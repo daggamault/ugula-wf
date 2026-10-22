@@ -1,0 +1,14 @@
+{
+  "name": "@ugula/sse",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ugula/config": "workspace:*"
+  }
+}

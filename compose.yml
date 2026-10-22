@@ -1,0 +1,144 @@
+name: ugula
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg18-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:?DB_USER is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:?DB_NAME is required}
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:${DB_PORT:?DB_PORT is required}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+  redis:
+    image: redis:8.10.2-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:${REDIS_PORT:?REDIS_PORT is required}:6379"
+    volumes:
+      - redis_data:/data
+
+  rustfs:
+    image: rustfs/rustfs:1.0.3
+    restart: unless-stopped
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID is required}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY is required}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:${S3_PORT:?S3_PORT is required}:9000"
+      - "127.0.0.1:${S3_CONSOLE_PORT:?S3_CONSOLE_PORT is required}:9001"
+    volumes:
+      - rustfs_data:/data
+
+  sftpgo:
+    image: drakkan/sftpgo:v2.7.6
+    restart: unless-stopped
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID is required}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY is required}
+      SFTPGO_SFTPD__BINDINGS__0__PORT: 2022
+      SFTPGO_HTTPD__BINDINGS__0__PORT: 8085
+      SFTPGO_DATA_PROVIDER__CREATE_DEFAULT_ADMIN: "true"
+      SFTPGO_DEFAULT_ADMIN_USERNAME: ${SFTPGO_ADMIN_USERNAME:?SFTPGO_ADMIN_USERNAME is required}
+      SFTPGO_DEFAULT_ADMIN_PASSWORD: ${SFTPGO_ADMIN_PASSWORD:?SFTPGO_ADMIN_PASSWORD is required}
+      SFTPGO_DATA_PROVIDER__EXTERNAL_AUTH_HOOK: http://host.docker.internal:${API_PORT:?API_PORT is required}/api/imports/sftp/auth
+      SFTPGO_DATA_PROVIDER__EXTERNAL_AUTH_SCOPE: 1
+      SFTPGO_COMMON__ACTIONS__EXECUTE_ON: upload
+      SFTPGO_COMMON__ACTIONS__EXECUTE_SYNC: upload
+      SFTPGO_COMMON__ACTIONS__HOOK: http://host.docker.internal:${API_PORT:?API_PORT is required}/api/imports/sftp/upload
+      SFTPGO_HTTP__HEADERS__0__KEY: Authorization
+      SFTPGO_HTTP__HEADERS__0__VALUE: Bearer ${SFTP_HOOK_SECRET:?SFTP_HOOK_SECRET is required}
+      SFTPGO_HTTP__HEADERS__0__URL: http://host.docker.internal:${API_PORT:?API_PORT is required}/api/imports/sftp/
+    healthcheck:
+      test: ["CMD", "sftpgo", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:${SFTP_PORT:?SFTP_PORT is required}:2022"
+      - "127.0.0.1:${SFTPGO_ADMIN_PORT:?SFTPGO_ADMIN_PORT is required}:8085"
+    volumes:
+      - sftpgo_data:/var/lib/sftpgo
+
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:89-1.9.4
+    restart: unless-stopped
+    gpus: all
+    command:
+      - --model-id=${EMBEDDINGS_MODEL:?EMBEDDINGS_MODEL is required}
+      - --revision=${EMBEDDINGS_MODEL_REVISION:?EMBEDDINGS_MODEL_REVISION is required}
+      - --max-batch-tokens=16384
+      - --max-client-batch-size=256
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 300s
+    ports:
+      - "127.0.0.1:${EMBEDDINGS_PORT:?EMBEDDINGS_PORT is required}:80"
+    volumes:
+      - embeddings_data:/data
+
+  completions:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda-b11783
+    restart: unless-stopped
+    gpus: all
+    command: >-
+      --model /data/${COMPLETIONS_MODEL:?COMPLETIONS_MODEL is required}.gguf
+      --model-url ${COMPLETIONS_MODEL_URL:?COMPLETIONS_MODEL_URL is required}
+      --alias ${COMPLETIONS_MODEL:?COMPLETIONS_MODEL is required}
+      --host 0.0.0.0
+      --port 8080
+      --n-gpu-layers all
+      --ctx-size 32768
+      --reasoning off
+      --no-webui
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 300s
+    ports:
+      - "127.0.0.1:${COMPLETIONS_PORT:?COMPLETIONS_PORT is required}:8080"
+    volumes:
+      - completions_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+  rustfs_data:
+  sftpgo_data:
+  embeddings_data:
+  completions_data:

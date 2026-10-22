@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="api-url" content="http://localhost:3001" />
+    <title>ugula</title>
+    <script>
+      {
+        const stored = localStorage.getItem('ugula_theme');
+        const isDark =
+          stored === 'dark' ||
+          (stored !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', isDark);
+        document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+      }
+    </script>
+    <link rel="stylesheet" href="/src/main.css" />
+  </head>
+  <body class="min-h-dvh bg-neutral-50 text-neutral-950 antialiased transition-colors dark:bg-neutral-950 dark:text-neutral-50">
+    <div id="root"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,56 @@
+{
+  "name": "ugula-monorepo",
+  "private": true,
+  "type": "module",
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "26.11.1",
+      "onFail": "download"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.10.1",
+      "onFail": "download"
+    }
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r --parallel run build",
+    "typecheck": "tsc --noEmit && pnpm -r --parallel run typecheck",
+    "test": "node --test .migrations/*.test.ts .seeds/*.test.ts && pnpm -r --parallel run test",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "db:migrate": "tsx --env-file=.env .migrations/migrate.ts",
+    "db:seed": "tsx --env-file=.env .seeds/seed.ts",
+    "db:seed:dev": "tsx --env-file=.env .seeds/seed.ts --dev"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "@hono/standard-validator": "0.4.0",
+    "@ugula/config": "workspace:*",
+    "@ugula/db": "workspace:*",
+    "@ugula/passwords": "workspace:*",
+    "hono": "4.13.13",
+    "ioredis": "6.0.0",
+    "kysely": "0.29.7",
+    "pg": "8.23.1",
+    "pg-boss": "12.38.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "valibot": "1.5.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.2",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "26.6.5",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}
