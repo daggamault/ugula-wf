@@ -16,7 +16,7 @@ export const Textarea = ({ id, label, error, hint, span, ...rest }: TextareaProp
       id={id}
       aria-invalid={Boolean(error) || undefined}
       aria-describedby={describedByOf(id, error, hint)}
-      className={classNamesOf('min-h-24 resize-y py-2 font-mono text-xs!', fieldControlClasses)}
+      className={classNamesOf('min-h-24 resize-y py-2 font-mono text-xs', fieldControlClasses)}
       spellCheck={false}
       {...rest}
     />

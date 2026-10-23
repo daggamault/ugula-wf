@@ -10,7 +10,7 @@ import { classNamesOf } from '../class-names.ts';
 
 export const emptyValue = '—';
 
-export type EmptyStateReason = 'empty' | 'clear' | 'noMatches' | 'error';
+type EmptyStateReason = 'empty' | 'clear' | 'noMatches' | 'error';
 
 const reasonIcons: Readonly<Record<EmptyStateReason, LucideIcon>> = {
   empty: InboxIcon,
@@ -23,7 +23,7 @@ const EmptyIcon = ({ icon: Icon, size }: { icon: LucideIcon; size: 'sm' | 'lg' }
   <span
     aria-hidden="true"
     className={classNamesOf(
-      'flex shrink-0 items-center justify-center rounded-full bg-surface-fg/6 text-surface-fg-muted',
+      'bg-surface-fg/6 text-surface-fg-muted flex shrink-0 items-center justify-center rounded-full',
       size === 'lg' ? 'size-12' : 'size-9'
     )}
   >

@@ -86,7 +86,7 @@ export const NewWorkflowDialog = ({ client, open, onClose }: NewWorkflowDialogPr
         </fieldset>
         {error ? <Alert>{error}</Alert> : null}
         <DialogActions>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             <XIcon aria-hidden="true" className="size-4" />
             Cancel
           </Button>

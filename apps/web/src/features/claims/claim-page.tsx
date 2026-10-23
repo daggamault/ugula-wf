@@ -12,12 +12,13 @@ import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatCents, formatDateTime, parseDollars } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
-import { Alert, type AlertTone } from '../../shared/ui/alert.tsx';
+import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
+import type { Intent } from '../../shared/ui/intent.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
@@ -226,7 +227,7 @@ export const PayersEditor = ({
                 <IconButton
                   label={`Remove ${p}`}
                   icon={Trash2Icon}
-                  tone="danger"
+                  intent="danger"
                   disabledReason={locked}
                   onClick={() => setList(list.filter((x) => x !== p))}
                 />
@@ -248,7 +249,7 @@ export const PayersEditor = ({
               onChange={(e) => setName(e.target.value)}
             />
           </div>
-          <Button type="submit" variant="secondary">
+          <Button type="submit" variant="outline">
             <PlusIcon aria-hidden="true" className="size-4" />
             Add
           </Button>
@@ -372,12 +373,12 @@ export const describeProgress = (progress: ClaimProgress | null) => {
 export const describeCycle = (
   claim: Pick<ClaimDetail, 'status' | 'cycle_status'>,
   progress: ClaimProgress | null
-): { tone: AlertTone; text: string; stopped: boolean; restartable: boolean } | null => {
+): { intent: Intent; text: string; stopped: boolean; restartable: boolean } | null => {
   if (claim.status !== 'open') return null;
   switch (claim.cycle_status) {
     case null:
       return {
-        tone: 'warning',
+        intent: 'warning',
         text: 'No payer cycle is running for this claim.',
         stopped: true,
         restartable: true
@@ -385,21 +386,21 @@ export const describeCycle = (
     case 'failed':
     case 'cancelled':
       return {
-        tone: 'danger',
+        intent: 'danger',
         text: `The payer cycle ${claim.cycle_status === 'failed' ? 'failed' : 'was cancelled'}, so nothing more will happen on this claim until it is restarted.`,
         stopped: true,
         restartable: true
       };
     case 'faulted':
       return {
-        tone: 'danger',
+        intent: 'danger',
         text: 'The payer cycle is stuck on an error. Resolve it from the exceptions queue.',
         stopped: true,
         restartable: false
       };
     default: {
       const text = describeProgress(progress);
-      return text ? { tone: 'info', text, stopped: false, restartable: false } : null;
+      return text ? { intent: 'info', text, stopped: false, restartable: false } : null;
     }
   }
 };
@@ -419,19 +420,19 @@ const CycleAlert = ({
   const runLink = status.stopped && claim.cycle_run_id ? claim.cycle_run_id : null;
   return (
     <Alert
-      tone={status.tone}
+      intent={status.intent}
       action={
         runLink || status.restartable ? (
           <>
             {runLink ? (
-              <ButtonLink to={`/runs/${runLink}`} variant="secondary" size="sm">
+              <ButtonLink to={`/runs/${runLink}`} variant="outline" size="sm">
                 <ExternalLinkIcon aria-hidden="true" className="size-4" />
                 Open the cycle run
               </ButtonLink>
             ) : null}
             {status.restartable ? (
               <Button
-                variant="secondary"
+                variant="outline"
                 size="sm"
                 isPending={restarting}
                 onClick={async () => {

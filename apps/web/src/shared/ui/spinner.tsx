@@ -11,7 +11,7 @@ const SpinnerBars = () =>
   barDelays.map((delay) => (
     <span
       key={delay}
-      className={classNamesOf('h-full flex-1 animate-bars rounded-full bg-current', delay)}
+      className={classNamesOf('animate-bars h-full flex-1 rounded-full bg-current', delay)}
     />
   ));
 

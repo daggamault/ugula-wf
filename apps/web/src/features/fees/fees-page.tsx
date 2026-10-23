@@ -53,11 +53,7 @@ export const FeesTable = ({
     {fees.map((f) => (
       <TableRow key={f.id}>
         <TableCell>
-          {f.payer ? (
-            <span className="font-medium">{f.payer}</span>
-          ) : (
-            <Badge tone="neutral">Default</Badge>
-          )}
+          {f.payer ? <span className="font-medium">{f.payer}</span> : <Badge>Default</Badge>}
         </TableCell>
         <TableCell>
           <span className="font-mono font-semibold">{f.code}</span>
@@ -77,7 +73,7 @@ export const FeesTable = ({
             <IconButton
               label={`Delete ${feeName(f)}`}
               icon={Trash2Icon}
-              tone="danger"
+              intent="danger"
               tooltipSide="left"
               onClick={() => onDelete(f)}
             />
@@ -142,7 +138,7 @@ export const FeesPage = ({ client }: FeesPageProps) => {
             ? `Change the price of ${draft.code} for ${draft.payer || 'the default schedule'}.`
             : 'Leave the payer empty to set the default price for a code.'
         }
-        accent={editing ? 'primary' : 'none'}
+        accent={editing ? 'primary' : undefined}
       >
         <form onSubmit={submit} className="flex flex-col gap-5" aria-label="Save fee">
           <fieldset
@@ -184,7 +180,7 @@ export const FeesPage = ({ client }: FeesPageProps) => {
               {editing ? 'Update fee' : 'Save fee'}
             </Button>
             {editing ? (
-              <Button variant="secondary" onClick={reset}>
+              <Button variant="outline" onClick={reset}>
                 <XIcon aria-hidden="true" className="size-4" />
                 Cancel
               </Button>
@@ -216,7 +212,7 @@ export const FeesPage = ({ client }: FeesPageProps) => {
       <ConfirmDialog
         open={deleting !== null}
         title="Delete Fee?"
-        tone="danger"
+        intent="danger"
         confirmLabel="Delete"
         confirmIcon={Trash2Icon}
         onClose={() => setDeleting(null)}

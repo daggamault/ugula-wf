@@ -1,22 +1,11 @@
-import {
-  createContext,
-  type ReactNode,
-  type RefObject,
-  type ToggleEvent,
-  use,
-  useEffect,
-  useId,
-  useRef,
-  useState
-} from 'react';
+import { type ReactNode, type ToggleEvent, useEffect, useId, useRef, useState } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { hidePopover, showPopover } from './popover.ts';
 
 export type TooltipSide = 'top' | 'right' | 'bottom' | 'left';
 
 type TooltipProps = {
-  label: string | undefined;
-  isBlock?: boolean;
+  label: string;
   side: TooltipSide;
   children: ReactNode;
 };
@@ -25,14 +14,7 @@ const showDelayMs = 300;
 const warmWindowMs = 300;
 const touchHideDelayMs = 2500;
 
-const TooltipLastHiddenAtContext = createContext<RefObject<number>>({ current: 0 });
-
-export const TooltipProvider = ({ children }: { children: ReactNode }) => {
-  const lastHiddenAtRef = useRef(0);
-  return (
-    <TooltipLastHiddenAtContext value={lastHiddenAtRef}>{children}</TooltipLastHiddenAtContext>
-  );
-};
+let lastHiddenAt = 0;
 
 const sideClasses: Readonly<Record<TooltipSide, string>> = {
   top: '[position-area:top]',
@@ -41,11 +23,10 @@ const sideClasses: Readonly<Record<TooltipSide, string>> = {
   left: '[position-area:left]'
 };
 
-export const Tooltip = ({ label, side, isBlock = false, children }: TooltipProps) => {
+export const Tooltip = ({ label, side, children }: TooltipProps) => {
   const anchorName = `--anchor-${useId().replace(/[^\w-]/g, '')}`;
   const triggerRef = useRef<HTMLSpanElement>(null);
   const popoverRef = useRef<HTMLSpanElement>(null);
-  const lastHiddenAtRef = use(TooltipLastHiddenAtContext);
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -64,7 +45,7 @@ export const Tooltip = ({ label, side, isBlock = false, children }: TooltipProps
     };
     const showOnPointer = (event: PointerEvent) => {
       if (event.pointerType !== 'touch') {
-        show(performance.now() - lastHiddenAtRef.current < warmWindowMs ? 0 : showDelayMs);
+        show(performance.now() - lastHiddenAt < warmWindowMs ? 0 : showDelayMs);
       }
     };
     const hideOnPointerLeave = (event: PointerEvent) => {
@@ -103,7 +84,7 @@ export const Tooltip = ({ label, side, isBlock = false, children }: TooltipProps
       trigger.removeEventListener('focusin', showOnFocus);
       trigger.removeEventListener('focusout', hide);
     };
-  }, [lastHiddenAtRef]);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) {
@@ -131,32 +112,26 @@ export const Tooltip = ({ label, side, isBlock = false, children }: TooltipProps
     const isShown = event.newState === 'open';
     setIsOpen(isShown);
     if (!isShown) {
-      lastHiddenAtRef.current = performance.now();
+      lastHiddenAt = performance.now();
     }
   };
 
   return (
-    <span
-      ref={triggerRef}
-      className={isBlock ? 'flex w-full' : 'inline-flex'}
-      style={{ anchorName }}
-    >
+    <span ref={triggerRef} className="inline-flex" style={{ anchorName }}>
       {children}
-      {label !== undefined && (
-        <span
-          ref={popoverRef}
-          popover="manual"
-          aria-hidden="true"
-          onToggle={onToggle}
-          style={{ positionAnchor: anchorName }}
-          className={classNamesOf(
-            'pointer-events-none inset-auto m-2 w-max max-w-xs scale-95 rounded-md border-0 bg-surface-fg px-2 py-1 font-semibold text-canvas text-xs opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-150 ease-out [position-try-fallbacks:flip-block,flip-inline] open:scale-100 starting:open:scale-95 open:opacity-100 starting:open:opacity-0',
-            sideClasses[side]
-          )}
-        >
-          {label}
-        </span>
-      )}
+      <span
+        ref={popoverRef}
+        popover="manual"
+        aria-hidden="true"
+        onToggle={onToggle}
+        style={{ positionAnchor: anchorName }}
+        className={classNamesOf(
+          'bg-surface-fg text-canvas pointer-events-none inset-auto m-2 w-max max-w-xs scale-95 rounded-md border-0 px-2 py-1 text-xs font-semibold opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-150 ease-out [position-try-fallbacks:flip-block,flip-inline] open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0',
+          sideClasses[side]
+        )}
+      >
+        {label}
+      </span>
     </span>
   );
 };

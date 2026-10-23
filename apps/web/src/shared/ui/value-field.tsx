@@ -68,7 +68,7 @@ export const ValueField = (props: ValueFieldProps) => {
           type="checkbox"
           checked={value === true}
           onChange={(e) => onChange(e.target.checked)}
-          className="size-4"
+          className="accent-primary size-4 cursor-pointer"
         />
         {label}
       </label>

@@ -3,57 +3,57 @@ import { type ComponentProps, useId } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { Link } from '../router.tsx';
 import { DisabledReason, preventDisabledClick } from './disabled-reason.tsx';
-import { PendingOverlay } from './spinner.tsx';
-import type { Tone } from './tone.ts';
+import type { Intent } from './intent.ts';
+import { interactiveClasses } from './interactive.ts';
 import { Tooltip, type TooltipSide } from './tooltip.tsx';
 
-const iconButtonClasses =
-  'relative grid size-9 shrink-0 place-items-center pointer-coarse:size-11 rounded-lg text-surface-fg-muted not-aria-disabled:active:scale-[0.97] aria-disabled:not-aria-busy:opacity-50';
+const iconButtonClasses = classNamesOf(
+  'text-surface-fg-muted grid size-9 shrink-0 place-items-center rounded-lg not-aria-disabled:active:scale-[0.97] aria-disabled:opacity-50 pointer-coarse:size-11',
+  interactiveClasses
+);
 
-type IconButtonTone = Extract<Tone, 'neutral' | 'danger'>;
+const neutralHoverClasses =
+  'not-aria-disabled:hover:bg-surface-fg/6 not-aria-disabled:hover:text-surface-fg';
 
-const toneClasses: Readonly<Record<IconButtonTone, string>> = {
-  neutral: 'not-aria-disabled:hover:bg-surface-fg/6 not-aria-disabled:hover:text-surface-fg',
-  danger: 'not-aria-disabled:hover:bg-danger/10 not-aria-disabled:hover:text-danger'
-};
+const dangerHoverClasses =
+  'not-aria-disabled:hover:bg-danger/10 not-aria-disabled:hover:text-danger';
 
 type IconButtonProps = Omit<ComponentProps<'button'>, 'children' | 'className' | 'disabled'> & {
   label: string;
   icon: LucideIcon;
-  tone?: IconButtonTone;
+  intent?: Extract<Intent, 'danger'>;
   tooltipSide?: TooltipSide;
-  isPending?: boolean;
   disabledReason?: string | undefined;
 };
 
 export const IconButton = ({
   label,
   icon: Icon,
-  tone = 'neutral',
+  intent,
   tooltipSide = 'bottom',
   type = 'button',
-  isPending = false,
   disabledReason,
   onClick,
   ...props
 }: IconButtonProps) => {
   const reasonId = useId();
-  const isEnabled = disabledReason === undefined && !isPending;
+  const isEnabled = disabledReason === undefined;
 
   return (
     <Tooltip label={disabledReason ?? label} side={tooltipSide}>
       <button
         type={type}
         aria-label={label}
-        aria-busy={isPending || undefined}
         aria-disabled={!isEnabled || undefined}
-        aria-describedby={disabledReason === undefined ? undefined : reasonId}
-        className={classNamesOf(iconButtonClasses, toneClasses[tone])}
+        aria-describedby={isEnabled ? undefined : reasonId}
+        className={classNamesOf(
+          iconButtonClasses,
+          intent === 'danger' ? dangerHoverClasses : neutralHoverClasses
+        )}
         onClick={isEnabled ? onClick : preventDisabledClick}
         {...props}
       >
-        <Icon aria-hidden="true" className={classNamesOf('size-4.5', isPending && 'opacity-0')} />
-        {isPending && <PendingOverlay />}
+        <Icon aria-hidden="true" className="size-4.5" />
       </button>
       <DisabledReason id={reasonId} reason={disabledReason} />
     </Tooltip>
@@ -72,7 +72,7 @@ export const IconLink = ({ to, label, icon: Icon, tooltipSide = 'bottom' }: Icon
     <Link
       to={to}
       aria-label={label}
-      className={classNamesOf(iconButtonClasses, toneClasses.neutral)}
+      className={classNamesOf(iconButtonClasses, neutralHoverClasses)}
     >
       <Icon aria-hidden="true" className="size-4.5" />
     </Link>

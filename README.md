@@ -27,17 +27,17 @@ Ugula is a durable, visual workflow engine (think Unreal Blueprints meets n8n) w
 
 ## Layout
 
-| Path | Purpose |
-| --- | --- |
-| `apps/api` | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, submissions, settings |
-| `apps/worker` | Executes workflow runs from the pg-boss queue and implements billing store ports |
-| `apps/sse` | Pushes live run and task updates to the browser over Server-Sent Events (via Redis) |
-| `apps/web` | React app: graph editor, runs, task queues, claims, submissions, fees, settings |
-| `libs/graph` | Workflow engine, expression language, and standard node library |
-| `libs/billing` | Billing domain: patient matching, pricing, claim cycle, statements, 837P generation |
-| `libs/nemsis` | NEMSIS XML parsing |
+| Path                                                                                                  | Purpose                                                                                |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `apps/api`                                                                                            | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, submissions, settings       |
+| `apps/worker`                                                                                         | Executes workflow runs from the pg-boss queue and implements billing store ports       |
+| `apps/sse`                                                                                            | Pushes live run and task updates to the browser over Server-Sent Events (via Redis)    |
+| `apps/web`                                                                                            | React app: graph editor, runs, task queues, claims, submissions, fees, settings        |
+| `libs/graph`                                                                                          | Workflow engine, expression language, and standard node library                        |
+| `libs/billing`                                                                                        | Billing domain: patient matching, pricing, claim cycle, statements, 837P generation    |
+| `libs/nemsis`                                                                                         | NEMSIS XML parsing                                                                     |
 | `libs/db`, `libs/jobs`, `libs/blobs`, `libs/events`, `libs/sessions`, `libs/config`, `libs/passwords` | Infrastructure: Postgres/Kysely, queues, S3 storage, events, sessions, config, hashing |
-| `.migrations`, `.seeds` | Schema and seed data (demo billing graphs, fees, payers) |
+| `.migrations`, `.seeds`                                                                               | Schema and seed data (demo billing graphs, fees, payers)                               |
 
 **Stack:** Node, TypeScript, pnpm workspaces, Postgres (Kysely), pg-boss, Redis, S3-compatible storage (RustFS), Hono, valibot, React, Tailwind, React Flow, Biome.
 

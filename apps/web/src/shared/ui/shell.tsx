@@ -1,9 +1,11 @@
 import { LogOutIcon, type LucideIcon, MenuIcon, XIcon } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { classNamesOf } from '../class-names.ts';
 import { Link } from '../router.tsx';
 import { Brand } from './brand.tsx';
 import { Collapse } from './collapse.tsx';
 import { IconButton } from './icon-button.tsx';
+import { interactiveClasses } from './interactive.ts';
 import { ThemeToggle } from './theme-toggle.tsx';
 
 export type NavItem = {
@@ -44,30 +46,31 @@ const NavHeader = ({ children }: { children?: ReactNode }) => (
 
 const NavMenu = ({ navItems, userEmail, status, onSignOut }: NavMenuProps) => (
   <div className="flex min-h-0 flex-1 flex-col gap-4">
-    <nav aria-label="Primary" className="flex-1 overflow-y-auto px-3">
-      <div className="flex flex-col gap-5">
-        {groupsOf(navItems).map(([group, items]) => (
-          <div key={group} className="flex flex-col gap-1">
-            <p className="text-surface-fg-muted px-3 pb-1 text-xs font-semibold tracking-wide uppercase">
-              {group}
-            </p>
-            <ul className="flex flex-col gap-1">
-              {items.map(({ id, label, href, icon: Icon, active }) => (
-                <li key={id} className="flex">
-                  <Link
-                    to={href}
-                    aria-current={active ? 'page' : undefined}
-                    className="text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold pointer-coarse:py-3"
-                  >
-                    <Icon aria-hidden="true" className="size-4.5" />
-                    {label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
+    <nav aria-label="Primary" className="flex flex-1 flex-col gap-5 overflow-y-auto px-3">
+      {groupsOf(navItems).map(([group, items]) => (
+        <div key={group} className="flex flex-col gap-1">
+          <p className="text-surface-fg-muted px-3 pb-1 text-xs font-semibold tracking-wide uppercase">
+            {group}
+          </p>
+          <ul className="flex flex-col gap-1">
+            {items.map(({ id, label, href, icon: Icon, active }) => (
+              <li key={id} className="flex">
+                <Link
+                  to={href}
+                  aria-current={active ? 'page' : undefined}
+                  className={classNamesOf(
+                    interactiveClasses,
+                    'text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold pointer-coarse:py-3'
+                  )}
+                >
+                  <Icon aria-hidden="true" className="size-4.5" />
+                  {label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </nav>
     <div className="border-border flex items-center gap-2 border-t p-3">
       {status}

@@ -29,10 +29,10 @@ export const Table = ({ label, head, children }: TableProps) => (
               key={c.label}
               scope="col"
               className={classNamesOf(
-                'whitespace-nowrap border-border border-b px-4 py-3 font-semibold text-surface-fg-muted text-xs uppercase tracking-wide',
+                'border-border text-surface-fg-muted border-b px-4 py-3 text-xs font-semibold tracking-wide whitespace-nowrap uppercase',
                 c.isNumeric && 'text-right',
                 c.isCompact && 'w-px',
-                c.isSecondary && 'max-md:hidden'
+                c.isSecondary && 'hidden md:table-cell'
               )}
             >
               <span className={c.isLabelHidden ? 'sr-only' : undefined}>{c.label}</span>
@@ -55,7 +55,7 @@ type TableCellKind = 'text' | 'numeric' | 'date' | 'actions';
 
 const cellKindClasses: Readonly<Record<TableCellKind, string>> = {
   text: 'whitespace-nowrap',
-  numeric: 'whitespace-nowrap text-right tabular-nums',
+  numeric: 'text-right whitespace-nowrap tabular-nums',
   date: 'whitespace-nowrap tabular-nums',
   actions: 'w-px whitespace-nowrap'
 };
@@ -76,15 +76,9 @@ export const TableCell = ({
     className={classNamesOf(
       'px-4 py-3 align-middle',
       isMuted && 'text-surface-fg-muted',
-      isSecondary && 'max-md:hidden',
+      isSecondary && 'hidden md:table-cell',
       cellKindClasses[kind]
     )}
     {...props}
   />
-);
-
-export const TableRowHead = ({ children }: { children: ReactNode }) => (
-  <th scope="row" className="px-4 py-3 align-middle font-medium">
-    {children}
-  </th>
 );

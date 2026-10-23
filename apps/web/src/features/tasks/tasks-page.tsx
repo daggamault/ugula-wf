@@ -44,14 +44,14 @@ export const QueuesTable = ({
         </TableCell>
         <TableCell kind="numeric">{q.open}</TableCell>
         <TableCell kind="numeric">
-          {q.unassigned ? <Badge tone="warning">{q.unassigned}</Badge> : q.unassigned}
+          {q.unassigned ? <Badge intent="warning">{q.unassigned}</Badge> : q.unassigned}
         </TableCell>
         <TableCell kind="date" isMuted isSecondary>
           {formatDateTime(q.oldest)}
         </TableCell>
         <TableCell kind="actions">
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
             tooltipSide="left"
             disabledReason={q.unassigned ? undefined : 'Every task here is assigned.'}
@@ -73,7 +73,7 @@ export const MyTasksTable = ({ tasks }: { tasks: readonly TaskSummary[] }) => (
         <TableCell>
           <span className="flex flex-wrap items-center gap-2">
             <TextLink to={`/tasks/${t.id}`}>{t.title}</TextLink>
-            {t.kind === 'fault' ? <Badge tone="danger">Stuck run</Badge> : null}
+            {t.kind === 'fault' ? <Badge intent="danger">Stuck run</Badge> : null}
           </span>
         </TableCell>
         <TableCell isMuted>{t.queue}</TableCell>
@@ -110,7 +110,7 @@ export const TasksPage = ({ client, live }: TasksPageProps) => {
 
   return (
     <Page title="Tasks" description="Reviews and stuck runs waiting on a person.">
-      {notice ? <Alert tone="info">{notice}</Alert> : null}
+      {notice ? <Alert intent="info">{notice}</Alert> : null}
       {queues.error ? <Alert>{queues.error.message}</Alert> : null}
       <Section title="Assigned to Me" description="Tasks you claimed. Finish these first.">
         {mine.data?.length ? (

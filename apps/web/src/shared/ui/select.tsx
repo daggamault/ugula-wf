@@ -1,19 +1,26 @@
 import { ChevronDownIcon } from 'lucide-react';
 import type { SelectHTMLAttributes } from 'react';
 import { classNamesOf } from '../class-names.ts';
-import { describedByOf, Field, type FieldSpan, fieldControlClasses } from './field.tsx';
+import {
+  describedByOf,
+  Field,
+  type FieldSpan,
+  fieldControlClasses,
+  fieldTextClasses
+} from './field.tsx';
 
 export type SelectOption = {
   value: string;
   label: string;
 };
 
-export const selectClasses = classNamesOf(
-  'min-h-10 appearance-none truncate pr-9',
-  fieldControlClasses
+const selectClasses = classNamesOf(
+  'min-h-10 cursor-pointer appearance-none truncate pr-9',
+  fieldControlClasses,
+  fieldTextClasses
 );
 
-export const SelectChevron = () => (
+const SelectChevron = () => (
   <ChevronDownIcon
     aria-hidden="true"
     className="text-surface-fg-muted pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2"

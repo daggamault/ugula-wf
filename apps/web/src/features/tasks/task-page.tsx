@@ -6,7 +6,9 @@ import { formatDateTime } from '../../shared/format.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
-import { Button, ButtonLink, type ButtonVariant } from '../../shared/ui/button.tsx';
+import { Button, ButtonLink } from '../../shared/ui/button.tsx';
+import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
+import type { Intent } from '../../shared/ui/intent.ts';
 import { JsonView } from '../../shared/ui/json-view.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
@@ -25,7 +27,7 @@ export type TaskViewProps = {
   onAssign: (claim: boolean) => Promise<void>;
 };
 
-const FAULT_VARIANTS: Record<string, ButtonVariant> = {
+const FAULT_INTENTS: Record<string, Intent> = {
   retry: 'primary',
   skip: 'warning',
   cancel: 'danger'
@@ -56,7 +58,6 @@ export const TaskView = ({ task, onComplete, onAssign }: TaskViewProps) => {
       setBusy(null);
     }
   };
-  const pendingReason = busy ? 'Wait for this to finish.' : undefined;
   const isUnassigned = task.assignee_id === null;
 
   return (
@@ -66,22 +67,22 @@ export const TaskView = ({ task, onComplete, onAssign }: TaskViewProps) => {
       backLabel="Back to Tasks"
       description={
         <span className="flex flex-wrap items-center gap-2">
-          <Badge tone={isFault ? 'danger' : 'info'}>{isFault ? 'Stuck run' : 'Review'}</Badge>
+          <Badge intent={isFault ? 'danger' : 'info'}>{isFault ? 'Stuck run' : 'Review'}</Badge>
           <span>{task.queue}</span>
           <span>· {formatDateTime(task.created_at)}</span>
         </span>
       }
       actions={
         <>
-          <ButtonLink to={`/runs/${task.run_id}`} variant="secondary">
+          <ButtonLink to={`/runs/${task.run_id}`} variant="outline">
             <ExternalLinkIcon aria-hidden="true" className="size-4" />
             Open run
           </ButtonLink>
           {open ? (
             <Button
-              variant="secondary"
+              variant="outline"
               isPending={busy === 'assign'}
-              disabledReason={busy && busy !== 'assign' ? pendingReason : undefined}
+              disabledReason={busy && busy !== 'assign' ? pendingActionMessage : undefined}
               onClick={() => act('assign', () => onAssign(isUnassigned))}
             >
               {isUnassigned ? (
@@ -105,7 +106,7 @@ export const TaskView = ({ task, onComplete, onAssign }: TaskViewProps) => {
         </SectionPanel>
         <SectionPanel
           title="Decision"
-          accent={open ? 'primary' : 'none'}
+          accent={open ? 'primary' : undefined}
           description={open && isFault ? FAULT_HELP : undefined}
         >
           {open ? (
@@ -129,15 +130,10 @@ export const TaskView = ({ task, onComplete, onAssign }: TaskViewProps) => {
                 {task.outcomes.map((outcome, i) => (
                   <Button
                     key={outcome}
-                    variant={
-                      isFault
-                        ? (FAULT_VARIANTS[outcome] ?? 'secondary')
-                        : i === 0
-                          ? 'primary'
-                          : 'secondary'
-                    }
+                    intent={isFault ? (FAULT_INTENTS[outcome] ?? 'primary') : 'primary'}
+                    variant={isFault || i === 0 ? 'solid' : 'outline'}
                     isPending={busy === outcome}
-                    disabledReason={busy && busy !== outcome ? pendingReason : undefined}
+                    disabledReason={busy && busy !== outcome ? pendingActionMessage : undefined}
                     onClick={() => act(outcome, () => onComplete(outcome, values))}
                   >
                     {labelOf(outcome)}
@@ -147,7 +143,7 @@ export const TaskView = ({ task, onComplete, onAssign }: TaskViewProps) => {
             </form>
           ) : (
             <>
-              <Alert tone={task.status === 'completed' ? 'success' : 'warning'}>
+              <Alert intent={task.status === 'completed' ? 'success' : 'warning'}>
                 {task.status === 'completed'
                   ? `Completed ${formatDateTime(task.completed_at)} as “${task.resolution?.outcome ?? ''}”.`
                   : 'This task was cancelled.'}

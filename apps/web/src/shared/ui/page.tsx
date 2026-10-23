@@ -25,12 +25,12 @@ export const PageHeader = ({
 
   useEffect(() => {
     const header = headerRef.current;
-    if (!header || typeof IntersectionObserver === 'undefined') {
+    if (!header) {
       return;
     }
     const observer = new IntersectionObserver(
       ([entry]) => setIsStuck(Boolean(entry && entry.intersectionRatio < 1)),
-      { threshold: 1, rootMargin: '-1px 0px 0px 0px' }
+      { threshold: 1 }
     );
     observer.observe(header);
     return () => observer.disconnect();
@@ -40,14 +40,14 @@ export const PageHeader = ({
     <header
       ref={headerRef}
       className={classNamesOf(
-        'sticky top-0 z-10 -mx-4 -mt-4 flex flex-wrap items-end justify-between gap-4 border-transparent border-b px-4 pt-4 pb-3 transition-colors duration-200 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6 lg:-mx-10 lg:-mt-10 lg:px-10 lg:pt-10',
-        isStuck && 'border-border bg-canvas/75 backdrop-blur-md'
+        'sticky -top-px z-10 -mx-4 -mt-4 flex flex-wrap items-end justify-between gap-4 border-b px-4 pt-4 pb-3 transition-colors duration-200 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6 lg:-mx-10 lg:-mt-10 lg:px-10 lg:pt-10',
+        isStuck ? 'border-border bg-canvas/75 backdrop-blur-md' : 'border-transparent'
       )}
     >
       <div className="flex min-w-0 items-start gap-2">
         {backTo && <IconLink to={backTo} label={backLabel} icon={ArrowLeftIcon} />}
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h1 className="text-xl/9 font-extrabold tracking-tight break-words sm:text-2xl">
+          <h1 className="text-xl/9 font-extrabold tracking-tight text-balance break-words sm:text-2xl">
             {title}
           </h1>
           {description && <div className="text-surface-fg-muted text-sm">{description}</div>}

@@ -9,6 +9,7 @@ import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
+import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
 import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.tsx';
 import { NativeSelect } from '../../shared/ui/select.tsx';
 import { useResource } from '../../shared/use-resource.ts';
@@ -116,11 +117,11 @@ export const EditorView = ({
         description={
           <span className="flex flex-wrap items-center gap-2">
             <code className="font-mono">{graph.key}</code>
-            <Badge tone={isDraft ? 'warning' : 'success'}>
+            <Badge intent={isDraft ? 'warning' : 'success'}>
               {isDraft ? `Draft v${version}` : `Published v${version}`}
             </Badge>
-            {graph.tenant_id === null ? <Badge tone="neutral">System</Badge> : null}
-            {dirty ? <Badge tone="danger">Unsaved</Badge> : null}
+            {graph.tenant_id === null ? <Badge>System</Badge> : null}
+            {dirty ? <Badge intent="danger">Unsaved</Badge> : null}
           </span>
         }
         actions={
@@ -137,7 +138,7 @@ export const EditorView = ({
               />
             </div>
             {graph.tenant_id !== null && !isDraft && !draft ? (
-              <Button variant="secondary" isPending={busy === 'save'} onClick={save}>
+              <Button variant="outline" isPending={busy === 'save'} onClick={save}>
                 <PencilIcon aria-hidden="true" className="size-4" />
                 Edit as new draft
               </Button>
@@ -145,11 +146,11 @@ export const EditorView = ({
             {editable ? (
               <>
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   isPending={busy === 'save'}
                   disabledReason={
                     busy === 'publish'
-                      ? 'Wait for this to finish.'
+                      ? pendingActionMessage
                       : dirty
                         ? undefined
                         : 'No changes to save.'
@@ -163,7 +164,7 @@ export const EditorView = ({
                   isPending={busy === 'publish'}
                   disabledReason={
                     busy === 'save'
-                      ? 'Wait for this to finish.'
+                      ? pendingActionMessage
                       : dirty
                         ? 'Save your changes first.'
                         : undefined
@@ -176,7 +177,7 @@ export const EditorView = ({
               </>
             ) : null}
             {graph.kind === 'workflow' && versions.some((v) => v.published_at) ? (
-              <ButtonLink to={`/runs/new?graph=${graph.id}`} variant="secondary">
+              <ButtonLink to={`/runs/new?graph=${graph.id}`} variant="outline">
                 <PlayIcon aria-hidden="true" className="size-4" />
                 Run
               </ButtonLink>
@@ -190,7 +191,7 @@ export const EditorView = ({
         </div>
       ) : null}
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[15rem_minmax(0,1fr)_22rem]">
-        <aside className="border-border bg-surface order-2 max-h-80 overflow-y-auto max-lg:border-t lg:order-1 lg:max-h-none lg:border-r">
+        <aside className="border-border bg-surface order-2 max-h-80 overflow-y-auto border-t lg:order-1 lg:max-h-none lg:border-t-0 lg:border-r">
           <Palette entries={catalog.palette} disabled={!editable} onAdd={add} />
         </aside>
         <div className="order-1 h-[60dvh] lg:order-2 lg:h-auto">
@@ -203,7 +204,7 @@ export const EditorView = ({
             {...(editable ? { onChange: change } : {})}
           />
         </div>
-        <aside className="border-border bg-surface order-3 overflow-y-auto max-lg:border-t lg:border-l">
+        <aside className="border-border bg-surface order-3 overflow-y-auto border-t lg:border-t-0 lg:border-l">
           {node ? (
             <NodePanel
               key={node.id}

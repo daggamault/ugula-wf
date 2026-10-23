@@ -25,9 +25,9 @@ export type GraphPanelProps = {
   onChange: (def: GraphDef) => void;
 };
 
-const headingClass = 'font-semibold text-surface-fg-muted text-xs uppercase tracking-wide';
+const headingClass = 'text-surface-fg-muted text-xs font-semibold tracking-wide uppercase';
 
-const sectionClass = 'flex flex-col gap-3 border-border border-t pt-4';
+const sectionClass = 'border-border flex flex-col gap-3 border-t pt-4';
 
 const names = (text: string) =>
   text
@@ -94,13 +94,13 @@ const PinsEditor = ({
           <IconButton
             label={`Remove ${pin.name}`}
             icon={Trash2Icon}
-            tone="danger"
+            intent="danger"
             onClick={() => onPins(pins.filter((_, j) => j !== i))}
           />
         </div>
       ))}
       <Button
-        variant="secondary"
+        variant="outline"
         onClick={() => onPins([...pins, { name: `value${pins.length + 1}`, type: 'any' }])}
       >
         <PlusIcon aria-hidden="true" className="size-4" />
@@ -147,7 +147,7 @@ const VariablesEditor = ({
             <IconButton
               label={`Remove ${variable.name}`}
               icon={Trash2Icon}
-              tone="danger"
+              intent="danger"
               onClick={() => onVariables(variables.filter((_, j) => j !== i))}
             />
           </div>
@@ -162,7 +162,7 @@ const VariablesEditor = ({
         </fieldset>
       ))}
       <Button
-        variant="secondary"
+        variant="outline"
         onClick={() =>
           onVariables([
             ...variables,
@@ -192,7 +192,7 @@ export const GraphPanel = ({ def, issues, editable, onChange }: GraphPanelProps)
         </p>
       </header>
       {issues.map((issue) => (
-        <Alert key={`${issue.node ?? ''}${issue.message}`} tone="warning">
+        <Alert key={`${issue.node ?? ''}${issue.message}`} intent="warning">
           {issue.node ? `${issue.node}: ` : ''}
           {issue.message}
         </Alert>

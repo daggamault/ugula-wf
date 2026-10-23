@@ -34,38 +34,36 @@ export const SignInForm = ({ auth, onSuccess }: SignInFormProps) => {
   };
 
   return (
-    <section aria-labelledby="sign-in-heading" className="contents">
-      <Card>
-        <BrandHeader id="sign-in-heading">Sign in to your account.</BrandHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <fieldset disabled={submitting} className="flex flex-col gap-5">
-            <Input
-              id="email"
-              label="Email"
-              type="email"
-              autoComplete="email"
-              required
-              placeholder="name@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <Input
-              id="password"
-              label="Password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </fieldset>
-          {error ? <Alert>{error}</Alert> : null}
-          <Button type="submit" isBlock isPending={submitting}>
-            <LogInIcon aria-hidden="true" className="size-4" />
-            Sign In
-          </Button>
-        </form>
-      </Card>
-    </section>
+    <Card labelledBy="sign-in-heading">
+      <BrandHeader id="sign-in-heading">Sign in to your account.</BrandHeader>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <fieldset disabled={submitting} className="flex flex-col gap-5">
+          <Input
+            id="email"
+            label="Email"
+            type="email"
+            autoComplete="email"
+            required
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <Input
+            id="password"
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </fieldset>
+        {error ? <Alert>{error}</Alert> : null}
+        <Button type="submit" isBlock isPending={submitting}>
+          <LogInIcon aria-hidden="true" className="size-4" />
+          Sign In
+        </Button>
+      </form>
+    </Card>
   );
 };

@@ -212,7 +212,7 @@ export const PayerDirectory = ({
             {editing ? 'Update payer' : 'Save payer'}
           </Button>
           {editing ? (
-            <Button variant="secondary" onClick={reset}>
+            <Button variant="outline" onClick={reset}>
               <XIcon aria-hidden="true" className="size-4" />
               Cancel
             </Button>
@@ -254,7 +254,7 @@ export const PayerDirectory = ({
                   <IconButton
                     label={`Delete ${p.name}`}
                     icon={Trash2Icon}
-                    tone="danger"
+                    intent="danger"
                     tooltipSide="left"
                     onClick={() => setDeleting(p)}
                   />
@@ -271,7 +271,7 @@ export const PayerDirectory = ({
       <ConfirmDialog
         open={deleting !== null}
         title="Delete Payer?"
-        tone="danger"
+        intent="danger"
         confirmLabel="Delete"
         confirmIcon={Trash2Icon}
         onClose={() => setDeleting(null)}
@@ -312,7 +312,7 @@ export const SettingsPage = ({ client }: SettingsPageProps) => {
       description="Billing identity and payer details used on claims and statements."
     >
       {error ? <Alert>{error}</Alert> : null}
-      {notice ? <Alert tone="success">{notice}</Alert> : null}
+      {notice ? <Alert intent="success">{notice}</Alert> : null}
       {profile.data !== undefined ? (
         <ProfileForm
           profile={profile.data}

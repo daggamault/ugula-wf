@@ -25,7 +25,7 @@ describe('Table', () => {
     assert.ok(html.includes('aria-label="Runs"'));
     assert.ok(html.includes('<th scope="col"'));
     assert.ok(html.includes('Batch</td>'));
-    assert.ok(html.includes('text-right tabular-nums'));
+    assert.match(html, /<td class="[^"]*text-right[^"]*">\$1\.00<\/td>/);
     assert.ok(html.includes('<span class="sr-only">Actions</span>'));
   });
 });

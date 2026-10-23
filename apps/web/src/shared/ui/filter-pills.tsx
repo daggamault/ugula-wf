@@ -1,6 +1,8 @@
+import { classNamesOf } from '../class-names.ts';
 import { Link } from '../router.tsx';
+import { interactiveClasses } from './interactive.ts';
 
-export type FilterPillOption = {
+type FilterPillOption = {
   label: string;
   href: string;
   isSelected: boolean;
@@ -18,7 +20,10 @@ export const FilterPills = ({ label, options }: FilterPillsProps) => (
         key={optionLabel}
         to={href}
         aria-current={isSelected ? 'true' : undefined}
-        className="border-border text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg aria-[current=true]:border-primary/40 aria-[current=true]:bg-primary/10 aria-[current=true]:text-primary rounded-full border px-3 py-1 text-xs font-semibold"
+        className={classNamesOf(
+          interactiveClasses,
+          'border-border text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg aria-[current=true]:border-primary/40 aria-[current=true]:bg-primary/10 aria-[current=true]:text-primary rounded-full border px-3 py-1 text-xs font-semibold'
+        )}
       >
         {optionLabel}
       </Link>

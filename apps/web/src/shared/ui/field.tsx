@@ -2,11 +2,13 @@ import { type ReactNode, useId } from 'react';
 import { classNamesOf } from '../class-names.ts';
 
 export const fieldControlClasses =
-  'w-full rounded-lg border border-border bg-surface px-3 text-base outline-offset-0 placeholder:text-surface-fg-muted/70 disabled:opacity-50 aria-invalid:border-danger aria-invalid:outline-danger [&:enabled:not([readonly])]:hover:border-surface-fg/25 sm:text-sm';
+  'border-border bg-surface placeholder:text-surface-fg-muted/70 focus-visible:outline-primary aria-invalid:border-danger aria-invalid:focus-visible:outline-danger [&:enabled:not([readonly])]:hover:border-surface-fg/25 w-full rounded-lg border px-3 outline-2 outline-offset-0 outline-transparent transition duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50';
+
+export const fieldTextClasses = 'text-base sm:text-sm';
 
 export type FieldSpan = 1 | 2 | 4;
 
-export const fieldSpanClasses: Readonly<Record<FieldSpan, string>> = {
+const fieldSpanClasses: Readonly<Record<FieldSpan, string>> = {
   1: '',
   2: '@lg:col-span-2',
   4: '@lg:col-span-2 @3xl:col-span-4'

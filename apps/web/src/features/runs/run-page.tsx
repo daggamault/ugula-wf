@@ -1,6 +1,7 @@
 import { ChevronRightIcon, CircleStopIcon, WorkflowIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
+import { classNamesOf } from '../../shared/class-names.ts';
 import { formatDateTime } from '../../shared/format.ts';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { GraphCanvas } from '../../shared/graph/graph-canvas.tsx';
@@ -9,6 +10,7 @@ import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
+import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { JsonView } from '../../shared/ui/json-view.tsx';
 import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
@@ -37,10 +39,12 @@ export type RunViewProps = {
   onCancel: () => Promise<void>;
 };
 
-const crumbClass =
-  'rounded-md px-2 py-1 font-mono text-xs hover:bg-surface-fg/6 hover:text-surface-fg last:font-semibold last:text-surface-fg';
+const crumbClass = classNamesOf(
+  'hover:bg-surface-fg/6 hover:text-surface-fg last:text-surface-fg rounded-md px-2 py-1 font-mono text-xs last:font-semibold',
+  interactiveClasses
+);
 
-const panelHeading = 'font-semibold text-surface-fg-muted text-xs uppercase tracking-wide';
+const panelHeading = 'text-surface-fg-muted text-xs font-semibold tracking-wide uppercase';
 
 export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
   const { run, children, childCount, tasks } = detail;
@@ -94,14 +98,14 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
           <>
             <ButtonLink
               to={`/workflows/${run.graph_id}?version=${run.version}`}
-              variant="secondary"
+              variant="outline"
               size="sm"
             >
               <WorkflowIcon aria-hidden="true" className="size-4" />
               Open workflow
             </ButtonLink>
             {active ? (
-              <Button variant="danger" size="sm" onClick={() => setConfirming(true)}>
+              <Button intent="danger" size="sm" onClick={() => setConfirming(true)}>
                 <CircleStopIcon aria-hidden="true" className="size-4" />
                 Cancel run
               </Button>
@@ -114,7 +118,7 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
           {error ? <Alert>{error}</Alert> : null}
           {run.error ? <Alert>{run.error.message}</Alert> : null}
           {openTasks.length ? (
-            <Alert tone="warning">
+            <Alert intent="warning">
               {openTasks.some((t) => t.kind === 'fault') ? 'Needs attention: ' : 'Waiting on '}
               {openTasks.map((t, i) => (
                 <span key={t.id}>
@@ -163,7 +167,7 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
             </div>
           )}
         </div>
-        <aside className="border-border bg-surface overflow-y-auto max-lg:border-t lg:border-l">
+        <aside className="border-border bg-surface overflow-y-auto border-t lg:border-t-0 lg:border-l">
           {node ? (
             <NodeExecutions
               title={catalog.titleOf(node)}
@@ -211,7 +215,7 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
         <ConfirmDialog
           open={confirming}
           title="Cancel this run?"
-          tone="danger"
+          intent="danger"
           confirmLabel="Cancel run"
           confirmIcon={CircleStopIcon}
           dismissLabel="Keep running"

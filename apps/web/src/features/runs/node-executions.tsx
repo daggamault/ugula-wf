@@ -27,7 +27,7 @@ export const NodeExecutions = ({ title, steps, onOpen }: NodeExecutionsProps) =>
         </p>
       </div>
       {onOpen ? (
-        <Button variant="secondary" size="sm" onClick={onOpen}>
+        <Button variant="outline" size="sm" onClick={onOpen}>
           <FolderOpenIcon aria-hidden="true" className="size-4" />
           Open sub-graph
         </Button>
@@ -42,8 +42,8 @@ export const NodeExecutions = ({ title, steps, onOpen }: NodeExecutionsProps) =>
           >
             <p className="text-surface-fg-muted flex flex-wrap items-center gap-2 text-xs">
               <span className="text-surface-fg font-semibold">#{s.seq}</span>
-              <Badge tone={s.error ? 'danger' : 'neutral'}>{s.event}</Badge>
-              {s.pin ? <Badge tone="info">→ {s.pin}</Badge> : null}
+              <Badge intent={s.error ? 'danger' : undefined}>{s.event}</Badge>
+              {s.pin ? <Badge intent="info">→ {s.pin}</Badge> : null}
               <time dateTime={s.started_at}>{formatDateTime(s.started_at)}</time>
               <span>{formatDuration(s.duration_ms)}</span>
             </p>

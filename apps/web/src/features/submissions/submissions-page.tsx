@@ -56,7 +56,7 @@ export const PendingTable = ({
             disabled={c.issues.length > 0}
             checked={!c.issues.length && !excluded.has(c.id)}
             onChange={() => onToggle(c.id)}
-            className="size-4 disabled:opacity-40"
+            className="accent-primary size-4 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
           />
         </TableCell>
         <TableCell>
@@ -71,7 +71,7 @@ export const PendingTable = ({
         <TableCell>
           <span className="flex flex-wrap items-center gap-2">
             {c.payer}
-            {c.resubmission ? <Badge tone="info">Resubmission</Badge> : null}
+            {c.resubmission ? <Badge intent="info">Resubmission</Badge> : null}
           </span>
         </TableCell>
         <TableCell kind="numeric">{formatCents(c.totalCents)}</TableCell>
@@ -83,16 +83,11 @@ export const PendingTable = ({
               ))}
             </ul>
           ) : (
-            <Badge tone="success">Ready</Badge>
+            <Badge intent="success">Ready</Badge>
           )}
         </TableCell>
         <TableCell kind="actions">
-          <Button
-            variant="secondary"
-            size="sm"
-            tooltipSide="left"
-            onClick={() => onMarkSubmitted(c)}
-          >
+          <Button variant="outline" size="sm" tooltipSide="left" onClick={() => onMarkSubmitted(c)}>
             <CheckIcon aria-hidden="true" className="size-4" />
             Mark submitted
           </Button>
@@ -133,16 +128,20 @@ export const BatchesTable = ({
         <TableCell kind="numeric">{formatCents(b.total_cents)}</TableCell>
         <TableCell>
           {b.production ? (
-            <Badge tone="success">Production</Badge>
+            <Badge intent="success">Production</Badge>
           ) : (
-            <Badge tone="warning">Test</Badge>
+            <Badge intent="warning">Test</Badge>
           )}
         </TableCell>
         <TableCell isMuted isSecondary>
           {b.created_by_email ?? emptyValue}
         </TableCell>
         <TableCell kind="actions">
-          <a href={fileUrl(b.id)} download className={buttonClasses('secondary', 'sm')}>
+          <a
+            href={fileUrl(b.id)}
+            download
+            className={buttonClasses({ variant: 'outline', size: 'sm' })}
+          >
             <DownloadIcon aria-hidden="true" className="size-4" />
             Download 837P
           </a>
@@ -231,9 +230,9 @@ export const SubmissionsPage = ({ client, live }: SubmissionsPageProps) => {
     >
       {blockers.length ? (
         <Alert
-          tone="warning"
+          intent="warning"
           action={
-            <ButtonLink to="/settings" variant="secondary" size="sm">
+            <ButtonLink to="/settings" variant="outline" size="sm">
               Open Settings
             </ButtonLink>
           }
@@ -244,13 +243,13 @@ export const SubmissionsPage = ({ client, live }: SubmissionsPageProps) => {
       {error ? <Alert>{error}</Alert> : null}
       {notice ? (
         <Alert
-          tone="success"
+          intent="success"
           action={
             notice.batch ? (
               <a
                 href={client.fileUrl(notice.batch.id)}
                 download
-                className={buttonClasses('secondary', 'sm')}
+                className={buttonClasses({ variant: 'outline', size: 'sm' })}
               >
                 <DownloadIcon aria-hidden="true" className="size-4" />
                 Download 837P

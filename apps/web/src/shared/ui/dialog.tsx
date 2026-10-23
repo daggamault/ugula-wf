@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useId, useRef } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { Button } from './button.tsx';
 import { IconButton } from './icon-button.tsx';
-import type { Tone } from './tone.ts';
+import type { Intent } from './intent.ts';
 
 export type DialogProps = {
   open: boolean;
@@ -38,7 +38,7 @@ export const Dialog = ({
       aria-labelledby={titleId}
       onClose={onClose}
       className={classNamesOf(
-        'm-auto w-[calc(100%-2rem)] scale-95 rounded-2xl border border-border bg-surface p-7 text-surface-fg opacity-0 shadow-2xl transition-[opacity,scale,display,overlay] transition-discrete duration-300 ease-out backdrop:bg-canvas/70 backdrop:opacity-0 backdrop:backdrop-blur-sm backdrop:transition-[opacity,display,overlay] backdrop:transition-discrete backdrop:duration-300 backdrop:ease-out open:scale-100 starting:open:scale-95 open:opacity-100 starting:open:opacity-0 open:backdrop:opacity-100 starting:open:backdrop:opacity-0',
+        'border-border bg-surface text-surface-fg backdrop:bg-canvas/70 m-auto w-[calc(100%-2rem)] scale-95 rounded-2xl border p-7 opacity-0 shadow-2xl transition-[opacity,scale,display,overlay] transition-discrete duration-300 ease-out backdrop:opacity-0 backdrop:backdrop-blur-sm backdrop:transition-[opacity,display,overlay] backdrop:transition-discrete backdrop:duration-300 backdrop:ease-out open:scale-100 open:opacity-100 open:backdrop:opacity-100 starting:open:scale-95 starting:open:opacity-0 starting:open:backdrop:opacity-0',
         isWide ? 'max-w-2xl' : 'max-w-md'
       )}
     >
@@ -67,7 +67,7 @@ export const DialogActions = ({ children }: { children: ReactNode }) => (
 type ConfirmDialogProps = {
   open: boolean;
   title: string;
-  tone?: Extract<Tone, 'danger' | 'warning'>;
+  intent?: Extract<Intent, 'danger' | 'warning'>;
   confirmLabel: string;
   confirmIcon: LucideIcon;
   dismissLabel?: string;
@@ -79,7 +79,7 @@ type ConfirmDialogProps = {
 export const ConfirmDialog = ({
   open,
   title,
-  tone,
+  intent,
   confirmLabel,
   confirmIcon: ConfirmIcon,
   dismissLabel = 'Cancel',
@@ -89,11 +89,11 @@ export const ConfirmDialog = ({
 }: ConfirmDialogProps) => (
   <Dialog open={open} title={title} description={children} onClose={onClose}>
     <DialogActions>
-      <Button variant="secondary" onClick={onClose}>
+      <Button variant="outline" onClick={onClose}>
         <XIcon aria-hidden="true" className="size-4" />
         {dismissLabel}
       </Button>
-      <Button variant={tone ?? 'primary'} onClick={onConfirm}>
+      <Button intent={intent} onClick={onConfirm}>
         <ConfirmIcon aria-hidden="true" className="size-4" />
         {confirmLabel}
       </Button>

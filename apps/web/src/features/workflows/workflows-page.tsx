@@ -38,10 +38,10 @@ export const WorkflowsTable = ({ graphs }: { graphs: readonly GraphSummary[] }) 
         </TableCell>
         <TableCell>
           <span className="flex gap-1.5">
-            <Badge tone={g.kind === 'workflow' ? 'info' : 'neutral'}>
+            <Badge intent={g.kind === 'workflow' ? 'info' : undefined}>
               {g.kind === 'workflow' ? 'Workflow' : 'Node'}
             </Badge>
-            {g.isSystem ? <Badge tone="warning">System</Badge> : null}
+            {g.isSystem ? <Badge intent="warning">System</Badge> : null}
           </span>
         </TableCell>
         <TableCell isMuted>{g.publishedVersion ? `v${g.publishedVersion}` : emptyValue}</TableCell>

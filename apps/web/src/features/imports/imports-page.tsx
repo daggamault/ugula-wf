@@ -43,7 +43,7 @@ export const ImportsPage = ({ client }: ImportsPageProps) => {
           <fieldset disabled={busy}>
             <label
               htmlFor="import-file"
-              className="border-border bg-canvas hover:border-primary/50 has-focus-visible:border-primary flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed px-4 py-10 text-center"
+              className="border-border bg-canvas hover:border-primary/50 has-focus-visible:border-primary flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed px-4 py-10 text-center transition duration-150 ease-out"
             >
               <span
                 aria-hidden="true"

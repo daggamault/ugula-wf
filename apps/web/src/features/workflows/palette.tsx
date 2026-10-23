@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { classNamesOf } from '../../shared/class-names.ts';
 import type { PaletteEntry } from '../../shared/graph/catalog.ts';
 import { Input } from '../../shared/ui/input.tsx';
+import { interactiveClasses } from '../../shared/ui/interactive.ts';
 
 export type PaletteProps = {
   entries: readonly PaletteEntry[];
@@ -34,7 +36,12 @@ export const Palette = ({ entries, disabled, onAdd }: PaletteProps) => {
       />
       {groupPalette(entries, query).map(([category, items]) => (
         <details key={category} open={query ? true : undefined} className="group">
-          <summary className="text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg flex items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold tracking-wide uppercase">
+          <summary
+            className={classNamesOf(
+              interactiveClasses,
+              'text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg flex items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold tracking-wide uppercase'
+            )}
+          >
             {category}
             <span className="bg-surface-fg/6 rounded-full px-1.5 font-normal tabular-nums">
               {items.length}
@@ -48,7 +55,10 @@ export const Palette = ({ entries, disabled, onAdd }: PaletteProps) => {
                   disabled={disabled}
                   title={e.description}
                   onClick={() => onAdd(e)}
-                  className="not-disabled:hover:bg-primary/10 not-disabled:hover:text-primary w-full rounded-md px-2 py-1 text-left text-sm disabled:opacity-50"
+                  className={classNamesOf(
+                    interactiveClasses,
+                    'not-disabled:hover:bg-primary/10 not-disabled:hover:text-primary w-full rounded-md px-2 py-1 text-left text-sm disabled:opacity-50'
+                  )}
                 >
                   {e.title}
                 </button>

@@ -1,20 +1,19 @@
 import { type ReactNode, useId } from 'react';
 import { classNamesOf } from '../class-names.ts';
-import type { Tone } from './tone.ts';
+import type { Intent } from './intent.ts';
 
-type SectionAccent = 'none' | 'primary' | Extract<Tone, 'warning'>;
+type SectionAccent = Extract<Intent, 'primary' | 'warning'>;
 
 const accentClasses: Readonly<Record<SectionAccent, string>> = {
-  none: 'border-border',
-  primary: 'border-primary/40 shadow-md ring-1 ring-primary/15',
-  warning: 'border-warning/60 shadow-md ring-1 ring-warning/25'
+  primary: 'border-primary/40 ring-primary/15 shadow-md ring-1',
+  warning: 'border-warning/60 ring-warning/25 shadow-md ring-1'
 };
 
 type SectionPanelProps = {
   title: string;
   description?: ReactNode;
   actions?: ReactNode;
-  accent?: SectionAccent;
+  accent?: SectionAccent | undefined;
   children?: ReactNode;
 };
 
@@ -22,7 +21,7 @@ export const SectionPanel = ({
   title,
   description,
   actions,
-  accent = 'none',
+  accent,
   children
 }: SectionPanelProps) => {
   const headingId = useId();
@@ -31,8 +30,8 @@ export const SectionPanel = ({
     <section
       aria-labelledby={headingId}
       className={classNamesOf(
-        'flex min-w-0 flex-col gap-5 rounded-xl border bg-surface p-5',
-        accentClasses[accent]
+        'bg-surface flex min-w-0 flex-col gap-5 rounded-xl border p-5',
+        accent ? accentClasses[accent] : 'border-border'
       )}
     >
       <header className="flex flex-wrap items-start justify-between gap-3">

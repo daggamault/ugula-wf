@@ -112,11 +112,11 @@ describe('describeCycle', () => {
   const waiting = { step: 'await', payer: 'Medicare', waitMs: 1, balanceCents: 1 } as const;
   it('reports a stopped, stuck or missing cycle instead of the expected next step', () => {
     assert.equal(
-      describeCycle({ status: 'open', cycle_status: 'suspended' }, waiting)?.tone,
+      describeCycle({ status: 'open', cycle_status: 'suspended' }, waiting)?.intent,
       'info'
     );
     const failed = describeCycle({ status: 'open', cycle_status: 'failed' }, waiting);
-    assert.equal(failed?.tone, 'danger');
+    assert.equal(failed?.intent, 'danger');
     assert.match(failed?.text ?? '', /payer cycle failed/);
     assert.match(
       describeCycle({ status: 'open', cycle_status: 'cancelled' }, waiting)?.text ?? '',
@@ -126,7 +126,7 @@ describe('describeCycle', () => {
       describeCycle({ status: 'open', cycle_status: 'faulted' }, waiting)?.text ?? '',
       /exceptions queue/
     );
-    assert.equal(describeCycle({ status: 'open', cycle_status: null }, null)?.tone, 'warning');
+    assert.equal(describeCycle({ status: 'open', cycle_status: null }, null)?.intent, 'warning');
     assert.equal(describeCycle({ status: 'paid', cycle_status: 'completed' }, null), null);
   });
 });

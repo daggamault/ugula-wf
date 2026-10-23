@@ -39,9 +39,9 @@ const MODES = [
 const modeOf = (binding: InputBinding | undefined): BindingMode =>
   !binding ? 'default' : 'expr' in binding ? 'expr' : 'value';
 
-const sectionClass = 'flex flex-col gap-3 border-border border-t pt-4';
+const sectionClass = 'border-border flex flex-col gap-3 border-t pt-4';
 
-const headingClass = 'font-semibold text-surface-fg-muted text-xs uppercase tracking-wide';
+const headingClass = 'text-surface-fg-muted text-xs font-semibold tracking-wide uppercase';
 
 const BindingEditor = ({
   nodeId,
@@ -241,7 +241,7 @@ export const NodePanel = ({ def, node, catalog, editable, onChange, onDelete }: 
           </div>
         ) : null}
         {node.type === ENTRY_TYPE ? null : (
-          <Button variant="danger" onClick={onDelete}>
+          <Button intent="danger" onClick={onDelete}>
             <Trash2Icon aria-hidden="true" className="size-4" />
             Delete node
           </Button>

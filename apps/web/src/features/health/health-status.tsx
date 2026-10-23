@@ -5,7 +5,7 @@ export type HealthStatusProps = {
   online?: boolean;
 };
 
-export const healthLabel = (online: boolean) => (online ? 'Live Updates On' : 'Live Updates Off');
+const healthLabel = (online: boolean) => (online ? 'Live Updates On' : 'Live Updates Off');
 
 export const HealthStatus = ({ online = true }: HealthStatusProps) => (
   <Tooltip label={healthLabel(online)} side="top">
