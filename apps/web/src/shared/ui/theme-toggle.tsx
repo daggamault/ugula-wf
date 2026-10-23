@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { MoonIcon, SunIcon } from 'lucide-react';
+import { useState, useSyncExternalStore } from 'react';
+import { IconButton } from './icon-button.tsx';
+import type { TooltipSide } from './tooltip.tsx';
 
 export type Theme = 'light' | 'dark';
 
@@ -14,6 +17,15 @@ export const readDocumentTheme = (): Theme =>
     ? 'dark'
     : 'light';
 
+const subscribeTheme = (onChange: () => void) => {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  return () => observer.disconnect();
+};
+
+export const useDocumentTheme = () =>
+  useSyncExternalStore(subscribeTheme, readDocumentTheme, (): Theme => 'light');
+
 export const applyDocumentTheme = (theme: Theme) => {
   if (typeof document === 'undefined') return;
   document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -24,63 +36,28 @@ export const applyDocumentTheme = (theme: Theme) => {
 export type ThemeToggleProps = {
   initialTheme?: Theme;
   onToggle?: (next: Theme) => void;
+  tooltipSide?: TooltipSide;
 };
 
-export const ThemeToggle = ({ initialTheme, onToggle }: ThemeToggleProps) => {
+export const ThemeToggle = ({
+  initialTheme,
+  onToggle,
+  tooltipSide = 'bottom'
+}: ThemeToggleProps) => {
   const [theme, setTheme] = useState<Theme>(() => initialTheme ?? readDocumentTheme());
   const isDark = theme === 'dark';
-  const label = isDark ? 'Switch to light mode' : 'Switch to dark mode';
-
-  const handleClick = () => {
-    const next: Theme = isDark ? 'light' : 'dark';
-    setTheme(next);
-    applyDocumentTheme(next);
-    onToggle?.(next);
-  };
 
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={handleClick}
-      className="focus-visible:ring-primary-500 hover:bg-primary-900/6 dark:hover:bg-primary-50/10 inline-grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg text-neutral-500 transition-all duration-150 hover:text-neutral-950 focus-visible:ring-2 focus-visible:outline-none active:scale-95 dark:text-neutral-400 dark:hover:text-neutral-50"
-    >
-      {isDark ? (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="size-4.5"
-        >
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2" />
-          <path d="M12 20v2" />
-          <path d="m4.93 4.93 1.41 1.41" />
-          <path d="m17.66 17.66 1.41 1.41" />
-          <path d="M2 12h2" />
-          <path d="M20 12h2" />
-          <path d="m6.34 17.66-1.41 1.41" />
-          <path d="m19.07 4.93-1.41 1.41" />
-        </svg>
-      ) : (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="size-4.5"
-        >
-          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-        </svg>
-      )}
-    </button>
+    <IconButton
+      label={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+      icon={isDark ? SunIcon : MoonIcon}
+      tooltipSide={tooltipSide}
+      onClick={() => {
+        const next: Theme = isDark ? 'light' : 'dark';
+        setTheme(next);
+        applyDocumentTheme(next);
+        onToggle?.(next);
+      }}
+    />
   );
 };

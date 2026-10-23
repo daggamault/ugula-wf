@@ -1,0 +1,330 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import type { RunStatus } from '@ugula/db';
+import {
+  createEngine,
+  createStdNodes,
+  ENTRY_TYPE,
+  type GraphDef,
+  RETURN_TYPE,
+  type RunState,
+  type Values
+} from '@ugula/graph';
+import type { RunJob } from '@ugula/jobs';
+import type { EngineSource } from './engines.ts';
+import type { ClaimedRun, RunPatch, RunStore, RunTx, TaskInsert } from './queries.ts';
+import { createRunner } from './runner.ts';
+
+const now = new Date('2026-01-01T00:00:00.000Z');
+
+const flow: GraphDef = {
+  signature: {
+    execIn: ['exec'],
+    execOut: [],
+    inputs: [{ name: 'ms', type: 'integer' }],
+    outputs: [{ name: 'doubled', type: 'number' }]
+  },
+  variables: [],
+  nodes: [
+    { id: 'entry', type: ENTRY_TYPE, version: 1 },
+    { id: 'wait', type: 'std.flow.delay', version: 1 },
+    { id: 'twice', type: 'std.math.multiply', version: 1, inputs: { b: { value: 2 } } },
+    { id: 'ret', type: RETURN_TYPE, version: 1 }
+  ],
+  edges: [
+    { from: 'entry', fromPin: 'exec', to: 'wait', toPin: 'exec' },
+    { from: 'entry', fromPin: 'ms', to: 'wait', toPin: 'ms' },
+    { from: 'wait', fromPin: 'then', to: 'ret', toPin: 'exec' },
+    { from: 'entry', fromPin: 'ms', to: 'twice', toPin: 'a' },
+    { from: 'twice', fromPin: 'result', to: 'ret', toPin: 'doubled' }
+  ]
+};
+
+const root = { type: 'test.flow', version: 1 };
+const engine = createEngine({
+  nodes: createStdNodes({ fetch }),
+  graphs: (ref) => (ref.type === root.type ? flow : undefined)
+});
+const engines: EngineSource = async () => ({ engine, root });
+
+const failing: GraphDef = {
+  signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
+  variables: [],
+  nodes: [
+    { id: 'entry', type: ENTRY_TYPE, version: 1 },
+    { id: 'stop', type: 'std.flow.fail', version: 1, inputs: { message: { value: 'payer down' } } }
+  ],
+  edges: [{ from: 'entry', fromPin: 'exec', to: 'stop', toPin: 'exec' }]
+};
+
+const failingEngines: EngineSource = async () => ({
+  engine: createEngine({ nodes: createStdNodes({ fetch }), graphs: () => failing }),
+  root
+});
+
+const fakeStore = (inputs: Values, opts: { leased?: boolean } = {}) => {
+  const row = {
+    status: 'running' as RunStatus,
+    state: null as RunState | null,
+    leased: opts.leased ?? false
+  };
+  const log = {
+    saves: [] as RunPatch[],
+    jobs: [] as RunJob[],
+    checkpoints: 0,
+    released: [] as RunStatus[],
+    tasks: [] as TaskInsert[]
+  };
+  const tx: RunTx = {
+    saveRun: async (_, patch) => {
+      log.saves.push(patch);
+      row.status = patch.status;
+      row.state = patch.state;
+    },
+    insertSteps: async () => undefined,
+    insertTask: async (t) => {
+      log.tasks.push(t);
+    },
+    cancelTasks: async () => undefined,
+    findVersion: async () => undefined,
+    insertRun: async () => 'detached',
+    insertChildren: async () => [],
+    lockParent: async () => undefined,
+    hasPendingChildren: async () => false,
+    children: async () => [],
+    activeChildren: async () => [],
+    enqueue: async (jobs) => {
+      log.jobs.push(...jobs);
+    }
+  };
+  const store: RunStore = {
+    claim: async ({ command }) => {
+      const ok =
+        command.type === 'cancel'
+          ? ['running', 'suspended', 'faulted'].includes(row.status)
+          : !row.leased &&
+            (command.type === 'advance'
+              ? row.status === 'running'
+              : command.type === 'resume'
+                ? row.status === 'suspended' && row.state?.suspension?.id === command.suspensionId
+                : row.status === 'faulted');
+      if (!ok) return undefined;
+      row.status = 'running';
+      const run: ClaimedRun = {
+        id: 'run-1',
+        lease: 'lease-1',
+        tenantId: 't-1',
+        versionId: 'v-1',
+        parentId: null,
+        parentWait: null,
+        inputs,
+        state: row.state && (JSON.parse(JSON.stringify(row.state)) as RunState)
+      };
+      return run;
+    },
+    checkpoint: async (_, state) => {
+      log.checkpoints++;
+      row.state = JSON.parse(JSON.stringify(state)) as RunState;
+    },
+    release: async (_, status) => {
+      log.released.push(status);
+      row.status = status;
+    },
+    transaction: (fn) => fn(tx),
+    sweep: async () => 0
+  };
+  return { store, row, log };
+};
+
+const events: { tenantId: string; status: string }[] = [];
+const publish = async (tenantId: string, event: { status: string }) => {
+  events.push({ tenantId, status: event.status });
+};
+
+const job = (command: RunJob['command']): RunJob => ({ runId: 'run-1', command });
+
+describe('runner', () => {
+  it('starts a run, suspends on a durable timer, and completes after resume', async () => {
+    const { store, row, log } = fakeStore({ ms: 1500 });
+    const runner = createRunner({ store, engines, now: () => now, publish });
+    await runner.process(job({ type: 'advance' }));
+    assert.equal(row.status, 'suspended');
+    assert.deepEqual(log.jobs.at(-1)?.startAfter, '2026-01-01T00:00:01.500Z');
+
+    const resume = log.jobs.at(-1);
+    assert.ok(resume);
+    await runner.process(resume);
+    assert.equal(row.status, 'completed');
+    assert.deepEqual(log.saves.at(-1)?.result, { pin: null, outputs: { doubled: 3000 } });
+    assert.deepEqual(events.slice(-2), [
+      { tenantId: 't-1', status: 'suspended' },
+      { tenantId: 't-1', status: 'completed' }
+    ]);
+
+    await runner.process(resume);
+    assert.equal(log.saves.length, 2);
+  });
+
+  it('yields after its step budget and re-enqueues itself', async () => {
+    const { store, row, log } = fakeStore({ ms: 10 });
+    const runner = createRunner({ store, engines, now: () => now, maxSteps: 1, publish });
+    await runner.process(job({ type: 'advance' }));
+    const resume = log.jobs.pop();
+    assert.ok(resume);
+    await runner.process(resume);
+    assert.equal(row.status, 'running');
+    assert.deepEqual(log.jobs, [job({ type: 'advance' })]);
+    await runner.process(job({ type: 'advance' }));
+    assert.equal(row.status, 'completed');
+  });
+
+  it('fails runs whose inputs are invalid', async () => {
+    const { store, row, log } = fakeStore({ ms: 'soon' });
+    await createRunner({ store, engines, now: () => now, publish }).process(
+      job({ type: 'advance' })
+    );
+    assert.equal(row.status, 'failed');
+    assert.match(JSON.stringify(log.saves[0]?.error), /expected integer/);
+  });
+
+  it('hands transient failures back for retry and fails runs on permanent ones', async () => {
+    const flaky = fakeStore({ ms: 1 });
+    const down: EngineSource = async () => {
+      throw Object.assign(new Error('connect refused'), { code: 'ECONNREFUSED' });
+    };
+    await assert.rejects(
+      () =>
+        createRunner({ store: flaky.store, engines: down, now: () => now, publish }).process(
+          job({ type: 'advance' })
+        ),
+      /connect refused/
+    );
+    assert.deepEqual(flaky.log.released, ['running']);
+
+    const broken = fakeStore({ ms: 1 });
+    const corrupt: EngineSource = async () => {
+      throw Object.assign(new Error('invalid input syntax for type uuid'), { code: '22P02' });
+    };
+    await createRunner({ store: broken.store, engines: corrupt, now: () => now, publish }).process(
+      job({ type: 'advance' })
+    );
+    assert.equal(broken.row.status, 'failed');
+    assert.match(JSON.stringify(broken.log.saves[0]?.error), /invalid input syntax/);
+  });
+
+  it('stops without writing when another worker took the lease', async () => {
+    const stolen = fakeStore({ ms: 1 });
+    stolen.store.transaction = async () => {
+      throw Object.assign(new Error('lease lost'), { code: 'LEASE_LOST' });
+    };
+    await assert.rejects(
+      () =>
+        createRunner({ store: stolen.store, engines, now: () => now, publish }).process(
+          job({ type: 'advance' })
+        ),
+      /lease lost/
+    );
+    assert.deepEqual(stolen.log.released, []);
+    assert.equal(stolen.log.saves.length, 0);
+  });
+
+  it('reopens the fault task when a skip cannot be applied', async () => {
+    const { store, row, log } = fakeStore({});
+    const runner = createRunner({ store, engines: failingEngines, now: () => now, publish });
+    await runner.process(job({ type: 'advance' }));
+    assert.equal(row.status, 'faulted');
+    await runner.process(job({ type: 'skip', pin: 'nope', outputs: {} }));
+    assert.equal(row.status, 'faulted');
+    assert.equal(log.tasks.length, 2);
+    assert.notEqual(log.tasks[1]?.waitId, log.tasks[0]?.waitId);
+    assert.match(log.tasks[1]?.instructions ?? '', /^Could not skip: .*no exec output "nope"/);
+    assert.match(log.tasks[1]?.instructions ?? '', /payer down/);
+  });
+
+  it('loads child results from the database when a map parent resumes', async () => {
+    const mapFlow: GraphDef = {
+      signature: {
+        execIn: ['exec'],
+        execOut: [],
+        inputs: [],
+        outputs: [{ name: 'results', type: { list: 'any' } }]
+      },
+      variables: [],
+      nodes: [
+        { id: 'entry', type: ENTRY_TYPE, version: 1 },
+        {
+          id: 'each',
+          type: 'std.flow.map-workflow',
+          version: 1,
+          config: { workflow: 'demo.child', version: 1 },
+          inputs: { items: { value: [{ n: 1 }, { n: 2 }] } }
+        },
+        { id: 'ret', type: RETURN_TYPE, version: 1 }
+      ],
+      edges: [
+        { from: 'entry', fromPin: 'exec', to: 'each', toPin: 'exec' },
+        { from: 'each', fromPin: 'then', to: 'ret', toPin: 'exec' },
+        { from: 'each', fromPin: 'results', to: 'ret', toPin: 'results' }
+      ]
+    };
+    const mapEngines: EngineSource = async () => ({
+      engine: createEngine({ nodes: createStdNodes({ fetch }), graphs: () => mapFlow }),
+      root
+    });
+    const { store, row, log } = fakeStore({});
+    const plain = store.transaction;
+    store.transaction = (fn) =>
+      plain((tx) =>
+        fn({
+          ...tx,
+          findVersion: async () => 'child-version',
+          insertChildren: async (_, __, ___, inputs) => inputs.map((_x, i) => `c${i}`),
+          children: async () => [
+            {
+              id: 'c0',
+              status: 'completed',
+              result: { pin: null, outputs: { n: 2 } },
+              error: null
+            },
+            { id: 'c1', status: 'completed', result: { pin: null, outputs: { n: 3 } }, error: null }
+          ]
+        })
+      );
+    const runner = createRunner({ store, engines: mapEngines, now: () => now, publish });
+    await runner.process(job({ type: 'advance' }));
+    assert.equal(row.status, 'suspended');
+    const wait = row.state?.suspension?.id ?? '';
+    await runner.process(job({ type: 'resume', suspensionId: wait, payload: null }));
+    assert.equal(row.status, 'completed');
+    assert.deepEqual(log.saves.at(-1)?.result, {
+      pin: null,
+      outputs: { results: [{ n: 2 }, { n: 3 }] }
+    });
+  });
+
+  it('puts an interrupted resume back where its own command can retry it', async () => {
+    const { store, row, log } = fakeStore({ ms: 1500 });
+    const runner = createRunner({ store, engines, now: () => now, publish });
+    await runner.process(job({ type: 'advance' }));
+    assert.equal(row.status, 'suspended');
+    row.status = 'running';
+    await runner.process(job({ type: 'advance' }));
+    assert.deepEqual(log.released, ['suspended']);
+    assert.equal(log.jobs.filter((j) => j.command.type === 'resume').length, 1);
+  });
+
+  it('ignores stale commands and cancels busy runs by taking over the lease', async () => {
+    const idle = fakeStore({ ms: 1 });
+    idle.row.status = 'completed';
+    await createRunner({ store: idle.store, engines, now: () => now, publish }).process(
+      job({ type: 'advance' })
+    );
+    assert.equal(idle.log.saves.length, 0);
+
+    const busy = fakeStore({ ms: 1 }, { leased: true });
+    await createRunner({ store: busy.store, engines, now: () => now, publish }).process(
+      job({ type: 'cancel' })
+    );
+    assert.equal(busy.row.status, 'cancelled');
+  });
+});

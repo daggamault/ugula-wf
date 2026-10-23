@@ -9,6 +9,7 @@ import {
   portInt,
   posInt,
   redisEnvEntries,
+  s3EnvEntries,
   urlString
 } from './index.ts';
 
@@ -52,5 +53,15 @@ describe('config primitives', () => {
       REDIS_PASSWORD: 'secret'
     });
     assert.equal(redis.REDIS_PORT, 6379);
+
+    const s3 = v.parse(v.object(s3EnvEntries), {
+      S3_ENDPOINT: 'http://localhost:9000',
+      S3_REGION: 'us-east-1',
+      S3_BUCKET: 'ugula',
+      S3_ACCESS_KEY_ID: 'key',
+      S3_SECRET_ACCESS_KEY: 'secret'
+    });
+    assert.equal(s3.S3_BUCKET, 'ugula');
+    assert.throws(() => v.parse(v.object(s3EnvEntries), { ...s3, S3_ENDPOINT: 'nope' }));
   });
 });

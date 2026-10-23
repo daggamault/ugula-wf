@@ -5,6 +5,7 @@ import {
   portInt,
   posInt,
   redisEnvEntries,
+  s3EnvEntries,
   urlString
 } from '@ugula/config';
 import * as v from 'valibot';
@@ -16,7 +17,12 @@ export const configSchema = v.object({
   HTTP_CORS_ORIGINS: nonEmpty,
   ...dbEnvEntries,
   API_DB_POOL_MAX: posInt,
-  ...redisEnvEntries
+  ...redisEnvEntries,
+  ...s3EnvEntries,
+  IMPORT_FILE_MAX_BYTES: posInt,
+  SFTP_HOOK_SECRET: v.pipe(nonEmpty, v.minLength(32)),
+  SFTP_S3_ENDPOINT: urlString,
+  SFTP_HOME_ROOT: nonEmpty
 });
 
 export type Config = v.InferOutput<typeof configSchema>;

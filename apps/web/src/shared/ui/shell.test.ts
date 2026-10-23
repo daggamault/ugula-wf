@@ -1,19 +1,34 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { ActivityIcon, ListTodoIcon } from 'lucide-react';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Shell } from './shell.tsx';
 
 describe('Shell', () => {
-  it('renders side navigation, user footer, and main content area', () => {
+  it('renders grouped side navigation, user footer, and main content area', () => {
     const html = renderToStaticMarkup(
       createElement(
         Shell,
         {
-          title: 'Overview',
+          path: '/runs',
           navItems: [
-            { id: 'overview', label: 'Overview', active: true },
-            { id: 'other', label: 'Other', active: false }
+            {
+              id: 'runs',
+              label: 'Runs',
+              href: '/runs',
+              icon: ActivityIcon,
+              group: 'Automation',
+              active: true
+            },
+            {
+              id: 'tasks',
+              label: 'Tasks',
+              href: '/tasks',
+              icon: ListTodoIcon,
+              group: 'Work',
+              active: false
+            }
           ],
           userEmail: 'dev@example.com',
           status: createElement('span', null, 'Online'),
@@ -26,11 +41,14 @@ describe('Shell', () => {
     assert.ok(html.includes('<aside'));
     assert.ok(html.includes('aria-label="Primary"'));
     assert.ok(html.includes('aria-current="page"'));
+    assert.ok(html.includes('href="/runs"'));
+    assert.ok(html.includes('Automation'));
+    assert.ok(html.includes('Work'));
     assert.ok(html.includes('dev@example.com'));
     assert.ok(html.includes('Online'));
-    assert.ok(html.includes('Sign out'));
+    assert.ok(html.includes('aria-label="Sign Out"'));
+    assert.ok(html.includes('aria-label="Open Menu"'));
     assert.ok(html.includes('<main'));
-    assert.ok(html.includes('Overview'));
     assert.ok(html.includes('Workspace content'));
   });
 });

@@ -1,14 +1,15 @@
 import { randomBytes } from 'node:crypto';
-import { emailString, nonEmpty } from '@ugula/config';
 import * as v from 'valibot';
 
 export const SESSION_COOKIE = 'ugula_session';
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
+const nonEmpty = v.pipe(v.string(), v.nonEmpty());
+
 export const sessionDataSchema = v.object({
   userId: nonEmpty,
   tenantId: nonEmpty,
-  email: emailString
+  email: v.pipe(nonEmpty, v.email())
 });
 
 export type SessionData = v.InferOutput<typeof sessionDataSchema>;
@@ -23,6 +24,19 @@ export type SessionStore = {
   create: (data: SessionData) => Promise<string>;
   get: (token: string) => Promise<SessionData | null>;
   destroy: (token: string) => Promise<void>;
+};
+
+export const readCookie = (header: string | undefined, name: string) => {
+  for (const part of (header ?? '').split(';')) {
+    const [key, ...value] = part.trim().split('=');
+    if (key !== name) continue;
+    try {
+      return decodeURIComponent(value.join('='));
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 };
 
 const sessionKey = (token: string) => `session:${token}`;

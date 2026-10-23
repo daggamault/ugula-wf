@@ -1,75 +1,49 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { hashPassword } from '@ugula/passwords';
-import { createSessionStore } from '../../shared/session.ts';
+import { fail, ok } from '../../shared/result.ts';
 import { createAuthRoutes } from './routes.ts';
+import type { AuthService } from './service.ts';
 
-const createTestStore = () => {
-  const map = new Map<string, string>();
-  return createSessionStore({
-    set: async (k, v) => {
-      map.set(k, v);
-    },
-    get: async (k) => map.get(k) ?? null,
-    del: async (...keys) => {
-      for (const k of keys) map.delete(k);
-    }
-  });
+const session = { userId: 'u-1', tenantId: 't-1', email: 'dev@example.com' };
+
+const service: AuthService = {
+  signIn: async ({ password }) =>
+    password === 'P@ssw0rd123'
+      ? ok({ token: 'tok', session })
+      : fail('unauthorized', 'Invalid email or password'),
+  session: async (token) => (token === 'tok' ? ok(session) : fail('unauthorized', 'Unauthorized')),
+  signOut: async () => undefined
 };
 
+const routes = createAuthRoutes({ service, sseUrl: 'http://localhost:3002', secureCookie: false });
+
+const post = (path: string, body?: object, cookie = '') =>
+  routes.request(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  });
+
 describe('auth routes', () => {
-  it('signs in, fetches /me, and signs out', async () => {
-    const passwordHash = await hashPassword('P@ssw0rd123');
-    const routes = createAuthRoutes({
-      findUserByEmail: async (email) =>
-        email === 'dev@example.com'
-          ? {
-              id: 'u-1',
-              tenant_id: 't-1',
-              email: 'dev@example.com',
-              password_hash: passwordHash
-            }
-          : undefined,
-      sessions: createTestStore(),
-      sseUrl: 'http://localhost:3002',
-      secureCookie: false
-    });
+  it('signs in with a session cookie, fetches /me, and signs out', async () => {
+    const bad = await post('/sign-in', { email: 'dev@example.com', password: 'wrong' });
+    assert.equal(bad.status, 401);
+    assert.deepEqual(await bad.json(), { error: 'Invalid email or password' });
 
-    const badRes = await routes.request('/sign-in', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'dev@example.com', password: 'wrong' })
-    });
-    assert.equal(badRes.status, 401);
+    const signIn = await post('/sign-in', { email: 'Dev@Example.com', password: 'P@ssw0rd123' });
+    assert.equal(signIn.status, 200);
+    const cookie = (signIn.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    assert.equal(cookie, 'ugula_session=tok');
 
-    const signInRes = await routes.request('/sign-in', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'Dev@Example.com', password: 'P@ssw0rd123' })
-    });
-    assert.equal(signInRes.status, 200);
-    const setCookieHeader = signInRes.headers.get('set-cookie') ?? '';
-    assert.ok(setCookieHeader.includes('ugula_session='));
-    const cookie = setCookieHeader.split(';')[0] ?? '';
-
-    const meRes = await routes.request('/me', {
-      headers: { cookie }
-    });
-    assert.equal(meRes.status, 200);
-    assert.deepEqual(await meRes.json(), {
+    const me = await routes.request('/me', { headers: { cookie } });
+    assert.deepEqual(await me.json(), {
       user: { id: 'u-1', tenantId: 't-1', email: 'dev@example.com' },
       sseUrl: 'http://localhost:3002'
     });
 
-    const outRes = await routes.request('/sign-out', {
-      method: 'POST',
-      headers: { cookie }
-    });
-    assert.equal(outRes.status, 200);
-
-    const afterOutRes = await routes.request('/me', {
-      headers: { cookie }
-    });
-    assert.equal(afterOutRes.status, 401);
+    assert.equal((await post('/sign-out', undefined, cookie)).status, 200);
+    const anon = await routes.request('/me');
+    assert.equal(anon.status, 401);
+    assert.ok(anon.headers.get('set-cookie')?.includes('ugula_session=;'));
   });
 });

@@ -1,0 +1,127 @@
+import type { Database, RunStatus } from '@ugula/db';
+import { type Kysely, sql } from 'kysely';
+
+type Db = Kysely<Database>;
+
+export type RunFilters = {
+  status?: RunStatus;
+  graphId?: string;
+  rootOnly: boolean;
+  limit: number;
+};
+
+export type StepFilters = {
+  path?: string;
+  node?: string;
+  after: number;
+  limit: number;
+};
+
+export const findPublishedVersion = (
+  db: Db,
+  tenantId: string,
+  graphId: string,
+  version?: number
+) => {
+  const base = db
+    .selectFrom('graph_versions as gv')
+    .innerJoin('graphs as g', 'g.id', 'gv.graph_id')
+    .select(['gv.id', 'gv.version'])
+    .where('g.id', '=', graphId)
+    .where('gv.published_at', 'is not', null)
+    .where((eb) => eb.or([eb('g.tenant_id', '=', tenantId), eb('g.tenant_id', 'is', null)]));
+  return (version === undefined ? base : base.where('gv.version', '=', version))
+    .orderBy('gv.version', 'desc')
+    .limit(1)
+    .executeTakeFirst();
+};
+
+const runColumns = (db: Db) =>
+  db
+    .selectFrom('workflow_runs as r')
+    .innerJoin('graph_versions as gv', 'gv.id', 'r.graph_version_id')
+    .innerJoin('graphs as g', 'g.id', 'gv.graph_id')
+    .select([
+      'r.id',
+      'r.status',
+      'r.parent_id',
+      'r.parent_index',
+      'r.created_at',
+      'r.updated_at',
+      'r.completed_at',
+      'g.id as graph_id',
+      'g.key',
+      'g.name',
+      'gv.version',
+      'gv.id as version_id',
+      sql<string | null>`r.error ->> 'message'`.as('error_message')
+    ]);
+
+export const listRuns = (db: Db, tenantId: string, f: RunFilters) => {
+  let q = runColumns(db).where('r.tenant_id', '=', tenantId);
+  if (f.status) q = q.where('r.status', '=', f.status);
+  if (f.graphId) q = q.where('g.id', '=', f.graphId);
+  if (f.rootOnly) q = q.where('r.parent_id', 'is', null);
+  return q.orderBy('r.created_at', 'desc').limit(f.limit).execute();
+};
+
+export const findRun = (db: Db, tenantId: string, id: string) =>
+  runColumns(db)
+    .select(['r.inputs', 'r.result', 'r.error', 'r.state', 'r.wait_key'])
+    .where('r.tenant_id', '=', tenantId)
+    .where('r.id', '=', id)
+    .executeTakeFirst();
+
+export const DETAIL_LIMIT = 200;
+
+export const listChildren = (db: Db, runId: string) =>
+  runColumns(db)
+    .where('r.parent_id', '=', runId)
+    .orderBy('r.parent_index')
+    .limit(DETAIL_LIMIT)
+    .execute();
+
+export const countChildren = async (db: Db, runId: string) =>
+  Number(
+    (
+      await db
+        .selectFrom('workflow_runs')
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .where('parent_id', '=', runId)
+        .executeTakeFirstOrThrow()
+    ).count
+  );
+
+export const listRunTasks = (db: Db, runId: string) =>
+  db
+    .selectFrom('tasks')
+    .select(['id', 'kind', 'queue', 'title', 'status', 'outcomes', 'created_at', 'completed_at'])
+    .where('run_id', '=', runId)
+    .orderBy('created_at', 'desc')
+    .limit(DETAIL_LIMIT)
+    .execute();
+
+export const listSteps = (db: Db, runId: string, f: StepFilters) => {
+  let q = db
+    .selectFrom('workflow_run_steps')
+    .select([
+      'seq',
+      'scope',
+      'path',
+      'node',
+      'node_type',
+      'node_version',
+      'event',
+      'inputs',
+      'outputs',
+      'pin',
+      'error',
+      'started_at',
+      'duration_ms'
+    ])
+    .where('run_id', '=', runId)
+    .where('seq', '>', f.after);
+  if (f.path !== undefined) q = q.where('path', '=', f.path);
+  if (f.node !== undefined) q = q.where('node', '=', f.node);
+  return q.orderBy('seq').limit(f.limit).execute();
+};

@@ -9,6 +9,10 @@
     "test": "tsx --test"
   },
   "dependencies": {
-    "@ugula/config": "workspace:*"
+    "@ugula/billing": "workspace:*",
+    "@ugula/config": "workspace:*",
+    "@ugula/events": "workspace:*",
+    "@ugula/graph": "workspace:*",
+    "@ugula/nemsis": "workspace:*"
   }
 }

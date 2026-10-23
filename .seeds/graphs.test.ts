@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { createDummyDb } from '@ugula/db';
+import { ENTRY_TYPE, type GraphDef } from '@ugula/graph';
+import { buildInsertPublishedVersion, buildUpsertGraph, type SeedGraph } from './graphs.ts';
+
+const base: GraphDef = {
+  signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
+  variables: [],
+  nodes: [
+    { id: 'entry', type: ENTRY_TYPE, version: 1 },
+    { id: 'a', type: 'std.math.add', version: 1 }
+  ],
+  edges: []
+};
+
+const graph: SeedGraph = {
+  key: 'demo.thing',
+  name: 'Thing',
+  kind: 'node',
+  description: '',
+  version: 1,
+  definition: { ...base, nodes: [...base.nodes, { id: 'c', type: 'demo.other', version: 2 }] }
+};
+
+describe('graph seeds', () => {
+  it('upserts global graphs by key', async () => {
+    const db = createDummyDb();
+    const { sql } = buildUpsertGraph(db, graph).compile();
+    assert.ok(sql.includes('insert into "graphs"'));
+    assert.ok(sql.includes('on conflict ("tenant_id", "key") do update set'));
+    await db.destroy();
+  });
+
+  it('inserts published versions without overwriting existing ones', async () => {
+    const db = createDummyDb();
+    const compiled = buildInsertPublishedVersion(db, 'g1', graph, ['v9']).compile();
+    assert.ok(compiled.sql.includes('on conflict ("graph_id", "version") do nothing'));
+    assert.ok(compiled.parameters.includes(JSON.stringify(graph.definition)));
+    await db.destroy();
+  });
+});

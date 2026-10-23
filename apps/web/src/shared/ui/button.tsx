@@ -1,29 +1,92 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
-import type { Intent } from './badge.tsx';
+import { type ComponentProps, useId } from 'react';
+import { classNamesOf } from '../class-names.ts';
+import { Link, type LinkProps } from '../router.tsx';
+import { DisabledReason, preventDisabledClick } from './disabled-reason.tsx';
+import { PendingOverlay } from './spinner.tsx';
+import { Tooltip, type TooltipSide } from './tooltip.tsx';
 
-export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  intent?: Intent;
-  children: ReactNode;
-};
+export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'warning';
 
-const intentClasses: Record<Intent, string> = {
-  primary:
-    'bg-primary-900 text-white hover:bg-primary-800 focus-visible:ring-primary-500 dark:bg-primary-100 dark:text-primary-950 dark:hover:bg-primary-200',
-  success:
-    'bg-success-600 text-white hover:bg-success-700 focus-visible:ring-success-500 dark:bg-success-500 dark:hover:bg-success-600',
-  info: 'bg-info-600 text-white hover:bg-info-700 focus-visible:ring-info-500 dark:bg-info-500 dark:hover:bg-info-600',
+type ButtonSize = 'md' | 'sm';
+
+const variantClasses: Readonly<Record<ButtonVariant, string>> = {
+  primary: 'bg-primary text-primary-fg not-aria-disabled:hover:brightness-110',
+  secondary:
+    'border border-border bg-surface text-surface-fg not-aria-disabled:hover:bg-surface-fg/6',
+  danger: 'bg-danger text-canvas not-aria-disabled:hover:brightness-110',
   warning:
-    'bg-warning-600 text-white hover:bg-warning-700 focus-visible:ring-warning-500 dark:bg-warning-500 dark:hover:bg-warning-600',
-  danger:
-    'bg-danger-600 text-white hover:bg-danger-700 focus-visible:ring-danger-500 dark:bg-danger-500 dark:hover:bg-danger-600'
+    'border border-warning/30 bg-warning/15 text-warning-fg not-aria-disabled:hover:bg-warning/25'
 };
 
-export const Button = ({ intent = 'primary', type = 'button', children, ...rest }: ButtonProps) => (
-  <button
-    type={type}
-    className={`inline-flex min-h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all duration-150 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-offset-neutral-950 ${intentClasses[intent]}`}
-    {...rest}
-  >
+const sizeClasses: Readonly<Record<ButtonSize, string>> = {
+  md: 'min-h-10 px-4 pointer-coarse:min-h-11',
+  sm: 'min-h-8 px-3 pointer-coarse:min-h-10'
+};
+
+export const buttonClasses = (variant: ButtonVariant, size: ButtonSize = 'md'): string =>
+  classNamesOf(
+    'relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold text-sm not-aria-disabled:active:scale-[0.97] aria-disabled:not-aria-busy:opacity-50',
+    sizeClasses[size],
+    variantClasses[variant]
+  );
+
+export type ButtonProps = Omit<ComponentProps<'button'>, 'className' | 'disabled'> & {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  isBlock?: boolean;
+  isPending?: boolean;
+  disabledReason?: string | undefined;
+  tooltipSide?: TooltipSide;
+};
+
+export const Button = ({
+  type = 'button',
+  variant = 'primary',
+  size = 'md',
+  isBlock = false,
+  isPending = false,
+  disabledReason,
+  tooltipSide = 'bottom',
+  onClick,
+  children,
+  ...props
+}: ButtonProps) => {
+  const reasonId = useId();
+  const isEnabled = disabledReason === undefined && !isPending;
+
+  return (
+    <Tooltip label={disabledReason} side={tooltipSide} isBlock={isBlock}>
+      <button
+        type={type}
+        aria-busy={isPending || undefined}
+        aria-disabled={!isEnabled || undefined}
+        aria-describedby={disabledReason === undefined ? undefined : reasonId}
+        className={classNamesOf(buttonClasses(variant, size), isBlock && 'w-full')}
+        onClick={isEnabled ? onClick : preventDisabledClick}
+        {...props}
+      >
+        <span className={classNamesOf('inline-flex items-center gap-2', isPending && 'opacity-0')}>
+          {children}
+        </span>
+        {isPending && <PendingOverlay />}
+      </button>
+      <DisabledReason id={reasonId} reason={disabledReason} />
+    </Tooltip>
+  );
+};
+
+type ButtonLinkProps = Omit<LinkProps, 'className'> & {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+};
+
+export const ButtonLink = ({
+  variant = 'primary',
+  size = 'md',
+  children,
+  ...props
+}: ButtonLinkProps) => (
+  <Link className={buttonClasses(variant, size)} {...props}>
     {children}
-  </button>
+  </Link>
 );

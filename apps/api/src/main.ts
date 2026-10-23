@@ -1,23 +1,61 @@
 import { serve } from '@hono/node-server';
+import { createBillingNodes } from '@ugula/billing';
+import { type BlobStore, createBlobStore, createS3Storage } from '@ugula/blobs';
 import { createDb, type Db } from '@ugula/db';
+import { createStdNodes, type NodeDef } from '@ugula/graph';
+import type { JobBoss } from '@ugula/jobs';
+import { createNemsisNodes } from '@ugula/nemsis';
+import { createSessionStore, type RedisLike } from '@ugula/sessions';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Redis } from 'ioredis';
+import { PgBoss } from 'pg-boss';
 import { type Config, parseConfig } from './config.ts';
-import { findActiveUserByEmail } from './features/auth/queries.ts';
 import { createAuthRoutes } from './features/auth/routes.ts';
+import { createAuthService } from './features/auth/service.ts';
+import { createBillingProfileRoutes } from './features/billing-profile/routes.ts';
+import { createBillingProfileService } from './features/billing-profile/service.ts';
+import { createClaimRoutes } from './features/claims/routes.ts';
+import { createClaimService } from './features/claims/service.ts';
+import { createFeeRoutes } from './features/fees/routes.ts';
+import { createFeeService } from './features/fees/service.ts';
+import { createGraphRoutes } from './features/graphs/routes.ts';
+import { createGraphService } from './features/graphs/service.ts';
 import { createHealthRoutes } from './features/health/routes.ts';
-import { createSessionStore, type RedisLike } from './shared/session.ts';
+import { createImportRoutes, createSftpRoutes } from './features/imports/routes.ts';
+import { createImportService } from './features/imports/service.ts';
+import { createPayerRoutes } from './features/payers/routes.ts';
+import { createPayerService } from './features/payers/service.ts';
+import { createRunRoutes } from './features/runs/routes.ts';
+import { createRunService } from './features/runs/service.ts';
+import { createSubmissionRoutes } from './features/submissions/routes.ts';
+import { createSubmissionService } from './features/submissions/service.ts';
+import { createTaskRoutes } from './features/tasks/routes.ts';
+import { createTaskService } from './features/tasks/service.ts';
+import { type AuthEnv, requireAuth } from './shared/auth.ts';
 
 export type AppDeps = {
   config: Config;
   db: Db;
   redis: RedisLike;
+  boss: JobBoss;
+  blobs: BlobStore;
+  nodes: NodeDef[];
 };
 
-export const createApp = ({ config, db, redis }: AppDeps) => {
+const sftpStorage = (config: Config) => ({
+  bucket: config.S3_BUCKET,
+  region: config.S3_REGION,
+  endpoint: config.SFTP_S3_ENDPOINT,
+  homeRoot: config.SFTP_HOME_ROOT
+});
+
+export const createApp = ({ config, db, redis, boss, blobs, nodes }: AppDeps) => {
   const app = new Hono();
   const origins = config.HTTP_CORS_ORIGINS.split(',').map((o) => o.trim());
+  const sessions = createSessionStore(redis);
+  const protect = (routes: Hono<AuthEnv>) =>
+    new Hono<AuthEnv>().use(requireAuth(sessions)).route('/', routes);
 
   app.use(
     '*',
@@ -31,34 +69,80 @@ export const createApp = ({ config, db, redis }: AppDeps) => {
   app.route(
     '/api/auth',
     createAuthRoutes({
-      findUserByEmail: (email) => findActiveUserByEmail(db, email),
-      sessions: createSessionStore(redis),
+      service: createAuthService({ db, sessions }),
       sseUrl: config.SSE_URL,
       secureCookie: config.NODE_ENV === 'production'
     })
   );
+  app.route('/api/graphs', protect(createGraphRoutes(createGraphService({ db, nodes }))));
+  app.route('/api/runs', protect(createRunRoutes(createRunService({ db, boss }))));
+  app.route('/api/tasks', protect(createTaskRoutes(createTaskService({ db, boss }))));
+  app.route('/api/fees', protect(createFeeRoutes(createFeeService({ db }))));
+  app.route('/api/payers', protect(createPayerRoutes(createPayerService({ db }))));
+  app.route(
+    '/api/billing-profile',
+    protect(createBillingProfileRoutes(createBillingProfileService({ db })))
+  );
+  app.route(
+    '/api/claims',
+    protect(createClaimRoutes(createClaimService({ db, boss, blobs, now: () => new Date() })))
+  );
+  app.route(
+    '/api/submissions',
+    protect(
+      createSubmissionRoutes(createSubmissionService({ db, boss, blobs, now: () => new Date() }))
+    )
+  );
+  const imports = createImportService({
+    db,
+    boss,
+    blobs,
+    maxBytes: config.IMPORT_FILE_MAX_BYTES,
+    sftp: sftpStorage(config)
+  });
+  app.route('/api/imports/sftp', createSftpRoutes(imports, config.SFTP_HOOK_SECRET));
+  app.route('/api/imports', protect(createImportRoutes(imports, config.IMPORT_FILE_MAX_BYTES)));
 
   return app;
 };
 
 if (import.meta.main) {
   const config = parseConfig(process.env);
-  const db = createDb({
+  const connection = {
     host: config.DB_HOST,
     port: config.DB_PORT,
     user: config.DB_USER,
     password: config.DB_PASSWORD,
-    database: config.DB_NAME,
-    max: config.API_DB_POOL_MAX
-  });
+    database: config.DB_NAME
+  };
+  const db = createDb({ ...connection, max: config.API_DB_POOL_MAX });
   const redis = new Redis({
     host: config.REDIS_HOST,
     port: config.REDIS_PORT,
     password: config.REDIS_PASSWORD
   });
+  const boss = new PgBoss({ ...connection, supervise: false, schedule: false });
+  await boss.start();
+  const blobs = createBlobStore(
+    config.S3_BUCKET,
+    createS3Storage({
+      endpoint: config.S3_ENDPOINT,
+      region: config.S3_REGION,
+      bucket: config.S3_BUCKET,
+      accessKeyId: config.S3_ACCESS_KEY_ID,
+      secretAccessKey: config.S3_SECRET_ACCESS_KEY
+    })
+  );
 
   serve({
-    fetch: createApp({ config, db, redis }).fetch,
+    fetch: createApp({
+      config,
+      db,
+      redis,
+      boss,
+      blobs,
+      nodes: [...createStdNodes({ fetch }), ...createNemsisNodes(null), ...createBillingNodes(null)]
+    }).fetch,
     port: config.API_PORT
   });
 }

@@ -1,48 +1,125 @@
 @import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-primary-50: var(--color-neutral-50);
-  --color-primary-100: var(--color-neutral-100);
-  --color-primary-200: var(--color-neutral-200);
-  --color-primary-400: var(--color-neutral-400);
-  --color-primary-500: var(--color-neutral-500);
-  --color-primary-600: var(--color-neutral-600);
-  --color-primary-700: var(--color-neutral-700);
-  --color-primary-800: var(--color-neutral-800);
-  --color-primary-900: var(--color-neutral-900);
-  --color-primary-950: var(--color-neutral-950);
+  --color-canvas: light-dark(oklch(97.5% 0.003 265), oklch(14.5% 0.005 265));
+  --color-surface: light-dark(oklch(100% 0 0), oklch(19% 0.006 265));
+  --color-surface-fg: light-dark(oklch(21% 0.006 265), oklch(96.5% 0.003 265));
+  --color-surface-fg-muted: light-dark(oklch(50% 0.01 265), oklch(68% 0.01 265));
+  --color-border: light-dark(oklch(91.5% 0.004 265), oklch(27% 0.006 265));
+  --color-primary: light-dark(oklch(54% 0.19 262), oklch(68% 0.16 262));
+  --color-primary-fg: light-dark(oklch(98.5% 0 0), oklch(14% 0.02 262));
+  --color-danger: light-dark(oklch(56% 0.21 25), oklch(70% 0.18 25));
+  --color-success: light-dark(oklch(50% 0.15 150), oklch(72% 0.16 150));
+  --color-warning: light-dark(oklch(75% 0.16 75), oklch(80% 0.15 80));
+  --color-warning-fg: light-dark(oklch(47% 0.11 65), oklch(82% 0.14 80));
 
-  --color-success-50: var(--color-emerald-50);
-  --color-success-100: var(--color-emerald-100);
-  --color-success-400: var(--color-emerald-400);
-  --color-success-500: var(--color-emerald-500);
-  --color-success-600: var(--color-emerald-600);
-  --color-success-700: var(--color-emerald-700);
-  --color-success-950: var(--color-emerald-950);
+  --spacing-sticky-offset: 7rem;
 
-  --color-info-50: var(--color-sky-50);
-  --color-info-100: var(--color-sky-100);
-  --color-info-400: var(--color-sky-400);
-  --color-info-500: var(--color-sky-500);
-  --color-info-600: var(--color-sky-600);
-  --color-info-700: var(--color-sky-700);
-  --color-info-950: var(--color-sky-950);
+  --animate-bars: bars 900ms ease-in-out infinite;
+  --animate-progress: progress 1200ms ease-in-out infinite;
+  --animate-reveal: reveal 150ms ease-out 150ms both;
 
-  --color-warning-50: var(--color-amber-50);
-  --color-warning-100: var(--color-amber-100);
-  --color-warning-400: var(--color-amber-400);
-  --color-warning-500: var(--color-amber-500);
-  --color-warning-600: var(--color-amber-600);
-  --color-warning-700: var(--color-amber-700);
-  --color-warning-950: var(--color-amber-950);
+  @keyframes reveal {
+    from {
+      opacity: 0;
+    }
+  }
 
-  --color-danger-50: var(--color-rose-50);
-  --color-danger-100: var(--color-rose-100);
-  --color-danger-400: var(--color-rose-400);
-  --color-danger-500: var(--color-rose-500);
-  --color-danger-600: var(--color-rose-600);
-  --color-danger-700: var(--color-rose-700);
-  --color-danger-950: var(--color-rose-950);
+  @keyframes progress {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(300%);
+    }
+  }
+
+  @keyframes bars {
+    0%,
+    100% {
+      transform: scaleY(0.35);
+      opacity: 0.5;
+    }
+    50% {
+      transform: scaleY(1);
+      opacity: 1;
+    }
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-canvas text-surface-fg antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    @apply bg-primary/25;
+  }
+
+  :where(h1, h2, h3) {
+    text-wrap: balance;
+  }
+
+  :where(p) {
+    text-wrap: pretty;
+  }
+
+  :where(a, button, input, select, textarea, summary) {
+    @apply outline-2 outline-offset-0 outline-transparent transition duration-150 ease-out;
+    transition-property:
+      color, background-color, border-color, outline-color, outline-offset, opacity, box-shadow,
+      transform, scale, filter;
+  }
+
+  :where(button) {
+    @apply select-none;
+  }
+
+  :where(
+    a[href],
+    button:enabled,
+    select:enabled,
+    summary,
+    input:is([type="checkbox"], [type="radio"], [type="file"]):enabled
+  ) {
+    @apply cursor-pointer;
+  }
+
+  :disabled,
+  [aria-disabled="true"] {
+    @apply cursor-not-allowed;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-primary;
+  }
+
+  input:is([type="checkbox"], [type="radio"]) {
+    @apply accent-primary;
+  }
+
+  input:autofill {
+    -webkit-text-fill-color: var(--color-surface-fg);
+    box-shadow: inset 0 0 0 100vmax var(--color-surface);
+  }
+}
+
+.react-flow {
+  --xy-background-color: var(--color-canvas);
+  --xy-background-pattern-color: var(--color-border);
+  --xy-edge-stroke-width: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after,
+  ::backdrop {
+    animation: none;
+    transition: none;
+  }
 }

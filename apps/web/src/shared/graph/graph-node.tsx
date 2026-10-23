@@ -1,0 +1,109 @@
+import { formatType, type InputBinding, type PinSpec } from '@ugula/graph';
+import { Handle, type NodeProps, Position } from '@xyflow/react';
+import type { GraphFlowNode, NodeStatus } from './flow.ts';
+import { toneOf } from './pins.ts';
+
+type Pin = { name: string; label: string; exec: boolean; spec?: PinSpec };
+
+const statusClasses: Record<NodeStatus, string> = {
+  idle: 'border-border',
+  done: 'border-success',
+  error: 'border-danger',
+  waiting: 'border-warning animate-pulse'
+};
+
+const handleBase = 'size-3! border-0! transition-transform hover:scale-125';
+const execShape = 'rounded-none! [clip-path:polygon(0_0,100%_50%,0_100%)]';
+
+const pinsOf = (exec: string[], data: PinSpec[]): Pin[] => [
+  ...exec.map((name) => ({
+    name,
+    label: name === 'exec' || name === 'then' ? '' : name,
+    exec: true
+  })),
+  ...data.map((spec) => ({ name: spec.name, label: spec.label ?? spec.name, exec: false, spec }))
+];
+
+const preview = (binding: InputBinding | undefined) => {
+  if (!binding) return null;
+  const text = 'expr' in binding ? `= ${binding.expr}` : JSON.stringify(binding.value);
+  return text.length > 18 ? `${text.slice(0, 17)}…` : text;
+};
+
+const PinRow = ({
+  pin,
+  side,
+  binding
+}: {
+  pin: Pin;
+  side: 'in' | 'out';
+  binding?: string | null;
+}) => (
+  <li
+    className={`text-surface-fg-muted relative flex min-h-6 items-center gap-2 text-xs ${side === 'in' ? 'pr-2 pl-4' : 'justify-end pr-4 pl-2'}`}
+    title={pin.spec ? `${pin.name}: ${formatType(pin.spec.type)}` : pin.name}
+  >
+    <Handle
+      type={side === 'in' ? 'target' : 'source'}
+      position={side === 'in' ? Position.Left : Position.Right}
+      id={pin.name}
+      className={`${handleBase} ${pin.exec ? execShape : 'rounded-full!'} ${toneOf(pin.exec ? 'exec' : (pin.spec?.type ?? 'any')).dot}`}
+    />
+    <span className="truncate">{pin.label}</span>
+    {binding ? (
+      <span className="bg-surface-fg/6 text-surface-fg-muted truncate rounded px-1 font-mono text-[10px]">
+        {binding}
+      </span>
+    ) : null}
+  </li>
+);
+
+export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
+  const { instance, signature, title, status, issues, composite, connected } = data;
+  const inputs = signature ? pinsOf(signature.execIn, signature.inputs) : [];
+  const outputs = signature ? pinsOf(signature.execOut, signature.outputs) : [];
+  return (
+    <article
+      aria-label={title}
+      className={`bg-surface text-surface-fg min-w-48 rounded-xl border-2 text-left shadow-sm transition-shadow ${statusClasses[status]} ${selected ? 'ring-primary shadow-lg ring-2' : ''}`}
+    >
+      <header className="border-border bg-canvas flex items-center justify-between gap-3 rounded-t-[10px] border-b px-3 py-1.5">
+        <span className="truncate text-sm font-semibold">{title}</span>
+        {composite ? (
+          <span className="text-primary text-[10px] font-semibold tracking-wide uppercase">
+            Sub-graph
+          </span>
+        ) : null}
+      </header>
+      {signature ? (
+        <div className="grid grid-cols-2 gap-x-2 py-1.5">
+          <ul className="flex flex-col">
+            {inputs.map((pin) => (
+              <PinRow
+                key={pin.name}
+                pin={pin}
+                side="in"
+                binding={connected.includes(pin.name) ? null : preview(instance.inputs?.[pin.name])}
+              />
+            ))}
+          </ul>
+          <ul className="flex flex-col">
+            {outputs.map((pin) => (
+              <PinRow key={pin.name} pin={pin} side="out" />
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="text-danger px-3 py-2 text-xs">
+          Unknown node {instance.type}@{instance.version}
+        </p>
+      )}
+      {issues.length ? (
+        <footer className="border-danger/30 bg-danger/10 text-danger rounded-b-[10px] border-t px-3 py-1 text-[11px]">
+          {issues[0]}
+          {issues.length > 1 ? ` (+${issues.length - 1})` : ''}
+        </footer>
+      ) : null}
+    </article>
+  );
+};

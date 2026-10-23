@@ -2,29 +2,38 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
-import { createSseServer } from './main.ts';
+import { createSseServer, relay } from './main.ts';
+import { createHub } from './shared/hub.ts';
 
-describe('sse createSseServer', () => {
-  it('serves /health and /events', async () => {
-    const server = createSseServer().listen(0);
+describe('sse server', () => {
+  it('routes /health and /events and 404s the rest', async () => {
+    const hits: string[] = [];
+    const server = createSseServer({
+      events: async (req, res) => {
+        hits.push(req.url ?? '');
+        res.writeHead(204).end();
+      }
+    }).listen(0);
     await once(server, 'listening');
-    const { port } = server.address() as AddressInfo;
-
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     try {
-      const healthRes = await fetch(`http://127.0.0.1:${port}/health`);
-      assert.equal(healthRes.status, 200);
-      assert.deepEqual(await healthRes.json(), { status: 'ok' });
-
-      const ctrl = new AbortController();
-      const sseRes = await fetch(`http://127.0.0.1:${port}/events`, { signal: ctrl.signal });
-      assert.equal(sseRes.status, 200);
-      assert.equal(sseRes.headers.get('content-type'), 'text/event-stream');
-      ctrl.abort();
-
-      const missingRes = await fetch(`http://127.0.0.1:${port}/unknown`);
-      assert.equal(missingRes.status, 404);
+      assert.deepEqual(await (await fetch(`${base}/health`)).json(), { status: 'ok' });
+      assert.equal((await fetch(`${base}/events?x=1`)).status, 204);
+      assert.deepEqual(hits, ['/events?x=1']);
+      assert.equal((await fetch(`${base}/unknown`)).status, 404);
     } finally {
       server.close();
     }
+  });
+
+  it('relays valid tenant events from Redis to the hub', () => {
+    const hub = createHub();
+    const seen: string[] = [];
+    hub.add('t-1', { write: (chunk) => void seen.push(chunk) });
+    const onMessage = relay(hub);
+    onMessage('events:*', 'events:t-1', '{"kind":"run","id":"r1","status":"completed"}');
+    onMessage('events:*', 'events:t-1', 'garbage');
+    onMessage('events:*', 'other', '{"kind":"run","id":"r1","status":"completed"}');
+    assert.deepEqual(seen, ['data: {"kind":"run","id":"r1","status":"completed"}\n\n']);
   });
 });

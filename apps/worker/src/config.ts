@@ -1,7 +1,12 @@
-import { dbEnvEntries } from '@ugula/config';
+import { dbEnvEntries, posInt, redisEnvEntries, s3EnvEntries } from '@ugula/config';
 import * as v from 'valibot';
 
-export const configSchema = v.object(dbEnvEntries);
+export const configSchema = v.object({
+  ...dbEnvEntries,
+  ...redisEnvEntries,
+  ...s3EnvEntries,
+  WORKFLOW_CONCURRENCY: v.optional(posInt, '8')
+});
 
 export type Config = v.InferOutput<typeof configSchema>;
 

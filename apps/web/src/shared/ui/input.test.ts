@@ -12,6 +12,6 @@ describe('Input', () => {
     assert.ok(html.includes('for="email"'));
     assert.ok(html.includes('aria-invalid="true"'));
     assert.ok(html.includes('aria-describedby="email-error"'));
-    assert.ok(html.includes('<span id="email-error"'));
+    assert.ok(html.includes('<p id="email-error"'));
   });
 });

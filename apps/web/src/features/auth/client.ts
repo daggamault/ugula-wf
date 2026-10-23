@@ -1,5 +1,6 @@
 import { emailString, nonEmpty, urlString } from '@ugula/config';
 import * as v from 'valibot';
+import { type Api, isApiError } from '../../shared/api.ts';
 
 export const authUserSchema = v.object({
   id: nonEmpty,
@@ -12,11 +13,6 @@ export const authSessionSchema = v.object({
   sseUrl: urlString
 });
 
-const errorBodySchema = v.object({
-  error: nonEmpty
-});
-
-export type AuthUser = v.InferOutput<typeof authUserSchema>;
 export type AuthSession = v.InferOutput<typeof authSessionSchema>;
 
 export type AuthClient = {
@@ -25,34 +21,18 @@ export type AuthClient = {
   getMe: () => Promise<AuthSession | null>;
 };
 
-export const createAuthClient = (apiUrl: string, fetchFn: typeof fetch = fetch): AuthClient => ({
-  signIn: async (email, password) => {
-    const res = await fetchFn(`${apiUrl}/api/auth/sign-in`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    if (!res.ok) {
-      const body = v.parse(errorBodySchema, await res.json());
-      throw new Error(body.error);
-    }
-    return v.parse(authSessionSchema, await res.json());
-  },
+export const createAuthClient = (api: Api): AuthClient => ({
+  signIn: async (email, password) =>
+    v.parse(authSessionSchema, await api.post('/api/auth/sign-in', { email, password })),
   signOut: async () => {
-    const res = await fetchFn(`${apiUrl}/api/auth/sign-out`, {
-      method: 'POST',
-      credentials: 'include'
-    });
-    if (!res.ok) {
-      throw new Error(`Sign out failed with status ${res.status}`);
-    }
+    await api.post('/api/auth/sign-out');
   },
   getMe: async () => {
-    const res = await fetchFn(`${apiUrl}/api/auth/me`, {
-      credentials: 'include'
-    });
-    if (!res.ok) return null;
-    return v.parse(authSessionSchema, await res.json());
+    try {
+      return v.parse(authSessionSchema, await api.get('/api/auth/me'));
+    } catch (err) {
+      if (isApiError(err) && err.status === 401) return null;
+      throw err;
+    }
   }
 });

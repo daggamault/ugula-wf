@@ -9,6 +9,8 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@ugula/config": "workspace:*"
+    "@ugula/config": "workspace:*",
+    "@ugula/events": "workspace:*",
+    "@ugula/sessions": "workspace:*"
   }
 }

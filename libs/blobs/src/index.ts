@@ -1,0 +1,91 @@
+import {
+  CreateBucketCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  PutObjectCommand,
+  S3Client
+} from '@aws-sdk/client-s3';
+
+export type BlobRef = {
+  bucket: string;
+  key: string;
+  size: number;
+  contentType: string;
+};
+
+export type BlobLocation = Pick<BlobRef, 'bucket' | 'key'>;
+
+export const importsPrefix = (tenantId: string) => `imports/${tenantId}/`;
+
+export type ObjectStorage = {
+  get: (key: string) => Promise<Uint8Array>;
+  put: (key: string, body: Uint8Array, contentType: string) => Promise<void>;
+  ensure: () => Promise<void>;
+};
+
+export type S3Config = {
+  endpoint: string;
+  region: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+};
+
+export const createS3Storage = ({
+  endpoint,
+  region,
+  bucket,
+  accessKeyId,
+  secretAccessKey
+}: S3Config): ObjectStorage => {
+  const client = new S3Client({
+    endpoint,
+    region,
+    forcePathStyle: true,
+    credentials: { accessKeyId, secretAccessKey }
+  });
+  return {
+    get: async (key) => {
+      const out = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      return out.Body ? out.Body.transformToByteArray() : new Uint8Array();
+    },
+    put: async (key, body, contentType) => {
+      await client.send(
+        new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType })
+      );
+    },
+    ensure: async () => {
+      try {
+        await client.send(new HeadBucketCommand({ Bucket: bucket }));
+      } catch (err) {
+        if (!(err instanceof Error) || err.name !== 'NotFound') throw err;
+        await client.send(new CreateBucketCommand({ Bucket: bucket }));
+      }
+    }
+  };
+};
+
+export const createBlobStore = (bucket: string, storage: ObjectStorage) => {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const check = (ref: BlobLocation) => {
+    if (ref.bucket !== bucket) throw new Error(`Blob ${ref.key} is not in bucket ${bucket}`);
+    return ref.key;
+  };
+  const putBytes = async (key: string, body: Uint8Array, contentType: string): Promise<BlobRef> => {
+    await storage.put(key, body, contentType);
+    return { bucket, key, size: body.byteLength, contentType };
+  };
+  const getText = async (ref: BlobLocation) => decoder.decode(await storage.get(check(ref)));
+  return {
+    putBytes,
+    putJson: (key: string, value: unknown) =>
+      putBytes(key, encoder.encode(JSON.stringify(value)), 'application/json'),
+    getBytes: (ref: BlobLocation) => storage.get(check(ref)),
+    getText,
+    getJson: async (ref: BlobLocation): Promise<unknown> => JSON.parse(await getText(ref)),
+    ensureBucket: storage.ensure
+  };
+};
+
+export type BlobStore = ReturnType<typeof createBlobStore>;

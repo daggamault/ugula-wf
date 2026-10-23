@@ -1,12 +1,29 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { Alert } from './alert.tsx';
 
 describe('Alert', () => {
-  it('renders an alert paragraph with semantic intent', () => {
-    const el = Alert({ intent: 'danger', children: 'Invalid credentials' });
-    assert.equal(el.type, 'p');
-    assert.equal(el.props.role, 'alert');
-    assert.ok(String(el.props.className).includes('text-danger-700'));
+  it('announces danger as an alert and other tones as status', () => {
+    const danger = renderToStaticMarkup(createElement(Alert, { children: 'Invalid credentials' }));
+    assert.ok(danger.includes('role="alert"'));
+    assert.ok(danger.includes('text-danger'));
+    assert.ok(danger.includes('Invalid credentials'));
+
+    const info = renderToStaticMarkup(createElement(Alert, { tone: 'info', children: 'Heads up' }));
+    assert.ok(info.includes('role="status"'));
+    assert.ok(info.includes('bg-primary/10'));
+  });
+
+  it('renders actions beside the message', () => {
+    const html = renderToStaticMarkup(
+      createElement(Alert, {
+        tone: 'warning',
+        action: createElement('button', { type: 'button' }, 'Fix'),
+        children: 'Needs setup'
+      })
+    );
+    assert.ok(html.includes('<button type="button">Fix</button>'));
   });
 });

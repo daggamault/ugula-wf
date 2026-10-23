@@ -1,4 +1,61 @@
-# Ugula Engineering & Code Standards
+# Ugula
+
+Ugula is a durable, visual workflow engine (think Unreal Blueprints meets n8n) with an EMS ambulance billing app built on top of it. Workflows are node graphs edited in the browser; billing is one set of nodes and graphs plugged into a general-purpose engine.
+
+## How It Works
+
+### The Workflow Engine
+
+- **Graphs:** A workflow is a graph of nodes joined by **exec** wires (control flow) and **data** wires (typed values). Graphs are versioned and published; any graph can call another as a node.
+- **Durable runs:** Runs persist their state in Postgres after every step, so they survive restarts. A run can suspend for days while it waits on a human task, a timer, a signal (e.g. "this claim changed"), or child workflows, then resume where it left off.
+- **Human tasks:** Task nodes put work in named queues (patient review, PCR review, follow-ups, collections). Completing a task resumes its run on the chosen outcome.
+- **Reliability:** Workers lease runs with fencing tokens, a sweeper recovers stalled runs, and transient failures retry while real faults stop the run for inspection and retry from the UI.
+- **Separation:** The engine and its standard library (`libs/graph`) know nothing about billing. Billing nodes live in `libs/billing` and reach the database only through ports the worker implements.
+
+### The Billing App
+
+1. **Import:** NEMSIS 3.5 XML arrives by upload or SFTP and is split into one run per patient care report (PCR).
+2. **Patient:** Each report is matched to an existing patient deterministically; uncertain matches go to a biller for review.
+3. **Review & pricing:** Rules suggest the level of service (BLS, ALS1, ALS2, SCT) and loaded miles; a biller confirms them, and the claim is priced from HCPCS fee schedules (payer-specific prices first, then defaults).
+4. **Claim cycle:** Each claim gets its own long-running workflow that works through its payers in order:
+   - claims wait until they go out in an **837P batch** file, which billers generate on the Submissions page and upload to their clearinghouse;
+   - a payer that hasn't answered in 30 days creates a follow-up task (resubmit, keep waiting, or move to the next payer);
+   - payer responses are recorded against the claim;
+   - once all payers are done, up to three **patient statements** (PDFs) go out 30 days apart;
+   - an unpaid balance after that goes to collections review; claims close as paid, written off, or sent to collections.
+5. **Settings:** The agency's billing profile, clearinghouse IDs, payer directory, and fee schedules drive the 837P files and statements.
+
+## Layout
+
+| Path | Purpose |
+| --- | --- |
+| `apps/api` | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, submissions, settings |
+| `apps/worker` | Executes workflow runs from the pg-boss queue and implements billing store ports |
+| `apps/sse` | Pushes live run and task updates to the browser over Server-Sent Events (via Redis) |
+| `apps/web` | React app: graph editor, runs, task queues, claims, submissions, fees, settings |
+| `libs/graph` | Workflow engine, expression language, and standard node library |
+| `libs/billing` | Billing domain: patient matching, pricing, claim cycle, statements, 837P generation |
+| `libs/nemsis` | NEMSIS XML parsing |
+| `libs/db`, `libs/jobs`, `libs/blobs`, `libs/events`, `libs/sessions`, `libs/config`, `libs/passwords` | Infrastructure: Postgres/Kysely, queues, S3 storage, events, sessions, config, hashing |
+| `.migrations`, `.seeds` | Schema and seed data (demo billing graphs, fees, payers) |
+
+**Stack:** Node, TypeScript, pnpm workspaces, Postgres (Kysely), pg-boss, Redis, S3-compatible storage (RustFS), Hono, valibot, React, Tailwind, React Flow, Biome.
+
+## Getting Started
+
+```sh
+docker compose up -d       # Postgres, Redis, RustFS
+pnpm install
+pnpm db:migrate            # resets and creates the schema
+pnpm db:seed:dev           # dev user, demo graphs, fees, payers
+pnpm dev                   # api, worker, sse, web
+```
+
+Copy `.env.example` to `.env` first. Run `pnpm check`, `pnpm typecheck`, and `pnpm test` before committing.
+
+---
+
+# Engineering & Code Standards
 
 This repository enforces strict, consistent standards across all applications, libraries, database schemas, tests, and user interfaces. Every change must adhere to these principles.
 

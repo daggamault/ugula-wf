@@ -1,13 +1,31 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createDummyDb } from '@ugula/db';
+import { createBillingProfilesTables } from './billing-profiles.ts';
+import { createClaimsTables } from './claims.ts';
+import { createFeeSchedulesTable } from './fee-schedules.ts';
+import { createGraphsTables } from './graphs.ts';
 import { migrate, resetSchema, steps } from './migrate.ts';
+import { createPatientsTable } from './patients.ts';
+import { createTasksTable } from './tasks.ts';
 import { createTenantsTable } from './tenants.ts';
 import { createUsersTable } from './users.ts';
+import { createWorkflowRunsTables } from './workflow-runs.ts';
 
 describe('migrate', () => {
-  it('orders resetSchema before createTenantsTable and createUsersTable', () => {
-    assert.deepEqual(steps, [resetSchema, createTenantsTable, createUsersTable]);
+  it('orders resetSchema before tables that depend on earlier ones', () => {
+    assert.deepEqual(steps, [
+      resetSchema,
+      createTenantsTable,
+      createUsersTable,
+      createGraphsTables,
+      createWorkflowRunsTables,
+      createTasksTable,
+      createPatientsTable,
+      createFeeSchedulesTable,
+      createBillingProfilesTables,
+      createClaimsTables
+    ]);
   });
 
   it('executes all migration steps within a transaction', async () => {

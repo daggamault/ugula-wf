@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createSessionStore, type RedisLike } from './session.ts';
+import { createSessionStore, type RedisLike, readCookie } from './index.ts';
 
 const createMemoryRedis = () => {
   const map = new Map<string, string>();
@@ -39,5 +39,14 @@ describe('createSessionStore', () => {
 
     map.set('session:bad-schema', JSON.stringify({ userId: 'u-1' }));
     assert.equal(await store.get('bad-schema'), null);
+  });
+});
+
+describe('readCookie', () => {
+  it('reads one cookie from a header', () => {
+    assert.equal(readCookie('a=1; ugula_session=tok%3D; b=2', 'ugula_session'), 'tok=');
+    assert.equal(readCookie(undefined, 'ugula_session'), undefined);
+    assert.equal(readCookie('a=1', 'ugula_session'), undefined);
+    assert.equal(readCookie('ugula_session=%E0%A4%A', 'ugula_session'), undefined);
   });
 });

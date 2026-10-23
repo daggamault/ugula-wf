@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { ENTRY_TYPE, type GraphDef } from '@ugula/graph';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createCatalog } from '../../shared/graph/catalog.ts';
+import type { GraphDetail, WorkflowsClient } from './client.ts';
+import { EditorPage, EditorView } from './editor-page.tsx';
+
+const source: GraphDef = {
+  signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
+  variables: [],
+  nodes: [{ id: 'entry', type: ENTRY_TYPE, version: 1 }],
+  edges: []
+};
+
+const detail = (tenant: string | null, published: boolean): GraphDetail => ({
+  graph: {
+    id: 'g1',
+    tenant_id: tenant,
+    key: 'acme.flow',
+    name: 'Flow',
+    kind: 'workflow',
+    description: ''
+  },
+  versions: [
+    {
+      id: 'v2',
+      version: 2,
+      published_at: published ? '2026-01-01' : null,
+      created_at: '2026-01-01'
+    },
+    { id: 'v1', version: 1, published_at: '2026-01-01', created_at: '2026-01-01' }
+  ]
+});
+
+const render = (d: GraphDetail, version: number) =>
+  renderToStaticMarkup(
+    createElement(EditorView, {
+      detail: d,
+      version,
+      source,
+      catalog: createCatalog(),
+      client: {} as WorkflowsClient,
+      onSaved: () => undefined
+    })
+  );
+
+describe('EditorView', () => {
+  it('lets tenants edit, save and publish drafts', () => {
+    const html = render(detail('t-1', false), 2);
+    assert.ok(html.includes('Draft v2'));
+    assert.ok(html.includes('>Save<'));
+    assert.ok(html.includes('>Publish<'));
+    assert.ok(html.includes('href="/runs/new?graph=g1"'));
+    assert.ok(html.includes('aria-label="Node palette"'));
+    assert.ok(html.includes('Graph</h2>'));
+  });
+
+  it('offers a new draft from published versions and locks system graphs', () => {
+    const published = render(detail('t-1', true), 2);
+    assert.ok(published.includes('Edit as new draft'));
+    assert.ok(!published.includes('>Publish<'));
+    const system = render(detail(null, true), 1);
+    assert.ok(system.includes('System'));
+    assert.ok(!system.includes('Edit as new draft'));
+  });
+});
+
+describe('EditorPage', () => {
+  it('waits for the graph before rendering', () => {
+    const html = renderToStaticMarkup(
+      createElement(EditorPage, {
+        client: {
+          find: async () => detail('t-1', false),
+          nodes: async () => [],
+          version: async () => ({ id: 'v2', version: 2, definition: source, published_at: null })
+        } as unknown as WorkflowsClient,
+        graphId: 'g1',
+        version: null
+      })
+    );
+    assert.ok(html.includes('aria-label="Loading"'));
+  });
+});

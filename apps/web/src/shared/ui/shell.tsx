@@ -1,16 +1,22 @@
-import type { ReactNode } from 'react';
-import { Button } from './button.tsx';
+import { LogOutIcon, type LucideIcon, MenuIcon, XIcon } from 'lucide-react';
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { Link } from '../router.tsx';
+import { Brand } from './brand.tsx';
+import { Collapse } from './collapse.tsx';
+import { IconButton } from './icon-button.tsx';
 import { ThemeToggle } from './theme-toggle.tsx';
 
 export type NavItem = {
   id: string;
   label: string;
+  href: string;
+  icon: LucideIcon;
+  group: string;
   active?: boolean;
-  onSelect?: () => void;
 };
 
 export type ShellProps = {
-  title: string;
+  path: string;
   navItems: readonly NavItem[];
   userEmail: string;
   status?: ReactNode;
@@ -18,58 +24,129 @@ export type ShellProps = {
   children?: ReactNode;
 };
 
-export const Shell = ({ title, navItems, userEmail, status, onSignOut, children }: ShellProps) => (
-  <div className="flex min-h-dvh flex-col bg-neutral-50 md:h-dvh md:flex-row md:overflow-hidden dark:bg-neutral-950">
-    <aside className="flex w-full shrink-0 flex-col border-b border-neutral-200 bg-white md:w-72 md:border-r md:border-b-0 dark:border-neutral-800 dark:bg-neutral-900">
-      <header className="flex h-16 shrink-0 items-center justify-between pr-3 pl-6">
-        <span className="text-2xl font-extrabold tracking-tight text-neutral-950 select-none dark:text-neutral-50">
-          ugula
-        </span>
-        <ThemeToggle />
-      </header>
+type NavMenuProps = Pick<ShellProps, 'navItems' | 'userEmail' | 'status' | 'onSignOut'>;
 
-      <nav
-        aria-label="Primary"
-        className="flex flex-1 gap-1 overflow-x-auto px-3 py-2 md:flex-col md:overflow-y-auto"
-      >
-        {navItems.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            aria-current={item.active ? 'page' : undefined}
-            onClick={item.onSelect}
-            className={`focus-visible:ring-primary-500 flex shrink-0 cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none ${
-              item.active
-                ? 'bg-primary-900/8 text-primary-950 dark:bg-primary-50/10 dark:text-primary-50'
-                : 'hover:bg-primary-900/5 hover:text-primary-950 dark:hover:bg-primary-50/6 dark:hover:text-primary-50 text-neutral-500 dark:text-neutral-400'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
+const groupsOf = (items: readonly NavItem[]) => {
+  const groups = new Map<string, NavItem[]>();
+  for (const item of items) groups.set(item.group, [...(groups.get(item.group) ?? []), item]);
+  return [...groups];
+};
 
-      <footer className="flex flex-col gap-3 border-t border-neutral-200 p-3 dark:border-neutral-800">
-        <div className="flex items-center justify-between gap-2 px-1">
-          <span
-            className="truncate text-xs font-semibold text-neutral-600 dark:text-neutral-400"
-            title={userEmail}
-          >
-            {userEmail}
-          </span>
-          {status}
-        </div>
-        <Button intent="danger" onClick={onSignOut}>
-          Sign out
-        </Button>
-      </footer>
-    </aside>
-
-    <main className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto p-4 sm:p-6 lg:p-10">
-      <h1 className="border-b border-neutral-200 pb-4 text-xl font-extrabold tracking-tight text-neutral-950 sm:text-2xl dark:border-neutral-800 dark:text-neutral-50">
-        {title}
-      </h1>
+const NavHeader = ({ children }: { children?: ReactNode }) => (
+  <div className="flex h-16 shrink-0 items-center justify-between pr-3 pl-6">
+    <Brand />
+    <div className="flex items-center gap-1">
+      <ThemeToggle />
       {children}
-    </main>
+    </div>
   </div>
 );
+
+const NavMenu = ({ navItems, userEmail, status, onSignOut }: NavMenuProps) => (
+  <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <nav aria-label="Primary" className="flex-1 overflow-y-auto px-3">
+      <div className="flex flex-col gap-5">
+        {groupsOf(navItems).map(([group, items]) => (
+          <div key={group} className="flex flex-col gap-1">
+            <p className="text-surface-fg-muted px-3 pb-1 text-xs font-semibold tracking-wide uppercase">
+              {group}
+            </p>
+            <ul className="flex flex-col gap-1">
+              {items.map(({ id, label, href, icon: Icon, active }) => (
+                <li key={id} className="flex">
+                  <Link
+                    to={href}
+                    aria-current={active ? 'page' : undefined}
+                    className="text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold pointer-coarse:py-3"
+                  >
+                    <Icon aria-hidden="true" className="size-4.5" />
+                    {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </nav>
+    <div className="border-border flex items-center gap-2 border-t p-3">
+      {status}
+      <span
+        aria-hidden="true"
+        className="bg-primary/15 text-primary grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold uppercase"
+      >
+        {userEmail.charAt(0)}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold" title={userEmail}>
+        {userEmail}
+      </span>
+      <IconButton label="Sign Out" icon={LogOutIcon} tooltipSide="top" onClick={onSignOut} />
+    </div>
+  </div>
+);
+
+const TopNav = ({ path, ...menu }: NavMenuProps & { path: string }) => {
+  const [openedAt, setOpenedAt] = useState<string | null>(null);
+  const isOpen = openedAt === path;
+  const menuId = useId();
+  const headerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenedAt(null);
+    };
+    const closeOutside = (event: Event) => {
+      if (event.target instanceof Node && !headerRef.current?.contains(event.target)) {
+        setOpenedAt(null);
+      }
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    document.addEventListener('pointerdown', closeOutside);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      document.removeEventListener('pointerdown', closeOutside);
+    };
+  }, [isOpen]);
+
+  return (
+    <header ref={headerRef} className="border-border bg-surface border-b lg:hidden">
+      <NavHeader>
+        <IconButton
+          label={isOpen ? 'Close Menu' : 'Open Menu'}
+          icon={isOpen ? XIcon : MenuIcon}
+          aria-expanded={isOpen}
+          aria-controls={menuId}
+          onClick={() => setOpenedAt(isOpen ? null : path)}
+        />
+      </NavHeader>
+      <Collapse id={menuId} isOpen={isOpen}>
+        <NavMenu {...menu} />
+      </Collapse>
+    </header>
+  );
+};
+
+export const Shell = ({ path, children, ...menu }: ShellProps) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    scrollRef.current?.scrollTo?.({ top: 0 });
+  }, [path]);
+
+  return (
+    <div className="flex h-dvh overflow-hidden">
+      <aside className="border-border bg-surface hidden w-72 shrink-0 flex-col border-r lg:flex">
+        <NavHeader />
+        <NavMenu {...menu} />
+      </aside>
+      <div
+        ref={scrollRef}
+        className="relative flex min-h-0 min-w-0 flex-1 [scrollbar-gutter:stable] flex-col overflow-y-auto"
+      >
+        <TopNav path={path} {...menu} />
+        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+      </div>
+    </div>
+  );
+};

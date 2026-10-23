@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { invokeNode } from '../testing.ts';
+import type { Json, Values } from '../types.ts';
+import { timeNodes } from './time.ts';
+
+const out = async (type: string, inputs: Values = {}, config: Json = {}) => {
+  const def = timeNodes.find((d) => d.type === type);
+  if (!def) throw new Error(type);
+  return (await invokeNode(def, { inputs, config })).outputs;
+};
+
+describe('time nodes', () => {
+  it('reads the step clock and date parts', async () => {
+    assert.deepEqual(await out('std.time.now'), { now: '2026-03-15T10:30:00.000Z' });
+    assert.deepEqual(await out('std.time.parts', { time: '2026-03-15T10:30:00Z' }), {
+      date: '2026-03-15',
+      year: 2026,
+      month: 3,
+      day: 15,
+      weekday: 0,
+      hour: 10,
+      minute: 30
+    });
+    assert.deepEqual(await out('std.time.age', { birthDate: '1980-03-16' }), { years: 45 });
+    assert.deepEqual(await out('std.time.age', { birthDate: '1980-03-16', at: '2026-03-16' }), {
+      years: 46
+    });
+  });
+
+  it('adds and measures calendar units', async () => {
+    assert.deepEqual(await out('std.time.add', { time: '2026-01-31T00:00:00Z', amount: 1 }), {
+      time: '2026-02-01T00:00:00.000Z'
+    });
+    assert.deepEqual(
+      await out('std.time.add', { time: '2026-01-15T00:00:00Z', amount: 2 }, { unit: 'years' }),
+      { time: '2028-01-15T00:00:00.000Z' }
+    );
+    const diff = (start: string, end: string, unit: string) =>
+      out('std.time.difference', { start, end }, { unit });
+    assert.deepEqual(await diff('2025-03-16', '2026-03-15', 'years'), { amount: 0 });
+    assert.deepEqual(await diff('2026-01-15', '2026-03-15', 'months'), { amount: 2 });
+    assert.deepEqual(await diff('2026-03-15', '2026-01-16', 'months'), { amount: -1 });
+    assert.deepEqual(await diff('2026-03-15T00:00:00Z', '2026-03-15T02:30:00Z', 'hours'), {
+      amount: 2
+    });
+  });
+});

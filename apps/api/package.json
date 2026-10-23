@@ -9,8 +9,14 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@ugula/billing": "workspace:*",
+    "@ugula/blobs": "workspace:*",
     "@ugula/config": "workspace:*",
     "@ugula/db": "workspace:*",
-    "@ugula/passwords": "workspace:*"
+    "@ugula/graph": "workspace:*",
+    "@ugula/jobs": "workspace:*",
+    "@ugula/nemsis": "workspace:*",
+    "@ugula/passwords": "workspace:*",
+    "@ugula/sessions": "workspace:*"
   }
 }
