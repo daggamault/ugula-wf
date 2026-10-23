@@ -18,5 +18,7 @@ describe('payer service', () => {
     assert.deepEqual(events, [{ tenantId: 't-1', event: { kind: 'claim', id: null } }]);
     const removed = await service.remove('t-1', 'p1');
     assert.equal(!removed.ok && removed.failure.code, 'not_found');
+    const forgotten = await service.forget('t-1', 'p1', 'a1');
+    assert.equal(!forgotten.ok && forgotten.failure.code, 'not_found');
   });
 });

@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createNemsisNodes, type ReportStore, reportKey, type SplitReport } from './nodes.ts';
+import {
+  createNemsisNodes,
+  type ReportStore,
+  reportKey,
+  type SplitReport,
+  UPLOAD_CONCURRENCY
+} from './nodes.ts';
 
 const SAMPLE = `<EMSDataSet xmlns="http://www.nemsis.org"><Header>
   <PatientCareReport><eRecord><eRecord.01>A</eRecord.01></eRecord></PatientCareReport>
@@ -57,6 +63,33 @@ describe('createNemsisNodes', () => {
           ]
         ]
       ]
+    );
+  });
+
+  it('stores large files in order with a bounded number of uploads in flight', async () => {
+    const { store, blobs } = memoryStore();
+    const total = UPLOAD_CONCURRENCY * 3 + 1;
+    blobs.set(
+      'in/big.xml',
+      `<EMSDataSet><Header>${'<PatientCareReport/>'.repeat(total)}</Header></EMSDataSet>`
+    );
+    let active = 0;
+    let peak = 0;
+    const [split] = createNemsisNodes({
+      ...store,
+      putJson: async (runId, key, value) => {
+        peak = Math.max(peak, ++active);
+        await new Promise((resolve) => setImmediate(resolve));
+        active--;
+        return store.putJson(runId, key, value);
+      }
+    });
+    const file = { bucket: 'ugula', key: 'in/big.xml' };
+    const res = await split?.run(invoke({ file }));
+    assert.equal(peak, UPLOAD_CONCURRENCY);
+    assert.deepEqual(
+      ((res?.outputs.reports ?? []) as { key: string }[]).map((r) => r.key),
+      Array.from({ length: total }, (_, i) => reportKey(file, i))
     );
   });
 

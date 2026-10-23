@@ -1,4 +1,4 @@
-import type { Database } from '@ugula/db';
+import { ACTIVE_RUN_STATUSES, type Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
 export const buildWorkflowRunsTable = (db: Kysely<Database>) =>
@@ -50,6 +50,15 @@ export const buildWorkflowRunsIndexes = (db: Kysely<Database>) => [
     .on('workflow_runs')
     .columns(['parent_id', 'parent_wait', 'parent_index']),
   db.schema
+    .createIndex('idx_workflow_runs_active_children')
+    .on('workflow_runs')
+    .columns(['parent_id', 'parent_wait'])
+    .where(
+      sql.ref('status'),
+      'in',
+      ACTIVE_RUN_STATUSES.map((s) => sql.lit(s))
+    ),
+  db.schema
     .createIndex('idx_workflow_runs_wait_key')
     .on('workflow_runs')
     .columns(['tenant_id', 'wait_key'])
@@ -88,9 +97,22 @@ export const buildWorkflowRunStepsNodeIndex = (db: Kysely<Database>) =>
     .on('workflow_run_steps')
     .columns(['run_id', 'path', 'node', 'seq']);
 
+export const buildSignalsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('signals')
+    .addColumn('tenant_id', 'uuid', (col) =>
+      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    )
+    .addColumn('key', 'text', (col) => col.notNull())
+    .addColumn('received', 'integer', (col) => col.notNull().defaultTo(0))
+    .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addPrimaryKeyConstraint('signals_pkey', ['tenant_id', 'key'])
+    .addCheckConstraint('signals_received_check', sql`received >= 0`);
+
 export const createWorkflowRunsTables = async (db: Kysely<Database>) => {
   await buildWorkflowRunsTable(db).execute();
   for (const index of buildWorkflowRunsIndexes(db)) await index.execute();
   await buildWorkflowRunStepsTable(db).execute();
   await buildWorkflowRunStepsNodeIndex(db).execute();
+  await buildSignalsTable(db).execute();
 };

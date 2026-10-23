@@ -40,3 +40,9 @@ export const s3EnvEntries = {
   S3_ACCESS_KEY_ID: nonEmpty,
   S3_SECRET_ACCESS_KEY: nonEmpty
 } as const;
+
+export const inferenceEnvEntries = {
+  EMBEDDINGS_URL: urlString,
+  COMPLETIONS_URL: urlString,
+  COMPLETIONS_MODEL: nonEmpty
+} as const;

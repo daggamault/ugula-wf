@@ -1,3 +1,4 @@
+import { CLAIM_SIGNAL } from '@ugula/billing';
 import { type Edge, ENTRY_TYPE, type GraphDef, type NodeInstance, RETURN_TYPE } from '@ugula/graph';
 import type { SeedGraph } from './graphs.ts';
 
@@ -14,6 +15,8 @@ const edge = (from: string, fromPin: string, to: string, toPin: string): Edge =>
   toPin
 });
 
+type Pin = GraphDef['signature']['inputs'][number];
+
 const BLOB = { object: { bucket: 'string', key: 'string' } } as const;
 
 const SUMMARY = `{
@@ -27,6 +30,7 @@ const SUMMARY = `{
   state: findKey(report, 'ePatient.08'),
   postalCode: findKey(report, 'ePatient.09'),
   incidentAt: findKey(report, 'eTimes.01'),
+  narrative: findKey(report, 'eNarrative.01'),
   pickup: {
     addressLine: findKey(report, 'eScene.15'),
     city: findKey(report, 'eScene.17'),
@@ -67,13 +71,28 @@ const SUMMARY = `{
 
 const LEVEL_RULES = `{
   level: summary.careLevel == '4232009' ? 'SCT'
-    : contains(['4232003', '4232005'], summary.careLevel)
-      ? ((summary.ivMedicationCount ?? 0) >= 3 ? 'ALS2' : 'ALS1')
-      : 'BLS',
+    : len(findings?.procedures ?? []) > 0
+      || max(summary.ivMedicationCount ?? 0, findings?.ivDoses ?? 0) >= 3 ? 'ALS2'
+    : contains(['4232003', '4232005'], summary.careLevel) || (findings?.ivDoses ?? 0) > 0 ? 'ALS1'
+    : 'BLS',
   emergency: contains(['2223001', '2223007'], summary.responseMode),
   loadedMiles: summary.sceneOdometer != null && summary.destinationOdometer != null
     ? max(0, round(number(summary.destinationOdometer) - number(summary.sceneOdometer), 1))
-    : null
+    : null,
+  basis: filter([
+    {
+      '4232001': 'BLS care documented',
+      '4232003': 'ALS care documented',
+      '4232005': 'ALS care documented',
+      '4232009': 'Critical care documented'
+    }[summary.careLevel ?? ''] ?? null,
+    (summary.ivMedicationCount ?? 0) > 0
+      ? text(summary.ivMedicationCount) + ' IV/IO medications coded' : null,
+    (findings?.ivDoses ?? 0) > 0
+      ? text(findings.ivDoses) + ' IV/IO medication doses in the narrative' : null,
+    len(findings?.procedures ?? []) > 0
+      ? 'Narrative ALS2 procedures: ' + join(findings.procedures, ', ') : null
+  ], x => x != null)
 }`;
 
 const CLAIM_LINES = `concat(
@@ -93,6 +112,8 @@ const SERVICE = { object: { level: 'string', emergency: 'boolean' } } as const;
 
 const LINES = { list: { object: { code: 'string', units: 'number' } } } as const;
 
+const COVERAGES = { list: { object: { payer: 'string' } } } as const;
+
 // Task contexts are what reviewers read, so they spell out NEMSIS codes and leave out internal ids.
 // Reports may carry a numeric GNIS code instead of a city name, and a FIPS code for the state.
 const placeOf = (place: string, withState = false) =>
@@ -106,72 +127,86 @@ const placeOf = (place: string, withState = false) =>
 // Repeated NEMSIS values can come with XML attributes, as { '#text': value, ... }.
 const textOf = (value: string) => `get(${value}, '#text') ?? ${value}`;
 
+const nameOf = (person: string) =>
+  `join(filter([${person}.firstName, ${person}.lastName], x => x != null), ' ')`;
+
 const SEX = "{ F: 'Female', M: 'Male', U: 'Unknown' }";
+
+const TRIP = `{
+  pcrNumber: summary.pcrNumber,
+  incidentAt: summary.incidentAt,
+  response: {
+    '2223001': 'Emergent',
+    '2223003': 'Emergent, downgraded to non-emergent',
+    '2223005': 'Non-emergent',
+    '2223007': 'Non-emergent, upgraded to emergent'
+  }[summary.responseMode ?? ''] ?? summary.responseMode,
+  careProvided: {
+    '4232001': 'BLS',
+    '4232003': 'ALS',
+    '4232005': 'ALS',
+    '4232009': 'Critical care'
+  }[summary.careLevel ?? ''] ?? summary.careLevel,
+  primaryImpression: ${textOf('summary.primaryImpression')},
+  otherImpressions: map(summary.secondaryImpressions, i => ${textOf('i')}),
+  ivMedications: summary.ivMedicationCount,
+  pickup: ${placeOf('summary.pickup')},
+  destination: join(filter([summary.destination.name, ${placeOf('summary.destination')}], x => x != null && x != ''), ' · ')
+}`;
 
 const REVIEW_CONTEXT = `{
   patient: {
-    name: patient.firstName + ' ' + patient.lastName,
+    name: ${nameOf('patient')},
     birthDate: patient.birthDate,
     sex: ${SEX}[patient.gender ?? ''] ?? null,
     address: ${placeOf('patient', true)}
   },
-  trip: {
-    pcrNumber: summary.pcrNumber,
-    incidentAt: summary.incidentAt,
-    response: {
-      '2223001': 'Emergent',
-      '2223003': 'Emergent, downgraded to non-emergent',
-      '2223005': 'Non-emergent',
-      '2223007': 'Non-emergent, upgraded to emergent'
-    }[summary.responseMode ?? ''] ?? summary.responseMode,
-    careProvided: {
-      '4232001': 'BLS',
-      '4232003': 'ALS',
-      '4232005': 'ALS',
-      '4232009': 'Critical care'
-    }[summary.careLevel ?? ''] ?? summary.careLevel,
-    primaryImpression: ${textOf('summary.primaryImpression')},
-    otherImpressions: map(summary.secondaryImpressions, i => ${textOf('i')}),
-    ivMedications: summary.ivMedicationCount,
-    pickup: ${placeOf('summary.pickup')},
-    destination: join(filter([summary.destination.name, ${placeOf('summary.destination')}], x => x != null && x != ''), ' · ')
-  },
-  coverage: map(sort(summary.coverages, c => c.priority ?? '9'), c => {
-    order: { '2611003': 'Primary', '2611005': 'Secondary', '2611007': 'Tertiary' }[c.priority ?? ''] ?? 'Other',
+  trip: ${TRIP},
+  coverage: map(coverages, c => {
     payer: c.payer,
+    directory: c.directoryName ?? 'Not linked to the payer directory',
     memberId: c.memberId,
     groupId: c.groupId
   }),
+  narrative: {
+    medications: map(findings.medications, m =>
+      m.medication + ' ' + m.route + (m.doses > 1 ? ' x' + text(m.doses) : '')),
+    procedures: findings.procedures
+  },
   suggested: service
+}`;
+
+const REVISION_CONTEXT = `{
+  claim: claimId,
+  patient: { name: ${nameOf('summary')}, birthDate: summary.birthDate },
+  trip: ${TRIP}
+}`;
+
+const HOLD_CONTEXT = `{
+  note: note,
+  patient: ${nameOf('patient')},
+  trip: ${TRIP}
 }`;
 
 const PATIENT_REVIEW_CONTEXT = `{
   reason: reason,
   report: {
-    name: demographics.firstName + ' ' + demographics.lastName,
+    name: ${nameOf('demographics')},
     birthDate: demographics.birthDate,
-    sex: {
-      '9906001': 'Female', '9906003': 'Male', '9906005': 'Unknown',
-      '9919001': 'Female', '9919003': 'Male', '9919005': 'Unknown'
-    }[demographics.gender ?? ''] ?? null,
+    sex: ${SEX}[demographics.gender ?? ''] ?? null,
     address: ${placeOf('demographics')},
-    pcrNumber: demographics.pcrNumber
+    pcrNumber: reported.pcrNumber
   },
   candidates: map(candidates, c => {
-    name: c.firstName + ' ' + c.lastName,
+    name: ${nameOf('c')},
     birthDate: c.birthDate,
     sex: ${SEX}[c.gender ?? ''] ?? null,
     address: ${placeOf('c', true)}
   })
 }`;
 
-const pureGraph = (
-  input: { name: string; type: GraphDef['signature']['inputs'][number]['type'] },
-  output: { name: string; type: GraphDef['signature']['outputs'][number]['type'] },
-  label: string,
-  expression: string
-): GraphDef => ({
-  signature: { execIn: [], execOut: [], inputs: [input], outputs: [output] },
+const pureGraph = (inputs: Pin[], output: Pin, label: string, expression: string): GraphDef => ({
+  signature: { execIn: [], execOut: [], inputs, outputs: [output] },
   variables: [],
   nodes: [
     node('entry', ENTRY_TYPE),
@@ -179,43 +214,34 @@ const pureGraph = (
     node('return', RETURN_TYPE)
   ],
   edges: [
-    edge('entry', input.name, 'rules', input.name),
+    ...inputs.map((p) => edge('entry', p.name, 'rules', p.name)),
     edge('rules', 'result', 'return', output.name)
   ]
 });
 
 const levelOfServiceGraph = pureGraph(
-  { name: 'summary', type: { object: {} } },
+  [
+    { name: 'summary', type: { object: {} } },
+    { name: 'findings', type: { object: {} }, optional: true }
+  ],
   { name: 'service', type: SERVICE },
   'Level of service rules',
   LEVEL_RULES
 );
 
 const claimLinesGraph = pureGraph(
-  { name: 'service', type: SERVICE },
+  [{ name: 'service', type: SERVICE }],
   { name: 'lines', type: LINES },
   'HCPCS lines',
   CLAIM_LINES
 );
 
-const pcrSummaryGraph: GraphDef = {
-  signature: {
-    execIn: [],
-    execOut: [],
-    inputs: [{ name: 'report', type: { object: {} } }],
-    outputs: [{ name: 'summary', type: { object: {} } }]
-  },
-  variables: [],
-  nodes: [
-    node('entry', ENTRY_TYPE),
-    node('fields', 'std.expr', { label: 'Billing fields', config: { expression: SUMMARY } }),
-    node('return', RETURN_TYPE)
-  ],
-  edges: [
-    edge('entry', 'report', 'fields', 'report'),
-    edge('fields', 'result', 'return', 'summary')
-  ]
-};
+const pcrSummaryGraph = pureGraph(
+  [{ name: 'report', type: { object: {} } }],
+  { name: 'summary', type: { object: {} } },
+  'Billing fields',
+  SUMMARY
+);
 
 const PATIENT = {
   object: { id: 'string', firstName: 'string', lastName: 'string', birthDate: 'string' }
@@ -294,6 +320,7 @@ const resolvePatientGraph: GraphDef = {
     edge('match', 'reason', 'context', 'reason'),
     edge('match', 'candidates', 'context', 'candidates'),
     edge('match', 'demographics', 'context', 'demographics'),
+    edge('entry', 'demographics', 'context', 'reported'),
     edge('context', 'result', 'confirm', 'context'),
     edge('match', 'demographics', 'confirm', 'defaults'),
     edge('confirm', 'link', 'find', 'exec'),
@@ -311,6 +338,101 @@ const resolvePatientGraph: GraphDef = {
   ]
 };
 
+const resolvePayersGraph: GraphDef = {
+  signature: {
+    execIn: ['exec'],
+    execOut: ['then'],
+    inputs: [{ name: 'summary', type: { object: {} } }],
+    outputs: [{ name: 'coverages', type: COVERAGES }]
+  },
+  variables: [],
+  nodes: [
+    node('entry', ENTRY_TYPE),
+    node('match', 'billing.match-payers'),
+    node('each', 'std.flow.for-each', { label: 'Each uncertain payer' }),
+    node('choices', 'std.expr', {
+      label: 'Directory choices',
+      config: { expression: '{ payerId: item.candidates }' }
+    }),
+    node('suggestion', 'std.expr', {
+      label: 'Suggested payer',
+      config: { expression: '{ payerId: item.suggested }' }
+    }),
+    node('context', 'std.expr', {
+      label: 'Payer context',
+      config: {
+        expression: `{
+          reportedPayer: item.payer,
+          memberId: item.memberId,
+          patient: ${nameOf('summary')},
+          pcrNumber: summary.pcrNumber
+        }`
+      }
+    }),
+    node('confirm', 'std.human.task', {
+      label: 'Match payer',
+      config: {
+        title: 'Match payer',
+        queue: 'billing-payers',
+        instructions:
+          'The report names a payer that is not in the payer directory by that name. Choose the directory payer it means, and later reports with this name link automatically, or mark it unlisted.',
+        fields: [{ name: 'payerId', type: 'string', label: 'Directory payer' }],
+        outcomes: ['link', 'unlisted']
+      }
+    }),
+    node('reported', 'std.expr', { label: 'Reported name', config: { expression: 'item.payer' } }),
+    node('link', 'billing.link-payer', { label: 'Remember payer name' }),
+    node('rematch', 'billing.match-payers', {
+      label: 'Match reviewed payers',
+      inputs: { suggest: { value: false } }
+    }),
+    node('matched', RETURN_TYPE),
+    node('reviewed', RETURN_TYPE)
+  ],
+  edges: [
+    edge('entry', 'exec', 'match', 'exec'),
+    edge('entry', 'summary', 'match', 'summary'),
+    edge('match', 'matched', 'matched', 'exec'),
+    edge('match', 'coverages', 'matched', 'coverages'),
+    edge('match', 'review', 'each', 'exec'),
+    edge('match', 'unmatched', 'each', 'list'),
+    edge('each', 'body', 'confirm', 'exec'),
+    edge('each', 'item', 'choices', 'item'),
+    edge('choices', 'result', 'confirm', 'options'),
+    edge('each', 'item', 'suggestion', 'item'),
+    edge('suggestion', 'result', 'confirm', 'defaults'),
+    edge('each', 'item', 'context', 'item'),
+    edge('entry', 'summary', 'context', 'summary'),
+    edge('context', 'result', 'confirm', 'context'),
+    edge('confirm', 'link', 'link', 'exec'),
+    edge('each', 'item', 'reported', 'item'),
+    edge('reported', 'result', 'link', 'name'),
+    edge('confirm', 'payerId', 'link', 'payerId'),
+    edge('each', 'completed', 'rematch', 'exec'),
+    edge('entry', 'summary', 'rematch', 'summary'),
+    edge('rematch', 'matched', 'reviewed', 'exec'),
+    edge('rematch', 'review', 'reviewed', 'exec'),
+    edge('rematch', 'coverages', 'reviewed', 'coverages')
+  ]
+};
+
+const REVIEW_FIELDS = [
+  {
+    name: 'level',
+    type: 'string',
+    label: 'Level of service',
+    options: [
+      { value: 'BLS', label: 'BLS' },
+      { value: 'ALS1', label: 'ALS1' },
+      { value: 'ALS2', label: 'ALS2' },
+      { value: 'SCT', label: 'Specialty care transport' }
+    ]
+  },
+  { name: 'emergency', type: 'boolean', label: 'Emergency response' },
+  { name: 'loadedMiles', type: 'number', label: 'Loaded miles' },
+  { name: 'note', type: 'string', label: 'Note' }
+];
+
 const processPcrGraph: GraphDef = {
   signature: {
     execIn: ['exec'],
@@ -318,17 +440,30 @@ const processPcrGraph: GraphDef = {
     inputs: [{ name: 'report', type: BLOB }],
     outputs: [
       { name: 'summary', type: { object: {} } },
-      { name: 'patient', type: PATIENT },
-      { name: 'charges', type: { object: {} } },
-      { name: 'claimId', type: 'string' }
+      { name: 'patient', type: PATIENT, optional: true },
+      { name: 'charges', type: { object: {} }, optional: true },
+      { name: 'claimId', type: 'string', optional: true }
     ]
   },
-  variables: [],
+  variables: [{ name: 'revising', type: 'string', default: '' }],
   nodes: [
     node('entry', ENTRY_TYPE),
     node('read', 'nemsis.read-report'),
     node('summary', 'billing.pcr-summary'),
+    node('pcrNumber', 'std.expr', {
+      label: 'PCR number',
+      config: { expression: 'summary.pcrNumber' }
+    }),
+    node('billed', 'billing.find-claim', { label: 'Already billed?' }),
+    node('narrativeText', 'std.expr', {
+      label: 'Narrative',
+      config: { expression: 'summary.narrative' }
+    }),
+    node('narrative', 'billing.read-narrative', {
+      retry: { max: 3, delayMs: 30_000, factor: 4 }
+    }),
     node('patient', 'billing.resolve-patient', { label: 'Resolve patient' }),
+    node('payers', 'billing.resolve-payers', { label: 'Resolve payers' }),
     node('service', 'billing.level-of-service', { label: 'Suggest level of service' }),
     node('claim', 'std.expr', {
       label: 'Claim context',
@@ -340,24 +475,23 @@ const processPcrGraph: GraphDef = {
         title: 'Review PCR',
         queue: 'billing-review',
         instructions:
-          'Check the patient and impression codes, and confirm the level of service and loaded miles before this claim is priced.',
-        fields: [
-          {
-            name: 'level',
-            type: 'string',
-            label: 'Level of service',
-            options: [
-              { value: 'BLS', label: 'BLS' },
-              { value: 'ALS1', label: 'ALS1' },
-              { value: 'ALS2', label: 'ALS2' },
-              { value: 'SCT', label: 'Specialty care transport' }
-            ]
-          },
-          { name: 'emergency', type: 'boolean', label: 'Emergency response' },
-          { name: 'loadedMiles', type: 'number', label: 'Loaded miles' },
-          { name: 'note', type: 'string', label: 'Note' }
-        ],
+          'Check the patient, payers and impression codes, and confirm the level of service and loaded miles before this claim is priced. The suggestion lists what supports it, including what the narrative documents.',
+        fields: REVIEW_FIELDS,
         outcomes: ['approve', 'hold']
+      }
+    }),
+    node('holdContext', 'std.expr', {
+      label: 'Hold context',
+      config: { expression: HOLD_CONTEXT }
+    }),
+    node('held', 'std.human.task', {
+      label: 'Held PCR',
+      config: {
+        title: 'Held PCR',
+        queue: 'billing-holds',
+        instructions:
+          'A reviewer held this PCR. Release it back to review once the report is sorted out, or void it so it is never billed.',
+        outcomes: ['release', 'void']
       }
     }),
     node('confirmed', 'std.expr', {
@@ -368,16 +502,19 @@ const processPcrGraph: GraphDef = {
       }
     }),
     node('lines', 'billing.claim-lines', { label: 'HCPCS lines' }),
-    node('payer', 'std.expr', { label: 'Primary payer', config: { expression: 'summary.payer' } }),
+    node('primaryPayer', 'std.expr', {
+      label: 'Primary payer',
+      config: { expression: 'first(coverages)?.payerId' }
+    }),
     node('price', 'billing.price-claim'),
     node('charges', 'std.expr', {
       label: 'Charges',
-      config: {
-        expression: 'merge(service, { payer: payer, lines: lines, totalCents: totalCents })'
-      }
+      config: { expression: 'merge(service, { lines: lines, totalCents: totalCents })' }
     }),
-    node('reason', 'std.text.template', { config: { template: 'Held by reviewer: {{ note }}' } }),
-    node('hold', 'std.flow.fail', { label: 'Hold claim' }),
+    node('claimSummary', 'std.expr', {
+      label: 'Claim summary',
+      config: { expression: 'merge(summary, { coverages: coverages })' }
+    }),
     node('open', 'billing.open-claim'),
     node('cycleInputs', 'std.expr', { config: { expression: '{ claimId: claimId }' } }),
     node('cycle', 'std.flow.start-workflow', {
@@ -385,21 +522,71 @@ const processPcrGraph: GraphDef = {
       config: { workflow: 'billing.cycle-claim', version: 1 }
     }),
     node('attach', 'billing.attach-cycle', { label: 'Link claim to its cycle' }),
-    node('approved', RETURN_TYPE)
+    node('approved', RETURN_TYPE),
+    node('reviseBilled', 'std.var.set', {
+      label: 'Revise billed claim',
+      config: { name: 'revising' }
+    }),
+    node('reviseDuplicate', 'std.var.set', {
+      label: 'Revise concurrent claim',
+      config: { name: 'revising' }
+    }),
+    node('revising', 'std.var.get', { config: { name: 'revising' } }),
+    node('noteRevision', 'billing.note-revision'),
+    node('revisionContext', 'std.expr', {
+      label: 'Revision context',
+      config: { expression: REVISION_CONTEXT }
+    }),
+    node('revision', 'std.human.task', {
+      label: 'Review updated PCR',
+      config: {
+        title: 'Review updated PCR',
+        queue: 'billing-review',
+        instructions:
+          'A newer version of this patient care report arrived after its claim was opened, so it was not billed again. Compare it with the claim and correct the claim if anything changed.',
+        outcomes: ['acknowledge']
+      }
+    }),
+    node('revised', RETURN_TYPE),
+    node('voided', RETURN_TYPE)
   ],
   edges: [
     edge('entry', 'exec', 'read', 'exec'),
     edge('entry', 'report', 'read', 'report'),
-    edge('read', 'then', 'patient', 'exec'),
     edge('read', 'data', 'summary', 'report'),
+    edge('read', 'then', 'billed', 'exec'),
+    edge('summary', 'summary', 'pcrNumber', 'summary'),
+    edge('pcrNumber', 'result', 'billed', 'pcrNumber'),
+
+    edge('billed', 'new', 'narrative', 'exec'),
+    edge('summary', 'summary', 'narrativeText', 'summary'),
+    edge('narrativeText', 'result', 'narrative', 'narrative'),
+    edge('narrative', 'then', 'patient', 'exec'),
     edge('summary', 'summary', 'patient', 'demographics'),
+    edge('patient', 'then', 'payers', 'exec'),
+    edge('summary', 'summary', 'payers', 'summary'),
     edge('summary', 'summary', 'service', 'summary'),
-    edge('patient', 'then', 'review', 'exec'),
+    edge('narrative', 'findings', 'service', 'findings'),
+
+    edge('payers', 'then', 'review', 'exec'),
     edge('patient', 'patient', 'claim', 'patient'),
     edge('summary', 'summary', 'claim', 'summary'),
     edge('service', 'service', 'claim', 'service'),
+    edge('payers', 'coverages', 'claim', 'coverages'),
+    edge('narrative', 'findings', 'claim', 'findings'),
     edge('claim', 'result', 'review', 'context'),
     edge('service', 'service', 'review', 'defaults'),
+
+    edge('review', 'hold', 'held', 'exec'),
+    edge('review', 'note', 'holdContext', 'note'),
+    edge('patient', 'patient', 'holdContext', 'patient'),
+    edge('summary', 'summary', 'holdContext', 'summary'),
+    edge('holdContext', 'result', 'held', 'context'),
+    edge('held', 'release', 'review', 'exec'),
+    edge('held', 'void', 'voided', 'exec'),
+    edge('summary', 'summary', 'voided', 'summary'),
+    edge('patient', 'patient', 'voided', 'patient'),
+
     edge('review', 'approve', 'price', 'exec'),
     edge('review', 'level', 'confirmed', 'level'),
     edge('review', 'emergency', 'confirmed', 'emergency'),
@@ -407,15 +594,19 @@ const processPcrGraph: GraphDef = {
     edge('service', 'service', 'confirmed', 'service'),
     edge('confirmed', 'result', 'lines', 'service'),
     edge('lines', 'lines', 'price', 'lines'),
-    edge('summary', 'summary', 'payer', 'summary'),
-    edge('payer', 'result', 'price', 'payer'),
-    edge('payer', 'result', 'charges', 'payer'),
+    edge('payers', 'coverages', 'primaryPayer', 'coverages'),
+    edge('primaryPayer', 'result', 'price', 'payerId'),
+    edge('confirmed', 'result', 'charges', 'service'),
+    edge('price', 'lines', 'charges', 'lines'),
+    edge('price', 'totalCents', 'charges', 'totalCents'),
+    edge('summary', 'summary', 'claimSummary', 'summary'),
+    edge('payers', 'coverages', 'claimSummary', 'coverages'),
     edge('price', 'then', 'open', 'exec'),
     edge('patient', 'patient', 'open', 'patient'),
-    edge('summary', 'summary', 'open', 'summary'),
+    edge('claimSummary', 'result', 'open', 'summary'),
     edge('charges', 'result', 'open', 'charges'),
     edge('entry', 'report', 'open', 'report'),
-    edge('open', 'then', 'cycle', 'exec'),
+    edge('open', 'opened', 'cycle', 'exec'),
     edge('open', 'claimId', 'cycleInputs', 'claimId'),
     edge('cycleInputs', 'result', 'cycle', 'inputs'),
     edge('cycle', 'then', 'attach', 'exec'),
@@ -423,15 +614,25 @@ const processPcrGraph: GraphDef = {
     edge('cycle', 'runId', 'attach', 'cycleRunId'),
     edge('attach', 'then', 'approved', 'exec'),
     edge('open', 'claimId', 'approved', 'claimId'),
-    edge('confirmed', 'result', 'charges', 'service'),
-    edge('price', 'lines', 'charges', 'lines'),
-    edge('price', 'totalCents', 'charges', 'totalCents'),
     edge('charges', 'result', 'approved', 'charges'),
     edge('summary', 'summary', 'approved', 'summary'),
     edge('patient', 'patient', 'approved', 'patient'),
-    edge('review', 'hold', 'hold', 'exec'),
-    edge('review', 'note', 'reason', 'note'),
-    edge('reason', 'text', 'hold', 'message')
+
+    edge('billed', 'found', 'reviseBilled', 'exec'),
+    edge('billed', 'claimId', 'reviseBilled', 'value'),
+    edge('open', 'duplicate', 'reviseDuplicate', 'exec'),
+    edge('open', 'claimId', 'reviseDuplicate', 'value'),
+    edge('reviseBilled', 'then', 'noteRevision', 'exec'),
+    edge('reviseDuplicate', 'then', 'noteRevision', 'exec'),
+    edge('revising', 'value', 'noteRevision', 'claimId'),
+    edge('entry', 'report', 'noteRevision', 'report'),
+    edge('noteRevision', 'then', 'revision', 'exec'),
+    edge('revising', 'value', 'revisionContext', 'claimId'),
+    edge('summary', 'summary', 'revisionContext', 'summary'),
+    edge('revisionContext', 'result', 'revision', 'context'),
+    edge('revision', 'acknowledge', 'revised', 'exec'),
+    edge('revising', 'value', 'revised', 'claimId'),
+    edge('summary', 'summary', 'revised', 'summary')
   ]
 };
 
@@ -442,7 +643,7 @@ const closeClaim = (id: string, status: string, label: string) =>
   node(id, 'billing.close-claim', { label, inputs: { status: { value: status } } });
 
 const waitForClaim = (id: string, label: string) =>
-  node(id, 'std.flow.wait-signal', { label, inputs: { name: { value: 'claim' } } });
+  node(id, 'std.flow.wait-signal', { label, inputs: { name: { value: CLAIM_SIGNAL } } });
 
 const cycleClaimGraph: GraphDef = {
   signature: {
@@ -511,12 +712,14 @@ const cycleClaimGraph: GraphDef = {
     edge('loop', 'body', 'step', 'exec'),
     edge('loop', 'completed', 'done', 'exec'),
     edge('entry', 'claimId', 'step', 'claimId'),
+    ...['submit', 'awaitPayer', 'awaitPatient'].flatMap((wait) => [
+      edge('entry', 'claimId', wait, 'key'),
+      edge('step', 'waitMs', wait, 'timeoutMs'),
+      edge('step', 'signalsSeen', wait, 'after')
+    ]),
     edge('step', 'submit', 'submit', 'exec'),
-    edge('entry', 'claimId', 'submit', 'key'),
-    edge('step', 'waitMs', 'submit', 'timeoutMs'),
     edge('step', 'await', 'awaitPayer', 'exec'),
-    edge('entry', 'claimId', 'awaitPayer', 'key'),
-    edge('step', 'waitMs', 'awaitPayer', 'timeoutMs'),
+    edge('step', 'awaitPatient', 'awaitPatient', 'exec'),
     edge('step', 'followUp', 'followUp', 'exec'),
     edge('entry', 'claimId', 'followUpContext', 'claimId'),
     edge('step', 'coverageId', 'followUpContext', 'coverageId'),
@@ -535,9 +738,6 @@ const cycleClaimGraph: GraphDef = {
     edge('step', 'statement', 'statement', 'exec'),
     edge('entry', 'claimId', 'statement', 'claimId'),
     edge('step', 'statementNumber', 'statement', 'statementNumber'),
-    edge('step', 'awaitPatient', 'awaitPatient', 'exec'),
-    edge('entry', 'claimId', 'awaitPatient', 'key'),
-    edge('step', 'waitMs', 'awaitPatient', 'timeoutMs'),
     edge('step', 'collections', 'collections', 'exec'),
     edge('entry', 'claimId', 'collectionsContext', 'claimId'),
     edge('step', 'balanceCents', 'collectionsContext', 'balanceCents'),
@@ -561,31 +761,29 @@ const ingestNemsisGraph: GraphDef = {
     inputs: [{ name: 'file', type: BLOB }],
     outputs: [
       { name: 'count', type: 'integer' },
-      { name: 'summaries', type: { list: { object: {} } } }
+      { name: 'runIds', type: { list: 'string' } }
     ]
   },
   variables: [],
   nodes: [
     node('entry', ENTRY_TYPE),
     node('split', 'nemsis.split'),
-    node('claims', 'std.list.map', { config: { expression: '{ report: item }' } }),
-    node('each', 'std.flow.map-workflow', {
+    node('items', 'std.list.map', { config: { expression: '{ report: item }' } }),
+    node('spawn', 'std.flow.spawn-workflows', {
       label: 'Process each PCR',
       config: { workflow: 'billing.process-pcr', version: 1 }
     }),
-    node('summaries', 'std.list.map', { config: { expression: 'item.summary' } }),
     node('return', RETURN_TYPE)
   ],
   edges: [
     edge('entry', 'exec', 'split', 'exec'),
     edge('entry', 'file', 'split', 'file'),
-    edge('split', 'then', 'each', 'exec'),
-    edge('split', 'reports', 'claims', 'list'),
-    edge('claims', 'list', 'each', 'items'),
-    edge('each', 'then', 'return', 'exec'),
-    edge('each', 'results', 'summaries', 'list'),
+    edge('split', 'then', 'spawn', 'exec'),
+    edge('split', 'reports', 'items', 'list'),
+    edge('items', 'list', 'spawn', 'items'),
+    edge('spawn', 'then', 'return', 'exec'),
     edge('split', 'count', 'return', 'count'),
-    edge('summaries', 'list', 'return', 'summaries')
+    edge('spawn', 'runIds', 'return', 'runIds')
   ]
 };
 
@@ -594,7 +792,7 @@ export const billingGraphs: SeedGraph[] = [
     key: 'billing.pcr-summary',
     name: 'PCR Summary',
     kind: 'node',
-    description: 'Pulls the billing fields out of a NEMSIS patient care report.',
+    description: 'Pulls the billing fields and narrative out of a NEMSIS patient care report.',
     version: 1,
     definition: pcrSummaryGraph
   },
@@ -603,16 +801,25 @@ export const billingGraphs: SeedGraph[] = [
     name: 'Resolve Patient',
     kind: 'node',
     description:
-      'Matches report demographics to a patient, creates one when nothing is close, and asks a biller about near matches.',
+      'Matches report demographics to a patient, creates one when nothing is close, and asks a biller about likely matches.',
     version: 1,
     definition: resolvePatientGraph
+  },
+  {
+    key: 'billing.resolve-payers',
+    name: 'Resolve Payers',
+    kind: 'node',
+    description:
+      'Links report payers to the payer directory, asks a biller about uncertain names and remembers the answers.',
+    version: 1,
+    definition: resolvePayersGraph
   },
   {
     key: 'billing.level-of-service',
     name: 'Level of Service',
     kind: 'node',
     description:
-      'Suggests BLS, ALS1, ALS2 or SCT from the level of care provided (eDisposition.32) and IV/IO medications, emergency status from the response mode, and loaded miles from the scene and destination odometers.',
+      'Suggests BLS, ALS1, ALS2 or SCT from the level of care (eDisposition.32), coded IV/IO medications and narrative findings, emergency status from the response mode, and loaded miles from the scene and destination odometers, with the reasons.',
     version: 1,
     definition: levelOfServiceGraph
   },
@@ -630,7 +837,7 @@ export const billingGraphs: SeedGraph[] = [
     name: 'Cycle Claim',
     kind: 'workflow',
     description:
-      'Bills each payer in claim order with 30-day follow-ups, then sends three patient statements 30 days apart before collections review.',
+      'Bills each payer in claim order with 30-day follow-ups, then sends three patient statements 30 days apart before collections review. Sleeps until a claim change or a deadline.',
     version: 1,
     definition: cycleClaimGraph
   },
@@ -639,7 +846,7 @@ export const billingGraphs: SeedGraph[] = [
     name: 'Process PCR',
     kind: 'workflow',
     description:
-      'Summarizes one patient care report, resolves its patient, confirms the level of service with a biller, prices and opens the claim, and starts its payer cycle.',
+      'Reads one patient care report and its narrative, resolves its patient and payers, confirms the level of service with a biller, prices and opens the claim, and starts its payer cycle. Reports already billed become revisions of their claim.',
     version: 1,
     definition: processPcrGraph
   },
@@ -647,7 +854,8 @@ export const billingGraphs: SeedGraph[] = [
     key: 'billing.ingest-nemsis',
     name: 'Ingest NEMSIS File',
     kind: 'workflow',
-    description: 'Splits a NEMSIS export and processes every report as its own claim run.',
+    description:
+      'Splits a NEMSIS export and starts one Process PCR run per report, without waiting for them.',
     version: 1,
     definition: ingestNemsisGraph
   }

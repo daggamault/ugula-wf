@@ -1,5 +1,6 @@
 import { CLAIM_FILING_CODES, type ClaimFilingCode } from '@ugula/billing';
 import * as v from 'valibot';
+import { uuid } from '../../shared/http.ts';
 
 export const payerSchema = v.object({
   name: v.pipe(v.string(), v.trim(), v.nonEmpty(), v.maxLength(60)),
@@ -12,3 +13,5 @@ export const payerSchema = v.object({
 });
 
 export type PayerInput = v.InferOutput<typeof payerSchema>;
+
+export const aliasParams = v.object({ id: uuid, aliasId: uuid });

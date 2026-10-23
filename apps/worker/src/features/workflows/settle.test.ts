@@ -19,6 +19,7 @@ type FakeOptions = {
   children?: ChildRun[];
   version?: string;
   active?: string[];
+  received?: number;
 };
 
 const fakeTx = (opts: FakeOptions = {}) => {
@@ -57,6 +58,7 @@ const fakeTx = (opts: FakeOptions = {}) => {
       (opts.children ?? []).some((c) => ['running', 'suspended', 'faulted'].includes(c.status)),
     children: async () => opts.children ?? [],
     activeChildren: async () => opts.active ?? [],
+    lockSignal: async () => opts.received ?? 0,
     enqueue: async (jobs) => {
       calls.jobs.push(...jobs);
     }
@@ -174,6 +176,24 @@ describe('settleRun', () => {
     });
   });
 
+  it('resumes signal waits at once when signals arrived after the ones already seen', async () => {
+    const data = { name: 'claim', key: 'C1', until: '2026-02-01', after: 2 };
+    const missed = fakeTx({ received: 3 });
+    await settleRun(missed.tx, run, waiting('signal', data), []);
+    assert.deepEqual(missed.calls.jobs, [
+      { runId: 'run-1', command: { type: 'resume', suspensionId: '7', payload: { payload: null } } }
+    ]);
+    const current = fakeTx({ received: 2 });
+    await settleRun(current.tx, run, waiting('signal', data), []);
+    assert.deepEqual(current.calls.jobs, [
+      {
+        runId: 'run-1',
+        command: { type: 'resume', suspensionId: '7', payload: { timedOut: true } },
+        startAfter: '2026-02-01'
+      }
+    ]);
+  });
+
   it('queues human tasks from the suspension data', async () => {
     const { tx, calls } = fakeTx();
     await settleRun(
@@ -239,6 +259,32 @@ describe('settleRun', () => {
       type: 'resume',
       suspensionId: '7',
       payload: { error: 'Workflow x.y@2 is not published' }
+    });
+  });
+
+  it('spawns linked children and resumes the parent immediately with their ids', async () => {
+    const spawned = fakeTx({ version: 'v-9' });
+    await settleRun(
+      spawned.tx,
+      run,
+      waiting('spawn', { type: 'x.y', version: 2, items: [{ a: 1 }, { a: 2 }] }),
+      []
+    );
+    assert.deepEqual(spawned.calls.spawned, [[{ a: 1 }, { a: 2 }]]);
+    assert.deepEqual(spawned.calls.jobs, [
+      { runId: 'child-0', command: { type: 'advance' } },
+      { runId: 'child-1', command: { type: 'advance' } },
+      {
+        runId: 'run-1',
+        command: { type: 'resume', suspensionId: '7', payload: { runIds: ['child-0', 'child-1'] } }
+      }
+    ]);
+    const empty = fakeTx({ version: 'v-9' });
+    await settleRun(empty.tx, run, waiting('spawn', { type: 'x.y', version: 2, items: [] }), []);
+    assert.deepEqual(empty.calls.jobs[0]?.command, {
+      type: 'resume',
+      suspensionId: '7',
+      payload: { runIds: [] }
     });
   });
 

@@ -15,6 +15,7 @@
     "@ugula/db": "workspace:*",
     "@ugula/events": "workspace:*",
     "@ugula/graph": "workspace:*",
+    "@ugula/inference": "workspace:*",
     "@ugula/jobs": "workspace:*",
     "@ugula/nemsis": "workspace:*"
   }

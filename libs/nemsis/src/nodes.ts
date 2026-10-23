@@ -52,6 +52,22 @@ const action = (inputs: Pin[], outputs: Pin[]) => ({
 export const reportKey = (file: BlobLocation, index: number) =>
   `${file.key}.reports/${String(index).padStart(5, '0')}.json`;
 
+export const UPLOAD_CONCURRENCY = 16;
+
+const mapLimited = async <T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, i: number) => Promise<R>
+) => {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const lane = async () => {
+    for (let i = next++; i < items.length; i = next++) results[i] = await fn(items[i] as T, i);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+  return results;
+};
+
 export const createNemsisNodes = (store: ReportStore | null): HostNode[] => {
   const storage = () => {
     if (!store) throw new Error('NEMSIS nodes need blob storage, which only the worker provides');
@@ -76,8 +92,8 @@ export const createNemsisNodes = (store: ReportStore | null): HostNode[] => {
       run: async ({ read, ctx }) => {
         const file = (await read('file')) as BlobLocation;
         const { reports } = parseDataset(await storage().getText(ctx.runId, file));
-        const refs = await Promise.all(
-          reports.map((report, i) => storage().putJson(ctx.runId, reportKey(file, i), report))
+        const refs = await mapLimited(reports, UPLOAD_CONCURRENCY, (report, i) =>
+          storage().putJson(ctx.runId, reportKey(file, i), report)
         );
         await storage().recordReports(
           ctx.runId,

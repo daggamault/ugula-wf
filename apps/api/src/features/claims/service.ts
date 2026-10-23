@@ -1,4 +1,4 @@
-import { type ClaimEventKind, nextClaimStep } from '@ugula/billing';
+import { CLAIM_SIGNAL, type ClaimEventKind, nextClaimStep } from '@ugula/billing';
 import type { BlobRef, BlobStore } from '@ugula/blobs';
 import { type Db, findPublishedGraphs, sqlExecutor } from '@ugula/db';
 import { enqueueRuns, type JobBoss, resume } from '@ugula/jobs';
@@ -65,7 +65,7 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
   const write = <T>(tenantId: string, id: string, work: (tx: Db) => Promise<Result<T>>) =>
     announced(announce, tenantId, db.transaction().execute(work), () => [{ kind: 'claim', id }]);
   const nudge = (tx: Db, tenantId: string, claimId: string) =>
-    signalRuns(tx, boss, { tenantId, name: 'claim', key: claimId, payload: null });
+    signalRuns(tx, boss, { tenantId, name: CLAIM_SIGNAL, key: claimId, payload: null });
 
   return {
     list: async (tenantId: string, filters: ClaimFilters) =>

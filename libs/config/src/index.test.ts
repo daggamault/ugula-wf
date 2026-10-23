@@ -4,6 +4,7 @@ import * as v from 'valibot';
 import {
   dbEnvEntries,
   emailString,
+  inferenceEnvEntries,
   nodeEnvSchema,
   nonEmpty,
   portInt,
@@ -63,5 +64,15 @@ describe('config primitives', () => {
     });
     assert.equal(s3.S3_BUCKET, 'ugula');
     assert.throws(() => v.parse(v.object(s3EnvEntries), { ...s3, S3_ENDPOINT: 'nope' }));
+
+    const inference = v.parse(v.object(inferenceEnvEntries), {
+      EMBEDDINGS_URL: 'http://localhost:8080',
+      COMPLETIONS_URL: 'http://localhost:8081',
+      COMPLETIONS_MODEL: 'qwen'
+    });
+    assert.equal(inference.COMPLETIONS_MODEL, 'qwen');
+    assert.throws(() =>
+      v.parse(v.object(inferenceEnvEntries), { ...inference, EMBEDDINGS_URL: 'nope' })
+    );
   });
 });

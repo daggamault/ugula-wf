@@ -362,6 +362,9 @@ importers:
       '@ugula/graph':
         specifier: workspace:*
         version: link:../../libs/graph
+      '@ugula/inference':
+        specifier: workspace:*
+        version: link:../../libs/inference
       '@ugula/jobs':
         specifier: workspace:*
         version: link:../../libs/jobs
@@ -380,6 +383,8 @@ importers:
   libs/events: {}
 
   libs/graph: {}
+
+  libs/inference: {}
 
   libs/jobs: {}
 

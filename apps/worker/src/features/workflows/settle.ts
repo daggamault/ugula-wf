@@ -45,26 +45,27 @@ const finish = async (
   await notifyParent(tx, run, jobs);
 };
 
+type ChildKind = 'workflow' | 'workflows' | 'spawn';
+
 const spawn = async (
   tx: RunTx,
   run: ClaimedRun,
   waitId: string,
   data: Record<string, Json>,
-  many: boolean,
+  kind: ChildKind,
   jobs: RunJob[]
 ) => {
   const versionId = await tx.findVersion(run.tenantId, String(data.type), Number(data.version));
   if (!versionId) {
     const error = `Workflow ${String(data.type)}@${String(data.version)} is not published`;
-    jobs.push(resume(run.id, waitId, many ? { results: [{ error }] } : { error }));
+    jobs.push(resume(run.id, waitId, kind === 'workflows' ? { results: [{ error }] } : { error }));
     return;
   }
-  const inputs = (many ? data.items : [data.inputs]) as Values[];
-  if (!inputs.length) {
-    jobs.push(resume(run.id, waitId, { results: [] }));
-    return;
-  }
-  jobs.push(...(await tx.insertChildren(run, waitId, versionId, inputs)).map(advance));
+  const inputs = (kind === 'workflow' ? [data.inputs] : data.items) as Values[];
+  const ids = inputs.length ? await tx.insertChildren(run, waitId, versionId, inputs) : [];
+  jobs.push(...ids.map(advance));
+  if (kind === 'spawn') jobs.push(resume(run.id, waitId, { runIds: ids }));
+  else if (!ids.length) jobs.push(resume(run.id, waitId, { results: [] }));
 };
 
 const startDetached = async (
@@ -95,14 +96,15 @@ const suspendRun = async (tx: RunTx, run: ClaimedRun, state: RunState, jobs: Run
       await tx.saveRun(run, { status: 'suspended', state });
       jobs.push(resume(run.id, wait.id, null, until ?? new Date(0).toISOString()));
       return;
-    case 'signal':
-      await tx.saveRun(run, {
-        status: 'suspended',
-        state,
-        waitKey: `${String(data.name)}:${String(data.key)}`
-      });
-      if (until) jobs.push(resume(run.id, wait.id, { timedOut: true }, until));
+    case 'signal': {
+      const waitKey = `${String(data.name)}:${String(data.key)}`;
+      await tx.saveRun(run, { status: 'suspended', state, waitKey });
+      const after = typeof data.after === 'number' ? data.after : null;
+      if (after !== null && (await tx.lockSignal(run.tenantId, waitKey)) > after) {
+        jobs.push(resume(run.id, wait.id, { payload: null }));
+      } else if (until) jobs.push(resume(run.id, wait.id, { timedOut: true }, until));
       return;
+    }
     case 'task':
       await tx.saveRun(run, { status: 'suspended', state });
       await tx.insertTask({
@@ -123,8 +125,9 @@ const suspendRun = async (tx: RunTx, run: ClaimedRun, state: RunState, jobs: Run
       return;
     case 'workflow':
     case 'workflows':
+    case 'spawn':
       await tx.saveRun(run, { status: 'suspended', state });
-      await spawn(tx, run, wait.id, data, wait.kind === 'workflows', jobs);
+      await spawn(tx, run, wait.id, data, wait.kind, jobs);
       return;
     case 'start':
       await tx.saveRun(run, { status: 'suspended', state });

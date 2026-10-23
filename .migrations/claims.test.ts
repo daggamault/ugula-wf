@@ -71,7 +71,9 @@ describe('claims tables', () => {
         "(kind not in ('submitted', 'resubmitted', 'resubmit_queued', 'follow_up', 'payer_skipped') or coverage_id is not null)"
       )
     );
-    assert.ok(events.includes("(kind not in ('statement', 'closed') or coverage_id is null)"));
+    assert.ok(
+      events.includes("(kind not in ('statement', 'revised', 'closed') or coverage_id is null)")
+    );
     assert.ok(events.includes('references "claim_batches" ("id") on delete restrict'));
     await db.destroy();
   });
@@ -98,9 +100,14 @@ describe('claims tables', () => {
         'create unique index "claim_coverages_claim_payer_name_unique" on "claim_coverages" (claim_id, lower(payer_name))'
       )
     );
+    assert.ok(
+      indexes.includes(
+        'create unique index "claims_tenant_pcr_number_unique" on "claims" ("tenant_id", "pcr_number") where "pcr_number" is not null'
+      )
+    );
     assert.ok(indexes.some((i) => i.includes('"idx_claim_events_coverage_id"')));
     assert.ok(indexes.some((i) => i.includes('"idx_claim_coverages_payer_id"')));
-    assert.equal(indexes.length, 12);
+    assert.equal(indexes.length, 13);
     await db.destroy();
   });
 

@@ -1,5 +1,5 @@
 import { CLAIM_FILING_CODES } from '@ugula/billing';
-import type { Database } from '@ugula/db';
+import { type Database, EMBEDDING_DIMENSIONS } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
 export const buildBillingProfilesTable = (db: Kysely<Database>) =>
@@ -44,6 +44,7 @@ export const buildPayersTable = (db: Kysely<Database>) =>
     .addColumn('name', 'text', (col) => col.notNull())
     .addColumn('payer_id', 'text', (col) => col.notNull())
     .addColumn('claim_filing', 'text', (col) => col.notNull())
+    .addColumn('embedding', sql`vector(${sql.lit(EMBEDDING_DIMENSIONS)})`)
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addCheckConstraint('payers_name_check', sql`name <> ''`)
@@ -60,8 +61,29 @@ export const buildPayersIndex = (db: Kysely<Database>) =>
     .unique()
     .expression(sql`tenant_id, lower(name)`);
 
+export const buildPayerAliasesTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('payer_aliases')
+    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
+    .addColumn('tenant_id', 'uuid', (col) =>
+      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    )
+    .addColumn('payer_id', 'uuid', (col) =>
+      col.notNull().references('payers.id').onDelete('cascade').onUpdate('cascade')
+    )
+    .addColumn('alias', 'text', (col) => col.notNull())
+    .addColumn('alias_key', 'text', (col) => col.notNull())
+    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addUniqueConstraint('payer_aliases_tenant_id_alias_key_unique', ['tenant_id', 'alias_key'])
+    .addCheckConstraint('payer_aliases_alias_key_check', sql`alias_key <> ''`);
+
+export const buildPayerAliasesIndex = (db: Kysely<Database>) =>
+  db.schema.createIndex('idx_payer_aliases_payer_id').on('payer_aliases').column('payer_id');
+
 export const createBillingProfilesTables = async (db: Kysely<Database>) => {
   await buildBillingProfilesTable(db).execute();
   await buildPayersTable(db).execute();
   await buildPayersIndex(db).execute();
+  await buildPayerAliasesTable(db).execute();
+  await buildPayerAliasesIndex(db).execute();
 };

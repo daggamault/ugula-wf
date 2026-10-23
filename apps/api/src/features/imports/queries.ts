@@ -62,7 +62,7 @@ export const listImports = (db: Kysely<Database>, tenantId: string, limit: numbe
             childCount('completed').as('completed'),
             childCount('suspended').as('waiting'),
             childCount('faulted').as('stuck'),
-            childCount('failed').as('held'),
+            childCount('failed').as('failed'),
             childCount('running').as('processing')
           ])
           .whereRef('ch.parent_id', '=', 'i.run_id')
@@ -94,7 +94,7 @@ export const listImports = (db: Kysely<Database>, tenantId: string, limit: numbe
       'reports.completed',
       'reports.waiting',
       'reports.stuck',
-      'reports.held',
+      'reports.failed',
       'reports.processing',
       'claimed.claims',
       'claimed.charges_cents'

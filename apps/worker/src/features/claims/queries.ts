@@ -1,16 +1,15 @@
 import { createHash } from 'node:crypto';
-import type { ClaimStore, NewClaim } from '@ugula/billing';
+import { type ClaimStore, claimSignalKey, type NewClaim } from '@ugula/billing';
 import type { BlobStore } from '@ugula/blobs';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { isUuid } from '../../shared/ids.ts';
 import { runTenant } from '../../shared/tenancy.ts';
 
 type Db = Kysely<Database>;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 const ownedClaim = async (db: Db, runId: string, claimId: string) => {
-  const claim = UUID.test(claimId)
+  const claim = isUuid(claimId)
     ? await db
         .selectFrom('claims')
         .select(['id', 'total_cents'])
@@ -39,12 +38,16 @@ export const statementKey = (
 ) =>
   `statements/${tenantId}/${claimId}/${number}-${createHash('sha256').update(sourceKey).digest('hex').slice(0, 16)}.pdf`;
 
-const directoryPayer = (db: Db, runId: string, payer: string) =>
+const directoryPayer = (db: Db, runId: string, { payer, payerId }: NewClaim['coverages'][number]) =>
   db
     .selectFrom('payers')
     .select('id')
     .where('tenant_id', '=', runTenant(db, runId))
-    .where(sql`lower(name)`, '=', payer.toLowerCase());
+    .where((eb) =>
+      payerId === null
+        ? eb(sql`lower(name)`, '=', payer.toLowerCase())
+        : eb('id', '=', isUuid(payerId) ? payerId : null)
+    );
 
 const sourceReport = (db: Db, runId: string, key: string) =>
   db
@@ -85,7 +88,7 @@ const insertClaim = async (db: Db, runId: string, sourceKey: string, c: NewClaim
   const created = await db
     .insertInto('claims')
     .values(claimValues(db, runId, sourceKey, c))
-    .onConflict((oc) => oc.columns(['tenant_id', 'source_key']).doNothing())
+    .onConflict((oc) => oc.doNothing())
     .returning('id')
     .executeTakeFirst();
   if (!created) return null;
@@ -110,7 +113,7 @@ const insertClaim = async (db: Db, runId: string, sourceKey: string, c: NewClaim
           claim_id: created.id,
           position: i + 1,
           payer_name: cov.payer,
-          payer_id: directoryPayer(db, runId, cov.payer),
+          payer_id: directoryPayer(db, runId, cov),
           payer_code: cov.payerCode,
           member_id: cov.memberId,
           group_id: cov.groupId
@@ -241,21 +244,49 @@ export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
       .execute();
   },
 
+  findByPcr: async (runId, pcrNumber) =>
+    (
+      await db
+        .selectFrom('claims')
+        .select('id')
+        .where('tenant_id', '=', runTenant(db, runId))
+        .where('pcr_number', '=', pcrNumber)
+        .executeTakeFirst()
+    )?.id ?? null,
+
   openClaim: (runId, sourceKey, c) =>
-    db
-      .transaction()
-      .execute(
-        async (tx) =>
-          (await insertClaim(tx, runId, sourceKey, c)) ??
-          (
-            await tx
-              .selectFrom('claims')
-              .select('id')
-              .where('tenant_id', '=', runTenant(tx, runId))
-              .where('source_key', '=', sourceKey)
-              .executeTakeFirstOrThrow()
-          ).id
-      ),
+    db.transaction().execute(async (tx) => {
+      const id = await insertClaim(tx, runId, sourceKey, c);
+      if (id) return { id, duplicate: false };
+      const existing = await tx
+        .selectFrom('claims')
+        .select(['id', 'source_key'])
+        .where('tenant_id', '=', runTenant(tx, runId))
+        .where((eb) =>
+          eb.or([
+            eb('source_key', '=', sourceKey),
+            ...(c.pcrNumber ? [eb('pcr_number', '=', c.pcrNumber)] : [])
+          ])
+        )
+        .orderBy(sql`source_key = ${sourceKey}`, 'desc')
+        .executeTakeFirstOrThrow();
+      return { id: existing.id, duplicate: existing.source_key !== sourceKey };
+    }),
+
+  noteRevision: async (runId, claimId, sourceKey, report) => {
+    const claim = await claimOrFail(db, runId, claimId);
+    await db
+      .insertInto('claim_events')
+      .values({
+        claim_id: claim.id,
+        kind: 'revised',
+        note: 'An updated patient care report arrived',
+        document: JSON.stringify(report),
+        source_key: sourceKey
+      })
+      .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
+      .execute();
+  },
 
   attachCycle: async (runId, claimId, cycleRunId) => {
     const claim = await claimOrFail(db, runId, claimId);
@@ -276,6 +307,12 @@ export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
   ledger: async (runId, claimId) => {
     const claim = await ownedClaim(db, runId, claimId);
     if (!claim) return null;
+    const signal = await db
+      .selectFrom('signals')
+      .select('received')
+      .where('tenant_id', '=', runTenant(db, runId))
+      .where('key', '=', claimSignalKey(claim.id))
+      .executeTakeFirst();
     const [coverages, events] = await Promise.all([
       db
         .selectFrom('claim_coverages as cc')
@@ -294,6 +331,7 @@ export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
     ]);
     return {
       totalCents: claim.total_cents,
+      signalsSeen: signal?.received ?? 0,
       coverages,
       events: events.map((e) => ({
         kind: e.kind,

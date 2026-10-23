@@ -16,6 +16,7 @@ describe('createSettingsClient', () => {
     assert.deepEqual(await client.payers(), []);
     await client.savePayer({ name: 'Medicare', payerId: '00952', claimFiling: 'MB' });
     await client.removePayer('p1');
+    await client.forgetAlias('p1', 'a1');
     await client.saveProfile({
       organizationName: 'Acme',
       npi: '1234567893',
@@ -35,6 +36,7 @@ describe('createSettingsClient', () => {
       'GET http://api.test/api/payers',
       'PUT http://api.test/api/payers',
       'DELETE http://api.test/api/payers/p1',
+      'DELETE http://api.test/api/payers/p1/aliases/a1',
       'PUT http://api.test/api/billing-profile'
     ]);
   });

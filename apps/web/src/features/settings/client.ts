@@ -30,11 +30,14 @@ export type BillingProfileInput = {
   production: boolean;
 };
 
+export type PayerAlias = { id: string; alias: string };
+
 export type Payer = {
   id: string;
   name: string;
   payer_id: string;
   claim_filing: string;
+  aliases: PayerAlias[];
 };
 
 export type PayerInput = { name: string; payerId: string; claimFiling: string };
@@ -46,7 +49,9 @@ export const createSettingsClient = (api: Api) => ({
   payers: async () => (await api.get<{ payers: Payer[] }>('/api/payers')).payers,
   savePayer: (payer: PayerInput) =>
     api.put<{ payer: Payer; linkedClaims: number }>('/api/payers', payer),
-  removePayer: (id: string) => api.remove(`/api/payers/${id}`)
+  removePayer: (id: string) => api.remove(`/api/payers/${id}`),
+  forgetAlias: (payerId: string, aliasId: string) =>
+    api.remove(`/api/payers/${payerId}/aliases/${aliasId}`)
 });
 
 export type SettingsClient = ReturnType<typeof createSettingsClient>;

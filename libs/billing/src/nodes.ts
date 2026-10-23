@@ -13,14 +13,17 @@ import {
   readCoverages
 } from './claim-details.ts';
 import { type ClaimLedger, claimProgress, nextClaimStep } from './claims.ts';
+import type { Completer } from './completions.ts';
+import { nameKey } from './names.ts';
+import { readNarrative } from './narrative.ts';
 import {
   matchPatient,
   type NewPatient,
-  nameKey,
   type Patient,
   readDemographics,
   toNewPatient
 } from './patients.ts';
+import { type PayerLookup, payerDocument, suggestPayer } from './payers.ts';
 import { renderStatement, type StatementData } from './statements.ts';
 
 type ValueType =
@@ -57,9 +60,14 @@ export type PatientStore = {
 export type FeeStore = {
   findFees: (
     runId: string,
-    payer: string | null,
+    payerId: string | null,
     codes: string[]
   ) => Promise<Record<string, number>>;
+};
+
+export type PayerStore = {
+  lookup: (runId: string, names: string[]) => Promise<PayerLookup[]>;
+  linkAlias: (runId: string, name: string, payerId: string) => Promise<void>;
 };
 
 export type NewClaim = {
@@ -81,8 +89,21 @@ export type CycleEventKind = 'resubmit_queued' | 'follow_up' | 'payer_skipped' |
 
 export type ClosedStatus = 'paid' | 'written_off' | 'collections';
 
+export type OpenedClaim = { id: string; duplicate: boolean };
+
+export type TrackedLedger = ClaimLedger & { signalsSeen: number };
+
+export type BlobRef = { bucket: string; key: string };
+
 export type ClaimStore = {
-  openClaim: (runId: string, sourceKey: string, claim: NewClaim) => Promise<string>;
+  findByPcr: (runId: string, pcrNumber: string) => Promise<string | null>;
+  openClaim: (runId: string, sourceKey: string, claim: NewClaim) => Promise<OpenedClaim>;
+  noteRevision: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    report: BlobRef
+  ) => Promise<void>;
   attachCycle: (runId: string, claimId: string, cycleRunId: string) => Promise<void>;
   statementData: (runId: string, claimId: string) => Promise<StatementSource>;
   saveStatement: (
@@ -91,7 +112,7 @@ export type ClaimStore = {
     sourceKey: string,
     statement: { number: number; pdf: Uint8Array }
   ) => Promise<void>;
-  ledger: (runId: string, claimId: string) => Promise<ClaimLedger | null>;
+  ledger: (runId: string, claimId: string) => Promise<TrackedLedger | null>;
   recordEvent: (
     runId: string,
     claimId: string,
@@ -108,8 +129,10 @@ export type ClaimStore = {
 
 export type BillingStores = {
   patients: PatientStore;
+  payers: PayerStore;
   fees: FeeStore;
   claims: ClaimStore;
+  completer: Completer;
 };
 
 export type HostNode = {
@@ -189,6 +212,32 @@ const claimIdOf = async (read: (pin: string) => Promise<unknown>) => {
   return id;
 };
 
+const resolveCoverage = async (
+  completer: Completer,
+  c: Coverage,
+  { known, candidates }: PayerLookup,
+  suggest: boolean
+) => {
+  const coverage = { ...c, payerId: known?.id ?? null, directoryName: known?.name ?? null };
+  if (known || !candidates.length) return { coverage, unmatched: null };
+  const suggested = suggest ? await suggestPayer(completer, c.payer, candidates) : null;
+  const ordered = suggested
+    ? [suggested, ...candidates.filter((p) => p.id !== suggested.id)]
+    : candidates;
+  return {
+    coverage,
+    unmatched: {
+      payer: c.payer,
+      memberId: c.memberId,
+      suggested: suggested?.id ?? null,
+      candidates: ordered.map((p) => ({
+        value: p.id,
+        label: p === suggested ? `${payerDocument(p)} · suggested` : payerDocument(p)
+      }))
+    }
+  };
+};
+
 const action = (inputs: Pin[], outputs: Pin[], execOut = ['then']) => ({
   execIn: ['exec'],
   execOut,
@@ -209,7 +258,7 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       title: 'Match Patient',
       category: 'Billing',
       description:
-        'Finds the existing patient by last name, birth date and first initial, or flags near matches for review. Also outputs the cleaned demographics.',
+        'Finds the existing patient with the same last name, birth date and first name or nickname, or flags likely matches (similar names, birth date typos) for review. Also outputs the cleaned demographics.',
       effect: false,
       signature: action(
         [DEMOGRAPHICS],
@@ -294,12 +343,12 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       title: 'Price Claim',
       category: 'Billing',
       description:
-        "Prices HCPCS claim lines from the tenant's fee schedule, using the payer's prices where they exist.",
+        "Prices HCPCS claim lines from the tenant's fee schedule, using the directory payer's prices where they exist.",
       effect: false,
       signature: action(
         [
           { name: 'lines', type: { list: { object: { code: 'string', units: 'number' } } } },
-          { name: 'payer', type: 'string', optional: true }
+          { name: 'payerId', type: 'string', optional: true }
         ],
         [
           {
@@ -320,10 +369,9 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       ),
       run: async ({ read, ctx }) => {
         const lines = readLines(await read('lines'));
-        const payer = await read('payer');
         const fees = await storesOrFail().fees.findFees(
           ctx.runId,
-          typeof payer === 'string' && payer ? payer : null,
+          textOrNull(await read('payerId')),
           [...new Set(lines.map((l) => l.code))]
         );
         const claim = priceLines(lines, fees);
@@ -336,7 +384,7 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       title: 'Open Claim',
       category: 'Billing',
       description:
-        'Records a priced claim for a patient, with its charge lines, payers in billing priority, member IDs, service date, pickup and destination, and diagnoses from the report summary, linked to the imported report it came from. Once per run step.',
+        'Records a priced claim for a patient, with its charge lines, payers in billing priority, member IDs, service date, pickup and destination, and diagnoses from the report summary, linked to the imported report it came from. Once per run step. Continues through duplicate with the existing claim when its PCR number was already billed.',
       effect: true,
       signature: action(
         [
@@ -345,7 +393,8 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
           { name: 'charges', type: { object: {} } },
           { name: 'report', type: BLOB, optional: true }
         ],
-        [{ name: 'claimId', type: 'string' }]
+        [{ name: 'claimId', type: 'string' }],
+        ['opened', 'duplicate']
       ),
       run: async ({ read, ctx }) => {
         const claim = readNewClaim(
@@ -354,8 +403,150 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
           await read('charges'),
           await read('report')
         );
-        const claimId = await storesOrFail().claims.openClaim(ctx.runId, ctx.key, claim);
-        return { type: 'next', pin: 'then', outputs: { claimId } };
+        const { id, duplicate } = await storesOrFail().claims.openClaim(ctx.runId, ctx.key, claim);
+        return { type: 'next', pin: duplicate ? 'duplicate' : 'opened', outputs: { claimId: id } };
+      }
+    },
+    {
+      type: 'billing.find-claim',
+      version: 1,
+      title: 'Find Claim',
+      category: 'Billing',
+      description:
+        'Looks up the claim already opened for a PCR number, so a re-imported or corrected report is not billed twice.',
+      effect: false,
+      signature: action(
+        [{ name: 'pcrNumber', type: 'string', optional: true }],
+        [{ name: 'claimId', type: 'string' }],
+        ['found', 'new']
+      ),
+      run: async ({ read, ctx }) => {
+        const pcrNumber = textOrNull(await read('pcrNumber'));
+        const claimId = pcrNumber
+          ? await storesOrFail().claims.findByPcr(ctx.runId, pcrNumber)
+          : null;
+        return { type: 'next', pin: claimId ? 'found' : 'new', outputs: { claimId } };
+      }
+    },
+    {
+      type: 'billing.note-revision',
+      version: 1,
+      title: 'Note PCR Revision',
+      category: 'Billing',
+      description:
+        'Logs on a claim that an updated version of its patient care report arrived, with the new report attached. Once per run step.',
+      effect: true,
+      signature: action(
+        [
+          { name: 'claimId', type: 'string' },
+          { name: 'report', type: BLOB }
+        ],
+        []
+      ),
+      run: async ({ read, ctx }) => {
+        const claimId = await claimIdOf(read);
+        const report = (await read('report')) as BlobRef;
+        await storesOrFail().claims.noteRevision(ctx.runId, claimId, ctx.key, report);
+        return { type: 'next', pin: 'then', outputs: {} };
+      }
+    },
+    {
+      type: 'billing.match-payers',
+      version: 1,
+      title: 'Match Payers',
+      category: 'Billing',
+      description:
+        "Links the report's payers to the payer directory by name or a name billers already matched. For other names it finds similar directory payers by embedding and, with suggest, has the language model pick the likely one; those continue through review for a biller to confirm.",
+      effect: false,
+      signature: action(
+        [
+          { name: 'summary', type: { object: {} } },
+          { name: 'suggest', type: 'boolean', optional: true }
+        ],
+        [
+          { name: 'coverages', type: { list: { object: { payer: 'string' } } } },
+          {
+            name: 'unmatched',
+            type: { list: { object: { payer: 'string', candidates: { list: { object: {} } } } } }
+          }
+        ],
+        ['matched', 'review']
+      ),
+      run: async ({ read, ctx }) => {
+        const coverages = readCoverages(await read('summary'));
+        const lookups = await storesOrFail().payers.lookup(
+          ctx.runId,
+          coverages.map((c) => c.payer)
+        );
+        const suggest = (await read('suggest')) !== false;
+        const resolved = await Promise.all(
+          coverages.map((c, i) =>
+            resolveCoverage(
+              storesOrFail().completer,
+              c,
+              lookups[i] ?? { name: c.payer, known: null, candidates: [] },
+              suggest
+            )
+          )
+        );
+        const unmatched = resolved.flatMap((r) => (r.unmatched ? [r.unmatched] : []));
+        return {
+          type: 'next',
+          pin: unmatched.length ? 'review' : 'matched',
+          outputs: { coverages: resolved.map((r) => r.coverage), unmatched }
+        };
+      }
+    },
+    {
+      type: 'billing.link-payer',
+      version: 1,
+      title: 'Link Payer Alias',
+      category: 'Billing',
+      description:
+        'Remembers that a payer name from reports means a directory payer, so later reports with that name link automatically.',
+      effect: true,
+      signature: action(
+        [
+          { name: 'name', type: 'string' },
+          { name: 'payerId', type: 'string' }
+        ],
+        []
+      ),
+      run: async ({ read, ctx }) => {
+        const name = textOrNull(await read('name'));
+        const payerId = textOrNull(await read('payerId'));
+        if (!name || !payerId) throw new Error('Choose the directory payer to link');
+        await storesOrFail().payers.linkAlias(ctx.runId, name, payerId);
+        return { type: 'next', pin: 'then', outputs: {} };
+      }
+    },
+    {
+      type: 'billing.read-narrative',
+      version: 1,
+      title: 'Read Narrative',
+      category: 'Billing',
+      description:
+        'Uses the local language model to list the medication doses (with routes) and CMS ALS2 procedures the crew documented in the PCR narrative. Suggestions only; a biller confirms the level of service.',
+      effect: false,
+      signature: action(
+        [{ name: 'narrative', type: 'string', optional: true }],
+        [
+          {
+            name: 'findings',
+            type: {
+              object: {
+                medications: { list: { object: {} } },
+                procedures: { list: 'string' },
+                ivDoses: 'integer'
+              }
+            }
+          }
+        ]
+      ),
+      run: async ({ read }) => {
+        const narrative = textOrNull(await read('narrative')) ?? '';
+        const findings = await readNarrative(storesOrFail().completer, narrative);
+        return { type: 'next', pin: 'then', outputs: { findings } };
       }
     },
     {
@@ -388,7 +579,7 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       title: 'Claim Step',
       category: 'Billing',
       description:
-        "Decides what a claim needs next from its history: wait for the next payer's claim to go out in an 837P batch, wait (at most a day before checking again), follow up after 30 days, send or wait on a patient statement, collections review, or close.",
+        "Decides what a claim needs next from its history: wait for the next payer's claim to go out in an 837P batch, wait out the payer's 30 days, follow up, send or wait on a patient statement, collections review, or close. Also outputs how many claim signals the history already reflects.",
       effect: false,
       signature: action(
         [{ name: 'claimId', type: 'string' }],
@@ -397,7 +588,8 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
           { name: 'payer', type: 'string' },
           { name: 'statementNumber', type: 'integer' },
           { name: 'balanceCents', type: 'integer' },
-          { name: 'waitMs', type: 'integer' }
+          { name: 'waitMs', type: 'integer' },
+          { name: 'signalsSeen', type: 'integer' }
         ],
         ['submit', 'await', 'followUp', 'statement', 'awaitPatient', 'collections', 'closed']
       ),
@@ -414,7 +606,8 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
             payer: 'coverage' in next ? next.coverage.payer : null,
             statementNumber: 'statement' in next ? next.statement : null,
             balanceCents: next.balanceCents,
-            waitMs: 'waitMs' in next ? next.waitMs : null
+            waitMs: 'waitMs' in next ? next.waitMs : null,
+            signalsSeen: ledger.signalsSeen
           }
         };
       }

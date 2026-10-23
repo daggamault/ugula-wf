@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ImportSummary } from './client.ts';
-import { ImportHistory, reportOutcomes } from './import-history.tsx';
+import { ImportHistory, importStatus, reportOutcomes } from './import-history.tsx';
 
 const summary = (over: Partial<ImportSummary> = {}): ImportSummary => ({
   id: 'i1',
@@ -17,7 +17,7 @@ const summary = (over: Partial<ImportSummary> = {}): ImportSummary => ({
   completed: 1,
   waiting: 1,
   stuck: 0,
-  held: 1,
+  failed: 1,
   processing: 0,
   claims: 1,
   charges_cents: 114_220,
@@ -26,8 +26,19 @@ const summary = (over: Partial<ImportSummary> = {}): ImportSummary => ({
 
 describe('reportOutcomes', () => {
   it('lists only the outcomes that need someone', () => {
-    assert.deepEqual(reportOutcomes(summary()), ['1 in review', '1 held']);
-    assert.deepEqual(reportOutcomes(summary({ waiting: 0, held: 0 })), []);
+    assert.deepEqual(reportOutcomes(summary()), ['1 in review', '1 failed']);
+    assert.deepEqual(reportOutcomes(summary({ waiting: 0, failed: 0 })), []);
+  });
+});
+
+describe('importStatus', () => {
+  it('stays in progress after the split while its reports still need work', () => {
+    const done = summary({ run_status: 'completed', waiting: 0, failed: 0 });
+    assert.equal(importStatus(done).label, 'Done');
+    assert.equal(importStatus({ ...done, waiting: 2 }).label, 'Reports in progress');
+    assert.equal(importStatus({ ...done, stuck: 1 }).label, 'Reports in progress');
+    assert.equal(importStatus({ ...done, failed: 1 }).label, 'Done');
+    assert.equal(importStatus(summary()).label, 'In review');
   });
 });
 
@@ -43,7 +54,7 @@ describe('ImportHistory', () => {
             run_status: 'completed',
             uploaded_by_email: null,
             waiting: 0,
-            held: 0
+            failed: 0
           })
         ]
       })
@@ -52,7 +63,7 @@ describe('ImportHistory', () => {
     assert.ok(html.includes('Upload · biller@example.com'));
     assert.ok(html.includes('>SFTP<'));
     assert.ok(html.includes('>In review<') && html.includes('>Done<'));
-    assert.ok(html.includes('1 in review, 1 held'));
+    assert.ok(html.includes('1 in review, 1 failed'));
     assert.ok(html.includes('$1,142.20'));
   });
 });

@@ -6,6 +6,7 @@ export const CLAIM_EVENT_KINDS = [
   'response',
   'payer_skipped',
   'statement',
+  'revised',
   'closed'
 ] as const;
 
@@ -19,7 +20,7 @@ export const COVERAGE_EVENT_KINDS: readonly ClaimEventKind[] = [
   'payer_skipped'
 ];
 
-export const PATIENT_EVENT_KINDS: readonly ClaimEventKind[] = ['statement', 'closed'];
+export const PATIENT_EVENT_KINDS: readonly ClaimEventKind[] = ['statement', 'revised', 'closed'];
 
 export type LedgerCoverage = { id: string; payer: string };
 
@@ -43,12 +44,10 @@ export const PAYER_WAIT_MS = 30 * 86_400_000;
 
 export const STATEMENT_INTERVAL_MS = 30 * 86_400_000;
 
-export const RECHECK_MS = 86_400_000;
-
 export const MIN_WAIT_MS = 60_000;
 
 export type ClaimStep =
-  | { step: 'submit'; coverage: LedgerCoverage; waitMs: number; balanceCents: number }
+  | { step: 'submit'; coverage: LedgerCoverage; balanceCents: number }
   | { step: 'followUp'; coverage: LedgerCoverage; balanceCents: number }
   | { step: 'await'; coverage: LedgerCoverage; waitMs: number; balanceCents: number }
   | { step: 'statement'; statement: number; balanceCents: number }
@@ -96,14 +95,14 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
 
 const waitFor = (since: number, intervalMs: number, now: Date) => {
   const remaining = since + intervalMs - now.getTime();
-  return remaining > 0 ? Math.max(Math.min(remaining, RECHECK_MS), MIN_WAIT_MS) : 0;
+  return remaining > 0 ? Math.max(remaining, MIN_WAIT_MS) : 0;
 };
 
 export const nextClaimStep = (ledger: ClaimLedger, now: Date): ClaimStep => {
   const { balanceCents, coverage, contacted, statements, lastStatement } = claimProgress(ledger);
   if (balanceCents <= 0) return { step: 'closed', balanceCents };
   if (coverage !== null) {
-    if (contacted === null) return { step: 'submit', coverage, waitMs: RECHECK_MS, balanceCents };
+    if (contacted === null) return { step: 'submit', coverage, balanceCents };
     const waitMs = waitFor(contacted, PAYER_WAIT_MS, now);
     return waitMs > 0
       ? { step: 'await', coverage, waitMs, balanceCents }
@@ -116,3 +115,7 @@ export const nextClaimStep = (ledger: ClaimLedger, now: Date): ClaimStep => {
     ? { step: 'statement', statement: statements + 1, balanceCents }
     : { step: 'collections', balanceCents };
 };
+
+export const CLAIM_SIGNAL = 'claim';
+
+export const claimSignalKey = (claimId: string) => `${CLAIM_SIGNAL}:${claimId}`;

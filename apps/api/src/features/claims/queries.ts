@@ -1,4 +1,4 @@
-import type { Address, Location } from '@ugula/billing';
+import { type Address, type Location, payerKey } from '@ugula/billing';
 import type { ClaimStatus, Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
@@ -185,7 +185,22 @@ export const reorderCoverages = async (
             .selectFrom('payers')
             .select('id')
             .where('tenant_id', '=', tenantId)
-            .where(sql`lower(name)`, '=', c.payer.toLowerCase())
+            .where((eb) =>
+              eb.or([
+                eb(sql`lower(name)`, '=', c.payer.toLowerCase()),
+                eb(
+                  'id',
+                  'in',
+                  eb
+                    .selectFrom('payer_aliases')
+                    .select('payer_id')
+                    .where('tenant_id', '=', tenantId)
+                    .where('alias_key', '=', payerKey(c.payer))
+                )
+              ])
+            )
+            .orderBy(sql`lower(name) = ${c.payer.toLowerCase()}`, 'desc')
+            .limit(1)
         }))
       )
       .execute();

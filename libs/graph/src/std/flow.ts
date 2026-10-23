@@ -302,14 +302,16 @@ export const waitSignalNode = defineNode({
   version: 1,
   title: 'Wait For Signal',
   category: CATEGORY,
-  description: 'Durably waits for an external signal matching name and key, with optional timeout.',
+  description:
+    'Durably waits for an external signal matching name and key, with optional timeout. Given how many signals were already seen, continues at once if more arrived meanwhile.',
   signature: {
     execIn: ['exec'],
     execOut: ['received', 'timeout'],
     inputs: [
       pin('name', 'string'),
       pin('key', 'string'),
-      pin('timeoutMs', 'integer', { optional: true })
+      pin('timeoutMs', 'integer', { optional: true }),
+      pin('after', 'integer', { optional: true })
     ],
     outputs: [pin('payload', 'any')]
   },
@@ -326,7 +328,8 @@ export const waitSignalNode = defineNode({
       data: {
         name: await read('name'),
         key: await read('key'),
-        until: timeout === null ? null : new Date(ctx.now.getTime() + timeout).toISOString()
+        until: timeout === null ? null : new Date(ctx.now.getTime() + timeout).toISOString(),
+        after: await read('after')
       }
     });
   }
@@ -426,6 +429,37 @@ export const mapWorkflowNode = defineNode<v.InferOutput<typeof workflowConfig>>(
   }
 });
 
+export const spawnWorkflowsNode = defineNode<v.InferOutput<typeof workflowConfig>>({
+  type: 'std.flow.spawn-workflows',
+  version: 1,
+  title: 'Spawn Workflows',
+  category: CATEGORY,
+  description:
+    'Starts one child run per item and continues without waiting; the children stay linked to this run.',
+  config: workflowConfig,
+  effect: true,
+  signature: {
+    execIn: ['exec'],
+    execOut: ['then'],
+    inputs: [pin('items', { list: { object: {} } })],
+    outputs: [pin('runIds', { list: 'string' })]
+  },
+  run: async ({ event, read, config }) => {
+    if (event.type !== 'resume') {
+      return suspend({
+        kind: 'spawn',
+        data: { type: config.workflow, version: config.version, items: await read('items') }
+      });
+    }
+    const p = event.payload;
+    const err = childError(p);
+    if (err !== null || !isRecord(p) || !Array.isArray(p.runIds)) {
+      return fail(`Could not start workflows: ${err ?? 'no runs'}`);
+    }
+    return next('then', { runIds: p.runIds });
+  }
+});
+
 export const flowNodes: NodeDef[] = [
   branchNode,
   switchNode,
@@ -443,5 +477,6 @@ export const flowNodes: NodeDef[] = [
   waitSignalNode,
   runWorkflowNode,
   startWorkflowNode,
-  mapWorkflowNode
+  mapWorkflowNode,
+  spawnWorkflowsNode
 ];

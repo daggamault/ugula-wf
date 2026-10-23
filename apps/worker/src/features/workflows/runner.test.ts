@@ -92,6 +92,7 @@ const fakeStore = (inputs: Values, opts: { leased?: boolean } = {}) => {
     insertChildren: async () => [],
     lockParent: async () => undefined,
     hasPendingChildren: async () => false,
+    lockSignal: async () => 0,
     children: async () => [],
     activeChildren: async () => [],
     enqueue: async (jobs) => {

@@ -28,7 +28,7 @@ const patient = {
 };
 
 describe('createPatientStore', () => {
-  it('finds candidates in the run tenant by birth date or last name key', async () => {
+  it('finds candidates in the run tenant by birth date or a similar last name key', async () => {
     const { db, queries } = createRecordingDb(() => [row]);
     const store = createPatientStore(db);
     assert.deepEqual(
@@ -41,7 +41,7 @@ describe('createPatientStore', () => {
     );
     assert.match(
       queries[0]?.sql ?? '',
-      /"tenant_id" = \(select "tenant_id" from "workflow_runs" where "id" = \$1\) and \("birth_date" = \$2 or "last_name_key" = \$3\)/
+      /"tenant_id" = \(select "tenant_id" from "workflow_runs" where "id" = \$1\) and \("birth_date" = \$2 or last_name_key % \$3\)/
     );
     assert.deepEqual(queries[0]?.parameters, [
       'r1',
@@ -54,7 +54,7 @@ describe('createPatientStore', () => {
     ]);
     assert.ok(
       queries[0]?.sql.includes(
-        '::int + (lower(first_name) is not distinct from lower($6))::int desc, "created_at" limit'
+        'similarity(last_name_key, $5) + (lower(first_name) is not distinct from lower($6))::int desc, "created_at" limit'
       )
     );
     assert.deepEqual(
@@ -113,19 +113,22 @@ describe('createPatientStore', () => {
       q.sql.startsWith('select "id"') ? [row] : []
     );
     const store = createPatientStore(db);
-    assert.deepEqual(
-      await store.createPatient('r1', 'k', { ...newJane, firstName: 'J.' }, true),
-      patient
-    );
+    assert.deepEqual(await store.createPatient('r1', 'k', newJane, true), patient);
     assert.equal(sqlOf(queries).filter((q) => q.startsWith('insert')).length, 0);
-    const other = createRecordingDb((q) =>
-      q.sql.startsWith('select "id"')
-        ? [{ ...row, first_name: 'Mary' }]
-        : q.sql.startsWith('insert')
-          ? [row]
-          : []
-    );
-    await createPatientStore(other.db).createPatient('r1', 'k', newJane, true);
-    assert.equal(sqlOf(other.queries).filter((q) => q.startsWith('insert')).length, 1);
+    for (const [reported, existing] of [
+      ['Jane', 'Mary'],
+      ['J.', 'Jane']
+    ]) {
+      const other = createRecordingDb((q) =>
+        q.sql.startsWith('select "id"')
+          ? [{ ...row, first_name: existing }]
+          : q.sql.startsWith('insert')
+            ? [row]
+            : []
+      );
+      const store = createPatientStore(other.db);
+      await store.createPatient('r1', 'k', { ...newJane, firstName: reported ?? '' }, true);
+      assert.equal(sqlOf(other.queries).filter((q) => q.startsWith('insert')).length, 1);
+    }
   });
 });

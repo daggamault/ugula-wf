@@ -25,7 +25,7 @@ export type ImportSummary = {
   completed: number;
   waiting: number;
   stuck: number;
-  held: number;
+  failed: number;
   processing: number;
   claims: number;
   charges_cents: number;

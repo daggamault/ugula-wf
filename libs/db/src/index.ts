@@ -90,6 +90,13 @@ export type WorkflowRunsTable = {
   completed_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
 };
 
+export type SignalsTable = {
+  tenant_id: string;
+  key: string;
+  received: Generated<number>;
+  updated_at: Timestamp;
+};
+
 export type WorkflowRunStepsTable = {
   run_id: string;
   seq: number;
@@ -171,6 +178,7 @@ export type ClaimEventKind =
   | 'response'
   | 'payer_skipped'
   | 'statement'
+  | 'revised'
   | 'closed';
 
 export type ClaimsTable = {
@@ -310,8 +318,20 @@ export type PayersTable = {
   name: string;
   payer_id: string;
   claim_filing: string;
+  embedding: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: Timestamp;
   updated_at: Timestamp;
+};
+
+export const EMBEDDING_DIMENSIONS = 1024;
+
+export type PayerAliasesTable = {
+  id: Generated<string>;
+  tenant_id: string;
+  payer_id: string;
+  alias: string;
+  alias_key: string;
+  created_at: Timestamp;
 };
 
 export type Database = {
@@ -321,6 +341,7 @@ export type Database = {
   graph_versions: GraphVersionsTable;
   workflow_runs: WorkflowRunsTable;
   workflow_run_steps: WorkflowRunStepsTable;
+  signals: SignalsTable;
   tasks: TasksTable;
   patients: PatientsTable;
   fee_schedules: FeeSchedulesTable;
@@ -335,6 +356,7 @@ export type Database = {
   claim_batches: ClaimBatchesTable;
   billing_profiles: BillingProfilesTable;
   payers: PayersTable;
+  payer_aliases: PayerAliasesTable;
 };
 
 export type Db = Kysely<Database>;

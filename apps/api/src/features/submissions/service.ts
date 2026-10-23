@@ -1,6 +1,7 @@
 import {
   type BatchClaim,
   build837,
+  CLAIM_SIGNAL,
   type ClaimDetails,
   type ClaimEvent,
   type ClaimEventKind,
@@ -211,7 +212,7 @@ export const createSubmissionService = ({
   ) => {
     await insertSubmissionEvents(tx, origin, events);
     for (const e of events) {
-      await signalRuns(tx, boss, { tenantId, name: 'claim', key: e.claimId, payload: null });
+      await signalRuns(tx, boss, { tenantId, name: CLAIM_SIGNAL, key: e.claimId, payload: null });
     }
   };
 

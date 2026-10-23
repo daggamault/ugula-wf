@@ -79,6 +79,7 @@ export type RunTx = {
   hasPendingChildren: (parentId: string, waitId: string) => Promise<boolean>;
   children: (parentId: string, waitId: string) => Promise<ChildRun[]>;
   activeChildren: (runId: string) => Promise<string[]>;
+  lockSignal: (tenantId: string, key: string) => Promise<number>;
   enqueue: (jobs: RunJob[]) => Promise<void>;
 };
 
@@ -318,6 +319,17 @@ const createRunTx = (tx: Kysely<Database>, boss: JobBoss): RunTx => ({
         .where('status', 'in', ACTIVE_RUN_STATUSES)
         .execute()
     ).map((r) => r.id),
+  lockSignal: async (tenantId, key) =>
+    (
+      await tx
+        .insertInto('signals')
+        .values({ tenant_id: tenantId, key })
+        .onConflict((oc) =>
+          oc.columns(['tenant_id', 'key']).doUpdateSet({ received: sql`signals.received` })
+        )
+        .returning('received')
+        .executeTakeFirstOrThrow()
+    ).received,
   enqueue: (jobs) => enqueueRuns(boss, sqlExecutor(tx), jobs)
 });
 

@@ -31,7 +31,12 @@ export const buildPatientsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_patients_last_name_key')
     .on('patients')
-    .columns(['tenant_id', 'last_name_key'])
+    .columns(['tenant_id', 'last_name_key']),
+  db.schema
+    .createIndex('idx_patients_last_name_trgm')
+    .on('patients')
+    .using('gin')
+    .expression(sql`last_name_key gin_trgm_ops`)
 ];
 
 export const createPatientsTable = async (db: Kysely<Database>) => {

@@ -17,7 +17,8 @@ const record =
 const service = {
   list: record('list'),
   save: record('save'),
-  remove: record('remove')
+  remove: record('remove'),
+  forget: record('forget')
 } as unknown as PayerService;
 
 const request = withSession(createPayerRoutes(service));
@@ -28,10 +29,13 @@ describe('payer routes', () => {
     const body = { name: 'Medicare', payerId: '00952', claimFiling: 'MB' };
     assert.equal((await request('/', { method: 'PUT', body: JSON.stringify(body) })).status, 200);
     await request(`/${ID}`, { method: 'DELETE' });
+    await request(`/${ID}/aliases/${ID}`, { method: 'DELETE' });
+    assert.equal((await request(`/${ID}/aliases/nope`, { method: 'DELETE' })).status, 400);
     assert.deepEqual(calls, [
       ['list', 't-1'],
       ['save', 't-1', body],
-      ['remove', 't-1', ID]
+      ['remove', 't-1', ID],
+      ['forget', 't-1', ID, ID]
     ]);
     const bad = await request('/', {
       method: 'PUT',

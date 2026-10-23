@@ -1,9 +1,8 @@
 import { isSamePerson, nameKey, type Patient, type PatientStore, sexOf } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { isUuid } from '../../shared/ids.ts';
 import { runTenant } from '../../shared/tenancy.ts';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const CANDIDATE_LIMIT = 50;
 
@@ -53,11 +52,11 @@ export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
       .where((eb) =>
         eb.or([
           ...(birthDate ? [eb('birth_date', '=', birthDate)] : []),
-          ...(lastNameKey ? [eb('last_name_key', '=', lastNameKey)] : [])
+          ...(lastNameKey ? [sql<boolean>`last_name_key % ${lastNameKey}`] : [])
         ])
       )
       .orderBy(
-        sql`(birth_date is not distinct from ${birthDate}::date)::int + (last_name_key is not distinct from ${lastNameKey})::int + (lower(first_name) is not distinct from lower(${firstName}))::int`,
+        sql`2 * (birth_date is not distinct from ${birthDate}::date)::int + similarity(last_name_key, ${lastNameKey ?? ''}) + (lower(first_name) is not distinct from lower(${firstName}))::int`,
         'desc'
       )
       .orderBy('created_at')
@@ -66,7 +65,7 @@ export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
     return rows.map(toPatient);
   },
   findPatient: async (runId, id) => {
-    if (!UUID.test(id)) return null;
+    if (!isUuid(id)) return null;
     const row = await db
       .selectFrom('patients')
       .select(COLUMNS)

@@ -1,5 +1,6 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import type { PayerInput } from './schemas.ts';
 
 type Db = Kysely<Database>;
@@ -8,10 +9,19 @@ const columns = ['id', 'name', 'payer_id', 'claim_filing', 'updated_at'] as cons
 
 export const listPayers = (db: Db, tenantId: string) =>
   db
-    .selectFrom('payers')
-    .select(columns)
-    .where('tenant_id', '=', tenantId)
-    .orderBy(sql`lower(name)`)
+    .selectFrom('payers as p')
+    .select((eb) => [
+      ...columns.map((c) => `p.${c}` as const),
+      jsonArrayFrom(
+        eb
+          .selectFrom('payer_aliases as a')
+          .select(['a.id', 'a.alias'])
+          .whereRef('a.payer_id', '=', 'p.id')
+          .orderBy(sql`lower(a.alias)`)
+      ).as('aliases')
+    ])
+    .where('p.tenant_id', '=', tenantId)
+    .orderBy(sql`lower(p.name)`)
     .execute();
 
 export const upsertPayer = (db: Db, tenantId: string, p: PayerInput) =>
@@ -22,6 +32,7 @@ export const upsertPayer = (db: Db, tenantId: string, p: PayerInput) =>
       oc.expression(sql`tenant_id, lower(name)`).doUpdateSet({
         payer_id: p.payerId,
         claim_filing: p.claimFiling,
+        embedding: sql`case when payers.claim_filing = excluded.claim_filing then payers.embedding end`,
         updated_at: sql`now()`
       })
     )
@@ -32,6 +43,15 @@ export const deletePayer = async (db: Db, tenantId: string, id: string) =>
   (await db
     .deleteFrom('payers')
     .where('id', '=', id)
+    .where('tenant_id', '=', tenantId)
+    .returning('id')
+    .executeTakeFirst()) !== undefined;
+
+export const deleteAlias = async (db: Db, tenantId: string, payerId: string, aliasId: string) =>
+  (await db
+    .deleteFrom('payer_aliases')
+    .where('id', '=', aliasId)
+    .where('payer_id', '=', payerId)
     .where('tenant_id', '=', tenantId)
     .returning('id')
     .executeTakeFirst()) !== undefined;

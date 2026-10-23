@@ -1,7 +1,7 @@
 import type { Db } from '@ugula/db';
 import { type Announce, announced } from '../../shared/live.ts';
 import { fail, ok } from '../../shared/result.ts';
-import { deletePayer, linkCoverages, listPayers, upsertPayer } from './queries.ts';
+import { deleteAlias, deletePayer, linkCoverages, listPayers, upsertPayer } from './queries.ts';
 import type { PayerInput } from './schemas.ts';
 
 export const createPayerService = ({ db, announce }: { db: Db; announce: Announce }) => ({
@@ -21,7 +21,12 @@ export const createPayerService = ({ db, announce }: { db: Db; announce: Announc
   remove: async (tenantId: string, id: string) =>
     (await deletePayer(db, tenantId, id))
       ? ok({ status: 'deleted' })
-      : fail('not_found', 'Payer not found')
+      : fail('not_found', 'Payer not found'),
+
+  forget: async (tenantId: string, payerId: string, aliasId: string) =>
+    (await deleteAlias(db, tenantId, payerId, aliasId))
+      ? ok({ status: 'deleted' })
+      : fail('not_found', 'Payer name not found')
 });
 
 export type PayerService = ReturnType<typeof createPayerService>;

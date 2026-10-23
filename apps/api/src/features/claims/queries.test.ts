@@ -55,9 +55,16 @@ describe('claim queries', () => {
     const { db, queries } = createRecordingDb(() => []);
     await reorderCoverages(db, 't-1', 'c1', {
       keep: [{ id: 'k1', position: 2 }],
-      add: [{ payer: 'Aetna', position: 1 }],
+      add: [{ payer: 'Aetna Inc.', position: 1 }],
       remove: ['r1']
     });
+    const insert = queries.find((q) => q.sql.startsWith('insert into "claim_coverages"'));
+    assert.ok(
+      insert?.sql.includes(
+        '(lower(name) = $5 or "id" in (select "payer_id" from "payer_aliases" where "tenant_id" = $6 and "alias_key" = $7))'
+      )
+    );
+    assert.deepEqual(insert?.parameters.slice(3, 7), ['t-1', 'aetna inc.', 't-1', 'aetna inc']);
     assert.deepEqual(
       queries.map((q) => q.sql.split(' ').slice(0, 3).join(' ')),
       [

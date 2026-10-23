@@ -3,6 +3,7 @@ import { createBlobStore, createS3Storage } from '@ugula/blobs';
 import { createDb, findGraphBundle } from '@ugula/db';
 import { publishEvent } from '@ugula/events';
 import { createStdNodes } from '@ugula/graph';
+import { createCompleter, createEmbedder } from '@ugula/inference';
 import { createNemsisNodes } from '@ugula/nemsis';
 import { Redis } from 'ioredis';
 import { PgBoss } from 'pg-boss';
@@ -14,6 +15,7 @@ import { registerHealthJob } from './features/health/job.ts';
 import { announceImports } from './features/imports/announce.ts';
 import { createReportStore } from './features/imports/reports.ts';
 import { createPatientStore } from './features/patients/queries.ts';
+import { createPayerStore } from './features/payers/queries.ts';
 import { createEngineCache } from './features/workflows/engines.ts';
 import { registerWorkflowJobs } from './features/workflows/job.ts';
 import { createRunStore } from './features/workflows/queries.ts';
@@ -62,8 +64,14 @@ if (import.meta.main) {
         ...createNemsisNodes(announceImports(createReportStore(db, blobs), announce)),
         ...createBillingNodes({
           patients: createPatientStore(db),
+          payers: createPayerStore(db, createEmbedder({ url: config.EMBEDDINGS_URL, fetch })),
           fees: createFeeStore(db),
-          claims: announceClaims(createClaimStore(db, blobs), announce)
+          claims: announceClaims(createClaimStore(db, blobs), announce),
+          completer: createCompleter({
+            url: config.COMPLETIONS_URL,
+            model: config.COMPLETIONS_MODEL,
+            fetch
+          })
         })
       ],
       loadBundle: (versionId) => findGraphBundle(db, versionId)

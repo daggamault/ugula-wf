@@ -3,6 +3,7 @@ import { type Kysely, sql } from 'kysely';
 import { createBillingProfilesTables } from './billing-profiles.ts';
 import { createClaimsTables } from './claims.ts';
 import { parseConfig } from './config.ts';
+import { createExtensions } from './extensions.ts';
 import { createFeeSchedulesTable } from './fee-schedules.ts';
 import { createGraphsTables } from './graphs.ts';
 import { createImportsTables } from './imports.ts';
@@ -24,10 +25,12 @@ export const resetSchema = async (db: Kysely<Database>) => {
     'import_reports',
     'imports',
     'fee_schedules',
+    'payer_aliases',
     'payers',
     'billing_profiles',
     'patients',
     'tasks',
+    'signals',
     'workflow_run_steps',
     'workflow_runs',
     'graph_versions',
@@ -42,6 +45,7 @@ export const resetSchema = async (db: Kysely<Database>) => {
 
 export const steps = [
   resetSchema,
+  createExtensions,
   createTenantsTable,
   createUsersTable,
   createGraphsTables,

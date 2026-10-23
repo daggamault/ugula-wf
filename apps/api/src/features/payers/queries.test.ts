@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db';
-import { deletePayer, linkCoverages, listPayers, upsertPayer } from './queries.ts';
+import { deleteAlias, deletePayer, linkCoverages, listPayers, upsertPayer } from './queries.ts';
 
 describe('payer queries', () => {
   it('lists, upserts by name ignoring case, and deletes within the tenant', async () => {
@@ -12,9 +12,27 @@ describe('payer queries', () => {
     await upsertPayer(db, 't-1', { name: 'Medicare', payerId: '00952', claimFiling: 'MB' });
     assert.equal(await deletePayer(db, 't-1', 'p1'), false);
     const [list, upsert, remove] = queries;
-    assert.ok(list?.sql.endsWith('order by lower(name)'));
+    assert.ok(list?.sql.endsWith('order by lower(p.name)'));
+    assert.ok(
+      list?.sql.includes(
+        '(select coalesce(json_agg(agg), \'[]\') from (select "a"."id", "a"."alias" from "payer_aliases" as "a" where "a"."payer_id" = "p"."id" order by lower(a.alias)) as agg) as "aliases"'
+      )
+    );
     assert.ok(upsert?.sql.includes('on conflict (tenant_id, lower(name)) do update set'));
+    assert.ok(
+      upsert?.sql.includes(
+        '"embedding" = case when payers.claim_filing = excluded.claim_filing then payers.embedding end'
+      )
+    );
     assert.deepEqual(remove?.parameters, ['p1', 't-1']);
+    await db.destroy();
+  });
+
+  it('forgets a learned payer name only within its payer and tenant', async () => {
+    const { db, queries } = createRecordingDb(() => [{ id: 'a1' }]);
+    assert.equal(await deleteAlias(db, 't-1', 'p1', 'a1'), true);
+    assert.ok(queries[0]?.sql.startsWith('delete from "payer_aliases" where "id" = $1'));
+    assert.deepEqual(queries[0]?.parameters, ['a1', 'p1', 't-1']);
     await db.destroy();
   });
 

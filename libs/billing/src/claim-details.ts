@@ -4,6 +4,7 @@ export type Location = Address & { name: string | null };
 
 export type Coverage = {
   payer: string;
+  payerId: string | null;
   payerCode: string | null;
   memberId: string | null;
   groupId: string | null;
@@ -120,6 +121,7 @@ export const readCoverages = (summary: unknown): Coverage[] => {
       return [
         {
           payer,
+          payerId: text(r.payerId),
           payerCode: text(r.payerCode),
           memberId: text(r.memberId),
           groupId: text(r.groupId)
@@ -129,5 +131,5 @@ export const readCoverages = (summary: unknown): Coverage[] => {
   const fallback = text(s.payer);
   return coverages.length || !fallback
     ? coverages
-    : [{ payer: fallback, payerCode: null, memberId: null, groupId: null }];
+    : [{ payer: fallback, payerId: null, payerCode: null, memberId: null, groupId: null }];
 };

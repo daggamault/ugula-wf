@@ -45,26 +45,32 @@ describe('readClaimDetails', () => {
 });
 
 describe('readCoverages', () => {
-  it('orders coverages by NEMSIS billing priority and drops duplicates', () => {
+  it('orders coverages by NEMSIS billing priority, keeps directory links and drops duplicates', () => {
     assert.deepEqual(
       readCoverages({
         coverages: [
-          { payer: 'Blue Plan', priority: '2611005', memberId: 'B1' },
+          { payer: 'Blue Plan', payerId: 'p-blue', priority: '2611005', memberId: 'B1' },
           { payer: 'Medicare', priority: '2611003', memberId: '1EG4TE5MK72', payerCode: 'MCR' },
           { payer: 'medicare', priority: '2611007' },
           { payer: null, priority: '2611009' }
         ]
       }),
       [
-        { payer: 'Medicare', payerCode: 'MCR', memberId: '1EG4TE5MK72', groupId: null },
-        { payer: 'Blue Plan', payerCode: null, memberId: 'B1', groupId: null }
+        {
+          payer: 'Medicare',
+          payerId: null,
+          payerCode: 'MCR',
+          memberId: '1EG4TE5MK72',
+          groupId: null
+        },
+        { payer: 'Blue Plan', payerId: 'p-blue', payerCode: null, memberId: 'B1', groupId: null }
       ]
     );
   });
 
   it('falls back to the primary payer named by the payment method', () => {
     assert.deepEqual(readCoverages({ coverages: [], payer: 'Medicaid' }), [
-      { payer: 'Medicaid', payerCode: null, memberId: null, groupId: null }
+      { payer: 'Medicaid', payerId: null, payerCode: null, memberId: null, groupId: null }
     ]);
     assert.deepEqual(readCoverages({}), []);
   });

@@ -15,7 +15,10 @@ const rawEnv = {
   S3_REGION: 'us-east-1',
   S3_BUCKET: 'ugula',
   S3_ACCESS_KEY_ID: 'key',
-  S3_SECRET_ACCESS_KEY: 'secret'
+  S3_SECRET_ACCESS_KEY: 'secret',
+  EMBEDDINGS_URL: 'http://localhost:8080',
+  COMPLETIONS_URL: 'http://localhost:8081',
+  COMPLETIONS_MODEL: 'qwen'
 };
 
 describe('worker parseConfig', () => {
@@ -26,5 +29,6 @@ describe('worker parseConfig', () => {
     assert.equal(parseConfig({ ...rawEnv, WORKFLOW_CONCURRENCY: '2' }).WORKFLOW_CONCURRENCY, 2);
     assert.throws(() => parseConfig({}));
     assert.throws(() => parseConfig({ ...rawEnv, WORKFLOW_CONCURRENCY: '0' }));
+    assert.throws(() => parseConfig({ ...rawEnv, COMPLETIONS_URL: undefined }));
   });
 });

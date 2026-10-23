@@ -7,9 +7,13 @@ export const announceClaims = (store: ClaimStore, announce: Announce): ClaimStor
   return {
     ...store,
     openClaim: async (runId, sourceKey, claim) => {
-      const id = await store.openClaim(runId, sourceKey, claim);
-      await changed(runId, id);
-      return id;
+      const opened = await store.openClaim(runId, sourceKey, claim);
+      await changed(runId, opened.id);
+      return opened;
+    },
+    noteRevision: async (runId, claimId, sourceKey, report) => {
+      await store.noteRevision(runId, claimId, sourceKey, report);
+      await changed(runId, claimId);
     },
     attachCycle: async (runId, claimId, cycleRunId) => {
       await store.attachCycle(runId, claimId, cycleRunId);

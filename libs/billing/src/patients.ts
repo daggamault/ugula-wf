@@ -1,4 +1,5 @@
 import { usState, zipCode } from './geo.ts';
+import { firstNameLikeness, jaroWinkler, NICKNAME_LIKENESS, nameKey } from './names.ts';
 
 export type Sex = 'F' | 'M' | 'U';
 
@@ -68,12 +69,6 @@ const isCalendarDate = (s: string) => {
   );
 };
 
-export const nameKey = (name: string) =>
-  name
-    .normalize('NFKD')
-    .toLowerCase()
-    .replace(/[^\p{L}]/gu, '');
-
 export const readDemographics = (x: unknown): Demographics => {
   const r =
     x !== null && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : {};
@@ -101,22 +96,53 @@ export const toNewPatient = (d: Demographics): NewPatient | null =>
       }
     : null;
 
-const initialOf = (name: string | null) => (name ? nameKey(name).charAt(0) : '');
+type BirthLikeness = 'same' | 'typo' | 'different' | 'unknown';
 
-export const isSamePerson = (d: Demographics, p: Patient) =>
-  !!d.lastName &&
-  !!d.birthDate &&
-  initialOf(d.firstName) !== '' &&
-  nameKey(p.lastName) === nameKey(d.lastName) &&
-  p.birthDate === d.birthDate &&
-  initialOf(p.firstName) === initialOf(d.firstName);
+const isTransposition = (a: string, b: string) => {
+  const i = [...a].findIndex((c, k) => c !== b[k]);
+  return i >= 0 && a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2);
+};
+
+const birthLikeness = (reported: string | null, known: string): BirthLikeness => {
+  if (!reported) return 'unknown';
+  if (reported === known) return 'same';
+  const [y, m, d] = reported.split('-');
+  const differing = [...reported].filter((c, i) => c !== known[i]).length;
+  return `${y}-${d}-${m}` === known || differing === 1 || isTransposition(reported, known)
+    ? 'typo'
+    : 'different';
+};
+
+type Likeness = { birth: BirthLikeness; last: number; first: number; sexConflict: boolean };
+
+const BIRTH_WEIGHT: Record<BirthLikeness, number> = { same: 2, typo: 1, unknown: 0, different: 0 };
+
+const SIMILAR_NAME = 0.85;
+
+const CLOSE_NAME = 0.9;
+
+const isKnownSex = (s: Sex | null) => s === 'F' || s === 'M';
+
+const likeness = (d: Demographics, p: Patient): Likeness => ({
+  birth: birthLikeness(d.birthDate, p.birthDate),
+  last: jaroWinkler(nameKey(d.lastName ?? ''), nameKey(p.lastName)),
+  first: firstNameLikeness(nameKey(d.firstName ?? ''), nameKey(p.firstName)),
+  sexConflict: isKnownSex(d.gender) && isKnownSex(p.gender) && d.gender !== p.gender
+});
+
+const isSame = (l: Likeness) =>
+  l.birth === 'same' && l.last === 1 && l.first >= NICKNAME_LIKENESS && !l.sexConflict;
+
+const isSimilar = ({ birth, last, first }: Likeness) =>
+  birth === 'same'
+    ? last >= SIMILAR_NAME || first >= SIMILAR_NAME
+    : birth !== 'different' && last >= CLOSE_NAME && first >= SIMILAR_NAME;
+
+const score = (l: Likeness) => BIRTH_WEIGHT[l.birth] + l.last + l.first;
+
+export const isSamePerson = (d: Demographics, p: Patient) => isSame(likeness(d, p));
 
 export const matchPatient = (d: Demographics, candidates: Patient[]): MatchDecision => {
-  const last = d.lastName ? nameKey(d.lastName) : '';
-  const first = d.firstName ? nameKey(d.firstName) : '';
-  const sameLast = (p: Patient) => last !== '' && nameKey(p.lastName) === last;
-  const sameFirst = (p: Patient) => first !== '' && nameKey(p.firstName) === first;
-  const sameBirth = (p: Patient) => p.birthDate === d.birthDate;
   const exact = candidates.filter((p) => isSamePerson(d, p));
   const [only] = exact;
   if (only && exact.length === 1) return { kind: 'matched', patient: only };
@@ -127,9 +153,11 @@ export const matchPatient = (d: Demographics, candidates: Patient[]): MatchDecis
       candidates: exact
     };
   }
-  const similar = candidates.filter((p) =>
-    sameBirth(p) ? sameLast(p) || sameFirst(p) : sameLast(p) && sameFirst(p)
-  );
+  const similar = candidates
+    .map((p) => ({ p, l: likeness(d, p) }))
+    .filter(({ l }) => isSimilar(l))
+    .sort((a, b) => score(b.l) - score(a.l))
+    .map(({ p }) => p);
   if (!toNewPatient(d)) {
     return {
       kind: 'review',

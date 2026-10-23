@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { matchPatient, nameKey, type Patient, readDemographics, toNewPatient } from './patients.ts';
+import { matchPatient, type Patient, readDemographics, toNewPatient } from './patients.ts';
 
 const address = {
   addressLine: '1 Main St',
@@ -63,46 +63,95 @@ describe('readDemographics', () => {
   });
 });
 
-describe('nameKey', () => {
-  it('ignores case, accents, spaces and punctuation', () => {
-    assert.equal(nameKey("O'Brien-Smith "), 'obriensmith');
-    assert.equal(nameKey('José'), 'jose');
-    assert.equal(nameKey('李'), '李');
-  });
-});
-
 describe('matchPatient', () => {
   const d = readDemographics(report);
+  const janet = { ...jane, id: 'p0', firstName: 'Janet' };
 
-  it('matches one patient with the same last name, birth date and first initial', () => {
+  it('matches the one patient with the same last name, birth date and first name or nickname', () => {
     const other = { ...jane, id: 'p2', firstName: 'Mary' };
-    assert.deepEqual(matchPatient(d, [jane, other]), { kind: 'matched', patient: jane });
+    assert.deepEqual(matchPatient(d, [janet, other]), { kind: 'matched', patient: janet });
+    const bill = { ...jane, id: 'p3', firstName: 'William', gender: 'M' as const };
+    assert.deepEqual(
+      matchPatient(readDemographics({ ...report, firstName: 'Bill', gender: 'M' }), [bill]),
+      {
+        kind: 'matched',
+        patient: bill
+      }
+    );
   });
 
-  it('sends ambiguous and near matches to review', () => {
-    const twin = { ...jane, id: 'p2', firstName: 'Joan' };
-    assert.deepEqual(matchPatient(d, [jane, twin]), {
-      kind: 'review',
-      reason: 'Several patients share this name and birth date',
-      candidates: [jane, twin]
-    });
-    const married = { ...jane, lastName: 'Smith', firstName: 'Janet' };
-    const typo = { ...jane, birthDate: '1980-02-28', firstName: 'Janet' };
-    const stranger = { ...jane, lastName: 'Smith', birthDate: '1970-01-01' };
-    assert.deepEqual(matchPatient(d, [married, typo, stranger]), {
+  it('never merges on a first initial, a similar first name or a different sex', () => {
+    const initial = readDemographics({ ...report, firstName: 'J' });
+    assert.deepEqual(matchPatient(initial, [janet]), {
       kind: 'review',
       reason: 'Similar patients found',
-      candidates: [married, typo]
+      candidates: [janet]
     });
+    assert.deepEqual(matchPatient(d, [jane]), {
+      kind: 'review',
+      reason: 'Similar patients found',
+      candidates: [jane]
+    });
+    const brother = { ...janet, gender: 'M' as const };
+    assert.equal(matchPatient(d, [brother]).kind, 'review');
+    assert.equal(
+      matchPatient(readDemographics({ ...report, gender: 'U' }), [janet]).kind,
+      'matched'
+    );
+  });
+
+  it('reviews several exact matches together', () => {
+    const twin = { ...janet, id: 'p2' };
+    assert.deepEqual(matchPatient(d, [janet, twin]), {
+      kind: 'review',
+      reason: 'Several patients share this name and birth date',
+      candidates: [janet, twin]
+    });
+  });
+
+  it('finds the same person through name and birth date typos, closest first', () => {
+    const married = { ...janet, id: 'm', lastName: 'Smith' };
+    const misspelled = { ...janet, id: 's', lastName: "O'Brian" };
+    const swapped = { ...janet, id: 'w', birthDate: '1980-29-02' };
+    const digit = { ...janet, id: 'g', birthDate: '1981-02-29' };
+    const transposed = { ...janet, id: 't', birthDate: '1980-02-92' };
+    const both = { ...janet, id: 'b', lastName: 'Obrein', birthDate: '1980-02-28' };
+    const stranger = {
+      ...janet,
+      id: 'x',
+      lastName: 'Smith',
+      firstName: 'Bob',
+      birthDate: '1970-01-01'
+    };
+    const decision = matchPatient(d, [
+      stranger,
+      both,
+      married,
+      swapped,
+      digit,
+      transposed,
+      misspelled
+    ]);
+    assert.equal(decision.kind, 'review');
+    assert.deepEqual(decision.kind === 'review' && decision.candidates.map((c) => c.id), [
+      's',
+      'm',
+      'w',
+      'g',
+      't',
+      'b'
+    ]);
   });
 
   it('creates when nothing is close and reviews incomplete reports', () => {
     const stranger = { ...jane, firstName: 'Bob', lastName: 'Smith' };
     assert.deepEqual(matchPatient(d, [stranger]), { kind: 'unmatched' });
-    assert.deepEqual(matchPatient(readDemographics({ ...report, birthDate: null }), [jane]), {
+    const farOff = { ...janet, birthDate: '1955-07-04' };
+    assert.deepEqual(matchPatient(d, [farOff]), { kind: 'unmatched' });
+    assert.deepEqual(matchPatient(readDemographics({ ...report, birthDate: null }), [janet]), {
       kind: 'review',
       reason: 'The report is missing the first name, last name or birth date',
-      candidates: []
+      candidates: [janet]
     });
   });
 });

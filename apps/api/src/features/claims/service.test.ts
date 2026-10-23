@@ -296,7 +296,7 @@ describe('claim service', () => {
     assert.deepEqual(found.value.progress, {
       step: 'await',
       coverage: { id: MEDICARE, payer: 'Medicare' },
-      waitMs: 86_400_000,
+      waitMs: 2_548_800_000,
       balanceCents: 100_000
     });
     const paid = await setup({ row: { ...claim, status: 'paid' } }).service.find('t', 'c1');

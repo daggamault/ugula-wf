@@ -2,6 +2,7 @@ import { CLAIM_FILING_CODES } from '@ugula/billing';
 import { PencilIcon, SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
+import { classNamesOf } from '../../shared/class-names.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
@@ -9,12 +10,19 @@ import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { FieldGrid, FieldGroup, FieldGroups, type FieldSpan } from '../../shared/ui/field.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
+import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { useResource } from '../../shared/use-resource.ts';
-import type { BillingProfile, BillingProfileInput, Payer, SettingsClient } from './client.ts';
+import type {
+  BillingProfile,
+  BillingProfileInput,
+  Payer,
+  PayerAlias,
+  SettingsClient
+} from './client.ts';
 
 export type SettingsPageProps = {
   client: SettingsClient;
@@ -150,14 +158,44 @@ export const ProfileForm = ({
   );
 };
 
+const PayerNames = ({
+  payer,
+  onForget
+}: {
+  payer: Payer;
+  onForget: (payer: Payer, alias: PayerAlias) => void;
+}) =>
+  payer.aliases.length ? (
+    <ul aria-label={`Report names for ${payer.name}`} className="flex flex-wrap gap-1">
+      {payer.aliases.map((a) => (
+        <li key={a.id}>
+          <button
+            type="button"
+            aria-label={`Forget ${a.alias} for ${payer.name}`}
+            onClick={() => onForget(payer, a)}
+            className={classNamesOf(
+              interactiveClasses,
+              'border-border text-surface-fg-muted hover:border-danger/40 hover:bg-danger/10 hover:text-danger inline-flex items-center gap-1 rounded-full border py-0.5 pr-1.5 pl-2 text-xs'
+            )}
+          >
+            {a.alias}
+            <XIcon aria-hidden="true" className="size-3" />
+          </button>
+        </li>
+      ))}
+    </ul>
+  ) : null;
+
 export const PayerDirectory = ({
   payers,
   onSave,
-  onDelete
+  onDelete,
+  onForget
 }: {
   payers: readonly Payer[];
   onSave: (payer: { name: string; payerId: string; claimFiling: string }) => Promise<boolean>;
   onDelete: (payer: Payer) => void;
+  onForget: (payer: Payer, alias: PayerAlias) => void;
 }) => {
   const empty = { name: '', payerId: '', claimFiling: 'CI' };
   const [draft, setDraft] = useState(empty);
@@ -174,7 +212,7 @@ export const PayerDirectory = ({
   return (
     <SectionPanel
       title="Payer Directory"
-      description="Payer IDs and claim filing codes used in 837P claims. Claim payers are matched by name, ignoring case."
+      description="Payer IDs and claim filing codes used in 837P claims. Report payers link by name, by a name a biller already matched, or by a clear similarity match; billers confirm the rest in the billing-payers queue."
     >
       <form
         onSubmit={submit}
@@ -232,7 +270,10 @@ export const PayerDirectory = ({
           {payers.map((p) => (
             <TableRow key={p.id}>
               <TableCell>
-                <span className="font-medium">{p.name}</span>
+                <span className="flex flex-col gap-1.5">
+                  <span className="font-medium">{p.name}</span>
+                  <PayerNames payer={p} onForget={onForget} />
+                </span>
               </TableCell>
               <TableCell>
                 <span className="font-mono">{p.payer_id}</span>
@@ -349,6 +390,13 @@ export const SettingsPage = ({ client }: SettingsPageProps) => {
             void act(
               () => client.removePayer(p.id),
               () => `${p.name} deleted.`,
+              payers.reload
+            )
+          }
+          onForget={(p, a) =>
+            void act(
+              () => client.forgetAlias(p.id, a.id),
+              () => `Reports naming ${a.alias} no longer link to ${p.name}.`,
               payers.reload
             )
           }

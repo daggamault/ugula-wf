@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  CLAIM_SIGNAL,
   type ClaimEvent,
   claimProgress,
+  claimSignalKey,
   MIN_WAIT_MS,
-  nextClaimStep,
-  RECHECK_MS
+  nextClaimStep
 } from './claims.ts';
 
 const DAY = 86_400_000;
@@ -32,17 +33,16 @@ const step = (events: ClaimEvent[], onDay: number, payers = ['Medicare', 'Blue P
   nextClaimStep({ totalCents: 100_000, coverages: payers.map(cov), events }, day(onDay));
 
 describe('nextClaimStep', () => {
-  it('submits to the first payer that has not answered, then waits at most a day at a time', () => {
+  it('submits to the first payer that has not answered, then waits out its 30 days', () => {
     assert.deepEqual(step([], 0), {
       step: 'submit',
       coverage: cov('Medicare'),
-      waitMs: RECHECK_MS,
       balanceCents: 100_000
     });
     assert.deepEqual(step([e('submitted', 'Medicare', 0)], 0), {
       step: 'await',
       coverage: cov('Medicare'),
-      waitMs: RECHECK_MS,
+      waitMs: 30 * DAY,
       balanceCents: 100_000
     });
     assert.equal(
@@ -101,7 +101,6 @@ describe('nextClaimStep', () => {
     assert.deepEqual(step([e('response', 'Blue Plan', 1, 5_000)], 2), {
       step: 'submit',
       coverage: cov('Medicare'),
-      waitMs: RECHECK_MS,
       balanceCents: 95_000
     });
     assert.equal(
@@ -111,7 +110,6 @@ describe('nextClaimStep', () => {
     assert.deepEqual(step([e('payer_skipped', 'Medicare', 1)], 1), {
       step: 'submit',
       coverage: cov('Blue Plan'),
-      waitMs: RECHECK_MS,
       balanceCents: 100_000
     });
   });
@@ -120,7 +118,7 @@ describe('nextClaimStep', () => {
     const one = [e('statement', null, 0)];
     assert.deepEqual(step(one, 0, []), {
       step: 'awaitPatient',
-      waitMs: RECHECK_MS,
+      waitMs: 30 * DAY,
       balanceCents: 100_000
     });
     assert.deepEqual(step(one, 30, []), { step: 'statement', statement: 2, balanceCents: 100_000 });
@@ -151,5 +149,12 @@ describe('claimProgress', () => {
     };
     assert.deepEqual(claimProgress(ledger).coverage, cov('Blue Plan'));
     assert.deepEqual(claimProgress(ledger).priorCoverages, [renamed]);
+  });
+});
+
+describe('claim signals', () => {
+  it('names the signal every claim change sends to its cycle', () => {
+    assert.equal(claimSignalKey('c1'), `${CLAIM_SIGNAL}:c1`);
+    assert.equal(CLAIM_SIGNAL, 'claim');
   });
 });

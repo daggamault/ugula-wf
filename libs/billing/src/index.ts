@@ -24,20 +24,24 @@ export {
 } from './claim-details.ts';
 export {
   CLAIM_EVENT_KINDS,
+  CLAIM_SIGNAL,
   type ClaimEvent,
   type ClaimEventKind,
   type ClaimLedger,
   type ClaimStep,
   COVERAGE_EVENT_KINDS,
   claimProgress,
+  claimSignalKey,
   type LedgerCoverage,
   nextClaimStep,
   PATIENT_EVENT_KINDS,
   STATEMENT_LIMIT
 } from './claims.ts';
 export { usState, zipCode } from './geo.ts';
+export { nameKey } from './names.ts';
 export {
   type BillingStores,
+  type BlobRef,
   type CandidateQuery,
   type ClaimStore,
   type ClosedStatus,
@@ -47,6 +51,7 @@ export {
   type HostNode,
   type NewClaim,
   type PatientStore,
+  type PayerStore,
   readNewClaim,
   type StatementSource
 } from './nodes.ts';
@@ -57,7 +62,6 @@ export {
   type MatchDecision,
   matchPatient,
   type NewPatient,
-  nameKey,
   type Patient,
   readAddress,
   readDemographics,
@@ -68,8 +72,13 @@ export {
 export {
   CLAIM_FILING_CODES,
   type ClaimFilingCode,
+  type DirectoryPayer,
   isClaimFilingCode,
-  isValidNpi
+  isValidNpi,
+  type PayerCandidate,
+  payerDocument,
+  payerKey,
+  payerQuery
 } from './payers.ts';
 export {
   HCPCS_LABELS,

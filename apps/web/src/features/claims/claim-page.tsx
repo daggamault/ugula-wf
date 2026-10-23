@@ -53,6 +53,7 @@ const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
   response: 'Response',
   payer_skipped: 'Payer skipped',
   statement: 'Patient statement',
+  revised: 'Updated PCR received',
   closed: 'Closed'
 };
 

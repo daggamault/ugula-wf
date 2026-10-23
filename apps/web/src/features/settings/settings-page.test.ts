@@ -50,19 +50,32 @@ describe('settings', () => {
     assert.ok(profile.includes('>Test files<'));
     const payers = renderToStaticMarkup(
       createElement(PayerDirectory, {
-        payers: [{ id: 'p1', name: 'Medicare', payer_id: '00952', claim_filing: 'MB' }],
+        payers: [
+          {
+            id: 'p1',
+            name: 'Medicare',
+            payer_id: '00952',
+            claim_filing: 'MB',
+            aliases: [{ id: 'a1', alias: 'MCR Part B' }]
+          }
+        ],
         onSave: async () => true,
-        onDelete: () => undefined
+        onDelete: () => undefined,
+        onForget: () => undefined
       })
     );
     assert.ok(payers.includes('>Medicare<'));
+    assert.ok(payers.includes('aria-label="Report names for Medicare"'));
+    assert.ok(payers.includes('aria-label="Forget MCR Part B for Medicare"'));
+    assert.ok(payers.includes('cursor-pointer'));
     assert.ok(payers.includes('00952'));
     assert.ok(payers.includes('MB · Medicare Part B'));
     const none = renderToStaticMarkup(
       createElement(PayerDirectory, {
         payers: [],
         onSave: async () => true,
-        onDelete: () => undefined
+        onDelete: () => undefined,
+        onForget: () => undefined
       })
     );
     assert.ok(none.includes('No payers yet'));

@@ -14,6 +14,7 @@ import {
   mapWorkflowNode,
   runWorkflowNode,
   sequenceNode,
+  spawnWorkflowsNode,
   startWorkflowNode,
   switchNode,
   tryNode,
@@ -180,7 +181,15 @@ describe('flow nodes', () => {
     assert.deepEqual(wait.type === 'suspend' && wait.suspension.data, {
       name: 'ack',
       key: 'C1',
-      until: '2026-01-01T00:00:01.000Z'
+      until: '2026-01-01T00:00:01.000Z',
+      after: null
+    });
+    const seen = await invoke(waitSignalNode, { inputs: { name: 'ack', key: 'C1', after: 4 } });
+    assert.deepEqual(seen.type === 'suspend' && seen.suspension.data, {
+      name: 'ack',
+      key: 'C1',
+      until: null,
+      after: 4
     });
     const got = await invoke(waitSignalNode, {
       event: { type: 'resume', payload: { payload: { ok: 1 } } }
@@ -260,6 +269,28 @@ describe('flow nodes', () => {
           event: { type: 'resume', payload: { results: [{ error: 'bad' }] } }
         }),
       /1 child workflow\(s\) failed: bad/
+    );
+
+    const spawn = await invoke(spawnWorkflowsNode, { config, inputs: { items: [{ id: 1 }] } });
+    assert.deepEqual(spawn.type === 'suspend' && spawn.suspension, {
+      kind: 'spawn',
+      data: { type: 'billing.claim', version: 2, items: [{ id: 1 }] }
+    });
+    const spawned = await invoke(spawnWorkflowsNode, {
+      config,
+      event: { type: 'resume', payload: { runIds: ['a', 'b'] } }
+    });
+    assert.deepEqual(spawned.type === 'next' && [spawned.pin, spawned.outputs], [
+      'then',
+      { runIds: ['a', 'b'] }
+    ]);
+    await assert.rejects(
+      () =>
+        invoke(spawnWorkflowsNode, {
+          config,
+          event: { type: 'resume', payload: { error: 'not published' } }
+        }),
+      /Could not start workflows: not published/
     );
   });
 });

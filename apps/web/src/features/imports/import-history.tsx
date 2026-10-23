@@ -14,6 +14,13 @@ const STATUS: Record<ImportRunStatus, StatusBadgeStyle> = {
   cancelled: { label: 'Cancelled' }
 };
 
+const REPORTS_PENDING: StatusBadgeStyle = { intent: 'info', label: 'Reports in progress' };
+
+export const importStatus = (i: ImportSummary) =>
+  i.run_status === 'completed' && i.waiting + i.processing + i.stuck > 0
+    ? REPORTS_PENDING
+    : STATUS[i.run_status];
+
 const SOURCES: Record<ImportSummary['source'], string> = {
   upload: 'Upload',
   sftp: 'SFTP',
@@ -23,7 +30,7 @@ const SOURCES: Record<ImportSummary['source'], string> = {
 export const reportOutcomes = (i: ImportSummary) =>
   [
     i.waiting ? `${i.waiting} in review` : '',
-    i.held ? `${i.held} held` : '',
+    i.failed ? `${i.failed} failed` : '',
     i.stuck ? `${i.stuck} stuck` : '',
     i.processing ? `${i.processing} processing` : ''
   ].filter(Boolean);
@@ -43,6 +50,7 @@ export const ImportHistory = ({ imports }: { imports: readonly ImportSummary[] }
   >
     {imports.map((i) => {
       const outcomes = reportOutcomes(i);
+      const status = importStatus(i);
       return (
         <TableRow key={i.id}>
           <TableCell>
@@ -58,7 +66,7 @@ export const ImportHistory = ({ imports }: { imports: readonly ImportSummary[] }
             {formatDateTime(i.created_at)}
           </TableCell>
           <TableCell>
-            <Badge intent={STATUS[i.run_status].intent}>{STATUS[i.run_status].label}</Badge>
+            <Badge intent={status.intent}>{status.label}</Badge>
           </TableCell>
           <TableCell kind="numeric">{i.report_count ?? emptyValue}</TableCell>
           <TableCell kind="numeric">{i.claims}</TableCell>
