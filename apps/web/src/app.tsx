@@ -19,10 +19,12 @@ import type { FeesClient } from './features/fees/client.ts';
 import { FeesPage } from './features/fees/fees-page.tsx';
 import { HealthStatus } from './features/health/health-status.tsx';
 import type { ImportsClient } from './features/imports/client.ts';
+import { ImportDrop } from './features/imports/import-drop.tsx';
 import { ImportsPage } from './features/imports/imports-page.tsx';
 import type { ReportsClient } from './features/reports/client.ts';
-import { ReportsPage } from './features/reports/reports-page.tsx';
+import { ReportPage, ReportsPage } from './features/reports/reports-page.tsx';
 import type { RunStatus, RunsClient } from './features/runs/client.ts';
+import { parseAt } from './features/runs/inspect.ts';
 import { RunsPage } from './features/runs/runs-page.tsx';
 import { StartRunPage } from './features/runs/start-run-page.tsx';
 import type { SettingsClient } from './features/settings/client.ts';
@@ -32,12 +34,15 @@ import { SubmissionsPage } from './features/submissions/submissions-page.tsx';
 import type { TasksClient } from './features/tasks/client.ts';
 import { TaskPage } from './features/tasks/task-page.tsx';
 import { TasksPage } from './features/tasks/tasks-page.tsx';
+import { useWorkAlerts } from './features/tasks/work-alerts.ts';
 import type { WorkflowsClient } from './features/workflows/client.ts';
+import { parseTrail } from './features/workflows/trail.ts';
 import { WorkflowsPage } from './features/workflows/workflows-page.tsx';
 import { createLive, type Live, useLiveStatus } from './shared/live.ts';
 import { matchPath, navigate, useLocation } from './shared/router.tsx';
 import { PageLoading } from './shared/ui/page.tsx';
 import { Shell } from './shared/ui/shell.tsx';
+import { ToastProvider, useToast } from './shared/ui/toast.tsx';
 
 export type AppClients = {
   auth: AuthClient;
@@ -69,7 +74,7 @@ const RunPage = lazy(() =>
   import('./features/runs/run-page.tsx').then((m) => ({ default: m.RunPage }))
 );
 
-export const HOME = '/workflows';
+export const HOME = '/tasks';
 
 export const SECTIONS = [
   { id: 'tasks', label: 'Tasks', href: '/tasks', icon: ListTodoIcon, group: 'Work' },
@@ -114,7 +119,12 @@ const routes: readonly Route[] = [
   {
     pattern: '/workflows/:id',
     render: (p, q, c) => (
-      <EditorPage client={c.workflows} graphId={p.id ?? ''} version={versionParam(q)} />
+      <EditorPage
+        client={c.workflows}
+        graphId={p.id ?? ''}
+        version={versionParam(q)}
+        trail={parseTrail(q.get('trail'))}
+      />
     )
   },
   {
@@ -127,7 +137,9 @@ const routes: readonly Route[] = [
   },
   {
     pattern: '/runs/:id',
-    render: (p, _, c) => <RunPage client={c.runs} live={c.live} runId={p.id ?? ''} />
+    render: (p, q, c) => (
+      <RunPage client={c.runs} live={c.live} runId={p.id ?? ''} at={parseAt(q.get('at'))} />
+    )
   },
   { pattern: '/imports', render: (_, __, c) => <ImportsPage client={c.imports} live={c.live} /> },
   {
@@ -142,10 +154,17 @@ const routes: readonly Route[] = [
     pattern: '/submissions',
     render: (_, __, c) => <SubmissionsPage client={c.submissions} live={c.live} />
   },
-  { pattern: '/reports', render: (_, __, c) => <ReportsPage client={c.reports} /> },
+  { pattern: '/reports', render: () => <ReportsPage /> },
+  {
+    pattern: '/reports/:id',
+    render: (p, q, c) => <ReportPage client={c.reports} reportId={p.id ?? ''} query={q} />
+  },
   { pattern: '/fees', render: (_, __, c) => <FeesPage client={c.fees} /> },
   { pattern: '/settings', render: (_, __, c) => <SettingsPage client={c.settings} /> },
-  { pattern: '/tasks', render: (_, __, c) => <TasksPage client={c.tasks} live={c.live} /> },
+  {
+    pattern: '/tasks',
+    render: (_, q, c) => <TasksPage client={c.tasks} live={c.live} queue={q.get('queue')} />
+  },
   {
     pattern: '/tasks/:id',
     render: (p, _, c) => <TaskPage client={c.tasks} live={c.live} taskId={p.id ?? ''} />
@@ -172,6 +191,7 @@ export type WorkspaceProps = {
 export const Workspace = ({ clients, path, query, email, sseUrl, onSignOut }: WorkspaceProps) => {
   const live = useMemo(() => createLive(sseUrl), [sseUrl]);
   const liveStatus = useLiveStatus(live);
+  const openTasks = useWorkAlerts(clients.tasks, live, useToast(), path.startsWith('/tasks'));
   const page = resolveRoute(path, query, { ...clients, live });
   const missing = page === null;
 
@@ -184,12 +204,17 @@ export const Workspace = ({ clients, path, query, email, sseUrl, onSignOut }: Wo
   return (
     <Shell
       path={path}
-      navItems={SECTIONS.map((s) => ({ ...s, active: path.startsWith(s.href) }))}
+      navItems={SECTIONS.map((s) => ({
+        ...s,
+        active: path.startsWith(s.href),
+        ...(s.id === 'tasks' && openTasks ? { badge: openTasks } : {})
+      }))}
       userEmail={email}
       status={<HealthStatus status={liveStatus} />}
       onSignOut={onSignOut}
     >
       <Suspense fallback={<PageLoading />}>{page}</Suspense>
+      <ImportDrop client={clients.imports} />
     </Shell>
   );
 };
@@ -199,14 +224,16 @@ export const App = ({ clients }: { clients: AppClients }) => {
   return (
     <AuthGate auth={clients.auth}>
       {(session, signOut) => (
-        <Workspace
-          clients={clients}
-          path={path}
-          query={query}
-          email={session.user.email}
-          sseUrl={session.sseUrl}
-          onSignOut={signOut}
-        />
+        <ToastProvider>
+          <Workspace
+            clients={clients}
+            path={path}
+            query={query}
+            email={session.user.email}
+            sseUrl={session.sseUrl}
+            onSignOut={signOut}
+          />
+        </ToastProvider>
       )}
     </AuthGate>
   );

@@ -8,6 +8,7 @@ import { Button } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { useToast } from '../../shared/ui/toast.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { RunsClient, Startable } from './client.ts';
@@ -23,13 +24,15 @@ export const StartRunForm = ({ client, target }: { client: RunsClient; target: S
   );
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const notify = useToast();
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
     setError('');
     try {
-      const { id } = await client.start(target.graphId, inputs);
+      const { id, version } = await client.start(target.graphId, inputs);
+      notify({ title: `${target.name} v${version} started` });
       navigate(`/runs/${id}`);
     } catch (err) {
       setError(messageOf(err));

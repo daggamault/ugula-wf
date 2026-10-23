@@ -126,6 +126,7 @@ export type TasksTable = {
   kind: TaskKind;
   queue: string;
   title: string;
+  subject: string | null;
   instructions: Generated<string>;
   context: JsonColumn;
   fields: JsonColumn;

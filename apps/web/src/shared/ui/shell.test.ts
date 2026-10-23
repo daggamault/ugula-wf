@@ -27,7 +27,8 @@ describe('Shell', () => {
               href: '/tasks',
               icon: ListTodoIcon,
               group: 'Work',
-              active: false
+              active: false,
+              badge: 7
             }
           ],
           userEmail: 'dev@example.com',
@@ -50,5 +51,6 @@ describe('Shell', () => {
     assert.ok(html.includes('aria-label="Open Menu"'));
     assert.ok(html.includes('<main'));
     assert.ok(html.includes('Workspace content'));
+    assert.ok(html.includes('>7<span class="sr-only"> open</span>'));
   });
 });

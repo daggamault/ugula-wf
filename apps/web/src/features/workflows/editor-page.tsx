@@ -8,20 +8,24 @@ import { GraphCanvas } from '../../shared/graph/graph-canvas.tsx';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
+import { Breadcrumbs } from '../../shared/ui/breadcrumbs.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
 import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.tsx';
 import { NativeSelect } from '../../shared/ui/select.tsx';
+import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { GraphDetail, WorkflowsClient } from './client.ts';
 import { GraphPanel } from './graph-panel.tsx';
 import { NodePanel } from './node-panel.tsx';
 import { Palette } from './palette.tsx';
+import { graphPath, type TrailStep } from './trail.ts';
 
 export type EditorPageProps = {
   client: WorkflowsClient;
   graphId: string;
   version: number | null;
+  trail: readonly TrailStep[];
 };
 
 export type EditorViewProps = {
@@ -30,6 +34,8 @@ export type EditorViewProps = {
   source: GraphDef;
   catalog: Catalog;
   client: WorkflowsClient;
+  trail: readonly TrailStep[];
+  nameOf: (graphId: string) => string;
   onSaved: () => void;
 };
 
@@ -50,6 +56,8 @@ export const EditorView = ({
   source,
   catalog,
   client,
+  trail,
+  nameOf,
   onSaved
 }: EditorViewProps) => {
   const { graph, versions } = detail;
@@ -63,13 +71,26 @@ export const EditorView = ({
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState<'save' | 'publish' | null>(null);
   const [error, setError] = useState('');
+  const notify = useToast();
   const openNode = (id: string) => {
     const inst = def.nodes.find((n) => n.id === id);
     const target = inst ? catalog.publishedOf(inst) : undefined;
     if (!target) return;
     if (dirty) setError('Save your changes before opening another workflow.');
-    else navigate(`/workflows/${target.graph_id}?version=${target.version}`);
+    else
+      navigate(
+        graphPath(target.graph_id, target.version, [...trail, { graphId: graph.id, version }])
+      );
   };
+  const parent = trail.at(-1);
+  const crumbs = [
+    { label: 'Workflows', to: '/workflows' },
+    ...trail.map((s, i) => ({
+      label: nameOf(s.graphId),
+      to: graphPath(s.graphId, s.version, trail.slice(0, i))
+    })),
+    { label: graph.name }
+  ];
   const node = def.nodes.find((n) => n.id === selected);
 
   const change = (next: GraphDef) => {
@@ -95,7 +116,16 @@ export const EditorView = ({
       const saved = await client.saveDraft(graph.id, def);
       setIssues(saved.issues);
       setDirty(false);
-      if (saved.version !== version) navigate(`/workflows/${graph.id}?version=${saved.version}`);
+      notify(
+        saved.issues.length
+          ? {
+              intent: 'warning',
+              title: `Draft v${saved.version} saved with ${saved.issues.length} ${saved.issues.length === 1 ? 'problem' : 'problems'}`,
+              description: 'Fix the highlighted nodes before publishing.'
+            }
+          : { title: `Draft v${saved.version} saved` }
+      );
+      if (saved.version !== version) navigate(graphPath(graph.id, saved.version, trail));
       onSaved();
     });
 
@@ -103,6 +133,10 @@ export const EditorView = ({
     run('publish', async () => {
       await client.publish(graph.id);
       setIssues([]);
+      notify({
+        title: `${graph.name} v${version} published`,
+        description: 'New runs use this version from now on.'
+      });
       onSaved();
     });
 
@@ -118,8 +152,11 @@ export const EditorView = ({
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <WorkspaceHeader
-        backTo="/workflows"
-        backLabel="Back to Workflows"
+        backTo={
+          parent ? graphPath(parent.graphId, parent.version, trail.slice(0, -1)) : '/workflows'
+        }
+        backLabel={parent ? `Back to ${nameOf(parent.graphId)}` : 'Back to Workflows'}
+        breadcrumbs={trail.length ? <Breadcrumbs label="Workflow path" crumbs={crumbs} /> : null}
         title={graph.name}
         description={
           <span className="flex flex-wrap items-center gap-2">
@@ -141,7 +178,7 @@ export const EditorView = ({
                   value: String(v.version),
                   label: `v${v.version}${v.published_at ? '' : ' (draft)'}`
                 }))}
-                onChange={(e) => navigate(`/workflows/${graph.id}?version=${e.target.value}`)}
+                onChange={(e) => navigate(graphPath(graph.id, Number(e.target.value), trail))}
               />
             </div>
             {graph.tenant_id !== null && !isDraft && !draft ? (
@@ -241,7 +278,7 @@ export const EditorView = ({
   );
 };
 
-export const EditorPage = ({ client, graphId, version }: EditorPageProps) => {
+export const EditorPage = ({ client, graphId, version, trail }: EditorPageProps) => {
   const detail = useResource(`graph:${graphId}`, () => client.find(graphId));
   const published = useResource('graph-nodes', client.nodes);
   const versions = detail.data?.versions ?? [];
@@ -258,9 +295,9 @@ export const EditorPage = ({ client, graphId, version }: EditorPageProps) => {
 
   useEffect(() => {
     if (version === null && chosen !== null) {
-      navigate(`/workflows/${graphId}?version=${chosen}`, { replace: true });
+      navigate(graphPath(graphId, chosen, trail), { replace: true });
     }
-  }, [graphId, version, chosen]);
+  }, [graphId, version, chosen, trail]);
 
   const failure = detail.error ?? source.error ?? published.error;
   if (failure) return <PageFailure message={failure.message} />;
@@ -274,6 +311,8 @@ export const EditorPage = ({ client, graphId, version }: EditorPageProps) => {
       source={source.data.definition}
       catalog={catalog}
       client={client}
+      trail={trail}
+      nameOf={(id) => published.data?.find((p) => p.graph_id === id)?.name ?? 'Workflow'}
       onSaved={reload}
     />
   );

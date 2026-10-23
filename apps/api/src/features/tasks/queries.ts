@@ -16,6 +16,7 @@ const summary = [
   'kind',
   'queue',
   'title',
+  'subject',
   'priority',
   'status',
   'assignee_id',
@@ -67,6 +68,26 @@ export const findTask = (db: Db, tenantId: string, id: string) =>
     .select(detail)
     .where('tenant_id', '=', tenantId)
     .where('id', '=', id)
+    .executeTakeFirst();
+
+export const findTaskSource = (db: Db, runId: string) =>
+  db
+    .selectFrom('workflow_runs as r')
+    .leftJoin('import_reports as ir', (j) =>
+      j.on(sql<boolean>`ir.report ->> 'key' = r.inputs -> 'report' ->> 'key'`)
+    )
+    .leftJoin('claims as c', (j) =>
+      j
+        .onRef('c.tenant_id', '=', 'r.tenant_id')
+        .on((eb) =>
+          eb.or([
+            eb('c.import_report_id', '=', eb.ref('ir.id')),
+            eb(sql`c.id::text`, '=', sql`r.inputs ->> 'claimId'`)
+          ])
+        )
+    )
+    .select(['ir.id as report_id', 'ir.pcr_number', 'c.id as claim_id'])
+    .where('r.id', '=', runId)
     .executeTakeFirst();
 
 export const claimNext = (db: Db, tenantId: string, queue: string, userId: string) =>

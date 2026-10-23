@@ -27,7 +27,11 @@ const service = {
     password === 'good'
       ? ok({ status: 1, username })
       : fail('unauthorized', 'Invalid SFTP credentials'),
-  receiveSftpEvent: async (event: { action: string }) => ok({ received: event.action })
+  receiveSftpEvent: async (event: { action: string }) => ok({ received: event.action }),
+  report: async (tenantId: string, id: string) => {
+    calls.push(['report', tenantId, id]);
+    return ok({ report: { id }, data: {}, xml: '' });
+  }
 } as unknown as ImportService;
 
 const request = withSession(createImportRoutes(service, 16));
@@ -43,6 +47,13 @@ describe('import routes', () => {
     assert.equal((await request('/?limit=20')).status, 200);
     assert.deepEqual(calls.at(-1), ['list', 't-1', 20]);
     assert.equal((await request('/?limit=0')).status, 400);
+  });
+
+  it('serves one stored report by id', async () => {
+    const id = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
+    assert.equal((await request(`/reports/${id}`)).status, 200);
+    assert.deepEqual(calls.at(-1), ['report', 't-1', id]);
+    assert.equal((await request('/reports/nope')).status, 400);
   });
 
   it('accepts a multipart file for the session tenant', async () => {

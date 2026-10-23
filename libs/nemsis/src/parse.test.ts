@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parseDataset, pcrNumberOf } from './parse.ts';
+import { parseDataset, pcrNumberOf, reportXml } from './parse.ts';
 
 const SAMPLE = `<?xml version="1.0" encoding="UTF-8"?>
 <EMSDataSet xmlns="http://www.nemsis.org" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -81,5 +81,25 @@ describe('pcrNumberOf', () => {
     assert.equal(pcrNumberOf([{ x: [{ 'eRecord.01': 'Z' }] }]), 'Z');
     assert.equal(pcrNumberOf({ eRecord: { 'eRecord.01': ' ' } }), null);
     assert.equal(pcrNumberOf(null), null);
+  });
+});
+
+describe('reportXml', () => {
+  it('writes a stored report back as indented NEMSIS XML that parses to the same data', () => {
+    const xml = `<EMSDataSet><Header><PatientCareReport>
+      <eRecord><eRecord.01>PCR-9</eRecord.01></eRecord>
+      <eVitals><eVitals.VitalGroup><eVitals.06>120</eVitals.06></eVitals.VitalGroup><eVitals.VitalGroup><eVitals.06>118</eVitals.06></eVitals.VitalGroup></eVitals>
+      <eSituation><eSituation.11 PN="8801005" />
+      </eSituation>
+    </PatientCareReport></Header></EMSDataSet>`;
+    const [report = null] = parseDataset(xml).reports;
+    const text = reportXml(report);
+    assert.ok(
+      text.startsWith('<PatientCareReport>\n  <eRecord>\n    <eRecord.01>PCR-9</eRecord.01>')
+    );
+    assert.ok(text.includes('<eSituation.11 PN="8801005"/>'));
+    assert.equal(text.match(/<eVitals.VitalGroup>/g)?.length, 2);
+    const [again] = parseDataset(`<EMSDataSet><Header>${text}</Header></EMSDataSet>`).reports;
+    assert.deepEqual(again, report);
   });
 });

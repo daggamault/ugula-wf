@@ -33,6 +33,8 @@ describe('app routing', () => {
       '/claims',
       '/claims/c1',
       '/submissions',
+      '/reports',
+      '/reports/aging',
       '/fees',
       '/settings'
     ]) {

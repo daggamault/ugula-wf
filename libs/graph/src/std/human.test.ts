@@ -24,7 +24,7 @@ describe('human task node', () => {
   it('exposes outcomes as exec outputs and fields as outputs', async () => {
     const { signature, result } = await invokeNode(humanTaskNode, {
       config,
-      inputs: { context: { claimId: 'C1' }, priority: 2 }
+      inputs: { subject: 'Claim C1 · Jane Doe', context: { claimId: 'C1' }, priority: 2 }
     });
     assert.deepEqual(signature.execOut, ['approve', 'reject']);
     assert.deepEqual(
@@ -40,6 +40,7 @@ describe('human task node', () => {
         instructions: '',
         fields: [reasonField],
         outcomes: ['approve', 'reject'],
+        subject: 'Claim C1 · Jane Doe',
         context: { claimId: 'C1' },
         defaults: null,
         assignee: null,
@@ -83,6 +84,7 @@ describe('human task node', () => {
       instructions: '',
       fields,
       outcomes: ['approve', 'reject'],
+      subject: null,
       context: null,
       defaults: null,
       assignee: null,

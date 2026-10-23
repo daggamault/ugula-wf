@@ -13,6 +13,7 @@ import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { Fee, FeeInput, FeesClient } from './client.ts';
 
@@ -105,12 +106,14 @@ export const FeesPage = ({ client }: FeesPageProps) => {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const act = async (action: () => Promise<unknown>) => {
+  const notify = useToast();
+  const act = async (action: () => Promise<unknown>, done: string) => {
     setBusy(true);
     setError('');
     try {
       await action();
       fees.reload();
+      notify({ title: done });
       return true;
     } catch (err) {
       setError(messageOf(err));
@@ -127,7 +130,7 @@ export const FeesPage = ({ client }: FeesPageProps) => {
       setError(input);
       return;
     }
-    if (await act(() => client.save(input))) reset();
+    if (await act(() => client.save(input), editing ? 'Fee updated' : 'Fee added')) reset();
   };
 
   const field = (key: keyof Draft) => ({
@@ -228,7 +231,7 @@ export const FeesPage = ({ client }: FeesPageProps) => {
         onConfirm={() => {
           const fee = deleting;
           setDeleting(null);
-          if (fee) void act(() => client.remove(fee.id));
+          if (fee) void act(() => client.remove(fee.id), 'Fee deleted');
         }}
       >
         {deleting

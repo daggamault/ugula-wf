@@ -39,7 +39,10 @@ export type RunDetail = {
   children: RunSummary[];
   childCount: number;
   tasks: RunTask[];
+  ancestors: RunAncestor[];
 };
+
+export type RunAncestor = { id: string; name: string; status: RunStatus };
 
 export type RunStep = {
   seq: number;

@@ -44,6 +44,7 @@ export const humanTaskNode = defineNode<v.InferOutput<typeof taskConfig>>({
     execIn: ['exec'],
     execOut: outcomes,
     inputs: [
+      pin('subject', 'string', { optional: true }),
       pin('context', 'any', { optional: true }),
       pin('defaults', { object: {} }, { optional: true }),
       pin('options', { object: {} }, { optional: true }),
@@ -67,6 +68,7 @@ export const humanTaskNode = defineNode<v.InferOutput<typeof taskConfig>>({
             instructions: config.instructions,
             fields,
             outcomes: config.outcomes,
+            subject: await read('subject'),
             context: await read('context'),
             defaults: await read('defaults'),
             assignee: await read('assignee'),

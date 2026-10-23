@@ -15,6 +15,7 @@ export const buildTasksTable = (db: Kysely<Database>) =>
     .addColumn('kind', 'text', (col) => col.notNull())
     .addColumn('queue', 'text', (col) => col.notNull())
     .addColumn('title', 'text', (col) => col.notNull())
+    .addColumn('subject', 'text')
     .addColumn('instructions', 'text', (col) => col.notNull().defaultTo(''))
     // json, not jsonb: it keeps keys in the order the workflow wrote them, which is the order
     // reviewers read them in.

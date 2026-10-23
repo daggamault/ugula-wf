@@ -74,12 +74,14 @@ export const WorkspaceHeader = ({
   description,
   backTo,
   backLabel = 'Back',
-  actions
-}: PageHeaderProps) => (
+  actions,
+  breadcrumbs
+}: PageHeaderProps & { breadcrumbs?: ReactNode }) => (
   <header className="border-border bg-surface flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
     <div className="flex min-w-0 items-center gap-2">
       {backTo && <IconLink to={backTo} label={backLabel} icon={ArrowLeftIcon} />}
       <div className="flex min-w-0 flex-col gap-0.5">
+        {breadcrumbs}
         <h1 className="flex flex-wrap items-center gap-2 text-lg font-extrabold tracking-tight">
           {title}
         </h1>

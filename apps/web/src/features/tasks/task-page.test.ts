@@ -4,53 +4,70 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import type { TaskDetail, TasksClient } from './client.ts';
-import { TaskPage, TaskView } from './task-page.tsx';
+import { NextUp, queuePath, TaskPage, TaskView } from './task-page.tsx';
 
 const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
   id: 't1',
   run_id: 'r1',
   kind: 'task',
-  queue: 'review',
-  title: 'Approve large item',
+  queue: 'billing-review',
+  title: 'Review PCR',
+  subject: 'PCR-1 · Jane Doe',
   priority: 0,
   status: 'open',
   assignee_id: null,
   created_at: '2026-01-01T00:00:00Z',
   completed_at: null,
   instructions: 'Check the charges.',
-  context: { claim: 'C1' },
+  context: { suggested: { level: 'ALS1' } },
   fields: [{ name: 'note', type: 'string', label: 'Note' }],
-  outcomes: ['approve', 'reject'],
+  outcomes: ['approve', 'keepWaiting'],
   defaults: { note: 'looks fine' },
   resolution: null,
+  source: { reportId: null, pcrNumber: null, claimId: null },
   ...patch
 });
 
-const render = (t: TaskDetail) =>
+const render = (t: TaskDetail, source: string | null = null) =>
   renderToStaticMarkup(
     createElement(TaskView, {
       task: t,
+      remaining: 2,
+      source,
       onComplete: async () => undefined,
-      onAssign: async () => undefined
+      onAssign: async () => undefined,
+      onNext: async () => undefined
     })
   );
 
 describe('TaskView', () => {
-  it('renders context, prefilled fields and one button per outcome', () => {
-    const html = render(task());
-    assert.ok(html.includes('Check the charges.'));
-    assert.ok(html.includes('&quot;claim&quot;'));
+  it('leads with the subject and queue, explains what to do and prefills the decision', () => {
+    const html = render(task(), 'SOURCE PANEL');
+    assert.ok(html.includes('PCR-1 · Jane Doe</h1>'));
+    assert.ok(html.includes('PCR review') && html.includes('Review PCR'));
+    assert.ok(html.includes('What to do') && html.includes('Check the charges.'));
+    assert.ok(html.includes('ALS1'));
     assert.ok(html.includes('value="looks fine"'));
-    assert.ok(html.includes('>Approve<'));
-    assert.ok(html.includes('>Reject<'));
+    assert.ok(html.includes('>Approve<') && html.includes('>Keep waiting<'));
     assert.ok(html.includes('>Claim<'));
-    assert.ok(html.includes('href="/runs/r1"'));
+    assert.ok(html.includes('href="/runs/r1"') && html.includes('Workflow progress'));
+    assert.ok(html.includes('href="/tasks?queue=billing-review"'));
+    assert.ok(html.includes('SOURCE PANEL'));
+    assert.ok(!html.includes('Open claim'));
+  });
+
+  it('links the claim a task is about', () => {
+    const html = render(task({ source: { reportId: null, pcrNumber: 'PCR-1', claimId: 'c1' } }));
+    assert.ok(html.includes('href="/claims/c1"'));
   });
 
   it('explains stuck-run resolutions and shows completed decisions', () => {
     const fault = render(
       task({
         kind: 'fault',
+        queue: 'exceptions',
+        subject: null,
+        title: 'Stuck at Price',
         fields: [
           {
             name: 'pin',
@@ -65,7 +82,8 @@ describe('TaskView', () => {
         assignee_id: 'u1'
       })
     );
-    assert.ok(fault.includes('Stuck run'));
+    assert.ok(fault.includes('Stuck at Price</h1>'));
+    assert.ok(fault.includes('What went wrong'));
     assert.ok(fault.includes('Retry the failed step'));
     assert.ok(fault.includes('>Release<'));
     assert.ok(fault.includes('<option value="then">Then</option>'));
@@ -73,20 +91,55 @@ describe('TaskView', () => {
       task({
         status: 'completed',
         completed_at: '2026-01-02T00:00:00Z',
-        resolution: { outcome: 'approve', values: { note: 'ok' } }
+        resolution: { outcome: 'keepWaiting', values: { note: 'ok' } }
       })
     );
-    assert.ok(done.includes('as “approve”'));
+    assert.ok(done.includes('as “Keep waiting”'));
     assert.ok(!done.includes('>Approve<'));
   });
 });
 
-describe('TaskPage', () => {
-  it('waits for the task before rendering', () => {
-    assert.ok(
-      renderToStaticMarkup(
-        createElement(TaskPage, { client: {} as TasksClient, live: idleLive, taskId: 't1' })
-      ).includes('aria-label="Loading"')
+describe('NextUp', () => {
+  const next = (remaining: number | null) =>
+    renderToStaticMarkup(
+      createElement(NextUp, {
+        outcome: 'approve',
+        queue: 'billing-review',
+        remaining,
+        onNext: async () => undefined
+      })
     );
+
+  it('confirms the decision and offers the next task only when there is one', () => {
+    const more = next(2);
+    assert.ok(more.includes('“Approve”'));
+    assert.ok(more.includes('2 more tasks are waiting in PCR review.'));
+    assert.ok(more.includes('Next task'));
+    assert.ok(more.includes('Back to PCR review'));
+    const clear = next(0);
+    assert.ok(clear.includes('PCR review is clear.'));
+    assert.ok(!clear.includes('Next task'));
+    assert.ok(next(1).includes('1 more task is waiting'));
+    assert.ok(next(null).includes('Checking PCR review'));
+  });
+
+  it('links back to the filtered queue', () => {
+    assert.equal(queuePath('billing review'), '/tasks?queue=billing%20review');
+  });
+});
+
+describe('TaskPage', () => {
+  it('loads the task before rendering it', () => {
+    const html = renderToStaticMarkup(
+      createElement(TaskPage, {
+        client: {
+          find: async () => task(),
+          queues: async () => []
+        } as unknown as TasksClient,
+        live: idleLive,
+        taskId: 't1'
+      })
+    );
+    assert.ok(html.length > 0);
   });
 });

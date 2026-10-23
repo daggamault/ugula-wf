@@ -16,19 +16,23 @@ describe('createTasksClient', () => {
     );
     assert.deepEqual(await client.queues(), ['q']);
     assert.deepEqual(await client.mine(), ['t']);
+    assert.deepEqual(await client.open(), ['t']);
     assert.deepEqual(await client.find('x'), { id: 'x' });
     assert.deepEqual(await client.next('billing'), { id: 'x' });
     await client.claim('x');
     await client.release('x');
     await client.complete('x', 'approve', { note: 'ok' });
+    await client.report('rep-1');
     assert.deepEqual(calls, [
       'GET /api/tasks/queues',
       'GET /api/tasks?mine=true',
+      'GET /api/tasks?limit=500',
       'GET /api/tasks/x',
       'POST /api/tasks/next {"queue":"billing"}',
       'POST /api/tasks/x/claim',
       'POST /api/tasks/x/release',
-      'POST /api/tasks/x/complete {"outcome":"approve","values":{"note":"ok"}}'
+      'POST /api/tasks/x/complete {"outcome":"approve","values":{"note":"ok"}}',
+      'GET /api/imports/reports/rep-1'
     ]);
   });
 });

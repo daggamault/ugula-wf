@@ -17,10 +17,18 @@
 
   --animate-bars: bars 900ms ease-in-out infinite;
   --animate-reveal: reveal 150ms ease-out 150ms both;
+  --animate-toast: toast 200ms ease-out both;
 
   @keyframes reveal {
     from {
       opacity: 0;
+    }
+  }
+
+  @keyframes toast {
+    from {
+      opacity: 0;
+      transform: translateY(0.5rem) scale(0.98);
     }
   }
 

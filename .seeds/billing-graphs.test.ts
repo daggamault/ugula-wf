@@ -261,6 +261,7 @@ describe('billing graphs', () => {
     const world = pcrWorld();
     const payer = await world.waitFor('task', 'Match payer');
     assert.equal(world.data('queue'), 'billing-payers');
+    assert.equal(world.data('subject'), 'PCR-1 · Acme Health');
     assert.deepEqual(world.data('context'), {
       reportedPayer: 'Acme Health',
       memberId: null,
@@ -283,6 +284,7 @@ describe('billing graphs', () => {
     assert.deepEqual([...world.aliases], []);
 
     let review = await world.waitFor('task', 'Review PCR');
+    assert.equal(world.data('subject'), 'PCR-1 · Jane Doe');
     assert.deepEqual([...world.aliases], [['Acme Health', 'p-acme']]);
     assert.deepEqual(world.data('context.coverage'), [
       { payer: 'Blue Plan', directory: 'Blue Plan', memberId: 'XYZ123', groupId: 'G7' },
@@ -333,7 +335,7 @@ describe('billing graphs', () => {
     const world = pcrWorld({ billed: 'c1' });
     const revision = await world.waitFor('task', 'Review updated PCR');
     assert.deepEqual(world.revisions, [['c1', world.report]]);
-    assert.equal(world.data('context.claim'), 'c1');
+    assert.equal(world.data('context.claimId'), 'c1');
     assert.equal(world.data('context.trip.pcrNumber'), 'PCR-1');
     world.answer(revision, 'acknowledge');
     const outputs = await world.finish(world.state);
@@ -364,6 +366,7 @@ describe('billing graphs', () => {
     };
     const world = pcrWorld({ known: [typo] });
     const confirm = await world.waitFor('task', 'Confirm patient');
+    assert.equal(world.data('subject'), 'PCR-1 · Jane Doe');
     assert.deepEqual(world.data('context'), {
       reason: 'Similar patients found',
       report: {
@@ -460,7 +463,8 @@ describe('billing graphs', () => {
         totalCents: 100_000,
         coverages: [{ id: 'cov-1', payer: 'Medicare' }],
         events,
-        signalsSeen: events.length
+        signalsSeen: events.length,
+        reference: 'PCR-1 · Jane Doe'
       }),
       recordEvent: async (_, __, ___, e) => {
         events.push({
@@ -532,6 +536,7 @@ describe('billing graphs', () => {
     at(30);
     engine.resume(state, wait, { timedOut: true });
     let followUp = await waitFor('task');
+    assert.equal(getPath(state.suspension?.data ?? null, 'subject'), 'PCR-1 · Jane Doe · Medicare');
     assert.deepEqual(getPath(state.suspension?.data ?? null, 'context'), {
       claimId: 'c1',
       coverageId: 'cov-1',

@@ -1,20 +1,60 @@
-import { FileUpIcon, UploadIcon } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
-import { messageOf } from '../../shared/api.ts';
+import { FileUpIcon } from 'lucide-react';
+import { useState } from 'react';
 import { type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
-import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
-import { Section, SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { Section } from '../../shared/ui/section-panel.tsx';
+import { Spinner } from '../../shared/ui/spinner.tsx';
 import { useResource } from '../../shared/use-resource.ts';
-import type { ImportResult, ImportsClient } from './client.ts';
+import type { ImportsClient } from './client.ts';
+import { useImportFiles } from './import-files.ts';
 import { ImportHistory } from './import-history.tsx';
 
 export type ImportsPageProps = {
   client: ImportsClient;
   live: Live;
 };
+
+export const FilePicker = ({
+  busy,
+  onFiles
+}: {
+  busy: boolean;
+  onFiles: (files: File[]) => void;
+}) => (
+  <label
+    htmlFor="import-files"
+    aria-busy={busy || undefined}
+    className="border-border bg-surface hover:border-primary/50 hover:bg-primary/5 has-focus-visible:border-primary flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed px-6 py-14 text-center transition duration-150 ease-out aria-busy:cursor-wait"
+  >
+    <span
+      aria-hidden="true"
+      className="bg-primary/10 text-primary grid size-14 place-items-center rounded-full"
+    >
+      {busy ? <Spinner /> : <FileUpIcon className="size-7" />}
+    </span>
+    <span className="text-base font-bold">
+      {busy ? 'Importing…' : 'Drop NEMSIS files anywhere, or choose them here'}
+    </span>
+    <span className="text-surface-fg-muted max-w-md text-sm">
+      NEMSIS 3.5 XML exports. Each patient care report becomes its own claim: patients and payers
+      are matched, the narrative is read, and anything uncertain goes to a queue for review.
+    </span>
+    <input
+      id="import-files"
+      type="file"
+      multiple
+      disabled={busy}
+      accept=".xml,application/xml,text/xml"
+      onChange={(e) => {
+        onFiles([...(e.target.files ?? [])]);
+        e.target.value = '';
+      }}
+      className="sr-only"
+    />
+  </label>
+);
 
 export const ImportsPage = ({ client, live }: ImportsPageProps) => {
   const history = useResource('imports', client.list, 30_000);
@@ -26,25 +66,14 @@ export const ImportsPage = ({ client, live }: ImportsPageProps) => {
       (e.kind === 'run' && (runs.has(e.id) || (e.parentId !== null && runs.has(e.parentId)))),
     history.reload
   );
-  const [file, setFile] = useState<File | null>(null);
-  const [error, setError] = useState('');
-  const [received, setReceived] = useState<{ name: string; result: ImportResult } | null>(null);
+  const importFiles = useImportFiles(client);
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!file) return;
-    const form = e.currentTarget;
+  const choose = async (files: File[]) => {
+    if (!files.length) return;
     setBusy(true);
-    setError('');
-    setReceived(null);
     try {
-      setReceived({ name: file.name, result: await client.upload(file) });
-      setFile(null);
-      form.reset();
-      history.reload();
-    } catch (err) {
-      setError(messageOf(err));
+      if (await importFiles(files)) history.reload();
     } finally {
       setBusy(false);
     }
@@ -53,69 +82,12 @@ export const ImportsPage = ({ client, live }: ImportsPageProps) => {
   return (
     <Page
       title="Imports"
-      description="Upload a NEMSIS 3.5 export. Each patient care report becomes its own claim run."
+      description="Bring in patient care reports from your ePCR system. Files sent to your SFTP folder are imported the same way."
     >
-      {received ? (
-        <Alert
-          intent="success"
-          action={
-            <ButtonLink to={`/runs/${received.result.runId}`} variant="outline" size="sm">
-              View run
-            </ButtonLink>
-          }
-        >
-          {received.name} was received. Its reports are being matched to patients and queued for
-          review.
-        </Alert>
-      ) : null}
-      <form onSubmit={submit} className="flex max-w-2xl flex-col gap-6">
-        <SectionPanel
-          title="NEMSIS File"
-          description="Patient care reports are matched to patients and priced as claims."
-        >
-          <fieldset disabled={busy}>
-            <label
-              htmlFor="import-file"
-              className="border-border bg-canvas hover:border-primary/50 has-focus-visible:border-primary flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed px-4 py-10 text-center transition duration-150 ease-out"
-            >
-              <span
-                aria-hidden="true"
-                className="bg-primary/10 text-primary grid size-12 place-items-center rounded-full"
-              >
-                <FileUpIcon className="size-6" />
-              </span>
-              <span className="text-sm font-semibold">
-                {file ? file.name : 'Choose a NEMSIS XML file'}
-              </span>
-              <span className="text-surface-fg-muted text-xs">
-                {file ? `${(file.size / 1024).toFixed(0)} KB` : 'XML exports only'}
-              </span>
-              <input
-                id="import-file"
-                type="file"
-                accept=".xml,application/xml,text/xml"
-                required
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="sr-only"
-              />
-            </label>
-          </fieldset>
-          {error ? <Alert>{error}</Alert> : null}
-          <div>
-            <Button
-              type="submit"
-              isPending={busy}
-              disabledReason={file ? undefined : 'Choose a file first.'}
-            >
-              <UploadIcon aria-hidden="true" className="size-4" />
-              Import
-            </Button>
-          </div>
-        </SectionPanel>
-      </form>
+      <FilePicker busy={busy} onFiles={(files) => void choose(files)} />
       <Section
         title="Recent Imports"
-        description="Every file received by upload or SFTP, and what became of its reports."
+        description="Every file received by upload or SFTP, and where its reports are now."
       >
         {history.error ? <Alert>{history.error.message}</Alert> : null}
         {history.data?.length ? (

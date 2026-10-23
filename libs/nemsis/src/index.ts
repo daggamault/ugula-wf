@@ -1,3 +1,4 @@
+export { elementLabel } from './elements.ts';
 export {
   createNemsisNodes,
   type HostNode,
@@ -5,4 +6,4 @@ export {
   reportKey,
   type SplitReport
 } from './nodes.ts';
-export { type JsonValue, parseDataset, pcrNumberOf } from './parse.ts';
+export { type JsonValue, parseDataset, pcrNumberOf, reportXml } from './parse.ts';

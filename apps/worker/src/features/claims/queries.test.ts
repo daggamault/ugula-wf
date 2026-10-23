@@ -162,26 +162,29 @@ describe('createClaimStore', () => {
 
   it('reads the ledger by coverage in billing order and refuses other tenants or bad ids', async () => {
     const { db, queries } = createRecordingDb((q) =>
-      q.sql.includes('from "claims"')
-        ? [{ id: ID, total_cents: 95_000 }]
-        : q.sql.includes('from "signals"')
-          ? [{ received: 4 }]
-          : q.sql.includes('from "claim_coverages"')
-            ? [{ id: 'cov-1', payer: 'Medicare' }]
-            : [
-                {
-                  kind: 'submitted',
-                  coverage_id: 'cov-1',
-                  paid_cents: 0,
-                  adjusted_cents: 0,
-                  created_at: new Date('2026-01-01T00:00:00.000Z')
-                }
-              ]
+      q.sql.includes('inner join "patients"')
+        ? [{ pcr_number: 'PCR-1', first_name: 'Jane', last_name: 'Doe' }]
+        : q.sql.includes('from "claims"')
+          ? [{ id: ID, total_cents: 95_000 }]
+          : q.sql.includes('from "signals"')
+            ? [{ received: 4 }]
+            : q.sql.includes('from "claim_coverages"')
+              ? [{ id: 'cov-1', payer: 'Medicare' }]
+              : [
+                  {
+                    kind: 'submitted',
+                    coverage_id: 'cov-1',
+                    paid_cents: 0,
+                    adjusted_cents: 0,
+                    created_at: new Date('2026-01-01T00:00:00.000Z')
+                  }
+                ]
     );
     const store = createClaimStore(db, blobs);
     assert.deepEqual(await store.ledger('r1', ID), {
       totalCents: 95_000,
       signalsSeen: 4,
+      reference: 'PCR-1 · Jane Doe',
       coverages: [{ id: 'cov-1', payer: 'Medicare' }],
       events: [
         {

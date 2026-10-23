@@ -73,6 +73,27 @@ export const findRun = (db: Db, tenantId: string, id: string) =>
     .where('r.id', '=', id)
     .executeTakeFirst();
 
+const ANCESTOR_LIMIT = 32;
+
+export const listAncestors = async (db: Db, runId: string) =>
+  (
+    await sql<{ id: string; name: string; status: RunStatus }>`
+      with recursive chain (id, parent_id, depth) as (
+        select id, parent_id, 0 from workflow_runs where id = ${runId}
+        union all
+        select w.id, w.parent_id, c.depth + 1
+        from workflow_runs w join chain c on w.id = c.parent_id
+        where c.depth < ${ANCESTOR_LIMIT}
+      )
+      select c.id, g.name, r.status
+      from chain c
+      join workflow_runs r on r.id = c.id
+      join graph_versions gv on gv.id = r.graph_version_id
+      join graphs g on g.id = gv.graph_id
+      where c.depth > 0
+      order by c.depth desc`.execute(db)
+  ).rows;
+
 export const DETAIL_LIMIT = 200;
 
 export const listChildren = (db: Db, runId: string) =>

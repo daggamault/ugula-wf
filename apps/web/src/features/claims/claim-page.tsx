@@ -25,6 +25,7 @@ import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { textLinkClasses } from '../../shared/ui/text-link.tsx';
+import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import { ClaimDataForm } from './claim-data-form.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
@@ -567,11 +568,13 @@ export const ClaimPage = ({ client, live, claimId }: ClaimPageProps) => {
     detail.reload
   );
   const [error, setError] = useState('');
-  const act = async (action: () => Promise<unknown>) => {
+  const notify = useToast();
+  const act = async (action: () => Promise<unknown>, done: string) => {
     setError('');
     try {
       await action();
       detail.reload();
+      notify({ title: done });
       return true;
     } catch (err) {
       setError(messageOf(err));
@@ -587,13 +590,17 @@ export const ClaimPage = ({ client, live, claimId }: ClaimPageProps) => {
       events={detail.data.events}
       progress={detail.data.progress}
       onSavePayers={async (payers) => {
-        await act(() => client.setPayers(claimId, payers));
+        await act(() => client.setPayers(claimId, payers), 'Payer order saved');
       }}
-      onRecord={(response) => act(() => client.recordResponse(claimId, response))}
-      onSaveData={(data) => act(() => client.saveBillingData(claimId, data))}
+      onRecord={(response) =>
+        act(() => client.recordResponse(claimId, response), 'Response recorded')
+      }
+      onSaveData={(data) =>
+        act(() => client.saveBillingData(claimId, data), 'Billing details saved')
+      }
       documentUrl={(eventId) => client.documentUrl(claimId, eventId)}
       onRestart={async () => {
-        await act(() => client.restartCycle(claimId));
+        await act(() => client.restartCycle(claimId), 'Payer cycle restarted');
       }}
     />
   );

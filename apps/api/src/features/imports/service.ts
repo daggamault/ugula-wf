@@ -2,12 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { type BlobRef, type BlobStore, importsPrefix } from '@ugula/blobs';
 import type { Db } from '@ugula/db';
 import type { JobBoss } from '@ugula/jobs';
+import { type JsonValue, reportXml } from '@ugula/nemsis';
 import { verifyPassword } from '@ugula/passwords';
 import type { Announce } from '../../shared/live.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import { startRun } from '../../shared/runs.ts';
 import {
   findLatestPublished,
+  findReport,
   findSftpTenant,
   insertImport,
   listImports,
@@ -27,7 +29,7 @@ export type SftpStorage = {
 export type ImportServiceDeps = {
   db: Db;
   boss: JobBoss;
-  blobs: Pick<BlobStore, 'putBytes'>;
+  blobs: Pick<BlobStore, 'putBytes' | 'getJson'>;
   announce: Announce;
   maxBytes: number;
   sftp: SftpStorage;
@@ -95,6 +97,14 @@ export const createImportService = ({
   return {
     list: async (tenantId: string, limit: number) =>
       ok({ imports: await listImports(db, tenantId, limit) }),
+
+    report: async (tenantId: string, id: string) => {
+      const found = await findReport(db, tenantId, id);
+      if (!found) return fail('not_found', 'Report not found');
+      const { report, ...meta } = found;
+      const data = (await blobs.getJson(report as BlobRef)) as JsonValue;
+      return ok({ report: meta, data, xml: reportXml(data) });
+    },
 
     upload: async (tenantId: string, userId: string, workflow: string, file: UploadedFile) => {
       if (!file.bytes.byteLength) return fail('invalid', 'The file is empty');

@@ -165,6 +165,7 @@ describe('createRunStore', () => {
         kind: 'task',
         queue: 'q',
         title: 'T',
+        subject: 'PCR-1',
         instructions: '',
         context: null,
         fields: [],

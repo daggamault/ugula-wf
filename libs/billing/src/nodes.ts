@@ -91,7 +91,7 @@ export type ClosedStatus = 'paid' | 'written_off' | 'collections';
 
 export type OpenedClaim = { id: string; duplicate: boolean };
 
-export type TrackedLedger = ClaimLedger & { signalsSeen: number };
+export type TrackedLedger = ClaimLedger & { signalsSeen: number; reference: string };
 
 export type BlobRef = { bucket: string; key: string };
 
@@ -579,7 +579,7 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       title: 'Claim Step',
       category: 'Billing',
       description:
-        "Decides what a claim needs next from its history: wait for the next payer's claim to go out in an 837P batch, wait out the payer's 30 days, follow up, send or wait on a patient statement, collections review, or close. Also outputs how many claim signals the history already reflects.",
+        "Decides what a claim needs next from its history: wait for the next payer's claim to go out in an 837P batch, wait out the payer's 30 days, follow up, send or wait on a patient statement, collections review, or close. Also outputs how many claim signals the history already reflects, and the claim's PCR number and patient for people to recognize it by.",
       effect: false,
       signature: action(
         [{ name: 'claimId', type: 'string' }],
@@ -589,7 +589,8 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
           { name: 'statementNumber', type: 'integer' },
           { name: 'balanceCents', type: 'integer' },
           { name: 'waitMs', type: 'integer' },
-          { name: 'signalsSeen', type: 'integer' }
+          { name: 'signalsSeen', type: 'integer' },
+          { name: 'reference', type: 'string' }
         ],
         ['submit', 'await', 'followUp', 'statement', 'awaitPatient', 'collections', 'closed']
       ),
@@ -607,7 +608,8 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
             statementNumber: 'statement' in next ? next.statement : null,
             balanceCents: next.balanceCents,
             waitMs: 'waitMs' in next ? next.waitMs : null,
-            signalsSeen: ledger.signalsSeen
+            signalsSeen: ledger.signalsSeen,
+            reference: ledger.reference
           }
         };
       }

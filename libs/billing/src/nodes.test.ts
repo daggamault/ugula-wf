@@ -119,7 +119,8 @@ const memoryClaims = () => {
               payer: c.payer
             })),
             events,
-            signalsSeen: 3
+            signalsSeen: 3,
+            reference: 'PCR-1 · Jane Doe'
           }
         : null,
     recordEvent: async (_, __, key, e) => {
@@ -321,7 +322,8 @@ describe('createBillingNodes', () => {
         statementNumber: null,
         balanceCents: 100_000,
         waitMs: null,
-        signalsSeen: 3
+        signalsSeen: 3,
+        reference: 'PCR-1 · Jane Doe'
       }
     });
     await assert.rejects(

@@ -130,6 +130,12 @@ const textOf = (value: string) => `get(${value}, '#text') ?? ${value}`;
 const nameOf = (person: string) =>
   `join(filter([${person}.firstName, ${person}.lastName], x => x != null), ' ')`;
 
+const subjectOf = (id: string, ...parts: string[]) =>
+  node(id, 'std.expr', {
+    label: 'Task subject',
+    config: { expression: `join(filter([${parts.join(', ')}], x => x != null && x != ''), ' · ')` }
+  });
+
 const SEX = "{ F: 'Female', M: 'Male', U: 'Unknown' }";
 
 const TRIP = `{
@@ -177,7 +183,7 @@ const REVIEW_CONTEXT = `{
 }`;
 
 const REVISION_CONTEXT = `{
-  claim: claimId,
+  claimId: claimId,
   patient: { name: ${nameOf('summary')}, birthDate: summary.birthDate },
   trip: ${TRIP}
 }`;
@@ -298,6 +304,7 @@ const resolvePatientGraph: GraphDef = {
           'merge(demographics, { firstName: firstName, lastName: lastName, birthDate: birthDate })'
       }
     }),
+    subjectOf('subject', 'reported.pcrNumber', nameOf('reported')),
     node('createReviewed', 'billing.create-patient', { label: 'Create reviewed patient' }),
     node('find', 'billing.find-patient'),
     node('matched', RETURN_TYPE),
@@ -323,6 +330,8 @@ const resolvePatientGraph: GraphDef = {
     edge('entry', 'demographics', 'context', 'reported'),
     edge('context', 'result', 'confirm', 'context'),
     edge('match', 'demographics', 'confirm', 'defaults'),
+    edge('entry', 'demographics', 'subject', 'reported'),
+    edge('subject', 'result', 'confirm', 'subject'),
     edge('confirm', 'link', 'find', 'exec'),
     edge('confirm', 'patientId', 'find', 'patientId'),
     edge('confirm', 'create', 'createReviewed', 'exec'),
@@ -381,6 +390,7 @@ const resolvePayersGraph: GraphDef = {
       }
     }),
     node('reported', 'std.expr', { label: 'Reported name', config: { expression: 'item.payer' } }),
+    subjectOf('subject', 'summary.pcrNumber', 'item.payer'),
     node('link', 'billing.link-payer', { label: 'Remember payer name' }),
     node('rematch', 'billing.match-payers', {
       label: 'Match reviewed payers',
@@ -404,6 +414,9 @@ const resolvePayersGraph: GraphDef = {
     edge('each', 'item', 'context', 'item'),
     edge('entry', 'summary', 'context', 'summary'),
     edge('context', 'result', 'confirm', 'context'),
+    edge('each', 'item', 'subject', 'item'),
+    edge('entry', 'summary', 'subject', 'summary'),
+    edge('subject', 'result', 'confirm', 'subject'),
     edge('confirm', 'link', 'link', 'exec'),
     edge('each', 'item', 'reported', 'item'),
     edge('reported', 'result', 'link', 'name'),
@@ -480,6 +493,7 @@ const processPcrGraph: GraphDef = {
         outcomes: ['approve', 'hold']
       }
     }),
+    subjectOf('subject', 'summary.pcrNumber', nameOf('summary')),
     node('holdContext', 'std.expr', {
       label: 'Hold context',
       config: { expression: HOLD_CONTEXT }
@@ -575,6 +589,10 @@ const processPcrGraph: GraphDef = {
     edge('payers', 'coverages', 'claim', 'coverages'),
     edge('narrative', 'findings', 'claim', 'findings'),
     edge('claim', 'result', 'review', 'context'),
+    edge('summary', 'summary', 'subject', 'summary'),
+    edge('subject', 'result', 'review', 'subject'),
+    edge('subject', 'result', 'held', 'subject'),
+    edge('subject', 'result', 'revision', 'subject'),
     edge('service', 'service', 'review', 'defaults'),
 
     edge('review', 'hold', 'held', 'exec'),
@@ -660,6 +678,8 @@ const cycleClaimGraph: GraphDef = {
     node('step', 'billing.claim-step', { label: 'Next step' }),
     waitForClaim('submit', 'Await 837P batch'),
     waitForClaim('awaitPayer', 'Await payer response'),
+    subjectOf('followUpSubject', 'reference', 'payer'),
+    subjectOf('collectionsSubject', 'reference'),
     node('followUpContext', 'std.expr', {
       label: 'Follow-up context',
       config: {
@@ -726,6 +746,9 @@ const cycleClaimGraph: GraphDef = {
     edge('step', 'payer', 'followUpContext', 'payer'),
     edge('step', 'balanceCents', 'followUpContext', 'balanceCents'),
     edge('followUpContext', 'result', 'followUp', 'context'),
+    edge('step', 'reference', 'followUpSubject', 'reference'),
+    edge('step', 'payer', 'followUpSubject', 'payer'),
+    edge('followUpSubject', 'result', 'followUp', 'subject'),
     edge('followUp', 'resubmit', 'resubmit', 'exec'),
     edge('entry', 'claimId', 'resubmit', 'claimId'),
     edge('step', 'coverageId', 'resubmit', 'coverageId'),
@@ -742,6 +765,8 @@ const cycleClaimGraph: GraphDef = {
     edge('entry', 'claimId', 'collectionsContext', 'claimId'),
     edge('step', 'balanceCents', 'collectionsContext', 'balanceCents'),
     edge('collectionsContext', 'result', 'collections', 'context'),
+    edge('step', 'reference', 'collectionsSubject', 'reference'),
+    edge('collectionsSubject', 'result', 'collections', 'subject'),
     edge('collections', 'writeOff', 'closeWrittenOff', 'exec'),
     edge('collections', 'sendToCollections', 'closeCollections', 'exec'),
     edge('step', 'closed', 'closePaid', 'exec'),

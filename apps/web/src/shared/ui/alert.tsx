@@ -25,7 +25,7 @@ const iconClasses: Readonly<Record<Intent, string>> = {
   danger: ''
 };
 
-const intentIcons: Readonly<Record<Intent, LucideIcon>> = {
+export const intentIcons: Readonly<Record<Intent, LucideIcon>> = {
   primary: InfoIcon,
   success: CircleCheckIcon,
   info: InfoIcon,

@@ -15,6 +15,7 @@ export type NavItem = {
   icon: LucideIcon;
   group: string;
   active?: boolean;
+  badge?: number;
 };
 
 export type ShellProps = {
@@ -53,7 +54,7 @@ const NavMenu = ({ navItems, userEmail, status, onSignOut }: NavMenuProps) => (
             {group}
           </p>
           <ul className="flex flex-col gap-1">
-            {items.map(({ id, label, href, icon: Icon, active }) => (
+            {items.map(({ id, label, href, icon: Icon, active, badge }) => (
               <li key={id} className="flex">
                 <Link
                   to={href}
@@ -64,7 +65,13 @@ const NavMenu = ({ navItems, userEmail, status, onSignOut }: NavMenuProps) => (
                   )}
                 >
                   <Icon aria-hidden="true" className="size-4.5" />
-                  {label}
+                  <span className="flex-1">{label}</span>
+                  {badge ? (
+                    <span className="bg-primary text-primary-fg min-w-5 rounded-full px-1.5 text-center text-xs/5 font-bold tabular-nums">
+                      {badge}
+                      <span className="sr-only"> open</span>
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             ))}

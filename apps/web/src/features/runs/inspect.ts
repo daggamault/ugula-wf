@@ -11,6 +11,11 @@ export type Cursor = {
 
 export const pathOf = (stack: readonly string[]) => stack.map((id) => `${id}/`).join('');
 
+export const parseAt = (raw: string | null) => (raw ?? '').split('/').filter(Boolean);
+
+export const runPath = (runId: string, stack: readonly string[] = []) =>
+  `/runs/${runId}${stack.length ? `?at=${stack.map(encodeURIComponent).join('/')}` : ''}`;
+
 export const graphAt = (root: GraphDef, stack: readonly string[], catalog: Catalog) =>
   stack.reduce<GraphDef | undefined>((def, id) => {
     const inst = def?.nodes.find((n) => n.id === id);

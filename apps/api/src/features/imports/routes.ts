@@ -3,7 +3,7 @@ import { sValidator } from '@hono/standard-validator';
 import { Hono, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AuthEnv } from '../../shared/auth.ts';
-import { invalidRequest } from '../../shared/http.ts';
+import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
 import { importFormSchema, listImportsQuery, sftpAuthSchema, sftpEventSchema } from './schemas.ts';
 import type { ImportService } from './service.ts';
@@ -14,6 +14,9 @@ export const createImportRoutes = (service: ImportService, maxBytes: number) =>
   new Hono<AuthEnv>()
     .get('/', sValidator('query', listImportsQuery, invalidRequest), async (c) =>
       respond(c, await service.list(c.get('session').tenantId, c.req.valid('query').limit))
+    )
+    .get('/reports/:id', sValidator('param', idParam, invalidRequest), async (c) =>
+      respond(c, await service.report(c.get('session').tenantId, c.req.valid('param').id))
     )
     .post(
       '/',

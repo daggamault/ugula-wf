@@ -9,6 +9,7 @@ import {
   claimNext,
   completeTask,
   findTask,
+  findTaskSource,
   listQueues,
   listTasks,
   type TaskFilters
@@ -74,7 +75,18 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
 
     find: async (tenantId: string, id: string) => {
       const task = await findTask(db, tenantId, id);
-      return task ? ok({ task }) : notFound;
+      if (!task) return notFound;
+      const source = await findTaskSource(db, task.run_id);
+      return ok({
+        task: {
+          ...task,
+          source: {
+            reportId: source?.report_id ?? null,
+            pcrNumber: source?.pcr_number ?? null,
+            claimId: source?.claim_id ?? null
+          }
+        }
+      });
     },
 
     next: (tenantId: string, queue: string, userId: string) =>

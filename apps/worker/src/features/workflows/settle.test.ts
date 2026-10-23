@@ -201,6 +201,7 @@ describe('settleRun', () => {
       run,
       waiting('task', {
         title: 'Review',
+        subject: 'PCR-1 · Jane Doe',
         queue: 'billing',
         instructions: 'Check codes',
         fields: [{ name: 'note', type: 'string' }],
@@ -219,6 +220,7 @@ describe('settleRun', () => {
       kind: 'task',
       queue: 'billing',
       title: 'Review',
+      subject: 'PCR-1 · Jane Doe',
       instructions: 'Check codes',
       context: { claim: 'C1' },
       fields: [{ name: 'note', type: 'string' }],

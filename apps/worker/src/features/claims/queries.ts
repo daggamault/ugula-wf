@@ -307,6 +307,12 @@ export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
   ledger: async (runId, claimId) => {
     const claim = await ownedClaim(db, runId, claimId);
     if (!claim) return null;
+    const named = await db
+      .selectFrom('claims as c')
+      .innerJoin('patients as p', 'p.id', 'c.patient_id')
+      .select(['c.pcr_number', 'p.first_name', 'p.last_name'])
+      .where('c.id', '=', claim.id)
+      .executeTakeFirst();
     const signal = await db
       .selectFrom('signals')
       .select('received')
@@ -332,6 +338,9 @@ export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
     return {
       totalCents: claim.total_cents,
       signalsSeen: signal?.received ?? 0,
+      reference: [named?.pcr_number, named && `${named.first_name} ${named.last_name}`]
+        .filter(Boolean)
+        .join(' · '),
       coverages,
       events: events.map((e) => ({
         kind: e.kind,

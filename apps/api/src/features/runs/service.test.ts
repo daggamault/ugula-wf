@@ -87,7 +87,13 @@ describe('run service', () => {
     });
     assert.deepEqual(await service.find('t', 'r1'), {
       ok: true,
-      value: { run: { id: 'r1', version_id: 'v1' }, children: [], childCount: 1200, tasks: [] }
+      value: {
+        run: { id: 'r1', version_id: 'v1' },
+        children: [],
+        childCount: 1200,
+        tasks: [],
+        ancestors: []
+      }
     });
     assert.deepEqual(await service.graphs('t', 'r1'), { ok: true, value: { graphs: [] } });
     assert.deepEqual(await service.steps('t', 'r1', { after: 0, limit: 10 }), {

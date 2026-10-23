@@ -15,6 +15,7 @@ import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type {
   BillingProfile,
@@ -338,16 +339,15 @@ export const SettingsPage = ({ client }: SettingsPageProps) => {
   const profile = useResource('billing-profile', client.profile);
   const payers = useResource('payers', client.payers);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const notify = useToast();
   const act = async <T,>(
     action: () => Promise<T>,
     done: (result: T) => string,
     reload: () => void
   ) => {
     setError('');
-    setNotice('');
     try {
-      setNotice(done(await action()));
+      notify({ title: done(await action()) });
       reload();
       return true;
     } catch (err) {
@@ -361,7 +361,6 @@ export const SettingsPage = ({ client }: SettingsPageProps) => {
       description="Billing identity and payer details used on claims and statements."
     >
       {error ? <Alert>{error}</Alert> : null}
-      {notice ? <Alert intent="success">{notice}</Alert> : null}
       {profile.data !== undefined ? (
         <ProfileForm
           profile={profile.data}

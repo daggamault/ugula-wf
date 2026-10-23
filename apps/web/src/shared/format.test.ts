@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { formatCents, formatDate, formatDateTime, formatDuration, parseDollars } from './format.ts';
+import {
+  formatAgo,
+  formatCents,
+  formatDate,
+  formatDateTime,
+  formatDuration,
+  parseDollars
+} from './format.ts';
 
 describe('format', () => {
   it('formats timestamps and durations for display', () => {
@@ -25,5 +32,16 @@ describe('formatDate', () => {
     assert.match(formatDate('2026-10-01'), /1/);
     assert.equal(formatDate('2026-01-01'), formatDate('2026-01-01T23:59:00Z'));
     assert.equal(formatDate(null), '—');
+  });
+});
+
+describe('formatAgo', () => {
+  it('says how long ago something happened in the largest whole unit', () => {
+    const now = new Date('2026-10-23T12:00:00Z');
+    assert.equal(formatAgo('2026-10-23T11:59:40Z', now), 'this minute');
+    assert.equal(formatAgo('2026-10-23T11:55:00Z', now), '5 minutes ago');
+    assert.equal(formatAgo('2026-10-23T09:30:00Z', now), '2 hours ago');
+    assert.equal(formatAgo('2026-10-22T11:00:00Z', now), 'yesterday');
+    assert.equal(formatAgo(null, now), '—');
   });
 });

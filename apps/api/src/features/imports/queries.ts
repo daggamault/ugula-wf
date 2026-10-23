@@ -46,6 +46,23 @@ export const insertImport = (db: Kysely<Database>, i: NewImport) =>
     .returning('id')
     .executeTakeFirstOrThrow();
 
+export const findReport = (db: Kysely<Database>, tenantId: string, id: string) =>
+  db
+    .selectFrom('import_reports as r')
+    .innerJoin('imports as i', 'i.id', 'r.import_id')
+    .select([
+      'r.id',
+      'r.position',
+      'r.pcr_number',
+      'r.report',
+      'i.id as import_id',
+      'i.file_name',
+      'i.created_at'
+    ])
+    .where('r.id', '=', id)
+    .where('i.tenant_id', '=', tenantId)
+    .executeTakeFirst();
+
 const childCount = (status: RunStatus) =>
   sql<number>`(count(*) filter (where ch.status = ${status}))::int`;
 

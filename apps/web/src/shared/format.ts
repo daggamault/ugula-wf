@@ -20,3 +20,18 @@ export const parseDollars = (text: string) => {
     ? Math.round(amount * 100)
     : null;
 };
+
+const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+
+const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ['day', 86_400_000],
+  ['hour', 3_600_000],
+  ['minute', 60_000]
+];
+
+export const formatAgo = (iso: string | null, now: Date = new Date()) => {
+  if (!iso) return '—';
+  const elapsed = now.getTime() - Date.parse(iso);
+  const [unit, size] = UNITS.find(([, ms]) => elapsed >= ms) ?? ['minute', 60_000];
+  return relative.format(-Math.floor(elapsed / size), unit);
+};

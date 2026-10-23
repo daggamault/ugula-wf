@@ -6,6 +6,7 @@ import {
   countChildren,
   findPublishedVersion,
   findRun,
+  listAncestors,
   listChildren,
   listRuns,
   listRunTasks,
@@ -28,12 +29,13 @@ export const createRunService = ({ db, boss }: RunServiceDeps) => ({
   find: async (tenantId: string, id: string) => {
     const run = await findRun(db, tenantId, id);
     if (!run) return notFound;
-    const [children, childCount, tasks] = await Promise.all([
+    const [children, childCount, tasks, ancestors] = await Promise.all([
       listChildren(db, id),
       countChildren(db, id),
-      listRunTasks(db, id)
+      listRunTasks(db, id),
+      listAncestors(db, id)
     ]);
-    return ok({ run, children, childCount, tasks });
+    return ok({ run, children, childCount, tasks, ancestors });
   },
 
   graphs: async (tenantId: string, id: string) => {

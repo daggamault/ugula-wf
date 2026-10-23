@@ -1,30 +1,20 @@
-import { DownloadIcon } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { ArrowRightIcon, CalendarRangeIcon, DownloadIcon, PlayIcon } from 'lucide-react';
+import { type FormEvent, useId, useState } from 'react';
+import { classNamesOf } from '../../shared/class-names.ts';
 import { formatDate } from '../../shared/format.ts';
+import { Link, navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { Input } from '../../shared/ui/input.tsx';
-import { Page, PageLoading } from '../../shared/ui/page.tsx';
-import { Section } from '../../shared/ui/section-panel.tsx';
-import { type Resource, useResource } from '../../shared/use-resource.ts';
+import { interactiveClasses } from '../../shared/ui/interactive.ts';
+import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
+import { Section, SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { useToast } from '../../shared/ui/toast.tsx';
+import { useResource } from '../../shared/use-resource.ts';
+import { findReport, REPORTS, type Report } from './catalog.tsx';
 import type { DateRange, ReportsClient } from './client.ts';
-import { type CsvCell, downloadCsv } from './csv.ts';
-import {
-  AgingTable,
-  agingCsv,
-  HcpcsTable,
-  hcpcsCsv,
-  MonthlyTable,
-  monthlyCsv,
-  PayerTable,
-  payerCsv
-} from './report-tables.tsx';
-
-export type ReportsPageProps = {
-  client: ReportsClient;
-  now?: Date;
-};
+import { downloadCsv } from './csv.ts';
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -33,34 +23,151 @@ export const defaultRange = (now: Date): DateRange => {
   return { from: day(from), to: day(now) };
 };
 
-const ReportSection = <T,>({
-  title,
-  description,
-  resource,
-  isEmpty,
-  csv,
-  children
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+export const rangeOf = (query: URLSearchParams, now: Date): DateRange => {
+  const fallback = defaultRange(now);
+  const from = query.get('from') ?? '';
+  const to = query.get('to') ?? '';
+  return {
+    from: ISO_DAY.test(from) ? from : fallback.from,
+    to: ISO_DAY.test(to) ? to : fallback.to
+  };
+};
+
+export const reportPath = (r: Pick<Report<unknown>, 'id' | 'usesPeriod'>, range: DateRange) =>
+  r.usesPeriod
+    ? `/reports/${r.id}?from=${range.from}&to=${range.to}&run=1`
+    : `/reports/${r.id}?run=1`;
+
+const ReportCard = ({ report }: { report: Report<unknown> }) => {
+  const headingId = useId();
+  return (
+    <li>
+      <Link
+        to={`/reports/${report.id}`}
+        aria-labelledby={headingId}
+        className={classNamesOf(
+          interactiveClasses,
+          'border-border bg-surface hover:border-primary/50 hover:bg-primary/5 group flex h-full flex-col gap-3 rounded-xl border p-5'
+        )}
+      >
+        <span className="flex items-start justify-between gap-3">
+          <span id={headingId} className="text-base font-bold tracking-tight">
+            {report.title}
+          </span>
+          <ArrowRightIcon
+            aria-hidden="true"
+            className="text-surface-fg-muted group-hover:text-primary size-4 shrink-0 transition group-hover:translate-x-0.5"
+          />
+        </span>
+        <span className="text-surface-fg-muted text-sm">{report.description}</span>
+        <span className="text-surface-fg-muted mt-auto flex items-center gap-1.5 text-xs font-semibold">
+          <CalendarRangeIcon aria-hidden="true" className="size-3.5" />
+          {report.usesPeriod ? 'Choose a range of service dates' : 'As of today, no options'}
+        </span>
+      </Link>
+    </li>
+  );
+};
+
+export const ReportsPage = () => (
+  <Page
+    title="Reports"
+    description="Receivables, collections and payer performance, straight from your claims. Pick a report, set its options and run it."
+  >
+    <ul className="grid gap-4 sm:grid-cols-2">
+      {REPORTS.map((r) => (
+        <ReportCard key={r.id} report={r} />
+      ))}
+    </ul>
+  </Page>
+);
+
+export const ReportOptions = ({ report, range }: { report: Report<unknown>; range: DateRange }) => {
+  const [draft, setDraft] = useState(range);
+  const valid = draft.from <= draft.to;
+  const run = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (valid) navigate(reportPath(report, draft));
+  };
+  return (
+    <SectionPanel
+      title="Options"
+      description={
+        report.usesPeriod
+          ? 'The report covers claims with a date of service in this range.'
+          : 'This report always shows balances as of today.'
+      }
+    >
+      <form onSubmit={run} className="flex flex-wrap items-end gap-4">
+        {report.usesPeriod ? (
+          <>
+            <div className="w-44">
+              <Input
+                id="report-from"
+                label="Service from"
+                type="date"
+                value={draft.from}
+                max={draft.to}
+                onChange={(e) => e.target.value && setDraft({ ...draft, from: e.target.value })}
+              />
+            </div>
+            <div className="w-44">
+              <Input
+                id="report-to"
+                label="Service to"
+                type="date"
+                value={draft.to}
+                min={draft.from}
+                onChange={(e) => e.target.value && setDraft({ ...draft, to: e.target.value })}
+              />
+            </div>
+          </>
+        ) : null}
+        <Button
+          type="submit"
+          disabledReason={valid ? undefined : 'Choose a start date on or before the end date.'}
+        >
+          <PlayIcon aria-hidden="true" className="size-4" />
+          Run report
+        </Button>
+      </form>
+    </SectionPanel>
+  );
+};
+
+const ReportResults = ({
+  client,
+  report,
+  range
 }: {
-  title: string;
-  description: ReactNode;
-  resource: Resource<T>;
-  isEmpty: (data: T) => boolean;
-  csv: (data: T) => { name: string; rows: CsvCell[][] };
-  children: (data: T) => ReactNode;
+  client: ReportsClient;
+  report: Report<unknown>;
+  range: DateRange;
 }) => {
-  const { data } = resource;
+  const notify = useToast();
+  const result = useResource(`report:${report.id}:${range.from}:${range.to}`, () =>
+    report.load(client, range)
+  );
+  const { data } = result;
   return (
     <Section
-      title={title}
-      description={description}
+      title="Results"
+      description={
+        report.usesPeriod
+          ? `Claims with a date of service from ${formatDate(range.from)} to ${formatDate(range.to)}.`
+          : 'Open balances as of today.'
+      }
       actions={
-        data && !isEmpty(data) ? (
+        data !== undefined && !report.isEmpty(data) ? (
           <Button
             variant="outline"
             size="sm"
             onClick={() => {
-              const file = csv(data);
+              const file = report.csv(data, range);
               downloadCsv(file.name, file.rows);
+              notify({ title: `${file.name} downloaded` });
             }}
           >
             <DownloadIcon aria-hidden="true" className="size-4" />
@@ -69,107 +176,40 @@ const ReportSection = <T,>({
         ) : null
       }
     >
-      {resource.error ? <Alert>{resource.error.message}</Alert> : null}
+      {result.error ? <Alert>{result.error.message}</Alert> : null}
       {data === undefined ? (
-        resource.loading ? (
+        result.loading ? (
           <PageLoading />
         ) : null
-      ) : isEmpty(data) ? (
-        <EmptyText>Nothing to report for this period.</EmptyText>
+      ) : report.isEmpty(data) ? (
+        <EmptyText>Nothing to report for these options.</EmptyText>
       ) : (
-        children(data)
+        report.table(data)
       )}
     </Section>
   );
 };
 
-export const ReportsPage = ({ client, now = new Date() }: ReportsPageProps) => {
-  const [range, setRange] = useState(() => defaultRange(now));
-  const period = `${range.from}:${range.to}`;
-  const aging = useResource('report-aging', client.aging);
-  const monthly = useResource(`report-monthly:${period}`, () => client.monthly(range));
-  const payers = useResource(`report-payers:${period}`, () => client.payers(range));
-  const hcpcs = useResource(`report-hcpcs:${period}`, () => client.hcpcs(range));
-  const suffix = `${range.from}-to-${range.to}.csv`;
-  const valid = range.from <= range.to;
+export type ReportPageProps = {
+  client: ReportsClient;
+  reportId: string;
+  query: URLSearchParams;
+  now?: Date;
+};
 
+export const ReportPage = ({ client, reportId, query, now = new Date() }: ReportPageProps) => {
+  const report = findReport(reportId);
+  if (!report) return <PageFailure message={`There is no report called “${reportId}”.`} />;
+  const range = rangeOf(query, now);
   return (
     <Page
-      title="Reports"
-      description="Receivables, collections and payer performance, straight from your claims."
+      title={report.title}
+      description={report.description}
+      backTo="/reports"
+      backLabel="Back to Reports"
     >
-      <ReportSection
-        title="Accounts Receivable Aging"
-        description={
-          aging.data
-            ? `Open balances as of ${formatDate(aging.data.asOf)}, by who owes them now: the next payer due to answer, or the patient once every payer has. Ages count from the date of service.`
-            : 'Open balances by who owes them now, aged from the date of service.'
-        }
-        resource={aging}
-        isEmpty={(d) => !d.rows.length}
-        csv={(d) => ({ name: `ar-aging-${d.asOf}.csv`, rows: agingCsv(d.rows) })}
-      >
-        {(d) => <AgingTable rows={d.rows} />}
-      </ReportSection>
-      <fieldset className="border-border flex flex-wrap items-end gap-4 border-t pt-6">
-        <legend className="sr-only">Report period</legend>
-        <div className="w-44">
-          <Input
-            id="report-from"
-            label="Service from"
-            type="date"
-            value={range.from}
-            max={range.to}
-            onChange={(e) => e.target.value && setRange({ ...range, from: e.target.value })}
-          />
-        </div>
-        <div className="w-44">
-          <Input
-            id="report-to"
-            label="Service to"
-            type="date"
-            value={range.to}
-            min={range.from}
-            onChange={(e) => e.target.value && setRange({ ...range, to: e.target.value })}
-          />
-        </div>
-        <p className="text-surface-fg-muted pb-2.5 text-sm">
-          The reports below cover claims with a date of service in this period.
-        </p>
-      </fieldset>
-      {valid ? (
-        <>
-          <ReportSection
-            title="Charges and Collections by Month"
-            description="What was billed for each month of service, and what has come back since."
-            resource={monthly}
-            isEmpty={(d) => !d.rows.length}
-            csv={(d) => ({ name: `monthly-${suffix}`, rows: monthlyCsv(d.rows) })}
-          >
-            {(d) => <MonthlyTable rows={d.rows} />}
-          </ReportSection>
-          <ReportSection
-            title="Payer Performance"
-            description="How each payer handled the claims billed to it: how many were answered, what they paid, and how long they took."
-            resource={payers}
-            isEmpty={(d) => !d.rows.length && !d.patient.paid_cents && !d.patient.adjusted_cents}
-            csv={(d) => ({ name: `payers-${suffix}`, rows: payerCsv(d.rows, d.patient) })}
-          >
-            {(d) => <PayerTable rows={d.rows} patient={d.patient} />}
-          </ReportSection>
-          <ReportSection
-            title="Charges by HCPCS Code"
-            description="Billed services and mileage, by procedure code."
-            resource={hcpcs}
-            isEmpty={(d) => !d.rows.length}
-            csv={(d) => ({ name: `hcpcs-${suffix}`, rows: hcpcsCsv(d.rows) })}
-          >
-            {(d) => <HcpcsTable rows={d.rows} />}
-          </ReportSection>
-        </>
-      ) : (
-        <Alert intent="warning">Choose a start date on or before the end date.</Alert>
-      )}
+      <ReportOptions key={`${range.from}:${range.to}`} report={report} range={range} />
+      {query.has('run') ? <ReportResults client={client} report={report} range={range} /> : null}
     </Page>
   );
 };

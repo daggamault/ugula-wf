@@ -141,7 +141,18 @@ describe('task service', () => {
       ok: true,
       value: { status: 'claimed' }
     });
-    assert.equal((await service.find('t', 't1')).ok, true);
+    const found = await service.find('t', 't1');
+    assert.deepEqual(found.ok && found.value.task.source, {
+      reportId: null,
+      pcrNumber: null,
+      claimId: null
+    });
+    const source = queries.find((q) => q.sql.includes('left join "import_reports"'));
+    assert.ok(
+      source?.sql.includes(
+        'on ir.report ->> \'key\' = r.inputs -> \'report\' ->> \'key\' left join "claims" as "c" on "c"."tenant_id" = "r"."tenant_id" and ("c"."import_report_id" = "ir"."id" or c.id::text = r.inputs ->> \'claimId\')'
+      )
+    );
     assert.equal((await service.queues('t')).ok, true);
   });
 });

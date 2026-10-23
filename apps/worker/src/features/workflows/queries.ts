@@ -38,6 +38,7 @@ export type TaskInsert = {
   kind: TaskKind;
   queue: string;
   title: string;
+  subject: string | null;
   instructions: string;
   context: Json;
   fields: Json;
@@ -208,6 +209,7 @@ const createRunTx = (tx: Kysely<Database>, boss: JobBoss): RunTx => ({
         kind: t.kind,
         queue: t.queue,
         title: t.title,
+        subject: t.subject,
         instructions: t.instructions,
         context: JSON.stringify(t.context),
         fields: JSON.stringify(t.fields),

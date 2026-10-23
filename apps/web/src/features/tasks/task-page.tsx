@@ -1,8 +1,16 @@
 import type { Json } from '@ugula/graph';
-import { ExternalLinkIcon, HandIcon, UndoIcon } from 'lucide-react';
-import { useState } from 'react';
+import {
+  ActivityIcon,
+  ArrowRightIcon,
+  CircleCheckBigIcon,
+  HandIcon,
+  InfoIcon,
+  ReceiptTextIcon,
+  UndoIcon
+} from 'lucide-react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
-import { formatDateTime } from '../../shared/format.ts';
+import { formatAgo, formatDateTime } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
@@ -12,10 +20,13 @@ import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { useToast } from '../../shared/ui/toast.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { TaskDetail, TasksClient } from './client.ts';
 import { ContextView } from './context-view.tsx';
+import { humanize, queueInfo } from './queues.ts';
+import { SourceReportPanel } from './source-report.tsx';
 
 export type TaskPageProps = {
   client: TasksClient;
@@ -25,8 +36,11 @@ export type TaskPageProps = {
 
 export type TaskViewProps = {
   task: TaskDetail;
+  remaining: number | null;
+  source?: ReactNode;
   onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
   onAssign: (claim: boolean) => Promise<void>;
+  onNext: () => Promise<void>;
 };
 
 const FAULT_INTENTS: Record<string, Intent> = {
@@ -38,55 +52,196 @@ const FAULT_INTENTS: Record<string, Intent> = {
 const FAULT_HELP =
   'Retry the failed step, skip it with the outputs below (and the exec pin to continue from), or cancel the run.';
 
-const labelOf = (outcome: string) => outcome.charAt(0).toUpperCase() + outcome.slice(1);
+export const queuePath = (queue: string) => `/tasks?queue=${encodeURIComponent(queue)}`;
 
-export const TaskView = ({ task, onComplete, onAssign }: TaskViewProps) => {
+export const NextUp = ({
+  outcome,
+  queue,
+  remaining,
+  onNext
+}: {
+  outcome: string;
+  queue: string;
+  remaining: number | null;
+  onNext: () => Promise<void>;
+}) => {
+  const nextRef = useRef<HTMLButtonElement>(null);
+  const [busy, setBusy] = useState(false);
+  const label = queueInfo(queue).label;
+  useEffect(() => nextRef.current?.focus(), []);
+  return (
+    <SectionPanel title="Done" accent="primary">
+      <p className="flex items-center gap-2 text-sm">
+        <CircleCheckBigIcon aria-hidden="true" className="text-success size-5" />“
+        {humanize(outcome)}” is recorded and the claim moves on.
+      </p>
+      <p className="text-surface-fg-muted text-sm">
+        {remaining === null
+          ? `Checking ${label}…`
+          : remaining
+            ? `${remaining} more ${remaining === 1 ? 'task is' : 'tasks are'} waiting in ${label}.`
+            : `${label} is clear.`}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {remaining ? (
+          <Button
+            ref={nextRef}
+            isPending={busy}
+            onClick={() => {
+              setBusy(true);
+              void onNext().finally(() => setBusy(false));
+            }}
+          >
+            Next task
+            <ArrowRightIcon aria-hidden="true" className="size-4" />
+          </Button>
+        ) : null}
+        <ButtonLink to={queuePath(queue)} variant="outline">
+          Back to {label}
+        </ButtonLink>
+      </div>
+    </SectionPanel>
+  );
+};
+
+const Decision = ({
+  task,
+  onComplete
+}: Pick<TaskViewProps, 'task'> & {
+  onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
+}) => {
   const isFault = task.kind === 'fault';
-  const open = task.status === 'open';
   const [values, setValues] = useState<Record<string, Json>>(() =>
     Object.fromEntries(task.fields.map((f) => [f.name, task.defaults?.[f.name] ?? null]))
   );
-  const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
-
-  const act = async (key: string, action: () => Promise<void>) => {
-    setBusy(key);
-    setError('');
+  const act = async (outcome: string) => {
+    setBusy(outcome);
     try {
-      await action();
-    } catch (err) {
-      setError(messageOf(err));
+      await onComplete(outcome, values);
     } finally {
       setBusy(null);
     }
   };
+  return (
+    <SectionPanel
+      title="Your Decision"
+      accent="primary"
+      description={isFault ? FAULT_HELP : 'Values come prefilled with what the workflow suggests.'}
+    >
+      <form className="flex flex-col gap-5" onSubmit={(e) => e.preventDefault()}>
+        {task.fields.length ? (
+          <fieldset disabled={busy !== null} className="flex flex-col gap-5">
+            {task.fields.map((f) => (
+              <ValueField
+                key={f.name}
+                id={`field-${f.name}`}
+                label={f.label ?? humanize(f.name)}
+                type={f.type}
+                options={f.options}
+                value={values[f.name] ?? null}
+                onChange={(value) => setValues({ ...values, [f.name]: value })}
+              />
+            ))}
+          </fieldset>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {task.outcomes.map((outcome, i) => (
+            <Button
+              key={outcome}
+              intent={isFault ? (FAULT_INTENTS[outcome] ?? 'primary') : 'primary'}
+              variant={isFault || i === 0 ? 'solid' : 'outline'}
+              isPending={busy === outcome}
+              disabledReason={busy && busy !== outcome ? pendingActionMessage : undefined}
+              onClick={() => void act(outcome)}
+            >
+              {humanize(outcome)}
+            </Button>
+          ))}
+        </div>
+      </form>
+    </SectionPanel>
+  );
+};
+
+export const TaskView = ({
+  task,
+  remaining,
+  source,
+  onComplete,
+  onAssign,
+  onNext
+}: TaskViewProps) => {
+  const isFault = task.kind === 'fault';
+  const info = queueInfo(task.queue);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState<string | null>(null);
+  const [assigning, setAssigning] = useState(false);
+  const notify = useToast();
   const isUnassigned = task.assignee_id === null;
+  const open = task.status === 'open' && done === null;
+
+  const complete = async (outcome: string, values: Record<string, Json>) => {
+    setError('');
+    try {
+      await onComplete(outcome, values);
+      setDone(outcome);
+      notify({
+        title: `${humanize(outcome)}: ${task.subject ?? task.title}`,
+        description: `Recorded in ${info.label}.`
+      });
+    } catch (err) {
+      setError(messageOf(err));
+    }
+  };
+
+  const assign = async () => {
+    setAssigning(true);
+    setError('');
+    try {
+      await onAssign(isUnassigned);
+      notify({
+        intent: 'info',
+        title: isUnassigned ? 'Task claimed' : 'Task released',
+        description: isUnassigned
+          ? 'Nobody else is handed this task while you work on it.'
+          : `It is back in ${info.label} for anyone to pick up.`
+      });
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   return (
     <Page
-      title={task.title}
-      backTo="/tasks"
-      backLabel="Back to Tasks"
+      title={task.subject ?? task.title}
+      backTo={queuePath(task.queue)}
+      backLabel={`Back to ${info.label}`}
       description={
         <span className="flex flex-wrap items-center gap-2">
-          <Badge intent={isFault ? 'danger' : 'info'}>{isFault ? 'Stuck run' : 'Review'}</Badge>
-          <span>{task.queue}</span>
-          <span>· {formatDateTime(task.created_at)}</span>
+          <Badge intent={isFault ? 'danger' : 'info'}>{info.label}</Badge>
+          {task.subject ? <span>{task.title}</span> : null}
+          <span title={formatDateTime(task.created_at)}>
+            · waiting since {formatAgo(task.created_at)}
+          </span>
         </span>
       }
       actions={
         <>
-          <ButtonLink to={`/runs/${task.run_id}`} variant="outline">
-            <ExternalLinkIcon aria-hidden="true" className="size-4" />
-            Open run
+          {task.source.claimId ? (
+            <ButtonLink to={`/claims/${task.source.claimId}`} variant="outline" size="sm">
+              <ReceiptTextIcon aria-hidden="true" className="size-4" />
+              Open claim
+            </ButtonLink>
+          ) : null}
+          <ButtonLink to={`/runs/${task.run_id}`} variant="outline" size="sm">
+            <ActivityIcon aria-hidden="true" className="size-4" />
+            Workflow progress
           </ButtonLink>
           {open ? (
-            <Button
-              variant="outline"
-              isPending={busy === 'assign'}
-              disabledReason={busy && busy !== 'assign' ? pendingActionMessage : undefined}
-              onClick={() => act('assign', () => onAssign(isUnassigned))}
-            >
+            <Button variant="outline" size="sm" isPending={assigning} onClick={() => void assign()}>
               {isUnassigned ? (
                 <HandIcon aria-hidden="true" className="size-4" />
               ) : (
@@ -99,63 +254,40 @@ export const TaskView = ({ task, onComplete, onAssign }: TaskViewProps) => {
       }
     >
       {error ? <Alert>{error}</Alert> : null}
-      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-        <SectionPanel title={isFault ? 'What Went Wrong' : 'Context'}>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-6">
           {task.instructions ? (
-            <p className="text-sm whitespace-pre-line">{task.instructions}</p>
-          ) : null}
-          <ContextView label="Task context" value={task.context} />
-        </SectionPanel>
-        <SectionPanel
-          title="Decision"
-          accent={open ? 'primary' : undefined}
-          description={open && isFault ? FAULT_HELP : undefined}
-        >
-          {open ? (
-            <form className="flex flex-col gap-5" onSubmit={(e) => e.preventDefault()}>
-              {task.fields.length ? (
-                <fieldset disabled={busy !== null} className="flex flex-col gap-5">
-                  {task.fields.map((f) => (
-                    <ValueField
-                      key={f.name}
-                      id={`field-${f.name}`}
-                      label={f.label ?? f.name}
-                      type={f.type}
-                      options={f.options}
-                      value={values[f.name] ?? null}
-                      onChange={(value) => setValues({ ...values, [f.name]: value })}
-                    />
-                  ))}
-                </fieldset>
-              ) : null}
-              <div className="flex flex-wrap gap-2">
-                {task.outcomes.map((outcome, i) => (
-                  <Button
-                    key={outcome}
-                    intent={isFault ? (FAULT_INTENTS[outcome] ?? 'primary') : 'primary'}
-                    variant={isFault || i === 0 ? 'solid' : 'outline'}
-                    isPending={busy === outcome}
-                    disabledReason={busy && busy !== outcome ? pendingActionMessage : undefined}
-                    onClick={() => act(outcome, () => onComplete(outcome, values))}
-                  >
-                    {labelOf(outcome)}
-                  </Button>
-                ))}
+            <aside className="border-info/30 bg-info/10 flex gap-3 rounded-xl border p-4">
+              <InfoIcon aria-hidden="true" className="text-info mt-0.5 size-5 shrink-0" />
+              <div className="flex flex-col gap-1">
+                <h2 className="text-sm font-bold">{isFault ? 'What went wrong' : 'What to do'}</h2>
+                <p className="text-sm whitespace-pre-line">{task.instructions}</p>
               </div>
-            </form>
+            </aside>
+          ) : null}
+          <SectionPanel title="Details">
+            <ContextView label="Task context" value={task.context} />
+          </SectionPanel>
+          {source}
+        </div>
+        <div className="flex flex-col gap-6 lg:sticky lg:top-24">
+          {done !== null ? (
+            <NextUp outcome={done} queue={task.queue} remaining={remaining} onNext={onNext} />
+          ) : open ? (
+            <Decision key={task.id} task={task} onComplete={complete} />
           ) : (
-            <>
+            <SectionPanel title="Decision">
               <Alert intent={task.status === 'completed' ? 'success' : 'warning'}>
                 {task.status === 'completed'
-                  ? `Completed ${formatDateTime(task.completed_at)} as “${task.resolution?.outcome ?? ''}”.`
+                  ? `Completed ${formatDateTime(task.completed_at)} as “${humanize(task.resolution?.outcome ?? '')}”.`
                   : 'This task was cancelled.'}
               </Alert>
               {task.resolution ? (
                 <ContextView label="Resolution" value={task.resolution.values} />
               ) : null}
-            </>
+            </SectionPanel>
           )}
-        </SectionPanel>
+        </div>
       </div>
     </Page>
   );
@@ -163,27 +295,39 @@ export const TaskView = ({ task, onComplete, onAssign }: TaskViewProps) => {
 
 export const TaskPage = ({ client, live, taskId }: TaskPageProps) => {
   const task = useResource(`task:${taskId}`, () => client.find(taskId));
+  const queues = useResource('task-queues', client.queues);
   const runId = task.data?.run_id;
   useLive(
     live,
-    (e) => e.kind === 'task' && (e.id === taskId || (e.id === null && e.runId === runId)),
-    task.reload
+    (e) => e.kind === 'task' && (e.id === taskId || e.id === null || e.runId === runId),
+    () => {
+      task.reload();
+      queues.reload();
+    }
   );
   if (task.error) return <PageFailure message={task.error.message} />;
   if (!task.data) return <PageLoading />;
-  const { queue } = task.data;
+  const { queue, source } = task.data;
+  const waiting = queues.data?.find((q) => q.queue === queue)?.unassigned;
   return (
     <TaskView
       key={taskId}
       task={task.data}
+      remaining={queues.data ? (waiting ?? 0) : null}
+      source={
+        source.reportId ? <SourceReportPanel client={client} reportId={source.reportId} /> : null
+      }
       onAssign={async (claim) => {
         await (claim ? client.claim(taskId) : client.release(taskId));
         task.reload();
       }}
       onComplete={async (outcome, values) => {
         await client.complete(taskId, outcome, values);
+        queues.reload();
+      }}
+      onNext={async () => {
         const next = await client.next(queue);
-        navigate(next ? `/tasks/${next.id}` : '/tasks');
+        navigate(next ? `/tasks/${next.id}` : queuePath(queue));
       }}
     />
   );

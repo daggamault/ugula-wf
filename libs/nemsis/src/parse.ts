@@ -1,4 +1,4 @@
-import { XMLParser } from 'fast-xml-parser';
+import { XMLBuilder, XMLParser } from 'fast-xml-parser';
 
 export type JsonValue =
   | null
@@ -58,3 +58,14 @@ const findText = (value: unknown, key: string): string | null => {
 };
 
 export const pcrNumberOf = (report: unknown) => findText(report, 'eRecord.01');
+
+const builder = new XMLBuilder({
+  ignoreAttributes: false,
+  attributeNamePrefix: '@',
+  format: true,
+  indentBy: '  ',
+  suppressEmptyNode: true
+});
+
+export const reportXml = (report: JsonValue) =>
+  String(builder.build({ PatientCareReport: report })).trim();

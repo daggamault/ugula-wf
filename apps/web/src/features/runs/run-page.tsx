@@ -1,20 +1,20 @@
-import { ChevronRightIcon, CircleStopIcon, WorkflowIcon } from 'lucide-react';
+import { CircleStopIcon, WorkflowIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
-import { classNamesOf } from '../../shared/class-names.ts';
 import { formatDateTime } from '../../shared/format.ts';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { GraphCanvas } from '../../shared/graph/graph-canvas.tsx';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
+import { Breadcrumbs } from '../../shared/ui/breadcrumbs.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
-import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { JsonView } from '../../shared/ui/json-view.tsx';
 import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
+import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import {
   isFinished,
@@ -23,7 +23,7 @@ import {
   type RunStep,
   type RunsClient
 } from './client.ts';
-import { graphAt, pathOf, runsStartedBy, statusAt } from './inspect.ts';
+import { graphAt, pathOf, runPath, runsStartedBy, statusAt } from './inspect.ts';
 import { NodeExecutions } from './node-executions.tsx';
 import { RunStatusBadge } from './run-status-badge.tsx';
 
@@ -31,25 +31,22 @@ export type RunPageProps = {
   client: RunsClient;
   live: Live;
   runId: string;
+  at: readonly string[];
 };
 
 export type RunViewProps = {
   detail: RunDetail;
   graphs: readonly RunGraph[];
   steps: readonly RunStep[];
+  stack: readonly string[];
   onCancel: () => Promise<void>;
 };
 
-const crumbClass = classNamesOf(
-  'hover:bg-surface-fg/6 hover:text-surface-fg last:text-surface-fg rounded-md px-2 py-1 font-mono text-xs last:font-semibold',
-  interactiveClasses
-);
-
 const panelHeading = 'text-surface-fg-muted text-xs font-semibold tracking-wide uppercase';
 
-export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
-  const { run, children, childCount, tasks } = detail;
-  const [stack, setStack] = useState<string[]>([]);
+export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps) => {
+  const { run, children, childCount, tasks, ancestors } = detail;
+  const setStack = (next: readonly string[]) => navigate(runPath(run.id, next));
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -73,7 +70,6 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
     if (!inst) return;
     if (catalog.opensAs(inst) === 'graph') {
       setStack([...stack, id]);
-      setSelected(null);
       return;
     }
     const [only, ...more] = startedBy(id);
@@ -81,11 +77,35 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
     else setSelected(id);
   };
 
+  const titleAt = (i: number) => {
+    const id = stack[i] ?? '';
+    const inst = root
+      ? graphAt(root, stack.slice(0, i), catalog)?.nodes.find((n) => n.id === id)
+      : undefined;
+    return inst ? catalog.titleOf(inst) : id;
+  };
+  const parent = ancestors.at(-1);
+  const crumbs = [
+    { label: 'Runs', to: '/runs' },
+    ...ancestors.map((a) => ({ label: a.name, to: `/runs/${a.id}` })),
+    { label: run.name, to: runPath(run.id) },
+    ...stack.map((_, i) => ({ label: titleAt(i), to: runPath(run.id, stack.slice(0, i + 1)) }))
+  ];
+  const back = stack.length
+    ? {
+        to: runPath(run.id, stack.slice(0, -1)),
+        label: `Back to ${crumbs.at(-2)?.label ?? run.name}`
+      }
+    : parent
+      ? { to: `/runs/${parent.id}`, label: `Back to ${parent.name}` }
+      : { to: '/runs', label: 'Back to Runs' };
+
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <WorkspaceHeader
-        backTo="/runs"
-        backLabel="Back to Runs"
+        backTo={back.to}
+        backLabel={back.label}
+        breadcrumbs={<Breadcrumbs label="Run path" crumbs={crumbs} />}
         title={
           <>
             {run.name} <span className="text-surface-fg-muted font-normal">v{run.version}</span>
@@ -96,12 +116,6 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
           <>
             Started {formatDateTime(run.created_at)}
             {run.completed_at ? ` · Finished ${formatDateTime(run.completed_at)}` : ''}
-            {run.parent_id ? (
-              <>
-                {' · '}
-                <TextLink to={`/runs/${run.parent_id}`}>Parent run</TextLink>
-              </>
-            ) : null}
           </>
         }
         actions={
@@ -140,26 +154,6 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
           ) : null}
         </div>
       ) : null}
-      <nav
-        aria-label="Graph path"
-        className="text-surface-fg-muted flex flex-wrap items-center gap-0.5 px-4 py-2"
-      >
-        <button type="button" className={crumbClass} onClick={() => setStack([])}>
-          {run.key}
-        </button>
-        {stack.map((id, i) => (
-          <span key={`${id}-${i}`} className="flex items-center gap-0.5">
-            <ChevronRightIcon aria-hidden="true" className="size-3.5" />
-            <button
-              type="button"
-              className={crumbClass}
-              onClick={() => setStack(stack.slice(0, i + 1))}
-            >
-              {id}
-            </button>
-          </span>
-        ))}
-      </nav>
       <div className="border-border grid min-h-0 flex-1 grid-cols-1 border-t lg:grid-cols-[minmax(0,1fr)_24rem]">
         <div className="h-[60dvh] lg:h-auto">
           {def ? (
@@ -188,8 +182,8 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
           ) : (
             <section aria-label="Run data" className="flex flex-col gap-5 p-4">
               <p className="text-surface-fg-muted text-sm">
-                Select a node to inspect its values. Double-click a sub-graph or workflow node to
-                open it.
+                Select a step to see what went in and out of it. Double-click a sub-graph to open it
+                here, or a workflow step to jump to the run it started; the path above leads back.
               </p>
               <div className="flex flex-col gap-2">
                 <h2 className={panelHeading}>Inputs</h2>
@@ -244,7 +238,8 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
   );
 };
 
-export const RunPage = ({ client, live, runId }: RunPageProps) => {
+export const RunPage = ({ client, live, runId, at }: RunPageProps) => {
+  const notify = useToast();
   const [active, setActive] = useState(true);
   const detail = useResource(`run:${runId}`, () => client.find(runId), active ? 15_000 : 0);
   const steps = useResource(`run-steps:${runId}`, () => client.steps(runId), active ? 15_000 : 0);
@@ -273,12 +268,18 @@ export const RunPage = ({ client, live, runId }: RunPageProps) => {
   if (!detail.data || !graphs.data) return <PageLoading />;
   return (
     <RunView
-      key={runId}
+      key={`${runId}/${at.join('/')}`}
       detail={detail.data}
       graphs={graphs.data}
       steps={steps.data ?? []}
+      stack={at}
       onCancel={async () => {
         await client.cancel(runId);
+        notify({
+          intent: 'info',
+          title: 'Run cancelled',
+          description: 'It stops at its current step.'
+        });
         setActive(true);
         reload();
       }}

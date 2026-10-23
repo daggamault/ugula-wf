@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import type { GraphDetail, WorkflowsClient } from './client.ts';
 import { EditorPage, EditorView } from './editor-page.tsx';
+import type { TrailStep } from './trail.ts';
 
 const source: GraphDef = {
   signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
@@ -34,7 +35,7 @@ const detail = (tenant: string | null, published: boolean): GraphDetail => ({
   ]
 });
 
-const render = (d: GraphDetail, version: number) =>
+const render = (d: GraphDetail, version: number, trail: TrailStep[] = []) =>
   renderToStaticMarkup(
     createElement(EditorView, {
       detail: d,
@@ -42,6 +43,8 @@ const render = (d: GraphDetail, version: number) =>
       source,
       catalog: createCatalog(),
       client: {} as WorkflowsClient,
+      trail,
+      nameOf: (id) => ({ p1: 'Process PCR', p0: 'Ingest' })[id] ?? 'Workflow',
       onSaved: () => undefined
     })
   );
@@ -65,6 +68,20 @@ describe('EditorView', () => {
     assert.ok(system.includes('System'));
     assert.ok(!system.includes('Edit as new draft'));
   });
+
+  it('shows where a sub-workflow was opened from and leads back up', () => {
+    const top = render(detail('t-1', true), 2);
+    assert.ok(!top.includes('aria-label="Workflow path"'));
+    assert.ok(top.includes('href="/workflows"') && top.includes('aria-label="Back to Workflows"'));
+    const nested = render(detail('t-1', true), 2, [
+      { graphId: 'p0', version: 1 },
+      { graphId: 'p1', version: 3 }
+    ]);
+    assert.ok(nested.includes('aria-label="Workflow path"'));
+    assert.ok(nested.includes('href="/workflows/p0?version=1"'));
+    assert.ok(nested.includes('href="/workflows/p1?version=3&amp;trail=p0:1"'));
+    assert.ok(nested.includes('aria-label="Back to Process PCR"'));
+  });
 });
 
 describe('EditorPage', () => {
@@ -77,7 +94,8 @@ describe('EditorPage', () => {
           version: async () => ({ id: 'v2', version: 2, definition: source, published_at: null })
         } as unknown as WorkflowsClient,
         graphId: 'g1',
-        version: null
+        version: null,
+        trail: []
       })
     );
     assert.ok(html.includes('aria-label="Loading"'));

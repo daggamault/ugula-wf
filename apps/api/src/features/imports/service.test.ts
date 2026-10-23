@@ -20,6 +20,21 @@ const setup = ({
 } = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.includes('from "tenants"')) return tenant ? [tenant] : [];
+    if (q.sql.includes('from "import_reports"')) {
+      return q.parameters.includes('rep-1')
+        ? [
+            {
+              id: 'rep-1',
+              position: 0,
+              pcr_number: 'PCR-1',
+              report: { bucket: 'ugula', key: 'imports/t-1/f.xml.reports/00000.json' },
+              import_id: 'i1',
+              file_name: 'f.xml',
+              created_at: '2026-10-01T00:00:00Z'
+            }
+          ]
+        : [];
+    }
     if (q.sql.startsWith('select')) return published ? [{ id: 'v1', version: 2 }] : [];
     return [{ id: 'r1' }];
   });
@@ -37,7 +52,8 @@ const setup = ({
       putBytes: async (key, body, contentType) => {
         stored.push(key);
         return { bucket: 'ugula', key, size: body.byteLength, contentType };
-      }
+      },
+      getJson: async () => ({ eRecord: { 'eRecord.01': 'PCR-1' } })
     }
   });
   return { service, stored, jobs, queries, announced };
@@ -78,6 +94,29 @@ describe('import service uploads', () => {
     assert.equal(await code(file('01234567890')), 'invalid');
     assert.equal(await code(file('<x/>')), 'not_found');
     assert.deepEqual(stored, []);
+  });
+
+  it('reads one stored report of the tenant with its XML', async () => {
+    const { service, queries } = setup();
+    assert.deepEqual(await service.report('t-1', 'rep-1'), {
+      ok: true,
+      value: {
+        report: {
+          id: 'rep-1',
+          position: 0,
+          pcr_number: 'PCR-1',
+          import_id: 'i1',
+          file_name: 'f.xml',
+          created_at: '2026-10-01T00:00:00Z'
+        },
+        data: { eRecord: { 'eRecord.01': 'PCR-1' } },
+        xml: '<PatientCareReport>\n  <eRecord>\n    <eRecord.01>PCR-1</eRecord.01>\n  </eRecord>\n</PatientCareReport>'
+      }
+    });
+    const lookup = queries.find((q) => q.sql.includes('from "import_reports"'));
+    assert.ok(lookup?.sql.endsWith('where "r"."id" = $1 and "i"."tenant_id" = $2'));
+    const missing = await service.report('t-1', 'rep-9');
+    assert.equal(!missing.ok && missing.failure.code, 'not_found');
   });
 
   it('sanitizes file names for storage keys', () => {

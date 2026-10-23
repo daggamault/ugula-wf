@@ -39,6 +39,10 @@ const detail = (status: RunDetail['run']['status']): RunDetail => ({
       status: 'open',
       created_at: '2026-01-01'
     }
+  ],
+  ancestors: [
+    { id: 'p0', name: 'Ingest NEMSIS File', status: 'completed' },
+    { id: 'p1', name: 'Process PCR', status: 'suspended' }
   ]
 });
 
@@ -49,18 +53,32 @@ const graphs = [
     definition: {
       signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
       variables: [],
+      nodes: [
+        { id: 'entry', type: ENTRY_TYPE, version: 1 },
+        { id: 'payers', type: 'demo.sub', version: 1, label: 'Resolve payers' }
+      ],
+      edges: []
+    }
+  },
+  {
+    key: 'demo.sub',
+    version: 1,
+    definition: {
+      signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
+      variables: [],
       nodes: [{ id: 'entry', type: ENTRY_TYPE, version: 1 }],
       edges: []
     }
   }
 ];
 
-const render = (status: RunDetail['run']['status']) =>
+const render = (status: RunDetail['run']['status'], stack: string[] = []) =>
   renderToStaticMarkup(
     createElement(RunView, {
       detail: detail(status),
       graphs,
       steps: [],
+      stack,
       onCancel: async () => undefined
     })
   );
@@ -71,11 +89,20 @@ describe('RunView', () => {
     assert.ok(html.includes('Stuck'));
     assert.ok(html.includes('payer rejected'));
     assert.ok(html.includes('href="/tasks/t1"'));
-    assert.ok(html.includes('href="/runs/p1"'));
+    assert.ok(html.includes('href="/runs/p0"') && html.includes('href="/runs/p1"'));
+    assert.ok(html.includes('aria-label="Back to Process PCR"'));
     assert.ok(html.includes('href="/workflows/g1?version=2"'));
     assert.ok(html.includes('Cancel run'));
-    assert.ok(html.includes('aria-label="Graph path"'));
+    assert.ok(html.includes('aria-label="Run path"'));
+    assert.ok(html.includes('Ingest NEMSIS File') && html.includes('Item</span>'));
     assert.ok(html.includes('&quot;id&quot;: &quot;a&quot;'));
+  });
+
+  it('keeps the opened sub-graph in the path, labelled, with a way back to its parent', () => {
+    const html = render('running', ['payers']);
+    assert.ok(html.includes('href="/runs/r1"'));
+    assert.ok(html.includes('Resolve payers</span>'));
+    assert.ok(html.includes('aria-label="Back to Item"'));
   });
 
   it('hides cancel once a run is finished', () => {
@@ -89,7 +116,8 @@ describe('RunPage', () => {
       createElement(RunPage, {
         client: {} as RunsClient,
         live: idleLive,
-        runId: 'r1'
+        runId: 'r1',
+        at: []
       })
     );
     assert.ok(html.includes('aria-label="Loading"'));

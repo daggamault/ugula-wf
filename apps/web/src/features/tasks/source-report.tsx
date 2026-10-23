@@ -1,0 +1,83 @@
+import { elementLabel } from '@ugula/nemsis';
+import { CopyIcon } from 'lucide-react';
+import { useState } from 'react';
+import { formatDateTime } from '../../shared/format.ts';
+import { Alert } from '../../shared/ui/alert.tsx';
+import { Button } from '../../shared/ui/button.tsx';
+import { PageLoading } from '../../shared/ui/page.tsx';
+import { SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { useToast } from '../../shared/ui/toast.tsx';
+import { XmlTree } from '../../shared/ui/xml-tree.tsx';
+import { useResource } from '../../shared/use-resource.ts';
+import type { SourceReport, TasksClient } from './client.ts';
+
+type View = 'tree' | 'xml';
+
+const VIEWS: readonly { value: View; label: string }[] = [
+  { value: 'tree', label: 'Elements' },
+  { value: 'xml', label: 'XML' }
+];
+
+export const SourceReportView = ({ source }: { source: SourceReport }) => {
+  const [view, setView] = useState<View>('tree');
+  const notify = useToast();
+  const copy = async () => {
+    await navigator.clipboard.writeText(source.xml);
+    notify({ title: 'XML copied to the clipboard' });
+  };
+  return (
+    <SectionPanel
+      title="Source Report"
+      description={`Patient care report ${source.report.pcr_number ?? `#${source.report.position + 1}`} from ${source.report.file_name}, received ${formatDateTime(source.report.created_at)}.`}
+      actions={
+        <fieldset className="border-border flex rounded-lg border p-0.5">
+          <legend className="sr-only">Show the report as</legend>
+          {VIEWS.map((v) => (
+            <Button
+              key={v.value}
+              size="sm"
+              variant={view === v.value ? 'solid' : 'outline'}
+              aria-pressed={view === v.value}
+              onClick={() => setView(v.value)}
+            >
+              {v.label}
+            </Button>
+          ))}
+        </fieldset>
+      }
+    >
+      {view === 'tree' ? (
+        <XmlTree
+          label="Source report"
+          rootName="PatientCareReport"
+          value={source.data}
+          labelOf={elementLabel}
+        />
+      ) : (
+        <figure aria-label="Source report XML" className="flex flex-col gap-2">
+          <div>
+            <Button variant="outline" size="sm" onClick={() => void copy()}>
+              <CopyIcon aria-hidden="true" className="size-4" />
+              Copy XML
+            </Button>
+          </div>
+          <pre className="border-border bg-canvas max-h-[32rem] overflow-auto rounded-lg border p-3 font-mono text-xs/6">
+            {source.xml}
+          </pre>
+        </figure>
+      )}
+    </SectionPanel>
+  );
+};
+
+export const SourceReportPanel = ({
+  client,
+  reportId
+}: {
+  client: TasksClient;
+  reportId: string;
+}) => {
+  const report = useResource(`source-report:${reportId}`, () => client.report(reportId));
+  if (report.error) return <Alert>{report.error.message}</Alert>;
+  return report.data ? <SourceReportView source={report.data} /> : <PageLoading />;
+};

@@ -3,7 +3,15 @@ import { describe, it } from 'node:test';
 import { ENTRY_TYPE, type GraphDef, type RunState } from '@ugula/graph';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import type { RunDetail, RunStep, RunSummary } from './client.ts';
-import { cursorsOf, graphAt, pathOf, runsStartedBy, statusAt } from './inspect.ts';
+import {
+  cursorsOf,
+  graphAt,
+  parseAt,
+  pathOf,
+  runPath,
+  runsStartedBy,
+  statusAt
+} from './inspect.ts';
 
 const child: GraphDef = {
   signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
@@ -82,5 +90,14 @@ describe('run inspection', () => {
       ['c1', 'c3']
     );
     assert.deepEqual(runsStartedBy(detail, [], '', 'review'), []);
+  });
+});
+
+describe('run paths', () => {
+  it('round-trips the opened sub-graphs through the URL', () => {
+    assert.equal(runPath('r1'), '/runs/r1');
+    assert.equal(runPath('r1', ['payers', 'each']), '/runs/r1?at=payers/each');
+    assert.deepEqual(parseAt('payers/each'), ['payers', 'each']);
+    assert.deepEqual(parseAt(null), []);
   });
 });
