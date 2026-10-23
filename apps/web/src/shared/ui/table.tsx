@@ -180,14 +180,7 @@ const rowClasses =
   'border-border bg-surface flex flex-col gap-2.5 rounded-xl border p-4 md:table-row md:rounded-none md:border-0 md:border-b md:bg-transparent md:p-0';
 
 export const TableRow = ({ children }: { children: ReactNode }) => (
-  <tr
-    className={classNamesOf(
-      rowClasses,
-      'md:hover:bg-surface-fg/3 transition-colors duration-150 md:last:border-b-0'
-    )}
-  >
-    {positioned(children)}
-  </tr>
+  <tr className={classNamesOf(rowClasses, 'md:last:border-b-0')}>{positioned(children)}</tr>
 );
 
 type TableCellKind = 'text' | 'numeric' | 'date' | 'actions';

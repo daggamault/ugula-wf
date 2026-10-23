@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { pinKindOf, toneOf } from './pins.ts';
+import { describeType, pinKindOf, toneOf } from './pins.ts';
 
 describe('pin tones', () => {
   it('classify value types and give each a distinct color', () => {
@@ -10,5 +10,18 @@ describe('pin tones', () => {
     assert.ok(toneOf('number').dot.includes('emerald'));
     assert.ok(toneOf({ list: 'any' }).edge.includes('stroke-sky-500'));
     assert.notEqual(toneOf('string').dot, toneOf('integer').dot);
+  });
+});
+
+describe('describeType', () => {
+  it('names value types in plain words', () => {
+    assert.equal(describeType('integer'), 'Whole number');
+    assert.equal(describeType({ list: 'string' }), 'List of text');
+    assert.equal(describeType({ list: { list: 'boolean' } }), 'List of list of yes or no');
+    assert.equal(
+      describeType({ object: { bucket: 'string', key: 'string' } }),
+      'Record with bucket, key'
+    );
+    assert.equal(describeType({ object: {} }), 'Record');
   });
 });

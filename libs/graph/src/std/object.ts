@@ -50,7 +50,7 @@ export const objectNodes: NodeDef[] = [
     type: 'std.object.make',
     title: 'Make Object',
     category: CATEGORY,
-    description: 'Builds an object from typed fields.',
+    description: 'Builds an object from the fields you define, each with its own input.',
     config: fieldsConfig,
     inputs: (c) => fieldPins(c, true),
     outputs: (c) => [
@@ -73,7 +73,7 @@ export const objectNodes: NodeDef[] = [
     type: 'std.object.merge',
     title: 'Merge',
     category: CATEGORY,
-    description: 'Shallow merge; fields in b win.',
+    description: "Combines two objects into one; when both have a field, b's value is kept.",
     inputs: [pin('a', OBJECT), pin('b', OBJECT)],
     outputs: [pin('object', OBJECT)],
     compute: ({ a, b }) => ({ object: { ...obj(a ?? {}), ...obj(b ?? {}) } })
@@ -82,7 +82,7 @@ export const objectNodes: NodeDef[] = [
     type: 'std.object.keys',
     title: 'Keys',
     category: CATEGORY,
-    description: 'Field names of the object.',
+    description: "Outputs the names of an object's fields as a list.",
     inputs: [pin('object', OBJECT)],
     outputs: [pin('keys', { list: 'string' })],
     compute: ({ object }) => ({ keys: Object.keys(obj(object ?? {})) })
@@ -91,7 +91,7 @@ export const objectNodes: NodeDef[] = [
     type: 'std.object.values',
     title: 'Values',
     category: CATEGORY,
-    description: 'Field values of the object.',
+    description: "Outputs the values of an object's fields as a list.",
     inputs: [pin('object', OBJECT)],
     outputs: [pin('values', { list: 'any' })],
     compute: ({ object }) => ({ values: Object.values(obj(object ?? {})) })
@@ -100,7 +100,7 @@ export const objectNodes: NodeDef[] = [
     type: 'std.object.has',
     title: 'Has Field',
     category: CATEGORY,
-    description: 'True when the object has the field.',
+    description: 'Outputs true when the object has a field with the given name.',
     inputs: [pin('object', 'any', { optional: true }), pin('key', 'string')],
     outputs: [pin('result', 'boolean')],
     compute: ({ object, key }) => ({
@@ -111,7 +111,7 @@ export const objectNodes: NodeDef[] = [
     type: 'std.object.pick',
     title: 'Pick',
     category: CATEGORY,
-    description: 'Only the listed fields.',
+    description: 'Outputs a copy of the object with only the listed fields.',
     inputs: [pin('object', OBJECT), pin('keys', { list: 'string' })],
     outputs: [pin('object', OBJECT)],
     compute: ({ object, keys }) => {
@@ -129,7 +129,7 @@ export const objectNodes: NodeDef[] = [
     type: 'std.object.omit',
     title: 'Omit',
     category: CATEGORY,
-    description: 'All fields except the listed ones.',
+    description: 'Outputs a copy of the object without the listed fields.',
     inputs: [pin('object', OBJECT), pin('keys', { list: 'string' })],
     outputs: [pin('object', OBJECT)],
     compute: ({ object, keys }) => {

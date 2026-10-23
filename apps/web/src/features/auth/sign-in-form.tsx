@@ -61,7 +61,7 @@ export const SignInForm = ({ auth, onSuccess }: SignInFormProps) => {
         {error ? <Alert>{error}</Alert> : null}
         <Button type="submit" isBlock isPending={submitting}>
           <LogInIcon aria-hidden="true" className="size-4" />
-          Sign In
+          Sign in
         </Button>
       </form>
     </Card>

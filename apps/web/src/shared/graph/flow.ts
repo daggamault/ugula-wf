@@ -17,6 +17,7 @@ export type NodeStatus = 'idle' | 'done' | 'error' | 'waiting';
 export type GraphNodeData = {
   instance: NodeInstance;
   title: string;
+  description: string;
   signature: Signature | null;
   connected: string[];
   status: NodeStatus;
@@ -96,6 +97,7 @@ export const toFlow = (
       data: {
         instance: inst,
         title: catalog.titleOf(inst),
+        description: catalog.describe(inst),
         signature,
         connected: def.edges.filter((e) => e.to === inst.id).map((e) => e.toPin),
         status: status[inst.id] ?? 'idle',

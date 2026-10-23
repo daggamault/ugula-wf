@@ -50,7 +50,7 @@ export const logicNodes: NodeDef[] = [
     type: 'std.logic.equal',
     title: 'Equal',
     category: CATEGORY,
-    description: 'True when a and b are deeply equal.',
+    description: 'Outputs true when both inputs hold the same value, including lists and objects.',
     inputs: [pin('a', 'any', { optional: true }), pin('b', 'any', { optional: true })],
     outputs: [pin('result', 'boolean')],
     compute: ({ a, b }) => ({ result: deepEqual(a ?? null, b ?? null) })
@@ -59,7 +59,7 @@ export const logicNodes: NodeDef[] = [
     type: 'std.logic.not-equal',
     title: 'Not Equal',
     category: CATEGORY,
-    description: 'True when a and b differ.',
+    description: 'Outputs true when the two inputs hold different values.',
     inputs: [pin('a', 'any', { optional: true }), pin('b', 'any', { optional: true })],
     outputs: [pin('result', 'boolean')],
     compute: ({ a, b }) => ({ result: !deepEqual(a ?? null, b ?? null) })
@@ -68,14 +68,19 @@ export const logicNodes: NodeDef[] = [
   compareNode('greater-or-equal', 'Greater Or Equal', (a, b) => a >= b),
   compareNode('less', 'Less Than', (a, b) => a < b),
   compareNode('less-or-equal', 'Less Or Equal', (a, b) => a <= b),
-  boolNode('and', 'And', 'True when both are true.', (a, b) => a && b),
-  boolNode('or', 'Or', 'True when either is true.', (a, b) => a || b),
-  boolNode('xor', 'Xor', 'True when exactly one is true.', (a, b) => a !== b),
+  boolNode('and', 'And', 'Outputs true only when both inputs are true.', (a, b) => a && b),
+  boolNode('or', 'Or', 'Outputs true when at least one input is true.', (a, b) => a || b),
+  boolNode(
+    'xor',
+    'Xor',
+    'Outputs true when exactly one of the two inputs is true.',
+    (a, b) => a !== b
+  ),
   pureNode({
     type: 'std.logic.not',
     title: 'Not',
     category: CATEGORY,
-    description: 'Inverts a boolean.',
+    description: 'Outputs the opposite of a true or false input.',
     inputs: [pin('value', 'boolean')],
     outputs: [pin('result', 'boolean')],
     compute: ({ value }) => ({ result: value !== true })
@@ -84,7 +89,7 @@ export const logicNodes: NodeDef[] = [
     type: 'std.logic.is-null',
     title: 'Is Null',
     category: CATEGORY,
-    description: 'True when the value is missing.',
+    description: 'Outputs true when the input has no value.',
     inputs: [pin('value', 'any', { optional: true })],
     outputs: [pin('result', 'boolean')],
     compute: ({ value }) => ({ result: value === null })
@@ -93,7 +98,7 @@ export const logicNodes: NodeDef[] = [
     type: 'std.logic.coalesce',
     title: 'Coalesce',
     category: CATEGORY,
-    description: 'The first value that is not null.',
+    description: 'Outputs the first input that has a value, skipping empty ones.',
     inputs: [pin('value', 'any', { optional: true }), pin('fallback', 'any', { optional: true })],
     outputs: [pin('result', 'any')],
     compute: ({ value, fallback }) => ({ result: value ?? fallback ?? null })

@@ -326,7 +326,7 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       version: 1,
       title: 'Find Patient',
       category: 'Billing',
-      description: 'Loads an existing patient by id.',
+      description: 'Loads an existing patient by id, such as the one a biller picked in a task.',
       effect: false,
       signature: action([{ name: 'patientId', type: 'string' }], [PATIENT_OUT]),
       run: async ({ read, ctx }) => {

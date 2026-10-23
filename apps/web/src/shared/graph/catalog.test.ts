@@ -53,7 +53,7 @@ describe('createCatalog', () => {
       version: 1,
       title: 'Clamp',
       category: 'Math',
-      description: 'Standard composite node.'
+      description: 'Keeps a number between a minimum and a maximum.'
     });
     assert.deepEqual(
       find('acme.score').map((p) => p.version),
@@ -95,6 +95,20 @@ describe('createCatalog', () => {
       catalog.titleOf({ id: 'z', type: 'acme.match-patient', version: 1 }),
       'Match Patient'
     );
+    assert.match(catalog.describe({ id: 'a', type: 'std.math.add', version: 1 }), /\w/);
+    assert.match(
+      catalog.describe({ id: 'e', type: ENTRY_TYPE, version: 1 }),
+      /^Where this graph starts/
+    );
+    assert.equal(
+      catalog.describe({ id: 'c', type: 'std.math.clamp', version: 1 }),
+      'Keeps a number between a minimum and a maximum.'
+    );
+    assert.equal(catalog.titleOf({ id: 'c', type: 'std.math.clamp', version: 1 }), 'Clamp');
+    assert.equal(catalog.describe({ id: 'z', type: 'nope', version: 1 }), '');
+    assert.equal(catalog.hasConfig({ id: 'x', type: 'std.expr', version: 1 }), true);
+    assert.equal(catalog.hasConfig({ id: 'a', type: 'std.math.add', version: 1 }), false);
+    assert.ok(!createCatalog().palette.some((e) => !e.description.endsWith('.')));
     assert.equal(catalog.graphOf({ type: 'acme.full', version: 1 }), owner);
     assert.ok(catalog.graphOf({ type: 'std.math.average', version: 1 }));
     assert.equal(titleFromKey('demo.line-total'), 'Line Total');

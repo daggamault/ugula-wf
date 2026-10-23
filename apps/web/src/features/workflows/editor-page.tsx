@@ -1,5 +1,12 @@
 import type { GraphDef, Issue } from '@ugula/graph';
-import { PencilIcon, PlayIcon, SaveIcon, UploadIcon } from 'lucide-react';
+import {
+  PencilIcon,
+  PlayIcon,
+  PlusIcon,
+  SaveIcon,
+  SlidersHorizontalIcon,
+  UploadIcon
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { isApiError, messageOf } from '../../shared/api.ts';
 import { type Catalog, createCatalog, type PaletteEntry } from '../../shared/graph/catalog.ts';
@@ -16,9 +23,9 @@ import { NativeSelect } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { GraphDetail, WorkflowsClient } from './client.ts';
-import { GraphPanel } from './graph-panel.tsx';
-import { NodePanel } from './node-panel.tsx';
-import { Palette } from './palette.tsx';
+import { GraphSettings } from './graph-settings.tsx';
+import { NodeInspector } from './node-inspector.tsx';
+import { NodePicker } from './node-picker.tsx';
 import { graphPath, type TrailStep } from './trail.ts';
 
 export type EditorPageProps = {
@@ -69,6 +76,7 @@ export const EditorView = ({
   const [dirty, setDirty] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<'add' | 'settings' | null>(null);
   const [busy, setBusy] = useState<'save' | 'publish' | null>(null);
   const [error, setError] = useState('');
   const notify = useToast();
@@ -147,7 +155,21 @@ export const EditorView = ({
     });
     change(placed.def);
     setSelected(placed.id);
+    setDialog(null);
+    notify({
+      key: 'node-added',
+      title: `${entry.title} added`,
+      description: 'Drag from its pins to connect it to the rest of the graph.'
+    });
   };
+  const graphIssues = issues.filter((i) => !i.node);
+  const howTo = editable
+    ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them.'
+    : graph.tenant_id === null
+      ? 'Built-in workflows are read-only. Select a node to see what it does.'
+      : draft
+        ? `Published versions are read-only. Open draft v${draft.version} to make changes.`
+        : 'Published versions are read-only. Edit as a new draft to make changes.';
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -170,6 +192,16 @@ export const EditorView = ({
         }
         actions={
           <>
+            {editable ? (
+              <Button onClick={() => setDialog('add')}>
+                <PlusIcon aria-hidden="true" className="size-4" />
+                Add node
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={() => setDialog('settings')}>
+              <SlidersHorizontalIcon aria-hidden="true" className="size-4" />
+              Graph settings
+            </Button>
             <div className="w-36">
               <NativeSelect
                 aria-label="Version"
@@ -229,16 +261,21 @@ export const EditorView = ({
           </>
         }
       />
-      {error ? (
-        <div className="px-4 py-3">
-          <Alert>{error}</Alert>
+      <p className="border-border bg-surface text-surface-fg-muted border-b px-4 py-2 text-xs">
+        {howTo}
+      </p>
+      {error || graphIssues.length ? (
+        <div className="flex flex-col gap-2 px-4 py-3">
+          {error ? <Alert>{error}</Alert> : null}
+          {graphIssues.map((issue) => (
+            <Alert key={issue.message} intent="warning">
+              {issue.message}
+            </Alert>
+          ))}
         </div>
       ) : null}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[15rem_minmax(0,1fr)_22rem]">
-        <aside className="border-border bg-surface order-2 max-h-80 overflow-y-auto border-t lg:order-1 lg:max-h-none lg:border-t-0 lg:border-r">
-          <Palette entries={catalog.palette} disabled={!editable} onAdd={add} />
-        </aside>
-        <div className="order-1 h-[60dvh] lg:order-2 lg:h-auto">
+      <div className="relative min-h-0 flex-1">
+        <div className="absolute inset-0">
           <GraphCanvas
             def={def}
             catalog={catalog}
@@ -249,9 +286,9 @@ export const EditorView = ({
             {...(editable ? { onChange: change } : {})}
           />
         </div>
-        <aside className="border-border bg-surface order-3 overflow-y-auto border-t lg:border-t-0 lg:border-l">
-          {node ? (
-            <NodePanel
+        {node ? (
+          <div className="border-border bg-surface absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l shadow-2xl sm:w-96">
+            <NodeInspector
               key={node.id}
               def={def}
               node={node}
@@ -262,18 +299,28 @@ export const EditorView = ({
                 change(removeNodes(def, [node.id]));
                 setSelected(null);
               }}
+              onOpen={catalog.publishedOf(node) ? () => openNode(node.id) : undefined}
+              onClose={() => setSelected(null)}
             />
-          ) : (
-            <GraphPanel
-              key={version}
-              def={def}
-              issues={issues.filter((i) => !i.node)}
-              editable={editable}
-              onChange={change}
-            />
-          )}
-        </aside>
+          </div>
+        ) : null}
       </div>
+      {editable ? (
+        <NodePicker
+          open={dialog === 'add'}
+          entries={catalog.palette}
+          onAdd={add}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
+      <GraphSettings
+        key={version}
+        open={dialog === 'settings'}
+        def={def}
+        editable={editable}
+        onChange={change}
+        onClose={() => setDialog(null)}
+      />
     </section>
   );
 };

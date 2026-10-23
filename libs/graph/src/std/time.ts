@@ -28,7 +28,7 @@ export const timeNodes: NodeDef[] = [
     type: 'std.time.now',
     title: 'Now',
     category: CATEGORY,
-    description: 'The current time of this run step.',
+    description: 'Outputs the current date and time, fixed for the current step so retries agree.',
     inputs: [],
     outputs: [pin('now', 'datetime')],
     compute: (_, __, ctx) => ({ now: ctx.now.toISOString() })
@@ -73,7 +73,7 @@ export const timeNodes: NodeDef[] = [
     type: 'std.time.parts',
     title: 'Date Parts',
     category: CATEGORY,
-    description: 'Splits a UTC date/time into its parts.',
+    description: 'Splits a date and time into year, month, day, hour and minute, in UTC.',
     inputs: [pin('time', 'datetime')],
     outputs: [
       pin('date', 'string'),

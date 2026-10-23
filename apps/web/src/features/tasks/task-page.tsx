@@ -265,7 +265,10 @@ export const TaskView = ({
               </div>
             </aside>
           ) : null}
-          <SectionPanel title="Details">
+          <SectionPanel
+            title="Details"
+            description="Everything the workflow knew when it asked for this decision."
+          >
             <ContextView label="Task context" value={task.context} />
           </SectionPanel>
           {source}
@@ -276,7 +279,7 @@ export const TaskView = ({
           ) : open ? (
             <Decision key={task.id} task={task} onComplete={complete} />
           ) : (
-            <SectionPanel title="Decision">
+            <SectionPanel title="Decision" description="How this task was settled.">
               <Alert intent={task.status === 'completed' ? 'success' : 'warning'}>
                 {task.status === 'completed'
                   ? `Completed ${formatDateTime(task.completed_at)} as “${humanize(task.resolution?.outcome ?? '')}”.`

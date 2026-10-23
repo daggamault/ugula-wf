@@ -32,7 +32,7 @@ const testNode = (key: string, title: string, fn: (s: string, part: string) => b
     type: `std.text.${key}`,
     title,
     category: CATEGORY,
-    description: `True when the text ${title.toLowerCase()} the part.`,
+    description: `Outputs true when the text ${title.toLowerCase()} the given part.`,
     inputs: [pin('text', 'string'), pin('part', 'string')],
     outputs: [pin('result', 'boolean')],
     compute: ({ text, part }) => ({ result: fn(text as string, part as string) })
@@ -57,14 +57,16 @@ export const textNodes: NodeDef[] = [
     type: 'std.text.length',
     title: 'Length',
     category: CATEGORY,
-    description: 'Number of characters.',
+    description: 'Outputs how many characters the text has.',
     inputs: [pin('text', 'string')],
     outputs: [pin('length', 'integer')],
     compute: ({ text }) => ({ length: (text as string).length })
   }),
-  textNode('upper', 'Upper Case', 'Converts to upper case.', (s) => s.toUpperCase()),
-  textNode('lower', 'Lower Case', 'Converts to lower case.', (s) => s.toLowerCase()),
-  textNode('trim', 'Trim', 'Removes surrounding whitespace.', (s) => s.trim()),
+  textNode('upper', 'Upper Case', 'Outputs the text in upper case.', (s) => s.toUpperCase()),
+  textNode('lower', 'Lower Case', 'Outputs the text in lower case.', (s) => s.toLowerCase()),
+  textNode('trim', 'Trim', 'Removes spaces and line breaks from both ends of the text.', (s) =>
+    s.trim()
+  ),
   testNode('contains', 'Contains', (s, p) => s.includes(p)),
   testNode('starts-with', 'Starts With', (s, p) => s.startsWith(p)),
   testNode('ends-with', 'Ends With', (s, p) => s.endsWith(p)),
@@ -87,7 +89,7 @@ export const textNodes: NodeDef[] = [
     type: 'std.text.split',
     title: 'Split',
     category: CATEGORY,
-    description: 'Splits text by a separator.',
+    description: 'Splits text into a list wherever the separator appears.',
     inputs: [pin('text', 'string'), pin('separator', 'string', { default: ',' })],
     outputs: [pin('parts', { list: 'string' })],
     compute: ({ text, separator }) => ({ parts: (text as string).split(separator as string) })

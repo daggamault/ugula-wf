@@ -19,7 +19,7 @@ export const convertNodes: NodeDef[] = [
     type: 'std.value',
     title: 'Constant',
     category: CATEGORY,
-    description: 'A fixed typed value.',
+    description: 'Outputs a fixed value you type in, such as a number, some text or a list.',
     config: constantConfig,
     inputs: [],
     outputs: ({ type }) => [pin('value', type)],
@@ -38,7 +38,7 @@ export const convertNodes: NodeDef[] = [
     type: 'std.convert.to-text',
     title: 'To Text',
     category: CATEGORY,
-    description: 'Formats any value as text.',
+    description: 'Turns any value into readable text.',
     inputs: [pin('value', 'any', { optional: true })],
     outputs: [pin('text', 'string')],
     compute: ({ value }) => ({ text: toText(value ?? null) })
@@ -64,7 +64,7 @@ export const convertNodes: NodeDef[] = [
     type: 'std.convert.parse-json',
     title: 'Parse JSON',
     category: CATEGORY,
-    description: 'Parses JSON text.',
+    description: 'Turns JSON text into a value the graph can use.',
     inputs: [pin('text', 'string')],
     outputs: [pin('value', 'any')],
     compute: ({ text }) => {
@@ -79,7 +79,7 @@ export const convertNodes: NodeDef[] = [
     type: 'std.convert.to-json',
     title: 'To JSON',
     category: CATEGORY,
-    description: 'Serializes a value to JSON text.',
+    description: 'Turns any value into JSON text, for example to send it over HTTP.',
     inputs: [pin('value', 'any', { optional: true })],
     outputs: [pin('text', 'string')],
     compute: ({ value }) => ({ text: JSON.stringify(value ?? null) })

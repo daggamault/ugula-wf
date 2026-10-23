@@ -90,7 +90,7 @@ const NavMenu = ({ navItems, userEmail, status, onSignOut }: NavMenuProps) => (
       <span className="min-w-0 flex-1 truncate text-sm font-semibold" title={userEmail}>
         {userEmail}
       </span>
-      <IconButton label="Sign Out" icon={LogOutIcon} tooltipSide="top" onClick={onSignOut} />
+      <IconButton label="Sign out" icon={LogOutIcon} tooltipSide="top" onClick={onSignOut} />
     </div>
   </div>
 );

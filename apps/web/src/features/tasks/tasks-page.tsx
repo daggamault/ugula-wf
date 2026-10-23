@@ -1,4 +1,4 @@
-import { ArrowRightIcon, FileUpIcon } from 'lucide-react';
+import { FileUpIcon, PlayIcon } from 'lucide-react';
 import { messageOf } from '../../shared/api.ts';
 import { formatAgo, formatDateTime } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
@@ -96,8 +96,8 @@ export const QueuesTable = ({
               disabledReason={q.unassigned ? undefined : 'Everything here is claimed by someone.'}
               onClick={() => onStart(q.queue)}
             >
+              <PlayIcon aria-hidden="true" className="size-4" />
               Start
-              <ArrowRightIcon aria-hidden="true" className="size-4" />
             </Button>
           </TableCell>
         </TableRow>

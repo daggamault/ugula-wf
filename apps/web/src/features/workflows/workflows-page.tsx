@@ -2,9 +2,8 @@ import { PlayIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
-import { Button } from '../../shared/ui/button.tsx';
+import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { EmptyState, emptyValue } from '../../shared/ui/empty-state.tsx';
-import { IconLink } from '../../shared/ui/icon-button.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
@@ -69,12 +68,15 @@ export const WorkflowsTable = ({
         <TableCell isMuted>{g.draftVersion ? `v${g.draftVersion}` : emptyValue}</TableCell>
         <TableCell kind="actions">
           {g.kind === 'workflow' && g.publishedVersion ? (
-            <IconLink
+            <ButtonLink
               to={`/runs/new?graph=${g.id}`}
-              label={`Run ${g.name}`}
-              icon={PlayIcon}
-              tooltipSide="left"
-            />
+              variant="outline"
+              size="sm"
+              aria-label={`Run ${g.name}`}
+            >
+              <PlayIcon aria-hidden="true" className="size-4" />
+              Run
+            </ButtonLink>
           ) : null}
         </TableCell>
       </TableRow>
@@ -93,7 +95,7 @@ export const WorkflowsPage = ({ client }: WorkflowsPageProps) => {
       actions={
         <Button onClick={() => setCreating(true)}>
           <PlusIcon aria-hidden="true" className="size-4" />
-          New Graph
+          New graph
         </Button>
       }
     >

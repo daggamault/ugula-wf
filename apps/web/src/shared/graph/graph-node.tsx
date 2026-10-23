@@ -1,7 +1,7 @@
-import { formatType, type InputBinding, type PinSpec } from '@ugula/graph';
+import type { InputBinding, PinSpec } from '@ugula/graph';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
 import type { GraphFlowNode, NodeStatus } from './flow.ts';
-import { toneOf } from './pins.ts';
+import { describeType, toneOf } from './pins.ts';
 
 type Pin = { name: string; label: string; exec: boolean; spec?: PinSpec };
 
@@ -41,7 +41,7 @@ const PinRow = ({
 }) => (
   <li
     className={`text-surface-fg-muted relative flex min-h-6 items-center gap-2 text-xs ${side === 'in' ? 'pr-2 pl-4' : 'justify-end pr-4 pl-2'}`}
-    title={pin.spec ? `${pin.name}: ${formatType(pin.spec.type)}` : pin.name}
+    title={pin.spec ? `${pin.label}: ${describeType(pin.spec.type)}` : 'Execution flow'}
   >
     <Handle
       type={side === 'in' ? 'target' : 'source'}
@@ -59,19 +59,26 @@ const PinRow = ({
 );
 
 export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
-  const { instance, signature, title, status, issues, opens, connected } = data;
+  const { instance, signature, title, description, status, issues, opens, connected } = data;
   const inputs = signature ? pinsOf(signature.execIn, signature.inputs) : [];
   const outputs = signature ? pinsOf(signature.execOut, signature.outputs) : [];
   return (
     <article
       aria-label={title}
-      className={`bg-surface text-surface-fg min-w-48 rounded-xl border-2 text-left shadow-sm transition-shadow ${statusClasses[status]} ${selected ? 'ring-primary shadow-lg ring-2' : ''}`}
+      className={`bg-surface text-surface-fg w-60 cursor-pointer rounded-xl border-2 text-left shadow-sm transition-shadow ${statusClasses[status]} ${selected ? 'ring-primary shadow-lg ring-2' : ''}`}
     >
-      <header className="border-border bg-canvas flex items-center justify-between gap-3 rounded-t-[10px] border-b px-3 py-1.5">
-        <span className="truncate text-sm font-semibold">{title}</span>
-        {opens ? (
-          <span className="text-primary text-[10px] font-semibold tracking-wide uppercase">
-            {opens === 'graph' ? 'Sub-graph' : 'Workflow'}
+      <header className="border-border bg-canvas flex flex-col gap-0.5 rounded-t-[10px] border-b px-3 py-1.5">
+        <span className="flex items-center justify-between gap-3">
+          <span className="truncate text-sm font-semibold">{title}</span>
+          {opens ? (
+            <span className="text-primary shrink-0 text-[10px] font-semibold tracking-wide uppercase">
+              {opens === 'graph' ? 'Sub-graph' : 'Workflow'}
+            </span>
+          ) : null}
+        </span>
+        {description ? (
+          <span className="text-surface-fg-muted line-clamp-2 text-[11px] leading-snug">
+            {description}
           </span>
         ) : null}
       </header>

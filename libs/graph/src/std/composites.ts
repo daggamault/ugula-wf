@@ -64,4 +64,15 @@ export const stdGraphs: Record<string, GraphDef> = {
   'std.math.average@1': averageGraph
 };
 
+export const stdGraphInfo: Readonly<Record<string, { title: string; description: string }>> = {
+  'std.math.clamp@1': {
+    title: 'Clamp',
+    description: 'Keeps a number between a minimum and a maximum.'
+  },
+  'std.math.average@1': {
+    title: 'Average',
+    description: 'Adds up a list of numbers and divides by how many there are.'
+  }
+};
+
 export const stdGraphSource: GraphSource = (ref) => stdGraphs[refKey(ref)];

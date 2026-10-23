@@ -267,7 +267,7 @@ export const SubmissionsPage = ({ client, live }: SubmissionsPageProps) => {
           intent="warning"
           action={
             <ButtonLink to="/settings" variant="outline" size="sm">
-              Open Settings
+              Open settings
             </ButtonLink>
           }
         >

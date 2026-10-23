@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { RETURN_TYPE } from '../compile.ts';
 import { createEngine } from '../engine.ts';
 import type { GraphDef } from '../types.ts';
-import { averageGraph, clampGraph, stdGraphSource } from './composites.ts';
+import { averageGraph, clampGraph, stdGraphInfo, stdGraphSource, stdGraphs } from './composites.ts';
 import { createStdNodes } from './index.ts';
 
 const harness = (type: string): GraphDef => {
@@ -51,5 +51,13 @@ describe('std composites', () => {
     assert.equal(await evaluate('std.math.clamp', { value: 15, min: 0, max: 10 }), 10);
     assert.equal(await evaluate('std.math.average', { values: [2, 4, 9] }), 5);
     assert.match(String(await evaluate('std.math.average', { values: [] })), /division by zero/);
+  });
+});
+
+describe('stdGraphInfo', () => {
+  it('names and describes every standard composite', () => {
+    assert.deepEqual(Object.keys(stdGraphInfo), Object.keys(stdGraphs));
+    for (const info of Object.values(stdGraphInfo))
+      assert.ok(info.title && info.description.endsWith('.'));
   });
 });

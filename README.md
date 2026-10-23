@@ -155,6 +155,11 @@ This repository enforces strict, consistent standards across all applications, l
 - **Interactive Affordances:**
   - All interactive and clickable elements (`<button>`, `<a>`, clickable cards/rows, toggles) must explicitly include `cursor-pointer` when enabled and clear disabled states when inactive.
   - Incorporate smooth, subtle transitions and micro-animations for state changes, hover/focus feedback, and layout transitions.
+- **One Way to Do Each Thing:**
+  - Each destination has exactly one link: in tables, the row's name is the link. Never add an "Open" button or icon that goes to the same place.
+  - Hover feedback belongs only on things that react to a click. Rows, cards and panels that do nothing stay still.
+  - Actions are text buttons with a leading icon (`Edit`, `Delete`, `Run`). Icon-only buttons are reserved for chrome that every app shares: close, dismiss, back, menu, theme, sign out and reorder arrows. Each one carries a tooltip.
+  - Every page and section has a title and one plain sentence saying what it is for. Field hints are the only other help text.
 - **Mobile-First & Fully Responsive:** Design layouts starting from mobile viewports upward, ensuring fluid usability across mobile, tablet, and desktop breakpoints.
 - **WCAG Compliance:** Meet WCAG AA accessibility standards at minimum—maintain proper color contrast ratios, visible focus rings, keyboard navigability, and accurate ARIA attributes where native semantics do not suffice.
 

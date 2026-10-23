@@ -56,14 +56,16 @@ describe('EditorView', () => {
     assert.ok(html.includes('>Save<'));
     assert.ok(html.includes('>Publish<'));
     assert.ok(html.includes('href="/runs/new?graph=g1"'));
-    assert.ok(html.includes('aria-label="Node palette"'));
-    assert.ok(html.includes('Graph</h2>'));
+    assert.ok(html.includes('Add node') && html.includes('Graph settings'));
+    assert.ok(html.includes('Drag from one pin to another'));
   });
 
   it('offers a new draft from published versions and locks system graphs', () => {
     const published = render(detail('t-1', true), 2);
     assert.ok(published.includes('Edit as new draft'));
     assert.ok(!published.includes('>Publish<'));
+    assert.ok(!published.includes('Add node'));
+    assert.ok(published.includes('Published versions are read-only. Edit as a new draft'));
     const system = render(detail(null, true), 1);
     assert.ok(system.includes('System'));
     assert.ok(!system.includes('Edit as new draft'));

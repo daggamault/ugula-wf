@@ -60,9 +60,16 @@ const sortKey = (v: Json) =>
 const items = (v: Values) => v.list as Json[];
 
 export const listNodes: NodeDef[] = [
-  listNode('length', 'Length', 'Number of items.', [], [pin('length', 'integer')], (v) => ({
-    length: items(v).length
-  })),
+  listNode(
+    'length',
+    'Length',
+    'Outputs how many items a list has.',
+    [],
+    [pin('length', 'integer')],
+    (v) => ({
+      length: items(v).length
+    })
+  ),
   listNode(
     'get',
     'Get Item',
@@ -71,12 +78,26 @@ export const listNodes: NodeDef[] = [
     [pin('item', 'any')],
     (v) => ({ item: items(v).at(v.index as number) ?? null })
   ),
-  listNode('first', 'First', 'The first item.', [], [pin('item', 'any')], (v) => ({
-    item: items(v)[0] ?? null
-  })),
-  listNode('last', 'Last', 'The last item.', [], [pin('item', 'any')], (v) => ({
-    item: items(v).at(-1) ?? null
-  })),
+  listNode(
+    'first',
+    'First',
+    'Outputs the first item of a list, or nothing when the list is empty.',
+    [],
+    [pin('item', 'any')],
+    (v) => ({
+      item: items(v)[0] ?? null
+    })
+  ),
+  listNode(
+    'last',
+    'Last',
+    'Outputs the last item of a list, or nothing when the list is empty.',
+    [],
+    [pin('item', 'any')],
+    (v) => ({
+      item: items(v).at(-1) ?? null
+    })
+  ),
   listNode(
     'append',
     'Append',
@@ -88,7 +109,7 @@ export const listNodes: NodeDef[] = [
   listNode(
     'concat',
     'Concat',
-    'Joins two lists.',
+    "Joins two lists into one, with the first list's items first.",
     [pin('other', ANY_LIST)],
     [pin('list', ANY_LIST)],
     (v) => ({ list: [...items(v), ...(v.other as Json[])] })
@@ -106,7 +127,7 @@ export const listNodes: NodeDef[] = [
   listNode(
     'contains',
     'Contains',
-    'True when the list holds an equal item.',
+    'Outputs true when the list holds an item equal to the one given.',
     [pin('item', 'any', { optional: true })],
     [pin('result', 'boolean')],
     (v) => ({ result: items(v).some((x) => deepEqual(x, v.item ?? null)) })
@@ -114,21 +135,35 @@ export const listNodes: NodeDef[] = [
   listNode(
     'index-of',
     'Index Of',
-    'Index of the first equal item, or -1.',
+    'Outputs the position of the first equal item, counting from 0, or -1 when there is none.',
     [pin('item', 'any', { optional: true })],
     [pin('index', 'integer')],
     (v) => ({ index: items(v).findIndex((x) => deepEqual(x, v.item ?? null)) })
   ),
-  listNode('reverse', 'Reverse', 'Items in reverse order.', [], [pin('list', ANY_LIST)], (v) => ({
-    list: [...items(v)].reverse()
-  })),
-  listNode('unique', 'Unique', 'Removes duplicate items.', [], [pin('list', ANY_LIST)], (v) => ({
-    list: items(v).filter((x, i, all) => all.findIndex((y) => deepEqual(x, y)) === i)
-  })),
+  listNode(
+    'reverse',
+    'Reverse',
+    'Outputs the list in reverse order.',
+    [],
+    [pin('list', ANY_LIST)],
+    (v) => ({
+      list: [...items(v)].reverse()
+    })
+  ),
+  listNode(
+    'unique',
+    'Unique',
+    'Outputs the list with duplicate items removed, keeping the first of each.',
+    [],
+    [pin('list', ANY_LIST)],
+    (v) => ({
+      list: items(v).filter((x, i, all) => all.findIndex((y) => deepEqual(x, y)) === i)
+    })
+  ),
   listNode(
     'flatten',
     'Flatten',
-    'Flattens nested lists one level.',
+    'Turns a list of lists into a single list.',
     [],
     [pin('list', ANY_LIST)],
     (v) => ({
@@ -169,7 +204,7 @@ export const listNodes: NodeDef[] = [
   lambdaNode(
     'find',
     'Find',
-    'First item where the expression holds.',
+    'Outputs the first item for which the expression is true, or nothing when none is.',
     [pin('item', 'any'), pin('found', 'boolean')],
     (xs, each) => {
       const i = xs.findIndex((x, j) => isTruthy(each(x, j)));

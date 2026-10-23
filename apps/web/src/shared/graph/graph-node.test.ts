@@ -34,6 +34,7 @@ const base: GraphNodeData = {
     inputs: { a: { value: 12 }, b: { expr: 'total * 2' } }
   },
   title: 'Add',
+  description: 'Adds two numbers (a + b).',
   signature: {
     execIn: ['exec'],
     execOut: ['then', 'failed'],
@@ -55,7 +56,9 @@ describe('GraphNode', () => {
     assert.ok(html.includes('aria-label="Add"'));
     assert.ok(html.includes('data-handleid="a"'));
     assert.ok(html.includes('data-handleid="failed"'));
-    assert.ok(html.includes('title="a: number"'));
+    assert.ok(html.includes('title="a: Number"'));
+    assert.ok(html.includes('title="Execution flow"'));
+    assert.ok(html.includes('Adds two numbers (a + b).'));
     assert.ok(html.includes('>12<'));
     assert.ok(!html.includes('total * 2'));
     assert.ok(html.includes('bg-emerald-500'));

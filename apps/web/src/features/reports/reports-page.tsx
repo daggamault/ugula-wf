@@ -1,9 +1,9 @@
-import { ArrowRightIcon, DownloadIcon, PlayIcon } from 'lucide-react';
+import { DownloadIcon, PlayIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { formatDate } from '../../shared/format.ts';
 import { navigate, useLocation } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
-import { Button, ButtonLink } from '../../shared/ui/button.tsx';
+import { Button } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
@@ -61,15 +61,7 @@ export const ReportsPage = () => {
       title="Reports"
       description="Receivables, collections and payer performance, straight from your claims. Pick a report, set its options and run it."
     >
-      <Table
-        label="Reports"
-        sorting={table}
-        head={[
-          { label: 'Report', sort: 'title' },
-          'Options',
-          { label: 'Actions', isLabelHidden: true, isCompact: true }
-        ]}
-      >
+      <Table label="Reports" sorting={table} head={[{ label: 'Report', sort: 'title' }, 'Options']}>
         {page.items.map((r) => (
           <TableRow key={r.id}>
             <TableCell>
@@ -80,12 +72,6 @@ export const ReportsPage = () => {
             </TableCell>
             <TableCell isMuted>
               {r.usesPeriod ? 'Service date range' : 'None, as of today'}
-            </TableCell>
-            <TableCell kind="actions">
-              <ButtonLink to={`/reports/${r.id}`} variant="outline" size="sm">
-                Open
-                <ArrowRightIcon aria-hidden="true" className="size-4" />
-              </ButtonLink>
             </TableCell>
           </TableRow>
         ))}

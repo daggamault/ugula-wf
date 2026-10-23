@@ -5,7 +5,6 @@ import {
   Background,
   Controls,
   type Edge,
-  MiniMap,
   ReactFlow
 } from '@xyflow/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -129,7 +128,6 @@ export const GraphCanvas = ({
       >
         <Background gap={24} />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable />
       </ReactFlow>
     </div>
   );

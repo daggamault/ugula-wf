@@ -281,7 +281,7 @@ export const waitUntilNode = defineNode({
   version: 1,
   title: 'Wait Until',
   category: CATEGORY,
-  description: 'Durably waits until a point in time.',
+  description: 'Pauses the run until a date and time, even across restarts, then continues.',
   signature: {
     execIn: ['exec'],
     execOut: ['then'],

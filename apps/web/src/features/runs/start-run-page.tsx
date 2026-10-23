@@ -66,7 +66,7 @@ export const StartRunForm = ({ client, target }: { client: RunsClient; target: S
         <div>
           <Button type="submit" isPending={busy}>
             <PlayIcon aria-hidden="true" className="size-4" />
-            Start Run
+            Start run
           </Button>
         </div>
       </SectionPanel>

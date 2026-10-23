@@ -31,7 +31,7 @@ export {
   valuesSchema,
   valueTypeSchema
 } from './schemas.ts';
-export { stdGraphSource, stdGraphs } from './std/composites.ts';
+export { stdGraphInfo, stdGraphSource, stdGraphs } from './std/composites.ts';
 export { createStdNodes, type StdDeps } from './std/index.ts';
 export type * from './types.ts';
 export { type Issue, validateGraph } from './validate.ts';

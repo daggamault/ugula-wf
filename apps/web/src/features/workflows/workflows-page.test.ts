@@ -42,6 +42,6 @@ describe('WorkflowsPage', () => {
       })
     );
     assert.ok(html.includes('<h1'));
-    assert.ok(html.includes('New Graph'));
+    assert.ok(html.includes('New graph'));
   });
 });

@@ -250,7 +250,7 @@ export const PayersEditor = ({
           onClick={() => void save()}
         >
           <SaveIcon aria-hidden="true" className="size-4" />
-          Save Order
+          Save order
         </Button>
       }
     >
@@ -286,13 +286,17 @@ export const PayersEditor = ({
                   disabledReason={locked ?? (i === list.length - 1 ? 'Already last.' : undefined)}
                   onClick={() => setList(moveItem(list, i, i + 1))}
                 />
-                <IconButton
-                  label={`Remove ${p}`}
-                  icon={Trash2Icon}
+                <Button
                   intent="danger"
+                  variant="outline"
+                  size="sm"
+                  aria-label={`Remove ${p}`}
                   disabledReason={locked}
                   onClick={() => setList(list.filter((x) => x !== p))}
-                />
+                >
+                  <Trash2Icon aria-hidden="true" className="size-4" />
+                  Remove
+                </Button>
               </span>
             </li>
           ))}
@@ -554,7 +558,10 @@ export const ClaimView = ({
     >
       {error ? <Alert>{error}</Alert> : null}
       <CycleAlert claim={claim} progress={progress} onRestart={onRestart} />
-      <SectionPanel title="Summary">
+      <SectionPanel
+        title="Summary"
+        description="What was billed, what is still owed, and the transport it covers."
+      >
         <DetailList>
           <Detail label="Total" isEmphasized>
             {formatCents(claim.total_cents)}

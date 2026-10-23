@@ -7,7 +7,6 @@ import { Badge } from '../../shared/ui/badge.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyState } from '../../shared/ui/empty-state.tsx';
-import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
@@ -84,20 +83,26 @@ export const FeesTable = ({
           {formatDateTime(f.updated_at)}
         </TableCell>
         <TableCell kind="actions">
-          <span className="flex gap-1">
-            <IconButton
-              label={`Edit ${feeName(f)}`}
-              icon={PencilIcon}
-              tooltipSide="left"
+          <span className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={`Edit ${feeName(f)}`}
               onClick={() => onEdit(f)}
-            />
-            <IconButton
-              label={`Delete ${feeName(f)}`}
-              icon={Trash2Icon}
+            >
+              <PencilIcon aria-hidden="true" className="size-4" />
+              Edit
+            </Button>
+            <Button
               intent="danger"
-              tooltipSide="left"
+              variant="outline"
+              size="sm"
+              aria-label={`Delete ${feeName(f)}`}
               onClick={() => onDelete(f)}
-            />
+            >
+              <Trash2Icon aria-hidden="true" className="size-4" />
+              Delete
+            </Button>
           </span>
         </TableCell>
       </TableRow>

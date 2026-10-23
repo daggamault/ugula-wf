@@ -3,12 +3,14 @@ import {
   combineSources,
   createRegistry,
   createStdNodes,
+  ENTRY_TYPE,
   type GraphDef,
   type NodeInstance,
   type NodeRef,
   RETURN_TYPE,
   refKey,
   type Signature,
+  stdGraphInfo,
   stdGraphSource,
   stdGraphs
 } from '@ugula/graph';
@@ -39,6 +41,10 @@ export type Catalog = {
   palette: PaletteEntry[];
   signatureOf: (inst: NodeInstance, owner: GraphDef) => Signature | null;
   titleOf: (inst: NodeInstance) => string;
+  /** What the node does, in a sentence or two. */
+  describe: (inst: NodeInstance) => string;
+  /** Whether the node takes settings beyond its inputs. */
+  hasConfig: (inst: NodeInstance) => boolean;
   graphOf: (ref: NodeRef) => GraphDef | undefined;
   /** What double-clicking the node opens: its own sub-graph, or the workflow it starts as runs. */
   opensAs: (inst: NodeInstance) => 'graph' | 'workflow' | null;
@@ -78,6 +84,12 @@ const categoryOf = (type: string) => {
   return stdNodes.find((d) => d.type.startsWith(`${prefix}.`))?.category ?? 'Composites';
 };
 
+const ENTRY_DESCRIPTION =
+  'Where this graph starts. Its inputs are available from here to every node that needs them.';
+
+const RETURN_DESCRIPTION =
+  'Finishes this graph and hands the values wired into it back as outputs.';
+
 const stub = (signature: Signature): GraphDef => ({
   signature,
   variables: [],
@@ -108,7 +120,7 @@ export const createCatalog = ({ published = [], graphs = [] }: CatalogSources = 
       version: 1,
       title: 'Return',
       category: 'Graph',
-      description: 'Completes this graph through an exec output.'
+      description: RETURN_DESCRIPTION
     },
     ...stdNodes.map((d) => ({
       type: d.type,
@@ -122,9 +134,9 @@ export const createCatalog = ({ published = [], graphs = [] }: CatalogSources = 
       return {
         type,
         version: Number(version),
-        title: titleFromKey(type),
+        title: stdGraphInfo[key]?.title ?? titleFromKey(type),
         category: categoryOf(type),
-        description: 'Standard composite node.'
+        description: stdGraphInfo[key]?.description ?? ''
       };
     }),
     ...latest.map((p) => ({
@@ -148,8 +160,23 @@ export const createCatalog = ({ published = [], graphs = [] }: CatalogSources = 
     titleOf: (inst) =>
       inst.label ??
       registry.node(inst)?.title ??
+      stdGraphInfo[refKey(inst)]?.title ??
       stubs.get(refKey(inst))?.name ??
-      titleFromKey(inst.type),
+      (inst.type === ENTRY_TYPE
+        ? 'Start'
+        : inst.type === RETURN_TYPE
+          ? 'Return'
+          : titleFromKey(inst.type)),
+    describe: (inst) =>
+      inst.type === ENTRY_TYPE
+        ? ENTRY_DESCRIPTION
+        : inst.type === RETURN_TYPE
+          ? RETURN_DESCRIPTION
+          : (registry.node(inst)?.description ??
+            stdGraphInfo[refKey(inst)]?.description ??
+            stubs.get(refKey(inst))?.description ??
+            ''),
+    hasConfig: (inst) => registry.node(inst)?.config !== undefined,
     graphOf,
     opensAs: (inst) => {
       if (workflowRefOf(inst)) return 'workflow';

@@ -8,7 +8,6 @@ import { Button } from '../../shared/ui/button.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { FieldGrid, FieldGroup, FieldGroups, type FieldSpan } from '../../shared/ui/field.tsx';
-import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
@@ -299,23 +298,29 @@ export const PayerDirectory = ({
                 {FILING_OPTIONS.find((o) => o.value === p.claim_filing)?.label ?? p.claim_filing}
               </TableCell>
               <TableCell kind="actions">
-                <span className="flex gap-1">
-                  <IconButton
-                    label={`Edit ${p.name}`}
-                    icon={PencilIcon}
-                    tooltipSide="left"
+                <span className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label={`Edit ${p.name}`}
                     onClick={() => {
                       setEditing(true);
                       setDraft({ name: p.name, payerId: p.payer_id, claimFiling: p.claim_filing });
                     }}
-                  />
-                  <IconButton
-                    label={`Delete ${p.name}`}
-                    icon={Trash2Icon}
+                  >
+                    <PencilIcon aria-hidden="true" className="size-4" />
+                    Edit
+                  </Button>
+                  <Button
                     intent="danger"
-                    tooltipSide="left"
+                    variant="outline"
+                    size="sm"
+                    aria-label={`Delete ${p.name}`}
                     onClick={() => setDeleting(p)}
-                  />
+                  >
+                    <Trash2Icon aria-hidden="true" className="size-4" />
+                    Delete
+                  </Button>
                 </span>
               </TableCell>
             </TableRow>
