@@ -18,6 +18,7 @@ const claim: ClaimDetail = {
   level: 'ALS1',
   total_cents: 114_220,
   balance_cents: 114_220,
+  service_date: '2026-10-01',
   payers: ['Medicare', 'Blue Plan'],
   status: 'open',
   created_at: '2026-10-01T00:00:00Z',
@@ -25,25 +26,51 @@ const claim: ClaimDetail = {
   last_name: 'Doe',
   emergency: true,
   loaded_miles: '12.4',
-  lines: [{ code: 'A0427', units: 1, unitCents: 95_000, totalCents: 95_000 }],
+  lines: [{ position: 1, code: 'A0427', units: 1, unit_cents: 95_000, total_cents: 95_000 }],
   birth_date: '1958-04-12',
   patient_id: 'p1',
   cycle_run_id: 'cycle-1',
   cycle_status: 'suspended',
-  coverages: [{ payer: 'Medicare', payerCode: null, memberId: '1EG4', groupId: null }],
-  details: {
-    serviceDate: '2026-10-01',
-    pickup: { name: null, addressLine: '9 Elm St', city: null, state: 'IL', postalCode: '62704' },
-    destination: { name: 'St. Mary', addressLine: null, city: null, state: null, postalCode: null },
-    diagnoses: ['R079', 'I10'],
-    originDestination: null
-  },
+  coverages: [
+    {
+      id: 'cov-m',
+      position: 1,
+      payer: 'Medicare',
+      payer_id: 'p-m',
+      payer_code: null,
+      member_id: '1EG4',
+      group_id: null
+    },
+    {
+      id: 'cov-b',
+      position: 2,
+      payer: 'Blue Plan',
+      payer_id: null,
+      payer_code: null,
+      member_id: null,
+      group_id: null
+    }
+  ],
+  diagnoses: ['R079', 'I10'],
+  origin_code: null,
+  destination_code: null,
+  pickup_address_line: '9 Elm St',
+  pickup_city: null,
+  pickup_state: 'IL',
+  pickup_postal_code: '62704',
+  destination_name: 'St. Mary',
+  destination_address_line: null,
+  destination_city: null,
+  destination_state: null,
+  destination_postal_code: null,
   gender: 'F',
   address_line: '1 Main St',
   city: 'Springfield',
   state: 'IL',
   postal_code: '62704'
 };
+
+const medicare = { id: 'cov-m', payer: 'Medicare' };
 
 const render = (over: Partial<ClaimDetail> = {}, progress: ClaimProgress | null = null) =>
   renderToStaticMarkup(
@@ -53,6 +80,7 @@ const render = (over: Partial<ClaimDetail> = {}, progress: ClaimProgress | null 
         {
           id: 'e1',
           kind: 'response',
+          coverage_id: null,
           payer: null,
           paid_cents: 5_000,
           adjusted_cents: 0,
@@ -63,6 +91,7 @@ const render = (over: Partial<ClaimDetail> = {}, progress: ClaimProgress | null 
         {
           id: 'e2',
           kind: 'statement',
+          coverage_id: null,
           payer: null,
           paid_cents: 0,
           adjusted_cents: 0,
@@ -94,11 +123,11 @@ describe('describeProgress', () => {
   it('tells billers what the claim cycle is doing', () => {
     assert.equal(describeProgress(null), null);
     assert.match(
-      describeProgress({ step: 'await', payer: 'Medicare', waitMs: 1, balanceCents: 1 }) ?? '',
+      describeProgress({ step: 'await', coverage: medicare, waitMs: 1, balanceCents: 1 }) ?? '',
       /^Waiting on Medicare/
     );
     assert.match(
-      describeProgress({ step: 'followUp', payer: 'Medicare', balanceCents: 1 }) ?? '',
+      describeProgress({ step: 'followUp', coverage: medicare, balanceCents: 1 }) ?? '',
       /billing-followup/
     );
     assert.equal(
@@ -109,7 +138,7 @@ describe('describeProgress', () => {
 });
 
 describe('describeCycle', () => {
-  const waiting = { step: 'await', payer: 'Medicare', waitMs: 1, balanceCents: 1 } as const;
+  const waiting = { step: 'await', coverage: medicare, waitMs: 1, balanceCents: 1 } as const;
   it('reports a stopped, stuck or missing cycle instead of the expected next step', () => {
     assert.equal(
       describeCycle({ status: 'open', cycle_status: 'suspended' }, waiting)?.intent,
@@ -141,26 +170,26 @@ describe('moveItem', () => {
 describe('toResponse', () => {
   it('converts dollars to cents and treats a blank payer as the patient', () => {
     assert.deepEqual(
-      toResponse({ payer: 'Medicare', paid: '600', adjusted: '100.5', note: ' ok ' }),
+      toResponse({ coverageId: 'cov-m', paid: '600', adjusted: '100.5', note: ' ok ' }),
       {
-        payer: 'Medicare',
+        coverageId: 'cov-m',
         paidCents: 60_000,
         adjustedCents: 10_050,
         note: 'ok'
       }
     );
-    assert.deepEqual(toResponse({ payer: 'Medicare', paid: '', adjusted: '', note: '' }), {
-      payer: 'Medicare',
+    assert.deepEqual(toResponse({ coverageId: 'cov-m', paid: '', adjusted: '', note: '' }), {
+      coverageId: 'cov-m',
       paidCents: 0,
       adjustedCents: 0,
       note: ''
     });
     assert.equal(
-      toResponse({ payer: '', paid: '', adjusted: '', note: '' }),
+      toResponse({ coverageId: '', paid: '', adjusted: '', note: '' }),
       'A patient payment needs an amount'
     );
     assert.equal(
-      toResponse({ payer: '', paid: '-1', adjusted: '', note: '' }),
+      toResponse({ coverageId: '', paid: '-1', adjusted: '', note: '' }),
       'Enter amounts of zero or more'
     );
   });
@@ -168,9 +197,17 @@ describe('toResponse', () => {
 
 describe('ClaimView', () => {
   it('shows lines, ordered payers, history and the response form for open claims', () => {
-    const html = render({}, { step: 'await', payer: 'Blue Plan', waitMs: 1, balanceCents: 1 });
+    const html = render(
+      {},
+      {
+        step: 'await',
+        coverage: { id: 'cov-b', payer: 'Blue Plan' },
+        waitMs: 1,
+        balanceCents: 1
+      }
+    );
     assert.ok(html.includes('Waiting on Blue Plan'));
-    assert.ok(html.includes('<option value="Blue Plan" selected="">'));
+    assert.ok(html.includes('<option value="cov-b" selected="">Blue Plan</option>'));
     assert.ok(html.includes('Doe, Jane'));
     assert.ok(html.includes('12.4 loaded miles'));
     assert.ok(html.includes('A0427'));
@@ -178,6 +215,8 @@ describe('ClaimView', () => {
     assert.ok(html.includes('2. </span>Blue Plan'));
     assert.ok(html.includes('aria-label="Move Blue Plan up"'));
     assert.ok(html.includes('>Patient<'));
+    assert.equal(html.match(/Not in payer directory/g)?.length, 1);
+    assert.ok(html.includes('Service date'));
     assert.ok(html.includes('$50.00 paid'));
     assert.ok(html.includes('href="/docs/e2"'));
     assert.equal(html.match(/View PDF/g)?.length, 1);
@@ -197,7 +236,7 @@ describe('ClaimView', () => {
   });
 
   it('locks editing once the claim is closed', () => {
-    const html = render({ status: 'paid', payers: [] });
+    const html = render({ status: 'paid', payers: [], coverages: [] });
     assert.ok(html.includes('>Paid<'));
     assert.ok(html.includes('The patient will be billed directly'));
     assert.equal(html.match(/<fieldset disabled=""/g)?.length, 3);

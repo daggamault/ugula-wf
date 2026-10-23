@@ -1,4 +1,4 @@
-import type { Database } from '@ugula/db';
+import type { Database, ImportSource, RunStatus } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
 export const findLatestPublished = (db: Kysely<Database>, tenantId: string, key: string) =>
@@ -22,3 +22,85 @@ export const findSftpTenant = (db: Kysely<Database>, username: string) =>
     .where('sftp_username', '=', username)
     .where('is_active', '=', true)
     .executeTakeFirst();
+
+export type NewImport = {
+  tenantId: string;
+  runId: string;
+  source: ImportSource;
+  fileName: string;
+  file: unknown;
+  uploadedBy: string | null;
+};
+
+export const insertImport = (db: Kysely<Database>, i: NewImport) =>
+  db
+    .insertInto('imports')
+    .values({
+      tenant_id: i.tenantId,
+      run_id: i.runId,
+      source: i.source,
+      file_name: i.fileName,
+      file: JSON.stringify(i.file),
+      uploaded_by: i.uploadedBy
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+
+const childCount = (status: RunStatus) =>
+  sql<number>`(count(*) filter (where ch.status = ${status}))::int`;
+
+export const listImports = (db: Kysely<Database>, tenantId: string, limit: number) =>
+  db
+    .selectFrom('imports as i')
+    .innerJoin('workflow_runs as r', 'r.id', 'i.run_id')
+    .leftJoin('users as u', 'u.id', 'i.uploaded_by')
+    .leftJoinLateral(
+      (eb) =>
+        eb
+          .selectFrom('workflow_runs as ch')
+          .select([
+            childCount('completed').as('completed'),
+            childCount('suspended').as('waiting'),
+            childCount('faulted').as('stuck'),
+            childCount('failed').as('held'),
+            childCount('running').as('processing')
+          ])
+          .whereRef('ch.parent_id', '=', 'i.run_id')
+          .as('reports'),
+      (join) => join.onTrue()
+    )
+    .leftJoinLateral(
+      (eb) =>
+        eb
+          .selectFrom('claims as c')
+          .innerJoin('import_reports as ir', 'ir.id', 'c.import_report_id')
+          .select([
+            sql<number>`count(*)::int`.as('claims'),
+            sql<number>`coalesce(sum(c.total_cents), 0)::int`.as('charges_cents')
+          ])
+          .whereRef('ir.import_id', '=', 'i.id')
+          .as('claimed'),
+      (join) => join.onTrue()
+    )
+    .select([
+      'i.id',
+      'i.file_name',
+      'i.source',
+      'i.report_count',
+      'i.created_at',
+      'i.run_id',
+      'r.status as run_status',
+      'u.email as uploaded_by_email',
+      'reports.completed',
+      'reports.waiting',
+      'reports.stuck',
+      'reports.held',
+      'reports.processing',
+      'claimed.claims',
+      'claimed.charges_cents'
+    ])
+    .where('i.tenant_id', '=', tenantId)
+    .orderBy('i.created_at', 'desc')
+    .orderBy('i.id', 'desc')
+    .limit(limit)
+    .execute();

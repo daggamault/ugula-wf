@@ -68,7 +68,16 @@ const memoryClaims = () => {
       return 'c1';
     },
     ledger: async (_, id) =>
-      id === 'c1' ? { totalCents: 100_000, payers: opened[0]?.payers ?? [], events } : null,
+      id === 'c1'
+        ? {
+            totalCents: 100_000,
+            coverages: (opened[0]?.coverages ?? []).map((c) => ({
+              id: `cov-${c.payer}`,
+              payer: c.payer
+            })),
+            events
+          }
+        : null,
     recordEvent: async (_, __, key, e) => {
       events.push({ ...e, key, paidCents: 0, adjustedCents: 0, at: '2026-01-01T00:00:00.000Z' });
     },
@@ -209,11 +218,16 @@ describe('createBillingNodes', () => {
             { payer: ' ' }
           ]
         },
-        charges
+        charges,
+        report: { bucket: 'ugula', key: 'imports/t/f.xml.reports/00000.json' }
       })
     );
     assert.deepEqual(opened?.outputs, { claimId: 'c1' });
-    assert.deepEqual(claims.opened[0]?.payers, ['Medicare', 'Blue']);
+    assert.deepEqual(
+      claims.opened[0]?.coverages.map((c) => c.payer),
+      ['Medicare', 'Blue']
+    );
+    assert.equal(claims.opened[0]?.reportKey, 'imports/t/f.xml.reports/00000.json');
     await attach?.run(invoke({ claimId: 'c1', cycleRunId: 'run-9' }));
     assert.deepEqual(claims.attached, ['run-9']);
     assert.equal(claims.opened[0]?.pcrNumber, 'PCR-1');
@@ -226,6 +240,7 @@ describe('createBillingNodes', () => {
       type: 'next',
       pin: 'submit',
       outputs: {
+        coverageId: 'cov-Medicare',
         payer: 'Medicare',
         statementNumber: null,
         balanceCents: 100_000,
@@ -233,12 +248,13 @@ describe('createBillingNodes', () => {
       }
     });
     await assert.rejects(
-      async () => record?.run(invoke({ claimId: 'c1', kind: 'submitted', payer: 'Medicare' })),
+      async () =>
+        record?.run(invoke({ claimId: 'c1', kind: 'submitted', coverageId: 'cov-Medicare' })),
       /Unknown claim event/
     );
     claims.events.push({
       kind: 'submitted',
-      payer: 'Medicare',
+      coverageId: 'cov-Medicare',
       key: 'batch',
       note: '',
       paidCents: 0,
@@ -246,11 +262,11 @@ describe('createBillingNodes', () => {
       at: '2026-01-01T00:00:00.000Z'
     });
     assert.equal((await next())?.pin, 'await');
-    await record?.run(invoke({ claimId: 'c1', kind: 'payer_skipped', payer: 'Medicare' }));
+    await record?.run(invoke({ claimId: 'c1', kind: 'payer_skipped', coverageId: 'cov-Medicare' }));
     const before = claims.events.length;
-    await record?.run(invoke({ claimId: 'c1', kind: 'follow_up', payer: 'Medicare' }));
+    await record?.run(invoke({ claimId: 'c1', kind: 'follow_up', coverageId: 'cov-Medicare' }));
     assert.equal(claims.events.length, before);
-    await record?.run(invoke({ claimId: 'c1', kind: 'payer_skipped', payer: 'Blue' }));
+    await record?.run(invoke({ claimId: 'c1', kind: 'payer_skipped', coverageId: 'cov-Blue' }));
     assert.deepEqual((await next())?.outputs.statementNumber, 1);
     await assert.rejects(
       async () => record?.run(invoke({ claimId: 'c1', kind: 'paid' })),

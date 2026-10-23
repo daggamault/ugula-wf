@@ -7,6 +7,7 @@ import { FeesPage, FeesTable, toFeeInput } from './fees-page.tsx';
 
 const fee = (over: Partial<Fee> = {}): Fee => ({
   id: 'f1',
+  payer_id: null,
   payer: null,
   code: 'A0427',
   amount_cents: 95000,
@@ -15,23 +16,23 @@ const fee = (over: Partial<Fee> = {}): Fee => ({
 });
 
 describe('toFeeInput', () => {
-  it('converts the form into cents and a nullable payer', () => {
-    assert.deepEqual(toFeeInput({ payer: ' ', code: ' a0427 ', amount: '950.5' }), {
-      payer: null,
+  it('converts the form into cents and an optional directory payer', () => {
+    assert.deepEqual(toFeeInput({ payerId: '', code: ' a0427 ', amount: '950.5' }), {
+      payerId: null,
       code: 'A0427',
       amountCents: 95050
     });
-    assert.deepEqual(toFeeInput({ payer: 'Medicare', code: 'A0425', amount: '15.55' }), {
-      payer: 'Medicare',
+    assert.deepEqual(toFeeInput({ payerId: 'p-m', code: 'A0425', amount: '15.55' }), {
+      payerId: 'p-m',
       code: 'A0425',
       amountCents: 1555
     });
     assert.equal(
-      toFeeInput({ payer: '', code: 'A0427', amount: '' }),
+      toFeeInput({ payerId: '', code: 'A0427', amount: '' }),
       'Enter an amount of zero or more'
     );
     assert.equal(
-      toFeeInput({ payer: '', code: 'A0427', amount: '-1' }),
+      toFeeInput({ payerId: '', code: 'A0427', amount: '-1' }),
       'Enter an amount of zero or more'
     );
   });
@@ -41,19 +42,23 @@ describe('FeesPage', () => {
   it('renders a labelled fee form', () => {
     const html = renderToStaticMarkup(
       createElement(FeesPage, {
-        client: { list: () => new Promise(() => undefined) } as unknown as FeesClient
+        client: {
+          list: () => new Promise(() => undefined),
+          payers: () => new Promise(() => undefined)
+        } as unknown as FeesClient
       })
     );
     assert.ok(html.includes('for="fee-payer"'));
     assert.ok(html.includes('for="fee-code"'));
     assert.ok(html.includes('step="0.01"'));
     assert.ok(html.includes('>Save fee<'));
+    assert.ok(html.includes('Default schedule (every payer)'));
   });
 
   it('lists default and payer prices with actions', () => {
     const html = renderToStaticMarkup(
       createElement(FeesTable, {
-        fees: [fee(), fee({ id: 'f2', payer: 'Medicare', amount_cents: 50000 })],
+        fees: [fee(), fee({ id: 'f2', payer_id: 'p-m', payer: 'Medicare', amount_cents: 50000 })],
         onEdit: () => undefined,
         onDelete: () => undefined
       })

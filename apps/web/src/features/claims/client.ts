@@ -17,6 +17,7 @@ export type ClaimSummary = {
   level: string;
   total_cents: number;
   balance_cents: number;
+  service_date: string | null;
   payers: string[];
   status: ClaimStatus;
   created_at: string;
@@ -24,30 +25,50 @@ export type ClaimSummary = {
   last_name: string;
 };
 
-export type ClaimLine = { code: string; units: number; unitCents: number; totalCents: number };
+export type ClaimLine = {
+  position: number;
+  code: string;
+  units: number;
+  unit_cents: number;
+  total_cents: number;
+};
+
+export type ClaimCoverage = {
+  id: string;
+  position: number;
+  payer: string;
+  payer_id: string | null;
+  payer_code: string | null;
+  member_id: string | null;
+  group_id: string | null;
+};
 
 export type ClaimDetail = ClaimSummary & {
   emergency: boolean;
   loaded_miles: string | null;
-  lines: ClaimLine[];
   birth_date: string;
   patient_id: string;
   cycle_run_id: string | null;
   cycle_status: CycleStatus | null;
-  coverages: ClaimCoverage[];
-  details: ClaimDetailsData;
+  origin_code: string | null;
+  destination_code: string | null;
+  pickup_address_line: string | null;
+  pickup_city: string | null;
+  pickup_state: string | null;
+  pickup_postal_code: string | null;
+  destination_name: string | null;
+  destination_address_line: string | null;
+  destination_city: string | null;
+  destination_state: string | null;
+  destination_postal_code: string | null;
   gender: string | null;
   address_line: string | null;
   city: string | null;
   state: string | null;
   postal_code: string | null;
-};
-
-export type ClaimCoverage = {
-  payer: string;
-  payerCode: string | null;
-  memberId: string | null;
-  groupId: string | null;
+  coverages: ClaimCoverage[];
+  lines: ClaimLine[];
+  diagnoses: string[];
 };
 
 export type AddressInput = {
@@ -59,22 +80,20 @@ export type AddressInput = {
 
 export type LocationInput = AddressInput & { name: string | null };
 
-export type ClaimDetailsData = {
+export type BillingDataInput = {
   serviceDate: string | null;
   pickup: LocationInput;
   destination: LocationInput;
   diagnoses: string[];
   originDestination: string | null;
-};
-
-export type BillingDataInput = ClaimDetailsData & {
   patient: AddressInput;
-  coverages: { payer: string; memberId: string | null; groupId: string | null }[];
+  coverages: { id: string; memberId: string | null; groupId: string | null }[];
 };
 
 export type ClaimEvent = {
   id: string;
   kind: ClaimEventKind;
+  coverage_id: string | null;
   payer: string | null;
   paid_cents: number;
   adjusted_cents: number;
@@ -87,7 +106,7 @@ export type ClaimProgress = ClaimStep;
 
 export type ClaimResponseInput = {
   requestId: string;
-  payer: string | null;
+  coverageId: string | null;
   paidCents: number;
   adjustedCents: number;
   note: string;

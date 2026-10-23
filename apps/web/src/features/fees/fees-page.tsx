@@ -11,6 +11,7 @@ import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { Select } from '../../shared/ui/select.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { Fee, FeeInput, FeesClient } from './client.ts';
@@ -19,14 +20,16 @@ export type FeesPageProps = {
   client: FeesClient;
 };
 
-type Draft = { payer: string; code: string; amount: string };
+type Draft = { payerId: string; code: string; amount: string };
 
-const EMPTY: Draft = { payer: '', code: '', amount: '' };
+const EMPTY: Draft = { payerId: '', code: '', amount: '' };
+
+const DEFAULT_SCHEDULE = { value: '', label: 'Default schedule (every payer)' };
 
 export const toFeeInput = (draft: Draft): FeeInput | string => {
   const amountCents = parseDollars(draft.amount);
   if (amountCents === null) return 'Enter an amount of zero or more';
-  return { payer: draft.payer.trim() || null, code: draft.code.trim().toUpperCase(), amountCents };
+  return { payerId: draft.payerId || null, code: draft.code.trim().toUpperCase(), amountCents };
 };
 
 const feeName = (f: Fee) => `${f.payer ?? 'Default'} ${f.code}`;
@@ -86,7 +89,13 @@ export const FeesTable = ({
 
 export const FeesPage = ({ client }: FeesPageProps) => {
   const fees = useResource('fees', client.list);
+  const payers = useResource('fee-payers', client.payers);
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  const payerOptions = [
+    DEFAULT_SCHEDULE,
+    ...(payers.data ?? []).map((p) => ({ value: p.id, label: p.name }))
+  ];
+  const payerLabel = payerOptions.find((o) => o.value === draft.payerId)?.label ?? '';
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState<Fee | null>(null);
   const reset = () => {
@@ -129,14 +138,14 @@ export const FeesPage = ({ client }: FeesPageProps) => {
   return (
     <Page
       title="Fees"
-      description="Prices for ambulance HCPCS codes. A claim is priced with its primary payer's price when one exists (payer names match ignoring case), otherwise the default."
+      description="Prices for ambulance HCPCS codes. A claim is priced with its primary payer's price when the payer directory has one, otherwise the default."
     >
       <SectionPanel
         title={editing ? 'Edit Fee' : 'Add a Fee'}
         description={
           editing
-            ? `Change the price of ${draft.code} for ${draft.payer || 'the default schedule'}.`
-            : 'Leave the payer empty to set the default price for a code.'
+            ? `Change the price of ${draft.code} for ${draft.payerId ? payerLabel : 'the default schedule'}.`
+            : 'Set a default price for a code, or a price for one payer in the directory.'
         }
         accent={editing ? 'primary' : undefined}
       >
@@ -145,12 +154,12 @@ export const FeesPage = ({ client }: FeesPageProps) => {
             disabled={busy}
             className="grid gap-x-4 gap-y-5 sm:grid-cols-[minmax(0,1fr)_9rem_10rem]"
           >
-            <Input
+            <Select
               id="fee-payer"
               label="Payer"
-              placeholder="Default schedule"
-              readOnly={editing}
-              {...field('payer')}
+              options={payerOptions}
+              disabled={editing}
+              {...field('payerId')}
             />
             <Input
               id="fee-code"
@@ -195,7 +204,7 @@ export const FeesPage = ({ client }: FeesPageProps) => {
           onEdit={(f) => {
             setEditing(true);
             setDraft({
-              payer: f.payer ?? '',
+              payerId: f.payer_id ?? '',
               code: f.code,
               amount: (f.amount_cents / 100).toFixed(2)
             });

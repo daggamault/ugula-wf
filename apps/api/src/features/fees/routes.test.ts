@@ -31,13 +31,13 @@ describe('fee routes', () => {
     assert.equal((await request('/')).status, 200);
     const saved = await request('/', {
       method: 'PUT',
-      body: JSON.stringify({ payer: 'Medicare', code: 'a0427', amountCents: 50000 })
+      body: JSON.stringify({ code: 'a0427', amountCents: 50000 })
     });
     assert.equal(saved.status, 200);
     assert.equal((await request(`/${ID}`, { method: 'DELETE' })).status, 200);
     assert.deepEqual(calls, [
       ['list', 't-1'],
-      ['save', 't-1', { payer: 'Medicare', code: 'A0427', amountCents: 50000 }],
+      ['save', 't-1', { payerId: null, code: 'A0427', amountCents: 50000 }],
       ['remove', 't-1', ID]
     ]);
   });

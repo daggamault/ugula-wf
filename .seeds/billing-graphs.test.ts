@@ -167,17 +167,21 @@ describe('billing graphs', () => {
         assert.equal(new TextDecoder().decode(pdf.slice(0, 5)), '%PDF-');
         events.push({
           kind: 'statement',
-          payer: null,
+          coverageId: null,
           paidCents: 0,
           adjustedCents: 0,
           at: clock.toISOString()
         });
       },
-      ledger: async () => ({ totalCents: 100_000, payers: ['Medicare'], events }),
+      ledger: async () => ({
+        totalCents: 100_000,
+        coverages: [{ id: 'cov-1', payer: 'Medicare' }],
+        events
+      }),
       recordEvent: async (_, __, ___, e) => {
         events.push({
           kind: e.kind,
-          payer: e.payer,
+          coverageId: e.coverageId,
           paidCents: 0,
           adjustedCents: 0,
           at: clock.toISOString()
@@ -190,7 +194,7 @@ describe('billing graphs', () => {
     const pay = (paidCents: number) =>
       events.push({
         kind: 'response',
-        payer: null,
+        coverageId: null,
         paidCents,
         adjustedCents: 0,
         at: clock.toISOString()
@@ -220,7 +224,7 @@ describe('billing graphs', () => {
     const sent = (kind: ClaimEvent['kind']) =>
       events.push({
         kind,
-        payer: 'Medicare',
+        coverageId: 'cov-1',
         paidCents: 0,
         adjustedCents: 0,
         at: clock.toISOString()
@@ -244,6 +248,7 @@ describe('billing graphs', () => {
     let followUp = await waitFor('task');
     assert.deepEqual(getPath(state.suspension?.data ?? null, 'context'), {
       claimId: 'c1',
+      coverageId: 'cov-1',
       payer: 'Medicare',
       balanceCents: 100_000
     });

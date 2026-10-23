@@ -10,9 +10,10 @@ import {
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
-import { formatCents, formatDateTime, parseDollars } from '../../shared/format.ts';
+import { formatCents, formatDate, formatDateTime, parseDollars } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
+import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -29,6 +30,7 @@ import { ClaimDataForm } from './claim-data-form.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
 import type {
   BillingDataInput,
+  ClaimCoverage,
   ClaimDetail,
   ClaimEvent,
   ClaimLine,
@@ -65,7 +67,7 @@ export const moveItem = (items: readonly string[], from: number, to: number) => 
 };
 
 export const toResponse = (draft: {
-  payer: string;
+  coverageId: string;
   paid: string;
   adjusted: string;
   note: string;
@@ -73,10 +75,15 @@ export const toResponse = (draft: {
   const paidCents = parseDollars(draft.paid || '0');
   const adjustedCents = parseDollars(draft.adjusted || '0');
   if (paidCents === null || adjustedCents === null) return 'Enter amounts of zero or more';
-  if (paidCents + adjustedCents === 0 && draft.payer === '') {
+  if (paidCents + adjustedCents === 0 && draft.coverageId === '') {
     return 'A patient payment needs an amount';
   }
-  return { payer: draft.payer || null, paidCents, adjustedCents, note: draft.note.trim() };
+  return {
+    coverageId: draft.coverageId || null,
+    paidCents,
+    adjustedCents,
+    note: draft.note.trim()
+  };
 };
 
 export const amountOf = (e: Pick<ClaimEvent, 'paid_cents' | 'adjusted_cents'>) =>
@@ -98,15 +105,15 @@ export const LinesTable = ({ lines }: { lines: readonly ClaimLine[] }) => (
     ]}
   >
     {lines.map((l) => (
-      <TableRow key={l.code}>
+      <TableRow key={l.position}>
         <TableCell>
           <span className="font-mono font-semibold">{l.code}</span>
         </TableCell>
         <TableCell kind="numeric">{l.units}</TableCell>
         <TableCell kind="numeric" isMuted>
-          {formatCents(l.unitCents)}
+          {formatCents(l.unit_cents)}
         </TableCell>
-        <TableCell kind="numeric">{formatCents(l.totalCents)}</TableCell>
+        <TableCell kind="numeric">{formatCents(l.total_cents)}</TableCell>
       </TableRow>
     ))}
   </Table>
@@ -155,15 +162,19 @@ export const EventsTable = ({
 );
 
 export const PayersEditor = ({
-  payers,
+  coverages,
   disabled,
   onSave
 }: {
-  payers: readonly string[];
+  coverages: readonly ClaimCoverage[];
   disabled: boolean;
   onSave: (payers: string[]) => Promise<void>;
 }) => {
-  const [list, setList] = useState<string[]>([...payers]);
+  const payers = coverages.map((c) => c.payer);
+  const unlisted = new Set(
+    coverages.filter((c) => c.payer_id === null).map((c) => c.payer.toLowerCase())
+  );
+  const [list, setList] = useState<string[]>(payers);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const locked = disabled ? closedReason : undefined;
@@ -210,6 +221,9 @@ export const PayersEditor = ({
                   <span className="sr-only">{i + 1}. </span>
                   {p}
                 </span>
+                {unlisted.has(p.toLowerCase()) ? (
+                  <Badge intent="warning">Not in payer directory</Badge>
+                ) : null}
               </span>
               <span className="flex">
                 <IconButton
@@ -260,17 +274,17 @@ export const PayersEditor = ({
 };
 
 export const ResponseForm = ({
-  payers,
+  coverages,
   current,
   disabled,
   onRecord
 }: {
-  payers: readonly string[];
+  coverages: readonly ClaimCoverage[];
   current: string | null;
   disabled: boolean;
   onRecord: (response: ClaimResponseInput) => Promise<boolean>;
 }) => {
-  const empty = { payer: current ?? '', paid: '', adjusted: '', note: '' };
+  const empty = { coverageId: current ?? '', paid: '', adjusted: '', note: '' };
   const [draft, setDraft] = useState(empty);
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(false);
@@ -307,10 +321,10 @@ export const ResponseForm = ({
             id="response-payer"
             label="From"
             options={[
-              ...payers.map((p) => ({ value: p, label: p })),
+              ...coverages.map((c) => ({ value: c.id, label: c.payer })),
               { value: '', label: 'Patient' }
             ]}
-            {...field('payer')}
+            {...field('coverageId')}
           />
           <Input id="response-note" label="Note" {...field('note')} />
           <Input
@@ -354,11 +368,11 @@ export const describeProgress = (progress: ClaimProgress | null) => {
   if (!progress) return null;
   switch (progress.step) {
     case 'submit':
-      return `Ready for ${progress.payer}. It goes out in the next 837P batch from Submissions.`;
+      return `Ready for ${progress.coverage.payer}. It goes out in the next 837P batch from Submissions.`;
     case 'await':
-      return `Waiting on ${progress.payer}. A follow-up task opens 30 days after submission.`;
+      return `Waiting on ${progress.coverage.payer}. A follow-up task opens 30 days after submission.`;
     case 'followUp':
-      return `${progress.payer} has not responded in 30 days. Follow up from the billing-followup queue.`;
+      return `${progress.coverage.payer} has not responded in 30 days. Follow up from the billing-followup queue.`;
     case 'statement':
       return `Sending patient statement ${progress.statement} of 3.`;
     case 'awaitPatient':
@@ -476,7 +490,8 @@ export const ClaimView = ({
   error?: string;
 }) => {
   const closed = claim.status !== 'open';
-  const current = progress && 'payer' in progress ? progress.payer : null;
+  const current = progress && 'coverage' in progress ? progress.coverage.id : null;
+  const coverageKey = claim.coverages.map((c) => `${c.id}:${c.payer}`).join('|');
   return (
     <Page
       title={`${claim.last_name}, ${claim.first_name}`}
@@ -499,7 +514,8 @@ export const ClaimView = ({
           <Detail label="Balance" isEmphasized>
             {formatCents(claim.balance_cents)}
           </Detail>
-          <Detail label="Born">{claim.birth_date}</Detail>
+          <Detail label="Service date">{formatDate(claim.service_date)}</Detail>
+          <Detail label="Born">{formatDate(claim.birth_date)}</Detail>
           <Detail label="Transport">
             {claim.level}
             {claim.emergency ? ' emergency' : ''}
@@ -513,15 +529,15 @@ export const ClaimView = ({
             <LinesTable lines={claim.lines} />
           </SectionPanel>
           <PayersEditor
-            key={claim.payers.join('|')}
-            payers={claim.payers}
+            key={coverageKey}
+            coverages={claim.coverages}
             disabled={closed}
             onSave={onSavePayers}
           />
         </div>
         <ResponseForm
-          key={`response-${claim.id}`}
-          payers={claim.payers}
+          key={`response-${coverageKey}`}
+          coverages={claim.coverages}
           current={current}
           disabled={closed}
           onRecord={onRecord}

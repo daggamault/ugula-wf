@@ -154,7 +154,7 @@ export type PatientsTable = {
 export type FeeSchedulesTable = {
   id: Generated<string>;
   tenant_id: string;
-  payer: string | null;
+  payer_id: string | null;
   code: string;
   amount_cents: number;
   created_at: Timestamp;
@@ -177,15 +177,24 @@ export type ClaimsTable = {
   id: Generated<string>;
   tenant_id: string;
   patient_id: string;
+  import_report_id: string | null;
   pcr_number: string | null;
   level: string;
   emergency: boolean;
   loaded_miles: ColumnType<string | null, number | null, number | null>;
-  lines: JsonColumn;
   total_cents: number;
-  payers: ColumnType<string[], string[] | undefined, string[]>;
-  coverages: ColumnType<unknown, string | undefined, string>;
-  details: ColumnType<unknown, string | undefined, string>;
+  service_date: ColumnType<string | null, string | null, string | null>;
+  origin_code: string | null;
+  destination_code: string | null;
+  pickup_address_line: string | null;
+  pickup_city: string | null;
+  pickup_state: string | null;
+  pickup_postal_code: string | null;
+  destination_name: string | null;
+  destination_address_line: string | null;
+  destination_city: string | null;
+  destination_state: string | null;
+  destination_postal_code: string | null;
   status: Generated<ClaimStatus>;
   cycle_run_id: string | null;
   source_key: string;
@@ -193,11 +202,44 @@ export type ClaimsTable = {
   updated_at: Timestamp;
 };
 
+export type ClaimLinesTable = {
+  claim_id: string;
+  position: number;
+  code: string;
+  units: ColumnType<string, number, number>;
+  unit_cents: number;
+  total_cents: number;
+};
+
+export type ClaimCoveragesTable = {
+  id: Generated<string>;
+  claim_id: string;
+  position: number;
+  payer_name: string;
+  payer_id: string | null;
+  payer_code: string | null;
+  member_id: string | null;
+  group_id: string | null;
+};
+
+export type ClaimDiagnosesTable = {
+  claim_id: string;
+  position: number;
+  code: string;
+};
+
+export type ClaimBalancesView = {
+  claim_id: string;
+  paid_cents: number;
+  adjusted_cents: number;
+  balance_cents: number;
+};
+
 export type ClaimEventsTable = {
   id: Generated<string>;
   claim_id: string;
   kind: ClaimEventKind;
-  payer: string | null;
+  coverage_id: string | null;
   paid_cents: Generated<number>;
   adjusted_cents: Generated<number>;
   note: Generated<string>;
@@ -217,6 +259,31 @@ export type ClaimBatchesTable = {
   production: boolean;
   document: JsonColumn;
   created_by: string | null;
+  created_at: Timestamp;
+};
+
+export const IMPORT_SOURCES = ['upload', 'sftp', 'manual'] as const;
+
+export type ImportSource = (typeof IMPORT_SOURCES)[number];
+
+export type ImportsTable = {
+  id: Generated<string>;
+  tenant_id: string;
+  run_id: string;
+  source: ImportSource;
+  file_name: string;
+  file: JsonColumn;
+  report_count: number | null;
+  uploaded_by: string | null;
+  created_at: Timestamp;
+};
+
+export type ImportReportsTable = {
+  id: Generated<string>;
+  import_id: string;
+  position: number;
+  pcr_number: string | null;
+  report: JsonColumn;
   created_at: Timestamp;
 };
 
@@ -257,7 +324,13 @@ export type Database = {
   tasks: TasksTable;
   patients: PatientsTable;
   fee_schedules: FeeSchedulesTable;
+  imports: ImportsTable;
+  import_reports: ImportReportsTable;
   claims: ClaimsTable;
+  claim_lines: ClaimLinesTable;
+  claim_coverages: ClaimCoveragesTable;
+  claim_diagnoses: ClaimDiagnosesTable;
+  claim_balances: ClaimBalancesView;
   claim_events: ClaimEventsTable;
   claim_batches: ClaimBatchesTable;
   billing_profiles: BillingProfilesTable;

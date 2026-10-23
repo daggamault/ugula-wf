@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parseDataset } from './parse.ts';
+import { parseDataset, pcrNumberOf } from './parse.ts';
 
 const SAMPLE = `<?xml version="1.0" encoding="UTF-8"?>
 <EMSDataSet xmlns="http://www.nemsis.org" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -72,5 +72,14 @@ describe('parseDataset', () => {
       /must not declare a DOCTYPE/
     );
     assert.deepEqual(parseDataset('<EMSDataSet><Header/></EMSDataSet>'), { reports: [] });
+  });
+});
+
+describe('pcrNumberOf', () => {
+  it('finds the PCR number anywhere in a report', () => {
+    assert.equal(pcrNumberOf({ eRecord: { 'eRecord.01': ' 2026-0042 ' } }), '2026-0042');
+    assert.equal(pcrNumberOf([{ x: [{ 'eRecord.01': 'Z' }] }]), 'Z');
+    assert.equal(pcrNumberOf({ eRecord: { 'eRecord.01': ' ' } }), null);
+    assert.equal(pcrNumberOf(null), null);
   });
 });

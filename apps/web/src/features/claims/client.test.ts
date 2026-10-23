@@ -18,7 +18,7 @@ describe('createClaimsClient', () => {
     await client.restartCycle('c1');
     await client.recordResponse('c1', {
       requestId: 'q1',
-      payer: null,
+      coverageId: null,
       paidCents: 500,
       adjustedCents: 0,
       note: ''
@@ -28,7 +28,7 @@ describe('createClaimsClient', () => {
       'GET http://api.test/api/claims/c1 ',
       'PUT http://api.test/api/claims/c1/payers {"payers":["Medicare"]}',
       'POST http://api.test/api/claims/c1/restart-cycle ',
-      'POST http://api.test/api/claims/c1/responses {"requestId":"q1","payer":null,"paidCents":500,"adjustedCents":0,"note":""}'
+      'POST http://api.test/api/claims/c1/responses {"requestId":"q1","coverageId":null,"paidCents":500,"adjustedCents":0,"note":""}'
     ]);
   });
 });

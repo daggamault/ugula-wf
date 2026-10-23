@@ -1,23 +1,16 @@
+import { HCPCS_PATTERN } from '@ugula/billing';
 import * as v from 'valibot';
+import { uuid } from '../../shared/http.ts';
 
 export const MAX_FEE_CENTS = 10_000_000;
 
 export const feeSchema = v.object({
-  payer: v.optional(
-    v.nullable(
-      v.pipe(
-        v.string(),
-        v.trim(),
-        v.transform((s) => s || null)
-      )
-    ),
-    null
-  ),
+  payerId: v.optional(v.nullable(uuid), null),
   code: v.pipe(
     v.string(),
     v.trim(),
     v.toUpperCase(),
-    v.regex(/^[A-Z]\d{4}$/, 'Enter a HCPCS code like A0427')
+    v.regex(new RegExp(HCPCS_PATTERN), 'Enter a HCPCS code like A0427')
   ),
   amountCents: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(MAX_FEE_CENTS))
 });

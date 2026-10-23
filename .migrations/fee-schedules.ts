@@ -1,3 +1,4 @@
+import { HCPCS_PATTERN } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
@@ -8,23 +9,23 @@ export const buildFeeSchedulesTable = (db: Kysely<Database>) =>
     .addColumn('tenant_id', 'uuid', (col) =>
       col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
     )
-    .addColumn('payer', 'text')
+    .addColumn('payer_id', 'uuid', (col) =>
+      col.references('payers.id').onDelete('cascade').onUpdate('cascade')
+    )
     .addColumn('code', 'text', (col) => col.notNull())
     .addColumn('amount_cents', 'integer', (col) => col.notNull())
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addCheckConstraint('fee_schedules_code_check', sql`code ~ '^[A-Z][0-9]{4}$'`)
-    .addCheckConstraint('fee_schedules_payer_check', sql`payer is null or payer <> ''`)
+    .addUniqueConstraint(
+      'fee_schedules_tenant_payer_code_unique',
+      ['tenant_id', 'payer_id', 'code'],
+      (c) => c.nullsNotDistinct()
+    )
+    .addCheckConstraint('fee_schedules_code_check', sql`code ~ ${sql.lit(HCPCS_PATTERN)}`)
     .addCheckConstraint('fee_schedules_amount_check', sql`amount_cents >= 0`);
 
-export const FEE_IDENTITY = sql`tenant_id, lower(coalesce(payer, '')), code`;
-
 export const buildFeeSchedulesIndex = (db: Kysely<Database>) =>
-  db.schema
-    .createIndex('fee_schedules_tenant_payer_code_unique')
-    .on('fee_schedules')
-    .unique()
-    .expression(FEE_IDENTITY);
+  db.schema.createIndex('idx_fee_schedules_payer_id').on('fee_schedules').column('payer_id');
 
 export const createFeeSchedulesTable = async (db: Kysely<Database>) => {
   await buildFeeSchedulesTable(db).execute();

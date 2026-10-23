@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { icd10, readClaimDetails, readCoverages, readStoredDetails } from './claim-details.ts';
+import { icd10, readClaimDetails, readCoverages } from './claim-details.ts';
 
 describe('readClaimDetails', () => {
   it('takes the service date, locations and X12-ready diagnosis codes from a summary', () => {
@@ -67,37 +67,5 @@ describe('readCoverages', () => {
       { payer: 'Medicaid', payerCode: null, memberId: null, groupId: null }
     ]);
     assert.deepEqual(readCoverages({}), []);
-  });
-});
-
-describe('readStoredDetails', () => {
-  it('reads details saved on a claim, revalidating codes and addresses', () => {
-    assert.deepEqual(
-      readStoredDetails({
-        serviceDate: '2026-10-01',
-        pickup: { addressLine: '9 Elm St', state: 'IL' },
-        destination: { name: 'St. Mary' },
-        diagnoses: ['R079', 'nope'],
-        originDestination: 'rh'
-      }),
-      {
-        serviceDate: '2026-10-01',
-        pickup: { name: null, addressLine: '9 Elm St', city: null, state: 'IL', postalCode: null },
-        destination: {
-          name: 'St. Mary',
-          addressLine: null,
-          city: null,
-          state: null,
-          postalCode: null
-        },
-        diagnoses: ['R079'],
-        originDestination: 'RH'
-      }
-    );
-    assert.equal(readStoredDetails(null).serviceDate, null);
-    assert.equal(readStoredDetails({ originDestination: 'RZ' }).originDestination, null);
-    assert.equal(readStoredDetails({ originDestination: 'RHS' }).originDestination, null);
-    assert.equal(readStoredDetails({ originDestination: 'XH' }).originDestination, null);
-    assert.equal(readStoredDetails({ originDestination: 'HX' }).originDestination, 'HX');
   });
 });

@@ -3,21 +3,26 @@ import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db';
 import type { JobBoss } from '@ugula/jobs';
 import type { CompiledQuery } from 'kysely';
-import { createClaimService } from './service.ts';
+import { createClaimService, planPayerOrder } from './service.ts';
 
 const REQUEST = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
+const MEDICARE = '01a16617-7704-7ba6-b9b5-000000000001';
+const BLUE = '01a16617-7704-7ba6-b9b5-000000000002';
 
 const claim = {
   id: 'c1',
   status: 'open',
-  payers: ['Medicare'],
   patient_id: 'p1',
   total_cents: 100_000,
-  balance_cents: 100_000
+  balance_cents: 100_000,
+  coverages: [{ id: MEDICARE, payer: 'Medicare' }]
 };
+
+const coverage = (id: string, payer: string, has_events = false) => ({ id, payer, has_events });
 
 const setup = ({
   row = claim as Record<string, unknown> | null,
+  coverages = [coverage(MEDICARE, 'Medicare')],
   duplicate = false,
   events = [] as Record<string, unknown>[],
   moot = [] as Record<string, unknown>[],
@@ -26,7 +31,11 @@ const setup = ({
 } = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.endsWith('for update')) return row ? [row] : [];
-    if (q.sql.includes('from "claim_events" as "e"')) return document ? [document] : [];
+    if (q.sql.startsWith('select "cc"."id"')) return coverages;
+    if (q.sql.includes('from "claim_balances"')) return row ? [row] : [];
+    if (q.sql.includes('from "claim_events" as "e" inner join "claims"')) {
+      return document ? [document] : [];
+    }
     if (q.sql.includes('from "claims" as "c"')) return row ? [row] : [];
     if (q.sql.includes('from "workflow_runs"')) return [{ id: 'r1', wait_id: '7' }];
     if (q.sql.includes('from "graph_versions"'))
@@ -35,10 +44,9 @@ const setup = ({
     if (q.sql.includes('from "claim_events"') && q.sql.includes('"source_key" = $')) {
       return duplicate ? [{ id: 'e0' }] : [];
     }
-    if (q.sql.includes('from "claim_events"')) return events;
+    if (q.sql.includes('from "claim_events" as "e"')) return events;
     if (q.sql.startsWith('insert into "claim_events"')) return [{ id: 'e1' }];
     if (q.sql.startsWith('update "tasks"')) return moot;
-    if (q.sql.startsWith('update "claims"')) return row?.status === 'open' ? [{ id: 'c1' }] : [];
     return [];
   });
   const jobs: unknown[] = [];
@@ -50,7 +58,7 @@ const setup = ({
 
 const response = (over: Record<string, unknown> = {}) => ({
   requestId: REQUEST,
-  payer: 'Medicare' as string | null,
+  coverageId: MEDICARE as string | null,
   paidCents: 60_000,
   adjustedCents: 10_000,
   note: '',
@@ -60,6 +68,19 @@ const response = (over: Record<string, unknown> = {}) => ({
 const failure = (res: { ok: boolean; failure?: { code: string; message: string } }) =>
   res.ok ? 'ok' : `${res.failure?.code}: ${res.failure?.message}`;
 
+describe('planPayerOrder', () => {
+  it('keeps known payers by name, adds new ones and lists the dropped ones', () => {
+    const plan = planPayerOrder(
+      [coverage(MEDICARE, 'Medicare'), coverage(BLUE, 'Blue Plan', true)],
+      ['Aetna', 'medicare']
+    );
+    assert.deepEqual(plan.keep, [{ id: MEDICARE, position: 2 }]);
+    assert.deepEqual(plan.add, [{ payer: 'Aetna', position: 1 }]);
+    assert.deepEqual(plan.remove, [BLUE]);
+    assert.deepEqual(plan.removed, [coverage(BLUE, 'Blue Plan', true)]);
+  });
+});
+
 describe('claim service', () => {
   it('records responses under a row lock and wakes the claim cycle', async () => {
     const { service, jobs, queries } = setup();
@@ -68,7 +89,8 @@ describe('claim service', () => {
       value: { balanceCents: 30_000, duplicate: false }
     });
     assert.ok(queries.some((q) => q.sql.endsWith('for update')));
-    assert.ok(queries.some((q) => q.parameters.includes(REQUEST)));
+    const insert = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.ok(insert?.parameters.includes(REQUEST) && insert.parameters.includes(MEDICARE));
     assert.deepEqual(jobs, [
       {
         data: {
@@ -85,7 +107,8 @@ describe('claim service', () => {
     });
     await service.recordResponse('t', 'u1', 'c1', response({ paidCents: 90_000 }));
     const update = queries.find((q) => q.sql.startsWith('update "tasks"'));
-    assert.ok(update?.sql.includes("context ->> 'payer'"));
+    assert.ok(update?.sql.includes("context ->> 'coverageId'"));
+    assert.ok(update?.parameters.includes(MEDICARE));
     assert.ok(update?.sql.includes('and true)'));
     assert.deepEqual(jobs[0], {
       data: {
@@ -108,7 +131,7 @@ describe('claim service', () => {
     assert.equal(jobs.length, 0);
   });
 
-  it('rejects overpayments and responses for unknown, closed or foreign-payer claims', async () => {
+  it('rejects overpayments and responses for unknown, closed or foreign coverages', async () => {
     const record = (opts: Parameters<typeof setup>[0], over: Record<string, unknown> = {}) =>
       setup(opts).service.recordResponse('t', 'u', 'c1', response(over));
     assert.equal(
@@ -117,7 +140,8 @@ describe('claim service', () => {
     );
     assert.match(failure(await record({ row: null })), /^not_found/);
     assert.match(failure(await record({ row: { ...claim, status: 'paid' } })), /^conflict/);
-    assert.match(failure(await record({}, { payer: 'Aetna' })), /^invalid: Aetna is not a payer/);
+    assert.match(failure(await record({}, { coverageId: BLUE })), /^invalid: That payer is not/);
+    assert.equal(failure(await record({}, { coverageId: null })), 'ok');
   });
 
   it('restarts a stopped payer cycle and links the claim to the new run', async () => {
@@ -145,15 +169,15 @@ describe('claim service', () => {
     assert.match(failure(await restart(null)), /^not_found/);
   });
 
-  it('saves billing data for open claims, updating the patient address', async () => {
+  it('saves billing data into columns, coverages and diagnoses, and the patient address', async () => {
     const empty = { name: null, addressLine: null, city: null, state: null, postalCode: null };
     const data = {
       patient: { addressLine: '1 Main', city: 'Springfield', state: 'IL', postalCode: '62704' },
-      coverages: [{ payer: 'Medicare', memberId: '1EG', groupId: null }],
+      coverages: [{ id: MEDICARE, memberId: '1EG', groupId: null }],
       serviceDate: '2026-10-01',
-      pickup: empty,
+      pickup: { ...empty, city: 'Springfield' },
       destination: empty,
-      diagnoses: ['R079', 'R079'],
+      diagnoses: ['R079', 'I10'],
       originDestination: 'RH'
     };
     const { service, queries } = setup();
@@ -161,19 +185,29 @@ describe('claim service', () => {
       ok: true,
       value: { status: 'saved' }
     });
-    const claimUpdate = queries.find((q) => q.sql.startsWith('update "claims" set "coverages"'));
-    assert.ok(String(claimUpdate?.parameters[1]).includes('"diagnoses":["R079"]'));
-    assert.ok(String(claimUpdate?.parameters[1]).includes('"originDestination":"RH"'));
+    const claimUpdate = queries.find((q) => q.sql.startsWith('update "claims" set "service_date"'));
+    assert.deepEqual(claimUpdate?.parameters.slice(0, 5), [
+      '2026-10-01',
+      'R',
+      'H',
+      null,
+      'Springfield'
+    ]);
+    const coverageUpdate = queries.find((q) => q.sql.startsWith('update "claim_coverages"'));
+    assert.deepEqual(coverageUpdate?.parameters, ['1EG', null, MEDICARE, 'c1']);
+    assert.ok(queries.some((q) => q.sql.startsWith('delete from "claim_diagnoses"')));
+    const diagnoses = queries.find((q) => q.sql.startsWith('insert into "claim_diagnoses"'));
+    assert.deepEqual(diagnoses?.parameters, ['c1', 1, 'R079', 'c1', 2, 'I10']);
     const patientUpdate = queries.find((q) => q.sql.startsWith('update "patients"'));
     assert.deepEqual(patientUpdate?.parameters.slice(-2), ['p1', 't']);
     assert.match(
       failure(
         await setup().service.saveBillingData('t', 'c1', {
           ...data,
-          coverages: [{ payer: 'Aetna', memberId: null, groupId: null }]
+          coverages: [{ id: BLUE, memberId: null, groupId: null }]
         })
       ),
-      /^invalid: Aetna is not a payer/
+      /^invalid: A coverage is not on this claim/
     );
     assert.match(
       failure(
@@ -196,17 +230,28 @@ describe('claim service', () => {
     assert.equal(found.value.name, '2-abc.pdf');
     assert.equal(found.value.contentType, 'application/pdf');
     assert.equal(new TextDecoder().decode(found.value.bytes), '%PDF-1.7');
-    const lookup = queries.find((q) => q.sql.includes('from "claim_events" as "e"'));
+    const lookup = queries.find((q) => q.sql.includes('from "claim_events" as "e" inner join'));
     assert.deepEqual(lookup?.parameters, ['e1', 'c1', 't']);
     assert.match(failure(await setup().service.document('t', 'c1', 'e1')), /^not_found/);
   });
 
-  it('reorders payers on open claims and reports closed or missing ones', async () => {
-    const open = setup();
-    assert.deepEqual(await open.service.setPayers('t', 'c1', ['Blue', 'Medicare']), {
+  it('reorders and adds payers on open claims, linking new ones to the directory', async () => {
+    const open = setup({ coverages: [coverage(MEDICARE, 'Medicare'), coverage(BLUE, 'Blue')] });
+    assert.deepEqual(await open.service.setPayers('t', 'c1', ['Blue', 'Medicare', 'Aetna']), {
       ok: true,
-      value: { payers: ['Blue', 'Medicare'] }
+      value: { payers: ['Blue', 'Medicare', 'Aetna'] }
     });
+    const moves = open.queries.filter((q) => q.sql.startsWith('update "claim_coverages"'));
+    assert.deepEqual(
+      moves.map((q) => q.parameters.slice(0, 2)),
+      [
+        [1, BLUE],
+        [2, MEDICARE]
+      ]
+    );
+    const added = open.queries.find((q) => q.sql.startsWith('insert into "claim_coverages"'));
+    assert.ok(added?.sql.includes('(select "id" from "payers" where "tenant_id" = $'));
+    assert.ok(added?.parameters.includes('Aetna') && added.parameters.includes('aetna'));
     assert.equal(open.jobs.length, 1);
     const closed = setup({ row: { ...claim, status: 'paid' } });
     assert.match(failure(await closed.service.setPayers('t', 'c1', [])), /^conflict/);
@@ -216,11 +261,23 @@ describe('claim service', () => {
     );
   });
 
+  it('removes untouched payers but keeps any payer with billing activity', async () => {
+    const quiet = setup();
+    assert.equal(failure(await quiet.service.setPayers('t', 'c1', [])), 'ok');
+    assert.ok(quiet.queries.some((q) => q.sql.startsWith('delete from "claim_coverages"')));
+    const active = setup({ coverages: [coverage(MEDICARE, 'Medicare', true)] });
+    assert.equal(
+      failure(await active.service.setPayers('t', 'c1', [])),
+      'conflict: Medicare already has billing activity on this claim, so it cannot be removed'
+    );
+    assert.ok(!active.queries.some((q) => q.sql.startsWith('delete')));
+  });
+
   it('returns a claim with its history and what the cycle is doing now', async () => {
     const events = [
       {
         kind: 'submitted',
-        payer: 'Medicare',
+        coverage_id: MEDICARE,
         paid_cents: 0,
         adjusted_cents: 0,
         created_at: new Date('2026-01-01T00:00:00.000Z')
@@ -230,7 +287,7 @@ describe('claim service', () => {
     assert.ok(found.ok);
     assert.deepEqual(found.value.progress, {
       step: 'await',
-      payer: 'Medicare',
+      coverage: { id: MEDICARE, payer: 'Medicare' },
       waitMs: 86_400_000,
       balanceCents: 100_000
     });

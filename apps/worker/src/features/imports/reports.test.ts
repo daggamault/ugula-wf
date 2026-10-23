@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db';
-import { createReportStore } from './reports.ts';
+import { createReportStore, fileNameOf } from './reports.ts';
 
 const blobs = {
   getText: async () => '<x/>',
@@ -31,6 +31,43 @@ describe('createReportStore', () => {
     await assert.rejects(() => store.getText('r1', ref('imports/t-2/a/pcrs.xml')), /not one of/);
     await assert.rejects(() => store.getText('r1', ref('imports/t-1/../t-2/x.xml')), /not one of/);
     await assert.rejects(() => store.putJson('r1', 'graphs/x.json', {}), /not one of/);
+  });
+
+  it('records the import once per run and each report once per position', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('select') ? [{ tenant_id: 't-1' }] : [{ id: 'imp-1' }]
+    );
+    const report = (i: number) => ({
+      bucket: 'ugula',
+      key: `imports/t-1/a/pcrs.xml.reports/${i}.json`,
+      size: 1,
+      contentType: 'application/json'
+    });
+    await createReportStore(db, blobs).recordReports(
+      'r1',
+      { bucket: 'ugula', key: 'imports/t-1/a/pcrs.xml' },
+      [
+        { position: 0, pcrNumber: 'A', report: report(0) },
+        { position: 1, pcrNumber: null, report: report(1) }
+      ]
+    );
+    const imp = queries.find((q) => q.sql.startsWith('insert into "imports"'));
+    assert.ok(imp?.sql.includes('on conflict ("run_id") do update set "report_count" = $'));
+    assert.ok(imp?.parameters.includes('pcrs.xml') && imp.parameters.includes('manual'));
+    const rows = queries.find((q) => q.sql.startsWith('insert into "import_reports"'));
+    assert.ok(rows?.sql.includes('on conflict ("import_id", "position") do nothing'));
+    assert.deepEqual(rows?.parameters.slice(0, 3), ['imp-1', 0, 'A']);
+    assert.ok(String(rows?.parameters[7]).includes('pcrs.xml.reports/1.json'));
+    await assert.rejects(
+      () =>
+        createReportStore(db, blobs).recordReports('r1', { bucket: 'ugula', key: 'x/y.xml' }, []),
+      /not one of/
+    );
+  });
+
+  it('names imports after the last path segment', () => {
+    assert.equal(fileNameOf('imports/t/abc/pcrs.xml'), 'pcrs.xml');
+    assert.equal(fileNameOf('loose'), 'loose');
   });
 
   it('refuses everything for unknown runs', async () => {

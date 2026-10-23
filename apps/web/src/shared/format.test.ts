@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { formatCents, formatDateTime, formatDuration, parseDollars } from './format.ts';
+import { formatCents, formatDate, formatDateTime, formatDuration, parseDollars } from './format.ts';
 
 describe('format', () => {
   it('formats timestamps and durations for display', () => {
@@ -16,5 +16,14 @@ describe('format', () => {
     assert.equal(parseDollars(' '), null);
     assert.equal(parseDollars('-1'), null);
     assert.equal(parseDollars('abc'), null);
+  });
+});
+
+describe('formatDate', () => {
+  it('shows calendar dates without shifting them across time zones', () => {
+    assert.match(formatDate('2026-10-01'), /2026/);
+    assert.match(formatDate('2026-10-01'), /1/);
+    assert.equal(formatDate('2026-01-01'), formatDate('2026-01-01T23:59:00Z'));
+    assert.equal(formatDate(null), '—');
   });
 });

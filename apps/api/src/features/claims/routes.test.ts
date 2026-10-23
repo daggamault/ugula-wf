@@ -43,7 +43,7 @@ describe('claim routes', () => {
     assert.equal(payers.status, 200);
     const paid = await request(`/${ID}/responses`, {
       method: 'POST',
-      body: JSON.stringify({ requestId: ID, payer: 'Medicare', paidCents: 100 })
+      body: JSON.stringify({ requestId: ID, coverageId: ID, paidCents: 100 })
     });
     assert.equal(paid.status, 201);
     assert.deepEqual(calls, [
@@ -55,7 +55,7 @@ describe('claim routes', () => {
         't-1',
         'u-1',
         ID,
-        { requestId: ID, payer: 'Medicare', paidCents: 100, adjustedCents: 0, note: '' }
+        { requestId: ID, coverageId: ID, paidCents: 100, adjustedCents: 0, note: '' }
       ]
     ]);
   });

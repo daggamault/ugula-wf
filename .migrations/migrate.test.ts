@@ -5,6 +5,7 @@ import { createBillingProfilesTables } from './billing-profiles.ts';
 import { createClaimsTables } from './claims.ts';
 import { createFeeSchedulesTable } from './fee-schedules.ts';
 import { createGraphsTables } from './graphs.ts';
+import { createImportsTables } from './imports.ts';
 import { migrate, resetSchema, steps } from './migrate.ts';
 import { createPatientsTable } from './patients.ts';
 import { createTasksTable } from './tasks.ts';
@@ -22,8 +23,9 @@ describe('migrate', () => {
       createWorkflowRunsTables,
       createTasksTable,
       createPatientsTable,
-      createFeeSchedulesTable,
       createBillingProfilesTables,
+      createFeeSchedulesTable,
+      createImportsTables,
       createClaimsTables
     ]);
   });

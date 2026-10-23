@@ -14,11 +14,22 @@ export const createFeeStore = (db: Kysely<Database>): FeeStore => ({
       .where('code', 'in', codes)
       .where((eb) =>
         payer === null
-          ? eb('payer', 'is', null)
-          : eb.or([eb('payer', 'is', null), eb(sql`lower(payer)`, '=', payer.toLowerCase())])
+          ? eb('payer_id', 'is', null)
+          : eb.or([
+              eb('payer_id', 'is', null),
+              eb(
+                'payer_id',
+                '=',
+                eb
+                  .selectFrom('payers')
+                  .select('id')
+                  .where('tenant_id', '=', runTenant(db, runId))
+                  .where(sql`lower(name)`, '=', payer.toLowerCase())
+              )
+            ])
       )
       .orderBy('code')
-      .orderBy('payer', (ob) => ob.asc().nullsLast())
+      .orderBy('payer_id', (ob) => ob.asc().nullsLast())
       .execute();
     return Object.fromEntries(rows.map((r) => [r.code, r.amount_cents]));
   }

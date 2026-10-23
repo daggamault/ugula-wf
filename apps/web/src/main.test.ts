@@ -18,7 +18,8 @@ describe('web composition root', () => {
       'fees',
       'claims',
       'settings',
-      'submissions'
+      'submissions',
+      'reports'
     ]);
     await clients.workflows.list();
     assert.deepEqual(urls, ['http://api.test/api/graphs']);

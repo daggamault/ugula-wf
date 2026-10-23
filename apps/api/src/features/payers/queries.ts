@@ -35,3 +35,21 @@ export const deletePayer = async (db: Db, tenantId: string, id: string) =>
     .where('tenant_id', '=', tenantId)
     .returning('id')
     .executeTakeFirst()) !== undefined;
+
+export const linkCoverages = async (
+  db: Db,
+  tenantId: string,
+  payer: { id: string; name: string }
+) =>
+  (
+    await db
+      .updateTable('claim_coverages as cc')
+      .set({ payer_id: payer.id })
+      .from('claims as c')
+      .whereRef('c.id', '=', 'cc.claim_id')
+      .where('c.tenant_id', '=', tenantId)
+      .where('cc.payer_id', 'is', null)
+      .where(sql`lower(cc.payer_name)`, '=', payer.name.toLowerCase())
+      .returning('cc.claim_id')
+      .execute()
+  ).length;

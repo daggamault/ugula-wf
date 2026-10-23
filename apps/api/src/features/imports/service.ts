@@ -5,7 +5,13 @@ import type { JobBoss } from '@ugula/jobs';
 import { verifyPassword } from '@ugula/passwords';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import { startRun } from '../../shared/runs.ts';
-import { findLatestPublished, findSftpTenant } from './queries.ts';
+import {
+  findLatestPublished,
+  findSftpTenant,
+  insertImport,
+  listImports,
+  type NewImport
+} from './queries.ts';
 import type { SftpEvent } from './schemas.ts';
 
 export const INGEST_WORKFLOW = 'billing.ingest-nemsis';
@@ -62,15 +68,25 @@ export const createImportService = ({ db, boss, blobs, maxBytes, sftp }: ImportS
   const unpublished = (workflow: string) =>
     fail('not_found', `Workflow ${workflow} has no published version`);
 
-  const ingest = async (tenantId: string, versionId: string, ref: BlobRef) => {
-    const runId = await db
-      .transaction()
-      .execute((tx) => startRun(tx, boss, { tenantId, versionId, inputs: { file: ref } }));
-    return ok({ runId, file: ref });
+  const ingest = async (
+    tenantId: string,
+    versionId: string,
+    file: BlobRef,
+    origin: Pick<NewImport, 'source' | 'fileName' | 'uploadedBy'>
+  ) => {
+    const runId = await db.transaction().execute(async (tx) => {
+      const id = await startRun(tx, boss, { tenantId, versionId, inputs: { file } });
+      await insertImport(tx, { tenantId, runId: id, file, ...origin });
+      return id;
+    });
+    return ok({ runId, file });
   };
 
   return {
-    upload: async (tenantId: string, workflow: string, file: UploadedFile) => {
+    list: async (tenantId: string, limit: number) =>
+      ok({ imports: await listImports(db, tenantId, limit) }),
+
+    upload: async (tenantId: string, userId: string, workflow: string, file: UploadedFile) => {
       if (!file.bytes.byteLength) return fail('invalid', 'The file is empty');
       if (file.bytes.byteLength > maxBytes) {
         return fail('invalid', `The file is larger than ${maxBytes} bytes`);
@@ -82,7 +98,11 @@ export const createImportService = ({ db, boss, blobs, maxBytes, sftp }: ImportS
         file.bytes,
         file.type || 'application/octet-stream'
       );
-      return ingest(tenantId, version.id, ref);
+      return ingest(tenantId, version.id, ref, {
+        source: 'upload',
+        fileName: file.name.trim() || safeName(file.name),
+        uploadedBy: userId
+      });
     },
 
     authenticateSftp: async (username: string, password: string) => {
@@ -101,12 +121,18 @@ export const createImportService = ({ db, boss, blobs, maxBytes, sftp }: ImportS
       if (!tenant) return fail('not_found', `No tenant uses SFTP account ${event.username}`);
       const version = await findLatestPublished(db, tenant.id, INGEST_WORKFLOW);
       if (!version) return unpublished(INGEST_WORKFLOW);
-      return ingest(tenant.id, version.id, {
-        bucket: sftp.bucket,
-        key: `${sftpPrefix(tenant.id)}${event.virtual_path.replace(/^\/+/, '')}`,
-        size: event.file_size,
-        contentType: 'application/xml'
-      });
+      const path = event.virtual_path.replace(/^\/+/, '');
+      return ingest(
+        tenant.id,
+        version.id,
+        {
+          bucket: sftp.bucket,
+          key: `${sftpPrefix(tenant.id)}${path}`,
+          size: event.file_size,
+          contentType: 'application/xml'
+        },
+        { source: 'sftp', fileName: path.split('/').at(-1) || path, uploadedBy: null }
+      );
     }
   };
 };

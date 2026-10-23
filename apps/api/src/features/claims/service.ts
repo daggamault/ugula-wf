@@ -7,6 +7,7 @@ import { signalRuns, startRun } from '../../shared/runs.ts';
 import {
   type ClaimFilters,
   type ClaimResponse,
+  type CoverageRow,
   claimBalance,
   findClaim,
   findEventDocument,
@@ -14,11 +15,13 @@ import {
   insertResponse,
   listClaimEvents,
   listClaims,
+  listCoverages,
   lockClaim,
+  type PayerOrder,
+  reorderCoverages,
   resolveMootTasks,
   saveBillingData,
-  setCycleRun,
-  updatePayers
+  setCycleRun
 } from './queries.ts';
 import type { BillingData } from './schemas.ts';
 
@@ -38,6 +41,23 @@ const closed = fail('conflict', 'Claim is already closed');
 
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+export const planPayerOrder = (
+  existing: readonly CoverageRow[],
+  payers: readonly string[]
+): PayerOrder & { removed: CoverageRow[] } => {
+  const byName = new Map(existing.map((c) => [c.payer.toLowerCase(), c]));
+  const keep: PayerOrder['keep'] = [];
+  const add: PayerOrder['add'] = [];
+  payers.forEach((payer, i) => {
+    const found = byName.get(payer.toLowerCase());
+    if (found) keep.push({ id: found.id, position: i + 1 });
+    else add.push({ payer, position: i + 1 });
+  });
+  const kept = new Set(keep.map((c) => c.id));
+  const removed = existing.filter((c) => !kept.has(c.id));
+  return { keep, add, remove: removed.map((c) => c.id), removed };
+};
+
 export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) => {
   const nudge = (tx: Db, tenantId: string, claimId: string) =>
     signalRuns(tx, boss, { tenantId, name: 'claim', key: claimId, payload: null });
@@ -55,10 +75,10 @@ export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) =
           ? nextClaimStep(
               {
                 totalCents: claim.total_cents,
-                payers: claim.payers,
+                coverages: claim.coverages.map((c) => ({ id: c.id, payer: c.payer })),
                 events: events.map((e) => ({
                   kind: e.kind as ClaimEventKind,
-                  payer: e.payer,
+                  coverageId: e.coverage_id,
                   paidCents: e.paid_cents,
                   adjustedCents: e.adjusted_cents,
                   at: new Date(e.created_at).toISOString()
@@ -72,9 +92,18 @@ export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) =
 
     setPayers: (tenantId: string, id: string, payers: string[]) =>
       db.transaction().execute(async (tx) => {
-        if (!(await updatePayers(tx, tenantId, id, payers))) {
-          return (await findClaim(tx, tenantId, id)) ? closed : notFound;
+        const claim = await lockClaim(tx, tenantId, id);
+        if (!claim) return notFound;
+        if (claim.status !== 'open') return closed;
+        const order = planPayerOrder(await listCoverages(tx, id), payers);
+        const active = order.removed.find((c) => c.has_events);
+        if (active) {
+          return fail(
+            'conflict',
+            `${active.payer} already has billing activity on this claim, so it cannot be removed`
+          );
         }
+        await reorderCoverages(tx, tenantId, id, order);
         await nudge(tx, tenantId, id);
         return ok({ payers });
       }),
@@ -95,8 +124,10 @@ export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) =
         const claim = await lockClaim(tx, tenantId, id);
         if (!claim) return notFound;
         if (claim.status !== 'open') return closed;
-        const unknown = data.coverages.find((c) => !claim.payers.includes(c.payer));
-        if (unknown) return fail('invalid', `${unknown.payer} is not a payer on this claim`);
+        const owned = new Set((await listCoverages(tx, id)).map((c) => c.id));
+        if (data.coverages.some((c) => !owned.has(c.id))) {
+          return fail('invalid', 'A coverage is not on this claim');
+        }
         await saveBillingData(
           tx,
           tenantId,
@@ -108,7 +139,7 @@ export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) =
               serviceDate: data.serviceDate,
               pickup: data.pickup,
               destination: data.destination,
-              diagnoses: [...new Set(data.diagnoses)],
+              diagnoses: data.diagnoses,
               originDestination: data.originDestination
             }
           }
@@ -144,8 +175,11 @@ export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) =
           return ok({ balanceCents: await claimBalance(tx, id), duplicate: true });
         }
         if (claim.status !== 'open') return closed;
-        if (response.payer !== null && !claim.payers.includes(response.payer)) {
-          return fail('invalid', `${response.payer} is not a payer on this claim`);
+        if (
+          response.coverageId !== null &&
+          !(await listCoverages(tx, id)).some((c) => c.id === response.coverageId)
+        ) {
+          return fail('invalid', 'That payer is not on this claim');
         }
         const balance = await claimBalance(tx, id);
         const amount = response.paidCents + response.adjustedCents;
@@ -158,7 +192,7 @@ export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) =
         await insertResponse(tx, id, userId, response);
         const remaining = balance - amount;
         const moot = await resolveMootTasks(tx, tenantId, id, {
-          payer: response.payer,
+          coverageId: response.coverageId,
           settled: remaining <= 0
         });
         await enqueueRuns(

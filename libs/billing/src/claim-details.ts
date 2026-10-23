@@ -70,9 +70,13 @@ const location = (x: unknown): Location => {
   return { name: text(r.name), ...readAddress(r) };
 };
 
+export const ICD10_PATTERN = '^[A-Z][0-9][0-9A-Z]{1,5}$';
+
+const ICD10 = new RegExp(ICD10_PATTERN);
+
 export const icd10 = (x: unknown): string | null => {
   const code = text(x)?.toUpperCase().replace('.', '');
-  return code && /^[A-Z][0-9][0-9A-Z]{1,5}$/.test(code) ? code : null;
+  return code && ICD10.test(code) ? code : null;
 };
 
 const serviceDate = (x: unknown) => {
@@ -126,18 +130,4 @@ export const readCoverages = (summary: unknown): Coverage[] => {
   return coverages.length || !fallback
     ? coverages
     : [{ payer: fallback, payerCode: null, memberId: null, groupId: null }];
-};
-
-export const readStoredDetails = (stored: unknown): ClaimDetails => {
-  const s = record(stored);
-  return {
-    serviceDate: serviceDate(s.serviceDate),
-    pickup: location(s.pickup),
-    destination: location(s.destination),
-    diagnoses: (Array.isArray(s.diagnoses) ? s.diagnoses : [])
-      .map(icd10)
-      .filter((c) => c !== null)
-      .slice(0, DIAGNOSIS_LIMIT),
-    originDestination: originDestination(s.originDestination)
-  };
 };

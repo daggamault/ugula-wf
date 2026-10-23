@@ -7,6 +7,7 @@ import {
   fromProfileDraft,
   PayerDirectory,
   ProfileForm,
+  payerSavedNotice,
   toProfileDraft
 } from './settings-page.tsx';
 
@@ -65,5 +66,13 @@ describe('settings', () => {
       })
     );
     assert.ok(none.includes('No payers yet'));
+  });
+});
+
+describe('payerSavedNotice', () => {
+  it('says how many claims a saved payer was linked to', () => {
+    assert.equal(payerSavedNotice('Medicare', 0), 'Medicare saved.');
+    assert.equal(payerSavedNotice('Medicare', 1), 'Medicare saved and linked to 1 claim.');
+    assert.equal(payerSavedNotice('Medicare', 3), 'Medicare saved and linked to 3 claims.');
   });
 });

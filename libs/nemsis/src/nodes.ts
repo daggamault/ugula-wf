@@ -1,4 +1,4 @@
-import { type JsonValue, parseDataset } from './parse.ts';
+import { type JsonValue, parseDataset, pcrNumberOf } from './parse.ts';
 
 type ValueType =
   | 'any'
@@ -14,14 +14,15 @@ type Pin = { name: string; type: ValueType };
 
 type BlobLocation = { bucket: string; key: string };
 
+type StoredBlob = BlobLocation & { size: number; contentType: string };
+
+export type SplitReport = { position: number; pcrNumber: string | null; report: StoredBlob };
+
 export type ReportStore = {
   getText: (runId: string, ref: BlobLocation) => Promise<string>;
   getJson: (runId: string, ref: BlobLocation) => Promise<unknown>;
-  putJson: (
-    runId: string,
-    key: string,
-    value: unknown
-  ) => Promise<BlobLocation & { size: number; contentType: string }>;
+  putJson: (runId: string, key: string, value: unknown) => Promise<StoredBlob>;
+  recordReports: (runId: string, file: BlobLocation, reports: SplitReport[]) => Promise<void>;
 };
 
 export type HostNode = {
@@ -63,7 +64,7 @@ export const createNemsisNodes = (store: ReportStore | null): HostNode[] => {
       title: 'Split NEMSIS File',
       category: 'NEMSIS',
       description:
-        'Parses a NEMSIS 3.5 EMSDataSet file and stores each patient care report as its own blob.',
+        'Parses a NEMSIS 3.5 EMSDataSet file, stores each patient care report as its own blob and records the reports against the import.',
       effect: true,
       signature: action(
         [{ name: 'file', type: BLOB }],
@@ -77,6 +78,11 @@ export const createNemsisNodes = (store: ReportStore | null): HostNode[] => {
         const { reports } = parseDataset(await storage().getText(ctx.runId, file));
         const refs = await Promise.all(
           reports.map((report, i) => storage().putJson(ctx.runId, reportKey(file, i), report))
+        );
+        await storage().recordReports(
+          ctx.runId,
+          file,
+          refs.map((report, i) => ({ position: i, pcrNumber: pcrNumberOf(reports[i]), report }))
         );
         return { type: 'next', pin: 'then', outputs: { reports: refs, count: refs.length } };
       }

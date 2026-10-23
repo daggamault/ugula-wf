@@ -5,6 +5,7 @@ import { createClaimsTables } from './claims.ts';
 import { parseConfig } from './config.ts';
 import { createFeeSchedulesTable } from './fee-schedules.ts';
 import { createGraphsTables } from './graphs.ts';
+import { createImportsTables } from './imports.ts';
 import { createPatientsTable } from './patients.ts';
 import { createTasksTable } from './tasks.ts';
 import { createTenantsTable } from './tenants.ts';
@@ -12,13 +13,19 @@ import { createUsersTable } from './users.ts';
 import { createWorkflowRunsTables } from './workflow-runs.ts';
 
 export const resetSchema = async (db: Kysely<Database>) => {
+  await db.schema.dropView('claim_balances').ifExists().execute();
   for (const table of [
     'claim_events',
     'claim_batches',
+    'claim_diagnoses',
+    'claim_coverages',
+    'claim_lines',
+    'claims',
+    'import_reports',
+    'imports',
+    'fee_schedules',
     'payers',
     'billing_profiles',
-    'claims',
-    'fee_schedules',
     'patients',
     'tasks',
     'workflow_run_steps',
@@ -41,8 +48,9 @@ export const steps = [
   createWorkflowRunsTables,
   createTasksTable,
   createPatientsTable,
-  createFeeSchedulesTable,
   createBillingProfilesTables,
+  createFeeSchedulesTable,
+  createImportsTables,
   createClaimsTables
 ] as const;
 

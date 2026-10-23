@@ -7,9 +7,7 @@ describe('fee seeds', () => {
   it('upserts a default price for every ambulance base and mileage code', async () => {
     const db = createDummyDb();
     const q = buildUpsertDefaultFees(db, 't-1', demoFees).compile();
-    assert.ok(
-      q.sql.includes("on conflict (tenant_id, lower(coalesce(payer, '')), code) do update set")
-    );
+    assert.ok(q.sql.includes('on conflict ("tenant_id", "payer_id", "code") do update set'));
     assert.ok(q.sql.includes('"amount_cents" = "excluded"."amount_cents"'));
     assert.deepEqual(Object.keys(demoFees).sort(), [
       'A0425',

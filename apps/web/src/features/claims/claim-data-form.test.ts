@@ -13,15 +13,23 @@ import type { ClaimDetail } from './client.ts';
 
 const claim = {
   id: 'c1',
-  payers: ['Medicare', 'Blue Plan'],
-  coverages: [{ payer: 'Medicare', payerCode: null, memberId: '1EG4', groupId: null }],
-  details: {
-    serviceDate: '2026-10-01',
-    pickup: { name: null, addressLine: '9 Elm St', city: null, state: 'IL', postalCode: '62704' },
-    destination: { name: 'St. Mary', addressLine: null, city: null, state: null, postalCode: null },
-    diagnoses: ['R079', 'I10'],
-    originDestination: 'SH'
-  },
+  coverages: [
+    { id: 'cov-m', payer: 'Medicare', member_id: '1EG4', group_id: null },
+    { id: 'cov-b', payer: 'Blue Plan', member_id: null, group_id: null }
+  ],
+  service_date: '2026-10-01',
+  pickup_address_line: '9 Elm St',
+  pickup_city: null,
+  pickup_state: 'IL',
+  pickup_postal_code: '62704',
+  destination_name: 'St. Mary',
+  destination_address_line: null,
+  destination_city: null,
+  destination_state: null,
+  destination_postal_code: null,
+  diagnoses: ['R079', 'I10'],
+  origin_code: 'S',
+  destination_code: 'H',
   address_line: '1 Main St',
   city: null,
   state: 'IL',
@@ -32,8 +40,8 @@ describe('claim data form', () => {
   it('round-trips claim data, blanks becoming missing values', () => {
     const draft = toDraft(claim);
     assert.deepEqual(draft.coverages, [
-      { payer: 'Medicare', memberId: '1EG4', groupId: '' },
-      { payer: 'Blue Plan', memberId: '', groupId: '' }
+      { id: 'cov-m', payer: 'Medicare', memberId: '1EG4', groupId: '' },
+      { id: 'cov-b', payer: 'Blue Plan', memberId: '', groupId: '' }
     ]);
     assert.equal(draft.diagnoses, 'R079, I10');
     const data = fromDraft({ ...draft, diagnoses: ' R07.9,I10  E11.9 ' });
@@ -44,7 +52,9 @@ describe('claim data form', () => {
       state: 'IL',
       postalCode: '62704'
     });
-    assert.deepEqual(data.coverages[1], { payer: 'Blue Plan', memberId: null, groupId: null });
+    assert.deepEqual(data.coverages[1], { id: 'cov-b', memberId: null, groupId: null });
+    assert.equal(data.serviceDate, '2026-10-01');
+    assert.equal(data.pickup.addressLine, '9 Elm St');
     assert.equal(data.destination.name, 'St. Mary');
     assert.equal(data.originDestination, 'SH');
     assert.deepEqual([draft.originCode, draft.destinationCode], ['S', 'H']);

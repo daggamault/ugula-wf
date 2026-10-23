@@ -20,7 +20,7 @@ describe('claim schemas', () => {
     const requestId = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
     assert.deepEqual(v.parse(responseSchema, { requestId, paidCents: 500 }), {
       requestId,
-      payer: null,
+      coverageId: null,
       paidCents: 500,
       adjustedCents: 0,
       note: ''
@@ -28,13 +28,15 @@ describe('claim schemas', () => {
     assert.equal(v.safeParse(responseSchema, { requestId, paidCents: -1 }).success, false);
     assert.equal(v.safeParse(responseSchema, { requestId, paidCents: 1.5 }).success, false);
     assert.equal(v.safeParse(responseSchema, { paidCents: 1 }).success, false);
+    assert.equal(v.safeParse(responseSchema, { requestId, coverageId: 'Medicare' }).success, false);
   });
 
   it('normalizes billing data and turns blanks into missing values', () => {
+    const requestId = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
     assert.deepEqual(
       v.parse(billingDataSchema, {
         patient: { addressLine: ' 1 Main ', city: '', state: 'il', postalCode: '62704-1234' },
-        coverages: [{ payer: 'Medicare', memberId: ' 1EG ', groupId: '' }],
+        coverages: [{ id: requestId, memberId: ' 1EG ', groupId: '' }],
         serviceDate: '2026-10-01',
         pickup: {
           name: '',
@@ -44,11 +46,11 @@ describe('claim schemas', () => {
           postalCode: '62701'
         },
         destination: {},
-        diagnoses: ['r07.9', 'I10']
+        diagnoses: ['r07.9', 'I10', 'R07.9']
       }),
       {
         patient: { addressLine: '1 Main', city: null, state: 'IL', postalCode: '627041234' },
-        coverages: [{ payer: 'Medicare', memberId: '1EG', groupId: null }],
+        coverages: [{ id: requestId, memberId: '1EG', groupId: null }],
         serviceDate: '2026-10-01',
         pickup: {
           name: null,

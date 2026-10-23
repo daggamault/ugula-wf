@@ -11,10 +11,7 @@ describe('payer service', () => {
     assert.deepEqual(await service.list('t-1'), { ok: true, value: { payers: [row] } });
     assert.deepEqual(
       await service.save('t-1', { name: 'Medicare', payerId: '00952', claimFiling: 'MB' }),
-      {
-        ok: true,
-        value: { payer: row }
-      }
+      { ok: true, value: { payer: row, linkedClaims: 1 } }
     );
     const removed = await service.remove('t-1', 'p1');
     assert.equal(!removed.ok && removed.failure.code, 'not_found');

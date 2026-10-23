@@ -1,10 +1,19 @@
+export const SERVICE_LEVELS = ['BLS', 'ALS1', 'ALS2', 'SCT'] as const;
+
+export type ServiceLevel = (typeof SERVICE_LEVELS)[number];
+
+export const isServiceLevel = (x: unknown): x is ServiceLevel =>
+  SERVICE_LEVELS.includes(x as ServiceLevel);
+
+export const HCPCS_PATTERN = '^[A-Z][0-9]{4}$';
+
 export type ClaimLine = { code: string; units: number };
 
 export type PricedLine = ClaimLine & { unitCents: number; totalCents: number };
 
 export type PricedClaim = { lines: PricedLine[]; totalCents: number };
 
-const HCPCS = /^[A-Z]\d{4}$/;
+const HCPCS = new RegExp(HCPCS_PATTERN);
 
 export const readLines = (x: unknown): ClaimLine[] => {
   if (!Array.isArray(x) || !x.length) throw new Error('A claim needs at least one line');

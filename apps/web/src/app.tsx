@@ -1,6 +1,7 @@
 import {
   ActivityIcon,
   BadgeDollarSignIcon,
+  ChartColumnIcon,
   FileUpIcon,
   ListTodoIcon,
   ReceiptTextIcon,
@@ -19,6 +20,8 @@ import { FeesPage } from './features/fees/fees-page.tsx';
 import { HealthStatus } from './features/health/health-status.tsx';
 import type { ImportsClient } from './features/imports/client.ts';
 import { ImportsPage } from './features/imports/imports-page.tsx';
+import type { ReportsClient } from './features/reports/client.ts';
+import { ReportsPage } from './features/reports/reports-page.tsx';
 import type { RunStatus, RunsClient } from './features/runs/client.ts';
 import { RunsPage } from './features/runs/runs-page.tsx';
 import { StartRunPage } from './features/runs/start-run-page.tsx';
@@ -46,6 +49,7 @@ export type AppClients = {
   claims: ClaimsClient;
   settings: SettingsClient;
   submissions: SubmissionsClient;
+  reports: ReportsClient;
 };
 
 export type RouteContext = AppClients & {
@@ -72,6 +76,7 @@ export const SECTIONS = [
   { id: 'claims', label: 'Claims', href: '/claims', icon: ReceiptTextIcon, group: 'Work' },
   { id: 'submissions', label: 'Submissions', href: '/submissions', icon: SendIcon, group: 'Work' },
   { id: 'imports', label: 'Imports', href: '/imports', icon: FileUpIcon, group: 'Work' },
+  { id: 'reports', label: 'Reports', href: '/reports', icon: ChartColumnIcon, group: 'Work' },
   {
     id: 'workflows',
     label: 'Workflows',
@@ -124,7 +129,7 @@ const routes: readonly Route[] = [
     pattern: '/runs/:id',
     render: (p, _, c) => <RunPage client={c.runs} live={c.live} runId={p.id ?? ''} />
   },
-  { pattern: '/imports', render: (_, __, c) => <ImportsPage client={c.imports} /> },
+  { pattern: '/imports', render: (_, __, c) => <ImportsPage client={c.imports} live={c.live} /> },
   {
     pattern: '/claims',
     render: (_, q, c) => <ClaimsPage client={c.claims} live={c.live} status={claimStatusParam(q)} />
@@ -137,6 +142,7 @@ const routes: readonly Route[] = [
     pattern: '/submissions',
     render: (_, __, c) => <SubmissionsPage client={c.submissions} live={c.live} />
   },
+  { pattern: '/reports', render: (_, __, c) => <ReportsPage client={c.reports} /> },
   { pattern: '/fees', render: (_, __, c) => <FeesPage client={c.fees} /> },
   { pattern: '/settings', render: (_, __, c) => <SettingsPage client={c.settings} /> },
   { pattern: '/tasks', render: (_, __, c) => <TasksPage client={c.tasks} live={c.live} /> },

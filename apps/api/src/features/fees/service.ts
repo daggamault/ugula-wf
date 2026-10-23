@@ -1,12 +1,15 @@
 import type { Db } from '@ugula/db';
 import { fail, ok } from '../../shared/result.ts';
-import { deleteFee, listFees, upsertFee } from './queries.ts';
+import { deleteFee, listFees, payerExists, upsertFee } from './queries.ts';
 import type { FeeInput } from './schemas.ts';
 
 export const createFeeService = ({ db }: { db: Db }) => ({
   list: async (tenantId: string) => ok({ fees: await listFees(db, tenantId) }),
 
-  save: async (tenantId: string, fee: FeeInput) => ok({ fee: await upsertFee(db, tenantId, fee) }),
+  save: async (tenantId: string, fee: FeeInput) =>
+    fee.payerId !== null && !(await payerExists(db, tenantId, fee.payerId))
+      ? fail('invalid', 'Choose a payer from the payer directory')
+      : ok({ fee: await upsertFee(db, tenantId, fee) }),
 
   remove: async (tenantId: string, id: string) =>
     (await deleteFee(db, tenantId, id))

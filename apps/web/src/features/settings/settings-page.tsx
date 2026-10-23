@@ -281,24 +281,32 @@ export const PayerDirectory = ({
         }}
       >
         {deleting
-          ? `Claims billed to ${deleting.name} cannot go in an 837P file until it is added again.`
+          ? `Its prices are removed, and claims billed to ${deleting.name} cannot go in an 837P file until it is added again.`
           : null}
       </ConfirmDialog>
     </SectionPanel>
   );
 };
 
+export const payerSavedNotice = (name: string, linkedClaims: number) =>
+  linkedClaims
+    ? `${name} saved and linked to ${linkedClaims} ${linkedClaims === 1 ? 'claim' : 'claims'}.`
+    : `${name} saved.`;
+
 export const SettingsPage = ({ client }: SettingsPageProps) => {
   const profile = useResource('billing-profile', client.profile);
   const payers = useResource('payers', client.payers);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const act = async (action: () => Promise<unknown>, done: string, reload: () => void) => {
+  const act = async <T,>(
+    action: () => Promise<T>,
+    done: (result: T) => string,
+    reload: () => void
+  ) => {
     setError('');
     setNotice('');
     try {
-      await action();
-      setNotice(done);
+      setNotice(done(await action()));
       reload();
       return true;
     } catch (err) {
@@ -316,7 +324,13 @@ export const SettingsPage = ({ client }: SettingsPageProps) => {
       {profile.data !== undefined ? (
         <ProfileForm
           profile={profile.data}
-          onSave={(p) => act(() => client.saveProfile(p), 'Billing profile saved.', profile.reload)}
+          onSave={(p) =>
+            act(
+              () => client.saveProfile(p),
+              () => 'Billing profile saved.',
+              profile.reload
+            )
+          }
         />
       ) : (
         <PageLoading />
@@ -324,9 +338,19 @@ export const SettingsPage = ({ client }: SettingsPageProps) => {
       {payers.data ? (
         <PayerDirectory
           payers={payers.data}
-          onSave={(p) => act(() => client.savePayer(p), `${p.name} saved.`, payers.reload)}
+          onSave={(p) =>
+            act(
+              () => client.savePayer(p),
+              (saved) => payerSavedNotice(saved.payer.name, saved.linkedClaims),
+              payers.reload
+            )
+          }
           onDelete={(p) =>
-            void act(() => client.removePayer(p.id), `${p.name} deleted.`, payers.reload)
+            void act(
+              () => client.removePayer(p.id),
+              () => `${p.name} deleted.`,
+              payers.reload
+            )
           }
         />
       ) : null}

@@ -1,31 +1,44 @@
 import { FileUpIcon, UploadIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
-import { navigate } from '../../shared/router.tsx';
+import { type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
-import { Button } from '../../shared/ui/button.tsx';
-import { Page } from '../../shared/ui/page.tsx';
-import { SectionPanel } from '../../shared/ui/section-panel.tsx';
-import type { ImportsClient } from './client.ts';
+import { Button, ButtonLink } from '../../shared/ui/button.tsx';
+import { EmptyText } from '../../shared/ui/empty-state.tsx';
+import { Page, PageLoading } from '../../shared/ui/page.tsx';
+import { Section, SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { useResource } from '../../shared/use-resource.ts';
+import type { ImportResult, ImportsClient } from './client.ts';
+import { ImportHistory } from './import-history.tsx';
 
 export type ImportsPageProps = {
   client: ImportsClient;
+  live: Live;
 };
 
-export const ImportsPage = ({ client }: ImportsPageProps) => {
+export const ImportsPage = ({ client, live }: ImportsPageProps) => {
+  const history = useResource('imports', client.list, 30_000);
+  useLive(live, history.reload);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState('');
+  const [received, setReceived] = useState<{ name: string; result: ImportResult } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!file) return;
+    const form = e.currentTarget;
     setBusy(true);
     setError('');
+    setReceived(null);
     try {
-      navigate(`/runs/${(await client.upload(file)).runId}`);
+      setReceived({ name: file.name, result: await client.upload(file) });
+      setFile(null);
+      form.reset();
+      history.reload();
     } catch (err) {
       setError(messageOf(err));
+    } finally {
       setBusy(false);
     }
   };
@@ -35,6 +48,19 @@ export const ImportsPage = ({ client }: ImportsPageProps) => {
       title="Imports"
       description="Upload a NEMSIS 3.5 export. Each patient care report becomes its own claim run."
     >
+      {received ? (
+        <Alert
+          intent="success"
+          action={
+            <ButtonLink to={`/runs/${received.result.runId}`} variant="outline" size="sm">
+              View run
+            </ButtonLink>
+          }
+        >
+          {received.name} was received. Its reports are being matched to patients and queued for
+          review.
+        </Alert>
+      ) : null}
       <form onSubmit={submit} className="flex max-w-2xl flex-col gap-6">
         <SectionPanel
           title="NEMSIS File"
@@ -80,6 +106,19 @@ export const ImportsPage = ({ client }: ImportsPageProps) => {
           </div>
         </SectionPanel>
       </form>
+      <Section
+        title="Recent Imports"
+        description="Every file received by upload or SFTP, and what became of its reports."
+      >
+        {history.error ? <Alert>{history.error.message}</Alert> : null}
+        {history.data?.length ? (
+          <ImportHistory imports={history.data} />
+        ) : history.loading ? (
+          <PageLoading />
+        ) : (
+          <EmptyText>No files have been imported yet.</EmptyText>
+        )}
+      </Section>
     </Page>
   );
 };

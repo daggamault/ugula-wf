@@ -8,8 +8,17 @@ import type { ImportService } from './service.ts';
 const calls: unknown[][] = [];
 
 const service = {
-  upload: async (tenantId: string, workflow: string, file: { name: string; bytes: Uint8Array }) => {
-    calls.push([tenantId, workflow, file.name, new TextDecoder().decode(file.bytes)]);
+  list: async (tenantId: string, limit: number) => {
+    calls.push(['list', tenantId, limit]);
+    return ok({ imports: [] });
+  },
+  upload: async (
+    tenantId: string,
+    userId: string,
+    workflow: string,
+    file: { name: string; bytes: Uint8Array }
+  ) => {
+    calls.push([tenantId, userId, workflow, file.name, new TextDecoder().decode(file.bytes)]);
     return workflow === 'billing.missing'
       ? fail('not_found', 'nope')
       : ok({ runId: 'r1', file: { bucket: 'b', key: 'k', size: 4, contentType: 'x' } });
@@ -30,10 +39,16 @@ const form = (fields: Record<string, string | File>) => {
 };
 
 describe('import routes', () => {
+  it('lists recent imports for the session tenant', async () => {
+    assert.equal((await request('/?limit=20')).status, 200);
+    assert.deepEqual(calls.at(-1), ['list', 't-1', 20]);
+    assert.equal((await request('/?limit=0')).status, 400);
+  });
+
   it('accepts a multipart file for the session tenant', async () => {
     const res = await request('/', form({ file: new File(['<x/>'], 'pcrs.xml') }));
     assert.equal(res.status, 201);
-    assert.deepEqual(calls.at(-1), ['t-1', 'billing.ingest-nemsis', 'pcrs.xml', '<x/>']);
+    assert.deepEqual(calls.at(-1), ['t-1', 'u-1', 'billing.ingest-nemsis', 'pcrs.xml', '<x/>']);
     const missing = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.missing' });
     assert.equal((await request('/', missing)).status, 404);
   });

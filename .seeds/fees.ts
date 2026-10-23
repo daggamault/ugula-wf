@@ -21,13 +21,13 @@ export const buildUpsertDefaultFees = (
     .values(
       Object.entries(fees).map(([code, amount]) => ({
         tenant_id: tenantId,
-        payer: null,
+        payer_id: null,
         code,
         amount_cents: amount
       }))
     )
     .onConflict((oc) =>
-      oc.expression(sql`tenant_id, lower(coalesce(payer, '')), code`).doUpdateSet({
+      oc.columns(['tenant_id', 'payer_id', 'code']).doUpdateSet({
         amount_cents: (eb) => eb.ref('excluded.amount_cents'),
         updated_at: sql`now()`
       })

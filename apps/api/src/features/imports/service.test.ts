@@ -48,8 +48,8 @@ const file = (text: string, name = 'pcrs.xml') => ({
 
 describe('import service uploads', () => {
   it('stores the upload and starts the workflow with a reference to it', async () => {
-    const { service, stored, jobs } = setup();
-    const res = await service.upload('t-1', 'billing.ingest-nemsis', file('<x/>'));
+    const { service, stored, jobs, queries } = setup();
+    const res = await service.upload('t-1', 'u-1', 'billing.ingest-nemsis', file('<x/>'));
     assert.ok(res.ok);
     assert.equal(res.value.runId, 'r1');
     assert.match(stored[0] ?? '', /^imports\/t-1\/[0-9a-f-]{36}\/pcrs\.xml$/);
@@ -60,12 +60,15 @@ describe('import service uploads', () => {
       contentType: 'application/xml'
     });
     assert.equal(jobs.length, 1);
+    const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
+    assert.deepEqual(recorded?.parameters.slice(0, 4), ['t-1', 'r1', 'upload', 'pcrs.xml']);
+    assert.equal(recorded?.parameters.at(-1), 'u-1');
   });
 
   it('rejects empty, oversized and unroutable uploads before storing anything', async () => {
     const { service, stored } = setup({ published: false });
     const code = async (f: ReturnType<typeof file>) => {
-      const res = await service.upload('t-1', 'billing.ingest-nemsis', f);
+      const res = await service.upload('t-1', 'u-1', 'billing.ingest-nemsis', f);
       return res.ok ? 'ok' : res.failure.code;
     };
     assert.equal(await code(file('')), 'invalid');
@@ -109,7 +112,7 @@ describe('import service SFTP hooks', () => {
   });
 
   it('starts ingest for completed uploads and ignores everything else', async () => {
-    const { service, jobs } = setup({ tenant: { id: 't-1', sftp_password_hash: '' } });
+    const { service, jobs, queries } = setup({ tenant: { id: 't-1', sftp_password_hash: '' } });
     const event = {
       action: 'upload',
       username: 'acme-ems',
@@ -133,6 +136,9 @@ describe('import service SFTP hooks', () => {
       value: { ignored: true }
     });
     assert.equal(jobs.length, 1);
+    const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
+    assert.deepEqual(recorded?.parameters.slice(0, 4), ['t-1', 'r1', 'sftp', 'pcrs.xml']);
+    assert.equal(recorded?.parameters.at(-1), null);
     const unknown = await setup().service.receiveSftpEvent(event);
     assert.equal(!unknown.ok && unknown.failure.code, 'not_found');
   });

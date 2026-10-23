@@ -5,32 +5,37 @@ import { bodyLimit } from 'hono/body-limit';
 import type { AuthEnv } from '../../shared/auth.ts';
 import { invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { importFormSchema, sftpAuthSchema, sftpEventSchema } from './schemas.ts';
+import { importFormSchema, listImportsQuery, sftpAuthSchema, sftpEventSchema } from './schemas.ts';
 import type { ImportService } from './service.ts';
 
 const FORM_OVERHEAD_BYTES = 64 * 1024;
 
 export const createImportRoutes = (service: ImportService, maxBytes: number) =>
-  new Hono<AuthEnv>().post(
-    '/',
-    bodyLimit({
-      maxSize: maxBytes + FORM_OVERHEAD_BYTES,
-      onError: (c) => c.json({ error: 'File too large' }, 413)
-    }),
-    sValidator('form', importFormSchema, invalidRequest),
-    async (c) => {
-      const { file, workflow } = c.req.valid('form');
-      return respond(
-        c,
-        await service.upload(c.get('session').tenantId, workflow, {
-          name: file.name,
-          type: file.type,
-          bytes: new Uint8Array(await file.arrayBuffer())
-        }),
-        201
-      );
-    }
-  );
+  new Hono<AuthEnv>()
+    .get('/', sValidator('query', listImportsQuery, invalidRequest), async (c) =>
+      respond(c, await service.list(c.get('session').tenantId, c.req.valid('query').limit))
+    )
+    .post(
+      '/',
+      bodyLimit({
+        maxSize: maxBytes + FORM_OVERHEAD_BYTES,
+        onError: (c) => c.json({ error: 'File too large' }, 413)
+      }),
+      sValidator('form', importFormSchema, invalidRequest),
+      async (c) => {
+        const { file, workflow } = c.req.valid('form');
+        const { tenantId, userId } = c.get('session');
+        return respond(
+          c,
+          await service.upload(tenantId, userId, workflow, {
+            name: file.name,
+            type: file.type,
+            bytes: new Uint8Array(await file.arrayBuffer())
+          }),
+          201
+        );
+      }
+    );
 
 export const requireBearer =
   (secret: string): MiddlewareHandler =>

@@ -10,7 +10,7 @@ import type { BillingDataInput, ClaimDetail, LocationInput } from './client.ts';
 
 type Draft = {
   patient: Record<'addressLine' | 'city' | 'state' | 'postalCode', string>;
-  coverages: { payer: string; memberId: string; groupId: string }[];
+  coverages: { id: string; payer: string; memberId: string; groupId: string }[];
   serviceDate: string;
   pickup: Record<keyof LocationInput, string>;
   destination: Record<keyof LocationInput, string>;
@@ -34,14 +34,6 @@ const blank = (x: string | null | undefined) => x ?? '';
 
 const orNull = (x: string) => (x.trim() ? x.trim() : null);
 
-const location = (l: LocationInput | undefined) => ({
-  name: blank(l?.name),
-  addressLine: blank(l?.addressLine),
-  city: blank(l?.city),
-  state: blank(l?.state),
-  postalCode: blank(l?.postalCode)
-});
-
 export const toDraft = (claim: ClaimDetail): Draft => ({
   patient: {
     addressLine: blank(claim.address_line),
@@ -49,16 +41,30 @@ export const toDraft = (claim: ClaimDetail): Draft => ({
     state: blank(claim.state),
     postalCode: blank(claim.postal_code)
   },
-  coverages: claim.payers.map((payer) => {
-    const c = claim.coverages.find((x) => x.payer === payer);
-    return { payer, memberId: blank(c?.memberId), groupId: blank(c?.groupId) };
-  }),
-  serviceDate: blank(claim.details.serviceDate),
-  pickup: location(claim.details.pickup),
-  destination: location(claim.details.destination),
-  diagnoses: claim.details.diagnoses.join(', '),
-  originCode: claim.details.originDestination?.[0] ?? '',
-  destinationCode: claim.details.originDestination?.[1] ?? ''
+  coverages: claim.coverages.map((c) => ({
+    id: c.id,
+    payer: c.payer,
+    memberId: blank(c.member_id),
+    groupId: blank(c.group_id)
+  })),
+  serviceDate: blank(claim.service_date),
+  pickup: {
+    name: '',
+    addressLine: blank(claim.pickup_address_line),
+    city: blank(claim.pickup_city),
+    state: blank(claim.pickup_state),
+    postalCode: blank(claim.pickup_postal_code)
+  },
+  destination: {
+    name: blank(claim.destination_name),
+    addressLine: blank(claim.destination_address_line),
+    city: blank(claim.destination_city),
+    state: blank(claim.destination_state),
+    postalCode: blank(claim.destination_postal_code)
+  },
+  diagnoses: claim.diagnoses.join(', '),
+  originCode: blank(claim.origin_code),
+  destinationCode: blank(claim.destination_code)
 });
 
 const fromLocation = (l: Record<keyof LocationInput, string>): LocationInput => ({
@@ -77,7 +83,7 @@ export const fromDraft = (d: Draft): BillingDataInput => ({
     postalCode: orNull(d.patient.postalCode)
   },
   coverages: d.coverages.map((c) => ({
-    payer: c.payer,
+    id: c.id,
     memberId: orNull(c.memberId),
     groupId: orNull(c.groupId)
   })),
@@ -167,7 +173,7 @@ export const ClaimDataForm = ({
               </FieldGrid>
             </FieldGroup>
             {draft.coverages.map((c, i) => (
-              <FieldGroup key={c.payer} title={c.payer}>
+              <FieldGroup key={c.id} title={c.payer}>
                 <FieldGrid>
                   {(['memberId', 'groupId'] as const).map((key) => (
                     <Input

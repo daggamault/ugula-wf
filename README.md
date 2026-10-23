@@ -23,21 +23,22 @@ Ugula is a durable, visual workflow engine (think Unreal Blueprints meets n8n) w
    - payer responses are recorded against the claim;
    - once all payers are done, up to three **patient statements** (PDFs) go out 30 days apart;
    - an unpaid balance after that goes to collections review; claims close as paid, written off, or sent to collections.
-5. **Settings:** The agency's billing profile, clearinghouse IDs, payer directory, and fee schedules drive the 837P files and statements.
+5. **Settings:** The agency's billing profile, clearinghouse IDs, payer directory, and fee schedules drive the 837P files and statements. Claim payers link to the directory by name, and payer-specific fees reference directory payers.
+6. **Reports:** Every import, report, claim line, coverage, diagnosis and ledger event is a relational row, so A/R aging, monthly collections, payer performance and HCPCS charges are plain SQL, viewable on the Reports page and downloadable as CSV.
 
 ## Layout
 
-| Path                                                                                                  | Purpose                                                                                |
-| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `apps/api`                                                                                            | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, submissions, settings       |
-| `apps/worker`                                                                                         | Executes workflow runs from the pg-boss queue and implements billing store ports       |
-| `apps/sse`                                                                                            | Pushes live run and task updates to the browser over Server-Sent Events (via Redis)    |
-| `apps/web`                                                                                            | React app: graph editor, runs, task queues, claims, submissions, fees, settings        |
-| `libs/graph`                                                                                          | Workflow engine, expression language, and standard node library                        |
-| `libs/billing`                                                                                        | Billing domain: patient matching, pricing, claim cycle, statements, 837P generation    |
-| `libs/nemsis`                                                                                         | NEMSIS XML parsing                                                                     |
-| `libs/db`, `libs/jobs`, `libs/blobs`, `libs/events`, `libs/sessions`, `libs/config`, `libs/passwords` | Infrastructure: Postgres/Kysely, queues, S3 storage, events, sessions, config, hashing |
-| `.migrations`, `.seeds`                                                                               | Schema and seed data (demo billing graphs, fees, payers)                               |
+| Path                                                                                                  | Purpose                                                                                     |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `apps/api`                                                                                            | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, submissions, reports, settings   |
+| `apps/worker`                                                                                         | Executes workflow runs from the pg-boss queue and implements billing store ports            |
+| `apps/sse`                                                                                            | Pushes live run and task updates to the browser over Server-Sent Events (via Redis)         |
+| `apps/web`                                                                                            | React app: graph editor, runs, tasks, imports, claims, submissions, reports, fees, settings |
+| `libs/graph`                                                                                          | Workflow engine, expression language, and standard node library                             |
+| `libs/billing`                                                                                        | Billing domain: patient matching, pricing, claim cycle, statements, 837P generation         |
+| `libs/nemsis`                                                                                         | NEMSIS XML parsing                                                                          |
+| `libs/db`, `libs/jobs`, `libs/blobs`, `libs/events`, `libs/sessions`, `libs/config`, `libs/passwords` | Infrastructure: Postgres/Kysely, queues, S3 storage, events, sessions, config, hashing      |
+| `.migrations`, `.seeds`                                                                               | Schema and seed data (demo billing graphs, fees, payers)                                    |
 
 **Stack:** Node, TypeScript, pnpm workspaces, Postgres (Kysely), pg-boss, Redis, S3-compatible storage (RustFS), Hono, valibot, React, Tailwind, React Flow, Biome.
 

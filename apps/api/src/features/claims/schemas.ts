@@ -1,4 +1,4 @@
-import { isOriginDestination } from '@ugula/billing';
+import { DIAGNOSIS_LIMIT, ICD10_PATTERN, isOriginDestination } from '@ugula/billing';
 import * as v from 'valibot';
 import { limitQuery, uuid } from '../../shared/http.ts';
 
@@ -19,7 +19,7 @@ export const payersSchema = v.object({
 
 export const responseSchema = v.object({
   requestId: uuid,
-  payer: v.optional(v.nullable(v.pipe(v.string(), v.trim(), v.nonEmpty())), null),
+  coverageId: v.optional(v.nullable(uuid), null),
   paidCents: v.optional(cents, 0),
   adjustedCents: v.optional(cents, 0),
   note: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(2000)), '')
@@ -72,7 +72,7 @@ export const billingDataSchema = v.object({
   coverages: v.pipe(
     v.array(
       v.object({
-        payer: v.pipe(v.string(), v.trim(), v.nonEmpty()),
+        id: uuid,
         memberId: optionalText(80),
         groupId: optionalText(50)
       })
@@ -89,10 +89,11 @@ export const billingDataSchema = v.object({
         v.trim(),
         v.toUpperCase(),
         v.transform((s) => s.replace('.', '')),
-        v.regex(/^[A-Z][0-9][0-9A-Z]{1,5}$/, 'Use ICD-10-CM codes like R07.9')
+        v.regex(new RegExp(ICD10_PATTERN), 'Use ICD-10-CM codes like R07.9')
       )
     ),
-    v.maxLength(12)
+    v.maxLength(DIAGNOSIS_LIMIT),
+    v.transform((xs) => [...new Set(xs)])
   ),
   originDestination: v.optional(
     v.nullable(

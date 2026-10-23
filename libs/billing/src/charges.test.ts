@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { priceLines, readLines, readPricedLines } from './charges.ts';
+import { isServiceLevel, priceLines, readLines, readPricedLines } from './charges.ts';
 
 describe('readLines', () => {
   it('accepts HCPCS lines with positive units', () => {
@@ -71,5 +71,13 @@ describe('readPricedLines', () => {
       () => readPricedLines([{ code: 'A0427', units: 1 }]),
       /Line 1 [(]A0427[)] has not been priced/
     );
+  });
+});
+
+describe('isServiceLevel', () => {
+  it('accepts the four ground ambulance levels only', () => {
+    assert.ok(['BLS', 'ALS1', 'ALS2', 'SCT'].every(isServiceLevel));
+    assert.ok(!isServiceLevel('als1'));
+    assert.ok(!isServiceLevel(null));
   });
 });

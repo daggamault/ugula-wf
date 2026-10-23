@@ -1,4 +1,4 @@
-import { formatCents, formatDateTime } from '../../shared/format.ts';
+import { formatCents, formatDate } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyState, emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -34,7 +34,7 @@ export const ClaimsTable = ({ claims }: { claims: readonly ClaimSummary[] }) => 
       { label: 'Balance', isNumeric: true },
       'Payers',
       'Status',
-      { label: 'Opened', isSecondary: true }
+      { label: 'Service Date', isSecondary: true }
     ]}
   >
     {claims.map((c) => (
@@ -61,7 +61,7 @@ export const ClaimsTable = ({ claims }: { claims: readonly ClaimSummary[] }) => 
           <ClaimStatusBadge status={c.status} />
         </TableCell>
         <TableCell kind="date" isMuted isSecondary>
-          {formatDateTime(c.created_at)}
+          {formatDate(c.service_date)}
         </TableCell>
       </TableRow>
     ))}

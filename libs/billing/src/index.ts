@@ -1,30 +1,38 @@
 export {
   type ClaimLine,
+  HCPCS_PATTERN,
+  isServiceLevel,
   type PricedClaim,
   type PricedLine,
   priceLines,
   readLines,
-  readPricedLines
+  readPricedLines,
+  SERVICE_LEVELS,
+  type ServiceLevel
 } from './charges.ts';
 export {
   type ClaimDetails,
   type Coverage,
   DIAGNOSIS_LIMIT,
+  ICD10_PATTERN,
   icd10,
   isOriginDestination,
   type Location,
   ORIGIN_DESTINATION_CODES,
   readClaimDetails,
-  readCoverages,
-  readStoredDetails
+  readCoverages
 } from './claim-details.ts';
 export {
+  CLAIM_EVENT_KINDS,
   type ClaimEvent,
   type ClaimEventKind,
   type ClaimLedger,
   type ClaimStep,
+  COVERAGE_EVENT_KINDS,
   claimProgress,
+  type LedgerCoverage,
   nextClaimStep,
+  PATIENT_EVENT_KINDS,
   STATEMENT_LIMIT
 } from './claims.ts';
 export { usState, zipCode } from './geo.ts';

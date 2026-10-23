@@ -11,6 +11,7 @@ const claim: ClaimSummary = {
   level: 'ALS1',
   total_cents: 114_220,
   balance_cents: 30_000,
+  service_date: '2026-10-01',
   payers: ['Medicare', 'Blue Plan'],
   status: 'open',
   created_at: '2026-10-01T00:00:00Z',

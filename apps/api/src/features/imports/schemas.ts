@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { limitQuery } from '../../shared/http.ts';
 
 const graphKey = v.pipe(v.string(), v.regex(/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/));
 
@@ -21,3 +22,5 @@ export const sftpEventSchema = v.looseObject({
 });
 
 export type SftpEvent = v.InferOutput<typeof sftpEventSchema>;
+
+export const listImportsQuery = v.object({ limit: limitQuery });

@@ -6,6 +6,8 @@ import { runTenant } from '../../shared/tenancy.ts';
 
 type Blobs = Pick<BlobStore, 'getText' | 'getJson' | 'putJson'>;
 
+export const fileNameOf = (key: string) => key.split('/').at(-1) || key;
+
 export const createReportStore = (db: Kysely<Database>, blobs: Blobs): ReportStore => {
   const authorize = async (runId: string, key: string) => {
     const run = await runTenant(db, runId).executeTakeFirst();
@@ -25,6 +27,37 @@ export const createReportStore = (db: Kysely<Database>, blobs: Blobs): ReportSto
     putJson: async (runId, key, value) => {
       await authorize(runId, key);
       return blobs.putJson(key, value);
+    },
+    recordReports: async (runId, file, reports) => {
+      await authorize(runId, file.key);
+      await db.transaction().execute(async (tx) => {
+        const { id } = await tx
+          .insertInto('imports')
+          .values({
+            tenant_id: runTenant(tx, runId),
+            run_id: runId,
+            source: 'manual',
+            file_name: fileNameOf(file.key),
+            file: JSON.stringify(file),
+            report_count: reports.length
+          })
+          .onConflict((oc) => oc.column('run_id').doUpdateSet({ report_count: reports.length }))
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        if (!reports.length) return;
+        await tx
+          .insertInto('import_reports')
+          .values(
+            reports.map((r) => ({
+              import_id: id,
+              position: r.position,
+              pcr_number: r.pcrNumber,
+              report: JSON.stringify(r.report)
+            }))
+          )
+          .onConflict((oc) => oc.columns(['import_id', 'position']).doNothing())
+          .execute();
+      });
     }
   };
 };

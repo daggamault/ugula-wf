@@ -26,6 +26,8 @@ import { createImportRoutes, createSftpRoutes } from './features/imports/routes.
 import { createImportService } from './features/imports/service.ts';
 import { createPayerRoutes } from './features/payers/routes.ts';
 import { createPayerService } from './features/payers/service.ts';
+import { createReportRoutes } from './features/reports/routes.ts';
+import { createReportService } from './features/reports/service.ts';
 import { createRunRoutes } from './features/runs/routes.ts';
 import { createRunService } from './features/runs/service.ts';
 import { createSubmissionRoutes } from './features/submissions/routes.ts';
@@ -92,6 +94,10 @@ export const createApp = ({ config, db, redis, boss, blobs, nodes }: AppDeps) =>
     protect(
       createSubmissionRoutes(createSubmissionService({ db, boss, blobs, now: () => new Date() }))
     )
+  );
+  app.route(
+    '/api/reports',
+    protect(createReportRoutes(createReportService({ db, now: () => new Date() })))
   );
   const imports = createImportService({
     db,

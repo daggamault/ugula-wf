@@ -12,6 +12,8 @@ const DAY = 86_400_000;
 const start = Date.parse('2026-01-01T00:00:00.000Z');
 const day = (n: number) => new Date(start + n * DAY);
 
+const cov = (payer: string) => ({ id: `cov-${payer}`, payer });
+
 const e = (
   kind: ClaimEvent['kind'],
   payer: string | null,
@@ -20,26 +22,26 @@ const e = (
   adjusted = 0
 ): ClaimEvent => ({
   kind,
-  payer,
+  coverageId: payer === null ? null : cov(payer).id,
   paidCents: paid,
   adjustedCents: adjusted,
   at: day(onDay).toISOString()
 });
 
 const step = (events: ClaimEvent[], onDay: number, payers = ['Medicare', 'Blue Plan']) =>
-  nextClaimStep({ totalCents: 100_000, payers, events }, day(onDay));
+  nextClaimStep({ totalCents: 100_000, coverages: payers.map(cov), events }, day(onDay));
 
 describe('nextClaimStep', () => {
   it('submits to the first payer that has not answered, then waits at most a day at a time', () => {
     assert.deepEqual(step([], 0), {
       step: 'submit',
-      payer: 'Medicare',
+      coverage: cov('Medicare'),
       waitMs: RECHECK_MS,
       balanceCents: 100_000
     });
     assert.deepEqual(step([e('submitted', 'Medicare', 0)], 0), {
       step: 'await',
-      payer: 'Medicare',
+      coverage: cov('Medicare'),
       waitMs: RECHECK_MS,
       balanceCents: 100_000
     });
@@ -59,7 +61,7 @@ describe('nextClaimStep', () => {
     const sent = [e('submitted', 'Medicare', 0)];
     assert.deepEqual(step(sent, 30), {
       step: 'followUp',
-      payer: 'Medicare',
+      coverage: cov('Medicare'),
       balanceCents: 100_000
     });
     assert.equal(step([...sent, e('follow_up', 'Medicare', 30)], 31).step, 'await');
@@ -70,7 +72,8 @@ describe('nextClaimStep', () => {
     const queued = [e('submitted', 'Medicare', 0), e('resubmit_queued', 'Medicare', 30)];
     assert.equal(step(queued, 31).step, 'submit');
     assert.equal(
-      claimProgress({ totalCents: 1, payers: ['Medicare'], events: queued }).submittedBefore,
+      claimProgress({ totalCents: 1, coverages: [cov('Medicare')], events: queued })
+        .submittedBefore,
       true
     );
     assert.equal(step([...queued, e('resubmitted', 'Medicare', 32)], 33).step, 'await');
@@ -79,15 +82,15 @@ describe('nextClaimStep', () => {
   it('lists the payers that already answered ahead of the one being billed', () => {
     const ledger = {
       totalCents: 100_000,
-      payers: ['Medicare', 'Blue Plan', 'Aetna'],
+      coverages: ['Medicare', 'Blue Plan', 'Aetna'].map(cov),
       events: [e('response', 'Medicare', 1, 50_000), e('payer_skipped', 'Blue Plan', 2)]
     };
-    assert.deepEqual(claimProgress(ledger).priorPayers, ['Medicare']);
-    assert.equal(claimProgress(ledger).payer, 'Aetna');
+    assert.deepEqual(claimProgress(ledger).priorCoverages, [cov('Medicare')]);
+    assert.deepEqual(claimProgress(ledger).coverage, cov('Aetna'));
     assert.equal(claimProgress(ledger).submittedBefore, false);
   });
 
-  it('tracks payers by name, so reordering, out-of-order responses and skips never re-bill', () => {
+  it('tracks payers by coverage, so reordering, out-of-order responses and skips never re-bill', () => {
     const both = [
       e('submitted', 'Medicare', 0),
       e('response', 'Medicare', 5, 50_000),
@@ -97,7 +100,7 @@ describe('nextClaimStep', () => {
     assert.equal(step(both, 10, ['Blue Plan', 'Medicare']).step, 'statement');
     assert.deepEqual(step([e('response', 'Blue Plan', 1, 5_000)], 2), {
       step: 'submit',
-      payer: 'Medicare',
+      coverage: cov('Medicare'),
       waitMs: RECHECK_MS,
       balanceCents: 95_000
     });
@@ -107,7 +110,7 @@ describe('nextClaimStep', () => {
     );
     assert.deepEqual(step([e('payer_skipped', 'Medicare', 1)], 1), {
       step: 'submit',
-      payer: 'Blue Plan',
+      coverage: cov('Blue Plan'),
       waitMs: RECHECK_MS,
       balanceCents: 100_000
     });
@@ -135,5 +138,18 @@ describe('nextClaimStep', () => {
       step([e('statement', null, 0), e('response', null, 3, 100_000)], 3, []).step,
       'closed'
     );
+  });
+});
+
+describe('claimProgress', () => {
+  it('follows the coverage, not its display name, so renaming a payer never re-bills it', () => {
+    const renamed = { id: 'cov-Medicare', payer: 'Medicare Part B' };
+    const ledger = {
+      totalCents: 100_000,
+      coverages: [renamed, cov('Blue Plan')],
+      events: [e('response', 'Medicare', 1, 40_000)]
+    };
+    assert.deepEqual(claimProgress(ledger).coverage, cov('Blue Plan'));
+    assert.deepEqual(claimProgress(ledger).priorCoverages, [renamed]);
   });
 });

@@ -82,3 +82,7 @@ export const TableCell = ({
     {...props}
   />
 );
+
+export const TableTotalRow = ({ children }: { children: ReactNode }) => (
+  <tr className="bg-surface-fg/3 border-border border-t font-semibold">{children}</tr>
+);

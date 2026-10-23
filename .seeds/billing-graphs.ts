@@ -342,6 +342,7 @@ const processPcrGraph: GraphDef = {
     edge('patient', 'patient', 'open', 'patient'),
     edge('summary', 'summary', 'open', 'summary'),
     edge('charges', 'result', 'open', 'charges'),
+    edge('entry', 'report', 'open', 'report'),
     edge('open', 'then', 'cycle', 'exec'),
     edge('open', 'claimId', 'cycleInputs', 'claimId'),
     edge('cycleInputs', 'result', 'cycle', 'inputs'),
@@ -389,7 +390,8 @@ const cycleClaimGraph: GraphDef = {
     node('followUpContext', 'std.expr', {
       label: 'Follow-up context',
       config: {
-        expression: '{ claimId: claimId, payer: payer, balanceCents: balanceCents }'
+        expression:
+          '{ claimId: claimId, coverageId: coverageId, payer: payer, balanceCents: balanceCents }'
       }
     }),
     node('followUp', 'std.human.task', {
@@ -445,18 +447,19 @@ const cycleClaimGraph: GraphDef = {
     edge('step', 'waitMs', 'awaitPayer', 'timeoutMs'),
     edge('step', 'followUp', 'followUp', 'exec'),
     edge('entry', 'claimId', 'followUpContext', 'claimId'),
+    edge('step', 'coverageId', 'followUpContext', 'coverageId'),
     edge('step', 'payer', 'followUpContext', 'payer'),
     edge('step', 'balanceCents', 'followUpContext', 'balanceCents'),
     edge('followUpContext', 'result', 'followUp', 'context'),
     edge('followUp', 'resubmit', 'resubmit', 'exec'),
     edge('entry', 'claimId', 'resubmit', 'claimId'),
-    edge('step', 'payer', 'resubmit', 'payer'),
+    edge('step', 'coverageId', 'resubmit', 'coverageId'),
     edge('followUp', 'keepWaiting', 'keepWaiting', 'exec'),
     edge('entry', 'claimId', 'keepWaiting', 'claimId'),
-    edge('step', 'payer', 'keepWaiting', 'payer'),
+    edge('step', 'coverageId', 'keepWaiting', 'coverageId'),
     edge('followUp', 'nextPayer', 'skip', 'exec'),
     edge('entry', 'claimId', 'skip', 'claimId'),
-    edge('step', 'payer', 'skip', 'payer'),
+    edge('step', 'coverageId', 'skip', 'coverageId'),
     edge('step', 'statement', 'statement', 'exec'),
     edge('entry', 'claimId', 'statement', 'claimId'),
     edge('step', 'statementNumber', 'statement', 'statementNumber'),

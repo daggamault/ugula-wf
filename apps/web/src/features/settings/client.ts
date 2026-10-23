@@ -44,7 +44,8 @@ export const createSettingsClient = (api: Api) => ({
     (await api.get<{ profile: BillingProfile | null }>('/api/billing-profile')).profile,
   saveProfile: (profile: BillingProfileInput) => api.put('/api/billing-profile', profile),
   payers: async () => (await api.get<{ payers: Payer[] }>('/api/payers')).payers,
-  savePayer: (payer: PayerInput) => api.put('/api/payers', payer),
+  savePayer: (payer: PayerInput) =>
+    api.put<{ payer: Payer; linkedClaims: number }>('/api/payers', payer),
   removePayer: (id: string) => api.remove(`/api/payers/${id}`)
 });
 

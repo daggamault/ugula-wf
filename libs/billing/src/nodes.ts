@@ -1,4 +1,11 @@
-import { type PricedLine, priceLines, readLines, readPricedLines } from './charges.ts';
+import {
+  isServiceLevel,
+  type PricedLine,
+  priceLines,
+  readLines,
+  readPricedLines,
+  SERVICE_LEVELS
+} from './charges.ts';
 import {
   type ClaimDetails,
   type Coverage,
@@ -63,9 +70,9 @@ export type NewClaim = {
   loadedMiles: number | null;
   lines: PricedLine[];
   totalCents: number;
-  payers: string[];
   coverages: Coverage[];
   details: ClaimDetails;
+  reportKey: string | null;
 };
 
 export type StatementSource = Omit<StatementData, 'number' | 'issuedOn'>;
@@ -89,7 +96,7 @@ export type ClaimStore = {
     runId: string,
     claimId: string,
     sourceKey: string,
-    event: { kind: CycleEventKind; payer: string | null; note: string }
+    event: { kind: CycleEventKind; coverageId: string | null; note: string }
   ) => Promise<void>;
   closeClaim: (
     runId: string,
@@ -123,6 +130,8 @@ const PATIENT: ValueType = {
   object: { id: 'string', firstName: 'string', lastName: 'string', birthDate: 'string' }
 };
 
+const BLOB: ValueType = { object: { bucket: 'string', key: 'string' } };
+
 const DEMOGRAPHICS: Pin = { name: 'demographics', type: { object: {} } };
 
 const PATIENT_OUT: Pin = { name: 'patient', type: PATIENT };
@@ -143,28 +152,34 @@ const isRecordValue = (x: unknown): x is Record<string, unknown> =>
 
 const textOrNull = (x: unknown) => (typeof x === 'string' && x.trim() ? x.trim() : null);
 
-export const readNewClaim = (patient: unknown, summary: unknown, charges: unknown): NewClaim => {
+export const readNewClaim = (
+  patient: unknown,
+  summary: unknown,
+  charges: unknown,
+  report: unknown = null
+): NewClaim => {
   const p = isRecordValue(patient) ? patient : {};
   const s = isRecordValue(summary) ? summary : {};
   const c = isRecordValue(charges) ? charges : {};
   if (typeof p.id !== 'string') throw new Error('A claim needs a patient');
-  if (typeof c.level !== 'string' || !c.level) throw new Error('A claim needs a level of service');
+  if (!isServiceLevel(c.level)) {
+    throw new Error(`A claim needs a level of service: ${SERVICE_LEVELS.join(', ')}`);
+  }
   if (typeof c.totalCents !== 'number' || !Number.isInteger(c.totalCents) || c.totalCents < 0) {
     throw new Error('A claim needs a priced total');
   }
-  const lines = readPricedLines(c.lines);
-  const coverages = readCoverages(s);
+  const r = isRecordValue(report) ? report : {};
   return {
     patientId: p.id,
     pcrNumber: textOrNull(s.pcrNumber),
     level: c.level,
     emergency: c.emergency === true,
     loadedMiles: typeof c.loadedMiles === 'number' ? c.loadedMiles : null,
-    lines,
+    lines: readPricedLines(c.lines),
     totalCents: c.totalCents,
-    payers: coverages.map((cov) => cov.payer),
-    coverages,
-    details: readClaimDetails(s)
+    coverages: readCoverages(s),
+    details: readClaimDetails(s),
+    reportKey: textOrNull(r.key)
   };
 };
 
@@ -321,13 +336,14 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       title: 'Open Claim',
       category: 'Billing',
       description:
-        'Records a priced claim for a patient, with its payers in billing priority, member IDs, service date, pickup and destination, and diagnoses from the report summary. Once per run step.',
+        'Records a priced claim for a patient, with its charge lines, payers in billing priority, member IDs, service date, pickup and destination, and diagnoses from the report summary, linked to the imported report it came from. Once per run step.',
       effect: true,
       signature: action(
         [
           { name: 'patient', type: PATIENT },
           { name: 'summary', type: { object: {} } },
-          { name: 'charges', type: { object: {} } }
+          { name: 'charges', type: { object: {} } },
+          { name: 'report', type: BLOB, optional: true }
         ],
         [{ name: 'claimId', type: 'string' }]
       ),
@@ -335,7 +351,8 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
         const claim = readNewClaim(
           await read('patient'),
           await read('summary'),
-          await read('charges')
+          await read('charges'),
+          await read('report')
         );
         const claimId = await storesOrFail().claims.openClaim(ctx.runId, ctx.key, claim);
         return { type: 'next', pin: 'then', outputs: { claimId } };
@@ -376,6 +393,7 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       signature: action(
         [{ name: 'claimId', type: 'string' }],
         [
+          { name: 'coverageId', type: 'string' },
           { name: 'payer', type: 'string' },
           { name: 'statementNumber', type: 'integer' },
           { name: 'balanceCents', type: 'integer' },
@@ -392,7 +410,8 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
           type: 'next',
           pin: next.step,
           outputs: {
-            payer: 'payer' in next ? next.payer : null,
+            coverageId: 'coverage' in next ? next.coverage.id : null,
+            payer: 'coverage' in next ? next.coverage.payer : null,
             statementNumber: 'statement' in next ? next.statement : null,
             balanceCents: next.balanceCents,
             waitMs: 'waitMs' in next ? next.waitMs : null
@@ -412,7 +431,7 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
         [
           { name: 'claimId', type: 'string' },
           { name: 'kind', type: 'string' },
-          { name: 'payer', type: 'string', optional: true },
+          { name: 'coverageId', type: 'string', optional: true },
           { name: 'note', type: 'string', optional: true }
         ],
         []
@@ -423,16 +442,16 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
         if (!CYCLE_KINDS.includes(kind as CycleEventKind)) {
           throw new Error(`Unknown claim event "${String(kind)}"`);
         }
-        const payer = textOrNull(await read('payer'));
+        const coverageId = textOrNull(await read('coverageId'));
         if (PAYER_ACTIONS.includes(kind as CycleEventKind)) {
           const ledger = await storesOrFail().claims.ledger(ctx.runId, claimId);
-          if (ledger && claimProgress(ledger).payer !== payer) {
+          if (ledger && claimProgress(ledger).coverage?.id !== coverageId) {
             return { type: 'next', pin: 'then', outputs: {} };
           }
         }
         await storesOrFail().claims.recordEvent(ctx.runId, claimId, ctx.key, {
           kind: kind as CycleEventKind,
-          payer,
+          coverageId,
           note: textOrNull(await read('note')) ?? ''
         });
         return { type: 'next', pin: 'then', outputs: {} };

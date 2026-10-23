@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createNemsisNodes, type ReportStore, reportKey } from './nodes.ts';
+import { createNemsisNodes, type ReportStore, reportKey, type SplitReport } from './nodes.ts';
 
 const SAMPLE = `<EMSDataSet xmlns="http://www.nemsis.org"><Header>
   <PatientCareReport><eRecord><eRecord.01>A</eRecord.01></eRecord></PatientCareReport>
@@ -9,15 +9,19 @@ const SAMPLE = `<EMSDataSet xmlns="http://www.nemsis.org"><Header>
 
 const memoryStore = () => {
   const blobs = new Map<string, unknown>([['in/file.xml', SAMPLE]]);
+  const recorded: { file: string; reports: SplitReport[] }[] = [];
   const store: ReportStore = {
     getText: async (_, { key }) => String(blobs.get(key)),
     getJson: async (_, { key }) => blobs.get(key),
     putJson: async (_, key, value) => {
       blobs.set(key, value);
       return { bucket: 'ugula', key, size: 1, contentType: 'application/json' };
+    },
+    recordReports: async (_, file, reports) => {
+      recorded.push({ file: file.key, reports });
     }
   };
-  return { store, blobs };
+  return { store, blobs, recorded };
 };
 
 const invoke = (values: Record<string, unknown>) => ({
@@ -27,7 +31,7 @@ const invoke = (values: Record<string, unknown>) => ({
 
 describe('createNemsisNodes', () => {
   it('splits a file into one stored report per patient care report', async () => {
-    const { store, blobs } = memoryStore();
+    const { store, blobs, recorded } = memoryStore();
     const [split, readReport] = createNemsisNodes(store);
     const file = { bucket: 'ugula', key: 'in/file.xml' };
     const res = await split?.run(invoke({ file }));
@@ -42,6 +46,18 @@ describe('createNemsisNodes', () => {
     );
     assert.deepEqual(loaded?.outputs.data, { eRecord: { 'eRecord.01': 'B' } });
     assert.equal(blobs.size, 3);
+    assert.deepEqual(
+      recorded.map((r) => [r.file, r.reports.map((x) => [x.position, x.pcrNumber, x.report.key])]),
+      [
+        [
+          'in/file.xml',
+          [
+            [0, 'A', reportKey(file, 0)],
+            [1, 'B', reportKey(file, 1)]
+          ]
+        ]
+      ]
+    );
   });
 
   it('describes static signatures so other apps can validate graphs without storage', async () => {

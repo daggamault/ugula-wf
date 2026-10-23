@@ -1,19 +1,19 @@
 import { createHash } from 'node:crypto';
-import { type ClaimStore, type PricedLine, readStoredDetails } from '@ugula/billing';
+import type { ClaimStore, NewClaim } from '@ugula/billing';
 import type { BlobStore } from '@ugula/blobs';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { runTenant } from '../../shared/tenancy.ts';
 
+type Db = Kysely<Database>;
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const balanceOf = sql<number>`(c.total_cents - coalesce((select sum(e.paid_cents + e.adjusted_cents) from claim_events e where e.claim_id = c.id), 0))::int`;
-
-const ownedClaim = async (db: Kysely<Database>, runId: string, claimId: string) => {
+const ownedClaim = async (db: Db, runId: string, claimId: string) => {
   const claim = UUID.test(claimId)
     ? await db
         .selectFrom('claims')
-        .select(['id', 'total_cents', 'payers'])
+        .select(['id', 'total_cents'])
         .where('id', '=', claimId)
         .where('tenant_id', '=', runTenant(db, runId))
         .executeTakeFirst()
@@ -21,7 +21,7 @@ const ownedClaim = async (db: Kysely<Database>, runId: string, claimId: string) 
   return claim ?? null;
 };
 
-const claimOrFail = async (db: Kysely<Database>, runId: string, claimId: string) =>
+const claimOrFail = async (db: Db, runId: string, claimId: string) =>
   (await ownedClaim(db, runId, claimId)) ??
   Promise.reject(new Error(`Claim ${claimId} does not exist`));
 
@@ -39,7 +39,99 @@ export const statementKey = (
 ) =>
   `statements/${tenantId}/${claimId}/${number}-${createHash('sha256').update(sourceKey).digest('hex').slice(0, 16)}.pdf`;
 
-export const createClaimStore = (db: Kysely<Database>, blobs: Blobs): ClaimStore => ({
+const directoryPayer = (db: Db, runId: string, payer: string) =>
+  db
+    .selectFrom('payers')
+    .select('id')
+    .where('tenant_id', '=', runTenant(db, runId))
+    .where(sql`lower(name)`, '=', payer.toLowerCase());
+
+const sourceReport = (db: Db, runId: string, key: string) =>
+  db
+    .selectFrom('import_reports as r')
+    .innerJoin('imports as i', 'i.id', 'r.import_id')
+    .select('r.id')
+    .where(sql`r.report ->> 'key'`, '=', key)
+    .where('i.tenant_id', '=', runTenant(db, runId));
+
+const claimValues = (db: Db, runId: string, sourceKey: string, c: NewClaim) => {
+  const { serviceDate, pickup, destination, originDestination } = c.details;
+  return {
+    tenant_id: runTenant(db, runId),
+    patient_id: c.patientId,
+    import_report_id: c.reportKey === null ? null : sourceReport(db, runId, c.reportKey),
+    pcr_number: c.pcrNumber,
+    level: c.level,
+    emergency: c.emergency,
+    loaded_miles: c.loadedMiles,
+    total_cents: c.totalCents,
+    service_date: serviceDate,
+    origin_code: originDestination?.[0] ?? null,
+    destination_code: originDestination?.[1] ?? null,
+    pickup_address_line: pickup.addressLine,
+    pickup_city: pickup.city,
+    pickup_state: pickup.state,
+    pickup_postal_code: pickup.postalCode,
+    destination_name: destination.name,
+    destination_address_line: destination.addressLine,
+    destination_city: destination.city,
+    destination_state: destination.state,
+    destination_postal_code: destination.postalCode,
+    source_key: sourceKey
+  };
+};
+
+const insertClaim = async (db: Db, runId: string, sourceKey: string, c: NewClaim) => {
+  const created = await db
+    .insertInto('claims')
+    .values(claimValues(db, runId, sourceKey, c))
+    .onConflict((oc) => oc.columns(['tenant_id', 'source_key']).doNothing())
+    .returning('id')
+    .executeTakeFirst();
+  if (!created) return null;
+  await db
+    .insertInto('claim_lines')
+    .values(
+      c.lines.map((l, i) => ({
+        claim_id: created.id,
+        position: i + 1,
+        code: l.code,
+        units: l.units,
+        unit_cents: l.unitCents,
+        total_cents: l.totalCents
+      }))
+    )
+    .execute();
+  if (c.coverages.length) {
+    await db
+      .insertInto('claim_coverages')
+      .values(
+        c.coverages.map((cov, i) => ({
+          claim_id: created.id,
+          position: i + 1,
+          payer_name: cov.payer,
+          payer_id: directoryPayer(db, runId, cov.payer),
+          payer_code: cov.payerCode,
+          member_id: cov.memberId,
+          group_id: cov.groupId
+        }))
+      )
+      .execute();
+  }
+  if (c.details.diagnoses.length) {
+    await db
+      .insertInto('claim_diagnoses')
+      .values(
+        c.details.diagnoses.map((code, i) => ({ claim_id: created.id, position: i + 1, code }))
+      )
+      .execute();
+  }
+  return created.id;
+};
+
+const payerName = sql<string>`coalesce(dp.name, cc.payer_name)`;
+
+export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
   statementData: async (runId, claimId) => {
     const row = await db
       .selectFrom('claims as c')
@@ -48,9 +140,8 @@ export const createClaimStore = (db: Kysely<Database>, blobs: Blobs): ClaimStore
       .select([
         'c.id',
         'c.pcr_number',
-        'c.lines',
         'c.total_cents',
-        'c.details',
+        'c.service_date',
         'p.first_name',
         'p.last_name',
         'p.address_line',
@@ -69,22 +160,31 @@ export const createClaimStore = (db: Kysely<Database>, blobs: Blobs): ClaimStore
       .executeTakeFirst();
     if (!row) throw new Error(`Claim ${claimId} does not exist`);
     if (!row.organization_name || !row.phone) throw new Error(NO_PROFILE);
-    const responses = await db
-      .selectFrom('claim_events')
-      .select(['payer', 'paid_cents', 'adjusted_cents', 'created_at'])
-      .where('claim_id', '=', row.id)
-      .where('kind', '=', 'response')
-      .orderBy('created_at')
-      .orderBy('id')
-      .execute();
-    const payments = responses
-      .filter((r) => r.paid_cents || r.adjusted_cents)
-      .map((r) => ({
-        date: day(r.created_at),
-        from: r.payer ?? 'Patient',
-        paidCents: r.paid_cents,
-        adjustedCents: r.adjusted_cents
-      }));
+    const [lines, responses] = await Promise.all([
+      db
+        .selectFrom('claim_lines')
+        .select(['code', 'units', 'unit_cents', 'total_cents'])
+        .where('claim_id', '=', row.id)
+        .orderBy('position')
+        .execute(),
+      db
+        .selectFrom('claim_events as e')
+        .leftJoin('claim_coverages as cc', 'cc.id', 'e.coverage_id')
+        .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
+        .select([payerName.as('payer'), 'e.paid_cents', 'e.adjusted_cents', 'e.created_at'])
+        .where('e.claim_id', '=', row.id)
+        .where('e.kind', '=', 'response')
+        .where((eb) => eb.or([eb('e.paid_cents', '>', 0), eb('e.adjusted_cents', '>', 0)]))
+        .orderBy('e.created_at')
+        .orderBy('e.id')
+        .execute()
+    ]);
+    const payments = responses.map((r) => ({
+      date: day(r.created_at),
+      from: r.payer ?? 'Patient',
+      paidCents: r.paid_cents,
+      adjustedCents: r.adjusted_cents
+    }));
     return {
       agency: {
         name: row.organization_name,
@@ -102,8 +202,13 @@ export const createClaimStore = (db: Kysely<Database>, blobs: Blobs): ClaimStore
         postalCode: row.postal_code
       },
       reference: row.pcr_number ?? row.id.slice(0, 8),
-      serviceDate: readStoredDetails(row.details).serviceDate,
-      lines: row.lines as PricedLine[],
+      serviceDate: row.service_date,
+      lines: lines.map((l) => ({
+        code: l.code,
+        units: Number(l.units),
+        unitCents: l.unit_cents,
+        totalCents: l.total_cents
+      })),
       totalCents: row.total_cents,
       payments,
       balanceCents: payments.reduce((b, p) => b - p.paidCents - p.adjustedCents, row.total_cents)
@@ -136,32 +241,21 @@ export const createClaimStore = (db: Kysely<Database>, blobs: Blobs): ClaimStore
       .execute();
   },
 
-  openClaim: async (runId, sourceKey, c) =>
-    (
-      await db
-        .insertInto('claims')
-        .values({
-          tenant_id: runTenant(db, runId),
-          patient_id: c.patientId,
-          pcr_number: c.pcrNumber,
-          level: c.level,
-          emergency: c.emergency,
-          loaded_miles: c.loadedMiles,
-          lines: JSON.stringify(c.lines),
-          total_cents: c.totalCents,
-          payers: c.payers,
-          coverages: JSON.stringify(c.coverages),
-          details: JSON.stringify(c.details),
-          source_key: sourceKey
-        })
-        .onConflict((oc) =>
-          oc
-            .columns(['tenant_id', 'source_key'])
-            .doUpdateSet({ updated_at: sql`claims.updated_at` })
-        )
-        .returning('id')
-        .executeTakeFirstOrThrow()
-    ).id,
+  openClaim: (runId, sourceKey, c) =>
+    db
+      .transaction()
+      .execute(
+        async (tx) =>
+          (await insertClaim(tx, runId, sourceKey, c)) ??
+          (
+            await tx
+              .selectFrom('claims')
+              .select('id')
+              .where('tenant_id', '=', runTenant(tx, runId))
+              .where('source_key', '=', sourceKey)
+              .executeTakeFirstOrThrow()
+          ).id
+      ),
 
   attachCycle: async (runId, claimId, cycleRunId) => {
     const claim = await claimOrFail(db, runId, claimId);
@@ -182,19 +276,28 @@ export const createClaimStore = (db: Kysely<Database>, blobs: Blobs): ClaimStore
   ledger: async (runId, claimId) => {
     const claim = await ownedClaim(db, runId, claimId);
     if (!claim) return null;
-    const events = await db
-      .selectFrom('claim_events')
-      .select(['kind', 'payer', 'paid_cents', 'adjusted_cents', 'created_at'])
-      .where('claim_id', '=', claim.id)
-      .orderBy('created_at')
-      .orderBy('id')
-      .execute();
+    const [coverages, events] = await Promise.all([
+      db
+        .selectFrom('claim_coverages as cc')
+        .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
+        .select(['cc.id', payerName.as('payer')])
+        .where('cc.claim_id', '=', claim.id)
+        .orderBy('cc.position')
+        .execute(),
+      db
+        .selectFrom('claim_events')
+        .select(['kind', 'coverage_id', 'paid_cents', 'adjusted_cents', 'created_at'])
+        .where('claim_id', '=', claim.id)
+        .orderBy('created_at')
+        .orderBy('id')
+        .execute()
+    ]);
     return {
       totalCents: claim.total_cents,
-      payers: claim.payers,
+      coverages,
       events: events.map((e) => ({
         kind: e.kind,
-        payer: e.payer,
+        coverageId: e.coverage_id,
         paidCents: e.paid_cents,
         adjustedCents: e.adjusted_cents,
         at: new Date(e.created_at).toISOString()
@@ -209,7 +312,7 @@ export const createClaimStore = (db: Kysely<Database>, blobs: Blobs): ClaimStore
       .values({
         claim_id: claim.id,
         kind: e.kind,
-        payer: e.payer,
+        coverage_id: e.coverageId,
         note: e.note,
         source_key: sourceKey
       })
@@ -228,9 +331,9 @@ export const createClaimStore = (db: Kysely<Database>, blobs: Blobs): ClaimStore
         .executeTakeFirstOrThrow();
       if (locked.status !== 'open') return;
       const { balance_cents } = await tx
-        .selectFrom('claims as c')
-        .select(balanceOf.as('balance_cents'))
-        .where('c.id', '=', claim.id)
+        .selectFrom('claim_balances')
+        .select('balance_cents')
+        .where('claim_id', '=', claim.id)
         .executeTakeFirstOrThrow();
       const status = balance_cents <= 0 ? 'paid' : requested;
       await tx
