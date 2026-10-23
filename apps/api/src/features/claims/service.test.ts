@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db';
 import type { JobBoss } from '@ugula/jobs';
 import type { CompiledQuery } from 'kysely';
+import { recordAnnouncements } from '../../shared/testing.ts';
 import { createClaimService, planPayerOrder } from './service.ts';
 
 const REQUEST = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
@@ -53,7 +54,13 @@ const setup = ({
   const boss: JobBoss = { insert: async (_n, batch) => void jobs.push(...batch) };
   const now = () => new Date('2026-01-01T12:00:00.000Z');
   const blobs = { getBytes: async () => new TextEncoder().encode('%PDF-1.7') };
-  return { service: createClaimService({ db, boss, now, blobs }), jobs, queries };
+  const { announce, events: announced } = recordAnnouncements();
+  return {
+    service: createClaimService({ db, boss, now, blobs, announce }),
+    jobs,
+    queries,
+    announced
+  };
 };
 
 const response = (over: Record<string, unknown> = {}) => ({
@@ -83,11 +90,12 @@ describe('planPayerOrder', () => {
 
 describe('claim service', () => {
   it('records responses under a row lock and wakes the claim cycle', async () => {
-    const { service, jobs, queries } = setup();
+    const { service, jobs, queries, announced } = setup();
     assert.deepEqual(await service.recordResponse('t', 'u1', 'c1', response()), {
       ok: true,
       value: { balanceCents: 30_000, duplicate: false }
     });
+    assert.deepEqual(announced, [{ tenantId: 't', event: { kind: 'claim', id: 'c1' } }]);
     assert.ok(queries.some((q) => q.sql.endsWith('for update')));
     const insert = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
     assert.ok(insert?.parameters.includes(REQUEST) && insert.parameters.includes(MEDICARE));

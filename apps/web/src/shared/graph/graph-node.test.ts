@@ -46,7 +46,7 @@ const base: GraphNodeData = {
   connected: ['b'],
   status: 'idle',
   issues: [],
-  composite: false
+  opens: null
 };
 
 describe('GraphNode', () => {
@@ -63,7 +63,7 @@ describe('GraphNode', () => {
 
   it('shows status, issues, sub-graph badges and unknown nodes', () => {
     const html = render(
-      { ...base, status: 'error', issues: ['Bad', 'Worse'], composite: true },
+      { ...base, status: 'error', issues: ['Bad', 'Worse'], opens: 'graph' },
       true
     );
     assert.ok(html.includes('border-danger'));

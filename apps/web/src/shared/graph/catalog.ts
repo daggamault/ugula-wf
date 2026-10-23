@@ -15,6 +15,7 @@ import {
 import { createNemsisNodes } from '@ugula/nemsis';
 
 export type PublishedNode = {
+  graph_id: string;
   key: string;
   name: string;
   kind: 'workflow' | 'node';
@@ -39,6 +40,25 @@ export type Catalog = {
   signatureOf: (inst: NodeInstance, owner: GraphDef) => Signature | null;
   titleOf: (inst: NodeInstance) => string;
   graphOf: (ref: NodeRef) => GraphDef | undefined;
+  /** What double-clicking the node opens: its own sub-graph, or the workflow it starts as runs. */
+  opensAs: (inst: NodeInstance) => 'graph' | 'workflow' | null;
+  /** The published workflow a node refers to, for linking to its editor. */
+  publishedOf: (inst: NodeInstance) => PublishedNode | undefined;
+};
+
+const SPAWNING = new Set([
+  'std.flow.run-workflow',
+  'std.flow.start-workflow',
+  'std.flow.map-workflow'
+]);
+
+const workflowRefOf = (inst: NodeInstance): NodeRef | null => {
+  const config = inst.config;
+  if (!SPAWNING.has(inst.type) || typeof config !== 'object' || config === null) return null;
+  const { workflow, version } = config as { workflow?: unknown; version?: unknown };
+  return typeof workflow === 'string' && typeof version === 'number'
+    ? { type: workflow, version }
+    : null;
 };
 
 const stdNodes = [
@@ -79,6 +99,7 @@ export const createCatalog = ({ published = [], graphs = [] }: CatalogSources = 
       }
     )
   );
+  const graphOf = (ref: NodeRef) => full.get(refKey(ref)) ?? stdGraphs[refKey(ref)];
   const latest = [...new Map([...published].reverse().map((p) => [p.key, p])).values()];
 
   const palette: PaletteEntry[] = [
@@ -129,6 +150,12 @@ export const createCatalog = ({ published = [], graphs = [] }: CatalogSources = 
       registry.node(inst)?.title ??
       stubs.get(refKey(inst))?.name ??
       titleFromKey(inst.type),
-    graphOf: (ref) => full.get(refKey(ref)) ?? stdGraphs[refKey(ref)]
+    graphOf,
+    opensAs: (inst) => {
+      if (workflowRefOf(inst)) return 'workflow';
+      const composite = graphOf(inst) !== undefined || stubs.has(refKey(inst));
+      return composite && !inst.type.startsWith('std.graph.') ? 'graph' : null;
+    },
+    publishedOf: (inst) => stubs.get(refKey(workflowRefOf(inst) ?? inst))
   };
 };

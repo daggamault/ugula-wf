@@ -68,7 +68,7 @@ export const RunsTable = ({ runs }: { runs: readonly RunSummary[] }) => (
 
 export const RunsPage = ({ client, live, status }: RunsPageProps) => {
   const runs = useResource(`runs:${status ?? 'all'}`, () => client.list(status), 30_000);
-  useLive(live, runs.reload);
+  useLive(live, (e) => e.kind === 'run', runs.reload);
   return (
     <Page
       title="Runs"

@@ -59,7 +59,7 @@ const PinRow = ({
 );
 
 export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
-  const { instance, signature, title, status, issues, composite, connected } = data;
+  const { instance, signature, title, status, issues, opens, connected } = data;
   const inputs = signature ? pinsOf(signature.execIn, signature.inputs) : [];
   const outputs = signature ? pinsOf(signature.execOut, signature.outputs) : [];
   return (
@@ -69,9 +69,9 @@ export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
     >
       <header className="border-border bg-canvas flex items-center justify-between gap-3 rounded-t-[10px] border-b px-3 py-1.5">
         <span className="truncate text-sm font-semibold">{title}</span>
-        {composite ? (
+        {opens ? (
           <span className="text-primary text-[10px] font-semibold tracking-wide uppercase">
-            Sub-graph
+            {opens === 'graph' ? 'Sub-graph' : 'Workflow'}
           </span>
         ) : null}
       </header>

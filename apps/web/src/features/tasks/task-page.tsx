@@ -3,21 +3,23 @@ import { ExternalLinkIcon, HandIcon, UndoIcon } from 'lucide-react';
 import { useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatDateTime } from '../../shared/format.ts';
+import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
-import { JsonView } from '../../shared/ui/json-view.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { TaskDetail, TasksClient } from './client.ts';
+import { ContextView } from './context-view.tsx';
 
 export type TaskPageProps = {
   client: TasksClient;
+  live: Live;
   taskId: string;
 };
 
@@ -102,7 +104,7 @@ export const TaskView = ({ task, onComplete, onAssign }: TaskViewProps) => {
           {task.instructions ? (
             <p className="text-sm whitespace-pre-line">{task.instructions}</p>
           ) : null}
-          <JsonView label="Task context" value={task.context} />
+          <ContextView label="Task context" value={task.context} />
         </SectionPanel>
         <SectionPanel
           title="Decision"
@@ -149,7 +151,7 @@ export const TaskView = ({ task, onComplete, onAssign }: TaskViewProps) => {
                   : 'This task was cancelled.'}
               </Alert>
               {task.resolution ? (
-                <JsonView label="Resolution" value={task.resolution.values} />
+                <ContextView label="Resolution" value={task.resolution.values} />
               ) : null}
             </>
           )}
@@ -159,8 +161,14 @@ export const TaskView = ({ task, onComplete, onAssign }: TaskViewProps) => {
   );
 };
 
-export const TaskPage = ({ client, taskId }: TaskPageProps) => {
+export const TaskPage = ({ client, live, taskId }: TaskPageProps) => {
   const task = useResource(`task:${taskId}`, () => client.find(taskId));
+  const runId = task.data?.run_id;
+  useLive(
+    live,
+    (e) => e.kind === 'task' && (e.id === taskId || (e.id === null && e.runId === runId)),
+    task.reload
+  );
   if (task.error) return <PageFailure message={task.error.message} />;
   if (!task.data) return <PageLoading />;
   const { queue } = task.data;

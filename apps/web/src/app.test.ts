@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { App, type AppClients, type RouteContext, resolveRoute, Workspace } from './app.tsx';
+import { idleLive } from './shared/testing.ts';
 
 const clients = {
   auth: { signIn: async () => null, signOut: async () => undefined, getMe: async () => null },
@@ -15,7 +16,7 @@ const query = (search = '') => new URLSearchParams(search);
 
 const ctx: RouteContext = {
   ...clients,
-  live: { subscribe: () => () => undefined, close: () => undefined }
+  live: idleLive
 };
 
 describe('app routing', () => {

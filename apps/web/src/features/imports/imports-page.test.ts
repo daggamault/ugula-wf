@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { idleLive } from '../../shared/testing.ts';
 import type { ImportsClient } from './client.ts';
 import { ImportsPage } from './imports-page.tsx';
 
-const live = { subscribe: () => () => undefined, close: () => undefined };
+const live = idleLive;
 
 describe('ImportsPage', () => {
   it('renders a labelled XML file picker with a disabled submit until a file is chosen', () => {

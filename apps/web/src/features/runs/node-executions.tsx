@@ -5,15 +5,19 @@ import { Badge } from '../../shared/ui/badge.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { JsonView } from '../../shared/ui/json-view.tsx';
+import { TextLink } from '../../shared/ui/text-link.tsx';
 import type { RunStep } from './client.ts';
+import type { StartedRun } from './inspect.ts';
+import { RunStatusBadge } from './run-status-badge.tsx';
 
 export type NodeExecutionsProps = {
   title: string;
   steps: readonly RunStep[];
   onOpen?: (() => void) | undefined;
+  runs?: readonly StartedRun[];
 };
 
-export const NodeExecutions = ({ title, steps, onOpen }: NodeExecutionsProps) => (
+export const NodeExecutions = ({ title, steps, onOpen, runs = [] }: NodeExecutionsProps) => (
   <section aria-labelledby="executions-title" className="flex flex-col gap-4 p-4">
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div className="flex flex-col gap-1">
@@ -33,6 +37,23 @@ export const NodeExecutions = ({ title, steps, onOpen }: NodeExecutionsProps) =>
         </Button>
       ) : null}
     </header>
+    {runs.length ? (
+      <div className="flex flex-col gap-2">
+        <h3 className="text-surface-fg-muted text-xs font-semibold tracking-wide uppercase">
+          Started runs
+        </h3>
+        <ul className="divide-border border-border flex flex-col divide-y rounded-lg border text-sm">
+          {runs.map((r, i) => (
+            <li key={r.id} className="flex items-center justify-between gap-2 px-3 py-2">
+              <TextLink to={`/runs/${r.id}`}>
+                #{r.parent_index ?? i} {r.name ?? 'Open run'}
+              </TextLink>
+              {r.status ? <RunStatusBadge status={r.status} /> : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null}
     {steps.length ? (
       <ol className="flex flex-col gap-3">
         {[...steps].reverse().map((s) => (

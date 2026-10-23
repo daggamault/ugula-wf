@@ -1,6 +1,8 @@
+import type { LiveEvent } from '@ugula/events';
 import type { SessionStore } from '@ugula/sessions';
 import { Hono } from 'hono';
 import { type AuthEnv, requireAuth } from './auth.ts';
+import type { Announce } from './live.ts';
 
 export const testSessions: SessionStore = {
   create: async () => 'test',
@@ -22,4 +24,10 @@ export const withSession = (routes: Hono<AuthEnv>) => {
         ...init.headers
       }
     });
+};
+
+export const recordAnnouncements = () => {
+  const events: { tenantId: string; event: LiveEvent }[] = [];
+  const announce: Announce = async (tenantId, event) => void events.push({ tenantId, event });
+  return { announce, events };
 };

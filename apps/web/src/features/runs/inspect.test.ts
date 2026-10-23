@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ENTRY_TYPE, type GraphDef, type RunState } from '@ugula/graph';
 import { createCatalog } from '../../shared/graph/catalog.ts';
-import type { RunStep } from './client.ts';
-import { cursorsOf, graphAt, pathOf, statusAt } from './inspect.ts';
+import type { RunDetail, RunStep, RunSummary } from './client.ts';
+import { cursorsOf, graphAt, pathOf, runsStartedBy, statusAt } from './inspect.ts';
 
 const child: GraphDef = {
   signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
@@ -61,5 +61,26 @@ describe('run inspection', () => {
     assert.deepEqual(statusAt(steps, state, ''), { a: 'done', b: 'done', sub: 'waiting' });
     assert.deepEqual(statusAt(steps, state, 'sub/'), { x: 'error', review: 'waiting' });
     assert.deepEqual(cursorsOf(null), []);
+  });
+
+  it('lists runs a workflow node started, from its outputs or the wait it is suspended on', () => {
+    const summary = (id: string, wait: string | null) =>
+      ({ id, name: 'Child', status: 'running', parent_index: 0, parent_wait: wait }) as RunSummary;
+    const detail = {
+      run: { state },
+      children: [summary('c1', '9'), summary('c2', '3'), summary('c3', '9')]
+    } as unknown as RunDetail;
+    const done = { ...step('', 'start'), outputs: { runId: 'd1' } };
+    const mapped = { ...step('', 'each'), outputs: { runIds: ['c2', 7] } };
+    assert.deepEqual(runsStartedBy(detail, [done], '', 'start'), [{ id: 'd1' }]);
+    assert.deepEqual(
+      runsStartedBy(detail, [mapped], '', 'each').map((r) => r.id),
+      ['c2']
+    );
+    assert.deepEqual(
+      runsStartedBy(detail, [], 'sub/', 'review').map((r) => r.id),
+      ['c1', 'c3']
+    );
+    assert.deepEqual(runsStartedBy(detail, [], '', 'review'), []);
   });
 });

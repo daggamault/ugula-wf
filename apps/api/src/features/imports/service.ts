@@ -3,6 +3,7 @@ import { type BlobRef, type BlobStore, importsPrefix } from '@ugula/blobs';
 import type { Db } from '@ugula/db';
 import type { JobBoss } from '@ugula/jobs';
 import { verifyPassword } from '@ugula/passwords';
+import type { Announce } from '../../shared/live.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import { startRun } from '../../shared/runs.ts';
 import {
@@ -27,6 +28,7 @@ export type ImportServiceDeps = {
   db: Db;
   boss: JobBoss;
   blobs: Pick<BlobStore, 'putBytes'>;
+  announce: Announce;
   maxBytes: number;
   sftp: SftpStorage;
 };
@@ -64,7 +66,14 @@ export const sftpUser = (username: string, tenantId: string, sftp: SftpStorage) 
   }
 });
 
-export const createImportService = ({ db, boss, blobs, maxBytes, sftp }: ImportServiceDeps) => {
+export const createImportService = ({
+  db,
+  boss,
+  blobs,
+  maxBytes,
+  sftp,
+  announce
+}: ImportServiceDeps) => {
   const unpublished = (workflow: string) =>
     fail('not_found', `Workflow ${workflow} has no published version`);
 
@@ -79,6 +88,7 @@ export const createImportService = ({ db, boss, blobs, maxBytes, sftp }: ImportS
       await insertImport(tx, { tenantId, runId: id, file, ...origin });
       return id;
     });
+    await announce(tenantId, { kind: 'import', id: null }).catch(() => undefined);
     return ok({ runId, file });
   };
 

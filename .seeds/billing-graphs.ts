@@ -93,6 +93,78 @@ const SERVICE = { object: { level: 'string', emergency: 'boolean' } } as const;
 
 const LINES = { list: { object: { code: 'string', units: 'number' } } } as const;
 
+// Task contexts are what reviewers read, so they spell out NEMSIS codes and leave out internal ids.
+// Reports may carry a numeric GNIS code instead of a city name, and a FIPS code for the state.
+const placeOf = (place: string, withState = false) =>
+  `join(filter([
+    ${place}.addressLine,
+    ${place}.city != null && !every(split(${place}.city, ''), d => contains('0123456789', d)) ? ${place}.city : null,
+    ${withState ? `${place}.state,` : ''}
+    ${place}.postalCode
+  ], x => x != null && x != ''), ', ')`;
+
+// Repeated NEMSIS values can come with XML attributes, as { '#text': value, ... }.
+const textOf = (value: string) => `get(${value}, '#text') ?? ${value}`;
+
+const SEX = "{ F: 'Female', M: 'Male', U: 'Unknown' }";
+
+const REVIEW_CONTEXT = `{
+  patient: {
+    name: patient.firstName + ' ' + patient.lastName,
+    birthDate: patient.birthDate,
+    sex: ${SEX}[patient.gender ?? ''] ?? null,
+    address: ${placeOf('patient', true)}
+  },
+  trip: {
+    pcrNumber: summary.pcrNumber,
+    incidentAt: summary.incidentAt,
+    response: {
+      '2223001': 'Emergent',
+      '2223003': 'Emergent, downgraded to non-emergent',
+      '2223005': 'Non-emergent',
+      '2223007': 'Non-emergent, upgraded to emergent'
+    }[summary.responseMode ?? ''] ?? summary.responseMode,
+    careProvided: {
+      '4232001': 'BLS',
+      '4232003': 'ALS',
+      '4232005': 'ALS',
+      '4232009': 'Critical care'
+    }[summary.careLevel ?? ''] ?? summary.careLevel,
+    primaryImpression: ${textOf('summary.primaryImpression')},
+    otherImpressions: map(summary.secondaryImpressions, i => ${textOf('i')}),
+    ivMedications: summary.ivMedicationCount,
+    pickup: ${placeOf('summary.pickup')},
+    destination: join(filter([summary.destination.name, ${placeOf('summary.destination')}], x => x != null && x != ''), ' · ')
+  },
+  coverage: map(sort(summary.coverages, c => c.priority ?? '9'), c => {
+    order: { '2611003': 'Primary', '2611005': 'Secondary', '2611007': 'Tertiary' }[c.priority ?? ''] ?? 'Other',
+    payer: c.payer,
+    memberId: c.memberId,
+    groupId: c.groupId
+  }),
+  suggested: service
+}`;
+
+const PATIENT_REVIEW_CONTEXT = `{
+  reason: reason,
+  report: {
+    name: demographics.firstName + ' ' + demographics.lastName,
+    birthDate: demographics.birthDate,
+    sex: {
+      '9906001': 'Female', '9906003': 'Male', '9906005': 'Unknown',
+      '9919001': 'Female', '9919003': 'Male', '9919005': 'Unknown'
+    }[demographics.gender ?? ''] ?? null,
+    address: ${placeOf('demographics')},
+    pcrNumber: demographics.pcrNumber
+  },
+  candidates: map(candidates, c => {
+    name: c.firstName + ' ' + c.lastName,
+    birthDate: c.birthDate,
+    sex: ${SEX}[c.gender ?? ''] ?? null,
+    address: ${placeOf('c', true)}
+  })
+}`;
+
 const pureGraph = (
   input: { name: string; type: GraphDef['signature']['inputs'][number]['type'] },
   output: { name: string; type: GraphDef['signature']['outputs'][number]['type'] },
@@ -175,7 +247,7 @@ const resolvePatientGraph: GraphDef = {
     }),
     node('context', 'std.expr', {
       label: 'Review context',
-      config: { expression: '{ reason: reason, report: demographics, candidates: candidates }' }
+      config: { expression: PATIENT_REVIEW_CONTEXT }
     }),
     node('confirm', 'std.human.task', {
       label: 'Confirm patient',
@@ -260,7 +332,7 @@ const processPcrGraph: GraphDef = {
     node('service', 'billing.level-of-service', { label: 'Suggest level of service' }),
     node('claim', 'std.expr', {
       label: 'Claim context',
-      config: { expression: '{ patient: patient, report: summary, suggested: service }' }
+      config: { expression: REVIEW_CONTEXT }
     }),
     node('review', 'std.human.task', {
       label: 'Review PCR',

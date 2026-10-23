@@ -4,6 +4,7 @@ import { createRecordingDb } from '@ugula/db';
 import type { JobBoss } from '@ugula/jobs';
 import { hashPassword } from '@ugula/passwords';
 import type { CompiledQuery } from 'kysely';
+import { recordAnnouncements } from '../../shared/testing.ts';
 import { createImportService, safeName, sftpPrefix } from './service.ts';
 
 const sftp = {
@@ -25,9 +26,11 @@ const setup = ({
   const stored: string[] = [];
   const jobs: unknown[] = [];
   const boss: JobBoss = { insert: async (_n, batch) => void jobs.push(...batch) };
+  const { announce, events: announced } = recordAnnouncements();
   const service = createImportService({
     db,
     boss,
+    announce,
     sftp,
     maxBytes: 10,
     blobs: {
@@ -37,7 +40,7 @@ const setup = ({
       }
     }
   });
-  return { service, stored, jobs, queries };
+  return { service, stored, jobs, queries, announced };
 };
 
 const file = (text: string, name = 'pcrs.xml') => ({

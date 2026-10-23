@@ -158,6 +158,7 @@ export const listPublishedNodes = (db: Db, tenantId: string) =>
     .selectFrom('graph_versions as gv')
     .innerJoin('graphs as g', 'g.id', 'gv.graph_id')
     .select([
+      'g.id as graph_id',
       'g.key',
       'g.name',
       'g.kind',

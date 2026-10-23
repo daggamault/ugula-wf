@@ -293,6 +293,9 @@ importers:
       '@ugula/db':
         specifier: workspace:*
         version: link:../../libs/db
+      '@ugula/events':
+        specifier: workspace:*
+        version: link:../../libs/events
       '@ugula/graph':
         specifier: workspace:*
         version: link:../../libs/graph

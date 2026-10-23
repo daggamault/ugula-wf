@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { createBillingNodes } from '@ugula/billing';
 import { type BlobStore, createBlobStore, createS3Storage } from '@ugula/blobs';
 import { createDb, type Db } from '@ugula/db';
+import { publishEvent } from '@ugula/events';
 import { createStdNodes, type NodeDef } from '@ugula/graph';
 import type { JobBoss } from '@ugula/jobs';
 import { createNemsisNodes } from '@ugula/nemsis';
@@ -35,6 +36,7 @@ import { createSubmissionService } from './features/submissions/service.ts';
 import { createTaskRoutes } from './features/tasks/routes.ts';
 import { createTaskService } from './features/tasks/service.ts';
 import { type AuthEnv, requireAuth } from './shared/auth.ts';
+import type { Announce } from './shared/live.ts';
 
 export type AppDeps = {
   config: Config;
@@ -43,6 +45,7 @@ export type AppDeps = {
   boss: JobBoss;
   blobs: BlobStore;
   nodes: NodeDef[];
+  announce: Announce;
 };
 
 const sftpStorage = (config: Config) => ({
@@ -52,7 +55,7 @@ const sftpStorage = (config: Config) => ({
   homeRoot: config.SFTP_HOME_ROOT
 });
 
-export const createApp = ({ config, db, redis, boss, blobs, nodes }: AppDeps) => {
+export const createApp = ({ config, db, redis, boss, blobs, nodes, announce }: AppDeps) => {
   const app = new Hono();
   const origins = config.HTTP_CORS_ORIGINS.split(',').map((o) => o.trim());
   const sessions = createSessionStore(redis);
@@ -83,21 +86,25 @@ export const createApp = ({ config, db, redis, boss, blobs, nodes }: AppDeps) =>
   );
   app.route('/api/graphs', protect(createGraphRoutes(createGraphService({ db, nodes }))));
   app.route('/api/runs', protect(createRunRoutes(createRunService({ db, boss }))));
-  app.route('/api/tasks', protect(createTaskRoutes(createTaskService({ db, boss }))));
+  app.route('/api/tasks', protect(createTaskRoutes(createTaskService({ db, boss, announce }))));
   app.route('/api/fees', protect(createFeeRoutes(createFeeService({ db }))));
-  app.route('/api/payers', protect(createPayerRoutes(createPayerService({ db }))));
+  app.route('/api/payers', protect(createPayerRoutes(createPayerService({ db, announce }))));
   app.route(
     '/api/billing-profile',
     protect(createBillingProfileRoutes(createBillingProfileService({ db })))
   );
   app.route(
     '/api/claims',
-    protect(createClaimRoutes(createClaimService({ db, boss, blobs, now: () => new Date() })))
+    protect(
+      createClaimRoutes(createClaimService({ db, boss, blobs, announce, now: () => new Date() }))
+    )
   );
   app.route(
     '/api/submissions',
     protect(
-      createSubmissionRoutes(createSubmissionService({ db, boss, blobs, now: () => new Date() }))
+      createSubmissionRoutes(
+        createSubmissionService({ db, boss, blobs, announce, now: () => new Date() })
+      )
     )
   );
   app.route(
@@ -108,6 +115,7 @@ export const createApp = ({ config, db, redis, boss, blobs, nodes }: AppDeps) =>
     db,
     boss,
     blobs,
+    announce,
     maxBytes: config.IMPORT_FILE_MAX_BYTES,
     sftp: sftpStorage(config)
   });
@@ -152,7 +160,12 @@ if (import.meta.main) {
       redis,
       boss,
       blobs,
-      nodes: [...createStdNodes({ fetch }), ...createNemsisNodes(null), ...createBillingNodes(null)]
+      nodes: [
+        ...createStdNodes({ fetch }),
+        ...createNemsisNodes(null),
+        ...createBillingNodes(null)
+      ],
+      announce: (tenantId, event) => publishEvent(redis, tenantId, event)
     }).fetch,
     port: config.API_PORT
   });

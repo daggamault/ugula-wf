@@ -2,7 +2,8 @@ import { type ClaimEventKind, nextClaimStep } from '@ugula/billing';
 import type { BlobRef, BlobStore } from '@ugula/blobs';
 import { type Db, findPublishedGraphs, sqlExecutor } from '@ugula/db';
 import { enqueueRuns, type JobBoss, resume } from '@ugula/jobs';
-import { fail, ok } from '../../shared/result.ts';
+import { type Announce, announced } from '../../shared/live.ts';
+import { fail, ok, type Result } from '../../shared/result.ts';
 import { signalRuns, startRun } from '../../shared/runs.ts';
 import {
   type ClaimFilters,
@@ -30,6 +31,7 @@ export type ClaimServiceDeps = {
   boss: JobBoss;
   now: () => Date;
   blobs: Pick<BlobStore, 'getBytes'>;
+  announce: Announce;
 };
 
 const CYCLE_WORKFLOW = { key: 'billing.cycle-claim', version: 1 };
@@ -58,7 +60,10 @@ export const planPayerOrder = (
   return { keep, add, remove: removed.map((c) => c.id), removed };
 };
 
-export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) => {
+export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServiceDeps) => {
+  // Every claim change commits in one transaction, then tells clients which claim changed.
+  const write = <T>(tenantId: string, id: string, work: (tx: Db) => Promise<Result<T>>) =>
+    announced(announce, tenantId, db.transaction().execute(work), () => [{ kind: 'claim', id }]);
   const nudge = (tx: Db, tenantId: string, claimId: string) =>
     signalRuns(tx, boss, { tenantId, name: 'claim', key: claimId, payload: null });
 
@@ -91,7 +96,7 @@ export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) =
     },
 
     setPayers: (tenantId: string, id: string, payers: string[]) =>
-      db.transaction().execute(async (tx) => {
+      write(tenantId, id, async (tx) => {
         const claim = await lockClaim(tx, tenantId, id);
         if (!claim) return notFound;
         if (claim.status !== 'open') return closed;
@@ -120,7 +125,7 @@ export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) =
     },
 
     saveBillingData: (tenantId: string, id: string, data: BillingData) =>
-      db.transaction().execute(async (tx) => {
+      write(tenantId, id, async (tx) => {
         const claim = await lockClaim(tx, tenantId, id);
         if (!claim) return notFound;
         if (claim.status !== 'open') return closed;
@@ -148,7 +153,7 @@ export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) =
       }),
 
     restartCycle: (tenantId: string, id: string) =>
-      db.transaction().execute(async (tx) => {
+      write(tenantId, id, async (tx) => {
         if (!(await lockClaim(tx, tenantId, id))) return notFound;
         const claim = await findClaim(tx, tenantId, id);
         if (!claim) return notFound;
@@ -168,7 +173,7 @@ export const createClaimService = ({ db, boss, now, blobs }: ClaimServiceDeps) =
       }),
 
     recordResponse: (tenantId: string, userId: string, id: string, response: ClaimResponse) =>
-      db.transaction().execute(async (tx) => {
+      write(tenantId, id, async (tx) => {
         const claim = await lockClaim(tx, tenantId, id);
         if (!claim) return notFound;
         if (await hasResponse(tx, id, response.requestId)) {

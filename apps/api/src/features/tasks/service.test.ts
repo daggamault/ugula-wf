@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db';
 import type { JobBoss } from '@ugula/jobs';
+import { recordAnnouncements } from '../../shared/testing.ts';
 import { createTaskService, fieldErrors, jobFor } from './service.ts';
 
 const task = (patch: Record<string, unknown> = {}) => ({
@@ -21,7 +22,8 @@ const setup = (row: Record<string, unknown> | undefined, updated = true) => {
   );
   const jobs: unknown[] = [];
   const boss: JobBoss = { insert: async (_n, batch) => void jobs.push(...batch) };
-  return { service: createTaskService({ db, boss }), jobs, queries };
+  const { announce, events: announced } = recordAnnouncements();
+  return { service: createTaskService({ db, boss, announce }), jobs, queries, announced };
 };
 
 describe('task service', () => {
@@ -68,12 +70,15 @@ describe('task service', () => {
   });
 
   it('completes open tasks and resumes the run atomically', async () => {
-    const { service, jobs } = setup(task());
+    const { service, jobs, announced } = setup(task());
     assert.deepEqual(
       await service.complete('t', 'u1', 't1', { outcome: 'approve', values: { note: 'ok' } }),
       { ok: true, value: { status: 'completed' } }
     );
     assert.equal(jobs.length, 1);
+    assert.deepEqual(announced, [
+      { tenantId: 't', event: { kind: 'task', id: 't1', runId: null } }
+    ]);
   });
 
   it('rejects unknown, closed, invalid and raced completions', async () => {
@@ -100,6 +105,9 @@ describe('task service', () => {
       'ok'
     );
     assert.equal(await status(task(), 'approve', { note: 'x' }, false), 'conflict');
+    const rejected = setup(undefined);
+    await rejected.service.complete('t', 'u1', 't1', { outcome: 'approve', values: {} });
+    assert.deepEqual(rejected.announced, []);
   });
 
   it('validates the pin and outputs of skipped faults only', async () => {

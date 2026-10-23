@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { idleLive } from '../../shared/testing.ts';
 import type { TasksClient } from './client.ts';
 import { MyTasksTable, QueuesTable, TasksPage } from './tasks-page.tsx';
 
@@ -48,7 +49,7 @@ describe('TasksPage', () => {
     const html = renderToStaticMarkup(
       createElement(TasksPage, {
         client: { queues: async () => [], mine: async () => [] } as unknown as TasksClient,
-        live: { subscribe: () => () => undefined, close: () => undefined }
+        live: idleLive
       })
     );
     assert.ok(html.includes('Queues'));

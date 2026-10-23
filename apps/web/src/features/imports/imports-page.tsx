@@ -18,7 +18,14 @@ export type ImportsPageProps = {
 
 export const ImportsPage = ({ client, live }: ImportsPageProps) => {
   const history = useResource('imports', client.list, 30_000);
-  useLive(live, history.reload);
+  const runs = new Set(history.data?.map((i) => i.run_id));
+  useLive(
+    live,
+    (e) =>
+      e.kind === 'import' ||
+      (e.kind === 'run' && (runs.has(e.id) || (e.parentId !== null && runs.has(e.parentId)))),
+    history.reload
+  );
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState('');
   const [received, setReceived] = useState<{ name: string; result: ImportResult } | null>(null);

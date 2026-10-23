@@ -70,7 +70,7 @@ export const ClaimsTable = ({ claims }: { claims: readonly ClaimSummary[] }) => 
 
 export const ClaimsPage = ({ client, live, status }: ClaimsPageProps) => {
   const claims = useResource(`claims:${status}`, () => client.list(status), 30_000);
-  useLive(live, claims.reload);
+  useLive(live, (e) => e.kind === 'claim', claims.reload);
   return (
     <Page title="Claims" description="Priced claims and where each one is in its payer cycle.">
       <FilterPills

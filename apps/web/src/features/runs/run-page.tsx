@@ -6,6 +6,7 @@ import { formatDateTime } from '../../shared/format.ts';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { GraphCanvas } from '../../shared/graph/graph-canvas.tsx';
 import { type Live, useLive } from '../../shared/live.ts';
+import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
@@ -22,7 +23,7 @@ import {
   type RunStep,
   type RunsClient
 } from './client.ts';
-import { graphAt, pathOf, statusAt } from './inspect.ts';
+import { graphAt, pathOf, runsStartedBy, statusAt } from './inspect.ts';
 import { NodeExecutions } from './node-executions.tsx';
 import { RunStatusBadge } from './run-status-badge.tsx';
 
@@ -66,9 +67,18 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
   const node = def?.nodes.find((n) => n.id === selected);
   const active = !isFinished(run.status);
   const openTasks = tasks.filter((t) => t.status === 'open');
+  const startedBy = (id: string) => runsStartedBy(detail, steps, path, id);
   const open = (id: string) => {
-    setStack([...stack, id]);
-    setSelected(null);
+    const inst = def?.nodes.find((n) => n.id === id);
+    if (!inst) return;
+    if (catalog.opensAs(inst) === 'graph') {
+      setStack([...stack, id]);
+      setSelected(null);
+      return;
+    }
+    const [only, ...more] = startedBy(id);
+    if (only && !more.length) navigate(`/runs/${only.id}`);
+    else setSelected(id);
   };
 
   return (
@@ -172,12 +182,14 @@ export const RunView = ({ detail, graphs, steps, onCancel }: RunViewProps) => {
             <NodeExecutions
               title={catalog.titleOf(node)}
               steps={steps.filter((s) => s.path === path && s.node === node.id)}
-              onOpen={catalog.graphOf(node) ? () => open(node.id) : undefined}
+              onOpen={catalog.opensAs(node) === 'graph' ? () => open(node.id) : undefined}
+              runs={startedBy(node.id)}
             />
           ) : (
             <section aria-label="Run data" className="flex flex-col gap-5 p-4">
               <p className="text-surface-fg-muted text-sm">
-                Select a node to inspect its values. Double-click a sub-graph to open it.
+                Select a node to inspect its values. Double-click a sub-graph or workflow node to
+                open it.
               </p>
               <div className="flex flex-col gap-2">
                 <h2 className={panelHeading}>Inputs</h2>
@@ -236,12 +248,18 @@ export const RunPage = ({ client, live, runId }: RunPageProps) => {
   const [active, setActive] = useState(true);
   const detail = useResource(`run:${runId}`, () => client.find(runId), active ? 15_000 : 0);
   const steps = useResource(`run-steps:${runId}`, () => client.steps(runId), active ? 15_000 : 0);
-  useLive(live, (event) => {
-    if (event.id === runId || detail.data?.children.some((c) => c.id === event.id)) {
+  const taskIds = new Set(detail.data?.tasks.map((t) => t.id));
+  useLive(
+    live,
+    (e) =>
+      e.kind === 'run'
+        ? e.id === runId || e.parentId === runId
+        : e.kind === 'task' && (e.runId === runId || (e.id !== null && taskIds.has(e.id))),
+    () => {
       detail.reload();
       steps.reload();
     }
-  });
+  );
   const graphs = useResource(`run-graphs:${runId}`, () => client.graphs(runId));
   const status = detail.data?.run.status;
   const { reload } = detail;

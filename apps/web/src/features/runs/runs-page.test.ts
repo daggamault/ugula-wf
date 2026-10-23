@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { idleLive } from '../../shared/testing.ts';
 import type { RunSummary, RunsClient } from './client.ts';
 import { RunsPage, RunsTable } from './runs-page.tsx';
 
@@ -10,6 +11,7 @@ const run: RunSummary = {
   status: 'faulted',
   parent_id: null,
   parent_index: null,
+  parent_wait: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
   completed_at: null,
@@ -34,7 +36,7 @@ describe('RunsPage', () => {
     const html = renderToStaticMarkup(
       createElement(RunsPage, {
         client: { list: async () => [] } as unknown as RunsClient,
-        live: { subscribe: () => () => undefined, close: () => undefined },
+        live: idleLive,
         status: 'faulted'
       })
     );

@@ -15,7 +15,8 @@ import {
 import type { BlobRef, BlobStore } from '@ugula/blobs';
 import type { Db } from '@ugula/db';
 import type { JobBoss } from '@ugula/jobs';
-import { fail, ok } from '../../shared/result.ts';
+import { type Announce, announced } from '../../shared/live.ts';
+import { fail, ok, type Result } from '../../shared/result.ts';
 import { signalRuns } from '../../shared/runs.ts';
 import {
   findBatchDocument,
@@ -38,6 +39,7 @@ export type SubmissionServiceDeps = {
   boss: JobBoss;
   now: () => Date;
   blobs: Pick<BlobStore, 'putBytes' | 'getBytes'>;
+  announce: Announce;
 };
 
 type LedgerRow = Awaited<ReturnType<typeof listLedgerEvents>>[number];
@@ -176,7 +178,23 @@ const submissionOf = (p: PendingClaim): SubmissionEvent => ({
   coverageId: p.coverageId
 });
 
-export const createSubmissionService = ({ db, boss, now, blobs }: SubmissionServiceDeps) => {
+export const createSubmissionService = ({
+  db,
+  boss,
+  now,
+  blobs,
+  announce
+}: SubmissionServiceDeps) => {
+  // A batch can touch many claims, so it reports them together (a null id).
+  const write = <T>(
+    tenantId: string,
+    claimId: string | null,
+    work: (tx: Db) => Promise<Result<T>>
+  ) =>
+    announced(announce, tenantId, db.transaction().execute(work), () => [
+      { kind: 'claim', id: claimId }
+    ]);
+
   const pendingOf = async (tx: Db, rows: OpenClaimRow[]) => {
     const events = await listLedgerEvents(
       tx,
@@ -225,7 +243,7 @@ export const createSubmissionService = ({ db, boss, now, blobs }: SubmissionServ
     },
 
     create: (tenantId: string, userId: string, claimIds: string[]) =>
-      db.transaction().execute(async (tx) => {
+      write(tenantId, null, async (tx) => {
         const profile = await lockProfile(tx, tenantId);
         const submitter = profile ? toSubmitter(profile) : null;
         const problems = submitterIssues(submitter);
@@ -279,7 +297,7 @@ export const createSubmissionService = ({ db, boss, now, blobs }: SubmissionServ
       }),
 
     markSubmitted: (tenantId: string, userId: string, claimId: string, note: string) =>
-      db.transaction().execute(async (tx) => {
+      write(tenantId, claimId, async (tx) => {
         const [pending] = await pendingOf(tx, await lockOpenClaims(tx, tenantId, [claimId]));
         if (!pending) return fail('conflict', 'This claim is not waiting to be submitted');
         await record(

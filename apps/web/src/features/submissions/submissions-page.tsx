@@ -158,7 +158,7 @@ export const SubmissionsPage = ({ client, live }: SubmissionsPageProps) => {
     pending.reload();
     batches.reload();
   };
-  useLive(live, pending.reload);
+  useLive(live, (e) => e.kind === 'claim', reload);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const [confirming, setConfirming] = useState<PendingClaim | null>(null);
   const [error, setError] = useState('');

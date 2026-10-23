@@ -34,7 +34,7 @@ import { TaskPage } from './features/tasks/task-page.tsx';
 import { TasksPage } from './features/tasks/tasks-page.tsx';
 import type { WorkflowsClient } from './features/workflows/client.ts';
 import { WorkflowsPage } from './features/workflows/workflows-page.tsx';
-import { createLive, type Live } from './shared/live.ts';
+import { createLive, type Live, useLiveStatus } from './shared/live.ts';
 import { matchPath, navigate, useLocation } from './shared/router.tsx';
 import { PageLoading } from './shared/ui/page.tsx';
 import { Shell } from './shared/ui/shell.tsx';
@@ -146,7 +146,10 @@ const routes: readonly Route[] = [
   { pattern: '/fees', render: (_, __, c) => <FeesPage client={c.fees} /> },
   { pattern: '/settings', render: (_, __, c) => <SettingsPage client={c.settings} /> },
   { pattern: '/tasks', render: (_, __, c) => <TasksPage client={c.tasks} live={c.live} /> },
-  { pattern: '/tasks/:id', render: (p, _, c) => <TaskPage client={c.tasks} taskId={p.id ?? ''} /> }
+  {
+    pattern: '/tasks/:id',
+    render: (p, _, c) => <TaskPage client={c.tasks} live={c.live} taskId={p.id ?? ''} />
+  }
 ];
 
 export const resolveRoute = (path: string, query: URLSearchParams, ctx: RouteContext) => {
@@ -168,6 +171,7 @@ export type WorkspaceProps = {
 
 export const Workspace = ({ clients, path, query, email, sseUrl, onSignOut }: WorkspaceProps) => {
   const live = useMemo(() => createLive(sseUrl), [sseUrl]);
+  const liveStatus = useLiveStatus(live);
   const page = resolveRoute(path, query, { ...clients, live });
   const missing = page === null;
 
@@ -182,7 +186,7 @@ export const Workspace = ({ clients, path, query, email, sseUrl, onSignOut }: Wo
       path={path}
       navItems={SECTIONS.map((s) => ({ ...s, active: path.startsWith(s.href) }))}
       userEmail={email}
-      status={<HealthStatus />}
+      status={<HealthStatus status={liveStatus} />}
       onSignOut={onSignOut}
     >
       <Suspense fallback={<PageLoading />}>{page}</Suspense>

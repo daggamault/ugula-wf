@@ -46,6 +46,7 @@ const runColumns = (db: Db) =>
       'r.status',
       'r.parent_id',
       'r.parent_index',
+      'r.parent_wait',
       'r.created_at',
       'r.updated_at',
       'r.completed_at',

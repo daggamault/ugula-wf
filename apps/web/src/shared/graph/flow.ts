@@ -21,7 +21,7 @@ export type GraphNodeData = {
   connected: string[];
   status: NodeStatus;
   issues: string[];
-  composite: boolean;
+  opens: 'graph' | 'workflow' | null;
 };
 
 export type GraphFlowNode = Node<GraphNodeData, 'graph'>;
@@ -100,7 +100,7 @@ export const toFlow = (
         connected: def.edges.filter((e) => e.to === inst.id).map((e) => e.toPin),
         status: status[inst.id] ?? 'idle',
         issues: [...(issues[inst.id] ?? [])],
-        composite: catalog.graphOf(inst) !== undefined && !inst.type.startsWith('std.graph.')
+        opens: catalog.opensAs(inst)
       }
     };
   });

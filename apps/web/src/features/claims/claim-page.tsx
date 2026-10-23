@@ -557,7 +557,14 @@ export const ClaimView = ({
 
 export const ClaimPage = ({ client, live, claimId }: ClaimPageProps) => {
   const detail = useResource(`claim:${claimId}`, () => client.find(claimId), 15_000);
-  useLive(live, detail.reload);
+  const cycleRun = detail.data?.claim.cycle_run_id;
+  useLive(
+    live,
+    (e) =>
+      (e.kind === 'claim' && (e.id === claimId || e.id === null)) ||
+      (e.kind === 'run' && e.id === cycleRun),
+    detail.reload
+  );
   const [error, setError] = useState('');
   const act = async (action: () => Promise<unknown>) => {
     setError('');

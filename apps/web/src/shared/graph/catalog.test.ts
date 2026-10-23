@@ -27,6 +27,7 @@ describe('createCatalog', () => {
     const catalog = createCatalog({
       published: [
         {
+          graph_id: 'g-x',
           key: 'acme.score',
           name: 'Score v2',
           kind: 'node',
@@ -34,7 +35,15 @@ describe('createCatalog', () => {
           version: 2,
           signature
         },
-        { key: 'acme.score', name: 'Score', kind: 'node', description: '', version: 1, signature }
+        {
+          graph_id: 'g-x',
+          key: 'acme.score',
+          name: 'Score',
+          kind: 'node',
+          description: '',
+          version: 1,
+          signature
+        }
       ]
     });
     const find = (type: string) => catalog.palette.filter((p) => p.type === type);
@@ -58,7 +67,15 @@ describe('createCatalog', () => {
   it('resolves signatures and titles without throwing on unknown nodes', () => {
     const catalog = createCatalog({
       published: [
-        { key: 'acme.score', name: 'Score', kind: 'node', description: '', version: 1, signature }
+        {
+          graph_id: 'g-x',
+          key: 'acme.score',
+          name: 'Score',
+          kind: 'node',
+          description: '',
+          version: 1,
+          signature
+        }
       ],
       graphs: [{ type: 'acme.full', version: 1, definition: owner }]
     });
@@ -81,5 +98,43 @@ describe('createCatalog', () => {
     assert.equal(catalog.graphOf({ type: 'acme.full', version: 1 }), owner);
     assert.ok(catalog.graphOf({ type: 'std.math.average', version: 1 }));
     assert.equal(titleFromKey('demo.line-total'), 'Line Total');
+  });
+
+  it('knows which nodes open a sub-graph or a started workflow', () => {
+    const catalog = createCatalog({
+      published: [
+        {
+          graph_id: 'g-s',
+          key: 'acme.score',
+          name: 'Score',
+          kind: 'node',
+          description: '',
+          version: 1,
+          signature
+        },
+        {
+          graph_id: 'g-c',
+          key: 'acme.cycle',
+          name: 'Cycle',
+          kind: 'workflow',
+          description: '',
+          version: 3,
+          signature
+        }
+      ]
+    });
+    const score = { id: 's', type: 'acme.score', version: 1 };
+    const start = {
+      id: 'w',
+      type: 'std.flow.start-workflow',
+      version: 1,
+      config: { workflow: 'acme.cycle', version: 3 }
+    };
+    assert.equal(catalog.opensAs(score), 'graph');
+    assert.equal(catalog.opensAs(start), 'workflow');
+    assert.equal(catalog.opensAs({ id: 'a', type: 'std.math.add', version: 1 }), null);
+    assert.equal(catalog.opensAs({ id: 'b', type: 'std.flow.start-workflow', version: 1 }), null);
+    assert.equal(catalog.publishedOf(score)?.graph_id, 'g-s');
+    assert.equal(catalog.publishedOf(start)?.graph_id, 'g-c');
   });
 });

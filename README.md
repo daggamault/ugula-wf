@@ -32,7 +32,7 @@ Ugula is a durable, visual workflow engine (think Unreal Blueprints meets n8n) w
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | `apps/api`                                                                                            | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, submissions, reports, settings   |
 | `apps/worker`                                                                                         | Executes workflow runs from the pg-boss queue and implements billing store ports            |
-| `apps/sse`                                                                                            | Pushes live run and task updates to the browser over Server-Sent Events (via Redis)         |
+| `apps/sse`                                                                                            | Pushes live run, task, claim and import updates over Server-Sent Events (via Redis)         |
 | `apps/web`                                                                                            | React app: graph editor, runs, tasks, imports, claims, submissions, reports, fees, settings |
 | `libs/graph`                                                                                          | Workflow engine, expression language, and standard node library                             |
 | `libs/billing`                                                                                        | Billing domain: patient matching, pricing, claim cycle, statements, 837P generation         |

@@ -73,8 +73,13 @@ export const createRunner = ({
   maxSteps = 5_000,
   flushSize = 200
 }: RunnerDeps): Runner => {
-  const notify = (run: ClaimedRun, status: string) =>
-    publish(run.tenantId, { kind: 'run', id: run.id, status }).catch(() => undefined);
+  // Tasks only open or close when a run settles (suspends, faults or ends), so any other status
+  // leaves task queues as they were.
+  const notify = async (run: ClaimedRun, status: string) => {
+    const events: LiveEvent[] = [{ kind: 'run', id: run.id, status, parentId: run.parentId }];
+    if (status !== 'running') events.push({ kind: 'task', id: null, runId: run.id });
+    for (const event of events) await publish(run.tenantId, event).catch(() => undefined);
+  };
 
   const drive = async (
     engine: Engine,

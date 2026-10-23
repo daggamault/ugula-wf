@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { type ClaimEventKind, createRecordingDb } from '@ugula/db';
 import type { JobBoss } from '@ugula/jobs';
 import type { CompiledQuery } from 'kysely';
+import { recordAnnouncements } from '../../shared/testing.ts';
 import type { OpenClaimRow } from './queries.ts';
 import { batchKey, createSubmissionService, detailsOf, pendingClaims } from './service.ts';
 
@@ -187,8 +188,9 @@ const setup = ({ rows = [claimRow(C1)], events = [] as unknown[], withProfile = 
     },
     getBytes: async () => new TextEncoder().encode('ISA*')
   };
-  const service = createSubmissionService({ db, boss, blobs, now: () => now });
-  return { service, queries, jobs, stored };
+  const { announce, events: announced } = recordAnnouncements();
+  const service = createSubmissionService({ db, boss, blobs, announce, now: () => now });
+  return { service, queries, jobs, stored, announced };
 };
 
 describe('submission service', () => {

@@ -8,6 +8,7 @@ export type RunSummary = {
   status: RunStatus;
   parent_id: string | null;
   parent_index: number | null;
+  parent_wait: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;

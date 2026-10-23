@@ -88,10 +88,14 @@ export const MyTasksTable = ({ tasks }: { tasks: readonly TaskSummary[] }) => (
 export const TasksPage = ({ client, live }: TasksPageProps) => {
   const queues = useResource('task-queues', client.queues, 30_000);
   const mine = useResource('my-tasks', client.mine, 30_000);
-  useLive(live, () => {
-    queues.reload();
-    mine.reload();
-  });
+  useLive(
+    live,
+    (e) => e.kind === 'task',
+    () => {
+      queues.reload();
+      mine.reload();
+    }
+  );
   const [notice, setNotice] = useState('');
 
   const work = async (queue: string) => {

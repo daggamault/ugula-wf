@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { ENTRY_TYPE } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { idleLive } from '../../shared/testing.ts';
 import type { RunDetail, RunsClient } from './client.ts';
 import { RunPage, RunView } from './run-page.tsx';
 
@@ -12,6 +13,7 @@ const detail = (status: RunDetail['run']['status']): RunDetail => ({
     status,
     parent_id: 'p1',
     parent_index: 0,
+    parent_wait: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     completed_at: null,
@@ -86,7 +88,7 @@ describe('RunPage', () => {
     const html = renderToStaticMarkup(
       createElement(RunPage, {
         client: {} as RunsClient,
-        live: { subscribe: () => () => undefined, close: () => undefined },
+        live: idleLive,
         runId: 'r1'
       })
     );

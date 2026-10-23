@@ -8,7 +8,7 @@ import {
   MiniMap,
   ReactFlow
 } from '@xyflow/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDocumentTheme } from '../ui/theme-toggle.tsx';
 import type { Catalog } from './catalog.ts';
 import {
@@ -53,10 +53,29 @@ export const GraphCanvas = ({
   const [nodes, setNodes] = useState<GraphFlowNode[]>(flow.nodes);
   const [edges, setEdges] = useState<Edge[]>(flow.edges);
 
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+
   useEffect(() => {
-    setNodes(flow.nodes.map((n) => ({ ...n, selected: n.id === selected })));
+    setNodes((prev) => {
+      const before = new Map(prev.map((n) => [n.id, n]));
+      return flow.nodes.map((n) => {
+        const measured = before.get(n.id)?.measured;
+        return { ...n, selected: n.id === selectedRef.current, ...(measured ? { measured } : {}) };
+      });
+    });
     setEdges(flow.edges);
-  }, [flow, selected]);
+  }, [flow]);
+
+  // Selection only flips the flag on existing nodes: rebuilding them would drop React Flow's
+  // measurements and swallow the second click of a double-click.
+  useEffect(() => {
+    setNodes((ns) =>
+      ns.map((n) =>
+        n.selected === (n.id === selected) ? n : { ...n, selected: n.id === selected }
+      )
+    );
+  }, [selected]);
 
   return (
     <div className="h-full min-h-96 w-full">
@@ -77,7 +96,7 @@ export const GraphCanvas = ({
         onNodeClick={(_, node) => onSelect(node.id)}
         onPaneClick={() => onSelect(null)}
         onNodeDoubleClick={(_, node) => {
-          if (node.data.composite) onOpen?.(node.id);
+          if (node.data.opens) onOpen?.(node.id);
         }}
         onNodeDragStop={(_, __, dragged) =>
           onChange?.(moveNodes(def, Object.fromEntries(dragged.map((n) => [n.id, n.position]))))

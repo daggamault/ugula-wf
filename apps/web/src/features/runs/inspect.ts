@@ -1,7 +1,7 @@
-import type { GraphDef, RunState } from '@ugula/graph';
+import type { GraphDef, RunState, Values } from '@ugula/graph';
 import type { Catalog } from '../../shared/graph/catalog.ts';
 import type { NodeStatus } from '../../shared/graph/flow.ts';
-import type { RunStep } from './client.ts';
+import type { RunDetail, RunStep, RunSummary } from './client.ts';
 
 export type Cursor = {
   path: string;
@@ -46,4 +46,36 @@ export const statusAt = (
     if (node) status[node] = cursor.status;
   }
   return status;
+};
+
+export type StartedRun = Pick<RunSummary, 'id'> &
+  Partial<Pick<RunSummary, 'name' | 'status' | 'parent_index'>>;
+
+const runIdsIn = (outputs: Values) => [
+  ...(typeof outputs.runId === 'string' ? [outputs.runId] : []),
+  ...(Array.isArray(outputs.runIds)
+    ? outputs.runIds.filter((id): id is string => typeof id === 'string')
+    : [])
+];
+
+/** Runs a workflow-starting node launched: recorded in its step outputs once it resumes, or
+ * linked to the wait it is suspended on while children are still running. */
+export const runsStartedBy = (
+  detail: RunDetail,
+  steps: readonly RunStep[],
+  path: string,
+  node: string
+): StartedRun[] => {
+  const { run, children } = detail;
+  const recorded = steps
+    .filter((s) => s.path === path && s.node === node)
+    .flatMap((s) => runIdsIn(s.outputs));
+  const wait = run.state?.suspension;
+  const waiting =
+    wait && wait.cursor.node === node && run.state?.scopes[wait.cursor.scope]?.path === path
+      ? children.filter((c) => c.parent_wait === wait.id).map((c) => c.id)
+      : [];
+  return [...new Set([...recorded, ...waiting])].map(
+    (id) => children.find((c) => c.id === id) ?? { id }
+  );
 };

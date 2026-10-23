@@ -63,6 +63,13 @@ export const EditorView = ({
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState<'save' | 'publish' | null>(null);
   const [error, setError] = useState('');
+  const openNode = (id: string) => {
+    const inst = def.nodes.find((n) => n.id === id);
+    const target = inst ? catalog.publishedOf(inst) : undefined;
+    if (!target) return;
+    if (dirty) setError('Save your changes before opening another workflow.');
+    else navigate(`/workflows/${target.graph_id}?version=${target.version}`);
+  };
   const node = def.nodes.find((n) => n.id === selected);
 
   const change = (next: GraphDef) => {
@@ -201,6 +208,7 @@ export const EditorView = ({
             issues={issuesByNode(issues)}
             selected={selected}
             onSelect={setSelected}
+            onOpen={openNode}
             {...(editable ? { onChange: change } : {})}
           />
         </div>

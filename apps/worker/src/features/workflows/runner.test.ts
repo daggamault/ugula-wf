@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { RunStatus } from '@ugula/db';
+import type { LiveEvent } from '@ugula/events';
 import {
   createEngine,
   createStdNodes,
@@ -136,9 +137,9 @@ const fakeStore = (inputs: Values, opts: { leased?: boolean } = {}) => {
   return { store, row, log };
 };
 
-const events: { tenantId: string; status: string }[] = [];
-const publish = async (tenantId: string, event: { status: string }) => {
-  events.push({ tenantId, status: event.status });
+const events: { tenantId: string; event: LiveEvent }[] = [];
+const publish = async (tenantId: string, event: LiveEvent) => {
+  events.push({ tenantId, event });
 };
 
 const job = (command: RunJob['command']): RunJob => ({ runId: 'run-1', command });
@@ -156,9 +157,12 @@ describe('runner', () => {
     await runner.process(resume);
     assert.equal(row.status, 'completed');
     assert.deepEqual(log.saves.at(-1)?.result, { pin: null, outputs: { doubled: 3000 } });
-    assert.deepEqual(events.slice(-2), [
-      { tenantId: 't-1', status: 'suspended' },
-      { tenantId: 't-1', status: 'completed' }
+    const task = { kind: 'task', id: null, runId: 'run-1' } as const;
+    assert.deepEqual(events.slice(-4), [
+      { tenantId: 't-1', event: { kind: 'run', id: 'run-1', status: 'suspended', parentId: null } },
+      { tenantId: 't-1', event: task },
+      { tenantId: 't-1', event: { kind: 'run', id: 'run-1', status: 'completed', parentId: null } },
+      { tenantId: 't-1', event: task }
     ]);
 
     await runner.process(resume);

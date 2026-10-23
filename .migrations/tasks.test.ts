@@ -9,6 +9,7 @@ describe('tasks table', () => {
     const tableSql = buildTasksTable(db).compile().sql;
     assert.ok(tableSql.includes('create table "tasks"'));
     assert.ok(tableSql.includes('unique ("run_id", "wait_id")'));
+    assert.ok(tableSql.includes('"context" json not null'));
     assert.ok(tableSql.includes("check (status in ('open', 'completed', 'cancelled'))"));
     const indexSql = buildTasksIndexes(db).map((i) => i.compile().sql);
     assert.ok(

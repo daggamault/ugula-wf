@@ -8,14 +8,17 @@ import { Redis } from 'ioredis';
 import { PgBoss } from 'pg-boss';
 import { type Config, parseConfig } from './config.ts';
 import { createFeeStore } from './features/charges/queries.ts';
+import { announceClaims } from './features/claims/announce.ts';
 import { createClaimStore } from './features/claims/queries.ts';
 import { registerHealthJob } from './features/health/job.ts';
+import { announceImports } from './features/imports/announce.ts';
 import { createReportStore } from './features/imports/reports.ts';
 import { createPatientStore } from './features/patients/queries.ts';
 import { createEngineCache } from './features/workflows/engines.ts';
 import { registerWorkflowJobs } from './features/workflows/job.ts';
 import { createRunStore } from './features/workflows/queries.ts';
 import { createRunner } from './features/workflows/runner.ts';
+import { createAnnouncer, type Publish } from './shared/live.ts';
 
 const connection = (config: Config) => ({
   host: config.DB_HOST,
@@ -49,22 +52,24 @@ if (import.meta.main) {
   );
   await blobs.ensureBucket();
   const store = createRunStore({ db, boss });
+  const publish: Publish = (tenantId, event) => publishEvent(redis, tenantId, event);
+  const announce = createAnnouncer(db, publish);
   const runner = createRunner({
     store,
     engines: createEngineCache({
       nodes: [
         ...createStdNodes({ fetch }),
-        ...createNemsisNodes(createReportStore(db, blobs)),
+        ...createNemsisNodes(announceImports(createReportStore(db, blobs), announce)),
         ...createBillingNodes({
           patients: createPatientStore(db),
           fees: createFeeStore(db),
-          claims: createClaimStore(db, blobs)
+          claims: announceClaims(createClaimStore(db, blobs), announce)
         })
       ],
       loadBundle: (versionId) => findGraphBundle(db, versionId)
     }),
     now: () => new Date(),
-    publish: (tenantId, event) => publishEvent(redis, tenantId, event)
+    publish
   });
   await registerHealthJob(boss);
   await registerWorkflowJobs({ boss, runner, store, concurrency: config.WORKFLOW_CONCURRENCY });

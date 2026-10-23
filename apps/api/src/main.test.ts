@@ -25,7 +25,8 @@ describe('api createApp', () => {
       } as RedisLike,
       boss: { insert: async () => null },
       blobs: {} as BlobStore,
-      nodes: [...createStdNodes({ fetch }), ...createNemsisNodes(null)]
+      nodes: [...createStdNodes({ fetch }), ...createNemsisNodes(null)],
+      announce: async () => undefined
     });
 
     const healthRes = await app.request('/health');

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { idleLive } from '../../shared/testing.ts';
 import type { TaskDetail, TasksClient } from './client.ts';
 import { TaskPage, TaskView } from './task-page.tsx';
 
@@ -84,7 +85,7 @@ describe('TaskPage', () => {
   it('waits for the task before rendering', () => {
     assert.ok(
       renderToStaticMarkup(
-        createElement(TaskPage, { client: {} as TasksClient, taskId: 't1' })
+        createElement(TaskPage, { client: {} as TasksClient, live: idleLive, taskId: 't1' })
       ).includes('aria-label="Loading"')
     );
   });
