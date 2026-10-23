@@ -1,4 +1,5 @@
 import type { Api } from '../../shared/api.ts';
+import type { Page } from '../../shared/url-state.ts';
 
 export type ImportResult = {
   runId: string;
@@ -32,7 +33,7 @@ export type ImportSummary = {
 };
 
 export const createImportsClient = (api: Api) => ({
-  list: async () => (await api.get<{ imports: ImportSummary[] }>('/api/imports?limit=50')).imports,
+  list: (page: string) => api.get<Page<ImportSummary>>(`/api/imports?${page}`),
   upload: (file: File) => {
     const form = new FormData();
     form.append('file', file);

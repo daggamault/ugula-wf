@@ -1,6 +1,8 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
+import { type PageRequest, paged } from '../../shared/paging.ts';
+import type { BatchSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
@@ -178,7 +180,17 @@ export const insertSubmissionEvents = (
     )
     .execute();
 
-export const listBatches = (db: Db, tenantId: string, limit: number) =>
+const BATCH_ORDER = {
+  created: sql.ref('b.created_at'),
+  control: sql.ref('b.control_number'),
+  claims: sql.ref('b.claim_count'),
+  total: sql.ref('b.total_cents')
+};
+
+export const listBatches = (db: Db, tenantId: string, page: PageRequest<BatchSort>) =>
+  paged(batchRows(db, tenantId), page, BATCH_ORDER, sql.ref('b.id'));
+
+const batchRows = (db: Db, tenantId: string) =>
   db
     .selectFrom('claim_batches as b')
     .leftJoin('users as u', 'u.id', 'b.created_by')
@@ -191,11 +203,7 @@ export const listBatches = (db: Db, tenantId: string, limit: number) =>
       'b.created_at',
       'u.email as created_by_email'
     ])
-    .where('b.tenant_id', '=', tenantId)
-    .orderBy('b.created_at', 'desc')
-    .orderBy('b.id', 'desc')
-    .limit(limit)
-    .execute();
+    .where('b.tenant_id', '=', tenantId);
 
 export const findBatchDocument = async (db: Db, tenantId: string, id: string) =>
   (await db

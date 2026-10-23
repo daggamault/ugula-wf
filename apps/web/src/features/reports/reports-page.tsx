@@ -1,20 +1,24 @@
-import { ArrowRightIcon, CalendarRangeIcon, DownloadIcon, PlayIcon } from 'lucide-react';
-import { type FormEvent, useId, useState } from 'react';
-import { classNamesOf } from '../../shared/class-names.ts';
+import { ArrowRightIcon, DownloadIcon, PlayIcon } from 'lucide-react';
+import { type FormEvent, useState } from 'react';
 import { formatDate } from '../../shared/format.ts';
-import { Link, navigate } from '../../shared/router.tsx';
+import { navigate, useLocation } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
-import { Button } from '../../shared/ui/button.tsx';
+import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { Input } from '../../shared/ui/input.tsx';
-import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
+import { Pagination } from '../../shared/ui/pagination.tsx';
 import { Section, SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { TextLink } from '../../shared/ui/text-link.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
+import { hrefWith, pageOf, type TableState, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { findReport, REPORTS, type Report } from './catalog.tsx';
 import type { DateRange, ReportsClient } from './client.ts';
 import { downloadCsv } from './csv.ts';
+
+type AnyReport = Report<unknown, unknown>;
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -35,61 +39,69 @@ export const rangeOf = (query: URLSearchParams, now: Date): DateRange => {
   };
 };
 
-export const reportPath = (r: Pick<Report<unknown>, 'id' | 'usesPeriod'>, range: DateRange) =>
-  r.usesPeriod
-    ? `/reports/${r.id}?from=${range.from}&to=${range.to}&run=1`
-    : `/reports/${r.id}?run=1`;
+export const reportPath = (
+  r: Pick<AnyReport, 'id' | 'usesPeriod'>,
+  range: DateRange,
+  query: URLSearchParams = new URLSearchParams()
+) =>
+  hrefWith(`/reports/${r.id}`, query, {
+    from: r.usesPeriod ? range.from : null,
+    to: r.usesPeriod ? range.to : null,
+    run: '1',
+    page: null
+  });
 
-const ReportCard = ({ report }: { report: Report<unknown> }) => {
-  const headingId = useId();
+const CATALOG_TABLE = { sorts: { title: 'asc' }, sort: 'title' } as const;
+
+export const ReportsPage = () => {
+  const table = useTableState('/reports', CATALOG_TABLE);
+  const page = pageOf(REPORTS, table, { title: (r) => r.title });
   return (
-    <li>
-      <Link
-        to={`/reports/${report.id}`}
-        aria-labelledby={headingId}
-        className={classNamesOf(
-          interactiveClasses,
-          'border-border bg-surface hover:border-primary/50 hover:bg-primary/5 group flex h-full flex-col gap-3 rounded-xl border p-5'
-        )}
+    <Page
+      title="Reports"
+      description="Receivables, collections and payer performance, straight from your claims. Pick a report, set its options and run it."
+    >
+      <Table
+        label="Reports"
+        sorting={table}
+        head={[
+          { label: 'Report', sort: 'title' },
+          'Options',
+          { label: 'Actions', isLabelHidden: true, isCompact: true }
+        ]}
       >
-        <span className="flex items-start justify-between gap-3">
-          <span id={headingId} className="text-base font-bold tracking-tight">
-            {report.title}
-          </span>
-          <ArrowRightIcon
-            aria-hidden="true"
-            className="text-surface-fg-muted group-hover:text-primary size-4 shrink-0 transition group-hover:translate-x-0.5"
-          />
-        </span>
-        <span className="text-surface-fg-muted text-sm">{report.description}</span>
-        <span className="text-surface-fg-muted mt-auto flex items-center gap-1.5 text-xs font-semibold">
-          <CalendarRangeIcon aria-hidden="true" className="size-3.5" />
-          {report.usesPeriod ? 'Choose a range of service dates' : 'As of today, no options'}
-        </span>
-      </Link>
-    </li>
+        {page.items.map((r) => (
+          <TableRow key={r.id}>
+            <TableCell>
+              <span className="flex max-w-2xl flex-col gap-0.5 whitespace-normal">
+                <TextLink to={`/reports/${r.id}`}>{r.title}</TextLink>
+                <span className="text-surface-fg-muted text-xs font-normal">{r.description}</span>
+              </span>
+            </TableCell>
+            <TableCell isMuted>
+              {r.usesPeriod ? 'Service date range' : 'None, as of today'}
+            </TableCell>
+            <TableCell kind="actions">
+              <ButtonLink to={`/reports/${r.id}`} variant="outline" size="sm">
+                Open
+                <ArrowRightIcon aria-hidden="true" className="size-4" />
+              </ButtonLink>
+            </TableCell>
+          </TableRow>
+        ))}
+      </Table>
+      <Pagination label="Reports" total={page.total} state={table} />
+    </Page>
   );
 };
 
-export const ReportsPage = () => (
-  <Page
-    title="Reports"
-    description="Receivables, collections and payer performance, straight from your claims. Pick a report, set its options and run it."
-  >
-    <ul className="grid gap-4 sm:grid-cols-2">
-      {REPORTS.map((r) => (
-        <ReportCard key={r.id} report={r} />
-      ))}
-    </ul>
-  </Page>
-);
-
-export const ReportOptions = ({ report, range }: { report: Report<unknown>; range: DateRange }) => {
+export const ReportOptions = ({ report, range }: { report: AnyReport; range: DateRange }) => {
   const [draft, setDraft] = useState(range);
+  const { query } = useLocation();
   const valid = draft.from <= draft.to;
   const run = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (valid) navigate(reportPath(report, draft));
+    if (valid) navigate(reportPath(report, draft, query));
   };
   return (
     <SectionPanel
@@ -100,10 +112,10 @@ export const ReportOptions = ({ report, range }: { report: Report<unknown>; rang
           : 'This report always shows balances as of today.'
       }
     >
-      <form onSubmit={run} className="flex flex-wrap items-end gap-4">
+      <form onSubmit={run} className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
         {report.usesPeriod ? (
           <>
-            <div className="w-44">
+            <div className="sm:w-44">
               <Input
                 id="report-from"
                 label="Service from"
@@ -113,7 +125,7 @@ export const ReportOptions = ({ report, range }: { report: Report<unknown>; rang
                 onChange={(e) => e.target.value && setDraft({ ...draft, from: e.target.value })}
               />
             </div>
-            <div className="w-44">
+            <div className="sm:w-44">
               <Input
                 id="report-to"
                 label="Service to"
@@ -137,16 +149,35 @@ export const ReportOptions = ({ report, range }: { report: Report<unknown>; rang
   );
 };
 
+const ReportRows = ({
+  report,
+  data,
+  state
+}: {
+  report: AnyReport;
+  data: unknown;
+  state: TableState<string>;
+}) => {
+  const page = pageOf(report.rowsOf(data), state, report.values);
+  return (
+    <>
+      {report.table(data, page.items, state)}
+      <Pagination label={report.title} total={page.total} state={state} />
+    </>
+  );
+};
+
 const ReportResults = ({
   client,
   report,
   range
 }: {
   client: ReportsClient;
-  report: Report<unknown>;
+  report: AnyReport;
   range: DateRange;
 }) => {
   const notify = useToast();
+  const table = useTableState(`/reports/${report.id}`, report);
   const result = useResource(`report:${report.id}:${range.from}:${range.to}`, () =>
     report.load(client, range)
   );
@@ -184,7 +215,7 @@ const ReportResults = ({
       ) : report.isEmpty(data) ? (
         <EmptyText>Nothing to report for these options.</EmptyText>
       ) : (
-        report.table(data)
+        <ReportRows report={report} data={data} state={table} />
       )}
     </Section>
   );

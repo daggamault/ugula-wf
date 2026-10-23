@@ -302,6 +302,17 @@ describe('claim service', () => {
     const paid = await setup({ row: { ...claim, status: 'paid' } }).service.find('t', 'c1');
     assert.equal(paid.ok && paid.value.progress, null);
     assert.match(failure(await setup({ row: null }).service.find('t', 'c1')), /^not_found/);
-    assert.equal((await setup().service.list('t', { status: 'open', limit: 50 })).ok, true);
+    assert.equal(
+      (
+        await setup().service.list('t', {
+          status: 'open',
+          page: 1,
+          pageSize: 25,
+          sort: 'created' as const,
+          dir: 'desc' as const
+        })
+      ).ok,
+      true
+    );
   });
 });

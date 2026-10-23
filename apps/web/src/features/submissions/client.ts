@@ -1,4 +1,5 @@
 import type { Api } from '../../shared/api.ts';
+import type { Page } from '../../shared/url-state.ts';
 
 export type PendingClaim = {
   id: string;
@@ -28,8 +29,7 @@ export type Batch = {
 
 export const createSubmissionsClient = (api: Api) => ({
   pending: () => api.get<Pending>('/api/submissions/pending'),
-  batches: async () =>
-    (await api.get<{ batches: Batch[] }>('/api/submissions/batches?limit=50')).batches,
+  batches: (page: string) => api.get<Page<Batch>>(`/api/submissions/batches?${page}`),
   createBatch: async (claimIds: string[]) =>
     (await api.post<{ batch: Batch }>('/api/submissions/batches', { claimIds })).batch,
   markSubmitted: (claimId: string) => api.post('/api/submissions/manual', { claimId }),

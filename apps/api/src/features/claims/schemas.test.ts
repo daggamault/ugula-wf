@@ -5,7 +5,15 @@ import { billingDataSchema, listClaimsQuery, payersSchema, responseSchema } from
 
 describe('claim schemas', () => {
   it('defaults list filters to open claims', () => {
-    assert.deepEqual(v.parse(listClaimsQuery, {}), { status: 'open', limit: 50 });
+    assert.deepEqual(v.parse(listClaimsQuery, {}), {
+      status: 'open',
+      page: 1,
+      pageSize: 25,
+      sort: 'created',
+      dir: 'desc'
+    });
+    assert.equal(v.safeParse(listClaimsQuery, { sort: 'balance', dir: 'asc' }).success, true);
+    assert.equal(v.safeParse(listClaimsQuery, { sort: 'payer' }).success, false);
   });
 
   it('accepts ordered unique payers', () => {

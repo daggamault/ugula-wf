@@ -50,7 +50,8 @@ export const queueInfo = (queue: string): QueueInfo =>
     description: ''
   };
 
-export const byQueueOrder = (a: string, b: string) => {
-  const rank = (q: string) => (ORDER.includes(q) ? ORDER.indexOf(q) : ORDER.length);
-  return rank(a) - rank(b) || a.localeCompare(b);
-};
+const rank = (queue: string) => (ORDER.includes(queue) ? ORDER.indexOf(queue) : ORDER.length);
+
+export const queueSortKey = (queue: string) => `${String(rank(queue)).padStart(3, '0')} ${queue}`;
+
+export const byQueueOrder = (a: string, b: string) => rank(a) - rank(b) || a.localeCompare(b);

@@ -58,6 +58,7 @@ NEMSIS path: drop the file anywhere (dispatch `dragenter` then `drop` `DragEvent
 - The pre-sign-in `GET /api/auth/me` 401 is expected (StrictMode runs it twice).
 - Assert run state on the level-1 heading; child-run badges also say "Completed".
 - Open sub-graphs with `node.dispatchEvent('dblclick')`: nodes can sit under the editor palette, which intercepts real pointer events. Drill-in state is in the URL (`?trail=` in the editor, `?at=` on runs), so `page.goBack()` walks back up.
+- Tables are real tables from `md` up and labelled cards below it (headers become `sr-only`, so use a desktop viewport to click headers, or the `Sort by` select on phones). Sort, page and page size live in the URL (`sort`, `dir`, `page`, `pageSize`; a second table on a page prefixes them, e.g. `mineSort`, `queuesPage`), so tests can open a view directly. Pagers show only the count until a list has more than 10 rows.
 - `/runs` lists top-level runs only; reach `Process PCR` runs through their `Ingest NEMSIS File` run.
 - Node inputs in the editor are grouped by pin: scope with `page.getByRole('group', { name: /pinName/ })` before `getByLabel('Value', { exact: true })`.
 - Wire pins with `node.locator('.react-flow__handle.source[data-handleid="exec"]').dragTo(...)`.

@@ -15,8 +15,9 @@ describe('createTasksClient', () => {
       })
     );
     assert.deepEqual(await client.queues(), ['q']);
-    assert.deepEqual(await client.mine(), ['t']);
-    assert.deepEqual(await client.open(), ['t']);
+    await client.mine('page=1');
+    await client.open('billing review', 'page=2&sort=task');
+    await client.open(null, 'page=1');
     assert.deepEqual(await client.find('x'), { id: 'x' });
     assert.deepEqual(await client.next('billing'), { id: 'x' });
     await client.claim('x');
@@ -25,8 +26,9 @@ describe('createTasksClient', () => {
     await client.report('rep-1');
     assert.deepEqual(calls, [
       'GET /api/tasks/queues',
-      'GET /api/tasks?mine=true',
-      'GET /api/tasks?limit=500',
+      'GET /api/tasks?mine=true&page=1',
+      'GET /api/tasks?queue=billing%20review&page=2&sort=task',
+      'GET /api/tasks?page=1',
       'GET /api/tasks/x',
       'POST /api/tasks/next {"queue":"billing"}',
       'POST /api/tasks/x/claim',

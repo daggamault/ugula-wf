@@ -108,6 +108,17 @@ describe('run service', () => {
     ]) {
       assert.equal(codeOf(res), 'not_found');
     }
-    assert.equal(codeOf(await hidden.list('t', { rootOnly: true, limit: 5 })), 'ok');
+    assert.equal(
+      codeOf(
+        await hidden.list('t', {
+          rootOnly: true,
+          page: 1,
+          pageSize: 25,
+          sort: 'started' as const,
+          dir: 'desc' as const
+        })
+      ),
+      'ok'
+    );
   });
 });

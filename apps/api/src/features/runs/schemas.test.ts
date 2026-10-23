@@ -8,7 +8,13 @@ const id = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 describe('run schemas', () => {
   it('apply defaults', () => {
     assert.deepEqual(v.parse(startRunSchema, { graphId: id }), { graphId: id, inputs: {} });
-    assert.deepEqual(v.parse(listRunsQuery, {}), { root: 'true', limit: 50 });
+    assert.deepEqual(v.parse(listRunsQuery, {}), {
+      root: 'true',
+      page: 1,
+      pageSize: 25,
+      sort: 'started',
+      dir: 'desc'
+    });
     assert.deepEqual(v.parse(stepsQuery, {}), { after: 0, limit: 500 });
     assert.deepEqual(v.parse(signalSchema, { name: 'a', key: 'b' }), {
       name: 'a',

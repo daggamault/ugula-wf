@@ -29,8 +29,11 @@ const request = withSession(createRunRoutes(service));
 
 describe('run routes', () => {
   it('translate query filters', async () => {
-    await request('/?status=faulted&root=false&limit=5');
-    assert.deepEqual(calls.at(-1), ['t-1', { status: 'faulted', rootOnly: false, limit: 5 }]);
+    await request('/?status=faulted&root=false&page=3&sort=workflow&dir=asc');
+    assert.deepEqual(calls.at(-1), [
+      't-1',
+      { status: 'faulted', rootOnly: false, page: 3, pageSize: 25, sort: 'workflow', dir: 'asc' }
+    ]);
     await request(`/${ID}/steps?path=sub/&after=3`);
     assert.deepEqual(calls.at(-1), ['t-1', ID, { path: 'sub/', after: 3, limit: 500 }]);
   });

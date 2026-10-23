@@ -1,5 +1,6 @@
 import type { ErrorInfo, GraphDef, Json, RunState, Signature, Values } from '@ugula/graph';
 import type { Api } from '../../shared/api.ts';
+import type { Page } from '../../shared/url-state.ts';
 
 export type RunStatus = 'running' | 'suspended' | 'completed' | 'faulted' | 'failed' | 'cancelled';
 
@@ -76,8 +77,8 @@ const FINISHED_STATUSES: readonly RunStatus[] = ['completed', 'failed', 'cancell
 export const isFinished = (status: RunStatus) => FINISHED_STATUSES.includes(status);
 
 export const createRunsClient = (api: Api) => ({
-  list: async (status: RunStatus | null) =>
-    (await api.get<{ runs: RunSummary[] }>(`/api/runs${status ? `?status=${status}` : ''}`)).runs,
+  list: (status: RunStatus | null, page: string) =>
+    api.get<Page<RunSummary>>(`/api/runs?${status ? `status=${status}&` : ''}${page}`),
   find: (id: string) => api.get<RunDetail>(`/api/runs/${id}`),
   graphs: async (id: string) =>
     (await api.get<{ graphs: RunGraph[] }>(`/api/runs/${id}/graphs`)).graphs,

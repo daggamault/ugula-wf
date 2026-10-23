@@ -32,18 +32,28 @@ describe('report options', () => {
       '/reports/monthly?from=2026-01-01&to=2026-03-31&run=1'
     );
     assert.equal(reportPath({ id: 'aging', usesPeriod: false }, range), '/reports/aging?run=1');
+    assert.equal(
+      reportPath(
+        { id: 'monthly', usesPeriod: true },
+        range,
+        new URLSearchParams('sort=paid&page=4')
+      ),
+      '/reports/monthly?sort=paid&from=2026-01-01&to=2026-03-31&run=1'
+    );
   });
 });
 
 describe('ReportsPage', () => {
-  it('lists every report as a card with what it needs', () => {
+  it('lists every report in a sortable table with the options it takes', () => {
     const html = renderToStaticMarkup(createElement(ReportsPage));
     for (const r of REPORTS) {
       assert.ok(html.includes(`href="/reports/${r.id}"`), r.id);
       assert.ok(html.includes(r.title), r.title);
     }
-    assert.ok(html.includes('As of today, no options'));
-    assert.ok(html.includes('Choose a range of service dates'));
+    assert.ok(html.includes('aria-label="Reports"'));
+    assert.ok(html.includes('aria-sort="ascending"'));
+    assert.ok(html.includes('None, as of today') && html.includes('Service date range'));
+    assert.ok(html.indexOf('Accounts Receivable Aging') < html.indexOf('Payer Performance'));
   });
 });
 

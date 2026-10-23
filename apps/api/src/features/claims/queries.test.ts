@@ -14,7 +14,13 @@ import {
 describe('claim queries', () => {
   it('scope claims to the tenant with balances from the view and payers in billing order', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await listClaims(db, 't-1', { status: 'open', limit: 50 });
+    await listClaims(db, 't-1', {
+      status: 'open',
+      page: 2,
+      pageSize: 25,
+      sort: 'balance',
+      dir: 'desc'
+    });
     const [list] = queries;
     assert.ok(
       list?.sql.includes('inner join "claim_balances" as "b" on "b"."claim_id" = "c"."id"')
@@ -25,7 +31,12 @@ describe('claim queries', () => {
       )
     );
     assert.ok(list?.sql.includes('"c"."tenant_id" = $1'));
-    assert.ok(list?.sql.endsWith('order by "c"."created_at" desc limit $3'));
+    assert.ok(
+      list?.sql.endsWith(
+        'order by "b"."balance_cents" desc nulls last, "c"."id" desc limit $3 offset $4'
+      )
+    );
+    assert.deepEqual(list?.parameters.slice(-2), [25, 25]);
   });
 
   it('finds a claim with its coverages, lines, diagnoses and cycle', async () => {

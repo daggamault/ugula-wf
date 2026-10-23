@@ -21,11 +21,13 @@ import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
+import { Pagination } from '../../shared/ui/pagination.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
-import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { textLinkClasses } from '../../shared/ui/text-link.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
+import { pageOf, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { ClaimDataForm } from './claim-data-form.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
@@ -121,16 +123,60 @@ export const LinesTable = ({ lines }: { lines: readonly ClaimLine[] }) => (
   </Table>
 );
 
-export const EventsTable = ({
+export const HISTORY_TABLE = {
+  prefix: 'history',
+  sorts: { when: 'desc', event: 'asc', payer: 'asc', amount: 'desc' },
+  sort: 'when'
+} as const;
+
+export const HISTORY_VALUES = {
+  when: (e: ClaimEvent) => e.created_at,
+  event: (e: ClaimEvent) => EVENT_LABELS[e.kind],
+  payer: (e: ClaimEvent) => e.payer,
+  amount: (e: ClaimEvent) => e.paid_cents + e.adjusted_cents
+};
+
+const ClaimHistory = ({
+  claimId,
   events,
   documentUrl
 }: {
+  claimId: string;
   events: readonly ClaimEvent[];
+  documentUrl: (eventId: string) => string;
+}) => {
+  const table = useTableState(`/claims/${claimId}`, HISTORY_TABLE);
+  return (
+    <>
+      <EventsTable
+        events={pageOf(events, table, HISTORY_VALUES).items}
+        sorting={table}
+        documentUrl={documentUrl}
+      />
+      <Pagination label="Claim history" total={events.length} state={table} />
+    </>
+  );
+};
+
+export const EventsTable = ({
+  events,
+  sorting,
+  documentUrl
+}: {
+  events: readonly ClaimEvent[];
+  sorting?: TableSorting;
   documentUrl: (eventId: string) => string;
 }) => (
   <Table
     label="Claim history"
-    head={['When', 'Event', 'Payer', 'Amount', { label: 'Note', isSecondary: true }]}
+    {...(sorting ? { sorting } : {})}
+    head={[
+      { label: 'When', sort: 'when' },
+      { label: 'Event', sort: 'event' },
+      { label: 'Payer', sort: 'payer' },
+      { label: 'Amount', sort: 'amount' },
+      { label: 'Note', isSecondary: true }
+    ]}
   >
     {events.map((e) => (
       <TableRow key={e.id}>
@@ -548,7 +594,7 @@ export const ClaimView = ({
       <ClaimDataForm key={`data-${claim.id}`} claim={claim} disabled={closed} onSave={onSaveData} />
       <SectionPanel title="History" description="Everything that has happened on this claim.">
         {events.length ? (
-          <EventsTable events={events} documentUrl={documentUrl} />
+          <ClaimHistory claimId={claim.id} events={events} documentUrl={documentUrl} />
         ) : (
           <EmptyText>Nothing has happened on this claim yet.</EmptyText>
         )}

@@ -2,13 +2,12 @@ import { type Address, type Location, payerKey } from '@ugula/billing';
 import type { ClaimStatus, Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
+import { type PageRequest, paged } from '../../shared/paging.ts';
+import type { ClaimSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
-export type ClaimFilters = {
-  status: ClaimStatus;
-  limit: number;
-};
+export type ClaimFilters = PageRequest<ClaimSort> & { status: ClaimStatus };
 
 export type ClaimResponse = {
   requestId: string;
@@ -47,12 +46,17 @@ const claimRows = (db: Db, tenantId: string) =>
     ])
     .where('c.tenant_id', '=', tenantId);
 
+const CLAIM_ORDER = {
+  created: sql.ref('c.created_at'),
+  service: sql.ref('c.service_date'),
+  patient: sql`lower(p.last_name || ' ' || p.first_name)`,
+  pcr: sql.ref('c.pcr_number'),
+  total: sql.ref('c.total_cents'),
+  balance: sql.ref('b.balance_cents')
+};
+
 export const listClaims = (db: Db, tenantId: string, f: ClaimFilters) =>
-  claimRows(db, tenantId)
-    .where('c.status', '=', f.status)
-    .orderBy('c.created_at', 'desc')
-    .limit(f.limit)
-    .execute();
+  paged(claimRows(db, tenantId).where('c.status', '=', f.status), f, CLAIM_ORDER, sql.ref('c.id'));
 
 export const findClaim = (db: Db, tenantId: string, id: string) =>
   claimRows(db, tenantId)

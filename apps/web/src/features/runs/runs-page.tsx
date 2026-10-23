@@ -4,8 +4,10 @@ import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyState } from '../../shared/ui/empty-state.tsx';
 import { FilterPills } from '../../shared/ui/filter-pills.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
-import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { Pagination } from '../../shared/ui/pagination.tsx';
+import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
+import { useFilterHref, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { RunStatus, RunSummary, RunsClient } from './client.ts';
 import { RunStatusBadge } from './run-status-badge.tsx';
@@ -26,14 +28,26 @@ const FILTERS = [
   { value: 'cancelled', label: 'Cancelled' }
 ] as const;
 
-export const RunsTable = ({ runs }: { runs: readonly RunSummary[] }) => (
+export const RUN_TABLE = {
+  sorts: { started: 'desc', workflow: 'asc', status: 'asc', finished: 'desc' },
+  sort: 'started'
+} as const;
+
+export const RunsTable = ({
+  runs,
+  sorting
+}: {
+  runs: readonly RunSummary[];
+  sorting?: TableSorting;
+}) => (
   <Table
     label="Workflow runs"
+    {...(sorting ? { sorting } : {})}
     head={[
-      'Workflow',
-      'Status',
-      'Started',
-      { label: 'Finished', isSecondary: true },
+      { label: 'Workflow', sort: 'workflow' },
+      { label: 'Status', sort: 'status' },
+      { label: 'Started', sort: 'started' },
+      { label: 'Finished', isSecondary: true, sort: 'finished' },
       { label: 'Problem', isSecondary: true }
     ]}
   >
@@ -67,7 +81,13 @@ export const RunsTable = ({ runs }: { runs: readonly RunSummary[] }) => (
 );
 
 export const RunsPage = ({ client, live, status }: RunsPageProps) => {
-  const runs = useResource(`runs:${status ?? 'all'}`, () => client.list(status), 30_000);
+  const table = useTableState('/runs', RUN_TABLE);
+  const filterHref = useFilterHref('/runs');
+  const runs = useResource(
+    `runs:${status ?? 'all'}:${table.apiQuery}`,
+    () => client.list(status, table.apiQuery),
+    30_000
+  );
   useLive(live, (e) => e.kind === 'run', runs.reload);
   return (
     <Page
@@ -78,13 +98,16 @@ export const RunsPage = ({ client, live, status }: RunsPageProps) => {
         label="Filter runs by status"
         options={FILTERS.map((f) => ({
           label: f.label,
-          href: f.value ? `/runs?status=${f.value}` : '/runs',
+          href: filterHref('status', f.value || null),
           isSelected: (status ?? '') === f.value
         }))}
       />
       {runs.error ? <Alert>{runs.error.message}</Alert> : null}
-      {runs.data?.length ? (
-        <RunsTable runs={runs.data} />
+      {runs.data?.items.length ? (
+        <>
+          <RunsTable runs={runs.data.items} sorting={table} />
+          <Pagination label="Runs" total={runs.data.total} state={table} />
+        </>
       ) : runs.loading ? (
         <PageLoading />
       ) : (

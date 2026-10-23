@@ -11,7 +11,11 @@ const signature = {
 };
 
 const routes: Record<string, unknown> = {
-  'GET /api/runs?status=faulted': { runs: ['r'] },
+  'GET /api/runs?status=faulted&page=1&pageSize=25&sort=started&dir=desc': {
+    items: ['r'],
+    total: 1
+  },
+  'GET /api/runs?page=2': { items: [], total: 30 },
   'GET /api/runs/r1/graphs': { graphs: ['g'] },
   'GET /api/runs/r1/steps?limit=2000': { steps: ['s'] },
   'GET /api/graphs/g1': {
@@ -45,7 +49,11 @@ describe('isFinished', () => {
 
 describe('createRunsClient', () => {
   it('unwraps run lists, bundles and steps', async () => {
-    assert.deepEqual(await client.list('faulted'), ['r']);
+    assert.deepEqual(await client.list('faulted', 'page=1&pageSize=25&sort=started&dir=desc'), {
+      items: ['r'],
+      total: 1
+    });
+    assert.deepEqual(await client.list(null, 'page=2'), { items: [], total: 30 });
     assert.deepEqual(await client.graphs('r1'), ['g']);
     assert.deepEqual(await client.steps('r1'), ['s']);
   });

@@ -17,6 +17,7 @@ import type { BlobRef, BlobStore } from '@ugula/blobs';
 import type { Db } from '@ugula/db';
 import type { JobBoss } from '@ugula/jobs';
 import { type Announce, announced } from '../../shared/live.ts';
+import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import { signalRuns } from '../../shared/runs.ts';
 import {
@@ -34,6 +35,7 @@ import {
   type ProfileRow,
   type SubmissionEvent
 } from './queries.ts';
+import type { BatchSort } from './schemas.ts';
 
 export type SubmissionServiceDeps = {
   db: Db;
@@ -229,8 +231,8 @@ export const createSubmissionService = ({
       });
     },
 
-    list: async (tenantId: string, limit: number) =>
-      ok({ batches: await listBatches(db, tenantId, limit) }),
+    list: async (tenantId: string, page: PageRequest<BatchSort>) =>
+      ok(await listBatches(db, tenantId, page)),
 
     document: async (tenantId: string, id: string) => {
       const found = await findBatchDocument(db, tenantId, id);

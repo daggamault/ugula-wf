@@ -71,7 +71,7 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
     queues: async (tenantId: string) => ok({ queues: await listQueues(db, tenantId) }),
 
     list: async (tenantId: string, filters: TaskFilters) =>
-      ok({ tasks: await listTasks(db, tenantId, filters) }),
+      ok(await listTasks(db, tenantId, filters)),
 
     find: async (tenantId: string, id: string) => {
       const task = await findTask(db, tenantId, id);

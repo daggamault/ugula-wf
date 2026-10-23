@@ -5,6 +5,7 @@ import type { JobBoss } from '@ugula/jobs';
 import { type JsonValue, reportXml } from '@ugula/nemsis';
 import { verifyPassword } from '@ugula/passwords';
 import type { Announce } from '../../shared/live.ts';
+import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import { startRun } from '../../shared/runs.ts';
 import {
@@ -15,7 +16,7 @@ import {
   listImports,
   type NewImport
 } from './queries.ts';
-import type { SftpEvent } from './schemas.ts';
+import type { ImportSort, SftpEvent } from './schemas.ts';
 
 export const INGEST_WORKFLOW = 'billing.ingest-nemsis';
 
@@ -95,8 +96,8 @@ export const createImportService = ({
   };
 
   return {
-    list: async (tenantId: string, limit: number) =>
-      ok({ imports: await listImports(db, tenantId, limit) }),
+    list: async (tenantId: string, page: PageRequest<ImportSort>) =>
+      ok(await listImports(db, tenantId, page)),
 
     report: async (tenantId: string, id: string) => {
       const found = await findReport(db, tenantId, id);

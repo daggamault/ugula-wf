@@ -1,6 +1,7 @@
 import { valuesSchema } from '@ugula/graph';
 import * as v from 'valibot';
-import { limitQuery, uuid } from '../../shared/http.ts';
+import { uuid } from '../../shared/http.ts';
+import { pageEntries } from '../../shared/paging.ts';
 
 export const startRunSchema = v.object({
   graphId: uuid,
@@ -8,13 +9,17 @@ export const startRunSchema = v.object({
   inputs: v.optional(valuesSchema, {})
 });
 
+export const RUN_SORTS = ['started', 'workflow', 'status', 'finished'] as const;
+
+export type RunSort = (typeof RUN_SORTS)[number];
+
 export const listRunsQuery = v.object({
   status: v.optional(
     v.picklist(['running', 'suspended', 'completed', 'faulted', 'failed', 'cancelled'])
   ),
   graphId: v.optional(uuid),
   root: v.optional(v.picklist(['true', 'false']), 'true'),
-  limit: limitQuery
+  ...pageEntries(RUN_SORTS, 'started', 'desc')
 });
 
 export const stepsQuery = v.object({

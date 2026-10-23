@@ -3,8 +3,16 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
+import { tableStateOf } from '../../shared/url-state.ts';
 import type { TaskSummary, TasksClient } from './client.ts';
-import { QueueCards, queueFilters, TasksPage, TaskTable } from './tasks-page.tsx';
+import {
+  QUEUE_TABLE,
+  QueuesTable,
+  queueFilters,
+  TASK_TABLE,
+  TasksPage,
+  TaskTable
+} from './tasks-page.tsx';
 
 const queues = [
   { queue: 'exceptions', open: 1, unassigned: 0, oldest: '2026-01-01T00:00:00Z' },
@@ -26,24 +34,32 @@ const task = (over: Partial<TaskSummary> = {}): TaskSummary => ({
   ...over
 });
 
-describe('QueueCards', () => {
-  it('explains each queue in billing order and only starts queues with unclaimed work', () => {
+const params = (search: string) => new URLSearchParams(search);
+
+describe('QueuesTable', () => {
+  it('describes each queue and only starts queues with unclaimed work', () => {
     const html = renderToStaticMarkup(
-      createElement(QueueCards, { queues, onStart: () => undefined })
+      createElement(QueuesTable, {
+        queues,
+        sorting: tableStateOf('/tasks', params('queuesSort=open'), QUEUE_TABLE),
+        onStart: () => undefined
+      })
     );
-    assert.ok(html.indexOf('PCR review') < html.indexOf('Stuck runs'));
     assert.ok(html.includes('Confirm the level of service'));
-    assert.ok(html.includes('2 unclaimed'));
+    assert.ok(html.includes('href="/tasks?queue=billing-review"'));
     assert.equal(html.match(/aria-disabled="true"/g)?.length, 1);
     assert.ok(html.includes('Everything here is claimed by someone.'));
+    assert.ok(html.includes('aria-sort="descending"'));
+    assert.ok(html.includes('href="/tasks?queuesSort=open&amp;queuesDir=asc"'));
   });
 });
 
 describe('TaskTable', () => {
-  it('leads with what the task is about and shows its state', () => {
+  it('leads with what the task is about, shows its state and sorts by column', () => {
     const html = renderToStaticMarkup(
       createElement(TaskTable, {
         label: 'Open tasks',
+        sorting: tableStateOf('/tasks', params('queue=billing-review'), TASK_TABLE),
         tasks: [
           task(),
           task({
@@ -60,12 +76,15 @@ describe('TaskTable', () => {
     assert.match(html, /href="\/tasks\/t1"[^>]*>PCR-1 · Jane Doe</);
     assert.match(html, /href="\/tasks\/t2"[^>]*>Stuck at Price</);
     assert.ok(html.includes('Stuck run') && html.includes('Claimed') && html.includes('Unclaimed'));
+    assert.ok(html.includes('href="/tasks?queue=billing-review&amp;sort=task&amp;dir=asc"'));
   });
 });
 
 describe('queueFilters', () => {
   it('filters the task list by queue through the URL', () => {
-    assert.deepEqual(queueFilters(queues, 'billing-review'), [
+    const href = (name: string, value: string | null) =>
+      value ? `/tasks?${name}=${value}` : '/tasks';
+    assert.deepEqual(queueFilters(queues, 'billing-review', href), [
       { label: 'All', href: '/tasks', isSelected: false },
       { label: 'PCR review (3)', href: '/tasks?queue=billing-review', isSelected: true },
       { label: 'Stuck runs (1)', href: '/tasks?queue=exceptions', isSelected: false }
@@ -75,13 +94,10 @@ describe('queueFilters', () => {
 
 describe('TasksPage', () => {
   it('starts loading queues, claimed tasks and open tasks', () => {
+    const pending = () => new Promise(() => undefined);
     const html = renderToStaticMarkup(
       createElement(TasksPage, {
-        client: {
-          queues: async () => [],
-          mine: async () => [],
-          open: async () => []
-        } as unknown as TasksClient,
+        client: { queues: pending, mine: pending, open: pending } as unknown as TasksClient,
         live: idleLive,
         queue: null
       })

@@ -1,7 +1,7 @@
 import { formatCents, formatDateTime } from '../../shared/format.ts';
 import { Badge, type StatusBadgeStyle } from '../../shared/ui/badge.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
-import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
 import type { ImportRunStatus, ImportSummary } from './client.ts';
 
@@ -35,16 +35,28 @@ export const reportOutcomes = (i: ImportSummary) =>
     i.processing ? `${i.processing} processing` : ''
   ].filter(Boolean);
 
-export const ImportHistory = ({ imports }: { imports: readonly ImportSummary[] }) => (
+export const IMPORT_TABLE = {
+  sorts: { received: 'desc', file: 'asc', reports: 'desc', claims: 'desc', charges: 'desc' },
+  sort: 'received'
+} as const;
+
+export const ImportHistory = ({
+  imports,
+  sorting
+}: {
+  imports: readonly ImportSummary[];
+  sorting?: TableSorting;
+}) => (
   <Table
     label="Recent imports"
+    {...(sorting ? { sorting } : {})}
     head={[
-      'File',
-      { label: 'Received', isSecondary: true },
+      { label: 'File', sort: 'file' },
+      { label: 'Received', isSecondary: true, sort: 'received' },
       'Status',
-      { label: 'Reports', isNumeric: true },
-      { label: 'Claims', isNumeric: true },
-      { label: 'Charges', isNumeric: true, isSecondary: true },
+      { label: 'Reports', isNumeric: true, sort: 'reports' },
+      { label: 'Claims', isNumeric: true, sort: 'claims' },
+      { label: 'Charges', isNumeric: true, isSecondary: true, sort: 'charges' },
       'Needs attention'
     ]}
   >

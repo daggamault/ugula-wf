@@ -4,8 +4,10 @@ import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyState, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { FilterPills } from '../../shared/ui/filter-pills.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
-import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { Pagination } from '../../shared/ui/pagination.tsx';
+import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
+import { useFilterHref, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
 import type { ClaimStatus, ClaimSummary, ClaimsClient } from './client.ts';
@@ -23,18 +25,37 @@ export const CLAIM_FILTERS = [
   { value: 'collections', label: 'Collections' }
 ] as const;
 
-export const ClaimsTable = ({ claims }: { claims: readonly ClaimSummary[] }) => (
+export const CLAIM_TABLE = {
+  sorts: {
+    created: 'desc',
+    service: 'desc',
+    patient: 'asc',
+    pcr: 'asc',
+    total: 'desc',
+    balance: 'desc'
+  },
+  sort: 'created'
+} as const;
+
+export const ClaimsTable = ({
+  claims,
+  sorting
+}: {
+  claims: readonly ClaimSummary[];
+  sorting?: TableSorting;
+}) => (
   <Table
     label="Claims"
+    {...(sorting ? { sorting } : {})}
     head={[
-      'Patient',
-      { label: 'PCR', isSecondary: true },
+      { label: 'Patient', sort: 'patient' },
+      { label: 'PCR', isSecondary: true, sort: 'pcr' },
       { label: 'Level', isSecondary: true },
-      { label: 'Total', isNumeric: true },
-      { label: 'Balance', isNumeric: true },
+      { label: 'Total', isNumeric: true, sort: 'total' },
+      { label: 'Balance', isNumeric: true, sort: 'balance' },
       'Payers',
       'Status',
-      { label: 'Service Date', isSecondary: true }
+      { label: 'Service Date', isSecondary: true, sort: 'service' }
     ]}
   >
     {claims.map((c) => (
@@ -69,7 +90,13 @@ export const ClaimsTable = ({ claims }: { claims: readonly ClaimSummary[] }) => 
 );
 
 export const ClaimsPage = ({ client, live, status }: ClaimsPageProps) => {
-  const claims = useResource(`claims:${status}`, () => client.list(status), 30_000);
+  const table = useTableState('/claims', CLAIM_TABLE);
+  const filterHref = useFilterHref('/claims');
+  const claims = useResource(
+    `claims:${status}:${table.apiQuery}`,
+    () => client.list(status, table.apiQuery),
+    30_000
+  );
   useLive(live, (e) => e.kind === 'claim', claims.reload);
   return (
     <Page title="Claims" description="Priced claims and where each one is in its payer cycle.">
@@ -77,13 +104,16 @@ export const ClaimsPage = ({ client, live, status }: ClaimsPageProps) => {
         label="Filter claims by status"
         options={CLAIM_FILTERS.map((f) => ({
           label: f.label,
-          href: `/claims?status=${f.value}`,
+          href: filterHref('status', f.value === 'open' ? null : f.value),
           isSelected: f.value === status
         }))}
       />
       {claims.error ? <Alert>{claims.error.message}</Alert> : null}
-      {claims.data?.length ? (
-        <ClaimsTable claims={claims.data} />
+      {claims.data?.items.length ? (
+        <>
+          <ClaimsTable claims={claims.data.items} sorting={table} />
+          <Pagination label="Claims" total={claims.data.total} state={table} />
+        </>
       ) : claims.loading ? (
         <PageLoading />
       ) : (

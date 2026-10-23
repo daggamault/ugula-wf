@@ -8,8 +8,8 @@ import type { ImportService } from './service.ts';
 const calls: unknown[][] = [];
 
 const service = {
-  list: async (tenantId: string, limit: number) => {
-    calls.push(['list', tenantId, limit]);
+  list: async (tenantId: string, page: unknown) => {
+    calls.push(['list', tenantId, page]);
     return ok({ imports: [] });
   },
   upload: async (
@@ -44,9 +44,13 @@ const form = (fields: Record<string, string | File>) => {
 
 describe('import routes', () => {
   it('lists recent imports for the session tenant', async () => {
-    assert.equal((await request('/?limit=20')).status, 200);
-    assert.deepEqual(calls.at(-1), ['list', 't-1', 20]);
-    assert.equal((await request('/?limit=0')).status, 400);
+    assert.equal((await request('/?page=2&pageSize=10&sort=claims&dir=asc')).status, 200);
+    assert.deepEqual(calls.at(-1), [
+      'list',
+      't-1',
+      { page: 2, pageSize: 10, sort: 'claims', dir: 'asc' }
+    ]);
+    assert.equal((await request('/?pageSize=7')).status, 400);
   });
 
   it('serves one stored report by id', async () => {

@@ -12,10 +12,12 @@ import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
+import { Pagination } from '../../shared/ui/pagination.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
+import { pageOf, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type {
   BillingProfile,
@@ -187,6 +189,18 @@ const PayerNames = ({
     </ul>
   ) : null;
 
+export const PAYER_TABLE = {
+  prefix: 'payers',
+  sorts: { name: 'asc', payerId: 'asc', filing: 'asc' },
+  sort: 'name'
+} as const;
+
+const PAYER_VALUES = {
+  name: (p: Payer) => p.name,
+  payerId: (p: Payer) => p.payer_id,
+  filing: (p: Payer) => p.claim_filing
+};
+
 export const PayerDirectory = ({
   payers,
   onSave,
@@ -202,6 +216,7 @@ export const PayerDirectory = ({
   const [draft, setDraft] = useState(empty);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState<Payer | null>(null);
+  const table = useTableState('/settings', PAYER_TABLE);
   const reset = () => {
     setDraft(empty);
     setEditing(false);
@@ -261,14 +276,15 @@ export const PayerDirectory = ({
       {payers.length ? (
         <Table
           label="Payer directory"
+          sorting={table}
           head={[
-            'Payer',
-            'Payer ID',
-            { label: 'Claim Filing', isSecondary: true },
+            { label: 'Payer', sort: 'name' },
+            { label: 'Payer ID', sort: 'payerId' },
+            { label: 'Claim Filing', isSecondary: true, sort: 'filing' },
             { label: 'Actions', isLabelHidden: true, isCompact: true }
           ]}
         >
-          {payers.map((p) => (
+          {pageOf(payers, table, PAYER_VALUES).items.map((p) => (
             <TableRow key={p.id}>
               <TableCell>
                 <span className="flex flex-col gap-1.5">
@@ -305,6 +321,9 @@ export const PayerDirectory = ({
             </TableRow>
           ))}
         </Table>
+      ) : null}
+      {payers.length ? (
+        <Pagination label="Payers" total={payers.length} state={table} />
       ) : (
         <EmptyText>
           No payers yet. Claims cannot be put in an 837P file until their payers are listed here.

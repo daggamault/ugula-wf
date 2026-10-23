@@ -12,7 +12,9 @@ describe('createClaimsClient', () => {
         return new Response('{"claims":[]}', { status: 200 });
       })
     );
-    assert.deepEqual(await client.list('open'), []);
+    assert.deepEqual(await client.list('open', 'page=2&pageSize=25&sort=balance&dir=desc'), {
+      claims: []
+    });
     await client.find('c1');
     await client.setPayers('c1', ['Medicare']);
     await client.restartCycle('c1');
@@ -24,7 +26,7 @@ describe('createClaimsClient', () => {
       note: ''
     });
     assert.deepEqual(seen, [
-      'GET http://api.test/api/claims?status=open ',
+      'GET http://api.test/api/claims?status=open&page=2&pageSize=25&sort=balance&dir=desc ',
       'GET http://api.test/api/claims/c1 ',
       'PUT http://api.test/api/claims/c1/payers {"payers":["Medicare"]}',
       'POST http://api.test/api/claims/c1/restart-cycle ',

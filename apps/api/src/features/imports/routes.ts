@@ -13,7 +13,7 @@ const FORM_OVERHEAD_BYTES = 64 * 1024;
 export const createImportRoutes = (service: ImportService, maxBytes: number) =>
   new Hono<AuthEnv>()
     .get('/', sValidator('query', listImportsQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('session').tenantId, c.req.valid('query').limit))
+      respond(c, await service.list(c.get('session').tenantId, c.req.valid('query')))
     )
     .get('/reports/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.report(c.get('session').tenantId, c.req.valid('param').id))

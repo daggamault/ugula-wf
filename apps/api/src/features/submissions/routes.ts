@@ -10,7 +10,7 @@ export const createSubmissionRoutes = (service: SubmissionService) =>
   new Hono<AuthEnv>()
     .get('/pending', async (c) => respond(c, await service.pending(c.get('session').tenantId)))
     .get('/batches', sValidator('query', listBatchesQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('session').tenantId, c.req.valid('query').limit))
+      respond(c, await service.list(c.get('session').tenantId, c.req.valid('query')))
     )
     .post('/batches', sValidator('json', batchSchema, invalidRequest), async (c) => {
       const { tenantId, userId } = c.get('session');

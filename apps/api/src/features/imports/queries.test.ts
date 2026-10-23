@@ -47,14 +47,16 @@ describe('import records', () => {
 
   it('lists imports with per-report outcomes and the claims they opened', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await listImports(db, 't-1', 25);
+    await listImports(db, 't-1', { page: 1, pageSize: 10, sort: 'file', dir: 'asc' });
     const [q] = queries;
     assert.ok(q?.sql.includes('"ch"."parent_id" = "i"."run_id"'));
     assert.ok(q?.sql.includes('(count(*) filter (where ch.status = $1))::int as "completed"'));
     assert.ok(
       q?.sql.includes('inner join "import_reports" as "ir" on "ir"."id" = "c"."import_report_id"')
     );
-    assert.ok(q?.sql.endsWith('order by "i"."created_at" desc, "i"."id" desc limit $7'));
+    assert.ok(
+      q?.sql.endsWith('order by lower(i.file_name) asc nulls last, "i"."id" asc limit $7 offset $8')
+    );
     assert.deepEqual(q?.parameters, [
       'completed',
       'suspended',
@@ -62,7 +64,8 @@ describe('import records', () => {
       'failed',
       'running',
       't-1',
-      25
+      10,
+      0
     ]);
   });
 });

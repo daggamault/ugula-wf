@@ -6,8 +6,10 @@ import { Button } from '../../shared/ui/button.tsx';
 import { EmptyState, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { IconLink } from '../../shared/ui/icon-button.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
-import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { Pagination } from '../../shared/ui/pagination.tsx';
+import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
+import { pageOf, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { GraphSummary, WorkflowsClient } from './client.ts';
 import { NewWorkflowDialog } from './new-workflow-dialog.tsx';
@@ -16,13 +18,32 @@ export type WorkflowsPageProps = {
   client: WorkflowsClient;
 };
 
-export const WorkflowsTable = ({ graphs }: { graphs: readonly GraphSummary[] }) => (
+export const GRAPH_TABLE = {
+  sorts: { name: 'asc', key: 'asc', kind: 'desc', updated: 'desc' },
+  sort: 'name'
+} as const;
+
+export const GRAPH_VALUES = {
+  name: (g: GraphSummary) => g.name,
+  key: (g: GraphSummary) => g.key,
+  kind: (g: GraphSummary) => `${g.kind} ${g.name}`,
+  updated: (g: GraphSummary) => g.updatedAt
+};
+
+export const WorkflowsTable = ({
+  graphs,
+  sorting
+}: {
+  graphs: readonly GraphSummary[];
+  sorting?: TableSorting;
+}) => (
   <Table
     label="Workflows and custom nodes"
+    {...(sorting ? { sorting } : {})}
     head={[
-      'Name',
-      { label: 'Key', isSecondary: true },
-      'Kind',
+      { label: 'Name', sort: 'name' },
+      { label: 'Key', isSecondary: true, sort: 'key' },
+      { label: 'Kind', sort: 'kind' },
       'Published',
       'Draft',
       { label: 'Actions', isLabelHidden: true, isCompact: true }
@@ -63,6 +84,7 @@ export const WorkflowsTable = ({ graphs }: { graphs: readonly GraphSummary[] }) 
 
 export const WorkflowsPage = ({ client }: WorkflowsPageProps) => {
   const graphs = useResource('graphs', client.list);
+  const table = useTableState('/workflows', GRAPH_TABLE);
   const [creating, setCreating] = useState(false);
   return (
     <Page
@@ -77,7 +99,10 @@ export const WorkflowsPage = ({ client }: WorkflowsPageProps) => {
     >
       {graphs.error ? <Alert>{graphs.error.message}</Alert> : null}
       {graphs.data?.length ? (
-        <WorkflowsTable graphs={graphs.data} />
+        <>
+          <WorkflowsTable graphs={pageOf(graphs.data, table, GRAPH_VALUES).items} sorting={table} />
+          <Pagination label="Graphs" total={graphs.data.length} state={table} />
+        </>
       ) : graphs.loading ? (
         <PageLoading />
       ) : (

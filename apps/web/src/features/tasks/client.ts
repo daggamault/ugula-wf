@@ -1,5 +1,6 @@
 import type { FieldSpec, Json } from '@ugula/graph';
 import type { Api } from '../../shared/api.ts';
+import type { Page } from '../../shared/url-state.ts';
 
 export type TaskStatus = 'open' | 'completed' | 'cancelled';
 
@@ -55,8 +56,11 @@ export type SourceReport = {
 
 export const createTasksClient = (api: Api) => ({
   queues: async () => (await api.get<{ queues: QueueSummary[] }>('/api/tasks/queues')).queues,
-  mine: async () => (await api.get<{ tasks: TaskSummary[] }>('/api/tasks?mine=true')).tasks,
-  open: async () => (await api.get<{ tasks: TaskSummary[] }>('/api/tasks?limit=500')).tasks,
+  mine: (page: string) => api.get<Page<TaskSummary>>(`/api/tasks?mine=true&${page}`),
+  open: (queue: string | null, page: string) =>
+    api.get<Page<TaskSummary>>(
+      `/api/tasks?${queue ? `queue=${encodeURIComponent(queue)}&` : ''}${page}`
+    ),
   find: async (id: string) => (await api.get<{ task: TaskDetail }>(`/api/tasks/${id}`)).task,
   next: async (queue: string) =>
     (await api.post<{ task: TaskDetail | null }>('/api/tasks/next', { queue })).task,

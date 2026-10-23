@@ -23,8 +23,7 @@ export type RunServiceDeps = {
 const notFound = fail('not_found', 'Run not found');
 
 export const createRunService = ({ db, boss }: RunServiceDeps) => ({
-  list: async (tenantId: string, filters: RunFilters) =>
-    ok({ runs: await listRuns(db, tenantId, filters) }),
+  list: async (tenantId: string, filters: RunFilters) => ok(await listRuns(db, tenantId, filters)),
 
   find: async (tenantId: string, id: string) => {
     const run = await findRun(db, tenantId, id);

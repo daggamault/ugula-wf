@@ -15,18 +15,18 @@ describe('createSubmissionsClient', () => {
             ? { payer: 'Medicare' }
             : init.method === 'POST'
               ? { batch: { id: 'b1' } }
-              : { batches: [] };
+              : { items: [], total: 0 };
         return new Response(JSON.stringify(body), { status: 200 });
       })
     );
     assert.deepEqual(await client.pending(), { issues: [], claims: [] });
-    assert.deepEqual(await client.batches(), []);
+    assert.deepEqual(await client.batches('page=2&sort=total'), { items: [], total: 0 });
     assert.deepEqual(await client.createBatch(['c1']), { id: 'b1' });
     await client.markSubmitted('c1');
     assert.equal(client.fileUrl('b1'), 'http://api.test/api/submissions/batches/b1/file');
     assert.deepEqual(seen, [
       'GET http://api.test/api/submissions/pending ',
-      'GET http://api.test/api/submissions/batches?limit=50 ',
+      'GET http://api.test/api/submissions/batches?page=2&sort=total ',
       'POST http://api.test/api/submissions/batches {"claimIds":["c1"]}',
       'POST http://api.test/api/submissions/manual {"claimId":"c1"}'
     ]);

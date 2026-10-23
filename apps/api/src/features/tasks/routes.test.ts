@@ -32,7 +32,15 @@ describe('task routes', () => {
     await request('/?mine=true&queue=billing');
     assert.deepEqual(calls.at(-1), [
       't-1',
-      { queue: 'billing', assigneeId: 'u-1', status: 'open', limit: 50 }
+      {
+        queue: 'billing',
+        assigneeId: 'u-1',
+        status: 'open',
+        page: 1,
+        pageSize: 25,
+        sort: 'waiting',
+        dir: 'desc'
+      }
     ]);
     assert.equal((await request('/queues')).status, 200);
   });

@@ -1,63 +1,202 @@
-import type { ComponentProps, ReactNode } from 'react';
+import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon } from 'lucide-react';
+import {
+  Children,
+  type ComponentProps,
+  createContext,
+  type ReactNode,
+  useContext,
+  useId
+} from 'react';
 import { classNamesOf } from '../class-names.ts';
+import { Link, navigate } from '../router.tsx';
+import type { SortDir } from '../url-state.ts';
+import { interactiveClasses } from './interactive.ts';
+import { NativeSelect } from './select.tsx';
 
 export type TableColumn =
   | string
   | {
       label: string;
+      sort?: string;
       isNumeric?: boolean;
       isCompact?: boolean;
       isSecondary?: boolean;
       isLabelHidden?: boolean;
     };
 
+type Column = Exclude<TableColumn, string>;
+
+export type TableSorting = {
+  sort: string;
+  dir: SortDir;
+  sortHref(key: string): string;
+  sortTo(key: string, dir: SortDir): string;
+};
+
 export type TableProps = {
   label: string;
   head: readonly TableColumn[];
+  sorting?: TableSorting;
   children: ReactNode;
 };
 
-const columnOf = (column: TableColumn) => (typeof column === 'string' ? { label: column } : column);
+const columnOf = (column: TableColumn): Column =>
+  typeof column === 'string' ? { label: column } : column;
 
-export const Table = ({ label, head, children }: TableProps) => (
-  <div className="border-border bg-surface overflow-x-auto rounded-xl border">
-    <table aria-label={label} className="w-full text-left text-sm">
-      <thead>
-        <tr>
-          {head.map(columnOf).map((c) => (
-            <th
-              key={c.label}
-              scope="col"
-              className={classNamesOf(
-                'border-border text-surface-fg-muted border-b px-4 py-3 text-xs font-semibold tracking-wide whitespace-nowrap uppercase',
-                c.isNumeric && 'text-right',
-                c.isCompact && 'w-px',
-                c.isSecondary && 'hidden md:table-cell'
-              )}
-            >
-              <span className={c.isLabelHidden ? 'sr-only' : undefined}>{c.label}</span>
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>{children}</tbody>
-    </table>
-  </div>
-);
+const Columns = createContext<readonly Column[]>([]);
+
+const Position = createContext(0);
+
+const secondaryClasses = 'md:hidden lg:table-cell';
+
+const DIRECTION_LABELS: Readonly<Record<SortDir, string>> = {
+  asc: 'ascending',
+  desc: 'descending'
+};
+
+const SortIcon = ({ active, dir }: { active: boolean; dir: SortDir }) => {
+  const Icon = !active ? ArrowUpDownIcon : dir === 'asc' ? ArrowUpIcon : ArrowDownIcon;
+  return (
+    <Icon
+      aria-hidden="true"
+      className={classNamesOf('size-3.5 shrink-0', active ? 'text-primary' : 'opacity-40')}
+    />
+  );
+};
+
+const HeaderCell = ({
+  column,
+  sorting
+}: {
+  column: Column;
+  sorting?: TableSorting | undefined;
+}) => {
+  const active = column.sort !== undefined && sorting?.sort === column.sort;
+  const content = (
+    <span className={column.isLabelHidden ? 'sr-only' : undefined}>{column.label}</span>
+  );
+  return (
+    <th
+      scope="col"
+      aria-sort={
+        active && sorting ? (sorting.dir === 'asc' ? 'ascending' : 'descending') : undefined
+      }
+      className={classNamesOf(
+        'border-border text-surface-fg-muted border-b px-4 py-3 text-xs font-semibold tracking-wide whitespace-nowrap uppercase',
+        column.isNumeric && 'text-right',
+        column.isCompact && 'w-px',
+        column.isSecondary && secondaryClasses
+      )}
+    >
+      {column.sort && sorting ? (
+        <Link
+          to={sorting.sortHref(column.sort)}
+          className={classNamesOf(
+            interactiveClasses,
+            'hover:text-surface-fg inline-flex items-center gap-1 rounded',
+            column.isNumeric && 'flex-row-reverse',
+            active && 'text-surface-fg'
+          )}
+        >
+          {content}
+          <SortIcon active={active} dir={sorting.dir} />
+        </Link>
+      ) : (
+        content
+      )}
+    </th>
+  );
+};
+
+const MobileSort = ({
+  columns,
+  sorting
+}: {
+  columns: readonly Column[];
+  sorting: TableSorting;
+}) => {
+  const id = useId();
+  const current = `${sorting.sort}:${sorting.dir}`;
+  const byColumn = columns.flatMap((c) =>
+    c.sort
+      ? (['asc', 'desc'] as const).map((dir) => ({
+          value: `${c.sort}:${dir}`,
+          label: `${c.label}, ${DIRECTION_LABELS[dir]}`
+        }))
+      : []
+  );
+  const options = byColumn.some((o) => o.value === current)
+    ? byColumn
+    : [{ value: current, label: 'Default order' }, ...byColumn];
+  return options.length ? (
+    <div className="flex items-center gap-3 md:hidden">
+      <label htmlFor={id} className="text-surface-fg-muted shrink-0 text-sm font-semibold">
+        Sort by
+      </label>
+      <NativeSelect
+        id={id}
+        value={current}
+        options={options}
+        onChange={(e) => {
+          const [key = '', dir] = e.target.value.split(':');
+          navigate(sorting.sortTo(key, dir === 'asc' ? 'asc' : 'desc'));
+        }}
+      />
+    </div>
+  ) : null;
+};
+
+export const Table = ({ label, head, sorting, children }: TableProps) => {
+  const columns = head.map(columnOf);
+  return (
+    <div className="flex flex-col gap-3">
+      {sorting ? <MobileSort columns={columns} sorting={sorting} /> : null}
+      <div className="md:border-border md:bg-surface md:overflow-x-auto md:rounded-xl md:border">
+        <table aria-label={label} className="block w-full text-left text-sm md:table">
+          <thead className="sr-only md:not-sr-only md:table-header-group">
+            <tr>
+              {columns.map((c) => (
+                <HeaderCell key={c.label} column={c} sorting={sorting} />
+              ))}
+            </tr>
+          </thead>
+          <tbody className="flex flex-col gap-3 md:table-row-group">
+            <Columns value={columns}>{children}</Columns>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const positioned = (children: ReactNode) =>
+  Children.toArray(children).map((child, i) => (
+    <Position key={i} value={i}>
+      {child}
+    </Position>
+  ));
+
+const rowClasses =
+  'border-border bg-surface flex flex-col gap-2.5 rounded-xl border p-4 md:table-row md:rounded-none md:border-0 md:border-b md:bg-transparent md:p-0';
 
 export const TableRow = ({ children }: { children: ReactNode }) => (
-  <tr className="border-border hover:bg-surface-fg/3 border-b transition-colors duration-150 last:border-b-0">
-    {children}
+  <tr
+    className={classNamesOf(
+      rowClasses,
+      'md:hover:bg-surface-fg/3 transition-colors duration-150 md:last:border-b-0'
+    )}
+  >
+    {positioned(children)}
   </tr>
 );
 
 type TableCellKind = 'text' | 'numeric' | 'date' | 'actions';
 
 const cellKindClasses: Readonly<Record<TableCellKind, string>> = {
-  text: 'whitespace-nowrap',
-  numeric: 'text-right whitespace-nowrap tabular-nums',
-  date: 'whitespace-nowrap tabular-nums',
-  actions: 'w-px whitespace-nowrap'
+  text: 'md:whitespace-nowrap',
+  numeric: 'tabular-nums md:text-right md:whitespace-nowrap',
+  date: 'tabular-nums md:whitespace-nowrap',
+  actions: 'justify-end pt-1 md:w-px md:pt-3 md:whitespace-nowrap'
 };
 
 type TableCellProps = Omit<ComponentProps<'td'>, 'className'> & {
@@ -70,19 +209,38 @@ export const TableCell = ({
   isMuted = false,
   isSecondary = false,
   kind = 'text',
+  children,
   ...props
-}: TableCellProps) => (
-  <td
-    className={classNamesOf(
-      'px-4 py-3 align-middle',
-      isMuted && 'text-surface-fg-muted',
-      isSecondary && 'hidden md:table-cell',
-      cellKindClasses[kind]
-    )}
-    {...props}
-  />
-);
+}: TableCellProps) => {
+  const position = useContext(Position);
+  const column = useContext(Columns)[position];
+  const isTitle = position === 0;
+  const label = isTitle || kind === 'actions' || column?.isLabelHidden ? null : column?.label;
+  return (
+    <td
+      className={classNamesOf(
+        'flex min-w-0 items-baseline gap-4 md:table-cell md:px-4 md:py-3 md:align-middle',
+        isTitle ? 'text-base font-semibold md:text-sm md:font-normal' : 'justify-between',
+        isMuted && 'text-surface-fg-muted',
+        isSecondary && secondaryClasses,
+        cellKindClasses[kind]
+      )}
+      {...props}
+    >
+      {label ? (
+        <span className="text-surface-fg-muted shrink-0 text-xs font-semibold tracking-wide uppercase md:hidden">
+          {label}
+        </span>
+      ) : null}
+      <span className={classNamesOf('min-w-0 md:contents', label && 'text-right')}>{children}</span>
+    </td>
+  );
+};
 
 export const TableTotalRow = ({ children }: { children: ReactNode }) => (
-  <tr className="bg-surface-fg/3 border-border border-t font-semibold">{children}</tr>
+  <tr
+    className={classNamesOf(rowClasses, 'bg-surface-fg/3 font-semibold md:border-t md:border-b-0')}
+  >
+    {positioned(children)}
+  </tr>
 );

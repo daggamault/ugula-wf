@@ -4,12 +4,14 @@ import { type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
+import { Pagination } from '../../shared/ui/pagination.tsx';
 import { Section } from '../../shared/ui/section-panel.tsx';
 import { Spinner } from '../../shared/ui/spinner.tsx';
+import { useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { ImportsClient } from './client.ts';
 import { useImportFiles } from './import-files.ts';
-import { ImportHistory } from './import-history.tsx';
+import { IMPORT_TABLE, ImportHistory } from './import-history.tsx';
 
 export type ImportsPageProps = {
   client: ImportsClient;
@@ -57,8 +59,13 @@ export const FilePicker = ({
 );
 
 export const ImportsPage = ({ client, live }: ImportsPageProps) => {
-  const history = useResource('imports', client.list, 30_000);
-  const runs = new Set(history.data?.map((i) => i.run_id));
+  const table = useTableState('/imports', IMPORT_TABLE);
+  const history = useResource(
+    `imports:${table.apiQuery}`,
+    () => client.list(table.apiQuery),
+    30_000
+  );
+  const runs = new Set(history.data?.items.map((i) => i.run_id));
   useLive(
     live,
     (e) =>
@@ -90,8 +97,11 @@ export const ImportsPage = ({ client, live }: ImportsPageProps) => {
         description="Every file received by upload or SFTP, and where its reports are now."
       >
         {history.error ? <Alert>{history.error.message}</Alert> : null}
-        {history.data?.length ? (
-          <ImportHistory imports={history.data} />
+        {history.data?.items.length ? (
+          <>
+            <ImportHistory imports={history.data.items} sorting={table} />
+            <Pagination label="Imports" total={history.data.total} state={table} />
+          </>
         ) : history.loading ? (
           <PageLoading />
         ) : (

@@ -7,8 +7,10 @@ import {
   TableCell,
   type TableColumn,
   TableRow,
+  type TableSorting,
   TableTotalRow
 } from '../../shared/ui/table.tsx';
+import type { SortValue } from '../../shared/url-state.ts';
 import type { AgingRow, HcpcsRow, MonthlyRow, PatientPayments, PayerRow } from './client.ts';
 import { type CsvCell, dollars } from './csv.ts';
 
@@ -40,16 +42,36 @@ const AGING_BUCKETS = [
   ['over_120_cents', '120+']
 ] as const satisfies readonly (readonly [AgingAmount, string])[];
 
-const numeric = (label: string): TableColumn => ({ label, isNumeric: true });
+const numeric = (label: string, sort?: string): TableColumn => ({
+  label,
+  isNumeric: true,
+  ...(sort ? { sort } : {})
+});
 
-export const AgingTable = ({ rows }: { rows: readonly AgingRow[] }) => (
+export type ResultTableProps<T> = {
+  rows: readonly T[];
+  all: readonly T[];
+  sorting?: TableSorting | undefined;
+};
+
+const sortingOf = (sorting: TableSorting | undefined) => (sorting ? { sorting } : {});
+
+export const AGING_VALUES: Readonly<Record<string, (r: AgingRow) => SortValue>> = {
+  owedBy: (r) => r.payer ?? PATIENT,
+  claims: (r) => r.claims,
+  ...Object.fromEntries(AGING_BUCKETS.map(([key]) => [key, (r: AgingRow) => r[key]])),
+  balance: (r) => r.balance_cents
+};
+
+export const AgingTable = ({ rows, all, sorting }: ResultTableProps<AgingRow>) => (
   <Table
     label="Accounts receivable aging"
+    {...sortingOf(sorting)}
     head={[
-      'Owed by',
-      numeric('Claims'),
-      ...AGING_BUCKETS.map(([, label]) => numeric(label)),
-      numeric('Balance')
+      { label: 'Owed by', sort: 'owedBy' },
+      numeric('Claims', 'claims'),
+      ...AGING_BUCKETS.map(([key, label]) => numeric(label, key)),
+      numeric('Balance', 'balance')
     ]}
   >
     {rows.map((r) => (
@@ -70,13 +92,13 @@ export const AgingTable = ({ rows }: { rows: readonly AgingRow[] }) => (
     ))}
     <TableTotalRow>
       <TableCell>Total</TableCell>
-      <TableCell kind="numeric">{sum(rows, (r) => r.claims)}</TableCell>
+      <TableCell kind="numeric">{sum(all, (r) => r.claims)}</TableCell>
       {AGING_BUCKETS.map(([key]) => (
         <TableCell key={key} kind="numeric">
-          {formatCents(sum(rows, (r) => r[key]))}
+          {formatCents(sum(all, (r) => r[key]))}
         </TableCell>
       ))}
-      {money(sum(rows, (r) => r.balance_cents))}
+      {money(sum(all, (r) => r.balance_cents))}
     </TableTotalRow>
   </Table>
 );
@@ -91,18 +113,34 @@ export const agingCsv = (rows: readonly AgingRow[]): CsvCell[][] => [
   ])
 ];
 
-export const MonthlyTable = ({ rows }: { rows: readonly MonthlyRow[] }) => (
+export const MONTHLY_VALUES: Readonly<Record<string, (r: MonthlyRow) => SortValue>> = {
+  month: (r) => r.month,
+  claims: (r) => r.claims,
+  charges: (r) => r.charges_cents,
+  paid: (r) => r.paid_cents,
+  adjusted: (r) => r.adjusted_cents,
+  open: (r) => r.open_balance_cents,
+  unrecovered: (r) => r.unrecovered_cents
+};
+
+export const MonthlyTable = ({ rows, all, sorting }: ResultTableProps<MonthlyRow>) => (
   <Table
     label="Charges and collections by month of service"
+    {...sortingOf(sorting)}
     head={[
-      'Month of service',
-      numeric('Claims'),
-      numeric('Charges'),
-      numeric('Paid'),
-      numeric('Adjusted'),
+      { label: 'Month of service', sort: 'month' },
+      numeric('Claims', 'claims'),
+      numeric('Charges', 'charges'),
+      numeric('Paid', 'paid'),
+      numeric('Adjusted', 'adjusted'),
       { label: 'Collected', isNumeric: true, isSecondary: true },
-      numeric('Open balance'),
-      { label: 'Written off or sent to collections', isNumeric: true, isSecondary: true }
+      numeric('Open balance', 'open'),
+      {
+        label: 'Written off or sent to collections',
+        isNumeric: true,
+        isSecondary: true,
+        sort: 'unrecovered'
+      }
     ]}
   >
     {rows.map((r) => (
@@ -125,19 +163,19 @@ export const MonthlyTable = ({ rows }: { rows: readonly MonthlyRow[] }) => (
     ))}
     <TableTotalRow>
       <TableCell>Total</TableCell>
-      <TableCell kind="numeric">{sum(rows, (r) => r.claims)}</TableCell>
-      {money(sum(rows, (r) => r.charges_cents))}
-      {money(sum(rows, (r) => r.paid_cents))}
-      {money(sum(rows, (r) => r.adjusted_cents))}
+      <TableCell kind="numeric">{sum(all, (r) => r.claims)}</TableCell>
+      {money(sum(all, (r) => r.charges_cents))}
+      {money(sum(all, (r) => r.paid_cents))}
+      {money(sum(all, (r) => r.adjusted_cents))}
       <TableCell kind="numeric" isSecondary>
         {percentOf(
-          sum(rows, (r) => r.paid_cents),
-          sum(rows, (r) => r.charges_cents)
+          sum(all, (r) => r.paid_cents),
+          sum(all, (r) => r.charges_cents)
         )}
       </TableCell>
-      {money(sum(rows, (r) => r.open_balance_cents))}
+      {money(sum(all, (r) => r.open_balance_cents))}
       <TableCell kind="numeric" isSecondary>
-        {formatCents(sum(rows, (r) => r.unrecovered_cents))}
+        {formatCents(sum(all, (r) => r.unrecovered_cents))}
       </TableCell>
     </TableTotalRow>
   </Table>
@@ -158,23 +196,32 @@ export const monthlyCsv = (rows: readonly MonthlyRow[]): CsvCell[][] => [
 
 const days = (value: number | null) => (value === null ? emptyValue : `${value} days`);
 
+export const PAYER_VALUES: Readonly<Record<string, (r: PayerRow) => SortValue>> = {
+  payer: (r) => r.payer,
+  claims: (r) => r.claims,
+  submitted: (r) => r.submitted,
+  answered: (r) => r.answered,
+  paid: (r) => r.paid_cents,
+  adjusted: (r) => r.adjusted_cents,
+  days: (r) => r.average_days_to_response
+};
+
 export const PayerTable = ({
   rows,
+  sorting,
   patient
-}: {
-  rows: readonly PayerRow[];
-  patient: PatientPayments;
-}) => (
+}: ResultTableProps<PayerRow> & { patient: PatientPayments }) => (
   <Table
     label="Payer performance"
+    {...sortingOf(sorting)}
     head={[
-      'Payer',
-      numeric('Claims'),
-      { label: 'Submitted', isNumeric: true, isSecondary: true },
-      numeric('Answered'),
-      numeric('Paid'),
-      numeric('Adjusted'),
-      { label: 'Days to respond', isNumeric: true, isSecondary: true }
+      { label: 'Payer', sort: 'payer' },
+      numeric('Claims', 'claims'),
+      { label: 'Submitted', isNumeric: true, isSecondary: true, sort: 'submitted' },
+      numeric('Answered', 'answered'),
+      numeric('Paid', 'paid'),
+      numeric('Adjusted', 'adjusted'),
+      { label: 'Days to respond', isNumeric: true, isSecondary: true, sort: 'days' }
     ]}
   >
     {rows.map((r) => (
@@ -252,16 +299,25 @@ export const payerCsv = (rows: readonly PayerRow[], patient: PatientPayments): C
   ]
 ];
 
-export const HcpcsTable = ({ rows }: { rows: readonly HcpcsRow[] }) => (
+export const HCPCS_VALUES: Readonly<Record<string, (r: HcpcsRow) => SortValue>> = {
+  code: (r) => r.code,
+  claims: (r) => r.claims,
+  units: (r) => Number(r.units),
+  price: (r) => r.average_unit_cents,
+  charges: (r) => r.charges_cents
+};
+
+export const HcpcsTable = ({ rows, all, sorting }: ResultTableProps<HcpcsRow>) => (
   <Table
     label="Charges by HCPCS code"
+    {...sortingOf(sorting)}
     head={[
-      'HCPCS',
+      { label: 'HCPCS', sort: 'code' },
       { label: 'Service', isSecondary: true },
-      numeric('Claims'),
-      numeric('Units'),
-      { label: 'Average price', isNumeric: true, isSecondary: true },
-      numeric('Charges')
+      numeric('Claims', 'claims'),
+      numeric('Units', 'units'),
+      { label: 'Average price', isNumeric: true, isSecondary: true, sort: 'price' },
+      numeric('Charges', 'charges')
     ]}
   >
     {rows.map((r) => (
@@ -286,7 +342,7 @@ export const HcpcsTable = ({ rows }: { rows: readonly HcpcsRow[] }) => (
       <TableCell />
       <TableCell />
       <TableCell isSecondary />
-      {money(sum(rows, (r) => r.charges_cents))}
+      {money(sum(all, (r) => r.charges_cents))}
     </TableTotalRow>
   </Table>
 );

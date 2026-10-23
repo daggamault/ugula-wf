@@ -11,14 +11,14 @@ export const createTaskRoutes = (service: TaskService) =>
     .get('/queues', async (c) => respond(c, await service.queues(c.get('session').tenantId)))
     .get('/', sValidator('query', listTasksQuery, invalidRequest), async (c) => {
       const { tenantId, userId } = c.get('session');
-      const { queue, status, mine, limit } = c.req.valid('query');
+      const { queue, status, mine, ...page } = c.req.valid('query');
       return respond(
         c,
         await service.list(tenantId, {
           ...(queue ? { queue } : {}),
           ...(mine === 'true' ? { assigneeId: userId } : {}),
           status,
-          limit
+          ...page
         })
       );
     })

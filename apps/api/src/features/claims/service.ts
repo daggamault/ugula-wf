@@ -69,7 +69,7 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
 
   return {
     list: async (tenantId: string, filters: ClaimFilters) =>
-      ok({ claims: await listClaims(db, tenantId, filters) }),
+      ok(await listClaims(db, tenantId, filters)),
 
     find: async (tenantId: string, id: string) => {
       const claim = await findClaim(db, tenantId, id);

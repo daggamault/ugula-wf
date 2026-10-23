@@ -1,13 +1,14 @@
 import type { Database, RunStatus } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { type PageRequest, paged } from '../../shared/paging.ts';
+import type { RunSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
-export type RunFilters = {
+export type RunFilters = PageRequest<RunSort> & {
   status?: RunStatus;
   graphId?: string;
   rootOnly: boolean;
-  limit: number;
 };
 
 export type StepFilters = {
@@ -58,12 +59,19 @@ const runColumns = (db: Db) =>
       sql<string | null>`r.error ->> 'message'`.as('error_message')
     ]);
 
+const RUN_ORDER = {
+  started: sql.ref('r.created_at'),
+  workflow: sql`lower(g.name)`,
+  status: sql.ref('r.status'),
+  finished: sql.ref('r.completed_at')
+};
+
 export const listRuns = (db: Db, tenantId: string, f: RunFilters) => {
   let q = runColumns(db).where('r.tenant_id', '=', tenantId);
   if (f.status) q = q.where('r.status', '=', f.status);
   if (f.graphId) q = q.where('g.id', '=', f.graphId);
   if (f.rootOnly) q = q.where('r.parent_id', 'is', null);
-  return q.orderBy('r.created_at', 'desc').limit(f.limit).execute();
+  return paged(q, f, RUN_ORDER, sql.ref('r.id'));
 };
 
 export const findRun = (db: Db, tenantId: string, id: string) =>

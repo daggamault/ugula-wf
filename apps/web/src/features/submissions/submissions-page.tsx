@@ -9,9 +9,11 @@ import { Button, ButtonLink, buttonClasses } from '../../shared/ui/button.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
+import { Pagination } from '../../shared/ui/pagination.tsx';
 import { Section } from '../../shared/ui/section-panel.tsx';
-import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
+import { pageOf, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { Batch, PendingClaim, SubmissionsClient } from './client.ts';
 
@@ -23,27 +25,52 @@ export type SubmissionsPageProps = {
 export const selectedIds = (claims: readonly PendingClaim[], excluded: ReadonlySet<string>) =>
   claims.filter((c) => !c.issues.length && !excluded.has(c.id)).map((c) => c.id);
 
+const PATH = '/submissions';
+
+export const PENDING_TABLE = {
+  prefix: 'pending',
+  sorts: { readiness: 'asc', patient: 'asc', service: 'desc', payer: 'asc', total: 'desc' },
+  sort: 'readiness'
+} as const;
+
+export const BATCH_TABLE = {
+  prefix: 'batches',
+  sorts: { created: 'desc', control: 'desc', claims: 'desc', total: 'desc' },
+  sort: 'created'
+} as const;
+
+export const PENDING_VALUES = {
+  readiness: (c: PendingClaim) => c.issues.length,
+  patient: (c: PendingClaim) => c.patient,
+  service: (c: PendingClaim) => c.serviceDate,
+  payer: (c: PendingClaim) => c.payer,
+  total: (c: PendingClaim) => c.totalCents
+};
+
 export const PendingTable = ({
   claims,
   excluded,
+  sorting,
   onToggle,
   onMarkSubmitted
 }: {
   claims: readonly PendingClaim[];
   excluded: ReadonlySet<string>;
+  sorting?: TableSorting;
   onToggle: (id: string) => void;
   onMarkSubmitted: (claim: PendingClaim) => void;
 }) => (
   <Table
     label="Claims waiting to be submitted"
+    {...(sorting ? { sorting } : {})}
     head={[
       { label: 'Include', isCompact: true },
-      'Patient',
+      { label: 'Patient', sort: 'patient' },
       { label: 'PCR', isSecondary: true },
-      { label: 'Service Date', isSecondary: true },
-      'Payer',
-      { label: 'Total', isNumeric: true },
-      'Readiness',
+      { label: 'Service Date', isSecondary: true, sort: 'service' },
+      { label: 'Payer', sort: 'payer' },
+      { label: 'Total', isNumeric: true, sort: 'total' },
+      { label: 'Readiness', sort: 'readiness' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
   >
@@ -99,18 +126,21 @@ export const PendingTable = ({
 
 export const BatchesTable = ({
   batches,
+  sorting,
   fileUrl
 }: {
   batches: readonly Batch[];
+  sorting?: TableSorting;
   fileUrl: (id: string) => string;
 }) => (
   <Table
     label="837P batches"
+    {...(sorting ? { sorting } : {})}
     head={[
-      'Batch',
-      'Created',
-      { label: 'Claims', isNumeric: true },
-      { label: 'Total', isNumeric: true },
+      { label: 'Batch', sort: 'control' },
+      { label: 'Created', sort: 'created' },
+      { label: 'Claims', isNumeric: true, sort: 'claims' },
+      { label: 'Total', isNumeric: true, sort: 'total' },
       'Usage',
       { label: 'Created By', isSecondary: true },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
@@ -152,8 +182,12 @@ export const BatchesTable = ({
 );
 
 export const SubmissionsPage = ({ client, live }: SubmissionsPageProps) => {
+  const pendingTable = useTableState(PATH, PENDING_TABLE);
+  const batchTable = useTableState(PATH, BATCH_TABLE);
   const pending = useResource('submissions:pending', client.pending, 30_000);
-  const batches = useResource('submissions:batches', client.batches);
+  const batches = useResource(`submissions:batches:${batchTable.apiQuery}`, () =>
+    client.batches(batchTable.apiQuery)
+  );
   const reload = () => {
     pending.reload();
     batches.reload();
@@ -263,15 +297,19 @@ export const SubmissionsPage = ({ client, live }: SubmissionsPageProps) => {
       {pending.error ? <Alert>{pending.error.message}</Alert> : null}
       <Section
         title="Waiting to Be Submitted"
-        description="Ready claims are included in the next batch unless you uncheck them."
+        description="Ready claims on every page are included in the next batch unless you uncheck them."
       >
         {claims.length ? (
-          <PendingTable
-            claims={claims}
-            excluded={excluded}
-            onToggle={toggle}
-            onMarkSubmitted={setConfirming}
-          />
+          <>
+            <PendingTable
+              claims={pageOf(claims, pendingTable, PENDING_VALUES).items}
+              excluded={excluded}
+              sorting={pendingTable}
+              onToggle={toggle}
+              onMarkSubmitted={setConfirming}
+            />
+            <Pagination label="Waiting claims" total={claims.length} state={pendingTable} />
+          </>
         ) : pending.loading ? (
           <PageLoading />
         ) : (
@@ -280,8 +318,15 @@ export const SubmissionsPage = ({ client, live }: SubmissionsPageProps) => {
       </Section>
       <Section title="837P Batches" description="Files you have generated, newest first.">
         {batches.error ? <Alert>{batches.error.message}</Alert> : null}
-        {batches.data?.length ? (
-          <BatchesTable batches={batches.data} fileUrl={client.fileUrl} />
+        {batches.data?.items.length ? (
+          <>
+            <BatchesTable
+              batches={batches.data.items}
+              sorting={batchTable}
+              fileUrl={client.fileUrl}
+            />
+            <Pagination label="837P batches" total={batches.data.total} state={batchTable} />
+          </>
         ) : batches.loading ? (
           <PageLoading />
         ) : (

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { byQueueOrder, humanize, queueInfo } from './queues.ts';
+import { byQueueOrder, humanize, queueInfo, queueSortKey } from './queues.ts';
 
 describe('queues', () => {
   it('names known queues for billers and humanizes the rest', () => {
@@ -17,6 +17,8 @@ describe('queues', () => {
   });
 
   it('orders queues by the billing flow, then alphabetically', () => {
+    assert.ok(queueSortKey('billing-review') < queueSortKey('exceptions'));
+    assert.ok(queueSortKey('exceptions') < queueSortKey('alpha'));
     assert.deepEqual(
       ['zeta', 'exceptions', 'billing-collections', 'alpha', 'billing-review'].sort(byQueueOrder),
       ['billing-review', 'billing-collections', 'exceptions', 'alpha', 'zeta']

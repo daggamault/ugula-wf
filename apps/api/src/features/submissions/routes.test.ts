@@ -36,10 +36,10 @@ const post = (path: string, body: unknown) =>
 describe('submission routes', () => {
   it('lists pending claims and batches for the session tenant', async () => {
     assert.equal((await request('/pending')).status, 200);
-    assert.equal((await request('/batches?limit=10')).status, 200);
+    assert.equal((await request('/batches?pageSize=10&sort=total')).status, 200);
     assert.deepEqual(calls.splice(0), [
       ['pending', 't-1'],
-      ['list', 't-1', 10]
+      ['list', 't-1', { page: 1, pageSize: 10, sort: 'total', dir: 'desc' }]
     ]);
   });
 

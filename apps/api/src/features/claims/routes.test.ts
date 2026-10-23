@@ -47,7 +47,7 @@ describe('claim routes', () => {
     });
     assert.equal(paid.status, 201);
     assert.deepEqual(calls, [
-      ['list', 't-1', { status: 'paid', limit: 50 }],
+      ['list', 't-1', { status: 'paid', page: 1, pageSize: 25, sort: 'created', dir: 'desc' }],
       ['find', 't-1', ID],
       ['setPayers', 't-1', ID, ['Medicare']],
       [

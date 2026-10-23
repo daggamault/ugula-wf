@@ -1,12 +1,17 @@
 import { DIAGNOSIS_LIMIT, ICD10_PATTERN, isOriginDestination } from '@ugula/billing';
 import * as v from 'valibot';
-import { limitQuery, uuid } from '../../shared/http.ts';
+import { uuid } from '../../shared/http.ts';
+import { pageEntries } from '../../shared/paging.ts';
 
 const cents = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(100_000_000));
 
+export const CLAIM_SORTS = ['created', 'service', 'patient', 'pcr', 'total', 'balance'] as const;
+
+export type ClaimSort = (typeof CLAIM_SORTS)[number];
+
 export const listClaimsQuery = v.object({
   status: v.optional(v.picklist(['open', 'paid', 'written_off', 'collections']), 'open'),
-  limit: limitQuery
+  ...pageEntries(CLAIM_SORTS, 'created', 'desc')
 });
 
 export const payersSchema = v.object({

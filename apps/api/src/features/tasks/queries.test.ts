@@ -7,11 +7,19 @@ describe('task queries', () => {
   it('summarize open work per queue and list by priority', async () => {
     const { db, queries } = createRecordingDb();
     await listQueues(db, 't');
-    await listTasks(db, 't', { status: 'open', queue: 'billing', assigneeId: 'u1', limit: 20 });
+    await listTasks(db, 't', {
+      status: 'open',
+      queue: 'billing',
+      assigneeId: 'u1',
+      page: 1,
+      pageSize: 25,
+      sort: 'waiting',
+      dir: 'desc'
+    });
     await findTask(db, 't', 'x');
     assert.ok(queries[0]?.sql.includes('filter (where assignee_id is null)'));
-    assert.ok(queries[1]?.sql.includes('order by "priority" desc, "created_at"'));
-    assert.deepEqual(queries[1]?.parameters, ['t', 'open', 'billing', 'u1', 20]);
+    assert.ok(queries[1]?.sql.includes('order by now() - created_at desc nulls last, "id" desc'));
+    assert.deepEqual(queries[1]?.parameters, ['t', 'open', 'billing', 'u1', 25, 0]);
     await db.destroy();
   });
 

@@ -9,14 +9,14 @@ import type { RunService } from './service.ts';
 export const createRunRoutes = (service: RunService) =>
   new Hono<AuthEnv>()
     .get('/', sValidator('query', listRunsQuery, invalidRequest), async (c) => {
-      const { status, graphId, root, limit } = c.req.valid('query');
+      const { status, graphId, root, ...page } = c.req.valid('query');
       return respond(
         c,
         await service.list(c.get('session').tenantId, {
           ...(status ? { status } : {}),
           ...(graphId ? { graphId } : {}),
           rootOnly: root === 'true',
-          limit
+          ...page
         })
       );
     })

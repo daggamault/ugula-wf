@@ -1,5 +1,7 @@
 import type { Database, ImportSource, RunStatus } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { type PageRequest, paged } from '../../shared/paging.ts';
+import type { ImportSort } from './schemas.ts';
 
 export const findLatestPublished = (db: Kysely<Database>, tenantId: string, key: string) =>
   db
@@ -66,7 +68,21 @@ export const findReport = (db: Kysely<Database>, tenantId: string, id: string) =
 const childCount = (status: RunStatus) =>
   sql<number>`(count(*) filter (where ch.status = ${status}))::int`;
 
-export const listImports = (db: Kysely<Database>, tenantId: string, limit: number) =>
+const IMPORT_ORDER = {
+  received: sql.ref('i.created_at'),
+  file: sql`lower(i.file_name)`,
+  reports: sql.ref('i.report_count'),
+  claims: sql.ref('claimed.claims'),
+  charges: sql.ref('claimed.charges_cents')
+};
+
+export const listImports = (
+  db: Kysely<Database>,
+  tenantId: string,
+  page: PageRequest<ImportSort>
+) => paged(importRows(db, tenantId), page, IMPORT_ORDER, sql.ref('i.id'));
+
+const importRows = (db: Kysely<Database>, tenantId: string) =>
   db
     .selectFrom('imports as i')
     .innerJoin('workflow_runs as r', 'r.id', 'i.run_id')
@@ -116,8 +132,4 @@ export const listImports = (db: Kysely<Database>, tenantId: string, limit: numbe
       'claimed.claims',
       'claimed.charges_cents'
     ])
-    .where('i.tenant_id', '=', tenantId)
-    .orderBy('i.created_at', 'desc')
-    .orderBy('i.id', 'desc')
-    .limit(limit)
-    .execute();
+    .where('i.tenant_id', '=', tenantId);

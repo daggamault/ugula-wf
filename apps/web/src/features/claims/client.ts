@@ -1,5 +1,6 @@
 import type { ClaimEventKind, ClaimStep } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
+import type { Page } from '../../shared/url-state.ts';
 
 export type ClaimStatus = 'open' | 'paid' | 'written_off' | 'collections';
 
@@ -113,8 +114,8 @@ export type ClaimResponseInput = {
 };
 
 export const createClaimsClient = (api: Api) => ({
-  list: async (status: ClaimStatus) =>
-    (await api.get<{ claims: ClaimSummary[] }>(`/api/claims?status=${status}`)).claims,
+  list: (status: ClaimStatus, page: string) =>
+    api.get<Page<ClaimSummary>>(`/api/claims?status=${status}&${page}`),
   find: (id: string) =>
     api.get<{ claim: ClaimDetail; events: ClaimEvent[]; progress: ClaimProgress | null }>(
       `/api/claims/${id}`

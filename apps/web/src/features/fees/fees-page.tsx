@@ -10,10 +10,12 @@ import { EmptyState } from '../../shared/ui/empty-state.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
+import { Pagination } from '../../shared/ui/pagination.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
-import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
+import { pageOf, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { Fee, FeeInput, FeesClient } from './client.ts';
 
@@ -35,22 +37,37 @@ export const toFeeInput = (draft: Draft): FeeInput | string => {
 
 const feeName = (f: Fee) => `${f.payer ?? 'Default'} ${f.code}`;
 
+export const FEE_TABLE = {
+  sorts: { payer: 'asc', code: 'asc', amount: 'desc', updated: 'desc' },
+  sort: 'payer'
+} as const;
+
+export const FEE_VALUES = {
+  payer: (f: Fee) => `${f.payer === null ? 0 : 1} ${f.payer ?? ''} ${f.code}`,
+  code: (f: Fee) => f.code,
+  amount: (f: Fee) => f.amount_cents,
+  updated: (f: Fee) => f.updated_at
+};
+
 export const FeesTable = ({
   fees,
+  sorting,
   onEdit,
   onDelete
 }: {
   fees: readonly Fee[];
+  sorting?: TableSorting;
   onEdit: (fee: Fee) => void;
   onDelete: (fee: Fee) => void;
 }) => (
   <Table
     label="Fee schedule"
+    {...(sorting ? { sorting } : {})}
     head={[
-      'Payer',
-      'HCPCS',
-      { label: 'Amount', isNumeric: true },
-      { label: 'Updated', isSecondary: true },
+      { label: 'Payer', sort: 'payer' },
+      { label: 'HCPCS', sort: 'code' },
+      { label: 'Amount', isNumeric: true, sort: 'amount' },
+      { label: 'Updated', isSecondary: true, sort: 'updated' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
   >
@@ -90,6 +107,7 @@ export const FeesTable = ({
 
 export const FeesPage = ({ client }: FeesPageProps) => {
   const fees = useResource('fees', client.list);
+  const table = useTableState('/fees', FEE_TABLE);
   const payers = useResource('fee-payers', client.payers);
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const payerOptions = [
@@ -202,18 +220,22 @@ export const FeesPage = ({ client }: FeesPageProps) => {
       </SectionPanel>
       {fees.error ? <Alert>{fees.error.message}</Alert> : null}
       {fees.data?.length ? (
-        <FeesTable
-          fees={fees.data}
-          onEdit={(f) => {
-            setEditing(true);
-            setDraft({
-              payerId: f.payer_id ?? '',
-              code: f.code,
-              amount: (f.amount_cents / 100).toFixed(2)
-            });
-          }}
-          onDelete={setDeleting}
-        />
+        <>
+          <FeesTable
+            fees={pageOf(fees.data, table, FEE_VALUES).items}
+            sorting={table}
+            onEdit={(f) => {
+              setEditing(true);
+              setDraft({
+                payerId: f.payer_id ?? '',
+                code: f.code,
+                amount: (f.amount_cents / 100).toFixed(2)
+              });
+            }}
+            onDelete={setDeleting}
+          />
+          <Pagination label="Fees" total={fees.data.length} state={table} />
+        </>
       ) : fees.data ? (
         <EmptyState title="No Fees">
           Claims cannot be priced until each code has a fee. Add one above.

@@ -1,13 +1,14 @@
 import type { Database, TaskStatus } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { type PageRequest, paged } from '../../shared/paging.ts';
+import type { TaskSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
-export type TaskFilters = {
+export type TaskFilters = PageRequest<TaskSort> & {
   queue?: string;
   status: TaskStatus;
   assigneeId?: string;
-  limit: number;
 };
 
 const summary = [
@@ -51,6 +52,13 @@ export const listQueues = (db: Db, tenantId: string) =>
     .orderBy('queue')
     .execute();
 
+const TASK_ORDER = {
+  waiting: sql`now() - created_at`,
+  task: sql`lower(coalesce(subject, title))`,
+  queue: sql.ref('queue'),
+  priority: sql.ref('priority')
+};
+
 export const listTasks = (db: Db, tenantId: string, f: TaskFilters) => {
   let q = db
     .selectFrom('tasks')
@@ -59,7 +67,7 @@ export const listTasks = (db: Db, tenantId: string, f: TaskFilters) => {
     .where('status', '=', f.status);
   if (f.queue) q = q.where('queue', '=', f.queue);
   if (f.assigneeId) q = q.where('assignee_id', '=', f.assigneeId);
-  return q.orderBy('priority', 'desc').orderBy('created_at').limit(f.limit).execute();
+  return paged(q, f, TASK_ORDER, sql.ref('id'));
 };
 
 export const findTask = (db: Db, tenantId: string, id: string) =>
