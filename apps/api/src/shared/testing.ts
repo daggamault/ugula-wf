@@ -10,7 +10,9 @@ export const testSessions: SessionStore = {
 };
 
 export const withSession = (routes: Hono<AuthEnv>) => {
-  const app = new Hono<AuthEnv>().use(requireAuth(testSessions)).route('/', routes);
+  const app = new Hono<AuthEnv>()
+    .use(requireAuth(async (token) => (token ? testSessions.get(token) : null)))
+    .route('/', routes);
   return (path: string, init: RequestInit = {}) =>
     app.request(path, {
       ...init,

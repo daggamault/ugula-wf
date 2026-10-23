@@ -11,7 +11,8 @@ const mockAuth: AuthClient = {
     sseUrl: 'http://localhost:3002'
   }),
   signOut: async () => undefined,
-  getMe: async () => null
+  getMe: async () => null,
+  onExpired: () => () => undefined
 };
 
 describe('SignInForm', () => {

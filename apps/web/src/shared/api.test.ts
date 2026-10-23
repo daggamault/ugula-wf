@@ -53,3 +53,17 @@ describe('messageOf', () => {
     assert.equal(messageOf('plain'), 'plain');
   });
 });
+
+describe('createApi session expiry', () => {
+  it('reports a 401 from any API but the auth endpoints', async () => {
+    let expired = 0;
+    const api = createApi(
+      'http://api.test',
+      async () => new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
+      () => expired++
+    );
+    await assert.rejects(() => api.get('/api/claims'), /Unauthorized/);
+    await assert.rejects(() => api.get('/api/auth/me'), /Unauthorized/);
+    assert.equal(expired, 1);
+  });
+});

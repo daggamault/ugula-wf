@@ -56,6 +56,8 @@ export const AuthGate = ({ auth, children }: AuthGateProps) => {
       .finally(() => setReady(true));
   }, [auth]);
 
+  useEffect(() => auth.onExpired(() => setSession(null)), [auth]);
+
   return (
     <AuthGateView ready={ready} session={session} auth={auth} onSessionChange={setSession}>
       {children}

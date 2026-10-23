@@ -2,7 +2,7 @@ import type { Db } from '@ugula/db';
 import { verifyPassword } from '@ugula/passwords';
 import type { SessionData, SessionStore } from '@ugula/sessions';
 import { fail, ok, type Result } from '../../shared/result.ts';
-import { findActiveUserByEmail } from './queries.ts';
+import { findActiveUserByEmail, isActiveMember } from './queries.ts';
 import type { SignInInput } from './schemas.ts';
 
 export type AuthServiceDeps = {
@@ -29,7 +29,12 @@ export const createAuthService = ({ db, sessions }: AuthServiceDeps) => ({
 
   session: async (token: string | undefined): Promise<Result<SessionData>> => {
     const session = token ? await sessions.get(token) : null;
-    return session ? ok(session) : unauthorized;
+    if (!token || !session) return unauthorized;
+    if (!(await isActiveMember(db, session.userId, session.tenantId))) {
+      await sessions.destroy(token);
+      return unauthorized;
+    }
+    return ok(session);
   },
 
   signOut: async (token: string | undefined) => {

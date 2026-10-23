@@ -46,6 +46,33 @@ describe('auth service', () => {
     await db.destroy();
   });
 
+  it('ends sessions whose user or tenant was removed or deactivated', async () => {
+    const passwordHash = await hashPassword('P@ssw0rd123');
+    let member = true;
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('"users"."password_hash"')
+        ? [{ id: 'u-1', tenant_id: 't-1', email: 'dev@example.com', password_hash: passwordHash }]
+        : member
+          ? [{ id: 'u-1' }]
+          : []
+    );
+    const service = createAuthService({ db, sessions: memorySessions() });
+    const signed = await service.signIn({ email: 'dev@example.com', password: 'P@ssw0rd123' });
+    assert.ok(signed.ok);
+    assert.equal((await service.session(signed.value.token)).ok, true);
+    const check = queries.at(-1);
+    assert.ok(
+      check?.sql.includes('"users"."is_active" = $') &&
+        check.sql.includes('"tenants"."is_active" = $')
+    );
+    assert.deepEqual(check?.parameters.slice(0, 2), ['u-1', 't-1']);
+    member = false;
+    assert.equal((await service.session(signed.value.token)).ok, false);
+    member = true;
+    assert.equal((await service.session(signed.value.token)).ok, false);
+    await db.destroy();
+  });
+
   it('rejects unknown users', async () => {
     const { db } = createRecordingDb();
     const res = await createAuthService({ db, sessions: memorySessions() }).signIn({

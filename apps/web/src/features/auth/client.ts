@@ -1,6 +1,7 @@
 import { emailString, nonEmpty, urlString } from '@ugula/config';
 import * as v from 'valibot';
 import { type Api, isApiError } from '../../shared/api.ts';
+import type { Signal } from '../../shared/signal.ts';
 
 export const authUserSchema = v.object({
   id: nonEmpty,
@@ -19,9 +20,10 @@ export type AuthClient = {
   signIn: (email: string, password: string) => Promise<AuthSession>;
   signOut: () => Promise<void>;
   getMe: () => Promise<AuthSession | null>;
+  onExpired: (listener: () => void) => () => void;
 };
 
-export const createAuthClient = (api: Api): AuthClient => ({
+export const createAuthClient = (api: Api, expired: Pick<Signal, 'subscribe'>): AuthClient => ({
   signIn: async (email, password) =>
     v.parse(authSessionSchema, await api.post('/api/auth/sign-in', { email, password })),
   signOut: async () => {
@@ -34,5 +36,6 @@ export const createAuthClient = (api: Api): AuthClient => ({
       if (isApiError(err) && err.status === 401) return null;
       throw err;
     }
-  }
+  },
+  onExpired: expired.subscribe
 });

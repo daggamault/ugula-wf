@@ -13,11 +13,13 @@ import { createSubmissionsClient } from './features/submissions/client.ts';
 import { createTasksClient } from './features/tasks/client.ts';
 import { createWorkflowsClient } from './features/workflows/client.ts';
 import { createApi } from './shared/api.ts';
+import { createSignal } from './shared/signal.ts';
 
 export const createClients = (config: Config, fetchFn: typeof fetch = fetch): AppClients => {
-  const api = createApi(config.apiUrl, fetchFn);
+  const expired = createSignal();
+  const api = createApi(config.apiUrl, fetchFn, expired.emit);
   return {
-    auth: createAuthClient(api),
+    auth: createAuthClient(api, expired),
     workflows: createWorkflowsClient(api),
     runs: createRunsClient(api),
     tasks: createTasksClient(api),

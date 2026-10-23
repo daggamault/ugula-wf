@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createApi } from '../../shared/api.ts';
+import { createSignal } from '../../shared/signal.ts';
 import { createAuthClient } from './client.ts';
 
 const session = {
@@ -10,7 +11,8 @@ const session = {
 
 const respond = (status: number, body: unknown) =>
   createAuthClient(
-    createApi('http://api.test', async () => new Response(JSON.stringify(body), { status }))
+    createApi('http://api.test', async () => new Response(JSON.stringify(body), { status })),
+    createSignal()
   );
 
 describe('createAuthClient', () => {
@@ -29,5 +31,18 @@ describe('createAuthClient', () => {
     );
     assert.equal(await client.getMe(), null);
     await assert.rejects(() => respond(500, {}).getMe(), /status 500/);
+  });
+});
+
+describe('session expiry', () => {
+  it('passes expiry notices from the API to subscribers', () => {
+    const signal = createSignal();
+    const client = createAuthClient(createApi('http://api.test'), signal);
+    let expired = 0;
+    const stop = client.onExpired(() => expired++);
+    signal.emit();
+    stop();
+    signal.emit();
+    assert.equal(expired, 1);
   });
 });

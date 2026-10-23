@@ -56,8 +56,13 @@ export const createApp = ({ config, db, redis, boss, blobs, nodes }: AppDeps) =>
   const app = new Hono();
   const origins = config.HTTP_CORS_ORIGINS.split(',').map((o) => o.trim());
   const sessions = createSessionStore(redis);
+  const auth = createAuthService({ db, sessions });
+  const authenticate = async (token: string | undefined) => {
+    const res = await auth.session(token);
+    return res.ok ? res.value : null;
+  };
   const protect = (routes: Hono<AuthEnv>) =>
-    new Hono<AuthEnv>().use(requireAuth(sessions)).route('/', routes);
+    new Hono<AuthEnv>().use(requireAuth(authenticate)).route('/', routes);
 
   app.use(
     '*',
@@ -71,7 +76,7 @@ export const createApp = ({ config, db, redis, boss, blobs, nodes }: AppDeps) =>
   app.route(
     '/api/auth',
     createAuthRoutes({
-      service: createAuthService({ db, sessions }),
+      service: auth,
       sseUrl: config.SSE_URL,
       secureCookie: config.NODE_ENV === 'production'
     })

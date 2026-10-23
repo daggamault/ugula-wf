@@ -13,7 +13,8 @@ const mockSession: AuthSession = {
 const mockAuth: AuthClient = {
   signIn: async () => mockSession,
   signOut: async () => undefined,
-  getMe: async () => null
+  getMe: async () => null,
+  onExpired: () => () => undefined
 };
 
 const workspace = (session: AuthSession) => createElement('p', null, `Hi ${session.user.email}`);

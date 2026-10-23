@@ -24,7 +24,13 @@ const apiError = (status: number, body: unknown): ApiError => {
   return Object.assign(new Error(message), { status, body: record });
 };
 
-export const createApi = (baseUrl: string, fetchFn: typeof fetch = fetch): Api => {
+const AUTH_PATH = '/api/auth/';
+
+export const createApi = (
+  baseUrl: string,
+  fetchFn: typeof fetch = fetch,
+  onUnauthorized: () => void = () => undefined
+): Api => {
   const request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
     const res = await fetchFn(`${baseUrl}${path}`, {
       method,
@@ -36,6 +42,7 @@ export const createApi = (baseUrl: string, fetchFn: typeof fetch = fetch): Api =
           : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
     });
     const data: unknown = await res.json().catch(() => null);
+    if (res.status === 401 && !path.startsWith(AUTH_PATH)) onUnauthorized();
     if (!res.ok) throw apiError(res.status, data);
     return data as T;
   };
