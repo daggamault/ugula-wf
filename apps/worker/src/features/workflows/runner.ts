@@ -129,7 +129,7 @@ export const createRunner = ({
     command: RunCommand,
     progress: { checkpointed: boolean }
   ) => {
-    const { engine, root } = await engines(run.versionId);
+    const { engine, root } = await engines(run);
     const state = run.state ?? engine.start(root, run.inputs, { now: now() });
     if (command.type === 'advance' && state.status !== 'running') {
       await store.release(run, state.status === 'suspended' ? 'suspended' : 'faulted');

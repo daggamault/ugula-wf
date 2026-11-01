@@ -1,4 +1,4 @@
-import { type Database, sqlExecutor } from '@ugula/db';
+import { type Database, pinRunGraphs, sqlExecutor } from '@ugula/db';
 import { advance, enqueueRuns, type JobBoss, resume } from '@ugula/jobs';
 import { type Kysely, sql } from 'kysely';
 
@@ -21,6 +21,7 @@ export const buildInsertRun = (db: Kysely<Database>, run: NewRun) =>
 
 export const startRun = async (tx: Kysely<Database>, boss: JobBoss, run: NewRun) => {
   const { id } = await buildInsertRun(tx, run).executeTakeFirstOrThrow();
+  await pinRunGraphs(tx, { id, tenantId: run.tenantId, versionId: run.versionId });
   await enqueueRuns(boss, sqlExecutor(tx), [advance(id)]);
   return id;
 };

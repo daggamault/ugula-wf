@@ -20,12 +20,12 @@ const createRecordingSeedDb = () => {
   const conn: DatabaseConnection = {
     executeQuery: async <R>(q: CompiledQuery) => {
       queries.push(q);
-      const refs = q.parameters.flatMap((p, i) =>
-        typeof p === 'string' && typeof q.parameters[i + 1] === 'number'
-          ? [{ id: 'v-dep', key: p, version: q.parameters[i + 1] }]
-          : []
-      );
-      const rows = q.sql.startsWith('select') ? refs : [{ id: 'tenant-1' }];
+      const [keys, versions] = q.parameters as [unknown, unknown];
+      const refs =
+        Array.isArray(keys) && Array.isArray(versions)
+          ? keys.map((key, i) => ({ id: 'v-dep', key, version: versions[i] }))
+          : [];
+      const rows = q.sql.trim().startsWith('select') ? refs : [{ id: 'tenant-1' }];
       return { rows: rows as unknown as R[] };
     },
     streamQuery: async function* () {
@@ -65,7 +65,7 @@ describe('seedDev', () => {
     assert.ok(queries[1]?.parameters.includes('dev@example.com'));
     const versions = queries.filter((q) => q.sql.startsWith('insert into "graph_versions"'));
     assert.equal(versions.length, demoGraphs.length);
-    assert.deepEqual(versions[1]?.parameters.at(-1), ['v-dep']);
+    assert.deepEqual(versions[1]?.parameters.at(-1), ['demo.line-total@1']);
 
     await db.destroy();
   });

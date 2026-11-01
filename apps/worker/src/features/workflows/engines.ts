@@ -1,4 +1,4 @@
-import type { PublishedGraph } from '@ugula/db';
+import type { GraphRef, PublishedGraph } from '@ugula/db';
 import {
   combineSources,
   createEngine,
@@ -17,13 +17,17 @@ export type LoadedEngine = {
   root: NodeRef;
 };
 
-export type EngineSource = (versionId: string) => Promise<LoadedEngine>;
+export type EngineSource = (run: { id: string; versionId: string }) => Promise<LoadedEngine>;
 
 export type EngineCacheDeps = {
   nodes: NodeDef[];
-  loadBundle: (versionId: string) => Promise<PublishedGraph[]>;
+  loadRefs: (runId: string) => Promise<GraphRef[]>;
+  loadDefinitions: (ids: string[]) => Promise<{ id: string; definition: unknown }[]>;
   max?: number;
 };
+
+export const bundleKey = (versionId: string, refs: GraphRef[]) =>
+  [versionId, ...refs.map((r) => `${r.key}@${r.version}=${r.id}`).sort()].join('|');
 
 export const buildEngine = (
   nodes: NodeDef[],
@@ -49,20 +53,30 @@ export const buildEngine = (
 
 export const createEngineCache = ({
   nodes,
-  loadBundle,
+  loadRefs,
+  loadDefinitions,
   max = 200
 }: EngineCacheDeps): EngineSource => {
   const cache = new Map<string, Promise<LoadedEngine>>();
-  return (versionId) => {
-    const hit = cache.get(versionId);
+  const load = async (refs: GraphRef[], versionId: string) => {
+    const defs = new Map(
+      (await loadDefinitions(refs.map((r) => r.id))).map((d) => [d.id, d.definition])
+    );
+    const rows: PublishedGraph[] = refs.map((r) => ({ ...r, definition: defs.get(r.id) ?? null }));
+    return buildEngine(nodes, rows, versionId);
+  };
+  return async ({ id, versionId }) => {
+    const refs = await loadRefs(id);
+    const key = bundleKey(versionId, refs);
+    const hit = cache.get(key);
     if (hit) {
-      cache.delete(versionId);
-      cache.set(versionId, hit);
+      cache.delete(key);
+      cache.set(key, hit);
       return hit;
     }
-    const loading = loadBundle(versionId).then((rows) => buildEngine(nodes, rows, versionId));
-    loading.catch(() => cache.delete(versionId));
-    cache.set(versionId, loading);
+    const loading = load(refs, versionId);
+    loading.catch(() => cache.delete(key));
+    cache.set(key, loading);
     for (const key of cache.keys()) {
       if (cache.size <= max) break;
       cache.delete(key);

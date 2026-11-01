@@ -8,6 +8,7 @@ import { listNodes } from './list.ts';
 import { logicNodes } from './logic.ts';
 import { mathNodes } from './math.ts';
 import { objectNodes } from './object.ts';
+import { tableNodes } from './tables.ts';
 import { textNodes } from './text.ts';
 import { timeNodes } from './time.ts';
 import { varNodes } from './vars.ts';
@@ -23,6 +24,7 @@ export const createStdNodes = (deps: StdDeps): NodeDef[] => [
   ...textNodes,
   ...listNodes,
   ...objectNodes,
+  ...tableNodes,
   ...convertNodes,
   ...timeNodes,
   ...humanNodes,

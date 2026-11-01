@@ -39,4 +39,11 @@ export const createGraphRoutes = (service: GraphService) =>
     )
     .post('/:id/publish', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.publish(c.get('session').tenantId, c.req.valid('param').id))
+    )
+    .post('/:id/override', sValidator('param', idParam, invalidRequest), async (c) => {
+      const { tenantId, userId } = c.get('session');
+      return respond(c, await service.override(tenantId, userId, c.req.valid('param').id), 201);
+    })
+    .delete('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
+      respond(c, await service.remove(c.get('session').tenantId, c.req.valid('param').id))
     );

@@ -1,4 +1,4 @@
-import { type Database, findPublishedGraphs, type GraphKind } from '@ugula/db';
+import { type Database, dependencyOf, findPublishedGraphs, type GraphKind } from '@ugula/db';
 import { type GraphDef, graphRefs, refKey } from '@ugula/graph';
 import { type Kysely, sql } from 'kysely';
 
@@ -64,10 +64,5 @@ export const publishGraph = async (
       `${graph.key} depends on unpublished ${missing.map((r) => `${r.key}@${r.version}`).join(', ')}`
     );
   }
-  await buildInsertPublishedVersion(
-    db,
-    id,
-    graph,
-    deps.map((d) => d.id)
-  ).execute();
+  await buildInsertPublishedVersion(db, id, graph, deps.map(dependencyOf)).execute();
 };

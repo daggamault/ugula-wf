@@ -10,8 +10,12 @@ export const limitQuery = v.optional(
   '50'
 );
 
-export const isUniqueViolation = (err: unknown) =>
-  typeof err === 'object' && err !== null && 'code' in err && err.code === '23505';
+const hasCode = (err: unknown, code: string) =>
+  typeof err === 'object' && err !== null && 'code' in err && err.code === code;
+
+export const isUniqueViolation = (err: unknown) => hasCode(err, '23505');
+
+export const isForeignKeyViolation = (err: unknown) => hasCode(err, '23503');
 
 type Issue = { message: string; path?: ReadonlyArray<unknown> };
 

@@ -32,7 +32,7 @@ export const buildGraphVersionsTable = (db: Kysely<Database>) =>
     )
     .addColumn('version', 'integer', (col) => col.notNull().check(sql`version > 0`))
     .addColumn('definition', 'jsonb', (col) => col.notNull())
-    .addColumn('dependencies', sql`uuid[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
+    .addColumn('dependencies', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
     .addColumn('published_at', 'timestamptz')
     .addColumn('created_by', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')

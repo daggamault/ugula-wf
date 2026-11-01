@@ -32,6 +32,7 @@ export const resetSchema = async (db: Kysely<Database>) => {
     'tasks',
     'signals',
     'workflow_run_steps',
+    'workflow_run_graphs',
     'workflow_runs',
     'graph_versions',
     'graphs',

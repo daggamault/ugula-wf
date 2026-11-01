@@ -109,9 +109,30 @@ export const buildSignalsTable = (db: Kysely<Database>) =>
     .addPrimaryKeyConstraint('signals_pkey', ['tenant_id', 'key'])
     .addCheckConstraint('signals_received_check', sql`received >= 0`);
 
+export const buildWorkflowRunGraphsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('workflow_run_graphs')
+    .addColumn('run_id', 'uuid', (col) =>
+      col.notNull().references('workflow_runs.id').onDelete('cascade').onUpdate('cascade')
+    )
+    .addColumn('key', 'text', (col) => col.notNull())
+    .addColumn('version', 'integer', (col) => col.notNull())
+    .addColumn('graph_version_id', 'uuid', (col) =>
+      col.notNull().references('graph_versions.id').onDelete('restrict').onUpdate('cascade')
+    )
+    .addPrimaryKeyConstraint('workflow_run_graphs_pkey', ['run_id', 'key', 'version']);
+
+export const buildWorkflowRunGraphsVersionIndex = (db: Kysely<Database>) =>
+  db.schema
+    .createIndex('idx_workflow_run_graphs_graph_version_id')
+    .on('workflow_run_graphs')
+    .column('graph_version_id');
+
 export const createWorkflowRunsTables = async (db: Kysely<Database>) => {
   await buildWorkflowRunsTable(db).execute();
   for (const index of buildWorkflowRunsIndexes(db)) await index.execute();
+  await buildWorkflowRunGraphsTable(db).execute();
+  await buildWorkflowRunGraphsVersionIndex(db).execute();
   await buildWorkflowRunStepsTable(db).execute();
   await buildWorkflowRunStepsNodeIndex(db).execute();
   await buildSignalsTable(db).execute();

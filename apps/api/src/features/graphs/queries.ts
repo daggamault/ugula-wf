@@ -11,6 +11,8 @@ export type GraphSummary = {
   kind: GraphKind;
   description: string;
   isSystem: boolean;
+  overrides: boolean;
+  overriddenBy: string | null;
   publishedVersion: number | null;
   draftVersion: number | null;
   updatedAt: Date;
@@ -32,7 +34,14 @@ export const listGraphs = async (db: Db, tenantId: string): Promise<GraphSummary
         sql<number | null>`max(gv.version) filter (where gv.published_at is not null)`.as(
           'published'
         ),
-        sql<number | null>`max(gv.version) filter (where gv.published_at is null)`.as('draft')
+        sql<number | null>`max(gv.version) filter (where gv.published_at is null)`.as('draft'),
+        sql<string | null>`(
+          select o.id from graphs o
+          where o.key = g.key and g.tenant_id is null and o.tenant_id = ${tenantId}
+        )`.as('overridden_by'),
+        sql<boolean>`g.tenant_id is not null and exists (
+          select 1 from graphs s where s.key = g.key and s.tenant_id is null
+        )`.as('overrides')
       ])
       .where((eb) => eb.or([eb('g.tenant_id', '=', tenantId), eb('g.tenant_id', 'is', null)]))
       .groupBy('g.id')
@@ -45,6 +54,8 @@ export const listGraphs = async (db: Db, tenantId: string): Promise<GraphSummary
     kind: r.kind,
     description: r.description,
     isSystem: r.tenant_id === null,
+    overrides: r.overrides,
+    overriddenBy: r.overridden_by,
     publishedVersion: r.published,
     draftVersion: r.draft,
     updatedAt: r.updated_at
@@ -167,7 +178,49 @@ export const listPublishedNodes = (db: Db, tenantId: string) =>
       sql<GraphDef['signature']>`gv.definition -> 'signature'`.as('signature')
     ])
     .where('gv.published_at', 'is not', null)
-    .where((eb) => eb.or([eb('g.tenant_id', '=', tenantId), eb('g.tenant_id', 'is', null)]))
+    .where((eb) =>
+      eb.or([
+        eb('g.tenant_id', 'is', null),
+        eb.and([
+          eb('g.tenant_id', '=', tenantId),
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('graphs as s')
+                .select('s.id')
+                .whereRef('s.key', '=', 'g.key')
+                .where('s.tenant_id', 'is', null)
+            )
+          )
+        ])
+      ])
+    )
     .orderBy('g.key')
     .orderBy('gv.version', 'desc')
     .execute();
+
+export const findSystemGraph = (db: Db, key: string) =>
+  db
+    .selectFrom('graphs')
+    .select(['id', 'key', 'name', 'kind', 'description'])
+    .where('key', '=', key)
+    .where('tenant_id', 'is', null)
+    .executeTakeFirst();
+
+export const findLatestPublished = (db: Db, graphId: string) =>
+  db
+    .selectFrom('graph_versions')
+    .select(['id', 'version', 'definition'])
+    .where('graph_id', '=', graphId)
+    .where('published_at', 'is not', null)
+    .orderBy('version', 'desc')
+    .limit(1)
+    .executeTakeFirst();
+
+export const deleteGraph = (db: Db, tenantId: string, id: string) =>
+  db
+    .deleteFrom('graphs')
+    .where('id', '=', id)
+    .where('tenant_id', '=', tenantId)
+    .returning('id')
+    .executeTakeFirst();

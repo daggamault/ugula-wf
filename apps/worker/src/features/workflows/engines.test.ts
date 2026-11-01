@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { PublishedGraph } from '@ugula/db';
 import { createStdNodes, ENTRY_TYPE, type GraphDef } from '@ugula/graph';
-import { buildEngine, createEngineCache } from './engines.ts';
+import { buildEngine, bundleKey, createEngineCache } from './engines.ts';
 
 const def: GraphDef = {
   signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
@@ -47,23 +47,37 @@ describe('buildEngine', () => {
 });
 
 describe('createEngineCache', () => {
-  it('loads each version once, evicts least recently used, and forgets failures', async () => {
-    const loads: string[] = [];
+  it('reuses engines per pinned bundle, evicts least recently used, and forgets failures', async () => {
+    const loads: string[][] = [];
+    const bundles: Record<string, PublishedGraph[]> = {
+      a: rows,
+      b: rows.map((r) => (r.id === 'v-child' ? { ...r, id: 'v-override' } : r)),
+      bad: rows.map((r) => (r.id === 'v-child' ? { ...r, id: 'v-bad' } : r))
+    };
     const engines = createEngineCache({
       nodes,
       max: 1,
-      loadBundle: async (id) => {
-        loads.push(id);
-        if (id === 'bad') throw new Error('db down');
-        return rows.map((r) => (r.id === 'v-root' ? { ...r, id } : r));
+      loadRefs: async (runId) => (bundles[runId] ?? []).map(({ definition: _, ...ref }) => ref),
+      loadDefinitions: async (ids) => {
+        loads.push(ids);
+        if (ids.includes('v-root') && loads.length > 3) throw new Error('db down');
+        return rows.flatMap((r) =>
+          ids.includes(r.id)
+            ? [r]
+            : r.id === 'v-child' && ids.includes('v-override')
+              ? [{ ...r, id: 'v-override' }]
+              : []
+        );
       }
     });
-    await engines('a');
-    await engines('a');
-    await engines('b');
-    await engines('a');
-    await assert.rejects(() => engines('bad'), /db down/);
-    await assert.rejects(() => engines('bad'), /db down/);
-    assert.deepEqual(loads, ['a', 'b', 'a', 'bad', 'bad']);
+    const run = (id: string) => engines({ id, versionId: 'v-root' });
+    await run('a');
+    await run('a');
+    await run('b');
+    await run('a');
+    assert.equal(loads.length, 3);
+    await assert.rejects(() => run('bad'), /db down/);
+    assert.equal(loads.length, 4);
+    assert.equal(bundleKey('v', [{ id: 'x', key: 'k.a', version: 2 }]), 'v|k.a@2=x');
   });
 });

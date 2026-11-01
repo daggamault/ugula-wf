@@ -39,7 +39,7 @@ const setup = ({
     }
     if (q.sql.includes('from "claims" as "c"')) return row ? [row] : [];
     if (q.sql.includes('from "workflow_runs"')) return [{ id: 'r1', wait_id: '7' }];
-    if (q.sql.includes('from "graph_versions"'))
+    if (q.sql.includes('cross join lateral'))
       return published ? [{ id: 'v-cycle', key: 'billing.cycle-claim', version: 1 }] : [];
     if (q.sql.startsWith('insert into "workflow_runs"')) return [{ id: 'cycle-2' }];
     if (q.sql.includes('from "claim_events"') && q.sql.includes('"source_key" = $')) {

@@ -1,6 +1,6 @@
 import { createBillingNodes } from '@ugula/billing';
 import { createBlobStore, createS3Storage } from '@ugula/blobs';
-import { createDb, findGraphBundle } from '@ugula/db';
+import { createDb, findDefinitions, listRunGraphRefs } from '@ugula/db';
 import { publishEvent } from '@ugula/events';
 import { createStdNodes } from '@ugula/graph';
 import { createCompleter, createEmbedder } from '@ugula/inference';
@@ -74,7 +74,8 @@ if (import.meta.main) {
           })
         })
       ],
-      loadBundle: (versionId) => findGraphBundle(db, versionId)
+      loadRefs: (runId) => listRunGraphRefs(db, runId),
+      loadDefinitions: (ids) => findDefinitions(db, ids)
     }),
     now: () => new Date(),
     publish

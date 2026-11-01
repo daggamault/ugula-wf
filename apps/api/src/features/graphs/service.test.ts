@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db';
 import { createStdNodes, ENTRY_TYPE, type GraphDef } from '@ugula/graph';
 import type { CompiledQuery } from 'kysely';
-import { createGraphService, templateFor } from './service.ts';
+import { createGraphService, keepsContract, templateFor } from './service.ts';
 
 const nodes = createStdNodes({ fetch });
 
@@ -26,15 +26,22 @@ type Scenario = {
   owner: string | null;
   draft?: { id: string; version: number };
   definition?: GraphDef;
+  system?: GraphDef;
 };
 
 const rowsFor =
-  ({ owner, draft, definition }: Scenario) =>
+  ({ owner, draft, definition, system }: Scenario) =>
   (q: CompiledQuery): unknown[] => {
+    if (q.sql.includes('"tenant_id" is null') && q.sql.startsWith('select "id", "key"')) {
+      return system ? [{ id: 'g-sys', key: 'acme.flow', name: 'Flow', kind: 'node' }] : [];
+    }
+    if (q.sql.includes('"published_at" is not null') && q.sql.includes('limit')) {
+      return system ? [{ id: 'v-sys', version: 2, definition: system }] : [];
+    }
     if (q.sql.includes('from "graphs"') && q.sql.includes('"tenant_id" = $')) {
       return [{ id: 'g1', tenant_id: owner, key: 'acme.flow', name: 'Flow', kind: 'workflow' }];
     }
-    if (q.sql.includes('distinct on')) {
+    if (q.sql.includes('cross join lateral')) {
       return [{ id: 'v-thing', key: 'acme.thing', version: 2, definition: composite }];
     }
     if (q.sql.includes('for update')) return draft ? [draft] : [];
@@ -59,7 +66,7 @@ describe('graph service', () => {
       ok: true,
       value: { issues: [] }
     });
-    assert.ok(queries.some((q) => q.parameters.includes('acme.thing')));
+    assert.ok(queries.some((q) => JSON.stringify(q.parameters).includes('acme.thing')));
     const missing = await service.validate('t-1', {
       ...usesComposite,
       nodes: [...usesComposite.nodes, { id: 'z', type: 'acme.nope', version: 1 }]
@@ -139,7 +146,69 @@ describe('graph service', () => {
       value: { version: 3 }
     });
     const publish = clean.queries.find((q) => q.sql.includes('"published_at" = now()'));
-    assert.deepEqual(publish?.parameters[0], ['v-thing']);
+    assert.deepEqual(publish?.parameters[0], ['acme.thing@2']);
+  });
+
+  it('copies a system graph into a tenant override that must keep its contract', async () => {
+    const system = createRecordingDb(rowsFor({ owner: null, system: composite }));
+    assert.deepEqual(
+      await createGraphService({ db: system.db, nodes }).override('t-1', 'u-1', 'g1'),
+      { ok: true, value: { id: 'g-new' } }
+    );
+    const copied = system.queries.find((q) => q.sql.startsWith('insert into "graph_versions"'));
+    assert.equal(copied?.parameters[2], JSON.stringify(composite));
+
+    const own = createRecordingDb(rowsFor({ owner: 't-1', system: composite }));
+    const refused = await createGraphService({ db: own.db, nodes }).override('t-1', 'u-1', 'g1');
+    assert.equal(!refused.ok && refused.failure.code, 'conflict');
+
+    const changed: GraphDef = {
+      ...composite,
+      signature: { ...composite.signature, inputs: [{ name: 'y', type: 'number' }] }
+    };
+    const drifted = createRecordingDb(
+      rowsFor({
+        owner: 't-1',
+        draft: { id: 'd1', version: 1 },
+        definition: changed,
+        system: composite
+      })
+    );
+    const failed = await createGraphService({ db: drifted.db, nodes }).publish('t-1', 'g1');
+    assert.equal(!failed.ok && failed.failure.code, 'invalid');
+    assert.equal(
+      keepsContract(composite.signature, {
+        ...composite.signature,
+        inputs: [{ name: 'x', type: 'number', label: 'X' }]
+      }),
+      true
+    );
+
+    const blocked = await createGraphService({ db: own.db, nodes }).create('t-1', 'u-1', {
+      key: 'acme.flow',
+      name: 'Flow',
+      kind: 'node',
+      description: ''
+    });
+    assert.equal(!blocked.ok && blocked.failure.code, 'conflict');
+  });
+
+  it('removes tenant graphs unless runs still use them', async () => {
+    const used = createRecordingDb((q) => {
+      if (q.sql.startsWith('delete from "graphs"')) {
+        throw Object.assign(new Error('fk'), { code: '23503' });
+      }
+      return [];
+    });
+    const res = await createGraphService({ db: used.db, nodes }).remove('t-1', 'g1');
+    assert.equal(!res.ok && res.failure.code, 'conflict');
+    const gone = createRecordingDb((q) =>
+      q.sql.startsWith('delete from "graphs"') ? [{ id: 'g1' }] : []
+    );
+    assert.deepEqual(await createGraphService({ db: gone.db, nodes }).remove('t-1', 'g1'), {
+      ok: true,
+      value: { id: 'g1' }
+    });
   });
 
   it('reports duplicate keys as conflicts', async () => {

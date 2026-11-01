@@ -1,4 +1,4 @@
-import { type Db, findGraphBundle, sqlExecutor, TERMINAL_RUN_STATUSES } from '@ugula/db';
+import { type Db, findRunGraphs, sqlExecutor, TERMINAL_RUN_STATUSES } from '@ugula/db';
 import { cancel, enqueueRuns, type JobBoss } from '@ugula/jobs';
 import { fail, ok } from '../../shared/result.ts';
 import { signalRuns, startRun } from '../../shared/runs.ts';
@@ -39,7 +39,7 @@ export const createRunService = ({ db, boss }: RunServiceDeps) => ({
 
   graphs: async (tenantId: string, id: string) => {
     const run = await findRun(db, tenantId, id);
-    return run ? ok({ graphs: await findGraphBundle(db, run.version_id) }) : notFound;
+    return run ? ok({ graphs: await findRunGraphs(db, id) }) : notFound;
   },
 
   steps: async (tenantId: string, id: string, filters: StepFilters) =>

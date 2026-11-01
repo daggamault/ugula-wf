@@ -1,21 +1,26 @@
-import { type Db, findPublishedGraphs, type GraphKind } from '@ugula/db';
+import { type Db, dependencyOf, findPublishedGraphs, type GraphKind } from '@ugula/db';
 import {
   combineSources,
   createRegistry,
+  deepEqual,
   ENTRY_TYPE,
   type GraphDef,
   graphRefs,
   type NodeDef,
   RETURN_TYPE,
   refKey,
+  type Signature,
   stdGraphSource,
   validateGraph
 } from '@ugula/graph';
-import { isUniqueViolation } from '../../shared/http.ts';
+import { isForeignKeyViolation, isUniqueViolation } from '../../shared/http.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
+  deleteGraph,
   findDefinition,
   findGraph,
+  findLatestPublished,
+  findSystemGraph,
   findVersion,
   insertDraft,
   insertGraph,
@@ -60,6 +65,16 @@ export const templateFor = (kind: GraphKind): GraphDef => ({
 
 const notFound = fail('not_found', 'Graph not found');
 
+const contract = (s: Signature) => ({
+  execIn: s.execIn,
+  execOut: s.execOut,
+  inputs: s.inputs.map((p) => ({ name: p.name, type: p.type })),
+  outputs: s.outputs.map((p) => ({ name: p.name, type: p.type }))
+});
+
+export const keepsContract = (system: Signature, override: Signature) =>
+  deepEqual(contract(system), contract(override));
+
 export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
   const primitives = new Set(nodes.map(refKey));
 
@@ -75,7 +90,7 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
       nodes,
       combineSources(stdGraphSource, (ref) => byRef.get(refKey(ref)))
     );
-    return { issues: validateGraph(def, registry), dependencies: composites.map((c) => c.id) };
+    return { issues: validateGraph(def, registry), dependencies: composites.map(dependencyOf) };
   };
 
   const editable = async (tx: Db, tenantId: string, graphId: string) => {
@@ -104,6 +119,9 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
       ok({ issues: (await check(db, tenantId, def)).issues }),
 
     create: async (tenantId: string, userId: string, input: NewGraph) => {
+      if (await findSystemGraph(db, input.key)) {
+        return fail('conflict', 'A system graph uses that key; override it instead');
+      }
       try {
         return ok(
           await db.transaction().execute(async (tx) => {
@@ -143,6 +161,46 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
         return ok({ version, issues: (await check(tx, tenantId, def)).issues });
       }),
 
+    override: (tenantId: string, userId: string, graphId: string) =>
+      db.transaction().execute(async (tx) => {
+        const graph = await findGraph(tx, tenantId, graphId);
+        if (!graph) return notFound;
+        if (graph.tenant_id !== null)
+          return fail('conflict', 'Only system graphs can be overridden');
+        const latest = await findLatestPublished(tx, graph.id);
+        if (!latest) return fail('conflict', 'This graph has no published version to start from');
+        try {
+          const { id } = await insertGraph(tx, {
+            tenantId,
+            key: graph.key,
+            name: graph.name,
+            kind: graph.kind,
+            description: graph.description
+          });
+          await insertDraft(tx, {
+            graphId: id,
+            version: 1,
+            definition: latest.definition as GraphDef,
+            userId
+          });
+          return ok({ id });
+        } catch (err) {
+          if (isUniqueViolation(err)) return fail('conflict', 'This graph is already overridden');
+          throw err;
+        }
+      }),
+
+    remove: async (tenantId: string, graphId: string) => {
+      try {
+        return (await deleteGraph(db, tenantId, graphId)) ? ok({ id: graphId }) : notFound;
+      } catch (err) {
+        if (isForeignKeyViolation(err)) {
+          return fail('conflict', 'Runs still use this graph, so it cannot be removed');
+        }
+        throw err;
+      }
+    },
+
     publish: (tenantId: string, graphId: string) =>
       db.transaction().execute(async (tx) => {
         const graph = await editable(tx, tenantId, graphId);
@@ -155,6 +213,20 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
           await findDefinition(tx, draft.id)
         );
         if (issues.length) return fail('invalid', 'Fix the issues before publishing', { issues });
+        const system = await findSystemGraph(tx, graph.value.key);
+        const original = system && (await findLatestPublished(tx, system.id));
+        if (
+          original &&
+          !keepsContract(
+            (original.definition as GraphDef).signature,
+            (await findDefinition(tx, draft.id)).signature
+          )
+        ) {
+          return fail(
+            'invalid',
+            'An override must keep the inputs, outputs and exits of the graph it replaces'
+          );
+        }
         await publishVersion(tx, draft.id, dependencies);
         await touchGraph(tx, graphId);
         return ok({ version: draft.version });

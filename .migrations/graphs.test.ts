@@ -22,7 +22,7 @@ describe('graphs tables', () => {
   it('compiles immutable versioned definitions with one draft per graph', async () => {
     const db = createDummyDb();
     const tableSql = buildGraphVersionsTable(db).compile().sql;
-    assert.ok(tableSql.includes('"dependencies" uuid[] default \'{}\' not null'));
+    assert.ok(tableSql.includes('"dependencies" text[] default \'{}\' not null'));
     assert.ok(tableSql.includes('unique ("graph_id", "version")'));
     const draftSql = buildGraphVersionsDraftIndex(db).compile().sql;
     assert.ok(draftSql.includes('create unique index "idx_graph_versions_draft"'));

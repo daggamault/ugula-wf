@@ -86,3 +86,49 @@ describe('list nodes', () => {
     await assert.rejects(() => out('std.list.range', { end: 1_000_000 }), /at most/);
   });
 });
+
+describe('field list nodes', () => {
+  const lines = [
+    { code: 'A0425', units: 4, route: '9927021' },
+    { code: 'A0427', units: 1, route: null },
+    { code: 'A0398', units: 1, route: '9927023' }
+  ];
+  const node = (type: string) => {
+    const def = listNodes.find((d) => d.type === type);
+    if (!def) throw new Error(type);
+    return def;
+  };
+
+  it('plucks, filters, sorts and builds lists by field', async () => {
+    assert.deepEqual(
+      (await invokeNode(node('std.list.pluck'), { inputs: { list: lines, field: 'code' } }))
+        .outputs,
+      { list: ['A0425', 'A0427', 'A0398'] }
+    );
+    const where = await invokeNode(node('std.list.where'), {
+      inputs: { list: lines },
+      config: { field: 'route', op: 'oneOf', value: ['9927021', '9927023'] }
+    });
+    assert.equal(where.outputs.count, 2);
+    const sorted = await invokeNode(node('std.list.sort-by-field'), {
+      inputs: { list: lines, field: 'route', descending: true }
+    });
+    assert.deepEqual(
+      (sorted.outputs.list as { code: string }[]).map((l) => l.code),
+      ['A0398', 'A0425', 'A0427']
+    );
+    assert.deepEqual(
+      (
+        await invokeNode(node('std.list.make'), {
+          inputs: { item1: 'a', item3: 'c' },
+          config: { count: 3 }
+        })
+      ).outputs,
+      { list: ['a', 'c'] }
+    );
+    assert.deepEqual(
+      (await invokeNode(node('std.list.compact'), { inputs: { list: ['a', null, ''] } })).outputs,
+      { list: ['a'] }
+    );
+  });
+});

@@ -23,7 +23,9 @@ describe('graph queries', () => {
         tenant_id: null,
         updated_at: new Date(0),
         published: 2,
-        draft: 3
+        draft: 3,
+        overrides: false,
+        overridden_by: 'g2'
       }
     ]);
     assert.deepEqual(await listGraphs(db, 't-1'), [
@@ -34,6 +36,8 @@ describe('graph queries', () => {
         kind: 'node',
         description: '',
         isSystem: true,
+        overrides: false,
+        overriddenBy: 'g2',
         publishedVersion: 2,
         draftVersion: 3,
         updatedAt: new Date(0)

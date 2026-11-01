@@ -3,6 +3,8 @@ import {
   type Database,
   type Db,
   findPublishedGraphs,
+  pinRunGraphs,
+  pinRunsGraphs,
   type RunStatus,
   sqlExecutor,
   type TaskKind,
@@ -238,19 +240,20 @@ const createRunTx = (tx: Kysely<Database>, boss: JobBoss): RunTx => ({
   },
   findVersion: async (tenantId, key, version) =>
     (await findPublishedGraphs(tx, tenantId, [{ key, version }]))[0]?.id,
-  insertRun: async (tenantId, versionId, inputs) =>
-    (
-      await tx
-        .insertInto('workflow_runs')
-        .values({
-          tenant_id: tenantId,
-          graph_version_id: versionId,
-          status: 'running',
-          inputs: JSON.stringify(inputs)
-        })
-        .returning('id')
-        .executeTakeFirstOrThrow()
-    ).id,
+  insertRun: async (tenantId, versionId, inputs) => {
+    const { id } = await tx
+      .insertInto('workflow_runs')
+      .values({
+        tenant_id: tenantId,
+        graph_version_id: versionId,
+        status: 'running',
+        inputs: JSON.stringify(inputs)
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    await pinRunGraphs(tx, { id, tenantId, versionId });
+    return id;
+  },
   insertChildren: async (parent, waitId, versionId, inputs) => {
     const ids: string[] = [];
     for (let i = 0; i < inputs.length; i += CHILD_CHUNK) {
@@ -273,6 +276,7 @@ const createRunTx = (tx: Kysely<Database>, boss: JobBoss): RunTx => ({
         ...rows.sort((a, b) => (a.parent_index ?? 0) - (b.parent_index ?? 0)).map((r) => r.id)
       );
     }
+    await pinRunsGraphs(tx, { ids, tenantId: parent.tenantId, versionId });
     return ids;
   },
   lockParent: async (parentId) => {

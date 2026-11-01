@@ -23,6 +23,7 @@ export { messageOf } from './errors.ts';
 export { evaluateExpr, freeIdentifiers, parseExpr } from './expr.ts';
 export { checkField } from './fields.ts';
 export { deepEqual, getPath, isRecord, setPath, toText } from './json.ts';
+export { createModelNodes, type Model, type ModelField, modelType } from './models.ts';
 export { combineSources, createRegistry, isPure, type Registry } from './registry.ts';
 export {
   type FieldSpec,
@@ -33,6 +34,7 @@ export {
 } from './schemas.ts';
 export { stdGraphInfo, stdGraphSource, stdGraphs } from './std/composites.ts';
 export { createStdNodes, type StdDeps } from './std/index.ts';
+export { CONDITION_OPS, type Condition, type ConditionOp } from './std/tables.ts';
 export type * from './types.ts';
 export { type Issue, validateGraph } from './validate.ts';
 export { checkValue, formatType, isAssignable, parseType } from './value-types.ts';

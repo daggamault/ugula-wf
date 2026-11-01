@@ -90,6 +90,13 @@ export type WorkflowRunsTable = {
   completed_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
 };
 
+export type WorkflowRunGraphsTable = {
+  run_id: string;
+  key: string;
+  version: number;
+  graph_version_id: string;
+};
+
 export type SignalsTable = {
   tenant_id: string;
   key: string;
@@ -342,6 +349,7 @@ export type Database = {
   graph_versions: GraphVersionsTable;
   workflow_runs: WorkflowRunsTable;
   workflow_run_steps: WorkflowRunStepsTable;
+  workflow_run_graphs: WorkflowRunGraphsTable;
   signals: SignalsTable;
   tasks: TasksTable;
   patients: PatientsTable;
