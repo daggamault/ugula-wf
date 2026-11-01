@@ -7,7 +7,7 @@ describe('task schemas', () => {
   it('apply defaults and require queues and outcomes', () => {
     assert.deepEqual(v.parse(listTasksQuery, {}), {
       status: 'open',
-      mine: 'false',
+      assignee: 'anyone',
       page: 1,
       pageSize: 25,
       sort: 'waiting',
@@ -15,6 +15,7 @@ describe('task schemas', () => {
     });
     assert.deepEqual(v.parse(completeTaskSchema, { outcome: 'ok' }), { outcome: 'ok', values: {} });
     assert.equal(v.safeParse(nextTaskSchema, { queue: '' }).success, false);
+    assert.deepEqual(v.parse(nextTaskSchema, {}), { queue: null });
     assert.equal(v.safeParse(completeTaskSchema, { outcome: '' }).success, false);
   });
 });

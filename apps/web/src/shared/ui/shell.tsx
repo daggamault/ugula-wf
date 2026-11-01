@@ -23,6 +23,7 @@ export type ShellProps = {
   navItems: readonly NavItem[];
   userEmail: string;
   status?: ReactNode;
+  tools?: ReactNode;
   onSignOut: () => void;
   children?: ReactNode;
 };
@@ -35,10 +36,11 @@ const groupsOf = (items: readonly NavItem[]) => {
   return [...groups];
 };
 
-const NavHeader = ({ children }: { children?: ReactNode }) => (
+const NavHeader = ({ tools, children }: { tools?: ReactNode; children?: ReactNode }) => (
   <div className="flex h-16 shrink-0 items-center justify-between pr-3 pl-6">
     <Brand />
     <div className="flex items-center gap-1">
+      {tools}
       <ThemeToggle />
       {children}
     </div>
@@ -95,7 +97,7 @@ const NavMenu = ({ navItems, userEmail, status, onSignOut }: NavMenuProps) => (
   </div>
 );
 
-const TopNav = ({ path, ...menu }: NavMenuProps & { path: string }) => {
+const TopNav = ({ path, tools, ...menu }: NavMenuProps & { path: string; tools?: ReactNode }) => {
   const [openedAt, setOpenedAt] = useState<string | null>(null);
   const isOpen = openedAt === path;
   const menuId = useId();
@@ -121,7 +123,7 @@ const TopNav = ({ path, ...menu }: NavMenuProps & { path: string }) => {
 
   return (
     <header ref={headerRef} className="border-border bg-surface border-b lg:hidden">
-      <NavHeader>
+      <NavHeader tools={tools}>
         <IconButton
           label={isOpen ? 'Close Menu' : 'Open Menu'}
           icon={isOpen ? XIcon : MenuIcon}
@@ -137,7 +139,7 @@ const TopNav = ({ path, ...menu }: NavMenuProps & { path: string }) => {
   );
 };
 
-export const Shell = ({ path, children, ...menu }: ShellProps) => {
+export const Shell = ({ path, tools, children, ...menu }: ShellProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -147,14 +149,14 @@ export const Shell = ({ path, children, ...menu }: ShellProps) => {
   return (
     <div className="flex h-dvh overflow-hidden">
       <aside className="border-border bg-surface hidden w-72 shrink-0 flex-col border-r lg:flex">
-        <NavHeader />
+        <NavHeader tools={tools} />
         <NavMenu {...menu} />
       </aside>
       <div
         ref={scrollRef}
         className="relative flex min-h-0 min-w-0 flex-1 [scrollbar-gutter:stable] flex-col overflow-y-auto"
       >
-        <TopNav path={path} {...menu} />
+        <TopNav path={path} tools={tools} {...menu} />
         <main className="flex min-h-0 flex-1 flex-col">{children}</main>
       </div>
     </div>

@@ -183,10 +183,11 @@ export const TableRow = ({ children }: { children: ReactNode }) => (
   <tr className={classNamesOf(rowClasses, 'md:last:border-b-0')}>{positioned(children)}</tr>
 );
 
-type TableCellKind = 'text' | 'numeric' | 'date' | 'actions';
+type TableCellKind = 'text' | 'wrap' | 'numeric' | 'date' | 'actions';
 
 const cellKindClasses: Readonly<Record<TableCellKind, string>> = {
   text: 'md:whitespace-nowrap',
+  wrap: 'md:min-w-48 md:whitespace-normal',
   numeric: 'tabular-nums md:text-right md:whitespace-nowrap',
   date: 'tabular-nums md:whitespace-nowrap',
   actions: 'justify-end pt-1 md:w-px md:pt-3 md:whitespace-nowrap'
@@ -225,7 +226,9 @@ export const TableCell = ({
           {label}
         </span>
       ) : null}
-      <span className={classNamesOf('min-w-0 md:contents', label && 'text-right')}>{children}</span>
+      <span className={classNamesOf('min-w-0 md:contents', label && 'max-md:text-right')}>
+        {children}
+      </span>
     </td>
   );
 };

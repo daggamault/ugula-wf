@@ -49,7 +49,7 @@ describe('TaskView', () => {
     assert.ok(html.includes('ALS1'));
     assert.ok(html.includes('value="looks fine"'));
     assert.ok(html.includes('>Approve<') && html.includes('>Keep waiting<'));
-    assert.ok(html.includes('>Claim<'));
+    assert.ok(html.includes('Assign to me'));
     assert.ok(html.includes('href="/runs/r1"') && html.includes('Workflow progress'));
     assert.ok(html.includes('href="/tasks?queue=billing-review"'));
     assert.ok(html.includes('SOURCE PANEL'));
@@ -85,7 +85,7 @@ describe('TaskView', () => {
     assert.ok(fault.includes('Stuck at Price</h1>'));
     assert.ok(fault.includes('What went wrong'));
     assert.ok(fault.includes('Retry the failed step'));
-    assert.ok(fault.includes('>Release<'));
+    assert.ok(fault.includes('Unassign'));
     assert.ok(fault.includes('<option value="then">Then</option>'));
     const done = render(
       task({
@@ -115,7 +115,7 @@ describe('NextUp', () => {
     assert.ok(more.includes('“Approve”'));
     assert.ok(more.includes('2 more tasks are waiting in PCR review.'));
     assert.ok(more.includes('Next task'));
-    assert.ok(more.includes('Back to PCR review'));
+    assert.ok(more.includes('Back to Tasks'));
     const clear = next(0);
     assert.ok(clear.includes('PCR review is clear.'));
     assert.ok(!clear.includes('Next task'));

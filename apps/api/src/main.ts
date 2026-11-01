@@ -25,6 +25,8 @@ import { createGraphService } from './features/graphs/service.ts';
 import { createHealthRoutes } from './features/health/routes.ts';
 import { createImportRoutes, createSftpRoutes } from './features/imports/routes.ts';
 import { createImportService } from './features/imports/service.ts';
+import { createPatientRoutes } from './features/patients/routes.ts';
+import { createPatientService } from './features/patients/service.ts';
 import { createPayerRoutes } from './features/payers/routes.ts';
 import { createPayerService } from './features/payers/service.ts';
 import { createReportRoutes } from './features/reports/routes.ts';
@@ -90,6 +92,7 @@ export const createApp = ({ config, db, redis, boss, blobs, nodes, announce }: A
   app.route('/api/tasks', protect(createTaskRoutes(createTaskService({ db, boss, announce }))));
   app.route('/api/fees', protect(createFeeRoutes(createFeeService({ db }))));
   app.route('/api/payers', protect(createPayerRoutes(createPayerService({ db, announce }))));
+  app.route('/api/patients', protect(createPatientRoutes(createPatientService({ db }))));
   app.route(
     '/api/billing-profile',
     protect(createBillingProfileRoutes(createBillingProfileService({ db })))

@@ -14,6 +14,8 @@ describe('claim schemas', () => {
     });
     assert.equal(v.safeParse(listClaimsQuery, { sort: 'balance', dir: 'asc' }).success, true);
     assert.equal(v.safeParse(listClaimsQuery, { sort: 'payer' }).success, false);
+    assert.deepEqual(v.parse(listClaimsQuery, { status: 'all', q: ' smith ' }).q, 'smith');
+    assert.equal(v.safeParse(listClaimsQuery, { patientId: 'x' }).success, false);
   });
 
   it('accepts ordered unique payers', () => {

@@ -9,11 +9,13 @@ export type TaskSort = (typeof TASK_SORTS)[number];
 export const listTasksQuery = v.object({
   queue: v.optional(v.pipe(v.string(), v.nonEmpty())),
   status: v.optional(v.picklist(['open', 'completed', 'cancelled']), 'open'),
-  mine: v.optional(v.picklist(['true', 'false']), 'false'),
+  assignee: v.optional(v.picklist(['anyone', 'me', 'unassigned']), 'anyone'),
   ...pageEntries(TASK_SORTS, 'waiting', 'desc')
 });
 
-export const nextTaskSchema = v.object({ queue: v.pipe(v.string(), v.nonEmpty()) });
+export const nextTaskSchema = v.object({
+  queue: v.optional(v.nullable(v.pipe(v.string(), v.nonEmpty())), null)
+});
 
 export const completeTaskSchema = v.object({
   outcome: v.pipe(v.string(), v.nonEmpty()),

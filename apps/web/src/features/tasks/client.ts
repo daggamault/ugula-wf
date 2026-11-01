@@ -8,8 +8,13 @@ export type QueueSummary = {
   queue: string;
   open: number;
   unassigned: number;
+  mine: number;
   oldest: string;
 };
+
+export type Assignee = 'anyone' | 'me' | 'unassigned';
+
+export type TaskFilter = { queue: string | null; assignee: Assignee };
 
 export type TaskSummary = {
   id: string;
@@ -23,6 +28,7 @@ export type TaskSummary = {
   assignee_id: string | null;
   created_at: string;
   completed_at: string | null;
+  assignee_email?: string | null;
 };
 
 export type TaskDetail = TaskSummary & {
@@ -56,16 +62,15 @@ export type SourceReport = {
 
 export const createTasksClient = (api: Api) => ({
   queues: async () => (await api.get<{ queues: QueueSummary[] }>('/api/tasks/queues')).queues,
-  mine: (page: string) => api.get<Page<TaskSummary>>(`/api/tasks?mine=true&${page}`),
-  open: (queue: string | null, page: string) =>
+  list: ({ queue, assignee }: TaskFilter, page: string) =>
     api.get<Page<TaskSummary>>(
-      `/api/tasks?${queue ? `queue=${encodeURIComponent(queue)}&` : ''}${page}`
+      `/api/tasks?${queue ? `queue=${encodeURIComponent(queue)}&` : ''}${assignee === 'anyone' ? '' : `assignee=${assignee}&`}${page}`
     ),
   find: async (id: string) => (await api.get<{ task: TaskDetail }>(`/api/tasks/${id}`)).task,
-  next: async (queue: string) =>
+  next: async (queue: string | null) =>
     (await api.post<{ task: TaskDetail | null }>('/api/tasks/next', { queue })).task,
-  claim: (id: string) => api.post<{ status: string }>(`/api/tasks/${id}/claim`),
-  release: (id: string) => api.post<{ status: string }>(`/api/tasks/${id}/release`),
+  assign: (id: string) => api.post<{ status: string }>(`/api/tasks/${id}/claim`),
+  unassign: (id: string) => api.post<{ status: string }>(`/api/tasks/${id}/release`),
   complete: (id: string, outcome: string, values: Record<string, Json>) =>
     api.post<{ status: string }>(`/api/tasks/${id}/complete`, { outcome, values }),
   report: (id: string) => api.get<SourceReport>(`/api/imports/reports/${id}`)

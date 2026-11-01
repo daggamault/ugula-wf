@@ -39,7 +39,7 @@ export type TaskViewProps = {
   remaining: number | null;
   source?: ReactNode;
   onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
-  onAssign: (claim: boolean) => Promise<void>;
+  onAssign: (assign: boolean) => Promise<void>;
   onNext: () => Promise<void>;
 };
 
@@ -73,7 +73,7 @@ export const NextUp = ({
     <SectionPanel title="Done" accent="primary">
       <p className="flex items-center gap-2 text-sm">
         <CircleCheckBigIcon aria-hidden="true" className="text-success size-5" />“
-        {humanize(outcome)}” is recorded and the claim moves on.
+        {humanize(outcome)}” is recorded and the workflow continues.
       </p>
       <p className="text-surface-fg-muted text-sm">
         {remaining === null
@@ -97,7 +97,7 @@ export const NextUp = ({
           </Button>
         ) : null}
         <ButtonLink to={queuePath(queue)} variant="outline">
-          Back to {label}
+          Back to Tasks
         </ButtonLink>
       </div>
     </SectionPanel>
@@ -188,7 +188,8 @@ export const TaskView = ({
       setDone(outcome);
       notify({
         title: `${humanize(outcome)}: ${task.subject ?? task.title}`,
-        description: `Recorded in ${info.label}.`
+        description: `Recorded in ${info.label}.`,
+        action: { label: 'Open task', to: `/tasks/${task.id}` }
       });
     } catch (err) {
       setError(messageOf(err));
@@ -202,10 +203,10 @@ export const TaskView = ({
       await onAssign(isUnassigned);
       notify({
         intent: 'info',
-        title: isUnassigned ? 'Task claimed' : 'Task released',
+        title: isUnassigned ? 'Assigned to you' : 'Unassigned',
         description: isUnassigned
           ? 'Nobody else is handed this task while you work on it.'
-          : `It is back in ${info.label} for anyone to pick up.`
+          : 'Anyone can pick it up now.'
       });
     } catch (err) {
       setError(messageOf(err));
@@ -218,7 +219,7 @@ export const TaskView = ({
     <Page
       title={task.subject ?? task.title}
       backTo={queuePath(task.queue)}
-      backLabel={`Back to ${info.label}`}
+      backLabel="Back to Tasks"
       description={
         <span className="flex flex-wrap items-center gap-2">
           <Badge intent={isFault ? 'danger' : 'info'}>{info.label}</Badge>
@@ -247,7 +248,7 @@ export const TaskView = ({
               ) : (
                 <UndoIcon aria-hidden="true" className="size-4" />
               )}
-              {isUnassigned ? 'Claim' : 'Release'}
+              {isUnassigned ? 'Assign to me' : 'Unassign'}
             </Button>
           ) : null}
         </>
@@ -320,8 +321,8 @@ export const TaskPage = ({ client, live, taskId }: TaskPageProps) => {
       source={
         source.reportId ? <SourceReportPanel client={client} reportId={source.reportId} /> : null
       }
-      onAssign={async (claim) => {
-        await (claim ? client.claim(taskId) : client.release(taskId));
+      onAssign={async (assign) => {
+        await (assign ? client.assign(taskId) : client.unassign(taskId));
         task.reload();
       }}
       onComplete={async (outcome, values) => {

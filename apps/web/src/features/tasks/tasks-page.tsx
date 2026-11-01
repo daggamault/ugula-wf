@@ -1,104 +1,86 @@
-import { FileUpIcon, PlayIcon } from 'lucide-react';
+import { PlayIcon } from 'lucide-react';
+import { useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatAgo, formatDateTime } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
-import { Button, ButtonLink } from '../../shared/ui/button.tsx';
-import { EmptyState, EmptyText } from '../../shared/ui/empty-state.tsx';
+import { Button } from '../../shared/ui/button.tsx';
+import { EmptyState } from '../../shared/ui/empty-state.tsx';
 import { FilterPills } from '../../shared/ui/filter-pills.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
-import { Section } from '../../shared/ui/section-panel.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
-import { pageOf, useFilterHref, useTableState } from '../../shared/url-state.ts';
+import { useFilterHref, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
-import type { QueueSummary, TaskSummary, TasksClient } from './client.ts';
-import { byQueueOrder, queueInfo, queueSortKey } from './queues.ts';
+import type { Assignee, QueueSummary, TaskFilter, TaskSummary, TasksClient } from './client.ts';
+import { byQueueOrder, queueInfo } from './queues.ts';
 
 export type TasksPageProps = {
   client: TasksClient;
   live: Live;
-  queue: string | null;
+  me: string;
+  filter: TaskFilter;
 };
 
 const PATH = '/tasks';
 
-export const QUEUE_TABLE = {
-  prefix: 'queues',
-  sorts: { flow: 'asc', open: 'desc', oldest: 'asc' },
-  sort: 'flow'
-} as const;
+export const ASSIGNEES: readonly Assignee[] = ['anyone', 'me', 'unassigned'];
 
 export const TASK_TABLE = {
   sorts: { waiting: 'desc', task: 'asc', queue: 'asc', priority: 'desc' },
   sort: 'waiting'
 } as const;
 
-export const MINE_TABLE = { ...TASK_TABLE, prefix: 'mine' } as const;
+export const assigneeOf = (t: Pick<TaskSummary, 'assignee_id' | 'assignee_email'>, me: string) =>
+  t.assignee_id ? (t.assignee_email === me ? 'You' : (t.assignee_email ?? 'Someone')) : null;
 
-const QUEUE_VALUES = {
-  flow: (q: QueueSummary) => queueSortKey(q.queue),
-  open: (q: QueueSummary) => q.open,
-  oldest: (q: QueueSummary) => q.oldest
-};
-
-export const QueuesTable = ({
-  queues,
-  sorting,
-  onStart
+export const TaskTable = ({
+  tasks,
+  me,
+  sorting
 }: {
-  queues: readonly QueueSummary[];
+  tasks: readonly TaskSummary[];
+  me: string;
   sorting?: TableSorting;
-  onStart: (queue: string) => void;
 }) => (
   <Table
-    label="Work queues"
+    label="Tasks"
     {...(sorting ? { sorting } : {})}
     head={[
-      { label: 'Queue', sort: 'flow' },
-      { label: 'Open', isNumeric: true, sort: 'open' },
-      { label: 'Unclaimed', isNumeric: true },
-      { label: 'Oldest', sort: 'oldest' },
-      { label: 'Actions', isLabelHidden: true, isCompact: true }
+      { label: 'Task', sort: 'task' },
+      { label: 'Type', sort: 'queue' },
+      { label: 'Waiting', sort: 'waiting' },
+      { label: 'Assigned To', isSecondary: true }
     ]}
   >
-    {queues.map((q) => {
-      const info = queueInfo(q.queue);
+    {tasks.map((t) => {
+      const assignee = assigneeOf(t, me);
       return (
-        <TableRow key={q.queue}>
+        <TableRow key={t.id}>
           <TableCell>
-            <span className="flex max-w-xl flex-col gap-0.5 whitespace-normal">
-              <TextLink to={`${PATH}?queue=${encodeURIComponent(q.queue)}`}>{info.label}</TextLink>
-              {info.description ? (
-                <span className="text-surface-fg-muted text-xs font-normal">
-                  {info.description}
-                </span>
+            <span className="flex flex-col gap-0.5">
+              <TextLink to={`/tasks/${t.id}`}>{t.subject ?? t.title}</TextLink>
+              {t.subject ? (
+                <span className="text-surface-fg-muted text-xs font-normal">{t.title}</span>
               ) : null}
             </span>
           </TableCell>
-          <TableCell kind="numeric">
-            <span className="font-semibold">{q.open}</span>
-          </TableCell>
-          <TableCell kind="numeric" isMuted>
-            {q.unassigned}
+          <TableCell>
+            {t.kind === 'fault' ? (
+              <Badge intent="danger">{queueInfo(t.queue).label}</Badge>
+            ) : (
+              <span className="text-surface-fg-muted">{queueInfo(t.queue).label}</span>
+            )}
           </TableCell>
           <TableCell kind="date" isMuted>
-            <span title={formatDateTime(q.oldest)}>{formatAgo(q.oldest)}</span>
+            <span title={formatDateTime(t.created_at)}>{formatAgo(t.created_at)}</span>
           </TableCell>
-          <TableCell kind="actions">
-            <Button
-              size="sm"
-              tooltipSide="left"
-              disabledReason={q.unassigned ? undefined : 'Everything here is claimed by someone.'}
-              onClick={() => onStart(q.queue)}
-            >
-              <PlayIcon aria-hidden="true" className="size-4" />
-              Start
-            </Button>
+          <TableCell isSecondary isMuted={!assignee}>
+            {assignee ?? 'Nobody'}
           </TableCell>
         </TableRow>
       );
@@ -106,59 +88,19 @@ export const QueuesTable = ({
   </Table>
 );
 
-export const TaskTable = ({
-  label,
-  tasks,
-  sorting
-}: {
-  label: string;
-  tasks: readonly TaskSummary[];
-  sorting?: TableSorting;
-}) => (
-  <Table
-    label={label}
-    {...(sorting ? { sorting } : {})}
-    head={[
-      { label: 'Task', sort: 'task' },
-      { label: 'Queue', sort: 'queue' },
-      { label: 'Waiting', sort: 'waiting' },
-      { label: 'Status', isSecondary: true }
-    ]}
-  >
-    {tasks.map((t) => (
-      <TableRow key={t.id}>
-        <TableCell>
-          <span className="flex flex-col gap-0.5">
-            <TextLink to={`/tasks/${t.id}`}>{t.subject ?? t.title}</TextLink>
-            {t.subject ? (
-              <span className="text-surface-fg-muted text-xs font-normal">{t.title}</span>
-            ) : null}
-          </span>
-        </TableCell>
-        <TableCell isMuted>{queueInfo(t.queue).label}</TableCell>
-        <TableCell kind="date" isMuted>
-          <span title={formatDateTime(t.created_at)}>{formatAgo(t.created_at)}</span>
-        </TableCell>
-        <TableCell isSecondary>
-          {t.kind === 'fault' ? (
-            <Badge intent="danger">Stuck run</Badge>
-          ) : t.assignee_id ? (
-            <Badge intent="info">Claimed</Badge>
-          ) : (
-            <Badge>Unclaimed</Badge>
-          )}
-        </TableCell>
-      </TableRow>
-    ))}
-  </Table>
-);
+const count = (queues: readonly QueueSummary[], pick: (q: QueueSummary) => number) =>
+  queues.reduce((n, q) => n + pick(q), 0);
 
-export const queueFilters = (
+export const typeFilters = (
   queues: readonly QueueSummary[],
   selected: string | null,
   filterHref: (name: string, value: string | null) => string
 ) => [
-  { label: 'All', href: filterHref('queue', null), isSelected: selected === null },
+  {
+    label: `All (${count(queues, (q) => q.open)})`,
+    href: filterHref('queue', null),
+    isSelected: selected === null
+  },
   ...[...queues]
     .sort((a, b) => byQueueOrder(a.queue, b.queue))
     .map((q) => ({
@@ -168,101 +110,121 @@ export const queueFilters = (
     }))
 ];
 
-export const TasksPage = ({ client, live, queue }: TasksPageProps) => {
-  const queueTable = useTableState(PATH, QUEUE_TABLE);
-  const mineTable = useTableState(PATH, MINE_TABLE);
-  const openTable = useTableState(PATH, TASK_TABLE);
+export const assigneeFilters = (
+  queues: readonly QueueSummary[],
+  selected: Assignee,
+  filterHref: (name: string, value: string | null) => string
+) => {
+  const scoped = (pick: (q: QueueSummary) => number) => count(queues, pick);
+  const labels: Record<Assignee, string> = {
+    anyone: 'Anyone',
+    me: `Me (${scoped((q) => q.mine)})`,
+    unassigned: `Nobody (${scoped((q) => q.unassigned)})`
+  };
+  return ASSIGNEES.map((a) => ({
+    label: labels[a],
+    href: filterHref('assignee', a === 'anyone' ? null : a),
+    isSelected: a === selected
+  }));
+};
+
+export const TasksPage = ({ client, live, me, filter }: TasksPageProps) => {
+  const table = useTableState(PATH, TASK_TABLE);
   const filterHref = useFilterHref(PATH);
   const queues = useResource('task-queues', client.queues, 30_000);
-  const mine = useResource(
-    `my-tasks:${mineTable.apiQuery}`,
-    () => client.mine(mineTable.apiQuery),
+  const tasks = useResource(
+    `tasks:${filter.queue}:${filter.assignee}:${table.apiQuery}`,
+    () => client.list(filter, table.apiQuery),
     30_000
   );
-  const open = useResource(
-    `open-tasks:${queue}:${openTable.apiQuery}`,
-    () => client.open(queue, openTable.apiQuery),
-    30_000
-  );
+  const [starting, setStarting] = useState(false);
   const notify = useToast();
   useLive(
     live,
     (e) => e.kind === 'task',
     () => {
       queues.reload();
-      mine.reload();
-      open.reload();
+      tasks.reload();
     }
   );
 
-  const start = async (name: string) => {
+  const all = queues.data ?? [];
+  const inScope = filter.queue ? all.filter((q) => q.queue === filter.queue) : all;
+  const unassigned = count(inScope, (q) => q.unassigned);
+  const info = filter.queue ? queueInfo(filter.queue) : null;
+
+  const start = async () => {
+    setStarting(true);
     try {
-      const task = await client.next(name);
+      const task = await client.next(filter.queue);
       if (task) navigate(`/tasks/${task.id}`);
       else {
-        notify({ intent: 'info', title: `Nothing left in ${queueInfo(name).label}` });
+        notify({ intent: 'info', title: 'Someone else picked up the last task' });
         queues.reload();
       }
     } catch (err) {
-      notify({ intent: 'danger', title: 'Could not start the queue', description: messageOf(err) });
+      notify({ intent: 'danger', title: 'Could not start', description: messageOf(err) });
+    } finally {
+      setStarting(false);
     }
   };
-
-  const caughtUp = queues.data !== undefined && !queues.data.length;
-  const queuePage = queues.data ? pageOf(queues.data, queueTable, QUEUE_VALUES) : null;
 
   return (
     <Page
       title="Tasks"
-      description="Everything waiting on a person. Start a queue to work through it oldest first, or open any task below."
+      description="Decisions waiting on a person. Start working to take the oldest unassigned task, or open any task below."
+      actions={
+        all.length ? (
+          <Button
+            isPending={starting}
+            disabledReason={
+              queues.data && !unassigned ? 'Every task here is already assigned.' : undefined
+            }
+            onClick={() => void start()}
+          >
+            <PlayIcon aria-hidden="true" className="size-4" />
+            Start working
+          </Button>
+        ) : null
+      }
     >
       {queues.error ? <Alert>{queues.error.message}</Alert> : null}
-      {caughtUp ? (
-        <EmptyState
-          reason="clear"
-          title="You're All Caught Up"
-          action={
-            <ButtonLink to="/imports" variant="outline">
-              <FileUpIcon aria-hidden="true" className="size-4" />
-              Import reports
-            </ButtonLink>
-          }
-        >
-          New work shows up here as reports are imported. Drop a NEMSIS file anywhere in the app to
-          import one.
+      {queues.data && !all.length ? (
+        <EmptyState reason="clear" title="You're All Caught Up">
+          New tasks show up here as reports are imported and claims move through their payers.
         </EmptyState>
-      ) : queuePage ? (
-        <Section title="Queues" description="Each queue is one kind of decision.">
-          <QueuesTable queues={queuePage.items} sorting={queueTable} onStart={start} />
-          <Pagination label="Queues" total={queuePage.total} state={queueTable} />
-        </Section>
+      ) : queues.data ? (
+        <>
+          <div className="flex flex-col gap-3">
+            <FilterPills
+              label="Filter by type"
+              options={typeFilters(all, filter.queue, filterHref)}
+            />
+            <FilterPills
+              label="Filter by who it is assigned to"
+              options={assigneeFilters(inScope, filter.assignee, filterHref)}
+            />
+            {info?.description ? (
+              <p className="text-surface-fg-muted text-sm">{info.description}</p>
+            ) : null}
+          </div>
+          {tasks.error ? <Alert>{tasks.error.message}</Alert> : null}
+          {tasks.data?.items.length ? (
+            <>
+              <TaskTable tasks={tasks.data.items} me={me} sorting={table} />
+              <Pagination label="Tasks" total={tasks.data.total} state={table} />
+            </>
+          ) : tasks.loading ? (
+            <PageLoading />
+          ) : (
+            <EmptyState reason="noMatches" title="No Tasks Here">
+              Nothing matches these filters.
+            </EmptyState>
+          )}
+        </>
       ) : (
         <PageLoading />
       )}
-      {mine.data?.items.length ? (
-        <Section title="Claimed by Me" description="Tasks you started. Finish these first.">
-          <TaskTable label="Tasks claimed by me" tasks={mine.data.items} sorting={mineTable} />
-          <Pagination label="Claimed tasks" total={mine.data.total} state={mineTable} />
-        </Section>
-      ) : null}
-      {queues.data?.length ? (
-        <Section title="All Open Tasks" description="Sort by any column; the link keeps your view.">
-          <FilterPills
-            label="Filter by queue"
-            options={queueFilters(queues.data, queue, filterHref)}
-          />
-          {open.data?.items.length ? (
-            <>
-              <TaskTable label="Open tasks" tasks={open.data.items} sorting={openTable} />
-              <Pagination label="Open tasks" total={open.data.total} state={openTable} />
-            </>
-          ) : open.loading ? (
-            <PageLoading />
-          ) : (
-            <EmptyText reason="clear">Nothing open in this queue.</EmptyText>
-          )}
-        </Section>
-      ) : null}
     </Page>
   );
 };

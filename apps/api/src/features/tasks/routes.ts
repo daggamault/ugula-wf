@@ -8,15 +8,18 @@ import type { TaskService } from './service.ts';
 
 export const createTaskRoutes = (service: TaskService) =>
   new Hono<AuthEnv>()
-    .get('/queues', async (c) => respond(c, await service.queues(c.get('session').tenantId)))
+    .get('/queues', async (c) => {
+      const { tenantId, userId } = c.get('session');
+      return respond(c, await service.queues(tenantId, userId));
+    })
     .get('/', sValidator('query', listTasksQuery, invalidRequest), async (c) => {
       const { tenantId, userId } = c.get('session');
-      const { queue, status, mine, ...page } = c.req.valid('query');
+      const { queue, status, assignee, ...page } = c.req.valid('query');
       return respond(
         c,
         await service.list(tenantId, {
           ...(queue ? { queue } : {}),
-          ...(mine === 'true' ? { assigneeId: userId } : {}),
+          ...(assignee === 'anyone' ? {} : { assignee: { id: assignee === 'me' ? userId : null } }),
           status,
           ...page
         })

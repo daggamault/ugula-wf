@@ -11,6 +11,8 @@ export const batchSchema = v.object({
   )
 });
 
+export const pendingQuery = v.object({ claimId: v.optional(uuid) });
+
 export const manualSubmissionSchema = v.object({
   claimId: uuid,
   note: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(500)), '')

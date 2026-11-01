@@ -76,7 +76,11 @@ const openClaims = (db: Db, tenantId: string) =>
     .orderBy('c.created_at')
     .orderBy('c.id');
 
-export const listOpenClaims = (db: Db, tenantId: string) => openClaims(db, tenantId).execute();
+export const listOpenClaims = (db: Db, tenantId: string, claimId?: string) =>
+  (claimId
+    ? openClaims(db, tenantId).where('c.id', '=', claimId)
+    : openClaims(db, tenantId)
+  ).execute();
 
 export const lockOpenClaims = (db: Db, tenantId: string, ids: string[]) =>
   openClaims(db, tenantId).where('c.id', 'in', ids).forUpdate('c').execute();

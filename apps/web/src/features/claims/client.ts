@@ -4,6 +4,45 @@ import type { Page } from '../../shared/url-state.ts';
 
 export type ClaimStatus = 'open' | 'paid' | 'written_off' | 'collections';
 
+export type ClaimView = ClaimStatus | 'ready' | 'all';
+
+export type ClaimQuery = { status: ClaimStatus | 'all'; q: string; patientId?: string };
+
+export type PendingClaim = {
+  id: string;
+  pcrNumber: string | null;
+  patient: string;
+  serviceDate: string | null;
+  payer: string;
+  totalCents: number;
+  resubmission: boolean;
+  issues: string[];
+};
+
+export type Pending = {
+  issues: string[];
+  claims: PendingClaim[];
+};
+
+export type Batch = {
+  id: string;
+  control_number: number;
+  claim_count: number;
+  total_cents: number;
+  production: boolean;
+  created_at: string;
+  created_by_email: string | null;
+};
+
+const listQuery = ({ status, q, patientId }: ClaimQuery, page: string) => {
+  const filters = new URLSearchParams({
+    status,
+    ...(q.trim() ? { q: q.trim() } : {}),
+    ...(patientId ? { patientId } : {})
+  });
+  return `${filters}&${page}`;
+};
+
 export type CycleStatus =
   | 'running'
   | 'suspended'
@@ -114,8 +153,8 @@ export type ClaimResponseInput = {
 };
 
 export const createClaimsClient = (api: Api) => ({
-  list: (status: ClaimStatus, page: string) =>
-    api.get<Page<ClaimSummary>>(`/api/claims?status=${status}&${page}`),
+  list: (query: ClaimQuery, page: string) =>
+    api.get<Page<ClaimSummary>>(`/api/claims?${listQuery(query, page)}`),
   find: (id: string) =>
     api.get<{ claim: ClaimDetail; events: ClaimEvent[]; progress: ClaimProgress | null }>(
       `/api/claims/${id}`
@@ -128,7 +167,14 @@ export const createClaimsClient = (api: Api) => ({
     api.put<{ status: string }>(`/api/claims/${id}/billing-data`, data),
   restartCycle: (id: string) => api.post<{ runId: string }>(`/api/claims/${id}/restart-cycle`),
   recordResponse: (id: string, response: ClaimResponseInput) =>
-    api.post<{ balanceCents: number; duplicate: boolean }>(`/api/claims/${id}/responses`, response)
+    api.post<{ balanceCents: number; duplicate: boolean }>(`/api/claims/${id}/responses`, response),
+  pending: (claimId?: string) =>
+    api.get<Pending>(`/api/submissions/pending${claimId ? `?claimId=${claimId}` : ''}`),
+  batches: (page: string) => api.get<Page<Batch>>(`/api/submissions/batches?${page}`),
+  createBatch: async (claimIds: string[]) =>
+    (await api.post<{ batch: Batch }>('/api/submissions/batches', { claimIds })).batch,
+  markSubmitted: (claimId: string) => api.post('/api/submissions/manual', { claimId }),
+  fileUrl: (batchId: string) => api.href(`/api/submissions/batches/${batchId}/file`)
 });
 
 export type ClaimsClient = ReturnType<typeof createClaimsClient>;

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { newWork, workToast } from './work-alerts.ts';
 
-const q = (queue: string, open: number) => ({ queue, open, unassigned: open, oldest: '' });
+const q = (queue: string, open: number) => ({ queue, open, unassigned: open, mine: 0, oldest: '' });
 
 describe('newWork', () => {
   it('reports queues that grew since the last look, never on the first one', () => {

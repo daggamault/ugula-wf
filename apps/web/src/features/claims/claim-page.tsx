@@ -2,11 +2,15 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   ExternalLinkIcon,
+  FileCogIcon,
   FileTextIcon,
+  ListTodoIcon,
   PlusIcon,
   RotateCcwIcon,
   SaveIcon,
-  Trash2Icon
+  SendIcon,
+  Trash2Icon,
+  UserIcon
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
@@ -16,6 +20,7 @@ import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
+import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
@@ -31,7 +36,9 @@ import { pageOf, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { ClaimDataForm } from './claim-data-form.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
+import { BatchDownload } from './claims-page.tsx';
 import type {
+  Batch,
   BillingDataInput,
   ClaimCoverage,
   ClaimDetail,
@@ -420,103 +427,216 @@ export const describeProgress = (progress: ClaimProgress | null) => {
   if (!progress) return null;
   switch (progress.step) {
     case 'submit':
-      return `Ready for ${progress.coverage.payer}. It goes out in the next 837P batch from Submissions.`;
+      return `Ready to submit to ${progress.coverage.payer}.`;
     case 'await':
-      return `Waiting on ${progress.coverage.payer}. A follow-up task opens 30 days after submission.`;
+      return `Waiting on ${progress.coverage.payer}. A follow-up task opens if they have not answered 30 days after submission.`;
     case 'followUp':
-      return `${progress.coverage.payer} has not responded in 30 days. Follow up from the billing-followup queue.`;
+      return `${progress.coverage.payer} has not answered in 30 days. A payer follow-up task is waiting.`;
     case 'statement':
       return `Sending patient statement ${progress.statement} of 3.`;
     case 'awaitPatient':
       return 'Waiting on the patient. The next statement goes out 30 days after the last one.';
     case 'collections':
-      return 'All payers and statements are done. Decide on the balance from the billing-collections queue.';
+      return 'Every payer and patient statement is done. A collections task is waiting for a decision on the balance.';
     case 'closed':
       return 'Paid in full. Closing.';
   }
 };
 
+const TASK_QUEUES: Partial<Record<ClaimProgress['step'], string>> = {
+  followUp: 'billing-followup',
+  collections: 'billing-collections'
+};
+
+export type CycleState = {
+  intent: Intent;
+  text: string;
+  stopped: boolean;
+  restartable: boolean;
+  submittable: boolean;
+  tasks: string | null;
+};
+
 export const describeCycle = (
   claim: Pick<ClaimDetail, 'status' | 'cycle_status'>,
   progress: ClaimProgress | null
-): { intent: Intent; text: string; stopped: boolean; restartable: boolean } | null => {
+): CycleState | null => {
   if (claim.status !== 'open') return null;
+  const base = { stopped: true, submittable: false, tasks: null };
   switch (claim.cycle_status) {
     case null:
       return {
+        ...base,
         intent: 'warning',
         text: 'No payer cycle is running for this claim.',
-        stopped: true,
         restartable: true
       };
     case 'failed':
     case 'cancelled':
       return {
+        ...base,
         intent: 'danger',
         text: `The payer cycle ${claim.cycle_status === 'failed' ? 'failed' : 'was cancelled'}, so nothing more will happen on this claim until it is restarted.`,
-        stopped: true,
         restartable: true
       };
     case 'faulted':
       return {
+        ...base,
         intent: 'danger',
-        text: 'The payer cycle is stuck on an error. Resolve it from the exceptions queue.',
-        stopped: true,
-        restartable: false
+        text: 'The payer cycle hit an error. A stuck run task is waiting for a decision.',
+        restartable: false,
+        tasks: 'exceptions'
       };
     default: {
       const text = describeProgress(progress);
-      return text ? { intent: 'info', text, stopped: false, restartable: false } : null;
+      if (!text) return null;
+      const step = progress?.step;
+      return {
+        intent: step === 'submit' ? 'primary' : 'info',
+        text,
+        stopped: false,
+        restartable: false,
+        submittable: step === 'submit',
+        tasks: (step && TASK_QUEUES[step]) ?? null
+      };
     }
   }
+};
+
+export type Submission = {
+  issues: readonly string[] | null;
+  made: Batch | null;
+  fileUrl: (batchId: string) => string;
+  onCreateFile: () => Promise<void>;
+  onMarkSubmitted: () => Promise<void>;
+};
+
+const SubmitActions = ({ payer, submission }: { payer: string; submission: Submission }) => {
+  const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const blocked =
+    submission.issues === null
+      ? 'Checking the claim…'
+      : submission.issues.length
+        ? 'Fix the problems listed first.'
+        : undefined;
+  return (
+    <>
+      <Button
+        size="sm"
+        isPending={busy}
+        disabledReason={blocked}
+        onClick={async () => {
+          setBusy(true);
+          await submission.onCreateFile();
+          setBusy(false);
+        }}
+      >
+        <FileCogIcon aria-hidden="true" className="size-4" />
+        Create 837P file
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+        <SendIcon aria-hidden="true" className="size-4" />
+        Mark submitted
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        title="Mark as Submitted?"
+        confirmLabel="Mark submitted"
+        confirmIcon={SendIcon}
+        onClose={() => setConfirming(false)}
+        onConfirm={() => {
+          setConfirming(false);
+          void submission.onMarkSubmitted();
+        }}
+      >
+        Use this when the claim to {payer} went out another way, such as the clearinghouse portal or
+        paper. The payer clock starts now.
+      </ConfirmDialog>
+    </>
+  );
 };
 
 const CycleAlert = ({
   claim,
   progress,
+  submission,
   onRestart
 }: {
   claim: ClaimDetail;
   progress: ClaimProgress | null;
+  submission: Submission | undefined;
   onRestart: () => Promise<void>;
 }) => {
   const [restarting, setRestarting] = useState(false);
   const status = describeCycle(claim, progress);
-  if (!status) return null;
-  const runLink = status.stopped && claim.cycle_run_id ? claim.cycle_run_id : null;
-  return (
+  const made = submission?.made;
+  const notice = made ? (
     <Alert
-      intent={status.intent}
-      action={
-        runLink || status.restartable ? (
-          <>
-            {runLink ? (
-              <ButtonLink to={`/runs/${runLink}`} variant="outline" size="sm">
-                <ExternalLinkIcon aria-hidden="true" className="size-4" />
-                Open the cycle run
-              </ButtonLink>
-            ) : null}
-            {status.restartable ? (
-              <Button
-                variant="outline"
-                size="sm"
-                isPending={restarting}
-                onClick={async () => {
-                  setRestarting(true);
-                  await onRestart();
-                  setRestarting(false);
-                }}
-              >
-                <RotateCcwIcon aria-hidden="true" className="size-4" />
-                Restart payer cycle
-              </Button>
-            ) : null}
-          </>
-        ) : undefined
-      }
+      intent="success"
+      action={<BatchDownload batch={made} href={submission.fileUrl(made.id)} />}
     >
-      {status.text}
+      837P file #{made.control_number} is ready. Upload it to your clearinghouse.
     </Alert>
+  ) : null;
+  if (!status) return notice;
+  const runLink = status.stopped && claim.cycle_run_id ? claim.cycle_run_id : null;
+  const payer = progress && 'coverage' in progress ? progress.coverage.payer : '';
+  const issues = status.submittable ? (submission?.issues ?? []) : [];
+  const actions = (
+    <>
+      {status.submittable && submission ? (
+        <SubmitActions payer={payer} submission={submission} />
+      ) : null}
+      {status.tasks ? (
+        <ButtonLink
+          to={`/tasks?queue=${encodeURIComponent(status.tasks)}`}
+          variant="outline"
+          size="sm"
+        >
+          <ListTodoIcon aria-hidden="true" className="size-4" />
+          Open tasks
+        </ButtonLink>
+      ) : null}
+      {runLink ? (
+        <ButtonLink to={`/runs/${runLink}`} variant="outline" size="sm">
+          <ExternalLinkIcon aria-hidden="true" className="size-4" />
+          Open the cycle run
+        </ButtonLink>
+      ) : null}
+      {status.restartable ? (
+        <Button
+          variant="outline"
+          size="sm"
+          isPending={restarting}
+          onClick={async () => {
+            setRestarting(true);
+            await onRestart();
+            setRestarting(false);
+          }}
+        >
+          <RotateCcwIcon aria-hidden="true" className="size-4" />
+          Restart payer cycle
+        </Button>
+      ) : null}
+    </>
+  );
+  return (
+    <>
+      {notice}
+      <Alert intent={status.intent} action={actions}>
+        <span className="flex flex-col gap-1">
+          {status.text}
+          {issues.length ? (
+            <ul className="list-disc pl-4 text-sm">
+              {issues.map((issue) => (
+                <li key={issue}>{issue}</li>
+              ))}
+            </ul>
+          ) : null}
+        </span>
+      </Alert>
+    </>
   );
 };
 
@@ -529,6 +649,7 @@ export const ClaimView = ({
   onRestart,
   onSaveData,
   documentUrl,
+  submission,
   error = ''
 }: {
   claim: ClaimDetail;
@@ -539,6 +660,7 @@ export const ClaimView = ({
   onRestart: () => Promise<void>;
   onSaveData: (data: BillingDataInput) => Promise<boolean>;
   documentUrl: (eventId: string) => string;
+  submission?: Submission;
   error?: string;
 }) => {
   const closed = claim.status !== 'open';
@@ -552,12 +674,18 @@ export const ClaimView = ({
       description={
         <span className="flex flex-wrap items-center gap-2">
           <ClaimStatusBadge status={claim.status} />
-          <span>{claim.pcr_number ?? 'No PCR number'}</span>
+          <span>{claim.pcr_number ? `PCR ${claim.pcr_number}` : 'No PCR number'}</span>
         </span>
+      }
+      actions={
+        <ButtonLink to={`/patients/${claim.patient_id}`} variant="outline" size="sm">
+          <UserIcon aria-hidden="true" className="size-4" />
+          Patient
+        </ButtonLink>
       }
     >
       {error ? <Alert>{error}</Alert> : null}
-      <CycleAlert claim={claim} progress={progress} onRestart={onRestart} />
+      <CycleAlert claim={claim} progress={progress} submission={submission} onRestart={onRestart} />
       <SectionPanel
         title="Summary"
         description="What was billed, what is still owed, and the transport it covers."
@@ -620,14 +748,27 @@ export const ClaimPage = ({ client, live, claimId }: ClaimPageProps) => {
       (e.kind === 'run' && e.id === cycleRun),
     detail.reload
   );
+  const submittable = detail.data?.progress?.step === 'submit';
+  const pending = useResource(`claim:${claimId}:pending:${submittable}`, () =>
+    submittable ? client.pending(claimId) : Promise.resolve(null)
+  );
   const [error, setError] = useState('');
+  const [made, setMade] = useState<Batch | null>(null);
   const notify = useToast();
+  const patient = detail.data
+    ? `${detail.data.claim.last_name}, ${detail.data.claim.first_name}`
+    : '';
   const act = async (action: () => Promise<unknown>, done: string) => {
     setError('');
     try {
       await action();
       detail.reload();
-      notify({ title: done });
+      pending.reload();
+      notify({
+        title: done,
+        description: patient,
+        action: { label: 'Open claim', to: `/claims/${claimId}` }
+      });
       return true;
     } catch (err) {
       setError(messageOf(err));
@@ -654,6 +795,18 @@ export const ClaimPage = ({ client, live, claimId }: ClaimPageProps) => {
       documentUrl={(eventId) => client.documentUrl(claimId, eventId)}
       onRestart={async () => {
         await act(() => client.restartCycle(claimId), 'Payer cycle restarted');
+      }}
+      submission={{
+        issues: pending.data?.claims[0]?.issues ?? (pending.data ? [] : null),
+        made,
+        fileUrl: client.fileUrl,
+        onCreateFile: async () => {
+          setMade(null);
+          await act(async () => setMade(await client.createBatch([claimId])), '837P file created');
+        },
+        onMarkSubmitted: async () => {
+          await act(() => client.markSubmitted(claimId), 'Marked submitted');
+        }
       }}
     />
   );

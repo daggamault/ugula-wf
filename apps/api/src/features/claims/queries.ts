@@ -7,7 +7,13 @@ import type { ClaimSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
-export type ClaimFilters = PageRequest<ClaimSort> & { status: ClaimStatus };
+export type ClaimFilters = PageRequest<ClaimSort> & {
+  status: ClaimStatus | 'all';
+  q?: string | undefined;
+  patientId?: string | undefined;
+};
+
+const escapeLike = (s: string) => s.replace(/[\\%_]/g, '\\$&');
 
 export type ClaimResponse = {
   requestId: string;
@@ -55,8 +61,26 @@ const CLAIM_ORDER = {
   balance: sql.ref('b.balance_cents')
 };
 
-export const listClaims = (db: Db, tenantId: string, f: ClaimFilters) =>
-  paged(claimRows(db, tenantId).where('c.status', '=', f.status), f, CLAIM_ORDER, sql.ref('c.id'));
+export const listClaims = (db: Db, tenantId: string, f: ClaimFilters) => {
+  let q = claimRows(db, tenantId);
+  if (f.status !== 'all') q = q.where('c.status', '=', f.status);
+  if (f.patientId) q = q.where('c.patient_id', '=', f.patientId);
+  const words =
+    f.q
+      ?.toLowerCase()
+      .split(/[\s,]+/)
+      .filter(Boolean) ?? [];
+  for (const word of words) {
+    const like = `%${escapeLike(word)}%`;
+    q = q.where((eb) =>
+      eb.or([
+        eb(sql`lower(p.last_name || ' ' || p.first_name)`, 'like', like),
+        eb(sql`lower(coalesce(c.pcr_number, ''))`, 'like', like)
+      ])
+    );
+  }
+  return paged(q, f, CLAIM_ORDER, sql.ref('c.id'));
+};
 
 export const findClaim = (db: Db, tenantId: string, id: string) =>
   claimRows(db, tenantId)

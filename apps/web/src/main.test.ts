@@ -17,8 +17,8 @@ describe('web composition root', () => {
       'imports',
       'fees',
       'claims',
+      'patients',
       'settings',
-      'submissions',
       'reports'
     ]);
     await clients.workflows.list();

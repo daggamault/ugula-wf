@@ -48,7 +48,7 @@ export const ImportHistory = ({
   sorting?: TableSorting;
 }) => (
   <Table
-    label="Recent imports"
+    label="Imports"
     {...(sorting ? { sorting } : {})}
     head={[
       { label: 'File', sort: 'file' },

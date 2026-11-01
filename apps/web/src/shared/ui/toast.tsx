@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState
 } from 'react';
@@ -42,7 +43,79 @@ const ToastContext = createContext<Notify>(() => undefined);
 
 export const useToast = () => useContext(ToastContext);
 
-const accentClasses: Readonly<Record<Intent, string>> = {
+export type Notification = ToastInput & { id: string; at: string; read: boolean };
+
+export const NOTIFICATION_LIMIT = 50;
+
+export const recordNotification = (
+  list: readonly Notification[],
+  notification: Notification
+): Notification[] =>
+  [notification, ...list.filter((n) => keyOf(n) !== keyOf(notification))].slice(
+    0,
+    NOTIFICATION_LIMIT
+  );
+
+const isNotification = (x: unknown): x is Notification =>
+  typeof x === 'object' &&
+  x !== null &&
+  typeof (x as Notification).id === 'string' &&
+  typeof (x as Notification).title === 'string' &&
+  typeof (x as Notification).at === 'string';
+
+export const readNotifications = (raw: string | null): Notification[] => {
+  try {
+    const parsed: unknown = JSON.parse(raw ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter(isNotification).slice(0, NOTIFICATION_LIMIT) : [];
+  } catch {
+    return [];
+  }
+};
+
+export type Notifications = {
+  items: readonly Notification[];
+  markAllRead: () => void;
+  clear: () => void;
+};
+
+const NotificationsContext = createContext<Notifications>({
+  items: [],
+  markAllRead: () => undefined,
+  clear: () => undefined
+});
+
+export const useNotifications = () => useContext(NotificationsContext);
+
+const storageOf = () => (typeof localStorage === 'undefined' ? null : localStorage);
+
+const useNotificationLog = (storageKey: string | undefined) => {
+  const [items, setItems] = useState<Notification[]>(() =>
+    storageKey ? readNotifications(storageOf()?.getItem(storageKey) ?? null) : []
+  );
+  useEffect(() => {
+    if (storageKey) storageOf()?.setItem(storageKey, JSON.stringify(items));
+  }, [storageKey, items]);
+  const record = useCallback((toast: ToastInput) => {
+    const notification = {
+      ...toast,
+      id: crypto.randomUUID(),
+      at: new Date().toISOString(),
+      read: false
+    };
+    setItems((list) => recordNotification(list, notification));
+  }, []);
+  const markAllRead = useCallback(
+    () =>
+      setItems((list) =>
+        list.some((n) => !n.read) ? list.map((n) => ({ ...n, read: true })) : list
+      ),
+    []
+  );
+  const clear = useCallback(() => setItems([]), []);
+  return { items, record, markAllRead, clear };
+};
+
+export const accentClasses: Readonly<Record<Intent, string>> = {
   primary: 'text-primary',
   success: 'text-success',
   info: 'text-info',
@@ -117,22 +190,36 @@ export const Toaster = ({
   </section>
 );
 
-export const ToastProvider = ({ children }: { children?: ReactNode }) => {
+export const ToastProvider = ({
+  storageKey,
+  children
+}: {
+  storageKey?: string;
+  children?: ReactNode;
+}) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const { items, record, markAllRead, clear } = useNotificationLog(storageKey);
   const seq = useRef(0);
-  const notify = useCallback<Notify>((toast) => {
-    seq.current += 1;
-    const id = seq.current;
-    setToasts((list) => addToast(list, { ...toast, id }));
-  }, []);
+  const notify = useCallback<Notify>(
+    (toast) => {
+      seq.current += 1;
+      const id = seq.current;
+      setToasts((list) => addToast(list, { ...toast, id }));
+      record(toast);
+    },
+    [record]
+  );
+  const notifications = useMemo(() => ({ items, markAllRead, clear }), [items, markAllRead, clear]);
   const dismiss = useCallback(
     (id: number) => setToasts((list) => list.filter((t) => t.id !== id)),
     []
   );
   return (
     <ToastContext value={notify}>
-      {children}
-      <Toaster toasts={toasts} onDismiss={dismiss} />
+      <NotificationsContext value={notifications}>
+        {children}
+        <Toaster toasts={toasts} onDismiss={dismiss} />
+      </NotificationsContext>
     </ToastContext>
   );
 };

@@ -128,7 +128,7 @@ describe('describeProgress', () => {
     );
     assert.match(
       describeProgress({ step: 'followUp', coverage: medicare, balanceCents: 1 }) ?? '',
-      /billing-followup/
+      /follow-up task is waiting/
     );
     assert.equal(
       describeProgress({ step: 'statement', statement: 2, balanceCents: 1 }),
@@ -153,7 +153,7 @@ describe('describeCycle', () => {
     );
     assert.match(
       describeCycle({ status: 'open', cycle_status: 'faulted' }, waiting)?.text ?? '',
-      /exceptions queue/
+      /stuck run task/
     );
     assert.equal(describeCycle({ status: 'open', cycle_status: null }, null)?.intent, 'warning');
     assert.equal(describeCycle({ status: 'paid', cycle_status: 'completed' }, null), null);
@@ -232,7 +232,9 @@ describe('ClaimView', () => {
     const html = render({ cycle_status: 'failed' });
     assert.ok(html.includes('href="/runs/cycle-1"'));
     assert.ok(html.includes('>Restart payer cycle<'));
-    assert.ok(!render({ cycle_status: 'faulted' }).includes('Restart payer cycle'));
+    const faulted = render({ cycle_status: 'faulted' });
+    assert.ok(!faulted.includes('Restart payer cycle'));
+    assert.ok(faulted.includes('href="/tasks?queue=exceptions"'));
   });
 
   it('locks editing once the claim is closed', () => {
@@ -240,5 +242,43 @@ describe('ClaimView', () => {
     assert.ok(html.includes('>Paid<'));
     assert.ok(html.includes('The patient will be billed directly'));
     assert.equal(html.match(/<fieldset disabled=""/g)?.length, 3);
+  });
+});
+
+describe('ClaimView submission', () => {
+  const submission = (issues: string[] | null) => ({
+    issues,
+    made: null,
+    fileUrl: (id: string) => `/files/${id}`,
+    onCreateFile: async () => undefined,
+    onMarkSubmitted: async () => undefined
+  });
+  const view = (issues: string[] | null) =>
+    renderToStaticMarkup(
+      createElement(ClaimView, {
+        claim,
+        events: [],
+        progress: { step: 'submit', coverage: medicare, balanceCents: 1 },
+        onSavePayers: async () => undefined,
+        onRecord: async () => true,
+        onRestart: async () => undefined,
+        onSaveData: async () => true,
+        documentUrl: () => '',
+        submission: submission(issues)
+      })
+    );
+
+  it('submits a ready claim from its own page and links its patient', () => {
+    const html = view([]);
+    assert.ok(html.includes('Ready to submit to Medicare.'));
+    assert.ok(html.includes('Create 837P file') && html.includes('Mark submitted'));
+    assert.ok(!html.includes('Fix the problems listed first.'));
+    assert.ok(html.includes('href="/patients/p1"'));
+  });
+
+  it('lists what blocks the 837P file', () => {
+    const html = view(['Add the member ID']);
+    assert.ok(html.includes('<li>Add the member ID</li>'));
+    assert.ok(html.includes('Fix the problems listed first.'));
   });
 });

@@ -153,6 +153,6 @@ describe('task service', () => {
         'on ir.report ->> \'key\' = r.inputs -> \'report\' ->> \'key\' left join "claims" as "c" on "c"."tenant_id" = "r"."tenant_id" and ("c"."import_report_id" = "ir"."id" or c.id::text = r.inputs ->> \'claimId\')'
       )
     );
-    assert.equal((await service.queues('t')).ok, true);
+    assert.equal((await service.queues('t', 'u1')).ok, true);
   });
 });

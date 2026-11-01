@@ -29,12 +29,12 @@ const request = withSession(createTaskRoutes(service));
 
 describe('task routes', () => {
   it('list my tasks in a queue', async () => {
-    await request('/?mine=true&queue=billing');
+    await request('/?assignee=me&queue=billing');
     assert.deepEqual(calls.at(-1), [
       't-1',
       {
         queue: 'billing',
-        assigneeId: 'u-1',
+        assignee: { id: 'u-1' },
         status: 'open',
         page: 1,
         pageSize: 25,
@@ -43,11 +43,17 @@ describe('task routes', () => {
       }
     ]);
     assert.equal((await request('/queues')).status, 200);
+    assert.deepEqual(calls.at(-1), ['t-1', 'u-1']);
+    await request('/?assignee=unassigned');
+    const [, filters] = calls.at(-1) ?? [];
+    assert.deepEqual((filters as { assignee: unknown }).assignee, { id: null });
   });
 
   it('hand out work and claim tasks as the session user', async () => {
     await request('/next', { method: 'POST', body: '{"queue":"billing"}' });
     assert.deepEqual(calls.at(-1), ['t-1', 'billing', 'u-1']);
+    await request('/next', { method: 'POST', body: '{}' });
+    assert.deepEqual(calls.at(-1), ['t-1', null, 'u-1']);
     await request(`/${ID}/claim`, { method: 'POST' });
     assert.deepEqual(calls.at(-1), ['t-1', ID, 'u-1']);
     assert.equal((await request(`/${ID}/release`, { method: 'POST' })).status, 409);

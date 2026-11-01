@@ -6,10 +6,10 @@ import { createAuthClient } from './features/auth/client.ts';
 import { createClaimsClient } from './features/claims/client.ts';
 import { createFeesClient } from './features/fees/client.ts';
 import { createImportsClient } from './features/imports/client.ts';
+import { createPatientsClient } from './features/patients/client.ts';
 import { createReportsClient } from './features/reports/client.ts';
 import { createRunsClient } from './features/runs/client.ts';
 import { createSettingsClient } from './features/settings/client.ts';
-import { createSubmissionsClient } from './features/submissions/client.ts';
 import { createTasksClient } from './features/tasks/client.ts';
 import { createWorkflowsClient } from './features/workflows/client.ts';
 import { createApi } from './shared/api.ts';
@@ -26,8 +26,8 @@ export const createClients = (config: Config, fetchFn: typeof fetch = fetch): Ap
     imports: createImportsClient(api),
     fees: createFeesClient(api),
     claims: createClaimsClient(api),
+    patients: createPatientsClient(api),
     settings: createSettingsClient(api),
-    submissions: createSubmissionsClient(api),
     reports: createReportsClient(api)
   };
 };

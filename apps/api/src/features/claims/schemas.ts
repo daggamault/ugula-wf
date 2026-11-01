@@ -10,7 +10,9 @@ export const CLAIM_SORTS = ['created', 'service', 'patient', 'pcr', 'total', 'ba
 export type ClaimSort = (typeof CLAIM_SORTS)[number];
 
 export const listClaimsQuery = v.object({
-  status: v.optional(v.picklist(['open', 'paid', 'written_off', 'collections']), 'open'),
+  status: v.optional(v.picklist(['open', 'paid', 'written_off', 'collections', 'all']), 'open'),
+  q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(100))),
+  patientId: v.optional(uuid),
   ...pageEntries(CLAIM_SORTS, 'created', 'desc')
 });
 

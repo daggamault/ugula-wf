@@ -8,7 +8,7 @@ type Db = Kysely<Database>;
 export type TaskFilters = PageRequest<TaskSort> & {
   queue?: string;
   status: TaskStatus;
-  assigneeId?: string;
+  assignee?: { id: string | null };
 };
 
 const summary = [
@@ -37,13 +37,14 @@ const detail = [
   'completed_by'
 ] as const;
 
-export const listQueues = (db: Db, tenantId: string) =>
+export const listQueues = (db: Db, tenantId: string, userId: string) =>
   db
     .selectFrom('tasks')
     .select([
       'queue',
       sql<number>`count(*)::int`.as('open'),
       sql<number>`(count(*) filter (where assignee_id is null))::int`.as('unassigned'),
+      sql<number>`(count(*) filter (where assignee_id = ${userId}))::int`.as('mine'),
       sql<Date>`min(created_at)`.as('oldest')
     ])
     .where('tenant_id', '=', tenantId)
@@ -63,10 +64,18 @@ export const listTasks = (db: Db, tenantId: string, f: TaskFilters) => {
   let q = db
     .selectFrom('tasks')
     .select(summary)
+    .select(
+      sql<string | null>`(select u.email from users u where u.id = tasks.assignee_id)`.as(
+        'assignee_email'
+      )
+    )
     .where('tenant_id', '=', tenantId)
     .where('status', '=', f.status);
   if (f.queue) q = q.where('queue', '=', f.queue);
-  if (f.assigneeId) q = q.where('assignee_id', '=', f.assigneeId);
+  if (f.assignee) {
+    const { id } = f.assignee;
+    q = id ? q.where('assignee_id', '=', id) : q.where('assignee_id', 'is', null);
+  }
   return paged(q, f, TASK_ORDER, sql.ref('id'));
 };
 
@@ -98,24 +107,24 @@ export const findTaskSource = (db: Db, runId: string) =>
     .where('r.id', '=', runId)
     .executeTakeFirst();
 
-export const claimNext = (db: Db, tenantId: string, queue: string, userId: string) =>
+export const claimNext = (db: Db, tenantId: string, queue: string | null, userId: string) =>
   db
     .updateTable('tasks')
     .set({ assignee_id: userId, updated_at: sql`now()` })
-    .where('id', '=', (eb) =>
-      eb
+    .where('id', '=', (eb) => {
+      const open = eb
         .selectFrom('tasks')
         .select('id')
         .where('tenant_id', '=', tenantId)
-        .where('queue', '=', queue)
-        .where('status', '=', 'open')
+        .where('status', '=', 'open');
+      return (queue ? open.where('queue', '=', queue) : open)
         .where('assignee_id', 'is', null)
         .orderBy('priority', 'desc')
         .orderBy('created_at')
         .limit(1)
         .forUpdate()
-        .skipLocked()
-    )
+        .skipLocked();
+    })
     .returning(detail)
     .executeTakeFirst();
 

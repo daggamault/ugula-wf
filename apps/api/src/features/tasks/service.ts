@@ -68,7 +68,8 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
     );
 
   return {
-    queues: async (tenantId: string) => ok({ queues: await listQueues(db, tenantId) }),
+    queues: async (tenantId: string, userId: string) =>
+      ok({ queues: await listQueues(db, tenantId, userId) }),
 
     list: async (tenantId: string, filters: TaskFilters) =>
       ok(await listTasks(db, tenantId, filters)),
@@ -89,7 +90,7 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
       });
     },
 
-    next: (tenantId: string, queue: string, userId: string) =>
+    next: (tenantId: string, queue: string | null, userId: string) =>
       announced(
         announce,
         tenantId,

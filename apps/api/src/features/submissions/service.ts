@@ -245,10 +245,10 @@ export const createSubmissionService = ({
   };
 
   return {
-    pending: async (tenantId: string) => {
+    pending: async (tenantId: string, claimId?: string) => {
       const [profile, rows] = await Promise.all([
         findProfile(db, tenantId),
-        listOpenClaims(db, tenantId)
+        listOpenClaims(db, tenantId, claimId)
       ]);
       const pending = await pendingOf(db, rows);
       return ok({

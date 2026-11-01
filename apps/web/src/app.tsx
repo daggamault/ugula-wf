@@ -5,22 +5,27 @@ import {
   FileUpIcon,
   ListTodoIcon,
   ReceiptTextIcon,
-  SendIcon,
   SettingsIcon,
+  UsersIcon,
   WorkflowIcon
 } from 'lucide-react';
 import { lazy, type ReactNode, Suspense, useEffect, useMemo } from 'react';
 import { AuthGate } from './features/auth/auth-gate.tsx';
 import type { AuthClient } from './features/auth/client.ts';
 import { ClaimPage } from './features/claims/claim-page.tsx';
-import { CLAIM_FILTERS, ClaimsPage } from './features/claims/claims-page.tsx';
-import type { ClaimStatus, ClaimsClient } from './features/claims/client.ts';
+import { CLAIM_VIEWS, ClaimsPage } from './features/claims/claims-page.tsx';
+import type { ClaimsClient, ClaimView } from './features/claims/client.ts';
+import { FilesPage } from './features/claims/files-page.tsx';
+import { PatientClaims } from './features/claims/patient-claims.tsx';
 import type { FeesClient } from './features/fees/client.ts';
 import { FeesPage } from './features/fees/fees-page.tsx';
 import { HealthStatus } from './features/health/health-status.tsx';
 import type { ImportsClient } from './features/imports/client.ts';
 import { ImportDrop } from './features/imports/import-drop.tsx';
 import { ImportsPage } from './features/imports/imports-page.tsx';
+import { type PatientsClient, searchOf } from './features/patients/client.ts';
+import { PatientPage } from './features/patients/patient-page.tsx';
+import { PatientsPage } from './features/patients/patients-page.tsx';
 import type { ReportsClient } from './features/reports/client.ts';
 import { ReportPage, ReportsPage } from './features/reports/reports-page.tsx';
 import type { RunStatus, RunsClient } from './features/runs/client.ts';
@@ -29,17 +34,16 @@ import { RunsPage } from './features/runs/runs-page.tsx';
 import { StartRunPage } from './features/runs/start-run-page.tsx';
 import type { SettingsClient } from './features/settings/client.ts';
 import { SettingsPage } from './features/settings/settings-page.tsx';
-import type { SubmissionsClient } from './features/submissions/client.ts';
-import { SubmissionsPage } from './features/submissions/submissions-page.tsx';
-import type { TasksClient } from './features/tasks/client.ts';
+import type { Assignee, TasksClient } from './features/tasks/client.ts';
 import { TaskPage } from './features/tasks/task-page.tsx';
-import { TasksPage } from './features/tasks/tasks-page.tsx';
+import { ASSIGNEES, TasksPage } from './features/tasks/tasks-page.tsx';
 import { useWorkAlerts } from './features/tasks/work-alerts.ts';
 import type { WorkflowsClient } from './features/workflows/client.ts';
 import { parseTrail } from './features/workflows/trail.ts';
 import { WorkflowsPage } from './features/workflows/workflows-page.tsx';
 import { createLive, type Live, useLiveStatus } from './shared/live.ts';
 import { matchPath, navigate, useLocation } from './shared/router.tsx';
+import { NotificationsButton } from './shared/ui/notifications.tsx';
 import { PageLoading } from './shared/ui/page.tsx';
 import { Shell } from './shared/ui/shell.tsx';
 import { ToastProvider, useToast } from './shared/ui/toast.tsx';
@@ -52,13 +56,14 @@ export type AppClients = {
   imports: ImportsClient;
   fees: FeesClient;
   claims: ClaimsClient;
+  patients: PatientsClient;
   settings: SettingsClient;
-  submissions: SubmissionsClient;
   reports: ReportsClient;
 };
 
 export type RouteContext = AppClients & {
   live: Live;
+  email: string;
 };
 
 type Route = {
@@ -79,7 +84,7 @@ export const HOME = '/tasks';
 export const SECTIONS = [
   { id: 'tasks', label: 'Tasks', href: '/tasks', icon: ListTodoIcon, group: 'Work' },
   { id: 'claims', label: 'Claims', href: '/claims', icon: ReceiptTextIcon, group: 'Work' },
-  { id: 'submissions', label: 'Submissions', href: '/submissions', icon: SendIcon, group: 'Work' },
+  { id: 'patients', label: 'Patients', href: '/patients', icon: UsersIcon, group: 'Work' },
   { id: 'imports', label: 'Imports', href: '/imports', icon: FileUpIcon, group: 'Work' },
   { id: 'reports', label: 'Reports', href: '/reports', icon: ChartColumnIcon, group: 'Work' },
   {
@@ -106,8 +111,11 @@ const RUN_STATUSES: readonly RunStatus[] = [
 const statusParam = (query: URLSearchParams) =>
   RUN_STATUSES.find((s) => s === query.get('status')) ?? null;
 
-const claimStatusParam = (query: URLSearchParams): ClaimStatus =>
-  CLAIM_FILTERS.find((f) => f.value === query.get('status'))?.value ?? 'open';
+const claimViewParam = (query: URLSearchParams): ClaimView =>
+  CLAIM_VIEWS.find((f) => f.value === query.get('view'))?.value ?? 'open';
+
+const assigneeParam = (query: URLSearchParams): Assignee =>
+  ASSIGNEES.find((a) => a === query.get('assignee')) ?? 'anyone';
 
 const versionParam = (query: URLSearchParams) => {
   const version = Number(query.get('version'));
@@ -144,15 +152,32 @@ const routes: readonly Route[] = [
   { pattern: '/imports', render: (_, __, c) => <ImportsPage client={c.imports} live={c.live} /> },
   {
     pattern: '/claims',
-    render: (_, q, c) => <ClaimsPage client={c.claims} live={c.live} status={claimStatusParam(q)} />
+    render: (_, q, c) => (
+      <ClaimsPage client={c.claims} live={c.live} view={claimViewParam(q)} q={q.get('q') ?? ''} />
+    )
+  },
+  {
+    pattern: '/claims/files',
+    render: (_, __, c) => <FilesPage client={c.claims} live={c.live} />
   },
   {
     pattern: '/claims/:id',
     render: (p, _, c) => <ClaimPage client={c.claims} live={c.live} claimId={p.id ?? ''} />
   },
   {
-    pattern: '/submissions',
-    render: (_, __, c) => <SubmissionsPage client={c.submissions} live={c.live} />
+    pattern: '/patients',
+    render: (_, q, c) => <PatientsPage client={c.patients} search={searchOf(q)} />
+  },
+  {
+    pattern: '/patients/:id',
+    render: (p, _, c) => (
+      <PatientPage
+        client={c.patients}
+        live={c.live}
+        patientId={p.id ?? ''}
+        claims={<PatientClaims client={c.claims} live={c.live} patientId={p.id ?? ''} />}
+      />
+    )
   },
   { pattern: '/reports', render: () => <ReportsPage /> },
   {
@@ -163,7 +188,14 @@ const routes: readonly Route[] = [
   { pattern: '/settings', render: (_, __, c) => <SettingsPage client={c.settings} /> },
   {
     pattern: '/tasks',
-    render: (_, q, c) => <TasksPage client={c.tasks} live={c.live} queue={q.get('queue')} />
+    render: (_, q, c) => (
+      <TasksPage
+        client={c.tasks}
+        live={c.live}
+        me={c.email}
+        filter={{ queue: q.get('queue'), assignee: assigneeParam(q) }}
+      />
+    )
   },
   {
     pattern: '/tasks/:id',
@@ -192,7 +224,7 @@ export const Workspace = ({ clients, path, query, email, sseUrl, onSignOut }: Wo
   const live = useMemo(() => createLive(sseUrl), [sseUrl]);
   const liveStatus = useLiveStatus(live);
   const openTasks = useWorkAlerts(clients.tasks, live, useToast(), path.startsWith('/tasks'));
-  const page = resolveRoute(path, query, { ...clients, live });
+  const page = resolveRoute(path, query, { ...clients, live, email });
   const missing = page === null;
 
   useEffect(() => () => live.close(), [live]);
@@ -211,6 +243,7 @@ export const Workspace = ({ clients, path, query, email, sseUrl, onSignOut }: Wo
       }))}
       userEmail={email}
       status={<HealthStatus status={liveStatus} />}
+      tools={<NotificationsButton />}
       onSignOut={onSignOut}
     >
       <Suspense fallback={<PageLoading />}>{page}</Suspense>
@@ -224,7 +257,7 @@ export const App = ({ clients }: { clients: AppClients }) => {
   return (
     <AuthGate auth={clients.auth}>
       {(session, signOut) => (
-        <ToastProvider>
+        <ToastProvider storageKey={`ugula_notifications:${session.user.email}`}>
           <Workspace
             clients={clients}
             path={path}

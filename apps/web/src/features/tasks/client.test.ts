@@ -15,22 +15,24 @@ describe('createTasksClient', () => {
       })
     );
     assert.deepEqual(await client.queues(), ['q']);
-    await client.mine('page=1');
-    await client.open('billing review', 'page=2&sort=task');
-    await client.open(null, 'page=1');
+    await client.list({ queue: null, assignee: 'me' }, 'page=1');
+    await client.list({ queue: 'billing review', assignee: 'anyone' }, 'page=2&sort=task');
+    await client.list({ queue: null, assignee: 'anyone' }, 'page=1');
     assert.deepEqual(await client.find('x'), { id: 'x' });
     assert.deepEqual(await client.next('billing'), { id: 'x' });
-    await client.claim('x');
-    await client.release('x');
+    await client.next(null);
+    await client.assign('x');
+    await client.unassign('x');
     await client.complete('x', 'approve', { note: 'ok' });
     await client.report('rep-1');
     assert.deepEqual(calls, [
       'GET /api/tasks/queues',
-      'GET /api/tasks?mine=true&page=1',
+      'GET /api/tasks?assignee=me&page=1',
       'GET /api/tasks?queue=billing%20review&page=2&sort=task',
       'GET /api/tasks?page=1',
       'GET /api/tasks/x',
       'POST /api/tasks/next {"queue":"billing"}',
+      'POST /api/tasks/next {"queue":null}',
       'POST /api/tasks/x/claim',
       'POST /api/tasks/x/release',
       'POST /api/tasks/x/complete {"outcome":"approve","values":{"note":"ok"}}',

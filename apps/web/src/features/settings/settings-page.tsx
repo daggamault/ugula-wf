@@ -227,7 +227,7 @@ export const PayerDirectory = ({
   return (
     <SectionPanel
       title="Payer Directory"
-      description="Payer IDs and claim filing codes used in 837P claims. Report payers link by name, by a name a biller already matched, or by a clear similarity match; billers confirm the rest in the billing-payers queue."
+      description="Payer IDs and claim filing codes used on 837P claims. Payer names from reports are matched to this list automatically when the match is clear; anything else becomes a Payer matching task."
     >
       <form
         onSubmit={submit}

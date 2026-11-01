@@ -9,14 +9,15 @@ const clients = {
   auth: { signIn: async () => null, signOut: async () => undefined, getMe: async () => null },
   workflows: { list: async () => [] },
   runs: { list: async () => [] },
-  tasks: { queues: async () => [], mine: async () => [] }
+  tasks: { queues: async () => [], list: async () => [] }
 } as unknown as AppClients;
 
 const query = (search = '') => new URLSearchParams(search);
 
 const ctx: RouteContext = {
   ...clients,
-  live: idleLive
+  live: idleLive,
+  email: 'dev@example.com'
 };
 
 describe('app routing', () => {
@@ -32,7 +33,9 @@ describe('app routing', () => {
       '/imports',
       '/claims',
       '/claims/c1',
-      '/submissions',
+      '/claims/files',
+      '/patients',
+      '/patients/p1',
       '/reports',
       '/reports/aging',
       '/fees',

@@ -21,6 +21,20 @@ describe('claim queries', () => {
       sort: 'balance',
       dir: 'desc'
     });
+    await listClaims(db, 't-1', {
+      status: 'all',
+      q: 'smith, 50%',
+      patientId: 'p-1',
+      page: 1,
+      pageSize: 25,
+      sort: 'created',
+      dir: 'desc'
+    });
+    const search = queries.at(-1);
+    assert.ok(!search?.sql.includes('"c"."status" ='));
+    assert.ok(search?.sql.includes("lower(p.last_name || ' ' || p.first_name) like $"));
+    assert.deepEqual(search?.parameters.slice(0, 4), ['t-1', 'p-1', '%smith%', '%smith%']);
+    assert.equal(search?.parameters[4], '%50\\%%');
     const [list] = queries;
     assert.ok(
       list?.sql.includes('inner join "claim_balances" as "b" on "b"."claim_id" = "c"."id"')

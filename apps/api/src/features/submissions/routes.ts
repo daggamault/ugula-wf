@@ -3,12 +3,14 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../../shared/auth.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { batchSchema, listBatchesQuery, manualSubmissionSchema } from './schemas.ts';
+import { batchSchema, listBatchesQuery, manualSubmissionSchema, pendingQuery } from './schemas.ts';
 import type { SubmissionService } from './service.ts';
 
 export const createSubmissionRoutes = (service: SubmissionService) =>
   new Hono<AuthEnv>()
-    .get('/pending', async (c) => respond(c, await service.pending(c.get('session').tenantId)))
+    .get('/pending', sValidator('query', pendingQuery, invalidRequest), async (c) =>
+      respond(c, await service.pending(c.get('session').tenantId, c.req.valid('query').claimId))
+    )
     .get('/batches', sValidator('query', listBatchesQuery, invalidRequest), async (c) =>
       respond(c, await service.list(c.get('session').tenantId, c.req.valid('query')))
     )

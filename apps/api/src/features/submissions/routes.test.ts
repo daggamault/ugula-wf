@@ -36,9 +36,12 @@ const post = (path: string, body: unknown) =>
 describe('submission routes', () => {
   it('lists pending claims and batches for the session tenant', async () => {
     assert.equal((await request('/pending')).status, 200);
+    assert.equal((await request(`/pending?claimId=${ID}`)).status, 200);
+    assert.equal((await request('/pending?claimId=x')).status, 400);
     assert.equal((await request('/batches?pageSize=10&sort=total')).status, 200);
     assert.deepEqual(calls.splice(0), [
-      ['pending', 't-1'],
+      ['pending', 't-1', undefined],
+      ['pending', 't-1', ID],
       ['list', 't-1', { page: 1, pageSize: 10, sort: 'total', dir: 'desc' }]
     ]);
   });

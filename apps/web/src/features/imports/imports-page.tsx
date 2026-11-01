@@ -1,11 +1,12 @@
 import { FileUpIcon } from 'lucide-react';
 import { useState } from 'react';
+import { classNamesOf } from '../../shared/class-names.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
-import { EmptyText } from '../../shared/ui/empty-state.tsx';
+import { buttonClasses } from '../../shared/ui/button.tsx';
+import { EmptyState } from '../../shared/ui/empty-state.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
-import { Section } from '../../shared/ui/section-panel.tsx';
 import { Spinner } from '../../shared/ui/spinner.tsx';
 import { useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
@@ -18,7 +19,7 @@ export type ImportsPageProps = {
   live: Live;
 };
 
-export const FilePicker = ({
+export const ImportButton = ({
   busy,
   onFiles
 }: {
@@ -28,21 +29,13 @@ export const FilePicker = ({
   <label
     htmlFor="import-files"
     aria-busy={busy || undefined}
-    className="border-border bg-surface hover:border-primary/50 hover:bg-primary/5 has-focus-visible:border-primary flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed px-6 py-14 text-center transition duration-150 ease-out aria-busy:cursor-wait"
+    className={classNamesOf(
+      buttonClasses(),
+      'cursor-pointer has-focus-visible:outline-2 aria-busy:cursor-wait'
+    )}
   >
-    <span
-      aria-hidden="true"
-      className="bg-primary/10 text-primary grid size-14 place-items-center rounded-full"
-    >
-      {busy ? <Spinner /> : <FileUpIcon className="size-7" />}
-    </span>
-    <span className="text-base font-bold">
-      {busy ? 'Importing…' : 'Drop NEMSIS files anywhere, or choose them here'}
-    </span>
-    <span className="text-surface-fg-muted max-w-md text-sm">
-      NEMSIS 3.5 XML exports. Each patient care report becomes its own claim: patients and payers
-      are matched, the narrative is read, and anything uncertain goes to a queue for review.
-    </span>
+    {busy ? <Spinner /> : <FileUpIcon aria-hidden="true" className="size-4" />}
+    {busy ? 'Importing…' : 'Import files'}
     <input
       id="import-files"
       type="file"
@@ -89,25 +82,22 @@ export const ImportsPage = ({ client, live }: ImportsPageProps) => {
   return (
     <Page
       title="Imports"
-      description="Bring in patient care reports from your ePCR system. Files sent to your SFTP folder are imported the same way."
+      description="NEMSIS XML from your ePCR system. Drop files anywhere in the app or send them to your SFTP folder."
+      actions={<ImportButton busy={busy} onFiles={(files) => void choose(files)} />}
     >
-      <FilePicker busy={busy} onFiles={(files) => void choose(files)} />
-      <Section
-        title="Recent Imports"
-        description="Every file received by upload or SFTP, and where its reports are now."
-      >
-        {history.error ? <Alert>{history.error.message}</Alert> : null}
-        {history.data?.items.length ? (
-          <>
-            <ImportHistory imports={history.data.items} sorting={table} />
-            <Pagination label="Imports" total={history.data.total} state={table} />
-          </>
-        ) : history.loading ? (
-          <PageLoading />
-        ) : (
-          <EmptyText>No files have been imported yet.</EmptyText>
-        )}
-      </Section>
+      {history.error ? <Alert>{history.error.message}</Alert> : null}
+      {history.data?.items.length ? (
+        <>
+          <ImportHistory imports={history.data.items} sorting={table} />
+          <Pagination label="Imports" total={history.data.total} state={table} />
+        </>
+      ) : history.loading ? (
+        <PageLoading />
+      ) : (
+        <EmptyState title="No Imports Yet">
+          Drag NEMSIS XML files onto any page, or use Import files.
+        </EmptyState>
+      )}
     </Page>
   );
 };
