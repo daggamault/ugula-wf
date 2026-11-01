@@ -37,13 +37,18 @@ export const listGraphs = async (db: Db, tenantId: string): Promise<GraphSummary
         sql<number | null>`max(gv.version) filter (where gv.published_at is null)`.as('draft'),
         sql<string | null>`(
           select o.id from graphs o
-          where o.key = g.key and g.tenant_id is null and o.tenant_id = ${tenantId}
+          where o.key = g.key and g.tenant_id is null and o.tenant_id = ${tenantId} and o.is_active
         )`.as('overridden_by'),
         sql<boolean>`g.tenant_id is not null and exists (
           select 1 from graphs s where s.key = g.key and s.tenant_id is null
         )`.as('overrides')
       ])
-      .where((eb) => eb.or([eb('g.tenant_id', '=', tenantId), eb('g.tenant_id', 'is', null)]))
+      .where((eb) =>
+        eb.or([
+          eb('g.tenant_id', 'is', null),
+          eb.and([eb('g.tenant_id', '=', tenantId), eb('g.is_active', '=', true)])
+        ])
+      )
       .groupBy('g.id')
       .orderBy('g.key')
       .execute()
@@ -73,7 +78,7 @@ export const findGraph = (db: Db, tenantId: string, id: string) =>
       'g.description',
       sql<string | null>`(
         select o.id from graphs o
-        where o.key = g.key and g.tenant_id is null and o.tenant_id = ${tenantId}
+        where o.key = g.key and g.tenant_id is null and o.tenant_id = ${tenantId} and o.is_active
       )`.as('overridden_by'),
       sql<string | null>`(
         select s.id from graphs s
@@ -81,7 +86,12 @@ export const findGraph = (db: Db, tenantId: string, id: string) =>
       )`.as('overrides')
     ])
     .where('g.id', '=', id)
-    .where((eb) => eb.or([eb('g.tenant_id', '=', tenantId), eb('g.tenant_id', 'is', null)]))
+    .where((eb) =>
+      eb.or([
+        eb('g.tenant_id', 'is', null),
+        eb.and([eb('g.tenant_id', '=', tenantId), eb('g.is_active', '=', true)])
+      ])
+    )
     .executeTakeFirst();
 
 export const listVersions = (db: Db, graphId: string) =>
@@ -230,6 +240,23 @@ export const findLatestPublished = (db: Db, graphId: string) =>
     .where('published_at', 'is not', null)
     .orderBy('version', 'desc')
     .limit(1)
+    .executeTakeFirst();
+
+export const findTenantGraph = (db: Db, tenantId: string, key: string) =>
+  db
+    .selectFrom('graphs')
+    .select(['id', 'is_active'])
+    .where('tenant_id', '=', tenantId)
+    .where('key', '=', key)
+    .executeTakeFirst();
+
+export const setGraphActive = (db: Db, tenantId: string, id: string, active: boolean) =>
+  db
+    .updateTable('graphs')
+    .set({ is_active: active, updated_at: sql`now()` })
+    .where('id', '=', id)
+    .where('tenant_id', '=', tenantId)
+    .returning('id')
     .executeTakeFirst();
 
 export const deleteGraph = (db: Db, tenantId: string, id: string) =>

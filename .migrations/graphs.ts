@@ -12,6 +12,7 @@ export const buildGraphsTable = (db: Kysely<Database>) =>
     .addColumn('name', 'text', (col) => col.notNull())
     .addColumn('kind', 'text', (col) => col.notNull())
     .addColumn('description', 'text', (col) => col.notNull().defaultTo(''))
+    .addColumn('is_active', 'boolean', (col) => col.notNull().defaultTo(true))
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('graphs_tenant_id_key_unique', ['tenant_id', 'key'], (uc) =>

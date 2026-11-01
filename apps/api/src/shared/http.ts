@@ -15,7 +15,8 @@ const hasCode = (err: unknown, code: string) =>
 
 export const isUniqueViolation = (err: unknown) => hasCode(err, '23505');
 
-export const isForeignKeyViolation = (err: unknown) => hasCode(err, '23503');
+export const isForeignKeyViolation = (err: unknown) =>
+  hasCode(err, '23503') || hasCode(err, '23001');
 
 type Issue = { message: string; path?: ReadonlyArray<unknown> };
 

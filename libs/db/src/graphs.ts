@@ -27,6 +27,7 @@ const resolved = (
         (g.tenant_id is null and v.version = ${version})
         or (
           g.tenant_id = ${tenantId}::uuid
+          and g.is_active
           and (
             v.version = ${version}
             or exists (select 1 from graphs s where s.key = g.key and s.tenant_id is null)

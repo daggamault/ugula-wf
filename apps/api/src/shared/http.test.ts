@@ -3,7 +3,14 @@ import { describe, it } from 'node:test';
 import { sValidator } from '@hono/standard-validator';
 import { Hono } from 'hono';
 import * as v from 'valibot';
-import { describeIssue, idParam, invalidRequest, isUniqueViolation, limitQuery } from './http.ts';
+import {
+  describeIssue,
+  idParam,
+  invalidRequest,
+  isForeignKeyViolation,
+  isUniqueViolation,
+  limitQuery
+} from './http.ts';
 
 describe('http helpers', () => {
   it('validates ids and limits', () => {
@@ -19,6 +26,9 @@ describe('http helpers', () => {
 
   it('recognizes unique violations', () => {
     assert.equal(isUniqueViolation({ code: '23505' }), true);
+    assert.equal(isForeignKeyViolation({ code: '23001' }), true);
+    assert.equal(isForeignKeyViolation({ code: '23503' }), true);
+    assert.equal(isForeignKeyViolation({ code: '23505' }), false);
     assert.equal(isUniqueViolation(new Error('x')), false);
   });
 

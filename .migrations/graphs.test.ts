@@ -16,6 +16,7 @@ describe('graphs tables', () => {
     assert.ok(tableSql.includes('unique nulls not distinct ("tenant_id", "key")'));
     assert.ok(tableSql.includes("check (kind in ('workflow', 'node'))"));
     assert.ok(tableSql.includes("key not like 'std.%'"));
+    assert.ok(tableSql.includes('"is_active" boolean default true not null'));
     await db.destroy();
   });
 

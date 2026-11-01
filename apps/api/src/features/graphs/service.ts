@@ -21,6 +21,7 @@ import {
   findGraph,
   findLatestPublished,
   findSystemGraph,
+  findTenantGraph,
   findVersion,
   insertDraft,
   insertGraph,
@@ -30,6 +31,7 @@ import {
   lockDraft,
   nextVersion,
   publishVersion,
+  setGraphActive,
   touchGraph,
   updateDraft
 } from './queries.ts';
@@ -167,6 +169,12 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
         if (!graph) return notFound;
         if (graph.tenant_id !== null)
           return fail('conflict', 'Only system graphs can be overridden');
+        const copy = await findTenantGraph(tx, tenantId, graph.key);
+        if (copy?.is_active) return fail('conflict', 'This graph is already overridden');
+        if (copy) {
+          await setGraphActive(tx, tenantId, copy.id, true);
+          return ok({ id: copy.id });
+        }
         const latest = await findLatestPublished(tx, graph.id);
         if (!latest) return fail('conflict', 'This graph has no published version to start from');
         try {
@@ -191,6 +199,12 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
       }),
 
     remove: async (tenantId: string, graphId: string) => {
+      const graph = await findGraph(db, tenantId, graphId);
+      if (!graph || graph.tenant_id === null) return notFound;
+      if (graph.overrides) {
+        await setGraphActive(db, tenantId, graphId, false);
+        return ok({ id: graphId });
+      }
       try {
         return (await deleteGraph(db, tenantId, graphId)) ? ok({ id: graphId }) : notFound;
       } catch (err) {

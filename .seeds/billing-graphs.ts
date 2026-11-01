@@ -913,7 +913,11 @@ const map837p = (): GraphDef => {
 };
 
 const placeOf = (place: string) =>
-  `join(filter([${place}.addressLine, ${place}.city, ${place}.postalCode], x => x != null && x != ''), ', ')`;
+  `join(filter([
+    ${place}.addressLine,
+    ${place}.city != null && !every(split(${place}.city, ''), d => contains('0123456789', d)) ? ${place}.city : null,
+    ${place}.postalCode
+  ], x => x != null && x != ''), ', ')`;
 
 const nameOf = (person: string) =>
   `join(filter([${person}.firstName, ${person}.lastName], x => x != null), ' ')`;

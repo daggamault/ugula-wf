@@ -380,7 +380,7 @@ export const EditorView = ({
         }}
       >
         New runs go back to the built-in {graph.name}. Runs that already started keep using your
-        copy until they finish, so it can only be removed once none are left.
+        copy. Override it again later to bring your copy back.
       </ConfirmDialog>
       <GraphSettings
         key={version}

@@ -966,3 +966,13 @@ describe('billing graphs', () => {
     assert.equal(world.opened.length, 0);
   });
 });
+
+describe('task context', () => {
+  it('leaves numeric GNIS city codes out of addresses people read', async () => {
+    const world = pcrWorld();
+    world.answer(await world.waitFor('task', 'Match payer'), 'unlisted');
+    await world.waitFor('task', 'Review PCR');
+    assert.equal(world.data('context.patient.address'), '1 Main St, 62704');
+    assert.equal(world.data('context.trip.pickup'), '9 Elm St, Springfield, 62701');
+  });
+});

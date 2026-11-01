@@ -52,6 +52,7 @@ export type GraphsTable = {
   name: string;
   kind: GraphKind;
   description: Generated<string>;
+  is_active: Generated<boolean>;
   created_at: Timestamp;
   updated_at: Timestamp;
 };
