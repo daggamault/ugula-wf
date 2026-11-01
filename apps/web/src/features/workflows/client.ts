@@ -11,6 +11,8 @@ export type GraphSummary = {
   kind: GraphKind;
   description: string;
   isSystem: boolean;
+  overrides: boolean;
+  overriddenBy: string | null;
   publishedVersion: number | null;
   draftVersion: number | null;
   updatedAt: string;
@@ -31,6 +33,8 @@ export type GraphDetail = {
     name: string;
     kind: GraphKind;
     description: string;
+    overridden_by: string | null;
+    overrides: string | null;
   };
   versions: GraphVersionSummary[];
 };
@@ -58,7 +62,9 @@ export const createWorkflowsClient = (api: Api) => ({
   create: (input: NewGraph) => api.post<{ id: string }>('/api/graphs', input),
   saveDraft: (id: string, definition: GraphDef) =>
     api.put<{ version: number; issues: Issue[] }>(`/api/graphs/${id}/draft`, { definition }),
-  publish: (id: string) => api.post<{ version: number }>(`/api/graphs/${id}/publish`)
+  publish: (id: string) => api.post<{ version: number }>(`/api/graphs/${id}/publish`),
+  override: (id: string) => api.post<{ id: string }>(`/api/graphs/${id}/override`),
+  remove: (id: string) => api.remove<{ id: string }>(`/api/graphs/${id}`)
 });
 
 export type WorkflowsClient = ReturnType<typeof createWorkflowsClient>;

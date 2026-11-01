@@ -19,6 +19,12 @@ import { Input } from '../../shared/ui/input.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { Textarea } from '../../shared/ui/textarea.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
+import { DecisionTableEditor, LookupTableEditor } from './table-editors.tsx';
+
+const TABLE_EDITORS = {
+  'std.table.lookup': LookupTableEditor,
+  'std.table.decide': DecisionTableEditor
+} as const;
 
 export type NodeInspectorProps = {
   def: GraphDef;
@@ -321,12 +327,26 @@ export const NodeInspector = ({
         ) : null}
         {!boundary && catalog.hasConfig(node) ? (
           <Group title="Settings" description="How this node is set up, beyond its inputs.">
-            <ConfigEditor
-              key={node.id}
-              node={node}
-              editable={editable}
-              onConfig={(config) => set({ config })}
-            />
+            {Object.hasOwn(TABLE_EDITORS, node.type) ? (
+              (() => {
+                const TableEditor = TABLE_EDITORS[node.type as keyof typeof TABLE_EDITORS];
+                return (
+                  <TableEditor
+                    nodeId={node.id}
+                    config={node.config}
+                    editable={editable}
+                    onConfig={(config) => set({ config })}
+                  />
+                );
+              })()
+            ) : (
+              <ConfigEditor
+                key={node.id}
+                node={node}
+                editable={editable}
+                onConfig={(config) => set({ config })}
+              />
+            )}
           </Group>
         ) : null}
         {editable ? (

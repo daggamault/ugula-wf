@@ -63,10 +63,25 @@ export const listGraphs = async (db: Db, tenantId: string): Promise<GraphSummary
 
 export const findGraph = (db: Db, tenantId: string, id: string) =>
   db
-    .selectFrom('graphs')
-    .select(['id', 'tenant_id', 'key', 'name', 'kind', 'description'])
-    .where('id', '=', id)
-    .where((eb) => eb.or([eb('tenant_id', '=', tenantId), eb('tenant_id', 'is', null)]))
+    .selectFrom('graphs as g')
+    .select([
+      'g.id',
+      'g.tenant_id',
+      'g.key',
+      'g.name',
+      'g.kind',
+      'g.description',
+      sql<string | null>`(
+        select o.id from graphs o
+        where o.key = g.key and g.tenant_id is null and o.tenant_id = ${tenantId}
+      )`.as('overridden_by'),
+      sql<string | null>`(
+        select s.id from graphs s
+        where s.key = g.key and g.tenant_id is not null and s.tenant_id is null
+      )`.as('overrides')
+    ])
+    .where('g.id', '=', id)
+    .where((eb) => eb.or([eb('g.tenant_id', '=', tenantId), eb('g.tenant_id', 'is', null)]))
     .executeTakeFirst();
 
 export const listVersions = (db: Db, graphId: string) =>

@@ -1,10 +1,12 @@
 import type { GraphDef, Issue } from '@ugula/graph';
 import {
+  CopyPlusIcon,
   PencilIcon,
   PlayIcon,
   PlusIcon,
   SaveIcon,
   SlidersHorizontalIcon,
+  Trash2Icon,
   UploadIcon
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -17,6 +19,7 @@ import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Breadcrumbs } from '../../shared/ui/breadcrumbs.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
+import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
 import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.tsx';
 import { NativeSelect } from '../../shared/ui/select.tsx';
@@ -76,8 +79,8 @@ export const EditorView = ({
   const [dirty, setDirty] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<'add' | 'settings' | null>(null);
-  const [busy, setBusy] = useState<'save' | 'publish' | null>(null);
+  const [dialog, setDialog] = useState<'add' | 'settings' | 'remove' | null>(null);
+  const [busy, setBusy] = useState<'save' | 'publish' | 'override' | 'remove' | null>(null);
   const [error, setError] = useState('');
   const notify = useToast();
   const openNode = (id: string) => {
@@ -106,7 +109,10 @@ export const EditorView = ({
     setDirty(true);
   };
 
-  const run = async (kind: 'save' | 'publish', action: () => Promise<void>) => {
+  const run = async (
+    kind: 'save' | 'publish' | 'override' | 'remove',
+    action: () => Promise<void>
+  ) => {
     setBusy(kind);
     setError('');
     try {
@@ -148,6 +154,27 @@ export const EditorView = ({
       onSaved();
     });
 
+  const override = () =>
+    run('override', async () => {
+      const { id } = await client.override(graph.id);
+      notify({
+        title: `${graph.name} copied for your agency`,
+        description:
+          'Change and publish the copy; new runs then use it everywhere this graph is used.'
+      });
+      navigate(graphPath(id, 1, trail));
+    });
+
+  const removeOverride = () =>
+    run('remove', async () => {
+      await client.remove(graph.id);
+      notify({
+        title: 'Override removed',
+        description: `New runs use the built-in ${graph.name} again.`
+      });
+      navigate(graph.overrides ? `/workflows/${graph.overrides}` : '/workflows');
+    });
+
   const add = (entry: PaletteEntry) => {
     const placed = addNode(def, entry, {
       x: 120 + def.nodes.length * 24,
@@ -166,7 +193,9 @@ export const EditorView = ({
   const howTo = editable
     ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them.'
     : graph.tenant_id === null
-      ? 'Built-in workflows are read-only. Select a node to see what it does.'
+      ? graph.overridden_by
+        ? 'Your agency overrides this built-in graph, so runs use your copy. Select a node to see what it does.'
+        : 'Built-in graphs are read-only. Override one to change how your agency runs it.'
       : draft
         ? `Published versions are read-only. Open draft v${draft.version} to make changes.`
         : 'Published versions are read-only. Edit as a new draft to make changes.';
@@ -187,6 +216,8 @@ export const EditorView = ({
               {isDraft ? `Draft v${version}` : `Published v${version}`}
             </Badge>
             {graph.tenant_id === null ? <Badge>System</Badge> : null}
+            {graph.overridden_by ? <Badge intent="info">Overridden</Badge> : null}
+            {graph.overrides ? <Badge intent="info">Override</Badge> : null}
             {dirty ? <Badge intent="danger">Unsaved</Badge> : null}
           </span>
         }
@@ -213,6 +244,29 @@ export const EditorView = ({
                 onChange={(e) => navigate(graphPath(graph.id, Number(e.target.value), trail))}
               />
             </div>
+            {graph.tenant_id === null && graph.overridden_by ? (
+              <ButtonLink to={`/workflows/${graph.overridden_by}`} variant="outline">
+                <PencilIcon aria-hidden="true" className="size-4" />
+                Edit override
+              </ButtonLink>
+            ) : null}
+            {graph.tenant_id === null && !graph.overridden_by ? (
+              <Button variant="outline" isPending={busy === 'override'} onClick={override}>
+                <CopyPlusIcon aria-hidden="true" className="size-4" />
+                Override
+              </Button>
+            ) : null}
+            {graph.overrides ? (
+              <Button
+                variant="outline"
+                intent="danger"
+                isPending={busy === 'remove'}
+                onClick={() => setDialog('remove')}
+              >
+                <Trash2Icon aria-hidden="true" className="size-4" />
+                Remove override
+              </Button>
+            ) : null}
             {graph.tenant_id !== null && !isDraft && !draft ? (
               <Button variant="outline" isPending={busy === 'save'} onClick={save}>
                 <PencilIcon aria-hidden="true" className="size-4" />
@@ -313,6 +367,21 @@ export const EditorView = ({
           onClose={() => setDialog(null)}
         />
       ) : null}
+      <ConfirmDialog
+        open={dialog === 'remove'}
+        title="Remove Override?"
+        intent="danger"
+        confirmLabel="Remove override"
+        confirmIcon={Trash2Icon}
+        onClose={() => setDialog(null)}
+        onConfirm={() => {
+          setDialog(null);
+          void removeOverride();
+        }}
+      >
+        New runs go back to the built-in {graph.name}. Runs that already started keep using your
+        copy until they finish, so it can only be removed once none are left.
+      </ConfirmDialog>
       <GraphSettings
         key={version}
         open={dialog === 'settings'}

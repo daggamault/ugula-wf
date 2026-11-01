@@ -12,6 +12,8 @@ const graph = (patch: Partial<GraphSummary>): GraphSummary => ({
   kind: 'workflow',
   description: '',
   isSystem: false,
+  overrides: false,
+  overriddenBy: null,
   publishedVersion: 2,
   draftVersion: null,
   updatedAt: '2026-01-01T00:00:00.000Z',
@@ -24,10 +26,13 @@ describe('WorkflowsPage', () => {
       createElement(WorkflowsTable, {
         graphs: [
           graph({}),
-          graph({ id: 'g2', kind: 'node', isSystem: true, publishedVersion: null })
+          graph({ id: 'g2', kind: 'node', isSystem: true, publishedVersion: null }),
+          graph({ id: 'g3', kind: 'node', isSystem: true, overriddenBy: 'g4' }),
+          graph({ id: 'g4', kind: 'node', overrides: true })
         ]
       })
     );
+    assert.ok(html.includes('Overridden') && html.includes('>Override<'));
     assert.ok(html.includes('href="/workflows/g1"'));
     assert.ok(html.includes('href="/runs/new?graph=g1"'));
     assert.ok(!html.includes('/runs/new?graph=g2'));

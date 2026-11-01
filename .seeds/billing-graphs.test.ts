@@ -720,6 +720,18 @@ describe('billing graphs', () => {
       (await tripOf(disposition('<eDisposition.27>4227005</eDisposition.27>'))).tripType,
       'noClaim'
     );
+    assert.equal(
+      (await tripOf(disposition('<eDisposition.12>4212041</eDisposition.12>'))).tripType,
+      'noClaim'
+    );
+    assert.equal(
+      (await tripOf(disposition('<eDisposition.30>4230011</eDisposition.30>'))).tripType,
+      'noClaim'
+    );
+    assert.equal(
+      (await tripOf(disposition('<eDisposition.12>4212019</eDisposition.12>'))).tripType,
+      'treatNoTransport'
+    );
     assert.deepEqual(
       await tripOf(wrap('<eResponse><eResponse.05>2205005</eResponse.05></eResponse>')),
       { tripType: 'scheduled', reason: 'Scheduled or interfacility transport' }
@@ -892,6 +904,18 @@ describe('billing graphs', () => {
       ['x837']
     );
     assert.deepEqual(getPath(scheduled.x837 ?? null, 'conditionCodes'), ['09']);
+    const noTransport = await evaluate(
+      'billing.map-837p',
+      {
+        claim: {
+          ...submission,
+          details: { ...submission.details, originDestination: 'RX' },
+          lines: [{ code: 'A0998', units: 1, unitCents: 25_000, totalCents: 25_000 }]
+        }
+      },
+      ['x837']
+    );
+    assert.deepEqual(getPath(noTransport.x837 ?? null, 'lines.0.modifiers'), ['RX', 'GY']);
   });
 
   it('asks before skipping a report that needs no claim, and can still claim it', async () => {

@@ -15,14 +15,20 @@ const source: GraphDef = {
   edges: []
 };
 
-const detail = (tenant: string | null, published: boolean): GraphDetail => ({
+const detail = (
+  tenant: string | null,
+  published: boolean,
+  links: { overridden_by?: string; overrides?: string } = {}
+): GraphDetail => ({
   graph: {
     id: 'g1',
     tenant_id: tenant,
     key: 'acme.flow',
     name: 'Flow',
     kind: 'workflow',
-    description: ''
+    description: '',
+    overridden_by: links.overridden_by ?? null,
+    overrides: links.overrides ?? null
   },
   versions: [
     {
@@ -69,6 +75,18 @@ describe('EditorView', () => {
     const system = render(detail(null, true), 1);
     assert.ok(system.includes('System'));
     assert.ok(!system.includes('Edit as new draft'));
+    assert.ok(system.includes('>Override<'));
+    assert.ok(system.includes('Override one to change how your agency runs it'));
+  });
+
+  it('links a built-in graph to its override, and lets the override be removed', () => {
+    const overridden = render(detail(null, true, { overridden_by: 'g9' }), 1);
+    assert.ok(overridden.includes('Overridden'));
+    assert.ok(overridden.includes('href="/workflows/g9"') && overridden.includes('Edit override'));
+    assert.ok(!overridden.includes('>Override<'));
+    const copy = render(detail('t-1', false, { overrides: 'g0' }), 2);
+    assert.ok(copy.includes('>Override<') && copy.includes('Remove override'));
+    assert.ok(copy.includes('>Publish<'));
   });
 
   it('shows where a sub-workflow was opened from and leads back up', () => {

@@ -10,23 +10,38 @@ Ugula is a durable, visual workflow engine (think Unreal Blueprints meets n8n) w
 - **Durable runs:** Runs persist their state in Postgres after every step, so they survive restarts. A run can suspend for days while it waits on a human task, a timer, a signal (e.g. "this claim changed"), or child workflows, then resume where it left off. Signals are counted, so a run that was busy when one arrived still sees it when it next waits.
 - **Human tasks:** Task nodes put work in named queues (patient review, PCR review, follow-ups, collections). Completing a task resumes its run on the chosen outcome.
 - **Reliability:** Workers lease runs with fencing tokens, a sweeper recovers stalled runs, and transient failures retry while real faults stop the run for inspection and retry from the UI.
-- **Separation:** The engine and its standard library (`libs/graph`) know nothing about billing. Billing nodes live in `libs/billing` and reach the database only through ports the worker implements.
+- **Separation:** The engine and its standard library (`libs/graph`) know nothing about billing. NEMSIS and billing nodes and models live in `libs/nemsis` and `libs/billing` and reach the database only through ports the worker implements.
+
+### Building Blocks
+
+Workflows are built from small, general nodes, so agencies can change billing logic without code:
+
+- **Typed models:** a NEMSIS patient care report, its sections (patient, times, payment, scene, situation, disposition, medications and more), the claim, and the 837P claim are named models. Each model gets a **Break** node (one labelled output per field, such as `Last name · ePatient.02`) and a **Make** node (one input per field).
+- **Tables:** a **Decision Table** checks rules top to bottom (is, is one of, starts with, at least, is empty and so on) and outputs the first matching rule's values, plus every rule that held as reasons. A **Lookup Table** maps codes to values. Both are edited as forms in the workflow editor.
+- **Lists and logic:** Where, Pluck Field, Reshape Items, Make List, Sort By Field, Coalesce, Select, math and text nodes.
+- **Capability nodes** do what a graph cannot: read and split NEMSIS files, match patients and payers, read narratives with the local model, price lines from fee schedules, save claims, run the claim cycle and render statements.
+
+**Overrides:** every built-in graph can be overridden by an agency. Override copies the graph into the agency's workspace. Once the copy is published, every workflow that uses that graph uses the copy for that agency, as long as it keeps the same inputs, outputs and exits. Each run records which versions it uses when it starts, so publishing or removing an override never changes a run that has already started.
 
 ### The Billing App
 
-1. **Import:** NEMSIS 3.5 XML arrives by upload or SFTP and is split into one run per patient care report (PCR); the import finishes once its reports are started, and each report proceeds on its own.
-2. **Duplicates:** A PCR number is billed once per agency. A re-imported or corrected report becomes a revision of its existing claim and goes to a biller instead of opening a second claim.
-3. **Patient:** Each report is matched to an existing patient only on the same last name, birth date and first name or nickname. Likely matches (similar names found by trigram search and Jaro-Winkler, birth date typos) go to a biller for review.
-4. **Payers:** Report payers link to the payer directory by name or by a name a biller already matched. Other names are compared with the directory by embedding (pgvector), the local language model suggests the likely payer, and a biller confirms it once; that name then links automatically.
-5. **Review & pricing:** The local language model lists the medication doses and CMS ALS2 procedures the narrative documents. Rules combine those with the coded data to suggest the level of service (BLS, ALS1, ALS2, SCT) and loaded miles, with the reasons. A biller confirms, holds (then releases or voids) the report, and the claim is priced from HCPCS fee schedules (the primary payer's prices first, then defaults).
-6. **Claim cycle:** Each claim gets its own long-running workflow that sleeps until a claim change or a deadline, and works through its payers in order:
-   - claims wait until they go out in an **837P batch** file, which billers generate on the Submissions page and upload to their clearinghouse;
+`billing.ingest-nemsis` starts one **Encounter to Claim** run per report. That run is made of smaller graphs, each one an override point:
+
+1. **Import:** NEMSIS 3.4 or 3.5 XML arrives by upload or SFTP and is split into one run per patient care report (PCR), read as a typed report.
+2. **Duplicates:** A PCR number is claimed once per agency. A re-imported or corrected report becomes a revision of its existing claim and goes to a biller instead of opening a second claim.
+3. **Trip type:** `Classify Trip` decides from the dispositions (`eDisposition.12`, or `.27`, `.28` and `.30` in 3.5) and the type of service whether the trip is an emergency, scheduled, treat-no-transport, refusal or no-claim trip. No-claim trips ask a biller before they are skipped.
+4. **Patient:** `Demographics From PCR` maps the report patient, which is matched to an existing patient only on the same last name, birth date and first name or nickname. Likely matches (similar names found by trigram search and Jaro-Winkler, birth date typos) go to a biller for review.
+5. **Payers:** `Coverages From PCR` maps the insurances, or Medicare or Medicaid from the payment method. Their names link to the payer directory by name or by a name a biller already matched. Other names are compared with the directory by embedding (pgvector), the local language model suggests the likely payer, and a biller confirms it once; that name then links automatically.
+6. **Service:** the local language model lists the medication doses and CMS ALS2 procedures the narrative documents. `Suggest Service` runs the graph for the trip type (`Emergency Trip`, `Scheduled Trip`, `Treat, No Transport`, `Refusal`), built on `Level of Service` and `Loaded Miles` decision tables over the level of care, CMS service level, coded IV/IO medications, response mode and odometers. A biller confirms it, or holds the report (then releases or voids it).
+7. **Claim:** `Map Charges` turns the confirmed service into HCPCS lines (a base rate by trip type, level and emergency, A0998 for no transport, and A0425 mileage in tenths of a mile), which are priced from fee schedules (the primary payer's prices first, then defaults). `Map Claim` and `Trip Details` fill the claim, including diagnoses and origin/destination modifiers. `Validate Claim` sends an incomplete claim to a biller instead of saving it.
+8. **Claim cycle:** Each claim gets its own long-running workflow that sleeps until a claim change or a deadline, and works through its payers in order. The waits and the number of statements are inputs of its `Claim Step` node.
+   - claims wait until they go out in an **837P batch** file, which billers generate on the Submissions page and upload to their clearinghouse. Each claim is mapped onto an 837P claim by the `Map 837P Claim` graph (subscriber, payer, ambulance conditions, modifiers, service lines), and the batch only serializes what it maps;
    - a payer that hasn't answered in 30 days creates a follow-up task (resubmit, keep waiting, or move to the next payer);
    - payer responses are recorded against the claim;
    - once all payers are done, up to three **patient statements** (PDFs) go out 30 days apart;
    - an unpaid balance after that goes to collections review; claims close as paid, written off, or sent to collections.
-7. **Settings:** The agency's billing profile, clearinghouse IDs, payer directory (with the report names it has learned), and fee schedules drive the 837P files and statements.
-8. **Reports:** Every import, report, claim line, coverage, diagnosis and ledger event is a relational row, so A/R aging, monthly collections, payer performance and HCPCS charges are plain SQL, viewable on the Reports page and downloadable as CSV.
+9. **Settings:** The agency's billing profile, clearinghouse IDs, payer directory (with the report names it has learned), and fee schedules drive the 837P files and statements.
+10. **Reports:** Every import, report, claim line, coverage, diagnosis and ledger event is a relational row, so A/R aging, monthly collections, payer performance and HCPCS charges are plain SQL, viewable on the Reports page and downloadable as CSV.
 
 ## Layout
 

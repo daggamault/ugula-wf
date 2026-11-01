@@ -194,12 +194,31 @@ const classifyTrip = (): GraphDef => {
       [
         {
           label: 'Cancelled, or no patient contact',
-          when: { incidentDisposition: oneOf('4212007', '4212009', '4212011', '4212039') },
+          when: { incidentDisposition: oneOf('4212007', '4212009', '4212011') },
           set: { tripType: 'noClaim' }
         },
         {
-          label: 'Unit cancelled or made no patient contact',
+          label: 'Assist, standby or non-patient transport',
+          when: {
+            incidentDisposition: oneOf(
+              '4212001',
+              '4212003',
+              '4212005',
+              '4212039',
+              '4212041',
+              '4212043'
+            )
+          },
+          set: { tripType: 'noClaim' }
+        },
+        {
+          label: 'Unit cancelled, made no patient contact, or had no patient',
           when: { unitDisposition: oneOf('4227003', '4227005', '4227007', '4227009', '4227011') },
+          set: { tripType: 'noClaim' }
+        },
+        {
+          label: 'Non-patient transport',
+          when: { transportDisposition: oneOf('4230011') },
           set: { tripType: 'noClaim' }
         },
         {
@@ -219,6 +238,8 @@ const classifyTrip = (): GraphDef => {
           label: 'Patient treated and not transported',
           when: {
             incidentDisposition: oneOf(
+              '4212015',
+              '4212019',
               '4212021',
               '4212027',
               '4212029',
@@ -673,7 +694,7 @@ const tripDetails = (): GraphDef => {
       [field('code', 'string', 'Origin code')],
       [
         {
-          label: 'Leaving a hospital',
+          label: 'Leaving a hospital (interfacility)',
           when: { serviceType: oneOf('2205005', '2205015') },
           set: { code: 'H' }
         },
@@ -684,8 +705,8 @@ const tripDetails = (): GraphDef => {
         },
         { label: 'Home', when: { locationType: startsWith('Y92.0') }, set: { code: 'R' } },
         {
-          label: 'Residential institution',
-          when: { locationType: startsWith('Y92.1') },
+          label: 'Nursing home',
+          when: { locationType: startsWith('Y92.12') },
           set: { code: 'E' }
         },
         { label: 'Hospital', when: { locationType: startsWith('Y92.23') }, set: { code: 'H' } },
@@ -714,7 +735,7 @@ const tripDetails = (): GraphDef => {
         { key: '4221027', value: 'D' },
         { key: '4221029', value: 'E' },
         { key: '4221033', value: 'E' },
-        { key: '4221039', value: 'N' }
+        { key: '4221041', value: 'N' }
       ]
     }
   });
@@ -805,7 +826,25 @@ const map837p = (): GraphDef => {
       { codes: ['09'] }
     )
   });
-  g.add('modifiers', 'std.list.make', { label: 'Line modifiers', config: { count: 1 } });
+  g.add('codes', 'std.list.pluck', { label: 'Line codes', values: { field: 'code' } });
+  g.add('coverage', 'std.table.decide', {
+    label: 'Coverage modifier',
+    config: table(
+      [
+        field('claimFiling', 'string', 'Claim filing indicator'),
+        field('codes', { list: 'string' }, 'HCPCS codes')
+      ],
+      [field('modifier', 'string', 'Modifier')],
+      [
+        {
+          label: 'Medicare does not cover treatment without transport',
+          when: { claimFiling: oneOf('MA', 'MB'), codes: oneOf('A0998') },
+          set: { modifier: 'GY' }
+        }
+      ]
+    )
+  });
+  g.add('modifiers', 'std.list.make', { label: 'Line modifiers', config: { count: 2 } });
   g.add('shared', 'std.object.make', {
     label: 'Every line',
     config: {
@@ -852,6 +891,10 @@ const map837p = (): GraphDef => {
   for (const pin of ['name', 'payerId', 'claimFiling']) g.wire(`payer.${pin}`, `x12Payer.${pin}`);
   g.wire('claim.emergency', 'conditions.emergency');
   g.wire('details.originDestination', 'modifiers.item1');
+  g.wire('claim.lines', 'codes.list');
+  g.wire('payer.claimFiling', 'coverage.claimFiling');
+  g.wire('codes.list', 'coverage.codes');
+  g.wire('coverage.modifier', 'modifiers.item2');
   g.wire('modifiers.list', 'shared.modifiers');
   g.wire('details.serviceDate', 'shared.serviceDate');
   g.wire('claim.lines', 'lines.list');

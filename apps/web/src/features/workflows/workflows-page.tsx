@@ -62,6 +62,8 @@ export const WorkflowsTable = ({
               {g.kind === 'workflow' ? 'Workflow' : 'Node'}
             </Badge>
             {g.isSystem ? <Badge intent="warning">System</Badge> : null}
+            {g.overriddenBy ? <Badge intent="info">Overridden</Badge> : null}
+            {g.overrides ? <Badge intent="info">Override</Badge> : null}
           </span>
         </TableCell>
         <TableCell isMuted>{g.publishedVersion ? `v${g.publishedVersion}` : emptyValue}</TableCell>
@@ -91,7 +93,7 @@ export const WorkflowsPage = ({ client }: WorkflowsPageProps) => {
   return (
     <Page
       title="Workflows"
-      description="Graphs that run as workflows, and custom nodes they are built from."
+      description="Graphs that run as workflows, and the nodes they are built from. Override a system graph to change how your agency runs it."
       actions={
         <Button onClick={() => setCreating(true)}>
           <PlusIcon aria-hidden="true" className="size-4" />
