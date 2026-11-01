@@ -85,33 +85,27 @@ const serviceDate = (x: unknown) => {
   return value && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
 };
 
-export const readClaimDetails = (summary: unknown): ClaimDetails => {
-  const s = record(summary);
-  const impressions = [
-    s.primaryImpression,
-    ...(Array.isArray(s.secondaryImpressions) ? s.secondaryImpressions : [s.secondaryImpressions])
-  ];
+export const readClaimDetails = (claim: unknown): ClaimDetails => {
+  const c = record(claim);
+  const codes = Array.isArray(c.diagnoses) ? c.diagnoses : [];
   return {
-    serviceDate: serviceDate(s.incidentAt),
-    pickup: location(s.pickup),
-    destination: location(s.destination),
-    diagnoses: [...new Set(impressions.map(icd10).filter((c) => c !== null))].slice(
-      0,
-      DIAGNOSIS_LIMIT
-    ),
-    originDestination: originDestination(s.originDestination)
+    serviceDate: serviceDate(c.serviceDate),
+    pickup: location(c.pickup),
+    destination: location(c.destination),
+    diagnoses: [...new Set(codes.map(icd10).filter((x) => x !== null))].slice(0, DIAGNOSIS_LIMIT),
+    originDestination: originDestination(c.originDestination)
   };
 };
 
-export const readCoverages = (summary: unknown): Coverage[] => {
-  const s = record(summary);
-  const rows = (Array.isArray(s.coverages) ? s.coverages : []).map(record);
-  const rank = (priority: unknown) => {
-    const i = PRIORITY_ORDER.indexOf(String(priority));
-    return i < 0 ? PRIORITY_ORDER.length : i;
-  };
+const rank = (priority: unknown) => {
+  const i = PRIORITY_ORDER.indexOf(String(priority));
+  return i < 0 ? PRIORITY_ORDER.length : i;
+};
+
+export const readCoverages = (list: unknown): Coverage[] => {
+  const rows = (Array.isArray(list) ? list : []).map(record);
   const seen = new Set<string>();
-  const coverages = rows
+  return rows
     .map((r, i) => ({ r, i }))
     .sort((a, b) => rank(a.r.priority) - rank(b.r.priority) || a.i - b.i)
     .flatMap(({ r }) => {
@@ -128,8 +122,4 @@ export const readCoverages = (summary: unknown): Coverage[] => {
         }
       ];
     });
-  const fallback = text(s.payer);
-  return coverages.length || !fallback
-    ? coverages
-    : [{ payer: fallback, payerId: null, payerCode: null, memberId: null, groupId: null }];
 };

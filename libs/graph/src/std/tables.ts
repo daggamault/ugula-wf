@@ -15,6 +15,7 @@ export const CONDITION_OPS = [
   'gte',
   'lt',
   'lte',
+  'startsWith',
   'empty',
   'present'
 ] as const;
@@ -111,6 +112,8 @@ export const holds = ({ op, value = null }: Condition, x: Json): boolean => {
       return compare(x, value, (a, b) => a < b);
     case 'lte':
       return compare(x, value, (a, b) => a <= b);
+    case 'startsWith':
+      return anyOf(x, (item) => options(value).some((o) => o !== '' && toText(item).startsWith(o)));
     case 'empty':
       return isEmpty(x);
     case 'present':

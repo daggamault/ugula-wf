@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 import {
   type BillingStores,
   type BlobRef,
+  billingModels,
+  build837,
   type ClaimEvent,
   type ClaimStore,
   createBillingNodes,
@@ -10,11 +12,13 @@ import {
   type NewClaim,
   type Patient,
   type PatientStore,
-  type PayerStore
+  type PayerStore,
+  readX837Claim
 } from '@ugula/billing';
 import {
   combineSources,
   createEngine,
+  createModelNodes,
   createStdNodes,
   ENTRY_TYPE,
   type GraphDef,
@@ -25,7 +29,13 @@ import {
   refKey,
   stdGraphSource
 } from '@ugula/graph';
-import { createNemsisNodes, parseDataset, type ReportStore } from '@ugula/nemsis';
+import {
+  createNemsisNodes,
+  nemsisModels,
+  parseDataset,
+  type ReportStore,
+  toPcr
+} from '@ugula/nemsis';
 import { billingGraphs } from './billing-graphs.ts';
 import { assertValidGraphs, graphNodes } from './seed.ts';
 
@@ -33,6 +43,7 @@ const now = new Date('2026-10-01T00:00:00.000Z');
 
 const REPORT = `<EMSDataSet xmlns="http://www.nemsis.org"><Header><PatientCareReport>
   <eRecord><eRecord.01>PCR-1</eRecord.01></eRecord>
+  <eTimes><eTimes.01>2026-09-30T23:40:00-05:00</eTimes.01></eTimes>
   <ePatient><ePatient.02>Doe</ePatient.02><ePatient.03>Jane</ePatient.03><ePatient.05>1 Main St</ePatient.05><ePatient.06>2395220</ePatient.06><ePatient.08>17</ePatient.08><ePatient.09>62704</ePatient.09><ePatient.17>1980-01-02</ePatient.17><ePatient.25>9919003</ePatient.25></ePatient>
   <eScene><eScene.15>9 Elm St</eScene.15><eScene.17>Springfield</eScene.17><eScene.18>17</eScene.18><eScene.19>62701</eScene.19></eScene>
   <eResponse><eResponse.20>100.0</eResponse.20><eResponse.21>104.25</eResponse.21><eResponse.23>2223001</eResponse.23></eResponse>
@@ -65,70 +76,59 @@ const graphSource = (main?: GraphDef) => {
 const engineFor = (main: GraphDef) =>
   createEngine({ nodes: graphNodes(), graphs: graphSource(main) });
 
-const summarize = async (report: Json) => {
+const PCR = toPcr(REPORT_DATA);
+
+const pcrOf = (xml: string) => toPcr(parseDataset(xml).reports[0] ?? null);
+
+const evaluate = async (type: string, inputs: Record<string, Json>, outputs: string[]) => {
   const main: GraphDef = {
     signature: {
       execIn: ['exec'],
       execOut: [],
       inputs: [],
-      outputs: [{ name: 'summary', type: 'any' }]
-    },
-    variables: [],
-    nodes: [
-      { id: 'entry', type: ENTRY_TYPE, version: 1 },
-      { id: 'sum', type: 'billing.pcr-summary', version: 1, inputs: { report: { value: report } } },
-      { id: 'ret', type: RETURN_TYPE, version: 1 }
-    ],
-    edges: [
-      { from: 'entry', fromPin: 'exec', to: 'ret', toPin: 'exec' },
-      { from: 'sum', fromPin: 'summary', to: 'ret', toPin: 'summary' }
-    ]
-  };
-  const engine = engineFor(main);
-  const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
-  await engine.drain(state, { runId: 'r', now });
-  assert.equal(state.status, 'completed', state.fault?.error.message ?? '');
-  return state.result?.outputs.summary as Record<string, Json>;
-};
-
-const NO_FINDINGS = { medications: [], procedures: [], ivDoses: 0 };
-
-const linesFor = async (summary: Record<string, Json>, findings: Json = NO_FINDINGS) => {
-  const main: GraphDef = {
-    signature: {
-      execIn: ['exec'],
-      execOut: [],
-      inputs: [],
-      outputs: [
-        { name: 'service', type: 'any' },
-        { name: 'lines', type: 'any' }
-      ]
+      outputs: outputs.map((name) => ({ name, type: 'any' }))
     },
     variables: [],
     nodes: [
       { id: 'entry', type: ENTRY_TYPE, version: 1 },
       {
-        id: 'los',
-        type: 'billing.level-of-service',
+        id: 'node',
+        type,
         version: 1,
-        inputs: { summary: { value: summary }, findings: { value: findings } }
+        inputs: Object.fromEntries(Object.entries(inputs).map(([k, value]) => [k, { value }]))
       },
-      { id: 'lines', type: 'billing.claim-lines', version: 1 },
       { id: 'ret', type: RETURN_TYPE, version: 1 }
     ],
     edges: [
       { from: 'entry', fromPin: 'exec', to: 'ret', toPin: 'exec' },
-      { from: 'los', fromPin: 'service', to: 'lines', toPin: 'service' },
-      { from: 'los', fromPin: 'service', to: 'ret', toPin: 'service' },
-      { from: 'lines', fromPin: 'lines', to: 'ret', toPin: 'lines' }
+      ...outputs.map((name) => ({ from: 'node', fromPin: name, to: 'ret', toPin: name }))
     ]
   };
   const engine = engineFor(main);
   const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
   await engine.drain(state, { runId: 'r', now });
   assert.equal(state.status, 'completed', state.fault?.error.message ?? '');
-  return state.result?.outputs;
+  return state.result?.outputs ?? {};
 };
+
+const NO_FINDINGS = { medications: [], procedures: [], ivDoses: 0 };
+
+const serviceFor = async (pcr: Json, findings: Json = NO_FINDINGS) =>
+  (await evaluate('billing.level-of-service', { pcr, findings }, ['service'])).service as Record<
+    string,
+    Json
+  >;
+
+const linesFor = async (tripType: string, service: Json) =>
+  (await evaluate('billing.map-charges', { tripType, service }, ['lines'])).lines;
+
+const tripOf = async (xml: string) =>
+  evaluate('billing.classify-trip', { pcr: pcrOf(xml) }, ['tripType', 'reason']);
+
+const wrap = (body: string) =>
+  `<EMSDataSet xmlns="http://www.nemsis.org"><Header><PatientCareReport>${body}</PatientCareReport></Header></EMSDataSet>`;
+
+const modelNodes = createModelNodes([...nemsisModels, ...billingModels]);
 
 const only = <T extends object>(impl: Partial<T> = {}) =>
   new Proxy(impl, {
@@ -140,7 +140,9 @@ const only = <T extends object>(impl: Partial<T> = {}) =>
           }
   }) as T;
 
-const pcrWorld = (opts: { billed?: string; duplicate?: boolean; known?: Patient[] } = {}) => {
+const pcrWorld = (
+  opts: { billed?: string; duplicate?: boolean; known?: Patient[]; report?: Json } = {}
+) => {
   const report = { bucket: 'ugula', key: 'imports/t/f.xml.reports/00000.json' };
   const opened: NewClaim[] = [];
   const revisions: [string, BlobRef][] = [];
@@ -204,12 +206,17 @@ const pcrWorld = (opts: { billed?: string; duplicate?: boolean; known?: Patient[
   const engine = createEngine({
     nodes: [
       ...createStdNodes({ fetch }),
-      ...createNemsisNodes(only<ReportStore>({ getJson: async () => REPORT_DATA })),
-      ...createBillingNodes(stores)
+      ...createNemsisNodes(only<ReportStore>({ getJson: async () => opts.report ?? REPORT_DATA })),
+      ...createBillingNodes(stores),
+      ...modelNodes
     ],
     graphs: graphSource()
   });
-  const state = engine.start({ type: 'billing.process-pcr', version: 1 }, { report }, { now });
+  const state = engine.start(
+    { type: 'billing.encounter-to-claim', version: 1 },
+    { report },
+    { now }
+  );
   const waitFor = async (kind: string, title?: string) => {
     await engine.drain(state, { runId: 'r', now });
     assert.equal(state.suspension?.kind, kind, state.fault?.error.message ?? '');
@@ -245,19 +252,30 @@ describe('billing graphs', () => {
     assert.deepEqual(
       billingGraphs.map((g) => g.key),
       [
-        'billing.pcr-summary',
+        'billing.classify-trip',
+        'billing.loaded-miles',
+        'billing.level-of-service',
+        'billing.trip-emergency',
+        'billing.trip-scheduled',
+        'billing.trip-treat-no-transport',
+        'billing.trip-refusal',
+        'billing.suggest-service',
+        'billing.map-charges',
+        'billing.demographics-from-pcr',
+        'billing.coverages-from-pcr',
+        'billing.trip-details',
+        'billing.map-claim',
+        'billing.map-837p',
         'billing.resolve-patient',
         'billing.resolve-payers',
-        'billing.level-of-service',
-        'billing.claim-lines',
         'billing.cycle-claim',
-        'billing.process-pcr',
+        'billing.encounter-to-claim',
         'billing.ingest-nemsis'
       ]
     );
   });
 
-  it('processes a new PCR: payers learned, narrative considered, held, released and billed', async () => {
+  it('turns a new PCR into a claim: payers learned, narrative considered, held, released and billed', async () => {
     const world = pcrWorld();
     const payer = await world.waitFor('task', 'Match payer');
     assert.equal(world.data('queue'), 'billing-payers');
@@ -299,11 +317,13 @@ describe('billing graphs', () => {
       emergency: true,
       loadedMiles: 4.3,
       basis: [
+        'Three or more IV/IO medications coded',
         'ALS care documented',
-        '3 IV/IO medications coded',
-        '2 IV/IO medication doses in the narrative'
+        'IV/IO medications coded',
+        'IV/IO doses in the narrative'
       ]
     });
+    assert.equal(world.data('context.trip.tripType'), 'emergency');
 
     world.answer(review, 'hold', { note: 'Missing signature' });
     const held = await world.waitFor('task', 'Held PCR');
@@ -327,8 +347,34 @@ describe('billing graphs', () => {
     assert.deepEqual(world.data('inputs'), { claimId: 'c1' });
     world.engine.resume(world.state, start, { runId: 'cycle-1' });
     const outputs = await world.finish(world.state);
-    assert.equal(outputs.claimId, 'c1');
-    assert.equal(getPath(outputs.charges ?? null, 'totalCents'), 53_000);
+    assert.deepEqual([outputs.claimId, outputs.tripType], ['c1', 'emergency']);
+    assert.equal(claim?.totalCents, 53_000);
+    assert.deepEqual(
+      claim?.lines.map((l) => [l.code, l.units]),
+      [
+        ['A0427', 1],
+        ['A0425', 4.3]
+      ]
+    );
+    assert.deepEqual(claim?.details, {
+      serviceDate: '2026-09-30',
+      pickup: {
+        name: null,
+        addressLine: '9 Elm St',
+        city: 'Springfield',
+        state: 'IL',
+        postalCode: '62701'
+      },
+      destination: {
+        name: 'St. Mary',
+        addressLine: '1 Hospital Way',
+        city: null,
+        state: 'IL',
+        postalCode: '62702'
+      },
+      diagnoses: [],
+      originDestination: null
+    });
   });
 
   it('treats an already billed PCR as a revision of its claim, never a second claim', async () => {
@@ -394,7 +440,7 @@ describe('billing graphs', () => {
     assert.equal(getPath(outputs.patient ?? null, 'id'), 'p-new');
   });
 
-  it('spawns one Process PCR run per report and completes without waiting for them', async () => {
+  it('spawns one Encounter to Claim run per report and completes without waiting for them', async () => {
     const file = { bucket: 'ugula', key: 'imports/t/f.xml' };
     const engine = createEngine({
       nodes: [
@@ -405,7 +451,8 @@ describe('billing graphs', () => {
           putJson: async (_, key) => ({ bucket: 'ugula', key, size: 1, contentType: 'json' }),
           recordReports: async () => undefined
         }),
-        ...createBillingNodes(null)
+        ...createBillingNodes(null),
+        ...modelNodes
       ],
       graphs: graphSource()
     });
@@ -496,7 +543,8 @@ describe('billing graphs', () => {
           payers: only(),
           fees: only(),
           completer: only()
-        })
+        }),
+        ...modelNodes
       ],
       graphs: graphSource()
     });
@@ -582,104 +630,315 @@ describe('billing graphs', () => {
     assert.deepEqual(closed, ['paid']);
   });
 
-  it('summarizes care level, IV/IO medications, narrative and the primary payer from a NEMSIS report', async () => {
-    const summary = await summarize(REPORT_DATA);
-    assert.equal(summary.pcrNumber, 'PCR-1');
-    assert.equal(summary.careLevel, '4232005');
-    assert.equal(summary.ivMedicationCount, 3);
-    assert.equal(summary.narrative, 'Fentanyl 50 mcg IV x2 for pain.');
-    assert.equal(summary.payer, 'Blue Plan');
-    assert.equal(summary.responseMode, '2223001');
-    assert.equal(summary.gender, '9919003');
-    assert.deepEqual(
-      [summary.addressLine, summary.city, summary.state, summary.postalCode],
-      ['1 Main St', '2395220', '17', '62704']
-    );
-    assert.deepEqual(summary.pickup, {
-      addressLine: '9 Elm St',
-      city: 'Springfield',
-      state: '17',
-      postalCode: '62701'
+  it('suggests the level of service with every reason that applied', async () => {
+    assert.deepEqual(await serviceFor(PCR), {
+      level: 'ALS2',
+      emergency: true,
+      loadedMiles: 4.3,
+      basis: [
+        'Three or more IV/IO medications coded',
+        'ALS care documented',
+        'IV/IO medications coded'
+      ]
     });
-    assert.equal((summary.destination as Record<string, Json>).name, 'St. Mary');
-    assert.deepEqual((summary.coverages as Json[])[1], {
+    const bls = pcrOf(
+      wrap('<eDisposition><eDisposition.32>4232001</eDisposition.32></eDisposition>')
+    );
+    assert.deepEqual(await serviceFor(bls), {
+      level: 'BLS',
+      emergency: false,
+      loadedMiles: null,
+      basis: ['BLS care documented']
+    });
+    const narrated = await serviceFor(bls, { ...NO_FINDINGS, ivDoses: 1 });
+    assert.deepEqual(
+      [narrated.level, narrated.basis],
+      ['ALS1', ['IV/IO doses in the narrative', 'BLS care documented']]
+    );
+    const intubated = await serviceFor(bls, { ...NO_FINDINGS, procedures: ['intubation'] });
+    assert.equal(intubated.level, 'ALS2');
+    const crew = pcrOf(wrap('<ePayment><ePayment.50>2650003</ePayment.50></ePayment>'));
+    assert.deepEqual(
+      [(await serviceFor(crew)).level, (await serviceFor(crew)).emergency],
+      ['ALS1', true]
+    );
+    const critical = pcrOf(
+      wrap('<eDisposition><eDisposition.32>4232009</eDisposition.32></eDisposition>')
+    );
+    assert.equal((await serviceFor(critical, null)).level, 'SCT');
+  });
+
+  it('maps a confirmed service to HCPCS lines by trip type', async () => {
+    const service = { level: 'ALS1', emergency: true, loadedMiles: 12.37, basis: [] };
+    assert.deepEqual(await linesFor('emergency', service), [
+      { code: 'A0427', units: 1, unitCents: null, totalCents: null },
+      { code: 'A0425', units: 12.4, unitCents: null, totalCents: null }
+    ]);
+    const codes = async (tripType: string, s: Record<string, Json>) =>
+      ((await linesFor(tripType, { ...service, ...s })) as { code: string }[]).map((l) => l.code);
+    assert.deepEqual(await codes('scheduled', { emergency: false, loadedMiles: null }), ['A0426']);
+    assert.deepEqual(await codes('emergency', { level: 'BLS' }), ['A0429', 'A0425']);
+    assert.deepEqual(await codes('scheduled', { level: 'BLS', emergency: false }), [
+      'A0428',
+      'A0425'
+    ]);
+    assert.deepEqual(await codes('emergency', { level: 'ALS2' }), ['A0433', 'A0425']);
+    assert.deepEqual(await codes('emergency', { level: 'SCT', loadedMiles: 0 }), ['A0434']);
+    assert.deepEqual(await codes('treatNoTransport', {}), ['A0998']);
+    assert.deepEqual(await codes('refusal', {}), ['A0998']);
+  });
+
+  it('classifies trips from NEMSIS 3.4 and 3.5 dispositions and the type of service', async () => {
+    const disposition = (xml: string) => wrap(`<eDisposition>${xml}</eDisposition>`);
+    assert.deepEqual(await tripOf(disposition('<eDisposition.12>4212033</eDisposition.12>')), {
+      tripType: 'emergency',
+      reason: 'Emergency transport'
+    });
+    assert.equal(
+      (await tripOf(disposition('<eDisposition.12>4212007</eDisposition.12>'))).tripType,
+      'noClaim'
+    );
+    assert.equal(
+      (await tripOf(disposition('<eDisposition.12>4212025</eDisposition.12>'))).tripType,
+      'refusal'
+    );
+    assert.equal(
+      (await tripOf(disposition('<eDisposition.12>4212029</eDisposition.12>'))).tripType,
+      'treatNoTransport'
+    );
+    assert.equal(
+      (
+        await tripOf(
+          disposition(
+            '<eDisposition.28>4228007</eDisposition.28><eDisposition.30>4230009</eDisposition.30>'
+          )
+        )
+      ).tripType,
+      'refusal'
+    );
+    assert.equal(
+      (await tripOf(disposition('<eDisposition.27>4227005</eDisposition.27>'))).tripType,
+      'noClaim'
+    );
+    assert.deepEqual(
+      await tripOf(wrap('<eResponse><eResponse.05>2205005</eResponse.05></eResponse>')),
+      { tripType: 'scheduled', reason: 'Scheduled or interfacility transport' }
+    );
+  });
+
+  it('suggests the service for each trip type', async () => {
+    const suggest = async (tripType: string) => {
+      const main: GraphDef = {
+        signature: {
+          execIn: ['exec'],
+          execOut: [],
+          inputs: [],
+          outputs: [{ name: 'service', type: 'any' }]
+        },
+        variables: [],
+        nodes: [
+          { id: 'entry', type: ENTRY_TYPE, version: 1 },
+          {
+            id: 'suggest',
+            type: 'billing.suggest-service',
+            version: 1,
+            inputs: { tripType: { value: tripType }, pcr: { value: PCR } }
+          },
+          { id: 'ret', type: RETURN_TYPE, version: 1 }
+        ],
+        edges: [
+          { from: 'entry', fromPin: 'exec', to: 'suggest', toPin: 'exec' },
+          { from: 'suggest', fromPin: 'then', to: 'ret', toPin: 'exec' },
+          { from: 'suggest', fromPin: 'service', to: 'ret', toPin: 'service' }
+        ]
+      };
+      const engine = engineFor(main);
+      const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
+      await engine.drain(state, { runId: 'r', now });
+      assert.equal(state.status, 'completed', state.fault?.error.message ?? '');
+      const service = state.result?.outputs.service as Record<string, Json>;
+      return [service.emergency, service.loadedMiles];
+    };
+    assert.deepEqual(await suggest('emergency'), [true, 4.3]);
+    assert.deepEqual(await suggest('scheduled'), [false, 4.3]);
+    assert.deepEqual(await suggest('treatNoTransport'), [true, null]);
+    assert.deepEqual(await suggest('refusal'), [true, null]);
+  });
+
+  it('maps report demographics, coverages and trip details', async () => {
+    assert.deepEqual(
+      (await evaluate('billing.demographics-from-pcr', { pcr: PCR }, ['demographics']))
+        .demographics,
+      {
+        firstName: 'Jane',
+        lastName: 'Doe',
+        birthDate: '1980-01-02',
+        gender: '9919003',
+        addressLine: '1 Main St',
+        city: '2395220',
+        state: '17',
+        postalCode: '62704'
+      }
+    );
+    const { coverages } = await evaluate('billing.coverages-from-pcr', { pcr: PCR }, ['coverages']);
+    assert.deepEqual((coverages as Json[])[1], {
       payer: 'Blue Plan',
       payerCode: 'BCBS1',
       priority: '2611003',
       memberId: 'XYZ123',
       groupId: 'G7'
     });
-    const medicare = await summarize({ ePayment: { 'ePayment.01': '2601005' } });
-    assert.equal(medicare.payer, 'Medicare');
-    assert.equal(medicare.ivMedicationCount, 0);
-    assert.equal((await summarize({})).payer, null);
-  });
-
-  it('suggests the level of service with its reasons and maps it to HCPCS lines', async () => {
+    const medicare = pcrOf(wrap('<ePayment><ePayment.01>2601005</ePayment.01></ePayment>'));
     assert.deepEqual(
-      await linesFor({
-        careLevel: '4232005',
-        responseMode: '2223001',
-        sceneOdometer: '1000.0',
-        destinationOdometer: '1012.37',
-        ivMedicationCount: 1
-      }),
-      {
-        service: {
-          level: 'ALS1',
-          emergency: true,
-          loadedMiles: 12.4,
-          basis: ['ALS care documented', '1 IV/IO medications coded']
-        },
-        lines: [
-          { code: 'A0427', units: 1 },
-          { code: 'A0425', units: 12.4 }
-        ]
-      }
+      (await evaluate('billing.coverages-from-pcr', { pcr: medicare }, ['coverages'])).coverages,
+      [
+        {
+          payer: 'Medicare',
+          payerId: null,
+          directoryName: null,
+          payerCode: null,
+          priority: '2611003',
+          memberId: null,
+          groupId: null
+        }
+      ]
     );
-    assert.deepEqual(
-      await linesFor({ careLevel: '4232005', responseMode: '2223005', ivMedicationCount: 3 }),
-      {
-        service: {
-          level: 'ALS2',
-          emergency: false,
-          loadedMiles: null,
-          basis: ['ALS care documented', '3 IV/IO medications coded']
-        },
-        lines: [{ code: 'A0433', units: 1 }]
-      }
+    const trip = pcrOf(
+      wrap(`<eTimes><eTimes.01>2026-10-01T08:15:00-05:00</eTimes.01></eTimes>
+        <eScene><eScene.09>Y92.009</eScene.09></eScene>
+        <eSituation><eSituation.11>R07.9</eSituation.11><eSituation.12>I10</eSituation.12></eSituation>
+        <eDisposition><eDisposition.21>4221003</eDisposition.21></eDisposition>`)
     );
-    assert.deepEqual((await linesFor({ careLevel: '4232001', ivMedicationCount: 0 }))?.lines, [
-      { code: 'A0428', units: 1 }
+    const details = await evaluate('billing.trip-details', { pcr: trip }, [
+      'serviceDate',
+      'diagnoses',
+      'originDestination'
     ]);
-    assert.deepEqual((await linesFor({ careLevel: '4232009', ivMedicationCount: 0 }))?.lines, [
-      { code: 'A0434', units: 1 }
-    ]);
-  });
-
-  it('raises the suggestion when the narrative documents more than the coded data', async () => {
-    const bls = { careLevel: '4232001', ivMedicationCount: 0 };
-    const pushed = await linesFor(bls, { medications: [], procedures: [], ivDoses: 1 });
-    assert.deepEqual(getPath(pushed?.service ?? null, 'level'), 'ALS1');
-    assert.deepEqual(getPath(pushed?.service ?? null, 'basis'), [
-      'BLS care documented',
-      '1 IV/IO medication doses in the narrative'
-    ]);
-    const intubated = await linesFor(bls, {
-      medications: [],
-      procedures: ['endotracheal intubation'],
-      ivDoses: 0
+    assert.deepEqual(details, {
+      serviceDate: '2026-10-01',
+      diagnoses: ['R07.9', 'I10'],
+      originDestination: 'RH'
     });
-    assert.equal(getPath(intubated?.service ?? null, 'level'), 'ALS2');
-    assert.deepEqual(getPath(intubated?.service ?? null, 'basis'), [
-      'BLS care documented',
-      'Narrative ALS2 procedures: endotracheal intubation'
-    ]);
-    const doses = await linesFor(
-      { careLevel: '4232005', ivMedicationCount: 1 },
-      { ...NO_FINDINGS, ivDoses: 3 }
+    const transfer = pcrOf(wrap('<eResponse><eResponse.05>2205005</eResponse.05></eResponse>'));
+    assert.equal(
+      (await evaluate('billing.trip-details', { pcr: transfer }, ['originDestination']))
+        .originDestination,
+      'H'
     );
-    assert.equal(getPath(doses?.service ?? null, 'level'), 'ALS2');
-    assert.equal(getPath((await linesFor(bls, null))?.service ?? null, 'level'), 'BLS');
+  });
+
+  it('maps a claim on its way to a payer onto an 837P claim', async () => {
+    const place = {
+      addressLine: '9 Oak Ave',
+      city: 'Springfield',
+      state: 'IL',
+      postalCode: '62702'
+    };
+    const submission = {
+      claimId: 'c-1',
+      priorPayers: [],
+      payer: { name: 'Medicare', payerId: 'DEMOMCR', claimFiling: 'MB' },
+      memberId: '1EG4TE5MK73',
+      groupId: null,
+      patient: { firstName: 'Jose', lastName: 'Doe', birthDate: '1950-02-03', sex: 'M', ...place },
+      details: {
+        serviceDate: '2026-10-01',
+        pickup: { name: null, ...place },
+        destination: { name: 'Mercy Hospital', ...place },
+        diagnoses: ['R079'],
+        originDestination: 'RH'
+      },
+      emergency: true,
+      loadedMiles: 7.33,
+      lines: [
+        { code: 'A0427', units: 1, unitCents: 85_000, totalCents: 85_000 },
+        { code: 'A0425', units: 7.33, unitCents: 1_250, totalCents: 9_163 }
+      ]
+    };
+    const { x837 } = await evaluate('billing.map-837p', { claim: submission }, ['x837']);
+    const mapped = readX837Claim(x837);
+    assert.deepEqual(mapped.lines[1], {
+      code: 'A0425',
+      modifiers: ['RH'],
+      chargeCents: 9_163,
+      units: 7.33,
+      serviceDate: '2026-10-01'
+    });
+    assert.deepEqual(mapped.conditionCodes, ['09', '06']);
+    assert.deepEqual([mapped.payer.responsibility, mapped.subscriber.relationship], ['P', '18']);
+    const file = build837(
+      {
+        organizationName: 'Metro EMS',
+        npi: '1234567893',
+        taxId: '123456789',
+        addressLine: '1 Main St',
+        city: 'Springfield',
+        state: 'IL',
+        postalCode: '62701',
+        phone: '2175550100',
+        submitterId: 'SUB01',
+        receiverId: 'RCV01',
+        receiverName: null,
+        production: false
+      },
+      [mapped],
+      { controlNumber: 1, createdAt: now }
+    );
+    assert.ok(file.includes('SV1*HC:A0425:RH*91.63*UN*7.4***1~'));
+    assert.ok(file.includes('CLM*c-1*941.63***41:B:1*Y*A*Y*Y~'));
+    const scheduled = await evaluate(
+      'billing.map-837p',
+      { claim: { ...submission, emergency: false } },
+      ['x837']
+    );
+    assert.deepEqual(getPath(scheduled.x837 ?? null, 'conditionCodes'), ['09']);
+  });
+
+  it('asks before skipping a report that needs no claim, and can still claim it', async () => {
+    const cancelled = parseDataset(
+      REPORT.replace(
+        '<eDisposition.32>4232005</eDisposition.32>',
+        '<eDisposition.32>4232005</eDisposition.32><eDisposition.12>4212007</eDisposition.12>'
+      )
+    ).reports[0];
+    const skipped = pcrWorld({ report: cancelled ?? null });
+    skipped.answer(await skipped.waitFor('task', 'Confirm no claim'), 'skip');
+    assert.deepEqual(await skipped.finish(skipped.state), {
+      tripType: 'noClaim',
+      patient: null,
+      claimId: null
+    });
+    const claimed = pcrWorld({ report: cancelled ?? null });
+    claimed.answer(await claimed.waitFor('task', 'Confirm no claim'), 'claim');
+    await claimed.waitFor('task', 'Match payer');
+  });
+
+  it('bills a refusal as treatment without transport', async () => {
+    const refusal = parseDataset(
+      REPORT.replace(
+        '<eDisposition.32>4232005</eDisposition.32>',
+        '<eDisposition.32>4232005</eDisposition.32><eDisposition.12>4212025</eDisposition.12>'
+      )
+    ).reports[0];
+    const world = pcrWorld({ report: refusal ?? null });
+    world.answer(await world.waitFor('task', 'Match payer'), 'unlisted');
+    world.answer(await world.waitFor('task', 'Review PCR'), 'approve', { loadedMiles: null });
+    await world.waitFor('start');
+    assert.deepEqual(
+      world.opened[0]?.lines.map((l) => l.code),
+      ['A0998']
+    );
+  });
+
+  it('sends an incomplete claim back for attention instead of saving it', async () => {
+    const undated = parseDataset(REPORT.replace(/<eTimes>.*<\/eTimes>/, '')).reports[0];
+    const world = pcrWorld({ report: undated ?? null });
+    world.answer(await world.waitFor('task', 'Match payer'), 'unlisted');
+    world.answer(await world.waitFor('task', 'Review PCR'), 'approve', { level: 'ALS1' });
+    await world.waitFor('task', 'Claim needs attention');
+    assert.deepEqual(world.data('context.issues'), ['A claim needs a date of service']);
+    world.answer(await world.waitFor('task', 'Claim needs attention'), 'void');
+    assert.deepEqual((await world.finish(world.state)).claimId, null);
+    assert.equal(world.opened.length, 0);
   });
 });

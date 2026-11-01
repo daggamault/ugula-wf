@@ -268,38 +268,41 @@ describe('createBillingNodes', () => {
   it('opens a claim, walks its payer cycle and closes it', async () => {
     const claims = memoryClaims();
     const nodes = createBillingNodes(withFees(memoryStore([]).store, claims.store));
-    const [open, attach, step, record, close] = [
-      'open-claim',
+    const [validate, open, attach, step, record, close] = [
+      'validate-claim',
+      'save-claim',
       'attach-cycle',
       'claim-step',
       'record-claim-event',
       'close-claim'
     ].map((t) => nodeOf(nodes, t));
-    const charges = {
+    const claim = {
+      pcrNumber: ' PCR-1 ',
+      patientId: jane.id,
+      serviceDate: '2026-10-01T08:15:00Z',
       level: 'ALS1',
       emergency: true,
       loadedMiles: 12.4,
       lines: [{ code: 'A0427', units: 1, unitCents: 100_000, totalCents: 100_000 }],
-      totalCents: 100_000
+      totalCents: 100_000,
+      diagnoses: ['R07.9'],
+      coverages: [
+        { payer: 'Blue', priority: '2611005' },
+        { payer: 'Medicare', priority: '2611003', memberId: 'M1' },
+        { payer: ' ' }
+      ],
+      report: { bucket: 'ugula', key: 'imports/t/f.xml.reports/00000.json' }
     };
-    const opened = await open?.run(
-      invoke({
-        patient: jane,
-        summary: {
-          pcrNumber: ' PCR-1 ',
-          incidentAt: '2026-10-01T08:15:00Z',
-          primaryImpression: 'R07.9',
-          coverages: [
-            { payer: 'Blue', priority: '2611005' },
-            { payer: 'Medicare', priority: '2611003', memberId: 'M1' },
-            { payer: ' ' }
-          ]
-        },
-        charges,
-        report: { bucket: 'ugula', key: 'imports/t/f.xml.reports/00000.json' }
-      })
-    );
-    assert.deepEqual([opened?.pin, opened?.outputs], ['opened', { claimId: 'c1' }]);
+    assert.deepEqual(await validate?.run(invoke({ claim })), {
+      type: 'next',
+      pin: 'valid',
+      outputs: { issues: [] }
+    });
+    const invalid = await validate?.run(invoke({ claim: { ...claim, totalCents: 5, level: 'X' } }));
+    assert.equal(invalid?.pin, 'invalid');
+    assert.equal((invalid?.outputs.issues as string[] | undefined)?.length, 2);
+    const opened = await open?.run(invoke({ claim }));
+    assert.deepEqual([opened?.pin, opened?.outputs], ['saved', { claimId: 'c1' }]);
     assert.deepEqual(
       claims.opened[0]?.coverages.map((c) => c.payer),
       ['Medicare', 'Blue']
@@ -341,12 +344,29 @@ describe('createBillingNodes', () => {
       at: '2026-01-01T00:00:00.000Z'
     });
     assert.equal((await next())?.pin, 'await');
+    assert.equal(
+      (await step?.run(invoke({ claimId: 'c1', payerWaitDays: 2 })))?.outputs.waitMs,
+      2 * 86_400_000
+    );
     await record?.run(invoke({ claimId: 'c1', kind: 'payer_skipped', coverageId: 'cov-Medicare' }));
     const before = claims.events.length;
     await record?.run(invoke({ claimId: 'c1', kind: 'follow_up', coverageId: 'cov-Medicare' }));
     assert.equal(claims.events.length, before);
     await record?.run(invoke({ claimId: 'c1', kind: 'payer_skipped', coverageId: 'cov-Blue' }));
     assert.deepEqual((await next())?.outputs.statementNumber, 1);
+    claims.events.push({
+      kind: 'statement',
+      coverageId: null,
+      key: 'st',
+      note: '',
+      paidCents: 0,
+      adjustedCents: 0,
+      at: '2025-01-01T00:00:00.000Z'
+    });
+    assert.equal(
+      (await step?.run(invoke({ claimId: 'c1', statementCount: 1 })))?.pin,
+      'collections'
+    );
     await assert.rejects(
       async () => record?.run(invoke({ claimId: 'c1', kind: 'paid' })),
       /Unknown claim event/
@@ -359,10 +379,10 @@ describe('createBillingNodes', () => {
     );
     await assert.rejects(async () => step?.run(invoke({ claimId: 'c9' })), /does not exist/);
     await assert.rejects(
-      async () => open?.run(invoke({ patient: jane, charges: {} })),
+      async () => open?.run(invoke({ claim: { ...claim, level: null } })),
       /level of service/
     );
-    const again = await open?.run(invoke({ patient: jane, summary: {}, charges }));
+    const again = await open?.run(invoke({ claim }));
     assert.deepEqual([again?.pin, again?.outputs], ['duplicate', { claimId: 'c1' }]);
   });
 
@@ -389,15 +409,13 @@ describe('createBillingNodes', () => {
       withFees(memoryStore([]).store, undefined, payers.store, model)
     );
     const match = nodeOf(nodes, 'match-payers');
-    const summary = {
-      coverages: [
-        { payer: 'BCBS', priority: '2611005', memberId: 'B7' },
-        { payer: 'Medicare', priority: '2611003' },
-        { payer: 'Blue Cross TX', priority: '2611007' },
-        { payer: 'Self Pay', priority: '2611009' }
-      ]
-    };
-    const first = await match.run(invoke({ summary }));
+    const coverages = [
+      { payer: 'BCBS', priority: '2611005', memberId: 'B7' },
+      { payer: 'Medicare', priority: '2611003' },
+      { payer: 'Blue Cross TX', priority: '2611007' },
+      { payer: 'Self Pay', priority: '2611009' }
+    ];
+    const first = await match.run(invoke({ coverages }));
     assert.equal(first.pin, 'review');
     assert.deepEqual(
       (first.outputs.coverages as { payer: string; payerId: string | null }[]).map((c) => [
@@ -434,7 +452,7 @@ describe('createBillingNodes', () => {
     await link.run(invoke({ name: 'BCBS', payerId: 'p-blue' }));
     assert.deepEqual([...payers.aliases], [['BCBS', 'p-blue']]);
     await assert.rejects(async () => link.run(invoke({ name: 'BCBS' })), /Choose the directory/);
-    const second = await match.run(invoke({ summary, suggest: false }));
+    const second = await match.run(invoke({ coverages, suggest: false }));
     assert.equal(second.pin, 'review');
     assert.equal((second.outputs.coverages as { payerId: string }[])[1]?.payerId, 'p-blue');
     assert.deepEqual(second.outputs.unmatched, [
@@ -479,7 +497,8 @@ describe('createBillingNodes', () => {
         'billing.create-patient@1',
         'billing.find-patient@1',
         'billing.price-claim@1',
-        'billing.open-claim@1',
+        'billing.validate-claim@1',
+        'billing.save-claim@1',
         'billing.find-claim@1',
         'billing.note-revision@1',
         'billing.match-payers@1',

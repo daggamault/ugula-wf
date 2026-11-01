@@ -98,20 +98,36 @@ const waitFor = (since: number, intervalMs: number, now: Date) => {
   return remaining > 0 ? Math.max(remaining, MIN_WAIT_MS) : 0;
 };
 
-export const nextClaimStep = (ledger: ClaimLedger, now: Date): ClaimStep => {
+export type CyclePolicy = {
+  payerWaitMs: number;
+  statementLimit: number;
+  statementIntervalMs: number;
+};
+
+export const DEFAULT_POLICY: CyclePolicy = {
+  payerWaitMs: PAYER_WAIT_MS,
+  statementLimit: STATEMENT_LIMIT,
+  statementIntervalMs: STATEMENT_INTERVAL_MS
+};
+
+export const nextClaimStep = (
+  ledger: ClaimLedger,
+  now: Date,
+  policy: CyclePolicy = DEFAULT_POLICY
+): ClaimStep => {
   const { balanceCents, coverage, contacted, statements, lastStatement } = claimProgress(ledger);
   if (balanceCents <= 0) return { step: 'closed', balanceCents };
   if (coverage !== null) {
     if (contacted === null) return { step: 'submit', coverage, balanceCents };
-    const waitMs = waitFor(contacted, PAYER_WAIT_MS, now);
+    const waitMs = waitFor(contacted, policy.payerWaitMs, now);
     return waitMs > 0
       ? { step: 'await', coverage, waitMs, balanceCents }
       : { step: 'followUp', coverage, balanceCents };
   }
   if (lastStatement === null) return { step: 'statement', statement: 1, balanceCents };
-  const waitMs = waitFor(lastStatement, STATEMENT_INTERVAL_MS, now);
+  const waitMs = waitFor(lastStatement, policy.statementIntervalMs, now);
   if (waitMs > 0) return { step: 'awaitPatient', waitMs, balanceCents };
-  return statements < STATEMENT_LIMIT
+  return statements < policy.statementLimit
     ? { step: 'statement', statement: statements + 1, balanceCents }
     : { step: 'collections', balanceCents };
 };

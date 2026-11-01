@@ -30,14 +30,17 @@ export {
   type ClaimLedger,
   type ClaimStep,
   COVERAGE_EVENT_KINDS,
+  type CyclePolicy,
   claimProgress,
   claimSignalKey,
+  DEFAULT_POLICY,
   type LedgerCoverage,
   nextClaimStep,
   PATIENT_EVENT_KINDS,
   STATEMENT_LIMIT
 } from './claims.ts';
 export { usState, zipCode } from './geo.ts';
+export { billingModels, type Model, type ModelField } from './models.ts';
 export { nameKey } from './names.ts';
 export {
   type BillingStores,
@@ -46,6 +49,7 @@ export {
   type ClaimStore,
   type ClosedStatus,
   type CycleEventKind,
+  claimProblems,
   createBillingNodes,
   type FeeStore,
   type HostNode,
@@ -96,6 +100,10 @@ export {
   type Envelope,
   MAX_BATCH_CLAIMS,
   MAX_CONTROL_NUMBER,
+  readX837Claim,
   type Submitter,
-  submitterIssues
+  submitterIssues,
+  type X837Claim,
+  type X837Line,
+  type X837Location
 } from './x837.ts';

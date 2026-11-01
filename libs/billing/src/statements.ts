@@ -36,7 +36,8 @@ export const HCPCS_LABELS: Record<string, string> = {
   A0428: 'BLS, non-emergency transport',
   A0429: 'BLS, emergency transport',
   A0433: 'ALS2 transport',
-  A0434: 'Specialty care transport'
+  A0434: 'Specialty care transport',
+  A0998: 'Ambulance response and treatment, no transport'
 };
 
 export const printable = (text: string) =>

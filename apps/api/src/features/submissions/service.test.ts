@@ -1,11 +1,53 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { BatchClaim } from '@ugula/billing';
 import { type ClaimEventKind, createRecordingDb } from '@ugula/db';
+import type { Json } from '@ugula/graph';
 import type { JobBoss } from '@ugula/jobs';
 import type { CompiledQuery } from 'kysely';
+import type { Evaluate } from '../../shared/evaluate.ts';
 import { recordAnnouncements } from '../../shared/testing.ts';
 import type { OpenClaimRow } from './queries.ts';
-import { batchKey, createSubmissionService, detailsOf, pendingClaims } from './service.ts';
+import {
+  batchKey,
+  createSubmissionService,
+  detailsOf,
+  MAP_837P,
+  pendingClaims
+} from './service.ts';
+
+const toX837 = (c: BatchClaim): Json => ({
+  claimId: c.claimId,
+  placeOfService: '41',
+  frequency: '1',
+  subscriber: {
+    relationship: '18',
+    lastName: c.patient.lastName,
+    firstName: c.patient.firstName,
+    memberId: c.memberId,
+    groupId: c.groupId,
+    addressLine: c.patient.addressLine,
+    city: c.patient.city,
+    state: c.patient.state,
+    postalCode: c.patient.postalCode,
+    birthDate: c.patient.birthDate,
+    sex: c.patient.sex
+  },
+  payer: { responsibility: 'P', ...c.payer },
+  transportReason: 'A',
+  loadedMiles: c.loadedMiles,
+  conditionCodes: ['09'],
+  diagnoses: c.details.diagnoses,
+  pickup: c.details.pickup,
+  dropoff: c.details.destination,
+  lines: c.lines.map((l) => ({
+    code: l.code,
+    modifiers: [c.details.originDestination],
+    chargeCents: l.totalCents,
+    units: l.units,
+    serviceDate: c.details.serviceDate
+  }))
+});
 
 const C1 = '01a16617-7704-7ba6-b9b5-9c79fa44f961';
 const C2 = '01a16617-7704-7ba6-b9b5-9c79fa44f962';
@@ -166,7 +208,13 @@ describe('detailsOf', () => {
   });
 });
 
-const setup = ({ rows = [claimRow(C1)], events = [] as unknown[], withProfile = true } = {}) => {
+const setup = ({
+  rows = [claimRow(C1)],
+  events = [] as unknown[],
+  withProfile = true,
+  broken = false
+} = {}) => {
+  const opts = { broken };
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.includes('from "billing_profiles"')) return withProfile ? [profile] : [];
     if (q.sql.includes('from "claims" as "c"')) return rows;
@@ -189,8 +237,15 @@ const setup = ({ rows = [claimRow(C1)], events = [] as unknown[], withProfile = 
     getBytes: async () => new TextEncoder().encode('ISA*')
   };
   const { announce, events: announced } = recordAnnouncements();
-  const service = createSubmissionService({ db, boss, blobs, announce, now: () => now });
-  return { service, queries, jobs, stored, announced };
+  const mapped: string[] = [];
+  const evaluate: Evaluate = async (_, tenantId, graph, inputs, output) => {
+    mapped.push(`${tenantId}:${graph.key}@${graph.version}:${output}`);
+    return inputs.map((i) =>
+      opts.broken ? { claimId: 'x' } : toX837(i.claim as unknown as BatchClaim)
+    );
+  };
+  const service = createSubmissionService({ db, boss, blobs, announce, now: () => now, evaluate });
+  return { service, queries, jobs, stored, announced, mapped };
 };
 
 describe('submission service', () => {
@@ -212,9 +267,11 @@ describe('submission service', () => {
   });
 
   it('writes an 837P file, logs each claim as submitted and wakes its cycle', async () => {
-    const { service, queries, jobs, stored } = setup();
+    const { service, queries, jobs, stored, mapped } = setup();
     const res = await service.create('t1', 'u1', [C1, C1]);
     assert.ok(res.ok, JSON.stringify(res));
+    assert.deepEqual(mapped, [`t1:${MAP_837P.key}@1:x837`]);
+    assert.ok(stored[0]?.text.includes('SV1*HC:A0427:RH*850*UN*1***1~'));
     assert.equal(stored[0]?.key, batchKey('t1', 7));
     assert.equal(stored[0]?.key, 'batches/t1/837P-000000007.txt');
     assert.equal(stored[0]?.contentType, 'application/edi-x12');
@@ -248,6 +305,17 @@ describe('submission service', () => {
     });
     assert.equal(stored.length, 0);
     assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
+  });
+
+  it('names the claim whose 837P mapping is incomplete, without writing anything', async () => {
+    const { service, stored } = setup({ broken: true });
+    const res = await service.create('t1', 'u1', [C1]);
+    assert.ok(!res.ok && res.failure.code === 'invalid');
+    assert.match(
+      !res.ok ? res.failure.message : '',
+      new RegExp(`Claim ${C1}: The 837P claim needs`)
+    );
+    assert.equal(stored.length, 0);
   });
 
   it('needs clearinghouse IDs before building a batch', async () => {

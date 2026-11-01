@@ -1,4 +1,5 @@
 import { type JsonValue, parseDataset, pcrNumberOf } from './parse.ts';
+import { PCR_TYPE, toPcr } from './pcr.ts';
 
 type ValueType =
   | 'any'
@@ -108,19 +109,23 @@ export const createNemsisNodes = (store: ReportStore | null): HostNode[] => {
       version: 1,
       title: 'Read Patient Care Report',
       category: 'NEMSIS',
-      description: 'Loads one stored patient care report so its fields can be used.',
+      description:
+        'Loads one stored patient care report as typed sections (patient, times, payment, disposition and more) for Break nodes to split into fields. Also outputs the raw report.',
       effect: false,
-      signature: action([{ name: 'report', type: BLOB }], [{ name: 'data', type: { object: {} } }]),
-      run: async ({ read, ctx }) => ({
-        type: 'next',
-        pin: 'then',
-        outputs: {
-          data: (await storage().getJson(
-            ctx.runId,
-            (await read('report')) as BlobLocation
-          )) as JsonValue
-        }
-      })
+      signature: action(
+        [{ name: 'report', type: BLOB }],
+        [
+          { name: 'pcr', type: PCR_TYPE },
+          { name: 'data', type: { object: {} } }
+        ]
+      ),
+      run: async ({ read, ctx }) => {
+        const data = (await storage().getJson(
+          ctx.runId,
+          (await read('report')) as BlobLocation
+        )) as JsonValue;
+        return { type: 'next', pin: 'then', outputs: { pcr: toPcr(data), data } };
+      }
     }
   ];
 };

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { type BatchClaim, build837, claimIssues, type Submitter, submitterIssues } from './x837.ts';
+import {
+  type BatchClaim,
+  build837,
+  claimIssues,
+  readX837Claim,
+  type Submitter,
+  submitterIssues,
+  type X837Claim
+} from './x837.ts';
 
 const submitter: Submitter = {
   organizationName: 'Metro EMS',
@@ -47,6 +55,33 @@ const claim: BatchClaim = {
   ]
 };
 
+const mapped: X837Claim = {
+  claimId: 'c-1',
+  placeOfService: '41',
+  frequency: '1',
+  subscriber: {
+    relationship: '18',
+    lastName: "O'Brien~*",
+    firstName: 'José',
+    memberId: '1EG4TE5MK73',
+    groupId: null,
+    birthDate: '1950-02-03',
+    sex: 'M',
+    ...place
+  },
+  payer: { responsibility: 'P', name: 'Medicare', payerId: 'DEMOMCR', claimFiling: 'MB' },
+  transportReason: 'A',
+  loadedMiles: 7.33,
+  conditionCodes: ['09', '06'],
+  diagnoses: ['R079', 'I10'],
+  pickup: { name: null, ...place },
+  dropoff: { name: 'Mercy Hospital', ...place, addressLine: '100 Health Way' },
+  lines: [
+    { code: 'A0427', modifiers: ['RH'], chargeCents: 85_000, units: 1, serviceDate: '2026-10-01' },
+    { code: 'A0425', modifiers: ['RH'], chargeCents: 9_163, units: 7.33, serviceDate: '2026-10-01' }
+  ]
+};
+
 const envelope = { controlNumber: 42, createdAt: new Date('2026-10-23T14:05:09Z') };
 
 const segments = (text: string) =>
@@ -56,7 +91,7 @@ const segments = (text: string) =>
     .map((s) => s.replace(/~$/, ''));
 
 describe('build837', () => {
-  const file = build837(submitter, [claim, { ...claim, claimId: 'c-2' }], envelope);
+  const file = build837(submitter, [mapped, { ...mapped, claimId: 'c-2' }], envelope);
   const segs = segments(file);
   const find = (id: string) => segs.filter((s) => s.startsWith(`${id}*`));
 
@@ -113,18 +148,38 @@ describe('build837', () => {
     ]);
   });
 
-  it('leaves out the emergency condition for scheduled transports', () => {
-    const scheduled = segments(build837(submitter, [{ ...claim, emergency: false }], envelope));
+  it('writes the ambulance conditions it is given, and none when there are none', () => {
+    const scheduled = segments(
+      build837(submitter, [{ ...mapped, conditionCodes: ['09'] }], envelope)
+    );
     assert.ok(scheduled.includes('CRC*07*Y*09'));
+    const none = segments(build837(submitter, [{ ...mapped, conditionCodes: [] }], envelope));
+    assert.ok(!none.some((s) => s.startsWith('CRC*')));
+  });
+
+  it('reads mapped claims and names what is missing', () => {
+    assert.deepEqual(readX837Claim(JSON.parse(JSON.stringify(mapped))), {
+      ...mapped,
+      subscriber: { ...mapped.subscriber, groupId: null }
+    });
+    assert.throws(() => readX837Claim({ ...mapped, lines: [] }), /at least one service line/);
+    assert.throws(
+      () => readX837Claim({ ...mapped, payer: { ...mapped.payer, payerId: ' ' } }),
+      /payer ID/
+    );
+    assert.throws(
+      () => readX837Claim({ ...mapped, lines: [{ ...mapped.lines[0], chargeCents: 1.5 }] }),
+      /charge in cents/
+    );
   });
 
   it('refuses control numbers that do not fit the envelope', () => {
     assert.throws(
-      () => build837(submitter, [claim], { ...envelope, controlNumber: 1e9 }),
+      () => build837(submitter, [mapped], { ...envelope, controlNumber: 1e9 }),
       /out of range/
     );
     assert.throws(
-      () => build837(submitter, [claim], { ...envelope, controlNumber: 0 }),
+      () => build837(submitter, [mapped], { ...envelope, controlNumber: 0 }),
       /out of range/
     );
   });

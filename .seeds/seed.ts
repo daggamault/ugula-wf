@@ -1,7 +1,8 @@
-import { createBillingNodes } from '@ugula/billing';
+import { billingModels, createBillingNodes } from '@ugula/billing';
 import { createDb, type Db } from '@ugula/db';
 import {
   combineSources,
+  createModelNodes,
   createRegistry,
   createStdNodes,
   type NodeDef,
@@ -9,7 +10,7 @@ import {
   stdGraphSource,
   validateGraph
 } from '@ugula/graph';
-import { createNemsisNodes } from '@ugula/nemsis';
+import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
 import { hashPassword } from '@ugula/passwords';
 import { billingGraphs } from './billing-graphs.ts';
 import { buildUpsertDemoPayers, buildUpsertDemoProfile } from './billing-setup.ts';
@@ -39,7 +40,8 @@ export const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
 export const graphNodes = () => [
   ...createStdNodes({ fetch }),
   ...createNemsisNodes(null),
-  ...createBillingNodes(null)
+  ...createBillingNodes(null),
+  ...createModelNodes([...nemsisModels, ...billingModels])
 ];
 
 const primitives = () => new Set(graphNodes().map(refKey));

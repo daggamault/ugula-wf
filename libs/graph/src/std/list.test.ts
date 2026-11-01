@@ -132,3 +132,29 @@ describe('field list nodes', () => {
     );
   });
 });
+
+describe('reshape', () => {
+  it('copies item paths and shared values into new objects', async () => {
+    const def = listNodes.find((d) => d.type === 'std.list.reshape');
+    if (!def) throw new Error('reshape');
+    const out = await invokeNode(def, {
+      inputs: {
+        list: [{ code: 'A0427', price: { cents: 100 } }],
+        shared: { serviceDate: '2026-10-01' }
+      },
+      config: {
+        fields: [
+          { name: 'code', type: 'string', from: 'code' },
+          { name: 'chargeCents', type: 'integer', from: 'price.cents' },
+          { name: 'serviceDate', type: 'string' }
+        ]
+      }
+    });
+    assert.deepEqual(out.outputs, {
+      list: [{ code: 'A0427', chargeCents: 100, serviceDate: '2026-10-01' }]
+    });
+    assert.deepEqual(out.signature.outputs[0]?.type, {
+      list: { object: { code: 'string', chargeCents: 'integer', serviceDate: 'string' } }
+    });
+  });
+});

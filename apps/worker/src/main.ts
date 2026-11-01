@@ -1,10 +1,10 @@
-import { createBillingNodes } from '@ugula/billing';
+import { billingModels, createBillingNodes } from '@ugula/billing';
 import { createBlobStore, createS3Storage } from '@ugula/blobs';
 import { createDb, findDefinitions, listRunGraphRefs } from '@ugula/db';
 import { publishEvent } from '@ugula/events';
-import { createStdNodes } from '@ugula/graph';
+import { createModelNodes, createStdNodes } from '@ugula/graph';
 import { createCompleter, createEmbedder } from '@ugula/inference';
-import { createNemsisNodes } from '@ugula/nemsis';
+import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
 import { Redis } from 'ioredis';
 import { PgBoss } from 'pg-boss';
 import { type Config, parseConfig } from './config.ts';
@@ -72,7 +72,8 @@ if (import.meta.main) {
             model: config.COMPLETIONS_MODEL,
             fetch
           })
-        })
+        }),
+        ...createModelNodes([...nemsisModels, ...billingModels])
       ],
       loadRefs: (runId) => listRunGraphRefs(db, runId),
       loadDefinitions: (ids) => findDefinitions(db, ids)

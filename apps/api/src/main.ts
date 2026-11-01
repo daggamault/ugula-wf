@@ -1,11 +1,11 @@
 import { serve } from '@hono/node-server';
-import { createBillingNodes } from '@ugula/billing';
+import { billingModels, createBillingNodes } from '@ugula/billing';
 import { type BlobStore, createBlobStore, createS3Storage } from '@ugula/blobs';
 import { createDb, type Db } from '@ugula/db';
 import { publishEvent } from '@ugula/events';
-import { createStdNodes, type NodeDef } from '@ugula/graph';
+import { createModelNodes, createStdNodes, type NodeDef } from '@ugula/graph';
 import type { JobBoss } from '@ugula/jobs';
-import { createNemsisNodes } from '@ugula/nemsis';
+import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
 import { createSessionStore, type RedisLike } from '@ugula/sessions';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -36,6 +36,7 @@ import { createSubmissionService } from './features/submissions/service.ts';
 import { createTaskRoutes } from './features/tasks/routes.ts';
 import { createTaskService } from './features/tasks/service.ts';
 import { type AuthEnv, requireAuth } from './shared/auth.ts';
+import { createEvaluate } from './shared/evaluate.ts';
 import type { Announce } from './shared/live.ts';
 
 export type AppDeps = {
@@ -103,7 +104,14 @@ export const createApp = ({ config, db, redis, boss, blobs, nodes, announce }: A
     '/api/submissions',
     protect(
       createSubmissionRoutes(
-        createSubmissionService({ db, boss, blobs, announce, now: () => new Date() })
+        createSubmissionService({
+          db,
+          boss,
+          blobs,
+          announce,
+          now: () => new Date(),
+          evaluate: createEvaluate(nodes, () => new Date())
+        })
       )
     )
   );
@@ -163,7 +171,8 @@ if (import.meta.main) {
       nodes: [
         ...createStdNodes({ fetch }),
         ...createNemsisNodes(null),
-        ...createBillingNodes(null)
+        ...createBillingNodes(null),
+        ...createModelNodes([...nemsisModels, ...billingModels])
       ],
       announce: (tenantId, event) => publishEvent(redis, tenantId, event)
     }).fetch,

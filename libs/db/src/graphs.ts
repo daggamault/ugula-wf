@@ -55,8 +55,7 @@ export const findPublishedGraphs = async (
 ): Promise<PublishedGraph[]> =>
   refs.length ? (await buildFindPublishedGraphs(tenantId, refs).execute(db)).rows : [];
 
-export const buildPinRunGraphs = (runId: string, tenantId: string, versionId: string) => sql`
-  insert into workflow_run_graphs (run_id, key, version, graph_version_id)
+const bundle = (tenantId: string | null, versionId: string) => sql`
   with recursive bundle (id, key, version) as (
     select gv.id, g.key, gv.version
     from graph_versions gv
@@ -71,9 +70,34 @@ export const buildPinRunGraphs = (runId: string, tenantId: string, versionId: st
       from unnest(gv.dependencies) as d
     ) dep
     cross join lateral ${resolved(tenantId, sql.ref('dep.key'), sql.ref('dep.version'))} r
-  )
+  )`;
+
+export const buildPinRunGraphs = (runId: string, tenantId: string, versionId: string) => sql`
+  insert into workflow_run_graphs (run_id, key, version, graph_version_id)
+  ${bundle(tenantId, versionId)}
   select ${runId}::uuid, key, version, id from bundle
   on conflict do nothing`;
+
+export const buildResolveBundle = (tenantId: string | null, versionId: string) => sql<GraphRef>`
+  ${bundle(tenantId, versionId)}
+  select id, key, version from bundle`;
+
+export const resolveBundle = async (
+  db: Kysely<Database>,
+  tenantId: string | null,
+  versionId: string
+): Promise<PublishedGraph[]> => {
+  const refs = (await buildResolveBundle(tenantId, versionId).execute(db)).rows;
+  const defs = new Map(
+    (
+      await findDefinitions(
+        db,
+        refs.map((r) => r.id)
+      )
+    ).map((d) => [d.id, d.definition])
+  );
+  return refs.map((r) => ({ ...r, definition: defs.get(r.id) ?? null }));
+};
 
 export const pinRunGraphs = async (
   db: Kysely<Database>,

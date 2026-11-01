@@ -1,163 +1,908 @@
 import { CLAIM_SIGNAL } from '@ugula/billing';
-import { type Edge, ENTRY_TYPE, type GraphDef, type NodeInstance, RETURN_TYPE } from '@ugula/graph';
+import type { GraphDef, Json, PinSpec, ValueType } from '@ugula/graph';
+import { PCR_TYPE } from '@ugula/nemsis';
+import { graph } from './builder.ts';
 import type { SeedGraph } from './graphs.ts';
 
-const node = (
-  id: string,
-  type: string,
-  extra: Partial<Omit<NodeInstance, 'id' | 'type'>> = {}
-): NodeInstance => ({ id, type, version: 1, ...extra });
+const obj = (fields: Record<string, ValueType>): ValueType => ({ object: fields });
 
-const edge = (from: string, fromPin: string, to: string, toPin: string): Edge => ({
-  from,
-  fromPin,
-  to,
-  toPin
+const BLOB = obj({ bucket: 'string', key: 'string' });
+
+const ADDRESS = { addressLine: 'string', city: 'string', state: 'string', postalCode: 'string' };
+
+const DEMOGRAPHICS = obj({
+  firstName: 'string',
+  lastName: 'string',
+  birthDate: 'string',
+  gender: 'string',
+  ...ADDRESS
+} as Record<string, ValueType>);
+
+const PATIENT = obj({
+  id: 'string',
+  firstName: 'string',
+  lastName: 'string',
+  birthDate: 'string',
+  gender: 'string',
+  ...ADDRESS
+} as Record<string, ValueType>);
+
+const LOCATION = obj({ name: 'string', ...ADDRESS } as Record<string, ValueType>);
+
+const COVERAGES: ValueType = {
+  list: obj({
+    payer: 'string',
+    payerId: 'string',
+    directoryName: 'string',
+    payerCode: 'string',
+    priority: 'string',
+    memberId: 'string',
+    groupId: 'string'
+  })
+};
+
+const SERVICE = obj({
+  level: 'string',
+  emergency: 'boolean',
+  loadedMiles: 'number',
+  basis: { list: 'string' }
 });
 
-type Pin = GraphDef['signature']['inputs'][number];
+const FINDINGS = obj({
+  medications: { list: obj({ medication: 'string', route: 'string', doses: 'integer' }) },
+  procedures: { list: 'string' },
+  ivDoses: 'integer'
+});
 
-const BLOB = { object: { bucket: 'string', key: 'string' } } as const;
+const LINE = obj({
+  code: 'string',
+  units: 'number',
+  unitCents: 'integer',
+  totalCents: 'integer'
+});
 
-const SUMMARY = `{
-  pcrNumber: findKey(report, 'eRecord.01'),
-  lastName: findKey(report, 'ePatient.02'),
-  firstName: findKey(report, 'ePatient.03'),
-  birthDate: findKey(report, 'ePatient.17'),
-  gender: findKey(report, 'ePatient.25') ?? findKey(report, 'ePatient.13'),
-  addressLine: findKey(report, 'ePatient.05'),
-  city: findKey(report, 'ePatient.06'),
-  state: findKey(report, 'ePatient.08'),
-  postalCode: findKey(report, 'ePatient.09'),
-  incidentAt: findKey(report, 'eTimes.01'),
-  narrative: findKey(report, 'eNarrative.01'),
-  pickup: {
-    addressLine: findKey(report, 'eScene.15'),
-    city: findKey(report, 'eScene.17'),
-    state: findKey(report, 'eScene.18'),
-    postalCode: findKey(report, 'eScene.19')
-  },
-  destination: {
-    name: findKey(report, 'eDisposition.01'),
-    addressLine: findKey(report, 'eDisposition.03'),
-    city: findKey(report, 'eDisposition.04'),
-    state: findKey(report, 'eDisposition.05'),
-    postalCode: findKey(report, 'eDisposition.07')
-  },
-  coverages: map(findKey(report, 'ePayment.InsuranceGroup') ?? [], g => {
-    payer: g['ePayment.10'],
-    payerCode: g['ePayment.09'],
-    priority: g['ePayment.11'],
-    memberId: g['ePayment.18'],
-    groupId: g['ePayment.17']
+const LINES: ValueType = { list: LINE };
+
+const CLAIM = obj({
+  pcrNumber: 'string',
+  patientId: 'string',
+  serviceDate: 'string',
+  level: 'string',
+  emergency: 'boolean',
+  loadedMiles: 'number',
+  lines: LINES,
+  totalCents: 'integer',
+  coverages: COVERAGES,
+  pickup: LOCATION,
+  destination: LOCATION,
+  diagnoses: { list: 'string' },
+  originDestination: 'string',
+  report: BLOB
+});
+
+const SUBMISSION = obj({
+  claimId: 'string',
+  priorPayers: { list: 'string' },
+  payer: obj({ name: 'string', payerId: 'string', claimFiling: 'string' }),
+  memberId: 'string',
+  groupId: 'string',
+  patient: obj({
+    firstName: 'string',
+    lastName: 'string',
+    birthDate: 'string',
+    sex: 'string',
+    ...ADDRESS
+  } as Record<string, ValueType>),
+  details: obj({
+    serviceDate: 'string',
+    pickup: LOCATION,
+    destination: LOCATION,
+    diagnoses: { list: 'string' },
+    originDestination: 'string'
   }),
-  primaryImpression: findKey(report, 'eSituation.11'),
-  secondaryImpressions: findKey(report, 'eSituation.12') ?? [],
-  careLevel: findKey(report, 'eDisposition.32'),
-  responseMode: findKey(report, 'eResponse.23'),
-  sceneOdometer: findKey(report, 'eResponse.20'),
-  destinationOdometer: findKey(report, 'eResponse.21'),
-  ivMedicationCount: count(
-    findKey(report, 'eMedications.MedicationGroup') ?? [],
-    m => contains(['9927021', '9927023', '9927069'], m['eMedications.04'])
-  ),
-  payer: first(map(
-    filter(findKey(report, 'ePayment.InsuranceGroup') ?? [], g => g['ePayment.11'] == '2611003'),
-    g => g['ePayment.10']
-  )) ?? (findKey(report, 'ePayment.01') == '2601005' ? 'Medicare'
-    : findKey(report, 'ePayment.01') == '2601003' ? 'Medicaid'
-    : null)
-}`;
+  emergency: 'boolean',
+  loadedMiles: 'number',
+  lines: LINES
+});
 
-const LEVEL_RULES = `{
-  level: summary.careLevel == '4232009' ? 'SCT'
-    : len(findings?.procedures ?? []) > 0
-      || max(summary.ivMedicationCount ?? 0, findings?.ivDoses ?? 0) >= 3 ? 'ALS2'
-    : contains(['4232003', '4232005'], summary.careLevel) || (findings?.ivDoses ?? 0) > 0 ? 'ALS1'
-    : 'BLS',
-  emergency: contains(['2223001', '2223007'], summary.responseMode),
-  loadedMiles: summary.sceneOdometer != null && summary.destinationOdometer != null
-    ? max(0, round(number(summary.destinationOdometer) - number(summary.sceneOdometer), 1))
-    : null,
-  basis: filter([
-    {
-      '4232001': 'BLS care documented',
-      '4232003': 'ALS care documented',
-      '4232005': 'ALS care documented',
-      '4232009': 'Critical care documented'
-    }[summary.careLevel ?? ''] ?? null,
-    (summary.ivMedicationCount ?? 0) > 0
-      ? text(summary.ivMedicationCount) + ' IV/IO medications coded' : null,
-    (findings?.ivDoses ?? 0) > 0
-      ? text(findings.ivDoses) + ' IV/IO medication doses in the narrative' : null,
-    len(findings?.procedures ?? []) > 0
-      ? 'Narrative ALS2 procedures: ' + join(findings.procedures, ', ') : null
-  ], x => x != null)
-}`;
+const X837 = obj({
+  claimId: 'string',
+  placeOfService: 'string',
+  frequency: 'string',
+  subscriber: obj({
+    relationship: 'string',
+    lastName: 'string',
+    firstName: 'string',
+    memberId: 'string',
+    groupId: 'string',
+    ...ADDRESS,
+    birthDate: 'string',
+    sex: 'string'
+  } as Record<string, ValueType>),
+  payer: obj({
+    responsibility: 'string',
+    name: 'string',
+    payerId: 'string',
+    claimFiling: 'string'
+  }),
+  transportReason: 'string',
+  loadedMiles: 'number',
+  conditionCodes: { list: 'string' },
+  diagnoses: { list: 'string' },
+  pickup: LOCATION,
+  dropoff: LOCATION,
+  lines: {
+    list: obj({
+      code: 'string',
+      modifiers: { list: 'string' },
+      chargeCents: 'integer',
+      units: 'number',
+      serviceDate: 'string'
+    })
+  }
+});
 
-const CLAIM_LINES = `concat(
-  [{
-    code: service.level == 'SCT' ? 'A0434'
-      : service.level == 'ALS2' ? 'A0433'
-      : service.level == 'ALS1' ? (service.emergency ? 'A0427' : 'A0426')
-      : (service.emergency ? 'A0429' : 'A0428'),
-    units: 1
-  }],
-  (service.loadedMiles ?? 0) > 0
-    ? [{ code: 'A0425', units: ceil(service.loadedMiles * 10) / 10 }]
-    : []
-)`;
+const p = (name: string, type: ValueType, optional = false): PinSpec => ({
+  name,
+  type,
+  ...(optional ? { optional: true } : {})
+});
 
-const SERVICE = { object: { level: 'string', emergency: 'boolean' } } as const;
+const pure = (inputs: PinSpec[], outputs: PinSpec[]) =>
+  graph({ execIn: [], execOut: [], inputs, outputs });
 
-const LINES = { list: { object: { code: 'string', units: 'number' } } } as const;
+const action = (inputs: PinSpec[], outputs: PinSpec[], execOut = ['then']) =>
+  graph({ execIn: ['exec'], execOut, inputs, outputs });
 
-const COVERAGES = { list: { object: { payer: 'string' } } } as const;
+type Rule = { label: string; when?: Record<string, Json>; set?: Record<string, Json> };
 
-// Task contexts are what reviewers read, so they spell out NEMSIS codes and leave out internal ids.
-// Reports may carry a numeric GNIS code instead of a city name, and a FIPS code for the state.
-const placeOf = (place: string, withState = false) =>
-  `join(filter([
-    ${place}.addressLine,
-    ${place}.city != null && !every(split(${place}.city, ''), d => contains('0123456789', d)) ? ${place}.city : null,
-    ${withState ? `${place}.state,` : ''}
-    ${place}.postalCode
-  ], x => x != null && x != ''), ', ')`;
+const field = (name: string, type: ValueType, label: string) => ({ name, type, label });
 
-// Repeated NEMSIS values can come with XML attributes, as { '#text': value, ... }.
-const textOf = (value: string) => `get(${value}, '#text') ?? ${value}`;
+const table = (
+  inputs: ReturnType<typeof field>[],
+  outputs: ReturnType<typeof field>[],
+  rules: Rule[],
+  otherwise: Record<string, Json> = {}
+) => ({
+  inputs,
+  outputs,
+  rules: rules.map((r) => ({ label: r.label, when: r.when ?? {}, set: r.set ?? {} })),
+  otherwise
+});
+
+const is = (value: Json) => ({ op: 'is', value });
+const oneOf = (...value: string[]) => ({ op: 'oneOf', value });
+const atLeast = (value: number) => ({ op: 'gte', value });
+const startsWith = (...value: string[]) => ({ op: 'startsWith', value });
+
+const classifyTrip = (): GraphDef => {
+  const g = pure([p('pcr', PCR_TYPE)], [p('tripType', 'string'), p('reason', 'string', true)]);
+  g.add('pcr', 'nemsis.pcr.break');
+  g.add('disposition', 'nemsis.disposition.break');
+  g.add('response', 'nemsis.response.break');
+  g.add('trip', 'std.table.decide', {
+    label: 'Trip type',
+    config: table(
+      [
+        field('incidentDisposition', 'string', 'Incident/patient disposition · eDisposition.12'),
+        field('unitDisposition', 'string', 'Unit disposition · eDisposition.27'),
+        field('patientEvaluation', 'string', 'Patient evaluation/care · eDisposition.28'),
+        field('transportDisposition', 'string', 'Transport disposition · eDisposition.30'),
+        field('serviceType', 'string', 'Type of service requested · eResponse.05')
+      ],
+      [field('tripType', 'string', 'Trip type')],
+      [
+        {
+          label: 'Cancelled, or no patient contact',
+          when: { incidentDisposition: oneOf('4212007', '4212009', '4212011', '4212039') },
+          set: { tripType: 'noClaim' }
+        },
+        {
+          label: 'Unit cancelled or made no patient contact',
+          when: { unitDisposition: oneOf('4227003', '4227005', '4227007', '4227009', '4227011') },
+          set: { tripType: 'noClaim' }
+        },
+        {
+          label: 'Patient refused care',
+          when: { incidentDisposition: oneOf('4212025') },
+          set: { tripType: 'refusal' }
+        },
+        {
+          label: 'Patient refused care and transport',
+          when: {
+            patientEvaluation: oneOf('4228003', '4228007'),
+            transportDisposition: oneOf('4230009', '4230013')
+          },
+          set: { tripType: 'refusal' }
+        },
+        {
+          label: 'Patient treated and not transported',
+          when: {
+            incidentDisposition: oneOf(
+              '4212021',
+              '4212027',
+              '4212029',
+              '4212031',
+              '4212035',
+              '4212037'
+            )
+          },
+          set: { tripType: 'treatNoTransport' }
+        },
+        {
+          label: 'Patient not transported by this unit',
+          when: { transportDisposition: oneOf('4230005', '4230007', '4230009', '4230013') },
+          set: { tripType: 'treatNoTransport' }
+        },
+        {
+          label: 'Scheduled or interfacility transport',
+          when: { serviceType: oneOf('2205005', '2205007', '2205015', '2205017', '2205019') },
+          set: { tripType: 'scheduled' }
+        },
+        { label: 'Emergency transport', set: { tripType: 'emergency' } }
+      ]
+    )
+  });
+  g.ret('return');
+  g.wire('entry.pcr', 'pcr.pcr');
+  g.wire('pcr.disposition', 'disposition.disposition');
+  g.wire('pcr.response', 'response.response');
+  for (const pin of [
+    'incidentDisposition',
+    'unitDisposition',
+    'patientEvaluation',
+    'transportDisposition'
+  ]) {
+    g.wire(`disposition.${pin}`, `trip.${pin}`);
+  }
+  g.wire('response.serviceType', 'trip.serviceType');
+  g.wire('trip.tripType', 'return.tripType');
+  g.wire('trip.rule', 'return.reason');
+  return g.def;
+};
+
+const loadedMiles = (): GraphDef => {
+  const g = pure(
+    [p('sceneOdometer', 'number', true), p('destinationOdometer', 'number', true)],
+    [p('loadedMiles', 'number', true)]
+  );
+  g.add('scene', 'std.logic.coalesce', { label: 'Scene odometer or 0', values: { fallback: 0 } });
+  g.add('destination', 'std.logic.coalesce', {
+    label: 'Destination odometer or 0',
+    values: { fallback: 0 }
+  });
+  g.add('distance', 'std.math.subtract', { label: 'Destination minus scene' });
+  g.add('positive', 'std.math.max', { label: 'Never below zero', values: { b: 0 } });
+  g.add('rounded', 'std.math.round', { label: 'Tenths of a mile', values: { digits: 1 } });
+  g.add('noScene', 'std.logic.is-null', { label: 'No scene odometer' });
+  g.add('noDestination', 'std.logic.is-null', { label: 'No destination odometer' });
+  g.add('missing', 'std.logic.or', { label: 'Either missing' });
+  g.add('miles', 'std.logic.select', { label: 'Miles when both are recorded' });
+  g.ret('return');
+  g.wire('entry.sceneOdometer', 'scene.value', 'noScene.value');
+  g.wire('entry.destinationOdometer', 'destination.value', 'noDestination.value');
+  g.wire('destination.result', 'distance.a');
+  g.wire('scene.result', 'distance.b');
+  g.wire('distance.result', 'positive.a');
+  g.wire('positive.result', 'rounded.value');
+  g.wire('noScene.result', 'missing.a');
+  g.wire('noDestination.result', 'missing.b');
+  g.wire('missing.result', 'miles.condition');
+  g.wire('rounded.result', 'miles.whenFalse');
+  g.wire('miles.result', 'return.loadedMiles');
+  return g.def;
+};
+
+const IV_ROUTES = ['9927021', '9927023', '9927069'];
+
+const levelOfService = (): GraphDef => {
+  const g = pure([p('pcr', PCR_TYPE), p('findings', FINDINGS, true)], [p('service', SERVICE)]);
+  g.add('pcr', 'nemsis.pcr.break');
+  g.add('disposition', 'nemsis.disposition.break');
+  g.add('payment', 'nemsis.payment.break');
+  g.add('response', 'nemsis.response.break');
+  g.add('ivMedications', 'std.list.where', {
+    label: 'IV/IO medications coded',
+    config: { field: 'route', op: 'oneOf', value: IV_ROUTES }
+  });
+  g.add('findings', 'billing.findings.break');
+  g.add('procedures', 'std.logic.coalesce', {
+    label: 'Narrative procedures',
+    values: { fallback: [] }
+  });
+  g.add('procedureCount', 'std.list.length', { label: 'How many ALS2 procedures' });
+  g.add('level', 'std.table.decide', {
+    label: 'Level of service',
+    config: table(
+      [
+        field('levelOfCare', 'string', 'Level of care provided · eDisposition.32'),
+        field('cmsServiceLevel', 'string', 'CMS service level · ePayment.50'),
+        field('codedIvMedications', 'integer', 'IV/IO medications coded'),
+        field('narrativeIvDoses', 'integer', 'IV/IO doses in the narrative'),
+        field('narrativeProcedures', 'integer', 'ALS2 procedures in the narrative')
+      ],
+      [field('level', 'string', 'Level of service')],
+      [
+        {
+          label: 'Critical care documented',
+          when: { levelOfCare: is('4232009') },
+          set: { level: 'SCT' }
+        },
+        {
+          label: 'Crew reported specialty care transport',
+          when: { cmsServiceLevel: is('2650015') },
+          set: { level: 'SCT' }
+        },
+        {
+          label: 'ALS2 procedures in the narrative',
+          when: { narrativeProcedures: atLeast(1) },
+          set: { level: 'ALS2' }
+        },
+        {
+          label: 'Three or more IV/IO medications coded',
+          when: { codedIvMedications: atLeast(3) },
+          set: { level: 'ALS2' }
+        },
+        {
+          label: 'Three or more IV/IO doses in the narrative',
+          when: { narrativeIvDoses: atLeast(3) },
+          set: { level: 'ALS2' }
+        },
+        {
+          label: 'Crew reported ALS2',
+          when: { cmsServiceLevel: is('2650005') },
+          set: { level: 'ALS2' }
+        },
+        {
+          label: 'ALS care documented',
+          when: { levelOfCare: oneOf('4232003', '4232005') },
+          set: { level: 'ALS1' }
+        },
+        {
+          label: 'Crew reported ALS1',
+          when: { cmsServiceLevel: oneOf('2650001', '2650003') },
+          set: { level: 'ALS1' }
+        },
+        {
+          label: 'IV/IO medications coded',
+          when: { codedIvMedications: atLeast(1) },
+          set: { level: 'ALS1' }
+        },
+        {
+          label: 'IV/IO doses in the narrative',
+          when: { narrativeIvDoses: atLeast(1) },
+          set: { level: 'ALS1' }
+        },
+        {
+          label: 'BLS care documented',
+          when: { levelOfCare: is('4232001') },
+          set: { level: 'BLS' }
+        }
+      ],
+      { level: 'BLS' }
+    )
+  });
+  g.add('emergency', 'std.table.decide', {
+    label: 'Emergency response',
+    config: table(
+      [
+        field('responseMode', 'string', 'Response mode to scene · eResponse.23'),
+        field('cmsServiceLevel', 'string', 'CMS service level · ePayment.50')
+      ],
+      [field('emergency', 'boolean', 'Emergency')],
+      [
+        {
+          label: 'Emergent response to scene',
+          when: { responseMode: oneOf('2223001', '2223007') },
+          set: { emergency: true }
+        },
+        {
+          label: 'Crew reported an emergency level',
+          when: { cmsServiceLevel: oneOf('2650003', '2650009') },
+          set: { emergency: true }
+        }
+      ],
+      { emergency: false }
+    )
+  });
+  g.add('miles', 'billing.loaded-miles', { label: 'Loaded miles' });
+  g.add('service', 'billing.service.make');
+  g.ret('return');
+  g.wire('entry.pcr', 'pcr.pcr');
+  g.wire('entry.findings', 'findings.findings');
+  g.wire('pcr.disposition', 'disposition.disposition');
+  g.wire('pcr.payment', 'payment.payment');
+  g.wire('pcr.response', 'response.response');
+  g.wire('pcr.medications', 'ivMedications.list');
+  g.wire('findings.procedures', 'procedures.value');
+  g.wire('procedures.result', 'procedureCount.list');
+  g.wire('disposition.levelOfCare', 'level.levelOfCare');
+  g.wire('payment.cmsServiceLevel', 'level.cmsServiceLevel', 'emergency.cmsServiceLevel');
+  g.wire('ivMedications.count', 'level.codedIvMedications');
+  g.wire('findings.ivDoses', 'level.narrativeIvDoses');
+  g.wire('procedureCount.length', 'level.narrativeProcedures');
+  g.wire('response.responseMode', 'emergency.responseMode');
+  g.wire('response.sceneOdometer', 'miles.sceneOdometer');
+  g.wire('response.destinationOdometer', 'miles.destinationOdometer');
+  g.wire('level.level', 'service.level');
+  g.wire('level.rules', 'service.basis');
+  g.wire('emergency.emergency', 'service.emergency');
+  g.wire('miles.loadedMiles', 'service.loadedMiles');
+  g.wire('service.service', 'return.service');
+  return g.def;
+};
+
+const tripService = (fixed: Record<string, Json>): GraphDef => {
+  const g = pure([p('pcr', PCR_TYPE), p('findings', FINDINGS, true)], [p('service', SERVICE)]);
+  g.add('suggested', 'billing.level-of-service', { label: 'Level of service' });
+  g.ret('return');
+  g.wire('entry.pcr', 'suggested.pcr');
+  g.wire('entry.findings', 'suggested.findings');
+  if (!Object.keys(fixed).length) {
+    g.wire('suggested.service', 'return.service');
+    return g.def;
+  }
+  g.add('parts', 'billing.service.break');
+  g.add('service', 'billing.service.make', { values: fixed });
+  g.wire('suggested.service', 'parts.service');
+  for (const pin of ['level', 'emergency', 'loadedMiles', 'basis'].filter((x) => !(x in fixed))) {
+    g.wire(`parts.${pin}`, `service.${pin}`);
+  }
+  g.wire('service.service', 'return.service');
+  return g.def;
+};
+
+const suggestService = (): GraphDef => {
+  const g = action(
+    [p('tripType', 'string'), p('pcr', PCR_TYPE), p('findings', FINDINGS, true)],
+    [p('service', SERVICE)]
+  );
+  const trips = [
+    ['scheduled', 'billing.trip-scheduled'],
+    ['treatNoTransport', 'billing.trip-treat-no-transport'],
+    ['refusal', 'billing.trip-refusal'],
+    ['default', 'billing.trip-emergency']
+  ] as const;
+  g.add('switch', 'std.flow.switch', {
+    label: 'By trip type',
+    config: { cases: trips.filter(([c]) => c !== 'default').map(([c]) => c) }
+  });
+  g.wire('entry.exec', 'switch.exec');
+  g.wire('entry.tripType', 'switch.value');
+  for (const [pin, type] of trips) {
+    const id = pin === 'default' ? 'emergency' : pin;
+    g.add(id, type);
+    g.ret(`${id}Done`);
+    g.wire(`switch.${pin}`, `${id}Done.exec`);
+    g.wire('entry.pcr', `${id}.pcr`);
+    g.wire('entry.findings', `${id}.findings`);
+    g.wire(`${id}.service`, `${id}Done.service`);
+  }
+  return g.def;
+};
+
+const mapCharges = (): GraphDef => {
+  const g = pure(
+    [p('tripType', 'string'), p('service', SERVICE)],
+    [p('lines', { list: obj({ code: 'string', units: 'number' }) })]
+  );
+  g.add('service', 'billing.service.break');
+  g.add('base', 'std.table.decide', {
+    label: 'Base rate',
+    config: table(
+      [
+        field('tripType', 'string', 'Trip type'),
+        field('level', 'string', 'Level of service'),
+        field('emergency', 'boolean', 'Emergency')
+      ],
+      [field('code', 'string', 'HCPCS code')],
+      [
+        {
+          label: 'Treated without transport',
+          when: { tripType: oneOf('treatNoTransport', 'refusal') },
+          set: { code: 'A0998' }
+        },
+        { label: 'Specialty care transport', when: { level: is('SCT') }, set: { code: 'A0434' } },
+        { label: 'ALS2', when: { level: is('ALS2') }, set: { code: 'A0433' } },
+        {
+          label: 'ALS1 emergency',
+          when: { level: is('ALS1'), emergency: is(true) },
+          set: { code: 'A0427' }
+        },
+        { label: 'ALS1 non-emergency', when: { level: is('ALS1') }, set: { code: 'A0426' } },
+        { label: 'BLS emergency', when: { emergency: is(true) }, set: { code: 'A0429' } }
+      ],
+      { code: 'A0428' }
+    )
+  });
+  g.add('baseLine', 'billing.line.make', { label: 'Base rate line', values: { units: 1 } });
+  g.add('mileage', 'std.table.decide', {
+    label: 'Mileage',
+    config: table(
+      [field('tripType', 'string', 'Trip type'), field('loadedMiles', 'number', 'Loaded miles')],
+      [field('code', 'string', 'HCPCS code')],
+      [
+        {
+          label: 'Loaded miles transported',
+          when: {
+            tripType: { op: 'notOneOf', value: ['treatNoTransport', 'refusal'] },
+            loadedMiles: { op: 'gt', value: 0 }
+          },
+          set: { code: 'A0425' }
+        }
+      ]
+    )
+  });
+  g.add('miles', 'std.logic.coalesce', { label: 'Loaded miles or 0', values: { fallback: 0 } });
+  g.add('tenths', 'std.math.multiply', { label: 'In tenths', values: { b: 10 } });
+  g.add('roundUp', 'std.math.ceil', { label: 'Round up' });
+  g.add('units', 'std.math.divide', { label: 'Back to miles', values: { b: 10 } });
+  g.add('mileageLine', 'billing.line.make', { label: 'Mileage line' });
+  g.add('keepMileage', 'std.logic.select', { label: 'Only when miles are billed' });
+  g.add('lines', 'std.list.make', { config: { count: 2 } });
+  g.ret('return');
+  g.wire('entry.service', 'service.service');
+  g.wire('entry.tripType', 'base.tripType', 'mileage.tripType');
+  g.wire('service.level', 'base.level');
+  g.wire('service.emergency', 'base.emergency');
+  g.wire('service.loadedMiles', 'mileage.loadedMiles', 'miles.value');
+  g.wire('base.code', 'baseLine.code');
+  g.wire('miles.result', 'tenths.a');
+  g.wire('tenths.result', 'roundUp.value');
+  g.wire('roundUp.result', 'units.a');
+  g.wire('mileage.code', 'mileageLine.code');
+  g.wire('units.result', 'mileageLine.units');
+  g.wire('mileage.matched', 'keepMileage.condition');
+  g.wire('mileageLine.line', 'keepMileage.whenTrue');
+  g.wire('baseLine.line', 'lines.item1');
+  g.wire('keepMileage.result', 'lines.item2');
+  g.wire('lines.list', 'return.lines');
+  return g.def;
+};
+
+const demographicsFromPcr = (): GraphDef => {
+  const g = pure([p('pcr', PCR_TYPE)], [p('demographics', DEMOGRAPHICS)]);
+  g.add('pcr', 'nemsis.pcr.break');
+  g.add('patient', 'nemsis.patient.break');
+  g.add('sex', 'std.logic.coalesce', { label: 'Sex, else gender' });
+  g.add('demographics', 'billing.demographics.make');
+  g.ret('return');
+  g.wire('entry.pcr', 'pcr.pcr');
+  g.wire('pcr.patient', 'patient.patient');
+  g.wire('patient.sex', 'sex.value');
+  g.wire('patient.gender', 'sex.fallback');
+  g.wire('sex.result', 'demographics.gender');
+  for (const pin of [
+    'firstName',
+    'lastName',
+    'birthDate',
+    'addressLine',
+    'city',
+    'state',
+    'postalCode'
+  ]) {
+    g.wire(`patient.${pin}`, `demographics.${pin}`);
+  }
+  g.wire('demographics.demographics', 'return.demographics');
+  return g.def;
+};
+
+const coveragesFromPcr = (): GraphDef => {
+  const g = pure([p('pcr', PCR_TYPE)], [p('coverages', COVERAGES)]);
+  g.add('pcr', 'nemsis.pcr.break');
+  g.add('payment', 'nemsis.payment.break');
+  g.add('insurances', 'std.list.reshape', {
+    label: 'Insurances as coverages',
+    config: {
+      fields: [
+        { name: 'payer', type: 'string', from: 'companyName' },
+        { name: 'payerCode', type: 'string', from: 'companyId' },
+        { name: 'priority', type: 'string', from: 'priority' },
+        { name: 'memberId', type: 'string', from: 'policyId' },
+        { name: 'groupId', type: 'string', from: 'groupId' }
+      ]
+    }
+  });
+  g.add('method', 'std.table.lookup', {
+    label: 'Payer named by the payment method',
+    config: {
+      type: 'string',
+      rows: [
+        { key: '2601005', value: 'Medicare' },
+        { key: '2601003', value: 'Medicaid' }
+      ]
+    }
+  });
+  g.add('fallback', 'billing.coverage.make', {
+    label: 'Coverage from the payment method',
+    values: { priority: '2611003' }
+  });
+  g.add('fallbackList', 'std.list.make', { config: { count: 1 } });
+  g.add('count', 'std.list.length', { label: 'How many insurances' });
+  g.add('none', 'std.logic.equal', { label: 'No insurances', values: { b: 0 } });
+  g.add('useMethod', 'std.logic.and', { label: 'No insurances, but a known method' });
+  g.add('coverages', 'std.logic.select', { label: 'Coverages' });
+  g.ret('return');
+  g.wire('entry.pcr', 'pcr.pcr');
+  g.wire('pcr.insurances', 'insurances.list', 'count.list');
+  g.wire('pcr.payment', 'payment.payment');
+  g.wire('payment.method', 'method.key');
+  g.wire('method.value', 'fallback.payer');
+  g.wire('fallback.coverage', 'fallbackList.item1');
+  g.wire('count.length', 'none.a');
+  g.wire('none.result', 'useMethod.a');
+  g.wire('method.found', 'useMethod.b');
+  g.wire('useMethod.result', 'coverages.condition');
+  g.wire('fallbackList.list', 'coverages.whenTrue');
+  g.wire('insurances.list', 'coverages.whenFalse');
+  g.wire('coverages.result', 'return.coverages');
+  return g.def;
+};
+
+const tripDetails = (): GraphDef => {
+  const g = pure(
+    [p('pcr', PCR_TYPE)],
+    [
+      p('serviceDate', 'string', true),
+      p('pickup', LOCATION),
+      p('destination', LOCATION),
+      p('diagnoses', { list: 'string' }),
+      p('originDestination', 'string', true)
+    ]
+  );
+  g.add('pcr', 'nemsis.pcr.break');
+  g.add('times', 'nemsis.times.break');
+  g.add('scene', 'nemsis.scene.break');
+  g.add('disposition', 'nemsis.disposition.break');
+  g.add('situation', 'nemsis.situation.break');
+  g.add('response', 'nemsis.response.break');
+  g.add('called', 'std.logic.coalesce', { label: 'Call time, else dispatch time' });
+  g.add('when', 'std.logic.coalesce', { label: 'Or nothing', values: { fallback: '' } });
+  g.add('serviceDate', 'std.text.substring', { label: 'Date part', values: { end: 10 } });
+  g.add('pickup', 'billing.location.make', { label: 'Pickup' });
+  g.add('destination', 'billing.location.make', { label: 'Destination' });
+  g.add('primary', 'std.list.make', { label: 'Primary impression', config: { count: 1 } });
+  g.add('diagnoses', 'std.list.concat', { label: 'With secondary impressions' });
+  g.add('origin', 'std.table.decide', {
+    label: 'Origin modifier',
+    config: table(
+      [
+        field('locationType', 'string', 'Incident location type · eScene.09'),
+        field('serviceType', 'string', 'Type of service requested · eResponse.05')
+      ],
+      [field('code', 'string', 'Origin code')],
+      [
+        {
+          label: 'Leaving a hospital',
+          when: { serviceType: oneOf('2205005', '2205015') },
+          set: { code: 'H' }
+        },
+        {
+          label: 'Leaving a care facility',
+          when: { serviceType: oneOf('2205017', '2205019') },
+          set: { code: 'E' }
+        },
+        { label: 'Home', when: { locationType: startsWith('Y92.0') }, set: { code: 'R' } },
+        {
+          label: 'Residential institution',
+          when: { locationType: startsWith('Y92.1') },
+          set: { code: 'E' }
+        },
+        { label: 'Hospital', when: { locationType: startsWith('Y92.23') }, set: { code: 'H' } },
+        {
+          label: "Physician's office or clinic",
+          when: { locationType: startsWith('Y92.53') },
+          set: { code: 'P' }
+        }
+      ],
+      { code: 'S' }
+    )
+  });
+  g.add('destinationCode', 'std.table.lookup', {
+    label: 'Destination modifier',
+    config: {
+      type: 'string',
+      rows: [
+        { key: '4221001', value: 'R' },
+        { key: '4221003', value: 'H' },
+        { key: '4221005', value: 'H' },
+        { key: '4221007', value: 'P' },
+        { key: '4221011', value: 'E' },
+        { key: '4221021', value: 'P' },
+        { key: '4221023', value: 'H' },
+        { key: '4221025', value: 'J' },
+        { key: '4221027', value: 'D' },
+        { key: '4221029', value: 'E' },
+        { key: '4221033', value: 'E' },
+        { key: '4221039', value: 'N' }
+      ]
+    }
+  });
+  g.add('codes', 'std.list.make', { config: { count: 2 } });
+  g.add('originDestination', 'std.text.join', { label: 'Origin then destination' });
+  g.ret('return');
+  g.wire('entry.pcr', 'pcr.pcr');
+  g.wire('pcr.times', 'times.times');
+  g.wire('pcr.scene', 'scene.scene');
+  g.wire('pcr.disposition', 'disposition.disposition');
+  g.wire('pcr.situation', 'situation.situation');
+  g.wire('pcr.response', 'response.response');
+  g.wire('times.psapCall', 'called.value');
+  g.wire('times.unitNotified', 'called.fallback');
+  g.wire('called.result', 'when.value');
+  g.wire('when.result', 'serviceDate.text');
+  for (const pin of ['addressLine', 'city', 'state', 'postalCode']) {
+    g.wire(`scene.${pin}`, `pickup.${pin}`);
+    g.wire(`disposition.${pin}`, `destination.${pin}`);
+  }
+  g.wire('disposition.destinationName', 'destination.name');
+  g.wire('situation.primaryImpression', 'primary.item1');
+  g.wire('primary.list', 'diagnoses.list');
+  g.wire('situation.secondaryImpressions', 'diagnoses.other');
+  g.wire('scene.locationType', 'origin.locationType');
+  g.wire('response.serviceType', 'origin.serviceType');
+  g.wire('disposition.destinationType', 'destinationCode.key');
+  g.wire('origin.code', 'codes.item1');
+  g.wire('destinationCode.value', 'codes.item2');
+  g.wire('codes.list', 'originDestination.items');
+  g.wire('serviceDate.result', 'return.serviceDate');
+  g.wire('pickup.location', 'return.pickup');
+  g.wire('destination.location', 'return.destination');
+  g.wire('diagnoses.list', 'return.diagnoses');
+  g.wire('originDestination.text', 'return.originDestination');
+  return g.def;
+};
+
+const mapClaim = (): GraphDef => {
+  const g = pure(
+    [
+      p('pcr', PCR_TYPE),
+      p('patient', PATIENT),
+      p('coverages', COVERAGES),
+      p('service', SERVICE),
+      p('lines', LINES),
+      p('totalCents', 'integer'),
+      p('report', BLOB, true)
+    ],
+    [p('claim', CLAIM)]
+  );
+  g.add('pcr', 'nemsis.pcr.break');
+  g.add('trip', 'billing.trip-details', { label: 'Trip details' });
+  g.add('patient', 'billing.patient.break');
+  g.add('service', 'billing.service.break');
+  g.add('claim', 'billing.claim.make');
+  g.ret('return');
+  g.wire('entry.pcr', 'pcr.pcr', 'trip.pcr');
+  g.wire('entry.patient', 'patient.patient');
+  g.wire('entry.service', 'service.service');
+  g.wire('pcr.pcrNumber', 'claim.pcrNumber');
+  g.wire('patient.id', 'claim.patientId');
+  for (const pin of ['serviceDate', 'pickup', 'destination', 'diagnoses', 'originDestination']) {
+    g.wire(`trip.${pin}`, `claim.${pin}`);
+  }
+  for (const pin of ['level', 'emergency', 'loadedMiles']) g.wire(`service.${pin}`, `claim.${pin}`);
+  for (const pin of ['coverages', 'lines', 'totalCents', 'report']) {
+    g.wire(`entry.${pin}`, `claim.${pin}`);
+  }
+  g.wire('claim.claim', 'return.claim');
+  return g.def;
+};
+
+const map837p = (): GraphDef => {
+  const g = pure([p('claim', SUBMISSION)], [p('x837', X837)]);
+  g.add('claim', 'billing.submission.break');
+  g.add('payer', 'billing.submitted-payer.break');
+  g.add('patient', 'billing.submitted-patient.break');
+  g.add('details', 'billing.submitted-details.break');
+  g.add('subscriber', 'x837.subscriber.make', { values: { relationship: '18' } });
+  g.add('x12Payer', 'x837.payer.make', { values: { responsibility: 'P' } });
+  g.add('conditions', 'std.table.decide', {
+    label: 'Ambulance conditions',
+    config: table(
+      [field('emergency', 'boolean', 'Emergency')],
+      [field('codes', { list: 'string' }, 'CRC condition codes')],
+      [{ label: 'Emergency', when: { emergency: is(true) }, set: { codes: ['09', '06'] } }],
+      { codes: ['09'] }
+    )
+  });
+  g.add('modifiers', 'std.list.make', { label: 'Line modifiers', config: { count: 1 } });
+  g.add('shared', 'std.object.make', {
+    label: 'Every line',
+    config: {
+      fields: [
+        { name: 'modifiers', type: { list: 'string' } },
+        { name: 'serviceDate', type: 'string' }
+      ]
+    }
+  });
+  g.add('lines', 'std.list.reshape', {
+    label: 'Service lines',
+    config: {
+      fields: [
+        { name: 'code', type: 'string', from: 'code' },
+        { name: 'modifiers', type: { list: 'string' } },
+        { name: 'chargeCents', type: 'integer', from: 'totalCents' },
+        { name: 'units', type: 'number', from: 'units' },
+        { name: 'serviceDate', type: 'string' }
+      ]
+    }
+  });
+  g.add('x837', 'x837.claim.make', {
+    values: { placeOfService: '41', frequency: '1', transportReason: 'A' }
+  });
+  g.ret('return');
+  g.wire('entry.claim', 'claim.claim');
+  g.wire('claim.payer', 'payer.payer');
+  g.wire('claim.patient', 'patient.patient');
+  g.wire('claim.details', 'details.details');
+  for (const pin of [
+    'firstName',
+    'lastName',
+    'birthDate',
+    'sex',
+    'addressLine',
+    'city',
+    'state',
+    'postalCode'
+  ]) {
+    g.wire(`patient.${pin}`, `subscriber.${pin}`);
+  }
+  g.wire('claim.memberId', 'subscriber.memberId');
+  g.wire('claim.groupId', 'subscriber.groupId');
+  for (const pin of ['name', 'payerId', 'claimFiling']) g.wire(`payer.${pin}`, `x12Payer.${pin}`);
+  g.wire('claim.emergency', 'conditions.emergency');
+  g.wire('details.originDestination', 'modifiers.item1');
+  g.wire('modifiers.list', 'shared.modifiers');
+  g.wire('details.serviceDate', 'shared.serviceDate');
+  g.wire('claim.lines', 'lines.list');
+  g.wire('shared.object', 'lines.shared');
+  g.wire('claim.claimId', 'x837.claimId');
+  g.wire('subscriber.subscriber', 'x837.subscriber');
+  g.wire('x12Payer.payer', 'x837.payer');
+  g.wire('claim.loadedMiles', 'x837.loadedMiles');
+  g.wire('conditions.codes', 'x837.conditionCodes');
+  g.wire('details.diagnoses', 'x837.diagnoses');
+  g.wire('details.pickup', 'x837.pickup');
+  g.wire('details.destination', 'x837.dropoff');
+  g.wire('lines.list', 'x837.lines');
+  g.wire('x837.x837', 'return.x837');
+  return g.def;
+};
+
+const placeOf = (place: string) =>
+  `join(filter([${place}.addressLine, ${place}.city, ${place}.postalCode], x => x != null && x != ''), ', ')`;
 
 const nameOf = (person: string) =>
   `join(filter([${person}.firstName, ${person}.lastName], x => x != null), ' ')`;
 
-const subjectOf = (id: string, ...parts: string[]) =>
-  node(id, 'std.expr', {
-    label: 'Task subject',
-    config: { expression: `join(filter([${parts.join(', ')}], x => x != null && x != ''), ' · ')` }
-  });
+const expr = (label: string, expression: string) => ({ label, config: { expression } });
+
+const subject = (...parts: string[]) =>
+  expr('Task subject', `join(filter([${parts.join(', ')}], x => x != null && x != ''), ' · ')`);
 
 const SEX = "{ F: 'Female', M: 'Male', U: 'Unknown' }";
 
 const TRIP = `{
-  pcrNumber: summary.pcrNumber,
-  incidentAt: summary.incidentAt,
+  pcrNumber: pcr.pcrNumber,
+  tripType: tripType,
+  classifiedBy: reason,
+  calledAt: pcr.times.psapCall,
   response: {
     '2223001': 'Emergent',
     '2223003': 'Emergent, downgraded to non-emergent',
     '2223005': 'Non-emergent',
     '2223007': 'Non-emergent, upgraded to emergent'
-  }[summary.responseMode ?? ''] ?? summary.responseMode,
+  }[pcr.response.responseMode ?? ''] ?? pcr.response.responseMode,
   careProvided: {
     '4232001': 'BLS',
     '4232003': 'ALS',
     '4232005': 'ALS',
     '4232009': 'Critical care'
-  }[summary.careLevel ?? ''] ?? summary.careLevel,
-  primaryImpression: ${textOf('summary.primaryImpression')},
-  otherImpressions: map(summary.secondaryImpressions, i => ${textOf('i')}),
-  ivMedications: summary.ivMedicationCount,
-  pickup: ${placeOf('summary.pickup')},
-  destination: join(filter([summary.destination.name, ${placeOf('summary.destination')}], x => x != null && x != ''), ' · ')
+  }[pcr.disposition.levelOfCare ?? ''] ?? pcr.disposition.levelOfCare,
+  primaryImpression: pcr.situation.primaryImpression,
+  otherImpressions: pcr.situation.secondaryImpressions,
+  pickup: ${placeOf('pcr.scene')},
+  destination: join(filter([pcr.disposition.destinationName, ${placeOf('pcr.disposition')}], x => x != null && x != ''), ' · ')
 }`;
 
 const REVIEW_CONTEXT = `{
@@ -165,7 +910,7 @@ const REVIEW_CONTEXT = `{
     name: ${nameOf('patient')},
     birthDate: patient.birthDate,
     sex: ${SEX}[patient.gender ?? ''] ?? null,
-    address: ${placeOf('patient', true)}
+    address: ${placeOf('patient')}
   },
   trip: ${TRIP},
   coverage: map(coverages, c => {
@@ -182,18 +927,6 @@ const REVIEW_CONTEXT = `{
   suggested: service
 }`;
 
-const REVISION_CONTEXT = `{
-  claimId: claimId,
-  patient: { name: ${nameOf('summary')}, birthDate: summary.birthDate },
-  trip: ${TRIP}
-}`;
-
-const HOLD_CONTEXT = `{
-  note: note,
-  patient: ${nameOf('patient')},
-  trip: ${TRIP}
-}`;
-
 const PATIENT_REVIEW_CONTEXT = `{
   reason: reason,
   report: {
@@ -201,57 +934,15 @@ const PATIENT_REVIEW_CONTEXT = `{
     birthDate: demographics.birthDate,
     sex: ${SEX}[demographics.gender ?? ''] ?? null,
     address: ${placeOf('demographics')},
-    pcrNumber: reported.pcrNumber
+    pcrNumber: pcrNumber
   },
   candidates: map(candidates, c => {
     name: ${nameOf('c')},
     birthDate: c.birthDate,
     sex: ${SEX}[c.gender ?? ''] ?? null,
-    address: ${placeOf('c', true)}
+    address: ${placeOf('c')}
   })
 }`;
-
-const pureGraph = (inputs: Pin[], output: Pin, label: string, expression: string): GraphDef => ({
-  signature: { execIn: [], execOut: [], inputs, outputs: [output] },
-  variables: [],
-  nodes: [
-    node('entry', ENTRY_TYPE),
-    node('rules', 'std.expr', { label, config: { expression } }),
-    node('return', RETURN_TYPE)
-  ],
-  edges: [
-    ...inputs.map((p) => edge('entry', p.name, 'rules', p.name)),
-    edge('rules', 'result', 'return', output.name)
-  ]
-});
-
-const levelOfServiceGraph = pureGraph(
-  [
-    { name: 'summary', type: { object: {} } },
-    { name: 'findings', type: { object: {} }, optional: true }
-  ],
-  { name: 'service', type: SERVICE },
-  'Level of service rules',
-  LEVEL_RULES
-);
-
-const claimLinesGraph = pureGraph(
-  [{ name: 'service', type: SERVICE }],
-  { name: 'lines', type: LINES },
-  'HCPCS lines',
-  CLAIM_LINES
-);
-
-const pcrSummaryGraph = pureGraph(
-  [{ name: 'report', type: { object: {} } }],
-  { name: 'summary', type: { object: {} } },
-  'Billing fields',
-  SUMMARY
-);
-
-const PATIENT = {
-  object: { id: 'string', firstName: 'string', lastName: 'string', birthDate: 'string' }
-} as const;
 
 const PATIENT_CHOICES = `len(candidates) > 0 ? {
   patientId: map(candidates, c => {
@@ -261,172 +952,130 @@ const PATIENT_CHOICES = `len(candidates) > 0 ? {
   })
 } : null`;
 
-const resolvePatientGraph: GraphDef = {
-  signature: {
-    execIn: ['exec'],
-    execOut: ['then'],
-    inputs: [{ name: 'demographics', type: { object: {} } }],
-    outputs: [{ name: 'patient', type: PATIENT }]
-  },
-  variables: [],
-  nodes: [
-    node('entry', ENTRY_TYPE),
-    node('match', 'billing.match-patient'),
-    node('create', 'billing.create-patient', { inputs: { reuseMatch: { value: true } } }),
-    node('choices', 'std.expr', {
-      label: 'Candidate choices',
-      config: { expression: PATIENT_CHOICES }
-    }),
-    node('context', 'std.expr', {
-      label: 'Review context',
-      config: { expression: PATIENT_REVIEW_CONTEXT }
-    }),
-    node('confirm', 'std.human.task', {
-      label: 'Confirm patient',
-      config: {
-        title: 'Confirm patient',
-        queue: 'billing-patients',
-        instructions:
-          'Link this report to one of the candidate patients, or correct the demographics and create a new patient when none of them is this person.',
-        fields: [
-          { name: 'patientId', type: 'string', label: 'Existing patient' },
-          { name: 'firstName', type: 'string', label: 'First name' },
-          { name: 'lastName', type: 'string', label: 'Last name' },
-          { name: 'birthDate', type: 'string', label: 'Birth date (YYYY-MM-DD)' }
-        ],
-        outcomes: ['link', 'create']
-      }
-    }),
-    node('corrected', 'std.expr', {
-      label: 'Corrected demographics',
-      config: {
-        expression:
-          'merge(demographics, { firstName: firstName, lastName: lastName, birthDate: birthDate })'
-      }
-    }),
-    subjectOf('subject', 'reported.pcrNumber', nameOf('reported')),
-    node('createReviewed', 'billing.create-patient', { label: 'Create reviewed patient' }),
-    node('find', 'billing.find-patient'),
-    node('matched', RETURN_TYPE),
-    node('created', RETURN_TYPE),
-    node('reviewed', RETURN_TYPE),
-    node('linked', RETURN_TYPE)
-  ],
-  edges: [
-    edge('entry', 'exec', 'match', 'exec'),
-    edge('entry', 'demographics', 'match', 'demographics'),
-    edge('entry', 'demographics', 'create', 'demographics'),
-    edge('match', 'matched', 'matched', 'exec'),
-    edge('match', 'patient', 'matched', 'patient'),
-    edge('match', 'unmatched', 'create', 'exec'),
-    edge('create', 'then', 'created', 'exec'),
-    edge('create', 'patient', 'created', 'patient'),
-    edge('match', 'review', 'confirm', 'exec'),
-    edge('match', 'candidates', 'choices', 'candidates'),
-    edge('choices', 'result', 'confirm', 'options'),
-    edge('match', 'reason', 'context', 'reason'),
-    edge('match', 'candidates', 'context', 'candidates'),
-    edge('match', 'demographics', 'context', 'demographics'),
-    edge('entry', 'demographics', 'context', 'reported'),
-    edge('context', 'result', 'confirm', 'context'),
-    edge('match', 'demographics', 'confirm', 'defaults'),
-    edge('entry', 'demographics', 'subject', 'reported'),
-    edge('subject', 'result', 'confirm', 'subject'),
-    edge('confirm', 'link', 'find', 'exec'),
-    edge('confirm', 'patientId', 'find', 'patientId'),
-    edge('confirm', 'create', 'createReviewed', 'exec'),
-    edge('match', 'demographics', 'corrected', 'demographics'),
-    edge('confirm', 'firstName', 'corrected', 'firstName'),
-    edge('confirm', 'lastName', 'corrected', 'lastName'),
-    edge('confirm', 'birthDate', 'corrected', 'birthDate'),
-    edge('corrected', 'result', 'createReviewed', 'demographics'),
-    edge('createReviewed', 'then', 'reviewed', 'exec'),
-    edge('createReviewed', 'patient', 'reviewed', 'patient'),
-    edge('find', 'then', 'linked', 'exec'),
-    edge('find', 'patient', 'linked', 'patient')
-  ]
+const resolvePatient = (): GraphDef => {
+  const g = action(
+    [p('demographics', DEMOGRAPHICS), p('pcrNumber', 'string', true)],
+    [p('patient', PATIENT)]
+  );
+  g.add('match', 'billing.match-patient');
+  g.add('create', 'billing.create-patient', { values: { reuseMatch: true } });
+  g.add('choices', 'std.expr', expr('Candidate choices', PATIENT_CHOICES));
+  g.add('context', 'std.expr', expr('Review context', PATIENT_REVIEW_CONTEXT));
+  g.add('subject', 'std.expr', subject('pcrNumber', nameOf('demographics')));
+  g.add('confirm', 'std.human.task', {
+    label: 'Confirm patient',
+    config: {
+      title: 'Confirm patient',
+      queue: 'billing-patients',
+      instructions:
+        'Link this report to one of the candidate patients, or correct the demographics and create a new patient when none of them is this person.',
+      fields: [
+        { name: 'patientId', type: 'string', label: 'Existing patient' },
+        { name: 'firstName', type: 'string', label: 'First name' },
+        { name: 'lastName', type: 'string', label: 'Last name' },
+        { name: 'birthDate', type: 'string', label: 'Birth date (YYYY-MM-DD)' }
+      ],
+      outcomes: ['link', 'create']
+    }
+  });
+  g.add('reported', 'billing.demographics.break', { label: 'Cleaned demographics' });
+  g.add('corrected', 'billing.demographics.make', { label: 'Corrected demographics' });
+  g.add('createReviewed', 'billing.create-patient', { label: 'Create reviewed patient' });
+  g.add('find', 'billing.find-patient');
+  for (const id of ['matched', 'created', 'reviewed', 'linked']) g.ret(id);
+  g.wire('entry.exec', 'match.exec');
+  g.wire('entry.demographics', 'match.demographics', 'create.demographics');
+  g.wire('match.matched', 'matched.exec');
+  g.wire('match.patient', 'matched.patient');
+  g.wire('match.unmatched', 'create.exec');
+  g.wire('create.then', 'created.exec');
+  g.wire('create.patient', 'created.patient');
+  g.wire('match.review', 'confirm.exec');
+  g.wire('match.candidates', 'choices.candidates', 'context.candidates');
+  g.wire('choices.result', 'confirm.options');
+  g.wire('match.reason', 'context.reason');
+  g.wire('match.demographics', 'context.demographics', 'confirm.defaults', 'reported.demographics');
+  g.wire('entry.pcrNumber', 'context.pcrNumber', 'subject.pcrNumber');
+  g.wire('entry.demographics', 'subject.demographics');
+  g.wire('context.result', 'confirm.context');
+  g.wire('subject.result', 'confirm.subject');
+  g.wire('confirm.link', 'find.exec');
+  g.wire('confirm.patientId', 'find.patientId');
+  g.wire('confirm.create', 'createReviewed.exec');
+  for (const pin of ['gender', 'addressLine', 'city', 'state', 'postalCode']) {
+    g.wire(`reported.${pin}`, `corrected.${pin}`);
+  }
+  for (const pin of ['firstName', 'lastName', 'birthDate']) {
+    g.wire(`confirm.${pin}`, `corrected.${pin}`);
+  }
+  g.wire('corrected.demographics', 'createReviewed.demographics');
+  g.wire('createReviewed.then', 'reviewed.exec');
+  g.wire('createReviewed.patient', 'reviewed.patient');
+  g.wire('find.then', 'linked.exec');
+  g.wire('find.patient', 'linked.patient');
+  return g.def;
 };
 
-const resolvePayersGraph: GraphDef = {
-  signature: {
-    execIn: ['exec'],
-    execOut: ['then'],
-    inputs: [{ name: 'summary', type: { object: {} } }],
-    outputs: [{ name: 'coverages', type: COVERAGES }]
-  },
-  variables: [],
-  nodes: [
-    node('entry', ENTRY_TYPE),
-    node('match', 'billing.match-payers'),
-    node('each', 'std.flow.for-each', { label: 'Each uncertain payer' }),
-    node('choices', 'std.expr', {
-      label: 'Directory choices',
-      config: { expression: '{ payerId: item.candidates }' }
-    }),
-    node('suggestion', 'std.expr', {
-      label: 'Suggested payer',
-      config: { expression: '{ payerId: item.suggested }' }
-    }),
-    node('context', 'std.expr', {
-      label: 'Payer context',
-      config: {
-        expression: `{
-          reportedPayer: item.payer,
-          memberId: item.memberId,
-          patient: ${nameOf('summary')},
-          pcrNumber: summary.pcrNumber
-        }`
-      }
-    }),
-    node('confirm', 'std.human.task', {
-      label: 'Match payer',
-      config: {
-        title: 'Match payer',
-        queue: 'billing-payers',
-        instructions:
-          'The report names a payer that is not in the payer directory by that name. Choose the directory payer it means, and later reports with this name link automatically, or mark it unlisted.',
-        fields: [{ name: 'payerId', type: 'string', label: 'Directory payer' }],
-        outcomes: ['link', 'unlisted']
-      }
-    }),
-    node('reported', 'std.expr', { label: 'Reported name', config: { expression: 'item.payer' } }),
-    subjectOf('subject', 'summary.pcrNumber', 'item.payer'),
-    node('link', 'billing.link-payer', { label: 'Remember payer name' }),
-    node('rematch', 'billing.match-payers', {
-      label: 'Match reviewed payers',
-      inputs: { suggest: { value: false } }
-    }),
-    node('matched', RETURN_TYPE),
-    node('reviewed', RETURN_TYPE)
-  ],
-  edges: [
-    edge('entry', 'exec', 'match', 'exec'),
-    edge('entry', 'summary', 'match', 'summary'),
-    edge('match', 'matched', 'matched', 'exec'),
-    edge('match', 'coverages', 'matched', 'coverages'),
-    edge('match', 'review', 'each', 'exec'),
-    edge('match', 'unmatched', 'each', 'list'),
-    edge('each', 'body', 'confirm', 'exec'),
-    edge('each', 'item', 'choices', 'item'),
-    edge('choices', 'result', 'confirm', 'options'),
-    edge('each', 'item', 'suggestion', 'item'),
-    edge('suggestion', 'result', 'confirm', 'defaults'),
-    edge('each', 'item', 'context', 'item'),
-    edge('entry', 'summary', 'context', 'summary'),
-    edge('context', 'result', 'confirm', 'context'),
-    edge('each', 'item', 'subject', 'item'),
-    edge('entry', 'summary', 'subject', 'summary'),
-    edge('subject', 'result', 'confirm', 'subject'),
-    edge('confirm', 'link', 'link', 'exec'),
-    edge('each', 'item', 'reported', 'item'),
-    edge('reported', 'result', 'link', 'name'),
-    edge('confirm', 'payerId', 'link', 'payerId'),
-    edge('each', 'completed', 'rematch', 'exec'),
-    edge('entry', 'summary', 'rematch', 'summary'),
-    edge('rematch', 'matched', 'reviewed', 'exec'),
-    edge('rematch', 'review', 'reviewed', 'exec'),
-    edge('rematch', 'coverages', 'reviewed', 'coverages')
-  ]
+const resolvePayers = (): GraphDef => {
+  const g = action(
+    [p('coverages', COVERAGES), p('pcrNumber', 'string', true), p('patientName', 'string', true)],
+    [p('coverages', COVERAGES)]
+  );
+  g.add('match', 'billing.match-payers');
+  g.add('each', 'std.flow.for-each', { label: 'Each uncertain payer' });
+  g.add('choices', 'std.expr', expr('Directory choices', '{ payerId: item.candidates }'));
+  g.add('suggestion', 'std.expr', expr('Suggested payer', '{ payerId: item.suggested }'));
+  g.add(
+    'context',
+    'std.expr',
+    expr(
+      'Payer context',
+      '{ reportedPayer: item.payer, memberId: item.memberId, patient: patientName, pcrNumber: pcrNumber }'
+    )
+  );
+  g.add('confirm', 'std.human.task', {
+    label: 'Match payer',
+    config: {
+      title: 'Match payer',
+      queue: 'billing-payers',
+      instructions:
+        'The report names a payer that is not in the payer directory by that name. Choose the directory payer it means, and later reports with this name link automatically, or mark it unlisted.',
+      fields: [{ name: 'payerId', type: 'string', label: 'Directory payer' }],
+      outcomes: ['link', 'unlisted']
+    }
+  });
+  g.add('reported', 'std.object.get', { label: 'Reported name', values: { path: 'payer' } });
+  g.add('subject', 'std.expr', subject('pcrNumber', 'item.payer'));
+  g.add('link', 'billing.link-payer', { label: 'Remember payer name' });
+  g.add('rematch', 'billing.match-payers', {
+    label: 'Match reviewed payers',
+    values: { suggest: false }
+  });
+  g.ret('matched');
+  g.ret('reviewed');
+  g.wire('entry.exec', 'match.exec');
+  g.wire('entry.coverages', 'match.coverages', 'rematch.coverages');
+  g.wire('match.matched', 'matched.exec');
+  g.wire('match.coverages', 'matched.coverages');
+  g.wire('match.review', 'each.exec');
+  g.wire('match.unmatched', 'each.list');
+  g.wire('each.body', 'confirm.exec');
+  g.wire('each.item', 'choices.item', 'suggestion.item', 'context.item', 'subject.item');
+  g.wire('each.item', 'reported.object');
+  g.wire('entry.pcrNumber', 'context.pcrNumber', 'subject.pcrNumber');
+  g.wire('entry.patientName', 'context.patientName');
+  g.wire('choices.result', 'confirm.options');
+  g.wire('suggestion.result', 'confirm.defaults');
+  g.wire('context.result', 'confirm.context');
+  g.wire('subject.result', 'confirm.subject');
+  g.wire('confirm.link', 'link.exec');
+  g.wire('reported.value', 'link.name');
+  g.wire('confirm.payerId', 'link.payerId');
+  g.wire('each.completed', 'rematch.exec');
+  g.wire('rematch.matched', 'reviewed.exec');
+  g.wire('rematch.review', 'reviewed.exec');
+  g.wire('rematch.coverages', 'reviewed.coverages');
+  return g.def;
 };
 
 const REVIEW_FIELDS = [
@@ -446,442 +1095,520 @@ const REVIEW_FIELDS = [
   { name: 'note', type: 'string', label: 'Note' }
 ];
 
-const processPcrGraph: GraphDef = {
-  signature: {
-    execIn: ['exec'],
-    execOut: [],
-    inputs: [{ name: 'report', type: BLOB }],
-    outputs: [
-      { name: 'summary', type: { object: {} } },
-      { name: 'patient', type: PATIENT, optional: true },
-      { name: 'charges', type: { object: {} }, optional: true },
-      { name: 'claimId', type: 'string', optional: true }
-    ]
-  },
-  variables: [{ name: 'revising', type: 'string', default: '' }],
-  nodes: [
-    node('entry', ENTRY_TYPE),
-    node('read', 'nemsis.read-report'),
-    node('summary', 'billing.pcr-summary'),
-    node('pcrNumber', 'std.expr', {
-      label: 'PCR number',
-      config: { expression: 'summary.pcrNumber' }
-    }),
-    node('billed', 'billing.find-claim', { label: 'Already billed?' }),
-    node('narrativeText', 'std.expr', {
-      label: 'Narrative',
-      config: { expression: 'summary.narrative' }
-    }),
-    node('narrative', 'billing.read-narrative', {
-      retry: { max: 3, delayMs: 30_000, factor: 4 }
-    }),
-    node('patient', 'billing.resolve-patient', { label: 'Resolve patient' }),
-    node('payers', 'billing.resolve-payers', { label: 'Resolve payers' }),
-    node('service', 'billing.level-of-service', { label: 'Suggest level of service' }),
-    node('claim', 'std.expr', {
-      label: 'Claim context',
-      config: { expression: REVIEW_CONTEXT }
-    }),
-    node('review', 'std.human.task', {
-      label: 'Review PCR',
-      config: {
-        title: 'Review PCR',
-        queue: 'billing-review',
-        instructions:
-          'Check the patient, payers and impression codes, and confirm the level of service and loaded miles before this claim is priced. The suggestion lists what supports it, including what the narrative documents.',
-        fields: REVIEW_FIELDS,
-        outcomes: ['approve', 'hold']
-      }
-    }),
-    subjectOf('subject', 'summary.pcrNumber', nameOf('summary')),
-    node('holdContext', 'std.expr', {
-      label: 'Hold context',
-      config: { expression: HOLD_CONTEXT }
-    }),
-    node('held', 'std.human.task', {
-      label: 'Held PCR',
-      config: {
-        title: 'Held PCR',
-        queue: 'billing-holds',
-        instructions:
-          'A reviewer held this PCR. Release it back to review once the report is sorted out, or void it so it is never billed.',
-        outcomes: ['release', 'void']
-      }
-    }),
-    node('confirmed', 'std.expr', {
-      label: 'Confirmed service',
-      config: {
-        expression:
-          '{ level: level ?? service.level, emergency: emergency ?? service.emergency, loadedMiles: loadedMiles }'
-      }
-    }),
-    node('lines', 'billing.claim-lines', { label: 'HCPCS lines' }),
-    node('primaryPayer', 'std.expr', {
-      label: 'Primary payer',
-      config: { expression: 'first(coverages)?.payerId' }
-    }),
-    node('price', 'billing.price-claim'),
-    node('charges', 'std.expr', {
-      label: 'Charges',
-      config: { expression: 'merge(service, { lines: lines, totalCents: totalCents })' }
-    }),
-    node('claimSummary', 'std.expr', {
-      label: 'Claim summary',
-      config: { expression: 'merge(summary, { coverages: coverages })' }
-    }),
-    node('open', 'billing.open-claim'),
-    node('cycleInputs', 'std.expr', { config: { expression: '{ claimId: claimId }' } }),
-    node('cycle', 'std.flow.start-workflow', {
-      label: 'Start payer cycle',
-      config: { workflow: 'billing.cycle-claim', version: 1 }
-    }),
-    node('attach', 'billing.attach-cycle', { label: 'Link claim to its cycle' }),
-    node('approved', RETURN_TYPE),
-    node('reviseBilled', 'std.var.set', {
-      label: 'Revise billed claim',
-      config: { name: 'revising' }
-    }),
-    node('reviseDuplicate', 'std.var.set', {
-      label: 'Revise concurrent claim',
-      config: { name: 'revising' }
-    }),
-    node('revising', 'std.var.get', { config: { name: 'revising' } }),
-    node('noteRevision', 'billing.note-revision'),
-    node('revisionContext', 'std.expr', {
-      label: 'Revision context',
-      config: { expression: REVISION_CONTEXT }
-    }),
-    node('revision', 'std.human.task', {
-      label: 'Review updated PCR',
-      config: {
-        title: 'Review updated PCR',
-        queue: 'billing-review',
-        instructions:
-          'A newer version of this patient care report arrived after its claim was opened, so it was not billed again. Compare it with the claim and correct the claim if anything changed.',
-        outcomes: ['acknowledge']
-      }
-    }),
-    node('revised', RETURN_TYPE),
-    node('voided', RETURN_TYPE)
-  ],
-  edges: [
-    edge('entry', 'exec', 'read', 'exec'),
-    edge('entry', 'report', 'read', 'report'),
-    edge('read', 'data', 'summary', 'report'),
-    edge('read', 'then', 'billed', 'exec'),
-    edge('summary', 'summary', 'pcrNumber', 'summary'),
-    edge('pcrNumber', 'result', 'billed', 'pcrNumber'),
+const encounterToClaim = (): GraphDef => {
+  const g = graph(
+    {
+      execIn: ['exec'],
+      execOut: [],
+      inputs: [p('report', BLOB)],
+      outputs: [
+        p('tripType', 'string', true),
+        p('patient', PATIENT, true),
+        p('claimId', 'string', true)
+      ]
+    },
+    [{ name: 'revising', type: 'string', default: '' }]
+  );
+  g.add('read', 'nemsis.read-report');
+  g.add('pcr', 'nemsis.pcr.break');
+  g.add('billed', 'billing.find-claim', { label: 'Already billed?' });
+  g.add('classify', 'billing.classify-trip', { label: 'Classify trip' });
+  g.add('tripSwitch', 'std.flow.switch', {
+    label: 'Claim needed?',
+    config: { cases: ['noClaim'] }
+  });
+  g.add('tripContext', 'std.expr', expr('Trip context', `{ trip: ${TRIP} }`));
+  g.add('subject', 'std.expr', subject('pcr.pcrNumber', nameOf('pcr.patient')));
+  g.add('noClaim', 'std.human.task', {
+    label: 'Confirm no claim',
+    config: {
+      title: 'Confirm no claim',
+      queue: 'billing-review',
+      instructions:
+        'This report looks like a cancelled call or a trip without patient contact, so no claim would be made. Skip it, or make a claim if care was given.',
+      outcomes: ['skip', 'claim']
+    }
+  });
+  g.ret('skipped');
+  g.add('narrative', 'billing.read-narrative', {
+    retry: { max: 3, delayMs: 30_000, factor: 4 }
+  });
+  g.add('demographics', 'billing.demographics-from-pcr', { label: 'Patient demographics' });
+  g.add('patient', 'billing.resolve-patient', { label: 'Resolve patient' });
+  g.add('reported', 'billing.coverages-from-pcr', { label: 'Reported coverages' });
+  g.add('patientName', 'std.text.template', {
+    label: 'Patient name',
+    config: { template: '{{ demographics.firstName }} {{ demographics.lastName }}' }
+  });
+  g.add('payers', 'billing.resolve-payers', { label: 'Resolve payers' });
+  g.add('suggest', 'billing.suggest-service', { label: 'Suggest service for the trip type' });
+  g.add('reviewContext', 'std.expr', expr('Review context', REVIEW_CONTEXT));
+  g.add('review', 'std.human.task', {
+    label: 'Review PCR',
+    config: {
+      title: 'Review PCR',
+      queue: 'billing-review',
+      instructions:
+        'Check the patient, payers and impression codes, and confirm the level of service and loaded miles before this claim is priced. The suggestion lists what supports it, including what the narrative documents.',
+      fields: REVIEW_FIELDS,
+      outcomes: ['approve', 'hold']
+    }
+  });
+  g.add(
+    'holdContext',
+    'std.expr',
+    expr('Hold context', `{ note: note, patient: ${nameOf('patient')}, trip: ${TRIP} }`)
+  );
+  g.add('held', 'std.human.task', {
+    label: 'Held PCR',
+    config: {
+      title: 'Held PCR',
+      queue: 'billing-holds',
+      instructions:
+        'A reviewer held this PCR. Release it back to review once the report is sorted out, or void it so it is never billed.',
+      outcomes: ['release', 'void']
+    }
+  });
+  g.ret('voided');
+  g.add('suggested', 'billing.service.break', { label: 'Suggested service' });
+  g.add('level', 'std.logic.coalesce', { label: 'Confirmed level' });
+  g.add('emergency', 'std.logic.coalesce', { label: 'Confirmed emergency' });
+  g.add('confirmed', 'billing.service.make', { label: 'Confirmed service' });
+  g.add('charges', 'billing.map-charges', { label: 'Charges' });
+  g.add('primary', 'std.list.first', { label: 'Primary payer' });
+  g.add('primaryPayer', 'billing.coverage.break');
+  g.add('price', 'billing.price-claim');
+  g.add('claim', 'billing.map-claim', { label: 'Map claim' });
+  g.add('validate', 'billing.validate-claim');
+  g.add('fixContext', 'std.expr', expr('Problems', `{ issues: issues, trip: ${TRIP} }`));
+  g.add('fix', 'std.human.task', {
+    label: 'Claim needs attention',
+    config: {
+      title: 'Claim needs attention',
+      queue: 'billing-review',
+      instructions:
+        'The claim is missing something it needs before it can be saved. Send it back to review to correct it, or void it.',
+      outcomes: ['review', 'void']
+    }
+  });
+  g.add('save', 'billing.save-claim');
+  g.add('cycleInputs', 'std.object.make', {
+    config: { fields: [{ name: 'claimId', type: 'string' }] }
+  });
+  g.add('cycle', 'std.flow.start-workflow', {
+    label: 'Start payer cycle',
+    config: { workflow: 'billing.cycle-claim', version: 1 }
+  });
+  g.add('attach', 'billing.attach-cycle', { label: 'Link claim to its cycle' });
+  g.ret('approved');
+  g.add('reviseBilled', 'std.var.set', {
+    label: 'Revise billed claim',
+    config: { name: 'revising' }
+  });
+  g.add('reviseDuplicate', 'std.var.set', {
+    label: 'Revise concurrent claim',
+    config: { name: 'revising' }
+  });
+  g.add('revising', 'std.var.get', { config: { name: 'revising' } });
+  g.add('noteRevision', 'billing.note-revision');
+  g.add(
+    'revisionContext',
+    'std.expr',
+    expr(
+      'Revision context',
+      `{ claimId: claimId, patient: { name: ${nameOf('pcr.patient')}, birthDate: pcr.patient.birthDate }, trip: ${TRIP} }`
+    )
+  );
+  g.add('revision', 'std.human.task', {
+    label: 'Review updated PCR',
+    config: {
+      title: 'Review updated PCR',
+      queue: 'billing-review',
+      instructions:
+        'A newer version of this patient care report arrived after its claim was opened, so it was not billed again. Compare it with the claim and correct the claim if anything changed.',
+      outcomes: ['acknowledge']
+    }
+  });
+  g.ret('revised');
 
-    edge('billed', 'new', 'narrative', 'exec'),
-    edge('summary', 'summary', 'narrativeText', 'summary'),
-    edge('narrativeText', 'result', 'narrative', 'narrative'),
-    edge('narrative', 'then', 'patient', 'exec'),
-    edge('summary', 'summary', 'patient', 'demographics'),
-    edge('patient', 'then', 'payers', 'exec'),
-    edge('summary', 'summary', 'payers', 'summary'),
-    edge('summary', 'summary', 'service', 'summary'),
-    edge('narrative', 'findings', 'service', 'findings'),
+  g.wire('entry.exec', 'read.exec');
+  g.wire('entry.report', 'read.report', 'noteRevision.report', 'claim.report');
+  g.wire('read.pcr', 'pcr.pcr');
+  g.wire('read.then', 'billed.exec');
+  g.wire('pcr.pcrNumber', 'billed.pcrNumber');
 
-    edge('payers', 'then', 'review', 'exec'),
-    edge('patient', 'patient', 'claim', 'patient'),
-    edge('summary', 'summary', 'claim', 'summary'),
-    edge('service', 'service', 'claim', 'service'),
-    edge('payers', 'coverages', 'claim', 'coverages'),
-    edge('narrative', 'findings', 'claim', 'findings'),
-    edge('claim', 'result', 'review', 'context'),
-    edge('summary', 'summary', 'subject', 'summary'),
-    edge('subject', 'result', 'review', 'subject'),
-    edge('subject', 'result', 'held', 'subject'),
-    edge('subject', 'result', 'revision', 'subject'),
-    edge('service', 'service', 'review', 'defaults'),
+  const pcr = 'read.pcr';
+  g.wire(pcr, 'classify.pcr', 'tripContext.pcr', 'subject.pcr', 'demographics.pcr', 'reported.pcr');
+  g.wire(pcr, 'suggest.pcr', 'reviewContext.pcr', 'holdContext.pcr', 'claim.pcr');
+  g.wire(pcr, 'fixContext.pcr', 'revisionContext.pcr');
+  const tripType = 'classify.tripType';
+  g.wire(
+    tripType,
+    'tripSwitch.value',
+    'tripContext.tripType',
+    'suggest.tripType',
+    'charges.tripType'
+  );
+  g.wire(tripType, 'reviewContext.tripType', 'holdContext.tripType', 'fixContext.tripType');
+  g.wire(tripType, 'revisionContext.tripType', 'skipped.tripType', 'approved.tripType');
+  g.wire('classify.reason', 'tripContext.reason', 'reviewContext.reason', 'holdContext.reason');
+  g.wire('classify.reason', 'fixContext.reason', 'revisionContext.reason');
+  g.wire('subject.result', 'noClaim.subject', 'review.subject', 'held.subject');
+  g.wire('subject.result', 'fix.subject', 'revision.subject');
 
-    edge('review', 'hold', 'held', 'exec'),
-    edge('review', 'note', 'holdContext', 'note'),
-    edge('patient', 'patient', 'holdContext', 'patient'),
-    edge('summary', 'summary', 'holdContext', 'summary'),
-    edge('holdContext', 'result', 'held', 'context'),
-    edge('held', 'release', 'review', 'exec'),
-    edge('held', 'void', 'voided', 'exec'),
-    edge('summary', 'summary', 'voided', 'summary'),
-    edge('patient', 'patient', 'voided', 'patient'),
+  g.wire('billed.new', 'tripSwitch.exec');
+  g.wire('tripSwitch.noClaim', 'noClaim.exec');
+  g.wire('tripContext.result', 'noClaim.context');
+  g.wire('noClaim.skip', 'skipped.exec');
+  g.wire('noClaim.claim', 'narrative.exec');
+  g.wire('tripSwitch.default', 'narrative.exec');
 
-    edge('review', 'approve', 'price', 'exec'),
-    edge('review', 'level', 'confirmed', 'level'),
-    edge('review', 'emergency', 'confirmed', 'emergency'),
-    edge('review', 'loadedMiles', 'confirmed', 'loadedMiles'),
-    edge('service', 'service', 'confirmed', 'service'),
-    edge('confirmed', 'result', 'lines', 'service'),
-    edge('lines', 'lines', 'price', 'lines'),
-    edge('payers', 'coverages', 'primaryPayer', 'coverages'),
-    edge('primaryPayer', 'result', 'price', 'payerId'),
-    edge('confirmed', 'result', 'charges', 'service'),
-    edge('price', 'lines', 'charges', 'lines'),
-    edge('price', 'totalCents', 'charges', 'totalCents'),
-    edge('summary', 'summary', 'claimSummary', 'summary'),
-    edge('payers', 'coverages', 'claimSummary', 'coverages'),
-    edge('price', 'then', 'open', 'exec'),
-    edge('patient', 'patient', 'open', 'patient'),
-    edge('claimSummary', 'result', 'open', 'summary'),
-    edge('charges', 'result', 'open', 'charges'),
-    edge('entry', 'report', 'open', 'report'),
-    edge('open', 'opened', 'cycle', 'exec'),
-    edge('open', 'claimId', 'cycleInputs', 'claimId'),
-    edge('cycleInputs', 'result', 'cycle', 'inputs'),
-    edge('cycle', 'then', 'attach', 'exec'),
-    edge('open', 'claimId', 'attach', 'claimId'),
-    edge('cycle', 'runId', 'attach', 'cycleRunId'),
-    edge('attach', 'then', 'approved', 'exec'),
-    edge('open', 'claimId', 'approved', 'claimId'),
-    edge('charges', 'result', 'approved', 'charges'),
-    edge('summary', 'summary', 'approved', 'summary'),
-    edge('patient', 'patient', 'approved', 'patient'),
+  g.wire('pcr.narrative', 'narrative.narrative');
+  g.wire('narrative.then', 'patient.exec');
+  g.wire('demographics.demographics', 'patient.demographics', 'patientName.demographics');
+  g.wire('pcr.pcrNumber', 'patient.pcrNumber', 'payers.pcrNumber');
+  g.wire('patient.then', 'payers.exec');
+  g.wire('reported.coverages', 'payers.coverages');
+  g.wire('patientName.text', 'payers.patientName');
+  g.wire('payers.then', 'suggest.exec');
+  g.wire('narrative.findings', 'suggest.findings', 'reviewContext.findings');
+  g.wire('suggest.then', 'review.exec');
+  g.wire('patient.patient', 'reviewContext.patient', 'holdContext.patient', 'claim.patient');
+  g.wire('payers.coverages', 'reviewContext.coverages', 'primary.list', 'claim.coverages');
+  g.wire('suggest.service', 'reviewContext.service', 'review.defaults', 'suggested.service');
+  g.wire('reviewContext.result', 'review.context');
 
-    edge('billed', 'found', 'reviseBilled', 'exec'),
-    edge('billed', 'claimId', 'reviseBilled', 'value'),
-    edge('open', 'duplicate', 'reviseDuplicate', 'exec'),
-    edge('open', 'claimId', 'reviseDuplicate', 'value'),
-    edge('reviseBilled', 'then', 'noteRevision', 'exec'),
-    edge('reviseDuplicate', 'then', 'noteRevision', 'exec'),
-    edge('revising', 'value', 'noteRevision', 'claimId'),
-    edge('entry', 'report', 'noteRevision', 'report'),
-    edge('noteRevision', 'then', 'revision', 'exec'),
-    edge('revising', 'value', 'revisionContext', 'claimId'),
-    edge('summary', 'summary', 'revisionContext', 'summary'),
-    edge('revisionContext', 'result', 'revision', 'context'),
-    edge('revision', 'acknowledge', 'revised', 'exec'),
-    edge('revising', 'value', 'revised', 'claimId'),
-    edge('summary', 'summary', 'revised', 'summary')
-  ]
+  g.wire('review.hold', 'held.exec');
+  g.wire('review.note', 'holdContext.note');
+  g.wire('holdContext.result', 'held.context');
+  g.wire('held.release', 'review.exec');
+  g.wire('held.void', 'voided.exec');
+  g.wire('patient.patient', 'voided.patient');
+  g.wire(tripType, 'voided.tripType');
+
+  g.wire('review.approve', 'price.exec');
+  g.wire('review.level', 'level.value');
+  g.wire('suggested.level', 'level.fallback');
+  g.wire('review.emergency', 'emergency.value');
+  g.wire('suggested.emergency', 'emergency.fallback');
+  g.wire('level.result', 'confirmed.level');
+  g.wire('emergency.result', 'confirmed.emergency');
+  g.wire('review.loadedMiles', 'confirmed.loadedMiles');
+  g.wire('suggested.basis', 'confirmed.basis');
+  g.wire('confirmed.service', 'charges.service', 'claim.service');
+  g.wire('charges.lines', 'price.lines');
+  g.wire('primary.item', 'primaryPayer.coverage');
+  g.wire('primaryPayer.payerId', 'price.payerId');
+  g.wire('price.lines', 'claim.lines');
+  g.wire('price.totalCents', 'claim.totalCents');
+  g.wire('price.then', 'validate.exec');
+  g.wire('claim.claim', 'validate.claim', 'save.claim');
+  g.wire('validate.invalid', 'fix.exec');
+  g.wire('validate.issues', 'fixContext.issues');
+  g.wire('fixContext.result', 'fix.context');
+  g.wire('fix.review', 'review.exec');
+  g.wire('fix.void', 'voided.exec');
+  g.wire('validate.valid', 'save.exec');
+  g.wire('save.saved', 'cycle.exec');
+  g.wire('save.claimId', 'cycleInputs.claimId', 'attach.claimId', 'approved.claimId');
+  g.wire('cycleInputs.object', 'cycle.inputs');
+  g.wire('cycle.then', 'attach.exec');
+  g.wire('cycle.runId', 'attach.cycleRunId');
+  g.wire('attach.then', 'approved.exec');
+  g.wire('patient.patient', 'approved.patient');
+
+  g.wire('billed.found', 'reviseBilled.exec');
+  g.wire('billed.claimId', 'reviseBilled.value');
+  g.wire('save.duplicate', 'reviseDuplicate.exec');
+  g.wire('save.claimId', 'reviseDuplicate.value');
+  g.wire('reviseBilled.then', 'noteRevision.exec');
+  g.wire('reviseDuplicate.then', 'noteRevision.exec');
+  g.wire('revising.value', 'noteRevision.claimId', 'revisionContext.claimId', 'revised.claimId');
+  g.wire('noteRevision.then', 'revision.exec');
+  g.wire('revisionContext.result', 'revision.context');
+  g.wire('revision.acknowledge', 'revised.exec');
+  g.wire(tripType, 'revised.tripType');
+  return g.def;
 };
 
-const recordEvent = (id: string, kind: string, label: string) =>
-  node(id, 'billing.record-claim-event', { label, inputs: { kind: { value: kind } } });
-
-const closeClaim = (id: string, status: string, label: string) =>
-  node(id, 'billing.close-claim', { label, inputs: { status: { value: status } } });
-
-const waitForClaim = (id: string, label: string) =>
-  node(id, 'std.flow.wait-signal', { label, inputs: { name: { value: CLAIM_SIGNAL } } });
-
-const cycleClaimGraph: GraphDef = {
-  signature: {
-    execIn: ['exec'],
-    execOut: [],
-    inputs: [{ name: 'claimId', type: 'string' }],
-    outputs: []
-  },
-  variables: [{ name: 'active', type: 'boolean', default: true }],
-  nodes: [
-    node('entry', ENTRY_TYPE),
-    node('active', 'std.var.get', { config: { name: 'active' } }),
-    node('loop', 'std.flow.while', { label: 'Until the claim closes' }),
-    node('step', 'billing.claim-step', { label: 'Next step' }),
-    waitForClaim('submit', 'Await 837P batch'),
-    waitForClaim('awaitPayer', 'Await payer response'),
-    subjectOf('followUpSubject', 'reference', 'payer'),
-    subjectOf('collectionsSubject', 'reference'),
-    node('followUpContext', 'std.expr', {
-      label: 'Follow-up context',
-      config: {
-        expression:
-          '{ claimId: claimId, coverageId: coverageId, payer: payer, balanceCents: balanceCents }'
-      }
-    }),
-    node('followUp', 'std.human.task', {
-      label: 'Follow up with payer',
-      config: {
-        title: 'Follow up on claim',
-        queue: 'billing-followup',
-        instructions:
-          'The payer has not responded in 30 days. Resubmit in the next 837P batch, keep waiting another 30 days, or move on to the next payer.',
-        outcomes: ['resubmit', 'keepWaiting', 'nextPayer']
-      }
-    }),
-    recordEvent('resubmit', 'resubmit_queued', 'Queue for the next batch'),
-    recordEvent('keepWaiting', 'follow_up', 'Keep waiting on payer'),
-    recordEvent('skip', 'payer_skipped', 'Move to next payer'),
-    node('statement', 'billing.issue-statement', { label: 'Send patient statement' }),
-    waitForClaim('awaitPatient', 'Await patient payment'),
-    node('collectionsContext', 'std.expr', {
-      label: 'Collections context',
-      config: { expression: '{ claimId: claimId, balanceCents: balanceCents }' }
-    }),
-    node('collections', 'std.human.task', {
-      label: 'Collections review',
-      config: {
-        title: 'Review unpaid balance',
-        queue: 'billing-collections',
-        instructions:
-          'Every payer and three patient statements are done and a balance remains. Write it off or send it to collections. If it has been paid in the meantime, either choice closes it as paid.',
-        outcomes: ['writeOff', 'sendToCollections']
-      }
-    }),
-    closeClaim('closeWrittenOff', 'written_off', 'Close as written off'),
-    closeClaim('closeCollections', 'collections', 'Close as sent to collections'),
-    closeClaim('closePaid', 'paid', 'Close as paid'),
-    node('stop', 'std.var.set', {
-      label: 'Stop cycling',
-      config: { name: 'active' },
-      inputs: { value: { value: false } }
-    }),
-    node('done', RETURN_TYPE)
-  ],
-  edges: [
-    edge('entry', 'exec', 'loop', 'exec'),
-    edge('active', 'value', 'loop', 'condition'),
-    edge('loop', 'body', 'step', 'exec'),
-    edge('loop', 'completed', 'done', 'exec'),
-    edge('entry', 'claimId', 'step', 'claimId'),
-    ...['submit', 'awaitPayer', 'awaitPatient'].flatMap((wait) => [
-      edge('entry', 'claimId', wait, 'key'),
-      edge('step', 'waitMs', wait, 'timeoutMs'),
-      edge('step', 'signalsSeen', wait, 'after')
-    ]),
-    edge('step', 'submit', 'submit', 'exec'),
-    edge('step', 'await', 'awaitPayer', 'exec'),
-    edge('step', 'awaitPatient', 'awaitPatient', 'exec'),
-    edge('step', 'followUp', 'followUp', 'exec'),
-    edge('entry', 'claimId', 'followUpContext', 'claimId'),
-    edge('step', 'coverageId', 'followUpContext', 'coverageId'),
-    edge('step', 'payer', 'followUpContext', 'payer'),
-    edge('step', 'balanceCents', 'followUpContext', 'balanceCents'),
-    edge('followUpContext', 'result', 'followUp', 'context'),
-    edge('step', 'reference', 'followUpSubject', 'reference'),
-    edge('step', 'payer', 'followUpSubject', 'payer'),
-    edge('followUpSubject', 'result', 'followUp', 'subject'),
-    edge('followUp', 'resubmit', 'resubmit', 'exec'),
-    edge('entry', 'claimId', 'resubmit', 'claimId'),
-    edge('step', 'coverageId', 'resubmit', 'coverageId'),
-    edge('followUp', 'keepWaiting', 'keepWaiting', 'exec'),
-    edge('entry', 'claimId', 'keepWaiting', 'claimId'),
-    edge('step', 'coverageId', 'keepWaiting', 'coverageId'),
-    edge('followUp', 'nextPayer', 'skip', 'exec'),
-    edge('entry', 'claimId', 'skip', 'claimId'),
-    edge('step', 'coverageId', 'skip', 'coverageId'),
-    edge('step', 'statement', 'statement', 'exec'),
-    edge('entry', 'claimId', 'statement', 'claimId'),
-    edge('step', 'statementNumber', 'statement', 'statementNumber'),
-    edge('step', 'collections', 'collections', 'exec'),
-    edge('entry', 'claimId', 'collectionsContext', 'claimId'),
-    edge('step', 'balanceCents', 'collectionsContext', 'balanceCents'),
-    edge('collectionsContext', 'result', 'collections', 'context'),
-    edge('step', 'reference', 'collectionsSubject', 'reference'),
-    edge('collectionsSubject', 'result', 'collections', 'subject'),
-    edge('collections', 'writeOff', 'closeWrittenOff', 'exec'),
-    edge('collections', 'sendToCollections', 'closeCollections', 'exec'),
-    edge('step', 'closed', 'closePaid', 'exec'),
-    edge('entry', 'claimId', 'closeWrittenOff', 'claimId'),
-    edge('entry', 'claimId', 'closeCollections', 'claimId'),
-    edge('entry', 'claimId', 'closePaid', 'claimId'),
-    edge('closeWrittenOff', 'then', 'stop', 'exec'),
-    edge('closeCollections', 'then', 'stop', 'exec'),
-    edge('closePaid', 'then', 'stop', 'exec')
-  ]
+const cycleClaim = (): GraphDef => {
+  const g = graph(
+    { execIn: ['exec'], execOut: [], inputs: [p('claimId', 'string')], outputs: [] },
+    [{ name: 'active', type: 'boolean', default: true }]
+  );
+  const waitForClaim = (id: string, label: string) =>
+    g.add(id, 'std.flow.wait-signal', { label, values: { name: CLAIM_SIGNAL } });
+  const recordEvent = (id: string, kind: string, label: string) =>
+    g.add(id, 'billing.record-claim-event', { label, values: { kind } });
+  const closeClaim = (id: string, status: string, label: string) =>
+    g.add(id, 'billing.close-claim', { label, values: { status } });
+  g.add('active', 'std.var.get', { config: { name: 'active' } });
+  g.add('loop', 'std.flow.while', { label: 'Until the claim closes' });
+  g.add('step', 'billing.claim-step', {
+    label: 'Next step',
+    values: { payerWaitDays: 30, statementCount: 3, statementIntervalDays: 30 }
+  });
+  waitForClaim('submit', 'Await 837P batch');
+  waitForClaim('awaitPayer', 'Await payer response');
+  waitForClaim('awaitPatient', 'Await patient payment');
+  g.add('followUpSubject', 'std.expr', subject('reference', 'payer'));
+  g.add('collectionsSubject', 'std.expr', subject('reference'));
+  g.add('followUpContext', 'std.object.make', {
+    label: 'Follow-up context',
+    config: {
+      fields: [
+        { name: 'claimId', type: 'string' },
+        { name: 'coverageId', type: 'string' },
+        { name: 'payer', type: 'string' },
+        { name: 'balanceCents', type: 'integer' }
+      ]
+    }
+  });
+  g.add('followUp', 'std.human.task', {
+    label: 'Follow up with payer',
+    config: {
+      title: 'Follow up on claim',
+      queue: 'billing-followup',
+      instructions:
+        'The payer has not responded in time. Resubmit in the next 837P batch, keep waiting, or move on to the next payer.',
+      outcomes: ['resubmit', 'keepWaiting', 'nextPayer']
+    }
+  });
+  recordEvent('resubmit', 'resubmit_queued', 'Queue for the next batch');
+  recordEvent('keepWaiting', 'follow_up', 'Keep waiting on payer');
+  recordEvent('skip', 'payer_skipped', 'Move to next payer');
+  g.add('statement', 'billing.issue-statement', { label: 'Send patient statement' });
+  g.add('collectionsContext', 'std.object.make', {
+    label: 'Collections context',
+    config: {
+      fields: [
+        { name: 'claimId', type: 'string' },
+        { name: 'balanceCents', type: 'integer' }
+      ]
+    }
+  });
+  g.add('collections', 'std.human.task', {
+    label: 'Collections review',
+    config: {
+      title: 'Review unpaid balance',
+      queue: 'billing-collections',
+      instructions:
+        'Every payer and patient statement is done and a balance remains. Write it off or send it to collections. If it has been paid in the meantime, either choice closes it as paid.',
+      outcomes: ['writeOff', 'sendToCollections']
+    }
+  });
+  closeClaim('closeWrittenOff', 'written_off', 'Close as written off');
+  closeClaim('closeCollections', 'collections', 'Close as sent to collections');
+  closeClaim('closePaid', 'paid', 'Close as paid');
+  g.add('stop', 'std.var.set', {
+    label: 'Stop cycling',
+    config: { name: 'active' },
+    values: { value: false }
+  });
+  g.ret('done');
+  g.wire('entry.exec', 'loop.exec');
+  g.wire('active.value', 'loop.condition');
+  g.wire('loop.body', 'step.exec');
+  g.wire('loop.completed', 'done.exec');
+  g.wire('entry.claimId', 'step.claimId');
+  for (const wait of ['submit', 'awaitPayer', 'awaitPatient']) {
+    g.wire('entry.claimId', `${wait}.key`);
+    g.wire('step.waitMs', `${wait}.timeoutMs`);
+    g.wire('step.signalsSeen', `${wait}.after`);
+  }
+  g.wire('step.submit', 'submit.exec');
+  g.wire('step.await', 'awaitPayer.exec');
+  g.wire('step.awaitPatient', 'awaitPatient.exec');
+  g.wire('step.followUp', 'followUp.exec');
+  g.wire('entry.claimId', 'followUpContext.claimId', 'collectionsContext.claimId');
+  g.wire('step.coverageId', 'followUpContext.coverageId');
+  g.wire('step.payer', 'followUpContext.payer', 'followUpSubject.payer');
+  g.wire('step.balanceCents', 'followUpContext.balanceCents', 'collectionsContext.balanceCents');
+  g.wire('followUpContext.object', 'followUp.context');
+  g.wire('step.reference', 'followUpSubject.reference', 'collectionsSubject.reference');
+  g.wire('followUpSubject.result', 'followUp.subject');
+  for (const [outcome, id] of [
+    ['resubmit', 'resubmit'],
+    ['keepWaiting', 'keepWaiting'],
+    ['nextPayer', 'skip']
+  ] as const) {
+    g.wire(`followUp.${outcome}`, `${id}.exec`);
+    g.wire('entry.claimId', `${id}.claimId`);
+    g.wire('step.coverageId', `${id}.coverageId`);
+  }
+  g.wire('step.statement', 'statement.exec');
+  g.wire('entry.claimId', 'statement.claimId');
+  g.wire('step.statementNumber', 'statement.statementNumber');
+  g.wire('step.collections', 'collections.exec');
+  g.wire('collectionsContext.object', 'collections.context');
+  g.wire('collectionsSubject.result', 'collections.subject');
+  g.wire('collections.writeOff', 'closeWrittenOff.exec');
+  g.wire('collections.sendToCollections', 'closeCollections.exec');
+  g.wire('step.closed', 'closePaid.exec');
+  for (const id of ['closeWrittenOff', 'closeCollections', 'closePaid']) {
+    g.wire('entry.claimId', `${id}.claimId`);
+    g.wire(`${id}.then`, 'stop.exec');
+  }
+  return g.def;
 };
 
-const ingestNemsisGraph: GraphDef = {
-  signature: {
+const ingestNemsis = (): GraphDef => {
+  const g = graph({
     execIn: ['exec'],
     execOut: [],
-    inputs: [{ name: 'file', type: BLOB }],
-    outputs: [
-      { name: 'count', type: 'integer' },
-      { name: 'runIds', type: { list: 'string' } }
-    ]
-  },
-  variables: [],
-  nodes: [
-    node('entry', ENTRY_TYPE),
-    node('split', 'nemsis.split'),
-    node('items', 'std.list.map', { config: { expression: '{ report: item }' } }),
-    node('spawn', 'std.flow.spawn-workflows', {
-      label: 'Process each PCR',
-      config: { workflow: 'billing.process-pcr', version: 1 }
-    }),
-    node('return', RETURN_TYPE)
-  ],
-  edges: [
-    edge('entry', 'exec', 'split', 'exec'),
-    edge('entry', 'file', 'split', 'file'),
-    edge('split', 'then', 'spawn', 'exec'),
-    edge('split', 'reports', 'items', 'list'),
-    edge('items', 'list', 'spawn', 'items'),
-    edge('spawn', 'then', 'return', 'exec'),
-    edge('split', 'count', 'return', 'count'),
-    edge('spawn', 'runIds', 'return', 'runIds')
-  ]
+    inputs: [p('file', BLOB)],
+    outputs: [p('count', 'integer'), p('runIds', { list: 'string' })]
+  });
+  g.add('split', 'nemsis.split');
+  g.add('items', 'std.list.reshape', {
+    label: 'One input per report',
+    config: { fields: [{ name: 'report', type: BLOB, from: '' }] }
+  });
+  g.add('spawn', 'std.flow.spawn-workflows', {
+    label: 'Claim each encounter',
+    config: { workflow: 'billing.encounter-to-claim', version: 1 }
+  });
+  g.ret('return');
+  g.wire('entry.exec', 'split.exec');
+  g.wire('entry.file', 'split.file');
+  g.wire('split.then', 'spawn.exec');
+  g.wire('split.reports', 'items.list');
+  g.wire('items.list', 'spawn.items');
+  g.wire('spawn.then', 'return.exec');
+  g.wire('split.count', 'return.count');
+  g.wire('spawn.runIds', 'return.runIds');
+  return g.def;
 };
+
+const node = (key: string, name: string, description: string, definition: GraphDef): SeedGraph => ({
+  key,
+  name,
+  kind: 'node',
+  description,
+  version: 1,
+  definition
+});
+
+const workflow = (
+  key: string,
+  name: string,
+  description: string,
+  definition: GraphDef
+): SeedGraph => ({ key, name, kind: 'workflow', description, version: 1, definition });
 
 export const billingGraphs: SeedGraph[] = [
-  {
-    key: 'billing.pcr-summary',
-    name: 'PCR Summary',
-    kind: 'node',
-    description: 'Pulls the billing fields and narrative out of a NEMSIS patient care report.',
-    version: 1,
-    definition: pcrSummaryGraph
-  },
-  {
-    key: 'billing.resolve-patient',
-    name: 'Resolve Patient',
-    kind: 'node',
-    description:
-      'Matches report demographics to a patient, creates one when nothing is close, and asks a biller about likely matches.',
-    version: 1,
-    definition: resolvePatientGraph
-  },
-  {
-    key: 'billing.resolve-payers',
-    name: 'Resolve Payers',
-    kind: 'node',
-    description:
-      'Links report payers to the payer directory, asks a biller about uncertain names and remembers the answers.',
-    version: 1,
-    definition: resolvePayersGraph
-  },
-  {
-    key: 'billing.level-of-service',
-    name: 'Level of Service',
-    kind: 'node',
-    description:
-      'Suggests BLS, ALS1, ALS2 or SCT from the level of care (eDisposition.32), coded IV/IO medications and narrative findings, emergency status from the response mode, and loaded miles from the scene and destination odometers, with the reasons.',
-    version: 1,
-    definition: levelOfServiceGraph
-  },
-  {
-    key: 'billing.claim-lines',
-    name: 'Claim Lines',
-    kind: 'node',
-    description:
-      'Maps a confirmed level of service to its HCPCS base code (A0426–A0434) plus A0425 mileage in tenths of a mile.',
-    version: 1,
-    definition: claimLinesGraph
-  },
-  {
-    key: 'billing.cycle-claim',
-    name: 'Cycle Claim',
-    kind: 'workflow',
-    description:
-      'Bills each payer in claim order with 30-day follow-ups, then sends three patient statements 30 days apart before collections review. Sleeps until a claim change or a deadline.',
-    version: 1,
-    definition: cycleClaimGraph
-  },
-  {
-    key: 'billing.process-pcr',
-    name: 'Process PCR',
-    kind: 'workflow',
-    description:
-      'Reads one patient care report and its narrative, resolves its patient and payers, confirms the level of service with a biller, prices and opens the claim, and starts its payer cycle. Reports already billed become revisions of their claim.',
-    version: 1,
-    definition: processPcrGraph
-  },
-  {
-    key: 'billing.ingest-nemsis',
-    name: 'Ingest NEMSIS File',
-    kind: 'workflow',
-    description:
-      'Splits a NEMSIS export and starts one Process PCR run per report, without waiting for them.',
-    version: 1,
-    definition: ingestNemsisGraph
-  }
+  node(
+    'billing.classify-trip',
+    'Classify Trip',
+    'Decides the trip type (emergency, scheduled, treatNoTransport, refusal or noClaim) from the report dispositions and type of service, with the rule that matched.',
+    classifyTrip()
+  ),
+  node(
+    'billing.loaded-miles',
+    'Loaded Miles',
+    'Destination minus scene odometer in tenths of a mile, or nothing when either is missing.',
+    loadedMiles()
+  ),
+  node(
+    'billing.level-of-service',
+    'Level of Service',
+    'Suggests BLS, ALS1, ALS2 or SCT from the level of care, CMS service level, coded IV/IO medications and narrative findings, plus emergency status and loaded miles, with every reason that applied.',
+    levelOfService()
+  ),
+  node(
+    'billing.trip-emergency',
+    'Emergency Trip',
+    'The service an emergency transport is billed for.',
+    tripService({})
+  ),
+  node(
+    'billing.trip-scheduled',
+    'Scheduled Trip',
+    'The service a scheduled or interfacility transport is billed for: never an emergency.',
+    tripService({ emergency: false })
+  ),
+  node(
+    'billing.trip-treat-no-transport',
+    'Treat, No Transport',
+    'The service a trip where the crew treated but did not transport is billed for: no loaded miles.',
+    tripService({ loadedMiles: null })
+  ),
+  node(
+    'billing.trip-refusal',
+    'Refusal',
+    'The service a trip where the patient refused care or transport is billed for: no loaded miles.',
+    tripService({ loadedMiles: null })
+  ),
+  node(
+    'billing.suggest-service',
+    'Suggest Service',
+    'Runs the service rules for the trip type.',
+    suggestService()
+  ),
+  node(
+    'billing.map-charges',
+    'Map Charges',
+    'Turns a confirmed service into HCPCS lines: a base rate by trip type, level and emergency, plus A0425 mileage in tenths of a mile for transports.',
+    mapCharges()
+  ),
+  node(
+    'billing.demographics-from-pcr',
+    'Demographics From PCR',
+    'Maps the report patient to the demographics patients are matched and created by.',
+    demographicsFromPcr()
+  ),
+  node(
+    'billing.coverages-from-pcr',
+    'Coverages From PCR',
+    'Maps the report insurances to coverages, or names Medicare or Medicaid from the payment method when there are none.',
+    coveragesFromPcr()
+  ),
+  node(
+    'billing.trip-details',
+    'Trip Details',
+    'Maps the report to the date of service, pickup, destination, diagnoses and origin/destination modifier.',
+    tripDetails()
+  ),
+  node(
+    'billing.map-claim',
+    'Map Claim',
+    'Builds the claim from the report, patient, payers, confirmed service and priced lines.',
+    mapClaim()
+  ),
+  node(
+    'billing.map-837p',
+    'Map 837P Claim',
+    'Maps a claim on its way to a payer onto an 837P claim: subscriber, payer, ambulance conditions, origin/destination modifiers and service lines.',
+    map837p()
+  ),
+  node(
+    'billing.resolve-patient',
+    'Resolve Patient',
+    'Matches report demographics to a patient, creates one when nothing is close, and asks a biller about likely matches.',
+    resolvePatient()
+  ),
+  node(
+    'billing.resolve-payers',
+    'Resolve Payers',
+    'Links report payers to the payer directory, asks a biller about uncertain names and remembers the answers.',
+    resolvePayers()
+  ),
+  workflow(
+    'billing.cycle-claim',
+    'Cycle Claim',
+    'Bills each payer in claim order with follow-ups, then sends patient statements before collections review. Sleeps until a claim change or a deadline.',
+    cycleClaim()
+  ),
+  workflow(
+    'billing.encounter-to-claim',
+    'Encounter to Claim',
+    'Turns one patient care report into a claim: classifies the trip, resolves the patient and payers, suggests the service for the trip type, has a biller confirm it, maps and prices the claim, saves it and starts its payer cycle. Reports already billed become revisions of their claim.',
+    encounterToClaim()
+  ),
+  workflow(
+    'billing.ingest-nemsis',
+    'Ingest NEMSIS File',
+    'Splits a NEMSIS export and starts one Encounter to Claim run per report, without waiting for them.',
+    ingestNemsis()
+  )
 ];

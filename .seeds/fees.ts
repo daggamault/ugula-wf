@@ -8,7 +8,8 @@ export const demoFees: Record<string, number> = {
   A0428: 60_000,
   A0429: 80_000,
   A0433: 120_000,
-  A0434: 145_000
+  A0434: 145_000,
+  A0998: 25_000
 };
 
 export const buildUpsertDefaultFees = (

@@ -94,17 +94,144 @@ export const claimIssues = (c: BatchClaim) => [
   ...(c.lines.length ? [] : ['The claim has no service lines'])
 ];
 
+export type X837Location = Address & { name: string | null };
+
+export type X837Line = {
+  code: string;
+  modifiers: string[];
+  chargeCents: number;
+  units: number;
+  serviceDate: string;
+};
+
+export type X837Claim = {
+  claimId: string;
+  placeOfService: string;
+  frequency: string;
+  subscriber: Address & {
+    relationship: string;
+    lastName: string;
+    firstName: string | null;
+    memberId: string;
+    groupId: string | null;
+    birthDate: string;
+    sex: string;
+  };
+  payer: { responsibility: string; name: string; payerId: string; claimFiling: string };
+  transportReason: string;
+  loadedMiles: number;
+  conditionCodes: string[];
+  diagnoses: string[];
+  pickup: X837Location;
+  dropoff: X837Location;
+  lines: X837Line[];
+};
+
+const rec = (x: unknown): Record<string, unknown> =>
+  x !== null && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : {};
+
+const str = (x: unknown) => (typeof x === 'string' && x.trim() ? x.trim() : null);
+
+const strs = (x: unknown) => (Array.isArray(x) ? x.map(str).filter((v) => v !== null) : []);
+
+const need = (value: string | null, what: string) => {
+  if (value === null) throw new Error(`The 837P claim needs ${what}`);
+  return value;
+};
+
+const positive = (x: unknown, what: string) => {
+  if (typeof x !== 'number' || !Number.isFinite(x) || x <= 0) {
+    throw new Error(`The 837P claim needs ${what}`);
+  }
+  return x;
+};
+
+const where = (x: unknown): X837Location => {
+  const r = rec(x);
+  return {
+    name: str(r.name),
+    addressLine: str(r.addressLine),
+    city: str(r.city),
+    state: str(r.state),
+    postalCode: str(r.postalCode)
+  };
+};
+
+const readX837Line = (x: unknown, i: number): X837Line => {
+  const r = rec(x);
+  const chargeCents = r.chargeCents;
+  if (typeof chargeCents !== 'number' || !Number.isInteger(chargeCents) || chargeCents < 0) {
+    throw new Error(`Service line ${i + 1} needs a charge in cents`);
+  }
+  return {
+    code: need(str(r.code), `a code on service line ${i + 1}`),
+    modifiers: strs(r.modifiers).slice(0, 4),
+    chargeCents,
+    units: positive(r.units, `units on service line ${i + 1}`),
+    serviceDate: need(str(r.serviceDate), `a date on service line ${i + 1}`)
+  };
+};
+
+export const readX837Claim = (x: unknown): X837Claim => {
+  const r = rec(x);
+  const sub = rec(r.subscriber);
+  const payer = rec(r.payer);
+  const lines = (Array.isArray(r.lines) ? r.lines : []).map(readX837Line);
+  if (!lines.length) throw new Error('The 837P claim needs at least one service line');
+  return {
+    claimId: need(str(r.claimId), 'a claim ID'),
+    placeOfService: need(str(r.placeOfService), 'a place of service'),
+    frequency: need(str(r.frequency), 'a claim frequency'),
+    subscriber: {
+      relationship: need(str(sub.relationship), 'a subscriber relationship'),
+      lastName: need(str(sub.lastName), 'a subscriber last name'),
+      firstName: str(sub.firstName),
+      memberId: need(str(sub.memberId), 'a member ID'),
+      groupId: str(sub.groupId),
+      addressLine: str(sub.addressLine),
+      city: str(sub.city),
+      state: str(sub.state),
+      postalCode: str(sub.postalCode),
+      birthDate: need(str(sub.birthDate), 'a subscriber birth date'),
+      sex: str(sub.sex) ?? 'U'
+    },
+    payer: {
+      responsibility: need(str(payer.responsibility), 'a payer responsibility'),
+      name: need(str(payer.name), 'a payer name'),
+      payerId: need(str(payer.payerId), 'a payer ID'),
+      claimFiling: need(str(payer.claimFiling), 'a claim filing indicator')
+    },
+    transportReason: need(str(r.transportReason), 'a transport reason'),
+    loadedMiles: positive(r.loadedMiles, 'loaded miles'),
+    conditionCodes: strs(r.conditionCodes).slice(0, 5),
+    diagnoses: strs(r.diagnoses).slice(0, 12),
+    pickup: where(r.pickup),
+    dropoff: where(r.dropoff),
+    lines
+  };
+};
+
 const place = (l: Address) => [
   ['N3', clean(l.addressLine, 55)],
   ['N4', clean(l.city, 30), l.state ?? '', l.postalCode ?? '']
 ];
 
-const claimSegments = (c: BatchClaim, hl: number) => {
-  const { patient: p, details: d } = c;
-  const serviceDate = yyyymmdd(d.serviceDate ?? '');
+const claimSegments = (c: X837Claim, hl: number) => {
+  const { subscriber: p } = c;
   return [
     ['HL', String(hl), '1', '22', '0'],
-    ['SBR', 'P', '18', clean(c.groupId, 50), '', '', '', '', '', c.payer.claimFiling ?? ''],
+    [
+      'SBR',
+      c.payer.responsibility,
+      p.relationship,
+      clean(p.groupId, 50),
+      '',
+      '',
+      '',
+      '',
+      '',
+      c.payer.claimFiling
+    ],
     [
       'NM1',
       'IL',
@@ -115,50 +242,50 @@ const claimSegments = (c: BatchClaim, hl: number) => {
       '',
       '',
       'MI',
-      clean(c.memberId, 80)
+      clean(p.memberId, 80)
     ],
     ...place(p),
-    ['DMG', 'D8', yyyymmdd(p.birthDate), p.sex ?? 'U'],
+    ['DMG', 'D8', yyyymmdd(p.birthDate), p.sex],
     ['NM1', 'PR', '2', clean(c.payer.name), '', '', '', '', 'PI', clean(c.payer.payerId, 80)],
     [
       'CLM',
       c.claimId,
-      dollars(c.lines.reduce((sum, l) => sum + l.totalCents, 0)),
+      dollars(c.lines.reduce((sum, l) => sum + l.chargeCents, 0)),
       '',
       '',
-      '41:B:1',
+      `${c.placeOfService}:B:${c.frequency}`,
       'Y',
       'A',
       'Y',
       'Y'
     ],
-    ['CR1', '', '', '', 'A', 'DH', tenths(c.loadedMiles ?? 0)],
-    ['CRC', '07', 'Y', '09', ...(c.emergency ? ['06'] : [])],
-    ['HI', ...d.diagnoses.map((code, i) => `${i ? 'ABF' : 'ABK'}:${code}`)],
+    ['CR1', '', '', '', clean(c.transportReason, 1), 'DH', tenths(c.loadedMiles)],
+    ...(c.conditionCodes.length ? [['CRC', '07', 'Y', ...c.conditionCodes]] : []),
+    ['HI', ...c.diagnoses.map((code, i) => `${i ? 'ABF' : 'ABK'}:${code}`)],
     ['NM1', 'PW', '2'],
-    ...place(d.pickup),
-    ['NM1', '45', '2', clean(d.destination.name)],
-    ...place(d.destination),
+    ...place(c.pickup),
+    ['NM1', '45', '2', clean(c.dropoff.name)],
+    ...place(c.dropoff),
     ...c.lines.flatMap((l, i) => [
       ['LX', String(i + 1)],
       [
         'SV1',
-        `HC:${l.code}:${d.originDestination ?? ''}`,
-        dollars(l.totalCents),
+        ['HC', l.code, ...l.modifiers].join(':'),
+        dollars(l.chargeCents),
         'UN',
         tenths(l.units),
         '',
         '',
         '1'
       ],
-      ['DTP', '472', 'D8', serviceDate]
+      ['DTP', '472', 'D8', yyyymmdd(l.serviceDate)]
     ])
   ];
 };
 
 const fixed = (x: string | null, n: number) => clean(x, n).padEnd(n, ' ');
 
-export const build837 = (s: Submitter, claims: BatchClaim[], e: Envelope) => {
+export const build837 = (s: Submitter, claims: X837Claim[], e: Envelope) => {
   if (
     !Number.isInteger(e.controlNumber) ||
     e.controlNumber < 1 ||

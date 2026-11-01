@@ -27,7 +27,7 @@ export const createModelNodes = (models: readonly Model[]): NodeDef[] =>
       title: `Break ${m.title}`,
       category: m.category,
       description: `Splits ${m.description} into one output per field.`,
-      inputs: [pin(m.name, modelType(m), { label: m.title })],
+      inputs: [pin(m.name, modelType(m), { label: m.title, optional: true })],
       outputs: fieldPins(m),
       compute: (inputs) => {
         const value = inputs[m.name];

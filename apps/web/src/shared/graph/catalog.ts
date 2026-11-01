@@ -1,6 +1,7 @@
-import { createBillingNodes } from '@ugula/billing';
+import { billingModels, createBillingNodes } from '@ugula/billing';
 import {
   combineSources,
+  createModelNodes,
   createRegistry,
   createStdNodes,
   ENTRY_TYPE,
@@ -14,7 +15,7 @@ import {
   stdGraphSource,
   stdGraphs
 } from '@ugula/graph';
-import { createNemsisNodes } from '@ugula/nemsis';
+import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
 
 export type PublishedNode = {
   graph_id: string;
@@ -70,7 +71,8 @@ const workflowRefOf = (inst: NodeInstance): NodeRef | null => {
 const stdNodes = [
   ...createStdNodes({ fetch: (...args) => fetch(...args) }),
   ...createNemsisNodes(null),
-  ...createBillingNodes(null)
+  ...createBillingNodes(null),
+  ...createModelNodes([...nemsisModels, ...billingModels])
 ];
 
 export const titleFromKey = (key: string) =>

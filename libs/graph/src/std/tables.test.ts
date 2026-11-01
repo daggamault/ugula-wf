@@ -93,3 +93,11 @@ describe('table nodes', () => {
     assert.equal(holds({ op: 'present' }, 0), true);
   });
 });
+
+describe('startsWith', () => {
+  it('matches any of several prefixes', () => {
+    assert.equal(holds({ op: 'startsWith', value: ['Y92.0', 'Y92.1'] }, 'Y92.009'), true);
+    assert.equal(holds({ op: 'startsWith', value: 'Y92.2' }, 'Y92.009'), false);
+    assert.equal(holds({ op: 'startsWith', value: '' }, 'x'), false);
+  });
+});

@@ -3,7 +3,7 @@ import { pin, pureNode } from '../define.ts';
 import { fail } from '../errors.ts';
 import { evaluateExpr, parseExpr } from '../expr.ts';
 import { deepEqual, getPath, groupBy, isTruthy } from '../json.ts';
-import { jsonSchema } from '../schemas.ts';
+import { jsonSchema, valueTypeSchema } from '../schemas.ts';
 import type { Json, NodeDef, PinSpec, Values, ValueType } from '../types.ts';
 import { type ExpressionConfig, expressionConfig, identifierPins } from './expression.ts';
 import { CONDITION_OPS, holds } from './tables.ts';
@@ -76,6 +76,20 @@ const makeConfig = v.object({
 });
 
 const isBlank = (x: Json) => x === null || x === '';
+
+const reshapeConfig = v.object({
+  fields: v.pipe(
+    v.array(
+      v.strictObject({
+        name: v.pipe(v.string(), v.regex(/^[A-Za-z_$][\w$]*$/, 'Names must be identifiers')),
+        type: valueTypeSchema,
+        from: v.exactOptional(v.string())
+      })
+    ),
+    v.minLength(1),
+    v.check((fs) => new Set(fs.map((f) => f.name)).size === fs.length, 'Field names must be unique')
+  )
+});
 
 export const listNodes: NodeDef[] = [
   listNode(
@@ -240,6 +254,28 @@ export const listNodes: NodeDef[] = [
       );
       return { list: kept, count: kept.length };
     }
+  }),
+  pureNode<v.InferOutput<typeof reshapeConfig>>({
+    type: 'std.list.reshape',
+    title: 'Reshape Items',
+    category: CATEGORY,
+    description:
+      'Turns each item into a new object: each field you list is copied from a path in the item (an empty path copies the whole item), or, without a path, taken from the shared object, such as a date every line needs.',
+    config: reshapeConfig,
+    inputs: [pin('list', ANY_LIST), pin('shared', { object: {} }, { optional: true })],
+    outputs: ({ fields }) => [
+      pin('list', { list: { object: Object.fromEntries(fields.map((f) => [f.name, f.type])) } })
+    ],
+    compute: ({ list, shared }, { fields }) => ({
+      list: ((list ?? []) as Json[]).map((item) =>
+        Object.fromEntries(
+          fields.map((f) => [
+            f.name,
+            f.from === undefined ? getPath(shared ?? null, f.name) : fieldOf(item, f.from)
+          ])
+        )
+      )
+    })
   }),
   pureNode<v.InferOutput<typeof makeConfig>>({
     type: 'std.list.make',

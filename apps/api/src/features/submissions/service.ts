@@ -9,13 +9,16 @@ import {
   claimProgress,
   MAX_CONTROL_NUMBER,
   nextClaimStep,
+  readX837Claim,
   type Sex,
   type Submitter,
   submitterIssues
 } from '@ugula/billing';
 import type { BlobRef, BlobStore } from '@ugula/blobs';
 import type { Db } from '@ugula/db';
+import type { Json } from '@ugula/graph';
 import type { JobBoss } from '@ugula/jobs';
+import type { Evaluate } from '../../shared/evaluate.ts';
 import { type Announce, announced } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
@@ -43,7 +46,12 @@ export type SubmissionServiceDeps = {
   now: () => Date;
   blobs: Pick<BlobStore, 'putBytes' | 'getBytes'>;
   announce: Announce;
+  evaluate: Evaluate;
 };
+
+export const MAP_837P = { key: 'billing.map-837p', version: 1 };
+
+const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 type LedgerRow = Awaited<ReturnType<typeof listLedgerEvents>>[number];
 
@@ -186,8 +194,26 @@ export const createSubmissionService = ({
   boss,
   now,
   blobs,
-  announce
+  announce,
+  evaluate
 }: SubmissionServiceDeps) => {
+  const map837 = async (tx: Db, tenantId: string, claims: BatchClaim[]) =>
+    (
+      await evaluate(
+        tx,
+        tenantId,
+        MAP_837P,
+        claims.map((claim) => ({ claim: claim as unknown as Json })),
+        'x837'
+      )
+    ).map((x, i) => {
+      try {
+        return readX837Claim(x);
+      } catch (err) {
+        throw new Error(`Claim ${claims[i]?.claimId}: ${messageOf(err)}`);
+      }
+    });
+
   // A batch can touch many claims, so it reports them together (a null id).
   const write = <T>(
     tenantId: string,
@@ -275,7 +301,13 @@ export const createSubmissionService = ({
         }
         const createdAt = now();
         const claims = ready.map((p) => p.claim);
-        const file = build837(submitter, claims, { controlNumber, createdAt });
+        let mapped: Awaited<ReturnType<typeof map837>>;
+        try {
+          mapped = await map837(tx, tenantId, claims);
+        } catch (err) {
+          return fail('invalid', `The 837P mapping failed: ${messageOf(err)}`);
+        }
+        const file = build837(submitter, mapped, { controlNumber, createdAt });
         const document = await blobs.putBytes(
           batchKey(tenantId, controlNumber),
           new TextEncoder().encode(file),

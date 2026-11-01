@@ -12,8 +12,16 @@ import {
   readClaimDetails,
   readCoverages
 } from './claim-details.ts';
-import { type ClaimLedger, claimProgress, nextClaimStep } from './claims.ts';
+import {
+  type ClaimLedger,
+  claimProgress,
+  DEFAULT_POLICY,
+  nextClaimStep,
+  PAYER_WAIT_MS,
+  STATEMENT_INTERVAL_MS
+} from './claims.ts';
 import type { Completer } from './completions.ts';
+import { CLAIM, COVERAGE, DEMOGRAPHICS, FINDINGS, PATIENT as PATIENT_MODEL } from './models.ts';
 import { nameKey } from './names.ts';
 import { readNarrative } from './narrative.ts';
 import {
@@ -36,7 +44,7 @@ type ValueType =
   | { list: ValueType }
   | { object: Record<string, ValueType> };
 
-type Pin = { name: string; type: ValueType; optional?: boolean };
+type Pin = { name: string; type: ValueType; optional?: boolean; label?: string; default?: Json };
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -149,15 +157,17 @@ export type HostNode = {
   }) => Promise<{ type: 'next'; pin: string; outputs: Record<string, Json> }>;
 };
 
-const PATIENT: ValueType = {
-  object: { id: 'string', firstName: 'string', lastName: 'string', birthDate: 'string' }
-};
+const PATIENT: ValueType = PATIENT_MODEL.type;
 
 const BLOB: ValueType = { object: { bucket: 'string', key: 'string' } };
 
-const DEMOGRAPHICS: Pin = { name: 'demographics', type: { object: {} } };
+const DEMOGRAPHICS_IN: Pin = { name: 'demographics', type: DEMOGRAPHICS.type };
 
 const PATIENT_OUT: Pin = { name: 'patient', type: PATIENT };
+
+const COVERAGES: ValueType = { list: COVERAGE.type };
+
+const DAY_MS = 86_400_000;
 
 const CYCLE_KINDS: readonly CycleEventKind[] = [
   'resubmit_queued',
@@ -175,34 +185,54 @@ const isRecordValue = (x: unknown): x is Record<string, unknown> =>
 
 const textOrNull = (x: unknown) => (typeof x === 'string' && x.trim() ? x.trim() : null);
 
-export const readNewClaim = (
-  patient: unknown,
-  summary: unknown,
-  charges: unknown,
-  report: unknown = null
-): NewClaim => {
-  const p = isRecordValue(patient) ? patient : {};
-  const s = isRecordValue(summary) ? summary : {};
-  const c = isRecordValue(charges) ? charges : {};
-  if (typeof p.id !== 'string') throw new Error('A claim needs a patient');
-  if (!isServiceLevel(c.level)) {
-    throw new Error(`A claim needs a level of service: ${SERVICE_LEVELS.join(', ')}`);
+const isCents = (x: unknown): x is number => typeof x === 'number' && Number.isInteger(x) && x >= 0;
+
+const linesProblem = (lines: unknown) => {
+  try {
+    readPricedLines(lines);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
   }
-  if (typeof c.totalCents !== 'number' || !Number.isInteger(c.totalCents) || c.totalCents < 0) {
-    throw new Error('A claim needs a priced total');
-  }
-  const r = isRecordValue(report) ? report : {};
+};
+
+export const claimProblems = (claim: unknown): string[] => {
+  const c = isRecordValue(claim) ? claim : {};
+  const lines = linesProblem(c.lines);
+  const total =
+    !lines && isCents(c.totalCents)
+      ? readPricedLines(c.lines).reduce((sum, l) => sum + l.totalCents, 0)
+      : null;
+  return [
+    ...(typeof c.patientId === 'string' && c.patientId ? [] : ['A claim needs a patient']),
+    ...(isServiceLevel(c.level)
+      ? []
+      : [`A claim needs a level of service: ${SERVICE_LEVELS.join(', ')}`]),
+    ...(lines ? [lines] : []),
+    ...(isCents(c.totalCents) ? [] : ['A claim needs a priced total']),
+    ...(total !== null && total !== c.totalCents
+      ? ['The claim total does not add up to its lines']
+      : []),
+    ...(readClaimDetails(c).serviceDate ? [] : ['A claim needs a date of service'])
+  ];
+};
+
+export const readNewClaim = (claim: unknown): NewClaim => {
+  const problems = claimProblems(claim);
+  if (problems.length) throw new Error(problems.join('. '));
+  const c = claim as Record<string, unknown>;
+  const report = isRecordValue(c.report) ? c.report : {};
   return {
-    patientId: p.id,
-    pcrNumber: textOrNull(s.pcrNumber),
-    level: c.level,
+    patientId: c.patientId as string,
+    pcrNumber: textOrNull(c.pcrNumber),
+    level: c.level as string,
     emergency: c.emergency === true,
     loadedMiles: typeof c.loadedMiles === 'number' ? c.loadedMiles : null,
     lines: readPricedLines(c.lines),
-    totalCents: c.totalCents,
-    coverages: readCoverages(s),
-    details: readClaimDetails(s),
-    reportKey: textOrNull(r.key)
+    totalCents: c.totalCents as number,
+    coverages: readCoverages(c.coverages),
+    details: readClaimDetails(c),
+    reportKey: textOrNull(report.key)
   };
 };
 
@@ -261,12 +291,12 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
         'Finds the existing patient with the same last name, birth date and first name or nickname, or flags likely matches (similar names, birth date typos) for review. Also outputs the cleaned demographics.',
       effect: false,
       signature: action(
-        [DEMOGRAPHICS],
+        [DEMOGRAPHICS_IN],
         [
           PATIENT_OUT,
           { name: 'candidates', type: { list: PATIENT } },
           { name: 'reason', type: 'string' },
-          { name: 'demographics', type: { object: {} } }
+          DEMOGRAPHICS_IN
         ],
         ['matched', 'unmatched', 'review']
       ),
@@ -299,7 +329,7 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
         'Creates a patient from report demographics, once per run step. With reuseMatch, returns the patient another run created for the same person instead.',
       effect: true,
       signature: action(
-        [DEMOGRAPHICS, { name: 'reuseMatch', type: 'boolean', optional: true }],
+        [DEMOGRAPHICS_IN, { name: 'reuseMatch', type: 'boolean', optional: true }],
         [PATIENT_OUT]
       ),
       run: async ({ read, ctx }) => {
@@ -379,32 +409,40 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       }
     },
     {
-      type: 'billing.open-claim',
+      type: 'billing.validate-claim',
       version: 1,
-      title: 'Open Claim',
+      title: 'Validate Claim',
       category: 'Billing',
       description:
-        'Records a priced claim for a patient, with its charge lines, payers in billing priority, member IDs, service date, pickup and destination, and diagnoses from the report summary, linked to the imported report it came from. Once per run step. Continues through duplicate with the existing claim when its PCR number was already billed.',
+        'Checks a claim has everything it needs to be saved: a patient, a level of service, priced lines that add up to the total, and a date of service. Continues through invalid with the problems, so a person can sort them out.',
+      effect: false,
+      signature: action(
+        [{ name: 'claim', type: CLAIM.type }],
+        [{ name: 'issues', type: { list: 'string' } }],
+        ['valid', 'invalid']
+      ),
+      run: async ({ read }) => {
+        const issues = claimProblems(await read('claim'));
+        return { type: 'next', pin: issues.length ? 'invalid' : 'valid', outputs: { issues } };
+      }
+    },
+    {
+      type: 'billing.save-claim',
+      version: 1,
+      title: 'Save Claim',
+      category: 'Billing',
+      description:
+        'Saves a claim with its charge lines, payers in billing order, trip details and diagnoses, linked to the report it came from. Once per run step. Continues through duplicate with the existing claim when its PCR number was already billed.',
       effect: true,
       signature: action(
-        [
-          { name: 'patient', type: PATIENT },
-          { name: 'summary', type: { object: {} } },
-          { name: 'charges', type: { object: {} } },
-          { name: 'report', type: BLOB, optional: true }
-        ],
+        [{ name: 'claim', type: CLAIM.type }],
         [{ name: 'claimId', type: 'string' }],
-        ['opened', 'duplicate']
+        ['saved', 'duplicate']
       ),
       run: async ({ read, ctx }) => {
-        const claim = readNewClaim(
-          await read('patient'),
-          await read('summary'),
-          await read('charges'),
-          await read('report')
-        );
+        const claim = readNewClaim(await read('claim'));
         const { id, duplicate } = await storesOrFail().claims.openClaim(ctx.runId, ctx.key, claim);
-        return { type: 'next', pin: duplicate ? 'duplicate' : 'opened', outputs: { claimId: id } };
+        return { type: 'next', pin: duplicate ? 'duplicate' : 'saved', outputs: { claimId: id } };
       }
     },
     {
@@ -456,15 +494,15 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       title: 'Match Payers',
       category: 'Billing',
       description:
-        "Links the report's payers to the payer directory by name or a name billers already matched. For other names it finds similar directory payers by embedding and, with suggest, has the language model pick the likely one; those continue through review for a biller to confirm.",
+        'Puts coverages in billing priority order and links their payers to the payer directory by name or a name billers already matched. For other names it finds similar directory payers by embedding and, with suggest, has the language model pick the likely one; those continue through review for a biller to confirm.',
       effect: false,
       signature: action(
         [
-          { name: 'summary', type: { object: {} } },
+          { name: 'coverages', type: COVERAGES },
           { name: 'suggest', type: 'boolean', optional: true }
         ],
         [
-          { name: 'coverages', type: { list: { object: { payer: 'string' } } } },
+          { name: 'coverages', type: COVERAGES },
           {
             name: 'unmatched',
             type: { list: { object: { payer: 'string', candidates: { list: { object: {} } } } } }
@@ -473,7 +511,7 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
         ['matched', 'review']
       ),
       run: async ({ read, ctx }) => {
-        const coverages = readCoverages(await read('summary'));
+        const coverages = readCoverages(await read('coverages'));
         const lookups = await storesOrFail().payers.lookup(
           ctx.runId,
           coverages.map((c) => c.payer)
@@ -530,18 +568,7 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       effect: false,
       signature: action(
         [{ name: 'narrative', type: 'string', optional: true }],
-        [
-          {
-            name: 'findings',
-            type: {
-              object: {
-                medications: { list: { object: {} } },
-                procedures: { list: 'string' },
-                ivDoses: 'integer'
-              }
-            }
-          }
-        ]
+        [{ name: 'findings', type: FINDINGS.type }]
       ),
       run: async ({ read }) => {
         const narrative = textOrNull(await read('narrative')) ?? '';
@@ -579,10 +606,30 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
       title: 'Claim Step',
       category: 'Billing',
       description:
-        "Decides what a claim needs next from its history: wait for the next payer's claim to go out in an 837P batch, wait out the payer's 30 days, follow up, send or wait on a patient statement, collections review, or close. Also outputs how many claim signals the history already reflects, and the claim's PCR number and patient for people to recognize it by.",
+        "Decides what a claim needs next from its history: wait for the next payer's claim to go out in an 837P batch, wait out the payer's response time, follow up, send or wait on a patient statement, collections review, or close. Also outputs how many claim signals the history already reflects, and the claim's PCR number and patient for people to recognize it by.",
       effect: false,
       signature: action(
-        [{ name: 'claimId', type: 'string' }],
+        [
+          { name: 'claimId', type: 'string' },
+          {
+            name: 'payerWaitDays',
+            type: 'number',
+            label: 'Days to wait for a payer',
+            default: PAYER_WAIT_MS / DAY_MS
+          },
+          {
+            name: 'statementCount',
+            type: 'integer',
+            label: 'Patient statements to send',
+            default: DEFAULT_POLICY.statementLimit
+          },
+          {
+            name: 'statementIntervalDays',
+            type: 'number',
+            label: 'Days between statements',
+            default: STATEMENT_INTERVAL_MS / DAY_MS
+          }
+        ],
         [
           { name: 'coverageId', type: 'string' },
           { name: 'payer', type: 'string' },
@@ -598,7 +645,22 @@ export const createBillingNodes = (stores: BillingStores | null): HostNode[] => 
         const claimId = await claimIdOf(read);
         const ledger = await storesOrFail().claims.ledger(ctx.runId, claimId);
         if (!ledger) throw new Error(`Claim ${claimId} does not exist`);
-        const next = nextClaimStep(ledger, ctx.now);
+        const days = async (pin: string, fallback: number) => {
+          const value = await read(pin);
+          return typeof value === 'number' && value > 0 ? value * DAY_MS : fallback;
+        };
+        const statements = await read('statementCount');
+        const next = nextClaimStep(ledger, ctx.now, {
+          payerWaitMs: await days('payerWaitDays', DEFAULT_POLICY.payerWaitMs),
+          statementLimit:
+            typeof statements === 'number' && Number.isInteger(statements) && statements >= 0
+              ? statements
+              : DEFAULT_POLICY.statementLimit,
+          statementIntervalMs: await days(
+            'statementIntervalDays',
+            DEFAULT_POLICY.statementIntervalMs
+          )
+        });
         return {
           type: 'next',
           pin: next.step,
