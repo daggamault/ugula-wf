@@ -1,16 +1,15 @@
-import { PencilIcon, SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
+import { PencilIcon, PlusIcon, SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatCents, formatDateTime, parseDollars } from '../../shared/format.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button } from '../../shared/ui/button.tsx';
-import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
+import { ConfirmDialog, Dialog, DialogActions } from '../../shared/ui/dialog.tsx';
 import { EmptyState } from '../../shared/ui/empty-state.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
-import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
@@ -121,10 +120,13 @@ export const FeesPage = ({ client }: FeesPageProps) => {
   ];
   const payerLabel = payerOptions.find((o) => o.value === draft.payerId)?.label ?? '';
   const [editing, setEditing] = useState(false);
+  const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState<Fee | null>(null);
   const reset = () => {
     setDraft(EMPTY);
     setEditing(false);
+    setOpen(false);
+    setError('');
   };
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -164,29 +166,42 @@ export const FeesPage = ({ client }: FeesPageProps) => {
   return (
     <Page
       title="Fees"
-      description="Prices for ambulance HCPCS codes. A claim is priced with its primary payer's price when the payer directory has one, otherwise the default."
+      description="Prices for ambulance HCPCS codes. A claim uses its primary payer's price when there is one, otherwise the default."
+      actions={
+        <Button
+          onClick={() => {
+            setDraft(EMPTY);
+            setEditing(false);
+            setError('');
+            setOpen(true);
+          }}
+        >
+          <PlusIcon aria-hidden="true" className="size-4" />
+          Add fee
+        </Button>
+      }
     >
-      <SectionPanel
+      <Dialog
+        open={open}
+        onClose={reset}
         title={editing ? 'Edit Fee' : 'Add a Fee'}
         description={
           editing
             ? `Change the price of ${draft.code} for ${draft.payerId ? payerLabel : 'the default schedule'}.`
-            : 'Set a default price for a code, or a price for one payer in the directory.'
+            : 'Set a default price for a code, or a price for one payer.'
         }
-        accent={editing ? 'primary' : undefined}
       >
         <form onSubmit={submit} className="flex flex-col gap-5" aria-label="Save fee">
-          <fieldset
-            disabled={busy}
-            className="grid gap-x-4 gap-y-5 sm:grid-cols-[minmax(0,1fr)_9rem_10rem]"
-          >
-            <Select
-              id="fee-payer"
-              label="Payer"
-              options={payerOptions}
-              disabled={editing}
-              {...field('payerId')}
-            />
+          <fieldset disabled={busy} className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Select
+                id="fee-payer"
+                label="Payer"
+                options={payerOptions}
+                disabled={editing}
+                {...field('payerId')}
+              />
+            </div>
             <Input
               id="fee-code"
               label="HCPCS"
@@ -209,20 +224,18 @@ export const FeesPage = ({ client }: FeesPageProps) => {
             />
           </fieldset>
           {error ? <Alert>{error}</Alert> : null}
-          <div className="flex flex-wrap gap-2">
+          <DialogActions>
+            <Button variant="outline" onClick={reset}>
+              <XIcon aria-hidden="true" className="size-4" />
+              Cancel
+            </Button>
             <Button type="submit" isPending={busy}>
               <SaveIcon aria-hidden="true" className="size-4" />
-              {editing ? 'Update fee' : 'Save fee'}
+              Save fee
             </Button>
-            {editing ? (
-              <Button variant="outline" onClick={reset}>
-                <XIcon aria-hidden="true" className="size-4" />
-                Cancel
-              </Button>
-            ) : null}
-          </div>
+          </DialogActions>
         </form>
-      </SectionPanel>
+      </Dialog>
       {fees.error ? <Alert>{fees.error.message}</Alert> : null}
       {fees.data?.length ? (
         <>
@@ -231,6 +244,8 @@ export const FeesPage = ({ client }: FeesPageProps) => {
             sorting={table}
             onEdit={(f) => {
               setEditing(true);
+              setError('');
+              setOpen(true);
               setDraft({
                 payerId: f.payer_id ?? '',
                 code: f.code,
@@ -243,7 +258,7 @@ export const FeesPage = ({ client }: FeesPageProps) => {
         </>
       ) : fees.data ? (
         <EmptyState title="No Fees">
-          Claims cannot be priced until each code has a fee. Add one above.
+          Claims cannot be priced until each code has a fee. Use Add fee to set one.
         </EmptyState>
       ) : (
         <PageLoading />

@@ -29,30 +29,27 @@ describe('report options', () => {
     const range = { from: '2026-01-01', to: '2026-03-31' };
     assert.equal(
       reportPath({ id: 'monthly', usesPeriod: true }, range),
-      '/reports/monthly?from=2026-01-01&to=2026-03-31&run=1'
+      '/reports/monthly?from=2026-01-01&to=2026-03-31'
     );
-    assert.equal(reportPath({ id: 'aging', usesPeriod: false }, range), '/reports/aging?run=1');
+    assert.equal(reportPath({ id: 'aging', usesPeriod: false }, range), '/reports/aging');
     assert.equal(
       reportPath(
         { id: 'monthly', usesPeriod: true },
         range,
         new URLSearchParams('sort=paid&page=4')
       ),
-      '/reports/monthly?sort=paid&from=2026-01-01&to=2026-03-31&run=1'
+      '/reports/monthly?sort=paid&from=2026-01-01&to=2026-03-31'
     );
   });
 });
 
 describe('ReportsPage', () => {
-  it('lists every report in a sortable table with the options it takes', () => {
+  it('lists every report as a card with what it shows', () => {
     const html = renderToStaticMarkup(createElement(ReportsPage));
     for (const r of REPORTS) {
       assert.ok(html.includes(`href="/reports/${r.id}"`), r.id);
       assert.ok(html.includes(r.title), r.title);
     }
-    assert.ok(html.includes('aria-label="Reports"'));
-    assert.ok(html.includes('aria-sort="ascending"'));
-    assert.ok(html.includes('None, as of today') && html.includes('Service date range'));
     assert.ok(html.indexOf('Accounts Receivable Aging') < html.indexOf('Payer Performance'));
   });
 });
@@ -70,20 +67,18 @@ describe('ReportPage', () => {
       createElement(ReportPage, { client, reportId: id, query: new URLSearchParams(search), now })
     );
 
-  it('shows the options first and results only once the report is run', () => {
+  it('runs on open for the last 12 months and lets the dates be changed', () => {
     const options = page('monthly', '');
     assert.ok(options.includes('Charges and Collections by Month</h1>'));
     assert.ok(options.includes('value="2025-11-01"') && options.includes('value="2026-10-23"'));
-    assert.ok(options.includes('Run report'));
-    assert.ok(!options.includes('Results'));
-    const run = page('monthly', 'from=2026-01-01&to=2026-03-31&run=1');
+    assert.ok(options.includes('Results') && options.includes('Update'));
+    const run = page('monthly', 'from=2026-01-01&to=2026-03-31');
     assert.ok(run.includes('value="2026-01-01"'));
-    assert.ok(run.includes('Results'));
   });
 
-  it('runs reports without options straight from their button', () => {
+  it('shows reports without options straight away', () => {
     const html = page('aging', '');
-    assert.ok(html.includes('always shows balances as of today'));
+    assert.ok(html.includes('Open balances as of today.'));
     assert.ok(!html.includes('type="date"'));
   });
 

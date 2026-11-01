@@ -16,6 +16,7 @@ import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatCents, formatDate, formatDateTime, parseDollars } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
+import { Link } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
@@ -277,7 +278,9 @@ export const PayersEditor = ({
                   {p}
                 </span>
                 {unlisted.has(p.toLowerCase()) ? (
-                  <Badge intent="warning">Not in payer directory</Badge>
+                  <Link to="/payers" className="shrink-0 rounded-full hover:underline">
+                    <Badge intent="warning">Not in payer directory</Badge>
+                  </Link>
                 ) : null}
               </span>
               <span className="flex">

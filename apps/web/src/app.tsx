@@ -1,6 +1,7 @@
 import {
   ActivityIcon,
   BadgeDollarSignIcon,
+  Building2Icon,
   ChartColumnIcon,
   FileUpIcon,
   ListTodoIcon,
@@ -33,6 +34,7 @@ import { parseAt } from './features/runs/inspect.ts';
 import { RunsPage } from './features/runs/runs-page.tsx';
 import { StartRunPage } from './features/runs/start-run-page.tsx';
 import type { SettingsClient } from './features/settings/client.ts';
+import { PayersPage } from './features/settings/payers-page.tsx';
 import { SettingsPage } from './features/settings/settings-page.tsx';
 import type { Assignee, TasksClient } from './features/tasks/client.ts';
 import { TaskPage } from './features/tasks/task-page.tsx';
@@ -40,7 +42,7 @@ import { ASSIGNEES, TasksPage } from './features/tasks/tasks-page.tsx';
 import { useWorkAlerts } from './features/tasks/work-alerts.ts';
 import type { WorkflowsClient } from './features/workflows/client.ts';
 import { parseTrail } from './features/workflows/trail.ts';
-import { WorkflowsPage } from './features/workflows/workflows-page.tsx';
+import { GRAPH_FILTERS, WorkflowsPage } from './features/workflows/workflows-page.tsx';
 import { createLive, type Live, useLiveStatus } from './shared/live.ts';
 import { matchPath, navigate, useLocation } from './shared/router.tsx';
 import { NotificationsButton } from './shared/ui/notifications.tsx';
@@ -95,6 +97,7 @@ export const SECTIONS = [
     group: 'Automation'
   },
   { id: 'runs', label: 'Runs', href: '/runs', icon: ActivityIcon, group: 'Automation' },
+  { id: 'payers', label: 'Payers', href: '/payers', icon: Building2Icon, group: 'Admin' },
   { id: 'fees', label: 'Fees', href: '/fees', icon: BadgeDollarSignIcon, group: 'Admin' },
   { id: 'settings', label: 'Settings', href: '/settings', icon: SettingsIcon, group: 'Admin' }
 ] as const;
@@ -123,7 +126,15 @@ const versionParam = (query: URLSearchParams) => {
 };
 
 const routes: readonly Route[] = [
-  { pattern: '/workflows', render: (_, __, c) => <WorkflowsPage client={c.workflows} /> },
+  {
+    pattern: '/workflows',
+    render: (_, q, c) => (
+      <WorkflowsPage
+        client={c.workflows}
+        show={GRAPH_FILTERS.find((f) => f.value === q.get('show'))?.value ?? 'all'}
+      />
+    )
+  },
   {
     pattern: '/workflows/:id',
     render: (p, q, c) => (
@@ -185,6 +196,7 @@ const routes: readonly Route[] = [
     render: (p, q, c) => <ReportPage client={c.reports} reportId={p.id ?? ''} query={q} />
   },
   { pattern: '/fees', render: (_, __, c) => <FeesPage client={c.fees} /> },
+  { pattern: '/payers', render: (_, __, c) => <PayersPage client={c.settings} /> },
   { pattern: '/settings', render: (_, __, c) => <SettingsPage client={c.settings} /> },
   {
     pattern: '/tasks',

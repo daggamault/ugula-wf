@@ -1,16 +1,16 @@
-import { DownloadIcon, PlayIcon } from 'lucide-react';
+import { ChartColumnIcon, DownloadIcon, RefreshCwIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
+import { classNamesOf } from '../../shared/class-names.ts';
 import { formatDate } from '../../shared/format.ts';
-import { navigate, useLocation } from '../../shared/router.tsx';
+import { Link, navigate, useLocation } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { Input } from '../../shared/ui/input.tsx';
+import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
-import { Section, SectionPanel } from '../../shared/ui/section-panel.tsx';
-import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
-import { TextLink } from '../../shared/ui/text-link.tsx';
+import { Section } from '../../shared/ui/section-panel.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { hrefWith, pageOf, type TableState, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
@@ -47,91 +47,86 @@ export const reportPath = (
   hrefWith(`/reports/${r.id}`, query, {
     from: r.usesPeriod ? range.from : null,
     to: r.usesPeriod ? range.to : null,
-    run: '1',
     page: null
   });
 
-const CATALOG_TABLE = { sorts: { title: 'asc' }, sort: 'title' } as const;
-
-export const ReportsPage = () => {
-  const table = useTableState('/reports', CATALOG_TABLE);
-  const page = pageOf(REPORTS, table, { title: (r) => r.title });
-  return (
-    <Page
-      title="Reports"
-      description="Receivables, collections and payer performance, straight from your claims. Pick a report, set its options and run it."
-    >
-      <Table label="Reports" sorting={table} head={[{ label: 'Report', sort: 'title' }, 'Options']}>
-        {page.items.map((r) => (
-          <TableRow key={r.id}>
-            <TableCell>
-              <span className="flex max-w-2xl flex-col gap-0.5 whitespace-normal">
-                <TextLink to={`/reports/${r.id}`}>{r.title}</TextLink>
-                <span className="text-surface-fg-muted text-xs font-normal">{r.description}</span>
-              </span>
-            </TableCell>
-            <TableCell isMuted>
-              {r.usesPeriod ? 'Service date range' : 'None, as of today'}
-            </TableCell>
-          </TableRow>
-        ))}
-      </Table>
-      <Pagination label="Reports" total={page.total} state={table} />
-    </Page>
-  );
-};
+export const ReportsPage = () => (
+  <Page
+    title="Reports"
+    description="Receivables, collections and payer performance, straight from your claims."
+  >
+    <ul className="grid gap-4 md:grid-cols-2">
+      {REPORTS.map((r) => (
+        <li key={r.id} className="flex">
+          <Link
+            to={`/reports/${r.id}`}
+            className={classNamesOf(
+              interactiveClasses,
+              'border-border bg-surface hover:border-primary/50 hover:bg-primary/5 flex flex-1 flex-col gap-2 rounded-xl border p-5'
+            )}
+          >
+            <span className="text-primary flex items-center gap-2 font-bold">
+              <ChartColumnIcon aria-hidden="true" className="size-4.5" />
+              {r.title}
+            </span>
+            <span className="text-surface-fg-muted text-sm">{r.description}</span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  </Page>
+);
 
 export const ReportOptions = ({ report, range }: { report: AnyReport; range: DateRange }) => {
   const [draft, setDraft] = useState(range);
   const { query } = useLocation();
   const valid = draft.from <= draft.to;
+  const changed = draft.from !== range.from || draft.to !== range.to;
   const run = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (valid) navigate(reportPath(report, draft, query));
   };
   return (
-    <SectionPanel
-      title="Options"
-      description={
-        report.usesPeriod
-          ? 'The report covers claims with a date of service in this range.'
-          : 'This report always shows balances as of today.'
-      }
+    <form
+      onSubmit={run}
+      aria-label="Report options"
+      className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end"
     >
-      <form onSubmit={run} className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
-        {report.usesPeriod ? (
-          <>
-            <div className="sm:w-44">
-              <Input
-                id="report-from"
-                label="Service from"
-                type="date"
-                value={draft.from}
-                max={draft.to}
-                onChange={(e) => e.target.value && setDraft({ ...draft, from: e.target.value })}
-              />
-            </div>
-            <div className="sm:w-44">
-              <Input
-                id="report-to"
-                label="Service to"
-                type="date"
-                value={draft.to}
-                min={draft.from}
-                onChange={(e) => e.target.value && setDraft({ ...draft, to: e.target.value })}
-              />
-            </div>
-          </>
-        ) : null}
-        <Button
-          type="submit"
-          disabledReason={valid ? undefined : 'Choose a start date on or before the end date.'}
-        >
-          <PlayIcon aria-hidden="true" className="size-4" />
-          Run report
-        </Button>
-      </form>
-    </SectionPanel>
+      <div className="sm:w-44">
+        <Input
+          id="report-from"
+          label="Service from"
+          type="date"
+          value={draft.from}
+          max={draft.to}
+          onChange={(e) => e.target.value && setDraft({ ...draft, from: e.target.value })}
+        />
+      </div>
+      <div className="sm:w-44">
+        <Input
+          id="report-to"
+          label="Service to"
+          type="date"
+          value={draft.to}
+          min={draft.from}
+          onChange={(e) => e.target.value && setDraft({ ...draft, to: e.target.value })}
+        />
+      </div>
+      <Button
+        type="submit"
+        variant="outline"
+        disabledReason={
+          valid
+            ? changed
+              ? undefined
+              : 'Change the dates first.'
+            : 'Choose a start date on or before the end date.'
+        }
+      >
+        <RefreshCwIcon aria-hidden="true" className="size-4" />
+        Update
+      </Button>
+    </form>
   );
 };
 
@@ -225,8 +220,10 @@ export const ReportPage = ({ client, reportId, query, now = new Date() }: Report
       backTo="/reports"
       backLabel="Back to Reports"
     >
-      <ReportOptions key={`${range.from}:${range.to}`} report={report} range={range} />
-      {query.has('run') ? <ReportResults client={client} report={report} range={range} /> : null}
+      {report.usesPeriod ? (
+        <ReportOptions key={`${range.from}:${range.to}`} report={report} range={range} />
+      ) : null}
+      <ReportResults client={client} report={report} range={range} />
     </Page>
   );
 };

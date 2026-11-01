@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { GraphSummary, WorkflowsClient } from './client.ts';
-import { WorkflowsPage, WorkflowsTable } from './workflows-page.tsx';
+import { matchesFilter, WorkflowsPage, WorkflowsTable } from './workflows-page.tsx';
 
 const graph = (patch: Partial<GraphSummary>): GraphSummary => ({
   id: 'g1',
@@ -36,17 +36,29 @@ describe('WorkflowsPage', () => {
     assert.ok(html.includes('href="/workflows/g1"'));
     assert.ok(html.includes('href="/runs/new?graph=g1"'));
     assert.ok(!html.includes('/runs/new?graph=g2'));
-    assert.ok(html.includes('System'));
+    assert.ok(html.includes('System') && html.includes('Building block'));
     assert.ok(html.includes('v2'));
   });
 
   it('renders the page shell with a create action', () => {
     const html = renderToStaticMarkup(
       createElement(WorkflowsPage, {
-        client: { list: async () => [] } as unknown as WorkflowsClient
+        client: { list: async () => [] } as unknown as WorkflowsClient,
+        show: 'all'
       })
     );
     assert.ok(html.includes('<h1'));
-    assert.ok(html.includes('New graph'));
+    assert.ok(html.includes('>New<'));
+    assert.ok(html.includes('href="/workflows?show=blocks"'));
+  });
+
+  it('filters workflows, building blocks and graphs the agency owns', () => {
+    const node = graph({ kind: 'node', isSystem: true });
+    assert.equal(matchesFilter(graph({}), 'workflows'), true);
+    assert.equal(matchesFilter(node, 'workflows'), false);
+    assert.equal(matchesFilter(node, 'blocks'), true);
+    assert.equal(matchesFilter(node, 'mine'), false);
+    assert.equal(matchesFilter(graph({}), 'mine'), true);
+    assert.equal(matchesFilter(node, 'all'), true);
   });
 });

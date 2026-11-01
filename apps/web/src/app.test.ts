@@ -39,6 +39,7 @@ describe('app routing', () => {
       '/reports',
       '/reports/aging',
       '/fees',
+      '/payers',
       '/settings'
     ]) {
       assert.notEqual(resolveRoute(path, query('graph=g1'), ctx), null, path);

@@ -2,14 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import {
-  FILING_OPTIONS,
-  fromProfileDraft,
-  PayerDirectory,
-  ProfileForm,
-  payerSavedNotice,
-  toProfileDraft
-} from './settings-page.tsx';
+import { PayerDirectory, payerSavedNotice } from './payers-page.tsx';
+import { FILING_OPTIONS, fromProfileDraft, ProfileForm, toProfileDraft } from './settings-page.tsx';
 
 describe('settings', () => {
   it('maps a saved profile into the form and starts empty without one', () => {
@@ -61,7 +55,10 @@ describe('settings', () => {
         ],
         onSave: async () => true,
         onDelete: () => undefined,
-        onForget: () => undefined
+        onForget: () => undefined,
+        open: false,
+        onOpen: () => undefined,
+        onClose: () => undefined
       })
     );
     assert.ok(payers.includes('>Medicare<'));
@@ -75,10 +72,14 @@ describe('settings', () => {
         payers: [],
         onSave: async () => true,
         onDelete: () => undefined,
-        onForget: () => undefined
+        onForget: () => undefined,
+        open: false,
+        onOpen: () => undefined,
+        onClose: () => undefined
       })
     );
-    assert.ok(none.includes('No payers yet'));
+    assert.ok(none.includes('No Payers Yet'));
+    assert.ok(payers.includes('for="payer-name"') && payers.includes('>Save payer<'));
   });
 });
 

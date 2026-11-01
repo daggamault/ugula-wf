@@ -136,7 +136,7 @@ export const MonthlyTable = ({ rows, all, sorting }: ResultTableProps<MonthlyRow
       { label: 'Collected', isNumeric: true, isSecondary: true },
       numeric('Open balance', 'open'),
       {
-        label: 'Written off or sent to collections',
+        label: 'Written Off / Collections',
         isNumeric: true,
         isSecondary: true,
         sort: 'unrecovered'

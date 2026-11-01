@@ -317,10 +317,20 @@ export const nemsisModels: Model[] = [
 const isRecord = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
 
+export const cleanText = (raw: string) =>
+  [
+    ...new Set(
+      raw
+        .split('~')
+        .map((part) => part.trim())
+        .filter(Boolean)
+    )
+  ].join(' - ');
+
 const textOf = (x: unknown): string | null => {
   const raw = isRecord(x) ? x['#text'] : x;
-  return typeof raw === 'string' && raw.trim()
-    ? raw.trim()
+  return typeof raw === 'string' && cleanText(raw)
+    ? cleanText(raw)
     : typeof raw === 'number'
       ? String(raw)
       : null;

@@ -39,7 +39,7 @@ describe('toFeeInput', () => {
 });
 
 describe('FeesPage', () => {
-  it('renders a labelled fee form', () => {
+  it('adds and edits fees in a dialog from the header', () => {
     const html = renderToStaticMarkup(
       createElement(FeesPage, {
         client: {
@@ -51,7 +51,7 @@ describe('FeesPage', () => {
     assert.ok(html.includes('for="fee-payer"'));
     assert.ok(html.includes('for="fee-code"'));
     assert.ok(html.includes('step="0.01"'));
-    assert.ok(html.includes('>Save fee<'));
+    assert.ok(html.includes('>Save fee<') && html.includes('Add fee'));
     assert.ok(html.includes('Default schedule (every payer)'));
   });
 
