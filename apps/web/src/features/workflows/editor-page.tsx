@@ -162,7 +162,7 @@ export const EditorView = ({
         description:
           'Change and publish the copy; new runs then use it everywhere this graph is used.'
       });
-      navigate(graphPath(id, 1, trail));
+      navigate(`/workflows/${id}`);
     });
 
   const removeOverride = () =>
@@ -194,7 +194,7 @@ export const EditorView = ({
     ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them.'
     : graph.tenant_id === null
       ? graph.overridden_by
-        ? 'Your agency overrides this built-in graph, so runs use your copy. Select a node to see what it does.'
+        ? 'Your agency has its own copy of this built-in graph; runs use it once it is published. Select a node to see what it does.'
         : 'Built-in graphs are read-only. Override one to change how your agency runs it.'
       : draft
         ? `Published versions are read-only. Open draft v${draft.version} to make changes.`
