@@ -18,5 +18,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": [".migrations/*.ts", ".seeds/*.ts"]
+  "include": [".migrations/*.ts", ".seeds/*.ts", ".e2e/*.ts"]
 }

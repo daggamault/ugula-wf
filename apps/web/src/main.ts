@@ -13,6 +13,7 @@ import { createSettingsClient } from './features/settings/client.ts';
 import { createTasksClient } from './features/tasks/client.ts';
 import { createWorkflowsClient } from './features/workflows/client.ts';
 import { createApi } from './shared/api.ts';
+import { createNotificationsClient } from './shared/notifications.ts';
 import { createSignal } from './shared/signal.ts';
 
 export const createClients = (config: Config, fetchFn: typeof fetch = fetch): AppClients => {
@@ -28,7 +29,8 @@ export const createClients = (config: Config, fetchFn: typeof fetch = fetch): Ap
     claims: createClaimsClient(api),
     patients: createPatientsClient(api),
     settings: createSettingsClient(api),
-    reports: createReportsClient(api)
+    reports: createReportsClient(api),
+    notifications: createNotificationsClient(api)
   };
 };
 

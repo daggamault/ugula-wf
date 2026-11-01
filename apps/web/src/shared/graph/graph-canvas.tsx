@@ -33,6 +33,13 @@ export type GraphCanvasProps = Decorations & {
 
 const nodeTypes = { graph: GraphNode };
 
+export const OPENING_WIDTH = 1800;
+
+export const openingNodes = (nodes: readonly { id: string; position: { x: number } }[]) => {
+  const left = Math.min(...nodes.map((n) => n.position.x));
+  return nodes.filter((n) => n.position.x <= left + OPENING_WIDTH).map((n) => ({ id: n.id }));
+};
+
 export const GraphCanvas = ({
   def,
   catalog,
@@ -50,6 +57,7 @@ export const GraphCanvas = ({
     [def, catalog, status, issues]
   );
   const [nodes, setNodes] = useState<GraphFlowNode[]>(flow.nodes);
+  const [opening] = useState(() => openingNodes(flow.nodes));
   const [edges, setEdges] = useState<Edge[]>(flow.edges);
 
   const selectedRef = useRef(selected);
@@ -84,7 +92,7 @@ export const GraphCanvas = ({
         nodeTypes={nodeTypes}
         colorMode={theme}
         fitView
-        fitViewOptions={{ maxZoom: 1, padding: 0.15 }}
+        fitViewOptions={{ maxZoom: 1, padding: 0.15, nodes: opening }}
         minZoom={0.15}
         zoomOnDoubleClick={false}
         nodesDraggable={editable}

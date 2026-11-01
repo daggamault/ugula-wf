@@ -9,6 +9,7 @@ import { createGnisPlacesTable } from './gnis-places.ts';
 import { createGraphsTables } from './graphs.ts';
 import { createImportsTables } from './imports.ts';
 import { migrate, resetSchema, steps } from './migrate.ts';
+import { createNotificationsTables } from './notifications.ts';
 import { createPatientsTable } from './patients.ts';
 import { createTasksTable } from './tasks.ts';
 import { createTenantsTable } from './tenants.ts';
@@ -30,7 +31,8 @@ describe('migrate', () => {
       createBillingProfilesTables,
       createFeeSchedulesTable,
       createImportsTables,
-      createClaimsTables
+      createClaimsTables,
+      createNotificationsTables
     ]);
   });
 

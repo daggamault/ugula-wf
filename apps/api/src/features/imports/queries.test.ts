@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db';
-import { findLatestPublished, findSftpTenant, insertImport, listImports } from './queries.ts';
+import {
+  findImport,
+  findLatestPublished,
+  findSftpTenant,
+  insertImport,
+  listImportReports,
+  listImports
+} from './queries.ts';
 
 describe('findLatestPublished', () => {
   it('picks the newest published workflow version, preferring the tenant copy', async () => {
@@ -67,5 +74,18 @@ describe('import records', () => {
       10,
       0
     ]);
+  });
+
+  it('lists each report of an import with its run, claim and open task', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await findImport(db, 't', 'i1');
+    await listImportReports(db, 't', 'i1');
+    assert.ok(queries[0]?.sql.includes('"i"."id" = $'));
+    const reports = queries[1]?.sql ?? '';
+    assert.ok(reports.includes(`r.inputs -> 'report' ->> 'key' = ir.report ->> 'key'`));
+    assert.ok(reports.includes('left join "claims" as "c" on "c"."import_report_id" = "ir"."id"'));
+    assert.ok(reports.includes('"t"."status" = $'));
+    assert.ok(reports.includes('order by "ir"."position"'));
+    await db.destroy();
   });
 });

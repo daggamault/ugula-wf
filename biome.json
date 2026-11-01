@@ -48,7 +48,12 @@
   },
   "overrides": [
     {
-      "includes": ["apps/*/src/main.ts", ".migrations/migrate.ts", ".seeds/seed.ts"],
+      "includes": [
+        "apps/*/src/main.ts",
+        ".migrations/migrate.ts",
+        ".seeds/seed.ts",
+        ".e2e/*.e2e.ts"
+      ],
       "linter": {
         "rules": {
           "style": {

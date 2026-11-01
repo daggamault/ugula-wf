@@ -28,6 +28,10 @@ const service = {
       ? ok({ status: 1, username })
       : fail('unauthorized', 'Invalid SFTP credentials'),
   receiveSftpEvent: async (event: { action: string }) => ok({ received: event.action }),
+  find: async (tenantId: string, id: string) => {
+    calls.push(['find', tenantId, id]);
+    return ok({ import: { id }, reports: [] });
+  },
   report: async (tenantId: string, id: string) => {
     calls.push(['report', tenantId, id]);
     return ok({ report: { id }, data: {}, xml: '' });
@@ -58,6 +62,8 @@ describe('import routes', () => {
     assert.equal((await request(`/reports/${id}`)).status, 200);
     assert.deepEqual(calls.at(-1), ['report', 't-1', id]);
     assert.equal((await request('/reports/nope')).status, 400);
+    assert.equal((await request(`/${id}`)).status, 200);
+    assert.deepEqual(calls.at(-1), ['find', 't-1', id]);
   });
 
   it('accepts a multipart file for the session tenant', async () => {

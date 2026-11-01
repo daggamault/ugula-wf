@@ -1,10 +1,12 @@
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  DownloadIcon,
   ExternalLinkIcon,
   FileCogIcon,
   FileTextIcon,
   ListTodoIcon,
+  PencilIcon,
   PlusIcon,
   RotateCcwIcon,
   SaveIcon,
@@ -31,6 +33,7 @@ import { Pagination } from '../../shared/ui/pagination.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
+import { Tabs } from '../../shared/ui/tabs.tsx';
 import { textLinkClasses } from '../../shared/ui/text-link.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { pageOf, useTableState } from '../../shared/url-state.ts';
@@ -54,6 +57,7 @@ export type ClaimPageProps = {
   client: ClaimsClient;
   live: Live;
   claimId: string;
+  tab?: ClaimTab;
 };
 
 const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
@@ -147,11 +151,13 @@ export const HISTORY_VALUES = {
 const ClaimHistory = ({
   claimId,
   events,
-  documentUrl
+  documentUrl,
+  fileUrl
 }: {
   claimId: string;
   events: readonly ClaimEvent[];
   documentUrl: (eventId: string) => string;
+  fileUrl?: ((batchId: string) => string) | undefined;
 }) => {
   const table = useTableState(`/claims/${claimId}`, HISTORY_TABLE);
   return (
@@ -160,6 +166,7 @@ const ClaimHistory = ({
         events={pageOf(events, table, HISTORY_VALUES).items}
         sorting={table}
         documentUrl={documentUrl}
+        fileUrl={fileUrl}
       />
       <Pagination label="Claim history" total={events.length} state={table} />
     </>
@@ -169,11 +176,13 @@ const ClaimHistory = ({
 export const EventsTable = ({
   events,
   sorting,
-  documentUrl
+  documentUrl,
+  fileUrl
 }: {
   events: readonly ClaimEvent[];
   sorting?: TableSorting;
   documentUrl: (eventId: string) => string;
+  fileUrl?: ((batchId: string) => string) | undefined;
 }) => (
   <Table
     label="Claim history"
@@ -208,6 +217,16 @@ export const EventsTable = ({
               >
                 <FileTextIcon aria-hidden="true" className="size-3.5" />
                 View PDF
+              </a>
+            ) : null}
+            {e.batch_id && fileUrl ? (
+              <a
+                href={fileUrl(e.batch_id)}
+                download
+                className={`inline-flex items-center gap-1 whitespace-nowrap ${textLinkClasses}`}
+              >
+                <DownloadIcon aria-hidden="true" className="size-3.5" />
+                837P file #{e.batch_number}
               </a>
             ) : null}
           </span>
@@ -591,6 +610,12 @@ const CycleAlert = ({
       {status.submittable && submission ? (
         <SubmitActions payer={payer} submission={submission} />
       ) : null}
+      {issues.length ? (
+        <ButtonLink to={`/claims/${claim.id}?tab=data`} variant="outline" size="sm">
+          <PencilIcon aria-hidden="true" className="size-4" />
+          Fix claim data
+        </ButtonLink>
+      ) : null}
       {status.tasks ? (
         <ButtonLink
           to={`/tasks?queue=${encodeURIComponent(status.tasks)}`}
@@ -643,6 +668,14 @@ const CycleAlert = ({
   );
 };
 
+export type ClaimTab = 'overview' | 'data' | 'history';
+
+export const CLAIM_TABS: readonly { value: ClaimTab; label: string }[] = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'data', label: 'Claim data' },
+  { value: 'history', label: 'History' }
+];
+
 export const ClaimView = ({
   claim,
   events,
@@ -653,6 +686,7 @@ export const ClaimView = ({
   onSaveData,
   documentUrl,
   submission,
+  tab = 'overview',
   error = ''
 }: {
   claim: ClaimDetail;
@@ -664,9 +698,11 @@ export const ClaimView = ({
   onSaveData: (data: BillingDataInput) => Promise<boolean>;
   documentUrl: (eventId: string) => string;
   submission?: Submission;
+  tab?: ClaimTab;
   error?: string;
 }) => {
   const closed = claim.status !== 'open';
+  const path = `/claims/${claim.id}`;
   const current = progress && 'coverage' in progress ? progress.coverage.id : null;
   const coverageKey = claim.coverages.map((c) => `${c.id}:${c.payer}`).join('|');
   return (
@@ -689,59 +725,84 @@ export const ClaimView = ({
     >
       {error ? <Alert>{error}</Alert> : null}
       <CycleAlert claim={claim} progress={progress} submission={submission} onRestart={onRestart} />
-      <SectionPanel
-        title="Summary"
-        description="What was billed, what is still owed, and the transport it covers."
-      >
-        <DetailList>
-          <Detail label="Total" isEmphasized>
-            {formatCents(claim.total_cents)}
-          </Detail>
-          <Detail label="Balance" isEmphasized>
-            {formatCents(claim.balance_cents)}
-          </Detail>
-          <Detail label="Service date">{formatDate(claim.service_date)}</Detail>
-          <Detail label="Born">{formatDate(claim.birth_date)}</Detail>
-          <Detail label="Transport">
-            {claim.level}
-            {claim.emergency ? ' emergency' : ''}
-            {claim.loaded_miles ? ` · ${claim.loaded_miles} loaded miles` : ''}
-          </Detail>
-        </DetailList>
-      </SectionPanel>
-      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-        <div className="flex min-w-0 flex-col gap-6">
-          <SectionPanel title="Charges" description="Priced from the fee schedule.">
-            <LinesTable lines={claim.lines} />
+      <Tabs
+        label="Claim sections"
+        tabs={CLAIM_TABS.map((t) => ({
+          label: t.label,
+          href: t.value === 'overview' ? path : `${path}?tab=${t.value}`,
+          isSelected: t.value === tab,
+          count: t.value === 'history' ? events.length : undefined
+        }))}
+      />
+      {tab === 'overview' ? (
+        <>
+          <SectionPanel
+            title="Summary"
+            description="What was billed, what is still owed, and the transport it covers."
+          >
+            <DetailList>
+              <Detail label="Total" isEmphasized>
+                {formatCents(claim.total_cents)}
+              </Detail>
+              <Detail label="Balance" isEmphasized>
+                {formatCents(claim.balance_cents)}
+              </Detail>
+              <Detail label="Service date">{formatDate(claim.service_date)}</Detail>
+              <Detail label="Born">{formatDate(claim.birth_date)}</Detail>
+              <Detail label="Transport">
+                {claim.level}
+                {claim.emergency ? ' emergency' : ''}
+                {claim.loaded_miles ? ` · ${claim.loaded_miles} loaded miles` : ''}
+              </Detail>
+            </DetailList>
           </SectionPanel>
-          <PayersEditor
-            key={coverageKey}
-            coverages={claim.coverages}
-            disabled={closed}
-            onSave={onSavePayers}
-          />
-        </div>
-        <ResponseForm
-          key={`response-${coverageKey}`}
-          coverages={claim.coverages}
-          current={current}
+          <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+            <div className="flex min-w-0 flex-col gap-6">
+              <SectionPanel title="Charges" description="Priced from the fee schedule.">
+                <LinesTable lines={claim.lines} />
+              </SectionPanel>
+              <PayersEditor
+                key={coverageKey}
+                coverages={claim.coverages}
+                disabled={closed}
+                onSave={onSavePayers}
+              />
+            </div>
+            <ResponseForm
+              key={`response-${coverageKey}`}
+              coverages={claim.coverages}
+              current={current}
+              disabled={closed}
+              onRecord={onRecord}
+            />
+          </div>
+        </>
+      ) : tab === 'data' ? (
+        <ClaimDataForm
+          key={`data-${claim.id}`}
+          claim={claim}
           disabled={closed}
-          onRecord={onRecord}
+          onSave={onSaveData}
         />
-      </div>
-      <ClaimDataForm key={`data-${claim.id}`} claim={claim} disabled={closed} onSave={onSaveData} />
-      <SectionPanel title="History" description="Everything that has happened on this claim.">
-        {events.length ? (
-          <ClaimHistory claimId={claim.id} events={events} documentUrl={documentUrl} />
-        ) : (
-          <EmptyText>Nothing has happened on this claim yet.</EmptyText>
-        )}
-      </SectionPanel>
+      ) : (
+        <SectionPanel title="History" description="Everything that has happened on this claim.">
+          {events.length ? (
+            <ClaimHistory
+              claimId={claim.id}
+              events={events}
+              documentUrl={documentUrl}
+              fileUrl={submission?.fileUrl}
+            />
+          ) : (
+            <EmptyText>Nothing has happened on this claim yet.</EmptyText>
+          )}
+        </SectionPanel>
+      )}
     </Page>
   );
 };
 
-export const ClaimPage = ({ client, live, claimId }: ClaimPageProps) => {
+export const ClaimPage = ({ client, live, claimId, tab = 'overview' }: ClaimPageProps) => {
   const detail = useResource(`claim:${claimId}`, () => client.find(claimId), 15_000);
   const cycleRun = detail.data?.claim.cycle_run_id;
   useLive(
@@ -782,6 +843,7 @@ export const ClaimPage = ({ client, live, claimId }: ClaimPageProps) => {
   if (!detail.data) return <PageLoading />;
   return (
     <ClaimView
+      tab={tab}
       error={error}
       claim={detail.data.claim}
       events={detail.data.events}

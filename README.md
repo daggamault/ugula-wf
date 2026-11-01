@@ -40,23 +40,25 @@ Workflows are built from small, general nodes, so agencies can change billing lo
    - payer responses are recorded against the claim;
    - once all payers are done, up to three **patient statements** (PDFs) go out 30 days apart;
    - an unpaid balance after that goes to collections review; claims close as paid, written off, or sent to collections.
-9. **Settings:** The agency's billing profile, clearinghouse IDs, payer directory (with the report names it has learned), and fee schedules drive the 837P files and statements.
-10. **Reports:** Every import, report, claim line, coverage, diagnosis and ledger event is a relational row, so A/R aging, monthly collections, payer performance and HCPCS charges are plain SQL, viewable on the Reports page and downloadable as CSV.
+9. **Admin:** Payers (the directory with the report names it has learned), Fees, and Settings (the agency's billing profile and clearinghouse IDs) drive the 837P files and statements.
+10. **Working it:** Billers work one Tasks list filtered by type and assignee; Claims has a `Ready to submit` view (a SQL filter over the ledger, so it scales with open claims) and each claim has Overview, Claim data and History tabs; Patients searches by name and birth date; each import lists what every report in the file became. New tasks, stuck runs and every message a biller sees are kept in the notification bell, stored per tenant and user so they follow the biller across devices.
+11. **Reports:** Every import, report, claim line, coverage, diagnosis and ledger event is a relational row, so A/R aging, monthly collections, payer performance and HCPCS charges are plain SQL, viewable on the Reports page and downloadable as CSV.
 
 ## Layout
 
-| Path                                                                                                  | Purpose                                                                                     |
-| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `apps/api`                                                                                            | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, submissions, reports, settings   |
-| `apps/worker`                                                                                         | Executes workflow runs from the pg-boss queue and implements billing store ports            |
-| `apps/sse`                                                                                            | Pushes live run, task, claim and import updates over Server-Sent Events (via Redis)         |
-| `apps/web`                                                                                            | React app: graph editor, runs, tasks, imports, claims, submissions, reports, fees, settings |
-| `libs/graph`                                                                                          | Workflow engine, expression language, and standard node library                             |
-| `libs/billing`                                                                                        | Billing domain: patient and payer matching, narrative reading, pricing, claim cycle, 837P   |
-| `libs/inference`                                                                                      | Clients for the local embeddings and structured-completions services                        |
-| `libs/nemsis`                                                                                         | NEMSIS XML parsing                                                                          |
-| `libs/db`, `libs/jobs`, `libs/blobs`, `libs/events`, `libs/sessions`, `libs/config`, `libs/passwords` | Infrastructure: Postgres/Kysely, queues, S3 storage, events, sessions, config, hashing      |
-| `.migrations`, `.seeds`                                                                               | Schema and seed data (billing graphs, GNIS place names, demo fees and payers)               |
+| Path                                                                                                  | Purpose                                                                                       |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `apps/api`                                                                                            | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, patients, notifications, reports   |
+| `apps/worker`                                                                                         | Executes workflow runs from the pg-boss queue and implements billing store ports              |
+| `apps/sse`                                                                                            | Pushes live run, task, claim and import updates over Server-Sent Events (via Redis)           |
+| `apps/web`                                                                                            | React app: tasks, claims, patients, imports, reports, workflows, runs, payers, fees, settings |
+| `libs/graph`                                                                                          | Workflow engine, expression language, and standard node library                               |
+| `libs/billing`                                                                                        | Billing domain: patient and payer matching, narrative reading, pricing, claim cycle, 837P     |
+| `libs/inference`                                                                                      | Clients for the local embeddings and structured-completions services                          |
+| `libs/nemsis`                                                                                         | NEMSIS XML parsing                                                                            |
+| `libs/db`, `libs/jobs`, `libs/blobs`, `libs/events`, `libs/sessions`, `libs/config`, `libs/passwords` | Infrastructure: Postgres/Kysely, queues, S3 storage, events, sessions, config, hashing        |
+| `.migrations`, `.seeds`                                                                               | Schema and seed data (billing graphs, GNIS place names, demo fees and payers)                 |
+| `.e2e`                                                                                                | Browser tests of the billing flow against a running stack (`pnpm e2e`)                        |
 
 **Stack:** Node, TypeScript, pnpm workspaces, Postgres (Kysely, pgvector, pg_trgm), pg-boss, Redis, S3-compatible storage (RustFS), local models (text-embeddings-inference with Qwen3-Embedding, llama.cpp with Qwen3.5), Hono, valibot, React, Tailwind, React Flow, Biome.
 
@@ -69,6 +71,7 @@ pnpm db:migrate            # resets and creates the schema
 pnpm db:seed:dev           # GNIS places, dev user, demo graphs, fees, payers
 pnpm db:gnis               # optional: rebuild .seeds/data/gnis-places.tsv.gz from USGS (updated bimonthly)
 pnpm dev                   # api, worker, sse, web
+pnpm e2e                   # with the stack running: import a synthetic report, work its tasks, file an 837P
 ```
 
 Copy `.env.example` to `.env` first. Run `pnpm check`, `pnpm typecheck`, and `pnpm test` before committing.
@@ -133,6 +136,7 @@ This repository enforces strict, consistent standards across all applications, l
 
 - **Mandatory Colocated Tests:** Every source file containing logic must have a colocated test file (`<name>.test.ts`) in the same directory.
 - **Native Test Runner:** Write fast, isolated, deterministic tests using Node's built-in test runner (`node:test` and `node:assert/strict`).
+- **End-to-End:** `.e2e` drives the real app in a headless browser (Edge by default, `E2E_BROWSER_CHANNEL=chrome` otherwise) with synthetic NEMSIS fixtures only. Never commit real patient data.
 - **Testable by Design:** Leverage dependency injection and pure functions so units and features can be tested cleanly without brittle module mocking.
 
 ---

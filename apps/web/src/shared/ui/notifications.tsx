@@ -2,16 +2,17 @@ import { BellIcon, Trash2Icon } from 'lucide-react';
 import { type ToggleEvent, useId, useRef } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { formatAgo, formatDateTime } from '../format.ts';
+import { type Live, useLive } from '../live.ts';
+import type { Notification, NotificationsClient } from '../notifications.ts';
 import { Link } from '../router.tsx';
+import { useResource } from '../use-resource.ts';
 import { intentIcons } from './alert.tsx';
 import { Button } from './button.tsx';
 import { EmptyText } from './empty-state.tsx';
 import { IconButton } from './icon-button.tsx';
 import { interactiveClasses } from './interactive.ts';
 import { hidePopover } from './popover.ts';
-import { accentClasses, type Notification, useNotifications } from './toast.tsx';
-
-export const unreadCount = (items: readonly Notification[]) => items.filter((n) => !n.read).length;
+import { accentClasses } from './toast.tsx';
 
 export const NotificationList = ({
   items,
@@ -23,8 +24,7 @@ export const NotificationList = ({
   items.length ? (
     <ol className="divide-border flex flex-col divide-y">
       {items.map((n) => {
-        const intent = n.intent ?? 'success';
-        const Icon = intentIcons[intent];
+        const Icon = intentIcons[n.intent];
         return (
           <li
             key={n.id}
@@ -32,7 +32,7 @@ export const NotificationList = ({
           >
             <Icon
               aria-hidden="true"
-              className={classNamesOf('mt-0.5 size-4.5 shrink-0', accentClasses[intent])}
+              className={classNamesOf('mt-0.5 size-4.5 shrink-0', accentClasses[n.intent])}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <p className="text-sm font-semibold">
@@ -66,20 +66,27 @@ export const NotificationList = ({
     </ol>
   ) : (
     <div className="p-4">
-      <EmptyText>Nothing yet. Messages that pop up while you work are kept here.</EmptyText>
+      <EmptyText>
+        Nothing yet. New tasks, stuck runs and messages from your work are kept here.
+      </EmptyText>
     </div>
   );
 
-export const NotificationsButton = () => {
-  const { items, markAllRead, clear } = useNotifications();
+export const NotificationsPanel = ({
+  items,
+  unread,
+  onOpenChange,
+  onClear
+}: {
+  items: readonly Notification[];
+  unread: number;
+  onOpenChange: (open: boolean) => void;
+  onClear: () => void;
+}) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const panelId = `notifications-${useId().replace(/[^\w-]/g, '')}`;
   const anchorName = `--${panelId}`;
-  const unread = unreadCount(items);
-  const close = () => hidePopover(panelRef.current);
-  const onToggle = (e: ToggleEvent) => {
-    if (e.newState === 'closed') markAllRead();
-  };
+  const onToggle = (e: ToggleEvent) => onOpenChange(e.newState === 'open');
   return (
     <span className="relative inline-flex" style={{ anchorName }}>
       <IconButton
@@ -111,14 +118,38 @@ export const NotificationsButton = () => {
             variant="outline"
             size="sm"
             disabledReason={items.length ? undefined : 'Nothing to clear.'}
-            onClick={clear}
+            onClick={onClear}
           >
             <Trash2Icon aria-hidden="true" className="size-4" />
             Clear all
           </Button>
         </div>
-        <NotificationList items={items} onFollow={close} />
+        <NotificationList items={items} onFollow={() => hidePopover(panelRef.current)} />
       </div>
     </span>
+  );
+};
+
+export const NotificationsButton = ({
+  client,
+  live
+}: {
+  client: NotificationsClient;
+  live: Live;
+}) => {
+  const feed = useResource('notifications', client.list, 60_000);
+  useLive(live, (e) => e.kind === 'notification' || e.kind === 'task', feed.reload);
+  const items = feed.data?.items ?? [];
+  const unread = feed.data?.unread ?? 0;
+  const done = (work: Promise<unknown>) => void work.then(feed.reload, () => undefined);
+  return (
+    <NotificationsPanel
+      items={items}
+      unread={unread}
+      onOpenChange={(open) => {
+        if (!open && unread) done(client.read());
+      }}
+      onClear={() => done(client.clear())}
+    />
   );
 };

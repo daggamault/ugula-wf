@@ -18,13 +18,14 @@
     "dev": "pnpm -r --parallel run dev",
     "build": "pnpm -r --parallel run build",
     "typecheck": "tsc --noEmit && pnpm -r --parallel run typecheck",
-    "test": "node --test .migrations/*.test.ts .seeds/*.test.ts && pnpm -r --parallel run test",
+    "test": "node --test .migrations/*.test.ts .seeds/*.test.ts .e2e/*.test.ts && pnpm -r --parallel run test",
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "db:migrate": "tsx --env-file=.env .migrations/migrate.ts",
     "db:seed": "tsx --env-file=.env .seeds/seed.ts",
     "db:seed:dev": "tsx --env-file=.env .seeds/seed.ts --dev",
-    "db:gnis": "tsx .seeds/gnis-build.ts"
+    "db:gnis": "tsx .seeds/gnis-build.ts",
+    "e2e": "node --env-file=.env --test .e2e/*.e2e.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1161.0",
@@ -61,6 +62,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
+    "playwright-core": "1.64.1",
     "tailwindcss": "4.3.3",
     "tsx": "^4.23.15",
     "typescript": "7.0.2",

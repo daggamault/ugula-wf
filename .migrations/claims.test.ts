@@ -107,7 +107,8 @@ describe('claims tables', () => {
     );
     assert.ok(indexes.some((i) => i.includes('"idx_claim_events_coverage_id"')));
     assert.ok(indexes.some((i) => i.includes('"idx_claim_coverages_payer_id"')));
-    assert.equal(indexes.length, 13);
+    assert.ok(indexes.some((i) => i.includes("(lower(coalesce(pcr_number, ''))) gin_trgm_ops")));
+    assert.equal(indexes.length, 14);
     await db.destroy();
   });
 

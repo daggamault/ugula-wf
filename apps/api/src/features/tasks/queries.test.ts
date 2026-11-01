@@ -41,7 +41,8 @@ describe('task queries', () => {
     await assignTask(db, 't', 'x', null);
     await claimNext(db, 't', null, 'u1');
     await completeTask(db, { tenantId: 't', id: 'x', userId: 'u1', resolution: { outcome: 'ok' } });
-    assert.ok(queries[0]?.sql.includes('"assignee_id" is null'));
+    assert.ok(queries[0]?.sql.includes('("assignee_id" is null or "assignee_id" = $'));
+    assert.ok(queries[0]?.sql.includes('order by assignee_id is null'));
     assert.ok(queries[0]?.sql.includes('for update skip locked'));
     for (const q of queries.slice(1)) assert.ok(q.sql.includes('"status" = $'));
     assert.ok(!queries[2]?.sql.includes('"queue" = $'));

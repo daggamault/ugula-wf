@@ -133,3 +133,48 @@ const importRows = (db: Kysely<Database>, tenantId: string) =>
       'claimed.charges_cents'
     ])
     .where('i.tenant_id', '=', tenantId);
+
+export const findImport = (db: Kysely<Database>, tenantId: string, id: string) =>
+  importRows(db, tenantId).where('i.id', '=', id).executeTakeFirst();
+
+export const listImportReports = (db: Kysely<Database>, tenantId: string, importId: string) =>
+  db
+    .selectFrom('import_reports as ir')
+    .innerJoin('imports as i', 'i.id', 'ir.import_id')
+    .leftJoin('workflow_runs as r', (j) =>
+      j
+        .onRef('r.parent_id', '=', 'i.run_id')
+        .on(sql<boolean>`r.inputs -> 'report' ->> 'key' = ir.report ->> 'key'`)
+    )
+    .leftJoin('claims as c', 'c.import_report_id', 'ir.id')
+    .leftJoin('patients as p', 'p.id', 'c.patient_id')
+    .leftJoinLateral(
+      (eb) =>
+        eb
+          .selectFrom('tasks as t')
+          .select(['t.id', 't.title', 't.subject', 't.kind'])
+          .whereRef('t.run_id', '=', 'r.id')
+          .where('t.status', '=', 'open')
+          .orderBy('t.created_at')
+          .limit(1)
+          .as('t'),
+      (join) => join.onTrue()
+    )
+    .select([
+      'ir.id',
+      'ir.position',
+      'ir.pcr_number',
+      'r.status as run_status',
+      'c.id as claim_id',
+      'c.total_cents',
+      'p.first_name',
+      'p.last_name',
+      't.id as task_id',
+      't.title as task_title',
+      't.subject as task_subject',
+      't.kind as task_kind'
+    ])
+    .where('i.tenant_id', '=', tenantId)
+    .where('i.id', '=', importId)
+    .orderBy('ir.position')
+    .execute();

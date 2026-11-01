@@ -99,6 +99,18 @@ export type RunStore = {
   sweep: () => Promise<number>;
 };
 
+export const taskNotification = (
+  t: { tenantId: string; kind: 'task' | 'fault'; title: string; subject: string | null },
+  id: string
+) => ({
+  tenant_id: t.tenantId,
+  intent: t.kind === 'fault' ? ('danger' as const) : ('info' as const),
+  title: t.kind === 'fault' ? `Stuck run: ${t.title}` : `New task: ${t.title}`,
+  description: t.subject,
+  link_label: 'Open task',
+  link_to: `/tasks/${id}`
+});
+
 const STEP_CHUNK = 500;
 
 const CHILD_CHUNK = 1_000;
@@ -202,7 +214,7 @@ const createRunTx = (tx: Kysely<Database>, boss: JobBoss): RunTx => ({
     }
   },
   insertTask: async (t) => {
-    await tx
+    const task = await tx
       .insertInto('tasks')
       .values({
         tenant_id: t.tenantId,
@@ -228,7 +240,9 @@ const createRunTx = (tx: Kysely<Database>, boss: JobBoss): RunTx => ({
                 .where('tenant_id', '=', t.tenantId)
       })
       .onConflict((oc) => oc.columns(['run_id', 'wait_id']).doNothing())
-      .execute();
+      .returning('id')
+      .executeTakeFirst();
+    if (task) await tx.insertInto('notifications').values(taskNotification(t, task.id)).execute();
   },
   cancelTasks: async (runId) => {
     await tx

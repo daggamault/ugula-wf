@@ -46,7 +46,7 @@ export const NodeExecutions = ({ title, steps, onOpen, runs = [] }: NodeExecutio
           {runs.map((r, i) => (
             <li key={r.id} className="flex items-center justify-between gap-2 px-3 py-2">
               <TextLink to={`/runs/${r.id}`}>
-                #{r.parent_index ?? i} {r.name ?? 'Open run'}
+                #{(r.parent_index ?? i) + 1} {r.name ?? 'Open run'}
               </TextLink>
               {r.status ? <RunStatusBadge status={r.status} /> : null}
             </li>

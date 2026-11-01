@@ -243,6 +243,11 @@ export const buildClaimsIndexes = (db: Kysely<Database>) => [
     .unique()
     .columns(['tenant_id', 'pcr_number'])
     .where('pcr_number', 'is not', null),
+  db.schema
+    .createIndex('idx_claims_pcr_number_trgm')
+    .on('claims')
+    .using('gin')
+    .expression(sql`(lower(coalesce(pcr_number, ''))) gin_trgm_ops`),
   db.schema.createIndex('idx_claims_patient_id').on('claims').column('patient_id'),
   db.schema.createIndex('idx_claims_cycle_run_id').on('claims').column('cycle_run_id'),
   db.schema

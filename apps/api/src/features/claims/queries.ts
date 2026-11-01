@@ -360,9 +360,12 @@ export const listClaimEvents = (db: Db, claimId: string) =>
     .selectFrom('claim_events as e')
     .leftJoin('claim_coverages as cc', 'cc.id', 'e.coverage_id')
     .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
+    .leftJoin('claim_batches as cb', 'cb.id', 'e.batch_id')
     .select([
       'e.id',
       'e.kind',
+      'e.batch_id',
+      'cb.control_number as batch_number',
       'e.coverage_id',
       sql<string | null>`case when e.coverage_id is null then null else ${payerName} end`.as(
         'payer'

@@ -32,7 +32,24 @@ export type ImportSummary = {
   charges_cents: number;
 };
 
+export type ImportReport = {
+  id: string;
+  position: number;
+  pcr_number: string | null;
+  run_status: ImportRunStatus | null;
+  claim_id: string | null;
+  total_cents: number | null;
+  first_name: string | null;
+  last_name: string | null;
+  task_id: string | null;
+  task_title: string | null;
+  task_subject: string | null;
+  task_kind: 'task' | 'fault' | null;
+};
+
 export const createImportsClient = (api: Api) => ({
+  find: (id: string) =>
+    api.get<{ import: ImportSummary; reports: ImportReport[] }>(`/api/imports/${id}`),
   list: (page: string) => api.get<Page<ImportSummary>>(`/api/imports?${page}`),
   upload: (file: File) => {
     const form = new FormData();

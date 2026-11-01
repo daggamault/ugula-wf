@@ -59,7 +59,7 @@ describe('ImportHistory', () => {
         ]
       })
     );
-    assert.ok(html.includes('href="/runs/r1"'));
+    assert.ok(html.includes('href="/imports/i1"'));
     assert.ok(html.includes('Upload · biller@example.com'));
     assert.ok(html.includes('>SFTP<'));
     assert.ok(html.includes('>In review<') && html.includes('>Done<'));

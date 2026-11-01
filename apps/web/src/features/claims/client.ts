@@ -140,6 +140,8 @@ export type ClaimEvent = {
   note: string;
   created_at: string;
   has_document: boolean;
+  batch_id?: string | null;
+  batch_number?: number | null;
 };
 
 export type ClaimProgress = ClaimStep;

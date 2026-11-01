@@ -50,7 +50,7 @@ describe('TaskView', () => {
     assert.ok(html.includes('value="looks fine"'));
     assert.ok(html.includes('>Approve<') && html.includes('>Keep waiting<'));
     assert.ok(html.includes('Assign to me'));
-    assert.ok(html.includes('href="/runs/r1"') && html.includes('Workflow progress'));
+    assert.ok(!html.includes('href="/runs/r1"'));
     assert.ok(html.includes('href="/tasks?queue=billing-review"'));
     assert.ok(html.includes('SOURCE PANEL'));
     assert.ok(!html.includes('Open claim'));
@@ -59,6 +59,8 @@ describe('TaskView', () => {
   it('links the claim a task is about', () => {
     const html = render(task({ source: { reportId: null, pcrNumber: 'PCR-1', claimId: 'c1' } }));
     assert.ok(html.includes('href="/claims/c1"'));
+    const fromContext = render(task({ context: { claimId: 'c2' } }));
+    assert.ok(fromContext.includes('href="/claims/c2"'));
   });
 
   it('explains stuck-run resolutions and shows completed decisions', () => {
@@ -86,6 +88,7 @@ describe('TaskView', () => {
     assert.ok(fault.includes('What went wrong'));
     assert.ok(fault.includes('Retry the failed step'));
     assert.ok(fault.includes('Unassign'));
+    assert.ok(fault.includes('href="/runs/r1"') && fault.includes('Open the stuck run'));
     assert.ok(fault.includes('<option value="then">Then</option>'));
     const done = render(
       task({

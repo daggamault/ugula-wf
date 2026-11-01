@@ -9,10 +9,12 @@ import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import { startRun } from '../../shared/runs.ts';
 import {
+  findImport,
   findLatestPublished,
   findReport,
   findSftpTenant,
   insertImport,
+  listImportReports,
   listImports,
   type NewImport
 } from './queries.ts';
@@ -98,6 +100,12 @@ export const createImportService = ({
   return {
     list: async (tenantId: string, page: PageRequest<ImportSort>) =>
       ok(await listImports(db, tenantId, page)),
+
+    find: async (tenantId: string, id: string) => {
+      const found = await findImport(db, tenantId, id);
+      if (!found) return fail('not_found', 'Import not found');
+      return ok({ import: found, reports: await listImportReports(db, tenantId, id) });
+    },
 
     report: async (tenantId: string, id: string) => {
       const found = await findReport(db, tenantId, id);

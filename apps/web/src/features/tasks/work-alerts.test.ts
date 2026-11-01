@@ -24,6 +24,7 @@ describe('workToast', () => {
   it('says what arrived where, replaces older news for the queue and links to it', () => {
     assert.deepEqual(workToast({ queue: 'billing-review', added: 2 }), {
       key: 'new-work:billing-review',
+      isRecorded: false,
       intent: 'info',
       title: '2 new tasks in PCR review',
       action: { label: 'Open PCR review', to: '/tasks?queue=billing-review' }

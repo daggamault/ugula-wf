@@ -15,7 +15,9 @@ describe('patients table', () => {
       [
         'create index "idx_patients_birth_date" on "patients" ("tenant_id", "birth_date")',
         'create index "idx_patients_last_name_key" on "patients" ("tenant_id", "last_name_key")',
-        'create index "idx_patients_last_name_trgm" on "patients" using gin (last_name_key gin_trgm_ops)'
+        'create index "idx_patients_last_name_trgm" on "patients" using gin (last_name_key gin_trgm_ops)',
+        `create index "idx_patients_full_name_trgm" on "patients" using gin ((lower(last_name || ' ' || first_name)) gin_trgm_ops)`,
+        'create index "idx_patients_first_name" on "patients" (tenant_id, lower(first_name) text_pattern_ops)'
       ]
     );
     await db.destroy();

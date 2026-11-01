@@ -4,9 +4,11 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   amountOf,
+  type ClaimTab,
   ClaimView,
   describeCycle,
   describeProgress,
+  EventsTable,
   moveItem,
   toResponse
 } from './claim-page.tsx';
@@ -72,10 +74,15 @@ const claim: ClaimDetail = {
 
 const medicare = { id: 'cov-m', payer: 'Medicare' };
 
-const render = (over: Partial<ClaimDetail> = {}, progress: ClaimProgress | null = null) =>
+const render = (
+  over: Partial<ClaimDetail> = {},
+  progress: ClaimProgress | null = null,
+  tab: ClaimTab = 'overview'
+) =>
   renderToStaticMarkup(
     createElement(ClaimView, {
       claim: { ...claim, ...over },
+      tab,
       events: [
         {
           id: 'e1',
@@ -217,10 +224,16 @@ describe('ClaimView', () => {
     assert.ok(html.includes('>Patient<'));
     assert.equal(html.match(/Not in payer directory/g)?.length, 1);
     assert.ok(html.includes('Service date'));
-    assert.ok(html.includes('$50.00 paid'));
-    assert.ok(html.includes('href="/docs/e2"'));
-    assert.equal(html.match(/View PDF/g)?.length, 1);
     assert.ok(html.includes('for="response-paid"'));
+    assert.ok(
+      html.includes('href="/claims/c1?tab=data"') && html.includes('href="/claims/c1?tab=history"')
+    );
+    assert.ok(!html.includes('View PDF'));
+    const history = render({}, null, 'history');
+    assert.ok(history.includes('$50.00 paid'));
+    assert.ok(history.includes('href="/docs/e2"'));
+    assert.equal(history.match(/View PDF/g)?.length, 1);
+    assert.ok(render({}, null, 'data').includes('Date of service'));
   });
 
   it('defaults payments to the patient once no payer is being billed', () => {
@@ -241,7 +254,9 @@ describe('ClaimView', () => {
     const html = render({ status: 'paid', payers: [], coverages: [] });
     assert.ok(html.includes('>Paid<'));
     assert.ok(html.includes('The patient will be billed directly'));
-    assert.equal(html.match(/<fieldset disabled=""/g)?.length, 3);
+    assert.equal(html.match(/<fieldset disabled=""/g)?.length, 2);
+    const data = render({ status: 'paid', payers: [], coverages: [] }, null, 'data');
+    assert.equal(data.match(/<fieldset disabled=""/g)?.length, 1);
   });
 });
 
@@ -280,5 +295,32 @@ describe('ClaimView submission', () => {
     const html = view(['Add the member ID']);
     assert.ok(html.includes('<li>Add the member ID</li>'));
     assert.ok(html.includes('Fix the problems listed first.'));
+  });
+});
+
+describe('EventsTable', () => {
+  it('links submissions to the 837P file they went out in', () => {
+    const html = renderToStaticMarkup(
+      createElement(EventsTable, {
+        events: [
+          {
+            id: 'e1',
+            kind: 'submitted',
+            coverage_id: 'cov-m',
+            payer: 'Medicare',
+            paid_cents: 0,
+            adjusted_cents: 0,
+            note: '837P batch #4',
+            created_at: '2026-10-02T00:00:00Z',
+            has_document: false,
+            batch_id: 'b4',
+            batch_number: 4
+          }
+        ],
+        documentUrl: () => '',
+        fileUrl: (id) => `/files/${id}`
+      })
+    );
+    assert.ok(html.includes('href="/files/b4"') && /837P file #(<!-- -->)?4/.test(html));
   });
 });

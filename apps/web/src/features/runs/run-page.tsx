@@ -205,7 +205,7 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
                     {children.map((c) => (
                       <li key={c.id} className="flex items-center justify-between gap-2 px-3 py-2">
                         <TextLink to={`/runs/${c.id}`}>
-                          #{c.parent_index} {c.name}
+                          #{(c.parent_index ?? 0) + 1} {c.name}
                         </TextLink>
                         <RunStatusBadge status={c.status} />
                       </li>

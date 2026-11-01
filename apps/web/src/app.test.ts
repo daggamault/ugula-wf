@@ -9,7 +9,8 @@ const clients = {
   auth: { signIn: async () => null, signOut: async () => undefined, getMe: async () => null },
   workflows: { list: async () => [] },
   runs: { list: async () => [] },
-  tasks: { queues: async () => [], list: async () => [] }
+  tasks: { queues: async () => [], list: async () => [] },
+  notifications: { list: () => new Promise(() => undefined) }
 } as unknown as AppClients;
 
 const query = (search = '') => new URLSearchParams(search);
@@ -31,6 +32,7 @@ describe('app routing', () => {
       '/tasks',
       '/tasks/t1',
       '/imports',
+      '/imports/i1',
       '/claims',
       '/claims/c1',
       '/claims/files',

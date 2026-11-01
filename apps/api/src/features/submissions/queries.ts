@@ -76,11 +76,38 @@ const openClaims = (db: Db, tenantId: string) =>
     .orderBy('c.created_at')
     .orderBy('c.id');
 
-export const listOpenClaims = (db: Db, tenantId: string, claimId?: string) =>
-  (claimId
-    ? openClaims(db, tenantId).where('c.id', '=', claimId)
-    : openClaims(db, tenantId)
-  ).execute();
+export const awaitingSubmission = sql<boolean>`(
+  (select b.balance_cents from claim_balances b where b.claim_id = c.id) > 0
+  and coalesce((
+    select e.kind from claim_events e
+    where e.coverage_id = (
+      select cc.id from claim_coverages cc
+      where cc.claim_id = c.id
+        and not exists (
+          select 1 from claim_events d
+          where d.coverage_id = cc.id and d.kind in ('response', 'payer_skipped')
+        )
+      order by cc.position
+      limit 1
+    )
+      and e.kind in ('submitted', 'resubmitted', 'resubmit_queued', 'follow_up')
+    order by e.created_at desc, e.id desc
+    limit 1
+  ), 'resubmit_queued') = 'resubmit_queued'
+  and exists (
+    select 1 from claim_coverages cc
+    where cc.claim_id = c.id
+      and not exists (
+        select 1 from claim_events d
+        where d.coverage_id = cc.id and d.kind in ('response', 'payer_skipped')
+      )
+  )
+)`;
+
+export const listOpenClaims = (db: Db, tenantId: string, claimId?: string) => {
+  const q = openClaims(db, tenantId).where(awaitingSubmission);
+  return (claimId ? q.where('c.id', '=', claimId) : q).execute();
+};
 
 export const lockOpenClaims = (db: Db, tenantId: string, ids: string[]) =>
   openClaims(db, tenantId).where('c.id', 'in', ids).forUpdate('c').execute();

@@ -35,6 +35,26 @@ export type UsersTable = {
   updated_at: Timestamp;
 };
 
+export type NotificationIntent = 'primary' | 'success' | 'info' | 'warning' | 'danger';
+
+export type NotificationsTable = {
+  id: Generated<string>;
+  tenant_id: string;
+  user_id: string | null;
+  intent: ColumnType<NotificationIntent, NotificationIntent | undefined, NotificationIntent>;
+  title: string;
+  description: string | null;
+  link_label: string | null;
+  link_to: string | null;
+  created_at: Timestamp;
+};
+
+export type NotificationStatesTable = {
+  user_id: string;
+  read_at: Timestamp;
+  cleared_at: Date | string | null;
+};
+
 export type JsonColumn<T = unknown> = ColumnType<T, string, string>;
 
 export type NullableJsonColumn<T = unknown> = ColumnType<
@@ -374,6 +394,8 @@ export type Database = {
   billing_profiles: BillingProfilesTable;
   payers: PayersTable;
   payer_aliases: PayerAliasesTable;
+  notifications: NotificationsTable;
+  notification_states: NotificationStatesTable;
 };
 
 export type Db = Kysely<Database>;

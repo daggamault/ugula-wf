@@ -13,7 +13,7 @@ import {
 import { lazy, type ReactNode, Suspense, useEffect, useMemo } from 'react';
 import { AuthGate } from './features/auth/auth-gate.tsx';
 import type { AuthClient } from './features/auth/client.ts';
-import { ClaimPage } from './features/claims/claim-page.tsx';
+import { CLAIM_TABS, ClaimPage } from './features/claims/claim-page.tsx';
 import { CLAIM_VIEWS, ClaimsPage } from './features/claims/claims-page.tsx';
 import type { ClaimsClient, ClaimView } from './features/claims/client.ts';
 import { FilesPage } from './features/claims/files-page.tsx';
@@ -23,6 +23,7 @@ import { FeesPage } from './features/fees/fees-page.tsx';
 import { HealthStatus } from './features/health/health-status.tsx';
 import type { ImportsClient } from './features/imports/client.ts';
 import { ImportDrop } from './features/imports/import-drop.tsx';
+import { ImportPage } from './features/imports/import-page.tsx';
 import { ImportsPage } from './features/imports/imports-page.tsx';
 import { type PatientsClient, searchOf } from './features/patients/client.ts';
 import { PatientPage } from './features/patients/patient-page.tsx';
@@ -44,6 +45,7 @@ import type { WorkflowsClient } from './features/workflows/client.ts';
 import { parseTrail } from './features/workflows/trail.ts';
 import { GRAPH_FILTERS, WorkflowsPage } from './features/workflows/workflows-page.tsx';
 import { createLive, type Live, useLiveStatus } from './shared/live.ts';
+import type { NotificationsClient } from './shared/notifications.ts';
 import { matchPath, navigate, useLocation } from './shared/router.tsx';
 import { NotificationsButton } from './shared/ui/notifications.tsx';
 import { PageLoading } from './shared/ui/page.tsx';
@@ -61,6 +63,7 @@ export type AppClients = {
   patients: PatientsClient;
   settings: SettingsClient;
   reports: ReportsClient;
+  notifications: NotificationsClient;
 };
 
 export type RouteContext = AppClients & {
@@ -162,6 +165,10 @@ const routes: readonly Route[] = [
   },
   { pattern: '/imports', render: (_, __, c) => <ImportsPage client={c.imports} live={c.live} /> },
   {
+    pattern: '/imports/:id',
+    render: (p, _, c) => <ImportPage client={c.imports} live={c.live} importId={p.id ?? ''} />
+  },
+  {
     pattern: '/claims',
     render: (_, q, c) => (
       <ClaimsPage client={c.claims} live={c.live} view={claimViewParam(q)} q={q.get('q') ?? ''} />
@@ -173,7 +180,14 @@ const routes: readonly Route[] = [
   },
   {
     pattern: '/claims/:id',
-    render: (p, _, c) => <ClaimPage client={c.claims} live={c.live} claimId={p.id ?? ''} />
+    render: (p, q, c) => (
+      <ClaimPage
+        client={c.claims}
+        live={c.live}
+        claimId={p.id ?? ''}
+        tab={CLAIM_TABS.find((t) => t.value === q.get('tab'))?.value ?? 'overview'}
+      />
+    )
   },
   {
     pattern: '/patients',
@@ -255,7 +269,7 @@ export const Workspace = ({ clients, path, query, email, sseUrl, onSignOut }: Wo
       }))}
       userEmail={email}
       status={<HealthStatus status={liveStatus} />}
-      tools={<NotificationsButton />}
+      tools={<NotificationsButton client={clients.notifications} live={live} />}
       onSignOut={onSignOut}
     >
       <Suspense fallback={<PageLoading />}>{page}</Suspense>
@@ -269,7 +283,9 @@ export const App = ({ clients }: { clients: AppClients }) => {
   return (
     <AuthGate auth={clients.auth}>
       {(session, signOut) => (
-        <ToastProvider storageKey={`ugula_notifications:${session.user.email}`}>
+        <ToastProvider
+          onNotify={(toast) => void clients.notifications.record(toast).catch(() => undefined)}
+        >
           <Workspace
             clients={clients}
             path={path}

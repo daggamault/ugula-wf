@@ -118,7 +118,8 @@ export const claimNext = (db: Db, tenantId: string, queue: string | null, userId
         .where('tenant_id', '=', tenantId)
         .where('status', '=', 'open');
       return (queue ? open.where('queue', '=', queue) : open)
-        .where('assignee_id', 'is', null)
+        .where((w) => w.or([w('assignee_id', 'is', null), w('assignee_id', '=', userId)]))
+        .orderBy(sql`assignee_id is null`)
         .orderBy('priority', 'desc')
         .orderBy('created_at')
         .limit(1)

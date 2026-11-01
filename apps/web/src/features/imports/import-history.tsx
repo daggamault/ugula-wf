@@ -67,7 +67,7 @@ export const ImportHistory = ({
         <TableRow key={i.id}>
           <TableCell>
             <span className="flex flex-col gap-0.5">
-              <TextLink to={`/runs/${i.run_id}`}>{i.file_name}</TextLink>
+              <TextLink to={`/imports/${i.id}`}>{i.file_name}</TextLink>
               <span className="text-surface-fg-muted text-xs">
                 {SOURCES[i.source]}
                 {i.uploaded_by_email ? ` · ${i.uploaded_by_email}` : ''}

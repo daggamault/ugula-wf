@@ -8,6 +8,7 @@ import { createFeeSchedulesTable } from './fee-schedules.ts';
 import { createGnisPlacesTable } from './gnis-places.ts';
 import { createGraphsTables } from './graphs.ts';
 import { createImportsTables } from './imports.ts';
+import { createNotificationsTables } from './notifications.ts';
 import { createPatientsTable } from './patients.ts';
 import { createTasksTable } from './tasks.ts';
 import { createTenantsTable } from './tenants.ts';
@@ -17,6 +18,8 @@ import { createWorkflowRunsTables } from './workflow-runs.ts';
 export const resetSchema = async (db: Kysely<Database>) => {
   await db.schema.dropView('claim_balances').ifExists().execute();
   for (const table of [
+    'notification_states',
+    'notifications',
     'claim_events',
     'claim_batches',
     'claim_diagnoses',
@@ -59,7 +62,8 @@ export const steps = [
   createBillingProfilesTables,
   createFeeSchedulesTable,
   createImportsTables,
-  createClaimsTables
+  createClaimsTables,
+  createNotificationsTables
 ] as const;
 
 export const migrate = async (db: Db) => {

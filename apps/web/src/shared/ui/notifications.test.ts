@@ -2,45 +2,19 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { NotificationList, NotificationsButton, unreadCount } from './notifications.tsx';
-import {
-  NOTIFICATION_LIMIT,
-  type Notification,
-  readNotifications,
-  recordNotification,
-  ToastProvider
-} from './toast.tsx';
+import type { Notification } from '../notifications.ts';
+import { idleLive } from '../testing.ts';
+import { NotificationList, NotificationsButton, NotificationsPanel } from './notifications.tsx';
 
 const note = (id: string, over: Partial<Notification> = {}): Notification => ({
   id,
+  intent: 'success',
   title: `T${id}`,
+  description: null,
+  action: null,
   at: '2026-11-01T00:00:00Z',
   read: false,
   ...over
-});
-
-describe('notification log', () => {
-  it('keeps the newest first, replaces repeats and caps the list', () => {
-    const list = ['1', '2', '3'].map((id) => note(id)).reduce(recordNotification, []);
-    assert.deepEqual(
-      list.map((n) => n.id),
-      ['3', '2', '1']
-    );
-    const repeated = recordNotification(list, note('4', { title: 'T1' }));
-    assert.deepEqual(
-      repeated.map((n) => n.id),
-      ['4', '3', '2']
-    );
-    const many = Array.from({ length: NOTIFICATION_LIMIT + 5 }, (_, i) => note(String(i)));
-    assert.equal(many.reduce(recordNotification, []).length, NOTIFICATION_LIMIT);
-    assert.equal(unreadCount([note('a'), note('b', { read: true })]), 1);
-  });
-
-  it('reads stored notifications and ignores anything malformed', () => {
-    assert.deepEqual(readNotifications(JSON.stringify([note('1'), { id: 2 }, null])), [note('1')]);
-    assert.deepEqual(readNotifications('{oops'), []);
-    assert.deepEqual(readNotifications(null), []);
-  });
 });
 
 describe('NotificationList', () => {
@@ -58,18 +32,39 @@ describe('NotificationList', () => {
     );
     assert.equal(html.match(/New: /g)?.length, 1);
     assert.ok(html.includes('Doe, Jane') && html.includes('href="/claims/c1"'));
-    assert.ok(/datetime="2026-11-01T00:00:00Z"/i.test(html));
+    assert.match(html, /datetime="2026-11-01T00:00:00Z"/i);
     assert.ok(
       renderToStaticMarkup(createElement(NotificationList, { items: [] })).includes('Nothing yet')
     );
   });
+});
 
-  it('puts a bell beside the theme toggle that opens the history', () => {
+describe('NotificationsPanel', () => {
+  it('puts a bell with the unread count beside the theme toggle', () => {
     const html = renderToStaticMarkup(
-      createElement(ToastProvider, null, createElement(NotificationsButton))
+      createElement(NotificationsPanel, {
+        items: [note('1')],
+        unread: 12,
+        onOpenChange: () => undefined,
+        onClear: () => undefined
+      })
+    );
+    assert.ok(html.includes('aria-label="Notifications (12 new)"'));
+    assert.ok(html.includes('>9+<'));
+    assert.match(html, /popovertarget="notifications-/i);
+    assert.ok(html.includes('Clear all'));
+  });
+
+  it('loads the feed from the server', () => {
+    const client = {
+      list: () => new Promise<{ items: Notification[]; unread: number }>(() => undefined),
+      record: async () => undefined,
+      read: async () => undefined,
+      clear: async () => undefined
+    };
+    const html = renderToStaticMarkup(
+      createElement(NotificationsButton, { client, live: idleLive })
     );
     assert.ok(html.includes('aria-label="Notifications"'));
-    assert.ok(/popovertarget="notifications-/i.test(html));
-    assert.ok(html.includes('Clear all'));
   });
 });

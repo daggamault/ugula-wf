@@ -150,7 +150,7 @@ export const TasksPage = ({ client, live, me, filter }: TasksPageProps) => {
 
   const all = queues.data ?? [];
   const inScope = filter.queue ? all.filter((q) => q.queue === filter.queue) : all;
-  const unassigned = count(inScope, (q) => q.unassigned);
+  const available = count(inScope, (q) => q.unassigned + q.mine);
   const info = filter.queue ? queueInfo(filter.queue) : null;
 
   const start = async () => {
@@ -172,13 +172,13 @@ export const TasksPage = ({ client, live, me, filter }: TasksPageProps) => {
   return (
     <Page
       title="Tasks"
-      description="Decisions waiting on a person. Start working to take the oldest unassigned task, or open any task below."
+      description="Decisions waiting on a person. Start working picks up your own tasks first, then the oldest unassigned one."
       actions={
         all.length ? (
           <Button
             isPending={starting}
             disabledReason={
-              queues.data && !unassigned ? 'Every task here is already assigned.' : undefined
+              queues.data && !available ? 'Every task here is assigned to someone else.' : undefined
             }
             onClick={() => void start()}
           >

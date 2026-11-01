@@ -52,6 +52,14 @@ const FAULT_INTENTS: Record<string, Intent> = {
 const FAULT_HELP =
   'Retry the failed step, skip it with the outputs below (and the exec pin to continue from), or cancel the run.';
 
+export const claimIdOf = (task: Pick<TaskDetail, 'source' | 'context'>) => {
+  const fromContext =
+    task.context && typeof task.context === 'object' && !Array.isArray(task.context)
+      ? task.context.claimId
+      : null;
+  return task.source.claimId ?? (typeof fromContext === 'string' ? fromContext : null);
+};
+
 export const queuePath = (queue: string) => `/tasks?queue=${encodeURIComponent(queue)}`;
 
 export const NextUp = ({
@@ -179,6 +187,7 @@ export const TaskView = ({
   const [assigning, setAssigning] = useState(false);
   const notify = useToast();
   const isUnassigned = task.assignee_id === null;
+  const claimId = claimIdOf(task);
   const open = task.status === 'open' && done === null;
 
   const complete = async (outcome: string, values: Record<string, Json>) => {
@@ -231,16 +240,18 @@ export const TaskView = ({
       }
       actions={
         <>
-          {task.source.claimId ? (
-            <ButtonLink to={`/claims/${task.source.claimId}`} variant="outline" size="sm">
+          {claimId ? (
+            <ButtonLink to={`/claims/${claimId}`} variant="outline" size="sm">
               <ReceiptTextIcon aria-hidden="true" className="size-4" />
               Open claim
             </ButtonLink>
           ) : null}
-          <ButtonLink to={`/runs/${task.run_id}`} variant="outline" size="sm">
-            <ActivityIcon aria-hidden="true" className="size-4" />
-            Workflow progress
-          </ButtonLink>
+          {isFault ? (
+            <ButtonLink to={`/runs/${task.run_id}`} variant="outline" size="sm">
+              <ActivityIcon aria-hidden="true" className="size-4" />
+              Open the stuck run
+            </ButtonLink>
+          ) : null}
           {open ? (
             <Button variant="outline" size="sm" isPending={assigning} onClick={() => void assign()}>
               {isUnassigned ? (

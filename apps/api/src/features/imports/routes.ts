@@ -18,6 +18,9 @@ export const createImportRoutes = (service: ImportService, maxBytes: number) =>
     .get('/reports/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.report(c.get('session').tenantId, c.req.valid('param').id))
     )
+    .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
+      respond(c, await service.find(c.get('session').tenantId, c.req.valid('param').id))
+    )
     .post(
       '/',
       bodyLimit({

@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<EMSDataSet xmlns="http://www.nemsis.org" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Header>
+    <DemographicGroup>
+      <dAgency.01>S42-12345</dAgency.01>
+      <dAgency.02>12345</dAgency.02>
+      <dAgency.04>42</dAgency.04>
+    </DemographicGroup>
+    <PatientCareReport UUID="a1c2e3f4-0001-4a1b-9c01-000000000001">
+      <eRecord>
+        <eRecord.01>E2E-PCR</eRecord.01>
+        <eRecord.SoftwareApplicationGroup>
+          <eRecord.02>Ugula Test Fixtures</eRecord.02>
+          <eRecord.03>Ugula ePCR</eRecord.03>
+          <eRecord.04>2.0</eRecord.04>
+        </eRecord.SoftwareApplicationGroup>
+      </eRecord>
+      <eResponse>
+        <eResponse.AgencyGroup>
+          <eResponse.01>12345</eResponse.01>
+          <eResponse.02>Ugula Test EMS</eResponse.02>
+        </eResponse.AgencyGroup>
+        <eResponse.03>26-0914001</eResponse.03>
+        <eResponse.04>26-0914001-R</eResponse.04>
+        <eResponse.ServiceGroup>
+          <eResponse.05>2205001</eResponse.05>
+        </eResponse.ServiceGroup>
+        <eResponse.07>2207015</eResponse.07>
+        <eResponse.13>1422</eResponse.13>
+        <eResponse.14>Medic 14-2</eResponse.14>
+        <eResponse.20>48211.3</eResponse.20>
+        <eResponse.21>48215.9</eResponse.21>
+        <eResponse.23>2223001</eResponse.23>
+      </eResponse>
+      <eCrew>
+        <eCrew.CrewGroup>
+          <eCrew.01>E-2210</eCrew.01>
+          <eCrew.02>9925007</eCrew.02>
+        </eCrew.CrewGroup>
+        <eCrew.CrewGroup>
+          <eCrew.01>E-2318</eCrew.01>
+          <eCrew.02>9925005</eCrew.02>
+        </eCrew.CrewGroup>
+      </eCrew>
+      <eTimes>
+        <eTimes.01>2026-09-14T08:12:00-04:00</eTimes.01>
+        <eTimes.03>2026-09-14T08:12:00-04:00</eTimes.03>
+        <eTimes.05>2026-09-14T08:13:00-04:00</eTimes.05>
+        <eTimes.06>2026-09-14T08:21:00-04:00</eTimes.06>
+        <eTimes.07>2026-09-14T08:22:00-04:00</eTimes.07>
+        <eTimes.09>2026-09-14T08:41:00-04:00</eTimes.09>
+        <eTimes.11>2026-09-14T08:52:00-04:00</eTimes.11>
+        <eTimes.12>2026-09-14T09:01:00-04:00</eTimes.12>
+        <eTimes.13>2026-09-14T09:15:00-04:00</eTimes.13>
+      </eTimes>
+      <ePatient>
+        <ePatient.PatientNameGroup>
+          <ePatient.02>Kline</ePatient.02>
+          <ePatient.03>Dorothy</ePatient.03>
+          <ePatient.04>Mae</ePatient.04>
+        </ePatient.PatientNameGroup>
+        <ePatient.05>1407 Derry St</ePatient.05>
+        <ePatient.06>1215162</ePatient.06>
+        <ePatient.08>42</ePatient.08>
+        <ePatient.09>17104</ePatient.09>
+        <ePatient.10>US</ePatient.10>
+        <ePatient.12>189402271</ePatient.12>
+        <ePatient.17>1941-05-22</ePatient.17>
+        <ePatient.18>717-555-0181</ePatient.18>
+        <ePatient.25>9919001</ePatient.25>
+      </ePatient>
+      <ePayment>
+        <ePayment.01>2601005</ePayment.01>
+        <ePayment.CertificateGroup>
+          <ePayment.02>9922001</ePayment.02>
+        </ePayment.CertificateGroup>
+        <ePayment.InsuranceGroup>
+          <ePayment.09>SIM00001</ePayment.09>
+          <ePayment.10>Simulated Medicare Part B</ePayment.10>
+          <ePayment.11>2611003</ePayment.11>
+          <ePayment.18>2KT7XM4RW91</ePayment.18>
+          <ePayment.19>Kline</ePayment.19>
+          <ePayment.20>Dorothy</ePayment.20>
+          <ePayment.22>2622001</ePayment.22>
+          <ePayment.57>MB</ePayment.57>
+        </ePayment.InsuranceGroup>
+        <ePayment.40>2640001</ePayment.40>
+        <ePayment.44>A</ePayment.44>
+        <ePayment.47>04</ePayment.47>
+        <ePayment.47>06</ePayment.47>
+        <ePayment.47>09</ePayment.47>
+        <ePayment.48>4.6</ePayment.48>
+        <ePayment.49>9923003</ePayment.49>
+        <ePayment.50>2650003</ePayment.50>
+        <ePayment.51>S72.001A</ePayment.51>
+      </ePayment>
+      <eScene>
+        <eScene.09>Y92.009</eScene.09>
+        <eScene.15>1407 Derry St</eScene.15>
+        <eScene.17>1215162</eScene.17>
+        <eScene.18>42</eScene.18>
+        <eScene.19>17104</eScene.19>
+      </eScene>
+      <eSituation>
+        <eSituation.02>9922005</eSituation.02>
+        <eSituation.09>M25.551</eSituation.09>
+        <eSituation.11>S72.001A</eSituation.11>
+      </eSituation>
+      <eArrest>
+        <eArrest.01>3001001</eArrest.01>
+      </eArrest>
+      <eNarrative>
+        <eNarrative.01>Dispatched emergent for 85 y/o female who fell at home. Found on kitchen floor, A&amp;Ox4, c/o right hip pain 8/10. Right leg shortened and externally rotated. IV established, fentanyl 50 mcg IV for pain. Moved to stretcher via scoop. Transported to Holy Spirit ED, care transferred to RN.</eNarrative.01>
+      </eNarrative>
+      <eDisposition>
+        <eDisposition.DestinationGroup>
+          <eDisposition.01>Penn State Health Holy Spirit Medical Center</eDisposition.01>
+          <eDisposition.02>HOS21002</eDisposition.02>
+          <eDisposition.03>503 N 21st St</eDisposition.03>
+          <eDisposition.04>1215146</eDisposition.04>
+          <eDisposition.05>42</eDisposition.05>
+          <eDisposition.07>17011</eDisposition.07>
+        </eDisposition.DestinationGroup>
+        <eDisposition.11>1</eDisposition.11>
+        <eDisposition.IncidentDispositionGroup>
+          <eDisposition.27>4227001</eDisposition.27>
+          <eDisposition.28>4228001</eDisposition.28>
+          <eDisposition.29>4229001</eDisposition.29>
+          <eDisposition.30>4230001</eDisposition.30>
+        </eDisposition.IncidentDispositionGroup>
+        <eDisposition.TransportDispositionGroup>
+          <eDisposition.16>4216005</eDisposition.16>
+          <eDisposition.17>4217005</eDisposition.17>
+          <eDisposition.20>4220001</eDisposition.20>
+          <eDisposition.21>4221003</eDisposition.21>
+        </eDisposition.TransportDispositionGroup>
+        <eDisposition.32>4232005</eDisposition.32>
+      </eDisposition>
+      <eOther>
+        <eOther.SignatureGroup>
+          <eOther.12>4512015</eOther.12>
+          <eOther.13>4513001</eOther.13>
+          <eOther.13>4513005</eOther.13>
+          <eOther.13>4513003</eOther.13>
+          <eOther.15>4515031</eOther.15>
+          <eOther.19>2026-09-14T08:22:00-04:00</eOther.19>
+          <eOther.20>Kline</eOther.20>
+          <eOther.21>Dorothy</eOther.21>
+        </eOther.SignatureGroup>
+      </eOther>
+    </PatientCareReport>
+  </Header>
+</EMSDataSet>

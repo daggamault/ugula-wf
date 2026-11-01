@@ -34,6 +34,10 @@ describe('live events', () => {
     });
     assert.deepEqual(parseEvent('{"kind":"claim","id":"c1"}'), { kind: 'claim', id: 'c1' });
     assert.deepEqual(parseEvent('{"kind":"import","id":null}'), { kind: 'import', id: null });
+    assert.deepEqual(parseEvent('{"kind":"notification","id":"n1"}'), {
+      kind: 'notification',
+      id: 'n1'
+    });
     assert.equal(parseEvent('{"kind":"run"}'), null);
     assert.equal(parseEvent('{"kind":"claim","id":7}'), null);
     assert.equal(parseEvent('{"kind":"toString","id":null}'), null);

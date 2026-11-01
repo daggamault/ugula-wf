@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createDummyDb, createRecordingDb } from '@ugula/db';
 import type { TraceEntry } from '@ugula/graph';
 import { advance, type JobBoss, RUN_QUEUE, resume } from '@ugula/jobs';
-import { buildClaim, createRunStore } from './queries.ts';
+import { buildClaim, createRunStore, taskNotification } from './queries.ts';
 
 const recordingDb = (rows: Record<string, unknown>[] = []) => createRecordingDb(() => rows);
 
@@ -32,6 +32,23 @@ const step = (seq: number): TraceEntry => ({
   error: null,
   startedAt: '2026-01-01T00:00:00.000Z',
   durationMs: 0.1
+});
+
+describe('taskNotification', () => {
+  it('announces new tasks and stuck runs with a link to the task', () => {
+    const task = { tenantId: 't', kind: 'task' as const, title: 'Review PCR', subject: 'PCR-1' };
+    assert.deepEqual(taskNotification(task, 'k1'), {
+      tenant_id: 't',
+      intent: 'info',
+      title: 'New task: Review PCR',
+      description: 'PCR-1',
+      link_label: 'Open task',
+      link_to: '/tasks/k1'
+    });
+    const fault = taskNotification({ ...task, kind: 'fault', title: 'Stuck at Price' }, 'k2');
+    assert.equal(fault.intent, 'danger');
+    assert.equal(fault.title, 'Stuck run: Stuck at Price');
+  });
 });
 
 describe('buildClaim', () => {
@@ -195,7 +212,8 @@ describe('createRunStore', () => {
       );
     });
     const sqls = queries.map((q) => q.sql).join('\n');
-    assert.ok(sqls.includes('on conflict ("run_id", "wait_id") do nothing'));
+    assert.ok(sqls.includes('on conflict ("run_id", "wait_id") do nothing returning "id"'));
+    assert.ok(sqls.includes('insert into "notifications"'));
     assert.ok(sqls.includes('g.tenant_id nulls last'));
     await db.destroy();
   });
