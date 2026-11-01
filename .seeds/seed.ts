@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { billingModels, createBillingNodes } from '@ugula/billing';
 import { createDb, type Db } from '@ugula/db';
 import {
@@ -17,6 +18,8 @@ import { buildUpsertDemoPayers, buildUpsertDemoProfile } from './billing-setup.t
 import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
 import { demoGraphs } from './demo-graphs.ts';
 import { buildUpsertDefaultFees, demoFees } from './fees.ts';
+import { readPlaces, upsertPlaces } from './gnis.ts';
+import { PLACES_FILE } from './gnis-build.ts';
 import { publishGraph, type SeedGraph } from './graphs.ts';
 import { upsertTenant } from './tenants.ts';
 import { upsertUser } from './users.ts';
@@ -48,7 +51,9 @@ const primitives = () => new Set(graphNodes().map(refKey));
 
 export const seedBase = async (db: Db) => {
   assertValidGraphs(billingGraphs, graphNodes());
+  const places = readPlaces(await readFile(PLACES_FILE));
   await db.transaction().execute(async (tx) => {
+    await upsertPlaces(tx, places);
     for (const graph of billingGraphs) await publishGraph(tx, graph, primitives());
   });
 };

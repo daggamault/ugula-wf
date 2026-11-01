@@ -1,5 +1,5 @@
 import { type JsonValue, parseDataset, pcrNumberOf } from './parse.ts';
-import { PCR_TYPE, toPcr } from './pcr.ts';
+import { PCR_TYPE, placeCodes, resolvePlaces, toPcr } from './pcr.ts';
 
 type ValueType =
   | 'any'
@@ -24,6 +24,7 @@ export type ReportStore = {
   getJson: (runId: string, ref: BlobLocation) => Promise<unknown>;
   putJson: (runId: string, key: string, value: unknown) => Promise<StoredBlob>;
   recordReports: (runId: string, file: BlobLocation, reports: SplitReport[]) => Promise<void>;
+  findPlaces: (codes: string[]) => Promise<Record<string, string>>;
 };
 
 export type HostNode = {
@@ -110,7 +111,7 @@ export const createNemsisNodes = (store: ReportStore | null): HostNode[] => {
       title: 'Read Patient Care Report',
       category: 'NEMSIS',
       description:
-        'Loads one stored patient care report as typed sections (patient, times, payment, disposition and more) for Break nodes to split into fields. Also outputs the raw report.',
+        'Loads one stored patient care report as typed sections (patient, times, payment, disposition and more) for Break nodes to split into fields, with GNIS city codes resolved to place names. Also outputs the raw report.',
       effect: false,
       signature: action(
         [{ name: 'report', type: BLOB }],
@@ -124,7 +125,10 @@ export const createNemsisNodes = (store: ReportStore | null): HostNode[] => {
           ctx.runId,
           (await read('report')) as BlobLocation
         )) as JsonValue;
-        return { type: 'next', pin: 'then', outputs: { pcr: toPcr(data), data } };
+        const pcr = toPcr(data);
+        const codes = placeCodes(pcr);
+        const names = codes.length ? await storage().findPlaces(codes) : {};
+        return { type: 'next', pin: 'then', outputs: { pcr: resolvePlaces(pcr, names), data } };
       }
     }
   ];

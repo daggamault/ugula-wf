@@ -33,6 +33,16 @@ describe('createReportStore', () => {
     await assert.rejects(() => store.putJson('r1', 'graphs/x.json', {}), /not one of/);
   });
 
+  it('names GNIS places by feature id, skipping codes that are not ids', async () => {
+    const { db, queries } = createRecordingDb(() => [{ id: 1215209, name: 'Erie' }]);
+    const store = createReportStore(db, blobs);
+    assert.deepEqual(await store.findPlaces(['1215209', 'x', '0']), { '1215209': 'Erie' });
+    assert.ok(queries[0]?.sql.includes('from "gnis_places"'));
+    assert.deepEqual(queries[0]?.parameters, [1215209]);
+    assert.deepEqual(await store.findPlaces(['abc']), {});
+    assert.equal(queries.length, 1);
+  });
+
   it('records the import once per run and each report once per position', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('select') ? [{ tenant_id: 't-1' }] : [{ id: 'imp-1' }]

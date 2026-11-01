@@ -23,7 +23,8 @@
     "check:fix": "biome check --write .",
     "db:migrate": "tsx --env-file=.env .migrations/migrate.ts",
     "db:seed": "tsx --env-file=.env .seeds/seed.ts",
-    "db:seed:dev": "tsx --env-file=.env .seeds/seed.ts --dev"
+    "db:seed:dev": "tsx --env-file=.env .seeds/seed.ts --dev",
+    "db:gnis": "tsx .seeds/gnis-build.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1161.0",

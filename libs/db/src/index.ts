@@ -98,6 +98,12 @@ export type WorkflowRunGraphsTable = {
   graph_version_id: string;
 };
 
+export type GnisPlacesTable = {
+  id: number;
+  name: string;
+  state: string;
+};
+
 export type SignalsTable = {
   tenant_id: string;
   key: string;
@@ -351,6 +357,7 @@ export type Database = {
   workflow_runs: WorkflowRunsTable;
   workflow_run_steps: WorkflowRunStepsTable;
   workflow_run_graphs: WorkflowRunGraphsTable;
+  gnis_places: GnisPlacesTable;
   signals: SignalsTable;
   tasks: TasksTable;
   patients: PatientsTable;

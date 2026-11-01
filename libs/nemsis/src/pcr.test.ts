@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { parseDataset } from './parse.ts';
-import { nemsisModels, PCR_TYPE, toPcr } from './pcr.ts';
+import { nemsisModels, PCR_TYPE, placeCodes, resolvePlaces, toPcr } from './pcr.ts';
 
 const XML = `<EMSDataSet xmlns="http://www.nemsis.org" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Header>
 <PatientCareReport>
@@ -97,5 +97,25 @@ describe('toPcr', () => {
     const patient = nemsisModels.find((m) => m.key === 'nemsis.patient');
     assert.equal(patient?.fields[0]?.label, 'Last name · ePatient.02');
     assert.equal(new Set(nemsisModels.map((m) => m.key)).size, nemsisModels.length);
+  });
+
+  it('collects GNIS city codes once and swaps them for place names', () => {
+    const pcr = toPcr({
+      ePatient: { 'ePatient.06': '1192443' },
+      eScene: { 'eScene.17': '1192443' },
+      eDisposition: { 'eDisposition.04': 'Erie' }
+    });
+    assert.deepEqual(placeCodes(pcr), ['1192443']);
+    const named = resolvePlaces(pcr, { '1192443': 'Fairview' });
+    assert.deepEqual(named.scene, {
+      ...(pcr.scene as object),
+      city: 'Fairview',
+      cityCode: '1192443'
+    });
+    assert.equal((named.disposition as { city: string }).city, 'Erie');
+    const label = nemsisModels
+      .find((m) => m.key === 'nemsis.scene')
+      ?.fields.find((f) => f.name === 'cityCode');
+    assert.equal(label?.label, 'Incident city GNIS code · eScene.17');
   });
 });

@@ -13,7 +13,7 @@ type ValueType =
 
 type Kind = 'text' | 'texts' | 'number' | 'integer';
 
-type Element = { name: string; element: string; kind: Kind };
+type Element = { name: string; element: string; kind: Kind; label?: string };
 
 type Section = {
   key: string;
@@ -94,6 +94,7 @@ const PATIENT: Section = {
     el('middleName', 'ePatient.04'),
     el('addressLine', 'ePatient.05'),
     el('city', 'ePatient.06'),
+    { ...el('cityCode', 'ePatient.06'), label: 'GNIS code' },
     el('county', 'ePatient.07'),
     el('state', 'ePatient.08'),
     el('postalCode', 'ePatient.09'),
@@ -147,6 +148,7 @@ const SCENE: Section = {
     el('locationType', 'eScene.09'),
     el('addressLine', 'eScene.15'),
     el('city', 'eScene.17'),
+    { ...el('cityCode', 'eScene.17'), label: 'GNIS code' },
     el('state', 'eScene.18'),
     el('postalCode', 'eScene.19'),
     el('county', 'eScene.21')
@@ -214,6 +216,7 @@ const DISPOSITION: Section = {
     el('destinationName', 'eDisposition.01'),
     el('addressLine', 'eDisposition.03'),
     el('city', 'eDisposition.04'),
+    { ...el('cityCode', 'eDisposition.04'), label: 'GNIS code' },
     el('state', 'eDisposition.05'),
     el('postalCode', 'eDisposition.07'),
     el('incidentDisposition', 'eDisposition.12'),
@@ -266,7 +269,7 @@ const fieldsOf = (s: Section): ModelField[] =>
   s.elements.map((e) => ({
     name: e.name,
     type: TYPES[e.kind],
-    label: `${elementLabel(e.element) ?? e.name} · ${e.element}`
+    label: `${elementLabel(e.element) ?? e.name}${e.label ? ` ${e.label}` : ''} · ${e.element}`
   }));
 
 const listOf = (s: Section): ValueType => ({ list: sectionType(s) });
@@ -390,4 +393,36 @@ export const toPcr = (report: unknown): Fields => ({
   disposition: read(report, DISPOSITION),
   narrative: textOf(find(report, 'eNarrative.01')),
   crew: readAll(report, 'eCrew.CrewGroup', CREW)
+});
+
+export type PlaceNames = Readonly<Record<string, string>>;
+
+const PLACED = ['patient', 'scene', 'disposition'] as const;
+
+const isGnisCode = (x: JsonValue | undefined): x is string =>
+  typeof x === 'string' && /^\d+$/.test(x);
+
+const sectionOf = (pcr: Fields, key: string): Fields => {
+  const section = pcr[key];
+  return isRecord(section) ? (section as Fields) : {};
+};
+
+export const placeCodes = (pcr: Fields): string[] => [
+  ...new Set(PLACED.map((k) => sectionOf(pcr, k).city).filter(isGnisCode))
+];
+
+export const resolvePlaces = (pcr: Fields, names: PlaceNames): Fields => ({
+  ...pcr,
+  ...Object.fromEntries(
+    PLACED.map((k) => {
+      const section = sectionOf(pcr, k);
+      const city = section.city;
+      return [
+        k,
+        isGnisCode(city)
+          ? { ...section, city: names[city] ?? null, cityCode: city }
+          : { ...section, cityCode: null }
+      ];
+    })
+  )
 });

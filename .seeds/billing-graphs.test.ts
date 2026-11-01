@@ -140,8 +140,16 @@ const only = <T extends object>(impl: Partial<T> = {}) =>
           }
   }) as T;
 
+const SPRINGFIELD: Record<string, string> = { '2395220': 'Springfield' };
+
 const pcrWorld = (
-  opts: { billed?: string; duplicate?: boolean; known?: Patient[]; report?: Json } = {}
+  opts: {
+    billed?: string;
+    duplicate?: boolean;
+    known?: Patient[];
+    report?: Json;
+    places?: Record<string, string>;
+  } = {}
 ) => {
   const report = { bucket: 'ugula', key: 'imports/t/f.xml.reports/00000.json' };
   const opened: NewClaim[] = [];
@@ -206,7 +214,18 @@ const pcrWorld = (
   const engine = createEngine({
     nodes: [
       ...createStdNodes({ fetch }),
-      ...createNemsisNodes(only<ReportStore>({ getJson: async () => opts.report ?? REPORT_DATA })),
+      ...createNemsisNodes(
+        only<ReportStore>({
+          getJson: async () => opts.report ?? REPORT_DATA,
+          findPlaces: async (codes) =>
+            Object.fromEntries(
+              codes.flatMap((c) => {
+                const name = (opts.places ?? SPRINGFIELD)[c];
+                return name ? [[c, name]] : [];
+              })
+            )
+        })
+      ),
       ...createBillingNodes(stores),
       ...modelNodes
     ],
@@ -419,7 +438,7 @@ describe('billing graphs', () => {
         name: 'Jane Doe',
         birthDate: '1980-01-02',
         sex: 'Male',
-        address: '1 Main St, 62704',
+        address: '1 Main St, Springfield, 62704',
         pcrNumber: 'PCR-1'
       },
       candidates: [{ name: 'Jane Doe', birthDate: '1980-01-20', sex: 'Male', address: '' }]
@@ -449,7 +468,8 @@ describe('billing graphs', () => {
           getText: async () => REPORT.replace('</Header>', '<PatientCareReport/></Header>'),
           getJson: async () => null,
           putJson: async (_, key) => ({ bucket: 'ugula', key, size: 1, contentType: 'json' }),
-          recordReports: async () => undefined
+          recordReports: async () => undefined,
+          findPlaces: async () => ({})
         }),
         ...createBillingNodes(null),
         ...modelNodes
@@ -968,11 +988,15 @@ describe('billing graphs', () => {
 });
 
 describe('task context', () => {
-  it('leaves numeric GNIS city codes out of addresses people read', async () => {
-    const world = pcrWorld();
-    world.answer(await world.waitFor('task', 'Match payer'), 'unlisted');
-    await world.waitFor('task', 'Review PCR');
-    assert.equal(world.data('context.patient.address'), '1 Main St, 62704');
-    assert.equal(world.data('context.trip.pickup'), '9 Elm St, Springfield, 62701');
+  it('names GNIS city codes, and leaves codes it cannot name out of addresses', async () => {
+    const named = pcrWorld();
+    named.answer(await named.waitFor('task', 'Match payer'), 'unlisted');
+    await named.waitFor('task', 'Review PCR');
+    assert.equal(named.data('context.patient.address'), '1 Main St, Springfield, 62704');
+    assert.equal(named.data('context.trip.pickup'), '9 Elm St, Springfield, 62701');
+    const unknown = pcrWorld({ places: {} });
+    unknown.answer(await unknown.waitFor('task', 'Match payer'), 'unlisted');
+    await unknown.waitFor('task', 'Review PCR');
+    assert.equal(unknown.data('context.patient.address'), '1 Main St, 62704');
   });
 });

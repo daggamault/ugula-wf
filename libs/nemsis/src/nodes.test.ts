@@ -25,7 +25,8 @@ const memoryStore = () => {
     },
     recordReports: async (_, file, reports) => {
       recorded.push({ file: file.key, reports });
-    }
+    },
+    findPlaces: async (codes) => (codes.includes('1215209') ? { '1215209': 'Erie' } : {})
   };
   return { store, blobs, recorded };
 };
@@ -91,6 +92,21 @@ describe('createNemsisNodes', () => {
       ((res?.outputs.reports ?? []) as { key: string }[]).map((r) => r.key),
       Array.from({ length: total }, (_, i) => reportKey(file, i))
     );
+  });
+
+  it('reads a report with its GNIS city codes resolved to place names', async () => {
+    const { store, blobs } = memoryStore();
+    blobs.set('r.json', {
+      ePatient: { 'ePatient.06': '1215209' },
+      eScene: { 'eScene.17': 'Fairview' },
+      eDisposition: { 'eDisposition.04': '999' }
+    });
+    const [, readReport] = createNemsisNodes(store);
+    const res = await readReport?.run(invoke({ report: { bucket: 'ugula', key: 'r.json' } }));
+    const pcr = res?.outputs.pcr as Record<string, Record<string, unknown>>;
+    assert.deepEqual([pcr.patient?.city, pcr.patient?.cityCode], ['Erie', '1215209']);
+    assert.deepEqual([pcr.scene?.city, pcr.scene?.cityCode], ['Fairview', null]);
+    assert.deepEqual([pcr.disposition?.city, pcr.disposition?.cityCode], [null, '999']);
   });
 
   it('describes static signatures so other apps can validate graphs without storage', async () => {

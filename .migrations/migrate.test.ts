@@ -5,6 +5,7 @@ import { createBillingProfilesTables } from './billing-profiles.ts';
 import { createClaimsTables } from './claims.ts';
 import { createExtensions } from './extensions.ts';
 import { createFeeSchedulesTable } from './fee-schedules.ts';
+import { createGnisPlacesTable } from './gnis-places.ts';
 import { createGraphsTables } from './graphs.ts';
 import { createImportsTables } from './imports.ts';
 import { migrate, resetSchema, steps } from './migrate.ts';
@@ -19,6 +20,7 @@ describe('migrate', () => {
     assert.deepEqual(steps, [
       resetSchema,
       createExtensions,
+      createGnisPlacesTable,
       createTenantsTable,
       createUsersTable,
       createGraphsTables,

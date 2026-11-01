@@ -28,6 +28,16 @@ export const createReportStore = (db: Kysely<Database>, blobs: Blobs): ReportSto
       await authorize(runId, key);
       return blobs.putJson(key, value);
     },
+    findPlaces: async (codes) => {
+      const ids = codes.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0);
+      if (!ids.length) return {};
+      const rows = await db
+        .selectFrom('gnis_places')
+        .select(['id', 'name'])
+        .where('id', 'in', ids)
+        .execute();
+      return Object.fromEntries(rows.map((p) => [String(p.id), p.name]));
+    },
     recordReports: async (runId, file, reports) => {
       await authorize(runId, file.key);
       await db.transaction().execute(async (tx) => {

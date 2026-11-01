@@ -27,7 +27,7 @@ Workflows are built from small, general nodes, so agencies can change billing lo
 
 `billing.ingest-nemsis` starts one **Encounter to Claim** run per report. That run is made of smaller graphs, each one an override point:
 
-1. **Import:** NEMSIS 3.4 or 3.5 XML arrives by upload or SFTP and is split into one run per patient care report (PCR), read as a typed report.
+1. **Import:** NEMSIS 3.4 or 3.5 XML arrives by upload or SFTP and is split into one run per patient care report (PCR), read as a typed report. NEMSIS records cities as USGS GNIS feature codes; the import names them from a `gnis_places` table the base seed loads, and keeps the code alongside.
 2. **Duplicates:** A PCR number is claimed once per agency. A re-imported or corrected report becomes a revision of its existing claim and goes to a biller instead of opening a second claim.
 3. **Trip type:** `Classify Trip` decides from the dispositions (`eDisposition.12`, or `.27`, `.28` and `.30` in 3.5) and the type of service whether the trip is an emergency, scheduled, treat-no-transport, refusal or no-claim trip. No-claim trips ask a biller before they are skipped.
 4. **Patient:** `Demographics From PCR` maps the report patient, which is matched to an existing patient only on the same last name, birth date and first name or nickname. Likely matches (similar names found by trigram search and Jaro-Winkler, birth date typos) go to a biller for review.
@@ -56,7 +56,7 @@ Workflows are built from small, general nodes, so agencies can change billing lo
 | `libs/inference`                                                                                      | Clients for the local embeddings and structured-completions services                        |
 | `libs/nemsis`                                                                                         | NEMSIS XML parsing                                                                          |
 | `libs/db`, `libs/jobs`, `libs/blobs`, `libs/events`, `libs/sessions`, `libs/config`, `libs/passwords` | Infrastructure: Postgres/Kysely, queues, S3 storage, events, sessions, config, hashing      |
-| `.migrations`, `.seeds`                                                                               | Schema and seed data (demo billing graphs, fees, payers)                                    |
+| `.migrations`, `.seeds`                                                                               | Schema and seed data (billing graphs, GNIS place names, demo fees and payers)               |
 
 **Stack:** Node, TypeScript, pnpm workspaces, Postgres (Kysely, pgvector, pg_trgm), pg-boss, Redis, S3-compatible storage (RustFS), local models (text-embeddings-inference with Qwen3-Embedding, llama.cpp with Qwen3.5), Hono, valibot, React, Tailwind, React Flow, Biome.
 
@@ -66,7 +66,8 @@ Workflows are built from small, general nodes, so agencies can change billing lo
 docker compose up -d       # Postgres, Redis, RustFS, SFTPGo, embeddings and completions (GPU)
 pnpm install
 pnpm db:migrate            # resets and creates the schema
-pnpm db:seed:dev           # dev user, demo graphs, fees, payers
+pnpm db:seed:dev           # GNIS places, dev user, demo graphs, fees, payers
+pnpm db:gnis               # optional: rebuild .seeds/data/gnis-places.tsv.gz from USGS (updated bimonthly)
 pnpm dev                   # api, worker, sse, web
 ```
 

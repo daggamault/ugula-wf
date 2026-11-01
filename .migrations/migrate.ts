@@ -5,6 +5,7 @@ import { createClaimsTables } from './claims.ts';
 import { parseConfig } from './config.ts';
 import { createExtensions } from './extensions.ts';
 import { createFeeSchedulesTable } from './fee-schedules.ts';
+import { createGnisPlacesTable } from './gnis-places.ts';
 import { createGraphsTables } from './graphs.ts';
 import { createImportsTables } from './imports.ts';
 import { createPatientsTable } from './patients.ts';
@@ -37,7 +38,8 @@ export const resetSchema = async (db: Kysely<Database>) => {
     'graph_versions',
     'graphs',
     'users',
-    'tenants'
+    'tenants',
+    'gnis_places'
   ] as const) {
     await db.schema.dropTable(table).ifExists().cascade().execute();
   }
@@ -47,6 +49,7 @@ export const resetSchema = async (db: Kysely<Database>) => {
 export const steps = [
   resetSchema,
   createExtensions,
+  createGnisPlacesTable,
   createTenantsTable,
   createUsersTable,
   createGraphsTables,
