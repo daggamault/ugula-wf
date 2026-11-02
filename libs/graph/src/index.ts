@@ -2,13 +2,17 @@ export { type CompiledGraph, ENTRY_TYPE, graphRefs, RETURN_TYPE, refKey } from '
 export { coreNodes } from './core.ts';
 export {
   actionNode,
+  branchNode,
   call,
   defineNode,
+  type InputsOf,
   next,
+  type OutputsOf,
   pin,
   pureNode,
   readInputs,
-  suspend
+  suspend,
+  type ValueOf
 } from './define.ts';
 export {
   createEngine,

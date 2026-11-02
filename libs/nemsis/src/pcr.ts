@@ -1,15 +1,5 @@
+import type { Json, Model, ModelField, ValueType } from '@ugula/graph';
 import { elementLabel } from './elements.ts';
-import type { JsonValue } from './parse.ts';
-
-type ValueType =
-  | 'any'
-  | 'string'
-  | 'number'
-  | 'integer'
-  | 'boolean'
-  | 'datetime'
-  | { list: ValueType }
-  | { object: Record<string, ValueType> };
 
 type Kind = 'text' | 'texts' | 'number' | 'integer';
 
@@ -23,18 +13,7 @@ type Section = {
   elements: readonly Element[];
 };
 
-export type ModelField = { name: string; type: ValueType; label: string };
-
-export type Model = {
-  key: string;
-  name: string;
-  title: string;
-  category: string;
-  description: string;
-  fields: ModelField[];
-};
-
-type Fields = Record<string, JsonValue>;
+type Fields = Record<string, Json>;
 
 const CATEGORY = 'NEMSIS';
 
@@ -359,7 +338,7 @@ const numberOf = (text: string | null) => {
   return Number.isFinite(n) ? n : null;
 };
 
-const elementValue = (x: unknown, { element, kind }: Element): JsonValue => {
+const elementValue = (x: unknown, { element, kind }: Element): Json => {
   const found = find(x, element);
   const texts = (Array.isArray(found) ? found : [found]).map(textOf);
   const first = texts.find((t) => t !== null) ?? null;
@@ -409,8 +388,7 @@ export type PlaceNames = Readonly<Record<string, string>>;
 
 const PLACED = ['patient', 'scene', 'disposition'] as const;
 
-const isGnisCode = (x: JsonValue | undefined): x is string =>
-  typeof x === 'string' && /^\d+$/.test(x);
+const isGnisCode = (x: Json | undefined): x is string => typeof x === 'string' && /^\d+$/.test(x);
 
 const sectionOf = (pcr: Fields, key: string): Fields => {
   const section = pcr[key];

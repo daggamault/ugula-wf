@@ -7,6 +7,7 @@ import { Badge } from '../../shared/ui/badge.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { ConfirmDialog, Dialog, DialogActions } from '../../shared/ui/dialog.tsx';
 import { EmptyState } from '../../shared/ui/empty-state.tsx';
+import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
@@ -29,7 +30,7 @@ const DEFAULT_SCHEDULE = { value: '', label: 'Default schedule (every payer)' };
 
 export const toFeeInput = (draft: Draft): FeeInput | string => {
   const amountCents = parseDollars(draft.amount);
-  if (amountCents === null) return 'Enter an amount of zero or more';
+  if (amountCents === null) return 'Enter an amount of zero or more.';
   return { payerId: draft.payerId || null, code: draft.code.trim().toUpperCase(), amountCents };
 };
 
@@ -82,26 +83,14 @@ export const FeesTable = ({
           {formatDateTime(f.updated_at)}
         </TableCell>
         <TableCell kind="actions">
-          <span className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label={`Edit ${feeName(f)}`}
-              onClick={() => onEdit(f)}
-            >
-              <PencilIcon aria-hidden="true" className="size-4" />
-              Edit
-            </Button>
-            <Button
+          <span className="flex items-center justify-end gap-2">
+            <IconButton label={`Edit ${feeName(f)}`} icon={PencilIcon} onClick={() => onEdit(f)} />
+            <IconButton
+              label={`Delete ${feeName(f)}`}
+              icon={Trash2Icon}
               intent="danger"
-              variant="outline"
-              size="sm"
-              aria-label={`Delete ${feeName(f)}`}
               onClick={() => onDelete(f)}
-            >
-              <Trash2Icon aria-hidden="true" className="size-4" />
-              Delete
-            </Button>
+            />
           </span>
         </TableCell>
       </TableRow>
@@ -148,6 +137,16 @@ export const FeesPage = ({ client }: FeesPageProps) => {
     }
   };
 
+  const remove = async (fee: Fee) => {
+    try {
+      await client.remove(fee.id);
+      fees.reload();
+      notify({ title: 'Fee deleted' });
+    } catch (err) {
+      notify({ intent: 'danger', title: 'Could not delete fee', description: messageOf(err) });
+    }
+  };
+
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const input = toFeeInput(draft);
@@ -184,7 +183,7 @@ export const FeesPage = ({ client }: FeesPageProps) => {
       <Dialog
         open={open}
         onClose={reset}
-        title={editing ? 'Edit Fee' : 'Add a Fee'}
+        title={editing ? 'Edit Fee' : 'Add Fee'}
         description={
           editing
             ? `Change the price of ${draft.code} for ${draft.payerId ? payerLabel : 'the default schedule'}.`
@@ -236,8 +235,9 @@ export const FeesPage = ({ client }: FeesPageProps) => {
           </DialogActions>
         </form>
       </Dialog>
-      {fees.error ? <Alert>{fees.error.message}</Alert> : null}
-      {fees.data?.length ? (
+      {fees.error ? (
+        <Alert>{fees.error.message}</Alert>
+      ) : fees.data?.length ? (
         <>
           <FeesTable
             fees={pageOf(fees.data, table, FEE_VALUES).items}
@@ -257,7 +257,7 @@ export const FeesPage = ({ client }: FeesPageProps) => {
           <Pagination label="Fees" total={fees.data.length} state={table} />
         </>
       ) : fees.data ? (
-        <EmptyState title="No Fees">
+        <EmptyState title="No Fees Yet">
           Claims cannot be priced until each code has a fee. Use Add fee to set one.
         </EmptyState>
       ) : (
@@ -273,7 +273,7 @@ export const FeesPage = ({ client }: FeesPageProps) => {
         onConfirm={() => {
           const fee = deleting;
           setDeleting(null);
-          if (fee) void act(() => client.remove(fee.id), 'Fee deleted');
+          if (fee) void remove(fee);
         }}
       >
         {deleting

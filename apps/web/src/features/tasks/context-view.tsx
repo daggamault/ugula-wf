@@ -1,7 +1,9 @@
 import { isRecord, type Json } from '@ugula/graph';
 import type { ReactNode } from 'react';
+import { classNamesOf } from '../../shared/class-names.ts';
 import { formatCents, formatDate, formatDateTime } from '../../shared/format.ts';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
+import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { JsonView } from '../../shared/ui/json-view.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
 
@@ -121,7 +123,12 @@ const subheading = 'text-surface-fg-muted text-xs font-semibold tracking-wide up
 export const ContextView = ({ value, label }: ContextViewProps) => {
   const raw = (
     <details className="group text-sm">
-      <summary className="text-surface-fg-muted hover:text-surface-fg w-fit cursor-pointer select-none">
+      <summary
+        className={classNamesOf(
+          interactiveClasses,
+          'text-surface-fg-muted hover:text-surface-fg w-fit rounded-lg select-none'
+        )}
+      >
         Show raw data
       </summary>
       <div className="pt-2">
@@ -157,7 +164,7 @@ export const ContextView = ({ value, label }: ContextViewProps) => {
             </h3>
             <ul className="flex flex-col gap-2">
               {v.map((item, i) => (
-                <li key={i} className="border-border bg-canvas/50 rounded-lg border p-3">
+                <li key={i} className="border-border bg-surface rounded-xl border p-4">
                   <Fields value={item} />
                 </li>
               ))}

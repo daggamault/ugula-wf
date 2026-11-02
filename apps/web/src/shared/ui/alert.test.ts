@@ -27,5 +27,9 @@ describe('Alert', () => {
       })
     );
     assert.ok(html.includes('<button type="button">Fix</button>'));
+    assert.ok(html.includes('rounded-xl'));
+    assert.ok(html.includes('items-center justify-between'));
+    assert.ok(html.includes('flex h-5 shrink-0 items-center'));
+    assert.ok(!html.includes('mt-0.5'));
   });
 });

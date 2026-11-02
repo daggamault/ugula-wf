@@ -7,9 +7,9 @@ export type HealthStatusProps = {
 };
 
 const labels: Record<LiveStatus, string> = {
-  connecting: 'Connecting to Live Updates',
-  online: 'Live Updates On',
-  offline: 'Live Updates Off, Reconnecting'
+  connecting: 'Connecting to live updates',
+  online: 'Live updates on',
+  offline: 'Live updates off, reconnecting'
 };
 
 const dots: Record<LiveStatus, string> = {

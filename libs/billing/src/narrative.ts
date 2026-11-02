@@ -1,4 +1,5 @@
 import type { Completer, CompletionRequest } from './completions.ts';
+import { isRecord } from './values.ts';
 
 export const ALS2_PROCEDURES = [
   'endotracheal intubation',
@@ -69,9 +70,6 @@ export const narrativeRequest = (narrative: string): CompletionRequest => ({
   schema: NARRATIVE_SCHEMA,
   maxTokens: 800
 });
-
-const isRecord = (x: unknown): x is Record<string, unknown> =>
-  x !== null && typeof x === 'object' && !Array.isArray(x);
 
 const isRoute = (x: unknown): x is Route => ROUTES.includes(x as Route);
 

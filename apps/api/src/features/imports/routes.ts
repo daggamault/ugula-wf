@@ -3,12 +3,11 @@ import { sValidator } from '@hono/standard-validator';
 import { Hono, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AuthEnv } from '../../shared/auth.ts';
+import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
 import { importFormSchema, listImportsQuery, sftpAuthSchema, sftpEventSchema } from './schemas.ts';
 import type { ImportService } from './service.ts';
-
-const FORM_OVERHEAD_BYTES = 64 * 1024;
 
 export const createImportRoutes = (service: ImportService, maxBytes: number) =>
   new Hono<AuthEnv>()
@@ -18,6 +17,16 @@ export const createImportRoutes = (service: ImportService, maxBytes: number) =>
     .get('/reports/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.report(c.get('session').tenantId, c.req.valid('param').id))
     )
+    .get('/reports/:id/xml', sValidator('param', idParam, invalidRequest), async (c) => {
+      const res = await service.report(c.get('session').tenantId, c.req.valid('param').id);
+      if (!res.ok) return respond(c, res);
+      const name = res.value.report.pcr_number ?? res.value.report.id;
+      return c.body(res.value.xml, 200, {
+        'content-type': 'application/xml; charset=utf-8',
+        'content-disposition': `attachment; filename="encounter-${name.replace(/[^\w.-]/g, '_')}.xml"`,
+        'cache-control': 'private, no-store'
+      });
+    })
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.find(c.get('session').tenantId, c.req.valid('param').id))
     )

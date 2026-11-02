@@ -10,13 +10,14 @@ describe('NewWorkflowDialog', () => {
     const html = renderToStaticMarkup(
       createElement(NewWorkflowDialog, {
         client: {} as WorkflowsClient,
+        kind: 'node',
         open: true,
         onClose: () => undefined
       })
     );
-    assert.ok(html.includes('New Graph'));
+    assert.ok(html.includes('New Workflow'));
     assert.ok(html.includes('billing.match-patient'));
-    assert.ok(html.includes('<option value="node">Custom node</option>'));
+    assert.ok(html.includes('<option value="node" selected="">Building block</option>'));
     assert.ok(html.includes('type="submit"'));
   });
 });

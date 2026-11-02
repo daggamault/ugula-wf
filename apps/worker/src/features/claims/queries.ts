@@ -1,7 +1,14 @@
 import { createHash } from 'node:crypto';
-import { type ClaimStore, claimSignalKey, type NewClaim } from '@ugula/billing';
-import type { BlobStore } from '@ugula/blobs';
+import {
+  CLOSED_CLAIM_STATUSES,
+  type ClaimStore,
+  claimSignalKey,
+  type DraftClaim,
+  isClosedStatus,
+  type NewClaim
+} from '@ugula/billing';
 import type { Database } from '@ugula/db';
+import type { BlobStore } from '@ugula/storage';
 import { type Kysely, sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runTenant } from '../../shared/tenancy.ts';
@@ -57,12 +64,10 @@ const sourceReport = (db: Db, runId: string, key: string) =>
     .where(sql`r.report ->> 'key'`, '=', key)
     .where('i.tenant_id', '=', runTenant(db, runId));
 
-const claimValues = (db: Db, runId: string, sourceKey: string, c: NewClaim) => {
+const claimValues = (c: NewClaim) => {
   const { serviceDate, pickup, destination, originDestination } = c.details;
   return {
-    tenant_id: runTenant(db, runId),
     patient_id: c.patientId,
-    import_report_id: c.reportKey === null ? null : sourceReport(db, runId, c.reportKey),
     pcr_number: c.pcrNumber,
     level: c.level,
     emergency: c.emergency,
@@ -79,24 +84,35 @@ const claimValues = (db: Db, runId: string, sourceKey: string, c: NewClaim) => {
     destination_address_line: destination.addressLine,
     destination_city: destination.city,
     destination_state: destination.state,
-    destination_postal_code: destination.postalCode,
-    source_key: sourceKey
+    destination_postal_code: destination.postalCode
   };
 };
 
-const insertClaim = async (db: Db, runId: string, sourceKey: string, c: NewClaim) => {
-  const created = await db
-    .insertInto('claims')
-    .values(claimValues(db, runId, sourceKey, c))
-    .onConflict((oc) => oc.doNothing())
-    .returning('id')
-    .executeTakeFirst();
-  if (!created) return null;
+const insertDraft = async (db: Db, runId: string, sourceKey: string, d: DraftClaim) =>
+  (
+    await db
+      .insertInto('claims')
+      .values({
+        tenant_id: runTenant(db, runId),
+        patient_id: d.patientId,
+        import_report_id: d.reportKey === null ? null : sourceReport(db, runId, d.reportKey),
+        pcr_number: d.pcrNumber,
+        source_key: sourceKey
+      })
+      .onConflict((oc) => oc.doNothing())
+      .returning('id')
+      .executeTakeFirst()
+  )?.id ?? null;
+
+const replaceClaimRows = async (db: Db, runId: string, claimId: string, c: NewClaim) => {
+  await db.deleteFrom('claim_lines').where('claim_id', '=', claimId).execute();
+  await db.deleteFrom('claim_coverages').where('claim_id', '=', claimId).execute();
+  await db.deleteFrom('claim_diagnoses').where('claim_id', '=', claimId).execute();
   await db
     .insertInto('claim_lines')
     .values(
       c.lines.map((l, i) => ({
-        claim_id: created.id,
+        claim_id: claimId,
         position: i + 1,
         code: l.code,
         units: l.units,
@@ -110,7 +126,7 @@ const insertClaim = async (db: Db, runId: string, sourceKey: string, c: NewClaim
       .insertInto('claim_coverages')
       .values(
         c.coverages.map((cov, i) => ({
-          claim_id: created.id,
+          claim_id: claimId,
           position: i + 1,
           payer_name: cov.payer,
           payer_id: directoryPayer(db, runId, cov),
@@ -124,12 +140,9 @@ const insertClaim = async (db: Db, runId: string, sourceKey: string, c: NewClaim
   if (c.details.diagnoses.length) {
     await db
       .insertInto('claim_diagnoses')
-      .values(
-        c.details.diagnoses.map((code, i) => ({ claim_id: created.id, position: i + 1, code }))
-      )
+      .values(c.details.diagnoses.map((code, i) => ({ claim_id: claimId, position: i + 1, code })))
       .execute();
   }
-  return created.id;
 };
 
 const payerName = sql<string>`coalesce(dp.name, cc.payer_name)`;
@@ -254,9 +267,9 @@ export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
         .executeTakeFirst()
     )?.id ?? null,
 
-  openClaim: (runId, sourceKey, c) =>
+  openDraft: (runId, sourceKey, d) =>
     db.transaction().execute(async (tx) => {
-      const id = await insertClaim(tx, runId, sourceKey, c);
+      const id = await insertDraft(tx, runId, sourceKey, d);
       if (id) return { id, duplicate: false };
       const existing = await tx
         .selectFrom('claims')
@@ -265,13 +278,43 @@ export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
         .where((eb) =>
           eb.or([
             eb('source_key', '=', sourceKey),
-            ...(c.pcrNumber ? [eb('pcr_number', '=', c.pcrNumber)] : [])
+            ...(d.pcrNumber ? [eb('pcr_number', '=', d.pcrNumber)] : [])
           ])
         )
         .orderBy(sql`source_key = ${sourceKey}`, 'desc')
         .executeTakeFirstOrThrow();
       return { id: existing.id, duplicate: existing.source_key !== sourceKey };
     }),
+
+  saveClaim: async (runId, claimId, c) => {
+    const claim = await claimOrFail(db, runId, claimId);
+    await db.transaction().execute(async (tx) => {
+      const locked = await tx
+        .selectFrom('claims')
+        .select('status')
+        .where('id', '=', claim.id)
+        .forUpdate()
+        .executeTakeFirstOrThrow();
+      if (locked.status !== 'draft') return;
+      await tx
+        .updateTable('claims')
+        .set({ ...claimValues(c), status: 'needs_review', updated_at: sql`now()` })
+        .where('id', '=', claim.id)
+        .execute();
+      await replaceClaimRows(tx, runId, claim.id, c);
+    });
+  },
+
+  setStatus: async (runId, claimId, status) => {
+    const claim = await claimOrFail(db, runId, claimId);
+    await db
+      .updateTable('claims')
+      .set({ status, updated_at: sql`now()` })
+      .where('id', '=', claim.id)
+      .where('status', '<>', status)
+      .where('status', 'not in', ['draft', ...CLOSED_CLAIM_STATUSES])
+      .execute();
+  },
 
   noteRevision: async (runId, claimId, sourceKey, report) => {
     const claim = await claimOrFail(db, runId, claimId);
@@ -376,13 +419,13 @@ export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
         .where('id', '=', claim.id)
         .forUpdate()
         .executeTakeFirstOrThrow();
-      if (locked.status !== 'open') return;
+      if (isClosedStatus(locked.status)) return;
       const { balance_cents } = await tx
         .selectFrom('claim_balances')
         .select('balance_cents')
         .where('claim_id', '=', claim.id)
         .executeTakeFirstOrThrow();
-      const status = balance_cents <= 0 ? 'paid' : requested;
+      const status = requested !== 'void' && balance_cents <= 0 ? 'paid' : requested;
       await tx
         .updateTable('claims')
         .set({ status, updated_at: sql`now()` })

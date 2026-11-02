@@ -14,7 +14,14 @@ describe('claim schemas', () => {
     });
     assert.equal(v.safeParse(listClaimsQuery, { sort: 'balance', dir: 'asc' }).success, true);
     assert.equal(v.safeParse(listClaimsQuery, { sort: 'payer' }).success, false);
-    assert.deepEqual(v.parse(listClaimsQuery, { status: 'all', q: ' smith ' }).q, 'smith');
+    assert.deepEqual(
+      v.parse(listClaimsQuery, { status: 'all', lastName: ' smith ' }).lastName,
+      'smith'
+    );
+    assert.equal(v.safeParse(listClaimsQuery, { status: 'needs_review' }).success, true);
+    assert.equal(v.safeParse(listClaimsQuery, { status: 'pending' }).success, false);
+    assert.equal(v.safeParse(listClaimsQuery, { birthDate: '01/02/1980' }).success, false);
+    assert.equal(v.parse(listClaimsQuery, { number: ' 42 ' }).number, '42');
     assert.equal(v.safeParse(listClaimsQuery, { patientId: 'x' }).success, false);
   });
 

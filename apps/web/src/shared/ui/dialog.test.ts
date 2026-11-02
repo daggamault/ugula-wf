@@ -19,6 +19,8 @@ describe('Dialog', () => {
     assert.match(html, /aria-labelledby="([^"]+)".*<h2 id="\1"/);
     assert.ok(html.includes('New workflow'));
     assert.ok(html.includes('Body'));
+    assert.ok(html.includes('rounded-xl') && html.includes('shadow-lg'));
+    assert.ok(html.includes('duration-200') && html.includes('starting:open:opacity-0'));
   });
 });
 

@@ -1,6 +1,6 @@
 import type { RunStatus } from '@ugula/db';
 import { isRecord, type Json, type RunState, type TraceEntry, type Values } from '@ugula/graph';
-import { advance, cancel, type RunJob, resume } from '@ugula/jobs';
+import { advance, cancel, type RunJob, resume } from '@ugula/run-queue';
 import type { ChildRun, ClaimedRun, RunTx } from './queries.ts';
 
 const FAULT_QUEUE = 'exceptions';

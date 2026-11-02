@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import {
+  findDictionary,
   findImport,
   findLatestPublished,
   findSftpTenant,
@@ -86,6 +87,37 @@ describe('import records', () => {
     assert.ok(reports.includes('left join "claims" as "c" on "c"."import_report_id" = "ir"."id"'));
     assert.ok(reports.includes('"t"."status" = $'));
     assert.ok(reports.includes('order by "ir"."position"'));
+    await db.destroy();
+  });
+});
+
+describe('findDictionary', () => {
+  it('groups code descriptions by list and skips lookups for nothing', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('from "nemsis_codes"')
+        ? [
+            { list: 'eResponse.05', code: '2205001', description: 'Emergency' },
+            { list: '@NV', code: '7701003', description: 'Not Recorded' }
+          ]
+        : [{ element: 'eResponse.05', name: 'Type of Service Requested' }]
+    );
+    const dictionary = await findDictionary(db, {
+      elements: ['eResponse.05'],
+      codes: [
+        { list: 'eResponse.05', code: '2205001' },
+        { list: '@NV', code: '7701003' }
+      ]
+    });
+    assert.deepEqual(dictionary, {
+      elements: { 'eResponse.05': 'Type of Service Requested' },
+      codes: { 'eResponse.05': { '2205001': 'Emergency' }, '@NV': { '7701003': 'Not Recorded' } }
+    });
+    assert.equal(queries.length, 2);
+    assert.deepEqual(await findDictionary(db, { elements: [], codes: [] }), {
+      elements: {},
+      codes: {}
+    });
+    assert.equal(queries.length, 2);
     await db.destroy();
   });
 });

@@ -1,4 +1,4 @@
-import { SESSION_COOKIE, type SessionData } from '@ugula/sessions';
+import { SESSION_COOKIE, type SessionData } from '@ugula/auth';
 import type { MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
 

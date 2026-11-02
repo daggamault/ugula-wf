@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { formatDateTime } from '../../shared/format.ts';
 import { idleLive } from '../../shared/testing.ts';
 import type { RunSummary, RunsClient } from './client.ts';
-import { RunsPage, RunsTable } from './runs-page.tsx';
+import { RunsPage, RunsTable, statusOptions } from './runs-page.tsx';
 
 const run: RunSummary = {
   id: 'r1',
@@ -24,15 +25,21 @@ const run: RunSummary = {
 };
 
 describe('RunsPage', () => {
-  it('lists runs with status, version and problems', () => {
+  it('lists runs with status, version, problems and an open action', () => {
     const html = renderToStaticMarkup(createElement(RunsTable, { runs: [run] }));
-    assert.ok(html.includes('href="/runs/r1"'));
+    assert.ok(html.includes('<span class="sr-only">Actions</span>'));
+    assert.ok(
+      html.includes(
+        `href="/runs/r1" aria-label="Open run Batch started ${formatDateTime(run.created_at)}"`
+      )
+    );
+    assert.equal(html.split('href="/runs/r1"').length, 2);
     assert.ok(html.includes('v3'));
     assert.ok(html.includes('Stuck'));
     assert.ok(html.includes('payer rejected'));
   });
 
-  it('renders a status filter', () => {
+  it('renders a status filter with one label per status', () => {
     const html = renderToStaticMarkup(
       createElement(RunsPage, {
         client: { list: async () => [] } as unknown as RunsClient,
@@ -40,10 +47,14 @@ describe('RunsPage', () => {
         status: 'faulted'
       })
     );
-    assert.ok(
-      html.includes('aria-current="true" href="/runs?status=faulted"') ||
-        html.includes('href="/runs?status=faulted" aria-current="true"')
-    );
-    assert.ok(html.includes('href="/runs"'));
+    assert.ok(html.includes('>Status<'));
+    assert.match(html, /<option value="faulted" selected="">Stuck<\/option>/);
+    assert.ok(html.includes('<option value="suspended">Waiting</option>'));
+  });
+
+  it('links each status option to its filter', () => {
+    const options = statusOptions((name, value) => (value ? `/runs?${name}=${value}` : '/runs'));
+    assert.deepEqual(options[0], { value: '', label: 'All', href: '/runs' });
+    assert.ok(options.some((o) => o.href === '/runs?status=faulted' && o.label === 'Stuck'));
   });
 });

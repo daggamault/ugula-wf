@@ -1,30 +1,48 @@
 import { isRecord, type Json } from '@ugula/graph';
 import { SearchIcon } from 'lucide-react';
 import { useId, useState } from 'react';
+import { classNamesOf } from '../class-names.ts';
 import { EmptyText } from './empty-state.tsx';
+import { interactiveClasses } from './interactive.ts';
+
+export type XmlAttribute = { name: string; value: string; meaning: string | null };
 
 export type XmlNode = {
   name: string;
   label: string | null;
-  attributes: [string, string][];
+  attributes: XmlAttribute[];
   text: string | null;
+  /** What a coded text value means, e.g. 2205001 → Emergency Response. */
+  meaning: string | null;
   children: XmlNode[];
 };
 
 export type LabelOf = (name: string) => string | null;
 
+/** Describes a coded value of an element, or of an attribute when the name starts with @. */
+export type MeaningOf = (name: string, value: string) => string | null;
+
+const noMeaning: MeaningOf = () => null;
+
 const TEXT = '#text';
 
 const scalar = (value: Json) => (value === null ? '' : String(value));
 
-const toNodes = (name: string, value: Json, labelOf: LabelOf): XmlNode[] => {
-  if (Array.isArray(value)) return value.flatMap((v) => toNodes(name, v, labelOf));
+const toNodes = (name: string, value: Json, labelOf: LabelOf, meaningOf: MeaningOf): XmlNode[] => {
+  if (Array.isArray(value)) return value.flatMap((v) => toNodes(name, v, labelOf, meaningOf));
   const label = labelOf(name);
-  if (!isRecord(value)) return [{ name, label, attributes: [], text: scalar(value), children: [] }];
+  const meaning = (text: string | null) => (text ? meaningOf(name, text) : null);
+  if (!isRecord(value)) {
+    const text = scalar(value);
+    return [{ name, label, attributes: [], text, meaning: meaning(text), children: [] }];
+  }
   const entries = Object.entries(value);
   const attributes = entries
     .filter(([k]) => k.startsWith('@'))
-    .map(([k, v]): [string, string] => [k.slice(1), scalar(v)]);
+    .map(([k, v]): XmlAttribute => {
+      const text = scalar(v);
+      return { name: k.slice(1), value: text, meaning: text ? meaningOf(k, text) : null };
+    });
   const own = Object.hasOwn(value, TEXT) ? scalar(value[TEXT] ?? null) : null;
   return [
     {
@@ -32,20 +50,29 @@ const toNodes = (name: string, value: Json, labelOf: LabelOf): XmlNode[] => {
       label,
       attributes,
       text: own,
+      meaning: meaning(own),
       children: entries
         .filter(([k]) => k !== TEXT && !k.startsWith('@'))
-        .flatMap(([k, v]) => toNodes(k, v, labelOf))
+        .flatMap(([k, v]) => toNodes(k, v, labelOf, meaningOf))
     }
   ];
 };
 
-export const xmlNodes = (name: string, value: Json, labelOf: LabelOf = () => null) =>
-  toNodes(name, value, labelOf);
+export const xmlNodes = (
+  name: string,
+  value: Json,
+  labelOf: LabelOf = () => null,
+  meaningOf: MeaningOf = noMeaning
+) => toNodes(name, value, labelOf, meaningOf);
 
 const matches = (node: XmlNode, query: string) =>
-  [node.name, node.label, node.text, ...node.attributes.flat()].some((s) =>
-    s?.toLowerCase().includes(query)
-  );
+  [
+    node.name,
+    node.label,
+    node.text,
+    node.meaning,
+    ...node.attributes.flatMap((a) => [a.name, a.value, a.meaning])
+  ].some((s) => s?.toLowerCase().includes(query));
 
 export const filterXml = (nodes: readonly XmlNode[], query: string): XmlNode[] => {
   const q = query.trim().toLowerCase();
@@ -63,10 +90,13 @@ const Tag = ({ node, closing = false }: { node: XmlNode; closing?: boolean }) =>
     {node.name}
     {closing
       ? null
-      : node.attributes.map(([k, v]) => (
-          <span key={k} className="text-info">
+      : node.attributes.map((a) => (
+          <span key={a.name} className="text-info">
             {' '}
-            {k}="{v}"
+            {a.name}="{a.value}"
+            {a.meaning ? (
+              <span className="text-surface-fg-muted font-sans"> ({a.meaning})</span>
+            ) : null}
           </span>
         ))}
     {'>'}
@@ -82,7 +112,12 @@ const Element = ({ node, depth, expanded }: { node: XmlNode; depth: number; expa
   node.children.length ? (
     <li>
       <details open={expanded || depth < 2} className="group">
-        <summary className="hover:bg-surface-fg/6 cursor-pointer rounded px-1 select-none">
+        <summary
+          className={classNamesOf(
+            interactiveClasses,
+            'hover:bg-surface-fg/6 rounded-lg px-1 select-none'
+          )}
+        >
           <Tag node={node} />
           <Label node={node} />
           <span className="text-surface-fg-muted group-open:hidden"> … {node.children.length}</span>
@@ -99,6 +134,9 @@ const Element = ({ node, depth, expanded }: { node: XmlNode; depth: number; expa
       <Tag node={node} />
       <span className="text-surface-fg break-words whitespace-pre-wrap">{node.text}</span>
       <Tag node={node} closing />
+      {node.meaning ? (
+        <span className="text-surface-fg ml-2 font-sans text-xs font-medium">{node.meaning}</span>
+      ) : null}
       <Label node={node} />
     </li>
   );
@@ -108,17 +146,18 @@ export type XmlTreeProps = {
   rootName: string;
   value: Json;
   labelOf?: LabelOf;
+  meaningOf?: MeaningOf;
 };
 
-export const XmlTree = ({ label, rootName, value, labelOf }: XmlTreeProps) => {
+export const XmlTree = ({ label, rootName, value, labelOf, meaningOf }: XmlTreeProps) => {
   const [query, setQuery] = useState('');
   const searchId = useId();
-  const nodes = filterXml(xmlNodes(rootName, value, labelOf), query);
+  const nodes = filterXml(xmlNodes(rootName, value, labelOf, meaningOf), query);
   return (
     <figure aria-label={label} className="flex min-w-0 flex-col gap-3">
       <label
         htmlFor={searchId}
-        className="border-border bg-canvas focus-within:border-primary flex items-center gap-2 rounded-lg border px-3"
+        className="border-border bg-surface hover:bg-surface-hover focus-within:outline-primary flex h-10 items-center gap-2 rounded-lg border px-3 outline-2 outline-transparent transition duration-150 ease-out pointer-coarse:h-11"
       >
         <SearchIcon aria-hidden="true" className="text-surface-fg-muted size-4" />
         <input
@@ -128,7 +167,7 @@ export const XmlTree = ({ label, rootName, value, labelOf }: XmlTreeProps) => {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Find an element, label or value"
           aria-label={`Search ${label}`}
-          className="min-h-9 flex-1 bg-transparent text-sm outline-none"
+          className="h-full min-w-0 flex-1 bg-transparent text-base outline-none sm:text-sm"
         />
       </label>
       {nodes.length ? (

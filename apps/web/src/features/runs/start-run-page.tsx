@@ -56,6 +56,7 @@ export const StartRunForm = ({ client, target }: { client: RunsClient; target: S
                 type={pin.type}
                 value={inputs[pin.name] ?? null}
                 onChange={(value) => setInputs({ ...inputs, [pin.name]: value })}
+                upload={client.uploadFile}
               />
             ))
           ) : (

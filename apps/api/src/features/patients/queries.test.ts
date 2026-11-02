@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import { findPatient, listPatients } from './queries.ts';
 
 describe('patient queries', () => {
@@ -34,7 +34,11 @@ describe('patient queries', () => {
     });
     await findPatient(db, 't-1', 'p-1');
     assert.ok(!queries[0]?.sql.includes(' like '));
-    assert.ok(queries[0]?.sql.includes("filter (where c.status = 'open')"));
+    assert.ok(
+      queries[0]?.sql.includes(
+        "filter (where c.status not in ('paid', 'written_off', 'collections', 'void'))"
+      )
+    );
     assert.deepEqual(queries[1]?.parameters, ['t-1', 'p-1']);
     await db.destroy();
   });

@@ -11,11 +11,11 @@ describe('HealthStatus', () => {
     const up = render('online');
     assert.ok(up.includes('role="status"'));
     assert.ok(up.includes('bg-success'));
-    assert.ok(up.includes('Live Updates On'));
+    assert.ok(up.includes('Live updates on'));
 
     const down = render('offline');
     assert.ok(down.includes('bg-danger'));
-    assert.ok(down.includes('Live Updates Off, Reconnecting'));
+    assert.ok(down.includes('Live updates off, reconnecting'));
 
     assert.ok(render('connecting').includes('bg-warning'));
   });

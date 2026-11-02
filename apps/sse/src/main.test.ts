@@ -31,9 +31,9 @@ describe('sse server', () => {
     const seen: string[] = [];
     hub.add('t-1', { write: (chunk) => void seen.push(chunk) });
     const onMessage = relay(hub);
-    onMessage('events:*', 'events:t-1', '{"kind":"run","id":"r1","status":"completed"}');
-    onMessage('events:*', 'events:t-1', 'garbage');
-    onMessage('events:*', 'other', '{"kind":"run","id":"r1","status":"completed"}');
+    onMessage('live:*', 'live:t-1', '{"kind":"run","id":"r1","status":"completed"}');
+    onMessage('live:*', 'live:t-1', 'garbage');
+    onMessage('live:*', 'other', '{"kind":"run","id":"r1","status":"completed"}');
     assert.deepEqual(seen, ['data: {"kind":"run","id":"r1","status":"completed"}\n\n']);
   });
 });

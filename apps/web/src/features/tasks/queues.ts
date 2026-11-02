@@ -2,29 +2,33 @@ export type QueueInfo = { label: string; description: string };
 
 const QUEUES: Readonly<Record<string, QueueInfo>> = {
   'billing-review': {
-    label: 'PCR review',
+    label: 'Billing review',
     description:
-      'Confirm the level of service and mileage before a claim is priced, and check reports that changed after billing.'
+      'Confirm the level of service and mileage before a claim is priced, approve claims before they go to a payer, and check PCRs that changed after billing.'
   },
   'billing-patients': {
     label: 'Patient matching',
-    description: 'Decide whether a report belongs to a patient you already have or a new one.'
+    description: 'Decide whether a PCR belongs to a patient you already have or a new one.'
   },
   'billing-payers': {
     label: 'Payer matching',
     description:
-      'Match payer names from reports to your payer directory. Each answer is remembered for later reports.'
+      'Match payer names from PCRs to your payer directory. Each answer is remembered for later PCRs.'
   },
   'billing-holds': {
     label: 'Held PCRs',
-    description: 'Reports a reviewer set aside. Release them back to review or void them.'
+    description: 'PCRs a reviewer set aside. Release them back to review or void them.'
   },
   'billing-followup': {
     label: 'Payer follow-up',
     description: 'Claims a payer has not answered in 30 days.'
   },
+  'billing-reconcile': {
+    label: 'Reconcile payments',
+    description: 'Payer responses that left a balance. Check them, then continue or write off.'
+  },
   'billing-collections': {
-    label: 'Collections',
+    label: 'Balance review',
     description: 'Balances left after every payer and three patient statements.'
   },
   exceptions: {

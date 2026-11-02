@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import { findBillingProfile } from './queries.ts';
 
 describe('billing profile queries', () => {

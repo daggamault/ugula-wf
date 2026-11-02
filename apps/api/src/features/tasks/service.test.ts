@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
-import type { JobBoss } from '@ugula/jobs';
+import { createRecordingDb } from '@ugula/db/testing';
+import type { RunQueueClient } from '@ugula/run-queue';
 import { recordAnnouncements } from '../../shared/testing.ts';
 import { createTaskService, fieldErrors, jobFor } from './service.ts';
 
@@ -21,7 +21,7 @@ const setup = (row: Record<string, unknown> | undefined, updated = true) => {
     q.sql.startsWith('select') ? (row ? [row] : []) : updated ? [{ id: 't1' }] : []
   );
   const jobs: unknown[] = [];
-  const boss: JobBoss = { insert: async (_n, batch) => void jobs.push(...batch) };
+  const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
   const { announce, events: announced } = recordAnnouncements();
   return { service: createTaskService({ db, boss, announce }), jobs, queries, announced };
 };

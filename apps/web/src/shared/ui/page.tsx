@@ -40,14 +40,14 @@ export const PageHeader = ({
     <header
       ref={headerRef}
       className={classNamesOf(
-        'sticky -top-px z-10 -mx-4 -mt-4 flex flex-wrap items-end justify-between gap-4 border-b px-4 pt-4 pb-3 transition-colors duration-200 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6 lg:-mx-10 lg:-mt-10 lg:px-10 lg:pt-10',
+        'sticky -top-px z-10 -mx-4 -mt-4 flex flex-wrap items-center print:hidden justify-between gap-4 border-b px-4 pt-4 pb-3 transition-colors duration-150 ease-out sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6 lg:-mx-10 lg:-mt-10 lg:px-10 lg:pt-10',
         isStuck ? 'border-border bg-canvas/75 backdrop-blur-md' : 'border-transparent'
       )}
     >
       <div className="flex min-w-0 items-start gap-2">
         {backTo && <IconLink to={backTo} label={backLabel} icon={ArrowLeftIcon} />}
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <h1 className="text-xl/9 font-extrabold tracking-tight text-balance break-words sm:text-2xl">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="text-2xl/9 font-extrabold tracking-tight text-balance break-words">
             {title}
           </h1>
           {description && <div className="text-surface-fg-muted text-sm">{description}</div>}
@@ -63,7 +63,7 @@ export type PageProps = PageHeaderProps & {
 };
 
 export const Page = ({ children, ...header }: PageProps) => (
-  <section className="flex flex-col gap-6 p-4 sm:p-6 lg:p-10">
+  <section className="flex flex-col gap-6 p-4 sm:p-6 lg:p-10 print:p-0">
     <PageHeader {...header} />
     {children}
   </section>
@@ -77,15 +77,17 @@ export const WorkspaceHeader = ({
   actions,
   breadcrumbs
 }: PageHeaderProps & { breadcrumbs?: ReactNode }) => (
-  <header className="border-border bg-surface flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-    <div className="flex min-w-0 items-center gap-2">
-      {backTo && <IconLink to={backTo} label={backLabel} icon={ArrowLeftIcon} />}
-      <div className="flex min-w-0 flex-col gap-0.5">
-        {breadcrumbs}
-        <h1 className="flex flex-wrap items-center gap-2 text-lg font-extrabold tracking-tight">
-          {title}
-        </h1>
-        {description && <div className="text-surface-fg-muted text-xs">{description}</div>}
+  <header className="border-border bg-surface flex flex-wrap items-center justify-between gap-4 border-b px-4 py-3">
+    <div className="flex min-w-0 flex-col gap-1">
+      {breadcrumbs}
+      <div className="flex min-w-0 items-start gap-2">
+        {backTo && <IconLink to={backTo} label={backLabel} icon={ArrowLeftIcon} />}
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="flex flex-wrap items-center gap-2 text-2xl/9 font-extrabold tracking-tight">
+            {title}
+          </h1>
+          {description && <div className="text-surface-fg-muted text-sm">{description}</div>}
+        </div>
       </div>
     </div>
     {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

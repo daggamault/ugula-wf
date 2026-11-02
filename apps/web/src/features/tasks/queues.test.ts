@@ -4,7 +4,7 @@ import { byQueueOrder, humanize, queueInfo, queueSortKey } from './queues.ts';
 
 describe('queues', () => {
   it('names known queues for billers and humanizes the rest', () => {
-    assert.equal(queueInfo('billing-review').label, 'PCR review');
+    assert.equal(queueInfo('billing-review').label, 'Billing review');
     assert.match(queueInfo('billing-payers').description, /remembered/);
     assert.deepEqual(queueInfo('custom-intake'), { label: 'Custom intake', description: '' });
     assert.equal(queueInfo('toString').label, 'To string');

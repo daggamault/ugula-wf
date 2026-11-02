@@ -1,8 +1,7 @@
 import type { ErrorInfo, GraphDef, Json, RunState, Signature, Values } from '@ugula/graph';
 import type { Api } from '../../shared/api.ts';
+import type { RunStatus } from '../../shared/ui/run-status-badge.tsx';
 import type { Page } from '../../shared/url-state.ts';
-
-export type RunStatus = 'running' | 'suspended' | 'completed' | 'faulted' | 'failed' | 'cancelled';
 
 export type RunSummary = {
   id: string;
@@ -87,6 +86,11 @@ export const createRunsClient = (api: Api) => ({
   start: (graphId: string, inputs: Record<string, Json>) =>
     api.post<{ id: string; version: number }>('/api/runs', { graphId, inputs }),
   cancel: (id: string) => api.post<{ status: string }>(`/api/runs/${id}/cancel`),
+  uploadFile: (file: File) => {
+    const form = new FormData();
+    form.set('file', file);
+    return api.upload<{ file: Json; name: string }>('/api/runs/files', form);
+  },
   startable: async (graphId: string): Promise<Startable> => {
     const { graph, versions } = await api.get<{
       graph: { name: string };

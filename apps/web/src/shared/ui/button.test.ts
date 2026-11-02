@@ -14,7 +14,26 @@ describe('Button', () => {
     assert.ok(buttonClasses({ intent: 'danger' }).includes('bg-danger'));
     assert.ok(buttonClasses({ variant: 'outline' }).includes('border-border'));
     assert.ok(buttonClasses({ intent: 'danger', variant: 'outline' }).includes('text-danger'));
-    assert.ok(buttonClasses({ size: 'sm' }).includes('min-h-8'));
+    assert.ok(buttonClasses({ size: 'sm' }).includes('h-8'));
+    assert.ok(buttonClasses().includes('h-10'));
+  });
+
+  it('renders every variant flat, without a shadow', () => {
+    const variants = ['solid', 'outline'] as const;
+    const intents = ['primary', 'success', 'info', 'warning', 'danger'] as const;
+    for (const variant of variants) {
+      for (const intent of intents) {
+        assert.ok(!/\bshadow/.test(buttonClasses({ intent, variant })));
+      }
+    }
+    assert.ok(!renderToStaticMarkup(createElement(Button, null, 'Go')).includes('shadow'));
+  });
+
+  it('hovers outline buttons to the opaque surface', () => {
+    const outline = buttonClasses({ variant: 'outline' });
+    assert.ok(outline.includes('bg-surface'));
+    assert.ok(outline.includes('hover:bg-surface-hover'));
+    assert.ok(outline.includes('active:scale-[0.98]'));
   });
 
   it('stays focusable when blocked and explains why', () => {

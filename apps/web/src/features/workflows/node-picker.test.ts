@@ -44,7 +44,7 @@ describe('NodePicker', () => {
         onClose: () => undefined
       })
     );
-    assert.ok(html.includes('Add a Node'));
+    assert.ok(html.includes('Add Node'));
     assert.ok(html.includes('type="search"'));
   });
 });

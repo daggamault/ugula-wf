@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { LiveEvent } from '@ugula/events';
+import type { LiveEvent } from '@ugula/live';
 import { createLive, type EventStream } from './live.ts';
 
 const fakeStreams = () => {

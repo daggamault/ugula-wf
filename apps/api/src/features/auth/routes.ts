@@ -1,5 +1,5 @@
 import { sValidator } from '@hono/standard-validator';
-import { SESSION_COOKIE, SESSION_TTL_SECONDS, type SessionData } from '@ugula/sessions';
+import { SESSION_COOKIE, SESSION_TTL_SECONDS, type SessionData } from '@ugula/auth';
 import { type Context, Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { invalidRequest } from '../../shared/http.ts';

@@ -7,7 +7,7 @@ export type Crumb = { label: string; to?: string; onSelect?: () => void };
 
 const crumbClasses = classNamesOf(
   interactiveClasses,
-  'hover:bg-surface-fg/6 hover:text-surface-fg rounded-md px-1.5 py-0.5'
+  'hover:bg-surface-fg/6 hover:text-surface-fg rounded-lg px-1.5 py-0.5'
 );
 
 export const Breadcrumbs = ({ label, crumbs }: { label: string; crumbs: readonly Crumb[] }) => (

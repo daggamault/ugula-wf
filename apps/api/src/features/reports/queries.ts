@@ -1,5 +1,10 @@
+import { CLOSED_CLAIM_STATUSES } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+
+const closedList = sql.join(CLOSED_CLAIM_STATUSES.map((s) => sql.lit(s)));
+
+const UNBILLED = ['draft', 'void'] as const;
 
 type Db = Kysely<Database>;
 
@@ -60,7 +65,7 @@ export const agingReport = (db: Db, tenantId: string, asOf: string) => {
       ...AGING_BUCKETS.map((b) => bucket(b).as(b.key))
     ])
     .where('c.tenant_id', '=', tenantId)
-    .where('c.status', '=', 'open')
+    .where('c.status', 'not in', CLOSED_CLAIM_STATUSES)
     .where('b.balance_cents', '>', 0)
     .groupBy(sql`responsible.payer`)
     .orderBy('balance_cents', 'desc')
@@ -77,7 +82,7 @@ export const monthlyReport = (db: Db, tenantId: string, range: DateRange) =>
       sumOf('c.total_cents').as('charges_cents'),
       sumOf('b.paid_cents').as('paid_cents'),
       sumOf('b.adjusted_cents').as('adjusted_cents'),
-      sql<number>`coalesce(sum(b.balance_cents) filter (where c.status = 'open'), 0)::int`.as(
+      sql<number>`coalesce(sum(b.balance_cents) filter (where c.status not in (${closedList})), 0)::int`.as(
         'open_balance_cents'
       ),
       sql<number>`coalesce(sum(b.balance_cents) filter (where c.status in ('written_off', 'collections')), 0)::int`.as(
@@ -85,6 +90,7 @@ export const monthlyReport = (db: Db, tenantId: string, range: DateRange) =>
       )
     ])
     .where('c.tenant_id', '=', tenantId)
+    .where('c.status', 'not in', UNBILLED)
     .where(inRange(range))
     .groupBy(sql`1`)
     .orderBy('month', 'desc')

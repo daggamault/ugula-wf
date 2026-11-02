@@ -1,4 +1,5 @@
 import type { Database, ImportSource, RunStatus } from '@ugula/db';
+import type { ReportDictionary, ReportTerms } from '@ugula/nemsis';
 import { type Kysely, sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import type { ImportSort } from './schemas.ts';
@@ -178,3 +179,40 @@ export const listImportReports = (db: Kysely<Database>, tenantId: string, import
     .where('i.id', '=', importId)
     .orderBy('ir.position')
     .execute();
+
+/** Official NEMSIS names and code descriptions for the terms of one report. */
+export const findDictionary = async (
+  db: Kysely<Database>,
+  { elements, codes }: ReportTerms
+): Promise<ReportDictionary> => {
+  const [named, described] = await Promise.all([
+    elements.length
+      ? db
+          .selectFrom('nemsis_elements')
+          .select(['element', 'name'])
+          .where('element', 'in', elements)
+          .execute()
+      : [],
+    codes.length
+      ? db
+          .selectFrom('nemsis_codes')
+          .select(['list', 'code', 'description'])
+          .where((eb) =>
+            eb(
+              eb.refTuple('list', 'code'),
+              'in',
+              codes.map((c) => eb.tuple(c.list, c.code))
+            )
+          )
+          .execute()
+      : []
+  ]);
+  const dictionary: ReportDictionary = {
+    elements: Object.fromEntries(named.map((e) => [e.element, e.name])),
+    codes: {}
+  };
+  for (const c of described) {
+    dictionary.codes[c.list] = { ...dictionary.codes[c.list], [c.code]: c.description };
+  }
+  return dictionary;
+};

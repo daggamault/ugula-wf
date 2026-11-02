@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createCompleter, createEmbedder, EMBED_BATCH_SIZE, type Fetch } from './index.ts';
+import {
+  createCompleter,
+  createCompletionLimiter,
+  createEmbedder,
+  EMBED_BATCH_SIZE,
+  type Fetch
+} from './index.ts';
 
 type Call = { url: string; body: Record<string, unknown> };
 
@@ -53,6 +59,8 @@ describe('createEmbedder', () => {
   });
 });
 
+const direct = <T>(task: () => Promise<T>) => task();
+
 describe('createCompleter', () => {
   const request = {
     system: 'Extract.',
@@ -63,7 +71,7 @@ describe('createCompleter', () => {
 
   it('asks for deterministic output constrained to the schema and parses it', async () => {
     const { fetch, calls } = fakeFetch(() => answer('{"ok":true}'));
-    const completer = createCompleter({ url: 'http://llm', model: 'm', fetch });
+    const completer = createCompleter({ url: 'http://llm', model: 'm', fetch, limit: direct });
     assert.deepEqual(await completer.complete(request), { ok: true });
     assert.equal(calls[0]?.url, 'http://llm/v1/chat/completions');
     assert.deepEqual(calls[0]?.body, {
@@ -83,7 +91,12 @@ describe('createCompleter', () => {
 
   it('rejects truncated, empty and failed completions', async () => {
     const run = (res: () => Response) =>
-      createCompleter({ url: 'u', model: 'm', fetch: fakeFetch(res).fetch }).complete(request);
+      createCompleter({
+        url: 'u',
+        model: 'm',
+        fetch: fakeFetch(res).fetch,
+        limit: direct
+      }).complete(request);
     await assert.rejects(
       run(() => answer('{"ok":', 'length')),
       /ran past 50 tokens/
@@ -96,5 +109,26 @@ describe('createCompleter', () => {
       run(() => json({ error: 'x' }, 500)),
       /answered 500/
     );
+  });
+});
+
+describe('createCompletionLimiter', () => {
+  it('leases completion slots cluster-wide for longer than a completion may take', async () => {
+    const calls: unknown[][] = [];
+    const limit = createCompletionLimiter(
+      {
+        eval: async (_, __, ...args) => {
+          calls.push(args);
+          return 1;
+        }
+      },
+      3
+    );
+    assert.equal(await limit(async () => 'done'), 'done');
+    const [acquire, release] = calls;
+    assert.equal(acquire?.[0], 'ugula:completions:leases');
+    assert.equal(acquire?.[2], 3);
+    assert.ok(Number(acquire?.[3]) > 120_000);
+    assert.deepEqual(release, [acquire?.[0], acquire?.[1]]);
   });
 });

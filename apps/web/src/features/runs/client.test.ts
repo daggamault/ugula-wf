@@ -68,3 +68,22 @@ describe('createRunsClient', () => {
     await assert.rejects(() => client.startable('g2'), /has no published version/);
   });
 });
+
+describe('run input files', () => {
+  it('uploads a file as a form and returns its stored reference', async () => {
+    const seen: string[] = [];
+    const uploads = createRunsClient(
+      createApi('', async (url, init = {}) => {
+        seen.push(`${init.method} ${String(url)} ${init.body instanceof FormData}`);
+        return new Response(JSON.stringify({ file: { bucket: 'b', key: 'k' }, name: 'a.xml' }), {
+          status: 201
+        });
+      })
+    );
+    assert.deepEqual(await uploads.uploadFile(new File(['<x/>'], 'a.xml')), {
+      file: { bucket: 'b', key: 'k' },
+      name: 'a.xml'
+    });
+    assert.deepEqual(seen, ['POST /api/runs/files true']);
+  });
+});

@@ -93,7 +93,7 @@ const HeaderCell = ({
           to={sorting.sortHref(column.sort)}
           className={classNamesOf(
             interactiveClasses,
-            'hover:text-surface-fg inline-flex items-center gap-1 rounded',
+            'hover:text-surface-fg inline-flex items-center gap-2 rounded-lg',
             column.isNumeric && 'flex-row-reverse',
             active && 'text-surface-fg'
           )}
@@ -129,8 +129,8 @@ const MobileSort = ({
     ? byColumn
     : [{ value: current, label: 'Default order' }, ...byColumn];
   return options.length ? (
-    <div className="flex items-center gap-3 md:hidden">
-      <label htmlFor={id} className="text-surface-fg-muted shrink-0 text-sm font-semibold">
+    <div className="flex items-center gap-2 md:hidden">
+      <label htmlFor={id} className="text-surface-fg-muted shrink-0 text-sm font-medium">
         Sort by
       </label>
       <NativeSelect
@@ -177,7 +177,7 @@ const positioned = (children: ReactNode) =>
   ));
 
 const rowClasses =
-  'border-border bg-surface flex flex-col gap-2.5 rounded-xl border p-4 md:table-row md:rounded-none md:border-0 md:border-b md:bg-transparent md:p-0';
+  'border-border bg-surface flex flex-col gap-2 rounded-xl border p-4 md:table-row md:rounded-none md:border-0 md:border-b md:bg-transparent md:p-0';
 
 export const TableRow = ({ children }: { children: ReactNode }) => (
   <tr className={classNamesOf(rowClasses, 'md:last:border-b-0')}>{positioned(children)}</tr>
@@ -190,7 +190,7 @@ const cellKindClasses: Readonly<Record<TableCellKind, string>> = {
   wrap: 'md:min-w-48 md:whitespace-normal',
   numeric: 'tabular-nums md:text-right md:whitespace-nowrap',
   date: 'tabular-nums md:whitespace-nowrap',
-  actions: 'justify-end pt-1 md:w-px md:pt-3 md:whitespace-nowrap'
+  actions: 'justify-end md:w-px md:whitespace-nowrap'
 };
 
 type TableCellProps = Omit<ComponentProps<'td'>, 'className'> & {
@@ -213,7 +213,7 @@ export const TableCell = ({
   return (
     <td
       className={classNamesOf(
-        'flex min-w-0 items-baseline gap-4 md:table-cell md:px-4 md:py-3 md:align-middle',
+        'flex min-w-0 items-center gap-4 md:table-cell md:px-4 md:py-3 md:align-middle',
         isTitle ? 'text-base font-semibold md:text-sm md:font-normal' : 'justify-between',
         isMuted && 'text-surface-fg-muted',
         isSecondary && secondaryClasses,
@@ -222,7 +222,7 @@ export const TableCell = ({
       {...props}
     >
       {label ? (
-        <span className="text-surface-fg-muted shrink-0 text-xs font-semibold tracking-wide uppercase md:hidden">
+        <span className="text-surface-fg-muted shrink-0 text-xs/5 font-semibold tracking-wide uppercase md:hidden">
           {label}
         </span>
       ) : null}

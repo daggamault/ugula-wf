@@ -1,33 +1,10 @@
-type ValueType =
-  | 'any'
-  | 'string'
-  | 'number'
-  | 'integer'
-  | 'boolean'
-  | 'datetime'
-  | { list: ValueType }
-  | { object: Record<string, ValueType> };
-
-export type ModelField = { name: string; type: ValueType; label: string };
-
-export type Model = {
-  key: string;
-  name: string;
-  title: string;
-  category: string;
-  description: string;
-  fields: ModelField[];
-};
+import { type Model, type ModelField, modelType, type ValueType } from '@ugula/graph';
 
 const CATEGORY = 'Billing';
 
 const X12 = 'X12 837P';
 
 const f = (name: string, type: ValueType, label: string): ModelField => ({ name, type, label });
-
-const objectOf = (fields: ModelField[]): ValueType => ({
-  object: Object.fromEntries(fields.map((x) => [x.name, x.type]))
-});
 
 const model = (
   key: string,
@@ -43,7 +20,7 @@ const model = (
   category,
   description,
   fields,
-  type: objectOf(fields)
+  type: modelType({ fields })
 });
 
 const ADDRESS = [

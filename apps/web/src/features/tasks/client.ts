@@ -1,4 +1,5 @@
 import type { FieldSpec, Json } from '@ugula/graph';
+import type { ReportDictionary } from '@ugula/nemsis';
 import type { Api } from '../../shared/api.ts';
 import type { Page } from '../../shared/url-state.ts';
 
@@ -58,6 +59,7 @@ export type SourceReport = {
   };
   data: Json;
   xml: string;
+  dictionary: ReportDictionary;
 };
 
 export const createTasksClient = (api: Api) => ({

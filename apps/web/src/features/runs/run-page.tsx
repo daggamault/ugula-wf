@@ -1,4 +1,4 @@
-import { CircleStopIcon, WorkflowIcon } from 'lucide-react';
+import { ChevronRightIcon, CircleStopIcon, WorkflowIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatDateTime } from '../../shared/format.ts';
@@ -11,8 +11,10 @@ import { Breadcrumbs } from '../../shared/ui/breadcrumbs.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
+import { IconLink } from '../../shared/ui/icon-button.tsx';
 import { JsonView } from '../../shared/ui/json-view.tsx';
 import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.tsx';
+import { RunStatusBadge } from '../../shared/ui/run-status-badge.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
@@ -25,7 +27,6 @@ import {
 } from './client.ts';
 import { graphAt, pathOf, runPath, runsStartedBy, statusAt } from './inspect.ts';
 import { NodeExecutions } from './node-executions.tsx';
-import { RunStatusBadge } from './run-status-badge.tsx';
 
 export type RunPageProps = {
   client: RunsClient;
@@ -120,16 +121,12 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
         }
         actions={
           <>
-            <ButtonLink
-              to={`/workflows/${run.graph_id}?version=${run.version}`}
-              variant="outline"
-              size="sm"
-            >
+            <ButtonLink to={`/workflows/${run.graph_id}?version=${run.version}`} variant="outline">
               <WorkflowIcon aria-hidden="true" className="size-4" />
               Open workflow
             </ButtonLink>
             {active ? (
-              <Button intent="danger" size="sm" onClick={() => setConfirming(true)}>
+              <Button intent="danger" variant="outline" onClick={() => setConfirming(true)}>
                 <CircleStopIcon aria-hidden="true" className="size-4" />
                 Cancel run
               </Button>
@@ -182,8 +179,9 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
           ) : (
             <section aria-label="Run data" className="flex flex-col gap-5 p-4">
               <p className="text-surface-fg-muted text-sm">
-                Select a step to see what went in and out of it. Double-click a sub-graph to open it
-                here, or a workflow step to jump to the run it started; the path above leads back.
+                Select a node to see what went in and out of it. Double-click a building block to
+                open it here, or a workflow node to jump to the run it started; the path above leads
+                back.
               </p>
               <div className="flex flex-col gap-2">
                 <h2 className={panelHeading}>Inputs</h2>
@@ -201,15 +199,21 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
                       ? ` (first ${children.length} of ${childCount})`
                       : ''}
                   </h2>
-                  <ul className="divide-border border-border flex flex-col divide-y rounded-lg border text-sm">
-                    {children.map((c) => (
-                      <li key={c.id} className="flex items-center justify-between gap-2 px-3 py-2">
-                        <TextLink to={`/runs/${c.id}`}>
-                          #{(c.parent_index ?? 0) + 1} {c.name}
-                        </TextLink>
-                        <RunStatusBadge status={c.status} />
-                      </li>
-                    ))}
+                  <ul className="divide-border border-border flex flex-col divide-y rounded-xl border text-sm">
+                    {children.map((c) => {
+                      const name = `#${(c.parent_index ?? 0) + 1} ${c.name}`;
+                      return (
+                        <li key={c.id} className="flex items-center gap-2 px-4 py-2">
+                          <span className="flex-1 font-medium">{name}</span>
+                          <RunStatusBadge status={c.status} />
+                          <IconLink
+                            to={`/runs/${c.id}`}
+                            label={`Open run ${name}`}
+                            icon={ChevronRightIcon}
+                          />
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ) : null}
@@ -220,7 +224,7 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
       {active ? (
         <ConfirmDialog
           open={confirming}
-          title="Cancel this run?"
+          title="Cancel Run?"
           intent="danger"
           confirmLabel="Cancel run"
           confirmIcon={CircleStopIcon}

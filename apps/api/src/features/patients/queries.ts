@@ -1,4 +1,4 @@
-import { nameKey } from '@ugula/billing';
+import { CLOSED_CLAIM_STATUSES, nameKey } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
@@ -24,9 +24,9 @@ const patientRows = (db: Db, tenantId: string) =>
           .innerJoin('claim_balances as b', 'b.claim_id', 'c.id')
           .select([
             sql<number>`count(*)::int`.as('claim_count'),
-            sql<number>`(coalesce(sum(b.balance_cents) filter (where c.status = 'open'), 0))::int`.as(
-              'balance_cents'
-            ),
+            sql<number>`(coalesce(sum(b.balance_cents) filter (where c.status not in (${sql.join(
+              CLOSED_CLAIM_STATUSES.map((s) => sql.lit(s))
+            )})), 0))::int`.as('balance_cents'),
             sql<string | null>`max(c.service_date)::text`.as('last_service_date')
           ])
           .whereRef('c.patient_id', '=', 'p.id')
@@ -35,6 +35,7 @@ const patientRows = (db: Db, tenantId: string) =>
     )
     .select([
       'p.id',
+      'p.number',
       'p.first_name',
       'p.last_name',
       sql<string>`p.birth_date::text`.as('birth_date'),

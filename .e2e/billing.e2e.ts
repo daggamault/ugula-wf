@@ -17,12 +17,28 @@ let page: Page;
 
 const go = (path: string) => page.goto(new URL(path, config.E2E_WEB_URL).href);
 
-const claimLink = () =>
-  page.getByRole('row').filter({ hasText: pcr }).getByRole('link', { name: /Kline/ });
+const claimRow = () => page.getByRole('row').filter({ hasText: pcr });
+
+const claimLink = () => claimRow().getByRole('link', { name: /^Open claim #/ });
+
+const claimsWith = (status: string) => go(`/claims?number=${pcr}&status=${status}`);
+
+const waitForClaim = async (status: string) => {
+  for (let i = 0; i < 40; i++) {
+    await claimsWith(status);
+    await claimRow()
+      .or(page.getByRole('heading', { name: 'No Matching Claims' }))
+      .first()
+      .waitFor();
+    if (await claimLink().count()) return;
+    await page.waitForTimeout(3_000);
+  }
+  assert.fail(`the claim never reached ${status}`);
+};
 
 const heading = (name: string | RegExp) => page.getByRole('heading', { level: 1, name });
 
-describe('a biller takes a report from import to an 837P file', { timeout: 600_000 }, () => {
+describe('a biller takes an encounter from import to an 837P file', { timeout: 600_000 }, () => {
   before(async () => {
     browser = await chromium.launch({ channel: config.E2E_BROWSER_CHANNEL, headless: true });
     page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -49,12 +65,17 @@ describe('a biller takes a report from import to an 837P file', { timeout: 600_0
       .getByRole('status')
       .filter({ hasText: `${pcr}.xml received` })
       .waitFor();
-    await page.getByRole('link', { name: `${pcr}.xml` }).click();
+    await page.getByRole('link', { name: `Open import ${pcr}.xml` }).click();
     await heading(`${pcr}.xml`).waitFor();
     await page.getByRole('row').filter({ hasText: pcr }).waitFor();
   });
 
-  it('works every task the report raises until its claim opens', async () => {
+  it('opens a draft claim while the PCR is worked', async () => {
+    await waitForClaim('draft');
+    await claimRow().getByText('Draft').waitFor();
+  });
+
+  it('works every task, including the forced claim review, until the claim is ready', async () => {
     for (let i = 0; i < 60; i++) {
       await go('/tasks');
       await heading('Tasks').waitFor();
@@ -62,8 +83,11 @@ describe('a biller takes a report from import to an 837P file', { timeout: 600_0
       const caughtUp = page.getByRole('heading', { name: "You're All Caught Up" });
       await start.or(caughtUp).first().waitFor();
       if (await caughtUp.isVisible()) {
-        await go(`/claims?q=${pcr}&view=all`);
-        await page.getByRole('row').or(page.getByText('No claims match')).first().waitFor();
+        await claimsWith('ready');
+        await claimRow()
+          .or(page.getByRole('heading', { name: 'No Matching Claims' }))
+          .first()
+          .waitFor();
         if (await claimLink().count()) return;
         await page.waitForTimeout(3_000);
         continue;
@@ -87,28 +111,25 @@ describe('a biller takes a report from import to an 837P file', { timeout: 600_0
       await decision.locator('form > div').last().getByRole('button').first().click();
       await page.getByRole('heading', { name: 'Done' }).waitFor();
     }
-    assert.fail('the claim never opened');
+    assert.fail('the claim never became ready to submit');
   });
 
-  it('finds the claim by PCR and creates an 837P file from Ready to submit', async () => {
-    await go(`/claims?view=ready&q=${pcr}`);
-    const row = page.getByRole('row').filter({ hasText: pcr });
-    await row.waitFor();
-    await row.getByText('Ready').waitFor();
-    await page.getByRole('button', { name: /Create 837P file \(\d+\)/ }).click();
-    await page.getByText(/837P file #\d+ holds/).waitFor();
-    await go(`/claims?view=ready&q=${pcr}`);
-    await page.getByRole('heading', { name: 'Nothing to Submit' }).waitFor();
-    await go('/claims/files');
-    await heading('837P Files').waitFor();
-    await page
-      .getByRole('link', { name: /Download #\d+/ })
-      .first()
-      .waitFor();
+  it('submits the claim from its own page and lists its files there', async () => {
+    await claimsWith('ready');
+    await claimLink().click();
+    await heading(/^Claim #\d+$/).waitFor();
+    await page.getByText(/^Encounter E2E-\S+$/).waitFor();
+    await page.getByRole('button', { name: 'Create 837P file' }).click();
+    await page.getByText(/837P file #\d+ is ready/).waitFor();
+    const files = page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'Files' }) });
+    await files.getByRole('link', { name: /837P file #\d+/ }).waitFor();
+    await files.getByRole('link', { name: /NEMSIS XML/ }).waitFor();
+    await waitForClaim('submitted');
   });
 
-  it('shows the submission and its file on the claim history tab', async () => {
-    await go(`/claims?q=${pcr}&view=all`);
+  it('shows the submission on the claim history tab', async () => {
     await claimLink().click();
     await page.getByRole('link', { name: /History/ }).click();
     await page.getByRole('link', { name: /837P file #\d+/ }).waitFor();
@@ -121,7 +142,7 @@ describe('a biller takes a report from import to an 837P file', { timeout: 600_0
     await page.getByLabel('Last name').fill('kli');
     await page.getByLabel('Birth date').fill('1941-05-22');
     await page.getByRole('button', { name: 'Search' }).click();
-    await page.getByRole('link', { name: 'Kline, Dorothy' }).click();
+    await page.getByRole('link', { name: 'Open patient Kline, Dorothy' }).click();
     await page.getByRole('heading', { name: 'Details' }).waitFor();
   });
 

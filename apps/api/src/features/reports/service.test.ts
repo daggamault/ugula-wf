@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import { createReportService, rangeOf } from './service.ts';
 
 const now = new Date('2026-10-23T15:00:00Z');

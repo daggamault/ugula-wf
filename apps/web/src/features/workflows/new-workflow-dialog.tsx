@@ -11,20 +11,21 @@ import type { GraphKind, WorkflowsClient } from './client.ts';
 
 export type NewWorkflowDialogProps = {
   client: WorkflowsClient;
+  kind: GraphKind;
   open: boolean;
   onClose: () => void;
 };
 
 const KINDS = [
   { value: 'workflow', label: 'Workflow' },
-  { value: 'node', label: 'Custom node' }
+  { value: 'node', label: 'Building block' }
 ] as const;
 
-export const NewWorkflowDialog = ({ client, open, onClose }: NewWorkflowDialogProps) => {
+export const NewWorkflowDialog = ({ client, kind, open, onClose }: NewWorkflowDialogProps) => {
   const [form, setForm] = useState({
     key: '',
     name: '',
-    kind: 'workflow' as GraphKind,
+    kind,
     description: ''
   });
   const [error, setError] = useState('');
@@ -47,8 +48,8 @@ export const NewWorkflowDialog = ({ client, open, onClose }: NewWorkflowDialogPr
   return (
     <Dialog
       open={open}
-      title="New Graph"
-      description="Start a workflow, or a custom node other graphs can use."
+      title="New Workflow"
+      description="Start a workflow, or a building block other workflows can use."
       onClose={onClose}
     >
       <form onSubmit={submit} className="flex flex-col gap-6">
@@ -66,7 +67,7 @@ export const NewWorkflowDialog = ({ client, open, onClose }: NewWorkflowDialogPr
             required
             isMonospace
             placeholder="billing.match-patient"
-            hint="Dotted lowercase; used to reference this graph as a node."
+            hint="Dotted lowercase; used to reference this building block from other workflows."
             value={form.key}
             onChange={(e) => setForm({ ...form, key: e.target.value })}
           />

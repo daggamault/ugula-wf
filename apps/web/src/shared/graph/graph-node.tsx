@@ -65,14 +65,14 @@ export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
   return (
     <article
       aria-label={title}
-      className={`bg-surface text-surface-fg w-60 cursor-pointer rounded-xl border-2 text-left shadow-sm transition-shadow ${statusClasses[status]} ${selected ? 'ring-primary shadow-lg ring-2' : ''}`}
+      className={`bg-surface text-surface-fg w-60 cursor-pointer rounded-xl border-2 text-left transition-shadow ${statusClasses[status]} ${selected ? 'ring-primary ring-2' : ''}`}
     >
       <header className="border-border bg-canvas flex flex-col gap-0.5 rounded-t-[10px] border-b px-3 py-1.5">
         <span className="flex items-center justify-between gap-3">
           <span className="truncate text-sm font-semibold">{title}</span>
           {opens ? (
             <span className="text-primary shrink-0 text-[10px] font-semibold tracking-wide uppercase">
-              {opens === 'graph' ? 'Sub-graph' : 'Workflow'}
+              {opens === 'graph' ? 'Building block' : 'Workflow'}
             </span>
           ) : null}
         </span>

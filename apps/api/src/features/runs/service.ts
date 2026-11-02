@@ -1,5 +1,7 @@
 import { type Db, findRunGraphs, sqlExecutor, TERMINAL_RUN_STATUSES } from '@ugula/db';
-import { cancel, enqueueRuns, type JobBoss } from '@ugula/jobs';
+import { cancel, enqueueRuns, type RunQueueClient } from '@ugula/run-queue';
+import type { BlobStore } from '@ugula/storage';
+import { type UploadedFile, uploadKey } from '../../shared/files.ts';
 import { fail, ok } from '../../shared/result.ts';
 import { signalRuns, startRun } from '../../shared/runs.ts';
 import {
@@ -17,12 +19,27 @@ import {
 
 export type RunServiceDeps = {
   db: Db;
-  boss: JobBoss;
+  boss: RunQueueClient;
+  blobs: Pick<BlobStore, 'putBytes'>;
+  maxBytes: number;
 };
 
 const notFound = fail('not_found', 'Run not found');
 
-export const createRunService = ({ db, boss }: RunServiceDeps) => ({
+export const createRunService = ({ db, boss, blobs, maxBytes }: RunServiceDeps) => ({
+  uploadFile: async (tenantId: string, file: UploadedFile) => {
+    if (!file.bytes.byteLength) return fail('invalid', 'The file is empty');
+    if (file.bytes.byteLength > maxBytes) {
+      return fail('invalid', `The file is larger than ${maxBytes} bytes`);
+    }
+    const ref = await blobs.putBytes(
+      uploadKey(tenantId, file.name, 'uploads/'),
+      file.bytes,
+      file.type || 'application/octet-stream'
+    );
+    return ok({ file: { bucket: ref.bucket, key: ref.key }, name: file.name });
+  },
+
   list: async (tenantId: string, filters: RunFilters) => ok(await listRuns(db, tenantId, filters)),
 
   find: async (tenantId: string, id: string) => {

@@ -8,7 +8,8 @@ import { NativeSelect } from './select.tsx';
 export type PaginationProps = {
   label: string;
   total: number;
-  state: Pick<TableState<string>, 'page' | 'pageSize' | 'pageHref' | 'sizeHref'>;
+  state: Pick<TableState<string>, 'page' | 'pageSize' | 'pageHref'> &
+    Partial<Pick<TableState<string>, 'sizeHref'>>;
 };
 
 export const pageCount = (total: number, pageSize: number) =>
@@ -55,18 +56,20 @@ export const Pagination = ({ label, total, state }: PaginationProps) => {
         {rangeText(page, pageSize, total)}
         {pages > 1 ? ` · page ${page} of ${pages}` : ''}
       </p>
-      <div className="flex flex-wrap items-center gap-3">
-        <label htmlFor={sizeId} className="text-surface-fg-muted flex items-center gap-2">
-          Rows
-          <span className="w-20">
-            <NativeSelect
-              id={sizeId}
-              value={String(pageSize)}
-              options={PAGE_SIZES.map((s) => ({ value: String(s), label: String(s) }))}
-              onChange={(e) => navigate(sizeHref(Number(e.target.value)))}
-            />
-          </span>
-        </label>
+      <div className="flex flex-wrap items-center gap-2">
+        {sizeHref ? (
+          <label htmlFor={sizeId} className="text-surface-fg-muted flex items-center gap-2">
+            Rows
+            <span className="w-20">
+              <NativeSelect
+                id={sizeId}
+                value={String(pageSize)}
+                options={PAGE_SIZES.map((s) => ({ value: String(s), label: String(s) }))}
+                onChange={(e) => navigate(sizeHref(Number(e.target.value)))}
+              />
+            </span>
+          </label>
+        ) : null}
         <div className="flex flex-1 justify-end gap-2 sm:flex-none">
           {page > 1 ? (
             <ButtonLink

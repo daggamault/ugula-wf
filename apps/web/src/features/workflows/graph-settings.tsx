@@ -15,8 +15,10 @@ import { Button } from '../../shared/ui/button.tsx';
 import { Dialog } from '../../shared/ui/dialog.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
+import type { GraphKind } from './client.ts';
 
 export type GraphSettingsProps = {
+  kind: GraphKind;
   open: boolean;
   def: GraphDef;
   editable: boolean;
@@ -24,7 +26,8 @@ export type GraphSettingsProps = {
   onClose: () => void;
 };
 
-const rowClass = 'grid grid-cols-1 items-start gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end';
+const rowClass =
+  'grid grid-cols-1 items-start gap-x-4 gap-y-5 sm:grid-cols-[1fr_1fr_auto] sm:items-end';
 
 const names = (text: string) =>
   text
@@ -41,9 +44,9 @@ const Section = ({
   description: string;
   children: ReactNode;
 }) => (
-  <section className="border-border flex flex-col gap-3 border-t pt-5 first:border-t-0 first:pt-0">
-    <header className="flex flex-col gap-0.5">
-      <h3 className="text-sm font-bold">{title}</h3>
+  <section className="border-border flex flex-col gap-4 border-t pt-5 first:border-t-0 first:pt-0">
+    <header className="flex flex-col gap-1">
+      <h3 className="text-base font-bold">{title}</h3>
       <p className="text-surface-fg-muted text-xs">{description}</p>
     </header>
     {children}
@@ -157,10 +160,10 @@ const VariablesEditor = ({
   return (
     <Section
       title="Variables"
-      description="Values the graph keeps while it runs. Read and change them with Get and Set nodes."
+      description="Values kept while it runs. Read and change them with Get and Set nodes."
     >
       {variables.map((variable, i) => (
-        <div key={`var-${i}`} className="border-border flex flex-col gap-2 rounded-lg border p-3">
+        <div key={`var-${i}`} className="border-border flex flex-col gap-4 rounded-xl border p-4">
           <div className={rowClass}>
             <Input
               id={`var-${i}-name`}
@@ -211,7 +214,14 @@ const VariablesEditor = ({
   );
 };
 
-export const GraphSettings = ({ open, def, editable, onChange, onClose }: GraphSettingsProps) => {
+export const GraphSettings = ({
+  kind,
+  open,
+  def,
+  editable,
+  onChange,
+  onClose
+}: GraphSettingsProps) => {
   const { signature } = def;
   const setSignature = (patch: Partial<GraphDef['signature']>) =>
     onChange(withSignature(def, { signature: { ...signature, ...patch } }));
@@ -219,19 +229,16 @@ export const GraphSettings = ({ open, def, editable, onChange, onClose }: GraphS
     <Dialog
       open={open}
       isWide
-      title="Graph Settings"
-      description="What this graph takes in, what it hands back, and what it keeps while it runs. Graphs that use this one see these as the pins of its node."
+      title={kind === 'workflow' ? 'Workflow Settings' : 'Building Block Settings'}
+      description="What this takes in, what it hands back, and what it keeps while it runs. Workflows that use it see these as the pins of its node."
       onClose={onClose}
     >
       <fieldset
         disabled={!editable}
         className="flex max-h-[65dvh] flex-col gap-5 overflow-y-auto pr-1"
       >
-        <Section
-          title="Paths"
-          description="Named ways into and out of the graph. Most graphs have one of each."
-        >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Section title="Paths" description="Named ways in and out. Most have one of each.">
+          <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
             <Input
               id="exec-in"
               label="Ways in"
@@ -251,7 +258,7 @@ export const GraphSettings = ({ open, def, editable, onChange, onClose }: GraphS
         <PinsEditor
           id="in"
           title="Inputs"
-          description="Values passed in when the graph starts. Types look like string, number, list<string> or object{id: string}."
+          description="Values passed in when it starts. Types look like string, number, list<string> or object{id: string}."
           noun="input"
           editable={editable}
           pins={signature.inputs}
@@ -260,7 +267,7 @@ export const GraphSettings = ({ open, def, editable, onChange, onClose }: GraphS
         <PinsEditor
           id="out"
           title="Outputs"
-          description="Values the graph hands back when it finishes."
+          description="Values it hands back when it finishes."
           noun="output"
           editable={editable}
           pins={signature.outputs}

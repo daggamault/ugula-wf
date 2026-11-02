@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
-import type { LiveEvent } from '@ugula/events';
+import { createRecordingDb } from '@ugula/db/testing';
+import type { LiveEvent } from '@ugula/live';
 import { createAnnouncer } from './live.ts';
 
 describe('createAnnouncer', () => {

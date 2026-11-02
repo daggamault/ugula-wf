@@ -15,23 +15,26 @@ const solidClasses: Readonly<Record<Intent, string>> = {
   primary: 'bg-primary text-primary-fg not-aria-disabled:hover:brightness-110',
   success: 'bg-success text-canvas not-aria-disabled:hover:brightness-110',
   info: 'bg-info text-canvas not-aria-disabled:hover:brightness-110',
-  warning:
-    'border-warning/30 bg-warning/15 text-warning-fg not-aria-disabled:hover:bg-warning/25 border',
+  warning: 'bg-warning text-on-warning not-aria-disabled:hover:brightness-105',
   danger: 'bg-danger text-canvas not-aria-disabled:hover:brightness-110'
 };
 
 const outlineClasses: Readonly<Record<Intent, string>> = {
-  primary:
-    'border-border bg-surface text-surface-fg not-aria-disabled:hover:bg-surface-fg/6 border',
-  success: 'border-success/40 text-success not-aria-disabled:hover:bg-success/10 border',
-  info: 'border-info/40 text-info not-aria-disabled:hover:bg-info/10 border',
-  warning: 'border-warning/50 text-warning-fg not-aria-disabled:hover:bg-warning/10 border',
-  danger: 'border-danger/40 text-danger not-aria-disabled:hover:bg-danger/10 border'
+  primary: 'border-border text-surface-fg not-aria-disabled:hover:border-surface-fg/25',
+  success: 'border-success/40 text-success not-aria-disabled:hover:border-success/70',
+  info: 'border-info/40 text-info not-aria-disabled:hover:border-info/70',
+  warning: 'border-warning/60 text-warning-fg not-aria-disabled:hover:border-warning',
+  danger: 'border-danger/40 text-danger not-aria-disabled:hover:border-danger/70'
+};
+
+const variantClasses: Readonly<Record<ButtonVariant, string>> = {
+  solid: '',
+  outline: 'bg-surface not-aria-disabled:hover:bg-surface-hover border'
 };
 
 const sizeClasses: Readonly<Record<ButtonSize, string>> = {
-  md: 'min-h-10 px-4 pointer-coarse:min-h-11',
-  sm: 'min-h-8 px-3 pointer-coarse:min-h-10'
+  md: 'h-10 px-4 pointer-coarse:h-11',
+  sm: 'h-8 px-3 pointer-coarse:h-10'
 };
 
 type ButtonStyle = {
@@ -46,9 +49,10 @@ export const buttonClasses = ({
   size = 'md'
 }: ButtonStyle = {}): string =>
   classNamesOf(
-    'relative inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold whitespace-nowrap not-aria-disabled:active:scale-[0.97] aria-disabled:not-aria-busy:opacity-50',
+    'relative inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold whitespace-nowrap not-aria-disabled:active:scale-[0.98] aria-disabled:not-aria-busy:opacity-50',
     interactiveClasses,
     sizeClasses[size],
+    variantClasses[variant],
     (variant === 'solid' ? solidClasses : outlineClasses)[intent]
   );
 

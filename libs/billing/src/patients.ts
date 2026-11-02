@@ -1,5 +1,6 @@
 import { usState, zipCode } from './geo.ts';
 import { firstNameLikeness, jaroWinkler, NICKNAME_LIKENESS, nameKey } from './names.ts';
+import { recordOf, textOrNull } from './values.ts';
 
 export type Sex = 'F' | 'M' | 'U';
 
@@ -31,8 +32,6 @@ export type MatchDecision =
   | { kind: 'unmatched' }
   | { kind: 'review'; reason: string; candidates: Patient[] };
 
-const text = (x: unknown) => (typeof x === 'string' && x.trim() ? x.trim() : null);
-
 const SEX_CODES: Record<string, Sex> = {
   F: 'F',
   M: 'M',
@@ -46,17 +45,17 @@ const SEX_CODES: Record<string, Sex> = {
 };
 
 export const sexOf = (x: unknown): Sex | null => {
-  const code = text(x)?.toUpperCase();
+  const code = textOrNull(x)?.toUpperCase();
   return code && Object.hasOwn(SEX_CODES, code) ? (SEX_CODES[code] ?? null) : null;
 };
 
 const cityName = (x: unknown) => {
-  const name = text(x);
+  const name = textOrNull(x);
   return name && !/^\d+$/.test(name) ? name : null;
 };
 
 export const readAddress = (r: Record<string, unknown>): Address => ({
-  addressLine: text(r.addressLine),
+  addressLine: textOrNull(r.addressLine),
   city: cityName(r.city),
   state: usState(r.state),
   postalCode: zipCode(r.postalCode)
@@ -70,12 +69,11 @@ const isCalendarDate = (s: string) => {
 };
 
 export const readDemographics = (x: unknown): Demographics => {
-  const r =
-    x !== null && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : {};
-  const birthDate = text(r.birthDate);
+  const r = recordOf(x);
+  const birthDate = textOrNull(r.birthDate);
   return {
-    firstName: text(r.firstName),
-    lastName: text(r.lastName),
+    firstName: textOrNull(r.firstName),
+    lastName: textOrNull(r.lastName),
     birthDate: birthDate && isCalendarDate(birthDate) ? birthDate : null,
     gender: sexOf(r.gender),
     ...readAddress(r)

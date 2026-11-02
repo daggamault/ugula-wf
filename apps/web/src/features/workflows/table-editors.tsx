@@ -93,7 +93,7 @@ export const LookupTableEditor = ({ nodeId, config, editable, onConfig }: TableE
         {table.rows.map((row, i) => (
           <li
             key={`${nodeId}-row-${i.toString()}`}
-            className="border-border grid grid-cols-2 items-end gap-2 rounded-lg border p-3"
+            className="border-border grid grid-cols-2 items-end gap-x-4 gap-y-5 rounded-xl border p-4"
           >
             <Input
               id={`${nodeId}-key-${i}`}
@@ -170,7 +170,7 @@ const ColumnsEditor = ({
         {columns.map((c, i) => (
           <li
             key={`${nodeId}-${side}-${i.toString()}`}
-            className="grid grid-cols-2 items-end gap-2"
+            className="grid grid-cols-2 items-end gap-x-4 gap-y-5"
           >
             <Input
               id={`${nodeId}-${side}-${i}-name`}
@@ -253,7 +253,7 @@ const RuleEditor = ({
   const id = `${nodeId}-rule-${index}`;
   const name = rule.label || `rule ${index + 1}`;
   return (
-    <li className="border-border flex flex-col gap-3 rounded-lg border p-3">
+    <li className="border-border flex flex-col gap-4 rounded-xl border p-4">
       <span className="flex items-end gap-2">
         <span className="min-w-0 flex-1">
           <Input
@@ -285,7 +285,7 @@ const RuleEditor = ({
         const condition = rule.when[c.name];
         const op = condition?.op ?? '';
         return (
-          <span key={c.name} className="grid grid-cols-2 items-end gap-2">
+          <span key={c.name} className="grid grid-cols-2 items-end gap-x-4 gap-y-5">
             <Select
               id={`${id}-${c.name}-op`}
               label={`When ${c.label ?? c.name}`}

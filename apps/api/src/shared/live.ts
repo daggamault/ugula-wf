@@ -1,4 +1,4 @@
-import type { LiveEvent } from '@ugula/events';
+import type { LiveEvent } from '@ugula/live';
 import type { Result } from './result.ts';
 
 export type Announce = (tenantId: string, event: LiveEvent) => Promise<void>;

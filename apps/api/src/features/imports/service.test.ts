@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
-import type { JobBoss } from '@ugula/jobs';
-import { hashPassword } from '@ugula/passwords';
+import { hashPassword } from '@ugula/auth';
+import { createRecordingDb } from '@ugula/db/testing';
+import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
 import { recordAnnouncements } from '../../shared/testing.ts';
-import { createImportService, safeName, sftpPrefix } from './service.ts';
+import { createImportService, sftpPrefix } from './service.ts';
 
 const sftp = {
   bucket: 'ugula',
@@ -20,6 +20,9 @@ const setup = ({
 } = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.includes('from "tenants"')) return tenant ? [tenant] : [];
+    if (q.sql.includes('from "nemsis_elements"'))
+      return [{ element: 'eRecord.01', name: 'Patient Care Report Number' }];
+    if (q.sql.includes('from "nemsis_codes"')) return [];
     if (q.sql.includes('from "import_reports"')) {
       return q.parameters.includes('rep-1')
         ? [
@@ -40,7 +43,7 @@ const setup = ({
   });
   const stored: string[] = [];
   const jobs: unknown[] = [];
-  const boss: JobBoss = { insert: async (_n, batch) => void jobs.push(...batch) };
+  const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
   const { announce, events: announced } = recordAnnouncements();
   const service = createImportService({
     db,
@@ -110,18 +113,17 @@ describe('import service uploads', () => {
           created_at: '2026-10-01T00:00:00Z'
         },
         data: { eRecord: { 'eRecord.01': 'PCR-1' } },
-        xml: '<PatientCareReport>\n  <eRecord>\n    <eRecord.01>PCR-1</eRecord.01>\n  </eRecord>\n</PatientCareReport>'
+        xml: '<PatientCareReport>\n  <eRecord>\n    <eRecord.01>PCR-1</eRecord.01>\n  </eRecord>\n</PatientCareReport>',
+        dictionary: { elements: { 'eRecord.01': 'Patient Care Report Number' }, codes: {} }
       }
     });
+    const codes = queries.find((q) => q.sql.includes('from "nemsis_codes"'));
+    assert.ok(codes?.sql.includes('("list", "code") in (($1, $2))'));
+    assert.deepEqual(codes?.parameters, ['eRecord.01', 'PCR-1']);
     const lookup = queries.find((q) => q.sql.includes('from "import_reports"'));
     assert.ok(lookup?.sql.endsWith('where "r"."id" = $1 and "i"."tenant_id" = $2'));
     const missing = await service.report('t-1', 'rep-9');
     assert.equal(!missing.ok && missing.failure.code, 'not_found');
-  });
-
-  it('sanitizes file names for storage keys', () => {
-    assert.equal(safeName('../../etc/pass wd.xml'), 'etc_pass_wd.xml');
-    assert.equal(safeName('...'), 'upload');
   });
 });
 

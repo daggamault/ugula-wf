@@ -1,5 +1,6 @@
 import {
   CLAIM_EVENT_KINDS,
+  CLAIM_STATUSES,
   COVERAGE_EVENT_KINDS,
   DIAGNOSIS_LIMIT,
   HCPCS_PATTERN,
@@ -26,6 +27,7 @@ export const buildClaimsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('claims')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
+    .addColumn('number', 'integer', (col) => col.notNull().unique().generatedAlwaysAsIdentity())
     .addColumn('tenant_id', 'uuid', (col) =>
       col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
     )
@@ -36,10 +38,10 @@ export const buildClaimsTable = (db: Kysely<Database>) =>
       col.unique().references('import_reports.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('pcr_number', 'text')
-    .addColumn('level', 'text', (col) => col.notNull())
-    .addColumn('emergency', 'boolean', (col) => col.notNull())
+    .addColumn('level', 'text')
+    .addColumn('emergency', 'boolean')
     .addColumn('loaded_miles', 'numeric')
-    .addColumn('total_cents', 'integer', (col) => col.notNull())
+    .addColumn('total_cents', 'integer', (col) => col.notNull().defaultTo(0))
     .addColumn('service_date', 'date')
     .addColumn('origin_code', 'text')
     .addColumn('destination_code', 'text')
@@ -52,7 +54,7 @@ export const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('destination_city', 'text')
     .addColumn('destination_state', 'text')
     .addColumn('destination_postal_code', 'text')
-    .addColumn('status', 'text', (col) => col.notNull().defaultTo('open'))
+    .addColumn('status', 'text', (col) => col.notNull().defaultTo('draft'))
     .addColumn('cycle_run_id', 'uuid', (col) =>
       col.references('workflow_runs.id').onDelete('set null').onUpdate('cascade')
     )
@@ -80,9 +82,10 @@ export const buildClaimsTable = (db: Kysely<Database>) =>
       'claims_destination_postal_code_check',
       sql`destination_postal_code ~ ${sql.lit(POSTAL_CODE)}`
     )
+    .addCheckConstraint('claims_status_check', sql`status in (${list(CLAIM_STATUSES)})`)
     .addCheckConstraint(
-      'claims_status_check',
-      sql`status in ('open', 'paid', 'written_off', 'collections')`
+      'claims_service_check',
+      sql`status = 'draft' or status = 'void' or (level is not null and emergency is not null)`
     );
 
 export const buildClaimLinesTable = (db: Kysely<Database>) =>

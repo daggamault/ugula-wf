@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readCookie, SESSION_COOKIE, type SessionStore } from '@ugula/sessions';
+import { readCookie, SESSION_COOKIE, type SessionStore } from '@ugula/auth';
 import { corsHeaders, sendJson } from '../../shared/http.ts';
 import type { Hub } from '../../shared/hub.ts';
 

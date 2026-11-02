@@ -17,18 +17,21 @@ describe('ImportDrop', () => {
     assert.equal(carriesFiles({ dataTransfer: null }), false);
   });
 
-  it('stays out of the way until a file is dragged over the window', () => {
+  it('stays hidden and out of the way until a file is dragged over the window', () => {
     const html = renderToStaticMarkup(
       createElement(ImportDrop, {
         client: { upload: async () => ({ runId: 'r', file: {} }) } as never
       })
     );
-    assert.equal(html, '');
+    assert.ok(html.includes('opacity-0') && html.includes('pointer-events-none'));
+    assert.ok(!html.includes('data-visible="'));
   });
 
   it('explains what dropping does', () => {
-    const html = renderToStaticMarkup(createElement(DropOverlay));
+    const html = renderToStaticMarkup(createElement(DropOverlay, { isVisible: true }));
     assert.ok(html.includes('Drop NEMSIS files to import'));
+    assert.ok(html.includes('data-visible="true"') && html.includes('inset-0'));
+    assert.ok(html.includes('transition-[opacity,backdrop-filter]'));
     assert.ok(html.includes('aria-hidden="true"'));
   });
 });

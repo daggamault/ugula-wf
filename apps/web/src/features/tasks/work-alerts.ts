@@ -25,7 +25,7 @@ export const workToast = ({ queue, added }: NewWork) => {
     isRecorded: false,
     intent: 'info' as const,
     title: `${added} new ${added === 1 ? 'task' : 'tasks'} in ${label}`,
-    action: { label: `Open ${label}`, to: `/tasks?queue=${encodeURIComponent(queue)}` }
+    action: { label: `Open ${label}`, to: `/tasks?type=${encodeURIComponent(queue)}` }
   };
 };
 

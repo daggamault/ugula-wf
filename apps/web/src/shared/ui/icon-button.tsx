@@ -8,7 +8,7 @@ import { interactiveClasses } from './interactive.ts';
 import { Tooltip, type TooltipSide } from './tooltip.tsx';
 
 const iconButtonClasses = classNamesOf(
-  'text-surface-fg-muted grid size-9 shrink-0 place-items-center rounded-lg not-aria-disabled:active:scale-[0.97] aria-disabled:opacity-50 pointer-coarse:size-11',
+  'text-surface-fg-muted grid size-9 shrink-0 place-items-center rounded-lg not-aria-disabled:active:scale-[0.98] aria-disabled:opacity-50 pointer-coarse:size-11',
   interactiveClasses
 );
 

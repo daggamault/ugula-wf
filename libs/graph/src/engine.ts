@@ -1,3 +1,4 @@
+import { checkExit, checkInput, checkOutputs } from './checks.ts';
 import { type CompiledGraph, ENTRY_TYPE, portKey, RETURN_TYPE, refKey } from './compile.ts';
 import { fail, messageOf } from './errors.ts';
 import { evaluateExpr } from './expr.ts';
@@ -14,7 +15,6 @@ import type {
   NodeInstance,
   NodeRef,
   NodeResult,
-  PinSpec,
   RunState,
   Scope,
   Signature,
@@ -85,31 +85,6 @@ const locate = (err: unknown, scope: Scope, node: string) => {
 const newMemo = (): Memo => ({ done: new Map(), active: new Set() });
 
 const depthOf = (scope: Scope) => scope.path.split('/').length - 1;
-
-const checked = (owner: string, spec: PinSpec, value: Json): Json => {
-  const name = spec.label ?? spec.name;
-  if (value === null) {
-    return spec.optional ? null : fail(`Input "${name}" of "${owner}" is required`);
-  }
-  const err = checkValue(spec.type, value);
-  return err ? fail(`Input "${name}" of "${owner}": ${err}`) : value;
-};
-
-const checkOutputs = (inst: NodeInstance, sig: Signature, outputs: Values) => {
-  for (const [name, value] of Object.entries(outputs)) {
-    const spec =
-      sig.outputs.find((p) => p.name === name) ??
-      fail(`"${labelOf(inst)}" produced unknown output "${name}"`);
-    const err = checkValue(spec.type, value);
-    if (err) fail(`Output "${name}" of "${labelOf(inst)}": ${err}`);
-  }
-};
-
-const checkPin = (inst: NodeInstance, sig: Signature, res: NodeResult) => {
-  if (res.type !== 'suspend' && res.pin !== null && !sig.execOut.includes(res.pin)) {
-    fail(`"${labelOf(inst)}" fired unknown exec output "${res.pin}"`);
-  }
-};
 
 export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): Engine => {
   const registry = createRegistry(nodes, graphs);
@@ -227,7 +202,7 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
             ? evaluateExpr(binding.expr, scope.vars, { now: s.now })
             : binding.value
           : (spec.default ?? null);
-      const value = checked(labelOf(inst), spec, raw);
+      const value = checkInput(labelOf(inst), spec, raw);
       values[name] = value;
       return value;
     };
@@ -304,7 +279,7 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
           ctx: { runId: s.runId, key: `${s.runId}:${scope.id}:${inst.id}`, now: s.now }
         });
         if (res.type !== 'next') fail(`Pure node "${labelOf(inst)}" cannot ${res.type}`);
-        checkOutputs(inst, sig, res.outputs);
+        checkOutputs(labelOf(inst), sig, res.outputs);
         outputs = res.outputs;
       }
       record(s, scope, inst, {
@@ -452,8 +427,8 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
           now: s.now
         }
       });
-      checkOutputs(inst, sig, res.outputs);
-      checkPin(inst, sig, res);
+      checkOutputs(labelOf(inst), sig, res.outputs);
+      checkExit(labelOf(inst), sig, res);
     } catch (err) {
       throw traced(s, scope, inst, err, event, r.values, t0);
     }
@@ -596,7 +571,10 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
       result: null
     };
     const values = Object.fromEntries(
-      sig.inputs.map((p) => [p.name, checked(refKey(ref), p, inputs[p.name] ?? p.default ?? null)])
+      sig.inputs.map((p) => [
+        p.name,
+        checkInput(refKey(ref), p, inputs[p.name] ?? p.default ?? null)
+      ])
     );
     const root = openScope({ state, now }, ref, g, null, null, values);
     state.scopes[root.id] = root;
@@ -683,7 +661,7 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
     if (pin !== null && callPins(inst).includes(pin)) {
       throw new Error(`"${labelOf(inst)}" cannot be skipped into "${pin}"`);
     }
-    checkOutputs(inst, sig, outputs);
+    checkOutputs(labelOf(inst), sig, outputs);
     scope.outputs[inst.id] = { ...scope.outputs[inst.id], ...outputs };
     delete scope.attempts[inst.id];
     state.cursor = follow(g, scope.id, inst.id, pin);

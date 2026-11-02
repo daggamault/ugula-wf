@@ -8,8 +8,10 @@ Ugula is a durable, visual workflow engine (think Unreal Blueprints meets n8n) w
 
 - **Graphs:** A workflow is a graph of nodes joined by **exec** wires (control flow) and **data** wires (typed values). Graphs are versioned and published; any graph can call another as a node.
 - **Durable runs:** Runs persist their state in Postgres after every step, so they survive restarts. A run can suspend for days while it waits on a human task, a timer, a signal (e.g. "this claim changed"), or child workflows, then resume where it left off. Signals are counted, so a run that was busy when one arrived still sees it when it next waits.
+- **Starting runs:** A published workflow can be run from the browser with a form for its inputs. File inputs (`{ bucket, key }`) are an upload button: the file is stored under the agency's import area and the run receives its reference.
 - **Human tasks:** Task nodes create tasks of a type (patient matching, PCR review, follow-ups, collections). Billers see one task list filtered by type and assignee; completing a task resumes its run on the chosen outcome.
 - **Reliability:** Workers lease runs with fencing tokens, a sweeper recovers stalled runs, and transient failures retry while real faults stop the run for inspection and retry from the UI.
+- **Scaling:** Workers scale horizontally. Postgres LISTEN/NOTIFY wakes an idle worker the moment a run is queued. Each worker claims runs only while it has a free slot (`WORKFLOW_CONCURRENCY`) and its event loop and memory are under their limits; over a limit it finishes what it holds and claims nothing new until load falls back. Language-model calls share one cluster-wide limit (`COMPLETIONS_CONCURRENCY`), held as expiring leases in Redis, so adding workers never overloads the model server.
 - **Separation:** The engine and its standard library (`libs/graph`) know nothing about billing. NEMSIS and billing nodes and models live in `libs/nemsis` and `libs/billing` and reach the database only through ports the worker implements.
 
 ### Building Blocks
@@ -27,38 +29,40 @@ Workflows are built from small, general nodes, so agencies can change billing lo
 
 `billing.ingest-nemsis` starts one **Encounter to Claim** run per report. That run is made of smaller graphs, each one an override point:
 
-1. **Import:** NEMSIS 3.4 or 3.5 XML arrives by upload or SFTP and is split into one run per patient care report (PCR), read as a typed report. NEMSIS records cities as USGS GNIS feature codes; the import names them from a `gnis_places` table the base seed loads, and keeps the code alongside.
+1. **Import:** NEMSIS 3.4 or 3.5 XML arrives by upload or SFTP and is split into one run per patient care report (PCR), read as a typed report. NEMSIS records cities as USGS GNIS feature codes; the import names them from a `gnis_places` table the base seed loads, and keeps the code alongside. Element names and code descriptions come from `nemsis_elements` and `nemsis_codes`, built from the official 3.5 schema, so a report shows `2205001 Emergency Response (Primary Response Area)` rather than a bare code.
 2. **Duplicates:** A PCR number is claimed once per agency. A re-imported or corrected report becomes a revision of its existing claim and goes to a biller instead of opening a second claim.
 3. **Trip type:** `Classify Trip` decides from the dispositions (`eDisposition.12`, or `.27`, `.28` and `.30` in 3.5) and the type of service whether the trip is an emergency, scheduled, treat-no-transport, refusal or no-claim trip. No-claim trips ask a biller before they are skipped.
-4. **Patient:** `Demographics From PCR` maps the report patient, which is matched to an existing patient only on the same last name, birth date and first name or nickname. Likely matches (similar names found by trigram search and Jaro-Winkler, birth date typos) go to a biller for review.
+4. **Patient:** `Demographics From PCR` maps the report patient, which is matched to an existing patient only on the same last name, birth date and first name or nickname. Likely matches (similar names found by trigram search and Jaro-Winkler, birth date typos) go to a biller for review. Once the patient is known, `Open Draft Claim` opens the claim as a **Draft**, so billers see it while the rest of the PCR is worked.
 5. **Payers:** `Coverages From PCR` maps the insurances, or Medicare or Medicaid from the payment method. Their names link to the payer directory by name or by a name a biller already matched. Other names are compared with the directory by embedding (pgvector), the local language model suggests the likely payer, and a biller confirms it once; that name then links automatically.
 6. **Service:** the local language model lists the medication doses and CMS ALS2 procedures the narrative documents. `Suggest Service` runs the graph for the trip type (`Emergency Trip`, `Scheduled Trip`, `Treat, No Transport`, `Refusal`), built on `Level of Service` and `Loaded Miles` decision tables over the level of care, CMS service level, coded IV/IO medications, response mode and odometers. A biller confirms it, or holds the report (then releases or voids it).
-7. **Claim:** `Map Charges` turns the confirmed service into HCPCS lines (a base rate by trip type, level and emergency, A0998 for no transport, and A0425 mileage in tenths of a mile), which are priced from fee schedules (the primary payer's prices first, then defaults). `Map Claim` and `Trip Details` fill the claim, including diagnoses and origin/destination modifiers. `Validate Claim` sends an incomplete claim to a biller instead of saving it.
-8. **Claim cycle:** Each claim gets its own long-running workflow that sleeps until a claim change or a deadline, and works through its payers in order. The waits and the number of statements are inputs of its `Claim Step` node.
-   - claims wait until they go out in an **837P batch** file, which billers create from the `Ready to submit` view on Claims (or from a single claim) and upload to their clearinghouse; past files are under `Claims → 837P files`. Each claim is mapped onto an 837P claim by the `Map 837P Claim` graph (subscriber, payer, ambulance conditions, modifiers, service lines), and the batch only serializes what it maps;
-   - a payer that hasn't answered in 30 days creates a follow-up task (resubmit, keep waiting, or move to the next payer);
-   - payer responses are recorded against the claim;
-   - once all payers are done, up to three **patient statements** (PDFs) go out 30 days apart;
-   - an unpaid balance after that goes to collections review; claims close as paid, written off, or sent to collections.
+7. **Claim:** `Map Charges` turns the confirmed service into HCPCS lines (a base rate by trip type, level and emergency, A0998 for no transport, and A0425 mileage in tenths of a mile), which are priced from fee schedules (the primary payer's prices first, then defaults). `Map Claim` and `Trip Details` fill the claim, including diagnoses and origin/destination modifiers. `Validate Claim` keeps an incomplete claim in Draft and sends it to a biller; a valid one is saved and moves to **Needs review**. A held or incomplete PCR that a biller voids closes its draft as **Void**.
+8. **Claim cycle:** Each claim gets its own long-running workflow that sleeps until a claim change or a deadline, and works through its payers in order. Its `Claim Step` node decides the next step from the claim's ledger and records it as the claim's status, so the status a biller filters by is always the step the claim is on. The waits and the number of statements are inputs of `Claim Step`.
+   - **Needs review:** before each payer, a `Review claim` task makes a biller check and approve the claim; nothing goes to a clearinghouse unreviewed, including resubmissions;
+   - **Ready to submit:** each claim is submitted on its own from its claim page, as an **837P file** the biller uploads to their clearinghouse (or marked submitted when it went out another way). The `Map 837P Claim` graph maps the claim (subscriber, payer, ambulance conditions, modifiers, service lines), and the file only serializes what it maps;
+   - **Submitted:** a payer that hasn't answered in 30 days creates a follow-up task (**Needs follow-up**: resubmit, keep waiting, or move to the next payer);
+   - **Reconcile payment:** a payer payment posted against the claim that leaves a balance opens a reconcile task (continue to the next payer or the patient, or write off the rest); a payment that settles the claim closes it as paid;
+   - **Patient balance:** once all payers are done, up to three patient statements (PDFs) go out 30 days apart;
+   - **Balance review:** an unpaid balance after that goes to a biller; claims close as **Paid**, **Written off**, **Sent to collections** or **Void**.
 9. **Admin:** Payers (the directory with the report names it has learned), Fees, and Settings (the agency's billing profile and clearinghouse IDs) drive the 837P files and statements.
-10. **Working it:** Billers work one Tasks list filtered by type and assignee; Claims has a `Ready to submit` view (a SQL filter over the ledger, so it scales with open claims) and each claim has Overview, Claim data and History tabs; Patients searches by name and birth date; each import lists what every report in the file became. New tasks, stuck runs and every message a biller sees are kept in the notification bell, stored per tenant and user so they follow the biller across devices.
-11. **Reports:** Every import, report, claim line, coverage, diagnosis and ledger event is a relational row, so A/R aging, monthly collections, payer performance and HCPCS charges are plain SQL, viewable on the Reports page and downloadable as CSV.
+10. **Working it:** Billers work one Tasks list filtered by type and assignee. Claims and patients get sequential numbers (`claims.number`, `patients.number`, identity columns shared across agencies), and the encounter number is the PCR number. Claims has a collapsible filter form for first and last name, birth date, any of the three numbers, and status (open claims by default), all in SQL; each claim has Overview, Claim data and History tabs, and its Files list the source encounter (NEMSIS XML), its 837P files and statements. Patients searches by name and birth date; each import lists what every PCR in the file became. New tasks, stuck runs and every message a biller sees are kept in the notification bell, stored per tenant and user so they follow the biller across devices.
+11. **Reports:** Every import, report, claim line, coverage, diagnosis and ledger event is a relational row, so A/R aging, monthly collections, payer performance and HCPCS charges are plain SQL. Reports lists them; each one opens an options page (dates of service, where the report uses them) and then a results page that pages at 100 rows, prints the current page as a black and gray document, and downloads as CSV.
 
 ## Layout
 
-| Path                                                                                                  | Purpose                                                                                       |
-| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `apps/api`                                                                                            | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, patients, notifications, reports   |
-| `apps/worker`                                                                                         | Executes workflow runs from the pg-boss queue and implements billing store ports              |
-| `apps/sse`                                                                                            | Pushes live run, task, claim and import updates over Server-Sent Events (via Redis)           |
-| `apps/web`                                                                                            | React app: tasks, claims, patients, imports, reports, workflows, runs, payers, fees, settings |
-| `libs/graph`                                                                                          | Workflow engine, expression language, and standard node library                               |
-| `libs/billing`                                                                                        | Billing domain: patient and payer matching, narrative reading, pricing, claim cycle, 837P     |
-| `libs/inference`                                                                                      | Clients for the local embeddings and structured-completions services                          |
-| `libs/nemsis`                                                                                         | NEMSIS XML parsing                                                                            |
-| `libs/db`, `libs/jobs`, `libs/blobs`, `libs/events`, `libs/sessions`, `libs/config`, `libs/passwords` | Infrastructure: Postgres/Kysely, queues, S3 storage, events, sessions, config, hashing        |
-| `.migrations`, `.seeds`                                                                               | Schema and seed data (billing graphs, GNIS place names, demo fees and payers)                 |
-| `.e2e`                                                                                                | Browser tests of the billing flow against a running stack (`pnpm e2e`)                        |
+| Path                                                                                 | Purpose                                                                                                 |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `apps/api`                                                                           | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, patients, notifications, reports             |
+| `apps/worker`                                                                        | Executes workflow runs from the pg-boss queue and implements billing store ports                        |
+| `apps/sse`                                                                           | Pushes live run, task, claim and import updates over Server-Sent Events (via Redis)                     |
+| `apps/web`                                                                           | React app: tasks, claims, patients, imports, reports, workflows, runs, payers, fees, settings           |
+| `libs/graph`                                                                         | Workflow engine, expression language, and standard node library                                         |
+| `libs/billing`                                                                       | Billing domain: patient and payer matching, narrative reading, pricing, claim cycle, 837P               |
+| `libs/catalog`                                                                       | The one node catalog of standard, NEMSIS, billing and model nodes                                       |
+| `libs/inference`                                                                     | Clients for the local embeddings and structured-completions services                                    |
+| `libs/nemsis`                                                                        | NEMSIS XML parsing, and the element names and code descriptions a report uses                           |
+| `libs/db`, `libs/run-queue`, `libs/storage`, `libs/live`, `libs/auth`, `libs/config` | Infrastructure: Postgres/Kysely, the run queue, S3 storage, live events, passwords and sessions, config |
+| `.migrations`, `.seeds`                                                              | Schema and seed data (billing graphs, GNIS place names, NEMSIS definitions, demo fees and payers)       |
+| `.e2e`                                                                               | Browser tests of the billing flow against a running stack (`pnpm e2e`)                                  |
 
 **Stack:** Node, TypeScript, pnpm workspaces, Postgres (Kysely, pgvector, pg_trgm), pg-boss, Redis, S3-compatible storage (RustFS), local models (text-embeddings-inference with Qwen3-Embedding, llama.cpp with Qwen3.5), Hono, valibot, React, Tailwind, React Flow, Biome.
 
@@ -68,8 +72,9 @@ Workflows are built from small, general nodes, so agencies can change billing lo
 docker compose up -d       # Postgres, Redis, RustFS, SFTPGo, embeddings and completions (GPU)
 pnpm install
 pnpm db:migrate            # resets and creates the schema
-pnpm db:seed:dev           # GNIS places, dev user, demo graphs, fees, payers
+pnpm db:seed:dev           # GNIS places, NEMSIS definitions, dev user, demo graphs, fees, payers
 pnpm db:gnis               # optional: rebuild .seeds/data/gnis-places.tsv.gz from USGS (updated bimonthly)
+pnpm db:nemsis             # optional: rebuild .seeds/data/nemsis-*.tsv.gz from the NEMSIS 3.5 schema
 pnpm dev                   # api, worker, sse, web
 pnpm e2e                   # with the stack running: import a synthetic report, work its tasks, file an 837P
 ```
@@ -127,7 +132,14 @@ This repository enforces strict, consistent standards across all applications, l
   - Maintain consistent file naming and structure across features (e.g., `routes.ts`, `schemas.ts`, `service.ts`, `queries.ts`).
 - **Strict Library Boundaries (`libs/*`):**
   - Libraries are pure TypeScript source packages referenced directly by applications with no separate build step.
-  - Libraries **cannot** import from other workspace libraries (`@ugula/*`); dependencies flow strictly one way from `apps/*` into `libs/*`.
+  - Libraries are layered, and dependencies only point inward. Biome enforces each layer, and a lib declares every `@ugula/*` lib it imports as `"workspace:*"`:
+    - **Kernel:** `graph` (the engine and the node contract) imports no other lib.
+    - **Infrastructure:** `auth`, `config`, `inference`, `live`, `run-queue` and `storage` import no other lib.
+    - **Domain:** `nemsis` and `billing` build only on `graph`. They reach the outside world through ports (store types) that apps implement.
+    - **Persistence:** `db` imports only the domain types it stores (e.g. claim statuses from `billing`), so an enum has one definition shared by code, Kysely types and migration `CHECK` constraints.
+    - **Composition:** `catalog` assembles the one node catalog (standard, NEMSIS, billing and model nodes) that the api, worker and web all use.
+  - Dependencies flow one way from `apps/*` into `libs/*`; a lib never imports an app.
+- **Nodes:** Define nodes with `pureNode`, `actionNode` or `branchNode` and `pin()` from `@ugula/graph`. Inputs are typed from their pins, and the engine checks required inputs, input and output types and exec outputs, so node code never re-checks them by hand; it only checks domain rules.
   - Keep libraries stateless, dependency-injected, and decoupled from application-specific configuration.
 
 ---
@@ -136,6 +148,7 @@ This repository enforces strict, consistent standards across all applications, l
 
 - **Mandatory Colocated Tests:** Every source file containing logic must have a colocated test file (`<name>.test.ts`) in the same directory.
 - **Native Test Runner:** Write fast, isolated, deterministic tests using Node's built-in test runner (`node:test` and `node:assert/strict`).
+- **Test Kits:** Libraries ship their fakes from a `/testing` entry (`@ugula/db/testing`, `@ugula/graph/testing`, `@ugula/billing/testing`) instead of each test rebuilding them. Test nodes with `invokeNode`, which applies the same input, output and exit checks as the engine.
 - **End-to-End:** `.e2e` drives the real app in a headless browser (Edge by default, `E2E_BROWSER_CHANNEL=chrome` otherwise) with synthetic NEMSIS fixtures only. Never commit real patient data.
 - **Testable by Design:** Leverage dependency injection and pure functions so units and features can be tested cleanly without brittle module mocking.
 
@@ -169,6 +182,18 @@ This repository enforces strict, consistent standards across all applications, l
   - Use sorted Tailwind CSS utility classes exclusively. Custom CSS is prohibited unless required for root theme variables or browser-level resets.
   - Never include duplicate, overridden, or conflicting Tailwind utility classes on an element.
   - Maintain a consistent spacing, sizing, border-radius, and elevation scale across all views.
+- **Design Scale:** Theme tokens live in `apps/web/src/main.css` `@theme`; fix a primitive in `shared/ui` before patching a call site.
+  - **Radius:** controls (buttons, inputs, selects, icon buttons, menu and nav items) `rounded-lg`; containers (panels, cards, alerts, dialogs, popovers, toasts, table frames, documents, empty states) `rounded-xl`; badges, pills, counts and avatars `rounded-full`.
+  - **Surfaces:** page `bg-canvas`; containers `bg-surface border border-border`, flat; floating layers (dialogs, menus, dropdowns, popovers, tooltips, toasts, the notification panel) `bg-surface border-border shadow-lg`; tinted status surfaces (alerts, badges) `bg-{intent}/10 border-{intent}/30`.
+  - **Shadows:** `shadow-lg` on floating layers only. Buttons, cards, panels, badges, inputs, tabs and backdrops carry no shadow.
+  - **Hover:** things with their own surface (outline buttons, inputs, clickable cards) go to opaque `bg-surface-hover`; ghost controls (icon buttons, nav items, tab pills, menu items) go to `bg-surface-fg/6` with `text-surface-fg-muted` becoming `text-surface-fg`. Never hover to a translucent tint of the parent's intent. Selected nav and menu items are `bg-primary/10 text-primary`; the selected tab pill is solid primary.
+  - **Focus:** every interactive element uses `interactiveClasses` from `shared/ui/interactive.ts` for its primary outline ring.
+  - **Motion:** colors and hover `transition duration-150 ease-out`; overlays enter and leave with fade plus scale or slide over 200ms via `open:`/`starting:`/`data-*` variants; layout movement (collapse, indicators) 300ms; `active:scale-[0.98]` press feedback on buttons only; reduced motion turns it all off.
+  - **Spacing:** pages `p-4 sm:p-6 lg:p-10 gap-6`; section panels `p-5 gap-4`; forms `gap-y-5` between fields and `gap-x-4` between columns; inline control groups and icon-to-text `gap-2`; list and table cells `px-4 py-3`.
+  - **Control sizes:** every button, input and select is `h-10` (md); icon buttons are `size-9`; each is larger under `pointer-coarse`. The `h-8` (sm) size is only for genuinely dense spots: pagination, inline editors inside cards, and the notifications panel.
+  - **Typography:** page title `text-2xl font-extrabold tracking-tight`; section title `text-base font-bold`; body `text-sm`; labels `text-sm font-medium`; meta and help `text-xs` or `text-sm text-surface-fg-muted`; table headers `text-xs font-semibold uppercase tracking-wide text-surface-fg-muted`; numbers `tabular-nums`.
+  - **Colors:** semantic tokens only (`canvas`, `surface`, `surface-hover`, `surface-fg`, `surface-fg-muted`, `border`, `primary`, `success`, `info`, `warning`, `on-warning`, `danger`). The printable report document is the one black-and-gray exception.
+  - **Vertical alignment:** icons beside text are `items-center` at `size-4` for `text-sm` and `size-3.5` for `text-xs`, with no `mt-*` nudges; beside multi-line text the icon sits in an `h-5 flex items-center` box on the first line. Controls in a row share one height; forms align fields and buttons with `items-end`, action groups with `items-center`. Table cells are `align-middle`, and two-line cells stack with `flex flex-col gap-0.5`. Badges and counts use `text-xs/5`. Page and section headers center their actions against the title block; back, close and dismiss buttons sit on the title's first line. Alerts center a single line with its actions; multi-line alerts keep the icon on the first line and center the actions.
 - **Clean Typography:** Establish clear visual hierarchy through consistent font weights, line heights, tracking, and semantic text colors.
 - **Minimal Semantic HTML5+:**
   - Use the leanest possible DOM tree with native semantic elements (`<main>`, `<nav>`, `<section>`, `<article>`, `<dialog>`, `<button>`, `<fieldset>`). Avoid unnecessary wrapper `<div>`s.
@@ -176,9 +201,9 @@ This repository enforces strict, consistent standards across all applications, l
   - All interactive and clickable elements (`<button>`, `<a>`, clickable cards/rows, toggles) must explicitly include `cursor-pointer` when enabled and clear disabled states when inactive.
   - Incorporate smooth, subtle transitions and micro-animations for state changes, hover/focus feedback, and layout transitions.
 - **One Way to Do Each Thing:**
-  - Each destination has exactly one link: in tables, the row's name is the link. Never add an "Open" button or icon that goes to the same place.
+  - Every table row's actions are icon buttons in a last, hidden-label `Actions` column: open (chevron right), edit (pencil), delete (trash, danger), run (play). The row's name is plain text, never a link. Each action's label names the row.
   - Hover feedback belongs only on things that react to a click. Rows, cards and panels that do nothing stay still.
-  - Actions are text buttons with a leading icon (`Edit`, `Delete`, `Run`). Icon-only buttons are reserved for chrome that every app shares: close, dismiss, back, menu, theme, sign out and reorder arrows. Each one carries a tooltip.
+  - Page and form actions are text buttons with a leading icon (`Save`, `Add fee`, `Run report`). Icon-only buttons are reserved for table row actions and chrome that every app shares: close, dismiss, back, menu, theme, sign out and reorder arrows. Each one carries a tooltip.
   - Every page and section has a title and one plain sentence saying what it is for. Field hints are the only other help text.
 - **Mobile-First & Fully Responsive:** Design layouts starting from mobile viewports upward, ensuring fluid usability across mobile, tablet, and desktop breakpoints.
 - **WCAG Compliance:** Meet WCAG AA accessibility standards at minimum—maintain proper color contrast ratios, visible focus rings, keyboard navigability, and accurate ARIA attributes where native semantics do not suffice.

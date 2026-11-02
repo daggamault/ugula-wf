@@ -72,11 +72,13 @@ describe('seedDev', () => {
 });
 
 describe('seedBase', () => {
-  it('publishes the billing graphs', async () => {
+  it('publishes the billing graphs and loads the NEMSIS dictionary', async () => {
     const { db, queries } = createRecordingSeedDb();
     await seedBase(db);
     const versions = queries.filter((q) => q.sql.startsWith('insert into "graph_versions"'));
     assert.equal(versions.length, billingGraphs.length);
+    assert.ok(queries.some((q) => q.sql.startsWith('insert into "nemsis_elements"')));
+    assert.ok(queries.some((q) => q.sql.startsWith('insert into "nemsis_codes"')));
     await db.destroy();
   });
 });

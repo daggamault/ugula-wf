@@ -175,36 +175,33 @@ importers:
       '@hono/standard-validator':
         specifier: 0.4.1
         version: 0.4.1(@standard-schema/spec@1.1.0)(hono@4.13.14)
+      '@ugula/auth':
+        specifier: workspace:*
+        version: link:libs/auth
       '@ugula/billing':
         specifier: workspace:*
         version: link:libs/billing
-      '@ugula/blobs':
-        specifier: workspace:*
-        version: link:libs/blobs
       '@ugula/config':
         specifier: workspace:*
         version: link:libs/config
       '@ugula/db':
         specifier: workspace:*
         version: link:libs/db
-      '@ugula/events':
-        specifier: workspace:*
-        version: link:libs/events
       '@ugula/graph':
         specifier: workspace:*
         version: link:libs/graph
-      '@ugula/jobs':
+      '@ugula/live':
         specifier: workspace:*
-        version: link:libs/jobs
+        version: link:libs/live
       '@ugula/nemsis':
         specifier: workspace:*
         version: link:libs/nemsis
-      '@ugula/passwords':
+      '@ugula/run-queue':
         specifier: workspace:*
-        version: link:libs/passwords
-      '@ugula/sessions':
+        version: link:libs/run-queue
+      '@ugula/storage':
         specifier: workspace:*
-        version: link:libs/sessions
+        version: link:libs/storage
       '@xyflow/react':
         specifier: 12.12.0
         version: 12.12.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -284,63 +281,66 @@ importers:
 
   apps/api:
     dependencies:
+      '@ugula/auth':
+        specifier: workspace:*
+        version: link:../../libs/auth
       '@ugula/billing':
         specifier: workspace:*
         version: link:../../libs/billing
-      '@ugula/blobs':
+      '@ugula/catalog':
         specifier: workspace:*
-        version: link:../../libs/blobs
+        version: link:../../libs/catalog
       '@ugula/config':
         specifier: workspace:*
         version: link:../../libs/config
       '@ugula/db':
         specifier: workspace:*
         version: link:../../libs/db
-      '@ugula/events':
-        specifier: workspace:*
-        version: link:../../libs/events
       '@ugula/graph':
         specifier: workspace:*
         version: link:../../libs/graph
-      '@ugula/jobs':
+      '@ugula/live':
         specifier: workspace:*
-        version: link:../../libs/jobs
+        version: link:../../libs/live
       '@ugula/nemsis':
         specifier: workspace:*
         version: link:../../libs/nemsis
-      '@ugula/passwords':
+      '@ugula/run-queue':
         specifier: workspace:*
-        version: link:../../libs/passwords
-      '@ugula/sessions':
+        version: link:../../libs/run-queue
+      '@ugula/storage':
         specifier: workspace:*
-        version: link:../../libs/sessions
+        version: link:../../libs/storage
 
   apps/sse:
     dependencies:
+      '@ugula/auth':
+        specifier: workspace:*
+        version: link:../../libs/auth
       '@ugula/config':
         specifier: workspace:*
         version: link:../../libs/config
-      '@ugula/events':
+      '@ugula/live':
         specifier: workspace:*
-        version: link:../../libs/events
-      '@ugula/sessions':
-        specifier: workspace:*
-        version: link:../../libs/sessions
+        version: link:../../libs/live
 
   apps/web:
     dependencies:
       '@ugula/billing':
         specifier: workspace:*
         version: link:../../libs/billing
+      '@ugula/catalog':
+        specifier: workspace:*
+        version: link:../../libs/catalog
       '@ugula/config':
         specifier: workspace:*
         version: link:../../libs/config
-      '@ugula/events':
-        specifier: workspace:*
-        version: link:../../libs/events
       '@ugula/graph':
         specifier: workspace:*
         version: link:../../libs/graph
+      '@ugula/live':
+        specifier: workspace:*
+        version: link:../../libs/live
       '@ugula/nemsis':
         specifier: workspace:*
         version: link:../../libs/nemsis
@@ -350,52 +350,77 @@ importers:
       '@ugula/billing':
         specifier: workspace:*
         version: link:../../libs/billing
-      '@ugula/blobs':
+      '@ugula/catalog':
         specifier: workspace:*
-        version: link:../../libs/blobs
+        version: link:../../libs/catalog
       '@ugula/config':
         specifier: workspace:*
         version: link:../../libs/config
       '@ugula/db':
         specifier: workspace:*
         version: link:../../libs/db
-      '@ugula/events':
-        specifier: workspace:*
-        version: link:../../libs/events
       '@ugula/graph':
         specifier: workspace:*
         version: link:../../libs/graph
       '@ugula/inference':
         specifier: workspace:*
         version: link:../../libs/inference
-      '@ugula/jobs':
+      '@ugula/live':
         specifier: workspace:*
-        version: link:../../libs/jobs
+        version: link:../../libs/live
       '@ugula/nemsis':
         specifier: workspace:*
         version: link:../../libs/nemsis
+      '@ugula/run-queue':
+        specifier: workspace:*
+        version: link:../../libs/run-queue
+      '@ugula/storage':
+        specifier: workspace:*
+        version: link:../../libs/storage
 
-  libs/billing: {}
+  libs/auth: {}
 
-  libs/blobs: {}
+  libs/billing:
+    dependencies:
+      '@ugula/graph':
+        specifier: workspace:*
+        version: link:../graph
+
+  libs/catalog:
+    dependencies:
+      '@ugula/billing':
+        specifier: workspace:*
+        version: link:../billing
+      '@ugula/graph':
+        specifier: workspace:*
+        version: link:../graph
+      '@ugula/nemsis':
+        specifier: workspace:*
+        version: link:../nemsis
 
   libs/config: {}
 
-  libs/db: {}
-
-  libs/events: {}
+  libs/db:
+    dependencies:
+      '@ugula/billing':
+        specifier: workspace:*
+        version: link:../billing
 
   libs/graph: {}
 
   libs/inference: {}
 
-  libs/jobs: {}
+  libs/live: {}
 
-  libs/nemsis: {}
+  libs/nemsis:
+    dependencies:
+      '@ugula/graph':
+        specifier: workspace:*
+        version: link:../graph
 
-  libs/passwords: {}
+  libs/run-queue: {}
 
-  libs/sessions: {}
+  libs/storage: {}
 
 packages:
 

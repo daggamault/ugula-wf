@@ -64,10 +64,10 @@ const Group = ({
   return (
     <section
       aria-labelledby={id}
-      className="border-border flex flex-col gap-3 border-t pt-5 first:border-t-0 first:pt-0"
+      className="border-border flex flex-col gap-4 border-t pt-5 first:border-t-0 first:pt-0"
     >
-      <header className="flex flex-col gap-0.5">
-        <h3 id={id} className="text-sm font-bold">
+      <header className="flex flex-col gap-1">
+        <h3 id={id} className="text-base font-bold">
           {title}
         </h3>
         <p className="text-surface-fg-muted text-xs">{description}</p>
@@ -110,7 +110,7 @@ const BindingEditor = ({
   const id = `${nodeId}-${spec.name}`;
   const mode = modeOf(binding);
   return (
-    <li className="border-border flex flex-col gap-3 rounded-lg border p-3">
+    <li className="border-border flex flex-col gap-4 rounded-xl border p-4">
       <PinHeading spec={spec} />
       <fieldset disabled={!editable} className="flex flex-col gap-3">
         <Select
@@ -246,17 +246,17 @@ export const NodeInspector = ({
 
   return (
     <aside aria-labelledby={titleId} className="flex min-h-0 flex-1 flex-col">
-      <header className="border-border flex items-start justify-between gap-3 border-b p-4">
+      <header className="border-border flex items-start justify-between gap-4 border-b p-4">
         <div className="flex min-w-0 flex-col gap-1">
-          <h2 id={titleId} className="text-lg font-bold tracking-tight">
+          <h2 id={titleId} className="text-base font-bold">
             {catalog.titleOf(node)}
           </h2>
           <p className="text-surface-fg-muted text-sm">{catalog.describe(node)}</p>
           {onOpen ? (
             <div className="pt-2">
-              <Button variant="outline" size="sm" onClick={onOpen}>
+              <Button variant="outline" onClick={onOpen}>
                 <ExternalLinkIcon aria-hidden="true" className="size-4" />
-                Open {catalog.opensAs(node) === 'graph' ? 'sub-graph' : 'workflow'}
+                Open {catalog.opensAs(node) === 'graph' ? 'building block' : 'workflow'}
               </Button>
             </div>
           ) : null}
@@ -279,7 +279,7 @@ export const NodeInspector = ({
                 return from.length ? (
                   <li
                     key={spec.name}
-                    className="border-border flex flex-col gap-1 rounded-lg border p-3"
+                    className="border-border flex flex-col gap-1 rounded-xl border p-4"
                   >
                     <PinHeading spec={spec} />
                     <span className="text-sm">From {from.join(', ')}</span>
@@ -363,9 +363,9 @@ export const NodeInspector = ({
         {signature && !isPure(signature) && !boundary ? (
           <Group
             title="Retry on Failure"
-            description="Try this step again before stopping the run, waiting longer each time."
+            description="Try this node again before stopping the run, waiting longer each time."
           >
-            <fieldset disabled={!editable} className="grid grid-cols-2 gap-3">
+            <fieldset disabled={!editable} className="grid grid-cols-2 gap-x-4 gap-y-5">
               <Input
                 id={`${node.id}-retry-max`}
                 label="Attempts"

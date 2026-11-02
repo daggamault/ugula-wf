@@ -1,8 +1,6 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
-import { type PageRequest, paged } from '../../shared/paging.ts';
-import type { BatchSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
@@ -72,47 +70,27 @@ const openClaims = (db: Db, tenantId: string) =>
         .orderBy('d.position')})`.as('diagnoses')
     ])
     .where('c.tenant_id', '=', tenantId)
-    .where('c.status', '=', 'open')
+    .where('c.status', '=', 'ready')
     .orderBy('c.created_at')
     .orderBy('c.id');
 
-export const awaitingSubmission = sql<boolean>`(
-  (select b.balance_cents from claim_balances b where b.claim_id = c.id) > 0
-  and coalesce((
-    select e.kind from claim_events e
-    where e.coverage_id = (
-      select cc.id from claim_coverages cc
-      where cc.claim_id = c.id
-        and not exists (
-          select 1 from claim_events d
-          where d.coverage_id = cc.id and d.kind in ('response', 'payer_skipped')
-        )
-      order by cc.position
-      limit 1
-    )
-      and e.kind in ('submitted', 'resubmitted', 'resubmit_queued', 'follow_up')
-    order by e.created_at desc, e.id desc
-    limit 1
-  ), 'resubmit_queued') = 'resubmit_queued'
-  and exists (
-    select 1 from claim_coverages cc
-    where cc.claim_id = c.id
-      and not exists (
-        select 1 from claim_events d
-        where d.coverage_id = cc.id and d.kind in ('response', 'payer_skipped')
-      )
-  )
-)`;
-
-export const listOpenClaims = (db: Db, tenantId: string, claimId?: string) => {
-  const q = openClaims(db, tenantId).where(awaitingSubmission);
+export const listReadyClaims = (db: Db, tenantId: string, claimId?: string) => {
+  const q = openClaims(db, tenantId);
   return (claimId ? q.where('c.id', '=', claimId) : q).execute();
 };
 
-export const lockOpenClaims = (db: Db, tenantId: string, ids: string[]) =>
-  openClaims(db, tenantId).where('c.id', 'in', ids).forUpdate('c').execute();
+export const lockReadyClaim = (db: Db, tenantId: string, id: string) =>
+  openClaims(db, tenantId).where('c.id', '=', id).forUpdate('c').execute();
 
-export type OpenClaimRow = Awaited<ReturnType<typeof listOpenClaims>>[number];
+export type ReadyClaimRow = Awaited<ReturnType<typeof listReadyClaims>>[number];
+
+export const markSubmitted = (db: Db, ids: string[]) =>
+  db
+    .updateTable('claims')
+    .set({ status: 'submitted', updated_at: sql`now()` })
+    .where('id', 'in', ids)
+    .where('status', '=', 'ready')
+    .execute();
 
 export const listLedgerEvents = (db: Db, claimIds: string[]) =>
   claimIds.length
@@ -210,31 +188,6 @@ export const insertSubmissionEvents = (
       }))
     )
     .execute();
-
-const BATCH_ORDER = {
-  created: sql.ref('b.created_at'),
-  control: sql.ref('b.control_number'),
-  claims: sql.ref('b.claim_count'),
-  total: sql.ref('b.total_cents')
-};
-
-export const listBatches = (db: Db, tenantId: string, page: PageRequest<BatchSort>) =>
-  paged(batchRows(db, tenantId), page, BATCH_ORDER, sql.ref('b.id'));
-
-const batchRows = (db: Db, tenantId: string) =>
-  db
-    .selectFrom('claim_batches as b')
-    .leftJoin('users as u', 'u.id', 'b.created_by')
-    .select([
-      'b.id',
-      'b.control_number',
-      'b.claim_count',
-      'b.total_cents',
-      'b.production',
-      'b.created_at',
-      'u.email as created_by_email'
-    ])
-    .where('b.tenant_id', '=', tenantId);
 
 export const findBatchDocument = async (db: Db, tenantId: string, id: string) =>
   (await db

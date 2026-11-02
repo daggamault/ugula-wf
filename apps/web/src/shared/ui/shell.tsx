@@ -39,7 +39,7 @@ const groupsOf = (items: readonly NavItem[]) => {
 const NavHeader = ({ tools, children }: { tools?: ReactNode; children?: ReactNode }) => (
   <div className="flex h-16 shrink-0 items-center justify-between pr-3 pl-6">
     <Brand />
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-2">
       {tools}
       <ThemeToggle />
       {children}
@@ -63,10 +63,10 @@ const NavMenu = ({ navItems, userEmail, status, onSignOut }: NavMenuProps) => (
                   aria-current={active ? 'page' : undefined}
                   className={classNamesOf(
                     interactiveClasses,
-                    'text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold pointer-coarse:py-3'
+                    'text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-sm font-semibold pointer-coarse:h-11'
                   )}
                 >
-                  <Icon aria-hidden="true" className="size-4.5" />
+                  <Icon aria-hidden="true" className="size-4 shrink-0" />
                   <span className="flex-1">{label}</span>
                   {badge ? (
                     <span className="bg-primary text-primary-fg min-w-5 rounded-full px-1.5 text-center text-xs/5 font-bold tabular-nums">
@@ -122,10 +122,10 @@ const TopNav = ({ path, tools, ...menu }: NavMenuProps & { path: string; tools?:
   }, [isOpen]);
 
   return (
-    <header ref={headerRef} className="border-border bg-surface border-b lg:hidden">
+    <header ref={headerRef} className="border-border bg-surface border-b lg:hidden print:hidden">
       <NavHeader tools={tools}>
         <IconButton
-          label={isOpen ? 'Close Menu' : 'Open Menu'}
+          label={isOpen ? 'Close menu' : 'Open menu'}
           icon={isOpen ? XIcon : MenuIcon}
           aria-expanded={isOpen}
           aria-controls={menuId}
@@ -147,14 +147,14 @@ export const Shell = ({ path, tools, children, ...menu }: ShellProps) => {
   }, [path]);
 
   return (
-    <div className="flex h-dvh overflow-hidden">
-      <aside className="border-border bg-surface hidden w-72 shrink-0 flex-col border-r lg:flex">
+    <div className="flex h-dvh overflow-hidden print:block print:h-auto print:overflow-visible">
+      <aside className="border-border bg-surface hidden w-72 shrink-0 flex-col border-r lg:flex print:hidden">
         <NavHeader tools={tools} />
         <NavMenu {...menu} />
       </aside>
       <div
         ref={scrollRef}
-        className="relative flex min-h-0 min-w-0 flex-1 [scrollbar-gutter:stable] flex-col overflow-y-auto"
+        className="relative flex min-h-0 min-w-0 flex-1 [scrollbar-gutter:stable] flex-col overflow-y-auto print:block print:overflow-visible"
       >
         <TopNav path={path} tools={tools} {...menu} />
         <main className="flex min-h-0 flex-1 flex-col">{children}</main>

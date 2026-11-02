@@ -1,5 +1,5 @@
-import type { LiveEvent } from '@ugula/events';
-import type { SessionStore } from '@ugula/sessions';
+import type { SessionStore } from '@ugula/auth';
+import type { LiveEvent } from '@ugula/live';
 import { Hono } from 'hono';
 import { type AuthEnv, requireAuth } from './auth.ts';
 import type { Announce } from './live.ts';

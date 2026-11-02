@@ -63,7 +63,7 @@ describe('claim data form', () => {
 
   it('renders labelled inputs for every payer and location', () => {
     const html = renderToStaticMarkup(
-      createElement(ClaimDataForm, { claim, disabled: false, onSave: async () => true })
+      createElement(ClaimDataForm, { claim, locked: undefined, onSave: async () => true })
     );
     assert.ok(html.includes('for="coverage-1-memberId"'));
     assert.ok(html.includes('>Blue Plan<'));

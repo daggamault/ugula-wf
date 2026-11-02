@@ -17,7 +17,6 @@ const record =
 
 const service = {
   pending: record('pending', { issues: [], claims: [] }),
-  list: record('list', { batches: [] }),
   create: record('create', { batch: { id: ID } }),
   markSubmitted: record('markSubmitted', { payer: 'Medicare' }),
   document: async () =>
@@ -34,23 +33,21 @@ const post = (path: string, body: unknown) =>
   request(path, { method: 'POST', body: JSON.stringify(body) });
 
 describe('submission routes', () => {
-  it('lists pending claims and batches for the session tenant', async () => {
+  it('lists claims ready to submit for the session tenant', async () => {
     assert.equal((await request('/pending')).status, 200);
     assert.equal((await request(`/pending?claimId=${ID}`)).status, 200);
     assert.equal((await request('/pending?claimId=x')).status, 400);
-    assert.equal((await request('/batches?pageSize=10&sort=total')).status, 200);
     assert.deepEqual(calls.splice(0), [
       ['pending', 't-1', undefined],
-      ['pending', 't-1', ID],
-      ['list', 't-1', { page: 1, pageSize: 10, sort: 'total', dir: 'desc' }]
+      ['pending', 't-1', ID]
     ]);
   });
 
-  it('creates batches as the session user and validates the selection', async () => {
-    assert.equal((await post('/batches', { claimIds: [ID] })).status, 201);
-    assert.deepEqual(calls.splice(0), [['create', 't-1', 'u-1', [ID]]]);
-    assert.equal((await post('/batches', { claimIds: [] })).status, 400);
-    assert.equal((await post('/batches', { claimIds: ['nope'] })).status, 400);
+  it('creates an 837P file for one claim as the session user', async () => {
+    assert.equal((await post('/batches', { claimId: ID })).status, 201);
+    assert.deepEqual(calls.splice(0), [['create', 't-1', 'u-1', ID]]);
+    assert.equal((await post('/batches', { claimIds: [ID] })).status, 400);
+    assert.equal((await post('/batches', { claimId: 'nope' })).status, 400);
     assert.equal(calls.length, 0);
   });
 

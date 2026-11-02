@@ -18,6 +18,10 @@ describe('SectionPanel', () => {
     assert.ok(html.includes('Billed in order.'));
     assert.ok(html.includes('<button type="button">Save</button>'));
     assert.ok(html.includes('border-border'));
+    assert.ok(html.includes('rounded-xl') && html.includes('p-5'));
+    assert.ok(html.includes('items-center justify-between gap-4'));
+    assert.ok(html.includes('text-base font-bold'));
+    assert.ok(!html.includes('shadow'));
   });
 
   it('highlights an accented panel', () => {
@@ -25,6 +29,7 @@ describe('SectionPanel', () => {
       createElement(SectionPanel, { title: 'Decision', accent: 'primary' })
     );
     assert.ok(html.includes('border-primary/40'));
+    assert.ok(!html.includes('shadow'));
   });
 });
 

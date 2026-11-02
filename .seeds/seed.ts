@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { hashPassword } from '@ugula/auth';
 import { billingModels, createBillingNodes } from '@ugula/billing';
 import { createDb, type Db } from '@ugula/db';
 import {
@@ -12,7 +13,6 @@ import {
   validateGraph
 } from '@ugula/graph';
 import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
-import { hashPassword } from '@ugula/passwords';
 import { billingGraphs } from './billing-graphs.ts';
 import { buildUpsertDemoPayers, buildUpsertDemoProfile } from './billing-setup.ts';
 import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
@@ -21,6 +21,8 @@ import { buildUpsertDefaultFees, demoFees } from './fees.ts';
 import { readPlaces, upsertPlaces } from './gnis.ts';
 import { PLACES_FILE } from './gnis-build.ts';
 import { publishGraph, type SeedGraph } from './graphs.ts';
+import { CODES_FILE, ELEMENTS_FILE } from './nemsis-build.ts';
+import { readCodes, readElements, upsertDictionary } from './nemsis-dictionary.ts';
 import { upsertTenant } from './tenants.ts';
 import { upsertUser } from './users.ts';
 
@@ -52,8 +54,13 @@ const primitives = () => new Set(graphNodes().map(refKey));
 export const seedBase = async (db: Db) => {
   assertValidGraphs(billingGraphs, graphNodes());
   const places = readPlaces(await readFile(PLACES_FILE));
+  const dictionary = {
+    elements: readElements(await readFile(ELEMENTS_FILE)),
+    codes: readCodes(await readFile(CODES_FILE))
+  };
   await db.transaction().execute(async (tx) => {
     await upsertPlaces(tx, places);
+    await upsertDictionary(tx, dictionary);
     for (const graph of billingGraphs) await publishGraph(tx, graph, primitives());
   });
 };

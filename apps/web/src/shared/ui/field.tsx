@@ -2,7 +2,7 @@ import { type ReactNode, useId } from 'react';
 import { classNamesOf } from '../class-names.ts';
 
 export const fieldControlClasses =
-  'border-border bg-surface placeholder:text-surface-fg-muted/70 focus-visible:outline-primary aria-invalid:border-danger aria-invalid:focus-visible:outline-danger [&:enabled:not([readonly])]:hover:border-surface-fg/25 w-full rounded-lg border px-3 outline-2 outline-offset-0 outline-transparent transition duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50';
+  'border-border bg-surface placeholder:text-surface-fg-muted/70 focus-visible:outline-primary aria-invalid:border-danger aria-invalid:focus-visible:outline-danger [&:enabled:not([readonly])]:hover:border-surface-fg/25 [&:enabled:not([readonly])]:hover:bg-surface-hover w-full rounded-lg border px-3 outline-2 outline-offset-0 outline-transparent transition duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50';
 
 export const fieldTextClasses = 'text-base sm:text-sm';
 
@@ -56,7 +56,7 @@ export const Field = ({ id, label, error, hint, isRequired, span = 1, children }
 
 export const FieldGrid = ({ children }: { children: ReactNode }) => (
   <div className="@container">
-    <div className="grid grid-cols-1 gap-x-6 gap-y-5 @lg:grid-cols-2 @3xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-x-4 gap-y-5 @lg:grid-cols-2 @3xl:grid-cols-4">
       {children}
     </div>
   </div>
@@ -66,7 +66,7 @@ export const FieldGroup = ({ title, children }: { title: string; children: React
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="flex min-w-0 flex-col gap-4">
-      <h3 id={headingId} className="text-base font-bold tracking-tight">
+      <h3 id={headingId} className="text-base font-bold">
         {title}
       </h3>
       {children}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import { createFeeService } from './service.ts';
 
 const PAYER = '01a16617-7704-7ba6-b9b5-9c79fa44f965';

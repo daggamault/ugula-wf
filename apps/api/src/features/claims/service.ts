@@ -1,7 +1,7 @@
-import { CLAIM_SIGNAL, type ClaimEventKind, nextClaimStep } from '@ugula/billing';
-import type { BlobRef, BlobStore } from '@ugula/blobs';
+import { CLAIM_SIGNAL, type ClaimEventKind, isClosedStatus, nextClaimStep } from '@ugula/billing';
 import { type Db, findPublishedGraphs, sqlExecutor } from '@ugula/db';
-import { enqueueRuns, type JobBoss, resume } from '@ugula/jobs';
+import { enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
+import type { BlobRef, BlobStore } from '@ugula/storage';
 import { type Announce, announced } from '../../shared/live.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import { signalRuns, startRun } from '../../shared/runs.ts';
@@ -28,7 +28,7 @@ import type { BillingData } from './schemas.ts';
 
 export type ClaimServiceDeps = {
   db: Db;
-  boss: JobBoss;
+  boss: RunQueueClient;
   now: () => Date;
   blobs: Pick<BlobStore, 'getBytes'>;
   announce: Announce;
@@ -40,6 +40,13 @@ const LIVE_CYCLE = new Set(['running', 'suspended', 'faulted']);
 
 const notFound = fail('not_found', 'Claim not found');
 const closed = fail('conflict', 'Claim is already closed');
+const draft = fail(
+  'conflict',
+  'This claim is still a draft. Finish its PCR tasks before changing it.'
+);
+
+export const unchangeable = (status: string) =>
+  isClosedStatus(status) ? closed : status === 'draft' ? draft : null;
 
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -76,7 +83,7 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
       if (!claim) return notFound;
       const events = await listClaimEvents(db, id);
       const progress =
-        claim.status === 'open'
+        unchangeable(claim.status) === null
           ? nextClaimStep(
               {
                 totalCents: claim.total_cents,
@@ -99,7 +106,8 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
       write(tenantId, id, async (tx) => {
         const claim = await lockClaim(tx, tenantId, id);
         if (!claim) return notFound;
-        if (claim.status !== 'open') return closed;
+        const blocked = unchangeable(claim.status);
+        if (blocked) return blocked;
         const order = planPayerOrder(await listCoverages(tx, id), payers);
         const active = order.removed.find((c) => c.has_events);
         if (active) {
@@ -128,7 +136,8 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
       write(tenantId, id, async (tx) => {
         const claim = await lockClaim(tx, tenantId, id);
         if (!claim) return notFound;
-        if (claim.status !== 'open') return closed;
+        const blocked = unchangeable(claim.status);
+        if (blocked) return blocked;
         const owned = new Set((await listCoverages(tx, id)).map((c) => c.id));
         if (data.coverages.some((c) => !owned.has(c.id))) {
           return fail('invalid', 'A coverage is not on this claim');
@@ -157,7 +166,8 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
         if (!(await lockClaim(tx, tenantId, id))) return notFound;
         const claim = await findClaim(tx, tenantId, id);
         if (!claim) return notFound;
-        if (claim.status !== 'open') return closed;
+        const blocked = unchangeable(claim.status);
+        if (blocked) return blocked;
         if (claim.cycle_status && LIVE_CYCLE.has(claim.cycle_status)) {
           return fail('conflict', 'The payer cycle for this claim is still active');
         }
@@ -179,7 +189,8 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
         if (await hasResponse(tx, id, response.requestId)) {
           return ok({ balanceCents: await claimBalance(tx, id), duplicate: true });
         }
-        if (claim.status !== 'open') return closed;
+        const blocked = unchangeable(claim.status);
+        if (blocked) return blocked;
         if (
           response.coverageId !== null &&
           !(await listCoverages(tx, id)).some((c) => c.id === response.coverageId)

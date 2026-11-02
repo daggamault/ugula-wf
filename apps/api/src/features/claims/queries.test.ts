@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import {
   claimBalance,
   findClaim,
@@ -8,6 +8,7 @@ import {
   listClaimEvents,
   listClaims,
   listCoverages,
+  numberOf,
   reorderCoverages
 } from './queries.ts';
 
@@ -23,7 +24,10 @@ describe('claim queries', () => {
     });
     await listClaims(db, 't-1', {
       status: 'all',
-      q: 'smith, 50%',
+      firstName: 'Ja%',
+      lastName: "O'Neil",
+      birthDate: '1980-01-02',
+      number: '#42',
       patientId: 'p-1',
       page: 1,
       pageSize: 25,
@@ -32,10 +36,37 @@ describe('claim queries', () => {
     });
     const search = queries.at(-1);
     assert.ok(!search?.sql.includes('"c"."status" ='));
-    assert.ok(search?.sql.includes("lower(p.last_name || ' ' || p.first_name) like $"));
-    assert.deepEqual(search?.parameters.slice(0, 4), ['t-1', 'p-1', '%smith%', '%smith%']);
-    assert.equal(search?.parameters[4], '%50\\%%');
+    assert.ok(!search?.sql.includes('"c"."status" not in'));
+    assert.ok(search?.sql.includes('lower(p.first_name) like $'));
+    assert.ok(search?.sql.includes('"p"."last_name_key" like $'));
+    assert.ok(
+      search?.sql.includes('("c"."pcr_number" = $6 or "c"."number" = $7 or "p"."number" = $8)')
+    );
+    assert.deepEqual(search?.parameters.slice(0, 8), [
+      't-1',
+      'p-1',
+      'ja\\%%',
+      'oneil%',
+      '1980-01-02',
+      '#42',
+      42,
+      42
+    ]);
+    await listClaims(db, 't-1', {
+      status: 'ready',
+      number: 'PCR-7',
+      page: 1,
+      pageSize: 25,
+      sort: 'number',
+      dir: 'asc'
+    });
+    const byPcr = queries.at(-1);
+    assert.ok(byPcr?.sql.includes('"c"."status" = $2'));
+    assert.ok(byPcr?.sql.includes('"c"."pcr_number" = $3'));
+    assert.ok(!byPcr?.sql.includes('"c"."number" ='));
     const [list] = queries;
+    assert.ok(list?.sql.includes('"c"."status" not in ('));
+    assert.deepEqual(list?.parameters.slice(1, 5), ['paid', 'written_off', 'collections', 'void']);
     assert.ok(
       list?.sql.includes('inner join "claim_balances" as "b" on "b"."claim_id" = "c"."id"')
     );
@@ -47,10 +78,21 @@ describe('claim queries', () => {
     assert.ok(list?.sql.includes('"c"."tenant_id" = $1'));
     assert.ok(
       list?.sql.endsWith(
-        'order by "b"."balance_cents" desc nulls last, "c"."id" desc limit $3 offset $4'
+        'order by "b"."balance_cents" desc nulls last, "c"."id" desc limit $6 offset $7'
       )
     );
     assert.deepEqual(list?.parameters.slice(-2), [25, 25]);
+  });
+
+  it('reads claim, patient and encounter numbers people type, with or without a #', () => {
+    assert.deepEqual(['42', '#7', ' 0012 ', 'PCR-1', '99999999999', ''].map(numberOf), [
+      42,
+      7,
+      12,
+      null,
+      null,
+      null
+    ]);
   });
 
   it('finds a claim with its coverages, lines, diagnoses and cycle', async () => {

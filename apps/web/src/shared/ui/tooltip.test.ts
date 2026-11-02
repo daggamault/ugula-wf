@@ -19,5 +19,6 @@ describe('Tooltip', () => {
     assert.ok(html.includes('[position-area:top]'));
     assert.match(html, /anchor-name:(--anchor-[\w-]+).*position-anchor:\1/);
     assert.ok(html.includes('Sign Out'));
+    assert.ok(html.includes('bg-surface') && html.includes('shadow-lg'));
   });
 });

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Json, RunState, Values } from '@ugula/graph';
-import type { RunJob } from '@ugula/jobs';
+import type { RunJob } from '@ugula/run-queue';
 import type { ChildRun, ClaimedRun, ParentWait, RunPatch, RunTx, TaskInsert } from './queries.ts';
 import {
   cancelRun,

@@ -47,13 +47,29 @@ describe('NodeExecutions', () => {
     assert.ok(html.includes('1.5 s'));
   });
 
+  it('opens the runs a node started from icon actions', () => {
+    const html = renderToStaticMarkup(
+      createElement(NodeExecutions, {
+        title: 'X',
+        steps: [],
+        runs: [
+          { id: 'r1', name: 'Process PCR', status: 'completed', parent_index: 0 },
+          { id: 'r2' }
+        ]
+      })
+    );
+    assert.ok(html.includes('href="/runs/r1" aria-label="Open run #1 Process PCR"'));
+    assert.ok(html.includes('href="/runs/r2" aria-label="Open run #2"'));
+    assert.equal(html.split('href="/runs/r1"').length, 2);
+  });
+
   it('says when a node has not run', () => {
     const html = renderToStaticMarkup(createElement(NodeExecutions, { title: 'X', steps: [] }));
     assert.ok(html.includes('Not executed yet'));
-    assert.ok(!html.includes('Open sub-graph'));
+    assert.ok(!html.includes('Open building block'));
     const composite = renderToStaticMarkup(
       createElement(NodeExecutions, { title: 'X', steps: [], onOpen: () => undefined })
     );
-    assert.ok(composite.includes('Open sub-graph'));
+    assert.ok(composite.includes('Open building block'));
   });
 });

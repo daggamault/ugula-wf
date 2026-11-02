@@ -1,12 +1,11 @@
 import { serve } from '@hono/node-server';
-import { billingModels, createBillingNodes } from '@ugula/billing';
-import { type BlobStore, createBlobStore, createS3Storage } from '@ugula/blobs';
+import { createSessionStore, type RedisLike } from '@ugula/auth';
+import { createNodeCatalog } from '@ugula/catalog';
 import { createDb, type Db } from '@ugula/db';
-import { publishEvent } from '@ugula/events';
-import { createModelNodes, createStdNodes, type NodeDef } from '@ugula/graph';
-import type { JobBoss } from '@ugula/jobs';
-import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
-import { createSessionStore, type RedisLike } from '@ugula/sessions';
+import type { NodeDef } from '@ugula/graph';
+import { publishLiveEvent } from '@ugula/live';
+import type { RunQueueClient } from '@ugula/run-queue';
+import { type BlobStore, createBlobStore, createS3Storage } from '@ugula/storage';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Redis } from 'ioredis';
@@ -47,7 +46,7 @@ export type AppDeps = {
   config: Config;
   db: Db;
   redis: RedisLike;
-  boss: JobBoss;
+  boss: RunQueueClient;
   blobs: BlobStore;
   nodes: NodeDef[];
   announce: Announce;
@@ -90,7 +89,15 @@ export const createApp = ({ config, db, redis, boss, blobs, nodes, announce }: A
     })
   );
   app.route('/api/graphs', protect(createGraphRoutes(createGraphService({ db, nodes }))));
-  app.route('/api/runs', protect(createRunRoutes(createRunService({ db, boss }))));
+  app.route(
+    '/api/runs',
+    protect(
+      createRunRoutes(
+        createRunService({ db, boss, blobs, maxBytes: config.IMPORT_FILE_MAX_BYTES }),
+        config.IMPORT_FILE_MAX_BYTES
+      )
+    )
+  );
   app.route('/api/tasks', protect(createTaskRoutes(createTaskService({ db, boss, announce }))));
   app.route('/api/fees', protect(createFeeRoutes(createFeeService({ db }))));
   app.route('/api/payers', protect(createPayerRoutes(createPayerService({ db, announce }))));
@@ -160,7 +167,6 @@ if (import.meta.main) {
   const boss = new PgBoss({ ...connection, supervise: false, schedule: false });
   await boss.start();
   const blobs = createBlobStore(
-    config.S3_BUCKET,
     createS3Storage({
       endpoint: config.S3_ENDPOINT,
       region: config.S3_REGION,
@@ -177,13 +183,8 @@ if (import.meta.main) {
       redis,
       boss,
       blobs,
-      nodes: [
-        ...createStdNodes({ fetch }),
-        ...createNemsisNodes(null),
-        ...createBillingNodes(null),
-        ...createModelNodes([...nemsisModels, ...billingModels])
-      ],
-      announce: (tenantId, event) => publishEvent(redis, tenantId, event)
+      nodes: createNodeCatalog({ fetch }),
+      announce: (tenantId, event) => publishLiveEvent(redis, tenantId, event)
     }).fetch,
     port: config.API_PORT
   });

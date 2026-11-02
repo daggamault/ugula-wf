@@ -14,15 +14,24 @@ const source = {
     file_name: 'october.xml',
     created_at: '2026-10-01T00:00:00Z'
   },
-  data: { ePatient: { 'ePatient.17': '1980-01-02' } },
-  xml: '<PatientCareReport/>'
+  data: {
+    ePatient: { 'ePatient.17': '1980-01-02', 'ePatient.25': '9919001' },
+    eOther: { 'eOther.22': 'Y' }
+  },
+  xml: '<PatientCareReport/>',
+  dictionary: {
+    elements: { 'eOther.22': 'File Attachment Name' },
+    codes: { 'ePatient.25': { '9919001': 'Female' } }
+  }
 };
 
 describe('SourceReportView', () => {
-  it('shows where the report came from and its elements with NEMSIS labels', () => {
+  it('shows where the report came from and its elements with NEMSIS labels and code meanings', () => {
     const html = renderToStaticMarkup(createElement(SourceReportView, { source }));
     assert.ok(html.includes('Patient care report PCR-1 from october.xml'));
     assert.ok(html.includes('Date of birth'));
+    assert.ok(html.includes('File Attachment Name'));
+    assert.ok(html.includes('Female'));
     assert.ok(html.includes('aria-pressed="true"') && html.includes('>XML<'));
   });
 });

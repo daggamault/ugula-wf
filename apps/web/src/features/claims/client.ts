@@ -1,12 +1,35 @@
-import type { ClaimEventKind, ClaimStep } from '@ugula/billing';
+import {
+  CLAIM_STATUSES,
+  type ClaimEventKind,
+  type ClaimStatus,
+  type ClaimStep
+} from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
 import type { Page } from '../../shared/url-state.ts';
 
-export type ClaimStatus = 'open' | 'paid' | 'written_off' | 'collections';
+export type { ClaimStatus };
 
-export type ClaimView = ClaimStatus | 'ready' | 'all';
+export type ClaimFilter = ClaimStatus | 'open' | 'all';
 
-export type ClaimQuery = { status: ClaimStatus | 'all'; q: string; patientId?: string };
+export type ClaimSearch = {
+  status: ClaimFilter;
+  firstName: string;
+  lastName: string;
+  birthDate: string;
+  number: string;
+};
+
+export type ClaimQuery = Partial<ClaimSearch> & { patientId?: string };
+
+const FILTERS: readonly ClaimFilter[] = ['open', 'all', ...CLAIM_STATUSES];
+
+export const claimSearchOf = (query: URLSearchParams): ClaimSearch => ({
+  status: FILTERS.find((f) => f === query.get('status')) ?? 'open',
+  firstName: query.get('firstName') ?? '',
+  lastName: query.get('lastName') ?? '',
+  birthDate: query.get('birthDate') ?? '',
+  number: query.get('number') ?? ''
+});
 
 export type PendingClaim = {
   id: string;
@@ -34,12 +57,10 @@ export type Batch = {
   created_by_email: string | null;
 };
 
-const listQuery = ({ status, q, patientId }: ClaimQuery, page: string) => {
-  const filters = new URLSearchParams({
-    status,
-    ...(q.trim() ? { q: q.trim() } : {}),
-    ...(patientId ? { patientId } : {})
-  });
+export const listQuery = (query: ClaimQuery, page: string) => {
+  const filters = new URLSearchParams(
+    Object.entries(query).flatMap(([k, v]) => (v?.trim() ? [[k, v.trim()]] : []))
+  );
   return `${filters}&${page}`;
 };
 
@@ -53,8 +74,10 @@ export type CycleStatus =
 
 export type ClaimSummary = {
   id: string;
+  number: number;
+  patient_number: number;
   pcr_number: string | null;
-  level: string;
+  level: string | null;
   total_cents: number;
   balance_cents: number;
   service_date: string | null;
@@ -84,7 +107,8 @@ export type ClaimCoverage = {
 };
 
 export type ClaimDetail = ClaimSummary & {
-  emergency: boolean;
+  emergency: boolean | null;
+  import_report_id: string | null;
   loaded_miles: string | null;
   birth_date: string;
   patient_id: string;
@@ -172,11 +196,11 @@ export const createClaimsClient = (api: Api) => ({
     api.post<{ balanceCents: number; duplicate: boolean }>(`/api/claims/${id}/responses`, response),
   pending: (claimId?: string) =>
     api.get<Pending>(`/api/submissions/pending${claimId ? `?claimId=${claimId}` : ''}`),
-  batches: (page: string) => api.get<Page<Batch>>(`/api/submissions/batches?${page}`),
-  createBatch: async (claimIds: string[]) =>
-    (await api.post<{ batch: Batch }>('/api/submissions/batches', { claimIds })).batch,
+  createBatch: async (claimId: string) =>
+    (await api.post<{ batch: Batch }>('/api/submissions/batches', { claimId })).batch,
   markSubmitted: (claimId: string) => api.post('/api/submissions/manual', { claimId }),
-  fileUrl: (batchId: string) => api.href(`/api/submissions/batches/${batchId}/file`)
+  fileUrl: (batchId: string) => api.href(`/api/submissions/batches/${batchId}/file`),
+  encounterUrl: (reportId: string) => api.href(`/api/imports/reports/${reportId}/xml`)
 });
 
 export type ClaimsClient = ReturnType<typeof createClaimsClient>;

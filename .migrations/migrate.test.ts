@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createDummyDb } from '@ugula/db';
+import { createDummyDb } from '@ugula/db/testing';
 import { createBillingProfilesTables } from './billing-profiles.ts';
 import { createClaimsTables } from './claims.ts';
 import { createExtensions } from './extensions.ts';
@@ -9,6 +9,7 @@ import { createGnisPlacesTable } from './gnis-places.ts';
 import { createGraphsTables } from './graphs.ts';
 import { createImportsTables } from './imports.ts';
 import { migrate, resetSchema, steps } from './migrate.ts';
+import { createNemsisDictionaryTables } from './nemsis-dictionary.ts';
 import { createNotificationsTables } from './notifications.ts';
 import { createPatientsTable } from './patients.ts';
 import { createTasksTable } from './tasks.ts';
@@ -22,6 +23,7 @@ describe('migrate', () => {
       resetSchema,
       createExtensions,
       createGnisPlacesTable,
+      createNemsisDictionaryTables,
       createTenantsTable,
       createUsersTable,
       createGraphsTables,

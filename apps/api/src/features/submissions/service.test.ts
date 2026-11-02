@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { BatchClaim } from '@ugula/billing';
-import { type ClaimEventKind, createRecordingDb } from '@ugula/db';
+import type { BatchClaim, ClaimEventKind } from '@ugula/billing';
+import { createRecordingDb } from '@ugula/db/testing';
 import type { Json } from '@ugula/graph';
-import type { JobBoss } from '@ugula/jobs';
+import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
 import type { Evaluate } from '../../shared/evaluate.ts';
 import { recordAnnouncements } from '../../shared/testing.ts';
-import type { OpenClaimRow } from './queries.ts';
+import type { ReadyClaimRow } from './queries.ts';
 import {
   batchKey,
   createSubmissionService,
@@ -63,7 +63,7 @@ const medicare = {
   group_id: null
 };
 
-const claimRow = (id: string, over: Partial<OpenClaimRow> = {}): OpenClaimRow => ({
+const claimRow = (id: string, over: Partial<ReadyClaimRow> = {}): ReadyClaimRow => ({
   id,
   pcr_number: 'PCR-1',
   emergency: true,
@@ -130,14 +130,15 @@ const event = (
   created_at: new Date(at)
 });
 
-const pending = (rows: OpenClaimRow[], events: ReturnType<typeof event>[]) =>
+const pending = (rows: ReadyClaimRow[], events: ReturnType<typeof event>[]) =>
   pendingClaims(rows, events, now);
 
 describe('pendingClaims', () => {
-  it('lists open claims waiting on a submission with what blocks each one', () => {
+  it('lists approved claims waiting on a submission with what blocks each one', () => {
     const waiting = pending(
       [
         claimRow(C1),
+        claimRow('unreviewed'),
         claimRow(C2, {
           service_date: null,
           origin_code: null,
@@ -149,9 +150,14 @@ describe('pendingClaims', () => {
         claimRow('requeued')
       ],
       [
+        event(C1, 'approved', MEDICARE),
+        event(C2, 'approved', MEDICARE),
+        event('sent', 'approved', MEDICARE),
         event('sent', 'submitted', MEDICARE),
+        event('requeued', 'approved', MEDICARE),
         event('requeued', 'submitted', MEDICARE),
-        event('requeued', 'resubmit_queued', MEDICARE, '2026-10-20T00:00:00Z')
+        event('requeued', 'resubmit_queued', MEDICARE, '2026-10-20T00:00:00Z'),
+        event('requeued', 'approved', MEDICARE, '2026-10-21T00:00:00Z')
       ]
     );
     assert.deepEqual(
@@ -188,7 +194,11 @@ describe('pendingClaims', () => {
   it('flags secondary claims, which need the primary payer adjudication', () => {
     const [secondary] = pending(
       [claimRow(C1, { coverages: [{ ...medicare, id: BLUE, payer: 'Blue Plan' }, medicare] })],
-      [{ ...event(C1, 'response', BLUE), paid_cents: 50_000 }]
+      [
+        { ...event(C1, 'response', BLUE), paid_cents: 50_000 },
+        event(C1, 'reconciled', BLUE),
+        event(C1, 'approved', MEDICARE)
+      ]
     );
     assert.equal(secondary?.coverageId, MEDICARE);
     assert.deepEqual(secondary?.claim.priorPayers, ['Blue Plan']);
@@ -210,7 +220,7 @@ describe('detailsOf', () => {
 
 const setup = ({
   rows = [claimRow(C1)],
-  events = [] as unknown[],
+  events = [event(C1, 'approved', MEDICARE)] as unknown[],
   withProfile = true,
   broken = false
 } = {}) => {
@@ -227,7 +237,7 @@ const setup = ({
     return [];
   });
   const jobs: unknown[] = [];
-  const boss: JobBoss = { insert: async (_n, batch) => void jobs.push(...batch) };
+  const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
   const stored: { key: string; text: string; contentType: string }[] = [];
   const blobs = {
     putBytes: async (key: string, body: Uint8Array, contentType: string) => {
@@ -266,9 +276,9 @@ describe('submission service', () => {
     });
   });
 
-  it('writes an 837P file, logs each claim as submitted and wakes its cycle', async () => {
+  it('writes an 837P file for one claim, logs it as submitted and wakes its cycle', async () => {
     const { service, queries, jobs, stored, mapped } = setup();
-    const res = await service.create('t1', 'u1', [C1, C1]);
+    const res = await service.create('t1', 'u1', C1);
     assert.ok(res.ok, JSON.stringify(res));
     assert.deepEqual(mapped, [`t1:${MAP_837P.key}@1:x837`]);
     assert.ok(stored[0]?.text.includes('SV1*HC:A0427:RH*850*UN*1***1~'));
@@ -285,31 +295,41 @@ describe('submission service', () => {
       C1,
       'submitted',
       MEDICARE,
-      '837P batch #7',
+      '837P file #7',
       'b1',
       'u1'
     ]);
+    const status = queries.find((q) => q.sql.startsWith('update "claims"'));
+    assert.deepEqual(status?.parameters, ['submitted', C1, 'ready']);
     assert.equal(jobs.length, 1);
   });
 
   it('refuses claims that are no longer ready, without writing anything', async () => {
-    const { service, stored, queries } = setup({ events: [event(C1, 'submitted', MEDICARE)] });
-    const res = await service.create('t1', 'u1', [C1]);
+    const { service, stored, queries } = setup({
+      events: [event(C1, 'approved', MEDICARE), event(C1, 'submitted', MEDICARE)]
+    });
+    const res = await service.create('t1', 'u1', C1);
     assert.deepEqual(res, {
       ok: false,
-      failure: {
-        code: 'conflict',
-        message: 'A selected claim is no longer ready to submit',
-        details: { claimIds: [C1] }
-      }
+      failure: { code: 'conflict', message: 'This claim is not ready to submit' }
     });
+    const unreviewed = await setup({ events: [] }).service.create('t1', 'u1', C1);
+    assert.ok(!unreviewed.ok && unreviewed.failure.code === 'conflict');
     assert.equal(stored.length, 0);
     assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
   });
 
+  it('refuses a claim with missing data, naming what to fix', async () => {
+    const { service, stored } = setup({ rows: [claimRow(C1, { service_date: null })] });
+    const res = await service.create('t1', 'u1', C1);
+    assert.ok(!res.ok && res.failure.code === 'invalid');
+    assert.equal(!res.ok && res.failure.message, 'The date of service is missing');
+    assert.equal(stored.length, 0);
+  });
+
   it('names the claim whose 837P mapping is incomplete, without writing anything', async () => {
     const { service, stored } = setup({ broken: true });
-    const res = await service.create('t1', 'u1', [C1]);
+    const res = await service.create('t1', 'u1', C1);
     assert.ok(!res.ok && res.failure.code === 'invalid');
     assert.match(
       !res.ok ? res.failure.message : '',
@@ -320,7 +340,7 @@ describe('submission service', () => {
 
   it('needs clearinghouse IDs before building a batch', async () => {
     const { service } = setup({ withProfile: false });
-    const res = await service.create('t1', 'u1', [C1]);
+    const res = await service.create('t1', 'u1', C1);
     assert.ok(!res.ok && res.failure.code === 'invalid');
   });
 
@@ -333,11 +353,13 @@ describe('submission service', () => {
       C1,
       'submitted',
       MEDICARE,
-      'Submitted outside an 837P batch',
+      'Submitted outside an 837P file',
       null
     ]);
     assert.equal(jobs.length, 1);
-    const done = setup({ events: [event(C1, 'submitted', MEDICARE)] });
+    const done = setup({
+      events: [event(C1, 'approved', MEDICARE), event(C1, 'submitted', MEDICARE)]
+    });
     const again = await done.service.markSubmitted('t1', 'u1', C1, '');
     assert.ok(!again.ok && again.failure.code === 'conflict');
   });

@@ -13,7 +13,7 @@ import { Link } from '../router.tsx';
 import { intentIcons } from './alert.tsx';
 import { IconButton } from './icon-button.tsx';
 import type { Intent } from './intent.ts';
-import { interactiveClasses } from './interactive.ts';
+import { textLinkClasses } from './text-link.tsx';
 
 export type ToastAction = { label: string; to: string };
 
@@ -70,12 +70,11 @@ const ToastCard = ({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: num
       onPointerLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      className="border-border bg-surface animate-toast pointer-events-auto flex items-start gap-3 rounded-xl border p-3 pl-4 shadow-lg"
+      className="border-border bg-surface animate-toast pointer-events-auto flex items-start gap-3 rounded-xl border px-4 py-3 shadow-lg"
     >
-      <Icon
-        aria-hidden="true"
-        className={classNamesOf('mt-0.5 size-5 shrink-0', accentClasses[intent])}
-      />
+      <span className="flex h-5 shrink-0 items-center">
+        <Icon aria-hidden="true" className={classNamesOf('size-4', accentClasses[intent])} />
+      </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <p className="text-sm font-semibold">{toast.title}</p>
         {toast.description ? (
@@ -85,16 +84,15 @@ const ToastCard = ({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: num
           <Link
             to={toast.action.to}
             onClick={dismiss}
-            className={classNamesOf(
-              interactiveClasses,
-              'text-primary w-fit rounded text-sm font-semibold hover:underline'
-            )}
+            className={classNamesOf(textLinkClasses, 'w-fit text-sm')}
           >
             {toast.action.label}
           </Link>
         ) : null}
       </div>
-      <IconButton label="Dismiss" icon={XIcon} tooltipSide="left" onClick={dismiss} />
+      <span className="-my-2 -mr-2 flex">
+        <IconButton label="Dismiss" icon={XIcon} tooltipSide="left" onClick={dismiss} />
+      </span>
     </li>
   );
 };

@@ -1,10 +1,8 @@
-import { billingModels, createBillingNodes } from '@ugula/billing';
-import { createBlobStore, createS3Storage } from '@ugula/blobs';
+import { createNodeCatalog } from '@ugula/catalog';
 import { createDb, findDefinitions, listRunGraphRefs } from '@ugula/db';
-import { publishEvent } from '@ugula/events';
-import { createModelNodes, createStdNodes } from '@ugula/graph';
-import { createCompleter, createEmbedder } from '@ugula/inference';
-import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
+import { createCompleter, createCompletionLimiter, createEmbedder } from '@ugula/inference';
+import { publishLiveEvent } from '@ugula/live';
+import { createBlobStore, createS3Storage } from '@ugula/storage';
 import { Redis } from 'ioredis';
 import { PgBoss } from 'pg-boss';
 import { type Config, parseConfig } from './config.ts';
@@ -21,6 +19,12 @@ import { registerWorkflowJobs } from './features/workflows/job.ts';
 import { createRunStore } from './features/workflows/queries.ts';
 import { createRunner } from './features/workflows/runner.ts';
 import { createAnnouncer, type Publish } from './shared/live.ts';
+import {
+  createLoadGate,
+  createProcessSampler,
+  defaultHeapBytes,
+  megabytes
+} from './shared/load.ts';
 
 const connection = (config: Config) => ({
   host: config.DB_HOST,
@@ -30,7 +34,8 @@ const connection = (config: Config) => ({
   database: config.DB_NAME
 });
 
-export const createWorker = (config: Config) => new PgBoss(connection(config));
+export const createWorker = (config: Config) =>
+  new PgBoss({ ...connection(config), useListenNotify: true });
 
 if (import.meta.main) {
   const config = parseConfig(process.env);
@@ -43,7 +48,6 @@ if (import.meta.main) {
     password: config.REDIS_PASSWORD
   });
   const blobs = createBlobStore(
-    config.S3_BUCKET,
     createS3Storage({
       endpoint: config.S3_ENDPOINT,
       region: config.S3_REGION,
@@ -54,15 +58,15 @@ if (import.meta.main) {
   );
   await blobs.ensureBucket();
   const store = createRunStore({ db, boss });
-  const publish: Publish = (tenantId, event) => publishEvent(redis, tenantId, event);
+  const publish: Publish = (tenantId, event) => publishLiveEvent(redis, tenantId, event);
   const announce = createAnnouncer(db, publish);
   const runner = createRunner({
     store,
     engines: createEngineCache({
-      nodes: [
-        ...createStdNodes({ fetch }),
-        ...createNemsisNodes(announceImports(createReportStore(db, blobs), announce)),
-        ...createBillingNodes({
+      nodes: createNodeCatalog({
+        fetch,
+        reports: announceImports(createReportStore(db, blobs), announce),
+        billing: {
           patients: createPatientStore(db),
           payers: createPayerStore(db, createEmbedder({ url: config.EMBEDDINGS_URL, fetch })),
           fees: createFeeStore(db),
@@ -70,11 +74,11 @@ if (import.meta.main) {
           completer: createCompleter({
             url: config.COMPLETIONS_URL,
             model: config.COMPLETIONS_MODEL,
+            limit: createCompletionLimiter(redis, config.COMPLETIONS_CONCURRENCY),
             fetch
           })
-        }),
-        ...createModelNodes([...nemsisModels, ...billingModels])
-      ],
+        }
+      }),
       loadRefs: (runId) => listRunGraphRefs(db, runId),
       loadDefinitions: (ids) => findDefinitions(db, ids)
     }),
@@ -82,5 +86,18 @@ if (import.meta.main) {
     publish
   });
   await registerHealthJob(boss);
-  await registerWorkflowJobs({ boss, runner, store, concurrency: config.WORKFLOW_CONCURRENCY });
+  await registerWorkflowJobs({
+    boss,
+    runner,
+    store,
+    concurrency: config.WORKFLOW_CONCURRENCY,
+    gate: createLoadGate(createProcessSampler(), {
+      eventLoop: config.WORKER_MAX_EVENT_LOOP_UTILIZATION,
+      heapBytes: config.WORKER_MAX_HEAP_MB
+        ? megabytes(config.WORKER_MAX_HEAP_MB)
+        : defaultHeapBytes(),
+      rssBytes: config.WORKER_MAX_RSS_MB ? megabytes(config.WORKER_MAX_RSS_MB) : null
+    }),
+    report: (message) => process.stderr.write(`${message}\n`)
+  });
 }

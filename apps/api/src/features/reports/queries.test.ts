@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import {
   AGING_BUCKETS,
   agingReport,
@@ -40,7 +40,17 @@ describe('report queries', () => {
     assert.ok(q.sql.includes('group by responsible.payer'));
     assert.equal(AGING_BUCKETS.length, 5);
     assert.deepEqual(q.parameters.slice(0, 3), ['2026-10-23', 0, 30]);
-    assert.deepEqual(q.parameters.slice(-6), ['response', 'payer_skipped', 1, 't-1', 'open', 0]);
+    assert.deepEqual(q.parameters.slice(-9), [
+      'response',
+      'payer_skipped',
+      1,
+      't-1',
+      'paid',
+      'written_off',
+      'collections',
+      'void',
+      0
+    ]);
   });
 
   it('summarizes charges, payments and balances by month of service', async () => {
@@ -50,10 +60,15 @@ describe('report queries', () => {
         "to_char(date_trunc('month', coalesce(c.service_date, c.created_at::date)), 'YYYY-MM') as \"month\""
       )
     );
-    assert.ok(q.sql.includes("filter (where c.status = 'open')"));
-    assert.ok(q.sql.includes('between $2::date and $3::date'));
+    assert.ok(
+      q.sql.includes(
+        "filter (where c.status not in ('paid', 'written_off', 'collections', 'void'))"
+      )
+    );
+    assert.ok(q.sql.includes('"c"."status" not in ('));
+    assert.ok(q.sql.includes('between $4::date and $5::date'));
     assert.ok(q.sql.endsWith('group by 1 order by "month" desc'));
-    assert.deepEqual(q.parameters, ['t-1', '2026-01-01', '2026-10-23']);
+    assert.deepEqual(q.parameters, ['t-1', 'draft', 'void', '2026-01-01', '2026-10-23']);
   });
 
   it('totals charge lines by HCPCS code', async () => {

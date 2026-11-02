@@ -1,6 +1,5 @@
+import { type SessionData, type SessionStore, verifyPassword } from '@ugula/auth';
 import type { Db } from '@ugula/db';
-import { verifyPassword } from '@ugula/passwords';
-import type { SessionData, SessionStore } from '@ugula/sessions';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import { findActiveUserByEmail, isActiveMember } from './queries.ts';
 import type { SignInInput } from './schemas.ts';

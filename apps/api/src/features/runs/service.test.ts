@@ -1,18 +1,27 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
-import type { JobBoss } from '@ugula/jobs';
+import { createRecordingDb } from '@ugula/db/testing';
+import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
 import { createRunService } from './service.ts';
 
 const recordingBoss = () => {
   const jobs: unknown[] = [];
-  const boss: JobBoss = { insert: async (_name, batch) => void jobs.push(...batch) };
+  const boss: RunQueueClient = { insert: async (_name, batch) => void jobs.push(...batch) };
   return { boss, jobs };
 };
 
 const codeOf = (res: { ok: boolean; failure?: { code: string } }) =>
   res.ok ? 'ok' : res.failure?.code;
+
+const stored: string[] = [];
+
+const blobs = {
+  putBytes: async (key: string, body: Uint8Array, contentType: string) => {
+    stored.push(`${key} ${contentType} ${body.byteLength}`);
+    return { bucket: 'ugula', key, size: body.byteLength, contentType };
+  }
+};
 
 describe('run service', () => {
   it('starts the latest published version and enqueues it in the same transaction', async () => {
@@ -20,17 +29,27 @@ describe('run service', () => {
       q.sql.startsWith('select') ? [{ id: 'v1', version: 4 }] : [{ id: 'r1' }]
     );
     const { boss, jobs } = recordingBoss();
-    assert.deepEqual(await createRunService({ db, boss }).start('t-1', 'g1', undefined, { a: 1 }), {
-      ok: true,
-      value: { id: 'r1', version: 4 }
-    });
+    assert.deepEqual(
+      await createRunService({ db, boss, blobs, maxBytes: 100 }).start('t-1', 'g1', undefined, {
+        a: 1
+      }),
+      {
+        ok: true,
+        value: { id: 'r1', version: 4 }
+      }
+    );
     assert.ok(queries.some((q) => q.parameters.includes('{"a":1}')));
     assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } } }]);
   });
 
   it('fails to start when nothing is published', async () => {
     const { db } = createRecordingDb();
-    const res = await createRunService({ db, boss: recordingBoss().boss }).start('t', 'g', 2, {});
+    const res = await createRunService({
+      db,
+      boss: recordingBoss().boss,
+      blobs,
+      maxBytes: 100
+    }).start('t', 'g', 2, {});
     assert.equal(codeOf(res), 'not_found');
   });
 
@@ -38,15 +57,30 @@ describe('run service', () => {
     const withStatus = (status: string) => createRecordingDb(() => [{ id: 'r1', status }]).db;
     const { boss, jobs } = recordingBoss();
     assert.equal(
-      codeOf(await createRunService({ db: withStatus('suspended'), boss }).cancel('t', 'r1')),
+      codeOf(
+        await createRunService({ db: withStatus('suspended'), boss, blobs, maxBytes: 100 }).cancel(
+          't',
+          'r1'
+        )
+      ),
       'ok'
     );
     assert.equal(
-      codeOf(await createRunService({ db: withStatus('completed'), boss }).cancel('t', 'r1')),
+      codeOf(
+        await createRunService({ db: withStatus('completed'), boss, blobs, maxBytes: 100 }).cancel(
+          't',
+          'r1'
+        )
+      ),
       'conflict'
     );
     assert.equal(
-      codeOf(await createRunService({ db: createRecordingDb().db, boss }).cancel('t', 'r1')),
+      codeOf(
+        await createRunService({ db: createRecordingDb().db, boss, blobs, maxBytes: 100 }).cancel(
+          't',
+          'r1'
+        )
+      ),
       'not_found'
     );
     assert.equal(jobs.length, 1);
@@ -59,7 +93,9 @@ describe('run service', () => {
     ]);
     const { boss, jobs } = recordingBoss();
     assert.deepEqual(
-      await createRunService({ db, boss }).signal('t-1', 'ack', 'C1', { ok: true }),
+      await createRunService({ db, boss, blobs, maxBytes: 100 }).signal('t-1', 'ack', 'C1', {
+        ok: true
+      }),
       {
         ok: true,
         value: { resumed: 2 }
@@ -83,7 +119,9 @@ describe('run service', () => {
           : [];
     const service = createRunService({
       db: createRecordingDb(visible).db,
-      boss: recordingBoss().boss
+      boss: recordingBoss().boss,
+      blobs,
+      maxBytes: 100
     });
     assert.deepEqual(await service.find('t', 'r1'), {
       ok: true,
@@ -100,7 +138,12 @@ describe('run service', () => {
       ok: true,
       value: { steps: [] }
     });
-    const hidden = createRunService({ db: createRecordingDb().db, boss: recordingBoss().boss });
+    const hidden = createRunService({
+      db: createRecordingDb().db,
+      boss: recordingBoss().boss,
+      blobs,
+      maxBytes: 100
+    });
     for (const res of [
       await hidden.find('t', 'x'),
       await hidden.graphs('t', 'x'),
@@ -120,5 +163,29 @@ describe('run service', () => {
       ),
       'ok'
     );
+  });
+});
+
+describe('run input files', () => {
+  it('stores an uploaded file for a run input and refuses empty or oversized files', async () => {
+    const service = createRunService({
+      db: createRecordingDb().db,
+      boss: recordingBoss().boss,
+      blobs,
+      maxBytes: 4
+    });
+    const res = await service.uploadFile('t-1', {
+      name: 'pcr.xml',
+      type: 'text/xml',
+      bytes: new Uint8Array(3)
+    });
+    assert.ok(res.ok);
+    assert.match(res.value.file.key, /^imports\/t-1\/uploads\/[0-9a-f-]{36}\/pcr\.xml$/);
+    assert.deepEqual([res.value.file.bucket, res.value.name], ['ugula', 'pcr.xml']);
+    assert.match(stored.at(-1) ?? '', / text\/xml 3$/);
+    const empty = await service.uploadFile('t-1', { name: 'a', type: '', bytes: new Uint8Array() });
+    assert.equal(codeOf(empty), 'invalid');
+    const big = await service.uploadFile('t-1', { name: 'a', type: '', bytes: new Uint8Array(5) });
+    assert.equal(codeOf(big), 'invalid');
   });
 });

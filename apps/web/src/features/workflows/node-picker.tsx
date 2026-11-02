@@ -50,7 +50,7 @@ export const NodeList = ({
                   onClick={() => onAdd(e)}
                   className={classNamesOf(
                     interactiveClasses,
-                    'hover:bg-primary/10 flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left'
+                    'hover:bg-surface-fg/6 flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left'
                   )}
                 >
                   <span className="text-sm font-semibold">{e.title}</span>
@@ -74,7 +74,7 @@ export const NodePicker = ({ open, entries, onAdd, onClose }: NodePickerProps) =
     <Dialog
       open={open}
       isWide
-      title="Add a Node"
+      title="Add Node"
       description="Pick what the next step should do. It lands on the canvas, ready to wire up."
       onClose={onClose}
     >

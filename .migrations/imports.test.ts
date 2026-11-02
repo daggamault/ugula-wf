@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createDummyDb } from '@ugula/db';
+import { createDummyDb } from '@ugula/db/testing';
 import { buildImportReportsTable, buildImportsIndexes, buildImportsTable } from './imports.ts';
 
 describe('imports tables', () => {

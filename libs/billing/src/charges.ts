@@ -1,3 +1,4 @@
+import { isCents } from './values.ts';
 export const SERVICE_LEVELS = ['BLS', 'ALS1', 'ALS2', 'SCT'] as const;
 
 export type ServiceLevel = (typeof SERVICE_LEVELS)[number];
@@ -39,8 +40,6 @@ export const priceLines = (lines: ClaimLine[], fees: Record<string, number>): Pr
   });
   return { lines: priced, totalCents: priced.reduce((sum, l) => sum + l.totalCents, 0) };
 };
-
-const isCents = (x: unknown): x is number => typeof x === 'number' && Number.isInteger(x) && x >= 0;
 
 export const readPricedLines = (x: unknown): PricedLine[] =>
   readLines(x).map((line, i) => {

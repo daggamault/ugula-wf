@@ -1,0 +1,17 @@
+{
+  "name": "@ugula/catalog",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ugula/billing": "workspace:*",
+    "@ugula/graph": "workspace:*",
+    "@ugula/nemsis": "workspace:*"
+  }
+}

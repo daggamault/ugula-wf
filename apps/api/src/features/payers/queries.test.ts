@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import { deleteAlias, deletePayer, linkCoverages, listPayers, upsertPayer } from './queries.ts';
 
 describe('payer queries', () => {

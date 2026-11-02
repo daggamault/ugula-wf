@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { BlobStore } from '@ugula/blobs';
+import type { RedisLike } from '@ugula/auth';
 import type { Db } from '@ugula/db';
 import { createStdNodes } from '@ugula/graph';
 import { createNemsisNodes } from '@ugula/nemsis';
-import type { RedisLike } from '@ugula/sessions';
+import type { BlobStore } from '@ugula/storage';
 import type { Config } from './config.ts';
 import { createApp } from './main.ts';
 

@@ -14,11 +14,11 @@ describe('ThemeToggle', () => {
 
   it('renders accessible icon toggle button for light and dark states', () => {
     const lightHtml = renderToStaticMarkup(createElement(ThemeToggle, { initialTheme: 'light' }));
-    assert.ok(lightHtml.includes('aria-label="Switch to Dark Mode"'));
+    assert.ok(lightHtml.includes('aria-label="Switch to dark mode"'));
     assert.ok(lightHtml.includes('<svg'));
 
     const darkHtml = renderToStaticMarkup(createElement(ThemeToggle, { initialTheme: 'dark' }));
-    assert.ok(darkHtml.includes('aria-label="Switch to Light Mode"'));
+    assert.ok(darkHtml.includes('aria-label="Switch to light mode"'));
   });
 });
 

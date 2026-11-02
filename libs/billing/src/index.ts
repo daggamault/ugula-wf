@@ -22,43 +22,47 @@ export {
   readClaimDetails,
   readCoverages
 } from './claim-details.ts';
+export { claimProblems, type NewClaim, readNewClaim } from './claim-validation.ts';
 export {
   CLAIM_EVENT_KINDS,
   CLAIM_SIGNAL,
+  CLAIM_STATUSES,
+  CLOSED_CLAIM_STATUSES,
   type ClaimEvent,
   type ClaimEventKind,
   type ClaimLedger,
+  type ClaimStatus,
   type ClaimStep,
+  type ClosedStatus,
   COVERAGE_EVENT_KINDS,
   type CyclePolicy,
   claimProgress,
   claimSignalKey,
   DEFAULT_POLICY,
+  isClosedStatus,
   type LedgerCoverage,
   nextClaimStep,
+  OPEN_CLAIM_STATUSES,
   PATIENT_EVENT_KINDS,
-  STATEMENT_LIMIT
+  STATEMENT_LIMIT,
+  stageOf
 } from './claims.ts';
 export { usState, zipCode } from './geo.ts';
-export { billingModels, type Model, type ModelField } from './models.ts';
+export { billingModels } from './models.ts';
 export { nameKey } from './names.ts';
 export {
   type BillingStores,
   type BlobRef,
   type CandidateQuery,
   type ClaimStore,
-  type ClosedStatus,
   type CycleEventKind,
-  claimProblems,
   createBillingNodes,
+  type DraftClaim,
   type FeeStore,
-  type HostNode,
-  type NewClaim,
   type PatientStore,
   type PayerStore,
-  readNewClaim,
   type StatementSource
-} from './nodes.ts';
+} from './nodes/index.ts';
 export {
   type Address,
   type Demographics,

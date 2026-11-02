@@ -5,8 +5,11 @@ import {
   type ClaimEvent,
   claimProgress,
   claimSignalKey,
+  isClosedStatus,
   MIN_WAIT_MS,
-  nextClaimStep
+  nextClaimStep,
+  OPEN_CLAIM_STATUSES,
+  stageOf
 } from './claims.ts';
 
 const DAY = 86_400_000;
@@ -33,8 +36,14 @@ const step = (events: ClaimEvent[], onDay: number, payers = ['Medicare', 'Blue P
   nextClaimStep({ totalCents: 100_000, coverages: payers.map(cov), events }, day(onDay));
 
 describe('nextClaimStep', () => {
-  it('submits to the first payer that has not answered, then waits out its 30 days', () => {
+  it('asks for review before each payer, then submits and waits out its 30 days', () => {
     assert.deepEqual(step([], 0), {
+      step: 'review',
+      coverage: cov('Medicare'),
+      balanceCents: 100_000
+    });
+    assert.equal(step([e('approved', 'Blue Plan', 0)], 0).step, 'review');
+    assert.deepEqual(step([e('approved', 'Medicare', 0)], 0), {
       step: 'submit',
       coverage: cov('Medicare'),
       balanceCents: 100_000
@@ -69,8 +78,13 @@ describe('nextClaimStep', () => {
   });
 
   it('puts a claim back in line for the next batch when a resubmission is queued', () => {
-    const queued = [e('submitted', 'Medicare', 0), e('resubmit_queued', 'Medicare', 30)];
-    assert.equal(step(queued, 31).step, 'submit');
+    const queued = [
+      e('approved', 'Medicare', 0),
+      e('submitted', 'Medicare', 0),
+      e('resubmit_queued', 'Medicare', 30)
+    ];
+    assert.equal(step(queued, 31).step, 'review');
+    assert.equal(step([...queued, e('approved', 'Medicare', 31)], 31).step, 'submit');
     assert.equal(
       claimProgress({ totalCents: 1, coverages: [cov('Medicare')], events: queued })
         .submittedBefore,
@@ -94,24 +108,46 @@ describe('nextClaimStep', () => {
     const both = [
       e('submitted', 'Medicare', 0),
       e('response', 'Medicare', 5, 50_000),
+      e('reconciled', 'Medicare', 5),
       e('submitted', 'Blue Plan', 5),
-      e('response', 'Blue Plan', 9, 10_000)
+      e('response', 'Blue Plan', 9, 10_000),
+      e('reconciled', 'Blue Plan', 9)
     ];
     assert.equal(step(both, 10, ['Blue Plan', 'Medicare']).step, 'statement');
-    assert.deepEqual(step([e('response', 'Blue Plan', 1, 5_000)], 2), {
-      step: 'submit',
-      coverage: cov('Medicare'),
-      balanceCents: 95_000
-    });
+    assert.deepEqual(
+      step([e('response', 'Blue Plan', 1, 5_000), e('reconciled', 'Blue Plan', 1)], 2),
+      { step: 'review', coverage: cov('Medicare'), balanceCents: 95_000 }
+    );
     assert.equal(
-      step([e('response', 'Blue Plan', 1), e('response', 'Medicare', 2)], 3).step,
+      step(
+        [
+          e('response', 'Blue Plan', 1),
+          e('reconciled', 'Blue Plan', 1),
+          e('response', 'Medicare', 2),
+          e('reconciled', 'Medicare', 2)
+        ],
+        3
+      ).step,
       'statement'
     );
     assert.deepEqual(step([e('payer_skipped', 'Medicare', 1)], 1), {
-      step: 'submit',
+      step: 'review',
       coverage: cov('Blue Plan'),
       balanceCents: 100_000
     });
+  });
+
+  it('asks for every payer response that leaves a balance to be reconciled', () => {
+    const answered = [e('submitted', 'Medicare', 0), e('response', 'Medicare', 5, 60_000)];
+    assert.deepEqual(step(answered, 6), {
+      step: 'reconcile',
+      coverage: cov('Medicare'),
+      balanceCents: 40_000
+    });
+    const reconciled = [...answered, e('reconciled', 'Medicare', 6)];
+    assert.equal(step(reconciled, 6).step, 'review');
+    assert.equal(step([...reconciled, e('response', 'Medicare', 7, 1_000)], 7).step, 'reconcile');
+    assert.equal(step([e('response', 'Medicare', 5, 100_000)], 6).step, 'closed');
   });
 
   it('spaces patient statements 30 days apart before collections', () => {
@@ -136,6 +172,29 @@ describe('nextClaimStep', () => {
       step([e('statement', null, 0), e('response', null, 3, 100_000)], 3, []).step,
       'closed'
     );
+  });
+});
+
+describe('claim statuses', () => {
+  it('names the status a biller sees for each step, leaving closing to the close step', () => {
+    assert.deepEqual(
+      (
+        ['review', 'submit', 'await', 'followUp', 'reconcile', 'statement', 'collections'] as const
+      ).map(stageOf),
+      [
+        'needs_review',
+        'ready',
+        'submitted',
+        'follow_up',
+        'reconcile',
+        'patient_balance',
+        'balance_review'
+      ]
+    );
+    assert.equal(stageOf('closed'), null);
+    assert.ok(OPEN_CLAIM_STATUSES.includes('draft'));
+    assert.ok(!OPEN_CLAIM_STATUSES.some(isClosedStatus));
+    assert.deepEqual(['paid', 'void', 'ready'].map(isClosedStatus), [true, true, false]);
   });
 });
 

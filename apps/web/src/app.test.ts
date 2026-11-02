@@ -35,7 +35,6 @@ describe('app routing', () => {
       '/imports/i1',
       '/claims',
       '/claims/c1',
-      '/claims/files',
       '/patients',
       '/patients/p1',
       '/reports',

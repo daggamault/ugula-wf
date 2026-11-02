@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createDummyDb, createRecordingDb } from '@ugula/db';
+import { createDummyDb, createRecordingDb } from '@ugula/db/testing';
 import type { TraceEntry } from '@ugula/graph';
-import { advance, type JobBoss, RUN_QUEUE, resume } from '@ugula/jobs';
+import { advance, RUN_QUEUE, type RunQueueClient, resume } from '@ugula/run-queue';
 import { buildClaim, createRunStore, taskNotification } from './queries.ts';
 
 const recordingDb = (rows: Record<string, unknown>[] = []) => createRecordingDb(() => rows);
 
 const recordingBoss = () => {
   const inserts: { name: string; jobs: unknown[] }[] = [];
-  const boss: JobBoss = {
+  const boss: RunQueueClient = {
     insert: async (name, jobs, options) => {
       assert.equal(typeof options.db.executeSql, 'function');
       inserts.push({ name, jobs });

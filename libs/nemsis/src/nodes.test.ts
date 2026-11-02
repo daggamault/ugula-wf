@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { NodeDef, Values } from '@ugula/graph';
+import { invokeNode } from '@ugula/graph/testing';
 import {
   createNemsisNodes,
   type ReportStore,
@@ -31,27 +33,25 @@ const memoryStore = () => {
   return { store, blobs, recorded };
 };
 
-const invoke = (values: Record<string, unknown>) => ({
-  read: async (pin: string) => values[pin] ?? null,
-  ctx: { runId: 'r1' }
-});
+const run = (node: NodeDef | undefined, inputs: Values) => {
+  if (!node) throw new Error('No such node');
+  return invokeNode(node, { inputs });
+};
 
 describe('createNemsisNodes', () => {
   it('splits a file into one stored report per patient care report', async () => {
     const { store, blobs, recorded } = memoryStore();
     const [split, readReport] = createNemsisNodes(store);
     const file = { bucket: 'ugula', key: 'in/file.xml' };
-    const res = await split?.run(invoke({ file }));
-    assert.equal(res?.outputs.count, 2);
+    const res = await run(split, { file });
+    assert.equal(res.outputs.count, 2);
     assert.deepEqual(
-      ((res?.outputs.reports ?? []) as { key: string }[]).map((r) => r.key),
+      ((res.outputs.reports ?? []) as { key: string }[]).map((r) => r.key),
       [reportKey(file, 0), reportKey(file, 1)]
     );
     assert.equal(reportKey(file, 1), 'in/file.xml.reports/00001.json');
-    const loaded = await readReport?.run(
-      invoke({ report: { bucket: 'ugula', key: reportKey(file, 1) } })
-    );
-    assert.deepEqual(loaded?.outputs.data, { eRecord: { 'eRecord.01': 'B' } });
+    const loaded = await run(readReport, { report: { bucket: 'ugula', key: reportKey(file, 1) } });
+    assert.deepEqual(loaded.outputs.data, { eRecord: { 'eRecord.01': 'B' } });
     assert.equal(blobs.size, 3);
     assert.deepEqual(
       recorded.map((r) => [r.file, r.reports.map((x) => [x.position, x.pcrNumber, x.report.key])]),
@@ -86,10 +86,10 @@ describe('createNemsisNodes', () => {
       }
     });
     const file = { bucket: 'ugula', key: 'in/big.xml' };
-    const res = await split?.run(invoke({ file }));
+    const res = await run(split, { file });
     assert.equal(peak, UPLOAD_CONCURRENCY);
     assert.deepEqual(
-      ((res?.outputs.reports ?? []) as { key: string }[]).map((r) => r.key),
+      ((res.outputs.reports ?? []) as { key: string }[]).map((r) => r.key),
       Array.from({ length: total }, (_, i) => reportKey(file, i))
     );
   });
@@ -102,8 +102,8 @@ describe('createNemsisNodes', () => {
       eDisposition: { 'eDisposition.04': '999' }
     });
     const [, readReport] = createNemsisNodes(store);
-    const res = await readReport?.run(invoke({ report: { bucket: 'ugula', key: 'r.json' } }));
-    const pcr = res?.outputs.pcr as Record<string, Record<string, unknown>>;
+    const res = await run(readReport, { report: { bucket: 'ugula', key: 'r.json' } });
+    const pcr = res.outputs.pcr as Record<string, Record<string, unknown>>;
     assert.deepEqual([pcr.patient?.city, pcr.patient?.cityCode], ['Erie', '1215209']);
     assert.deepEqual([pcr.scene?.city, pcr.scene?.cityCode], ['Fairview', null]);
     assert.deepEqual([pcr.disposition?.city, pcr.disposition?.cityCode], [null, '999']);
@@ -115,10 +115,13 @@ describe('createNemsisNodes', () => {
       nodes.map((n) => `${n.type}@${n.version}`),
       ['nemsis.split@1', 'nemsis.read-report@1']
     );
-    assert.deepEqual(nodes[0]?.signature.execOut, ['then']);
     await assert.rejects(
-      () => nodes[0]?.run(invoke({})) ?? Promise.resolve(),
+      () => run(nodes[0], { file: { bucket: 'ugula', key: 'in/file.xml' } }),
       /only the worker provides/
+    );
+    await assert.rejects(
+      () => run(nodes[0], {}),
+      /Input "file" of "Split NEMSIS File" is required/
     );
   });
 });

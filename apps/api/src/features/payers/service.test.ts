@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import { recordAnnouncements } from '../../shared/testing.ts';
 import { createPayerService } from './service.ts';
 

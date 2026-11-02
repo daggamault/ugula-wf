@@ -3,11 +3,11 @@ import { classNamesOf } from '../class-names.ts';
 import type { Intent } from './intent.ts';
 
 const intentClasses: Readonly<Record<Intent, string>> = {
-  primary: 'bg-primary/15 text-primary',
-  success: 'bg-success/15 text-success',
-  info: 'bg-info/15 text-info',
-  warning: 'bg-warning/15 text-warning-fg',
-  danger: 'bg-danger/15 text-danger'
+  primary: 'border-primary/30 bg-primary/10 text-primary',
+  success: 'border-success/30 bg-success/10 text-success',
+  info: 'border-info/30 bg-info/10 text-info',
+  warning: 'border-warning/30 bg-warning/10 text-warning-fg',
+  danger: 'border-danger/30 bg-danger/10 text-danger'
 };
 
 export type BadgeProps = {
@@ -18,8 +18,8 @@ export type BadgeProps = {
 export const Badge = ({ intent, children }: BadgeProps) => (
   <span
     className={classNamesOf(
-      'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap',
-      intent ? intentClasses[intent] : 'bg-surface-fg/6 text-surface-fg-muted'
+      'inline-flex items-center gap-1 rounded-full border px-2 text-xs/5 font-semibold whitespace-nowrap',
+      intent ? intentClasses[intent] : 'border-border bg-surface-fg/6 text-surface-fg-muted'
     )}
   >
     {children}

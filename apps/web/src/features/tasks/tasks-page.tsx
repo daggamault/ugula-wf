@@ -1,4 +1,4 @@
-import { PlayIcon } from 'lucide-react';
+import { ChevronRightIcon, PlayIcon } from 'lucide-react';
 import { useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatAgo, formatDateTime } from '../../shared/format.ts';
@@ -8,11 +8,11 @@ import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { EmptyState } from '../../shared/ui/empty-state.tsx';
-import { FilterPills } from '../../shared/ui/filter-pills.tsx';
+import { FilterSelect } from '../../shared/ui/filter-select.tsx';
+import { IconLink } from '../../shared/ui/icon-button.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
-import { TextLink } from '../../shared/ui/text-link.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useFilterHref, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
@@ -54,7 +54,8 @@ export const TaskTable = ({
       { label: 'Task', sort: 'task' },
       { label: 'Type', sort: 'queue' },
       { label: 'Waiting', sort: 'waiting' },
-      { label: 'Assigned To', isSecondary: true }
+      { label: 'Assigned To', isSecondary: true },
+      { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
   >
     {tasks.map((t) => {
@@ -63,7 +64,7 @@ export const TaskTable = ({
         <TableRow key={t.id}>
           <TableCell>
             <span className="flex flex-col gap-0.5">
-              <TextLink to={`/tasks/${t.id}`}>{t.subject ?? t.title}</TextLink>
+              <span className="font-medium">{t.subject ?? t.title}</span>
               {t.subject ? (
                 <span className="text-surface-fg-muted text-xs font-normal">{t.title}</span>
               ) : null}
@@ -80,7 +81,14 @@ export const TaskTable = ({
             <span title={formatDateTime(t.created_at)}>{formatAgo(t.created_at)}</span>
           </TableCell>
           <TableCell isSecondary isMuted={!assignee}>
-            {assignee ?? 'Nobody'}
+            {assignee ?? 'Unassigned'}
+          </TableCell>
+          <TableCell kind="actions">
+            <IconLink
+              to={`/tasks/${t.id}`}
+              label={`Open task ${t.subject ?? t.title}`}
+              icon={ChevronRightIcon}
+            />
           </TableCell>
         </TableRow>
       );
@@ -93,38 +101,36 @@ const count = (queues: readonly QueueSummary[], pick: (q: QueueSummary) => numbe
 
 export const typeFilters = (
   queues: readonly QueueSummary[],
-  selected: string | null,
   filterHref: (name: string, value: string | null) => string
 ) => [
   {
+    value: '',
     label: `All (${count(queues, (q) => q.open)})`,
-    href: filterHref('queue', null),
-    isSelected: selected === null
+    href: filterHref('type', null)
   },
   ...[...queues]
     .sort((a, b) => byQueueOrder(a.queue, b.queue))
     .map((q) => ({
+      value: q.queue,
       label: `${queueInfo(q.queue).label} (${q.open})`,
-      href: filterHref('queue', q.queue),
-      isSelected: q.queue === selected
+      href: filterHref('type', q.queue)
     }))
 ];
 
 export const assigneeFilters = (
   queues: readonly QueueSummary[],
-  selected: Assignee,
   filterHref: (name: string, value: string | null) => string
 ) => {
   const scoped = (pick: (q: QueueSummary) => number) => count(queues, pick);
   const labels: Record<Assignee, string> = {
-    anyone: 'Anyone',
+    anyone: `Anyone (${scoped((q) => q.open)})`,
     me: `Me (${scoped((q) => q.mine)})`,
-    unassigned: `Nobody (${scoped((q) => q.unassigned)})`
+    unassigned: `Unassigned (${scoped((q) => q.unassigned)})`
   };
   return ASSIGNEES.map((a) => ({
+    value: a,
     label: labels[a],
-    href: filterHref('assignee', a === 'anyone' ? null : a),
-    isSelected: a === selected
+    href: filterHref('assignee', a === 'anyone' ? null : a)
   }));
 };
 
@@ -188,28 +194,36 @@ export const TasksPage = ({ client, live, me, filter }: TasksPageProps) => {
         ) : null
       }
     >
-      {queues.error ? <Alert>{queues.error.message}</Alert> : null}
-      {queues.data && !all.length ? (
+      {queues.error ? (
+        <Alert>{queues.error.message}</Alert>
+      ) : queues.data && !all.length ? (
         <EmptyState reason="clear" title="You're All Caught Up">
-          New tasks show up here as reports are imported and claims move through their payers.
+          New tasks show up here as PCRs are imported and claims move through their payers.
         </EmptyState>
       ) : queues.data ? (
         <>
           <div className="flex flex-col gap-3">
-            <FilterPills
-              label="Filter by type"
-              options={typeFilters(all, filter.queue, filterHref)}
-            />
-            <FilterPills
-              label="Filter by who it is assigned to"
-              options={assigneeFilters(inScope, filter.assignee, filterHref)}
-            />
+            <div className="flex flex-wrap items-end gap-2">
+              <FilterSelect
+                id="tasks-type"
+                label="Type"
+                value={filter.queue ?? ''}
+                options={typeFilters(all, filterHref)}
+              />
+              <FilterSelect
+                id="tasks-assignee"
+                label="Assigned to"
+                value={filter.assignee}
+                options={assigneeFilters(inScope, filterHref)}
+              />
+            </div>
             {info?.description ? (
               <p className="text-surface-fg-muted text-sm">{info.description}</p>
             ) : null}
           </div>
-          {tasks.error ? <Alert>{tasks.error.message}</Alert> : null}
-          {tasks.data?.items.length ? (
+          {tasks.error ? (
+            <Alert>{tasks.error.message}</Alert>
+          ) : tasks.data?.items.length ? (
             <>
               <TaskTable tasks={tasks.data.items} me={me} sorting={table} />
               <Pagination label="Tasks" total={tasks.data.total} state={table} />
@@ -217,7 +231,7 @@ export const TasksPage = ({ client, live, me, filter }: TasksPageProps) => {
           ) : tasks.loading ? (
             <PageLoading />
           ) : (
-            <EmptyState reason="noMatches" title="No Tasks Here">
+            <EmptyState reason="noMatches" title="No Matching Tasks">
               Nothing matches these filters.
             </EmptyState>
           )}

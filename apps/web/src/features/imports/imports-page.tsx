@@ -85,8 +85,9 @@ export const ImportsPage = ({ client, live }: ImportsPageProps) => {
       description="NEMSIS XML from your ePCR system. Drop files anywhere in the app or send them to your SFTP folder."
       actions={<ImportButton busy={busy} onFiles={(files) => void choose(files)} />}
     >
-      {history.error ? <Alert>{history.error.message}</Alert> : null}
-      {history.data?.items.length ? (
+      {history.error ? (
+        <Alert>{history.error.message}</Alert>
+      ) : history.data?.items.length ? (
         <>
           <ImportHistory imports={history.data.items} sorting={table} />
           <Pagination label="Imports" total={history.data.total} state={table} />

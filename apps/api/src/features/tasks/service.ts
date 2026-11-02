@@ -1,7 +1,15 @@
 import { type Db, sqlExecutor } from '@ugula/db';
-import type { LiveEvent } from '@ugula/events';
 import { checkField, type FieldSpec, isRecord, type Json } from '@ugula/graph';
-import { cancel, enqueueRuns, type JobBoss, type RunJob, resume, retry, skip } from '@ugula/jobs';
+import type { LiveEvent } from '@ugula/live';
+import {
+  cancel,
+  enqueueRuns,
+  type RunJob,
+  type RunQueueClient,
+  resume,
+  retry,
+  skip
+} from '@ugula/run-queue';
 import { type Announce, announced } from '../../shared/live.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
@@ -17,7 +25,7 @@ import {
 
 export type TaskServiceDeps = {
   db: Db;
-  boss: JobBoss;
+  boss: RunQueueClient;
   announce: Announce;
 };
 

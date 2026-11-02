@@ -5,6 +5,8 @@ export const CLAIM_EVENT_KINDS = [
   'follow_up',
   'response',
   'payer_skipped',
+  'approved',
+  'reconciled',
   'statement',
   'revised',
   'closed'
@@ -17,10 +19,40 @@ export const COVERAGE_EVENT_KINDS: readonly ClaimEventKind[] = [
   'resubmitted',
   'resubmit_queued',
   'follow_up',
-  'payer_skipped'
+  'payer_skipped',
+  'approved',
+  'reconciled'
 ];
 
 export const PATIENT_EVENT_KINDS: readonly ClaimEventKind[] = ['statement', 'revised', 'closed'];
+
+export const CLAIM_STATUSES = [
+  'draft',
+  'needs_review',
+  'ready',
+  'submitted',
+  'follow_up',
+  'reconcile',
+  'patient_balance',
+  'balance_review',
+  'paid',
+  'written_off',
+  'collections',
+  'void'
+] as const;
+
+export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
+
+export const CLOSED_CLAIM_STATUSES = ['paid', 'written_off', 'collections', 'void'] as const;
+
+export type ClosedStatus = (typeof CLOSED_CLAIM_STATUSES)[number];
+
+export const isClosedStatus = (status: string): status is ClosedStatus =>
+  (CLOSED_CLAIM_STATUSES as readonly string[]).includes(status);
+
+export const OPEN_CLAIM_STATUSES = CLAIM_STATUSES.filter(
+  (s): s is Exclude<ClaimStatus, ClosedStatus> => !isClosedStatus(s)
+);
 
 export type LedgerCoverage = { id: string; payer: string };
 
@@ -47,7 +79,9 @@ export const STATEMENT_INTERVAL_MS = 30 * 86_400_000;
 export const MIN_WAIT_MS = 60_000;
 
 export type ClaimStep =
+  | { step: 'review'; coverage: LedgerCoverage; balanceCents: number }
   | { step: 'submit'; coverage: LedgerCoverage; balanceCents: number }
+  | { step: 'reconcile'; coverage: LedgerCoverage; balanceCents: number }
   | { step: 'followUp'; coverage: LedgerCoverage; balanceCents: number }
   | { step: 'await'; coverage: LedgerCoverage; waitMs: number; balanceCents: number }
   | { step: 'statement'; statement: number; balanceCents: number }
@@ -81,11 +115,19 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const last = contacts.at(-1);
   const contacted = !last || last.kind === 'resubmit_queued' ? null : Date.parse(last.at);
+  const lastOf = (coverageId: string, kinds: readonly ClaimEventKind[]) =>
+    events.findLastIndex((e) => e.coverageId === coverageId && kinds.includes(e.kind));
+  const approved =
+    coverage !== null && lastOf(coverage.id, ['approved']) > lastOf(coverage.id, CONTACTS);
+  const unreconciled =
+    coverages.find((c) => lastOf(c.id, ['response']) > lastOf(c.id, ['reconciled'])) ?? null;
   const statements = events.filter((e) => e.kind === 'statement');
   return {
     balanceCents,
     coverage,
     contacted,
+    approved,
+    unreconciled,
     submittedBefore: contacts.some((e) => e.kind === 'submitted' || e.kind === 'resubmitted'),
     priorCoverages: coverages.filter((c) => answered.has(c.id) && c.id !== coverage?.id),
     statements: statements.length,
@@ -115,10 +157,14 @@ export const nextClaimStep = (
   now: Date,
   policy: CyclePolicy = DEFAULT_POLICY
 ): ClaimStep => {
-  const { balanceCents, coverage, contacted, statements, lastStatement } = claimProgress(ledger);
+  const { balanceCents, coverage, contacted, approved, unreconciled, statements, lastStatement } =
+    claimProgress(ledger);
   if (balanceCents <= 0) return { step: 'closed', balanceCents };
+  if (unreconciled !== null) return { step: 'reconcile', coverage: unreconciled, balanceCents };
   if (coverage !== null) {
-    if (contacted === null) return { step: 'submit', coverage, balanceCents };
+    if (contacted === null) {
+      return { step: approved ? 'submit' : 'review', coverage, balanceCents };
+    }
     const waitMs = waitFor(contacted, policy.payerWaitMs, now);
     return waitMs > 0
       ? { step: 'await', coverage, waitMs, balanceCents }
@@ -131,6 +177,20 @@ export const nextClaimStep = (
     ? { step: 'statement', statement: statements + 1, balanceCents }
     : { step: 'collections', balanceCents };
 };
+
+const STAGES: Record<ClaimStep['step'], ClaimStatus | null> = {
+  review: 'needs_review',
+  submit: 'ready',
+  reconcile: 'reconcile',
+  await: 'submitted',
+  followUp: 'follow_up',
+  statement: 'patient_balance',
+  awaitPatient: 'patient_balance',
+  collections: 'balance_review',
+  closed: null
+};
+
+export const stageOf = (step: ClaimStep['step']) => STAGES[step];
 
 export const CLAIM_SIGNAL = 'claim';
 

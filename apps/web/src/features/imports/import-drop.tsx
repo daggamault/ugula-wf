@@ -1,23 +1,36 @@
 import { FileUpIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { classNamesOf } from '../../shared/class-names.ts';
 import type { ImportsClient } from './client.ts';
 import { useImportFiles } from './import-files.ts';
 
 export const carriesFiles = (e: Pick<DragEvent, 'dataTransfer'>) =>
   e.dataTransfer?.types.includes('Files') ?? false;
 
-export const DropOverlay = () => (
+export const DropOverlay = ({ isVisible }: { isVisible: boolean }) => (
   <div
     aria-hidden="true"
-    className="bg-canvas/80 animate-reveal pointer-events-none fixed inset-0 z-40 grid place-items-center p-6 backdrop-blur-sm"
+    inert
+    data-visible={isVisible || undefined}
+    className="bg-canvas/85 pointer-events-none fixed inset-0 z-50 flex p-4 opacity-0 backdrop-blur-none transition-[opacity,backdrop-filter] duration-200 ease-out data-visible:opacity-100 data-visible:backdrop-blur-md sm:p-6"
   >
-    <div className="border-primary bg-surface flex w-full max-w-lg flex-col items-center gap-3 rounded-2xl border-2 border-dashed px-6 py-14 text-center shadow-xl">
-      <span className="bg-primary/10 text-primary grid size-14 place-items-center rounded-full">
-        <FileUpIcon className="size-7" />
+    <div
+      className={classNamesOf(
+        'border-primary bg-primary/5 flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed p-8 text-center transition-transform duration-200 ease-out',
+        isVisible ? 'scale-100' : 'scale-95'
+      )}
+    >
+      <span
+        className={classNamesOf(
+          'bg-primary/10 text-primary grid size-24 place-items-center rounded-full transition-transform duration-200 ease-out',
+          isVisible ? 'translate-y-0' : 'translate-y-3'
+        )}
+      >
+        <FileUpIcon className="size-12" />
       </span>
-      <p className="text-lg font-bold">Drop NEMSIS files to import</p>
-      <p className="text-surface-fg-muted text-sm">
-        Each patient care report becomes its own claim, ready for review.
+      <p className="text-2xl font-extrabold tracking-tight">Drop NEMSIS files to import</p>
+      <p className="text-surface-fg-muted max-w-md text-sm">
+        Each patient care report becomes its own draft claim, ready for review.
       </p>
     </div>
   </div>
@@ -62,5 +75,5 @@ export const ImportDrop = ({ client }: { client: Pick<ImportsClient, 'upload'> }
     };
   }, [importFiles]);
 
-  return dragging ? <DropOverlay /> : null;
+  return <DropOverlay isVisible={dragging} />;
 };

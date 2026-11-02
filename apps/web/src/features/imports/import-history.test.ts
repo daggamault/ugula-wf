@@ -26,7 +26,7 @@ const summary = (over: Partial<ImportSummary> = {}): ImportSummary => ({
 
 describe('reportOutcomes', () => {
   it('lists only the outcomes that need someone', () => {
-    assert.deepEqual(reportOutcomes(summary()), ['1 in review', '1 failed']);
+    assert.deepEqual(reportOutcomes(summary()), ['1 waiting', '1 failed']);
     assert.deepEqual(reportOutcomes(summary({ waiting: 0, failed: 0 })), []);
   });
 });
@@ -34,11 +34,11 @@ describe('reportOutcomes', () => {
 describe('importStatus', () => {
   it('stays in progress after the split while its reports still need work', () => {
     const done = summary({ run_status: 'completed', waiting: 0, failed: 0 });
-    assert.equal(importStatus(done).label, 'Done');
-    assert.equal(importStatus({ ...done, waiting: 2 }).label, 'Reports in progress');
-    assert.equal(importStatus({ ...done, stuck: 1 }).label, 'Reports in progress');
-    assert.equal(importStatus({ ...done, failed: 1 }).label, 'Done');
-    assert.equal(importStatus(summary()).label, 'In review');
+    assert.equal(importStatus(done).label, 'Completed');
+    assert.equal(importStatus({ ...done, waiting: 2 }).label, 'PCRs in progress');
+    assert.equal(importStatus({ ...done, stuck: 1 }).label, 'PCRs in progress');
+    assert.equal(importStatus({ ...done, failed: 1 }).label, 'Completed');
+    assert.equal(importStatus(summary()).label, 'Waiting');
   });
 });
 
@@ -59,11 +59,13 @@ describe('ImportHistory', () => {
         ]
       })
     );
-    assert.ok(html.includes('href="/imports/i1"'));
+    assert.ok(html.includes('<span class="sr-only">Actions</span>'));
+    assert.ok(html.includes('href="/imports/i1" aria-label="Open import october.xml"'));
+    assert.equal(html.split('href="/imports/i1"').length, 2);
     assert.ok(html.includes('Upload · biller@example.com'));
     assert.ok(html.includes('>SFTP<'));
-    assert.ok(html.includes('>In review<') && html.includes('>Done<'));
-    assert.ok(html.includes('1 in review, 1 failed'));
+    assert.ok(html.includes('>Waiting<') && html.includes('>Completed<'));
+    assert.ok(html.includes('1 waiting, 1 failed'));
     assert.ok(html.includes('$1,142.20'));
   });
 });

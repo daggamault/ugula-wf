@@ -14,13 +14,12 @@ import {
   type Submitter,
   submitterIssues
 } from '@ugula/billing';
-import type { BlobRef, BlobStore } from '@ugula/blobs';
 import type { Db } from '@ugula/db';
 import type { Json } from '@ugula/graph';
-import type { JobBoss } from '@ugula/jobs';
+import type { RunQueueClient } from '@ugula/run-queue';
+import type { BlobRef, BlobStore } from '@ugula/storage';
 import type { Evaluate } from '../../shared/evaluate.ts';
 import { type Announce, announced } from '../../shared/live.ts';
-import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import { signalRuns } from '../../shared/runs.ts';
 import {
@@ -28,21 +27,20 @@ import {
   findProfile,
   insertBatch,
   insertSubmissionEvents,
-  listBatches,
   listLedgerEvents,
-  listOpenClaims,
-  lockOpenClaims,
+  listReadyClaims,
   lockProfile,
+  lockReadyClaim,
+  markSubmitted,
   nextControlNumber,
-  type OpenClaimRow,
   type ProfileRow,
+  type ReadyClaimRow,
   type SubmissionEvent
 } from './queries.ts';
-import type { BatchSort } from './schemas.ts';
 
 export type SubmissionServiceDeps = {
   db: Db;
-  boss: JobBoss;
+  boss: RunQueueClient;
   now: () => Date;
   blobs: Pick<BlobStore, 'putBytes' | 'getBytes'>;
   announce: Announce;
@@ -93,7 +91,7 @@ const toLedgerEvent = (e: LedgerRow): ClaimEvent => ({
   at: new Date(e.created_at).toISOString()
 });
 
-export const detailsOf = (row: OpenClaimRow): ClaimDetails => ({
+export const detailsOf = (row: ReadyClaimRow): ClaimDetails => ({
   serviceDate: row.service_date,
   pickup: {
     name: null,
@@ -115,7 +113,7 @@ export const detailsOf = (row: OpenClaimRow): ClaimDetails => ({
 });
 
 export const pendingClaims = (
-  rows: OpenClaimRow[],
+  rows: ReadyClaimRow[],
   events: LedgerRow[],
   now: Date
 ): PendingClaim[] => {
@@ -151,7 +149,7 @@ export const pendingClaims = (
         postalCode: row.postal_code
       },
       details: detailsOf(row),
-      emergency: row.emergency,
+      emergency: row.emergency === true,
       loadedMiles: row.loaded_miles === null ? null : Number(row.loaded_miles),
       lines: row.lines.map((l) => ({
         code: l.code,
@@ -214,17 +212,12 @@ export const createSubmissionService = ({
       }
     });
 
-  // A batch can touch many claims, so it reports them together (a null id).
-  const write = <T>(
-    tenantId: string,
-    claimId: string | null,
-    work: (tx: Db) => Promise<Result<T>>
-  ) =>
+  const write = <T>(tenantId: string, claimId: string, work: (tx: Db) => Promise<Result<T>>) =>
     announced(announce, tenantId, db.transaction().execute(work), () => [
       { kind: 'claim', id: claimId }
     ]);
 
-  const pendingOf = async (tx: Db, rows: OpenClaimRow[]) => {
+  const pendingOf = async (tx: Db, rows: ReadyClaimRow[]) => {
     const events = await listLedgerEvents(
       tx,
       rows.map((r) => r.id)
@@ -239,6 +232,10 @@ export const createSubmissionService = ({
     events: SubmissionEvent[]
   ) => {
     await insertSubmissionEvents(tx, origin, events);
+    await markSubmitted(
+      tx,
+      events.map((e) => e.claimId)
+    );
     for (const e of events) {
       await signalRuns(tx, boss, { tenantId, name: CLAIM_SIGNAL, key: e.claimId, payload: null });
     }
@@ -248,7 +245,7 @@ export const createSubmissionService = ({
     pending: async (tenantId: string, claimId?: string) => {
       const [profile, rows] = await Promise.all([
         findProfile(db, tenantId),
-        listOpenClaims(db, tenantId, claimId)
+        listReadyClaims(db, tenantId, claimId)
       ]);
       const pending = await pendingOf(db, rows);
       return ok({
@@ -256,9 +253,6 @@ export const createSubmissionService = ({
         claims: pending.map(describe)
       });
     },
-
-    list: async (tenantId: string, page: PageRequest<BatchSort>) =>
-      ok(await listBatches(db, tenantId, page)),
 
     document: async (tenantId: string, id: string) => {
       const found = await findBatchDocument(db, tenantId, id);
@@ -271,8 +265,8 @@ export const createSubmissionService = ({
       });
     },
 
-    create: (tenantId: string, userId: string, claimIds: string[]) =>
-      write(tenantId, null, async (tx) => {
+    create: (tenantId: string, userId: string, claimId: string) =>
+      write(tenantId, claimId, async (tx) => {
         const profile = await lockProfile(tx, tenantId);
         const submitter = profile ? toSubmitter(profile) : null;
         const problems = submitterIssues(submitter);
@@ -281,20 +275,14 @@ export const createSubmissionService = ({
             issues: problems
           });
         }
-        const ids = [...new Set(claimIds)];
-        const ready = (await pendingOf(tx, await lockOpenClaims(tx, tenantId, ids))).filter(
-          (p) => !p.issues.length
-        );
-        const stale = ids.filter((id) => !ready.some((p) => p.claim.claimId === id));
-        if (stale.length) {
-          return fail(
-            'conflict',
-            stale.length === 1
-              ? 'A selected claim is no longer ready to submit'
-              : `${stale.length} selected claims are no longer ready to submit`,
-            { claimIds: stale }
-          );
+        const [pending] = await pendingOf(tx, await lockReadyClaim(tx, tenantId, claimId));
+        if (!pending) return fail('conflict', 'This claim is not ready to submit');
+        if (pending.issues.length) {
+          return fail('invalid', pending.issues[0] ?? 'This claim is missing data', {
+            issues: pending.issues
+          });
         }
+        const ready = [pending];
         const controlNumber = await nextControlNumber(tx, tenantId);
         if (controlNumber > MAX_CONTROL_NUMBER) {
           return fail('conflict', 'Batch control numbers are used up; contact support');
@@ -325,7 +313,7 @@ export const createSubmissionService = ({
         await record(
           tx,
           tenantId,
-          { batchId: batch.id, note: `837P batch #${controlNumber}`, createdBy: userId },
+          { batchId: batch.id, note: `837P file #${controlNumber}`, createdBy: userId },
           ready.map(submissionOf)
         );
         return ok({ batch });
@@ -333,12 +321,12 @@ export const createSubmissionService = ({
 
     markSubmitted: (tenantId: string, userId: string, claimId: string, note: string) =>
       write(tenantId, claimId, async (tx) => {
-        const [pending] = await pendingOf(tx, await lockOpenClaims(tx, tenantId, [claimId]));
-        if (!pending) return fail('conflict', 'This claim is not waiting to be submitted');
+        const [pending] = await pendingOf(tx, await lockReadyClaim(tx, tenantId, claimId));
+        if (!pending) return fail('conflict', 'This claim is not ready to submit');
         await record(
           tx,
           tenantId,
-          { batchId: null, note: note || 'Submitted outside an 837P batch', createdBy: userId },
+          { batchId: null, note: note || 'Submitted outside an 837P file', createdBy: userId },
           [submissionOf(pending)]
         );
         return ok({ payer: pending.claim.payer.name });

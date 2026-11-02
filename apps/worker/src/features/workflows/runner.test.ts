@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { RunStatus } from '@ugula/db';
-import type { LiveEvent } from '@ugula/events';
 import {
   createEngine,
   createStdNodes,
@@ -11,7 +10,8 @@ import {
   type RunState,
   type Values
 } from '@ugula/graph';
-import type { RunJob } from '@ugula/jobs';
+import type { LiveEvent } from '@ugula/live';
+import type { RunJob } from '@ugula/run-queue';
 import type { EngineSource } from './engines.ts';
 import type { ClaimedRun, RunPatch, RunStore, RunTx, TaskInsert } from './queries.ts';
 import { createRunner } from './runner.ts';

@@ -48,9 +48,9 @@ export const EmptyState = ({
 }: EmptyStateProps) => (
   <div className="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed px-4 py-12 text-center">
     <EmptyIcon icon={reasonIcons[reason]} size="lg" />
-    <Heading className="text-lg font-bold tracking-tight">{title}</Heading>
+    <Heading className="text-base font-bold">{title}</Heading>
     {children && <p className="text-surface-fg-muted max-w-sm text-sm">{children}</p>}
-    {action && <div className="mt-3">{action}</div>}
+    {action && <div className="pt-2">{action}</div>}
   </div>
 );
 
@@ -60,7 +60,7 @@ type EmptyTextProps = {
 };
 
 export const EmptyText = ({ reason = 'empty', children }: EmptyTextProps) => (
-  <div className="border-border flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-6 text-center">
+  <div className="border-border flex flex-col items-center gap-2 rounded-xl border border-dashed px-4 py-6 text-center">
     <EmptyIcon icon={reasonIcons[reason]} size="sm" />
     <p className="text-surface-fg-muted text-sm">{children}</p>
   </div>

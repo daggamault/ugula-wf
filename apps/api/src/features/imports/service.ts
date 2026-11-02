@@ -1,14 +1,16 @@
-import { randomUUID } from 'node:crypto';
-import { type BlobRef, type BlobStore, importsPrefix } from '@ugula/blobs';
+import { verifyPassword } from '@ugula/auth';
 import type { Db } from '@ugula/db';
-import type { JobBoss } from '@ugula/jobs';
-import { type JsonValue, reportXml } from '@ugula/nemsis';
-import { verifyPassword } from '@ugula/passwords';
+import type { Json } from '@ugula/graph';
+import { reportTerms, reportXml } from '@ugula/nemsis';
+import type { RunQueueClient } from '@ugula/run-queue';
+import { type BlobRef, type BlobStore, importsPrefix } from '@ugula/storage';
+import { safeName, type UploadedFile, uploadKey } from '../../shared/files.ts';
 import type { Announce } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import { startRun } from '../../shared/runs.ts';
 import {
+  findDictionary,
   findImport,
   findLatestPublished,
   findReport,
@@ -31,7 +33,7 @@ export type SftpStorage = {
 
 export type ImportServiceDeps = {
   db: Db;
-  boss: JobBoss;
+  boss: RunQueueClient;
   blobs: Pick<BlobStore, 'putBytes' | 'getJson'>;
   announce: Announce;
   maxBytes: number;
@@ -39,18 +41,6 @@ export type ImportServiceDeps = {
 };
 
 export type SftpReceipt = { runId: string; file: BlobRef } | { ignored: true };
-
-export type UploadedFile = {
-  name: string;
-  type: string;
-  bytes: Uint8Array;
-};
-
-export const safeName = (name: string) =>
-  name
-    .replace(/[^\w.-]+/g, '_')
-    .replace(/^[._]+/, '')
-    .slice(-120) || 'upload';
 
 export const sftpPrefix = (tenantId: string) => `${importsPrefix(tenantId)}sftp/`;
 
@@ -111,8 +101,9 @@ export const createImportService = ({
       const found = await findReport(db, tenantId, id);
       if (!found) return fail('not_found', 'Report not found');
       const { report, ...meta } = found;
-      const data = (await blobs.getJson(report as BlobRef)) as JsonValue;
-      return ok({ report: meta, data, xml: reportXml(data) });
+      const data = (await blobs.getJson(report as BlobRef)) as Json;
+      const dictionary = await findDictionary(db, reportTerms(data));
+      return ok({ report: meta, data, xml: reportXml(data), dictionary });
     },
 
     upload: async (tenantId: string, userId: string, workflow: string, file: UploadedFile) => {
@@ -123,7 +114,7 @@ export const createImportService = ({
       const version = await findLatestPublished(db, tenantId, workflow);
       if (!version) return unpublished(workflow);
       const ref = await blobs.putBytes(
-        `${importsPrefix(tenantId)}${randomUUID()}/${safeName(file.name)}`,
+        uploadKey(tenantId, file.name),
         file.bytes,
         file.type || 'application/octet-stream'
       );

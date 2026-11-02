@@ -26,15 +26,23 @@ describe('reportOutcome', () => {
     assert.deepEqual(reportOutcome(report({ claim_id: 'c1' })), {
       intent: 'success',
       label: 'Claim opened',
-      link: { label: 'Open claim', to: '/claims/c1' }
+      link: { label: 'Open claim for PCR-1', to: '/claims/c1' }
+    });
+    assert.deepEqual(reportOutcome(report({ task_id: 'k1', task_title: 'Review PCR' })).link, {
+      label: 'Open task Review PCR',
+      to: '/tasks/k1'
     });
     assert.equal(
-      reportOutcome(report({ task_id: 'k1', task_title: 'Review PCR' })).link?.to,
-      '/tasks/k1'
+      reportOutcome(report({ task_id: 'k1', task_subject: 'PCR-1 · Jane Doe' })).link?.label,
+      'Open task PCR-1 · Jane Doe'
+    );
+    assert.equal(
+      reportOutcome(report({ claim_id: 'c1', pcr_number: null, position: 2 })).link?.label,
+      'Open claim for PCR #3'
     );
     assert.equal(reportOutcome(report({ task_id: 'k1', task_kind: 'fault' })).label, 'Stuck');
     assert.equal(reportOutcome(report()).label, 'No claim');
-    assert.equal(reportOutcome(report({ run_status: 'running' })).label, 'Processing');
+    assert.equal(reportOutcome(report({ run_status: 'running' })).label, 'Running');
     assert.equal(reportOutcome(report({ run_status: 'failed' })).label, 'Failed');
   });
 
@@ -46,7 +54,7 @@ describe('reportOutcome', () => {
 });
 
 describe('ReportsTable', () => {
-  it('lists reports in file order with their outcome', () => {
+  it('lists reports in file order with their outcome and an open action', () => {
     const html = renderToStaticMarkup(
       createElement(ReportsTable, {
         reports: [
@@ -55,7 +63,9 @@ describe('ReportsTable', () => {
         ]
       })
     );
-    assert.ok(html.includes('href="/claims/c1"') && html.includes('$950.00'));
-    assert.ok(html.includes('href="/tasks/k1"') && html.includes('Waiting on a person'));
+    assert.ok(html.includes('<span class="sr-only">Actions</span>'));
+    assert.ok(html.includes('href="/claims/c1" aria-label="Open claim for PCR-1"'));
+    assert.ok(html.includes('href="/tasks/k1" aria-label="Open task Review PCR"'));
+    assert.ok(html.includes('$950.00') && html.includes('>Waiting<'));
   });
 });

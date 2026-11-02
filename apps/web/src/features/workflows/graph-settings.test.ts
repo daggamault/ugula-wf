@@ -20,6 +20,7 @@ const def: GraphDef = {
 const render = (editable: boolean) =>
   renderToStaticMarkup(
     createElement(GraphSettings, {
+      kind: 'workflow',
       open: true,
       def,
       editable,
@@ -31,7 +32,7 @@ const render = (editable: boolean) =>
 describe('GraphSettings', () => {
   it('edits paths, inputs, outputs and variables in one explained dialog', () => {
     const html = render(true);
-    assert.ok(html.includes('Graph Settings'));
+    assert.ok(html.includes('Workflow Settings'));
     assert.ok(html.includes('value="ok, rejected"'));
     assert.ok(html.includes('value="object{id: string}"'));
     assert.ok(html.includes('value="total"'));

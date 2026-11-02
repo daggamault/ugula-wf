@@ -29,11 +29,11 @@ describe('toFeeInput', () => {
     });
     assert.equal(
       toFeeInput({ payerId: '', code: 'A0427', amount: '' }),
-      'Enter an amount of zero or more'
+      'Enter an amount of zero or more.'
     );
     assert.equal(
       toFeeInput({ payerId: '', code: 'A0427', amount: '-1' }),
-      'Enter an amount of zero or more'
+      'Enter an amount of zero or more.'
     );
   });
 });
@@ -67,6 +67,10 @@ describe('FeesPage', () => {
     assert.ok(html.includes('>Medicare<'));
     assert.ok(html.includes('$950.00'));
     assert.ok(html.includes('$500.00'));
+    assert.ok(html.includes('<span class="sr-only">Actions</span>'));
+    assert.ok(html.includes('aria-label="Edit Default A0427"'));
+    assert.ok(html.includes('aria-label="Delete Medicare A0427"'));
     assert.equal(html.match(/aria-label="Delete /g)?.length, 2);
+    assert.ok(!html.includes('>Edit<') && !html.includes('>Delete<'));
   });
 });

@@ -20,7 +20,7 @@ export const PatientClaims = ({
 }) => {
   const table = useTableState(`/patients/${patientId}`, CLAIM_TABLE);
   const list = useResource(`patient-claims:${patientId}:${table.apiQuery}`, () =>
-    client.list({ status: 'all', q: '', patientId }, table.apiQuery)
+    client.list({ status: 'all', patientId }, table.apiQuery)
   );
   useLive(live, (e) => e.kind === 'claim', list.reload);
   return (

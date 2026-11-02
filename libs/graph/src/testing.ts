@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { checkExit, checkInput, checkOutputs } from './checks.ts';
 import { isPure } from './registry.ts';
 import type { GraphDef, Json, NodeDef, NodeEvent, Values } from './types.ts';
 
@@ -30,8 +31,11 @@ export const invokeNode = async (def: NodeDef, opts: InvokeOptions = {}) => {
     event: opts.event ?? (isPure(signature) ? { type: 'eval' } : { type: 'exec', pin: 'exec' }),
     state: opts.state ?? null,
     signature,
-    read: async (name) =>
-      opts.inputs?.[name] ?? signature.inputs.find((p) => p.name === name)?.default ?? null,
+    read: async (name) => {
+      const spec = signature.inputs.find((p) => p.name === name);
+      if (!spec) throw new Error(`"${def.title}" has no input "${name}"`);
+      return checkInput(def.title, spec, opts.inputs?.[name] ?? spec.default ?? null);
+    },
     vars: {
       get: (name) => vars[name] ?? null,
       set: (name, value) => {
@@ -40,6 +44,8 @@ export const invokeNode = async (def: NodeDef, opts: InvokeOptions = {}) => {
     },
     ctx: { runId: 'run', key: 'key', now: opts.now ?? new Date('2026-03-15T10:30:00.000Z') }
   });
+  checkOutputs(def.title, signature, result.outputs);
+  checkExit(def.title, signature, result);
   return {
     result,
     signature,

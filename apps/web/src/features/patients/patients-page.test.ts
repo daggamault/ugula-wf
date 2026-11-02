@@ -49,9 +49,11 @@ describe('createPatientsClient', () => {
 });
 
 describe('PatientsTable', () => {
-  it('links each patient with birth date, place, claims and balance', () => {
+  it('opens each patient from an icon action and shows birth date, place, claims and balance', () => {
     const html = renderToStaticMarkup(createElement(PatientsTable, { patients: [patient] }));
-    assert.ok(html.includes('href="/patients/p1"') && html.includes('Doe, Jane'));
+    assert.ok(html.includes('<span class="sr-only">Actions</span>'));
+    assert.ok(html.includes('href="/patients/p1" aria-label="Open patient Doe, Jane"'));
+    assert.equal(html.split('href="/patients/p1"').length, 2);
     assert.ok(html.includes('Erie, PA') && html.includes('$300.00'));
     assert.equal(placeOf({ city: null, state: null }), null);
   });

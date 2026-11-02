@@ -1,5 +1,12 @@
-import { type Address, type Location, payerKey } from '@ugula/billing';
-import type { ClaimStatus, Database } from '@ugula/db';
+import type { ClaimStatus } from '@ugula/billing';
+import {
+  type Address,
+  CLOSED_CLAIM_STATUSES,
+  type Location,
+  nameKey,
+  payerKey
+} from '@ugula/billing';
+import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { type PageRequest, paged } from '../../shared/paging.ts';
@@ -8,8 +15,11 @@ import type { ClaimSort } from './schemas.ts';
 type Db = Kysely<Database>;
 
 export type ClaimFilters = PageRequest<ClaimSort> & {
-  status: ClaimStatus | 'all';
-  q?: string | undefined;
+  status: ClaimStatus | 'open' | 'all';
+  firstName?: string | undefined;
+  lastName?: string | undefined;
+  birthDate?: string | undefined;
+  number?: string | undefined;
   patientId?: string | undefined;
 };
 
@@ -34,6 +44,8 @@ const claimRows = (db: Db, tenantId: string) =>
     .innerJoin('claim_balances as b', 'b.claim_id', 'c.id')
     .select((eb) => [
       'c.id',
+      'c.number',
+      'p.number as patient_number',
       'c.pcr_number',
       'c.level',
       'c.total_cents',
@@ -54,6 +66,7 @@ const claimRows = (db: Db, tenantId: string) =>
 
 const CLAIM_ORDER = {
   created: sql.ref('c.created_at'),
+  number: sql.ref('c.number'),
   service: sql.ref('c.service_date'),
   patient: sql`lower(p.last_name || ' ' || p.first_name)`,
   pcr: sql.ref('c.pcr_number'),
@@ -61,21 +74,32 @@ const CLAIM_ORDER = {
   balance: sql.ref('b.balance_cents')
 };
 
+const MAX_NUMBER = 2_147_483_647;
+
+export const numberOf = (text: string) => {
+  const digits = /^#?(\d{1,10})$/.exec(text.trim())?.[1];
+  const n = digits === undefined ? null : Number(digits);
+  return n !== null && n <= MAX_NUMBER ? n : null;
+};
+
 export const listClaims = (db: Db, tenantId: string, f: ClaimFilters) => {
   let q = claimRows(db, tenantId);
-  if (f.status !== 'all') q = q.where('c.status', '=', f.status);
+  if (f.status === 'open') q = q.where('c.status', 'not in', CLOSED_CLAIM_STATUSES);
+  else if (f.status !== 'all') q = q.where('c.status', '=', f.status);
   if (f.patientId) q = q.where('c.patient_id', '=', f.patientId);
-  const words =
-    f.q
-      ?.toLowerCase()
-      .split(/[\s,]+/)
-      .filter(Boolean) ?? [];
-  for (const word of words) {
-    const like = `%${escapeLike(word)}%`;
+  if (f.firstName) {
+    q = q.where(sql`lower(p.first_name)`, 'like', `${escapeLike(f.firstName.toLowerCase())}%`);
+  }
+  const lastName = f.lastName ? nameKey(f.lastName) : '';
+  if (lastName) q = q.where('p.last_name_key', 'like', `${escapeLike(lastName)}%`);
+  if (f.birthDate) q = q.where('p.birth_date', '=', f.birthDate);
+  if (f.number) {
+    const text = f.number;
+    const n = numberOf(text);
     q = q.where((eb) =>
       eb.or([
-        eb(sql`lower(p.last_name || ' ' || p.first_name)`, 'like', like),
-        eb(sql`lower(coalesce(c.pcr_number, ''))`, 'like', like)
+        eb('c.pcr_number', '=', text),
+        ...(n === null ? [] : [eb('c.number', '=', n), eb('p.number', '=', n)])
       ])
     );
   }
@@ -99,6 +123,7 @@ export const findClaim = (db: Db, tenantId: string, id: string) =>
       'c.destination_city',
       'c.destination_state',
       'c.destination_postal_code',
+      'c.import_report_id',
       'p.birth_date',
       'c.patient_id',
       'c.cycle_run_id',
@@ -323,6 +348,8 @@ export const hasResponse = async (db: Db, claimId: string, requestId: string) =>
     .executeTakeFirst()) !== undefined;
 
 export const FOLLOW_UP_QUEUE = 'billing-followup';
+
+export const RECONCILE_QUEUE = 'billing-reconcile';
 
 export const COLLECTIONS_QUEUE = 'billing-collections';
 

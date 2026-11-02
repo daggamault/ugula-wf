@@ -43,7 +43,7 @@ describe('TaskTable', () => {
     const html = renderToStaticMarkup(
       createElement(TaskTable, {
         me: 'me@example.com',
-        sorting: tableStateOf('/tasks', params('queue=billing-review'), TASK_TABLE),
+        sorting: tableStateOf('/tasks', params('type=billing-review'), TASK_TABLE),
         tasks: [
           task(),
           task({
@@ -58,13 +58,16 @@ describe('TaskTable', () => {
         ]
       })
     );
-    assert.match(html, /href="\/tasks\/t1"[^>]*>PCR-1 · Jane Doe</);
-    assert.match(html, /href="\/tasks\/t2"[^>]*>Stuck at Price</);
-    assert.ok(html.includes('PCR review') && html.includes('Stuck runs'));
+    assert.ok(html.includes('<span class="sr-only">Actions</span>'));
+    assert.ok(html.includes('<span class="font-medium">PCR-1 · Jane Doe</span>'));
+    assert.ok(html.includes('href="/tasks/t1" aria-label="Open task PCR-1 · Jane Doe"'));
+    assert.ok(html.includes('href="/tasks/t2" aria-label="Open task Stuck at Price"'));
+    assert.equal(html.split('href="/tasks/t1"').length, 2);
+    assert.ok(html.includes('Billing review') && html.includes('Stuck runs'));
     assert.ok(
-      html.includes('pat@example.com') && html.includes('Nobody') && html.includes('>You<')
+      html.includes('pat@example.com') && html.includes('Unassigned') && html.includes('>You<')
     );
-    assert.ok(html.includes('href="/tasks?queue=billing-review&amp;sort=task&amp;dir=asc"'));
+    assert.ok(html.includes('href="/tasks?type=billing-review&amp;sort=task&amp;dir=asc"'));
   });
 
   it('names whoever a task is assigned to', () => {
@@ -75,18 +78,22 @@ describe('TaskTable', () => {
 
 describe('task filters', () => {
   it('filter by type with counts, in the usual order', () => {
-    assert.deepEqual(typeFilters(queues, 'billing-review', href), [
-      { label: 'All (4)', href: '/tasks', isSelected: false },
-      { label: 'PCR review (3)', href: '/tasks?queue=billing-review', isSelected: true },
-      { label: 'Stuck runs (1)', href: '/tasks?queue=exceptions', isSelected: false }
+    assert.deepEqual(typeFilters(queues, href), [
+      { value: '', label: 'All (4)', href: '/tasks' },
+      {
+        value: 'billing-review',
+        label: 'Billing review (3)',
+        href: '/tasks?type=billing-review'
+      },
+      { value: 'exceptions', label: 'Stuck runs (1)', href: '/tasks?type=exceptions' }
     ]);
   });
 
   it('filter by assignee with counts for the selected types', () => {
-    assert.deepEqual(assigneeFilters(queues, 'me', href), [
-      { label: 'Anyone', href: '/tasks', isSelected: false },
-      { label: 'Me (1)', href: '/tasks?assignee=me', isSelected: true },
-      { label: 'Nobody (2)', href: '/tasks?assignee=unassigned', isSelected: false }
+    assert.deepEqual(assigneeFilters(queues, href), [
+      { value: 'anyone', label: 'Anyone (4)', href: '/tasks' },
+      { value: 'me', label: 'Me (1)', href: '/tasks?assignee=me' },
+      { value: 'unassigned', label: 'Unassigned (2)', href: '/tasks?assignee=unassigned' }
     ]);
   });
 });

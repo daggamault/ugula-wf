@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createDummyDb } from '@ugula/db';
+import { createDummyDb } from '@ugula/db/testing';
 import { buildPatientsIndexes, buildPatientsTable } from './patients.ts';
 
 describe('patients table', () => {
@@ -8,6 +8,7 @@ describe('patients table', () => {
     const db = createDummyDb();
     const tableSql = buildPatientsTable(db).compile().sql;
     assert.ok(tableSql.includes('create table "patients"'));
+    assert.ok(tableSql.includes('"number" integer generated always as identity not null unique'));
     assert.ok(tableSql.includes('"birth_date" date not null'));
     assert.ok(tableSql.includes('unique ("tenant_id", "source_key")'));
     assert.deepEqual(

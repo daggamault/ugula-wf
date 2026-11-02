@@ -126,7 +126,7 @@ export const Tooltip = ({ label, side, children }: TooltipProps) => {
         onToggle={onToggle}
         style={{ positionAnchor: anchorName }}
         className={classNamesOf(
-          'bg-surface-fg text-canvas pointer-events-none inset-auto m-2 w-max max-w-xs scale-95 rounded-md border-0 px-2 py-1 text-xs font-semibold opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-150 ease-out [position-try-fallbacks:flip-block,flip-inline] open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0',
+          'bg-surface text-surface-fg border-border pointer-events-none inset-auto m-2 w-max max-w-xs scale-95 rounded-lg border px-2 py-1 text-xs font-semibold opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out [position-try-fallbacks:flip-block,flip-inline] open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0',
           sideClasses[side]
         )}
       >

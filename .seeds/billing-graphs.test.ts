@@ -8,6 +8,7 @@ import {
   type ClaimEvent,
   type ClaimStore,
   createBillingNodes,
+  type DraftClaim,
   type FeeStore,
   type NewClaim,
   type Patient,
@@ -152,7 +153,9 @@ const pcrWorld = (
   } = {}
 ) => {
   const report = { bucket: 'ugula', key: 'imports/t/f.xml.reports/00000.json' };
-  const opened: NewClaim[] = [];
+  const drafts: DraftClaim[] = [];
+  const saved: NewClaim[] = [];
+  const closed: string[] = [];
   const revisions: [string, BlobRef][] = [];
   const priced: (string | null)[] = [];
   const aliases = new Map<string, string>();
@@ -190,9 +193,15 @@ const pcrWorld = (
   };
   const claims = only<ClaimStore>({
     findByPcr: async () => opts.billed ?? null,
-    openClaim: async (_, __, claim) => {
-      opened.push(claim);
+    openDraft: async (_, __, draft) => {
+      drafts.push(draft);
       return { id: 'c1', duplicate: opts.duplicate === true };
+    },
+    saveClaim: async (_, __, claim) => {
+      saved.push(claim);
+    },
+    closeClaim: async (_, __, ___, status) => {
+      closed.push(status);
     },
     noteRevision: async (_, claimId, __, blob) => {
       revisions.push([claimId, blob]);
@@ -258,7 +267,9 @@ const pcrWorld = (
     finish,
     data,
     report,
-    opened,
+    drafts,
+    saved,
+    closed,
     revisions,
     priced,
     aliases
@@ -353,8 +364,11 @@ describe('billing graphs', () => {
     world.answer(review, 'approve', { level: 'ALS1', loadedMiles: 4.3 });
 
     const start = await world.waitFor('start');
+    assert.deepEqual(world.drafts, [
+      { patientId: 'p-new', pcrNumber: 'PCR-1', reportKey: world.report.key }
+    ]);
     assert.deepEqual(world.priced, ['p-blue']);
-    const [claim] = world.opened;
+    const [claim] = world.saved;
     assert.equal(claim?.level, 'ALS1');
     assert.deepEqual(
       claim?.coverages.map((c) => [c.payer, c.payerId]),
@@ -404,16 +418,17 @@ describe('billing graphs', () => {
     assert.equal(world.data('context.trip.pcrNumber'), 'PCR-1');
     world.answer(revision, 'acknowledge');
     const outputs = await world.finish(world.state);
-    assert.deepEqual([outputs.claimId, world.opened.length, world.priced.length], ['c1', 0, 0]);
+    assert.deepEqual(
+      [outputs.claimId, world.drafts.length, world.saved.length, world.priced.length],
+      ['c1', 0, 0, 0]
+    );
   });
 
   it('turns a claim another run opened for the same PCR into a revision', async () => {
     const world = pcrWorld({ duplicate: true });
-    world.answer(await world.waitFor('task', 'Match payer'), 'unlisted');
-    world.answer(await world.waitFor('task', 'Review PCR'), 'approve');
     world.answer(await world.waitFor('task', 'Review updated PCR'), 'acknowledge');
     assert.deepEqual(world.revisions, [['c1', world.report]]);
-    assert.deepEqual([...world.aliases], []);
+    assert.deepEqual([world.saved.length, world.priced.length], [0, 0]);
     assert.equal((await world.finish(world.state)).claimId, 'c1');
   });
 
@@ -449,13 +464,13 @@ describe('billing graphs', () => {
     assert.equal(world.data('context.patient.birthDate'), '1980-01-20');
   });
 
-  it('voids a held PCR without billing it', async () => {
+  it('voids the draft claim of a held PCR without billing it', async () => {
     const world = pcrWorld();
     world.answer(await world.waitFor('task', 'Match payer'), 'unlisted');
     world.answer(await world.waitFor('task', 'Review PCR'), 'hold', { note: 'Duplicate trip' });
     world.answer(await world.waitFor('task', 'Held PCR'), 'void');
     const outputs = await world.finish(world.state);
-    assert.deepEqual([outputs.claimId, world.opened.length], [null, 0]);
+    assert.deepEqual([outputs.claimId, world.saved.length, world.closed], ['c1', 0, ['void']]);
     assert.equal(getPath(outputs.patient ?? null, 'id'), 'p-new');
   });
 
@@ -498,7 +513,11 @@ describe('billing graphs', () => {
     };
     const events: ClaimEvent[] = [];
     const closed: string[] = [];
+    const statuses: string[] = [];
     const claims = only<ClaimStore>({
+      setStatus: async (_, __, status) => {
+        if (statuses.at(-1) !== status) statuses.push(status);
+      },
       statementData: async () => ({
         agency: {
           name: 'Agency',
@@ -589,8 +608,13 @@ describe('billing graphs', () => {
         at: clock.toISOString()
       });
 
+    const review = await waitFor('task');
+    assert.equal(getPath(state.suspension?.data ?? null, 'title'), 'Review claim');
+    assert.equal(getPath(state.suspension?.data ?? null, 'queue'), 'billing-review');
+    engine.resume(state, review, { outcome: 'approve', values: {} });
     let wait = await waitFor('signal');
-    assert.deepEqual(state.suspension?.data, { name: 'claim', key: 'c1', until: null, after: 0 });
+    assert.deepEqual(kinds(), ['approved']);
+    assert.deepEqual(state.suspension?.data, { name: 'claim', key: 'c1', until: null, after: 1 });
     sent('submitted');
     engine.resume(state, wait, { payload: null });
     wait = await waitFor('signal');
@@ -598,7 +622,7 @@ describe('billing graphs', () => {
       name: 'claim',
       key: 'c1',
       until: '2026-01-31T00:00:00.000Z',
-      after: 1
+      after: 2
     });
 
     at(30);
@@ -612,8 +636,9 @@ describe('billing graphs', () => {
       balanceCents: 100_000
     });
     engine.resume(state, followUp, { outcome: 'resubmit', values: {} });
+    engine.resume(state, await waitFor('task'), { outcome: 'approve', values: {} });
     wait = await waitFor('signal');
-    assert.deepEqual(kinds(), ['submitted', 'resubmit_queued']);
+    assert.deepEqual(kinds(), ['approved', 'submitted', 'resubmit_queued', 'approved']);
     sent('resubmitted');
     engine.resume(state, wait, { payload: null });
     wait = await waitFor('signal');
@@ -624,8 +649,10 @@ describe('billing graphs', () => {
     engine.resume(state, followUp, { outcome: 'nextPayer', values: {} });
     wait = await waitFor('signal');
     assert.deepEqual(kinds(), [
+      'approved',
       'submitted',
       'resubmit_queued',
+      'approved',
       'resubmitted',
       'payer_skipped',
       'statement'
@@ -648,6 +675,87 @@ describe('billing graphs', () => {
     await engine.drain(state, { runId: 'r', now: clock });
     assert.equal(state.status, 'completed', state.fault?.error.message ?? '');
     assert.deepEqual(closed, ['paid']);
+    assert.deepEqual(statuses, [
+      'needs_review',
+      'ready',
+      'submitted',
+      'follow_up',
+      'needs_review',
+      'ready',
+      'submitted',
+      'follow_up',
+      'patient_balance'
+    ]);
+  });
+
+  it('asks a biller to reconcile a payer response that leaves a balance', async () => {
+    const events: ClaimEvent[] = [
+      {
+        kind: 'approved',
+        coverageId: 'cov-1',
+        paidCents: 0,
+        adjustedCents: 0,
+        at: '2026-01-01T00:00:00.000Z'
+      },
+      {
+        kind: 'submitted',
+        coverageId: 'cov-1',
+        paidCents: 0,
+        adjustedCents: 0,
+        at: '2026-01-01T00:00:00.000Z'
+      },
+      {
+        kind: 'response',
+        coverageId: 'cov-1',
+        paidCents: 60_000,
+        adjustedCents: 0,
+        at: '2026-01-10T00:00:00.000Z'
+      }
+    ];
+    const closed: string[] = [];
+    const statuses: string[] = [];
+    const engine = createEngine({
+      nodes: [
+        ...createStdNodes({ fetch }),
+        ...createBillingNodes({
+          claims: only<ClaimStore>({
+            setStatus: async (_, __, status) => {
+              statuses.push(status);
+            },
+            ledger: async () => ({
+              totalCents: 100_000,
+              coverages: [{ id: 'cov-1', payer: 'Medicare' }],
+              events,
+              signalsSeen: events.length,
+              reference: 'PCR-1 · Jane Doe'
+            }),
+            closeClaim: async (_, __, ___, status) => {
+              closed.push(status);
+            }
+          }),
+          patients: only(),
+          payers: only(),
+          fees: only(),
+          completer: only()
+        }),
+        ...modelNodes
+      ],
+      graphs: graphSource()
+    });
+    const now = new Date('2026-01-11T00:00:00.000Z');
+    const state = engine.start(
+      { type: 'billing.cycle-claim', version: 1 },
+      { claimId: 'c1' },
+      { now }
+    );
+    await engine.drain(state, { runId: 'r', now });
+    assert.equal(getPath(state.suspension?.data ?? null, 'title'), 'Reconcile payment');
+    assert.equal(getPath(state.suspension?.data ?? null, 'queue'), 'billing-reconcile');
+    assert.equal(getPath(state.suspension?.data ?? null, 'context.balanceCents'), 40_000);
+    engine.resume(state, state.suspension?.id ?? '', { outcome: 'writeOff', values: {} });
+    await engine.drain(state, { runId: 'r', now });
+    assert.equal(state.status, 'completed', state.fault?.error.message ?? '');
+    assert.deepEqual([statuses, closed], [['reconcile'], ['written_off']]);
   });
 
   it('suggests the level of service with every reason that applied', async () => {
@@ -969,12 +1077,12 @@ describe('billing graphs', () => {
     world.answer(await world.waitFor('task', 'Review PCR'), 'approve', { loadedMiles: null });
     await world.waitFor('start');
     assert.deepEqual(
-      world.opened[0]?.lines.map((l) => l.code),
+      world.saved[0]?.lines.map((l) => l.code),
       ['A0998']
     );
   });
 
-  it('sends an incomplete claim back for attention instead of saving it', async () => {
+  it('keeps an incomplete claim in draft for attention instead of saving it', async () => {
     const undated = parseDataset(REPORT.replace(/<eTimes>.*<\/eTimes>/, '')).reports[0];
     const world = pcrWorld({ report: undated ?? null });
     world.answer(await world.waitFor('task', 'Match payer'), 'unlisted');
@@ -982,8 +1090,8 @@ describe('billing graphs', () => {
     await world.waitFor('task', 'Claim needs attention');
     assert.deepEqual(world.data('context.issues'), ['A claim needs a date of service']);
     world.answer(await world.waitFor('task', 'Claim needs attention'), 'void');
-    assert.deepEqual((await world.finish(world.state)).claimId, null);
-    assert.equal(world.opened.length, 0);
+    assert.deepEqual((await world.finish(world.state)).claimId, 'c1');
+    assert.deepEqual([world.saved.length, world.closed], [0, ['void']]);
   });
 });
 

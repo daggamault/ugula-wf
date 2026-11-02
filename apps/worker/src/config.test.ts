@@ -31,4 +31,23 @@ describe('worker parseConfig', () => {
     assert.throws(() => parseConfig({ ...rawEnv, WORKFLOW_CONCURRENCY: '0' }));
     assert.throws(() => parseConfig({ ...rawEnv, COMPLETIONS_URL: undefined }));
   });
+
+  it('defaults load limits to 90% event loop and the heap limit, and bounds utilization', () => {
+    const config = parseConfig(rawEnv);
+    assert.equal(config.WORKER_MAX_EVENT_LOOP_UTILIZATION, 0.9);
+    assert.equal(config.WORKER_MAX_HEAP_MB, undefined);
+    assert.equal(config.WORKER_MAX_RSS_MB, undefined);
+    const set = parseConfig({
+      ...rawEnv,
+      WORKER_MAX_EVENT_LOOP_UTILIZATION: '0.75',
+      WORKER_MAX_HEAP_MB: '1536',
+      WORKER_MAX_RSS_MB: '3072'
+    });
+    assert.deepEqual(
+      [set.WORKER_MAX_EVENT_LOOP_UTILIZATION, set.WORKER_MAX_HEAP_MB, set.WORKER_MAX_RSS_MB],
+      [0.75, 1536, 3072]
+    );
+    assert.throws(() => parseConfig({ ...rawEnv, WORKER_MAX_EVENT_LOOP_UTILIZATION: '1.5' }));
+    assert.throws(() => parseConfig({ ...rawEnv, WORKER_MAX_EVENT_LOOP_UTILIZATION: 'busy' }));
+  });
 });

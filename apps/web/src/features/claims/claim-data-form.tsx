@@ -115,18 +115,18 @@ const ADDRESS_SPANS: Record<string, FieldSpan> = {
 
 export const ClaimDataForm = ({
   claim,
-  disabled,
+  locked,
   onSave
 }: {
   claim: ClaimDetail;
-  disabled: boolean;
+  locked: string | undefined;
   onSave: (data: BillingDataInput) => Promise<boolean>;
 }) => {
   const [draft, setDraft] = useState(() => toDraft(claim));
   const [busy, setBusy] = useState(false);
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (disabled) return;
+    if (locked) return;
     setBusy(true);
     await onSave(fromDraft(draft));
     setBusy(false);
@@ -154,18 +154,13 @@ export const ClaimDataForm = ({
         title="Claim Data"
         description="What goes on the 837P: patient address, member IDs, and transport details."
         actions={
-          <Button
-            type="submit"
-            size="sm"
-            isPending={busy}
-            disabledReason={disabled ? 'This claim is closed.' : undefined}
-          >
+          <Button type="submit" isPending={busy} disabledReason={locked}>
             <SaveIcon aria-hidden="true" className="size-4" />
             Save claim data
           </Button>
         }
       >
-        <fieldset disabled={disabled || busy}>
+        <fieldset disabled={Boolean(locked) || busy}>
           <FieldGroups>
             <FieldGroup title="Patient Mailing Address">
               <FieldGrid>

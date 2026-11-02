@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { actionNode, call, next, pin, pureNode, readInputs, suspend } from './define.ts';
-import type { GraphDef, Invocation, Signature } from './types.ts';
+import {
+  actionNode,
+  branchNode,
+  call,
+  type InputsOf,
+  next,
+  pin,
+  pureNode,
+  readInputs,
+  suspend,
+  type ValueOf
+} from './define.ts';
+import type { GraphDef, Invocation, Signature, Values } from './types.ts';
 
 const graph: GraphDef = {
   signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
@@ -10,7 +21,7 @@ const graph: GraphDef = {
   edges: []
 };
 
-const invocation = (signature: Signature, values: Record<string, number>): Invocation => ({
+const invocation = (signature: Signature, values: Values): Invocation => ({
   config: {},
   event: { type: 'exec', pin: 'exec' },
   state: null,
@@ -63,5 +74,40 @@ describe('define helpers', () => {
       typeof act.signature === 'function' ? act.signature({}, { graph }) : act.signature;
     assert.deepEqual([actSig.execIn, actSig.execOut, act.effect], [['exec'], ['then'], true]);
     assert.deepEqual(await readInputs(invocation(actSig, { a: 4 })), { a: 4, b: null });
+  });
+  it('infers typed inputs from pins and routes branch nodes through their exits', async () => {
+    const pins = [
+      pin('name', 'string'),
+      pin('age', 'integer', { optional: true }),
+      pin('tags', { list: 'string' })
+    ] as const;
+    const typed: InputsOf<typeof pins> = { name: 'a', age: null, tags: ['x', null] };
+    const value: ValueOf<{ object: { n: 'number' } }> = { n: null };
+    assert.deepEqual([typed.name, value.n], ['a', null]);
+    const grade = branchNode({
+      type: 't.grade',
+      title: 'Grade',
+      category: 'T',
+      description: '',
+      inputs: [pin('score', 'number'), pin('meta', { object: { scale: 'number' } })],
+      outputs: [pin('margin', 'number')],
+      exits: ['pass', 'fail'],
+      compute: ({ score, meta }) =>
+        score >= (meta.scale ?? 100) / 2
+          ? { exit: 'pass', outputs: { margin: score - 50 } }
+          : { exit: 'fail', outputs: { margin: 50 - score } }
+    });
+    const sig =
+      typeof grade.signature === 'function' ? grade.signature({}, { graph }) : grade.signature;
+    assert.deepEqual(sig.execOut, ['pass', 'fail']);
+    assert.deepEqual(await grade.run(invocation(sig, { score: 70, meta: { scale: 100 } })), {
+      type: 'next',
+      pin: 'pass',
+      outputs: { margin: 20 }
+    });
+    assert.equal(
+      (await grade.run(invocation(sig, { score: 20, meta: { scale: 100 } }))).type,
+      'next'
+    );
   });
 });

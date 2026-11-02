@@ -49,7 +49,7 @@ export const ThemeToggle = ({
 
   return (
     <IconButton
-      label={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+      label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       icon={isDark ? SunIcon : MoonIcon}
       tooltipSide={tooltipSide}
       onClick={() => {

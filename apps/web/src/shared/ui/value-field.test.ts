@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { Json, ValueType } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ValueField } from './value-field.tsx';
+import { isFileType, ValueField } from './value-field.tsx';
 
 const render = (type: ValueType, value: Json) =>
   renderToStaticMarkup(
@@ -34,5 +34,31 @@ describe('ValueField', () => {
       })
     );
     assert.ok(choice.includes('<option value="failed" selected="">Failed</option>'));
+  });
+});
+
+describe('file inputs', () => {
+  const file: ValueType = { object: { bucket: 'string', key: 'string' } };
+
+  it('recognizes stored file references', () => {
+    assert.equal(isFileType(file), true);
+    assert.equal(isFileType({ object: { key: 'string' } }), false);
+    assert.equal(isFileType('string'), false);
+  });
+
+  it('offers a file picker when the field can upload, and JSON otherwise', () => {
+    const picker = renderToStaticMarkup(
+      createElement(ValueField, {
+        id: 'file',
+        label: 'File',
+        type: file,
+        value: null,
+        onChange: () => undefined,
+        upload: async () => ({ file: null, name: '' })
+      })
+    );
+    assert.ok(picker.includes('type="file"') && picker.includes('Choose a file to upload.'));
+    assert.ok(picker.includes('file:rounded-lg'));
+    assert.ok(!render(file, null).includes('type="file"'));
   });
 });

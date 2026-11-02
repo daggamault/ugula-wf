@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { EVENTS_PATTERN, parseEvent, tenantOf } from '@ugula/events';
-import { createSessionStore } from '@ugula/sessions';
+import { createSessionStore } from '@ugula/auth';
+import { LIVE_PATTERN, parseLiveEvent, tenantOf } from '@ugula/live';
 import { Redis } from 'ioredis';
 import { parseConfig } from './config.ts';
 import { createEventsHandler } from './features/events/handler.ts';
@@ -33,7 +33,7 @@ export const createSseServer = (routes: SseRoutes) => createServer(handleRequest
 
 export const relay = (hub: Hub) => (_pattern: string, channel: string, message: string) => {
   const tenantId = tenantOf(channel);
-  if (tenantId && parseEvent(message)) hub.broadcast(tenantId, message);
+  if (tenantId && parseLiveEvent(message)) hub.broadcast(tenantId, message);
 };
 
 if (import.meta.main) {
@@ -45,7 +45,7 @@ if (import.meta.main) {
   };
   const hub = createHub();
   const subscriber = new Redis(redis);
-  await subscriber.psubscribe(EVENTS_PATTERN);
+  await subscriber.psubscribe(LIVE_PATTERN);
   subscriber.on('pmessage', relay(hub));
   setInterval(hub.beat, HEARTBEAT_MS);
   createSseServer({

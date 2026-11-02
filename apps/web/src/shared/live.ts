@@ -1,4 +1,4 @@
-import { type LiveEvent, parseEvent } from '@ugula/events';
+import { type LiveEvent, parseLiveEvent } from '@ugula/live';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 
 export type EventStream = {
@@ -71,7 +71,7 @@ export const createLive = (
     source = stream;
     stream.listen({
       onData: (data) => {
-        const event = parseEvent(data);
+        const event = parseLiveEvent(data);
         if (event) for (const l of listeners) l(event);
       },
       onOpen: () => {

@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
-import type { JobBoss } from '@ugula/jobs';
+import { createRecordingDb } from '@ugula/db/testing';
+import type { RunQueueClient } from '@ugula/run-queue';
 import { findRunWait, signalRuns, startRun } from './runs.ts';
 
 describe('startRun', () => {
   it('inserts a running run and enqueues its first step in the same transaction', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'r1' }]);
     const jobs: unknown[] = [];
-    const boss: JobBoss = { insert: async (_name, batch) => void jobs.push(...batch) };
+    const boss: RunQueueClient = { insert: async (_name, batch) => void jobs.push(...batch) };
     assert.equal(
       await startRun(db, boss, { tenantId: 't', versionId: 'v', inputs: { a: 1 } }),
       'r1'
@@ -23,7 +23,7 @@ describe('startRun', () => {
 describe('signalRuns', () => {
   it('counts the signal before looking for waiters, so a run about to wait sees it', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    const boss: JobBoss = { insert: async () => undefined };
+    const boss: RunQueueClient = { insert: async () => undefined };
     await signalRuns(db, boss, { tenantId: 't', name: 'claim', key: 'c1', payload: null });
     assert.equal(
       queries[0]?.sql,
@@ -44,7 +44,7 @@ describe('signalRuns', () => {
         : []
     );
     const jobs: unknown[] = [];
-    const boss: JobBoss = { insert: async (_name, batch) => void jobs.push(...batch) };
+    const boss: RunQueueClient = { insert: async (_name, batch) => void jobs.push(...batch) };
     assert.equal(
       await signalRuns(db, boss, { tenantId: 't', name: 'claim', key: 'c1', payload: { a: 1 } }),
       2

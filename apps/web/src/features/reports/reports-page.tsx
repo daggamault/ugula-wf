@@ -1,24 +1,26 @@
-import { ChartColumnIcon, DownloadIcon, RefreshCwIcon } from 'lucide-react';
+import { DownloadIcon, PlayIcon, PrinterIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
-import { classNamesOf } from '../../shared/class-names.ts';
-import { formatDate } from '../../shared/format.ts';
-import { Link, navigate, useLocation } from '../../shared/router.tsx';
+import { formatDate, formatDateTime } from '../../shared/format.ts';
+import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
+import { IconLink } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
-import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
-import { Section } from '../../shared/ui/section-panel.tsx';
+import { SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
-import { hrefWith, pageOf, type TableState, useTableState } from '../../shared/url-state.ts';
+import { hrefWith } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
-import { findReport, REPORTS, type Report } from './catalog.tsx';
+import { type AnyReport, findReport, REPORTS } from './catalog.ts';
 import type { DateRange, ReportsClient } from './client.ts';
 import { downloadCsv } from './csv.ts';
+import { csvRows, totalsOf } from './report-columns.ts';
+import { ReportDocument } from './report-document.tsx';
 
-type AnyReport = Report<unknown, unknown>;
+export const REPORT_PAGE_SIZE = 100;
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -39,180 +41,73 @@ export const rangeOf = (query: URLSearchParams, now: Date): DateRange => {
   };
 };
 
-export const reportPath = (
-  r: Pick<AnyReport, 'id' | 'usesPeriod'>,
-  range: DateRange,
-  query: URLSearchParams = new URLSearchParams()
-) =>
-  hrefWith(`/reports/${r.id}`, query, {
+const withRange = (path: string, r: Pick<AnyReport, 'usesPeriod'>, range: DateRange) =>
+  hrefWith(path, new URLSearchParams(), {
     from: r.usesPeriod ? range.from : null,
-    to: r.usesPeriod ? range.to : null,
-    page: null
+    to: r.usesPeriod ? range.to : null
   });
+
+export const optionsPath = (r: Pick<AnyReport, 'id' | 'usesPeriod'>, range: DateRange) =>
+  withRange(`/reports/${r.id}`, r, range);
+
+export const resultsPath = (r: Pick<AnyReport, 'id' | 'usesPeriod'>, range: DateRange) =>
+  withRange(`/reports/${r.id}/results`, r, range);
+
+export const pageParam = (query: URLSearchParams) => {
+  const n = Number(query.get('page'));
+  return Number.isInteger(n) && n > 1 ? n : 1;
+};
+
+export const periodText = (r: Pick<AnyReport, 'usesPeriod'>, range: DateRange, now: Date) =>
+  r.usesPeriod
+    ? `Dates of service ${formatDate(range.from)} to ${formatDate(range.to)}`
+    : `Open balances as of ${formatDate(day(now))}`;
 
 export const ReportsPage = () => (
   <Page
     title="Reports"
     description="Receivables, collections and payer performance, straight from your claims."
   >
-    <ul className="grid gap-4 md:grid-cols-2">
+    <Table
+      label="Reports"
+      head={['Report', 'Description', { label: 'Actions', isLabelHidden: true, isCompact: true }]}
+    >
       {REPORTS.map((r) => (
-        <li key={r.id} className="flex">
-          <Link
-            to={`/reports/${r.id}`}
-            className={classNamesOf(
-              interactiveClasses,
-              'border-border bg-surface hover:border-primary/50 hover:bg-primary/5 flex flex-1 flex-col gap-2 rounded-xl border p-5'
-            )}
-          >
-            <span className="text-primary flex items-center gap-2 font-bold">
-              <ChartColumnIcon aria-hidden="true" className="size-4.5" />
-              {r.title}
-            </span>
-            <span className="text-surface-fg-muted text-sm">{r.description}</span>
-          </Link>
-        </li>
+        <TableRow key={r.id}>
+          <TableCell>
+            <span className="font-semibold">{r.title}</span>
+          </TableCell>
+          <TableCell kind="wrap" isMuted>
+            {r.description}
+          </TableCell>
+          <TableCell kind="actions">
+            <IconLink to={`/reports/${r.id}`} label={`Run ${r.title}`} icon={PlayIcon} />
+          </TableCell>
+        </TableRow>
       ))}
-    </ul>
+    </Table>
   </Page>
 );
 
-export const ReportOptions = ({ report, range }: { report: AnyReport; range: DateRange }) => {
-  const [draft, setDraft] = useState(range);
-  const { query } = useLocation();
-  const valid = draft.from <= draft.to;
-  const changed = draft.from !== range.from || draft.to !== range.to;
-  const run = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (valid) navigate(reportPath(report, draft, query));
-  };
-  return (
-    <form
-      onSubmit={run}
-      aria-label="Report options"
-      className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end"
-    >
-      <div className="sm:w-44">
-        <Input
-          id="report-from"
-          label="Service from"
-          type="date"
-          value={draft.from}
-          max={draft.to}
-          onChange={(e) => e.target.value && setDraft({ ...draft, from: e.target.value })}
-        />
-      </div>
-      <div className="sm:w-44">
-        <Input
-          id="report-to"
-          label="Service to"
-          type="date"
-          value={draft.to}
-          min={draft.from}
-          onChange={(e) => e.target.value && setDraft({ ...draft, to: e.target.value })}
-        />
-      </div>
-      <Button
-        type="submit"
-        variant="outline"
-        disabledReason={
-          valid
-            ? changed
-              ? undefined
-              : 'Change the dates first.'
-            : 'Choose a start date on or before the end date.'
-        }
-      >
-        <RefreshCwIcon aria-hidden="true" className="size-4" />
-        Update
-      </Button>
-    </form>
-  );
-};
-
-const ReportRows = ({
-  report,
-  data,
-  state
-}: {
-  report: AnyReport;
-  data: unknown;
-  state: TableState<string>;
-}) => {
-  const page = pageOf(report.rowsOf(data), state, report.values);
-  return (
-    <>
-      {report.table(data, page.items, state)}
-      <Pagination label={report.title} total={page.total} state={state} />
-    </>
-  );
-};
-
-const ReportResults = ({
-  client,
-  report,
-  range
-}: {
-  client: ReportsClient;
-  report: AnyReport;
-  range: DateRange;
-}) => {
-  const notify = useToast();
-  const table = useTableState(`/reports/${report.id}`, report);
-  const result = useResource(`report:${report.id}:${range.from}:${range.to}`, () =>
-    report.load(client, range)
-  );
-  const { data } = result;
-  return (
-    <Section
-      title="Results"
-      description={
-        report.usesPeriod
-          ? `Claims with a date of service from ${formatDate(range.from)} to ${formatDate(range.to)}.`
-          : 'Open balances as of today.'
-      }
-      actions={
-        data !== undefined && !report.isEmpty(data) ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              const file = report.csv(data, range);
-              downloadCsv(file.name, file.rows);
-              notify({ title: `${file.name} downloaded` });
-            }}
-          >
-            <DownloadIcon aria-hidden="true" className="size-4" />
-            Download CSV
-          </Button>
-        ) : null
-      }
-    >
-      {result.error ? <Alert>{result.error.message}</Alert> : null}
-      {data === undefined ? (
-        result.loading ? (
-          <PageLoading />
-        ) : null
-      ) : report.isEmpty(data) ? (
-        <EmptyText>Nothing to report for these options.</EmptyText>
-      ) : (
-        <ReportRows report={report} data={data} state={table} />
-      )}
-    </Section>
-  );
-};
-
 export type ReportPageProps = {
-  client: ReportsClient;
   reportId: string;
   query: URLSearchParams;
   now?: Date;
 };
 
-export const ReportPage = ({ client, reportId, query, now = new Date() }: ReportPageProps) => {
+const unknownReport = (id: string) => (
+  <PageFailure message={`There is no report called “${id}”.`} />
+);
+
+export const ReportOptionsPage = ({ reportId, query, now = new Date() }: ReportPageProps) => {
   const report = findReport(reportId);
-  if (!report) return <PageFailure message={`There is no report called “${reportId}”.`} />;
-  const range = rangeOf(query, now);
+  const [draft, setDraft] = useState(() => rangeOf(query, now));
+  if (!report) return unknownReport(reportId);
+  const valid = draft.from <= draft.to;
+  const run = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (valid) navigate(resultsPath(report, draft));
+  };
   return (
     <Page
       title={report.title}
@@ -220,10 +115,167 @@ export const ReportPage = ({ client, reportId, query, now = new Date() }: Report
       backTo="/reports"
       backLabel="Back to Reports"
     >
-      {report.usesPeriod ? (
-        <ReportOptions key={`${range.from}:${range.to}`} report={report} range={range} />
-      ) : null}
-      <ReportResults client={client} report={report} range={range} />
+      <SectionPanel
+        title="Options"
+        description={
+          report.usesPeriod
+            ? 'Choose the dates of service to report on.'
+            : 'This report has no options. It shows open balances as of today.'
+        }
+      >
+        <form
+          onSubmit={run}
+          aria-label="Report options"
+          className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end"
+        >
+          {report.usesPeriod ? (
+            <>
+              <div className="sm:w-44">
+                <Input
+                  id="report-from"
+                  label="Service from"
+                  type="date"
+                  value={draft.from}
+                  max={draft.to}
+                  onChange={(e) => e.target.value && setDraft({ ...draft, from: e.target.value })}
+                />
+              </div>
+              <div className="sm:w-44">
+                <Input
+                  id="report-to"
+                  label="Service to"
+                  type="date"
+                  value={draft.to}
+                  min={draft.from}
+                  onChange={(e) => e.target.value && setDraft({ ...draft, to: e.target.value })}
+                />
+              </div>
+            </>
+          ) : null}
+          <Button
+            type="submit"
+            disabledReason={valid ? undefined : 'Choose a start date on or before the end date.'}
+          >
+            <PlayIcon aria-hidden="true" className="size-4" />
+            Run report
+          </Button>
+        </form>
+      </SectionPanel>
     </Page>
+  );
+};
+
+const ReportResults = ({
+  client,
+  report,
+  range,
+  query,
+  now
+}: {
+  client: ReportsClient;
+  report: AnyReport;
+  range: DateRange;
+  query: URLSearchParams;
+  now: Date;
+}) => {
+  const notify = useToast();
+  const [ranAt] = useState(() => now.toISOString());
+  const result = useResource(`report:${report.id}:${range.from}:${range.to}`, () =>
+    report.load(client, range)
+  );
+  const { data } = result;
+  const rows = data === undefined ? [] : report.rowsOf(data);
+  const page = pageParam(query);
+  const pages = Math.max(1, Math.ceil(rows.length / REPORT_PAGE_SIZE));
+  const shown = rows.slice((page - 1) * REPORT_PAGE_SIZE, page * REPORT_PAGE_SIZE);
+  const isPaged = rows.length > REPORT_PAGE_SIZE;
+  const path = `/reports/${report.id}/results`;
+  const totals = totalsOf(report.columns, rows);
+  return (
+    <Page
+      title={report.title}
+      description={periodText(report, range, now)}
+      backTo={optionsPath(report, range)}
+      backLabel="Back to report options"
+      actions={
+        data !== undefined && rows.length ? (
+          <>
+            <Button variant="outline" onClick={() => window.print()}>
+              <PrinterIcon aria-hidden="true" className="size-4" />
+              Print
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const name = report.fileName(data, range);
+                downloadCsv(name, csvRows(report.columns, rows));
+                notify({ title: `${name} downloaded` });
+              }}
+            >
+              <DownloadIcon aria-hidden="true" className="size-4" />
+              Download CSV
+            </Button>
+          </>
+        ) : null
+      }
+    >
+      {result.error ? (
+        <Alert>{result.error.message}</Alert>
+      ) : data === undefined ? (
+        <PageLoading />
+      ) : rows.length ? (
+        <>
+          <ReportDocument
+            title={report.title}
+            details={[
+              periodText(report, range, now),
+              `Run ${formatDateTime(ranAt)}`,
+              ...(isPaged
+                ? [
+                    `Rows ${(page - 1) * REPORT_PAGE_SIZE + 1}–${Math.min(page * REPORT_PAGE_SIZE, rows.length)} of ${rows.length} · page ${page} of ${pages}`
+                  ]
+                : [])
+            ]}
+            columns={report.columns}
+            rows={shown}
+            totals={totals && isPaged ? ['Total, all pages', ...totals.slice(1)] : totals}
+          />
+          {isPaged ? (
+            <div className="print:hidden">
+              <Pagination
+                label={report.title}
+                total={rows.length}
+                state={{
+                  page,
+                  pageSize: REPORT_PAGE_SIZE,
+                  pageHref: (n) => hrefWith(path, query, { page: n > 1 ? String(n) : null })
+                }}
+              />
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <EmptyText>Nothing to report for these options.</EmptyText>
+      )}
+    </Page>
+  );
+};
+
+export const ReportResultsPage = ({
+  client,
+  reportId,
+  query,
+  now = new Date()
+}: ReportPageProps & { client: ReportsClient }) => {
+  const report = findReport(reportId);
+  if (!report) return unknownReport(reportId);
+  return (
+    <ReportResults
+      client={client}
+      report={report}
+      range={rangeOf(query, now)}
+      query={query}
+      now={now}
+    />
   );
 };

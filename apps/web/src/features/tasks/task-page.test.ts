@@ -44,14 +44,14 @@ describe('TaskView', () => {
   it('leads with the subject and queue, explains what to do and prefills the decision', () => {
     const html = render(task(), 'SOURCE PANEL');
     assert.ok(html.includes('PCR-1 · Jane Doe</h1>'));
-    assert.ok(html.includes('PCR review') && html.includes('Review PCR'));
+    assert.ok(html.includes('Billing review') && html.includes('Review PCR'));
     assert.ok(html.includes('What to do') && html.includes('Check the charges.'));
     assert.ok(html.includes('ALS1'));
     assert.ok(html.includes('value="looks fine"'));
     assert.ok(html.includes('>Approve<') && html.includes('>Keep waiting<'));
     assert.ok(html.includes('Assign to me'));
     assert.ok(!html.includes('href="/runs/r1"'));
-    assert.ok(html.includes('href="/tasks?queue=billing-review"'));
+    assert.ok(html.includes('href="/tasks?type=billing-review"'));
     assert.ok(html.includes('SOURCE PANEL'));
     assert.ok(!html.includes('Open claim'));
   });
@@ -88,7 +88,7 @@ describe('TaskView', () => {
     assert.ok(fault.includes('What went wrong'));
     assert.ok(fault.includes('Retry the failed step'));
     assert.ok(fault.includes('Unassign'));
-    assert.ok(fault.includes('href="/runs/r1"') && fault.includes('Open the stuck run'));
+    assert.ok(fault.includes('href="/runs/r1"') && fault.includes('Open run'));
     assert.ok(fault.includes('<option value="then">Then</option>'));
     const done = render(
       task({
@@ -116,18 +116,18 @@ describe('NextUp', () => {
   it('confirms the decision and offers the next task only when there is one', () => {
     const more = next(2);
     assert.ok(more.includes('“Approve”'));
-    assert.ok(more.includes('2 more tasks are waiting in PCR review.'));
+    assert.ok(more.includes('2 more tasks are waiting in Billing review.'));
     assert.ok(more.includes('Next task'));
     assert.ok(more.includes('Back to Tasks'));
     const clear = next(0);
-    assert.ok(clear.includes('PCR review is clear.'));
+    assert.ok(clear.includes('Billing review is clear.'));
     assert.ok(!clear.includes('Next task'));
     assert.ok(next(1).includes('1 more task is waiting'));
-    assert.ok(next(null).includes('Checking PCR review'));
+    assert.ok(next(null).includes('Checking Billing review'));
   });
 
   it('links back to the filtered queue', () => {
-    assert.equal(queuePath('billing review'), '/tasks?queue=billing%20review');
+    assert.equal(queuePath('billing review'), '/tasks?type=billing%20review');
   });
 });
 

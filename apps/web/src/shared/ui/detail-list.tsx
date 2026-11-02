@@ -3,7 +3,7 @@ import { classNamesOf } from '../class-names.ts';
 
 export const DetailList = ({ children }: { children: ReactNode }) => (
   <div className="@container">
-    <dl className="grid grid-cols-1 gap-x-6 gap-y-4 @md:grid-cols-2 @2xl:grid-cols-4">
+    <dl className="grid grid-cols-1 gap-x-4 gap-y-5 @md:grid-cols-2 @2xl:grid-cols-4">
       {children}
     </dl>
   </div>

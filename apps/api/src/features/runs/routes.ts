@@ -1,13 +1,41 @@
 import { sValidator } from '@hono/standard-validator';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { AuthEnv } from '../../shared/auth.ts';
+import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { listRunsQuery, signalSchema, startRunSchema, stepsQuery } from './schemas.ts';
+import {
+  fileFormSchema,
+  listRunsQuery,
+  signalSchema,
+  startRunSchema,
+  stepsQuery
+} from './schemas.ts';
 import type { RunService } from './service.ts';
 
-export const createRunRoutes = (service: RunService) =>
+export const createRunRoutes = (service: RunService, maxBytes: number) =>
   new Hono<AuthEnv>()
+    .post(
+      '/files',
+      bodyLimit({
+        maxSize: maxBytes + FORM_OVERHEAD_BYTES,
+        onError: (c) => c.json({ error: 'File too large' }, 413)
+      }),
+      sValidator('form', fileFormSchema, invalidRequest),
+      async (c) => {
+        const { file } = c.req.valid('form');
+        return respond(
+          c,
+          await service.uploadFile(c.get('session').tenantId, {
+            name: file.name,
+            type: file.type,
+            bytes: new Uint8Array(await file.arrayBuffer())
+          }),
+          201
+        );
+      }
+    )
     .get('/', sValidator('query', listRunsQuery, invalidRequest), async (c) => {
       const { status, graphId, root, ...page } = c.req.valid('query');
       return respond(

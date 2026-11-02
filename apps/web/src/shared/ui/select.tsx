@@ -15,7 +15,7 @@ export type SelectOption = {
 };
 
 const selectClasses = classNamesOf(
-  'min-h-10 cursor-pointer appearance-none truncate pr-9',
+  'h-10 cursor-pointer pointer-coarse:h-11 appearance-none truncate pr-9',
   fieldControlClasses,
   fieldTextClasses
 );

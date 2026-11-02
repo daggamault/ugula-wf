@@ -1,3 +1,4 @@
+import { isClosedStatus } from '@ugula/billing';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -16,18 +17,20 @@ import {
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
+import { classNamesOf } from '../../shared/class-names.ts';
 import { formatCents, formatDate, formatDateTime, parseDollars } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { Link } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
-import { Button, ButtonLink } from '../../shared/ui/button.tsx';
+import { Button, ButtonLink, buttonClasses } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
+import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
@@ -40,7 +43,7 @@ import { pageOf, useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { ClaimDataForm } from './claim-data-form.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
-import { BatchDownload } from './claims-page.tsx';
+import { claimNumber } from './claims-page.tsx';
 import type {
   Batch,
   BillingDataInput,
@@ -61,18 +64,90 @@ export type ClaimPageProps = {
 };
 
 const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
+  approved: 'Approved for submission',
   submitted: 'Submitted',
   follow_up: 'Followed up',
   resubmitted: 'Resubmitted',
   resubmit_queued: 'Resubmission queued',
   response: 'Response',
+  reconciled: 'Payment reconciled',
   payer_skipped: 'Payer skipped',
   statement: 'Patient statement',
   revised: 'Updated PCR received',
   closed: 'Closed'
 };
 
-const closedReason = 'This claim is closed.';
+export const lockedReason = (status: ClaimDetail['status']) =>
+  isClosedStatus(status)
+    ? 'This claim is closed.'
+    : status === 'draft'
+      ? 'This claim is still a draft. Finish its PCR tasks first.'
+      : undefined;
+
+export const BatchDownload = ({ batch, href }: { batch: Batch; href: string }) => (
+  <a href={href} download className={buttonClasses({ variant: 'outline' })}>
+    <DownloadIcon aria-hidden="true" className="size-4" />
+    Download #{batch.control_number}
+  </a>
+);
+
+const fileLinkClasses = `inline-flex items-center gap-2 whitespace-nowrap ${textLinkClasses}`;
+
+export const ClaimFiles = ({
+  claim,
+  events,
+  documentUrl,
+  fileUrl,
+  encounterUrl
+}: {
+  claim: Pick<ClaimDetail, 'import_report_id' | 'pcr_number'>;
+  events: readonly ClaimEvent[];
+  documentUrl: (eventId: string) => string;
+  fileUrl: (batchId: string) => string;
+  encounterUrl: (reportId: string) => string;
+}) => {
+  const batches = events.filter((e) => e.batch_id);
+  const documents = events.filter((e) => e.has_document);
+  return (
+    <SectionPanel
+      title="Files"
+      description="The encounter this claim came from, and every 837P file and document sent for it."
+    >
+      <ul className="flex flex-col gap-2 text-sm">
+        <li>
+          {claim.import_report_id ? (
+            <a href={encounterUrl(claim.import_report_id)} download className={fileLinkClasses}>
+              <DownloadIcon aria-hidden="true" className="size-4" />
+              Encounter {claim.pcr_number ?? ''} (NEMSIS XML)
+            </a>
+          ) : (
+            <span className="text-surface-fg-muted">No source encounter file.</span>
+          )}
+        </li>
+        {batches.map((e) => (
+          <li key={e.id} className="flex flex-wrap items-center gap-2">
+            <a href={fileUrl(e.batch_id ?? '')} download className={fileLinkClasses}>
+              <DownloadIcon aria-hidden="true" className="size-4" />
+              837P file #{e.batch_number}
+            </a>
+            <span className="text-surface-fg-muted">
+              {e.payer} · {formatDateTime(e.created_at)}
+            </span>
+          </li>
+        ))}
+        {documents.map((e) => (
+          <li key={e.id} className="flex flex-wrap items-center gap-2">
+            <a href={documentUrl(e.id)} target="_blank" rel="noopener" className={fileLinkClasses}>
+              <FileTextIcon aria-hidden="true" className="size-4" />
+              {e.note || EVENT_LABELS[e.kind]}
+            </a>
+            <span className="text-surface-fg-muted">{formatDateTime(e.created_at)}</span>
+          </li>
+        ))}
+      </ul>
+    </SectionPanel>
+  );
+};
 
 export const moveItem = (items: readonly string[], from: number, to: number) => {
   if (to < 0 || to >= items.length) return [...items];
@@ -213,19 +288,15 @@ export const EventsTable = ({
                 href={documentUrl(e.id)}
                 target="_blank"
                 rel="noopener"
-                className={`inline-flex items-center gap-1 whitespace-nowrap ${textLinkClasses}`}
+                className={fileLinkClasses}
               >
-                <FileTextIcon aria-hidden="true" className="size-3.5" />
+                <FileTextIcon aria-hidden="true" className="size-4" />
                 View PDF
               </a>
             ) : null}
             {e.batch_id && fileUrl ? (
-              <a
-                href={fileUrl(e.batch_id)}
-                download
-                className={`inline-flex items-center gap-1 whitespace-nowrap ${textLinkClasses}`}
-              >
-                <DownloadIcon aria-hidden="true" className="size-3.5" />
+              <a href={fileUrl(e.batch_id)} download className={fileLinkClasses}>
+                <DownloadIcon aria-hidden="true" className="size-4" />
                 837P file #{e.batch_number}
               </a>
             ) : null}
@@ -238,11 +309,11 @@ export const EventsTable = ({
 
 export const PayersEditor = ({
   coverages,
-  disabled,
+  locked,
   onSave
 }: {
   coverages: readonly ClaimCoverage[];
-  disabled: boolean;
+  locked: string | undefined;
   onSave: (payers: string[]) => Promise<void>;
 }) => {
   const payers = coverages.map((c) => c.payer);
@@ -252,7 +323,6 @@ export const PayersEditor = ({
   const [list, setList] = useState<string[]>(payers);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
-  const locked = disabled ? closedReason : undefined;
   const isDirty = list.join('|') !== payers.join('|');
   const add = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -271,7 +341,6 @@ export const PayersEditor = ({
       description="Billed in this order. The patient is billed after the last payer."
       actions={
         <Button
-          size="sm"
           isPending={busy}
           disabledReason={locked ?? (isDirty ? undefined : 'No changes to save.')}
           onClick={() => void save()}
@@ -282,10 +351,10 @@ export const PayersEditor = ({
       }
     >
       {list.length ? (
-        <ol className="divide-border border-border flex flex-col divide-y rounded-lg border">
+        <ol className="divide-border border-border flex flex-col divide-y rounded-xl border">
           {list.map((p, i) => (
-            <li key={p} className="flex items-center justify-between gap-2 py-1 pr-1 pl-3 text-sm">
-              <span className="flex min-w-0 items-center gap-3">
+            <li key={p} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
+              <span className="flex min-w-0 items-center gap-2">
                 <span
                   aria-hidden="true"
                   className="bg-primary/10 text-primary grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold"
@@ -297,12 +366,18 @@ export const PayersEditor = ({
                   {p}
                 </span>
                 {unlisted.has(p.toLowerCase()) ? (
-                  <Link to="/payers" className="shrink-0 rounded-full hover:underline">
+                  <Link
+                    to="/payers"
+                    className={classNamesOf(
+                      interactiveClasses,
+                      'shrink-0 rounded-full hover:underline'
+                    )}
+                  >
                     <Badge intent="warning">Not in payer directory</Badge>
                   </Link>
                 ) : null}
               </span>
-              <span className="flex">
+              <span className="flex items-center gap-2">
                 <IconButton
                   label={`Move ${p} up`}
                   icon={ArrowUpIcon}
@@ -318,7 +393,6 @@ export const PayersEditor = ({
                 <Button
                   intent="danger"
                   variant="outline"
-                  size="sm"
                   aria-label={`Remove ${p}`}
                   disabledReason={locked}
                   onClick={() => setList(list.filter((x) => x !== p))}
@@ -334,11 +408,11 @@ export const PayersEditor = ({
         <EmptyText>No payers yet. The patient will be billed directly.</EmptyText>
       )}
       <form onSubmit={add} className="flex items-end gap-2" aria-label="Add payer">
-        <fieldset disabled={disabled} className="flex flex-1 items-end gap-2">
+        <fieldset disabled={Boolean(locked)} className="flex flex-1 items-end gap-2">
           <div className="flex-1">
             <Input
               id="payer-name"
-              label="Add a Payer"
+              label="Add payer"
               placeholder="Payer name"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -357,12 +431,12 @@ export const PayersEditor = ({
 export const ResponseForm = ({
   coverages,
   current,
-  disabled,
+  locked,
   onRecord
 }: {
   coverages: readonly ClaimCoverage[];
   current: string | null;
-  disabled: boolean;
+  locked: string | undefined;
   onRecord: (response: ClaimResponseInput) => Promise<boolean>;
 }) => {
   const empty = { coverageId: current ?? '', paid: '', adjusted: '', note: '' };
@@ -372,7 +446,7 @@ export const ResponseForm = ({
   const [error, setError] = useState('');
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (disabled) return;
+    if (locked) return;
     const response = toResponse(draft);
     if (typeof response === 'string') {
       setError(response);
@@ -393,11 +467,14 @@ export const ResponseForm = ({
   });
   return (
     <SectionPanel
-      title="Record a Response"
-      description="A payer's remittance, or a payment from the patient."
+      title="Post Payment"
+      description="A payer's remittance, or a payment from the patient. A payer payment that leaves a balance opens a reconcile task."
     >
-      <form onSubmit={submit} className="flex flex-col gap-5" aria-label="Record a response">
-        <fieldset disabled={disabled || busy} className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
+      <form onSubmit={submit} className="flex flex-col gap-5" aria-label="Post payment">
+        <fieldset
+          disabled={Boolean(locked) || busy}
+          className="grid gap-x-4 gap-y-5 sm:grid-cols-2"
+        >
           <Select
             id="response-payer"
             label="From"
@@ -431,13 +508,9 @@ export const ResponseForm = ({
         </fieldset>
         {error ? <Alert>{error}</Alert> : null}
         <div>
-          <Button
-            type="submit"
-            isPending={busy}
-            disabledReason={disabled ? closedReason : undefined}
-          >
+          <Button type="submit" isPending={busy} disabledReason={locked}>
             <SaveIcon aria-hidden="true" className="size-4" />
-            Record
+            Post payment
           </Button>
         </div>
       </form>
@@ -448,8 +521,12 @@ export const ResponseForm = ({
 export const describeProgress = (progress: ClaimProgress | null) => {
   if (!progress) return null;
   switch (progress.step) {
+    case 'review':
+      return `Needs review before it goes to ${progress.coverage.payer}. Check the claim, then approve its review task.`;
     case 'submit':
       return `Ready to submit to ${progress.coverage.payer}.`;
+    case 'reconcile':
+      return `${progress.coverage.payer} answered and a balance remains. A reconcile task is waiting.`;
     case 'await':
       return `Waiting on ${progress.coverage.payer}. A follow-up task opens if they have not answered 30 days after submission.`;
     case 'followUp':
@@ -459,13 +536,15 @@ export const describeProgress = (progress: ClaimProgress | null) => {
     case 'awaitPatient':
       return 'Waiting on the patient. The next statement goes out 30 days after the last one.';
     case 'collections':
-      return 'Every payer and patient statement is done. A collections task is waiting for a decision on the balance.';
+      return 'Every payer and patient statement is done. A balance review task is waiting for a decision.';
     case 'closed':
       return 'Paid in full. Closing.';
   }
 };
 
 const TASK_QUEUES: Partial<Record<ClaimProgress['step'], string>> = {
+  review: 'billing-review',
+  reconcile: 'billing-reconcile',
   followUp: 'billing-followup',
   collections: 'billing-collections'
 };
@@ -483,8 +562,18 @@ export const describeCycle = (
   claim: Pick<ClaimDetail, 'status' | 'cycle_status'>,
   progress: ClaimProgress | null
 ): CycleState | null => {
-  if (claim.status !== 'open') return null;
+  if (isClosedStatus(claim.status)) return null;
   const base = { stopped: true, submittable: false, tasks: null };
+  if (claim.status === 'draft') {
+    return {
+      ...base,
+      stopped: false,
+      restartable: false,
+      intent: 'info',
+      text: 'Draft. Its PCR is still being worked: patient, payer and service review happen in Tasks.',
+      tasks: ''
+    };
+  }
   switch (claim.cycle_status) {
     case null:
       return {
@@ -529,6 +618,7 @@ export type Submission = {
   issues: readonly string[] | null;
   made: Batch | null;
   fileUrl: (batchId: string) => string;
+  encounterUrl: (reportId: string) => string;
   onCreateFile: () => Promise<void>;
   onMarkSubmitted: () => Promise<void>;
 };
@@ -545,7 +635,6 @@ const SubmitActions = ({ payer, submission }: { payer: string; submission: Submi
   return (
     <>
       <Button
-        size="sm"
         isPending={busy}
         disabledReason={blocked}
         onClick={async () => {
@@ -557,7 +646,7 @@ const SubmitActions = ({ payer, submission }: { payer: string; submission: Submi
         <FileCogIcon aria-hidden="true" className="size-4" />
         Create 837P file
       </Button>
-      <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+      <Button variant="outline" onClick={() => setConfirming(true)}>
         <SendIcon aria-hidden="true" className="size-4" />
         Mark submitted
       </Button>
@@ -611,23 +700,22 @@ const CycleAlert = ({
         <SubmitActions payer={payer} submission={submission} />
       ) : null}
       {issues.length ? (
-        <ButtonLink to={`/claims/${claim.id}?tab=data`} variant="outline" size="sm">
+        <ButtonLink to={`/claims/${claim.id}?tab=data`} variant="outline">
           <PencilIcon aria-hidden="true" className="size-4" />
           Fix claim data
         </ButtonLink>
       ) : null}
-      {status.tasks ? (
+      {status.tasks !== null ? (
         <ButtonLink
-          to={`/tasks?queue=${encodeURIComponent(status.tasks)}`}
+          to={status.tasks ? `/tasks?type=${encodeURIComponent(status.tasks)}` : '/tasks'}
           variant="outline"
-          size="sm"
         >
           <ListTodoIcon aria-hidden="true" className="size-4" />
           Open tasks
         </ButtonLink>
       ) : null}
       {runLink ? (
-        <ButtonLink to={`/runs/${runLink}`} variant="outline" size="sm">
+        <ButtonLink to={`/runs/${runLink}`} variant="outline">
           <ExternalLinkIcon aria-hidden="true" className="size-4" />
           Open the cycle run
         </ButtonLink>
@@ -635,7 +723,6 @@ const CycleAlert = ({
       {status.restartable ? (
         <Button
           variant="outline"
-          size="sm"
           isPending={restarting}
           onClick={async () => {
             setRestarting(true);
@@ -701,23 +788,27 @@ export const ClaimView = ({
   tab?: ClaimTab;
   error?: string;
 }) => {
-  const closed = claim.status !== 'open';
+  const locked = lockedReason(claim.status);
   const path = `/claims/${claim.id}`;
   const current = progress && 'coverage' in progress ? progress.coverage.id : null;
   const coverageKey = claim.coverages.map((c) => `${c.id}:${c.payer}`).join('|');
   return (
     <Page
-      title={`${claim.last_name}, ${claim.first_name}`}
+      title={`Claim ${claimNumber(claim.number)}`}
       backTo="/claims"
       backLabel="Back to Claims"
       description={
-        <span className="flex flex-wrap items-center gap-2">
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <ClaimStatusBadge status={claim.status} />
-          <span>{claim.pcr_number ? `PCR ${claim.pcr_number}` : 'No PCR number'}</span>
+          <span className="text-surface-fg font-medium">
+            {claim.last_name}, {claim.first_name}
+          </span>
+          <span>Patient {claimNumber(claim.patient_number)}</span>
+          <span>{claim.pcr_number ? `Encounter ${claim.pcr_number}` : 'No encounter number'}</span>
         </span>
       }
       actions={
-        <ButtonLink to={`/patients/${claim.patient_id}`} variant="outline" size="sm">
+        <ButtonLink to={`/patients/${claim.patient_id}`} variant="outline">
           <UserIcon aria-hidden="true" className="size-4" />
           Patient
         </ButtonLink>
@@ -750,7 +841,7 @@ export const ClaimView = ({
               <Detail label="Service date">{formatDate(claim.service_date)}</Detail>
               <Detail label="Born">{formatDate(claim.birth_date)}</Detail>
               <Detail label="Transport">
-                {claim.level}
+                {claim.level ?? emptyValue}
                 {claim.emergency ? ' emergency' : ''}
                 {claim.loaded_miles ? ` · ${claim.loaded_miles} loaded miles` : ''}
               </Detail>
@@ -764,26 +855,30 @@ export const ClaimView = ({
               <PayersEditor
                 key={coverageKey}
                 coverages={claim.coverages}
-                disabled={closed}
+                locked={locked}
                 onSave={onSavePayers}
               />
+              {submission ? (
+                <ClaimFiles
+                  claim={claim}
+                  events={events}
+                  documentUrl={documentUrl}
+                  fileUrl={submission.fileUrl}
+                  encounterUrl={submission.encounterUrl}
+                />
+              ) : null}
             </div>
             <ResponseForm
               key={`response-${coverageKey}`}
               coverages={claim.coverages}
               current={current}
-              disabled={closed}
+              locked={locked}
               onRecord={onRecord}
             />
           </div>
         </>
       ) : tab === 'data' ? (
-        <ClaimDataForm
-          key={`data-${claim.id}`}
-          claim={claim}
-          disabled={closed}
-          onSave={onSaveData}
-        />
+        <ClaimDataForm key={`data-${claim.id}`} claim={claim} locked={locked} onSave={onSaveData} />
       ) : (
         <SectionPanel title="History" description="Everything that has happened on this claim.">
           {events.length ? (
@@ -820,7 +915,7 @@ export const ClaimPage = ({ client, live, claimId, tab = 'overview' }: ClaimPage
   const [made, setMade] = useState<Batch | null>(null);
   const notify = useToast();
   const patient = detail.data
-    ? `${detail.data.claim.last_name}, ${detail.data.claim.first_name}`
+    ? `Claim ${claimNumber(detail.data.claim.number)} · ${detail.data.claim.last_name}, ${detail.data.claim.first_name}`
     : '';
   const act = async (action: () => Promise<unknown>, done: string) => {
     setError('');
@@ -828,11 +923,7 @@ export const ClaimPage = ({ client, live, claimId, tab = 'overview' }: ClaimPage
       await action();
       detail.reload();
       pending.reload();
-      notify({
-        title: done,
-        description: patient,
-        action: { label: 'Open claim', to: `/claims/${claimId}` }
-      });
+      notify({ title: done, description: patient });
       return true;
     } catch (err) {
       setError(messageOf(err));
@@ -851,9 +942,7 @@ export const ClaimPage = ({ client, live, claimId, tab = 'overview' }: ClaimPage
       onSavePayers={async (payers) => {
         await act(() => client.setPayers(claimId, payers), 'Payer order saved');
       }}
-      onRecord={(response) =>
-        act(() => client.recordResponse(claimId, response), 'Response recorded')
-      }
+      onRecord={(response) => act(() => client.recordResponse(claimId, response), 'Payment posted')}
       onSaveData={(data) =>
         act(() => client.saveBillingData(claimId, data), 'Billing details saved')
       }
@@ -865,9 +954,10 @@ export const ClaimPage = ({ client, live, claimId, tab = 'overview' }: ClaimPage
         issues: pending.data?.claims[0]?.issues ?? (pending.data ? [] : null),
         made,
         fileUrl: client.fileUrl,
+        encounterUrl: client.encounterUrl,
         onCreateFile: async () => {
           setMade(null);
-          await act(async () => setMade(await client.createBatch([claimId])), '837P file created');
+          await act(async () => setMade(await client.createBatch(claimId)), '837P file created');
         },
         onMarkSubmitted: async () => {
           await act(() => client.markSubmitted(claimId), 'Marked submitted');

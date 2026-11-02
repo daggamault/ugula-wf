@@ -1,6 +1,7 @@
 import type { Json } from '@ugula/graph';
 import {
   ActivityIcon,
+  ArrowLeftIcon,
   ArrowRightIcon,
   CircleCheckBigIcon,
   HandIcon,
@@ -60,7 +61,7 @@ export const claimIdOf = (task: Pick<TaskDetail, 'source' | 'context'>) => {
   return task.source.claimId ?? (typeof fromContext === 'string' ? fromContext : null);
 };
 
-export const queuePath = (queue: string) => `/tasks?queue=${encodeURIComponent(queue)}`;
+export const queuePath = (queue: string) => `/tasks?type=${encodeURIComponent(queue)}`;
 
 export const NextUp = ({
   outcome,
@@ -80,7 +81,7 @@ export const NextUp = ({
   return (
     <SectionPanel title="Done" accent="primary">
       <p className="flex items-center gap-2 text-sm">
-        <CircleCheckBigIcon aria-hidden="true" className="text-success size-5" />“
+        <CircleCheckBigIcon aria-hidden="true" className="text-success size-4 shrink-0" />“
         {humanize(outcome)}” is recorded and the workflow continues.
       </p>
       <p className="text-surface-fg-muted text-sm">
@@ -90,7 +91,7 @@ export const NextUp = ({
             ? `${remaining} more ${remaining === 1 ? 'task is' : 'tasks are'} waiting in ${label}.`
             : `${label} is clear.`}
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {remaining ? (
           <Button
             ref={nextRef}
@@ -105,6 +106,7 @@ export const NextUp = ({
           </Button>
         ) : null}
         <ButtonLink to={queuePath(queue)} variant="outline">
+          <ArrowLeftIcon aria-hidden="true" className="size-4" />
           Back to Tasks
         </ButtonLink>
       </div>
@@ -153,7 +155,7 @@ const Decision = ({
             ))}
           </fieldset>
         ) : null}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {task.outcomes.map((outcome, i) => (
             <Button
               key={outcome}
@@ -197,8 +199,7 @@ export const TaskView = ({
       setDone(outcome);
       notify({
         title: `${humanize(outcome)}: ${task.subject ?? task.title}`,
-        description: `Recorded in ${info.label}.`,
-        action: { label: 'Open task', to: `/tasks/${task.id}` }
+        description: `Recorded in ${info.label}.`
       });
     } catch (err) {
       setError(messageOf(err));
@@ -233,27 +234,25 @@ export const TaskView = ({
         <span className="flex flex-wrap items-center gap-2">
           <Badge intent={isFault ? 'danger' : 'info'}>{info.label}</Badge>
           {task.subject ? <span>{task.title}</span> : null}
-          <span title={formatDateTime(task.created_at)}>
-            · waiting since {formatAgo(task.created_at)}
-          </span>
+          <span title={formatDateTime(task.created_at)}>· opened {formatAgo(task.created_at)}</span>
         </span>
       }
       actions={
         <>
           {claimId ? (
-            <ButtonLink to={`/claims/${claimId}`} variant="outline" size="sm">
+            <ButtonLink to={`/claims/${claimId}`} variant="outline">
               <ReceiptTextIcon aria-hidden="true" className="size-4" />
               Open claim
             </ButtonLink>
           ) : null}
           {isFault ? (
-            <ButtonLink to={`/runs/${task.run_id}`} variant="outline" size="sm">
+            <ButtonLink to={`/runs/${task.run_id}`} variant="outline">
               <ActivityIcon aria-hidden="true" className="size-4" />
-              Open the stuck run
+              Open run
             </ButtonLink>
           ) : null}
           {open ? (
-            <Button variant="outline" size="sm" isPending={assigning} onClick={() => void assign()}>
+            <Button variant="outline" isPending={assigning} onClick={() => void assign()}>
               {isUnassigned ? (
                 <HandIcon aria-hidden="true" className="size-4" />
               ) : (
@@ -269,8 +268,10 @@ export const TaskView = ({
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
         <div className="flex min-w-0 flex-col gap-6">
           {task.instructions ? (
-            <aside className="border-info/30 bg-info/10 flex gap-3 rounded-xl border p-4">
-              <InfoIcon aria-hidden="true" className="text-info mt-0.5 size-5 shrink-0" />
+            <aside className="border-info/30 bg-info/10 flex items-start gap-3 rounded-xl border px-4 py-3">
+              <span className="flex h-5 shrink-0 items-center">
+                <InfoIcon aria-hidden="true" className="text-info size-4" />
+              </span>
               <div className="flex flex-col gap-1">
                 <h2 className="text-sm font-bold">{isFault ? 'What went wrong' : 'What to do'}</h2>
                 <p className="text-sm whitespace-pre-line">{task.instructions}</p>

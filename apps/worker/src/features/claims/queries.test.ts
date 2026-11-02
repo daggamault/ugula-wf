@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { NewClaim } from '@ugula/billing';
-import { createRecordingDb } from '@ugula/db';
+import type { DraftClaim, NewClaim } from '@ugula/billing';
+import { createRecordingDb } from '@ugula/db/testing';
 import type { CompiledQuery } from 'kysely';
 import { createClaimStore, NO_PROFILE, statementKey } from './queries.ts';
 
@@ -49,15 +49,21 @@ const claim: NewClaim = {
   reportKey: 'imports/t-1/a/f.xml.reports/00000.json'
 };
 
+const draft: DraftClaim = {
+  patientId: 'p1',
+  pcrNumber: 'PCR-1',
+  reportKey: 'imports/t-1/a/f.xml.reports/00000.json'
+};
+
 const sqlOf = (queries: readonly CompiledQuery[], prefix: string) =>
   queries.filter((q) => q.sql.startsWith(prefix));
 
 describe('createClaimStore', () => {
-  it('opens a claim, then its lines, coverages and diagnoses', async () => {
+  it('opens a draft claim linked to its source report', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('insert into "claims"') ? [{ id: ID }] : []
     );
-    assert.deepEqual(await createClaimStore(db, blobs).openClaim('r1', 'r1:s:open:0', claim), {
+    assert.deepEqual(await createClaimStore(db, blobs).openDraft('r1', 'r1:s:open:0', draft), {
       id: ID,
       duplicate: false
     });
@@ -69,9 +75,53 @@ describe('createClaimStore', () => {
       )
     );
     assert.ok(insert?.parameters.includes('imports/t-1/a/f.xml.reports/00000.json'));
-    assert.ok(insert?.parameters.includes('2026-10-01'));
-    assert.ok(insert?.parameters.includes('S') && insert.parameters.includes('H'));
-    assert.ok(insert?.parameters.includes('St. Mary'));
+    assert.ok(insert?.parameters.includes('PCR-1') && insert.parameters.includes('p1'));
+    assert.ok(!insert?.sql.includes('"level"'));
+  });
+
+  it('returns the existing claim on a replayed step and flags another run as a duplicate', async () => {
+    const lookup = (sourceKey: string) =>
+      createRecordingDb((q) =>
+        q.sql.startsWith('select "id", "source_key" from "claims"')
+          ? [{ id: ID, source_key: sourceKey }]
+          : []
+      );
+    const replay = lookup('r1:s:open:0');
+    assert.deepEqual(
+      await createClaimStore(replay.db, blobs).openDraft('r1', 'r1:s:open:0', draft),
+      {
+        id: ID,
+        duplicate: false
+      }
+    );
+    const query = sqlOf(replay.queries, 'select "id", "source_key" from "claims"')[0];
+    assert.ok(query?.sql.includes('("source_key" = $2 or "pcr_number" = $3)'));
+    assert.ok(query?.sql.endsWith('order by source_key = $4 desc'));
+    const other = lookup('other-run:s:open:0');
+    assert.deepEqual(
+      await createClaimStore(other.db, blobs).openDraft('r1', 'r1:s:open:0', draft),
+      {
+        id: ID,
+        duplicate: true
+      }
+    );
+  });
+
+  it('fills a draft with its lines, coverages and diagnoses and moves it to review', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('select "id", "total_cents" from "claims"')
+        ? [{ id: ID, total_cents: 0 }]
+        : q.sql.startsWith('select "status" from "claims"')
+          ? [{ status: 'draft' }]
+          : []
+    );
+    await createClaimStore(db, blobs).saveClaim('r1', ID, claim);
+    const [update] = sqlOf(queries, 'update "claims"');
+    assert.ok(update?.parameters.includes('needs_review') && update.parameters.includes('ALS1'));
+    assert.ok(update?.parameters.includes('2026-10-01'));
+    assert.ok(update?.parameters.includes('S') && update.parameters.includes('H'));
+    assert.ok(update?.parameters.includes('St. Mary'));
+    assert.equal(sqlOf(queries, 'delete from').length, 3);
     const [lines] = sqlOf(queries, 'insert into "claim_lines"');
     assert.deepEqual(lines?.parameters, [
       ID,
@@ -95,36 +145,46 @@ describe('createClaimStore', () => {
     assert.ok(!coverages?.parameters.includes('bcbs'));
     const [diagnoses] = sqlOf(queries, 'insert into "claim_diagnoses"');
     assert.deepEqual(diagnoses?.parameters, [ID, 1, 'R079', ID, 2, 'I10']);
-    assert.ok(queries[0]?.sql.startsWith('insert into "claims"'));
   });
 
-  it('returns the existing claim on a replayed step without duplicating its rows', async () => {
+  it('saves a draft only once, and skips optional rows it does not have', async () => {
+    const saved = createRecordingDb((q) =>
+      q.sql.startsWith('select "id", "total_cents" from "claims"')
+        ? [{ id: ID, total_cents: 1 }]
+        : q.sql.startsWith('select "status" from "claims"')
+          ? [{ status: 'ready' }]
+          : []
+    );
+    await createClaimStore(saved.db, blobs).saveClaim('r1', ID, claim);
+    assert.equal(sqlOf(saved.queries, 'update "claims"').length, 0);
+    const bare = createRecordingDb((q) =>
+      q.sql.startsWith('select "id", "total_cents" from "claims"')
+        ? [{ id: ID, total_cents: 0 }]
+        : q.sql.startsWith('select "status" from "claims"')
+          ? [{ status: 'draft' }]
+          : []
+    );
+    await createClaimStore(bare.db, blobs).saveClaim('r1', ID, {
+      ...claim,
+      coverages: [],
+      details: { ...claim.details, diagnoses: [] }
+    });
+    assert.equal(sqlOf(bare.queries, 'insert into "claim_coverages"').length, 0);
+    assert.equal(sqlOf(bare.queries, 'insert into "claim_diagnoses"').length, 0);
+  });
+
+  it('records the cycle status without touching drafts or closed claims', async () => {
     const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select "id", "source_key" from "claims"')
-        ? [{ id: ID, source_key: 'r1:s:open:0' }]
-        : []
+      q.sql.startsWith('select') ? [{ id: ID, total_cents: 1 }] : []
     );
-    assert.deepEqual(await createClaimStore(db, blobs).openClaim('r1', 'r1:s:open:0', claim), {
-      id: ID,
-      duplicate: false
-    });
-    assert.equal(sqlOf(queries, 'insert into "claim_lines"').length, 0);
-    const lookup = sqlOf(queries, 'select "id", "source_key" from "claims"')[0];
-    assert.ok(lookup?.sql.includes('("source_key" = $2 or "pcr_number" = $3)'));
-    assert.ok(lookup?.sql.endsWith('order by source_key = $4 desc'));
-  });
-
-  it('reports a claim another run already opened for the same PCR as a duplicate', async () => {
-    const { db } = createRecordingDb((q) =>
-      q.sql.startsWith('select "id", "source_key" from "claims"')
-        ? [{ id: ID, source_key: 'other-run:s:open:0' }]
-        : []
+    await createClaimStore(db, blobs).setStatus('r1', ID, 'submitted');
+    const [update] = sqlOf(queries, 'update "claims"');
+    assert.ok(update?.sql.includes('"status" <> $'));
+    assert.ok(update?.sql.includes('"status" not in ($'));
+    assert.deepEqual(
+      update?.parameters.filter((x) => typeof x === 'string' && x !== ID),
+      ['submitted', 'submitted', 'draft', 'paid', 'written_off', 'collections', 'void']
     );
-    const store = createClaimStore(db, blobs);
-    assert.deepEqual(await store.openClaim('r1', 'r1:s:open:0', claim), {
-      id: ID,
-      duplicate: true
-    });
   });
 
   it('finds claims by PCR number and notes revisions with the new report', async () => {
@@ -143,21 +203,6 @@ describe('createClaimStore', () => {
     assert.ok(insert?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
     const none = createClaimStore(createRecordingDb(() => []).db, blobs);
     assert.equal(await none.findByPcr('r1', 'PCR-9'), null);
-  });
-
-  it('skips optional rows for a claim with no payers, diagnoses or source report', async () => {
-    const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('insert into "claims"') ? [{ id: ID }] : []
-    );
-    await createClaimStore(db, blobs).openClaim('r1', 'k', {
-      ...claim,
-      coverages: [],
-      details: { ...claim.details, diagnoses: [], originDestination: null },
-      reportKey: null
-    });
-    assert.equal(sqlOf(queries, 'insert into "claim_coverages"').length, 0);
-    assert.equal(sqlOf(queries, 'insert into "claim_diagnoses"').length, 0);
-    assert.ok(!sqlOf(queries, 'insert into "claims"')[0]?.sql.includes('import_reports'));
   });
 
   it('reads the ledger by coverage in billing order and refuses other tenants or bad ids', async () => {
@@ -242,7 +287,10 @@ describe('createClaimStore', () => {
   });
 
   it('closes under a row lock, as paid when nothing is owed, and only open claims', async () => {
-    const close = async (locked: { status: string; balance_cents: number }) => {
+    const close = async (
+      locked: { status: string; balance_cents: number },
+      requested: 'written_off' | 'void' = 'written_off'
+    ) => {
       const { db, queries } = createRecordingDb((q) =>
         q.sql.includes('for update')
           ? [{ status: locked.status }]
@@ -252,16 +300,18 @@ describe('createClaimStore', () => {
               ? [{ id: ID, total_cents: 1 }]
               : []
       );
-      await createClaimStore(db, blobs).closeClaim('r1', ID, 'k2', 'written_off');
+      await createClaimStore(db, blobs).closeClaim('r1', ID, 'k2', requested);
       return queries;
     };
-    const owed = await close({ status: 'open', balance_cents: 500 });
+    const owed = await close({ status: 'balance_review', balance_cents: 500 });
     const lockAt = owed.findIndex((q) => q.sql.endsWith('for update'));
     const balanceAt = owed.findIndex((q) => q.sql.includes('from "claim_balances"'));
     assert.ok(lockAt >= 0 && balanceAt > lockAt);
     assert.deepEqual(owed.find((q) => q.sql.startsWith('update'))?.parameters[0], 'written_off');
-    const settled = await close({ status: 'open', balance_cents: 0 });
+    const settled = await close({ status: 'balance_review', balance_cents: 0 });
     assert.deepEqual(settled.find((q) => q.sql.startsWith('update'))?.parameters[0], 'paid');
+    const voided = await close({ status: 'draft', balance_cents: 0 }, 'void');
+    assert.deepEqual(voided.find((q) => q.sql.startsWith('update'))?.parameters[0], 'void');
     const done = await close({ status: 'paid', balance_cents: 0 });
     assert.equal(
       done.some((q) => q.sql.startsWith('update')),

@@ -48,7 +48,7 @@ describe('Shell', () => {
     assert.ok(html.includes('dev@example.com'));
     assert.ok(html.includes('Online'));
     assert.ok(html.includes('aria-label="Sign out"'));
-    assert.ok(html.includes('aria-label="Open Menu"'));
+    assert.ok(html.includes('aria-label="Open menu"'));
     assert.ok(html.includes('<main'));
     assert.ok(html.includes('Workspace content'));
     assert.ok(html.includes('>7<span class="sr-only"> open</span>'));

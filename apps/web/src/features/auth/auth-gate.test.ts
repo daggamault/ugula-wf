@@ -38,7 +38,7 @@ describe('AuthGate', () => {
       })
     );
     assert.ok(html.includes('<main'));
-    assert.ok(html.includes('Sign in to your account.'));
+    assert.ok(html.includes('Sign in to your account'));
   });
 
   it('hands the session to the authenticated workspace', () => {

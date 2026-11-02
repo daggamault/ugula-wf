@@ -37,3 +37,5 @@ export const signalSchema = v.object({
   key: v.pipe(v.string(), v.nonEmpty()),
   payload: v.optional(v.unknown(), null)
 });
+
+export const fileFormSchema = v.object({ file: v.instance(File) });

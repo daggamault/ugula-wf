@@ -10,9 +10,10 @@
   },
   "dependencies": {
     "@ugula/billing": "workspace:*",
+    "@ugula/catalog": "workspace:*",
     "@ugula/config": "workspace:*",
-    "@ugula/events": "workspace:*",
     "@ugula/graph": "workspace:*",
+    "@ugula/live": "workspace:*",
     "@ugula/nemsis": "workspace:*"
   }
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createDummyDb } from '@ugula/db';
+import { createDummyDb } from '@ugula/db/testing';
 import {
   buildClaimBalancesView,
   buildClaimBatchesTable,
@@ -24,6 +24,14 @@ describe('claims tables', () => {
       )
     );
     assert.ok(claims.includes("level in ('BLS', 'ALS1', 'ALS2', 'SCT')"));
+    assert.ok(claims.includes('"number" integer generated always as identity not null unique'));
+    assert.ok(claims.includes('"status" text default \'draft\' not null'));
+    assert.ok(claims.includes("status in ('draft', 'needs_review', 'ready', 'submitted'"));
+    assert.ok(
+      claims.includes(
+        "status = 'draft' or status = 'void' or (level is not null and emergency is not null)"
+      )
+    );
     assert.ok(claims.includes('(origin_code is null) = (destination_code is null)'));
     assert.ok(claims.includes("origin_code in ('R', 'S', 'H', 'N', 'E', 'P', 'D', 'G', 'J', 'I')"));
     assert.ok(
@@ -68,7 +76,7 @@ describe('claims tables', () => {
     assert.ok(events.includes('unique ("claim_id", "source_key")'));
     assert.ok(
       events.includes(
-        "(kind not in ('submitted', 'resubmitted', 'resubmit_queued', 'follow_up', 'payer_skipped') or coverage_id is not null)"
+        "(kind not in ('submitted', 'resubmitted', 'resubmit_queued', 'follow_up', 'payer_skipped', 'approved', 'reconciled') or coverage_id is not null)"
       )
     );
     assert.ok(

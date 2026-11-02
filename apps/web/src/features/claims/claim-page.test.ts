@@ -4,11 +4,13 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   amountOf,
+  ClaimFiles,
   type ClaimTab,
   ClaimView,
   describeCycle,
   describeProgress,
   EventsTable,
+  lockedReason,
   moveItem,
   toResponse
 } from './claim-page.tsx';
@@ -16,13 +18,16 @@ import type { ClaimDetail, ClaimProgress } from './client.ts';
 
 const claim: ClaimDetail = {
   id: 'c1',
+  number: 12,
+  patient_number: 3,
+  import_report_id: 'r1',
   pcr_number: 'PCR-1001',
   level: 'ALS1',
   total_cents: 114_220,
   balance_cents: 114_220,
   service_date: '2026-10-01',
   payers: ['Medicare', 'Blue Plan'],
-  status: 'open',
+  status: 'submitted',
   created_at: '2026-10-01T00:00:00Z',
   first_name: 'Jane',
   last_name: 'Doe',
@@ -137,6 +142,14 @@ describe('describeProgress', () => {
       describeProgress({ step: 'followUp', coverage: medicare, balanceCents: 1 }) ?? '',
       /follow-up task is waiting/
     );
+    assert.match(
+      describeProgress({ step: 'review', coverage: medicare, balanceCents: 1 }) ?? '',
+      /^Needs review before it goes to Medicare/
+    );
+    assert.match(
+      describeProgress({ step: 'reconcile', coverage: medicare, balanceCents: 1 }) ?? '',
+      /reconcile task is waiting/
+    );
     assert.equal(
       describeProgress({ step: 'statement', statement: 2, balanceCents: 1 }),
       'Sending patient statement 2 of 3.'
@@ -148,22 +161,45 @@ describe('describeCycle', () => {
   const waiting = { step: 'await', coverage: medicare, waitMs: 1, balanceCents: 1 } as const;
   it('reports a stopped, stuck or missing cycle instead of the expected next step', () => {
     assert.equal(
-      describeCycle({ status: 'open', cycle_status: 'suspended' }, waiting)?.intent,
+      describeCycle({ status: 'submitted', cycle_status: 'suspended' }, waiting)?.intent,
       'info'
     );
-    const failed = describeCycle({ status: 'open', cycle_status: 'failed' }, waiting);
+    const failed = describeCycle({ status: 'submitted', cycle_status: 'failed' }, waiting);
     assert.equal(failed?.intent, 'danger');
     assert.match(failed?.text ?? '', /payer cycle failed/);
     assert.match(
-      describeCycle({ status: 'open', cycle_status: 'cancelled' }, waiting)?.text ?? '',
+      describeCycle({ status: 'submitted', cycle_status: 'cancelled' }, waiting)?.text ?? '',
       /was cancelled/
     );
     assert.match(
-      describeCycle({ status: 'open', cycle_status: 'faulted' }, waiting)?.text ?? '',
+      describeCycle({ status: 'submitted', cycle_status: 'faulted' }, waiting)?.text ?? '',
       /stuck run task/
     );
-    assert.equal(describeCycle({ status: 'open', cycle_status: null }, null)?.intent, 'warning');
+    assert.equal(describeCycle({ status: 'ready', cycle_status: null }, null)?.intent, 'warning');
     assert.equal(describeCycle({ status: 'paid', cycle_status: 'completed' }, null), null);
+    const draft = describeCycle({ status: 'draft', cycle_status: null }, null);
+    assert.deepEqual([draft?.intent, draft?.tasks, draft?.restartable], ['info', '', false]);
+  });
+
+  it('points review and reconcile steps at their task types', () => {
+    const review = { step: 'review', coverage: medicare, balanceCents: 1 } as const;
+    assert.equal(
+      describeCycle({ status: 'needs_review', cycle_status: 'suspended' }, review)?.tasks,
+      'billing-review'
+    );
+    const reconcile = { step: 'reconcile', coverage: medicare, balanceCents: 1 } as const;
+    assert.equal(
+      describeCycle({ status: 'reconcile', cycle_status: 'suspended' }, reconcile)?.tasks,
+      'billing-reconcile'
+    );
+  });
+});
+
+describe('lockedReason', () => {
+  it('locks drafts and closed claims with a reason', () => {
+    assert.equal(lockedReason('submitted'), undefined);
+    assert.match(lockedReason('draft') ?? '', /still a draft/);
+    assert.equal(lockedReason('void'), 'This claim is closed.');
   });
 });
 
@@ -216,6 +252,8 @@ describe('ClaimView', () => {
     assert.ok(html.includes('Waiting on Blue Plan'));
     assert.ok(html.includes('<option value="cov-b" selected="">Blue Plan</option>'));
     assert.ok(html.includes('Doe, Jane'));
+    assert.ok(html.includes('Claim #12') && html.includes('Patient #3'));
+    assert.ok(html.includes('Encounter PCR-1001'));
     assert.ok(html.includes('12.4 loaded miles'));
     assert.ok(html.includes('A0427'));
     assert.ok(html.includes('1. </span>Medicare'));
@@ -229,6 +267,7 @@ describe('ClaimView', () => {
       html.includes('href="/claims/c1?tab=data"') && html.includes('href="/claims/c1?tab=history"')
     );
     assert.ok(!html.includes('View PDF'));
+    assert.ok(html.includes('>Post payment<'));
     const history = render({}, null, 'history');
     assert.ok(history.includes('$50.00 paid'));
     assert.ok(history.includes('href="/docs/e2"'));
@@ -247,7 +286,13 @@ describe('ClaimView', () => {
     assert.ok(html.includes('>Restart payer cycle<'));
     const faulted = render({ cycle_status: 'faulted' });
     assert.ok(!faulted.includes('Restart payer cycle'));
-    assert.ok(faulted.includes('href="/tasks?queue=exceptions"'));
+    assert.ok(faulted.includes('href="/tasks?type=exceptions"'));
+  });
+
+  it('locks editing while a draft, and links to its tasks', () => {
+    const html = render({ status: 'draft' });
+    assert.equal(html.match(/<fieldset disabled=""/g)?.length, 2);
+    assert.ok(html.includes('href="/tasks"'));
   });
 
   it('locks editing once the claim is closed', () => {
@@ -265,6 +310,7 @@ describe('ClaimView submission', () => {
     issues,
     made: null,
     fileUrl: (id: string) => `/files/${id}`,
+    encounterUrl: (id: string) => `/encounters/${id}`,
     onCreateFile: async () => undefined,
     onMarkSubmitted: async () => undefined
   });
@@ -322,5 +368,57 @@ describe('EventsTable', () => {
       })
     );
     assert.ok(html.includes('href="/files/b4"') && /837P file #(<!-- -->)?4/.test(html));
+  });
+});
+
+describe('ClaimFiles', () => {
+  it('lists the encounter, 837P files and documents for the claim', () => {
+    const html = renderToStaticMarkup(
+      createElement(ClaimFiles, {
+        claim: { import_report_id: 'r1', pcr_number: 'PCR-1' },
+        events: [
+          {
+            id: 'e1',
+            kind: 'submitted',
+            coverage_id: 'cov-m',
+            payer: 'Medicare',
+            paid_cents: 0,
+            adjusted_cents: 0,
+            note: '837P file #7',
+            created_at: '2026-10-02T00:00:00Z',
+            has_document: false,
+            batch_id: 'b7',
+            batch_number: 7
+          },
+          {
+            id: 'e2',
+            kind: 'statement',
+            coverage_id: null,
+            payer: null,
+            paid_cents: 0,
+            adjusted_cents: 0,
+            note: 'Patient statement 1 of 3',
+            created_at: '2026-10-03T00:00:00Z',
+            has_document: true
+          }
+        ],
+        documentUrl: (id) => `/docs/${id}`,
+        fileUrl: (id) => `/files/${id}`,
+        encounterUrl: (id) => `/encounters/${id}`
+      })
+    );
+    assert.ok(html.includes('href="/encounters/r1"') && html.includes('Encounter PCR-1'));
+    assert.ok(html.includes('href="/files/b7"') && html.includes('837P file #7'));
+    assert.ok(html.includes('href="/docs/e2"') && html.includes('Patient statement 1 of 3'));
+    const bare = renderToStaticMarkup(
+      createElement(ClaimFiles, {
+        claim: { import_report_id: null, pcr_number: null },
+        events: [],
+        documentUrl: () => '',
+        fileUrl: () => '',
+        encounterUrl: () => ''
+      })
+    );
+    assert.ok(bare.includes('No source encounter file.'));
   });
 });

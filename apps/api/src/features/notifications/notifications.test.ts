@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import * as v from 'valibot';
 import { recordAnnouncements, withSession } from '../../shared/testing.ts';
 import { insertNotification, listNotifications, markState } from './queries.ts';

@@ -6,10 +6,18 @@ export const announceClaims = (store: ClaimStore, announce: Announce): ClaimStor
   const changed = (runId: string, id: string) => announce(runId, { kind: 'claim', id });
   return {
     ...store,
-    openClaim: async (runId, sourceKey, claim) => {
-      const opened = await store.openClaim(runId, sourceKey, claim);
+    openDraft: async (runId, sourceKey, draft) => {
+      const opened = await store.openDraft(runId, sourceKey, draft);
       await changed(runId, opened.id);
       return opened;
+    },
+    saveClaim: async (runId, claimId, claim) => {
+      await store.saveClaim(runId, claimId, claim);
+      await changed(runId, claimId);
+    },
+    setStatus: async (runId, claimId, status) => {
+      await store.setStatus(runId, claimId, status);
+      await changed(runId, claimId);
     },
     noteRevision: async (runId, claimId, sourceKey, report) => {
       await store.noteRevision(runId, claimId, sourceKey, report);

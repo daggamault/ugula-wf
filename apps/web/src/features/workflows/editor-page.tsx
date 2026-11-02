@@ -30,6 +30,7 @@ import { GraphSettings } from './graph-settings.tsx';
 import { NodeInspector } from './node-inspector.tsx';
 import { NodePicker } from './node-picker.tsx';
 import { graphPath, type TrailStep } from './trail.ts';
+import { kindLabel } from './workflows-page.tsx';
 
 export type EditorPageProps = {
   client: WorkflowsClient;
@@ -103,6 +104,8 @@ export const EditorView = ({
     { label: graph.name }
   ];
   const node = def.nodes.find((n) => n.id === selected);
+  const label = kindLabel(graph.kind);
+  const noun = label.toLowerCase();
 
   const change = (next: GraphDef) => {
     setDef(next);
@@ -159,8 +162,7 @@ export const EditorView = ({
       const { id } = await client.override(graph.id);
       notify({
         title: `${graph.name} copied for your agency`,
-        description:
-          'Change and publish the copy; new runs then use it everywhere this graph is used.'
+        description: `Change and publish the copy; new runs then use it everywhere this ${noun} is used.`
       });
       navigate(`/workflows/${id}`);
     });
@@ -186,7 +188,7 @@ export const EditorView = ({
     notify({
       key: 'node-added',
       title: `${entry.title} added`,
-      description: 'Drag from its pins to connect it to the rest of the graph.'
+      description: `Drag from its pins to connect it to the rest of the ${noun}.`
     });
   };
   const graphIssues = issues.filter((i) => !i.node);
@@ -194,8 +196,8 @@ export const EditorView = ({
     ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them.'
     : graph.tenant_id === null
       ? graph.overridden_by
-        ? 'Your agency has its own copy of this built-in graph; runs use it once it is published. Select a node to see what it does.'
-        : 'Built-in graphs are read-only. Override one to change how your agency runs it.'
+        ? `Your agency has its own copy of this built-in ${noun}; runs use it once it is published. Select a node to see what it does.`
+        : `Built-in ${noun}s are read-only. Override this one to change how your agency runs it.`
       : draft
         ? `Published versions are read-only. Open draft v${draft.version} to make changes.`
         : 'Published versions are read-only. Edit as a new draft to make changes.';
@@ -216,8 +218,8 @@ export const EditorView = ({
               {isDraft ? `Draft v${version}` : `Published v${version}`}
             </Badge>
             {graph.tenant_id === null ? <Badge>System</Badge> : null}
-            {graph.overridden_by ? <Badge intent="info">Overridden</Badge> : null}
-            {graph.overrides ? <Badge intent="info">Override</Badge> : null}
+            {graph.overridden_by ? <Badge intent="info">Has your copy</Badge> : null}
+            {graph.overrides ? <Badge intent="info">Your copy</Badge> : null}
             {dirty ? <Badge intent="danger">Unsaved</Badge> : null}
           </span>
         }
@@ -231,7 +233,7 @@ export const EditorView = ({
             ) : null}
             <Button variant="outline" onClick={() => setDialog('settings')}>
               <SlidersHorizontalIcon aria-hidden="true" className="size-4" />
-              Graph settings
+              {label} settings
             </Button>
             <div className="w-36">
               <NativeSelect
@@ -341,7 +343,7 @@ export const EditorView = ({
           />
         </div>
         {node ? (
-          <div className="border-border bg-surface absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l shadow-2xl sm:w-96">
+          <div className="border-border bg-surface absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l shadow-lg transition-[opacity,translate] duration-200 ease-out sm:w-96 starting:translate-x-4 starting:opacity-0">
             <NodeInspector
               key={node.id}
               def={def}
@@ -384,6 +386,7 @@ export const EditorView = ({
       </ConfirmDialog>
       <GraphSettings
         key={version}
+        kind={graph.kind}
         open={dialog === 'settings'}
         def={def}
         editable={editable}

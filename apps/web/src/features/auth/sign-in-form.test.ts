@@ -20,7 +20,7 @@ describe('SignInForm', () => {
     const html = renderToStaticMarkup(
       createElement(SignInForm, { auth: mockAuth, onSuccess: () => undefined })
     );
-    assert.ok(html.includes('Sign in to your account.'));
+    assert.ok(html.includes('Sign in to your account'));
     assert.ok(html.includes('type="email"'));
     assert.ok(html.includes('type="password"'));
     assert.ok(html.includes('type="submit"'));

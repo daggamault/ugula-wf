@@ -2,6 +2,7 @@ import type { PricedLine } from './charges.ts';
 import { type ClaimDetails, isOriginDestination } from './claim-details.ts';
 import type { Address, Sex } from './patients.ts';
 import { isValidNpi } from './payers.ts';
+import { recordOf, textOrNull } from './values.ts';
 
 export type Submitter = {
   organizationName: string;
@@ -127,12 +128,7 @@ export type X837Claim = {
   lines: X837Line[];
 };
 
-const rec = (x: unknown): Record<string, unknown> =>
-  x !== null && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : {};
-
-const str = (x: unknown) => (typeof x === 'string' && x.trim() ? x.trim() : null);
-
-const strs = (x: unknown) => (Array.isArray(x) ? x.map(str).filter((v) => v !== null) : []);
+const strs = (x: unknown) => (Array.isArray(x) ? x.map(textOrNull).filter((v) => v !== null) : []);
 
 const need = (value: string | null, what: string) => {
   if (value === null) throw new Error(`The 837P claim needs ${what}`);
@@ -147,61 +143,61 @@ const positive = (x: unknown, what: string) => {
 };
 
 const where = (x: unknown): X837Location => {
-  const r = rec(x);
+  const r = recordOf(x);
   return {
-    name: str(r.name),
-    addressLine: str(r.addressLine),
-    city: str(r.city),
-    state: str(r.state),
-    postalCode: str(r.postalCode)
+    name: textOrNull(r.name),
+    addressLine: textOrNull(r.addressLine),
+    city: textOrNull(r.city),
+    state: textOrNull(r.state),
+    postalCode: textOrNull(r.postalCode)
   };
 };
 
 const readX837Line = (x: unknown, i: number): X837Line => {
-  const r = rec(x);
+  const r = recordOf(x);
   const chargeCents = r.chargeCents;
   if (typeof chargeCents !== 'number' || !Number.isInteger(chargeCents) || chargeCents < 0) {
     throw new Error(`Service line ${i + 1} needs a charge in cents`);
   }
   return {
-    code: need(str(r.code), `a code on service line ${i + 1}`),
+    code: need(textOrNull(r.code), `a code on service line ${i + 1}`),
     modifiers: strs(r.modifiers).slice(0, 4),
     chargeCents,
     units: positive(r.units, `units on service line ${i + 1}`),
-    serviceDate: need(str(r.serviceDate), `a date on service line ${i + 1}`)
+    serviceDate: need(textOrNull(r.serviceDate), `a date on service line ${i + 1}`)
   };
 };
 
 export const readX837Claim = (x: unknown): X837Claim => {
-  const r = rec(x);
-  const sub = rec(r.subscriber);
-  const payer = rec(r.payer);
+  const r = recordOf(x);
+  const sub = recordOf(r.subscriber);
+  const payer = recordOf(r.payer);
   const lines = (Array.isArray(r.lines) ? r.lines : []).map(readX837Line);
   if (!lines.length) throw new Error('The 837P claim needs at least one service line');
   return {
-    claimId: need(str(r.claimId), 'a claim ID'),
-    placeOfService: need(str(r.placeOfService), 'a place of service'),
-    frequency: need(str(r.frequency), 'a claim frequency'),
+    claimId: need(textOrNull(r.claimId), 'a claim ID'),
+    placeOfService: need(textOrNull(r.placeOfService), 'a place of service'),
+    frequency: need(textOrNull(r.frequency), 'a claim frequency'),
     subscriber: {
-      relationship: need(str(sub.relationship), 'a subscriber relationship'),
-      lastName: need(str(sub.lastName), 'a subscriber last name'),
-      firstName: str(sub.firstName),
-      memberId: need(str(sub.memberId), 'a member ID'),
-      groupId: str(sub.groupId),
-      addressLine: str(sub.addressLine),
-      city: str(sub.city),
-      state: str(sub.state),
-      postalCode: str(sub.postalCode),
-      birthDate: need(str(sub.birthDate), 'a subscriber birth date'),
-      sex: str(sub.sex) ?? 'U'
+      relationship: need(textOrNull(sub.relationship), 'a subscriber relationship'),
+      lastName: need(textOrNull(sub.lastName), 'a subscriber last name'),
+      firstName: textOrNull(sub.firstName),
+      memberId: need(textOrNull(sub.memberId), 'a member ID'),
+      groupId: textOrNull(sub.groupId),
+      addressLine: textOrNull(sub.addressLine),
+      city: textOrNull(sub.city),
+      state: textOrNull(sub.state),
+      postalCode: textOrNull(sub.postalCode),
+      birthDate: need(textOrNull(sub.birthDate), 'a subscriber birth date'),
+      sex: textOrNull(sub.sex) ?? 'U'
     },
     payer: {
-      responsibility: need(str(payer.responsibility), 'a payer responsibility'),
-      name: need(str(payer.name), 'a payer name'),
-      payerId: need(str(payer.payerId), 'a payer ID'),
-      claimFiling: need(str(payer.claimFiling), 'a claim filing indicator')
+      responsibility: need(textOrNull(payer.responsibility), 'a payer responsibility'),
+      name: need(textOrNull(payer.name), 'a payer name'),
+      payerId: need(textOrNull(payer.payerId), 'a payer ID'),
+      claimFiling: need(textOrNull(payer.claimFiling), 'a claim filing indicator')
     },
-    transportReason: need(str(r.transportReason), 'a transport reason'),
+    transportReason: need(textOrNull(r.transportReason), 'a transport reason'),
     loadedMiles: positive(r.loadedMiles, 'loaded miles'),
     conditionCodes: strs(r.conditionCodes).slice(0, 5),
     diagnoses: strs(r.diagnoses).slice(0, 12),

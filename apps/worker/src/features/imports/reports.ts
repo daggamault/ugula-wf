@@ -1,6 +1,6 @@
-import { type BlobStore, importsPrefix } from '@ugula/blobs';
 import type { Database } from '@ugula/db';
 import type { ReportStore } from '@ugula/nemsis';
+import { type BlobStore, importsPrefix } from '@ugula/storage';
 import type { Kysely } from 'kysely';
 import { runTenant } from '../../shared/tenancy.ts';
 

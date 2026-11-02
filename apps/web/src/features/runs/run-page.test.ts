@@ -105,6 +105,22 @@ describe('RunView', () => {
     assert.ok(html.includes('aria-label="Back to Item"'));
   });
 
+  it('opens child runs from an icon action', () => {
+    const base = detail('running');
+    const { inputs, result, error, state, ...summary } = base.run;
+    const html = renderToStaticMarkup(
+      createElement(RunView, {
+        detail: { ...base, children: [{ ...summary, id: 'c1', parent_index: 1 }], childCount: 1 },
+        graphs,
+        steps: [],
+        stack: [],
+        onCancel: async () => undefined
+      })
+    );
+    assert.ok(html.includes('href="/runs/c1" aria-label="Open run #2 Item"'));
+    assert.equal(html.split('href="/runs/c1"').length, 2);
+  });
+
   it('hides cancel once a run is finished', () => {
     assert.ok(!render('completed').includes('Cancel run'));
   });

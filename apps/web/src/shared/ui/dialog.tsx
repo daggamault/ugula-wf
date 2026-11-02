@@ -38,19 +38,19 @@ export const Dialog = ({
       aria-labelledby={titleId}
       onClose={onClose}
       className={classNamesOf(
-        'border-border bg-surface text-surface-fg backdrop:bg-canvas/70 m-auto w-[calc(100%-2rem)] scale-95 rounded-2xl border p-7 opacity-0 shadow-2xl transition-[opacity,scale,display,overlay] transition-discrete duration-300 ease-out backdrop:opacity-0 backdrop:backdrop-blur-sm backdrop:transition-[opacity,display,overlay] backdrop:transition-discrete backdrop:duration-300 backdrop:ease-out open:scale-100 open:opacity-100 open:backdrop:opacity-100 starting:open:scale-95 starting:open:opacity-0 starting:open:backdrop:opacity-0',
+        'border-border bg-surface text-surface-fg backdrop:bg-canvas/70 m-auto w-[calc(100%-2rem)] scale-95 rounded-xl border p-6 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out backdrop:opacity-0 backdrop:backdrop-blur-sm backdrop:transition-[opacity,display,overlay] backdrop:transition-discrete backdrop:duration-200 backdrop:ease-out open:scale-100 open:opacity-100 open:backdrop:opacity-100 starting:open:scale-95 starting:open:opacity-0 starting:open:backdrop:opacity-0',
         isWide ? 'max-w-2xl' : 'max-w-md'
       )}
     >
       <div className="flex flex-col gap-6">
-        <header className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-2">
-            <h2 id={titleId} className="text-lg font-bold tracking-tight">
+        <header className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 id={titleId} className="text-base font-bold">
               {title}
             </h2>
             {description && <div className="text-surface-fg-muted text-sm">{description}</div>}
           </div>
-          <div className="-mt-1.5 -mr-3">
+          <div className="-my-1.5 -mr-2">
             <IconButton label="Close" icon={XIcon} onClick={onClose} />
           </div>
         </header>

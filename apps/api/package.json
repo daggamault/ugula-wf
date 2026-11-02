@@ -9,15 +9,15 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@ugula/auth": "workspace:*",
     "@ugula/billing": "workspace:*",
-    "@ugula/blobs": "workspace:*",
+    "@ugula/catalog": "workspace:*",
     "@ugula/config": "workspace:*",
     "@ugula/db": "workspace:*",
-    "@ugula/events": "workspace:*",
     "@ugula/graph": "workspace:*",
-    "@ugula/jobs": "workspace:*",
+    "@ugula/live": "workspace:*",
     "@ugula/nemsis": "workspace:*",
-    "@ugula/passwords": "workspace:*",
-    "@ugula/sessions": "workspace:*"
+    "@ugula/run-queue": "workspace:*",
+    "@ugula/storage": "workspace:*"
   }
 }

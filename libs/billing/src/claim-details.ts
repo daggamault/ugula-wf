@@ -1,4 +1,5 @@
 import { type Address, readAddress } from './patients.ts';
+import { recordOf, textOrNull } from './values.ts';
 
 export type Location = Address & { name: string | null };
 
@@ -61,14 +62,9 @@ const PRIORITY_ORDER = [
   '2611023'
 ];
 
-const record = (x: unknown): Record<string, unknown> =>
-  x !== null && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : {};
-
-const text = (x: unknown) => (typeof x === 'string' && x.trim() ? x.trim() : null);
-
 const location = (x: unknown): Location => {
-  const r = record(x);
-  return { name: text(r.name), ...readAddress(r) };
+  const r = recordOf(x);
+  return { name: textOrNull(r.name), ...readAddress(r) };
 };
 
 export const ICD10_PATTERN = '^[A-Z][0-9][0-9A-Z]{1,5}$';
@@ -76,17 +72,17 @@ export const ICD10_PATTERN = '^[A-Z][0-9][0-9A-Z]{1,5}$';
 const ICD10 = new RegExp(ICD10_PATTERN);
 
 export const icd10 = (x: unknown): string | null => {
-  const code = text(x)?.toUpperCase().replace('.', '');
+  const code = textOrNull(x)?.toUpperCase().replace('.', '');
   return code && ICD10.test(code) ? code : null;
 };
 
 const serviceDate = (x: unknown) => {
-  const value = text(x);
+  const value = textOrNull(x);
   return value && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
 };
 
 export const readClaimDetails = (claim: unknown): ClaimDetails => {
-  const c = record(claim);
+  const c = recordOf(claim);
   const codes = Array.isArray(c.diagnoses) ? c.diagnoses : [];
   return {
     serviceDate: serviceDate(c.serviceDate),
@@ -103,22 +99,22 @@ const rank = (priority: unknown) => {
 };
 
 export const readCoverages = (list: unknown): Coverage[] => {
-  const rows = (Array.isArray(list) ? list : []).map(record);
+  const rows = (Array.isArray(list) ? list : []).map(recordOf);
   const seen = new Set<string>();
   return rows
     .map((r, i) => ({ r, i }))
     .sort((a, b) => rank(a.r.priority) - rank(b.r.priority) || a.i - b.i)
     .flatMap(({ r }) => {
-      const payer = text(r.payer);
+      const payer = textOrNull(r.payer);
       if (!payer || seen.has(payer.toLowerCase())) return [];
       seen.add(payer.toLowerCase());
       return [
         {
           payer,
-          payerId: text(r.payerId),
-          payerCode: text(r.payerCode),
-          memberId: text(r.memberId),
-          groupId: text(r.groupId)
+          payerId: textOrNull(r.payerId),
+          payerCode: textOrNull(r.payerCode),
+          memberId: textOrNull(r.memberId),
+          groupId: textOrNull(r.groupId)
         }
       ];
     });

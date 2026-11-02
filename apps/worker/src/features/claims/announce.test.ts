@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ClaimStore } from '@ugula/billing';
-import type { LiveEvent } from '@ugula/events';
+import type { LiveEvent } from '@ugula/live';
 import { announceClaims } from './announce.ts';
 
 describe('announceClaims', () => {
@@ -9,10 +9,12 @@ describe('announceClaims', () => {
     const log: string[] = [];
     const store = {
       findByPcr: async () => 'c1',
-      openClaim: async () => {
+      openDraft: async () => {
         log.push('open');
         return { id: 'c1', duplicate: false };
       },
+      saveClaim: async () => void log.push('save'),
+      setStatus: async () => void log.push('status'),
       noteRevision: async () => void log.push('revision'),
       attachCycle: async () => void log.push('attach'),
       statementData: async () => {
@@ -28,10 +30,12 @@ describe('announceClaims', () => {
       log.push('announce');
       announced.push([runId, event]);
     });
-    assert.deepEqual(await claims.openClaim('r1', 'k', {} as never), {
-      id: 'c1',
-      duplicate: false
-    });
+    assert.deepEqual(
+      await claims.openDraft('r1', 'k', { patientId: 'p1', pcrNumber: null, reportKey: null }),
+      { id: 'c1', duplicate: false }
+    );
+    await claims.saveClaim('r1', 'c1', {} as never);
+    await claims.setStatus('r1', 'c1', 'ready');
     await claims.noteRevision('r1', 'c1', 'k', { bucket: 'b', key: 'k' });
     assert.equal(await claims.findByPcr('r1', 'PCR-1'), 'c1');
     await claims.attachCycle('r1', 'c1', 'r2');
@@ -40,6 +44,10 @@ describe('announceClaims', () => {
     assert.equal(await claims.ledger('r1', 'c1'), null);
     assert.deepEqual(log, [
       'open',
+      'announce',
+      'save',
+      'announce',
+      'status',
       'announce',
       'revision',
       'announce',

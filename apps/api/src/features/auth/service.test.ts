@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
-import { hashPassword } from '@ugula/passwords';
-import { createSessionStore } from '@ugula/sessions';
+import { createSessionStore, hashPassword } from '@ugula/auth';
+import { createRecordingDb } from '@ugula/db/testing';
 import { createAuthService } from './service.ts';
 
 const memorySessions = () => {

@@ -3,7 +3,7 @@ import { Link, type LinkProps } from '../router.tsx';
 import { interactiveClasses } from './interactive.ts';
 
 export const textLinkClasses = classNamesOf(
-  'text-primary rounded-sm font-medium underline-offset-2 hover:underline',
+  'text-primary rounded-lg font-medium underline-offset-2 hover:underline',
   interactiveClasses
 );
 

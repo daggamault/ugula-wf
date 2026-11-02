@@ -5,6 +5,7 @@ export const buildPatientsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('patients')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
+    .addColumn('number', 'integer', (col) => col.notNull().unique().generatedAlwaysAsIdentity())
     .addColumn('tenant_id', 'uuid', (col) =>
       col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
     )

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import { createStdNodes, ENTRY_TYPE, type GraphDef, RETURN_TYPE } from '@ugula/graph';
 import { callerOf, createEvaluate, evaluateBundle } from './evaluate.ts';
 

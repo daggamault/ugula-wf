@@ -35,7 +35,7 @@ export const SignInForm = ({ auth, onSuccess }: SignInFormProps) => {
 
   return (
     <Card labelledBy="sign-in-heading">
-      <BrandHeader id="sign-in-heading">Sign in to your account.</BrandHeader>
+      <BrandHeader id="sign-in-heading">Sign in to your account</BrandHeader>
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <fieldset disabled={submitting} className="flex flex-col gap-5">
           <Input

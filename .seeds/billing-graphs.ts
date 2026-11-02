@@ -181,7 +181,7 @@ const classifyTrip = (): GraphDef => {
   g.add('disposition', 'nemsis.disposition.break');
   g.add('response', 'nemsis.response.break');
   g.add('trip', 'std.table.decide', {
-    label: 'Trip type',
+    label: 'Trip Type',
     config: table(
       [
         field('incidentDisposition', 'string', 'Incident/patient disposition · eDisposition.12'),
@@ -287,18 +287,18 @@ const loadedMiles = (): GraphDef => {
     [p('sceneOdometer', 'number', true), p('destinationOdometer', 'number', true)],
     [p('loadedMiles', 'number', true)]
   );
-  g.add('scene', 'std.logic.coalesce', { label: 'Scene odometer or 0', values: { fallback: 0 } });
+  g.add('scene', 'std.logic.coalesce', { label: 'Scene Odometer or 0', values: { fallback: 0 } });
   g.add('destination', 'std.logic.coalesce', {
-    label: 'Destination odometer or 0',
+    label: 'Destination Odometer or 0',
     values: { fallback: 0 }
   });
-  g.add('distance', 'std.math.subtract', { label: 'Destination minus scene' });
-  g.add('positive', 'std.math.max', { label: 'Never below zero', values: { b: 0 } });
-  g.add('rounded', 'std.math.round', { label: 'Tenths of a mile', values: { digits: 1 } });
-  g.add('noScene', 'std.logic.is-null', { label: 'No scene odometer' });
-  g.add('noDestination', 'std.logic.is-null', { label: 'No destination odometer' });
-  g.add('missing', 'std.logic.or', { label: 'Either missing' });
-  g.add('miles', 'std.logic.select', { label: 'Miles when both are recorded' });
+  g.add('distance', 'std.math.subtract', { label: 'Destination minus Scene' });
+  g.add('positive', 'std.math.max', { label: 'Never Below Zero', values: { b: 0 } });
+  g.add('rounded', 'std.math.round', { label: 'Tenths of a Mile', values: { digits: 1 } });
+  g.add('noScene', 'std.logic.is-null', { label: 'No Scene Odometer' });
+  g.add('noDestination', 'std.logic.is-null', { label: 'No Destination Odometer' });
+  g.add('missing', 'std.logic.or', { label: 'Either Missing' });
+  g.add('miles', 'std.logic.select', { label: 'Miles When Both Are Recorded' });
   g.ret('return');
   g.wire('entry.sceneOdometer', 'scene.value', 'noScene.value');
   g.wire('entry.destinationOdometer', 'destination.value', 'noDestination.value');
@@ -323,17 +323,17 @@ const levelOfService = (): GraphDef => {
   g.add('payment', 'nemsis.payment.break');
   g.add('response', 'nemsis.response.break');
   g.add('ivMedications', 'std.list.where', {
-    label: 'IV/IO medications coded',
+    label: 'IV/IO Medications Coded',
     config: { field: 'route', op: 'oneOf', value: IV_ROUTES }
   });
   g.add('findings', 'billing.findings.break');
   g.add('procedures', 'std.logic.coalesce', {
-    label: 'Narrative procedures',
+    label: 'Narrative Procedures',
     values: { fallback: [] }
   });
-  g.add('procedureCount', 'std.list.length', { label: 'How many ALS2 procedures' });
+  g.add('procedureCount', 'std.list.length', { label: 'How Many ALS2 Procedures' });
   g.add('level', 'std.table.decide', {
-    label: 'Level of service',
+    label: 'Level of Service',
     config: table(
       [
         field('levelOfCare', 'string', 'Level of care provided · eDisposition.32'),
@@ -404,7 +404,7 @@ const levelOfService = (): GraphDef => {
     )
   });
   g.add('emergency', 'std.table.decide', {
-    label: 'Emergency response',
+    label: 'Emergency Response',
     config: table(
       [
         field('responseMode', 'string', 'Response mode to scene · eResponse.23'),
@@ -426,7 +426,7 @@ const levelOfService = (): GraphDef => {
       { emergency: false }
     )
   });
-  g.add('miles', 'billing.loaded-miles', { label: 'Loaded miles' });
+  g.add('miles', 'billing.loaded-miles', { label: 'Loaded Miles' });
   g.add('service', 'billing.service.make');
   g.ret('return');
   g.wire('entry.pcr', 'pcr.pcr');
@@ -455,7 +455,7 @@ const levelOfService = (): GraphDef => {
 
 const tripService = (fixed: Record<string, Json>): GraphDef => {
   const g = pure([p('pcr', PCR_TYPE), p('findings', FINDINGS, true)], [p('service', SERVICE)]);
-  g.add('suggested', 'billing.level-of-service', { label: 'Level of service' });
+  g.add('suggested', 'billing.level-of-service', { label: 'Level of Service' });
   g.ret('return');
   g.wire('entry.pcr', 'suggested.pcr');
   g.wire('entry.findings', 'suggested.findings');
@@ -485,7 +485,7 @@ const suggestService = (): GraphDef => {
     ['default', 'billing.trip-emergency']
   ] as const;
   g.add('switch', 'std.flow.switch', {
-    label: 'By trip type',
+    label: 'By Trip Type',
     config: { cases: trips.filter(([c]) => c !== 'default').map(([c]) => c) }
   });
   g.wire('entry.exec', 'switch.exec');
@@ -509,7 +509,7 @@ const mapCharges = (): GraphDef => {
   );
   g.add('service', 'billing.service.break');
   g.add('base', 'std.table.decide', {
-    label: 'Base rate',
+    label: 'Base Rate',
     config: table(
       [
         field('tripType', 'string', 'Trip type'),
@@ -536,7 +536,7 @@ const mapCharges = (): GraphDef => {
       { code: 'A0428' }
     )
   });
-  g.add('baseLine', 'billing.line.make', { label: 'Base rate line', values: { units: 1 } });
+  g.add('baseLine', 'billing.line.make', { label: 'Base Rate Line', values: { units: 1 } });
   g.add('mileage', 'std.table.decide', {
     label: 'Mileage',
     config: table(
@@ -554,12 +554,12 @@ const mapCharges = (): GraphDef => {
       ]
     )
   });
-  g.add('miles', 'std.logic.coalesce', { label: 'Loaded miles or 0', values: { fallback: 0 } });
-  g.add('tenths', 'std.math.multiply', { label: 'In tenths', values: { b: 10 } });
-  g.add('roundUp', 'std.math.ceil', { label: 'Round up' });
-  g.add('units', 'std.math.divide', { label: 'Back to miles', values: { b: 10 } });
-  g.add('mileageLine', 'billing.line.make', { label: 'Mileage line' });
-  g.add('keepMileage', 'std.logic.select', { label: 'Only when miles are billed' });
+  g.add('miles', 'std.logic.coalesce', { label: 'Loaded Miles or 0', values: { fallback: 0 } });
+  g.add('tenths', 'std.math.multiply', { label: 'In Tenths', values: { b: 10 } });
+  g.add('roundUp', 'std.math.ceil', { label: 'Round Up' });
+  g.add('units', 'std.math.divide', { label: 'Back to Miles', values: { b: 10 } });
+  g.add('mileageLine', 'billing.line.make', { label: 'Mileage Line' });
+  g.add('keepMileage', 'std.logic.select', { label: 'Only When Miles Are Billed' });
   g.add('lines', 'std.list.make', { config: { count: 2 } });
   g.ret('return');
   g.wire('entry.service', 'service.service');
@@ -585,7 +585,7 @@ const demographicsFromPcr = (): GraphDef => {
   const g = pure([p('pcr', PCR_TYPE)], [p('demographics', DEMOGRAPHICS)]);
   g.add('pcr', 'nemsis.pcr.break');
   g.add('patient', 'nemsis.patient.break');
-  g.add('sex', 'std.logic.coalesce', { label: 'Sex, else gender' });
+  g.add('sex', 'std.logic.coalesce', { label: 'Sex, else Gender' });
   g.add('demographics', 'billing.demographics.make');
   g.ret('return');
   g.wire('entry.pcr', 'pcr.pcr');
@@ -613,7 +613,7 @@ const coveragesFromPcr = (): GraphDef => {
   g.add('pcr', 'nemsis.pcr.break');
   g.add('payment', 'nemsis.payment.break');
   g.add('insurances', 'std.list.reshape', {
-    label: 'Insurances as coverages',
+    label: 'Insurances as Coverages',
     config: {
       fields: [
         { name: 'payer', type: 'string', from: 'companyName' },
@@ -625,7 +625,7 @@ const coveragesFromPcr = (): GraphDef => {
     }
   });
   g.add('method', 'std.table.lookup', {
-    label: 'Payer named by the payment method',
+    label: 'Payer Named by the Payment Method',
     config: {
       type: 'string',
       rows: [
@@ -635,13 +635,13 @@ const coveragesFromPcr = (): GraphDef => {
     }
   });
   g.add('fallback', 'billing.coverage.make', {
-    label: 'Coverage from the payment method',
+    label: 'Coverage From the Payment Method',
     values: { priority: '2611003' }
   });
   g.add('fallbackList', 'std.list.make', { config: { count: 1 } });
-  g.add('count', 'std.list.length', { label: 'How many insurances' });
-  g.add('none', 'std.logic.equal', { label: 'No insurances', values: { b: 0 } });
-  g.add('useMethod', 'std.logic.and', { label: 'No insurances, but a known method' });
+  g.add('count', 'std.list.length', { label: 'How Many Insurances' });
+  g.add('none', 'std.logic.equal', { label: 'No Insurances', values: { b: 0 } });
+  g.add('useMethod', 'std.logic.and', { label: 'No Insurances, but a Known Method' });
   g.add('coverages', 'std.logic.select', { label: 'Coverages' });
   g.ret('return');
   g.wire('entry.pcr', 'pcr.pcr');
@@ -677,15 +677,15 @@ const tripDetails = (): GraphDef => {
   g.add('disposition', 'nemsis.disposition.break');
   g.add('situation', 'nemsis.situation.break');
   g.add('response', 'nemsis.response.break');
-  g.add('called', 'std.logic.coalesce', { label: 'Call time, else dispatch time' });
-  g.add('when', 'std.logic.coalesce', { label: 'Or nothing', values: { fallback: '' } });
-  g.add('serviceDate', 'std.text.substring', { label: 'Date part', values: { end: 10 } });
+  g.add('called', 'std.logic.coalesce', { label: 'Call Time, else Dispatch Time' });
+  g.add('when', 'std.logic.coalesce', { label: 'Or Nothing', values: { fallback: '' } });
+  g.add('serviceDate', 'std.text.substring', { label: 'Date Part', values: { end: 10 } });
   g.add('pickup', 'billing.location.make', { label: 'Pickup' });
   g.add('destination', 'billing.location.make', { label: 'Destination' });
-  g.add('primary', 'std.list.make', { label: 'Primary impression', config: { count: 1 } });
-  g.add('diagnoses', 'std.list.concat', { label: 'With secondary impressions' });
+  g.add('primary', 'std.list.make', { label: 'Primary Impression', config: { count: 1 } });
+  g.add('diagnoses', 'std.list.concat', { label: 'With Secondary Impressions' });
   g.add('origin', 'std.table.decide', {
-    label: 'Origin modifier',
+    label: 'Origin Modifier',
     config: table(
       [
         field('locationType', 'string', 'Incident location type · eScene.09'),
@@ -720,7 +720,7 @@ const tripDetails = (): GraphDef => {
     )
   });
   g.add('destinationCode', 'std.table.lookup', {
-    label: 'Destination modifier',
+    label: 'Destination Modifier',
     config: {
       type: 'string',
       rows: [
@@ -740,7 +740,7 @@ const tripDetails = (): GraphDef => {
     }
   });
   g.add('codes', 'std.list.make', { config: { count: 2 } });
-  g.add('originDestination', 'std.text.join', { label: 'Origin then destination' });
+  g.add('originDestination', 'std.text.join', { label: 'Origin Then Destination' });
   g.ret('return');
   g.wire('entry.pcr', 'pcr.pcr');
   g.wire('pcr.times', 'times.times');
@@ -788,7 +788,7 @@ const mapClaim = (): GraphDef => {
     [p('claim', CLAIM)]
   );
   g.add('pcr', 'nemsis.pcr.break');
-  g.add('trip', 'billing.trip-details', { label: 'Trip details' });
+  g.add('trip', 'billing.trip-details', { label: 'Trip Details' });
   g.add('patient', 'billing.patient.break');
   g.add('service', 'billing.service.break');
   g.add('claim', 'billing.claim.make');
@@ -818,7 +818,7 @@ const map837p = (): GraphDef => {
   g.add('subscriber', 'x837.subscriber.make', { values: { relationship: '18' } });
   g.add('x12Payer', 'x837.payer.make', { values: { responsibility: 'P' } });
   g.add('conditions', 'std.table.decide', {
-    label: 'Ambulance conditions',
+    label: 'Ambulance Conditions',
     config: table(
       [field('emergency', 'boolean', 'Emergency')],
       [field('codes', { list: 'string' }, 'CRC condition codes')],
@@ -826,9 +826,9 @@ const map837p = (): GraphDef => {
       { codes: ['09'] }
     )
   });
-  g.add('codes', 'std.list.pluck', { label: 'Line codes', values: { field: 'code' } });
+  g.add('codes', 'std.list.pluck', { label: 'Line Codes', values: { field: 'code' } });
   g.add('coverage', 'std.table.decide', {
-    label: 'Coverage modifier',
+    label: 'Coverage Modifier',
     config: table(
       [
         field('claimFiling', 'string', 'Claim filing indicator'),
@@ -844,9 +844,9 @@ const map837p = (): GraphDef => {
       ]
     )
   });
-  g.add('modifiers', 'std.list.make', { label: 'Line modifiers', config: { count: 2 } });
+  g.add('modifiers', 'std.list.make', { label: 'Line Modifiers', config: { count: 2 } });
   g.add('shared', 'std.object.make', {
-    label: 'Every line',
+    label: 'Every Line',
     config: {
       fields: [
         { name: 'modifiers', type: { list: 'string' } },
@@ -855,7 +855,7 @@ const map837p = (): GraphDef => {
     }
   });
   g.add('lines', 'std.list.reshape', {
-    label: 'Service lines',
+    label: 'Service Lines',
     config: {
       fields: [
         { name: 'code', type: 'string', from: 'code' },
@@ -925,7 +925,7 @@ const nameOf = (person: string) =>
 const expr = (label: string, expression: string) => ({ label, config: { expression } });
 
 const subject = (...parts: string[]) =>
-  expr('Task subject', `join(filter([${parts.join(', ')}], x => x != null && x != ''), ' · ')`);
+  expr('Task Subject', `join(filter([${parts.join(', ')}], x => x != null && x != ''), ' · ')`);
 
 const SEX = "{ F: 'Female', M: 'Male', U: 'Unknown' }";
 
@@ -1006,11 +1006,11 @@ const resolvePatient = (): GraphDef => {
   );
   g.add('match', 'billing.match-patient');
   g.add('create', 'billing.create-patient', { values: { reuseMatch: true } });
-  g.add('choices', 'std.expr', expr('Candidate choices', PATIENT_CHOICES));
-  g.add('context', 'std.expr', expr('Review context', PATIENT_REVIEW_CONTEXT));
+  g.add('choices', 'std.expr', expr('Candidate Choices', PATIENT_CHOICES));
+  g.add('context', 'std.expr', expr('Review Context', PATIENT_REVIEW_CONTEXT));
   g.add('subject', 'std.expr', subject('pcrNumber', nameOf('demographics')));
   g.add('confirm', 'std.human.task', {
-    label: 'Confirm patient',
+    label: 'Confirm Patient',
     config: {
       title: 'Confirm patient',
       queue: 'billing-patients',
@@ -1025,9 +1025,9 @@ const resolvePatient = (): GraphDef => {
       outcomes: ['link', 'create']
     }
   });
-  g.add('reported', 'billing.demographics.break', { label: 'Cleaned demographics' });
-  g.add('corrected', 'billing.demographics.make', { label: 'Corrected demographics' });
-  g.add('createReviewed', 'billing.create-patient', { label: 'Create reviewed patient' });
+  g.add('reported', 'billing.demographics.break', { label: 'Cleaned Demographics' });
+  g.add('corrected', 'billing.demographics.make', { label: 'Corrected Demographics' });
+  g.add('createReviewed', 'billing.create-patient', { label: 'Create Reviewed Patient' });
   g.add('find', 'billing.find-patient');
   for (const id of ['matched', 'created', 'reviewed', 'linked']) g.ret(id);
   g.wire('entry.exec', 'match.exec');
@@ -1069,9 +1069,9 @@ const resolvePayers = (): GraphDef => {
     [p('coverages', COVERAGES)]
   );
   g.add('match', 'billing.match-payers');
-  g.add('each', 'std.flow.for-each', { label: 'Each uncertain payer' });
-  g.add('choices', 'std.expr', expr('Directory choices', '{ payerId: item.candidates }'));
-  g.add('suggestion', 'std.expr', expr('Suggested payer', '{ payerId: item.suggested }'));
+  g.add('each', 'std.flow.for-each', { label: 'Each Uncertain Payer' });
+  g.add('choices', 'std.expr', expr('Directory Choices', '{ payerId: item.candidates }'));
+  g.add('suggestion', 'std.expr', expr('Suggested Payer', '{ payerId: item.suggested }'));
   g.add(
     'context',
     'std.expr',
@@ -1081,7 +1081,7 @@ const resolvePayers = (): GraphDef => {
     )
   );
   g.add('confirm', 'std.human.task', {
-    label: 'Match payer',
+    label: 'Match Payer',
     config: {
       title: 'Match payer',
       queue: 'billing-payers',
@@ -1091,11 +1091,11 @@ const resolvePayers = (): GraphDef => {
       outcomes: ['link', 'unlisted']
     }
   });
-  g.add('reported', 'std.object.get', { label: 'Reported name', values: { path: 'payer' } });
+  g.add('reported', 'std.object.get', { label: 'Reported Name', values: { path: 'payer' } });
   g.add('subject', 'std.expr', subject('pcrNumber', 'item.payer'));
-  g.add('link', 'billing.link-payer', { label: 'Remember payer name' });
+  g.add('link', 'billing.link-payer', { label: 'Remember Payer Name' });
   g.add('rematch', 'billing.match-payers', {
-    label: 'Match reviewed payers',
+    label: 'Match Reviewed Payers',
     values: { suggest: false }
   });
   g.ret('matched');
@@ -1158,16 +1158,16 @@ const encounterToClaim = (): GraphDef => {
   );
   g.add('read', 'nemsis.read-report');
   g.add('pcr', 'nemsis.pcr.break');
-  g.add('billed', 'billing.find-claim', { label: 'Already billed?' });
-  g.add('classify', 'billing.classify-trip', { label: 'Classify trip' });
+  g.add('billed', 'billing.find-claim', { label: 'Already Billed?' });
+  g.add('classify', 'billing.classify-trip', { label: 'Classify Trip' });
   g.add('tripSwitch', 'std.flow.switch', {
-    label: 'Claim needed?',
+    label: 'Claim Needed?',
     config: { cases: ['noClaim'] }
   });
-  g.add('tripContext', 'std.expr', expr('Trip context', `{ trip: ${TRIP} }`));
+  g.add('tripContext', 'std.expr', expr('Trip Context', `{ trip: ${TRIP} }`));
   g.add('subject', 'std.expr', subject('pcr.pcrNumber', nameOf('pcr.patient')));
   g.add('noClaim', 'std.human.task', {
-    label: 'Confirm no claim',
+    label: 'Confirm No Claim',
     config: {
       title: 'Confirm no claim',
       queue: 'billing-review',
@@ -1180,16 +1180,17 @@ const encounterToClaim = (): GraphDef => {
   g.add('narrative', 'billing.read-narrative', {
     retry: { max: 3, delayMs: 30_000, factor: 4 }
   });
-  g.add('demographics', 'billing.demographics-from-pcr', { label: 'Patient demographics' });
-  g.add('patient', 'billing.resolve-patient', { label: 'Resolve patient' });
-  g.add('reported', 'billing.coverages-from-pcr', { label: 'Reported coverages' });
+  g.add('demographics', 'billing.demographics-from-pcr', { label: 'Patient Demographics' });
+  g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
+  g.add('open', 'billing.open-claim', { label: 'Open Draft Claim' });
+  g.add('reported', 'billing.coverages-from-pcr', { label: 'Reported Coverages' });
   g.add('patientName', 'std.text.template', {
-    label: 'Patient name',
+    label: 'Patient Name',
     config: { template: '{{ demographics.firstName }} {{ demographics.lastName }}' }
   });
-  g.add('payers', 'billing.resolve-payers', { label: 'Resolve payers' });
-  g.add('suggest', 'billing.suggest-service', { label: 'Suggest service for the trip type' });
-  g.add('reviewContext', 'std.expr', expr('Review context', REVIEW_CONTEXT));
+  g.add('payers', 'billing.resolve-payers', { label: 'Resolve Payers' });
+  g.add('suggest', 'billing.suggest-service', { label: 'Suggest Service for the Trip Type' });
+  g.add('reviewContext', 'std.expr', expr('Review Context', REVIEW_CONTEXT));
   g.add('review', 'std.human.task', {
     label: 'Review PCR',
     config: {
@@ -1204,7 +1205,7 @@ const encounterToClaim = (): GraphDef => {
   g.add(
     'holdContext',
     'std.expr',
-    expr('Hold context', `{ note: note, patient: ${nameOf('patient')}, trip: ${TRIP} }`)
+    expr('Hold Context', `{ note: note, patient: ${nameOf('patient')}, trip: ${TRIP} }`)
   );
   g.add('held', 'std.human.task', {
     label: 'Held PCR',
@@ -1217,19 +1218,19 @@ const encounterToClaim = (): GraphDef => {
     }
   });
   g.ret('voided');
-  g.add('suggested', 'billing.service.break', { label: 'Suggested service' });
-  g.add('level', 'std.logic.coalesce', { label: 'Confirmed level' });
-  g.add('emergency', 'std.logic.coalesce', { label: 'Confirmed emergency' });
-  g.add('confirmed', 'billing.service.make', { label: 'Confirmed service' });
+  g.add('suggested', 'billing.service.break', { label: 'Suggested Service' });
+  g.add('level', 'std.logic.coalesce', { label: 'Confirmed Level' });
+  g.add('emergency', 'std.logic.coalesce', { label: 'Confirmed Emergency' });
+  g.add('confirmed', 'billing.service.make', { label: 'Confirmed Service' });
   g.add('charges', 'billing.map-charges', { label: 'Charges' });
-  g.add('primary', 'std.list.first', { label: 'Primary payer' });
+  g.add('primary', 'std.list.first', { label: 'Primary Payer' });
   g.add('primaryPayer', 'billing.coverage.break');
   g.add('price', 'billing.price-claim');
-  g.add('claim', 'billing.map-claim', { label: 'Map claim' });
+  g.add('claim', 'billing.map-claim', { label: 'Map Claim' });
   g.add('validate', 'billing.validate-claim');
   g.add('fixContext', 'std.expr', expr('Problems', `{ issues: issues, trip: ${TRIP} }`));
   g.add('fix', 'std.human.task', {
-    label: 'Claim needs attention',
+    label: 'Claim Needs Attention',
     config: {
       title: 'Claim needs attention',
       queue: 'billing-review',
@@ -1238,22 +1239,23 @@ const encounterToClaim = (): GraphDef => {
       outcomes: ['review', 'void']
     }
   });
-  g.add('save', 'billing.save-claim');
+  g.add('save', 'billing.save-claim', { label: 'Save Claim for Review' });
+  g.add('void', 'billing.close-claim', { label: 'Void Draft Claim', values: { status: 'void' } });
   g.add('cycleInputs', 'std.object.make', {
     config: { fields: [{ name: 'claimId', type: 'string' }] }
   });
   g.add('cycle', 'std.flow.start-workflow', {
-    label: 'Start payer cycle',
+    label: 'Start Payer Cycle',
     config: { workflow: 'billing.cycle-claim', version: 1 }
   });
-  g.add('attach', 'billing.attach-cycle', { label: 'Link claim to its cycle' });
+  g.add('attach', 'billing.attach-cycle', { label: 'Link Claim to Its Cycle' });
   g.ret('approved');
   g.add('reviseBilled', 'std.var.set', {
-    label: 'Revise billed claim',
+    label: 'Revise Billed Claim',
     config: { name: 'revising' }
   });
   g.add('reviseDuplicate', 'std.var.set', {
-    label: 'Revise concurrent claim',
+    label: 'Revise Concurrent Claim',
     config: { name: 'revising' }
   });
   g.add('revising', 'std.var.get', { config: { name: 'revising' } });
@@ -1262,12 +1264,12 @@ const encounterToClaim = (): GraphDef => {
     'revisionContext',
     'std.expr',
     expr(
-      'Revision context',
+      'Revision Context',
       `{ claimId: claimId, patient: { name: ${nameOf('pcr.patient')}, birthDate: pcr.patient.birthDate }, trip: ${TRIP} }`
     )
   );
   g.add('revision', 'std.human.task', {
-    label: 'Review updated PCR',
+    label: 'Review Updated PCR',
     config: {
       title: 'Review updated PCR',
       queue: 'billing-review',
@@ -1314,7 +1316,14 @@ const encounterToClaim = (): GraphDef => {
   g.wire('narrative.then', 'patient.exec');
   g.wire('demographics.demographics', 'patient.demographics', 'patientName.demographics');
   g.wire('pcr.pcrNumber', 'patient.pcrNumber', 'payers.pcrNumber');
-  g.wire('patient.then', 'payers.exec');
+  g.wire('patient.then', 'open.exec');
+  g.wire('patient.patient', 'open.patient');
+  g.wire('pcr.pcrNumber', 'open.pcrNumber');
+  g.wire('entry.report', 'open.report');
+  g.wire('open.opened', 'payers.exec');
+  g.wire('open.duplicate', 'reviseDuplicate.exec');
+  g.wire('open.claimId', 'save.claimId', 'void.claimId', 'voided.claimId', 'reviseDuplicate.value');
+  g.wire('open.claimId', 'cycleInputs.claimId', 'attach.claimId', 'approved.claimId');
   g.wire('reported.coverages', 'payers.coverages');
   g.wire('patientName.text', 'payers.patientName');
   g.wire('payers.then', 'suggest.exec');
@@ -1329,7 +1338,8 @@ const encounterToClaim = (): GraphDef => {
   g.wire('review.note', 'holdContext.note');
   g.wire('holdContext.result', 'held.context');
   g.wire('held.release', 'review.exec');
-  g.wire('held.void', 'voided.exec');
+  g.wire('held.void', 'void.exec');
+  g.wire('void.then', 'voided.exec');
   g.wire('patient.patient', 'voided.patient');
   g.wire(tripType, 'voided.tripType');
 
@@ -1354,10 +1364,9 @@ const encounterToClaim = (): GraphDef => {
   g.wire('validate.issues', 'fixContext.issues');
   g.wire('fixContext.result', 'fix.context');
   g.wire('fix.review', 'review.exec');
-  g.wire('fix.void', 'voided.exec');
+  g.wire('fix.void', 'void.exec');
   g.wire('validate.valid', 'save.exec');
-  g.wire('save.saved', 'cycle.exec');
-  g.wire('save.claimId', 'cycleInputs.claimId', 'attach.claimId', 'approved.claimId');
+  g.wire('save.then', 'cycle.exec');
   g.wire('cycleInputs.object', 'cycle.inputs');
   g.wire('cycle.then', 'attach.exec');
   g.wire('cycle.runId', 'attach.cycleRunId');
@@ -1366,8 +1375,6 @@ const encounterToClaim = (): GraphDef => {
 
   g.wire('billed.found', 'reviseBilled.exec');
   g.wire('billed.claimId', 'reviseBilled.value');
-  g.wire('save.duplicate', 'reviseDuplicate.exec');
-  g.wire('save.claimId', 'reviseDuplicate.value');
   g.wire('reviseBilled.then', 'noteRevision.exec');
   g.wire('reviseDuplicate.then', 'noteRevision.exec');
   g.wire('revising.value', 'noteRevision.claimId', 'revisionContext.claimId', 'revised.claimId');
@@ -1390,18 +1397,18 @@ const cycleClaim = (): GraphDef => {
   const closeClaim = (id: string, status: string, label: string) =>
     g.add(id, 'billing.close-claim', { label, values: { status } });
   g.add('active', 'std.var.get', { config: { name: 'active' } });
-  g.add('loop', 'std.flow.while', { label: 'Until the claim closes' });
+  g.add('loop', 'std.flow.while', { label: 'Until the Claim Closes' });
   g.add('step', 'billing.claim-step', {
-    label: 'Next step',
+    label: 'Next Step',
     values: { payerWaitDays: 30, statementCount: 3, statementIntervalDays: 30 }
   });
-  waitForClaim('submit', 'Await 837P batch');
-  waitForClaim('awaitPayer', 'Await payer response');
-  waitForClaim('awaitPatient', 'Await patient payment');
-  g.add('followUpSubject', 'std.expr', subject('reference', 'payer'));
+  waitForClaim('submit', 'Await 837P Batch');
+  waitForClaim('awaitPayer', 'Await Payer Response');
+  waitForClaim('awaitPatient', 'Await Patient Payment');
+  g.add('payerSubject', 'std.expr', subject('reference', 'payer'));
   g.add('collectionsSubject', 'std.expr', subject('reference'));
-  g.add('followUpContext', 'std.object.make', {
-    label: 'Follow-up context',
+  g.add('payerContext', 'std.object.make', {
+    label: 'Payer Context',
     config: {
       fields: [
         { name: 'claimId', type: 'string' },
@@ -1411,8 +1418,30 @@ const cycleClaim = (): GraphDef => {
       ]
     }
   });
+  g.add('review', 'std.human.task', {
+    label: 'Review Claim',
+    config: {
+      title: 'Review claim',
+      queue: 'billing-review',
+      instructions:
+        'Check the claim before it goes to this payer: patient, member ID, service, charges, diagnoses and trip details. Correct anything on the claim page, then approve it to make it ready to submit.',
+      outcomes: ['approve']
+    }
+  });
+  recordEvent('approve', 'approved', 'Approve for Submission');
+  g.add('reconcile', 'std.human.task', {
+    label: 'Reconcile Payment',
+    config: {
+      title: 'Reconcile payment',
+      queue: 'billing-reconcile',
+      instructions:
+        'The payer answered and a balance remains. Check what they paid and adjusted against the claim, record anything missing, then continue to the next payer or the patient, or write off the rest.',
+      outcomes: ['continue', 'writeOff']
+    }
+  });
+  recordEvent('reconciled', 'reconciled', 'Mark the Response Reconciled');
   g.add('followUp', 'std.human.task', {
-    label: 'Follow up with payer',
+    label: 'Follow Up with Payer',
     config: {
       title: 'Follow up on claim',
       queue: 'billing-followup',
@@ -1421,12 +1450,12 @@ const cycleClaim = (): GraphDef => {
       outcomes: ['resubmit', 'keepWaiting', 'nextPayer']
     }
   });
-  recordEvent('resubmit', 'resubmit_queued', 'Queue for the next batch');
-  recordEvent('keepWaiting', 'follow_up', 'Keep waiting on payer');
-  recordEvent('skip', 'payer_skipped', 'Move to next payer');
-  g.add('statement', 'billing.issue-statement', { label: 'Send patient statement' });
+  recordEvent('resubmit', 'resubmit_queued', 'Queue for the Next Batch');
+  recordEvent('keepWaiting', 'follow_up', 'Keep Waiting on Payer');
+  recordEvent('skip', 'payer_skipped', 'Move to Next Payer');
+  g.add('statement', 'billing.issue-statement', { label: 'Send Patient Statement' });
   g.add('collectionsContext', 'std.object.make', {
-    label: 'Collections context',
+    label: 'Collections Context',
     config: {
       fields: [
         { name: 'claimId', type: 'string' },
@@ -1435,7 +1464,7 @@ const cycleClaim = (): GraphDef => {
     }
   });
   g.add('collections', 'std.human.task', {
-    label: 'Collections review',
+    label: 'Collections Review',
     config: {
       title: 'Review unpaid balance',
       queue: 'billing-collections',
@@ -1444,11 +1473,11 @@ const cycleClaim = (): GraphDef => {
       outcomes: ['writeOff', 'sendToCollections']
     }
   });
-  closeClaim('closeWrittenOff', 'written_off', 'Close as written off');
-  closeClaim('closeCollections', 'collections', 'Close as sent to collections');
-  closeClaim('closePaid', 'paid', 'Close as paid');
+  closeClaim('closeWrittenOff', 'written_off', 'Close as Written Off');
+  closeClaim('closeCollections', 'collections', 'Close as Sent to Collections');
+  closeClaim('closePaid', 'paid', 'Close as Paid');
   g.add('stop', 'std.var.set', {
-    label: 'Stop cycling',
+    label: 'Stop Cycling',
     config: { name: 'active' },
     values: { value: false }
   });
@@ -1467,13 +1496,22 @@ const cycleClaim = (): GraphDef => {
   g.wire('step.await', 'awaitPayer.exec');
   g.wire('step.awaitPatient', 'awaitPatient.exec');
   g.wire('step.followUp', 'followUp.exec');
-  g.wire('entry.claimId', 'followUpContext.claimId', 'collectionsContext.claimId');
-  g.wire('step.coverageId', 'followUpContext.coverageId');
-  g.wire('step.payer', 'followUpContext.payer', 'followUpSubject.payer');
-  g.wire('step.balanceCents', 'followUpContext.balanceCents', 'collectionsContext.balanceCents');
-  g.wire('followUpContext.object', 'followUp.context');
-  g.wire('step.reference', 'followUpSubject.reference', 'collectionsSubject.reference');
-  g.wire('followUpSubject.result', 'followUp.subject');
+  g.wire('step.review', 'review.exec');
+  g.wire('step.reconcile', 'reconcile.exec');
+  g.wire('entry.claimId', 'payerContext.claimId', 'collectionsContext.claimId');
+  g.wire('step.coverageId', 'payerContext.coverageId');
+  g.wire('step.payer', 'payerContext.payer', 'payerSubject.payer');
+  g.wire('step.balanceCents', 'payerContext.balanceCents', 'collectionsContext.balanceCents');
+  g.wire('payerContext.object', 'followUp.context', 'review.context', 'reconcile.context');
+  g.wire('step.reference', 'payerSubject.reference', 'collectionsSubject.reference');
+  g.wire('payerSubject.result', 'followUp.subject', 'review.subject', 'reconcile.subject');
+  g.wire('review.approve', 'approve.exec');
+  g.wire('reconcile.continue', 'reconciled.exec');
+  g.wire('reconcile.writeOff', 'closeWrittenOff.exec');
+  for (const id of ['approve', 'reconciled']) {
+    g.wire('entry.claimId', `${id}.claimId`);
+    g.wire('step.coverageId', `${id}.coverageId`);
+  }
   for (const [outcome, id] of [
     ['resubmit', 'resubmit'],
     ['keepWaiting', 'keepWaiting'],
@@ -1508,11 +1546,11 @@ const ingestNemsis = (): GraphDef => {
   });
   g.add('split', 'nemsis.split');
   g.add('items', 'std.list.reshape', {
-    label: 'One input per report',
+    label: 'One Input per Report',
     config: { fields: [{ name: 'report', type: BLOB, from: '' }] }
   });
   g.add('spawn', 'std.flow.spawn-workflows', {
-    label: 'Claim each encounter',
+    label: 'Claim Each Encounter',
     config: { workflow: 'billing.encounter-to-claim', version: 1 }
   });
   g.ret('return');

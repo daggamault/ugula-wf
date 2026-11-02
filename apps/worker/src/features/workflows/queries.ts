@@ -11,7 +11,7 @@ import {
   TERMINAL_RUN_STATUSES
 } from '@ugula/db';
 import type { Json, RunState, TraceEntry, Values } from '@ugula/graph';
-import { advance, enqueueRuns, type JobBoss, type RunJob } from '@ugula/jobs';
+import { advance, enqueueRuns, type RunJob, type RunQueueClient } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
 
 export type ClaimedRun = {
@@ -168,7 +168,7 @@ export const buildClaim = (db: Kysely<Database>, { runId, command }: RunJob, lea
   ]);
 };
 
-const createRunTx = (tx: Kysely<Database>, boss: JobBoss): RunTx => ({
+const createRunTx = (tx: Kysely<Database>, boss: RunQueueClient): RunTx => ({
   saveRun: async (run, patch) => {
     const saved = await tx
       .updateTable('workflow_runs')
@@ -353,7 +353,7 @@ const createRunTx = (tx: Kysely<Database>, boss: JobBoss): RunTx => ({
   enqueue: (jobs) => enqueueRuns(boss, sqlExecutor(tx), jobs)
 });
 
-export const createRunStore = ({ db, boss }: { db: Db; boss: JobBoss }): RunStore => ({
+export const createRunStore = ({ db, boss }: { db: Db; boss: RunQueueClient }): RunStore => ({
   claim: async (job, leaseMs) => {
     const row = await buildClaim(db, job, leaseMs).executeTakeFirst();
     return (

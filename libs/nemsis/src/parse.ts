@@ -1,12 +1,5 @@
+import type { Json } from '@ugula/graph';
 import { XMLBuilder, XMLParser } from 'fast-xml-parser';
-
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
 
 const REPEATING = new Set([
   'PatientCareReport',
@@ -31,12 +24,12 @@ const parser = new XMLParser({
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-export const parseDataset = (xml: string): { reports: JsonValue[] } => {
+export const parseDataset = (xml: string): { reports: Json[] } => {
   if (/<!DOCTYPE/i.test(xml)) throw new Error('NEMSIS files must not declare a DOCTYPE');
   const dataset: unknown = parser.parse(xml).EMSDataSet;
   if (!isRecord(dataset)) throw new Error('Not a NEMSIS EMSDataSet document');
   const reports = isRecord(dataset.Header) ? dataset.Header.PatientCareReport : undefined;
-  return { reports: Array.isArray(reports) ? (reports as JsonValue[]) : [] };
+  return { reports: Array.isArray(reports) ? (reports as Json[]) : [] };
 };
 
 const findText = (value: unknown, key: string): string | null => {
@@ -67,5 +60,5 @@ const builder = new XMLBuilder({
   suppressEmptyNode: true
 });
 
-export const reportXml = (report: JsonValue) =>
+export const reportXml = (report: Json) =>
   String(builder.build({ PatientCareReport: report })).trim();

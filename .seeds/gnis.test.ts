@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { deflateRawSync, gzipSync } from 'node:zlib';
-import { createDummyDb } from '@ugula/db';
+import { createDummyDb } from '@ugula/db/testing';
 import {
   buildUpsertPlaces,
   federalCodeFiles,
@@ -12,10 +12,10 @@ import {
   parsePopulatedPlaces,
   placeName,
   readPlaces,
-  toTsv,
-  unzipTexts
+  toTsv
 } from './gnis.ts';
 import { buildPlaces, PLACES_FILE } from './gnis-build.ts';
+import { unzipTexts } from './zip.ts';
 
 const zipOf = (name: string, text: string) => {
   const data = deflateRawSync(Buffer.from(text));

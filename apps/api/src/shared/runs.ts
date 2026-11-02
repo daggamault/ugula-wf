@@ -1,5 +1,5 @@
 import { type Database, pinRunGraphs, sqlExecutor } from '@ugula/db';
-import { advance, enqueueRuns, type JobBoss, resume } from '@ugula/jobs';
+import { advance, enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
 
 export type NewRun = {
@@ -19,7 +19,7 @@ export const buildInsertRun = (db: Kysely<Database>, run: NewRun) =>
     })
     .returning('id');
 
-export const startRun = async (tx: Kysely<Database>, boss: JobBoss, run: NewRun) => {
+export const startRun = async (tx: Kysely<Database>, boss: RunQueueClient, run: NewRun) => {
   const { id } = await buildInsertRun(tx, run).executeTakeFirstOrThrow();
   await pinRunGraphs(tx, { id, tenantId: run.tenantId, versionId: run.versionId });
   await enqueueRuns(boss, sqlExecutor(tx), [advance(id)]);
@@ -48,7 +48,7 @@ const countSignal = (db: Kysely<Database>, tenantId: string, waitKey: string) =>
 
 export const signalRuns = async (
   tx: Kysely<Database>,
-  boss: JobBoss,
+  boss: RunQueueClient,
   signal: { tenantId: string; name: string; key: string; payload: unknown }
 ) => {
   const waitKey = `${signal.name}:${signal.key}`;

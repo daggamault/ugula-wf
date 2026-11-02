@@ -73,7 +73,75 @@
                 "patterns": [
                   {
                     "group": ["@ugula/*"],
-                    "message": "Libs never import other libs."
+                    "message": "Kernel and infrastructure libs import no other libs."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["libs/billing/**", "libs/nemsis/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@ugula/*", "!@ugula/graph", "!@ugula/graph/*"],
+                    "message": "Domain libs build only on the graph kernel."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["libs/db/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@ugula/*", "!@ugula/billing", "!@ugula/billing/*"],
+                    "message": "The database schema imports only the domain types it stores."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["libs/catalog/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@ugula/*",
+                      "!@ugula/graph",
+                      "!@ugula/graph/*",
+                      "!@ugula/nemsis",
+                      "!@ugula/nemsis/*",
+                      "!@ugula/billing",
+                      "!@ugula/billing/*"
+                    ],
+                    "message": "The catalog composes the graph kernel and domain libs only."
                   }
                 ]
               }

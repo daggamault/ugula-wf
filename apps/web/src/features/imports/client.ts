@@ -1,18 +1,11 @@
 import type { Api } from '../../shared/api.ts';
+import type { RunStatus } from '../../shared/ui/run-status-badge.tsx';
 import type { Page } from '../../shared/url-state.ts';
 
 export type ImportResult = {
   runId: string;
   file: { bucket: string; key: string; size: number; contentType: string };
 };
-
-export type ImportRunStatus =
-  | 'running'
-  | 'suspended'
-  | 'completed'
-  | 'faulted'
-  | 'failed'
-  | 'cancelled';
 
 export type ImportSummary = {
   id: string;
@@ -21,7 +14,7 @@ export type ImportSummary = {
   report_count: number | null;
   created_at: string;
   run_id: string;
-  run_status: ImportRunStatus;
+  run_status: RunStatus;
   uploaded_by_email: string | null;
   completed: number;
   waiting: number;
@@ -36,7 +29,7 @@ export type ImportReport = {
   id: string;
   position: number;
   pcr_number: string | null;
-  run_status: ImportRunStatus | null;
+  run_status: RunStatus | null;
   claim_id: string | null;
   total_cents: number | null;
   first_name: string | null;

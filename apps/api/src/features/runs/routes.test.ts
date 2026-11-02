@@ -22,10 +22,11 @@ const service = {
   steps: record({ steps: [] }),
   start: record({ id: 'r1', version: 1 }),
   cancel: async () => fail('conflict', 'Run already finished'),
-  signal: record({ resumed: 3 })
+  signal: record({ resumed: 3 }),
+  uploadFile: record({ file: { bucket: 'b', key: 'k' }, name: 'a.xml' })
 } as unknown as RunService;
 
-const request = withSession(createRunRoutes(service));
+const request = withSession(createRunRoutes(service, 1_000));
 
 describe('run routes', () => {
   it('translate query filters', async () => {
@@ -54,5 +55,14 @@ describe('run routes', () => {
 
   it('map cancel conflicts', async () => {
     assert.equal((await request(`/${ID}/cancel`, { method: 'POST' })).status, 409);
+  });
+});
+
+describe('run input file uploads', () => {
+  it('accepts a file form and rejects a form without a file', async () => {
+    const form = new FormData();
+    form.set('file', new File(['<x/>'], 'a.xml', { type: 'text/xml' }));
+    assert.equal((await request('/files', { method: 'POST', body: form })).status, 201);
+    assert.equal((await request('/files', { method: 'POST', body: new FormData() })).status, 400);
   });
 });

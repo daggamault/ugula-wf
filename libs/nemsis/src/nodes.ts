@@ -1,17 +1,6 @@
-import { type JsonValue, parseDataset, pcrNumberOf } from './parse.ts';
+import { actionNode, type Json, type NodeDef, pin } from '@ugula/graph';
+import { parseDataset, pcrNumberOf } from './parse.ts';
 import { PCR_TYPE, placeCodes, resolvePlaces, toPcr } from './pcr.ts';
-
-type ValueType =
-  | 'any'
-  | 'string'
-  | 'number'
-  | 'integer'
-  | 'boolean'
-  | 'datetime'
-  | { list: ValueType }
-  | { object: Record<string, ValueType> };
-
-type Pin = { name: string; type: ValueType };
 
 type BlobLocation = { bucket: string; key: string };
 
@@ -27,29 +16,12 @@ export type ReportStore = {
   findPlaces: (codes: string[]) => Promise<Record<string, string>>;
 };
 
-export type HostNode = {
-  type: string;
-  version: number;
-  title: string;
-  category: string;
-  description: string;
-  effect: boolean;
-  signature: { execIn: string[]; execOut: string[]; inputs: Pin[]; outputs: Pin[] };
-  run: (inv: { read: (pin: string) => Promise<unknown>; ctx: { runId: string } }) => Promise<{
-    type: 'next';
-    pin: string;
-    outputs: Record<string, JsonValue>;
-  }>;
+const BLOB = { object: { bucket: 'string', key: 'string' } } as const;
+
+const blobOf = (x: { bucket: string | null; key: string | null }): BlobLocation => {
+  if (!x.bucket || !x.key) throw new Error('A stored file needs a bucket and key');
+  return { bucket: x.bucket, key: x.key };
 };
-
-const BLOB: ValueType = { object: { bucket: 'string', key: 'string' } };
-
-const action = (inputs: Pin[], outputs: Pin[]) => ({
-  execIn: ['exec'],
-  execOut: ['then'],
-  inputs,
-  outputs
-});
 
 export const reportKey = (file: BlobLocation, index: number) =>
   `${file.key}.reports/${String(index).padStart(5, '0')}.json`;
@@ -70,29 +42,23 @@ const mapLimited = async <T, R>(
   return results;
 };
 
-export const createNemsisNodes = (store: ReportStore | null): HostNode[] => {
+export const createNemsisNodes = (store: ReportStore | null): NodeDef[] => {
   const storage = () => {
     if (!store) throw new Error('NEMSIS nodes need blob storage, which only the worker provides');
     return store;
   };
   return [
-    {
+    actionNode({
       type: 'nemsis.split',
-      version: 1,
       title: 'Split NEMSIS File',
       category: 'NEMSIS',
       description:
         'Parses a NEMSIS 3.5 EMSDataSet file, stores each patient care report as its own blob and records the reports against the import.',
       effect: true,
-      signature: action(
-        [{ name: 'file', type: BLOB }],
-        [
-          { name: 'reports', type: { list: BLOB } },
-          { name: 'count', type: 'integer' }
-        ]
-      ),
-      run: async ({ read, ctx }) => {
-        const file = (await read('file')) as BlobLocation;
+      inputs: [pin('file', BLOB)],
+      outputs: [pin('reports', { list: BLOB }), pin('count', 'integer')],
+      compute: async (inputs, _, ctx) => {
+        const file = blobOf(inputs.file);
         const { reports } = parseDataset(await storage().getText(ctx.runId, file));
         const refs = await mapLimited(reports, UPLOAD_CONCURRENCY, (report, i) =>
           storage().putJson(ctx.runId, reportKey(file, i), report)
@@ -102,34 +68,24 @@ export const createNemsisNodes = (store: ReportStore | null): HostNode[] => {
           file,
           refs.map((report, i) => ({ position: i, pcrNumber: pcrNumberOf(reports[i]), report }))
         );
-        return { type: 'next', pin: 'then', outputs: { reports: refs, count: refs.length } };
+        return { reports: refs, count: refs.length };
       }
-    },
-    {
+    }),
+    actionNode({
       type: 'nemsis.read-report',
-      version: 1,
       title: 'Read Patient Care Report',
       category: 'NEMSIS',
       description:
         'Loads one stored patient care report as typed sections (patient, times, payment, disposition and more) for Break nodes to split into fields, with GNIS city codes resolved to place names. Also outputs the raw report.',
-      effect: false,
-      signature: action(
-        [{ name: 'report', type: BLOB }],
-        [
-          { name: 'pcr', type: PCR_TYPE },
-          { name: 'data', type: { object: {} } }
-        ]
-      ),
-      run: async ({ read, ctx }) => {
-        const data = (await storage().getJson(
-          ctx.runId,
-          (await read('report')) as BlobLocation
-        )) as JsonValue;
+      inputs: [pin('report', BLOB)],
+      outputs: [pin('pcr', PCR_TYPE), pin('data', { object: {} })],
+      compute: async (inputs, _, ctx) => {
+        const data = (await storage().getJson(ctx.runId, blobOf(inputs.report))) as Json;
         const pcr = toPcr(data);
         const codes = placeCodes(pcr);
         const names = codes.length ? await storage().findPlaces(codes) : {};
-        return { type: 'next', pin: 'then', outputs: { pcr: resolvePlaces(pcr, names), data } };
+        return { pcr: resolvePlaces(pcr, names), data };
       }
-    }
+    })
   ];
 };

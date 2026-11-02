@@ -9,9 +9,9 @@ import {
   POPULATED_PLACES_URL,
   parseFederalCodes,
   parsePopulatedPlaces,
-  toTsv,
-  unzipTexts
+  toTsv
 } from './gnis.ts';
+import { download, unzipTexts } from './zip.ts';
 
 export const PLACES_FILE = new URL('./data/gnis-places.tsv.gz', import.meta.url);
 
@@ -31,12 +31,6 @@ export const buildPlaces = async (download: (url: string) => Promise<Buffer>) =>
     parsePopulatedPlaces
   );
   return mergePlaces(populated, ...federal);
-};
-
-const download = async (url: string) => {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url}: ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
 };
 
 if (import.meta.main) {

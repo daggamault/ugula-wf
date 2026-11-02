@@ -1,5 +1,5 @@
 import type { Database } from '@ugula/db';
-import type { LiveEvent } from '@ugula/events';
+import type { LiveEvent } from '@ugula/live';
 import type { Kysely } from 'kysely';
 import { runTenant } from './tenancy.ts';
 

@@ -1,9 +1,7 @@
-import { billingModels, createBillingNodes } from '@ugula/billing';
+import { createNodeCatalog } from '@ugula/catalog';
 import {
   combineSources,
-  createModelNodes,
   createRegistry,
-  createStdNodes,
   ENTRY_TYPE,
   type GraphDef,
   type NodeInstance,
@@ -15,7 +13,6 @@ import {
   stdGraphSource,
   stdGraphs
 } from '@ugula/graph';
-import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
 
 export type PublishedNode = {
   graph_id: string;
@@ -42,14 +39,10 @@ export type Catalog = {
   palette: PaletteEntry[];
   signatureOf: (inst: NodeInstance, owner: GraphDef) => Signature | null;
   titleOf: (inst: NodeInstance) => string;
-  /** What the node does, in a sentence or two. */
   describe: (inst: NodeInstance) => string;
-  /** Whether the node takes settings beyond its inputs. */
   hasConfig: (inst: NodeInstance) => boolean;
   graphOf: (ref: NodeRef) => GraphDef | undefined;
-  /** What double-clicking the node opens: its own sub-graph, or the workflow it starts as runs. */
   opensAs: (inst: NodeInstance) => 'graph' | 'workflow' | null;
-  /** The published workflow a node refers to, for linking to its editor. */
   publishedOf: (inst: NodeInstance) => PublishedNode | undefined;
 };
 
@@ -68,12 +61,7 @@ const workflowRefOf = (inst: NodeInstance): NodeRef | null => {
     : null;
 };
 
-const stdNodes = [
-  ...createStdNodes({ fetch: (...args) => fetch(...args) }),
-  ...createNemsisNodes(null),
-  ...createBillingNodes(null),
-  ...createModelNodes([...nemsisModels, ...billingModels])
-];
+const stdNodes = createNodeCatalog({ fetch: (...args) => fetch(...args) });
 
 export const titleFromKey = (key: string) =>
   (key.split('.').at(-1) ?? key)

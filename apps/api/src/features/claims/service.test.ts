@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
-import type { JobBoss } from '@ugula/jobs';
+import { createRecordingDb } from '@ugula/db/testing';
+import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
 import { recordAnnouncements } from '../../shared/testing.ts';
 import { createClaimService, planPayerOrder } from './service.ts';
@@ -12,7 +12,7 @@ const BLUE = '01a16617-7704-7ba6-b9b5-000000000002';
 
 const claim = {
   id: 'c1',
-  status: 'open',
+  status: 'submitted',
   patient_id: 'p1',
   total_cents: 100_000,
   balance_cents: 100_000,
@@ -51,7 +51,7 @@ const setup = ({
     return [];
   });
   const jobs: unknown[] = [];
-  const boss: JobBoss = { insert: async (_n, batch) => void jobs.push(...batch) };
+  const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
   const now = () => new Date('2026-01-01T12:00:00.000Z');
   const blobs = { getBytes: async () => new TextEncoder().encode('%PDF-1.7') };
   const { announce, events: announced } = recordAnnouncements();
@@ -263,6 +263,11 @@ describe('claim service', () => {
     assert.equal(open.jobs.length, 1);
     const closed = setup({ row: { ...claim, status: 'paid' } });
     assert.match(failure(await closed.service.setPayers('t', 'c1', [])), /^conflict/);
+    const draft = setup({ row: { ...claim, status: 'draft' } });
+    assert.match(
+      failure(await draft.service.setPayers('t', 'c1', [])),
+      /^conflict: This claim is still a draft/
+    );
     assert.match(
       failure(await setup({ row: null }).service.setPayers('t', 'c1', [])),
       /^not_found/
@@ -301,6 +306,8 @@ describe('claim service', () => {
     });
     const paid = await setup({ row: { ...claim, status: 'paid' } }).service.find('t', 'c1');
     assert.equal(paid.ok && paid.value.progress, null);
+    const draft = await setup({ row: { ...claim, status: 'draft' } }).service.find('t', 'c1');
+    assert.equal(draft.ok && draft.value.progress, null);
     assert.match(failure(await setup({ row: null }).service.find('t', 'c1')), /^not_found/);
     assert.equal(
       (

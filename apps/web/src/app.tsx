@@ -14,9 +14,8 @@ import { lazy, type ReactNode, Suspense, useEffect, useMemo } from 'react';
 import { AuthGate } from './features/auth/auth-gate.tsx';
 import type { AuthClient } from './features/auth/client.ts';
 import { CLAIM_TABS, ClaimPage } from './features/claims/claim-page.tsx';
-import { CLAIM_VIEWS, ClaimsPage } from './features/claims/claims-page.tsx';
-import type { ClaimsClient, ClaimView } from './features/claims/client.ts';
-import { FilesPage } from './features/claims/files-page.tsx';
+import { ClaimsPage } from './features/claims/claims-page.tsx';
+import { type ClaimsClient, claimSearchOf } from './features/claims/client.ts';
 import { PatientClaims } from './features/claims/patient-claims.tsx';
 import type { FeesClient } from './features/fees/client.ts';
 import { FeesPage } from './features/fees/fees-page.tsx';
@@ -29,8 +28,12 @@ import { type PatientsClient, searchOf } from './features/patients/client.ts';
 import { PatientPage } from './features/patients/patient-page.tsx';
 import { PatientsPage } from './features/patients/patients-page.tsx';
 import type { ReportsClient } from './features/reports/client.ts';
-import { ReportPage, ReportsPage } from './features/reports/reports-page.tsx';
-import type { RunStatus, RunsClient } from './features/runs/client.ts';
+import {
+  ReportOptionsPage,
+  ReportResultsPage,
+  ReportsPage
+} from './features/reports/reports-page.tsx';
+import type { RunsClient } from './features/runs/client.ts';
 import { parseAt } from './features/runs/inspect.ts';
 import { RunsPage } from './features/runs/runs-page.tsx';
 import { StartRunPage } from './features/runs/start-run-page.tsx';
@@ -43,12 +46,13 @@ import { ASSIGNEES, TasksPage } from './features/tasks/tasks-page.tsx';
 import { useWorkAlerts } from './features/tasks/work-alerts.ts';
 import type { WorkflowsClient } from './features/workflows/client.ts';
 import { parseTrail } from './features/workflows/trail.ts';
-import { GRAPH_FILTERS, WorkflowsPage } from './features/workflows/workflows-page.tsx';
+import { graphFilterOf, WorkflowsPage } from './features/workflows/workflows-page.tsx';
 import { createLive, type Live, useLiveStatus } from './shared/live.ts';
 import type { NotificationsClient } from './shared/notifications.ts';
 import { matchPath, navigate, useLocation } from './shared/router.tsx';
 import { NotificationsButton } from './shared/ui/notifications.tsx';
 import { PageLoading } from './shared/ui/page.tsx';
+import { RUN_STATUSES } from './shared/ui/run-status-badge.tsx';
 import { Shell } from './shared/ui/shell.tsx';
 import { ToastProvider, useToast } from './shared/ui/toast.tsx';
 
@@ -87,10 +91,10 @@ const RunPage = lazy(() =>
 export const HOME = '/tasks';
 
 export const SECTIONS = [
-  { id: 'tasks', label: 'Tasks', href: '/tasks', icon: ListTodoIcon, group: 'Work' },
-  { id: 'claims', label: 'Claims', href: '/claims', icon: ReceiptTextIcon, group: 'Work' },
   { id: 'patients', label: 'Patients', href: '/patients', icon: UsersIcon, group: 'Work' },
   { id: 'imports', label: 'Imports', href: '/imports', icon: FileUpIcon, group: 'Work' },
+  { id: 'claims', label: 'Claims', href: '/claims', icon: ReceiptTextIcon, group: 'Work' },
+  { id: 'tasks', label: 'Tasks', href: '/tasks', icon: ListTodoIcon, group: 'Work' },
   { id: 'reports', label: 'Reports', href: '/reports', icon: ChartColumnIcon, group: 'Work' },
   {
     id: 'workflows',
@@ -105,20 +109,8 @@ export const SECTIONS = [
   { id: 'settings', label: 'Settings', href: '/settings', icon: SettingsIcon, group: 'Admin' }
 ] as const;
 
-const RUN_STATUSES: readonly RunStatus[] = [
-  'running',
-  'suspended',
-  'completed',
-  'faulted',
-  'failed',
-  'cancelled'
-];
-
 const statusParam = (query: URLSearchParams) =>
   RUN_STATUSES.find((s) => s === query.get('status')) ?? null;
-
-const claimViewParam = (query: URLSearchParams): ClaimView =>
-  CLAIM_VIEWS.find((f) => f.value === query.get('view'))?.value ?? 'open';
 
 const assigneeParam = (query: URLSearchParams): Assignee =>
   ASSIGNEES.find((a) => a === query.get('assignee')) ?? 'anyone';
@@ -132,10 +124,7 @@ const routes: readonly Route[] = [
   {
     pattern: '/workflows',
     render: (_, q, c) => (
-      <WorkflowsPage
-        client={c.workflows}
-        show={GRAPH_FILTERS.find((f) => f.value === q.get('show'))?.value ?? 'all'}
-      />
+      <WorkflowsPage client={c.workflows} show={graphFilterOf(q)} search={q.get('q') ?? ''} />
     )
   },
   {
@@ -170,13 +159,7 @@ const routes: readonly Route[] = [
   },
   {
     pattern: '/claims',
-    render: (_, q, c) => (
-      <ClaimsPage client={c.claims} live={c.live} view={claimViewParam(q)} q={q.get('q') ?? ''} />
-    )
-  },
-  {
-    pattern: '/claims/files',
-    render: (_, __, c) => <FilesPage client={c.claims} live={c.live} />
+    render: (_, q, c) => <ClaimsPage client={c.claims} live={c.live} search={claimSearchOf(q)} />
   },
   {
     pattern: '/claims/:id',
@@ -207,10 +190,17 @@ const routes: readonly Route[] = [
   { pattern: '/reports', render: () => <ReportsPage /> },
   {
     pattern: '/reports/:id',
-    render: (p, q, c) => <ReportPage client={c.reports} reportId={p.id ?? ''} query={q} />
+    render: (p, q) => <ReportOptionsPage key={p.id} reportId={p.id ?? ''} query={q} />
+  },
+  {
+    pattern: '/reports/:id/results',
+    render: (p, q, c) => <ReportResultsPage client={c.reports} reportId={p.id ?? ''} query={q} />
   },
   { pattern: '/fees', render: (_, __, c) => <FeesPage client={c.fees} /> },
-  { pattern: '/payers', render: (_, __, c) => <PayersPage client={c.settings} /> },
+  {
+    pattern: '/payers',
+    render: (_, q, c) => <PayersPage client={c.settings} search={q.get('q') ?? ''} />
+  },
   { pattern: '/settings', render: (_, __, c) => <SettingsPage client={c.settings} /> },
   {
     pattern: '/tasks',
@@ -219,7 +209,7 @@ const routes: readonly Route[] = [
         client={c.tasks}
         live={c.live}
         me={c.email}
-        filter={{ queue: q.get('queue'), assignee: assigneeParam(q) }}
+        filter={{ queue: q.get('type'), assignee: assigneeParam(q) }}
       />
     )
   },

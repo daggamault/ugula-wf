@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import { createStdNodes, ENTRY_TYPE, type GraphDef } from '@ugula/graph';
 import type { CompiledQuery } from 'kysely';
 import { createGraphService, keepsContract, templateFor } from './service.ts';

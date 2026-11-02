@@ -10,8 +10,8 @@ import { intentIcons } from './alert.tsx';
 import { Button } from './button.tsx';
 import { EmptyText } from './empty-state.tsx';
 import { IconButton } from './icon-button.tsx';
-import { interactiveClasses } from './interactive.ts';
 import { hidePopover } from './popover.ts';
+import { textLinkClasses } from './text-link.tsx';
 import { accentClasses } from './toast.tsx';
 
 export const NotificationList = ({
@@ -30,10 +30,12 @@ export const NotificationList = ({
             key={n.id}
             className={classNamesOf('flex gap-3 px-4 py-3', n.read ? '' : 'bg-primary/5')}
           >
-            <Icon
-              aria-hidden="true"
-              className={classNamesOf('mt-0.5 size-4.5 shrink-0', accentClasses[n.intent])}
-            />
+            <span className="flex h-5 shrink-0 items-center">
+              <Icon
+                aria-hidden="true"
+                className={classNamesOf('size-4', accentClasses[n.intent])}
+              />
+            </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <p className="text-sm font-semibold">
                 {n.read ? null : <span className="sr-only">New: </span>}
@@ -47,14 +49,7 @@ export const NotificationList = ({
                   {formatAgo(n.at)}
                 </time>
                 {n.action ? (
-                  <Link
-                    to={n.action.to}
-                    onClick={onFollow}
-                    className={classNamesOf(
-                      interactiveClasses,
-                      'text-primary rounded font-semibold hover:underline'
-                    )}
-                  >
+                  <Link to={n.action.to} onClick={onFollow} className={textLinkClasses}>
                     {n.action.label}
                   </Link>
                 ) : null}
@@ -110,10 +105,10 @@ export const NotificationsPanel = ({
         aria-label="Notifications"
         onToggle={onToggle}
         style={{ positionAnchor: anchorName }}
-        className="bg-surface text-surface-fg border-border inset-auto m-2 max-h-[min(32rem,80vh)] w-96 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-xl border p-0 shadow-xl [position-area:bottom_span-right] [position-try-fallbacks:flip-inline]"
+        className="bg-surface text-surface-fg border-border inset-auto m-2 max-h-[min(32rem,80vh)] w-96 max-w-[calc(100vw-1rem)] scale-95 overflow-y-auto rounded-xl border p-0 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out [position-area:bottom_span-right] [position-try-fallbacks:flip-inline] open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0"
       >
-        <div className="border-border bg-surface sticky top-0 flex items-center justify-between gap-2 border-b px-4 py-2">
-          <h2 className="text-sm font-bold">Notifications</h2>
+        <div className="border-border bg-surface sticky top-0 flex items-center justify-between gap-2 border-b px-4 py-3">
+          <h2 className="text-base font-bold">Notifications</h2>
           <Button
             variant="outline"
             size="sm"

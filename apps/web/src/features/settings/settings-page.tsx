@@ -6,7 +6,7 @@ import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { FieldGrid, FieldGroup, FieldGroups, type FieldSpan } from '../../shared/ui/field.tsx';
 import { Input } from '../../shared/ui/input.tsx';
-import { Page, PageLoading } from '../../shared/ui/page.tsx';
+import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
@@ -83,14 +83,16 @@ export const ProfileForm = ({
   onSave
 }: {
   profile: BillingProfile | null;
-  onSave: (profile: BillingProfileInput) => Promise<boolean>;
+  onSave: (profile: BillingProfileInput) => Promise<string | null>;
 }) => {
   const [draft, setDraft] = useState(() => toProfileDraft(profile));
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
-    await onSave(fromProfileDraft(draft));
+    setError('');
+    setError((await onSave(fromProfileDraft(draft))) ?? '');
     setBusy(false);
   };
   const inputs = (fields: ProfileField[], required: boolean) =>
@@ -111,12 +113,6 @@ export const ProfileForm = ({
       <SectionPanel
         title="Billing Profile"
         description="Your agency as it appears on 837P claims and patient statements."
-        actions={
-          <Button type="submit" size="sm" isPending={busy}>
-            <SaveIcon aria-hidden="true" className="size-4" />
-            Save profile
-          </Button>
-        }
       >
         <fieldset disabled={busy}>
           <FieldGroups>
@@ -142,6 +138,13 @@ export const ProfileForm = ({
             </FieldGroup>
           </FieldGroups>
         </fieldset>
+        {error ? <Alert>{error}</Alert> : null}
+        <div className="flex justify-end">
+          <Button type="submit" isPending={busy}>
+            <SaveIcon aria-hidden="true" className="size-4" />
+            Save profile
+          </Button>
+        </div>
       </SectionPanel>
     </form>
   );
@@ -149,39 +152,26 @@ export const ProfileForm = ({
 
 export const SettingsPage = ({ client }: SettingsPageProps) => {
   const profile = useResource('billing-profile', client.profile);
-  const [error, setError] = useState('');
   const notify = useToast();
-  const act = async <T,>(
-    action: () => Promise<T>,
-    done: (result: T) => string,
-    reload: () => void
-  ) => {
-    setError('');
-    try {
-      notify({ title: done(await action()) });
-      reload();
-      return true;
-    } catch (err) {
-      setError(messageOf(err));
-      return false;
-    }
-  };
+  if (profile.error) return <PageFailure message={profile.error.message} />;
   return (
     <Page
       title="Settings"
       description="Your agency's billing identity and clearinghouse, used on every claim and statement."
     >
-      {error ? <Alert>{error}</Alert> : null}
       {profile.data !== undefined ? (
         <ProfileForm
           profile={profile.data}
-          onSave={(p) =>
-            act(
-              () => client.saveProfile(p),
-              () => 'Billing profile saved.',
-              profile.reload
-            )
-          }
+          onSave={async (p) => {
+            try {
+              await client.saveProfile(p);
+              notify({ title: 'Billing profile saved' });
+              profile.reload();
+              return null;
+            } catch (err) {
+              return messageOf(err);
+            }
+          }}
         />
       ) : (
         <PageLoading />

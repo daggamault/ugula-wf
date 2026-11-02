@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { isClaimFilingCode, isValidNpi } from '@ugula/billing';
-import { createDummyDb } from '@ugula/db';
+import { createDummyDb } from '@ugula/db/testing';
 import {
   buildUpsertDemoPayers,
   buildUpsertDemoProfile,
