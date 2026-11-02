@@ -12,7 +12,7 @@ Ugula is a durable, visual workflow engine (think Unreal Blueprints meets n8n) w
 - **Human tasks:** Task nodes create tasks of a type (patient matching, PCR review, follow-ups, collections). Billers see one task list filtered by type and assignee; completing a task resumes its run on the chosen outcome.
 - **Reliability:** Workers lease runs with fencing tokens, a sweeper recovers stalled runs, and transient failures retry while real faults stop the run for inspection and retry from the UI.
 - **Scaling:** Workers scale horizontally. Postgres LISTEN/NOTIFY wakes an idle worker the moment a run is queued. Each worker claims runs only while it has a free slot (`WORKFLOW_CONCURRENCY`) and its event loop and memory are under their limits; over a limit it finishes what it holds and claims nothing new until load falls back. Language-model calls share one cluster-wide limit (`COMPLETIONS_CONCURRENCY`), held as expiring leases in Redis, so adding workers never overloads the model server.
-- **Separation:** The engine and its standard library (`libs/graph`) know nothing about billing. NEMSIS and billing nodes and models live in `libs/nemsis` and `libs/billing` and reach the database only through ports the worker implements.
+- **Separation:** The engine and its standard library (`libs/kernel/graph`) know nothing about billing. NEMSIS and billing nodes and models live in `libs/domain/nemsis` and `libs/domain/billing` and reach the database only through ports the worker implements.
 
 ### Building Blocks
 
@@ -49,20 +49,19 @@ Workflows are built from small, general nodes, so agencies can change billing lo
 
 ## Layout
 
-| Path                                                                                 | Purpose                                                                                                 |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `apps/api`                                                                           | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, patients, notifications, reports             |
-| `apps/worker`                                                                        | Executes workflow runs from the pg-boss queue and implements billing store ports                        |
-| `apps/sse`                                                                           | Pushes live run, task, claim and import updates over Server-Sent Events (via Redis)                     |
-| `apps/web`                                                                           | React app: tasks, claims, patients, imports, reports, workflows, runs, payers, fees, settings           |
-| `libs/graph`                                                                         | Workflow engine, expression language, and standard node library                                         |
-| `libs/billing`                                                                       | Billing domain: patient and payer matching, narrative reading, pricing, claim cycle, 837P               |
-| `libs/catalog`                                                                       | The one node catalog of standard, NEMSIS, billing and model nodes                                       |
-| `libs/inference`                                                                     | Clients for the local embeddings and structured-completions services                                    |
-| `libs/nemsis`                                                                        | NEMSIS XML parsing, and the element names and code descriptions a report uses                           |
-| `libs/db`, `libs/run-queue`, `libs/storage`, `libs/live`, `libs/auth`, `libs/config` | Infrastructure: Postgres/Kysely, the run queue, S3 storage, live events, passwords and sessions, config |
-| `.migrations`, `.seeds`                                                              | Schema and seed data (billing graphs, GNIS place names, NEMSIS definitions, demo fees and payers)       |
-| `.e2e`                                                                               | Browser tests of the billing flow against a running stack (`pnpm e2e`)                                  |
+| Path                    | Purpose                                                                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`              | Hono HTTP API: auth, graphs, runs, tasks, imports, claims, patients, notifications, reports                                            |
+| `apps/worker`           | Executes workflow runs from the pg-boss queue and implements billing store ports                                                       |
+| `apps/sse`              | Pushes live run, task, claim and import updates over Server-Sent Events (via Redis)                                                    |
+| `apps/web`              | React app: tasks, claims, patients, imports, reports, workflows, runs, payers, fees, settings                                          |
+| `libs/kernel`           | `graph` (workflow engine, expression language, standard nodes), `config` (validators), `live` (live event contract)                    |
+| `libs/platform`         | Domain-free I/O: `auth` (passwords, sessions), `inference` (embeddings, completions), `run-queue`, `storage` (S3)                      |
+| `libs/domain`           | `billing` (patient and payer matching, narrative reading, pricing, claim cycle, 837P), `nemsis` (XML parsing, element names and codes) |
+| `libs/data`             | `db`: Postgres/Kysely client and schema                                                                                                |
+| `libs/composition`      | `catalog`: the one node catalog of standard, NEMSIS, billing and model nodes                                                           |
+| `.migrations`, `.seeds` | Schema and seed data (billing graphs, GNIS place names, NEMSIS definitions, demo fees and payers)                                      |
+| `.e2e`                  | Browser tests of the billing flow against a running stack (`pnpm e2e`)                                                                 |
 
 **Stack:** Node, TypeScript, pnpm workspaces, Postgres (Kysely, pgvector, pg_trgm), pg-boss, Redis, S3-compatible storage (RustFS), local models (text-embeddings-inference with Qwen3-Embedding, llama.cpp with Qwen3.5), Hono, valibot, React, Tailwind, React Flow, Biome.
 
@@ -119,8 +118,8 @@ This repository enforces strict, consistent standards across all applications, l
 
 - **Root-Only Dependency Management:**
   - All third-party `dependencies` and `devDependencies` are declared and versioned exclusively in the root `package.json`.
-  - Workspace apps (`apps/*`) and libraries (`libs/*`) never declare external npm dependencies in their own `package.json`.
-  - Apps only declare `"workspace:*"` references to internal `libs/*` in their `package.json` to explicitly control scope and access boundaries.
+  - Workspace apps (`apps/*`) and libraries (`libs/<layer>/*`) never declare external npm dependencies in their own `package.json`.
+  - Apps and libraries declare a `"workspace:*"` reference to exactly the internal libs they import, and nothing else, so each `package.json` states its boundaries.
 - **Application Conventions & Build Pipeline (`apps/*`):**
   - Every application uses `src/main.ts` as its entry point and composition root.
   - All applications (`web`, `api`, `sse`, `worker`) build with **Vite 8** directly into `/dist/{app}`.
@@ -132,12 +131,15 @@ This repository enforces strict, consistent standards across all applications, l
   - Maintain consistent file naming and structure across features (e.g., `routes.ts`, `schemas.ts`, `service.ts`, `queries.ts`).
 - **Strict Library Boundaries (`libs/*`):**
   - Libraries are pure TypeScript source packages referenced directly by applications with no separate build step.
-  - Libraries are layered, and dependencies only point inward. Biome enforces each layer, and a lib declares every `@ugula/*` lib it imports as `"workspace:*"`:
-    - **Kernel:** `graph` (the engine and the node contract) imports no other lib.
-    - **Infrastructure:** `auth`, `config`, `inference`, `live`, `run-queue` and `storage` import no other lib.
-    - **Domain:** `nemsis` and `billing` build only on `graph`. They reach the outside world through ports (store types) that apps implement.
-    - **Persistence:** `db` imports only the domain types it stores (e.g. claim statuses from `billing`), so an enum has one definition shared by code, Kysely types and migration `CHECK` constraints.
-    - **Composition:** `catalog` assembles the one node catalog (standard, NEMSIS, billing and model nodes) that the api, worker and web all use.
+  - Libraries live in layer folders, `libs/<layer>/<name>`, and import only libs in the layers their layer allows. A lib never imports a lib in its own layer, so nothing points sideways or upward:
+    - **`kernel`** (`graph`, `config`, `live`): pure, runtime-agnostic foundations and contracts. Imports no lib.
+    - **`platform`** (`auth`, `inference`, `run-queue`, `storage`): I/O adapters with no domain knowledge. Imports `kernel`.
+    - **`domain`** (`billing`, `nemsis`): the business models, rules and nodes every feature builds on. No I/O; it reaches the outside world through ports (store types) that apps implement. Imports `kernel`.
+    - **`data`** (`db`): persistence over domain types, so an enum has one definition shared by code, Kysely types and migration `CHECK` constraints. Imports `domain`, `platform` and `kernel`.
+    - **`composition`** (`catalog`): assembles several domains into one thing all apps share. Imports `domain` and `kernel`.
+  - Apps sit on top of every layer; `web` runs in the browser and imports only `kernel`, `domain` and `composition`.
+  - Domain models cross features: when two features need the same thing, move it down instead of across, to `domain` for a business concept, `data` for shared persistence, `platform` for I/O plumbing, or the app's `src/shared/` for app mechanics.
+  - `libs/boundaries.test.ts` enforces the layers, that every package declares exactly the `@ugula/*` libs it imports as `"workspace:*"`, and that relative imports never leave their package. Adding a lib to a layer folder needs no configuration.
   - Dependencies flow one way from `apps/*` into `libs/*`; a lib never imports an app.
 - **Nodes:** Define nodes with `pureNode`, `actionNode` or `branchNode` and `pin()` from `@ugula/graph`. Inputs are typed from their pins, and the engine checks required inputs, input and output types and exec outputs, so node code never re-checks them by hand; it only checks domain rules.
   - Keep libraries stateless, dependency-injected, and decoupled from application-specific configuration.

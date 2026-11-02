@@ -1,6 +1,6 @@
 packages:
   - apps/*
-  - libs/*
+  - libs/*/*
 allowBuilds:
   esbuild: false
 minimumReleaseAge: 1440

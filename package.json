@@ -18,7 +18,7 @@
     "dev": "pnpm -r --parallel run dev",
     "build": "pnpm -r --parallel run build",
     "typecheck": "tsc --noEmit && pnpm -r --parallel run typecheck",
-    "test": "node --test .migrations/*.test.ts .seeds/*.test.ts .e2e/*.test.ts && pnpm -r --parallel run test",
+    "test": "node --test .migrations/*.test.ts .seeds/*.test.ts .e2e/*.test.ts libs/*.test.ts && pnpm -r --parallel run test",
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "db:migrate": "tsx --env-file=.env .migrations/migrate.ts",
