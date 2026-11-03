@@ -50,7 +50,10 @@ const HCPCS = new RegExp(HCPCS_PATTERN);
 
 const STEP = 10 ** UNIT_SCALE;
 
-export const roundUnits = (units: number) => Math.ceil(units * STEP - 1e-9) / STEP;
+const WHOLE_UNITS_FROM = 100;
+
+export const roundUnits = (units: number) =>
+  units >= WHOLE_UNITS_FROM ? Math.ceil(units - 1e-9) : Math.ceil(units * STEP - 1e-9) / STEP;
 
 export const isTransport = (lines: readonly ClaimLine[]) =>
   lines.some((l) => l.code !== NO_TRANSPORT_CODE);

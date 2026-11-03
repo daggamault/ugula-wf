@@ -7,8 +7,10 @@ import { narrativeNodes } from './narrative.ts';
 describe('narrativeNodes', () => {
   it('reads narrative findings with the language model, skipping empty narratives', async () => {
     const model = scriptedCompleter(() => ({
-      medications: [{ medication: 'fentanyl', route: 'IV', doses: 2 }],
-      procedures: ['intraosseous line']
+      medications: [
+        { medication: 'fentanyl', route: 'IV', doses: 2, evidence: 'Fentanyl 50 IV x2' }
+      ],
+      procedures: [{ procedure: 'intraosseous line', evidence: 'IO tibia' }]
     }));
     const stores = billingStores({ completer: model.completer });
     const [read] = narrativeNodes(() => stores);

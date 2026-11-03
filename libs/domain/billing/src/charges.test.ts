@@ -33,6 +33,14 @@ describe('readLines', () => {
     assert.equal(roundUnits(1.1000000000000085), 1.1);
     assert.equal(roundUnits(1.11), 1.2);
     assert.equal(roundUnits(1.0999999999999943), 1.1);
+    assert.equal(roundUnits(0.31), 0.4);
+    assert.equal(roundUnits(99.91), 100);
+  });
+
+  it('rounds units up to whole miles from 100 miles, as Medicare asks', () => {
+    assert.equal(roundUnits(100), 100);
+    assert.equal(roundUnits(100.2), 101);
+    assert.equal(roundUnits(998.5), 999);
   });
 
   it('rejects empty claims, bad codes and bad units', () => {

@@ -54,9 +54,11 @@ export const remittancePosting = (c: RemittanceClaim): RemittancePosting => {
   return {
     post: true,
     paidCents: c.paidCents,
-    adjustedCents: adjustments
-      .filter((a) => a.group !== PATIENT_RESPONSIBILITY)
-      .reduce((sum, a) => sum + a.cents, 0),
+    adjustedCents: c.denied
+      ? 0
+      : adjustments
+          .filter((a) => a.group !== PATIENT_RESPONSIBILITY)
+          .reduce((sum, a) => sum + a.cents, 0),
     adjustments,
     payerClaimNumber: c.payerClaimNumber
   };

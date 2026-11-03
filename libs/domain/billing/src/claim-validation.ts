@@ -304,7 +304,10 @@ export const claimIssues = (c: ClaimCheck, asOf: Date | null = null): ClaimIssue
   ...when(c.emergency === null, blocking('emergency', 'Say whether the response was an emergency')),
   ...when(
     c.tripType === 'scheduled' && c.emergency === true,
-    warning('emergency', 'A scheduled trip is marked as an emergency response')
+    warning(
+      'emergency',
+      'A scheduled trip is billed as an emergency; confirm the unit responded immediately'
+    )
   ),
   ...lineIssues(c),
   ...when(

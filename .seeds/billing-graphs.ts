@@ -65,8 +65,28 @@ const table = (
 
 const is = (value: Json) => ({ op: 'is', value });
 const oneOf = (...value: string[]) => ({ op: 'oneOf', value });
+const notOneOf = (...value: string[]) => ({ op: 'notOneOf', value });
 const atLeast = (value: number) => ({ op: 'gte', value });
 const startsWith = (...value: string[]) => ({ op: 'startsWith', value });
+
+const INTERFACILITY = ['2205005', '2205015', '2205017', '2205019'];
+
+const NON_PATIENT_SERVICES = [
+  '2205011',
+  '2205013',
+  '2205021',
+  '2205023',
+  '2205025',
+  '2205027',
+  '2205029',
+  '2205031',
+  '2205033',
+  '2205035'
+];
+
+const TRANSPORTED = ['4230001', '4230003'];
+
+const TRANSPORTED_INCIDENTS = ['4212013', '4212017', '4212023', '4212033'];
 
 const classifyTrip = (): GraphDef => {
   const g = pure([p('pcr', PCR_TYPE)], [p('tripType', 'string'), p('reason', 'string', true)]);
@@ -115,6 +135,15 @@ const classifyTrip = (): GraphDef => {
           set: { tripType: 'noClaim' }
         },
         {
+          label: 'Non-patient service requested and nobody transported',
+          when: {
+            serviceType: oneOf(...NON_PATIENT_SERVICES),
+            incidentDisposition: notOneOf(...TRANSPORTED_INCIDENTS),
+            transportDisposition: notOneOf(...TRANSPORTED)
+          },
+          set: { tripType: 'noClaim' }
+        },
+        {
           label: 'Patient refused care',
           when: { incidentDisposition: oneOf('4212025') },
           set: { tripType: 'refusal' }
@@ -150,7 +179,7 @@ const classifyTrip = (): GraphDef => {
         },
         {
           label: 'Scheduled or interfacility transport',
-          when: { serviceType: oneOf('2205005', '2205007', '2205015', '2205017', '2205019') },
+          when: { serviceType: oneOf(...INTERFACILITY, '2205007') },
           set: { tripType: 'scheduled' }
         },
         {
@@ -160,12 +189,12 @@ const classifyTrip = (): GraphDef => {
         },
         {
           label: 'Patient treated and transported by this unit',
-          when: { incidentDisposition: oneOf('4212033') },
+          when: { incidentDisposition: oneOf(...TRANSPORTED_INCIDENTS) },
           set: { tripType: 'emergency' }
         },
         {
           label: 'Patient transported by this unit',
-          when: { transportDisposition: oneOf('4230001', '4230003') },
+          when: { transportDisposition: oneOf(...TRANSPORTED) },
           set: { tripType: 'emergency' }
         }
       ],
@@ -227,7 +256,35 @@ const loadedMiles = (): GraphDef => {
 
 const IV_ROUTES = ['9927021', '9927023', '9927069'];
 
+const IV_SOLUTIONS = [
+  '9863',
+  '4850',
+  '56489',
+  '313002',
+  '1807639',
+  '309778',
+  '1795477',
+  '1795480',
+  '1795481',
+  '2262603',
+  '260258',
+  '237653',
+  '847630',
+  '847627'
+];
+
 const ALS2_PROCEDURES = [
+  '16883004',
+  '182682004',
+  '429161001',
+  '232681006',
+  '427331009',
+  '439868004',
+  '182705007',
+  '232690004',
+  '785906002',
+  '785907006',
+  '449860009',
   '112798008',
   '232674004',
   '232678001',
@@ -271,6 +328,10 @@ const levelOfService = (): GraphDef => {
     label: 'IV/IO Medications Coded',
     config: { field: 'route', op: 'oneOf', value: IV_ROUTES }
   });
+  g.add('ivDrugs', 'std.list.where', {
+    label: 'Not IV Solutions',
+    config: { field: 'medication', op: 'notOneOf', value: IV_SOLUTIONS }
+  });
   g.add('findings', 'billing.findings.break');
   g.add('procedures', 'std.logic.coalesce', {
     label: 'Narrative Procedures',
@@ -287,6 +348,7 @@ const levelOfService = (): GraphDef => {
       [
         field('levelOfCare', 'string', 'Level of care provided · eDisposition.32'),
         field('cmsServiceLevel', 'string', 'CMS service level · ePayment.50'),
+        field('serviceType', 'string', 'Type of service requested · eResponse.05'),
         field('codedIvMedications', 'integer', 'IV/IO medications coded'),
         field('narrativeIvDoses', 'integer', 'IV/IO doses in the narrative'),
         field('narrativeProcedures', 'integer', 'ALS2 procedures in the narrative'),
@@ -296,13 +358,13 @@ const levelOfService = (): GraphDef => {
       [field('level', 'string', 'Level of service')],
       [
         {
-          label: 'Critical care documented',
-          when: { levelOfCare: is('4232009') },
+          label: 'Critical care documented on an interfacility transport',
+          when: { levelOfCare: is('4232009'), serviceType: oneOf(...INTERFACILITY) },
           set: { level: 'SCT' }
         },
         {
-          label: 'Crew reported specialty care transport',
-          when: { cmsServiceLevel: is('2650015') },
+          label: 'Crew reported specialty care on an interfacility transport',
+          when: { cmsServiceLevel: is('2650015'), serviceType: oneOf(...INTERFACILITY) },
           set: { level: 'SCT' }
         },
         {
@@ -374,8 +436,8 @@ const levelOfService = (): GraphDef => {
       [field('emergency', 'boolean', 'Emergency')],
       [
         {
-          label: 'Emergent response to scene',
-          when: { responseMode: oneOf('2223001', '2223007') },
+          label: 'Immediate response to the call',
+          when: { responseMode: oneOf('2223001', '2223003', '2223007') },
           set: { emergency: true }
         },
         {
@@ -400,7 +462,9 @@ const levelOfService = (): GraphDef => {
   g.wire('procedures.result', 'procedureCount.list');
   g.wire('disposition.levelOfCare', 'level.levelOfCare');
   g.wire('payment.cmsServiceLevel', 'level.cmsServiceLevel', 'emergency.cmsServiceLevel');
-  g.wire('ivMedications.count', 'level.codedIvMedications');
+  g.wire('response.serviceType', 'level.serviceType');
+  g.wire('ivMedications.list', 'ivDrugs.list');
+  g.wire('ivDrugs.count', 'level.codedIvMedications');
   g.wire('findings.ivDoses', 'level.narrativeIvDoses');
   g.wire('procedureCount.length', 'level.narrativeProcedures');
   g.wire('pcr.procedures', 'codedProcedures.list');
@@ -643,6 +707,18 @@ const tripDetails = (): GraphDef => {
       ],
       [field('code', 'string', 'Origin code')],
       [
+        { label: 'Home', when: { locationType: startsWith('Y92.0') }, set: { code: 'R' } },
+        {
+          label: 'Nursing home or other residential institution',
+          when: { locationType: startsWith('Y92.1') },
+          set: { code: 'E' }
+        },
+        { label: 'Hospital', when: { locationType: startsWith('Y92.23') }, set: { code: 'H' } },
+        {
+          label: "Physician's office or clinic",
+          when: { locationType: startsWith('Y92.53') },
+          set: { code: 'P' }
+        },
         {
           label: 'Leaving a hospital (interfacility)',
           when: { serviceType: oneOf('2205005', '2205015') },
@@ -652,18 +728,6 @@ const tripDetails = (): GraphDef => {
           label: 'Leaving a care facility',
           when: { serviceType: oneOf('2205017', '2205019') },
           set: { code: 'E' }
-        },
-        { label: 'Home', when: { locationType: startsWith('Y92.0') }, set: { code: 'R' } },
-        {
-          label: 'Nursing home',
-          when: { locationType: startsWith('Y92.12') },
-          set: { code: 'E' }
-        },
-        { label: 'Hospital', when: { locationType: startsWith('Y92.23') }, set: { code: 'H' } },
-        {
-          label: "Physician's office or clinic",
-          when: { locationType: startsWith('Y92.53') },
-          set: { code: 'P' }
         },
         {
           label: 'Emergency response to a scene',
@@ -683,6 +747,7 @@ const tripDetails = (): GraphDef => {
         { key: '4221005', value: 'H' },
         { key: '4221007', value: 'P' },
         { key: '4221011', value: 'E' },
+        { key: '4221015', value: 'I' },
         { key: '4221021', value: 'P' },
         { key: '4221023', value: 'H' },
         { key: '4221025', value: 'J' },
@@ -2847,8 +2912,8 @@ export const billingGraphs: SeedGraph[] = [
   node(
     'billing.trip-scheduled',
     'Scheduled Trip',
-    'The service a scheduled or interfacility transport is billed for: never an emergency.',
-    tripService({ emergency: false })
+    'The service a scheduled or interfacility transport is billed for: an emergency only when the unit responded immediately.',
+    tripService({})
   ),
   node(
     'billing.trip-treat-no-transport',
