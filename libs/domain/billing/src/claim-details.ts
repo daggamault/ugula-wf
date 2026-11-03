@@ -1,3 +1,4 @@
+import { type Documentation, readDocumentation } from './documentation.ts';
 import { type Address, readAddress } from './patients.ts';
 import { recordOf, textOrNull } from './values.ts';
 
@@ -71,6 +72,7 @@ export type ClaimDetails = {
   destination: Location;
   diagnoses: string[];
   originDestination: string | null;
+  documentation: Documentation;
 };
 
 export const DIAGNOSIS_LIMIT = 12;
@@ -143,7 +145,8 @@ export const readClaimDetails = (claim: unknown): ClaimDetails => {
     pickup: location(c.pickup),
     destination: location(c.destination),
     diagnoses: [...new Set(codes.map(icd10).filter((x) => x !== null))].slice(0, DIAGNOSIS_LIMIT),
-    originDestination: originDestination(c.originDestination)
+    originDestination: originDestination(c.originDestination),
+    documentation: readDocumentation(c.documentation)
   };
 };
 

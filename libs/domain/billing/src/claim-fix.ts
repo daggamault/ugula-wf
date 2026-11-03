@@ -23,6 +23,15 @@ import {
 } from './claim-details.ts';
 
 import type { ClaimCheck, ClaimField, ClaimIssue } from './claim-validation.ts';
+import {
+  isSignatureStatus,
+  isTransportReason,
+  SIGNATURE_LABELS,
+  SIGNATURE_STATUSES,
+  type SignatureStatus,
+  TRANSPORT_REASONS,
+  type TransportReason
+} from './documentation.ts';
 import { type Address, readAddress } from './patients.ts';
 import { type DirectoryPayer, payerDocument } from './payers.ts';
 import { recordOf, textOrNull } from './values.ts';
@@ -102,6 +111,27 @@ export const CLAIM_FIX_FIELDS: FieldSpec[] = [
     label: 'Destination modifier',
     options: MODIFIER_OPTIONS
   },
+  {
+    name: 'transportReason',
+    type: 'string',
+    label: 'Ambulance transport reason',
+    options: Object.entries(TRANSPORT_REASONS).map(([code, label]) =>
+      option(code, `${code} · ${label}`)
+    )
+  },
+  {
+    name: 'signature',
+    type: 'string',
+    label: 'Billing signature',
+    options: SIGNATURE_STATUSES.map((s) => option(s, SIGNATURE_LABELS[s]))
+  },
+  { name: 'pcsOnFile', type: 'boolean', label: 'Physician certification statement on file' },
+  {
+    name: 'pcsSignedOn',
+    type: 'string',
+    label: 'Physician certification statement signed on',
+    format: 'date'
+  },
   ...address('patient', 'Patient'),
   { name: 'coverageId', type: 'string', label: 'Payer on the claim' },
   { name: 'payerId', type: 'string', label: 'Directory payer' },
@@ -149,7 +179,13 @@ const FIELDS_OF: Record<ClaimField, string[]> = {
   payers: COVERAGE_FIELDS,
   payer: COVERAGE_FIELDS,
   memberId: COVERAGE_FIELDS,
-  insured: COVERAGE_FIELDS
+  insured: COVERAGE_FIELDS,
+  signature: ['signature'],
+  pcs: ['pcsOnFile', 'pcsSignedOn'],
+  transportReason: ['transportReason'],
+  times: [],
+  filing: [],
+  submission: []
 };
 
 type FixForm = {
@@ -182,6 +218,7 @@ export const fixForm = (
   if (!check.payers.length) for (const f of COVERAGE_FIELDS) asked.delete(f);
   if (!directory.length) asked.delete('payerId');
   const od = check.details.originDestination;
+  const doc = check.details.documentation;
   return {
     visible: CLAIM_FIX_FIELDS.map((f) => f.name).filter((n) => asked.has(n)),
     defaults: {
@@ -196,6 +233,10 @@ export const fixForm = (
       ...locationDefaults('destination', check.details.destination),
       originCode: od?.[0] ?? null,
       destinationCode: od?.[1] ?? null,
+      transportReason: doc.transportReason,
+      signature: doc.signature,
+      pcsOnFile: doc.pcsOnFile,
+      pcsSignedOn: doc.pcsSignedOn,
       ...(check.patient ? locationDefaults('patient', check.patient) : {}),
       coverageId,
       payerId: payer?.payerId ?? null,
@@ -238,6 +279,13 @@ export type NewCoverage = {
   insuredLastName: string | null;
 };
 
+export type DocumentationPatch = {
+  signature: SignatureStatus | null;
+  pcsOnFile: boolean | null;
+  pcsSignedOn: string | null;
+  transportReason: TransportReason | null;
+};
+
 export type ClaimPatch = {
   serviceDate: string | null;
   tripType: TripType | null;
@@ -248,6 +296,7 @@ export type ClaimPatch = {
   pickup: Location | null;
   destination: Location | null;
   originDestination: string | null;
+  documentation: DocumentationPatch | null;
   patientAddress: Address | null;
   coverage: CoveragePatch | null;
   newCoverage: NewCoverage | null;
@@ -301,6 +350,23 @@ const modifier = (r: Record<string, unknown>, current: string | null) => {
   return code !== current && isOriginDestination(code) ? code : null;
 };
 
+const documentationPatch = (
+  r: Record<string, unknown>,
+  check: ClaimCheck
+): DocumentationPatch | null => {
+  const now = check.details.documentation;
+  const signedOn = readClaimDetails({ serviceDate: r.pcsSignedOn }).serviceDate;
+  const reason = textOrNull(r.transportReason)?.toUpperCase();
+  const patch = {
+    signature: isSignatureStatus(r.signature) && r.signature !== now.signature ? r.signature : null,
+    pcsOnFile:
+      typeof r.pcsOnFile === 'boolean' && r.pcsOnFile !== now.pcsOnFile ? r.pcsOnFile : null,
+    pcsSignedOn: signedOn !== now.pcsSignedOn ? signedOn : null,
+    transportReason: isTransportReason(reason) && reason !== now.transportReason ? reason : null
+  };
+  return Object.values(patch).some((v) => v !== null) ? patch : null;
+};
+
 export const readClaimPatch = (values: unknown, check: ClaimCheck): ClaimPatch => {
   const r = recordOf(values);
   const details = readClaimDetails({ serviceDate: r.serviceDate, diagnoses: r.diagnoses });
@@ -327,6 +393,7 @@ export const readClaimPatch = (values: unknown, check: ClaimCheck): ClaimPatch =
           }
         : null,
     originDestination: modifier(r, check.details.originDestination),
+    documentation: documentationPatch(r, check),
     patientAddress: check.patient ? changedAddress(r, 'patient', check.patient) : null,
     coverage: coveragePatch(r, check),
     newCoverage: newCoverage(r, check),

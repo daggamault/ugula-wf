@@ -1,7 +1,7 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const demoProfile = {
+const demoProfile = {
   organization_name: 'Development EMS',
   npi: '1234567893',
   tax_id: '123456789',
@@ -17,7 +17,7 @@ export const demoProfile = {
   production: false
 };
 
-export const demoPayers = [
+const demoPayers = [
   { name: 'Medicare', payer_id: 'DEMOMCR', claim_filing: 'MB' },
   { name: 'Medicaid', payer_id: 'DEMOMCD', claim_filing: 'MC' },
   { name: 'Blue Plan', payer_id: 'DEMOBCBS', claim_filing: 'BL' }

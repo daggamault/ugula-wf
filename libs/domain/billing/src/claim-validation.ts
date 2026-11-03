@@ -19,7 +19,10 @@ import {
   readCoverages,
   SELF
 } from './claim-details.ts';
+import { type Documentation, daysBetween, PCS_LATE_DAYS, PCS_VALID_DAYS } from './documentation.ts';
 import type { Address } from './patients.ts';
+import type { EligibilityStatus } from './payer-files.ts';
+import { filingLimitOf } from './payers.ts';
 import { textOrNull } from './values.ts';
 
 export type NewClaim = {
@@ -57,7 +60,13 @@ export const CLAIM_FIELDS = [
   'payers',
   'payer',
   'memberId',
-  'insured'
+  'insured',
+  'signature',
+  'pcs',
+  'transportReason',
+  'times',
+  'filing',
+  'submission'
 ] as const;
 
 export type ClaimField = (typeof CLAIM_FIELDS)[number];
@@ -78,6 +87,9 @@ export type CheckedPayer = {
   relationship: string;
   insuredFirstName: string | null;
   insuredLastName: string | null;
+  filingLimitDays: number | null;
+  eligibility: EligibilityStatus | null;
+  eligibilityNote: string | null;
 };
 
 export type ClaimCheck = {
@@ -132,6 +144,14 @@ const payerIssues = (p: CheckedPayer) => [
   ...when(
     p.relationship !== SELF && !p.insuredLastName,
     blocking('insured', `The insured's last name for ${p.name} is missing`, p.coverageId)
+  ),
+  ...when(
+    p.eligibility === 'inactive',
+    blocking(
+      'payer',
+      `${p.name} reports this coverage is not active${p.eligibilityNote ? ` (${p.eligibilityNote})` : ''}; fix the member ID or remove the payer`,
+      p.coverageId
+    )
   )
 ];
 
@@ -151,9 +171,75 @@ const mileageIssues = (miles: number | null) =>
           )
         );
 
+const MEDICARE_FILINGS = ['MA', 'MB'];
+
+const billsMedicare = (c: ClaimCheck) =>
+  c.payers.some((p) => p.claimFiling !== null && MEDICARE_FILINGS.includes(p.claimFiling));
+
+const signatureIssues = ({ signature, signatureNote }: Documentation) =>
+  signature === 'signed'
+    ? []
+    : signature === 'exception'
+      ? warning(
+          'signature',
+          `${signatureNote ?? 'The patient could not sign'}; keep the crew statement and the receiving facility's name and date with the claim`
+        )
+      : blocking(
+          'signature',
+          signature === 'refused'
+            ? 'The patient refused to sign the release for billing; get a signature before billing a payer'
+            : `${signatureNote ?? 'No billing signature'}; get the patient's or a representative's signature`
+        );
+
+const pcsIssues = (c: ClaimCheck) => {
+  const { pcsOnFile, pcsSignedOn } = c.details.documentation;
+  if (c.tripType !== 'scheduled' || c.emergency === true) return [];
+  if (pcsOnFile !== true) {
+    return issue(billsMedicare(c) ? 'blocking' : 'warning')(
+      'pcs',
+      'A scheduled non-emergency transport needs a physician certification statement'
+    );
+  }
+  if (!pcsSignedOn || !c.details.serviceDate) {
+    return warning('pcs', 'The physician certification statement has no signed date');
+  }
+  const days = daysBetween(pcsSignedOn, c.details.serviceDate);
+  return days > PCS_VALID_DAYS
+    ? warning(
+        'pcs',
+        `The physician certification statement was signed ${days} days before the trip; repetitive transports need one from the last ${PCS_VALID_DAYS} days`
+      )
+    : when(
+        days < -PCS_LATE_DAYS,
+        warning(
+          'pcs',
+          `The physician certification statement was signed more than ${PCS_LATE_DAYS} days after the trip`
+        )
+      );
+};
+
+const before = (a: string | null, b: string | null) =>
+  a !== null && b !== null && Date.parse(b) < Date.parse(a);
+
+const timeIssues = ({ atScene, leftScene, atDestination }: Documentation) =>
+  !leftScene || !atDestination
+    ? warning(
+        'times',
+        'The report does not say when the patient left the scene and arrived at the destination'
+      )
+    : when(
+        before(atScene, leftScene) || before(leftScene, atDestination),
+        warning('times', 'The trip times are out of order')
+      );
+
 const tripIssues = (c: ClaimCheck) =>
   transports(c)
     ? [
+        ...when(
+          !c.details.documentation.transportReason,
+          blocking('transportReason', 'The ambulance transport reason is missing')
+        ),
+        ...timeIssues(c.details.documentation),
         ...addressIssues('destination', 'destination', c.details.destination),
         ...when(
           !isOriginDestination(c.details.originDestination),
@@ -174,7 +260,32 @@ const lineIssues = (c: ClaimCheck) =>
         blocking('lines', 'The claim total does not add up to its lines')
       );
 
-export const claimIssues = (c: ClaimCheck): ClaimIssue[] => [
+const FILING_WARNING_DAYS = 30;
+
+const filingIssues = (c: ClaimCheck, asOf: Date) =>
+  c.details.serviceDate
+    ? c.payers.flatMap((p) => {
+        const limit = filingLimitOf(p.claimFiling, p.filingLimitDays);
+        if (limit === null || !c.details.serviceDate) return [];
+        const left = limit - daysBetween(c.details.serviceDate, asOf.toISOString());
+        return left < 0
+          ? warning(
+              'filing',
+              `The ${limit}-day filing limit for ${p.name} passed ${-left} days ago; submit only with proof of timely filing`,
+              p.coverageId
+            )
+          : when(
+              left <= FILING_WARNING_DAYS,
+              warning(
+                'filing',
+                `${left} days are left to file with ${p.name} (${limit}-day limit)`,
+                p.coverageId
+              )
+            );
+      })
+    : [];
+
+export const claimIssues = (c: ClaimCheck, asOf: Date | null = null): ClaimIssue[] => [
   ...when(!c.patientId, blocking('patient', 'The claim has no patient')),
   ...(c.patient ? addressIssues('patientAddress', "patient's", c.patient) : []),
   ...when(
@@ -202,6 +313,8 @@ export const claimIssues = (c: ClaimCheck): ClaimIssue[] => [
   ),
   ...addressIssues('pickup', 'pickup', c.details.pickup),
   ...tripIssues(c),
+  ...signatureIssues(c.details.documentation),
+  ...pcsIssues(c),
   ...when(
     !c.payers.length,
     warning('payers', 'No payer is on the claim, so the patient is billed')
@@ -210,7 +323,8 @@ export const claimIssues = (c: ClaimCheck): ClaimIssue[] => [
     c.payers.length > MAX_PAYERS,
     blocking('payers', `An 837P claim carries at most ${MAX_PAYERS} payers`)
   ),
-  ...c.payers.flatMap(payerIssues)
+  ...c.payers.flatMap(payerIssues),
+  ...(asOf ? filingIssues(c, asOf) : [])
 ];
 
 export const isBlocking = (issues: readonly ClaimIssue[]) =>

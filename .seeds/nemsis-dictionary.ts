@@ -3,14 +3,14 @@ import type { Database } from '@ugula/db';
 import { XMLParser } from 'fast-xml-parser';
 import type { Kysely } from 'kysely';
 
-export type DictionaryElement = {
+type DictionaryElement = {
   element: string;
   name: string;
   definition: string;
   usage: string;
 };
 
-export type DictionaryCode = {
+type DictionaryCode = {
   list: string;
   code: string;
   description: string;
@@ -280,7 +280,7 @@ export const readCodes = (gzipped: Buffer): DictionaryCode[] =>
 
 const DICTIONARY_BATCH = 2_000;
 
-export const buildUpsertElements = (db: Kysely<Database>, elements: readonly DictionaryElement[]) =>
+const buildUpsertElements = (db: Kysely<Database>, elements: readonly DictionaryElement[]) =>
   db
     .insertInto('nemsis_elements')
     .values(elements.map((e) => ({ ...e })))
@@ -292,7 +292,7 @@ export const buildUpsertElements = (db: Kysely<Database>, elements: readonly Dic
       })
     );
 
-export const buildUpsertCodes = (db: Kysely<Database>, codes: readonly DictionaryCode[]) =>
+const buildUpsertCodes = (db: Kysely<Database>, codes: readonly DictionaryCode[]) =>
   db
     .insertInto('nemsis_codes')
     .values(codes.map((c) => ({ ...c })))

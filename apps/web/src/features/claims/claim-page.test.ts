@@ -60,7 +60,10 @@ const claim: ClaimDetail = {
       group_id: null,
       relationship: '18',
       insured_first_name: null,
-      insured_last_name: null
+      insured_last_name: null,
+      eligibility: null,
+      eligibility_note: null,
+      eligibility_checked_at: null
     },
     {
       id: 'cov-b',
@@ -72,7 +75,10 @@ const claim: ClaimDetail = {
       group_id: null,
       relationship: '01',
       insured_first_name: 'John',
-      insured_last_name: 'Doe'
+      insured_last_name: 'Doe',
+      eligibility: null,
+      eligibility_note: null,
+      eligibility_checked_at: null
     }
   ],
   diagnoses: ['R079', 'I10'],
@@ -92,6 +98,17 @@ const claim: ClaimDetail = {
   city: 'Springfield',
   state: 'IL',
   postal_code: '62704',
+  signature: 'signed',
+  signature_note: null,
+  pcs_on_file: null,
+  pcs_signed_on: null,
+  transport_reason: 'A',
+  condition_codes: ['09'],
+  prior_authorization: null,
+  weight_kg: '81.6',
+  at_scene_at: '2026-10-01T10:05:00Z',
+  left_scene_at: '2026-10-01T10:25:00Z',
+  at_destination_at: '2026-10-01T10:40:00Z',
   tasks: [],
   task_id: null,
   task_title: null,
@@ -157,6 +174,7 @@ const render = (
       onRecord: async () => true,
       onRestart: async () => undefined,
       onSaveData: async () => true,
+      onCheckEligibility: async () => undefined,
       documentUrl: (eventId: string) => `/docs/${eventId}`
     })
   );
@@ -309,7 +327,10 @@ describe('payer relationships', () => {
         group_id: null,
         relationship: '18',
         insured_first_name: null,
-        insured_last_name: null
+        insured_last_name: null,
+        eligibility: null,
+        eligibility_note: null,
+        eligibility_checked_at: null
       }),
       entry('c', 'A')
     );
@@ -552,6 +573,7 @@ describe('ClaimView submission', () => {
         onRecord: async () => true,
         onRestart: async () => undefined,
         onSaveData: async () => true,
+        onCheckEligibility: async () => undefined,
         documentUrl: () => '',
         submission: submission(issues)
       })

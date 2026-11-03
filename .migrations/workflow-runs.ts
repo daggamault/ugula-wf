@@ -1,7 +1,7 @@
 import { type Database, RUN_STATUSES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const buildWorkflowRunsTable = (db: Kysely<Database>) =>
+const buildWorkflowRunsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('workflow_runs')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -37,7 +37,7 @@ export const buildWorkflowRunsTable = (db: Kysely<Database>) =>
       sql`(parent_id is null) = (parent_wait is null) and (parent_id is null) = (parent_index is null)`
     );
 
-export const buildWorkflowRunsIndexes = (db: Kysely<Database>) => [
+const buildWorkflowRunsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_workflow_runs_tenant_status')
     .on('workflow_runs')
@@ -62,7 +62,7 @@ export const buildWorkflowRunsIndexes = (db: Kysely<Database>) => [
     .where(sql.ref('status'), '=', 'running')
 ];
 
-export const buildWorkflowRunStepsTable = (db: Kysely<Database>) =>
+const buildWorkflowRunStepsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('workflow_run_steps')
     .addColumn('run_id', 'uuid', (col) =>
@@ -83,13 +83,13 @@ export const buildWorkflowRunStepsTable = (db: Kysely<Database>) =>
     .addColumn('duration_ms', 'double precision', (col) => col.notNull())
     .addPrimaryKeyConstraint('workflow_run_steps_pkey', ['run_id', 'seq']);
 
-export const buildWorkflowRunStepsNodeIndex = (db: Kysely<Database>) =>
+const buildWorkflowRunStepsNodeIndex = (db: Kysely<Database>) =>
   db.schema
     .createIndex('idx_workflow_run_steps_node')
     .on('workflow_run_steps')
     .columns(['run_id', 'path', 'node', 'seq']);
 
-export const buildSignalsTable = (db: Kysely<Database>) =>
+const buildSignalsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('signals')
     .addColumn('tenant_id', 'uuid', (col) =>
@@ -101,7 +101,7 @@ export const buildSignalsTable = (db: Kysely<Database>) =>
     .addPrimaryKeyConstraint('signals_pkey', ['tenant_id', 'key'])
     .addCheckConstraint('signals_received_check', sql`received >= 0`);
 
-export const buildWorkflowRunGraphsTable = (db: Kysely<Database>) =>
+const buildWorkflowRunGraphsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('workflow_run_graphs')
     .addColumn('run_id', 'uuid', (col) =>
@@ -114,7 +114,7 @@ export const buildWorkflowRunGraphsTable = (db: Kysely<Database>) =>
     )
     .addPrimaryKeyConstraint('workflow_run_graphs_pkey', ['run_id', 'key', 'version']);
 
-export const buildWorkflowRunGraphsVersionIndex = (db: Kysely<Database>) =>
+const buildWorkflowRunGraphsVersionIndex = (db: Kysely<Database>) =>
   db.schema
     .createIndex('idx_workflow_run_graphs_graph_version_id')
     .on('workflow_run_graphs')

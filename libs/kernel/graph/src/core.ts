@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { ENTRY_TYPE, RETURN_TYPE } from './compile.ts';
+import { ENTRY_TYPE, INPUT_TYPE, RETURN_TYPE } from './compile.ts';
 import { defineNode } from './define.ts';
 import type { NodeDef } from './types.ts';
 
@@ -18,6 +18,26 @@ export const entryNode = defineNode({
     execOut: graph.signature.execIn,
     inputs: [],
     outputs: graph.signature.inputs
+  }),
+  run: handledByEngine
+});
+
+const inputConfig = v.object({
+  pin: v.pipe(v.string(), v.nonEmpty())
+});
+
+export const inputNode = defineNode<v.InferOutput<typeof inputConfig>>({
+  type: INPUT_TYPE,
+  version: 1,
+  title: 'Get Input',
+  category: 'Graph',
+  description: "Reads one of this graph's inputs next to the nodes that use it.",
+  config: inputConfig,
+  signature: ({ pin }, { graph }) => ({
+    execIn: [],
+    execOut: [],
+    inputs: [],
+    outputs: graph.signature.inputs.filter((p) => p.name === pin)
   }),
   run: handledByEngine
 });
@@ -42,4 +62,4 @@ export const returnNode = defineNode<v.InferOutput<typeof returnConfig>>({
   run: handledByEngine
 });
 
-export const coreNodes: NodeDef[] = [entryNode, returnNode];
+export const coreNodes: NodeDef[] = [entryNode, inputNode, returnNode];

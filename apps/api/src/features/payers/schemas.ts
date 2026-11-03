@@ -1,4 +1,4 @@
-import { CLAIM_FILING_CODES, type ClaimFilingCode } from '@ugula/billing';
+import { CLAIM_FILING_CODES, type ClaimFilingCode, MAX_FILING_LIMIT_DAYS } from '@ugula/billing';
 import * as v from 'valibot';
 import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
@@ -11,7 +11,18 @@ export const payerSchema = v.object({
     v.trim(),
     v.regex(/^[A-Za-z0-9]{2,80}$/, 'A clearinghouse payer ID is 2 to 80 letters or digits')
   ),
-  claimFiling: v.picklist(Object.keys(CLAIM_FILING_CODES) as ClaimFilingCode[])
+  claimFiling: v.picklist(Object.keys(CLAIM_FILING_CODES) as ClaimFilingCode[]),
+  filingLimitDays: v.optional(
+    v.nullable(
+      v.pipe(
+        v.number(),
+        v.integer(),
+        v.minValue(1),
+        v.maxValue(MAX_FILING_LIMIT_DAYS, `Use at most ${MAX_FILING_LIMIT_DAYS} days`)
+      )
+    ),
+    null
+  )
 });
 
 export type PayerInput = v.InferOutput<typeof payerSchema>;

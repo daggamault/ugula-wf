@@ -2,7 +2,7 @@ import { type Database, TASK_KINDS, TASK_STATUSES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { tenantSetNullForeignKey } from './foreign-keys.ts';
 
-export const buildTasksTable = (db: Kysely<Database>) =>
+const buildTasksTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('tasks')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -41,7 +41,7 @@ export const buildTasksTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint('tasks_outcomes_check', sql`cardinality(outcomes) > 0`);
 
-export const buildTasksIndexes = (db: Kysely<Database>) => [
+const buildTasksIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_tasks_queue')
     .on('tasks')
@@ -61,7 +61,7 @@ export const buildTasksIndexes = (db: Kysely<Database>) => [
     .where(sql.ref('status'), '=', 'completed')
 ];
 
-export const buildTasksForeignKeys = () =>
+const buildTasksForeignKeys = () =>
   ['assignee_id', 'completed_by'].map((column) =>
     tenantSetNullForeignKey({ table: 'tasks', column, references: 'users' })
   );

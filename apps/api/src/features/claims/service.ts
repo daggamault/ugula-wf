@@ -1,38 +1,37 @@
-import { CLAIM_SIGNAL, claimIssues, isClosedStatus, nextClaimStep } from '@ugula/billing';
+import { claimIssues, nextClaimStep } from '@ugula/billing';
 import {
   applyClaimEdit,
   type ClaimEdit,
   type Db,
   findClaimCheck,
-  findPublishedGraphs,
-  sqlExecutor
+  findPublishedGraphs
 } from '@ugula/db';
-import { enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
+import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobRef, BlobStore } from '@ugula/storage';
+import {
+  type CoverageRow,
+  listCoverages,
+  lockClaim,
+  nudgeClaim,
+  postClaimResponse,
+  unchangeable
+} from '../../shared/claim-responses.ts';
 import { listLedgerEvents } from '../../shared/ledger.ts';
 import { type Announce, announced } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
-import { signalRuns, startRun } from '../../shared/runs.ts';
+import { startRun } from '../../shared/runs.ts';
 import {
   type ClaimFilters,
-  type CoverageRow,
-  claimBalance,
   claimExists,
   findClaim,
   findEventDocument,
   hasActiveRun,
-  hasResponse,
-  insertResponse,
   listClaimEvents,
   listClaimFiles,
   listClaims,
-  listCoverages,
-  lockClaim,
   type PayerOrder,
-  paidBy,
   reorderCoverages,
-  resolveMootTasks,
   setCycleRun
 } from './queries.ts';
 import type { BillingData, ClaimEventSort, ClaimResponse, PayerEntry } from './schemas.ts';
@@ -48,16 +47,6 @@ type ClaimServiceDeps = {
 const CYCLE_WORKFLOW = { key: 'billing.cycle-claim', version: 1 };
 
 const notFound = fail('not_found', 'Claim not found');
-const closed = fail('conflict', 'Claim is already closed');
-const draft = fail(
-  'conflict',
-  'This claim is still a draft. Finish its PCR tasks before changing it.'
-);
-
-const unchangeable = (status: string) =>
-  isClosedStatus(status) ? closed : status === 'draft' ? draft : null;
-
-const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export const planPayerOrder = (
   existing: readonly CoverageRow[],
@@ -86,6 +75,7 @@ export const claimEdit = (data: BillingData): ClaimEdit => ({
   pickup: data.pickup,
   destination: data.destination,
   originDestination: data.originDestination,
+  documentation: data.documentation,
   patientAddress: data.patient,
   coverages: data.coverages.map((c) => ({
     coverageId: c.id,
@@ -106,7 +96,7 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
   const write = <T>(tenantId: string, id: string, work: (tx: Db) => Promise<Result<T>>) =>
     announced(announce, tenantId, db.transaction().execute(work), () => [{ kind: 'claim', id }]);
   const nudge = (tx: Db, tenantId: string, claimId: string) =>
-    signalRuns(tx, boss, { tenantId, name: CLAIM_SIGNAL, key: claimId, payload: null });
+    nudgeClaim(tx, boss, tenantId, claimId);
 
   return {
     list: async (tenantId: string, filters: ClaimFilters) =>
@@ -131,7 +121,7 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
             now()
           )
         : null;
-      return ok({ claim, files, progress, issues: check ? claimIssues(check) : [] });
+      return ok({ claim, files, progress, issues: check ? claimIssues(check, now()) : [] });
     },
 
     events: async (tenantId: string, id: string, page: PageRequest<ClaimEventSort>) =>
@@ -213,54 +203,7 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
       }),
 
     recordResponse: (tenantId: string, userId: string, id: string, response: ClaimResponse) =>
-      write(tenantId, id, async (tx) => {
-        const claim = await lockClaim(tx, tenantId, id);
-        if (!claim) return notFound;
-        if (await hasResponse(tx, id, response.requestId)) {
-          return ok({ balanceCents: await claimBalance(tx, id), duplicate: true });
-        }
-        const blocked = unchangeable(claim.status);
-        if (blocked) return blocked;
-        if (
-          response.coverageId !== null &&
-          !(await listCoverages(tx, id)).some((c) => c.id === response.coverageId)
-        ) {
-          return fail('invalid', 'That payer is not on this claim');
-        }
-        const balance = await claimBalance(tx, id);
-        if (response.kind === 'refunded') {
-          const paid = await paidBy(tx, id, response.coverageId);
-          if (response.paidCents > paid) {
-            return fail(
-              'invalid',
-              `${dollars(response.paidCents)} is more than the ${dollars(paid)} paid that can be refunded`
-            );
-          }
-          await insertResponse(tx, id, userId, response);
-          await nudge(tx, tenantId, id);
-          return ok({ balanceCents: balance + response.paidCents, duplicate: false });
-        }
-        const amount = response.paidCents + response.adjustedCents;
-        if (amount > balance) {
-          return fail(
-            'invalid',
-            `${dollars(amount)} is more than the remaining balance of ${dollars(balance)}`
-          );
-        }
-        await insertResponse(tx, id, userId, response);
-        const remaining = balance - amount;
-        const moot = await resolveMootTasks(tx, tenantId, id, {
-          coverageId: response.coverageId,
-          settled: remaining <= 0
-        });
-        await enqueueRuns(
-          boss,
-          sqlExecutor(tx),
-          moot.map((t) => resume(t.run_id, t.wait_id, { outcome: t.outcome, values: {}, userId }))
-        );
-        await nudge(tx, tenantId, id);
-        return ok({ balanceCents: remaining, duplicate: false });
-      })
+      write(tenantId, id, (tx) => postClaimResponse(tx, boss, tenantId, id, userId, response))
   };
 };
 

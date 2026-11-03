@@ -2,7 +2,7 @@ import { HCPCS_PATTERN } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const buildFeeSchedulesTable = (db: Kysely<Database>) =>
+const buildFeeSchedulesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('fee_schedules')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -29,7 +29,7 @@ export const buildFeeSchedulesTable = (db: Kysely<Database>) =>
     .addCheckConstraint('fee_schedules_code_check', sql`code ~ ${sql.lit(HCPCS_PATTERN)}`)
     .addCheckConstraint('fee_schedules_amount_check', sql`amount_cents >= 0`);
 
-export const buildFeeSchedulesIndex = (db: Kysely<Database>) =>
+const buildFeeSchedulesIndex = (db: Kysely<Database>) =>
   db.schema.createIndex('idx_fee_schedules_payer_id').on('fee_schedules').column('payer_id');
 
 export const createFeeSchedulesTable = async (db: Kysely<Database>) => {

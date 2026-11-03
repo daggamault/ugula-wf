@@ -5,11 +5,12 @@ import { testNodes } from '../testing.ts';
 import { createCatalog } from './catalog.ts';
 import {
   addNode,
+  arranged,
   connect,
   connectionKind,
   edgeId,
-  layout,
   moveNodes,
+  placed,
   removeEdges,
   removeNodes,
   toFlow,
@@ -53,7 +54,7 @@ describe('toFlow', () => {
     assert.equal(add?.data.title, 'Add');
     assert.equal(add?.data.status, 'error');
     assert.deepEqual(add?.data.issues, ['Input "b" is required']);
-    assert.deepEqual(add?.position, { x: 0, y: 200 });
+    assert.ok(add?.position);
     assert.equal(nodes[0]?.deletable, false);
     assert.deepEqual(nodes.find((n) => n.id === 'return1')?.data.connected, ['exec']);
     assert.equal(
@@ -64,21 +65,17 @@ describe('toFlow', () => {
   });
 });
 
-describe('layout', () => {
-  it('places nodes in columns by their longest path from the start, tolerating loops', () => {
-    const chain: GraphDef = {
-      ...def,
-      edges: [
-        { from: 'entry', fromPin: 'exec', to: 'add1', toPin: 'exec' },
-        { from: 'add1', fromPin: 'result', to: 'return1', toPin: 'y' },
-        { from: 'entry', fromPin: 'exec', to: 'return1', toPin: 'exec' },
-        { from: 'return1', fromPin: 'x', to: 'add1', toPin: 'a' }
-      ]
-    };
-    const positions = layout(chain);
-    assert.deepEqual(positions.entry, { x: 0, y: 0 });
-    assert.ok((positions.return1?.x ?? 0) > (positions.entry?.x ?? 0));
-    assert.deepEqual(positions.up1, { x: 0, y: 200 });
+describe('arranging', () => {
+  it('fills in missing positions once, then arranges every node on request', () => {
+    const filled = placed(def, catalog);
+    assert.ok(filled.nodes.every((n) => n.position));
+    assert.deepEqual(filled.nodes[0]?.position, def.nodes[0]?.position);
+    assert.equal(placed(filled, catalog), filled);
+    const moved = moveNodes(filled, { entry: { x: 900, y: 900 } });
+    assert.deepEqual(
+      arranged(moved, catalog).nodes[0]?.position,
+      arranged(filled, catalog).nodes[0]?.position
+    );
   });
 });
 

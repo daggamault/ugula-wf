@@ -32,6 +32,8 @@ import { createNotificationRoutes } from './features/notifications/routes.ts';
 import { createNotificationService } from './features/notifications/service.ts';
 import { createPatientRoutes } from './features/patients/routes.ts';
 import { createPatientService } from './features/patients/service.ts';
+import { createPayerFileRoutes } from './features/payer-files/routes.ts';
+import { createPayerFileService } from './features/payer-files/service.ts';
 import { createPayerRoutes } from './features/payers/routes.ts';
 import { createPayerService } from './features/payers/service.ts';
 import { createReportRoutes } from './features/reports/routes.ts';
@@ -175,6 +177,22 @@ export const createApp = ({
   });
   app.route('/api/imports/sftp', createSftpRoutes(imports, config.SFTP_HOOK_SECRET));
   app.route('/api/imports', protect(createImportRoutes(imports, config.IMPORT_FILE_MAX_BYTES)));
+  app.route(
+    '/api/payer-files',
+    protect(
+      createPayerFileRoutes(
+        createPayerFileService({
+          db,
+          boss,
+          blobs,
+          announce,
+          now: () => new Date(),
+          maxBytes: config.IMPORT_FILE_MAX_BYTES
+        }),
+        config.IMPORT_FILE_MAX_BYTES
+      )
+    )
+  );
 
   return app;
 };

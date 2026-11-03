@@ -139,9 +139,22 @@ export const cycleNodes: NodesOf = (stores) => {
           ? checkOf(await claims().claimCheck(ctx.runId, claimId), claimId)
           : null;
         const issues = claim
-          ? relevantIssues(claimIssues(claim), ledger, PATIENT_STEPS.includes(next.step))
+          ? relevantIssues(claimIssues(claim, ctx.now), ledger, PATIENT_STEPS.includes(next.step))
           : [];
         const exit = gated && isBlocking(issues) ? 'fix' : next.step;
+        const { rejection } = claimProgress(ledger);
+        const flagged =
+          rejection && next.step === 'review'
+            ? [
+                {
+                  level: 'warning' as const,
+                  field: 'submission' as const,
+                  message: rejection,
+                  coverageId: next.coverage.id
+                },
+                ...issues
+              ]
+            : issues;
         const stage = stageOf(next.step);
         const recorded = stage
           ? await claims().setStatus(ctx.runId, claimId, ctx.key, stage, ledger.signalsSeen)
@@ -157,7 +170,7 @@ export const cycleNodes: NodesOf = (stores) => {
             waitMs: 'waitMs' in next ? next.waitMs : null,
             signalsSeen: ledger.signalsSeen,
             reference: ledger.reference,
-            issues,
+            issues: flagged,
             claim
           }
         };

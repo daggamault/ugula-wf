@@ -5,12 +5,13 @@ import {
   nameKey,
   payerKey
 } from '@ugula/billing';
-import { ACTIVE_RUN_STATUSES, type Database } from '@ugula/db';
+import { ACTIVE_RUN_STATUSES, type Database, DOCUMENTATION_COLUMNS } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
+import { payerName } from '../../shared/claim-responses.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { escapeLike } from '../../shared/search.ts';
-import type { ClaimEventSort, ClaimResponse, ClaimSort, PayerEntry } from './schemas.ts';
+import type { ClaimEventSort, ClaimSort, PayerEntry } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
@@ -30,10 +31,6 @@ export type ClaimFilters = PageRequest<ClaimSort> &
   };
 
 const ANY_TASK = 'any';
-
-export type CoverageRow = { id: string; payer: string; has_events: boolean };
-
-const payerName = sql<string>`coalesce(dp.name, cc.payer_name)`;
 
 const claimTasks = (db: Db) =>
   db
@@ -184,6 +181,7 @@ export const findClaim = (db: Db, tenantId: string, id: string) =>
       'c.destination_state',
       'c.destination_postal_code',
       'c.import_report_id',
+      ...DOCUMENTATION_COLUMNS,
       'p.birth_date',
       'c.patient_id',
       'c.cycle_run_id',
@@ -207,7 +205,10 @@ export const findClaim = (db: Db, tenantId: string, id: string) =>
             'cc.group_id',
             'cc.relationship',
             'cc.insured_first_name',
-            'cc.insured_last_name'
+            'cc.insured_last_name',
+            'cc.eligibility',
+            'cc.eligibility_note',
+            'cc.eligibility_checked_at'
           ])
           .whereRef('cc.claim_id', '=', 'c.id')
           .orderBy('cc.position')
@@ -241,40 +242,6 @@ export const findClaim = (db: Db, tenantId: string, id: string) =>
     ])
     .where('c.id', '=', id)
     .executeTakeFirst();
-
-export const lockClaim = (db: Db, tenantId: string, id: string) =>
-  db
-    .selectFrom('claims')
-    .select(['id', 'status', 'patient_id'])
-    .where('id', '=', id)
-    .where('tenant_id', '=', tenantId)
-    .forUpdate()
-    .executeTakeFirst();
-
-export const listCoverages = (db: Db, claimId: string): Promise<CoverageRow[]> =>
-  db
-    .selectFrom('claim_coverages as cc')
-    .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
-    .select((eb) => [
-      'cc.id',
-      payerName.as('payer'),
-      sql<boolean>`exists (${eb
-        .selectFrom('claim_events as e')
-        .select('e.id')
-        .whereRef('e.coverage_id', '=', 'cc.id')})`.as('has_events')
-    ])
-    .where('cc.claim_id', '=', claimId)
-    .orderBy('cc.position')
-    .execute();
-
-export const claimBalance = async (db: Db, id: string) =>
-  (
-    await db
-      .selectFrom('claim_balances')
-      .select('balance_cents')
-      .where('claim_id', '=', id)
-      .executeTakeFirstOrThrow()
-  ).balance_cents;
 
 export type PayerOrder = {
   keep: { id: string; position: number }[];
@@ -364,51 +331,6 @@ export const setCycleRun = async (db: Db, id: string, runId: string) => {
     .execute();
 };
 
-export const hasResponse = async (db: Db, claimId: string, requestId: string) =>
-  (await db
-    .selectFrom('claim_events')
-    .select('id')
-    .where('claim_id', '=', claimId)
-    .where('source_key', '=', requestId)
-    .executeTakeFirst()) !== undefined;
-
-const FOLLOW_UP_QUEUE = 'billing-followup';
-
-const COLLECTIONS_QUEUE = 'billing-collections';
-
-export const resolveMootTasks = (
-  db: Db,
-  tenantId: string,
-  claimId: string,
-  moot: { coverageId: string | null; settled: boolean }
-) =>
-  db
-    .updateTable('tasks')
-    .set({
-      status: 'completed',
-      completed_at: sql`now()`,
-      resolution: sql`jsonb_build_object('outcome', case when queue = ${FOLLOW_UP_QUEUE} then 'keepWaiting' else 'writeOff' end, 'values', '{}'::jsonb, 'resolvedBy', 'claim response')`,
-      updated_at: sql`now()`
-    })
-    .where('tenant_id', '=', tenantId)
-    .where('status', '=', 'open')
-    .where(
-      'run_id',
-      'in',
-      db.selectFrom('claim_runs').select('run_id').where('claim_id', '=', claimId)
-    )
-    .where((eb) =>
-      eb.or([
-        eb.and([
-          eb('queue', '=', FOLLOW_UP_QUEUE),
-          eb(sql<string>`context ->> 'coverageId'`, '=', moot.coverageId ?? '')
-        ]),
-        eb.and([eb('queue', '=', COLLECTIONS_QUEUE), eb.lit(moot.settled)])
-      ])
-    )
-    .returning(['run_id', 'wait_id', sql<string>`resolution ->> 'outcome'`.as('outcome')])
-    .execute();
-
 const claimEvents = (db: Db, claimId: string) =>
   db.selectFrom('claim_events as e').where('e.claim_id', '=', claimId);
 
@@ -485,51 +407,3 @@ export const findEventDocument = async (
     .where('c.tenant_id', '=', tenantId)
     .where('e.document', 'is not', null)
     .executeTakeFirst()) ?? null;
-
-export const insertResponse = async (db: Db, claimId: string, userId: string, r: ClaimResponse) => {
-  const event = await db
-    .insertInto('claim_events')
-    .values({
-      claim_id: claimId,
-      kind: r.kind,
-      coverage_id: r.coverageId,
-      paid_cents: r.kind === 'refunded' ? -r.paidCents : r.paidCents,
-      adjusted_cents: r.adjustedCents,
-      payer_claim_number: r.coverageId === null ? null : r.payerClaimNumber,
-      paid_on: r.paidOn,
-      check_number: r.checkNumber,
-      note: r.note,
-      created_by: userId,
-      source_key: r.requestId
-    })
-    .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
-    .returning('id')
-    .executeTakeFirst();
-  if (event && r.adjustments.length) {
-    await db
-      .insertInto('claim_event_adjustments')
-      .values(
-        r.adjustments.map((a, i) => ({
-          event_id: event.id,
-          position: i + 1,
-          group_code: a.group,
-          reason_code: a.reason,
-          amount_cents: a.cents
-        }))
-      )
-      .execute();
-  }
-  return event !== undefined;
-};
-
-export const paidBy = async (db: Db, claimId: string, coverageId: string | null) =>
-  (
-    await db
-      .selectFrom('claim_events')
-      .select(sql<number>`coalesce(sum(paid_cents), 0)::int`.as('paid'))
-      .where('claim_id', '=', claimId)
-      .where((eb) =>
-        coverageId === null ? eb('coverage_id', 'is', null) : eb('coverage_id', '=', coverageId)
-      )
-      .executeTakeFirstOrThrow()
-  ).paid;

@@ -55,7 +55,12 @@ describe('payer queries', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('delete') ? [] : [{ id: 'p1' }]
     );
-    await upsertPayer(db, 't-1', { name: 'Medicare', payerId: '00952', claimFiling: 'MB' });
+    await upsertPayer(db, 't-1', {
+      name: 'Medicare',
+      payerId: '00952',
+      claimFiling: 'MB',
+      filingLimitDays: null
+    });
     assert.equal(await deletePayer(db, 't-1', 'p1'), false);
     const [upsert, remove] = queries;
     assert.ok(upsert?.sql.includes('on conflict (tenant_id, lower(name)) do update set'));

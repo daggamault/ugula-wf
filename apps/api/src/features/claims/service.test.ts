@@ -256,6 +256,7 @@ describe('claim service', () => {
       destination: null,
       diagnoses: ['R079', 'I10'],
       originDestination: 'RH',
+      documentation: null,
       note: null
     };
     const { service, queries, jobs } = setup();

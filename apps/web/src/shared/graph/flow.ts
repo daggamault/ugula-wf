@@ -10,6 +10,7 @@ import {
 } from '@ugula/graph';
 import type { Connection, Edge, Node } from '@xyflow/react';
 import type { Catalog } from './catalog.ts';
+import { layout, shapeOf } from './layout.ts';
 import { toneOf } from './pins.ts';
 
 export type NodeStatus = 'idle' | 'done' | 'error' | 'waiting';
@@ -36,32 +37,6 @@ type PinEnd = { exec: boolean; type: ValueType | null };
 
 export const edgeId = (e: GraphEdge) => `${e.from}:${e.fromPin}->${e.to}:${e.toPin}`;
 
-const GRID = { x: 320, y: 200 };
-
-export const layout = (def: GraphDef): Record<string, { x: number; y: number }> => {
-  const depth = new Map(def.nodes.map((n) => [n.id, 0]));
-  for (let pass = 0; pass < def.nodes.length; pass++) {
-    let moved = false;
-    for (const e of def.edges) {
-      const next = (depth.get(e.from) ?? 0) + 1;
-      if (e.from !== e.to && next > (depth.get(e.to) ?? 0) && next < def.nodes.length) {
-        depth.set(e.to, next);
-        moved = true;
-      }
-    }
-    if (!moved) break;
-  }
-  const rows = new Map<number, number>();
-  return Object.fromEntries(
-    def.nodes.map((n) => {
-      const column = depth.get(n.id) ?? 0;
-      const row = rows.get(column) ?? 0;
-      rows.set(column, row + 1);
-      return [n.id, { x: column * GRID.x, y: row * GRID.y }];
-    })
-  );
-};
-
 const outputOf = (sig: Signature | null, pin: string): PinEnd | null => {
   if (!sig) return null;
   if (sig.execOut.includes(pin)) return { exec: true, type: null };
@@ -81,12 +56,20 @@ const signatureById = (def: GraphDef, catalog: Catalog, id: string) => {
   return inst ? catalog.signatureOf(inst, def) : null;
 };
 
+export const arrange = (def: GraphDef, catalog: Catalog) =>
+  layout(
+    def,
+    new Map(
+      def.nodes.map((n) => [n.id, shapeOf(catalog.signatureOf(n, def), catalog.describe(n) !== '')])
+    )
+  );
+
 export const toFlow = (
   def: GraphDef,
   catalog: Catalog,
   { status = {}, issues = {} }: Decorations = {}
 ) => {
-  const placed = def.nodes.every((n) => n.position) ? {} : layout(def);
+  const placed = def.nodes.every((n) => n.position) ? {} : arrange(def, catalog);
   const nodes: GraphFlowNode[] = def.nodes.map((inst) => {
     const signature = catalog.signatureOf(inst, def);
     return {
@@ -200,3 +183,15 @@ export const withSignature = (
   def: GraphDef,
   patch: Partial<Pick<GraphDef, 'signature' | 'variables'>>
 ): GraphDef => ({ ...def, ...patch, nodes: def.nodes.map((n) => ({ ...n })) });
+
+export const arranged = (def: GraphDef, catalog: Catalog): GraphDef =>
+  moveNodes(def, arrange(def, catalog));
+
+export const placed = (def: GraphDef, catalog: Catalog): GraphDef => {
+  if (def.nodes.every((n) => n.position)) return def;
+  const missing = new Set(def.nodes.filter((n) => !n.position).map((n) => n.id));
+  return moveNodes(
+    def,
+    Object.fromEntries(Object.entries(arrange(def, catalog)).filter(([id]) => missing.has(id)))
+  );
+};

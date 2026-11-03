@@ -4,6 +4,7 @@ import {
   BadgeDollarSignIcon,
   Building2Icon,
   ChartColumnIcon,
+  FileInputIcon,
   FileUpIcon,
   ReceiptTextIcon,
   SettingsIcon,
@@ -28,6 +29,9 @@ import { ImportsPage } from './features/imports/imports-page.tsx';
 import { type PatientsClient, searchOf } from './features/patients/client.ts';
 import { PatientPage } from './features/patients/patient-page.tsx';
 import { PatientsPage } from './features/patients/patients-page.tsx';
+import type { PayerFilesClient } from './features/payer-files/client.ts';
+import { PayerFilePage } from './features/payer-files/payer-file-page.tsx';
+import { PayerFilesPage } from './features/payer-files/payer-files-page.tsx';
 import type { ReportsClient } from './features/reports/client.ts';
 import {
   ReportOptionsPage,
@@ -69,6 +73,7 @@ export type AppClients = {
   runs: RunsClient;
   tasks: TasksClient;
   imports: ImportsClient;
+  payerFiles: PayerFilesClient;
   fees: FeesClient;
   claims: ClaimsClient;
   patients: PatientsClient;
@@ -102,6 +107,13 @@ const SECTIONS = [
   { id: 'claims', label: 'Claims', href: '/claims', icon: ReceiptTextIcon, group: 'Work' },
   { id: 'patients', label: 'Patients', href: '/patients', icon: UsersIcon, group: 'Work' },
   { id: 'imports', label: 'Imports', href: '/imports', icon: FileUpIcon, group: 'Work' },
+  {
+    id: 'payer-files',
+    label: 'Payer Files',
+    href: '/payer-files',
+    icon: FileInputIcon,
+    group: 'Work'
+  },
   { id: 'reports', label: 'Reports', href: '/reports', icon: ChartColumnIcon, group: 'Work' },
   {
     id: 'workflows',
@@ -185,6 +197,21 @@ const routes: readonly Route[] = [
         live={c.live}
         importId={p.id ?? ''}
         back={backOf(q, '/imports')}
+      />
+    )
+  },
+  {
+    pattern: '/payer-files',
+    render: (_, __, c) => <PayerFilesPage client={c.payerFiles} live={c.live} />
+  },
+  {
+    pattern: '/payer-files/:id',
+    render: (p, q, c) => (
+      <PayerFilePage
+        client={c.payerFiles}
+        live={c.live}
+        fileId={p.id ?? ''}
+        back={backOf(q, '/payer-files')}
       />
     )
   },

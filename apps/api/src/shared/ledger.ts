@@ -13,6 +13,7 @@ export const listLedgerEvents = async (db: Db, claimId: string): Promise<ClaimEv
         'e.adjusted_cents',
         'e.payer_claim_number',
         'e.paid_on',
+        'e.note',
         'e.created_at',
         jsonArrayFrom(
           eb
@@ -34,5 +35,6 @@ export const listLedgerEvents = async (db: Db, claimId: string): Promise<ClaimEv
     payerClaimNumber: e.payer_claim_number,
     paidOn: e.paid_on,
     adjustments: e.adjustments,
+    note: e.note,
     at: new Date(e.created_at).toISOString()
   }));

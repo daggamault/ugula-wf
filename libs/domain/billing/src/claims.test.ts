@@ -31,6 +31,7 @@ const e = (
   payerClaimNumber: null,
   paidOn: null,
   adjustments: [],
+  note: '',
   at: day(onDay).toISOString()
 });
 
@@ -202,6 +203,23 @@ describe('nextClaimStep', () => {
       coverage: cov('Medicare'),
       balanceCents: 100_000
     });
+  });
+
+  it('sends a rejected claim back to review with the reason, while an acceptance keeps waiting', () => {
+    const sent = [e('approved', 'Medicare', 0), e('submitted', 'Medicare', 0)];
+    assert.equal(step([...sent, e('accepted', 'Medicare', 1)], 2).step, 'await');
+    const rejected = [...sent, { ...e('rejected', 'Medicare', 1), note: 'A7: Invalid member ID' }];
+    assert.equal(step(rejected, 2).step, 'review');
+    assert.equal(
+      claimProgress({ totalCents: 100_000, coverages: [cov('Medicare')], events: rejected })
+        .rejection,
+      'A7: Invalid member ID'
+    );
+    assert.equal(step([...rejected, e('approved', 'Medicare', 2)], 2).step, 'submit');
+    assert.equal(
+      step([...rejected, e('approved', 'Medicare', 2), e('resubmitted', 'Medicare', 3)], 3).step,
+      'await'
+    );
   });
 
   it('re-requires review when the claim is edited after approval', () => {

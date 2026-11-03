@@ -1,6 +1,7 @@
 import type { GraphDef, Issue, NodeDef } from '@ugula/graph';
 import {
   CopyPlusIcon,
+  NetworkIcon,
   PencilIcon,
   PlayIcon,
   PlusIcon,
@@ -12,7 +13,7 @@ import {
 import { type MouseEvent, useEffect, useMemo, useState } from 'react';
 import { isApiError, messageOf } from '../../shared/api.ts';
 import { type Catalog, createCatalog, type PaletteEntry } from '../../shared/graph/catalog.ts';
-import { addNode, removeNodes } from '../../shared/graph/flow.ts';
+import { addNode, arranged, placed, removeNodes } from '../../shared/graph/flow.ts';
 import { GraphCanvas } from '../../shared/graph/graph-canvas.tsx';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate, useLocation } from '../../shared/router.tsx';
@@ -90,7 +91,7 @@ export const EditorView = ({
   const draft = versions.find((v) => !v.published_at);
   const isDraft = current !== undefined && !current.published_at;
   const editable = graph.tenant_id !== null && isDraft;
-  const [def, setDef] = useState(source);
+  const [def, setDef] = useState(() => (editable ? placed(source, catalog) : source));
   const [dirty, setDirty] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -205,12 +206,12 @@ export const EditorView = ({
     });
 
   const add = (entry: PaletteEntry) => {
-    const placed = addNode(def, entry, {
+    const added = addNode(def, entry, {
       x: 120 + def.nodes.length * 24,
       y: 120 + def.nodes.length * 24
     });
-    change(placed.def);
-    setSelected(placed.id);
+    change(added.def);
+    setSelected(added.id);
     setDialog(null);
     notify({
       key: 'node-added',
@@ -256,6 +257,12 @@ export const EditorView = ({
               <Button onClick={() => setDialog('add')}>
                 <PlusIcon aria-hidden="true" className="size-4" />
                 Add Node
+              </Button>
+            ) : null}
+            {editable ? (
+              <Button variant="outline" onClick={() => change(arranged(def, catalog))}>
+                <NetworkIcon aria-hidden="true" className="size-4" />
+                Arrange Nodes
               </Button>
             ) : null}
             <ButtonLink to={settingsHref(!isSettingsOpen)} variant="outline">

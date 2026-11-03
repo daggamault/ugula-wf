@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { type ClaimCheck, claimIssues, isBlocking, readNewClaim } from './claim-validation.ts';
+import { readDocumentation } from './documentation.ts';
+import { COMPLETE_DOCUMENTATION } from './testing.ts';
 
 const claim = {
   pcrNumber: ' PCR-1 ',
@@ -28,7 +30,10 @@ const medicare = {
   memberId: '1EG4TE5MK73',
   relationship: '18',
   insuredFirstName: null,
-  insuredLastName: null
+  insuredLastName: null,
+  filingLimitDays: null,
+  eligibility: null,
+  eligibilityNote: null
 };
 
 const check: ClaimCheck = {
@@ -50,9 +55,17 @@ const check: ClaimCheck = {
     pickup: { name: null, ...place },
     destination: { name: 'Mercy', ...place },
     diagnoses: ['R079'],
-    originDestination: 'RH'
+    originDestination: 'RH',
+    documentation: COMPLETE_DOCUMENTATION
   }
 };
+
+const documented = (d: Partial<typeof COMPLETE_DOCUMENTATION>, c: Partial<ClaimCheck> = {}) =>
+  fields({
+    ...check,
+    ...c,
+    details: { ...check.details, documentation: { ...COMPLETE_DOCUMENTATION, ...d } }
+  });
 
 const fields = (c: ClaimCheck) => claimIssues(c).map((i) => `${i.level}:${i.field}`);
 
@@ -70,7 +83,8 @@ describe('claimIssues', () => {
         pickup: blank,
         destination: blank,
         diagnoses: [],
-        originDestination: null
+        originDestination: null,
+        documentation: readDocumentation({})
       },
       loadedMiles: null,
       payers: [
@@ -85,9 +99,12 @@ describe('claimIssues', () => {
         'serviceDate',
         'diagnoses',
         'pickup',
+        'transportReason',
+        'times',
         'destination',
         'originDestination',
         'loadedMiles',
+        'signature',
         'insured',
         'payer',
         'memberId'
@@ -136,6 +153,96 @@ describe('claimIssues', () => {
       'warning:payers'
     ]);
     assert.deepEqual(fields({ ...check, patientId: null, patient: null }), ['blocking:patient']);
+  });
+});
+
+describe('documentation checks', () => {
+  it('blocks billing without a billing signature, and warns on a documented exception', () => {
+    assert.deepEqual(documented({ signature: 'missing' }), ['blocking:signature']);
+    assert.deepEqual(documented({ signature: 'refused' }), ['blocking:signature']);
+    assert.deepEqual(
+      documented({
+        signature: 'exception',
+        signatureNote: 'Not signed because the patient was unconscious'
+      }),
+      ['warning:signature']
+    );
+  });
+
+  it('asks for a current physician certification on scheduled non-emergency trips', () => {
+    const scheduled = { tripType: 'scheduled', emergency: false };
+    assert.deepEqual(documented({}, scheduled), ['blocking:pcs']);
+    assert.deepEqual(
+      documented({}, { ...scheduled, payers: [{ ...medicare, claimFiling: 'CI' }] }),
+      ['warning:pcs']
+    );
+    assert.deepEqual(documented({ pcsOnFile: true, pcsSignedOn: '2026-09-20' }, scheduled), []);
+    assert.deepEqual(documented({ pcsOnFile: true, pcsSignedOn: '2026-06-01' }, scheduled), [
+      'warning:pcs'
+    ]);
+    assert.deepEqual(documented({ pcsOnFile: true, pcsSignedOn: '2026-10-09' }, scheduled), [
+      'warning:pcs'
+    ]);
+    assert.deepEqual(documented({ pcsOnFile: true }, scheduled), ['warning:pcs']);
+  });
+
+  it('needs a transport reason and ordered trip times on transports only', () => {
+    assert.deepEqual(documented({ transportReason: null }), ['blocking:transportReason']);
+    assert.deepEqual(documented({ leftScene: null }), ['warning:times']);
+    assert.deepEqual(documented({ atDestination: '2025-12-30T10:10:00Z' }), ['warning:times']);
+    assert.deepEqual(
+      documented(
+        { transportReason: null, leftScene: null },
+        { tripType: 'refusal', loadedMiles: null }
+      ),
+      []
+    );
+  });
+});
+
+describe('eligibility', () => {
+  it('blocks billing a payer that reports the coverage inactive, and trusts active or unchecked', () => {
+    const inactive = claimIssues({
+      ...check,
+      payers: [
+        { ...medicare, eligibility: 'inactive', eligibilityNote: 'Not covered after 2026-09-30' }
+      ]
+    });
+    assert.deepEqual(
+      inactive.map((i) => [i.level, i.field, i.coverageId]),
+      [['blocking', 'payer', 'cov-1']]
+    );
+    assert.match(inactive[0]?.message ?? '', /not active \(Not covered after 2026-09-30\)/);
+    assert.deepEqual(fields({ ...check, payers: [{ ...medicare, eligibility: 'active' }] }), []);
+  });
+});
+
+describe('filing limits', () => {
+  const on = (day: string) => new Date(`${day}T12:00:00Z`);
+
+  it('warns as the filing limit nears and once it passes, from the payer or federal default', () => {
+    assert.deepEqual(claimIssues(check, on('2027-08-01')), []);
+    assert.deepEqual(
+      claimIssues(check, on('2027-09-20')).map((i) => i.message),
+      ['11 days are left to file with Medicare (365-day limit)']
+    );
+    assert.match(
+      claimIssues(check, on('2027-10-11'))[0]?.message ?? '',
+      /365-day filing limit for Medicare passed 10 days ago/
+    );
+    const commercial = { ...check, payers: [{ ...medicare, claimFiling: 'CI' }] };
+    assert.deepEqual(claimIssues(commercial, on('2030-01-01')), []);
+    assert.deepEqual(
+      fields({ ...commercial, payers: [{ ...medicare, claimFiling: 'CI', filingLimitDays: 90 }] }),
+      []
+    );
+    assert.equal(
+      claimIssues(
+        { ...commercial, payers: [{ ...medicare, claimFiling: 'CI', filingLimitDays: 90 }] },
+        on('2026-12-20')
+      )[0]?.field,
+      'filing'
+    );
   });
 });
 

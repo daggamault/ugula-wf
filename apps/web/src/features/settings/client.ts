@@ -40,10 +40,16 @@ export type Payer = {
   name: string;
   payer_id: string;
   claim_filing: string;
+  filing_limit_days: number | null;
   aliases: PayerAlias[];
 };
 
-export type PayerInput = { name: string; payerId: string; claimFiling: string };
+export type PayerInput = {
+  name: string;
+  payerId: string;
+  claimFiling: string;
+  filingLimitDays: number | null;
+};
 
 export const createSettingsClient = (api: Api) => ({
   profile: async () =>

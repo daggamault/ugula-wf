@@ -38,6 +38,7 @@ const mapped: X837Claim = {
   placeOfService: '41',
   frequency: '1',
   payerClaimNumber: null,
+  priorAuthorization: null,
   subscriber: {
     relationship: '18',
     lastName: "O'Brien~*",
@@ -54,6 +55,7 @@ const mapped: X837Claim = {
   },
   payer: { name: 'Medicare', payerId: 'DEMOMCR', claimFiling: 'MB' },
   otherPayers: [],
+  weightPounds: null,
   transportReason: 'A',
   loadedMiles: 7.33,
   conditionCodes: ['09', '06'],
@@ -151,6 +153,12 @@ describe('build837', () => {
   it('writes the ambulance conditions it is given, and none when there are none', () => {
     assert.ok(build({ ...mapped, conditionCodes: ['09'] }).includes('CRC*07*Y*09'));
     assert.ok(!build({ ...mapped, conditionCodes: [] }).some((s) => s.startsWith('CRC*')));
+  });
+
+  it('writes the patient weight and a prior authorization when the report has them', () => {
+    const documented = build({ ...mapped, weightPounds: 180, priorAuthorization: 'PA-77' });
+    assert.ok(documented.includes('CR1*LB*180**A*DH*7.4'));
+    assert.ok(documented.includes('REF*G1*PA-77'));
   });
 
   it('writes treat-no-transport claims without CR1 or a drop-off', () => {

@@ -2,6 +2,7 @@ import type { ClaimPatch } from './claim-fix.ts';
 import type { ClaimCheck, NewClaim } from './claim-validation.ts';
 import type { ClaimEvent, ClaimStatus, LedgerCoverage } from './claims.ts';
 import type { CompletionRequest } from './completions.ts';
+import type { Documentation } from './documentation.ts';
 import type {
   BillingStores,
   BlobRef,
@@ -134,7 +135,10 @@ const checkOfSaved = (c: NewClaim): ClaimCheck => ({
     memberId: cov.memberId,
     relationship: cov.relationship,
     insuredFirstName: cov.insuredFirstName,
-    insuredLastName: cov.insuredLastName
+    insuredLastName: cov.insuredLastName,
+    filingLimitDays: null,
+    eligibility: null,
+    eligibilityNote: null
   })),
   details: c.details
 });
@@ -156,6 +160,9 @@ const patched = (c: ClaimCheck, p: ClaimPatch): ClaimCheck => ({
             coverageId: `cov-${p.newCoverage.payerId}`,
             name: p.newCoverage.payerId,
             claimFiling: 'CI',
+            filingLimitDays: null,
+            eligibility: null,
+            eligibilityNote: null,
             ...p.newCoverage
           }
         ]
@@ -181,7 +188,13 @@ const patched = (c: ClaimCheck, p: ClaimPatch): ClaimCheck => ({
     pickup: p.pickup ?? c.details.pickup,
     destination: p.destination ?? c.details.destination,
     diagnoses: p.diagnoses ?? c.details.diagnoses,
-    originDestination: p.originDestination ?? c.details.originDestination
+    originDestination: p.originDestination ?? c.details.originDestination,
+    documentation: p.documentation
+      ? {
+          ...c.details.documentation,
+          ...Object.fromEntries(Object.entries(p.documentation).filter(([, v]) => v !== null))
+        }
+      : c.details.documentation
   }
 });
 
@@ -343,8 +356,25 @@ export const checkedPayer = (name: string, payerId: string | null = `p-${name}`)
   memberId: `M-${name}`,
   relationship: '18',
   insuredFirstName: null,
-  insuredLastName: null
+  insuredLastName: null,
+  filingLimitDays: null,
+  eligibility: null,
+  eligibilityNote: null
 });
+
+export const COMPLETE_DOCUMENTATION: Documentation = {
+  signature: 'signed',
+  signatureNote: null,
+  pcsOnFile: null,
+  pcsSignedOn: null,
+  transportReason: 'A',
+  conditionCodes: [],
+  priorAuthorization: null,
+  weightKg: null,
+  atScene: '2025-12-30T10:05:00Z',
+  leftScene: '2025-12-30T10:25:00Z',
+  atDestination: '2025-12-30T10:40:00Z'
+};
 
 export const completeCheck = (payers = ['Medicare', 'Blue']): ClaimCheck => ({
   patientId: 'p1',
@@ -365,6 +395,7 @@ export const completeCheck = (payers = ['Medicare', 'Blue']): ClaimCheck => ({
     pickup: { name: null, ...PLACE },
     destination: { name: 'Mercy', ...PLACE },
     diagnoses: ['R079'],
-    originDestination: 'RH'
+    originDestination: 'RH',
+    documentation: COMPLETE_DOCUMENTATION
   }
 });

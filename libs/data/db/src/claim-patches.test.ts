@@ -13,6 +13,7 @@ const empty: ClaimEdit = {
   pickup: null,
   destination: null,
   originDestination: null,
+  documentation: null,
   patientAddress: null,
   coverages: [],
   newCoverage: null,
@@ -95,7 +96,8 @@ describe('applyClaimEdit', () => {
     }
     assert.doesNotMatch(claim, /"level"|"pickup_city"/);
     assert.ok(sqls.some((s) => s.startsWith('update "patients"')));
-    assert.ok(sqls.some((s) => /^with "cleared".*insert into "claim_diagnoses"/s.test(s)));
+    const cleared = sqls.findIndex((s) => s.startsWith('delete from "claim_diagnoses"'));
+    assert.ok(cleared >= 0 && sqls[cleared + 1]?.startsWith('insert into "claim_diagnoses"'));
     assert.ok(sqls.some((s) => s.startsWith('insert into "claim_lines"')));
     assert.ok(sqls.some((s) => /update claim_coverages cc set\s+payer_id/.test(s)));
     assert.ok(sqls.some((s) => s.startsWith('delete from "claim_coverages"')));

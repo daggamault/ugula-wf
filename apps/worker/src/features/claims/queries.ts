@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   type Adjustment,
   CLOSED_CLAIM_STATUSES,
+  type ClaimStatus,
   type ClaimStore,
   claimSignalKey,
   DIAGNOSIS_LIMIT,
@@ -13,6 +14,7 @@ import {
   ACTIVE_RUN_STATUSES,
   applyClaimEdit,
   type Db,
+  documentationValues,
   findClaimCheck,
   sqlExecutor,
   TERMINAL_RUN_STATUSES
@@ -34,6 +36,10 @@ const tenantClaim = async (db: Db, runId: string, claimId: string) =>
         .where('tenant_id', '=', runTenant(db, runId))
         .executeTakeFirst()
     : undefined) ?? Promise.reject(new Error(`Claim ${claimId} does not exist`));
+
+const DRAFT: ClaimStatus = 'draft';
+
+const REVIEWABLE: ClaimStatus = 'needs_review';
 
 const day = (d: Date | string) => new Date(d).toISOString().slice(0, 10);
 
@@ -85,7 +91,8 @@ const claimValues = (c: NewClaim) => {
     destination_address_line: destination.addressLine,
     destination_city: destination.city,
     destination_state: destination.state,
-    destination_postal_code: destination.postalCode
+    destination_postal_code: destination.postalCode,
+    ...documentationValues(c.details.documentation)
   };
 };
 
@@ -520,7 +527,11 @@ export const createClaimStore = (db: Db, blobs: Blobs, boss: RunQueueClient): Cl
       if (!cycle) throw new Error(`Run ${cycleRunId} does not exist`);
       const { numUpdatedRows } = await tx
         .updateTable('claims as c')
-        .set({ cycle_run_id: cycle.id, updated_at: sql`now()` })
+        .set({
+          cycle_run_id: cycle.id,
+          status: sql`case when c.status = ${DRAFT} then ${REVIEWABLE} else c.status end`,
+          updated_at: sql`now()`
+        })
         .where('c.id', '=', claim.id)
         .where((eb) =>
           eb.or([
@@ -584,6 +595,7 @@ export const createClaimStore = (db: Db, blobs: Blobs, boss: RunQueueClient): Cl
           'e.adjusted_cents',
           'e.payer_claim_number',
           'e.paid_on',
+          'e.note',
           adjustmentsOf.as('adjustments'),
           'e.created_at'
         ])
@@ -605,6 +617,7 @@ export const createClaimStore = (db: Db, blobs: Blobs, boss: RunQueueClient): Cl
         payerClaimNumber: e.payer_claim_number,
         paidOn: e.paid_on,
         adjustments: e.adjustments,
+        note: e.note,
         at: new Date(e.created_at).toISOString()
       }))
     };

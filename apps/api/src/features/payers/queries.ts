@@ -7,7 +7,14 @@ import type { PayerInput, PayerSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
-const columns = ['id', 'name', 'payer_id', 'claim_filing', 'updated_at'] as const;
+const columns = [
+  'id',
+  'name',
+  'payer_id',
+  'claim_filing',
+  'filing_limit_days',
+  'updated_at'
+] as const;
 
 export type PayerFilters = PageRequest<PayerSort> & { q?: string | undefined };
 
@@ -71,11 +78,18 @@ export const listPayerNames = (db: Db, tenantId: string, text?: string) => {
 export const upsertPayer = (db: Db, tenantId: string, p: PayerInput) =>
   db
     .insertInto('payers')
-    .values({ tenant_id: tenantId, name: p.name, payer_id: p.payerId, claim_filing: p.claimFiling })
+    .values({
+      tenant_id: tenantId,
+      name: p.name,
+      payer_id: p.payerId,
+      claim_filing: p.claimFiling,
+      filing_limit_days: p.filingLimitDays
+    })
     .onConflict((oc) =>
       oc.expression(sql`tenant_id, lower(name)`).doUpdateSet({
         payer_id: p.payerId,
         claim_filing: p.claimFiling,
+        filing_limit_days: p.filingLimitDays,
         embedding: sql`case when payers.claim_filing = excluded.claim_filing then payers.embedding end`,
         updated_at: sql`now()`
       })

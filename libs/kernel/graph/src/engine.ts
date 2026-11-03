@@ -1,5 +1,12 @@
 import { checkExit, checkInput, checkOutputs } from './checks.ts';
-import { type CompiledGraph, ENTRY_TYPE, portKey, RETURN_TYPE, refKey } from './compile.ts';
+import {
+  type CompiledGraph,
+  ENTRY_TYPE,
+  INPUT_TYPE,
+  portKey,
+  RETURN_TYPE,
+  refKey
+} from './compile.ts';
 import { fail, messageOf } from './errors.ts';
 import { evaluateExpr } from './expr.ts';
 import { createRegistry, isPure, type Registry } from './registry.ts';
@@ -282,7 +289,7 @@ export const createEngine = ({
     deps: Deps
   ): Promise<Json> => {
     const src = nodeIn(g, id);
-    if (src.type === ENTRY_TYPE) return scope.inputs[pin] ?? null;
+    if (src.type === ENTRY_TYPE || src.type === INPUT_TYPE) return scope.inputs[pin] ?? null;
     const sig = registry.signature(src, g.def);
     const key = outKey(scope.id, id);
     if (!isPure(sig)) {

@@ -1,7 +1,7 @@
 import { type Database, NOTIFICATION_INTENTS } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const buildNotificationsTable = (db: Kysely<Database>) =>
+const buildNotificationsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('notifications')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -26,7 +26,7 @@ export const buildNotificationsTable = (db: Kysely<Database>) =>
       sql`(link_label is null) = (link_to is null) and (link_to is null or link_to like '/%')`
     );
 
-export const buildNotificationStatesTable = (db: Kysely<Database>) =>
+const buildNotificationStatesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('notification_states')
     .addColumn('user_id', 'uuid', (col) =>
@@ -35,7 +35,7 @@ export const buildNotificationStatesTable = (db: Kysely<Database>) =>
     .addColumn('read_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('cleared_at', 'timestamptz');
 
-export const buildNotificationsIndexes = (db: Kysely<Database>) => [
+const buildNotificationsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_notifications_tenant_created')
     .on('notifications')

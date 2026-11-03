@@ -11,7 +11,9 @@ export const CLAIM_EVENT_KINDS = [
   'reconciled',
   'statement',
   'revised',
-  'closed'
+  'closed',
+  'accepted',
+  'rejected'
 ] as const;
 
 export type ClaimEventKind = (typeof CLAIM_EVENT_KINDS)[number];
@@ -22,7 +24,9 @@ export const COVERAGE_EVENT_KINDS: readonly ClaimEventKind[] = [
   'resubmit_queued',
   'follow_up',
   'payer_skipped',
-  'reconciled'
+  'reconciled',
+  'accepted',
+  'rejected'
 ];
 
 export const CYCLE_EVENT_KINDS = [
@@ -99,6 +103,7 @@ export type ClaimEvent = {
   payerClaimNumber: string | null;
   paidOn: string | null;
   adjustments: Adjustment[];
+  note: string;
   at: string;
 };
 
@@ -139,8 +144,13 @@ const CONTACTS: readonly ClaimEventKind[] = [
   'submitted',
   'resubmitted',
   'resubmit_queued',
-  'follow_up'
+  'follow_up',
+  'rejected'
 ];
+
+const REOPENING: readonly ClaimEventKind[] = ['resubmit_queued', 'rejected'];
+
+const REJECTION_NOTE = 'The payer or clearinghouse rejected the last submission';
 
 const latest = (events: ClaimEvent[]) =>
   events.reduce<number | null>((max, e) => {
@@ -171,7 +181,7 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
     .filter((e) => coverage !== null && e.coverageId === coverage.id && CONTACTS.includes(e.kind))
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const last = contacts.at(-1);
-  const contacted = !last || last.kind === 'resubmit_queued' ? null : Date.parse(last.at);
+  const contacted = !last || REOPENING.includes(last.kind) ? null : Date.parse(last.at);
   const approvedAt = coverage === null ? -1 : lastOf(coverage.id, ['approved']);
   const approval =
     coverage !== null && approvedAt > Math.max(lastOf(coverage.id, CONTACTS), edited)
@@ -197,6 +207,7 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
       .filter((c) => lastOf(c.id, ['payer_skipped']) > reopened(c.id))
       .map((c) => c.id),
     submittedBefore: contacts.some((e) => e.kind === 'submitted' || e.kind === 'resubmitted'),
+    rejection: last?.kind === 'rejected' ? last.note || REJECTION_NOTE : null,
     payerClaimNumber:
       events.findLast((e) => e.coverageId === coverage?.id && e.payerClaimNumber !== null)
         ?.payerClaimNumber ?? null,

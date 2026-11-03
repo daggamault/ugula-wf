@@ -1,3 +1,5 @@
+import { downloadText } from '../../shared/download.ts';
+
 export type CsvCell = string | number | null;
 
 const cell = (value: CsvCell) => {
@@ -10,9 +12,5 @@ export const toCsv = (rows: readonly (readonly CsvCell[])[]) =>
 
 export const dollars = (cents: number) => (cents / 100).toFixed(2);
 
-export const downloadCsv = (fileName: string, rows: readonly (readonly CsvCell[])[]) => {
-  const url = URL.createObjectURL(new Blob([toCsv(rows)], { type: 'text/csv;charset=utf-8' }));
-  const link = Object.assign(document.createElement('a'), { href: url, download: fileName });
-  link.click();
-  URL.revokeObjectURL(url);
-};
+export const downloadCsv = (fileName: string, rows: readonly (readonly CsvCell[])[]) =>
+  downloadText(fileName, toCsv(rows), 'text/csv;charset=utf-8');

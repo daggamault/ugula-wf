@@ -21,12 +21,15 @@ const XML = `<EMSDataSet xmlns="http://www.nemsis.org" xmlns:xsi="http://www.w3.
     <ePayment.01 NV="7701003" xsi:nil="true"/>
     <ePayment.InsuranceGroup><ePayment.10>HIGHMARK BCBS</ePayment.10><ePayment.11>2611003</ePayment.11><ePayment.18>M1</ePayment.18></ePayment.InsuranceGroup>
     <ePayment.InsuranceGroup><ePayment.10>MEDICARE</ePayment.10><ePayment.11>2611005</ePayment.11></ePayment.InsuranceGroup>
-    <ePayment.50>2650003</ePayment.50>
+    <ePayment.44>A</ePayment.44><ePayment.47>06</ePayment.47><ePayment.47>09</ePayment.47>
+    <ePayment.50>2650003</ePayment.50><ePayment.53>PA-77</ePayment.53>
   </ePayment>
+  <eExam><eExam.01>81.6</eExam.01></eExam>
   <eSituation><eSituation.11>R07.9</eSituation.11><eSituation.12>I10</eSituation.12><eSituation.12>E11.9</eSituation.12></eSituation>
   <eMedications><eMedications.MedicationGroup><eMedications.03 PN="8801019">4337</eMedications.03><eMedications.04>9927021</eMedications.04></eMedications.MedicationGroup></eMedications>
   <eDisposition><eDisposition.12>4212033</eDisposition.12></eDisposition>
   <eNarrative><eNarrative.01>Pt found sitting.</eNarrative.01></eNarrative>
+  <eOther><eOther.SignatureGroup><eOther.12>4512015</eOther.12><eOther.13>4513001</eOther.13><eOther.13>4513005</eOther.13><eOther.15>4515031</eOther.15><eOther.19>2026-09-14T08:22:00-04:00</eOther.19></eOther.SignatureGroup></eOther>
 </PatientCareReport>
 </Header></EMSDataSet>`;
 
@@ -85,6 +88,23 @@ describe('toPcr', () => {
     );
     assert.equal(pcr.narrative, 'Pt found sitting.');
     assert.deepEqual(toPcr(null).insurances, []);
+    const payment = pcr.payment as Record<string, unknown>;
+    assert.deepEqual(
+      [payment.transportReason, payment.ambulanceConditions, payment.priorAuthorization],
+      ['A', ['06', '09'], 'PA-77']
+    );
+    assert.equal((pcr.exam as { weightKg: number }).weightKg, 81.6);
+    assert.deepEqual(pcr.signatures, [
+      {
+        signer: '4512015',
+        reasons: ['4513001', '4513005'],
+        representative: null,
+        status: '4515031',
+        signedAt: '2026-09-14T08:22:00-04:00',
+        lastName: null,
+        firstName: null
+      }
+    ]);
   });
 
   it('describes the report and each section as labelled models', () => {

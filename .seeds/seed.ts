@@ -26,7 +26,7 @@ import { readCodes, readElements, upsertDictionary } from './nemsis-dictionary.t
 import { upsertTenant } from './tenants.ts';
 import { upsertUser } from './users.ts';
 
-export const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
+const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
   const byRef = new Map(
     graphs.map((g) => [refKey({ type: g.key, version: g.version }), g.definition])
   );
@@ -42,14 +42,14 @@ export const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
   if (problems.length) throw new Error(`Invalid seed graphs:\n${problems.join('\n')}`);
 };
 
-export const graphNodes = () => [
+const graphNodes = () => [
   ...createStdNodes({ fetch }),
   ...createNemsisNodes(null),
   ...createBillingNodes(null),
   ...createModelNodes([...nemsisModels, ...billingModels])
 ];
 
-export const seedBase = async (db: Db) => {
+const seedBase = async (db: Db) => {
   const nodes = graphNodes();
   assertValidGraphs(billingGraphs, nodes);
   const places = readPlaces(await readFile(PLACES_FILE));
@@ -64,7 +64,7 @@ export const seedBase = async (db: Db) => {
   });
 };
 
-export const seedDev = async (db: Db, dev: DevSeedConfig) => {
+const seedDev = async (db: Db, dev: DevSeedConfig) => {
   const [userPasswordHash, sftpPasswordHash] = await Promise.all([
     hashPassword(dev.DEV_USER_PASSWORD),
     hashPassword(dev.DEV_SFTP_PASSWORD)

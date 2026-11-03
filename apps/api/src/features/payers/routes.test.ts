@@ -43,7 +43,7 @@ describe('payer routes', () => {
       ['names', 't-1', undefined],
       ['names', 't-1', 'med'],
       ['find', 't-1', ID],
-      ['save', 't-1', body],
+      ['save', 't-1', { ...body, filingLimitDays: null }],
       ['remove', 't-1', ID],
       ['forget', 't-1', ID, ID]
     ]);

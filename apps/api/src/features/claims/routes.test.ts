@@ -125,6 +125,7 @@ describe('claim routes', () => {
       destination: { name: null, addressLine: null, city: null, state: null, postalCode: null },
       diagnoses: ['R079'],
       originDestination: 'RH',
+      documentation: null,
       note: null
     });
     const bad = await request(`/${ID}/billing-data`, {

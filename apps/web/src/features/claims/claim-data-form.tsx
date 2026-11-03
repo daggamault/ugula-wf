@@ -1,4 +1,11 @@
-import { ORIGIN_DESTINATION_CODES } from '@ugula/billing';
+import {
+  isSignatureStatus,
+  isTransportReason,
+  ORIGIN_DESTINATION_CODES,
+  SIGNATURE_LABELS,
+  SIGNATURE_STATUSES,
+  TRANSPORT_REASONS
+} from '@ugula/billing';
 import { SaveIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Button } from '../../shared/ui/button.tsx';
@@ -17,6 +24,10 @@ type Draft = {
   diagnoses: string;
   originCode: string;
   destinationCode: string;
+  signature: string;
+  transportReason: string;
+  pcsOnFile: string;
+  pcsSignedOn: string;
 };
 
 const MODIFIER_OPTIONS = Object.entries(ORIGIN_DESTINATION_CODES).map(([value, label]) => ({
@@ -29,6 +40,27 @@ const NOT_SET = { value: '', label: 'Not Set' };
 export const ORIGIN_OPTIONS = [NOT_SET, ...MODIFIER_OPTIONS.filter((o) => o.value !== 'X')];
 
 export const DESTINATION_OPTIONS = [NOT_SET, ...MODIFIER_OPTIONS];
+
+export const SIGNATURE_OPTIONS = SIGNATURE_STATUSES.map((value) => ({
+  value,
+  label: SIGNATURE_LABELS[value]
+}));
+
+export const TRANSPORT_REASON_OPTIONS = [
+  NOT_SET,
+  ...Object.entries(TRANSPORT_REASONS).map(([value, label]) => ({
+    value,
+    label: `${value} · ${label}`
+  }))
+];
+
+const PCS_OPTIONS = [
+  { value: '', label: 'Unknown' },
+  { value: 'yes', label: 'On File' },
+  { value: 'no', label: 'Not on File' }
+];
+
+const pcsOf = (x: boolean | null) => (x === null ? '' : x ? 'yes' : 'no');
 
 const blank = (x: string | null | undefined) => x ?? '';
 
@@ -64,7 +96,11 @@ export const toDraft = (claim: ClaimDetail): Draft => ({
   },
   diagnoses: claim.diagnoses.join(', '),
   originCode: blank(claim.origin_code),
-  destinationCode: blank(claim.destination_code)
+  destinationCode: blank(claim.destination_code),
+  signature: claim.signature,
+  transportReason: blank(claim.transport_reason),
+  pcsOnFile: pcsOf(claim.pcs_on_file),
+  pcsSignedOn: blank(claim.pcs_signed_on)
 });
 
 const fromLocation = (l: Record<keyof LocationInput, string>): LocationInput => ({
@@ -75,7 +111,23 @@ const fromLocation = (l: Record<keyof LocationInput, string>): LocationInput => 
   postalCode: orNull(l.postalCode)
 });
 
-export const fromDraft = (d: Draft): BillingDataInput => ({
+const changed = <T, V>(next: T, before: T, value: V): V | null => (next === before ? null : value);
+
+const documentationOf = (d: Draft, before: Draft): BillingDataInput['documentation'] => {
+  const doc = {
+    signature: isSignatureStatus(d.signature)
+      ? changed(d.signature, before.signature, d.signature)
+      : null,
+    pcsOnFile: d.pcsOnFile ? changed(d.pcsOnFile, before.pcsOnFile, d.pcsOnFile === 'yes') : null,
+    pcsSignedOn: orNull(changed(d.pcsSignedOn, before.pcsSignedOn, d.pcsSignedOn) ?? ''),
+    transportReason: isTransportReason(d.transportReason)
+      ? changed(d.transportReason, before.transportReason, d.transportReason)
+      : null
+  };
+  return Object.values(doc).some((v) => v !== null) ? doc : null;
+};
+
+export const fromDraft = (d: Draft, before: Draft = d): BillingDataInput => ({
   patient: {
     addressLine: orNull(d.patient.addressLine),
     city: orNull(d.patient.city),
@@ -94,7 +146,8 @@ export const fromDraft = (d: Draft): BillingDataInput => ({
     .split(/[\s,]+/)
     .map((x) => x.trim())
     .filter(Boolean),
-  originDestination: d.originCode && d.destinationCode ? d.originCode + d.destinationCode : null
+  originDestination: d.originCode && d.destinationCode ? d.originCode + d.destinationCode : null,
+  documentation: documentationOf(d, before)
 });
 
 export const modifierErrorOf = (d: Pick<Draft, 'originCode' | 'destinationCode'>) =>
@@ -127,7 +180,8 @@ export const ClaimDataForm = ({
   locked: string | undefined;
   onSave: (data: BillingDataInput) => Promise<boolean>;
 }) => {
-  const [draft, setDraft] = useState(() => toDraft(claim));
+  const [initial] = useState(() => toDraft(claim));
+  const [draft, setDraft] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [isChecked, setChecked] = useState(false);
   const modifierError = isChecked ? modifierErrorOf(draft) : undefined;
@@ -137,7 +191,7 @@ export const ClaimDataForm = ({
     setChecked(true);
     if (modifierErrorOf(draft)) return;
     setBusy(true);
-    await onSave(fromDraft(draft));
+    await onSave(fromDraft(draft, initial));
     setBusy(false);
   };
   const address = <K extends 'patient' | 'pickup' | 'destination'>(
@@ -161,7 +215,7 @@ export const ClaimDataForm = ({
     <form onSubmit={submit} aria-label="Claim data">
       <SectionPanel
         title="Claim Data"
-        description="What goes on the 837P: patient address, member IDs, and transport details."
+        description="What goes on the 837P: patient address, member IDs, transport details and documentation."
         actions={
           <Button type="submit" isPending={busy} disabledReason={locked}>
             <SaveIcon aria-hidden="true" className="size-4" />
@@ -235,6 +289,42 @@ export const ClaimDataForm = ({
                   error={draft.destinationCode ? undefined : modifierError}
                   value={draft.destinationCode}
                   onChange={(e) => setDraft({ ...draft, destinationCode: e.target.value })}
+                />
+              </FieldGrid>
+            </FieldGroup>
+            <FieldGroup title="Documentation">
+              <FieldGrid>
+                <Select
+                  id="signature"
+                  label="Billing Signature"
+                  span={2}
+                  options={SIGNATURE_OPTIONS}
+                  value={draft.signature}
+                  onChange={(e) => setDraft({ ...draft, signature: e.target.value })}
+                />
+                <Select
+                  id="transport-reason"
+                  label="Transport Reason"
+                  span={2}
+                  options={TRANSPORT_REASON_OPTIONS}
+                  value={draft.transportReason}
+                  onChange={(e) => setDraft({ ...draft, transportReason: e.target.value })}
+                />
+                <Select
+                  id="pcs-on-file"
+                  label="Physician Certification"
+                  span={2}
+                  options={PCS_OPTIONS}
+                  value={draft.pcsOnFile}
+                  onChange={(e) => setDraft({ ...draft, pcsOnFile: e.target.value })}
+                />
+                <Input
+                  id="pcs-signed-on"
+                  label="Certification Signed On"
+                  type="date"
+                  span={2}
+                  value={draft.pcsSignedOn}
+                  onChange={(e) => setDraft({ ...draft, pcsSignedOn: e.target.value })}
                 />
               </FieldGrid>
             </FieldGroup>

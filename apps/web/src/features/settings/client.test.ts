@@ -15,7 +15,12 @@ describe('createSettingsClient', () => {
     assert.equal(await client.profile(), null);
     assert.deepEqual((await client.searchPayers('q=blue&page=1')).items, []);
     assert.deepEqual(await client.payer('p1'), { id: 'p1' });
-    await client.savePayer({ name: 'Medicare', payerId: '00952', claimFiling: 'MB' });
+    await client.savePayer({
+      name: 'Medicare',
+      payerId: '00952',
+      claimFiling: 'MB',
+      filingLimitDays: null
+    });
     await client.removePayer('p1');
     await client.forgetAlias('p1', 'a1');
     await client.saveProfile({

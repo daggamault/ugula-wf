@@ -1,190 +1,193 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, it } from 'node:test';
-import { type Browser, chromium, type Page } from 'playwright-core';
-import { parseE2eConfig, withPcr } from './config.ts';
+import {
+  claimState,
+  claimStatusIs,
+  completeTask,
+  go,
+  heading,
+  importEncounter,
+  type Session,
+  SUITE_MS,
+  section,
+  signIn,
+  toasts,
+  uniqueId,
+  until,
+  uploadPayerFile,
+  workTasksUntil
+} from './shared/session.ts';
+import {
+  batchAcknowledgment999,
+  claimAcknowledgment277,
+  eligibility271,
+  remittance835
+} from './shared/x12.ts';
 
-const config = parseE2eConfig(process.env);
-const pcr = `E2E-${Date.now()}`;
-const fixture = withPcr(
-  readFileSync(new URL('./fixtures/new-patient-medicare.xml', import.meta.url), 'utf8'),
-  pcr
-);
-const STEP_MS = 120_000;
+const pcr = uniqueId('E2E-BILL');
 
-let browser: Browser;
-let page: Page;
+let s: Session;
+let claimId = '';
 
-const go = (path: string) => page.goto(new URL(path, config.E2E_WEB_URL).href);
-
-const claimRow = () => page.getByRole('row').filter({ hasText: pcr });
-
-const claimLink = () => claimRow().getByRole('link', { name: /^Open claim #/ });
-
-const claimsWith = (status: string) => go(`/claims?number=${pcr}&status=${status}`);
-
-const waitForClaim = async (status: string) => {
-  for (let i = 0; i < 40; i++) {
-    await claimsWith(status);
-    await claimRow()
-      .or(page.getByRole('heading', { name: 'No Matching Claims' }))
-      .first()
-      .waitFor();
-    if (await claimLink().count()) return;
-    await page.waitForTimeout(3_000);
-  }
-  assert.fail(`the claim never reached ${status}`);
+const openClaim = async () => {
+  await go(s.page, `/claims/${claimId}`);
+  await heading(s.page, /^Claim #\d+$/).waitFor();
 };
 
-const heading = (name: string | RegExp) => page.getByRole('heading', { level: 1, name });
+const createBatch = async () => {
+  await openClaim();
+  await s.page.getByRole('button', { name: 'Create 837P file' }).click();
+  const ready = s.page.getByText(/837P file #\d+ is ready/).first();
+  await ready.waitFor();
+  const control = Number((await ready.textContent())?.match(/#(\d+)/)?.[1]);
+  const href = await s.page
+    .getByRole('link', { name: `837P file #${control}` })
+    .first()
+    .getAttribute('href');
+  const file = await (await s.page.request.get(new URL(href ?? '', s.apiUrl).href)).text();
+  return { control, file };
+};
 
-describe('a biller takes an encounter from import to an 837P file', { timeout: 600_000 }, () => {
+describe('a biller takes an encounter from import to payment', { timeout: SUITE_MS }, () => {
   before(async () => {
-    browser = await chromium.launch({ channel: config.E2E_BROWSER_CHANNEL, headless: true });
-    page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    page.setDefaultTimeout(STEP_MS);
-    await go('/claims');
-    await page.getByLabel('Email').fill(config.DEV_USER_EMAIL);
-    await page.getByLabel('Password').fill(config.DEV_USER_PASSWORD);
-    await page.getByRole('button', { name: 'Sign In' }).click();
-    await heading('Claims').waitFor();
+    s = await signIn();
   });
 
   after(async () => {
-    await browser?.close();
+    await s?.browser.close();
   });
 
-  it('imports a NEMSIS file from the Imports button', async () => {
-    await go('/imports');
-    await page.locator('input[type="file"][accept*="xml"]').setInputFiles({
-      name: `${pcr}.xml`,
-      mimeType: 'text/xml',
-      buffer: Buffer.from(fixture)
-    });
-    await page
-      .getByRole('region', { name: 'Notifications' })
-      .getByText(`${pcr}.xml received`)
-      .waitFor();
-    await page.getByRole('link', { name: `Open import ${pcr}.xml` }).click();
-    await heading(`${pcr}.xml`).waitFor();
-    await page.getByRole('row').filter({ hasText: pcr }).waitFor();
+  it('imports a NEMSIS file and opens a draft claim for its PCR', async () => {
+    claimId = await importEncounter(s, pcr);
+    assert.equal((await claimState(s, claimId)).claim.status, 'draft');
   });
 
-  it('opens a draft claim while the PCR is worked', async () => {
-    await waitForClaim('draft');
-    await claimRow().getByText('Draft').waitFor();
-  });
-
-  it('works every task from the claim row, including the forced claim review, until the claim is ready', async () => {
-    for (let i = 0; i < 60; i++) {
-      await go(`/claims?number=${pcr}&status=all`);
-      await claimRow().waitFor();
-      const work = claimRow().getByRole('link', { name: /^Work / });
-      if (!(await work.count())) {
-        await claimsWith('ready');
-        await claimRow()
-          .or(page.getByRole('heading', { name: 'No Matching Claims' }))
-          .first()
-          .waitFor();
-        if (await claimLink().count()) return;
-        await page.waitForTimeout(3_000);
-        continue;
-      }
-      await work.click();
-      await page
-        .getByText(/claim #\d+ for /i)
-        .first()
-        .waitFor();
-      const decision = page
-        .locator('section')
-        .filter({ has: page.getByRole('heading', { name: 'Your Decision' }) })
-        .last();
-      await decision.waitFor();
-      for (const select of await decision.locator('select').all()) {
-        if (!(await select.inputValue())) {
-          const values = await select
-            .locator('option')
-            .evaluateAll((options) =>
-              options.map((o) => o.getAttribute('value') ?? '').filter(Boolean)
-            );
-          if (values[0]) await select.selectOption(values[0]);
+  it('works the PCR: links the payer and reviews the service with what supports it', async () => {
+    let reviewed = false;
+    const built = await workTasksUntil(s, claimId, 'needs_review', {
+      'Review PCR': {
+        check: async () => {
+          await s.page
+            .getByText('No vital signs are recorded to support medical necessity')
+            .first()
+            .waitFor();
+          reviewed = true;
         }
       }
-      for (const input of await decision.locator('input[required], textarea[required]').all()) {
-        if (await input.inputValue()) continue;
-        const type = await input.getAttribute('type');
-        const min = await input.getAttribute('min');
-        await input.fill(
-          type === 'date' ? '2026-10-01' : type === 'number' ? (min ?? '1') : 'E2E synthetic'
-        );
-      }
-      await decision
-        .locator('form > div')
-        .last()
-        .locator('button:not([aria-disabled="true"])')
-        .first()
-        .click();
-      await page.getByRole('heading', { name: 'Done' }).waitFor();
-    }
-    assert.fail('the claim never became ready to submit');
+    });
+    assert.ok(reviewed, 'a biller reviewed the PCR');
+    assert.deepEqual(
+      built.issues.filter((i) => i.level === 'blocking'),
+      [],
+      'a complete report builds a claim with nothing blocking it'
+    );
   });
 
-  it('submits the claim from its own page and lists its files there', async () => {
-    await claimsWith('ready');
-    await claimLink().click();
-    await heading(/^Claim #\d+$/).waitFor();
-    await page.getByText(/^Encounter E2E-\S+$/).waitFor();
-    await page.getByRole('button', { name: 'Create 837P file' }).click();
-    await page.getByText(/837P file #\d+ is ready/).waitFor();
-    const files = page
-      .locator('section')
-      .filter({ has: page.getByRole('heading', { name: 'Files' }) });
-    await files.getByRole('link', { name: /837P file #\d+/ }).waitFor();
-    await files.getByRole('link', { name: /NEMSIS XML/ }).waitFor();
-    await waitForClaim('submitted');
-  });
-
-  it('shows the submission on the claim history tab', async () => {
-    await claimLink().click();
-    await page.getByRole('link', { name: /History/ }).click();
-    await page.getByRole('link', { name: /837P file #\d+/i }).waitFor();
-    await page.getByRole('link', { name: 'Claim data' }).click();
-    await page.getByLabel('Date of service').waitFor();
-  });
-
-  it('finds the patient by last name and birth date', async () => {
-    await go('/patients');
-    await page.getByLabel('Last name').fill('kli');
-    await page.getByLabel('Birth date').fill('1941-05-22');
-    await page.getByRole('button', { name: 'Search' }).click();
-    await page.getByRole('link', { name: 'Open patient Kline, Dorothy' }).click();
-    await page.getByRole('heading', { name: 'Details' }).waitFor();
-  });
-
-  it('keeps new tasks in the notification bell', async () => {
-    await page
-      .getByRole('button', { name: /^Notifications/ })
-      .first()
-      .click();
-    await page
-      .getByRole('dialog', { name: 'Notifications' })
-      .getByText(/New task:/)
+  it('shows what the report documents for billing on the claim', async () => {
+    await openClaim();
+    const documentation = section(s.page, 'Documentation');
+    await documentation
+      .getByText('Signed by the patient or their representative')
       .first()
       .waitFor();
-    await page.keyboard.press('Escape');
+    await documentation
+      .getByText(/^A · Nearest facility/)
+      .first()
+      .waitFor();
+    await documentation
+      .getByText(/04 · Patient was moved by stretcher/)
+      .first()
+      .waitFor();
   });
 
-  it('searches fees and payers and edits them on their own pages', async () => {
-    await go('/fees?q=a04');
-    await page.locator('mark', { hasText: /a04/i }).first().waitFor();
-    await page.getByRole('link', { name: 'Add Fee' }).first().click();
-    await page.getByLabel('HCPCS').waitFor();
-    await page.getByRole('link', { name: 'Cancel' }).click();
-    await page.waitForURL(/\/fees\?q=a04$/);
-    await go('/payers');
-    await page.getByRole('link', { name: 'Add Payer' }).first().click();
-    await page.getByLabel('Clearinghouse Payer ID').waitFor();
-    await page.getByRole('link', { name: 'Cancel' }).click();
-    await page.waitForURL(/\/payers$/);
+  it('requests eligibility as a 270 and blocks billing a payer that reports the coverage inactive', async () => {
+    await openClaim();
+    const download = s.page.waitForEvent('download');
+    await s.page.getByRole('button', { name: 'Check Eligibility' }).click();
+    const request = readFileSync((await (await download).path()) ?? '', 'utf8');
+    assert.match(request, /ST\*270\*0001\*005010X279A1/);
+    assert.match(request, /NM1\*IL\*1\*KLINE\*DOROTHY\*{4}MI\*2KT7XM4RW91/);
+    const [coverage] = (await claimState(s, claimId)).claim.coverages;
+    assert.ok(coverage);
+    assert.match(
+      await uploadPayerFile(s.page, `${pcr}-inactive.271`, eligibility271(coverage.id, false)),
+      /applied$/
+    );
+    await until(
+      s.page,
+      () => claimState(s, claimId),
+      (c) => c.issues.some((i) => /reports this coverage is not active/.test(i.message)),
+      'the inactive coverage to block billing'
+    );
+    await openClaim();
+    await section(s.page, 'Eligibility').getByText('Not Active').first().waitFor();
+    await uploadPayerFile(s.page, `${pcr}-active.271`, eligibility271(coverage.id, true));
+    await until(
+      s.page,
+      () => claimState(s, claimId),
+      (c) => !c.issues.some((i) => /not active/.test(i.message)),
+      'the active coverage to clear the block'
+    );
+  });
+
+  it('reviews the claim and files it as an 837P carrying the documentation', async () => {
+    await completeTask(s, claimId, 'Review claim', { outcome: 'Approve' });
+    const ready = await claimStatusIs(s, claimId, 'ready');
+    const { control, file } = await createBatch();
+    assert.match(file, new RegExp(`CLM\\*${ready.claim.number}\\*`));
+    assert.match(file, /CR1\*{3,4}A\*DH\*/);
+    assert.match(file, /CRC\*07\*Y\*04\*06\*09/);
+    await claimStatusIs(s, claimId, 'submitted');
+    assert.match(
+      await uploadPayerFile(s.page, `${pcr}.999`, batchAcknowledgment999(control, true)),
+      /applied$/
+    );
+    await openClaim();
+    await s.page.getByRole('link', { name: /History/ }).click();
+    await s.page.getByText('Accepted by the payer').first().waitFor();
+  });
+
+  it('sends a claim the payer rejects back to review with the reason, and resubmits it', async () => {
+    const { claim } = await claimState(s, claimId);
+    await uploadPayerFile(
+      s.page,
+      `${pcr}-rejected.277`,
+      claimAcknowledgment277(claim.number, 'Invalid member ID')
+    );
+    await claimStatusIs(s, claimId, 'needs_review');
+    await completeTask(s, claimId, 'Review claim', {
+      outcome: 'Approve',
+      check: async () => {
+        await s.page
+          .getByText(/Invalid member ID/)
+          .first()
+          .waitFor();
+      }
+    });
+    await claimStatusIs(s, claimId, 'ready');
+    await createBatch();
+    await claimStatusIs(s, claimId, 'submitted');
+  });
+
+  it('posts the remittance, closes the claim as paid and never applies the same file twice', async () => {
+    const { claim } = await claimState(s, claimId);
+    const paid = Math.round(claim.total_cents * 0.6);
+    const era = remittance835(claim.number, claim.total_cents, paid);
+    assert.match(await uploadPayerFile(s.page, `${pcr}.835`, era), /applied$/);
+    await claimStatusIs(s, claimId, 'paid');
+    await go(s.page, '/payer-files');
+    await s.page.getByRole('link', { name: `Open payer file ${pcr}.835` }).click();
+    await s.page
+      .getByRole('row')
+      .filter({ hasText: `#${claim.number}` })
+      .getByText('Posted')
+      .first()
+      .waitFor();
+    assert.match(await uploadPayerFile(s.page, `${pcr}.835`, era), /could not be applied$/);
+    await toasts(s.page)
+      .getByText(/already imported/)
+      .first()
+      .waitFor();
   });
 });

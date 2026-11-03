@@ -1,17 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import {
-  claimBalance,
-  findClaim,
-  insertResponse,
-  listClaimEvents,
-  listClaims,
-  listCoverages,
-  numberOf,
-  paidBy,
-  reorderCoverages
-} from './queries.ts';
+import { findClaim, listClaimEvents, listClaims, numberOf, reorderCoverages } from './queries.ts';
 
 describe('claim queries', () => {
   it('pages claim ids by tenant and filters first, then loads details for that page only', async () => {
@@ -187,16 +177,6 @@ describe('claim queries', () => {
     assert.ok(find?.sql.includes('as "assignee_email", "t"."created_at" from "tasks" as "t"'));
   });
 
-  it('flags coverages that already have billing activity', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    await listCoverages(db, 'c1');
-    assert.ok(
-      queries[0]?.sql.includes(
-        'exists ((select "e"."id" from "claim_events" as "e" where "e"."coverage_id" = "cc"."id")) as "has_events"'
-      )
-    );
-  });
-
   it('removes, repositions and adds coverages, then touches the claim', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await reorderCoverages(db, 't-1', 'c1', {
@@ -239,27 +219,10 @@ describe('claim queries', () => {
     );
   });
 
-  it('reads balances, events with payer names and inserts responses idempotently', async () => {
-    const { db, queries } = createRecordingDb((q) =>
-      q.sql.includes('claim_balances') ? [{ balance_cents: 7 }] : []
-    );
-    assert.equal(await claimBalance(db, 'c1'), 7);
+  it('reads events with payer names, amounts and reason codes', async () => {
+    const { db, queries } = createRecordingDb(() => []);
     await listClaimEvents(db, 'c1', { page: 1, pageSize: 25, sort: 'amount', dir: 'asc' });
-    const inserted = await insertResponse(db, 'c1', 'u1', {
-      requestId: 'req-1',
-      kind: 'response',
-      coverageId: null,
-      paidCents: 5,
-      adjustedCents: 0,
-      paidOn: null,
-      checkNumber: null,
-      payerClaimNumber: 'ignored without a payer',
-      adjustments: [{ group: 'PR', reason: '1', cents: 5 }],
-      note: ''
-    });
-    assert.equal(inserted, false);
-    assert.equal(queries.length, 3);
-    const [, events, insert] = queries;
+    const [events] = queries;
     assert.ok(events?.sql.includes('case when e.coverage_id is null then null else coalesce('));
     assert.ok(
       events?.sql.includes('order by e.paid_cents + e.adjusted_cents asc nulls last, "e"."id" asc')
@@ -270,17 +233,6 @@ describe('claim queries', () => {
         'select "a"."group_code" as "group", "a"."reason_code" as "reason", "a"."amount_cents" as "cents" from "claim_event_adjustments" as "a"'
       )
     );
-    assert.ok(insert?.parameters.includes('response'));
-    assert.ok(insert?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
-    assert.ok(!insert?.parameters.includes('ignored without a payer'));
-  });
-
-  it('sums what a payer or the patient paid, for refunds', async () => {
-    const { db, queries } = createRecordingDb(() => [{ paid: 900 }]);
-    assert.equal(await paidBy(db, 'c1', 'cov1'), 900);
-    await paidBy(db, 'c1', null);
-    assert.ok(queries[0]?.sql.endsWith('"claim_id" = $1 and "coverage_id" = $2'));
-    assert.ok(queries[1]?.sql.endsWith('"coverage_id" is null'));
   });
 });
 

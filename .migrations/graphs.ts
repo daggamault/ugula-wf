@@ -1,7 +1,7 @@
 import { type Database, GRAPH_KINDS, PUBLISHED_IMMUTABLE_TRIGGER } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const buildGraphsTable = (db: Kysely<Database>) =>
+const buildGraphsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('graphs')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -27,7 +27,7 @@ export const buildGraphsTable = (db: Kysely<Database>) =>
       sql`key ~ '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$' and key not like 'std.%'`
     );
 
-export const buildGraphVersionsTable = (db: Kysely<Database>) =>
+const buildGraphVersionsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('graph_versions')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -45,7 +45,7 @@ export const buildGraphVersionsTable = (db: Kysely<Database>) =>
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('graph_versions_graph_id_version_unique', ['graph_id', 'version']);
 
-export const buildGraphVersionsDraftIndex = (db: Kysely<Database>) =>
+const buildGraphVersionsDraftIndex = (db: Kysely<Database>) =>
   db.schema
     .createIndex('idx_graph_versions_draft')
     .on('graph_versions')
@@ -53,10 +53,10 @@ export const buildGraphVersionsDraftIndex = (db: Kysely<Database>) =>
     .unique()
     .where(sql.ref('published_at'), 'is', null);
 
-export const buildGraphVersionsCreatedByIndex = (db: Kysely<Database>) =>
+const buildGraphVersionsCreatedByIndex = (db: Kysely<Database>) =>
   db.schema.createIndex('idx_graph_versions_created_by').on('graph_versions').column('created_by');
 
-export const publishedImmutableFunction = sql`
+const publishedImmutableFunction = sql`
   create function prevent_published_graph_change() returns trigger language plpgsql as $$
   begin
     if old.published_at is not null then
@@ -66,7 +66,7 @@ export const publishedImmutableFunction = sql`
   end;
   $$`;
 
-export const publishedImmutableTrigger = sql`
+const publishedImmutableTrigger = sql`
   create trigger ${sql.id(PUBLISHED_IMMUTABLE_TRIGGER)}
   before update on graph_versions
   for each row execute function prevent_published_graph_change()`;

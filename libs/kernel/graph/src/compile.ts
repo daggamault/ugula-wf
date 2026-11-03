@@ -2,6 +2,7 @@ import type { Edge, GraphDef, NodeInstance, NodeRef, VariableDef } from './types
 
 export const ENTRY_TYPE = 'std.graph.entry';
 export const RETURN_TYPE = 'std.graph.return';
+export const INPUT_TYPE = 'std.graph.input';
 
 export type CompiledGraph = {
   def: GraphDef;

@@ -8,7 +8,14 @@ import type { CompiledQuery } from 'kysely';
 import type { Evaluate } from '../../shared/evaluate.ts';
 import { recordAnnouncements } from '../../shared/testing.ts';
 import type { ReadyClaimRow } from './queries.ts';
-import { batchKey, createSubmissionService, detailsOf, MAP_837P, pendingClaim } from './service.ts';
+import {
+  batchKey,
+  createSubmissionService,
+  detailsOf,
+  eligibilityRequests,
+  MAP_837P,
+  pendingClaim
+} from './service.ts';
 
 const toX837 = (c: BatchClaim): Json => ({
   claimId: c.claimId,
@@ -82,6 +89,17 @@ const claimRow = (id: string, over: Partial<ReadyClaimRow> = {}): ReadyClaimRow 
   destination_city: 'Springfield',
   destination_state: 'IL',
   destination_postal_code: '62702',
+  signature: 'signed',
+  signature_note: null,
+  pcs_on_file: null,
+  pcs_signed_on: null,
+  transport_reason: 'A',
+  condition_codes: [],
+  prior_authorization: null,
+  weight_kg: null,
+  at_scene_at: new Date('2026-10-01T10:05:00Z'),
+  left_scene_at: new Date('2026-10-01T10:25:00Z'),
+  at_destination_at: new Date('2026-10-01T10:40:00Z'),
   created_at: new Date('2026-10-01T00:00:00Z'),
   first_name: 'Jane',
   last_name: 'Doe',
@@ -145,6 +163,7 @@ const ledgerOf = (events: EventRow[]) =>
     payerClaimNumber: e.payer_claim_number,
     paidOn: e.paid_on,
     adjustments: e.adjustments,
+    note: '',
     at: e.created_at.toISOString()
   }));
 
@@ -186,7 +205,10 @@ const checkOf = (row: ReadyClaimRow): ClaimCheck => ({
     memberId: c.member_id,
     relationship: c.relationship,
     insuredFirstName: c.insured_first_name,
-    insuredLastName: c.insured_last_name
+    insuredLastName: c.insured_last_name,
+    filingLimitDays: null,
+    eligibility: null,
+    eligibilityNote: null
   })),
   details: detailsOf(row)
 });
@@ -506,5 +528,86 @@ describe('submission service', () => {
     const changed = await paid.service.markSubmitted('t1', 'u1', C1, '');
     assert.ok(!changed.ok && /since it was approved/.test(changed.failure.message));
     assert.ok(!paid.queries.some((q) => q.sql.startsWith('insert')));
+  });
+});
+
+describe('eligibility requests', () => {
+  const row = {
+    number: 1001,
+    service_date: null,
+    first_name: 'Jane',
+    last_name: 'Doe',
+    birth_date: '1950-02-03',
+    gender: 'F' as const,
+    coverages: [
+      {
+        id: MEDICARE,
+        payer: 'Medicare',
+        payer_id: 'DEMOMCR',
+        member_id: '1EG4TE5MK73',
+        relationship: '18',
+        insured_first_name: null,
+        insured_last_name: null
+      },
+      {
+        id: BLUE,
+        payer: 'Blue Plan',
+        payer_id: 'BCBS1',
+        member_id: 'XYZ1',
+        relationship: '19',
+        insured_first_name: 'John',
+        insured_last_name: 'Doe'
+      },
+      {
+        id: C2,
+        payer: 'Unlisted',
+        payer_id: null,
+        member_id: 'Q',
+        relationship: '18',
+        insured_first_name: null,
+        insured_last_name: null
+      }
+    ]
+  };
+
+  it('asks each linked payer about the patient or the insured, traced by coverage', () => {
+    assert.deepEqual(eligibilityRequests(row, '2026-10-31'), [
+      {
+        trace: MEDICARE,
+        payer: { name: 'Medicare', payerId: 'DEMOMCR' },
+        subscriber: {
+          lastName: 'Doe',
+          firstName: 'Jane',
+          memberId: '1EG4TE5MK73',
+          birthDate: '1950-02-03',
+          sex: 'F'
+        },
+        serviceDate: '2026-10-31'
+      },
+      {
+        trace: BLUE,
+        payer: { name: 'Blue Plan', payerId: 'BCBS1' },
+        subscriber: {
+          lastName: 'Doe',
+          firstName: 'John',
+          memberId: 'XYZ1',
+          birthDate: null,
+          sex: null
+        },
+        serviceDate: '2026-10-31'
+      }
+    ]);
+  });
+
+  it('builds a 270 with a fresh control number, or says what is missing', async () => {
+    const built = await setup({
+      rows: [{ ...claimRow(C1), ...row } as unknown as ReadyClaimRow]
+    }).service.eligibility('t1', C1);
+    assert.ok(built.ok && built.value.file.includes('ST*270*0001*005010X279A1'));
+    assert.ok(built.ok && built.value.name === 'eligibility-1001-7.x12');
+    const none = await setup({ rows: [] }).service.eligibility('t1', C1);
+    assert.equal(none.ok ? null : none.failure.code, 'not_found');
+    const noProfile = await setup({ withProfile: false }).service.eligibility('t1', C1);
+    assert.equal(noProfile.ok ? null : noProfile.failure.code, 'invalid');
   });
 });

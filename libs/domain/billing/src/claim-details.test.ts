@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { readClaimDetails, readCoverages, relationshipOf } from './claim-details.ts';
+import { readDocumentation } from './documentation.ts';
 
 describe('readClaimDetails', () => {
   it('takes the service date, locations and X12-ready diagnosis codes from a claim', () => {
@@ -34,7 +35,8 @@ describe('readClaimDetails', () => {
           postalCode: '62701'
         },
         diagnoses: ['R079', 'I10', 'E119', 'S72001A'],
-        originDestination: null
+        originDestination: null,
+        documentation: readDocumentation(null)
       }
     );
     assert.deepEqual(readClaimDetails(null).diagnoses, []);

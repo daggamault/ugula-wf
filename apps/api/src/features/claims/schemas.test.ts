@@ -149,6 +149,7 @@ describe('claim schemas', () => {
         destination: { name: null, addressLine: null, city: null, state: null, postalCode: null },
         diagnoses: ['R079', 'I10'],
         originDestination: null,
+        documentation: null,
         note: null
       }
     );
@@ -160,6 +161,7 @@ describe('claim schemas', () => {
       destination: null,
       diagnoses: null,
       originDestination: null,
+      documentation: null,
       note: null
     });
     assert.deepEqual(
@@ -194,6 +196,13 @@ describe('claim schemas', () => {
     assert.ok(!fails({ originDestination: ' sh ' }));
     assert.ok(fails({ diagnoses: ['bad'] }));
     assert.ok(fails({ serviceDate: '10/01/2026' }));
+    assert.ok(fails({ documentation: { transportReason: 'Z' } }));
+    assert.ok(fails({ documentation: { signature: 'maybe' } }));
+    assert.deepEqual(
+      v.parse(billingDataSchema, { documentation: { signature: 'signed', transportReason: 'D' } })
+        .documentation,
+      { signature: 'signed', pcsOnFile: null, pcsSignedOn: null, transportReason: 'D' }
+    );
     assert.ok(!fails({}));
   });
 });

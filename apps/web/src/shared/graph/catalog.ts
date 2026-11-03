@@ -3,6 +3,8 @@ import {
   createRegistry,
   ENTRY_TYPE,
   type GraphDef,
+  INPUT_TYPE,
+  inputNode,
   type NodeDef,
   type NodeInstance,
   type NodeRef,
@@ -61,6 +63,11 @@ const workflowRefOf = (inst: NodeInstance): NodeRef | null => {
     : null;
 };
 
+const inputTitle = (inst: NodeInstance) => {
+  const pin = (inst.config as { pin?: unknown } | undefined)?.pin;
+  return typeof pin === 'string' && pin ? `Get ${pin}` : undefined;
+};
+
 export const titleFromKey = (key: string) =>
   (key.split('.').at(-1) ?? key)
     .split('-')
@@ -107,6 +114,13 @@ export const createCatalog = (
 
   const palette: PaletteEntry[] = [
     {
+      type: inputNode.type,
+      version: inputNode.version,
+      title: inputNode.title,
+      category: inputNode.category,
+      description: inputNode.description
+    },
+    {
       type: RETURN_TYPE,
       version: 1,
       title: 'Return',
@@ -150,6 +164,7 @@ export const createCatalog = (
     },
     titleOf: (inst) =>
       inst.label ??
+      (inst.type === INPUT_TYPE ? inputTitle(inst) : undefined) ??
       registry.node(inst)?.title ??
       stdGraphInfo[refKey(inst)]?.title ??
       stubs.get(refKey(inst))?.name ??

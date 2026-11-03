@@ -2,7 +2,7 @@ import { SEXES, US_STATE_PATTERN, ZIP_CODE_PATTERN } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const buildPatientsTable = (db: Kysely<Database>) =>
+const buildPatientsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('patients')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -35,7 +35,7 @@ export const buildPatientsTable = (db: Kysely<Database>) =>
       sql`postal_code ~ ${sql.lit(ZIP_CODE_PATTERN)}`
     );
 
-export const buildPatientsIndexes = (db: Kysely<Database>) => [
+const buildPatientsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_patients_birth_date')
     .on('patients')

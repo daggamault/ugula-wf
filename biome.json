@@ -52,7 +52,7 @@
         "apps/*/src/main.ts",
         ".migrations/migrate.ts",
         ".seeds/seed.ts",
-        ".e2e/*.e2e.ts"
+        ".e2e/shared/config.ts"
       ],
       "linter": {
         "rules": {

@@ -132,6 +132,26 @@ export const LINE = model('billing.line', 'line', 'Claim Line', 'one HCPCS charg
   f('totalCents', 'integer', 'Line total (cents)')
 ]);
 
+export const DOCUMENTATION = model(
+  'billing.documentation',
+  'documentation',
+  'Documentation',
+  'what the report documents for billing: signature, physician certification, transport reason, conditions, weight and trip times',
+  [
+    f('signature', 'string', 'Billing signature (signed, exception, refused or missing)'),
+    f('signatureNote', 'string', 'Why the patient did not sign, or who signed'),
+    f('pcsOnFile', 'boolean', 'Physician certification statement on file'),
+    f('pcsSignedOn', 'string', 'Physician certification statement signed on (YYYY-MM-DD)'),
+    f('transportReason', 'string', 'Ambulance transport reason (A to E)'),
+    f('conditionCodes', { list: 'string' }, 'Ambulance condition codes'),
+    f('priorAuthorization', 'string', 'Prior authorization number'),
+    f('weightKg', 'number', 'Patient weight (kg)'),
+    f('atScene', 'string', 'Arrived on scene'),
+    f('leftScene', 'string', 'Left the scene'),
+    f('atDestination', 'string', 'Arrived at the destination')
+  ]
+);
+
 export const CLAIM = model('billing.claim', 'claim', 'Claim', 'a claim before it is saved', [
   f('pcrNumber', 'string', 'PCR number'),
   f('patientId', 'string', 'Patient ID'),
@@ -147,6 +167,7 @@ export const CLAIM = model('billing.claim', 'claim', 'Claim', 'a claim before it
   f('destination', LOCATION.type, 'Destination'),
   f('diagnoses', { list: 'string' }, 'ICD-10 diagnoses'),
   f('originDestination', 'string', 'Origin/destination modifier'),
+  f('documentation', DOCUMENTATION.type, 'Documentation'),
   f('report', BLOB, 'Source report')
 ]);
 
@@ -207,7 +228,8 @@ const SUBMITTED_DETAILS = model(
     f('pickup', LOCATION.type, 'Pickup'),
     f('destination', LOCATION.type, 'Destination'),
     f('diagnoses', { list: 'string' }, 'ICD-10 diagnoses'),
-    f('originDestination', 'string', 'Origin/destination modifier')
+    f('originDestination', 'string', 'Origin/destination modifier'),
+    f('documentation', DOCUMENTATION.type, 'Documentation')
   ]
 );
 
@@ -319,10 +341,12 @@ export const X837_CLAIM = model(
     f('placeOfService', 'string', 'Place of service (CLM05-1)'),
     f('frequency', 'string', 'Claim frequency (CLM05-3)'),
     f('payerClaimNumber', 'string', 'Payer claim control number (REF F8)'),
+    f('priorAuthorization', 'string', 'Prior authorization number (REF G1)'),
     f('subscriber', X837_SUBSCRIBER.type, 'Subscriber'),
     f('patient', X837_PATIENT.type, 'Patient'),
     f('payer', X837_PAYER.type, 'Payer'),
     f('otherPayers', { list: X837_OTHER_PAYER.type }, 'Other payers (2320)'),
+    f('weightPounds', 'integer', 'Patient weight in pounds (CR102)'),
     f('transportReason', 'string', 'Transport reason (CR104), with loaded miles'),
     f('loadedMiles', 'number', 'Loaded miles (CR106), none without transport'),
     f('conditionCodes', { list: 'string' }, 'Ambulance conditions (CRC03 to 07)'),
@@ -344,6 +368,7 @@ export const billingTypes = {
   findings: FINDINGS.type,
   issues: { list: CLAIM_ISSUE.type },
   lines: { list: LINE.type },
+  documentation: DOCUMENTATION.type,
   claim: CLAIM.type,
   submission: SUBMISSION.type,
   x837: X837_CLAIM.type
@@ -358,7 +383,7 @@ export const billingModels: Model[] = [
   FINDINGS,
   CLAIM_ISSUE,
   LINE,
-
+  DOCUMENTATION,
   CLAIM,
   SUBMITTED_PATIENT,
   SUBMITTED_PAYER,

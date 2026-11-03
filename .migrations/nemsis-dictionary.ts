@@ -1,7 +1,7 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const buildNemsisElementsTable = (db: Kysely<Database>) =>
+const buildNemsisElementsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('nemsis_elements')
     .addColumn('element', 'text', (col) => col.primaryKey())
@@ -10,7 +10,7 @@ export const buildNemsisElementsTable = (db: Kysely<Database>) =>
     .addColumn('usage', 'text', (col) => col.notNull())
     .addCheckConstraint('nemsis_elements_element_check', sql`element ~ '^[a-z][A-Za-z]+\.[0-9]+$'`);
 
-export const buildNemsisCodesTable = (db: Kysely<Database>) =>
+const buildNemsisCodesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('nemsis_codes')
     .addColumn('list', 'text', (col) => col.notNull())

@@ -1,4 +1,5 @@
 import type { ClaimCheck } from '@ugula/billing';
+import { DOCUMENTATION_COLUMNS, documentationOf } from './claim-documentation.ts';
 import type { Db } from './schema.ts';
 
 export const findClaimCheck = async (
@@ -30,6 +31,7 @@ export const findClaimCheck = async (
       'c.destination_city',
       'c.destination_state',
       'c.destination_postal_code',
+      ...DOCUMENTATION_COLUMNS,
       'p.address_line',
       'p.city',
       'p.state',
@@ -54,6 +56,9 @@ export const findClaimCheck = async (
         'cc.payer_name',
         'cc.payer_id',
         'dp.claim_filing',
+        'dp.filing_limit_days',
+        'cc.eligibility',
+        'cc.eligibility_note',
         'cc.member_id',
         'cc.relationship',
         'cc.insured_first_name',
@@ -99,7 +104,10 @@ export const findClaimCheck = async (
       memberId: p.member_id,
       relationship: p.relationship,
       insuredFirstName: p.insured_first_name,
-      insuredLastName: p.insured_last_name
+      insuredLastName: p.insured_last_name,
+      filingLimitDays: p.filing_limit_days,
+      eligibility: p.eligibility,
+      eligibilityNote: p.eligibility_note
     })),
     details: {
       serviceDate: claim.service_date,
@@ -121,7 +129,8 @@ export const findClaimCheck = async (
       originDestination:
         claim.origin_code && claim.destination_code
           ? claim.origin_code + claim.destination_code
-          : null
+          : null,
+      documentation: documentationOf(claim)
     }
   };
 };

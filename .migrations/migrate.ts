@@ -11,12 +11,13 @@ import { createImportsTables } from './imports.ts';
 import { createNemsisDictionaryTables } from './nemsis-dictionary.ts';
 import { createNotificationsTables } from './notifications.ts';
 import { createPatientsTable } from './patients.ts';
+import { createPayerFilesTables } from './payer-files.ts';
 import { createTasksTable } from './tasks.ts';
 import { createTenantsTable } from './tenants.ts';
 import { createUsersTable } from './users.ts';
 import { createWorkflowRunsTables } from './workflow-runs.ts';
 
-export const resetSchema = async (db: Kysely<Database>) => {
+const resetSchema = async (db: Kysely<Database>) => {
   await db.schema.dropView('claim_balances').ifExists().execute();
   for (const table of [
     'notification_states',
@@ -39,6 +40,8 @@ export const resetSchema = async (db: Kysely<Database>) => {
     'patients',
     'tasks',
     'signals',
+    'payer_file_items',
+    'payer_files',
     'workflow_run_steps',
     'workflow_run_graphs',
     'workflow_runs',
@@ -70,10 +73,11 @@ export const steps = [
   createFeeSchedulesTable,
   createImportsTables,
   createClaimsTables,
+  createPayerFilesTables,
   createNotificationsTables
 ] as const;
 
-export const migrate = async (db: Db) => {
+const migrate = async (db: Db) => {
   await db.transaction().execute(async (tx) => {
     for (const step of steps) {
       await step(tx);

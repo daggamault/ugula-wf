@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ENTRY_TYPE, RETURN_TYPE, refKey } from './compile.ts';
+import { ENTRY_TYPE, INPUT_TYPE, RETURN_TYPE, refKey } from './compile.ts';
 import { actionNode, pin, pureNode } from './define.ts';
 import { createEngine } from './engine.ts';
 import { getPath } from './json.ts';
@@ -90,6 +90,30 @@ describe('engine', () => {
         ['ret', 'exec']
       ]
     );
+  });
+
+  it('reads graph inputs through Get Input nodes like the entry', async () => {
+    const def = graph(
+      {
+        inputs: [pin('a', 'number'), pin('b', 'number')],
+        outputs: [pin('sum', 'number')],
+        execOut: ['done']
+      },
+      [
+        n('a', INPUT_TYPE, { config: { pin: 'a' } }),
+        n('b', INPUT_TYPE, { config: { pin: 'b' } }),
+        n('add', 'std.math.add'),
+        n('ret', RETURN_TYPE)
+      ],
+      [
+        e('entry', 'exec', 'ret', 'exec'),
+        e('a', 'a', 'add', 'a'),
+        e('b', 'b', 'add', 'b'),
+        e('add', 'result', 'ret', 'sum')
+      ]
+    );
+    const { state } = await run(def, { a: 2, b: 3 });
+    assert.deepEqual(state.result, { pin: 'done', outputs: { sum: 5 } });
   });
 
   it('loops with for-each, accumulates variables, and honors break', async () => {

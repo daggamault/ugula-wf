@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ClaimPatch, DraftClaim, NewClaim } from '@ugula/billing';
+import { COMPLETE_DOCUMENTATION } from '@ugula/billing/testing';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { RunJob, RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
@@ -75,7 +76,8 @@ const claim: NewClaim = {
     pickup: { name: null, ...place, state: 'IL' },
     destination: { name: 'St. Mary', ...place },
     diagnoses: ['R079', 'I10'],
-    originDestination: 'SH'
+    originDestination: 'SH',
+    documentation: COMPLETE_DOCUMENTATION
   },
   reportKey: 'imports/t-1/a/f.xml.reports/00000.json'
 };
@@ -210,7 +212,7 @@ describe('createClaimStore', () => {
     );
     await createClaimStore(db, blobs).saveClaim('r1', ID, 'k', claim);
     const [update] = sqlOf(queries, 'update "claims"');
-    assert.ok(update?.sql.endsWith('where "id" = $20 and "status" = $21'));
+    assert.ok(update?.sql.endsWith('where "id" = $31 and "status" = $32'));
     assert.ok(!update?.parameters.includes('needs_review'));
     assert.ok(update?.parameters.includes('emergency') && update.parameters.includes('ALS1'));
     assert.ok(update?.parameters.includes('2026-10-01'));
@@ -339,6 +341,7 @@ describe('createClaimStore', () => {
     );
     const patch: ClaimPatch = {
       serviceDate: '2026-10-02',
+      documentation: null,
       tripType: null,
       level: null,
       emergency: null,
@@ -432,6 +435,7 @@ describe('createClaimStore', () => {
                 payer_claim_number: null,
                 paid_on: null,
                 adjustments: [],
+                note: 'ICN 1',
                 created_at: new Date('2026-01-01T00:00:00.000Z')
               }
             ]
@@ -451,6 +455,7 @@ describe('createClaimStore', () => {
           payerClaimNumber: null,
           paidOn: null,
           adjustments: [],
+          note: 'ICN 1',
           at: '2026-01-01T00:00:00.000Z'
         }
       ]
@@ -497,7 +502,8 @@ describe('createClaimStore', () => {
     const run = queries.find((q) => q.sql.startsWith('select "id" from "workflow_runs"'));
     assert.ok(run?.parameters.includes('t-1'));
     const [update] = sqlOf(queries, 'update "claims"');
-    assert.deepEqual(update?.parameters.slice(0, 1), [CYCLE]);
+    assert.deepEqual(update?.parameters.slice(0, 3), [CYCLE, 'draft', 'needs_review']);
+    assert.ok(update?.sql.includes('"status" = case when c.status = $2 then $3 else c.status end'));
     assert.ok(update?.sql.includes('"c"."cycle_run_id" is null'));
     assert.ok(update?.sql.includes('not exists (select "r"."id" from "workflow_runs" as "r"'));
     const [link] = sqlOf(queries, 'insert into "claim_runs"');

@@ -1,7 +1,7 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const buildTenantsTable = (db: Kysely<Database>) =>
+const buildTenantsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('tenants')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))

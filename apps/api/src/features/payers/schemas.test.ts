@@ -10,8 +10,27 @@ describe('payerSchema', () => {
       {
         name: 'Medicare',
         payerId: '00952',
-        claimFiling: 'MB'
+        claimFiling: 'MB',
+        filingLimitDays: null
       }
+    );
+    assert.equal(
+      v.parse(payerSchema, {
+        name: 'Blue',
+        payerId: 'BCBS1',
+        claimFiling: 'BL',
+        filingLimitDays: 180
+      }).filingLimitDays,
+      180
+    );
+    assert.equal(
+      v.safeParse(payerSchema, {
+        name: 'X',
+        payerId: '00952',
+        claimFiling: 'MB',
+        filingLimitDays: 0
+      }).success,
+      false
     );
     assert.equal(
       v.safeParse(payerSchema, { name: 'X', payerId: '0', claimFiling: 'MB' }).success,

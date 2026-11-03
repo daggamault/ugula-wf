@@ -17,7 +17,7 @@ export type SeedGraph = {
   definition: GraphDef;
 };
 
-export const buildUpsertGraph = (db: Kysely<Database>, graph: SeedGraph) =>
+const buildUpsertGraph = (db: Kysely<Database>, graph: SeedGraph) =>
   db
     .insertInto('graphs')
     .values({
@@ -37,7 +37,7 @@ export const buildUpsertGraph = (db: Kysely<Database>, graph: SeedGraph) =>
     )
     .returning('id');
 
-export const buildUpsertPublishedVersion = (
+const buildUpsertPublishedVersion = (
   db: Kysely<Database>,
   graphId: string,
   graph: SeedGraph,

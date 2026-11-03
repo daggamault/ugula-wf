@@ -2,8 +2,13 @@ import type {
   AdjustmentGroup,
   ClaimEventKind,
   ClaimStatus,
+  EligibilityStatus,
+  InboundKind,
   InsuredRelationship,
+  PayerFileOutcome,
   Sex,
+  SignatureStatus,
+  TransportReason,
   TripType
 } from '@ugula/billing';
 import type { ColumnType, Generated, GeneratedAlways, Kysely } from 'kysely';
@@ -260,6 +265,17 @@ export type ClaimsTable = {
   destination_city: string | null;
   destination_state: string | null;
   destination_postal_code: string | null;
+  signature: ColumnType<SignatureStatus, SignatureStatus | undefined, SignatureStatus>;
+  signature_note: string | null;
+  pcs_on_file: boolean | null;
+  pcs_signed_on: ColumnType<string | null, string | null | undefined, string | null>;
+  transport_reason: TransportReason | null;
+  condition_codes: ColumnType<string[], string[] | undefined, string[]>;
+  prior_authorization: string | null;
+  weight_kg: ColumnType<string | null, number | null | undefined, number | null>;
+  at_scene_at: NullableTimestamp;
+  left_scene_at: NullableTimestamp;
+  at_destination_at: NullableTimestamp;
   status: Generated<ClaimStatus>;
   cycle_run_id: string | null;
   source_key: string;
@@ -294,6 +310,13 @@ export type ClaimCoveragesTable = {
   relationship: InsuredRelationship;
   insured_first_name: string | null;
   insured_last_name: string | null;
+  eligibility: ColumnType<
+    EligibilityStatus | null,
+    EligibilityStatus | null | undefined,
+    EligibilityStatus | null
+  >;
+  eligibility_note: ColumnType<string | null, string | null | undefined, string | null>;
+  eligibility_checked_at: NullableTimestamp;
 };
 
 export type ClaimDiagnosesTable = {
@@ -347,6 +370,32 @@ export type ClaimBatchesTable = {
   created_at: Timestamp;
 };
 
+export type PayerFilesTable = {
+  id: Generated<string>;
+  tenant_id: string;
+  kind: InboundKind;
+  file_name: string;
+  digest: string;
+  document: JsonColumn;
+  control_number: string | null;
+  item_count: ColumnType<number, number | undefined, number>;
+  problem_count: ColumnType<number, number | undefined, number>;
+  uploaded_by: string | null;
+  created_at: Timestamp;
+};
+
+export type PayerFileItemsTable = {
+  id: Generated<string>;
+  file_id: string;
+  position: number;
+  reference: string;
+  claim_id: string | null;
+  outcome: PayerFileOutcome;
+  message: ColumnType<string, string | undefined, string>;
+  paid_cents: number | null;
+  adjusted_cents: number | null;
+};
+
 export const IMPORT_SOURCES = ['upload', 'sftp', 'manual'] as const;
 
 export type ImportSource = (typeof IMPORT_SOURCES)[number];
@@ -397,6 +446,7 @@ export type PayersTable = {
   name: string;
   payer_id: string;
   claim_filing: string;
+  filing_limit_days: ColumnType<number | null, number | null | undefined, number | null>;
   embedding: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: Timestamp;
   updated_at: Timestamp;
@@ -447,6 +497,8 @@ export type Database = {
   claim_events: ClaimEventsTable;
   claim_event_adjustments: ClaimEventAdjustmentsTable;
   claim_batches: ClaimBatchesTable;
+  payer_files: PayerFilesTable;
+  payer_file_items: PayerFileItemsTable;
   billing_profiles: BillingProfilesTable;
   payers: PayersTable;
   payer_aliases: PayerAliasesTable;

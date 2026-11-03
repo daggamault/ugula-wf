@@ -19,6 +19,7 @@ const service = {
   pending: record('pending', { issues: [], claim: null }),
   create: record('create', { batch: { id: ID } }),
   markSubmitted: record('markSubmitted', { payer: 'Medicare' }),
+  eligibility: record('eligibility', { name: 'eligibility-1-7.x12', file: 'ISA*', payers: [] }),
   document: async () =>
     ok({
       bytes: new TextEncoder().encode('ISA*00'),
@@ -46,6 +47,12 @@ describe('submission routes', () => {
     assert.equal((await post('/batches', { claimIds: [ID] })).status, 400);
     assert.equal((await post('/batches', { claimId: 'nope' })).status, 400);
     assert.equal(calls.length, 0);
+  });
+
+  it('builds an eligibility request for one claim', async () => {
+    assert.equal((await post('/eligibility', { claimId: ID })).status, 201);
+    assert.deepEqual(calls.splice(0), [['eligibility', 't-1', ID]]);
+    assert.equal((await post('/eligibility', {})).status, 400);
   });
 
   it('records manual submissions with an optional note', async () => {

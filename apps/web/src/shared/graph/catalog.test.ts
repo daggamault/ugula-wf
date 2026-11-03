@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ENTRY_TYPE, type GraphDef, RETURN_TYPE } from '@ugula/graph';
+import { ENTRY_TYPE, type GraphDef, INPUT_TYPE, RETURN_TYPE } from '@ugula/graph';
 import { testNodes } from '../testing.ts';
 import { createCatalog, titleFromKey } from './catalog.ts';
 
@@ -106,6 +106,11 @@ describe('createCatalog', () => {
       'Keeps a number between a minimum and a maximum.'
     );
     assert.equal(catalog.titleOf({ id: 'c', type: 'std.math.clamp', version: 1 }), 'Clamp');
+    assert.equal(
+      catalog.titleOf({ id: 'i', type: INPUT_TYPE, version: 1, config: { pin: 'claimId' } }),
+      'Get claimId'
+    );
+    assert.ok(catalog.palette.some((e) => e.type === INPUT_TYPE && e.category === 'Graph'));
     assert.equal(catalog.describe({ id: 'z', type: 'nope', version: 1 }), '');
     assert.equal(catalog.hasConfig({ id: 'x', type: 'std.expr', version: 1 }), true);
     assert.equal(catalog.hasConfig({ id: 'a', type: 'std.math.add', version: 1 }), false);

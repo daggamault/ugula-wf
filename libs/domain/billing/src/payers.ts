@@ -15,6 +15,18 @@ export const CLAIM_FILING_CODES = {
 
 export type ClaimFilingCode = keyof typeof CLAIM_FILING_CODES;
 
+export const MAX_FILING_LIMIT_DAYS = 3650;
+
+const FEDERAL_FILING_LIMIT_DAYS: Partial<Record<ClaimFilingCode, number>> = {
+  MA: 365,
+  MB: 365,
+  CH: 365
+};
+
+export const filingLimitOf = (claimFiling: string | null, days: number | null) =>
+  days ??
+  (isClaimFilingCode(claimFiling) ? (FEDERAL_FILING_LIMIT_DAYS[claimFiling] ?? null) : null);
+
 const isClaimFilingCode = (x: unknown): x is ClaimFilingCode =>
   typeof x === 'string' && Object.hasOwn(CLAIM_FILING_CODES, x);
 

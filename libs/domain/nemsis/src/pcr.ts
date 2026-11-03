@@ -112,9 +112,14 @@ const PAYMENT: Section = {
     el('method', 'ePayment.01'),
     el('certificationStatement', 'ePayment.02'),
     el('certificationDate', 'ePayment.03'),
+    el('certificationReason', 'ePayment.04'),
+    el('transportReason', 'ePayment.44'),
+    el('ambulanceConditions', 'ePayment.47', 'texts'),
+    el('alsAssessment', 'ePayment.49'),
     el('cmsServiceLevel', 'ePayment.50'),
     el('conditionCodes', 'ePayment.51', 'texts'),
-    el('transportationIndicators', 'ePayment.52', 'texts')
+    el('transportationIndicators', 'ePayment.52', 'texts'),
+    el('priorAuthorization', 'ePayment.53')
   ]
 };
 
@@ -199,6 +204,7 @@ const DISPOSITION: Section = {
     el('state', 'eDisposition.05'),
     el('postalCode', 'eDisposition.07'),
     el('incidentDisposition', 'eDisposition.12'),
+    el('destinationReasons', 'eDisposition.20', 'texts'),
     el('transportMethod', 'eDisposition.16'),
     el('transportMode', 'eDisposition.17'),
     el('destinationType', 'eDisposition.21'),
@@ -207,6 +213,30 @@ const DISPOSITION: Section = {
     el('crewDisposition', 'eDisposition.29'),
     el('transportDisposition', 'eDisposition.30'),
     el('levelOfCare', 'eDisposition.32')
+  ]
+};
+
+const EXAM: Section = {
+  key: 'nemsis.exam',
+  name: 'exam',
+  title: 'Exam',
+  description: 'the exam section of a patient care report',
+  elements: [el('weightKg', 'eExam.01', 'number')]
+};
+
+const SIGNATURE: Section = {
+  key: 'nemsis.signature',
+  name: 'signature',
+  title: 'Signature',
+  description: 'one signature collected or attempted in a patient care report',
+  elements: [
+    el('signer', 'eOther.12'),
+    el('reasons', 'eOther.13', 'texts'),
+    el('representative', 'eOther.14'),
+    el('status', 'eOther.15'),
+    el('signedAt', 'eOther.19'),
+    el('lastName', 'eOther.20'),
+    el('firstName', 'eOther.21')
   ]
 };
 
@@ -229,7 +259,9 @@ const SECTIONS = [
   MEDICATION,
   PROCEDURE,
   VITAL,
+  EXAM,
   DISPOSITION,
+  SIGNATURE,
   CREW
 ];
 
@@ -265,8 +297,10 @@ const PCR_FIELDS: ModelField[] = [
   { name: 'medications', type: listOf(MEDICATION), label: 'Medications' },
   { name: 'procedures', type: listOf(PROCEDURE), label: 'Procedures' },
   { name: 'vitals', type: listOf(VITAL), label: 'Vital signs' },
+  { name: 'exam', type: sectionType(EXAM), label: 'Exam' },
   { name: 'disposition', type: sectionType(DISPOSITION), label: 'Disposition' },
   { name: 'narrative', type: 'string', label: 'Narrative · eNarrative.01' },
+  { name: 'signatures', type: listOf(SIGNATURE), label: 'Signatures' },
   { name: 'crew', type: listOf(CREW), label: 'Crew' }
 ];
 
@@ -376,8 +410,10 @@ export const toPcr = (report: unknown): Fields => ({
   medications: readAll(report, 'eMedications.MedicationGroup', MEDICATION),
   procedures: readAll(report, 'eProcedures.ProcedureGroup', PROCEDURE),
   vitals: readAll(report, 'eVitals.VitalGroup', VITAL),
+  exam: read(report, EXAM),
   disposition: read(report, DISPOSITION),
   narrative: textOf(find(report, 'eNarrative.01')),
+  signatures: readAll(report, 'eOther.SignatureGroup', SIGNATURE),
   crew: readAll(report, 'eCrew.CrewGroup', CREW)
 });
 

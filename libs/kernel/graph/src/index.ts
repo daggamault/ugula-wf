@@ -1,4 +1,5 @@
-export { ENTRY_TYPE, graphRefs, RETURN_TYPE, refKey } from './compile.ts';
+export { ENTRY_TYPE, graphRefs, INPUT_TYPE, RETURN_TYPE, refKey } from './compile.ts';
+export { inputNode } from './core.ts';
 export { actionNode, branchNode, pin, pureNode } from './define.ts';
 export { createEngine, type Engine } from './engine.ts';
 export { messageOf } from './errors.ts';

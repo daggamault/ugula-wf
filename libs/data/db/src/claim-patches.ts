@@ -19,6 +19,15 @@ const addressValues = (prefix: 'pickup' | 'destination', a: Location | null) =>
     [`${prefix}_postal_code`]: a.postalCode
   };
 
+const documentationValues = (d: ClaimEdit['documentation']) =>
+  d && {
+    signature: d.signature ?? undefined,
+    signature_note: d.signature ? 'Updated by a biller' : undefined,
+    pcs_on_file: d.pcsOnFile ?? undefined,
+    pcs_signed_on: d.pcsSignedOn ?? undefined,
+    transport_reason: d.transportReason ?? undefined
+  };
+
 const claimValues = (e: ClaimEdit) =>
   defined({
     service_date: e.serviceDate ?? undefined,
@@ -31,6 +40,7 @@ const claimValues = (e: ClaimEdit) =>
     ...addressValues('pickup', e.pickup),
     ...addressValues('destination', e.destination),
     destination_name: e.destination ? e.destination.name : undefined,
+    ...documentationValues(e.documentation),
     total_cents: e.lines ? e.lines.reduce((sum, l) => sum + l.totalCents, 0) : undefined
   });
 
@@ -58,12 +68,13 @@ const updatePatientAddress = (tx: Db, tenantId: string, claimId: string, a: Addr
     .where('id', '=', tx.selectFrom('claims').select('patient_id').where('id', '=', claimId))
     .execute();
 
-const replaceDiagnoses = (tx: Db, claimId: string, codes: string[]) =>
-  tx
-    .with('cleared', (q) => q.deleteFrom('claim_diagnoses').where('claim_id', '=', claimId))
+const replaceDiagnoses = async (tx: Db, claimId: string, codes: string[]) => {
+  await tx.deleteFrom('claim_diagnoses').where('claim_id', '=', claimId).execute();
+  await tx
     .insertInto('claim_diagnoses')
     .values(codes.map((code, i) => ({ claim_id: claimId, position: i + 1, code })))
     .execute();
+};
 
 const replaceLines = async (tx: Db, claimId: string, lines: NonNullable<ClaimEdit['lines']>) => {
   await tx.deleteFrom('claim_lines').where('claim_id', '=', claimId).execute();

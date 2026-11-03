@@ -34,10 +34,38 @@ const claim = {
   address_line: '1 Main St',
   city: null,
   state: 'IL',
-  postal_code: '62704'
+  postal_code: '62704',
+  signature: 'missing',
+  transport_reason: null,
+  pcs_on_file: null,
+  pcs_signed_on: null
 } as unknown as ClaimDetail;
 
 describe('claim data form', () => {
+  it('sends only the documentation a biller changed', () => {
+    const before = toDraft(claim);
+    assert.equal(fromDraft(before, before).documentation, null);
+    assert.deepEqual(
+      fromDraft(
+        {
+          ...before,
+          signature: 'signed',
+          transportReason: 'D',
+          pcsOnFile: 'yes',
+          pcsSignedOn: '2026-09-20'
+        },
+        before
+      ).documentation,
+      { signature: 'signed', pcsOnFile: true, pcsSignedOn: '2026-09-20', transportReason: 'D' }
+    );
+    assert.deepEqual(fromDraft({ ...before, pcsOnFile: 'no' }, before).documentation, {
+      signature: null,
+      pcsOnFile: false,
+      pcsSignedOn: null,
+      transportReason: null
+    });
+  });
+
   it('round-trips claim data, blanks becoming missing values', () => {
     const draft = toDraft(claim);
     assert.deepEqual(draft.coverages, [

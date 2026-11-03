@@ -35,7 +35,8 @@ describe('payer service', () => {
     const saved = await service.save('t-1', {
       name: 'Medicare',
       payerId: '00952',
-      claimFiling: 'MB'
+      claimFiling: 'MB',
+      filingLimitDays: null
     });
     assert.equal(saved.ok && saved.value.linkedClaims, 1);
     assert.deepEqual(events, [{ tenantId: 't-1', event: { kind: 'claim', id: null } }]);
@@ -46,7 +47,12 @@ describe('payer service', () => {
   });
 
   it('embeds a new or changed payer right away and leaves it to the worker when that fails', async () => {
-    const input = { name: 'Medicare', payerId: '00952', claimFiling: 'MB' } as const;
+    const input = {
+      name: 'Medicare',
+      payerId: '00952',
+      claimFiling: 'MB',
+      filingLimitDays: null
+    } as const;
     const setup = (unembedded: boolean, e: ReturnType<typeof embedder>) => {
       const { db, queries } = createRecordingDb((q) =>
         q.sql.startsWith('insert into "payers"') ? [{ id: 'p1', name: 'Medicare', unembedded }] : []

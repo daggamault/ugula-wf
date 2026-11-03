@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ENTRY_TYPE, RETURN_TYPE } from './compile.ts';
+import { ENTRY_TYPE, INPUT_TYPE, RETURN_TYPE } from './compile.ts';
 import { pin } from './define.ts';
 import { combineSources, createRegistry } from './registry.ts';
 import { clampGraph, stdGraphSource } from './std/composites.ts';
@@ -30,6 +30,19 @@ describe('validateGraph', () => {
   it('accepts valid graphs', () => {
     assert.deepEqual(messages(base), []);
     assert.deepEqual(messages(clampGraph), []);
+  });
+
+  it('reads graph inputs anywhere, but only inputs the graph has', () => {
+    const read = (pinName: string): GraphDef => ({
+      ...base,
+      nodes: [...base.nodes, { id: 'n', type: INPUT_TYPE, version: 1, config: { pin: pinName } }],
+      edges: [
+        { from: 'entry', fromPin: 'exec', to: 'set', toPin: 'exec' },
+        { from: 'n', fromPin: 'n', to: 'set', toPin: 'value' }
+      ]
+    });
+    assert.deepEqual(messages(read('n')), []);
+    assert.ok(messages(read('x')).includes('n: "x" is not an input of this graph'));
   });
 
   it('reports structural, typing and binding problems', () => {

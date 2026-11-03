@@ -28,7 +28,8 @@ describe('createBillingNodes', () => {
         'billing.claim-step@1',
         'billing.record-claim-event@1',
         'billing.issue-statement@1',
-        'billing.close-claim@1'
+        'billing.close-claim@1',
+        'billing.read-signature@1'
       ]
     );
     const [match] = nodes;

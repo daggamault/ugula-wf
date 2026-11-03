@@ -126,7 +126,7 @@ export const claimNodes: NodesOf = (stores) => {
           store.ledger(ctx.runId, claimId),
           stores().payers.directory(ctx.runId)
         ]);
-        const issues = relevantIssues(claimIssues(check), ledger);
+        const issues = relevantIssues(claimIssues(check, ctx.now), ledger);
         return {
           exit: isBlocking(issues) ? 'invalid' : 'valid',
           outputs: { issues, ...fixForm(check, issues, directory, inputs.all === true) }

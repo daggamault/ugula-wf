@@ -17,7 +17,7 @@ export const PLACES_FILE = new URL('./data/gnis-places.tsv.gz', import.meta.url)
 
 const isText = (name: string) => name.endsWith('.txt');
 
-export const buildPlaces = async (download: (url: string) => Promise<Buffer>) => {
+const buildPlaces = async (download: (url: string) => Promise<Buffer>) => {
   const listing = (await download(FEDERAL_CODES_LIST_URL)).toString('utf8');
   const files = federalCodeFiles(listing);
   if (!files.length) throw new Error('No GNIS federal codes files found');

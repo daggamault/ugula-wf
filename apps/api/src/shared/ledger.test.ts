@@ -13,6 +13,7 @@ describe('listLedgerEvents', () => {
         adjusted_cents: 10_000,
         payer_claim_number: 'PCN1',
         paid_on: '2026-10-20',
+        note: 'ICN 1',
         created_at: new Date('2026-10-21T00:00:00Z'),
         adjustments: [{ group: 'CO', reason: '45', cents: 10_000 }]
       }
@@ -26,6 +27,7 @@ describe('listLedgerEvents', () => {
         payerClaimNumber: 'PCN1',
         paidOn: '2026-10-20',
         adjustments: [{ group: 'CO', reason: '45', cents: 10_000 }],
+        note: 'ICN 1',
         at: '2026-10-21T00:00:00.000Z'
       }
     ]);

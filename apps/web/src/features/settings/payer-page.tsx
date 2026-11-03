@@ -1,3 +1,4 @@
+import { MAX_FILING_LIMIT_DAYS } from '@ugula/billing';
 import { SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
@@ -28,7 +29,8 @@ export const payerSavedNotice = (name: string, linkedClaims: number) =>
 export const toPayerDraft = (p: Payer | null): PayerInput => ({
   name: p?.name ?? '',
   payerId: p?.payer_id ?? '',
-  claimFiling: p?.claim_filing ?? 'CI'
+  claimFiling: p?.claim_filing ?? 'CI',
+  filingLimitDays: p?.filing_limit_days ?? null
 });
 
 export const PayerForm = ({
@@ -84,6 +86,21 @@ export const PayerForm = ({
               options={FILING_OPTIONS}
               value={draft.claimFiling}
               onChange={(e) => setDraft({ ...draft, claimFiling: e.target.value })}
+            />
+            <Input
+              id="payer-filing-limit"
+              label="Filing Limit (Days)"
+              type="number"
+              min={1}
+              max={MAX_FILING_LIMIT_DAYS}
+              hint="Days from the date of service to file. Leave empty for 365 days on Medicare and TRICARE, and no limit otherwise."
+              value={draft.filingLimitDays ?? ''}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  filingLimitDays: e.target.value === '' ? null : Number(e.target.value)
+                })
+              }
             />
           </FieldGrid>
         </fieldset>

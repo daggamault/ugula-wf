@@ -1,7 +1,7 @@
 import { type Database, IMPORT_SOURCES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const buildImportsTable = (db: Kysely<Database>) =>
+const buildImportsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('imports')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -26,7 +26,7 @@ export const buildImportsTable = (db: Kysely<Database>) =>
     .addCheckConstraint('imports_file_name_check', sql`file_name <> ''`)
     .addCheckConstraint('imports_report_count_check', sql`report_count >= 0`);
 
-export const buildImportReportsTable = (db: Kysely<Database>) =>
+const buildImportReportsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('import_reports')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -40,7 +40,7 @@ export const buildImportReportsTable = (db: Kysely<Database>) =>
     .addUniqueConstraint('import_reports_import_id_position_unique', ['import_id', 'position'])
     .addCheckConstraint('import_reports_position_check', sql`position >= 0`);
 
-export const buildImportsIndexes = (db: Kysely<Database>) => [
+const buildImportsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_imports_tenant_created')
     .on('imports')

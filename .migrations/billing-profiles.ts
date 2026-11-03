@@ -1,13 +1,14 @@
 import {
   CLAIM_FILING_CODES,
   MAX_CONTROL_NUMBER,
+  MAX_FILING_LIMIT_DAYS,
   US_STATE_PATTERN,
   ZIP_PLUS_4_PATTERN
 } from '@ugula/billing';
 import { type Database, EMBEDDING_DIMENSIONS } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const buildBillingProfilesTable = (db: Kysely<Database>) =>
+const buildBillingProfilesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('billing_profiles')
     .addColumn('tenant_id', 'uuid', (col) =>
@@ -49,7 +50,7 @@ export const buildBillingProfilesTable = (db: Kysely<Database>) =>
       sql`submitter_id ~ '^[A-Za-z0-9]{2,15}$' and receiver_id ~ '^[A-Za-z0-9]{2,15}$'`
     );
 
-export const buildPayersTable = (db: Kysely<Database>) =>
+const buildPayersTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('payers')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -59,25 +60,30 @@ export const buildPayersTable = (db: Kysely<Database>) =>
     .addColumn('name', 'text', (col) => col.notNull())
     .addColumn('payer_id', 'text', (col) => col.notNull())
     .addColumn('claim_filing', 'text', (col) => col.notNull())
+    .addColumn('filing_limit_days', 'integer')
     .addColumn('embedding', sql`vector(${sql.lit(EMBEDDING_DIMENSIONS)})`)
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('payers_tenant_id_id_unique', ['tenant_id', 'id'])
     .addCheckConstraint('payers_name_check', sql`name <> ''`)
+    .addCheckConstraint(
+      'payers_filing_limit_days_check',
+      sql`filing_limit_days between 1 and ${sql.lit(MAX_FILING_LIMIT_DAYS)}`
+    )
     .addCheckConstraint('payers_payer_id_check', sql`payer_id ~ '^[A-Za-z0-9]{2,80}$'`)
     .addCheckConstraint(
       'payers_claim_filing_check',
       sql`claim_filing in (${sql.join(Object.keys(CLAIM_FILING_CODES).map((c) => sql.lit(c)))})`
     );
 
-export const buildPayersIndex = (db: Kysely<Database>) =>
+const buildPayersIndex = (db: Kysely<Database>) =>
   db.schema
     .createIndex('payers_tenant_name_unique')
     .on('payers')
     .unique()
     .expression(sql`tenant_id, lower(name)`);
 
-export const buildPayerAliasesTable = (db: Kysely<Database>) =>
+const buildPayerAliasesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('payer_aliases')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -98,10 +104,10 @@ export const buildPayerAliasesTable = (db: Kysely<Database>) =>
     .addUniqueConstraint('payer_aliases_tenant_id_alias_key_unique', ['tenant_id', 'alias_key'])
     .addCheckConstraint('payer_aliases_alias_key_check', sql`alias_key <> ''`);
 
-export const buildPayerAliasesIndex = (db: Kysely<Database>) =>
+const buildPayerAliasesIndex = (db: Kysely<Database>) =>
   db.schema.createIndex('idx_payer_aliases_payer_id').on('payer_aliases').column('payer_id');
 
-export const buildPayerSuggestionsTable = (db: Kysely<Database>) =>
+const buildPayerSuggestionsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('payer_suggestions')
     .addColumn('tenant_id', 'uuid', (col) =>

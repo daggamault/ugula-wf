@@ -35,6 +35,35 @@ const nodeTypes = { graph: GraphNode };
 
 export const OPENING_WIDTH = 1800;
 
+export const DOUBLE_CLICK_MS = 300;
+
+type Timer = ReturnType<typeof setTimeout>;
+
+export const nodeClicks = ({
+  onSelect,
+  onOpen,
+  delayMs = DOUBLE_CLICK_MS
+}: {
+  onSelect: (id: string) => void;
+  onOpen?: ((id: string) => void) | undefined;
+  delayMs?: number;
+}) => {
+  let pending: Timer | undefined;
+  const cancel = () => clearTimeout(pending);
+  return {
+    click: (id: string, opens: boolean) => {
+      cancel();
+      if (opens && onOpen) pending = setTimeout(() => onSelect(id), delayMs);
+      else onSelect(id);
+    },
+    doubleClick: (id: string, opens: boolean) => {
+      cancel();
+      if (opens) onOpen?.(id);
+    },
+    cancel
+  };
+};
+
 export const openingNodes = (nodes: readonly { id: string; position: { x: number } }[]) => {
   const left = Math.min(...nodes.map((n) => n.position.x));
   return nodes.filter((n) => n.position.x <= left + OPENING_WIDTH).map((n) => ({ id: n.id }));
@@ -61,6 +90,15 @@ export const GraphCanvas = ({
   const [edges, setEdges] = useState<Edge[]>(flow.edges);
 
   const selectedRef = useRef(selected);
+  const handlers = useRef({ onSelect, onOpen });
+  handlers.current = { onSelect, onOpen };
+  const [clicks] = useState(() =>
+    nodeClicks({
+      onSelect: (id) => handlers.current.onSelect(id),
+      onOpen: (id) => handlers.current.onOpen?.(id)
+    })
+  );
+  useEffect(() => clicks.cancel, [clicks]);
   selectedRef.current = selected;
 
   useEffect(() => {
@@ -99,11 +137,11 @@ export const GraphCanvas = ({
         deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
         onNodesChange={(changes) => setNodes((ns) => applyNodeChanges(changes, ns))}
         onEdgesChange={(changes) => setEdges((es) => applyEdgeChanges(changes, es))}
-        onNodeClick={(_, node) => onSelect(node.id)}
+        onNodeClick={(_, node) =>
+          clicks.click(node.id, node.data.opens !== null && onOpen !== undefined)
+        }
         onPaneClick={() => onSelect(null)}
-        onNodeDoubleClick={(_, node) => {
-          if (node.data.opens) onOpen?.(node.id);
-        }}
+        onNodeDoubleClick={(_, node) => clicks.doubleClick(node.id, node.data.opens !== null)}
         onNodeDragStop={(_, __, dragged) =>
           onChange?.(moveNodes(def, Object.fromEntries(dragged.map((n) => [n.id, n.position]))))
         }

@@ -10,6 +10,9 @@ import { ZIP_PLUS_4_PATTERN } from './geo.ts';
 import type { Address, Sex } from './patients.ts';
 import { isValidNpi } from './payers.ts';
 import { recordOf, textOrNull } from './values.ts';
+import { clean, type Envelope, interchange, type Segment, stampOf, yyyymmdd } from './x12.ts';
+
+export { MAX_CONTROL_NUMBER } from './x12.ts';
 
 export type Submitter = {
   organizationName: string;
@@ -51,10 +54,6 @@ export type BatchClaim = {
   lines: PricedLine[];
 };
 
-type Envelope = { controlNumber: number; createdAt: Date };
-
-export const MAX_CONTROL_NUMBER = 999_999_999;
-
 const AMBULANCE_TAXONOMY = '3416L0300X';
 
 const RESPONSIBILITY = 'PSTABCDEFGH';
@@ -63,26 +62,7 @@ const REPLACEMENT_FREQUENCIES: readonly string[] = ['7', '8'];
 
 const ZIP_PLUS_4 = new RegExp(ZIP_PLUS_4_PATTERN);
 
-const clean = (x: string | null | undefined, max = 60) =>
-  (x ?? '')
-    .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
-    .replace(/[^\x20-\x7E]/g, '')
-    .replace(/[~*:^]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, max)
-    .toUpperCase();
-
-const safe = (x: string) => x.replace(/[^\x20-\x7E]/g, '').replace(/[~*:^]/g, ' ');
-
-type Element = string | readonly string[];
-
-type Segment = readonly Element[];
-
 const dollars = (cents: number) => String(cents / 100);
-
-const yyyymmdd = (date: string) => date.slice(0, 10).replaceAll('-', '');
 
 export const submitterIssues = (s: Submitter | null) =>
   !s
@@ -122,6 +102,7 @@ export type X837Claim = {
   placeOfService: string;
   frequency: string;
   payerClaimNumber: string | null;
+  priorAuthorization: string | null;
   subscriber: {
     relationship: string;
     lastName: string;
@@ -137,6 +118,7 @@ export type X837Claim = {
   };
   payer: { name: string; payerId: string; claimFiling: string };
   otherPayers: X837OtherPayer[];
+  weightPounds: number | null;
   transportReason: string | null;
   loadedMiles: number | null;
   conditionCodes: string[];
@@ -270,6 +252,7 @@ export const readX837Claim = (x: unknown): X837Claim => {
     placeOfService: need(textOrNull(r.placeOfService), 'a place of service'),
     frequency,
     payerClaimNumber,
+    priorAuthorization: textOrNull(r.priorAuthorization),
     subscriber: {
       relationship,
       ...insured(sub, relationship, patient, 'the subscriber'),
@@ -283,6 +266,10 @@ export const readX837Claim = (x: unknown): X837Claim => {
       claimFiling: need(textOrNull(payer.claimFiling), 'a claim filing indicator')
     },
     otherPayers,
+    weightPounds:
+      typeof r.weightPounds === 'number' && Number.isInteger(r.weightPounds) && r.weightPounds > 0
+        ? r.weightPounds
+        : null,
     transportReason:
       loadedMiles === null
         ? null
@@ -404,11 +391,20 @@ const claimSegments = (c: X837Claim, hl: number): Segment[] => {
       'Y',
       'Y'
     ],
+    ...(c.priorAuthorization ? [['REF', 'G1', clean(c.priorAuthorization, 50)]] : []),
     ...(c.payerClaimNumber ? [['REF', 'F8', c.payerClaimNumber]] : []),
     ...(c.loadedMiles === null
       ? []
       : [
-          ['CR1', '', '', '', clean(c.transportReason, 1), 'DH', String(roundUnits(c.loadedMiles))]
+          [
+            'CR1',
+            c.weightPounds === null ? '' : 'LB',
+            c.weightPounds === null ? '' : String(c.weightPounds),
+            '',
+            clean(c.transportReason, 1),
+            'DH',
+            String(roundUnits(c.loadedMiles))
+          ]
         ]),
     ...(c.conditionCodes.length ? [['CRC', '07', 'Y', ...c.conditionCodes]] : []),
     ['HI', ...c.diagnoses.map((code, i) => [i ? 'ABF' : 'ABK', code])],
@@ -435,26 +431,8 @@ const claimSegments = (c: X837Claim, hl: number): Segment[] => {
   ];
 };
 
-const fixed = (x: string | null, n: number) => clean(x, n).padEnd(n, ' ');
-
-const serialize = (seg: Segment) =>
-  `${seg
-    .map((el) => (typeof el === 'string' ? safe(el) : el.map(safe).join(':')))
-    .join('*')
-    .replace(/\*+$/, '')}~`;
-
 export const build837 = (s: Submitter, claims: X837Claim[], e: Envelope) => {
-  if (
-    !Number.isInteger(e.controlNumber) ||
-    e.controlNumber < 1 ||
-    e.controlNumber > MAX_CONTROL_NUMBER
-  ) {
-    throw new Error(`Control number ${e.controlNumber} is out of range`);
-  }
-  const iso = e.createdAt.toISOString();
-  const date = iso.slice(0, 10).replaceAll('-', '');
-  const time = iso.slice(11, 16).replace(':', '');
-  const control = String(e.controlNumber).padStart(9, '0');
+  const { date, time, control } = stampOf(e);
   const sender = clean(s.submitterId, 15);
   const receiver = clean(s.receiverId, 15);
   let hl = 2;
@@ -476,31 +454,10 @@ export const build837 = (s: Submitter, claims: X837Claim[], e: Envelope) => {
       return segments;
     })
   ];
-  const isa = [
-    'ISA',
-    '00',
-    fixed('', 10),
-    '00',
-    fixed('', 10),
-    'ZZ',
-    fixed(sender, 15),
-    'ZZ',
-    fixed(receiver, 15),
-    date.slice(2),
-    time,
-    '^',
-    '00501',
-    control,
-    '0',
-    s.production ? 'P' : 'T',
-    ':'
-  ];
-  const segments: Segment[] = [
-    ['GS', 'HC', sender, receiver, date, time, String(e.controlNumber), 'X', '005010X222A1'],
-    ...body,
-    ['SE', String(body.length + 1), '0001'],
-    ['GE', '1', String(e.controlNumber)],
-    ['IEA', '1', control]
-  ];
-  return `${[`${isa.join('*')}~`, ...segments.map(serialize)].join('\n')}\n`;
+  return interchange(
+    { sender: s.submitterId, receiver: s.receiverId, production: s.production },
+    e,
+    { functional: 'HC', version: '005010X222A1' },
+    body
+  );
 };

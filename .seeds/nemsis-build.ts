@@ -16,7 +16,7 @@ export const CODES_FILE = new URL('./data/nemsis-codes.tsv.gz', import.meta.url)
 
 const isXsd = (name: string) => name.endsWith('.xsd');
 
-export const buildDictionary = async (download: (url: string) => Promise<Buffer>) => {
+const buildDictionary = async (download: (url: string) => Promise<Buffer>) => {
   const releases: Dictionary[] = [];
   for (const release of NEMSIS_RELEASES) {
     const xsds = unzipTexts(await download(xsdZipUrl(release)), isXsd);

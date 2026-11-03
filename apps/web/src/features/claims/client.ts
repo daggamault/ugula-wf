@@ -5,7 +5,10 @@ import {
   type ClaimIssue,
   type ClaimStatus,
   type ClaimStep,
+  type EligibilityStatus,
   type InsuredRelationship,
+  type SignatureStatus,
+  type TransportReason,
   type TripType
 } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
@@ -134,6 +137,9 @@ export type ClaimCoverage = {
   payer_code: string | null;
   member_id: string | null;
   group_id: string | null;
+  eligibility: EligibilityStatus | null;
+  eligibility_note: string | null;
+  eligibility_checked_at: string | null;
 };
 
 export type ClaimDetail = ClaimSummary & {
@@ -161,6 +167,17 @@ export type ClaimDetail = ClaimSummary & {
   city: string | null;
   state: string | null;
   postal_code: string | null;
+  signature: SignatureStatus;
+  signature_note: string | null;
+  pcs_on_file: boolean | null;
+  pcs_signed_on: string | null;
+  transport_reason: TransportReason | null;
+  condition_codes: string[];
+  prior_authorization: string | null;
+  weight_kg: string | null;
+  at_scene_at: string | null;
+  left_scene_at: string | null;
+  at_destination_at: string | null;
   coverages: ClaimCoverage[];
   lines: ClaimLine[];
   diagnoses: string[];
@@ -184,6 +201,12 @@ export type BillingDataInput = {
   originDestination: string | null;
   patient: AddressInput;
   coverages: { id: string; memberId: string | null; groupId: string | null }[];
+  documentation: {
+    signature: SignatureStatus | null;
+    pcsOnFile: boolean | null;
+    pcsSignedOn: string | null;
+    transportReason: TransportReason | null;
+  } | null;
 };
 
 export type PayerInput = {
@@ -255,6 +278,10 @@ export const createClaimsClient = (api: Api) => ({
   createBatch: async (claimId: string) =>
     (await api.post<{ batch: Batch }>('/api/submissions/batches', { claimId })).batch,
   markSubmitted: (claimId: string) => api.post('/api/submissions/manual', { claimId }),
+  eligibilityRequest: (claimId: string) =>
+    api.post<{ name: string; file: string; payers: string[] }>('/api/submissions/eligibility', {
+      claimId
+    }),
   fileUrl: (batchId: string) =>
     api.href(`/api/submissions/batches/${encodeURIComponent(batchId)}/file`),
   encounterUrl: (reportId: string) =>

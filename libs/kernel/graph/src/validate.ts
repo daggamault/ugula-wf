@@ -1,4 +1,4 @@
-import { compileGraph, ENTRY_TYPE, portKey, RETURN_TYPE, refKey } from './compile.ts';
+import { compileGraph, ENTRY_TYPE, INPUT_TYPE, portKey, RETURN_TYPE, refKey } from './compile.ts';
 import { messageOf } from './errors.ts';
 import { freeIdentifiers } from './expr.ts';
 import { isPure, type Registry } from './registry.ts';
@@ -62,6 +62,12 @@ export const validateGraph = (def: GraphDef, registry: Registry): Issue[] => {
       const { pin } = registry.config(node) as { pin?: string };
       if (pin !== undefined && !def.signature.execOut.includes(pin)) {
         add(`Return pin "${pin}" is not an exec output of this graph`, node.id);
+      }
+    }
+    if (node.type === INPUT_TYPE) {
+      const { pin } = registry.config(node) as { pin: string };
+      if (!def.signature.inputs.some((p) => p.name === pin)) {
+        add(`"${pin}" is not an input of this graph`, node.id);
       }
     }
     for (const name of pinIssues(sig)) add(`Duplicate pin "${name}"`, node.id);

@@ -1,14 +1,14 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export type SeedTenantInput = {
+type SeedTenantInput = {
   name: string;
   slug: string;
   sftpUsername: string;
   sftpPasswordHash: string;
 };
 
-export const buildUpsertTenant = (db: Kysely<Database>, input: SeedTenantInput) =>
+const buildUpsertTenant = (db: Kysely<Database>, input: SeedTenantInput) =>
   db
     .insertInto('tenants')
     .values({

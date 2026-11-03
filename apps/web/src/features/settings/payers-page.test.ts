@@ -12,6 +12,7 @@ const medicare: Payer = {
   name: 'Medicare',
   payer_id: '00952',
   claim_filing: 'MB',
+  filing_limit_days: null,
   aliases: [{ id: 'a1', alias: 'MCR Part B' }]
 };
 

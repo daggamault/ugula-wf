@@ -1,6 +1,7 @@
 import type { NodeDef } from '@ugula/graph';
 import { claimNodes } from './claims.ts';
 import { cycleNodes } from './cycle.ts';
+import { documentationNodes } from './documentation.ts';
 import { narrativeNodes } from './narrative.ts';
 import { patientNodes } from './patients.ts';
 import { payerNodes } from './payers.ts';
@@ -24,7 +25,12 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
     if (!stores) throw new Error('Billing nodes need storage, which only the worker provides');
     return stores;
   };
-  return [patientNodes, claimNodes, payerNodes, narrativeNodes, cycleNodes].flatMap((nodes) =>
-    nodes(storesOf)
-  );
+  return [
+    patientNodes,
+    claimNodes,
+    payerNodes,
+    narrativeNodes,
+    cycleNodes,
+    documentationNodes
+  ].flatMap((nodes) => nodes(storesOf));
 };

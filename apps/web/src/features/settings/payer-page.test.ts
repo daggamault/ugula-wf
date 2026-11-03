@@ -17,6 +17,7 @@ const medicare: Payer = {
   name: 'Medicare',
   payer_id: '00952',
   claim_filing: 'MB',
+  filing_limit_days: null,
   aliases: [{ id: 'a1', alias: 'MCR Part B' }]
 };
 
@@ -34,7 +35,12 @@ describe('PayerPage', () => {
     assert.ok(html.includes('>Payer Name<') && html.includes('>Clearinghouse Payer ID<'));
     assert.ok(html.includes('>Claim Filing<') && html.includes('readOnly=""'));
     assert.ok(html.includes('href="/payers?q=part"') && html.includes('>Save Payer<'));
-    assert.deepEqual(toPayerDraft(null), { name: '', payerId: '', claimFiling: 'CI' });
+    assert.deepEqual(toPayerDraft(null), {
+      name: '',
+      payerId: '',
+      claimFiling: 'CI',
+      filingLimitDays: null
+    });
   });
 
   it('lists learned names to forget, and a new payer starts with none', () => {

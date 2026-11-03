@@ -1,7 +1,7 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const buildGnisPlacesTable = (db: Kysely<Database>) =>
+const buildGnisPlacesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('gnis_places')
     .addColumn('id', 'integer', (col) => col.primaryKey())

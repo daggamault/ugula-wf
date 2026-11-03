@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { testNodes } from '../testing.ts';
 import { createCatalog } from './catalog.ts';
-import { GraphCanvas, OPENING_WIDTH, openingNodes } from './graph-canvas.tsx';
+import { GraphCanvas, nodeClicks, OPENING_WIDTH, openingNodes } from './graph-canvas.tsx';
 
 describe('GraphCanvas', () => {
   it('renders a React Flow surface for a graph', () => {
@@ -35,5 +35,34 @@ describe('openingNodes', () => {
       { id: 'far', position: { x: OPENING_WIDTH } }
     ];
     assert.deepEqual(openingNodes(nodes), [{ id: 'b' }, { id: 'a' }]);
+  });
+});
+
+describe('nodeClicks', () => {
+  it('waits out a double-click before selecting a node that opens, so opening it is not blocked', async () => {
+    const selected: string[] = [];
+    const opened: string[] = [];
+    const clicks = nodeClicks({
+      onSelect: (id) => void selected.push(id),
+      onOpen: (id) => void opened.push(id),
+      delayMs: 5
+    });
+    clicks.click('plain', false);
+    assert.deepEqual(selected, ['plain']);
+    clicks.click('block', true);
+    clicks.doubleClick('block', true);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual([selected, opened], [['plain'], ['block']]);
+    clicks.click('block', true);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual(selected, ['plain', 'block']);
+    clicks.doubleClick('plain', false);
+    assert.deepEqual(opened, ['block']);
+  });
+
+  it('selects at once when nothing can be opened', () => {
+    const selected: string[] = [];
+    nodeClicks({ onSelect: (id) => void selected.push(id) }).click('block', true);
+    assert.deepEqual(selected, ['block']);
   });
 });

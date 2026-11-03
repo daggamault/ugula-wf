@@ -24,6 +24,13 @@ export const createSubmissionRoutes = (service: SubmissionService) =>
         'cache-control': 'private, no-store'
       });
     })
+    .post('/eligibility', sValidator('json', batchSchema, invalidRequest), async (c) =>
+      respond(
+        c,
+        await service.eligibility(c.get('session').tenantId, c.req.valid('json').claimId),
+        201
+      )
+    )
     .post('/manual', sValidator('json', manualSubmissionSchema, invalidRequest), async (c) => {
       const { tenantId, userId } = c.get('session');
       const { claimId, note } = c.req.valid('json');

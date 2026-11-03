@@ -21,7 +21,7 @@ export const federalCodeFiles = (listing: string) => [
 const PREFIX =
   /^(?:City of the Village of|City and Borough of|City and County of|Charter Township of|Metro Township of|Unified Government of|Metropolitan Government of|Consolidated Government of|Municipality of|Township of|Plantation of|Borough of|Village of|City of|Town of)\s+/;
 
-export const placeName = (raw: string) =>
+const placeName = (raw: string) =>
   raw
     .replace(/\s*\(historical\)$/, '')
     .replace(PREFIX, '')
@@ -70,7 +70,7 @@ export const mergePlaces = (...sources: Place[][]): Place[] => {
 export const toTsv = (places: readonly Place[]) =>
   `${places.map((p) => `${p.id}\t${p.name}\t${p.state}`).join('\n')}\n`;
 
-export const fromTsv = (text: string): Place[] =>
+const fromTsv = (text: string): Place[] =>
   text
     .split('\n')
     .filter(Boolean)
@@ -83,7 +83,7 @@ export const readPlaces = (gzipped: Buffer) => fromTsv(gunzipSync(gzipped).toStr
 
 const PLACE_BATCH = 5_000;
 
-export const buildUpsertPlaces = (db: Kysely<Database>, places: readonly Place[]) =>
+const buildUpsertPlaces = (db: Kysely<Database>, places: readonly Place[]) =>
   db
     .insertInto('gnis_places')
     .values(places.map((p) => ({ id: p.id, name: p.name, state: p.state })))

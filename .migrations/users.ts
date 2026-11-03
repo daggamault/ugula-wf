@@ -1,7 +1,7 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const buildUsersTable = (db: Kysely<Database>) =>
+const buildUsersTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('users')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
@@ -16,7 +16,7 @@ export const buildUsersTable = (db: Kysely<Database>) =>
     .addUniqueConstraint('users_tenant_id_id_unique', ['tenant_id', 'id'])
     .addCheckConstraint('users_email_check', sql`email <> ''`);
 
-export const buildUsersEmailIndex = (db: Kysely<Database>) =>
+const buildUsersEmailIndex = (db: Kysely<Database>) =>
   db.schema.createIndex('users_email_unique').on('users').unique().expression(sql`lower(email)`);
 
 export const createUsersTable = async (db: Kysely<Database>) => {

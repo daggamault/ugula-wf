@@ -1,6 +1,7 @@
 import {
   ENTRY_TYPE,
   type GraphDef,
+  INPUT_TYPE,
   type InputBinding,
   type Json,
   type NodeInstance,
@@ -9,9 +10,9 @@ import {
   type VariableDef
 } from '@ugula/graph';
 
-export type Port = `${string}.${string}`;
+type Port = `${string}.${string}`;
 
-export type NodeOptions = Pick<NodeInstance, 'label' | 'config' | 'retry'> & {
+type NodeOptions = Pick<NodeInstance, 'label' | 'config' | 'retry'> & {
   values?: Record<string, Json>;
 };
 
@@ -44,5 +45,6 @@ export const graph = (signature: Signature, variables: VariableDef[] = []) => {
     }
   };
   const ret = (id: string, pin?: string) => add(id, RETURN_TYPE, pin ? { config: { pin } } : {});
-  return { add, wire, ret, def };
+  const input = (id: string, pin: string) => add(id, INPUT_TYPE, { config: { pin } });
+  return { add, wire, ret, input, def };
 };

@@ -6,6 +6,9 @@ import {
   ICD10_PATTERN,
   INSURED_RELATIONSHIPS,
   isOriginDestination,
+  SIGNATURE_STATUSES,
+  TRANSPORT_REASONS,
+  type TransportReason,
   US_STATE_PATTERN,
   ZIP_CODE_PATTERN
 } from '@ugula/billing';
@@ -244,6 +247,25 @@ export const billingDataSchema = v.object({
         v.toUpperCase(),
         v.check((s) => isOriginDestination(s), 'Use two origin/destination letters like RH')
       )
+    ),
+    null
+  ),
+  documentation: v.optional(
+    v.nullable(
+      v.object({
+        signature: v.optional(v.nullable(v.picklist(SIGNATURE_STATUSES)), null),
+        pcsOnFile: v.optional(v.nullable(v.boolean()), null),
+        pcsSignedOn: v.optional(
+          v.nullable(v.pipe(v.string(), v.isoDate('Use a date like 2026-10-01'))),
+          null
+        ),
+        transportReason: v.optional(
+          v.nullable(
+            v.picklist(Object.keys(TRANSPORT_REASONS) as [TransportReason, ...TransportReason[]])
+          ),
+          null
+        )
+      })
     ),
     null
   ),

@@ -15,6 +15,7 @@ describe('web composition root', () => {
       'runs',
       'tasks',
       'imports',
+      'payerFiles',
       'fees',
       'claims',
       'patients',

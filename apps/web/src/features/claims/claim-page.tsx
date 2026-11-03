@@ -30,6 +30,7 @@ import { messageOf } from '../../shared/api.ts';
 import { ChargeLines } from '../../shared/claims/charge-lines.tsx';
 import { ClaimIssues } from '../../shared/claims/claim-issues.tsx';
 import { classNamesOf } from '../../shared/class-names.ts';
+import { downloadText } from '../../shared/download.ts';
 import {
   formatAgo,
   formatCents,
@@ -69,6 +70,7 @@ import {
 } from '../../shared/url-state.ts';
 import { type Resource, useResource } from '../../shared/use-resource.ts';
 import { ClaimDataForm } from './claim-data-form.tsx';
+import { DocumentationPanel, EligibilityPanel } from './claim-documentation.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
 import { assigneeOf, claimNumber } from './claims-page.tsx';
 import type {
@@ -107,7 +109,9 @@ const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
   revised: 'Updated PCR received',
   edited: 'Claim data edited',
   refunded: 'Refunded',
-  closed: 'Closed'
+  closed: 'Closed',
+  accepted: 'Accepted by the payer',
+  rejected: 'Rejected'
 };
 
 export const lockedReason = (status: ClaimDetail['status']) =>
@@ -1092,6 +1096,7 @@ export const ClaimView = ({
   onRecord,
   onRestart,
   onSaveData,
+  onCheckEligibility,
   documentUrl,
   submission,
   tab = 'overview',
@@ -1108,6 +1113,7 @@ export const ClaimView = ({
   onRecord: (response: ClaimResponseInput) => Promise<boolean>;
   onRestart: () => Promise<void>;
   onSaveData: (data: BillingDataInput) => Promise<boolean>;
+  onCheckEligibility: () => Promise<void>;
   documentUrl: (eventId: string) => string;
   submission?: Submission;
   tab?: ClaimTab;
@@ -1189,6 +1195,7 @@ export const ClaimView = ({
               </Detail>
             </DetailList>
           </SectionPanel>
+          <DocumentationPanel claim={claim} />
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             <div className="flex min-w-0 flex-col gap-6">
               <SectionPanel title="Charges" description="Priced from the fee schedule.">
@@ -1199,6 +1206,11 @@ export const ClaimView = ({
                 coverages={claim.coverages}
                 locked={locked}
                 onSave={onSavePayers}
+              />
+              <EligibilityPanel
+                coverages={claim.coverages}
+                locked={locked}
+                onCheck={onCheckEligibility}
               />
               {submission ? (
                 <ClaimFiles
@@ -1306,6 +1318,12 @@ export const ClaimPage = ({
         act(() => client.saveBillingData(claimId, data), 'Billing details saved')
       }
       documentUrl={(eventId) => client.documentUrl(claimId, eventId)}
+      onCheckEligibility={async () => {
+        await act(async () => {
+          const request = await client.eligibilityRequest(claimId);
+          downloadText(request.name, request.file, 'application/edi-x12');
+        }, 'Eligibility request (270) downloaded');
+      }}
       onRestart={async () => {
         await act(() => client.restartCycle(claimId), 'Payer cycle restarted');
       }}
