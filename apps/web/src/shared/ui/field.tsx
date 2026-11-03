@@ -23,6 +23,7 @@ type FieldProps = {
   error?: string | undefined;
   hint?: string | undefined;
   isRequired?: boolean | undefined;
+  isLabelHidden?: boolean | undefined;
   span?: FieldSpan | undefined;
   children: ReactNode;
 };
@@ -34,9 +35,18 @@ export const hintIdOf = (id: string) => `${id}-hint`;
 export const describedByOf = (id: string, error?: string, hint?: string) =>
   error ? errorIdOf(id) : hint ? hintIdOf(id) : undefined;
 
-export const Field = ({ id, label, error, hint, isRequired, span = 1, children }: FieldProps) => (
+export const Field = ({
+  id,
+  label,
+  error,
+  hint,
+  isRequired,
+  isLabelHidden = false,
+  span = 1,
+  children
+}: FieldProps) => (
   <div className={classNamesOf('flex min-w-0 flex-col gap-1.5', fieldSpanClasses[span])}>
-    <label htmlFor={id} className="text-sm font-medium">
+    <label htmlFor={id} className={classNamesOf('text-sm font-medium', isLabelHidden && 'sr-only')}>
       {label}
       {isRequired && (
         <span aria-hidden="true" className="text-danger ml-0.5">

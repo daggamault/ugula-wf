@@ -53,6 +53,27 @@ const buildPayerFileItemsTable = (db: Kysely<Database>) =>
       sql`outcome in (${list(PAYER_FILE_OUTCOMES)})`
     );
 
+const buildClearinghouseDownloadsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('clearinghouse_downloads')
+    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
+    .addColumn('remote_path', 'text', (col) => col.notNull())
+    .addColumn('size', 'integer', (col) => col.notNull())
+    .addColumn('modified_at', 'timestamptz', (col) => col.notNull())
+    .addColumn('tenant_id', 'uuid', (col) =>
+      col.references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    )
+    .addColumn('run_id', 'uuid', (col) =>
+      col.references('workflow_runs.id').onDelete('set null').onUpdate('cascade')
+    )
+    .addColumn('note', 'text', (col) => col.notNull().defaultTo(''))
+    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addUniqueConstraint('clearinghouse_downloads_file_unique', [
+      'remote_path',
+      'size',
+      'modified_at'
+    ]);
+
 const buildPayerFilesIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_payer_files_tenant_created')
@@ -65,5 +86,6 @@ const buildPayerFilesIndexes = (db: Kysely<Database>) => [
 export const createPayerFilesTables = async (db: Kysely<Database>) => {
   await buildPayerFilesTable(db).execute();
   await buildPayerFileItemsTable(db).execute();
+  await buildClearinghouseDownloadsTable(db).execute();
   for (const index of buildPayerFilesIndexes(db)) await index.execute();
 };

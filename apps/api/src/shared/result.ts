@@ -1,21 +1,8 @@
+import type { FailureCode, Result } from '@ugula/db';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
-type FailureCode =
-  | 'invalid'
-  | 'unauthorized'
-  | 'forbidden'
-  | 'not_found'
-  | 'conflict'
-  | 'rate_limited';
-
-type Failure = {
-  code: FailureCode;
-  message: string;
-  details?: Record<string, unknown>;
-};
-
-export type Result<T> = { ok: true; value: T } | { ok: false; failure: Failure };
+export { type Failure, type FailureCode, fail, ok, type Result } from '@ugula/db';
 
 const statusOf: Record<FailureCode, ContentfulStatusCode> = {
   invalid: 422,
@@ -25,17 +12,6 @@ const statusOf: Record<FailureCode, ContentfulStatusCode> = {
   conflict: 409,
   rate_limited: 429
 };
-
-export const ok = <T>(value: T): Result<T> => ({ ok: true, value });
-
-export const fail = (
-  code: FailureCode,
-  message: string,
-  details?: Record<string, unknown>
-): { ok: false; failure: Failure } => ({
-  ok: false,
-  failure: details ? { code, message, details } : { code, message }
-});
 
 export const respond = <T>(c: Context, result: Result<T>, status: ContentfulStatusCode = 200) =>
   result.ok

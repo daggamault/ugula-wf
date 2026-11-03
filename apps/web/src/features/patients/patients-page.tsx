@@ -2,13 +2,12 @@ import { nameKey } from '@ugula/billing';
 import { formatCents, formatDate } from '../../shared/format.ts';
 import { LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
-import { EmptyState, emptyValue } from '../../shared/ui/empty-state.tsx';
+import { EmptyState, EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
 import { OpenLink } from '../../shared/ui/icon-button.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { type SearchField, SearchForm } from '../../shared/ui/search-form.tsx';
-import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
 import { useTableState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
@@ -135,12 +134,18 @@ export const PatientsPage = ({ client, live, search }: PatientsPageProps) => (
     title="Patients"
     description="Find a patient by name or birth date to see their claims and what they owe."
   >
-    <SectionPanel
-      title="Find a Patient"
-      description="Enter a last name, first name or birth date. Names match from the start."
-    >
-      <SearchForm label="Search patients" path={PATH} fields={SEARCH_FIELDS} />
-    </SectionPanel>
-    {isSearching(search) ? <PatientResults client={client} live={live} search={search} /> : null}
+    <SearchForm
+      label="Search patients"
+      path={PATH}
+      fields={SEARCH_FIELDS}
+      collapsibleTitle="Filters"
+    />
+    {isSearching(search) ? (
+      <PatientResults client={client} live={live} search={search} />
+    ) : (
+      <EmptyText>
+        Enter a last name, first name or birth date. Names match from the start.
+      </EmptyText>
+    )}
   </Page>
 );

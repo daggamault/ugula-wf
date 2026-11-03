@@ -2,5 +2,7 @@ packages:
   - apps/*
   - libs/*/*
 allowBuilds:
+  cpu-features: false
   esbuild: false
+  ssh2: false
 minimumReleaseAge: 1440

@@ -54,7 +54,7 @@ describe('RunsPage', () => {
 
   it('links each status option to its filter', () => {
     const options = statusOptions((name, value) => (value ? `/runs?${name}=${value}` : '/runs'));
-    assert.deepEqual(options[0], { value: '', label: 'All', href: '/runs' });
+    assert.deepEqual(options[0], { value: '', label: 'All Statuses', href: '/runs' });
     assert.ok(options.some((o) => o.href === '/runs?status=faulted' && o.label === 'Stuck'));
   });
 });

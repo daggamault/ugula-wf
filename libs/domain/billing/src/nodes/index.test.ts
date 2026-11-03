@@ -28,7 +28,12 @@ describe('createBillingNodes', () => {
         'billing.claim-step@1',
         'billing.record-claim-event@1',
         'billing.issue-statement@1',
+        'billing.prepare-837p@1',
+        'billing.file-837p@1',
+        'billing.follow-claim@1',
+        'billing.send-837p@1',
         'billing.close-claim@1',
+        'billing.apply-payer-file@1',
         'billing.read-signature@1'
       ]
     );

@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db/testing';
+
 import {
   findBatchClaims,
   findClaimByNumber,
   findTracedCoverage,
   insertAcknowledgment,
   saveFileItems
-} from './queries.ts';
+} from './payer-files.ts';
+import { createRecordingDb } from './testing.ts';
 
 describe('payer file queries', () => {
   it('finds claims by the number billed as CLM01 and batches by control number', async () => {

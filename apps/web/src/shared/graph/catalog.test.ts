@@ -108,7 +108,7 @@ describe('createCatalog', () => {
     assert.equal(catalog.titleOf({ id: 'c', type: 'std.math.clamp', version: 1 }), 'Clamp');
     assert.equal(
       catalog.titleOf({ id: 'i', type: INPUT_TYPE, version: 1, config: { pin: 'claimId' } }),
-      'Get claimId'
+      'Get Claim ID'
     );
     assert.ok(catalog.palette.some((e) => e.type === INPUT_TYPE && e.category === 'Graph'));
     assert.equal(catalog.describe({ id: 'z', type: 'nope', version: 1 }), '');

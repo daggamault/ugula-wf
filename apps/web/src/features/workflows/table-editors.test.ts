@@ -40,9 +40,9 @@ describe('table editors', () => {
     };
     const html = render(DecisionTableEditor, config);
     assert.ok(html.includes('What the Rules Check') && html.includes('What the Rules Decide'));
-    assert.ok(html.includes('When Level of care'));
+    assert.ok(html.includes('When Level of Care'));
     assert.ok(html.includes('value="4232003, 4232005"'));
-    assert.ok(html.includes('Then level') && html.includes('value="ALS1"'));
+    assert.ok(html.includes('Then Level') && html.includes('value="ALS1"'));
     assert.ok(html.includes('When No Rule Holds') && html.includes('value="BLS"'));
     assert.ok(html.includes('aria-label="Move ALS care up"'));
     assert.ok(

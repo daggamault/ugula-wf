@@ -31,6 +31,8 @@ const claim: ClaimDetail = {
   number: 12,
   patient_number: 3,
   import_report_id: 'r1',
+  import_id: 'i1',
+  import_file_name: 'october.xml',
   pcr_number: 'PCR-1001',
   level: 'ALS1',
   total_cents: 114_220,
@@ -233,8 +235,8 @@ describe('describeProgress', () => {
       'Sending patient statement 2 of 3.'
     );
     assert.match(
-      describeProgress({ step: 'submitDue', coverage: medicare, balanceCents: 1 }),
-      /submit claim task is waiting/
+      describeProgress({ step: 'submit', coverage: medicare, balanceCents: 1 }),
+      /^Approved. Creating its 837P file for Medicare/
     );
     assert.match(
       describeProgress({ step: 'confirmPayers', balanceCents: 1 }),
@@ -271,11 +273,11 @@ describe('describeCycle', () => {
     );
     assert.equal(describeCycle({ status: 'ready', cycle_status: null }, null)?.intent, 'warning');
     assert.equal(describeCycle({ status: 'paid', cycle_status: 'completed' }, null), null);
-    const due = describeCycle(
-      { status: 'ready', cycle_status: 'suspended' },
-      { step: 'submitDue', coverage: medicare, balanceCents: 1 }
+    const filing = describeCycle(
+      { status: 'ready', cycle_status: 'running' },
+      { step: 'submit', coverage: medicare, balanceCents: 1 }
     );
-    assert.deepEqual([due?.intent, due?.submittable], ['primary', true]);
+    assert.equal(filing?.intent, 'info');
     const draft = describeCycle({ status: 'draft', cycle_status: null }, null);
     assert.deepEqual([draft?.intent, draft?.restartable], ['info', false]);
   });
@@ -553,44 +555,26 @@ describe('ClaimView', () => {
 });
 
 describe('ClaimView submission', () => {
-  const submission = (issues: string[] | null) => ({
-    issues,
-    made: null,
-    fileUrl: (id: string) => `/files/${id}`,
-    encounterUrl: (id: string) => `/encounters/${id}`,
-    onCreateFile: async () => undefined,
-    onMarkSubmitted: async () => undefined
-  });
-  const view = (issues: string[] | null) =>
-    renderToStaticMarkup(
+  it('has no buttons to create or mark the 837P file, which the cycle files once approved', () => {
+    const html = renderToStaticMarkup(
       createElement(ClaimView, {
         claim,
         issues: [],
         files: [],
         history: loaded([]),
-        progress: { step: 'submit', coverage: medicare, waitMs: 0, balanceCents: 1 },
+        progress: { step: 'submit', coverage: medicare, balanceCents: 1 },
         onSavePayers: async () => undefined,
         onRecord: async () => true,
         onRestart: async () => undefined,
         onSaveData: async () => true,
         onCheckEligibility: async () => undefined,
         documentUrl: () => '',
-        submission: submission(issues)
+        submission: { fileUrl: (id) => `/files/${id}`, encounterUrl: (id) => `/encounters/${id}` }
       })
     );
-
-  it('submits a ready claim from its own page and links its patient', () => {
-    const html = view([]);
-    assert.ok(html.includes('Approved and ready to submit to Medicare.'));
-    assert.ok(html.includes('Create 837P File') && html.includes('Mark Submitted'));
-    assert.ok(!html.includes('Fix the problems listed first.'));
+    assert.ok(html.includes('Approved. Creating its 837P file for Medicare'));
+    assert.ok(!html.includes('Create 837P File') && !html.includes('Mark Submitted'));
     assert.ok(html.includes('href="/patients/p1"'));
-  });
-
-  it('lists what blocks the 837P file', () => {
-    const html = view(['Add the member ID']);
-    assert.ok(html.includes('<li>Add the member ID</li>'));
-    assert.ok(html.includes('Fix the problems listed first.'));
   });
 });
 
@@ -628,7 +612,22 @@ describe('ClaimFiles', () => {
   it('lists the encounter, 837P files and documents for the claim', () => {
     const html = renderToStaticMarkup(
       createElement(ClaimFiles, {
-        claim: { import_report_id: 'r1', pcr_number: 'PCR-1' },
+        claim: {
+          import_report_id: 'r1',
+          pcr_number: 'PCR-1',
+          import_id: 'i1',
+          import_file_name: 'october.xml'
+        },
+        payerFiles: [
+          {
+            id: 'pf1',
+            kind: '999',
+            file_name: 'ack.999',
+            created_at: '2026-10-03T00:00:00Z',
+            items: [{ outcome: 'rejected', message: 'Invalid member ID' }]
+          }
+        ],
+        back: '/claims/c1',
         files: [
           {
             id: 'e1',
@@ -644,7 +643,8 @@ describe('ClaimFiles', () => {
             created_at: '2026-10-02T00:00:00Z',
             has_document: false,
             batch_id: 'b7',
-            batch_number: 7
+            batch_number: 7,
+            batch_sent_at: '2026-10-02T00:01:00Z'
           },
           {
             id: 'e2',
@@ -668,11 +668,26 @@ describe('ClaimFiles', () => {
     );
     assert.ok(html.includes('href="/encounters/r1"') && html.includes('Encounter PCR-1'));
     assert.ok(html.includes('href="/files/b7"') && html.includes('837P file #7'));
+    assert.ok(html.includes('>Sent '));
     assert.ok(html.includes('href="/docs/e2"') && html.includes('Patient statement 1 of 3'));
+    assert.ok(
+      html.includes('href="/imports/i1?back=%2Fclaims%2Fc1"') && html.includes('october.xml')
+    );
+    assert.ok(
+      html.includes('href="/payer-files/pf1?back=%2Fclaims%2Fc1"') && html.includes('ack.999')
+    );
+    assert.ok(html.includes('Rejected') && html.includes('Invalid member ID'));
     const bare = renderToStaticMarkup(
       createElement(ClaimFiles, {
-        claim: { import_report_id: null, pcr_number: null },
+        claim: {
+          import_report_id: null,
+          pcr_number: null,
+          import_id: null,
+          import_file_name: null
+        },
         files: [],
+        payerFiles: [],
+        back: '/claims',
         documentUrl: () => '',
         fileUrl: () => '',
         encounterUrl: () => ''

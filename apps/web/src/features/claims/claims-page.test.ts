@@ -99,7 +99,6 @@ describe('ClaimsPage', () => {
         client: { list: pending } as unknown as ClaimsClient,
         live: idleLive,
         me: 'me@example.com',
-        startWork: async () => null,
         search: {
           status: 'open',
           firstName: '',
@@ -111,7 +110,7 @@ describe('ClaimsPage', () => {
         }
       })
     );
-    assert.ok(html.includes('Start Working'));
+    assert.ok(!html.includes('Start Working'));
     assert.ok(html.includes('<option value="billing-review">Billing Review</option>'));
     assert.ok(html.includes('<option value="unassigned">Unassigned</option>'));
     assert.ok(html.includes('aria-expanded="true"') && html.includes('>Filters'));

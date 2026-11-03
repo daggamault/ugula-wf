@@ -30,6 +30,13 @@ describe('announceClaims', () => {
       },
       saveStatement: async () => void log.push('statement'),
       ledger: async () => null,
+      submission: async () => ({ submitter: null, pending: null }),
+      sendClaimFile: async () => 'manual' as const,
+      linkRun: async () => void log.push('link'),
+      saveSubmission: async () => {
+        log.push('submission');
+        return 'stale' as const;
+      },
       recordEvent: async () => void log.push('event'),
       closeClaim: async () => void log.push('close')
     } satisfies ClaimStore;

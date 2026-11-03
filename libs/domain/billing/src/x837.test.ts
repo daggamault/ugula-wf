@@ -1,72 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import {
-  build837,
-  readX837Claim,
-  type Submitter,
-  submitterIssues,
-  type X837Claim
-} from './x837.ts';
+import { sampleLine, sampleSubmitter, sampleX837 } from './testing.ts';
+import { build837, readX837Claim, submitterIssues, type X837Claim } from './x837.ts';
 
-const submitter: Submitter = {
-  organizationName: 'Metro EMS',
-  npi: '1234567893',
-  taxId: '123456789',
-  addressLine: '1 Main St',
-  city: 'Springfield',
-  state: 'IL',
-  postalCode: '627011234',
-  phone: '2175550100',
-  submitterId: 'SUB01',
-  receiverId: 'RCV01',
-  receiverName: 'Demo Clearinghouse',
-  production: false
-};
+const submitter = sampleSubmitter;
 
-const place = { addressLine: '9 Oak Ave', city: 'Springfield', state: 'IL', postalCode: '62702' };
+const base = sampleLine;
 
-const base = {
-  code: 'A0427',
-  modifiers: ['RH'],
-  chargeCents: 85_000,
-  units: 1,
-  serviceDate: '2026-10-01'
-};
-
-const mapped: X837Claim = {
-  claimId: 'c-1',
-  placeOfService: '41',
-  frequency: '1',
-  payerClaimNumber: null,
-  priorAuthorization: null,
-  subscriber: {
-    relationship: '18',
-    lastName: "O'Brien~*",
-    firstName: 'José',
-    memberId: '1EG4TE5MK73',
-    groupId: null
-  },
-  patient: {
-    lastName: "O'Brien~*",
-    firstName: 'José',
-    birthDate: '1950-02-03',
-    sex: 'M',
-    ...place
-  },
-  payer: { name: 'Medicare', payerId: 'DEMOMCR', claimFiling: 'MB' },
-  otherPayers: [],
-  weightPounds: null,
-  transportReason: 'A',
-  loadedMiles: 7.33,
-  conditionCodes: ['09', '06'],
-  diagnoses: ['R079', 'I10'],
-  pickup: { name: null, ...place },
-  dropoff: { name: 'Mercy Hospital', ...place, addressLine: '100 Health Way' },
-  lines: [
-    base,
-    { code: 'A0425', modifiers: ['RH'], chargeCents: 9_250, units: 7.4, serviceDate: '2026-10-01' }
-  ]
-};
+const mapped = sampleX837;
 
 const envelope = { controlNumber: 42, createdAt: new Date('2026-10-23T14:05:09Z') };
 

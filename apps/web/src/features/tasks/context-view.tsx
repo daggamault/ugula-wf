@@ -17,8 +17,6 @@ type ContextViewProps = {
   label: string;
 };
 
-const ACRONYMS = new Set(['id', 'pcr', 'iv', 'hcpcs', 'icd', 'npi', 'url']);
-
 export const labelOf = (key: string) => {
   const words = key
     .replace(/Cents$/, '')
@@ -27,7 +25,7 @@ export const labelOf = (key: string) => {
     .toLowerCase()
     .split(' ')
     .filter(Boolean);
-  return words.length ? titleCaseWords(words, ACRONYMS) : key;
+  return words.length ? titleCaseWords(words) : key;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

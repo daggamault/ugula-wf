@@ -35,12 +35,12 @@ const openClaim = async () => {
   await heading(s.page, /^Claim #\d+$/).waitFor();
 };
 
-const createBatch = async () => {
+const latestBatch = async () => {
   await openClaim();
-  await s.page.getByRole('button', { name: 'Create 837P file' }).click();
-  const ready = s.page.getByText(/837P file #\d+ is ready/).first();
-  await ready.waitFor();
-  const control = Number((await ready.textContent())?.match(/#(\d+)/)?.[1]);
+  const links = s.page.getByRole('link', { name: /^837P file #\d+$/i });
+  await links.first().waitFor();
+  const names = await links.allTextContents();
+  const control = Math.max(...names.map((n) => Number(n.match(/#(\d+)/)?.[1])));
   const href = await s.page
     .getByRole('link', { name: `837P file #${control}` })
     .first()
@@ -131,14 +131,13 @@ describe('a biller takes an encounter from import to payment', { timeout: SUITE_
     );
   });
 
-  it('reviews the claim and files it as an 837P carrying the documentation', async () => {
+  it('files the claim as an 837P carrying the documentation as soon as it is approved', async () => {
     await completeTask(s, claimId, 'Review claim', { outcome: 'Approve' });
-    const ready = await claimStatusIs(s, claimId, 'ready');
-    const { control, file } = await createBatch();
-    assert.match(file, new RegExp(`CLM\\*${ready.claim.number}\\*`));
+    const filed = await claimStatusIs(s, claimId, 'submitted');
+    const { control, file } = await latestBatch();
+    assert.match(file, new RegExp(`CLM\\*${filed.claim.number}\\*`));
     assert.match(file, /CR1\*{3,4}A\*DH\*/);
     assert.match(file, /CRC\*07\*Y\*04\*06\*09/);
-    await claimStatusIs(s, claimId, 'submitted');
     assert.match(
       await uploadPayerFile(s.page, `${pcr}.999`, batchAcknowledgment999(control, true)),
       /applied$/
@@ -165,9 +164,9 @@ describe('a biller takes an encounter from import to payment', { timeout: SUITE_
           .waitFor();
       }
     });
-    await claimStatusIs(s, claimId, 'ready');
-    await createBatch();
-    await claimStatusIs(s, claimId, 'submitted');
+    const { claim: resubmitted } = await claimStatusIs(s, claimId, 'submitted');
+    const { file } = await latestBatch();
+    assert.match(file, new RegExp(`CLM\\*${resubmitted.number}\\*`));
   });
 
   it('posts the remittance, closes the claim as paid and never applies the same file twice', async () => {

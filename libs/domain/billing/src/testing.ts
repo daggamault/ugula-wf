@@ -11,10 +11,14 @@ import type {
   FeeStore,
   PatientStore,
   PayerStore,
-  StatementSource
+  SavedSubmission,
+  SentClaimFile,
+  StatementSource,
+  SubmissionSource
 } from './nodes/stores.ts';
 import type { Patient } from './patients.ts';
 import type { DirectoryPayer, PayerCandidate } from './payers.ts';
+import type { Submitter, X837Claim } from './x837.ts';
 
 export type RecordedEvent = ClaimEvent & { key: string; note: string };
 
@@ -113,9 +117,14 @@ export type MemoryClaimOptions = {
   status?: ClaimStatus;
   previous?: BlobRef | null;
   stale?: boolean;
+  submission?: SubmissionSource;
+  saving?: SavedSubmission;
+  sending?: SentClaimFile;
 };
 
 type SavedStatement = { key: string; number: number; count: number; pdf: Uint8Array };
+
+type FiledClaim = { key: string; coverageId: string; resubmission: boolean; file: string };
 
 const checkOfSaved = (c: NewClaim): ClaimCheck => ({
   patientId: c.patientId,
@@ -208,7 +217,10 @@ export const memoryClaims = ({
   check,
   status = 'draft',
   previous = null,
-  stale = false
+  stale = false,
+  submission,
+  saving = { controlNumber: 1 },
+  sending = 'manual'
 }: MemoryClaimOptions = {}) => {
   const drafts: DraftClaim[] = [];
   const patients: string[] = [];
@@ -220,6 +232,8 @@ export const memoryClaims = ({
   const closed: string[] = [];
   const attached: string[] = [];
   const statements: SavedStatement[] = [];
+  const filed: FiledClaim[] = [];
+  const sent: number[] = [];
   let current: ClaimCheck | null = check ?? null;
   const ledgerCoverages = () =>
     coverages ??
@@ -296,6 +310,25 @@ export const memoryClaims = ({
     },
     closeClaim: async (_, __, ___, closing) => {
       closed.push(closing);
+    },
+    submission: submission ? async () => submission : unused('submission'),
+    saveSubmission: async (_, __, key, f) => {
+      if (typeof saving === 'object') {
+        filed.push({
+          key,
+          coverageId: f.coverageId,
+          resubmission: f.resubmission,
+          file: f.build(saving.controlNumber)
+        });
+      }
+      return saving;
+    },
+    linkRun: async (_, id) => {
+      attached.push(`claim:${id}`);
+    },
+    sendClaimFile: async (_, __, controlNumber) => {
+      if (sending !== 'manual') sent.push(controlNumber);
+      return sending;
     }
   };
   return {
@@ -310,6 +343,8 @@ export const memoryClaims = ({
     closed,
     attached,
     statements,
+    filed,
+    sent,
     current: () => current
   };
 };
@@ -334,6 +369,7 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
     createPatient: unused('patient'),
     updateAddress: unused('patient')
   },
+  payerFiles: stores.payerFiles ?? { apply: unused('payer file') },
   payers: stores.payers ?? {
     lookup: unused('payer'),
     directory: async () => [],
@@ -399,3 +435,63 @@ export const completeCheck = (payers = ['Medicare', 'Blue']): ClaimCheck => ({
     documentation: COMPLETE_DOCUMENTATION
   }
 });
+
+export const sampleSubmitter: Submitter = {
+  organizationName: 'Metro EMS',
+  npi: '1234567893',
+  taxId: '123456789',
+  addressLine: '1 Main St',
+  city: 'Springfield',
+  state: 'IL',
+  postalCode: '627011234',
+  phone: '2175550100',
+  submitterId: 'SUB01',
+  receiverId: 'RCV01',
+  receiverName: 'Demo Clearinghouse',
+  production: false
+};
+
+const place = { addressLine: '9 Oak Ave', city: 'Springfield', state: 'IL', postalCode: '62702' };
+
+export const sampleLine = {
+  code: 'A0427',
+  modifiers: ['RH'],
+  chargeCents: 85_000,
+  units: 1,
+  serviceDate: '2026-10-01'
+};
+
+export const sampleX837: X837Claim = {
+  claimId: 'c-1',
+  placeOfService: '41',
+  frequency: '1',
+  payerClaimNumber: null,
+  priorAuthorization: null,
+  subscriber: {
+    relationship: '18',
+    lastName: "O'Brien~*",
+    firstName: 'José',
+    memberId: '1EG4TE5MK73',
+    groupId: null
+  },
+  patient: {
+    lastName: "O'Brien~*",
+    firstName: 'José',
+    birthDate: '1950-02-03',
+    sex: 'M',
+    ...place
+  },
+  payer: { name: 'Medicare', payerId: 'DEMOMCR', claimFiling: 'MB' },
+  otherPayers: [],
+  weightPounds: null,
+  transportReason: 'A',
+  loadedMiles: 7.33,
+  conditionCodes: ['09', '06'],
+  diagnoses: ['R079', 'I10'],
+  pickup: { name: null, ...place },
+  dropoff: { name: 'Mercy Hospital', ...place, addressLine: '100 Health Way' },
+  lines: [
+    sampleLine,
+    { code: 'A0425', modifiers: ['RH'], chargeCents: 9_250, units: 7.4, serviceDate: '2026-10-01' }
+  ]
+};

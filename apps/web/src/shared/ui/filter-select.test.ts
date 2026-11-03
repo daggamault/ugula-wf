@@ -10,11 +10,11 @@ const options = [
 ];
 
 describe('FilterSelect', () => {
-  it('renders a labelled select with the current value chosen', () => {
+  it('renders a select labelled for screen readers only, with the current value chosen', () => {
     const html = renderToStaticMarkup(
       createElement(FilterSelect, { id: 'status', label: 'Status', value: 'paid', options })
     );
-    assert.ok(html.includes('>Status<'));
+    assert.ok(html.includes('class="text-sm font-medium sr-only"') && html.includes('>Status<'));
     assert.match(html, /<option value="paid" selected="">Paid<\/option>/);
   });
 

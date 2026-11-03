@@ -216,7 +216,7 @@ export const GraphSettings = ({ kind, def, editable, onChange, onClose }: GraphS
       <header className="border-border flex items-start justify-between gap-4 border-b p-4">
         <div className="flex min-w-0 flex-col gap-1">
           <h2 id={titleId} className="text-base font-bold">
-            {kind === 'workflow' ? 'Workflow Settings' : 'Building Block Settings'}
+            {kind === 'workflow' ? 'Workflow Settings' : 'Subworkflow Settings'}
           </h2>
           <p className="text-surface-fg-muted text-sm">
             What this takes in, hands back and keeps while it runs, shown as its node's pins.

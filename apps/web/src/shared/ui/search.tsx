@@ -14,6 +14,7 @@ type SearchProps<T> = {
   search: SearchView;
   results: Resource<Page<T>>;
   isFiltered?: boolean;
+  filters?: ReactNode;
   empty: { title: string; children: ReactNode; action?: ReactNode };
   children: (items: readonly T[]) => ReactNode;
 };
@@ -28,11 +29,15 @@ export const Search = <T,>({
   search,
   results,
   isFiltered = false,
+  filters,
   empty,
   children
 }: SearchProps<T>) => (
   <>
-    <SearchForm label={`Search ${label}`} path={path} fields={searchFieldsOf(label)} />
+    <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+      <SearchForm label={`Search ${label}`} path={path} fields={searchFieldsOf(label)} />
+      {filters}
+    </div>
     {results.error ? (
       <Alert>{results.error.message}</Alert>
     ) : results.data?.items.length ? (

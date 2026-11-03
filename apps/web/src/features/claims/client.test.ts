@@ -40,9 +40,6 @@ describe('createClaimsClient', () => {
       adjustments: [],
       note: ''
     });
-    await client.pending('c1');
-    await client.createBatch('c1');
-    await client.markSubmitted('c1');
     assert.equal(client.fileUrl('b1'), 'http://api.test/api/submissions/batches/b1/file');
     assert.equal(client.encounterUrl('r1'), 'http://api.test/api/imports/reports/r1/xml');
     assert.deepEqual(seen, [
@@ -54,10 +51,7 @@ describe('createClaimsClient', () => {
       'GET http://api.test/api/claims/c1/events?page=2&sort=amount ',
       'PUT http://api.test/api/claims/c1/payers {"payers":[{"name":"Medicare","relationship":"18","insuredFirstName":null,"insuredLastName":null}]}',
       'POST http://api.test/api/claims/c1/restart-cycle ',
-      'POST http://api.test/api/claims/c1/responses {"requestId":"q1","kind":"response","coverageId":null,"paidCents":500,"adjustedCents":0,"paidOn":null,"checkNumber":null,"payerClaimNumber":null,"adjustments":[],"note":""}',
-      'GET http://api.test/api/submissions/pending?claimId=c1 ',
-      'POST http://api.test/api/submissions/batches {"claimId":"c1"}',
-      'POST http://api.test/api/submissions/manual {"claimId":"c1"}'
+      'POST http://api.test/api/claims/c1/responses {"requestId":"q1","kind":"response","coverageId":null,"paidCents":500,"adjustedCents":0,"paidOn":null,"checkNumber":null,"payerClaimNumber":null,"adjustments":[],"note":""}'
     ]);
   });
 

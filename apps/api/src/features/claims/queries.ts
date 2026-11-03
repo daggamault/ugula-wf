@@ -5,10 +5,9 @@ import {
   nameKey,
   payerKey
 } from '@ugula/billing';
-import { ACTIVE_RUN_STATUSES, type Database, DOCUMENTATION_COLUMNS } from '@ugula/db';
+import { ACTIVE_RUN_STATUSES, type Database, DOCUMENTATION_COLUMNS, payerName } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
-import { payerName } from '../../shared/claim-responses.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { escapeLike } from '../../shared/search.ts';
 import type { ClaimEventSort, ClaimSort, PayerEntry } from './schemas.ts';
@@ -165,7 +164,11 @@ export const listClaims = async (db: Db, tenantId: string, f: ClaimFilters) => {
 export const findClaim = (db: Db, tenantId: string, id: string) =>
   claimRows(db, tenantId)
     .leftJoin('workflow_runs as r', 'r.id', 'c.cycle_run_id')
+    .leftJoin('import_reports as ir', 'ir.id', 'c.import_report_id')
+    .leftJoin('imports as i', 'i.id', 'ir.import_id')
     .select((eb) => [
+      'i.id as import_id',
+      'i.file_name as import_file_name',
       'c.trip_type',
       'c.emergency',
       'c.loaded_miles',
@@ -355,6 +358,7 @@ const eventRows = (db: Db, claimId: string) =>
       'e.kind',
       'e.batch_id',
       'cb.control_number as batch_number',
+      'cb.sent_at as batch_sent_at',
       'e.coverage_id',
       eventPayer.as('payer'),
       'e.paid_cents',
@@ -382,6 +386,36 @@ export const listClaimFiles = (db: Db, claimId: string) =>
     .where((eb) => eb.or([eb('e.batch_id', 'is not', null), eb('e.document', 'is not', null)]))
     .orderBy('e.created_at')
     .orderBy('e.id')
+    .execute();
+
+export const listClaimPayerFiles = (db: Db, claimId: string) =>
+  db
+    .selectFrom('payer_files as f')
+    .select((eb) => [
+      'f.id',
+      'f.kind',
+      'f.file_name',
+      'f.created_at',
+      jsonArrayFrom(
+        eb
+          .selectFrom('payer_file_items as fi')
+          .select(['fi.outcome', 'fi.message'])
+          .whereRef('fi.file_id', '=', 'f.id')
+          .where('fi.claim_id', '=', claimId)
+          .orderBy('fi.position')
+      ).as('items')
+    ])
+    .where((eb) =>
+      eb.exists(
+        eb
+          .selectFrom('payer_file_items as fi')
+          .select('fi.id')
+          .whereRef('fi.file_id', '=', 'f.id')
+          .where('fi.claim_id', '=', claimId)
+      )
+    )
+    .orderBy('f.created_at')
+    .orderBy('f.id')
     .execute();
 
 export const claimExists = async (db: Db, tenantId: string, id: string) =>

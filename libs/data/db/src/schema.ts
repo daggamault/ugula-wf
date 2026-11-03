@@ -368,6 +368,19 @@ export type ClaimBatchesTable = {
   document: JsonColumn;
   created_by: string | null;
   created_at: Timestamp;
+  sent_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  sent_as: ColumnType<string | null, string | null | undefined, string | null>;
+};
+
+export type ClearinghouseDownloadsTable = {
+  id: Generated<string>;
+  remote_path: string;
+  size: number;
+  modified_at: ColumnType<Date, Date | string, Date | string>;
+  tenant_id: string | null;
+  run_id: string | null;
+  note: ColumnType<string, string | undefined, string>;
+  created_at: Timestamp;
 };
 
 export type PayerFilesTable = {
@@ -498,6 +511,7 @@ export type Database = {
   claim_event_adjustments: ClaimEventAdjustmentsTable;
   claim_batches: ClaimBatchesTable;
   payer_files: PayerFilesTable;
+  clearinghouse_downloads: ClearinghouseDownloadsTable;
   payer_file_items: PayerFileItemsTable;
   billing_profiles: BillingProfilesTable;
   payers: PayersTable;

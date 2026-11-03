@@ -4,8 +4,11 @@ import type { ClaimCheck, NewClaim } from '../claim-validation.ts';
 import type { ClaimLedger, ClaimStatus, ClosedStatus, CycleEventKind } from '../claims.ts';
 import type { Completer } from '../completions.ts';
 import type { Address, NewPatient, Patient } from '../patients.ts';
+import type { PayerFileOutcome } from '../payer-files.ts';
 import type { DirectoryPayer, PayerLookup } from '../payers.ts';
 import type { StatementData } from '../statements.ts';
+import type { InboundKind } from '../x12.ts';
+import type { PendingSubmission, Submitter } from '../x837.ts';
 
 export type CandidateQuery = {
   birthDate: string | null;
@@ -70,6 +73,23 @@ type TrackedLedger = ClaimLedger & { signalsSeen: number; reference: string };
 
 export type BlobRef = { bucket: string; key: string };
 
+export type SubmissionSource = {
+  submitter: Submitter | null;
+  pending: PendingSubmission | null;
+};
+
+export type SubmissionFile = {
+  coverageId: string;
+  resubmission: boolean;
+  totalCents: number;
+  production: boolean;
+  build: (controlNumber: number) => string;
+};
+
+export type SavedSubmission = { controlNumber: number } | 'stale' | 'exhausted';
+
+export type SentClaimFile = { sentAs: string } | 'manual';
+
 type Revision = { status: ClaimStatus; previous: BlobRef | null };
 
 export type ClaimStore = {
@@ -115,6 +135,15 @@ export type ClaimStore = {
     statement: { number: number; count: number; pdf: Uint8Array }
   ) => Promise<void>;
   ledger: (runId: string, claimId: string) => Promise<TrackedLedger | null>;
+  submission: (runId: string, claimId: string) => Promise<SubmissionSource>;
+  saveSubmission: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    file: SubmissionFile
+  ) => Promise<SavedSubmission>;
+  sendClaimFile: (runId: string, claimId: string, controlNumber: number) => Promise<SentClaimFile>;
+  linkRun: (runId: string, claimId: string) => Promise<void>;
   recordEvent: (
     runId: string,
     claimId: string,
@@ -134,11 +163,32 @@ export type ClaimStore = {
   ) => Promise<void>;
 };
 
+export type PayerFileLine = {
+  reference: string;
+  claimId: string | null;
+  outcome: PayerFileOutcome;
+  message: string;
+};
+
+export type AppliedPayerFile =
+  | { status: 'applied'; fileId: string; kind: InboundKind; reviews: PayerFileLine[] }
+  | { status: 'duplicate'; fileId: string }
+  | { status: 'unreadable'; reason: string };
+
+export type PayerFileStore = {
+  apply: (
+    runId: string,
+    sourceKey: string,
+    file: { document: BlobRef; fileName: string }
+  ) => Promise<AppliedPayerFile>;
+};
+
 export type BillingStores = {
   patients: PatientStore;
   payers: PayerStore;
   fees: FeeStore;
   claims: ClaimStore;
+  payerFiles: PayerFileStore;
   completer: Completer;
 };
 

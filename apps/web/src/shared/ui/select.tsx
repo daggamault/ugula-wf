@@ -50,10 +50,19 @@ type SelectProps = NativeSelectProps & {
   error?: string | undefined;
   hint?: string | undefined;
   span?: FieldSpan | undefined;
+  isLabelHidden?: boolean | undefined;
 };
 
-export const Select = ({ id, label, error, hint, span, ...rest }: SelectProps) => (
-  <Field id={id} label={label} error={error} hint={hint} isRequired={rest.required} span={span}>
+export const Select = ({ id, label, error, hint, span, isLabelHidden, ...rest }: SelectProps) => (
+  <Field
+    id={id}
+    label={label}
+    error={error}
+    hint={hint}
+    isRequired={rest.required}
+    isLabelHidden={isLabelHidden}
+    span={span}
+  >
     <NativeSelect
       id={id}
       aria-invalid={Boolean(error) || undefined}

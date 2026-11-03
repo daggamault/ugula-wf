@@ -129,7 +129,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
   });
 
-  it('opens the waiting task from its claim row and starts working the next task', async () => {
+  it('opens the waiting task from its claim row', async () => {
     await reach(claims.worked, 'Review PCR');
     await filterClaims({ Number: pcrs.worked });
     const row = claimRow(pcrs.worked);
@@ -137,12 +137,6 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await row.getByRole('link', { name: /^Work Review PCR on claim #\d+$/ }).click();
     await section(s.page, 'Your Decision').last().waitFor();
     assert.match(s.page.url(), /\/tasks\//);
-    await go(s.page, '/claims');
-    await s.page.getByRole('button', { name: 'Start Working' }).click();
-    await s.page.waitForURL(/\/tasks\//);
-    await section(s.page, 'Your Decision').last().waitFor();
-    await s.page.getByRole('button', { name: 'Unassign' }).click();
-    await toast('Unassigned');
   });
 
   it('assigns a task, shows its details, and blocks an outcome until required fields are set', async () => {
@@ -241,13 +235,8 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await until(s.page, order, (o) => o.join() === first, 'Blue Plan removed');
   });
 
-  it('marks a reviewed claim submitted, posts a payment by hand and lowers the balance', async () => {
+  it('files a claim once it is reviewed, posts a payment by hand and lowers the balance', async () => {
     await completeTask(s, claims.worked, 'Review claim', { outcome: 'Approve' });
-    await claimStatusIs(s, claims.worked, 'ready');
-    await openClaim(claims.worked);
-    await s.page.getByRole('button', { name: 'Mark Submitted' }).first().click();
-    await s.page.getByRole('dialog').getByRole('button', { name: 'Mark Submitted' }).click();
-    await toast('Marked submitted');
     const { claim } = await claimStatusIs(s, claims.worked, 'submitted');
     await openClaim(claims.worked);
     const form = s.page.getByRole('form', { name: 'Post payment' });

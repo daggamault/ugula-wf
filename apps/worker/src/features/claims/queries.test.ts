@@ -13,7 +13,8 @@ const blobs = {
   putBytes: async (key: string, body: Uint8Array, contentType: string) => {
     stored.push({ key, size: body.byteLength, type: contentType });
     return { bucket: 'ugula', key, size: body.byteLength, contentType };
-  }
+  },
+  getBytes: async () => new Uint8Array()
 };
 
 const jobs: RunJob[] = [];

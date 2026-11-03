@@ -22,6 +22,7 @@ export const FilterSelect = ({ id, label, value, options }: FilterSelectProps) =
     <Select
       id={id}
       label={label}
+      isLabelHidden
       value={value}
       options={options}
       onChange={(e) => {

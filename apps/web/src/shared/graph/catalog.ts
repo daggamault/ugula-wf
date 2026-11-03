@@ -15,6 +15,7 @@ import {
   stdGraphSource,
   stdGraphs
 } from '@ugula/graph';
+import { labelFromName } from '../format.ts';
 
 export type PublishedNode = {
   graph_id: string;
@@ -65,14 +66,10 @@ const workflowRefOf = (inst: NodeInstance): NodeRef | null => {
 
 const inputTitle = (inst: NodeInstance) => {
   const pin = (inst.config as { pin?: unknown } | undefined)?.pin;
-  return typeof pin === 'string' && pin ? `Get ${pin}` : undefined;
+  return typeof pin === 'string' && pin ? `Get ${labelFromName(pin)}` : undefined;
 };
 
-export const titleFromKey = (key: string) =>
-  (key.split('.').at(-1) ?? key)
-    .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+export const titleFromKey = (key: string) => labelFromName(key.split('.').at(-1) ?? key);
 
 const categoryOf = (nodes: readonly NodeDef[], type: string) => {
   const prefix = type.split('.').slice(0, 2).join('.');

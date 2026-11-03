@@ -203,7 +203,7 @@ export const XmlTree = ({ label, rootName, value, labelOf, meaningOf }: XmlTreeP
         placeholder="Find an element, label or value"
       />
       {nodes.length ? (
-        <ul className="max-h-[32rem] overflow-auto font-mono text-xs/6">
+        <ul className="overflow-x-auto font-mono text-xs/6">
           {nodes.map((n) => (
             <Element
               key={n.path}

@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { findClaim, listClaimEvents, listClaims, numberOf, reorderCoverages } from './queries.ts';
+import {
+  findClaim,
+  listClaimEvents,
+  listClaimPayerFiles,
+  listClaims,
+  numberOf,
+  reorderCoverages
+} from './queries.ts';
 
 describe('claim queries', () => {
   it('pages claim ids by tenant and filters first, then loads details for that page only', async () => {
@@ -249,5 +256,22 @@ describe('claim status sort', () => {
     assert.ok(
       queries[0]?.sql.includes("order by array_position(array['draft', 'needs_review', 'ready'")
     );
+  });
+
+  it('lists the payer files that touched a claim with only the lines for that claim', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    assert.deepEqual(await listClaimPayerFiles(db, 'c1'), []);
+    const [q] = queries;
+    assert.ok(q?.sql.includes('from "payer_files" as "f"'));
+    assert.ok(q?.sql.includes('where exists (select "fi"."id" from "payer_file_items" as "fi"'));
+    assert.deepEqual(q?.parameters, ['c1', 'c1']);
+    await db.destroy();
+  });
+
+  it('names the import a claim came from', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await findClaim(db, 't1', 'c1');
+    assert.ok(queries.some((q) => q.sql.includes('left join "imports" as "i"')));
+    await db.destroy();
   });
 });

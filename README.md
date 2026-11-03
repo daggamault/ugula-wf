@@ -14,7 +14,7 @@ Ugula is a durable, visual workflow engine (think Unreal Blueprints meets n8n) w
 - **Scaling:** Workers scale horizontally. Postgres LISTEN/NOTIFY wakes an idle worker the moment a run is queued. Each worker claims runs only while it has a free slot (`WORKFLOW_CONCURRENCY`) and its event loop and memory are under their limits; over a limit it finishes what it holds and claims nothing new until load falls back. Language-model calls share one cluster-wide limit (`COMPLETIONS_CONCURRENCY`), held as expiring leases in Redis, so adding workers never overloads the model server; a run that finds every lease taken gives up its slot and retries on a short timer. Task completions and signals are picked up before bulk work, and each import runs at most `WORKFLOW_CONCURRENCY` of its reports at once across the cluster, so one large file never takes every worker.
 - **Separation:** The engine and its standard library (`libs/kernel/graph`) know nothing about billing. NEMSIS and billing nodes and models live in `libs/domain/nemsis` and `libs/domain/billing` and reach the database only through ports the worker implements.
 
-### Building Blocks
+### Subworkflows
 
 Workflows are built from small, general nodes, so agencies can change billing logic without code:
 
@@ -38,14 +38,14 @@ Workflows are built from small, general nodes, so agencies can change billing lo
 7. **Claim:** `Map Charges` turns the confirmed service into HCPCS lines (a base rate by trip type, level and emergency, A0998 for no transport, and A0425 mileage in tenths of a mile), which are priced from fee schedules (the primary payer's prices first, then defaults). `Map Claim`, `Trip Details` and `Documentation From PCR` fill the claim, including diagnoses, origin/destination modifiers and documentation: the release-for-billing signature (signed, a Medicare exception because the patient could not sign, refused or missing), the physician certification statement, the CMS transport reason (reported, else from the reason for the destination), ambulance conditions, prior authorization, weight and trip times. A claim cannot go to a payer without a billing signature or a documented exception, a transport reason on transports, or a certification on scheduled non-emergency Medicare trips; old certifications, out-of-order times and nearing or passed filing limits are warnings. `Validate Claim` keeps an incomplete claim in Draft and sends it to a biller; a valid one is saved and moves to **Needs review**. A held or incomplete PCR that a biller voids closes its draft as **Void**.
 8. **Claim cycle:** Each claim gets its own long-running workflow that sleeps until a claim change or a deadline, and works through its payers in order. Its `Claim Step` node decides the next step from the claim's ledger and records it as the claim's status, so the status a biller filters by is always the step the claim is on. The waits and the number of statements are inputs of `Claim Step`.
    - **Needs review:** before each payer, a `Review claim` task makes a biller check and approve the claim; nothing goes to a clearinghouse unreviewed, including resubmissions;
-   - **Ready to submit:** each claim is submitted on its own from its claim page, as an **837P file** the biller uploads to their clearinghouse (or marked submitted when it went out another way). The `Map 837P Claim` graph maps the claim (subscriber, payer, ambulance conditions, modifiers, service lines), and the file only serializes what it maps;
+   - **Ready to submit:** as soon as the review is approved, the payer cycle files the claim on its own as an **837P file** (`Prepare 837P Claim`, `Map 837P Claim`, `File 837P Claim`), logs it submitted, and `Send 837P to Clearinghouse` uploads it to the clearinghouse SFTP server (without a connection, the file waits on the claim for the biller to upload). The `Map 837P Claim` graph maps the claim (subscriber, payer, ambulance conditions, modifiers, service lines), and the file only serializes what it maps. When the file cannot be created (an incomplete billing profile, blocking claim data, an incomplete mapping or used-up control numbers), a `Claim could not be filed` task says why and lets the biller try again, fix the data (which sends it back to review), skip the payer or mark it submitted another way;
    - **Submitted:** a 999 or 277CA rejection sends the claim back to review with the payer's reason; a payer that hasn't answered in 30 days creates a follow-up task (**Needs follow-up**: resubmit, keep waiting, or move to the next payer);
    - **Reconcile payment:** a payer payment posted against the claim that leaves a balance opens a reconcile task (continue to the next payer or the patient, or write off the rest); a payment that settles the claim closes it as paid;
    - **Patient balance:** once all payers are done, up to three patient statements (PDFs) go out 30 days apart;
    - **Balance review:** an unpaid balance after that goes to a biller; claims close as **Paid**, **Written off**, **Sent to collections** or **Void**.
-9. **Payer files:** Payer Files takes whatever the clearinghouse returns. An 835 posts each claim's payment, contractual adjustments and reason codes (patient responsibility stays on the balance), matched by claim number and payer; a 999 accepts or rejects every claim in its 837P file; a 277CA accepts or rejects single claims; a 271 records whether each payer says the coverage is active, and an inactive coverage blocks billing that payer. Check Eligibility on a claim downloads a 270 for its payers. Every line keeps its outcome, unclear lines (reversals, unknown claims, payers not on the claim) go to a biller, and the same file is never applied twice.
+9. **Payer files:** the worker polls the clearinghouse SFTP download folders, routes each file to the agency it is addressed to (ISA08 is the agency's submitter ID) and starts `Receive Payer File` for it, which applies it and starts `Review Payer File Line` (a task on the claim) for every line a biller has to look at. Each claim lists the payer files that touched it. An 835 posts each claim's payment, contractual adjustments and reason codes (patient responsibility stays on the balance), matched by claim number and payer; a 999 accepts or rejects every claim in its 837P file; a 277CA accepts or rejects single claims; a 271 records whether each payer says the coverage is active, and an inactive coverage blocks billing that payer. Check Eligibility on a claim downloads a 270 for its payers. Every line keeps its outcome, unclear lines (reversals, unknown claims, payers not on the claim) go to a biller, and the same file is never applied twice.
 10. **Admin:** Payers (the directory, with each clearinghouse payer ID, its filing limit and the report names it has learned), Fees, and Settings (the agency's billing profile and clearinghouse IDs) drive the 837P files and statements.
-11. **Working it:** Billers work from Claims: each row shows the task the claim is waiting on with a Work Task action, the list filters by task type and assignee, and Start Working opens the next task. A claim's page lists its open tasks, and a task page names its claim and returns to it. Claims and patients get sequential numbers (`claims.number`, `patients.number`, identity columns shared across agencies), and the encounter number is the PCR number. Claims has a collapsible filter form for first and last name, birth date, any of the three numbers, and status (open claims by default), all in SQL; each claim has Overview, Claim data and History tabs, and its Files list the source encounter (NEMSIS XML), its 837P files and statements. Patients searches by name and birth date; each import lists what every PCR in the file became. New tasks, stuck runs and every message a biller sees are kept in the notification bell, stored per tenant and user so they follow the biller across devices.
+11. **Working it:** Billers work from Claims: each row shows the task the claim is waiting on with a Work Task action, the list filters by task type and assignee. A claim's page lists its open tasks, and a task page names its claim and returns to it. Claims and patients get sequential numbers (`claims.number`, `patients.number`, identity columns shared across agencies), and the encounter number is the PCR number. Claims has a collapsible filter form for first and last name, birth date, any of the three numbers, and status (open claims by default), all in SQL; each claim has Overview, Claim data and History tabs, and its Files list the source encounter (NEMSIS XML), its 837P files and statements. Patients searches by name and birth date; each import lists what every PCR in the file became. New tasks, stuck runs and every message a biller sees are kept in the notification bell, stored per tenant and user so they follow the biller across devices.
 12. **Reports:** Every import, report, claim line, coverage, diagnosis and ledger event is a relational row, so A/R aging, monthly collections, payer performance and HCPCS charges are plain SQL. Reports lists them; each one opens an options page (dates of service, where the report uses them) and then a results page that pages at 100 rows, prints the current page as a black and gray document, and downloads as CSV.
 
 ## Layout
@@ -75,11 +75,36 @@ pnpm db:migrate            # resets and creates the schema
 pnpm db:seed:dev           # GNIS places, NEMSIS definitions, dev user, demo graphs, fees, payers
 pnpm db:gnis               # optional: rebuild .seeds/data/gnis-places.tsv.gz from USGS (updated bimonthly)
 pnpm db:nemsis             # optional: rebuild .seeds/data/nemsis-*.tsv.gz from the NEMSIS 3.5 schema
-pnpm dev                   # api, worker, sse, web
+pnpm dev                   # api, worker, sse, web and the mock clearinghouse
 pnpm e2e                   # with the stack running: every area in the browser, suites in parallel (about 30s)
 ```
 
 Copy `.env.example` to `.env` first. Run `pnpm check`, `pnpm typecheck`, and `pnpm test` before committing.
+
+### Clearinghouse connection
+
+The worker reads the clearinghouse SFTP connection from `.env`; leave `CLEARINGHOUSE_SFTP_HOST` empty to turn the exchange off. Pointing it at a real clearinghouse is a settings change:
+
+| Setting                             | Mock (default)                              | TriZetto                               | Waystar                          |
+| ----------------------------------- | ------------------------------------------- | -------------------------------------- | -------------------------------- |
+| `CLEARINGHOUSE_SFTP_HOST` / `_PORT` | `localhost` / `2223`                        | from your TriZetto setup               | from your Waystar setup          |
+| `CLEARINGHOUSE_UPLOAD_PATH`         | `/inbound`                                  | the upload folder they give you        | the outbound (write-only) folder |
+| `CLEARINGHOUSE_DOWNLOAD_PATHS`      | `/outbound/999,/outbound/277,/outbound/835` | one folder each for 999, 277CA and 835 | the inbound folder               |
+| `CLEARINGHOUSE_FILE_EXTENSION`      | `.txt`                                      | `.txt`                                 | `.CLP`                           |
+| `CLEARINGHOUSE_AFTER_DOWNLOAD`      | `delete`                                    | `delete`                               | `delete` or `keep`               |
+
+Response files are recognized by content (ISA/GS/ST), not by name, and each agency's billing profile submitter ID must be the ID the clearinghouse addresses its responses to. Confirm folder names, extensions and IDs with the clearinghouse during enrollment.
+
+### Mock clearinghouse
+
+`.dev/mock-clearinghouse.ts` is a dev-only, in-memory SFTP server that answers 837P files like a clearinghouse. `pnpm dev` starts it (`pnpm dev:clearinghouse` alone) on `CLEARINGHOUSE_SFTP_HOST`:`CLEARINGHOUSE_SFTP_PORT` (localhost:2223 in `.env.example`) for `CLEARINGHOUSE_SFTP_USERNAME` / `CLEARINGHOUSE_SFTP_PASSWORD`. Files live in memory and are gone on restart; the host key is new on every start.
+
+- Upload 837P files to `/inbound` (files ending in `.part`, `.tmp` or `.filepart` wait until renamed). About 2s later the file is picked up and removed.
+- `/outbound/999/<name>.999` acknowledges the group (AK1 = the 837 GS06); a file that is not a readable 837P gets a rejected 999 (`AK9*R`).
+- `/outbound/277/<name>.277` has one status per claim (TRN = CLM01): accepted, or rejected with "Invalid member ID" when the subscriber member ID starts with `REJECT`.
+- `/outbound/835/<name>.835` follows after `CLEARINGHOUSE_REMIT_DELAY_SECONDS` (default 20) for accepted claims, one transaction per payer: 80% of the charge paid, the rest a CO-45.
+
+`<name>` is the uploaded name without its extension. The responses come from `respond()` in `@ugula/billing/mock`, which also has the 999/277CA/835/271 builders the e2e suites use.
 
 ---
 

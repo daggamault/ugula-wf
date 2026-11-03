@@ -50,36 +50,47 @@ const NavHeader = ({ tools, children }: { tools?: ReactNode; children?: ReactNod
 const NavMenu = ({ navItems, userEmail, status, onSignOut }: NavMenuProps) => (
   <div className="flex min-h-0 flex-1 flex-col gap-4">
     <nav aria-label="Primary" className="flex flex-1 flex-col gap-5 overflow-y-auto px-3">
-      {groupsOf(navItems).map(([group, items]) => (
-        <div key={group} className="flex flex-col gap-1">
-          <p className="text-surface-fg-muted px-3 pb-1 text-xs font-semibold tracking-wide uppercase">
-            {group}
-          </p>
-          <ul className="flex flex-col gap-1">
-            {items.map(({ id, label, href, icon: Icon, active, badge }) => (
-              <li key={id} className="flex">
-                <Link
-                  to={href}
-                  aria-current={active ? 'page' : undefined}
-                  className={classNamesOf(
-                    interactiveClasses,
-                    'text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-sm font-semibold pointer-coarse:h-11'
-                  )}
-                >
-                  <Icon aria-hidden="true" className="size-4 shrink-0" />
-                  <span className="flex-1">{label}</span>
-                  {badge ? (
-                    <span className="bg-primary text-primary-fg min-w-5 rounded-full px-1.5 text-center text-xs/5 font-bold tabular-nums">
-                      {badge}
-                      <span className="sr-only"> open</span>
-                    </span>
-                  ) : null}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+      {groupsOf(navItems).map(([group, items]) => {
+        const hasActive = items.some((item) => item.active);
+        return (
+          <div key={group} className="flex flex-col gap-1">
+            <p
+              className={classNamesOf(
+                'flex items-center gap-1.5 px-3 pb-1 text-xs font-semibold tracking-wide uppercase',
+                hasActive ? 'text-surface-fg' : 'text-surface-fg-muted'
+              )}
+            >
+              {group}
+              {hasActive ? (
+                <span aria-hidden="true" className="bg-primary size-1.5 rounded-full" />
+              ) : null}
+            </p>
+            <ul className="flex flex-col gap-1">
+              {items.map(({ id, label, href, icon: Icon, active, badge }) => (
+                <li key={id} className="flex">
+                  <Link
+                    to={href}
+                    aria-current={active ? 'page' : undefined}
+                    className={classNamesOf(
+                      interactiveClasses,
+                      'text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-sm font-semibold pointer-coarse:h-11'
+                    )}
+                  >
+                    <Icon aria-hidden="true" className="size-4 shrink-0" />
+                    <span className="flex-1">{label}</span>
+                    {badge ? (
+                      <span className="bg-primary text-primary-fg min-w-5 rounded-full px-1.5 text-center text-xs/5 font-bold tabular-nums">
+                        {badge}
+                        <span className="sr-only"> open</span>
+                      </span>
+                    ) : null}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
     </nav>
     <div className="border-border flex items-center gap-2 border-t p-3">
       {status}

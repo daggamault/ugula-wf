@@ -32,7 +32,7 @@ export const NodeExecutions = ({ title, steps, onOpen, runs = [] }: NodeExecutio
         onOpen ? (
           <Button variant="outline" onClick={onOpen}>
             <FolderOpenIcon aria-hidden="true" className="size-4" />
-            Open Building Block
+            Open Subworkflow
           </Button>
         ) : null
       }

@@ -49,7 +49,6 @@ describe('nextClaimStep', () => {
     assert.deepEqual(step([e('approved', 'Medicare', 0)], 0), {
       step: 'submit',
       coverage: cov('Medicare'),
-      waitMs: 3 * DAY,
       balanceCents: 100_000
     });
     assert.deepEqual(step([e('submitted', 'Medicare', 0)], 0), {
@@ -182,7 +181,7 @@ describe('nextClaimStep', () => {
 
   it('sends no statement when the limit is zero, and honors other limits', () => {
     const ledger = { totalCents: 100_000, coverages: [], events: [e('approved', null, 0)] };
-    const policy = { payerWaitMs: 30 * DAY, submitWaitMs: DAY, statementIntervalMs: 30 * DAY };
+    const policy = { payerWaitMs: 30 * DAY, statementIntervalMs: 30 * DAY };
     assert.deepEqual(nextClaimStep(ledger, day(0), { ...policy, statementLimit: 0 }), {
       step: 'collections',
       balanceCents: 100_000
@@ -195,11 +194,10 @@ describe('nextClaimStep', () => {
     assert.equal(nextClaimStep(one, day(30), { ...policy, statementLimit: 1 }).step, 'collections');
   });
 
-  it('asks for the claim to be submitted once it has sat ready for three days', () => {
-    const approved = [e('approved', 'Medicare', 0)];
-    assert.equal(step(approved, 2).step, 'submit');
-    assert.deepEqual(step(approved, 3), {
-      step: 'submitDue',
+  it('submits an approved claim right away, and never before it is approved', () => {
+    assert.equal(step([], 0).step, 'review');
+    assert.deepEqual(step([e('approved', 'Medicare', 0)], 0), {
+      step: 'submit',
       coverage: cov('Medicare'),
       balanceCents: 100_000
     });
@@ -310,7 +308,6 @@ describe('claim statuses', () => {
           'reviewPatient',
           'confirmPayers',
           'submit',
-          'submitDue',
           'await',
           'followUp',
           'reconcile',
@@ -323,7 +320,6 @@ describe('claim statuses', () => {
         'needs_review',
         'needs_review',
         'needs_review',
-        'ready',
         'ready',
         'submitted',
         'follow_up',

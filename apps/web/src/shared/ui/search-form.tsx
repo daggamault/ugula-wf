@@ -60,51 +60,63 @@ const SearchFields = ({
     Object.fromEntries(fields.map((f) => [f.name, fieldValue(f, query)]))
   );
   const active = activeCount(fields, query) > 0;
+  const isInline = fields.length === 1;
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     navigate(searchHref(path, query, fields, values));
   };
   const set = (name: string, value: string) => setValues({ ...values, [name]: value });
+  const controls = fields.map((f) => (
+    <div key={f.name} className={classNamesOf('min-w-0', isInline && 'sm:w-80')}>
+      {f.type === 'select' ? (
+        <Select
+          id={`search-${f.name}`}
+          label={f.label}
+          isLabelHidden={isInline}
+          options={f.options ?? []}
+          value={values[f.name] ?? ''}
+          onChange={(e) => set(f.name, e.target.value)}
+        />
+      ) : (
+        <Input
+          id={`search-${f.name}`}
+          label={f.label}
+          isLabelHidden={isInline}
+          type={f.type ?? 'search'}
+          placeholder={f.placeholder}
+          value={values[f.name] ?? ''}
+          onChange={(e) => set(f.name, e.target.value)}
+        />
+      )}
+    </div>
+  ));
+  const actions = (
+    <FormActions>
+      {active ? (
+        <Button variant="outline" onClick={() => navigate(searchHref(path, query, fields, {}))}>
+          <XIcon aria-hidden="true" className="size-4" />
+          Clear
+        </Button>
+      ) : null}
+      <Button type="submit">
+        <SearchIcon aria-hidden="true" className="size-4" />
+        Search
+      </Button>
+    </FormActions>
+  );
   return (
     <search aria-label={label}>
-      <form onSubmit={submit} className="flex flex-col gap-4">
-        <FieldGrid>
-          {fields.map((f) => (
-            <div key={f.name} className="min-w-0">
-              {f.type === 'select' ? (
-                <Select
-                  id={`search-${f.name}`}
-                  label={f.label}
-                  options={f.options ?? []}
-                  value={values[f.name] ?? ''}
-                  onChange={(e) => set(f.name, e.target.value)}
-                />
-              ) : (
-                <Input
-                  id={`search-${f.name}`}
-                  label={f.label}
-                  type={f.type ?? 'search'}
-                  placeholder={f.placeholder}
-                  value={values[f.name] ?? ''}
-                  onChange={(e) => set(f.name, e.target.value)}
-                />
-              )}
-            </div>
-          ))}
-        </FieldGrid>
-        <FormActions>
-          {active ? (
-            <Button variant="outline" onClick={() => navigate(searchHref(path, query, fields, {}))}>
-              <XIcon aria-hidden="true" className="size-4" />
-              Clear
-            </Button>
-          ) : null}
-          <Button type="submit">
-            <SearchIcon aria-hidden="true" className="size-4" />
-            Search
-          </Button>
-        </FormActions>
-      </form>
+      {isInline ? (
+        <form onSubmit={submit} className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-2">
+          {controls}
+          {actions}
+        </form>
+      ) : (
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <FieldGrid>{controls}</FieldGrid>
+          {actions}
+        </form>
+      )}
     </search>
   );
 };

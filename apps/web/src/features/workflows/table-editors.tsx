@@ -1,6 +1,7 @@
 import { type ConditionOp, deepEqual, type Json } from '@ugula/graph';
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
+import { pinLabel } from '../../shared/graph/pins.ts';
 import { Button } from '../../shared/ui/button.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input, type InputProps } from '../../shared/ui/input.tsx';
@@ -322,7 +323,7 @@ const RuleEditor = ({
           <div key={`${i}-${c.name}`} className="grid grid-cols-2 items-start gap-x-4 gap-y-5">
             <Select
               id={`${id}-${c.name}-op`}
-              label={`When ${c.label ?? c.name}`}
+              label={`When ${pinLabel(c)}`}
               options={OPS}
               value={op}
               onChange={(e) => {
@@ -361,7 +362,7 @@ const RuleEditor = ({
         <CellInput
           key={`${i}-${c.name}`}
           id={`${id}-${c.name}-set`}
-          label={`Then ${c.label ?? c.name}`}
+          label={`Then ${pinLabel(c)}`}
           hint={cellHint(c)}
           value={rule.set[c.name]}
           parse={(text) => parseCell(text, c.type)}
@@ -439,7 +440,7 @@ export const DecisionTableEditor = ({ nodeId, config, editable, onConfig }: Tabl
           <CellInput
             key={`${i}-${c.name}`}
             id={`${nodeId}-otherwise-${c.name}`}
-            label={c.label ?? c.name}
+            label={pinLabel(c)}
             hint={cellHint(c)}
             value={table.otherwise[c.name]}
             parse={(text) => parseCell(text, c.type)}

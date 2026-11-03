@@ -52,7 +52,8 @@
         "apps/*/src/main.ts",
         ".migrations/migrate.ts",
         ".seeds/seed.ts",
-        ".e2e/shared/config.ts"
+        ".e2e/shared/config.ts",
+        ".dev/mock-clearinghouse.ts"
       ],
       "linter": {
         "rules": {

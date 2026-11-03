@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import { signalRuns, startRun } from './runs.ts';
+import { createRecordingDb } from './testing.ts';
 
 describe('startRun', () => {
   it('inserts a running run and enqueues its first step in the same transaction', async () => {

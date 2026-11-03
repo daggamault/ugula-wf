@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { resolveWorkflowVersion } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
 import {
   findDictionary,
@@ -7,8 +8,7 @@ import {
   findSftpTenant,
   insertImport,
   listImportReports,
-  listImports,
-  resolveWorkflowVersion
+  listImports
 } from './queries.ts';
 
 describe('resolveWorkflowVersion', () => {

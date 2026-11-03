@@ -8,8 +8,11 @@ import {
   completeCheck,
   type MemoryClaimOptions,
   memoryClaims,
-  type RecordedEvent
+  type RecordedEvent,
+  sampleSubmitter,
+  sampleX837
 } from '../testing.ts';
+import type { PendingSubmission } from '../x837.ts';
 import { cycleNodes } from './cycle.ts';
 
 const run = (node: NodeDef, inputs: Values) =>
@@ -53,6 +56,45 @@ const statement = {
   totalCents: 100_000,
   payments: [],
   balanceCents: 100_000
+};
+
+const pending: PendingSubmission = {
+  id: 'c1',
+  claim: {
+    claimId: '1001',
+    payerClaimNumber: null,
+    payer: {
+      name: 'Medicare',
+      payerId: 'DEMOMCR',
+      claimFiling: 'MB',
+      memberId: '1EG4TE5MK73',
+      groupId: null,
+      relationship: '18',
+      insuredFirstName: null,
+      insuredLastName: null
+    },
+    priorPayers: [],
+    patient: {
+      firstName: 'Jane',
+      lastName: 'Doe',
+      birthDate: '1950-02-03',
+      sex: 'F',
+      addressLine: '1 Main St',
+      city: 'Springfield',
+      state: 'IL',
+      postalCode: '62701'
+    },
+    details: completeCheck().details,
+    emergency: true,
+    loadedMiles: 7.4,
+    lines: [{ code: 'A0427', units: 1, unitCents: 85_000, totalCents: 85_000 }]
+  },
+  coverageId: 'cov-Medicare',
+  pcrNumber: 'PCR-1',
+  resubmission: false,
+  totalCents: 85_000,
+  issues: [],
+  warnings: []
 };
 
 const world = (options: MemoryClaimOptions = {}) => {
@@ -112,7 +154,7 @@ describe('cycleNodes', () => {
           statementNumber: null,
           statementCount: 3,
           balanceCents: 100_000,
-          waitMs: 3 * 86_400_000,
+          waitMs: null,
           signalsSeen: 3,
           reference: 'PCR-1 · Jane Doe',
           issues: [],
@@ -234,5 +276,87 @@ describe('cycleNodes', () => {
     await run(record, { claimId: 'c1', kind: 'resubmit_queued', coverageId: 'cov-Medicare' });
     const review = await run(node('claim-step'), { claimId: 'c1' });
     assert.deepEqual([review.pin, review.outputs.coverageId], ['review', 'cov-Medicare']);
+  });
+
+  it('files an approved claim as its own 837P without anyone asking for it', async () => {
+    const { claims, node } = world({ submission: { submitter: sampleSubmitter, pending } });
+    const prepared = await run(node('prepare-837p'), { claimId: 'c1' });
+    assert.deepEqual([prepared.pin, prepared.outputs.claim], ['ready', pending.claim]);
+    const filed = await run(node('file-837p'), {
+      claimId: 'c1',
+      coverageId: 'cov-Medicare',
+      x837: sampleX837
+    });
+    assert.deepEqual([filed.pin, filed.outputs.controlNumber], ['filed', 1]);
+    const [file] = claims.filed;
+    assert.deepEqual([file?.coverageId, file?.resubmission], ['cov-Medicare', false]);
+    assert.ok(file?.file.startsWith('ISA*'));
+    assert.ok(file?.file.includes('CLM*c-1*'));
+  });
+
+  it('says why an approved claim cannot be filed instead of faulting', async () => {
+    const unprofiled = world({ submission: { submitter: null, pending } });
+    const filing = { claimId: 'c1', coverageId: 'cov-Medicare', x837: sampleX837 };
+    const blocked = await run(unprofiled.node('file-837p'), filing);
+    assert.deepEqual(
+      [blocked.pin, blocked.outputs.reason],
+      ['blocked', 'Add a billing profile in Settings']
+    );
+    assert.equal(unprofiled.claims.filed.length, 0);
+    const issues = world({
+      submission: { submitter: sampleSubmitter, pending: { ...pending, issues: ['No NPI'] } }
+    });
+    const flagged = await run(issues.node('file-837p'), filing);
+    assert.deepEqual([flagged.pin, flagged.outputs.reason], ['blocked', 'No NPI']);
+    const ready = world({ submission: { submitter: sampleSubmitter, pending } });
+    const unmapped = await run(ready.node('file-837p'), {
+      ...filing,
+      x837: { ...sampleX837, lines: [] }
+    });
+    assert.equal(unmapped.pin, 'blocked');
+    assert.match(
+      String(unmapped.outputs.reason),
+      /^The 837P mapping is incomplete: .*service line/
+    );
+    assert.equal(ready.claims.filed.length, 0);
+    const used = world({
+      submission: { submitter: sampleSubmitter, pending },
+      saving: 'exhausted'
+    });
+    const exhausted = await run(used.node('file-837p'), filing);
+    assert.deepEqual(
+      [exhausted.pin, exhausted.outputs.reason],
+      ['blocked', 'Batch control numbers are used up; contact support']
+    );
+  });
+
+  it('decides again when the claim is no longer waiting to be filed for that payer', async () => {
+    const gone = world({ submission: { submitter: sampleSubmitter, pending: null } });
+    assert.equal((await run(gone.node('prepare-837p'), { claimId: 'c1' })).pin, 'stale');
+    const moved = world({ submission: { submitter: sampleSubmitter, pending } });
+    const other = await run(moved.node('file-837p'), {
+      claimId: 'c1',
+      coverageId: 'cov-Blue',
+      x837: sampleX837
+    });
+    assert.equal(other.pin, 'stale');
+    const changed = world({ submission: { submitter: sampleSubmitter, pending }, saving: 'stale' });
+    const raced = await run(changed.node('file-837p'), {
+      claimId: 'c1',
+      coverageId: 'cov-Medicare',
+      x837: sampleX837
+    });
+    assert.equal(raced.pin, 'stale');
+  });
+
+  it('sends a filed 837P to the clearinghouse, or leaves it to the biller without a connection', async () => {
+    const connected = world({ sending: { sentAs: '837P-000000001-abcd1234.txt' } });
+    const sent = await run(connected.node('send-837p'), { claimId: 'c1', controlNumber: 1 });
+    assert.deepEqual([sent.pin, sent.outputs.sentAs], ['sent', '837P-000000001-abcd1234.txt']);
+    assert.deepEqual(connected.claims.sent, [1]);
+    const offline = world();
+    const manual = await run(offline.node('send-837p'), { claimId: 'c1', controlNumber: 1 });
+    assert.deepEqual([manual.pin, manual.outputs.sentAs], ['manual', null]);
+    assert.deepEqual(offline.claims.sent, []);
   });
 });

@@ -53,4 +53,48 @@ describe('Shell', () => {
     assert.ok(html.includes('Workspace content'));
     assert.ok(html.includes('>7<span class="sr-only"> open</span>'));
   });
+
+  it('highlights the title of the group containing the active link', () => {
+    const html = renderToStaticMarkup(
+      createElement(Shell, {
+        path: '/runs',
+        navItems: [
+          {
+            id: 'runs',
+            label: 'Runs',
+            href: '/runs',
+            icon: ActivityIcon,
+            group: 'Automation',
+            active: true
+          },
+          {
+            id: 'tasks',
+            label: 'Tasks',
+            href: '/tasks',
+            icon: ListTodoIcon,
+            group: 'Work',
+            active: false
+          }
+        ],
+        userEmail: 'dev@example.com',
+        onSignOut: () => undefined
+      })
+    );
+
+    const titleOf = (group: string) => {
+      const match = html.match(new RegExp(`<p class="([^"]*)">${group}(.*?)</p>`));
+      assert.ok(match, `missing ${group} title`);
+      const [, classes = '', marker = ''] = match;
+      return { classes: classes.split(' '), marker };
+    };
+
+    const automation = titleOf('Automation');
+    assert.ok(automation.classes.includes('text-surface-fg'));
+    assert.ok(!automation.classes.includes('text-surface-fg-muted'));
+    assert.ok(automation.marker.includes('bg-primary'));
+
+    const work = titleOf('Work');
+    assert.ok(work.classes.includes('text-surface-fg-muted'));
+    assert.equal(work.marker, '');
+  });
 });

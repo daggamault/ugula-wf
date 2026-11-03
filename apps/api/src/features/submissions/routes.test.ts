@@ -16,9 +16,6 @@ const record =
   };
 
 const service = {
-  pending: record('pending', { issues: [], claim: null }),
-  create: record('create', { batch: { id: ID } }),
-  markSubmitted: record('markSubmitted', { payer: 'Medicare' }),
   eligibility: record('eligibility', { name: 'eligibility-1-7.x12', file: 'ISA*', payers: [] }),
   document: async () =>
     ok({
@@ -34,30 +31,16 @@ const post = (path: string, body: unknown) =>
   request(path, { method: 'POST', body: JSON.stringify(body) });
 
 describe('submission routes', () => {
-  it('lists claims ready to submit for the session tenant', async () => {
-    assert.equal((await request('/pending')).status, 400);
-    assert.equal((await request(`/pending?claimId=${ID}`)).status, 200);
-    assert.equal((await request('/pending?claimId=x')).status, 400);
-    assert.deepEqual(calls.splice(0), [['pending', 't-1', ID]]);
-  });
-
-  it('creates an 837P file for one claim as the session user', async () => {
-    assert.equal((await post('/batches', { claimId: ID })).status, 201);
-    assert.deepEqual(calls.splice(0), [['create', 't-1', 'u-1', ID]]);
-    assert.equal((await post('/batches', { claimIds: [ID] })).status, 400);
-    assert.equal((await post('/batches', { claimId: 'nope' })).status, 400);
-    assert.equal(calls.length, 0);
-  });
-
   it('builds an eligibility request for one claim', async () => {
     assert.equal((await post('/eligibility', { claimId: ID })).status, 201);
     assert.deepEqual(calls.splice(0), [['eligibility', 't-1', ID]]);
     assert.equal((await post('/eligibility', {})).status, 400);
   });
 
-  it('records manual submissions with an optional note', async () => {
-    assert.equal((await post('/manual', { claimId: ID })).status, 201);
-    assert.deepEqual(calls.splice(0), [['markSubmitted', 't-1', 'u-1', ID, '']]);
+  it('no longer creates 837P files or manual submissions, which the claim cycle does', async () => {
+    assert.equal((await post('/batches', { claimId: ID })).status, 404);
+    assert.equal((await post('/manual', { claimId: ID })).status, 404);
+    assert.equal(calls.length, 0);
   });
 
   it('downloads a batch file as an attachment', async () => {

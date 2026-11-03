@@ -21,7 +21,7 @@ type NewWorkflowPageProps = {
 
 const GRAPH_KINDS = [
   { value: 'workflow', label: 'Workflow' },
-  { value: 'node', label: 'Building Block' }
+  { value: 'node', label: 'Subworkflow' }
 ] as const;
 
 export const graphKindOf = (query: URLSearchParams): GraphKind =>
@@ -58,7 +58,7 @@ export const NewWorkflowForm = ({
     <form onSubmit={submit} aria-label={`Create ${kindLabel(form.kind)}`}>
       <SectionPanel
         title={kindLabel(form.kind)}
-        description="Start a workflow, or a building block other workflows can use."
+        description="Start a workflow, or a subworkflow other workflows can use."
       >
         <fieldset disabled={busy}>
           <FieldGrid>
@@ -77,7 +77,7 @@ export const NewWorkflowForm = ({
               required
               isMonospace
               placeholder="billing.match-patient"
-              hint="Dotted lowercase; used to reference this building block from other workflows."
+              hint="Dotted lowercase; used to reference this subworkflow from other workflows."
               value={form.key}
               onChange={(e) => setForm({ ...fields, key: e.target.value })}
             />
@@ -118,7 +118,7 @@ export const NewWorkflowPage = ({ client, kind, back }: NewWorkflowPageProps) =>
   const { query } = useLocation();
   return (
     <Page
-      title={kind === 'node' ? 'New Building Block' : 'New Workflow'}
+      title={kind === 'node' ? 'New Subworkflow' : 'New Workflow'}
       description="Give it a name and key, then build it in the editor."
       backTo={back}
       backLabel="Back to Workflows"

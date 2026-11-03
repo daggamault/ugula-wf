@@ -75,10 +75,10 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await s?.browser.close();
   });
 
-  it('lists workflows and building blocks, switching between them with the Show filter', async () => {
+  it('lists workflows and subworkflows, switching between them with the Show filter', async () => {
     await go(s.page, '/workflows');
     await heading(s.page, 'Workflows').waitFor();
-    const table = () => s.page.getByRole('table', { name: 'Workflows and building blocks' });
+    const table = () => s.page.getByRole('table', { name: 'Workflows and subworkflows' });
     await table().getByText('Encounter to Claim', { exact: true }).waitFor();
     assert.equal(await table().getByText('Work Draft Claim', { exact: true }).count(), 0);
     await s.page.getByLabel('Show').selectOption('blocks');
@@ -90,10 +90,9 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
         rows.slice(1).map((r) => r.querySelector('td:nth-child(3)')?.textContent ?? '')
       );
     assert.ok(
-      kinds.length > 0 &&
-        kinds.every((k) => k.includes('Building Block') && !k.includes('Workflow'))
+      kinds.length > 0 && kinds.every((k) => k.includes('Subworkflow') && !k.includes('Workflow'))
     );
-    await s.page.getByRole('link', { name: 'New Building Block' }).waitFor();
+    await s.page.getByRole('link', { name: 'New Subworkflow' }).waitFor();
   });
 
   it('opens Encounter to Claim with every main step on screen, and opens its blocks', async () => {

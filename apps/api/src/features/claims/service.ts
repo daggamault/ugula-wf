@@ -2,25 +2,23 @@ import { claimIssues, nextClaimStep } from '@ugula/billing';
 import {
   applyClaimEdit,
   type ClaimEdit,
+  type CoverageRow,
   type Db,
   findClaimCheck,
-  findPublishedGraphs
-} from '@ugula/db';
-import type { RunQueueClient } from '@ugula/run-queue';
-import type { BlobRef, BlobStore } from '@ugula/storage';
-import {
-  type CoverageRow,
+  findPublishedGraphs,
   listCoverages,
   lockClaim,
   nudgeClaim,
   postClaimResponse,
+  startRun,
   unchangeable
-} from '../../shared/claim-responses.ts';
+} from '@ugula/db';
+import type { RunQueueClient } from '@ugula/run-queue';
+import type { BlobRef, BlobStore } from '@ugula/storage';
 import { listLedgerEvents } from '../../shared/ledger.ts';
 import { type Announce, announced } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
-import { startRun } from '../../shared/runs.ts';
 import {
   type ClaimFilters,
   claimExists,
@@ -29,6 +27,7 @@ import {
   hasActiveRun,
   listClaimEvents,
   listClaimFiles,
+  listClaimPayerFiles,
   listClaims,
   type PayerOrder,
   reorderCoverages,
@@ -106,8 +105,9 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
       const claim = await findClaim(db, tenantId, id);
       if (!claim) return notFound;
       const open = unchangeable(claim.status) === null;
-      const [files, events, check] = await Promise.all([
+      const [files, payerFiles, events, check] = await Promise.all([
         listClaimFiles(db, id),
+        listClaimPayerFiles(db, id),
         open ? listLedgerEvents(db, id) : [],
         findClaimCheck(db, tenantId, id)
       ]);
@@ -121,7 +121,13 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
             now()
           )
         : null;
-      return ok({ claim, files, progress, issues: check ? claimIssues(check, now()) : [] });
+      return ok({
+        claim,
+        files,
+        payerFiles,
+        progress,
+        issues: check ? claimIssues(check, now()) : []
+      });
     },
 
     events: async (tenantId: string, id: string, page: PageRequest<ClaimEventSort>) =>

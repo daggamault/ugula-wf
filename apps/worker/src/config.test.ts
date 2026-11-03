@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parseConfig } from './config.ts';
+import { clearinghouseOf, parseConfig } from './config.ts';
 
 const rawEnv = {
   DB_HOST: 'localhost',
@@ -49,5 +49,32 @@ describe('worker parseConfig', () => {
     );
     assert.throws(() => parseConfig({ ...rawEnv, WORKER_MAX_EVENT_LOOP_UTILIZATION: '1.5' }));
     assert.throws(() => parseConfig({ ...rawEnv, WORKER_MAX_EVENT_LOOP_UTILIZATION: 'busy' }));
+  });
+
+  it('reads the clearinghouse SFTP connection, off unless a host is set', () => {
+    assert.equal(clearinghouseOf(parseConfig(rawEnv)), null);
+    const on = clearinghouseOf(
+      parseConfig({
+        ...rawEnv,
+        CLEARINGHOUSE_SFTP_HOST: 'sftp.example.com',
+        CLEARINGHOUSE_SFTP_USERNAME: 'agency',
+        CLEARINGHOUSE_SFTP_PASSWORD: 'secret',
+        CLEARINGHOUSE_DOWNLOAD_PATHS: '/outbound/999, /outbound/835',
+        CLEARINGHOUSE_FILE_EXTENSION: '.CLP'
+      })
+    );
+    assert.deepEqual(on, {
+      host: 'sftp.example.com',
+      port: 22,
+      username: 'agency',
+      password: 'secret',
+      uploadPath: '/',
+      downloadPaths: ['/outbound/999', '/outbound/835'],
+      fileExtension: '.CLP',
+      afterDownload: 'delete',
+      pollMinutes: 1
+    });
+    assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_SFTP_HOST: 'sftp.example.com' }));
+    assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_DOWNLOAD_PATHS: 'outbound' }));
   });
 });

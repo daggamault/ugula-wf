@@ -3,6 +3,7 @@ import { PlayIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { classNamesOf } from '../../shared/class-names.ts';
+import { pinLabel } from '../../shared/graph/pins.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
@@ -66,7 +67,7 @@ export const StartRunForm = ({ client, target }: { client: RunsClient; target: S
                 <div key={pin.name} className={classNamesOf('min-w-0', inputSpanClasses(pin.type))}>
                   <ValueField
                     id={`input-${pin.name}`}
-                    label={pin.label ?? pin.name}
+                    label={pinLabel(pin)}
                     type={pin.type}
                     value={inputs[pin.name] ?? null}
                     onChange={(value) => setInputs((prev) => ({ ...prev, [pin.name]: value }))}

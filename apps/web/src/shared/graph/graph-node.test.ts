@@ -56,7 +56,7 @@ describe('GraphNode', () => {
     assert.ok(html.includes('aria-label="Add"'));
     assert.ok(html.includes('data-handleid="a"'));
     assert.ok(html.includes('data-handleid="failed"'));
-    assert.ok(html.includes('title="a: Number"'));
+    assert.ok(html.includes('title="A: Number"'));
     assert.ok(html.includes('title="Execution flow"'));
     assert.ok(html.includes('Adds two numbers (a + b).'));
     assert.ok(html.includes('>12<'));
@@ -71,7 +71,7 @@ describe('GraphNode', () => {
     );
     assert.ok(html.includes('border-danger'));
     assert.ok(html.includes('Bad (+1)'));
-    assert.ok(html.includes('Building Block'));
+    assert.ok(html.includes('Subworkflow'));
     assert.ok(html.includes('ring-2'));
     assert.ok(render({ ...base, signature: null }).includes('Unknown node std.math.add@1'));
   });

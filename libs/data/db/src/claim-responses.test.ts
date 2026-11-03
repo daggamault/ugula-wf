@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import {
   type ClaimResponse,
@@ -11,6 +10,7 @@ import {
   postClaimResponse,
   unchangeable
 } from './claim-responses.ts';
+import { createRecordingDb } from './testing.ts';
 
 const response: ClaimResponse = {
   requestId: 'req-1',

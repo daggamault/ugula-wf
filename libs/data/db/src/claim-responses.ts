@@ -1,9 +1,10 @@
 import { type Adjustment, CLAIM_SIGNAL, isClosedStatus } from '@ugula/billing';
-import { type Database, sqlExecutor } from '@ugula/db';
 import { enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
+import { sqlExecutor } from './client.ts';
 import { fail, ok, type Result } from './result.ts';
 import { signalRuns } from './runs.ts';
+import type { Database } from './schema.ts';
 
 type Db = Kysely<Database>;
 

@@ -11,12 +11,13 @@ import {
   nextClaimStep,
   PAYER_WAIT_MS,
   STATEMENT_INTERVAL_MS,
-  SUBMIT_WAIT_MS,
   stageOf
 } from '../claims.ts';
+import { billingTypes } from '../models.ts';
 import { isCompleteAddress } from '../patients.ts';
 import { localDate, renderStatement } from '../statements.ts';
 import { requiredText, textOrNull } from '../values.ts';
+import { build837, readX837Claim, submitterIssues, type X837Claim } from '../x837.ts';
 import { checkOf, claimIdOf, claimIdPin, issuesPin, relevantIssues } from './claims.ts';
 import type { NodesOf } from './stores.ts';
 
@@ -32,13 +33,7 @@ const PAYER_ACTIONS: readonly CycleEventKind[] = [
   'approved'
 ];
 
-const GATED_STEPS: readonly string[] = [
-  'review',
-  'reviewPatient',
-  'confirmPayers',
-  'submit',
-  'submitDue'
-];
+const GATED_STEPS: readonly string[] = ['review', 'reviewPatient', 'confirmPayers', 'submit'];
 
 const PATIENT_STEPS: readonly string[] = ['reviewPatient', 'confirmPayers'];
 
@@ -69,17 +64,13 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Claim Step',
       category: CATEGORY,
       description:
-        "Decides what a claim needs next from its history and records it as the claim's status: fix data the claim checks block on before review or submission, review before the next payer's claim goes out, wait for it to be submitted and ask when it sits too long, wait out the payer's response time, follow up, reconcile a payer's response or an overpayment, confirm the payers of a claim without any, review before the first patient statement, send or wait on a patient statement, balance review, or close. Continues through stale when the claim changed while it decided, so it decides again. Also outputs the claim's issues, how many claim signals the history already reflects, and the claim's PCR number and patient for people to recognize it by.",
+        "Decides what a claim needs next from its history and records it as the claim's status: fix data the claim checks block on before review or submission, review before the next payer's claim goes out, submit it once approved, wait out the payer's response time, follow up, reconcile a payer's response or an overpayment, confirm the payers of a claim without any, review before the first patient statement, send or wait on a patient statement, balance review, or close. Continues through stale when the claim changed while it decided, so it decides again. Also outputs the claim's issues, how many claim signals the history already reflects, and the claim's PCR number and patient for people to recognize it by.",
       effect: true,
       inputs: [
         claimIdPin,
         pin('payerWaitDays', 'number', {
           label: 'Days to wait for a payer',
           default: PAYER_WAIT_MS / DAY_MS
-        }),
-        pin('submitWaitDays', 'number', {
-          label: 'Days a ready claim waits to be submitted',
-          default: SUBMIT_WAIT_MS / DAY_MS
         }),
         pin('statementCount', 'integer', {
           label: 'Patient statements to send',
@@ -108,7 +99,6 @@ export const cycleNodes: NodesOf = (stores) => {
         'reviewPatient',
         'confirmPayers',
         'submit',
-        'submitDue',
         'reconcile',
         'overpaid',
         'await',
@@ -125,7 +115,6 @@ export const cycleNodes: NodesOf = (stores) => {
         if (!ledger) throw new Error(`Claim ${claimId} does not exist`);
         const policy = {
           payerWaitMs: daysOr(inputs.payerWaitDays, DEFAULT_POLICY.payerWaitMs),
-          submitWaitMs: daysOr(inputs.submitWaitDays, DEFAULT_POLICY.submitWaitMs),
           statementLimit:
             inputs.statementCount >= 0 ? inputs.statementCount : DEFAULT_POLICY.statementLimit,
           statementIntervalMs: daysOr(
@@ -252,6 +241,102 @@ export const cycleNodes: NodesOf = (stores) => {
         });
         await store.saveStatement(ctx.runId, claimId, ctx.key, { number, count, pdf });
         return { exit: 'issued', outputs: { need: null } };
+      }
+    }),
+    branchNode({
+      type: 'billing.prepare-837p',
+      title: 'Prepare 837P Claim',
+      category: CATEGORY,
+      description:
+        'Loads an approved claim as it goes to its current payer, ready to map onto an 837P. Continues through stale when the claim is no longer waiting to be submitted.',
+      inputs: [claimIdPin],
+      outputs: [pin('claim', billingTypes.submission)],
+      exits: ['ready', 'stale'],
+      compute: async (inputs, _, ctx) => {
+        const { pending } = await claims().submission(ctx.runId, claimIdOf(inputs.claimId));
+        return pending
+          ? { exit: 'ready', outputs: { claim: pending.claim } }
+          : { exit: 'stale', outputs: { claim: null } };
+      }
+    }),
+    branchNode({
+      type: 'billing.file-837p',
+      title: 'File 837P Claim',
+      category: CATEGORY,
+      description:
+        "Writes a mapped 837P claim into its own numbered 837P file for the clearinghouse, stores it and logs the claim as submitted (or resubmitted) to the payer, once per run step. Continues through blocked, saying why, when the billing profile is missing or incomplete, the claim's data blocks it, the 837P mapping is incomplete or control numbers are used up, and through stale when the claim changed or its payer is no longer the one being billed.",
+      effect: true,
+      inputs: [claimIdPin, pin('coverageId', 'string'), pin('x837', billingTypes.x837)],
+      outputs: [pin('controlNumber', 'integer'), pin('reason', 'string')],
+      exits: ['filed', 'blocked', 'stale'],
+      compute: async (inputs, _, ctx) => {
+        const claimId = claimIdOf(inputs.claimId);
+        const coverageId = requiredText(inputs.coverageId, 'No payer to file the claim with');
+        const stale = { exit: 'stale', outputs: { controlNumber: null, reason: null } };
+        const blocked = (reason: string) => ({
+          exit: 'blocked',
+          outputs: { controlNumber: null, reason }
+        });
+        const { submitter, pending } = await claims().submission(ctx.runId, claimId);
+        if (pending?.coverageId !== coverageId) return stale;
+        const problems = [...submitterIssues(submitter), ...pending.issues];
+        if (!submitter || problems.length) return blocked(problems.join('; '));
+        let x837: X837Claim;
+        try {
+          x837 = readX837Claim(inputs.x837);
+        } catch (err) {
+          return blocked(
+            `The 837P mapping is incomplete: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+        const saved = await claims().saveSubmission(ctx.runId, claimId, ctx.key, {
+          coverageId,
+          resubmission: pending.resubmission,
+          totalCents: pending.totalCents,
+          production: submitter.production,
+          build: (controlNumber) =>
+            build837(submitter, [x837], { controlNumber, createdAt: ctx.now })
+        });
+        if (saved === 'stale') return stale;
+        if (saved === 'exhausted') {
+          return blocked('Batch control numbers are used up; contact support');
+        }
+        return { exit: 'filed', outputs: { controlNumber: saved.controlNumber, reason: null } };
+      }
+    }),
+    actionNode({
+      type: 'billing.follow-claim',
+      title: 'Follow Claim',
+      category: CATEGORY,
+      description:
+        "Links this run to a claim, so its tasks and problems show on the claim and the claim's tasks list. A run follows one claim.",
+      effect: true,
+      inputs: [claimIdPin],
+      outputs: [],
+      compute: async (inputs, _, ctx) => {
+        await claims().linkRun(ctx.runId, claimIdOf(inputs.claimId));
+        return {};
+      }
+    }),
+    branchNode({
+      type: 'billing.send-837p',
+      title: 'Send 837P to Clearinghouse',
+      category: CATEGORY,
+      description:
+        "Uploads a claim's 837P file to the clearinghouse over SFTP, once; sending it again does nothing. Continues through manual when no clearinghouse connection is set up, so the biller uploads the file from the claim page.",
+      effect: true,
+      inputs: [claimIdPin, pin('controlNumber', 'integer')],
+      outputs: [pin('sentAs', 'string')],
+      exits: ['sent', 'manual'],
+      compute: async (inputs, _, ctx) => {
+        const sent = await claims().sendClaimFile(
+          ctx.runId,
+          claimIdOf(inputs.claimId),
+          inputs.controlNumber
+        );
+        return sent === 'manual'
+          ? { exit: 'manual', outputs: { sentAs: null } }
+          : { exit: 'sent', outputs: { sentAs: sent.sentAs } };
       }
     }),
     actionNode({

@@ -24,6 +24,7 @@ export const announceClaims = (store: ClaimStore, announce: Announce): ClaimStor
     noteRevision: after(store.noteRevision),
     attachCycle: after(store.attachCycle),
     saveStatement: after(store.saveStatement),
+    saveSubmission: after(store.saveSubmission),
     recordEvent: after(store.recordEvent),
     closeClaim: after(store.closeClaim)
   };

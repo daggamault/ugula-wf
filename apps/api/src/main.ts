@@ -45,7 +45,6 @@ import { createSubmissionService } from './features/submissions/service.ts';
 import { createTaskRoutes } from './features/tasks/routes.ts';
 import { createTaskService } from './features/tasks/service.ts';
 import { type AuthEnv, requireAuth } from './shared/auth.ts';
-import { createEvaluate } from './shared/evaluate.ts';
 import type { Announce } from './shared/live.ts';
 import { createSignInThrottle, type ThrottleStore } from './shared/throttle.ts';
 
@@ -150,18 +149,7 @@ export const createApp = ({
   );
   app.route(
     '/api/submissions',
-    protect(
-      createSubmissionRoutes(
-        createSubmissionService({
-          db,
-          boss,
-          blobs,
-          announce,
-          now: () => new Date(),
-          evaluate: createEvaluate(nodes, () => new Date())
-        })
-      )
-    )
+    protect(createSubmissionRoutes(createSubmissionService({ db, blobs, now: () => new Date() })))
   );
   app.route(
     '/api/reports',

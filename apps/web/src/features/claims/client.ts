@@ -6,7 +6,9 @@ import {
   type ClaimStatus,
   type ClaimStep,
   type EligibilityStatus,
+  type InboundKind,
   type InsuredRelationship,
+  type PayerFileOutcome,
   type SignatureStatus,
   type TransportReason,
   type TripType
@@ -45,22 +47,6 @@ export const claimSearchOf = (query: URLSearchParams): ClaimSearch => ({
   task: query.get('task') ?? '',
   assignee: ASSIGNEES.find((a) => a === query.get('assignee')) ?? 'anyone'
 });
-
-type PendingClaim = {
-  id: string;
-  pcrNumber: string | null;
-  patient: string;
-  serviceDate: string | null;
-  payer: string;
-  totalCents: number;
-  resubmission: boolean;
-  issues: string[];
-};
-
-type Pending = {
-  issues: string[];
-  claim: PendingClaim | null;
-};
 
 export type Batch = {
   id: string;
@@ -142,10 +128,20 @@ export type ClaimCoverage = {
   eligibility_checked_at: string | null;
 };
 
+export type ClaimPayerFile = {
+  id: string;
+  kind: InboundKind;
+  file_name: string;
+  created_at: string;
+  items: { outcome: PayerFileOutcome; message: string }[];
+};
+
 export type ClaimDetail = ClaimSummary & {
   trip_type: TripType | null;
   emergency: boolean | null;
   import_report_id: string | null;
+  import_id: string | null;
+  import_file_name: string | null;
   loaded_miles: string | null;
   birth_date: string | null;
   patient_id: string | null;
@@ -231,6 +227,7 @@ export type ClaimEvent = {
   has_document: boolean;
   batch_id?: string | null;
   batch_number?: number | null;
+  batch_sent_at?: string | null;
 };
 
 export type ClaimProgress = ClaimStep;
@@ -259,6 +256,7 @@ export const createClaimsClient = (api: Api) => ({
     api.get<{
       claim: ClaimDetail;
       files: ClaimEvent[];
+      payerFiles: ClaimPayerFile[];
       progress: ClaimProgress | null;
       issues: ClaimIssue[];
     }>(claimPath(id), signal),
@@ -273,11 +271,6 @@ export const createClaimsClient = (api: Api) => ({
   restartCycle: (id: string) => api.post<{ runId: string }>(`${claimPath(id)}/restart-cycle`),
   recordResponse: (id: string, response: ClaimResponseInput) =>
     api.post<{ balanceCents: number; duplicate: boolean }>(`${claimPath(id)}/responses`, response),
-  pending: (claimId: string, signal?: AbortSignal) =>
-    api.get<Pending>(`/api/submissions/pending?claimId=${encodeURIComponent(claimId)}`, signal),
-  createBatch: async (claimId: string) =>
-    (await api.post<{ batch: Batch }>('/api/submissions/batches', { claimId })).batch,
-  markSubmitted: (claimId: string) => api.post('/api/submissions/manual', { claimId }),
   eligibilityRequest: (claimId: string) =>
     api.post<{ name: string; file: string; payers: string[] }>('/api/submissions/eligibility', {
       claimId

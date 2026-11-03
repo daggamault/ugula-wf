@@ -30,7 +30,7 @@ type GraphFilter = 'workflows' | 'blocks' | 'mine' | 'all';
 
 const GRAPH_FILTERS: readonly { value: GraphFilter; label: string }[] = [
   { value: 'workflows', label: 'Workflows' },
-  { value: 'blocks', label: 'Building Blocks' },
+  { value: 'blocks', label: 'Subworkflows' },
   { value: 'mine', label: "Your Agency's Copies" },
   { value: 'all', label: 'All' }
 ];
@@ -38,7 +38,7 @@ const GRAPH_FILTERS: readonly { value: GraphFilter; label: string }[] = [
 export const graphFilterOf = (query: URLSearchParams): GraphFilter =>
   GRAPH_FILTERS.find((f) => f.value === query.get('kind'))?.value ?? 'workflows';
 
-export const kindLabel = (kind: GraphKind) => (kind === 'workflow' ? 'Workflow' : 'Building Block');
+export const kindLabel = (kind: GraphKind) => (kind === 'workflow' ? 'Workflow' : 'Subworkflow');
 
 export const GRAPH_TABLE = {
   sorts: { name: 'asc', key: 'asc', kind: 'desc', updated: 'desc' },
@@ -55,7 +55,7 @@ export const WorkflowsTable = ({
   search: SearchView;
 }) => (
   <Table
-    label="Workflows and building blocks"
+    label="Workflows and subworkflows"
     sorting={search}
     head={[
       { label: 'Name', sort: 'name' },
@@ -114,11 +114,11 @@ export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
   const filterHref = useFilterHref(WORKFLOWS_PATH);
   const newKind: GraphKind = show === 'blocks' ? 'node' : 'workflow';
   const add = withBack(`${WORKFLOWS_PATH}/new?kind=${newKind}`, search.href);
-  const addLabel = newKind === 'node' ? 'New Building Block' : 'New Workflow';
+  const addLabel = newKind === 'node' ? 'New Subworkflow' : 'New Workflow';
   return (
     <Page
       title="Workflows"
-      description="Workflows that run on their own, and the building blocks they are made of."
+      description="Workflows that run on their own, and the subworkflows they are made of."
       actions={
         <ButtonLink to={add}>
           <PlusIcon aria-hidden="true" className="size-4" />
@@ -126,23 +126,23 @@ export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
         </ButtonLink>
       }
     >
-      <div className="w-full sm:w-64">
-        <FilterSelect
-          id="workflows-kind"
-          label="Show"
-          value={show}
-          options={GRAPH_FILTERS.map((f) => ({
-            value: f.value,
-            label: f.label,
-            href: filterHref('kind', f.value === 'workflows' ? null : f.value)
-          }))}
-        />
-      </div>
       <Search
-        label={show === 'blocks' ? 'Building Blocks' : 'Workflows'}
+        label={show === 'blocks' ? 'Subworkflows' : 'Workflows'}
         path={WORKFLOWS_PATH}
         search={search}
         results={graphs}
+        filters={
+          <FilterSelect
+            id="workflows-kind"
+            label="Show"
+            value={show}
+            options={GRAPH_FILTERS.map((f) => ({
+              value: f.value,
+              label: f.label,
+              href: filterHref('kind', f.value === 'workflows' ? null : f.value)
+            }))}
+          />
+        }
         empty={
           show === 'mine'
             ? {

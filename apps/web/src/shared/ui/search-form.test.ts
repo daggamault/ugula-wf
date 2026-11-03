@@ -51,11 +51,20 @@ describe('SearchForm', () => {
     assert.ok(html.includes('aria-expanded="true"') && html.includes('>Filters'));
     assert.ok(html.includes('type="date"') && html.includes('type="search"'));
     assert.ok(html.includes('@lg:grid-cols-2 @3xl:grid-cols-4') && !html.includes('w-44'));
+    assert.ok(!html.includes('sr-only'));
     assert.match(html, /<\/div><\/div><div class="flex flex-col-reverse[^"]*sm:justify-end/);
     assert.match(html, /<option value="open" selected="">Open<\/option>/);
     const inline = renderToStaticMarkup(
       createElement(SearchForm, { label: 'Search', path: '/patients', fields })
     );
     assert.ok(!inline.includes('aria-expanded'));
+  });
+
+  it('puts the buttons beside a lone field instead of below a grid', () => {
+    const html = renderToStaticMarkup(
+      createElement(SearchForm, { label: 'Search', path: '/runs', fields: fields.slice(0, 1) })
+    );
+    assert.ok(html.includes('sm:flex-row sm:items-end') && !html.includes('@container'));
+    assert.ok(html.includes('sr-only">Last name<'));
   });
 });

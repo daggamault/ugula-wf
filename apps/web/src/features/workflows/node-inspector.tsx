@@ -12,7 +12,7 @@ import { ExternalLinkIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { useId, useState } from 'react';
 import type { Catalog } from '../../shared/graph/catalog.ts';
 import { updateNode } from '../../shared/graph/flow.ts';
-import { describeType } from '../../shared/graph/pins.ts';
+import { describeType, pinLabel } from '../../shared/graph/pins.ts';
 import { Button } from '../../shared/ui/button.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
@@ -48,8 +48,6 @@ const MODES = [
 
 const modeOf = (binding: InputBinding | undefined): BindingMode =>
   !binding ? 'default' : 'expr' in binding ? 'expr' : 'value';
-
-const pinLabel = (spec: Pick<PinSpec, 'name' | 'label'>) => spec.label ?? spec.name;
 
 const PinHeading = ({ spec }: { spec: PinSpec }) => (
   <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
@@ -231,7 +229,7 @@ export const NodeInspector = ({
             <div className="pt-2">
               <Button variant="outline" onClick={onOpen}>
                 <ExternalLinkIcon aria-hidden="true" className="size-4" />
-                Open {catalog.opensAs(node) === 'graph' ? 'Building Block' : 'Workflow'}
+                Open {catalog.opensAs(node) === 'graph' ? 'Subworkflow' : 'Workflow'}
               </Button>
             </div>
           ) : null}

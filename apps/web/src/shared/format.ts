@@ -48,7 +48,10 @@ const MINOR_WORDS = new Set([
   'an',
   'the',
   'and',
+  'but',
   'or',
+  'nor',
+  'as',
   'of',
   'to',
   'in',
@@ -56,28 +59,97 @@ const MINOR_WORDS = new Set([
   'for',
   'at',
   'by',
-  'from'
+  'from',
+  'per',
+  'via',
+  'vs',
+  'with'
 ]);
 
-export const titleCaseWords = (
-  words: readonly string[],
-  acronyms: ReadonlySet<string> = new Set()
-) =>
-  words
-    .map((word, i) => {
-      const w = word.toLowerCase();
-      if (acronyms.has(w)) return w.toUpperCase();
-      return i && MINOR_WORDS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1);
-    })
-    .join(' ');
+const SPECIAL_WORDS: ReadonlyMap<string, string> = new Map(
+  [
+    'ALS',
+    'ALS1',
+    'ALS2',
+    'API',
+    'BLS',
+    'CMS',
+    'CRC',
+    'CSV',
+    'DOB',
+    'EMS',
+    'GNIS',
+    'HCPCS',
+    'ICD',
+    'ID',
+    'IDs',
+    'IO',
+    'IV',
+    'JSON',
+    'NEMSIS',
+    'NPI',
+    'PCR',
+    'PCRs',
+    'PCS',
+    'PDF',
+    'PSAP',
+    'SCT',
+    'SSN',
+    'URL',
+    'UUID',
+    'X12',
+    'X837',
+    'XML',
+    'ZIP',
+    '837P'
+  ].map((w) => [w.toLowerCase(), w])
+);
 
-const capitalize = (word: string, i: number) =>
-  i && MINOR_WORDS.has(word)
-    ? word
-    : word.replace(/^(\W*)([a-z])/, (_, lead: string, c: string) => lead + c.toUpperCase());
+const LOWER_UNITS = new Set(['kg', 'lb', 'lbs', 'ms']);
 
+const casePart = (part: string, minor: boolean) => {
+  const [, lead = '', core = '', trail = ''] =
+    /^([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9]*)$/.exec(part) ?? [];
+  const lower = core.toLowerCase();
+  const cased =
+    SPECIAL_WORDS.get(lower) ??
+    (/[A-Z]/.test(core.slice(1)) || LOWER_UNITS.has(core) || (minor && MINOR_WORDS.has(lower))
+      ? core
+      : core.charAt(0).toUpperCase() + core.slice(1));
+  return lead + cased + trail;
+};
+
+/** Title cases a sentence case label, keeping acronyms and mixed case words like eRecord.01. */
 export const titleCaseLabel = (label: string) =>
   label
     .split(' ')
-    .map((word, i) => (/[A-Z]/.test(word.slice(1)) ? word : capitalize(word, i)))
+    .map((word, i, words) =>
+      word
+        .split(/([/-])/)
+        .map((part, j) => (j % 2 ? part : casePart(part, i > 0 && i < words.length - 1 && j === 0)))
+        .join('')
+    )
     .join(' ');
+
+export const titleCaseWords = (words: readonly string[]) =>
+  titleCaseLabel(words.map((w) => w.toLowerCase()).join(' '));
+
+const UNIT_SUFFIX = new Set(['cents', 'ms', 'kg']);
+
+/** Turns an identifier like payerNotes, pcr_number or timeoutMs into a Title Case label. */
+export const labelFromName = (name: string) => {
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .split(/[\s_.-]+/)
+    .filter(Boolean)
+    .flatMap((w) => {
+      const lower = w.toLowerCase();
+      return SPECIAL_WORDS.has(lower)
+        ? [lower]
+        : lower.replace(/([a-z]{2,})(\d)/g, '$1 $2').split(' ');
+    });
+  const last = words.at(-1);
+  if (words.length > 1 && last && UNIT_SUFFIX.has(last)) words[words.length - 1] = `(${last})`;
+  return words.length ? titleCaseLabel(words.join(' ')) : name;
+};

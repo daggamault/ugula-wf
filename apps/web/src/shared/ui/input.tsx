@@ -14,6 +14,7 @@ export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'className'
   error?: string | undefined;
   hint?: string | undefined;
   span?: FieldSpan | undefined;
+  isLabelHidden?: boolean | undefined;
   isMonospace?: boolean;
 };
 
@@ -28,10 +29,19 @@ export const Input = ({
   error,
   hint,
   span,
+  isLabelHidden,
   isMonospace = false,
   ...rest
 }: InputProps) => (
-  <Field id={id} label={label} error={error} hint={hint} isRequired={rest.required} span={span}>
+  <Field
+    id={id}
+    label={label}
+    error={error}
+    hint={hint}
+    isRequired={rest.required}
+    isLabelHidden={isLabelHidden}
+    span={span}
+  >
     <input
       id={id}
       aria-invalid={Boolean(error) || undefined}

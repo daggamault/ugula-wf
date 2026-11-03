@@ -25,7 +25,7 @@ type RunsPageProps = {
 const PATH = '/runs';
 
 export const statusOptions = (filterHref: (name: string, value: string | null) => string) => [
-  { value: '', label: 'All', href: filterHref('status', null) },
+  { value: '', label: 'All Statuses', href: filterHref('status', null) },
   ...RUN_STATUSES.map((s) => ({
     value: s,
     label: runStatusStyles[s].label,
@@ -115,17 +115,19 @@ export const RunsPage = ({ client, live, status }: RunsPageProps) => {
       title="Runs"
       description="Every workflow run, including the ones waiting on people or stuck on errors."
     >
-      <FilterSelect
-        id="runs-status"
-        label="Status"
-        value={status ?? ''}
-        options={statusOptions(filterHref)}
-      />
       <Search
         label="Runs"
         path={PATH}
         search={search}
         results={runs}
+        filters={
+          <FilterSelect
+            id="runs-status"
+            label="Status"
+            value={status ?? ''}
+            options={statusOptions(filterHref)}
+          />
+        }
         isFiltered={status !== null}
         empty={{ title: 'No Runs Yet', children: 'Runs show up here as workflows start.' }}
       >

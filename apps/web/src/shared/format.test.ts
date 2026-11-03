@@ -7,6 +7,7 @@ import {
   formatDateTime,
   formatDuration,
   formatMiles,
+  labelFromName,
   parseDollars,
   titleCaseLabel
 } from './format.ts';
@@ -70,5 +71,45 @@ describe('titleCaseLabel', () => {
       titleCaseLabel('Save to the default fee schedule'),
       'Save to the Default Fee Schedule'
     );
+  });
+});
+
+describe('titleCaseLabel edge cases', () => {
+  it('cases hyphenated and slashed words, units and NEMSIS element ids', () => {
+    assert.equal(
+      titleCaseLabel('On-scene odometer · eResponse.20'),
+      'On-Scene Odometer · eResponse.20'
+    );
+    assert.equal(titleCaseLabel('Incident/patient disposition'), 'Incident/Patient Disposition');
+    assert.equal(titleCaseLabel('Patient weight (kg)'), 'Patient Weight (kg)');
+    assert.equal(titleCaseLabel('IV/IO doses in the narrative'), 'IV/IO Doses in the Narrative');
+    assert.equal(titleCaseLabel('Birth date (YYYY-MM-DD)'), 'Birth Date (YYYY-MM-DD)');
+    assert.equal(titleCaseLabel('Close as paid'), 'Close as Paid');
+  });
+});
+
+describe('labelFromName', () => {
+  it('turns identifiers into Title Case labels with acronyms kept upper case', () => {
+    assert.equal(labelFromName('payerNotes'), 'Payer Notes');
+    assert.equal(labelFromName('pcr'), 'PCR');
+    assert.equal(labelFromName('pcrNumber'), 'PCR Number');
+    assert.equal(labelFromName('claimId'), 'Claim ID');
+    assert.equal(labelFromName('runIds'), 'Run IDs');
+    assert.equal(labelFromName('hcpcsCode'), 'HCPCS Code');
+    assert.equal(labelFromName('nemsisXml'), 'NEMSIS XML');
+    assert.equal(labelFromName('x837'), 'X837');
+    assert.equal(labelFromName('build-837p'), 'Build 837P');
+    assert.equal(labelFromName('npi'), 'NPI');
+    assert.equal(labelFromName('patientZIP'), 'Patient ZIP');
+    assert.equal(labelFromName('icdCodes'), 'ICD Codes');
+    assert.equal(labelFromName('match-patient'), 'Match Patient');
+    assert.equal(labelFromName('totalCents'), 'Total (Cents)');
+    assert.equal(labelFromName('timeoutMs'), 'Timeout (ms)');
+    assert.equal(labelFromName('weightKg'), 'Weight (kg)');
+    assert.equal(labelFromName('item1'), 'Item 1');
+    assert.equal(labelFromName('isA'), 'Is A');
+    assert.equal(labelFromName('whenTrue'), 'When True');
+    assert.equal(labelFromName('by'), 'By');
+    assert.equal(labelFromName('statementsToSend'), 'Statements to Send');
   });
 });

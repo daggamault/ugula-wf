@@ -32,7 +32,8 @@ describe('SourceReportView', () => {
     assert.ok(html.includes('Date of birth'));
     assert.ok(html.includes('File Attachment Name'));
     assert.ok(html.includes('Female'));
-    assert.ok(html.includes('aria-pressed="true"') && html.includes('>XML<'));
+    assert.ok(html.includes('Copy XML'));
+    assert.ok(!html.includes('aria-pressed'));
   });
 });
 

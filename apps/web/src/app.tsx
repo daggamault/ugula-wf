@@ -4,7 +4,6 @@ import {
   BadgeDollarSignIcon,
   Building2Icon,
   ChartColumnIcon,
-  FileInputIcon,
   FileUpIcon,
   ReceiptTextIcon,
   SettingsIcon,
@@ -104,16 +103,9 @@ const RunPage = lazy(() =>
 const HOME = '/claims';
 
 const SECTIONS = [
-  { id: 'claims', label: 'Claims', href: '/claims', icon: ReceiptTextIcon, group: 'Work' },
   { id: 'patients', label: 'Patients', href: '/patients', icon: UsersIcon, group: 'Work' },
   { id: 'imports', label: 'Imports', href: '/imports', icon: FileUpIcon, group: 'Work' },
-  {
-    id: 'payer-files',
-    label: 'Payer Files',
-    href: '/payer-files',
-    icon: FileInputIcon,
-    group: 'Work'
-  },
+  { id: 'claims', label: 'Claims', href: '/claims', icon: ReceiptTextIcon, group: 'Work' },
   { id: 'reports', label: 'Reports', href: '/reports', icon: ChartColumnIcon, group: 'Work' },
   {
     id: 'workflows',
@@ -218,13 +210,7 @@ const routes: readonly Route[] = [
   {
     pattern: '/claims',
     render: (_, q, c) => (
-      <ClaimsPage
-        client={c.claims}
-        live={c.live}
-        me={c.email}
-        search={claimSearchOf(q)}
-        startWork={async (queue) => (await c.tasks.next(queue))?.id ?? null}
-      />
+      <ClaimsPage client={c.claims} live={c.live} me={c.email} search={claimSearchOf(q)} />
     )
   },
   {

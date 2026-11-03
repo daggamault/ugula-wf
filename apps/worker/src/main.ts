@@ -5,10 +5,12 @@ import { publishLiveEvent } from '@ugula/live';
 import { createBlobStore, createS3Storage } from '@ugula/storage';
 import { Redis } from 'ioredis';
 import { PgBoss } from 'pg-boss';
-import { type Config, parseConfig } from './config.ts';
+import { type Config, clearinghouseOf, parseConfig } from './config.ts';
 import { createFeeStore } from './features/charges/queries.ts';
 import { announceClaims } from './features/claims/announce.ts';
 import { createClaimStore } from './features/claims/queries.ts';
+import { createPayerFileStore } from './features/clearinghouse/payer-files.ts';
+import { createClearinghousePoll, POLL_QUEUE } from './features/clearinghouse/poll.ts';
 import { registerHealthJob } from './features/health/job.ts';
 import { announceImports } from './features/imports/announce.ts';
 import { createReportStore } from './features/imports/reports.ts';
@@ -18,6 +20,7 @@ import { createEngineCache } from './features/workflows/engines.ts';
 import { registerWorkflowJobs } from './features/workflows/job.ts';
 import { createRunStore } from './features/workflows/queries.ts';
 import { createRunner } from './features/workflows/runner.ts';
+import { createClearinghouse } from './shared/clearinghouse.ts';
 import { coalescePublish, createAnnouncer, type Publish } from './shared/live.ts';
 import {
   createLoadGate,
@@ -90,6 +93,8 @@ if (import.meta.main) {
   const tenantOf = createTenantOf(db, scope.tenantOf);
   const announce = createAnnouncer(tenantOf, publish);
   const guardedFetch = scope.fetch(fetch);
+  const exchange = clearinghouseOf(config);
+  const clearinghouse = exchange ? createClearinghouse(exchange) : null;
   const runner = createRunner({
     store,
     engines: createEngineCache({
@@ -105,7 +110,10 @@ if (import.meta.main) {
             )
           ),
           fees: scope.guard(createFeeStore(db)),
-          claims: scope.guard(announceClaims(createClaimStore(db, blobs, boss), announce)),
+          claims: scope.guard(
+            announceClaims(createClaimStore(db, blobs, boss, clearinghouse), announce)
+          ),
+          payerFiles: scope.guard(createPayerFileStore(db, blobs, boss, announce)),
           completer: createCompleter({
             url: config.COMPLETIONS_URL,
             model: config.COMPLETIONS_MODEL,
@@ -136,6 +144,18 @@ if (import.meta.main) {
     }),
     report
   });
+  if (clearinghouse) {
+    const poll = createClearinghousePoll({ db, boss, blobs, clearinghouse, report });
+    await boss.createQueue(POLL_QUEUE);
+    await boss.schedule(POLL_QUEUE, `*/${clearinghouse.config.pollMinutes} * * * *`);
+    await boss.work(POLL_QUEUE, { localConcurrency: 1, batchSize: 1 }, async () => {
+      await poll().catch((err: unknown) => report(`Clearinghouse poll failed: ${String(err)}`));
+    });
+  } else {
+    report(
+      'Clearinghouse: no CLEARINGHOUSE_SFTP_HOST, so 837P files are left for billers to upload'
+    );
+  }
   let stopping = false;
   const shutdown = (signal: NodeJS.Signals) => {
     if (stopping) return;

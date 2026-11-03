@@ -9,21 +9,6 @@ type Db = Kysely<Database>;
 
 export type ImportFilters = PageRequest<ImportSort> & { q?: string | undefined };
 
-export const resolveWorkflowVersion = (db: Db, tenantId: string, key: string) =>
-  db
-    .selectFrom('graph_versions as gv')
-    .innerJoin('graphs as g', 'g.id', 'gv.graph_id')
-    .select(['gv.id', 'gv.version'])
-    .where('g.key', '=', key)
-    .where('g.kind', '=', 'workflow')
-    .where('g.is_active', '=', true)
-    .where('gv.published_at', 'is not', null)
-    .where((eb) => eb.or([eb('g.tenant_id', '=', tenantId), eb('g.tenant_id', 'is', null)]))
-    .orderBy(sql`g.tenant_id nulls last`)
-    .orderBy('gv.version', 'desc')
-    .limit(1)
-    .executeTakeFirst();
-
 export const findSftpTenant = (db: Db, username: string) =>
   db
     .selectFrom('tenants')

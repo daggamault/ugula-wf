@@ -105,6 +105,7 @@ export { nameKey } from './names.ts';
 export { UNREAD_FINDINGS } from './narrative.ts';
 export {
   type AgencyProfile,
+  type AppliedPayerFile,
   type BillingStores,
   type BlobRef,
   type CandidateQuery,
@@ -113,8 +114,14 @@ export {
   type DraftClaim,
   type FeeStore,
   type PatientStore,
+  type PayerFileLine,
+  type PayerFileStore,
   type PayerStore,
-  type StatementSource
+  type SavedSubmission,
+  type SentClaimFile,
+  type StatementSource,
+  type SubmissionFile,
+  type SubmissionSource
 } from './nodes/index.ts';
 export {
   type Address,
@@ -162,6 +169,7 @@ export {
   type BatchPayer,
   build837,
   MAX_CONTROL_NUMBER,
+  type PendingSubmission,
   type PriorPayer,
   readX837Claim,
   type Submitter,

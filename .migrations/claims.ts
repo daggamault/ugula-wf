@@ -246,6 +246,9 @@ const buildClaimBatchesTable = (db: Kysely<Database>) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addColumn('sent_at', 'timestamptz')
+    .addColumn('sent_as', 'text')
+    .addCheckConstraint('claim_batches_sent_check', sql`(sent_at is null) = (sent_as is null)`)
     .addUniqueConstraint('claim_batches_tenant_id_control_number_unique', [
       'tenant_id',
       'control_number'

@@ -40,6 +40,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'patients',
     'tasks',
     'signals',
+    'clearinghouse_downloads',
     'payer_file_items',
     'payer_files',
     'workflow_run_steps',

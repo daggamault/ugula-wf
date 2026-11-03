@@ -1,7 +1,8 @@
 import type { InputBinding, PinSpec } from '@ugula/graph';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
+import { labelFromName } from '../format.ts';
 import type { GraphFlowNode, NodeStatus } from './flow.ts';
-import { describeType, toneOf } from './pins.ts';
+import { describeType, pinLabel, toneOf } from './pins.ts';
 
 type Pin = { name: string; label: string; exec: boolean; spec?: PinSpec };
 
@@ -18,10 +19,10 @@ const execShape = 'rounded-none! [clip-path:polygon(0_0,100%_50%,0_100%)]';
 const pinsOf = (exec: string[], data: PinSpec[]): Pin[] => [
   ...exec.map((name) => ({
     name,
-    label: name === 'exec' || name === 'then' ? '' : name,
+    label: name === 'exec' || name === 'then' ? '' : labelFromName(name),
     exec: true
   })),
-  ...data.map((spec) => ({ name: spec.name, label: spec.label ?? spec.name, exec: false, spec }))
+  ...data.map((spec) => ({ name: spec.name, label: pinLabel(spec), exec: false, spec }))
 ];
 
 const preview = (binding: InputBinding | undefined) => {
@@ -72,7 +73,7 @@ export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
           <span className="truncate text-sm font-semibold">{title}</span>
           {opens ? (
             <span className="text-primary shrink-0 text-xs font-semibold tracking-wide uppercase">
-              {opens === 'graph' ? 'Building Block' : 'Workflow'}
+              {opens === 'graph' ? 'Subworkflow' : 'Workflow'}
             </span>
           ) : null}
         </span>

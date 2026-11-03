@@ -1,13 +1,8 @@
 import { nameKey } from '@ugula/billing';
-import { PlayIcon } from 'lucide-react';
-import { useState } from 'react';
-import { messageOf } from '../../shared/api.ts';
 import { formatCents, formatDate } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
-import { navigate } from '../../shared/router.tsx';
 import { queueInfo, TASK_FILTERS } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
-import { Button } from '../../shared/ui/button.tsx';
 import { EmptyState, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
 import { OpenLink, RowActions, WorkLink } from '../../shared/ui/icon-button.tsx';
@@ -15,7 +10,6 @@ import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { type SearchField, SearchForm } from '../../shared/ui/search-form.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
-import { useToast } from '../../shared/ui/toast.tsx';
 import { useTableState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { CLAIM_FILTERS, ClaimStatusBadge } from './claim-status-badge.tsx';
@@ -26,7 +20,6 @@ type ClaimsPageProps = {
   live: Live;
   search: ClaimSearch;
   me: string;
-  startWork: (queue: string | null) => Promise<string | null>;
 };
 
 const PATH = '/claims';
@@ -191,7 +184,7 @@ const isFiltered = (s: ClaimSearch) =>
   s.status !== 'open' ||
   s.assignee !== 'anyone';
 
-export const ClaimsPage = ({ client, live, search, me, startWork }: ClaimsPageProps) => {
+export const ClaimsPage = ({ client, live, search, me }: ClaimsPageProps) => {
   const table = useTableState(PATH, CLAIM_TABLE);
   const back = table.href;
   const key = Object.values(search).join('|');
@@ -200,8 +193,6 @@ export const ClaimsPage = ({ client, live, search, me, startWork }: ClaimsPagePr
     (signal) => client.list(search, table.apiQuery, signal),
     30_000
   );
-  const [starting, setStarting] = useState(false);
-  const notify = useToast();
   const items = claims.data?.items ?? [];
   useLive(
     live,
@@ -221,31 +212,10 @@ export const ClaimsPage = ({ client, live, search, me, startWork }: ClaimsPagePr
     claims.reload,
     LIST_RELOAD_MS
   );
-  const queue = search.task && search.task !== 'any' ? search.task : null;
-
-  const start = async () => {
-    setStarting(true);
-    try {
-      const taskId = await startWork(queue);
-      if (taskId) navigate(withBack(`/tasks/${taskId}`, back));
-      else notify({ intent: 'info', title: 'Nothing is waiting on you right now' });
-    } catch (err) {
-      notify({ intent: 'danger', title: 'Could not start', description: messageOf(err) });
-    } finally {
-      setStarting(false);
-    }
-  };
-
   return (
     <Page
       title="Claims"
       description="Every claim from draft to paid, and the task each one is waiting on."
-      actions={
-        <Button isPending={starting} onClick={() => void start()}>
-          <PlayIcon aria-hidden="true" className="size-4" />
-          Start Working
-        </Button>
-      }
     >
       <SearchForm
         label="Filter claims"

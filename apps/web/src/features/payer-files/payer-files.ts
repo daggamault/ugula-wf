@@ -1,20 +1,11 @@
-import { PAYER_FILE_LABELS, type PayerFileOutcome } from '@ugula/billing';
+import { PAYER_FILE_LABELS } from '@ugula/billing';
 import { useCallback } from 'react';
 import { messageOf } from '../../shared/api.ts';
-import type { StatusBadgeStyle } from '../../shared/ui/badge.tsx';
+
+export { OUTCOME_STYLES } from '../../shared/payer-file-outcomes.ts';
+
 import { type Notify, useToast } from '../../shared/ui/toast.tsx';
 import type { PayerFileSummary, PayerFilesClient } from './client.ts';
-
-export const OUTCOME_STYLES: Readonly<Record<PayerFileOutcome, StatusBadgeStyle>> = {
-  posted: { intent: 'success', label: 'Posted' },
-  accepted: { intent: 'success', label: 'Accepted' },
-  eligible: { intent: 'success', label: 'Eligible' },
-  duplicate: { label: 'Already Posted' },
-  rejected: { intent: 'danger', label: 'Rejected' },
-  ineligible: { intent: 'danger', label: 'Not Eligible' },
-  unmatched: { intent: 'warning', label: 'No Match' },
-  review: { intent: 'warning', label: 'Needs Review' }
-};
 
 export const kindOf = (f: Pick<PayerFileSummary, 'kind'>) => PAYER_FILE_LABELS[f.kind];
 

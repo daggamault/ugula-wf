@@ -16,10 +16,10 @@ describe('NewWorkflowPage', () => {
       })
     );
     assert.ok(html.includes('billing.match-patient'));
-    assert.ok(html.includes('aria-label="Create Building Block"'));
-    assert.ok(html.includes('<option value="node" selected="">Building Block</option>'));
+    assert.ok(html.includes('aria-label="Create Subworkflow"'));
+    assert.ok(html.includes('<option value="node" selected="">Subworkflow</option>'));
     assert.ok(
-      html.includes('href="/workflows?kind=blocks"') && html.includes('Create Building Block')
+      html.includes('href="/workflows?kind=blocks"') && html.includes('Create Subworkflow')
     );
     assert.ok(html.includes('@3xl:grid-cols-4') && html.includes('type="submit"'));
     const page = renderToStaticMarkup(

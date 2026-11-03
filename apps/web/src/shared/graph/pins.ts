@@ -1,4 +1,5 @@
 import type { ValueType } from '@ugula/graph';
+import { labelFromName, titleCaseLabel } from '../format.ts';
 
 type PinKind =
   | 'exec'
@@ -54,3 +55,6 @@ export const describeType = (type: ValueType): string => {
   const fields = Object.keys(type.object);
   return fields.length ? `Record With ${fields.join(', ')}` : 'Record';
 };
+
+export const pinLabel = (spec: { name: string; label?: string | undefined }) =>
+  spec.label ? titleCaseLabel(spec.label) : labelFromName(spec.name);

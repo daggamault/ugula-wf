@@ -1287,7 +1287,7 @@ const resolvePayers = (): GraphDef => {
     'context',
     'std.expr',
     expr(
-      'Payer context',
+      'Payer Context',
       '{ reportedPayer: item.payer, memberId: item.memberId, patient: patientName, pcrNumber: pcrNumber, notes: item.notes }'
     )
   );
@@ -2229,6 +2229,15 @@ const CLAIM_CONTEXT = `{
   claim: claim
 }`;
 
+const FILING_CONTEXT = `{
+  claimId: claimId,
+  coverageId: coverageId,
+  payer: payer,
+  balanceCents: balanceCents,
+  whyNotFiled: reason,
+  claim: claim
+}`;
+
 const PATIENT_ADDRESS_FIELDS = ['AddressLine', 'City', 'State', 'PostalCode'].map((part) => ({
   name: `patient${part}`,
   type: 'string',
@@ -2348,13 +2357,13 @@ const confirmPayers = (): GraphDef => {
 const submitClaim = (): GraphDef => {
   const g = claimStep(['done', 'void']);
   g.add('submit', 'std.human.task', {
-    label: 'Submit Claim',
+    label: 'Claim Could Not Be Filed',
     config: {
-      title: 'Submit claim',
+      title: 'Claim could not be filed',
       queue: 'billing-review',
       instructions:
-        'This claim was approved but has not gone out. Submit it from its claim page, or mark it submitted when it went out another way. Fix its data or skip this payer if it cannot be submitted.',
-      outcomes: ['submitted', 'fixData', 'skipPayer']
+        'This claim was approved, but its 837P file could not be created for the reason in the details. Fix what it names (the billing profile is in Settings) and try again, fix the claim data (it is reviewed again), skip this payer, or mark it submitted if it went out another way.',
+      outcomes: ['tryAgain', 'fixData', 'skipPayer', 'submitted']
     }
   });
   recordEvent(g, 'submitted', 'submitted', 'Submitted Outside the App');
@@ -2370,7 +2379,13 @@ const submitClaim = (): GraphDef => {
   g.wire('submit.submitted', 'submitted.exec');
   g.wire('submit.fixData', 'fix.exec');
   g.wire('submit.skipPayer', 'skip.exec');
-  for (const done of ['submitted.then', 'skip.then', 'fix.fixed', 'fix.backToReview'] as const) {
+  for (const done of [
+    'submit.tryAgain',
+    'submitted.then',
+    'skip.then',
+    'fix.fixed',
+    'fix.backToReview'
+  ] as const) {
     g.wire(done, 'doneReturn.exec');
   }
   g.wire('fix.voided', 'voidReturn.exec');
@@ -2514,7 +2529,7 @@ const cycleClaim = (): GraphDef => {
   g.input('claimId', 'claimId');
   g.add('step', 'billing.claim-step', {
     label: 'Next Step',
-    values: { payerWaitDays: 30, submitWaitDays: 3, statementCount: 3, statementIntervalDays: 30 }
+    values: { payerWaitDays: 30, statementCount: 3, statementIntervalDays: 30 }
   });
   g.add('payerSubject', 'std.expr', subject('reference', 'payer'));
   g.add('claimSubject', 'std.expr', subject('reference'));
@@ -2527,7 +2542,12 @@ const cycleClaim = (): GraphDef => {
   g.add('fix', 'billing.fix-claim', { label: 'Fix Claim Data', values: { all: false } });
   g.add('review', 'billing.review-claim', { label: 'Review Claim' });
   g.add('confirmPayers', 'billing.confirm-payers', { label: 'Confirm Payers' });
-  g.add('submit', 'billing.submit-claim', { label: 'Submit Claim' });
+  g.add('prepare', 'billing.prepare-837p', { label: 'Prepare 837P Claim' });
+  g.add('map', 'billing.map-837p', { label: 'Map 837P Claim' });
+  g.add('file', 'billing.file-837p', { label: 'File 837P Claim' });
+  g.add('send', 'billing.send-837p', { label: 'Send 837P to Clearinghouse' });
+  g.add('filingContext', 'std.expr', expr('Filing Context', FILING_CONTEXT));
+  g.add('submit', 'billing.submit-claim', { label: 'Claim Could Not Be Filed' });
   g.add('reconcile', 'billing.reconcile-payment', { label: 'Reconcile Payment' });
   g.add('overpaid', 'std.human.task', {
     label: 'Refund Overpayment',
@@ -2573,7 +2593,6 @@ const cycleClaim = (): GraphDef => {
   g.wire('step.payer', 'payerSubject.payer');
   g.wire('step.reference', 'payerSubject.reference', 'claimSubject.reference');
 
-  g.wire('step.submit', 'wait.exec');
   g.wire('step.await', 'wait.exec');
   g.wire('step.awaitPatient', 'wait.exec');
   g.wire('stepClaimId.claimId', 'wait.key');
@@ -2592,7 +2611,7 @@ const cycleClaim = (): GraphDef => {
   for (const [id, about] of steps) {
     g.wire('stepClaimId.claimId', `${id}.claimId`);
     g.wire(`${about}Subject.result`, `${id}.subject`);
-    g.wire('claimContext.result', `${id}.context`);
+    g.wire(id === 'submit' ? 'filingContext.result' : 'claimContext.result', `${id}.context`);
     if (id !== 'fix' && id !== 'statement') g.wire('step.coverageId', `${id}.coverageId`);
   }
   for (const id of ['overpaid', 'collections']) {
@@ -2603,7 +2622,20 @@ const cycleClaim = (): GraphDef => {
   g.wire('step.review', 'review.exec');
   g.wire('step.reviewPatient', 'review.exec');
   g.wire('step.confirmPayers', 'confirmPayers.exec');
-  g.wire('step.submitDue', 'submit.exec');
+  g.wire('step.submit', 'prepare.exec');
+  g.wire('stepClaimId.claimId', 'prepare.claimId', 'file.claimId', 'send.claimId');
+  g.wire('file.filed', 'send.exec');
+  g.wire('file.controlNumber', 'send.controlNumber');
+  g.wire('step.coverageId', 'file.coverageId');
+  g.wire('prepare.ready', 'file.exec');
+  g.wire('prepare.claim', 'map.claim');
+  g.wire('map.x837', 'file.x837');
+  g.wire('file.blocked', 'submit.exec');
+  g.wire('claimId.claimId', 'filingContext.claimId');
+  for (const pin of ['coverageId', 'payer', 'balanceCents', 'claim']) {
+    g.wire(`step.${pin}`, `filingContext.${pin}`);
+  }
+  g.wire('file.reason', 'filingContext.reason');
   g.wire('step.reconcile', 'reconcile.exec');
   g.wire('step.overpaid', 'overpaid.exec');
   g.wire('step.followUp', 'followUp.exec');
@@ -2653,6 +2685,121 @@ const ingestNemsis = (): GraphDef => {
   g.wire('spawn.then', 'return.exec');
   g.wire('split.count', 'return.count');
   g.wire('spawn.runIds', 'return.runIds');
+  return g.def;
+};
+
+const LINE_CONTEXT = `{
+  claimNumber: reference,
+  outcome: outcome,
+  problem: message,
+  fileName: fileName
+}`;
+
+const reviewPayerFileLine = (): GraphDef => {
+  const g = graph({
+    execIn: ['exec'],
+    execOut: [],
+    inputs: [
+      p('fileName', 'string'),
+      p('reference', 'string'),
+      p('claimId', 'string', true),
+      p('outcome', 'string'),
+      p('message', 'string')
+    ],
+    outputs: []
+  });
+  g.add('noClaim', 'std.logic.is-null', { label: 'No Claim Matched' });
+  g.add('matched', 'std.flow.branch', { label: 'Matched a Claim?' });
+  g.add('follow', 'billing.follow-claim', { label: 'Show on the Claim' });
+  g.add('subject', 'std.expr', subject('fileName', 'reference'));
+  g.add('context', 'std.expr', expr('Line Context', LINE_CONTEXT));
+  g.add('review', 'std.human.task', {
+    label: 'Review Payer File Line',
+    config: {
+      title: 'Review payer file line',
+      queue: 'billing-reconcile',
+      instructions:
+        'The clearinghouse sent a line that could not be applied on its own: a claim number that matches no claim, a reversal, a pending status, or a payer that is not on the claim. Post or correct it on the claim by hand (or check the claim number with the clearinghouse), then mark it resolved.',
+      outcomes: ['resolved']
+    }
+  });
+  g.ret('done');
+  g.wire('entry.exec', 'matched.exec');
+  g.wire('entry.claimId', 'noClaim.value', 'follow.claimId');
+  g.wire('noClaim.result', 'matched.condition');
+  g.wire('matched.false', 'follow.exec');
+  g.wire('matched.true', 'review.exec');
+  g.wire('follow.then', 'review.exec');
+  g.wire('entry.fileName', 'subject.fileName', 'context.fileName');
+  g.wire('entry.reference', 'subject.reference', 'context.reference');
+  g.wire('entry.outcome', 'context.outcome');
+  g.wire('entry.message', 'context.message');
+  g.wire('subject.result', 'review.subject');
+  g.wire('context.result', 'review.context');
+  g.wire('review.resolved', 'done.exec');
+  return g.def;
+};
+
+const receivePayerFile = (): GraphDef => {
+  const g = graph({
+    execIn: ['exec'],
+    execOut: [],
+    inputs: [p('file', BLOB), p('fileName', 'string')],
+    outputs: [p('fileId', 'string'), p('kind', 'string'), p('reviews', 'integer')]
+  });
+  g.add('apply', 'billing.apply-payer-file', { label: 'Apply to Claims' });
+  g.add('lines', 'std.list.reshape', {
+    label: 'One Review per Line',
+    config: {
+      fields: [
+        { name: 'fileName', type: 'string' },
+        { name: 'reference', type: 'string', from: 'reference' },
+        { name: 'claimId', type: 'string', from: 'claimId' },
+        { name: 'outcome', type: 'string', from: 'outcome' },
+        { name: 'message', type: 'string', from: 'message' }
+      ]
+    }
+  });
+  g.add('spawn', 'std.flow.spawn-workflows', {
+    label: 'Ask a Biller About Each Line',
+    config: { workflow: 'billing.review-payer-file-line', version: 1 }
+  });
+  g.add('count', 'std.list.length', { label: 'Lines to Review' });
+  g.add('shared', 'std.expr', expr('Same for Every Line', '{ fileName: fileName }'));
+  g.add('unreadable', 'std.human.task', {
+    label: 'Unreadable Clearinghouse File',
+    config: {
+      title: 'Unreadable clearinghouse file',
+      queue: 'billing-reconcile',
+      instructions:
+        'The clearinghouse sent a file that is not a remittance (835), acknowledgment (999 or 277CA) or eligibility (271) file. Check it with the clearinghouse; nothing was applied.',
+      outcomes: ['resolved']
+    }
+  });
+  g.add('why', 'std.expr', expr('File Context', '{ fileName: fileName, problem: reason }'));
+  g.ret('return');
+  g.wire('entry.exec', 'apply.exec');
+  g.wire('entry.file', 'apply.file');
+  g.wire(
+    'entry.fileName',
+    'apply.fileName',
+    'why.fileName',
+    'unreadable.subject',
+    'shared.fileName'
+  );
+  g.wire('shared.result', 'lines.shared');
+  g.wire('apply.applied', 'spawn.exec');
+  g.wire('apply.reviews', 'lines.list', 'count.list');
+  g.wire('lines.list', 'spawn.items');
+  g.wire('spawn.then', 'return.exec');
+  g.wire('apply.duplicate', 'return.exec');
+  g.wire('apply.unreadable', 'unreadable.exec');
+  g.wire('apply.reason', 'why.reason');
+  g.wire('why.result', 'unreadable.context');
+  g.wire('unreadable.resolved', 'return.exec');
+  g.wire('apply.fileId', 'return.fileId');
+  g.wire('apply.kind', 'return.kind');
+  g.wire('count.length', 'return.reviews');
   return g.def;
 };
 
@@ -2885,8 +3032,8 @@ export const billingGraphs: SeedGraph[] = [
   ),
   node(
     'billing.submit-claim',
-    'Submit Claim',
-    'Asks a biller to submit an approved claim that has not gone out, mark it submitted elsewhere, fix its data or skip the payer.',
+    'Claim Could Not Be Filed',
+    'Asks a biller what to do about an approved claim whose 837P file could not be created: try again once the reason is fixed, fix its data, skip the payer, or mark it submitted elsewhere.',
     submitClaim()
   ),
   node(
@@ -2910,7 +3057,7 @@ export const billingGraphs: SeedGraph[] = [
   workflow(
     'billing.cycle-claim',
     'Cycle Claim',
-    'Bills each payer in claim order: fixes what blocks the claim, has it reviewed, asks for it to be submitted when it sits ready, follows up, reconciles responses (or resubmits a corrected claim), confirms payers when there are none, reviews before the first patient statement and asks for a missing billing profile or patient address, then sends statements before collections review. Sleeps until a claim change or a deadline.',
+    'Bills each payer in claim order: fixes what blocks the claim, has it reviewed, files each approved claim as its own 837P (asking a biller when it cannot), follows up, reconciles responses (or resubmits a corrected claim), confirms payers when there are none, reviews before the first patient statement and asks for a missing billing profile or patient address, then sends statements before collections review. Sleeps until a claim change or a deadline.',
     cycleClaim()
   ),
   workflow(
@@ -2926,6 +3073,18 @@ export const billingGraphs: SeedGraph[] = [
     recoverDraft()
   ),
 
+  workflow(
+    'billing.review-payer-file-line',
+    'Review Payer File Line',
+    'Shows a clearinghouse file line that could not be applied on its own on its claim, and asks a biller to resolve it.',
+    reviewPayerFileLine()
+  ),
+  workflow(
+    'billing.receive-payer-file',
+    'Receive Payer File',
+    'Applies a file the clearinghouse sent (835 remittance, 999 or 277CA acknowledgment, 271 eligibility) to its claims, and asks a biller about each line that could not be applied on its own. Started for every file downloaded from the clearinghouse.',
+    receivePayerFile()
+  ),
   workflow(
     'billing.ingest-nemsis',
     'Ingest NEMSIS File',

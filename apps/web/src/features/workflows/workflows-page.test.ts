@@ -50,7 +50,7 @@ describe('WorkflowsPage', () => {
     assert.ok(html.includes('href="/runs/new?graph=g1" aria-label="Run Batch"'));
     assert.ok(html.includes('>Run</span>') && html.includes('>Edit</span>'));
     assert.ok(!html.includes('/runs/new?graph=g2'));
-    assert.ok(html.includes('System') && html.includes('Building Block'));
+    assert.ok(html.includes('System') && html.includes('Subworkflow'));
     assert.match(html, /<mark[^>]*>Bat<\/mark>ch/);
     assert.ok(html.includes('v2'));
   });
@@ -64,13 +64,9 @@ describe('WorkflowsPage', () => {
       })
     );
     assert.ok(html.includes('<h1'));
-    assert.ok(
-      html.includes('href="/workflows/new?kind=node"') && html.includes('New Building Block')
-    );
-    assert.ok(html.includes('<option value="blocks" selected="">Building Blocks</option>'));
-    assert.ok(
-      html.includes('aria-label="Search Building Blocks"') && html.includes('id="search-q"')
-    );
+    assert.ok(html.includes('href="/workflows/new?kind=node"') && html.includes('New Subworkflow'));
+    assert.ok(html.includes('<option value="blocks" selected="">Subworkflows</option>'));
+    assert.ok(html.includes('aria-label="Search Subworkflows"') && html.includes('id="search-q"'));
   });
 
   it('defaults to workflows, reads the kind param and asks the API for that kind', () => {

@@ -6,6 +6,7 @@ import {
   INSURED_RELATIONSHIPS,
   type InsuredRelationship,
   isClosedStatus,
+  PAYER_FILE_LABELS,
   RELATIONSHIP_LABELS,
   TRIP_TYPE_LABELS
 } from '@ugula/billing';
@@ -14,14 +15,12 @@ import {
   ArrowUpIcon,
   DownloadIcon,
   ExternalLinkIcon,
-  FileCogIcon,
+  FileInputIcon,
   FileTextIcon,
   ListTodoIcon,
-  PencilIcon,
   PlusIcon,
   RotateCcwIcon,
   SaveIcon,
-  SendIcon,
   Trash2Icon,
   UserIcon
 } from 'lucide-react';
@@ -41,13 +40,13 @@ import {
   titleCaseLabel
 } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
+import { OUTCOME_STYLES } from '../../shared/payer-file-outcomes.ts';
 import { Link } from '../../shared/router.tsx';
 import { queueInfo } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
-import { Button, ButtonLink, buttonClasses } from '../../shared/ui/button.tsx';
+import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
-import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { FieldGrid, FieldGroup, FormActions } from '../../shared/ui/field.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
@@ -74,12 +73,12 @@ import { DocumentationPanel, EligibilityPanel } from './claim-documentation.tsx'
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
 import { assigneeOf, claimNumber } from './claims-page.tsx';
 import type {
-  Batch,
   BillingDataInput,
   ClaimCoverage,
   ClaimDetail,
   ClaimEvent,
   ClaimLine,
+  ClaimPayerFile,
   ClaimProgress,
   ClaimResponseInput,
   ClaimsClient,
@@ -121,24 +120,21 @@ export const lockedReason = (status: ClaimDetail['status']) =>
       ? 'This claim is still a draft. Finish its PCR tasks first.'
       : undefined;
 
-const BatchDownload = ({ batch, href }: { batch: Batch; href: string }) => (
-  <a href={href} download className={buttonClasses({ variant: 'outline' })}>
-    <DownloadIcon aria-hidden="true" className="size-4" />
-    Download #{batch.control_number}
-  </a>
-);
-
 const fileLinkClasses = `inline-flex items-center gap-2 whitespace-nowrap ${textLinkClasses}`;
 
 export const ClaimFiles = ({
   claim,
   files,
+  payerFiles,
+  back,
   documentUrl,
   fileUrl,
   encounterUrl
 }: {
-  claim: Pick<ClaimDetail, 'import_report_id' | 'pcr_number'>;
+  claim: Pick<ClaimDetail, 'import_report_id' | 'pcr_number' | 'import_id' | 'import_file_name'>;
   files: readonly ClaimEvent[];
+  payerFiles: readonly ClaimPayerFile[];
+  back: string;
   documentUrl: (eventId: string) => string;
   fileUrl: (batchId: string) => string;
   encounterUrl: (reportId: string) => string;
@@ -148,15 +144,28 @@ export const ClaimFiles = ({
   return (
     <SectionPanel
       title="Files"
-      description="The encounter this claim came from, and every 837P file and document sent for it."
+      description="The encounter and import this claim came from, every 837P file and document sent for it, and every clearinghouse file that answered it."
     >
       <ul className="flex flex-col gap-2 text-sm">
-        <li>
+        <li className="flex flex-wrap items-center gap-2">
           {claim.import_report_id ? (
-            <a href={encounterUrl(claim.import_report_id)} download className={fileLinkClasses}>
-              <DownloadIcon aria-hidden="true" className="size-4" />
-              Encounter {claim.pcr_number ?? ''} (NEMSIS XML)
-            </a>
+            <>
+              <a href={encounterUrl(claim.import_report_id)} download className={fileLinkClasses}>
+                <DownloadIcon aria-hidden="true" className="size-4" />
+                Encounter {claim.pcr_number ?? ''} (NEMSIS XML)
+              </a>
+              {claim.import_id ? (
+                <span className="text-surface-fg-muted">
+                  from{' '}
+                  <Link
+                    to={withBack(`/imports/${claim.import_id}`, back)}
+                    className={textLinkClasses}
+                  >
+                    {claim.import_file_name}
+                  </Link>
+                </span>
+              ) : null}
+            </>
           ) : (
             <span className="text-surface-fg-muted">No source encounter file.</span>
           )}
@@ -170,6 +179,30 @@ export const ClaimFiles = ({
             <span className="text-surface-fg-muted">
               {e.payer} · {formatDateTime(e.created_at)}
             </span>
+            {e.batch_sent_at ? (
+              <Badge intent="success">Sent {formatDateTime(e.batch_sent_at)}</Badge>
+            ) : (
+              <Badge intent="warning">Not sent; upload it to the clearinghouse</Badge>
+            )}
+          </li>
+        ))}
+        {payerFiles.map((f) => (
+          <li key={f.id} className="flex flex-wrap items-center gap-2">
+            <Link to={withBack(`/payer-files/${f.id}`, back)} className={fileLinkClasses}>
+              <FileInputIcon aria-hidden="true" className="size-4" />
+              {f.file_name}
+            </Link>
+            <span className="text-surface-fg-muted">
+              {PAYER_FILE_LABELS[f.kind]} · {formatDateTime(f.created_at)}
+            </span>
+            {f.items.map((i, n) => (
+              <span key={`${f.id}-${n}`} className="flex items-center gap-2">
+                <Badge intent={OUTCOME_STYLES[i.outcome].intent}>
+                  {OUTCOME_STYLES[i.outcome].label}
+                </Badge>
+                {i.message ? <span className="text-surface-fg-muted">{i.message}</span> : null}
+              </span>
+            ))}
           </li>
         ))}
         {documents.map((e) => (
@@ -820,11 +853,9 @@ const ResponseForm = ({
 export const describeProgress = (progress: ClaimProgress): string => {
   switch (progress.step) {
     case 'review':
-      return `Needs review before it goes to ${progress.coverage.payer}. Check the claim, then approve its review task.`;
+      return `Needs review before it goes to ${progress.coverage.payer}. Check the claim, then approve its review task. Its 837P file is created as soon as it is approved.`;
     case 'submit':
-      return `Approved and ready to submit to ${progress.coverage.payer}.`;
-    case 'submitDue':
-      return `Approved for ${progress.coverage.payer} but not submitted yet. A submit claim task is waiting.`;
+      return `Approved. Creating its 837P file for ${progress.coverage.payer}; a task opens if it cannot be created.`;
     case 'reconcile':
       return `${progress.coverage.payer} answered and a balance remains. A reconcile task is waiting.`;
     case 'await':
@@ -848,15 +879,11 @@ export const describeProgress = (progress: ClaimProgress): string => {
   }
 };
 
-const isSubmittable = (progress: ClaimProgress | null) =>
-  progress?.step === 'submit' || progress?.step === 'submitDue';
-
 type CycleState = {
   intent: Intent;
   text: string;
   stopped: boolean;
   restartable: boolean;
-  submittable: boolean;
 };
 
 export const describeCycle = (
@@ -864,7 +891,7 @@ export const describeCycle = (
   progress: ClaimProgress | null
 ): CycleState | null => {
   if (isClosedStatus(claim.status)) return null;
-  const base = { stopped: true, submittable: false };
+  const base = { stopped: true };
   if (claim.status === 'draft') {
     return {
       ...base,
@@ -899,111 +926,36 @@ export const describeCycle = (
       };
     default: {
       if (!progress) return null;
-      const submittable = isSubmittable(progress);
       return {
-        intent: submittable ? 'primary' : progress.step === 'overpaid' ? 'warning' : 'info',
+        intent: progress.step === 'overpaid' ? 'warning' : 'info',
         text: describeProgress(progress),
         stopped: false,
-        restartable: false,
-        submittable
+        restartable: false
       };
     }
   }
 };
 
-type Submission = {
-  issues: readonly string[] | null;
-  made: Batch | null;
+type ClaimLinks = {
   fileUrl: (batchId: string) => string;
   encounterUrl: (reportId: string) => string;
-  onCreateFile: () => Promise<void>;
-  onMarkSubmitted: () => Promise<void>;
-};
-
-const SubmitActions = ({ payer, submission }: { payer: string; submission: Submission }) => {
-  const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const blocked =
-    submission.issues === null
-      ? 'Checking the claim…'
-      : submission.issues.length
-        ? 'Fix the problems listed first.'
-        : undefined;
-  return (
-    <>
-      <Button
-        isPending={busy}
-        disabledReason={blocked}
-        onClick={async () => {
-          setBusy(true);
-          await submission.onCreateFile();
-          setBusy(false);
-        }}
-      >
-        <FileCogIcon aria-hidden="true" className="size-4" />
-        Create 837P File
-      </Button>
-      <Button variant="outline" onClick={() => setConfirming(true)}>
-        <SendIcon aria-hidden="true" className="size-4" />
-        Mark Submitted
-      </Button>
-      <ConfirmDialog
-        open={confirming}
-        title="Mark as Submitted?"
-        confirmLabel="Mark Submitted"
-        confirmIcon={SendIcon}
-        onClose={() => setConfirming(false)}
-        onConfirm={() => {
-          setConfirming(false);
-          void submission.onMarkSubmitted();
-        }}
-      >
-        Use this when the claim to {payer} went out another way, such as the clearinghouse portal or
-        paper. The payer clock starts now.
-      </ConfirmDialog>
-    </>
-  );
 };
 
 const CycleAlert = ({
   claim,
   progress,
-  submission,
-  back,
   onRestart
 }: {
   claim: ClaimDetail;
-  back: string;
   progress: ClaimProgress | null;
-  submission: Submission | undefined;
   onRestart: () => Promise<void>;
 }) => {
   const [restarting, setRestarting] = useState(false);
   const status = describeCycle(claim, progress);
-  const made = submission?.made;
-  const notice = made ? (
-    <Alert
-      intent="success"
-      action={<BatchDownload batch={made} href={submission.fileUrl(made.id)} />}
-    >
-      837P file #{made.control_number} is ready. Upload it to your clearinghouse.
-    </Alert>
-  ) : null;
-  if (!status) return notice;
+  if (!status) return null;
   const runLink = status.stopped && claim.cycle_run_id ? claim.cycle_run_id : null;
-  const payer = progress && 'coverage' in progress ? progress.coverage.payer : '';
-  const issues = status.submittable ? (submission?.issues ?? []) : [];
   const actions = (
     <>
-      {status.submittable && submission ? (
-        <SubmitActions payer={payer} submission={submission} />
-      ) : null}
-      {issues.length ? (
-        <ButtonLink to={withBack(`/claims/${claim.id}?tab=data`, back)} variant="outline">
-          <PencilIcon aria-hidden="true" className="size-4" />
-          Fix Claim Data
-        </ButtonLink>
-      ) : null}
       {runLink ? (
         <ButtonLink to={`/runs/${runLink}`} variant="outline">
           <ExternalLinkIcon aria-hidden="true" className="size-4" />
@@ -1027,21 +979,9 @@ const CycleAlert = ({
     </>
   );
   return (
-    <>
-      {notice}
-      <Alert intent={status.intent} action={actions}>
-        <span className="flex flex-col gap-1">
-          {status.text}
-          {issues.length ? (
-            <ul className="list-disc pl-4 text-sm">
-              {issues.map((issue) => (
-                <li key={issue}>{issue}</li>
-              ))}
-            </ul>
-          ) : null}
-        </span>
-      </Alert>
-    </>
+    <Alert intent={status.intent} action={actions}>
+      {status.text}
+    </Alert>
   );
 };
 
@@ -1089,6 +1029,7 @@ export const CLAIM_TABS: readonly { value: ClaimTab; label: string }[] = [
 export const ClaimView = ({
   claim,
   files,
+  payerFiles = [],
   history,
   progress,
   issues,
@@ -1106,6 +1047,7 @@ export const ClaimView = ({
 }: {
   claim: ClaimDetail;
   files: readonly ClaimEvent[];
+  payerFiles?: readonly ClaimPayerFile[];
   history: Resource<ListPage<ClaimEvent>>;
   progress: ClaimProgress | null;
   issues: readonly ClaimIssue[];
@@ -1115,7 +1057,7 @@ export const ClaimView = ({
   onSaveData: (data: BillingDataInput) => Promise<boolean>;
   onCheckEligibility: () => Promise<void>;
   documentUrl: (eventId: string) => string;
-  submission?: Submission;
+  submission?: ClaimLinks;
   tab?: ClaimTab;
   back?: string;
   error?: string;
@@ -1151,13 +1093,7 @@ export const ClaimView = ({
     >
       {error ? <Alert>{error}</Alert> : null}
       <OpenTasks tasks={claim.tasks} back={withBack(path, back)} me={me} />
-      <CycleAlert
-        claim={claim}
-        progress={progress}
-        submission={submission}
-        back={back}
-        onRestart={onRestart}
-      />
+      <CycleAlert claim={claim} progress={progress} onRestart={onRestart} />
       <Tabs
         label="Claim sections"
         tabs={CLAIM_TABS.map((t) => ({
@@ -1216,6 +1152,8 @@ export const ClaimView = ({
                 <ClaimFiles
                   claim={claim}
                   files={files}
+                  payerFiles={payerFiles}
+                  back={withBack(path, back)}
                   documentUrl={documentUrl}
                   fileUrl={submission.fileUrl}
                   encounterUrl={submission.encounterUrl}
@@ -1274,12 +1212,7 @@ export const ClaimPage = ({
       (e.kind === 'task' && (e.id === null || taskIds.includes(e.id))),
     reload
   );
-  const submittable = isSubmittable(detail.data?.progress ?? null);
-  const pending = useResource(`claim:${claimId}:pending:${submittable}`, (signal) =>
-    submittable ? client.pending(claimId, signal) : Promise.resolve(null)
-  );
   const [error, setError] = useState('');
-  const [made, setMade] = useState<Batch | null>(null);
   const notify = useToast();
   const patient = detail.data
     ? `Claim ${claimNumber(detail.data.claim.number)} · ${patientName(detail.data.claim)}`
@@ -1289,7 +1222,6 @@ export const ClaimPage = ({
     try {
       await action();
       reload();
-      pending.reload();
       notify({ title: done, description: patient });
       return true;
     } catch (err) {
@@ -1307,6 +1239,7 @@ export const ClaimPage = ({
       error={error}
       claim={detail.data.claim}
       files={detail.data.files}
+      payerFiles={detail.data.payerFiles}
       history={history}
       progress={detail.data.progress}
       issues={detail.data.issues}
@@ -1327,21 +1260,7 @@ export const ClaimPage = ({
       onRestart={async () => {
         await act(() => client.restartCycle(claimId), 'Payer cycle restarted');
       }}
-      submission={{
-        issues: pending.data
-          ? [...pending.data.issues, ...(pending.data.claim?.issues ?? [])]
-          : null,
-        made,
-        fileUrl: client.fileUrl,
-        encounterUrl: client.encounterUrl,
-        onCreateFile: async () => {
-          setMade(null);
-          await act(async () => setMade(await client.createBatch(claimId)), '837P file created');
-        },
-        onMarkSubmitted: async () => {
-          await act(() => client.markSubmitted(claimId), 'Marked submitted');
-        }
-      }}
+      submission={{ fileUrl: client.fileUrl, encounterUrl: client.encounterUrl }}
     />
   );
 };

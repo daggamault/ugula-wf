@@ -124,8 +124,6 @@ const STATEMENT_LIMIT = 3;
 
 export const PAYER_WAIT_MS = 30 * 86_400_000;
 
-export const SUBMIT_WAIT_MS = 3 * 86_400_000;
-
 export const STATEMENT_INTERVAL_MS = 30 * 86_400_000;
 
 export const MIN_WAIT_MS = 60_000;
@@ -133,8 +131,8 @@ export const MIN_WAIT_MS = 60_000;
 type CoverageStep = { coverage: LedgerCoverage; balanceCents: number };
 
 export type ClaimStep =
-  | ({ step: 'review' | 'submitDue' | 'reconcile' | 'followUp' } & CoverageStep)
-  | ({ step: 'submit' | 'await'; waitMs: number } & CoverageStep)
+  | ({ step: 'review' | 'submit' | 'reconcile' | 'followUp' } & CoverageStep)
+  | ({ step: 'await'; waitMs: number } & CoverageStep)
   | { step: 'reviewPatient' | 'confirmPayers' | 'overpaid'; balanceCents: number }
   | { step: 'statement'; statement: number; balanceCents: number }
   | { step: 'awaitPatient'; waitMs: number; balanceCents: number }
@@ -227,14 +225,12 @@ const waitFor = (since: number, intervalMs: number, now: Date) => {
 
 type CyclePolicy = {
   payerWaitMs: number;
-  submitWaitMs: number;
   statementLimit: number;
   statementIntervalMs: number;
 };
 
 export const DEFAULT_POLICY: CyclePolicy = {
   payerWaitMs: PAYER_WAIT_MS,
-  submitWaitMs: SUBMIT_WAIT_MS,
   statementLimit: STATEMENT_LIMIT,
   statementIntervalMs: STATEMENT_INTERVAL_MS
 };
@@ -247,11 +243,7 @@ const payerStep = (
 ): ClaimStep => {
   const { balanceCents, contacted, approvedAt } = p;
   if (contacted === null) {
-    if (approvedAt === null) return { step: 'review', coverage, balanceCents };
-    const waitMs = waitFor(approvedAt, policy.submitWaitMs, now);
-    return waitMs > 0
-      ? { step: 'submit', coverage, waitMs, balanceCents }
-      : { step: 'submitDue', coverage, balanceCents };
+    return { step: approvedAt === null ? 'review' : 'submit', coverage, balanceCents };
   }
   const waitMs = waitFor(contacted, policy.payerWaitMs, now);
   return waitMs > 0
@@ -286,7 +278,6 @@ const STAGES: Record<ClaimStep['step'], ClaimStatus | null> = {
   reviewPatient: 'needs_review',
   confirmPayers: 'needs_review',
   submit: 'ready',
-  submitDue: 'ready',
   reconcile: 'reconcile',
   overpaid: 'reconcile',
   await: 'submitted',

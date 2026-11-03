@@ -42,7 +42,7 @@ describe('Search', () => {
   it('searches on the server and renders the results with pagination', () => {
     const html = render('', [{ id: 'a' }]);
     assert.ok(html.includes('aria-label="Search Imports"'));
-    assert.ok(html.includes('placeholder="Search imports"'));
+    assert.ok(html.includes('placeholder="Search imports"') && html.includes('sr-only">Search<'));
     assert.ok(html.includes('<p>1 rows</p>'));
   });
 
