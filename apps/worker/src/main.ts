@@ -127,7 +127,6 @@ if (import.meta.main) {
     runner,
     store,
     concurrency: config.WORKFLOW_CONCURRENCY,
-    childConcurrency: config.WORKFLOW_CHILD_CONCURRENCY,
     gate: createLoadGate(createProcessSampler(), {
       eventLoop: config.WORKER_MAX_EVENT_LOOP_UTILIZATION,
       heapBytes: config.WORKER_MAX_HEAP_MB

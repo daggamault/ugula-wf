@@ -34,7 +34,6 @@ describe('registerWorkflowJobs', () => {
       runner: { process: async (job) => void processed.push(job) },
       store: { sweep: async () => ++swept, prune: async () => ++pruned } as unknown as RunStore,
       concurrency: 2,
-      childConcurrency: 4,
       gate: () => ({ open: true, reason: null }),
       report: () => undefined
     });
@@ -45,8 +44,8 @@ describe('registerWorkflowJobs', () => {
       `schedule:${SWEEP_QUEUE}:* * * * *`,
       `queue:${PRUNE_QUEUE}`,
       `schedule:${PRUNE_QUEUE}:17 * * * *`,
-      `work:${RUN_QUEUE}:1:4`,
-      `work:${RUN_QUEUE}:1:4`,
+      `work:${RUN_QUEUE}:1:2`,
+      `work:${RUN_QUEUE}:1:2`,
       `work:${SWEEP_QUEUE}:1:-`,
       `work:${PRUNE_QUEUE}:1:-`
     ]);

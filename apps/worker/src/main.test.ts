@@ -12,7 +12,6 @@ describe('worker createWorker', () => {
       DB_PASSWORD: 'password',
       DB_NAME: 'ugula',
       WORKFLOW_CONCURRENCY: 8,
-      WORKFLOW_CHILD_CONCURRENCY: 8,
       COMPLETIONS_CONCURRENCY: 2,
       WORKER_MAX_EVENT_LOOP_UTILIZATION: 0.9,
       REDIS_HOST: 'localhost',

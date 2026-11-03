@@ -21,7 +21,6 @@ const configSchema = v.object({
   ...s3EnvEntries,
   ...inferenceEnvEntries,
   WORKFLOW_CONCURRENCY: v.optional(posInt, '8'),
-  WORKFLOW_CHILD_CONCURRENCY: v.optional(posInt, '8'),
   COMPLETIONS_CONCURRENCY: v.optional(posInt, '2'),
   WORKER_MAX_EVENT_LOOP_UTILIZATION: v.optional(utilization, '0.9'),
   WORKER_MAX_HEAP_MB: v.optional(posInt),

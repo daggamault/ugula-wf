@@ -15,7 +15,6 @@ type WorkflowJobDeps = {
   runner: Runner;
   store: RunStore;
   concurrency: number;
-  childConcurrency: number;
   gate: LoadGate;
   report: (message: string) => void;
 };
@@ -25,7 +24,6 @@ export const registerWorkflowJobs = async ({
   runner,
   store,
   concurrency,
-  childConcurrency,
   gate,
   report
 }: WorkflowJobDeps) => {
@@ -48,7 +46,7 @@ export const registerWorkflowJobs = async ({
     concurrency,
     gate,
     report,
-    groupConcurrency: childConcurrency,
+    groupConcurrency: concurrency,
     handler: async (jobs) => {
       for (const job of jobs) await runner.process(job.data);
     }

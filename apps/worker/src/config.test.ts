@@ -26,7 +26,6 @@ describe('worker parseConfig', () => {
     const config = parseConfig(rawEnv);
     assert.equal(config.DB_PORT, 5432);
     assert.equal(config.WORKFLOW_CONCURRENCY, 8);
-    assert.equal(config.WORKFLOW_CHILD_CONCURRENCY, 8);
     assert.equal(parseConfig({ ...rawEnv, WORKFLOW_CONCURRENCY: '2' }).WORKFLOW_CONCURRENCY, 2);
     assert.throws(() => parseConfig({}));
     assert.throws(() => parseConfig({ ...rawEnv, WORKFLOW_CONCURRENCY: '0' }));
