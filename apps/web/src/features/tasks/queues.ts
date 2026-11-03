@@ -49,7 +49,6 @@ export const humanize = (key: string) => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
-/** A key as a Title Cased label ("sendToCollections" → "Send to Collections"). */
 export const titleCase = (key: string) => titleCaseWords(humanize(key).split(' '));
 
 export const queueInfo = (queue: string): QueueInfo =>

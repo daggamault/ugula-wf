@@ -56,9 +56,7 @@ export const ClaimsTable = ({
   claims: readonly ClaimSummary[];
   sorting?: TableSorting;
   showPatient?: boolean;
-  /** The list as it is now, so an opened claim can return to it. */
   back?: string;
-  /** Searched names to highlight. */
   names?: { firstName: string; lastName: string };
 }) => (
   <Table

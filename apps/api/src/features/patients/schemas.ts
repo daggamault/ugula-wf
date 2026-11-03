@@ -7,7 +7,6 @@ export const PATIENT_SORTS = ['name', 'born', 'lastService', 'balance', 'city', 
 
 export type PatientSort = (typeof PATIENT_SORTS)[number];
 
-/** Patients are only ever searched for: there are thousands, and listing them all helps no one. */
 export const listPatientsQuery = v.pipe(
   v.object({
     lastName: name,

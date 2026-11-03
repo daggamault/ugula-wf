@@ -72,7 +72,6 @@ const CLAIM_ORDER = {
   pcr: sql.ref('c.pcr_number'),
   total: sql.ref('c.total_cents'),
   balance: sql.ref('b.balance_cents'),
-  // Statuses sort in the order a claim moves through them, not alphabetically.
   status: sql`array_position(array[${sql.join(CLAIM_STATUSES.map((s) => sql.lit(s)))}]::text[], c.status::text)`
 };
 

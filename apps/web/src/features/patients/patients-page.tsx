@@ -49,9 +49,7 @@ export const PatientsTable = ({
 }: {
   patients: readonly PatientSummary[];
   sorting?: TableSorting;
-  /** The list as it is now, so an opened patient can return to it. */
   back?: string;
-  /** The searched names to highlight. */
   search?: PatientSearch;
 }) => (
   <Table
@@ -129,7 +127,6 @@ const PatientResults = ({ client, search }: PatientsPageProps) => {
   );
 };
 
-/** Patients are found by searching; there is no list of every patient. */
 export const PatientsPage = ({ client, search }: PatientsPageProps) => (
   <Page
     title="Patients"

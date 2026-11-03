@@ -16,14 +16,12 @@ const feeRows = (db: Db, tenantId: string) =>
     .where('f.tenant_id', '=', tenantId);
 
 const FEE_ORDER = {
-  // The default schedule sorts before every payer, then each payer's codes in order.
   payer: sql`(p.name is not null, lower(p.name), f.code)`,
   code: sql.ref('f.code'),
   amount: sql.ref('f.amount_cents'),
   updated: sql.ref('f.updated_at')
 };
 
-/** Fees whose HCPCS code or payer contains `q` ("default" finds the default schedule). */
 export const searchFees = (db: Db, tenantId: string, f: FeeFilters) => {
   let q = feeRows(db, tenantId);
   if (f.q) {

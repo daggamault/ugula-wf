@@ -52,7 +52,6 @@ const MINOR_WORDS = new Set([
   'from'
 ]);
 
-/** Joins words as a Title Cased label: minor words stay lower case after the first, acronyms upper. */
 export const titleCaseWords = (
   words: readonly string[],
   acronyms: ReadonlySet<string> = new Set()

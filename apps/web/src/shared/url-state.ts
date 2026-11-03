@@ -22,7 +22,6 @@ export type TableState<K extends string> = {
   pageHref: (page: number) => string;
   sizeHref: (size: number) => string;
   apiQuery: string;
-  /** This list as it is now (filters, sort and page), for links back to it. */
   href: string;
 };
 
@@ -137,18 +136,15 @@ export const pageOf = <T, K extends string>(
 export const SEARCH_MAX = 80;
 
 export type SearchState<K extends string> = TableState<K> & {
-  /** The trimmed free text being searched for; blank shows everything. */
   q: string;
 };
 
-/** A searchable list: the `q` text plus its table state, all kept in the URL. */
 export const searchStateOf = <K extends string>(
   path: string,
   query: URLSearchParams,
   spec: TableSpec<K>
 ): SearchState<K> => {
   const table = tableStateOf(path, query, spec);
-  // The API accepts up to 80 characters of search text.
   const q = (query.get('q') ?? '').trim().slice(0, SEARCH_MAX);
   return {
     ...table,
@@ -162,16 +158,11 @@ export const useSearchState = <K extends string>(path: string, spec: TableSpec<K
 
 const BACK = 'back';
 
-/** Links `to` a page that should return to `back` (a list with its search and page) when done. */
 export const withBack = (to: string, back: string) =>
   to.startsWith(`${back}/`)
     ? to
     : `${to}${to.includes('?') ? '&' : '?'}${BACK}=${encodeURIComponent(back)}`;
 
-/**
- * Where a page opened with `withBack` returns to: the list it came from, or the list itself.
- * `also` names other pages (by path prefix, like `/patients/`) that may open it.
- */
 export const backOf = (query: URLSearchParams, list: string, ...also: readonly string[]) => {
   const back = query.get(BACK);
   const isAllowed =
@@ -181,7 +172,6 @@ export const backOf = (query: URLSearchParams, list: string, ...also: readonly s
   return isAllowed ? back : list;
 };
 
-/** Any search state, whatever its sort keys, as tables and pagers read it. */
 export type SearchView = {
   q: string;
   href: string;

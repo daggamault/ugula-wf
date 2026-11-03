@@ -19,9 +19,7 @@ const dangerHoverClasses =
   'not-aria-disabled:hover:bg-danger/10 not-aria-disabled:hover:text-danger';
 
 type IconButtonProps = Omit<ComponentProps<'button'>, 'children' | 'className' | 'disabled'> & {
-  /** The accessible name; say which item it acts on ("Delete Medicare"). */
   label: string;
-  /** A shorter visible tooltip ("Delete") when the row already says which item; defaults to the label. */
   tooltip?: string;
   icon: LucideIcon;
   intent?: Extract<Intent, 'danger'>;
@@ -67,9 +65,7 @@ export const IconButton = ({
 type IconLinkProps = {
   to: string;
   rel?: string;
-  /** The accessible name; say which item it opens ("Edit Medicare"). */
   label: string;
-  /** A shorter visible tooltip ("Edit"); defaults to the label. */
   tooltip?: string;
   icon: LucideIcon;
   tooltipSide?: TooltipSide;
@@ -95,7 +91,6 @@ export const IconLink = ({
   </Tooltip>
 );
 
-/** The standard row actions. Tooltips stay short; accessible names say which row (WCAG 2.4.6). */
 export const EditLink = ({ to, name }: { to: string; name: string }) => (
   <IconLink to={to} label={`Edit ${name}`} tooltip="Edit" icon={PencilIcon} />
 );
@@ -114,7 +109,6 @@ export const DeleteButton = ({ name, onClick }: { name: string; onClick: () => v
   />
 );
 
-/** Row actions, right-aligned with even spacing. */
 export const RowActions = ({ children }: { children: ReactNode }) => (
   <span className="flex items-center justify-end gap-1">{children}</span>
 );

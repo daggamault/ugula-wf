@@ -1,6 +1,5 @@
 export type TextPart = { text: string; isMatch: boolean };
 
-/** Splits `text` around every case-insensitive occurrence of `query`. */
 export const highlightParts = (text: string, query: string): TextPart[] => {
   const needle = query.trim().toLowerCase();
   if (!needle || !text) return text ? [{ text, isMatch: false }] : [];
@@ -18,10 +17,6 @@ export const highlightParts = (text: string, query: string): TextPart[] => {
 
 const lower = (s: string) => s.toLowerCase();
 
-/**
- * Splits off the start of `text` that `query` matches as a prefix once both are reduced by
- * `keyOf`, for searches that match from the start of a normalized value (like name keys).
- */
 export const prefixParts = (
   text: string,
   query: string,
@@ -37,7 +32,6 @@ export const prefixParts = (
     at += char.length;
     if (built.length < want.length) continue;
     if (!built.startsWith(want)) return whole;
-    // Keep combining marks with the letter they belong to.
     for (const mark of text.slice(at)) {
       if (!/\p{M}/u.test(mark)) break;
       at += mark.length;
@@ -54,12 +48,10 @@ export const prefixParts = (
 export type HighlightProps = {
   text: string;
   query: string;
-  /** Mark only a match at the start, compared by `keyOf`, to mirror a prefix search. */
   isPrefix?: boolean;
   keyOf?: (s: string) => string;
 };
 
-/** Shows `text` with the parts matching a search marked. */
 export const Highlight = ({ text, query, isPrefix = false, keyOf }: HighlightProps) => (
   <>
     {(isPrefix ? prefixParts(text, query, keyOf) : highlightParts(text, query)).map((p, i) =>

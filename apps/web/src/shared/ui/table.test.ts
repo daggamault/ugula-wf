@@ -75,7 +75,6 @@ describe('Table alignment', () => {
       sortHref: (k) => `/runs?sort=${k}`,
       sortTo: (k, d) => `/runs?sort=${k}&dir=${d}`
     });
-    // Only phone cards right-align a value against its label.
     assert.doesNotMatch(html, /(?<![\w:-])(md:)?text-right/);
     assert.ok(!html.includes('flex-row-reverse'));
     assert.ok(html.includes('tabular-nums'));

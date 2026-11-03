@@ -47,7 +47,6 @@ const PageLink = ({
     <IconButton label={label} icon={icon} disabledReason={disabledReason} />
   );
 
-/** Range, rows per page, and first, previous, next and last page buttons for a paged list. */
 export const Pagination = ({ label, total, state }: PaginationProps) => {
   const { page, pageSize, pageHref, sizeHref } = state;
   const sizeId = useId();

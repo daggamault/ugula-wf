@@ -127,15 +127,12 @@ export const ConfirmDialog = ({
 
 type DeleteDialogProps = {
   open: boolean;
-  /** What is being deleted, as the user knows it ("Medicare", "Default A0427"). */
   name: string;
   onConfirm: () => void;
   onClose: () => void;
-  /** What else changes once it is gone. */
   children?: ReactNode;
 };
 
-/** The one way to confirm a delete: danger themed, names what goes, and says it is permanent. */
 export const DeleteDialog = ({ open, name, onConfirm, onClose, children }: DeleteDialogProps) => (
   <ConfirmDialog
     open={open}

@@ -110,7 +110,7 @@ This repository enforces strict, consistent standards across all applications, l
 - **Uncompromising Consistency:** File names (`kebab-case`), type names (`PascalCase`), variable/function names (`camelCase`), and architectural patterns must remain uniform across the entire repository.
 - **Continuous Verification:** Always run linting (`pnpm check`) and typechecking (`pnpm typecheck`) after making changes.
 - **Conventional Commits:** Format all git commit messages according to the Conventional Commits specification (`<type>[optional scope]: <description>`, e.g., `feat(web): ...`, `fix(api): ...`, `refactor: ...`, `chore: ...`) using concise, imperative, lowercase subjects.
-- **Trunk-Based Git:** Commit directly to `main`. Do not create feature, fix or release branches; keep each commit small, green (`pnpm check`, `pnpm typecheck`, `pnpm test`) and self-contained instead.
+- **Trunk-Based Git:** Always commit directly to `main` and push to `origin main`. Never create feature, fix or release branches, worktrees or pull requests; keep each commit small, green (`pnpm check`, `pnpm typecheck`, `pnpm test`) and self-contained instead.
 
 ---
 
@@ -205,8 +205,15 @@ This repository enforces strict, consistent standards across all applications, l
 - **One Way to Do Each Thing:**
   - Every table row's actions are icon buttons in a last, hidden-label `Actions` column: open (chevron right), edit (pencil), delete (trash, danger), run (play). The row's name is plain text, never a link. Each action's label names the row.
   - Hover feedback belongs only on things that react to a click. Rows, cards and panels that do nothing stay still.
-  - Page and form actions are text buttons with a leading icon (`Save`, `Add fee`, `Run report`). Icon-only buttons are reserved for table row actions and chrome that every app shares: close, dismiss, back, menu, theme, sign out and reorder arrows. Each one carries a tooltip.
+  - Page and form actions are text buttons with a leading icon (`Save`, `Add Fee`, `Run Report`). Icon-only buttons are reserved for table row actions and chrome that every app shares: close, dismiss, back, menu, theme, sign out and reorder arrows. Each one carries a tooltip.
   - Every page and section has a title and one plain sentence saying what it is for. Field hints are the only other help text.
+  - Every label is Title Case: field labels, placeholders, buttons, tabs, badges, options, column headers and tooltips. Descriptions, hints, toasts and other sentences stay sentence case.
+  - Row actions come from `RowActions` with `OpenLink`, `EditLink` and `DeleteButton`: the tooltip is the short verb ("Edit") and the accessible name names the row ("Edit Medicare").
+  - Setup screens never edit in a dialog. Adding and editing open their own route (`/payers/new`, `/payers/:id`) so all state lives in the URL, and the page returns to the list it came from (`withBack`, `backOf`) with its search, sort and page.
+  - Deletes always confirm with `DeleteDialog` (danger themed, names what goes, says it cannot be undone); other destructive confirmations use `ConfirmDialog` with `intent="danger"`. Dialogs are only for confirming and choosing, never for editing.
+  - Searchable lists use `Search` with `useSearchState`: one `q` box, filtered and paged in SQL, matches marked with `Highlight`. Multi-field filters use `SearchForm`. Lists that would be thousands of rows nobody browses (patients) show nothing until searched.
+  - Every list pages with `Pagination` (first, previous, next and last icon buttons and rows per page). Every column is left-aligned, and every column that has a sensible order is sortable.
+  - Forms and search forms lay fields on `FieldGrid` (one, two, then four columns, widened with `span`) and put their buttons on their own row in `FormActions` below the fields.
 - **Mobile-First & Fully Responsive:** Design layouts starting from mobile viewports upward, ensuring fluid usability across mobile, tablet, and desktop breakpoints.
 - **WCAG Compliance:** Meet WCAG AA accessibility standards at minimum—maintain proper color contrast ratios, visible focus rings, keyboard navigability, and accurate ARIA attributes where native semantics do not suffice.
 

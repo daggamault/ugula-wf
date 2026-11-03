@@ -13,7 +13,6 @@ export type PatientPageProps = {
   live: Live;
   patientId: string;
   claims: ReactNode;
-  /** The patient list to return to, with its search and page. */
   back?: string;
 };
 

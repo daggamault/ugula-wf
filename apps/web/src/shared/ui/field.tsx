@@ -78,7 +78,6 @@ export const FieldGroups = ({ children }: { children: ReactNode }) => (
   <div className="flex flex-col gap-8">{children}</div>
 );
 
-/** A form's buttons: stacked full width on phones (primary on top), right-aligned from `sm` up. */
 export const FormActions = ({ children }: { children: ReactNode }) => (
   <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end [&>*]:w-full sm:[&>*]:w-auto">
     {children}

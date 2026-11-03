@@ -123,9 +123,7 @@ export const FeeForm = ({
 
 export type FeePageProps = {
   client: FeesClient;
-  /** The fee to edit, or null to add one. */
   feeId: string | null;
-  /** The fee list to return to, with its search and page. */
   back: string;
 };
 

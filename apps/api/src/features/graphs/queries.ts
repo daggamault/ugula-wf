@@ -62,7 +62,6 @@ const toSummary = (r: GraphRow): GraphSummary => ({
   updatedAt: r.updated_at
 });
 
-/** Tenant and system graphs whose name or key contains `q`, of the kind shown, a page at a time. */
 export const searchGraphs = async (
   db: Db,
   tenantId: string,
@@ -70,7 +69,6 @@ export const searchGraphs = async (
 ): Promise<Page<GraphSummary>> => {
   let q = db
     .selectFrom('graphs as g')
-    // One lookup per graph for both its latest published and draft versions.
     .leftJoinLateral(
       (eb) =>
         eb

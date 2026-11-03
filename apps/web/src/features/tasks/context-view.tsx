@@ -14,7 +14,6 @@ export type ContextViewProps = {
 
 const ACRONYMS = new Set(['id', 'pcr', 'iv', 'hcpcs', 'icd', 'npi', 'url']);
 
-/** `loadedMiles` → "Loaded Miles", `pcrNumber` → "PCR Number", `balanceCents` → "Balance". */
 export const labelOf = (key: string) => {
   const words = key
     .replace(/Cents$/, '')

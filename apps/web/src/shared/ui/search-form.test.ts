@@ -51,7 +51,6 @@ describe('SearchForm', () => {
     assert.ok(html.includes('aria-expanded="true"') && html.includes('>Filters'));
     assert.ok(html.includes('type="date"') && html.includes('type="search"'));
     assert.ok(html.includes('@lg:grid-cols-2 @3xl:grid-cols-4') && !html.includes('w-44'));
-    // Buttons get their own row under the fields, the way edit forms do.
     assert.match(html, /<\/div><\/div><div class="flex flex-col-reverse[^"]*sm:justify-end/);
     assert.match(html, /<option value="open" selected="">Open<\/option>/);
     const inline = renderToStaticMarkup(

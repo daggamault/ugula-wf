@@ -43,7 +43,6 @@ export const GRAPH_TABLE = {
   sort: 'name'
 } as const;
 
-/** The API query for one page of graphs: the search, its table state and the kind shown. */
 export const graphsQueryOf = (apiQuery: string, show: GraphFilter) => `${apiQuery}&show=${show}`;
 
 export const WorkflowsTable = ({

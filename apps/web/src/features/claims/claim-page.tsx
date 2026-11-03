@@ -62,7 +62,6 @@ export type ClaimPageProps = {
   live: Live;
   claimId: string;
   tab?: ClaimTab;
-  /** The claim list to return to, with its filters and page. */
   back?: string;
 };
 
@@ -764,7 +763,6 @@ const CycleAlert = ({
 
 export type ClaimTab = 'overview' | 'data' | 'history';
 
-/** Claims open from the claims list or from a patient's page. */
 export const backLabelOf = (back: string) =>
   back.startsWith('/patients/') ? 'Back to Patient' : 'Back to Claims';
 

@@ -16,7 +16,6 @@ import { kindLabel, WORKFLOWS_PATH } from './workflows-page.tsx';
 export type NewWorkflowPageProps = {
   client: WorkflowsClient;
   kind: GraphKind;
-  /** The workflow list to return to, with its search and page. */
   back: string;
 };
 
@@ -34,7 +33,6 @@ export const NewWorkflowForm = ({
   onKindChange,
   onCreate
 }: {
-  /** The kind lives in the URL, so the page title and the form always agree. */
   kind: GraphKind;
   back: string;
   onKindChange: (kind: GraphKind) => void;

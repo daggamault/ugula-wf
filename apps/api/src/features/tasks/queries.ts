@@ -58,7 +58,6 @@ const TASK_ORDER = {
   task: sql`lower(coalesce(subject, title))`,
   queue: sql.ref('queue'),
   priority: sql.ref('priority'),
-  // Unassigned tasks sort last either way.
   assignee: sql`(select lower(u.email) from users u where u.id = tasks.assignee_id)`
 };
 

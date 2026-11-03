@@ -140,9 +140,7 @@ export const LearnedNames = ({
 
 export type PayerPageProps = {
   client: SettingsClient;
-  /** The payer to edit, or null to add one. */
   payerId: string | null;
-  /** The payer list to return to, with its search and page. */
   back: string;
 };
 

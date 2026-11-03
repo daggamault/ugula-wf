@@ -48,7 +48,6 @@ export const ImportHistory = ({
 }: {
   imports: readonly ImportSummary[];
   sorting?: TableSorting;
-  /** The list as it is now, so an opened import can return to it. */
   back?: string;
 }) => (
   <Table

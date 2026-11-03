@@ -32,7 +32,6 @@ const PAYER_ORDER = {
   filing: sql.ref('p.claim_filing')
 };
 
-/** Payers whose name, clearinghouse payer ID or a learned name contains `q`, one page at a time. */
 export const searchPayers = (db: Db, tenantId: string, f: PayerFilters) => {
   let q = payerRows(db, tenantId);
   if (f.q) {
@@ -57,7 +56,6 @@ export const searchPayers = (db: Db, tenantId: string, f: PayerFilters) => {
 export const findPayer = (db: Db, tenantId: string, id: string) =>
   payerRows(db, tenantId).where('p.id', '=', id).executeTakeFirst();
 
-/** Every payer's name, for choosing one elsewhere (fees). */
 export const listPayerNames = (db: Db, tenantId: string) =>
   db
     .selectFrom('payers')

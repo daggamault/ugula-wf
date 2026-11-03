@@ -22,7 +22,6 @@ export type StartRunPageProps = {
   graphId: string;
 };
 
-/** Scalars take one column of the form grid; files take two, and lists, objects and JSON a row. */
 export const inputSpanClasses = (type: ValueType) =>
   typeof type === 'string' && type !== 'any'
     ? ''

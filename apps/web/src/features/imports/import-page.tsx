@@ -20,7 +20,6 @@ export type ImportPageProps = {
   client: ImportsClient;
   live: Live;
   importId: string;
-  /** The import list to return to, with its sort and page. */
   back?: string;
 };
 
