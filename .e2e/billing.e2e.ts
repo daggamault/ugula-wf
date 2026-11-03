@@ -8,6 +8,7 @@ import {
   go,
   heading,
   importEncounter,
+  latest837,
   type Session,
   SUITE_MS,
   section,
@@ -33,20 +34,6 @@ let claimId = '';
 const openClaim = async () => {
   await go(s.page, `/claims/${claimId}`);
   await heading(s.page, /^Claim #\d+$/).waitFor();
-};
-
-const latestBatch = async () => {
-  await openClaim();
-  const links = s.page.getByRole('link', { name: /^837P file #\d+$/i });
-  await links.first().waitFor();
-  const names = await links.allTextContents();
-  const control = Math.max(...names.map((n) => Number(n.match(/#(\d+)/)?.[1])));
-  const href = await s.page
-    .getByRole('link', { name: `837P file #${control}` })
-    .first()
-    .getAttribute('href');
-  const file = await (await s.page.request.get(new URL(href ?? '', s.apiUrl).href)).text();
-  return { control, file };
 };
 
 describe('a biller takes an encounter from import to payment', { timeout: SUITE_MS }, () => {
@@ -134,7 +121,7 @@ describe('a biller takes an encounter from import to payment', { timeout: SUITE_
   it('files the claim as an 837P carrying the documentation as soon as it is approved', async () => {
     await completeTask(s, claimId, 'Review claim', { outcome: 'Approve' });
     const filed = await claimStatusIs(s, claimId, 'submitted');
-    const { control, file } = await latestBatch();
+    const { control, file } = await latest837(s, claimId);
     assert.match(file, new RegExp(`CLM\\*${filed.claim.number}\\*`));
     assert.match(file, /CR1\*{3,4}A\*DH\*/);
     assert.match(file, /CRC\*07\*Y\*04\*06\*09/);
@@ -165,7 +152,7 @@ describe('a biller takes an encounter from import to payment', { timeout: SUITE_
       }
     });
     const { claim: resubmitted } = await claimStatusIs(s, claimId, 'submitted');
-    const { file } = await latestBatch();
+    const { file } = await latest837(s, claimId);
     assert.match(file, new RegExp(`CLM\\*${resubmitted.number}\\*`));
   });
 

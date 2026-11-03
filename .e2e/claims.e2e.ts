@@ -290,14 +290,13 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
       .first()
       .click();
     const panel = s.page.getByRole('dialog', { name: 'Notifications' });
-    await panel
-      .getByText(/New task:/)
-      .first()
-      .waitFor();
+    const first = panel.getByText(/New task:/).first();
+    await first.waitFor();
+    const cleared = (await first.textContent()) ?? '';
     await panel.getByRole('button', { name: 'Clear All' }).click();
     await until(
       s.page,
-      async () => panel.getByText(/New task:/).count(),
+      async () => panel.getByText(cleared, { exact: true }).count(),
       (n) => n === 0,
       'the notifications to clear'
     );

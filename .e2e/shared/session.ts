@@ -67,11 +67,8 @@ export const until = async <T>(
 export const uniqueId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-export const encounter = (pcr: string) =>
-  withPcr(
-    readFileSync(new URL('../fixtures/new-patient-medicare.xml', import.meta.url), 'utf8'),
-    pcr
-  );
+export const encounter = (pcr: string, fixture = 'new-patient-medicare') =>
+  withPcr(readFileSync(new URL(`../fixtures/${fixture}.xml`, import.meta.url), 'utf8'), pcr);
 
 export type ClaimState = {
   claim: {
@@ -79,20 +76,39 @@ export type ClaimState = {
     number: number;
     status: string;
     total_cents: number;
-    coverages: { id: string; payer: string }[];
+    trip_type: string | null;
+    level: string | null;
+    emergency: boolean | null;
+    loaded_miles: string | number | null;
+    origin_code: string | null;
+    destination_code: string | null;
+    signature: string;
+    first_name: string | null;
+    last_name: string | null;
+    birth_date: string | null;
+    coverages: { id: string; payer: string; relationship: string }[];
+    lines: { code: string; units: string | number }[];
     tasks: { id: string; title: string }[];
   };
   issues: { level: string; field: string; message: string }[];
 };
 
-export const importEncounter = async (s: Session, pcr: string) => {
+export const uploadEncounters = async (s: Session, pcr: string, fixture?: string) => {
   await go(s.page, '/imports');
   await s.page.locator('input[type="file"][accept*="xml"]').setInputFiles({
     name: `${pcr}.xml`,
     mimeType: 'text/xml',
-    buffer: Buffer.from(encounter(pcr))
+    buffer: Buffer.from(encounter(pcr, fixture))
   });
   await toasts(s.page).getByText(`${pcr}.xml received`).waitFor();
+};
+
+export const importEncounter = async (s: Session, pcr: string, fixture?: string) => {
+  await uploadEncounters(s, pcr, fixture);
+  return draftClaim(s, pcr);
+};
+
+export const draftClaim = async (s: Session, pcr: string) => {
   const found = await until(
     s.page,
     () =>
@@ -180,21 +196,67 @@ export type TaskPlan = Readonly<
   Record<string, { outcome?: string; check?: () => Promise<void> } | undefined>
 >;
 
-export const workTasksUntil = async (
+export const workTasks = async (
   s: Session,
   claimId: string,
-  status: string,
+  done: (c: ClaimState) => boolean,
+  what: string,
   plan: TaskPlan = {}
 ) => {
-  for (let i = 0; i < 30; i++) {
+  let deadline = Date.now() + FLOW_MS;
+  while (Date.now() < deadline) {
     const current = await claimState(s, claimId);
-    if (current.claim.status === status) return current;
+    if (done(current)) return current;
     const [task] = current.claim.tasks;
     if (!task) {
       await s.page.waitForTimeout(POLL_MS);
       continue;
     }
     await completeTask(s, claimId, task.title, plan[task.title] ?? {});
+    deadline = Date.now() + FLOW_MS;
   }
-  assert.fail(`the claim never reached ${status}`);
+  assert.fail(`the claim never reached ${what}`);
+};
+
+export const workTasksUntil = (s: Session, claimId: string, status: string, plan: TaskPlan = {}) =>
+  workTasks(s, claimId, (c) => c.claim.status === status, status, plan);
+
+export const workTasksUntilTask = (
+  s: Session,
+  claimId: string,
+  title: string,
+  plan: TaskPlan = {}
+) =>
+  workTasks(
+    s,
+    claimId,
+    (c) => c.claim.tasks.some((t) => t.title === title),
+    `a "${title}" task`,
+    plan
+  );
+
+export const latest837 = async (s: Session, claimId: string) => {
+  await go(s.page, `/claims/${claimId}`);
+  await heading(s.page, /^Claim #\d+$/).waitFor();
+  const links = s.page.getByRole('link', { name: /^837P file #\d+$/i });
+  await links.first().waitFor();
+  const names = await links.allTextContents();
+  const control = Math.max(...names.map((n) => Number(n.match(/#(\d+)/)?.[1])));
+  const href = await s.page
+    .getByRole('link', { name: `837P File #${control}`, exact: true })
+    .first()
+    .getAttribute('href');
+  const file = await (await s.page.request.get(new URL(href ?? '', s.apiUrl).href)).text();
+  return { control, file };
+};
+
+export const fileClaim = async (s: Session, claimId: string) => {
+  await completeTask(s, claimId, 'Review claim', { outcome: 'Approve' });
+  await until(
+    s.page,
+    () => claimState(s, claimId),
+    (c) => !['needs_review', 'ready'].includes(c.claim.status),
+    'the claim to be filed'
+  );
+  return latest837(s, claimId);
 };

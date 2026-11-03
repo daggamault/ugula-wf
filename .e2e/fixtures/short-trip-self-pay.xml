@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<EMSDataSet xmlns="http://www.nemsis.org" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Header>
+    <DemographicGroup>
+      <dAgency.01>S42-12345</dAgency.01>
+      <dAgency.02>12345</dAgency.02>
+      <dAgency.04>42</dAgency.04>
+    </DemographicGroup>
+    <PatientCareReport UUID="b2d4f6a8-0011-4c1d-8e2f-000000000001">
+      <eRecord>
+        <eRecord.01>E2E-PCR</eRecord.01>
+        <eRecord.SoftwareApplicationGroup>
+          <eRecord.02>Ugula Test Fixtures</eRecord.02>
+          <eRecord.03>Ugula ePCR</eRecord.03>
+          <eRecord.04>2.0</eRecord.04>
+        </eRecord.SoftwareApplicationGroup>
+      </eRecord>
+      <eResponse>
+        <eResponse.AgencyGroup>
+          <eResponse.01>12345</eResponse.01>
+          <eResponse.02>Ugula Test EMS</eResponse.02>
+        </eResponse.AgencyGroup>
+        <eResponse.03>26-0915013</eResponse.03>
+        <eResponse.04>26-0915013-R</eResponse.04>
+        <eResponse.ServiceGroup>
+          <eResponse.05>2205001</eResponse.05>
+        </eResponse.ServiceGroup>
+        <eResponse.07>2207015</eResponse.07>
+        <eResponse.13>1422</eResponse.13>
+        <eResponse.14>Medic 14-2</eResponse.14>
+        <eResponse.19>2201.0</eResponse.19>
+        <eResponse.20>2203.6</eResponse.20>
+        <eResponse.21>2203.91</eResponse.21>
+        <eResponse.22>2204.4</eResponse.22>
+        <eResponse.23>2223003</eResponse.23>
+      </eResponse>
+      <eCrew>
+        <eCrew.CrewGroup>
+          <eCrew.01>E-2210</eCrew.01>
+          <eCrew.02>9925007</eCrew.02>
+        </eCrew.CrewGroup>
+        <eCrew.CrewGroup>
+          <eCrew.01>E-2318</eCrew.01>
+          <eCrew.02>9925005</eCrew.02>
+        </eCrew.CrewGroup>
+      </eCrew>
+      <eTimes>
+        <eTimes.01>2026-09-15T19:02:00-04:00</eTimes.01>
+        <eTimes.03>2026-09-15T19:02:00-04:00</eTimes.03>
+        <eTimes.05>2026-09-15T19:03:00-04:00</eTimes.05>
+        <eTimes.06>2026-09-15T19:08:00-04:00</eTimes.06>
+        <eTimes.07>2026-09-15T19:09:00-04:00</eTimes.07>
+        <eTimes.09>2026-09-15T19:20:00-04:00</eTimes.09>
+        <eTimes.11>2026-09-15T19:23:00-04:00</eTimes.11>
+        <eTimes.12>2026-09-15T19:30:00-04:00</eTimes.12>
+        <eTimes.13>2026-09-15T19:41:00-04:00</eTimes.13>
+      </eTimes>
+      <ePatient>
+        <ePatient.PatientNameGroup>
+          <ePatient.02>Nakamura</ePatient.02>
+          <ePatient.03>Kenji</ePatient.03>
+        </ePatient.PatientNameGroup>
+        <ePatient.05>4 Front St</ePatient.05>
+        <ePatient.06>1215162</ePatient.06>
+        <ePatient.08>42</ePatient.08>
+        <ePatient.09>17101</ePatient.09>
+        <ePatient.10>US</ePatient.10>
+        <ePatient.17>1995-05-27</ePatient.17>
+        <ePatient.25>9919003</ePatient.25>
+      </ePatient>
+      <ePayment>
+        <ePayment.01>2601011</ePayment.01>
+        <ePayment.40>2640001</ePayment.40>
+        <ePayment.44>A</ePayment.44>
+        <ePayment.47>06</ePayment.47>
+        <ePayment.50>2650009</ePayment.50>
+      </ePayment>
+      <eScene>
+        <eScene.09>Y92.010</eScene.09>
+        <eScene.15>4 Front St</eScene.15>
+        <eScene.17>1215162</eScene.17>
+        <eScene.18>42</eScene.18>
+        <eScene.19>17101</eScene.19>
+      </eScene>
+      <eSituation>
+        <eSituation.02>9922005</eSituation.02>
+        <eSituation.04>Laceration to forearm</eSituation.04>
+        <eSituation.09>S51.812A</eSituation.09>
+        <eSituation.11>S51.812A</eSituation.11>
+      </eSituation>
+      <eVitals>
+        <eVitals.VitalGroup>
+          <eVitals.01>2026-09-15T19:12:00-04:00</eVitals.01>
+          <eVitals.BloodPressureGroup>
+            <eVitals.06>132</eVitals.06>
+            <eVitals.07>84</eVitals.07>
+          </eVitals.BloodPressureGroup>
+          <eVitals.HeartRateGroup>
+            <eVitals.10>88</eVitals.10>
+          </eVitals.HeartRateGroup>
+          <eVitals.12>97</eVitals.12>
+          <eVitals.14>16</eVitals.14>
+          <eVitals.GlasgowScoreGroup>
+            <eVitals.23>15</eVitals.23>
+          </eVitals.GlasgowScoreGroup>
+        </eVitals.VitalGroup>
+      </eVitals>
+      <eNarrative>
+        <eNarrative.01>Dispatched emergent for a laceration with heavy bleeding, downgraded to non-emergent en route when the caller reported bleeding controlled. 3 cm laceration to the left forearm, bleeding controlled with direct pressure and dressing. BLS care. Transported to Harrisburg ED two blocks away. Patient states he has no insurance.</eNarrative.01>
+      </eNarrative>
+      <eDisposition>
+        <eDisposition.DestinationGroup>
+          <eDisposition.01>UPMC Harrisburg</eDisposition.01>
+          <eDisposition.02>HOS21004</eDisposition.02>
+          <eDisposition.03>111 S Front St</eDisposition.03>
+          <eDisposition.04>1215162</eDisposition.04>
+          <eDisposition.05>42</eDisposition.05>
+          <eDisposition.07>17101</eDisposition.07>
+        </eDisposition.DestinationGroup>
+        <eDisposition.11>1</eDisposition.11>
+        <eDisposition.IncidentDispositionGroup>
+          <eDisposition.27>4227001</eDisposition.27>
+          <eDisposition.28>4228001</eDisposition.28>
+          <eDisposition.29>4229001</eDisposition.29>
+          <eDisposition.30>4230001</eDisposition.30>
+        </eDisposition.IncidentDispositionGroup>
+        <eDisposition.TransportDispositionGroup>
+          <eDisposition.16>4216005</eDisposition.16>
+          <eDisposition.17>4217005</eDisposition.17>
+          <eDisposition.20>4220001</eDisposition.20>
+          <eDisposition.21>4221003</eDisposition.21>
+        </eDisposition.TransportDispositionGroup>
+        <eDisposition.32>4232001</eDisposition.32>
+      </eDisposition>
+      <eOther>
+        <eOther.SignatureGroup>
+          <eOther.12>4512017</eOther.12>
+          <eOther.13>4513001</eOther.13>
+          <eOther.13>4513005</eOther.13>
+          <eOther.14>4514017</eOther.14>
+          <eOther.15>4515033</eOther.15>
+          <eOther.19>2026-09-15T19:18:00-04:00</eOther.19>
+          <eOther.20>Nakamura</eOther.20>
+          <eOther.21>Aiko</eOther.21>
+        </eOther.SignatureGroup>
+      </eOther>
+    </PatientCareReport>
+  </Header>
+</EMSDataSet>

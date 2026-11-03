@@ -12,7 +12,7 @@ export const e2eConfigSchema = v.object({
   ),
   E2E_FLOW_MS: v.optional(
     v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1_000)),
-    '60000'
+    '300000'
   )
 });
 

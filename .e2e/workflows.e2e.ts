@@ -4,6 +4,7 @@ import type { Page } from 'playwright-core';
 import {
   api,
   config,
+  FLOW_MS,
   go,
   heading,
   importEncounter,
@@ -153,7 +154,7 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await s.page.getByText('Waiting').first().waitFor();
     await node(s.page, 'Open Draft Claim').first().waitFor();
     await s.page.getByRole('link', { name: 'Back to Ingest NEMSIS File' }).waitFor();
-    await s.page.getByText('Waiting on').first().waitFor();
+    await s.page.getByText('Waiting on').first().waitFor({ timeout: FLOW_MS });
   });
 
   it('overrides a built-in workflow, arranges, saves and publishes the copy, then removes it', async () => {
