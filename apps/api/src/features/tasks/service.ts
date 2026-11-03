@@ -18,9 +18,7 @@ import {
   completeTask,
   findTask,
   findTaskSource,
-  listQueues,
-  listTasks,
-  type TaskFilters
+  listQueues
 } from './queries.ts';
 
 export type TaskServiceDeps = {
@@ -79,20 +77,26 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
     queues: async (tenantId: string, userId: string) =>
       ok({ queues: await listQueues(db, tenantId, userId) }),
 
-    list: async (tenantId: string, filters: TaskFilters) =>
-      ok(await listTasks(db, tenantId, filters)),
-
     find: async (tenantId: string, id: string) => {
       const task = await findTask(db, tenantId, id);
       if (!task) return notFound;
       const source = await findTaskSource(db, task.run_id);
+      const claim =
+        source?.claim_id && source.claim_number !== null && source.claim_status
+          ? {
+              id: source.claim_id,
+              number: source.claim_number,
+              status: source.claim_status,
+              patient: source.last_name ? `${source.last_name}, ${source.first_name}` : null
+            }
+          : null;
       return ok({
         task: {
           ...task,
           source: {
             reportId: source?.report_id ?? null,
             pcrNumber: source?.pcr_number ?? null,
-            claimId: source?.claim_id ?? null
+            claim
           }
         }
       });

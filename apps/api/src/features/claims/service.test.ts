@@ -116,6 +116,9 @@ describe('claim service', () => {
     await service.recordResponse('t', 'u1', 'c1', response({ paidCents: 90_000 }));
     const update = queries.find((q) => q.sql.startsWith('update "tasks"'));
     assert.ok(update?.sql.includes("context ->> 'coverageId'"));
+    assert.ok(
+      update?.sql.includes('"run_id" in (select "run_id" from "claim_runs" where "claim_id" = $')
+    );
     assert.ok(update?.parameters.includes(MEDICARE));
     assert.ok(update?.sql.includes('and true)'));
     assert.deepEqual(jobs[0], {
@@ -159,6 +162,7 @@ describe('claim service', () => {
       value: { runId: 'cycle-2' }
     });
     assert.ok(stopped.queries.some((q) => q.sql.startsWith('update "claims" set "cycle_run_id"')));
+    assert.ok(stopped.queries.some((q) => q.sql.startsWith('insert into "claim_runs"')));
     assert.deepEqual(stopped.jobs, [{ data: { runId: 'cycle-2', command: { type: 'advance' } } }]);
     const restart = (row: Record<string, unknown> | null, published = true) =>
       setup({ row, published }).service.restartCycle('t', 'c1');

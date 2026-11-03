@@ -11,6 +11,10 @@ export const announceClaims = (store: ClaimStore, announce: Announce): ClaimStor
       await changed(runId, opened.id);
       return opened;
     },
+    assignPatient: async (runId, claimId, patientId) => {
+      await store.assignPatient(runId, claimId, patientId);
+      await changed(runId, claimId);
+    },
     saveClaim: async (runId, claimId, claim) => {
       await store.saveClaim(runId, claimId, claim);
       await changed(runId, claimId);

@@ -18,9 +18,16 @@ import {
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { classNamesOf } from '../../shared/class-names.ts';
-import { formatCents, formatDate, formatDateTime, parseDollars } from '../../shared/format.ts';
+import {
+  formatAgo,
+  formatCents,
+  formatDate,
+  formatDateTime,
+  parseDollars
+} from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { Link } from '../../shared/router.tsx';
+import { queueInfo } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink, buttonClasses } from '../../shared/ui/button.tsx';
@@ -44,7 +51,7 @@ import { pageOf, useTableState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { ClaimDataForm } from './claim-data-form.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
-import { claimNumber } from './claims-page.tsx';
+import { assigneeOf, claimNumber } from './claims-page.tsx';
 import type {
   Batch,
   BillingDataInput,
@@ -54,12 +61,14 @@ import type {
   ClaimLine,
   ClaimProgress,
   ClaimResponseInput,
-  ClaimsClient
+  ClaimsClient,
+  ClaimTask
 } from './client.ts';
 
 export type ClaimPageProps = {
   client: ClaimsClient;
   live: Live;
+  me: string;
   claimId: string;
   tab?: ClaimTab;
   back?: string;
@@ -546,20 +555,12 @@ export const describeProgress = (progress: ClaimProgress | null) => {
   }
 };
 
-const TASK_QUEUES: Partial<Record<ClaimProgress['step'], string>> = {
-  review: 'billing-review',
-  reconcile: 'billing-reconcile',
-  followUp: 'billing-followup',
-  collections: 'billing-collections'
-};
-
 export type CycleState = {
   intent: Intent;
   text: string;
   stopped: boolean;
   restartable: boolean;
   submittable: boolean;
-  tasks: string | null;
 };
 
 export const describeCycle = (
@@ -567,15 +568,14 @@ export const describeCycle = (
   progress: ClaimProgress | null
 ): CycleState | null => {
   if (isClosedStatus(claim.status)) return null;
-  const base = { stopped: true, submittable: false, tasks: null };
+  const base = { stopped: true, submittable: false };
   if (claim.status === 'draft') {
     return {
       ...base,
       stopped: false,
       restartable: false,
       intent: 'info',
-      text: 'Draft. Its PCR is still being worked: patient, payer and service review happen in Tasks.',
-      tasks: ''
+      text: 'Draft. Its PCR is still being worked into a claim.'
     };
   }
   switch (claim.cycle_status) {
@@ -599,8 +599,7 @@ export const describeCycle = (
         ...base,
         intent: 'danger',
         text: 'The payer cycle hit an error. A stuck run task is waiting for a decision.',
-        restartable: false,
-        tasks: 'exceptions'
+        restartable: false
       };
     default: {
       const text = describeProgress(progress);
@@ -611,8 +610,7 @@ export const describeCycle = (
         text,
         stopped: false,
         restartable: false,
-        submittable: step === 'submit',
-        tasks: (step && TASK_QUEUES[step]) ?? null
+        submittable: step === 'submit'
       };
     }
   }
@@ -711,15 +709,6 @@ const CycleAlert = ({
           Fix Claim Data
         </ButtonLink>
       ) : null}
-      {status.tasks !== null ? (
-        <ButtonLink
-          to={status.tasks ? `/tasks?type=${encodeURIComponent(status.tasks)}` : '/tasks'}
-          variant="outline"
-        >
-          <ListTodoIcon aria-hidden="true" className="size-4" />
-          Open Tasks
-        </ButtonLink>
-      ) : null}
       {runLink ? (
         <ButtonLink to={`/runs/${runLink}`} variant="outline">
           <ExternalLinkIcon aria-hidden="true" className="size-4" />
@@ -761,7 +750,40 @@ const CycleAlert = ({
   );
 };
 
+export const OpenTasks = ({
+  tasks,
+  back,
+  me
+}: {
+  tasks: readonly ClaimTask[];
+  back: string;
+  me: string;
+}) =>
+  tasks.map((t) => (
+    <Alert
+      key={t.id}
+      intent={t.kind === 'fault' ? 'danger' : 'warning'}
+      action={
+        <ButtonLink to={withBack(`/tasks/${t.id}`, back)}>
+          <ListTodoIcon aria-hidden="true" className="size-4" />
+          Work Task
+        </ButtonLink>
+      }
+    >
+      <span className="flex flex-col gap-0.5">
+        <span className="font-semibold">{t.title}</span>
+        <span className="text-xs">
+          {queueInfo(t.queue).label} · {assigneeOf(t.assignee_email, me)} · opened{' '}
+          {formatAgo(t.created_at)}
+        </span>
+      </span>
+    </Alert>
+  ));
+
 export type ClaimTab = 'overview' | 'data' | 'history';
+
+export const patientName = (c: Pick<ClaimDetail, 'first_name' | 'last_name'>) =>
+  c.last_name ? `${c.last_name}, ${c.first_name ?? ''}` : 'Patient not matched yet';
 
 export const backLabelOf = (back: string) =>
   back.startsWith('/patients/') ? 'Back to Patient' : 'Back to Claims';
@@ -784,7 +806,8 @@ export const ClaimView = ({
   submission,
   tab = 'overview',
   back = '/claims',
-  error = ''
+  error = '',
+  me = ''
 }: {
   claim: ClaimDetail;
   events: readonly ClaimEvent[];
@@ -798,6 +821,7 @@ export const ClaimView = ({
   tab?: ClaimTab;
   back?: string;
   error?: string;
+  me?: string;
 }) => {
   const locked = lockedReason(claim.status);
   const path = `/claims/${claim.id}`;
@@ -811,21 +835,24 @@ export const ClaimView = ({
       description={
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <ClaimStatusBadge status={claim.status} />
-          <span className="text-surface-fg font-medium">
-            {claim.last_name}, {claim.first_name}
-          </span>
-          <span>Patient {claimNumber(claim.patient_number)}</span>
+          <span className="text-surface-fg font-medium">{patientName(claim)}</span>
+          {claim.patient_number !== null ? (
+            <span>Patient {claimNumber(claim.patient_number)}</span>
+          ) : null}
           <span>{claim.pcr_number ? `Encounter ${claim.pcr_number}` : 'No encounter number'}</span>
         </span>
       }
       actions={
-        <ButtonLink to={`/patients/${claim.patient_id}`} variant="outline">
-          <UserIcon aria-hidden="true" className="size-4" />
-          Patient
-        </ButtonLink>
+        claim.patient_id ? (
+          <ButtonLink to={`/patients/${claim.patient_id}`} variant="outline">
+            <UserIcon aria-hidden="true" className="size-4" />
+            Patient
+          </ButtonLink>
+        ) : null
       }
     >
       {error ? <Alert>{error}</Alert> : null}
+      <OpenTasks tasks={claim.tasks} back={withBack(path, back)} me={me} />
       <CycleAlert
         claim={claim}
         progress={progress}
@@ -917,6 +944,7 @@ export const ClaimView = ({
 export const ClaimPage = ({
   client,
   live,
+  me,
   claimId,
   tab = 'overview',
   back = '/claims'
@@ -927,7 +955,8 @@ export const ClaimPage = ({
     live,
     (e) =>
       (e.kind === 'claim' && (e.id === claimId || e.id === null)) ||
-      (e.kind === 'run' && e.id === cycleRun),
+      (e.kind === 'run' && e.id === cycleRun) ||
+      e.kind === 'task',
     detail.reload
   );
   const submittable = detail.data?.progress?.step === 'submit';
@@ -938,7 +967,7 @@ export const ClaimPage = ({
   const [made, setMade] = useState<Batch | null>(null);
   const notify = useToast();
   const patient = detail.data
-    ? `Claim ${claimNumber(detail.data.claim.number)} · ${detail.data.claim.last_name}, ${detail.data.claim.first_name}`
+    ? `Claim ${claimNumber(detail.data.claim.number)} · ${patientName(detail.data.claim)}`
     : '';
   const act = async (action: () => Promise<unknown>, done: string) => {
     setError('');
@@ -959,6 +988,7 @@ export const ClaimPage = ({
     <ClaimView
       tab={tab}
       back={back}
+      me={me}
       error={error}
       claim={detail.data.claim}
       events={detail.data.events}

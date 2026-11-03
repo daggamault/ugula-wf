@@ -63,7 +63,7 @@ describe('import records', () => {
       q?.sql.includes('inner join "import_reports" as "ir" on "ir"."id" = "c"."import_report_id"')
     );
     assert.ok(
-      q?.sql.endsWith('order by lower(i.file_name) asc nulls last, "i"."id" asc limit $7 offset $8')
+      q?.sql.endsWith('order by lower(i.file_name) asc nulls last, "i"."id" asc limit $8 offset $9')
     );
     assert.deepEqual(q?.parameters, [
       'completed',
@@ -71,6 +71,7 @@ describe('import records', () => {
       'faulted',
       'failed',
       'running',
+      'void',
       't-1',
       10,
       0
@@ -84,7 +85,11 @@ describe('import records', () => {
     assert.ok(queries[0]?.sql.includes('"i"."id" = $'));
     const reports = queries[1]?.sql ?? '';
     assert.ok(reports.includes(`r.inputs -> 'report' ->> 'key' = ir.report ->> 'key'`));
-    assert.ok(reports.includes('left join "claims" as "c" on "c"."import_report_id" = "ir"."id"'));
+    assert.ok(
+      reports.includes(
+        'left join "claim_runs" as "cr" on "cr"."run_id" = "r"."id" left join "claims" as "c" on "c"."id" = "cr"."claim_id"'
+      )
+    );
     assert.ok(reports.includes('"t"."status" = $'));
     assert.ok(reports.includes('order by "ir"."position"'));
     await db.destroy();

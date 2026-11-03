@@ -94,7 +94,6 @@ const insertDraft = async (db: Db, runId: string, sourceKey: string, d: DraftCla
       .insertInto('claims')
       .values({
         tenant_id: runTenant(db, runId),
-        patient_id: d.patientId,
         import_report_id: d.reportKey === null ? null : sourceReport(db, runId, d.reportKey),
         pcr_number: d.pcrNumber,
         source_key: sourceKey
@@ -103,6 +102,24 @@ const insertDraft = async (db: Db, runId: string, sourceKey: string, d: DraftCla
       .returning('id')
       .executeTakeFirst()
   )?.id ?? null;
+
+const linkRun = (db: Db, runId: string, claimId: string) =>
+  db
+    .insertInto('claim_runs')
+    .columns(['run_id', 'claim_id'])
+    .expression(
+      db
+        .selectFrom('workflow_runs')
+        .select(['id', sql<string>`${claimId}::uuid`.as('claim_id')])
+        .where('id', '=', runId)
+        .where(
+          'tenant_id',
+          '=',
+          db.selectFrom('claims').select('tenant_id').where('id', '=', claimId)
+        )
+    )
+    .onConflict((oc) => oc.column('run_id').doNothing())
+    .execute();
 
 const replaceClaimRows = async (db: Db, runId: string, claimId: string, c: NewClaim) => {
   await db.deleteFrom('claim_lines').where('claim_id', '=', claimId).execute();
@@ -257,20 +274,13 @@ export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
       .execute();
   },
 
-  findByPcr: async (runId, pcrNumber) =>
-    (
-      await db
-        .selectFrom('claims')
-        .select('id')
-        .where('tenant_id', '=', runTenant(db, runId))
-        .where('pcr_number', '=', pcrNumber)
-        .executeTakeFirst()
-    )?.id ?? null,
-
   openDraft: (runId, sourceKey, d) =>
     db.transaction().execute(async (tx) => {
       const id = await insertDraft(tx, runId, sourceKey, d);
-      if (id) return { id, duplicate: false };
+      if (id) {
+        await linkRun(tx, runId, id);
+        return { id, duplicate: false };
+      }
       const existing = await tx
         .selectFrom('claims')
         .select(['id', 'source_key'])
@@ -283,8 +293,26 @@ export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
         )
         .orderBy(sql`source_key = ${sourceKey}`, 'desc')
         .executeTakeFirstOrThrow();
+      await linkRun(tx, runId, existing.id);
       return { id: existing.id, duplicate: existing.source_key !== sourceKey };
     }),
+
+  assignPatient: async (runId, claimId, patientId) => {
+    const claim = await claimOrFail(db, runId, claimId);
+    await db
+      .updateTable('claims')
+      .set({
+        patient_id: db
+          .selectFrom('patients')
+          .select('id')
+          .where('id', '=', isUuid(patientId) ? patientId : null)
+          .where('tenant_id', '=', runTenant(db, runId)),
+        updated_at: sql`now()`
+      })
+      .where('id', '=', claim.id)
+      .where('status', '=', 'draft')
+      .execute();
+  },
 
   saveClaim: async (runId, claimId, c) => {
     const claim = await claimOrFail(db, runId, claimId);
@@ -333,6 +361,7 @@ export const createClaimStore = (db: Db, blobs: Blobs): ClaimStore => ({
 
   attachCycle: async (runId, claimId, cycleRunId) => {
     const claim = await claimOrFail(db, runId, claimId);
+    await linkRun(db, cycleRunId, claim.id);
     await db
       .updateTable('claims')
       .set({

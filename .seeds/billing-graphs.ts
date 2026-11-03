@@ -1143,22 +1143,19 @@ const REVIEW_FIELDS = [
 ];
 
 const encounterToClaim = (): GraphDef => {
-  const g = graph(
-    {
-      execIn: ['exec'],
-      execOut: [],
-      inputs: [p('report', BLOB)],
-      outputs: [
-        p('tripType', 'string', true),
-        p('patient', PATIENT, true),
-        p('claimId', 'string', true)
-      ]
-    },
-    [{ name: 'revising', type: 'string', default: '' }]
-  );
+  const g = graph({
+    execIn: ['exec'],
+    execOut: [],
+    inputs: [p('report', BLOB)],
+    outputs: [
+      p('tripType', 'string', true),
+      p('patient', PATIENT, true),
+      p('claimId', 'string', true)
+    ]
+  });
   g.add('read', 'nemsis.read-report');
   g.add('pcr', 'nemsis.pcr.break');
-  g.add('billed', 'billing.find-claim', { label: 'Already Billed?' });
+  g.add('open', 'billing.open-claim', { label: 'Open Draft Claim' });
   g.add('classify', 'billing.classify-trip', { label: 'Classify Trip' });
   g.add('tripSwitch', 'std.flow.switch', {
     label: 'Claim Needed?',
@@ -1176,13 +1173,17 @@ const encounterToClaim = (): GraphDef => {
       outcomes: ['skip', 'claim']
     }
   });
+  g.add('skip', 'billing.close-claim', {
+    label: 'Void Skipped Claim',
+    values: { status: 'void' }
+  });
   g.ret('skipped');
   g.add('narrative', 'billing.read-narrative', {
     retry: { max: 3, delayMs: 30_000, factor: 4 }
   });
   g.add('demographics', 'billing.demographics-from-pcr', { label: 'Patient Demographics' });
   g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
-  g.add('open', 'billing.open-claim', { label: 'Open Draft Claim' });
+  g.add('assign', 'billing.assign-patient', { label: 'Assign Patient to Claim' });
   g.add('reported', 'billing.coverages-from-pcr', { label: 'Reported Coverages' });
   g.add('patientName', 'std.text.template', {
     label: 'Patient Name',
@@ -1250,15 +1251,6 @@ const encounterToClaim = (): GraphDef => {
   });
   g.add('attach', 'billing.attach-cycle', { label: 'Link Claim to Its Cycle' });
   g.ret('approved');
-  g.add('reviseBilled', 'std.var.set', {
-    label: 'Revise Billed Claim',
-    config: { name: 'revising' }
-  });
-  g.add('reviseDuplicate', 'std.var.set', {
-    label: 'Revise Concurrent Claim',
-    config: { name: 'revising' }
-  });
-  g.add('revising', 'std.var.get', { config: { name: 'revising' } });
   g.add('noteRevision', 'billing.note-revision');
   g.add(
     'revisionContext',
@@ -1283,8 +1275,13 @@ const encounterToClaim = (): GraphDef => {
   g.wire('entry.exec', 'read.exec');
   g.wire('entry.report', 'read.report', 'noteRevision.report', 'claim.report');
   g.wire('read.pcr', 'pcr.pcr');
-  g.wire('read.then', 'billed.exec');
-  g.wire('pcr.pcrNumber', 'billed.pcrNumber');
+  g.wire('read.then', 'open.exec');
+  g.wire('pcr.pcrNumber', 'open.pcrNumber');
+  g.wire('entry.report', 'open.report');
+  g.wire('open.claimId', 'skip.claimId', 'skipped.claimId', 'assign.claimId', 'save.claimId');
+  g.wire('open.claimId', 'void.claimId', 'voided.claimId', 'cycleInputs.claimId', 'attach.claimId');
+  g.wire('open.claimId', 'approved.claimId', 'noteRevision.claimId', 'revisionContext.claimId');
+  g.wire('open.claimId', 'revised.claimId');
 
   const pcr = 'read.pcr';
   g.wire(pcr, 'classify.pcr', 'tripContext.pcr', 'subject.pcr', 'demographics.pcr', 'reported.pcr');
@@ -1305,10 +1302,11 @@ const encounterToClaim = (): GraphDef => {
   g.wire('subject.result', 'noClaim.subject', 'review.subject', 'held.subject');
   g.wire('subject.result', 'fix.subject', 'revision.subject');
 
-  g.wire('billed.new', 'tripSwitch.exec');
+  g.wire('open.opened', 'tripSwitch.exec');
   g.wire('tripSwitch.noClaim', 'noClaim.exec');
   g.wire('tripContext.result', 'noClaim.context');
-  g.wire('noClaim.skip', 'skipped.exec');
+  g.wire('noClaim.skip', 'skip.exec');
+  g.wire('skip.then', 'skipped.exec');
   g.wire('noClaim.claim', 'narrative.exec');
   g.wire('tripSwitch.default', 'narrative.exec');
 
@@ -1316,14 +1314,9 @@ const encounterToClaim = (): GraphDef => {
   g.wire('narrative.then', 'patient.exec');
   g.wire('demographics.demographics', 'patient.demographics', 'patientName.demographics');
   g.wire('pcr.pcrNumber', 'patient.pcrNumber', 'payers.pcrNumber');
-  g.wire('patient.then', 'open.exec');
-  g.wire('patient.patient', 'open.patient');
-  g.wire('pcr.pcrNumber', 'open.pcrNumber');
-  g.wire('entry.report', 'open.report');
-  g.wire('open.opened', 'payers.exec');
-  g.wire('open.duplicate', 'reviseDuplicate.exec');
-  g.wire('open.claimId', 'save.claimId', 'void.claimId', 'voided.claimId', 'reviseDuplicate.value');
-  g.wire('open.claimId', 'cycleInputs.claimId', 'attach.claimId', 'approved.claimId');
+  g.wire('patient.then', 'assign.exec');
+  g.wire('patient.patient', 'assign.patient');
+  g.wire('assign.then', 'payers.exec');
   g.wire('reported.coverages', 'payers.coverages');
   g.wire('patientName.text', 'payers.patientName');
   g.wire('payers.then', 'suggest.exec');
@@ -1373,11 +1366,7 @@ const encounterToClaim = (): GraphDef => {
   g.wire('attach.then', 'approved.exec');
   g.wire('patient.patient', 'approved.patient');
 
-  g.wire('billed.found', 'reviseBilled.exec');
-  g.wire('billed.claimId', 'reviseBilled.value');
-  g.wire('reviseBilled.then', 'noteRevision.exec');
-  g.wire('reviseDuplicate.then', 'noteRevision.exec');
-  g.wire('revising.value', 'noteRevision.claimId', 'revisionContext.claimId', 'revised.claimId');
+  g.wire('open.duplicate', 'noteRevision.exec');
   g.wire('noteRevision.then', 'revision.exec');
   g.wire('revisionContext.result', 'revision.context');
   g.wire('revision.acknowledge', 'revised.exec');
@@ -1687,7 +1676,7 @@ export const billingGraphs: SeedGraph[] = [
   workflow(
     'billing.encounter-to-claim',
     'Encounter to Claim',
-    'Turns one patient care report into a claim: classifies the trip, resolves the patient and payers, suggests the service for the trip type, has a biller confirm it, maps and prices the claim, saves it and starts its payer cycle. Reports already billed become revisions of their claim.',
+    'Turns one patient care report into a claim: opens a draft claim, classifies the trip, resolves the patient and payers, suggests the service for the trip type, has a biller confirm it, maps and prices the claim, saves it and starts its payer cycle. Reports already billed become revisions of their claim.',
     encounterToClaim()
   ),
   workflow(

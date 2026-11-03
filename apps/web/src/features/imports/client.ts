@@ -1,3 +1,4 @@
+import type { ClaimStatus } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
 import type { RunStatus } from '../../shared/ui/run-status-badge.tsx';
 import type { Page } from '../../shared/url-state.ts';
@@ -31,6 +32,7 @@ export type ImportReport = {
   pcr_number: string | null;
   run_status: RunStatus | null;
   claim_id: string | null;
+  claim_status: ClaimStatus | null;
   total_cents: number | null;
   first_name: string | null;
   last_name: string | null;

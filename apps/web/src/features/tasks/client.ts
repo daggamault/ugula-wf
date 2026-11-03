@@ -1,7 +1,7 @@
+import type { ClaimStatus } from '@ugula/billing';
 import type { FieldSpec, Json } from '@ugula/graph';
 import type { ReportDictionary } from '@ugula/nemsis';
 import type { Api } from '../../shared/api.ts';
-import type { Page } from '../../shared/url-state.ts';
 
 export type TaskStatus = 'open' | 'completed' | 'cancelled';
 
@@ -12,10 +12,6 @@ export type QueueSummary = {
   mine: number;
   oldest: string;
 };
-
-export type Assignee = 'anyone' | 'me' | 'unassigned';
-
-export type TaskFilter = { queue: string | null; assignee: Assignee };
 
 export type TaskSummary = {
   id: string;
@@ -29,7 +25,6 @@ export type TaskSummary = {
   assignee_id: string | null;
   created_at: string;
   completed_at: string | null;
-  assignee_email?: string | null;
 };
 
 export type TaskDetail = TaskSummary & {
@@ -42,10 +37,17 @@ export type TaskDetail = TaskSummary & {
   source: TaskSource;
 };
 
+export type TaskClaim = {
+  id: string;
+  number: number;
+  status: ClaimStatus;
+  patient: string | null;
+};
+
 export type TaskSource = {
   reportId: string | null;
   pcrNumber: string | null;
-  claimId: string | null;
+  claim: TaskClaim | null;
 };
 
 export type SourceReport = {
@@ -64,10 +66,6 @@ export type SourceReport = {
 
 export const createTasksClient = (api: Api) => ({
   queues: async () => (await api.get<{ queues: QueueSummary[] }>('/api/tasks/queues')).queues,
-  list: ({ queue, assignee }: TaskFilter, page: string) =>
-    api.get<Page<TaskSummary>>(
-      `/api/tasks?${queue ? `queue=${encodeURIComponent(queue)}&` : ''}${assignee === 'anyone' ? '' : `assignee=${assignee}&`}${page}`
-    ),
   find: async (id: string) => (await api.get<{ task: TaskDetail }>(`/api/tasks/${id}`)).task,
   next: async (queue: string | null) =>
     (await api.post<{ task: TaskDetail | null }>('/api/tasks/next', { queue })).task,

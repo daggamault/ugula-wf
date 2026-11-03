@@ -138,6 +138,8 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
         if (!claim) return notFound;
         const blocked = unchangeable(claim.status);
         if (blocked) return blocked;
+        const patientId = claim.patient_id;
+        if (!patientId) return draft;
         const owned = new Set((await listCoverages(tx, id)).map((c) => c.id));
         if (data.coverages.some((c) => !owned.has(c.id))) {
           return fail('invalid', 'A coverage is not on this claim');
@@ -145,7 +147,7 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
         await saveBillingData(
           tx,
           tenantId,
-          { id, patientId: claim.patient_id },
+          { id, patientId },
           {
             patient: data.patient,
             coverages: data.coverages,

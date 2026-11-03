@@ -11,24 +11,32 @@ export type { ClaimStatus };
 
 export type ClaimFilter = ClaimStatus | 'open' | 'all';
 
+export type Assignee = 'anyone' | 'me' | 'unassigned';
+
 export type ClaimSearch = {
   status: ClaimFilter;
   firstName: string;
   lastName: string;
   birthDate: string;
   number: string;
+  task: string;
+  assignee: Assignee;
 };
 
 export type ClaimQuery = Partial<ClaimSearch> & { patientId?: string };
 
 const FILTERS: readonly ClaimFilter[] = ['open', 'all', ...CLAIM_STATUSES];
 
+const ASSIGNEES: readonly Assignee[] = ['anyone', 'me', 'unassigned'];
+
 export const claimSearchOf = (query: URLSearchParams): ClaimSearch => ({
   status: FILTERS.find((f) => f === query.get('status')) ?? 'open',
   firstName: query.get('firstName') ?? '',
   lastName: query.get('lastName') ?? '',
   birthDate: query.get('birthDate') ?? '',
-  number: query.get('number') ?? ''
+  number: query.get('number') ?? '',
+  task: query.get('task') ?? '',
+  assignee: ASSIGNEES.find((a) => a === query.get('assignee')) ?? 'anyone'
 });
 
 export type PendingClaim = {
@@ -59,7 +67,9 @@ export type Batch = {
 
 export const listQuery = (query: ClaimQuery, page: string) => {
   const filters = new URLSearchParams(
-    Object.entries(query).flatMap(([k, v]) => (v?.trim() ? [[k, v.trim()]] : []))
+    Object.entries(query).flatMap(([k, v]) =>
+      v?.trim() && !(k === 'assignee' && v === 'anyone') ? [[k, v.trim()]] : []
+    )
   );
   return `${filters}&${page}`;
 };
@@ -72,10 +82,12 @@ export type CycleStatus =
   | 'failed'
   | 'cancelled';
 
+export type TaskKind = 'task' | 'fault';
+
 export type ClaimSummary = {
   id: string;
   number: number;
-  patient_number: number;
+  patient_number: number | null;
   pcr_number: string | null;
   level: string | null;
   total_cents: number;
@@ -84,8 +96,25 @@ export type ClaimSummary = {
   payers: string[];
   status: ClaimStatus;
   created_at: string;
-  first_name: string;
-  last_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  task_id: string | null;
+  task_title: string | null;
+  task_queue: string | null;
+  task_kind: TaskKind | null;
+  task_assignee_email: string | null;
+  open_tasks: number;
+};
+
+export type ClaimTask = {
+  id: string;
+  title: string;
+  subject: string | null;
+  queue: string;
+  kind: TaskKind;
+  assignee_id: string | null;
+  assignee_email: string | null;
+  created_at: string;
 };
 
 export type ClaimLine = {
@@ -110,8 +139,8 @@ export type ClaimDetail = ClaimSummary & {
   emergency: boolean | null;
   import_report_id: string | null;
   loaded_miles: string | null;
-  birth_date: string;
-  patient_id: string;
+  birth_date: string | null;
+  patient_id: string | null;
   cycle_run_id: string | null;
   cycle_status: CycleStatus | null;
   origin_code: string | null;
@@ -133,6 +162,7 @@ export type ClaimDetail = ClaimSummary & {
   coverages: ClaimCoverage[];
   lines: ClaimLine[];
   diagnoses: string[];
+  tasks: ClaimTask[];
 };
 
 export type AddressInput = {

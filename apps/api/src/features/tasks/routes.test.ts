@@ -17,7 +17,6 @@ const record =
 
 const service = {
   queues: record({ queues: [] }),
-  list: record({ tasks: [] }),
   find: record({ task: { id: ID } }),
   next: record({ task: null }),
   claim: record({ status: 'claimed' }),
@@ -28,25 +27,10 @@ const service = {
 const request = withSession(createTaskRoutes(service));
 
 describe('task routes', () => {
-  it('list my tasks in a queue', async () => {
-    await request('/?assignee=me&queue=billing');
-    assert.deepEqual(calls.at(-1), [
-      't-1',
-      {
-        queue: 'billing',
-        assignee: { id: 'u-1' },
-        status: 'open',
-        page: 1,
-        pageSize: 25,
-        sort: 'waiting',
-        dir: 'desc'
-      }
-    ]);
+  it('summarize queues for the session user', async () => {
     assert.equal((await request('/queues')).status, 200);
     assert.deepEqual(calls.at(-1), ['t-1', 'u-1']);
-    await request('/?assignee=unassigned');
-    const [, filters] = calls.at(-1) ?? [];
-    assert.deepEqual((filters as { assignee: unknown }).assignee, { id: null });
+    assert.equal((await request('/')).status, 404);
   });
 
   it('hand out work and claim tasks as the session user', async () => {

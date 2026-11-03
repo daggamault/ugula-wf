@@ -27,23 +27,24 @@ export type ReportOutcome = StatusBadgeStyle & { link: { name: string; to: strin
 
 const pcrOf = (r: ImportReport) => r.pcr_number ?? `PCR #${r.position + 1}`;
 
+const claimLink = (r: ImportReport) =>
+  r.claim_id ? { name: `claim for ${pcrOf(r)}`, to: `/claims/${r.claim_id}` } : null;
+
 export const reportOutcome = (r: ImportReport): ReportOutcome => {
   if (r.task_id) {
     return {
       intent: r.task_kind === 'fault' ? 'danger' : 'warning',
       label: r.task_kind === 'fault' ? 'Stuck' : 'Waiting',
-      link: {
+      link: claimLink(r) ?? {
         name: `task ${r.task_subject ?? r.task_title ?? pcrOf(r)}`,
         to: `/tasks/${r.task_id}`
       }
     };
   }
   if (r.claim_id) {
-    return {
-      intent: 'success',
-      label: 'Claim Opened',
-      link: { name: `claim for ${pcrOf(r)}`, to: `/claims/${r.claim_id}` }
-    };
+    return r.claim_status === 'void'
+      ? { label: 'Void', link: claimLink(r) }
+      : { intent: 'success', label: 'Claim Opened', link: claimLink(r) };
   }
   switch (r.run_status) {
     case 'completed':

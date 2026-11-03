@@ -145,7 +145,6 @@ const SPRINGFIELD: Record<string, string> = { '2395220': 'Springfield' };
 
 const pcrWorld = (
   opts: {
-    billed?: string;
     duplicate?: boolean;
     known?: Patient[];
     report?: Json;
@@ -154,6 +153,7 @@ const pcrWorld = (
 ) => {
   const report = { bucket: 'ugula', key: 'imports/t/f.xml.reports/00000.json' };
   const drafts: DraftClaim[] = [];
+  const assigned: string[] = [];
   const saved: NewClaim[] = [];
   const closed: string[] = [];
   const revisions: [string, BlobRef][] = [];
@@ -192,10 +192,12 @@ const pcrWorld = (
     }
   };
   const claims = only<ClaimStore>({
-    findByPcr: async () => opts.billed ?? null,
     openDraft: async (_, __, draft) => {
       drafts.push(draft);
       return { id: 'c1', duplicate: opts.duplicate === true };
+    },
+    assignPatient: async (_, __, patientId) => {
+      assigned.push(patientId);
     },
     saveClaim: async (_, __, claim) => {
       saved.push(claim);
@@ -268,6 +270,7 @@ const pcrWorld = (
     data,
     report,
     drafts,
+    assigned,
     saved,
     closed,
     revisions,
@@ -308,6 +311,8 @@ describe('billing graphs', () => {
   it('turns a new PCR into a claim: payers learned, narrative considered, held, released and billed', async () => {
     const world = pcrWorld();
     const payer = await world.waitFor('task', 'Match payer');
+    assert.deepEqual(world.drafts, [{ pcrNumber: 'PCR-1', reportKey: world.report.key }]);
+    assert.deepEqual(world.assigned, ['p-new']);
     assert.equal(world.data('queue'), 'billing-payers');
     assert.equal(world.data('subject'), 'PCR-1 · Acme Health');
     assert.deepEqual(world.data('context'), {
@@ -364,9 +369,6 @@ describe('billing graphs', () => {
     world.answer(review, 'approve', { level: 'ALS1', loadedMiles: 4.3 });
 
     const start = await world.waitFor('start');
-    assert.deepEqual(world.drafts, [
-      { patientId: 'p-new', pcrNumber: 'PCR-1', reportKey: world.report.key }
-    ]);
     assert.deepEqual(world.priced, ['p-blue']);
     const [claim] = world.saved;
     assert.equal(claim?.level, 'ALS1');
@@ -411,7 +413,7 @@ describe('billing graphs', () => {
   });
 
   it('treats an already billed PCR as a revision of its claim, never a second claim', async () => {
-    const world = pcrWorld({ billed: 'c1' });
+    const world = pcrWorld({ duplicate: true });
     const revision = await world.waitFor('task', 'Review updated PCR');
     assert.deepEqual(world.revisions, [['c1', world.report]]);
     assert.equal(world.data('context.claimId'), 'c1');
@@ -419,17 +421,9 @@ describe('billing graphs', () => {
     world.answer(revision, 'acknowledge');
     const outputs = await world.finish(world.state);
     assert.deepEqual(
-      [outputs.claimId, world.drafts.length, world.saved.length, world.priced.length],
+      [outputs.claimId, world.assigned.length, world.saved.length, world.priced.length],
       ['c1', 0, 0, 0]
     );
-  });
-
-  it('turns a claim another run opened for the same PCR into a revision', async () => {
-    const world = pcrWorld({ duplicate: true });
-    world.answer(await world.waitFor('task', 'Review updated PCR'), 'acknowledge');
-    assert.deepEqual(world.revisions, [['c1', world.report]]);
-    assert.deepEqual([world.saved.length, world.priced.length], [0, 0]);
-    assert.equal((await world.finish(world.state)).claimId, 'c1');
   });
 
   it('asks a biller to confirm a likely patient, showing the report as cleaned and coded', async () => {
@@ -1046,7 +1040,7 @@ describe('billing graphs', () => {
     assert.deepEqual(getPath(noTransport.x837 ?? null, 'lines.0.modifiers'), ['RX', 'GY']);
   });
 
-  it('asks before skipping a report that needs no claim, and can still claim it', async () => {
+  it('asks on the draft claim before voiding a report that needs no claim, and can still claim it', async () => {
     const cancelled = parseDataset(
       REPORT.replace(
         '<eDisposition.32>4232005</eDisposition.32>',
@@ -1058,8 +1052,9 @@ describe('billing graphs', () => {
     assert.deepEqual(await skipped.finish(skipped.state), {
       tripType: 'noClaim',
       patient: null,
-      claimId: null
+      claimId: 'c1'
     });
+    assert.deepEqual([skipped.drafts.length, skipped.closed], [1, ['void']]);
     const claimed = pcrWorld({ report: cancelled ?? null });
     claimed.answer(await claimed.waitFor('task', 'Confirm no claim'), 'claim');
     await claimed.waitFor('task', 'Match payer');

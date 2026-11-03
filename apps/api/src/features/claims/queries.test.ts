@@ -84,6 +84,37 @@ describe('claim queries', () => {
     assert.deepEqual(list?.parameters.slice(-2), [25, 25]);
   });
 
+  it('lists claims with the open task waiting on them, filtered by task type and assignee', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    const page = { page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' } as const;
+    await listClaims(db, 't-1', { status: 'open', ...page });
+    await listClaims(db, 't-1', {
+      status: 'open',
+      task: 'billing-review',
+      assignee: { id: 'u-1' },
+      ...page
+    });
+    await listClaims(db, 't-1', { status: 'all', task: 'any', assignee: { id: null }, ...page });
+    const [all, mine, unassigned] = queries;
+    assert.ok(all?.sql.includes('left join "patients" as "p" on "p"."id" = "c"."patient_id"'));
+    assert.ok(
+      all?.sql.includes(
+        'left join lateral (select "t"."id", "t"."title", "t"."queue", "t"."kind", "t"."created_at", "u"."email", (count(*) over ())::int as "count" from "tasks" as "t" inner join "claim_runs" as "cr" on "cr"."run_id" = "t"."run_id"'
+      )
+    );
+    assert.ok(all?.sql.includes('"t"."status" = \'open\''));
+    assert.ok(
+      all?.sql.includes('order by "t"."priority" desc, "t"."created_at" limit 1) as "t" on true')
+    );
+    assert.ok(!all?.sql.includes('"t"."id" is not null'));
+    assert.ok(all?.sql.includes('order by "t"."created_at" asc nulls last'));
+    assert.ok(mine?.sql.includes('"t"."queue" = $1 and "t"."assignee_id" = $2'));
+    assert.ok(mine?.sql.includes('"t"."id" is not null'));
+    assert.deepEqual(mine?.parameters.slice(0, 3), ['billing-review', 'u-1', 't-1']);
+    assert.ok(!unassigned?.sql.includes('"t"."queue" ='));
+    assert.ok(unassigned?.sql.includes('"t"."assignee_id" is null'));
+  });
+
   it('reads claim, patient and encounter numbers people type, with or without a #', () => {
     assert.deepEqual(['42', '#7', ' 0012 ', 'PCR-1', '99999999999', ''].map(numberOf), [
       42,
@@ -106,6 +137,7 @@ describe('claim queries', () => {
     assert.ok(find?.sql.includes('order by "l"."position"'));
     assert.ok(find?.sql.includes('from "claim_diagnoses" as "d"'));
     assert.ok(find?.sql.includes('"c"."id" = $'));
+    assert.ok(find?.sql.includes('as "assignee_email", "t"."created_at" from "tasks" as "t"'));
   });
 
   it('flags coverages that already have billing activity', async () => {

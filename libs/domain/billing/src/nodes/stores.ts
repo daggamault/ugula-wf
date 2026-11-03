@@ -46,7 +46,7 @@ export type CycleEventKind =
   | 'reconciled'
   | 'statement';
 
-export type DraftClaim = { patientId: string; pcrNumber: string | null; reportKey: string | null };
+export type DraftClaim = { pcrNumber: string | null; reportKey: string | null };
 
 type OpenedClaim = { id: string; duplicate: boolean };
 
@@ -55,8 +55,8 @@ type TrackedLedger = ClaimLedger & { signalsSeen: number; reference: string };
 export type BlobRef = { bucket: string; key: string };
 
 export type ClaimStore = {
-  findByPcr: (runId: string, pcrNumber: string) => Promise<string | null>;
   openDraft: (runId: string, sourceKey: string, draft: DraftClaim) => Promise<OpenedClaim>;
+  assignPatient: (runId: string, claimId: string, patientId: string) => Promise<void>;
   saveClaim: (runId: string, claimId: string, claim: NewClaim) => Promise<void>;
   setStatus: (runId: string, claimId: string, status: ClaimStatus) => Promise<void>;
   noteRevision: (

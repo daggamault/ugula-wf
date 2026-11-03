@@ -11,6 +11,7 @@ const report = (over: Partial<ImportReport> = {}): ImportReport => ({
   pcr_number: 'PCR-1',
   run_status: 'completed',
   claim_id: null,
+  claim_status: null,
   total_cents: null,
   first_name: null,
   last_name: null,
@@ -41,6 +42,11 @@ describe('reportOutcome', () => {
       'claim for PCR #3'
     );
     assert.equal(reportOutcome(report({ task_id: 'k1', task_kind: 'fault' })).label, 'Stuck');
+    assert.deepEqual(reportOutcome(report({ task_id: 'k1', claim_id: 'c1' })).link, {
+      name: 'claim for PCR-1',
+      to: '/claims/c1'
+    });
+    assert.equal(reportOutcome(report({ claim_id: 'c1', claim_status: 'void' })).label, 'Void');
     assert.equal(reportOutcome(report()).label, 'No Claim');
     assert.equal(reportOutcome(report({ run_status: 'running' })).label, 'Running');
     assert.equal(reportOutcome(report({ run_status: 'failed' })).label, 'Failed');

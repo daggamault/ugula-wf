@@ -63,26 +63,35 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Open Draft Claim',
       category: CATEGORY,
       description:
-        "Opens a draft claim for a patient's encounter, linked to the report it came from, so billers see it while it is being worked. Once per run step. Continues through duplicate with the existing claim when its PCR number was already billed.",
+        'Opens a draft claim for an encounter as soon as its report arrives, linked to the report and to this run, so billers see it and every task it needs while it is worked. Once per run step. Continues through duplicate with the existing claim when its PCR number was already billed.',
       effect: true,
       inputs: [
-        pin('patient', PATIENT.type),
         pin('pcrNumber', 'string', { optional: true }),
         pin('report', BLOB, { optional: true })
       ],
       outputs: [claimIdPin],
       exits: ['opened', 'duplicate'],
       compute: async (inputs, _, ctx) => {
-        const patientId = requiredText(
-          recordOf(inputs.patient).id,
-          'A draft claim needs a patient'
-        );
         const { id, duplicate } = await claims().openDraft(ctx.runId, ctx.key, {
-          patientId,
           pcrNumber: textOrNull(inputs.pcrNumber),
           reportKey: textOrNull(inputs.report?.key)
         });
         return { exit: duplicate ? 'duplicate' : 'opened', outputs: { claimId: id } };
+      }
+    }),
+    actionNode({
+      type: 'billing.assign-patient',
+      title: 'Assign Patient',
+      category: CATEGORY,
+      description: 'Sets the patient on a draft claim once the report patient is resolved.',
+      effect: true,
+      inputs: [claimIdPin, pin('patient', PATIENT.type)],
+      outputs: [],
+      compute: async (inputs, _, ctx) => {
+        const claimId = requiredText(inputs.claimId, noClaim);
+        const patientId = requiredText(recordOf(inputs.patient).id, 'The patient has no id');
+        await claims().assignPatient(ctx.runId, claimId, patientId);
+        return {};
       }
     }),
     actionNode({
@@ -98,21 +107,6 @@ export const claimNodes: NodesOf = (stores) => {
         const claimId = requiredText(inputs.claimId, noClaim);
         await claims().saveClaim(ctx.runId, claimId, readNewClaim(inputs.claim));
         return {};
-      }
-    }),
-    branchNode({
-      type: 'billing.find-claim',
-      title: 'Find Claim',
-      category: CATEGORY,
-      description:
-        'Looks up the claim already opened for a PCR number, so a re-imported or corrected report is not billed twice.',
-      inputs: [pin('pcrNumber', 'string', { optional: true })],
-      outputs: [claimIdPin],
-      exits: ['found', 'new'],
-      compute: async (inputs, _, ctx) => {
-        const pcrNumber = textOrNull(inputs.pcrNumber);
-        const claimId = pcrNumber ? await claims().findByPcr(ctx.runId, pcrNumber) : null;
-        return { exit: claimId ? 'found' : 'new', outputs: { claimId } };
       }
     }),
     actionNode({

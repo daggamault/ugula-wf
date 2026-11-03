@@ -4,7 +4,6 @@ import {
   Building2Icon,
   ChartColumnIcon,
   FileUpIcon,
-  ListTodoIcon,
   ReceiptTextIcon,
   SettingsIcon,
   UsersIcon,
@@ -42,9 +41,8 @@ import type { SettingsClient } from './features/settings/client.ts';
 import { PayerPage } from './features/settings/payer-page.tsx';
 import { PAYERS_PATH, PayersPage } from './features/settings/payers-page.tsx';
 import { SettingsPage } from './features/settings/settings-page.tsx';
-import type { Assignee, TasksClient } from './features/tasks/client.ts';
+import type { TasksClient } from './features/tasks/client.ts';
 import { TaskPage } from './features/tasks/task-page.tsx';
-import { ASSIGNEES, TasksPage } from './features/tasks/tasks-page.tsx';
 import { useWorkAlerts } from './features/tasks/work-alerts.ts';
 import type { WorkflowsClient } from './features/workflows/client.ts';
 import { graphKindOf, NewWorkflowPage } from './features/workflows/new-workflow-page.tsx';
@@ -96,13 +94,12 @@ const RunPage = lazy(() =>
   import('./features/runs/run-page.tsx').then((m) => ({ default: m.RunPage }))
 );
 
-export const HOME = '/tasks';
+export const HOME = '/claims';
 
 export const SECTIONS = [
+  { id: 'claims', label: 'Claims', href: '/claims', icon: ReceiptTextIcon, group: 'Work' },
   { id: 'patients', label: 'Patients', href: '/patients', icon: UsersIcon, group: 'Work' },
   { id: 'imports', label: 'Imports', href: '/imports', icon: FileUpIcon, group: 'Work' },
-  { id: 'claims', label: 'Claims', href: '/claims', icon: ReceiptTextIcon, group: 'Work' },
-  { id: 'tasks', label: 'Tasks', href: '/tasks', icon: ListTodoIcon, group: 'Work' },
   { id: 'reports', label: 'Reports', href: '/reports', icon: ChartColumnIcon, group: 'Work' },
   {
     id: 'workflows',
@@ -119,9 +116,6 @@ export const SECTIONS = [
 
 const statusParam = (query: URLSearchParams) =>
   RUN_STATUSES.find((s) => s === query.get('status')) ?? null;
-
-const assigneeParam = (query: URLSearchParams): Assignee =>
-  ASSIGNEES.find((a) => a === query.get('assignee')) ?? 'anyone';
 
 const versionParam = (query: URLSearchParams) => {
   const version = Number(query.get('version'));
@@ -182,7 +176,15 @@ const routes: readonly Route[] = [
   },
   {
     pattern: '/claims',
-    render: (_, q, c) => <ClaimsPage client={c.claims} live={c.live} search={claimSearchOf(q)} />
+    render: (_, q, c) => (
+      <ClaimsPage
+        client={c.claims}
+        live={c.live}
+        me={c.email}
+        search={claimSearchOf(q)}
+        startWork={async (queue) => (await c.tasks.next(queue))?.id ?? null}
+      />
+    )
   },
   {
     pattern: '/claims/:id',
@@ -190,6 +192,7 @@ const routes: readonly Route[] = [
       <ClaimPage
         client={c.claims}
         live={c.live}
+        me={c.email}
         claimId={p.id ?? ''}
         back={backOf(q, '/claims', '/patients/')}
         tab={CLAIM_TABS.find((t) => t.value === q.get('tab'))?.value ?? 'overview'}
@@ -252,19 +255,16 @@ const routes: readonly Route[] = [
   },
   { pattern: '/settings', render: (_, __, c) => <SettingsPage client={c.settings} /> },
   {
-    pattern: '/tasks',
-    render: (_, q, c) => (
-      <TasksPage
+    pattern: '/tasks/:id',
+    render: (p, q, c) => (
+      <TaskPage
+        key={p.id}
         client={c.tasks}
         live={c.live}
-        me={c.email}
-        filter={{ queue: q.get('type'), assignee: assigneeParam(q) }}
+        taskId={p.id ?? ''}
+        back={q.has('back') ? backOf(q, '/claims', '/claims/', '/runs/', '/imports/') : null}
       />
     )
-  },
-  {
-    pattern: '/tasks/:id',
-    render: (p, _, c) => <TaskPage client={c.tasks} live={c.live} taskId={p.id ?? ''} />
   }
 ];
 
@@ -288,7 +288,7 @@ export type WorkspaceProps = {
 export const Workspace = ({ clients, path, query, email, sseUrl, onSignOut }: WorkspaceProps) => {
   const live = useMemo(() => createLive(sseUrl), [sseUrl]);
   const liveStatus = useLiveStatus(live);
-  const openTasks = useWorkAlerts(clients.tasks, live, useToast(), path.startsWith('/tasks'));
+  const openTasks = useWorkAlerts(clients.tasks, live, useToast(), path.startsWith('/tasks/'));
   const page = resolveRoute(path, query, { ...clients, live, email });
   const missing = page === null;
 
@@ -304,7 +304,7 @@ export const Workspace = ({ clients, path, query, email, sseUrl, onSignOut }: Wo
       navItems={SECTIONS.map((s) => ({
         ...s,
         active: path.startsWith(s.href),
-        ...(s.id === 'tasks' && openTasks ? { badge: openTasks } : {})
+        ...(s.id === 'claims' && openTasks ? { badge: openTasks } : {})
       }))}
       userEmail={email}
       status={<HealthStatus status={liveStatus} />}

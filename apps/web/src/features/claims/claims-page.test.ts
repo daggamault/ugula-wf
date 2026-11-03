@@ -19,7 +19,13 @@ const claim: ClaimSummary = {
   status: 'submitted',
   created_at: '2026-10-01T00:00:00Z',
   first_name: 'Jane',
-  last_name: 'Doe'
+  last_name: 'Doe',
+  task_id: null,
+  task_title: null,
+  task_queue: null,
+  task_kind: null,
+  task_assignee_email: null,
+  open_tasks: 0
 };
 
 describe('ClaimsTable', () => {
@@ -41,6 +47,41 @@ describe('ClaimsTable', () => {
     assert.ok(!own.includes('Doe, Jane'));
   });
 
+  it('shows the task each claim is waiting on and links straight to it', () => {
+    const waiting = {
+      ...claim,
+      status: 'draft',
+      patient_number: null,
+      first_name: null,
+      last_name: null,
+      task_id: 't1',
+      task_title: 'Confirm patient',
+      task_queue: 'billing-patients',
+      task_kind: 'task',
+      task_assignee_email: 'me@example.com',
+      open_tasks: 2
+    } as const;
+    const html = renderToStaticMarkup(
+      createElement(ClaimsTable, {
+        claims: [waiting, { ...waiting, id: 'c2', task_kind: 'fault', task_assignee_email: null }],
+        me: 'me@example.com',
+        back: '/claims?task=any'
+      })
+    );
+    assert.ok(html.includes('Not matched yet'));
+    assert.ok(html.includes('Confirm patient') && html.includes('+1 more'));
+    assert.ok(
+      html.includes('Patient Matching · You') && html.includes('Patient Matching · Unassigned')
+    );
+    assert.ok(
+      html.includes(
+        'href="/tasks/t1?back=%2Fclaims%3Ftask%3Dany" aria-label="Work Confirm patient on claim #12"'
+      )
+    );
+    assert.ok(html.includes('text-danger font-medium'));
+    assert.ok(html.includes('>Draft<'));
+  });
+
   it('numbers claims and patients with a #', () => {
     assert.equal(claimNumber(7), '#7');
   });
@@ -50,16 +91,29 @@ describe('ClaimsPage', () => {
   it('filters by name, birth date, number and status, defaulting to open claims', () => {
     assert.deepEqual(
       CLAIM_SEARCH_FIELDS.map((f) => f.name),
-      ['firstName', 'lastName', 'birthDate', 'number', 'status']
+      ['firstName', 'lastName', 'birthDate', 'number', 'status', 'task', 'assignee']
     );
     const pending = () => new Promise(() => undefined);
     const html = renderToStaticMarkup(
       createElement(ClaimsPage, {
         client: { list: pending } as unknown as ClaimsClient,
         live: idleLive,
-        search: { status: 'open', firstName: '', lastName: '', birthDate: '', number: '' }
+        me: 'me@example.com',
+        startWork: async () => null,
+        search: {
+          status: 'open',
+          firstName: '',
+          lastName: '',
+          birthDate: '',
+          number: '',
+          task: '',
+          assignee: 'anyone'
+        }
       })
     );
+    assert.ok(html.includes('Start Working'));
+    assert.ok(html.includes('<option value="billing-review">Billing Review</option>'));
+    assert.ok(html.includes('<option value="unassigned">Unassigned</option>'));
     assert.ok(html.includes('aria-expanded="true"') && html.includes('>Filters'));
     assert.ok(html.includes('<option value="needs_review">Needs Review</option>'));
     assert.ok(html.includes('for="search-number"') && html.includes('for="search-birthDate"'));

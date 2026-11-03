@@ -210,7 +210,7 @@ export type ClaimsTable = {
   id: Generated<string>;
   number: GeneratedAlways<number>;
   tenant_id: string;
-  patient_id: string;
+  patient_id: string | null;
   import_report_id: string | null;
   pcr_number: string | null;
   level: string | null;
@@ -234,6 +234,11 @@ export type ClaimsTable = {
   source_key: string;
   created_at: Timestamp;
   updated_at: Timestamp;
+};
+
+export type ClaimRunsTable = {
+  run_id: string;
+  claim_id: string;
 };
 
 export type ClaimLinesTable = {
@@ -378,6 +383,7 @@ export type Database = {
   imports: ImportsTable;
   import_reports: ImportReportsTable;
   claims: ClaimsTable;
+  claim_runs: ClaimRunsTable;
   claim_lines: ClaimLinesTable;
   claim_coverages: ClaimCoveragesTable;
   claim_diagnoses: ClaimDiagnosesTable;

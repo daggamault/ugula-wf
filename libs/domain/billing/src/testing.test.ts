@@ -51,16 +51,13 @@ describe('billing test stores', () => {
   });
 
   it('keeps a claim ledger from saved coverages and recorded events', async () => {
-    const claims = memoryClaims({ pcrNumbers: { 'PCR-1': 'c1' }, totalCents: 500 });
-    assert.equal(await claims.store.findByPcr('r', 'PCR-1'), 'c1');
-    assert.deepEqual(
-      await claims.store.openDraft('r', 'k', {
-        patientId: 'p1',
-        pcrNumber: null,
-        reportKey: null
-      }),
-      { id: 'c1', duplicate: false }
-    );
+    const claims = memoryClaims({ totalCents: 500 });
+    assert.deepEqual(await claims.store.openDraft('r', 'k', { pcrNumber: null, reportKey: null }), {
+      id: 'c1',
+      duplicate: false
+    });
+    await claims.store.assignPatient('r', 'c1', 'p1');
+    assert.deepEqual(claims.patients, ['p1']);
     await claims.store.recordEvent('r', 'c1', 'k', {
       kind: 'approved',
       coverageId: null,

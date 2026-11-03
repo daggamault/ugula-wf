@@ -32,7 +32,7 @@ export const buildClaimsTable = (db: Kysely<Database>) =>
       col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('patient_id', 'uuid', (col) =>
-      col.notNull().references('patients.id').onDelete('restrict').onUpdate('cascade')
+      col.references('patients.id').onDelete('restrict').onUpdate('cascade')
     )
     .addColumn('import_report_id', 'uuid', (col) =>
       col.unique().references('import_reports.id').onDelete('set null').onUpdate('cascade')
@@ -84,8 +84,22 @@ export const buildClaimsTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint('claims_status_check', sql`status in (${list(CLAIM_STATUSES)})`)
     .addCheckConstraint(
+      'claims_patient_check',
+      sql`patient_id is not null or status = 'draft' or status = 'void'`
+    )
+    .addCheckConstraint(
       'claims_service_check',
       sql`status = 'draft' or status = 'void' or (level is not null and emergency is not null)`
+    );
+
+export const buildClaimRunsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('claim_runs')
+    .addColumn('run_id', 'uuid', (col) =>
+      col.primaryKey().references('workflow_runs.id').onDelete('cascade').onUpdate('cascade')
+    )
+    .addColumn('claim_id', 'uuid', (col) =>
+      col.notNull().references('claims.id').onDelete('cascade').onUpdate('cascade')
     );
 
 export const buildClaimLinesTable = (db: Kysely<Database>) =>
@@ -253,6 +267,7 @@ export const buildClaimsIndexes = (db: Kysely<Database>) => [
     .expression(sql`(lower(coalesce(pcr_number, ''))) gin_trgm_ops`),
   db.schema.createIndex('idx_claims_patient_id').on('claims').column('patient_id'),
   db.schema.createIndex('idx_claims_cycle_run_id').on('claims').column('cycle_run_id'),
+  db.schema.createIndex('idx_claim_runs_claim_id').on('claim_runs').column('claim_id'),
   db.schema
     .createIndex('claim_coverages_claim_payer_name_unique')
     .on('claim_coverages')
@@ -275,6 +290,7 @@ export const buildClaimsIndexes = (db: Kysely<Database>) => [
 
 export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimsTable(db).execute();
+  await buildClaimRunsTable(db).execute();
   await buildClaimLinesTable(db).execute();
   await buildClaimCoveragesTable(db).execute();
   await buildClaimDiagnosesTable(db).execute();

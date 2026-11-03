@@ -35,6 +35,8 @@ const request = withSession(createClaimRoutes(service));
 describe('claim routes', () => {
   it('list, read, reorder payers and record responses as the session user', async () => {
     assert.equal((await request('/?status=paid')).status, 200);
+    assert.equal((await request('/?task=billing-review&assignee=me')).status, 200);
+    assert.equal((await request('/?task=any&assignee=unassigned')).status, 200);
     assert.equal((await request(`/${ID}`)).status, 200);
     const payers = await request(`/${ID}/payers`, {
       method: 'PUT',
@@ -48,6 +50,32 @@ describe('claim routes', () => {
     assert.equal(paid.status, 201);
     assert.deepEqual(calls, [
       ['list', 't-1', { status: 'paid', page: 1, pageSize: 25, sort: 'created', dir: 'desc' }],
+      [
+        'list',
+        't-1',
+        {
+          status: 'open',
+          task: 'billing-review',
+          assignee: { id: 'u-1' },
+          page: 1,
+          pageSize: 25,
+          sort: 'created',
+          dir: 'desc'
+        }
+      ],
+      [
+        'list',
+        't-1',
+        {
+          status: 'open',
+          task: 'any',
+          assignee: { id: null },
+          page: 1,
+          pageSize: 25,
+          sort: 'created',
+          dir: 'desc'
+        }
+      ],
       ['find', 't-1', ID],
       ['setPayers', 't-1', ID, ['Medicare']],
       [

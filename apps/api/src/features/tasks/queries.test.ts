@@ -1,37 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { assignTask, claimNext, completeTask, findTask, listQueues, listTasks } from './queries.ts';
+import { assignTask, claimNext, completeTask, findTask, listQueues } from './queries.ts';
 
 describe('task queries', () => {
-  it('summarize open work per queue and list by priority', async () => {
+  it('summarize open work per queue and find one task in its tenant', async () => {
     const { db, queries } = createRecordingDb();
     await listQueues(db, 't', 'u1');
-    await listTasks(db, 't', {
-      status: 'open',
-      queue: 'billing',
-      assignee: { id: 'u1' },
-      page: 1,
-      pageSize: 25,
-      sort: 'waiting',
-      dir: 'desc'
-    });
     await findTask(db, 't', 'x');
     assert.ok(queries[0]?.sql.includes('filter (where assignee_id is null)'));
-    assert.ok(queries[1]?.sql.includes('order by now() - created_at desc nulls last, "id" desc'));
-    assert.ok(
-      queries[1]?.sql.includes('(select u.email from users u where u.id = tasks.assignee_id)')
-    );
-    assert.deepEqual(queries[1]?.parameters, ['t', 'open', 'billing', 'u1', 25, 0]);
-    await listTasks(db, 't', {
-      status: 'open',
-      assignee: { id: null },
-      page: 1,
-      pageSize: 25,
-      sort: 'waiting',
-      dir: 'desc'
-    });
-    assert.ok(queries[3]?.sql.includes('"assignee_id" is null'));
+    assert.deepEqual(queries[1]?.parameters, ['t', 'x']);
     await db.destroy();
   });
 
@@ -48,23 +26,5 @@ describe('task queries', () => {
     assert.ok(!queries[2]?.sql.includes('"queue" = $'));
     assert.ok(queries[3]?.parameters.includes('{"outcome":"ok"}'));
     await db.destroy();
-  });
-});
-
-describe('task assignee sort', () => {
-  it('orders tasks by who they are assigned to', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    await listTasks(db, 't', {
-      status: 'open',
-      page: 1,
-      pageSize: 25,
-      sort: 'assignee',
-      dir: 'asc'
-    });
-    assert.ok(
-      queries[0]?.sql.includes(
-        'order by (select lower(u.email) from users u where u.id = tasks.assignee_id) asc nulls last'
-      )
-    );
   });
 });

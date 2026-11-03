@@ -9,7 +9,7 @@ const clients = {
   auth: { signIn: async () => null, signOut: async () => undefined, getMe: async () => null },
   workflows: { list: async () => [] },
   runs: { list: async () => [] },
-  tasks: { queues: async () => [], list: async () => [] },
+  tasks: { queues: async () => [] },
   notifications: { list: () => new Promise(() => undefined) }
 } as unknown as AppClients;
 
@@ -29,7 +29,6 @@ describe('app routing', () => {
       '/runs',
       '/runs/new',
       '/runs/r1',
-      '/tasks',
       '/tasks/t1',
       '/imports',
       '/imports/i1',
@@ -46,6 +45,7 @@ describe('app routing', () => {
       assert.notEqual(resolveRoute(path, query('graph=g1'), ctx), null, path);
     }
     assert.equal(resolveRoute('/nope', query(), ctx), null);
+    assert.equal(resolveRoute('/tasks', query(), ctx), null);
   });
 
   it('renders the workspace shell with the active section and page', () => {

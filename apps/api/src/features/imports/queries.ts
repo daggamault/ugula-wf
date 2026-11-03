@@ -115,6 +115,7 @@ const importRows = (db: Kysely<Database>, tenantId: string) =>
             sql<number>`coalesce(sum(c.total_cents), 0)::int`.as('charges_cents')
           ])
           .whereRef('ir.import_id', '=', 'i.id')
+          .where('c.status', '<>', 'void')
           .as('claimed'),
       (join) => join.onTrue()
     )
@@ -149,7 +150,8 @@ export const listImportReports = (db: Kysely<Database>, tenantId: string, import
         .onRef('r.parent_id', '=', 'i.run_id')
         .on(sql<boolean>`r.inputs -> 'report' ->> 'key' = ir.report ->> 'key'`)
     )
-    .leftJoin('claims as c', 'c.import_report_id', 'ir.id')
+    .leftJoin('claim_runs as cr', 'cr.run_id', 'r.id')
+    .leftJoin('claims as c', 'c.id', 'cr.claim_id')
     .leftJoin('patients as p', 'p.id', 'c.patient_id')
     .leftJoinLateral(
       (eb) =>
@@ -169,6 +171,7 @@ export const listImportReports = (db: Kysely<Database>, tenantId: string, import
       'ir.pcr_number',
       'r.status as run_status',
       'c.id as claim_id',
+      'c.status as claim_status',
       'c.total_cents',
       'p.first_name',
       'p.last_name',

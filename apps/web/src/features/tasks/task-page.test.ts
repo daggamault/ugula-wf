@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import type { TaskDetail, TasksClient } from './client.ts';
-import { NextUp, queuePath, TaskPage, TaskView } from './task-page.tsx';
+import { backLabelOf, backOfTask, NextUp, TaskPage, TaskView } from './task-page.tsx';
 
 const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
   id: 't1',
@@ -24,14 +24,15 @@ const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
   outcomes: ['approve', 'keepWaiting'],
   defaults: { note: 'looks fine' },
   resolution: null,
-  source: { reportId: null, pcrNumber: null, claimId: null },
+  source: { reportId: null, pcrNumber: null, claim: null },
   ...patch
 });
 
-const render = (t: TaskDetail, source: string | null = null) =>
+const render = (t: TaskDetail, source: string | null = null, back = '/claims') =>
   renderToStaticMarkup(
     createElement(TaskView, {
       task: t,
+      back,
       remaining: 2,
       source,
       onComplete: async () => undefined,
@@ -51,16 +52,23 @@ describe('TaskView', () => {
     assert.ok(html.includes('>Approve<') && html.includes('>Keep Waiting<'));
     assert.ok(html.includes('Assign to Me'));
     assert.ok(!html.includes('href="/runs/r1"'));
-    assert.ok(html.includes('href="/tasks?type=billing-review"'));
+    assert.ok(html.includes('href="/claims"') && html.includes('Back to Claims'));
     assert.ok(html.includes('SOURCE PANEL'));
     assert.ok(!html.includes('Open Claim'));
   });
 
-  it('links the claim a task is about', () => {
-    const html = render(task({ source: { reportId: null, pcrNumber: 'PCR-1', claimId: 'c1' } }));
-    assert.ok(html.includes('href="/claims/c1"'));
-    const fromContext = render(task({ context: { claimId: 'c2' } }));
-    assert.ok(fromContext.includes('href="/claims/c2"'));
+  it('names and links the claim a task is about, and goes back where the biller came from', () => {
+    const claim = { id: 'c1', number: 12, status: 'draft', patient: null } as const;
+    const onClaim = task({ source: { reportId: null, pcrNumber: 'PCR-1', claim } });
+    const html = render(onClaim);
+    assert.ok(html.includes('Claim #12 · Patient not matched yet'));
+    assert.ok(html.includes('href="/claims/c1"') && html.includes('Open Claim'));
+    const fromClaim = render(onClaim, null, '/claims/c1');
+    assert.ok(!fromClaim.includes('Open Claim') && fromClaim.includes('Back to Claim'));
+    assert.equal(backOfTask(null, onClaim), '/claims/c1');
+    assert.equal(backOfTask(null, task()), '/claims');
+    assert.equal(backOfTask('/runs/r1', onClaim), '/runs/r1');
+    assert.equal(backLabelOf('/imports/i1'), 'Back to Import');
   });
 
   it('explains stuck-run resolutions and shows completed decisions', () => {
@@ -109,6 +117,7 @@ describe('NextUp', () => {
         outcome: 'approve',
         queue: 'billing-review',
         remaining,
+        back: '/claims?task=billing-review',
         onNext: async () => undefined
       })
     );
@@ -118,16 +127,14 @@ describe('NextUp', () => {
     assert.ok(more.includes('“Approve”'));
     assert.ok(more.includes('2 more tasks are waiting in Billing Review.'));
     assert.ok(more.includes('Next Task'));
-    assert.ok(more.includes('Back to Tasks'));
+    assert.ok(
+      more.includes('href="/claims?task=billing-review"') && more.includes('Back to Claims')
+    );
     const clear = next(0);
     assert.ok(clear.includes('Billing Review is clear.'));
     assert.ok(!clear.includes('Next Task'));
     assert.ok(next(1).includes('1 more task is waiting'));
     assert.ok(next(null).includes('Checking Billing Review'));
-  });
-
-  it('links back to the filtered queue', () => {
-    assert.equal(queuePath('billing review'), '/tasks?type=billing%20review');
   });
 });
 
@@ -140,7 +147,8 @@ describe('TaskPage', () => {
           queues: async () => []
         } as unknown as TasksClient,
         live: idleLive,
-        taskId: 't1'
+        taskId: 't1',
+        back: null
       })
     );
     assert.ok(html.length > 0);

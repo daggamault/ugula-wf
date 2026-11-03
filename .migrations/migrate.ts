@@ -26,6 +26,7 @@ export const resetSchema = async (db: Kysely<Database>) => {
     'claim_diagnoses',
     'claim_coverages',
     'claim_lines',
+    'claim_runs',
     'claims',
     'import_reports',
     'imports',

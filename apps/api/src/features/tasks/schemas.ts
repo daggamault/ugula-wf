@@ -1,17 +1,5 @@
 import { valuesSchema } from '@ugula/graph';
 import * as v from 'valibot';
-import { pageEntries } from '../../shared/paging.ts';
-
-export const TASK_SORTS = ['waiting', 'task', 'queue', 'priority', 'assignee'] as const;
-
-export type TaskSort = (typeof TASK_SORTS)[number];
-
-export const listTasksQuery = v.object({
-  queue: v.optional(v.pipe(v.string(), v.nonEmpty())),
-  status: v.optional(v.picklist(['open', 'completed', 'cancelled']), 'open'),
-  assignee: v.optional(v.picklist(['anyone', 'me', 'unassigned']), 'anyone'),
-  ...pageEntries(TASK_SORTS, 'waiting', 'desc')
-});
 
 export const nextTaskSchema = v.object({
   queue: v.optional(v.nullable(v.pipe(v.string(), v.nonEmpty())), null)

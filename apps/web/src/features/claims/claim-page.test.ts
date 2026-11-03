@@ -74,7 +74,14 @@ const claim: ClaimDetail = {
   address_line: '1 Main St',
   city: 'Springfield',
   state: 'IL',
-  postal_code: '62704'
+  postal_code: '62704',
+  tasks: [],
+  task_id: null,
+  task_title: null,
+  task_queue: null,
+  task_kind: null,
+  task_assignee_email: null,
+  open_tasks: 0
 };
 
 const medicare = { id: 'cov-m', payer: 'Medicare' };
@@ -178,20 +185,7 @@ describe('describeCycle', () => {
     assert.equal(describeCycle({ status: 'ready', cycle_status: null }, null)?.intent, 'warning');
     assert.equal(describeCycle({ status: 'paid', cycle_status: 'completed' }, null), null);
     const draft = describeCycle({ status: 'draft', cycle_status: null }, null);
-    assert.deepEqual([draft?.intent, draft?.tasks, draft?.restartable], ['info', '', false]);
-  });
-
-  it('points review and reconcile steps at their task types', () => {
-    const review = { step: 'review', coverage: medicare, balanceCents: 1 } as const;
-    assert.equal(
-      describeCycle({ status: 'needs_review', cycle_status: 'suspended' }, review)?.tasks,
-      'billing-review'
-    );
-    const reconcile = { step: 'reconcile', coverage: medicare, balanceCents: 1 } as const;
-    assert.equal(
-      describeCycle({ status: 'reconcile', cycle_status: 'suspended' }, reconcile)?.tasks,
-      'billing-reconcile'
-    );
+    assert.deepEqual([draft?.intent, draft?.restartable], ['info', false]);
   });
 });
 
@@ -286,13 +280,35 @@ describe('ClaimView', () => {
     assert.ok(html.includes('>Restart Payer Cycle<'));
     const faulted = render({ cycle_status: 'faulted' });
     assert.ok(!faulted.includes('Restart Payer Cycle'));
-    assert.ok(faulted.includes('href="/tasks?type=exceptions"'));
   });
 
-  it('locks editing while a draft, and links to its tasks', () => {
-    const html = render({ status: 'draft' });
+  it('locks editing while a draft and shows each task it is waiting on', () => {
+    const task = {
+      id: 't1',
+      title: 'Confirm patient',
+      subject: 'PCR-1',
+      queue: 'billing-patients',
+      kind: 'task',
+      assignee_id: null,
+      assignee_email: null,
+      created_at: '2026-10-01T00:00:00Z'
+    } as const;
+    const html = render({
+      status: 'draft',
+      patient_id: null,
+      patient_number: null,
+      first_name: null,
+      last_name: null,
+      birth_date: null,
+      tasks: [task, { ...task, id: 't2', kind: 'fault', title: 'Stuck at Price' }]
+    });
     assert.equal(html.match(/<fieldset disabled=""/g)?.length, 2);
-    assert.ok(html.includes('href="/tasks"'));
+    assert.ok(html.includes('Patient not matched yet'));
+    assert.ok(!html.includes('href="/patients/'));
+    assert.ok(html.includes('Confirm patient') && html.includes('Patient Matching · Unassigned'));
+    assert.ok(html.includes('href="/tasks/t1?back=%2Fclaims%2Fc1"'));
+    assert.ok(html.includes('href="/tasks/t2?back='));
+    assert.equal(html.match(/>Work Task</g)?.length, 2);
   });
 
   it('locks editing once the claim is closed', () => {

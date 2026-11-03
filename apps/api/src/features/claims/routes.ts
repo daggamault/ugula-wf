@@ -11,9 +11,17 @@ const documentParam = v.object({ id: uuid, eventId: uuid });
 
 export const createClaimRoutes = (service: ClaimService) =>
   new Hono<AuthEnv>()
-    .get('/', sValidator('query', listClaimsQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('session').tenantId, c.req.valid('query')))
-    )
+    .get('/', sValidator('query', listClaimsQuery, invalidRequest), async (c) => {
+      const { tenantId, userId } = c.get('session');
+      const { assignee, ...query } = c.req.valid('query');
+      return respond(
+        c,
+        await service.list(tenantId, {
+          ...query,
+          ...(assignee === 'anyone' ? {} : { assignee: { id: assignee === 'me' ? userId : null } })
+        })
+      );
+    })
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.find(c.get('session').tenantId, c.req.valid('param').id))
     )

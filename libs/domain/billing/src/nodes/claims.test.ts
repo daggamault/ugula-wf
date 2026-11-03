@@ -62,27 +62,39 @@ describe('claimNodes', () => {
     );
   });
 
-  it('validates, opens and saves a draft claim, and flags duplicates', async () => {
+  it('opens a draft claim before the patient is known and assigns the patient later', async () => {
     const claims = memoryClaims();
     const node = nodesFor(claims.store);
-    const [validate, open, save] = ['validate-claim', 'open-claim', 'save-claim'].map(node);
-    if (!validate || !open || !save) throw new Error('Missing claim nodes');
+    const draftInputs = { pcrNumber: ' PCR-1 ', report: claim.report };
+    const opened = await run(node('open-claim'), draftInputs);
+    assert.deepEqual([opened.pin, opened.outputs], ['opened', { claimId: 'c1' }]);
+    assert.deepEqual(claims.drafts, [
+      { pcrNumber: 'PCR-1', reportKey: 'imports/t/f.xml.reports/00000.json' }
+    ]);
+    const again = await run(node('open-claim'), draftInputs);
+    assert.deepEqual([again.pin, again.outputs], ['duplicate', { claimId: 'c1' }]);
+    await run(node('assign-patient'), { claimId: 'c1', patient: jane });
+    assert.deepEqual(claims.patients, [jane.id]);
+    await assert.rejects(
+      async () => run(node('assign-patient'), { claimId: 'c1', patient: {} }),
+      /The patient has no id/
+    );
+    await assert.rejects(
+      async () => run(node('assign-patient'), { claimId: ' ', patient: jane }),
+      /No claim to work on/
+    );
+  });
+
+  it('validates and saves a draft claim', async () => {
+    const claims = memoryClaims();
+    const node = nodesFor(claims.store);
+    const [validate, save] = ['validate-claim', 'save-claim'].map(node);
+    if (!validate || !save) throw new Error('Missing claim nodes');
     const valid = await run(validate, { claim });
     assert.deepEqual([valid.pin, valid.outputs], ['valid', { issues: [] }]);
     const invalid = await run(validate, { claim: { ...claim, totalCents: 5, level: 'X' } });
     assert.equal(invalid.pin, 'invalid');
     assert.equal((invalid.outputs.issues as string[]).length, 2);
-    const draftInputs = { patient: jane, pcrNumber: ' PCR-1 ', report: claim.report };
-    const opened = await run(open, draftInputs);
-    assert.deepEqual([opened.pin, opened.outputs], ['opened', { claimId: 'c1' }]);
-    assert.deepEqual(claims.drafts, [
-      { patientId: jane.id, pcrNumber: 'PCR-1', reportKey: 'imports/t/f.xml.reports/00000.json' }
-    ]);
-    await assert.rejects(async () => run(open, { ...draftInputs, patient: {} }), /needs a patient/);
-    await assert.rejects(
-      async () => run(open, { ...draftInputs, patient: null }),
-      /Input "patient" of "Open Draft Claim" is required/
-    );
     await run(save, { claimId: 'c1', claim });
     const [saved] = claims.saved;
     assert.deepEqual(
@@ -99,18 +111,11 @@ describe('claimNodes', () => {
       /level of service/
     );
     await assert.rejects(async () => run(save, { claimId: ' ', claim }), /No claim to work on/);
-    const again = await run(open, draftInputs);
-    assert.deepEqual([again.pin, again.outputs], ['duplicate', { claimId: 'c1' }]);
   });
 
-  it('finds claims already billed for a PCR and notes revisions on them', async () => {
-    const claims = memoryClaims({ pcrNumbers: { 'PCR-1': 'c1' } });
+  it('notes revisions on claims already billed', async () => {
+    const claims = memoryClaims();
     const node = nodesFor(claims.store);
-    const find = node('find-claim');
-    const found = await run(find, { pcrNumber: ' PCR-1 ' });
-    assert.deepEqual([found.pin, found.outputs], ['found', { claimId: 'c1' }]);
-    assert.equal((await run(find, { pcrNumber: 'PCR-2' })).pin, 'new');
-    assert.equal((await run(find, {})).pin, 'new');
     const report = { bucket: 'ugula', key: 'imports/t/g.xml.reports/00000.json' };
     await run(node('note-revision'), { claimId: 'c1', report });
     assert.deepEqual(claims.revisions, [report]);

@@ -18,7 +18,8 @@ export const CLAIM_SORTS = [
   'pcr',
   'total',
   'balance',
-  'status'
+  'status',
+  'waiting'
 ] as const;
 
 export type ClaimSort = (typeof CLAIM_SORTS)[number];
@@ -34,6 +35,8 @@ export const listClaimsQuery = v.object({
   birthDate: v.optional(v.pipe(v.string(), v.isoDate('Use a date like 1980-01-02'))),
   number: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(40))),
   patientId: v.optional(uuid),
+  task: v.optional(v.pipe(v.string(), v.trim(), v.nonEmpty(), v.maxLength(60))),
+  assignee: v.optional(v.picklist(['anyone', 'me', 'unassigned']), 'anyone'),
   ...pageEntries(CLAIM_SORTS, 'created', 'desc')
 });
 

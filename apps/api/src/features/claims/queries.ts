@@ -16,14 +16,22 @@ import type { ClaimSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
-export type ClaimFilters = PageRequest<ClaimSort> & {
-  status: ClaimStatus | 'open' | 'all';
-  firstName?: string | undefined;
-  lastName?: string | undefined;
-  birthDate?: string | undefined;
-  number?: string | undefined;
-  patientId?: string | undefined;
+export type TaskScope = {
+  task?: string | undefined;
+  assignee?: { id: string | null } | undefined;
 };
+
+export type ClaimFilters = PageRequest<ClaimSort> &
+  TaskScope & {
+    status: ClaimStatus | 'open' | 'all';
+    firstName?: string | undefined;
+    lastName?: string | undefined;
+    birthDate?: string | undefined;
+    number?: string | undefined;
+    patientId?: string | undefined;
+  };
+
+export const ANY_TASK = 'any';
 
 export type ClaimResponse = {
   requestId: string;
@@ -37,12 +45,49 @@ export type CoverageRow = { id: string; payer: string; has_events: boolean };
 
 export const payerName = sql<string>`coalesce(dp.name, cc.payer_name)`;
 
-const claimRows = (db: Db, tenantId: string) =>
+const claimTasks = (db: Db) =>
+  db
+    .selectFrom('tasks as t')
+    .innerJoin('claim_runs as cr', 'cr.run_id', 't.run_id')
+    .leftJoin('users as u', 'u.id', 't.assignee_id')
+    .where('t.status', '=', sql.lit('open'))
+    .orderBy('t.priority', 'desc')
+    .orderBy('t.created_at');
+
+const nextTask = (db: Db, { task, assignee }: TaskScope) => {
+  let q = claimTasks(db)
+    .select([
+      't.id',
+      't.title',
+      't.queue',
+      't.kind',
+      't.created_at',
+      'u.email',
+      sql<number>`(count(*) over ())::int`.as('count')
+    ])
+    .where('cr.claim_id', '=', sql.ref<string>('c.id'));
+  if (task && task !== ANY_TASK) q = q.where('t.queue', '=', task);
+  if (assignee) {
+    q = assignee.id
+      ? q.where('t.assignee_id', '=', assignee.id)
+      : q.where('t.assignee_id', 'is', null);
+  }
+  return q.limit(sql.lit(1)).as('t');
+};
+
+const claimRows = (db: Db, tenantId: string, scope: TaskScope = {}) =>
   db
     .selectFrom('claims as c')
-    .innerJoin('patients as p', 'p.id', 'c.patient_id')
+    .leftJoin('patients as p', 'p.id', 'c.patient_id')
     .innerJoin('claim_balances as b', 'b.claim_id', 'c.id')
+    .leftJoinLateral(nextTask(db, scope), (join) => join.onTrue())
     .select((eb) => [
+      't.id as task_id',
+      't.title as task_title',
+      't.queue as task_queue',
+      't.kind as task_kind',
+      't.email as task_assignee_email',
+      eb.fn.coalesce('t.count', sql<number>`0`).as('open_tasks'),
       'c.id',
       'c.number',
       'p.number as patient_number',
@@ -72,6 +117,7 @@ const CLAIM_ORDER = {
   pcr: sql.ref('c.pcr_number'),
   total: sql.ref('c.total_cents'),
   balance: sql.ref('b.balance_cents'),
+  waiting: sql.ref('t.created_at'),
   status: sql`array_position(array[${sql.join(CLAIM_STATUSES.map((s) => sql.lit(s)))}]::text[], c.status::text)`
 };
 
@@ -84,7 +130,8 @@ export const numberOf = (text: string) => {
 };
 
 export const listClaims = (db: Db, tenantId: string, f: ClaimFilters) => {
-  let q = claimRows(db, tenantId);
+  let q = claimRows(db, tenantId, f);
+  if (f.task || f.assignee) q = q.where('t.id', 'is not', null);
   if (f.status === 'open') q = q.where('c.status', 'not in', CLOSED_CLAIM_STATUSES);
   else if (f.status !== 'all') q = q.where('c.status', '=', f.status);
   if (f.patientId) q = q.where('c.patient_id', '=', f.patientId);
@@ -161,7 +208,21 @@ export const findClaim = (db: Db, tenantId: string, id: string) =>
         .selectFrom('claim_diagnoses as d')
         .select('d.code')
         .whereRef('d.claim_id', '=', 'c.id')
-        .orderBy('d.position')})`.as('diagnoses')
+        .orderBy('d.position')})`.as('diagnoses'),
+      jsonArrayFrom(
+        claimTasks(db)
+          .select([
+            't.id',
+            't.title',
+            't.subject',
+            't.queue',
+            't.kind',
+            't.assignee_id',
+            'u.email as assignee_email',
+            't.created_at'
+          ])
+          .where('cr.claim_id', '=', sql.ref<string>('c.id'))
+      ).as('tasks')
     ])
     .where('c.id', '=', id)
     .executeTakeFirst();
@@ -333,12 +394,14 @@ export const saveBillingData = async (
     .execute();
 };
 
-export const setCycleRun = (db: Db, id: string, runId: string) =>
-  db
+export const setCycleRun = async (db: Db, id: string, runId: string) => {
+  await db.insertInto('claim_runs').values({ run_id: runId, claim_id: id }).execute();
+  await db
     .updateTable('claims')
     .set({ cycle_run_id: runId, updated_at: sql`now()` })
     .where('id', '=', id)
     .execute();
+};
 
 export const hasResponse = async (db: Db, claimId: string, requestId: string) =>
   (await db
@@ -370,7 +433,11 @@ export const resolveMootTasks = (
     })
     .where('tenant_id', '=', tenantId)
     .where('status', '=', 'open')
-    .where(sql<string>`context ->> 'claimId'`, '=', claimId)
+    .where(
+      'run_id',
+      'in',
+      db.selectFrom('claim_runs').select('run_id').where('claim_id', '=', claimId)
+    )
     .where((eb) =>
       eb.or([
         eb.and([

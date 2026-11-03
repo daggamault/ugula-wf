@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../../shared/auth.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { completeTaskSchema, listTasksQuery, nextTaskSchema } from './schemas.ts';
+import { completeTaskSchema, nextTaskSchema } from './schemas.ts';
 import type { TaskService } from './service.ts';
 
 export const createTaskRoutes = (service: TaskService) =>
@@ -11,19 +11,6 @@ export const createTaskRoutes = (service: TaskService) =>
     .get('/queues', async (c) => {
       const { tenantId, userId } = c.get('session');
       return respond(c, await service.queues(tenantId, userId));
-    })
-    .get('/', sValidator('query', listTasksQuery, invalidRequest), async (c) => {
-      const { tenantId, userId } = c.get('session');
-      const { queue, status, assignee, ...page } = c.req.valid('query');
-      return respond(
-        c,
-        await service.list(tenantId, {
-          ...(queue ? { queue } : {}),
-          ...(assignee === 'anyone' ? {} : { assignee: { id: assignee === 'me' ? userId : null } }),
-          status,
-          ...page
-        })
-      );
     })
     .post('/next', sValidator('json', nextTaskSchema, invalidRequest), async (c) => {
       const { tenantId, userId } = c.get('session');

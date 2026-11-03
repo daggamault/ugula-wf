@@ -8,6 +8,7 @@ import {
   buildClaimDiagnosesTable,
   buildClaimEventsTable,
   buildClaimLinesTable,
+  buildClaimRunsTable,
   buildClaimsIndexes,
   buildClaimsTable
 } from './claims.ts';
@@ -42,6 +43,20 @@ describe('claims tables', () => {
     assert.ok(!claims.includes('jsonb'));
     assert.ok(
       claims.includes('"cycle_run_id" uuid references "workflow_runs" ("id") on delete set null')
+    );
+    assert.ok(claims.includes('"patient_id" uuid references "patients" ("id") on delete restrict'));
+    assert.ok(claims.includes("patient_id is not null or status = 'draft' or status = 'void'"));
+    await db.destroy();
+  });
+
+  it('compiles one claim per run so tasks and faults find the claim they are about', async () => {
+    const db = createDummyDb();
+    const runs = buildClaimRunsTable(db).compile().sql;
+    assert.ok(
+      runs.includes('"run_id" uuid primary key references "workflow_runs" ("id") on delete cascade')
+    );
+    assert.ok(
+      runs.includes('"claim_id" uuid not null references "claims" ("id") on delete cascade')
     );
     await db.destroy();
   });
@@ -116,7 +131,8 @@ describe('claims tables', () => {
     assert.ok(indexes.some((i) => i.includes('"idx_claim_events_coverage_id"')));
     assert.ok(indexes.some((i) => i.includes('"idx_claim_coverages_payer_id"')));
     assert.ok(indexes.some((i) => i.includes("(lower(coalesce(pcr_number, ''))) gin_trgm_ops")));
-    assert.equal(indexes.length, 14);
+    assert.ok(indexes.some((i) => i.includes('"idx_claim_runs_claim_id"')));
+    assert.equal(indexes.length, 15);
     await db.destroy();
   });
 

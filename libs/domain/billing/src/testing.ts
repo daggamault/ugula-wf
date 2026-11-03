@@ -76,7 +76,6 @@ export const memoryFees = (price: (payerId: string | null, code: string) => numb
 
 export type MemoryClaimOptions = {
   claimId?: string;
-  pcrNumbers?: Record<string, string>;
   coverages?: LedgerCoverage[];
   totalCents?: number;
   signalsSeen?: number;
@@ -85,13 +84,13 @@ export type MemoryClaimOptions = {
 
 export const memoryClaims = ({
   claimId = 'c1',
-  pcrNumbers = {},
   coverages,
   totalCents = 0,
   signalsSeen = 0,
   reference = ''
 }: MemoryClaimOptions = {}) => {
   const drafts: DraftClaim[] = [];
+  const patients: string[] = [];
   const saved: NewClaim[] = [];
   const statuses: string[] = [];
   const revisions: BlobRef[] = [];
@@ -102,10 +101,12 @@ export const memoryClaims = ({
     coverages ??
     (saved.at(-1)?.coverages ?? []).map((c) => ({ id: `cov-${c.payer}`, payer: c.payer }));
   const store: ClaimStore = {
-    findByPcr: async (_, pcrNumber) => pcrNumbers[pcrNumber] ?? null,
     openDraft: async (_, __, draft) => {
       drafts.push(draft);
       return { id: claimId, duplicate: drafts.length > 1 };
+    },
+    assignPatient: async (_, __, patientId) => {
+      patients.push(patientId);
     },
     saveClaim: async (_, __, claim) => {
       saved.push(claim);
@@ -132,7 +133,7 @@ export const memoryClaims = ({
       closed.push(status);
     }
   };
-  return { store, drafts, saved, statuses, revisions, events, closed, attached };
+  return { store, drafts, patients, saved, statuses, revisions, events, closed, attached };
 };
 
 export const scriptedCompleter = (answer: (request: CompletionRequest) => unknown) => {

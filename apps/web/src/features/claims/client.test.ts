@@ -20,6 +20,8 @@ describe('createClaimsClient', () => {
       { status: 'all', lastName: ' doe ', number: '', birthDate: '1980-01-02', patientId: 'p1' },
       'page=1'
     );
+    await client.list({ task: 'any', assignee: 'anyone' }, 'page=1');
+    await client.list({ task: '', assignee: 'me' }, 'page=1');
     await client.find('c1');
     await client.setPayers('c1', ['Medicare']);
     await client.restartCycle('c1');
@@ -39,6 +41,8 @@ describe('createClaimsClient', () => {
     assert.deepEqual(seen, [
       'GET http://api.test/api/claims?status=open&page=2&pageSize=25&sort=balance&dir=desc ',
       'GET http://api.test/api/claims?status=all&lastName=doe&birthDate=1980-01-02&patientId=p1&page=1 ',
+      'GET http://api.test/api/claims?task=any&page=1 ',
+      'GET http://api.test/api/claims?assignee=me&page=1 ',
       'GET http://api.test/api/claims/c1 ',
       'PUT http://api.test/api/claims/c1/payers {"payers":["Medicare"]}',
       'POST http://api.test/api/claims/c1/restart-cycle ',
@@ -56,10 +60,15 @@ describe('createClaimsClient', () => {
       firstName: '',
       lastName: '',
       birthDate: '',
-      number: ''
+      number: '',
+      task: '',
+      assignee: 'anyone'
     });
     const search = claimSearchOf(new URLSearchParams('status=needs_review&number=42'));
     assert.deepEqual([search.status, search.number], ['needs_review', '42']);
     assert.equal(claimSearchOf(new URLSearchParams('status=bogus')).status, 'open');
+    const work = claimSearchOf(new URLSearchParams('task=billing-review&assignee=me'));
+    assert.deepEqual([work.task, work.assignee], ['billing-review', 'me']);
+    assert.equal(claimSearchOf(new URLSearchParams('assignee=them')).assignee, 'anyone');
   });
 });

@@ -43,11 +43,11 @@ describe('a biller takes an encounter from import to an 837P file', { timeout: 6
     browser = await chromium.launch({ channel: config.E2E_BROWSER_CHANNEL, headless: true });
     page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     page.setDefaultTimeout(STEP_MS);
-    await go('/tasks');
+    await go('/claims');
     await page.getByLabel('Email').fill(config.DEV_USER_EMAIL);
     await page.getByLabel('Password').fill(config.DEV_USER_PASSWORD);
     await page.getByRole('button', { name: 'Sign In' }).click();
-    await heading('Tasks').waitFor();
+    await heading('Claims').waitFor();
   });
 
   after(async () => {
@@ -75,14 +75,12 @@ describe('a biller takes an encounter from import to an 837P file', { timeout: 6
     await claimRow().getByText('Draft').waitFor();
   });
 
-  it('works every task, including the forced claim review, until the claim is ready', async () => {
+  it('works every task from the claim row, including the forced claim review, until the claim is ready', async () => {
     for (let i = 0; i < 60; i++) {
-      await go('/tasks');
-      await heading('Tasks').waitFor();
-      const start = page.getByRole('button', { name: 'Start working' });
-      const caughtUp = page.getByRole('heading', { name: "You're All Caught Up" });
-      await start.or(caughtUp).first().waitFor();
-      if (await caughtUp.isVisible()) {
+      await go(`/claims?number=${pcr}&status=all`);
+      await claimRow().waitFor();
+      const work = claimRow().getByRole('link', { name: /^Work / });
+      if (!(await work.count())) {
         await claimsWith('ready');
         await claimRow()
           .or(page.getByRole('heading', { name: 'No Matching Claims' }))
@@ -92,7 +90,8 @@ describe('a biller takes an encounter from import to an 837P file', { timeout: 6
         await page.waitForTimeout(3_000);
         continue;
       }
-      await start.click();
+      await work.click();
+      await page.getByText(/· Claim #\d+ · /).waitFor();
       const decision = page
         .locator('section')
         .filter({ has: page.getByRole('heading', { name: 'Your Decision' }) })
@@ -132,7 +131,7 @@ describe('a biller takes an encounter from import to an 837P file', { timeout: 6
   it('shows the submission on the claim history tab', async () => {
     await claimLink().click();
     await page.getByRole('link', { name: /History/ }).click();
-    await page.getByRole('link', { name: /837P file #\d+/ }).waitFor();
+    await page.getByRole('link', { name: /837P file #\d+/i }).waitFor();
     await page.getByRole('link', { name: 'Claim data' }).click();
     await page.getByLabel('Date of service').waitFor();
   });

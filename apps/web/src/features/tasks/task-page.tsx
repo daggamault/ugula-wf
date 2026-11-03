@@ -14,6 +14,7 @@ import { messageOf } from '../../shared/api.ts';
 import { formatAgo, formatDateTime } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
+import { queueInfo, titleCase } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
@@ -24,20 +25,22 @@ import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
+import { withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { TaskDetail, TasksClient } from './client.ts';
 import { ContextView } from './context-view.tsx';
-import { queueInfo, titleCase } from './queues.ts';
 import { SourceReportPanel } from './source-report.tsx';
 
 export type TaskPageProps = {
   client: TasksClient;
   live: Live;
   taskId: string;
+  back: string | null;
 };
 
 export type TaskViewProps = {
   task: TaskDetail;
+  back: string;
   remaining: number | null;
   source?: ReactNode;
   onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
@@ -54,25 +57,29 @@ const FAULT_INTENTS: Record<string, Intent> = {
 const FAULT_HELP =
   'Retry the failed step, skip it with the outputs below (and the exec pin to continue from), or cancel the run.';
 
-export const claimIdOf = (task: Pick<TaskDetail, 'source' | 'context'>) => {
-  const fromContext =
-    task.context && typeof task.context === 'object' && !Array.isArray(task.context)
-      ? task.context.claimId
-      : null;
-  return task.source.claimId ?? (typeof fromContext === 'string' ? fromContext : null);
-};
+export const backLabelOf = (back: string) =>
+  back.startsWith('/claims/')
+    ? 'Back to Claim'
+    : back.startsWith('/runs/')
+      ? 'Back to Run'
+      : back.startsWith('/imports/')
+        ? 'Back to Import'
+        : 'Back to Claims';
 
-export const queuePath = (queue: string) => `/tasks?type=${encodeURIComponent(queue)}`;
+export const backOfTask = (back: string | null, task: Pick<TaskDetail, 'source'>) =>
+  back ?? (task.source.claim ? `/claims/${task.source.claim.id}` : '/claims');
 
 export const NextUp = ({
   outcome,
   queue,
   remaining,
+  back,
   onNext
 }: {
   outcome: string;
   queue: string;
   remaining: number | null;
+  back: string;
   onNext: () => Promise<void>;
 }) => {
   const nextRef = useRef<HTMLButtonElement>(null);
@@ -106,9 +113,9 @@ export const NextUp = ({
             <ArrowRightIcon aria-hidden="true" className="size-4" />
           </Button>
         ) : null}
-        <ButtonLink to={queuePath(queue)} variant="outline">
+        <ButtonLink to={back} variant="outline">
           <ArrowLeftIcon aria-hidden="true" className="size-4" />
-          Back to Tasks
+          {backLabelOf(back)}
         </ButtonLink>
       </div>
     </SectionPanel>
@@ -179,6 +186,7 @@ const Decision = ({
 
 export const TaskView = ({
   task,
+  back,
   remaining,
   source,
   onComplete,
@@ -192,7 +200,7 @@ export const TaskView = ({
   const [assigning, setAssigning] = useState(false);
   const notify = useToast();
   const isUnassigned = task.assignee_id === null;
-  const claimId = claimIdOf(task);
+  const { claim } = task.source;
   const open = task.status === 'open' && done === null;
 
   const complete = async (outcome: string, values: Record<string, Json>) => {
@@ -231,19 +239,24 @@ export const TaskView = ({
   return (
     <Page
       title={task.subject ?? task.title}
-      backTo={queuePath(task.queue)}
-      backLabel="Back to Tasks"
+      backTo={back}
+      backLabel={backLabelOf(back)}
       description={
         <span className="flex flex-wrap items-center gap-2">
           <Badge intent={isFault ? 'danger' : 'info'}>{info.label}</Badge>
           {task.subject ? <span>{task.title}</span> : null}
+          {claim ? (
+            <span className="text-surface-fg font-medium">
+              · Claim #{claim.number} · {claim.patient ?? 'Patient not matched yet'}
+            </span>
+          ) : null}
           <span title={formatDateTime(task.created_at)}>· opened {formatAgo(task.created_at)}</span>
         </span>
       }
       actions={
         <>
-          {claimId ? (
-            <ButtonLink to={`/claims/${claimId}`} variant="outline">
+          {claim && back !== `/claims/${claim.id}` ? (
+            <ButtonLink to={`/claims/${claim.id}`} variant="outline">
               <ReceiptTextIcon aria-hidden="true" className="size-4" />
               Open Claim
             </ButtonLink>
@@ -291,7 +304,13 @@ export const TaskView = ({
         </div>
         <div className="flex flex-col gap-6 lg:sticky lg:top-24">
           {done !== null ? (
-            <NextUp outcome={done} queue={task.queue} remaining={remaining} onNext={onNext} />
+            <NextUp
+              outcome={done}
+              queue={task.queue}
+              remaining={remaining}
+              back={back}
+              onNext={onNext}
+            />
           ) : open ? (
             <Decision key={task.id} task={task} onComplete={complete} />
           ) : (
@@ -312,7 +331,7 @@ export const TaskView = ({
   );
 };
 
-export const TaskPage = ({ client, live, taskId }: TaskPageProps) => {
+export const TaskPage = ({ client, live, taskId, back }: TaskPageProps) => {
   const task = useResource(`task:${taskId}`, () => client.find(taskId));
   const queues = useResource('task-queues', client.queues);
   const runId = task.data?.run_id;
@@ -327,11 +346,13 @@ export const TaskPage = ({ client, live, taskId }: TaskPageProps) => {
   if (task.error) return <PageFailure message={task.error.message} />;
   if (!task.data) return <PageLoading />;
   const { queue, source } = task.data;
+  const backTo = backOfTask(back, task.data);
   const waiting = queues.data?.find((q) => q.queue === queue)?.unassigned;
   return (
     <TaskView
       key={taskId}
       task={task.data}
+      back={backTo}
       remaining={queues.data ? (waiting ?? 0) : null}
       source={
         source.reportId ? <SourceReportPanel client={client} reportId={source.reportId} /> : null
@@ -346,7 +367,9 @@ export const TaskPage = ({ client, live, taskId }: TaskPageProps) => {
       }}
       onNext={async () => {
         const next = await client.next(queue);
-        navigate(next ? `/tasks/${next.id}` : queuePath(queue));
+        if (!next) navigate(backTo);
+        else if (backTo.startsWith('/claims/')) navigate(`/tasks/${next.id}`);
+        else navigate(withBack(`/tasks/${next.id}`, backTo));
       }}
     />
   );

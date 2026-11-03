@@ -8,11 +8,11 @@ describe('announceClaims', () => {
   it('announces each claim change after the store has made it', async () => {
     const log: string[] = [];
     const store = {
-      findByPcr: async () => 'c1',
       openDraft: async () => {
         log.push('open');
         return { id: 'c1', duplicate: false };
       },
+      assignPatient: async () => void log.push('patient'),
       saveClaim: async () => void log.push('save'),
       setStatus: async () => void log.push('status'),
       noteRevision: async () => void log.push('revision'),
@@ -30,20 +30,22 @@ describe('announceClaims', () => {
       log.push('announce');
       announced.push([runId, event]);
     });
-    assert.deepEqual(
-      await claims.openDraft('r1', 'k', { patientId: 'p1', pcrNumber: null, reportKey: null }),
-      { id: 'c1', duplicate: false }
-    );
+    assert.deepEqual(await claims.openDraft('r1', 'k', { pcrNumber: null, reportKey: null }), {
+      id: 'c1',
+      duplicate: false
+    });
+    await claims.assignPatient('r1', 'c1', 'p1');
     await claims.saveClaim('r1', 'c1', {} as never);
     await claims.setStatus('r1', 'c1', 'ready');
     await claims.noteRevision('r1', 'c1', 'k', { bucket: 'b', key: 'k' });
-    assert.equal(await claims.findByPcr('r1', 'PCR-1'), 'c1');
     await claims.attachCycle('r1', 'c1', 'r2');
     await claims.recordEvent('r1', 'c1', 'k', { kind: 'follow_up', coverageId: null, note: '' });
     await claims.closeClaim('r1', 'c1', 'k', 'paid');
     assert.equal(await claims.ledger('r1', 'c1'), null);
     assert.deepEqual(log, [
       'open',
+      'announce',
+      'patient',
       'announce',
       'save',
       'announce',

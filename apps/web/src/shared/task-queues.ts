@@ -1,4 +1,5 @@
-import { titleCaseWords } from '../../shared/format.ts';
+import { titleCaseWords } from './format.ts';
+
 export type QueueInfo = { label: string; description: string };
 
 const QUEUES: Readonly<Record<string, QueueInfo>> = {
@@ -38,8 +39,6 @@ const QUEUES: Readonly<Record<string, QueueInfo>> = {
   }
 };
 
-const ORDER = Object.keys(QUEUES);
-
 export const humanize = (key: string) => {
   const words = key
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
@@ -57,8 +56,7 @@ export const queueInfo = (queue: string): QueueInfo =>
     description: ''
   };
 
-const rank = (queue: string) => (ORDER.includes(queue) ? ORDER.indexOf(queue) : ORDER.length);
-
-export const queueSortKey = (queue: string) => `${String(rank(queue)).padStart(3, '0')} ${queue}`;
-
-export const byQueueOrder = (a: string, b: string) => rank(a) - rank(b) || a.localeCompare(b);
+export const TASK_FILTERS = [
+  { value: 'any', label: 'Any Task' },
+  ...Object.entries(QUEUES).map(([value, { label }]) => ({ value, label }))
+] as const satisfies readonly { value: string; label: string }[];

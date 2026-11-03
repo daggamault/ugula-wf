@@ -1,4 +1,10 @@
-import { ChevronRightIcon, type LucideIcon, PencilIcon, Trash2Icon } from 'lucide-react';
+import {
+  ChevronRightIcon,
+  ListTodoIcon,
+  type LucideIcon,
+  PencilIcon,
+  Trash2Icon
+} from 'lucide-react';
 import { type ComponentProps, type ReactNode, useId } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { Link } from '../router.tsx';
@@ -97,6 +103,10 @@ export const EditLink = ({ to, name }: { to: string; name: string }) => (
 
 export const OpenLink = ({ to, name }: { to: string; name: string }) => (
   <IconLink to={to} label={`Open ${name}`} tooltip="Open" icon={ChevronRightIcon} />
+);
+
+export const WorkLink = ({ to, name }: { to: string; name: string }) => (
+  <IconLink to={to} label={`Work ${name}`} tooltip="Work Task" icon={ListTodoIcon} />
 );
 
 export const DeleteButton = ({ name, onClick }: { name: string; onClick: () => void }) => (

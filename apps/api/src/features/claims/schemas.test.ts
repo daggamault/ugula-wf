@@ -7,6 +7,7 @@ describe('claim schemas', () => {
   it('defaults list filters to open claims', () => {
     assert.deepEqual(v.parse(listClaimsQuery, {}), {
       status: 'open',
+      assignee: 'anyone',
       page: 1,
       pageSize: 25,
       sort: 'created',
@@ -23,6 +24,9 @@ describe('claim schemas', () => {
     assert.equal(v.safeParse(listClaimsQuery, { birthDate: '01/02/1980' }).success, false);
     assert.equal(v.parse(listClaimsQuery, { number: ' 42 ' }).number, '42');
     assert.equal(v.safeParse(listClaimsQuery, { patientId: 'x' }).success, false);
+    assert.equal(v.safeParse(listClaimsQuery, { task: '' }).success, false);
+    assert.equal(v.safeParse(listClaimsQuery, { assignee: 'them' }).success, false);
+    assert.equal(v.parse(listClaimsQuery, { sort: 'waiting' }).sort, 'waiting');
   });
 
   it('accepts ordered unique payers', () => {

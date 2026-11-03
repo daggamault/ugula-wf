@@ -1,17 +1,9 @@
-import type { Database, TaskStatus } from '@ugula/db';
+import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
-import { type PageRequest, paged } from '../../shared/paging.ts';
-import type { TaskSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
-export type TaskFilters = PageRequest<TaskSort> & {
-  queue?: string;
-  status: TaskStatus;
-  assignee?: { id: string | null };
-};
-
-const summary = [
+const detail = [
   'id',
   'run_id',
   'kind',
@@ -22,11 +14,7 @@ const summary = [
   'status',
   'assignee_id',
   'created_at',
-  'completed_at'
-] as const;
-
-const detail = [
-  ...summary,
+  'completed_at',
   'wait_id',
   'instructions',
   'context',
@@ -53,33 +41,6 @@ export const listQueues = (db: Db, tenantId: string, userId: string) =>
     .orderBy('queue')
     .execute();
 
-const TASK_ORDER = {
-  waiting: sql`now() - created_at`,
-  task: sql`lower(coalesce(subject, title))`,
-  queue: sql.ref('queue'),
-  priority: sql.ref('priority'),
-  assignee: sql`(select lower(u.email) from users u where u.id = tasks.assignee_id)`
-};
-
-export const listTasks = (db: Db, tenantId: string, f: TaskFilters) => {
-  let q = db
-    .selectFrom('tasks')
-    .select(summary)
-    .select(
-      sql<string | null>`(select u.email from users u where u.id = tasks.assignee_id)`.as(
-        'assignee_email'
-      )
-    )
-    .where('tenant_id', '=', tenantId)
-    .where('status', '=', f.status);
-  if (f.queue) q = q.where('queue', '=', f.queue);
-  if (f.assignee) {
-    const { id } = f.assignee;
-    q = id ? q.where('assignee_id', '=', id) : q.where('assignee_id', 'is', null);
-  }
-  return paged(q, f, TASK_ORDER, sql.ref('id'));
-};
-
 export const findTask = (db: Db, tenantId: string, id: string) =>
   db
     .selectFrom('tasks')
@@ -94,17 +55,18 @@ export const findTaskSource = (db: Db, runId: string) =>
     .leftJoin('import_reports as ir', (j) =>
       j.on(sql<boolean>`ir.report ->> 'key' = r.inputs -> 'report' ->> 'key'`)
     )
-    .leftJoin('claims as c', (j) =>
-      j
-        .onRef('c.tenant_id', '=', 'r.tenant_id')
-        .on((eb) =>
-          eb.or([
-            eb('c.import_report_id', '=', eb.ref('ir.id')),
-            eb(sql`c.id::text`, '=', sql`r.inputs ->> 'claimId'`)
-          ])
-        )
-    )
-    .select(['ir.id as report_id', 'ir.pcr_number', 'c.id as claim_id'])
+    .leftJoin('claim_runs as cr', 'cr.run_id', 'r.id')
+    .leftJoin('claims as c', 'c.id', 'cr.claim_id')
+    .leftJoin('patients as p', 'p.id', 'c.patient_id')
+    .select((eb) => [
+      eb.fn.coalesce('ir.id', 'c.import_report_id').as('report_id'),
+      eb.fn.coalesce('ir.pcr_number', 'c.pcr_number').as('pcr_number'),
+      'c.id as claim_id',
+      'c.number as claim_number',
+      'c.status as claim_status',
+      'p.first_name',
+      'p.last_name'
+    ])
     .where('r.id', '=', runId)
     .executeTakeFirst();
 

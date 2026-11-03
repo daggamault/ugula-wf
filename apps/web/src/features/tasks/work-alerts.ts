@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { type Live, useLive } from '../../shared/live.ts';
+import { queueInfo } from '../../shared/task-queues.ts';
 import type { Notify } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { QueueSummary, TasksClient } from './client.ts';
-import { queueInfo } from './queues.ts';
 
 export type NewWork = { queue: string; added: number };
 
@@ -25,7 +25,7 @@ export const workToast = ({ queue, added }: NewWork) => {
     isRecorded: false,
     intent: 'info' as const,
     title: `${added} new ${added === 1 ? 'task' : 'tasks'} in ${label}`,
-    action: { label: `Open ${label}`, to: `/tasks?type=${encodeURIComponent(queue)}` }
+    action: { label: `Open ${label}`, to: `/claims?task=${encodeURIComponent(queue)}` }
   };
 };
 
