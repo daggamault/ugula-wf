@@ -766,6 +766,15 @@ export const createClaimStore = (
         .select(['id', 'document', 'sent_as'])
         .where('tenant_id', '=', claim.tenant_id)
         .where('control_number', '=', controlNumber)
+        .where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('claim_events as e')
+              .select('e.id')
+              .whereRef('e.batch_id', '=', 'claim_batches.id')
+              .where('e.claim_id', '=', claimId)
+          )
+        )
         .executeTakeFirst();
       if (!batch) throw new Error(`No 837P file #${controlNumber} for claim ${claimId}`);
       if (batch.sent_as) return { sentAs: batch.sent_as };
