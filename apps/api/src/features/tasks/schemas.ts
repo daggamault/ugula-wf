@@ -2,7 +2,7 @@ import { valuesSchema } from '@ugula/graph';
 import * as v from 'valibot';
 import { pageEntries } from '../../shared/paging.ts';
 
-export const TASK_SORTS = ['waiting', 'task', 'queue', 'priority'] as const;
+export const TASK_SORTS = ['waiting', 'task', 'queue', 'priority', 'assignee'] as const;
 
 export type TaskSort = (typeof TASK_SORTS)[number];
 

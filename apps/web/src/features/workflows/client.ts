@@ -1,6 +1,7 @@
 import type { GraphDef, Issue } from '@ugula/graph';
 import type { Api } from '../../shared/api.ts';
 import type { PublishedNode } from '../../shared/graph/catalog.ts';
+import type { Page } from '../../shared/url-state.ts';
 
 export type GraphKind = 'workflow' | 'node';
 
@@ -54,7 +55,7 @@ export type NewGraph = {
 };
 
 export const createWorkflowsClient = (api: Api) => ({
-  list: async () => (await api.get<{ graphs: GraphSummary[] }>('/api/graphs')).graphs,
+  search: (query: string) => api.get<Page<GraphSummary>>(`/api/graphs?${query}`),
   nodes: async () => (await api.get<{ nodes: PublishedNode[] }>('/api/graphs/nodes')).nodes,
   find: (id: string) => api.get<GraphDetail>(`/api/graphs/${id}`),
   version: (id: string, version: number) =>

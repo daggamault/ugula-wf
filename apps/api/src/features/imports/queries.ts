@@ -74,7 +74,10 @@ const IMPORT_ORDER = {
   file: sql`lower(i.file_name)`,
   reports: sql.ref('i.report_count'),
   claims: sql.ref('claimed.claims'),
-  charges: sql.ref('claimed.charges_cents')
+  charges: sql.ref('claimed.charges_cents'),
+  // Finished imports with PCRs still being worked sort apart from those that are done.
+  status: sql`(r.status, reports.waiting + reports.processing + reports.stuck > 0)`,
+  attention: sql`reports.waiting + reports.failed + reports.stuck + reports.processing`
 };
 
 export const listImports = (

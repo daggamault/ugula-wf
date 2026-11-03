@@ -2,6 +2,7 @@ import { CLOSED_CLAIM_STATUSES, nameKey } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
+import { escapeLike } from '../../shared/search.ts';
 import type { PatientSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
@@ -11,8 +12,6 @@ export type PatientFilters = PageRequest<PatientSort> & {
   firstName?: string | undefined;
   birthDate?: string | undefined;
 };
-
-const escapeLike = (s: string) => s.replace(/[\\%_]/g, '\\$&');
 
 const patientRows = (db: Db, tenantId: string) =>
   db
@@ -54,7 +53,9 @@ const PATIENT_ORDER = {
   name: sql`lower(p.last_name || ' ' || p.first_name)`,
   born: sql.ref('p.birth_date'),
   lastService: sql.ref('claimed.last_service_date'),
-  balance: sql.ref('claimed.balance_cents')
+  balance: sql.ref('claimed.balance_cents'),
+  city: sql`lower(p.city || ' ' || coalesce(p.state, ''))`,
+  claims: sql.ref('claimed.claim_count')
 };
 
 export const listPatients = (db: Db, tenantId: string, f: PatientFilters) => {

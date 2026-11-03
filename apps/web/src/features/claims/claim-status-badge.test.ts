@@ -7,8 +7,8 @@ import { CLAIM_FILTERS, ClaimStatusBadge, claimStatusLabel } from './claim-statu
 
 describe('ClaimStatusBadge', () => {
   it('labels each claim status in the words a biller uses', () => {
-    assert.equal(claimStatusLabel('needs_review'), 'Needs review');
-    assert.equal(claimStatusLabel('collections'), 'Sent to collections');
+    assert.equal(claimStatusLabel('needs_review'), 'Needs Review');
+    assert.equal(claimStatusLabel('collections'), 'Sent to Collections');
     const html = renderToStaticMarkup(createElement(ClaimStatusBadge, { status: 'paid' }));
     assert.ok(html.includes('>Paid<'));
   });

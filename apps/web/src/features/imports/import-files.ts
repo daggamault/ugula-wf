@@ -29,7 +29,7 @@ export const importFiles = async (
         title: `${file.name} received`,
         description:
           'Its reports are being read and matched. Tasks appear in your queues as they need you.',
-        action: { label: 'View imports', to: '/imports' }
+        action: { label: 'View Imports', to: '/imports' }
       });
     } catch (err) {
       notify({

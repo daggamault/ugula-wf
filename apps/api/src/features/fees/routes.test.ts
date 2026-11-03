@@ -10,9 +10,13 @@ const ID = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 const calls: unknown[][] = [];
 
 const service = {
-  list: async (...args: unknown[]) => {
-    calls.push(['list', ...args]);
-    return ok({ fees: [] });
+  search: async (...args: unknown[]) => {
+    calls.push(['search', ...args]);
+    return ok({ items: [] });
+  },
+  find: async (...args: unknown[]) => {
+    calls.push(['find', ...args]);
+    return ok({ fee: { id: ID } });
   },
   save: async (...args: unknown[]) => {
     calls.push(['save', ...args]);
@@ -27,8 +31,9 @@ const service = {
 const request = withSession(createFeeRoutes(service));
 
 describe('fee routes', () => {
-  it('lists, saves and deletes fees for the session tenant', async () => {
-    assert.equal((await request('/')).status, 200);
+  it('searches, finds, saves and deletes fees for the session tenant', async () => {
+    assert.equal((await request('/?q=a04&sort=amount')).status, 200);
+    assert.equal((await request(`/${ID}`)).status, 200);
     const saved = await request('/', {
       method: 'PUT',
       body: JSON.stringify({ code: 'a0427', amountCents: 50000 })
@@ -36,7 +41,8 @@ describe('fee routes', () => {
     assert.equal(saved.status, 200);
     assert.equal((await request(`/${ID}`, { method: 'DELETE' })).status, 200);
     assert.deepEqual(calls, [
-      ['list', 't-1'],
+      ['search', 't-1', { q: 'a04', page: 1, pageSize: 25, sort: 'amount', dir: 'asc' }],
+      ['find', 't-1', ID],
       ['save', 't-1', { payerId: null, code: 'A0427', amountCents: 50000 }],
       ['remove', 't-1', ID]
     ]);

@@ -159,14 +159,17 @@ describe('a biller takes an encounter from import to an 837P file', { timeout: 6
     await page.keyboard.press('Escape');
   });
 
-  it('adds fees and payers in dialogs', async () => {
-    await go('/fees');
-    await page.getByRole('button', { name: 'Add fee' }).click();
-    await page.getByRole('dialog').getByLabel('HCPCS').waitFor();
-    await page.getByRole('button', { name: 'Cancel' }).click();
+  it('searches fees and payers and edits them on their own pages', async () => {
+    await go('/fees?q=a04');
+    await page.locator('mark', { hasText: /a04/i }).first().waitFor();
+    await page.getByRole('link', { name: 'Add Fee' }).first().click();
+    await page.getByLabel('HCPCS').waitFor();
+    await page.getByRole('link', { name: 'Cancel' }).click();
+    await page.waitForURL(/\/fees\?q=a04$/);
     await go('/payers');
-    await page.getByRole('button', { name: 'Add payer' }).click();
-    await page.getByRole('dialog').getByLabel('Payer name').waitFor();
-    await page.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByRole('link', { name: 'Add Payer' }).first().click();
+    await page.getByLabel('Clearinghouse Payer ID').waitFor();
+    await page.getByRole('link', { name: 'Cancel' }).click();
+    await page.waitForURL(/\/payers$/);
   });
 });

@@ -69,7 +69,7 @@ describe('ReportOptionsPage', () => {
   it('asks for dates of service, defaulting to the last 12 months, and goes back to Reports', () => {
     const html = page('monthly');
     assert.ok(html.includes('value="2025-11-01"') && html.includes('value="2026-10-23"'));
-    assert.ok(html.includes('>Run report<') && html.includes('href="/reports"'));
+    assert.ok(html.includes('>Run Report<') && html.includes('href="/reports"'));
     assert.ok(page('monthly', 'from=2026-01-01&to=2026-03-31').includes('value="2026-01-01"'));
   });
 

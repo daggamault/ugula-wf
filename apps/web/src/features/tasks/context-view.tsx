@@ -1,7 +1,7 @@
 import { isRecord, type Json } from '@ugula/graph';
 import type { ReactNode } from 'react';
 import { classNamesOf } from '../../shared/class-names.ts';
-import { formatCents, formatDate, formatDateTime } from '../../shared/format.ts';
+import { formatCents, formatDate, formatDateTime, titleCaseWords } from '../../shared/format.ts';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { JsonView } from '../../shared/ui/json-view.tsx';
@@ -14,7 +14,7 @@ export type ContextViewProps = {
 
 const ACRONYMS = new Set(['id', 'pcr', 'iv', 'hcpcs', 'icd', 'npi', 'url']);
 
-/** `loadedMiles` → "Loaded miles", `pcrNumber` → "PCR number", `balanceCents` → "Balance". */
+/** `loadedMiles` → "Loaded Miles", `pcrNumber` → "PCR Number", `balanceCents` → "Balance". */
 export const labelOf = (key: string) => {
   const words = key
     .replace(/Cents$/, '')
@@ -22,18 +22,16 @@ export const labelOf = (key: string) => {
     .replace(/[_-]+/g, ' ')
     .toLowerCase()
     .split(' ')
-    .filter(Boolean)
-    .map((w) => (ACRONYMS.has(w) ? w.toUpperCase() : w));
-  const [first = key, ...rest] = words;
-  return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(' ');
+    .filter(Boolean);
+  return words.length ? titleCaseWords(words, ACRONYMS) : key;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const LINKS: Record<string, { to: (id: string) => string; text: string }> = {
-  claimId: { to: (id) => `/claims/${id}`, text: 'Open claim' },
-  runId: { to: (id) => `/runs/${id}`, text: 'Open run' },
-  taskId: { to: (id) => `/tasks/${id}`, text: 'Open task' }
+  claimId: { to: (id) => `/claims/${id}`, text: 'Open Claim' },
+  runId: { to: (id) => `/runs/${id}`, text: 'Open Run' },
+  taskId: { to: (id) => `/tasks/${id}`, text: 'Open Task' }
 };
 
 const isEmpty = (value: Json | undefined) =>

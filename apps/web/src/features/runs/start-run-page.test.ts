@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { RunsClient } from './client.ts';
-import { StartRunForm, StartRunPage } from './start-run-page.tsx';
+import { inputSpanClasses, StartRunForm, StartRunPage } from './start-run-page.tsx';
 
 describe('StartRunPage', () => {
   it('renders a typed field per workflow input with defaults', () => {
@@ -29,7 +29,19 @@ describe('StartRunPage', () => {
     assert.ok(html.includes('id="input-limit"'));
     assert.ok(html.includes('value="10"'));
     assert.ok(html.includes('<textarea'));
-    assert.ok(html.includes('Start run'));
+    assert.ok(html.includes('Start Run'));
+    assert.ok(html.includes('@3xl:grid-cols-4') && html.includes('href="/workflows/g1"'));
+    assert.ok(html.includes('>Cancel<'));
+  });
+
+  it('gives scalars one grid column, files two and structured values a whole row', () => {
+    assert.equal(inputSpanClasses('integer'), '');
+    assert.equal(
+      inputSpanClasses({ object: { bucket: 'string', key: 'string' } }),
+      '@lg:col-span-2'
+    );
+    assert.equal(inputSpanClasses({ list: 'string' }), '@lg:col-span-2 @3xl:col-span-4');
+    assert.equal(inputSpanClasses('any'), '@lg:col-span-2 @3xl:col-span-4');
   });
 
   it('shows a heading while loading the workflow', () => {

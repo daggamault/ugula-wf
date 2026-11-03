@@ -35,3 +35,32 @@ export const formatAgo = (iso: string | null, now: Date = new Date()) => {
   const [unit, size] = UNITS.find(([, ms]) => elapsed >= ms) ?? ['minute', 60_000];
   return relative.format(-Math.floor(elapsed / size), unit);
 };
+
+const MINOR_WORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'and',
+  'or',
+  'of',
+  'to',
+  'in',
+  'on',
+  'for',
+  'at',
+  'by',
+  'from'
+]);
+
+/** Joins words as a Title Cased label: minor words stay lower case after the first, acronyms upper. */
+export const titleCaseWords = (
+  words: readonly string[],
+  acronyms: ReadonlySet<string> = new Set()
+) =>
+  words
+    .map((word, i) => {
+      const w = word.toLowerCase();
+      if (acronyms.has(w)) return w.toUpperCase();
+      return i && MINOR_WORDS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1);
+    })
+    .join(' ');

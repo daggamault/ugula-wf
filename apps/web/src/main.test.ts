@@ -22,8 +22,8 @@ describe('web composition root', () => {
       'reports',
       'notifications'
     ]);
-    await clients.workflows.list();
-    assert.deepEqual(urls, ['http://api.test/api/graphs']);
+    await clients.workflows.search('show=workflows');
+    assert.deepEqual(urls, ['http://api.test/api/graphs?show=workflows']);
   });
 
   it('throws when the root element is missing', () => {

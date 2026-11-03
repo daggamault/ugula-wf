@@ -23,14 +23,15 @@ import {
   findSystemGraph,
   findTenantGraph,
   findVersion,
+  type GraphFilters,
   insertDraft,
   insertGraph,
-  listGraphs,
   listPublishedNodes,
   listVersions,
   lockDraft,
   nextVersion,
   publishVersion,
+  searchGraphs,
   setGraphActive,
   touchGraph,
   updateDraft
@@ -103,7 +104,8 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
   };
 
   return {
-    list: async (tenantId: string) => ok({ graphs: await listGraphs(db, tenantId) }),
+    search: async (tenantId: string, filters: GraphFilters) =>
+      ok(await searchGraphs(db, tenantId, filters)),
 
     nodes: async (tenantId: string) => ok({ nodes: await listPublishedNodes(db, tenantId) }),
 

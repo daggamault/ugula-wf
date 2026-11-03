@@ -52,7 +52,7 @@ describe('NotificationsPanel', () => {
     assert.ok(html.includes('aria-label="Notifications (12 new)"'));
     assert.ok(html.includes('>9+<'));
     assert.match(html, /popovertarget="notifications-/i);
-    assert.ok(html.includes('Clear all'));
+    assert.ok(html.includes('Clear All'));
   });
 
   it('loads the feed from the server', () => {

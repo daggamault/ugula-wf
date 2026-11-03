@@ -62,30 +62,31 @@ describe('EditorView', () => {
     assert.ok(html.includes('>Save<'));
     assert.ok(html.includes('>Publish<'));
     assert.ok(html.includes('href="/runs/new?graph=g1"'));
-    assert.ok(html.includes('Add node') && html.includes('Workflow settings'));
+    assert.ok(html.includes('Add Node') && html.includes('Workflow Settings'));
     assert.ok(html.includes('Drag from one pin to another'));
+    assert.ok(html.includes('href="/?panel=settings"') && !html.includes('<dialog open'));
   });
 
   it('offers a new draft from published versions and locks system graphs', () => {
     const published = render(detail('t-1', true), 2);
-    assert.ok(published.includes('Edit as new draft'));
+    assert.ok(published.includes('Edit as New Draft'));
     assert.ok(!published.includes('>Publish<'));
-    assert.ok(!published.includes('Add node'));
+    assert.ok(!published.includes('Add Node'));
     assert.ok(published.includes('Published versions are read-only. Edit as a new draft'));
     const system = render(detail(null, true), 1);
     assert.ok(system.includes('System'));
-    assert.ok(!system.includes('Edit as new draft'));
+    assert.ok(!system.includes('Edit as New Draft'));
     assert.ok(system.includes('>Override<'));
     assert.ok(system.includes('Override this one to change how your agency runs it'));
   });
 
   it('links a built-in graph to its override, and lets the override be removed', () => {
     const overridden = render(detail(null, true, { overridden_by: 'g9' }), 1);
-    assert.ok(overridden.includes('>Has your copy<'));
-    assert.ok(overridden.includes('href="/workflows/g9"') && overridden.includes('Edit override'));
+    assert.ok(overridden.includes('>Has Your Copy<'));
+    assert.ok(overridden.includes('href="/workflows/g9"') && overridden.includes('Edit Override'));
     assert.ok(!overridden.includes('>Override<'));
     const copy = render(detail('t-1', false, { overrides: 'g0' }), 2);
-    assert.ok(copy.includes('>Your copy<') && copy.includes('Remove override'));
+    assert.ok(copy.includes('>Your Copy<') && copy.includes('Remove Override'));
     assert.ok(copy.includes('>Publish<'));
   });
 

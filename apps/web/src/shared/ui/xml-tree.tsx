@@ -165,7 +165,7 @@ export const XmlTree = ({ label, rootName, value, labelOf, meaningOf }: XmlTreeP
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Find an element, label or value"
+          placeholder="Find an Element, Label or Value"
           aria-label={`Search ${label}`}
           className="h-full min-w-0 flex-1 bg-transparent text-base outline-none sm:text-sm"
         />

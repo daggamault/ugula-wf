@@ -1,13 +1,17 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
-import type { PayerInput } from './schemas.ts';
+import { type PageRequest, paged } from '../../shared/paging.ts';
+import { containsPattern } from '../../shared/search.ts';
+import type { PayerInput, PayerSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
 const columns = ['id', 'name', 'payer_id', 'claim_filing', 'updated_at'] as const;
 
-export const listPayers = (db: Db, tenantId: string) =>
+export type PayerFilters = PageRequest<PayerSort> & { q?: string | undefined };
+
+const payerRows = (db: Db, tenantId: string) =>
   db
     .selectFrom('payers as p')
     .select((eb) => [
@@ -20,10 +24,47 @@ export const listPayers = (db: Db, tenantId: string) =>
           .orderBy(sql`lower(a.alias)`)
       ).as('aliases')
     ])
-    .where('p.tenant_id', '=', tenantId)
-    .orderBy(sql`lower(p.name)`)
-    .execute();
+    .where('p.tenant_id', '=', tenantId);
 
+const PAYER_ORDER = {
+  name: sql`lower(p.name)`,
+  payerId: sql`lower(p.payer_id)`,
+  filing: sql.ref('p.claim_filing')
+};
+
+/** Payers whose name, clearinghouse payer ID or a learned name contains `q`, one page at a time. */
+export const searchPayers = (db: Db, tenantId: string, f: PayerFilters) => {
+  let q = payerRows(db, tenantId);
+  if (f.q) {
+    const like = containsPattern(f.q);
+    q = q.where((eb) =>
+      eb.or([
+        eb(sql`lower(p.name)`, 'like', like),
+        eb(sql`lower(p.payer_id)`, 'like', like),
+        eb.exists(
+          eb
+            .selectFrom('payer_aliases as m')
+            .select('m.id')
+            .whereRef('m.payer_id', '=', 'p.id')
+            .where(sql`lower(m.alias)`, 'like', like)
+        )
+      ])
+    );
+  }
+  return paged(q, f, PAYER_ORDER, sql.ref('p.id'));
+};
+
+export const findPayer = (db: Db, tenantId: string, id: string) =>
+  payerRows(db, tenantId).where('p.id', '=', id).executeTakeFirst();
+
+/** Every payer's name, for choosing one elsewhere (fees). */
+export const listPayerNames = (db: Db, tenantId: string) =>
+  db
+    .selectFrom('payers')
+    .select(['id', 'name'])
+    .where('tenant_id', '=', tenantId)
+    .orderBy(sql`lower(name)`)
+    .execute();
 export const upsertPayer = (db: Db, tenantId: string, p: PayerInput) =>
   db
     .insertInto('payers')

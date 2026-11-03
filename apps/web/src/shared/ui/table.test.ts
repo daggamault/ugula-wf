@@ -53,16 +53,31 @@ describe('Table', () => {
     assert.ok(html.includes('aria-sort="descending"'));
     assert.ok(html.includes('href="/runs?sort=name"') && html.includes('href="/runs?sort=total"'));
     assert.equal(html.match(/aria-sort=/g)?.length, 1);
-    assert.ok(html.includes('Sort by'));
-    assert.ok(html.includes('<option value="total:desc" selected="">Total, descending</option>'));
-    assert.ok(!html.includes('Default order'));
+    assert.ok(html.includes('Sort By'));
+    assert.ok(html.includes('<option value="total:desc" selected="">Total, Descending</option>'));
+    assert.ok(!html.includes('Default Order'));
     const unlisted = render({
       sort: 'created',
       dir: 'desc',
       sortHref: (k) => `/runs?sort=${k}`,
       sortTo: (k, d) => `/runs?sort=${k}&dir=${d}`
     });
-    assert.ok(unlisted.includes('<option value="created:desc" selected="">Default order</option>'));
+    assert.ok(unlisted.includes('<option value="created:desc" selected="">Default Order</option>'));
     assert.ok(!unlisted.includes('aria-sort='));
+  });
+});
+
+describe('Table alignment', () => {
+  it('left-aligns every column, numbers included, with the sort arrow after the label', () => {
+    const html = render({
+      sort: 'total',
+      dir: 'asc',
+      sortHref: (k) => `/runs?sort=${k}`,
+      sortTo: (k, d) => `/runs?sort=${k}&dir=${d}`
+    });
+    // Only phone cards right-align a value against its label.
+    assert.doesNotMatch(html, /(?<![\w:-])(md:)?text-right/);
+    assert.ok(!html.includes('flex-row-reverse'));
+    assert.ok(html.includes('tabular-nums'));
   });
 });

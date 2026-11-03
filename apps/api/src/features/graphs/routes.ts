@@ -3,12 +3,14 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../../shared/auth.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { createGraphSchema, definitionSchema, versionParam } from './schemas.ts';
+import { createGraphSchema, definitionSchema, searchGraphsQuery, versionParam } from './schemas.ts';
 import type { GraphService } from './service.ts';
 
 export const createGraphRoutes = (service: GraphService) =>
   new Hono<AuthEnv>()
-    .get('/', async (c) => respond(c, await service.list(c.get('session').tenantId)))
+    .get('/', sValidator('query', searchGraphsQuery, invalidRequest), async (c) =>
+      respond(c, await service.search(c.get('session').tenantId, c.req.valid('query')))
+    )
     .get('/nodes', async (c) => respond(c, await service.nodes(c.get('session').tenantId)))
     .post('/validate', sValidator('json', definitionSchema, invalidRequest), async (c) =>
       respond(c, await service.validate(c.get('session').tenantId, c.req.valid('json').definition))

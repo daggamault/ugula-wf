@@ -121,3 +121,13 @@ describe('findDictionary', () => {
     await db.destroy();
   });
 });
+
+describe('import status and attention sorts', () => {
+  it('orders imports by status or by how many PCRs still need attention', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await listImports(db, 't-1', { page: 1, pageSize: 10, sort: 'status', dir: 'asc' });
+    await listImports(db, 't-1', { page: 1, pageSize: 10, sort: 'attention', dir: 'desc' });
+    assert.ok(queries[0]?.sql.includes('order by (r.status, reports.waiting'));
+    assert.ok(queries[1]?.sql.includes('order by reports.waiting + reports.failed'));
+  });
+});

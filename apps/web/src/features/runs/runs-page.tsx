@@ -1,10 +1,9 @@
-import { ChevronRightIcon } from 'lucide-react';
 import { formatDateTime } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyState } from '../../shared/ui/empty-state.tsx';
 import { FilterSelect } from '../../shared/ui/filter-select.tsx';
-import { IconLink } from '../../shared/ui/icon-button.tsx';
+import { OpenLink, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import {
@@ -82,11 +81,12 @@ export const RunsTable = ({
           </span>
         </TableCell>
         <TableCell kind="actions">
-          <IconLink
-            to={`/runs/${r.id}`}
-            label={`Open run ${r.name} started ${formatDateTime(r.created_at)}`}
-            icon={ChevronRightIcon}
-          />
+          <RowActions>
+            <OpenLink
+              to={`/runs/${r.id}`}
+              name={`run ${r.name} started ${formatDateTime(r.created_at)}`}
+            />
+          </RowActions>
         </TableCell>
       </TableRow>
     ))}

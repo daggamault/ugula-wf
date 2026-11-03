@@ -35,7 +35,7 @@ export const SignInForm = ({ auth, onSuccess }: SignInFormProps) => {
 
   return (
     <Card labelledBy="sign-in-heading">
-      <BrandHeader id="sign-in-heading">Sign in to your account</BrandHeader>
+      <BrandHeader id="sign-in-heading">Sign In to Your Account</BrandHeader>
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <fieldset disabled={submitting} className="flex flex-col gap-5">
           <Input
@@ -61,7 +61,7 @@ export const SignInForm = ({ auth, onSuccess }: SignInFormProps) => {
         {error ? <Alert>{error}</Alert> : null}
         <Button type="submit" isBlock isPending={submitting}>
           <LogInIcon aria-hidden="true" className="size-4" />
-          Sign in
+          Sign In
         </Button>
       </form>
     </Card>

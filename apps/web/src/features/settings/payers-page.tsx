@@ -1,335 +1,155 @@
-import { PencilIcon, PlusIcon, SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { PlusIcon } from 'lucide-react';
+import { useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
-import { classNamesOf } from '../../shared/class-names.ts';
-import { Alert } from '../../shared/ui/alert.tsx';
-import { Button } from '../../shared/ui/button.tsx';
-import { ConfirmDialog, Dialog, DialogActions } from '../../shared/ui/dialog.tsx';
-import { EmptyState } from '../../shared/ui/empty-state.tsx';
-import { IconButton } from '../../shared/ui/icon-button.tsx';
-import { Input } from '../../shared/ui/input.tsx';
-import { interactiveClasses } from '../../shared/ui/interactive.ts';
-import { Page, PageLoading } from '../../shared/ui/page.tsx';
-import { Pagination } from '../../shared/ui/pagination.tsx';
-import { type SearchField, SearchForm } from '../../shared/ui/search-form.tsx';
-import { Select } from '../../shared/ui/select.tsx';
+import { ButtonLink } from '../../shared/ui/button.tsx';
+import { DeleteDialog } from '../../shared/ui/dialog.tsx';
+import { Highlight } from '../../shared/ui/highlight.tsx';
+import { DeleteButton, EditLink, RowActions } from '../../shared/ui/icon-button.tsx';
+import { Page } from '../../shared/ui/page.tsx';
+import { Search } from '../../shared/ui/search.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
-import { pageOf, useTableState } from '../../shared/url-state.ts';
+import { type SearchView, useSearchState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
-import type { Payer, PayerAlias, SettingsClient } from './client.ts';
+import type { Payer, SettingsClient } from './client.ts';
 import { FILING_OPTIONS } from './settings-page.tsx';
 
-const PATH = '/payers';
-
-const SEARCH_FIELDS: readonly SearchField[] = [
-  { name: 'q', label: 'Payer', placeholder: 'Name or payer ID' }
-];
-
-export const matchesPayer = (p: Payer, search: string) => {
-  const needle = search.trim().toLowerCase();
-  return (
-    !needle || p.name.toLowerCase().includes(needle) || p.payer_id.toLowerCase().includes(needle)
-  );
-};
-
-type Forgetting = { payer: Payer; alias: PayerAlias };
-
-const PayerNames = ({
-  payer,
-  onForget
-}: {
-  payer: Payer;
-  onForget: (payer: Payer, alias: PayerAlias) => void;
-}) =>
-  payer.aliases.length ? (
-    <ul aria-label={`Learned names for ${payer.name}`} className="flex flex-wrap gap-1">
-      {payer.aliases.map((a) => (
-        <li key={a.id}>
-          <button
-            type="button"
-            aria-label={`Forget ${a.alias} for ${payer.name}`}
-            onClick={() => onForget(payer, a)}
-            className={classNamesOf(
-              interactiveClasses,
-              'border-border text-surface-fg-muted hover:border-danger/40 hover:bg-danger/10 hover:text-danger inline-flex items-center gap-1 rounded-full border pr-1.5 pl-2 text-xs/5'
-            )}
-          >
-            {a.alias}
-            <XIcon aria-hidden="true" className="size-3.5" />
-          </button>
-        </li>
-      ))}
-    </ul>
-  ) : null;
+export const PAYERS_PATH = '/payers';
 
 export const PAYER_TABLE = {
   sorts: { name: 'asc', payerId: 'asc', filing: 'asc' },
   sort: 'name'
 } as const;
 
-const PAYER_VALUES = {
-  name: (p: Payer) => p.name,
-  payerId: (p: Payer) => p.payer_id,
-  filing: (p: Payer) => p.claim_filing
-};
+export const filingLabel = (code: string) =>
+  FILING_OPTIONS.find((o) => o.value === code)?.label ?? code;
 
-export const PayerDirectory = ({
+export const payerDeleteNote = (name: string) =>
+  `Its prices are removed, and claims billed to ${name} cannot go in an 837P file until it is added again.`;
+
+const LearnedNames = ({ payer, q }: { payer: Payer; q: string }) =>
+  payer.aliases.length ? (
+    <ul aria-label={`Learned names for ${payer.name}`} className="flex flex-wrap gap-1">
+      {payer.aliases.map((a) => (
+        <li
+          key={a.id}
+          className="border-border text-surface-fg-muted rounded-full border px-2 text-xs/5"
+        >
+          <Highlight text={a.alias} query={q} />
+        </li>
+      ))}
+    </ul>
+  ) : null;
+
+export const PayersTable = ({
   payers,
-  isSearching,
-  onSave,
-  onDelete,
-  onForget,
-  open,
-  onOpen,
-  onClose
+  search,
+  onDelete
 }: {
   payers: readonly Payer[];
-  isSearching: boolean;
-  open: boolean;
-  onOpen: () => void;
-  onClose: () => void;
-  onSave: (payer: { name: string; payerId: string; claimFiling: string }) => Promise<string | null>;
+  search: SearchView;
   onDelete: (payer: Payer) => void;
-  onForget: (payer: Payer, alias: PayerAlias) => void;
-}) => {
-  const empty = { name: '', payerId: '', claimFiling: 'CI' };
-  const [draft, setDraft] = useState(empty);
-  const [editing, setEditing] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [deleting, setDeleting] = useState<Payer | null>(null);
-  const [forgetting, setForgetting] = useState<Forgetting | null>(null);
-  const table = useTableState(PATH, PAYER_TABLE);
-  const reset = () => {
-    setDraft(empty);
-    setEditing(false);
-    setError('');
-    onClose();
-  };
-  const submit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setBusy(true);
-    setError('');
-    const failure = await onSave(draft);
-    setBusy(false);
-    if (failure) setError(failure);
-    else reset();
-  };
-  return (
-    <>
-      <Dialog
-        open={open}
-        onClose={reset}
-        title={editing ? 'Edit Payer' : 'Add Payer'}
-        description="The payer ID and claim filing code come from your clearinghouse's payer list."
-      >
-        <form onSubmit={submit} className="flex flex-col gap-5" aria-label="Save payer">
-          <fieldset disabled={busy} className="grid gap-x-4 gap-y-5">
-            <Input
-              id="payer-name"
-              label="Payer name"
-              required
-              readOnly={editing}
-              value={draft.name}
-              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            />
-            <Input
-              id="payer-id"
-              label="Payer ID"
-              required
-              isMonospace
-              value={draft.payerId}
-              onChange={(e) => setDraft({ ...draft, payerId: e.target.value })}
-            />
-            <Select
-              id="payer-filing"
-              label="Claim filing"
-              options={FILING_OPTIONS}
-              value={draft.claimFiling}
-              onChange={(e) => setDraft({ ...draft, claimFiling: e.target.value })}
-            />
-          </fieldset>
-          {error ? <Alert>{error}</Alert> : null}
-          <DialogActions>
-            <Button variant="outline" onClick={reset}>
-              <XIcon aria-hidden="true" className="size-4" />
-              Cancel
-            </Button>
-            <Button type="submit" isPending={busy}>
-              <SaveIcon aria-hidden="true" className="size-4" />
-              Save payer
-            </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
-      {payers.length ? (
-        <>
-          <Table
-            label="Payer directory"
-            sorting={table}
-            head={[
-              { label: 'Payer', sort: 'name' },
-              { label: 'Payer ID', sort: 'payerId' },
-              { label: 'Claim Filing', isSecondary: true, sort: 'filing' },
-              { label: 'Actions', isLabelHidden: true, isCompact: true }
-            ]}
-          >
-            {pageOf(payers, table, PAYER_VALUES).items.map((p) => (
-              <TableRow key={p.id}>
-                <TableCell>
-                  <span className="flex flex-col gap-1">
-                    <span className="font-medium">{p.name}</span>
-                    <PayerNames
-                      payer={p}
-                      onForget={(payer, alias) => setForgetting({ payer, alias })}
-                    />
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <span className="font-mono">{p.payer_id}</span>
-                </TableCell>
-                <TableCell isMuted isSecondary>
-                  {FILING_OPTIONS.find((o) => o.value === p.claim_filing)?.label ?? p.claim_filing}
-                </TableCell>
-                <TableCell kind="actions">
-                  <span className="flex items-center justify-end gap-2">
-                    <IconButton
-                      label={`Edit ${p.name}`}
-                      icon={PencilIcon}
-                      onClick={() => {
-                        setEditing(true);
-                        setError('');
-                        setDraft({
-                          name: p.name,
-                          payerId: p.payer_id,
-                          claimFiling: p.claim_filing
-                        });
-                        onOpen();
-                      }}
-                    />
-                    <IconButton
-                      label={`Delete ${p.name}`}
-                      icon={Trash2Icon}
-                      intent="danger"
-                      onClick={() => setDeleting(p)}
-                    />
-                  </span>
-                </TableCell>
-              </TableRow>
-            ))}
-          </Table>
-          <Pagination label="Payers" total={payers.length} state={table} />
-        </>
-      ) : isSearching ? (
-        <EmptyState reason="noMatches" title="No Matching Payers">
-          Nothing matches this search.
-        </EmptyState>
-      ) : (
-        <EmptyState title="No Payers Yet">
-          Claims cannot go in an 837P file until their payers are listed here. Use Add payer to add
-          one.
-        </EmptyState>
-      )}
-      <ConfirmDialog
-        open={deleting !== null}
-        title="Delete Payer?"
-        intent="danger"
-        confirmLabel="Delete"
-        confirmIcon={Trash2Icon}
-        onClose={() => setDeleting(null)}
-        onConfirm={() => {
-          if (deleting) onDelete(deleting);
-          setDeleting(null);
-        }}
-      >
-        {deleting
-          ? `Its prices are removed, and claims billed to ${deleting.name} cannot go in an 837P file until it is added again.`
-          : null}
-      </ConfirmDialog>
-      <ConfirmDialog
-        open={forgetting !== null}
-        title="Forget Name?"
-        intent="danger"
-        confirmLabel="Forget"
-        confirmIcon={XIcon}
-        onClose={() => setForgetting(null)}
-        onConfirm={() => {
-          if (forgetting) onForget(forgetting.payer, forgetting.alias);
-          setForgetting(null);
-        }}
-      >
-        {forgetting
-          ? `PCRs naming ${forgetting.alias.alias} stop linking to ${forgetting.payer.name}; the next one goes to a Payer matching task.`
-          : null}
-      </ConfirmDialog>
-    </>
+}) => (
+  <Table
+    label="Payers"
+    sorting={search}
+    head={[
+      { label: 'Payer', sort: 'name' },
+      { label: 'Clearinghouse Payer ID', sort: 'payerId' },
+      { label: 'Claim Filing', isSecondary: true, sort: 'filing' },
+      { label: 'Actions', isLabelHidden: true, isCompact: true }
+    ]}
+  >
+    {payers.map((p) => {
+      const edit = withBack(`${PAYERS_PATH}/${p.id}`, search.href);
+      return (
+        <TableRow key={p.id}>
+          <TableCell kind="wrap">
+            <span className="flex flex-col gap-1">
+              <span className="font-medium">
+                <Highlight text={p.name} query={search.q} />
+              </span>
+              <LearnedNames payer={p} q={search.q} />
+            </span>
+          </TableCell>
+          <TableCell>
+            <span className="font-mono">
+              <Highlight text={p.payer_id} query={search.q} />
+            </span>
+          </TableCell>
+          <TableCell isMuted isSecondary>
+            {filingLabel(p.claim_filing)}
+          </TableCell>
+          <TableCell kind="actions">
+            <RowActions>
+              <EditLink to={edit} name={p.name} />
+              <DeleteButton name={p.name} onClick={() => onDelete(p)} />
+            </RowActions>
+          </TableCell>
+        </TableRow>
+      );
+    })}
+  </Table>
+);
+
+export const PayersPage = ({ client }: { client: SettingsClient }) => {
+  const search = useSearchState(PAYERS_PATH, PAYER_TABLE);
+  const payers = useResource(`payers:${search.apiQuery}`, () =>
+    client.searchPayers(search.apiQuery)
   );
-};
-
-export const payerSavedNotice = (name: string, linkedClaims: number) =>
-  linkedClaims
-    ? `${name} saved and linked to ${linkedClaims} ${linkedClaims === 1 ? 'claim' : 'claims'}`
-    : `${name} saved`;
-
-export const PayersPage = ({ client, search }: { client: SettingsClient; search: string }) => {
-  const payers = useResource('payers', client.payers);
-  const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState<Payer | null>(null);
   const notify = useToast();
-  const act = async (action: () => Promise<unknown>, done: string, failed: string) => {
+  const remove = async (p: Payer) => {
     try {
-      await action();
-      notify({ title: done });
+      await client.removePayer(p.id);
+      notify({ title: `${p.name} deleted` });
       payers.reload();
     } catch (err) {
-      notify({ intent: 'danger', title: failed, description: messageOf(err) });
+      notify({ intent: 'danger', title: 'Could not delete payer', description: messageOf(err) });
     }
   };
+  const add = withBack(`${PAYERS_PATH}/new`, search.href);
   return (
     <Page
       title="Payers"
-      description="Payer IDs and filing codes for 837P claims. Payer names on PCRs match here automatically, or through a Payer matching task."
+      description="Clearinghouse payer IDs and filing codes for 837P claims. Payer names on PCRs match here automatically, or through a Payer Matching task."
       actions={
-        <Button onClick={() => setOpen(true)}>
+        <ButtonLink to={add}>
           <PlusIcon aria-hidden="true" className="size-4" />
-          Add payer
-        </Button>
+          Add Payer
+        </ButtonLink>
       }
     >
-      <SearchForm label="Search payers" path={PATH} fields={SEARCH_FIELDS} />
-      {payers.error ? (
-        <Alert>{payers.error.message}</Alert>
-      ) : payers.data ? (
-        <PayerDirectory
-          payers={payers.data.filter((p) => matchesPayer(p, search))}
-          isSearching={Boolean(search.trim())}
-          open={open}
-          onOpen={() => setOpen(true)}
-          onClose={() => setOpen(false)}
-          onSave={async (p) => {
-            try {
-              const saved = await client.savePayer(p);
-              notify({ title: payerSavedNotice(saved.payer.name, saved.linkedClaims) });
-              payers.reload();
-              return null;
-            } catch (err) {
-              return messageOf(err);
-            }
-          }}
-          onDelete={(p) =>
-            void act(() => client.removePayer(p.id), `${p.name} deleted`, 'Could not delete payer')
-          }
-          onForget={(p, a) =>
-            void act(
-              () => client.forgetAlias(p.id, a.id),
-              `${a.alias} no longer links to ${p.name}`,
-              'Could not forget name'
-            )
-          }
-        />
-      ) : (
-        <PageLoading />
-      )}
+      <Search
+        label="Payers"
+        path={PAYERS_PATH}
+        search={search}
+        results={payers}
+        empty={{
+          title: 'No Payers Yet',
+          children: 'Claims cannot go in an 837P file until their payers are listed here.',
+          action: (
+            <ButtonLink to={add} variant="outline">
+              <PlusIcon aria-hidden="true" className="size-4" />
+              Add Payer
+            </ButtonLink>
+          )
+        }}
+      >
+        {(items) => <PayersTable payers={items} search={search} onDelete={setDeleting} />}
+      </Search>
+      <DeleteDialog
+        open={deleting !== null}
+        name={deleting?.name ?? ''}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => {
+          const payer = deleting;
+          setDeleting(null);
+          if (payer) void remove(payer);
+        }}
+      >
+        {deleting ? payerDeleteNote(deleting.name) : null}
+      </DeleteDialog>
     </Page>
   );
 };

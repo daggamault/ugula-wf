@@ -260,19 +260,19 @@ describe('ClaimView', () => {
     assert.ok(html.includes('2. </span>Blue Plan'));
     assert.ok(html.includes('aria-label="Move Blue Plan up"'));
     assert.ok(html.includes('>Patient<'));
-    assert.equal(html.match(/Not in payer directory/g)?.length, 1);
-    assert.ok(html.includes('Service date'));
+    assert.equal(html.match(/Not in Payer Directory/g)?.length, 1);
+    assert.ok(html.includes('Service Date'));
     assert.ok(html.includes('for="response-paid"'));
     assert.ok(
       html.includes('href="/claims/c1?tab=data"') && html.includes('href="/claims/c1?tab=history"')
     );
     assert.ok(!html.includes('View PDF'));
-    assert.ok(html.includes('>Post payment<'));
+    assert.ok(html.includes('>Post Payment<'));
     const history = render({}, null, 'history');
     assert.ok(history.includes('$50.00 paid'));
     assert.ok(history.includes('href="/docs/e2"'));
     assert.equal(history.match(/View PDF/g)?.length, 1);
-    assert.ok(render({}, null, 'data').includes('Date of service'));
+    assert.ok(render({}, null, 'data').includes('Date of Service'));
   });
 
   it('defaults payments to the patient once no payer is being billed', () => {
@@ -283,9 +283,9 @@ describe('ClaimView', () => {
   it('links to the cycle run when it has stopped', () => {
     const html = render({ cycle_status: 'failed' });
     assert.ok(html.includes('href="/runs/cycle-1"'));
-    assert.ok(html.includes('>Restart payer cycle<'));
+    assert.ok(html.includes('>Restart Payer Cycle<'));
     const faulted = render({ cycle_status: 'faulted' });
-    assert.ok(!faulted.includes('Restart payer cycle'));
+    assert.ok(!faulted.includes('Restart Payer Cycle'));
     assert.ok(faulted.includes('href="/tasks?type=exceptions"'));
   });
 
@@ -332,7 +332,7 @@ describe('ClaimView submission', () => {
   it('submits a ready claim from its own page and links its patient', () => {
     const html = view([]);
     assert.ok(html.includes('Ready to submit to Medicare.'));
-    assert.ok(html.includes('Create 837P file') && html.includes('Mark submitted'));
+    assert.ok(html.includes('Create 837P File') && html.includes('Mark Submitted'));
     assert.ok(!html.includes('Fix the problems listed first.'));
     assert.ok(html.includes('href="/patients/p1"'));
   });
@@ -367,7 +367,7 @@ describe('EventsTable', () => {
         fileUrl: (id) => `/files/${id}`
       })
     );
-    assert.ok(html.includes('href="/files/b4"') && /837P file #(<!-- -->)?4/.test(html));
+    assert.ok(html.includes('href="/files/b4"') && /837P File #(<!-- -->)?4/.test(html));
   });
 });
 

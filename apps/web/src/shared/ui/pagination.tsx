@@ -1,8 +1,14 @@
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronsLeftIcon,
+  ChevronsRightIcon,
+  type LucideIcon
+} from 'lucide-react';
 import { useId } from 'react';
 import { navigate } from '../router.tsx';
 import { PAGE_SIZES, type TableState } from '../url-state.ts';
-import { ButtonLink, buttonClasses } from './button.tsx';
+import { IconButton, IconLink } from './icon-button.tsx';
 import { NativeSelect } from './select.tsx';
 
 export type PaginationProps = {
@@ -22,12 +28,26 @@ export const rangeText = (page: number, pageSize: number, total: number) => {
   return `${first.toLocaleString()}–${last.toLocaleString()} of ${total.toLocaleString()}`;
 };
 
-const Disabled = ({ children }: { children: React.ReactNode }) => (
-  <span aria-disabled="true" className={buttonClasses({ variant: 'outline', size: 'sm' })}>
-    {children}
-  </span>
-);
+const PageLink = ({
+  to,
+  rel,
+  label,
+  icon,
+  disabledReason
+}: {
+  to: string;
+  rel?: string;
+  label: string;
+  icon: LucideIcon;
+  disabledReason: string | undefined;
+}) =>
+  disabledReason === undefined ? (
+    <IconLink to={to} label={label} icon={icon} {...(rel ? { rel } : {})} />
+  ) : (
+    <IconButton label={label} icon={icon} disabledReason={disabledReason} />
+  );
 
+/** Range, rows per page, and first, previous, next and last page buttons for a paged list. */
 export const Pagination = ({ label, total, state }: PaginationProps) => {
   const { page, pageSize, pageHref, sizeHref } = state;
   const sizeId = useId();
@@ -35,18 +55,10 @@ export const Pagination = ({ label, total, state }: PaginationProps) => {
   if (pages === 1 && page === 1 && total <= PAGE_SIZES[0]) {
     return <p className="text-surface-fg-muted text-sm">{rangeText(page, pageSize, total)}</p>;
   }
-  const previous = (
-    <>
-      <ChevronLeftIcon aria-hidden="true" className="size-4" />
-      Previous
-    </>
-  );
-  const next = (
-    <>
-      Next
-      <ChevronRightIcon aria-hidden="true" className="size-4" />
-    </>
-  );
+  const isFirst = page <= 1;
+  const isLast = page >= pages;
+  const onFirst = isFirst ? 'Already on the first page' : undefined;
+  const onLast = isLast ? 'Already on the last page' : undefined;
   return (
     <nav
       aria-label={`${label} pages`}
@@ -54,12 +66,12 @@ export const Pagination = ({ label, total, state }: PaginationProps) => {
     >
       <p className="text-surface-fg-muted" aria-live="polite">
         {rangeText(page, pageSize, total)}
-        {pages > 1 ? ` · page ${page} of ${pages}` : ''}
+        {pages > 1 ? ` · Page ${page.toLocaleString()} of ${pages.toLocaleString()}` : ''}
       </p>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
         {sizeHref ? (
           <label htmlFor={sizeId} className="text-surface-fg-muted flex items-center gap-2">
-            Rows
+            Rows Per Page
             <span className="w-20">
               <NativeSelect
                 id={sizeId}
@@ -70,26 +82,33 @@ export const Pagination = ({ label, total, state }: PaginationProps) => {
             </span>
           </label>
         ) : null}
-        <div className="flex flex-1 justify-end gap-2 sm:flex-none">
-          {page > 1 ? (
-            <ButtonLink
-              to={pageHref(Math.min(page - 1, pages))}
-              variant="outline"
-              size="sm"
-              rel="prev"
-            >
-              {previous}
-            </ButtonLink>
-          ) : (
-            <Disabled>{previous}</Disabled>
-          )}
-          {page < pages ? (
-            <ButtonLink to={pageHref(page + 1)} variant="outline" size="sm" rel="next">
-              {next}
-            </ButtonLink>
-          ) : (
-            <Disabled>{next}</Disabled>
-          )}
+        <div className="flex items-center gap-1">
+          <PageLink
+            to={pageHref(1)}
+            label="First Page"
+            icon={ChevronsLeftIcon}
+            disabledReason={onFirst}
+          />
+          <PageLink
+            to={pageHref(Math.min(page - 1, pages))}
+            rel="prev"
+            label="Previous Page"
+            icon={ChevronLeftIcon}
+            disabledReason={onFirst}
+          />
+          <PageLink
+            to={pageHref(page + 1)}
+            rel="next"
+            label="Next Page"
+            icon={ChevronRightIcon}
+            disabledReason={onLast}
+          />
+          <PageLink
+            to={pageHref(pages)}
+            label="Last Page"
+            icon={ChevronsRightIcon}
+            disabledReason={onLast}
+          />
         </div>
       </div>
     </nav>

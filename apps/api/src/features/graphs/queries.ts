@@ -2,6 +2,10 @@ import type { Database, GraphKind } from '@ugula/db';
 import type { GraphDef } from '@ugula/graph';
 import { type Kysely, sql } from 'kysely';
 
+import { type Page, type PageRequest, paged } from '../../shared/paging.ts';
+import { containsPattern } from '../../shared/search.ts';
+import type { GraphShow, GraphSort } from './schemas.ts';
+
 type Db = Kysely<Database>;
 
 export type GraphSummary = {
@@ -18,53 +22,105 @@ export type GraphSummary = {
   updatedAt: Date;
 };
 
-export const listGraphs = async (db: Db, tenantId: string): Promise<GraphSummary[]> =>
-  (
-    await db
-      .selectFrom('graphs as g')
-      .leftJoin('graph_versions as gv', 'gv.graph_id', 'g.id')
-      .select([
-        'g.id',
-        'g.key',
-        'g.name',
-        'g.kind',
-        'g.description',
-        'g.tenant_id',
-        'g.updated_at',
-        sql<number | null>`max(gv.version) filter (where gv.published_at is not null)`.as(
-          'published'
-        ),
-        sql<number | null>`max(gv.version) filter (where gv.published_at is null)`.as('draft'),
-        sql<string | null>`(
-          select o.id from graphs o
-          where o.key = g.key and g.tenant_id is null and o.tenant_id = ${tenantId} and o.is_active
-        )`.as('overridden_by'),
-        sql<boolean>`g.tenant_id is not null and exists (
-          select 1 from graphs s where s.key = g.key and s.tenant_id is null
-        )`.as('overrides')
+export type GraphFilters = PageRequest<GraphSort> & {
+  q?: string | undefined;
+  show: GraphShow;
+};
+
+type GraphRow = {
+  id: string;
+  key: string;
+  name: string;
+  kind: GraphKind;
+  description: string;
+  tenant_id: string | null;
+  updated_at: Date;
+  published: number | null;
+  draft: number | null;
+  overridden_by: string | null;
+  overrides: boolean;
+};
+
+const GRAPH_ORDER = {
+  name: sql`lower(g.name)`,
+  key: sql.ref('g.key'),
+  kind: sql`(g.kind, lower(g.name))`,
+  updated: sql.ref('g.updated_at')
+};
+
+const toSummary = (r: GraphRow): GraphSummary => ({
+  id: r.id,
+  key: r.key,
+  name: r.name,
+  kind: r.kind,
+  description: r.description,
+  isSystem: r.tenant_id === null,
+  overrides: r.overrides,
+  overriddenBy: r.overridden_by,
+  publishedVersion: r.published,
+  draftVersion: r.draft,
+  updatedAt: r.updated_at
+});
+
+/** Tenant and system graphs whose name or key contains `q`, of the kind shown, a page at a time. */
+export const searchGraphs = async (
+  db: Db,
+  tenantId: string,
+  f: GraphFilters
+): Promise<Page<GraphSummary>> => {
+  let q = db
+    .selectFrom('graphs as g')
+    // One lookup per graph for both its latest published and draft versions.
+    .leftJoinLateral(
+      (eb) =>
+        eb
+          .selectFrom('graph_versions as gv')
+          .select([
+            sql<number | null>`max(gv.version) filter (where gv.published_at is not null)`.as(
+              'published'
+            ),
+            sql<number | null>`max(gv.version) filter (where gv.published_at is null)`.as('draft')
+          ])
+          .whereRef('gv.graph_id', '=', 'g.id')
+          .as('v'),
+      (join) => join.onTrue()
+    )
+    .select([
+      'g.id',
+      'g.key',
+      'g.name',
+      'g.kind',
+      'g.description',
+      'g.tenant_id',
+      'g.updated_at',
+      'v.published',
+      'v.draft',
+      sql<string | null>`(
+        select o.id from graphs o
+        where o.key = g.key and g.tenant_id is null and o.tenant_id = ${tenantId} and o.is_active
+      )`.as('overridden_by'),
+      sql<boolean>`g.tenant_id is not null and exists (
+        select 1 from graphs s where s.key = g.key and s.tenant_id is null
+      )`.as('overrides')
+    ])
+    .where((eb) =>
+      eb.or([
+        eb('g.tenant_id', 'is', null),
+        eb.and([eb('g.tenant_id', '=', tenantId), eb('g.is_active', '=', true)])
       ])
-      .where((eb) =>
-        eb.or([
-          eb('g.tenant_id', 'is', null),
-          eb.and([eb('g.tenant_id', '=', tenantId), eb('g.is_active', '=', true)])
-        ])
-      )
-      .groupBy('g.id')
-      .orderBy('g.key')
-      .execute()
-  ).map((r) => ({
-    id: r.id,
-    key: r.key,
-    name: r.name,
-    kind: r.kind,
-    description: r.description,
-    isSystem: r.tenant_id === null,
-    overrides: r.overrides,
-    overriddenBy: r.overridden_by,
-    publishedVersion: r.published,
-    draftVersion: r.draft,
-    updatedAt: r.updated_at
-  }));
+    );
+  if (f.show === 'workflows') q = q.where('g.kind', '=', 'workflow');
+  if (f.show === 'blocks') q = q.where('g.kind', '!=', 'workflow');
+  if (f.show === 'mine') q = q.where('g.tenant_id', 'is not', null);
+  if (f.q) {
+    const like = containsPattern(f.q);
+    q = q.where((eb) =>
+      eb.or([eb(sql`lower(g.name)`, 'like', like), eb(sql`lower(g.key)`, 'like', like)])
+    );
+  }
+  const page = await paged(q, f, GRAPH_ORDER, sql.ref('g.id'));
+  return { ...page, items: page.items.map((r) => toSummary(r as GraphRow)) };
+};
 
 export const findGraph = (db: Db, tenantId: string, id: string) =>
   db

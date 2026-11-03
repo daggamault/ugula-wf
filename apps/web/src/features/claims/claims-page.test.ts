@@ -61,7 +61,7 @@ describe('ClaimsPage', () => {
       })
     );
     assert.ok(html.includes('aria-expanded="true"') && html.includes('>Filters'));
-    assert.ok(html.includes('<option value="needs_review">Needs review</option>'));
+    assert.ok(html.includes('<option value="needs_review">Needs Review</option>'));
     assert.ok(html.includes('for="search-number"') && html.includes('for="search-birthDate"'));
     assert.ok(!html.includes('837P'));
   });

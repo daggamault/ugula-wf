@@ -43,6 +43,6 @@ describe('importFiles', () => {
         ['danger', 'bad.xml could not be imported', 'The file is empty']
       ]
     );
-    assert.deepEqual(toasts[0]?.action, { label: 'View imports', to: '/imports' });
+    assert.deepEqual(toasts[0]?.action, { label: 'View Imports', to: '/imports' });
   });
 });

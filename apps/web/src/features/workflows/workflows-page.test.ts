@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { searchStateOf } from '../../shared/url-state.ts';
 import type { GraphSummary, WorkflowsClient } from './client.ts';
+import { graphKindOf, NewWorkflowForm, NewWorkflowPage } from './new-workflow-page.tsx';
 import {
+  GRAPH_TABLE,
   graphFilterOf,
-  matchesFilter,
-  matchesSearch,
+  graphsQueryOf,
   WorkflowsPage,
   WorkflowsTable
 } from './workflows-page.tsx';
@@ -26,8 +28,10 @@ const graph = (patch: Partial<GraphSummary>): GraphSummary => ({
   ...patch
 });
 
+const search = (query = '') => searchStateOf('/workflows', new URLSearchParams(query), GRAPH_TABLE);
+
 describe('WorkflowsPage', () => {
-  it('lists graphs with kind, versions and run links for published workflows', () => {
+  it('lists graphs with kind, versions, highlighted matches and row actions', () => {
     const html = renderToStaticMarkup(
       createElement(WorkflowsTable, {
         graphs: [
@@ -35,54 +39,77 @@ describe('WorkflowsPage', () => {
           graph({ id: 'g2', kind: 'node', isSystem: true, publishedVersion: null }),
           graph({ id: 'g3', kind: 'node', isSystem: true, overriddenBy: 'g4' }),
           graph({ id: 'g4', kind: 'node', overrides: true })
-        ]
+        ],
+        search: search('q=bat')
       })
     );
-    assert.ok(html.includes('>Has your copy<') && html.includes('>Your copy<'));
+    assert.ok(html.includes('>Has Your Copy<') && html.includes('>Your Copy<'));
     assert.ok(html.includes('<span class="sr-only">Actions</span>'));
     assert.ok(html.includes('href="/workflows/g1" aria-label="Edit Batch"'));
     assert.equal(html.split('href="/workflows/g1"').length, 2);
     assert.ok(html.includes('href="/runs/new?graph=g1" aria-label="Run Batch"'));
+    assert.ok(html.includes('>Run</span>') && html.includes('>Edit</span>'));
     assert.ok(!html.includes('/runs/new?graph=g2'));
-    assert.ok(html.includes('System') && html.includes('Building block'));
+    assert.ok(html.includes('System') && html.includes('Building Block'));
+    assert.match(html, /<mark[^>]*>Bat<\/mark>ch/);
     assert.ok(html.includes('v2'));
   });
 
-  it('renders the page shell with a create action, a kind filter and a name search', () => {
+  it('renders a create link, a kind filter and the standard search', () => {
     const html = renderToStaticMarkup(
       createElement(WorkflowsPage, {
-        client: { list: async () => [] } as unknown as WorkflowsClient,
-        show: 'workflows',
-        search: ''
+        client: { search: () => new Promise(() => undefined) } as unknown as WorkflowsClient,
+        show: 'blocks'
       })
     );
     assert.ok(html.includes('<h1'));
-    assert.ok(html.includes('>New workflow<'));
-    assert.match(html, /<option value="workflows" selected="">Workflows<\/option>/);
-    assert.ok(html.includes('<option value="blocks">Building blocks</option>'));
-    assert.ok(html.includes('id="search-q"'));
+    assert.ok(
+      html.includes('href="/workflows/new?kind=node"') && html.includes('New Building Block')
+    );
+    assert.ok(html.includes('<option value="blocks" selected="">Building Blocks</option>'));
+    assert.ok(
+      html.includes('aria-label="Search Building Blocks"') && html.includes('id="search-q"')
+    );
   });
 
-  it('defaults to workflows and reads the kind param', () => {
+  it('defaults to workflows, reads the kind param and asks the API for that kind', () => {
     assert.equal(graphFilterOf(new URLSearchParams()), 'workflows');
     assert.equal(graphFilterOf(new URLSearchParams('kind=blocks')), 'blocks');
     assert.equal(graphFilterOf(new URLSearchParams('kind=nope')), 'workflows');
+    assert.equal(
+      graphsQueryOf(search('q=bat').apiQuery, 'mine'),
+      'q=bat&page=1&pageSize=25&sort=name&dir=asc&show=mine'
+    );
   });
+});
 
-  it('filters workflows, building blocks and graphs the agency owns', () => {
-    const node = graph({ kind: 'node', isSystem: true });
-    assert.equal(matchesFilter(graph({}), 'workflows'), true);
-    assert.equal(matchesFilter(node, 'workflows'), false);
-    assert.equal(matchesFilter(node, 'blocks'), true);
-    assert.equal(matchesFilter(node, 'mine'), false);
-    assert.equal(matchesFilter(graph({}), 'mine'), true);
-    assert.equal(matchesFilter(node, 'all'), true);
-  });
-
-  it('searches by name or key, ignoring case', () => {
-    assert.equal(matchesSearch(graph({}), ''), true);
-    assert.equal(matchesSearch(graph({}), 'bat'), true);
-    assert.equal(matchesSearch(graph({}), 'DEMO.'), true);
-    assert.equal(matchesSearch(graph({}), 'claim'), false);
+describe('NewWorkflowPage', () => {
+  it('creates a workflow on its own page with Title Cased labels and a way back', () => {
+    const html = renderToStaticMarkup(
+      createElement(NewWorkflowForm, {
+        kind: 'node',
+        back: '/workflows?kind=blocks',
+        onKindChange: () => undefined,
+        onCreate: async () => null
+      })
+    );
+    assert.ok(html.includes('billing.match-patient'));
+    assert.ok(html.includes('<option value="node" selected="">Building Block</option>'));
+    assert.ok(
+      html.includes('href="/workflows?kind=blocks"') && html.includes('Create Building Block')
+    );
+    assert.ok(html.includes('@3xl:grid-cols-4') && html.includes('type="submit"'));
+    const page = renderToStaticMarkup(
+      createElement(NewWorkflowPage, {
+        client: {} as WorkflowsClient,
+        kind: 'workflow',
+        back: '/workflows'
+      })
+    );
+    assert.ok(
+      page.includes('>New Workflow</h1>') && page.includes('aria-label="Back to Workflows"')
+    );
+    assert.equal(graphKindOf(new URLSearchParams('kind=node')), 'node');
+    assert.equal(graphKindOf(new URLSearchParams('kind=x')), 'workflow');
   });
 });

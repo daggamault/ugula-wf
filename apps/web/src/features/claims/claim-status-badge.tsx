@@ -4,23 +4,23 @@ import type { ClaimStatus } from './client.ts';
 
 const STATUS: Record<ClaimStatus, StatusBadgeStyle> = {
   draft: { label: 'Draft' },
-  needs_review: { intent: 'warning', label: 'Needs review' },
-  ready: { intent: 'primary', label: 'Ready to submit' },
+  needs_review: { intent: 'warning', label: 'Needs Review' },
+  ready: { intent: 'primary', label: 'Ready to Submit' },
   submitted: { intent: 'info', label: 'Submitted' },
-  follow_up: { intent: 'warning', label: 'Needs follow-up' },
-  reconcile: { intent: 'warning', label: 'Reconcile payment' },
-  patient_balance: { intent: 'info', label: 'Patient balance' },
-  balance_review: { intent: 'warning', label: 'Balance review' },
+  follow_up: { intent: 'warning', label: 'Needs Follow-Up' },
+  reconcile: { intent: 'warning', label: 'Reconcile Payment' },
+  patient_balance: { intent: 'info', label: 'Patient Balance' },
+  balance_review: { intent: 'warning', label: 'Balance Review' },
   paid: { intent: 'success', label: 'Paid' },
-  written_off: { label: 'Written off' },
-  collections: { intent: 'danger', label: 'Sent to collections' },
+  written_off: { label: 'Written Off' },
+  collections: { intent: 'danger', label: 'Sent to Collections' },
   void: { label: 'Void' }
 };
 
 export const claimStatusLabel = (status: ClaimStatus) => STATUS[status].label;
 
 export const CLAIM_FILTERS = [
-  { value: 'open', label: 'Open (all not closed)' },
+  { value: 'open', label: 'Open (Not Closed)' },
   ...CLAIM_STATUSES.map((s) => ({ value: s, label: STATUS[s].label })),
   { value: 'all', label: 'All' }
 ] as const satisfies readonly { value: string; label: string }[];

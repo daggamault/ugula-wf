@@ -71,7 +71,7 @@ describe('GraphNode', () => {
     );
     assert.ok(html.includes('border-danger'));
     assert.ok(html.includes('Bad (+1)'));
-    assert.ok(html.includes('Building block'));
+    assert.ok(html.includes('Building Block'));
     assert.ok(html.includes('ring-2'));
     assert.ok(render({ ...base, signature: null }).includes('Unknown node std.math.add@1'));
   });

@@ -84,7 +84,7 @@ export const LookupTableEditor = ({ nodeId, config, editable, onConfig }: TableE
     <fieldset disabled={!editable} className="flex flex-col gap-3">
       <Select
         id={`${nodeId}-lookup-type`}
-        label="Values are"
+        label="Values Are"
         options={COLUMN_TYPES}
         value={columnKind(table.type)}
         onChange={(e) => set({ type: columnType(e.target.value) })}
@@ -130,13 +130,13 @@ export const LookupTableEditor = ({ nodeId, config, editable, onConfig }: TableE
       {editable ? (
         <span>
           <AddButton onClick={() => set({ rows: [...table.rows, { key: '', value: null }] })}>
-            Add row
+            Add Row
           </AddButton>
         </span>
       ) : null}
       <CellInput
         id={`${nodeId}-fallback`}
-        label="When the key is not listed"
+        label="When the Key Is Not Listed"
         hint="Left empty, the value is empty."
         value={table.fallback}
         parse={(text) => parseCell(text, table.type)}
@@ -223,7 +223,7 @@ const ColumnsEditor = ({
               })
             }
           >
-            {`Add ${noun}`}
+            {side === 'inputs' ? 'Add Input' : 'Add Output'}
           </AddButton>
         </span>
       ) : null}
@@ -394,13 +394,13 @@ export const DecisionTableEditor = ({ nodeId, config, editable, onConfig }: Tabl
                 ])
               }
             >
-              Add rule
+              Add Rule
             </AddButton>
           </span>
         ) : null}
       </section>
       <section className="flex flex-col gap-2">
-        <h4 className="text-sm font-semibold">When no rule holds</h4>
+        <h4 className="text-sm font-semibold">When No Rule Holds</h4>
         {table.outputs.map((c) => (
           <CellInput
             key={c.name}

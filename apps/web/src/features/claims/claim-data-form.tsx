@@ -24,7 +24,7 @@ const MODIFIER_OPTIONS = Object.entries(ORIGIN_DESTINATION_CODES).map(([value, l
   label: `${value} · ${label}`
 }));
 
-const NOT_SET = { value: '', label: 'Not set' };
+const NOT_SET = { value: '', label: 'Not Set' };
 
 export const ORIGIN_OPTIONS = [NOT_SET, ...MODIFIER_OPTIONS.filter((o) => o.value !== 'X')];
 
@@ -102,7 +102,7 @@ const ADDRESS_LABELS: Record<string, string> = {
   addressLine: 'Street',
   city: 'City',
   state: 'State',
-  postalCode: 'ZIP'
+  postalCode: 'ZIP Code'
 };
 
 const ADDRESS_SPANS: Record<string, FieldSpan> = {
@@ -156,7 +156,7 @@ export const ClaimDataForm = ({
         actions={
           <Button type="submit" isPending={busy} disabledReason={locked}>
             <SaveIcon aria-hidden="true" className="size-4" />
-            Save claim data
+            Save Claim Data
           </Button>
         }
       >
@@ -174,7 +174,7 @@ export const ClaimDataForm = ({
                     <Input
                       key={key}
                       id={`coverage-${i}-${key}`}
-                      label={key === 'memberId' ? 'Member ID' : 'Group number'}
+                      label={key === 'memberId' ? 'Member ID' : 'Group Number'}
                       span={2}
                       value={c[key]}
                       onChange={(e) =>
@@ -194,7 +194,7 @@ export const ClaimDataForm = ({
               <FieldGrid>
                 <Input
                   id="service-date"
-                  label="Date of service"
+                  label="Date of Service"
                   type="date"
                   span={2}
                   value={draft.serviceDate}
@@ -202,7 +202,7 @@ export const ClaimDataForm = ({
                 />
                 <Input
                   id="diagnoses"
-                  label="Diagnosis codes (ICD-10-CM)"
+                  label="Diagnosis Codes (ICD-10-CM)"
                   hint="Comma separated, first is primary"
                   span={2}
                   isMonospace
@@ -211,7 +211,7 @@ export const ClaimDataForm = ({
                 />
                 <Select
                   id="origin-code"
-                  label="Picked up from"
+                  label="Pickup Type"
                   span={2}
                   options={ORIGIN_OPTIONS}
                   value={draft.originCode}
@@ -219,7 +219,7 @@ export const ClaimDataForm = ({
                 />
                 <Select
                   id="destination-code"
-                  label="Taken to"
+                  label="Destination Type"
                   span={2}
                   options={DESTINATION_OPTIONS}
                   value={draft.destinationCode}

@@ -43,3 +43,15 @@ describe('patient queries', () => {
     await db.destroy();
   });
 });
+
+describe('patient city and claims sorts', () => {
+  it('orders patients by city or by how many claims they have', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await listPatients(db, 't-1', { page: 1, pageSize: 25, sort: 'city', dir: 'asc' });
+    await listPatients(db, 't-1', { page: 1, pageSize: 25, sort: 'claims', dir: 'desc' });
+    assert.ok(
+      queries[0]?.sql.includes("order by lower(p.city || ' ' || coalesce(p.state, '')) asc")
+    );
+    assert.ok(queries[1]?.sql.includes('order by "claimed"."claim_count" desc'));
+  });
+});

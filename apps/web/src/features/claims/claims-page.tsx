@@ -1,14 +1,15 @@
-import { ChevronRightIcon } from 'lucide-react';
+import { nameKey } from '@ugula/billing';
 import { formatCents, formatDate } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyState, emptyValue } from '../../shared/ui/empty-state.tsx';
-import { IconLink } from '../../shared/ui/icon-button.tsx';
+import { Highlight } from '../../shared/ui/highlight.tsx';
+import { OpenLink } from '../../shared/ui/icon-button.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { type SearchField, SearchForm } from '../../shared/ui/search-form.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
-import { useTableState } from '../../shared/url-state.ts';
+import { useTableState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { CLAIM_FILTERS, ClaimStatusBadge } from './claim-status-badge.tsx';
 import type { ClaimSearch, ClaimSummary, ClaimsClient } from './client.ts';
@@ -29,16 +30,17 @@ export const CLAIM_TABLE = {
     patient: 'asc',
     pcr: 'asc',
     total: 'desc',
-    balance: 'desc'
+    balance: 'desc',
+    status: 'asc'
   },
   sort: 'created'
 } as const;
 
 export const CLAIM_SEARCH_FIELDS: readonly SearchField[] = [
-  { name: 'firstName', label: 'First name' },
-  { name: 'lastName', label: 'Last name' },
-  { name: 'birthDate', label: 'Birth date', type: 'date' },
-  { name: 'number', label: 'Number', placeholder: 'Claim, patient or encounter #' },
+  { name: 'firstName', label: 'First Name' },
+  { name: 'lastName', label: 'Last Name' },
+  { name: 'birthDate', label: 'Birth Date', type: 'date' },
+  { name: 'number', label: 'Number', placeholder: 'Claim, Patient or Encounter #' },
   { name: 'status', label: 'Status', type: 'select', options: CLAIM_FILTERS, defaultValue: 'open' }
 ];
 
@@ -47,11 +49,17 @@ export const claimNumber = (n: number) => `#${n}`;
 export const ClaimsTable = ({
   claims,
   sorting,
-  showPatient = true
+  showPatient = true,
+  back = '',
+  names
 }: {
   claims: readonly ClaimSummary[];
   sorting?: TableSorting;
   showPatient?: boolean;
+  /** The list as it is now, so an opened claim can return to it. */
+  back?: string;
+  /** Searched names to highlight. */
+  names?: { firstName: string; lastName: string };
 }) => (
   <Table
     label="Claims"
@@ -64,7 +72,7 @@ export const ClaimsTable = ({
       { label: 'Total', isNumeric: true, sort: 'total' },
       { label: 'Balance', isNumeric: true, sort: 'balance' },
       { label: 'Payers', isSecondary: true },
-      'Status',
+      { label: 'Status', sort: 'status' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
   >
@@ -77,7 +85,13 @@ export const ClaimsTable = ({
           <TableCell>
             <span className="flex flex-col gap-0.5">
               <span className="font-medium">
-                {c.last_name}, {c.first_name}
+                <Highlight
+                  text={c.last_name}
+                  query={names?.lastName ?? ''}
+                  isPrefix
+                  keyOf={nameKey}
+                />
+                , <Highlight text={c.first_name} query={names?.firstName ?? ''} isPrefix />
               </span>
               <span className="text-surface-fg-muted text-xs">
                 Patient {claimNumber(c.patient_number)}
@@ -100,10 +114,9 @@ export const ClaimsTable = ({
           <ClaimStatusBadge status={c.status} />
         </TableCell>
         <TableCell kind="actions">
-          <IconLink
-            to={`/claims/${c.id}`}
-            label={`Open claim ${claimNumber(c.number)}`}
-            icon={ChevronRightIcon}
+          <OpenLink
+            to={withBack(`/claims/${c.id}`, back)}
+            name={`claim ${claimNumber(c.number)}`}
           />
         </TableCell>
       </TableRow>
@@ -116,6 +129,7 @@ const isFiltered = (s: ClaimSearch) =>
 
 export const ClaimsPage = ({ client, live, search }: ClaimsPageProps) => {
   const table = useTableState(PATH, CLAIM_TABLE);
+  const back = table.href;
   const key = Object.values(search).join('|');
   const claims = useResource(
     `claims:${key}:${table.apiQuery}`,
@@ -137,7 +151,12 @@ export const ClaimsPage = ({ client, live, search }: ClaimsPageProps) => {
       {claims.error ? <Alert>{claims.error.message}</Alert> : null}
       {claims.data?.items.length ? (
         <>
-          <ClaimsTable claims={claims.data.items} sorting={table} />
+          <ClaimsTable
+            claims={claims.data.items}
+            sorting={table}
+            back={back}
+            names={{ firstName: search.firstName, lastName: search.lastName }}
+          />
           <Pagination label="Claims" total={claims.data.total} state={table} />
         </>
       ) : claims.loading ? (

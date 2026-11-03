@@ -10,7 +10,7 @@ const ID = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 const calls: unknown[][] = [];
 
 const service = {
-  list: async () => ok({ graphs: [] }),
+  search: async (...args: unknown[]) => ok({ items: [], args }),
   nodes: async () => ok({ nodes: [{ key: 'demo.x' }] }),
   find: async (_t: string, id: string) =>
     id === ID ? ok({ graph: { id } }) : fail('not_found', 'Graph not found'),
@@ -29,7 +29,11 @@ const definition = templateFor('workflow');
 
 describe('graph routes', () => {
   it('serve lists, the node catalog and validation', async () => {
-    assert.deepEqual(await (await request('/')).json(), { graphs: [] });
+    assert.deepEqual(await (await request('/?q=match&show=blocks&sort=key')).json(), {
+      items: [],
+      args: ['t-1', { q: 'match', show: 'blocks', page: 1, pageSize: 25, sort: 'key', dir: 'asc' }]
+    });
+    assert.equal((await request('/?show=nope')).status, 400);
     assert.deepEqual(await (await request('/nodes')).json(), { nodes: [{ key: 'demo.x' }] });
     const validate = (body: string) => request('/validate', { method: 'POST', body });
     assert.equal((await validate(JSON.stringify({ definition }))).status, 200);

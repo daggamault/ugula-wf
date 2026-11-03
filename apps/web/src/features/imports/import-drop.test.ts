@@ -29,7 +29,7 @@ describe('ImportDrop', () => {
 
   it('explains what dropping does', () => {
     const html = renderToStaticMarkup(createElement(DropOverlay, { isVisible: true }));
-    assert.ok(html.includes('Drop NEMSIS files to import'));
+    assert.ok(html.includes('Drop NEMSIS Files to Import'));
     assert.ok(html.includes('data-visible="true"') && html.includes('inset-0'));
     assert.ok(html.includes('transition-[opacity,backdrop-filter]'));
     assert.ok(html.includes('aria-hidden="true"'));

@@ -28,7 +28,7 @@ export const DropOverlay = ({ isVisible }: { isVisible: boolean }) => (
       >
         <FileUpIcon className="size-12" />
       </span>
-      <p className="text-2xl font-extrabold tracking-tight">Drop NEMSIS files to import</p>
+      <p className="text-2xl font-extrabold tracking-tight">Drop NEMSIS Files to Import</p>
       <p className="text-surface-fg-muted max-w-md text-sm">
         Each patient care report becomes its own draft claim, ready for review.
       </p>

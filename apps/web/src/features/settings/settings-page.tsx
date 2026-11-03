@@ -4,7 +4,13 @@ import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
-import { FieldGrid, FieldGroup, FieldGroups, type FieldSpan } from '../../shared/ui/field.tsx';
+import {
+  FieldGrid,
+  FieldGroup,
+  FieldGroups,
+  type FieldSpan,
+  FormActions
+} from '../../shared/ui/field.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
@@ -54,28 +60,28 @@ export const fromProfileDraft = ({ usage, ...d }: ProfileDraft): BillingProfileI
 type ProfileField = { key: ProfileText; label: string; hint?: string; span?: FieldSpan };
 
 const AGENCY_FIELDS: ProfileField[] = [
-  { key: 'organizationName', label: 'Organization name', span: 4 },
+  { key: 'organizationName', label: 'Organization Name', span: 4 },
   { key: 'npi', label: 'NPI', hint: '10 digits' },
   { key: 'taxId', label: 'Tax ID (EIN)', hint: '9 digits' },
-  { key: 'phone', label: 'Billing phone', hint: '10 digits', span: 2 }
+  { key: 'phone', label: 'Billing Phone', hint: '10 digits', span: 2 }
 ];
 
 const ADDRESS_FIELDS: ProfileField[] = [
   { key: 'addressLine', label: 'Street', span: 4 },
   { key: 'city', label: 'City', span: 2 },
   { key: 'state', label: 'State', hint: '2 letters' },
-  { key: 'postalCode', label: 'ZIP code' }
+  { key: 'postalCode', label: 'ZIP Code' }
 ];
 
 const CLEARINGHOUSE_FIELDS: ProfileField[] = [
   { key: 'submitterId', label: 'Submitter ID', hint: 'Assigned by your clearinghouse' },
   { key: 'receiverId', label: 'Receiver ID', hint: 'The clearinghouse ID' },
-  { key: 'receiverName', label: 'Clearinghouse name' }
+  { key: 'receiverName', label: 'Clearinghouse Name' }
 ];
 
 const USAGE_OPTIONS = [
-  { value: 'T', label: 'Test files' },
-  { value: 'P', label: 'Production files' }
+  { value: 'T', label: 'Test Files' },
+  { value: 'P', label: 'Production Files' }
 ];
 
 export const ProfileForm = ({
@@ -127,7 +133,7 @@ export const ProfileForm = ({
                 {inputs(CLEARINGHOUSE_FIELDS, false)}
                 <Select
                   id="profile-usage"
-                  label="837P files are"
+                  label="837P Files"
                   options={USAGE_OPTIONS}
                   value={draft.usage}
                   onChange={(e) =>
@@ -139,12 +145,12 @@ export const ProfileForm = ({
           </FieldGroups>
         </fieldset>
         {error ? <Alert>{error}</Alert> : null}
-        <div className="flex justify-end">
+        <FormActions>
           <Button type="submit" isPending={busy}>
             <SaveIcon aria-hidden="true" className="size-4" />
-            Save profile
+            Save Profile
           </Button>
-        </div>
+        </FormActions>
       </SectionPanel>
     </form>
   );

@@ -66,10 +66,10 @@ describe('NodeExecutions', () => {
   it('says when a node has not run', () => {
     const html = renderToStaticMarkup(createElement(NodeExecutions, { title: 'X', steps: [] }));
     assert.ok(html.includes('Not executed yet'));
-    assert.ok(!html.includes('Open building block'));
+    assert.ok(!html.includes('Open Building Block'));
     const composite = renderToStaticMarkup(
       createElement(NodeExecutions, { title: 'X', steps: [], onOpen: () => undefined })
     );
-    assert.ok(composite.includes('Open building block'));
+    assert.ok(composite.includes('Open Building Block'));
   });
 });

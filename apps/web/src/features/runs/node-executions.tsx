@@ -1,10 +1,10 @@
-import { ChevronRightIcon, FolderOpenIcon } from 'lucide-react';
+import { FolderOpenIcon } from 'lucide-react';
 import { formatDateTime, formatDuration } from '../../shared/format.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
-import { IconLink } from '../../shared/ui/icon-button.tsx';
+import { OpenLink } from '../../shared/ui/icon-button.tsx';
 import { JsonView } from '../../shared/ui/json-view.tsx';
 import { RunStatusBadge } from '../../shared/ui/run-status-badge.tsx';
 import type { RunStep } from './client.ts';
@@ -33,14 +33,14 @@ export const NodeExecutions = ({ title, steps, onOpen, runs = [] }: NodeExecutio
       {onOpen ? (
         <Button variant="outline" onClick={onOpen}>
           <FolderOpenIcon aria-hidden="true" className="size-4" />
-          Open building block
+          Open Building Block
         </Button>
       ) : null}
     </header>
     {runs.length ? (
       <div className="flex flex-col gap-2">
         <h3 className="text-surface-fg-muted text-xs font-semibold tracking-wide uppercase">
-          Started runs
+          Started Runs
         </h3>
         <ul className="divide-border border-border flex flex-col divide-y rounded-xl border text-sm">
           {runs.map((r, i) => {
@@ -49,7 +49,7 @@ export const NodeExecutions = ({ title, steps, onOpen, runs = [] }: NodeExecutio
               <li key={r.id} className="flex items-center gap-2 px-4 py-2">
                 <span className="flex-1 font-medium">{name}</span>
                 {r.status ? <RunStatusBadge status={r.status} /> : null}
-                <IconLink to={`/runs/${r.id}`} label={`Open run ${name}`} icon={ChevronRightIcon} />
+                <OpenLink to={`/runs/${r.id}`} name={`run ${name}`} />
               </li>
             );
           })}

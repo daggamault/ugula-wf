@@ -22,24 +22,24 @@ export type LookupConfig = {
 export const COLUMN_TYPES = [
   { value: 'string', label: 'Text' },
   { value: 'number', label: 'Number' },
-  { value: 'integer', label: 'Whole number' },
-  { value: 'boolean', label: 'True or false' },
-  { value: 'list', label: 'List of text' }
+  { value: 'integer', label: 'Whole Number' },
+  { value: 'boolean', label: 'True or False' },
+  { value: 'list', label: 'List of Text' }
 ] as const;
 
 export const OPS: readonly { value: ConditionOp | ''; label: string }[] = [
-  { value: '', label: 'Any value' },
+  { value: '', label: 'Any Value' },
   { value: 'is', label: 'Is' },
-  { value: 'isNot', label: 'Is not' },
-  { value: 'oneOf', label: 'Is one of' },
-  { value: 'notOneOf', label: 'Is not one of' },
-  { value: 'startsWith', label: 'Starts with' },
-  { value: 'gt', label: 'Greater than' },
-  { value: 'gte', label: 'At least' },
-  { value: 'lt', label: 'Less than' },
-  { value: 'lte', label: 'At most' },
-  { value: 'empty', label: 'Is empty' },
-  { value: 'present', label: 'Has a value' }
+  { value: 'isNot', label: 'Is Not' },
+  { value: 'oneOf', label: 'Is One Of' },
+  { value: 'notOneOf', label: 'Is Not One Of' },
+  { value: 'startsWith', label: 'Starts With' },
+  { value: 'gt', label: 'Greater Than' },
+  { value: 'gte', label: 'At Least' },
+  { value: 'lt', label: 'Less Than' },
+  { value: 'lte', label: 'At Most' },
+  { value: 'empty', label: 'Is Empty' },
+  { value: 'present', label: 'Has a Value' }
 ];
 
 const LIST_OPS: readonly ConditionOp[] = ['oneOf', 'notOneOf', 'startsWith'];

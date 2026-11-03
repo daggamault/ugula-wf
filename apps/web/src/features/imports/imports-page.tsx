@@ -53,6 +53,7 @@ export const ImportButton = ({
 
 export const ImportsPage = ({ client, live }: ImportsPageProps) => {
   const table = useTableState('/imports', IMPORT_TABLE);
+  const back = table.href;
   const history = useResource(
     `imports:${table.apiQuery}`,
     () => client.list(table.apiQuery),
@@ -89,7 +90,7 @@ export const ImportsPage = ({ client, live }: ImportsPageProps) => {
         <Alert>{history.error.message}</Alert>
       ) : history.data?.items.length ? (
         <>
-          <ImportHistory imports={history.data.items} sorting={table} />
+          <ImportHistory imports={history.data.items} sorting={table} back={back} />
           <Pagination label="Imports" total={history.data.total} state={table} />
         </>
       ) : history.loading ? (

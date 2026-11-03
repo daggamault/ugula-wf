@@ -40,17 +40,17 @@ export const pinTones: Record<PinKind, PinTone> = {
 export const toneOf = (type: ValueType | 'exec') => pinTones[pinKindOf(type)];
 
 const TYPE_WORDS: Readonly<Record<Exclude<PinKind, 'list' | 'object' | 'exec'>, string>> = {
-  any: 'Any value',
+  any: 'Any Value',
   string: 'Text',
   number: 'Number',
-  integer: 'Whole number',
-  boolean: 'Yes or no',
-  datetime: 'Date and time'
+  integer: 'Whole Number',
+  boolean: 'Yes or No',
+  datetime: 'Date and Time'
 };
 
 export const describeType = (type: ValueType): string => {
   if (typeof type === 'string') return TYPE_WORDS[type];
-  if ('list' in type) return `List of ${describeType(type.list).toLowerCase()}`;
+  if ('list' in type) return `List of ${describeType(type.list)}`;
   const fields = Object.keys(type.object);
-  return fields.length ? `Record with ${fields.join(', ')}` : 'Record';
+  return fields.length ? `Record With ${fields.join(', ')}` : 'Record';
 };

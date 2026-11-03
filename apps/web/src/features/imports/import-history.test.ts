@@ -35,8 +35,8 @@ describe('importStatus', () => {
   it('stays in progress after the split while its reports still need work', () => {
     const done = summary({ run_status: 'completed', waiting: 0, failed: 0 });
     assert.equal(importStatus(done).label, 'Completed');
-    assert.equal(importStatus({ ...done, waiting: 2 }).label, 'PCRs in progress');
-    assert.equal(importStatus({ ...done, stuck: 1 }).label, 'PCRs in progress');
+    assert.equal(importStatus({ ...done, waiting: 2 }).label, 'PCRs in Progress');
+    assert.equal(importStatus({ ...done, stuck: 1 }).label, 'PCRs in Progress');
     assert.equal(importStatus({ ...done, failed: 1 }).label, 'Completed');
     assert.equal(importStatus(summary()).label, 'Waiting');
   });

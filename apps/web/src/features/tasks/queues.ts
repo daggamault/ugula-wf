@@ -1,17 +1,18 @@
+import { titleCaseWords } from '../../shared/format.ts';
 export type QueueInfo = { label: string; description: string };
 
 const QUEUES: Readonly<Record<string, QueueInfo>> = {
   'billing-review': {
-    label: 'Billing review',
+    label: 'Billing Review',
     description:
       'Confirm the level of service and mileage before a claim is priced, approve claims before they go to a payer, and check PCRs that changed after billing.'
   },
   'billing-patients': {
-    label: 'Patient matching',
+    label: 'Patient Matching',
     description: 'Decide whether a PCR belongs to a patient you already have or a new one.'
   },
   'billing-payers': {
-    label: 'Payer matching',
+    label: 'Payer Matching',
     description:
       'Match payer names from PCRs to your payer directory. Each answer is remembered for later PCRs.'
   },
@@ -20,19 +21,19 @@ const QUEUES: Readonly<Record<string, QueueInfo>> = {
     description: 'PCRs a reviewer set aside. Release them back to review or void them.'
   },
   'billing-followup': {
-    label: 'Payer follow-up',
+    label: 'Payer Follow-Up',
     description: 'Claims a payer has not answered in 30 days.'
   },
   'billing-reconcile': {
-    label: 'Reconcile payments',
+    label: 'Reconcile Payments',
     description: 'Payer responses that left a balance. Check them, then continue or write off.'
   },
   'billing-collections': {
-    label: 'Balance review',
+    label: 'Balance Review',
     description: 'Balances left after every payer and three patient statements.'
   },
   exceptions: {
-    label: 'Stuck runs',
+    label: 'Stuck Runs',
     description: 'Automation that hit an error and needs a decision before it can continue.'
   }
 };
@@ -48,9 +49,12 @@ export const humanize = (key: string) => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
+/** A key as a Title Cased label ("sendToCollections" → "Send to Collections"). */
+export const titleCase = (key: string) => titleCaseWords(humanize(key).split(' '));
+
 export const queueInfo = (queue: string): QueueInfo =>
   (Object.hasOwn(QUEUES, queue) ? QUEUES[queue] : undefined) ?? {
-    label: humanize(queue),
+    label: titleCase(queue),
     description: ''
   };
 

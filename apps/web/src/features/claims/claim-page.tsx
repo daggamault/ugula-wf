@@ -27,6 +27,7 @@ import { Button, ButtonLink, buttonClasses } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
+import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
@@ -39,7 +40,7 @@ import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/t
 import { Tabs } from '../../shared/ui/tabs.tsx';
 import { textLinkClasses } from '../../shared/ui/text-link.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
-import { pageOf, useTableState } from '../../shared/url-state.ts';
+import { pageOf, useTableState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { ClaimDataForm } from './claim-data-form.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
@@ -61,6 +62,8 @@ export type ClaimPageProps = {
   live: Live;
   claimId: string;
   tab?: ClaimTab;
+  /** The claim list to return to, with its filters and page. */
+  back?: string;
 };
 
 const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
@@ -297,7 +300,7 @@ export const EventsTable = ({
             {e.batch_id && fileUrl ? (
               <a href={fileUrl(e.batch_id)} download className={fileLinkClasses}>
                 <DownloadIcon aria-hidden="true" className="size-4" />
-                837P file #{e.batch_number}
+                837P File #{e.batch_number}
               </a>
             ) : null}
           </span>
@@ -346,7 +349,7 @@ export const PayersEditor = ({
           onClick={() => void save()}
         >
           <SaveIcon aria-hidden="true" className="size-4" />
-          Save order
+          Save Order
         </Button>
       }
     >
@@ -373,19 +376,21 @@ export const PayersEditor = ({
                       'shrink-0 rounded-full hover:underline'
                     )}
                   >
-                    <Badge intent="warning">Not in payer directory</Badge>
+                    <Badge intent="warning">Not in Payer Directory</Badge>
                   </Link>
                 ) : null}
               </span>
               <span className="flex items-center gap-2">
                 <IconButton
                   label={`Move ${p} up`}
+                  tooltip="Move Up"
                   icon={ArrowUpIcon}
                   disabledReason={locked ?? (i === 0 ? 'Already first.' : undefined)}
                   onClick={() => setList(moveItem(list, i, i - 1))}
                 />
                 <IconButton
                   label={`Move ${p} down`}
+                  tooltip="Move Down"
                   icon={ArrowDownIcon}
                   disabledReason={locked ?? (i === list.length - 1 ? 'Already last.' : undefined)}
                   onClick={() => setList(moveItem(list, i, i + 1))}
@@ -412,8 +417,8 @@ export const PayersEditor = ({
           <div className="flex-1">
             <Input
               id="payer-name"
-              label="Add payer"
-              placeholder="Payer name"
+              label="Add Payer"
+              placeholder="Payer Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -471,48 +476,48 @@ export const ResponseForm = ({
       description="A payer's remittance, or a payment from the patient. A payer payment that leaves a balance opens a reconcile task."
     >
       <form onSubmit={submit} className="flex flex-col gap-5" aria-label="Post payment">
-        <fieldset
-          disabled={Boolean(locked) || busy}
-          className="grid gap-x-4 gap-y-5 sm:grid-cols-2"
-        >
-          <Select
-            id="response-payer"
-            label="From"
-            options={[
-              ...coverages.map((c) => ({ value: c.id, label: c.payer })),
-              { value: '', label: 'Patient' }
-            ]}
-            {...field('coverageId')}
-          />
-          <Input id="response-note" label="Note" {...field('note')} />
-          <Input
-            id="response-paid"
-            label="Paid (USD)"
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="0.01"
-            placeholder="0.00"
-            {...field('paid')}
-          />
-          <Input
-            id="response-adjusted"
-            label="Adjusted (USD)"
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="0.01"
-            placeholder="0.00"
-            {...field('adjusted')}
-          />
+        <fieldset disabled={Boolean(locked) || busy}>
+          <FieldGrid>
+            <Select
+              id="response-payer"
+              label="From"
+              span={2}
+              options={[
+                ...coverages.map((c) => ({ value: c.id, label: c.payer })),
+                { value: '', label: 'Patient' }
+              ]}
+              {...field('coverageId')}
+            />
+            <Input id="response-note" label="Note" span={2} {...field('note')} />
+            <Input
+              id="response-paid"
+              label="Paid (USD)"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              {...field('paid')}
+            />
+            <Input
+              id="response-adjusted"
+              label="Adjusted (USD)"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              {...field('adjusted')}
+            />
+          </FieldGrid>
         </fieldset>
         {error ? <Alert>{error}</Alert> : null}
-        <div>
+        <FormActions>
           <Button type="submit" isPending={busy} disabledReason={locked}>
             <SaveIcon aria-hidden="true" className="size-4" />
-            Post payment
+            Post Payment
           </Button>
-        </div>
+        </FormActions>
       </form>
     </SectionPanel>
   );
@@ -644,16 +649,16 @@ const SubmitActions = ({ payer, submission }: { payer: string; submission: Submi
         }}
       >
         <FileCogIcon aria-hidden="true" className="size-4" />
-        Create 837P file
+        Create 837P File
       </Button>
       <Button variant="outline" onClick={() => setConfirming(true)}>
         <SendIcon aria-hidden="true" className="size-4" />
-        Mark submitted
+        Mark Submitted
       </Button>
       <ConfirmDialog
         open={confirming}
         title="Mark as Submitted?"
-        confirmLabel="Mark submitted"
+        confirmLabel="Mark Submitted"
         confirmIcon={SendIcon}
         onClose={() => setConfirming(false)}
         onConfirm={() => {
@@ -672,9 +677,11 @@ const CycleAlert = ({
   claim,
   progress,
   submission,
+  back,
   onRestart
 }: {
   claim: ClaimDetail;
+  back: string;
   progress: ClaimProgress | null;
   submission: Submission | undefined;
   onRestart: () => Promise<void>;
@@ -700,9 +707,9 @@ const CycleAlert = ({
         <SubmitActions payer={payer} submission={submission} />
       ) : null}
       {issues.length ? (
-        <ButtonLink to={`/claims/${claim.id}?tab=data`} variant="outline">
+        <ButtonLink to={withBack(`/claims/${claim.id}?tab=data`, back)} variant="outline">
           <PencilIcon aria-hidden="true" className="size-4" />
-          Fix claim data
+          Fix Claim Data
         </ButtonLink>
       ) : null}
       {status.tasks !== null ? (
@@ -711,13 +718,13 @@ const CycleAlert = ({
           variant="outline"
         >
           <ListTodoIcon aria-hidden="true" className="size-4" />
-          Open tasks
+          Open Tasks
         </ButtonLink>
       ) : null}
       {runLink ? (
         <ButtonLink to={`/runs/${runLink}`} variant="outline">
           <ExternalLinkIcon aria-hidden="true" className="size-4" />
-          Open the cycle run
+          Open Cycle Run
         </ButtonLink>
       ) : null}
       {status.restartable ? (
@@ -731,7 +738,7 @@ const CycleAlert = ({
           }}
         >
           <RotateCcwIcon aria-hidden="true" className="size-4" />
-          Restart payer cycle
+          Restart Payer Cycle
         </Button>
       ) : null}
     </>
@@ -757,9 +764,13 @@ const CycleAlert = ({
 
 export type ClaimTab = 'overview' | 'data' | 'history';
 
+/** Claims open from the claims list or from a patient's page. */
+export const backLabelOf = (back: string) =>
+  back.startsWith('/patients/') ? 'Back to Patient' : 'Back to Claims';
+
 export const CLAIM_TABS: readonly { value: ClaimTab; label: string }[] = [
   { value: 'overview', label: 'Overview' },
-  { value: 'data', label: 'Claim data' },
+  { value: 'data', label: 'Claim Data' },
   { value: 'history', label: 'History' }
 ];
 
@@ -774,6 +785,7 @@ export const ClaimView = ({
   documentUrl,
   submission,
   tab = 'overview',
+  back = '/claims',
   error = ''
 }: {
   claim: ClaimDetail;
@@ -786,6 +798,7 @@ export const ClaimView = ({
   documentUrl: (eventId: string) => string;
   submission?: Submission;
   tab?: ClaimTab;
+  back?: string;
   error?: string;
 }) => {
   const locked = lockedReason(claim.status);
@@ -795,8 +808,8 @@ export const ClaimView = ({
   return (
     <Page
       title={`Claim ${claimNumber(claim.number)}`}
-      backTo="/claims"
-      backLabel="Back to Claims"
+      backTo={back}
+      backLabel={backLabelOf(back)}
       description={
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <ClaimStatusBadge status={claim.status} />
@@ -815,12 +828,18 @@ export const ClaimView = ({
       }
     >
       {error ? <Alert>{error}</Alert> : null}
-      <CycleAlert claim={claim} progress={progress} submission={submission} onRestart={onRestart} />
+      <CycleAlert
+        claim={claim}
+        progress={progress}
+        submission={submission}
+        back={back}
+        onRestart={onRestart}
+      />
       <Tabs
         label="Claim sections"
         tabs={CLAIM_TABS.map((t) => ({
           label: t.label,
-          href: t.value === 'overview' ? path : `${path}?tab=${t.value}`,
+          href: withBack(t.value === 'overview' ? path : `${path}?tab=${t.value}`, back),
           isSelected: t.value === tab,
           count: t.value === 'history' ? events.length : undefined
         }))}
@@ -838,7 +857,7 @@ export const ClaimView = ({
               <Detail label="Balance" isEmphasized>
                 {formatCents(claim.balance_cents)}
               </Detail>
-              <Detail label="Service date">{formatDate(claim.service_date)}</Detail>
+              <Detail label="Service Date">{formatDate(claim.service_date)}</Detail>
               <Detail label="Born">{formatDate(claim.birth_date)}</Detail>
               <Detail label="Transport">
                 {claim.level ?? emptyValue}
@@ -897,7 +916,13 @@ export const ClaimView = ({
   );
 };
 
-export const ClaimPage = ({ client, live, claimId, tab = 'overview' }: ClaimPageProps) => {
+export const ClaimPage = ({
+  client,
+  live,
+  claimId,
+  tab = 'overview',
+  back = '/claims'
+}: ClaimPageProps) => {
   const detail = useResource(`claim:${claimId}`, () => client.find(claimId), 15_000);
   const cycleRun = detail.data?.claim.cycle_run_id;
   useLive(
@@ -935,6 +960,7 @@ export const ClaimPage = ({ client, live, claimId, tab = 'overview' }: ClaimPage
   return (
     <ClaimView
       tab={tab}
+      back={back}
       error={error}
       claim={detail.data.claim}
       events={detail.data.events}

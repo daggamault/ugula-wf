@@ -1,4 +1,4 @@
-import { ChevronRightIcon, CircleStopIcon, WorkflowIcon } from 'lucide-react';
+import { CircleStopIcon, WorkflowIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatDateTime } from '../../shared/format.ts';
@@ -11,7 +11,7 @@ import { Breadcrumbs } from '../../shared/ui/breadcrumbs.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
-import { IconLink } from '../../shared/ui/icon-button.tsx';
+import { OpenLink } from '../../shared/ui/icon-button.tsx';
 import { JsonView } from '../../shared/ui/json-view.tsx';
 import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.tsx';
 import { RunStatusBadge } from '../../shared/ui/run-status-badge.tsx';
@@ -123,12 +123,12 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
           <>
             <ButtonLink to={`/workflows/${run.graph_id}?version=${run.version}`} variant="outline">
               <WorkflowIcon aria-hidden="true" className="size-4" />
-              Open workflow
+              Open Workflow
             </ButtonLink>
             {active ? (
               <Button intent="danger" variant="outline" onClick={() => setConfirming(true)}>
                 <CircleStopIcon aria-hidden="true" className="size-4" />
-                Cancel run
+                Cancel Run
               </Button>
             ) : null}
           </>
@@ -194,7 +194,7 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
               {children.length ? (
                 <div className="flex flex-col gap-2">
                   <h2 className={panelHeading}>
-                    Child runs
+                    Child Runs
                     {childCount > children.length
                       ? ` (first ${children.length} of ${childCount})`
                       : ''}
@@ -206,11 +206,7 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
                         <li key={c.id} className="flex items-center gap-2 px-4 py-2">
                           <span className="flex-1 font-medium">{name}</span>
                           <RunStatusBadge status={c.status} />
-                          <IconLink
-                            to={`/runs/${c.id}`}
-                            label={`Open run ${name}`}
-                            icon={ChevronRightIcon}
-                          />
+                          <OpenLink to={`/runs/${c.id}`} name={`run ${name}`} />
                         </li>
                       );
                     })}
@@ -226,16 +222,17 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
           open={confirming}
           title="Cancel Run?"
           intent="danger"
-          confirmLabel="Cancel run"
+          confirmLabel="Cancel Run"
           confirmIcon={CircleStopIcon}
-          dismissLabel="Keep running"
+          dismissLabel="Keep Running"
           onClose={() => setConfirming(false)}
           onConfirm={() => {
             setConfirming(false);
             onCancel().catch((err: unknown) => setError(messageOf(err)));
           }}
         >
-          The run stops at its current step and will not continue.
+          Are you sure you want to cancel {run.name}? The run stops at its current step and will not
+          continue. This cannot be undone.
         </ConfirmDialog>
       ) : null}
     </section>

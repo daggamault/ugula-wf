@@ -5,7 +5,8 @@ import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
-import { IconLink } from '../../shared/ui/icon-button.tsx';
+import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
+import { IconLink, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
@@ -81,7 +82,14 @@ export const ReportsPage = () => (
             {r.description}
           </TableCell>
           <TableCell kind="actions">
-            <IconLink to={`/reports/${r.id}`} label={`Run ${r.title}`} icon={PlayIcon} />
+            <RowActions>
+              <IconLink
+                to={`/reports/${r.id}`}
+                label={`Run ${r.title}`}
+                tooltip="Run"
+                icon={PlayIcon}
+              />
+            </RowActions>
           </TableCell>
         </TableRow>
       ))}
@@ -123,42 +131,36 @@ export const ReportOptionsPage = ({ reportId, query, now = new Date() }: ReportP
             : 'This report has no options. It shows open balances as of today.'
         }
       >
-        <form
-          onSubmit={run}
-          aria-label="Report options"
-          className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end"
-        >
+        <form onSubmit={run} aria-label="Report options" className="flex flex-col gap-5">
           {report.usesPeriod ? (
-            <>
-              <div className="sm:w-44">
-                <Input
-                  id="report-from"
-                  label="Service from"
-                  type="date"
-                  value={draft.from}
-                  max={draft.to}
-                  onChange={(e) => e.target.value && setDraft({ ...draft, from: e.target.value })}
-                />
-              </div>
-              <div className="sm:w-44">
-                <Input
-                  id="report-to"
-                  label="Service to"
-                  type="date"
-                  value={draft.to}
-                  min={draft.from}
-                  onChange={(e) => e.target.value && setDraft({ ...draft, to: e.target.value })}
-                />
-              </div>
-            </>
+            <FieldGrid>
+              <Input
+                id="report-from"
+                label="Service From"
+                type="date"
+                value={draft.from}
+                max={draft.to}
+                onChange={(e) => e.target.value && setDraft({ ...draft, from: e.target.value })}
+              />
+              <Input
+                id="report-to"
+                label="Service To"
+                type="date"
+                value={draft.to}
+                min={draft.from}
+                onChange={(e) => e.target.value && setDraft({ ...draft, to: e.target.value })}
+              />
+            </FieldGrid>
           ) : null}
-          <Button
-            type="submit"
-            disabledReason={valid ? undefined : 'Choose a start date on or before the end date.'}
-          >
-            <PlayIcon aria-hidden="true" className="size-4" />
-            Run report
-          </Button>
+          <FormActions>
+            <Button
+              type="submit"
+              disabledReason={valid ? undefined : 'Choose a start date on or before the end date.'}
+            >
+              <PlayIcon aria-hidden="true" className="size-4" />
+              Run Report
+            </Button>
+          </FormActions>
         </form>
       </SectionPanel>
     </Page>
@@ -196,7 +198,7 @@ const ReportResults = ({
       title={report.title}
       description={periodText(report, range, now)}
       backTo={optionsPath(report, range)}
-      backLabel="Back to report options"
+      backLabel="Back to Report Options"
       actions={
         data !== undefined && rows.length ? (
           <>

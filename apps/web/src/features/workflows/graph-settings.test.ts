@@ -21,7 +21,6 @@ const render = (editable: boolean) =>
   renderToStaticMarkup(
     createElement(GraphSettings, {
       kind: 'workflow',
-      open: true,
       def,
       editable,
       onChange: () => undefined,
@@ -30,20 +29,22 @@ const render = (editable: boolean) =>
   );
 
 describe('GraphSettings', () => {
-  it('edits paths, inputs, outputs and variables in one explained dialog', () => {
+  it('edits paths, inputs, outputs and variables in one explained side panel', () => {
     const html = render(true);
-    assert.ok(html.includes('Workflow Settings'));
+    assert.ok(html.includes('Workflow Settings') && html.startsWith('<aside'));
+    assert.ok(html.includes('aria-label="Close settings"') && !html.includes('<dialog'));
     assert.ok(html.includes('value="ok, rejected"'));
     assert.ok(html.includes('value="object{id: string}"'));
     assert.ok(html.includes('value="total"'));
     assert.ok(html.includes('value="lines"'));
-    assert.ok(html.includes('Add input') && html.includes('Add output'));
+    assert.ok(html.includes('Add Input') && html.includes('Add Output'));
+    assert.ok(html.includes('>Ways In<') && html.includes('>Starts As<'));
     assert.ok(html.includes('aria-label="Remove claim"') && html.includes('Remove</span>'));
   });
 
   it('locks every field in read-only graphs', () => {
     const html = render(false);
     assert.ok(html.includes('<fieldset disabled'));
-    assert.ok(!html.includes('Add input') && !html.includes('Remove claim'));
+    assert.ok(!html.includes('Add Input') && !html.includes('Remove claim'));
   });
 });

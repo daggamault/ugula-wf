@@ -2,8 +2,27 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { matchesPayer, PayerDirectory, payerSavedNotice } from './payers-page.tsx';
+import { searchStateOf } from '../../shared/url-state.ts';
+import type { Payer, SettingsClient } from './client.ts';
+import {
+  LearnedNames,
+  PayerForm,
+  PayerPage,
+  payerSavedNotice,
+  toPayerDraft
+} from './payer-page.tsx';
+import { PAYER_TABLE, PayersPage, PayersTable } from './payers-page.tsx';
 import { FILING_OPTIONS, fromProfileDraft, ProfileForm, toProfileDraft } from './settings-page.tsx';
+
+const medicare: Payer = {
+  id: 'p1',
+  name: 'Medicare',
+  payer_id: '00952',
+  claim_filing: 'MB',
+  aliases: [{ id: 'a1', alias: 'MCR Part B' }]
+};
+
+const pending = () => new Promise<never>(() => undefined);
 
 describe('settings', () => {
   it('maps a saved profile into the form and starts empty without one', () => {
@@ -34,81 +53,79 @@ describe('settings', () => {
     assert.ok(FILING_OPTIONS.some((o) => o.value === 'MB' && o.label === 'MB · Medicare Part B'));
   });
 
-  it('renders labelled profile and payer forms', () => {
+  it('renders a labelled profile form', () => {
     const profile = renderToStaticMarkup(
       createElement(ProfileForm, { profile: null, onSave: async () => null })
     );
     assert.ok(profile.includes('for="profile-npi"'));
-    assert.ok(profile.includes('>Save profile<'));
+    assert.ok(profile.includes('>Save Profile<'));
     assert.ok(profile.includes('for="profile-submitterId"'));
-    assert.ok(profile.includes('>Test files<'));
-    const payers = renderToStaticMarkup(
-      createElement(PayerDirectory, {
-        payers: [
-          {
-            id: 'p1',
-            name: 'Medicare',
-            payer_id: '00952',
-            claim_filing: 'MB',
-            aliases: [{ id: 'a1', alias: 'MCR Part B' }]
-          }
-        ],
-        isSearching: false,
-        onSave: async () => null,
-        onDelete: () => undefined,
-        onForget: () => undefined,
-        open: false,
-        onOpen: () => undefined,
-        onClose: () => undefined
-      })
-    );
-    assert.ok(payers.includes('>Medicare<'));
-    assert.ok(payers.includes('aria-label="Learned names for Medicare"'));
-    assert.ok(payers.includes('aria-label="Forget MCR Part B for Medicare"'));
-    assert.ok(payers.includes('cursor-pointer'));
-    assert.ok(payers.includes('<span class="sr-only">Actions</span>'));
-    assert.ok(payers.includes('aria-label="Edit Medicare"'));
-    assert.ok(payers.includes('aria-label="Delete Medicare"'));
-    assert.ok(!payers.includes('>Edit<'));
-    assert.ok(payers.includes('00952'));
-    assert.ok(payers.includes('MB · Medicare Part B'));
-    const none = renderToStaticMarkup(
-      createElement(PayerDirectory, {
-        payers: [],
-        isSearching: false,
-        onSave: async () => null,
-        onDelete: () => undefined,
-        onForget: () => undefined,
-        open: false,
-        onOpen: () => undefined,
-        onClose: () => undefined
-      })
-    );
-    assert.ok(none.includes('No Payers Yet'));
-    assert.ok(payers.includes('for="payer-name"') && payers.includes('>Save payer<'));
+    assert.ok(profile.includes('>Test Files<'));
   });
 });
 
-describe('payerSavedNotice', () => {
+describe('PayersPage', () => {
+  it('searches payers and adds them on their own page', () => {
+    const html = renderToStaticMarkup(
+      createElement(PayersPage, { client: { searchPayers: pending } as unknown as SettingsClient })
+    );
+    assert.ok(html.includes('aria-label="Search Payers"'));
+    assert.ok(html.includes('placeholder="Search Payers"'));
+    assert.ok(html.includes('href="/payers/new"') && html.includes('Add Payer'));
+  });
+
+  it('lists payers with highlighted matches and links to their pages', () => {
+    const html = renderToStaticMarkup(
+      createElement(PayersTable, {
+        payers: [medicare],
+        search: searchStateOf('/payers', new URLSearchParams('q=part'), PAYER_TABLE),
+        onDelete: () => undefined
+      })
+    );
+    assert.ok(html.includes('Clearinghouse Payer ID'));
+    assert.ok(html.includes('aria-label="Learned names for Medicare"'));
+    assert.match(html, /MCR <mark[^>]*>Part<\/mark> B/);
+    assert.ok(html.includes('href="/payers/p1?back=%2Fpayers%3Fq%3Dpart"'));
+    assert.ok(html.includes('aria-label="Edit Medicare"'));
+    assert.ok(html.includes('aria-label="Delete Medicare"'));
+    assert.ok(html.includes('MB · Medicare Part B') && html.includes('00952'));
+  });
+});
+
+describe('PayerPage', () => {
+  it('edits a payer on a page with Title Cased labels that returns to the list', () => {
+    const html = renderToStaticMarkup(
+      createElement(PayerForm, {
+        payer: medicare,
+        back: '/payers?q=part',
+        onSave: async () => null
+      })
+    );
+    assert.ok(html.includes('>Payer Name<') && html.includes('>Clearinghouse Payer ID<'));
+    assert.ok(html.includes('>Claim Filing<') && html.includes('readOnly=""'));
+    assert.ok(html.includes('href="/payers?q=part"') && html.includes('>Save Payer<'));
+    assert.deepEqual(toPayerDraft(null), { name: '', payerId: '', claimFiling: 'CI' });
+  });
+
+  it('lists learned names to forget, and a new payer starts with none', () => {
+    const names = renderToStaticMarkup(
+      createElement(LearnedNames, { payer: medicare, onForget: () => undefined })
+    );
+    assert.ok(names.includes('aria-label="Forget MCR Part B"'));
+    const added = renderToStaticMarkup(
+      createElement(PayerPage, {
+        client: { payer: pending } as unknown as SettingsClient,
+        payerId: null,
+        back: '/payers'
+      })
+    );
+    assert.ok(added.includes('>Add Payer</h1>') && !added.includes('Learned Names'));
+    assert.ok(!added.includes('Delete Payer'));
+  });
+
   it('says how many claims a saved payer was linked to', () => {
     assert.equal(payerSavedNotice('Medicare', 0), 'Medicare saved');
     assert.equal(payerSavedNotice('Medicare', 1), 'Medicare saved and linked to 1 claim');
     assert.equal(payerSavedNotice('Medicare', 3), 'Medicare saved and linked to 3 claims');
-  });
-});
-
-describe('matchesPayer', () => {
-  it('finds payers by name or payer ID, ignoring case', () => {
-    const payer = {
-      id: 'p1',
-      name: 'Medicare',
-      payer_id: '00952',
-      claim_filing: 'MB',
-      aliases: []
-    };
-    assert.equal(matchesPayer(payer, ''), true);
-    assert.equal(matchesPayer(payer, 'medi'), true);
-    assert.equal(matchesPayer(payer, '0095'), true);
-    assert.equal(matchesPayer(payer, 'aetna'), false);
   });
 });

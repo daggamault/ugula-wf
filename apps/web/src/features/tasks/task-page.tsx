@@ -18,6 +18,7 @@ import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
+import { FieldGrid } from '../../shared/ui/field.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
@@ -26,7 +27,7 @@ import { ValueField } from '../../shared/ui/value-field.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { TaskDetail, TasksClient } from './client.ts';
 import { ContextView } from './context-view.tsx';
-import { humanize, queueInfo } from './queues.ts';
+import { queueInfo, titleCase } from './queues.ts';
 import { SourceReportPanel } from './source-report.tsx';
 
 export type TaskPageProps = {
@@ -82,7 +83,7 @@ export const NextUp = ({
     <SectionPanel title="Done" accent="primary">
       <p className="flex items-center gap-2 text-sm">
         <CircleCheckBigIcon aria-hidden="true" className="text-success size-4 shrink-0" />“
-        {humanize(outcome)}” is recorded and the workflow continues.
+        {titleCase(outcome)}” is recorded and the workflow continues.
       </p>
       <p className="text-surface-fg-muted text-sm">
         {remaining === null
@@ -101,7 +102,7 @@ export const NextUp = ({
               void onNext().finally(() => setBusy(false));
             }}
           >
-            Next task
+            Next Task
             <ArrowRightIcon aria-hidden="true" className="size-4" />
           </Button>
         ) : null}
@@ -141,18 +142,20 @@ const Decision = ({
     >
       <form className="flex flex-col gap-5" onSubmit={(e) => e.preventDefault()}>
         {task.fields.length ? (
-          <fieldset disabled={busy !== null} className="flex flex-col gap-5">
-            {task.fields.map((f) => (
-              <ValueField
-                key={f.name}
-                id={`field-${f.name}`}
-                label={f.label ?? humanize(f.name)}
-                type={f.type}
-                options={f.options}
-                value={values[f.name] ?? null}
-                onChange={(value) => setValues({ ...values, [f.name]: value })}
-              />
-            ))}
+          <fieldset disabled={busy !== null}>
+            <FieldGrid>
+              {task.fields.map((f) => (
+                <ValueField
+                  key={f.name}
+                  id={`field-${f.name}`}
+                  label={f.label ?? titleCase(f.name)}
+                  type={f.type}
+                  options={f.options}
+                  value={values[f.name] ?? null}
+                  onChange={(value) => setValues({ ...values, [f.name]: value })}
+                />
+              ))}
+            </FieldGrid>
           </fieldset>
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
@@ -165,7 +168,7 @@ const Decision = ({
               disabledReason={busy && busy !== outcome ? pendingActionMessage : undefined}
               onClick={() => void act(outcome)}
             >
-              {humanize(outcome)}
+              {titleCase(outcome)}
             </Button>
           ))}
         </div>
@@ -198,7 +201,7 @@ export const TaskView = ({
       await onComplete(outcome, values);
       setDone(outcome);
       notify({
-        title: `${humanize(outcome)}: ${task.subject ?? task.title}`,
+        title: `${titleCase(outcome)}: ${task.subject ?? task.title}`,
         description: `Recorded in ${info.label}.`
       });
     } catch (err) {
@@ -242,13 +245,13 @@ export const TaskView = ({
           {claimId ? (
             <ButtonLink to={`/claims/${claimId}`} variant="outline">
               <ReceiptTextIcon aria-hidden="true" className="size-4" />
-              Open claim
+              Open Claim
             </ButtonLink>
           ) : null}
           {isFault ? (
             <ButtonLink to={`/runs/${task.run_id}`} variant="outline">
               <ActivityIcon aria-hidden="true" className="size-4" />
-              Open run
+              Open Run
             </ButtonLink>
           ) : null}
           {open ? (
@@ -258,7 +261,7 @@ export const TaskView = ({
               ) : (
                 <UndoIcon aria-hidden="true" className="size-4" />
               )}
-              {isUnassigned ? 'Assign to me' : 'Unassign'}
+              {isUnassigned ? 'Assign to Me' : 'Unassign'}
             </Button>
           ) : null}
         </>
@@ -273,7 +276,7 @@ export const TaskView = ({
                 <InfoIcon aria-hidden="true" className="text-info size-4" />
               </span>
               <div className="flex flex-col gap-1">
-                <h2 className="text-sm font-bold">{isFault ? 'What went wrong' : 'What to do'}</h2>
+                <h2 className="text-sm font-bold">{isFault ? 'What Went Wrong' : 'What to Do'}</h2>
                 <p className="text-sm whitespace-pre-line">{task.instructions}</p>
               </div>
             </aside>
@@ -295,7 +298,7 @@ export const TaskView = ({
             <SectionPanel title="Decision" description="How this task was settled.">
               <Alert intent={task.status === 'completed' ? 'success' : 'warning'}>
                 {task.status === 'completed'
-                  ? `Completed ${formatDateTime(task.completed_at)} as “${humanize(task.resolution?.outcome ?? '')}”.`
+                  ? `Completed ${formatDateTime(task.completed_at)} as “${titleCase(task.resolution?.outcome ?? '')}”.`
                   : 'This task was cancelled.'}
               </Alert>
               {task.resolution ? (

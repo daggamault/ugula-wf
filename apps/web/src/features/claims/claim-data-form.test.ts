@@ -69,7 +69,7 @@ describe('claim data form', () => {
     assert.ok(html.includes('>Blue Plan<'));
     assert.ok(html.includes('for="destination-name"'));
     assert.ok(html.includes('type="date"'));
-    assert.ok(html.includes('>Save claim data<'));
+    assert.ok(html.includes('>Save Claim Data<'));
     assert.ok(html.includes('for="origin-code"'));
     assert.ok(html.includes('S · Scene of an accident or acute event'));
     assert.equal(

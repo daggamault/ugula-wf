@@ -17,7 +17,8 @@ export const CLAIM_SORTS = [
   'patient',
   'pcr',
   'total',
-  'balance'
+  'balance',
+  'status'
 ] as const;
 
 export type ClaimSort = (typeof CLAIM_SORTS)[number];

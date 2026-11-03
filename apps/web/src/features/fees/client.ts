@@ -1,4 +1,5 @@
 import type { Api } from '../../shared/api.ts';
+import type { Page } from '../../shared/url-state.ts';
 
 export type Fee = {
   id: string;
@@ -18,8 +19,10 @@ export type FeeInput = {
 type DirectoryPayer = { id: string; name: string };
 
 export const createFeesClient = (api: Api) => ({
-  list: async () => (await api.get<{ fees: Fee[] }>('/api/fees')).fees,
-  payers: async () => (await api.get<{ payers: DirectoryPayer[] }>('/api/payers')).payers,
+  search: (query: string) => api.get<Page<Fee>>(`/api/fees?${query}`),
+  fee: async (id: string) =>
+    (await api.get<{ fee: Fee }>(`/api/fees/${encodeURIComponent(id)}`)).fee,
+  payers: async () => (await api.get<{ payers: DirectoryPayer[] }>('/api/payers/names')).payers,
   save: async (fee: FeeInput) => (await api.put<{ fee: Fee }>('/api/fees', fee)).fee,
   remove: (id: string) => api.remove<{ status: string }>(`/api/fees/${id}`)
 });

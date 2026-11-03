@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { hrefWith, pageOf, tableStateOf } from './url-state.ts';
+import { backOf, hrefWith, pageOf, searchStateOf, tableStateOf, withBack } from './url-state.ts';
 
 const spec = { sorts: { created: 'desc', name: 'asc' }, sort: 'created' } as const;
 
@@ -73,5 +73,32 @@ describe('pageOf', () => {
     assert.deepEqual(by('total', 'asc'), ['c', 'b', 'a2', 'A10']);
     assert.deepEqual(by('name', 'asc', 2, 3), ['c']);
     assert.equal(pageOf(rows, { sort: 'name', dir: 'asc', page: 2, pageSize: 3 }, values).total, 4);
+  });
+});
+
+describe('searchStateOf', () => {
+  it('adds the trimmed search text to the table state and API query', () => {
+    const s = searchStateOf('/payers', new URLSearchParams('q=+blue+cross+&page=2'), spec);
+    assert.equal(s.q, 'blue cross');
+    assert.equal(s.apiQuery, 'q=blue%20cross&page=2&pageSize=25&sort=created&dir=desc');
+    assert.equal(s.href, '/payers?q=+blue+cross+&page=2');
+    assert.equal(searchStateOf('/payers', new URLSearchParams(), spec).href, '/payers');
+  });
+});
+
+describe('withBack and backOf', () => {
+  it('returns to the list a page was opened from, never anywhere else', () => {
+    const to = withBack('/payers/p1', '/payers?q=blue&page=2');
+    assert.equal(to, '/payers/p1?back=%2Fpayers%3Fq%3Dblue%26page%3D2');
+    const query = new URL(to, 'http://local').searchParams;
+    assert.equal(backOf(query, '/payers'), '/payers?q=blue&page=2');
+    assert.equal(withBack('/payers/new', '/payers'), '/payers/new');
+    assert.equal(withBack('/claims/c1', '/patients/p1'), '/claims/c1?back=%2Fpatients%2Fp1');
+    const fromPatient = new URLSearchParams('back=/patients/p1?page=2');
+    assert.equal(backOf(fromPatient, '/claims', '/patients/'), '/patients/p1?page=2');
+    assert.equal(backOf(fromPatient, '/claims'), '/claims');
+    assert.equal(backOf(new URLSearchParams('back=https://evil.test'), '/payers'), '/payers');
+    assert.equal(backOf(new URLSearchParams('back=/payersx'), '/payers'), '/payers');
+    assert.equal(backOf(new URLSearchParams(), '/fees'), '/fees');
   });
 });

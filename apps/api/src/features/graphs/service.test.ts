@@ -274,7 +274,18 @@ describe('graph service', () => {
     const service = createGraphService({ db, nodes });
     assert.equal((await service.find('t-1', 'g1')).ok, true);
     assert.equal((await service.version('t-1', 'g1', 1)).ok, false);
-    assert.equal((await service.list('t-1')).ok, true);
+    assert.equal(
+      (
+        await service.search('t-1', {
+          page: 1,
+          pageSize: 25,
+          sort: 'name',
+          dir: 'asc',
+          show: 'all'
+        })
+      ).ok,
+      true
+    );
     assert.equal((await service.nodes('t-1')).ok, true);
   });
 });

@@ -92,7 +92,7 @@ const NavMenu = ({ navItems, userEmail, status, onSignOut }: NavMenuProps) => (
       <span className="min-w-0 flex-1 truncate text-sm font-semibold" title={userEmail}>
         {userEmail}
       </span>
-      <IconButton label="Sign out" icon={LogOutIcon} tooltipSide="top" onClick={onSignOut} />
+      <IconButton label="Sign Out" icon={LogOutIcon} tooltipSide="top" onClick={onSignOut} />
     </div>
   </div>
 );
@@ -125,7 +125,7 @@ const TopNav = ({ path, tools, ...menu }: NavMenuProps & { path: string; tools?:
     <header ref={headerRef} className="border-border bg-surface border-b lg:hidden print:hidden">
       <NavHeader tools={tools}>
         <IconButton
-          label={isOpen ? 'Close menu' : 'Open menu'}
+          label={isOpen ? 'Close Menu' : 'Open Menu'}
           icon={isOpen ? XIcon : MenuIcon}
           aria-expanded={isOpen}
           aria-controls={menuId}

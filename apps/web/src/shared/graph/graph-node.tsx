@@ -72,7 +72,7 @@ export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
           <span className="truncate text-sm font-semibold">{title}</span>
           {opens ? (
             <span className="text-primary shrink-0 text-[10px] font-semibold tracking-wide uppercase">
-              {opens === 'graph' ? 'Building block' : 'Workflow'}
+              {opens === 'graph' ? 'Building Block' : 'Workflow'}
             </span>
           ) : null}
         </span>

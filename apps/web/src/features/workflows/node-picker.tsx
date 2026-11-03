@@ -82,7 +82,7 @@ export const NodePicker = ({ open, entries, onAdd, onClose }: NodePickerProps) =
         id={searchId}
         label="Search"
         type="search"
-        placeholder="For example: round, wait, payer"
+        placeholder="For Example: Round, Wait, Payer"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />

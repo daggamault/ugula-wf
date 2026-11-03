@@ -4,15 +4,17 @@ import { createRecordingDb } from '@ugula/db/testing';
 import {
   findGraph,
   findVersion,
-  listGraphs,
   listPublishedNodes,
   listVersions,
   nextVersion,
-  publishVersion
+  publishVersion,
+  searchGraphs
 } from './queries.ts';
 
+const BASE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
+
 describe('graph queries', () => {
-  it('lists tenant and system graphs with published and draft versions', async () => {
+  it('pages tenant and system graphs with published and draft versions', async () => {
     const { db, queries } = createRecordingDb(() => [
       {
         id: 'g1',
@@ -25,10 +27,13 @@ describe('graph queries', () => {
         published: 2,
         draft: 3,
         overrides: false,
-        overridden_by: 'g2'
+        overridden_by: 'g2',
+        total: '1'
       }
     ]);
-    assert.deepEqual(await listGraphs(db, 't-1'), [
+    const page = await searchGraphs(db, 't-1', { ...BASE, show: 'all' });
+    assert.equal(page.total, 1);
+    assert.deepEqual(page.items, [
       {
         id: 'g1',
         key: 'demo.x',
@@ -43,8 +48,30 @@ describe('graph queries', () => {
         updatedAt: new Date(0)
       }
     ]);
-    assert.ok(queries[0]?.sql.includes('filter (where gv.published_at is not null)'));
+    assert.ok(
+      queries[0]?.sql.includes(
+        'left join lateral (select max(gv.version) filter (where gv.published_at is not null)'
+      )
+    );
     assert.ok(queries[0]?.sql.includes('"g"."tenant_id" is null'));
+    assert.ok(queries[0]?.sql.includes('order by lower(g.name) asc nulls last'));
+    await db.destroy();
+  });
+
+  it('searches names and keys of the kind shown', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    const base = { ...BASE, sort: 'kind', dir: 'desc' } as const;
+    await searchGraphs(db, 't-1', { ...base, show: 'blocks', q: 'Match' });
+    await searchGraphs(db, 't-1', { ...base, show: 'mine' });
+    await searchGraphs(db, 't-1', { ...base, show: 'workflows' });
+    const [blocks, mine, workflows] = queries;
+    assert.ok(blocks?.sql.includes('"g"."kind" != $'));
+    assert.ok(blocks?.sql.includes('lower(g.name) like $'));
+    assert.ok(blocks?.sql.includes('lower(g.key) like $'));
+    assert.ok(blocks?.parameters.includes('%match%'));
+    assert.ok(blocks?.sql.includes('order by (g.kind, lower(g.name)) desc nulls last'));
+    assert.ok(mine?.sql.includes('"g"."tenant_id" is not null'));
+    assert.ok(workflows?.sql.includes('"g"."kind" = $'));
     await db.destroy();
   });
 

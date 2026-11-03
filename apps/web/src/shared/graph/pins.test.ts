@@ -15,12 +15,12 @@ describe('pin tones', () => {
 
 describe('describeType', () => {
   it('names value types in plain words', () => {
-    assert.equal(describeType('integer'), 'Whole number');
-    assert.equal(describeType({ list: 'string' }), 'List of text');
-    assert.equal(describeType({ list: { list: 'boolean' } }), 'List of list of yes or no');
+    assert.equal(describeType('integer'), 'Whole Number');
+    assert.equal(describeType({ list: 'string' }), 'List of Text');
+    assert.equal(describeType({ list: { list: 'boolean' } }), 'List of List of Yes or No');
     assert.equal(
       describeType({ object: { bucket: 'string', key: 'string' } }),
-      'Record with bucket, key'
+      'Record With bucket, key'
     );
     assert.equal(describeType({ object: {} }), 'Record');
   });

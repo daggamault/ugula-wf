@@ -1,4 +1,5 @@
 import type { Api } from '../../shared/api.ts';
+import type { Page } from '../../shared/url-state.ts';
 
 export type BillingProfile = {
   organization_name: string;
@@ -46,7 +47,9 @@ export const createSettingsClient = (api: Api) => ({
   profile: async () =>
     (await api.get<{ profile: BillingProfile | null }>('/api/billing-profile')).profile,
   saveProfile: (profile: BillingProfileInput) => api.put('/api/billing-profile', profile),
-  payers: async () => (await api.get<{ payers: Payer[] }>('/api/payers')).payers,
+  searchPayers: (query: string) => api.get<Page<Payer>>(`/api/payers?${query}`),
+  payer: async (id: string) =>
+    (await api.get<{ payer: Payer }>(`/api/payers/${encodeURIComponent(id)}`)).payer,
   savePayer: (payer: PayerInput) =>
     api.put<{ payer: Payer; linkedClaims: number }>('/api/payers', payer),
   removePayer: (id: string) => api.remove(`/api/payers/${id}`),

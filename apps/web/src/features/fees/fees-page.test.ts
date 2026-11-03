@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { searchStateOf } from '../../shared/url-state.ts';
 import type { Fee, FeesClient } from './client.ts';
-import { FeesPage, FeesTable, toFeeInput } from './fees-page.tsx';
+import { FeeForm, FeePage, toFeeDraft, toFeeInput } from './fee-page.tsx';
+import { FEE_TABLE, FeesPage, FeesTable, feeName } from './fees-page.tsx';
 
 const fee = (over: Partial<Fee> = {}): Fee => ({
   id: 'f1',
@@ -14,6 +16,10 @@ const fee = (over: Partial<Fee> = {}): Fee => ({
   updated_at: '2026-10-01T00:00:00Z',
   ...over
 });
+
+const pending = () => new Promise<never>(() => undefined);
+
+const search = (query: string) => searchStateOf('/fees', new URLSearchParams(query), FEE_TABLE);
 
 describe('toFeeInput', () => {
   it('converts the form into cents and an optional directory payer', () => {
@@ -35,42 +41,73 @@ describe('toFeeInput', () => {
       toFeeInput({ payerId: '', code: 'A0427', amount: '-1' }),
       'Enter an amount of zero or more.'
     );
+    assert.deepEqual(toFeeDraft(fee({ payer_id: 'p-m' })), {
+      payerId: 'p-m',
+      code: 'A0427',
+      amount: '950.00'
+    });
   });
 });
 
 describe('FeesPage', () => {
-  it('adds and edits fees in a dialog from the header', () => {
+  it('searches fees and adds them on their own page', () => {
     const html = renderToStaticMarkup(
       createElement(FeesPage, {
-        client: {
-          list: () => new Promise(() => undefined),
-          payers: () => new Promise(() => undefined)
-        } as unknown as FeesClient
+        client: { search: pending } as unknown as FeesClient
       })
     );
-    assert.ok(html.includes('for="fee-payer"'));
-    assert.ok(html.includes('for="fee-code"'));
-    assert.ok(html.includes('step="0.01"'));
-    assert.ok(html.includes('>Save fee<') && html.includes('Add fee'));
-    assert.ok(html.includes('Default schedule (every payer)'));
+    assert.ok(html.includes('aria-label="Search Fees"') && html.includes('>Search</label>'));
+    assert.ok(html.includes('href="/fees/new"') && html.includes('Add Fee'));
+    assert.ok(!html.includes('<dialog open'));
   });
 
-  it('lists default and payer prices with actions', () => {
+  it('lists default and payer prices, highlights matches and links to their pages', () => {
     const html = renderToStaticMarkup(
       createElement(FeesTable, {
         fees: [fee(), fee({ id: 'f2', payer_id: 'p-m', payer: 'Medicare', amount_cents: 50000 })],
-        onEdit: () => undefined,
+        search: search('q=a04&page=2'),
         onDelete: () => undefined
       })
     );
-    assert.ok(html.includes('>Default<'));
     assert.ok(html.includes('>Medicare<'));
-    assert.ok(html.includes('$950.00'));
-    assert.ok(html.includes('$500.00'));
-    assert.ok(html.includes('<span class="sr-only">Actions</span>'));
+    assert.ok(html.includes('$950.00') && html.includes('$500.00'));
+    assert.match(html, /<mark[^>]*>A04<\/mark>27/);
+    assert.ok(html.includes('href="/fees/f1?back=%2Ffees%3Fq%3Da04%26page%3D2"'));
     assert.ok(html.includes('aria-label="Edit Default A0427"'));
     assert.ok(html.includes('aria-label="Delete Medicare A0427"'));
-    assert.equal(html.match(/aria-label="Delete /g)?.length, 2);
-    assert.ok(!html.includes('>Edit<') && !html.includes('>Delete<'));
+    assert.ok(html.includes('>Edit</span>') && html.includes('>Delete</span>'));
+    assert.equal(feeName(fee()), 'Default A0427');
+  });
+});
+
+describe('FeePage', () => {
+  it('adds a fee on a page with Title Cased labels that returns to the list', () => {
+    const html = renderToStaticMarkup(
+      createElement(FeeForm, {
+        fee: null,
+        payers: [],
+        back: '/fees?q=a04',
+        onSave: async () => null
+      })
+    );
+    assert.ok(html.includes('for="fee-payer"') && html.includes('>Amount (USD)<'));
+    assert.ok(html.includes('step="0.01"') && html.includes('Default Schedule (Every Payer)'));
+    assert.ok(html.includes('href="/fees?q=a04"') && html.includes('>Save Fee<'));
+    assert.ok(html.includes('@3xl:grid-cols-4'));
+  });
+
+  it('keeps the payer and code of an existing fee and loads it first', () => {
+    const edit = renderToStaticMarkup(
+      createElement(FeeForm, { fee: fee(), payers: [], back: '/fees', onSave: async () => null })
+    );
+    assert.ok(edit.includes('readOnly=""') && edit.includes('value="950.00"'));
+    const loading = renderToStaticMarkup(
+      createElement(FeePage, {
+        client: { fee: pending, payers: pending } as unknown as FeesClient,
+        feeId: 'f1',
+        back: '/fees'
+      })
+    );
+    assert.ok(loading.includes('aria-label="Back to Fees"') && loading.includes('href="/fees"'));
   });
 });

@@ -1,6 +1,22 @@
 import { graphDefSchema } from '@ugula/graph';
 import * as v from 'valibot';
 import { uuid } from '../../shared/http.ts';
+import { pageEntries } from '../../shared/paging.ts';
+import { searchText } from '../../shared/search.ts';
+
+export const GRAPH_SORTS = ['name', 'key', 'kind', 'updated'] as const;
+
+export type GraphSort = (typeof GRAPH_SORTS)[number];
+
+export const GRAPH_SHOWS = ['workflows', 'blocks', 'mine', 'all'] as const;
+
+export type GraphShow = (typeof GRAPH_SHOWS)[number];
+
+export const searchGraphsQuery = v.object({
+  q: searchText,
+  show: v.optional(v.picklist(GRAPH_SHOWS), 'workflows'),
+  ...pageEntries(GRAPH_SORTS, 'name', 'asc')
+});
 
 export const createGraphSchema = v.object({
   key: v.pipe(

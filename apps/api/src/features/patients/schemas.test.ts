@@ -4,7 +4,7 @@ import * as v from 'valibot';
 import { listPatientsQuery } from './schemas.ts';
 
 describe('patient schemas', () => {
-  it('trims names, checks birth dates and sorts by name by default', () => {
+  it('trims names, checks birth dates, needs something to search for and sorts by name', () => {
     assert.deepEqual(v.parse(listPatientsQuery, { lastName: ' Doe ', birthDate: '1980-01-02' }), {
       lastName: 'Doe',
       birthDate: '1980-01-02',
@@ -14,6 +14,7 @@ describe('patient schemas', () => {
       dir: 'asc'
     });
     assert.equal(v.safeParse(listPatientsQuery, { birthDate: '01/02/1980' }).success, false);
-    assert.equal(v.safeParse(listPatientsQuery, { sort: 'balance' }).success, true);
+    assert.equal(v.safeParse(listPatientsQuery, { lastName: 'k', sort: 'balance' }).success, true);
+    assert.equal(v.safeParse(listPatientsQuery, { sort: 'balance' }).success, false);
   });
 });

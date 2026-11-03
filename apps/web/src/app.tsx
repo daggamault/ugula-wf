@@ -18,7 +18,8 @@ import { ClaimsPage } from './features/claims/claims-page.tsx';
 import { type ClaimsClient, claimSearchOf } from './features/claims/client.ts';
 import { PatientClaims } from './features/claims/patient-claims.tsx';
 import type { FeesClient } from './features/fees/client.ts';
-import { FeesPage } from './features/fees/fees-page.tsx';
+import { FeePage } from './features/fees/fee-page.tsx';
+import { FEES_PATH, FeesPage } from './features/fees/fees-page.tsx';
 import { HealthStatus } from './features/health/health-status.tsx';
 import type { ImportsClient } from './features/imports/client.ts';
 import { ImportDrop } from './features/imports/import-drop.tsx';
@@ -38,15 +39,21 @@ import { parseAt } from './features/runs/inspect.ts';
 import { RunsPage } from './features/runs/runs-page.tsx';
 import { StartRunPage } from './features/runs/start-run-page.tsx';
 import type { SettingsClient } from './features/settings/client.ts';
-import { PayersPage } from './features/settings/payers-page.tsx';
+import { PayerPage } from './features/settings/payer-page.tsx';
+import { PAYERS_PATH, PayersPage } from './features/settings/payers-page.tsx';
 import { SettingsPage } from './features/settings/settings-page.tsx';
 import type { Assignee, TasksClient } from './features/tasks/client.ts';
 import { TaskPage } from './features/tasks/task-page.tsx';
 import { ASSIGNEES, TasksPage } from './features/tasks/tasks-page.tsx';
 import { useWorkAlerts } from './features/tasks/work-alerts.ts';
 import type { WorkflowsClient } from './features/workflows/client.ts';
+import { graphKindOf, NewWorkflowPage } from './features/workflows/new-workflow-page.tsx';
 import { parseTrail } from './features/workflows/trail.ts';
-import { graphFilterOf, WorkflowsPage } from './features/workflows/workflows-page.tsx';
+import {
+  graphFilterOf,
+  WORKFLOWS_PATH,
+  WorkflowsPage
+} from './features/workflows/workflows-page.tsx';
 import { createLive, type Live, useLiveStatus } from './shared/live.ts';
 import type { NotificationsClient } from './shared/notifications.ts';
 import { matchPath, navigate, useLocation } from './shared/router.tsx';
@@ -55,6 +62,7 @@ import { PageLoading } from './shared/ui/page.tsx';
 import { RUN_STATUSES } from './shared/ui/run-status-badge.tsx';
 import { Shell } from './shared/ui/shell.tsx';
 import { ToastProvider, useToast } from './shared/ui/toast.tsx';
+import { backOf } from './shared/url-state.ts';
 
 export type AppClients = {
   auth: AuthClient;
@@ -123,8 +131,16 @@ const versionParam = (query: URLSearchParams) => {
 const routes: readonly Route[] = [
   {
     pattern: '/workflows',
+    render: (_, q, c) => <WorkflowsPage client={c.workflows} show={graphFilterOf(q)} />
+  },
+  {
+    pattern: `${WORKFLOWS_PATH}/new`,
     render: (_, q, c) => (
-      <WorkflowsPage client={c.workflows} show={graphFilterOf(q)} search={q.get('q') ?? ''} />
+      <NewWorkflowPage
+        client={c.workflows}
+        kind={graphKindOf(q)}
+        back={backOf(q, WORKFLOWS_PATH)}
+      />
     )
   },
   {
@@ -155,7 +171,14 @@ const routes: readonly Route[] = [
   { pattern: '/imports', render: (_, __, c) => <ImportsPage client={c.imports} live={c.live} /> },
   {
     pattern: '/imports/:id',
-    render: (p, _, c) => <ImportPage client={c.imports} live={c.live} importId={p.id ?? ''} />
+    render: (p, q, c) => (
+      <ImportPage
+        client={c.imports}
+        live={c.live}
+        importId={p.id ?? ''}
+        back={backOf(q, '/imports')}
+      />
+    )
   },
   {
     pattern: '/claims',
@@ -168,6 +191,7 @@ const routes: readonly Route[] = [
         client={c.claims}
         live={c.live}
         claimId={p.id ?? ''}
+        back={backOf(q, '/claims', '/patients/')}
         tab={CLAIM_TABS.find((t) => t.value === q.get('tab'))?.value ?? 'overview'}
       />
     )
@@ -178,9 +202,10 @@ const routes: readonly Route[] = [
   },
   {
     pattern: '/patients/:id',
-    render: (p, _, c) => (
+    render: (p, q, c) => (
       <PatientPage
         client={c.patients}
+        back={backOf(q, '/patients')}
         live={c.live}
         patientId={p.id ?? ''}
         claims={<PatientClaims client={c.claims} live={c.live} patientId={p.id ?? ''} />}
@@ -196,10 +221,34 @@ const routes: readonly Route[] = [
     pattern: '/reports/:id/results',
     render: (p, q, c) => <ReportResultsPage client={c.reports} reportId={p.id ?? ''} query={q} />
   },
-  { pattern: '/fees', render: (_, __, c) => <FeesPage client={c.fees} /> },
+  { pattern: FEES_PATH, render: (_, __, c) => <FeesPage client={c.fees} /> },
   {
-    pattern: '/payers',
-    render: (_, q, c) => <PayersPage client={c.settings} search={q.get('q') ?? ''} />
+    pattern: `${FEES_PATH}/new`,
+    render: (_, q, c) => <FeePage client={c.fees} feeId={null} back={backOf(q, FEES_PATH)} />
+  },
+  {
+    pattern: `${FEES_PATH}/:id`,
+    render: (p, q, c) => (
+      <FeePage key={p.id} client={c.fees} feeId={p.id ?? ''} back={backOf(q, FEES_PATH)} />
+    )
+  },
+  { pattern: PAYERS_PATH, render: (_, __, c) => <PayersPage client={c.settings} /> },
+  {
+    pattern: `${PAYERS_PATH}/new`,
+    render: (_, q, c) => (
+      <PayerPage client={c.settings} payerId={null} back={backOf(q, PAYERS_PATH)} />
+    )
+  },
+  {
+    pattern: `${PAYERS_PATH}/:id`,
+    render: (p, q, c) => (
+      <PayerPage
+        key={p.id}
+        client={c.settings}
+        payerId={p.id ?? ''}
+        back={backOf(q, PAYERS_PATH)}
+      />
+    )
   },
   { pattern: '/settings', render: (_, __, c) => <SettingsPage client={c.settings} /> },
   {

@@ -63,7 +63,7 @@ describe('TaskTable', () => {
     assert.ok(html.includes('href="/tasks/t1" aria-label="Open task PCR-1 · Jane Doe"'));
     assert.ok(html.includes('href="/tasks/t2" aria-label="Open task Stuck at Price"'));
     assert.equal(html.split('href="/tasks/t1"').length, 2);
-    assert.ok(html.includes('Billing review') && html.includes('Stuck runs'));
+    assert.ok(html.includes('Billing Review') && html.includes('Stuck Runs'));
     assert.ok(
       html.includes('pat@example.com') && html.includes('Unassigned') && html.includes('>You<')
     );
@@ -82,10 +82,10 @@ describe('task filters', () => {
       { value: '', label: 'All (4)', href: '/tasks' },
       {
         value: 'billing-review',
-        label: 'Billing review (3)',
+        label: 'Billing Review (3)',
         href: '/tasks?type=billing-review'
       },
-      { value: 'exceptions', label: 'Stuck runs (1)', href: '/tasks?type=exceptions' }
+      { value: 'exceptions', label: 'Stuck Runs (1)', href: '/tasks?type=exceptions' }
     ]);
   });
 
@@ -110,6 +110,6 @@ describe('TasksPage', () => {
       })
     );
     assert.ok(html.includes('<h1'));
-    assert.ok(html.includes('Start working'));
+    assert.ok(html.includes('Start Working'));
   });
 });

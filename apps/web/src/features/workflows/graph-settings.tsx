@@ -7,19 +7,19 @@ import {
   type ValueType,
   type VariableDef
 } from '@ugula/graph';
-import { PlusIcon, Trash2Icon } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { PlusIcon, Trash2Icon, XIcon } from 'lucide-react';
+import { type ReactNode, useId, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { withSignature } from '../../shared/graph/flow.ts';
 import { Button } from '../../shared/ui/button.tsx';
-import { Dialog } from '../../shared/ui/dialog.tsx';
+import { FieldGrid } from '../../shared/ui/field.tsx';
+import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
 import type { GraphKind } from './client.ts';
 
 export type GraphSettingsProps = {
   kind: GraphKind;
-  open: boolean;
   def: GraphDef;
   editable: boolean;
   onChange: (def: GraphDef) => void;
@@ -139,7 +139,7 @@ const PinsEditor = ({
         <AddButton
           onClick={() => onPins([...pins, { name: `value${pins.length + 1}`, type: 'any' }])}
         >
-          Add {noun}
+          Add {noun.charAt(0).toUpperCase() + noun.slice(1)}
         </AddButton>
       ) : null}
     </Section>
@@ -191,7 +191,7 @@ const VariablesEditor = ({
           <ValueField
             key={`var-${i}-${formatType(variable.type)}`}
             id={`var-${i}-default`}
-            label="Starts as"
+            label="Starts As"
             type={variable.type}
             value={variable.default}
             onChange={(value) => patch(i, { default: value })}
@@ -207,53 +207,61 @@ const VariablesEditor = ({
             ])
           }
         >
-          Add variable
+          Add Variable
         </AddButton>
       ) : null}
     </Section>
   );
 };
 
-export const GraphSettings = ({
-  kind,
-  open,
-  def,
-  editable,
-  onChange,
-  onClose
-}: GraphSettingsProps) => {
+export const GraphSettings = ({ kind, def, editable, onChange, onClose }: GraphSettingsProps) => {
+  const titleId = useId();
   const { signature } = def;
   const setSignature = (patch: Partial<GraphDef['signature']>) =>
     onChange(withSignature(def, { signature: { ...signature, ...patch } }));
   return (
-    <Dialog
-      open={open}
-      isWide
-      title={kind === 'workflow' ? 'Workflow Settings' : 'Building Block Settings'}
-      description="What this takes in, what it hands back, and what it keeps while it runs. Workflows that use it see these as the pins of its node."
-      onClose={onClose}
-    >
+    <aside aria-labelledby={titleId} className="flex min-h-0 flex-1 flex-col">
+      <header className="border-border flex items-start justify-between gap-4 border-b p-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h2 id={titleId} className="text-base font-bold">
+            {kind === 'workflow' ? 'Workflow Settings' : 'Building Block Settings'}
+          </h2>
+          <p className="text-surface-fg-muted text-sm">
+            What this takes in, what it hands back, and what it keeps while it runs. Workflows that
+            use it see these as the pins of its node.
+          </p>
+        </div>
+        <IconButton
+          label="Close settings"
+          tooltip="Close"
+          icon={XIcon}
+          tooltipSide="left"
+          onClick={onClose}
+        />
+      </header>
       <fieldset
         disabled={!editable}
-        className="flex max-h-[65dvh] flex-col gap-5 overflow-y-auto pr-1"
+        className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4"
       >
         <Section title="Paths" description="Named ways in and out. Most have one of each.">
-          <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
+          <FieldGrid>
             <Input
               id="exec-in"
-              label="Ways in"
+              span={2}
+              label="Ways In"
               hint="Comma separated, for example: exec"
               defaultValue={signature.execIn.join(', ')}
               onBlur={(e) => setSignature({ execIn: names(e.target.value) })}
             />
             <Input
               id="exec-out"
-              label="Ways out"
+              span={2}
+              label="Ways Out"
               hint="Comma separated, for example: approved, rejected"
               defaultValue={signature.execOut.join(', ')}
               onBlur={(e) => setSignature({ execOut: names(e.target.value) })}
             />
-          </div>
+          </FieldGrid>
         </Section>
         <PinsEditor
           id="in"
@@ -279,6 +287,6 @@ export const GraphSettings = ({
           onVariables={(variables) => onChange(withSignature(def, { variables }))}
         />
       </fieldset>
-    </Dialog>
+    </aside>
   );
 };

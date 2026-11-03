@@ -13,6 +13,8 @@ export type PatientPageProps = {
   live: Live;
   patientId: string;
   claims: ReactNode;
+  /** The patient list to return to, with its search and page. */
+  back?: string;
 };
 
 const SEXES: Readonly<Record<string, string>> = { F: 'Female', M: 'Male', U: 'Unknown' };
@@ -27,17 +29,23 @@ export const addressOf = (p: PatientSummary) => {
 export const PatientDetails = ({ patient }: { patient: PatientSummary }) => (
   <SectionPanel title="Details" description="As last reported on a patient care report or claim.">
     <DetailList>
-      <Detail label="Open balance" isEmphasized>
+      <Detail label="Open Balance" isEmphasized>
         {formatCents(patient.balance_cents)}
       </Detail>
-      <Detail label="Birth date">{formatDate(patient.birth_date)}</Detail>
+      <Detail label="Birth Date">{formatDate(patient.birth_date)}</Detail>
       <Detail label="Sex">{(patient.gender && SEXES[patient.gender]) ?? emptyValue}</Detail>
       <Detail label="Address">{addressOf(patient) || emptyValue}</Detail>
     </DetailList>
   </SectionPanel>
 );
 
-export const PatientPage = ({ client, claims, live, patientId }: PatientPageProps) => {
+export const PatientPage = ({
+  client,
+  claims,
+  live,
+  patientId,
+  back = '/patients'
+}: PatientPageProps) => {
   const patient = useResource(`patient:${patientId}`, () => client.find(patientId));
   useLive(live, (e) => e.kind === 'claim', patient.reload);
   if (patient.error) return <PageFailure message={patient.error.message} />;
@@ -47,7 +55,7 @@ export const PatientPage = ({ client, claims, live, patientId }: PatientPageProp
     <Page
       title={`${p.last_name}, ${p.first_name}`}
       description={`Born ${formatDate(p.birth_date)}`}
-      backTo="/patients"
+      backTo={back}
       backLabel="Back to Patients"
     >
       <PatientDetails patient={p} />

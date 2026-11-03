@@ -8,8 +8,8 @@ const CLAIM = '01a169fa-2534-79ed-97b7-d7789e899bd6';
 
 describe('ContextView', () => {
   it('turns keys into labels', () => {
-    assert.equal(labelOf('loadedMiles'), 'Loaded miles');
-    assert.equal(labelOf('pcrNumber'), 'PCR number');
+    assert.equal(labelOf('loadedMiles'), 'Loaded Miles');
+    assert.equal(labelOf('pcrNumber'), 'PCR Number');
     assert.equal(labelOf('balanceCents'), 'Balance');
     assert.equal(labelOf('memberId'), 'Member ID');
   });

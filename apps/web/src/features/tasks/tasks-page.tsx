@@ -1,4 +1,4 @@
-import { ChevronRightIcon, PlayIcon } from 'lucide-react';
+import { PlayIcon } from 'lucide-react';
 import { useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatAgo, formatDateTime } from '../../shared/format.ts';
@@ -9,7 +9,7 @@ import { Badge } from '../../shared/ui/badge.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { EmptyState } from '../../shared/ui/empty-state.tsx';
 import { FilterSelect } from '../../shared/ui/filter-select.tsx';
-import { IconLink } from '../../shared/ui/icon-button.tsx';
+import { OpenLink, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
@@ -31,7 +31,7 @@ const PATH = '/tasks';
 export const ASSIGNEES: readonly Assignee[] = ['anyone', 'me', 'unassigned'];
 
 export const TASK_TABLE = {
-  sorts: { waiting: 'desc', task: 'asc', queue: 'asc', priority: 'desc' },
+  sorts: { waiting: 'desc', task: 'asc', queue: 'asc', priority: 'desc', assignee: 'asc' },
   sort: 'waiting'
 } as const;
 
@@ -54,7 +54,7 @@ export const TaskTable = ({
       { label: 'Task', sort: 'task' },
       { label: 'Type', sort: 'queue' },
       { label: 'Waiting', sort: 'waiting' },
-      { label: 'Assigned To', isSecondary: true },
+      { label: 'Assigned To', isSecondary: true, sort: 'assignee' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
   >
@@ -84,11 +84,9 @@ export const TaskTable = ({
             {assignee ?? 'Unassigned'}
           </TableCell>
           <TableCell kind="actions">
-            <IconLink
-              to={`/tasks/${t.id}`}
-              label={`Open task ${t.subject ?? t.title}`}
-              icon={ChevronRightIcon}
-            />
+            <RowActions>
+              <OpenLink to={`/tasks/${t.id}`} name={`task ${t.subject ?? t.title}`} />
+            </RowActions>
           </TableCell>
         </TableRow>
       );
@@ -178,7 +176,7 @@ export const TasksPage = ({ client, live, me, filter }: TasksPageProps) => {
   return (
     <Page
       title="Tasks"
-      description="Decisions waiting on a person. Start working picks up your own tasks first, then the oldest unassigned one."
+      description="Decisions waiting on a person. Start Working picks up your own tasks first, then the oldest unassigned one."
       actions={
         all.length ? (
           <Button
@@ -189,7 +187,7 @@ export const TasksPage = ({ client, live, me, filter }: TasksPageProps) => {
             onClick={() => void start()}
           >
             <PlayIcon aria-hidden="true" className="size-4" />
-            Start working
+            Start Working
           </Button>
         ) : null
       }
@@ -212,7 +210,7 @@ export const TasksPage = ({ client, live, me, filter }: TasksPageProps) => {
               />
               <FilterSelect
                 id="tasks-assignee"
-                label="Assigned to"
+                label="Assigned To"
                 value={filter.assignee}
                 options={assigneeFilters(inScope, filterHref)}
               />

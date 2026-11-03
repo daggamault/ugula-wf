@@ -163,3 +163,19 @@ describe('claim queries', () => {
     assert.ok(insert?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
   });
 });
+
+describe('claim status sort', () => {
+  it('orders statuses the way a claim moves through them', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await listClaims(db, 't-1', {
+      status: 'all',
+      page: 1,
+      pageSize: 25,
+      sort: 'status',
+      dir: 'asc'
+    });
+    assert.ok(
+      queries[0]?.sql.includes("order by array_position(array['draft', 'needs_review', 'ready'")
+    );
+  });
+});

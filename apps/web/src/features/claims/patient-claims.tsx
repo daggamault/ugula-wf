@@ -28,7 +28,12 @@ export const PatientClaims = ({
       {list.error ? <Alert>{list.error.message}</Alert> : null}
       {list.data?.items.length ? (
         <>
-          <ClaimsTable claims={list.data.items} sorting={table} showPatient={false} />
+          <ClaimsTable
+            claims={list.data.items}
+            sorting={table}
+            showPatient={false}
+            back={table.href}
+          />
           <Pagination label="Claims" total={list.data.total} state={table} />
         </>
       ) : list.loading ? (

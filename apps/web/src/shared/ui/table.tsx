@@ -50,8 +50,8 @@ const Position = createContext(0);
 const secondaryClasses = 'md:hidden lg:table-cell';
 
 const DIRECTION_LABELS: Readonly<Record<SortDir, string>> = {
-  asc: 'ascending',
-  desc: 'descending'
+  asc: 'Ascending',
+  desc: 'Descending'
 };
 
 const SortIcon = ({ active, dir }: { active: boolean; dir: SortDir }) => {
@@ -83,7 +83,6 @@ const HeaderCell = ({
       }
       className={classNamesOf(
         'border-border text-surface-fg-muted border-b px-4 py-3 text-xs font-semibold tracking-wide whitespace-nowrap uppercase',
-        column.isNumeric && 'text-right',
         column.isCompact && 'w-px',
         column.isSecondary && secondaryClasses
       )}
@@ -94,7 +93,6 @@ const HeaderCell = ({
           className={classNamesOf(
             interactiveClasses,
             'hover:text-surface-fg inline-flex items-center gap-2 rounded-lg',
-            column.isNumeric && 'flex-row-reverse',
             active && 'text-surface-fg'
           )}
         >
@@ -127,11 +125,11 @@ const MobileSort = ({
   );
   const options = byColumn.some((o) => o.value === current)
     ? byColumn
-    : [{ value: current, label: 'Default order' }, ...byColumn];
+    : [{ value: current, label: 'Default Order' }, ...byColumn];
   return options.length ? (
     <div className="flex items-center gap-2 md:hidden">
       <label htmlFor={id} className="text-surface-fg-muted shrink-0 text-sm font-medium">
-        Sort by
+        Sort By
       </label>
       <NativeSelect
         id={id}
@@ -188,7 +186,7 @@ type TableCellKind = 'text' | 'wrap' | 'numeric' | 'date' | 'actions';
 const cellKindClasses: Readonly<Record<TableCellKind, string>> = {
   text: 'md:whitespace-nowrap',
   wrap: 'md:min-w-48 md:whitespace-normal',
-  numeric: 'tabular-nums md:text-right md:whitespace-nowrap',
+  numeric: 'tabular-nums md:whitespace-nowrap',
   date: 'tabular-nums md:whitespace-nowrap',
   actions: 'justify-end md:w-px md:whitespace-nowrap'
 };

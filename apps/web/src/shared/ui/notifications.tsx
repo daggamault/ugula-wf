@@ -116,7 +116,7 @@ export const NotificationsPanel = ({
             onClick={onClear}
           >
             <Trash2Icon aria-hidden="true" className="size-4" />
-            Clear all
+            Clear All
           </Button>
         </div>
         <NotificationList items={items} onFollow={() => hidePopover(panelRef.current)} />

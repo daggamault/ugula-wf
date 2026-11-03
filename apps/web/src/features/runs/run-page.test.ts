@@ -92,7 +92,7 @@ describe('RunView', () => {
     assert.ok(html.includes('href="/runs/p0"') && html.includes('href="/runs/p1"'));
     assert.ok(html.includes('aria-label="Back to Process PCR"'));
     assert.ok(html.includes('href="/workflows/g1?version=2"'));
-    assert.ok(html.includes('Cancel run'));
+    assert.ok(html.includes('Cancel Run'));
     assert.ok(html.includes('aria-label="Run path"'));
     assert.ok(html.includes('Ingest NEMSIS File') && html.includes('Item</span>'));
     assert.ok(html.includes('&quot;id&quot;: &quot;a&quot;'));
@@ -122,7 +122,7 @@ describe('RunView', () => {
   });
 
   it('hides cancel once a run is finished', () => {
-    assert.ok(!render('completed').includes('Cancel run'));
+    assert.ok(!render('completed').includes('Cancel Run'));
   });
 });
 

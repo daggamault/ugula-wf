@@ -23,7 +23,15 @@ export const sftpEventSchema = v.looseObject({
 
 export type SftpEvent = v.InferOutput<typeof sftpEventSchema>;
 
-export const IMPORT_SORTS = ['received', 'file', 'reports', 'claims', 'charges'] as const;
+export const IMPORT_SORTS = [
+  'received',
+  'file',
+  'reports',
+  'claims',
+  'charges',
+  'status',
+  'attention'
+] as const;
 
 export type ImportSort = (typeof IMPORT_SORTS)[number];
 

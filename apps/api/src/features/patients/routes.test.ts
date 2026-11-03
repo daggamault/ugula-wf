@@ -27,6 +27,8 @@ describe('patient routes', () => {
     assert.equal((await request('/?lastName=doe&birthDate=1980-01-02')).status, 200);
     assert.equal((await request(`/${ID}`)).status, 200);
     assert.equal((await request('/?birthDate=yesterday')).status, 400);
+    assert.equal((await request('/')).status, 400);
+    assert.equal((await request('/?lastName=%20%20')).status, 400);
     assert.equal((await request('/nope')).status, 400);
     assert.deepEqual(calls, [
       [

@@ -47,11 +47,11 @@ describe('NodeInspector', () => {
     assert.ok(html.includes('Delay</h2>'));
     assert.ok(html.includes('Durably waits'));
     assert.ok(html.includes('value="wait * 1000"'));
-    assert.ok(html.includes('Whole number'));
+    assert.ok(html.includes('Whole Number'));
     assert.ok(html.includes('Not connected'));
     assert.ok(html.includes('Retry on Failure') && html.includes('value="500"'));
     assert.ok(!html.includes('Settings (JSON)'));
-    assert.ok(html.includes('Delete node'));
+    assert.ok(html.includes('Delete Node'));
     assert.ok(html.includes('aria-label="Close"'));
   });
 
@@ -70,8 +70,8 @@ describe('NodeInspector', () => {
   it('locks every field and hides delete in read-only graphs, and never deletes the start', () => {
     const html = render('add1', false);
     assert.ok(html.includes('disabled'));
-    assert.ok(!html.includes('Delete node'));
-    assert.ok(!render('entry').includes('Delete node'));
+    assert.ok(!html.includes('Delete Node'));
+    assert.ok(!render('entry').includes('Delete Node'));
     assert.ok(render('entry').includes('Where this graph starts'));
   });
 });

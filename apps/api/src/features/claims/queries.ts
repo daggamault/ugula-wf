@@ -1,6 +1,7 @@
 import type { ClaimStatus } from '@ugula/billing';
 import {
   type Address,
+  CLAIM_STATUSES,
   CLOSED_CLAIM_STATUSES,
   type Location,
   nameKey,
@@ -10,6 +11,7 @@ import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { type PageRequest, paged } from '../../shared/paging.ts';
+import { escapeLike } from '../../shared/search.ts';
 import type { ClaimSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
@@ -22,8 +24,6 @@ export type ClaimFilters = PageRequest<ClaimSort> & {
   number?: string | undefined;
   patientId?: string | undefined;
 };
-
-const escapeLike = (s: string) => s.replace(/[\\%_]/g, '\\$&');
 
 export type ClaimResponse = {
   requestId: string;
@@ -71,7 +71,9 @@ const CLAIM_ORDER = {
   patient: sql`lower(p.last_name || ' ' || p.first_name)`,
   pcr: sql.ref('c.pcr_number'),
   total: sql.ref('c.total_cents'),
-  balance: sql.ref('b.balance_cents')
+  balance: sql.ref('b.balance_cents'),
+  // Statuses sort in the order a claim moves through them, not alphabetically.
+  status: sql`array_position(array[${sql.join(CLAIM_STATUSES.map((s) => sql.lit(s)))}]::text[], c.status::text)`
 };
 
 const MAX_NUMBER = 2_147_483_647;

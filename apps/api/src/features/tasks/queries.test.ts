@@ -50,3 +50,21 @@ describe('task queries', () => {
     await db.destroy();
   });
 });
+
+describe('task assignee sort', () => {
+  it('orders tasks by who they are assigned to', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await listTasks(db, 't', {
+      status: 'open',
+      page: 1,
+      pageSize: 25,
+      sort: 'assignee',
+      dir: 'asc'
+    });
+    assert.ok(
+      queries[0]?.sql.includes(
+        'order by (select lower(u.email) from users u where u.id = tasks.assignee_id) asc nulls last'
+      )
+    );
+  });
+});

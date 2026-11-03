@@ -14,7 +14,7 @@ import { isApiError, messageOf } from '../../shared/api.ts';
 import { type Catalog, createCatalog, type PaletteEntry } from '../../shared/graph/catalog.ts';
 import { addNode, removeNodes } from '../../shared/graph/flow.ts';
 import { GraphCanvas } from '../../shared/graph/graph-canvas.tsx';
-import { navigate } from '../../shared/router.tsx';
+import { navigate, useLocation } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Breadcrumbs } from '../../shared/ui/breadcrumbs.tsx';
@@ -24,6 +24,7 @@ import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
 import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.tsx';
 import { NativeSelect } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
+import { hrefWith } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { GraphDetail, WorkflowsClient } from './client.ts';
 import { GraphSettings } from './graph-settings.tsx';
@@ -80,7 +81,15 @@ export const EditorView = ({
   const [dirty, setDirty] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<'add' | 'settings' | 'remove' | null>(null);
+  const [dialog, setDialog] = useState<'add' | 'remove' | null>(null);
+  const location = useLocation();
+  const isSettingsOpen = location.query.get('panel') === 'settings';
+  const settingsHref = (open: boolean) =>
+    hrefWith(location.path, location.query, { panel: open ? 'settings' : null });
+  const select = (id: string | null) => {
+    setSelected(id);
+    if (id && isSettingsOpen) navigate(settingsHref(false), { replace: true });
+  };
   const [busy, setBusy] = useState<'save' | 'publish' | 'override' | 'remove' | null>(null);
   const [error, setError] = useState('');
   const notify = useToast();
@@ -218,8 +227,8 @@ export const EditorView = ({
               {isDraft ? `Draft v${version}` : `Published v${version}`}
             </Badge>
             {graph.tenant_id === null ? <Badge>System</Badge> : null}
-            {graph.overridden_by ? <Badge intent="info">Has your copy</Badge> : null}
-            {graph.overrides ? <Badge intent="info">Your copy</Badge> : null}
+            {graph.overridden_by ? <Badge intent="info">Has Your Copy</Badge> : null}
+            {graph.overrides ? <Badge intent="info">Your Copy</Badge> : null}
             {dirty ? <Badge intent="danger">Unsaved</Badge> : null}
           </span>
         }
@@ -228,20 +237,20 @@ export const EditorView = ({
             {editable ? (
               <Button onClick={() => setDialog('add')}>
                 <PlusIcon aria-hidden="true" className="size-4" />
-                Add node
+                Add Node
               </Button>
             ) : null}
-            <Button variant="outline" onClick={() => setDialog('settings')}>
+            <ButtonLink to={settingsHref(!isSettingsOpen)} variant="outline">
               <SlidersHorizontalIcon aria-hidden="true" className="size-4" />
-              {label} settings
-            </Button>
+              {label} Settings
+            </ButtonLink>
             <div className="w-36">
               <NativeSelect
                 aria-label="Version"
                 value={String(version)}
                 options={versions.map((v) => ({
                   value: String(v.version),
-                  label: `v${v.version}${v.published_at ? '' : ' (draft)'}`
+                  label: `v${v.version}${v.published_at ? '' : ' (Draft)'}`
                 }))}
                 onChange={(e) => navigate(graphPath(graph.id, Number(e.target.value), trail))}
               />
@@ -249,7 +258,7 @@ export const EditorView = ({
             {graph.tenant_id === null && graph.overridden_by ? (
               <ButtonLink to={`/workflows/${graph.overridden_by}`} variant="outline">
                 <PencilIcon aria-hidden="true" className="size-4" />
-                Edit override
+                Edit Override
               </ButtonLink>
             ) : null}
             {graph.tenant_id === null && !graph.overridden_by ? (
@@ -266,13 +275,13 @@ export const EditorView = ({
                 onClick={() => setDialog('remove')}
               >
                 <Trash2Icon aria-hidden="true" className="size-4" />
-                Remove override
+                Remove Override
               </Button>
             ) : null}
             {graph.tenant_id !== null && !isDraft && !draft ? (
               <Button variant="outline" isPending={busy === 'save'} onClick={save}>
                 <PencilIcon aria-hidden="true" className="size-4" />
-                Edit as new draft
+                Edit as New Draft
               </Button>
             ) : null}
             {editable ? (
@@ -337,12 +346,23 @@ export const EditorView = ({
             catalog={catalog}
             issues={issuesByNode(issues)}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={select}
             onOpen={openNode}
             {...(editable ? { onChange: change } : {})}
           />
         </div>
-        {node ? (
+        {isSettingsOpen ? (
+          <div className="border-border bg-surface absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l shadow-lg transition-[opacity,translate] duration-200 ease-out sm:w-[32rem] starting:translate-x-4 starting:opacity-0">
+            <GraphSettings
+              key={version}
+              kind={graph.kind}
+              def={def}
+              editable={editable}
+              onChange={change}
+              onClose={() => navigate(settingsHref(false))}
+            />
+          </div>
+        ) : node ? (
           <div className="border-border bg-surface absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l shadow-lg transition-[opacity,translate] duration-200 ease-out sm:w-96 starting:translate-x-4 starting:opacity-0">
             <NodeInspector
               key={node.id}
@@ -373,26 +393,18 @@ export const EditorView = ({
         open={dialog === 'remove'}
         title="Remove Override?"
         intent="danger"
-        confirmLabel="Remove override"
+        confirmLabel="Remove Override"
         confirmIcon={Trash2Icon}
+        dismissLabel="Keep"
         onClose={() => setDialog(null)}
         onConfirm={() => {
           setDialog(null);
           void removeOverride();
         }}
       >
-        New runs go back to the built-in {graph.name}. Runs that already started keep using your
-        copy. Override it again later to bring your copy back.
+        Are you sure? New runs go back to the built-in {graph.name}. Runs that already started keep
+        using your copy. Override it again later to bring your copy back.
       </ConfirmDialog>
-      <GraphSettings
-        key={version}
-        kind={graph.kind}
-        open={dialog === 'settings'}
-        def={def}
-        editable={editable}
-        onChange={change}
-        onClose={() => setDialog(null)}
-      />
     </section>
   );
 };

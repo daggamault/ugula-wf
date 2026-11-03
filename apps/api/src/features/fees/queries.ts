@@ -1,8 +1,12 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
-import type { FeeInput } from './schemas.ts';
+import { type PageRequest, paged } from '../../shared/paging.ts';
+import { containsPattern } from '../../shared/search.ts';
+import type { FeeInput, FeeSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
+
+export type FeeFilters = PageRequest<FeeSort> & { q?: string | undefined };
 
 const feeRows = (db: Db, tenantId: string) =>
   db
@@ -11,11 +15,31 @@ const feeRows = (db: Db, tenantId: string) =>
     .select(['f.id', 'f.payer_id', 'p.name as payer', 'f.code', 'f.amount_cents', 'f.updated_at'])
     .where('f.tenant_id', '=', tenantId);
 
-export const listFees = (db: Db, tenantId: string) =>
-  feeRows(db, tenantId)
-    .orderBy(sql`lower(p.name)`, (ob) => ob.asc().nullsFirst())
-    .orderBy('f.code')
-    .execute();
+const FEE_ORDER = {
+  // The default schedule sorts before every payer, then each payer's codes in order.
+  payer: sql`(p.name is not null, lower(p.name), f.code)`,
+  code: sql.ref('f.code'),
+  amount: sql.ref('f.amount_cents'),
+  updated: sql.ref('f.updated_at')
+};
+
+/** Fees whose HCPCS code or payer contains `q` ("default" finds the default schedule). */
+export const searchFees = (db: Db, tenantId: string, f: FeeFilters) => {
+  let q = feeRows(db, tenantId);
+  if (f.q) {
+    const like = containsPattern(f.q);
+    q = q.where((eb) =>
+      eb.or([
+        eb(sql`lower(f.code)`, 'like', like),
+        eb(sql`lower(coalesce(p.name, 'Default'))`, 'like', like)
+      ])
+    );
+  }
+  return paged(q, f, FEE_ORDER, sql.ref('f.id'));
+};
+
+export const findFee = (db: Db, tenantId: string, id: string) =>
+  feeRows(db, tenantId).where('f.id', '=', id).executeTakeFirst();
 
 export const payerExists = async (db: Db, tenantId: string, id: string) =>
   (await db

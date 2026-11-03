@@ -41,9 +41,9 @@ export type NodeInspectorProps = {
 type BindingMode = 'default' | 'value' | 'expr';
 
 const MODES = [
-  { value: 'default', label: 'Not set' },
-  { value: 'value', label: 'A fixed value' },
-  { value: 'expr', label: 'An expression' }
+  { value: 'default', label: 'Not Set' },
+  { value: 'value', label: 'A Fixed Value' },
+  { value: 'expr', label: 'An Expression' }
 ] as const;
 
 const modeOf = (binding: InputBinding | undefined): BindingMode =>
@@ -133,7 +133,7 @@ const BindingEditor = ({
           <ValueField
             key={id}
             id={`${id}-value`}
-            label="Fixed value"
+            label="Fixed Value"
             type={spec.type}
             value={binding.value}
             onChange={(value: Json) => onBind({ value })}
@@ -256,7 +256,7 @@ export const NodeInspector = ({
             <div className="pt-2">
               <Button variant="outline" onClick={onOpen}>
                 <ExternalLinkIcon aria-hidden="true" className="size-4" />
-                Open {catalog.opensAs(node) === 'graph' ? 'building block' : 'workflow'}
+                Open {catalog.opensAs(node) === 'graph' ? 'Building Block' : 'Workflow'}
               </Button>
             </div>
           ) : null}
@@ -382,7 +382,7 @@ export const NodeInspector = ({
               />
               <Input
                 id={`${node.id}-retry-delay`}
-                label="First wait (ms)"
+                label="First Wait (ms)"
                 type="number"
                 min={0}
                 disabled={!node.retry}
@@ -398,7 +398,7 @@ export const NodeInspector = ({
           <div className="border-border border-t pt-5">
             <Button intent="danger" variant="outline" onClick={onDelete}>
               <Trash2Icon aria-hidden="true" className="size-4" />
-              Delete node
+              Delete Node
             </Button>
           </div>
         ) : null}

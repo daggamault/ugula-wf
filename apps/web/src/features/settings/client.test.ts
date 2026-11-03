@@ -9,11 +9,12 @@ describe('createSettingsClient', () => {
     const client = createSettingsClient(
       createApi('http://api.test', async (url, init = {}) => {
         seen.push(`${init.method} ${String(url)}`);
-        return new Response('{"profile":null,"payers":[]}', { status: 200 });
+        return new Response('{"profile":null,"items":[],"payer":{"id":"p1"}}', { status: 200 });
       })
     );
     assert.equal(await client.profile(), null);
-    assert.deepEqual(await client.payers(), []);
+    assert.deepEqual((await client.searchPayers('q=blue&page=1')).items, []);
+    assert.deepEqual(await client.payer('p1'), { id: 'p1' });
     await client.savePayer({ name: 'Medicare', payerId: '00952', claimFiling: 'MB' });
     await client.removePayer('p1');
     await client.forgetAlias('p1', 'a1');
@@ -33,7 +34,8 @@ describe('createSettingsClient', () => {
     });
     assert.deepEqual(seen, [
       'GET http://api.test/api/billing-profile',
-      'GET http://api.test/api/payers',
+      'GET http://api.test/api/payers?q=blue&page=1',
+      'GET http://api.test/api/payers/p1',
       'PUT http://api.test/api/payers',
       'DELETE http://api.test/api/payers/p1',
       'DELETE http://api.test/api/payers/p1/aliases/a1',

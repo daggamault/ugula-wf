@@ -21,8 +21,8 @@ describe('table editors', () => {
       fallback: 'S'
     });
     assert.ok(html.includes('value="4221003"') && html.includes('value="H"'));
-    assert.ok(html.includes('When the key is not listed') && html.includes('value="S"'));
-    assert.ok(html.includes('Add row') && html.includes('aria-label="Remove 4221003"'));
+    assert.ok(html.includes('When the Key Is Not Listed') && html.includes('value="S"'));
+    assert.ok(html.includes('Add Row') && html.includes('aria-label="Remove 4221003"'));
   });
 
   it('edits columns, ordered rules and the otherwise values of a decision table', () => {
@@ -43,12 +43,12 @@ describe('table editors', () => {
     assert.ok(html.includes('When Level of care'));
     assert.ok(html.includes('value="4232003, 4232005"'));
     assert.ok(html.includes('Then level') && html.includes('value="ALS1"'));
-    assert.ok(html.includes('When no rule holds') && html.includes('value="BLS"'));
+    assert.ok(html.includes('When No Rule Holds') && html.includes('value="BLS"'));
     assert.ok(html.includes('aria-label="Move ALS care up"'));
     assert.ok(
-      html.includes('Add rule') && html.includes('Add input') && html.includes('Add output')
+      html.includes('Add Rule') && html.includes('Add Input') && html.includes('Add Output')
     );
     const locked = render(DecisionTableEditor, config, false);
-    assert.ok(!locked.includes('Add rule') && locked.includes('disabled'));
+    assert.ok(!locked.includes('Add Rule') && locked.includes('disabled'));
   });
 });

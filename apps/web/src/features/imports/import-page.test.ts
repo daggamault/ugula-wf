@@ -25,23 +25,23 @@ describe('reportOutcome', () => {
   it('says what each report became and links to it', () => {
     assert.deepEqual(reportOutcome(report({ claim_id: 'c1' })), {
       intent: 'success',
-      label: 'Claim opened',
-      link: { label: 'Open claim for PCR-1', to: '/claims/c1' }
+      label: 'Claim Opened',
+      link: { name: 'claim for PCR-1', to: '/claims/c1' }
     });
     assert.deepEqual(reportOutcome(report({ task_id: 'k1', task_title: 'Review PCR' })).link, {
-      label: 'Open task Review PCR',
+      name: 'task Review PCR',
       to: '/tasks/k1'
     });
     assert.equal(
-      reportOutcome(report({ task_id: 'k1', task_subject: 'PCR-1 · Jane Doe' })).link?.label,
-      'Open task PCR-1 · Jane Doe'
+      reportOutcome(report({ task_id: 'k1', task_subject: 'PCR-1 · Jane Doe' })).link?.name,
+      'task PCR-1 · Jane Doe'
     );
     assert.equal(
-      reportOutcome(report({ claim_id: 'c1', pcr_number: null, position: 2 })).link?.label,
-      'Open claim for PCR #3'
+      reportOutcome(report({ claim_id: 'c1', pcr_number: null, position: 2 })).link?.name,
+      'claim for PCR #3'
     );
     assert.equal(reportOutcome(report({ task_id: 'k1', task_kind: 'fault' })).label, 'Stuck');
-    assert.equal(reportOutcome(report()).label, 'No claim');
+    assert.equal(reportOutcome(report()).label, 'No Claim');
     assert.equal(reportOutcome(report({ run_status: 'running' })).label, 'Running');
     assert.equal(reportOutcome(report({ run_status: 'failed' })).label, 'Failed');
   });

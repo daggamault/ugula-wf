@@ -11,7 +11,7 @@ export type ReportDocumentProps<R> = {
 };
 
 const cellClasses = (isNumeric: boolean | undefined) =>
-  classNamesOf('px-2 py-1.5 align-top', isNumeric ? 'text-right tabular-nums' : 'text-left');
+  classNamesOf('px-2 py-1.5 text-left align-top', isNumeric && 'tabular-nums');
 
 export const ReportDocument = <R,>({
   title,

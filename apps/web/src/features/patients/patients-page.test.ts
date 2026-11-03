@@ -57,6 +57,19 @@ describe('PatientsTable', () => {
     assert.ok(html.includes('Erie, PA') && html.includes('$300.00'));
     assert.equal(placeOf({ city: null, state: null }), null);
   });
+
+  it('highlights searched names and returns opened patients to the searched list', () => {
+    const html = renderToStaticMarkup(
+      createElement(PatientsTable, {
+        patients: [patient],
+        back: '/patients?lastName=do',
+        search: { lastName: 'do', firstName: '', birthDate: '' }
+      })
+    );
+    assert.match(html, /<mark[^>]*>Do<\/mark>e/);
+    assert.ok(html.includes('href="/patients/p1?back=%2Fpatients%3FlastName%3Ddo"'));
+    assert.ok(html.includes('>Open</span>'));
+  });
 });
 
 describe('PatientsPage', () => {
@@ -67,9 +80,28 @@ describe('PatientsPage', () => {
         search: { lastName: '', firstName: '', birthDate: '' }
       })
     );
-    assert.ok(html.includes('<search'));
-    assert.ok(html.includes('Last name') && html.includes('First name'));
+    assert.ok(html.includes('<search') && html.includes('Find a Patient'));
+    assert.ok(html.includes('Last Name') && html.includes('First Name'));
     assert.ok(html.includes('type="date"'));
+  });
+
+  it('lists no patients until something is searched for', () => {
+    const client = { list: () => new Promise(() => undefined) } as unknown as PatientsClient;
+    const idle = renderToStaticMarkup(
+      createElement(PatientsPage, {
+        client,
+        search: { lastName: ' ', firstName: '', birthDate: '' }
+      })
+    );
+    assert.ok(!idle.includes('aria-label="Patients"') && !idle.includes('No Patients'));
+    assert.ok(!idle.includes('role="status"'));
+    const searching = renderToStaticMarkup(
+      createElement(PatientsPage, {
+        client,
+        search: { lastName: 'kli', firstName: '', birthDate: '' }
+      })
+    );
+    assert.ok(searching.includes('role="status"'));
   });
 });
 
