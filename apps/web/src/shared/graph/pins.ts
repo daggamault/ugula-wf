@@ -1,6 +1,6 @@
 import type { ValueType } from '@ugula/graph';
 
-export type PinKind =
+type PinKind =
   | 'exec'
   | 'any'
   | 'string'
@@ -11,7 +11,7 @@ export type PinKind =
   | 'list'
   | 'object';
 
-export type PinTone = {
+type PinTone = {
   dot: string;
   edge: string;
 };
@@ -19,7 +19,7 @@ export type PinTone = {
 export const pinKindOf = (type: ValueType | 'exec'): PinKind =>
   typeof type === 'string' ? type : 'list' in type ? 'list' : 'object';
 
-export const pinTones: Record<PinKind, PinTone> = {
+const pinTones: Record<PinKind, PinTone> = {
   exec: {
     dot: 'bg-surface-fg-muted',
     edge: '[&_.react-flow__edge-path]:stroke-surface-fg-muted [&_.react-flow__edge-path]:stroke-[3]'
@@ -28,13 +28,13 @@ export const pinTones: Record<PinKind, PinTone> = {
     dot: 'bg-surface-fg-muted/60',
     edge: '[&_.react-flow__edge-path]:stroke-surface-fg-muted/60'
   },
-  string: { dot: 'bg-pink-500', edge: '[&_.react-flow__edge-path]:stroke-pink-500' },
-  number: { dot: 'bg-emerald-500', edge: '[&_.react-flow__edge-path]:stroke-emerald-500' },
-  integer: { dot: 'bg-teal-500', edge: '[&_.react-flow__edge-path]:stroke-teal-500' },
-  boolean: { dot: 'bg-rose-600', edge: '[&_.react-flow__edge-path]:stroke-rose-600' },
-  datetime: { dot: 'bg-amber-500', edge: '[&_.react-flow__edge-path]:stroke-amber-500' },
-  list: { dot: 'bg-sky-500', edge: '[&_.react-flow__edge-path]:stroke-sky-500' },
-  object: { dot: 'bg-violet-500', edge: '[&_.react-flow__edge-path]:stroke-violet-500' }
+  string: { dot: 'bg-pin-string', edge: '[&_.react-flow__edge-path]:stroke-pin-string' },
+  number: { dot: 'bg-pin-number', edge: '[&_.react-flow__edge-path]:stroke-pin-number' },
+  integer: { dot: 'bg-pin-integer', edge: '[&_.react-flow__edge-path]:stroke-pin-integer' },
+  boolean: { dot: 'bg-pin-boolean', edge: '[&_.react-flow__edge-path]:stroke-pin-boolean' },
+  datetime: { dot: 'bg-pin-datetime', edge: '[&_.react-flow__edge-path]:stroke-pin-datetime' },
+  list: { dot: 'bg-pin-list', edge: '[&_.react-flow__edge-path]:stroke-pin-list' },
+  object: { dot: 'bg-pin-object', edge: '[&_.react-flow__edge-path]:stroke-pin-object' }
 };
 
 export const toneOf = (type: ValueType | 'exec') => pinTones[pinKindOf(type)];

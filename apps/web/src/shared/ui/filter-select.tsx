@@ -1,7 +1,7 @@
 import { navigate } from '../router.tsx';
 import { Select } from './select.tsx';
 
-export type FilterSelectOption = {
+type FilterSelectOption = {
   value: string;
   label: string;
   href: string;

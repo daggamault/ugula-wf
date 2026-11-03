@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createDummyDb } from '@ugula/db/testing';
+import { createDummyDb, createRecordingDb } from '@ugula/db/testing';
 import { createBillingProfilesTables } from './billing-profiles.ts';
 import { createClaimsTables } from './claims.ts';
 import { createExtensions } from './extensions.ts';
@@ -36,6 +36,20 @@ describe('migrate', () => {
       createClaimsTables,
       createNotificationsTables
     ]);
+  });
+
+  it('drops every table the steps create, so a reset starts clean', async () => {
+    const { db, queries } = createRecordingDb();
+    await migrate(db);
+    const named = (pattern: RegExp) => queries.flatMap((q) => q.sql.match(pattern)?.[1] ?? []);
+    const created = named(/^create table "(\w+)"/);
+    const dropped = new Set(named(/^drop table if exists "(\w+)"/));
+    assert.ok(created.length > 20);
+    assert.deepEqual(
+      created.filter((t) => !dropped.has(t)),
+      []
+    );
+    await db.destroy();
   });
 
   it('executes all migration steps within a transaction', async () => {

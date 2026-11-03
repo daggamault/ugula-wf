@@ -1,3 +1,4 @@
+import type { NodeDef } from '@ugula/graph';
 import {
   ActivityIcon,
   BadgeDollarSignIcon,
@@ -77,6 +78,7 @@ export type AppClients = {
 };
 
 export type RouteContext = AppClients & {
+  nodes: NodeDef[];
   live: Live;
   email: string;
 };
@@ -94,9 +96,9 @@ const RunPage = lazy(() =>
   import('./features/runs/run-page.tsx').then((m) => ({ default: m.RunPage }))
 );
 
-export const HOME = '/claims';
+const HOME = '/claims';
 
-export const SECTIONS = [
+const SECTIONS = [
   { id: 'claims', label: 'Claims', href: '/claims', icon: ReceiptTextIcon, group: 'Work' },
   { id: 'patients', label: 'Patients', href: '/patients', icon: UsersIcon, group: 'Work' },
   { id: 'imports', label: 'Imports', href: '/imports', icon: FileUpIcon, group: 'Work' },
@@ -125,7 +127,9 @@ const versionParam = (query: URLSearchParams) => {
 const routes: readonly Route[] = [
   {
     pattern: '/workflows',
-    render: (_, q, c) => <WorkflowsPage client={c.workflows} show={graphFilterOf(q)} />
+    render: (_, q, c) => (
+      <WorkflowsPage client={c.workflows} live={c.live} show={graphFilterOf(q)} />
+    )
   },
   {
     pattern: `${WORKFLOWS_PATH}/new`,
@@ -142,6 +146,8 @@ const routes: readonly Route[] = [
     render: (p, q, c) => (
       <EditorPage
         client={c.workflows}
+        live={c.live}
+        nodes={c.nodes}
         graphId={p.id ?? ''}
         version={versionParam(q)}
         trail={parseTrail(q.get('trail'))}
@@ -154,12 +160,20 @@ const routes: readonly Route[] = [
   },
   {
     pattern: '/runs/new',
-    render: (_, q, c) => <StartRunPage client={c.runs} graphId={q.get('graph') ?? ''} />
+    render: (_, q, c) => (
+      <StartRunPage client={c.runs} live={c.live} graphId={q.get('graph') ?? ''} />
+    )
   },
   {
     pattern: '/runs/:id',
     render: (p, q, c) => (
-      <RunPage client={c.runs} live={c.live} runId={p.id ?? ''} at={parseAt(q.get('at'))} />
+      <RunPage
+        client={c.runs}
+        nodes={c.nodes}
+        live={c.live}
+        runId={p.id ?? ''}
+        at={parseAt(q.get('at'))}
+      />
     )
   },
   { pattern: '/imports', render: (_, __, c) => <ImportsPage client={c.imports} live={c.live} /> },
@@ -201,7 +215,7 @@ const routes: readonly Route[] = [
   },
   {
     pattern: '/patients',
-    render: (_, q, c) => <PatientsPage client={c.patients} search={searchOf(q)} />
+    render: (_, q, c) => <PatientsPage client={c.patients} live={c.live} search={searchOf(q)} />
   },
   {
     pattern: '/patients/:id',
@@ -222,24 +236,37 @@ const routes: readonly Route[] = [
   },
   {
     pattern: '/reports/:id/results',
-    render: (p, q, c) => <ReportResultsPage client={c.reports} reportId={p.id ?? ''} query={q} />
+    render: (p, q, c) => (
+      <ReportResultsPage client={c.reports} live={c.live} reportId={p.id ?? ''} query={q} />
+    )
   },
-  { pattern: FEES_PATH, render: (_, __, c) => <FeesPage client={c.fees} /> },
+  { pattern: FEES_PATH, render: (_, __, c) => <FeesPage client={c.fees} live={c.live} /> },
   {
     pattern: `${FEES_PATH}/new`,
-    render: (_, q, c) => <FeePage client={c.fees} feeId={null} back={backOf(q, FEES_PATH)} />
+    render: (_, q, c) => (
+      <FeePage client={c.fees} live={c.live} feeId={null} back={backOf(q, FEES_PATH)} />
+    )
   },
   {
     pattern: `${FEES_PATH}/:id`,
     render: (p, q, c) => (
-      <FeePage key={p.id} client={c.fees} feeId={p.id ?? ''} back={backOf(q, FEES_PATH)} />
+      <FeePage
+        key={p.id}
+        client={c.fees}
+        live={c.live}
+        feeId={p.id ?? ''}
+        back={backOf(q, FEES_PATH)}
+      />
     )
   },
-  { pattern: PAYERS_PATH, render: (_, __, c) => <PayersPage client={c.settings} /> },
+  {
+    pattern: PAYERS_PATH,
+    render: (_, __, c) => <PayersPage client={c.settings} live={c.live} />
+  },
   {
     pattern: `${PAYERS_PATH}/new`,
     render: (_, q, c) => (
-      <PayerPage client={c.settings} payerId={null} back={backOf(q, PAYERS_PATH)} />
+      <PayerPage client={c.settings} live={c.live} payerId={null} back={backOf(q, PAYERS_PATH)} />
     )
   },
   {
@@ -248,12 +275,16 @@ const routes: readonly Route[] = [
       <PayerPage
         key={p.id}
         client={c.settings}
+        live={c.live}
         payerId={p.id ?? ''}
         back={backOf(q, PAYERS_PATH)}
       />
     )
   },
-  { pattern: '/settings', render: (_, __, c) => <SettingsPage client={c.settings} /> },
+  {
+    pattern: '/settings',
+    render: (_, __, c) => <SettingsPage client={c.settings} live={c.live} />
+  },
   {
     pattern: '/tasks/:id',
     render: (p, q, c) => (
@@ -276,8 +307,9 @@ export const resolveRoute = (path: string, query: URLSearchParams, ctx: RouteCon
   return null;
 };
 
-export type WorkspaceProps = {
+type WorkspaceProps = {
   clients: AppClients;
+  nodes: NodeDef[];
   path: string;
   query: URLSearchParams;
   email: string;
@@ -285,11 +317,19 @@ export type WorkspaceProps = {
   onSignOut: () => void;
 };
 
-export const Workspace = ({ clients, path, query, email, sseUrl, onSignOut }: WorkspaceProps) => {
+export const Workspace = ({
+  clients,
+  nodes,
+  path,
+  query,
+  email,
+  sseUrl,
+  onSignOut
+}: WorkspaceProps) => {
   const live = useMemo(() => createLive(sseUrl), [sseUrl]);
   const liveStatus = useLiveStatus(live);
   const openTasks = useWorkAlerts(clients.tasks, live, useToast(), path.startsWith('/tasks/'));
-  const page = resolveRoute(path, query, { ...clients, live, email });
+  const page = resolveRoute(path, query, { ...clients, nodes, live, email });
   const missing = page === null;
 
   useEffect(() => () => live.close(), [live]);
@@ -317,7 +357,7 @@ export const Workspace = ({ clients, path, query, email, sseUrl, onSignOut }: Wo
   );
 };
 
-export const App = ({ clients }: { clients: AppClients }) => {
+export const App = ({ clients, nodes }: { clients: AppClients; nodes: NodeDef[] }) => {
   const { path, query } = useLocation(HOME);
   return (
     <AuthGate auth={clients.auth}>
@@ -327,6 +367,7 @@ export const App = ({ clients }: { clients: AppClients }) => {
         >
           <Workspace
             clients={clients}
+            nodes={nodes}
             path={path}
             query={query}
             email={session.user.email}

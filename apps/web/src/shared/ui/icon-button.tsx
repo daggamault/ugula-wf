@@ -22,7 +22,7 @@ const neutralHoverClasses =
   'not-aria-disabled:hover:bg-surface-fg/6 not-aria-disabled:hover:text-surface-fg';
 
 const dangerHoverClasses =
-  'not-aria-disabled:hover:bg-danger/10 not-aria-disabled:hover:text-danger';
+  'not-aria-disabled:hover:bg-surface-fg/6 not-aria-disabled:hover:text-danger';
 
 type IconButtonProps = Omit<ComponentProps<'button'>, 'children' | 'className' | 'disabled'> & {
   label: string;

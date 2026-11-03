@@ -13,13 +13,13 @@ import { hrefWith } from '../../shared/url-state.ts';
 import type { GraphKind, NewGraph, WorkflowsClient } from './client.ts';
 import { kindLabel, WORKFLOWS_PATH } from './workflows-page.tsx';
 
-export type NewWorkflowPageProps = {
+type NewWorkflowPageProps = {
   client: WorkflowsClient;
   kind: GraphKind;
   back: string;
 };
 
-export const GRAPH_KINDS = [
+const GRAPH_KINDS = [
   { value: 'workflow', label: 'Workflow' },
   { value: 'node', label: 'Building Block' }
 ] as const;
@@ -55,7 +55,7 @@ export const NewWorkflowForm = ({
     if (failure) setError(failure);
   };
   return (
-    <form onSubmit={submit} aria-label="Create workflow">
+    <form onSubmit={submit} aria-label={`Create ${kindLabel(form.kind)}`}>
       <SectionPanel
         title={kindLabel(form.kind)}
         description="Start a workflow, or a building block other workflows can use."

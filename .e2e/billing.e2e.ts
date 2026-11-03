@@ -56,14 +56,14 @@ describe('a biller takes an encounter from import to an 837P file', { timeout: 6
 
   it('imports a NEMSIS file from the Imports button', async () => {
     await go('/imports');
-    await page.locator('#import-files').setInputFiles({
+    await page.locator('input[type="file"][accept*="xml"]').setInputFiles({
       name: `${pcr}.xml`,
       mimeType: 'text/xml',
       buffer: Buffer.from(fixture)
     });
     await page
-      .getByRole('status')
-      .filter({ hasText: `${pcr}.xml received` })
+      .getByRole('region', { name: 'Notifications' })
+      .getByText(`${pcr}.xml received`)
       .waitFor();
     await page.getByRole('link', { name: `Open import ${pcr}.xml` }).click();
     await heading(`${pcr}.xml`).waitFor();
@@ -91,7 +91,10 @@ describe('a biller takes an encounter from import to an 837P file', { timeout: 6
         continue;
       }
       await work.click();
-      await page.getByText(/· Claim #\d+ · /).waitFor();
+      await page
+        .getByText(/claim #\d+ for /i)
+        .first()
+        .waitFor();
       const decision = page
         .locator('section')
         .filter({ has: page.getByRole('heading', { name: 'Your Decision' }) })
@@ -107,7 +110,20 @@ describe('a biller takes an encounter from import to an 837P file', { timeout: 6
           if (values[0]) await select.selectOption(values[0]);
         }
       }
-      await decision.locator('form > div').last().getByRole('button').first().click();
+      for (const input of await decision.locator('input[required], textarea[required]').all()) {
+        if (await input.inputValue()) continue;
+        const type = await input.getAttribute('type');
+        const min = await input.getAttribute('min');
+        await input.fill(
+          type === 'date' ? '2026-10-01' : type === 'number' ? (min ?? '1') : 'E2E synthetic'
+        );
+      }
+      await decision
+        .locator('form > div')
+        .last()
+        .locator('button:not([aria-disabled="true"])')
+        .first()
+        .click();
       await page.getByRole('heading', { name: 'Done' }).waitFor();
     }
     assert.fail('the claim never became ready to submit');

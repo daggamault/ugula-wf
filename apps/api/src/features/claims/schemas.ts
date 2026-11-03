@@ -1,8 +1,13 @@
 import {
+  ADJUSTMENT_GROUPS,
+  ADJUSTMENT_REASON_PATTERN,
   CLAIM_STATUSES,
   DIAGNOSIS_LIMIT,
   ICD10_PATTERN,
-  isOriginDestination
+  INSURED_RELATIONSHIPS,
+  isOriginDestination,
+  US_STATE_PATTERN,
+  ZIP_CODE_PATTERN
 } from '@ugula/billing';
 import * as v from 'valibot';
 import { uuid } from '../../shared/http.ts';
@@ -10,7 +15,7 @@ import { pageEntries } from '../../shared/paging.ts';
 
 const cents = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(100_000_000));
 
-export const CLAIM_SORTS = [
+const CLAIM_SORTS = [
   'created',
   'number',
   'service',
@@ -24,7 +29,7 @@ export const CLAIM_SORTS = [
 
 export type ClaimSort = (typeof CLAIM_SORTS)[number];
 
-export const CLAIM_FILTERS = ['open', 'all', ...CLAIM_STATUSES] as const;
+const CLAIM_FILTERS = ['open', 'all', ...CLAIM_STATUSES] as const;
 
 const name = v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)));
 
@@ -40,20 +45,55 @@ export const listClaimsQuery = v.object({
   ...pageEntries(CLAIM_SORTS, 'created', 'desc')
 });
 
+const CLAIM_EVENT_SORTS = ['when', 'event', 'payer', 'amount'] as const;
+
+export type ClaimEventSort = (typeof CLAIM_EVENT_SORTS)[number];
+
+export const claimEventsQuery = v.object(pageEntries(CLAIM_EVENT_SORTS, 'when', 'desc'));
+
+const payerName = v.pipe(v.string(), v.trim(), v.nonEmpty('Payer names cannot be blank'));
+
+const insuredName = v.optional(
+  v.nullable(
+    v.pipe(
+      v.string(),
+      v.trim(),
+      v.maxLength(60),
+      v.transform((s) => s || null)
+    )
+  ),
+  null
+);
+
+const payerEntry = v.union([
+  v.pipe(
+    payerName,
+    v.transform((name) => ({
+      name,
+      relationship: INSURED_RELATIONSHIPS[0],
+      insuredFirstName: null,
+      insuredLastName: null
+    }))
+  ),
+  v.object({
+    name: payerName,
+    relationship: v.optional(v.picklist(INSURED_RELATIONSHIPS), INSURED_RELATIONSHIPS[0]),
+    insuredFirstName: insuredName,
+    insuredLastName: insuredName
+  })
+]);
+
+export type PayerEntry = v.InferOutput<typeof payerEntry>;
+
 export const payersSchema = v.object({
   payers: v.pipe(
-    v.array(v.pipe(v.string(), v.trim(), v.nonEmpty('Payer names cannot be blank'))),
+    v.array(payerEntry),
     v.maxLength(10),
-    v.check((xs) => new Set(xs).size === xs.length, 'Each payer can only be listed once')
+    v.check(
+      (xs) => new Set(xs.map((x) => x.name.toLowerCase())).size === xs.length,
+      'Each payer can only be listed once'
+    )
   )
-});
-
-export const responseSchema = v.object({
-  requestId: uuid,
-  coverageId: v.optional(v.nullable(uuid), null),
-  paidCents: v.optional(cents, 0),
-  adjustedCents: v.optional(cents, 0),
-  note: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(2000)), '')
 });
 
 const optionalText = (max: number) =>
@@ -69,6 +109,57 @@ const optionalText = (max: number) =>
     null
   );
 
+const adjustmentSchema = v.object({
+  group: v.picklist(Object.keys(ADJUSTMENT_GROUPS) as (keyof typeof ADJUSTMENT_GROUPS)[]),
+  reason: v.pipe(
+    v.string(),
+    v.trim(),
+    v.toUpperCase(),
+    v.regex(new RegExp(ADJUSTMENT_REASON_PATTERN), 'Use a reason code like 45 or CO45')
+  ),
+  cents: v.pipe(
+    v.number(),
+    v.integer(),
+    v.minValue(-100_000_000),
+    v.maxValue(100_000_000),
+    v.check((n) => n !== 0, 'An adjustment needs an amount')
+  )
+});
+
+const RESPONSE_KINDS = ['response', 'refunded'] as const;
+
+export const responseSchema = v.pipe(
+  v.object({
+    requestId: uuid,
+    kind: v.optional(v.picklist(RESPONSE_KINDS), 'response'),
+    coverageId: v.optional(v.nullable(uuid), null),
+    paidCents: v.optional(cents, 0),
+    adjustedCents: v.optional(cents, 0),
+    paidOn: v.optional(
+      v.nullable(v.pipe(v.string(), v.isoDate('Use a date like 2026-10-01'))),
+      null
+    ),
+    checkNumber: optionalText(50),
+    payerClaimNumber: optionalText(50),
+    adjustments: v.optional(v.pipe(v.array(adjustmentSchema), v.maxLength(99)), []),
+    note: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(2000)), '')
+  }),
+  v.forward(
+    v.check(
+      (r) => r.kind === 'response' || (r.paidCents > 0 && r.adjustedCents === 0),
+      'A refund needs an amount paid back and no adjustment'
+    ),
+    ['paidCents']
+  ),
+  v.forward(
+    v.check(
+      (r) => r.kind === 'response' || !r.adjustments.length,
+      'A refund carries no reason codes'
+    ),
+    ['adjustments']
+  )
+);
+
 const addressSchema = v.object({
   addressLine: optionalText(55),
   city: optionalText(30),
@@ -79,7 +170,9 @@ const addressSchema = v.object({
         v.trim(),
         v.toUpperCase(),
         v.transform((s) => s || null),
-        v.nullable(v.pipe(v.string(), v.regex(/^[A-Z]{2}$/, 'Use a 2-letter state')))
+        v.nullable(
+          v.pipe(v.string(), v.regex(new RegExp(US_STATE_PATTERN), 'Use a 2-letter state'))
+        )
       )
     ),
     null
@@ -89,7 +182,9 @@ const addressSchema = v.object({
       v.pipe(
         v.string(),
         v.transform((s) => s.replace(/\D/g, '') || null),
-        v.nullable(v.pipe(v.string(), v.regex(/^(\d{5}|\d{9})$/, 'Use a 5 or 9 digit ZIP code')))
+        v.nullable(
+          v.pipe(v.string(), v.regex(new RegExp(ZIP_CODE_PATTERN), 'Use a 5 or 9 digit ZIP code'))
+        )
       )
     ),
     null
@@ -99,32 +194,47 @@ const addressSchema = v.object({
 const locationSchema = v.object({ name: optionalText(60), ...addressSchema.entries });
 
 export const billingDataSchema = v.object({
-  patient: addressSchema,
-  coverages: v.pipe(
-    v.array(
-      v.object({
-        id: uuid,
-        memberId: optionalText(80),
-        groupId: optionalText(50)
-      })
+  patient: v.optional(v.nullable(addressSchema), null),
+  coverages: v.optional(
+    v.pipe(
+      v.array(
+        v.object({
+          id: uuid,
+          memberId: optionalText(80),
+          groupId: optionalText(50),
+          relationship: v.optional(v.nullable(v.picklist(INSURED_RELATIONSHIPS)), null),
+          insuredFirstName: optionalText(60),
+          insuredLastName: optionalText(60),
+          remove: v.optional(v.boolean(), false)
+        })
+      ),
+      v.maxLength(10)
     ),
-    v.maxLength(10)
+    []
   ),
-  serviceDate: v.nullable(v.pipe(v.string(), v.isoDate('Use a date like 2026-10-01'))),
-  pickup: locationSchema,
-  destination: locationSchema,
-  diagnoses: v.pipe(
-    v.array(
+  serviceDate: v.optional(
+    v.nullable(v.pipe(v.string(), v.isoDate('Use a date like 2026-10-01'))),
+    null
+  ),
+  pickup: v.optional(v.nullable(locationSchema), null),
+  destination: v.optional(v.nullable(locationSchema), null),
+  diagnoses: v.optional(
+    v.nullable(
       v.pipe(
-        v.string(),
-        v.trim(),
-        v.toUpperCase(),
-        v.transform((s) => s.replace('.', '')),
-        v.regex(new RegExp(ICD10_PATTERN), 'Use ICD-10-CM codes like R07.9')
+        v.array(
+          v.pipe(
+            v.string(),
+            v.trim(),
+            v.toUpperCase(),
+            v.transform((s) => s.replace('.', '')),
+            v.regex(new RegExp(ICD10_PATTERN), 'Use ICD-10-CM codes like R07.9')
+          )
+        ),
+        v.maxLength(DIAGNOSIS_LIMIT),
+        v.transform((xs) => [...new Set(xs)])
       )
     ),
-    v.maxLength(DIAGNOSIS_LIMIT),
-    v.transform((xs) => [...new Set(xs)])
+    null
   ),
   originDestination: v.optional(
     v.nullable(
@@ -136,7 +246,10 @@ export const billingDataSchema = v.object({
       )
     ),
     null
-  )
+  ),
+  note: optionalText(500)
 });
 
 export type BillingData = v.InferOutput<typeof billingDataSchema>;
+
+export type ClaimResponse = v.InferOutput<typeof responseSchema>;

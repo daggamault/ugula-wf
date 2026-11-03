@@ -3,6 +3,7 @@ import { PlayIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { classNamesOf } from '../../shared/class-names.ts';
+import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
@@ -17,8 +18,9 @@ import type { RunsClient, Startable } from './client.ts';
 
 const backOf = (graphId: string) => (graphId ? `/workflows/${graphId}` : '/workflows');
 
-export type StartRunPageProps = {
+type StartRunPageProps = {
   client: RunsClient;
+  live: Live;
   graphId: string;
 };
 
@@ -67,7 +69,7 @@ export const StartRunForm = ({ client, target }: { client: RunsClient; target: S
                     label={pin.label ?? pin.name}
                     type={pin.type}
                     value={inputs[pin.name] ?? null}
-                    onChange={(value) => setInputs({ ...inputs, [pin.name]: value })}
+                    onChange={(value) => setInputs((prev) => ({ ...prev, [pin.name]: value }))}
                     upload={client.uploadFile}
                   />
                 </div>
@@ -93,8 +95,9 @@ export const StartRunForm = ({ client, target }: { client: RunsClient; target: S
   );
 };
 
-export const StartRunPage = ({ client, graphId }: StartRunPageProps) => {
+export const StartRunPage = ({ client, live, graphId }: StartRunPageProps) => {
   const target = useResource(`startable:${graphId}`, () => client.startable(graphId));
+  useReconnect(live, target.reload);
   return (
     <Page
       title={target.data ? `Run ${target.data.name}` : 'Start a Run'}

@@ -11,6 +11,7 @@
   "dependencies": {
     "@ugula/auth": "workspace:*",
     "@ugula/config": "workspace:*",
+    "@ugula/db": "workspace:*",
     "@ugula/live": "workspace:*"
   }
 }

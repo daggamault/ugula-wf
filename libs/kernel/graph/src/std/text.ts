@@ -1,6 +1,8 @@
 import * as v from 'valibot';
 import { pin, pureNode } from '../define.ts';
-import { evaluateExpr } from '../expr.ts';
+import { fail } from '../errors.ts';
+import { createEvaluator } from '../expr.ts';
+import { MAX_RANGE } from '../expr-functions.ts';
 import { toText } from '../json.ts';
 import type { Json, NodeDef } from '../types.ts';
 import { identifierPins, validExpressions } from './expression.ts';
@@ -47,11 +49,12 @@ export const textNodes: NodeDef[] = [
     config: templateConfig,
     inputs: ({ template }) => identifierPins(templateExpressions(template)),
     outputs: [pin('text', 'string')],
-    compute: (inputs, { template }, ctx) => ({
-      text: template.replace(PLACEHOLDER, (_, src: string) =>
-        toText(evaluateExpr(src.trim(), inputs, { now: ctx.now }))
-      )
-    })
+    compute: (inputs, { template }, ctx) => {
+      const run = createEvaluator({ now: ctx.now });
+      return {
+        text: template.replace(PLACEHOLDER, (_, src: string) => toText(run(src.trim(), inputs)))
+      };
+    }
   }),
   pureNode({
     type: 'std.text.length',
@@ -132,11 +135,15 @@ export const textNodes: NodeDef[] = [
       pin('fill', 'string', { default: ' ' })
     ],
     outputs: [pin('result', 'string')],
-    compute: ({ text, length, fill }, { side }) => ({
-      result:
-        side === 'start'
-          ? (text as string).padStart(length as number, fill as string)
-          : (text as string).padEnd(length as number, fill as string)
-    })
+    compute: ({ text, length, fill }, { side }) => {
+      const n = length as number;
+      if (n > MAX_RANGE) fail(`Pad: at most ${MAX_RANGE} characters`);
+      return {
+        result:
+          side === 'start'
+            ? (text as string).padStart(n, fill as string)
+            : (text as string).padEnd(n, fill as string)
+      };
+    }
   })
 ];

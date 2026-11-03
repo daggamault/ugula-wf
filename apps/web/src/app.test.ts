@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { App, type AppClients, type RouteContext, resolveRoute, Workspace } from './app.tsx';
-import { idleLive } from './shared/testing.ts';
+import { idleLive, testNodes } from './shared/testing.ts';
 
 const clients = {
   auth: { signIn: async () => null, signOut: async () => undefined, getMe: async () => null },
@@ -17,6 +17,7 @@ const query = (search = '') => new URLSearchParams(search);
 
 const ctx: RouteContext = {
   ...clients,
+  nodes: testNodes,
   live: idleLive,
   email: 'dev@example.com'
 };
@@ -52,6 +53,7 @@ describe('app routing', () => {
     const html = renderToStaticMarkup(
       createElement(Workspace, {
         clients,
+        nodes: testNodes,
         path: '/runs',
         query: query('status=faulted'),
         email: 'dev@example.com',
@@ -69,6 +71,6 @@ describe('app routing', () => {
   });
 
   it('renders nothing until the session check completes', () => {
-    assert.equal(renderToStaticMarkup(createElement(App, { clients })), '');
+    assert.equal(renderToStaticMarkup(createElement(App, { clients, nodes: testNodes })), '');
   });
 });

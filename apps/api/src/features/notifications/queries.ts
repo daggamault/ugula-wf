@@ -3,9 +3,9 @@ import { type Kysely, sql } from 'kysely';
 
 type Db = Kysely<Database>;
 
-export const NOTIFICATION_LIMIT = 50;
+const NOTIFICATION_LIMIT = 50;
 
-export type NewNotification = {
+type NewNotification = {
   intent: NotificationIntent;
   title: string;
   description: string | null;

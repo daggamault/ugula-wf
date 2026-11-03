@@ -2,6 +2,7 @@ import { PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatCents, formatDateTime } from '../../shared/format.ts';
+import { type Live, useReconnect } from '../../shared/live.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
 import { DeleteDialog } from '../../shared/ui/dialog.tsx';
@@ -42,7 +43,7 @@ export const FeesTable = ({
     head={[
       { label: 'Payer', sort: 'payer' },
       { label: 'HCPCS', sort: 'code' },
-      { label: 'Amount', isNumeric: true, sort: 'amount' },
+      { label: 'Amount', sort: 'amount' },
       { label: 'Updated', isSecondary: true, sort: 'updated' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
@@ -83,9 +84,10 @@ export const FeesTable = ({
   </Table>
 );
 
-export const FeesPage = ({ client }: { client: FeesClient }) => {
+export const FeesPage = ({ client, live }: { client: FeesClient; live: Live }) => {
   const search = useSearchState(FEES_PATH, FEE_TABLE);
   const fees = useResource(`fees:${search.apiQuery}`, () => client.search(search.apiQuery));
+  useReconnect(live, fees.reload);
   const [deleting, setDeleting] = useState<Fee | null>(null);
   const notify = useToast();
   const remove = async (fee: Fee) => {

@@ -3,7 +3,7 @@ import { classNamesOf } from '../class-names.ts';
 import { Link } from '../router.tsx';
 import { interactiveClasses } from './interactive.ts';
 
-export type TabLink = {
+type TabLink = {
   label: string;
   href: string;
   isSelected: boolean;

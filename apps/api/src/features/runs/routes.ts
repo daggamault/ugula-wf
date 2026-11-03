@@ -5,13 +5,7 @@ import type { AuthEnv } from '../../shared/auth.ts';
 import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import {
-  fileFormSchema,
-  listRunsQuery,
-  signalSchema,
-  startRunSchema,
-  stepsQuery
-} from './schemas.ts';
+import { fileFormSchema, listRunsQuery, startRunSchema, stepsQuery } from './schemas.ts';
 import type { RunService } from './service.ts';
 
 export const createRunRoutes = (service: RunService, maxBytes: number) =>
@@ -37,10 +31,11 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
       }
     )
     .get('/', sValidator('query', listRunsQuery, invalidRequest), async (c) => {
-      const { status, graphId, root, ...page } = c.req.valid('query');
+      const { q, status, graphId, root, ...page } = c.req.valid('query');
       return respond(
         c,
         await service.list(c.get('session').tenantId, {
+          ...(q ? { q } : {}),
           ...(status ? { status } : {}),
           ...(graphId ? { graphId } : {}),
           rootOnly: root === 'true',
@@ -55,10 +50,6 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
         await service.start(c.get('session').tenantId, graphId, version, inputs),
         201
       );
-    })
-    .post('/signals', sValidator('json', signalSchema, invalidRequest), async (c) => {
-      const { name, key, payload } = c.req.valid('json');
-      return respond(c, await service.signal(c.get('session').tenantId, name, key, payload));
     })
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.find(c.get('session').tenantId, c.req.valid('param').id))

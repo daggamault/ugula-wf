@@ -39,7 +39,7 @@ describe('table editors', () => {
       otherwise: { level: 'BLS' }
     };
     const html = render(DecisionTableEditor, config);
-    assert.ok(html.includes('What the rules check') && html.includes('What the rules decide'));
+    assert.ok(html.includes('What the Rules Check') && html.includes('What the Rules Decide'));
     assert.ok(html.includes('When Level of care'));
     assert.ok(html.includes('value="4232003, 4232005"'));
     assert.ok(html.includes('Then level') && html.includes('value="ALS1"'));

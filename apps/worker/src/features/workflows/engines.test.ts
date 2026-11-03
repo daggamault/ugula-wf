@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { PublishedGraph } from '@ugula/db';
-import { createStdNodes, ENTRY_TYPE, type GraphDef } from '@ugula/graph';
+import { actionNode, createStdNodes, ENTRY_TYPE, type GraphDef } from '@ugula/graph';
 import { buildEngine, bundleKey, createEngineCache } from './engines.ts';
 
 const def: GraphDef = {
@@ -38,6 +38,37 @@ describe('buildEngine', () => {
     assert.equal(state.status, 'completed');
   });
 
+  it('retries transient node failures on a timer instead of faulting', async () => {
+    const down = actionNode({
+      type: 'demo.down',
+      title: 'Down',
+      category: 'Demo',
+      description: 'Cannot reach its service.',
+      inputs: [],
+      outputs: [],
+      compute: () => {
+        throw new TypeError('fetch failed');
+      }
+    });
+    const flaky: GraphDef = {
+      ...def,
+      nodes: [
+        { id: 'entry', type: ENTRY_TYPE, version: 1 },
+        { id: 'call', type: 'demo.down', version: 1 }
+      ],
+      edges: [{ from: 'entry', fromPin: 'exec', to: 'call', toPin: 'exec' }]
+    };
+    const { engine, root } = buildEngine(
+      [...nodes, down],
+      [{ id: 'v', key: 'demo.flaky', version: 1, definition: flaky }],
+      'v'
+    );
+    const state = engine.start(root, {}, { now: new Date(0) });
+    await engine.drain(state, { runId: 'r', now: new Date(0) });
+    assert.equal(state.status, 'suspended');
+    assert.equal(state.suspension?.kind, 'timer');
+  });
+
   it('rejects missing roots and malformed definitions', () => {
     assert.throws(() => buildEngine(nodes, rows, 'nope'), /not found/);
     assert.throws(() =>
@@ -57,7 +88,6 @@ describe('createEngineCache', () => {
     const engines = createEngineCache({
       nodes,
       max: 1,
-      loadRefs: async (runId) => (bundles[runId] ?? []).map(({ definition: _, ...ref }) => ref),
       loadDefinitions: async (ids) => {
         loads.push(ids);
         if (ids.includes('v-root') && loads.length > 3) throw new Error('db down');
@@ -70,7 +100,11 @@ describe('createEngineCache', () => {
         );
       }
     });
-    const run = (id: string) => engines({ id, versionId: 'v-root' });
+    const run = (id: string) =>
+      engines({
+        versionId: 'v-root',
+        graphs: (bundles[id] ?? []).map(({ definition: _, ...ref }) => ref)
+      });
     await run('a');
     await run('a');
     await run('b');

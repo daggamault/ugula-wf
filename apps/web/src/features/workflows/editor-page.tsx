@@ -1,4 +1,4 @@
-import type { GraphDef, Issue } from '@ugula/graph';
+import type { GraphDef, Issue, NodeDef } from '@ugula/graph';
 import {
   CopyPlusIcon,
   PencilIcon,
@@ -9,11 +9,12 @@ import {
   Trash2Icon,
   UploadIcon
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { type MouseEvent, useEffect, useMemo, useState } from 'react';
 import { isApiError, messageOf } from '../../shared/api.ts';
 import { type Catalog, createCatalog, type PaletteEntry } from '../../shared/graph/catalog.ts';
 import { addNode, removeNodes } from '../../shared/graph/flow.ts';
 import { GraphCanvas } from '../../shared/graph/graph-canvas.tsx';
+import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate, useLocation } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
@@ -33,14 +34,16 @@ import { NodePicker } from './node-picker.tsx';
 import { graphPath, type TrailStep } from './trail.ts';
 import { kindLabel } from './workflows-page.tsx';
 
-export type EditorPageProps = {
+type EditorPageProps = {
   client: WorkflowsClient;
+  live: Live;
+  nodes: NodeDef[];
   graphId: string;
   version: number | null;
   trail: readonly TrailStep[];
 };
 
-export type EditorViewProps = {
+type EditorViewProps = {
   detail: GraphDetail;
   version: number;
   source: GraphDef;
@@ -49,6 +52,16 @@ export type EditorViewProps = {
   trail: readonly TrailStep[];
   nameOf: (graphId: string) => string;
   onSaved: () => void;
+};
+
+export const leavingHref = (
+  target: Pick<Element, 'closest'>,
+  path: string,
+  e: Pick<MouseEvent, 'button' | 'metaKey' | 'ctrlKey' | 'shiftKey'>
+) => {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return null;
+  const href = target.closest('a[href]')?.getAttribute('href');
+  return href && new URL(href, 'http://local').pathname !== path ? href : null;
 };
 
 const issuesByNode = (issues: readonly Issue[]) => {
@@ -82,6 +95,7 @@ export const EditorView = ({
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [dialog, setDialog] = useState<'add' | 'remove' | null>(null);
+  const [leaving, setLeaving] = useState<string | null>(null);
   const location = useLocation();
   const isSettingsOpen = location.query.get('panel') === 'settings';
   const settingsHref = (open: boolean) =>
@@ -93,15 +107,19 @@ export const EditorView = ({
   const [busy, setBusy] = useState<'save' | 'publish' | 'override' | 'remove' | null>(null);
   const [error, setError] = useState('');
   const notify = useToast();
+  const leave = (to: string) => (dirty ? setLeaving(to) : navigate(to));
+  const guardLinks = (e: MouseEvent) => {
+    const to = dirty ? leavingHref(e.target as Element, location.path, e) : null;
+    if (!to) return;
+    e.preventDefault();
+    setLeaving(to);
+  };
   const openNode = (id: string) => {
     const inst = def.nodes.find((n) => n.id === id);
     const target = inst ? catalog.publishedOf(inst) : undefined;
-    if (!target) return;
-    if (dirty) setError('Save your changes before opening another workflow.');
-    else
-      navigate(
-        graphPath(target.graph_id, target.version, [...trail, { graphId: graph.id, version }])
-      );
+    if (target) {
+      leave(graphPath(target.graph_id, target.version, [...trail, { graphId: graph.id, version }]));
+    }
   };
   const parent = trail.at(-1);
   const crumbs = [
@@ -212,7 +230,7 @@ export const EditorView = ({
         : 'Published versions are read-only. Edit as a new draft to make changes.';
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
+    <section className="flex min-h-0 flex-1 flex-col" onClickCapture={guardLinks}>
       <WorkspaceHeader
         backTo={
           parent ? graphPath(parent.graphId, parent.version, trail.slice(0, -1)) : '/workflows'
@@ -252,7 +270,7 @@ export const EditorView = ({
                   value: String(v.version),
                   label: `v${v.version}${v.published_at ? '' : ' (Draft)'}`
                 }))}
-                onChange={(e) => navigate(graphPath(graph.id, Number(e.target.value), trail))}
+                onChange={(e) => leave(graphPath(graph.id, Number(e.target.value), trail))}
               />
             </div>
             {graph.tenant_id === null && graph.overridden_by ? (
@@ -332,8 +350,8 @@ export const EditorView = ({
       {error || graphIssues.length ? (
         <div className="flex flex-col gap-2 px-4 py-3">
           {error ? <Alert>{error}</Alert> : null}
-          {graphIssues.map((issue) => (
-            <Alert key={issue.message} intent="warning">
+          {graphIssues.map((issue, i) => (
+            <Alert key={`${i}-${issue.message}`} intent="warning">
               {issue.message}
             </Alert>
           ))}
@@ -405,13 +423,33 @@ export const EditorView = ({
         Are you sure? New runs go back to the built-in {graph.name}. Runs that already started keep
         using your copy. Override it again later to bring your copy back.
       </ConfirmDialog>
+      <ConfirmDialog
+        open={leaving !== null}
+        title="Discard Unsaved Changes?"
+        intent="danger"
+        confirmLabel="Discard Changes"
+        confirmIcon={Trash2Icon}
+        dismissLabel="Keep Editing"
+        onClose={() => setLeaving(null)}
+        onConfirm={() => {
+          const to = leaving;
+          setLeaving(null);
+          if (to) navigate(to);
+        }}
+      >
+        Your changes to {graph.name} have not been saved. Leave anyway and lose them?
+      </ConfirmDialog>
     </section>
   );
 };
 
-export const EditorPage = ({ client, graphId, version, trail }: EditorPageProps) => {
-  const detail = useResource(`graph:${graphId}`, () => client.find(graphId));
+export const EditorPage = ({ client, live, nodes, graphId, version, trail }: EditorPageProps) => {
+  const detail = useResource(`graph:${graphId}`, (signal) => client.find(graphId, signal));
   const published = useResource('graph-nodes', client.nodes);
+  useReconnect(live, () => {
+    detail.reload();
+    published.reload();
+  });
   const versions = detail.data?.versions ?? [];
   const chosen =
     version ?? versions.find((v) => !v.published_at)?.version ?? versions[0]?.version ?? null;
@@ -419,8 +457,8 @@ export const EditorPage = ({ client, graphId, version, trail }: EditorPageProps)
     chosen === null ? Promise.resolve(null) : client.version(graphId, chosen)
   );
   const catalog = useMemo(
-    () => createCatalog({ published: published.data ?? [] }),
-    [published.data]
+    () => createCatalog(nodes, { published: published.data ?? [] }),
+    [nodes, published.data]
   );
   const { reload } = detail;
 

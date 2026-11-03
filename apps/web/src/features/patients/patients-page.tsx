@@ -1,5 +1,6 @@
 import { nameKey } from '@ugula/billing';
 import { formatCents, formatDate } from '../../shared/format.ts';
+import { LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyState, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
@@ -13,14 +14,15 @@ import { useTableState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { PatientSearch, PatientSummary, PatientsClient } from './client.ts';
 
-export type PatientsPageProps = {
+type PatientsPageProps = {
   client: PatientsClient;
+  live: Live;
   search: PatientSearch;
 };
 
 const PATH = '/patients';
 
-export const PATIENT_TABLE = {
+const PATIENT_TABLE = {
   sorts: {
     name: 'asc',
     born: 'asc',
@@ -32,7 +34,7 @@ export const PATIENT_TABLE = {
   sort: 'name'
 } as const;
 
-export const SEARCH_FIELDS: readonly SearchField[] = [
+const SEARCH_FIELDS: readonly SearchField[] = [
   { name: 'lastName', label: 'Last Name' },
   { name: 'firstName', label: 'First Name' },
   { name: 'birthDate', label: 'Birth Date', type: 'date' }
@@ -59,8 +61,8 @@ export const PatientsTable = ({
       { label: 'Patient', sort: 'name' },
       { label: 'Birth Date', sort: 'born' },
       { label: 'City', isSecondary: true, sort: 'city' },
-      { label: 'Claims', isNumeric: true, sort: 'claims' },
-      { label: 'Open Balance', isNumeric: true, sort: 'balance' },
+      { label: 'Claims', sort: 'claims' },
+      { label: 'Open Balance', sort: 'balance' },
       { label: 'Last Service', isSecondary: true, sort: 'lastService' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
@@ -97,15 +99,16 @@ export const PatientsTable = ({
   </Table>
 );
 
-export const isSearching = (s: PatientSearch) =>
+const isSearching = (s: PatientSearch) =>
   Boolean(s.lastName.trim() || s.firstName.trim() || s.birthDate.trim());
 
-const PatientResults = ({ client, search }: PatientsPageProps) => {
+const PatientResults = ({ client, live, search }: PatientsPageProps) => {
   const table = useTableState(PATH, PATIENT_TABLE);
   const key = `${search.lastName}|${search.firstName}|${search.birthDate}`;
-  const patients = useResource(`patients:${key}:${table.apiQuery}`, () =>
-    client.list(search, table.apiQuery)
+  const patients = useResource(`patients:${key}:${table.apiQuery}`, (signal) =>
+    client.list(search, table.apiQuery, signal)
   );
+  useLive(live, (e) => e.kind === 'claim', patients.reload, LIST_RELOAD_MS);
   return patients.error ? (
     <Alert>{patients.error.message}</Alert>
   ) : patients.data?.items.length ? (
@@ -127,7 +130,7 @@ const PatientResults = ({ client, search }: PatientsPageProps) => {
   );
 };
 
-export const PatientsPage = ({ client, search }: PatientsPageProps) => (
+export const PatientsPage = ({ client, live, search }: PatientsPageProps) => (
   <Page
     title="Patients"
     description="Find a patient by name or birth date to see their claims and what they owe."
@@ -138,6 +141,6 @@ export const PatientsPage = ({ client, search }: PatientsPageProps) => (
     >
       <SearchForm label="Search patients" path={PATH} fields={SEARCH_FIELDS} />
     </SectionPanel>
-    {isSearching(search) ? <PatientResults client={client} search={search} /> : null}
+    {isSearching(search) ? <PatientResults client={client} live={live} search={search} /> : null}
   </Page>
 );

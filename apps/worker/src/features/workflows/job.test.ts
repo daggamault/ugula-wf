@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { advance, RUN_QUEUE, type RunJob, SWEEP_QUEUE } from '@ugula/run-queue';
+import { advance, PRUNE_QUEUE, RUN_QUEUE, type RunJob, SWEEP_QUEUE } from '@ugula/run-queue';
 import type { Job } from 'pg-boss';
 import { registerWorkflowJobs, type WorkflowBoss } from './job.ts';
 import type { RunStore } from './queries.ts';
@@ -20,7 +20,7 @@ describe('registerWorkflowJobs', () => {
         calls.push(`schedule:${name}:${cron}`);
       },
       work: async (name, options, handler) => {
-        calls.push(`work:${name}:${options.localConcurrency}`);
+        calls.push(`work:${name}:${options.localConcurrency}:${options.groupConcurrency ?? '-'}`);
         handlers.set(name, handler as (jobs: Job<unknown>[]) => Promise<unknown>);
         return `${name}:${calls.length}`;
       },
@@ -28,11 +28,13 @@ describe('registerWorkflowJobs', () => {
     };
     const processed: RunJob[] = [];
     let swept = 0;
-    await registerWorkflowJobs({
+    let pruned = 0;
+    const jobs = await registerWorkflowJobs({
       boss,
       runner: { process: async (job) => void processed.push(job) },
-      store: { sweep: async () => ++swept } as unknown as RunStore,
+      store: { sweep: async () => ++swept, prune: async () => ++pruned } as unknown as RunStore,
       concurrency: 2,
+      childConcurrency: 4,
       gate: () => ({ open: true, reason: null }),
       report: () => undefined
     });
@@ -41,13 +43,19 @@ describe('registerWorkflowJobs', () => {
       `update:${RUN_QUEUE}:{"notify":true}`,
       `queue:${SWEEP_QUEUE}`,
       `schedule:${SWEEP_QUEUE}:* * * * *`,
-      `work:${RUN_QUEUE}:1`,
-      `work:${RUN_QUEUE}:1`,
-      `work:${SWEEP_QUEUE}:1`
+      `queue:${PRUNE_QUEUE}`,
+      `schedule:${PRUNE_QUEUE}:17 * * * *`,
+      `work:${RUN_QUEUE}:1:4`,
+      `work:${RUN_QUEUE}:1:4`,
+      `work:${SWEEP_QUEUE}:1:-`,
+      `work:${PRUNE_QUEUE}:1:-`
     ]);
     await handlers.get(RUN_QUEUE)?.([{ data: advance('r1') } as Job<unknown>]);
     await handlers.get(SWEEP_QUEUE)?.([]);
+    await handlers.get(PRUNE_QUEUE)?.([]);
     assert.deepEqual(processed, [advance('r1')]);
     assert.equal(swept, 1);
+    assert.equal(pruned, 1);
+    jobs.stop();
   });
 });

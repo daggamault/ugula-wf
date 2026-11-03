@@ -3,7 +3,7 @@ import { classNamesOf } from '../class-names.ts';
 import { Link } from '../router.tsx';
 import { interactiveClasses } from './interactive.ts';
 
-export type Crumb = { label: string; to?: string; onSelect?: () => void };
+type Crumb = { label: string; to?: string; onSelect?: () => void };
 
 const crumbClasses = classNamesOf(
   interactiveClasses,

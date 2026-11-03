@@ -1,13 +1,18 @@
 import { isRecord, type Json } from '@ugula/graph';
 import type { ReactNode } from 'react';
+import { ClaimIssues, isIssueList } from '../../shared/claims/claim-issues.tsx';
 import { classNamesOf } from '../../shared/class-names.ts';
 import { formatCents, formatDate, formatDateTime, titleCaseWords } from '../../shared/format.ts';
+import { AlertList } from '../../shared/ui/alert.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
+import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { JsonView } from '../../shared/ui/json-view.tsx';
+import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
+import { ClaimCheckView, isClaimCheck } from './claim-check.tsx';
 
-export type ContextViewProps = {
+type ContextViewProps = {
   value: Json | undefined;
   label: string;
 };
@@ -40,7 +45,6 @@ const isEmpty = (value: Json | undefined) =>
   (Array.isArray(value) && value.length === 0) ||
   (isRecord(value) && Object.values(value).every(isEmpty));
 
-/** Internal ids mean nothing to a reader, unless they lead somewhere. */
 const isHidden = (key: string, value: Json | undefined) =>
   isEmpty(value) || (typeof value === 'string' && UUID.test(value) && !LINKS[key]);
 
@@ -113,40 +117,68 @@ const Fields = ({ value }: { value: Record<string, Json> }) => (
 
 const subheading = 'text-surface-fg-muted text-xs font-semibold tracking-wide uppercase';
 
-/**
- * Shows the data a workflow attached to a task as labeled sections: nested objects become their
- * own sections, lists of objects become cards, and the raw JSON stays one click away.
- */
-export const ContextView = ({ value, label }: ContextViewProps) => {
-  const raw = (
-    <details className="group text-sm">
-      <summary
-        className={classNamesOf(
-          interactiveClasses,
-          'text-surface-fg-muted hover:text-surface-fg w-fit rounded-lg select-none'
-        )}
-      >
-        Show raw data
-      </summary>
-      <div className="pt-2">
-        <JsonView label={label} value={value} />
-      </div>
-    </details>
-  );
-  if (!isRecord(value)) {
-    return isEmpty(value) ? null : (
-      <div className="flex flex-col gap-3">
-        <p className="text-sm">{scalarText('', value as Json)}</p>
-        {raw}
-      </div>
-    );
-  }
-  const entries = entriesOf(value);
+type Change = { field: string; was: Json; now: Json };
+
+const isTextList = (x: Json | undefined): x is string[] =>
+  Array.isArray(x) && x.length > 0 && x.every((v) => typeof v === 'string');
+
+const isChangeList = (x: Json | undefined): x is Change[] =>
+  Array.isArray(x) && x.every((c) => isRecord(c) && typeof c.field === 'string');
+
+const changeText = (value: Json) =>
+  value === null || value === '' ? emptyValue : (scalarText('', value) ?? JSON.stringify(value));
+
+const Changes = ({ changes }: { changes: readonly Change[] }) => (
+  <section className="flex flex-col gap-3">
+    <h3 className={subheading}>
+      Changes <span className="font-normal">({changes.length})</span>
+    </h3>
+    {changes.length ? (
+      <Table label="Changes from the earlier report" head={['Field', 'Was', 'Now']}>
+        {changes.map((c) => (
+          <TableRow key={c.field}>
+            <TableCell>{c.field}</TableCell>
+            <TableCell kind="wrap" isMuted>
+              {changeText(c.was)}
+            </TableCell>
+            <TableCell kind="wrap">{changeText(c.now)}</TableCell>
+          </TableRow>
+        ))}
+      </Table>
+    ) : (
+      <EmptyText>Nothing billed from the report changed.</EmptyText>
+    )}
+  </section>
+);
+
+const NOTICES = {
+  warnings: { intent: 'warning', title: 'Warnings' },
+  notes: { intent: 'info', title: 'Notes' }
+} as const;
+
+const SPECIAL = new Set(['issues', 'warnings', 'notes', 'changes', 'claim']);
+
+const ContextBody = ({ value, hasIssues }: { value: Record<string, Json>; hasIssues: boolean }) => {
+  const entries = entriesOf(value).filter(([key]) => !SPECIAL.has(key));
   const simple = Object.fromEntries(
     entries.filter(([, v]) => !isRecord(v) && !isRecordList(v))
   ) as Record<string, Json>;
+  const { issues, changes, claim } = value;
+  const showIssues = !hasIssues && isIssueList(issues);
   return (
-    <figure aria-label={label} className="flex min-w-0 flex-col gap-5">
+    <>
+      {showIssues ? <ClaimIssues issues={issues} /> : null}
+      {(['warnings', 'notes'] as const).map((key) => {
+        const items = value[key];
+        return isTextList(items) ? (
+          <AlertList
+            key={key}
+            intent={NOTICES[key].intent}
+            title={NOTICES[key].title}
+            items={items.map((text) => ({ text }))}
+          />
+        ) : null;
+      })}
       {Object.keys(simple).length ? <Fields value={simple} /> : null}
       {entries.map(([key, v]) =>
         isRecord(v) ? (
@@ -169,6 +201,46 @@ export const ContextView = ({ value, label }: ContextViewProps) => {
           </section>
         ) : null
       )}
+      {isChangeList(changes) ? <Changes changes={changes} /> : null}
+      {isClaimCheck(claim) ? (
+        <section className="flex flex-col gap-3">
+          <h3 className={subheading}>Claim</h3>
+          <ClaimCheckView claim={claim} />
+        </section>
+      ) : isRecord(claim) ? (
+        <ContextBody value={claim} hasIssues={hasIssues || showIssues} />
+      ) : null}
+    </>
+  );
+};
+
+export const ContextView = ({ value, label }: ContextViewProps) => {
+  const raw = (
+    <details className="group text-sm">
+      <summary
+        className={classNamesOf(
+          interactiveClasses,
+          'text-surface-fg-muted hover:text-surface-fg w-fit rounded-lg select-none'
+        )}
+      >
+        Show Raw Data
+      </summary>
+      <div className="pt-2">
+        <JsonView label={label} value={value} />
+      </div>
+    </details>
+  );
+  if (!isRecord(value)) {
+    return isEmpty(value) ? null : (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm">{scalarText('', value as Json)}</p>
+        {raw}
+      </div>
+    );
+  }
+  return (
+    <figure aria-label={label} className="flex min-w-0 flex-col gap-5">
+      <ContextBody value={value} hasIssues={false} />
       {raw}
     </figure>
   );

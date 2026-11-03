@@ -11,7 +11,7 @@ export type Notification = {
   read: boolean;
 };
 
-export type NotificationInput = {
+type NotificationInput = {
   intent?: Intent | undefined;
   title: string;
   description?: string | undefined;

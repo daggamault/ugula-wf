@@ -15,7 +15,7 @@ import { IconButton } from './icon-button.tsx';
 import type { Intent } from './intent.ts';
 import { textLinkClasses } from './text-link.tsx';
 
-export type ToastAction = { label: string; to: string };
+type ToastAction = { label: string; to: string };
 
 export type ToastInput = {
   key?: string;
@@ -26,11 +26,11 @@ export type ToastInput = {
   action?: ToastAction;
 };
 
-export type ToastItem = ToastInput & { id: number };
+type ToastItem = ToastInput & { id: number };
 
 export const TOAST_LIMIT = 4;
 
-export const TOAST_MS = 6_000;
+const TOAST_MS = 6_000;
 
 const keyOf = (toast: ToastInput) => toast.key ?? toast.title;
 
@@ -65,7 +65,6 @@ const ToastCard = ({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: num
 
   return (
     <li
-      role={intent === 'danger' ? 'alert' : 'status'}
       onPointerEnter={() => setPaused(true)}
       onPointerLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
@@ -106,6 +105,8 @@ export const Toaster = ({
 }) => (
   <section
     aria-label="Notifications"
+    aria-live="polite"
+    aria-relevant="additions text"
     className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center p-4 sm:justify-end"
   >
     <ol className="flex w-full max-w-sm flex-col gap-2">

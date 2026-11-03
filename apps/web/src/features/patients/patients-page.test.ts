@@ -2,10 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createApi } from '../../shared/api.ts';
+import { idleLive } from '../../shared/testing.ts';
 import type { PatientSummary, PatientsClient } from './client.ts';
-import { createPatientsClient, searchOf } from './client.ts';
-import { addressOf, PatientDetails } from './patient-page.tsx';
 import { PatientsPage, PatientsTable, placeOf } from './patients-page.tsx';
 
 const patient: PatientSummary = {
@@ -22,31 +20,6 @@ const patient: PatientSummary = {
   balance_cents: 30_000,
   last_service_date: '2026-10-01'
 };
-
-describe('createPatientsClient', () => {
-  it('searches by the fields given and opens one patient', async () => {
-    const seen: string[] = [];
-    const client = createPatientsClient(
-      createApi('', async (url) => {
-        seen.push(String(url));
-        return new Response('{"patient":{"id":"p1"},"items":[]}', { status: 200 });
-      })
-    );
-    await client.list({ lastName: ' Doe ', firstName: '', birthDate: '1958-04-12' }, 'page=1');
-    await client.list({ lastName: '', firstName: '', birthDate: '' }, 'page=2');
-    assert.deepEqual(await client.find('p1'), { id: 'p1' });
-    assert.deepEqual(seen, [
-      '/api/patients?lastName=Doe&birthDate=1958-04-12&page=1',
-      '/api/patients?page=2',
-      '/api/patients/p1'
-    ]);
-    assert.deepEqual(searchOf(new URLSearchParams('lastName=doe')), {
-      lastName: 'doe',
-      firstName: '',
-      birthDate: ''
-    });
-  });
-});
 
 describe('PatientsTable', () => {
   it('opens each patient from an icon action and shows birth date, place, claims and balance', () => {
@@ -76,6 +49,7 @@ describe('PatientsPage', () => {
   it('searches by last name, first name and birth date', () => {
     const html = renderToStaticMarkup(
       createElement(PatientsPage, {
+        live: idleLive,
         client: { list: () => new Promise(() => undefined) } as unknown as PatientsClient,
         search: { lastName: '', firstName: '', birthDate: '' }
       })
@@ -89,6 +63,7 @@ describe('PatientsPage', () => {
     const client = { list: () => new Promise(() => undefined) } as unknown as PatientsClient;
     const idle = renderToStaticMarkup(
       createElement(PatientsPage, {
+        live: idleLive,
         client,
         search: { lastName: ' ', firstName: '', birthDate: '' }
       })
@@ -97,18 +72,11 @@ describe('PatientsPage', () => {
     assert.ok(!idle.includes('role="status"'));
     const searching = renderToStaticMarkup(
       createElement(PatientsPage, {
+        live: idleLive,
         client,
         search: { lastName: 'kli', firstName: '', birthDate: '' }
       })
     );
     assert.ok(searching.includes('role="status"'));
-  });
-});
-
-describe('PatientDetails', () => {
-  it('shows the balance, sex and full address', () => {
-    const html = renderToStaticMarkup(createElement(PatientDetails, { patient }));
-    assert.ok(html.includes('Female') && html.includes('$300.00'));
-    assert.equal(addressOf(patient), '1 Main St, Erie, PA 16501');
   });
 });

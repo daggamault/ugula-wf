@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { ENTRY_TYPE } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { testNodes } from '../testing.ts';
 import { createCatalog } from './catalog.ts';
 import { GraphCanvas, OPENING_WIDTH, openingNodes } from './graph-canvas.tsx';
 
@@ -16,7 +17,7 @@ describe('GraphCanvas', () => {
           nodes: [{ id: 'entry', type: ENTRY_TYPE, version: 1 }],
           edges: []
         },
-        catalog: createCatalog(),
+        catalog: createCatalog(testNodes),
         selected: null,
         onSelect: () => undefined
       })

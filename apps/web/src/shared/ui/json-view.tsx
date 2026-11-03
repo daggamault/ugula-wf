@@ -1,4 +1,4 @@
-export type JsonViewProps = {
+type JsonViewProps = {
   value: unknown;
   label: string;
 };

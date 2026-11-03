@@ -2,15 +2,21 @@ import type { Database, ImportSource, RunStatus } from '@ugula/db';
 import type { ReportDictionary, ReportTerms } from '@ugula/nemsis';
 import { type Kysely, sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
-import type { ImportSort } from './schemas.ts';
+import { containsPattern } from '../../shared/search.ts';
+import type { ImportSort, ReportSort } from './schemas.ts';
 
-export const findLatestPublished = (db: Kysely<Database>, tenantId: string, key: string) =>
+type Db = Kysely<Database>;
+
+export type ImportFilters = PageRequest<ImportSort> & { q?: string | undefined };
+
+export const resolveWorkflowVersion = (db: Db, tenantId: string, key: string) =>
   db
     .selectFrom('graph_versions as gv')
     .innerJoin('graphs as g', 'g.id', 'gv.graph_id')
     .select(['gv.id', 'gv.version'])
     .where('g.key', '=', key)
     .where('g.kind', '=', 'workflow')
+    .where('g.is_active', '=', true)
     .where('gv.published_at', 'is not', null)
     .where((eb) => eb.or([eb('g.tenant_id', '=', tenantId), eb('g.tenant_id', 'is', null)]))
     .orderBy(sql`g.tenant_id nulls last`)
@@ -18,7 +24,7 @@ export const findLatestPublished = (db: Kysely<Database>, tenantId: string, key:
     .limit(1)
     .executeTakeFirst();
 
-export const findSftpTenant = (db: Kysely<Database>, username: string) =>
+export const findSftpTenant = (db: Db, username: string) =>
   db
     .selectFrom('tenants')
     .select(['id', 'sftp_password_hash'])
@@ -35,7 +41,7 @@ export type NewImport = {
   uploadedBy: string | null;
 };
 
-export const insertImport = (db: Kysely<Database>, i: NewImport) =>
+export const insertImport = (db: Db, i: NewImport) =>
   db
     .insertInto('imports')
     .values({
@@ -49,7 +55,7 @@ export const insertImport = (db: Kysely<Database>, i: NewImport) =>
     .returning('id')
     .executeTakeFirstOrThrow();
 
-export const findReport = (db: Kysely<Database>, tenantId: string, id: string) =>
+export const findReport = (db: Db, tenantId: string, id: string) =>
   db
     .selectFrom('import_reports as r')
     .innerJoin('imports as i', 'i.id', 'r.import_id')
@@ -79,13 +85,7 @@ const IMPORT_ORDER = {
   attention: sql`reports.waiting + reports.failed + reports.stuck + reports.processing`
 };
 
-export const listImports = (
-  db: Kysely<Database>,
-  tenantId: string,
-  page: PageRequest<ImportSort>
-) => paged(importRows(db, tenantId), page, IMPORT_ORDER, sql.ref('i.id'));
-
-const importRows = (db: Kysely<Database>, tenantId: string) =>
+const importRows = (db: Db, tenantId: string) =>
   db
     .selectFrom('imports as i')
     .innerJoin('workflow_runs as r', 'r.id', 'i.run_id')
@@ -138,56 +138,83 @@ const importRows = (db: Kysely<Database>, tenantId: string) =>
     ])
     .where('i.tenant_id', '=', tenantId);
 
-export const findImport = (db: Kysely<Database>, tenantId: string, id: string) =>
+export const listImports = (db: Db, tenantId: string, f: ImportFilters) => {
+  let q = importRows(db, tenantId);
+  if (f.q) {
+    const like = containsPattern(f.q);
+    q = q.where((eb) =>
+      eb.or([eb(sql`lower(i.file_name)`, 'like', like), eb(sql`lower(u.email)`, 'like', like)])
+    );
+  }
+  return paged(q, f, IMPORT_ORDER, sql.ref('i.id'));
+};
+
+export const findImport = (db: Db, tenantId: string, id: string) =>
   importRows(db, tenantId).where('i.id', '=', id).executeTakeFirst();
 
-export const listImportReports = (db: Kysely<Database>, tenantId: string, importId: string) =>
-  db
-    .selectFrom('import_reports as ir')
-    .innerJoin('imports as i', 'i.id', 'ir.import_id')
-    .leftJoin('workflow_runs as r', (j) =>
-      j
-        .onRef('r.parent_id', '=', 'i.run_id')
-        .on(sql<boolean>`r.inputs -> 'report' ->> 'key' = ir.report ->> 'key'`)
-    )
-    .leftJoin('claim_runs as cr', 'cr.run_id', 'r.id')
-    .leftJoin('claims as c', 'c.id', 'cr.claim_id')
-    .leftJoin('patients as p', 'p.id', 'c.patient_id')
-    .leftJoinLateral(
-      (eb) =>
-        eb
-          .selectFrom('tasks as t')
-          .select(['t.id', 't.title', 't.subject', 't.kind'])
-          .whereRef('t.run_id', '=', 'r.id')
-          .where('t.status', '=', 'open')
-          .orderBy('t.created_at')
-          .limit(1)
-          .as('t'),
-      (join) => join.onTrue()
-    )
-    .select([
-      'ir.id',
-      'ir.position',
-      'ir.pcr_number',
-      'r.status as run_status',
-      'c.id as claim_id',
-      'c.status as claim_status',
-      'c.total_cents',
-      'p.first_name',
-      'p.last_name',
-      't.id as task_id',
-      't.title as task_title',
-      't.subject as task_subject',
-      't.kind as task_kind'
-    ])
-    .where('i.tenant_id', '=', tenantId)
-    .where('i.id', '=', importId)
-    .orderBy('ir.position')
-    .execute();
+const REPORT_ORDER = {
+  position: sql.ref('ir.position'),
+  pcr: sql.ref('ir.pcr_number'),
+  patient: sql`lower(p.last_name || ' ' || p.first_name)`,
+  status: sql.ref('r.status'),
+  claim: sql.ref('c.status'),
+  total: sql.ref('c.total_cents')
+};
 
-/** Official NEMSIS names and code descriptions for the terms of one report. */
+export const listImportReports = (
+  db: Db,
+  tenantId: string,
+  importId: string,
+  page: PageRequest<ReportSort>
+) =>
+  paged(
+    db
+      .selectFrom('import_reports as ir')
+      .innerJoin('imports as i', 'i.id', 'ir.import_id')
+      .leftJoin('workflow_runs as r', (j) =>
+        j
+          .onRef('r.parent_id', '=', 'i.run_id')
+          .on(sql<boolean>`r.inputs -> 'report' ->> 'key' = ir.report ->> 'key'`)
+      )
+      .leftJoin('claim_runs as cr', 'cr.run_id', 'r.id')
+      .leftJoin('claims as c', 'c.id', 'cr.claim_id')
+      .leftJoin('patients as p', 'p.id', 'c.patient_id')
+      .leftJoinLateral(
+        (eb) =>
+          eb
+            .selectFrom('tasks as t')
+            .select(['t.id', 't.title', 't.subject', 't.kind'])
+            .whereRef('t.run_id', '=', 'r.id')
+            .where('t.status', '=', 'open')
+            .orderBy('t.created_at')
+            .limit(1)
+            .as('t'),
+        (join) => join.onTrue()
+      )
+      .select([
+        'ir.id',
+        'ir.position',
+        'ir.pcr_number',
+        'r.status as run_status',
+        'c.id as claim_id',
+        'c.status as claim_status',
+        'c.total_cents',
+        'p.first_name',
+        'p.last_name',
+        't.id as task_id',
+        't.title as task_title',
+        't.subject as task_subject',
+        't.kind as task_kind'
+      ])
+      .where('i.tenant_id', '=', tenantId)
+      .where('i.id', '=', importId),
+    page,
+    REPORT_ORDER,
+    sql.ref('ir.id')
+  );
+
 export const findDictionary = async (
-  db: Kysely<Database>,
+  db: Db,
   { elements, codes }: ReportTerms
 ): Promise<ReportDictionary> => {
   const [named, described] = await Promise.all([

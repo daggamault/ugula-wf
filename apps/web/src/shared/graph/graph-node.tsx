@@ -51,7 +51,7 @@ const PinRow = ({
     />
     <span className="truncate">{pin.label}</span>
     {binding ? (
-      <span className="bg-surface-fg/6 text-surface-fg-muted truncate rounded px-1 font-mono text-[10px]">
+      <span className="bg-surface-fg/6 text-surface-fg-muted truncate rounded-full px-1.5 font-mono text-xs">
         {binding}
       </span>
     ) : null}
@@ -67,19 +67,17 @@ export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
       aria-label={title}
       className={`bg-surface text-surface-fg w-60 cursor-pointer rounded-xl border-2 text-left transition-shadow ${statusClasses[status]} ${selected ? 'ring-primary ring-2' : ''}`}
     >
-      <header className="border-border bg-canvas flex flex-col gap-0.5 rounded-t-[10px] border-b px-3 py-1.5">
+      <header className="border-border flex flex-col gap-0.5 border-b px-3 py-1.5">
         <span className="flex items-center justify-between gap-3">
           <span className="truncate text-sm font-semibold">{title}</span>
           {opens ? (
-            <span className="text-primary shrink-0 text-[10px] font-semibold tracking-wide uppercase">
+            <span className="text-primary shrink-0 text-xs font-semibold tracking-wide uppercase">
               {opens === 'graph' ? 'Building Block' : 'Workflow'}
             </span>
           ) : null}
         </span>
         {description ? (
-          <span className="text-surface-fg-muted line-clamp-2 text-[11px] leading-snug">
-            {description}
-          </span>
+          <span className="text-surface-fg-muted line-clamp-2 text-xs">{description}</span>
         ) : null}
       </header>
       {signature ? (
@@ -106,7 +104,7 @@ export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
         </p>
       )}
       {issues.length ? (
-        <footer className="border-danger/30 bg-danger/10 text-danger rounded-b-[10px] border-t px-3 py-1 text-[11px]">
+        <footer className="border-danger/30 text-danger border-t px-3 py-1 text-xs">
           {issues[0]}
           {issues.length > 1 ? ` (+${issues.length - 1})` : ''}
         </footer>

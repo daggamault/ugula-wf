@@ -1,4 +1,5 @@
 import { PlayIcon, PlusIcon } from 'lucide-react';
+import { type Live, useReconnect } from '../../shared/live.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -17,16 +18,17 @@ import {
 import { useResource } from '../../shared/use-resource.ts';
 import type { GraphKind, GraphSummary, WorkflowsClient } from './client.ts';
 
-export type WorkflowsPageProps = {
+type WorkflowsPageProps = {
   client: WorkflowsClient;
+  live: Live;
   show: GraphFilter;
 };
 
 export const WORKFLOWS_PATH = '/workflows';
 
-export type GraphFilter = 'workflows' | 'blocks' | 'mine' | 'all';
+type GraphFilter = 'workflows' | 'blocks' | 'mine' | 'all';
 
-export const GRAPH_FILTERS: readonly { value: GraphFilter; label: string }[] = [
+const GRAPH_FILTERS: readonly { value: GraphFilter; label: string }[] = [
   { value: 'workflows', label: 'Workflows' },
   { value: 'blocks', label: 'Building Blocks' },
   { value: 'mine', label: "Your Agency's Copies" },
@@ -104,10 +106,11 @@ export const WorkflowsTable = ({
   </Table>
 );
 
-export const WorkflowsPage = ({ client, show }: WorkflowsPageProps) => {
+export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
   const search = useSearchState(WORKFLOWS_PATH, GRAPH_TABLE);
   const query = graphsQueryOf(search.apiQuery, show);
-  const graphs = useResource(`graphs:${query}`, () => client.search(query));
+  const graphs = useResource(`graphs:${query}`, (signal) => client.search(query, signal));
+  useReconnect(live, graphs.reload);
   const filterHref = useFilterHref(WORKFLOWS_PATH);
   const newKind: GraphKind = show === 'blocks' ? 'node' : 'workflow';
   const add = withBack(`${WORKFLOWS_PATH}/new?kind=${newKind}`, search.href);
@@ -115,7 +118,7 @@ export const WorkflowsPage = ({ client, show }: WorkflowsPageProps) => {
   return (
     <Page
       title="Workflows"
-      description="Workflows run on their own; building blocks are the smaller parts they are made of. Override a system one to change how your agency runs it."
+      description="Workflows that run on their own, and the building blocks they are made of."
       actions={
         <ButtonLink to={add}>
           <PlusIcon aria-hidden="true" className="size-4" />

@@ -4,8 +4,9 @@ import { ENTRY_TYPE, type GraphDef } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
+import { idleLive, testNodes } from '../../shared/testing.ts';
 import type { GraphDetail, WorkflowsClient } from './client.ts';
-import { EditorPage, EditorView } from './editor-page.tsx';
+import { EditorPage, EditorView, leavingHref } from './editor-page.tsx';
 import type { TrailStep } from './trail.ts';
 
 const source: GraphDef = {
@@ -47,7 +48,7 @@ const render = (d: GraphDetail, version: number, trail: TrailStep[] = []) =>
       detail: d,
       version,
       source,
-      catalog: createCatalog(),
+      catalog: createCatalog(testNodes),
       client: {} as WorkflowsClient,
       trail,
       nameOf: (id) => ({ p1: 'Process PCR', p0: 'Ingest' })[id] ?? 'Workflow',
@@ -109,16 +110,30 @@ describe('EditorPage', () => {
   it('waits for the graph before rendering', () => {
     const html = renderToStaticMarkup(
       createElement(EditorPage, {
+        live: idleLive,
         client: {
           find: async () => detail('t-1', false),
           nodes: async () => [],
           version: async () => ({ id: 'v2', version: 2, definition: source, published_at: null })
         } as unknown as WorkflowsClient,
+        nodes: testNodes,
         graphId: 'g1',
         version: null,
         trail: []
       })
     );
     assert.ok(html.includes('aria-label="Loading"'));
+  });
+});
+
+describe('leavingHref', () => {
+  it('only catches plain clicks on links that leave the editor', () => {
+    const plain = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false };
+    const link = (href: string | null) =>
+      ({ closest: () => (href ? { getAttribute: () => href } : null) }) as unknown as Element;
+    assert.equal(leavingHref(link('/workflows'), '/workflows/g1', plain), '/workflows');
+    assert.equal(leavingHref(link('/workflows/g1?panel=settings'), '/workflows/g1', plain), null);
+    assert.equal(leavingHref(link('/runs'), '/workflows/g1', { ...plain, ctrlKey: true }), null);
+    assert.equal(leavingHref(link(null), '/workflows/g1', plain), null);
   });
 });

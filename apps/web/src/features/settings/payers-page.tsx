@@ -1,6 +1,8 @@
 import { PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
+import { type Live, useReconnect } from '../../shared/live.ts';
+import { Badge } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
 import { DeleteDialog } from '../../shared/ui/dialog.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
@@ -27,15 +29,14 @@ export const filingLabel = (code: string) =>
 export const payerDeleteNote = (name: string) =>
   `Its prices are removed, and claims billed to ${name} cannot go in an 837P file until it is added again.`;
 
-const LearnedNames = ({ payer, q }: { payer: Payer; q: string }) =>
+export const LearnedNames = ({ payer, q = '' }: { payer: Payer; q?: string }) =>
   payer.aliases.length ? (
     <ul aria-label={`Learned names for ${payer.name}`} className="flex flex-wrap gap-1">
       {payer.aliases.map((a) => (
-        <li
-          key={a.id}
-          className="border-border text-surface-fg-muted rounded-full border px-2 text-xs/5"
-        >
-          <Highlight text={a.alias} query={q} />
+        <li key={a.id}>
+          <Badge>
+            <Highlight text={a.alias} query={q} />
+          </Badge>
         </li>
       ))}
     </ul>
@@ -92,11 +93,12 @@ export const PayersTable = ({
   </Table>
 );
 
-export const PayersPage = ({ client }: { client: SettingsClient }) => {
+export const PayersPage = ({ client, live }: { client: SettingsClient; live: Live }) => {
   const search = useSearchState(PAYERS_PATH, PAYER_TABLE);
-  const payers = useResource(`payers:${search.apiQuery}`, () =>
-    client.searchPayers(search.apiQuery)
+  const payers = useResource(`payers:${search.apiQuery}`, (signal) =>
+    client.searchPayers(search.apiQuery, signal)
   );
+  useReconnect(live, payers.reload);
   const [deleting, setDeleting] = useState<Payer | null>(null);
   const notify = useToast();
   const remove = async (p: Payer) => {
@@ -112,7 +114,7 @@ export const PayersPage = ({ client }: { client: SettingsClient }) => {
   return (
     <Page
       title="Payers"
-      description="Clearinghouse payer IDs and filing codes for 837P claims. Payer names on PCRs match here automatically, or through a Payer Matching task."
+      description="Clearinghouse payer IDs and filing codes for 837P claims, matched to the payer names on PCRs."
       actions={
         <ButtonLink to={add}>
           <PlusIcon aria-hidden="true" className="size-4" />

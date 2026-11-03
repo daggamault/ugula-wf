@@ -12,7 +12,7 @@ import type {
   ValueType
 } from './types.ts';
 
-export type ValueOf<T extends ValueType> = [ValueType] extends [T]
+type ValueOf<T extends ValueType> = [ValueType] extends [T]
   ? Json
   : T extends 'string' | 'datetime'
     ? string
@@ -26,23 +26,23 @@ export type ValueOf<T extends ValueType> = [ValueType] extends [T]
             ? { [K in keyof O]: ValueOf<O[K]> | null }
             : Json;
 
-export type PinOptions = Omit<PinSpec, 'name' | 'type'>;
+type PinOptions = Omit<PinSpec, 'name' | 'type'>;
 
-export type Pins<C> = readonly PinSpec[] | ((config: C, ctx: SignatureContext) => PinSpec[]);
+type Pins<C> = readonly PinSpec[] | ((config: C, ctx: SignatureContext) => PinSpec[]);
 
 type PinValue<P extends PinSpec> = P extends { optional: true }
   ? ValueOf<P['type']> | null
   : ValueOf<P['type']>;
 
-export type InputsOf<P> = P extends readonly PinSpec[]
+type InputsOf<P> = P extends readonly PinSpec[]
   ? { [S in P[number] as S['name']]: PinValue<S> }
   : Values;
 
-export type OutputsOf<P> = P extends readonly PinSpec[]
+type OutputsOf<P> = P extends readonly PinSpec[]
   ? { [S in P[number] as S['name']]?: ValueOf<S['type']> | null }
   : Values;
 
-export type NodeMeta<C> = {
+type NodeMeta<C> = {
   type: string;
   version?: number;
   title: string;
@@ -56,12 +56,12 @@ type Computed<C, I, R> = {
   compute: (inputs: InputsOf<I>, config: C, ctx: NodeContext) => R | Promise<R>;
 };
 
-export type ComputeNode<C, I extends Pins<C>, O extends Pins<C>> = NodeMeta<C> &
+type ComputeNode<C, I extends Pins<C>, O extends Pins<C>> = NodeMeta<C> &
   Computed<C, I, OutputsOf<O>> & { outputs: O };
 
-export type Exit<E extends string, O> = { exit: E; outputs: O };
+type Exit<E extends string, O> = { exit: E; outputs: O };
 
-export type BranchNode<C, I extends Pins<C>, O extends Pins<C>, E extends string> = NodeMeta<C> &
+type BranchNode<C, I extends Pins<C>, O extends Pins<C>, E extends string> = NodeMeta<C> &
   Computed<C, I, Exit<E, OutputsOf<O>>> & {
     outputs: O;
     exits: readonly [E, ...E[]];
@@ -105,7 +105,7 @@ export const suspend = (
 
 export const defineNode = <C>(def: NodeDef<C>): NodeDef => def as unknown as NodeDef;
 
-export const readInputs = async (inv: Invocation<unknown>): Promise<Values> => {
+const readInputs = async (inv: Invocation<unknown>): Promise<Values> => {
   const out: Values = {};
   for (const p of inv.signature.inputs) out[p.name] = await inv.read(p.name);
   return out;

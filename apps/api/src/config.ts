@@ -10,11 +10,12 @@ import {
 } from '@ugula/config';
 import * as v from 'valibot';
 
-export const configSchema = v.object({
+const configSchema = v.object({
   NODE_ENV: nodeEnvSchema,
   API_PORT: portInt,
   SSE_URL: urlString,
   HTTP_CORS_ORIGINS: nonEmpty,
+  HTTP_MAX_BODY_BYTES: posInt,
   ...dbEnvEntries,
   API_DB_POOL_MAX: posInt,
   ...redisEnvEntries,
@@ -22,7 +23,8 @@ export const configSchema = v.object({
   IMPORT_FILE_MAX_BYTES: posInt,
   SFTP_HOOK_SECRET: v.pipe(nonEmpty, v.minLength(32)),
   SFTP_S3_ENDPOINT: urlString,
-  SFTP_HOME_ROOT: nonEmpty
+  SFTP_HOME_ROOT: nonEmpty,
+  EMBEDDINGS_URL: urlString
 });
 
 export type Config = v.InferOutput<typeof configSchema>;

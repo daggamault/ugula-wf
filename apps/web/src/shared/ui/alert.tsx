@@ -33,7 +33,7 @@ export const intentIcons: Readonly<Record<Intent, LucideIcon>> = {
   danger: CircleAlertIcon
 };
 
-export type AlertProps = {
+type AlertProps = {
   intent?: Intent;
   action?: ReactNode;
   children: ReactNode;
@@ -53,9 +53,35 @@ export const Alert = ({ intent = 'danger', action, children }: AlertProps) => {
         <span className="flex h-5 shrink-0 items-center">
           <Icon aria-hidden="true" className={classNamesOf('size-4', iconClasses[intent])} />
         </span>
-        <p className="min-w-0">{children}</p>
+        <div className="min-w-0">{children}</div>
       </div>
       {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
     </div>
   );
 };
+
+type AlertItem = { label?: string | undefined; text: string };
+
+export const AlertList = ({
+  intent,
+  title,
+  items
+}: {
+  intent: Intent;
+  title: string;
+  items: readonly AlertItem[];
+}) => (
+  <Alert intent={intent}>
+    <span className="flex flex-col gap-1">
+      <strong className="font-semibold">{title}</strong>
+      <ul className="flex flex-col gap-1">
+        {items.map((item) => (
+          <li key={`${item.label ?? ''}:${item.text}`}>
+            {item.label ? <span className="font-semibold">{item.label}: </span> : null}
+            {item.text}
+          </li>
+        ))}
+      </ul>
+    </span>
+  </Alert>
+);

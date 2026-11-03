@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createDummyDb } from '@ugula/db/testing';
 import { ENTRY_TYPE, type GraphDef } from '@ugula/graph';
-import { buildInsertPublishedVersion, buildUpsertGraph, type SeedGraph } from './graphs.ts';
+import { buildUpsertGraph, buildUpsertPublishedVersion, type SeedGraph } from './graphs.ts';
 
 const base: GraphDef = {
   signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
@@ -32,10 +32,15 @@ describe('graph seeds', () => {
     await db.destroy();
   });
 
-  it('inserts published versions without overwriting existing ones', async () => {
+  it('publishes versions and rewrites a definition only when it was edited in place', async () => {
     const db = createDummyDb();
-    const compiled = buildInsertPublishedVersion(db, 'g1', graph, ['v9']).compile();
-    assert.ok(compiled.sql.includes('on conflict ("graph_id", "version") do nothing'));
+    const compiled = buildUpsertPublishedVersion(db, 'g1', graph, ['v9']).compile();
+    assert.ok(compiled.sql.includes('on conflict ("graph_id", "version") do update set'));
+    assert.ok(
+      compiled.sql.includes(
+        '"graph_versions"."definition" is distinct from "excluded"."definition"'
+      )
+    );
     assert.ok(compiled.parameters.includes(JSON.stringify(graph.definition)));
     await db.destroy();
   });

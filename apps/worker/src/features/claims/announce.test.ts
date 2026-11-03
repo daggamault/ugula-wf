@@ -14,8 +14,16 @@ describe('announceClaims', () => {
       },
       assignPatient: async () => void log.push('patient'),
       saveClaim: async () => void log.push('save'),
-      setStatus: async () => void log.push('status'),
-      noteRevision: async () => void log.push('revision'),
+      claimCheck: async () => null,
+      patchClaim: async () => void log.push('patch'),
+      setStatus: async () => {
+        log.push('status');
+        return 'stale' as const;
+      },
+      noteRevision: async () => {
+        log.push('revision');
+        return { status: 'draft' as const, previous: null };
+      },
       attachCycle: async () => void log.push('attach'),
       statementData: async () => {
         throw new Error('not used');
@@ -24,30 +32,45 @@ describe('announceClaims', () => {
       ledger: async () => null,
       recordEvent: async () => void log.push('event'),
       closeClaim: async () => void log.push('close')
-    } as ClaimStore;
+    } satisfies ClaimStore;
     const announced: [string, LiveEvent][] = [];
     const claims = announceClaims(store, async (runId, event) => {
       log.push('announce');
       announced.push([runId, event]);
     });
-    assert.deepEqual(await claims.openDraft('r1', 'k', { pcrNumber: null, reportKey: null }), {
-      id: 'c1',
-      duplicate: false
+    assert.deepEqual(
+      await claims.openDraft('r1', 'k', { pcrNumber: null, reportKey: null, claimId: null }),
+      {
+        id: 'c1',
+        duplicate: false
+      }
+    );
+    await claims.assignPatient('r1', 'c1', 'k', 'p1');
+    await claims.saveClaim('r1', 'c1', 'k', {} as never);
+    await claims.patchClaim('r1', 'c1', 'k', {} as never);
+    assert.equal(await claims.setStatus('r1', 'c1', 'k', 'ready', 0), 'stale');
+    assert.deepEqual(await claims.noteRevision('r1', 'c1', 'k', { bucket: 'b', key: 'k' }), {
+      status: 'draft',
+      previous: null
     });
-    await claims.assignPatient('r1', 'c1', 'p1');
-    await claims.saveClaim('r1', 'c1', {} as never);
-    await claims.setStatus('r1', 'c1', 'ready');
-    await claims.noteRevision('r1', 'c1', 'k', { bucket: 'b', key: 'k' });
-    await claims.attachCycle('r1', 'c1', 'r2');
-    await claims.recordEvent('r1', 'c1', 'k', { kind: 'follow_up', coverageId: null, note: '' });
+    await claims.attachCycle('r1', 'c1', 'k', 'r2');
+    await claims.recordEvent('r1', 'c1', 'k', {
+      kind: 'follow_up',
+      coverageId: null,
+      note: '',
+      payerClaimNumber: null
+    });
     await claims.closeClaim('r1', 'c1', 'k', 'paid');
     assert.equal(await claims.ledger('r1', 'c1'), null);
+    assert.equal(await claims.claimCheck('r1', 'c1'), null);
     assert.deepEqual(log, [
       'open',
       'announce',
       'patient',
       'announce',
       'save',
+      'announce',
+      'patch',
       'announce',
       'status',
       'announce',

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as v from 'valibot';
-import { createGraphSchema, versionParam } from './schemas.ts';
+import { createGraphSchema, definitionSchema, versionParam } from './schemas.ts';
+import { templateFor } from './service.ts';
 
 describe('graph schemas', () => {
   it('normalizes keys and reserves the std namespace', () => {
@@ -21,6 +22,22 @@ describe('graph schemas', () => {
         key
       );
     }
+  });
+
+  it('bounds names, descriptions and definition size', () => {
+    const base = { key: 'billing.x', kind: 'node' };
+    assert.equal(v.safeParse(createGraphSchema, { ...base, name: 'x'.repeat(121) }).success, false);
+    assert.equal(
+      v.safeParse(createGraphSchema, { ...base, name: 'X', description: 'x'.repeat(2001) }).success,
+      false
+    );
+    const definition = templateFor('node');
+    assert.equal(v.safeParse(definitionSchema, { definition }).success, true);
+    const huge = {
+      ...definition,
+      variables: [{ name: 'x', type: 'string', default: 'x'.repeat(2_000_000) }]
+    };
+    assert.equal(v.safeParse(definitionSchema, { definition: huge }).success, false);
   });
 
   it('parses version params', () => {

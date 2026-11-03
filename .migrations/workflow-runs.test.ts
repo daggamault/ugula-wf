@@ -14,7 +14,13 @@ describe('workflow runs tables', () => {
     const db = createDummyDb();
     const tableSql = buildWorkflowRunsTable(db).compile().sql;
     assert.ok(tableSql.includes('create table "workflow_runs"'));
-    assert.ok(tableSql.includes('references "graph_versions" ("id") on delete restrict'));
+    assert.ok(tableSql.includes('references "graph_versions" ("id") on delete no action'));
+    assert.ok(tableSql.includes('unique ("tenant_id", "id")'));
+    assert.ok(
+      tableSql.includes(
+        "status in ('running', 'suspended', 'completed', 'faulted', 'failed', 'cancelled')"
+      )
+    );
     assert.ok(tableSql.includes('references "workflow_runs" ("id") on delete cascade'));
     assert.ok(tableSql.includes("'faulted'"));
     const indexSql = buildWorkflowRunsIndexes(db).map((i) => i.compile().sql);
@@ -22,9 +28,10 @@ describe('workflow runs tables', () => {
     assert.ok(indexSql.some((s) => s.includes(`"status" = 'running'`)));
     assert.ok(
       indexSql.includes(
-        `create index "idx_workflow_runs_active_children" on "workflow_runs" ("parent_id", "parent_wait") where "status" in ('running', 'suspended', 'faulted')`
+        'create index "idx_workflow_runs_parent" on "workflow_runs" ("parent_id", "parent_wait", "parent_index")'
       )
     );
+    assert.equal(indexSql.length, 5);
     await db.destroy();
   });
 

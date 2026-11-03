@@ -30,6 +30,7 @@ export type S3Config = {
   bucket: string;
   accessKeyId: string;
   secretAccessKey: string;
+  maxObjectBytes?: number;
 };
 
 export const createS3Storage = ({
@@ -37,8 +38,14 @@ export const createS3Storage = ({
   region,
   bucket,
   accessKeyId,
-  secretAccessKey
+  secretAccessKey,
+  maxObjectBytes = 128 * 1024 * 1024
 }: S3Config): ObjectStorage => {
+  const tooLarge = (key: string, size: number) => {
+    if (size > maxObjectBytes) {
+      throw new Error(`Object ${key} is ${size} bytes, more than ${maxObjectBytes}`);
+    }
+  };
   const client = new S3Client({
     endpoint,
     region,
@@ -49,7 +56,11 @@ export const createS3Storage = ({
     bucket,
     get: async (key) => {
       const out = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-      return out.Body ? out.Body.transformToByteArray() : new Uint8Array();
+      if (!out.Body) throw new Error(`Object ${key} has no body`);
+      tooLarge(key, out.ContentLength ?? 0);
+      const bytes = await out.Body.transformToByteArray();
+      tooLarge(key, bytes.byteLength);
+      return bytes;
     },
     put: async (key, body, contentType) => {
       await client.send(

@@ -110,6 +110,20 @@ test('packages declare exactly the libs they import', () => {
   assert.deepEqual(bad, []);
 });
 
+test('the root declares exactly the libs its scripts import', () => {
+  const pkg = load(root, layers);
+  const used = new Set(
+    ['.migrations', '.seeds', '.e2e'].flatMap((d) =>
+      (readdirSync(join(root, d), { recursive: true, encoding: 'utf8' }) as string[])
+        .filter((f) => /\.tsx?$/.test(f))
+        .flatMap((f) => specifiers(join(root, d, f)))
+        .map((s) => /^(@ugula\/[^/]+)/.exec(s)?.[1])
+        .filter((l) => l !== undefined)
+    )
+  );
+  assert.deepEqual(pkg.deps.toSorted(), [...used].toSorted());
+});
+
 test('relative imports stay inside their package', () => {
   const bad = [...libs, ...apps].flatMap((p) =>
     imports(p)

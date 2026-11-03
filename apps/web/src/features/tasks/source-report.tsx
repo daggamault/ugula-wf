@@ -1,6 +1,7 @@
 import { describeCode, elementLabel } from '@ugula/nemsis';
 import { CopyIcon } from 'lucide-react';
 import { useState } from 'react';
+import { messageOf } from '../../shared/api.ts';
 import { formatDateTime } from '../../shared/format.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
@@ -22,8 +23,12 @@ export const SourceReportView = ({ source }: { source: SourceReport }) => {
   const [view, setView] = useState<View>('tree');
   const notify = useToast();
   const copy = async () => {
-    await navigator.clipboard.writeText(source.xml);
-    notify({ title: 'XML copied to the clipboard' });
+    try {
+      await navigator.clipboard.writeText(source.xml);
+      notify({ title: 'XML copied to the clipboard' });
+    } catch (err) {
+      notify({ intent: 'danger', title: 'Could not copy the XML', description: messageOf(err) });
+    }
   };
   return (
     <SectionPanel
@@ -47,7 +52,7 @@ export const SourceReportView = ({ source }: { source: SourceReport }) => {
     >
       {view === 'tree' ? (
         <XmlTree
-          label="Source report"
+          label="Source Report"
           rootName="PatientCareReport"
           value={source.data}
           labelOf={(name) => elementLabel(name) ?? source.dictionary.elements[name] ?? null}

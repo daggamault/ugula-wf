@@ -1,6 +1,7 @@
 import * as v from 'valibot';
 import { call, defineNode, next, pin, suspend } from '../define.ts';
 import { fail } from '../errors.ts';
+import { MAX_RANGE } from '../expr-functions.ts';
 import { isRecord, toText } from '../json.ts';
 import type { Json, NodeDef } from '../types.ts';
 
@@ -19,7 +20,7 @@ const workflowConfig = v.object({
 const childError = (payload: Json) =>
   isRecord(payload) && typeof payload.error === 'string' ? payload.error : null;
 
-export const branchNode = defineNode({
+export const flowBranchNode = defineNode({
   type: 'std.flow.branch',
   version: 1,
   title: 'Branch',
@@ -129,6 +130,7 @@ export const forRangeNode = defineNode({
     const loop = event.type === 'return' ? loopState(state) : null;
     const index = loop ? Number(loop.index) + 1 : ((await read('first')) as number);
     const last = loop ? Number(loop.last) : ((await read('last')) as number);
+    if (!loop && last - index >= MAX_RANGE) fail(`For Range: at most ${MAX_RANGE} iterations`);
     if (index > last) return next('completed', {}, null);
     return call('body', { index, last }, { index });
   }
@@ -461,7 +463,7 @@ export const spawnWorkflowsNode = defineNode<v.InferOutput<typeof workflowConfig
 });
 
 export const flowNodes: NodeDef[] = [
-  branchNode,
+  flowBranchNode,
   switchNode,
   sequenceNode,
   forEachNode,

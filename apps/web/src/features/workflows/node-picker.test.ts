@@ -3,9 +3,10 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
+import { testNodes } from '../../shared/testing.ts';
 import { groupPalette, NodeList, NodePicker } from './node-picker.tsx';
 
-const { palette } = createCatalog();
+const { palette } = createCatalog(testNodes);
 
 describe('NodePicker', () => {
   it('groups nodes by category and finds them by title or what they do', () => {

@@ -1,3 +1,4 @@
+import { createNodeCatalog } from '@ugula/catalog';
 import { createElement, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App, type AppClients } from './app.tsx';
@@ -37,7 +38,14 @@ export const createClients = (config: Config, fetchFn: typeof fetch = fetch): Ap
 export const mountApp = (el: HTMLElement | null, config: Config) => {
   if (!el) throw new Error('Missing root element');
   createRoot(el).render(
-    createElement(StrictMode, null, createElement(App, { clients: createClients(config) }))
+    createElement(
+      StrictMode,
+      null,
+      createElement(App, {
+        clients: createClients(config),
+        nodes: createNodeCatalog({ fetch: (...args) => fetch(...args) })
+      })
+    )
   );
 };
 

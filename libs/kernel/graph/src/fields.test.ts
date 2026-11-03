@@ -18,4 +18,27 @@ describe('checkField', () => {
     assert.equal(checkField(pin, 3), 'expected string, got number');
     assert.equal(checkField({ name: 'n', type: 'number' }, 3), null);
   });
+
+  it('requires a value only for the outcomes that need it', () => {
+    const date = { name: 'd', type: 'string' as const, required: ['save'] };
+    assert.equal(checkField(date, null, 'save'), 'is required');
+    assert.equal(checkField(date, '  ', 'save'), 'is required');
+    assert.equal(checkField(date, null, 'void'), null);
+    assert.equal(checkField(date, null), null);
+    assert.equal(
+      checkField({ name: 'l', type: { list: 'string' }, required: ['save'] }, [], 'save'),
+      'is required'
+    );
+  });
+
+  it('checks calendar dates and number ranges', () => {
+    const date = { name: 'd', type: 'string' as const, format: 'date' as const };
+    assert.equal(checkField(date, '2026-02-28'), null);
+    assert.equal(checkField(date, '2026-02-30'), 'must be a date (YYYY-MM-DD)');
+    assert.equal(checkField(date, '02/01/2026'), 'must be a date (YYYY-MM-DD)');
+    const miles = { name: 'm', type: 'number' as const, min: 0.1, max: 500 };
+    assert.equal(checkField(miles, 12.5), null);
+    assert.equal(checkField(miles, 0), 'must be at least 0.1');
+    assert.equal(checkField(miles, 900), 'must be at most 500');
+  });
 });

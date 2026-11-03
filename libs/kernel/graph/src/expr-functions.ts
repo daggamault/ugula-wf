@@ -16,7 +16,7 @@ export type FnValue = (args: ExprValue[]) => ExprValue;
 
 export type ExprValue = Json | FnValue;
 
-export type ExprCallContext = {
+type ExprCallContext = {
   call: (fn: ExprValue, args: ExprValue[]) => ExprValue;
   charge: (units: number) => void;
   now: Date | undefined;
@@ -24,10 +24,10 @@ export type ExprCallContext = {
 
 export const CHARS_PER_UNIT = 32;
 
-export type ExprFunction = (args: ExprValue[], cx: ExprCallContext) => ExprValue;
+type ExprFunction = (args: ExprValue[], cx: ExprCallContext) => ExprValue;
 
 const DAY_MS = 86_400_000;
-const MAX_RANGE = 100_000;
+export const MAX_RANGE = 100_000;
 
 const describe = (v: ExprValue) => (typeof v === 'function' ? 'function' : kindOf(v));
 
@@ -94,7 +94,7 @@ const padTo = (fn: string, n: ExprValue, cx: ExprCallContext) => {
   return width;
 };
 
-const sortKey = (fn: string, v: ExprValue): number | string =>
+export const sortKey = (fn: string, v: ExprValue): number | string =>
   typeof v === 'number' || typeof v === 'string'
     ? v
     : fail(`${fn}: can only sort by numbers or strings`);

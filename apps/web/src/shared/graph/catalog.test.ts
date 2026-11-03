@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ENTRY_TYPE, type GraphDef, RETURN_TYPE } from '@ugula/graph';
+import { testNodes } from '../testing.ts';
 import { createCatalog, titleFromKey } from './catalog.ts';
 
 const owner: GraphDef = {
@@ -24,7 +25,7 @@ const signature = {
 
 describe('createCatalog', () => {
   it('builds a categorized palette from std nodes, std composites and published nodes', () => {
-    const catalog = createCatalog({
+    const catalog = createCatalog(testNodes, {
       published: [
         {
           graph_id: 'g-x',
@@ -65,7 +66,7 @@ describe('createCatalog', () => {
   });
 
   it('resolves signatures and titles without throwing on unknown nodes', () => {
-    const catalog = createCatalog({
+    const catalog = createCatalog(testNodes, {
       published: [
         {
           graph_id: 'g-x',
@@ -108,14 +109,14 @@ describe('createCatalog', () => {
     assert.equal(catalog.describe({ id: 'z', type: 'nope', version: 1 }), '');
     assert.equal(catalog.hasConfig({ id: 'x', type: 'std.expr', version: 1 }), true);
     assert.equal(catalog.hasConfig({ id: 'a', type: 'std.math.add', version: 1 }), false);
-    assert.ok(!createCatalog().palette.some((e) => !e.description.endsWith('.')));
+    assert.ok(!createCatalog(testNodes).palette.some((e) => !e.description.endsWith('.')));
     assert.equal(catalog.graphOf({ type: 'acme.full', version: 1 }), owner);
     assert.ok(catalog.graphOf({ type: 'std.math.average', version: 1 }));
     assert.equal(titleFromKey('demo.line-total'), 'Line Total');
   });
 
   it('knows which nodes open a sub-graph or a started workflow', () => {
-    const catalog = createCatalog({
+    const catalog = createCatalog(testNodes, {
       published: [
         {
           graph_id: 'g-s',

@@ -1,4 +1,4 @@
-export type TextPart = { text: string; isMatch: boolean };
+type TextPart = { text: string; isMatch: boolean };
 
 export const highlightParts = (text: string, query: string): TextPart[] => {
   const needle = query.trim().toLowerCase();
@@ -45,7 +45,7 @@ export const prefixParts = (
   return whole;
 };
 
-export type HighlightProps = {
+type HighlightProps = {
   text: string;
   query: string;
   isPrefix?: boolean;
@@ -56,10 +56,7 @@ export const Highlight = ({ text, query, isPrefix = false, keyOf }: HighlightPro
   <>
     {(isPrefix ? prefixParts(text, query, keyOf) : highlightParts(text, query)).map((p, i) =>
       p.isMatch ? (
-        <mark
-          key={i}
-          className="bg-warning/35 text-surface-fg rounded-sm [box-decoration-break:clone] px-px"
-        >
+        <mark key={i} className="bg-warning/35 text-surface-fg [box-decoration-break:clone] px-px">
           {p.text}
         </mark>
       ) : (

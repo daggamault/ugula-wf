@@ -30,7 +30,11 @@ const service = {
   receiveSftpEvent: async (event: { action: string }) => ok({ received: event.action }),
   find: async (tenantId: string, id: string) => {
     calls.push(['find', tenantId, id]);
-    return ok({ import: { id }, reports: [] });
+    return ok({ import: { id } });
+  },
+  reports: async (tenantId: string, id: string, page: unknown) => {
+    calls.push(['reports', tenantId, id, page]);
+    return ok({ items: [], total: 0, page: 1, pageSize: 25 });
   },
   report: async (tenantId: string, id: string) => {
     calls.push(['report', tenantId, id]);
@@ -48,11 +52,11 @@ const form = (fields: Record<string, string | File>) => {
 
 describe('import routes', () => {
   it('lists recent imports for the session tenant', async () => {
-    assert.equal((await request('/?page=2&pageSize=10&sort=claims&dir=asc')).status, 200);
+    assert.equal((await request('/?q=pcrs&page=2&pageSize=10&sort=claims&dir=asc')).status, 200);
     assert.deepEqual(calls.at(-1), [
       'list',
       't-1',
-      { page: 2, pageSize: 10, sort: 'claims', dir: 'asc' }
+      { q: 'pcrs', page: 2, pageSize: 10, sort: 'claims', dir: 'asc' }
     ]);
     assert.equal((await request('/?pageSize=7')).status, 400);
   });
@@ -64,6 +68,14 @@ describe('import routes', () => {
     assert.equal((await request('/reports/nope')).status, 400);
     assert.equal((await request(`/${id}`)).status, 200);
     assert.deepEqual(calls.at(-1), ['find', 't-1', id]);
+    assert.equal((await request(`/${id}/reports?sort=patient&page=2`)).status, 200);
+    assert.deepEqual(calls.at(-1), [
+      'reports',
+      't-1',
+      id,
+      { page: 2, pageSize: 25, sort: 'patient', dir: 'asc' }
+    ]);
+    assert.equal((await request(`/${id}/reports?sort=odd`)).status, 400);
   });
 
   it('accepts a multipart file for the session tenant', async () => {

@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { matchPatient, type Patient, readDemographics, toNewPatient } from './patients.ts';
+import {
+  isCompleteAddress,
+  matchPatient,
+  type Patient,
+  readDemographics,
+  sameAddress,
+  toNewPatient
+} from './patients.ts';
 
 const address = {
   addressLine: '1 Main St',
@@ -151,5 +158,16 @@ describe('matchPatient', () => {
     assert.deepEqual(matchPatient(readDemographics({ ...report, birthDate: null }), [janet]), {
       kind: 'incomplete'
     });
+  });
+});
+
+describe('addresses', () => {
+  const home = { addressLine: '2 Elm St', city: 'Springfield', state: 'IL', postalCode: '62701' };
+
+  it('knows a complete mailing address, and the same one written differently', () => {
+    assert.ok(isCompleteAddress(home));
+    assert.ok(!isCompleteAddress({ ...home, state: null }));
+    assert.ok(sameAddress(home, { ...home, addressLine: '2 ELM ST.', postalCode: '627011234' }));
+    assert.ok(!sameAddress(home, { ...home, addressLine: '3 Elm St' }));
   });
 });

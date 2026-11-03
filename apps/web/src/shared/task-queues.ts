@@ -1,16 +1,17 @@
 import { titleCaseWords } from './format.ts';
 
-export type QueueInfo = { label: string; description: string };
+type QueueInfo = { label: string; description: string };
 
 const QUEUES: Readonly<Record<string, QueueInfo>> = {
   'billing-review': {
     label: 'Billing Review',
     description:
-      'Confirm the level of service and mileage before a claim is priced, approve claims before they go to a payer, and check PCRs that changed after billing.'
+      'Confirm the trip and service before a claim is priced, set missing charges, fix claim data, approve and submit claims, and check PCRs that changed after billing.'
   },
   'billing-patients': {
     label: 'Patient Matching',
-    description: 'Decide whether a PCR belongs to a patient you already have or a new one.'
+    description:
+      'Confirm whether a PCR belongs to a likely patient or a new one, and fill in a missing name or birth date.'
   },
   'billing-payers': {
     label: 'Payer Matching',
@@ -27,7 +28,8 @@ const QUEUES: Readonly<Record<string, QueueInfo>> = {
   },
   'billing-reconcile': {
     label: 'Reconcile Payments',
-    description: 'Payer responses that left a balance. Check them, then continue or write off.'
+    description:
+      'Payer responses that left a balance, and overpayments to refund. Check them, then continue, write off or refund.'
   },
   'billing-collections': {
     label: 'Balance Review',

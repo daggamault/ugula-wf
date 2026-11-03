@@ -4,7 +4,7 @@ import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
 import { searchText } from '../../shared/search.ts';
 
-export const MAX_FEE_CENTS = 10_000_000;
+const MAX_FEE_CENTS = 10_000_000;
 
 export const feeSchema = v.object({
   payerId: v.optional(v.nullable(uuid), null),
@@ -19,7 +19,7 @@ export const feeSchema = v.object({
 
 export type FeeInput = v.InferOutput<typeof feeSchema>;
 
-export const FEE_SORTS = ['payer', 'code', 'amount', 'updated'] as const;
+const FEE_SORTS = ['payer', 'code', 'amount', 'updated'] as const;
 
 export type FeeSort = (typeof FEE_SORTS)[number];
 

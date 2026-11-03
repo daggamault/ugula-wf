@@ -56,13 +56,18 @@ export const searchPayers = (db: Db, tenantId: string, f: PayerFilters) => {
 export const findPayer = (db: Db, tenantId: string, id: string) =>
   payerRows(db, tenantId).where('p.id', '=', id).executeTakeFirst();
 
-export const listPayerNames = (db: Db, tenantId: string) =>
-  db
+const NAME_LIMIT = 50;
+
+export const listPayerNames = (db: Db, tenantId: string, text?: string) => {
+  const q = db
     .selectFrom('payers')
     .select(['id', 'name'])
     .where('tenant_id', '=', tenantId)
     .orderBy(sql`lower(name)`)
-    .execute();
+    .limit(NAME_LIMIT);
+  return (text ? q.where(sql`lower(name)`, 'like', containsPattern(text)) : q).execute();
+};
+
 export const upsertPayer = (db: Db, tenantId: string, p: PayerInput) =>
   db
     .insertInto('payers')
@@ -75,8 +80,17 @@ export const upsertPayer = (db: Db, tenantId: string, p: PayerInput) =>
         updated_at: sql`now()`
       })
     )
-    .returning(columns)
+    .returning([...columns, sql<boolean>`embedding is null`.as('unembedded')])
     .executeTakeFirstOrThrow();
+
+export const saveEmbedding = (db: Db, tenantId: string, id: string, embedding: number[]) =>
+  db
+    .updateTable('payers')
+    .set({ embedding: sql`${`[${embedding.join(',')}]`}::vector` })
+    .where('id', '=', id)
+    .where('tenant_id', '=', tenantId)
+    .where('embedding', 'is', null)
+    .execute();
 
 export const deletePayer = async (db: Db, tenantId: string, id: string) =>
   (await db

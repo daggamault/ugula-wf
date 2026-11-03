@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { Json, ValueType } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { isFileType, ValueField } from './value-field.tsx';
+import { isFileType, linesOf, ValueField } from './value-field.tsx';
 
 const render = (type: ValueType, value: Json) =>
   renderToStaticMarkup(
@@ -17,9 +17,11 @@ describe('ValueField', () => {
     assert.ok(render('number', null).includes('type="number"'));
     assert.ok(render('string', 'abc').includes('value="abc"'));
     assert.ok(render('datetime', '2026-01-02T03:04:00.000Z').includes('value="2026-01-02T03:04"'));
-    const json = render({ list: 'string' }, ['a']);
+    const json = render({ list: 'number' }, [1]);
     assert.ok(json.includes('<textarea'));
-    assert.ok(json.includes('list&lt;string&gt;'));
+    assert.ok(json.includes('list&lt;number&gt;'));
+    const list = render({ list: 'string' }, ['R07.9', 'I10']);
+    assert.ok(list.includes('R07.9\nI10</textarea>') && list.includes('One per line.'));
     const choice = renderToStaticMarkup(
       createElement(ValueField, {
         id: 'pin',
@@ -34,6 +36,30 @@ describe('ValueField', () => {
       })
     );
     assert.ok(choice.includes('<option value="failed" selected="">Failed</option>'));
+  });
+});
+
+describe('field specs', () => {
+  it('reads one value per line, dropping blank lines', () => {
+    assert.deepEqual(linesOf(' R07.9 \n\nI10\n'), ['R07.9', 'I10']);
+  });
+
+  it('marks required fields, offers dates and bounds numbers', () => {
+    const field = (patch: object) =>
+      renderToStaticMarkup(
+        createElement(ValueField, {
+          id: 'f',
+          label: 'Field',
+          type: 'string',
+          value: null,
+          onChange: () => undefined,
+          ...patch
+        })
+      );
+    assert.ok(field({ isRequired: true }).includes('required=""'));
+    assert.ok(field({ format: 'date', value: '2026-01-02' }).includes('type="date"'));
+    const price = field({ type: 'number', min: 0, max: 500 });
+    assert.ok(price.includes('min="0"') && price.includes('max="500"'));
   });
 });
 

@@ -8,7 +8,7 @@ import type { GraphShow, GraphSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
-export type GraphSummary = {
+type GraphSummary = {
   id: string;
   key: string;
   name: string;
@@ -286,7 +286,7 @@ export const findSystemGraph = (db: Db, key: string) =>
     .where('tenant_id', 'is', null)
     .executeTakeFirst();
 
-export const findLatestPublished = (db: Db, graphId: string) =>
+export const findNewestPublishedVersion = (db: Db, graphId: string) =>
   db
     .selectFrom('graph_versions')
     .select(['id', 'version', 'definition'])

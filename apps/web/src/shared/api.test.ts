@@ -67,3 +67,17 @@ describe('createApi session expiry', () => {
     assert.equal(expired, 1);
   });
 });
+
+describe('createApi cancellation', () => {
+  it('hands the abort signal of a read to fetch', async () => {
+    const seen: (AbortSignal | null | undefined)[] = [];
+    const api = createApi('', async (_, init) => {
+      seen.push(init?.signal);
+      return new Response('{}', { status: 200 });
+    });
+    const controller = new AbortController();
+    await api.get('/a', controller.signal);
+    await api.get('/b');
+    assert.deepEqual(seen, [controller.signal, undefined]);
+  });
+});

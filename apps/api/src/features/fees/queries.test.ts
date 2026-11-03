@@ -33,14 +33,16 @@ describe('fee queries', () => {
   it('upserts one price per tenant, payer and code and returns it with its payer name', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'f1' }]);
     await upsertFee(db, 't-1', { payerId: PAYER, code: 'A0427', amountCents: 95000 });
-    const [upsert, reread] = queries;
+    assert.equal(queries.length, 1);
+    const [upsert] = queries;
+    assert.ok(upsert?.sql.startsWith('with "saved" as (insert into "fee_schedules"'));
     assert.ok(
       upsert?.sql.includes(
         'on conflict ("tenant_id", "payer_id", "code") do update set "amount_cents" = $'
       )
     );
+    assert.ok(upsert?.sql.includes('from "saved" as "f" left join "payers" as "p"'));
     assert.deepEqual(upsert?.parameters.slice(0, 4), ['t-1', PAYER, 'A0427', 95000]);
-    assert.ok(reread?.sql.includes('"f"."id" = $2'));
   });
 
   it('finds, checks payers and deletes only within the tenant', async () => {

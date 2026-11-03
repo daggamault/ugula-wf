@@ -4,6 +4,7 @@ import { ENTRY_TYPE, type GraphDef } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
+import { testNodes } from '../../shared/testing.ts';
 import { NodeInspector } from './node-inspector.tsx';
 
 const def: GraphDef = {
@@ -33,7 +34,7 @@ const render = (id: string, editable = true) =>
     createElement(NodeInspector, {
       def,
       node: def.nodes.find((n) => n.id === id) ?? { id, type: 'x', version: 1 },
-      catalog: createCatalog(),
+      catalog: createCatalog(testNodes),
       editable,
       onChange: () => undefined,
       onDelete: () => undefined,

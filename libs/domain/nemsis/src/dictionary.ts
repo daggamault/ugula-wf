@@ -1,11 +1,9 @@
-import type { Json } from '@ugula/graph';
+import { isRecord, type Json } from '@ugula/graph';
 
-/** A coded value to describe: `list` is the element (eResponse.05) or an attribute (@NV). */
-export type CodeRef = { list: string; code: string };
+type CodeRef = { list: string; code: string };
 
 export type ReportTerms = { elements: string[]; codes: CodeRef[] };
 
-/** Official element names and code descriptions for the terms one report uses. */
 export type ReportDictionary = {
   elements: Record<string, string>;
   codes: Record<string, Record<string, string>>;
@@ -13,15 +11,10 @@ export type ReportDictionary = {
 
 const TEXT = '#text';
 
-/** Codes are short tokens; free text such as the narrative is never looked up. */
 const isCode = (value: string) => /^[\w.-]{1,20}$/.test(value);
 
-const isRecord = (value: Json | undefined): value is { [key: string]: Json } =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
+const attributeList = (name: string) => `@${name}`;
 
-export const attributeList = (name: string) => `@${name}`;
-
-/** The element names and coded values in a parsed report, without repeats. */
 export const reportTerms = (report: Json): ReportTerms => {
   const elements = new Set<string>();
   const codes = new Map<string, CodeRef>();

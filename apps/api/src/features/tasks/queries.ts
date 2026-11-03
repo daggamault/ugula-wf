@@ -92,13 +92,17 @@ export const claimNext = (db: Db, tenantId: string, queue: string | null, userId
     .returning(detail)
     .executeTakeFirst();
 
-export const assignTask = (db: Db, tenantId: string, id: string, userId: string | null) =>
+export const assignTask = (
+  db: Db,
+  input: { tenantId: string; id: string; userId: string; assignee: string | null }
+) =>
   db
     .updateTable('tasks')
-    .set({ assignee_id: userId, updated_at: sql`now()` })
-    .where('tenant_id', '=', tenantId)
-    .where('id', '=', id)
+    .set({ assignee_id: input.assignee, updated_at: sql`now()` })
+    .where('tenant_id', '=', input.tenantId)
+    .where('id', '=', input.id)
     .where('status', '=', 'open')
+    .where((eb) => eb.or([eb('assignee_id', 'is', null), eb('assignee_id', '=', input.userId)]))
     .returning('id')
     .executeTakeFirst();
 
@@ -118,5 +122,6 @@ export const completeTask = (
     .where('tenant_id', '=', input.tenantId)
     .where('id', '=', input.id)
     .where('status', '=', 'open')
+    .where((eb) => eb.or([eb('assignee_id', 'is', null), eb('assignee_id', '=', input.userId)]))
     .returning('id')
     .executeTakeFirst();

@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { ImportReport } from './client.ts';
-import { patientOf, ReportsTable, reportOutcome } from './import-page.tsx';
+import { idleLive } from '../../shared/testing.ts';
+import type { ImportReport, ImportsClient } from './client.ts';
+import { ImportPage, patientOf, ReportsTable, reportOutcome } from './import-page.tsx';
 
 const report = (over: Partial<ImportReport> = {}): ImportReport => ({
   id: 'r1',
@@ -73,5 +74,21 @@ describe('ReportsTable', () => {
     assert.ok(html.includes('href="/claims/c1" aria-label="Open claim for PCR-1"'));
     assert.ok(html.includes('href="/tasks/k1" aria-label="Open task Review PCR"'));
     assert.ok(html.includes('$950.00') && html.includes('>Waiting<'));
+  });
+});
+
+describe('ImportPage', () => {
+  it('loads the import before its PCRs', () => {
+    const html = renderToStaticMarkup(
+      createElement(ImportPage, {
+        client: {
+          find: () => new Promise(() => undefined),
+          reports: () => new Promise(() => undefined)
+        } as unknown as ImportsClient,
+        live: idleLive,
+        importId: 'i1'
+      })
+    );
+    assert.ok(html.includes('aria-label="Loading"'));
   });
 });

@@ -8,7 +8,7 @@ import { IconButton } from './icon-button.tsx';
 import { interactiveClasses } from './interactive.ts';
 import { ThemeToggle } from './theme-toggle.tsx';
 
-export type NavItem = {
+type NavItem = {
   id: string;
   label: string;
   href: string;
@@ -18,7 +18,7 @@ export type NavItem = {
   badge?: number;
 };
 
-export type ShellProps = {
+type ShellProps = {
   path: string;
   navItems: readonly NavItem[];
   userEmail: string;

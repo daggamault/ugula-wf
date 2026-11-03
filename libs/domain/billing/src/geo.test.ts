@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { usState, zipCode } from './geo.ts';
+import { US_STATE_PATTERN, usState, ZIP_CODE_PATTERN, ZIP_PLUS_4_PATTERN, zipCode } from './geo.ts';
 
 describe('usState', () => {
   it('turns NEMSIS ANSI (FIPS) state codes and USPS codes into USPS abbreviations', () => {
@@ -20,5 +20,15 @@ describe('zipCode', () => {
     assert.equal(zipCode('62704-1234'), '627041234');
     assert.equal(zipCode('6270'), null);
     assert.equal(zipCode(null), null);
+  });
+});
+
+describe('address patterns', () => {
+  it('accept exactly what the readers produce', () => {
+    assert.match(usState('17') ?? '', new RegExp(US_STATE_PATTERN));
+    assert.match(zipCode('62704') ?? '', new RegExp(ZIP_CODE_PATTERN));
+    assert.match(zipCode('62704-1234') ?? '', new RegExp(ZIP_PLUS_4_PATTERN));
+    assert.doesNotMatch('62704', new RegExp(ZIP_PLUS_4_PATTERN));
+    assert.doesNotMatch('6270', new RegExp(ZIP_CODE_PATTERN));
   });
 });

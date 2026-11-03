@@ -131,4 +131,30 @@ describe('createPatientStore', () => {
       assert.equal(sqlOf(other.queries).filter((q) => q.startsWith('insert')).length, 1);
     }
   });
+
+  it("updates a patient's address in the run tenant and returns the patient", async () => {
+    const moved = {
+      addressLine: '9 Oak Ave',
+      city: 'Springfield',
+      state: 'IL',
+      postalCode: '62702'
+    };
+    const { db, queries } = createRecordingDb((q) =>
+      q.parameters.includes(row.id)
+        ? [{ ...row, address_line: '9 Oak Ave', postal_code: '62702' }]
+        : []
+    );
+    const store = createPatientStore(db);
+    assert.deepEqual(await store.updateAddress('r1', 'k', row.id, moved), {
+      ...patient,
+      ...moved
+    });
+    assert.ok(queries[0]?.sql.startsWith('update "patients" set "address_line" = $1'));
+    assert.ok(
+      queries[0]?.sql.includes(
+        '"tenant_id" = (select "tenant_id" from "workflow_runs" where "id" = $6)'
+      )
+    );
+    await assert.rejects(store.updateAddress('r1', 'k', 'nope', moved), /does not exist/);
+  });
 });

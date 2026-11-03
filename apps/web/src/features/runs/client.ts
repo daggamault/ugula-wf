@@ -20,7 +20,7 @@ export type RunSummary = {
   error_message: string | null;
 };
 
-export type RunTask = {
+type RunTask = {
   id: string;
   kind: 'task' | 'fault';
   queue: string;
@@ -42,7 +42,7 @@ export type RunDetail = {
   ancestors: RunAncestor[];
 };
 
-export type RunAncestor = { id: string; name: string; status: RunStatus };
+type RunAncestor = { id: string; name: string; status: RunStatus };
 
 export type RunStep = {
   seq: number;
@@ -76,16 +76,23 @@ const FINISHED_STATUSES: readonly RunStatus[] = ['completed', 'failed', 'cancell
 export const isFinished = (status: RunStatus) => FINISHED_STATUSES.includes(status);
 
 export const createRunsClient = (api: Api) => ({
-  list: (status: RunStatus | null, page: string) =>
-    api.get<Page<RunSummary>>(`/api/runs?${status ? `status=${status}&` : ''}${page}`),
-  find: (id: string) => api.get<RunDetail>(`/api/runs/${id}`),
+  list: (status: RunStatus | null, query: string, signal?: AbortSignal) =>
+    api.get<Page<RunSummary>>(`/api/runs?${status ? `status=${status}&` : ''}${query}`, signal),
+  find: (id: string, signal?: AbortSignal) =>
+    api.get<RunDetail>(`/api/runs/${encodeURIComponent(id)}`, signal),
   graphs: async (id: string) =>
-    (await api.get<{ graphs: RunGraph[] }>(`/api/runs/${id}/graphs`)).graphs,
-  steps: async (id: string) =>
-    (await api.get<{ steps: RunStep[] }>(`/api/runs/${id}/steps?limit=2000`)).steps,
+    (await api.get<{ graphs: RunGraph[] }>(`/api/runs/${encodeURIComponent(id)}/graphs`)).graphs,
+  steps: async (id: string, signal?: AbortSignal) =>
+    (
+      await api.get<{ steps: RunStep[] }>(
+        `/api/runs/${encodeURIComponent(id)}/steps?limit=2000`,
+        signal
+      )
+    ).steps,
   start: (graphId: string, inputs: Record<string, Json>) =>
     api.post<{ id: string; version: number }>('/api/runs', { graphId, inputs }),
-  cancel: (id: string) => api.post<{ status: string }>(`/api/runs/${id}/cancel`),
+  cancel: (id: string) =>
+    api.post<{ status: string }>(`/api/runs/${encodeURIComponent(id)}/cancel`),
   uploadFile: (file: File) => {
     const form = new FormData();
     form.set('file', file);
@@ -95,11 +102,11 @@ export const createRunsClient = (api: Api) => ({
     const { graph, versions } = await api.get<{
       graph: { name: string };
       versions: { version: number; published_at: string | null }[];
-    }>(`/api/graphs/${graphId}`);
+    }>(`/api/graphs/${encodeURIComponent(graphId)}`);
     const latest = versions.find((v) => v.published_at);
     if (!latest) throw new Error(`${graph.name} has no published version`);
     const { definition } = await api.get<{ definition: GraphDef }>(
-      `/api/graphs/${graphId}/versions/${latest.version}`
+      `/api/graphs/${encodeURIComponent(graphId)}/versions/${latest.version}`
     );
     return { graphId, name: graph.name, version: latest.version, signature: definition.signature };
   }

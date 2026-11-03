@@ -3,21 +3,35 @@ import { describe, it } from 'node:test';
 import { createHub } from './hub.ts';
 
 describe('createHub', () => {
-  it('fans messages out per tenant, sends heartbeats and forgets closed clients', () => {
+  const recorder =
+    (seen: string[]) =>
+    (name: string, needDrain = false) => ({
+      writableNeedDrain: needDrain,
+      write: (chunk: string) => void seen.push(`${name}:${chunk}`),
+      destroy: () => void seen.push(`${name}:destroyed`)
+    });
+
+  it('fans messages out per tenant and forgets closed clients', () => {
     const hub = createHub();
     const seen: string[] = [];
-    const client = (name: string) => ({
-      write: (chunk: string) => void seen.push(`${name}:${chunk}`)
-    });
+    const client = recorder(seen);
     const removeA = hub.add('t-1', client('a'));
     hub.add('t-2', client('b'));
     hub.broadcast('t-1', '{"id":1}');
-    hub.beat();
-    assert.deepEqual(seen, ['a:data: {"id":1}\n\n', 'a:: ping\n\n', 'b:: ping\n\n']);
-    assert.equal(hub.size(), 2);
+    hub.broadcast('t-2', '{"id":2}');
     removeA();
     hub.broadcast('t-1', 'x');
-    assert.equal(hub.size(), 1);
-    assert.equal(seen.length, 3);
+    assert.deepEqual(seen, ['a:data: {"id":1}\n\n', 'b:data: {"id":2}\n\n']);
+  });
+
+  it('drops clients that are not keeping up so they reconnect', () => {
+    const hub = createHub();
+    const seen: string[] = [];
+    const client = recorder(seen);
+    hub.add('t-1', client('slow', true));
+    hub.add('t-1', client('fast'));
+    hub.broadcast('t-1', '1');
+    hub.broadcast('t-1', '2');
+    assert.deepEqual(seen, ['slow:destroyed', 'fast:data: 1\n\n', 'fast:data: 2\n\n']);
   });
 });

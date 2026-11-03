@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { Alert } from './alert.tsx';
+import { Alert, AlertList } from './alert.tsx';
 
 describe('Alert', () => {
   it('announces danger as an alert and other intents as status', () => {
@@ -31,5 +31,21 @@ describe('Alert', () => {
     assert.ok(html.includes('items-center justify-between'));
     assert.ok(html.includes('flex h-5 shrink-0 items-center'));
     assert.ok(!html.includes('mt-0.5'));
+  });
+});
+
+describe('AlertList', () => {
+  it('titles a list of labelled messages', () => {
+    const html = renderToStaticMarkup(
+      createElement(AlertList, {
+        intent: 'warning',
+        title: 'Warnings',
+        items: [{ label: 'Loaded Miles', text: 'Over 100' }, { text: 'Narrative unread' }]
+      })
+    );
+    assert.ok(html.includes('<strong class="font-semibold">Warnings</strong>'));
+    assert.ok(html.includes('Loaded Miles: </span>Over 100'));
+    assert.ok(html.includes('<li>Narrative unread</li>'));
+    assert.ok(!html.includes('<p '));
   });
 });

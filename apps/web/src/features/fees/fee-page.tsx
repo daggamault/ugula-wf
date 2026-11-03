@@ -1,7 +1,8 @@
 import { SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { parseDollars } from '../../shared/format.ts';
+import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
@@ -10,15 +11,71 @@ import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
-import { Select, type SelectOption } from '../../shared/ui/select.tsx';
+import { Select } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
-import type { Fee, FeeInput, FeesClient } from './client.ts';
+import type { DirectoryPayer, Fee, FeeInput, FeesClient } from './client.ts';
 import { feeDeleteNote, feeName } from './fees-page.tsx';
 
-export type FeeDraft = { payerId: string; code: string; amount: string };
+type FeeDraft = { payerId: string; code: string; amount: string };
 
-export const DEFAULT_SCHEDULE = { value: '', label: 'Default Schedule (Every Payer)' };
+const DEFAULT_SCHEDULE = { value: '', label: 'Default Schedule (Every Payer)' };
+
+type FindPayers = (q: string, signal: AbortSignal) => Promise<DirectoryPayer[]>;
+
+export const payerOptions = (found: readonly DirectoryPayer[], chosen: DirectoryPayer | null) => [
+  DEFAULT_SCHEDULE,
+  ...[...(chosen && !found.some((p) => p.id === chosen.id) ? [chosen] : []), ...found].map((p) => ({
+    value: p.id,
+    label: p.name
+  }))
+];
+
+const SEARCH_DELAY_MS = 250;
+
+const PayerPicker = ({
+  findPayers,
+  value,
+  onChange
+}: {
+  findPayers: FindPayers;
+  value: DirectoryPayer | null;
+  onChange: (payer: DirectoryPayer | null) => void;
+}) => {
+  const [text, setText] = useState('');
+  const [q, setQ] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setQ(text.trim()), SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
+  const found = useResource(`fee-payers:${q}`, (signal) => findPayers(q, signal));
+  const payers = found.data ?? [];
+  return (
+    <>
+      <Input
+        id="fee-payer-search"
+        label="Find Payer"
+        type="search"
+        span={2}
+        placeholder="Type part of a payer name"
+        hint={found.error ? found.error.message : undefined}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <Select
+        id="fee-payer"
+        label="Payer"
+        span={2}
+        hint={payers.length === 50 ? 'Showing the first 50 matches.' : undefined}
+        options={payerOptions(payers, value)}
+        value={value?.id ?? ''}
+        onChange={(e) =>
+          onChange([value, ...payers].find((p) => p !== null && p.id === e.target.value) ?? null)
+        }
+      />
+    </>
+  );
+};
 
 export const toFeeDraft = (f: Fee | null): FeeDraft => ({
   payerId: f?.payer_id ?? '',
@@ -34,16 +91,17 @@ export const toFeeInput = (draft: FeeDraft): FeeInput | string => {
 
 export const FeeForm = ({
   fee,
-  payers,
+  findPayers,
   back,
   onSave
 }: {
   fee: Fee | null;
-  payers: readonly SelectOption[];
+  findPayers: FindPayers;
   back: string;
   onSave: (fee: FeeInput) => Promise<string | null>;
 }) => {
   const [draft, setDraft] = useState(() => toFeeDraft(fee));
+  const [payer, setPayer] = useState<DirectoryPayer | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const field = (key: keyof FeeDraft) => ({
@@ -75,14 +133,24 @@ export const FeeForm = ({
       >
         <fieldset disabled={busy}>
           <FieldGrid>
-            <Select
-              id="fee-payer"
-              label="Payer"
-              span={2}
-              options={[DEFAULT_SCHEDULE, ...payers]}
-              disabled={fee !== null}
-              {...field('payerId')}
-            />
+            {fee ? (
+              <Input
+                id="fee-payer"
+                label="Payer"
+                span={4}
+                readOnly
+                value={fee.payer ?? DEFAULT_SCHEDULE.label}
+              />
+            ) : (
+              <PayerPicker
+                findPayers={findPayers}
+                value={payer}
+                onChange={(next) => {
+                  setPayer(next);
+                  setDraft({ ...draft, payerId: next?.id ?? '' });
+                }}
+              />
+            )}
             <Input
               id="fee-code"
               label="HCPCS"
@@ -121,19 +189,21 @@ export const FeeForm = ({
   );
 };
 
-export type FeePageProps = {
+type FeePageProps = {
   client: FeesClient;
+  live: Live;
   feeId: string | null;
   back: string;
 };
 
-export const FeePage = ({ client, feeId, back }: FeePageProps) => {
-  const fee = useResource(`fee:${feeId ?? 'new'}`, async () => (feeId ? client.fee(feeId) : null));
-  const payers = useResource('fee-payers', client.payers);
+export const FeePage = ({ client, live, feeId, back }: FeePageProps) => {
+  const fee = useResource(`fee:${feeId ?? 'new'}`, async (signal) =>
+    feeId ? client.fee(feeId, signal) : null
+  );
+  useReconnect(live, fee.reload);
   const [deleting, setDeleting] = useState(false);
   const notify = useToast();
-  const failure = fee.error ?? payers.error;
-  if (failure) return <PageFailure message={failure.message} />;
+  if (fee.error) return <PageFailure message={fee.error.message} />;
   const current = fee.data ?? null;
   const save = async (input: FeeInput) => {
     try {
@@ -160,7 +230,7 @@ export const FeePage = ({ client, feeId, back }: FeePageProps) => {
       description={
         current
           ? `The price claims use for ${current.code} on ${current.payer ? `${current.payer} claims` : 'the default schedule'}.`
-          : 'Prices for ambulance HCPCS codes. A claim uses its primary payer’s price when there is one, otherwise the default.'
+          : 'A price for an ambulance HCPCS code, for every payer or just one.'
       }
       backTo={back}
       backLabel="Back to Fees"
@@ -173,13 +243,13 @@ export const FeePage = ({ client, feeId, back }: FeePageProps) => {
         ) : null
       }
     >
-      {(feeId && fee.data === undefined) || !payers.data ? (
+      {feeId && fee.data === undefined ? (
         <PageLoading />
       ) : (
         <FeeForm
           key={current?.id ?? 'new'}
           fee={current}
-          payers={payers.data.map((p) => ({ value: p.id, label: p.name }))}
+          findPayers={client.payers}
           back={back}
           onSave={save}
         />

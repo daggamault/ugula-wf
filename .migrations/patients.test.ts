@@ -11,6 +11,10 @@ describe('patients table', () => {
     assert.ok(tableSql.includes('"number" integer generated always as identity not null unique'));
     assert.ok(tableSql.includes('"birth_date" date not null'));
     assert.ok(tableSql.includes('unique ("tenant_id", "source_key")'));
+    assert.ok(tableSql.includes('unique ("tenant_id", "id")'));
+    assert.ok(tableSql.includes("check (gender in ('F', 'M', 'U'))"));
+    assert.ok(tableSql.includes("check (state ~ '^[A-Z]{2}$')"));
+    assert.ok(tableSql.includes("check (postal_code ~ '^[0-9]{5}([0-9]{4})?$')"));
     assert.deepEqual(
       buildPatientsIndexes(db).map((i) => i.compile().sql),
       [

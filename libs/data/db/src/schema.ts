@@ -1,7 +1,20 @@
-import type { ClaimEventKind, ClaimStatus } from '@ugula/billing';
+import type {
+  AdjustmentGroup,
+  ClaimEventKind,
+  ClaimStatus,
+  InsuredRelationship,
+  Sex,
+  TripType
+} from '@ugula/billing';
 import type { ColumnType, Generated, GeneratedAlways, Kysely } from 'kysely';
 
 export type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
+
+export type NullableTimestamp = ColumnType<
+  Date | null,
+  Date | string | null | undefined,
+  Date | string | null
+>;
 
 export type TenantsTable = {
   id: Generated<string>;
@@ -24,7 +37,9 @@ export type UsersTable = {
   updated_at: Timestamp;
 };
 
-export type NotificationIntent = 'primary' | 'success' | 'info' | 'warning' | 'danger';
+export const NOTIFICATION_INTENTS = ['primary', 'success', 'info', 'warning', 'danger'] as const;
+
+export type NotificationIntent = (typeof NOTIFICATION_INTENTS)[number];
 
 export type NotificationsTable = {
   id: Generated<string>;
@@ -41,7 +56,7 @@ export type NotificationsTable = {
 export type NotificationStatesTable = {
   user_id: string;
   read_at: Timestamp;
-  cleared_at: Date | string | null;
+  cleared_at: NullableTimestamp;
 };
 
 export type JsonColumn<T = unknown> = ColumnType<T, string, string>;
@@ -52,7 +67,9 @@ export type NullableJsonColumn<T = unknown> = ColumnType<
   string | null
 >;
 
-export type GraphKind = 'workflow' | 'node';
+export const GRAPH_KINDS = ['workflow', 'node'] as const;
+
+export type GraphKind = (typeof GRAPH_KINDS)[number];
 
 export type GraphsTable = {
   id: Generated<string>;
@@ -72,13 +89,22 @@ export type GraphVersionsTable = {
   version: number;
   definition: JsonColumn;
   dependencies: ColumnType<string[], string[] | undefined, string[]>;
-  published_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  published_at: NullableTimestamp;
   created_by: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 };
 
-export type RunStatus = 'running' | 'suspended' | 'completed' | 'faulted' | 'failed' | 'cancelled';
+export const RUN_STATUSES = [
+  'running',
+  'suspended',
+  'completed',
+  'faulted',
+  'failed',
+  'cancelled'
+] as const;
+
+export type RunStatus = (typeof RUN_STATUSES)[number];
 
 export type WorkflowRunsTable = {
   id: Generated<string>;
@@ -93,11 +119,11 @@ export type WorkflowRunsTable = {
   result: NullableJsonColumn;
   error: NullableJsonColumn;
   wait_key: string | null;
-  lease_until: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  lease_until: NullableTimestamp;
   lease_token: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
-  completed_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  completed_at: NullableTimestamp;
 };
 
 export type WorkflowRunGraphsTable = {
@@ -150,9 +176,13 @@ export type WorkflowRunStepsTable = {
   duration_ms: number;
 };
 
-export type TaskKind = 'task' | 'fault';
+export const TASK_KINDS = ['task', 'fault'] as const;
 
-export type TaskStatus = 'open' | 'completed' | 'cancelled';
+export type TaskKind = (typeof TASK_KINDS)[number];
+
+export const TASK_STATUSES = ['open', 'completed', 'cancelled'] as const;
+
+export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export type TasksTable = {
   id: Generated<string>;
@@ -175,7 +205,7 @@ export type TasksTable = {
   completed_by: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
-  completed_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  completed_at: NullableTimestamp;
 };
 
 export type PatientsTable = {
@@ -186,7 +216,7 @@ export type PatientsTable = {
   last_name: string;
   last_name_key: string;
   birth_date: ColumnType<string, string, string>;
-  gender: string | null;
+  gender: Sex | null;
   address_line: string | null;
   city: string | null;
   state: string | null;
@@ -213,6 +243,7 @@ export type ClaimsTable = {
   patient_id: string | null;
   import_report_id: string | null;
   pcr_number: string | null;
+  trip_type: TripType | null;
   level: string | null;
   emergency: boolean | null;
   loaded_miles: ColumnType<string | null, number | null, number | null>;
@@ -252,6 +283,7 @@ export type ClaimLinesTable = {
 
 export type ClaimCoveragesTable = {
   id: Generated<string>;
+  tenant_id: string;
   claim_id: string;
   position: number;
   payer_name: string;
@@ -259,6 +291,9 @@ export type ClaimCoveragesTable = {
   payer_code: string | null;
   member_id: string | null;
   group_id: string | null;
+  relationship: InsuredRelationship;
+  insured_first_name: string | null;
+  insured_last_name: string | null;
 };
 
 export type ClaimDiagnosesTable = {
@@ -281,12 +316,23 @@ export type ClaimEventsTable = {
   coverage_id: string | null;
   paid_cents: Generated<number>;
   adjusted_cents: Generated<number>;
+  payer_claim_number: string | null;
+  paid_on: ColumnType<string | null, string | null | undefined, string | null>;
+  check_number: string | null;
   note: Generated<string>;
   document: NullableJsonColumn;
   created_by: string | null;
   source_key: string | null;
   batch_id: string | null;
   created_at: Timestamp;
+};
+
+export type ClaimEventAdjustmentsTable = {
+  event_id: string;
+  position: number;
+  group_code: AdjustmentGroup;
+  reason_code: string;
+  amount_cents: number;
 };
 
 export type ClaimBatchesTable = {
@@ -339,7 +385,9 @@ export type BillingProfilesTable = {
   submitter_id: string | null;
   receiver_id: string | null;
   receiver_name: string | null;
+  time_zone: string;
   production: Generated<boolean>;
+  next_control_number: Generated<number>;
   updated_at: Timestamp;
 };
 
@@ -362,6 +410,14 @@ export type PayerAliasesTable = {
   payer_id: string;
   alias: string;
   alias_key: string;
+  created_at: Timestamp;
+};
+
+export type PayerSuggestionsTable = {
+  tenant_id: string;
+  name_key: string;
+  directory_version: string;
+  payer_id: string | null;
   created_at: Timestamp;
 };
 
@@ -389,10 +445,13 @@ export type Database = {
   claim_diagnoses: ClaimDiagnosesTable;
   claim_balances: ClaimBalancesView;
   claim_events: ClaimEventsTable;
+  claim_event_adjustments: ClaimEventAdjustmentsTable;
   claim_batches: ClaimBatchesTable;
   billing_profiles: BillingProfilesTable;
   payers: PayersTable;
   payer_aliases: PayerAliasesTable;
+  payer_suggestions: PayerSuggestionsTable;
+
   notifications: NotificationsTable;
   notification_states: NotificationStatesTable;
 };

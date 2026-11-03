@@ -20,7 +20,7 @@ import { demoGraphs } from './demo-graphs.ts';
 import { buildUpsertDefaultFees, demoFees } from './fees.ts';
 import { readPlaces, upsertPlaces } from './gnis.ts';
 import { PLACES_FILE } from './gnis-build.ts';
-import { publishGraph, type SeedGraph } from './graphs.ts';
+import { publishGraphs, type SeedGraph } from './graphs.ts';
 import { CODES_FILE, ELEMENTS_FILE } from './nemsis-build.ts';
 import { readCodes, readElements, upsertDictionary } from './nemsis-dictionary.ts';
 import { upsertTenant } from './tenants.ts';
@@ -49,10 +49,9 @@ export const graphNodes = () => [
   ...createModelNodes([...nemsisModels, ...billingModels])
 ];
 
-const primitives = () => new Set(graphNodes().map(refKey));
-
 export const seedBase = async (db: Db) => {
-  assertValidGraphs(billingGraphs, graphNodes());
+  const nodes = graphNodes();
+  assertValidGraphs(billingGraphs, nodes);
   const places = readPlaces(await readFile(PLACES_FILE));
   const dictionary = {
     elements: readElements(await readFile(ELEMENTS_FILE)),
@@ -61,7 +60,7 @@ export const seedBase = async (db: Db) => {
   await db.transaction().execute(async (tx) => {
     await upsertPlaces(tx, places);
     await upsertDictionary(tx, dictionary);
-    for (const graph of billingGraphs) await publishGraph(tx, graph, primitives());
+    await publishGraphs(tx, billingGraphs, new Set(nodes.map(refKey)));
   });
 };
 
@@ -70,7 +69,8 @@ export const seedDev = async (db: Db, dev: DevSeedConfig) => {
     hashPassword(dev.DEV_USER_PASSWORD),
     hashPassword(dev.DEV_SFTP_PASSWORD)
   ]);
-  assertValidGraphs(demoGraphs, graphNodes());
+  const nodes = graphNodes();
+  assertValidGraphs(demoGraphs, nodes);
 
   await db.transaction().execute(async (tx) => {
     const tenant = await upsertTenant(tx, {
@@ -90,7 +90,7 @@ export const seedDev = async (db: Db, dev: DevSeedConfig) => {
     await buildUpsertDemoProfile(tx, tenant.id).execute();
     await buildUpsertDemoPayers(tx, tenant.id).execute();
 
-    for (const graph of demoGraphs) await publishGraph(tx, graph, primitives());
+    await publishGraphs(tx, demoGraphs, new Set(nodes.map(refKey)));
   });
 };
 

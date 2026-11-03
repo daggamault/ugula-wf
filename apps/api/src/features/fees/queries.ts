@@ -47,24 +47,28 @@ export const payerExists = async (db: Db, tenantId: string, id: string) =>
     .where('tenant_id', '=', tenantId)
     .executeTakeFirst()) !== undefined;
 
-export const upsertFee = async (db: Db, tenantId: string, fee: FeeInput) => {
-  const { id } = await db
-    .insertInto('fee_schedules')
-    .values({
-      tenant_id: tenantId,
-      payer_id: fee.payerId,
-      code: fee.code,
-      amount_cents: fee.amountCents
-    })
-    .onConflict((oc) =>
-      oc
-        .columns(['tenant_id', 'payer_id', 'code'])
-        .doUpdateSet({ amount_cents: fee.amountCents, updated_at: sql`now()` })
+export const upsertFee = (db: Db, tenantId: string, fee: FeeInput) =>
+  db
+    .with('saved', (w) =>
+      w
+        .insertInto('fee_schedules')
+        .values({
+          tenant_id: tenantId,
+          payer_id: fee.payerId,
+          code: fee.code,
+          amount_cents: fee.amountCents
+        })
+        .onConflict((oc) =>
+          oc
+            .columns(['tenant_id', 'payer_id', 'code'])
+            .doUpdateSet({ amount_cents: fee.amountCents, updated_at: sql`now()` })
+        )
+        .returning(['id', 'payer_id', 'code', 'amount_cents', 'updated_at'])
     )
-    .returning('id')
+    .selectFrom('saved as f')
+    .leftJoin('payers as p', 'p.id', 'f.payer_id')
+    .select(['f.id', 'f.payer_id', 'p.name as payer', 'f.code', 'f.amount_cents', 'f.updated_at'])
     .executeTakeFirstOrThrow();
-  return feeRows(db, tenantId).where('f.id', '=', id).executeTakeFirstOrThrow();
-};
 
 export const deleteFee = async (db: Db, tenantId: string, id: string) =>
   (await db

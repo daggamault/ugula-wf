@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ENTRY_TYPE, type GraphDef, type RunState } from '@ugula/graph';
 import { createCatalog } from '../../shared/graph/catalog.ts';
+import { testNodes } from '../../shared/testing.ts';
 import type { RunDetail, RunStep, RunSummary } from './client.ts';
 import {
   cursorsOf,
@@ -54,7 +55,7 @@ const state = {
 
 describe('run inspection', () => {
   it('builds drill-down paths and resolves nested graphs', () => {
-    const catalog = createCatalog({
+    const catalog = createCatalog(testNodes, {
       graphs: [{ type: 'acme.child', version: 1, definition: child }]
     });
     assert.equal(pathOf(['sub', 'inner']), 'sub/inner/');

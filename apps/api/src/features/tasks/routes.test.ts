@@ -20,7 +20,10 @@ const service = {
   find: record({ task: { id: ID } }),
   next: record({ task: null }),
   claim: record({ status: 'claimed' }),
-  release: async () => fail('conflict', 'Task is already closed'),
+  release: async (...args: unknown[]) => {
+    calls.push(args);
+    return fail('conflict', 'Another user is working this task');
+  },
   complete: async () => fail('invalid', 'Some fields are invalid', { fields: { note: 'x' } })
 } as unknown as TaskService;
 
@@ -41,6 +44,7 @@ describe('task routes', () => {
     await request(`/${ID}/claim`, { method: 'POST' });
     assert.deepEqual(calls.at(-1), ['t-1', ID, 'u-1']);
     assert.equal((await request(`/${ID}/release`, { method: 'POST' })).status, 409);
+    assert.deepEqual(calls.at(-1), ['t-1', ID, 'u-1']);
   });
 
   it('surface field errors when completing', async () => {

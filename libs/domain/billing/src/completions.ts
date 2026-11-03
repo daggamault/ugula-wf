@@ -6,5 +6,5 @@ export type CompletionRequest = {
 };
 
 export type Completer = {
-  complete: (request: CompletionRequest) => Promise<unknown>;
+  complete: (request: CompletionRequest, signal?: AbortSignal) => Promise<unknown>;
 };

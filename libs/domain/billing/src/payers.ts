@@ -15,7 +15,7 @@ export const CLAIM_FILING_CODES = {
 
 export type ClaimFilingCode = keyof typeof CLAIM_FILING_CODES;
 
-export const isClaimFilingCode = (x: unknown): x is ClaimFilingCode =>
+const isClaimFilingCode = (x: unknown): x is ClaimFilingCode =>
   typeof x === 'string' && Object.hasOwn(CLAIM_FILING_CODES, x);
 
 export const isValidNpi = (npi: string) => {
@@ -55,10 +55,7 @@ export const payerDocument = ({ name, claimFiling }: Omit<DirectoryPayer, 'id'>)
 const CHOICE_SYSTEM =
   'You match insurance payer names for ambulance billing. Given a payer name from a patient care report and a numbered list of payers from the agency directory (with their claim filing type), answer with the number of the directory payer that is the same insurer or program, or 0 when none clearly is. Abbreviations, states and plan or contractor names may differ. Self pay, unknown and unrelated insurers are 0.';
 
-export const payerChoiceRequest = (
-  name: string,
-  candidates: DirectoryPayer[]
-): CompletionRequest => ({
+const payerChoiceRequest = (name: string, candidates: DirectoryPayer[]): CompletionRequest => ({
   system: CHOICE_SYSTEM,
   user: [
     `Report payer: ${name}`,
@@ -74,13 +71,17 @@ export const payerChoiceRequest = (
   maxTokens: 20
 });
 
+export const SUGGEST_SIMILARITY = 0.8;
+
 export const suggestPayer = async <T extends DirectoryPayer>(
   completer: Completer,
   name: string,
-  candidates: T[]
+  candidates: T[],
+  signal?: AbortSignal
 ): Promise<T | null> => {
   if (!candidates.length) return null;
-  const answer = await completer.complete(payerChoiceRequest(name, candidates));
+  const answer = await completer.complete(payerChoiceRequest(name, candidates), signal);
+
   const choice =
     answer !== null && typeof answer === 'object' && 'choice' in answer ? answer.choice : 0;
   return Number.isInteger(choice) ? (candidates[(choice as number) - 1] ?? null) : null;

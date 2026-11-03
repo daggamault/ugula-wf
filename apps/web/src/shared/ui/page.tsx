@@ -5,7 +5,7 @@ import { EmptyState } from './empty-state.tsx';
 import { IconLink } from './icon-button.tsx';
 import { Spinner } from './spinner.tsx';
 
-export type PageHeaderProps = {
+type PageHeaderProps = {
   title: ReactNode;
   description?: ReactNode;
   backTo?: string | undefined;
@@ -13,7 +13,7 @@ export type PageHeaderProps = {
   actions?: ReactNode;
 };
 
-export const PageHeader = ({
+const PageHeader = ({
   title,
   description,
   backTo,
@@ -40,7 +40,7 @@ export const PageHeader = ({
     <header
       ref={headerRef}
       className={classNamesOf(
-        'sticky -top-px z-10 -mx-4 -mt-4 flex flex-wrap items-center print:hidden justify-between gap-4 border-b px-4 pt-4 pb-3 transition-colors duration-150 ease-out sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6 lg:-mx-10 lg:-mt-10 lg:px-10 lg:pt-10',
+        'sticky -top-px z-10 -mx-4 -mt-4 flex flex-wrap items-center justify-between gap-4 border-b px-4 pt-4 pb-3 transition-colors duration-150 ease-out sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6 lg:-mx-10 lg:-mt-10 lg:px-10 lg:pt-10 print:hidden',
         isStuck ? 'border-border bg-canvas/75 backdrop-blur-md' : 'border-transparent'
       )}
     >
@@ -58,7 +58,7 @@ export const PageHeader = ({
   );
 };
 
-export type PageProps = PageHeaderProps & {
+type PageProps = PageHeaderProps & {
   children?: ReactNode;
 };
 

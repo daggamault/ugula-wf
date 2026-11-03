@@ -22,7 +22,6 @@ const service = {
   steps: record({ steps: [] }),
   start: record({ id: 'r1', version: 1 }),
   cancel: async () => fail('conflict', 'Run already finished'),
-  signal: record({ resumed: 3 }),
   uploadFile: record({ file: { bucket: 'b', key: 'k' }, name: 'a.xml' })
 } as unknown as RunService;
 
@@ -30,21 +29,29 @@ const request = withSession(createRunRoutes(service, 1_000));
 
 describe('run routes', () => {
   it('translate query filters', async () => {
-    await request('/?status=faulted&root=false&page=3&sort=workflow&dir=asc');
+    await request('/?q=ingest&status=faulted&root=false&page=3&sort=workflow&dir=asc');
     assert.deepEqual(calls.at(-1), [
       't-1',
-      { status: 'faulted', rootOnly: false, page: 3, pageSize: 25, sort: 'workflow', dir: 'asc' }
+      {
+        q: 'ingest',
+        status: 'faulted',
+        rootOnly: false,
+        page: 3,
+        pageSize: 25,
+        sort: 'workflow',
+        dir: 'asc'
+      }
     ]);
     await request(`/${ID}/steps?path=sub/&after=3`);
     assert.deepEqual(calls.at(-1), ['t-1', ID, { path: 'sub/', after: 3, limit: 500 }]);
   });
 
-  it('start runs and deliver signals', async () => {
+  it('start runs and accept no signals from users', async () => {
     const started = await request('/', { method: 'POST', body: JSON.stringify({ graphId: ID }) });
     assert.equal(started.status, 201);
     assert.deepEqual(calls.at(-1), ['t-1', ID, undefined, {}]);
     const signal = await request('/signals', { method: 'POST', body: '{"name":"ack","key":"C1"}' });
-    assert.deepEqual(await signal.json(), { resumed: 3 });
+    assert.equal(signal.status, 404);
   });
 
   it('serve run detail and the bundle and reject bad ids', async () => {

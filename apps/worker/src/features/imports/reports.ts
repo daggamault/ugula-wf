@@ -2,16 +2,20 @@ import type { Database } from '@ugula/db';
 import type { ReportStore } from '@ugula/nemsis';
 import { type BlobStore, importsPrefix } from '@ugula/storage';
 import type { Kysely } from 'kysely';
-import { runTenant } from '../../shared/tenancy.ts';
+import { runTenant, type TenantOf } from '../../shared/tenancy.ts';
 
 type Blobs = Pick<BlobStore, 'getText' | 'getJson' | 'putJson'>;
 
 export const fileNameOf = (key: string) => key.split('/').at(-1) || key;
 
-export const createReportStore = (db: Kysely<Database>, blobs: Blobs): ReportStore => {
+export const createReportStore = (
+  db: Kysely<Database>,
+  blobs: Blobs,
+  tenantOf: TenantOf
+): ReportStore => {
   const authorize = async (runId: string, key: string) => {
-    const run = await runTenant(db, runId).executeTakeFirst();
-    if (!run || !key.startsWith(importsPrefix(run.tenant_id)) || key.split('/').includes('..')) {
+    const tenantId = await tenantOf(runId);
+    if (!tenantId || !key.startsWith(importsPrefix(tenantId)) || key.split('/').includes('..')) {
       throw new Error(`Blob ${key} is not one of this tenant's imports`);
     }
   };

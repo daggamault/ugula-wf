@@ -4,9 +4,9 @@ export type SortDir = 'asc' | 'desc';
 
 export const PAGE_SIZES = [10, 25, 50, 100] as const;
 
-export const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = 25;
 
-export type TableSpec<K extends string> = {
+type TableSpec<K extends string> = {
   prefix?: string;
   sorts: Readonly<Record<K, SortDir>>;
   sort: NoInfer<K>;
@@ -39,7 +39,7 @@ export const hrefWith = (
   return search ? `${path}?${search}` : path;
 };
 
-export const paramOf = (prefix: string | undefined, name: string) =>
+const paramOf = (prefix: string | undefined, name: string) =>
   prefix ? `${prefix}${name.charAt(0).toUpperCase()}${name.slice(1)}` : name;
 
 const isKey = <K extends string>(
@@ -101,41 +101,9 @@ export const useFilterHref = (path: string, prefix?: string) => {
 
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number };
 
-export type SortValue = string | number | null;
+const SEARCH_MAX = 80;
 
-const compare = (a: SortValue, b: SortValue) => {
-  if (a === b) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  return typeof a === 'number' && typeof b === 'number'
-    ? a - b
-    : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
-};
-
-export const pageOf = <T, K extends string>(
-  rows: readonly T[],
-  state: Pick<TableState<K>, 'sort' | 'dir' | 'page' | 'pageSize'>,
-  values: Readonly<Record<K, (row: T) => SortValue>>
-): Page<T> => {
-  const value = values[state.sort];
-  const sign = state.dir === 'asc' ? 1 : -1;
-  const sorted = [...rows].sort((a, b) => {
-    const x = value(a);
-    const y = value(b);
-    return x === null || y === null ? compare(x, y) : sign * compare(x, y);
-  });
-  const start = (state.page - 1) * state.pageSize;
-  return {
-    items: sorted.slice(start, start + state.pageSize),
-    total: rows.length,
-    page: state.page,
-    pageSize: state.pageSize
-  };
-};
-
-export const SEARCH_MAX = 80;
-
-export type SearchState<K extends string> = TableState<K> & {
+type SearchState<K extends string> = TableState<K> & {
   q: string;
 };
 
@@ -171,6 +139,16 @@ export const backOf = (query: URLSearchParams, list: string, ...also: readonly s
     (back === list || back.startsWith(`${list}?`) || also.some((p) => back.startsWith(p)));
   return isAllowed ? back : list;
 };
+
+const BACK_LABELS: readonly (readonly [string, string])[] = [
+  ['/claims/', 'Back to Claim'],
+  ['/patients/', 'Back to Patient'],
+  ['/runs/', 'Back to Run'],
+  ['/imports/', 'Back to Import']
+];
+
+export const backLabelOf = (back: string) =>
+  BACK_LABELS.find(([prefix]) => back.startsWith(prefix))?.[1] ?? 'Back to Claims';
 
 export type SearchView = {
   q: string;

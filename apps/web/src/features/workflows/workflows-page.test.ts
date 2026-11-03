@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { idleLive } from '../../shared/testing.ts';
 import { searchStateOf } from '../../shared/url-state.ts';
 import type { GraphSummary, WorkflowsClient } from './client.ts';
-import { graphKindOf, NewWorkflowForm, NewWorkflowPage } from './new-workflow-page.tsx';
 import {
   GRAPH_TABLE,
   graphFilterOf,
@@ -58,6 +58,7 @@ describe('WorkflowsPage', () => {
   it('renders a create link, a kind filter and the standard search', () => {
     const html = renderToStaticMarkup(
       createElement(WorkflowsPage, {
+        live: idleLive,
         client: { search: () => new Promise(() => undefined) } as unknown as WorkflowsClient,
         show: 'blocks'
       })
@@ -80,36 +81,5 @@ describe('WorkflowsPage', () => {
       graphsQueryOf(search('q=bat').apiQuery, 'mine'),
       'q=bat&page=1&pageSize=25&sort=name&dir=asc&show=mine'
     );
-  });
-});
-
-describe('NewWorkflowPage', () => {
-  it('creates a workflow on its own page with Title Cased labels and a way back', () => {
-    const html = renderToStaticMarkup(
-      createElement(NewWorkflowForm, {
-        kind: 'node',
-        back: '/workflows?kind=blocks',
-        onKindChange: () => undefined,
-        onCreate: async () => null
-      })
-    );
-    assert.ok(html.includes('billing.match-patient'));
-    assert.ok(html.includes('<option value="node" selected="">Building Block</option>'));
-    assert.ok(
-      html.includes('href="/workflows?kind=blocks"') && html.includes('Create Building Block')
-    );
-    assert.ok(html.includes('@3xl:grid-cols-4') && html.includes('type="submit"'));
-    const page = renderToStaticMarkup(
-      createElement(NewWorkflowPage, {
-        client: {} as WorkflowsClient,
-        kind: 'workflow',
-        back: '/workflows'
-      })
-    );
-    assert.ok(
-      page.includes('>New Workflow</h1>') && page.includes('aria-label="Back to Workflows"')
-    );
-    assert.equal(graphKindOf(new URLSearchParams('kind=node')), 'node');
-    assert.equal(graphKindOf(new URLSearchParams('kind=x')), 'workflow');
   });
 });

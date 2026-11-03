@@ -7,7 +7,7 @@ import { interactiveClasses } from './interactive.ts';
 import { PendingOverlay } from './spinner.tsx';
 import { Tooltip, type TooltipSide } from './tooltip.tsx';
 
-export type ButtonVariant = 'solid' | 'outline';
+type ButtonVariant = 'solid' | 'outline';
 
 type ButtonSize = 'md' | 'sm';
 
@@ -56,7 +56,7 @@ export const buttonClasses = ({
     (variant === 'solid' ? solidClasses : outlineClasses)[intent]
   );
 
-export type ButtonProps = Omit<ComponentProps<'button'>, 'className' | 'disabled'> &
+type ButtonProps = Omit<ComponentProps<'button'>, 'className' | 'disabled'> &
   ButtonStyle & {
     isBlock?: boolean;
     isPending?: boolean;

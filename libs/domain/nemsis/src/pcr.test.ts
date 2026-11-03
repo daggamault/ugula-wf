@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { parseDataset } from './parse.ts';
-import { cleanText, nemsisModels, PCR_TYPE, placeCodes, resolvePlaces, toPcr } from './pcr.ts';
+import { nemsisModels, PCR_TYPE, placeCodes, resolvePlaces, toPcr } from './pcr.ts';
 
 const XML = `<EMSDataSet xmlns="http://www.nemsis.org" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Header>
 <PatientCareReport>
@@ -120,18 +120,17 @@ describe('toPcr', () => {
   });
 });
 
-describe('cleanText', () => {
+describe('text cleanup', () => {
   it('drops repeated ~-joined values some ePCR exports produce', () => {
-    assert.equal(cleanText('UPMC EXCHANGE HMO~UPMC EXCHANGE HMO'), 'UPMC EXCHANGE HMO');
-    assert.equal(cleanText(' Highmark ~ PPO Blue '), 'Highmark - PPO Blue');
-    assert.equal(cleanText(' ~ '), '');
-    assert.equal(
+    const company = (name: string) =>
       (
-        toPcr({ ePayment: { 'ePayment.InsuranceGroup': { 'ePayment.10': 'A~A' } } }).insurances as {
-          companyName: string;
+        toPcr({ ePayment: { 'ePayment.InsuranceGroup': { 'ePayment.10': name } } }).insurances as {
+          companyName: string | null;
         }[]
-      )[0]?.companyName,
-      'A'
-    );
+      )[0]?.companyName;
+    assert.equal(company('UPMC EXCHANGE HMO~UPMC EXCHANGE HMO'), 'UPMC EXCHANGE HMO');
+    assert.equal(company(' Highmark ~ PPO Blue '), 'Highmark - PPO Blue');
+    assert.equal(company(' ~ '), null);
+    assert.equal(company('A~A'), 'A');
   });
 });

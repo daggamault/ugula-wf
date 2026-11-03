@@ -26,7 +26,7 @@ describe('addToast', () => {
 });
 
 describe('Toaster', () => {
-  it('announces each notification with its action and a dismiss button', () => {
+  it('announces notifications from one persistent live region with its action and a dismiss button', () => {
     const html = renderToStaticMarkup(
       createElement(Toaster, {
         toasts: [
@@ -42,7 +42,7 @@ describe('Toaster', () => {
       })
     );
     assert.ok(html.includes('aria-label="Notifications"'));
-    assert.ok(html.includes('role="status"') && html.includes('role="alert"'));
+    assert.ok(html.includes('aria-live="polite"') && !/role="(alert|status)"/.test(html));
     assert.ok(html.includes('Next up: PCR-2'));
     assert.ok(html.includes('href="/imports"'));
     assert.equal(html.match(/aria-label="Dismiss"/g)?.length, 2);

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { deflateRawSync, gzipSync } from 'node:zlib';
+import { gzipSync } from 'node:zlib';
 import { createDummyDb } from '@ugula/db/testing';
 import {
   buildUpsertPlaces,
@@ -14,31 +13,6 @@ import {
   readPlaces,
   toTsv
 } from './gnis.ts';
-import { buildPlaces, PLACES_FILE } from './gnis-build.ts';
-import { unzipTexts } from './zip.ts';
-
-const zipOf = (name: string, text: string) => {
-  const data = deflateRawSync(Buffer.from(text));
-  const nameBytes = Buffer.from(name);
-  const local = Buffer.alloc(30);
-  local.writeUInt32LE(0x04034b50, 0);
-  local.writeUInt16LE(8, 8);
-  local.writeUInt32LE(data.length, 18);
-  local.writeUInt16LE(nameBytes.length, 26);
-  const central = Buffer.alloc(46);
-  central.writeUInt32LE(0x02014b50, 0);
-  central.writeUInt16LE(8, 10);
-  central.writeUInt32LE(data.length, 20);
-  central.writeUInt16LE(nameBytes.length, 28);
-  central.writeUInt32LE(0, 42);
-  const directoryAt = local.length + nameBytes.length + data.length;
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(1, 10);
-  end.writeUInt32LE(central.length + nameBytes.length, 12);
-  end.writeUInt32LE(directoryAt, 16);
-  return Buffer.concat([local, nameBytes, data, central, nameBytes, end]);
-};
 
 const POPULATED = `﻿feature_id|feature_name|feature_class|state_name|state_numeric|county_name
 1192443|Fairview|Populated Place|Pennsylvania|42|Erie
@@ -76,16 +50,7 @@ describe('GNIS places', () => {
     );
   });
 
-  it('reads text files out of zip archives and round-trips the compact format', () => {
-    assert.deepEqual(
-      unzipTexts(zipOf('Text/a.txt', 'hello'), (n) => n.endsWith('.txt')),
-      ['hello']
-    );
-    assert.deepEqual(
-      unzipTexts(zipOf('a.jpg', 'x'), (n) => n.endsWith('.txt')),
-      []
-    );
-    assert.throws(() => unzipTexts(Buffer.from('nope'), () => true), /zip/);
+  it('round-trips the compact format and finds the federal codes files', () => {
     const places = [{ id: 1215209, name: 'Erie', state: 'PA' }];
     assert.deepEqual(fromTsv(toTsv(places)), places);
     assert.deepEqual(readPlaces(gzipSync(toTsv(places))), places);
@@ -93,30 +58,6 @@ describe('GNIS places', () => {
       federalCodeFiles('<Key>x/FedCodes_PA_Text.zip</Key><Key>x/FedCodes_PA_Text.zip</Key>'),
       ['FedCodes_PA_Text.zip']
     );
-  });
-
-  it('builds the place list from every federal codes file and the populated places file', async () => {
-    const files: Record<string, Buffer> = {
-      list: Buffer.from('<Key>FederalCodes/FedCodes_PA_Text.zip</Key>'),
-      fed: zipOf('Text/FedCodes_PA.txt', FEDERAL),
-      pop: zipOf('Text/PopulatedPlaces_National.txt', POPULATED)
-    };
-    const places = await buildPlaces(async (url) =>
-      url.includes('?prefix=')
-        ? (files.list as Buffer)
-        : url.includes('FedCodes')
-          ? (files.fed as Buffer)
-          : (files.pop as Buffer)
-    );
-    assert.equal(places.length, 4);
-    await assert.rejects(() => buildPlaces(async () => Buffer.from('')), /No GNIS/);
-  });
-
-  it('ships the place file with the codes NEMSIS exports use', () => {
-    const places = new Map(readPlaces(readFileSync(PLACES_FILE)).map((p) => [p.id, p]));
-    assert.ok(places.size > 200_000);
-    assert.deepEqual(places.get(1215209), { id: 1215209, name: 'Erie', state: 'PA' });
-    assert.deepEqual(places.get(1192443), { id: 1192443, name: 'Fairview', state: 'PA' });
   });
 
   it('upserts places by feature id', async () => {

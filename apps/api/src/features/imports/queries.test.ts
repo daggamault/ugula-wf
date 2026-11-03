@@ -4,20 +4,21 @@ import { createRecordingDb } from '@ugula/db/testing';
 import {
   findDictionary,
   findImport,
-  findLatestPublished,
   findSftpTenant,
   insertImport,
   listImportReports,
-  listImports
+  listImports,
+  resolveWorkflowVersion
 } from './queries.ts';
 
-describe('findLatestPublished', () => {
-  it('picks the newest published workflow version, preferring the tenant copy', async () => {
+describe('resolveWorkflowVersion', () => {
+  it('picks the newest published workflow version, preferring an active tenant copy', async () => {
     const { db, queries } = createRecordingDb();
-    await findLatestPublished(db, 't-1', 'billing.ingest-nemsis');
+    await resolveWorkflowVersion(db, 't-1', 'billing.ingest-nemsis');
     const [q] = queries;
+    assert.ok(q?.sql.includes('"g"."is_active" = $3'));
     assert.ok(q?.sql.includes('order by g.tenant_id nulls last, "gv"."version" desc'));
-    assert.deepEqual(q?.parameters, ['billing.ingest-nemsis', 'workflow', 't-1', 1]);
+    assert.deepEqual(q?.parameters, ['billing.ingest-nemsis', 'workflow', true, 't-1', 1]);
     await db.destroy();
   });
 });
@@ -78,10 +79,23 @@ describe('import records', () => {
     ]);
   });
 
-  it('lists each report of an import with its run, claim and open task', async () => {
+  it('searches imports by file name or uploader', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await listImports(db, 't-1', {
+      q: 'PCRS_',
+      page: 1,
+      pageSize: 10,
+      sort: 'received',
+      dir: 'desc'
+    });
+    assert.ok(queries[0]?.sql.includes('(lower(i.file_name) like $8 or lower(u.email) like $9)'));
+    assert.deepEqual(queries[0]?.parameters.slice(7, 9), ['%pcrs\\_%', '%pcrs\\_%']);
+  });
+
+  it('pages each report of an import with its run, claim and open task', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await findImport(db, 't', 'i1');
-    await listImportReports(db, 't', 'i1');
+    await listImportReports(db, 't', 'i1', { page: 1, pageSize: 25, sort: 'pcr', dir: 'desc' });
     assert.ok(queries[0]?.sql.includes('"i"."id" = $'));
     const reports = queries[1]?.sql ?? '';
     assert.ok(reports.includes(`r.inputs -> 'report' ->> 'key' = ir.report ->> 'key'`));
@@ -91,7 +105,7 @@ describe('import records', () => {
       )
     );
     assert.ok(reports.includes('"t"."status" = $'));
-    assert.ok(reports.includes('order by "ir"."position"'));
+    assert.ok(reports.includes('order by "ir"."pcr_number" desc nulls last, "ir"."id" desc'));
     await db.destroy();
   });
 });

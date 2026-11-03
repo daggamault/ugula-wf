@@ -17,7 +17,7 @@ export const buildUpsertUser = (db: Kysely<Database>, input: SeedUserInput) =>
       is_active: true
     })
     .onConflict((oc) =>
-      oc.column('email').doUpdateSet({
+      oc.expression(sql`lower(email)`).doUpdateSet({
         tenant_id: input.tenantId,
         password_hash: input.passwordHash,
         is_active: true,

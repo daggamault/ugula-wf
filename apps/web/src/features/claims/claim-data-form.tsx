@@ -97,6 +97,11 @@ export const fromDraft = (d: Draft): BillingDataInput => ({
   originDestination: d.originCode && d.destinationCode ? d.originCode + d.destinationCode : null
 });
 
+export const modifierErrorOf = (d: Pick<Draft, 'originCode' | 'destinationCode'>) =>
+  Boolean(d.originCode) === Boolean(d.destinationCode)
+    ? undefined
+    : 'Choose both a pickup and a destination type, or neither.';
+
 const ADDRESS_LABELS: Record<string, string> = {
   name: 'Facility',
   addressLine: 'Street',
@@ -124,9 +129,13 @@ export const ClaimDataForm = ({
 }) => {
   const [draft, setDraft] = useState(() => toDraft(claim));
   const [busy, setBusy] = useState(false);
+  const [isChecked, setChecked] = useState(false);
+  const modifierError = isChecked ? modifierErrorOf(draft) : undefined;
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (locked) return;
+    setChecked(true);
+    if (modifierErrorOf(draft)) return;
     setBusy(true);
     await onSave(fromDraft(draft));
     setBusy(false);
@@ -214,6 +223,7 @@ export const ClaimDataForm = ({
                   label="Pickup Type"
                   span={2}
                   options={ORIGIN_OPTIONS}
+                  error={draft.originCode ? undefined : modifierError}
                   value={draft.originCode}
                   onChange={(e) => setDraft({ ...draft, originCode: e.target.value })}
                 />
@@ -222,12 +232,13 @@ export const ClaimDataForm = ({
                   label="Destination Type"
                   span={2}
                   options={DESTINATION_OPTIONS}
+                  error={draft.destinationCode ? undefined : modifierError}
                   value={draft.destinationCode}
                   onChange={(e) => setDraft({ ...draft, destinationCode: e.target.value })}
                 />
               </FieldGrid>
             </FieldGroup>
-            <div className="grid gap-8 lg:grid-cols-2">
+            <div className="grid gap-x-4 gap-y-8 lg:grid-cols-2">
               <FieldGroup title="Pickup">
                 <FieldGrid>
                   {address('pickup', 'pickup', ['addressLine', 'city', 'state', 'postalCode'])}

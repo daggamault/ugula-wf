@@ -1,9 +1,15 @@
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
-export type FailureCode = 'invalid' | 'unauthorized' | 'forbidden' | 'not_found' | 'conflict';
+type FailureCode =
+  | 'invalid'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'not_found'
+  | 'conflict'
+  | 'rate_limited';
 
-export type Failure = {
+type Failure = {
   code: FailureCode;
   message: string;
   details?: Record<string, unknown>;
@@ -16,7 +22,8 @@ const statusOf: Record<FailureCode, ContentfulStatusCode> = {
   unauthorized: 401,
   forbidden: 403,
   not_found: 404,
-  conflict: 409
+  conflict: 409,
+  rate_limited: 429
 };
 
 export const ok = <T>(value: T): Result<T> => ({ ok: true, value });

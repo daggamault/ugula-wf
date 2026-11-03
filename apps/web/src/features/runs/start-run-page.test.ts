@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { idleLive } from '../../shared/testing.ts';
 import type { RunsClient } from './client.ts';
 import { inputSpanClasses, StartRunForm, StartRunPage } from './start-run-page.tsx';
 
@@ -47,6 +48,7 @@ describe('StartRunPage', () => {
   it('shows a heading while loading the workflow', () => {
     const html = renderToStaticMarkup(
       createElement(StartRunPage, {
+        live: idleLive,
         client: { startable: async () => ({}) } as unknown as RunsClient,
         graphId: 'g1'
       })

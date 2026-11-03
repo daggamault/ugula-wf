@@ -3,14 +3,14 @@ import { ThemeToggle } from '../../shared/ui/theme-toggle.tsx';
 import type { AuthClient, AuthSession } from './client.ts';
 import { SignInForm } from './sign-in-form.tsx';
 
-export type Authenticated = (session: AuthSession, signOut: () => void) => ReactNode;
+type Authenticated = (session: AuthSession, signOut: () => void) => ReactNode;
 
-export type AuthGateProps = {
+type AuthGateProps = {
   auth: AuthClient;
   children: Authenticated;
 };
 
-export type AuthGateViewProps = AuthGateProps & {
+type AuthGateViewProps = AuthGateProps & {
   ready: boolean;
   session: AuthSession | null;
   onSessionChange: (session: AuthSession | null) => void;

@@ -17,8 +17,6 @@ const STATUS: Record<ClaimStatus, StatusBadgeStyle> = {
   void: { label: 'Void' }
 };
 
-export const claimStatusLabel = (status: ClaimStatus) => STATUS[status].label;
-
 export const CLAIM_FILTERS = [
   { value: 'open', label: 'Open (Not Closed)' },
   ...CLAIM_STATUSES.map((s) => ({ value: s, label: STATUS[s].label })),

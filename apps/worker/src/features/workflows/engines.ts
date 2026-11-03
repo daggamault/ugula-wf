@@ -11,17 +11,21 @@ import {
   stdGraphSource
 } from '@ugula/graph';
 import * as v from 'valibot';
+import { deferralOf } from '../../shared/defer.ts';
+import { isTransient } from './errors.ts';
 
-export type LoadedEngine = {
+type LoadedEngine = {
   engine: Engine;
   root: NodeRef;
 };
 
-export type EngineSource = (run: { id: string; versionId: string }) => Promise<LoadedEngine>;
+export type EngineSource = (run: {
+  versionId: string;
+  graphs: GraphRef[];
+}) => Promise<LoadedEngine>;
 
-export type EngineCacheDeps = {
+type EngineCacheDeps = {
   nodes: NodeDef[];
-  loadRefs: (runId: string) => Promise<GraphRef[]>;
   loadDefinitions: (ids: string[]) => Promise<{ id: string; definition: unknown }[]>;
   max?: number;
 };
@@ -45,7 +49,9 @@ export const buildEngine = (
   return {
     engine: createEngine({
       nodes,
-      graphs: combineSources(stdGraphSource, (ref) => graphs.get(refKey(ref)))
+      graphs: combineSources(stdGraphSource, (ref) => graphs.get(refKey(ref))),
+      isTransient,
+      deferOf: deferralOf
     }),
     root: { type: root.key, version: root.version }
   };
@@ -53,7 +59,6 @@ export const buildEngine = (
 
 export const createEngineCache = ({
   nodes,
-  loadRefs,
   loadDefinitions,
   max = 200
 }: EngineCacheDeps): EngineSource => {
@@ -65,8 +70,7 @@ export const createEngineCache = ({
     const rows: PublishedGraph[] = refs.map((r) => ({ ...r, definition: defs.get(r.id) ?? null }));
     return buildEngine(nodes, rows, versionId);
   };
-  return async ({ id, versionId }) => {
-    const refs = await loadRefs(id);
+  return async ({ versionId, graphs: refs }) => {
     const key = bundleKey(versionId, refs);
     const hit = cache.get(key);
     if (hit) {

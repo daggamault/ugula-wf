@@ -7,7 +7,11 @@ describe('fee schedules table', () => {
   it('compiles one price per tenant, directory payer (or default) and HCPCS code', async () => {
     const db = createDummyDb();
     const tableSql = buildFeeSchedulesTable(db).compile().sql;
-    assert.ok(tableSql.includes('"payer_id" uuid references "payers" ("id") on delete cascade'));
+    assert.ok(
+      tableSql.includes(
+        'constraint "fee_schedules_payer_id_fkey" foreign key ("tenant_id", "payer_id") references "payers" ("tenant_id", "id") on delete cascade on update cascade'
+      )
+    );
     assert.ok(
       tableSql.includes(
         'constraint "fee_schedules_tenant_payer_code_unique" unique nulls not distinct ("tenant_id", "payer_id", "code")'

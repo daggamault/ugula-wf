@@ -23,6 +23,7 @@ export const getVarNode = defineNode<VarConfig>({
   category: CATEGORY,
   description: "Reads the current value of one of this graph's variables.",
   config: varConfig,
+  variables: ({ name }) => [name],
   signature: ({ name }, { graph }) => ({
     execIn: [],
     execOut: [],
@@ -39,6 +40,7 @@ export const setVarNode = defineNode<VarConfig>({
   category: CATEGORY,
   description: "Stores a value in one of this graph's variables for later nodes to read.",
   config: varConfig,
+  variables: ({ name }) => [name],
   signature: ({ name }, { graph }) => ({
     execIn: ['exec'],
     execOut: ['then'],
@@ -59,6 +61,7 @@ export const appendVarNode = defineNode<VarConfig>({
   category: CATEGORY,
   description: 'Adds an item to the end of a list variable.',
   config: varConfig,
+  variables: ({ name }) => [name],
   signature: ({ name }, { graph }) => ({
     execIn: ['exec'],
     execOut: ['then'],
@@ -81,6 +84,7 @@ export const incrementVarNode = defineNode<VarConfig>({
   category: CATEGORY,
   description: 'Adds an amount to a number variable and stores the result.',
   config: varConfig,
+  variables: ({ name }) => [name],
   signature: {
     execIn: ['exec'],
     execOut: ['then'],

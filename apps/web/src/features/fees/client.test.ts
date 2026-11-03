@@ -11,7 +11,7 @@ describe('createFeesClient', () => {
         seen.push(`${init.method} ${String(url)} ${String(init.body ?? '')}`);
         const body =
           init.method === 'GET'
-            ? String(url).endsWith('/payers/names')
+            ? String(url).includes('/payers/names')
               ? { payers: [{ id: 'p-m', name: 'Medicare' }] }
               : { items: [], fee: { id: 'f1' } }
             : init.method === 'PUT'
@@ -22,17 +22,19 @@ describe('createFeesClient', () => {
     );
     assert.deepEqual((await client.search('q=a04&page=1')).items, []);
     assert.deepEqual(await client.fee('f1'), { id: 'f1' });
-    assert.deepEqual(await client.payers(), [{ id: 'p-m', name: 'Medicare' }]);
+    assert.deepEqual(await client.payers(''), [{ id: 'p-m', name: 'Medicare' }]);
+    await client.payers(' blue cross ');
     assert.deepEqual(await client.save({ payerId: null, code: 'A0427', amountCents: 95000 }), {
       id: 'f1'
     });
-    await client.remove('f1');
+    await client.remove('f 1');
     assert.deepEqual(seen, [
       'GET http://api.test/api/fees?q=a04&page=1 ',
       'GET http://api.test/api/fees/f1 ',
       'GET http://api.test/api/payers/names ',
+      'GET http://api.test/api/payers/names?q=blue%20cross ',
       'PUT http://api.test/api/fees {"payerId":null,"code":"A0427","amountCents":95000}',
-      'DELETE http://api.test/api/fees/f1 '
+      'DELETE http://api.test/api/fees/f%201 '
     ]);
   });
 });

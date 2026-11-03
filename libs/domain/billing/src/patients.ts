@@ -2,7 +2,9 @@ import { usState, zipCode } from './geo.ts';
 import { firstNameLikeness, jaroWinkler, NICKNAME_LIKENESS, nameKey } from './names.ts';
 import { recordOf, textOrNull } from './values.ts';
 
-export type Sex = 'F' | 'M' | 'U';
+export const SEXES = ['F', 'M', 'U'] as const;
+
+export type Sex = (typeof SEXES)[number];
 
 export type Address = {
   addressLine: string | null;
@@ -27,27 +29,27 @@ export type NewPatient = Address & {
 
 export type Patient = NewPatient & { id: string };
 
-export type MatchDecision =
+type MatchDecision =
   | { kind: 'matched'; patient: Patient }
   | { kind: 'unmatched' }
   | { kind: 'review'; reason: string; candidates: Patient[] }
   | { kind: 'incomplete' };
 
-const SEX_CODES: Record<string, Sex> = {
-  F: 'F',
-  M: 'M',
-  U: 'U',
-  '9919001': 'F',
-  '9919003': 'M',
-  '9919005': 'U',
-  '9906001': 'F',
-  '9906003': 'M',
-  '9906005': 'U'
-};
+const SEX_CODES = new Map<string, Sex>([
+  ['F', 'F'],
+  ['M', 'M'],
+  ['U', 'U'],
+  ['9919001', 'F'],
+  ['9919003', 'M'],
+  ['9919005', 'U'],
+  ['9906001', 'F'],
+  ['9906003', 'M'],
+  ['9906005', 'U']
+]);
 
 export const sexOf = (x: unknown): Sex | null => {
   const code = textOrNull(x)?.toUpperCase();
-  return code && Object.hasOwn(SEX_CODES, code) ? (SEX_CODES[code] ?? null) : null;
+  return code ? (SEX_CODES.get(code) ?? null) : null;
 };
 
 const cityName = (x: unknown) => {
@@ -61,6 +63,16 @@ export const readAddress = (r: Record<string, unknown>): Address => ({
   state: usState(r.state),
   postalCode: zipCode(r.postalCode)
 });
+
+export const isCompleteAddress = (a: Address) =>
+  Boolean(a.addressLine && a.city && a.state && a.postalCode);
+
+const addressKey = (a: Address) =>
+  [a.addressLine, a.city, a.state, a.postalCode?.slice(0, 5)]
+    .map((x) => (x ?? '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+    .join('|');
+
+export const sameAddress = (a: Address, b: Address) => addressKey(a) === addressKey(b);
 
 const isCalendarDate = (s: string) => {
   const t = Date.parse(`${s}T00:00:00Z`);

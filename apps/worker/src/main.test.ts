@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { PgBoss } from 'pg-boss';
-import { createWorker } from './main.ts';
+import { createWorker, poolSize, stopWorker } from './main.ts';
 
 describe('worker createWorker', () => {
   it('creates a PgBoss instance from parsed config', () => {
@@ -12,6 +12,7 @@ describe('worker createWorker', () => {
       DB_PASSWORD: 'password',
       DB_NAME: 'ugula',
       WORKFLOW_CONCURRENCY: 8,
+      WORKFLOW_CHILD_CONCURRENCY: 8,
       COMPLETIONS_CONCURRENCY: 2,
       WORKER_MAX_EVENT_LOOP_UTILIZATION: 0.9,
       REDIS_HOST: 'localhost',
@@ -27,5 +28,32 @@ describe('worker createWorker', () => {
       COMPLETIONS_MODEL: 'qwen'
     });
     assert.ok(boss instanceof PgBoss);
+  });
+});
+
+describe('stopWorker', () => {
+  it('stops claiming, drains pg-boss within the timeout, then closes connections', async () => {
+    const calls: string[] = [];
+    await stopWorker(
+      {
+        jobs: { stop: () => void calls.push('jobs') },
+        live: { flush: async () => void calls.push('live') },
+        boss: { stop: async (options) => void calls.push(`boss:${JSON.stringify(options)}`) },
+        db: { destroy: async () => void calls.push('db') },
+        redis: { quit: async () => calls.push('redis') }
+      },
+      5_000
+    );
+    assert.deepEqual(calls, [
+      'jobs',
+      'boss:{"graceful":true,"timeout":5000}',
+      'live',
+      'db',
+      'redis'
+    ]);
+  });
+
+  it('sizes the pool for every connection a slot can hold at once', () => {
+    assert.equal(poolSize(8), 28);
   });
 });

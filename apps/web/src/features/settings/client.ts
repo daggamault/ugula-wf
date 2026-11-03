@@ -13,6 +13,7 @@ export type BillingProfile = {
   submitter_id: string | null;
   receiver_id: string | null;
   receiver_name: string | null;
+  time_zone: string | null;
   production: boolean;
 };
 
@@ -28,6 +29,7 @@ export type BillingProfileInput = {
   submitterId: string | null;
   receiverId: string | null;
   receiverName: string | null;
+  timeZone: string;
   production: boolean;
 };
 
@@ -47,14 +49,15 @@ export const createSettingsClient = (api: Api) => ({
   profile: async () =>
     (await api.get<{ profile: BillingProfile | null }>('/api/billing-profile')).profile,
   saveProfile: (profile: BillingProfileInput) => api.put('/api/billing-profile', profile),
-  searchPayers: (query: string) => api.get<Page<Payer>>(`/api/payers?${query}`),
-  payer: async (id: string) =>
-    (await api.get<{ payer: Payer }>(`/api/payers/${encodeURIComponent(id)}`)).payer,
+  searchPayers: (query: string, signal?: AbortSignal) =>
+    api.get<Page<Payer>>(`/api/payers?${query}`, signal),
+  payer: async (id: string, signal?: AbortSignal) =>
+    (await api.get<{ payer: Payer }>(`/api/payers/${encodeURIComponent(id)}`, signal)).payer,
   savePayer: (payer: PayerInput) =>
     api.put<{ payer: Payer; linkedClaims: number }>('/api/payers', payer),
-  removePayer: (id: string) => api.remove(`/api/payers/${id}`),
+  removePayer: (id: string) => api.remove(`/api/payers/${encodeURIComponent(id)}`),
   forgetAlias: (payerId: string, aliasId: string) =>
-    api.remove(`/api/payers/${payerId}/aliases/${aliasId}`)
+    api.remove(`/api/payers/${encodeURIComponent(payerId)}/aliases/${encodeURIComponent(aliasId)}`)
 });
 
 export type SettingsClient = ReturnType<typeof createSettingsClient>;

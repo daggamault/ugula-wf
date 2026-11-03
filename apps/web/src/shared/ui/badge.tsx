@@ -10,7 +10,7 @@ const intentClasses: Readonly<Record<Intent, string>> = {
   danger: 'border-danger/30 bg-danger/10 text-danger'
 };
 
-export type BadgeProps = {
+type BadgeProps = {
   intent?: Intent | undefined;
   children: ReactNode;
 };

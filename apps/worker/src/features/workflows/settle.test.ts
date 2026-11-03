@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Json, RunState, Values } from '@ugula/graph';
-import type { RunJob } from '@ugula/run-queue';
+import { type RunJob, timeoutJobId } from '@ugula/run-queue';
 import type { ChildRun, ClaimedRun, ParentWait, RunPatch, RunTx, TaskInsert } from './queries.ts';
 import {
   cancelRun,
   childrenPayload,
   FAULT_OUTCOMES,
-  failRun,
   faultFields,
   isChildWait,
   notifyParent,
-  settleRun
+  readableError,
+  settleRun,
+  stallRun
 } from './settle.ts';
 
 type FakeOptions = {
@@ -20,6 +21,8 @@ type FakeOptions = {
   version?: string;
   active?: string[];
   received?: number;
+  reference?: string;
+  recovered?: string[];
 };
 
 const fakeTx = (opts: FakeOptions = {}) => {
@@ -29,7 +32,8 @@ const fakeTx = (opts: FakeOptions = {}) => {
     tasks: [] as TaskInsert[],
     jobs: [] as RunJob[],
     cancelledTasks: [] as string[],
-    spawned: [] as Values[][]
+    spawned: [] as Values[][],
+    recoveries: [] as [string, string, string][]
   };
   const tx: RunTx = {
     saveRun: async (_, patch) => {
@@ -59,9 +63,15 @@ const fakeTx = (opts: FakeOptions = {}) => {
     children: async () => opts.children ?? [],
     activeChildren: async () => opts.active ?? [],
     lockSignal: async () => opts.received ?? 0,
+    claimReference: async () => opts.reference ?? null,
+    recoverDrafts: async (r, versionId, reason) => {
+      calls.recoveries.push([r.id, versionId, reason]);
+      return opts.recovered ?? [];
+    },
     enqueue: async (jobs) => {
       calls.jobs.push(...jobs);
-    }
+    },
+    dropTimeout: async () => undefined
   };
   return { tx, calls };
 };
@@ -73,6 +83,7 @@ const run: ClaimedRun = {
   versionId: 'v-1',
   parentId: null,
   parentWait: null,
+  graphs: [],
   inputs: {},
   state: null
 };
@@ -115,9 +126,9 @@ describe('settleRun', () => {
     assert.deepEqual(calls.jobs, []);
   });
 
-  it('opens an exception task for faulted runs', async () => {
-    const { tx, calls } = fakeTx();
-    const error = { message: 'boom', path: 'sub/', node: 'call' };
+  it('opens an exception task for faulted runs, named for the claim it works', async () => {
+    const { tx, calls } = fakeTx({ reference: 'PCR-1 · Jane Doe' });
+    const error = { message: 'payer service answered 503', path: 'sub/', node: 'call' };
     await settleRun(tx, run, state({ status: 'faulted', fault: { cursor, error } }), [], {
       title: 'Call payer',
       exits: ['then', 'failed'],
@@ -127,6 +138,11 @@ describe('settleRun', () => {
     assert.equal(calls.tasks[0]?.kind, 'fault');
     assert.equal(calls.tasks[0]?.waitId, 'fault:9');
     assert.equal(calls.tasks[0]?.title, 'Stuck at Call payer');
+    assert.equal(calls.tasks[0]?.subject, 'PCR-1 · Jane Doe');
+    assert.equal(
+      calls.tasks[0]?.instructions,
+      'Call payer: Payer service answered 503.\n\nRetry once the cause is fixed.'
+    );
     assert.deepEqual(calls.tasks[0]?.fields, [
       {
         name: 'pin',
@@ -136,18 +152,33 @@ describe('settleRun', () => {
           { value: 'then', label: 'then' },
           { value: 'failed', label: 'failed' }
         ]
-      },
-      { name: 'outputs', type: { object: {} }, label: 'Outputs to use (status)' }
+      }
     ]);
     assert.deepEqual(calls.tasks[0]?.outcomes, FAULT_OUTCOMES);
   });
 
   it('asks only for the decisions that apply to the failed node', () => {
-    assert.deepEqual(faultFields({ title: 'Fail', exits: [], outputs: [] }), []);
-    assert.deepEqual(faultFields(null), [
-      { name: 'pin', type: 'string', label: 'Continue from' },
-      { name: 'outputs', type: { object: {} }, label: 'Outputs to use' }
-    ]);
+    assert.deepEqual(faultFields({ title: 'Fail', exits: [], outputs: ['x'] }), []);
+    assert.deepEqual(faultFields(null), []);
+  });
+
+  it('explains database rule violations in plain words', () => {
+    assert.equal(
+      readableError(
+        'new row for relation "claims" violates check constraint "claims_pickup_state_check"'
+      ),
+      'A saved value broke the rule claims pickup state check.'
+    );
+    assert.equal(
+      readableError('duplicate key value violates unique constraint "x"'),
+      'It would duplicate a record that already exists.'
+    );
+    assert.equal(
+      readableError('null value in column "payer_name" of relation "claim_coverages"'),
+      'Payer name is required.'
+    );
+    assert.equal(readableError('Error: no claim to work on'), 'No claim to work on.');
+    assert.equal(readableError(''), 'The step failed.');
   });
 
   it('schedules timers and signal timeouts as delayed resumes', async () => {
@@ -189,7 +220,8 @@ describe('settleRun', () => {
       {
         runId: 'run-1',
         command: { type: 'resume', suspensionId: '7', payload: { timedOut: true } },
-        startAfter: '2026-02-01'
+        startAfter: '2026-02-01',
+        id: timeoutJobId('run-1', '7')
       }
     ]);
   });
@@ -240,7 +272,9 @@ describe('settleRun', () => {
       []
     );
     assert.deepEqual(one.calls.spawned, [[{ a: 1 }]]);
-    assert.deepEqual(one.calls.jobs, [{ runId: 'child-0', command: { type: 'advance' } }]);
+    assert.deepEqual(one.calls.jobs, [
+      { runId: 'child-0', command: { type: 'advance' }, group: 'run-1' }
+    ]);
 
     const none = fakeTx({ version: 'v-9' });
     await settleRun(none.tx, run, waiting('workflows', { type: 'x.y', version: 2, items: [] }), []);
@@ -274,8 +308,8 @@ describe('settleRun', () => {
     );
     assert.deepEqual(spawned.calls.spawned, [[{ a: 1 }, { a: 2 }]]);
     assert.deepEqual(spawned.calls.jobs, [
-      { runId: 'child-0', command: { type: 'advance' } },
-      { runId: 'child-1', command: { type: 'advance' } },
+      { runId: 'child-0', command: { type: 'advance' }, group: 'run-1' },
+      { runId: 'child-1', command: { type: 'advance' }, group: 'run-1' },
       {
         runId: 'run-1',
         command: { type: 'resume', suspensionId: '7', payload: { runIds: ['child-0', 'child-1'] } }
@@ -389,19 +423,45 @@ describe('notifyParent', () => {
   });
 });
 
-describe('failRun and cancelRun', () => {
-  it('fail terminally and notify the parent', async () => {
+describe('stallRun and cancelRun', () => {
+  it('stall on a fault task that can be retried or cancelled, leaving the parent waiting', async () => {
     const { tx, calls } = fakeTx({
-      parent: { status: 'suspended', waitId: '7', kind: 'workflow' },
-      children: [{ id: 'child-a', status: 'failed', result: null, error: { message: 'bad input' } }]
+      parent: { status: 'suspended', waitId: '7', kind: 'workflow' }
     });
-    await failRun(tx, child, 'bad input');
-    assert.equal(calls.saved[0]?.status, 'failed');
-    assert.deepEqual(calls.jobs[0]?.command, {
-      type: 'resume',
-      suspensionId: '7',
-      payload: null
-    });
+    await stallRun(tx, child, 'bad input', '2026-01-01T00:00:00.000Z');
+    assert.equal(calls.saved[0]?.status, 'faulted');
+    assert.deepEqual(calls.saved[0]?.error, { message: 'bad input' });
+    assert.equal(calls.tasks[0]?.kind, 'fault');
+    assert.equal(calls.tasks[0]?.waitId, 'fault:0:2026-01-01T00:00:00.000Z');
+    assert.deepEqual(calls.tasks[0]?.outcomes, ['retry', 'cancel']);
+    assert.equal(calls.tasks[0]?.instructions, 'Bad input.\n\nRetry once the cause is fixed.');
+    assert.deepEqual(calls.jobs, []);
+  });
+
+  it('starts draft recovery when an Encounter to Claim run ends early, and only then', async () => {
+    const encounter = {
+      ...run,
+      graphs: [{ id: 'v-1', key: 'billing.encounter-to-claim', version: 1 }]
+    };
+    const cancelled = fakeTx({ version: 'v-rec', recovered: ['rec-1'] });
+    await cancelRun(cancelled.tx, encounter);
+    assert.deepEqual(cancelled.calls.recoveries, [['run-1', 'v-rec', 'The run was cancelled']]);
+    assert.ok(
+      cancelled.calls.jobs.some((j) => j.runId === 'rec-1' && j.command.type === 'advance')
+    );
+    const failed = fakeTx({ version: 'v-rec' });
+    await settleRun(failed.tx, encounter, waiting('nope' as never, {}), []);
+    assert.equal(failed.calls.saved[0]?.status, 'failed');
+    assert.deepEqual(failed.calls.recoveries, [
+      ['run-1', 'v-rec', 'The run failed: Unsupported wait "nope"']
+    ]);
+    const unpublished = fakeTx();
+    await cancelRun(unpublished.tx, encounter);
+    assert.deepEqual(unpublished.calls.recoveries, []);
+    const other = fakeTx({ version: 'v-rec' });
+    await cancelRun(other.tx, run);
+    await settleRun(other.tx, encounter, state({ status: 'completed', result: null }), []);
+    assert.deepEqual(other.calls.recoveries, []);
   });
 
   it('cancel open tasks and cascade to active children', async () => {

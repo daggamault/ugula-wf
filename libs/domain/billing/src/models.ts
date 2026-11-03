@@ -30,6 +30,12 @@ const ADDRESS = [
   f('postalCode', 'string', 'ZIP code')
 ];
 
+export const BLOB = { object: { bucket: 'string', key: 'string' } } as const satisfies ValueType;
+
+const ADJUSTMENT_TYPE = {
+  object: { group: 'string', reason: 'string', cents: 'integer' }
+} as const satisfies ValueType;
+
 export const DEMOGRAPHICS = model(
   'billing.demographics',
   'demographics',
@@ -61,7 +67,7 @@ export const COVERAGE = model(
   'billing.coverage',
   'coverage',
   'Coverage',
-  'one payer that covers a claim',
+  'one payer that covers a claim, and who holds the policy',
   [
     f('payer', 'string', 'Payer name as reported'),
     f('payerId', 'string', 'Directory payer ID'),
@@ -69,7 +75,10 @@ export const COVERAGE = model(
     f('payerCode', 'string', 'Payer code'),
     f('priority', 'string', 'Billing priority'),
     f('memberId', 'string', 'Member ID'),
-    f('groupId', 'string', 'Group ID')
+    f('groupId', 'string', 'Group ID'),
+    f('relationship', 'string', 'Patient relationship to the insured (X12 or NEMSIS code)'),
+    f('insuredFirstName', 'string', 'Insured first name'),
+    f('insuredLastName', 'string', 'Insured last name')
   ]
 );
 
@@ -98,7 +107,21 @@ export const FINDINGS = model(
       'Medication doses'
     ),
     f('procedures', { list: 'string' }, 'ALS2 procedures'),
-    f('ivDoses', 'integer', 'IV/IO medication doses')
+    f('ivDoses', 'integer', 'IV/IO medication doses'),
+    f('notes', { list: 'string' }, 'What limited the reading')
+  ]
+);
+
+export const CLAIM_ISSUE = model(
+  'billing.claim-issue',
+  'issue',
+  'Claim Issue',
+  'something a claim is missing or that looks wrong, with the field it is fixed in',
+  [
+    f('level', 'string', 'Level (blocking or warning)'),
+    f('field', 'string', 'Field to fix'),
+    f('message', 'string', 'Message'),
+    f('coverageId', 'string', 'Coverage it is about')
   ]
 );
 
@@ -109,11 +132,10 @@ export const LINE = model('billing.line', 'line', 'Claim Line', 'one HCPCS charg
   f('totalCents', 'integer', 'Line total (cents)')
 ]);
 
-const BLOB: ValueType = { object: { bucket: 'string', key: 'string' } };
-
 export const CLAIM = model('billing.claim', 'claim', 'Claim', 'a claim before it is saved', [
   f('pcrNumber', 'string', 'PCR number'),
   f('patientId', 'string', 'Patient ID'),
+  f('tripType', 'string', 'Trip type'),
   f('serviceDate', 'string', 'Date of service (YYYY-MM-DD)'),
   f('level', 'string', 'Level of service'),
   f('emergency', 'boolean', 'Emergency response'),
@@ -128,7 +150,7 @@ export const CLAIM = model('billing.claim', 'claim', 'Claim', 'a claim before it
   f('report', BLOB, 'Source report')
 ]);
 
-export const SUBMITTED_PATIENT = model(
+const SUBMITTED_PATIENT = model(
   'billing.submitted-patient',
   'patient',
   'Submitted Patient',
@@ -142,19 +164,40 @@ export const SUBMITTED_PATIENT = model(
   ]
 );
 
-export const SUBMITTED_PAYER = model(
+const PAYER_FIELDS = [
+  f('name', 'string', 'Payer name'),
+  f('payerId', 'string', 'Clearinghouse payer ID'),
+  f('claimFiling', 'string', 'Claim filing indicator'),
+  f('memberId', 'string', 'Member ID'),
+  f('groupId', 'string', 'Group ID'),
+  f('relationship', 'string', 'Patient relationship to the insured (X12)'),
+  f('insuredFirstName', 'string', 'Insured first name'),
+  f('insuredLastName', 'string', 'Insured last name')
+];
+
+const SUBMITTED_PAYER = model(
   'billing.submitted-payer',
   'payer',
   'Submitted Payer',
-  'the payer a claim is being submitted to',
+  'the payer a claim is being submitted to, with the policy holder',
+  PAYER_FIELDS
+);
+
+const PRIOR_PAYER = model(
+  'billing.prior-payer',
+  'payer',
+  'Prior Payer',
+  'a payer that already adjudicated a claim, with what it paid and adjusted',
   [
-    f('name', 'string', 'Payer name'),
-    f('payerId', 'string', 'Clearinghouse payer ID'),
-    f('claimFiling', 'string', 'Claim filing indicator')
+    ...PAYER_FIELDS,
+    f('paidCents', 'integer', 'Paid (cents)'),
+    f('adjustedCents', 'integer', 'Adjusted (cents)'),
+    f('paidOn', 'string', 'Adjudication date (YYYY-MM-DD)'),
+    f('adjustments', { list: ADJUSTMENT_TYPE }, 'Adjustment reason codes')
   ]
 );
 
-export const SUBMITTED_DETAILS = model(
+const SUBMITTED_DETAILS = model(
   'billing.submitted-details',
   'details',
   'Submitted Trip',
@@ -168,17 +211,16 @@ export const SUBMITTED_DETAILS = model(
   ]
 );
 
-export const SUBMISSION = model(
+const SUBMISSION = model(
   'billing.submission',
   'claim',
   'Claim to Submit',
   'a saved claim on its way to a payer',
   [
     f('claimId', 'string', 'Claim ID'),
-    f('priorPayers', { list: 'string' }, 'Payers that already answered'),
+    f('payerClaimNumber', 'string', 'Payer claim number of the claim it replaces'),
     f('payer', SUBMITTED_PAYER.type, 'Payer'),
-    f('memberId', 'string', 'Member ID'),
-    f('groupId', 'string', 'Group ID'),
+    f('priorPayers', { list: PRIOR_PAYER.type }, 'Payers that already adjudicated it, in order'),
     f('patient', SUBMITTED_PATIENT.type, 'Patient'),
     f('details', SUBMITTED_DETAILS.type, 'Trip'),
     f('emergency', 'boolean', 'Emergency response'),
@@ -187,17 +229,29 @@ export const SUBMISSION = model(
   ]
 );
 
-export const X837_SUBSCRIBER = model(
+const X837_SUBSCRIBER = model(
   'x837.subscriber',
   'subscriber',
   'Subscriber',
-  'the 837P subscriber loop (2010BA)',
+  'the 837P subscriber loop (2010BA); a self subscriber is named after the patient when blank',
   [
-    f('relationship', 'string', 'Relationship code (SBR02)'),
+    f('relationship', 'string', 'Patient relationship (SBR02, PAT01)'),
     f('lastName', 'string', 'Last name (NM103)'),
     f('firstName', 'string', 'First name (NM104)'),
     f('memberId', 'string', 'Member ID (NM109)'),
-    f('groupId', 'string', 'Group number (SBR03)'),
+    f('groupId', 'string', 'Group number (SBR03)')
+  ],
+  X12
+);
+
+const X837_PATIENT = model(
+  'x837.patient',
+  'patient',
+  'Patient',
+  'the person transported: written in the subscriber loop when self, else the patient loop (2010CA)',
+  [
+    f('lastName', 'string', 'Last name (NM103)'),
+    f('firstName', 'string', 'First name (NM104)'),
     ...ADDRESS,
     f('birthDate', 'string', 'Birth date (DMG02)'),
     f('sex', 'string', 'Sex (DMG03)')
@@ -205,13 +259,12 @@ export const X837_SUBSCRIBER = model(
   X12
 );
 
-export const X837_PAYER = model(
+const X837_PAYER = model(
   'x837.payer',
   'payer',
   'Payer',
   'the 837P payer loop (2010BB)',
   [
-    f('responsibility', 'string', 'Payer responsibility (SBR01)'),
     f('name', 'string', 'Payer name (NM103)'),
     f('payerId', 'string', 'Payer ID (NM109)'),
     f('claimFiling', 'string', 'Claim filing indicator (SBR09)')
@@ -219,7 +272,29 @@ export const X837_PAYER = model(
   X12
 );
 
-export const X837_LINE = model(
+const X837_OTHER_PAYER = model(
+  'x837.other-payer',
+  'otherPayer',
+  'Other Payer',
+  'a payer that already adjudicated the claim (2320, 2330A, 2330B), in billing order',
+  [
+    f('name', 'string', 'Payer name (2330B NM103)'),
+    f('payerId', 'string', 'Payer ID (2330B NM109)'),
+    f('claimFiling', 'string', 'Claim filing indicator (SBR09)'),
+    f('memberId', 'string', 'Member ID (2330A NM109)'),
+    f('groupId', 'string', 'Group number (SBR03)'),
+    f('relationship', 'string', 'Patient relationship (SBR02)'),
+    f('lastName', 'string', 'Insured last name (2330A NM103)'),
+    f('firstName', 'string', 'Insured first name (2330A NM104)'),
+    f('paidCents', 'integer', 'Paid in cents (AMT02)'),
+    f('adjustedCents', 'integer', 'Adjusted in cents, without reason codes (CAS)'),
+    f('paidOn', 'string', 'Adjudication date (DTP03)'),
+    f('adjustments', { list: ADJUSTMENT_TYPE }, 'Adjustment reason codes (CAS)')
+  ],
+  X12
+);
+
+const X837_LINE = model(
   'x837.line',
   'line',
   'Service Line',
@@ -238,23 +313,41 @@ export const X837_CLAIM = model(
   'x837.claim',
   'x837',
   '837P Claim',
-  'one 837P claim (2300) with its subscriber, payer and service lines',
+  'one 837P claim (2300) with its subscriber, patient, payers and service lines',
   [
     f('claimId', 'string', 'Patient control number (CLM01)'),
     f('placeOfService', 'string', 'Place of service (CLM05-1)'),
     f('frequency', 'string', 'Claim frequency (CLM05-3)'),
+    f('payerClaimNumber', 'string', 'Payer claim control number (REF F8)'),
     f('subscriber', X837_SUBSCRIBER.type, 'Subscriber'),
+    f('patient', X837_PATIENT.type, 'Patient'),
     f('payer', X837_PAYER.type, 'Payer'),
-    f('transportReason', 'string', 'Transport reason (CR104)'),
-    f('loadedMiles', 'number', 'Loaded miles (CR106)'),
+    f('otherPayers', { list: X837_OTHER_PAYER.type }, 'Other payers (2320)'),
+    f('transportReason', 'string', 'Transport reason (CR104), with loaded miles'),
+    f('loadedMiles', 'number', 'Loaded miles (CR106), none without transport'),
     f('conditionCodes', { list: 'string' }, 'Ambulance conditions (CRC03 to 07)'),
     f('diagnoses', { list: 'string' }, 'Diagnoses (HI)'),
     f('pickup', LOCATION.type, 'Pickup (2310E)'),
-    f('dropoff', LOCATION.type, 'Drop-off (2310F)'),
+    f('dropoff', LOCATION.type, 'Drop-off (2310F), with transport'),
     f('lines', { list: X837_LINE.type }, 'Service lines')
   ],
   X12
 );
+
+export const billingTypes = {
+  blob: BLOB,
+  demographics: DEMOGRAPHICS.type,
+  patient: PATIENT.type,
+  location: LOCATION.type,
+  coverages: { list: COVERAGE.type },
+  service: SERVICE.type,
+  findings: FINDINGS.type,
+  issues: { list: CLAIM_ISSUE.type },
+  lines: { list: LINE.type },
+  claim: CLAIM.type,
+  submission: SUBMISSION.type,
+  x837: X837_CLAIM.type
+} satisfies Record<string, ValueType>;
 
 export const billingModels: Model[] = [
   DEMOGRAPHICS,
@@ -263,14 +356,19 @@ export const billingModels: Model[] = [
   COVERAGE,
   SERVICE,
   FINDINGS,
+  CLAIM_ISSUE,
   LINE,
+
   CLAIM,
   SUBMITTED_PATIENT,
   SUBMITTED_PAYER,
+  PRIOR_PAYER,
   SUBMITTED_DETAILS,
   SUBMISSION,
   X837_SUBSCRIBER,
+  X837_PATIENT,
   X837_PAYER,
+  X837_OTHER_PAYER,
   X837_LINE,
   X837_CLAIM
 ].map(({ type: _, ...m }) => m);

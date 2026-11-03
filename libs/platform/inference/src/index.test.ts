@@ -89,6 +89,21 @@ describe('createCompleter', () => {
     });
   });
 
+  it('passes the caller abort signal to the request', async () => {
+    const seen: (AbortSignal | null | undefined)[] = [];
+    const fetch: Fetch = async (_, init) => {
+      seen.push(init?.signal);
+      return answer('{"ok":true}');
+    };
+    const completer = createCompleter({ url: 'u', model: 'm', fetch, limit: direct });
+    const controller = new AbortController();
+    await completer.complete(request, controller.signal);
+    controller.abort();
+    assert.equal(seen[0]?.aborted, true);
+    await assert.rejects(completer.complete(request, controller.signal), /abort/i);
+    assert.equal(seen.length, 1);
+  });
+
   it('rejects truncated, empty and failed completions', async () => {
     const run = (res: () => Response) =>
       createCompleter({
@@ -130,5 +145,21 @@ describe('createCompletionLimiter', () => {
     assert.equal(acquire?.[2], 3);
     assert.ok(Number(acquire?.[3]) > 120_000);
     assert.deepEqual(release, [acquire?.[0], acquire?.[1]]);
+  });
+
+  it('reports lease release failures without failing the completion', async () => {
+    const errors: unknown[] = [];
+    const limit = createCompletionLimiter(
+      {
+        eval: async (script) => {
+          if (!script.includes('ZADD')) throw new Error('redis down');
+          return 1;
+        }
+      },
+      1,
+      (err) => errors.push(err)
+    );
+    assert.equal(await limit(async () => 'done'), 'done');
+    assert.equal(errors.length, 1);
   });
 });

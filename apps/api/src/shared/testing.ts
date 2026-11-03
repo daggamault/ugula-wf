@@ -1,14 +1,16 @@
-import type { SessionStore } from '@ugula/auth';
+import type { RedisLike, SessionStore } from '@ugula/auth';
 import type { LiveEvent } from '@ugula/live';
 import { Hono } from 'hono';
 import { type AuthEnv, requireAuth } from './auth.ts';
 import type { Announce } from './live.ts';
+import type { ThrottleStore } from './throttle.ts';
 
 export const testSessions: SessionStore = {
   create: async () => 'test',
   get: async (token) =>
     token === 'test' ? { userId: 'u-1', tenantId: 't-1', email: 'dev@example.com' } : null,
-  destroy: async () => undefined
+  destroy: async () => undefined,
+  destroyAll: async () => undefined
 };
 
 export const withSession = (routes: Hono<AuthEnv>) => {
@@ -30,4 +32,35 @@ export const recordAnnouncements = () => {
   const events: { tenantId: string; event: LiveEvent }[] = [];
   const announce: Announce = async (tenantId, event) => void events.push({ tenantId, event });
   return { announce, events };
+};
+
+export const memoryRedis = () => {
+  const values = new Map<string, { value: string; ttl: number }>();
+  const sets = new Map<string, Set<string>>();
+  const redis: RedisLike & ThrottleStore = {
+    get: async (k) => values.get(k)?.value ?? null,
+    set: async (k, value, _mode, ttl) => void values.set(k, { value, ttl }),
+    del: async (...keys) => {
+      for (const k of keys) {
+        values.delete(k);
+        sets.delete(k);
+      }
+    },
+    incr: async (k) => {
+      const n = Number(values.get(k)?.value ?? 0) + 1;
+      values.set(k, { value: String(n), ttl: values.get(k)?.ttl ?? -1 });
+      return n;
+    },
+    expire: async (k, ttl) => {
+      const entry = values.get(k);
+      if (entry) values.set(k, { ...entry, ttl });
+    },
+    ttl: async (k) => values.get(k)?.ttl ?? -2,
+    sadd: async (k, ...members) => void sets.set(k, new Set([...(sets.get(k) ?? []), ...members])),
+    srem: async (k, ...members) => {
+      for (const m of members) sets.get(k)?.delete(m);
+    },
+    smembers: async (k) => [...(sets.get(k) ?? [])]
+  };
+  return { redis, keys: () => [...values.keys(), ...sets.keys()] };
 };

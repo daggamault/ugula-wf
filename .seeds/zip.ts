@@ -3,7 +3,6 @@ import { inflateRawSync } from 'node:zlib';
 const END_OF_CENTRAL_DIRECTORY = 0x06054b50;
 const CENTRAL_FILE = 0x02014b50;
 
-/** Reads the entries of a zip whose names pass `wanted`, as UTF-8 text. */
 export const unzipTexts = (zip: Buffer, wanted: (name: string) => boolean): string[] => {
   let end = zip.length - 22;
   while (end >= 0 && zip.readUInt32LE(end) !== END_OF_CENTRAL_DIRECTORY) end--;

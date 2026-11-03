@@ -1,20 +1,16 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { deflateRawSync, gzipSync } from 'node:zlib';
+import { gzipSync } from 'node:zlib';
 import { createDummyDb } from '@ugula/db/testing';
-import { buildDictionary, CODES_FILE, ELEMENTS_FILE } from './nemsis-build.ts';
 import {
   buildUpsertCodes,
   buildUpsertElements,
   codesToTsv,
   elementsToTsv,
   mergeDictionaries,
-  NEMSIS_RELEASES,
   parseXsds,
   readCodes,
-  readElements,
-  xsdZipUrl
+  readElements
 } from './nemsis-dictionary.ts';
 
 const XS = 'xmlns:xs="http://www.w3.org/2001/XMLSchema"';
@@ -115,23 +111,6 @@ describe('dictionary files', () => {
     assert.deepEqual(readElements(gzipSync(elementsToTsv(elements))), elements);
     assert.deepEqual(readCodes(gzipSync(codesToTsv(codes))), codes);
   });
-
-  it('ship with the seed and describe common values', () => {
-    const elements = readElements(readFileSync(ELEMENTS_FILE));
-    const codes = readCodes(readFileSync(CODES_FILE));
-    assert.equal(
-      elements.find((e) => e.element === 'eResponse.05')?.name,
-      'Type of Service Requested'
-    );
-    assert.equal(
-      codes.find((c) => c.list === 'eResponse.05' && c.code === '2205001')?.description,
-      'Emergency Response (Primary Response Area)'
-    );
-    assert.equal(
-      codes.find((c) => c.list === '@NV' && c.code === '7701003')?.description,
-      'Not Recorded'
-    );
-  });
 });
 
 describe('dictionary upserts', () => {
@@ -146,53 +125,5 @@ describe('dictionary upserts', () => {
       .sql;
     assert.ok(codes.includes('on conflict ("list", "code") do update'));
     await db.destroy();
-  });
-});
-
-const zipOf = (files: Record<string, string>) => {
-  const locals: Buffer[] = [];
-  const centrals: Buffer[] = [];
-  let offset = 0;
-  for (const [name, text] of Object.entries(files)) {
-    const data = deflateRawSync(Buffer.from(text));
-    const nameBytes = Buffer.from(name);
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(8, 8);
-    local.writeUInt32LE(data.length, 18);
-    local.writeUInt16LE(nameBytes.length, 26);
-    const central = Buffer.alloc(46);
-    central.writeUInt32LE(0x02014b50, 0);
-    central.writeUInt16LE(8, 10);
-    central.writeUInt32LE(data.length, 20);
-    central.writeUInt16LE(nameBytes.length, 28);
-    central.writeUInt32LE(offset, 42);
-    locals.push(local, nameBytes, data);
-    centrals.push(central, nameBytes);
-    offset += local.length + nameBytes.length + data.length;
-  }
-  const directory = Buffer.concat(centrals);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(Object.keys(files).length, 10);
-  end.writeUInt32LE(directory.length, 12);
-  end.writeUInt32LE(offset, 16);
-  return Buffer.concat([...locals, directory, end]);
-};
-
-describe('buildDictionary', () => {
-  it('downloads every 3.5 release and merges their XSDs', async () => {
-    const urls: string[] = [];
-    const dictionary = await buildDictionary(async (url) => {
-      urls.push(url);
-      return zipOf({
-        'X/eResponse_v3.xsd': SECTION,
-        'X/commonTypes_v3.xsd': COMMON,
-        'X/a.txt': ''
-      });
-    });
-    assert.deepEqual(urls, NEMSIS_RELEASES.map(xsdZipUrl));
-    assert.equal(dictionary.elements.length, 2);
-    assert.equal(dictionary.codes.length, 6);
   });
 });

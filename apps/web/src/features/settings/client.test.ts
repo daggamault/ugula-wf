@@ -25,11 +25,12 @@ describe('createSettingsClient', () => {
       addressLine: '1 Rd',
       city: 'X',
       state: 'IL',
-      postalCode: '62704',
+      postalCode: '627041234',
       phone: '2175550100',
       submitterId: null,
       receiverId: null,
       receiverName: null,
+      timeZone: 'America/Chicago',
       production: false
     });
     assert.deepEqual(seen, [

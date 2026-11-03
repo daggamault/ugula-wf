@@ -2,7 +2,7 @@ import { classNamesOf } from '../../shared/class-names.ts';
 import type { LiveStatus } from '../../shared/live.ts';
 import { Tooltip } from '../../shared/ui/tooltip.tsx';
 
-export type HealthStatusProps = {
+type HealthStatusProps = {
   status: LiveStatus;
 };
 

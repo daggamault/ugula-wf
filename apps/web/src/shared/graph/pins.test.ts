@@ -7,8 +7,8 @@ describe('pin tones', () => {
     assert.equal(pinKindOf('exec'), 'exec');
     assert.equal(pinKindOf({ list: 'number' }), 'list');
     assert.equal(pinKindOf({ object: {} }), 'object');
-    assert.ok(toneOf('number').dot.includes('emerald'));
-    assert.ok(toneOf({ list: 'any' }).edge.includes('stroke-sky-500'));
+    assert.ok(toneOf('number').dot === 'bg-pin-number');
+    assert.ok(toneOf({ list: 'any' }).edge.includes('stroke-pin-list'));
     assert.notEqual(toneOf('string').dot, toneOf('integer').dot);
   });
 });

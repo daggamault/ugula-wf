@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { attributeList, describeCode, reportTerms } from './dictionary.ts';
+import { describeCode, reportTerms } from './dictionary.ts';
 
 describe('reportTerms', () => {
   it('collects element names and coded values, including attributes, once each', () => {
@@ -43,7 +43,7 @@ describe('describeCode', () => {
       codes: { 'eResponse.05': { '2205001': 'Emergency' }, '@NV': { '7701003': 'Not Recorded' } }
     };
     assert.equal(describeCode(dictionary, 'eResponse.05', '2205001'), 'Emergency');
-    assert.equal(describeCode(dictionary, attributeList('NV'), '7701003'), 'Not Recorded');
+    assert.equal(describeCode(dictionary, '@NV', '7701003'), 'Not Recorded');
     assert.equal(describeCode(dictionary, 'eResponse.05', '1'), null);
   });
 });

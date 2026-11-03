@@ -1,34 +1,59 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { createReportService, rangeOf } from './service.ts';
+import { createReportService, dayIn, rangeOf } from './service.ts';
 
-const now = new Date('2026-10-23T15:00:00Z');
+const now = new Date('2026-11-01T02:00:00Z');
 
 describe('rangeOf', () => {
   it('defaults to the last twelve months, from the first of the month', () => {
-    assert.deepEqual(rangeOf({}, now), { from: '2025-11-01', to: '2026-10-23' });
-    assert.deepEqual(rangeOf({ to: '2026-03-31' }, now), { from: '2025-04-01', to: '2026-03-31' });
-    assert.deepEqual(rangeOf({ from: '2026-01-01', to: '2026-01-31' }, now), {
+    assert.deepEqual(rangeOf({}, '2026-10-23'), { from: '2025-11-01', to: '2026-10-23' });
+    assert.deepEqual(rangeOf({ to: '2026-03-31' }, '2026-10-23'), {
+      from: '2025-04-01',
+      to: '2026-03-31'
+    });
+    assert.deepEqual(rangeOf({ from: '2026-01-01', to: '2026-01-31' }, '2026-10-23'), {
       from: '2026-01-01',
       to: '2026-01-31'
     });
   });
 });
 
+describe('dayIn', () => {
+  it('reads the calendar day in a time zone', () => {
+    assert.equal(dayIn(now, 'UTC'), '2026-11-01');
+    assert.equal(dayIn(now, 'America/New_York'), '2026-10-31');
+  });
+});
+
 describe('report service', () => {
-  it('runs each report for the tenant and echoes the period it covers', async () => {
-    const { db, queries } = createRecordingDb(() => [{ paid_cents: 5, adjusted_cents: 1 }]);
-    const service = createReportService({ db, now: () => now });
-    const aging = await service.aging('t-1');
-    assert.ok(aging.ok && aging.value.asOf === '2026-10-23');
-    const monthly = await service.monthly('t-1', { from: '2026-01-01' });
+  const service = () => {
+    const recording = createRecordingDb(() => [{ total: '1', balance_cents: 5 }]);
+    return { ...recording, service: createReportService({ db: recording.db, now: () => now }) };
+  };
+
+  it('runs a report as of today in the time zone, echoing its period and group', async () => {
+    const { service: s, queries } = service();
+    const aging = await s.run('t-1', 'aging', { tz: 'America/New_York', page: 1 });
+    assert.ok(aging.ok);
+    assert.equal(aging.value.asOf, '2026-10-31');
+    assert.equal(aging.value.range, null);
+    assert.equal(aging.value.group, 'payer');
+    assert.equal(aging.value.total, 1);
+    const monthly = await s.run('t-1', 'monthly', { from: '2026-01-01', tz: 'UTC', page: 1 });
     assert.ok(monthly.ok);
-    assert.deepEqual(monthly.value.range, { from: '2026-01-01', to: '2026-10-23' });
-    assert.ok((await service.hcpcs('t-1', {})).ok);
-    const payers = await service.payers('t-1', {});
-    assert.ok(payers.ok);
-    assert.deepEqual(payers.value.patient, { paid_cents: 5, adjusted_cents: 1 });
+    assert.deepEqual(monthly.value.range, { from: '2026-01-01', to: '2026-11-01' });
+    assert.equal(monthly.value.group, null);
     assert.ok(queries.every((q) => q.parameters.includes('t-1')));
+  });
+
+  it('rejects unknown reports and groups a report does not offer', async () => {
+    const { service: s } = service();
+    const missing = await s.run('t-1', 'nope', { tz: 'UTC', page: 1 });
+    assert.ok(!missing.ok && missing.failure.code === 'not_found');
+    const badGroup = await s.run('t-1', 'aging', { tz: 'UTC', group: 'queue', page: 1 });
+    assert.ok(!badGroup.ok && badGroup.failure.code === 'invalid');
+    const ungrouped = await s.run('t-1', 'monthly', { tz: 'UTC', group: 'payer', page: 1 });
+    assert.ok(!ungrouped.ok && ungrouped.failure.code === 'invalid');
   });
 });

@@ -1,4 +1,4 @@
-import { type Live, useLive } from '../../shared/live.ts';
+import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { PageLoading } from '../../shared/ui/page.tsx';
@@ -19,10 +19,16 @@ export const PatientClaims = ({
   patientId: string;
 }) => {
   const table = useTableState(`/patients/${patientId}`, CLAIM_TABLE);
-  const list = useResource(`patient-claims:${patientId}:${table.apiQuery}`, () =>
-    client.list({ status: 'all', patientId }, table.apiQuery)
+  const list = useResource(`patient-claims:${patientId}:${table.apiQuery}`, (signal) =>
+    client.list({ status: 'all', patientId }, table.apiQuery, signal)
   );
-  useLive(live, (e) => e.kind === 'claim', list.reload);
+  const ids = list.data?.items.map((c) => c.id) ?? [];
+  useLive(
+    live,
+    (e) => e.kind === 'claim' && isOnPage(e.id, table.page, ids),
+    list.reload,
+    LIST_RELOAD_MS
+  );
   return (
     <SectionPanel title="Claims" description="Every claim for this patient, open or closed.">
       {list.error ? <Alert>{list.error.message}</Alert> : null}

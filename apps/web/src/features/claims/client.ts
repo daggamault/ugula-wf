@@ -1,15 +1,19 @@
 import {
+  type AdjustmentGroup,
   CLAIM_STATUSES,
   type ClaimEventKind,
+  type ClaimIssue,
   type ClaimStatus,
-  type ClaimStep
+  type ClaimStep,
+  type InsuredRelationship,
+  type TripType
 } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
 import type { Page } from '../../shared/url-state.ts';
 
 export type { ClaimStatus };
 
-export type ClaimFilter = ClaimStatus | 'open' | 'all';
+type ClaimFilter = ClaimStatus | 'open' | 'all';
 
 export type Assignee = 'anyone' | 'me' | 'unassigned';
 
@@ -23,7 +27,7 @@ export type ClaimSearch = {
   assignee: Assignee;
 };
 
-export type ClaimQuery = Partial<ClaimSearch> & { patientId?: string };
+type ClaimQuery = Partial<ClaimSearch> & { patientId?: string };
 
 const FILTERS: readonly ClaimFilter[] = ['open', 'all', ...CLAIM_STATUSES];
 
@@ -39,7 +43,7 @@ export const claimSearchOf = (query: URLSearchParams): ClaimSearch => ({
   assignee: ASSIGNEES.find((a) => a === query.get('assignee')) ?? 'anyone'
 });
 
-export type PendingClaim = {
+type PendingClaim = {
   id: string;
   pcrNumber: string | null;
   patient: string;
@@ -50,9 +54,9 @@ export type PendingClaim = {
   issues: string[];
 };
 
-export type Pending = {
+type Pending = {
   issues: string[];
-  claims: PendingClaim[];
+  claim: PendingClaim | null;
 };
 
 export type Batch = {
@@ -65,7 +69,7 @@ export type Batch = {
   created_by_email: string | null;
 };
 
-export const listQuery = (query: ClaimQuery, page: string) => {
+const listQuery = (query: ClaimQuery, page: string) => {
   const filters = new URLSearchParams(
     Object.entries(query).flatMap(([k, v]) =>
       v?.trim() && !(k === 'assignee' && v === 'anyone') ? [[k, v.trim()]] : []
@@ -74,15 +78,9 @@ export const listQuery = (query: ClaimQuery, page: string) => {
   return `${filters}&${page}`;
 };
 
-export type CycleStatus =
-  | 'running'
-  | 'suspended'
-  | 'completed'
-  | 'faulted'
-  | 'failed'
-  | 'cancelled';
+type CycleStatus = 'running' | 'suspended' | 'completed' | 'faulted' | 'failed' | 'cancelled';
 
-export type TaskKind = 'task' | 'fault';
+type TaskKind = 'task' | 'fault';
 
 export type ClaimSummary = {
   id: string;
@@ -129,6 +127,9 @@ export type ClaimCoverage = {
   id: string;
   position: number;
   payer: string;
+  relationship: InsuredRelationship;
+  insured_first_name: string | null;
+  insured_last_name: string | null;
   payer_id: string | null;
   payer_code: string | null;
   member_id: string | null;
@@ -136,6 +137,7 @@ export type ClaimCoverage = {
 };
 
 export type ClaimDetail = ClaimSummary & {
+  trip_type: TripType | null;
   emergency: boolean | null;
   import_report_id: string | null;
   loaded_miles: string | null;
@@ -165,7 +167,7 @@ export type ClaimDetail = ClaimSummary & {
   tasks: ClaimTask[];
 };
 
-export type AddressInput = {
+type AddressInput = {
   addressLine: string | null;
   city: string | null;
   state: string | null;
@@ -184,6 +186,13 @@ export type BillingDataInput = {
   coverages: { id: string; memberId: string | null; groupId: string | null }[];
 };
 
+export type PayerInput = {
+  name: string;
+  relationship: InsuredRelationship;
+  insuredFirstName: string | null;
+  insuredLastName: string | null;
+};
+
 export type ClaimEvent = {
   id: string;
   kind: ClaimEventKind;
@@ -191,6 +200,9 @@ export type ClaimEvent = {
   payer: string | null;
   paid_cents: number;
   adjusted_cents: number;
+  paid_on: string | null;
+  check_number: string | null;
+  payer_claim_number: string | null;
   note: string;
   created_at: string;
   has_document: boolean;
@@ -200,37 +212,53 @@ export type ClaimEvent = {
 
 export type ClaimProgress = ClaimStep;
 
+type AdjustmentInput = { group: AdjustmentGroup; reason: string; cents: number };
+
 export type ClaimResponseInput = {
   requestId: string;
+  kind: 'response' | 'refunded';
   coverageId: string | null;
   paidCents: number;
   adjustedCents: number;
+  paidOn: string | null;
+  checkNumber: string | null;
+  payerClaimNumber: string | null;
+  adjustments: AdjustmentInput[];
   note: string;
 };
 
+const claimPath = (id: string) => `/api/claims/${encodeURIComponent(id)}`;
+
 export const createClaimsClient = (api: Api) => ({
-  list: (query: ClaimQuery, page: string) =>
-    api.get<Page<ClaimSummary>>(`/api/claims?${listQuery(query, page)}`),
-  find: (id: string) =>
-    api.get<{ claim: ClaimDetail; events: ClaimEvent[]; progress: ClaimProgress | null }>(
-      `/api/claims/${id}`
-    ),
-  setPayers: (id: string, payers: string[]) =>
-    api.put<{ payers: string[] }>(`/api/claims/${id}/payers`, { payers }),
+  list: (query: ClaimQuery, page: string, signal?: AbortSignal) =>
+    api.get<Page<ClaimSummary>>(`/api/claims?${listQuery(query, page)}`, signal),
+  find: (id: string, signal?: AbortSignal) =>
+    api.get<{
+      claim: ClaimDetail;
+      files: ClaimEvent[];
+      progress: ClaimProgress | null;
+      issues: ClaimIssue[];
+    }>(claimPath(id), signal),
+  events: (id: string, page: string, signal?: AbortSignal) =>
+    api.get<Page<ClaimEvent>>(`${claimPath(id)}/events?${page}`, signal),
+  setPayers: (id: string, payers: readonly PayerInput[]) =>
+    api.put<{ payers: PayerInput[] }>(`${claimPath(id)}/payers`, { payers }),
   documentUrl: (claimId: string, eventId: string) =>
-    api.href(`/api/claims/${claimId}/events/${eventId}/document`),
+    api.href(`${claimPath(claimId)}/events/${encodeURIComponent(eventId)}/document`),
   saveBillingData: (id: string, data: BillingDataInput) =>
-    api.put<{ status: string }>(`/api/claims/${id}/billing-data`, data),
-  restartCycle: (id: string) => api.post<{ runId: string }>(`/api/claims/${id}/restart-cycle`),
+    api.put<{ status: string }>(`${claimPath(id)}/billing-data`, data),
+  restartCycle: (id: string) => api.post<{ runId: string }>(`${claimPath(id)}/restart-cycle`),
   recordResponse: (id: string, response: ClaimResponseInput) =>
-    api.post<{ balanceCents: number; duplicate: boolean }>(`/api/claims/${id}/responses`, response),
-  pending: (claimId?: string) =>
-    api.get<Pending>(`/api/submissions/pending${claimId ? `?claimId=${claimId}` : ''}`),
+    api.post<{ balanceCents: number; duplicate: boolean }>(`${claimPath(id)}/responses`, response),
+  pending: (claimId: string, signal?: AbortSignal) =>
+    api.get<Pending>(`/api/submissions/pending?claimId=${encodeURIComponent(claimId)}`, signal),
   createBatch: async (claimId: string) =>
     (await api.post<{ batch: Batch }>('/api/submissions/batches', { claimId })).batch,
   markSubmitted: (claimId: string) => api.post('/api/submissions/manual', { claimId }),
-  fileUrl: (batchId: string) => api.href(`/api/submissions/batches/${batchId}/file`),
-  encounterUrl: (reportId: string) => api.href(`/api/imports/reports/${reportId}/xml`)
+  fileUrl: (batchId: string) =>
+    api.href(`/api/submissions/batches/${encodeURIComponent(batchId)}/file`),
+  encounterUrl: (reportId: string) =>
+    api.href(`/api/imports/reports/${encodeURIComponent(reportId)}/xml`)
 });
 
 export type ClaimsClient = ReturnType<typeof createClaimsClient>;

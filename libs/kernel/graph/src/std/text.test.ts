@@ -44,6 +44,10 @@ describe('text nodes', () => {
     assert.deepEqual(await out('std.text.pad', { text: '7', length: 2 }, { side: 'end' }), {
       result: '7 '
     });
+    await assert.rejects(
+      () => out('std.text.pad', { text: '7', length: 100_001 }),
+      /Pad: at most 100000 characters/
+    );
     assert.deepEqual(await out('std.text.substring', { text: 'hello', start: 1 }), {
       result: 'ello'
     });

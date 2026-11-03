@@ -53,7 +53,16 @@ describe('list nodes', () => {
     });
     await assert.rejects(
       () => out('std.list.sort-by', { list: [{}] }, { expression: 'item' }),
-      /numbers or strings/
+      /Sort By: can only sort by numbers or strings/
+    );
+    await assert.rejects(
+      () =>
+        out(
+          'std.list.map',
+          { list: Array.from({ length: 100 }, (_, i) => i) },
+          { expression: 'len(range(20000))' }
+        ),
+      /evaluation budget/
     );
     const groups = await out('std.list.group-by', { list: lines }, { expression: 'item.code' });
     assert.deepEqual(Object.keys(groups.groups as object), ['A0427', 'A0425']);

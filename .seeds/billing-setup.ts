@@ -8,11 +8,12 @@ export const demoProfile = {
   address_line: '100 Station Rd',
   city: 'Springfield',
   state: 'IL',
-  postal_code: '62704',
+  postal_code: '627041234',
   phone: '2175550100',
   submitter_id: 'DEVEMS01',
   receiver_id: 'DEMOCH',
   receiver_name: 'Demo Clearinghouse',
+  time_zone: 'America/Chicago',
   production: false
 };
 

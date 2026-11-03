@@ -1,5 +1,5 @@
+import { isRecord } from '@ugula/graph';
 import type { Completer, CompletionRequest } from './completions.ts';
-import { isRecord } from './values.ts';
 
 export const ALS2_PROCEDURES = [
   'endotracheal intubation',
@@ -14,7 +14,7 @@ export const ALS2_PROCEDURES = [
 
 export type Als2Procedure = (typeof ALS2_PROCEDURES)[number];
 
-export const ROUTES = ['IV', 'IO', 'IM', 'IN', 'PO', 'SL', 'NEB', 'SQ', 'other'] as const;
+const ROUTES = ['IV', 'IO', 'IM', 'IN', 'PO', 'SL', 'NEB', 'SQ', 'other'] as const;
 
 export type Route = (typeof ROUTES)[number];
 
@@ -24,9 +24,19 @@ export type NarrativeFindings = {
   medications: Medication[];
   procedures: Als2Procedure[];
   ivDoses: number;
+  notes: string[];
 };
 
 const MAX_NARRATIVE_CHARS = 12_000;
+
+export const TRUNCATED_NOTE = `The narrative is longer than ${MAX_NARRATIVE_CHARS.toLocaleString('en-US')} characters; only the start was read`;
+
+export const UNREAD_FINDINGS: NarrativeFindings = {
+  medications: [],
+  procedures: [],
+  ivDoses: 0,
+  notes: ['The language model was unavailable, so the narrative was not read']
+};
 
 const MAX_DOSES = 20;
 
@@ -62,9 +72,9 @@ const SYSTEM = `You extract billing facts from an EMS patient care narrative.
 2. procedures: each of these the crew performed: ${ALS2_PROCEDURES.join(', ')}. Any shock or joules delivered is defibrillation. An IO needle or IO access is an intraosseous line. Supraglottic airways (King, i-gel, LMA) are not surgical airways.
 Only include what this crew did, not what was refused, considered, or done before their arrival.`;
 
-export const NO_FINDINGS: NarrativeFindings = { medications: [], procedures: [], ivDoses: 0 };
+const NO_FINDINGS: NarrativeFindings = { medications: [], procedures: [], ivDoses: 0, notes: [] };
 
-export const narrativeRequest = (narrative: string): CompletionRequest => ({
+const narrativeRequest = (narrative: string): CompletionRequest => ({
   system: SYSTEM,
   user: narrative.slice(0, MAX_NARRATIVE_CHARS),
   schema: NARRATIVE_SCHEMA,
@@ -94,11 +104,19 @@ export const readFindings = (x: unknown): NarrativeFindings => {
     procedures,
     ivDoses: medications
       .filter((m) => m.route === 'IV' || m.route === 'IO')
-      .reduce((n, m) => n + m.doses, 0)
+      .reduce((n, m) => n + m.doses, 0),
+    notes: []
   };
 };
 
-export const readNarrative = async (completer: Completer, narrative: string) =>
-  narrative.trim()
-    ? readFindings(await completer.complete(narrativeRequest(narrative)))
-    : NO_FINDINGS;
+export const readNarrative = async (
+  completer: Completer,
+  narrative: string,
+  signal?: AbortSignal
+): Promise<NarrativeFindings> => {
+  if (!narrative.trim()) return NO_FINDINGS;
+  const findings = readFindings(await completer.complete(narrativeRequest(narrative), signal));
+  return narrative.length > MAX_NARRATIVE_CHARS
+    ? { ...findings, notes: [TRUNCATED_NOTE] }
+    : findings;
+};

@@ -1,4 +1,4 @@
-import type { Database } from '@ugula/db';
+import { type Database, NOTIFICATION_INTENTS } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
 export const buildNotificationsTable = (db: Kysely<Database>) =>
@@ -19,7 +19,7 @@ export const buildNotificationsTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addCheckConstraint(
       'notifications_intent_check',
-      sql`intent in ('primary', 'success', 'info', 'warning', 'danger')`
+      sql`intent in (${sql.join(NOTIFICATION_INTENTS.map((v) => sql.lit(v)))})`
     )
     .addCheckConstraint(
       'notifications_link_check',

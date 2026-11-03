@@ -3,21 +3,26 @@ import { useState } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { describedByOf, Field, fieldControlClasses, fieldTextClasses } from './field.tsx';
 import { Input } from './input.tsx';
+import { interactiveClasses } from './interactive.ts';
 import { Select, type SelectOption } from './select.tsx';
 import { Textarea } from './textarea.tsx';
 
-export type ValueFieldProps = {
+type ValueFieldProps = {
   id: string;
   label: string;
   type: ValueType;
   value: Json;
   onChange: (value: Json) => void;
   error?: string | undefined;
+  isRequired?: boolean | undefined;
+  format?: 'date' | undefined;
+  min?: number | undefined;
+  max?: number | undefined;
   options?: readonly SelectOption[] | undefined;
   upload?: ((file: File) => Promise<UploadedValue>) | undefined;
 };
 
-export type UploadedValue = { file: Json; name: string };
+type UploadedValue = { file: Json; name: string };
 
 export const isFileType = (type: ValueType) =>
   typeof type === 'object' &&
@@ -87,6 +92,7 @@ const JsonField = ({ id, label, type, value, onChange, error }: ValueFieldProps)
   const [parseError, setParseError] = useState<string>();
   return (
     <Textarea
+      isMonospace
       id={id}
       label={label}
       hint={formatType(type)}
@@ -105,19 +111,50 @@ const JsonField = ({ id, label, type, value, onChange, error }: ValueFieldProps)
   );
 };
 
+export const linesOf = (text: string) =>
+  text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+const isStringList = (type: ValueType) =>
+  typeof type === 'object' && 'list' in type && type.list === 'string';
+
+const ListField = ({ id, label, value, onChange, error, isRequired }: ValueFieldProps) => {
+  const [text, setText] = useState(() =>
+    Array.isArray(value) ? value.filter((v) => typeof v === 'string').join('\n') : ''
+  );
+  return (
+    <Textarea
+      id={id}
+      label={label}
+      hint="One per line."
+      error={error}
+      required={isRequired}
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(linesOf(e.target.value));
+      }}
+    />
+  );
+};
+
+const textOf = (value: Json) => (typeof value === 'string' ? value : '');
+
 export const ValueField = (props: ValueFieldProps) => {
-  const { id, label, type, value, onChange, error, options, upload } = props;
+  const { id, label, type, value, onChange, error, isRequired, format, min, max, options, upload } =
+    props;
+  const common = { id, label, error, required: isRequired };
   if (upload && isFileType(type)) {
     return <FileField id={id} label={label} error={error} onChange={onChange} upload={upload} />;
   }
   if (options) {
     return (
       <Select
-        id={id}
-        label={label}
-        error={error}
+        {...common}
         options={[{ value: '', label: 'Choose…' }, ...options]}
-        value={typeof value === 'string' ? value : ''}
+        value={textOf(value)}
         onChange={(e) => onChange(e.target.value || null)}
       />
     );
@@ -130,7 +167,7 @@ export const ValueField = (props: ValueFieldProps) => {
           type="checkbox"
           checked={value === true}
           onChange={(e) => onChange(e.target.checked)}
-          className="accent-primary size-4 cursor-pointer"
+          className={classNamesOf(interactiveClasses, 'accent-primary size-4')}
         />
         {label}
       </label>
@@ -139,37 +176,45 @@ export const ValueField = (props: ValueFieldProps) => {
   if (type === 'number' || type === 'integer') {
     return (
       <Input
-        id={id}
-        label={label}
+        {...common}
         type="number"
+        inputMode={type === 'integer' ? 'numeric' : 'decimal'}
         step={type === 'integer' ? 1 : 'any'}
-        error={error}
+        min={min}
+        max={max}
         value={typeof value === 'number' ? value : ''}
         onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
       />
     );
   }
-  if (type === 'string' || type === 'datetime') {
-    const isTime = type === 'datetime';
+  if (type === 'string' && format === 'date') {
     return (
       <Input
-        id={id}
-        label={label}
-        type={isTime ? 'datetime-local' : 'text'}
-        hint={isTime ? 'UTC' : undefined}
-        error={error}
-        value={typeof value === 'string' ? (isTime ? value.slice(0, 16) : value) : ''}
+        {...common}
+        type="date"
+        value={textOf(value)}
+        onChange={(e) => onChange(e.target.value || null)}
+      />
+    );
+  }
+  if (type === 'string') {
+    return (
+      <Input {...common} value={textOf(value)} onChange={(e) => onChange(e.target.value || null)} />
+    );
+  }
+  if (type === 'datetime') {
+    return (
+      <Input
+        {...common}
+        type="datetime-local"
+        hint="UTC"
+        value={textOf(value).slice(0, 16)}
         onChange={(e) =>
-          onChange(
-            e.target.value === ''
-              ? null
-              : isTime
-                ? new Date(`${e.target.value}Z`).toISOString()
-                : e.target.value
-          )
+          onChange(e.target.value ? new Date(`${e.target.value}Z`).toISOString() : null)
         }
       />
     );
   }
+  if (isStringList(type)) return <ListField {...props} />;
   return <JsonField {...props} />;
 };

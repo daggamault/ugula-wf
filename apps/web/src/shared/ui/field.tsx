@@ -1,8 +1,11 @@
 import { type ReactNode, useId } from 'react';
 import { classNamesOf } from '../class-names.ts';
+import { focusRingClasses } from './interactive.ts';
 
-export const fieldControlClasses =
-  'border-border bg-surface placeholder:text-surface-fg-muted/70 focus-visible:outline-primary aria-invalid:border-danger aria-invalid:focus-visible:outline-danger [&:enabled:not([readonly])]:hover:border-surface-fg/25 [&:enabled:not([readonly])]:hover:bg-surface-hover w-full rounded-lg border px-3 outline-2 outline-offset-0 outline-transparent transition duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-50';
+export const fieldControlClasses = classNamesOf(
+  focusRingClasses,
+  'border-border bg-surface placeholder:text-surface-fg-muted/70 aria-invalid:border-danger aria-invalid:focus-visible:outline-danger [&:enabled:not([readonly])]:hover:border-surface-fg/25 [&:enabled:not([readonly])]:hover:bg-surface-hover w-full rounded-lg border px-3 disabled:cursor-not-allowed disabled:opacity-50'
+);
 
 export const fieldTextClasses = 'text-base sm:text-sm';
 
@@ -14,7 +17,7 @@ const fieldSpanClasses: Readonly<Record<FieldSpan, string>> = {
   4: '@lg:col-span-2 @3xl:col-span-4'
 };
 
-export type FieldProps = {
+type FieldProps = {
   id: string;
   label: string;
   error?: string | undefined;

@@ -36,6 +36,14 @@ describe('time nodes', () => {
       await out('std.time.add', { time: '2026-01-15T00:00:00Z', amount: 2 }, { unit: 'years' }),
       { time: '2028-01-15T00:00:00.000Z' }
     );
+    const add = async (time: string, amount: number, unit: string) =>
+      (await out('std.time.add', { time, amount }, { unit })).time;
+    assert.equal(await add('2026-01-31T08:00:00Z', 1, 'months'), '2026-02-28T08:00:00.000Z');
+    assert.equal(await add('2024-01-31T00:00:00Z', 1, 'months'), '2024-02-29T00:00:00.000Z');
+    assert.equal(await add('2026-03-31T00:00:00Z', -1, 'months'), '2026-02-28T00:00:00.000Z');
+    assert.equal(await add('2026-01-31T00:00:00Z', 14, 'months'), '2027-03-31T00:00:00.000Z');
+    assert.equal(await add('2024-02-29T00:00:00Z', 1, 'years'), '2025-02-28T00:00:00.000Z');
+    assert.equal(await add('2024-02-29T00:00:00Z', 4, 'years'), '2028-02-29T00:00:00.000Z');
     const diff = (start: string, end: string, unit: string) =>
       out('std.time.difference', { start, end }, { unit });
     assert.deepEqual(await diff('2025-03-16', '2026-03-15', 'years'), { amount: 0 });

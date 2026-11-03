@@ -16,6 +16,14 @@ const toDate = (x: unknown) => new Date(x as string);
 
 const intoMonth = (d: Date) => d.getTime() - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
 
+const addMonths = (d: Date, n: number) => {
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + n);
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, last));
+};
+
 const monthsBetween = (a: Date, b: Date) => {
   const months = (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + b.getUTCMonth() - a.getUTCMonth();
   if (months > 0 && intoMonth(b) < intoMonth(a)) return months - 1;
@@ -44,8 +52,8 @@ export const timeNodes: NodeDef[] = [
     compute: ({ time, amount }, { unit }) => {
       const d = toDate(time);
       const n = amount as number;
-      if (unit === 'years') d.setUTCFullYear(d.getUTCFullYear() + n);
-      else if (unit === 'months') d.setUTCMonth(d.getUTCMonth() + n);
+      if (unit === 'years') addMonths(d, n * 12);
+      else if (unit === 'months') addMonths(d, n);
       else d.setTime(d.getTime() + n * UNIT_MS[unit]);
       return { time: d.toISOString() };
     }

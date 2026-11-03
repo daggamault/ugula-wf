@@ -8,20 +8,29 @@ import { PageLoading } from './page.tsx';
 import { Pagination } from './pagination.tsx';
 import { type SearchField, SearchForm } from './search-form.tsx';
 
-export type SearchProps<T> = {
+type SearchProps<T> = {
   label: string;
   path: string;
   search: SearchView;
   results: Resource<Page<T>>;
+  isFiltered?: boolean;
   empty: { title: string; children: ReactNode; action?: ReactNode };
   children: (items: readonly T[]) => ReactNode;
 };
 
-export const searchFieldsOf = (label: string): readonly SearchField[] => [
-  { name: 'q', label: 'Search', placeholder: `Search ${label}` }
+const searchFieldsOf = (label: string): readonly SearchField[] => [
+  { name: 'q', label: 'Search', placeholder: `Search ${label.toLowerCase()}` }
 ];
 
-export const Search = <T,>({ label, path, search, results, empty, children }: SearchProps<T>) => (
+export const Search = <T,>({
+  label,
+  path,
+  search,
+  results,
+  isFiltered = false,
+  empty,
+  children
+}: SearchProps<T>) => (
   <>
     <SearchForm label={`Search ${label}`} path={path} fields={searchFieldsOf(label)} />
     {results.error ? (
@@ -48,6 +57,10 @@ export const Search = <T,>({ label, path, search, results, empty, children }: Se
     ) : search.q ? (
       <EmptyState reason="noMatches" title={`No Matching ${label}`}>
         Nothing matches “{search.q}”. Try fewer letters or another word.
+      </EmptyState>
+    ) : isFiltered ? (
+      <EmptyState reason="noMatches" title={`No Matching ${label}`}>
+        Nothing matches these filters.
       </EmptyState>
     ) : (
       <EmptyState title={empty.title} action={empty.action}>

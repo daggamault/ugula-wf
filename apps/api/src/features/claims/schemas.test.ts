@@ -30,10 +30,27 @@ describe('claim schemas', () => {
   });
 
   it('accepts ordered unique payers', () => {
-    assert.deepEqual(v.parse(payersSchema, { payers: [' Medicare ', 'Blue Plan'] }), {
-      payers: ['Medicare', 'Blue Plan']
-    });
+    const self = { relationship: '18', insuredFirstName: null, insuredLastName: null };
+    assert.deepEqual(
+      v.parse(payersSchema, {
+        payers: [
+          ' Medicare ',
+          { name: 'Blue Plan', relationship: '01', insuredFirstName: ' Sam ', insuredLastName: '' }
+        ]
+      }),
+      {
+        payers: [
+          { name: 'Medicare', ...self },
+          { name: 'Blue Plan', relationship: '01', insuredFirstName: 'Sam', insuredLastName: null }
+        ]
+      }
+    );
     assert.equal(v.safeParse(payersSchema, { payers: ['A', 'A'] }).success, false);
+    assert.equal(v.safeParse(payersSchema, { payers: ['A', { name: 'a' }] }).success, false);
+    assert.equal(
+      v.safeParse(payersSchema, { payers: [{ name: 'A', relationship: 'XX' }] }).success,
+      false
+    );
     assert.equal(v.safeParse(payersSchema, { payers: [' '] }).success, false);
   });
 
@@ -41,15 +58,54 @@ describe('claim schemas', () => {
     const requestId = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
     assert.deepEqual(v.parse(responseSchema, { requestId, paidCents: 500 }), {
       requestId,
+      kind: 'response',
       coverageId: null,
       paidCents: 500,
       adjustedCents: 0,
+      paidOn: null,
+      checkNumber: null,
+      payerClaimNumber: null,
+      adjustments: [],
       note: ''
     });
+    assert.equal(
+      v.parse(responseSchema, { requestId, payerClaimNumber: ' ICN-9 ' }).payerClaimNumber,
+      'ICN-9'
+    );
     assert.equal(v.safeParse(responseSchema, { requestId, paidCents: -1 }).success, false);
     assert.equal(v.safeParse(responseSchema, { requestId, paidCents: 1.5 }).success, false);
     assert.equal(v.safeParse(responseSchema, { paidCents: 1 }).success, false);
     assert.equal(v.safeParse(responseSchema, { requestId, coverageId: 'Medicare' }).success, false);
+  });
+
+  it('reads paid dates, check numbers, reason codes and refunds', () => {
+    const requestId = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
+    const paid = v.parse(responseSchema, {
+      requestId,
+      paidCents: 500,
+      paidOn: '2026-10-20',
+      checkNumber: ' EFT-9 ',
+      adjustments: [{ group: 'CO', reason: ' 45 ', cents: 100 }]
+    });
+    assert.equal(paid.checkNumber, 'EFT-9');
+    assert.deepEqual(paid.adjustments, [{ group: 'CO', reason: '45', cents: 100 }]);
+    const fails = (over: Record<string, unknown>) =>
+      !v.safeParse(responseSchema, { requestId, ...over }).success;
+    assert.ok(fails({ paidOn: '10/20/2026' }));
+    assert.ok(fails({ adjustments: [{ group: 'XX', reason: '45', cents: 1 }] }));
+    assert.ok(fails({ adjustments: [{ group: 'CO', reason: 'TOO-LONG', cents: 1 }] }));
+    assert.ok(fails({ adjustments: [{ group: 'CO', reason: '45', cents: 0 }] }));
+    assert.ok(!fails({ kind: 'refunded', paidCents: 500 }));
+    assert.ok(fails({ kind: 'refunded', paidCents: 0 }));
+    assert.ok(fails({ kind: 'refunded', paidCents: 500, adjustedCents: 5 }));
+    assert.ok(
+      fails({
+        kind: 'refunded',
+        paidCents: 500,
+        adjustments: [{ group: 'CO', reason: '45', cents: 1 }]
+      })
+    );
+    assert.ok(fails({ kind: 'reversal' }));
   });
 
   it('normalizes billing data and turns blanks into missing values', () => {
@@ -71,7 +127,17 @@ describe('claim schemas', () => {
       }),
       {
         patient: { addressLine: '1 Main', city: null, state: 'IL', postalCode: '627041234' },
-        coverages: [{ id: requestId, memberId: '1EG', groupId: null }],
+        coverages: [
+          {
+            id: requestId,
+            memberId: '1EG',
+            groupId: null,
+            relationship: null,
+            insuredFirstName: null,
+            insuredLastName: null,
+            remove: false
+          }
+        ],
         serviceDate: '2026-10-01',
         pickup: {
           name: null,
@@ -82,8 +148,35 @@ describe('claim schemas', () => {
         },
         destination: { name: null, addressLine: null, city: null, state: null, postalCode: null },
         diagnoses: ['R079', 'I10'],
-        originDestination: null
+        originDestination: null,
+        note: null
       }
+    );
+    assert.deepEqual(v.parse(billingDataSchema, {}), {
+      patient: null,
+      coverages: [],
+      serviceDate: null,
+      pickup: null,
+      destination: null,
+      diagnoses: null,
+      originDestination: null,
+      note: null
+    });
+    assert.deepEqual(
+      v.parse(billingDataSchema, {
+        coverages: [{ id: requestId, relationship: '01', insuredLastName: ' Doe ', remove: true }]
+      }).coverages,
+      [
+        {
+          id: requestId,
+          memberId: null,
+          groupId: null,
+          relationship: '01',
+          insuredFirstName: null,
+          insuredLastName: 'Doe',
+          remove: true
+        }
+      ]
     );
     const fails = (over: Record<string, unknown>) =>
       !v.safeParse(billingDataSchema, {

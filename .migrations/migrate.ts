@@ -21,6 +21,7 @@ export const resetSchema = async (db: Kysely<Database>) => {
   for (const table of [
     'notification_states',
     'notifications',
+    'claim_event_adjustments',
     'claim_events',
     'claim_batches',
     'claim_diagnoses',
@@ -31,6 +32,7 @@ export const resetSchema = async (db: Kysely<Database>) => {
     'import_reports',
     'imports',
     'fee_schedules',
+    'payer_suggestions',
     'payer_aliases',
     'payers',
     'billing_profiles',

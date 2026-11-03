@@ -4,7 +4,13 @@ import * as v from 'valibot';
 import type { AuthEnv } from '../../shared/auth.ts';
 import { idParam, invalidRequest, uuid } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { billingDataSchema, listClaimsQuery, payersSchema, responseSchema } from './schemas.ts';
+import {
+  billingDataSchema,
+  claimEventsQuery,
+  listClaimsQuery,
+  payersSchema,
+  responseSchema
+} from './schemas.ts';
 import type { ClaimService } from './service.ts';
 
 const documentParam = v.object({ id: uuid, eventId: uuid });
@@ -24,6 +30,20 @@ export const createClaimRoutes = (service: ClaimService) =>
     })
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.find(c.get('session').tenantId, c.req.valid('param').id))
+    )
+    .get(
+      '/:id/events',
+      sValidator('param', idParam, invalidRequest),
+      sValidator('query', claimEventsQuery, invalidRequest),
+      async (c) =>
+        respond(
+          c,
+          await service.events(
+            c.get('session').tenantId,
+            c.req.valid('param').id,
+            c.req.valid('query')
+          )
+        )
     )
     .put(
       '/:id/payers',
@@ -57,15 +77,18 @@ export const createClaimRoutes = (service: ClaimService) =>
       '/:id/billing-data',
       sValidator('param', idParam, invalidRequest),
       sValidator('json', billingDataSchema, invalidRequest),
-      async (c) =>
-        respond(
+      async (c) => {
+        const { tenantId, userId } = c.get('session');
+        return respond(
           c,
           await service.saveBillingData(
-            c.get('session').tenantId,
+            tenantId,
+            userId,
             c.req.valid('param').id,
             c.req.valid('json')
           )
-        )
+        );
+      }
     )
     .post('/:id/restart-cycle', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(

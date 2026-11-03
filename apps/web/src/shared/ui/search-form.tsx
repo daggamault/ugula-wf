@@ -129,7 +129,7 @@ const CollapsibleFilters = ({
         onClick={() => setOpen(!isOpen)}
         className={classNamesOf(
           interactiveClasses,
-          'hover:bg-surface-hover flex h-12 items-center gap-2 rounded-xl px-4 text-left text-sm font-semibold'
+          'hover:bg-surface-hover flex h-12 items-center gap-2 rounded-lg px-4 text-left text-sm font-semibold'
         )}
       >
         <ChevronDownIcon

@@ -9,13 +9,18 @@ export const buildFeeSchedulesTable = (db: Kysely<Database>) =>
     .addColumn('tenant_id', 'uuid', (col) =>
       col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
     )
-    .addColumn('payer_id', 'uuid', (col) =>
-      col.references('payers.id').onDelete('cascade').onUpdate('cascade')
-    )
+    .addColumn('payer_id', 'uuid')
     .addColumn('code', 'text', (col) => col.notNull())
     .addColumn('amount_cents', 'integer', (col) => col.notNull())
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addForeignKeyConstraint(
+      'fee_schedules_payer_id_fkey',
+      ['tenant_id', 'payer_id'],
+      'payers',
+      ['tenant_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
     .addUniqueConstraint(
       'fee_schedules_tenant_payer_code_unique',
       ['tenant_id', 'payer_id', 'code'],

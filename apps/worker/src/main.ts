@@ -1,5 +1,5 @@
 import { createNodeCatalog } from '@ugula/catalog';
-import { createDb, findDefinitions, listRunGraphRefs } from '@ugula/db';
+import { createDb, findDefinitions } from '@ugula/db';
 import { createCompleter, createCompletionLimiter, createEmbedder } from '@ugula/inference';
 import { publishLiveEvent } from '@ugula/live';
 import { createBlobStore, createS3Storage } from '@ugula/storage';
@@ -18,13 +18,15 @@ import { createEngineCache } from './features/workflows/engines.ts';
 import { registerWorkflowJobs } from './features/workflows/job.ts';
 import { createRunStore } from './features/workflows/queries.ts';
 import { createRunner } from './features/workflows/runner.ts';
-import { createAnnouncer, type Publish } from './shared/live.ts';
+import { coalescePublish, createAnnouncer, type Publish } from './shared/live.ts';
 import {
   createLoadGate,
   createProcessSampler,
   defaultHeapBytes,
   megabytes
 } from './shared/load.ts';
+import { createRunScope } from './shared/run-scope.ts';
+import { createTenantOf } from './shared/tenancy.ts';
 
 const connection = (config: Config) => ({
   host: config.DB_HOST,
@@ -37,9 +39,33 @@ const connection = (config: Config) => ({
 export const createWorker = (config: Config) =>
   new PgBoss({ ...connection(config), useListenNotify: true });
 
+const SHUTDOWN_TIMEOUT_MS = 30_000;
+
+const CONNECTIONS_PER_SLOT = 3;
+
+const SPARE_CONNECTIONS = 4;
+
+export const poolSize = (concurrency: number) =>
+  concurrency * CONNECTIONS_PER_SLOT + SPARE_CONNECTIONS;
+
+type Running = {
+  jobs: { stop: () => void };
+  live: { flush: () => Promise<void> };
+  boss: Pick<PgBoss, 'stop'>;
+  db: { destroy: () => Promise<void> };
+  redis: { quit: () => Promise<unknown> };
+};
+
+export const stopWorker = async ({ jobs, live, boss, db, redis }: Running, timeoutMs: number) => {
+  jobs.stop();
+  await boss.stop({ graceful: true, timeout: timeoutMs });
+  await live.flush();
+  await Promise.all([db.destroy(), redis.quit()]);
+};
+
 if (import.meta.main) {
   const config = parseConfig(process.env);
-  const db = createDb({ ...connection(config), max: config.WORKFLOW_CONCURRENCY + 2 });
+  const db = createDb({ ...connection(config), max: poolSize(config.WORKFLOW_CONCURRENCY) });
   const boss = createWorker(config);
   await boss.start();
   const redis = new Redis({
@@ -58,39 +84,50 @@ if (import.meta.main) {
   );
   await blobs.ensureBucket();
   const store = createRunStore({ db, boss });
-  const publish: Publish = (tenantId, event) => publishLiveEvent(redis, tenantId, event);
-  const announce = createAnnouncer(db, publish);
+  const live = coalescePublish((tenantId, event) => publishLiveEvent(redis, tenantId, event));
+  const publish: Publish = live.publish;
+  const scope = createRunScope();
+  const tenantOf = createTenantOf(db, scope.tenantOf);
+  const announce = createAnnouncer(tenantOf, publish);
+  const guardedFetch = scope.fetch(fetch);
   const runner = createRunner({
     store,
     engines: createEngineCache({
       nodes: createNodeCatalog({
-        fetch,
-        reports: announceImports(createReportStore(db, blobs), announce),
+        fetch: guardedFetch,
+        reports: scope.guard(announceImports(createReportStore(db, blobs, tenantOf), announce)),
         billing: {
-          patients: createPatientStore(db),
-          payers: createPayerStore(db, createEmbedder({ url: config.EMBEDDINGS_URL, fetch })),
-          fees: createFeeStore(db),
-          claims: announceClaims(createClaimStore(db, blobs), announce),
+          patients: scope.guard(createPatientStore(db)),
+          payers: scope.guard(
+            createPayerStore(
+              db,
+              createEmbedder({ url: config.EMBEDDINGS_URL, fetch: guardedFetch })
+            )
+          ),
+          fees: scope.guard(createFeeStore(db)),
+          claims: scope.guard(announceClaims(createClaimStore(db, blobs, boss), announce)),
           completer: createCompleter({
             url: config.COMPLETIONS_URL,
             model: config.COMPLETIONS_MODEL,
             limit: createCompletionLimiter(redis, config.COMPLETIONS_CONCURRENCY),
-            fetch
+            fetch: guardedFetch
           })
         }
       }),
-      loadRefs: (runId) => listRunGraphRefs(db, runId),
       loadDefinitions: (ids) => findDefinitions(db, ids)
     }),
     now: () => new Date(),
-    publish
+    publish,
+    within: scope.within
   });
   await registerHealthJob(boss);
-  await registerWorkflowJobs({
+  const report = (message: string) => process.stderr.write(`${message}\n`);
+  const jobs = await registerWorkflowJobs({
     boss,
     runner,
     store,
     concurrency: config.WORKFLOW_CONCURRENCY,
+    childConcurrency: config.WORKFLOW_CHILD_CONCURRENCY,
     gate: createLoadGate(createProcessSampler(), {
       eventLoop: config.WORKER_MAX_EVENT_LOOP_UTILIZATION,
       heapBytes: config.WORKER_MAX_HEAP_MB
@@ -98,6 +135,20 @@ if (import.meta.main) {
         : defaultHeapBytes(),
       rssBytes: config.WORKER_MAX_RSS_MB ? megabytes(config.WORKER_MAX_RSS_MB) : null
     }),
-    report: (message) => process.stderr.write(`${message}\n`)
+    report
   });
+  let stopping = false;
+  const shutdown = (signal: NodeJS.Signals) => {
+    if (stopping) return;
+    stopping = true;
+    stopWorker({ jobs, live, boss, db, redis }, SHUTDOWN_TIMEOUT_MS).then(
+      () => process.exit(0),
+      (err: unknown) => {
+        report(`Stopping after ${signal} failed: ${String(err)}`);
+        process.exit(1);
+      }
+    );
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 }

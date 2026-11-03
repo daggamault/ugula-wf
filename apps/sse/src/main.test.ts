@@ -29,7 +29,11 @@ describe('sse server', () => {
   it('relays valid tenant events from Redis to the hub', () => {
     const hub = createHub();
     const seen: string[] = [];
-    hub.add('t-1', { write: (chunk) => void seen.push(chunk) });
+    hub.add('t-1', {
+      writableNeedDrain: false,
+      write: (chunk) => void seen.push(chunk),
+      destroy: () => undefined
+    });
     const onMessage = relay(hub);
     onMessage('live:*', 'live:t-1', '{"kind":"run","id":"r1","status":"completed"}');
     onMessage('live:*', 'live:t-1', 'garbage');

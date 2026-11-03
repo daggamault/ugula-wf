@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { BatchClaim, ClaimEventKind } from '@ugula/billing';
+import type { BatchClaim, ClaimCheck, ClaimEventKind } from '@ugula/billing';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { Json } from '@ugula/graph';
 import type { RunQueueClient } from '@ugula/run-queue';
@@ -8,24 +8,21 @@ import type { CompiledQuery } from 'kysely';
 import type { Evaluate } from '../../shared/evaluate.ts';
 import { recordAnnouncements } from '../../shared/testing.ts';
 import type { ReadyClaimRow } from './queries.ts';
-import {
-  batchKey,
-  createSubmissionService,
-  detailsOf,
-  MAP_837P,
-  pendingClaims
-} from './service.ts';
+import { batchKey, createSubmissionService, detailsOf, MAP_837P, pendingClaim } from './service.ts';
 
 const toX837 = (c: BatchClaim): Json => ({
   claimId: c.claimId,
   placeOfService: '41',
   frequency: '1',
+  payerClaimNumber: c.payerClaimNumber,
   subscriber: {
-    relationship: '18',
+    relationship: c.payer.relationship,
+    memberId: c.payer.memberId,
+    groupId: c.payer.groupId
+  },
+  patient: {
     lastName: c.patient.lastName,
     firstName: c.patient.firstName,
-    memberId: c.memberId,
-    groupId: c.groupId,
     addressLine: c.patient.addressLine,
     city: c.patient.city,
     state: c.patient.state,
@@ -60,11 +57,15 @@ const medicare = {
   payer_id: 'DEMOMCR',
   claim_filing: 'MB',
   member_id: '1EG4TE5MK73',
-  group_id: null
+  group_id: null,
+  relationship: '18',
+  insured_first_name: null,
+  insured_last_name: null
 };
 
 const claimRow = (id: string, over: Partial<ReadyClaimRow> = {}): ReadyClaimRow => ({
   id,
+  number: 1001,
   pcr_number: 'PCR-1',
   emergency: true,
   loaded_miles: '7.3',
@@ -106,7 +107,7 @@ const profile = {
   address_line: '1 Station Rd',
   city: 'Springfield',
   state: 'IL',
-  postal_code: '62701',
+  postal_code: '627011234',
   phone: '2175550100',
   submitter_id: 'SUB01',
   receiver_id: 'RCV01',
@@ -119,7 +120,7 @@ const now = new Date('2026-10-23T12:00:00Z');
 const event = (
   claimId: string,
   kind: ClaimEventKind,
-  coverageId: string,
+  coverageId: string | null,
   at = '2026-10-02T00:00:00Z'
 ) => ({
   claim_id: claimId,
@@ -127,53 +128,116 @@ const event = (
   coverage_id: coverageId,
   paid_cents: 0,
   adjusted_cents: 0,
+  payer_claim_number: null as string | null,
+  paid_on: null as string | null,
+  adjustments: [] as { group: 'CO' | 'PR'; reason: string; cents: number }[],
   created_at: new Date(at)
 });
 
-const pending = (rows: ReadyClaimRow[], events: ReturnType<typeof event>[]) =>
-  pendingClaims(rows, events, now);
+type EventRow = ReturnType<typeof event>;
 
-describe('pendingClaims', () => {
-  it('lists approved claims waiting on a submission with what blocks each one', () => {
-    const waiting = pending(
-      [
-        claimRow(C1),
-        claimRow('unreviewed'),
-        claimRow(C2, {
-          service_date: null,
-          origin_code: null,
-          destination_code: null,
-          coverages: [{ ...medicare, member_id: null, payer_id: null, claim_filing: null }],
-          diagnoses: []
-        }),
-        claimRow('sent'),
-        claimRow('requeued')
-      ],
-      [
-        event(C1, 'approved', MEDICARE),
-        event(C2, 'approved', MEDICARE),
+const ledgerOf = (events: EventRow[]) =>
+  events.map((e) => ({
+    kind: e.kind,
+    coverageId: e.coverage_id,
+    paidCents: e.paid_cents,
+    adjustedCents: e.adjusted_cents,
+    payerClaimNumber: e.payer_claim_number,
+    paidOn: e.paid_on,
+    adjustments: e.adjustments,
+    at: e.created_at.toISOString()
+  }));
+
+const claimColumns = (row: ReadyClaimRow) => ({
+  ...row,
+  patient_id: 'p1',
+  trip_type: 'emergency',
+  level: 'ALS1'
+});
+
+const coverageColumns = (row: ReadyClaimRow) =>
+  row.coverages.map((c) => ({ ...c, payer_name: c.payer }));
+
+const checkOf = (row: ReadyClaimRow): ClaimCheck => ({
+  patientId: 'p1',
+  patient: {
+    addressLine: row.address_line,
+    city: row.city,
+    state: row.state,
+    postalCode: row.postal_code
+  },
+  pcrNumber: row.pcr_number,
+  tripType: 'emergency',
+  level: 'ALS1',
+  emergency: row.emergency,
+  loadedMiles: row.loaded_miles === null ? null : Number(row.loaded_miles),
+  lines: row.lines.map((l) => ({
+    code: l.code,
+    units: Number(l.units),
+    unitCents: l.unit_cents,
+    totalCents: l.total_cents
+  })),
+  totalCents: row.total_cents,
+  payers: row.coverages.map((c) => ({
+    coverageId: c.id,
+    name: c.payer,
+    payerId: c.payer_id,
+    claimFiling: c.claim_filing,
+    memberId: c.member_id,
+    relationship: c.relationship,
+    insuredFirstName: c.insured_first_name,
+    insuredLastName: c.insured_last_name
+  })),
+  details: detailsOf(row)
+});
+
+const pending = (row: ReadyClaimRow, events: EventRow[]) =>
+  pendingClaim(row, ledgerOf(events), checkOf(row), now);
+
+describe('pendingClaim', () => {
+  it('describes an approved claim waiting on a submission with what blocks it', () => {
+    const incomplete = claimRow(C2, {
+      service_date: null,
+      origin_code: null,
+      destination_code: null,
+      coverages: [{ ...medicare, member_id: null, payer_id: null, claim_filing: null }],
+      diagnoses: []
+    });
+    const waiting = [
+      pending(claimRow(C1), [event(C1, 'approved', MEDICARE)]),
+      pending(claimRow('unreviewed'), []),
+      pending(incomplete, [event(C2, 'approved', MEDICARE)]),
+      pending(claimRow('sent'), [
         event('sent', 'approved', MEDICARE),
-        event('sent', 'submitted', MEDICARE),
+        event('sent', 'submitted', MEDICARE)
+      ]),
+      pending(claimRow('requeued'), [
         event('requeued', 'approved', MEDICARE),
         event('requeued', 'submitted', MEDICARE),
         event('requeued', 'resubmit_queued', MEDICARE, '2026-10-20T00:00:00Z'),
         event('requeued', 'approved', MEDICARE, '2026-10-21T00:00:00Z')
-      ]
-    );
+      ])
+    ].filter((p) => p !== null);
     assert.deepEqual(
-      waiting.map((p) => [p.claim.claimId, p.coverageId, p.resubmission]),
+      waiting.map((p) => [p.id, p.claim.claimId, p.coverageId, p.resubmission]),
       [
-        [C1, MEDICARE, false],
-        [C2, MEDICARE, false],
-        ['requeued', MEDICARE, true]
+        [C1, '1001', MEDICARE, false],
+        [C2, '1001', MEDICARE, false],
+        ['requeued', '1001', MEDICARE, true]
       ]
     );
     assert.deepEqual(waiting[0]?.issues, []);
     assert.deepEqual(waiting[0]?.claim.payer, {
       name: 'Medicare',
       payerId: 'DEMOMCR',
-      claimFiling: 'MB'
+      claimFiling: 'MB',
+      memberId: '1EG4TE5MK73',
+      groupId: null,
+      relationship: '18',
+      insuredFirstName: null,
+      insuredLastName: null
     });
+    assert.equal(waiting[0]?.claim.payerClaimNumber, null);
     assert.equal(waiting[0]?.claim.loadedMiles, 7.3);
     assert.deepEqual(waiting[0]?.claim.lines[1], {
       code: 'A0425',
@@ -183,26 +247,71 @@ describe('pendingClaims', () => {
     });
     for (const issue of [
       'The member ID for Medicare is missing',
-      'Medicare is not in the payer directory',
+      'Medicare is not linked to the payer directory',
       'The origin/destination modifier is missing',
       'The date of service is missing'
     ]) {
       assert.ok(waiting[1]?.issues.includes(issue), issue);
     }
+    assert.deepEqual(waiting[1]?.warnings, []);
+  });
+
+  it('blocks only on blocking issues and ignores payers already skipped', () => {
+    const skippedBlue = { ...medicare, id: BLUE, payer: 'Blue Plan', member_id: null };
+    const row = claimRow(C1, { pcr_number: null, coverages: [skippedBlue, medicare] });
+    const found = pending(row, [
+      event(C1, 'payer_skipped', BLUE),
+      event(C1, 'approved', MEDICARE, '2026-10-03T00:00:00Z')
+    ]);
+    assert.equal(found?.coverageId, MEDICARE);
+    assert.deepEqual(found?.issues, []);
+    assert.equal(found?.warnings.length, 1);
+    assert.match(found?.warnings[0] ?? '', /no PCR number/);
+  });
+
+  it('notes when anything was logged after the approval', () => {
+    const later = pending(claimRow(C1), [
+      event(C1, 'approved', MEDICARE),
+      { ...event(C1, 'statement', MEDICARE, '2026-10-05T00:00:00Z'), coverage_id: null }
+    ]);
+    assert.equal(later?.changedSinceApproval, true);
+    const fresh = pending(claimRow(C1), [event(C1, 'approved', MEDICARE)]);
+    assert.equal(fresh?.changedSinceApproval, false);
   });
 
   it('flags secondary claims, which need the primary payer adjudication', () => {
-    const [secondary] = pending(
-      [claimRow(C1, { coverages: [{ ...medicare, id: BLUE, payer: 'Blue Plan' }, medicare] })],
+    const secondary = pending(
+      claimRow(C1, { coverages: [{ ...medicare, id: BLUE, payer: 'Blue Plan' }, medicare] }),
       [
-        { ...event(C1, 'response', BLUE), paid_cents: 50_000 },
+        {
+          ...event(C1, 'response', BLUE),
+          paid_cents: 50_000,
+          adjusted_cents: 20_000,
+          paid_on: '2026-09-30',
+          adjustments: [
+            { group: 'CO', reason: '45', cents: 20_000 },
+            { group: 'PR', reason: '1', cents: 22_300 }
+          ]
+        },
         event(C1, 'reconciled', BLUE),
         event(C1, 'approved', MEDICARE)
       ]
     );
     assert.equal(secondary?.coverageId, MEDICARE);
-    assert.deepEqual(secondary?.claim.priorPayers, ['Blue Plan']);
-    assert.match(secondary?.issues[0] ?? '', /secondary payer/);
+    assert.deepEqual(
+      secondary?.claim.priorPayers.map((p) => [p.name, p.paidCents, p.paidOn, p.adjustments]),
+      [
+        [
+          'Blue Plan',
+          50_000,
+          '2026-09-30',
+          [
+            { group: 'CO', reason: '45', cents: 20_000 },
+            { group: 'PR', reason: '1', cents: 22_300 }
+          ]
+        ]
+      ]
+    );
   });
 });
 
@@ -222,16 +331,24 @@ const setup = ({
   rows = [claimRow(C1)],
   events = [event(C1, 'approved', MEDICARE)] as unknown[],
   withProfile = true,
-  broken = false
+  broken = false,
+  exhausted = false
 } = {}) => {
   const opts = { broken };
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
+    if (q.sql.startsWith('update "billing_profiles"')) {
+      return exhausted ? [] : [{ control_number: 7 }];
+    }
     if (q.sql.includes('from "billing_profiles"')) return withProfile ? [profile] : [];
-    if (q.sql.includes('from "claims" as "c"')) return rows;
+    if (q.sql.includes('from "claims" as "c"')) return rows.map(claimColumns);
     if (q.sql.includes('from "claim_events"')) return events;
-    if (q.sql.includes('max(control_number)')) return [{ next: 7 }];
+    if (q.sql.includes('from "claim_lines"')) return rows[0]?.lines ?? [];
+    if (q.sql.includes('from "claim_coverages"')) return rows[0] ? coverageColumns(rows[0]) : [];
+    if (q.sql.includes('from "claim_diagnoses"')) {
+      return (rows[0]?.diagnoses ?? []).map((code) => ({ code }));
+    }
     if (q.sql.startsWith('insert into "claim_batches"')) {
-      return [{ id: 'b1', control_number: 7, claim_count: 1, total_cents: 92_300 }];
+      return [{ id: q.parameters[0], control_number: q.parameters[2], claim_count: 1 }];
     }
     if (q.sql.includes('from "workflow_runs"')) return [{ id: 'r1', wait_id: '4' }];
     return [];
@@ -261,10 +378,10 @@ const setup = ({
 describe('submission service', () => {
   it('reports profile problems alongside the claims waiting to go out', async () => {
     const { service } = setup({ withProfile: false });
-    const res = await service.pending('t1');
+    const res = await service.pending('t1', C1);
     assert.ok(res.ok);
     assert.deepEqual(res.value.issues, ['Add a billing profile in Settings']);
-    assert.deepEqual(res.value.claims[0], {
+    assert.deepEqual(res.value.claim, {
       id: C1,
       pcrNumber: 'PCR-1',
       patient: 'Jane Doe',
@@ -272,8 +389,14 @@ describe('submission service', () => {
       payer: 'Medicare',
       totalCents: 92_300,
       resubmission: false,
-      issues: []
+      issues: [],
+      warnings: []
     });
+  });
+
+  it('reports no claim when it is not waiting on a submission', async () => {
+    const res = await setup({ rows: [] }).service.pending('t1', C1);
+    assert.deepEqual(res.ok && res.value.claim, null);
   });
 
   it('writes an 837P file for one claim, logs it as submitted and wakes its cycle', async () => {
@@ -282,26 +405,37 @@ describe('submission service', () => {
     assert.ok(res.ok, JSON.stringify(res));
     assert.deepEqual(mapped, [`t1:${MAP_837P.key}@1:x837`]);
     assert.ok(stored[0]?.text.includes('SV1*HC:A0427:RH*850*UN*1***1~'));
-    assert.equal(stored[0]?.key, batchKey('t1', 7));
-    assert.equal(stored[0]?.key, 'batches/t1/837P-000000007.txt');
+    const batchId = res.ok ? res.value.batch.id : '';
+    assert.equal(stored[0]?.key, batchKey('t1', batchId, 7));
+    assert.equal(stored[0]?.key, `batches/t1/${batchId}/837P-000000007.txt`);
     assert.equal(stored[0]?.contentType, 'application/edi-x12');
     assert.match(stored[0]?.text ?? '', /^ISA\*00\*/);
-    assert.match(stored[0]?.text ?? '', new RegExp(`CLM\\*${C1}\\*923\\*`));
+    assert.match(stored[0]?.text ?? '', /CLM\*1001\*923\*/);
     const sqls = queries.map((q) => q.sql);
-    assert.ok(sqls[0]?.includes('from "billing_profiles"') && sqls[0]?.endsWith('for update'));
-    assert.ok(sqls.some((s) => s.includes('for update of "c"')));
+    assert.ok(!sqls.some((s) => s.includes('from "billing_profiles"') && s.endsWith('for update')));
+    const locked = sqls.findIndex((s) => s.includes('for update of "c"'));
+    const numbered = sqls.findIndex((s) => s.startsWith('update "billing_profiles"'));
+    assert.ok(locked >= 0 && numbered > locked);
     const inserted = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
     assert.deepEqual(inserted?.parameters.slice(0, 6), [
       C1,
       'submitted',
       MEDICARE,
       '837P file #7',
-      'b1',
+      batchId,
       'u1'
     ]);
     const status = queries.find((q) => q.sql.startsWith('update "claims"'));
     assert.deepEqual(status?.parameters, ['submitted', C1, 'ready']);
     assert.equal(jobs.length, 1);
+  });
+
+  it('refuses to write a file once the control numbers are used up', async () => {
+    const { service, stored, queries } = setup({ exhausted: true });
+    const res = await service.create('t1', 'u1', C1);
+    assert.ok(!res.ok && res.failure.code === 'conflict');
+    assert.equal(stored.length, 0);
+    assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
   });
 
   it('refuses claims that are no longer ready, without writing anything', async () => {
@@ -331,10 +465,7 @@ describe('submission service', () => {
     const { service, stored } = setup({ broken: true });
     const res = await service.create('t1', 'u1', C1);
     assert.ok(!res.ok && res.failure.code === 'invalid');
-    assert.match(
-      !res.ok ? res.failure.message : '',
-      new RegExp(`Claim ${C1}: The 837P claim needs`)
-    );
+    assert.match(!res.ok ? res.failure.message : '', /Claim 1001: The 837P claim needs/);
     assert.equal(stored.length, 0);
   });
 
@@ -362,5 +493,18 @@ describe('submission service', () => {
     });
     const again = await done.service.markSubmitted('t1', 'u1', C1, '');
     assert.ok(!again.ok && again.failure.code === 'conflict');
+    const paid = setup({
+      events: [
+        event(C1, 'approved', MEDICARE),
+        {
+          ...event(C1, 'response', MEDICARE, '2026-10-04T00:00:00Z'),
+          coverage_id: null,
+          paid_cents: 1_000
+        }
+      ]
+    });
+    const changed = await paid.service.markSubmitted('t1', 'u1', C1, '');
+    assert.ok(!changed.ok && /since it was approved/.test(changed.failure.message));
+    assert.ok(!paid.queries.some((q) => q.sql.startsWith('insert')));
   });
 });

@@ -1,6 +1,7 @@
 import type { Db } from '@ugula/db';
+import { sql } from 'kysely';
 
-export type AuthUserRecord = {
+type AuthUserRecord = {
   id: string;
   tenant_id: string;
   email: string;
@@ -12,7 +13,7 @@ export const findActiveUserByEmail = (db: Db, email: string): Promise<AuthUserRe
     .selectFrom('users')
     .innerJoin('tenants', 'tenants.id', 'users.tenant_id')
     .select(['users.id', 'users.tenant_id', 'users.email', 'users.password_hash'])
-    .where('users.email', '=', email)
+    .where(sql`lower(users.email)`, '=', email.toLowerCase())
     .where('users.is_active', '=', true)
     .where('tenants.is_active', '=', true)
     .executeTakeFirst();

@@ -3,7 +3,7 @@ import { getHeapStatistics } from 'node:v8';
 
 export type LoadSample = { eventLoop: number; heapBytes: number; rssBytes: number };
 
-export type LoadLimits = { eventLoop: number; heapBytes: number; rssBytes: number | null };
+type LoadLimits = { eventLoop: number; heapBytes: number; rssBytes: number | null };
 
 export type LoadGate = () => { open: boolean; reason: string | null };
 

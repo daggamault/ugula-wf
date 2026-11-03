@@ -12,26 +12,27 @@ import { startRun } from '../../shared/runs.ts';
 import {
   findDictionary,
   findImport,
-  findLatestPublished,
   findReport,
   findSftpTenant,
+  type ImportFilters,
   insertImport,
   listImportReports,
   listImports,
-  type NewImport
+  type NewImport,
+  resolveWorkflowVersion
 } from './queries.ts';
-import type { ImportSort, SftpEvent } from './schemas.ts';
+import type { ReportSort, SftpEvent } from './schemas.ts';
 
-export const INGEST_WORKFLOW = 'billing.ingest-nemsis';
+const INGEST_WORKFLOW = 'billing.ingest-nemsis';
 
-export type SftpStorage = {
+type SftpStorage = {
   bucket: string;
   region: string;
   endpoint: string;
   homeRoot: string;
 };
 
-export type ImportServiceDeps = {
+type ImportServiceDeps = {
   db: Db;
   boss: RunQueueClient;
   blobs: Pick<BlobStore, 'putBytes' | 'getJson'>;
@@ -40,11 +41,11 @@ export type ImportServiceDeps = {
   sftp: SftpStorage;
 };
 
-export type SftpReceipt = { runId: string; file: BlobRef } | { ignored: true };
+type SftpReceipt = { runId: string; file: BlobRef } | { ignored: true };
 
-export const sftpPrefix = (tenantId: string) => `${importsPrefix(tenantId)}sftp/`;
+const sftpPrefix = (tenantId: string) => `${importsPrefix(tenantId)}sftp/`;
 
-export const sftpUser = (username: string, tenantId: string, sftp: SftpStorage) => ({
+const sftpUser = (username: string, tenantId: string, sftp: SftpStorage) => ({
   status: 1,
   username,
   home_dir: `${sftp.homeRoot}/${username}`,
@@ -60,6 +61,17 @@ export const sftpUser = (username: string, tenantId: string, sftp: SftpStorage) 
     }
   }
 });
+
+const importNotFound = fail('not_found', 'Import not found');
+
+const sftpPathOf = (virtualPath: string) => {
+  const path = virtualPath.replace(/^\/+/, '');
+  const safe =
+    path !== '' &&
+    !path.includes('\\') &&
+    path.split('/').every((s) => s !== '' && s !== '.' && s !== '..');
+  return safe ? path : null;
+};
 
 export const createImportService = ({
   db,
@@ -88,14 +100,18 @@ export const createImportService = ({
   };
 
   return {
-    list: async (tenantId: string, page: PageRequest<ImportSort>) =>
-      ok(await listImports(db, tenantId, page)),
+    list: async (tenantId: string, filters: ImportFilters) =>
+      ok(await listImports(db, tenantId, filters)),
 
     find: async (tenantId: string, id: string) => {
       const found = await findImport(db, tenantId, id);
-      if (!found) return fail('not_found', 'Import not found');
-      return ok({ import: found, reports: await listImportReports(db, tenantId, id) });
+      return found ? ok({ import: found }) : importNotFound;
     },
+
+    reports: async (tenantId: string, id: string, page: PageRequest<ReportSort>) =>
+      (await findImport(db, tenantId, id))
+        ? ok(await listImportReports(db, tenantId, id, page))
+        : importNotFound,
 
     report: async (tenantId: string, id: string) => {
       const found = await findReport(db, tenantId, id);
@@ -111,7 +127,7 @@ export const createImportService = ({
       if (file.bytes.byteLength > maxBytes) {
         return fail('invalid', `The file is larger than ${maxBytes} bytes`);
       }
-      const version = await findLatestPublished(db, tenantId, workflow);
+      const version = await resolveWorkflowVersion(db, tenantId, workflow);
       if (!version) return unpublished(workflow);
       const ref = await blobs.putBytes(
         uploadKey(tenantId, file.name),
@@ -137,11 +153,15 @@ export const createImportService = ({
     receiveSftpEvent: async (event: SftpEvent): Promise<Result<SftpReceipt>> => {
       if (event.action !== 'upload' || event.status !== 1)
         return ok<SftpReceipt>({ ignored: true });
+      if (event.file_size > maxBytes) {
+        return fail('invalid', `The file is larger than ${maxBytes} bytes`);
+      }
+      const path = sftpPathOf(event.virtual_path);
+      if (!path) return fail('invalid', 'The SFTP path is not a safe relative file path');
       const tenant = await findSftpTenant(db, event.username);
       if (!tenant) return fail('not_found', `No tenant uses SFTP account ${event.username}`);
-      const version = await findLatestPublished(db, tenant.id, INGEST_WORKFLOW);
+      const version = await resolveWorkflowVersion(db, tenant.id, INGEST_WORKFLOW);
       if (!version) return unpublished(INGEST_WORKFLOW);
-      const path = event.virtual_path.replace(/^\/+/, '');
       return ingest(
         tenant.id,
         version.id,
@@ -151,7 +171,7 @@ export const createImportService = ({
           size: event.file_size,
           contentType: 'application/xml'
         },
-        { source: 'sftp', fileName: path.split('/').at(-1) || path, uploadedBy: null }
+        { source: 'sftp', fileName: path.split('/').at(-1) ?? path, uploadedBy: null }
       );
     }
   };

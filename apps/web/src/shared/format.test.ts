@@ -6,7 +6,9 @@ import {
   formatDate,
   formatDateTime,
   formatDuration,
-  parseDollars
+  formatMiles,
+  parseDollars,
+  titleCaseLabel
 } from './format.ts';
 
 describe('format', () => {
@@ -43,5 +45,30 @@ describe('formatAgo', () => {
     assert.equal(formatAgo('2026-10-23T09:30:00Z', now), '2 hours ago');
     assert.equal(formatAgo('2026-10-22T11:00:00Z', now), 'yesterday');
     assert.equal(formatAgo(null, now), '—');
+  });
+});
+
+describe('formatMiles', () => {
+  it('shows unrounded mileage to two decimals', () => {
+    assert.equal(formatMiles('4.25'), '4.25 miles');
+    assert.equal(formatMiles('12.4'), '12.4 miles');
+    assert.equal(formatMiles(1), '1 mile');
+    assert.equal(formatMiles('1234.567'), '1,234.57 miles');
+    assert.equal(formatMiles('x'), '—');
+  });
+});
+
+describe('titleCaseLabel', () => {
+  it('title cases sentence case labels and keeps acronyms', () => {
+    assert.equal(titleCaseLabel('Unit price (dollars)'), 'Unit Price (Dollars)');
+    assert.equal(
+      titleCaseLabel('ICD-10 diagnoses, primary first'),
+      'ICD-10 Diagnoses, Primary First'
+    );
+    assert.equal(titleCaseLabel('Patient ZIP code'), 'Patient ZIP Code');
+    assert.equal(
+      titleCaseLabel('Save to the default fee schedule'),
+      'Save to the Default Fee Schedule'
+    );
   });
 });

@@ -10,6 +10,8 @@ export type GraphRef = GraphKey & { id: string };
 
 export type PublishedGraph = GraphRef & { definition: unknown };
 
+export const PUBLISHED_IMMUTABLE_TRIGGER = 'graph_versions_published_immutable';
+
 export const dependencyOf = (ref: GraphKey) => `${ref.key}@${ref.version}`;
 
 const resolved = (
@@ -79,7 +81,7 @@ export const buildPinRunGraphs = (runId: string, tenantId: string, versionId: st
   select ${runId}::uuid, key, version, id from bundle
   on conflict do nothing`;
 
-export const buildResolveBundle = (tenantId: string | null, versionId: string) => sql<GraphRef>`
+const buildResolveBundle = (tenantId: string | null, versionId: string) => sql<GraphRef>`
   ${bundle(tenantId, versionId)}
   select id, key, version from bundle`;
 
@@ -87,18 +89,8 @@ export const resolveBundle = async (
   db: Kysely<Database>,
   tenantId: string | null,
   versionId: string
-): Promise<PublishedGraph[]> => {
-  const refs = (await buildResolveBundle(tenantId, versionId).execute(db)).rows;
-  const defs = new Map(
-    (
-      await findDefinitions(
-        db,
-        refs.map((r) => r.id)
-      )
-    ).map((d) => [d.id, d.definition])
-  );
-  return refs.map((r) => ({ ...r, definition: defs.get(r.id) ?? null }));
-};
+): Promise<PublishedGraph[]> =>
+  withDefinitions(db, (await buildResolveBundle(tenantId, versionId).execute(db)).rows);
 
 export const pinRunGraphs = async (
   db: Kysely<Database>,
@@ -125,11 +117,10 @@ export const findDefinitions = async (db: Kysely<Database>, ids: string[]) =>
         .execute()
     : [];
 
-export const findRunGraphs = async (
+const withDefinitions = async (
   db: Kysely<Database>,
-  runId: string
+  refs: GraphRef[]
 ): Promise<PublishedGraph[]> => {
-  const refs = await listRunGraphRefs(db, runId);
   const defs = new Map(
     (
       await findDefinitions(
@@ -141,7 +132,12 @@ export const findRunGraphs = async (
   return refs.map((r) => ({ ...r, definition: defs.get(r.id) ?? null }));
 };
 
-export const buildCopyRunGraphs = (fromRunId: string, toRunIds: string[]) => sql`
+export const findRunGraphs = async (
+  db: Kysely<Database>,
+  runId: string
+): Promise<PublishedGraph[]> => withDefinitions(db, await listRunGraphRefs(db, runId));
+
+const buildCopyRunGraphs = (fromRunId: string, toRunIds: string[]) => sql`
   insert into workflow_run_graphs (run_id, key, version, graph_version_id)
   select t.id, g.key, g.version, g.graph_version_id
   from workflow_run_graphs g

@@ -52,7 +52,7 @@ type SectionProps = {
   title: string;
   description?: ReactNode;
   actions?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
 };
 
 export const Section = ({ title, description, actions, children }: SectionProps) => {

@@ -3,13 +3,13 @@ import * as v from 'valibot';
 import { type Api, isApiError } from '../../shared/api.ts';
 import type { Signal } from '../../shared/signal.ts';
 
-export const authUserSchema = v.object({
+const authUserSchema = v.object({
   id: nonEmpty,
   tenantId: nonEmpty,
   email: emailString
 });
 
-export const authSessionSchema = v.object({
+const authSessionSchema = v.object({
   user: authUserSchema,
   sseUrl: urlString
 });

@@ -1,8 +1,14 @@
 import { actionNode, branchNode, pin } from '@ugula/graph';
 import { DEMOGRAPHICS, PATIENT } from '../models.ts';
 import { nameKey } from '../names.ts';
-import { matchPatient, readDemographics, toNewPatient } from '../patients.ts';
-import { requiredText } from '../values.ts';
+import {
+  isCompleteAddress,
+  matchPatient,
+  readDemographics,
+  sameAddress,
+  toNewPatient
+} from '../patients.ts';
+import { recordOf, requiredText, textOrNull } from '../values.ts';
 import type { NodesOf } from './stores.ts';
 
 const CATEGORY = 'Billing';
@@ -47,42 +53,72 @@ export const patientNodes: NodesOf = (stores) => {
         };
       }
     }),
-    actionNode({
+    branchNode({
       type: 'billing.create-patient',
       title: 'Create Patient',
       category: CATEGORY,
       description:
-        'Creates a patient from report demographics, once per run step. With reuseMatch, returns the patient another run created for the same person instead.',
+        'Creates a patient from report demographics, once per run step. With reuseMatch, returns the patient another run created for the same person instead. Continues through invalid when the first name, last name or birth date is missing or not a real date.',
       effect: true,
       inputs: [demographicsPin, pin('reuseMatch', 'boolean', { optional: true })],
       outputs: [patientPin],
+      exits: ['created', 'invalid'],
       compute: async (inputs, _, ctx) => {
         const patient = toNewPatient(readDemographics(inputs.demographics));
-        if (!patient) {
-          throw new Error('A patient needs a first name, last name and valid birth date');
-        }
+        if (!patient) return { exit: 'invalid', outputs: { patient: null } };
         return {
-          patient: await patients().createPatient(
-            ctx.runId,
-            ctx.key,
-            patient,
-            inputs.reuseMatch === true
-          )
+          exit: 'created',
+          outputs: {
+            patient: await patients().createPatient(
+              ctx.runId,
+              ctx.key,
+              patient,
+              inputs.reuseMatch === true
+            )
+          }
         };
       }
     }),
-    actionNode({
+    branchNode({
       type: 'billing.find-patient',
       title: 'Find Patient',
       category: CATEGORY,
-      description: 'Loads an existing patient by id, such as the one a biller picked in a task.',
-      inputs: [pin('patientId', 'string')],
+      description:
+        'Loads an existing patient by id, such as the one a biller picked in a task. Continues through missing when none was picked or it no longer exists.',
+      inputs: [pin('patientId', 'string', { optional: true })],
+      outputs: [patientPin],
+      exits: ['found', 'missing'],
+      compute: async (inputs, _, ctx) => {
+        const id = textOrNull(inputs.patientId);
+        const patient = id ? await patients().findPatient(ctx.runId, id) : null;
+        return { exit: patient ? 'found' : 'missing', outputs: { patient } };
+      }
+    }),
+    actionNode({
+      type: 'billing.update-patient-address',
+      title: 'Update Patient Address',
+      category: CATEGORY,
+      description:
+        'Moves an existing patient to the address on a newer report when the report has a complete address that differs, once per run step, so statements go where the patient lives now. Outputs the patient as it is afterwards.',
+      effect: true,
+      inputs: [patientPin, demographicsPin],
       outputs: [patientPin],
       compute: async (inputs, _, ctx) => {
-        const id = requiredText(inputs.patientId, 'Choose a patient');
-        const patient = await patients().findPatient(ctx.runId, id);
-        if (!patient) throw new Error(`Patient ${id} does not exist`);
-        return { patient };
+        const current = recordOf(inputs.patient);
+        const id = requiredText(current.id, 'The patient has no id');
+        const reported = readDemographics(inputs.demographics);
+        const known = readDemographics(current);
+        if (!isCompleteAddress(reported) || sameAddress(reported, known)) {
+          return { patient: inputs.patient };
+        }
+        return {
+          patient: await patients().updateAddress(ctx.runId, ctx.key, id, {
+            addressLine: reported.addressLine,
+            city: reported.city,
+            state: reported.state,
+            postalCode: reported.postalCode
+          })
+        };
       }
     })
   ];

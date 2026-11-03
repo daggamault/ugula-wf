@@ -1,6 +1,6 @@
 import { LogInIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
-import { messageOf } from '../../shared/api.ts';
+import { isApiError, messageOf } from '../../shared/api.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { BrandHeader } from '../../shared/ui/brand.tsx';
 import { Button } from '../../shared/ui/button.tsx';
@@ -8,9 +8,18 @@ import { Card } from '../../shared/ui/card.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import type { AuthClient, AuthSession } from './client.ts';
 
-export type SignInFormProps = {
+type SignInFormProps = {
   auth: AuthClient;
   onSuccess: (session: AuthSession) => void;
+};
+
+export const signInErrorOf = (err: unknown) => {
+  if (!isApiError(err) || err.status !== 429) return messageOf(err);
+  const seconds = Number(err.body.retryAfter);
+  const minutes = Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds / 60) : null;
+  const wait =
+    minutes === null ? 'a few minutes' : minutes === 1 ? '1 minute' : `${minutes} minutes`;
+  return `Too many sign-in attempts. Try again in ${wait}.`;
 };
 
 export const SignInForm = ({ auth, onSuccess }: SignInFormProps) => {
@@ -27,7 +36,7 @@ export const SignInForm = ({ auth, onSuccess }: SignInFormProps) => {
       const session = await auth.signIn(email, password);
       onSuccess(session);
     } catch (err) {
-      setError(messageOf(err));
+      setError(signInErrorOf(err));
     } finally {
       setSubmitting(false);
     }

@@ -16,7 +16,7 @@ const record =
   };
 
 const service = {
-  pending: record('pending', { issues: [], claims: [] }),
+  pending: record('pending', { issues: [], claim: null }),
   create: record('create', { batch: { id: ID } }),
   markSubmitted: record('markSubmitted', { payer: 'Medicare' }),
   document: async () =>
@@ -34,13 +34,10 @@ const post = (path: string, body: unknown) =>
 
 describe('submission routes', () => {
   it('lists claims ready to submit for the session tenant', async () => {
-    assert.equal((await request('/pending')).status, 200);
+    assert.equal((await request('/pending')).status, 400);
     assert.equal((await request(`/pending?claimId=${ID}`)).status, 200);
     assert.equal((await request('/pending?claimId=x')).status, 400);
-    assert.deepEqual(calls.splice(0), [
-      ['pending', 't-1', undefined],
-      ['pending', 't-1', ID]
-    ]);
+    assert.deepEqual(calls.splice(0), [['pending', 't-1', ID]]);
   });
 
   it('creates an 837P file for one claim as the session user', async () => {

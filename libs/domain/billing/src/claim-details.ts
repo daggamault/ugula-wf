@@ -3,12 +3,66 @@ import { recordOf, textOrNull } from './values.ts';
 
 export type Location = Address & { name: string | null };
 
+export const SELF = '18';
+
+export const INSURED_RELATIONSHIPS = [
+  SELF,
+  '01',
+  '19',
+  '20',
+  '21',
+  '39',
+  '40',
+  '53',
+  'G8'
+] as const;
+
+export type InsuredRelationship = (typeof INSURED_RELATIONSHIPS)[number];
+
+export const RELATIONSHIP_LABELS: Record<InsuredRelationship, string> = {
+  [SELF]: 'Self',
+  '01': 'Spouse',
+  '19': 'Child',
+  '20': 'Employee',
+  '21': 'Unknown',
+  '39': 'Organ donor',
+  '40': 'Cadaver donor',
+  '53': 'Life partner',
+  G8: 'Other relationship'
+};
+
+export const isRelationship = (x: unknown): x is InsuredRelationship =>
+  INSURED_RELATIONSHIPS.includes(x as InsuredRelationship);
+
+const NEMSIS_RELATIONSHIPS = new Map<string, InsuredRelationship>([
+  ['2622001', SELF],
+  ['2622003', '01'],
+  ['2622005', '19'],
+  ['2622009', '40'],
+  ['2622011', '20'],
+  ['2622013', '53'],
+  ['2622015', '39'],
+  ['2622017', '21'],
+  ['2622019', 'G8']
+]);
+
+const UNKNOWN_RELATIONSHIP = '21';
+
+export const relationshipOf = (x: unknown): InsuredRelationship => {
+  const code = textOrNull(x)?.toUpperCase();
+  if (!code) return SELF;
+  return isRelationship(code) ? code : (NEMSIS_RELATIONSHIPS.get(code) ?? UNKNOWN_RELATIONSHIP);
+};
+
 export type Coverage = {
   payer: string;
   payerId: string | null;
   payerCode: string | null;
   memberId: string | null;
   groupId: string | null;
+  relationship: InsuredRelationship;
+  insuredFirstName: string | null;
+  insuredLastName: string | null;
 };
 
 export type ClaimDetails = {
@@ -71,7 +125,7 @@ export const ICD10_PATTERN = '^[A-Z][0-9][0-9A-Z]{1,5}$';
 
 const ICD10 = new RegExp(ICD10_PATTERN);
 
-export const icd10 = (x: unknown): string | null => {
+const icd10 = (x: unknown): string | null => {
   const code = textOrNull(x)?.toUpperCase().replace('.', '');
   return code && ICD10.test(code) ? code : null;
 };
@@ -98,6 +152,18 @@ const rank = (priority: unknown) => {
   return i < 0 ? PRIORITY_ORDER.length : i;
 };
 
+const payerNameOf = (r: Record<string, unknown>) => {
+  const memberId = textOrNull(r.memberId);
+  return (
+    textOrNull(r.payer) ??
+    textOrNull(r.payerCode) ??
+    (memberId ? `Unnamed insurance, member ${memberId}` : null)
+  );
+};
+
+export const coverageKey = (payer: string, memberId: string | null) =>
+  `${payer.trim().toLowerCase()}|${memberId?.trim().toLowerCase() ?? ''}`;
+
 export const readCoverages = (list: unknown): Coverage[] => {
   const rows = (Array.isArray(list) ? list : []).map(recordOf);
   const seen = new Set<string>();
@@ -105,16 +171,20 @@ export const readCoverages = (list: unknown): Coverage[] => {
     .map((r, i) => ({ r, i }))
     .sort((a, b) => rank(a.r.priority) - rank(b.r.priority) || a.i - b.i)
     .flatMap(({ r }) => {
-      const payer = textOrNull(r.payer);
-      if (!payer || seen.has(payer.toLowerCase())) return [];
-      seen.add(payer.toLowerCase());
+      const payer = payerNameOf(r);
+      const memberId = textOrNull(r.memberId);
+      if (!payer || seen.has(coverageKey(payer, memberId))) return [];
+      seen.add(coverageKey(payer, memberId));
       return [
         {
           payer,
           payerId: textOrNull(r.payerId),
           payerCode: textOrNull(r.payerCode),
-          memberId: textOrNull(r.memberId),
-          groupId: textOrNull(r.groupId)
+          memberId,
+          groupId: textOrNull(r.groupId),
+          relationship: relationshipOf(r.relationship),
+          insuredFirstName: textOrNull(r.insuredFirstName),
+          insuredLastName: textOrNull(r.insuredLastName)
         }
       ];
     });

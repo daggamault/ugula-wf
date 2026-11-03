@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { backOf, hrefWith, pageOf, searchStateOf, tableStateOf, withBack } from './url-state.ts';
+import {
+  backLabelOf,
+  backOf,
+  hrefWith,
+  searchStateOf,
+  tableStateOf,
+  withBack
+} from './url-state.ts';
 
 const spec = { sorts: { created: 'desc', name: 'asc' }, sort: 'created' } as const;
 
@@ -53,29 +60,6 @@ describe('tableStateOf', () => {
   });
 });
 
-describe('pageOf', () => {
-  const rows = [
-    { name: 'b', total: 2 },
-    { name: 'A10', total: null },
-    { name: 'a2', total: 9 },
-    { name: 'c', total: 1 }
-  ];
-  const values = {
-    name: (r: (typeof rows)[number]) => r.name,
-    total: (r: (typeof rows)[number]) => r.total
-  };
-
-  it('sorts naturally with empty values last in either direction, then pages', () => {
-    const by = (sort: 'name' | 'total', dir: 'asc' | 'desc', page = 1, pageSize = 10) =>
-      pageOf(rows, { sort, dir, page, pageSize }, values).items.map((r) => r.name);
-    assert.deepEqual(by('name', 'asc'), ['a2', 'A10', 'b', 'c']);
-    assert.deepEqual(by('total', 'desc'), ['a2', 'b', 'c', 'A10']);
-    assert.deepEqual(by('total', 'asc'), ['c', 'b', 'a2', 'A10']);
-    assert.deepEqual(by('name', 'asc', 2, 3), ['c']);
-    assert.equal(pageOf(rows, { sort: 'name', dir: 'asc', page: 2, pageSize: 3 }, values).total, 4);
-  });
-});
-
 describe('searchStateOf', () => {
   it('adds the trimmed search text to the table state and API query', () => {
     const s = searchStateOf('/payers', new URLSearchParams('q=+blue+cross+&page=2'), spec);
@@ -100,5 +84,15 @@ describe('withBack and backOf', () => {
     assert.equal(backOf(new URLSearchParams('back=https://evil.test'), '/payers'), '/payers');
     assert.equal(backOf(new URLSearchParams('back=/payersx'), '/payers'), '/payers');
     assert.equal(backOf(new URLSearchParams(), '/fees'), '/fees');
+  });
+});
+
+describe('backLabelOf', () => {
+  it('names the page a back link returns to', () => {
+    assert.equal(backLabelOf('/claims/c1?tab=data'), 'Back to Claim');
+    assert.equal(backLabelOf('/patients/p1'), 'Back to Patient');
+    assert.equal(backLabelOf('/runs/r1'), 'Back to Run');
+    assert.equal(backLabelOf('/imports/i1'), 'Back to Import');
+    assert.equal(backLabelOf('/claims?status=all'), 'Back to Claims');
   });
 });

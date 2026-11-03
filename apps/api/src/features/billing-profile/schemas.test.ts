@@ -12,6 +12,7 @@ const valid = {
   state: 'il',
   postalCode: '62704-1234',
   phone: '(217) 555-0100',
+  timeZone: ' America/Chicago ',
   submitterId: ' SUB01 ',
   receiverId: 'RCV01',
   receiverName: null,
@@ -29,6 +30,7 @@ describe('billingProfileSchema', () => {
       state: 'IL',
       postalCode: '627041234',
       phone: '2175550100',
+      timeZone: 'America/Chicago',
       submitterId: 'SUB01',
       receiverId: 'RCV01',
       receiverName: null,
@@ -44,6 +46,8 @@ describe('billingProfileSchema', () => {
     assert.ok(fails({ taxId: '1234' }));
     assert.ok(fails({ state: 'Illinois' }));
     assert.ok(fails({ postalCode: '6270' }));
+    assert.ok(fails({ postalCode: '62704' }));
+    assert.ok(fails({ timeZone: 'Mars/Olympus' }));
     assert.ok(fails({ organizationName: ' ' }));
     assert.ok(fails({ submitterId: 'has space' }));
     assert.ok(fails({ production: 'yes' }));

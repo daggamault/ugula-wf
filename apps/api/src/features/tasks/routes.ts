@@ -23,9 +23,10 @@ export const createTaskRoutes = (service: TaskService) =>
       const { tenantId, userId } = c.get('session');
       return respond(c, await service.claim(tenantId, c.req.valid('param').id, userId));
     })
-    .post('/:id/release', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.release(c.get('session').tenantId, c.req.valid('param').id))
-    )
+    .post('/:id/release', sValidator('param', idParam, invalidRequest), async (c) => {
+      const { tenantId, userId } = c.get('session');
+      return respond(c, await service.release(tenantId, c.req.valid('param').id, userId));
+    })
     .post(
       '/:id/complete',
       sValidator('param', idParam, invalidRequest),

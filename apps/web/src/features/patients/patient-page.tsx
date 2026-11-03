@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { formatCents, formatDate } from '../../shared/format.ts';
-import { type Live, useLive } from '../../shared/live.ts';
+import { LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
@@ -8,7 +8,7 @@ import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { PatientSummary, PatientsClient } from './client.ts';
 
-export type PatientPageProps = {
+type PatientPageProps = {
   client: PatientsClient;
   live: Live;
   patientId: string;
@@ -32,7 +32,7 @@ export const PatientDetails = ({ patient }: { patient: PatientSummary }) => (
         {formatCents(patient.balance_cents)}
       </Detail>
       <Detail label="Birth Date">{formatDate(patient.birth_date)}</Detail>
-      <Detail label="Sex">{(patient.gender && SEXES[patient.gender]) ?? emptyValue}</Detail>
+      <Detail label="Sex">{(patient.gender && SEXES[patient.gender]) || emptyValue}</Detail>
       <Detail label="Address">{addressOf(patient) || emptyValue}</Detail>
     </DetailList>
   </SectionPanel>
@@ -45,15 +45,15 @@ export const PatientPage = ({
   patientId,
   back = '/patients'
 }: PatientPageProps) => {
-  const patient = useResource(`patient:${patientId}`, () => client.find(patientId));
-  useLive(live, (e) => e.kind === 'claim', patient.reload);
+  const patient = useResource(`patient:${patientId}`, (signal) => client.find(patientId, signal));
+  useLive(live, (e) => e.kind === 'claim', patient.reload, LIST_RELOAD_MS);
   if (patient.error) return <PageFailure message={patient.error.message} />;
   if (!patient.data) return <PageLoading />;
   const p = patient.data;
   return (
     <Page
       title={`${p.last_name}, ${p.first_name}`}
-      description={`Born ${formatDate(p.birth_date)}`}
+      description={`Details, claims and open balance for the patient born ${formatDate(p.birth_date)}.`}
       backTo={back}
       backLabel="Back to Patients"
     >

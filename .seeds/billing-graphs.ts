@@ -1,146 +1,36 @@
-import { CLAIM_SIGNAL } from '@ugula/billing';
+import {
+  billingTypes,
+  CLAIM_FIX_FIELDS,
+  CLAIM_SIGNAL,
+  HCPCS_LABELS,
+  LEVEL_FIELD,
+  LOADED_MILES_FIELD,
+  NO_TRANSPORT_CODE,
+  TRIP_TYPE_FIELD,
+  UNREAD_FINDINGS
+} from '@ugula/billing';
 import type { GraphDef, Json, PinSpec, ValueType } from '@ugula/graph';
 import { PCR_TYPE } from '@ugula/nemsis';
 import { graph } from './builder.ts';
 import type { SeedGraph } from './graphs.ts';
 
-const obj = (fields: Record<string, ValueType>): ValueType => ({ object: fields });
-
-const BLOB = obj({ bucket: 'string', key: 'string' });
-
-const ADDRESS = { addressLine: 'string', city: 'string', state: 'string', postalCode: 'string' };
-
-const DEMOGRAPHICS = obj({
-  firstName: 'string',
-  lastName: 'string',
-  birthDate: 'string',
-  gender: 'string',
-  ...ADDRESS
-} as Record<string, ValueType>);
-
-const PATIENT = obj({
-  id: 'string',
-  firstName: 'string',
-  lastName: 'string',
-  birthDate: 'string',
-  gender: 'string',
-  ...ADDRESS
-} as Record<string, ValueType>);
-
-const LOCATION = obj({ name: 'string', ...ADDRESS } as Record<string, ValueType>);
-
-const COVERAGES: ValueType = {
-  list: obj({
-    payer: 'string',
-    payerId: 'string',
-    directoryName: 'string',
-    payerCode: 'string',
-    priority: 'string',
-    memberId: 'string',
-    groupId: 'string'
-  })
-};
-
-const SERVICE = obj({
-  level: 'string',
-  emergency: 'boolean',
-  loadedMiles: 'number',
-  basis: { list: 'string' }
-});
-
-const FINDINGS = obj({
-  medications: { list: obj({ medication: 'string', route: 'string', doses: 'integer' }) },
-  procedures: { list: 'string' },
-  ivDoses: 'integer'
-});
-
-const LINE = obj({
-  code: 'string',
-  units: 'number',
-  unitCents: 'integer',
-  totalCents: 'integer'
-});
-
-const LINES: ValueType = { list: LINE };
-
-const CLAIM = obj({
-  pcrNumber: 'string',
-  patientId: 'string',
-  serviceDate: 'string',
-  level: 'string',
-  emergency: 'boolean',
-  loadedMiles: 'number',
-  lines: LINES,
-  totalCents: 'integer',
+const {
+  blob: BLOB,
+  demographics: DEMOGRAPHICS,
+  patient: PATIENT,
+  location: LOCATION,
   coverages: COVERAGES,
-  pickup: LOCATION,
-  destination: LOCATION,
-  diagnoses: { list: 'string' },
-  originDestination: 'string',
-  report: BLOB
-});
+  service: SERVICE,
+  findings: FINDINGS,
+  lines: LINES,
+  claim: CLAIM,
+  submission: SUBMISSION,
+  x837: X837
+} = billingTypes;
 
-const SUBMISSION = obj({
-  claimId: 'string',
-  priorPayers: { list: 'string' },
-  payer: obj({ name: 'string', payerId: 'string', claimFiling: 'string' }),
-  memberId: 'string',
-  groupId: 'string',
-  patient: obj({
-    firstName: 'string',
-    lastName: 'string',
-    birthDate: 'string',
-    sex: 'string',
-    ...ADDRESS
-  } as Record<string, ValueType>),
-  details: obj({
-    serviceDate: 'string',
-    pickup: LOCATION,
-    destination: LOCATION,
-    diagnoses: { list: 'string' },
-    originDestination: 'string'
-  }),
-  emergency: 'boolean',
-  loadedMiles: 'number',
-  lines: LINES
-});
+const ADDRESS_PINS = ['addressLine', 'city', 'state', 'postalCode'];
 
-const X837 = obj({
-  claimId: 'string',
-  placeOfService: 'string',
-  frequency: 'string',
-  subscriber: obj({
-    relationship: 'string',
-    lastName: 'string',
-    firstName: 'string',
-    memberId: 'string',
-    groupId: 'string',
-    ...ADDRESS,
-    birthDate: 'string',
-    sex: 'string'
-  } as Record<string, ValueType>),
-  payer: obj({
-    responsibility: 'string',
-    name: 'string',
-    payerId: 'string',
-    claimFiling: 'string'
-  }),
-  transportReason: 'string',
-  loadedMiles: 'number',
-  conditionCodes: { list: 'string' },
-  diagnoses: { list: 'string' },
-  pickup: LOCATION,
-  dropoff: LOCATION,
-  lines: {
-    list: obj({
-      code: 'string',
-      modifiers: { list: 'string' },
-      chargeCents: 'integer',
-      units: 'number',
-      serviceDate: 'string'
-    })
-  }
-});
+const CHARGE_LINES: ValueType = { list: { object: { code: 'string', units: 'number' } } };
 
 const p = (name: string, type: ValueType, optional = false): PinSpec => ({
   name,
@@ -260,8 +150,23 @@ const classifyTrip = (): GraphDef => {
           when: { serviceType: oneOf('2205005', '2205007', '2205015', '2205017', '2205019') },
           set: { tripType: 'scheduled' }
         },
-        { label: 'Emergency transport', set: { tripType: 'emergency' } }
-      ]
+        {
+          label: 'Emergency response',
+          when: { serviceType: oneOf('2205001', '2205003', '2205009') },
+          set: { tripType: 'emergency' }
+        },
+        {
+          label: 'Patient treated and transported by this unit',
+          when: { incidentDisposition: oneOf('4212033') },
+          set: { tripType: 'emergency' }
+        },
+        {
+          label: 'Patient transported by this unit',
+          when: { transportDisposition: oneOf('4230001', '4230003') },
+          set: { tripType: 'emergency' }
+        }
+      ],
+      { tripType: 'emergency' }
     )
   });
   g.ret('return');
@@ -294,7 +199,10 @@ const loadedMiles = (): GraphDef => {
   });
   g.add('distance', 'std.math.subtract', { label: 'Destination minus Scene' });
   g.add('positive', 'std.math.max', { label: 'Never Below Zero', values: { b: 0 } });
-  g.add('rounded', 'std.math.round', { label: 'Tenths of a Mile', values: { digits: 1 } });
+  g.add('rounded', 'std.math.round', {
+    label: 'Hundredths, Without Float Noise',
+    values: { digits: 2 }
+  });
   g.add('noScene', 'std.logic.is-null', { label: 'No Scene Odometer' });
   g.add('noDestination', 'std.logic.is-null', { label: 'No Destination Odometer' });
   g.add('missing', 'std.logic.or', { label: 'Either Missing' });
@@ -503,10 +411,7 @@ const suggestService = (): GraphDef => {
 };
 
 const mapCharges = (): GraphDef => {
-  const g = pure(
-    [p('tripType', 'string'), p('service', SERVICE)],
-    [p('lines', { list: obj({ code: 'string', units: 'number' }) })]
-  );
+  const g = pure([p('tripType', 'string'), p('service', SERVICE)], [p('lines', CHARGE_LINES)]);
   g.add('service', 'billing.service.break');
   g.add('base', 'std.table.decide', {
     label: 'Base Rate',
@@ -521,7 +426,7 @@ const mapCharges = (): GraphDef => {
         {
           label: 'Treated without transport',
           when: { tripType: oneOf('treatNoTransport', 'refusal') },
-          set: { code: 'A0998' }
+          set: { code: NO_TRANSPORT_CODE }
         },
         { label: 'Specialty care transport', when: { level: is('SCT') }, set: { code: 'A0434' } },
         { label: 'ALS2', when: { level: is('ALS2') }, set: { code: 'A0433' } },
@@ -555,9 +460,6 @@ const mapCharges = (): GraphDef => {
     )
   });
   g.add('miles', 'std.logic.coalesce', { label: 'Loaded Miles or 0', values: { fallback: 0 } });
-  g.add('tenths', 'std.math.multiply', { label: 'In Tenths', values: { b: 10 } });
-  g.add('roundUp', 'std.math.ceil', { label: 'Round Up' });
-  g.add('units', 'std.math.divide', { label: 'Back to Miles', values: { b: 10 } });
   g.add('mileageLine', 'billing.line.make', { label: 'Mileage Line' });
   g.add('keepMileage', 'std.logic.select', { label: 'Only When Miles Are Billed' });
   g.add('lines', 'std.list.make', { config: { count: 2 } });
@@ -568,11 +470,8 @@ const mapCharges = (): GraphDef => {
   g.wire('service.emergency', 'base.emergency');
   g.wire('service.loadedMiles', 'mileage.loadedMiles', 'miles.value');
   g.wire('base.code', 'baseLine.code');
-  g.wire('miles.result', 'tenths.a');
-  g.wire('tenths.result', 'roundUp.value');
-  g.wire('roundUp.result', 'units.a');
   g.wire('mileage.code', 'mileageLine.code');
-  g.wire('units.result', 'mileageLine.units');
+  g.wire('miles.result', 'mileageLine.units');
   g.wire('mileage.matched', 'keepMileage.condition');
   g.wire('mileageLine.line', 'keepMileage.whenTrue');
   g.wire('baseLine.line', 'lines.item1');
@@ -593,15 +492,7 @@ const demographicsFromPcr = (): GraphDef => {
   g.wire('patient.sex', 'sex.value');
   g.wire('patient.gender', 'sex.fallback');
   g.wire('sex.result', 'demographics.gender');
-  for (const pin of [
-    'firstName',
-    'lastName',
-    'birthDate',
-    'addressLine',
-    'city',
-    'state',
-    'postalCode'
-  ]) {
+  for (const pin of ['firstName', 'lastName', 'birthDate', ...ADDRESS_PINS]) {
     g.wire(`patient.${pin}`, `demographics.${pin}`);
   }
   g.wire('demographics.demographics', 'return.demographics');
@@ -620,7 +511,10 @@ const coveragesFromPcr = (): GraphDef => {
         { name: 'payerCode', type: 'string', from: 'companyId' },
         { name: 'priority', type: 'string', from: 'priority' },
         { name: 'memberId', type: 'string', from: 'policyId' },
-        { name: 'groupId', type: 'string', from: 'groupId' }
+        { name: 'groupId', type: 'string', from: 'groupId' },
+        { name: 'relationship', type: 'string', from: 'relationship' },
+        { name: 'insuredFirstName', type: 'string', from: 'insuredFirstName' },
+        { name: 'insuredLastName', type: 'string', from: 'insuredLastName' }
       ]
     }
   });
@@ -714,9 +608,13 @@ const tripDetails = (): GraphDef => {
           label: "Physician's office or clinic",
           when: { locationType: startsWith('Y92.53') },
           set: { code: 'P' }
+        },
+        {
+          label: 'Emergency response to a scene',
+          when: { serviceType: oneOf('2205001', '2205003', '2205009') },
+          set: { code: 'S' }
         }
-      ],
-      { code: 'S' }
+      ]
     )
   });
   g.add('destinationCode', 'std.table.lookup', {
@@ -752,7 +650,7 @@ const tripDetails = (): GraphDef => {
   g.wire('times.unitNotified', 'called.fallback');
   g.wire('called.result', 'when.value');
   g.wire('when.result', 'serviceDate.text');
-  for (const pin of ['addressLine', 'city', 'state', 'postalCode']) {
+  for (const pin of ADDRESS_PINS) {
     g.wire(`scene.${pin}`, `pickup.${pin}`);
     g.wire(`disposition.${pin}`, `destination.${pin}`);
   }
@@ -778,6 +676,7 @@ const mapClaim = (): GraphDef => {
   const g = pure(
     [
       p('pcr', PCR_TYPE),
+      p('tripType', 'string'),
       p('patient', PATIENT),
       p('coverages', COVERAGES),
       p('service', SERVICE),
@@ -802,7 +701,7 @@ const mapClaim = (): GraphDef => {
     g.wire(`trip.${pin}`, `claim.${pin}`);
   }
   for (const pin of ['level', 'emergency', 'loadedMiles']) g.wire(`service.${pin}`, `claim.${pin}`);
-  for (const pin of ['coverages', 'lines', 'totalCents', 'report']) {
+  for (const pin of ['tripType', 'coverages', 'lines', 'totalCents', 'report']) {
     g.wire(`entry.${pin}`, `claim.${pin}`);
   }
   g.wire('claim.claim', 'return.claim');
@@ -815,8 +714,38 @@ const map837p = (): GraphDef => {
   g.add('payer', 'billing.submitted-payer.break');
   g.add('patient', 'billing.submitted-patient.break');
   g.add('details', 'billing.submitted-details.break');
-  g.add('subscriber', 'x837.subscriber.make', { values: { relationship: '18' } });
-  g.add('x12Payer', 'x837.payer.make', { values: { responsibility: 'P' } });
+  g.add('subscriber', 'x837.subscriber.make');
+  g.add('x12Patient', 'x837.patient.make');
+  g.add('x12Payer', 'x837.payer.make');
+  g.add('otherPayers', 'std.list.reshape', {
+    label: 'Prior Payers as Other Payers',
+    config: {
+      fields: [
+        { name: 'name', type: 'string', from: 'name' },
+        { name: 'payerId', type: 'string', from: 'payerId' },
+        { name: 'claimFiling', type: 'string', from: 'claimFiling' },
+        { name: 'memberId', type: 'string', from: 'memberId' },
+        { name: 'groupId', type: 'string', from: 'groupId' },
+        { name: 'relationship', type: 'string', from: 'relationship' },
+        { name: 'lastName', type: 'string', from: 'insuredLastName' },
+        { name: 'firstName', type: 'string', from: 'insuredFirstName' },
+        { name: 'paidCents', type: 'integer', from: 'paidCents' },
+        { name: 'adjustedCents', type: 'integer', from: 'adjustedCents' },
+        { name: 'paidOn', type: 'string', from: 'paidOn' },
+        {
+          name: 'adjustments',
+          type: { list: { object: { group: 'string', reason: 'string', cents: 'integer' } } },
+          from: 'adjustments'
+        }
+      ]
+    }
+  });
+  g.add('original', 'std.logic.is-null', { label: 'No Claim to Replace' });
+
+  g.add('frequency', 'std.logic.select', {
+    label: 'Original or Replacement',
+    values: { whenTrue: '1', whenFalse: '7' }
+  });
   g.add('conditions', 'std.table.decide', {
     label: 'Ambulance Conditions',
     config: table(
@@ -838,7 +767,7 @@ const map837p = (): GraphDef => {
       [
         {
           label: 'Medicare does not cover treatment without transport',
-          when: { claimFiling: oneOf('MA', 'MB'), codes: oneOf('A0998') },
+          when: { claimFiling: oneOf('MA', 'MB'), codes: oneOf(NO_TRANSPORT_CODE) },
           set: { modifier: 'GY' }
         }
       ]
@@ -866,29 +795,25 @@ const map837p = (): GraphDef => {
       ]
     }
   });
-  g.add('x837', 'x837.claim.make', {
-    values: { placeOfService: '41', frequency: '1', transportReason: 'A' }
-  });
+  g.add('x837', 'x837.claim.make', { values: { placeOfService: '41', transportReason: 'A' } });
   g.ret('return');
   g.wire('entry.claim', 'claim.claim');
   g.wire('claim.payer', 'payer.payer');
   g.wire('claim.patient', 'patient.patient');
   g.wire('claim.details', 'details.details');
-  for (const pin of [
-    'firstName',
-    'lastName',
-    'birthDate',
-    'sex',
-    'addressLine',
-    'city',
-    'state',
-    'postalCode'
-  ]) {
-    g.wire(`patient.${pin}`, `subscriber.${pin}`);
+  for (const pin of ['firstName', 'lastName', 'birthDate', 'sex', ...ADDRESS_PINS]) {
+    g.wire(`patient.${pin}`, `x12Patient.${pin}`);
   }
-  g.wire('claim.memberId', 'subscriber.memberId');
-  g.wire('claim.groupId', 'subscriber.groupId');
+  for (const pin of ['relationship', 'memberId', 'groupId']) {
+    g.wire(`payer.${pin}`, `subscriber.${pin}`);
+  }
+  g.wire('payer.insuredLastName', 'subscriber.lastName');
+  g.wire('payer.insuredFirstName', 'subscriber.firstName');
   for (const pin of ['name', 'payerId', 'claimFiling']) g.wire(`payer.${pin}`, `x12Payer.${pin}`);
+  g.wire('claim.priorPayers', 'otherPayers.list');
+  g.wire('claim.payerClaimNumber', 'original.value', 'x837.payerClaimNumber');
+  g.wire('original.result', 'frequency.condition');
+  g.wire('frequency.result', 'x837.frequency');
   g.wire('claim.emergency', 'conditions.emergency');
   g.wire('details.originDestination', 'modifiers.item1');
   g.wire('claim.lines', 'codes.list');
@@ -901,7 +826,9 @@ const map837p = (): GraphDef => {
   g.wire('shared.object', 'lines.shared');
   g.wire('claim.claimId', 'x837.claimId');
   g.wire('subscriber.subscriber', 'x837.subscriber');
+  g.wire('x12Patient.patient', 'x837.patient');
   g.wire('x12Payer.payer', 'x837.payer');
+  g.wire('otherPayers.list', 'x837.otherPayers');
   g.wire('claim.loadedMiles', 'x837.loadedMiles');
   g.wire('conditions.codes', 'x837.conditionCodes');
   g.wire('details.diagnoses', 'x837.diagnoses');
@@ -971,7 +898,12 @@ const REVIEW_CONTEXT = `{
       m.medication + ' ' + m.route + (m.doses > 1 ? ' x' + text(m.doses) : '')),
     procedures: findings.procedures
   },
-  suggested: service
+  suggested: service,
+  warnings: concat(
+    reason == null ? ['No disposition or type of service is recorded, so the trip was classified as an emergency transport'] : [],
+    findings.notes,
+    payerNotes
+  )
 }`;
 
 const PATIENT_REVIEW_CONTEXT = `{
@@ -999,13 +931,16 @@ const PATIENT_CHOICES = `{
   })
 }`;
 
-const resolvePatient = (): GraphDef => {
+const reviewPatientMatch = (): GraphDef => {
   const g = action(
-    [p('demographics', DEMOGRAPHICS), p('pcrNumber', 'string', true)],
+    [
+      p('demographics', DEMOGRAPHICS),
+      p('candidates', { list: PATIENT }),
+      p('reason', 'string', true),
+      p('pcrNumber', 'string', true)
+    ],
     [p('patient', PATIENT)]
   );
-  g.add('match', 'billing.match-patient');
-  g.add('create', 'billing.create-patient', { values: { reuseMatch: true } });
   g.add('choices', 'std.expr', expr('Candidate Choices', PATIENT_CHOICES));
   g.add('pick', 'std.expr', expr('Likeliest Candidate', '{ patientId: candidates[0].id }'));
   g.add('context', 'std.expr', expr('Review Context', PATIENT_REVIEW_CONTEXT));
@@ -1017,88 +952,179 @@ const resolvePatient = (): GraphDef => {
       queue: 'billing-patients',
       instructions:
         'Use the candidate that is this person, or create a new patient from the report when none of them is.',
-      fields: [{ name: 'patientId', type: 'string', label: 'Candidate patient' }],
+      fields: [
+        {
+          name: 'patientId',
+          type: 'string',
+          label: 'Candidate patient',
+          required: ['useSelected']
+        }
+      ],
       outcomes: ['useSelected', 'createNew']
     }
   });
   g.add('createNew', 'billing.create-patient', { label: 'Create New Patient' });
   g.add('find', 'billing.find-patient');
+  g.ret('reviewed');
+  g.ret('linked');
+  g.wire('entry.exec', 'confirm.exec');
+  g.wire('entry.candidates', 'choices.candidates', 'pick.candidates', 'context.candidates');
+  g.wire('entry.reason', 'context.reason');
+  g.wire('entry.demographics', 'context.demographics', 'subject.demographics');
+  g.wire('entry.demographics', 'createNew.demographics');
+  g.wire('entry.pcrNumber', 'context.pcrNumber', 'subject.pcrNumber');
+  g.wire('choices.result', 'confirm.options');
+  g.wire('pick.result', 'confirm.defaults');
+  g.wire('context.result', 'confirm.context');
+  g.wire('subject.result', 'confirm.subject');
+  g.wire('confirm.useSelected', 'find.exec');
+  g.wire('confirm.patientId', 'find.patientId');
+  g.wire('find.missing', 'confirm.exec');
+  g.wire('confirm.createNew', 'createNew.exec');
+  g.wire('createNew.invalid', 'confirm.exec');
+  g.wire('createNew.created', 'reviewed.exec');
+  g.wire('createNew.patient', 'reviewed.patient');
+  g.wire('find.found', 'linked.exec');
+  g.wire('find.patient', 'linked.patient');
+  return g.def;
+};
+
+const resolvePatient = (): GraphDef => {
+  const g = graph(
+    {
+      execIn: ['exec'],
+      execOut: ['then'],
+      inputs: [p('demographics', DEMOGRAPHICS), p('pcrNumber', 'string', true)],
+      outputs: [p('patient', PATIENT)]
+    },
+    [{ name: 'entered', type: DEMOGRAPHICS, default: null }]
+  );
+  g.add('match', 'billing.match-patient');
+  g.add('create', 'billing.create-patient', { values: { reuseMatch: true } });
+  g.add('review', 'billing.review-patient-match', { label: 'Review Likely Matches' });
+  g.add('context', 'std.expr', expr('Report Context', PATIENT_REVIEW_CONTEXT));
+  g.add('subject', 'std.expr', subject('pcrNumber', nameOf('demographics')));
+  g.add('entered', 'std.var.get', { label: 'Details Entered Before', config: { name: 'entered' } });
+  g.add('prefill', 'std.logic.coalesce', { label: 'Entered Before, Else the Report' });
   g.add('complete', 'std.human.task', {
     label: 'Complete Patient Details',
     config: {
       title: 'Complete patient details',
       queue: 'billing-patients',
       instructions:
-        'The report is missing the name or birth date needed to find or create a patient. Fill them in from the report, and the patient is matched or created from them.',
+        'The report is missing the name or birth date needed to find or create a patient, or one of them is not valid. Fill them in from the report, and the patient is matched or created from them.',
       fields: [
-        { name: 'firstName', type: 'string', label: 'First name' },
-        { name: 'lastName', type: 'string', label: 'Last name' },
-        { name: 'birthDate', type: 'string', label: 'Birth date (YYYY-MM-DD)' }
+        { name: 'firstName', type: 'string', label: 'First name', required: ['savePatient'] },
+        { name: 'lastName', type: 'string', label: 'Last name', required: ['savePatient'] },
+        {
+          name: 'birthDate',
+          type: 'string',
+          label: 'Birth date',
+          format: 'date',
+          required: ['savePatient']
+        }
       ],
       outcomes: ['savePatient']
     }
   });
   g.add('reported', 'billing.demographics.break', { label: 'Cleaned Demographics' });
   g.add('corrected', 'billing.demographics.make', { label: 'Completed Demographics' });
+  g.add('remember', 'std.var.set', { label: 'Remember the Details', config: { name: 'entered' } });
+  g.add('rematch', 'billing.match-patient', { label: 'Match Completed Patient' });
   g.add('createCompleted', 'billing.create-patient', {
     label: 'Create Completed Patient',
     values: { reuseMatch: true }
   });
-  for (const id of ['matched', 'created', 'reviewed', 'linked', 'completed']) g.ret(id);
+  g.add('reviewCompleted', 'billing.review-patient-match', {
+    label: 'Review Completed Matches'
+  });
+  for (const id of [
+    'matched',
+    'created',
+    'reviewed',
+    'completedMatched',
+    'completedCreated',
+    'completedReviewed'
+  ]) {
+    g.ret(id);
+  }
   g.wire('entry.exec', 'match.exec');
   g.wire('entry.demographics', 'match.demographics', 'create.demographics');
+  g.wire('entry.demographics', 'subject.demographics');
+  g.wire('entry.pcrNumber', 'review.pcrNumber', 'reviewCompleted.pcrNumber');
+  g.wire('entry.pcrNumber', 'context.pcrNumber', 'subject.pcrNumber');
   g.wire('match.matched', 'matched.exec');
   g.wire('match.patient', 'matched.patient');
   g.wire('match.unmatched', 'create.exec');
-  g.wire('create.then', 'created.exec');
+  g.wire('create.created', 'created.exec');
+  g.wire('create.invalid', 'complete.exec');
   g.wire('create.patient', 'created.patient');
-  g.wire('match.review', 'confirm.exec');
-  g.wire('match.candidates', 'choices.candidates', 'pick.candidates', 'context.candidates');
-  g.wire('choices.result', 'confirm.options');
-  g.wire('pick.result', 'confirm.defaults');
-  g.wire('match.reason', 'context.reason');
-  g.wire('match.demographics', 'context.demographics', 'createNew.demographics');
-  g.wire('entry.pcrNumber', 'context.pcrNumber', 'subject.pcrNumber');
-  g.wire('entry.demographics', 'subject.demographics');
-  g.wire('context.result', 'confirm.context', 'complete.context');
-  g.wire('subject.result', 'confirm.subject', 'complete.subject');
-  g.wire('confirm.useSelected', 'find.exec');
-  g.wire('confirm.patientId', 'find.patientId');
-  g.wire('confirm.createNew', 'createNew.exec');
-  g.wire('createNew.then', 'reviewed.exec');
-  g.wire('createNew.patient', 'reviewed.patient');
-  g.wire('find.then', 'linked.exec');
-  g.wire('find.patient', 'linked.patient');
+  g.wire('match.review', 'review.exec');
+  g.wire('match.candidates', 'review.candidates', 'context.candidates');
+  g.wire('match.reason', 'review.reason', 'context.reason');
+  g.wire('match.demographics', 'review.demographics', 'context.demographics');
+  g.wire('review.then', 'reviewed.exec');
+  g.wire('review.patient', 'reviewed.patient');
   g.wire('match.incomplete', 'complete.exec');
-  g.wire('match.demographics', 'complete.defaults', 'reported.demographics');
-  for (const pin of ['gender', 'addressLine', 'city', 'state', 'postalCode']) {
+  g.wire('context.result', 'complete.context');
+  g.wire('subject.result', 'complete.subject');
+  g.wire('entered.value', 'prefill.value');
+  g.wire('match.demographics', 'prefill.fallback', 'reported.demographics');
+  g.wire('prefill.result', 'complete.defaults');
+  for (const pin of ['gender', ...ADDRESS_PINS]) {
     g.wire(`reported.${pin}`, `corrected.${pin}`);
   }
   for (const pin of ['firstName', 'lastName', 'birthDate']) {
     g.wire(`complete.${pin}`, `corrected.${pin}`);
   }
-  g.wire('complete.savePatient', 'createCompleted.exec');
-  g.wire('corrected.demographics', 'createCompleted.demographics');
-  g.wire('createCompleted.then', 'completed.exec');
-  g.wire('createCompleted.patient', 'completed.patient');
+  g.wire('complete.savePatient', 'remember.exec');
+  g.wire('corrected.demographics', 'remember.value');
+  g.wire('remember.then', 'rematch.exec');
+  g.wire('corrected.demographics', 'rematch.demographics');
+  g.wire('rematch.matched', 'completedMatched.exec');
+  g.wire('rematch.patient', 'completedMatched.patient');
+  g.wire('rematch.unmatched', 'createCompleted.exec');
+  g.wire('rematch.demographics', 'createCompleted.demographics', 'reviewCompleted.demographics');
+  g.wire('createCompleted.created', 'completedCreated.exec');
+  g.wire('createCompleted.invalid', 'complete.exec');
+  g.wire('createCompleted.patient', 'completedCreated.patient');
+  g.wire('rematch.review', 'reviewCompleted.exec');
+  g.wire('rematch.candidates', 'reviewCompleted.candidates');
+  g.wire('rematch.reason', 'reviewCompleted.reason');
+  g.wire('reviewCompleted.then', 'completedReviewed.exec');
+  g.wire('reviewCompleted.patient', 'completedReviewed.patient');
+  g.wire('rematch.incomplete', 'complete.exec');
   return g.def;
 };
 
 const resolvePayers = (): GraphDef => {
-  const g = action(
-    [p('coverages', COVERAGES), p('pcrNumber', 'string', true), p('patientName', 'string', true)],
-    [p('coverages', COVERAGES)]
+  const g = graph(
+    {
+      execIn: ['exec'],
+      execOut: ['then'],
+      inputs: [
+        p('coverages', COVERAGES),
+        p('pcrNumber', 'string', true),
+        p('patientName', 'string', true)
+      ],
+      outputs: [p('coverages', COVERAGES), p('notes', { list: 'string' })]
+    },
+    [{ name: 'removed', type: { list: 'string' }, default: [] }]
   );
   g.add('match', 'billing.match-payers');
-  g.add('each', 'std.flow.for-each', { label: 'Each Uncertain Payer' });
-  g.add('choices', 'std.expr', expr('Directory Choices', '{ payerId: item.candidates }'));
+  g.add('each', 'std.flow.for-each', { label: 'Each Unlinked Payer' });
+  g.add(
+    'choices',
+    'std.expr',
+    expr('Directory Choices', 'len(item.candidates) > 0 ? { payerId: item.candidates } : null')
+  );
   g.add('suggestion', 'std.expr', expr('Suggested Payer', '{ payerId: item.suggested }'));
   g.add(
     'context',
     'std.expr',
     expr(
       'Payer context',
-      '{ reportedPayer: item.payer, memberId: item.memberId, patient: patientName, pcrNumber: pcrNumber }'
+      '{ reportedPayer: item.payer, memberId: item.memberId, patient: patientName, pcrNumber: pcrNumber, notes: item.notes }'
     )
   );
   g.add('confirm', 'std.human.task', {
@@ -1107,14 +1133,20 @@ const resolvePayers = (): GraphDef => {
       title: 'Match payer',
       queue: 'billing-payers',
       instructions:
-        'The report names a payer that is not in the payer directory by that name. Choose the directory payer it means, and later reports with this name link automatically, or mark it unlisted.',
-      fields: [{ name: 'payerId', type: 'string', label: 'Directory payer' }],
-      outcomes: ['link', 'unlisted']
+        'The report names a payer that is not in the payer directory by that name. Choose the directory payer it means, and later reports with this name link automatically; similar payers come first with how close they are. Mark it unlisted when the payer is real but not in the directory yet, or remove it when it is not insurance (self pay, unknown).',
+      fields: [{ name: 'payerId', type: 'string', label: 'Directory payer', required: ['link'] }],
+      outcomes: ['link', 'unlisted', 'remove']
     }
   });
   g.add('reported', 'std.object.get', { label: 'Reported Name', values: { path: 'payer' } });
+  g.add('key', 'std.object.get', { label: 'Coverage Key', values: { path: 'key' } });
   g.add('subject', 'std.expr', subject('pcrNumber', 'item.payer'));
   g.add('link', 'billing.link-payer', { label: 'Remember Payer Name' });
+  g.add('remove', 'std.var.append', {
+    label: 'Leave Out This Coverage',
+    config: { name: 'removed' }
+  });
+  g.add('removed', 'std.var.get', { config: { name: 'removed' } });
   g.add('rematch', 'billing.match-payers', {
     label: 'Match Reviewed Payers',
     values: { suggest: false }
@@ -1125,11 +1157,12 @@ const resolvePayers = (): GraphDef => {
   g.wire('entry.coverages', 'match.coverages', 'rematch.coverages');
   g.wire('match.matched', 'matched.exec');
   g.wire('match.coverages', 'matched.coverages');
+  g.wire('match.notes', 'matched.notes');
   g.wire('match.review', 'each.exec');
   g.wire('match.unmatched', 'each.list');
   g.wire('each.body', 'confirm.exec');
   g.wire('each.item', 'choices.item', 'suggestion.item', 'context.item', 'subject.item');
-  g.wire('each.item', 'reported.object');
+  g.wire('each.item', 'reported.object', 'key.object');
   g.wire('entry.pcrNumber', 'context.pcrNumber', 'subject.pcrNumber');
   g.wire('entry.patientName', 'context.patientName');
   g.wire('choices.result', 'confirm.options');
@@ -1139,45 +1172,236 @@ const resolvePayers = (): GraphDef => {
   g.wire('confirm.link', 'link.exec');
   g.wire('reported.value', 'link.name');
   g.wire('confirm.payerId', 'link.payerId');
+  g.wire('link.invalid', 'confirm.exec');
+  g.wire('confirm.remove', 'remove.exec');
+  g.wire('key.value', 'remove.item');
+  g.wire('removed.value', 'rematch.exclude');
   g.wire('each.completed', 'rematch.exec');
   g.wire('rematch.matched', 'reviewed.exec');
   g.wire('rematch.review', 'reviewed.exec');
   g.wire('rematch.coverages', 'reviewed.coverages');
+  g.wire('match.notes', 'reviewed.notes');
+  return g.def;
+};
+
+const SET_CHARGE_CONTEXT = `{
+  codes: map(missing, c => c + ' · ' + (labels[c] ?? 'Ambulance service')),
+  primaryPayer: payerId == null ? 'No directory payer, so the default fee schedule' : payerId,
+  claim: context
+}`;
+
+const priceCharges = (): GraphDef => {
+  const g = graph(
+    {
+      execIn: ['exec'],
+      execOut: ['priced', 'voided'],
+      inputs: [
+        p('lines', CHARGE_LINES),
+        p('payerId', 'string', true),
+        p('subject', 'string', true),
+        p('context', 'any', true)
+      ],
+      outputs: [p('lines', LINES, true), p('totalCents', 'integer', true)]
+    },
+    [{ name: 'fees', type: { object: {} }, default: {} }]
+  );
+  g.add('fees', 'std.var.get', { label: 'Prices Set Here', config: { name: 'fees' } });
+  g.add('price', 'billing.price-claim');
+  g.add('setContext', 'std.expr', {
+    ...expr('Missing Fees', SET_CHARGE_CONTEXT),
+    values: { labels: HCPCS_LABELS }
+  });
+  g.add('codeChoices', 'std.expr', expr('Codes Without a Fee', '{ code: missing }'));
+  g.add('firstCode', 'std.expr', expr('First Code', '{ code: missing[0] }'));
+  g.add('setCharge', 'std.human.task', {
+    label: 'Set Charge',
+    config: {
+      title: 'Set charge',
+      queue: 'billing-review',
+      instructions:
+        "No fee schedule has a price for a code on this claim. Enter the unit price to bill it at, and save it to the agency's default fee schedule so later claims are priced too, or void the claim.",
+      fields: [
+        { name: 'code', type: 'string', label: 'HCPCS code', required: ['price'] },
+        {
+          name: 'unitPrice',
+          type: 'number',
+          label: 'Unit price (dollars)',
+          min: 0,
+          required: ['price']
+        },
+        { name: 'saveToSchedule', type: 'boolean', label: 'Save to the default fee schedule' }
+      ],
+      outcomes: ['price', 'void']
+    }
+  });
+  g.add('setFee', 'billing.set-fee');
+  g.add('keep', 'std.var.set', { label: 'Keep the Price', config: { name: 'fees' } });
+  g.ret('pricedDone', 'priced');
+  g.ret('voidedDone', 'voided');
+  g.wire('entry.exec', 'price.exec');
+  g.wire('entry.lines', 'price.lines');
+  g.wire('entry.payerId', 'price.payerId', 'setContext.payerId');
+  g.wire('fees.value', 'price.fees', 'setFee.fees');
+  g.wire('price.priced', 'pricedDone.exec');
+  g.wire('price.lines', 'pricedDone.lines');
+  g.wire('price.totalCents', 'pricedDone.totalCents');
+  g.wire('price.unpriced', 'setCharge.exec');
+  g.wire('price.missing', 'setContext.missing', 'codeChoices.missing', 'firstCode.missing');
+  g.wire('entry.context', 'setContext.context');
+  g.wire('setContext.result', 'setCharge.context');
+  g.wire('codeChoices.result', 'setCharge.options');
+  g.wire('firstCode.result', 'setCharge.defaults');
+  g.wire('entry.subject', 'setCharge.subject');
+  g.wire('setCharge.price', 'setFee.exec');
+  g.wire('setCharge.code', 'setFee.code');
+  g.wire('setCharge.unitPrice', 'setFee.unitPrice');
+  g.wire('setCharge.saveToSchedule', 'setFee.saveToSchedule');
+  g.wire('setFee.then', 'keep.exec');
+  g.wire('setFee.fees', 'keep.value');
+  g.wire('keep.then', 'price.exec');
+  g.wire('setCharge.void', 'voidedDone.exec');
+  return g.def;
+};
+
+const fixClaim = (): GraphDef => {
+  const g = graph(
+    {
+      execIn: ['exec'],
+      execOut: ['fixed', 'voided', 'backToReview'],
+      inputs: [
+        p('claimId', 'string'),
+        p('all', 'boolean', true),
+        p('subject', 'string', true),
+        p('context', 'any', true)
+      ],
+      outputs: []
+    },
+    [{ name: 'askAll', type: 'boolean', default: false }]
+  );
+  g.add('ask', 'std.var.set', { label: 'Ask Every Field First?', config: { name: 'askAll' } });
+  g.add('askAll', 'std.var.get', { config: { name: 'askAll' } });
+  g.add('validate', 'billing.validate-claim', { label: 'Check the Claim' });
+  g.add('asked', 'std.flow.branch', { label: 'Asked to Fix Anyway?' });
+  g.add('fixContext', 'std.expr', expr('Fix Context', '{ issues: issues, claim: context }'));
+  g.add('fix', 'std.human.task', {
+    label: 'Fix Claim Data',
+    config: {
+      title: 'Fix claim data',
+      queue: 'billing-review',
+      instructions:
+        'The claim is missing something or has something wrong, listed with the field it is fixed in. Correct the fields below and save, and the claim is checked again; empty fields are left as they are. Charges are mapped and priced again when the trip type, service, miles or payers change. Void the claim if it should never be billed.',
+      fields: CLAIM_FIX_FIELDS,
+      outcomes: ['save', 'void', 'backToReview']
+    }
+  });
+  g.add('stopAsking', 'std.var.set', {
+    label: 'Ask Only About Issues Now',
+    config: { name: 'askAll' },
+    values: { value: false }
+  });
+  g.add('patch', 'billing.patch-claim', { label: 'Apply the Fixes' });
+  g.add('charges', 'billing.map-charges', { label: 'Charges' });
+  g.add('price', 'billing.price-charges', { label: 'Price Charges' });
+  g.add('repriced', 'billing.patch-claim', { label: 'Save the Repriced Lines' });
+  g.ret('fixedDone', 'fixed');
+  g.ret('voidedDone', 'voided');
+  g.ret('reviewDone', 'backToReview');
+  g.wire('entry.exec', 'ask.exec');
+  g.wire('entry.all', 'ask.value');
+  g.wire('ask.then', 'validate.exec');
+  g.wire('entry.claimId', 'validate.claimId', 'patch.claimId', 'repriced.claimId');
+  g.wire('askAll.value', 'validate.all', 'asked.condition');
+  g.wire('validate.invalid', 'fix.exec');
+  g.wire('validate.valid', 'asked.exec');
+  g.wire('asked.true', 'fix.exec');
+  g.wire('asked.false', 'fixedDone.exec');
+  g.wire('validate.issues', 'fixContext.issues');
+  g.wire('entry.context', 'fixContext.context');
+  g.wire('fixContext.result', 'fix.context');
+  g.wire('validate.visible', 'fix.visible');
+  g.wire('validate.defaults', 'fix.defaults');
+  g.wire('validate.options', 'fix.options');
+  g.wire('entry.subject', 'fix.subject', 'price.subject');
+  g.wire('fix.save', 'stopAsking.exec');
+  g.wire('stopAsking.then', 'patch.exec');
+  for (const { name } of CLAIM_FIX_FIELDS) g.wire(`fix.${name}`, `patch.${name}`);
+  g.wire('patch.patched', 'validate.exec');
+  g.wire('patch.reprice', 'price.exec');
+  g.wire('patch.tripType', 'charges.tripType');
+  g.wire('patch.service', 'charges.service');
+  g.wire('charges.lines', 'price.lines');
+  g.wire('patch.payerId', 'price.payerId');
+  g.wire('fixContext.result', 'price.context');
+  g.wire('price.priced', 'repriced.exec');
+  g.wire('price.lines', 'repriced.lines');
+  g.wire('price.voided', 'voidedDone.exec');
+  g.wire('repriced.patched', 'validate.exec');
+  g.wire('repriced.reprice', 'validate.exec');
+  g.wire('fix.void', 'voidedDone.exec');
+  g.wire('fix.backToReview', 'reviewDone.exec');
   return g.def;
 };
 
 const REVIEW_FIELDS = [
-  {
-    name: 'level',
-    type: 'string',
-    label: 'Level of service',
-    options: [
-      { value: 'BLS', label: 'BLS' },
-      { value: 'ALS1', label: 'ALS1' },
-      { value: 'ALS2', label: 'ALS2' },
-      { value: 'SCT', label: 'Specialty care transport' }
-    ]
-  },
+  { ...TRIP_TYPE_FIELD, required: ['approve'] },
+  { ...LEVEL_FIELD, required: ['approve'] },
   { name: 'emergency', type: 'boolean', label: 'Emergency response' },
-  { name: 'loadedMiles', type: 'number', label: 'Loaded miles' },
+  LOADED_MILES_FIELD,
   { name: 'note', type: 'string', label: 'Note' }
 ];
 
+const REVISION_CONTEXT = `{
+  claimId: claimId,
+  status: status,
+  canApply: some(['draft', 'needs_review', 'void'], s => s == status),
+  patient: { name: ${nameOf('pcr.patient')}, birthDate: pcr.patient.birthDate },
+  trip: ${TRIP},
+  changes: previous == null ? null : filter([
+    { field: 'Patient name', was: ${nameOf('previous.patient')}, now: ${nameOf('pcr.patient')} },
+    { field: 'Birth date', was: previous.patient.birthDate, now: pcr.patient.birthDate },
+    { field: 'Patient address', was: ${placeOf('previous.patient')}, now: ${placeOf('pcr.patient')} },
+    { field: 'Call time', was: previous.times.psapCall, now: pcr.times.psapCall },
+    { field: 'Pickup', was: ${placeOf('previous.scene')}, now: ${placeOf('pcr.scene')} },
+    { field: 'Destination', was: ${placeOf('previous.disposition')}, now: ${placeOf('pcr.disposition')} },
+    { field: 'Primary impression', was: previous.situation.primaryImpression, now: pcr.situation.primaryImpression },
+    { field: 'Other impressions', was: join(previous.situation.secondaryImpressions ?? [], ', '), now: join(pcr.situation.secondaryImpressions ?? [], ', ') },
+    { field: 'Level of care', was: previous.disposition.levelOfCare, now: pcr.disposition.levelOfCare },
+    { field: 'Response mode', was: previous.response.responseMode, now: pcr.response.responseMode },
+    { field: 'Scene odometer', was: previous.response.sceneOdometer, now: pcr.response.sceneOdometer },
+    { field: 'Destination odometer', was: previous.response.destinationOdometer, now: pcr.response.destinationOdometer },
+    { field: 'Payers', was: join(map(previous.insurances ?? [], i => i.companyName ?? ''), ', '), now: join(map(pcr.insurances ?? [], i => i.companyName ?? ''), ', ') },
+    { field: 'Narrative', was: len(previous.narrative ?? ''), now: len(pcr.narrative ?? '') }
+  ], d => d.was != d.now)
+}`;
+
 const encounterToClaim = (): GraphDef => {
-  const g = graph({
-    execIn: ['exec'],
-    execOut: [],
-    inputs: [p('report', BLOB)],
-    outputs: [
-      p('tripType', 'string', true),
-      p('patient', PATIENT, true),
-      p('claimId', 'string', true)
+  const g = graph(
+    {
+      execIn: ['exec'],
+      execOut: [],
+      inputs: [p('report', BLOB), p('claimId', 'string', true)],
+      outputs: [
+        p('tripType', 'string', true),
+        p('patient', PATIENT, true),
+        p('claimId', 'string', true)
+      ]
+    },
+    [
+      { name: 'tripType', type: 'string', default: null },
+      { name: 'findings', type: FINDINGS, default: UNREAD_FINDINGS },
+      { name: 'answers', type: { object: {} }, default: null },
+      { name: 'previous', type: PCR_TYPE, default: null }
     ]
-  });
+  );
   g.add('read', 'nemsis.read-report');
   g.add('pcr', 'nemsis.pcr.break');
   g.add('open', 'billing.open-claim', { label: 'Open Draft Claim' });
   g.add('classify', 'billing.classify-trip', { label: 'Classify Trip' });
+  g.add('classified', 'std.var.set', {
+    label: 'Classified Trip Type',
+    config: { name: 'tripType' }
+  });
+  g.add('tripType', 'std.var.get', { label: 'Trip Type', config: { name: 'tripType' } });
   g.add('tripSwitch', 'std.flow.switch', {
     label: 'Claim Needed?',
     config: { cases: ['noClaim'] }
@@ -1190,20 +1414,29 @@ const encounterToClaim = (): GraphDef => {
       title: 'Confirm no claim',
       queue: 'billing-review',
       instructions:
-        'This report looks like a cancelled call or a trip without patient contact, so no claim would be made. Skip it, or make a claim if care was given.',
+        'This report looks like a cancelled call or a trip without patient contact, so no claim would be made. Skip it, or choose the trip type that was billed and make a claim if care was given.',
+      fields: [{ ...TRIP_TYPE_FIELD, required: ['claim'] }],
       outcomes: ['skip', 'claim']
     }
   });
+  g.add('claimed', 'std.var.set', { label: 'Confirmed Trip Type', config: { name: 'tripType' } });
   g.add('skip', 'billing.close-claim', {
     label: 'Void Skipped Claim',
     values: { status: 'void' }
   });
   g.ret('skipped');
+  g.add('tryNarrative', 'std.flow.try', { label: 'Read the Narrative if the Model Is Up' });
   g.add('narrative', 'billing.read-narrative', {
     retry: { max: 3, delayMs: 30_000, factor: 4 }
   });
+  g.add('keepFindings', 'std.var.set', {
+    label: 'Narrative Findings',
+    config: { name: 'findings' }
+  });
+  g.add('findings', 'std.var.get', { label: 'Findings', config: { name: 'findings' } });
   g.add('demographics', 'billing.demographics-from-pcr', { label: 'Patient Demographics' });
   g.add('patient', 'billing.resolve-patient', { label: 'Resolve Patient' });
+  g.add('address', 'billing.update-patient-address', { label: 'Current Patient Address' });
   g.add('assign', 'billing.assign-patient', { label: 'Assign Patient to Claim' });
   g.add('reported', 'billing.coverages-from-pcr', { label: 'Reported Coverages' });
   g.add('patientName', 'std.text.template', {
@@ -1213,16 +1446,49 @@ const encounterToClaim = (): GraphDef => {
   g.add('payers', 'billing.resolve-payers', { label: 'Resolve Payers' });
   g.add('suggest', 'billing.suggest-service', { label: 'Suggest Service for the Trip Type' });
   g.add('reviewContext', 'std.expr', expr('Review Context', REVIEW_CONTEXT));
+  g.add('answers', 'std.var.get', { label: 'Answers Given Before', config: { name: 'answers' } });
+  g.add(
+    'reviewDefaults',
+    'std.expr',
+    expr(
+      'Answers Before, Else the Suggestion',
+      'merge(service, { tripType: tripType }, fromEntries(filter(entries(answers ?? {}), e => e.value != null)))'
+    )
+  );
   g.add('review', 'std.human.task', {
     label: 'Review PCR',
     config: {
       title: 'Review PCR',
       queue: 'billing-review',
       instructions:
-        'Check the patient, payers and impression codes, and confirm the level of service and loaded miles before this claim is priced. The suggestion lists what supports it, including what the narrative documents.',
+        'Check the patient, payers and impression codes, and confirm the trip type, level of service and loaded miles before this claim is priced. The suggestion lists what supports it, including what the narrative documents; warnings say what could not be read or decided.',
       fields: REVIEW_FIELDS,
       outcomes: ['approve', 'hold']
     }
+  });
+  g.add('given', 'std.object.make', {
+    label: 'Answers',
+    config: {
+      fields: [
+        { name: 'tripType', type: 'string' },
+        { name: 'level', type: 'string' },
+        { name: 'emergency', type: 'boolean' },
+        { name: 'loadedMiles', type: 'number' },
+        { name: 'note', type: 'string' }
+      ]
+    }
+  });
+  g.add('rememberHeld', 'std.var.set', {
+    label: 'Remember the Answers',
+    config: { name: 'answers' }
+  });
+  g.add('rememberApproved', 'std.var.set', {
+    label: 'Remember the Approved Answers',
+    config: { name: 'answers' }
+  });
+  g.add('reviewedTrip', 'std.var.set', {
+    label: 'Reviewed Trip Type',
+    config: { name: 'tripType' }
   });
   g.add(
     'holdContext',
@@ -1247,21 +1513,11 @@ const encounterToClaim = (): GraphDef => {
   g.add('charges', 'billing.map-charges', { label: 'Charges' });
   g.add('primary', 'std.list.first', { label: 'Primary Payer' });
   g.add('primaryPayer', 'billing.coverage.break');
-  g.add('price', 'billing.price-claim');
+  g.add('fixContext', 'std.expr', expr('Claim Context', `{ trip: ${TRIP} }`));
+  g.add('price', 'billing.price-charges', { label: 'Price Charges' });
   g.add('claim', 'billing.map-claim', { label: 'Map Claim' });
-  g.add('validate', 'billing.validate-claim');
-  g.add('fixContext', 'std.expr', expr('Problems', `{ issues: issues, trip: ${TRIP} }`));
-  g.add('fix', 'std.human.task', {
-    label: 'Claim Needs Attention',
-    config: {
-      title: 'Claim needs attention',
-      queue: 'billing-review',
-      instructions:
-        'The claim is missing something it needs before it can be saved. Send it back to review to correct it, or void it.',
-      outcomes: ['review', 'void']
-    }
-  });
-  g.add('save', 'billing.save-claim', { label: 'Save Claim for Review' });
+  g.add('save', 'billing.save-claim', { label: 'Save Draft Claim' });
+  g.add('fix', 'billing.fix-claim', { label: 'Validate and Fix Claim', values: { all: false } });
   g.add('void', 'billing.close-claim', { label: 'Void Draft Claim', values: { status: 'void' } });
   g.add('cycleInputs', 'std.object.make', {
     config: { fields: [{ name: 'claimId', type: 'string' }] }
@@ -1273,91 +1529,126 @@ const encounterToClaim = (): GraphDef => {
   g.add('attach', 'billing.attach-cycle', { label: 'Link Claim to Its Cycle' });
   g.ret('approved');
   g.add('noteRevision', 'billing.note-revision');
-  g.add(
-    'revisionContext',
-    'std.expr',
-    expr(
-      'Revision Context',
-      `{ claimId: claimId, patient: { name: ${nameOf('pcr.patient')}, birthDate: pcr.patient.birthDate }, trip: ${TRIP} }`
-    )
-  );
+  g.add('hasPrevious', 'std.logic.is-null', { label: 'No Earlier Report' });
+  g.add('firstReport', 'std.flow.branch', { label: 'Compare With the Earlier Report?' });
+  g.add('readPrevious', 'nemsis.read-report', { label: 'Read the Earlier Report' });
+  g.add('keepPrevious', 'std.var.set', { label: 'Earlier Report', config: { name: 'previous' } });
+  g.add('previous', 'std.var.get', { label: 'Earlier PCR', config: { name: 'previous' } });
+  g.add('revisionContext', 'std.expr', expr('Revision Context', REVISION_CONTEXT));
+  g.add('canApply', 'std.object.get', { label: 'Can Apply', values: { path: 'canApply' } });
   g.add('revision', 'std.human.task', {
     label: 'Review Updated PCR',
     config: {
       title: 'Review updated PCR',
       queue: 'billing-review',
       instructions:
-        'A newer version of this patient care report arrived after its claim was opened, so it was not billed again. Compare it with the claim and correct the claim if anything changed.',
-      outcomes: ['acknowledge']
+        'A newer version of this patient care report arrived after its claim was opened, so it was not billed again; the changes list what differs from the report the claim came from. Apply works the claim again from the new report while it is a draft, needs review or is void; a claim already on its way to payers is corrected on its claim page. Acknowledge keeps the claim as it is, or void it.',
+      outcomes: ['apply', 'acknowledge', 'void']
     }
+  });
+  g.add('applies', 'std.flow.branch', { label: 'Can It Be Worked Again?' });
+  g.add('restartInputs', 'std.object.make', {
+    config: {
+      fields: [
+        { name: 'report', type: BLOB },
+        { name: 'claimId', type: 'string' }
+      ]
+    }
+  });
+  g.add('restart', 'std.flow.start-workflow', {
+    label: 'Work the Claim From the New Report',
+    config: { workflow: 'billing.encounter-to-claim', version: 1 }
+  });
+  g.add('voidRevised', 'billing.close-claim', {
+    label: 'Void Revised Claim',
+    values: { status: 'void' }
   });
   g.ret('revised');
 
   g.wire('entry.exec', 'read.exec');
   g.wire('entry.report', 'read.report', 'noteRevision.report', 'claim.report');
+  g.wire('entry.report', 'restartInputs.report');
   g.wire('read.pcr', 'pcr.pcr');
   g.wire('read.then', 'open.exec');
   g.wire('pcr.pcrNumber', 'open.pcrNumber');
   g.wire('entry.report', 'open.report');
+  g.wire('entry.claimId', 'open.claimId');
   g.wire('open.claimId', 'skip.claimId', 'skipped.claimId', 'assign.claimId', 'save.claimId');
   g.wire('open.claimId', 'void.claimId', 'voided.claimId', 'cycleInputs.claimId', 'attach.claimId');
   g.wire('open.claimId', 'approved.claimId', 'noteRevision.claimId', 'revisionContext.claimId');
-  g.wire('open.claimId', 'revised.claimId');
+  g.wire('open.claimId', 'revised.claimId', 'fix.claimId', 'restartInputs.claimId');
+  g.wire('open.claimId', 'voidRevised.claimId');
 
   const pcr = 'read.pcr';
   g.wire(pcr, 'classify.pcr', 'tripContext.pcr', 'subject.pcr', 'demographics.pcr', 'reported.pcr');
   g.wire(pcr, 'suggest.pcr', 'reviewContext.pcr', 'holdContext.pcr', 'claim.pcr');
   g.wire(pcr, 'fixContext.pcr', 'revisionContext.pcr');
-  const tripType = 'classify.tripType';
-  g.wire(
-    tripType,
-    'tripSwitch.value',
-    'tripContext.tripType',
-    'suggest.tripType',
-    'charges.tripType'
-  );
+  const tripType = 'tripType.value';
+  g.wire('classify.tripType', 'classified.value', 'tripSwitch.value');
+  g.wire(tripType, 'tripContext.tripType', 'suggest.tripType', 'charges.tripType');
   g.wire(tripType, 'reviewContext.tripType', 'holdContext.tripType', 'fixContext.tripType');
   g.wire(tripType, 'revisionContext.tripType', 'skipped.tripType', 'approved.tripType');
+  g.wire(tripType, 'reviewDefaults.tripType', 'claim.tripType');
   g.wire('classify.reason', 'tripContext.reason', 'reviewContext.reason', 'holdContext.reason');
   g.wire('classify.reason', 'fixContext.reason', 'revisionContext.reason');
   g.wire('subject.result', 'noClaim.subject', 'review.subject', 'held.subject');
-  g.wire('subject.result', 'fix.subject', 'revision.subject');
+  g.wire('subject.result', 'fix.subject', 'revision.subject', 'price.subject');
 
-  g.wire('open.opened', 'tripSwitch.exec');
+  g.wire('open.opened', 'classified.exec');
+  g.wire('classified.then', 'tripSwitch.exec');
   g.wire('tripSwitch.noClaim', 'noClaim.exec');
   g.wire('tripContext.result', 'noClaim.context');
   g.wire('noClaim.skip', 'skip.exec');
   g.wire('skip.then', 'skipped.exec');
-  g.wire('noClaim.claim', 'narrative.exec');
-  g.wire('tripSwitch.default', 'narrative.exec');
+  g.wire('noClaim.claim', 'claimed.exec');
+  g.wire('noClaim.tripType', 'claimed.value');
+  g.wire('claimed.then', 'tryNarrative.exec');
+  g.wire('tripSwitch.default', 'tryNarrative.exec');
 
+  g.wire('tryNarrative.try', 'narrative.exec');
   g.wire('pcr.narrative', 'narrative.narrative');
-  g.wire('narrative.then', 'patient.exec');
+  g.wire('narrative.then', 'keepFindings.exec');
+  g.wire('narrative.findings', 'keepFindings.value');
+  g.wire('tryNarrative.then', 'patient.exec');
+  g.wire('tryNarrative.catch', 'patient.exec');
   g.wire('demographics.demographics', 'patient.demographics', 'patientName.demographics');
+  g.wire('demographics.demographics', 'address.demographics');
   g.wire('pcr.pcrNumber', 'patient.pcrNumber', 'payers.pcrNumber');
-  g.wire('patient.then', 'assign.exec');
-  g.wire('patient.patient', 'assign.patient');
+  g.wire('patient.then', 'address.exec');
+  g.wire('patient.patient', 'address.patient');
+  g.wire('address.then', 'assign.exec');
+  const patient = 'address.patient';
+  g.wire(patient, 'assign.patient', 'reviewContext.patient', 'holdContext.patient');
+  g.wire(patient, 'claim.patient', 'voided.patient', 'approved.patient');
   g.wire('assign.then', 'payers.exec');
   g.wire('reported.coverages', 'payers.coverages');
   g.wire('patientName.text', 'payers.patientName');
   g.wire('payers.then', 'suggest.exec');
-  g.wire('narrative.findings', 'suggest.findings', 'reviewContext.findings');
+  g.wire('payers.notes', 'reviewContext.payerNotes');
+  g.wire('findings.value', 'suggest.findings', 'reviewContext.findings');
   g.wire('suggest.then', 'review.exec');
-  g.wire('patient.patient', 'reviewContext.patient', 'holdContext.patient', 'claim.patient');
   g.wire('payers.coverages', 'reviewContext.coverages', 'primary.list', 'claim.coverages');
-  g.wire('suggest.service', 'reviewContext.service', 'review.defaults', 'suggested.service');
+  g.wire('suggest.service', 'reviewContext.service', 'reviewDefaults.service', 'suggested.service');
+  g.wire('answers.value', 'reviewDefaults.answers');
+  g.wire('reviewDefaults.result', 'review.defaults');
   g.wire('reviewContext.result', 'review.context');
+  for (const pin of ['tripType', 'level', 'emergency', 'loadedMiles', 'note']) {
+    g.wire(`review.${pin}`, `given.${pin}`);
+  }
+  g.wire('given.object', 'rememberHeld.value', 'rememberApproved.value');
 
-  g.wire('review.hold', 'held.exec');
+  g.wire('review.hold', 'rememberHeld.exec');
+  g.wire('rememberHeld.then', 'held.exec');
   g.wire('review.note', 'holdContext.note');
   g.wire('holdContext.result', 'held.context');
   g.wire('held.release', 'review.exec');
   g.wire('held.void', 'void.exec');
   g.wire('void.then', 'voided.exec');
-  g.wire('patient.patient', 'voided.patient');
-  g.wire(tripType, 'voided.tripType');
 
-  g.wire('review.approve', 'price.exec');
+  g.wire('review.approve', 'rememberApproved.exec');
+  g.wire('rememberApproved.then', 'reviewedTrip.exec');
+  g.wire('review.tripType', 'reviewedTrip.value');
+  g.wire('reviewedTrip.then', 'price.exec');
   g.wire('review.level', 'level.value');
   g.wire('suggested.level', 'level.fallback');
   g.wire('review.emergency', 'emergency.value');
@@ -1370,30 +1661,118 @@ const encounterToClaim = (): GraphDef => {
   g.wire('charges.lines', 'price.lines');
   g.wire('primary.item', 'primaryPayer.coverage');
   g.wire('primaryPayer.payerId', 'price.payerId');
+  g.wire('fixContext.result', 'price.context', 'fix.context');
+  g.wire('price.voided', 'void.exec');
+  g.wire('price.priced', 'save.exec');
   g.wire('price.lines', 'claim.lines');
   g.wire('price.totalCents', 'claim.totalCents');
-  g.wire('price.then', 'validate.exec');
-  g.wire('claim.claim', 'validate.claim', 'save.claim');
-  g.wire('validate.invalid', 'fix.exec');
-  g.wire('validate.issues', 'fixContext.issues');
-  g.wire('fixContext.result', 'fix.context');
-  g.wire('fix.review', 'review.exec');
-  g.wire('fix.void', 'void.exec');
-  g.wire('validate.valid', 'save.exec');
-  g.wire('save.then', 'cycle.exec');
+  g.wire('claim.claim', 'save.claim');
+  g.wire('save.then', 'fix.exec');
+  g.wire('fix.voided', 'void.exec');
+  g.wire('fix.backToReview', 'review.exec');
+  g.wire('fix.fixed', 'cycle.exec');
   g.wire('cycleInputs.object', 'cycle.inputs');
   g.wire('cycle.then', 'attach.exec');
   g.wire('cycle.runId', 'attach.cycleRunId');
   g.wire('attach.then', 'approved.exec');
-  g.wire('patient.patient', 'approved.patient');
 
   g.wire('open.duplicate', 'noteRevision.exec');
-  g.wire('noteRevision.then', 'revision.exec');
-  g.wire('revisionContext.result', 'revision.context');
+  g.wire('noteRevision.restartable', 'firstReport.exec');
+  g.wire('noteRevision.billed', 'firstReport.exec');
+  g.wire('noteRevision.previous', 'hasPrevious.value', 'readPrevious.report');
+  g.wire('noteRevision.status', 'revisionContext.status');
+  g.wire('hasPrevious.result', 'firstReport.condition');
+  g.wire('firstReport.true', 'revision.exec');
+  g.wire('firstReport.false', 'readPrevious.exec');
+  g.wire('readPrevious.then', 'keepPrevious.exec');
+  g.wire('readPrevious.pcr', 'keepPrevious.value');
+  g.wire('keepPrevious.then', 'revision.exec');
+  g.wire('previous.value', 'revisionContext.previous');
+  g.wire('revisionContext.result', 'revision.context', 'canApply.object');
+  g.wire('revision.apply', 'applies.exec');
+  g.wire('canApply.value', 'applies.condition');
+  g.wire('applies.true', 'restart.exec');
+  g.wire('applies.false', 'revision.exec');
+  g.wire('restartInputs.object', 'restart.inputs');
+  g.wire('restart.then', 'revised.exec');
   g.wire('revision.acknowledge', 'revised.exec');
+  g.wire('revision.void', 'voidRevised.exec');
+  g.wire('voidRevised.then', 'revised.exec');
   g.wire(tripType, 'revised.tripType');
   return g.def;
 };
+
+const recoverDraft = (): GraphDef => {
+  const g = graph({
+    execIn: ['exec'],
+    execOut: [],
+    inputs: [p('claimId', 'string'), p('report', BLOB, true), p('reason', 'string', true)],
+    outputs: []
+  });
+  g.add('context', 'std.object.make', {
+    label: 'Orphan Context',
+    config: {
+      fields: [
+        { name: 'claimId', type: 'string' },
+        { name: 'reason', type: 'string' }
+      ]
+    }
+  });
+  g.add('orphan', 'std.human.task', {
+    label: 'Draft Claim Has No Workflow',
+    config: {
+      title: 'Draft claim has no workflow',
+      queue: 'billing-review',
+      instructions:
+        'The workflow working this draft claim stopped before the claim was ready, so nothing would happen to it. Restart works it again from its report, or void it.',
+      outcomes: ['restart', 'void']
+    }
+  });
+  g.add('inputs', 'std.object.make', {
+    config: {
+      fields: [
+        { name: 'report', type: BLOB },
+        { name: 'claimId', type: 'string' }
+      ]
+    }
+  });
+  g.add('restart', 'std.flow.start-workflow', {
+    label: 'Work the Claim Again',
+    config: { workflow: 'billing.encounter-to-claim', version: 1 }
+  });
+  g.add('void', 'billing.close-claim', {
+    label: 'Void Orphaned Draft',
+    values: { status: 'void' }
+  });
+  g.ret('done');
+  g.wire('entry.exec', 'orphan.exec');
+  g.wire('entry.claimId', 'context.claimId', 'inputs.claimId', 'void.claimId');
+  g.wire('entry.reason', 'context.reason');
+  g.wire('entry.report', 'inputs.report');
+  g.wire('context.object', 'orphan.context');
+  g.wire('orphan.restart', 'restart.exec');
+  g.wire('inputs.object', 'restart.inputs');
+  g.wire('restart.then', 'done.exec');
+  g.wire('orphan.void', 'void.exec');
+  g.wire('void.then', 'done.exec');
+  return g.def;
+};
+
+const CLAIM_CONTEXT = `{
+  claimId: claimId,
+  coverageId: coverageId,
+  payer: payer,
+  balanceCents: balanceCents,
+  issues: issues,
+  claim: claim
+}`;
+
+const PATIENT_ADDRESS_FIELDS = ['AddressLine', 'City', 'State', 'PostalCode'].map((part) => ({
+  name: `patient${part}`,
+  type: 'string',
+  label: `Patient ${part === 'AddressLine' ? 'street address' : part === 'PostalCode' ? 'ZIP code' : part.toLowerCase()}`,
+  required: ['save']
+}));
 
 const cycleClaim = (): GraphDef => {
   const g = graph(
@@ -1406,86 +1785,128 @@ const cycleClaim = (): GraphDef => {
     g.add(id, 'billing.record-claim-event', { label, values: { kind } });
   const closeClaim = (id: string, status: string, label: string) =>
     g.add(id, 'billing.close-claim', { label, values: { status } });
+  const task = (id: string, label: string, config: Record<string, Json>) =>
+    g.add(id, 'std.human.task', { label, config });
   g.add('active', 'std.var.get', { config: { name: 'active' } });
   g.add('loop', 'std.flow.while', { label: 'Until the Claim Closes' });
   g.add('step', 'billing.claim-step', {
     label: 'Next Step',
-    values: { payerWaitDays: 30, statementCount: 3, statementIntervalDays: 30 }
+    values: { payerWaitDays: 30, submitWaitDays: 3, statementCount: 3, statementIntervalDays: 30 }
   });
-  waitForClaim('submit', 'Await 837P Batch');
+  waitForClaim('submit', 'Await Submission');
   waitForClaim('awaitPayer', 'Await Payer Response');
   waitForClaim('awaitPatient', 'Await Patient Payment');
   g.add('payerSubject', 'std.expr', subject('reference', 'payer'));
-  g.add('collectionsSubject', 'std.expr', subject('reference'));
-  g.add('payerContext', 'std.object.make', {
-    label: 'Payer Context',
-    config: {
-      fields: [
-        { name: 'claimId', type: 'string' },
-        { name: 'coverageId', type: 'string' },
-        { name: 'payer', type: 'string' },
-        { name: 'balanceCents', type: 'integer' }
-      ]
-    }
+  g.add('claimSubject', 'std.expr', subject('reference'));
+  g.add('claimContext', 'std.expr', expr('Claim Context', CLAIM_CONTEXT));
+  g.add('fix', 'billing.fix-claim', { label: 'Fix Claim Data', values: { all: false } });
+  g.add('fixData', 'billing.fix-claim', {
+    label: 'Fix Claim Data on Request',
+    values: { all: true }
   });
-  g.add('review', 'std.human.task', {
-    label: 'Review Claim',
-    config: {
-      title: 'Review claim',
-      queue: 'billing-review',
-      instructions:
-        'Check the claim before it goes to this payer: patient, member ID, service, charges, diagnoses and trip details. Correct anything on the claim page, then approve it to make it ready to submit.',
-      outcomes: ['approve']
-    }
+  task('review', 'Review Claim', {
+    title: 'Review claim',
+    queue: 'billing-review',
+    instructions:
+      'Check the claim before it goes to this payer, or before the patient is billed when no payer is left: patient, member ID, service, charges, diagnoses and trip details, with any warnings. Approve it to make it ready, fix its data, skip this payer, or void the claim.',
+    outcomes: ['approve', 'fixData', 'skipPayer', 'void']
   });
-  recordEvent('approve', 'approved', 'Approve for Submission');
-  g.add('reconcile', 'std.human.task', {
-    label: 'Reconcile Payment',
-    config: {
-      title: 'Reconcile payment',
-      queue: 'billing-reconcile',
-      instructions:
-        'The payer answered and a balance remains. Check what they paid and adjusted against the claim, record anything missing, then continue to the next payer or the patient, or write off the rest.',
-      outcomes: ['continue', 'writeOff']
-    }
+  recordEvent('approve', 'approved', 'Approve');
+  recordEvent('skip', 'payer_skipped', 'Move to Next Payer');
+  task('confirmPayers', 'Confirm Payers', {
+    title: 'Confirm payers',
+    queue: 'billing-review',
+    instructions:
+      'The report named no payer the claim can be billed to. Add the payer from the directory with the member ID, or confirm the patient pays themselves.',
+    fields: CLAIM_FIX_FIELDS.filter((f) =>
+      ['payerId', 'memberId', 'relationship', 'insuredFirstName', 'insuredLastName'].includes(
+        f.name
+      )
+    ).map((f) =>
+      f.name === 'payerId' || f.name === 'memberId' ? { ...f, required: ['save'] } : f
+    ),
+    outcomes: ['save', 'selfPay']
+  });
+  g.add('payerChoices', 'billing.validate-claim', {
+    label: 'Directory Choices',
+    values: { all: true }
+  });
+  g.add('directory', 'std.object.pick', {
+    label: 'Directory Payers',
+    values: { keys: ['payerId'] }
+  });
+  g.add('addPayer', 'billing.patch-claim', { label: 'Add the Payer' });
+  g.add('recharge', 'billing.map-charges', { label: 'Charges' });
+  g.add('reprice', 'billing.price-charges', { label: 'Price for the New Payer' });
+  g.add('relines', 'billing.patch-claim', { label: 'Save the Repriced Lines' });
+  recordEvent('selfPay', 'approved', 'Bill the Patient');
+  task('submitDue', 'Submit Claim', {
+    title: 'Submit claim',
+    queue: 'billing-review',
+    instructions:
+      'This claim was approved but has not gone out. Submit it from its claim page, or mark it submitted when it went out another way. Fix its data or skip this payer if it cannot be submitted.',
+    outcomes: ['submitted', 'fixData', 'skipPayer']
+  });
+  recordEvent('submitted', 'submitted', 'Submitted Outside the App');
+  task('reconcile', 'Reconcile Payment', {
+    title: 'Reconcile payment',
+    queue: 'billing-reconcile',
+    instructions:
+      'The payer answered and a balance remains. Check what they paid and adjusted, with their reason codes, against the claim, and record anything missing. Continue to the next payer or the patient, write off the rest, or correct the claim and resubmit it to this payer as a replacement of their claim.',
+    outcomes: ['continue', 'writeOff', 'resubmitCorrected']
   });
   recordEvent('reconciled', 'reconciled', 'Mark the Response Reconciled');
-  g.add('followUp', 'std.human.task', {
-    label: 'Follow Up with Payer',
-    config: {
-      title: 'Follow up on claim',
-      queue: 'billing-followup',
-      instructions:
-        'The payer has not responded in time. Resubmit in the next 837P batch, keep waiting, or move on to the next payer.',
-      outcomes: ['resubmit', 'keepWaiting', 'nextPayer']
-    }
+  recordEvent('correct', 'resubmit_queued', 'Resubmit as a Corrected Claim');
+  task('overpaid', 'Refund Overpayment', {
+    title: 'Refund overpayment',
+    queue: 'billing-reconcile',
+    instructions:
+      'More has been paid than the claim charges. Refund the difference and record the refund on the claim page, or keep the credit and close the claim as paid.',
+    outcomes: ['refunded', 'keepCredit']
+  });
+  task('followUp', 'Follow Up with Payer', {
+    title: 'Follow up on claim',
+    queue: 'billing-followup',
+    instructions:
+      'The payer has not responded in time. Resubmit in the next 837P batch, keep waiting, or move on to the next payer. When the payer has the claim on file, enter its claim number so the resubmission replaces it.',
+    fields: [{ name: 'payerClaimNumber', type: 'string', label: 'Payer claim number' }],
+    outcomes: ['resubmit', 'keepWaiting', 'nextPayer']
   });
   recordEvent('resubmit', 'resubmit_queued', 'Queue for the Next Batch');
   recordEvent('keepWaiting', 'follow_up', 'Keep Waiting on Payer');
-  recordEvent('skip', 'payer_skipped', 'Move to Next Payer');
+  recordEvent('followUpSkip', 'payer_skipped', 'Move On From the Payer');
   g.add('statement', 'billing.issue-statement', { label: 'Send Patient Statement' });
-  g.add('collectionsContext', 'std.object.make', {
-    label: 'Collections Context',
-    config: {
-      fields: [
-        { name: 'claimId', type: 'string' },
-        { name: 'balanceCents', type: 'integer' }
-      ]
-    }
+  g.add('missing', 'std.flow.switch', {
+    label: 'What the Statement Needs',
+    config: { cases: ['profile', 'patientAddress'] }
   });
-  g.add('collections', 'std.human.task', {
-    label: 'Collections Review',
-    config: {
-      title: 'Review unpaid balance',
-      queue: 'billing-collections',
-      instructions:
-        'Every payer and patient statement is done and a balance remains. Write it off or send it to collections. If it has been paid in the meantime, either choice closes it as paid.',
-      outcomes: ['writeOff', 'sendToCollections']
-    }
+  task('profileNeeded', 'Billing Profile Needed', {
+    title: 'Billing profile needed',
+    queue: 'billing-review',
+    instructions:
+      "Patient statements carry the agency's name, address, phone and time zone from the billing profile, and there is none. Add it in Settings, then continue.",
+    outcomes: ['continue']
+  });
+  task('addressNeeded', 'Patient Address Needed', {
+    title: 'Patient address needed',
+    queue: 'billing-review',
+    instructions:
+      "The patient's mailing address is incomplete, so a statement cannot be sent. Enter it and save, or write off the balance.",
+    fields: PATIENT_ADDRESS_FIELDS,
+    outcomes: ['save', 'writeOff']
+  });
+  g.add('addAddress', 'billing.patch-claim', { label: 'Save the Patient Address' });
+  task('collections', 'Collections Review', {
+    title: 'Review unpaid balance',
+    queue: 'billing-collections',
+    instructions:
+      'Every payer and patient statement is done and a balance remains. Write it off or send it to collections. If it has been paid in the meantime, either choice closes it as paid.',
+    outcomes: ['writeOff', 'sendToCollections']
   });
   closeClaim('closeWrittenOff', 'written_off', 'Close as Written Off');
   closeClaim('closeCollections', 'collections', 'Close as Sent to Collections');
   closeClaim('closePaid', 'paid', 'Close as Paid');
+  closeClaim('closeVoid', 'void', 'Close as Void');
   g.add('stop', 'std.var.set', {
     label: 'Stop Cycling',
     config: { name: 'active' },
@@ -1496,7 +1917,7 @@ const cycleClaim = (): GraphDef => {
   g.wire('active.value', 'loop.condition');
   g.wire('loop.body', 'step.exec');
   g.wire('loop.completed', 'done.exec');
-  g.wire('entry.claimId', 'step.claimId');
+  g.wire('entry.claimId', 'step.claimId', 'claimContext.claimId');
   for (const wait of ['submit', 'awaitPayer', 'awaitPatient']) {
     g.wire('entry.claimId', `${wait}.key`);
     g.wire('step.waitMs', `${wait}.timeoutMs`);
@@ -1505,42 +1926,119 @@ const cycleClaim = (): GraphDef => {
   g.wire('step.submit', 'submit.exec');
   g.wire('step.await', 'awaitPayer.exec');
   g.wire('step.awaitPatient', 'awaitPatient.exec');
-  g.wire('step.followUp', 'followUp.exec');
+  g.wire('step.coverageId', 'claimContext.coverageId');
+  g.wire('step.payer', 'claimContext.payer', 'payerSubject.payer');
+  g.wire('step.balanceCents', 'claimContext.balanceCents');
+  g.wire('step.issues', 'claimContext.issues');
+  g.wire('step.claim', 'claimContext.claim');
+  g.wire('step.reference', 'payerSubject.reference', 'claimSubject.reference');
+  const context = 'claimContext.result';
+  g.wire(context, 'review.context', 'confirmPayers.context', 'submitDue.context');
+  g.wire(context, 'reconcile.context', 'overpaid.context', 'followUp.context');
+  g.wire(context, 'profileNeeded.context', 'addressNeeded.context', 'collections.context');
+  g.wire(context, 'fix.context', 'fixData.context');
+  const payerSubject = 'payerSubject.result';
+  g.wire(payerSubject, 'review.subject', 'submitDue.subject', 'reconcile.subject');
+  g.wire(payerSubject, 'followUp.subject', 'fix.subject', 'fixData.subject');
+  const claimSubject = 'claimSubject.result';
+  g.wire(claimSubject, 'confirmPayers.subject', 'overpaid.subject', 'profileNeeded.subject');
+  g.wire(claimSubject, 'addressNeeded.subject', 'collections.subject');
+  for (const id of [
+    'fix',
+    'fixData',
+    'payerChoices',
+    'addPayer',
+    'relines',
+    'addAddress',
+    'statement'
+  ]) {
+    g.wire('entry.claimId', `${id}.claimId`);
+  }
+
+  g.wire('step.fix', 'fix.exec');
+  for (const id of ['fix', 'fixData']) {
+    g.wire(`${id}.voided`, 'closeVoid.exec');
+  }
+
   g.wire('step.review', 'review.exec');
-  g.wire('step.reconcile', 'reconcile.exec');
-  g.wire('entry.claimId', 'payerContext.claimId', 'collectionsContext.claimId');
-  g.wire('step.coverageId', 'payerContext.coverageId');
-  g.wire('step.payer', 'payerContext.payer', 'payerSubject.payer');
-  g.wire('step.balanceCents', 'payerContext.balanceCents', 'collectionsContext.balanceCents');
-  g.wire('payerContext.object', 'followUp.context', 'review.context', 'reconcile.context');
-  g.wire('step.reference', 'payerSubject.reference', 'collectionsSubject.reference');
-  g.wire('payerSubject.result', 'followUp.subject', 'review.subject', 'reconcile.subject');
+  g.wire('step.reviewPatient', 'review.exec');
   g.wire('review.approve', 'approve.exec');
+  g.wire('review.fixData', 'fixData.exec');
+  g.wire('review.skipPayer', 'skip.exec');
+  g.wire('review.void', 'closeVoid.exec');
+
+  g.wire('step.confirmPayers', 'payerChoices.exec');
+  g.wire('payerChoices.valid', 'confirmPayers.exec');
+  g.wire('payerChoices.invalid', 'confirmPayers.exec');
+  g.wire('payerChoices.options', 'directory.object');
+  g.wire('directory.object', 'confirmPayers.options');
+  g.wire('confirmPayers.save', 'addPayer.exec');
+  for (const pin of [
+    'payerId',
+    'memberId',
+    'relationship',
+    'insuredFirstName',
+    'insuredLastName'
+  ]) {
+    g.wire(`confirmPayers.${pin}`, `addPayer.${pin}`);
+  }
+  g.wire('confirmPayers.selfPay', 'selfPay.exec');
+  g.wire('addPayer.reprice', 'reprice.exec');
+  g.wire('addPayer.tripType', 'recharge.tripType');
+  g.wire('addPayer.service', 'recharge.service');
+  g.wire('addPayer.payerId', 'reprice.payerId');
+  g.wire('recharge.lines', 'reprice.lines');
+  g.wire(claimSubject, 'reprice.subject');
+  g.wire(context, 'reprice.context');
+  g.wire('reprice.priced', 'relines.exec');
+  g.wire('reprice.lines', 'relines.lines');
+  g.wire('reprice.voided', 'closeVoid.exec');
+
+  g.wire('step.submitDue', 'submitDue.exec');
+  g.wire('submitDue.submitted', 'submitted.exec');
+  g.wire('submitDue.fixData', 'fixData.exec');
+  g.wire('submitDue.skipPayer', 'skip.exec');
+
+  g.wire('step.reconcile', 'reconcile.exec');
   g.wire('reconcile.continue', 'reconciled.exec');
   g.wire('reconcile.writeOff', 'closeWrittenOff.exec');
-  for (const id of ['approve', 'reconciled']) {
+  g.wire('reconcile.resubmitCorrected', 'correct.exec');
+  g.wire('step.overpaid', 'overpaid.exec');
+  g.wire('overpaid.keepCredit', 'closePaid.exec');
+
+  for (const id of ['approve', 'skip', 'submitted', 'reconciled', 'correct', 'selfPay']) {
     g.wire('entry.claimId', `${id}.claimId`);
     g.wire('step.coverageId', `${id}.coverageId`);
   }
+  g.wire('step.followUp', 'followUp.exec');
   for (const [outcome, id] of [
     ['resubmit', 'resubmit'],
     ['keepWaiting', 'keepWaiting'],
-    ['nextPayer', 'skip']
+    ['nextPayer', 'followUpSkip']
   ] as const) {
     g.wire(`followUp.${outcome}`, `${id}.exec`);
     g.wire('entry.claimId', `${id}.claimId`);
     g.wire('step.coverageId', `${id}.coverageId`);
+    g.wire('followUp.payerClaimNumber', `${id}.payerClaimNumber`);
   }
+
   g.wire('step.statement', 'statement.exec');
-  g.wire('entry.claimId', 'statement.claimId');
   g.wire('step.statementNumber', 'statement.statementNumber');
+  g.wire('step.statementCount', 'statement.statementCount');
+  g.wire('statement.missing', 'missing.exec');
+  g.wire('statement.need', 'missing.value');
+  g.wire('missing.profile', 'profileNeeded.exec');
+  g.wire('missing.patientAddress', 'addressNeeded.exec');
+  g.wire('addressNeeded.save', 'addAddress.exec');
+  for (const { name } of PATIENT_ADDRESS_FIELDS)
+    g.wire(`addressNeeded.${name}`, `addAddress.${name}`);
+  g.wire('addressNeeded.writeOff', 'closeWrittenOff.exec');
+
   g.wire('step.collections', 'collections.exec');
-  g.wire('collectionsContext.object', 'collections.context');
-  g.wire('collectionsSubject.result', 'collections.subject');
   g.wire('collections.writeOff', 'closeWrittenOff.exec');
   g.wire('collections.sendToCollections', 'closeCollections.exec');
   g.wire('step.closed', 'closePaid.exec');
-  for (const id of ['closeWrittenOff', 'closeCollections', 'closePaid']) {
+  for (const id of ['closeWrittenOff', 'closeCollections', 'closePaid', 'closeVoid']) {
     g.wire('entry.claimId', `${id}.claimId`);
     g.wire(`${id}.then`, 'stop.exec');
   }
@@ -1601,7 +2099,7 @@ export const billingGraphs: SeedGraph[] = [
   node(
     'billing.loaded-miles',
     'Loaded Miles',
-    'Destination minus scene odometer in tenths of a mile, or nothing when either is missing.',
+    'Destination minus scene odometer, or nothing when either is missing. Fractions are billed rounded up to the next tenth of a mile when the claim is priced.',
     loadedMiles()
   ),
   node(
@@ -1643,7 +2141,7 @@ export const billingGraphs: SeedGraph[] = [
   node(
     'billing.map-charges',
     'Map Charges',
-    'Turns a confirmed service into HCPCS lines: a base rate by trip type, level and emergency, plus A0425 mileage in tenths of a mile for transports.',
+    'Turns a confirmed service into HCPCS lines: a base rate by trip type, level and emergency, plus A0425 mileage for transports, priced in tenths of a mile rounded up.',
     mapCharges()
   ),
   node(
@@ -1655,7 +2153,7 @@ export const billingGraphs: SeedGraph[] = [
   node(
     'billing.coverages-from-pcr',
     'Coverages From PCR',
-    'Maps the report insurances to coverages, or names Medicare or Medicaid from the payment method when there are none.',
+    'Maps the report insurances to coverages with the insured and their relationship to the patient, or names Medicare or Medicaid from the payment method when there are none.',
     coveragesFromPcr()
   ),
   node(
@@ -1673,33 +2171,58 @@ export const billingGraphs: SeedGraph[] = [
   node(
     'billing.map-837p',
     'Map 837P Claim',
-    'Maps a claim on its way to a payer onto an 837P claim: subscriber, payer, ambulance conditions, origin/destination modifiers and service lines.',
+    'Maps a claim on its way to a payer onto an 837P claim: subscriber and patient, payer, prior payers for coordination of benefits, original or replacement frequency, ambulance conditions, origin/destination modifiers and service lines.',
     map837p()
+  ),
+  node(
+    'billing.price-charges',
+    'Price Charges',
+    'Prices charge lines from the fee schedules, and asks a biller for the price of any code without a fee (optionally saving it to the default schedule) before going on, or voids.',
+    priceCharges()
+  ),
+  node(
+    'billing.fix-claim',
+    'Fix Claim',
+    'Checks a saved claim with the submission checks and, while anything blocks it (or always, with all), asks a biller to fix the fields the issues name, applies the fixes, reprices changed charges and checks again. Continues through fixed, voided or backToReview.',
+    fixClaim()
+  ),
+  node(
+    'billing.review-patient-match',
+    'Review Patient Match',
+    'Asks a biller to pick the patient among likely matches for report demographics, or to create a new patient from the report.',
+    reviewPatientMatch()
   ),
   node(
     'billing.resolve-patient',
     'Resolve Patient',
-    'Matches report demographics to a patient, creates one when nothing is close, asks a biller to pick among likely matches or create a new one, and asks for a missing name or birth date.',
+    'Matches report demographics to a patient, creates one when nothing is close, asks a biller to pick among likely matches or create a new one, and asks for a missing or invalid name or birth date (prefilled with what was entered before), then matches the completed details the same way.',
     resolvePatient()
   ),
   node(
     'billing.resolve-payers',
     'Resolve Payers',
-    'Links report payers to the payer directory, asks a biller about uncertain names and remembers the answers.',
+    'Links report payers to the payer directory and asks a biller about every other name: link it (remembered for later reports), leave it unlisted, or remove it when it is not insurance. Outputs what limited the matching.',
     resolvePayers()
   ),
   workflow(
     'billing.cycle-claim',
     'Cycle Claim',
-    'Bills each payer in claim order with follow-ups, then sends patient statements before collections review. Sleeps until a claim change or a deadline.',
+    'Bills each payer in claim order: fixes what blocks the claim, has it reviewed, asks for it to be submitted when it sits ready, follows up, reconciles responses (or resubmits a corrected claim), confirms payers when there are none, reviews before the first patient statement and asks for a missing billing profile or patient address, then sends statements before collections review. Sleeps until a claim change or a deadline.',
     cycleClaim()
   ),
   workflow(
     'billing.encounter-to-claim',
     'Encounter to Claim',
-    'Turns one patient care report into a claim: opens a draft claim, classifies the trip, resolves the patient and payers, suggests the service for the trip type, has a biller confirm it, maps and prices the claim, saves it and starts its payer cycle. Reports already billed become revisions of their claim.',
+    'Turns one patient care report into a claim: opens a draft claim (or works an existing one again), classifies the trip, reads the narrative when the model is up, resolves the patient and payers, suggests the service for the trip type, has a biller confirm it, prices the charges, saves the draft, fixes what blocks it and starts its payer cycle. Reports already billed become revisions of their claim, shown with what changed.',
     encounterToClaim()
   ),
+  workflow(
+    'billing.recover-draft',
+    'Recover Draft Claim',
+    'Asks a biller what to do with a draft claim whose workflow stopped: work it again from its report, or void it.',
+    recoverDraft()
+  ),
+
   workflow(
     'billing.ingest-nemsis',
     'Ingest NEMSIS File',

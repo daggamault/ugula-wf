@@ -1,18 +1,16 @@
-import type { ClaimStatus } from '@ugula/billing';
 import {
-  type Address,
   CLAIM_STATUSES,
   CLOSED_CLAIM_STATUSES,
-  type Location,
+  type ClaimStatus,
   nameKey,
   payerKey
 } from '@ugula/billing';
-import type { Database } from '@ugula/db';
+import { ACTIVE_RUN_STATUSES, type Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { escapeLike } from '../../shared/search.ts';
-import type { ClaimSort } from './schemas.ts';
+import type { ClaimEventSort, ClaimResponse, ClaimSort, PayerEntry } from './schemas.ts';
 
 type Db = Kysely<Database>;
 
@@ -31,19 +29,11 @@ export type ClaimFilters = PageRequest<ClaimSort> &
     patientId?: string | undefined;
   };
 
-export const ANY_TASK = 'any';
-
-export type ClaimResponse = {
-  requestId: string;
-  coverageId: string | null;
-  paidCents: number;
-  adjustedCents: number;
-  note: string;
-};
+const ANY_TASK = 'any';
 
 export type CoverageRow = { id: string; payer: string; has_events: boolean };
 
-export const payerName = sql<string>`coalesce(dp.name, cc.payer_name)`;
+const payerName = sql<string>`coalesce(dp.name, cc.payer_name)`;
 
 const claimTasks = (db: Db) =>
   db
@@ -54,8 +44,19 @@ const claimTasks = (db: Db) =>
     .orderBy('t.priority', 'desc')
     .orderBy('t.created_at');
 
-const nextTask = (db: Db, { task, assignee }: TaskScope) => {
-  let q = claimTasks(db)
+const scopedTasks = (db: Db, { task, assignee }: TaskScope) => {
+  let q = claimTasks(db).where('cr.claim_id', '=', sql.ref<string>('c.id'));
+  if (task && task !== ANY_TASK) q = q.where('t.queue', '=', task);
+  if (assignee) {
+    q = assignee.id
+      ? q.where('t.assignee_id', '=', assignee.id)
+      : q.where('t.assignee_id', 'is', null);
+  }
+  return q;
+};
+
+const nextTask = (db: Db, scope: TaskScope) =>
+  scopedTasks(db, scope)
     .select([
       't.id',
       't.title',
@@ -65,15 +66,8 @@ const nextTask = (db: Db, { task, assignee }: TaskScope) => {
       'u.email',
       sql<number>`(count(*) over ())::int`.as('count')
     ])
-    .where('cr.claim_id', '=', sql.ref<string>('c.id'));
-  if (task && task !== ANY_TASK) q = q.where('t.queue', '=', task);
-  if (assignee) {
-    q = assignee.id
-      ? q.where('t.assignee_id', '=', assignee.id)
-      : q.where('t.assignee_id', 'is', null);
-  }
-  return q.limit(sql.lit(1)).as('t');
-};
+    .limit(sql.lit(1))
+    .as('t');
 
 const claimRows = (db: Db, tenantId: string, scope: TaskScope = {}) =>
   db
@@ -109,17 +103,20 @@ const claimRows = (db: Db, tenantId: string, scope: TaskScope = {}) =>
     ])
     .where('c.tenant_id', '=', tenantId);
 
-const CLAIM_ORDER = {
+const claimOrder = (db: Db, scope: TaskScope) => ({
   created: sql.ref('c.created_at'),
   number: sql.ref('c.number'),
   service: sql.ref('c.service_date'),
   patient: sql`lower(p.last_name || ' ' || p.first_name)`,
   pcr: sql.ref('c.pcr_number'),
   total: sql.ref('c.total_cents'),
-  balance: sql.ref('b.balance_cents'),
-  waiting: sql.ref('t.created_at'),
+  balance: db
+    .selectFrom('claim_balances as b')
+    .select('b.balance_cents')
+    .where('b.claim_id', '=', sql.ref<string>('c.id')),
+  waiting: scopedTasks(db, scope).select('t.created_at').limit(sql.lit(1)),
   status: sql`array_position(array[${sql.join(CLAIM_STATUSES.map((s) => sql.lit(s)))}]::text[], c.status::text)`
-};
+});
 
 const MAX_NUMBER = 2_147_483_647;
 
@@ -129,9 +126,13 @@ export const numberOf = (text: string) => {
   return n !== null && n <= MAX_NUMBER ? n : null;
 };
 
-export const listClaims = (db: Db, tenantId: string, f: ClaimFilters) => {
-  let q = claimRows(db, tenantId, f);
-  if (f.task || f.assignee) q = q.where('t.id', 'is not', null);
+const claimIds = (db: Db, tenantId: string, f: ClaimFilters) => {
+  let q = db
+    .selectFrom('claims as c')
+    .leftJoin('patients as p', 'p.id', 'c.patient_id')
+    .select('c.id')
+    .where('c.tenant_id', '=', tenantId);
+  if (f.task || f.assignee) q = q.where((eb) => eb.exists(scopedTasks(db, f).select('t.id')));
   if (f.status === 'open') q = q.where('c.status', 'not in', CLOSED_CLAIM_STATUSES);
   else if (f.status !== 'all') q = q.where('c.status', '=', f.status);
   if (f.patientId) q = q.where('c.patient_id', '=', f.patientId);
@@ -151,13 +152,24 @@ export const listClaims = (db: Db, tenantId: string, f: ClaimFilters) => {
       ])
     );
   }
-  return paged(q, f, CLAIM_ORDER, sql.ref('c.id'));
+  return q;
+};
+
+export const listClaims = async (db: Db, tenantId: string, f: ClaimFilters) => {
+  const page = await paged(claimIds(db, tenantId, f), f, claimOrder(db, f), sql.ref('c.id'));
+  const ids = page.items.map((r) => r.id);
+  const rows = ids.length
+    ? await claimRows(db, tenantId, f).where('c.id', 'in', ids).execute()
+    : [];
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return { ...page, items: ids.flatMap((id) => byId.get(id) ?? []) };
 };
 
 export const findClaim = (db: Db, tenantId: string, id: string) =>
   claimRows(db, tenantId)
     .leftJoin('workflow_runs as r', 'r.id', 'c.cycle_run_id')
     .select((eb) => [
+      'c.trip_type',
       'c.emergency',
       'c.loaded_miles',
       'c.origin_code',
@@ -192,7 +204,10 @@ export const findClaim = (db: Db, tenantId: string, id: string) =>
             'cc.payer_id',
             'cc.payer_code',
             'cc.member_id',
-            'cc.group_id'
+            'cc.group_id',
+            'cc.relationship',
+            'cc.insured_first_name',
+            'cc.insured_last_name'
           ])
           .whereRef('cc.claim_id', '=', 'c.id')
           .orderBy('cc.position')
@@ -263,7 +278,7 @@ export const claimBalance = async (db: Db, id: string) =>
 
 export type PayerOrder = {
   keep: { id: string; position: number }[];
-  add: { payer: string; position: number }[];
+  add: (Omit<PayerEntry, 'name'> & { payer: string; position: number })[];
   remove: string[];
 };
 
@@ -280,13 +295,12 @@ export const reorderCoverages = async (
       .where('id', 'in', order.remove)
       .execute();
   }
-  for (const c of order.keep) {
-    await db
-      .updateTable('claim_coverages')
-      .set({ position: c.position })
-      .where('id', '=', c.id)
-      .where('claim_id', '=', claimId)
-      .execute();
+  if (order.keep.length) {
+    await sql`
+      update claim_coverages cc set position = v.position
+      from (values ${sql.join(order.keep.map((c) => sql`(${c.id}::uuid, ${c.position}::smallint)`))})
+        as v (id, position)
+      where cc.id = v.id and cc.claim_id = ${claimId}`.execute(db);
   }
   if (order.add.length) {
     await db
@@ -294,8 +308,12 @@ export const reorderCoverages = async (
       .values(
         order.add.map((c) => ({
           claim_id: claimId,
+          tenant_id: tenantId,
           position: c.position,
           payer_name: c.payer,
+          relationship: c.relationship,
+          insured_first_name: c.insuredFirstName,
+          insured_last_name: c.insuredLastName,
           payer_id: db
             .selectFrom('payers')
             .select('id')
@@ -327,72 +345,15 @@ export const reorderCoverages = async (
     .execute();
 };
 
-type BillingDetails = {
-  serviceDate: string | null;
-  pickup: Location;
-  destination: Location;
-  diagnoses: string[];
-  originDestination: string | null;
-};
-
-export const saveBillingData = async (
-  db: Db,
-  tenantId: string,
-  claim: { id: string; patientId: string },
-  data: {
-    details: BillingDetails;
-    coverages: { id: string; memberId: string | null; groupId: string | null }[];
-    patient: Address;
-  }
-) => {
-  const { serviceDate, pickup, destination, diagnoses, originDestination } = data.details;
-  await db
-    .updateTable('claims')
-    .set({
-      service_date: serviceDate,
-      origin_code: originDestination?.[0] ?? null,
-      destination_code: originDestination?.[1] ?? null,
-      pickup_address_line: pickup.addressLine,
-      pickup_city: pickup.city,
-      pickup_state: pickup.state,
-      pickup_postal_code: pickup.postalCode,
-      destination_name: destination.name,
-      destination_address_line: destination.addressLine,
-      destination_city: destination.city,
-      destination_state: destination.state,
-      destination_postal_code: destination.postalCode,
-      updated_at: sql`now()`
-    })
-    .where('id', '=', claim.id)
-    .execute();
-  for (const c of data.coverages) {
-    await db
-      .updateTable('claim_coverages')
-      .set({ member_id: c.memberId, group_id: c.groupId })
-      .where('id', '=', c.id)
-      .where('claim_id', '=', claim.id)
-      .execute();
-  }
-  await db.deleteFrom('claim_diagnoses').where('claim_id', '=', claim.id).execute();
-  if (diagnoses.length) {
-    await db
-      .insertInto('claim_diagnoses')
-      .values(diagnoses.map((code, i) => ({ claim_id: claim.id, position: i + 1, code })))
-      .execute();
-  }
-  await db
-    .updateTable('patients')
-    .set({
-      address_line: data.patient.addressLine,
-      city: data.patient.city,
-      state: data.patient.state,
-      postal_code: data.patient.postalCode,
-      updated_at: sql`now()`
-    })
-    .where('id', '=', claim.patientId)
-    .where('tenant_id', '=', tenantId)
-    .execute();
-};
+export const hasActiveRun = async (db: Db, claimId: string) =>
+  (await db
+    .selectFrom('claim_runs as cr')
+    .innerJoin('workflow_runs as r', 'r.id', 'cr.run_id')
+    .select('r.id')
+    .where('cr.claim_id', '=', claimId)
+    .where('r.status', 'in', ACTIVE_RUN_STATUSES)
+    .limit(1)
+    .executeTakeFirst()) !== undefined;
 
 export const setCycleRun = async (db: Db, id: string, runId: string) => {
   await db.insertInto('claim_runs').values({ run_id: runId, claim_id: id }).execute();
@@ -411,11 +372,9 @@ export const hasResponse = async (db: Db, claimId: string, requestId: string) =>
     .where('source_key', '=', requestId)
     .executeTakeFirst()) !== undefined;
 
-export const FOLLOW_UP_QUEUE = 'billing-followup';
+const FOLLOW_UP_QUEUE = 'billing-followup';
 
-export const RECONCILE_QUEUE = 'billing-reconcile';
-
-export const COLLECTIONS_QUEUE = 'billing-collections';
+const COLLECTIONS_QUEUE = 'billing-collections';
 
 export const resolveMootTasks = (
   db: Db,
@@ -450,31 +409,66 @@ export const resolveMootTasks = (
     .returning(['run_id', 'wait_id', sql<string>`resolution ->> 'outcome'`.as('outcome')])
     .execute();
 
-export const listClaimEvents = (db: Db, claimId: string) =>
-  db
-    .selectFrom('claim_events as e')
+const claimEvents = (db: Db, claimId: string) =>
+  db.selectFrom('claim_events as e').where('e.claim_id', '=', claimId);
+
+const eventPayer = sql<
+  string | null
+>`case when e.coverage_id is null then null else ${payerName} end`;
+
+const EVENT_ORDER = {
+  when: sql.ref('e.created_at'),
+  event: sql`e.kind::text`,
+  payer: sql`lower(${eventPayer})`,
+  amount: sql`e.paid_cents + e.adjusted_cents`
+};
+
+const eventRows = (db: Db, claimId: string) =>
+  claimEvents(db, claimId)
     .leftJoin('claim_coverages as cc', 'cc.id', 'e.coverage_id')
     .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
     .leftJoin('claim_batches as cb', 'cb.id', 'e.batch_id')
-    .select([
+    .select((eb) => [
       'e.id',
       'e.kind',
       'e.batch_id',
       'cb.control_number as batch_number',
       'e.coverage_id',
-      sql<string | null>`case when e.coverage_id is null then null else ${payerName} end`.as(
-        'payer'
-      ),
+      eventPayer.as('payer'),
       'e.paid_cents',
       'e.adjusted_cents',
+      'e.paid_on',
+      'e.check_number',
+      'e.payer_claim_number',
       'e.note',
       'e.created_at',
-      sql<boolean>`e.document is not null`.as('has_document')
-    ])
-    .where('e.claim_id', '=', claimId)
+      sql<boolean>`e.document is not null`.as('has_document'),
+      jsonArrayFrom(
+        eb
+          .selectFrom('claim_event_adjustments as a')
+          .select(['a.group_code as group', 'a.reason_code as reason', 'a.amount_cents as cents'])
+          .whereRef('a.event_id', '=', 'e.id')
+          .orderBy('a.position')
+      ).as('adjustments')
+    ]);
+
+export const listClaimEvents = (db: Db, claimId: string, page: PageRequest<ClaimEventSort>) =>
+  paged(eventRows(db, claimId), page, EVENT_ORDER, sql.ref('e.id'));
+
+export const listClaimFiles = (db: Db, claimId: string) =>
+  eventRows(db, claimId)
+    .where((eb) => eb.or([eb('e.batch_id', 'is not', null), eb('e.document', 'is not', null)]))
     .orderBy('e.created_at')
     .orderBy('e.id')
     .execute();
+
+export const claimExists = async (db: Db, tenantId: string, id: string) =>
+  (await db
+    .selectFrom('claims')
+    .select('id')
+    .where('id', '=', id)
+    .where('tenant_id', '=', tenantId)
+    .executeTakeFirst()) !== undefined;
 
 export const findEventDocument = async (
   db: Db,
@@ -492,19 +486,50 @@ export const findEventDocument = async (
     .where('e.document', 'is not', null)
     .executeTakeFirst()) ?? null;
 
-export const insertResponse = async (db: Db, claimId: string, userId: string, r: ClaimResponse) =>
-  (await db
+export const insertResponse = async (db: Db, claimId: string, userId: string, r: ClaimResponse) => {
+  const event = await db
     .insertInto('claim_events')
     .values({
       claim_id: claimId,
-      kind: 'response',
+      kind: r.kind,
       coverage_id: r.coverageId,
-      paid_cents: r.paidCents,
+      paid_cents: r.kind === 'refunded' ? -r.paidCents : r.paidCents,
       adjusted_cents: r.adjustedCents,
+      payer_claim_number: r.coverageId === null ? null : r.payerClaimNumber,
+      paid_on: r.paidOn,
+      check_number: r.checkNumber,
       note: r.note,
       created_by: userId,
       source_key: r.requestId
     })
     .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
     .returning('id')
-    .executeTakeFirst()) !== undefined;
+    .executeTakeFirst();
+  if (event && r.adjustments.length) {
+    await db
+      .insertInto('claim_event_adjustments')
+      .values(
+        r.adjustments.map((a, i) => ({
+          event_id: event.id,
+          position: i + 1,
+          group_code: a.group,
+          reason_code: a.reason,
+          amount_cents: a.cents
+        }))
+      )
+      .execute();
+  }
+  return event !== undefined;
+};
+
+export const paidBy = async (db: Db, claimId: string, coverageId: string | null) =>
+  (
+    await db
+      .selectFrom('claim_events')
+      .select(sql<number>`coalesce(sum(paid_cents), 0)::int`.as('paid'))
+      .where('claim_id', '=', claimId)
+      .where((eb) =>
+        coverageId === null ? eb('coverage_id', 'is', null) : eb('coverage_id', '=', coverageId)
+      )
+      .executeTakeFirstOrThrow()
+  ).paid;

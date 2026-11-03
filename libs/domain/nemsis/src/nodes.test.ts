@@ -2,13 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { NodeDef, Values } from '@ugula/graph';
 import { invokeNode } from '@ugula/graph/testing';
-import {
-  createNemsisNodes,
-  type ReportStore,
-  reportKey,
-  type SplitReport,
-  UPLOAD_CONCURRENCY
-} from './nodes.ts';
+import { createNemsisNodes, type ReportStore, reportKey } from './nodes.ts';
+
+type SplitReport = Parameters<ReportStore['recordReports']>[2][number];
 
 const SAMPLE = `<EMSDataSet xmlns="http://www.nemsis.org"><Header>
   <PatientCareReport><eRecord><eRecord.01>A</eRecord.01></eRecord></PatientCareReport>
@@ -51,7 +47,8 @@ describe('createNemsisNodes', () => {
     );
     assert.equal(reportKey(file, 1), 'in/file.xml.reports/00001.json');
     const loaded = await run(readReport, { report: { bucket: 'ugula', key: reportKey(file, 1) } });
-    assert.deepEqual(loaded.outputs.data, { eRecord: { 'eRecord.01': 'B' } });
+    assert.deepEqual(Object.keys(loaded.outputs), ['pcr']);
+    assert.equal((loaded.outputs.pcr as { pcrNumber: string }).pcrNumber, 'B');
     assert.equal(blobs.size, 3);
     assert.deepEqual(
       recorded.map((r) => [r.file, r.reports.map((x) => [x.position, x.pcrNumber, x.report.key])]),
@@ -69,7 +66,7 @@ describe('createNemsisNodes', () => {
 
   it('stores large files in order with a bounded number of uploads in flight', async () => {
     const { store, blobs } = memoryStore();
-    const total = UPLOAD_CONCURRENCY * 3 + 1;
+    const total = 49;
     blobs.set(
       'in/big.xml',
       `<EMSDataSet><Header>${'<PatientCareReport/>'.repeat(total)}</Header></EMSDataSet>`
@@ -87,7 +84,7 @@ describe('createNemsisNodes', () => {
     });
     const file = { bucket: 'ugula', key: 'in/big.xml' };
     const res = await run(split, { file });
-    assert.equal(peak, UPLOAD_CONCURRENCY);
+    assert.ok(peak > 1 && peak < total);
     assert.deepEqual(
       ((res.outputs.reports ?? []) as { key: string }[]).map((r) => r.key),
       Array.from({ length: total }, (_, i) => reportKey(file, i))

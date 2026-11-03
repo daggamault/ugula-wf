@@ -1,7 +1,8 @@
 import * as v from 'valibot';
 import { pin, pureNode } from '../define.ts';
 import { fail } from '../errors.ts';
-import { evaluateExpr, parseExpr } from '../expr.ts';
+import { createEvaluator, parseExpr } from '../expr.ts';
+import { MAX_RANGE, sortKey } from '../expr-functions.ts';
 import { deepEqual, getPath, groupBy, isTruthy } from '../json.ts';
 import { jsonSchema, valueTypeSchema } from '../schemas.ts';
 import type { Json, NodeDef, PinSpec, Values, ValueType } from '../types.ts';
@@ -9,7 +10,6 @@ import { type ExpressionConfig, expressionConfig, identifierPins } from './expre
 import { CONDITION_OPS, holds } from './tables.ts';
 
 const CATEGORY = 'Lists';
-const MAX_RANGE = 100_000;
 const ANY_LIST: ValueType = { list: 'any' };
 const RESERVED = ['item', 'index', 'list'];
 
@@ -48,17 +48,10 @@ const lambdaNode = (
     outputs,
     compute: (inputs, { expression }, ctx) => {
       const ast = parseExpr(expression);
-      const items = inputs.list as Json[];
-      return fn(items, (item, index) =>
-        evaluateExpr(ast, { ...inputs, item, index }, { now: ctx.now })
-      );
+      const run = createEvaluator({ now: ctx.now });
+      return fn(inputs.list as Json[], (item, index) => run(ast, { ...inputs, item, index }));
     }
   });
-
-const sortKey = (k: Json) =>
-  typeof k === 'number' || typeof k === 'string'
-    ? k
-    : fail('Sort By: keys must be numbers or strings');
 
 const items = (x: Values) => x.list as Json[];
 
@@ -232,7 +225,7 @@ export const listNodes: NodeDef[] = [
         list: [
           ...keyed
             .filter((e) => !isBlank(e.k))
-            .map((e) => ({ item: e.item, k: sortKey(e.k) }))
+            .map((e) => ({ item: e.item, k: sortKey('Sort By Field', e.k) }))
             .sort((a, b) => (a.k < b.k ? -dir : a.k > b.k ? dir : 0)),
           ...blank
         ].map((e) => e.item)
@@ -358,7 +351,7 @@ export const listNodes: NodeDef[] = [
     [pin('list', ANY_LIST)],
     (xs, each) => ({
       list: xs
-        .map((x, i) => ({ x, k: sortKey(each(x, i)) }))
+        .map((x, i) => ({ x, k: sortKey('Sort By', each(x, i)) }))
         .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0))
         .map((e) => e.x)
     })

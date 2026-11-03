@@ -3,7 +3,7 @@ import { uuid } from '../../shared/http.ts';
 
 export const batchSchema = v.object({ claimId: uuid });
 
-export const pendingQuery = v.object({ claimId: v.optional(uuid) });
+export const pendingQuery = v.object({ claimId: uuid });
 
 export const manualSubmissionSchema = v.object({
   claimId: uuid,

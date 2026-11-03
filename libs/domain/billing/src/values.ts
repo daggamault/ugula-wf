@@ -1,5 +1,4 @@
-export const isRecord = (x: unknown): x is Record<string, unknown> =>
-  x !== null && typeof x === 'object' && !Array.isArray(x);
+import { isRecord } from '@ugula/graph';
 
 export const recordOf = (x: unknown): Record<string, unknown> => (isRecord(x) ? x : {});
 

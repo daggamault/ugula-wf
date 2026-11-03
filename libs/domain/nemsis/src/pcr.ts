@@ -1,4 +1,4 @@
-import type { Json, Model, ModelField, ValueType } from '@ugula/graph';
+import { isRecord, type Json, type Model, type ModelField, type ValueType } from '@ugula/graph';
 import { elementLabel } from './elements.ts';
 
 type Kind = 'text' | 'texts' | 'number' | 'integer';
@@ -293,10 +293,7 @@ export const nemsisModels: Model[] = [
   }))
 ];
 
-const isRecord = (x: unknown): x is Record<string, unknown> =>
-  typeof x === 'object' && x !== null && !Array.isArray(x);
-
-export const cleanText = (raw: string) =>
+const cleanText = (raw: string) =>
   [
     ...new Set(
       raw

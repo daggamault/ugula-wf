@@ -1,25 +1,49 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createRecordingDb } from '@ugula/db/testing';
 import type { LiveEvent } from '@ugula/live';
-import { createAnnouncer } from './live.ts';
+import { coalescePublish, createAnnouncer } from './live.ts';
 
 describe('createAnnouncer', () => {
   it("publishes to the run's tenant and never throws", async () => {
     const sent: [string, LiveEvent][] = [];
     const event: LiveEvent = { kind: 'claim', id: 'c1' };
-    const { db } = createRecordingDb(() => [{ tenant_id: 't-1' }]);
-    await createAnnouncer(db, async (tenantId, e) => void sent.push([tenantId, e]))('r1', event);
+    const tenantOf = async (runId: string) => (runId === 'gone' ? undefined : 't-1');
+    await createAnnouncer(tenantOf, async (tenantId, e) => void sent.push([tenantId, e]))(
+      'r1',
+      event
+    );
     assert.deepEqual(sent, [['t-1', event]]);
-
-    const failing = createAnnouncer(db, async () => {
+    await createAnnouncer(tenantOf, async () => {
       throw new Error('redis down');
-    });
-    await failing('r1', event);
-    const { db: empty } = createRecordingDb(() => []);
-    await createAnnouncer(empty, async (t, e) => void sent.push([t, e]))('gone', event);
+    })('r1', event);
+    await createAnnouncer(
+      async () => Promise.reject(new Error('db down')),
+      async (t, e) => void sent.push([t, e])
+    )('r1', event);
+    await createAnnouncer(tenantOf, async (t, e) => void sent.push([t, e]))('gone', event);
     assert.equal(sent.length, 1);
-    await db.destroy();
-    await empty.destroy();
+  });
+});
+
+describe('coalescePublish', () => {
+  it('publishes only the latest event per tenant, kind and id once the window closes', async () => {
+    const sent: [string, LiveEvent][] = [];
+    const live = coalescePublish(async (t, e) => void sent.push([t, e]), 5);
+    await live.publish('t', { kind: 'run', id: 'r1', status: 'running', parentId: null });
+    await live.publish('t', { kind: 'run', id: 'r1', status: 'suspended', parentId: null });
+    await live.publish('t', { kind: 'task', id: null, runId: 'r1' });
+    await live.publish('t', { kind: 'task', id: null, runId: 'r2' });
+    await live.publish('u', { kind: 'claim', id: 'c1' });
+    assert.equal(sent.length, 0);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual(sent, [
+      ['t', { kind: 'run', id: 'r1', status: 'suspended', parentId: null }],
+      ['t', { kind: 'task', id: null, runId: 'r1' }],
+      ['t', { kind: 'task', id: null, runId: 'r2' }],
+      ['u', { kind: 'claim', id: 'c1' }]
+    ]);
+    await live.publish('t', { kind: 'claim', id: 'c2' });
+    await live.flush();
+    assert.equal(sent.length, 5);
   });
 });

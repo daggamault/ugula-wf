@@ -65,6 +65,9 @@ export const validateGraph = (def: GraphDef, registry: Registry): Issue[] => {
       }
     }
     for (const name of pinIssues(sig)) add(`Duplicate pin "${name}"`, node.id);
+    for (const name of registry.node(node)?.variables?.(registry.config(node)) ?? []) {
+      if (!varNames.has(name)) add(`Unknown variable "${name}"`, node.id);
+    }
     checkBindings(node, sig, varNames, add);
   }
 

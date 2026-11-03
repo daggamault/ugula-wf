@@ -1,94 +1,142 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import {
-  AGING_BUCKETS,
-  agingReport,
-  hcpcsReport,
-  monthlyReport,
-  patientPayments,
-  payerReport
-} from './queries.ts';
+import { findReport, REPORTS, type ReportContext } from './queries.ts';
 
-const range = { from: '2026-01-01', to: '2026-10-23' };
+const ctx: ReportContext = {
+  tenantId: 't-1',
+  tz: 'America/New_York',
+  now: '2026-10-23T15:00:00.000Z',
+  today: '2026-10-23',
+  range: { from: '2026-01-01', to: '2026-10-23' },
+  group: ''
+};
 
-const compile = async (
-  run: (db: ReturnType<typeof createRecordingDb>['db']) => Promise<unknown>
-) => {
-  const { db, queries } = createRecordingDb(() => [{ paid_cents: 0, adjusted_cents: 0 }]);
-  await run(db);
-  const [q] = queries;
-  assert.ok(q);
-  return q;
+const compile = async (id: string, group = '', page: number | 'all' = 1) => {
+  const { db, queries } = createRecordingDb(() => [{ total: '1', paid_cents: 5 }]);
+  const report = findReport(id);
+  assert.ok(report);
+  const result = await report.run(db, { ...ctx, group }, page);
+  const [rows, totals] = queries;
+  assert.ok(rows && totals);
+  return { result, rows, totals };
 };
 
 describe('report queries', () => {
-  it('ages open balances by the payer still owing, or the patient, as of a day', async () => {
-    const q = await compile((db) => agingReport(db, 't-1', '2026-10-23'));
+  it('runs every report for the tenant only', async () => {
+    for (const [id, report] of Object.entries(REPORTS)) {
+      for (const group of report.groups ?? ['']) {
+        const { rows, totals } = await compile(id, group);
+        assert.ok(rows.parameters.includes('t-1'), id);
+        assert.ok(totals.parameters.includes('t-1'), id);
+      }
+    }
+  });
+
+  it('pages 100 rows at a time and returns totals across every page', async () => {
+    const { result, rows, totals } = await compile('payments', '', 2);
+    assert.ok(rows.sql.includes('count(*) over () as "total"'));
+    assert.deepEqual(rows.parameters.slice(-2), [100, 100]);
+    assert.ok(totals.sql.startsWith('select coalesce(sum("r"."paid_cents"), 0)::float8'));
+    assert.deepEqual(result.totals, { total: '1', paid_cents: 5 });
+    assert.equal(result.total, 1);
+  });
+
+  it('returns every row in one page when exporting', async () => {
+    const { result, rows } = await compile('hcpcs', '', 'all');
+    assert.ok(!rows.sql.includes('limit') && !rows.sql.includes('count(*) over ()'));
+    assert.ok(rows.sql.endsWith('order by "r"."charges_cents" desc nulls last, "r"."code" desc'));
+    assert.deepEqual(result.pageSize, 1);
+  });
+
+  it('ages open balances from the date of service by who owes them now', async () => {
+    const { rows } = await compile('aging', 'payer');
+    assert.ok(rows.sql.includes('as "responsible" on true'));
+    assert.ok(rows.sql.includes('($1::date - coalesce(c.service_date, c.created_at::date)) <= $2'));
+    assert.ok(rows.sql.includes('responsible.payer as "name"'));
+    const byClass = await compile('aging', 'class');
+    assert.ok(byClass.rows.sql.includes("coalesce(responsible.filing, '')"));
+    assert.deepEqual(rows.parameters.slice(0, 2), ['2026-10-23', 30]);
+  });
+
+  it('filters service dates on the indexed column and posting dates in the time zone', async () => {
+    const monthly = await compile('monthly');
+    assert.ok(monthly.rows.sql.includes('c.service_date between $'));
+    assert.ok(!monthly.rows.sql.includes('coalesce(c.service_date'));
+    const payments = await compile('payments');
     assert.ok(
-      q.sql.includes('left join lateral (select coalesce(dp.name, cc.payer_name) as "payer"')
-    );
-    assert.ok(
-      q.sql.includes(
-        'not exists (select "e"."id" from "claim_events" as "e" where "e"."coverage_id" = "cc"."id" and "e"."kind" in ($15, $16))'
+      payments.rows.sql.includes(
+        '"e"."created_at" >= ($4::date)::timestamp at time zone $5 and "e"."created_at" < ($6::date + 1)::timestamp at time zone $7'
       )
     );
-    assert.ok(q.sql.includes('order by "cc"."position" limit $17) as "responsible" on true'));
-    assert.ok(
-      q.sql.includes('($1::date - coalesce(c.service_date, c.created_at::date)) between $2 and $3')
-    );
-    assert.ok(q.sql.includes('group by responsible.payer'));
-    assert.equal(AGING_BUCKETS.length, 5);
-    assert.deepEqual(q.parameters.slice(0, 3), ['2026-10-23', 0, 30]);
-    assert.deepEqual(q.parameters.slice(-9), [
-      'response',
-      'payer_skipped',
-      1,
+    assert.deepEqual(payments.rows.parameters.slice(0, 7), [
       't-1',
-      'paid',
-      'written_off',
-      'collections',
-      'void',
-      0
+      'response',
+      'refunded',
+      '2026-01-01',
+      'America/New_York',
+      '2026-10-23',
+      'America/New_York'
     ]);
   });
 
-  it('summarizes charges, payments and balances by month of service', async () => {
-    const q = await compile((db) => monthlyReport(db, 't-1', range));
+  it('adds the patient to payer performance and counts only billed coverages', async () => {
+    const { rows } = await compile('payers', 'payer');
+    assert.ok(rows.sql.includes('union all'));
+    assert.ok(rows.sql.includes('a.first_submitted is not null or a.responses > 0'));
+    assert.ok(rows.sql.includes('"e"."coverage_id" is null'));
     assert.ok(
-      q.sql.includes(
-        "to_char(date_trunc('month', coalesce(c.service_date, c.created_at::date)), 'YYYY-MM') as \"month\""
-      )
+      rows.sql.includes('e.paid_cents = 0 and exists (select 1 from claim_event_adjustments a')
     );
-    assert.ok(
-      q.sql.includes(
-        "filter (where c.status not in ('paid', 'written_off', 'collections', 'void'))"
-      )
-    );
-    assert.ok(q.sql.includes('"c"."status" not in ('));
-    assert.ok(q.sql.includes('between $4::date and $5::date'));
-    assert.ok(q.sql.endsWith('group by 1 order by "month" desc'));
-    assert.deepEqual(q.parameters, ['t-1', 'draft', 'void', '2026-01-01', '2026-10-23']);
   });
 
-  it('totals charge lines by HCPCS code', async () => {
-    const q = await compile((db) => hcpcsReport(db, 't-1', range));
-    assert.ok(q.sql.includes('from "claim_lines" as "l" inner join "claims" as "c"'));
-    assert.ok(q.sql.includes('count(distinct l.claim_id)::int as "claims"'));
-    assert.ok(q.sql.endsWith('group by "l"."code" order by "charges_cents" desc'));
+  it('posts payments and refunds with their paid date, check number and reason codes', async () => {
+    const { rows } = await compile('payments');
+    for (const column of ['"e"."paid_on"', '"e"."check_number"', '"e"."payer_claim_number"']) {
+      assert.ok(rows.sql.includes(column), column);
+    }
+    assert.ok(rows.sql.includes("a.group_code || '-' || a.reason_code"));
   });
 
-  it('measures each payer by claims billed, answered, paid and days to respond', async () => {
-    const q = await compile((db) => payerReport(db, 't-1', range));
-    assert.ok(q.sql.includes('"e"."coverage_id" = "cc"."id"'));
-    assert.ok(q.sql.includes('bool_and(cc.payer_id is not null) as "in_directory"'));
-    assert.ok(q.sql.includes('activity.first_response > activity.first_submitted'));
-    assert.ok(q.sql.endsWith('group by 1 order by "paid_cents" desc'));
+  it('sums reason codes by payer and code, or by code alone', async () => {
+    const byPayer = await compile('denials', 'payer');
+    assert.ok(byPayer.rows.sql.includes('from "claim_event_adjustments" as "a"'));
+    assert.ok(byPayer.rows.sql.includes('group by 1, 2'));
+    assert.ok(byPayer.rows.sql.includes('coalesce(dp.name, cc.payer_name)'));
+    const byReason = await compile('denials', 'reason');
+    assert.ok(byReason.rows.sql.includes('null as "payer"'));
+    assert.ok(byReason.totals.sql.includes('"r"."amount_cents"'));
   });
 
-  it('totals patient payments, which have no coverage', async () => {
-    const q = await compile((db) => patientPayments(db, 't-1', range));
-    assert.ok(q.sql.includes('"e"."coverage_id" is null'));
-    assert.deepEqual(q.parameters.slice(0, 2), ['t-1', 'response']);
+  it('books monthly activity from first submissions, payments and closings', async () => {
+    const { rows } = await compile('activity');
+    assert.ok(rows.sql.includes('(f.created_at, f.id) < (e.created_at, e.id)'));
+    assert.equal(rows.sql.match(/union all/g)?.length, 2);
+    assert.ok(rows.sql.includes('group by "f"."month"'));
+  });
+
+  it('lists write-offs and collections by the day they closed', async () => {
+    const { rows } = await compile('write-offs');
+    assert.ok(rows.parameters.includes('written_off') && rows.parameters.includes('collections'));
+    assert.ok(rows.sql.includes('"e"."note" in ('));
+  });
+
+  it('groups open tasks by queue or assignee and ages them from now', async () => {
+    const byQueue = await compile('work-queue', 'queue');
+    assert.ok(byQueue.rows.sql.includes('t.queue as "name"'));
+    assert.ok(byQueue.rows.parameters.includes('2026-10-23T15:00:00.000Z'));
+    const byAssignee = await compile('work-queue', 'assignee');
+    assert.ok(byAssignee.rows.sql.includes('u.email as "name"'));
+  });
+
+  it('counts revisions apart from PCRs that never got a claim', async () => {
+    const { rows } = await compile('imports');
+    assert.ok(rows.sql.includes('c.id is null and exists'));
+    assert.ok(rows.sql.includes('c.id is null and not exists'));
+  });
+
+  it('finds reports by id only', () => {
+    assert.ok(findReport('aging'));
+    assert.equal(findReport('toString'), undefined);
   });
 });

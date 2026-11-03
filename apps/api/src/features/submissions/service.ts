@@ -1,44 +1,44 @@
+import { randomUUID } from 'node:crypto';
 import {
   type BatchClaim,
+  type BatchPayer,
   build837,
   CLAIM_SIGNAL,
+  type ClaimCheck,
   type ClaimDetails,
   type ClaimEvent,
-  type ClaimEventKind,
   claimIssues,
   claimProgress,
-  MAX_CONTROL_NUMBER,
+  INSURED_RELATIONSHIPS,
   nextClaimStep,
   readX837Claim,
-  type Sex,
   type Submitter,
   submitterIssues
 } from '@ugula/billing';
-import type { Db } from '@ugula/db';
+import { type Db, findClaimCheck } from '@ugula/db';
 import type { Json } from '@ugula/graph';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobRef, BlobStore } from '@ugula/storage';
 import type { Evaluate } from '../../shared/evaluate.ts';
+import { listLedgerEvents } from '../../shared/ledger.ts';
 import { type Announce, announced } from '../../shared/live.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import { signalRuns } from '../../shared/runs.ts';
 import {
+  allocateControlNumber,
   findBatchDocument,
   findProfile,
+  findReadyClaim,
   insertBatch,
-  insertSubmissionEvents,
-  listLedgerEvents,
-  listReadyClaims,
-  lockProfile,
+  insertSubmissionEvent,
   lockReadyClaim,
   markSubmitted,
-  nextControlNumber,
   type ProfileRow,
   type ReadyClaimRow,
   type SubmissionEvent
 } from './queries.ts';
 
-export type SubmissionServiceDeps = {
+type SubmissionServiceDeps = {
   db: Db;
   boss: RunQueueClient;
   now: () => Date;
@@ -51,24 +51,30 @@ export const MAP_837P = { key: 'billing.map-837p', version: 1 };
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-type LedgerRow = Awaited<ReturnType<typeof listLedgerEvents>>[number];
-
-export type PendingClaim = {
+type PendingClaim = {
+  id: string;
   claim: BatchClaim;
   coverageId: string;
   pcrNumber: string | null;
   resubmission: boolean;
+  changedSinceApproval: boolean;
   issues: string[];
+  warnings: string[];
 };
 
-const SEXES: readonly string[] = ['F', 'M', 'U'];
+const notReady = fail('conflict', 'This claim is not ready to submit');
 
-export const BATCH_CONTENT_TYPE = 'application/edi-x12';
+const changedSinceApproval = fail(
+  'conflict',
+  'Something was logged on this claim since it was approved; refresh and check it again'
+);
 
-export const batchKey = (tenantId: string, controlNumber: number) =>
-  `batches/${tenantId}/837P-${String(controlNumber).padStart(9, '0')}.txt`;
+const BATCH_CONTENT_TYPE = 'application/edi-x12';
 
-export const toSubmitter = (p: ProfileRow): Submitter => ({
+export const batchKey = (tenantId: string, batchId: string, controlNumber: number) =>
+  `batches/${tenantId}/${batchId}/837P-${String(controlNumber).padStart(9, '0')}.txt`;
+
+const toSubmitter = (p: ProfileRow): Submitter => ({
   organizationName: p.organization_name,
   npi: p.npi,
   taxId: p.tax_id,
@@ -83,12 +89,17 @@ export const toSubmitter = (p: ProfileRow): Submitter => ({
   production: p.production
 });
 
-const toLedgerEvent = (e: LedgerRow): ClaimEvent => ({
-  kind: e.kind as ClaimEventKind,
-  coverageId: e.coverage_id,
-  paidCents: e.paid_cents,
-  adjustedCents: e.adjusted_cents,
-  at: new Date(e.created_at).toISOString()
+type CoverageRow = ReadyClaimRow['coverages'][number];
+
+const payerOf = (name: string, c: CoverageRow | undefined): BatchPayer => ({
+  name,
+  payerId: c?.payer_id ?? null,
+  claimFiling: c?.claim_filing ?? null,
+  memberId: c?.member_id ?? null,
+  groupId: c?.group_id ?? null,
+  relationship: INSURED_RELATIONSHIPS.find((r) => r === String(c?.relationship)) ?? '18',
+  insuredFirstName: c?.insured_first_name ?? null,
+  insuredLastName: c?.insured_last_name ?? null
 });
 
 export const detailsOf = (row: ReadyClaimRow): ClaimDetails => ({
@@ -112,77 +123,85 @@ export const detailsOf = (row: ReadyClaimRow): ClaimDetails => ({
     row.origin_code && row.destination_code ? row.origin_code + row.destination_code : null
 });
 
-export const pendingClaims = (
-  rows: ReadyClaimRow[],
-  events: LedgerRow[],
+const messages = (issues: ReturnType<typeof claimIssues>, level: string) =>
+  issues.filter((i) => i.level === level).map((i) => i.message);
+
+export const pendingClaim = (
+  row: ReadyClaimRow,
+  events: ClaimEvent[],
+  check: ClaimCheck,
   now: Date
-): PendingClaim[] => {
-  const byClaim = Map.groupBy(events, (e) => e.claim_id);
-  return rows.flatMap((row) => {
-    const ledger = {
-      totalCents: row.total_cents,
-      coverages: row.coverages.map((c) => ({ id: c.id, payer: c.payer })),
-      events: (byClaim.get(row.id) ?? []).map(toLedgerEvent)
-    };
-    const next = nextClaimStep(ledger, now);
-    if (next.step !== 'submit') return [];
-    const progress = claimProgress(ledger);
-    const coverage = row.coverages.find((c) => c.id === next.coverage.id);
-    const claim: BatchClaim = {
-      claimId: row.id,
-      priorPayers: progress.priorCoverages.map((c) => c.payer),
-      payer: {
-        name: next.coverage.payer,
-        payerId: coverage?.payer_id ?? null,
-        claimFiling: coverage?.claim_filing ?? null
-      },
-      memberId: coverage?.member_id ?? null,
-      groupId: coverage?.group_id ?? null,
-      patient: {
-        firstName: row.first_name,
-        lastName: row.last_name,
-        birthDate: row.birth_date,
-        sex: row.gender && SEXES.includes(row.gender) ? (row.gender as Sex) : null,
-        addressLine: row.address_line,
-        city: row.city,
-        state: row.state,
-        postalCode: row.postal_code
-      },
-      details: detailsOf(row),
-      emergency: row.emergency === true,
-      loadedMiles: row.loaded_miles === null ? null : Number(row.loaded_miles),
-      lines: row.lines.map((l) => ({
-        code: l.code,
-        units: Number(l.units),
-        unitCents: l.unit_cents,
-        totalCents: l.total_cents
-      }))
-    };
-    return [
-      {
-        claim,
-        coverageId: next.coverage.id,
-        pcrNumber: row.pcr_number,
-        resubmission: progress.submittedBefore,
-        issues: claimIssues(claim)
-      }
-    ];
-  });
+): PendingClaim | null => {
+  const ledger = {
+    totalCents: row.total_cents,
+    coverages: row.coverages.map((c) => ({ id: c.id, payer: c.payer })),
+    events
+  };
+  const next = nextClaimStep(ledger, now);
+  if (next.step !== 'submit' && next.step !== 'submitDue') return null;
+  const progress = claimProgress(ledger);
+  const skipped = new Set(progress.skipped);
+  const issues = claimIssues(check).filter(
+    (i) => i.coverageId === null || !skipped.has(i.coverageId)
+  );
+  const coverageOf = (id: string) => row.coverages.find((c) => c.id === id);
+  const claim: BatchClaim = {
+    claimId: String(row.number),
+    payerClaimNumber: progress.payerClaimNumber,
+    payer: payerOf(next.coverage.payer, coverageOf(next.coverage.id)),
+    priorPayers: progress.priorCoverages.map((c) => ({
+      ...payerOf(c.payer, coverageOf(c.id)),
+      paidCents: c.paidCents,
+      adjustedCents: c.adjustedCents,
+      paidOn: c.paidOn,
+      adjustments: c.adjustments
+    })),
+    patient: {
+      firstName: row.first_name,
+      lastName: row.last_name,
+      birthDate: row.birth_date,
+      sex: row.gender,
+      addressLine: row.address_line,
+      city: row.city,
+      state: row.state,
+      postalCode: row.postal_code
+    },
+    details: detailsOf(row),
+    emergency: row.emergency === true,
+    loadedMiles: row.loaded_miles === null ? null : Number(row.loaded_miles),
+    lines: row.lines.map((l) => ({
+      code: l.code,
+      units: Number(l.units),
+      unitCents: l.unit_cents,
+      totalCents: l.total_cents
+    }))
+  };
+  return {
+    id: row.id,
+    claim,
+    coverageId: next.coverage.id,
+    pcrNumber: row.pcr_number,
+    resubmission: progress.submittedBefore,
+    changedSinceApproval: events.some((e) => Date.parse(e.at) > (progress.approvedAt ?? 0)),
+    issues: messages(issues, 'blocking'),
+    warnings: messages(issues, 'warning')
+  };
 };
 
 const describe = (p: PendingClaim) => ({
-  id: p.claim.claimId,
+  id: p.id,
   pcrNumber: p.pcrNumber,
   patient: `${p.claim.patient.firstName} ${p.claim.patient.lastName}`,
   serviceDate: p.claim.details.serviceDate,
   payer: p.claim.payer.name,
   totalCents: p.claim.lines.reduce((sum, l) => sum + l.totalCents, 0),
   resubmission: p.resubmission,
-  issues: p.issues
+  issues: p.issues,
+  warnings: p.warnings
 });
 
 const submissionOf = (p: PendingClaim): SubmissionEvent => ({
-  claimId: p.claim.claimId,
+  claimId: p.id,
   kind: p.resubmission ? 'resubmitted' : 'submitted',
   coverageId: p.coverageId
 });
@@ -195,62 +214,61 @@ export const createSubmissionService = ({
   announce,
   evaluate
 }: SubmissionServiceDeps) => {
-  const map837 = async (tx: Db, tenantId: string, claims: BatchClaim[]) =>
-    (
-      await evaluate(
-        tx,
-        tenantId,
-        MAP_837P,
-        claims.map((claim) => ({ claim: claim as unknown as Json })),
-        'x837'
-      )
-    ).map((x, i) => {
-      try {
-        return readX837Claim(x);
-      } catch (err) {
-        throw new Error(`Claim ${claims[i]?.claimId}: ${messageOf(err)}`);
-      }
-    });
+  const map837 = async (tx: Db, tenantId: string, claim: BatchClaim) => {
+    const [x] = await evaluate(
+      tx,
+      tenantId,
+      MAP_837P,
+      [{ claim: claim as unknown as Json }],
+      'x837'
+    );
+    try {
+      return readX837Claim(x);
+    } catch (err) {
+      throw new Error(`Claim ${claim.claimId}: ${messageOf(err)}`);
+    }
+  };
 
   const write = <T>(tenantId: string, claimId: string, work: (tx: Db) => Promise<Result<T>>) =>
     announced(announce, tenantId, db.transaction().execute(work), () => [
       { kind: 'claim', id: claimId }
     ]);
 
-  const pendingOf = async (tx: Db, rows: ReadyClaimRow[]) => {
-    const events = await listLedgerEvents(
-      tx,
-      rows.map((r) => r.id)
-    );
-    return pendingClaims(rows, events, now());
+  const pendingOf = async (tx: Db, tenantId: string, row: ReadyClaimRow | undefined) => {
+    if (!row) return null;
+    const [events, check] = await Promise.all([
+      listLedgerEvents(tx, row.id),
+      findClaimCheck(tx, tenantId, row.id)
+    ]);
+    return check ? pendingClaim(row, events, check, now()) : null;
   };
 
   const record = async (
     tx: Db,
     tenantId: string,
     origin: { batchId: string | null; note: string; createdBy: string },
-    events: SubmissionEvent[]
+    event: SubmissionEvent
   ) => {
-    await insertSubmissionEvents(tx, origin, events);
-    await markSubmitted(
-      tx,
-      events.map((e) => e.claimId)
-    );
-    for (const e of events) {
-      await signalRuns(tx, boss, { tenantId, name: CLAIM_SIGNAL, key: e.claimId, payload: null });
-    }
+    await insertSubmissionEvent(tx, origin, event);
+    await markSubmitted(tx, event.claimId);
+    await signalRuns(tx, boss, {
+      tenantId,
+      name: CLAIM_SIGNAL,
+      key: event.claimId,
+      payload: null
+    });
   };
 
   return {
-    pending: async (tenantId: string, claimId?: string) => {
-      const [profile, rows] = await Promise.all([
+    pending: async (tenantId: string, claimId: string) => {
+      const [profile, row] = await Promise.all([
         findProfile(db, tenantId),
-        listReadyClaims(db, tenantId, claimId)
+        findReadyClaim(db, tenantId, claimId)
       ]);
-      const pending = await pendingOf(db, rows);
+      const pending = await pendingOf(db, tenantId, row);
       return ok({
         issues: submitterIssues(profile ? toSubmitter(profile) : null),
-        claims: pending.map(describe)
+        claim: pending ? describe(pending) : null
       });
     },
 
@@ -265,47 +283,50 @@ export const createSubmissionService = ({
       });
     },
 
-    create: (tenantId: string, userId: string, claimId: string) =>
-      write(tenantId, claimId, async (tx) => {
-        const profile = await lockProfile(tx, tenantId);
-        const submitter = profile ? toSubmitter(profile) : null;
-        const problems = submitterIssues(submitter);
-        if (!submitter || problems.length) {
-          return fail('invalid', problems[0] ?? 'Add a billing profile in Settings', {
-            issues: problems
-          });
-        }
-        const [pending] = await pendingOf(tx, await lockReadyClaim(tx, tenantId, claimId));
-        if (!pending) return fail('conflict', 'This claim is not ready to submit');
-        if (pending.issues.length) {
-          return fail('invalid', pending.issues[0] ?? 'This claim is missing data', {
-            issues: pending.issues
-          });
-        }
-        const ready = [pending];
-        const controlNumber = await nextControlNumber(tx, tenantId);
-        if (controlNumber > MAX_CONTROL_NUMBER) {
+    create: async (tenantId: string, userId: string, claimId: string) => {
+      const [profile, row] = await Promise.all([
+        findProfile(db, tenantId),
+        findReadyClaim(db, tenantId, claimId)
+      ]);
+      const submitter = profile ? toSubmitter(profile) : null;
+      const problems = submitterIssues(submitter);
+      if (!submitter || problems.length) {
+        return fail('invalid', problems[0] ?? 'Add a billing profile in Settings', {
+          issues: problems
+        });
+      }
+      const pending = await pendingOf(db, tenantId, row);
+      if (!pending) return notReady;
+      if (pending.issues.length) {
+        return fail('invalid', pending.issues[0] ?? 'This claim is missing data', {
+          issues: pending.issues
+        });
+      }
+      let mapped: Awaited<ReturnType<typeof map837>>;
+      try {
+        mapped = await map837(db, tenantId, pending.claim);
+      } catch (err) {
+        return fail('invalid', `The 837P mapping failed: ${messageOf(err)}`);
+      }
+      return write(tenantId, claimId, async (tx) => {
+        const current = await pendingOf(tx, tenantId, await lockReadyClaim(tx, tenantId, claimId));
+        if (current?.coverageId !== pending.coverageId) return notReady;
+        const controlNumber = await allocateControlNumber(tx, tenantId);
+        if (controlNumber === null) {
           return fail('conflict', 'Batch control numbers are used up; contact support');
         }
-        const createdAt = now();
-        const claims = ready.map((p) => p.claim);
-        let mapped: Awaited<ReturnType<typeof map837>>;
-        try {
-          mapped = await map837(tx, tenantId, claims);
-        } catch (err) {
-          return fail('invalid', `The 837P mapping failed: ${messageOf(err)}`);
-        }
-        const file = build837(submitter, mapped, { controlNumber, createdAt });
+        const id = randomUUID();
+        const file = build837(submitter, [mapped], { controlNumber, createdAt: now() });
         const document = await blobs.putBytes(
-          batchKey(tenantId, controlNumber),
+          batchKey(tenantId, id, controlNumber),
           new TextEncoder().encode(file),
           BATCH_CONTENT_TYPE
         );
         const batch = await insertBatch(tx, {
+          id,
           tenantId,
           controlNumber,
-          claimCount: claims.length,
-          totalCents: ready.reduce((sum, p) => sum + describe(p).totalCents, 0),
+          totalCents: describe(current).totalCents,
           production: submitter.production,
           document,
           createdBy: userId
@@ -314,20 +335,22 @@ export const createSubmissionService = ({
           tx,
           tenantId,
           { batchId: batch.id, note: `837P file #${controlNumber}`, createdBy: userId },
-          ready.map(submissionOf)
+          submissionOf(current)
         );
         return ok({ batch });
-      }),
+      });
+    },
 
     markSubmitted: (tenantId: string, userId: string, claimId: string, note: string) =>
       write(tenantId, claimId, async (tx) => {
-        const [pending] = await pendingOf(tx, await lockReadyClaim(tx, tenantId, claimId));
-        if (!pending) return fail('conflict', 'This claim is not ready to submit');
+        const pending = await pendingOf(tx, tenantId, await lockReadyClaim(tx, tenantId, claimId));
+        if (!pending) return notReady;
+        if (pending.changedSinceApproval) return changedSinceApproval;
         await record(
           tx,
           tenantId,
           { batchId: null, note: note || 'Submitted outside an 837P file', createdBy: userId },
-          [submissionOf(pending)]
+          submissionOf(pending)
         );
         return ok({ payer: pending.claim.payer.name });
       })

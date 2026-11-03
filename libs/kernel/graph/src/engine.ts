@@ -15,6 +15,7 @@ import type {
   NodeInstance,
   NodeRef,
   NodeResult,
+  RetryPolicy,
   RunState,
   Scope,
   Signature,
@@ -28,11 +29,17 @@ export type EngineOptions = {
   nodes: NodeDef[];
   graphs: GraphSource;
   maxDepth?: number;
+  isTransient?: (err: unknown) => boolean;
+  deferOf?: (err: unknown) => number | null;
+  transientRetry?: RetryPolicy;
 };
+
+const TRANSIENT_RETRY: RetryPolicy = { max: 5, delayMs: 5_000, factor: 3 };
 
 export type StepContext = {
   runId: string;
   now: Date;
+  signal?: AbortSignal;
 };
 
 export type StepResult = {
@@ -63,9 +70,15 @@ export type Engine = {
   nodeAt: (state: RunState, cursor: Cursor) => NodeAtCursor | null;
 };
 
-type Session = StepContext & { state: RunState; trace: TraceEntry[] };
+type Cached = { outputs: Values; stamps: Map<string, number>; now: number | null };
 
-type Memo = { done: Map<string, Values>; active: Set<string> };
+type Cache = { tick: number; stamps: Map<string, number>; entries: Map<string, Cached> };
+
+type Session = StepContext & { state: RunState; trace: TraceEntry[]; cache: Cache };
+
+type Memo = { done: Map<string, Cached>; active: Set<string> };
+
+type Deps = { stamps: Map<string, number>; now: boolean };
 
 type Reader = { read: (pin: string) => Promise<Json>; values: Values };
 
@@ -84,9 +97,46 @@ const locate = (err: unknown, scope: Scope, node: string) => {
 
 const newMemo = (): Memo => ({ done: new Map(), active: new Set() });
 
+const newDeps = (): Deps => ({ stamps: new Map(), now: false });
+
+const caches = new WeakMap<RunState, Cache>();
+
+const cacheOf = (state: RunState) => {
+  const hit = caches.get(state);
+  if (hit) return hit;
+  const cache: Cache = { tick: 0, stamps: new Map(), entries: new Map() };
+  caches.set(state, cache);
+  return cache;
+};
+
+const outKey = (scope: string, node: string) => `${scope}/${node}`;
+
+const varsKey = (scope: string) => `${scope}#vars`;
+
+const touch = (cache: Cache, key: string) => {
+  cache.stamps.set(key, ++cache.tick);
+};
+
+const depend = (cache: Cache, deps: Deps, key: string) => {
+  deps.stamps.set(key, cache.stamps.get(key) ?? 0);
+};
+
+const fresh = (cache: Cache, hit: Cached, now: Date) =>
+  (hit.now === null || hit.now === now.getTime()) &&
+  [...hit.stamps].every(([k, v]) => (cache.stamps.get(k) ?? 0) === v);
+
 const depthOf = (scope: Scope) => scope.path.split('/').length - 1;
 
-export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): Engine => {
+const signalOf = ({ signal }: StepContext) => (signal ? { signal } : {});
+
+export const createEngine = ({
+  nodes,
+  graphs,
+  maxDepth = 256,
+  isTransient = () => false,
+  deferOf = () => null,
+  transientRetry = TRANSIENT_RETRY
+}: EngineOptions): Engine => {
   const registry = createRegistry(nodes, graphs);
 
   const graphOf = (ref: NodeRef) => registry.graph(ref) ?? fail(`Unknown graph ${refKey(ref)}`);
@@ -154,6 +204,7 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
     t0: number
   ) => {
     locate(err, scope, inst.id);
+    if (deferOf(err) !== null) return err;
     record(s, scope, inst, {
       event: event.type,
       inputs,
@@ -166,9 +217,10 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
     return err;
   };
 
-  const varAccess = (g: CompiledGraph, scope: Scope): VarAccess => ({
+  const varAccess = (s: Session, g: CompiledGraph, scope: Scope, deps: Deps): VarAccess => ({
     get: (name) => {
       if (!g.variables.has(name)) fail(`Unknown variable "${name}"`);
+      depend(s.cache, deps, varsKey(scope.id));
       return scope.vars[name] ?? null;
     },
     set: (name, value) => {
@@ -176,6 +228,7 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
       const err = checkValue(def.type, value);
       if (err) fail(`Variable "${name}": ${err}`);
       scope.vars[name] = value;
+      touch(s.cache, varsKey(scope.id));
     }
   });
 
@@ -185,7 +238,8 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
     g: CompiledGraph,
     inst: NodeInstance,
     sig: Signature,
-    memo: Memo
+    memo: Memo,
+    deps: Deps = newDeps()
   ): Reader => {
     const values: Values = {};
     const read = async (name: string): Promise<Json> => {
@@ -195,8 +249,12 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
         fail(`"${labelOf(inst)}" has no input "${name}"`);
       const edge = g.in.get(portKey(inst.id, name))?.[0];
       const binding = inst.inputs?.[name];
+      if (!edge && binding && 'expr' in binding) {
+        depend(s.cache, deps, varsKey(scope.id));
+        deps.now = true;
+      }
       const raw = edge
-        ? await pull(s, scope, g, edge.from, edge.fromPin, memo)
+        ? await pull(s, scope, g, edge.from, edge.fromPin, memo, deps)
         : binding
           ? 'expr' in binding
             ? evaluateExpr(binding.expr, scope.vars, { now: s.now })
@@ -220,30 +278,39 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
     g: CompiledGraph,
     id: string,
     pin: string,
-    memo: Memo
+    memo: Memo,
+    deps: Deps
   ): Promise<Json> => {
     const src = nodeIn(g, id);
     if (src.type === ENTRY_TYPE) return scope.inputs[pin] ?? null;
     const sig = registry.signature(src, g.def);
+    const key = outKey(scope.id, id);
     if (!isPure(sig)) {
+      depend(s.cache, deps, key);
       const out = scope.outputs[id];
       return out && Object.hasOwn(out, pin)
         ? (out[pin] ?? null)
         : fail(`"${labelOf(src)}" has not produced "${pin}" yet`);
     }
-    const key = `${scope.id}/${id}`;
-    let out = memo.done.get(key);
-    if (!out) {
+    const kept = s.state.scopes[scope.id] === scope;
+    const hit = kept ? s.cache.entries.get(key) : undefined;
+    let found = memo.done.get(key) ?? (hit && fresh(s.cache, hit, s.now) ? hit : undefined);
+    if (!found) {
       if (memo.active.has(key)) fail(`Data cycle through "${labelOf(src)}"`);
       memo.active.add(key);
+      const own = newDeps();
       try {
-        out = await evalPure(s, scope, g, src, sig, memo);
+        const outputs = await evalPure(s, scope, g, src, sig, memo, own);
+        found = { outputs, stamps: own.stamps, now: own.now ? s.now.getTime() : null };
       } finally {
         memo.active.delete(key);
       }
-      memo.done.set(key, out);
+      memo.done.set(key, found);
+      if (kept) s.cache.entries.set(key, found);
     }
-    return out[pin] ?? null;
+    for (const [k, v] of found.stamps) deps.stamps.set(k, v);
+    if (found.now !== null) deps.now = true;
+    return found.outputs[pin] ?? null;
   };
 
   const evalPure = async (
@@ -252,10 +319,11 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
     g: CompiledGraph,
     inst: NodeInstance,
     sig: Signature,
-    memo: Memo
+    memo: Memo,
+    deps: Deps
   ): Promise<Values> => {
     const t0 = performance.now();
-    const r = reader(s, scope, g, inst, sig, memo);
+    const r = reader(s, scope, g, inst, sig, memo, deps);
     try {
       const sub = registry.graph(inst);
       let outputs: Values;
@@ -266,7 +334,7 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
         }
         const child = openScope(s, inst, sub, scope, inst.id, await readAll(r, sig));
         const retSig = registry.signature(ret, sub.def);
-        outputs = { ...(await readAll(reader(s, child, sub, ret, retSig, memo), retSig)) };
+        outputs = { ...(await readAll(reader(s, child, sub, ret, retSig, memo, deps), retSig)) };
       } else {
         const def = registry.node(inst) ?? fail(`Unknown node type ${refKey(inst)}`);
         const res = await def.run({
@@ -275,8 +343,16 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
           state: null,
           signature: sig,
           read: r.read,
-          vars: varAccess(g, scope),
-          ctx: { runId: s.runId, key: `${s.runId}:${scope.id}:${inst.id}`, now: s.now }
+          vars: varAccess(s, g, scope, deps),
+          ctx: {
+            runId: s.runId,
+            key: `${s.runId}:${scope.id}:${inst.id}`,
+            get now() {
+              deps.now = true;
+              return s.now;
+            },
+            ...signalOf(s)
+          }
         });
         if (res.type !== 'next') fail(`Pure node "${labelOf(inst)}" cannot ${res.type}`);
         checkOutputs(labelOf(inst), sig, res.outputs);
@@ -284,7 +360,7 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
       }
       record(s, scope, inst, {
         event: 'eval',
-        inputs: r.values,
+        inputs: {},
         outputs,
         pin: null,
         error: null,
@@ -315,6 +391,7 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
     const pg = graphOf(parent.graph);
     const inst = nodeIn(pg, scope.node);
     parent.outputs[inst.id] = outputs;
+    touch(s.cache, outKey(parent.id, inst.id));
     delete parent.attempts[inst.id];
     record(s, parent, inst, {
       event: 'exec',
@@ -343,8 +420,28 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
     }
     const scope = scopeOf(state, f.scope);
     const sig = graphOf(scope.graph).def.signature;
+    if (
+      scope.parent !== null &&
+      scope.node !== null &&
+      (sig.execOut.length || sig.outputs.length)
+    ) {
+      unreturned(s, scope, scope.parent, scope.node, sig.execIn[0] ?? 'exec');
+      return;
+    }
     const defaults = Object.fromEntries(sig.outputs.map((p) => [p.name, p.default ?? null]));
     complete(s, scope, sig.execOut[0] ?? null, defaults);
+  };
+
+  const unreturned = (s: Session, scope: Scope, parentId: string, node: string, pin: string) => {
+    const { state } = s;
+    state.stack.pop();
+    delete state.scopes[scope.id];
+    const parent = scopeOf(state, parentId);
+    const inst = nodeIn(graphOf(parent.graph), node);
+    const event: NodeEvent = { type: 'exec', pin };
+    const err = new Error(`"${labelOf(inst)}" ended without reaching a Return node`);
+    traced(s, parent, inst, err, event, scope.inputs, performance.now());
+    handleError(s, { scope: parent.id, node, event }, err);
   };
 
   const pushFrame = (state: RunState, frame: Frame) => {
@@ -407,7 +504,7 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
     const def = registry.node(inst) ?? fail(`Unknown node type ${refKey(inst)}`);
     const sig = registry.signature(inst, g.def);
     if (isPure(sig)) fail(`Pure node "${labelOf(inst)}" cannot be executed`);
-    if (event.type === 'exec' && !scope.attempts[inst.id]) {
+    if (event.type === 'exec' && scope.attempts[inst.id] === undefined) {
       scope.counts[inst.id] = (scope.counts[inst.id] ?? 0) + 1;
     }
     const t0 = performance.now();
@@ -420,11 +517,12 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
         state: scope.states[inst.id] ?? null,
         signature: sig,
         read: r.read,
-        vars: varAccess(g, scope),
+        vars: varAccess(s, g, scope, newDeps()),
         ctx: {
           runId: s.runId,
           key: `${s.runId}:${scope.id}:${inst.id}:${scope.counts[inst.id] ?? 0}`,
-          now: s.now
+          now: s.now,
+          ...signalOf(s)
         }
       });
       checkOutputs(labelOf(inst), sig, res.outputs);
@@ -433,7 +531,9 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
       throw traced(s, scope, inst, err, event, r.values, t0);
     }
     if (res.type !== 'suspend') delete scope.attempts[inst.id];
-    scope.outputs[inst.id] = { ...scope.outputs[inst.id], ...res.outputs };
+    const first = event.type === 'exec' && scope.states[inst.id] == null;
+    scope.outputs[inst.id] = first ? res.outputs : { ...scope.outputs[inst.id], ...res.outputs };
+    touch(s.cache, outKey(scope.id, inst.id));
     if (res.state !== undefined) scope.states[inst.id] = res.state;
     record(s, scope, inst, {
       event: event.type,
@@ -510,12 +610,29 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
       path: scope?.path ?? '',
       node: cursor.node
     };
+    const deferMs = scope && inst ? deferOf(err) : null;
+    if (scope && inst && deferMs !== null) {
+      scope.attempts[inst.id] ??= 0;
+      state.status = 'suspended';
+      state.suspension = {
+        id: String(nextSeq(state)),
+        kind: 'timer',
+        data: {
+          until: new Date(s.now.getTime() + Math.min(deferMs, MAX_RETRY_DELAY_MS)).toISOString(),
+          deferred: error.message
+        },
+        cursor: restartOf(state, cursor),
+        retry: true
+      };
+      return;
+    }
     if (scope && inst) {
       const attempt = (scope.attempts[inst.id] ?? 0) + 1;
       scope.attempts[inst.id] = attempt;
-      if (inst.retry && attempt <= inst.retry.max) {
+      const policy = inst.retry ?? (isTransient(err) ? transientRetry : undefined);
+      if (policy && attempt <= policy.max) {
         const delay = Math.min(
-          inst.retry.delayMs * (inst.retry.factor ?? 1) ** (attempt - 1),
+          policy.delayMs * (policy.factor ?? 1) ** (attempt - 1),
           MAX_RETRY_DELAY_MS
         );
         state.status = 'suspended';
@@ -585,7 +702,8 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
 
   const advance = async (state: RunState, cx: StepContext): Promise<StepResult> => {
     if (state.status !== 'running') throw new Error(`Run is ${state.status}`);
-    const s: Session = { ...cx, state, trace: [] };
+    cx.signal?.throwIfAborted();
+    const s: Session = { ...cx, state, trace: [], cache: cacheOf(state) };
     const cursor = state.cursor;
     state.cursor = null;
     let effect = false;
@@ -643,7 +761,10 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
   };
 
   const retryFault = (state: RunState) => {
-    state.cursor = restartOf(state, faultOf(state).cursor);
+    const { cursor } = faultOf(state);
+    const scope = state.scopes[cursor.scope];
+    if (scope && scope.attempts[cursor.node] !== undefined) scope.attempts[cursor.node] = 0;
+    state.cursor = restartOf(state, cursor);
     state.status = 'running';
     state.fault = null;
   };
@@ -663,6 +784,7 @@ export const createEngine = ({ nodes, graphs, maxDepth = 256 }: EngineOptions): 
     }
     checkOutputs(labelOf(inst), sig, outputs);
     scope.outputs[inst.id] = { ...scope.outputs[inst.id], ...outputs };
+    touch(cacheOf(state), outKey(scope.id, inst.id));
     delete scope.attempts[inst.id];
     state.cursor = follow(g, scope.id, inst.id, pin);
     state.status = 'running';

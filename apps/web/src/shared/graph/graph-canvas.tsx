@@ -22,7 +22,7 @@ import {
 } from './flow.ts';
 import { GraphNode } from './graph-node.tsx';
 
-export type GraphCanvasProps = Decorations & {
+type GraphCanvasProps = Decorations & {
   def: GraphDef;
   catalog: Catalog;
   selected: string | null;
@@ -74,8 +74,6 @@ export const GraphCanvas = ({
     setEdges(flow.edges);
   }, [flow]);
 
-  // Selection only flips the flag on existing nodes: rebuilding them would drop React Flow's
-  // measurements and swallow the second click of a double-click.
   useEffect(() => {
     setNodes((ns) =>
       ns.map((n) =>
@@ -91,6 +89,7 @@ export const GraphCanvas = ({
         edges={edges}
         nodeTypes={nodeTypes}
         colorMode={theme}
+        className="[--xy-background-color:var(--color-canvas)] [--xy-background-pattern-color:var(--color-border)] [--xy-edge-stroke-width:2]"
         fitView
         fitViewOptions={{ maxZoom: 1, padding: 0.15, nodes: opening }}
         minZoom={0.15}

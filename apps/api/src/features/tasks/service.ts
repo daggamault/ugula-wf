@@ -21,24 +21,37 @@ import {
   listQueues
 } from './queries.ts';
 
-export type TaskServiceDeps = {
+type TaskServiceDeps = {
   db: Db;
   boss: RunQueueClient;
   announce: Announce;
 };
 
-export type Completion = {
+type Completion = {
   outcome: string;
   values: Record<string, Json>;
 };
 
 const notFound = fail('not_found', 'Task not found');
 const closed = fail('conflict', 'Task is already closed');
+const taken = fail('conflict', 'Another user is working this task');
 
-export const fieldErrors = (fields: unknown, values: Record<string, Json>) =>
+const blocked = (
+  task: { status: string; assignee_id: string | null } | undefined,
+  userId: string
+) =>
+  !task
+    ? notFound
+    : task.status !== 'open'
+      ? closed
+      : task.assignee_id !== null && task.assignee_id !== userId
+        ? taken
+        : null;
+
+export const fieldErrors = (fields: unknown, values: Record<string, Json>, outcome: string) =>
   Object.fromEntries(
     (Array.isArray(fields) ? (fields as FieldSpec[]) : []).flatMap((f) => {
-      const err = checkField(f, values[f.name] ?? null);
+      const err = checkField(f, values[f.name] ?? null, outcome);
       return err ? [[f.name, err]] : [];
     })
   );
@@ -63,15 +76,13 @@ export const jobFor = (
 export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
   const changed = (id: string): LiveEvent[] => [{ kind: 'task', id, runId: null }];
 
-  const assign = (tenantId: string, id: string, userId: string | null) =>
-    announced(
-      announce,
-      tenantId,
-      assignTask(db, tenantId, id, userId).then((assigned) =>
-        assigned ? ok({ status: userId ? 'claimed' : 'released' }) : closed
-      ),
-      () => changed(id)
-    );
+  const reassign = async (tenantId: string, id: string, userId: string, assignee: string | null) =>
+    (await assignTask(db, { tenantId, id, userId, assignee }))
+      ? ok({ status: assignee ? 'claimed' : 'released' })
+      : (blocked(await findTask(db, tenantId, id), userId) ?? closed);
+
+  const assign = (tenantId: string, id: string, userId: string, assignee: string | null) =>
+    announced(announce, tenantId, reassign(tenantId, id, userId, assignee), () => changed(id));
 
   return {
     queues: async (tenantId: string, userId: string) =>
@@ -110,9 +121,9 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
         ({ task }) => (task ? changed(task.id) : [])
       ),
 
-    claim: (tenantId: string, id: string, userId: string) => assign(tenantId, id, userId),
+    claim: (tenantId: string, id: string, userId: string) => assign(tenantId, id, userId, userId),
 
-    release: (tenantId: string, id: string) => assign(tenantId, id, null),
+    release: (tenantId: string, id: string, userId: string) => assign(tenantId, id, userId, null),
 
     complete: (tenantId: string, userId: string, id: string, completion: Completion) =>
       announced(
@@ -121,17 +132,20 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
         db.transaction().execute(async (tx) => {
           const task = await findTask(tx, tenantId, id);
           if (!task) return notFound;
-          if (task.status !== 'open') return closed;
+          const refused = blocked(task, userId);
+          if (refused) return refused;
           if (!task.outcomes.includes(completion.outcome)) {
             return fail('invalid', `Unknown outcome "${completion.outcome}"`);
           }
           const checked = task.kind === 'task' || completion.outcome === 'skip';
-          const fields = checked ? fieldErrors(task.fields, completion.values) : {};
+          const fields = checked
+            ? fieldErrors(task.fields, completion.values, completion.outcome)
+            : {};
           if (Object.keys(fields).length) {
             return fail('invalid', 'Some fields are invalid', { fields });
           }
           if (!(await completeTask(tx, { tenantId, id, userId, resolution: completion }))) {
-            return closed;
+            return blocked(await findTask(tx, tenantId, id), userId) ?? closed;
           }
           await enqueueRuns(boss, sqlExecutor(tx), [jobFor(task, userId, completion)]);
           return ok({ status: 'completed' });

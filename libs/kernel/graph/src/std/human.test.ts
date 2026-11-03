@@ -108,4 +108,38 @@ describe('human task node', () => {
       /Task options/
     );
   });
+
+  it('asks only the visible fields and requires them for the outcomes that need them', async () => {
+    const fix = {
+      title: 'Fix claim data',
+      queue: 'billing-review',
+      fields: [
+        { name: 'serviceDate', type: 'string', format: 'date', required: ['save'] },
+        { name: 'loadedMiles', type: 'number', min: 0.1 }
+      ],
+      outcomes: ['save', 'void']
+    };
+    const { result } = await invokeNode(humanTaskNode, {
+      config: fix,
+      inputs: { visible: ['serviceDate'] }
+    });
+    const asked = result.type === 'suspend' ? result.state : null;
+    assert.deepEqual(asked, [fix.fields[0]]);
+    const resume = (outcome: string, values: Record<string, unknown>) =>
+      invokeNode(humanTaskNode, {
+        config: fix,
+        state: asked,
+        event: { type: 'resume', payload: { outcome, values } as never }
+      });
+    assert.deepEqual(
+      (await resume('save', { serviceDate: '2026-09-30', loadedMiles: 3 })).outputs,
+      { serviceDate: '2026-09-30', loadedMiles: null, completedBy: null }
+    );
+    assert.equal((await resume('void', {})).pin, 'void');
+    await assert.rejects(() => resume('save', {}), /"serviceDate": is required/);
+    await assert.rejects(
+      () => resume('save', { serviceDate: '2026-13-01' }),
+      /must be a date \(YYYY-MM-DD\)/
+    );
+  });
 });

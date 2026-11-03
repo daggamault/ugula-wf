@@ -19,7 +19,7 @@ export type GraphSummary = {
   updatedAt: string;
 };
 
-export type GraphVersionSummary = {
+type GraphVersionSummary = {
   id: string;
   version: number;
   published_at: string | null;
@@ -40,7 +40,7 @@ export type GraphDetail = {
   versions: GraphVersionSummary[];
 };
 
-export type GraphVersion = {
+type GraphVersion = {
   id: string;
   version: number;
   definition: GraphDef;
@@ -54,18 +54,21 @@ export type NewGraph = {
   description: string;
 };
 
+const graphPathOf = (id: string) => `/api/graphs/${encodeURIComponent(id)}`;
+
 export const createWorkflowsClient = (api: Api) => ({
-  search: (query: string) => api.get<Page<GraphSummary>>(`/api/graphs?${query}`),
+  search: (query: string, signal?: AbortSignal) =>
+    api.get<Page<GraphSummary>>(`/api/graphs?${query}`, signal),
   nodes: async () => (await api.get<{ nodes: PublishedNode[] }>('/api/graphs/nodes')).nodes,
-  find: (id: string) => api.get<GraphDetail>(`/api/graphs/${id}`),
+  find: (id: string, signal?: AbortSignal) => api.get<GraphDetail>(graphPathOf(id), signal),
   version: (id: string, version: number) =>
-    api.get<GraphVersion>(`/api/graphs/${id}/versions/${version}`),
+    api.get<GraphVersion>(`${graphPathOf(id)}/versions/${version}`),
   create: (input: NewGraph) => api.post<{ id: string }>('/api/graphs', input),
   saveDraft: (id: string, definition: GraphDef) =>
-    api.put<{ version: number; issues: Issue[] }>(`/api/graphs/${id}/draft`, { definition }),
-  publish: (id: string) => api.post<{ version: number }>(`/api/graphs/${id}/publish`),
-  override: (id: string) => api.post<{ id: string }>(`/api/graphs/${id}/override`),
-  remove: (id: string) => api.remove<{ id: string }>(`/api/graphs/${id}`)
+    api.put<{ version: number; issues: Issue[] }>(`${graphPathOf(id)}/draft`, { definition }),
+  publish: (id: string) => api.post<{ version: number }>(`${graphPathOf(id)}/publish`),
+  override: (id: string) => api.post<{ id: string }>(`${graphPathOf(id)}/override`),
+  remove: (id: string) => api.remove<{ id: string }>(graphPathOf(id))
 });
 
 export type WorkflowsClient = ReturnType<typeof createWorkflowsClient>;

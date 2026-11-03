@@ -3,11 +3,11 @@ import { describe, it } from 'node:test';
 import { type InvokeOptions, invokeNode } from '../testing.ts';
 import type { Json, NodeDef, NodeEvent } from '../types.ts';
 import {
-  branchNode,
   delayNode,
   doOnceNode,
   failNode,
   flipFlopNode,
+  flowBranchNode,
   forEachNode,
   forRangeNode,
   gateNode,
@@ -31,7 +31,7 @@ const invoke = async (def: NodeDef, opts: InvokeOptions = {}) =>
 describe('flow nodes', () => {
   it('branches and switches', async () => {
     assert.equal(
-      ((await invoke(branchNode, { inputs: { condition: true } })) as { pin: string }).pin,
+      ((await invoke(flowBranchNode, { inputs: { condition: true } })) as { pin: string }).pin,
       'true'
     );
     const sw = (value: Json) =>
@@ -79,6 +79,10 @@ describe('flow nodes', () => {
       'completed'
     );
 
+    await assert.rejects(
+      () => invoke(forRangeNode, { inputs: { first: 0, last: 100_000 } }),
+      /For Range: at most 100000 iterations/
+    );
     const range = await invoke(forRangeNode, { inputs: { first: 3, last: 3 } });
     assert.deepEqual(range.outputs, { index: 3 });
     assert.equal(

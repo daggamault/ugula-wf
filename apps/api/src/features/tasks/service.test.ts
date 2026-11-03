@@ -11,6 +11,7 @@ const task = (patch: Record<string, unknown> = {}) => ({
   wait_id: '7',
   kind: 'task',
   status: 'open',
+  assignee_id: null,
   outcomes: ['approve', 'reject'],
   fields: [{ name: 'note', type: 'string' }],
   ...patch
@@ -27,6 +28,34 @@ const setup = (row: Record<string, unknown> | undefined, updated = true) => {
 };
 
 describe('task service', () => {
+  it('refuses to claim, release or complete a task another user is working', async () => {
+    const theirs = setup(task({ assignee_id: 'u2' }), false);
+    const refused = {
+      ok: false,
+      failure: { code: 'conflict', message: 'Another user is working this task' }
+    };
+    assert.deepEqual(await theirs.service.claim('t', 't1', 'u1'), refused);
+    assert.deepEqual(await theirs.service.release('t', 't1', 'u1'), refused);
+    assert.deepEqual(
+      await theirs.service.complete('t', 'u1', 't1', { outcome: 'approve', values: { note: 'x' } }),
+      refused
+    );
+    assert.equal(theirs.jobs.length, 0);
+    const gone = setup(undefined, false);
+    assert.equal((await gone.service.release('t', 't1', 'u1')).ok, false);
+    const done = setup(task({ status: 'completed' }), false);
+    assert.deepEqual(await done.service.claim('t', 't1', 'u1'), {
+      ok: false,
+      failure: { code: 'conflict', message: 'Task is already closed' }
+    });
+    const mine = setup(task({ assignee_id: 'u1' }));
+    assert.equal(
+      (await mine.service.complete('t', 'u1', 't1', { outcome: 'approve', values: { note: 'x' } }))
+        .ok,
+      true
+    );
+  });
+
   it('maps completions to run commands', () => {
     const base = { run_id: 'r1', wait_id: '7' };
     assert.deepEqual(
@@ -55,18 +84,30 @@ describe('task service', () => {
   });
 
   it('checks field values against their types', () => {
-    assert.deepEqual(fieldErrors([{ name: 'n', type: 'integer' }], { n: 1.5 }), {
+    assert.deepEqual(fieldErrors([{ name: 'n', type: 'integer' }], { n: 1.5 }, 'approve'), {
       n: 'expected integer, got number'
     });
     assert.deepEqual(
-      fieldErrors([{ name: 'pin', type: 'string', options: [{ value: 'then', label: 'then' }] }], {
-        pin: 'x'
-      }),
-      {
-        pin: 'must be one of then'
-      }
+      fieldErrors(
+        [{ name: 'pin', type: 'string', options: [{ value: 'then', label: 'then' }] }],
+        { pin: 'x' },
+        'skip'
+      ),
+      { pin: 'must be one of then' }
     );
-    assert.deepEqual(fieldErrors(null, {}), {});
+    assert.deepEqual(fieldErrors(null, {}, 'approve'), {});
+  });
+
+  it('applies required-for-outcome, date format and range rules', () => {
+    const due = { name: 'due', type: 'string', format: 'date', required: ['approve'] };
+    assert.deepEqual(fieldErrors([due], {}, 'approve'), { due: 'is required' });
+    assert.deepEqual(fieldErrors([due], {}, 'reject'), {});
+    assert.deepEqual(fieldErrors([due], { due: '2026-13-01' }, 'reject'), {
+      due: 'must be a date (YYYY-MM-DD)'
+    });
+    assert.deepEqual(fieldErrors([{ name: 'n', type: 'number', min: 1 }], { n: 0 }, 'approve'), {
+      n: 'must be at least 1'
+    });
   });
 
   it('completes open tasks and resumes the run atomically', async () => {
@@ -136,7 +177,10 @@ describe('task service', () => {
     const { service, queries } = setup(task());
     await service.next('t', 'billing', 'u1');
     assert.ok(queries[0]?.sql.includes('for update skip locked'));
-    assert.deepEqual(await service.release('t', 't1'), { ok: true, value: { status: 'released' } });
+    assert.deepEqual(await service.release('t', 't1', 'u1'), {
+      ok: true,
+      value: { status: 'released' }
+    });
     assert.deepEqual(await service.claim('t', 't1', 'u1'), {
       ok: true,
       value: { status: 'claimed' }

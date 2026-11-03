@@ -1,9 +1,9 @@
-import { createNodeCatalog } from '@ugula/catalog';
 import {
   combineSources,
   createRegistry,
   ENTRY_TYPE,
   type GraphDef,
+  type NodeDef,
   type NodeInstance,
   type NodeRef,
   RETURN_TYPE,
@@ -30,7 +30,7 @@ export type PaletteEntry = NodeRef & {
   description: string;
 };
 
-export type CatalogSources = {
+type CatalogSources = {
   published?: readonly PublishedNode[];
   graphs?: readonly (NodeRef & { definition: GraphDef })[];
 };
@@ -61,17 +61,15 @@ const workflowRefOf = (inst: NodeInstance): NodeRef | null => {
     : null;
 };
 
-const stdNodes = createNodeCatalog({ fetch: (...args) => fetch(...args) });
-
 export const titleFromKey = (key: string) =>
   (key.split('.').at(-1) ?? key)
     .split('-')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
 
-const categoryOf = (type: string) => {
+const categoryOf = (nodes: readonly NodeDef[], type: string) => {
   const prefix = type.split('.').slice(0, 2).join('.');
-  return stdNodes.find((d) => d.type.startsWith(`${prefix}.`))?.category ?? 'Composites';
+  return nodes.find((d) => d.type.startsWith(`${prefix}.`))?.category ?? 'Composites';
 };
 
 const ENTRY_DESCRIPTION =
@@ -87,11 +85,14 @@ const stub = (signature: Signature): GraphDef => ({
   edges: []
 });
 
-export const createCatalog = ({ published = [], graphs = [] }: CatalogSources = {}): Catalog => {
+export const createCatalog = (
+  nodes: NodeDef[],
+  { published = [], graphs = [] }: CatalogSources = {}
+): Catalog => {
   const full = new Map(graphs.map((g) => [refKey(g), g.definition]));
   const stubs = new Map(published.map((p) => [refKey({ type: p.key, version: p.version }), p]));
   const registry = createRegistry(
-    stdNodes,
+    nodes,
     combineSources(
       stdGraphSource,
       (ref) => full.get(refKey(ref)),
@@ -112,7 +113,7 @@ export const createCatalog = ({ published = [], graphs = [] }: CatalogSources = 
       category: 'Graph',
       description: RETURN_DESCRIPTION
     },
-    ...stdNodes.map((d) => ({
+    ...nodes.map((d) => ({
       type: d.type,
       version: d.version,
       title: d.title,
@@ -125,7 +126,7 @@ export const createCatalog = ({ published = [], graphs = [] }: CatalogSources = 
         type,
         version: Number(version),
         title: stdGraphInfo[key]?.title ?? titleFromKey(type),
-        category: categoryOf(type),
+        category: categoryOf(nodes, type),
         description: stdGraphInfo[key]?.description ?? ''
       };
     }),

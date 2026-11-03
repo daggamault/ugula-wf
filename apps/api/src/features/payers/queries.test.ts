@@ -39,12 +39,16 @@ describe('payer queries', () => {
     assert.deepEqual(list?.parameters.slice(1, 4), ['%blue\\%%', '%blue\\%%', '%blue\\%%']);
   });
 
-  it('finds one payer and lists every payer name within the tenant', async () => {
+  it('finds one payer and lists a bounded set of payer names matching the text', async () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.equal(await findPayer(db, 't-1', 'p1'), undefined);
     await listPayerNames(db, 't-1');
+    await listPayerNames(db, 't-1', 'Med');
     assert.deepEqual(queries[0]?.parameters, ['t-1', 'p1']);
-    assert.ok(queries[1]?.sql.endsWith('order by lower(name)'));
+    assert.ok(queries[1]?.sql.endsWith('order by lower(name) limit $2'));
+    assert.deepEqual(queries[1]?.parameters, ['t-1', 50]);
+    assert.ok(queries[2]?.sql.includes('lower(name) like $2'));
+    assert.deepEqual(queries[2]?.parameters, ['t-1', '%med%', 50]);
   });
 
   it('upserts by name ignoring case and deletes within the tenant', async () => {

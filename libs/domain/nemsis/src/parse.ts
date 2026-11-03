@@ -1,4 +1,4 @@
-import type { Json } from '@ugula/graph';
+import { isRecord, type Json } from '@ugula/graph';
 import { XMLBuilder, XMLParser } from 'fast-xml-parser';
 
 const REPEATING = new Set([
@@ -20,9 +20,6 @@ const parser = new XMLParser({
   parseAttributeValue: false,
   isArray: (name) => REPEATING.has(name)
 });
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export const parseDataset = (xml: string): { reports: Json[] } => {
   if (/<!DOCTYPE/i.test(xml)) throw new Error('NEMSIS files must not declare a DOCTYPE');

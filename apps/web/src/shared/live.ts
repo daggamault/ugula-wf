@@ -5,7 +5,6 @@ export type EventStream = {
   listen: (handlers: {
     onData: (data: string) => void;
     onOpen: () => void;
-    /** `closed` is true when the stream gave up rather than reconnecting on its own. */
     onError: (closed: boolean) => void;
   }) => void;
   close: () => void;
@@ -13,8 +12,7 @@ export type EventStream = {
 
 export type LiveStatus = 'connecting' | 'online' | 'offline';
 
-/** `null` means the stream reconnected: events may have been missed, so reload everything. */
-export type LiveListener = (event: LiveEvent | null) => void;
+type LiveListener = (event: LiveEvent | null) => void;
 
 export type Live = {
   subscribe: (listener: LiveListener) => () => void;
@@ -37,7 +35,7 @@ const openEventSource = (url: string): EventStream => {
 
 const RETRY_MS = [1_000, 5_000, 15_000, 30_000];
 
-export type LiveOptions = {
+type LiveOptions = {
   open?: (url: string) => EventStream;
   schedule?: (run: () => void, ms: number) => () => void;
 };
@@ -84,7 +82,6 @@ export const createLive = (
         missed = true;
         setStatus('offline');
         if (!closed || source !== stream) return;
-        // The browser stopped retrying (for example after a server error), so retry with backoff.
         stream.close();
         source = null;
         const delay = RETRY_MS[Math.min(failures++, RETRY_MS.length - 1)] ?? 30_000;
@@ -121,31 +118,56 @@ export const createLive = (
   };
 };
 
-/** How long a burst of events is gathered into one reload. */
-export const COALESCE_MS = 250;
+const COALESCE_MS = 250;
 
-/**
- * Calls `reload` when an event the page cares about arrives, or after a reconnect. A burst of
- * events (a run checkpointing every step, a batch touching many claims) becomes one reload.
- */
-export const useLive = (live: Live, matches: (event: LiveEvent) => boolean, reload: () => void) => {
+export const LIST_RELOAD_MS = 1_500;
+
+export const isOnPage = (id: string | null, page: number, visible: readonly (string | null)[]) =>
+  id === null || page === 1 || visible.includes(id);
+
+export const createBurst = (
+  run: () => void,
+  ms: number,
+  schedule: (run: () => void, ms: number) => () => void = after
+) => {
+  let cancel: (() => void) | null = null;
+  return {
+    push: () => {
+      cancel ??= schedule(() => {
+        cancel = null;
+        run();
+      }, ms);
+    },
+    stop: () => {
+      cancel?.();
+      cancel = null;
+    }
+  };
+};
+
+export const useLive = (
+  live: Live,
+  matches: (event: LiveEvent) => boolean,
+  reload: () => void,
+  ms = COALESCE_MS
+) => {
   const latest = useRef({ matches, reload });
   latest.current = { matches, reload };
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    const burst = createBurst(() => latest.current.reload(), ms);
     const stop = live.subscribe((event) => {
-      if (timer || (event && !latest.current.matches(event))) return;
-      timer = setTimeout(() => {
-        timer = null;
-        latest.current.reload();
-      }, COALESCE_MS);
+      if (!event || latest.current.matches(event)) burst.push();
     });
     return () => {
       stop();
-      if (timer) clearTimeout(timer);
+      burst.stop();
     };
-  }, [live]);
+  }, [live, ms]);
 };
 
 export const useLiveStatus = (live: Live) =>
   useSyncExternalStore(live.onStatus, live.status, () => 'connecting' as const);
+
+const NONE = () => false;
+
+export const useReconnect = (live: Live, reload: () => void) => useLive(live, NONE, reload);

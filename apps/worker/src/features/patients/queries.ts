@@ -117,5 +117,22 @@ export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
           .returning(COLUMNS)
           .executeTakeFirstOrThrow()
       );
-    })
+    }),
+  updateAddress: async (runId, _sourceKey, patientId, a) => {
+    const row = await db
+      .updateTable('patients')
+      .set({
+        address_line: a.addressLine,
+        city: a.city,
+        state: a.state,
+        postal_code: a.postalCode,
+        updated_at: sql`now()`
+      })
+      .where('id', '=', isUuid(patientId) ? patientId : null)
+      .where('tenant_id', '=', runTenant(db, runId))
+      .returning(COLUMNS)
+      .executeTakeFirst();
+    if (!row) throw new Error(`Patient ${patientId} does not exist`);
+    return toPatient(row);
+  }
 });

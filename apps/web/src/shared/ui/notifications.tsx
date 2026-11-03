@@ -92,7 +92,7 @@ export const NotificationsPanel = ({
       {unread ? (
         <span
           aria-hidden="true"
-          className="bg-primary text-primary-fg pointer-events-none absolute -top-0.5 -right-0.5 min-w-4 rounded-full px-1 text-center text-[0.625rem]/4 font-bold tabular-nums"
+          className="bg-primary text-primary-fg pointer-events-none absolute -top-1 -right-1 min-w-5 rounded-full px-1.5 text-center text-xs/5 font-bold tabular-nums"
         >
           {unread > 9 ? '9+' : unread}
         </span>

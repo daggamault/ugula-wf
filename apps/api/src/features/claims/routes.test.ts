@@ -17,7 +17,8 @@ const record =
 
 const service = {
   list: record('list', { claims: [] }),
-  find: record('find', { claim: { id: ID }, events: [] }),
+  find: record('find', { claim: { id: ID }, files: [] }),
+  events: record('events', { items: [], total: 0, page: 1, pageSize: 25 }),
   setPayers: record('setPayers', { payers: [] }),
   recordResponse: record('recordResponse', { balanceCents: 0 }),
   restartCycle: record('restartCycle', { runId: 'r2' }),
@@ -77,13 +78,29 @@ describe('claim routes', () => {
         }
       ],
       ['find', 't-1', ID],
-      ['setPayers', 't-1', ID, ['Medicare']],
+      [
+        'setPayers',
+        't-1',
+        ID,
+        [{ name: 'Medicare', relationship: '18', insuredFirstName: null, insuredLastName: null }]
+      ],
       [
         'recordResponse',
         't-1',
         'u-1',
         ID,
-        { requestId: ID, coverageId: ID, paidCents: 100, adjustedCents: 0, note: '' }
+        {
+          requestId: ID,
+          kind: 'response',
+          coverageId: ID,
+          paidCents: 100,
+          adjustedCents: 0,
+          paidOn: null,
+          checkNumber: null,
+          payerClaimNumber: null,
+          adjustments: [],
+          note: ''
+        }
       ]
     ]);
   });
@@ -100,13 +117,15 @@ describe('claim routes', () => {
     };
     const res = await request(`/${ID}/billing-data`, { method: 'PUT', body: JSON.stringify(body) });
     assert.equal(res.status, 200);
-    assert.deepEqual(calls.at(-1)?.[3], {
+    assert.deepEqual(calls.at(-1)?.slice(0, 3), ['saveBillingData', 't-1', 'u-1']);
+    assert.deepEqual(calls.at(-1)?.[4], {
       ...body,
       patient: { addressLine: null, city: null, state: 'IL', postalCode: null },
       pickup: { name: null, addressLine: null, city: null, state: null, postalCode: null },
       destination: { name: null, addressLine: null, city: null, state: null, postalCode: null },
       diagnoses: ['R079'],
-      originDestination: 'RH'
+      originDestination: 'RH',
+      note: null
     });
     const bad = await request(`/${ID}/billing-data`, {
       method: 'PUT',
@@ -118,6 +137,21 @@ describe('claim routes', () => {
       body: JSON.stringify({ ...body, originDestination: 'RZ' })
     });
     assert.equal(badModifier.status, 400);
+  });
+
+  it('pages and sorts claim history on the server', async () => {
+    calls.length = 0;
+    assert.equal((await request(`/${ID}/events`)).status, 200);
+    assert.equal(
+      (await request(`/${ID}/events?sort=amount&dir=asc&page=2&pageSize=10`)).status,
+      200
+    );
+    assert.equal((await request(`/${ID}/events?sort=nope`)).status, 400);
+    assert.equal((await request('/nope/events')).status, 400);
+    assert.deepEqual(calls.splice(0), [
+      ['events', 't-1', ID, { page: 1, pageSize: 25, sort: 'when', dir: 'desc' }],
+      ['events', 't-1', ID, { page: 2, pageSize: 10, sort: 'amount', dir: 'asc' }]
+    ]);
   });
 
   it('streams claim documents inline', async () => {

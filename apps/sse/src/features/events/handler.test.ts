@@ -7,9 +7,10 @@ import { createHub } from '../../shared/hub.ts';
 import { createEventsHandler } from './handler.ts';
 
 describe('events handler', () => {
-  it('streams tenant events to signed-in clients and rejects others', async () => {
+  it('streams tenant events to signed-in members and rejects others', async () => {
     const hub = createHub();
-    const valid = new Set(['good', 'expiring']);
+    const valid = new Set(['good', 'expiring', 'deactivated']);
+    const members = new Set(['good', 'expiring', 'deactivated']);
     const handler = createEventsHandler({
       hub,
       heartbeatMs: 50,
@@ -19,13 +20,15 @@ describe('events handler', () => {
           token === 'down'
             ? Promise.reject(new Error('redis down'))
             : valid.has(token)
-              ? { userId: 'u', tenantId: 't-1', email: 'dev@example.com' }
+              ? { userId: token, tenantId: 't-1', email: 'dev@example.com' }
               : null
-      }
+      },
+      isActiveMember: async ({ userId }) => members.has(userId)
     });
     const server = createServer((req, res) => void handler(req, res)).listen(0);
     await once(server, 'listening');
     const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    const decoder = new TextDecoder();
     try {
       const denied = await fetch(url, { headers: { cookie: 'ugula_session=bad' } });
       assert.equal(denied.status, 401);
@@ -42,18 +45,26 @@ describe('events handler', () => {
       assert.equal(res.headers.get('content-type'), 'text/event-stream');
       assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
       const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
       assert.equal(decoder.decode((await reader?.read())?.value), ': connected\n\n');
       hub.broadcast('t-1', '{"kind":"run"}');
       assert.equal(decoder.decode((await reader?.read())?.value), 'data: {"kind":"run"}\n\n');
       ctrl.abort();
 
-      const signedOut = await fetch(url, { headers: { cookie: 'ugula_session=expiring' } });
-      const stream = signedOut.body?.getReader();
-      assert.equal(decoder.decode((await stream?.read())?.value), ': connected\n\n');
-      valid.delete('expiring');
-      assert.equal(decoder.decode((await stream?.read())?.value), ': ping\n\n');
-      assert.equal((await stream?.read())?.done, true);
+      for (const [token, revoke] of [
+        ['expiring', () => valid.delete('expiring')],
+        ['deactivated', () => members.delete('deactivated')]
+      ] as const) {
+        const stream = (
+          await fetch(url, { headers: { cookie: `ugula_session=${token}` } })
+        ).body?.getReader();
+        assert.equal(decoder.decode((await stream?.read())?.value), ': connected\n\n');
+        revoke();
+        assert.equal(decoder.decode((await stream?.read())?.value), ': ping\n\n');
+        assert.equal((await stream?.read())?.done, true);
+      }
+
+      const inactive = await fetch(url, { headers: { cookie: 'ugula_session=deactivated' } });
+      assert.equal(inactive.status, 401);
     } finally {
       server.closeAllConnections();
       server.close();

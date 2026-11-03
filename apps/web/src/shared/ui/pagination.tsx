@@ -11,7 +11,7 @@ import { PAGE_SIZES, type TableState } from '../url-state.ts';
 import { IconButton, IconLink } from './icon-button.tsx';
 import { NativeSelect } from './select.tsx';
 
-export type PaginationProps = {
+type PaginationProps = {
   label: string;
   total: number;
   state: Pick<TableState<string>, 'page' | 'pageSize' | 'pageHref'> &

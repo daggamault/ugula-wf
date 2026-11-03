@@ -1,9 +1,10 @@
 import type { NodeDef } from '@ugula/graph';
-import type { NewClaim } from '../claim-validation.ts';
-import type { ClaimLedger, ClaimStatus, ClosedStatus } from '../claims.ts';
+import type { ClaimPatch } from '../claim-fix.ts';
+import type { ClaimCheck, NewClaim } from '../claim-validation.ts';
+import type { ClaimLedger, ClaimStatus, ClosedStatus, CycleEventKind } from '../claims.ts';
 import type { Completer } from '../completions.ts';
-import type { NewPatient, Patient } from '../patients.ts';
-import type { PayerLookup } from '../payers.ts';
+import type { Address, NewPatient, Patient } from '../patients.ts';
+import type { DirectoryPayer, PayerLookup } from '../payers.ts';
 import type { StatementData } from '../statements.ts';
 
 export type CandidateQuery = {
@@ -21,6 +22,12 @@ export type PatientStore = {
     patient: NewPatient,
     reuseMatch: boolean
   ) => Promise<Patient>;
+  updateAddress: (
+    runId: string,
+    sourceKey: string,
+    patientId: string,
+    address: Address
+  ) => Promise<Patient>;
 };
 
 export type FeeStore = {
@@ -29,24 +36,33 @@ export type FeeStore = {
     payerId: string | null,
     codes: string[]
   ) => Promise<Record<string, number>>;
+  saveFee: (
+    runId: string,
+    payerId: string | null,
+    code: string,
+    unitCents: number
+  ) => Promise<void>;
 };
 
 export type PayerStore = {
-  lookup: (runId: string, names: string[]) => Promise<PayerLookup[]>;
-  linkAlias: (runId: string, name: string, payerId: string) => Promise<void>;
+  lookup: (runId: string, names: string[], similar: boolean) => Promise<PayerLookup[]>;
+  directory: (runId: string) => Promise<DirectoryPayer[]>;
+  linkAlias: (runId: string, name: string, payerId: string) => Promise<boolean>;
+  cachedSuggestion: (runId: string, name: string) => Promise<string | null | undefined>;
+  cacheSuggestion: (runId: string, name: string, payerId: string | null) => Promise<void>;
 };
 
-export type StatementSource = Omit<StatementData, 'number' | 'issuedOn'>;
+export type AgencyProfile = StatementData['agency'] & { timeZone: string };
 
-export type CycleEventKind =
-  | 'resubmit_queued'
-  | 'follow_up'
-  | 'payer_skipped'
-  | 'approved'
-  | 'reconciled'
-  | 'statement';
+export type StatementSource = Omit<StatementData, 'number' | 'count' | 'issuedOn' | 'agency'> & {
+  agency: AgencyProfile | null;
+};
 
-export type DraftClaim = { pcrNumber: string | null; reportKey: string | null };
+export type DraftClaim = {
+  pcrNumber: string | null;
+  reportKey: string | null;
+  claimId: string | null;
+};
 
 type OpenedClaim = { id: string; duplicate: boolean };
 
@@ -54,31 +70,61 @@ type TrackedLedger = ClaimLedger & { signalsSeen: number; reference: string };
 
 export type BlobRef = { bucket: string; key: string };
 
+type Revision = { status: ClaimStatus; previous: BlobRef | null };
+
 export type ClaimStore = {
   openDraft: (runId: string, sourceKey: string, draft: DraftClaim) => Promise<OpenedClaim>;
-  assignPatient: (runId: string, claimId: string, patientId: string) => Promise<void>;
-  saveClaim: (runId: string, claimId: string, claim: NewClaim) => Promise<void>;
-  setStatus: (runId: string, claimId: string, status: ClaimStatus) => Promise<void>;
+  assignPatient: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    patientId: string
+  ) => Promise<void>;
+  saveClaim: (runId: string, claimId: string, sourceKey: string, claim: NewClaim) => Promise<void>;
+  claimCheck: (runId: string, claimId: string) => Promise<ClaimCheck | null>;
+  patchClaim: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    patch: ClaimPatch
+  ) => Promise<void>;
+  setStatus: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    status: ClaimStatus,
+    signalsSeen: number
+  ) => Promise<'set' | 'stale'>;
   noteRevision: (
     runId: string,
     claimId: string,
     sourceKey: string,
     report: BlobRef
+  ) => Promise<Revision>;
+  attachCycle: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    cycleRunId: string
   ) => Promise<void>;
-  attachCycle: (runId: string, claimId: string, cycleRunId: string) => Promise<void>;
   statementData: (runId: string, claimId: string) => Promise<StatementSource>;
   saveStatement: (
     runId: string,
     claimId: string,
     sourceKey: string,
-    statement: { number: number; pdf: Uint8Array }
+    statement: { number: number; count: number; pdf: Uint8Array }
   ) => Promise<void>;
   ledger: (runId: string, claimId: string) => Promise<TrackedLedger | null>;
   recordEvent: (
     runId: string,
     claimId: string,
     sourceKey: string,
-    event: { kind: CycleEventKind; coverageId: string | null; note: string }
+    event: {
+      kind: CycleEventKind;
+      coverageId: string | null;
+      note: string;
+      payerClaimNumber: string | null;
+    }
   ) => Promise<void>;
   closeClaim: (
     runId: string,

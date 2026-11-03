@@ -79,17 +79,44 @@ describe('patientNodes', () => {
     const create = nodeFor(store, 'create-patient');
     const find = nodeFor(store, 'find-patient');
     const created = await run(create, { demographics });
-    assert.deepEqual(created.outputs.patient, { id: 'new', ...cleaned });
+    assert.deepEqual(
+      [created.pin, created.outputs.patient],
+      ['created', { id: 'new', ...cleaned }]
+    );
     assert.deepEqual(calls.at(-1), ['createPatient', 'run', 'key', false]);
     await run(create, { demographics, reuseMatch: true });
     assert.deepEqual(calls.at(-1), ['createPatient', 'run', 'key', true]);
-    await assert.rejects(
-      async () => run(create, { demographics: { lastName: 'Doe' } }),
-      /needs a first name, last name and valid birth date/
+    const invalid = await run(create, {
+      demographics: { ...demographics, birthDate: '1980-02-31' }
+    });
+    assert.deepEqual([invalid.pin, invalid.outputs.patient], ['invalid', null]);
+    const found = await run(find, { patientId: 'p1' });
+    assert.deepEqual([found.pin, found.outputs], ['found', { patient: jane }]);
+    assert.equal((await run(find, { patientId: 'p9' })).pin, 'missing');
+    assert.equal((await run(find, { patientId: ' ' })).pin, 'missing');
+    assert.equal((await run(find, {})).pin, 'missing');
+  });
+
+  it('moves a known patient to the complete address of a newer report', async () => {
+    const { store, calls } = memoryPatients([jane]);
+    const update = nodeFor(store, 'update-patient-address');
+    const moved = {
+      ...demographics,
+      addressLine: '2 Elm St',
+      city: 'Springfield',
+      state: 'IL',
+      postalCode: '62701'
+    };
+    const updated = await run(update, { patient: jane, demographics: moved });
+    assert.equal((updated.outputs.patient as Patient).addressLine, '2 Elm St');
+    assert.deepEqual(calls.at(-1)?.[0], 'updateAddress');
+    const partial = await run(update, { patient: jane, demographics: { ...moved, city: null } });
+    assert.deepEqual(partial.outputs.patient, jane);
+    const same = { ...jane, ...moved, addressLine: '2 ELM ST.' };
+    assert.deepEqual(
+      (await run(update, { patient: same, demographics: moved })).outputs.patient,
+      same
     );
-    assert.deepEqual((await run(find, { patientId: 'p1' })).outputs, { patient: jane });
-    await assert.rejects(async () => run(find, { patientId: 'p9' }), /does not exist/);
-    await assert.rejects(async () => run(find, { patientId: ' ' }), /Choose a patient/);
-    await assert.rejects(async () => run(find, {}), /Input "patientId" of "Find Patient"/);
+    assert.equal(calls.filter((c) => c[0] === 'updateAddress').length, 1);
   });
 });

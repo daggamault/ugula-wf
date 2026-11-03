@@ -21,6 +21,13 @@ export const parseDollars = (text: string) => {
     : null;
 };
 
+const miles = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+
+export const formatMiles = (value: string | number) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? `${miles.format(n)} ${n === 1 ? 'mile' : 'miles'}` : '—';
+};
+
 const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
@@ -62,4 +69,15 @@ export const titleCaseWords = (
       if (acronyms.has(w)) return w.toUpperCase();
       return i && MINOR_WORDS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1);
     })
+    .join(' ');
+
+const capitalize = (word: string, i: number) =>
+  i && MINOR_WORDS.has(word)
+    ? word
+    : word.replace(/^(\W*)([a-z])/, (_, lead: string, c: string) => lead + c.toUpperCase());
+
+export const titleCaseLabel = (label: string) =>
+  label
+    .split(' ')
+    .map((word, i) => (/[A-Z]/.test(word.slice(1)) ? word : capitalize(word, i)))
     .join(' ');

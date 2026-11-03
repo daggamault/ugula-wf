@@ -7,25 +7,28 @@ import { ok, respond } from '../../shared/result.ts';
 import { signInSchema } from './schemas.ts';
 import type { AuthService } from './service.ts';
 
-export type AuthRoutesDeps = {
+type AuthRoutesDeps = {
   service: AuthService;
   sseUrl: string;
   secureCookie: boolean;
+  clientIp: (c: Context) => string;
 };
 
-export const createAuthRoutes = ({ service, sseUrl, secureCookie }: AuthRoutesDeps) => {
+export const createAuthRoutes = ({ service, sseUrl, secureCookie, clientIp }: AuthRoutesDeps) => {
   const app = new Hono();
-
   const sessionBody = ({ userId, tenantId, email }: SessionData) => ({
     user: { id: userId, tenantId, email },
     sseUrl
   });
-
   const clearCookie = (c: Context) => deleteCookie(c, SESSION_COOKIE, { path: '/' });
 
   app.post('/sign-in', sValidator('json', signInSchema, invalidRequest), async (c) => {
-    const res = await service.signIn(c.req.valid('json'));
-    if (!res.ok) return respond(c, res);
+    const res = await service.signIn(c.req.valid('json'), clientIp(c));
+    if (!res.ok) {
+      const wait = res.failure.details?.retryAfter;
+      if (typeof wait === 'number') c.header('retry-after', String(wait));
+      return respond(c, res);
+    }
     setCookie(c, SESSION_COOKIE, res.value.token, {
       httpOnly: true,
       sameSite: 'Lax',

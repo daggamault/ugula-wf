@@ -1,6 +1,7 @@
 import type { Database, RunStatus } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
+import { containsPattern } from '../../shared/search.ts';
 import type { RunSort } from './schemas.ts';
 
 type Db = Kysely<Database>;
@@ -9,6 +10,7 @@ export type RunFilters = PageRequest<RunSort> & {
   status?: RunStatus;
   graphId?: string;
   rootOnly: boolean;
+  q?: string | undefined;
 };
 
 export type StepFilters = {
@@ -29,6 +31,8 @@ export const findPublishedVersion = (
     .innerJoin('graphs as g', 'g.id', 'gv.graph_id')
     .select(['gv.id', 'gv.version'])
     .where('g.id', '=', graphId)
+    .where('g.kind', '=', 'workflow')
+    .where('g.is_active', '=', true)
     .where('gv.published_at', 'is not', null)
     .where((eb) => eb.or([eb('g.tenant_id', '=', tenantId), eb('g.tenant_id', 'is', null)]));
   return (version === undefined ? base : base.where('gv.version', '=', version))
@@ -71,6 +75,17 @@ export const listRuns = (db: Db, tenantId: string, f: RunFilters) => {
   if (f.status) q = q.where('r.status', '=', f.status);
   if (f.graphId) q = q.where('g.id', '=', f.graphId);
   if (f.rootOnly) q = q.where('r.parent_id', 'is', null);
+  if (f.q) {
+    const like = containsPattern(f.q);
+    q = q.where((eb) =>
+      eb.or([
+        eb(sql`lower(g.name)`, 'like', like),
+        eb(sql`lower(g.key)`, 'like', like),
+        eb(sql`r.id::text`, 'like', like),
+        eb(sql`lower(r.error ->> 'message')`, 'like', like)
+      ])
+    );
+  }
   return paged(q, f, RUN_ORDER, sql.ref('r.id'));
 };
 
@@ -102,7 +117,7 @@ export const listAncestors = async (db: Db, runId: string) =>
       order by c.depth desc`.execute(db)
   ).rows;
 
-export const DETAIL_LIMIT = 200;
+const DETAIL_LIMIT = 200;
 
 export const listChildren = (db: Db, runId: string) =>
   runColumns(db)

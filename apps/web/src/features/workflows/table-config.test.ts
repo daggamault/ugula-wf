@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   columnKind,
+  columnNameError,
   columnType,
   conditionValue,
   formatCell,
@@ -12,6 +13,7 @@ import {
   readLookup,
   removeColumn,
   renameColumn,
+  takesList,
   takesValue
 } from './table-config.ts';
 
@@ -60,6 +62,17 @@ describe('table config', () => {
     const out = renameColumn(table, 'outputs', 'level', 'code');
     assert.deepEqual(out.otherwise, { code: 'BLS' });
     assert.deepEqual(out.rules[0]?.set, { code: 'ALS1' });
+    const two = { ...table, inputs: [...table.inputs, { name: 'miles', type: 'number' as const }] };
+    assert.equal(renameColumn(two, 'inputs', 'miles', 'care'), two);
+    assert.equal(renameColumn(two, 'inputs', 'miles', '  '), two);
+    assert.match(columnNameError(two, 'inputs', 'miles', 'care') ?? '', /already called care/);
+    assert.equal(columnNameError(two, 'inputs', 'miles', ''), 'Enter a name.');
+    assert.equal(columnNameError(two, 'inputs', 'miles', 'miles'), undefined);
+    assert.deepEqual(
+      renameColumn(two, 'inputs', 'miles', ' distance ').inputs[1]?.name,
+      'distance'
+    );
+    assert.equal(takesList('oneOf') && !takesList('is'), true);
     const dropped = removeColumn(table, 'outputs', 'level');
     assert.deepEqual([dropped.outputs, dropped.otherwise, dropped.rules[0]?.set], [[], {}, {}]);
   });

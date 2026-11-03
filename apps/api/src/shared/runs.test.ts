@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
-import { findRunWait, signalRuns, startRun } from './runs.ts';
+import { signalRuns, startRun } from './runs.ts';
 
 describe('startRun', () => {
   it('inserts a running run and enqueues its first step in the same transaction', async () => {
@@ -50,13 +50,10 @@ describe('signalRuns', () => {
       2
     );
     assert.deepEqual(queries[1]?.parameters, ['t', 'claim:c1', 'suspended']);
-    assert.deepEqual(jobs[1], {
-      data: {
-        runId: 'r2',
-        command: { type: 'resume', suspensionId: '9', payload: { payload: { a: 1 } } }
-      }
+    assert.deepEqual((jobs[1] as { data: unknown }).data, {
+      runId: 'r2',
+      command: { type: 'resume', suspensionId: '9', payload: { payload: { a: 1 } } }
     });
-    await findRunWait(db, 't', 'x:y');
     await db.destroy();
   });
 });

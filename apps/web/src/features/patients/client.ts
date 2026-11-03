@@ -18,7 +18,7 @@ export type PatientSummary = {
 
 export type PatientSearch = { lastName: string; firstName: string; birthDate: string };
 
-export const PATIENT_FIELDS = ['lastName', 'firstName', 'birthDate'] as const;
+const PATIENT_FIELDS = ['lastName', 'firstName', 'birthDate'] as const;
 
 export const searchOf = (query: URLSearchParams): PatientSearch => ({
   lastName: query.get('lastName') ?? '',
@@ -32,12 +32,16 @@ const searchQuery = (search: PatientSearch) =>
   ).join('&');
 
 export const createPatientsClient = (api: Api) => ({
-  list: (search: PatientSearch, page: string) => {
+  list: (search: PatientSearch, page: string, signal?: AbortSignal) => {
     const filters = searchQuery(search);
-    return api.get<Page<PatientSummary>>(`/api/patients?${filters ? `${filters}&` : ''}${page}`);
+    return api.get<Page<PatientSummary>>(
+      `/api/patients?${filters ? `${filters}&` : ''}${page}`,
+      signal
+    );
   },
-  find: async (id: string) =>
-    (await api.get<{ patient: PatientSummary }>(`/api/patients/${id}`)).patient
+  find: async (id: string, signal?: AbortSignal) =>
+    (await api.get<{ patient: PatientSummary }>(`/api/patients/${encodeURIComponent(id)}`, signal))
+      .patient
 });
 
 export type PatientsClient = ReturnType<typeof createPatientsClient>;

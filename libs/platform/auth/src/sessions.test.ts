@@ -4,23 +4,36 @@ import { createSessionStore, type RedisLike, readCookie } from './sessions.ts';
 
 const createMemoryRedis = () => {
   const map = new Map<string, string>();
+  const sets = new Map<string, Set<string>>();
   const redis: RedisLike = {
     set: async (k, v) => {
       map.set(k, v);
     },
     get: async (k) => map.get(k) ?? null,
     del: async (...keys) => {
-      for (const k of keys) map.delete(k);
-    }
+      for (const k of keys) {
+        map.delete(k);
+        sets.delete(k);
+      }
+    },
+    sadd: async (k, ...members) => {
+      sets.set(k, new Set([...(sets.get(k) ?? []), ...members]));
+    },
+    srem: async (k, ...members) => {
+      for (const m of members) sets.get(k)?.delete(m);
+    },
+    smembers: async (k) => [...(sets.get(k) ?? [])],
+    expire: async () => 1
   };
-  return { redis, map };
+  return { redis, map, sets };
 };
+
+const data = { userId: 'u-1', tenantId: 't-1', email: 'dev@example.com' };
 
 describe('createSessionStore', () => {
   it('creates, retrieves, and destroys sessions', async () => {
-    const { redis } = createMemoryRedis();
+    const { redis, sets } = createMemoryRedis();
     const store = createSessionStore(redis);
-    const data = { userId: 'u-1', tenantId: 't-1', email: 'dev@example.com' };
 
     const token = await store.create(data);
     assert.ok(token.length >= 32);
@@ -28,6 +41,21 @@ describe('createSessionStore', () => {
 
     await store.destroy(token);
     assert.equal(await store.get(token), null);
+    assert.deepEqual([...(sets.get('user-sessions:u-1') ?? [])], []);
+  });
+
+  it('destroys every session of one user and leaves others alone', async () => {
+    const { redis, sets } = createMemoryRedis();
+    const store = createSessionStore(redis);
+    const [a, b] = [await store.create(data), await store.create(data)];
+    const other = await store.create({ ...data, userId: 'u-2' });
+
+    await store.destroyAll('u-1');
+    assert.equal(await store.get(a), null);
+    assert.equal(await store.get(b), null);
+    assert.deepEqual(await store.get(other), { ...data, userId: 'u-2' });
+    assert.equal(sets.has('user-sessions:u-1'), false);
+    await store.destroyAll('nobody');
   });
 
   it('returns null for malformed JSON or invalid session payload', async () => {
@@ -39,6 +67,8 @@ describe('createSessionStore', () => {
 
     map.set('session:bad-schema', JSON.stringify({ userId: 'u-1' }));
     assert.equal(await store.get('bad-schema'), null);
+    await store.destroy('bad-schema');
+    assert.equal(map.has('session:bad-schema'), false);
   });
 });
 

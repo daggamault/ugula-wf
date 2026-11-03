@@ -3,10 +3,6 @@ import type { Result } from './result.ts';
 
 export type Announce = (tenantId: string, event: LiveEvent) => Promise<void>;
 
-/**
- * Awaits a write and, once it has committed, tells the tenant's clients what it changed. A lost
- * event only leaves clients stale until their next reload, so it never fails the request.
- */
 export const announced = async <T>(
   announce: Announce,
   tenantId: string,

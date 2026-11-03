@@ -27,7 +27,7 @@ const SelectChevron = () => (
   />
 );
 
-export type NativeSelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'className'> & {
+type NativeSelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'className'> & {
   options: readonly SelectOption[];
 };
 
@@ -44,7 +44,7 @@ export const NativeSelect = ({ options, ...rest }: NativeSelectProps) => (
   </span>
 );
 
-export type SelectProps = NativeSelectProps & {
+type SelectProps = NativeSelectProps & {
   id: string;
   label: string;
   error?: string | undefined;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { evaluateExpr, freeIdentifiers, parseExpr } from './expr.ts';
+import { createEvaluator, evaluateExpr, freeIdentifiers, parseExpr } from './expr.ts';
 
 const ev = (src: string, vars = {}) =>
   evaluateExpr(src, vars, { now: new Date('2026-03-01T00:00:00Z') });
@@ -53,6 +53,9 @@ describe('expressions', () => {
     assert.throws(() => parseExpr('1 +'), /Unexpected end/);
     assert.throws(() => parseExpr('"open'), /Unterminated string/);
     assert.throws(() => parseExpr('a # b'), /Unexpected "#"/);
+    assert.equal(ev('"\\u00e9"'), 'é');
+    assert.throws(() => parseExpr('"\\u12"'), /Invalid unicode escape at 1/);
+    assert.throws(() => parseExpr('"\\uzzzz"'), /Invalid unicode escape/);
     assert.throws(() => ev('missing'), /Unknown name "missing"/);
     assert.throws(() => ev('1 / 0'), /Division by zero/);
     assert.throws(() => ev('"a" - 1'), /needs numbers/);
@@ -78,6 +81,24 @@ describe('expressions', () => {
     over('reduce(range(40), (acc, i) => acc + acc, s)');
     assert.equal(evaluateExpr('len(unique(map(range(20000), i => i % 7)))', {}), 7);
     assert.equal(evaluateExpr('len(padStart("", 1000))', {}), 1000);
+  });
+
+  it('shares one budget across every call of an evaluator', () => {
+    const run = createEvaluator({ maxOps: 50 });
+    for (let i = 0; i < 5; i++) run('1 + 2', {});
+    assert.throws(() => {
+      for (let i = 0; i < 50; i++) run('1 + 2', {});
+    }, /evaluation budget/);
+  });
+
+  it('keeps recently used parses when the cache is full', () => {
+    const hot = parseExpr('hot + 1');
+    const cold = parseExpr('cold + 1');
+    for (let i = 0; i < 3000; i++) {
+      parseExpr(`x + ${i}`);
+      assert.equal(parseExpr('hot + 1'), hot);
+    }
+    assert.notEqual(parseExpr('cold + 1'), cold);
   });
 
   it('lists free identifiers excluding lambda params and functions', () => {

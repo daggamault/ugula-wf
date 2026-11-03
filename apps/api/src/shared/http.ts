@@ -5,11 +5,6 @@ export const uuid = v.pipe(v.string(), v.uuid());
 
 export const idParam = v.object({ id: uuid });
 
-export const limitQuery = v.optional(
-  v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1), v.maxValue(500)),
-  '50'
-);
-
 const hasCode = (err: unknown, code: string) =>
   typeof err === 'object' && err !== null && 'code' in err && err.code === code;
 

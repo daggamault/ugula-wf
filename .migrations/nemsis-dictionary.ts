@@ -10,10 +10,6 @@ export const buildNemsisElementsTable = (db: Kysely<Database>) =>
     .addColumn('usage', 'text', (col) => col.notNull())
     .addCheckConstraint('nemsis_elements_element_check', sql`element ~ '^[a-z][A-Za-z]+\.[0-9]+$'`);
 
-/**
- * Code lists keyed by element number (eResponse.05) or, for attribute values every element
- * shares, by attribute name (@NV, @PN).
- */
 export const buildNemsisCodesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('nemsis_codes')

@@ -5,7 +5,7 @@ import type { Notify } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { QueueSummary, TasksClient } from './client.ts';
 
-export type NewWork = { queue: string; added: number };
+type NewWork = { queue: string; added: number };
 
 export const newWork = (
   before: readonly QueueSummary[] | undefined,

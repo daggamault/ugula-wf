@@ -3,6 +3,7 @@ import {
   type Database,
   type Db,
   findPublishedGraphs,
+  type GraphRef,
   pinRunGraphs,
   pinRunsGraphs,
   type RunStatus,
@@ -11,7 +12,14 @@ import {
   TERMINAL_RUN_STATUSES
 } from '@ugula/db';
 import type { Json, RunState, TraceEntry, Values } from '@ugula/graph';
-import { advance, enqueueRuns, type RunJob, type RunQueueClient } from '@ugula/run-queue';
+import {
+  advance,
+  dropTimeout,
+  enqueueRuns,
+  type RunJob,
+  type RunQueueClient,
+  type TimeoutClient
+} from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
 
 export type ClaimedRun = {
@@ -23,6 +31,7 @@ export type ClaimedRun = {
   parentWait: string | null;
   inputs: Values;
   state: RunState | null;
+  graphs: GraphRef[];
 };
 
 export type RunPatch = {
@@ -63,7 +72,7 @@ export type ChildRun = {
   error: Json;
 };
 
-export type LeasedRun = Pick<ClaimedRun, 'id' | 'lease'>;
+type LeasedRun = Pick<ClaimedRun, 'id' | 'lease'>;
 
 export type RunTx = {
   saveRun: (run: LeasedRun, patch: RunPatch) => Promise<void>;
@@ -83,7 +92,10 @@ export type RunTx = {
   children: (parentId: string, waitId: string) => Promise<ChildRun[]>;
   activeChildren: (runId: string) => Promise<string[]>;
   lockSignal: (tenantId: string, key: string) => Promise<number>;
+  claimReference: (runId: string) => Promise<string | null>;
+  recoverDrafts: (run: ClaimedRun, versionId: string, reason: string) => Promise<string[]>;
   enqueue: (jobs: RunJob[]) => Promise<void>;
+  dropTimeout: (runId: string, waitId: string) => Promise<void>;
 };
 
 export type RunStore = {
@@ -94,10 +106,15 @@ export type RunStore = {
     steps: TraceEntry[],
     leaseMs: number
   ) => Promise<void>;
+  extend: (run: LeasedRun, leaseMs: number) => Promise<void>;
+  children: (parentId: string, waitId: string) => Promise<ChildRun[]>;
   release: (run: LeasedRun, status: RunStatus) => Promise<void>;
   transaction: <T>(fn: (tx: RunTx) => Promise<T>) => Promise<T>;
   sweep: () => Promise<number>;
+  prune: () => Promise<number>;
 };
+
+type QueueClient = RunQueueClient & TimeoutClient;
 
 export const taskNotification = (
   t: { tenantId: string; kind: 'task' | 'fault'; title: string; subject: string | null },
@@ -115,9 +132,15 @@ const STEP_CHUNK = 500;
 
 const CHILD_CHUNK = 1_000;
 
+const STRANDED_AFTER = sql<Date>`now() - interval '10 minutes'`;
+
+const PRUNE_BEFORE = sql<Date>`now() - interval '30 days'`;
+
+const PRUNE_BATCH = 10_000;
+
 const LEASE_LOST = 'LEASE_LOST';
 
-export const leaseLost = (runId: string) =>
+const leaseLost = (runId: string) =>
   Object.assign(new Error(`Run ${runId} is no longer leased by this worker`), {
     code: LEASE_LOST
   });
@@ -156,7 +179,7 @@ export const buildClaim = (db: Kysely<Database>, { runId, command }: RunJob, lea
         : command.type === 'cancel'
           ? base.where('status', 'in', ACTIVE_RUN_STATUSES)
           : idle.where('status', '=', 'faulted');
-  return scoped.returning([
+  return scoped.returning((eb) => [
     'id',
     'lease_token',
     'tenant_id',
@@ -164,11 +187,22 @@ export const buildClaim = (db: Kysely<Database>, { runId, command }: RunJob, lea
     'parent_id',
     'parent_wait',
     'inputs',
-    'state'
+    'state',
+    eb
+      .selectFrom('workflow_run_graphs as g')
+      .select(
+        sql<
+          GraphRef[]
+        >`coalesce(json_agg(json_build_object('id', g.graph_version_id, 'key', g.key, 'version', g.version) order by g.key, g.version), '[]')`.as(
+          'graphs'
+        )
+      )
+      .whereRef('g.run_id', '=', 'workflow_runs.id')
+      .as('graphs')
   ]);
 };
 
-const createRunTx = (tx: Kysely<Database>, boss: RunQueueClient): RunTx => ({
+const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
   saveRun: async (run, patch) => {
     const saved = await tx
       .updateTable('workflow_runs')
@@ -350,10 +384,52 @@ const createRunTx = (tx: Kysely<Database>, boss: RunQueueClient): RunTx => ({
         .returning('received')
         .executeTakeFirstOrThrow()
     ).received,
-  enqueue: (jobs) => enqueueRuns(boss, sqlExecutor(tx), jobs)
+  claimReference: async (runId) =>
+    (
+      await tx
+        .selectFrom('claim_runs as cr')
+        .innerJoin('claims as c', 'c.id', 'cr.claim_id')
+        .leftJoin('patients as p', 'p.id', 'c.patient_id')
+        .select(
+          sql<string>`concat_ws(' · ', c.pcr_number, nullif(concat_ws(' ', p.first_name, p.last_name), ''))`.as(
+            'reference'
+          )
+        )
+        .where('cr.run_id', '=', runId)
+        .executeTakeFirst()
+    )?.reference || null,
+  recoverDrafts: async (run, versionId, reason) => {
+    const { rows } = await sql<{ id: string }>`
+      with orphans as (
+        select c.id, r.report from claim_runs cr
+        join claims c on c.id = cr.claim_id
+        left join import_reports r on r.id = c.import_report_id
+        where cr.run_id = ${run.id} and c.status = 'draft'
+          and not exists (
+            select 1 from claim_runs o
+            join workflow_runs w on w.id = o.run_id
+            where o.claim_id = c.id and o.run_id <> ${run.id}
+              and w.status in (${sql.join(ACTIVE_RUN_STATUSES)})
+          )
+      ), started as (
+        insert into workflow_runs (tenant_id, graph_version_id, status, inputs)
+        select ${run.tenantId}, ${versionId}, 'running',
+          jsonb_build_object('claimId', o.id, 'report', o.report, 'reason', ${reason}::text)
+        from orphans o
+        returning id, (inputs ->> 'claimId')::uuid as claim_id
+      ), linked as (
+        insert into claim_runs (run_id, claim_id) select id, claim_id from started
+      )
+      select id from started`.execute(tx);
+    const ids = rows.map((r) => r.id);
+    if (ids.length) await pinRunsGraphs(tx, { ids, tenantId: run.tenantId, versionId });
+    return ids;
+  },
+  enqueue: (jobs) => enqueueRuns(boss, sqlExecutor(tx), jobs),
+  dropTimeout: (runId, waitId) => dropTimeout(boss, sqlExecutor(tx), runId, waitId)
 });
 
-export const createRunStore = ({ db, boss }: { db: Db; boss: RunQueueClient }): RunStore => ({
+export const createRunStore = ({ db, boss }: { db: Db; boss: QueueClient }): RunStore => ({
   claim: async (job, leaseMs) => {
     const row = await buildClaim(db, job, leaseMs).executeTakeFirst();
     return (
@@ -365,7 +441,8 @@ export const createRunStore = ({ db, boss }: { db: Db; boss: RunQueueClient }): 
         parentId: row.parent_id,
         parentWait: row.parent_wait,
         inputs: row.inputs as Values,
-        state: (row.state ?? null) as RunState | null
+        state: (row.state ?? null) as RunState | null,
+        graphs: row.graphs ?? []
       }
     );
   },
@@ -385,6 +462,16 @@ export const createRunStore = ({ db, boss }: { db: Db; boss: RunQueueClient }): 
       await createRunTx(tx, boss).insertSteps(run.id, steps);
     });
   },
+  extend: async (run, leaseMs) => {
+    const extended = await db
+      .updateTable('workflow_runs')
+      .set({ lease_until: leaseUntil(leaseMs) })
+      .where('id', '=', run.id)
+      .where('lease_token', '=', run.lease)
+      .executeTakeFirst();
+    assertLeased(run.id, extended);
+  },
+  children: (parentId, waitId) => createRunTx(db, boss).children(parentId, waitId),
   release: async (run, status) => {
     await db
       .updateTable('workflow_runs')
@@ -405,10 +492,31 @@ export const createRunStore = ({ db, boss }: { db: Db; boss: RunQueueClient }): 
         .updateTable('workflow_runs')
         .set({ lease_until: null, lease_token: null, updated_at: sql`now()` })
         .where('status', '=', 'running')
-        .where('lease_until', '<', sql<Date>`now()`)
-        .returning('id')
+        .where((eb) =>
+          eb.or([
+            eb('lease_until', '<', sql<Date>`now()`),
+            eb.and([eb('lease_until', 'is', null), eb('updated_at', '<', STRANDED_AFTER)])
+          ])
+        )
+        .returning(['id', 'parent_id'])
         .execute();
-      await createRunTx(tx, boss).enqueue(rows.map((r) => advance(r.id)));
+      await createRunTx(tx, boss).enqueue(rows.map((r) => advance(r.id, r.parent_id)));
       return rows.length;
-    })
+    }),
+  prune: async () => {
+    const { numDeletedRows } = await db
+      .deleteFrom('workflow_run_steps as s')
+      .where(
+        sql<boolean>`(s.run_id, s.seq) in (${db
+          .selectFrom('workflow_run_steps as o')
+          .innerJoin('workflow_runs as r', 'r.id', 'o.run_id')
+          .select(['o.run_id', 'o.seq'])
+          .where('r.status', 'in', ACTIVE_RUN_STATUSES)
+          .where('r.created_at', '<', PRUNE_BEFORE)
+          .where('o.started_at', '<', PRUNE_BEFORE)
+          .limit(PRUNE_BATCH)})`
+      )
+      .executeTakeFirst();
+    return Number(numDeletedRows);
+  }
 });

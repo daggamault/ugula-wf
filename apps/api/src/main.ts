@@ -1,13 +1,17 @@
 import { serve } from '@hono/node-server';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import { createSessionStore, type RedisLike } from '@ugula/auth';
 import { createNodeCatalog } from '@ugula/catalog';
 import { createDb, type Db } from '@ugula/db';
 import type { NodeDef } from '@ugula/graph';
+import { createEmbedder, type Embedder } from '@ugula/inference';
 import { publishLiveEvent } from '@ugula/live';
 import type { RunQueueClient } from '@ugula/run-queue';
 import { type BlobStore, createBlobStore, createS3Storage } from '@ugula/storage';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
+import { csrf } from 'hono/csrf';
 import { Redis } from 'ioredis';
 import { PgBoss } from 'pg-boss';
 import { type Config, parseConfig } from './config.ts';
@@ -41,15 +45,18 @@ import { createTaskService } from './features/tasks/service.ts';
 import { type AuthEnv, requireAuth } from './shared/auth.ts';
 import { createEvaluate } from './shared/evaluate.ts';
 import type { Announce } from './shared/live.ts';
+import { createSignInThrottle, type ThrottleStore } from './shared/throttle.ts';
 
-export type AppDeps = {
+type AppDeps = {
   config: Config;
   db: Db;
-  redis: RedisLike;
+  redis: RedisLike & ThrottleStore;
   boss: RunQueueClient;
   blobs: BlobStore;
+  embedder: Embedder;
   nodes: NodeDef[];
   announce: Announce;
+  clientIp: (c: Context) => string;
 };
 
 const sftpStorage = (config: Config) => ({
@@ -59,17 +66,34 @@ const sftpStorage = (config: Config) => ({
   homeRoot: config.SFTP_HOME_ROOT
 });
 
-export const createApp = ({ config, db, redis, boss, blobs, nodes, announce }: AppDeps) => {
+const isMultipart = (c: Context) =>
+  c.req.header('content-type')?.toLowerCase().startsWith('multipart/form-data') ?? false;
+
+export const createApp = ({
+  config,
+  db,
+  redis,
+  boss,
+  blobs,
+  embedder,
+  nodes,
+  announce,
+  clientIp
+}: AppDeps) => {
   const app = new Hono();
   const origins = config.HTTP_CORS_ORIGINS.split(',').map((o) => o.trim());
   const sessions = createSessionStore(redis);
-  const auth = createAuthService({ db, sessions });
+  const auth = createAuthService({ db, sessions, throttle: createSignInThrottle(redis) });
   const authenticate = async (token: string | undefined) => {
     const res = await auth.session(token);
     return res.ok ? res.value : null;
   };
   const protect = (routes: Hono<AuthEnv>) =>
     new Hono<AuthEnv>().use(requireAuth(authenticate)).route('/', routes);
+  const limitBody = bodyLimit({
+    maxSize: config.HTTP_MAX_BODY_BYTES,
+    onError: (c) => c.json({ error: 'Request body too large' }, 413)
+  });
 
   app.use(
     '*',
@@ -78,6 +102,8 @@ export const createApp = ({ config, db, redis, boss, blobs, nodes, announce }: A
       credentials: true
     })
   );
+  app.use('*', csrf({ origin: origins }));
+  app.use('*', async (c, next) => (isMultipart(c) ? next() : limitBody(c, next)));
 
   app.route('/health', createHealthRoutes());
   app.route(
@@ -85,7 +111,8 @@ export const createApp = ({ config, db, redis, boss, blobs, nodes, announce }: A
     createAuthRoutes({
       service: auth,
       sseUrl: config.SSE_URL,
-      secureCookie: config.NODE_ENV === 'production'
+      secureCookie: config.NODE_ENV === 'production',
+      clientIp
     })
   );
   app.route('/api/graphs', protect(createGraphRoutes(createGraphService({ db, nodes }))));
@@ -100,7 +127,10 @@ export const createApp = ({ config, db, redis, boss, blobs, nodes, announce }: A
   );
   app.route('/api/tasks', protect(createTaskRoutes(createTaskService({ db, boss, announce }))));
   app.route('/api/fees', protect(createFeeRoutes(createFeeService({ db }))));
-  app.route('/api/payers', protect(createPayerRoutes(createPayerService({ db, announce }))));
+  app.route(
+    '/api/payers',
+    protect(createPayerRoutes(createPayerService({ db, announce, embedder })))
+  );
   app.route('/api/patients', protect(createPatientRoutes(createPatientService({ db }))));
   app.route(
     '/api/notifications',
@@ -183,8 +213,10 @@ if (import.meta.main) {
       redis,
       boss,
       blobs,
+      embedder: createEmbedder({ url: config.EMBEDDINGS_URL, fetch }),
       nodes: createNodeCatalog({ fetch }),
-      announce: (tenantId, event) => publishLiveEvent(redis, tenantId, event)
+      announce: (tenantId, event) => publishLiveEvent(redis, tenantId, event),
+      clientIp: (c) => getConnInfo(c).remote.address ?? 'unknown'
     }).fetch,
     port: config.API_PORT
   });

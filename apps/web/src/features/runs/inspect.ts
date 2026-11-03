@@ -3,7 +3,7 @@ import type { Catalog } from '../../shared/graph/catalog.ts';
 import type { NodeStatus } from '../../shared/graph/flow.ts';
 import type { RunDetail, RunStep, RunSummary } from './client.ts';
 
-export type Cursor = {
+type Cursor = {
   path: string;
   node: string;
   status: Extract<NodeStatus, 'waiting' | 'error'>;
@@ -63,8 +63,6 @@ const runIdsIn = (outputs: Values) => [
     : [])
 ];
 
-/** Runs a workflow-starting node launched: recorded in its step outputs once it resumes, or
- * linked to the wait it is suspended on while children are still running. */
 export const runsStartedBy = (
   detail: RunDetail,
   steps: readonly RunStep[],

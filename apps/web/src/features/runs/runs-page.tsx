@@ -1,27 +1,28 @@
 import { formatDateTime } from '../../shared/format.ts';
-import { type Live, useLive } from '../../shared/live.ts';
-import { Alert } from '../../shared/ui/alert.tsx';
-import { EmptyState } from '../../shared/ui/empty-state.tsx';
+import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { FilterSelect } from '../../shared/ui/filter-select.tsx';
+import { Highlight } from '../../shared/ui/highlight.tsx';
 import { OpenLink, RowActions } from '../../shared/ui/icon-button.tsx';
-import { Page, PageLoading } from '../../shared/ui/page.tsx';
-import { Pagination } from '../../shared/ui/pagination.tsx';
+import { Page } from '../../shared/ui/page.tsx';
 import {
   RUN_STATUSES,
   type RunStatus,
   RunStatusBadge,
   runStatusStyles
 } from '../../shared/ui/run-status-badge.tsx';
-import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
-import { useFilterHref, useTableState } from '../../shared/url-state.ts';
+import { Search } from '../../shared/ui/search.tsx';
+import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { type SearchView, useFilterHref, useSearchState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { RunSummary, RunsClient } from './client.ts';
 
-export type RunsPageProps = {
+type RunsPageProps = {
   client: RunsClient;
   live: Live;
   status: RunStatus | null;
 };
+
+const PATH = '/runs';
 
 export const statusOptions = (filterHref: (name: string, value: string | null) => string) => [
   { value: '', label: 'All', href: filterHref('status', null) },
@@ -32,21 +33,21 @@ export const statusOptions = (filterHref: (name: string, value: string | null) =
   }))
 ];
 
-export const RUN_TABLE = {
+const RUN_TABLE = {
   sorts: { started: 'desc', workflow: 'asc', status: 'asc', finished: 'desc' },
   sort: 'started'
 } as const;
 
 export const RunsTable = ({
   runs,
-  sorting
+  search
 }: {
   runs: readonly RunSummary[];
-  sorting?: TableSorting;
+  search?: SearchView;
 }) => (
   <Table
     label="Workflow runs"
-    {...(sorting ? { sorting } : {})}
+    {...(search ? { sorting: search } : {})}
     head={[
       { label: 'Workflow', sort: 'workflow' },
       { label: 'Status', sort: 'status' },
@@ -60,7 +61,8 @@ export const RunsTable = ({
       <TableRow key={r.id}>
         <TableCell>
           <span className="font-medium">
-            {r.name} <span className="text-surface-fg-muted font-normal">v{r.version}</span>
+            <Highlight text={r.name} query={search?.q ?? ''} />{' '}
+            <span className="text-surface-fg-muted font-normal">v{r.version}</span>
           </span>
         </TableCell>
         <TableCell>
@@ -77,7 +79,7 @@ export const RunsTable = ({
             className="text-danger block max-w-80 truncate"
             title={r.error_message ?? undefined}
           >
-            {r.error_message ?? ''}
+            <Highlight text={r.error_message ?? ''} query={search?.q ?? ''} />
           </span>
         </TableCell>
         <TableCell kind="actions">
@@ -94,14 +96,20 @@ export const RunsTable = ({
 );
 
 export const RunsPage = ({ client, live, status }: RunsPageProps) => {
-  const table = useTableState('/runs', RUN_TABLE);
-  const filterHref = useFilterHref('/runs');
+  const search = useSearchState(PATH, RUN_TABLE);
+  const filterHref = useFilterHref(PATH);
   const runs = useResource(
-    `runs:${status ?? 'all'}:${table.apiQuery}`,
-    () => client.list(status, table.apiQuery),
+    `runs:${status ?? 'all'}:${search.apiQuery}`,
+    (signal) => client.list(status, search.apiQuery, signal),
     30_000
   );
-  useLive(live, (e) => e.kind === 'run', runs.reload);
+  const ids = runs.data?.items.map((r) => r.id) ?? [];
+  useLive(
+    live,
+    (e) => e.kind === 'run' && isOnPage(e.id, search.page, ids),
+    runs.reload,
+    LIST_RELOAD_MS
+  );
   return (
     <Page
       title="Runs"
@@ -113,22 +121,16 @@ export const RunsPage = ({ client, live, status }: RunsPageProps) => {
         value={status ?? ''}
         options={statusOptions(filterHref)}
       />
-      {runs.error ? (
-        <Alert>{runs.error.message}</Alert>
-      ) : runs.data?.items.length ? (
-        <>
-          <RunsTable runs={runs.data.items} sorting={table} />
-          <Pagination label="Runs" total={runs.data.total} state={table} />
-        </>
-      ) : runs.loading ? (
-        <PageLoading />
-      ) : status ? (
-        <EmptyState reason="noMatches" title="No Matching Runs">
-          Nothing matches these filters.
-        </EmptyState>
-      ) : (
-        <EmptyState title="No Runs Yet">Runs show up here as workflows start.</EmptyState>
-      )}
+      <Search
+        label="Runs"
+        path={PATH}
+        search={search}
+        results={runs}
+        isFiltered={status !== null}
+        empty={{ title: 'No Runs Yet', children: 'Runs show up here as workflows start.' }}
+      >
+        {(items) => <RunsTable runs={items} search={search} />}
+      </Search>
     </Page>
   );
 };

@@ -1,3 +1,4 @@
+import { MAX_CONTROL_NUMBER } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
@@ -10,12 +11,13 @@ export type SubmissionEvent = {
   coverageId: string;
 };
 
-const openClaims = (db: Db, tenantId: string) =>
+const readyClaim = (db: Db, tenantId: string, id: string) =>
   db
     .selectFrom('claims as c')
     .innerJoin('patients as p', 'p.id', 'c.patient_id')
     .select((eb) => [
       'c.id',
+      'c.number',
       'c.pcr_number',
       'c.emergency',
       'c.loaded_miles',
@@ -51,7 +53,10 @@ const openClaims = (db: Db, tenantId: string) =>
             'dp.payer_id',
             'dp.claim_filing',
             'cc.member_id',
-            'cc.group_id'
+            'cc.group_id',
+            sql<string>`cc.relationship`.as('relationship'),
+            'cc.insured_first_name',
+            'cc.insured_last_name'
           ])
           .whereRef('cc.claim_id', '=', 'c.id')
           .orderBy('cc.position')
@@ -70,38 +75,24 @@ const openClaims = (db: Db, tenantId: string) =>
         .orderBy('d.position')})`.as('diagnoses')
     ])
     .where('c.tenant_id', '=', tenantId)
-    .where('c.status', '=', 'ready')
-    .orderBy('c.created_at')
-    .orderBy('c.id');
+    .where('c.id', '=', id)
+    .where('c.status', '=', 'ready');
 
-export const listReadyClaims = (db: Db, tenantId: string, claimId?: string) => {
-  const q = openClaims(db, tenantId);
-  return (claimId ? q.where('c.id', '=', claimId) : q).execute();
-};
+export const findReadyClaim = (db: Db, tenantId: string, id: string) =>
+  readyClaim(db, tenantId, id).executeTakeFirst();
 
 export const lockReadyClaim = (db: Db, tenantId: string, id: string) =>
-  openClaims(db, tenantId).where('c.id', '=', id).forUpdate('c').execute();
+  readyClaim(db, tenantId, id).forUpdate('c').executeTakeFirst();
 
-export type ReadyClaimRow = Awaited<ReturnType<typeof listReadyClaims>>[number];
+export type ReadyClaimRow = NonNullable<Awaited<ReturnType<typeof findReadyClaim>>>;
 
-export const markSubmitted = (db: Db, ids: string[]) =>
+export const markSubmitted = (db: Db, id: string) =>
   db
     .updateTable('claims')
     .set({ status: 'submitted', updated_at: sql`now()` })
-    .where('id', 'in', ids)
+    .where('id', '=', id)
     .where('status', '=', 'ready')
     .execute();
-
-export const listLedgerEvents = (db: Db, claimIds: string[]) =>
-  claimIds.length
-    ? db
-        .selectFrom('claim_events')
-        .select(['claim_id', 'kind', 'coverage_id', 'paid_cents', 'adjusted_cents', 'created_at'])
-        .where('claim_id', 'in', claimIds)
-        .orderBy('created_at')
-        .orderBy('id')
-        .execute()
-    : Promise.resolve([]);
 
 const profileColumns = [
   'organization_name',
@@ -125,31 +116,25 @@ export const findProfile = (db: Db, tenantId: string) =>
     .where('tenant_id', '=', tenantId)
     .executeTakeFirst();
 
-export const lockProfile = (db: Db, tenantId: string) =>
-  db
-    .selectFrom('billing_profiles')
-    .select(profileColumns)
-    .where('tenant_id', '=', tenantId)
-    .forUpdate()
-    .executeTakeFirst();
-
 export type ProfileRow = NonNullable<Awaited<ReturnType<typeof findProfile>>>;
 
-export const nextControlNumber = async (db: Db, tenantId: string) =>
+export const allocateControlNumber = async (db: Db, tenantId: string) =>
   (
     await db
-      .selectFrom('claim_batches')
-      .select(sql<number>`coalesce(max(control_number), 0)::int + 1`.as('next'))
+      .updateTable('billing_profiles')
+      .set({ next_control_number: sql`next_control_number + 1` })
       .where('tenant_id', '=', tenantId)
-      .executeTakeFirstOrThrow()
-  ).next;
+      .where('next_control_number', '<=', MAX_CONTROL_NUMBER)
+      .returning(sql<number>`next_control_number - 1`.as('control_number'))
+      .executeTakeFirst()
+  )?.control_number ?? null;
 
 export const insertBatch = (
   db: Db,
   batch: {
+    id: string;
     tenantId: string;
     controlNumber: number;
-    claimCount: number;
     totalCents: number;
     production: boolean;
     document: unknown;
@@ -159,9 +144,10 @@ export const insertBatch = (
   db
     .insertInto('claim_batches')
     .values({
+      id: batch.id,
       tenant_id: batch.tenantId,
       control_number: batch.controlNumber,
-      claim_count: batch.claimCount,
+      claim_count: 1,
       total_cents: batch.totalCents,
       production: batch.production,
       document: JSON.stringify(batch.document),
@@ -170,23 +156,21 @@ export const insertBatch = (
     .returning(['id', 'control_number', 'claim_count', 'total_cents', 'production', 'created_at'])
     .executeTakeFirstOrThrow();
 
-export const insertSubmissionEvents = (
+export const insertSubmissionEvent = (
   db: Db,
   origin: { batchId: string | null; note: string; createdBy: string },
-  events: SubmissionEvent[]
+  e: SubmissionEvent
 ) =>
   db
     .insertInto('claim_events')
-    .values(
-      events.map((e) => ({
-        claim_id: e.claimId,
-        kind: e.kind,
-        coverage_id: e.coverageId,
-        note: origin.note,
-        batch_id: origin.batchId,
-        created_by: origin.createdBy
-      }))
-    )
+    .values({
+      claim_id: e.claimId,
+      kind: e.kind,
+      coverage_id: e.coverageId,
+      note: origin.note,
+      batch_id: origin.batchId,
+      created_by: origin.createdBy
+    })
     .execute();
 
 export const findBatchDocument = async (db: Db, tenantId: string, id: string) =>

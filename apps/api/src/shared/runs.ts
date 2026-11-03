@@ -2,13 +2,13 @@ import { type Database, pinRunGraphs, sqlExecutor } from '@ugula/db';
 import { advance, enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
 
-export type NewRun = {
+type NewRun = {
   tenantId: string;
   versionId: string;
   inputs: unknown;
 };
 
-export const buildInsertRun = (db: Kysely<Database>, run: NewRun) =>
+const buildInsertRun = (db: Kysely<Database>, run: NewRun) =>
   db
     .insertInto('workflow_runs')
     .values({
@@ -26,7 +26,7 @@ export const startRun = async (tx: Kysely<Database>, boss: RunQueueClient, run: 
   return id;
 };
 
-export const findRunWait = (db: Kysely<Database>, tenantId: string, waitKey: string) =>
+const findRunWait = (db: Kysely<Database>, tenantId: string, waitKey: string) =>
   db
     .selectFrom('workflow_runs')
     .select(['id', sql<string>`state -> 'suspension' ->> 'id'`.as('wait_id')])

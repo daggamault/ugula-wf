@@ -1,7 +1,7 @@
 import { urlString } from '@ugula/config';
 import * as v from 'valibot';
 
-export const configSchema = v.object({
+const configSchema = v.object({
   apiUrl: urlString
 });
 

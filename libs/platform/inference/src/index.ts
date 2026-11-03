@@ -5,7 +5,7 @@ import {
   type ScriptRunner
 } from './limiter.ts';
 
-export type { Limiter, ScriptRunner } from './limiter.ts';
+export { busyRetryAfter, type Limiter, type ScriptRunner } from './limiter.ts';
 
 export type Fetch = typeof fetch;
 
@@ -23,7 +23,7 @@ export type CompletionRequest = {
 };
 
 export type Completer = {
-  complete: (request: CompletionRequest) => Promise<unknown>;
+  complete: (request: CompletionRequest, signal?: AbortSignal) => Promise<unknown>;
 };
 
 export const EMBED_BATCH_SIZE = 256;
@@ -34,9 +34,14 @@ const COMPLETION_LEASES_KEY = 'ugula:completions:leases';
 
 const LEASE_MS = TIMEOUT_MS + 30_000;
 
-export const createCompletionLimiter = (redis: ScriptRunner, limit: number): Limiter =>
+export const createCompletionLimiter = (
+  redis: ScriptRunner,
+  limit: number,
+  onReleaseError?: (err: unknown) => void
+): Limiter =>
   createSharedLimiter(
-    createRedisLeases(redis, { key: COMPLETION_LEASES_KEY, limit, ttlMs: LEASE_MS })
+    createRedisLeases(redis, { key: COMPLETION_LEASES_KEY, limit, ttlMs: LEASE_MS }),
+    onReleaseError ? { onReleaseError } : {}
   );
 
 const isRecord = (x: unknown): x is Record<string, unknown> =>
@@ -45,12 +50,13 @@ const isRecord = (x: unknown): x is Record<string, unknown> =>
 const isVector = (x: unknown): x is number[] =>
   Array.isArray(x) && x.length > 0 && x.every((n) => typeof n === 'number');
 
-const postJson = async (fetch: Fetch, url: string, body: unknown) => {
+const postJson = async (fetch: Fetch, url: string, body: unknown, signal?: AbortSignal) => {
+  const timeout = AbortSignal.timeout(TIMEOUT_MS);
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(TIMEOUT_MS)
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout
   });
   if (!res.ok) {
     throw new Error(`${url} answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -89,21 +95,27 @@ export const createCompleter = ({
   limit: Limiter;
 }): Completer => {
   return {
-    complete: async ({ system, user, schema, maxTokens }) => {
+    complete: async ({ system, user, schema, maxTokens }, signal) => {
+      signal?.throwIfAborted();
       const out = await limit(() =>
-        postJson(fetch, `${url}/v1/chat/completions`, {
-          model,
-          temperature: 0,
-          max_tokens: maxTokens,
-          response_format: {
-            type: 'json_schema',
-            json_schema: { name: 'result', strict: true, schema }
+        postJson(
+          fetch,
+          `${url}/v1/chat/completions`,
+          {
+            model,
+            temperature: 0,
+            max_tokens: maxTokens,
+            response_format: {
+              type: 'json_schema',
+              json_schema: { name: 'result', strict: true, schema }
+            },
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: user }
+            ]
           },
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: user }
-          ]
-        })
+          signal
+        )
       );
       const [choice] = isRecord(out) && Array.isArray(out.choices) ? out.choices : [];
       const content = isRecord(choice) && isRecord(choice.message) ? choice.message.content : null;

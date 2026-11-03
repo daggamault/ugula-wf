@@ -1,24 +1,182 @@
-import { HCPCS_LABELS } from '@ugula/billing';
-import { formatCents } from '../../shared/format.ts';
+import { ADJUSTMENT_GROUPS, CLAIM_FILING_CODES, HCPCS_LABELS } from '@ugula/billing';
+import { formatCents, formatDate, formatDateTime } from '../../shared/format.ts';
+import { queueInfo, titleCase } from '../../shared/task-queues.ts';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
-import type { AgingRow, HcpcsRow, MonthlyRow, PatientPayments, PayerRow } from './client.ts';
+import type {
+  ActivityRow,
+  AgingRow,
+  DenialRow,
+  HcpcsRow,
+  ImportRow,
+  LevelRow,
+  MonthlyRow,
+  PayerRow,
+  PaymentRow,
+  ProductivityRow,
+  Totals,
+  UnbilledRow,
+  WorkQueueRow,
+  WriteOffRow
+} from './client.ts';
 import { type CsvCell, dollars } from './csv.ts';
 
 export type ReportColumn<R> = {
   label: string;
   isNumeric?: boolean;
-  text: (row: R) => string;
-  csv: (row: R) => CsvCell;
-  total?: (rows: readonly R[]) => string;
+  text: (row: R, totals: Totals) => string;
+  csv: (row: R, totals: Totals) => CsvCell;
+  total?: (totals: Totals) => string;
 };
+
+type NumericKey<R> = { [K in keyof R]-?: R[K] extends number ? K : never }[keyof R] & string;
+
+type Read<R> = (key: NumericKey<R>) => number;
+
+type Format = { text: (n: number) => string; csv: (n: number) => CsvCell };
 
 const PATIENT = 'Patient';
 
-const sum = <T>(rows: readonly T[], pick: (row: T) => number) =>
-  rows.reduce((total, row) => total + pick(row), 0);
+const round1 = (n: number) => Math.round(n * 10) / 10;
 
-export const percentOf = (part: number, whole: number) =>
-  whole > 0 ? `${Math.round((part / whole) * 100)}%` : emptyValue;
+const AS_MONEY: Format = { text: formatCents, csv: dollars };
+
+const AS_COUNT: Format = { text: (n) => n.toLocaleString(), csv: (n) => n };
+
+const AS_DECIMAL: Format = {
+  text: (n) => n.toLocaleString(undefined, { maximumFractionDigits: 1 }),
+  csv: round1
+};
+
+const AS_PERCENT: Format = { text: (n) => `${Math.round(n)}%`, csv: round1 };
+
+const AS_MONEY_AVERAGE: Format = {
+  text: (n) => formatCents(Math.round(n)),
+  csv: (n) => dollars(Math.round(n))
+};
+
+const shown = (n: number | null, f: (n: number) => string) =>
+  n === null || !Number.isFinite(n) ? emptyValue : f(n);
+
+const derived = <R>(
+  label: string,
+  value: (read: Read<R>, totals: Totals) => number | null,
+  format: Format,
+  hasTotal = true
+): ReportColumn<R> => {
+  const ofRow =
+    (r: R): Read<R> =>
+    (k) =>
+      Number(r[k]);
+  const ofTotals =
+    (t: Totals): Read<R> =>
+    (k) =>
+      t[k] ?? 0;
+  return {
+    label,
+    isNumeric: true,
+    text: (r, t) => shown(value(ofRow(r), t), format.text),
+    csv: (r, t) => {
+      const n = value(ofRow(r), t);
+      return n === null || !Number.isFinite(n) ? null : format.csv(n);
+    },
+    ...(hasTotal ? { total: (t: Totals) => shown(value(ofTotals(t), t), format.text) } : {})
+  };
+};
+
+const money = <R>(label: string, key: NumericKey<R>, hasTotal = true) =>
+  derived<R>(label, (read) => read(key), AS_MONEY, hasTotal);
+
+const count = <R>(label: string, key: NumericKey<R>, hasTotal = true) =>
+  derived<R>(label, (read) => read(key), AS_COUNT, hasTotal);
+
+const ratio = (part: number, whole: number) => (whole > 0 ? part / whole : null);
+
+const percent = <R>(
+  label: string,
+  part: (read: Read<R>) => number,
+  whole: (read: Read<R>) => number
+) =>
+  derived<R>(
+    label,
+    (read) => {
+      const r = ratio(part(read), whole(read));
+      return r === null ? null : r * 100;
+    },
+    AS_PERCENT
+  );
+
+const share = <R>(label: string, key: NumericKey<R>) =>
+  derived<R>(
+    label,
+    (read, totals) => {
+      const r = ratio(read(key), totals[key] ?? 0);
+      return r === null ? null : r * 100;
+    },
+    AS_PERCENT
+  );
+
+const average = <R>(
+  label: string,
+  sum: NumericKey<R>,
+  of: NumericKey<R>,
+  format: Format = AS_DECIMAL,
+  hasTotal = true
+) => derived<R>(label, (read) => ratio(read(sum), read(of)), format, hasTotal);
+
+const text = <R>(label: string, show: (row: R) => string | null): ReportColumn<R> => ({
+  label,
+  text: (r) => show(r) ?? emptyValue,
+  csv: (r) => show(r)
+});
+
+export const filingLabel = (code: string | null) => {
+  if (code === null) return PATIENT;
+  if (code === '') return 'Not in Payer Directory';
+  return Object.hasOwn(CLAIM_FILING_CODES, code)
+    ? CLAIM_FILING_CODES[code as keyof typeof CLAIM_FILING_CODES]
+    : code;
+};
+
+export const adjustmentGroupLabel = (code: string) => {
+  const group = code.split('-')[0] ?? '';
+  return Object.hasOwn(ADJUSTMENT_GROUPS, group)
+    ? ADJUSTMENT_GROUPS[group as keyof typeof ADJUSTMENT_GROUPS]
+    : null;
+};
+
+type PayerName = { name: string | null; in_directory: boolean };
+
+const payerColumn = <R extends PayerName>(group: string | null): ReportColumn<R> =>
+  group === 'class'
+    ? text<R>('Financial Class', (r) => filingLabel(r.name))
+    : {
+        label: 'Payer',
+        text: (r) =>
+          r.name === null
+            ? PATIENT
+            : r.in_directory
+              ? r.name
+              : `${r.name} (not in payer directory)`,
+        csv: (r) => r.name ?? PATIENT
+      };
+
+type ClaimRow = {
+  claim_number: number;
+  pcr_number: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  service_date: string | null;
+};
+
+const patientOf = (r: ClaimRow) =>
+  r.last_name ? [r.last_name, r.first_name].filter(Boolean).join(', ') : null;
+
+const claimColumns = <R extends ClaimRow>({ hasPcr = true } = {}): ReportColumn<R>[] => [
+  text<R>('Claim', (r) => String(r.claim_number)),
+  ...(hasPcr ? [text<R>('PCR', (r) => r.pcr_number)] : []),
+  text<R>('Patient', patientOf),
+  text<R>('Date of Service', (r) => (r.service_date ? formatDate(r.service_date) : null))
+];
 
 const monthLabel = new Intl.DateTimeFormat(undefined, {
   month: 'long',
@@ -28,146 +186,193 @@ const monthLabel = new Intl.DateTimeFormat(undefined, {
 
 export const formatMonth = (month: string) => monthLabel.format(new Date(`${month}-01T00:00:00Z`));
 
-const count = <R>(
-  label: string,
-  pick: (row: R) => number | null,
-  totals = true
-): ReportColumn<R> => ({
+const monthColumn = <R extends { month: string }>(label: string): ReportColumn<R> => ({
   label,
-  isNumeric: true,
-  text: (r) => pick(r)?.toLocaleString() ?? emptyValue,
-  csv: (r) => pick(r),
-  ...(totals
-    ? { total: (rows: readonly R[]) => sum(rows, (r) => pick(r) ?? 0).toLocaleString() }
-    : {})
-});
-
-const money = <R>(
-  label: string,
-  pick: (row: R) => number | null,
-  totals = true
-): ReportColumn<R> => ({
-  label,
-  isNumeric: true,
-  text: (r) => {
-    const cents = pick(r);
-    return cents === null ? emptyValue : formatCents(cents);
-  },
-  csv: (r) => {
-    const cents = pick(r);
-    return cents === null ? null : dollars(cents);
-  },
-  ...(totals ? { total: (rows: readonly R[]) => formatCents(sum(rows, (r) => pick(r) ?? 0)) } : {})
+  text: (r) => formatMonth(r.month),
+  csv: (r) => r.month
 });
 
 const AGING_BUCKETS = [
-  ['current_cents', '0–30'],
-  ['days_31_60_cents', '31–60'],
-  ['days_61_90_cents', '61–90'],
-  ['days_91_120_cents', '91–120'],
-  ['over_120_cents', '120+']
-] as const satisfies readonly (readonly [Exclude<keyof AgingRow, 'payer' | 'claims'>, string])[];
+  ['days_0_30_cents', '0–30 Days'],
+  ['days_31_60_cents', '31–60 Days'],
+  ['days_61_90_cents', '61–90 Days'],
+  ['days_91_120_cents', '91–120 Days'],
+  ['days_over_120_cents', 'Over 120 Days']
+] as const;
 
-export const AGING_COLUMNS: readonly ReportColumn<AgingRow>[] = [
-  { label: 'Owed By', text: (r) => r.payer ?? PATIENT, csv: (r) => r.payer ?? PATIENT },
-  count('Claims', (r) => r.claims),
-  ...AGING_BUCKETS.map(([key, label]) => money<AgingRow>(label, (r) => r[key])),
-  money('Balance', (r) => r.balance_cents)
+export const agingColumns = (group: string | null): ReportColumn<AgingRow>[] => [
+  { ...payerColumn<AgingRow>(group), ...(group === 'class' ? {} : { label: 'Owed By' }) },
+  count('Claims', 'claims'),
+  ...AGING_BUCKETS.map(([key, label]) => money<AgingRow>(label, key)),
+  money('Balance', 'balance_cents')
 ];
+
+export const UNBILLED_COLUMNS: readonly ReportColumn<UnbilledRow>[] = [
+  ...claimColumns<UnbilledRow>(),
+  text('Status', (r) => titleCase(r.status)),
+  text('Waiting On', (r) => (r.queue ? queueInfo(r.queue).label : null)),
+  count('Days Old', 'age_days', false),
+  money('Charges', 'charges_cents')
+];
+
+const paidOf = (read: Read<MonthlyRow>) => read('payer_paid_cents') + read('patient_paid_cents');
 
 export const MONTHLY_COLUMNS: readonly ReportColumn<MonthlyRow>[] = [
-  { label: 'Month of Service', text: (r) => formatMonth(r.month), csv: (r) => r.month },
-  count('Claims', (r) => r.claims),
-  money('Charges', (r) => r.charges_cents),
-  money('Paid', (r) => r.paid_cents),
-  money('Adjusted', (r) => r.adjusted_cents),
-  {
-    label: 'Collected %',
-    isNumeric: true,
-    text: (r) => percentOf(r.paid_cents, r.charges_cents),
-    csv: (r) => percentOf(r.paid_cents, r.charges_cents),
-    total: (rows) =>
-      percentOf(
-        sum(rows, (r) => r.paid_cents),
-        sum(rows, (r) => r.charges_cents)
-      )
-  },
-  money('Open Balance', (r) => r.open_balance_cents),
-  money('Written Off / Collections', (r) => r.unrecovered_cents)
+  monthColumn('Month of Service'),
+  count('Claims', 'claims'),
+  money('Charges', 'charges_cents'),
+  money('Payer Paid', 'payer_paid_cents'),
+  money('Patient Paid', 'patient_paid_cents'),
+  money('Contractual Adjustments', 'adjusted_cents'),
+  money('Written Off', 'written_off_cents'),
+  money('Sent to Collections', 'collections_cents'),
+  money('Open Balance', 'open_balance_cents'),
+  percent('Net Collection Rate', paidOf, (read) => read('charges_cents') - read('adjusted_cents')),
+  average('Days to Bill', 'bill_days', 'billed')
 ];
 
-export type PayerLine = {
-  payer: string;
-  inDirectory: boolean;
-  claims: number | null;
-  submitted: number | null;
-  answered: number | null;
-  paidCents: number;
-  adjustedCents: number;
-  days: number | null;
+export const ACTIVITY_COLUMNS: readonly ReportColumn<ActivityRow>[] = [
+  monthColumn('Month'),
+  count('Claims Billed', 'claims_billed'),
+  money('Charges Billed', 'charges_billed_cents'),
+  money('Payer Payments', 'payer_paid_cents'),
+  money('Patient Payments', 'patient_paid_cents'),
+  money('Contractual Adjustments', 'adjusted_cents'),
+  money('Written Off', 'written_off_cents'),
+  money('Sent to Collections', 'collections_cents')
+];
+
+export const PAYMENT_COLUMNS: readonly ReportColumn<PaymentRow>[] = [
+  text('Posted', (r) => formatDateTime(r.posted_at)),
+  text('Paid On', (r) => (r.paid_on ? formatDate(r.paid_on) : null)),
+  ...claimColumns<PaymentRow>({ hasPcr: false }),
+  text('Paid By', (r) => r.payer ?? PATIENT),
+  text('Financial Class', (r) => (r.payer === null ? null : filingLabel(r.filing ?? ''))),
+  text('Type', (r) => (r.kind === 'refunded' ? 'Refund' : 'Payment')),
+  text('Check or EFT', (r) => r.check_number),
+  text('Payer Claim Number', (r) => r.payer_claim_number),
+  money('Paid', 'paid_cents'),
+  money('Adjusted', 'adjusted_cents'),
+  text('Reason Codes', (r) => r.reason_codes || null),
+  text('Posted By', (r) => r.posted_by),
+  text('Note', (r) => r.note || null)
+];
+
+export const denialColumns = (group: string | null): ReportColumn<DenialRow>[] => [
+  ...(group === 'reason' ? [] : [text<DenialRow>('Payer', (r) => r.payer ?? PATIENT)]),
+  text('Reason Code', (r) => r.code),
+  text('Group', (r) => adjustmentGroupLabel(r.code)),
+  count('Adjustments', 'adjustments'),
+  count('Denials', 'denials'),
+  count('Claims', 'claims', false),
+  money('Amount', 'amount_cents')
+];
+
+const OUTCOMES: Readonly<Record<string, string>> = {
+  written_off: 'Written Off',
+  collections: 'Sent to Collections'
 };
 
-export const payerLines = (rows: readonly PayerRow[], patient: PatientPayments): PayerLine[] => [
-  ...rows.map((r) => ({
-    payer: r.payer,
-    inDirectory: r.in_directory,
-    claims: r.claims,
-    submitted: r.submitted,
-    answered: r.answered,
-    paidCents: r.paid_cents,
-    adjustedCents: r.adjusted_cents,
-    days: r.average_days_to_response
-  })),
-  {
-    payer: PATIENT,
-    inDirectory: true,
-    claims: null,
-    submitted: null,
-    answered: null,
-    paidCents: patient.paid_cents,
-    adjustedCents: patient.adjusted_cents,
-    days: null
-  }
+export const WRITE_OFF_COLUMNS: readonly ReportColumn<WriteOffRow>[] = [
+  text('Closed', (r) => formatDateTime(r.closed_at)),
+  ...claimColumns<WriteOffRow>(),
+  text('Outcome', (r) => OUTCOMES[r.outcome] ?? titleCase(r.outcome)),
+  money('Charges', 'charges_cents'),
+  money('Paid', 'paid_cents'),
+  money('Adjusted', 'adjusted_cents'),
+  money('Amount Closed', 'balance_cents')
 ];
 
-export const PAYER_COLUMNS: readonly ReportColumn<PayerLine>[] = [
-  {
-    label: 'Payer',
-    text: (r) => (r.inDirectory ? r.payer : `${r.payer} (not in payer directory)`),
-    csv: (r) => r.payer
-  },
-  count('Claims', (r) => r.claims, false),
-  count('Submitted', (r) => r.submitted, false),
-  count('Answered', (r) => r.answered, false),
-  money('Paid', (r) => r.paidCents),
-  money('Adjusted', (r) => r.adjustedCents),
-  {
-    label: 'Days to Respond',
-    isNumeric: true,
-    text: (r) => (r.days === null ? emptyValue : `${r.days} days`),
-    csv: (r) => r.days
-  }
+export const payerColumns = (group: string | null): ReportColumn<PayerRow>[] => [
+  payerColumn<PayerRow>(group),
+  count('Claims Billed', 'billed'),
+  money('Charges Billed', 'charges_cents'),
+  money('Paid', 'paid_cents'),
+  percent(
+    'Paid of Charges',
+    (read) => read('paid_cents'),
+    (read) => read('charges_cents')
+  ),
+  money('Adjusted', 'adjusted_cents'),
+  count('Responses', 'responses'),
+  count('Denials', 'denials'),
+  percent(
+    'Denial Rate',
+    (read) => read('denials'),
+    (read) => read('responses')
+  ),
+  average('Days to Pay', 'pay_days', 'paid_claims')
 ];
 
 export const HCPCS_COLUMNS: readonly ReportColumn<HcpcsRow>[] = [
-  { label: 'HCPCS', text: (r) => r.code, csv: (r) => r.code },
-  {
-    label: 'Service',
-    text: (r) => HCPCS_LABELS[r.code] ?? emptyValue,
-    csv: (r) => HCPCS_LABELS[r.code] ?? null
-  },
-  count('Claims', (r) => r.claims, false),
-  count('Units', (r) => Number(r.units), false),
-  money('Average Price', (r) => r.average_unit_cents, false),
-  money('Charges', (r) => r.charges_cents)
+  text('HCPCS', (r) => r.code),
+  text('Service', (r) => HCPCS_LABELS[r.code] ?? null),
+  count('Claims', 'claims', false),
+  derived('Units', (read) => read('units'), AS_DECIMAL, false),
+  average('Average Price', 'charges_cents', 'units', AS_MONEY_AVERAGE, false),
+  money('Charges', 'charges_cents'),
+  share('Share of Charges', 'charges_cents')
+];
+
+export const LEVEL_COLUMNS: readonly ReportColumn<LevelRow>[] = [
+  text('Level of Service', (r) => `${r.level} ${r.emergency ? 'Emergency' : 'Non-Emergency'}`),
+  count('Trips', 'trips'),
+  share('Share of Trips', 'trips'),
+  derived('Loaded Miles', (read) => read('miles'), AS_DECIMAL),
+  average('Miles per Trip', 'miles', 'trips'),
+  money('Charges', 'charges_cents'),
+  average('Charges per Trip', 'charges_cents', 'trips', AS_MONEY_AVERAGE)
+];
+
+const TASK_AGES = [
+  ['days_0_1', '0–1 Days'],
+  ['days_2_7', '2–7 Days'],
+  ['days_8_30', '8–30 Days'],
+  ['days_over_30', 'Over 30 Days']
+] as const;
+
+export const workQueueColumns = (group: string | null): ReportColumn<WorkQueueRow>[] => [
+  group === 'assignee'
+    ? text<WorkQueueRow>('Assignee', (r) => r.name ?? 'Unassigned')
+    : text<WorkQueueRow>('Task Type', (r) => (r.name === null ? null : queueInfo(r.name).label)),
+  count('Open', 'open'),
+  ...(group === 'assignee' ? [] : [count<WorkQueueRow>('Unassigned', 'unassigned')]),
+  ...TASK_AGES.map(([key, label]) => count<WorkQueueRow>(label, key)),
+  text('Oldest', (r) => formatDateTime(r.oldest_at))
+];
+
+export const PRODUCTIVITY_COLUMNS: readonly ReportColumn<ProductivityRow>[] = [
+  text('Biller', (r) => r.name),
+  count('Tasks Completed', 'tasks'),
+  average('Hours per Task', 'task_hours', 'tasks'),
+  count('Submissions', 'submitted'),
+  count('Payments Posted', 'posted')
+];
+
+export const IMPORT_COLUMNS: readonly ReportColumn<ImportRow>[] = [
+  text('Received', (r) => formatDateTime(r.received_at)),
+  text('File', (r) => r.file_name),
+  text('Source', (r) => titleCase(r.source)),
+  count('PCRs', 'pcrs'),
+  count('Billed', 'billed'),
+  count('In Draft', 'drafts'),
+  count('Voided', 'voided'),
+  count('Revisions', 'revisions'),
+  count('Without Claim', 'no_claim'),
+  count('Stuck or Failed', 'failed'),
+  money('Charges', 'charges_cents')
 ];
 
 export const csvRows = <R>(
   columns: readonly ReportColumn<R>[],
-  rows: readonly R[]
-): CsvCell[][] => [columns.map((c) => c.label), ...rows.map((r) => columns.map((c) => c.csv(r)))];
+  rows: readonly R[],
+  totals: Totals
+): CsvCell[][] => [
+  columns.map((c) => c.label),
+  ...rows.map((r) => columns.map((c) => c.csv(r, totals)))
+];
 
-export const totalsOf = <R>(columns: readonly ReportColumn<R>[], rows: readonly R[]) =>
+export const totalsOf = <R>(columns: readonly ReportColumn<R>[], totals: Totals) =>
   columns.some((c) => c.total)
-    ? columns.map((c, i) => (i === 0 ? 'Total' : (c.total?.(rows) ?? '')))
+    ? columns.map((c, i) => (i === 0 ? 'Total' : (c.total?.(totals) ?? '')))
     : null;

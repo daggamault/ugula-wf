@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
+import { createTenantOf } from '../../shared/tenancy.ts';
 import { createReportStore, fileNameOf } from './reports.ts';
 
 const blobs = {
@@ -17,7 +18,11 @@ const blobs = {
 describe('createReportStore', () => {
   it("only touches blobs under the run tenant's imports", async () => {
     const { db, queries } = createRecordingDb(() => [{ tenant_id: 't-1' }]);
-    const store = createReportStore(db, blobs);
+    const store = createReportStore(
+      db,
+      blobs,
+      createTenantOf(db, () => undefined)
+    );
     const ref = (key: string) => ({ bucket: 'ugula', key });
     assert.equal(await store.getText('r1', ref('imports/t-1/a/pcrs.xml')), '<x/>');
     assert.deepEqual(await store.getJson('r1', ref('imports/t-1/a/pcrs.xml.reports/0.json')), {
@@ -35,7 +40,11 @@ describe('createReportStore', () => {
 
   it('names GNIS places by feature id, skipping codes that are not ids', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 1215209, name: 'Erie' }]);
-    const store = createReportStore(db, blobs);
+    const store = createReportStore(
+      db,
+      blobs,
+      createTenantOf(db, () => undefined)
+    );
     assert.deepEqual(await store.findPlaces(['1215209', 'x', '0']), { '1215209': 'Erie' });
     assert.ok(queries[0]?.sql.includes('from "gnis_places"'));
     assert.deepEqual(queries[0]?.parameters, [1215209]);
@@ -53,14 +62,14 @@ describe('createReportStore', () => {
       size: 1,
       contentType: 'application/json'
     });
-    await createReportStore(db, blobs).recordReports(
-      'r1',
-      { bucket: 'ugula', key: 'imports/t-1/a/pcrs.xml' },
-      [
-        { position: 0, pcrNumber: 'A', report: report(0) },
-        { position: 1, pcrNumber: null, report: report(1) }
-      ]
-    );
+    await createReportStore(
+      db,
+      blobs,
+      createTenantOf(db, () => undefined)
+    ).recordReports('r1', { bucket: 'ugula', key: 'imports/t-1/a/pcrs.xml' }, [
+      { position: 0, pcrNumber: 'A', report: report(0) },
+      { position: 1, pcrNumber: null, report: report(1) }
+    ]);
     const imp = queries.find((q) => q.sql.startsWith('insert into "imports"'));
     assert.ok(imp?.sql.includes('on conflict ("run_id") do update set "report_count" = $'));
     assert.ok(imp?.parameters.includes('pcrs.xml') && imp.parameters.includes('manual'));
@@ -70,7 +79,11 @@ describe('createReportStore', () => {
     assert.ok(String(rows?.parameters[7]).includes('pcrs.xml.reports/1.json'));
     await assert.rejects(
       () =>
-        createReportStore(db, blobs).recordReports('r1', { bucket: 'ugula', key: 'x/y.xml' }, []),
+        createReportStore(
+          db,
+          blobs,
+          createTenantOf(db, () => undefined)
+        ).recordReports('r1', { bucket: 'ugula', key: 'x/y.xml' }, []),
       /not one of/
     );
   });
@@ -81,7 +94,7 @@ describe('createReportStore', () => {
   });
 
   it('refuses everything for unknown runs', async () => {
-    const store = createReportStore(createRecordingDb(() => []).db, blobs);
+    const store = createReportStore(createRecordingDb(() => []).db, blobs, async () => undefined);
     await assert.rejects(
       () => store.getText('nope', { bucket: 'ugula', key: 'imports/t-1/x.xml' }),
       /not one of/

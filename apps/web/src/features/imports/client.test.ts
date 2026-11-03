@@ -17,4 +17,22 @@ describe('createImportsClient', () => {
     assert.equal(seen[0]?.url, 'http://api.test/api/imports');
     assert.ok(seen[0]?.file instanceof File && seen[0].file.name === 'pcrs.xml');
   });
+
+  it('searches imports, opens one and pages its PCRs on the server', async () => {
+    const seen: string[] = [];
+    const client = createImportsClient(
+      createApi('', async (url) => {
+        seen.push(String(url));
+        return new Response('{"import":{"id":"i 1"},"items":[]}', { status: 200 });
+      })
+    );
+    await client.list('q=oct&page=1');
+    assert.deepEqual(await client.find('i 1'), { id: 'i 1' });
+    await client.reports('i 1', 'page=2');
+    assert.deepEqual(seen, [
+      '/api/imports?q=oct&page=1',
+      '/api/imports/i%201',
+      '/api/imports/i%201/reports?page=2'
+    ]);
+  });
 });

@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { ClaimIssue } from '@ugula/billing';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import type { Page } from '../../shared/url-state.ts';
+import type { Resource } from '../../shared/use-resource.ts';
 import {
+  addEntry,
   amountOf,
   ClaimFiles,
   type ClaimTab,
@@ -10,11 +14,17 @@ import {
   describeCycle,
   describeProgress,
   EventsTable,
+  entryOf,
   lockedReason,
   moveItem,
+  payersErrorOf,
+  paymentDetailsOf,
+  type ResponseDraft,
+  removeEntry,
+  toPayerInput,
   toResponse
 } from './claim-page.tsx';
-import type { ClaimDetail, ClaimProgress } from './client.ts';
+import type { ClaimDetail, ClaimEvent, ClaimProgress } from './client.ts';
 
 const claim: ClaimDetail = {
   id: 'c1',
@@ -31,6 +41,7 @@ const claim: ClaimDetail = {
   created_at: '2026-10-01T00:00:00Z',
   first_name: 'Jane',
   last_name: 'Doe',
+  trip_type: 'emergency',
   emergency: true,
   loaded_miles: '12.4',
   lines: [{ position: 1, code: 'A0427', units: 1, unit_cents: 95_000, total_cents: 95_000 }],
@@ -46,7 +57,10 @@ const claim: ClaimDetail = {
       payer_id: 'p-m',
       payer_code: null,
       member_id: '1EG4',
-      group_id: null
+      group_id: null,
+      relationship: '18',
+      insured_first_name: null,
+      insured_last_name: null
     },
     {
       id: 'cov-b',
@@ -55,7 +69,10 @@ const claim: ClaimDetail = {
       payer_id: null,
       payer_code: null,
       member_id: null,
-      group_id: null
+      group_id: null,
+      relationship: '01',
+      insured_first_name: 'John',
+      insured_last_name: 'Doe'
     }
   ],
   diagnoses: ['R079', 'I10'],
@@ -86,16 +103,26 @@ const claim: ClaimDetail = {
 
 const medicare = { id: 'cov-m', payer: 'Medicare' };
 
+const loaded = (items: ClaimEvent[]): Resource<Page<ClaimEvent>> => ({
+  data: { items, total: items.length, page: 1, pageSize: 25 },
+  error: undefined,
+  loading: false,
+  reload: () => undefined
+});
+
 const render = (
   over: Partial<ClaimDetail> = {},
   progress: ClaimProgress | null = null,
-  tab: ClaimTab = 'overview'
+  tab: ClaimTab = 'overview',
+  issues: readonly ClaimIssue[] = []
 ) =>
   renderToStaticMarkup(
     createElement(ClaimView, {
       claim: { ...claim, ...over },
+      issues,
       tab,
-      events: [
+      files: [],
+      history: loaded([
         {
           id: 'e1',
           kind: 'response',
@@ -103,6 +130,9 @@ const render = (
           payer: null,
           paid_cents: 5_000,
           adjusted_cents: 0,
+          paid_on: '2026-10-01',
+          check_number: 'CHK-77',
+          payer_claim_number: null,
           note: 'card',
           created_at: '2026-10-02T00:00:00Z',
           has_document: false
@@ -114,11 +144,14 @@ const render = (
           payer: null,
           paid_cents: 0,
           adjusted_cents: 0,
+          paid_on: null,
+          check_number: null,
+          payer_claim_number: null,
           note: 'Patient statement 1 of 3',
           created_at: '2026-10-03T00:00:00Z',
           has_document: true
         }
-      ],
+      ]),
       progress,
       onSavePayers: async () => undefined,
       onRecord: async () => true,
@@ -128,38 +161,74 @@ const render = (
     })
   );
 
-describe('amountOf', () => {
-  it('describes paid and adjusted amounts together', () => {
+describe('paymentDetailsOf', () => {
+  it('lists the paid date, check number and payer claim number a payment came with', () => {
     assert.equal(
-      amountOf({ paid_cents: 40_000, adjusted_cents: 10_000 }),
+      paymentDetailsOf({
+        paid_on: '2026-10-20',
+        check_number: 'EFT-9',
+        payer_claim_number: 'ICN1'
+      }),
+      'Paid Oct 20, 2026 · Check or EFT EFT-9 · Payer claim ICN1'
+    );
+    assert.equal(
+      paymentDetailsOf({ paid_on: null, check_number: null, payer_claim_number: null }),
+      ''
+    );
+  });
+});
+
+describe('amountOf', () => {
+  it('describes paid and adjusted amounts together, and refunds as paid back', () => {
+    assert.equal(
+      amountOf({ kind: 'response', paid_cents: 40_000, adjusted_cents: 10_000 }),
       '$400.00 paid · $100.00 adjusted'
     );
-    assert.equal(amountOf({ paid_cents: 0, adjusted_cents: 0 }), '');
+    assert.equal(amountOf({ kind: 'response', paid_cents: 0, adjusted_cents: 0 }), '');
+    assert.equal(
+      amountOf({ kind: 'refunded', paid_cents: -2_500, adjusted_cents: 0 }),
+      '$25.00 refunded'
+    );
   });
 });
 
 describe('describeProgress', () => {
   it('tells billers what the claim cycle is doing', () => {
-    assert.equal(describeProgress(null), null);
     assert.match(
-      describeProgress({ step: 'await', coverage: medicare, waitMs: 1, balanceCents: 1 }) ?? '',
+      describeProgress({ step: 'await', coverage: medicare, waitMs: 1, balanceCents: 1 }),
       /^Waiting on Medicare/
     );
     assert.match(
-      describeProgress({ step: 'followUp', coverage: medicare, balanceCents: 1 }) ?? '',
+      describeProgress({ step: 'followUp', coverage: medicare, balanceCents: 1 }),
       /follow-up task is waiting/
     );
     assert.match(
-      describeProgress({ step: 'review', coverage: medicare, balanceCents: 1 }) ?? '',
+      describeProgress({ step: 'review', coverage: medicare, balanceCents: 1 }),
       /^Needs review before it goes to Medicare/
     );
     assert.match(
-      describeProgress({ step: 'reconcile', coverage: medicare, balanceCents: 1 }) ?? '',
+      describeProgress({ step: 'reconcile', coverage: medicare, balanceCents: 1 }),
       /reconcile task is waiting/
     );
     assert.equal(
       describeProgress({ step: 'statement', statement: 2, balanceCents: 1 }),
       'Sending patient statement 2 of 3.'
+    );
+    assert.match(
+      describeProgress({ step: 'submitDue', coverage: medicare, balanceCents: 1 }),
+      /submit claim task is waiting/
+    );
+    assert.match(
+      describeProgress({ step: 'confirmPayers', balanceCents: 1 }),
+      /No payer is on this claim/
+    );
+    assert.match(
+      describeProgress({ step: 'reviewPatient', balanceCents: 1 }),
+      /before the patient is billed/
+    );
+    assert.match(
+      describeProgress({ step: 'overpaid', balanceCents: -2_500 }),
+      /^\$25\.00 more has been paid/
     );
   });
 });
@@ -184,6 +253,11 @@ describe('describeCycle', () => {
     );
     assert.equal(describeCycle({ status: 'ready', cycle_status: null }, null)?.intent, 'warning');
     assert.equal(describeCycle({ status: 'paid', cycle_status: 'completed' }, null), null);
+    const due = describeCycle(
+      { status: 'ready', cycle_status: 'suspended' },
+      { step: 'submitDue', coverage: medicare, balanceCents: 1 }
+    );
+    assert.deepEqual([due?.intent, due?.submittable], ['primary', true]);
     const draft = describeCycle({ status: 'draft', cycle_status: null }, null);
     assert.deepEqual([draft?.intent, draft?.restartable], ['info', false]);
   });
@@ -204,35 +278,169 @@ describe('moveItem', () => {
   });
 });
 
-describe('toResponse', () => {
-  it('converts dollars to cents and treats a blank payer as the patient', () => {
+const entry = (id: string, name: string) => ({
+  id,
+  name,
+  relationship: '18' as const,
+  insuredFirstName: null,
+  insuredLastName: null
+});
+
+describe('addEntry and removeEntry', () => {
+  it('adds a payer once by name and removes only the chosen row', () => {
+    const list = [entry('1', 'Medicare'), entry('2', 'Medicare')];
+    assert.deepEqual(addEntry(list, ' medicare ', '3'), list);
+    assert.deepEqual(addEntry(list, '  ', '3'), list);
+    assert.deepEqual(addEntry(list, ' Aetna ', '3').at(-1), entry('3', 'Aetna'));
+    assert.deepEqual(removeEntry(list, '2'), [entry('1', 'Medicare')]);
+  });
+});
+
+describe('payer relationships', () => {
+  it('reads coverage relationships and drops insured names for self', () => {
     assert.deepEqual(
-      toResponse({ coverageId: 'cov-m', paid: '600', adjusted: '100.5', note: ' ok ' }),
-      {
-        coverageId: 'cov-m',
-        paidCents: 60_000,
-        adjustedCents: 10_050,
-        note: 'ok'
-      }
+      entryOf({
+        id: 'c',
+        position: 0,
+        payer: 'A',
+        payer_id: null,
+        payer_code: null,
+        member_id: null,
+        group_id: null,
+        relationship: '18',
+        insured_first_name: null,
+        insured_last_name: null
+      }),
+      entry('c', 'A')
     );
-    assert.deepEqual(toResponse({ coverageId: 'cov-m', paid: '', adjusted: '', note: '' }), {
-      coverageId: 'cov-m',
-      paidCents: 0,
-      adjustedCents: 0,
-      note: ''
-    });
-    assert.equal(
-      toResponse({ coverageId: '', paid: '', adjusted: '', note: '' }),
-      'A patient payment needs an amount'
+    assert.deepEqual(
+      toPayerInput({ ...entry('c', 'A'), insuredFirstName: 'Sam', insuredLastName: 'Doe' }),
+      { name: 'A', relationship: '18', insuredFirstName: null, insuredLastName: null }
+    );
+    assert.deepEqual(
+      toPayerInput({
+        ...entry('c', 'A'),
+        relationship: '01',
+        insuredFirstName: ' Sam ',
+        insuredLastName: ''
+      }),
+      { name: 'A', relationship: '01', insuredFirstName: 'Sam', insuredLastName: null }
+    );
+  });
+
+  it('needs the insured name whenever the patient is not the insured', () => {
+    assert.equal(payersErrorOf([entry('1', 'A')]), undefined);
+    assert.match(
+      payersErrorOf([
+        { ...entry('1', 'Blue Plan'), relationship: '19', insuredFirstName: 'Sam' }
+      ]) ?? '',
+      /first and last name for Blue Plan/
     );
     assert.equal(
-      toResponse({ coverageId: '', paid: '-1', adjusted: '', note: '' }),
-      'Enter amounts of zero or more'
+      payersErrorOf([
+        { ...entry('1', 'A'), relationship: '01', insuredFirstName: 'Sam', insuredLastName: 'Doe' }
+      ]),
+      undefined
     );
   });
 });
 
+const draft = (patch: Partial<ResponseDraft> = {}): ResponseDraft => ({
+  kind: 'response',
+  coverageId: 'cov-m',
+  paid: '',
+  adjusted: '',
+  paidOn: '',
+  checkNumber: '',
+  payerClaimNumber: '',
+  adjustments: [],
+  note: '',
+  ...patch
+});
+
+describe('toResponse', () => {
+  it('converts dollars to cents and treats a blank payer as the patient', () => {
+    assert.deepEqual(
+      toResponse(
+        draft({
+          paid: '600',
+          adjusted: '100.5',
+          paidOn: '2026-10-20',
+          checkNumber: ' EFT-9 ',
+          payerClaimNumber: 'ICN1',
+          adjustments: [
+            { id: 'a', group: 'CO', reason: ' 45 ', amount: '100.50' },
+            { id: 'b', group: 'CR', reason: 'b7', amount: '-5' }
+          ],
+          note: ' ok '
+        })
+      ),
+      {
+        kind: 'response',
+        coverageId: 'cov-m',
+        paidCents: 60_000,
+        adjustedCents: 10_050,
+        paidOn: '2026-10-20',
+        checkNumber: 'EFT-9',
+        payerClaimNumber: 'ICN1',
+        adjustments: [
+          { group: 'CO', reason: '45', cents: 10_050 },
+          { group: 'CR', reason: 'B7', cents: -500 }
+        ],
+        note: 'ok'
+      }
+    );
+    assert.equal(toResponse(draft({ coverageId: '' })), 'A patient payment needs an amount');
+    assert.equal(toResponse(draft({ paid: '-1' })), 'Enter amounts of zero or more');
+    assert.match(
+      String(
+        toResponse(draft({ adjustments: [{ id: 'a', group: 'CO', reason: '', amount: '1' }] }))
+      ),
+      /Each reason code/
+    );
+  });
+
+  it('records refunds without adjustments or a payer claim number', () => {
+    const refund = toResponse(
+      draft({
+        kind: 'refunded',
+        paid: '25',
+        adjusted: '9',
+        payerClaimNumber: 'ICN1',
+        adjustments: [{ id: 'a', group: 'CO', reason: '45', amount: '1' }]
+      })
+    );
+    assert.deepEqual(
+      typeof refund === 'string'
+        ? refund
+        : [refund.paidCents, refund.adjustedCents, refund.adjustments, refund.payerClaimNumber],
+      [2_500, 0, [], null]
+    );
+    assert.equal(toResponse(draft({ kind: 'refunded' })), 'A refund needs the amount paid back');
+  });
+});
+
 describe('ClaimView', () => {
+  it('shows the trip type and the claim check issues of an open claim', () => {
+    const issues: ClaimIssue[] = [
+      { level: 'blocking', field: 'memberId', message: 'Member ID missing', coverageId: 'cov-b' }
+    ];
+    const html = render({}, null, 'overview', issues);
+    assert.ok(html.includes('Emergency transport'));
+    assert.ok(
+      html.includes('Must Be Fixed') && html.includes('Member ID: </span>Member ID missing')
+    );
+    assert.ok(!render({ status: 'paid' }, null, 'overview', issues).includes('Must Be Fixed'));
+  });
+
+  it('posts payments with paid date, check number and reason codes', () => {
+    const html = render({}, { step: 'await', coverage: medicare, waitMs: 1, balanceCents: 1 });
+    assert.ok(html.includes('Paid On') && html.includes('Check or EFT Number'));
+    assert.ok(html.includes('Payer Claim Number') && html.includes('Add Reason Code'));
+    assert.ok(html.includes('>Refund<'));
+    assert.ok(render({}, null, 'history').includes('Check or EFT CHK-77'));
+  });
+
   it('shows lines, ordered payers, history and the response form for open claims', () => {
     const html = render(
       {},
@@ -248,11 +456,13 @@ describe('ClaimView', () => {
     assert.ok(html.includes('Doe, Jane'));
     assert.ok(html.includes('Claim #12') && html.includes('Patient #3'));
     assert.ok(html.includes('Encounter PCR-1001'));
-    assert.ok(html.includes('12.4 loaded miles'));
+    assert.ok(html.includes('12.4 miles loaded'));
     assert.ok(html.includes('A0427'));
     assert.ok(html.includes('1. </span>Medicare'));
     assert.ok(html.includes('2. </span>Blue Plan'));
     assert.ok(html.includes('aria-label="Move Blue Plan up"'));
+    assert.ok(html.includes('aria-label="Remove Blue Plan"'));
+    assert.ok(html.includes('aria-label="History, 2"') || html.includes('>2<'));
     assert.ok(html.includes('>Patient<'));
     assert.equal(html.match(/Not in Payer Directory/g)?.length, 1);
     assert.ok(html.includes('Service Date'));
@@ -302,7 +512,7 @@ describe('ClaimView', () => {
       birth_date: null,
       tasks: [task, { ...task, id: 't2', kind: 'fault', title: 'Stuck at Price' }]
     });
-    assert.equal(html.match(/<fieldset disabled=""/g)?.length, 2);
+    assert.equal(html.match(/<fieldset disabled=""/g)?.length, 4);
     assert.ok(html.includes('Patient not matched yet'));
     assert.ok(!html.includes('href="/patients/'));
     assert.ok(html.includes('Confirm patient') && html.includes('Patient Matching · Unassigned'));
@@ -334,8 +544,10 @@ describe('ClaimView submission', () => {
     renderToStaticMarkup(
       createElement(ClaimView, {
         claim,
-        events: [],
-        progress: { step: 'submit', coverage: medicare, balanceCents: 1 },
+        issues: [],
+        files: [],
+        history: loaded([]),
+        progress: { step: 'submit', coverage: medicare, waitMs: 0, balanceCents: 1 },
         onSavePayers: async () => undefined,
         onRecord: async () => true,
         onRestart: async () => undefined,
@@ -347,7 +559,7 @@ describe('ClaimView submission', () => {
 
   it('submits a ready claim from its own page and links its patient', () => {
     const html = view([]);
-    assert.ok(html.includes('Ready to submit to Medicare.'));
+    assert.ok(html.includes('Approved and ready to submit to Medicare.'));
     assert.ok(html.includes('Create 837P File') && html.includes('Mark Submitted'));
     assert.ok(!html.includes('Fix the problems listed first.'));
     assert.ok(html.includes('href="/patients/p1"'));
@@ -372,6 +584,9 @@ describe('EventsTable', () => {
             payer: 'Medicare',
             paid_cents: 0,
             adjusted_cents: 0,
+            paid_on: null,
+            check_number: null,
+            payer_claim_number: null,
             note: '837P batch #4',
             created_at: '2026-10-02T00:00:00Z',
             has_document: false,
@@ -392,7 +607,7 @@ describe('ClaimFiles', () => {
     const html = renderToStaticMarkup(
       createElement(ClaimFiles, {
         claim: { import_report_id: 'r1', pcr_number: 'PCR-1' },
-        events: [
+        files: [
           {
             id: 'e1',
             kind: 'submitted',
@@ -400,6 +615,9 @@ describe('ClaimFiles', () => {
             payer: 'Medicare',
             paid_cents: 0,
             adjusted_cents: 0,
+            paid_on: null,
+            check_number: null,
+            payer_claim_number: null,
             note: '837P file #7',
             created_at: '2026-10-02T00:00:00Z',
             has_document: false,
@@ -413,6 +631,9 @@ describe('ClaimFiles', () => {
             payer: null,
             paid_cents: 0,
             adjusted_cents: 0,
+            paid_on: null,
+            check_number: null,
+            payer_claim_number: null,
             note: 'Patient statement 1 of 3',
             created_at: '2026-10-03T00:00:00Z',
             has_document: true
@@ -429,7 +650,7 @@ describe('ClaimFiles', () => {
     const bare = renderToStaticMarkup(
       createElement(ClaimFiles, {
         claim: { import_report_id: null, pcr_number: null },
-        events: [],
+        files: [],
         documentUrl: () => '',
         fileUrl: () => '',
         encounterUrl: () => ''

@@ -12,8 +12,11 @@ describe('createBillingNodes', () => {
         'billing.match-patient@1',
         'billing.create-patient@1',
         'billing.find-patient@1',
+        'billing.update-patient-address@1',
         'billing.price-claim@1',
+        'billing.set-fee@1',
         'billing.validate-claim@1',
+        'billing.patch-claim@1',
         'billing.open-claim@1',
         'billing.assign-patient@1',
         'billing.save-claim@1',
@@ -34,7 +37,10 @@ describe('createBillingNodes', () => {
       () => invokeNode(match, { inputs: { demographics: { lastName: 'Doe' } } }),
       /only the worker provides/
     );
-    const { signature } = await invokeNode(nodes[4] ?? match, { inputs: { claim: {} } });
-    assert.deepEqual(signature.execOut, ['valid', 'invalid']);
+    const setFee = nodes.find((n) => n.type === 'billing.set-fee') ?? match;
+    const { signature, outputs } = await invokeNode(setFee, {
+      inputs: { code: 'A0999', unitPrice: 10 }
+    });
+    assert.deepEqual([signature.execOut, outputs.fees], [['then'], { A0999: 1000 }]);
   });
 });

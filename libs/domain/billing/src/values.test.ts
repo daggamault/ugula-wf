@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { isCents, isRecord, recordOf, requiredText, textOrNull } from './values.ts';
+import { isCents, recordOf, requiredText, textOrNull } from './values.ts';
 
 describe('values', () => {
-  it('tells plain records from arrays and null', () => {
-    assert.equal(isRecord({ a: 1 }), true);
-    assert.equal(isRecord([]), false);
-    assert.equal(isRecord(null), false);
+  it('reads plain records and nothing else', () => {
     assert.deepEqual(recordOf({ a: 1 }), { a: 1 });
     assert.deepEqual(recordOf('x'), {});
+    assert.deepEqual(recordOf([1]), {});
+    assert.deepEqual(recordOf(null), {});
   });
 
   it('trims text and treats blanks and non-strings as missing', () => {

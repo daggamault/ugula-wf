@@ -1,7 +1,6 @@
 import type { ReportStore } from '@ugula/nemsis';
 import type { Announce } from '../../shared/live.ts';
 
-/** Tells clients when an import's reports are recorded. */
 export const announceImports = (store: ReportStore, announce: Announce): ReportStore => ({
   ...store,
   recordReports: async (runId, file, reports) => {

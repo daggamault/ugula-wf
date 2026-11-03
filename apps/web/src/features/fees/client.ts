@@ -16,15 +16,21 @@ export type FeeInput = {
   amountCents: number;
 };
 
-type DirectoryPayer = { id: string; name: string };
+export type DirectoryPayer = { id: string; name: string };
 
 export const createFeesClient = (api: Api) => ({
-  search: (query: string) => api.get<Page<Fee>>(`/api/fees?${query}`),
-  fee: async (id: string) =>
-    (await api.get<{ fee: Fee }>(`/api/fees/${encodeURIComponent(id)}`)).fee,
-  payers: async () => (await api.get<{ payers: DirectoryPayer[] }>('/api/payers/names')).payers,
+  search: (query: string, signal?: AbortSignal) => api.get<Page<Fee>>(`/api/fees?${query}`, signal),
+  fee: async (id: string, signal?: AbortSignal) =>
+    (await api.get<{ fee: Fee }>(`/api/fees/${encodeURIComponent(id)}`, signal)).fee,
+  payers: async (q: string, signal?: AbortSignal) =>
+    (
+      await api.get<{ payers: DirectoryPayer[] }>(
+        `/api/payers/names${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`,
+        signal
+      )
+    ).payers,
   save: async (fee: FeeInput) => (await api.put<{ fee: Fee }>('/api/fees', fee)).fee,
-  remove: (id: string) => api.remove<{ status: string }>(`/api/fees/${id}`)
+  remove: (id: string) => api.remove<{ status: string }>(`/api/fees/${encodeURIComponent(id)}`)
 });
 
 export type FeesClient = ReturnType<typeof createFeesClient>;

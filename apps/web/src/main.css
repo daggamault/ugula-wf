@@ -16,6 +16,13 @@
   --color-warning-fg: light-dark(oklch(47% 0.11 65), oklch(82% 0.14 80));
   --color-on-warning: oklch(24% 0.06 65);
   --color-danger: light-dark(oklch(56% 0.21 25), oklch(70% 0.18 25));
+  --color-pin-string: light-dark(oklch(65.6% 0.241 354.3), oklch(71.8% 0.202 349.8));
+  --color-pin-number: light-dark(oklch(69.6% 0.17 162.5), oklch(76.5% 0.177 163.2));
+  --color-pin-integer: light-dark(oklch(70.4% 0.14 182.5), oklch(77.7% 0.152 181.9));
+  --color-pin-boolean: light-dark(oklch(58.6% 0.253 17.6), oklch(64.5% 0.246 16.4));
+  --color-pin-datetime: light-dark(oklch(76.9% 0.188 70.1), oklch(82.8% 0.189 84.4));
+  --color-pin-list: light-dark(oklch(68.5% 0.169 237.3), oklch(74.6% 0.16 232.7));
+  --color-pin-object: light-dark(oklch(60.6% 0.25 292.7), oklch(70.2% 0.183 293.5));
 
   --animate-bars: bars 900ms ease-in-out infinite;
   --animate-reveal: reveal 150ms ease-out 150ms both;
@@ -56,12 +63,6 @@
     -webkit-text-fill-color: var(--color-surface-fg);
     box-shadow: inset 0 0 0 100vmax var(--color-surface);
   }
-}
-
-.react-flow {
-  --xy-background-color: var(--color-canvas);
-  --xy-background-pattern-color: var(--color-border);
-  --xy-edge-stroke-width: 2;
 }
 
 @media print {

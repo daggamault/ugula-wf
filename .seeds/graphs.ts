@@ -1,4 +1,10 @@
-import { type Database, dependencyOf, findPublishedGraphs, type GraphKind } from '@ugula/db';
+import {
+  type Database,
+  dependencyOf,
+  findPublishedGraphs,
+  type GraphKind,
+  PUBLISHED_IMMUTABLE_TRIGGER
+} from '@ugula/db';
 import { type GraphDef, graphRefs, refKey } from '@ugula/graph';
 import { type Kysely, sql } from 'kysely';
 
@@ -31,7 +37,7 @@ export const buildUpsertGraph = (db: Kysely<Database>, graph: SeedGraph) =>
     )
     .returning('id');
 
-export const buildInsertPublishedVersion = (
+export const buildUpsertPublishedVersion = (
   db: Kysely<Database>,
   graphId: string,
   graph: SeedGraph,
@@ -46,9 +52,23 @@ export const buildInsertPublishedVersion = (
       dependencies,
       published_at: sql`now()`
     })
-    .onConflict((oc) => oc.columns(['graph_id', 'version']).doNothing());
+    .onConflict((oc) =>
+      oc
+        .columns(['graph_id', 'version'])
+        .doUpdateSet({
+          definition: (eb) => eb.ref('excluded.definition'),
+          dependencies: (eb) => eb.ref('excluded.dependencies'),
+          updated_at: sql`now()`
+        })
+        .where((eb) =>
+          eb.or([
+            eb('graph_versions.definition', 'is distinct from', eb.ref('excluded.definition')),
+            eb('graph_versions.dependencies', 'is distinct from', eb.ref('excluded.dependencies'))
+          ])
+        )
+    );
 
-export const publishGraph = async (
+const publishGraph = async (
   db: Kysely<Database>,
   graph: SeedGraph,
   primitives: ReadonlySet<string>
@@ -64,5 +84,18 @@ export const publishGraph = async (
       `${graph.key} depends on unpublished ${missing.map((r) => `${r.key}@${r.version}`).join(', ')}`
     );
   }
-  await buildInsertPublishedVersion(db, id, graph, deps.map(dependencyOf)).execute();
+  await buildUpsertPublishedVersion(db, id, graph, deps.map(dependencyOf)).execute();
+};
+
+const immutability = (enabled: boolean) =>
+  sql`alter table graph_versions ${sql.raw(enabled ? 'enable' : 'disable')} trigger ${sql.id(PUBLISHED_IMMUTABLE_TRIGGER)}`;
+
+export const publishGraphs = async (
+  db: Kysely<Database>,
+  graphs: SeedGraph[],
+  primitives: ReadonlySet<string>
+) => {
+  await immutability(false).execute(db);
+  for (const graph of graphs) await publishGraph(db, graph, primitives);
+  await immutability(true).execute(db);
 };

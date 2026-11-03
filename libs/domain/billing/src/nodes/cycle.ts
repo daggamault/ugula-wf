@@ -1,43 +1,46 @@
 import { actionNode, branchNode, pin } from '@ugula/graph';
+import { claimIssues, isBlocking } from '../claim-validation.ts';
 import {
   CLOSED_CLAIM_STATUSES,
+  COVERAGE_EVENT_KINDS,
+  type CycleEventKind,
   claimProgress,
   DEFAULT_POLICY,
   isClosedStatus,
+  isCycleEventKind,
   nextClaimStep,
   PAYER_WAIT_MS,
   STATEMENT_INTERVAL_MS,
+  SUBMIT_WAIT_MS,
   stageOf
 } from '../claims.ts';
-import { renderStatement } from '../statements.ts';
+import { isCompleteAddress } from '../patients.ts';
+import { localDate, renderStatement } from '../statements.ts';
 import { requiredText, textOrNull } from '../values.ts';
-import type { CycleEventKind, NodesOf } from './stores.ts';
+import { checkOf, claimIdOf, claimIdPin, issuesPin, relevantIssues } from './claims.ts';
+import type { NodesOf } from './stores.ts';
 
 const CATEGORY = 'Billing';
 
 const DAY_MS = 86_400_000;
 
-const CYCLE_KINDS: readonly string[] = [
-  'resubmit_queued',
-  'follow_up',
-  'payer_skipped',
-  'approved',
-  'reconciled',
-  'statement'
-] satisfies CycleEventKind[];
-
-const PAYER_ACTIONS: readonly string[] = [
+const PAYER_ACTIONS: readonly CycleEventKind[] = [
+  'submitted',
   'resubmit_queued',
   'follow_up',
   'payer_skipped',
   'approved'
-] satisfies CycleEventKind[];
+];
 
-const isCycleKind = (x: string): x is CycleEventKind => CYCLE_KINDS.includes(x);
+const GATED_STEPS: readonly string[] = [
+  'review',
+  'reviewPatient',
+  'confirmPayers',
+  'submit',
+  'submitDue'
+];
 
-const claimIdPin = pin('claimId', 'string');
-
-const noClaim = 'No claim to work on';
+const PATIENT_STEPS: readonly string[] = ['reviewPatient', 'confirmPayers'];
 
 const daysOr = (days: number, fallbackMs: number) => (days > 0 ? days * DAY_MS : fallbackMs);
 
@@ -54,9 +57,10 @@ export const cycleNodes: NodesOf = (stores) => {
       inputs: [claimIdPin, pin('cycleRunId', 'string')],
       outputs: [],
       compute: async (inputs, _, ctx) => {
-        const claimId = requiredText(inputs.claimId, noClaim);
+        const claimId = claimIdOf(inputs.claimId);
         const cycleRunId = requiredText(inputs.cycleRunId, 'No cycle run to attach');
-        await claims().attachCycle(ctx.runId, claimId, cycleRunId);
+        await claims().attachCycle(ctx.runId, claimId, ctx.key, cycleRunId);
+
         return {};
       }
     }),
@@ -65,13 +69,17 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Claim Step',
       category: CATEGORY,
       description:
-        "Decides what a claim needs next from its history and records it as the claim's status: review before the next payer's claim goes out, wait for it to be submitted, wait out the payer's response time, follow up, reconcile a payer's response, send or wait on a patient statement, balance review, or close. Also outputs how many claim signals the history already reflects, and the claim's PCR number and patient for people to recognize it by.",
+        "Decides what a claim needs next from its history and records it as the claim's status: fix data the claim checks block on before review or submission, review before the next payer's claim goes out, wait for it to be submitted and ask when it sits too long, wait out the payer's response time, follow up, reconcile a payer's response or an overpayment, confirm the payers of a claim without any, review before the first patient statement, send or wait on a patient statement, balance review, or close. Continues through stale when the claim changed while it decided, so it decides again. Also outputs the claim's issues, how many claim signals the history already reflects, and the claim's PCR number and patient for people to recognize it by.",
       effect: true,
       inputs: [
         claimIdPin,
         pin('payerWaitDays', 'number', {
           label: 'Days to wait for a payer',
           default: PAYER_WAIT_MS / DAY_MS
+        }),
+        pin('submitWaitDays', 'number', {
+          label: 'Days a ready claim waits to be submitted',
+          default: SUBMIT_WAIT_MS / DAY_MS
         }),
         pin('statementCount', 'integer', {
           label: 'Patient statements to send',
@@ -86,47 +94,71 @@ export const cycleNodes: NodesOf = (stores) => {
         pin('coverageId', 'string'),
         pin('payer', 'string'),
         pin('statementNumber', 'integer'),
+        pin('statementCount', 'integer'),
         pin('balanceCents', 'integer'),
         pin('waitMs', 'integer'),
         pin('signalsSeen', 'integer'),
-        pin('reference', 'string')
+        pin('reference', 'string'),
+        issuesPin,
+        pin('claim', { object: {} })
       ],
       exits: [
+        'fix',
         'review',
+        'reviewPatient',
+        'confirmPayers',
         'submit',
+        'submitDue',
         'reconcile',
+        'overpaid',
         'await',
         'followUp',
         'statement',
         'awaitPatient',
         'collections',
-        'closed'
+        'closed',
+        'stale'
       ],
       compute: async (inputs, _, ctx) => {
-        const claimId = requiredText(inputs.claimId, noClaim);
+        const claimId = claimIdOf(inputs.claimId);
         const ledger = await claims().ledger(ctx.runId, claimId);
         if (!ledger) throw new Error(`Claim ${claimId} does not exist`);
-        const next = nextClaimStep(ledger, ctx.now, {
+        const policy = {
           payerWaitMs: daysOr(inputs.payerWaitDays, DEFAULT_POLICY.payerWaitMs),
+          submitWaitMs: daysOr(inputs.submitWaitDays, DEFAULT_POLICY.submitWaitMs),
           statementLimit:
             inputs.statementCount >= 0 ? inputs.statementCount : DEFAULT_POLICY.statementLimit,
           statementIntervalMs: daysOr(
             inputs.statementIntervalDays,
             DEFAULT_POLICY.statementIntervalMs
           )
-        });
+        };
+        const next = nextClaimStep(ledger, ctx.now, policy);
+        const gated = GATED_STEPS.includes(next.step);
+        const claim = gated
+          ? checkOf(await claims().claimCheck(ctx.runId, claimId), claimId)
+          : null;
+        const issues = claim
+          ? relevantIssues(claimIssues(claim), ledger, PATIENT_STEPS.includes(next.step))
+          : [];
+        const exit = gated && isBlocking(issues) ? 'fix' : next.step;
         const stage = stageOf(next.step);
-        if (stage) await claims().setStatus(ctx.runId, claimId, stage);
+        const recorded = stage
+          ? await claims().setStatus(ctx.runId, claimId, ctx.key, stage, ledger.signalsSeen)
+          : 'set';
         return {
-          exit: next.step,
+          exit: recorded === 'stale' ? 'stale' : exit,
           outputs: {
             coverageId: 'coverage' in next ? next.coverage.id : null,
             payer: 'coverage' in next ? next.coverage.payer : null,
             statementNumber: 'statement' in next ? next.statement : null,
+            statementCount: policy.statementLimit,
             balanceCents: next.balanceCents,
             waitMs: 'waitMs' in next ? next.waitMs : null,
             signalsSeen: ledger.signalsSeen,
-            reference: ledger.reference
+            reference: ledger.reference,
+            issues,
+            claim
           }
         };
       }
@@ -136,54 +168,77 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Record Claim Event',
       category: CATEGORY,
       description:
-        "Logs a review approval, queued resubmission, follow-up, skipped payer, reconciled response or patient statement on a claim, once per run step. Actions for a payer who has already answered are ignored, except reconciling that payer's response.",
+        "Logs a review approval (of a payer, or with no coverage of billing the patient), a submission made outside the app, a queued resubmission, follow-up, skipped payer, reconciled response or patient statement on a claim, once per run step, with the payer's claim number when the payer gave one, so a resubmission replaces that claim. Actions for a payer other than the one being billed are ignored, except reconciling a response or resubmitting a corrected claim to the payer whose response is being reconciled; a submission already on file is not logged twice.",
       effect: true,
       inputs: [
         claimIdPin,
         pin('kind', 'string'),
         pin('coverageId', 'string', { optional: true }),
-        pin('note', 'string', { optional: true })
+        pin('note', 'string', { optional: true }),
+        pin('payerClaimNumber', 'string', { optional: true })
       ],
       outputs: [],
       compute: async (inputs, _, ctx) => {
-        const claimId = requiredText(inputs.claimId, noClaim);
+        const claimId = claimIdOf(inputs.claimId);
         const { kind } = inputs;
-        if (!isCycleKind(kind)) throw new Error(`Unknown claim event "${kind}"`);
+        if (!isCycleEventKind(kind)) throw new Error(`Unknown claim event "${kind}"`);
         const coverageId = textOrNull(inputs.coverageId);
-        if (PAYER_ACTIONS.includes(kind)) {
+        if (coverageId === null && COVERAGE_EVENT_KINDS.includes(kind)) return {};
+        if (PAYER_ACTIONS.includes(kind) && coverageId !== null) {
           const ledger = await claims().ledger(ctx.runId, claimId);
-          if (ledger && claimProgress(ledger).coverage?.id !== coverageId) return {};
+          const p = ledger ? claimProgress(ledger) : null;
+          const current = p?.coverage?.id === coverageId;
+          const correcting = kind === 'resubmit_queued' && p?.unreconciled?.id === coverageId;
+          if (p && !current && !correcting) return {};
+          if (kind === 'submitted' && p?.contacted !== null) return {};
         }
+
         await claims().recordEvent(ctx.runId, claimId, ctx.key, {
           kind,
           coverageId,
-          note: textOrNull(inputs.note) ?? ''
+          note: textOrNull(inputs.note) ?? '',
+          payerClaimNumber: coverageId === null ? null : textOrNull(inputs.payerClaimNumber)
         });
         return {};
       }
     }),
-    actionNode({
+    branchNode({
       type: 'billing.issue-statement',
       title: 'Issue Patient Statement',
       category: CATEGORY,
       description:
-        "Renders a PDF statement of the claim's charges, payments and balance due, stores it and logs it on the claim. Needs the tenant's billing profile.",
+        "Renders a PDF statement of the claim's charges, payments and balance due, numbered out of the statements the cycle sends and dated in the agency's time zone, stores it and logs it on the claim. Continues through missing, naming what, when the tenant has no billing profile or the patient has no complete mailing address.",
       effect: true,
-      inputs: [claimIdPin, pin('statementNumber', 'integer')],
-      outputs: [],
+      inputs: [
+        claimIdPin,
+        pin('statementNumber', 'integer'),
+        pin('statementCount', 'integer', { label: 'Statements in the cycle' })
+      ],
+      outputs: [pin('need', 'string')],
+      exits: ['issued', 'missing'],
       compute: async (inputs, _, ctx) => {
-        const claimId = requiredText(inputs.claimId, noClaim);
+        const claimId = claimIdOf(inputs.claimId);
         const number = inputs.statementNumber;
-        if (number < 1) throw new Error('A statement needs a number');
+        const count = inputs.statementCount;
+        if (number < 1 || number > count) {
+          throw new Error(`Statement ${number} is not one of the ${count} the cycle sends`);
+        }
         const store = claims();
-        const source = await store.statementData(ctx.runId, claimId);
+        const { agency, ...source } = await store.statementData(ctx.runId, claimId);
+        if (!agency) return { exit: 'missing', outputs: { need: 'profile' } };
+        if (!isCompleteAddress(source.patient)) {
+          return { exit: 'missing', outputs: { need: 'patientAddress' } };
+        }
+        const { timeZone, ...from } = agency;
         const pdf = await renderStatement({
           ...source,
+          agency: from,
           number,
-          issuedOn: ctx.now.toISOString().slice(0, 10)
+          count,
+          issuedOn: localDate(ctx.now, timeZone)
         });
-        await store.saveStatement(ctx.runId, claimId, ctx.key, { number, pdf });
-        return {};
+        await store.saveStatement(ctx.runId, claimId, ctx.key, { number, count, pdf });
+        return { exit: 'issued', outputs: { need: null } };
       }
     }),
     actionNode({
@@ -196,7 +251,7 @@ export const cycleNodes: NodesOf = (stores) => {
       inputs: [claimIdPin, pin('status', 'string')],
       outputs: [],
       compute: async (inputs, _, ctx) => {
-        const claimId = requiredText(inputs.claimId, noClaim);
+        const claimId = claimIdOf(inputs.claimId);
         const { status } = inputs;
         if (!isClosedStatus(status)) {
           throw new Error(

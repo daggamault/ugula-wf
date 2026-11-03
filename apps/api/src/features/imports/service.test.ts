@@ -5,7 +5,7 @@ import { createRecordingDb } from '@ugula/db/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
 import { recordAnnouncements } from '../../shared/testing.ts';
-import { createImportService, sftpPrefix } from './service.ts';
+import { createImportService } from './service.ts';
 
 const sftp = {
   bucket: 'ugula',
@@ -99,6 +99,18 @@ describe('import service uploads', () => {
     assert.deepEqual(stored, []);
   });
 
+  it('finds an import and pages its reports only within the tenant', async () => {
+    const { service, queries } = setup();
+    const page = { page: 1, pageSize: 25, sort: 'position' as const, dir: 'asc' as const };
+    const found = await service.find('t-1', 'i1');
+    assert.ok(found.ok && 'import' in found.value && !('reports' in found.value));
+    assert.equal((await service.reports('t-1', 'i1', page)).ok, true);
+    assert.ok(queries.some((q) => q.sql.includes('from "import_reports" as "ir"')));
+    const { service: empty } = setup({ published: false });
+    assert.equal((await empty.reports('t-1', 'i9', page)).ok, false);
+    assert.equal((await empty.find('t-1', 'i9')).ok, false);
+  });
+
   it('reads one stored report of the tenant with its XML', async () => {
     const { service, queries } = setup();
     assert.deepEqual(await service.report('t-1', 'rep-1'), {
@@ -161,14 +173,14 @@ describe('import service SFTP hooks', () => {
       action: 'upload',
       username: 'acme-ems',
       virtual_path: '/2026/pcrs.xml',
-      file_size: 99,
+      file_size: 9,
       status: 1
     };
     const res = await service.receiveSftpEvent(event);
     assert.deepEqual(res.ok && 'file' in res.value && res.value.file, {
       bucket: 'ugula',
-      key: `${sftpPrefix('t-1')}2026/pcrs.xml`,
-      size: 99,
+      key: 'imports/t-1/sftp/2026/pcrs.xml',
+      size: 9,
       contentType: 'application/xml'
     });
     assert.deepEqual(await service.receiveSftpEvent({ ...event, status: 2 }), {
@@ -185,5 +197,27 @@ describe('import service SFTP hooks', () => {
     assert.equal(recorded?.parameters.at(-1), null);
     const unknown = await setup().service.receiveSftpEvent(event);
     assert.equal(!unknown.ok && unknown.failure.code, 'not_found');
+  });
+
+  it('refuses oversized files and unsafe paths before recording an import', async () => {
+    const { service, jobs, queries } = setup({ tenant: { id: 't-1', sftp_password_hash: '' } });
+    const event = {
+      action: 'upload',
+      username: 'acme-ems',
+      virtual_path: '/a.xml',
+      file_size: 5,
+      status: 1
+    };
+    const code = async (e: Partial<typeof event>) => {
+      const res = await service.receiveSftpEvent({ ...event, ...e });
+      return res.ok ? 'ok' : res.failure.code;
+    };
+    assert.equal(await code({ file_size: 11 }), 'invalid');
+    for (const path of ['/../t-2/a.xml', '/a/./b.xml', '/a//b.xml', '/a\\b.xml', '/', '/a/..']) {
+      assert.equal(await code({ virtual_path: path }), 'invalid', path);
+    }
+    assert.deepEqual(queries, []);
+    assert.equal(jobs.length, 0);
+    assert.equal(await code({}), 'ok');
   });
 });

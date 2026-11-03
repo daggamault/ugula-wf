@@ -3,12 +3,15 @@ import { describe, it } from 'node:test';
 import {
   advance,
   cancel,
+  dropTimeout,
   enqueueRuns,
   RUN_QUEUE,
   type RunQueueClient,
   resume,
   retry,
-  skip
+  skip,
+  timeout,
+  timeoutJobId
 } from './index.ts';
 
 describe('run jobs', () => {
@@ -28,12 +31,17 @@ describe('run jobs', () => {
     assert.equal(resume('r', '7', null, '2026-01-01').startAfter, '2026-01-01');
   });
 
-  it('enqueue through the caller transaction and skip empty batches', async () => {
+  it('enqueue through the caller transaction, keep retrying commands other than advance, and skip empty batches', async () => {
     const calls: unknown[][] = [];
     const boss: RunQueueClient = { insert: async (...args) => void calls.push(args) };
     const db = { executeSql: async () => ({ rows: [] }) };
     await enqueueRuns(boss, db, []);
-    await enqueueRuns(boss, db, [advance('a'), resume('b', '1', null, '2026-01-01')]);
+    await enqueueRuns(boss, db, [
+      advance('a'),
+      resume('b', '1', null, '2026-01-01'),
+      advance('c', 'parent'),
+      cancel('d')
+    ]);
     assert.deepEqual(calls, [
       [
         RUN_QUEUE,
@@ -41,11 +49,34 @@ describe('run jobs', () => {
           { data: { runId: 'a', command: { type: 'advance' } } },
           {
             data: { runId: 'b', command: { type: 'resume', suspensionId: '1', payload: null } },
-            startAfter: '2026-01-01'
+            startAfter: '2026-01-01',
+            retryLimit: 1_000_000,
+            priority: 1
+          },
+          { data: { runId: 'c', command: { type: 'advance' } }, group: { id: 'parent' } },
+          {
+            data: { runId: 'd', command: { type: 'cancel' } },
+            retryLimit: 1_000_000,
+            priority: 2
           }
         ],
         { db }
       ]
     ]);
+  });
+
+  it('gives each signal timeout a stable job id so a wake can delete it', async () => {
+    const id = timeoutJobId('r', '7');
+    assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.equal(timeoutJobId('r', '7'), id);
+    assert.notEqual(timeoutJobId('r', '8'), id);
+    assert.deepEqual(timeout('r', '7', '2026-01-01'), {
+      ...resume('r', '7', { timedOut: true }, '2026-01-01'),
+      id
+    });
+    const deleted: unknown[][] = [];
+    const db = { executeSql: async () => ({ rows: [] }) };
+    await dropTimeout({ deleteJob: async (...args) => void deleted.push(args) }, db, 'r', '7');
+    assert.deepEqual(deleted, [[RUN_QUEUE, id, { db }]]);
   });
 });

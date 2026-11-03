@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { firstNameLikeness, isNickname, jaroWinkler, nameKey } from './names.ts';
+import { firstNameLikeness, jaroWinkler, NICKNAME_LIKENESS, nameKey } from './names.ts';
 
 const near = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 0.001);
 
@@ -28,10 +28,11 @@ describe('jaroWinkler', () => {
 
 describe('first names', () => {
   it('treats nicknames of the same name as alike, in either direction', () => {
-    assert.ok(isNickname('bob', 'robert'));
-    assert.ok(isNickname('pat', 'patricia') && isNickname('pat', 'patrick'));
-    assert.ok(!isNickname('patricia', 'patrick'));
-    assert.ok(!isNickname('zelda', 'zelda'));
+    const nickname = (a: string, b: string) => firstNameLikeness(a, b) === NICKNAME_LIKENESS;
+    assert.ok(nickname('bob', 'robert') && nickname('robert', 'bob'));
+    assert.ok(nickname('pat', 'patricia') && nickname('pat', 'patrick'));
+    assert.ok(!nickname('patricia', 'patrick'));
+    assert.ok(!nickname('zelda', 'zeldo'));
   });
 
   it('ranks exact names, nicknames, initials and spelling variants', () => {

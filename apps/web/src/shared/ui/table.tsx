@@ -13,12 +13,11 @@ import type { SortDir } from '../url-state.ts';
 import { interactiveClasses } from './interactive.ts';
 import { NativeSelect } from './select.tsx';
 
-export type TableColumn =
+type TableColumn =
   | string
   | {
       label: string;
       sort?: string;
-      isNumeric?: boolean;
       isCompact?: boolean;
       isSecondary?: boolean;
       isLabelHidden?: boolean;
@@ -33,7 +32,7 @@ export type TableSorting = {
   sortTo(key: string, dir: SortDir): string;
 };
 
-export type TableProps = {
+type TableProps = {
   label: string;
   head: readonly TableColumn[];
   sorting?: TableSorting;
@@ -230,11 +229,3 @@ export const TableCell = ({
     </td>
   );
 };
-
-export const TableTotalRow = ({ children }: { children: ReactNode }) => (
-  <tr
-    className={classNamesOf(rowClasses, 'bg-surface-fg/3 font-semibold md:border-t md:border-b-0')}
-  >
-    {positioned(children)}
-  </tr>
-);

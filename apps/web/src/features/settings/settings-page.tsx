@@ -2,6 +2,7 @@ import { CLAIM_FILING_CODES } from '@ugula/billing';
 import { SaveIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
+import { type Live, useReconnect } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import {
@@ -19,8 +20,9 @@ import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { BillingProfile, BillingProfileInput, SettingsClient } from './client.ts';
 
-export type SettingsPageProps = {
+type SettingsPageProps = {
   client: SettingsClient;
+  live: Live;
 };
 
 export const FILING_OPTIONS = Object.entries(CLAIM_FILING_CODES).map(([value, label]) => ({
@@ -30,9 +32,22 @@ export const FILING_OPTIONS = Object.entries(CLAIM_FILING_CODES).map(([value, la
 
 type ProfileText = Exclude<keyof BillingProfileInput, 'production'>;
 
-export type ProfileDraft = Record<ProfileText, string> & { usage: 'T' | 'P' };
+type ProfileDraft = Record<ProfileText, string> & { usage: 'T' | 'P' };
 
-export const toProfileDraft = (p: BillingProfile | null): ProfileDraft => ({
+const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+export const timeZoneOptions = (current: string) => {
+  const zones = Intl.supportedValuesOf('timeZone');
+  return (zones.includes(current) ? zones : [current, ...zones]).map((z) => ({
+    value: z,
+    label: z.replaceAll('_', ' ')
+  }));
+};
+
+export const toProfileDraft = (
+  p: BillingProfile | null,
+  defaultZone: string = browserZone()
+): ProfileDraft => ({
   organizationName: p?.organization_name ?? '',
   npi: p?.npi ?? '',
   taxId: p?.tax_id ?? '',
@@ -44,6 +59,7 @@ export const toProfileDraft = (p: BillingProfile | null): ProfileDraft => ({
   submitterId: p?.submitter_id ?? '',
   receiverId: p?.receiver_id ?? '',
   receiverName: p?.receiver_name ?? '',
+  timeZone: p?.time_zone ?? defaultZone,
   usage: p?.production ? 'P' : 'T'
 });
 
@@ -57,7 +73,13 @@ export const fromProfileDraft = ({ usage, ...d }: ProfileDraft): BillingProfileI
   production: usage === 'P'
 });
 
-type ProfileField = { key: ProfileText; label: string; hint?: string; span?: FieldSpan };
+type ProfileField = {
+  key: Exclude<ProfileText, 'timeZone'>;
+  label: string;
+  hint?: string;
+  span?: FieldSpan;
+  pattern?: string;
+};
 
 const AGENCY_FIELDS: ProfileField[] = [
   { key: 'organizationName', label: 'Organization Name', span: 4 },
@@ -70,7 +92,12 @@ const ADDRESS_FIELDS: ProfileField[] = [
   { key: 'addressLine', label: 'Street', span: 4 },
   { key: 'city', label: 'City', span: 2 },
   { key: 'state', label: 'State', hint: '2 letters' },
-  { key: 'postalCode', label: 'ZIP Code' }
+  {
+    key: 'postalCode',
+    label: 'ZIP+4 Code',
+    hint: 'All 9 digits, like 62704-1234',
+    pattern: '\\d{5}-?\\d{4}'
+  }
 ];
 
 const CLEARINGHOUSE_FIELDS: ProfileField[] = [
@@ -109,6 +136,7 @@ export const ProfileForm = ({
         label={f.label}
         hint={f.hint}
         span={f.span}
+        pattern={f.pattern}
         required={required}
         value={draft[f.key]}
         onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
@@ -123,7 +151,19 @@ export const ProfileForm = ({
         <fieldset disabled={busy}>
           <FieldGroups>
             <FieldGroup title="Agency">
-              <FieldGrid>{inputs(AGENCY_FIELDS, true)}</FieldGrid>
+              <FieldGrid>
+                {inputs(AGENCY_FIELDS, true)}
+                <Select
+                  id="profile-timeZone"
+                  label="Time Zone"
+                  hint="Dates on claims and statements use this zone."
+                  span={2}
+                  required
+                  options={timeZoneOptions(draft.timeZone)}
+                  value={draft.timeZone}
+                  onChange={(e) => setDraft({ ...draft, timeZone: e.target.value })}
+                />
+              </FieldGrid>
             </FieldGroup>
             <FieldGroup title="Remit-to Address">
               <FieldGrid>{inputs(ADDRESS_FIELDS, true)}</FieldGrid>
@@ -156,8 +196,9 @@ export const ProfileForm = ({
   );
 };
 
-export const SettingsPage = ({ client }: SettingsPageProps) => {
+export const SettingsPage = ({ client, live }: SettingsPageProps) => {
   const profile = useResource('billing-profile', client.profile);
+  useReconnect(live, profile.reload);
   const notify = useToast();
   if (profile.error) return <PageFailure message={profile.error.message} />;
   return (

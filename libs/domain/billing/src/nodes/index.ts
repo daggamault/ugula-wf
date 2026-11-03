@@ -7,11 +7,11 @@ import { payerNodes } from './payers.ts';
 import type { BillingStores } from './stores.ts';
 
 export type {
+  AgencyProfile,
   BillingStores,
   BlobRef,
   CandidateQuery,
   ClaimStore,
-  CycleEventKind,
   DraftClaim,
   FeeStore,
   PatientStore,

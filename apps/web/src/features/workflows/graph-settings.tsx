@@ -15,10 +15,11 @@ import { Button } from '../../shared/ui/button.tsx';
 import { FieldGrid } from '../../shared/ui/field.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
+import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
 import type { GraphKind } from './client.ts';
 
-export type GraphSettingsProps = {
+type GraphSettingsProps = {
   kind: GraphKind;
   def: GraphDef;
   editable: boolean;
@@ -35,24 +36,6 @@ const names = (text: string) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-const Section = ({
-  title,
-  description,
-  children
-}: {
-  title: string;
-  description: string;
-  children: ReactNode;
-}) => (
-  <section className="border-border flex flex-col gap-4 border-t pt-5 first:border-t-0 first:pt-0">
-    <header className="flex flex-col gap-1">
-      <h3 className="text-base font-bold">{title}</h3>
-      <p className="text-surface-fg-muted text-xs">{description}</p>
-    </header>
-    {children}
-  </section>
-);
-
 const AddButton = ({ children, onClick }: { children: ReactNode; onClick: () => void }) => (
   <div>
     <Button variant="outline" onClick={onClick}>
@@ -63,10 +46,13 @@ const AddButton = ({ children, onClick }: { children: ReactNode; onClick: () => 
 );
 
 const RemoveButton = ({ name, onClick }: { name: string; onClick: () => void }) => (
-  <Button intent="danger" variant="outline" aria-label={`Remove ${name}`} onClick={onClick}>
-    <Trash2Icon aria-hidden="true" className="size-4" />
-    Remove
-  </Button>
+  <IconButton
+    label={`Remove ${name}`}
+    tooltip="Remove"
+    icon={Trash2Icon}
+    intent="danger"
+    onClick={onClick}
+  />
 );
 
 const TypeInput = ({
@@ -120,7 +106,7 @@ const PinsEditor = ({
   const patch = (i: number, next: Partial<PinSpec>) =>
     onPins(pins.map((p, j) => (j === i ? { ...p, ...next } : p)));
   return (
-    <Section title={title} description={description}>
+    <SectionPanel title={title} description={description}>
       {pins.map((pin, i) => (
         <div key={`${id}-${i}`} className={rowClass}>
           <Input
@@ -129,7 +115,12 @@ const PinsEditor = ({
             value={pin.name}
             onChange={(e) => patch(i, { name: e.target.value })}
           />
-          <TypeInput id={`${id}-${i}-type`} type={pin.type} onType={(type) => patch(i, { type })} />
+          <TypeInput
+            key={formatType(pin.type)}
+            id={`${id}-${i}-type`}
+            type={pin.type}
+            onType={(type) => patch(i, { type })}
+          />
           {editable ? (
             <RemoveButton name={pin.name} onClick={() => onPins(pins.filter((_, j) => j !== i))} />
           ) : null}
@@ -142,7 +133,7 @@ const PinsEditor = ({
           Add {noun.charAt(0).toUpperCase() + noun.slice(1)}
         </AddButton>
       ) : null}
-    </Section>
+    </SectionPanel>
   );
 };
 
@@ -158,9 +149,9 @@ const VariablesEditor = ({
   const patch = (i: number, next: Partial<VariableDef>) =>
     onVariables(variables.map((v, j) => (j === i ? { ...v, ...next } : v)));
   return (
-    <Section
+    <SectionPanel
       title="Variables"
-      description="Values kept while it runs. Read and change them with Get and Set nodes."
+      description="Values kept while it runs, read and changed with Get and Set nodes."
     >
       {variables.map((variable, i) => (
         <div key={`var-${i}`} className="border-border flex flex-col gap-4 rounded-xl border p-4">
@@ -172,6 +163,7 @@ const VariablesEditor = ({
               onChange={(e) => patch(i, { name: e.target.value })}
             />
             <TypeInput
+              key={formatType(variable.type)}
               id={`var-${i}-type`}
               type={variable.type}
               onType={(type) =>
@@ -210,7 +202,7 @@ const VariablesEditor = ({
           Add Variable
         </AddButton>
       ) : null}
-    </Section>
+    </SectionPanel>
   );
 };
 
@@ -227,12 +219,11 @@ export const GraphSettings = ({ kind, def, editable, onChange, onClose }: GraphS
             {kind === 'workflow' ? 'Workflow Settings' : 'Building Block Settings'}
           </h2>
           <p className="text-surface-fg-muted text-sm">
-            What this takes in, what it hands back, and what it keeps while it runs. Workflows that
-            use it see these as the pins of its node.
+            What this takes in, hands back and keeps while it runs, shown as its node's pins.
           </p>
         </div>
         <IconButton
-          label="Close settings"
+          label="Close Settings"
           tooltip="Close"
           icon={XIcon}
           tooltipSide="left"
@@ -243,7 +234,7 @@ export const GraphSettings = ({ kind, def, editable, onChange, onClose }: GraphS
         disabled={!editable}
         className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4"
       >
-        <Section title="Paths" description="Named ways in and out. Most have one of each.">
+        <SectionPanel title="Paths" description="Named ways in and out, and most have one of each.">
           <FieldGrid>
             <Input
               id="exec-in"
@@ -262,11 +253,11 @@ export const GraphSettings = ({ kind, def, editable, onChange, onClose }: GraphS
               onBlur={(e) => setSignature({ execOut: names(e.target.value) })}
             />
           </FieldGrid>
-        </Section>
+        </SectionPanel>
         <PinsEditor
           id="in"
           title="Inputs"
-          description="Values passed in when it starts. Types look like string, number, list<string> or object{id: string}."
+          description="Values passed in when it starts, typed like string, number, list<string> or object{id: string}."
           noun="input"
           editable={editable}
           pins={signature.inputs}

@@ -10,7 +10,7 @@ const render = (sorting?: Parameters<typeof Table>[0]['sorting']) =>
       label: 'Runs',
       head: [
         { label: 'Name', sort: 'name' },
-        { label: 'Total', isNumeric: true, sort: 'total' },
+        { label: 'Total', sort: 'total' },
         { label: 'Started', isSecondary: true },
         { label: 'Actions', isLabelHidden: true }
       ],

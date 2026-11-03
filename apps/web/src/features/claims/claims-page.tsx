@@ -3,7 +3,7 @@ import { PlayIcon } from 'lucide-react';
 import { useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatCents, formatDate } from '../../shared/format.ts';
-import { type Live, useLive } from '../../shared/live.ts';
+import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { queueInfo, TASK_FILTERS } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
@@ -21,7 +21,7 @@ import { useResource } from '../../shared/use-resource.ts';
 import { CLAIM_FILTERS, ClaimStatusBadge } from './claim-status-badge.tsx';
 import type { ClaimSearch, ClaimSummary, ClaimsClient } from './client.ts';
 
-export type ClaimsPageProps = {
+type ClaimsPageProps = {
   client: ClaimsClient;
   live: Live;
   search: ClaimSearch;
@@ -118,8 +118,8 @@ export const ClaimsTable = ({
       ...(showPatient ? [{ label: 'Patient', sort: 'patient' }] : []),
       { label: 'Encounter', isSecondary: true, sort: 'pcr' },
       { label: 'Service Date', sort: 'service' },
-      { label: 'Total', isNumeric: true, sort: 'total' },
-      { label: 'Balance', isNumeric: true, sort: 'balance' },
+      { label: 'Total', sort: 'total' },
+      { label: 'Balance', sort: 'balance' },
       { label: 'Payers', isSecondary: true },
       { label: 'Status', sort: 'status' },
       { label: 'Waiting On', sort: 'waiting' },
@@ -197,12 +197,30 @@ export const ClaimsPage = ({ client, live, search, me, startWork }: ClaimsPagePr
   const key = Object.values(search).join('|');
   const claims = useResource(
     `claims:${key}:${table.apiQuery}`,
-    () => client.list(search, table.apiQuery),
+    (signal) => client.list(search, table.apiQuery, signal),
     30_000
   );
   const [starting, setStarting] = useState(false);
   const notify = useToast();
-  useLive(live, (e) => e.kind === 'claim' || e.kind === 'task', claims.reload);
+  const items = claims.data?.items ?? [];
+  useLive(
+    live,
+    (e) =>
+      (e.kind === 'claim' &&
+        isOnPage(
+          e.id,
+          table.page,
+          items.map((c) => c.id)
+        )) ||
+      (e.kind === 'task' &&
+        isOnPage(
+          e.id,
+          table.page,
+          items.map((c) => c.task_id)
+        )),
+    claims.reload,
+    LIST_RELOAD_MS
+  );
   const queue = search.task && search.task !== 'any' ? search.task : null;
 
   const start = async () => {
@@ -221,7 +239,7 @@ export const ClaimsPage = ({ client, live, search, me, startWork }: ClaimsPagePr
   return (
     <Page
       title="Claims"
-      description="Every claim from draft to paid, and the task each one is waiting on. Start Working opens the next task for you."
+      description="Every claim from draft to paid, and the task each one is waiting on."
       actions={
         <Button isPending={starting} onClick={() => void start()}>
           <PlayIcon aria-hidden="true" className="size-4" />

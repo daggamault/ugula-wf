@@ -109,7 +109,7 @@ NICKNAME_GROUPS.forEach((names, i) => {
   for (const name of names) groupsOf.set(name, (groupsOf.get(name) ?? new Set()).add(i));
 });
 
-export const isNickname = (a: string, b: string) => {
+const isNickname = (a: string, b: string) => {
   const groups = groupsOf.get(a);
   return !!groups && [...(groupsOf.get(b) ?? [])].some((g) => groups.has(g));
 };

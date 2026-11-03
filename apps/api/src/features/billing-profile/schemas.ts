@@ -10,6 +10,8 @@ const digits = (n: number, message: string) =>
 
 const required = v.pipe(v.string(), v.trim(), v.nonEmpty());
 
+const TIME_ZONES = new Set(Intl.supportedValuesOf('timeZone'));
+
 const clearinghouseId = v.nullable(
   v.pipe(
     v.string(),
@@ -33,12 +35,13 @@ export const billingProfileSchema = v.object({
     v.toUpperCase(),
     v.regex(/^[A-Z]{2}$/, 'Use a 2-letter state')
   ),
-  postalCode: v.pipe(
-    v.string(),
-    v.transform((s) => s.replace(/\D/g, '')),
-    v.regex(/^(\d{5}|\d{9})$/, 'Use a 5 or 9 digit ZIP code')
-  ),
+  postalCode: digits(9, 'Use the 9 digit ZIP+4 code'),
   phone: digits(10, 'A phone number has 10 digits'),
+  timeZone: v.pipe(
+    v.string(),
+    v.trim(),
+    v.check((tz) => TIME_ZONES.has(tz), 'Choose a time zone such as America/Chicago')
+  ),
   submitterId: clearinghouseId,
   receiverId: clearinghouseId,
   receiverName: v.nullable(v.pipe(v.string(), v.trim(), v.maxLength(60))),

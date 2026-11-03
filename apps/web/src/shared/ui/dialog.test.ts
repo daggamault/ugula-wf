@@ -43,7 +43,7 @@ describe('ConfirmDialog', () => {
     assert.ok(html.includes('>Keep</span>'));
     assert.ok(html.includes('>Delete</span>'));
     assert.ok(html.includes('bg-danger'));
-    assert.ok(html.includes('border-danger/50') && html.includes('lucide-triangle-alert'));
+    assert.ok(html.includes('border-danger/30') && html.includes('lucide-triangle-alert'));
   });
 });
 
@@ -62,6 +62,6 @@ describe('DeleteDialog', () => {
     assert.ok(html.includes('Are you sure you want to delete <strong'));
     assert.ok(html.includes('This cannot be undone.') && html.includes('Its prices are removed.'));
     assert.ok(html.includes('>Keep</span>') && html.includes('>Delete</span>'));
-    assert.ok(html.includes('border-danger/50'));
+    assert.ok(html.includes('border-danger/30'));
   });
 });

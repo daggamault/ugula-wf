@@ -9,13 +9,14 @@ import {
   RETURN_TYPE
 } from '@ugula/graph';
 import { ExternalLinkIcon, Trash2Icon, XIcon } from 'lucide-react';
-import { type ReactNode, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import type { Catalog } from '../../shared/graph/catalog.ts';
 import { updateNode } from '../../shared/graph/flow.ts';
 import { describeType } from '../../shared/graph/pins.ts';
 import { Button } from '../../shared/ui/button.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
+import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { Textarea } from '../../shared/ui/textarea.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
@@ -26,14 +27,13 @@ const TABLE_EDITORS = {
   'std.table.decide': DecisionTableEditor
 } as const;
 
-export type NodeInspectorProps = {
+type NodeInspectorProps = {
   def: GraphDef;
   node: NodeInstance;
   catalog: Catalog;
   editable: boolean;
   onChange: (def: GraphDef) => void;
   onDelete: () => void;
-  /** Opens the sub-graph or workflow this node runs; absent when it runs neither. */
   onOpen?: (() => void) | undefined;
   onClose: () => void;
 };
@@ -50,32 +50,6 @@ const modeOf = (binding: InputBinding | undefined): BindingMode =>
   !binding ? 'default' : 'expr' in binding ? 'expr' : 'value';
 
 const pinLabel = (spec: Pick<PinSpec, 'name' | 'label'>) => spec.label ?? spec.name;
-
-const Group = ({
-  title,
-  description,
-  children
-}: {
-  title: string;
-  description: string;
-  children: ReactNode;
-}) => {
-  const id = useId();
-  return (
-    <section
-      aria-labelledby={id}
-      className="border-border flex flex-col gap-4 border-t pt-5 first:border-t-0 first:pt-0"
-    >
-      <header className="flex flex-col gap-1">
-        <h3 id={id} className="text-base font-bold">
-          {title}
-        </h3>
-        <p className="text-surface-fg-muted text-xs">{description}</p>
-      </header>
-      {children}
-    </section>
-  );
-};
 
 const PinHeading = ({ spec }: { spec: PinSpec }) => (
   <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
@@ -172,6 +146,7 @@ const ConfigEditor = ({
   const [error, setError] = useState<string>();
   return (
     <Textarea
+      isMonospace
       id={`${node.id}-config`}
       label="Settings (JSON)"
       hint="For example the expression to evaluate, the fields of a task, or which workflow to start."
@@ -265,7 +240,7 @@ export const NodeInspector = ({
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
         {inputs.length ? (
-          <Group
+          <SectionPanel
             title="Inputs"
             description={
               editable
@@ -296,10 +271,13 @@ export const NodeInspector = ({
                 );
               })}
             </ul>
-          </Group>
+          </SectionPanel>
         ) : null}
         {outputs.length ? (
-          <Group title="Outputs" description="What this node produces for the nodes after it.">
+          <SectionPanel
+            title="Outputs"
+            description="What this node produces for the nodes after it."
+          >
             <ul className="flex flex-col gap-2">
               {outputs.map((spec) => (
                 <li key={spec.name} className="flex flex-col gap-0.5">
@@ -308,12 +286,12 @@ export const NodeInspector = ({
                 </li>
               ))}
             </ul>
-          </Group>
+          </SectionPanel>
         ) : null}
         {exits.length ? (
-          <Group
+          <SectionPanel
             title="Then"
-            description="Where the run goes next. Each path is a separate connection on the canvas."
+            description="Where the run goes next, each path a separate connection on the canvas."
           >
             <ul className="flex flex-col gap-2">
               {exits.map((pin) => (
@@ -323,10 +301,10 @@ export const NodeInspector = ({
                 </li>
               ))}
             </ul>
-          </Group>
+          </SectionPanel>
         ) : null}
         {!boundary && catalog.hasConfig(node) ? (
-          <Group title="Settings" description="How this node is set up, beyond its inputs.">
+          <SectionPanel title="Settings" description="How this node is set up, beyond its inputs.">
             {Object.hasOwn(TABLE_EDITORS, node.type) ? (
               (() => {
                 const TableEditor = TABLE_EDITORS[node.type as keyof typeof TABLE_EDITORS];
@@ -347,10 +325,13 @@ export const NodeInspector = ({
                 onConfig={(config) => set({ config })}
               />
             )}
-          </Group>
+          </SectionPanel>
         ) : null}
         {editable ? (
-          <Group title="Name" description="Shown on the canvas instead of the node's usual name.">
+          <SectionPanel
+            title="Name"
+            description="Shown on the canvas instead of the node's usual name."
+          >
             <Input
               id={`${node.id}-label`}
               label="Label"
@@ -358,10 +339,10 @@ export const NodeInspector = ({
               value={node.label ?? ''}
               onChange={(e) => set({ label: e.target.value || undefined })}
             />
-          </Group>
+          </SectionPanel>
         ) : null}
         {signature && !isPure(signature) && !boundary ? (
-          <Group
+          <SectionPanel
             title="Retry on Failure"
             description="Try this node again before stopping the run, waiting longer each time."
           >
@@ -392,7 +373,7 @@ export const NodeInspector = ({
                 }
               />
             </fieldset>
-          </Group>
+          </SectionPanel>
         ) : null}
         {editable && !isStart ? (
           <div className="border-border border-t pt-5">

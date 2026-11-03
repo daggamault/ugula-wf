@@ -1,10 +1,11 @@
 import { formatCents, formatDateTime } from '../../shared/format.ts';
 import { Badge, type StatusBadgeStyle } from '../../shared/ui/badge.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
+import { Highlight } from '../../shared/ui/highlight.tsx';
 import { OpenLink } from '../../shared/ui/icon-button.tsx';
 import { runStatusStyles } from '../../shared/ui/run-status-badge.tsx';
-import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
-import { withBack } from '../../shared/url-state.ts';
+import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { type SearchView, withBack } from '../../shared/url-state.ts';
 import type { ImportSummary } from './client.ts';
 
 const REPORTS_PENDING: StatusBadgeStyle = { intent: 'info', label: 'PCRs in Progress' };
@@ -14,7 +15,7 @@ export const importStatus = (i: ImportSummary) =>
     ? REPORTS_PENDING
     : runStatusStyles[i.run_status];
 
-export const SOURCES: Readonly<Record<ImportSummary['source'], string>> = {
+const SOURCES: Readonly<Record<ImportSummary['source'], string>> = {
   upload: 'Upload',
   sftp: 'SFTP',
   manual: 'Workflow run'
@@ -41,25 +42,25 @@ export const IMPORT_TABLE = {
   sort: 'received'
 } as const;
 
+export const sourceOf = (i: Pick<ImportSummary, 'source'>) => SOURCES[i.source];
+
 export const ImportHistory = ({
   imports,
-  sorting,
-  back = ''
+  search
 }: {
   imports: readonly ImportSummary[];
-  sorting?: TableSorting;
-  back?: string;
+  search?: SearchView;
 }) => (
   <Table
     label="Imports"
-    {...(sorting ? { sorting } : {})}
+    {...(search ? { sorting: search } : {})}
     head={[
       { label: 'File', sort: 'file' },
       { label: 'Received', isSecondary: true, sort: 'received' },
       { label: 'Status', sort: 'status' },
-      { label: 'PCRs', isNumeric: true, sort: 'reports' },
-      { label: 'Claims', isNumeric: true, sort: 'claims' },
-      { label: 'Charges', isNumeric: true, isSecondary: true, sort: 'charges' },
+      { label: 'PCRs', sort: 'reports' },
+      { label: 'Claims', sort: 'claims' },
+      { label: 'Charges', isSecondary: true, sort: 'charges' },
       { label: 'Needs Attention', sort: 'attention' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
@@ -71,10 +72,17 @@ export const ImportHistory = ({
         <TableRow key={i.id}>
           <TableCell>
             <span className="flex flex-col gap-0.5">
-              <span className="font-medium">{i.file_name}</span>
+              <span className="font-medium">
+                <Highlight text={i.file_name} query={search?.q ?? ''} />
+              </span>
               <span className="text-surface-fg-muted text-xs">
-                {SOURCES[i.source]}
-                {i.uploaded_by_email ? ` · ${i.uploaded_by_email}` : ''}
+                {sourceOf(i)}
+                {i.uploaded_by_email ? (
+                  <>
+                    {' · '}
+                    <Highlight text={i.uploaded_by_email} query={search?.q ?? ''} />
+                  </>
+                ) : null}
               </span>
             </span>
           </TableCell>
@@ -93,7 +101,10 @@ export const ImportHistory = ({
             {outcomes.length ? outcomes.join(', ') : 'Nothing'}
           </TableCell>
           <TableCell kind="actions">
-            <OpenLink to={withBack(`/imports/${i.id}`, back)} name={`import ${i.file_name}`} />
+            <OpenLink
+              to={withBack(`/imports/${i.id}`, search?.href ?? '')}
+              name={`import ${i.file_name}`}
+            />
           </TableCell>
         </TableRow>
       );

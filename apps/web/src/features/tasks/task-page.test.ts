@@ -4,7 +4,14 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import type { TaskDetail, TasksClient } from './client.ts';
-import { backLabelOf, backOfTask, NextUp, TaskPage, TaskView } from './task-page.tsx';
+import {
+  backOfTask,
+  describeTask,
+  fieldErrorsOf,
+  NextUp,
+  TaskPage,
+  TaskView
+} from './task-page.tsx';
 
 const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
   id: 't1',
@@ -61,14 +68,13 @@ describe('TaskView', () => {
     const claim = { id: 'c1', number: 12, status: 'draft', patient: null } as const;
     const onClaim = task({ source: { reportId: null, pcrNumber: 'PCR-1', claim } });
     const html = render(onClaim);
-    assert.ok(html.includes('Claim #12 · Patient not matched yet'));
+    assert.ok(html.includes('Review PCR on claim #12 for a patient not matched yet, opened'));
     assert.ok(html.includes('href="/claims/c1"') && html.includes('Open Claim'));
     const fromClaim = render(onClaim, null, '/claims/c1');
     assert.ok(!fromClaim.includes('Open Claim') && fromClaim.includes('Back to Claim'));
     assert.equal(backOfTask(null, onClaim), '/claims/c1');
     assert.equal(backOfTask(null, task()), '/claims');
     assert.equal(backOfTask('/runs/r1', onClaim), '/runs/r1');
-    assert.equal(backLabelOf('/imports/i1'), 'Back to Import');
   });
 
   it('explains stuck-run resolutions and shows completed decisions', () => {
@@ -107,6 +113,37 @@ describe('TaskView', () => {
     );
     assert.ok(done.includes('as “Keep Waiting”'));
     assert.ok(!done.includes('>Approve<'));
+  });
+
+  it('marks required fields, blocks the outcomes that need them and themes destructive ones', () => {
+    const html = render(
+      task({
+        title: 'Match payer',
+        fields: [
+          { name: 'payerId', type: 'string', label: 'Directory payer', required: ['link'] },
+          { name: 'birthDate', type: 'string', label: 'Birth date', format: 'date' }
+        ],
+        outcomes: ['link', 'unlisted', 'void'],
+        defaults: null
+      })
+    );
+    assert.ok(html.includes('Directory Payer') && html.includes('required=""'));
+    assert.ok(html.includes('type="date"'));
+    assert.ok(html.includes('Fill in Directory Payer first.'));
+    assert.ok(html.includes('>Link Payer<') && html.includes('>Mark Unlisted<'));
+    assert.ok(html.includes('border-danger/40 text-danger'));
+    assert.ok(html.includes('>Void<'));
+  });
+});
+
+describe('fieldErrorsOf', () => {
+  it('reads field errors from an invalid completion', () => {
+    const err = Object.assign(new Error('Some fields are invalid'), {
+      status: 422,
+      body: { error: 'Some fields are invalid', fields: { payerId: 'is required', bad: 1 } }
+    });
+    assert.deepEqual(fieldErrorsOf(err), { payerId: 'is required' });
+    assert.deepEqual(fieldErrorsOf(new Error('x')), {});
   });
 });
 
@@ -152,5 +189,17 @@ describe('TaskPage', () => {
       })
     );
     assert.ok(html.length > 0);
+  });
+});
+
+describe('describeTask', () => {
+  it('says what a task is and which claim it is on in one sentence', () => {
+    const claim = { id: 'c1', number: 12, status: 'draft', patient: 'Doe, Jane' } as const;
+    assert.equal(describeTask(task()), 'Review PCR');
+    assert.equal(
+      describeTask(task({ subject: null, source: { reportId: null, pcrNumber: null, claim } })),
+      'On claim #12 for Doe, Jane'
+    );
+    assert.equal(describeTask(task({ subject: null })), 'Waiting on a decision');
   });
 });

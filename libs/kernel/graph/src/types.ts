@@ -101,6 +101,7 @@ export type NodeContext = {
   runId: string;
   key: string;
   now: Date;
+  signal?: AbortSignal;
 };
 
 export type VarAccess = {
@@ -131,6 +132,7 @@ export type NodeDef<C = unknown> = NodeRef & {
   effect?: boolean;
   catches?: boolean;
   calls?: (config: C) => string[];
+  variables?: (config: C) => string[];
   run: (inv: Invocation<C>) => NodeResult | Promise<NodeResult>;
 };
 

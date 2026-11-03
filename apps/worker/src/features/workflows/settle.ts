@@ -1,10 +1,48 @@
 import type { RunStatus } from '@ugula/db';
 import { isRecord, type Json, type RunState, type TraceEntry, type Values } from '@ugula/graph';
-import { advance, cancel, type RunJob, resume } from '@ugula/run-queue';
+import { advance, cancel, type RunJob, resume, timeout } from '@ugula/run-queue';
 import type { ChildRun, ClaimedRun, RunTx } from './queries.ts';
 
 const FAULT_QUEUE = 'exceptions';
 export const FAULT_OUTCOMES = ['retry', 'skip', 'cancel'];
+const STALL_OUTCOMES = ['retry', 'cancel'];
+
+const ENCOUNTER_WORKFLOW = 'billing.encounter-to-claim';
+
+const RECOVER_DRAFT = { key: 'billing.recover-draft', version: 1 };
+
+const RETRY_HINT = 'Retry once the cause is fixed.';
+
+const CONSTRAINT_MESSAGES: [RegExp, (m: RegExpMatchArray) => string][] = [
+  [
+    /violates check constraint "(\w+)"/,
+    (m) => `A saved value broke the rule ${m[1]?.replaceAll('_', ' ')}`
+  ],
+  [/violates unique constraint/, () => 'It would duplicate a record that already exists'],
+  [/violates foreign key constraint/, () => 'It refers to a record that does not exist'],
+  [/null value in column "(\w+)"/, (m) => `${m[1]?.replaceAll('_', ' ')} is required`]
+];
+
+const sentence = (text: string) => {
+  const t = text.trim().replace(/^Error:\s*/, '');
+  const capital = t.charAt(0).toUpperCase() + t.slice(1);
+  return /[.!?]$/.test(capital) ? capital : `${capital}.`;
+};
+
+export const readableError = (message: string) => {
+  for (const [pattern, explain] of CONSTRAINT_MESSAGES) {
+    const m = message.match(pattern);
+    if (m) return sentence(explain(m));
+  }
+  return sentence(message || 'The step failed');
+};
+
+const faultInstructions = (node: string, message: string, rejected: string | null) =>
+  [
+    ...(rejected ? [sentence(rejected)] : []),
+    `${node}: ${readableError(message)}`,
+    RETRY_HINT
+  ].join('\n\n');
 
 const messageOf = (error: Json) =>
   isRecord(error) && typeof error.message === 'string' ? error.message : 'Run did not complete';
@@ -33,6 +71,16 @@ export const childrenPayload = (kind: string, children: ChildRun[]): Json => {
   return kind === 'workflows' ? { results } : (results[0] ?? null);
 };
 
+const rootKey = (run: ClaimedRun) => run.graphs.find((g) => g.id === run.versionId)?.key;
+
+const recoverDrafts = async (tx: RunTx, run: ClaimedRun, reason: string, jobs: RunJob[]) => {
+  if (rootKey(run) !== ENCOUNTER_WORKFLOW) return;
+  const versionId = await tx.findVersion(run.tenantId, RECOVER_DRAFT.key, RECOVER_DRAFT.version);
+  if (!versionId) return;
+  const ids = await tx.recoverDrafts(run, versionId, reason);
+  jobs.push(...ids.map((id) => advance(id)));
+};
+
 const finish = async (
   tx: RunTx,
   run: ClaimedRun,
@@ -42,6 +90,16 @@ const finish = async (
   jobs: RunJob[]
 ) => {
   await tx.saveRun(run, { status, state, ...outcome });
+  if (status !== 'completed') {
+    await recoverDrafts(
+      tx,
+      run,
+      status === 'cancelled'
+        ? 'The run was cancelled'
+        : `The run failed: ${messageOf(outcome.error ?? null)}`,
+      jobs
+    );
+  }
   await notifyParent(tx, run, jobs);
 };
 
@@ -63,7 +121,7 @@ const spawn = async (
   }
   const inputs = (kind === 'workflow' ? [data.inputs] : data.items) as Values[];
   const ids = inputs.length ? await tx.insertChildren(run, waitId, versionId, inputs) : [];
-  jobs.push(...ids.map(advance));
+  jobs.push(...ids.map((id) => advance(id, run.id)));
   if (kind === 'spawn') jobs.push(resume(run.id, waitId, { runIds: ids }));
   else if (!ids.length) jobs.push(resume(run.id, waitId, { results: [] }));
 };
@@ -102,7 +160,7 @@ const suspendRun = async (tx: RunTx, run: ClaimedRun, state: RunState, jobs: Run
       const after = typeof data.after === 'number' ? data.after : null;
       if (after !== null && (await tx.lockSignal(run.tenantId, waitKey)) > after) {
         jobs.push(resume(run.id, wait.id, { payload: null }));
-      } else if (until) jobs.push(resume(run.id, wait.id, { timedOut: true }, until));
+      } else if (until) jobs.push(timeout(run.id, wait.id, until));
       return;
     }
     case 'task':
@@ -152,29 +210,19 @@ export type FailedNode = {
   outputs: string[];
 };
 
-export const faultFields = (failed: FailedNode | null): Json => [
-  ...(!failed || failed.exits.length
+export const faultFields = (failed: FailedNode | null): Json =>
+  failed?.exits.length
     ? [
         {
           name: 'pin',
           type: 'string',
           label: 'Continue from',
-          ...(failed ? { options: failed.exits.map((value) => ({ value, label: value })) } : {})
+          options: failed.exits.map((value) => ({ value, label: value }))
         }
       ]
-    : []),
-  ...(!failed || failed.outputs.length
-    ? [
-        {
-          name: 'outputs',
-          type: { object: {} },
-          label: failed ? `Outputs to use (${failed.outputs.join(', ')})` : 'Outputs to use'
-        }
-      ]
-    : [])
-];
+    : [];
 
-export type Rejection = {
+type Rejection = {
   reason: string;
   at: string;
 };
@@ -189,16 +237,17 @@ const faultRun = async (
   const fault = state.fault;
   if (!fault) throw new Error(`Run ${run.id} is faulted without an error`);
   await tx.saveRun(run, { status: 'faulted', state, error: fault.error });
+  const node = failed?.title ?? fault.error.node;
   await tx.insertTask({
     tenantId: run.tenantId,
     runId: run.id,
     waitId: rejected ? `fault:${state.seq}:${rejected.at}` : `fault:${state.seq}`,
     kind: 'fault',
     queue: FAULT_QUEUE,
-    title: `Stuck at ${failed?.title ?? fault.error.node}`,
-    subject: null,
-    instructions: rejected ? `${rejected.reason}\n\n${fault.error.message}` : fault.error.message,
-    context: { runId: run.id, node: failed?.title ?? fault.error.node, error: fault.error },
+    title: `Stuck at ${node}`,
+    subject: await tx.claimReference(run.id),
+    instructions: faultInstructions(node, fault.error.message, rejected?.reason ?? null),
+    context: { runId: run.id, node, error: fault.error },
     fields: faultFields(failed),
     outcomes: FAULT_OUTCOMES,
     defaults: null,
@@ -219,7 +268,7 @@ export const settleRun = async (
   switch (state.status) {
     case 'running':
       await tx.saveRun(run, { status: 'running', state });
-      jobs.push(advance(run.id));
+      jobs.push(advance(run.id, run.parentId));
       break;
     case 'completed':
       await finish(tx, run, 'completed', state, { result: state.result }, jobs);
@@ -241,10 +290,25 @@ export const refaultRun = (
   rejected: Rejection
 ) => faultRun(tx, run, state, failed, rejected);
 
-export const failRun = async (tx: RunTx, run: ClaimedRun, message: string) => {
-  const jobs: RunJob[] = [];
-  await finish(tx, run, 'failed', run.state, { error: { message } }, jobs);
-  await tx.enqueue(jobs);
+export const stallRun = async (tx: RunTx, run: ClaimedRun, message: string, at: string) => {
+  const error = { message };
+  await tx.saveRun(run, { status: 'faulted', state: run.state, error });
+  await tx.insertTask({
+    tenantId: run.tenantId,
+    runId: run.id,
+    waitId: `fault:${run.state?.seq ?? 0}:${at}`,
+    kind: 'fault',
+    queue: FAULT_QUEUE,
+    title: 'Could not continue',
+    subject: await tx.claimReference(run.id),
+    instructions: `${readableError(message)}\n\n${RETRY_HINT}`,
+    context: { runId: run.id, error },
+    fields: [],
+    outcomes: STALL_OUTCOMES,
+    defaults: null,
+    priority: 0,
+    assigneeId: null
+  });
 };
 
 export const cancelRun = async (tx: RunTx, run: ClaimedRun) => {

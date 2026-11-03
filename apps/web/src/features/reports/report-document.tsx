@@ -1,13 +1,15 @@
 import type { ReactNode } from 'react';
 import { classNamesOf } from '../../shared/class-names.ts';
+import type { Totals } from './client.ts';
 import type { ReportColumn } from './report-columns.ts';
 
-export type ReportDocumentProps<R> = {
+type ReportDocumentProps<R> = {
   title: string;
   details: readonly ReactNode[];
   columns: readonly ReportColumn<R>[];
   rows: readonly R[];
-  totals: readonly string[] | null;
+  totals: Totals;
+  footer: readonly string[] | null;
 };
 
 const cellClasses = (isNumeric: boolean | undefined) =>
@@ -18,7 +20,8 @@ export const ReportDocument = <R,>({
   details,
   columns,
   rows,
-  totals
+  totals,
+  footer
 }: ReportDocumentProps<R>) => (
   <article className="rounded-xl border border-gray-300 bg-white p-6 text-black sm:p-8 print:rounded-none print:border-0 print:p-0">
     <header className="mb-5 flex flex-col gap-1 border-b border-gray-400 pb-4">
@@ -45,16 +48,16 @@ export const ReportDocument = <R,>({
             <tr key={i} className="break-inside-avoid border-b border-gray-200 even:bg-gray-50">
               {columns.map((c) => (
                 <td key={c.label} className={cellClasses(c.isNumeric)}>
-                  {c.text(r)}
+                  {c.text(r, totals)}
                 </td>
               ))}
             </tr>
           ))}
         </tbody>
-        {totals ? (
+        {footer ? (
           <tfoot>
             <tr className="border-t-2 border-gray-800 font-bold">
-              {totals.map((t, i) => (
+              {footer.map((t, i) => (
                 <td key={columns[i]?.label ?? i} className={cellClasses(columns[i]?.isNumeric)}>
                   {t}
                 </td>

@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { AuthClient } from './client.ts';
-import { SignInForm } from './sign-in-form.tsx';
+import { SignInForm, signInErrorOf } from './sign-in-form.tsx';
 
 const mockAuth: AuthClient = {
   signIn: async () => ({
@@ -24,5 +24,32 @@ describe('SignInForm', () => {
     assert.ok(html.includes('type="email"'));
     assert.ok(html.includes('type="password"'));
     assert.ok(html.includes('type="submit"'));
+  });
+});
+
+describe('signInErrorOf', () => {
+  const limited = (body: Record<string, unknown>) =>
+    Object.assign(new Error('Too many attempts'), { status: 429, body });
+
+  it('says how long to wait after too many attempts', () => {
+    assert.equal(
+      signInErrorOf(limited({ retryAfter: 600 })),
+      'Too many sign-in attempts. Try again in 10 minutes.'
+    );
+    assert.equal(
+      signInErrorOf(limited({ retryAfter: 30 })),
+      'Too many sign-in attempts. Try again in 1 minute.'
+    );
+    assert.equal(
+      signInErrorOf(limited({})),
+      'Too many sign-in attempts. Try again in a few minutes.'
+    );
+  });
+
+  it('passes other failures through', () => {
+    assert.equal(
+      signInErrorOf(new Error('Invalid email or password')),
+      'Invalid email or password'
+    );
   });
 });

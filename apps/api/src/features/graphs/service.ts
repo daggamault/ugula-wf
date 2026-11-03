@@ -19,7 +19,7 @@ import {
   deleteGraph,
   findDefinition,
   findGraph,
-  findLatestPublished,
+  findNewestPublishedVersion,
   findSystemGraph,
   findTenantGraph,
   findVersion,
@@ -37,12 +37,12 @@ import {
   updateDraft
 } from './queries.ts';
 
-export type GraphServiceDeps = {
+type GraphServiceDeps = {
   db: Db;
   nodes: NodeDef[];
 };
 
-export type NewGraph = {
+type NewGraph = {
   key: string;
   name: string;
   kind: GraphKind;
@@ -177,7 +177,7 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
           await setGraphActive(tx, tenantId, copy.id, true);
           return ok({ id: copy.id });
         }
-        const latest = await findLatestPublished(tx, graph.id);
+        const latest = await findNewestPublishedVersion(tx, graph.id);
         if (!latest) return fail('conflict', 'This graph has no published version to start from');
         try {
           const { id } = await insertGraph(tx, {
@@ -223,20 +223,14 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
         if (!graph.ok) return graph;
         const draft = await lockDraft(tx, graphId);
         if (!draft) return fail('conflict', 'Nothing to publish');
-        const { issues, dependencies } = await check(
-          tx,
-          tenantId,
-          await findDefinition(tx, draft.id)
-        );
+        const definition = await findDefinition(tx, draft.id);
+        const { issues, dependencies } = await check(tx, tenantId, definition);
         if (issues.length) return fail('invalid', 'Fix the issues before publishing', { issues });
         const system = await findSystemGraph(tx, graph.value.key);
-        const original = system && (await findLatestPublished(tx, system.id));
+        const original = system && (await findNewestPublishedVersion(tx, system.id));
         if (
           original &&
-          !keepsContract(
-            (original.definition as GraphDef).signature,
-            (await findDefinition(tx, draft.id)).signature
-          )
+          !keepsContract((original.definition as GraphDef).signature, definition.signature)
         ) {
           return fail(
             'invalid',

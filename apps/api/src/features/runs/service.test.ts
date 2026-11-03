@@ -86,30 +86,6 @@ describe('run service', () => {
     assert.equal(jobs.length, 1);
   });
 
-  it('resumes every run waiting on a signal', async () => {
-    const { db, queries } = createRecordingDb(() => [
-      { id: 'r1', wait_id: '4' },
-      { id: 'r2', wait_id: '9' }
-    ]);
-    const { boss, jobs } = recordingBoss();
-    assert.deepEqual(
-      await createRunService({ db, boss, blobs, maxBytes: 100 }).signal('t-1', 'ack', 'C1', {
-        ok: true
-      }),
-      {
-        ok: true,
-        value: { resumed: 2 }
-      }
-    );
-    assert.ok(queries[0]?.parameters.includes('ack:C1'));
-    assert.deepEqual(jobs[1], {
-      data: {
-        runId: 'r2',
-        command: { type: 'resume', suspensionId: '9', payload: { payload: { ok: true } } }
-      }
-    });
-  });
-
   it('reads detail, steps and bundles only for visible runs', async () => {
     const visible = (q: CompiledQuery) =>
       q.sql.includes('count(*)')

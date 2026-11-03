@@ -27,7 +27,7 @@ const conditionSchema = v.strictObject({
   value: v.exactOptional(jsonSchema)
 });
 
-export type Condition = v.InferOutput<typeof conditionSchema>;
+type Condition = v.InferOutput<typeof conditionSchema>;
 
 const lookupConfig = v.object({
   type: v.optional(valueTypeSchema, 'string'),

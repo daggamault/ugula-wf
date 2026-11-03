@@ -1,6 +1,6 @@
 import { ActivityIcon } from 'lucide-react';
 import { formatCents, formatDateTime } from '../../shared/format.ts';
-import { type Live, useLive } from '../../shared/live.ts';
+import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge, type StatusBadgeStyle } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
@@ -11,19 +11,19 @@ import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
-import { pageOf, useTableState } from '../../shared/url-state.ts';
+import { useTableState } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { ImportReport, ImportsClient } from './client.ts';
-import { importStatus, SOURCES } from './import-history.tsx';
+import { importStatus, sourceOf } from './import-history.tsx';
 
-export type ImportPageProps = {
+type ImportPageProps = {
   client: ImportsClient;
   live: Live;
   importId: string;
   back?: string;
 };
 
-export type ReportOutcome = StatusBadgeStyle & { link: { name: string; to: string } | null };
+type ReportOutcome = StatusBadgeStyle & { link: { name: string; to: string } | null };
 
 const pcrOf = (r: ImportReport) => r.pcr_number ?? `PCR #${r.position + 1}`;
 
@@ -62,19 +62,11 @@ export const reportOutcome = (r: ImportReport): ReportOutcome => {
 export const patientOf = (r: ImportReport) =>
   r.last_name ? `${r.last_name}, ${r.first_name ?? ''}` : (r.task_subject ?? null);
 
-export const REPORT_TABLE = {
+const REPORT_TABLE = {
   prefix: 'pcr',
-  sorts: { position: 'asc', pcr: 'asc', patient: 'asc', outcome: 'asc', charges: 'desc' },
+  sorts: { position: 'asc', pcr: 'asc', patient: 'asc', status: 'asc', total: 'desc' },
   sort: 'position'
 } as const;
-
-export const REPORT_VALUES = {
-  position: (r: ImportReport) => r.position,
-  pcr: (r: ImportReport) => r.pcr_number,
-  patient: (r: ImportReport) => patientOf(r),
-  outcome: (r: ImportReport) => reportOutcome(r).label,
-  charges: (r: ImportReport) => r.total_cents
-};
 
 export const ReportsTable = ({
   reports,
@@ -90,8 +82,8 @@ export const ReportsTable = ({
       { label: '#', isCompact: true, sort: 'position' },
       { label: 'PCR', sort: 'pcr' },
       { label: 'Patient', sort: 'patient' },
-      { label: 'Outcome', sort: 'outcome' },
-      { label: 'Charges', isNumeric: true, sort: 'charges' },
+      { label: 'Outcome', sort: 'status' },
+      { label: 'Charges', sort: 'total' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
   >
@@ -117,21 +109,63 @@ export const ReportsTable = ({
   </Table>
 );
 
-export const ImportPage = ({ client, live, importId, back = '/imports' }: ImportPageProps) => {
-  const found = useResource(`import:${importId}`, () => client.find(importId));
+const ImportReports = ({
+  client,
+  live,
+  importId,
+  runId
+}: Omit<ImportPageProps, 'back'> & { runId: string }) => {
   const table = useTableState(`/imports/${importId}`, REPORT_TABLE);
-  const runId = found.data?.import.run_id;
+  const reports = useResource(`import-reports:${importId}:${table.apiQuery}`, (signal) =>
+    client.reports(importId, table.apiQuery, signal)
+  );
+  const items = reports.data?.items ?? [];
   useLive(
     live,
     (e) =>
-      e.kind === 'claim' ||
-      e.kind === 'task' ||
+      (e.kind === 'claim' &&
+        isOnPage(
+          e.id,
+          table.page,
+          items.map((r) => r.claim_id)
+        )) ||
+      (e.kind === 'task' &&
+        isOnPage(
+          e.id,
+          table.page,
+          items.map((r) => r.task_id)
+        )) ||
+      (e.kind === 'run' && (e.id === runId || e.parentId === runId)),
+    reports.reload,
+    LIST_RELOAD_MS
+  );
+  return reports.error ? (
+    <Alert>{reports.error.message}</Alert>
+  ) : items.length && reports.data ? (
+    <>
+      <ReportsTable reports={items} sorting={table} />
+      <Pagination label="PCRs" total={reports.data.total} state={table} />
+    </>
+  ) : reports.loading ? (
+    <PageLoading />
+  ) : (
+    <EmptyText>No PCRs have been read from this file yet.</EmptyText>
+  );
+};
+
+export const ImportPage = ({ client, live, importId, back = '/imports' }: ImportPageProps) => {
+  const found = useResource(`import:${importId}`, (signal) => client.find(importId, signal));
+  const runId = found.data?.run_id;
+  useLive(
+    live,
+    (e) =>
+      (e.kind === 'import' && (e.id === null || e.id === importId)) ||
       (e.kind === 'run' && (e.id === runId || e.parentId === runId)),
     found.reload
   );
   if (found.error) return <PageFailure message={found.error.message} />;
   if (!found.data) return <PageLoading />;
-  const { import: file, reports } = found.data;
+  const file = found.data;
   const status = importStatus(file);
   return (
     <Page
@@ -142,7 +176,7 @@ export const ImportPage = ({ client, live, importId, back = '/imports' }: Import
         <span className="flex flex-wrap items-center gap-2">
           <Badge intent={status.intent}>{status.label}</Badge>
           <span>
-            {SOURCES[file.source]} · {formatDateTime(file.created_at)}
+            {sourceOf(file)} · {formatDateTime(file.created_at)}
             {file.uploaded_by_email ? ` · ${file.uploaded_by_email}` : ''}
           </span>
         </span>
@@ -173,14 +207,7 @@ export const ImportPage = ({ client, live, importId, back = '/imports' }: Import
         title="PCRs"
         description="Each patient care report (PCR) in the file and what it became."
       >
-        {reports.length ? (
-          <>
-            <ReportsTable reports={pageOf(reports, table, REPORT_VALUES).items} sorting={table} />
-            <Pagination label="PCRs" total={reports.length} state={table} />
-          </>
-        ) : (
-          <EmptyText>No PCRs have been read from this file yet.</EmptyText>
-        )}
+        <ImportReports client={client} live={live} importId={importId} runId={file.run_id} />
       </SectionPanel>
     </Page>
   );

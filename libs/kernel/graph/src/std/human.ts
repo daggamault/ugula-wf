@@ -32,13 +32,16 @@ const withOptions = (fields: FieldSpec[], options: Json) => {
   });
 };
 
+const shown = (fields: FieldSpec[], visible: Json) =>
+  Array.isArray(visible) ? fields.filter((f) => visible.includes(f.name)) : fields;
+
 export const humanTaskNode = defineNode<v.InferOutput<typeof taskConfig>>({
   type: 'std.human.task',
   version: 1,
   title: 'Human Task',
   category: 'Human',
   description:
-    'Pauses the run and queues a task for a person, continuing through the outcome they choose.',
+    'Pauses the run and queues a task for a person, continuing through the outcome they choose. Visible limits the task to some of its fields; the others output nothing.',
   config: taskConfig,
   signature: ({ fields, outcomes }) => ({
     execIn: ['exec'],
@@ -48,6 +51,7 @@ export const humanTaskNode = defineNode<v.InferOutput<typeof taskConfig>>({
       pin('context', 'any', { optional: true }),
       pin('defaults', { object: {} }, { optional: true }),
       pin('options', { object: {} }, { optional: true }),
+      pin('visible', { list: 'string' }, { optional: true }),
       pin('assignee', 'string', { optional: true }),
       pin('priority', 'integer', { default: 0 })
     ],
@@ -58,7 +62,10 @@ export const humanTaskNode = defineNode<v.InferOutput<typeof taskConfig>>({
   }),
   run: async ({ event, read, config, state }) => {
     if (event.type !== 'resume') {
-      const fields = withOptions(config.fields, await read('options'));
+      const fields = shown(
+        withOptions(config.fields, await read('options')),
+        await read('visible')
+      );
       return suspend(
         {
           kind: 'task',
@@ -78,16 +85,17 @@ export const humanTaskNode = defineNode<v.InferOutput<typeof taskConfig>>({
         fields
       );
     }
-    const fields = (state as FieldSpec[] | null) ?? config.fields;
+    const asked = (state as FieldSpec[] | null) ?? config.fields;
     const p = isRecord(event.payload) ? event.payload : {};
     const outcome = typeof p.outcome === 'string' ? p.outcome : '';
     if (!config.outcomes.includes(outcome)) fail(`Unknown task outcome "${outcome}"`);
     const values = isRecord(p.values) ? p.values : {};
     const outputs = Object.fromEntries(
-      fields.map((f) => {
-        const value = Object.hasOwn(values, f.name) ? (values[f.name] ?? null) : null;
-        const err = checkField(f, value);
-        return err ? fail(`Task field "${f.name}": ${err}`) : [f.name, value];
+      config.fields.map(({ name }) => {
+        const f = asked.find((x) => x.name === name);
+        const value = f && Object.hasOwn(values, name) ? (values[name] ?? null) : null;
+        const err = f ? checkField(f, value, outcome) : null;
+        return err ? fail(`Task field "${name}": ${err}`) : [name, value];
       })
     );
     return next(outcome, {

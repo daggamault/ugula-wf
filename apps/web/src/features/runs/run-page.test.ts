@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { ENTRY_TYPE } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { idleLive } from '../../shared/testing.ts';
+import { idleLive, testNodes } from '../../shared/testing.ts';
 import type { RunDetail, RunsClient } from './client.ts';
 import { RunPage, RunView } from './run-page.tsx';
 
@@ -76,6 +76,7 @@ const render = (status: RunDetail['run']['status'], stack: string[] = []) =>
   renderToStaticMarkup(
     createElement(RunView, {
       detail: detail(status),
+      nodes: testNodes,
       graphs,
       steps: [],
       stack,
@@ -111,6 +112,7 @@ describe('RunView', () => {
     const html = renderToStaticMarkup(
       createElement(RunView, {
         detail: { ...base, children: [{ ...summary, id: 'c1', parent_index: 1 }], childCount: 1 },
+        nodes: testNodes,
         graphs,
         steps: [],
         stack: [],
@@ -131,6 +133,7 @@ describe('RunPage', () => {
     const html = renderToStaticMarkup(
       createElement(RunPage, {
         client: {} as RunsClient,
+        nodes: testNodes,
         live: idleLive,
         runId: 'r1',
         at: []

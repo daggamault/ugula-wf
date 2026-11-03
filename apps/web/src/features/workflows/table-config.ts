@@ -2,7 +2,7 @@ import type { ConditionOp, Json, ValueType } from '@ugula/graph';
 
 export type Column = { name: string; type: ValueType; label?: string };
 
-export type Condition = { op: ConditionOp; value?: Json };
+type Condition = { op: ConditionOp; value?: Json };
 
 export type Rule = { label: string; when: Record<string, Condition>; set: Record<string, Json> };
 
@@ -46,6 +46,8 @@ const LIST_OPS: readonly ConditionOp[] = ['oneOf', 'notOneOf', 'startsWith'];
 
 export const takesValue = (op: ConditionOp) => op !== 'empty' && op !== 'present';
 
+export const takesList = (op: ConditionOp) => LIST_OPS.includes(op);
+
 const isRecord = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
 
@@ -86,7 +88,7 @@ export const parseCell = (text: string, type: ValueType): Json => {
 };
 
 export const conditionValue = (op: ConditionOp, text: string, type: ValueType): Json =>
-  LIST_OPS.includes(op) ? parseCell(text, { list: 'string' }) : parseCell(text, type);
+  takesList(op) ? parseCell(text, { list: 'string' }) : parseCell(text, type);
 
 const records = (x: unknown) =>
   (Array.isArray(x) ? x : []).flatMap((r) => (isRecord(r) ? [r] : []));
@@ -132,7 +134,30 @@ const renameKey = <T>(o: Record<string, T>, from: string, to: string) =>
 const dropKey = <T>(o: Record<string, T>, key: string) =>
   Object.fromEntries(Object.entries(o).filter(([k]) => k !== key));
 
+export const columnNameError = (
+  c: DecisionConfig,
+  side: 'inputs' | 'outputs',
+  from: string,
+  to: string
+) => {
+  const name = to.trim();
+  if (!name) return 'Enter a name.';
+  return name !== from && c[side].some((col) => col.name === name)
+    ? `Another ${side === 'inputs' ? 'input' : 'output'} is already called ${name}.`
+    : undefined;
+};
+
 export const renameColumn = (
+  c: DecisionConfig,
+  side: 'inputs' | 'outputs',
+  from: string,
+  raw: string
+): DecisionConfig => {
+  const to = raw.trim();
+  return columnNameError(c, side, from, to) || to === from ? c : renamed(c, side, from, to);
+};
+
+const renamed = (
   c: DecisionConfig,
   side: 'inputs' | 'outputs',
   from: string,

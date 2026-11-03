@@ -1,10 +1,10 @@
-export type ApiError = Error & {
+type ApiError = Error & {
   status: number;
   body: Record<string, unknown>;
 };
 
 export type Api = {
-  get: <T>(path: string) => Promise<T>;
+  get: <T>(path: string, signal?: AbortSignal) => Promise<T>;
   post: <T>(path: string, body?: unknown) => Promise<T>;
   put: <T>(path: string, body: unknown) => Promise<T>;
   remove: <T>(path: string) => Promise<T>;
@@ -31,10 +31,16 @@ export const createApi = (
   fetchFn: typeof fetch = fetch,
   onUnauthorized: () => void = () => undefined
 ): Api => {
-  const request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+  const request = async <T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal
+  ): Promise<T> => {
     const res = await fetchFn(`${baseUrl}${path}`, {
       method,
       credentials: 'include',
+      ...(signal ? { signal } : {}),
       ...(body === undefined
         ? {}
         : body instanceof FormData
@@ -47,7 +53,7 @@ export const createApi = (
     return data as T;
   };
   return {
-    get: (path) => request('GET', path),
+    get: (path, signal) => request('GET', path, undefined, signal),
     post: (path, body) => request('POST', path, body),
     put: (path, body) => request('PUT', path, body),
     remove: (path) => request('DELETE', path),

@@ -4,19 +4,20 @@ import type { LoadGate } from './load.ts';
 export type SlotBoss = {
   work: <T>(
     name: string,
-    options: { localConcurrency: number; batchSize: number },
+    options: { localConcurrency: number; batchSize: number; groupConcurrency?: number },
     handler: (jobs: Job<T>[]) => Promise<unknown>
   ) => Promise<string>;
   offWork: (name: string, options: { id: string; wait: boolean }) => Promise<void>;
 };
 
-export type GatedWorkDeps<T> = {
+type GatedWorkDeps<T> = {
   boss: SlotBoss;
   queue: string;
   concurrency: number;
   handler: (jobs: Job<T>[]) => Promise<unknown>;
   gate: LoadGate;
   report: (message: string) => void;
+  groupConcurrency?: number;
   intervalMs?: number;
 };
 
@@ -29,8 +30,14 @@ export const createGatedWork = <T>({
   handler,
   gate,
   report,
+  groupConcurrency,
   intervalMs = 1_000
 }: GatedWorkDeps<T>) => {
+  const options = {
+    localConcurrency: 1,
+    batchSize: 1,
+    ...(groupConcurrency ? { groupConcurrency } : {})
+  };
   const slots = new Set<Slot>();
   let open = true;
   let ticking = false;
@@ -40,7 +47,7 @@ export const createGatedWork = <T>({
     const slot: Slot = { id: null, live: true };
     slots.add(slot);
     try {
-      slot.id = await boss.work<T>(queue, { localConcurrency: 1, batchSize: 1 }, handler);
+      slot.id = await boss.work<T>(queue, options, handler);
     } catch (err) {
       slots.delete(slot);
       throw err;

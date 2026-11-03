@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { PDFDocument } from 'pdf-lib';
-import { money, printable, renderStatement, type StatementData } from './statements.ts';
+import { localDate, money, renderStatement, type StatementData } from './statements.ts';
 
 const statement: StatementData = {
   number: 2,
+  count: 5,
   issuedOn: '2026-11-01',
   agency: {
     name: 'Development EMS',
@@ -33,10 +34,23 @@ const statement: StatementData = {
 };
 
 describe('statements', () => {
-  it('formats money and strips characters the standard PDF fonts cannot draw', () => {
+  it('formats money', () => {
     assert.equal(money(114_220), '$1,142.20');
     assert.equal(money(-500), '-$5.00');
-    assert.equal(printable('José · Ñoño ✓'), 'Jose  Nono ');
+  });
+
+  it('dates a statement in the agency time zone', () => {
+    const lateEvening = new Date('2026-11-02T03:30:00Z');
+    assert.equal(localDate(lateEvening, 'America/Chicago'), '2026-11-01');
+    assert.equal(localDate(lateEvening, 'UTC'), '2026-11-02');
+  });
+
+  it('strips characters the standard PDF fonts cannot draw', async () => {
+    const bytes = await renderStatement({
+      ...statement,
+      patient: { ...statement.patient, name: 'José · Ñoño ✓' }
+    });
+    assert.equal((await PDFDocument.load(bytes)).getTitle(), 'Statement 2 of 5 - Jose  Nono ');
   });
 
   it('renders a one-page PDF statement deterministically', async () => {
@@ -44,7 +58,7 @@ describe('statements', () => {
     assert.equal(new TextDecoder().decode(bytes.slice(0, 5)), '%PDF-');
     const doc = await PDFDocument.load(bytes);
     assert.equal(doc.getPageCount(), 1);
-    assert.equal(doc.getTitle(), 'Statement 2 - Jose Doe');
+    assert.equal(doc.getTitle(), 'Statement 2 of 5 - Jose Doe');
     const again = await renderStatement(statement);
     assert.deepEqual(again.length, bytes.length);
   });

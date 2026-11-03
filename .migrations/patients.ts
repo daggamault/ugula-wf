@@ -1,3 +1,4 @@
+import { SEXES, US_STATE_PATTERN, ZIP_CODE_PATTERN } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
@@ -22,7 +23,17 @@ export const buildPatientsTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('patients_tenant_id_source_key_unique', ['tenant_id', 'source_key'])
-    .addCheckConstraint('patients_last_name_key_check', sql`last_name_key <> ''`);
+    .addUniqueConstraint('patients_tenant_id_id_unique', ['tenant_id', 'id'])
+    .addCheckConstraint('patients_last_name_key_check', sql`last_name_key <> ''`)
+    .addCheckConstraint(
+      'patients_gender_check',
+      sql`gender in (${sql.join(SEXES.map((v) => sql.lit(v)))})`
+    )
+    .addCheckConstraint('patients_state_check', sql`state ~ ${sql.lit(US_STATE_PATTERN)}`)
+    .addCheckConstraint(
+      'patients_postal_code_check',
+      sql`postal_code ~ ${sql.lit(ZIP_CODE_PATTERN)}`
+    );
 
 export const buildPatientsIndexes = (db: Kysely<Database>) => [
   db.schema

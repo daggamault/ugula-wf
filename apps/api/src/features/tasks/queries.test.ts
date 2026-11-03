@@ -16,7 +16,7 @@ describe('task queries', () => {
   it('claim, assign and complete only open tasks', async () => {
     const { db, queries } = createRecordingDb();
     await claimNext(db, 't', 'billing', 'u1');
-    await assignTask(db, 't', 'x', null);
+    await assignTask(db, { tenantId: 't', id: 'x', userId: 'u1', assignee: null });
     await claimNext(db, 't', null, 'u1');
     await completeTask(db, { tenantId: 't', id: 'x', userId: 'u1', resolution: { outcome: 'ok' } });
     assert.ok(queries[0]?.sql.includes('("assignee_id" is null or "assignee_id" = $'));
@@ -25,6 +25,10 @@ describe('task queries', () => {
     for (const q of queries.slice(1)) assert.ok(q.sql.includes('"status" = $'));
     assert.ok(!queries[2]?.sql.includes('"queue" = $'));
     assert.ok(queries[3]?.parameters.includes('{"outcome":"ok"}'));
+    for (const q of [queries[1], queries[3]]) {
+      assert.ok(q?.sql.includes('("assignee_id" is null or "assignee_id" = $'));
+      assert.ok(q?.parameters.includes('u1'));
+    }
     await db.destroy();
   });
 });

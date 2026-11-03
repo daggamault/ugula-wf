@@ -1,20 +1,22 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createSessionStore } from '@ugula/auth';
+import { createDb } from '@ugula/db';
 import { LIVE_PATTERN, parseLiveEvent, tenantOf } from '@ugula/live';
 import { Redis } from 'ioredis';
 import { parseConfig } from './config.ts';
 import { createEventsHandler } from './features/events/handler.ts';
+import { isActiveMember } from './features/events/queries.ts';
 import { handleHealth } from './features/health/handler.ts';
 import { sendJson } from './shared/http.ts';
 import { createHub, type Hub } from './shared/hub.ts';
 
-const HEARTBEAT_MS = 25_000;
+const DB_POOL_MAX = 4;
 
-export type SseRoutes = {
+type SseRoutes = {
   events: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 };
 
-export const handleRequest =
+const handleRequest =
   ({ events }: SseRoutes) =>
   (req: IncomingMessage, res: ServerResponse) => {
     const path = (req.url ?? '').split('?')[0];
@@ -43,15 +45,23 @@ if (import.meta.main) {
     port: config.REDIS_PORT,
     password: config.REDIS_PASSWORD
   };
+  const db = createDb({
+    host: config.DB_HOST,
+    port: config.DB_PORT,
+    user: config.DB_USER,
+    password: config.DB_PASSWORD,
+    database: config.DB_NAME,
+    max: DB_POOL_MAX
+  });
   const hub = createHub();
   const subscriber = new Redis(redis);
   await subscriber.psubscribe(LIVE_PATTERN);
   subscriber.on('pmessage', relay(hub));
-  setInterval(hub.beat, HEARTBEAT_MS);
   createSseServer({
     events: createEventsHandler({
       hub,
       sessions: createSessionStore(new Redis(redis)),
+      isActiveMember: (s) => isActiveMember(db, s.userId, s.tenantId),
       origins: config.HTTP_CORS_ORIGINS.split(',').map((o) => o.trim())
     })
   }).listen(config.SSE_PORT);

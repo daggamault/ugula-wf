@@ -6,6 +6,7 @@ import {
   ClaimDataForm,
   DESTINATION_OPTIONS,
   fromDraft,
+  modifierErrorOf,
   ORIGIN_OPTIONS,
   toDraft
 } from './claim-data-form.tsx';
@@ -80,5 +81,13 @@ describe('claim data form', () => {
       DESTINATION_OPTIONS.some((o) => o.value === 'X'),
       true
     );
+  });
+});
+
+describe('modifierErrorOf', () => {
+  it('needs both transport types or neither', () => {
+    assert.equal(modifierErrorOf({ originCode: 'R', destinationCode: 'H' }), undefined);
+    assert.equal(modifierErrorOf({ originCode: '', destinationCode: '' }), undefined);
+    assert.match(modifierErrorOf({ originCode: 'R', destinationCode: '' }) ?? '', /both/);
   });
 });

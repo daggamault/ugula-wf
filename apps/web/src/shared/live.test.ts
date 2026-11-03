@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { LiveEvent } from '@ugula/live';
-import { createLive, type EventStream } from './live.ts';
+import { createBurst, createLive, type EventStream, isOnPage } from './live.ts';
 
 const fakeStreams = () => {
   const opened: { url: string; closed: boolean; handlers: Parameters<EventStream['listen']>[0] }[] =
@@ -80,5 +80,30 @@ describe('createLive', () => {
     opened[2]?.handlers.onOpen();
     assert.equal(opened.length, 3);
     assert.equal(live.status(), 'online');
+  });
+});
+
+describe('createBurst', () => {
+  it('gathers a burst of pushes into one run after the delay', () => {
+    const { timers, schedule } = fakeStreams();
+    let runs = 0;
+    const burst = createBurst(() => runs++, 1_500, schedule);
+    burst.push();
+    burst.push();
+    assert.equal(timers.length, 1);
+    assert.equal(timers[0]?.ms, 1_500);
+    timers[0]?.run();
+    assert.equal(runs, 1);
+    burst.push();
+    assert.equal(timers.length, 2);
+  });
+});
+
+describe('isOnPage', () => {
+  it('reloads a list for unknown ids, its first page, or a row it shows', () => {
+    assert.equal(isOnPage(null, 3, []), true);
+    assert.equal(isOnPage('c9', 1, []), true);
+    assert.equal(isOnPage('c2', 2, ['c1', 'c2']), true);
+    assert.equal(isOnPage('c9', 2, ['c1', null]), false);
   });
 });

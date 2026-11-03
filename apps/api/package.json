@@ -15,6 +15,7 @@
     "@ugula/config": "workspace:*",
     "@ugula/db": "workspace:*",
     "@ugula/graph": "workspace:*",
+    "@ugula/inference": "workspace:*",
     "@ugula/live": "workspace:*",
     "@ugula/nemsis": "workspace:*",
     "@ugula/run-queue": "workspace:*",

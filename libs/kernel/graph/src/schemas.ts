@@ -10,7 +10,7 @@ const name = v.pipe(
 const id = v.pipe(v.string(), v.nonEmpty(), v.maxLength(64), unreserved);
 const positiveInt = v.pipe(v.number(), v.integer(), v.minValue(1));
 
-export const MAX_RETRIES = 100;
+const MAX_RETRIES = 100;
 
 export const MAX_RETRY_DELAY_MS = 30 * 86_400_000;
 
@@ -98,7 +98,11 @@ export const fieldsSchema = v.pipe(
       name,
       type: valueTypeSchema,
       label: v.exactOptional(v.string()),
-      options: v.exactOptional(optionsSchema)
+      options: v.exactOptional(optionsSchema),
+      required: v.exactOptional(v.array(name)),
+      format: v.exactOptional(v.picklist(['date'])),
+      min: v.exactOptional(v.number()),
+      max: v.exactOptional(v.number())
     })
   ),
   v.check((fs) => new Set(fs.map((f) => f.name)).size === fs.length, 'Field names must be unique')

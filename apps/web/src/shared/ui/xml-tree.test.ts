@@ -31,6 +31,7 @@ describe('xmlNodes', () => {
       ]
     );
     assert.deepEqual(root?.children[0]?.children[0], {
+      path: '0.0.0',
       name: 'eRecord.01',
       label: 'PCR number',
       attributes: [],
@@ -83,7 +84,7 @@ describe('XmlTree', () => {
     );
     assert.ok(html.includes('Chest pain'));
     assert.ok(html.includes('(Exam Finding Not Present)'));
-    assert.ok(html.includes('aria-label="Search Source report"'));
+    assert.ok(html.includes('>Search Source report</label>') && html.includes('type="search"'));
     assert.ok(html.includes('PCR number'));
     assert.ok(html.includes('PN=&quot;8801005&quot;'));
     assert.equal(html.match(/<details open=""/g)?.length, 4);

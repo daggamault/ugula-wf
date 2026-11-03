@@ -1,18 +1,19 @@
 import { SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
-import { classNamesOf } from '../../shared/class-names.ts';
+import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
-import { ConfirmDialog, DeleteDialog } from '../../shared/ui/dialog.tsx';
+import { DeleteDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
+import { DeleteButton, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
-import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
+import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { Payer, PayerAlias, PayerInput, SettingsClient } from './client.ts';
@@ -102,7 +103,7 @@ export const PayerForm = ({
   );
 };
 
-export const LearnedNames = ({
+export const LearnedNamesPanel = ({
   payer,
   onForget
 }: {
@@ -111,43 +112,42 @@ export const LearnedNames = ({
 }) => (
   <SectionPanel
     title="Learned Names"
-    description="Names on PCRs that a biller matched to this payer. PCRs with these names link here automatically."
+    description="Names on PCRs that a biller matched to this payer, so later PCRs with them link here."
   >
     {payer.aliases.length ? (
-      <ul aria-label={`Learned names for ${payer.name}`} className="flex flex-wrap gap-2">
+      <Table
+        label={`Learned names for ${payer.name}`}
+        head={['Name on PCRs', { label: 'Actions', isLabelHidden: true, isCompact: true }]}
+      >
         {payer.aliases.map((a) => (
-          <li key={a.id}>
-            <button
-              type="button"
-              aria-label={`Forget ${a.alias}`}
-              onClick={() => onForget(a)}
-              className={classNamesOf(
-                interactiveClasses,
-                'border-border text-surface-fg-muted hover:border-danger/40 hover:bg-danger/10 hover:text-danger inline-flex h-8 items-center gap-1.5 rounded-full border pr-2 pl-3 text-sm pointer-coarse:h-10'
-              )}
-            >
-              {a.alias}
-              <XIcon aria-hidden="true" className="size-4" />
-            </button>
-          </li>
+          <TableRow key={a.id}>
+            <TableCell kind="wrap">{a.alias}</TableCell>
+            <TableCell kind="actions">
+              <RowActions>
+                <DeleteButton name={a.alias} onClick={() => onForget(a)} />
+              </RowActions>
+            </TableCell>
+          </TableRow>
         ))}
-      </ul>
+      </Table>
     ) : (
       <EmptyText>No learned names yet. They are added as billers match PCR payer names.</EmptyText>
     )}
   </SectionPanel>
 );
 
-export type PayerPageProps = {
+type PayerPageProps = {
   client: SettingsClient;
+  live: Live;
   payerId: string | null;
   back: string;
 };
 
-export const PayerPage = ({ client, payerId, back }: PayerPageProps) => {
-  const payer = useResource(`payer:${payerId ?? 'new'}`, async () =>
-    payerId ? client.payer(payerId) : null
+export const PayerPage = ({ client, live, payerId, back }: PayerPageProps) => {
+  const payer = useResource(`payer:${payerId ?? 'new'}`, async (signal) =>
+    payerId ? client.payer(payerId, signal) : null
   );
+  useReconnect(live, payer.reload);
   const [deleting, setDeleting] = useState(false);
   const [forgetting, setForgetting] = useState<PayerAlias | null>(null);
   const notify = useToast();
@@ -175,10 +175,10 @@ export const PayerPage = ({ client, payerId, back }: PayerPageProps) => {
   const forget = async (p: Payer, a: PayerAlias) => {
     try {
       await client.forgetAlias(p.id, a.id);
-      notify({ title: `${a.alias} no longer links to ${p.name}` });
+      notify({ title: `${a.alias} deleted from ${p.name}` });
       payer.reload();
     } catch (err) {
-      notify({ intent: 'danger', title: 'Could not forget name', description: messageOf(err) });
+      notify({ intent: 'danger', title: 'Could not delete name', description: messageOf(err) });
     }
   };
   return (
@@ -205,7 +205,7 @@ export const PayerPage = ({ client, payerId, back }: PayerPageProps) => {
       ) : (
         <div className="flex flex-col gap-6">
           <PayerForm key={current?.id ?? 'new'} payer={current} back={back} onSave={save} />
-          {current ? <LearnedNames payer={current} onForget={setForgetting} /> : null}
+          {current ? <LearnedNamesPanel payer={current} onForget={setForgetting} /> : null}
         </div>
       )}
       <DeleteDialog
@@ -219,13 +219,9 @@ export const PayerPage = ({ client, payerId, back }: PayerPageProps) => {
       >
         {current ? payerDeleteNote(current.name) : null}
       </DeleteDialog>
-      <ConfirmDialog
+      <DeleteDialog
         open={forgetting !== null}
-        title={`Forget ${forgetting?.alias ?? 'Name'}?`}
-        intent="danger"
-        confirmLabel="Forget"
-        confirmIcon={XIcon}
-        dismissLabel="Keep"
+        name={forgetting?.alias ?? ''}
         onClose={() => setForgetting(null)}
         onConfirm={() => {
           const alias = forgetting;
@@ -234,9 +230,9 @@ export const PayerPage = ({ client, payerId, back }: PayerPageProps) => {
         }}
       >
         {forgetting && current
-          ? `Are you sure? PCRs naming ${forgetting.alias} stop linking to ${current.name}; the next one goes to a Payer Matching task.`
+          ? `PCRs naming ${forgetting.alias} stop linking to ${current.name}; the next one goes to a Payer Matching task.`
           : null}
-      </ConfirmDialog>
+      </DeleteDialog>
     </Page>
   );
 };

@@ -2,20 +2,32 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createDummyDb, createRecordingDb } from '@ugula/db/testing';
 import type { TraceEntry } from '@ugula/graph';
-import { advance, RUN_QUEUE, type RunQueueClient, resume } from '@ugula/run-queue';
+import {
+  advance,
+  RUN_QUEUE,
+  type RunQueueClient,
+  resume,
+  type TimeoutClient,
+  timeoutJobId
+} from '@ugula/run-queue';
 import { buildClaim, createRunStore, taskNotification } from './queries.ts';
 
 const recordingDb = (rows: Record<string, unknown>[] = []) => createRecordingDb(() => rows);
 
 const recordingBoss = () => {
   const inserts: { name: string; jobs: unknown[] }[] = [];
-  const boss: RunQueueClient = {
+  const deleted: string[] = [];
+  const boss: RunQueueClient & TimeoutClient = {
     insert: async (name, jobs, options) => {
       assert.equal(typeof options.db.executeSql, 'function');
       inserts.push({ name, jobs });
+    },
+    deleteJob: async (name, id, options) => {
+      assert.equal(typeof options.db.executeSql, 'function');
+      deleted.push(`${name}:${id}`);
     }
   };
-  return { boss, inserts };
+  return { boss, inserts, deleted };
 };
 
 const step = (seq: number): TraceEntry => ({
@@ -85,14 +97,15 @@ describe('createRunStore', () => {
       /no longer leased/
     );
     await assert.rejects(() => store.checkpoint(run, {} as never, [], 1000), /no longer leased/);
+    await assert.rejects(() => store.extend(run, 1000), /no longer leased/);
     await store.release(run, 'running');
     const fenced = queries.filter((q) => q.sql.startsWith('update'));
-    assert.equal(fenced.length, 3);
+    assert.equal(fenced.length, 4);
     for (const q of fenced) {
       assert.ok(q.sql.includes('"lease_token" = $'));
       assert.ok(q.parameters.includes('l1'));
     }
-    assert.ok(fenced[2]?.sql.includes('"lease_until" = now()'));
+    assert.ok(fenced[3]?.sql.includes('"lease_until" = now()'));
     await db.destroy();
   });
 
@@ -106,7 +119,8 @@ describe('createRunStore', () => {
         parent_id: null,
         parent_wait: null,
         inputs: { a: 1 },
-        state: null
+        state: null,
+        graphs: [{ id: 'v1', key: 'demo.x', version: 1 }]
       }
     ]);
     const store = createRunStore({ db, boss: recordingBoss().boss });
@@ -118,16 +132,18 @@ describe('createRunStore', () => {
       parentId: null,
       parentWait: null,
       inputs: { a: 1 },
-      state: null
+      state: null,
+      graphs: [{ id: 'v1', key: 'demo.x', version: 1 }]
     });
     await db.destroy();
   });
 
   it('writes steps in chunks and enqueues jobs inside the same transaction', async () => {
     const { db, queries } = createRecordingDb((q) => (q.sql.startsWith('update') ? [{}] : []));
-    const { boss, inserts } = recordingBoss();
+    const { boss, inserts, deleted } = recordingBoss();
     const store = createRunStore({ db, boss });
     await store.transaction(async (tx) => {
+      await tx.dropTimeout('r1', '6');
       await tx.insertSteps(
         'r1',
         Array.from({ length: 501 }, (_, i) => step(i))
@@ -140,7 +156,7 @@ describe('createRunStore', () => {
           result: { pin: null, outputs: {} }
         }
       );
-      await tx.enqueue([resume('r1', '7', null, '2026-01-01T00:00:00.000Z'), advance('r2')]);
+      await tx.enqueue([resume('r1', '7', null, '2026-01-01T00:00:00.000Z'), advance('r2', 'p1')]);
       await tx.enqueue([]);
     });
     const sqls = queries.map((q) => q.sql);
@@ -153,21 +169,41 @@ describe('createRunStore', () => {
         jobs: [
           {
             data: { runId: 'r1', command: { type: 'resume', suspensionId: '7', payload: null } },
-            startAfter: '2026-01-01T00:00:00.000Z'
+            startAfter: '2026-01-01T00:00:00.000Z',
+            retryLimit: 1_000_000,
+            priority: 1
           },
-          { data: { runId: 'r2', command: { type: 'advance' } } }
+          { data: { runId: 'r2', command: { type: 'advance' } }, group: { id: 'p1' } }
         ]
       }
+    ]);
+    assert.deepEqual(deleted, [`${RUN_QUEUE}:${timeoutJobId('r1', '6')}`]);
+    await db.destroy();
+  });
+
+  it('sweeps expired leases and stranded unleased runs back onto the queue', async () => {
+    const { db, queries } = recordingDb([
+      { id: 'r1', parent_id: null },
+      { id: 'r2', parent_id: 'p' }
+    ]);
+    const { boss, inserts } = recordingBoss();
+    assert.equal(await createRunStore({ db, boss }).sweep(), 2);
+    const sweep = queries.find((q) => q.sql.startsWith('update "workflow_runs"'))?.sql ?? '';
+    assert.ok(sweep.includes('"lease_until" < now()'));
+    assert.ok(sweep.includes('"lease_until" is null and "updated_at" < now() - interval'));
+    assert.deepEqual(inserts[0]?.jobs, [
+      { data: { runId: 'r1', command: { type: 'advance' } } },
+      { data: { runId: 'r2', command: { type: 'advance' } }, group: { id: 'p' } }
     ]);
     await db.destroy();
   });
 
-  it('sweeps expired leases back onto the queue', async () => {
-    const { db, queries } = recordingDb([{ id: 'r1' }, { id: 'r2' }]);
-    const { boss, inserts } = recordingBoss();
-    assert.equal(await createRunStore({ db, boss }).sweep(), 2);
-    assert.ok(queries.some((q) => q.sql.includes('"lease_until" < now()')));
-    assert.equal(inserts[0]?.jobs.length, 2);
+  it('prunes old steps of long-lived active runs in bounded batches', async () => {
+    const { db, queries } = recordingDb();
+    assert.equal(await createRunStore({ db, boss: recordingBoss().boss }).prune(), 0);
+    const sql = queries[0]?.sql ?? '';
+    assert.ok(sql.startsWith('delete from "workflow_run_steps" as "s" where (s.run_id, s.seq) in'));
+    assert.ok(sql.includes('"r"."status" in') && sql.includes('limit $'));
     await db.destroy();
   });
 
@@ -202,7 +238,8 @@ describe('createRunStore', () => {
             parentId: null,
             parentWait: null,
             inputs: {},
-            state: null
+            state: null,
+            graphs: []
           },
           '7',
           'v1',
@@ -215,6 +252,50 @@ describe('createRunStore', () => {
     assert.ok(sqls.includes('on conflict ("run_id", "wait_id") do nothing returning "id"'));
     assert.ok(sqls.includes('insert into "notifications"'));
     assert.ok(sqls.includes('g.tenant_id nulls last'));
+    await db.destroy();
+  });
+
+  it('names the claim a run works and starts draft recovery for its orphaned drafts', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('concat_ws')
+        ? [{ reference: 'PCR-1 · Jane Doe' }]
+        : q.sql.includes('with orphans as')
+          ? [{ id: 'rec-1' }]
+          : []
+    );
+    const store = createRunStore({ db, boss: recordingBoss().boss });
+    const run = {
+      id: 'r1',
+      lease: 'l',
+      tenantId: 't',
+      versionId: 'v',
+      parentId: null,
+      parentWait: null,
+      inputs: {},
+      state: null,
+      graphs: []
+    };
+    await store.transaction(async (tx) => {
+      assert.equal(await tx.claimReference('r1'), 'PCR-1 · Jane Doe');
+      assert.deepEqual(await tx.recoverDrafts(run, 'v-rec', 'The run was cancelled'), ['rec-1']);
+    });
+    const recover = queries.find((q) => q.sql.includes('with orphans as'));
+    assert.ok(recover?.sql.includes("c.status = 'draft'"));
+    assert.ok(recover?.sql.includes('and not exists ('));
+    assert.ok(
+      recover?.sql.includes("jsonb_build_object('claimId', o.id, 'report', o.report, 'reason'")
+    );
+    assert.ok(recover?.sql.includes('insert into claim_runs (run_id, claim_id)'));
+    assert.deepEqual(recover?.parameters.slice(0, 2), ['r1', 'r1']);
+    assert.ok(recover?.parameters.includes('The run was cancelled'));
+    assert.ok(queries.some((q) => /insert into "?workflow_run_graphs/.test(q.sql)));
+    await db.destroy();
+  });
+
+  it('has no claim reference for runs that work no claim', async () => {
+    const { db } = recordingDb();
+    const store = createRunStore({ db, boss: recordingBoss().boss });
+    assert.equal(await store.transaction((tx) => tx.claimReference('r1')), null);
     await db.destroy();
   });
 });

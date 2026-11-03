@@ -61,7 +61,7 @@ describe('GraphNode', () => {
     assert.ok(html.includes('Adds two numbers (a + b).'));
     assert.ok(html.includes('>12<'));
     assert.ok(!html.includes('total * 2'));
-    assert.ok(html.includes('bg-emerald-500'));
+    assert.ok(html.includes('bg-pin-number'));
   });
 
   it('shows status, issues, sub-graph badges and unknown nodes', () => {

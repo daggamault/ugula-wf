@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ENTRY_TYPE, type GraphDef, RETURN_TYPE } from '@ugula/graph';
+import { testNodes } from '../testing.ts';
 import { createCatalog } from './catalog.ts';
 import {
   addNode,
@@ -16,7 +17,7 @@ import {
   withSignature
 } from './flow.ts';
 
-const catalog = createCatalog();
+const catalog = createCatalog(testNodes);
 
 const def: GraphDef = {
   signature: {

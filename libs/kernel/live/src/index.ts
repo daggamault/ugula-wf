@@ -1,7 +1,3 @@
-/**
- * What changed, pushed to every client of a tenant. Events say which record changed, not how:
- * clients reload what they show. A null id means several records of that kind may have changed.
- */
 export type LiveEvent =
   | { kind: 'run'; id: string; status: string; parentId: string | null }
   | { kind: 'task'; id: string | null; runId: string | null }

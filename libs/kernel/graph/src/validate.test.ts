@@ -48,6 +48,7 @@ describe('validateGraph', () => {
           inputs: { a: { expr: 'missing + 1' }, z: { value: 1 } }
         },
         { id: 'len', type: 'std.text.length', version: 1 },
+        { id: 'gv', type: 'std.var.get', version: 1, config: { name: 'undeclared' } },
         { id: 'b1', type: 'std.flow.branch', version: 1, inputs: { condition: { value: true } } },
         { id: 'b2', type: 'std.flow.branch', version: 1, inputs: { condition: { value: true } } }
       ],
@@ -73,7 +74,8 @@ describe('validateGraph', () => {
       'len: No input "nope"',
       '-: Edge 6 references a missing node',
       'entry: Exec output "exec" can only connect once; use a Sequence',
-      'len: Input "text" is required'
+      'len: Input "text" is required',
+      'gv: Unknown variable "undeclared"'
     ]) {
       assert.ok(
         found.includes(expected),

@@ -522,4 +522,248 @@ describe('engine', () => {
       /Unknown graph/
     );
   });
+  it('retries transient node errors with backoff and still faults on real ones', async () => {
+    const thrown = [
+      Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }),
+      Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }),
+      new Error('bad payer')
+    ];
+    const flaky = actionNode({
+      type: 'test.flaky',
+      title: 'Flaky',
+      category: 'Test',
+      description: 'Fails with queued errors.',
+      inputs: [],
+      outputs: [],
+      compute: () => {
+        const err = thrown.shift();
+        if (err) throw err;
+        return {};
+      }
+    });
+    const engine = createEngine({
+      nodes: [...createStdNodes({ fetch }), flaky],
+      graphs: () => graph({}, [n('call', 'test.flaky')], [e('entry', 'exec', 'call', 'exec')]),
+      isTransient: (err) => err instanceof Error && 'code' in err,
+      transientRetry: { max: 3, delayMs: 1000, factor: 2 }
+    });
+    const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
+    await engine.drain(state, cx);
+    assert.equal(getPath(state.suspension?.data ?? null, 'until'), '2026-01-01T00:00:01.000Z');
+    engine.resume(state, state.suspension?.id ?? '', null);
+    await engine.drain(state, cx);
+    assert.equal(getPath(state.suspension?.data ?? null, 'until'), '2026-01-01T00:00:02.000Z');
+    engine.resume(state, state.suspension?.id ?? '', null);
+    await engine.drain(state, cx);
+    assert.equal(state.status, 'faulted');
+    assert.equal(state.fault?.error.message, 'bad payer');
+  });
+
+  it('resets retry attempts when a fault is retried by hand', async () => {
+    let failures = 3;
+    const flaky = actionNode({
+      type: 'test.flaky',
+      title: 'Flaky',
+      category: 'Test',
+      description: 'Fails a few times.',
+      inputs: [],
+      outputs: [],
+      compute: () => {
+        if (failures-- > 0) throw new Error('busy');
+        return {};
+      }
+    });
+    const def = graph(
+      {},
+      [n('call', 'test.flaky', { retry: { max: 1, delayMs: 10 } })],
+      [e('entry', 'exec', 'call', 'exec')]
+    );
+    const { engine, state } = await run(def, {}, [flaky]);
+    engine.resume(state, state.suspension?.id ?? '', null);
+    await engine.drain(state, cx);
+    assert.equal(state.status, 'faulted');
+    engine.retryFault(state);
+    await engine.drain(state, cx);
+    assert.equal(state.suspension?.kind, 'timer');
+    engine.resume(state, state.suspension?.id ?? '', null);
+    await engine.drain(state, cx);
+    assert.equal(state.status, 'completed');
+  });
+
+  it('faults a composite whose exec chain ends without a Return', async () => {
+    const open = graph({ execOut: ['done'] }, [], []);
+    const main = graph({}, [n('sub', 'test.open')], [e('entry', 'exec', 'sub', 'exec')]);
+    const engine = setup({ 'test.main@1': main, 'test.open@1': open });
+    const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
+    await engine.drain(state, cx);
+    assert.equal(state.status, 'faulted');
+    assert.equal(state.fault?.error.node, 'sub');
+    assert.match(state.fault?.error.message ?? '', /"sub" ended without reaching a Return node/);
+    assert.deepEqual(Object.keys(state.scopes).length, 1);
+  });
+
+  it('does not leak outputs from an earlier activation of a node', async () => {
+    const maybe = actionNode({
+      type: 'test.maybe',
+      title: 'Maybe',
+      category: 'Test',
+      description: 'Produces a value only for the first item.',
+      inputs: [pin('n', 'number')],
+      outputs: [pin('a', 'number')],
+      compute: ({ n }) => (n === 1 ? { a: n } : {})
+    });
+    const def = graph(
+      { outputs: [pin('seen', { list: 'number' })] },
+      [
+        n('loop', 'std.flow.for-each', { inputs: { list: val([1, 2]) } }),
+        n('maybe', 'test.maybe'),
+        n('push', 'std.var.append', { config: { name: 'seen' } }),
+        n('get', 'std.var.get', { config: { name: 'seen' } }),
+        n('ret', RETURN_TYPE)
+      ],
+      [
+        e('entry', 'exec', 'loop', 'exec'),
+        e('loop', 'body', 'maybe', 'exec'),
+        e('loop', 'item', 'maybe', 'n'),
+        e('maybe', 'then', 'push', 'exec'),
+        e('maybe', 'a', 'push', 'item'),
+        e('loop', 'completed', 'ret', 'exec'),
+        e('get', 'value', 'ret', 'seen')
+      ],
+      [{ name: 'seen', type: { list: 'number' }, default: [] }]
+    );
+    const { state } = await run(def, {}, [maybe]);
+    assert.equal(state.status, 'faulted');
+    assert.match(state.fault?.error.message ?? '', /"maybe" has not produced "a" yet/);
+  });
+
+  it('evaluates a pure node once until what it reads changes, tracing it without inputs', async () => {
+    const evals: number[] = [];
+    const seen: Json[] = [];
+    const double = pureNode({
+      type: 'test.double',
+      title: 'Double',
+      category: 'Test',
+      description: 'Doubles a number.',
+      inputs: [pin('n', 'number')],
+      outputs: [pin('r', 'number')],
+      compute: ({ n }) => {
+        evals.push(n);
+        return { r: n * 2 };
+      }
+    });
+    const sink = actionNode({
+      type: 'test.sink',
+      title: 'Sink',
+      category: 'Test',
+      description: 'Records a value.',
+      inputs: [pin('x', 'number')],
+      outputs: [],
+      compute: ({ x }) => {
+        seen.push(x);
+        return {};
+      }
+    });
+    const def = graph(
+      { inputs: [pin('v', 'number')] },
+      [
+        n('d1', 'test.double'),
+        n('s1', 'test.sink'),
+        n('s2', 'test.sink'),
+        n('loop', 'std.flow.for-each', { inputs: { list: val([1, 2]) } }),
+        n('d2', 'test.double'),
+        n('s3', 'test.sink')
+      ],
+      [
+        e('entry', 'exec', 's1', 'exec'),
+        e('s1', 'then', 's2', 'exec'),
+        e('s2', 'then', 'loop', 'exec'),
+        e('loop', 'body', 's3', 'exec'),
+        e('entry', 'v', 'd1', 'n'),
+        e('d1', 'r', 's1', 'x'),
+        e('d1', 'r', 's2', 'x'),
+        e('loop', 'item', 'd2', 'n'),
+        e('d2', 'r', 's3', 'x')
+      ]
+    );
+    const { state, trace } = await run(def, { v: 3 }, [double, sink]);
+    assert.equal(state.status, 'completed');
+    assert.deepEqual(seen, [6, 6, 2, 4]);
+    assert.deepEqual(evals, [3, 1, 2]);
+    const pure = trace.filter((t) => t.event === 'eval');
+    assert.equal(pure.length, 3);
+    assert.ok(pure.every((t) => Object.keys(t.inputs).length === 0));
+  });
+
+  it('defers a busy node on a timer without counting an attempt or changing its key', async () => {
+    const keys: string[] = [];
+    let busy = 2;
+    const model = actionNode({
+      type: 'test.model',
+      title: 'Model',
+      category: 'Test',
+      description: 'Waits for a free model slot.',
+      inputs: [],
+      outputs: [],
+      compute: (_, __, ctx) => {
+        keys.push(ctx.key);
+        if (busy-- > 0) throw new Error('busy');
+        return {};
+      }
+    });
+    const engine = createEngine({
+      nodes: [...createStdNodes({ fetch }), model],
+      graphs: combineSources(stdGraphSource, (ref) =>
+        refKey(ref) === 'test.main@1'
+          ? graph({}, [n('call', 'test.model')], [e('entry', 'exec', 'call', 'exec')])
+          : undefined
+      ),
+      isTransient: () => true,
+      deferOf: (err) => (err instanceof Error && err.message === 'busy' ? 750 : null)
+    });
+    const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
+    const trace = await engine.drain(state, cx);
+    assert.equal(state.suspension?.kind, 'timer');
+    assert.equal(state.suspension?.retry, true);
+    assert.deepEqual(state.suspension?.data, {
+      until: new Date(now.getTime() + 750).toISOString(),
+      deferred: 'busy'
+    });
+    assert.deepEqual(trace, []);
+    for (let i = 0; i < 2; i++) {
+      engine.resume(state, state.suspension?.id ?? '', null);
+      await engine.drain(state, cx);
+    }
+    assert.equal(state.status, 'completed');
+    assert.equal(new Set(keys).size, 1);
+  });
+
+  it('hands nodes the abort signal and stops advancing once it fires', async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const probe = actionNode({
+      type: 'test.probe',
+      title: 'Probe',
+      category: 'Test',
+      description: 'Captures the abort signal.',
+      inputs: [],
+      outputs: [],
+      compute: (_, __, ctx) => {
+        signals.push(ctx.signal);
+        return {};
+      }
+    });
+    const def = graph(
+      {},
+      [n('a', 'test.probe'), n('b', 'test.probe')],
+      [e('entry', 'exec', 'a', 'exec'), e('a', 'then', 'b', 'exec')]
+    );
+    const engine = setup({ 'test.main@1': def }, [probe]);
+    const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
+    const lease = new AbortController();
+    await engine.advance(state, { ...cx, signal: lease.signal });
+    assert.equal(signals[0], lease.signal);
+    lease.abort(new Error('lease lost'));
+    await assert.rejects(engine.advance(state, { ...cx, signal: lease.signal }), /lease lost/);
+    assert.equal(signals.length, 1);
+  });
 });

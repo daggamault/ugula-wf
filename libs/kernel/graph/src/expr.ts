@@ -3,7 +3,7 @@ import { CHARS_PER_UNIT, type ExprValue, exprFunctions, type FnValue } from './e
 import { deepEqual, isRecord, isTruthy, kindOf, toText } from './json.ts';
 import type { Json } from './types.ts';
 
-export type Ast =
+type Ast =
   | { k: 'lit'; v: Json }
   | { k: 'id'; name: string }
   | { k: 'arr'; items: Ast[] }
@@ -19,7 +19,7 @@ type Token = { t: 'num' | 'str' | 'id' | 'op' | 'eof'; v: string; pos: number };
 
 type Env = { vars: Record<string, ExprValue>; parent: Env | null };
 
-export type EvalOptions = { now?: Date; maxOps?: number };
+type EvalOptions = { now?: Date; maxOps?: number };
 
 const OPS = ['?.', '??', '==', '!=', '<=', '>=', '&&', '||', '=>'];
 const SINGLE = '+-*/%<>!?:.,()[]{}';
@@ -49,6 +49,7 @@ const ESCAPES: Record<string, string> = {
 };
 const NUM_RE = /(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/y;
 const ID_RE = /[A-Za-z_$][\w$]*/y;
+const CACHE_SIZE = 2000;
 const cache = new Map<string, Ast>();
 
 const tokenize = (src: string): Token[] => {
@@ -81,7 +82,9 @@ const tokenize = (src: string): Token[] => {
         }
         const esc = src.charAt(++j);
         if (esc === 'u') {
-          s += String.fromCharCode(Number.parseInt(src.slice(j + 1, j + 5), 16));
+          const hex = src.slice(j + 1, j + 5);
+          if (!/^[\da-fA-F]{4}$/.test(hex)) fail(`Invalid unicode escape at ${j - 1}`);
+          s += String.fromCharCode(Number.parseInt(hex, 16));
           j += 4;
         } else s += ESCAPES[esc] ?? esc;
       }
@@ -101,7 +104,11 @@ const tokenize = (src: string): Token[] => {
 
 export const parseExpr = (src: string): Ast => {
   const hit = cache.get(src);
-  if (hit) return hit;
+  if (hit) {
+    cache.delete(src);
+    cache.set(src, hit);
+    return hit;
+  }
   const toks = tokenize(src);
   let p = 0;
   const eof = toks[toks.length - 1] ?? { t: 'eof', v: '', pos: 0 };
@@ -234,7 +241,8 @@ export const parseExpr = (src: string): Ast => {
   };
   const ast = expr(0);
   if (peek().t !== 'eof') fail(`Unexpected "${peek().v}" at ${peek().pos}`);
-  if (cache.size > 2000) cache.clear();
+  const oldest = cache.size >= CACHE_SIZE ? cache.keys().next().value : undefined;
+  if (oldest !== undefined) cache.delete(oldest);
   cache.set(src, ast);
   return ast;
 };
@@ -336,11 +344,7 @@ const member = (obj: ExprValue, key: ExprValue, opt: boolean): ExprValue => {
   return fail(`Cannot read "${toText(asJson(key))}" of ${kindOf(asJson(obj))}`);
 };
 
-export const evaluateExpr = (
-  src: string | Ast,
-  vars: Record<string, Json>,
-  { now, maxOps = 1_000_000 }: EvalOptions = {}
-): Json => {
+export const createEvaluator = ({ now, maxOps = 1_000_000 }: EvalOptions = {}) => {
   let ops = 0;
   const charge = (units: number) => {
     ops += units;
@@ -411,5 +415,12 @@ export const evaluateExpr = (
       }
     }
   };
-  return asJson(ev(typeof src === 'string' ? parseExpr(src) : src, { vars, parent: null }));
+  return (src: string | Ast, vars: Record<string, Json>): Json =>
+    asJson(ev(typeof src === 'string' ? parseExpr(src) : src, { vars, parent: null }));
 };
+
+export const evaluateExpr = (
+  src: string | Ast,
+  vars: Record<string, Json>,
+  options: EvalOptions = {}
+): Json => createEvaluator(options)(src, vars);

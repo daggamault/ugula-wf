@@ -7,38 +7,33 @@ import type { ReportService } from './service.ts';
 
 const calls: unknown[][] = [];
 
-const record =
-  (name: string) =>
-  async (...args: unknown[]) => {
-    calls.push([name, ...args]);
-    return ok({ rows: [] });
-  };
-
 const service = {
-  aging: record('aging'),
-  monthly: record('monthly'),
-  hcpcs: record('hcpcs'),
-  payers: record('payers')
+  run: async (...args: unknown[]) => {
+    calls.push(args);
+    return ok({ items: [], total: 0, page: 1, pageSize: 100, totals: {} });
+  }
 } as unknown as ReportService;
 
 const request = withSession(createReportRoutes(service));
 
 describe('report routes', () => {
-  it('runs each report for the session tenant with the requested period', async () => {
-    assert.equal((await request('/aging')).status, 200);
+  it('runs the named report for the session tenant with its options and page', async () => {
+    assert.equal((await request('/aging?page=2&group=class&tz=America/Chicago')).status, 200);
     assert.equal((await request('/monthly?from=2026-01-01&to=2026-06-30')).status, 200);
-    assert.equal((await request('/hcpcs')).status, 200);
-    assert.equal((await request('/payers?to=2026-06-30')).status, 200);
+    assert.equal((await request('/write-offs?all=true')).status, 200);
     assert.deepEqual(calls, [
-      ['aging', 't-1'],
-      ['monthly', 't-1', { from: '2026-01-01', to: '2026-06-30' }],
-      ['hcpcs', 't-1', {}],
-      ['payers', 't-1', { to: '2026-06-30' }]
+      ['t-1', 'aging', { tz: 'America/Chicago', group: 'class', page: 2 }],
+      ['t-1', 'monthly', { from: '2026-01-01', to: '2026-06-30', tz: 'UTC', page: 1 }],
+      ['t-1', 'write-offs', { tz: 'UTC', page: 'all' }]
     ]);
   });
 
-  it('rejects malformed or reversed periods', async () => {
+  it('rejects malformed options', async () => {
     assert.equal((await request('/monthly?from=june')).status, 400);
     assert.equal((await request('/hcpcs?from=2026-02-01&to=2026-01-01')).status, 400);
+    assert.equal((await request('/aging?page=0')).status, 400);
+    assert.equal((await request('/aging?all=yes')).status, 400);
+    assert.equal((await request('/aging?tz=Mars/Base')).status, 400);
+    assert.equal((await request('/Aging')).status, 400);
   });
 });

@@ -23,16 +23,23 @@ describe('createClaimsClient', () => {
     await client.list({ task: 'any', assignee: 'anyone' }, 'page=1');
     await client.list({ task: '', assignee: 'me' }, 'page=1');
     await client.find('c1');
-    await client.setPayers('c1', ['Medicare']);
+    await client.events('c1', 'page=2&sort=amount');
+    await client.setPayers('c1', [
+      { name: 'Medicare', relationship: '18', insuredFirstName: null, insuredLastName: null }
+    ]);
     await client.restartCycle('c1');
     await client.recordResponse('c1', {
       requestId: 'q1',
+      kind: 'response',
       coverageId: null,
       paidCents: 500,
       adjustedCents: 0,
+      paidOn: null,
+      checkNumber: null,
+      payerClaimNumber: null,
+      adjustments: [],
       note: ''
     });
-    await client.pending();
     await client.pending('c1');
     await client.createBatch('c1');
     await client.markSubmitted('c1');
@@ -44,10 +51,10 @@ describe('createClaimsClient', () => {
       'GET http://api.test/api/claims?task=any&page=1 ',
       'GET http://api.test/api/claims?assignee=me&page=1 ',
       'GET http://api.test/api/claims/c1 ',
-      'PUT http://api.test/api/claims/c1/payers {"payers":["Medicare"]}',
+      'GET http://api.test/api/claims/c1/events?page=2&sort=amount ',
+      'PUT http://api.test/api/claims/c1/payers {"payers":[{"name":"Medicare","relationship":"18","insuredFirstName":null,"insuredLastName":null}]}',
       'POST http://api.test/api/claims/c1/restart-cycle ',
-      'POST http://api.test/api/claims/c1/responses {"requestId":"q1","coverageId":null,"paidCents":500,"adjustedCents":0,"note":""}',
-      'GET http://api.test/api/submissions/pending ',
+      'POST http://api.test/api/claims/c1/responses {"requestId":"q1","kind":"response","coverageId":null,"paidCents":500,"adjustedCents":0,"paidOn":null,"checkNumber":null,"payerClaimNumber":null,"adjustments":[],"note":""}',
       'GET http://api.test/api/submissions/pending?claimId=c1 ',
       'POST http://api.test/api/submissions/batches {"claimId":"c1"}',
       'POST http://api.test/api/submissions/manual {"claimId":"c1"}'

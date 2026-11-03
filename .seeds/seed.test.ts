@@ -79,6 +79,11 @@ describe('seedBase', () => {
     assert.equal(versions.length, billingGraphs.length);
     assert.ok(queries.some((q) => q.sql.startsWith('insert into "nemsis_elements"')));
     assert.ok(queries.some((q) => q.sql.startsWith('insert into "nemsis_codes"')));
+    const triggers = queries.filter((q) => q.sql.startsWith('alter table graph_versions'));
+    assert.deepEqual(
+      triggers.map((q) => q.sql.split(' ')[3]),
+      ['disable', 'enable']
+    );
     await db.destroy();
   });
 });

@@ -18,14 +18,17 @@ describe('narrativeNodes', () => {
       findings: {
         medications: [{ medication: 'fentanyl', route: 'IV', doses: 2 }],
         procedures: ['intraosseous line'],
-        ivDoses: 2
+        ivDoses: 2,
+        notes: []
       }
     });
     assert.deepEqual((await invokeNode(read)).outputs.findings, {
       medications: [],
       procedures: [],
-      ivDoses: 0
+      ivDoses: 0,
+      notes: []
     });
+
     assert.equal(model.asked.length, 1);
   });
 });

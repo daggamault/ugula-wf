@@ -3,7 +3,7 @@ import type { FieldSpec, Json } from '@ugula/graph';
 import type { ReportDictionary } from '@ugula/nemsis';
 import type { Api } from '../../shared/api.ts';
 
-export type TaskStatus = 'open' | 'completed' | 'cancelled';
+type TaskStatus = 'open' | 'completed' | 'cancelled';
 
 export type QueueSummary = {
   queue: string;
@@ -13,7 +13,7 @@ export type QueueSummary = {
   oldest: string;
 };
 
-export type TaskSummary = {
+type TaskSummary = {
   id: string;
   run_id: string;
   kind: 'task' | 'fault';
@@ -37,14 +37,14 @@ export type TaskDetail = TaskSummary & {
   source: TaskSource;
 };
 
-export type TaskClaim = {
+type TaskClaim = {
   id: string;
   number: number;
   status: ClaimStatus;
   patient: string | null;
 };
 
-export type TaskSource = {
+type TaskSource = {
   reportId: string | null;
   pcrNumber: string | null;
   claim: TaskClaim | null;
@@ -66,14 +66,20 @@ export type SourceReport = {
 
 export const createTasksClient = (api: Api) => ({
   queues: async () => (await api.get<{ queues: QueueSummary[] }>('/api/tasks/queues')).queues,
-  find: async (id: string) => (await api.get<{ task: TaskDetail }>(`/api/tasks/${id}`)).task,
+  find: async (id: string, signal?: AbortSignal) =>
+    (await api.get<{ task: TaskDetail }>(`/api/tasks/${encodeURIComponent(id)}`, signal)).task,
   next: async (queue: string | null) =>
     (await api.post<{ task: TaskDetail | null }>('/api/tasks/next', { queue })).task,
-  assign: (id: string) => api.post<{ status: string }>(`/api/tasks/${id}/claim`),
-  unassign: (id: string) => api.post<{ status: string }>(`/api/tasks/${id}/release`),
+  assign: (id: string) =>
+    api.post<{ status: string }>(`/api/tasks/${encodeURIComponent(id)}/claim`),
+  unassign: (id: string) =>
+    api.post<{ status: string }>(`/api/tasks/${encodeURIComponent(id)}/release`),
   complete: (id: string, outcome: string, values: Record<string, Json>) =>
-    api.post<{ status: string }>(`/api/tasks/${id}/complete`, { outcome, values }),
-  report: (id: string) => api.get<SourceReport>(`/api/imports/reports/${id}`)
+    api.post<{ status: string }>(`/api/tasks/${encodeURIComponent(id)}/complete`, {
+      outcome,
+      values
+    }),
+  report: (id: string) => api.get<SourceReport>(`/api/imports/reports/${encodeURIComponent(id)}`)
 });
 
 export type TasksClient = ReturnType<typeof createTasksClient>;

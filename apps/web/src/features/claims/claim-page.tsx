@@ -1,4 +1,14 @@
-import { isClosedStatus } from '@ugula/billing';
+import {
+  ADJUSTMENT_GROUPS,
+  ADJUSTMENT_REASON_PATTERN,
+  type AdjustmentGroup,
+  type ClaimIssue,
+  INSURED_RELATIONSHIPS,
+  type InsuredRelationship,
+  isClosedStatus,
+  RELATIONSHIP_LABELS,
+  TRIP_TYPE_LABELS
+} from '@ugula/billing';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -17,13 +27,17 @@ import {
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
+import { ChargeLines } from '../../shared/claims/charge-lines.tsx';
+import { ClaimIssues } from '../../shared/claims/claim-issues.tsx';
 import { classNamesOf } from '../../shared/class-names.ts';
 import {
   formatAgo,
   formatCents,
   formatDate,
   formatDateTime,
-  parseDollars
+  formatMiles,
+  parseDollars,
+  titleCaseLabel
 } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { Link } from '../../shared/router.tsx';
@@ -34,7 +48,7 @@ import { Button, ButtonLink, buttonClasses } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
-import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
+import { FieldGrid, FieldGroup, FormActions } from '../../shared/ui/field.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
@@ -47,8 +61,13 @@ import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/t
 import { Tabs } from '../../shared/ui/tabs.tsx';
 import { textLinkClasses } from '../../shared/ui/text-link.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
-import { pageOf, useTableState, withBack } from '../../shared/url-state.ts';
-import { useResource } from '../../shared/use-resource.ts';
+import {
+  backLabelOf,
+  type Page as ListPage,
+  useTableState,
+  withBack
+} from '../../shared/url-state.ts';
+import { type Resource, useResource } from '../../shared/use-resource.ts';
 import { ClaimDataForm } from './claim-data-form.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
 import { assigneeOf, claimNumber } from './claims-page.tsx';
@@ -62,10 +81,11 @@ import type {
   ClaimProgress,
   ClaimResponseInput,
   ClaimsClient,
-  ClaimTask
+  ClaimTask,
+  PayerInput
 } from './client.ts';
 
-export type ClaimPageProps = {
+type ClaimPageProps = {
   client: ClaimsClient;
   live: Live;
   me: string;
@@ -85,6 +105,8 @@ const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
   payer_skipped: 'Payer skipped',
   statement: 'Patient statement',
   revised: 'Updated PCR received',
+  edited: 'Claim data edited',
+  refunded: 'Refunded',
   closed: 'Closed'
 };
 
@@ -95,7 +117,7 @@ export const lockedReason = (status: ClaimDetail['status']) =>
       ? 'This claim is still a draft. Finish its PCR tasks first.'
       : undefined;
 
-export const BatchDownload = ({ batch, href }: { batch: Batch; href: string }) => (
+const BatchDownload = ({ batch, href }: { batch: Batch; href: string }) => (
   <a href={href} download className={buttonClasses({ variant: 'outline' })}>
     <DownloadIcon aria-hidden="true" className="size-4" />
     Download #{batch.control_number}
@@ -106,19 +128,19 @@ const fileLinkClasses = `inline-flex items-center gap-2 whitespace-nowrap ${text
 
 export const ClaimFiles = ({
   claim,
-  events,
+  files,
   documentUrl,
   fileUrl,
   encounterUrl
 }: {
   claim: Pick<ClaimDetail, 'import_report_id' | 'pcr_number'>;
-  events: readonly ClaimEvent[];
+  files: readonly ClaimEvent[];
   documentUrl: (eventId: string) => string;
   fileUrl: (batchId: string) => string;
   encounterUrl: (reportId: string) => string;
 }) => {
-  const batches = events.filter((e) => e.batch_id);
-  const documents = events.filter((e) => e.has_document);
+  const batches = files.filter((e) => e.batch_id);
+  const documents = files.filter((e) => e.has_document);
   return (
     <SectionPanel
       title="Files"
@@ -160,7 +182,7 @@ export const ClaimFiles = ({
   );
 };
 
-export const moveItem = (items: readonly string[], from: number, to: number) => {
+export const moveItem = <T,>(items: readonly T[], from: number, to: number) => {
   if (to < 0 || to >= items.length) return [...items];
   const next = [...items];
   const [item] = next.splice(from, 1);
@@ -168,94 +190,133 @@ export const moveItem = (items: readonly string[], from: number, to: number) => 
   return next;
 };
 
-export const toResponse = (draft: {
+type ResponseKind = ClaimResponseInput['kind'];
+
+type AdjustmentDraft = { id: string; group: AdjustmentGroup; reason: string; amount: string };
+
+export type ResponseDraft = {
+  kind: ResponseKind;
   coverageId: string;
   paid: string;
   adjusted: string;
+  paidOn: string;
+  checkNumber: string;
+  payerClaimNumber: string;
+  adjustments: AdjustmentDraft[];
   note: string;
-}): Omit<ClaimResponseInput, 'requestId'> | string => {
+};
+
+const REASON = new RegExp(ADJUSTMENT_REASON_PATTERN);
+
+const signedCents = (text: string) => {
+  const amount = Number(text);
+  return text.trim() !== '' && Number.isFinite(amount) && amount !== 0
+    ? Math.round(amount * 100)
+    : null;
+};
+
+const adjustmentOf = (a: AdjustmentDraft) => {
+  const reason = a.reason.trim().toUpperCase();
+  const cents = signedCents(a.amount);
+  return REASON.test(reason) && cents !== null ? { group: a.group, reason, cents } : null;
+};
+
+const orNull = (text: string) => text.trim() || null;
+
+export const toResponse = (
+  draft: ResponseDraft
+): Omit<ClaimResponseInput, 'requestId'> | string => {
+  const isRefund = draft.kind === 'refunded';
   const paidCents = parseDollars(draft.paid || '0');
-  const adjustedCents = parseDollars(draft.adjusted || '0');
+  const adjustedCents = isRefund ? 0 : parseDollars(draft.adjusted || '0');
   if (paidCents === null || adjustedCents === null) return 'Enter amounts of zero or more';
+  if (isRefund && paidCents === 0) return 'A refund needs the amount paid back';
   if (paidCents + adjustedCents === 0 && draft.coverageId === '') {
     return 'A patient payment needs an amount';
   }
+  const adjustments = isRefund ? [] : draft.adjustments.map(adjustmentOf);
+  if (adjustments.some((a) => a === null)) {
+    return 'Each reason code needs a code like 45 and an amount other than zero';
+  }
+  const coverageId = draft.coverageId || null;
   return {
-    coverageId: draft.coverageId || null,
+    kind: draft.kind,
+    coverageId,
     paidCents,
     adjustedCents,
+    paidOn: orNull(draft.paidOn),
+    checkNumber: orNull(draft.checkNumber),
+    payerClaimNumber: coverageId && !isRefund ? orNull(draft.payerClaimNumber) : null,
+    adjustments: adjustments.filter((a) => a !== null),
     note: draft.note.trim()
   };
 };
 
-export const amountOf = (e: Pick<ClaimEvent, 'paid_cents' | 'adjusted_cents'>) =>
+export const paymentDetailsOf = (
+  e: Pick<ClaimEvent, 'paid_on' | 'check_number' | 'payer_claim_number'>
+) =>
   [
-    e.paid_cents ? `${formatCents(e.paid_cents)} paid` : '',
-    e.adjusted_cents ? `${formatCents(e.adjusted_cents)} adjusted` : ''
+    e.paid_on ? `Paid ${formatDate(e.paid_on)}` : '',
+    e.check_number ? `Check or EFT ${e.check_number}` : '',
+    e.payer_claim_number ? `Payer claim ${e.payer_claim_number}` : ''
   ]
     .filter(Boolean)
     .join(' · ');
 
-export const LinesTable = ({ lines }: { lines: readonly ClaimLine[] }) => (
-  <Table
-    label="Claim lines"
-    head={[
-      'HCPCS',
-      { label: 'Units', isNumeric: true },
-      { label: 'Unit Price', isNumeric: true },
-      { label: 'Amount', isNumeric: true }
-    ]}
-  >
-    {lines.map((l) => (
-      <TableRow key={l.position}>
-        <TableCell>
-          <span className="font-mono font-semibold">{l.code}</span>
-        </TableCell>
-        <TableCell kind="numeric">{l.units}</TableCell>
-        <TableCell kind="numeric" isMuted>
-          {formatCents(l.unit_cents)}
-        </TableCell>
-        <TableCell kind="numeric">{formatCents(l.total_cents)}</TableCell>
-      </TableRow>
-    ))}
-  </Table>
-);
+export const amountOf = (e: Pick<ClaimEvent, 'kind' | 'paid_cents' | 'adjusted_cents'>) =>
+  e.kind === 'refunded'
+    ? `${formatCents(Math.abs(e.paid_cents))} refunded`
+    : [
+        e.paid_cents ? `${formatCents(e.paid_cents)} paid` : '',
+        e.adjusted_cents ? `${formatCents(e.adjusted_cents)} adjusted` : ''
+      ]
+        .filter(Boolean)
+        .join(' · ');
 
-export const HISTORY_TABLE = {
+const pricedLinesOf = (lines: readonly ClaimLine[]) =>
+  lines.map((l) => ({
+    code: l.code,
+    units: Number(l.units),
+    unitCents: l.unit_cents,
+    totalCents: l.total_cents
+  }));
+
+const HISTORY_TABLE = {
   prefix: 'history',
   sorts: { when: 'desc', event: 'asc', payer: 'asc', amount: 'desc' },
   sort: 'when'
 } as const;
 
-export const HISTORY_VALUES = {
-  when: (e: ClaimEvent) => e.created_at,
-  event: (e: ClaimEvent) => EVENT_LABELS[e.kind],
-  payer: (e: ClaimEvent) => e.payer,
-  amount: (e: ClaimEvent) => e.paid_cents + e.adjusted_cents
-};
+const useHistoryTable = (claimId: string) => useTableState(`/claims/${claimId}`, HISTORY_TABLE);
 
 const ClaimHistory = ({
   claimId,
-  events,
+  history,
   documentUrl,
   fileUrl
 }: {
   claimId: string;
-  events: readonly ClaimEvent[];
+  history: Resource<ListPage<ClaimEvent>>;
   documentUrl: (eventId: string) => string;
   fileUrl?: ((batchId: string) => string) | undefined;
 }) => {
-  const table = useTableState(`/claims/${claimId}`, HISTORY_TABLE);
-  return (
+  const table = useHistoryTable(claimId);
+  return history.error ? (
+    <Alert>{history.error.message}</Alert>
+  ) : history.data?.items.length ? (
     <>
       <EventsTable
-        events={pageOf(events, table, HISTORY_VALUES).items}
+        events={history.data.items}
         sorting={table}
         documentUrl={documentUrl}
         fileUrl={fileUrl}
       />
-      <Pagination label="Claim history" total={events.length} state={table} />
+      <Pagination label="Claim history" total={history.data.total} state={table} />
     </>
+  ) : history.loading ? (
+    <PageLoading />
+  ) : (
+    <EmptyText>Nothing has happened on this claim yet.</EmptyText>
   );
 };
 
@@ -290,27 +351,32 @@ export const EventsTable = ({
           <span className="font-medium">{EVENT_LABELS[e.kind]}</span>
         </TableCell>
         <TableCell>{e.payer ?? (e.kind === 'response' ? 'Patient' : emptyValue)}</TableCell>
-        <TableCell kind="date">{amountOf(e)}</TableCell>
+        <TableCell kind="numeric">{amountOf(e)}</TableCell>
         <TableCell isSecondary>
-          <span className="flex items-center gap-3">
-            {e.note}
-            {e.has_document ? (
-              <a
-                href={documentUrl(e.id)}
-                target="_blank"
-                rel="noopener"
-                className={fileLinkClasses}
-              >
-                <FileTextIcon aria-hidden="true" className="size-4" />
-                View PDF
-              </a>
+          <span className="flex flex-col gap-0.5">
+            {paymentDetailsOf(e) ? (
+              <span className="text-surface-fg-muted text-xs">{paymentDetailsOf(e)}</span>
             ) : null}
-            {e.batch_id && fileUrl ? (
-              <a href={fileUrl(e.batch_id)} download className={fileLinkClasses}>
-                <DownloadIcon aria-hidden="true" className="size-4" />
-                837P File #{e.batch_number}
-              </a>
-            ) : null}
+            <span className="flex items-center gap-3">
+              {e.note}
+              {e.has_document ? (
+                <a
+                  href={documentUrl(e.id)}
+                  target="_blank"
+                  rel="noopener"
+                  className={fileLinkClasses}
+                >
+                  <FileTextIcon aria-hidden="true" className="size-4" />
+                  View PDF
+                </a>
+              ) : null}
+              {e.batch_id && fileUrl ? (
+                <a href={fileUrl(e.batch_id)} download className={fileLinkClasses}>
+                  <DownloadIcon aria-hidden="true" className="size-4" />
+                  837P File #{e.batch_number}
+                </a>
+              ) : null}
+            </span>
           </span>
         </TableCell>
       </TableRow>
@@ -318,38 +384,101 @@ export const EventsTable = ({
   </Table>
 );
 
-export const PayersEditor = ({
+type PayerEntry = PayerInput & { id: string };
+
+const SELF: InsuredRelationship = '18';
+
+const RELATIONSHIP_OPTIONS = INSURED_RELATIONSHIPS.map((r) => ({
+  value: r,
+  label: titleCaseLabel(RELATIONSHIP_LABELS[r])
+}));
+
+const isRelationshipCode = (x: string): x is InsuredRelationship =>
+  INSURED_RELATIONSHIPS.some((r) => r === x);
+
+export const entryOf = (c: ClaimCoverage): PayerEntry => ({
+  id: c.id,
+  name: c.payer,
+  relationship: c.relationship,
+  insuredFirstName: c.insured_first_name,
+  insuredLastName: c.insured_last_name
+});
+
+export const toPayerInput = ({ id, ...e }: PayerEntry): PayerInput =>
+  e.relationship === SELF
+    ? { ...e, insuredFirstName: null, insuredLastName: null }
+    : {
+        ...e,
+        insuredFirstName: e.insuredFirstName?.trim() || null,
+        insuredLastName: e.insuredLastName?.trim() || null
+      };
+
+export const payersErrorOf = (entries: readonly PayerEntry[]) => {
+  const missing = entries.find((e) => {
+    const input = toPayerInput(e);
+    return input.relationship !== SELF && (!input.insuredFirstName || !input.insuredLastName);
+  });
+  return missing ? `Enter the insured's first and last name for ${missing.name}.` : undefined;
+};
+
+export const removeEntry = (entries: readonly PayerEntry[], id: string) =>
+  entries.filter((e) => e.id !== id);
+
+export const addEntry = (entries: readonly PayerEntry[], name: string, id: string) => {
+  const trimmed = name.trim();
+  const key = trimmed.toLowerCase();
+  return !trimmed || entries.some((e) => e.name.toLowerCase() === key)
+    ? [...entries]
+    : [
+        ...entries,
+        {
+          id,
+          name: trimmed,
+          relationship: SELF,
+          insuredFirstName: null,
+          insuredLastName: null
+        }
+      ];
+};
+
+const PayersEditor = ({
   coverages,
   locked,
   onSave
 }: {
   coverages: readonly ClaimCoverage[];
   locked: string | undefined;
-  onSave: (payers: string[]) => Promise<void>;
+  onSave: (payers: PayerInput[]) => Promise<void>;
 }) => {
-  const payers = coverages.map((c) => c.payer);
+  const saved = JSON.stringify(coverages.map((c) => toPayerInput(entryOf(c))));
   const unlisted = new Set(
     coverages.filter((c) => c.payer_id === null).map((c) => c.payer.toLowerCase())
   );
-  const [list, setList] = useState<string[]>(payers);
+  const [list, setList] = useState<PayerEntry[]>(() => coverages.map(entryOf));
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
-  const isDirty = list.join('|') !== payers.join('|');
+  const [isChecked, setChecked] = useState(false);
+  const inputs = list.map(toPayerInput);
+  const isDirty = JSON.stringify(inputs) !== saved;
+  const problem = isChecked ? payersErrorOf(list) : undefined;
+  const patch = (id: string, next: Partial<PayerEntry>) =>
+    setList(list.map((e) => (e.id === id ? { ...e, ...next } : e)));
   const add = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const trimmed = name.trim();
-    if (trimmed && !list.includes(trimmed)) setList([...list, trimmed]);
+    setList(addEntry(list, name, crypto.randomUUID()));
     setName('');
   };
   const save = async () => {
+    setChecked(true);
+    if (payersErrorOf(list)) return;
     setBusy(true);
-    await onSave(list);
+    await onSave(inputs);
     setBusy(false);
   };
   return (
     <SectionPanel
       title="Payers"
-      description="Billed in this order. The patient is billed after the last payer."
+      description="Billed in this order, with the patient billed after the last payer."
       actions={
         <Button
           isPending={busy}
@@ -357,69 +486,106 @@ export const PayersEditor = ({
           onClick={() => void save()}
         >
           <SaveIcon aria-hidden="true" className="size-4" />
-          Save Order
+          Save Payers
         </Button>
       }
     >
       {list.length ? (
         <ol className="divide-border border-border flex flex-col divide-y rounded-xl border">
-          {list.map((p, i) => (
-            <li key={p} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
-              <span className="flex min-w-0 items-center gap-2">
-                <span
-                  aria-hidden="true"
-                  className="bg-primary/10 text-primary grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold"
-                >
-                  {i + 1}
-                </span>
-                <span className="truncate font-medium">
-                  <span className="sr-only">{i + 1}. </span>
-                  {p}
-                </span>
-                {unlisted.has(p.toLowerCase()) ? (
-                  <Link
-                    to="/payers"
-                    className={classNamesOf(
-                      interactiveClasses,
-                      'shrink-0 rounded-full hover:underline'
-                    )}
+          {list.map(({ id, name: p, relationship, insuredFirstName, insuredLastName }, i) => (
+            <li key={id} className="flex flex-col gap-4 px-4 py-3 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="bg-primary/10 text-primary min-w-5 shrink-0 rounded-full px-1.5 text-center text-xs/5 font-semibold tabular-nums"
                   >
-                    <Badge intent="warning">Not in Payer Directory</Badge>
-                  </Link>
-                ) : null}
-              </span>
-              <span className="flex items-center gap-2">
-                <IconButton
-                  label={`Move ${p} up`}
-                  tooltip="Move Up"
-                  icon={ArrowUpIcon}
-                  disabledReason={locked ?? (i === 0 ? 'Already first.' : undefined)}
-                  onClick={() => setList(moveItem(list, i, i - 1))}
-                />
-                <IconButton
-                  label={`Move ${p} down`}
-                  tooltip="Move Down"
-                  icon={ArrowDownIcon}
-                  disabledReason={locked ?? (i === list.length - 1 ? 'Already last.' : undefined)}
-                  onClick={() => setList(moveItem(list, i, i + 1))}
-                />
-                <Button
-                  intent="danger"
-                  variant="outline"
-                  aria-label={`Remove ${p}`}
-                  disabledReason={locked}
-                  onClick={() => setList(list.filter((x) => x !== p))}
-                >
-                  <Trash2Icon aria-hidden="true" className="size-4" />
-                  Remove
-                </Button>
-              </span>
+                    {i + 1}
+                  </span>
+                  <span className="truncate font-medium">
+                    <span className="sr-only">{i + 1}. </span>
+                    {p}
+                  </span>
+                  {unlisted.has(p.toLowerCase()) ? (
+                    <Link
+                      to="/payers"
+                      className={classNamesOf(
+                        interactiveClasses,
+                        'shrink-0 rounded-full hover:underline'
+                      )}
+                    >
+                      <Badge intent="warning">Not in Payer Directory</Badge>
+                    </Link>
+                  ) : null}
+                </span>
+                <span className="flex items-center gap-1">
+                  <IconButton
+                    label={`Move ${p} up`}
+                    tooltip="Move Up"
+                    icon={ArrowUpIcon}
+                    disabledReason={locked ?? (i === 0 ? 'Already first.' : undefined)}
+                    onClick={() => setList(moveItem(list, i, i - 1))}
+                  />
+                  <IconButton
+                    label={`Move ${p} down`}
+                    tooltip="Move Down"
+                    icon={ArrowDownIcon}
+                    disabledReason={locked ?? (i === list.length - 1 ? 'Already last.' : undefined)}
+                    onClick={() => setList(moveItem(list, i, i + 1))}
+                  />
+                  <IconButton
+                    label={`Remove ${p}`}
+                    tooltip="Remove"
+                    icon={Trash2Icon}
+                    intent="danger"
+                    disabledReason={locked}
+                    onClick={() => setList(removeEntry(list, id))}
+                  />
+                </span>
+              </div>
+              <fieldset disabled={Boolean(locked)}>
+                <FieldGrid>
+                  <Select
+                    id={`payer-${id}-relationship`}
+                    label="Patient Is the Insured's"
+                    span={relationship === SELF ? 4 : 2}
+                    options={RELATIONSHIP_OPTIONS}
+                    value={relationship}
+                    onChange={(e) => {
+                      if (isRelationshipCode(e.target.value)) {
+                        patch(id, { relationship: e.target.value });
+                      }
+                    }}
+                  />
+                  {relationship === SELF ? null : (
+                    <>
+                      <Input
+                        id={`payer-${id}-insured-first`}
+                        label="Insured First Name"
+                        required
+                        error={problem && !insuredFirstName?.trim() ? 'Required' : undefined}
+                        value={insuredFirstName ?? ''}
+                        onChange={(e) => patch(id, { insuredFirstName: e.target.value })}
+                      />
+                      <Input
+                        id={`payer-${id}-insured-last`}
+                        label="Insured Last Name"
+                        required
+                        error={problem && !insuredLastName?.trim() ? 'Required' : undefined}
+                        value={insuredLastName ?? ''}
+                        onChange={(e) => patch(id, { insuredLastName: e.target.value })}
+                      />
+                    </>
+                  )}
+                </FieldGrid>
+              </fieldset>
             </li>
           ))}
         </ol>
       ) : (
         <EmptyText>No payers yet. The patient will be billed directly.</EmptyText>
       )}
+      {problem ? <Alert>{problem}</Alert> : null}
       <form onSubmit={add} className="flex items-end gap-2" aria-label="Add payer">
         <fieldset disabled={Boolean(locked)} className="flex flex-1 items-end gap-2">
           <div className="flex-1">
@@ -441,7 +607,111 @@ export const PayersEditor = ({
   );
 };
 
-export const ResponseForm = ({
+const GROUP_OPTIONS = Object.entries(ADJUSTMENT_GROUPS).map(([value, label]) => ({
+  value,
+  label: `${value} · ${label}`
+}));
+
+const KIND_OPTIONS = [
+  { value: 'response', label: 'Payment' },
+  { value: 'refunded', label: 'Refund' }
+];
+
+const isGroup = (x: string): x is AdjustmentGroup => Object.hasOwn(ADJUSTMENT_GROUPS, x);
+
+const moneyProps = {
+  type: 'number',
+  inputMode: 'decimal',
+  step: '0.01',
+  placeholder: '0.00'
+} as const;
+
+const ReasonCodes = ({
+  rows,
+  onChange
+}: {
+  rows: readonly AdjustmentDraft[];
+  onChange: (rows: AdjustmentDraft[]) => void;
+}) => {
+  const patch = (id: string, next: Partial<AdjustmentDraft>) =>
+    onChange(rows.map((r) => (r.id === id ? { ...r, ...next } : r)));
+  return (
+    <FieldGroup title="Reason Codes">
+      {rows.length ? (
+        <ol className="flex flex-col gap-5">
+          {rows.map((r, i) => (
+            <li key={r.id} className="flex flex-wrap items-end gap-x-4 gap-y-5">
+              <div className="min-w-48 flex-1">
+                <Select
+                  id={`adjustment-${r.id}-group`}
+                  label="Group"
+                  options={GROUP_OPTIONS}
+                  value={r.group}
+                  onChange={(e) => {
+                    if (isGroup(e.target.value)) patch(r.id, { group: e.target.value });
+                  }}
+                />
+              </div>
+              <div className="w-28">
+                <Input
+                  id={`adjustment-${r.id}-reason`}
+                  label="Code"
+                  isMonospace
+                  placeholder="45"
+                  value={r.reason}
+                  onChange={(e) => patch(r.id, { reason: e.target.value })}
+                />
+              </div>
+              <div className="w-32">
+                <Input
+                  id={`adjustment-${r.id}-amount`}
+                  label="Amount (USD)"
+                  {...moneyProps}
+                  value={r.amount}
+                  onChange={(e) => patch(r.id, { amount: e.target.value })}
+                />
+              </div>
+              <span className="flex h-10 items-center pointer-coarse:h-11">
+                <IconButton
+                  label={`Remove reason code ${i + 1}`}
+                  tooltip="Remove"
+                  icon={Trash2Icon}
+                  intent="danger"
+                  onClick={() => onChange(rows.filter((x) => x.id !== r.id))}
+                />
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      <div>
+        <Button
+          variant="outline"
+          onClick={() =>
+            onChange([...rows, { id: crypto.randomUUID(), group: 'CO', reason: '', amount: '' }])
+          }
+        >
+          <PlusIcon aria-hidden="true" className="size-4" />
+          Add Reason Code
+        </Button>
+      </div>
+    </FieldGroup>
+  );
+};
+
+const emptyResponse = (coverageId: string): ResponseDraft => ({
+  kind: 'response',
+  coverageId,
+  paid: '',
+  adjusted: '',
+  paidOn: '',
+  checkNumber: '',
+  payerClaimNumber: '',
+  adjustments: [],
+  note: ''
+});
+
+const ResponseForm = ({
   coverages,
   current,
   locked,
@@ -452,11 +722,11 @@ export const ResponseForm = ({
   locked: string | undefined;
   onRecord: (response: ClaimResponseInput) => Promise<boolean>;
 }) => {
-  const empty = { coverageId: current ?? '', paid: '', adjusted: '', note: '' };
-  const [draft, setDraft] = useState(empty);
+  const [draft, setDraft] = useState(() => emptyResponse(current ?? ''));
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const isRefund = draft.kind === 'refunded';
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (locked) return;
@@ -470,21 +740,21 @@ export const ResponseForm = ({
     const recorded = await onRecord({ ...response, requestId });
     setBusy(false);
     if (recorded) {
-      setDraft(empty);
+      setDraft(emptyResponse(current ?? ''));
       setRequestId(crypto.randomUUID());
     }
   };
-  const field = (key: keyof typeof draft) => ({
+  const field = (key: Exclude<keyof ResponseDraft, 'adjustments'>) => ({
     value: draft[key],
     onChange: (e: { target: { value: string } }) => setDraft({ ...draft, [key]: e.target.value })
   });
   return (
     <SectionPanel
       title="Post Payment"
-      description="A payer's remittance, or a payment from the patient. A payer payment that leaves a balance opens a reconcile task."
+      description="A payer's remittance or a patient payment, or a refund of either. A payer payment that leaves a balance opens a reconcile task."
     >
       <form onSubmit={submit} className="flex flex-col gap-5" aria-label="Post payment">
-        <fieldset disabled={Boolean(locked) || busy}>
+        <fieldset disabled={Boolean(locked) || busy} className="flex flex-col gap-8">
           <FieldGrid>
             <Select
               id="response-payer"
@@ -496,34 +766,46 @@ export const ResponseForm = ({
               ]}
               {...field('coverageId')}
             />
-            <Input id="response-note" label="Note" span={2} {...field('note')} />
+            <Select id="response-kind" label="Type" options={KIND_OPTIONS} {...field('kind')} />
+            <Input id="response-paid-on" label="Paid On" type="date" {...field('paidOn')} />
             <Input
               id="response-paid"
-              label="Paid (USD)"
-              type="number"
-              inputMode="decimal"
+              label={isRefund ? 'Refunded (USD)' : 'Paid (USD)'}
               min="0"
-              step="0.01"
-              placeholder="0.00"
+              {...moneyProps}
               {...field('paid')}
             />
-            <Input
-              id="response-adjusted"
-              label="Adjusted (USD)"
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              {...field('adjusted')}
-            />
+            {isRefund ? null : (
+              <Input
+                id="response-adjusted"
+                label="Adjusted (USD)"
+                min="0"
+                {...moneyProps}
+                {...field('adjusted')}
+              />
+            )}
+            <Input id="response-check" label="Check or EFT Number" {...field('checkNumber')} />
+            {isRefund || draft.coverageId === '' ? null : (
+              <Input
+                id="response-payer-claim"
+                label="Payer Claim Number"
+                {...field('payerClaimNumber')}
+              />
+            )}
+            <Input id="response-note" label="Note" span={4} {...field('note')} />
           </FieldGrid>
+          {isRefund ? null : (
+            <ReasonCodes
+              rows={draft.adjustments}
+              onChange={(adjustments) => setDraft({ ...draft, adjustments })}
+            />
+          )}
         </fieldset>
         {error ? <Alert>{error}</Alert> : null}
         <FormActions>
           <Button type="submit" isPending={busy} disabledReason={locked}>
             <SaveIcon aria-hidden="true" className="size-4" />
-            Post Payment
+            {isRefund ? 'Record Refund' : 'Post Payment'}
           </Button>
         </FormActions>
       </form>
@@ -531,19 +813,26 @@ export const ResponseForm = ({
   );
 };
 
-export const describeProgress = (progress: ClaimProgress | null) => {
-  if (!progress) return null;
+export const describeProgress = (progress: ClaimProgress): string => {
   switch (progress.step) {
     case 'review':
       return `Needs review before it goes to ${progress.coverage.payer}. Check the claim, then approve its review task.`;
     case 'submit':
-      return `Ready to submit to ${progress.coverage.payer}.`;
+      return `Approved and ready to submit to ${progress.coverage.payer}.`;
+    case 'submitDue':
+      return `Approved for ${progress.coverage.payer} but not submitted yet. A submit claim task is waiting.`;
     case 'reconcile':
       return `${progress.coverage.payer} answered and a balance remains. A reconcile task is waiting.`;
     case 'await':
       return `Waiting on ${progress.coverage.payer}. A follow-up task opens if they have not answered 30 days after submission.`;
     case 'followUp':
       return `${progress.coverage.payer} has not answered in 30 days. A payer follow-up task is waiting.`;
+    case 'reviewPatient':
+      return 'Every payer is done. A review task is waiting before the patient is billed.';
+    case 'confirmPayers':
+      return 'No payer is on this claim. A task is waiting to add one or confirm the patient pays.';
+    case 'overpaid':
+      return `${formatCents(-progress.balanceCents)} more has been paid than the claim charges. A refund task is waiting.`;
     case 'statement':
       return `Sending patient statement ${progress.statement} of 3.`;
     case 'awaitPatient':
@@ -555,7 +844,10 @@ export const describeProgress = (progress: ClaimProgress | null) => {
   }
 };
 
-export type CycleState = {
+const isSubmittable = (progress: ClaimProgress | null) =>
+  progress?.step === 'submit' || progress?.step === 'submitDue';
+
+type CycleState = {
   intent: Intent;
   text: string;
   stopped: boolean;
@@ -602,21 +894,20 @@ export const describeCycle = (
         restartable: false
       };
     default: {
-      const text = describeProgress(progress);
-      if (!text) return null;
-      const step = progress?.step;
+      if (!progress) return null;
+      const submittable = isSubmittable(progress);
       return {
-        intent: step === 'submit' ? 'primary' : 'info',
-        text,
+        intent: submittable ? 'primary' : progress.step === 'overpaid' ? 'warning' : 'info',
+        text: describeProgress(progress),
         stopped: false,
         restartable: false,
-        submittable: step === 'submit'
+        submittable
       };
     }
   }
 };
 
-export type Submission = {
+type Submission = {
   issues: readonly string[] | null;
   made: Batch | null;
   fileUrl: (batchId: string) => string;
@@ -750,7 +1041,7 @@ const CycleAlert = ({
   );
 };
 
-export const OpenTasks = ({
+const OpenTasks = ({
   tasks,
   back,
   me
@@ -782,11 +1073,8 @@ export const OpenTasks = ({
 
 export type ClaimTab = 'overview' | 'data' | 'history';
 
-export const patientName = (c: Pick<ClaimDetail, 'first_name' | 'last_name'>) =>
+const patientName = (c: Pick<ClaimDetail, 'first_name' | 'last_name'>) =>
   c.last_name ? `${c.last_name}, ${c.first_name ?? ''}` : 'Patient not matched yet';
-
-export const backLabelOf = (back: string) =>
-  back.startsWith('/patients/') ? 'Back to Patient' : 'Back to Claims';
 
 export const CLAIM_TABS: readonly { value: ClaimTab; label: string }[] = [
   { value: 'overview', label: 'Overview' },
@@ -796,8 +1084,10 @@ export const CLAIM_TABS: readonly { value: ClaimTab; label: string }[] = [
 
 export const ClaimView = ({
   claim,
-  events,
+  files,
+  history,
   progress,
+  issues,
   onSavePayers,
   onRecord,
   onRestart,
@@ -810,9 +1100,11 @@ export const ClaimView = ({
   me = ''
 }: {
   claim: ClaimDetail;
-  events: readonly ClaimEvent[];
+  files: readonly ClaimEvent[];
+  history: Resource<ListPage<ClaimEvent>>;
   progress: ClaimProgress | null;
-  onSavePayers: (payers: string[]) => Promise<void>;
+  issues: readonly ClaimIssue[];
+  onSavePayers: (payers: PayerInput[]) => Promise<void>;
   onRecord: (response: ClaimResponseInput) => Promise<boolean>;
   onRestart: () => Promise<void>;
   onSaveData: (data: BillingDataInput) => Promise<boolean>;
@@ -826,7 +1118,7 @@ export const ClaimView = ({
   const locked = lockedReason(claim.status);
   const path = `/claims/${claim.id}`;
   const current = progress && 'coverage' in progress ? progress.coverage.id : null;
-  const coverageKey = claim.coverages.map((c) => `${c.id}:${c.payer}`).join('|');
+  const coverageKey = JSON.stringify(claim.coverages);
   return (
     <Page
       title={`Claim ${claimNumber(claim.number)}`}
@@ -866,11 +1158,12 @@ export const ClaimView = ({
           label: t.label,
           href: withBack(t.value === 'overview' ? path : `${path}?tab=${t.value}`, back),
           isSelected: t.value === tab,
-          count: t.value === 'history' ? events.length : undefined
+          count: t.value === 'history' ? history.data?.total : undefined
         }))}
       />
       {tab === 'overview' ? (
         <>
+          {isClosedStatus(claim.status) ? null : <ClaimIssues issues={issues} />}
           <SectionPanel
             title="Summary"
             description="What was billed, what is still owed, and the transport it covers."
@@ -884,17 +1177,22 @@ export const ClaimView = ({
               </Detail>
               <Detail label="Service Date">{formatDate(claim.service_date)}</Detail>
               <Detail label="Born">{formatDate(claim.birth_date)}</Detail>
+              <Detail label="Trip Type">
+                {claim.trip_type ? TRIP_TYPE_LABELS[claim.trip_type] : emptyValue}
+              </Detail>
               <Detail label="Transport">
                 {claim.level ?? emptyValue}
                 {claim.emergency ? ' emergency' : ''}
-                {claim.loaded_miles ? ` · ${claim.loaded_miles} loaded miles` : ''}
+                {claim.loaded_miles ? (
+                  <span className="tabular-nums"> · {formatMiles(claim.loaded_miles)} loaded</span>
+                ) : null}
               </Detail>
             </DetailList>
           </SectionPanel>
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             <div className="flex min-w-0 flex-col gap-6">
               <SectionPanel title="Charges" description="Priced from the fee schedule.">
-                <LinesTable lines={claim.lines} />
+                <ChargeLines lines={pricedLinesOf(claim.lines)} />
               </SectionPanel>
               <PayersEditor
                 key={coverageKey}
@@ -905,7 +1203,7 @@ export const ClaimView = ({
               {submission ? (
                 <ClaimFiles
                   claim={claim}
-                  events={events}
+                  files={files}
                   documentUrl={documentUrl}
                   fileUrl={submission.fileUrl}
                   encounterUrl={submission.encounterUrl}
@@ -925,16 +1223,12 @@ export const ClaimView = ({
         <ClaimDataForm key={`data-${claim.id}`} claim={claim} locked={locked} onSave={onSaveData} />
       ) : (
         <SectionPanel title="History" description="Everything that has happened on this claim.">
-          {events.length ? (
-            <ClaimHistory
-              claimId={claim.id}
-              events={events}
-              documentUrl={documentUrl}
-              fileUrl={submission?.fileUrl}
-            />
-          ) : (
-            <EmptyText>Nothing has happened on this claim yet.</EmptyText>
-          )}
+          <ClaimHistory
+            claimId={claim.id}
+            history={history}
+            documentUrl={documentUrl}
+            fileUrl={submission?.fileUrl}
+          />
         </SectionPanel>
       )}
     </Page>
@@ -949,19 +1243,28 @@ export const ClaimPage = ({
   tab = 'overview',
   back = '/claims'
 }: ClaimPageProps) => {
-  const detail = useResource(`claim:${claimId}`, () => client.find(claimId), 15_000);
+  const detail = useResource(`claim:${claimId}`, (signal) => client.find(claimId, signal), 15_000);
+  const historyTable = useHistoryTable(claimId);
+  const history = useResource(`claim:${claimId}:events:${historyTable.apiQuery}`, (signal) =>
+    client.events(claimId, historyTable.apiQuery, signal)
+  );
   const cycleRun = detail.data?.claim.cycle_run_id;
+  const taskIds = detail.data?.claim.tasks.map((t) => t.id) ?? [];
+  const reload = () => {
+    detail.reload();
+    history.reload();
+  };
   useLive(
     live,
     (e) =>
       (e.kind === 'claim' && (e.id === claimId || e.id === null)) ||
       (e.kind === 'run' && e.id === cycleRun) ||
-      e.kind === 'task',
-    detail.reload
+      (e.kind === 'task' && (e.id === null || taskIds.includes(e.id))),
+    reload
   );
-  const submittable = detail.data?.progress?.step === 'submit';
-  const pending = useResource(`claim:${claimId}:pending:${submittable}`, () =>
-    submittable ? client.pending(claimId) : Promise.resolve(null)
+  const submittable = isSubmittable(detail.data?.progress ?? null);
+  const pending = useResource(`claim:${claimId}:pending:${submittable}`, (signal) =>
+    submittable ? client.pending(claimId, signal) : Promise.resolve(null)
   );
   const [error, setError] = useState('');
   const [made, setMade] = useState<Batch | null>(null);
@@ -973,7 +1276,7 @@ export const ClaimPage = ({
     setError('');
     try {
       await action();
-      detail.reload();
+      reload();
       pending.reload();
       notify({ title: done, description: patient });
       return true;
@@ -991,10 +1294,12 @@ export const ClaimPage = ({
       me={me}
       error={error}
       claim={detail.data.claim}
-      events={detail.data.events}
+      files={detail.data.files}
+      history={history}
       progress={detail.data.progress}
+      issues={detail.data.issues}
       onSavePayers={async (payers) => {
-        await act(() => client.setPayers(claimId, payers), 'Payer order saved');
+        await act(() => client.setPayers(claimId, payers), 'Payers saved');
       }}
       onRecord={(response) => act(() => client.recordResponse(claimId, response), 'Payment posted')}
       onSaveData={(data) =>
@@ -1005,7 +1310,9 @@ export const ClaimPage = ({
         await act(() => client.restartCycle(claimId), 'Payer cycle restarted');
       }}
       submission={{
-        issues: pending.data?.claims[0]?.issues ?? (pending.data ? [] : null),
+        issues: pending.data
+          ? [...pending.data.issues, ...(pending.data.claim?.issues ?? [])]
+          : null,
         made,
         fileUrl: client.fileUrl,
         encounterUrl: client.encounterUrl,

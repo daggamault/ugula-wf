@@ -5,7 +5,7 @@ import type { Kysely } from 'kysely';
 
 export type Place = { id: number; name: string; state: string };
 
-export const GNIS_BASE = 'https://prd-tnm.s3.amazonaws.com/StagedProducts/GeographicNames';
+const GNIS_BASE = 'https://prd-tnm.s3.amazonaws.com/StagedProducts/GeographicNames';
 
 export const POPULATED_PLACES_URL = `${GNIS_BASE}/Topical/PopulatedPlaces_National_Text.zip`;
 
@@ -81,7 +81,7 @@ export const fromTsv = (text: string): Place[] =>
 
 export const readPlaces = (gzipped: Buffer) => fromTsv(gunzipSync(gzipped).toString('utf8'));
 
-export const PLACE_BATCH = 5_000;
+const PLACE_BATCH = 5_000;
 
 export const buildUpsertPlaces = (db: Kysely<Database>, places: readonly Place[]) =>
   db

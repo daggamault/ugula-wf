@@ -3,7 +3,7 @@ import { cancel, enqueueRuns, type RunQueueClient } from '@ugula/run-queue';
 import type { BlobStore } from '@ugula/storage';
 import { type UploadedFile, uploadKey } from '../../shared/files.ts';
 import { fail, ok } from '../../shared/result.ts';
-import { signalRuns, startRun } from '../../shared/runs.ts';
+import { startRun } from '../../shared/runs.ts';
 import {
   countChildren,
   findPublishedVersion,
@@ -17,7 +17,7 @@ import {
   type StepFilters
 } from './queries.ts';
 
-export type RunServiceDeps = {
+type RunServiceDeps = {
   db: Db;
   boss: RunQueueClient;
   blobs: Pick<BlobStore, 'putBytes'>;
@@ -79,11 +79,6 @@ export const createRunService = ({ db, boss, blobs, maxBytes }: RunServiceDeps) 
       }
       await enqueueRuns(boss, sqlExecutor(tx), [cancel(id)]);
       return ok({ status: 'cancelling' });
-    }),
-
-  signal: (tenantId: string, name: string, key: string, payload: unknown) =>
-    db.transaction().execute(async (tx) => {
-      return ok({ resumed: await signalRuns(tx, boss, { tenantId, name, key, payload }) });
     })
 });
 

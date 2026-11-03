@@ -3,12 +3,13 @@ import { describe, it } from 'node:test';
 import { CLAIM_STATUSES } from '@ugula/billing';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { CLAIM_FILTERS, ClaimStatusBadge, claimStatusLabel } from './claim-status-badge.tsx';
+import { CLAIM_FILTERS, ClaimStatusBadge } from './claim-status-badge.tsx';
 
 describe('ClaimStatusBadge', () => {
   it('labels each claim status in the words a biller uses', () => {
-    assert.equal(claimStatusLabel('needs_review'), 'Needs Review');
-    assert.equal(claimStatusLabel('collections'), 'Sent to Collections');
+    const label = (value: string) => CLAIM_FILTERS.find((f) => f.value === value)?.label;
+    assert.equal(label('needs_review'), 'Needs Review');
+    assert.equal(label('collections'), 'Sent to Collections');
     const html = renderToStaticMarkup(createElement(ClaimStatusBadge, { status: 'paid' }));
     assert.ok(html.includes('>Paid<'));
   });

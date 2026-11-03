@@ -1,4 +1,4 @@
-import { ACTIVE_RUN_STATUSES, type Database } from '@ugula/db';
+import { type Database, RUN_STATUSES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
 export const buildWorkflowRunsTable = (db: Kysely<Database>) =>
@@ -9,7 +9,7 @@ export const buildWorkflowRunsTable = (db: Kysely<Database>) =>
       col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('graph_version_id', 'uuid', (col) =>
-      col.notNull().references('graph_versions.id').onDelete('restrict').onUpdate('cascade')
+      col.notNull().references('graph_versions.id').onDelete('no action').onUpdate('cascade')
     )
     .addColumn('parent_id', 'uuid', (col) =>
       col.references('workflow_runs.id').onDelete('cascade').onUpdate('cascade')
@@ -27,9 +27,10 @@ export const buildWorkflowRunsTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('completed_at', 'timestamptz')
+    .addUniqueConstraint('workflow_runs_tenant_id_id_unique', ['tenant_id', 'id'])
     .addCheckConstraint(
       'workflow_runs_status_check',
-      sql`status in ('running', 'suspended', 'completed', 'faulted', 'failed', 'cancelled')`
+      sql`status in (${sql.join(RUN_STATUSES.map((v) => sql.lit(v)))})`
     )
     .addCheckConstraint(
       'workflow_runs_parent_check',
@@ -49,15 +50,6 @@ export const buildWorkflowRunsIndexes = (db: Kysely<Database>) => [
     .createIndex('idx_workflow_runs_parent')
     .on('workflow_runs')
     .columns(['parent_id', 'parent_wait', 'parent_index']),
-  db.schema
-    .createIndex('idx_workflow_runs_active_children')
-    .on('workflow_runs')
-    .columns(['parent_id', 'parent_wait'])
-    .where(
-      sql.ref('status'),
-      'in',
-      ACTIVE_RUN_STATUSES.map((s) => sql.lit(s))
-    ),
   db.schema
     .createIndex('idx_workflow_runs_wait_key')
     .on('workflow_runs')
@@ -118,7 +110,7 @@ export const buildWorkflowRunGraphsTable = (db: Kysely<Database>) =>
     .addColumn('key', 'text', (col) => col.notNull())
     .addColumn('version', 'integer', (col) => col.notNull())
     .addColumn('graph_version_id', 'uuid', (col) =>
-      col.notNull().references('graph_versions.id').onDelete('restrict').onUpdate('cascade')
+      col.notNull().references('graph_versions.id').onDelete('no action').onUpdate('cascade')
     )
     .addPrimaryKeyConstraint('workflow_run_graphs_pkey', ['run_id', 'key', 'version']);
 

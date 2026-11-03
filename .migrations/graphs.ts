@@ -1,4 +1,4 @@
-import type { Database } from '@ugula/db';
+import { type Database, GRAPH_KINDS, PUBLISHED_IMMUTABLE_TRIGGER } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
 export const buildGraphsTable = (db: Kysely<Database>) =>
@@ -18,7 +18,10 @@ export const buildGraphsTable = (db: Kysely<Database>) =>
     .addUniqueConstraint('graphs_tenant_id_key_unique', ['tenant_id', 'key'], (uc) =>
       uc.nullsNotDistinct()
     )
-    .addCheckConstraint('graphs_kind_check', sql`kind in ('workflow', 'node')`)
+    .addCheckConstraint(
+      'graphs_kind_check',
+      sql`kind in (${sql.join(GRAPH_KINDS.map((v) => sql.lit(v)))})`
+    )
     .addCheckConstraint(
       'graphs_key_check',
       sql`key ~ '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$' and key not like 'std.%'`
@@ -64,7 +67,7 @@ export const publishedImmutableFunction = sql`
   $$`;
 
 export const publishedImmutableTrigger = sql`
-  create trigger graph_versions_published_immutable
+  create trigger ${sql.id(PUBLISHED_IMMUTABLE_TRIGGER)}
   before update on graph_versions
   for each row execute function prevent_published_graph_change()`;
 

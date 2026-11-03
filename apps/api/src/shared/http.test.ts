@@ -8,20 +8,16 @@ import {
   idParam,
   invalidRequest,
   isForeignKeyViolation,
-  isUniqueViolation,
-  limitQuery
+  isUniqueViolation
 } from './http.ts';
 
 describe('http helpers', () => {
-  it('validates ids and limits', () => {
+  it('validates ids', () => {
     assert.equal(
       v.safeParse(idParam, { id: '01a16617-7704-7ba6-b9b5-9c79fa44f965' }).success,
       true
     );
     assert.equal(v.safeParse(idParam, { id: 'nope' }).success, false);
-    assert.equal(v.parse(limitQuery, undefined), 50);
-    assert.equal(v.parse(limitQuery, '10'), 10);
-    assert.equal(v.safeParse(limitQuery, '9999').success, false);
   });
 
   it('recognizes unique violations', () => {

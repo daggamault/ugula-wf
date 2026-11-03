@@ -3,7 +3,6 @@ import type { Database } from '@ugula/db';
 import { XMLParser } from 'fast-xml-parser';
 import type { Kysely } from 'kysely';
 
-/** A NEMSIS data element, e.g. eResponse.05 "Type of Service Requested". */
 export type DictionaryElement = {
   element: string;
   name: string;
@@ -11,10 +10,6 @@ export type DictionaryElement = {
   usage: string;
 };
 
-/**
- * One coded value. `list` is the element number for element values (eResponse.05) or the
- * attribute name prefixed with @ for attribute values shared by every element (@NV, @PN).
- */
 export type DictionaryCode = {
   list: string;
   code: string;
@@ -26,8 +21,7 @@ export type Dictionary = {
   codes: DictionaryCode[];
 };
 
-/** Published 3.5.x releases, oldest first so later releases win when merged. */
-export const NEMSIS_RELEASES = ['3.5.0', '3.5.1'] as const;
+export const NEMSIS_RELEASES = ['3.4.0', '3.5.0', '3.5.1'] as const;
 
 export const xsdZipUrl = (release: string) =>
   `https://nemsis.org/media/nemsis_v3/release-${release}/XSDs/NEMSIS_XSDs.zip`;
@@ -62,8 +56,7 @@ const attr = (node: Node, name: string) => {
   return typeof value === 'string' ? value : undefined;
 };
 
-/** Collapses whitespace so a value fits on one line of the seed file. */
-export const cleanText = (text: string) => text.replace(/\s+/g, ' ').trim();
+const cleanText = (text: string) => text.replace(/\s+/g, ' ').trim();
 
 const textOf = (node: Node | undefined): string => {
   if (!node) return '';
@@ -138,7 +131,6 @@ const ELEMENT_NUMBER = /^[deis][A-Z][A-Za-z]+\.\d{2,3}$/;
 
 type RawElement = DictionaryElement & { info: TypeInfo };
 
-/** Named types and numbered elements from one XSD file. */
 const scan = (xsd: string) => {
   const types = new Map<string, TypeInfo>();
   const elements: RawElement[] = [];
@@ -184,7 +176,6 @@ const scan = (xsd: string) => {
   return { types, elements };
 };
 
-/** Builds the dictionary of one release from the text of all of its XSD files. */
 export const parseXsds = (xsds: readonly string[]): Dictionary => {
   const types = new Map<string, TypeInfo>();
   const raw: RawElement[] = [];
@@ -243,7 +234,6 @@ const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const sortCodes = (codes: DictionaryCode[]) =>
   codes.sort((a, b) => compare(a.list, b.list) || compare(a.code, b.code));
 
-/** Merges releases; later ones win, and values only older releases had stay readable. */
 export const mergeDictionaries = (...dictionaries: Dictionary[]): Dictionary => {
   const elements = new Map<string, DictionaryElement>();
   const codes = new Map<string, DictionaryCode>();
@@ -288,7 +278,7 @@ export const readCodes = (gzipped: Buffer): DictionaryCode[] =>
     description
   }));
 
-export const DICTIONARY_BATCH = 2_000;
+const DICTIONARY_BATCH = 2_000;
 
 export const buildUpsertElements = (db: Kysely<Database>, elements: readonly DictionaryElement[]) =>
   db

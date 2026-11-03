@@ -1,7 +1,7 @@
 import { PDFDocument, type PDFFont, rgb, StandardFonts } from 'pdf-lib';
 import type { PricedLine } from './charges.ts';
 
-export type MailingAddress = {
+type MailingAddress = {
   name: string;
   addressLine: string | null;
   city: string | null;
@@ -9,7 +9,7 @@ export type MailingAddress = {
   postalCode: string | null;
 };
 
-export type StatementPayment = {
+type StatementPayment = {
   date: string;
   from: string;
   paidCents: number;
@@ -18,6 +18,7 @@ export type StatementPayment = {
 
 export type StatementData = {
   number: number;
+  count: number;
   issuedOn: string;
   agency: MailingAddress & { phone: string };
   patient: MailingAddress;
@@ -40,11 +41,25 @@ export const HCPCS_LABELS: Record<string, string> = {
   A0998: 'Ambulance response and treatment, no transport'
 };
 
-export const printable = (text: string) =>
+const printable = (text: string) =>
   text
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^\x20-\x7E]/g, '');
+
+export const localDate = (at: Date, timeZone: string) => {
+  const parts = new Map(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value])
+  );
+  return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`;
+};
 
 export const money = (cents: number) =>
   `${cents < 0 ? '-' : ''}$${(Math.abs(cents) / 100).toLocaleString('en-US', {
@@ -67,7 +82,7 @@ const phone = (p: string) =>
 
 export const renderStatement = async (s: StatementData): Promise<Uint8Array> => {
   const pdf = await PDFDocument.create();
-  pdf.setTitle(printable(`Statement ${s.number} - ${s.patient.name}`));
+  pdf.setTitle(printable(`Statement ${s.number} of ${s.count} - ${s.patient.name}`));
   pdf.setProducer('ugula');
   pdf.setCreationDate(new Date(`${s.issuedOn}T00:00:00Z`));
   pdf.setModificationDate(new Date(`${s.issuedOn}T00:00:00Z`));
@@ -99,7 +114,7 @@ export const renderStatement = async (s: StatementData): Promise<Uint8Array> => 
   right('PATIENT STATEMENT', 562, 14, bold);
   y -= 18;
   for (const [label, value] of [
-    ['Statement', `${s.number} of 3`],
+    ['Statement', `${s.number} of ${s.count}`],
     ['Date', s.issuedOn],
     ['Reference', s.reference],
     ['Date of service', s.serviceDate ?? 'Unknown']

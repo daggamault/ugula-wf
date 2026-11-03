@@ -1,3 +1,4 @@
+import type { NodeDef } from '@ugula/graph';
 import { CircleStopIcon, WorkflowIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
@@ -15,6 +16,7 @@ import { OpenLink } from '../../shared/ui/icon-button.tsx';
 import { JsonView } from '../../shared/ui/json-view.tsx';
 import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.tsx';
 import { RunStatusBadge } from '../../shared/ui/run-status-badge.tsx';
+import { Section } from '../../shared/ui/section-panel.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
@@ -28,24 +30,24 @@ import {
 import { graphAt, pathOf, runPath, runsStartedBy, statusAt } from './inspect.ts';
 import { NodeExecutions } from './node-executions.tsx';
 
-export type RunPageProps = {
+type RunPageProps = {
   client: RunsClient;
+  nodes: NodeDef[];
   live: Live;
   runId: string;
   at: readonly string[];
 };
 
-export type RunViewProps = {
+type RunViewProps = {
   detail: RunDetail;
+  nodes: NodeDef[];
   graphs: readonly RunGraph[];
   steps: readonly RunStep[];
   stack: readonly string[];
   onCancel: () => Promise<void>;
 };
 
-const panelHeading = 'text-surface-fg-muted text-xs font-semibold tracking-wide uppercase';
-
-export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps) => {
+export const RunView = ({ detail, nodes, graphs, steps, stack, onCancel }: RunViewProps) => {
   const { run, children, childCount, tasks, ancestors } = detail;
   const setStack = (next: readonly string[]) => navigate(runPath(run.id, next));
   const [selected, setSelected] = useState<string | null>(null);
@@ -53,10 +55,10 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
   const [confirming, setConfirming] = useState(false);
   const catalog = useMemo(
     () =>
-      createCatalog({
+      createCatalog(nodes, {
         graphs: graphs.map((g) => ({ type: g.key, version: g.version, definition: g.definition }))
       }),
-    [graphs]
+    [nodes, graphs]
   );
   const root = graphs.find((g) => g.key === run.key && g.version === run.version)?.definition;
   const def = root ? graphAt(root, stack, catalog) : undefined;
@@ -113,12 +115,7 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
             <RunStatusBadge status={run.status} />
           </>
         }
-        description={
-          <>
-            Started {formatDateTime(run.created_at)}
-            {run.completed_at ? ` · Finished ${formatDateTime(run.completed_at)}` : ''}
-          </>
-        }
+        description={`Started ${formatDateTime(run.created_at)}${run.completed_at ? ` and finished ${formatDateTime(run.completed_at)}` : ''}.`}
         actions={
           <>
             <ButtonLink to={`/workflows/${run.graph_id}?version=${run.version}`} variant="outline">
@@ -177,33 +174,31 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
               runs={startedBy(node.id)}
             />
           ) : (
-            <section aria-label="Run data" className="flex flex-col gap-5 p-4">
-              <p className="text-surface-fg-muted text-sm">
-                Select a node to see what went in and out of it. Double-click a building block to
-                open it here, or a workflow node to jump to the run it started; the path above leads
-                back.
-              </p>
-              <div className="flex flex-col gap-2">
-                <h2 className={panelHeading}>Inputs</h2>
+            <div className="flex flex-col gap-6 p-4">
+              <Section
+                title="Run Data"
+                description="Select a node to see what went in and out of it, or double-click one to open what it runs."
+              />
+              <Section title="Inputs" description="The values this run started with.">
                 <JsonView label="Run inputs" value={run.inputs} />
-              </div>
-              <div className="flex flex-col gap-2">
-                <h2 className={panelHeading}>Result</h2>
+              </Section>
+              <Section title="Result" description="What the run handed back when it finished.">
                 <JsonView label="Run result" value={run.result ?? undefined} />
-              </div>
+              </Section>
               {children.length ? (
-                <div className="flex flex-col gap-2">
-                  <h2 className={panelHeading}>
-                    Child Runs
-                    {childCount > children.length
-                      ? ` (first ${children.length} of ${childCount})`
-                      : ''}
-                  </h2>
+                <Section
+                  title="Child Runs"
+                  description={
+                    childCount > children.length
+                      ? `The first ${children.length} of ${childCount} runs this run started.`
+                      : 'The runs this run started.'
+                  }
+                >
                   <ul className="divide-border border-border flex flex-col divide-y rounded-xl border text-sm">
                     {children.map((c) => {
                       const name = `#${(c.parent_index ?? 0) + 1} ${c.name}`;
                       return (
-                        <li key={c.id} className="flex items-center gap-2 px-4 py-2">
+                        <li key={c.id} className="flex items-center gap-2 px-4 py-3">
                           <span className="flex-1 font-medium">{name}</span>
                           <RunStatusBadge status={c.status} />
                           <OpenLink to={`/runs/${c.id}`} name={`run ${name}`} />
@@ -211,9 +206,9 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
                       );
                     })}
                   </ul>
-                </div>
+                </Section>
               ) : null}
-            </section>
+            </div>
           )}
         </aside>
       </div>
@@ -239,11 +234,19 @@ export const RunView = ({ detail, graphs, steps, stack, onCancel }: RunViewProps
   );
 };
 
-export const RunPage = ({ client, live, runId, at }: RunPageProps) => {
+export const RunPage = ({ client, nodes, live, runId, at }: RunPageProps) => {
   const notify = useToast();
   const [active, setActive] = useState(true);
-  const detail = useResource(`run:${runId}`, () => client.find(runId), active ? 15_000 : 0);
-  const steps = useResource(`run-steps:${runId}`, () => client.steps(runId), active ? 15_000 : 0);
+  const detail = useResource(
+    `run:${runId}`,
+    (signal) => client.find(runId, signal),
+    active ? 15_000 : 0
+  );
+  const steps = useResource(
+    `run-steps:${runId}`,
+    (signal) => client.steps(runId, signal),
+    active ? 15_000 : 0
+  );
   const taskIds = new Set(detail.data?.tasks.map((t) => t.id));
   useLive(
     live,
@@ -271,6 +274,7 @@ export const RunPage = ({ client, live, runId, at }: RunPageProps) => {
     <RunView
       key={`${runId}/${at.join('/')}`}
       detail={detail.data}
+      nodes={nodes}
       graphs={graphs.data}
       steps={steps.data ?? []}
       stack={at}

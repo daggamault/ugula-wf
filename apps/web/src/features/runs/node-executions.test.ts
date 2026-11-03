@@ -39,7 +39,7 @@ describe('NodeExecutions', () => {
         ]
       })
     );
-    assert.ok(html.includes('2 executions'));
+    assert.ok(html.includes('It ran 2 times on this path, newest first.'));
     assert.ok(html.indexOf('#9') < html.indexOf('#3'));
     assert.ok(html.includes('→ matched'));
     assert.ok(html.includes('Ambiguous match'));
@@ -65,7 +65,7 @@ describe('NodeExecutions', () => {
 
   it('says when a node has not run', () => {
     const html = renderToStaticMarkup(createElement(NodeExecutions, { title: 'X', steps: [] }));
-    assert.ok(html.includes('Not executed yet'));
+    assert.ok(html.includes('It has not run on this path yet.'));
     assert.ok(!html.includes('Open Building Block'));
     const composite = renderToStaticMarkup(
       createElement(NodeExecutions, { title: 'X', steps: [], onOpen: () => undefined })

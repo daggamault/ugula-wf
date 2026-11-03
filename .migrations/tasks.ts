@@ -1,5 +1,6 @@
-import type { Database } from '@ugula/db';
+import { type Database, TASK_KINDS, TASK_STATUSES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { tenantSetNullForeignKey } from './foreign-keys.ts';
 
 export const buildTasksTable = (db: Kysely<Database>) =>
   db.schema
@@ -17,27 +18,27 @@ export const buildTasksTable = (db: Kysely<Database>) =>
     .addColumn('title', 'text', (col) => col.notNull())
     .addColumn('subject', 'text')
     .addColumn('instructions', 'text', (col) => col.notNull().defaultTo(''))
-    // json, not jsonb: it keeps keys in the order the workflow wrote them, which is the order
-    // reviewers read them in.
     .addColumn('context', 'json', (col) => col.notNull())
     .addColumn('fields', 'jsonb', (col) => col.notNull())
     .addColumn('outcomes', sql`text[]`, (col) => col.notNull())
     .addColumn('defaults', 'jsonb')
     .addColumn('priority', 'integer', (col) => col.notNull().defaultTo(0))
     .addColumn('status', 'text', (col) => col.notNull().defaultTo('open'))
-    .addColumn('assignee_id', 'uuid', (col) =>
-      col.references('users.id').onDelete('set null').onUpdate('cascade')
-    )
+    .addColumn('assignee_id', 'uuid')
     .addColumn('resolution', 'jsonb')
-    .addColumn('completed_by', 'uuid', (col) =>
-      col.references('users.id').onDelete('set null').onUpdate('cascade')
-    )
+    .addColumn('completed_by', 'uuid')
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('completed_at', 'timestamptz')
     .addUniqueConstraint('tasks_run_id_wait_id_unique', ['run_id', 'wait_id'])
-    .addCheckConstraint('tasks_kind_check', sql`kind in ('task', 'fault')`)
-    .addCheckConstraint('tasks_status_check', sql`status in ('open', 'completed', 'cancelled')`)
+    .addCheckConstraint(
+      'tasks_kind_check',
+      sql`kind in (${sql.join(TASK_KINDS.map((v) => sql.lit(v)))})`
+    )
+    .addCheckConstraint(
+      'tasks_status_check',
+      sql`status in (${sql.join(TASK_STATUSES.map((v) => sql.lit(v)))})`
+    )
     .addCheckConstraint('tasks_outcomes_check', sql`cardinality(outcomes) > 0`);
 
 export const buildTasksIndexes = (db: Kysely<Database>) => [
@@ -46,11 +47,27 @@ export const buildTasksIndexes = (db: Kysely<Database>) => [
     .on('tasks')
     .columns(['tenant_id', 'queue', 'priority desc', 'created_at'])
     .where(sql.ref('status'), '=', 'open'),
+  db.schema
+    .createIndex('idx_tasks_open')
+    .on('tasks')
+    .expression(sql`tenant_id, (assignee_id is null), priority desc, created_at`)
+    .where(sql.ref('status'), '=', 'open'),
   db.schema.createIndex('idx_tasks_assignee_id').on('tasks').column('assignee_id'),
-  db.schema.createIndex('idx_tasks_completed_by').on('tasks').column('completed_by')
+  db.schema.createIndex('idx_tasks_completed_by').on('tasks').column('completed_by'),
+  db.schema
+    .createIndex('idx_tasks_completed')
+    .on('tasks')
+    .columns(['tenant_id', 'completed_at'])
+    .where(sql.ref('status'), '=', 'completed')
 ];
+
+export const buildTasksForeignKeys = () =>
+  ['assignee_id', 'completed_by'].map((column) =>
+    tenantSetNullForeignKey({ table: 'tasks', column, references: 'users' })
+  );
 
 export const createTasksTable = async (db: Kysely<Database>) => {
   await buildTasksTable(db).execute();
+  for (const fk of buildTasksForeignKeys()) await fk.execute(db);
   for (const index of buildTasksIndexes(db)) await index.execute();
 };

@@ -6,7 +6,7 @@ import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { interactiveClasses } from '../../shared/ui/interactive.ts';
 
-export type NodePickerProps = {
+type NodePickerProps = {
   open: boolean;
   entries: readonly PaletteEntry[];
   onAdd: (entry: PaletteEntry) => void;
@@ -82,7 +82,7 @@ export const NodePicker = ({ open, entries, onAdd, onClose }: NodePickerProps) =
         id={searchId}
         label="Search"
         type="search"
-        placeholder="For Example: Round, Wait, Payer"
+        placeholder="For example: round, wait, payer"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />

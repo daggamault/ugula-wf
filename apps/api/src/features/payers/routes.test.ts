@@ -31,6 +31,7 @@ describe('payer routes', () => {
   it('searches, finds, saves and deletes payers for the session tenant', async () => {
     await request('/?q=blue&page=2&sort=payerId&dir=desc');
     await request('/names');
+    await request('/names?q=med');
     await request(`/${ID}`);
     const body = { name: 'Medicare', payerId: '00952', claimFiling: 'MB' };
     assert.equal((await request('/', { method: 'PUT', body: JSON.stringify(body) })).status, 200);
@@ -39,7 +40,8 @@ describe('payer routes', () => {
     assert.equal((await request(`/${ID}/aliases/nope`, { method: 'DELETE' })).status, 400);
     assert.deepEqual(calls, [
       ['search', 't-1', { q: 'blue', page: 2, pageSize: 25, sort: 'payerId', dir: 'desc' }],
-      ['names', 't-1'],
+      ['names', 't-1', undefined],
+      ['names', 't-1', 'med'],
       ['find', 't-1', ID],
       ['save', 't-1', body],
       ['remove', 't-1', ID],

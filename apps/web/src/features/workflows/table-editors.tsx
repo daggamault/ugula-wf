@@ -4,11 +4,13 @@ import { useState } from 'react';
 import { Button } from '../../shared/ui/button.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input, type InputProps } from '../../shared/ui/input.tsx';
+import { Section } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import {
   COLUMN_TYPES,
   type Column,
   columnKind,
+  columnNameError,
   columnType,
   conditionValue,
   type DecisionConfig,
@@ -23,11 +25,12 @@ import {
   readLookup,
   removeColumn,
   renameColumn,
+  takesList,
   takesValue,
   toJson
 } from './table-config.ts';
 
-export type TableEditorProps = {
+type TableEditorProps = {
   nodeId: string;
   config: Json | undefined;
   editable: boolean;
@@ -35,11 +38,39 @@ export type TableEditorProps = {
 };
 
 const RemoveButton = ({ label, onClick }: { label: string; onClick: () => void }) => (
-  <Button intent="danger" variant="outline" size="sm" aria-label={label} onClick={onClick}>
-    <Trash2Icon aria-hidden="true" className="size-4" />
-    Remove
-  </Button>
+  <IconButton label={label} tooltip="Remove" icon={Trash2Icon} intent="danger" onClick={onClick} />
 );
+
+const ColumnName = ({
+  id,
+  table,
+  side,
+  column,
+  onChange
+}: {
+  id: string;
+  table: DecisionConfig;
+  side: 'inputs' | 'outputs';
+  column: Column;
+  onChange: (next: DecisionConfig) => void;
+}) => {
+  const [text, setText] = useState(column.name);
+  const error = columnNameError(table, side, column.name, text);
+  const shown = error || text.trim() === column.name ? text : column.name;
+  return (
+    <Input
+      id={id}
+      label="Name"
+      isMonospace
+      value={shown}
+      error={error}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(renameColumn(table, side, column.name, e.target.value));
+      }}
+    />
+  );
+};
 
 const AddButton = ({ children, onClick }: { children: string; onClick: () => void }) => (
   <Button variant="outline" size="sm" onClick={onClick}>
@@ -93,7 +124,7 @@ export const LookupTableEditor = ({ nodeId, config, editable, onConfig }: TableE
         {table.rows.map((row, i) => (
           <li
             key={`${nodeId}-row-${i.toString()}`}
-            className="border-border grid grid-cols-2 items-end gap-x-4 gap-y-5 rounded-xl border p-4"
+            className="border-border grid grid-cols-2 items-start gap-x-4 gap-y-5 rounded-xl border p-4"
           >
             <Input
               id={`${nodeId}-key-${i}`}
@@ -117,22 +148,22 @@ export const LookupTableEditor = ({ nodeId, config, editable, onConfig }: TableE
               }
             />
             {editable ? (
-              <span className="col-span-2 flex justify-end">
+              <div className="col-span-2 flex justify-end">
                 <RemoveButton
                   label={`Remove ${row.key || 'row'}`}
                   onClick={() => set({ rows: table.rows.filter((_, j) => j !== i) })}
                 />
-              </span>
+              </div>
             ) : null}
           </li>
         ))}
       </ul>
       {editable ? (
-        <span>
+        <div>
           <AddButton onClick={() => set({ rows: [...table.rows, { key: '', value: null }] })}>
             Add Row
           </AddButton>
-        </span>
+        </div>
       ) : null}
       <CellInput
         id={`${nodeId}-fallback`}
@@ -162,22 +193,26 @@ const ColumnsEditor = ({
   const columns = table[side];
   const noun = side === 'inputs' ? 'input' : 'output';
   return (
-    <section className="flex flex-col gap-2">
-      <h4 className="text-sm font-semibold">
-        {side === 'inputs' ? 'What the rules check' : 'What the rules decide'}
-      </h4>
+    <Section
+      title={side === 'inputs' ? 'What the Rules Check' : 'What the Rules Decide'}
+      description={
+        side === 'inputs'
+          ? 'The values each rule compares before it holds.'
+          : 'The values a rule hands back when it holds.'
+      }
+    >
       <ul className="flex flex-col gap-2">
         {columns.map((c, i) => (
           <li
             key={`${nodeId}-${side}-${i.toString()}`}
-            className="grid grid-cols-2 items-end gap-x-4 gap-y-5"
+            className="grid grid-cols-2 items-start gap-x-4 gap-y-5"
           >
-            <Input
+            <ColumnName
               id={`${nodeId}-${side}-${i}-name`}
-              label="Name"
-              isMonospace
-              value={c.name}
-              onChange={(e) => onChange(renameColumn(table, side, c.name, e.target.value))}
+              table={table}
+              side={side}
+              column={c}
+              onChange={onChange}
             />
             <Select
               id={`${nodeId}-${side}-${i}-type`}
@@ -194,18 +229,18 @@ const ColumnsEditor = ({
               }
             />
             {editable ? (
-              <span className="col-span-2 flex justify-end">
+              <div className="col-span-2 flex justify-end">
                 <RemoveButton
                   label={`Remove ${noun} ${c.name}`}
                   onClick={() => onChange(removeColumn(table, side, c.name))}
                 />
-              </span>
+              </div>
             ) : null}
           </li>
         ))}
       </ul>
       {editable ? (
-        <span>
+        <div>
           <AddButton
             onClick={() =>
               onChange({
@@ -225,9 +260,9 @@ const ColumnsEditor = ({
           >
             {side === 'inputs' ? 'Add Input' : 'Add Output'}
           </AddButton>
-        </span>
+        </div>
       ) : null}
-    </section>
+    </Section>
   );
 };
 
@@ -254,18 +289,17 @@ const RuleEditor = ({
   const name = rule.label || `rule ${index + 1}`;
   return (
     <li className="border-border flex flex-col gap-4 rounded-xl border p-4">
-      <span className="flex items-end gap-2">
-        <span className="min-w-0 flex-1">
+      <div className="flex items-end gap-2">
+        <div className="min-w-0 flex-1">
           <Input
             id={`${id}-label`}
             label={`Rule ${index + 1}`}
-            hint="Shown as the reason when this rule holds."
             value={rule.label}
             onChange={(e) => onRule({ ...rule, label: e.target.value })}
           />
-        </span>
+        </div>
         {editable ? (
-          <span className="flex pb-1">
+          <div className="flex items-center gap-1">
             <IconButton
               label={`Move ${name} up`}
               icon={ArrowUpIcon}
@@ -278,14 +312,14 @@ const RuleEditor = ({
               disabledReason={index === table.rules.length - 1 ? 'Already last.' : undefined}
               onClick={() => onMove(1)}
             />
-          </span>
+          </div>
         ) : null}
-      </span>
-      {table.inputs.map((c) => {
+      </div>
+      {table.inputs.map((c, i) => {
         const condition = rule.when[c.name];
         const op = condition?.op ?? '';
         return (
-          <span key={c.name} className="grid grid-cols-2 items-end gap-x-4 gap-y-5">
+          <div key={`${i}-${c.name}`} className="grid grid-cols-2 items-start gap-x-4 gap-y-5">
             <Select
               id={`${id}-${c.name}-op`}
               label={`When ${c.label ?? c.name}`}
@@ -312,11 +346,7 @@ const RuleEditor = ({
               <CellInput
                 id={`${id}-${c.name}-value`}
                 label="Value"
-                hint={
-                  ['oneOf', 'notOneOf', 'startsWith'].includes(op)
-                    ? 'Separate items with commas.'
-                    : cellHint(c)
-                }
+                hint={takesList(op) ? 'Separate items with commas.' : cellHint(c)}
                 value={condition?.value}
                 parse={(text) => conditionValue(op, text, c.type)}
                 onValue={(value) =>
@@ -324,12 +354,12 @@ const RuleEditor = ({
                 }
               />
             ) : null}
-          </span>
+          </div>
         );
       })}
-      {table.outputs.map((c) => (
+      {table.outputs.map((c, i) => (
         <CellInput
-          key={c.name}
+          key={`${i}-${c.name}`}
           id={`${id}-${c.name}-set`}
           label={`Then ${c.label ?? c.name}`}
           hint={cellHint(c)}
@@ -339,9 +369,9 @@ const RuleEditor = ({
         />
       ))}
       {editable ? (
-        <span className="flex justify-end">
+        <div className="flex justify-end">
           <RemoveButton label={`Remove ${name}`} onClick={onRemove} />
-        </span>
+        </div>
       ) : null}
     </li>
   );
@@ -367,8 +397,10 @@ export const DecisionTableEditor = ({ nodeId, config, editable, onConfig }: Tabl
         editable={editable}
         onChange={change}
       />
-      <section className="flex flex-col gap-2">
-        <h4 className="text-sm font-semibold">Rules, checked top to bottom</h4>
+      <Section
+        title="Rules"
+        description="Checked top to bottom, and the label of the first that holds is the reason."
+      >
         <ol className="flex flex-col gap-3">
           {table.rules.map((rule, i) => (
             <RuleEditor
@@ -385,7 +417,7 @@ export const DecisionTableEditor = ({ nodeId, config, editable, onConfig }: Tabl
           ))}
         </ol>
         {editable ? (
-          <span>
+          <div>
             <AddButton
               onClick={() =>
                 setRules([
@@ -396,14 +428,16 @@ export const DecisionTableEditor = ({ nodeId, config, editable, onConfig }: Tabl
             >
               Add Rule
             </AddButton>
-          </span>
+          </div>
         ) : null}
-      </section>
-      <section className="flex flex-col gap-2">
-        <h4 className="text-sm font-semibold">When No Rule Holds</h4>
-        {table.outputs.map((c) => (
+      </Section>
+      <Section
+        title="When No Rule Holds"
+        description="The values handed back when nothing matches."
+      >
+        {table.outputs.map((c, i) => (
           <CellInput
-            key={c.name}
+            key={`${i}-${c.name}`}
             id={`${nodeId}-otherwise-${c.name}`}
             label={c.label ?? c.name}
             hint={cellHint(c)}
@@ -414,7 +448,7 @@ export const DecisionTableEditor = ({ nodeId, config, editable, onConfig }: Tabl
             }
           />
         ))}
-      </section>
+      </Section>
     </fieldset>
   );
 };

@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { setTimeout } from 'node:timers/promises';
 import type { RunStatus } from '@ugula/db';
 import {
+  actionNode,
   createEngine,
   createStdNodes,
   ENTRY_TYPE,
   type GraphDef,
+  pin,
   RETURN_TYPE,
   type RunState,
   type Values
@@ -74,7 +77,9 @@ const fakeStore = (inputs: Values, opts: { leased?: boolean } = {}) => {
     jobs: [] as RunJob[],
     checkpoints: 0,
     released: [] as RunStatus[],
-    tasks: [] as TaskInsert[]
+    tasks: [] as TaskInsert[],
+    extended: 0,
+    dropped: [] as string[]
   };
   const tx: RunTx = {
     saveRun: async (_, patch) => {
@@ -93,10 +98,15 @@ const fakeStore = (inputs: Values, opts: { leased?: boolean } = {}) => {
     lockParent: async () => undefined,
     hasPendingChildren: async () => false,
     lockSignal: async () => 0,
+    claimReference: async () => null,
+    recoverDrafts: async () => [],
     children: async () => [],
     activeChildren: async () => [],
     enqueue: async (jobs) => {
       log.jobs.push(...jobs);
+    },
+    dropTimeout: async (_, waitId) => {
+      log.dropped.push(waitId);
     }
   };
   const store: RunStore = {
@@ -120,7 +130,8 @@ const fakeStore = (inputs: Values, opts: { leased?: boolean } = {}) => {
         parentId: null,
         parentWait: null,
         inputs,
-        state: row.state && (JSON.parse(JSON.stringify(row.state)) as RunState)
+        state: row.state && (JSON.parse(JSON.stringify(row.state)) as RunState),
+        graphs: []
       };
       return run;
     },
@@ -128,12 +139,17 @@ const fakeStore = (inputs: Values, opts: { leased?: boolean } = {}) => {
       log.checkpoints++;
       row.state = JSON.parse(JSON.stringify(state)) as RunState;
     },
+    extend: async () => {
+      log.extended++;
+    },
+    children: (parentId, waitId) => tx.children(parentId, waitId),
     release: async (_, status) => {
       log.released.push(status);
       row.status = status;
     },
     transaction: (fn) => fn(tx),
-    sweep: async () => 0
+    sweep: async () => 0,
+    prune: async () => 0
   };
   return { store, row, log };
 };
@@ -183,13 +199,33 @@ describe('runner', () => {
     assert.equal(row.status, 'completed');
   });
 
-  it('fails runs whose inputs are invalid', async () => {
+  it('stalls runs whose inputs are invalid on a fault task', async () => {
     const { store, row, log } = fakeStore({ ms: 'soon' });
     await createRunner({ store, engines, now: () => now, publish }).process(
       job({ type: 'advance' })
     );
-    assert.equal(row.status, 'failed');
+    assert.equal(row.status, 'faulted');
     assert.match(JSON.stringify(log.saves[0]?.error), /expected integer/);
+    assert.equal(log.tasks[0]?.kind, 'fault');
+    assert.match(log.tasks[0]?.instructions ?? '', /expected integer/);
+  });
+
+  it('retries a stalled run from its last saved state', async () => {
+    const { store, row, log } = fakeStore({ ms: 5 });
+    let broken = true;
+    const once: EngineSource = async (run) => {
+      if (broken) {
+        broken = false;
+        throw new Error('Graph version v-1 not found');
+      }
+      return engines(run);
+    };
+    const runner = createRunner({ store, engines: once, now: () => now, publish });
+    await runner.process(job({ type: 'advance' }));
+    assert.equal(row.status, 'faulted');
+    assert.deepEqual(log.tasks[0]?.outcomes, ['retry', 'cancel']);
+    await runner.process(job({ type: 'retry' }));
+    assert.equal(row.status, 'suspended');
   });
 
   it('hands transient failures back for retry and fails runs on permanent ones', async () => {
@@ -213,7 +249,7 @@ describe('runner', () => {
     await createRunner({ store: broken.store, engines: corrupt, now: () => now, publish }).process(
       job({ type: 'advance' })
     );
-    assert.equal(broken.row.status, 'failed');
+    assert.equal(broken.row.status, 'faulted');
     assert.match(JSON.stringify(broken.log.saves[0]?.error), /invalid input syntax/);
   });
 
@@ -222,15 +258,67 @@ describe('runner', () => {
     stolen.store.transaction = async () => {
       throw Object.assign(new Error('lease lost'), { code: 'LEASE_LOST' });
     };
-    await assert.rejects(
-      () =>
-        createRunner({ store: stolen.store, engines, now: () => now, publish }).process(
-          job({ type: 'advance' })
-        ),
-      /lease lost/
+    await createRunner({ store: stolen.store, engines, now: () => now, publish }).process(
+      job({ type: 'advance' })
     );
     assert.deepEqual(stolen.log.released, []);
     assert.equal(stolen.log.saves.length, 0);
+  });
+
+  it('extends its lease while a slow node runs and stops once the lease is lost', async () => {
+    const slowFlow: GraphDef = {
+      signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
+      variables: [],
+      nodes: [
+        { id: 'entry', type: ENTRY_TYPE, version: 1 },
+        { id: 'slow', type: 'test.slow', version: 1 },
+        { id: 'again', type: 'test.slow', version: 1 }
+      ],
+      edges: [
+        { from: 'entry', fromPin: 'exec', to: 'slow', toPin: 'exec' },
+        { from: 'slow', fromPin: 'then', to: 'again', toPin: 'exec' }
+      ]
+    };
+    const slow = actionNode({
+      type: 'test.slow',
+      title: 'Slow',
+      category: 'Test',
+      description: 'Takes a while.',
+      inputs: [],
+      outputs: [],
+      compute: async () => {
+        await setTimeout(30);
+        return {};
+      }
+    });
+    const slowEngines: EngineSource = async () => ({
+      engine: createEngine({ nodes: [...createStdNodes({ fetch }), slow], graphs: () => slowFlow }),
+      root
+    });
+    const held = fakeStore({});
+    await createRunner({
+      store: held.store,
+      engines: slowEngines,
+      now: () => now,
+      publish,
+      heartbeatMs: 5
+    }).process(job({ type: 'advance' }));
+    assert.equal(held.row.status, 'completed');
+    assert.ok(held.log.extended > 0);
+
+    const lost = fakeStore({});
+    lost.store.extend = async () => {
+      throw Object.assign(new Error('lease lost'), { code: 'LEASE_LOST' });
+    };
+    await createRunner({
+      store: lost.store,
+      engines: slowEngines,
+      now: () => now,
+      publish,
+      heartbeatMs: 5
+    }).process(job({ type: 'advance' }));
+    assert.equal(lost.log.saves.length, 0);
+    assert.deepEqual(lost.log.released, []);
   });
 
   it('reopens the fault task when a skip cannot be applied', async () => {
@@ -243,7 +331,52 @@ describe('runner', () => {
     assert.equal(log.tasks.length, 2);
     assert.notEqual(log.tasks[1]?.waitId, log.tasks[0]?.waitId);
     assert.match(log.tasks[1]?.instructions ?? '', /^Could not skip: .*no exec output "nope"/);
-    assert.match(log.tasks[1]?.instructions ?? '', /payer down/);
+    assert.match(log.tasks[1]?.instructions ?? '', /Payer down/);
+  });
+
+  it('skips a failed node with every output left empty, ignoring typed outputs', async () => {
+    const flaky = actionNode({
+      type: 'test.flaky',
+      title: 'Flaky',
+      category: 'Test',
+      description: 'Fails.',
+      inputs: [],
+      outputs: [pin('status', 'string')],
+      compute: async () => {
+        throw new Error('payer down');
+      }
+    });
+    const graph: GraphDef = {
+      signature: {
+        execIn: ['exec'],
+        execOut: [],
+        inputs: [],
+        outputs: [{ name: 'status', type: 'string' }]
+      },
+      variables: [],
+      nodes: [
+        { id: 'entry', type: ENTRY_TYPE, version: 1 },
+        { id: 'flaky', type: 'test.flaky', version: 1 },
+        { id: 'ret', type: RETURN_TYPE, version: 1 }
+      ],
+      edges: [
+        { from: 'entry', fromPin: 'exec', to: 'flaky', toPin: 'exec' },
+        { from: 'flaky', fromPin: 'then', to: 'ret', toPin: 'exec' },
+        { from: 'flaky', fromPin: 'status', to: 'ret', toPin: 'status' }
+      ]
+    };
+    const flakyEngines: EngineSource = async () => ({
+      engine: createEngine({ nodes: [...createStdNodes({ fetch }), flaky], graphs: () => graph }),
+      root
+    });
+    const { store, row, log } = fakeStore({});
+    const runner = createRunner({ store, engines: flakyEngines, now: () => now, publish });
+    await runner.process(job({ type: 'advance' }));
+    assert.equal(row.status, 'faulted');
+    await runner.process(job({ type: 'skip', pin: 'then', outputs: { status: 'typed' } }));
+    assert.equal(row.status, 'faulted');
+    assert.equal(log.tasks.at(-1)?.title, 'Stuck at Return');
+    assert.match(log.tasks.at(-1)?.instructions ?? '', /Input "status" of "ret" is required/);
   });
 
   it('loads child results from the database when a map parent resumes', async () => {
@@ -283,18 +416,13 @@ describe('runner', () => {
         fn({
           ...tx,
           findVersion: async () => 'child-version',
-          insertChildren: async (_, __, ___, inputs) => inputs.map((_x, i) => `c${i}`),
-          children: async () => [
-            {
-              id: 'c0',
-              status: 'completed',
-              result: { pin: null, outputs: { n: 2 } },
-              error: null
-            },
-            { id: 'c1', status: 'completed', result: { pin: null, outputs: { n: 3 } }, error: null }
-          ]
+          insertChildren: async (_, __, ___, inputs) => inputs.map((_x, i) => `c${i}`)
         })
       );
+    store.children = async () => [
+      { id: 'c0', status: 'completed', result: { pin: null, outputs: { n: 2 } }, error: null },
+      { id: 'c1', status: 'completed', result: { pin: null, outputs: { n: 3 } }, error: null }
+    ];
     const runner = createRunner({ store, engines: mapEngines, now: () => now, publish });
     await runner.process(job({ type: 'advance' }));
     assert.equal(row.status, 'suspended');
@@ -331,5 +459,48 @@ describe('runner', () => {
       job({ type: 'cancel' })
     );
     assert.equal(busy.row.status, 'cancelled');
+  });
+});
+
+describe('runner wakes', () => {
+  const waiting: GraphDef = {
+    signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
+    variables: [],
+    nodes: [
+      { id: 'entry', type: ENTRY_TYPE, version: 1 },
+      {
+        id: 'wait',
+        type: 'std.flow.wait-signal',
+        version: 1,
+        inputs: { name: { value: 'claim' }, key: { value: 'c1' }, timeoutMs: { value: 60_000 } }
+      }
+    ],
+    edges: [{ from: 'entry', fromPin: 'exec', to: 'wait', toPin: 'exec' }]
+  };
+  const signalEngines: EngineSource = async () => ({
+    engine: createEngine({ nodes: createStdNodes({ fetch }), graphs: () => waiting }),
+    root
+  });
+
+  it('drops the pending timeout when a signal wakes a run, inside its run scope', async () => {
+    const { store, log } = fakeStore({});
+    const scoped: string[] = [];
+    const runner = createRunner({
+      store,
+      engines: signalEngines,
+      now: () => now,
+      publish,
+      within: async (ctx, work) => {
+        scoped.push(`${ctx.tenantId}:${ctx.runId}:${ctx.signal.aborted}`);
+        await work();
+      }
+    });
+    await runner.process(job({ type: 'advance' }));
+    const timeout = log.jobs.at(-1);
+    assert.equal(typeof timeout?.id, 'string');
+    const waitId = timeout?.command.type === 'resume' ? timeout.command.suspensionId : '';
+    await runner.process(job({ type: 'resume', suspensionId: waitId, payload: { payload: 1 } }));
+    assert.deepEqual(log.dropped, [waitId]);
+    assert.deepEqual(scoped, ['t-1:run-1:false', 't-1:run-1:false']);
   });
 });

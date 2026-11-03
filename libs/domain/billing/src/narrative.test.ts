@@ -1,17 +1,28 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { CompletionRequest } from './completions.ts';
-import {
-  ALS2_PROCEDURES,
-  NO_FINDINGS,
-  narrativeRequest,
-  readFindings,
-  readNarrative
-} from './narrative.ts';
+import { ALS2_PROCEDURES, readFindings, readNarrative, TRUNCATED_NOTE } from './narrative.ts';
 
-describe('narrativeRequest', () => {
-  it('asks for medication doses and the CMS ALS2 procedures as structured output', () => {
-    const request = narrativeRequest(`ASA 324 PO. ${'x'.repeat(20_000)}`);
+const NO_FINDINGS = { medications: [], procedures: [], ivDoses: 0, notes: [] };
+
+describe('narrative request', () => {
+  it('asks for medication doses and the CMS ALS2 procedures as structured output', async () => {
+    const asked: CompletionRequest[] = [];
+    await readNarrative(
+      {
+        complete: async (r) => {
+          asked.push(r);
+          return {};
+        }
+      },
+      `ASA 324 PO. ${'x'.repeat(20_000)}`
+    );
+    const [request] = asked;
+    if (!request) throw new Error('The model was not asked');
+    assert.deepEqual(
+      (await readNarrative({ complete: async () => ({}) }, 'x'.repeat(12_001))).notes,
+      [TRUNCATED_NOTE]
+    );
     assert.equal(request.user.length, 12_000);
     assert.match(request.system, /how many separate doses/);
     assert.match(request.system, /intraosseous line/);
@@ -46,7 +57,8 @@ describe('readFindings', () => {
           { medication: 'ondansetron', route: 'IV', doses: 1 }
         ],
         procedures: ['defibrillation'],
-        ivDoses: 23
+        ivDoses: 23,
+        notes: []
       }
     );
     assert.deepEqual(readFindings('nonsense'), NO_FINDINGS);
@@ -71,8 +83,10 @@ describe('readNarrative', () => {
     assert.deepEqual(await readNarrative(completer, 'Amiodarone 300 IO'), {
       medications: [{ medication: 'amiodarone', route: 'IO', doses: 1 }],
       procedures: [],
-      ivDoses: 1
+      ivDoses: 1,
+      notes: []
     });
+
     assert.equal(asked[0]?.user, 'Amiodarone 300 IO');
   });
 });

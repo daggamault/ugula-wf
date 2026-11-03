@@ -5,7 +5,7 @@ import { Button } from './button.tsx';
 import { IconButton } from './icon-button.tsx';
 import type { Intent } from './intent.ts';
 
-export type DialogProps = {
+type DialogProps = {
   open: boolean;
   title: string;
   description?: ReactNode;
@@ -18,11 +18,8 @@ export type DialogProps = {
 type DialogIntent = Extract<Intent, 'danger' | 'warning'>;
 
 const intentClasses: Readonly<Record<DialogIntent, { dialog: string; icon: string }>> = {
-  danger: { dialog: 'border-danger/50 ring-danger/15 ring-4', icon: 'bg-danger/12 text-danger' },
-  warning: {
-    dialog: 'border-warning/60 ring-warning/20 ring-4',
-    icon: 'bg-warning/15 text-warning-fg'
-  }
+  danger: { dialog: 'border-danger/30', icon: 'bg-danger/10 text-danger' },
+  warning: { dialog: 'border-warning/30', icon: 'bg-warning/10 text-warning-fg' }
 };
 
 export const Dialog = ({
@@ -35,6 +32,8 @@ export const Dialog = ({
   children
 }: DialogProps) => {
   const ref = useRef<HTMLDialogElement>(null);
+  const isOpen = useRef(open);
+  isOpen.current = open;
   const titleId = useId();
 
   useEffect(() => {
@@ -48,11 +47,13 @@ export const Dialog = ({
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      onClose={onClose}
+      onClose={() => {
+        if (isOpen.current) onClose();
+      }}
       className={classNamesOf(
-        'border-border bg-surface text-surface-fg backdrop:bg-canvas/70 m-auto w-[calc(100%-2rem)] scale-95 rounded-xl border p-6 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out backdrop:opacity-0 backdrop:backdrop-blur-sm backdrop:transition-[opacity,display,overlay] backdrop:transition-discrete backdrop:duration-200 backdrop:ease-out open:scale-100 open:opacity-100 open:backdrop:opacity-100 starting:open:scale-95 starting:open:opacity-0 starting:open:backdrop:opacity-0',
+        'bg-surface text-surface-fg backdrop:bg-canvas/70 m-auto w-[calc(100%-2rem)] scale-95 rounded-xl border p-6 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out backdrop:opacity-0 backdrop:backdrop-blur-sm backdrop:transition-[opacity,display,overlay] backdrop:transition-discrete backdrop:duration-200 backdrop:ease-out open:scale-100 open:opacity-100 open:backdrop:opacity-100 starting:open:scale-95 starting:open:opacity-0 starting:open:backdrop:opacity-0',
         isWide ? 'max-w-2xl' : 'max-w-md',
-        intent && intentClasses[intent].dialog
+        intent ? intentClasses[intent].dialog : 'border-border'
       )}
     >
       <div className="flex flex-col gap-6">
@@ -75,7 +76,7 @@ export const Dialog = ({
             {description && <div className="text-surface-fg-muted text-sm">{description}</div>}
           </div>
           <div className="-my-1.5 -mr-2">
-            <IconButton label="Close" icon={XIcon} onClick={onClose} />
+            <IconButton label="Close" icon={XIcon} onClick={() => ref.current?.close()} />
           </div>
         </header>
         {children}
@@ -84,7 +85,7 @@ export const Dialog = ({
   );
 };
 
-export const DialogActions = ({ children }: { children: ReactNode }) => (
+const DialogActions = ({ children }: { children: ReactNode }) => (
   <div className="flex flex-wrap justify-end gap-2">{children}</div>
 );
 

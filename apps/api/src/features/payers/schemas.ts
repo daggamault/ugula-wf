@@ -18,7 +18,7 @@ export type PayerInput = v.InferOutput<typeof payerSchema>;
 
 export const aliasParams = v.object({ id: uuid, aliasId: uuid });
 
-export const PAYER_SORTS = ['name', 'payerId', 'filing'] as const;
+const PAYER_SORTS = ['name', 'payerId', 'filing'] as const;
 
 export type PayerSort = (typeof PAYER_SORTS)[number];
 
@@ -26,3 +26,5 @@ export const searchPayersQuery = v.object({
   q: searchText,
   ...pageEntries(PAYER_SORTS, 'name', 'asc')
 });
+
+export const payerNamesQuery = v.object({ q: searchText });

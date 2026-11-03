@@ -12,9 +12,11 @@ export type Leases = {
 
 export type Limiter = <T>(task: () => Promise<T>) => Promise<T>;
 
-export type LimiterTiming = {
+type LimiterOptions = {
   wait?: (ms: number) => Promise<unknown>;
   random?: () => number;
+  onReleaseError?: (err: unknown) => void;
+  tries?: number;
 };
 
 const ACQUIRE = `
@@ -43,19 +45,40 @@ export const createRedisLeases = (
   }
 });
 
-export const backoffMs = (attempt: number, random: () => number) =>
+const backoffMs = (attempt: number, random: () => number) =>
   Math.min(MAX_BACKOFF_MS, MIN_BACKOFF_MS * 2 ** attempt) * (0.5 + random() / 2);
 
+const LIMIT_BUSY = 'LIMIT_BUSY';
+
+const BUSY_RETRY_MS = 1_000;
+
+const limitBusy = (retryAfterMs: number) =>
+  Object.assign(new Error('Every shared slot is busy'), { code: LIMIT_BUSY, retryAfterMs });
+
+export const busyRetryAfter = (err: unknown): number | null =>
+  err instanceof Error && 'code' in err && err.code === LIMIT_BUSY && 'retryAfterMs' in err
+    ? Number(err.retryAfterMs)
+    : null;
+
 export const createSharedLimiter =
-  (leases: Leases, { wait = delay, random = Math.random }: LimiterTiming = {}): Limiter =>
+  (
+    leases: Leases,
+    {
+      wait = delay,
+      random = Math.random,
+      onReleaseError = () => {},
+      tries = 3
+    }: LimiterOptions = {}
+  ): Limiter =>
   async (task) => {
     const id = randomUUID();
     for (let attempt = 0; !(await leases.acquire(id)); attempt++) {
+      if (attempt + 1 >= tries) throw limitBusy(BUSY_RETRY_MS * (1 + 2 * random()));
       await wait(backoffMs(attempt, random));
     }
     try {
       return await task();
     } finally {
-      await leases.release(id);
+      await leases.release(id).catch(onReleaseError);
     }
   };

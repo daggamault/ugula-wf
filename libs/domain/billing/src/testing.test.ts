@@ -37,37 +37,52 @@ describe('billing test stores', () => {
   it('links known payers, offers similar ones and learns aliases', async () => {
     const blue = { id: 'p-blue', name: 'Blue', claimFiling: 'BL', similarity: 0.7 };
     const { store, aliases } = memoryPayers({ Medicare: medicare }, { BCBS: [blue] });
-    const [known, similar] = await store.lookup('r', ['Medicare', 'BCBS']);
+    const [known, similar] = await store.lookup('r', ['Medicare', 'BCBS'], true);
     assert.equal(known?.known?.id, 'p-medicare');
     assert.deepEqual(similar?.candidates, [blue]);
-    await store.linkAlias('r', 'BCBS', 'p-blue');
+    assert.equal(await store.linkAlias('r', 'BCBS', 'p-blue'), true);
+    assert.equal(await store.linkAlias('r', 'BCBS', 'p-none'), false);
     assert.deepEqual([...aliases], [['BCBS', 'p-blue']]);
-    assert.equal((await store.lookup('r', ['BCBS']))[0]?.known?.id, 'p-blue');
+    assert.equal((await store.lookup('r', ['BCBS'], false))[0]?.known?.id, 'p-blue');
+    assert.deepEqual(
+      (await store.directory('r')).map((p) => p.id),
+      ['p-medicare', 'p-blue']
+    );
   });
 
   it('prices only the codes the schedule knows', async () => {
     const { store } = memoryFees((_, code) => (code === 'A0427' ? 100 : null));
     assert.deepEqual(await store.findFees('r', null, ['A0427', 'A0999']), { A0427: 100 });
+    await store.saveFee('r', null, 'A0999', 5);
+    assert.deepEqual(await store.findFees('r', 'p1', ['A0999']), { A0999: 5 });
   });
 
   it('keeps a claim ledger from saved coverages and recorded events', async () => {
     const claims = memoryClaims({ totalCents: 500 });
-    assert.deepEqual(await claims.store.openDraft('r', 'k', { pcrNumber: null, reportKey: null }), {
-      id: 'c1',
-      duplicate: false
-    });
-    await claims.store.assignPatient('r', 'c1', 'p1');
+    assert.deepEqual(
+      await claims.store.openDraft('r', 'k', { pcrNumber: null, reportKey: null, claimId: null }),
+      { id: 'c1', duplicate: false }
+    );
+    await claims.store.assignPatient('r', 'c1', 'k', 'p1');
+
     assert.deepEqual(claims.patients, ['p1']);
     await claims.store.recordEvent('r', 'c1', 'k', {
       kind: 'approved',
       coverageId: null,
-      note: ''
+      note: '',
+      payerClaimNumber: null
     });
     const ledger = await claims.store.ledger('r', 'c1');
     assert.equal(ledger?.totalCents, 500);
     assert.equal(ledger?.events[0]?.kind, 'approved');
     assert.equal(await claims.store.ledger('r', 'c9'), null);
     await assert.rejects(() => claims.store.statementData('r', 'c1'), /not used here/);
+    await claims.store.saveStatement('r', 'c1', 'k', {
+      number: 1,
+      count: 3,
+      pdf: new Uint8Array()
+    });
+    assert.deepEqual(claims.statements, [{ key: 'k', number: 1, count: 3, pdf: new Uint8Array() }]);
   });
 
   it('answers completions from a script and fills unused stores with faults', async () => {
