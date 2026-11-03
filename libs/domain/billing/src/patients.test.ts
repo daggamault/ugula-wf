@@ -143,15 +143,13 @@ describe('matchPatient', () => {
     ]);
   });
 
-  it('creates when nothing is close and reviews incomplete reports', () => {
+  it('creates when nothing is close and flags incomplete reports', () => {
     const stranger = { ...jane, firstName: 'Bob', lastName: 'Smith' };
     assert.deepEqual(matchPatient(d, [stranger]), { kind: 'unmatched' });
     const farOff = { ...janet, birthDate: '1955-07-04' };
     assert.deepEqual(matchPatient(d, [farOff]), { kind: 'unmatched' });
     assert.deepEqual(matchPatient(readDemographics({ ...report, birthDate: null }), [janet]), {
-      kind: 'review',
-      reason: 'The report is missing the first name, last name or birth date',
-      candidates: [janet]
+      kind: 'incomplete'
     });
   });
 });

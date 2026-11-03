@@ -41,7 +41,7 @@ const cleaned = {
 };
 
 describe('patientNodes', () => {
-  it('routes report demographics to matched, unmatched or review', async () => {
+  it('routes report demographics to matched, unmatched, review or incomplete', async () => {
     const { store, calls } = memoryPatients([jane]);
     const match = nodeFor(store, 'match-patient');
     const matched = await run(match, { demographics });
@@ -58,7 +58,7 @@ describe('patientNodes', () => {
       { birthDate: '1980-01-02', lastNameKey: 'doe', firstName: 'Jane' }
     ]);
     const review = await run(match, { demographics: { lastName: 'Doe', birthDate: null } });
-    assert.equal(review.pin, 'review');
+    assert.equal(review.pin, 'incomplete');
     assert.deepEqual(review.outputs.demographics, {
       firstName: null,
       lastName: 'Doe',

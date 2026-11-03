@@ -30,7 +30,8 @@ export type Patient = NewPatient & { id: string };
 export type MatchDecision =
   | { kind: 'matched'; patient: Patient }
   | { kind: 'unmatched' }
-  | { kind: 'review'; reason: string; candidates: Patient[] };
+  | { kind: 'review'; reason: string; candidates: Patient[] }
+  | { kind: 'incomplete' };
 
 const SEX_CODES: Record<string, Sex> = {
   F: 'F',
@@ -156,13 +157,7 @@ export const matchPatient = (d: Demographics, candidates: Patient[]): MatchDecis
     .filter(({ l }) => isSimilar(l))
     .sort((a, b) => score(b.l) - score(a.l))
     .map(({ p }) => p);
-  if (!toNewPatient(d)) {
-    return {
-      kind: 'review',
-      reason: 'The report is missing the first name, last name or birth date',
-      candidates: similar
-    };
-  }
+  if (!toNewPatient(d)) return { kind: 'incomplete' };
   return similar.length
     ? { kind: 'review', reason: 'Similar patients found', candidates: similar }
     : { kind: 'unmatched' };

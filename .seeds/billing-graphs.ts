@@ -991,13 +991,13 @@ const PATIENT_REVIEW_CONTEXT = `{
   })
 }`;
 
-const PATIENT_CHOICES = `len(candidates) > 0 ? {
+const PATIENT_CHOICES = `{
   patientId: map(candidates, c => {
     value: c.id,
     label: c.lastName + ', ' + c.firstName + ' · born ' + c.birthDate +
       (c.postalCode ? ' · ' + c.postalCode : '')
   })
-} : null`;
+}`;
 
 const resolvePatient = (): GraphDef => {
   const g = action(
@@ -1007,6 +1007,7 @@ const resolvePatient = (): GraphDef => {
   g.add('match', 'billing.match-patient');
   g.add('create', 'billing.create-patient', { values: { reuseMatch: true } });
   g.add('choices', 'std.expr', expr('Candidate Choices', PATIENT_CHOICES));
+  g.add('pick', 'std.expr', expr('Likeliest Candidate', '{ patientId: candidates[0].id }'));
   g.add('context', 'std.expr', expr('Review Context', PATIENT_REVIEW_CONTEXT));
   g.add('subject', 'std.expr', subject('pcrNumber', nameOf('demographics')));
   g.add('confirm', 'std.human.task', {
@@ -1015,21 +1016,35 @@ const resolvePatient = (): GraphDef => {
       title: 'Confirm patient',
       queue: 'billing-patients',
       instructions:
-        'Link this report to one of the candidate patients, or correct the demographics and create a new patient when none of them is this person.',
+        'Use the candidate that is this person, or create a new patient from the report when none of them is.',
+      fields: [{ name: 'patientId', type: 'string', label: 'Candidate patient' }],
+      outcomes: ['useSelected', 'createNew']
+    }
+  });
+  g.add('createNew', 'billing.create-patient', { label: 'Create New Patient' });
+  g.add('find', 'billing.find-patient');
+  g.add('complete', 'std.human.task', {
+    label: 'Complete Patient Details',
+    config: {
+      title: 'Complete patient details',
+      queue: 'billing-patients',
+      instructions:
+        'The report is missing the name or birth date needed to find or create a patient. Fill them in from the report, and the patient is matched or created from them.',
       fields: [
-        { name: 'patientId', type: 'string', label: 'Existing patient' },
         { name: 'firstName', type: 'string', label: 'First name' },
         { name: 'lastName', type: 'string', label: 'Last name' },
         { name: 'birthDate', type: 'string', label: 'Birth date (YYYY-MM-DD)' }
       ],
-      outcomes: ['link', 'create']
+      outcomes: ['savePatient']
     }
   });
   g.add('reported', 'billing.demographics.break', { label: 'Cleaned Demographics' });
-  g.add('corrected', 'billing.demographics.make', { label: 'Corrected Demographics' });
-  g.add('createReviewed', 'billing.create-patient', { label: 'Create Reviewed Patient' });
-  g.add('find', 'billing.find-patient');
-  for (const id of ['matched', 'created', 'reviewed', 'linked']) g.ret(id);
+  g.add('corrected', 'billing.demographics.make', { label: 'Completed Demographics' });
+  g.add('createCompleted', 'billing.create-patient', {
+    label: 'Create Completed Patient',
+    values: { reuseMatch: true }
+  });
+  for (const id of ['matched', 'created', 'reviewed', 'linked', 'completed']) g.ret(id);
   g.wire('entry.exec', 'match.exec');
   g.wire('entry.demographics', 'match.demographics', 'create.demographics');
   g.wire('match.matched', 'matched.exec');
@@ -1038,28 +1053,34 @@ const resolvePatient = (): GraphDef => {
   g.wire('create.then', 'created.exec');
   g.wire('create.patient', 'created.patient');
   g.wire('match.review', 'confirm.exec');
-  g.wire('match.candidates', 'choices.candidates', 'context.candidates');
+  g.wire('match.candidates', 'choices.candidates', 'pick.candidates', 'context.candidates');
   g.wire('choices.result', 'confirm.options');
+  g.wire('pick.result', 'confirm.defaults');
   g.wire('match.reason', 'context.reason');
-  g.wire('match.demographics', 'context.demographics', 'confirm.defaults', 'reported.demographics');
+  g.wire('match.demographics', 'context.demographics', 'createNew.demographics');
   g.wire('entry.pcrNumber', 'context.pcrNumber', 'subject.pcrNumber');
   g.wire('entry.demographics', 'subject.demographics');
-  g.wire('context.result', 'confirm.context');
-  g.wire('subject.result', 'confirm.subject');
-  g.wire('confirm.link', 'find.exec');
+  g.wire('context.result', 'confirm.context', 'complete.context');
+  g.wire('subject.result', 'confirm.subject', 'complete.subject');
+  g.wire('confirm.useSelected', 'find.exec');
   g.wire('confirm.patientId', 'find.patientId');
-  g.wire('confirm.create', 'createReviewed.exec');
+  g.wire('confirm.createNew', 'createNew.exec');
+  g.wire('createNew.then', 'reviewed.exec');
+  g.wire('createNew.patient', 'reviewed.patient');
+  g.wire('find.then', 'linked.exec');
+  g.wire('find.patient', 'linked.patient');
+  g.wire('match.incomplete', 'complete.exec');
+  g.wire('match.demographics', 'complete.defaults', 'reported.demographics');
   for (const pin of ['gender', 'addressLine', 'city', 'state', 'postalCode']) {
     g.wire(`reported.${pin}`, `corrected.${pin}`);
   }
   for (const pin of ['firstName', 'lastName', 'birthDate']) {
-    g.wire(`confirm.${pin}`, `corrected.${pin}`);
+    g.wire(`complete.${pin}`, `corrected.${pin}`);
   }
-  g.wire('corrected.demographics', 'createReviewed.demographics');
-  g.wire('createReviewed.then', 'reviewed.exec');
-  g.wire('createReviewed.patient', 'reviewed.patient');
-  g.wire('find.then', 'linked.exec');
-  g.wire('find.patient', 'linked.patient');
+  g.wire('complete.savePatient', 'createCompleted.exec');
+  g.wire('corrected.demographics', 'createCompleted.demographics');
+  g.wire('createCompleted.then', 'completed.exec');
+  g.wire('createCompleted.patient', 'completed.patient');
   return g.def;
 };
 
@@ -1658,7 +1679,7 @@ export const billingGraphs: SeedGraph[] = [
   node(
     'billing.resolve-patient',
     'Resolve Patient',
-    'Matches report demographics to a patient, creates one when nothing is close, and asks a biller about likely matches.',
+    'Matches report demographics to a patient, creates one when nothing is close, asks a biller to pick among likely matches or create a new one, and asks for a missing name or birth date.',
     resolvePatient()
   ),
   node(

@@ -452,10 +452,52 @@ describe('billing graphs', () => {
       },
       candidates: [{ name: 'Jane Doe', birthDate: '1980-01-20', sex: 'Male', address: '' }]
     });
-    world.answer(confirm, 'link', { patientId: 'p-jane' });
+    world.answer(confirm, 'useSelected', { patientId: 'p-jane' });
     world.answer(await world.waitFor('task', 'Match payer'), 'unlisted');
     await world.waitFor('task', 'Review PCR');
     assert.equal(world.data('context.patient.birthDate'), '1980-01-20');
+  });
+
+  it('preselects the likeliest candidate and creates a new patient from the report when none fits', async () => {
+    const typo: Patient = {
+      id: 'p-jane',
+      firstName: 'Jane',
+      lastName: 'Doe',
+      birthDate: '1980-01-20',
+      gender: 'M',
+      addressLine: null,
+      city: null,
+      state: null,
+      postalCode: null
+    };
+    const world = pcrWorld({ known: [typo] });
+    const confirm = await world.waitFor('task', 'Confirm patient');
+    assert.deepEqual(world.data('defaults'), { patientId: 'p-jane' });
+    assert.deepEqual(
+      (world.data('fields') as { name: string }[]).map((f) => f.name),
+      ['patientId']
+    );
+    world.answer(confirm, 'createNew');
+    world.answer(await world.waitFor('task', 'Match payer'), 'unlisted');
+    await world.waitFor('task', 'Review PCR');
+    assert.equal(world.data('context.patient.birthDate'), '1980-01-02');
+    assert.deepEqual(world.assigned, ['p-new']);
+  });
+
+  it('asks for the missing name or birth date before creating the patient', async () => {
+    const report = parseDataset(REPORT.replace('<ePatient.17>1980-01-02</ePatient.17>', ''))
+      .reports[0];
+    const world = pcrWorld({ report: report ?? null });
+    const complete = await world.waitFor('task', 'Complete patient details');
+    world.answer(complete, 'savePatient', {
+      firstName: 'Jane',
+      lastName: 'Doe',
+      birthDate: '1980-01-02'
+    });
+    world.answer(await world.waitFor('task', 'Match payer'), 'unlisted');
+    await world.waitFor('task', 'Review PCR');
+    assert.equal(world.data('context.patient.birthDate'), '1980-01-02');
+    assert.deepEqual(world.assigned, ['p-new']);
   });
 
   it('voids the draft claim of a held PCR without billing it', async () => {

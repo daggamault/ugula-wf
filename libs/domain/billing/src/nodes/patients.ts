@@ -19,7 +19,7 @@ export const patientNodes: NodesOf = (stores) => {
       title: 'Match Patient',
       category: CATEGORY,
       description:
-        'Finds the existing patient with the same last name, birth date and first name or nickname, or flags likely matches (similar names, birth date typos) for review. Also outputs the cleaned demographics.',
+        'Finds the existing patient with the same last name, birth date and first name or nickname, or flags likely matches (similar names, birth date typos) for review. Continues through incomplete when the report lacks a first name, last name or valid birth date. Also outputs the cleaned demographics.',
       inputs: [demographicsPin],
       outputs: [
         patientPin,
@@ -27,7 +27,7 @@ export const patientNodes: NodesOf = (stores) => {
         pin('reason', 'string'),
         demographicsPin
       ],
-      exits: ['matched', 'unmatched', 'review'],
+      exits: ['matched', 'unmatched', 'review', 'incomplete'],
       compute: async (inputs, _, ctx) => {
         const d = readDemographics(inputs.demographics);
         const candidates = await patients().findCandidates(ctx.runId, {
