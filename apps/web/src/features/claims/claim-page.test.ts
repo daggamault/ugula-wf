@@ -250,6 +250,15 @@ describe('describeProgress', () => {
       describeProgress({ step: 'overpaid', balanceCents: -2_500 }),
       /^\$25\.00 more has been paid/
     );
+    assert.match(
+      describeProgress({ step: 'awaitPatient', waitMs: 1, balanceCents: 1 }),
+      /^Waiting on the patient/
+    );
+    assert.match(
+      describeProgress({ step: 'collections', balanceCents: 1 }),
+      /balance review task is waiting/
+    );
+    assert.equal(describeProgress({ step: 'closed', balanceCents: 0 }), 'Paid in full. Closing.');
   });
 });
 
@@ -271,7 +280,23 @@ describe('describeCycle', () => {
       describeCycle({ status: 'submitted', cycle_status: 'faulted' }, waiting)?.text ?? '',
       /stuck run task/
     );
-    assert.equal(describeCycle({ status: 'ready', cycle_status: null }, null)?.intent, 'warning');
+    const missing = describeCycle({ status: 'ready', cycle_status: null }, null);
+    assert.deepEqual(
+      [missing?.intent, missing?.stopped, missing?.restartable],
+      ['warning', true, true]
+    );
+    assert.equal(
+      describeCycle({ status: 'submitted', cycle_status: 'faulted' }, waiting)?.restartable,
+      false
+    );
+    assert.equal(describeCycle({ status: 'submitted', cycle_status: 'running' }, null), null);
+    assert.equal(
+      describeCycle(
+        { status: 'submitted', cycle_status: 'running' },
+        { step: 'overpaid', balanceCents: -1 }
+      )?.intent,
+      'warning'
+    );
     assert.equal(describeCycle({ status: 'paid', cycle_status: 'completed' }, null), null);
     const filing = describeCycle(
       { status: 'ready', cycle_status: 'running' },
@@ -294,7 +319,9 @@ describe('lockedReason', () => {
 describe('moveItem', () => {
   it('reorders within bounds and leaves the list alone otherwise', () => {
     assert.deepEqual(moveItem(['a', 'b', 'c'], 2, 0), ['c', 'a', 'b']);
+    assert.deepEqual(moveItem(['a', 'b', 'c'], 0, 1), ['b', 'a', 'c']);
     assert.deepEqual(moveItem(['a', 'b'], 0, -1), ['a', 'b']);
+    assert.deepEqual(moveItem(['a', 'b'], 1, 2), ['a', 'b']);
   });
 });
 
@@ -415,6 +442,27 @@ describe('toResponse', () => {
     );
     assert.equal(toResponse(draft({ coverageId: '' })), 'A patient payment needs an amount');
     assert.equal(toResponse(draft({ paid: '-1' })), 'Enter amounts of zero or more');
+    assert.equal(toResponse(draft({ adjusted: 'x' })), 'Enter amounts of zero or more');
+    const patient = toResponse(draft({ coverageId: '', paid: '20', payerClaimNumber: 'ICN1' }));
+    assert.deepEqual(
+      typeof patient === 'string'
+        ? patient
+        : [patient.coverageId, patient.paidCents, patient.payerClaimNumber],
+      [null, 2_000, null]
+    );
+    const zero = toResponse(draft());
+    assert.deepEqual(
+      typeof zero === 'string'
+        ? zero
+        : [zero.paidCents, zero.adjustedCents, zero.paidOn, zero.checkNumber],
+      [0, 0, null, null]
+    );
+    assert.match(
+      String(
+        toResponse(draft({ adjustments: [{ id: 'a', group: 'CO', reason: '45', amount: '0' }] }))
+      ),
+      /Each reason code/
+    );
     assert.match(
       String(
         toResponse(draft({ adjustments: [{ id: 'a', group: 'CO', reason: '', amount: '1' }] }))
@@ -485,7 +533,7 @@ describe('ClaimView', () => {
     assert.ok(html.includes('2. </span>Blue Plan'));
     assert.ok(html.includes('aria-label="Move Blue Plan up"'));
     assert.ok(html.includes('aria-label="Remove Blue Plan"'));
-    assert.ok(html.includes('aria-label="History, 2"') || html.includes('>2<'));
+    assert.match(html, /History<span[^>]*tabular-nums[^>]*>2<\/span>/);
     assert.ok(html.includes('>Patient<'));
     assert.equal(html.match(/Not in Payer Directory/g)?.length, 1);
     assert.ok(html.includes('Service Date'));
@@ -667,7 +715,7 @@ describe('ClaimFiles', () => {
       })
     );
     assert.ok(html.includes('href="/encounters/r1"') && html.includes('Encounter PCR-1'));
-    assert.ok(html.includes('href="/files/b7"') && html.includes('837P file #7'));
+    assert.ok(html.includes('href="/files/b7"') && html.includes('837P File #7'));
     assert.ok(html.includes('>Sent '));
     assert.ok(html.includes('href="/docs/e2"') && html.includes('Patient statement 1 of 3'));
     assert.ok(
@@ -694,5 +742,41 @@ describe('ClaimFiles', () => {
       })
     );
     assert.ok(bare.includes('No source encounter file.'));
+    const unsent = renderToStaticMarkup(
+      createElement(ClaimFiles, {
+        claim: {
+          import_report_id: 'r1',
+          pcr_number: null,
+          import_id: null,
+          import_file_name: null
+        },
+        files: [
+          {
+            id: 'e1',
+            kind: 'submitted',
+            coverage_id: 'cov-m',
+            payer: 'Medicare',
+            paid_cents: 0,
+            adjusted_cents: 0,
+            paid_on: null,
+            check_number: null,
+            payer_claim_number: null,
+            note: '',
+            created_at: '2026-10-02T00:00:00Z',
+            has_document: false,
+            batch_id: 'b8',
+            batch_number: 8,
+            batch_sent_at: null
+          }
+        ],
+        payerFiles: [],
+        back: '/claims',
+        documentUrl: () => '',
+        fileUrl: (id) => `/files/${id}`,
+        encounterUrl: (id) => `/encounters/${id}`
+      })
+    );
+    assert.ok(unsent.includes('Not sent; upload it to the clearinghouse'));
+    assert.ok(unsent.includes('href="/encounters/r1"') && !unsent.includes('href="/imports/'));
   });
 });

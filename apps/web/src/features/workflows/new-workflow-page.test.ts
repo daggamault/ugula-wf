@@ -16,6 +16,9 @@ describe('NewWorkflowPage', () => {
       })
     );
     assert.ok(html.includes('billing.match-patient'));
+    assert.ok(
+      html.includes('for="graph-name"') && html.includes('>Name<') && html.includes('>Key<')
+    );
     assert.ok(html.includes('aria-label="Create Subworkflow"'));
     assert.ok(html.includes('<option value="node" selected="">Subworkflow</option>'));
     assert.ok(

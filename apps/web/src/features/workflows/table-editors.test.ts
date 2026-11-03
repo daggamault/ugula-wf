@@ -25,6 +25,34 @@ describe('table editors', () => {
     assert.ok(html.includes('Add Row') && html.includes('aria-label="Remove 4221003"'));
   });
 
+  it('reorders rules with arrow buttons that name the rule and carry a tooltip', () => {
+    const html = render(DecisionTableEditor, {
+      inputs: [],
+      outputs: [],
+      rules: [
+        { label: 'First', when: {}, set: {} },
+        { label: '', when: {}, set: {} }
+      ]
+    });
+    assert.ok(html.includes('aria-label="Move First down"') && html.includes('>Move Down<'));
+    assert.ok(html.includes('aria-label="Move rule 2 up"') && html.includes('>Move Up<'));
+  });
+
+  it('hints how to type list and true or false lookup values', () => {
+    const list = render(LookupTableEditor, {
+      type: { list: 'string' },
+      rows: [{ key: '', value: ['a', 'b'] }]
+    });
+    assert.ok(list.includes('value="a, b"') && list.includes('Separate items with commas.'));
+    assert.ok(list.includes('aria-label="Remove row"'));
+    assert.ok(list.includes('<option value="list" selected="">List of Text</option>'));
+    assert.ok(
+      render(LookupTableEditor, { type: 'boolean', rows: [{ key: 'k', value: true }] }).includes(
+        'true or false.'
+      )
+    );
+  });
+
   it('edits columns, ordered rules and the otherwise values of a decision table', () => {
     const config = {
       inputs: [{ name: 'care', type: 'string', label: 'Level of care' }],
@@ -45,6 +73,11 @@ describe('table editors', () => {
     assert.ok(html.includes('Then Level') && html.includes('value="ALS1"'));
     assert.ok(html.includes('When No Rule Holds') && html.includes('value="BLS"'));
     assert.ok(html.includes('aria-label="Move ALS care up"'));
+    assert.ok(html.includes('Already first.') && html.includes('Already last.'));
+    assert.ok(
+      html.includes('aria-label="Remove input care"') &&
+        html.includes('aria-label="Remove ALS care"')
+    );
     assert.ok(
       html.includes('Add Rule') && html.includes('Add Input') && html.includes('Add Output')
     );

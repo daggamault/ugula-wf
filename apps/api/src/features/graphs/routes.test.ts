@@ -21,7 +21,12 @@ const service = {
     return ok({ id: ID });
   },
   saveDraft: async () => ok({ version: 2, issues: [] }),
-  publish: async () => fail('invalid', 'Fix', { issues: [{ message: 'x' }] })
+  publish: async () => fail('invalid', 'Fix', { issues: [{ message: 'x' }] }),
+  override: async (...args: unknown[]) => {
+    calls.push(args);
+    return ok({ id: ID });
+  },
+  remove: async () => fail('conflict', 'Runs still use this graph, so it cannot be removed')
 } as unknown as GraphService;
 
 const request = withSession(createGraphRoutes(service));
@@ -63,5 +68,43 @@ describe('graph routes', () => {
     const publish = await request(`/${ID}/publish`, { method: 'POST' });
     assert.equal(publish.status, 422);
     assert.deepEqual(await publish.json(), { error: 'Fix', issues: [{ message: 'x' }] });
+  });
+});
+
+describe('graph route validation', () => {
+  it('reject bad bodies and params before reaching the service', async () => {
+    const post = (path: string, body: unknown) =>
+      request(path, { method: 'POST', body: JSON.stringify(body) });
+    const bad = [
+      await post('/', { key: 'std.x', name: 'X', kind: 'workflow' }),
+      await post('/', { key: 'acme.x', name: ' ', kind: 'workflow' }),
+      await post('/', { key: 'acme.x', name: 'X', kind: 'other' }),
+      await request(`/${ID}/versions/0`),
+      await request('/nope/versions/1'),
+      await request('/nope/draft', { method: 'PUT', body: JSON.stringify({ definition }) }),
+      await request(`/${ID}/draft`, { method: 'PUT', body: '{"definition":{"nodes":[]}}' }),
+      await request('/nope/publish', { method: 'POST' }),
+      await request('/nope/override', { method: 'POST' }),
+      await request('/nope', { method: 'DELETE' })
+    ];
+    assert.deepEqual(
+      bad.map((r) => r.status),
+      bad.map(() => 400)
+    );
+    assert.deepEqual(await bad[0]?.json(), {
+      error: 'key: The std namespace is reserved',
+      issues: ['key: The std namespace is reserved']
+    });
+  });
+
+  it('override as the session user and map removal conflicts', async () => {
+    const override = await request(`/${ID}/override`, { method: 'POST' });
+    assert.equal(override.status, 201);
+    assert.deepEqual(calls.at(-1), ['t-1', 'u-1', ID]);
+    const removed = await request(`/${ID}`, { method: 'DELETE' });
+    assert.equal(removed.status, 409);
+    assert.deepEqual(await removed.json(), {
+      error: 'Runs still use this graph, so it cannot be removed'
+    });
   });
 });

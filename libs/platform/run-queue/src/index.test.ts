@@ -17,6 +17,8 @@ import {
 describe('run jobs', () => {
   it('build command payloads', () => {
     assert.deepEqual(advance('r'), { runId: 'r', command: { type: 'advance' } });
+    assert.deepEqual(advance('r', null), advance('r'));
+    assert.deepEqual(advance('r', 'p'), { runId: 'r', command: { type: 'advance' }, group: 'p' });
     assert.deepEqual(cancel('r').command, { type: 'cancel' });
     assert.deepEqual(retry('r').command, { type: 'retry' });
     assert.deepEqual(skip('r', 'then', { a: 1 }).command, {
@@ -40,7 +42,8 @@ describe('run jobs', () => {
       advance('a'),
       resume('b', '1', null, '2026-01-01'),
       advance('c', 'parent'),
-      cancel('d')
+      cancel('d'),
+      timeout('e', '2', '2026-01-02')
     ]);
     assert.deepEqual(calls, [
       [
@@ -58,6 +61,16 @@ describe('run jobs', () => {
             data: { runId: 'd', command: { type: 'cancel' } },
             retryLimit: 1_000_000,
             priority: 2
+          },
+          {
+            data: {
+              runId: 'e',
+              command: { type: 'resume', suspensionId: '2', payload: { timedOut: true } }
+            },
+            id: timeoutJobId('e', '2'),
+            startAfter: '2026-01-02',
+            retryLimit: 1_000_000,
+            priority: 1
           }
         ],
         { db }

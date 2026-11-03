@@ -5,7 +5,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import { searchStateOf } from '../../shared/url-state.ts';
 import type { Payer, SettingsClient } from './client.ts';
-import { LearnedNames, PAYER_TABLE, PayersPage, PayersTable } from './payers-page.tsx';
+import {
+  filingLabel,
+  LearnedNames,
+  PAYER_TABLE,
+  PayersPage,
+  PayersTable,
+  payerDeleteNote
+} from './payers-page.tsx';
 
 const medicare: Payer = {
   id: 'p1',
@@ -55,5 +62,21 @@ describe('PayersPage', () => {
       createElement(LearnedNames, { payer: { ...medicare, aliases: [] } })
     );
     assert.equal(none, '');
+  });
+});
+
+describe('filingLabel', () => {
+  it('names known claim filing codes and keeps unknown ones as they are', () => {
+    assert.equal(filingLabel('MB'), 'MB · Medicare Part B');
+    assert.equal(filingLabel('ZZ'), 'ZZ');
+  });
+});
+
+describe('payerDeleteNote', () => {
+  it('says what deleting a payer does to its prices and claims', () => {
+    assert.equal(
+      payerDeleteNote('Medicare'),
+      'Its prices are removed, and claims billed to Medicare cannot go in an 837P file until it is added again.'
+    );
   });
 });

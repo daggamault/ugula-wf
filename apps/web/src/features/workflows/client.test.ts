@@ -25,6 +25,8 @@ describe('createWorkflowsClient', () => {
       edges: []
     });
     await client.publish('g');
+    await client.override('g');
+    await client.remove('a/b');
     assert.deepEqual(calls, [
       'GET /api/graphs?show=all&q=bat',
       'GET /api/graphs/nodes',
@@ -32,7 +34,30 @@ describe('createWorkflowsClient', () => {
       'GET /api/graphs/g/versions/3',
       'POST /api/graphs',
       'PUT /api/graphs/g/draft',
-      'POST /api/graphs/g/publish'
+      'POST /api/graphs/g/publish',
+      'POST /api/graphs/g/override',
+      'DELETE /api/graphs/a%2Fb'
     ]);
+  });
+});
+
+describe('workflows client errors', () => {
+  it('surfaces API errors with their issues', async () => {
+    const client = createWorkflowsClient(
+      createApi(
+        '',
+        async () =>
+          new Response('{"error":"Graph has problems","issues":[{"message":"x"}]}', {
+            status: 422
+          })
+      )
+    );
+    await assert.rejects(
+      () => client.publish('g'),
+      (err: Error & { status?: number; body?: Record<string, unknown> }) =>
+        err.message === 'Graph has problems' &&
+        err.status === 422 &&
+        Array.isArray(err.body?.issues)
+    );
   });
 });

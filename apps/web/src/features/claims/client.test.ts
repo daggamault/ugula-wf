@@ -40,7 +40,22 @@ describe('createClaimsClient', () => {
       adjustments: [],
       note: ''
     });
+    await client.saveBillingData('c1', {
+      serviceDate: null,
+      pickup: { name: null, addressLine: null, city: null, state: null, postalCode: null },
+      destination: { name: null, addressLine: null, city: null, state: null, postalCode: null },
+      diagnoses: ['I10'],
+      originDestination: 'RH',
+      patient: { addressLine: null, city: null, state: null, postalCode: null },
+      coverages: [],
+      documentation: null
+    });
+    await client.eligibilityRequest('c1');
     assert.equal(client.fileUrl('b1'), 'http://api.test/api/submissions/batches/b1/file');
+    assert.equal(
+      client.documentUrl('c 1', 'e/1'),
+      'http://api.test/api/claims/c%201/events/e%2F1/document'
+    );
     assert.equal(client.encounterUrl('r1'), 'http://api.test/api/imports/reports/r1/xml');
     assert.deepEqual(seen, [
       'GET http://api.test/api/claims?status=open&page=2&pageSize=25&sort=balance&dir=desc ',
@@ -51,8 +66,17 @@ describe('createClaimsClient', () => {
       'GET http://api.test/api/claims/c1/events?page=2&sort=amount ',
       'PUT http://api.test/api/claims/c1/payers {"payers":[{"name":"Medicare","relationship":"18","insuredFirstName":null,"insuredLastName":null}]}',
       'POST http://api.test/api/claims/c1/restart-cycle ',
-      'POST http://api.test/api/claims/c1/responses {"requestId":"q1","kind":"response","coverageId":null,"paidCents":500,"adjustedCents":0,"paidOn":null,"checkNumber":null,"payerClaimNumber":null,"adjustments":[],"note":""}'
+      'POST http://api.test/api/claims/c1/responses {"requestId":"q1","kind":"response","coverageId":null,"paidCents":500,"adjustedCents":0,"paidOn":null,"checkNumber":null,"payerClaimNumber":null,"adjustments":[],"note":""}',
+      'PUT http://api.test/api/claims/c1/billing-data {"serviceDate":null,"pickup":{"name":null,"addressLine":null,"city":null,"state":null,"postalCode":null},"destination":{"name":null,"addressLine":null,"city":null,"state":null,"postalCode":null},"diagnoses":["I10"],"originDestination":"RH","patient":{"addressLine":null,"city":null,"state":null,"postalCode":null},"coverages":[],"documentation":null}',
+      'POST http://api.test/api/submissions/eligibility {"claimId":"c1"}'
     ]);
+  });
+
+  it('rejects with the message the server sends back', async () => {
+    const client = createClaimsClient(
+      createApi('', async () => new Response('{"error":"Claim is closed"}', { status: 409 }))
+    );
+    await assert.rejects(client.restartCycle('c1'), { message: 'Claim is closed', status: 409 });
   });
 
   it('reads claim filters from the URL, defaulting to open claims', () => {

@@ -62,6 +62,8 @@ describe('toFlow', () => {
       edgeId({ from: 'entry', fromPin: 'exec', to: 'return1', toPin: 'exec' })
     );
     assert.ok(edges[0]?.className?.includes('stroke-[3]'));
+    assert.equal(edges[0]?.animated, false);
+    assert.equal(toFlow(def, catalog, { status: { return1: 'waiting' } }).edges[0]?.animated, true);
   });
 });
 
@@ -98,6 +100,17 @@ describe('connections', () => {
       ['entry']
     );
     assert.equal(connect(def, catalog, link('entry', 'x', 'up1', 'text')), def);
+  });
+
+  it('move an exec wire when its output is connected again', () => {
+    const twoReturns: GraphDef = {
+      ...def,
+      nodes: [...def.nodes, { id: 'return2', type: RETURN_TYPE, version: 1 }]
+    };
+    const moved = connect(twoReturns, catalog, link('entry', 'exec', 'return2', 'exec'));
+    assert.deepEqual(moved.edges, [
+      { from: 'entry', fromPin: 'exec', to: 'return2', toPin: 'exec' }
+    ]);
   });
 });
 

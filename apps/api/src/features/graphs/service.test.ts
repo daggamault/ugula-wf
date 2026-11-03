@@ -289,3 +289,51 @@ describe('graph service', () => {
     assert.equal((await service.nodes('t-1')).ok, true);
   });
 });
+
+describe('graph service lookups', () => {
+  it('report graphs and versions hidden from the tenant as not found', async () => {
+    const { db, queries } = createRecordingDb();
+    const service = createGraphService({ db, nodes });
+    assert.deepEqual(await service.find('t-2', 'g1'), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Graph not found' }
+    });
+    assert.deepEqual(await service.version('t-2', 'g1', 1), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Version not found' }
+    });
+    assert.deepEqual(await service.remove('t-2', 'g1'), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Graph not found' }
+    });
+    const saved = await service.saveDraft('t-2', 'u-1', 'g1', templateFor('node'));
+    assert.equal(!saved.ok && saved.failure.code, 'not_found');
+    const copied = await service.override('t-2', 'u-1', 'g1');
+    assert.equal(!copied.ok && copied.failure.code, 'not_found');
+    assert.ok(queries.every((q) => !q.sql.startsWith('select "id", "version" from')));
+    assert.ok(queries.every((q) => /^(select|begin|commit)/.test(q.sql)));
+  });
+
+  it('reads a version of a visible graph', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('"version" = $')
+        ? [{ id: 'v2', version: 2, definition: composite, published_at: null }]
+        : rowsFor({ owner: 't-1' })(q)
+    );
+    assert.deepEqual(await createGraphService({ db, nodes }).version('t-1', 'g1', 2), {
+      ok: true,
+      value: { id: 'v2', version: 2, definition: composite, published_at: null }
+    });
+    assert.deepEqual(queries.at(-1)?.parameters, ['g1', 2]);
+  });
+
+  it('refuses to override a system graph that was never published', async () => {
+    const { db, queries } = createRecordingDb(rowsFor({ owner: null }));
+    const res = await createGraphService({ db, nodes }).override('t-1', 'u-1', 'g1');
+    assert.deepEqual(res, {
+      ok: false,
+      failure: { code: 'conflict', message: 'This graph has no published version to start from' }
+    });
+    assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
+  });
+});

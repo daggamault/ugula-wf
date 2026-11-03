@@ -35,16 +35,25 @@ describe('SourceReportView', () => {
     assert.ok(html.includes('Copy XML'));
     assert.ok(!html.includes('aria-pressed'));
   });
+
+  it('names a report without a PCR number by its place in the file', () => {
+    const html = renderToStaticMarkup(
+      createElement(SourceReportView, {
+        source: { ...source, report: { ...source.report, pcr_number: null, position: 2 } }
+      })
+    );
+    assert.ok(html.includes('Patient care report #3 from october.xml'));
+  });
 });
 
 describe('SourceReportPanel', () => {
-  it('loads the report before showing it', () => {
+  it('shows a spinner while the report loads', () => {
     const html = renderToStaticMarkup(
       createElement(SourceReportPanel, {
         client: { report: async () => source } as unknown as TasksClient,
         reportId: 'rep-1'
       })
     );
-    assert.ok(html.length > 0);
+    assert.ok(html.includes('aria-label="Loading"') && !html.includes('Source Report'));
   });
 });

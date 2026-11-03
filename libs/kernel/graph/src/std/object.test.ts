@@ -34,16 +34,31 @@ describe('object nodes', () => {
       value: 1,
       found: true
     });
-    assert.deepEqual(await out('std.object.set', { object: { a: 1 }, path: 'b.c', value: 2 }), {
+    assert.deepEqual(await out('std.object.get', { object: { a: [{ b: 1 }] }, path: 'a.0.b' }), {
+      value: 1,
+      found: true
+    });
+    assert.deepEqual(await out('std.object.get', { object: { a: 1 }, path: 'a.b' }), {
+      value: null,
+      found: false
+    });
+    const original = { a: 1 };
+    assert.deepEqual(await out('std.object.set', { object: original, path: 'b.c', value: 2 }), {
       object: { a: 1, b: { c: 2 } }
     });
+    assert.deepEqual(original, { a: 1 });
+    assert.deepEqual(await out('std.object.set', { path: 'a' }), { object: { a: null } });
     assert.deepEqual(await out('std.object.merge', { a: { x: 1 }, b: { x: 2, y: 3 } }), {
       object: { x: 2, y: 3 }
     });
     assert.deepEqual(await out('std.object.keys', { object: { a: 1 } }), { keys: ['a'] });
     assert.deepEqual(await out('std.object.values', { object: { a: 1 } }), { values: [1] });
     assert.deepEqual(await out('std.object.has', { object: { a: 1 }, key: 'a' }), { result: true });
-    assert.deepEqual(await out('std.object.pick', { object: { a: 1, b: 2 }, keys: ['b'] }), {
+    assert.deepEqual(await out('std.object.has', { object: {}, key: 'toString' }), {
+      result: false
+    });
+    assert.deepEqual(await out('std.object.has', { object: ['a'], key: '0' }), { result: false });
+    assert.deepEqual(await out('std.object.pick', { object: { a: 1, b: 2 }, keys: ['b', 'z'] }), {
       object: { b: 2 }
     });
     assert.deepEqual(await out('std.object.omit', { object: { a: 1, b: 2 }, keys: ['a'] }), {

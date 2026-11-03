@@ -5,9 +5,11 @@ import {
   buildPinRunGraphs,
   dependencyOf,
   findDefinitions,
-  findPublishedGraphs
+  findPublishedGraphs,
+  findRunGraphs,
+  pinRunsGraphs
 } from './graph-versions.ts';
-import { createDummyDb } from './testing.ts';
+import { createDummyDb, createRecordingDb } from './testing.ts';
 
 describe('shared graph queries', () => {
   it('resolves each requested version, letting a tenant override a system graph', async () => {
@@ -30,6 +32,40 @@ describe('shared graph queries', () => {
     assert.ok(compiled.sql.includes('with recursive bundle'));
     assert.ok(compiled.parameters.includes('r-1') && compiled.parameters.includes('v-1'));
     assert.equal(dependencyOf({ key: 'a.b', version: 3 }), 'a.b@3');
+    await db.destroy();
+  });
+
+  it('pins the first run, then copies its graphs to the rest of the batch', async () => {
+    const { db, queries } = createRecordingDb();
+    await pinRunsGraphs(db, { ids: [], tenantId: 't-1', versionId: 'v-1' });
+    assert.equal(queries.length, 0);
+    await pinRunsGraphs(db, { ids: ['r-1'], tenantId: 't-1', versionId: 'v-1' });
+    assert.equal(queries.length, 1);
+    await pinRunsGraphs(db, { ids: ['r-1', 'r-2', 'r-3'], tenantId: 't-1', versionId: 'v-1' });
+    const [pin, copy] = queries.slice(1);
+    assert.match(pin?.sql ?? '', /with recursive bundle/);
+    assert.ok(pin?.parameters.includes('r-1'));
+    assert.match(copy?.sql ?? '', /from workflow_run_graphs g/);
+    assert.deepEqual(copy?.parameters, [['r-2', 'r-3'], 'r-1']);
+    await db.destroy();
+  });
+
+  it('loads each pinned graph with its definition, reading each version once', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('"workflow_run_graphs"')
+        ? [
+            { id: 'v-1', key: 'a', version: 1 },
+            { id: 'v-2', key: 'b', version: 1 },
+            { id: 'v-1', key: 'c', version: 1 }
+          ]
+        : [{ id: 'v-1', definition: { nodes: [] } }]
+    );
+    assert.deepEqual(await findRunGraphs(db, 'r-1'), [
+      { id: 'v-1', key: 'a', version: 1, definition: { nodes: [] } },
+      { id: 'v-2', key: 'b', version: 1, definition: null },
+      { id: 'v-1', key: 'c', version: 1, definition: { nodes: [] } }
+    ]);
+    assert.deepEqual(queries[1]?.parameters, ['v-1', 'v-2']);
     await db.destroy();
   });
 });

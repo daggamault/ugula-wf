@@ -35,7 +35,33 @@ describe('define helpers', () => {
       state: { i: 0 },
       outputs: {}
     });
-    assert.equal(suspend({ kind: 'timer', data: null }).type, 'suspend');
+    assert.deepEqual(suspend({ kind: 'timer', data: null }), {
+      type: 'suspend',
+      suspension: { kind: 'timer', data: null },
+      state: null,
+      outputs: {}
+    });
+  });
+
+  it('derives pins from config when given a function', () => {
+    const fan = pureNode<{ count: number }>({
+      type: 't.fan',
+      title: 'Fan',
+      category: 'T',
+      description: '',
+      version: 2,
+      inputs: [],
+      outputs: ({ count }) => Array.from({ length: count }, (_, i) => pin(`out${i}`, 'number')),
+      compute: () => ({})
+    });
+    const sig =
+      typeof fan.signature === 'function' ? fan.signature({ count: 2 }, { graph }) : fan.signature;
+    assert.deepEqual(
+      sig.outputs.map((p) => p.name),
+      ['out0', 'out1']
+    );
+    assert.equal(fan.version, 2);
+    assert.equal(fan.config, undefined);
   });
 
   it('creates pure and action nodes that read all inputs', async () => {
@@ -65,6 +91,7 @@ describe('define helpers', () => {
     const echo = actionNode({ ...options, compute: (inputs) => ({ sum: inputs.b ?? -1 }) });
     assert.deepEqual((await echo.run(invocation(actSig, { a: 4 }))).outputs, { sum: -1 });
   });
+
   it('infers typed inputs from pins and routes branch nodes through their exits', async () => {
     const pins = [
       pin('name', 'string'),
@@ -111,9 +138,11 @@ describe('define helpers', () => {
       pin: 'pass',
       outputs: { margin: 20 }
     });
-    assert.equal(
-      (await grade.run(invocation(sig, { score: 20, meta: { scale: 100 } }))).type,
-      'next'
-    );
+    assert.deepEqual(await grade.run(invocation(sig, { score: 20, meta: { scale: 100 } })), {
+      type: 'next',
+      pin: 'fail',
+      outputs: { margin: 30 }
+    });
+    assert.equal(grade.effect, undefined);
   });
 });

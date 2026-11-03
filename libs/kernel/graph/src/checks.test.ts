@@ -37,5 +37,11 @@ describe('checks', () => {
       () => checkExit('Sum', sig, { type: 'next', pin: 'else', outputs: {} }),
       /unknown exec output "else"/
     );
+    checkExit('Sum', sig, {
+      type: 'suspend',
+      suspension: { kind: 'timer', data: null },
+      state: null,
+      outputs: {}
+    });
   });
 });

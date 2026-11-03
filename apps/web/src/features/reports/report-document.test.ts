@@ -31,4 +31,23 @@ describe('ReportDocument', () => {
     assert.ok(html.includes('bg-white') && html.includes('text-black'));
     assert.ok(!/(primary|success|warning|danger|info)/.test(html));
   });
+
+  it('sets numbers in tabular figures and leaves the footer out without totals', () => {
+    const html = renderToStaticMarkup(
+      createElement(ReportDocument<{ name: string; n: number }>, {
+        title: 'Work Queue',
+        details: [],
+        columns: [
+          { label: 'Name', text: (r) => r.name, csv: (r) => r.name },
+          { label: 'Open', isNumeric: true, text: (r) => String(r.n), csv: (r) => r.n }
+        ],
+        rows: [{ name: 'Review', n: 3 }],
+        totals: {},
+        footer: null
+      })
+    );
+    assert.equal(html.match(/tabular-nums/g)?.length, 2);
+    assert.ok(html.includes('tabular-nums">3<') && !html.includes('tabular-nums">Review<'));
+    assert.ok(!html.includes('<tfoot>'));
+  });
 });

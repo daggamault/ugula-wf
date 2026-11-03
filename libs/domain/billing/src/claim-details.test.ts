@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { readClaimDetails, readCoverages, relationshipOf } from './claim-details.ts';
+import {
+  isOriginDestination,
+  readClaimDetails,
+  readCoverages,
+  relationshipOf
+} from './claim-details.ts';
 import { readDocumentation } from './documentation.ts';
 
 describe('readClaimDetails', () => {
@@ -40,6 +45,29 @@ describe('readClaimDetails', () => {
       }
     );
     assert.deepEqual(readClaimDetails(null).diagnoses, []);
+  });
+
+  it('keeps origin/destination modifiers, with X only as a destination', () => {
+    const modifier = (originDestination: unknown) =>
+      readClaimDetails({ originDestination }).originDestination;
+    assert.deepEqual([' rh ', 'SH', 'RX', 'NJ', 'XH', 'RZ', 'R', 'RHH', 7].map(modifier), [
+      'RH',
+      'SH',
+      'RX',
+      'NJ',
+      null,
+      null,
+      null,
+      null,
+      null
+    ]);
+    assert.ok(isOriginDestination('IH'));
+    assert.ok(!isOriginDestination('rh'));
+  });
+
+  it('caps diagnoses at the twelve an 837P carries', () => {
+    const codes = Array.from({ length: 14 }, (_, i) => `R${String(i + 10)}`);
+    assert.deepEqual(readClaimDetails({ diagnoses: codes }).diagnoses, codes.slice(0, 12));
   });
 });
 

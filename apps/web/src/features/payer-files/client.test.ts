@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { Api } from '../../shared/api.ts';
+import { type Api, createApi } from '../../shared/api.ts';
 import { createPayerFilesClient } from './client.ts';
 
 describe('payer files client', () => {
@@ -27,5 +27,17 @@ describe('payer files client', () => {
       ['upload', '/api/payer-files', 'era.835']
     ]);
     assert.equal(client.fileHref('f1'), 'https://app/api/payer-files/f1/file');
+  });
+});
+
+describe('payer files client errors', () => {
+  it('rejects uploads with the reason the server gives', async () => {
+    const client = createPayerFilesClient(
+      createApi('', async () => Response.json({ error: 'Not an X12 file' }, { status: 400 }))
+    );
+    await assert.rejects(client.upload(new File(['x'], 'a.txt')), {
+      message: 'Not an X12 file',
+      status: 400
+    });
   });
 });

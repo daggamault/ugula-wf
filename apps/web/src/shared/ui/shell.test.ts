@@ -49,6 +49,10 @@ describe('Shell', () => {
     assert.ok(html.includes('Online'));
     assert.ok(html.includes('aria-label="Sign Out"'));
     assert.ok(html.includes('aria-label="Open Menu"'));
+    const [, menu] = html.match(/aria-expanded="false" aria-controls="([^"]+)"/) ?? [];
+    assert.ok(menu && html.includes(`id="${menu}" inert=""`));
+    assert.equal(html.match(/aria-label="Switch to Dark Mode"/g)?.length, 2);
+    assert.ok(html.includes('>d</span>'));
     assert.ok(html.includes('<main'));
     assert.ok(html.includes('Workspace content'));
     assert.ok(html.includes('>7<span class="sr-only"> open</span>'));

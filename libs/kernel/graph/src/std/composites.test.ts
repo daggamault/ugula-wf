@@ -49,6 +49,8 @@ describe('std composites', () => {
 
   it('compute through their inner graphs', async () => {
     assert.equal(await evaluate('std.math.clamp', { value: 15, min: 0, max: 10 }), 10);
+    assert.equal(await evaluate('std.math.clamp', { value: -5, min: 0, max: 10 }), 0);
+    assert.equal(await evaluate('std.math.clamp', { value: 5, min: 0, max: 10 }), 5);
     assert.equal(await evaluate('std.math.average', { values: [2, 4, 9] }), 5);
     assert.match(String(await evaluate('std.math.average', { values: [] })), /division by zero/);
   });

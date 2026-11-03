@@ -165,3 +165,29 @@ describe('run input files', () => {
     assert.equal(codeOf(big), 'invalid');
   });
 });
+
+describe('run service tenant scoping', () => {
+  it('looks runs up in the caller tenant before cancelling or starting', async () => {
+    const { db, queries } = createRecordingDb();
+    const service = createRunService({ db, boss: recordingBoss().boss, blobs, maxBytes: 100 });
+    assert.equal(codeOf(await service.cancel('t-2', 'r1')), 'not_found');
+    assert.equal(codeOf(await service.start('t-2', 'g1', undefined, {})), 'not_found');
+    const [cancel, start] = queries.filter((q) => q.sql.startsWith('select'));
+    assert.deepEqual(cancel?.parameters, ['t-2', 'r1']);
+    assert.ok(start?.parameters.includes('t-2'));
+    assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
+  });
+
+  it('stores files without a type as binary', async () => {
+    const service = createRunService({
+      db: createRecordingDb().db,
+      boss: recordingBoss().boss,
+      blobs,
+      maxBytes: 4
+    });
+    assert.ok(
+      (await service.uploadFile('t-1', { name: 'a', type: '', bytes: new Uint8Array(1) })).ok
+    );
+    assert.match(stored.at(-1) ?? '', / application\/octet-stream 1$/);
+  });
+});

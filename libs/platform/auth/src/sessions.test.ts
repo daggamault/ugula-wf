@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createSessionStore, type RedisLike, readCookie } from './sessions.ts';
+import { createSessionStore, type RedisLike, readCookie, SESSION_TTL_SECONDS } from './sessions.ts';
 
 const createMemoryRedis = () => {
   const map = new Map<string, string>();
   const sets = new Map<string, Set<string>>();
+  const ttls = new Map<string, number>();
   const redis: RedisLike = {
-    set: async (k, v) => {
+    set: async (k, v, _mode, ttl) => {
       map.set(k, v);
+      ttls.set(k, ttl);
     },
     get: async (k) => map.get(k) ?? null,
     del: async (...keys) => {
@@ -23,9 +25,9 @@ const createMemoryRedis = () => {
       for (const m of members) sets.get(k)?.delete(m);
     },
     smembers: async (k) => [...(sets.get(k) ?? [])],
-    expire: async () => 1
+    expire: async (k, ttl) => ttls.set(k, ttl)
   };
-  return { redis, map, sets };
+  return { redis, map, sets, ttls };
 };
 
 const data = { userId: 'u-1', tenantId: 't-1', email: 'dev@example.com' };
@@ -39,9 +41,23 @@ describe('createSessionStore', () => {
     assert.ok(token.length >= 32);
     assert.deepEqual(await store.get(token), data);
 
+    assert.notEqual(await store.create(data), token);
+
     await store.destroy(token);
     assert.equal(await store.get(token), null);
-    assert.deepEqual([...(sets.get('user-sessions:u-1') ?? [])], []);
+    assert.equal(sets.get('user-sessions:u-1')?.has(token), false);
+    await store.destroy('missing');
+  });
+
+  it('expires sessions and the user index after the ttl', async () => {
+    const { redis, ttls } = createMemoryRedis();
+    const token = await createSessionStore(redis, 60).create(data);
+    assert.deepEqual(Object.fromEntries(ttls), {
+      [`session:${token}`]: 60,
+      'user-sessions:u-1': 60
+    });
+    const other = await createSessionStore(redis).create(data);
+    assert.equal(ttls.get(`session:${other}`), SESSION_TTL_SECONDS);
   });
 
   it('destroys every session of one user and leaves others alone', async () => {
@@ -65,6 +81,9 @@ describe('createSessionStore', () => {
     map.set('session:bad-json', '{not-json');
     assert.equal(await store.get('bad-json'), null);
 
+    map.set('session:bad-email', JSON.stringify({ ...data, email: 'nope' }));
+    assert.equal(await store.get('bad-email'), null);
+
     map.set('session:bad-schema', JSON.stringify({ userId: 'u-1' }));
     assert.equal(await store.get('bad-schema'), null);
     await store.destroy('bad-schema');
@@ -77,6 +96,8 @@ describe('readCookie', () => {
     assert.equal(readCookie('a=1; ugula_session=tok%3D; b=2', 'ugula_session'), 'tok=');
     assert.equal(readCookie(undefined, 'ugula_session'), undefined);
     assert.equal(readCookie('a=1', 'ugula_session'), undefined);
+    assert.equal(readCookie('ugula_session_x=1;ugula_session=a=b', 'ugula_session'), 'a=b');
+    assert.equal(readCookie('ugula_session=', 'ugula_session'), '');
     assert.equal(readCookie('ugula_session=%E0%A4%A', 'ugula_session'), undefined);
   });
 });

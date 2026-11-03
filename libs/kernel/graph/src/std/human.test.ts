@@ -64,6 +64,19 @@ describe('human task node', () => {
       () => resume({ outcome: 'approve', values: { reason: 1 } }),
       /expected string/
     );
+    assert.deepEqual((await resume({ outcome: 'approve', userId: 7 })).outputs, {
+      reason: null,
+      completedBy: null
+    });
+    await assert.rejects(
+      () => invokeNode(humanTaskNode, { event: { type: 'resume', payload: null }, config }),
+      /Unknown task outcome ""/
+    );
+  });
+
+  it('rejects tasks without unique identifier outcomes', async () => {
+    for (const outcomes of [[], ['ok', 'ok'], ['not ok']])
+      await assert.rejects(() => invokeNode(humanTaskNode, { config: { ...config, outcomes } }));
   });
 
   it('offers run-time options and validates the answer against them', async () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as v from 'valibot';
-import { createGraphSchema, definitionSchema, versionParam } from './schemas.ts';
+import { createGraphSchema, definitionSchema, searchGraphsQuery, versionParam } from './schemas.ts';
 import { templateFor } from './service.ts';
 
 describe('graph schemas', () => {
@@ -50,5 +50,20 @@ describe('graph schemas', () => {
         .success,
       false
     );
+  });
+});
+
+describe('graph search query', () => {
+  it('shows workflows by name by default and rejects unknown views and sorts', () => {
+    assert.deepEqual(v.parse(searchGraphsQuery, {}), {
+      show: 'workflows',
+      page: 1,
+      pageSize: 25,
+      sort: 'name',
+      dir: 'asc'
+    });
+    assert.equal(v.safeParse(searchGraphsQuery, { show: 'system' }).success, false);
+    assert.equal(v.safeParse(searchGraphsQuery, { sort: 'status' }).success, false);
+    assert.equal(v.safeParse(searchGraphsQuery, { page: '0' }).success, false);
   });
 });

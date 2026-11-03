@@ -39,7 +39,16 @@ describe('api createApp', () => {
       '/api/graphs',
       '/api/runs',
       '/api/tasks/queues',
-      '/api/imports'
+      '/api/imports',
+      '/api/fees',
+      '/api/payers',
+      '/api/patients?lastName=doe',
+      '/api/notifications',
+      '/api/billing-profile',
+      '/api/claims',
+      '/api/submissions',
+      '/api/reports/aging',
+      '/api/payer-files'
     ]) {
       assert.equal((await app.request(path)).status, 401, path);
     }
@@ -50,6 +59,12 @@ describe('api createApp', () => {
       body: JSON.stringify({ action: 'download', username: 'acme', virtual_path: '/a', status: 1 })
     });
     assert.deepEqual(await hook.json(), { ignored: true });
+    const forgedHook = await app.request('/api/imports/sftp/upload', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${'y'.repeat(32)}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'upload', username: 'acme', virtual_path: '/a', status: 1 })
+    });
+    assert.equal(forgedHook.status, 401);
   });
 
   it('refuses form-like and bodyless writes from other origins', async () => {

@@ -21,9 +21,12 @@ describe('SignInForm', () => {
       createElement(SignInForm, { auth: mockAuth, onSuccess: () => undefined })
     );
     assert.ok(html.includes('Sign In to Your Account'));
-    assert.ok(html.includes('type="email"'));
-    assert.ok(html.includes('type="password"'));
-    assert.ok(html.includes('type="submit"'));
+    assert.ok(html.includes('for="email"') && html.includes('>Email<'));
+    assert.ok(html.includes('for="password"') && html.includes('>Password<'));
+    assert.ok(html.includes('type="email"') && html.includes('autoComplete="email"'));
+    assert.ok(html.includes('type="password"') && html.includes('autoComplete="current-password"'));
+    assert.ok(html.includes('type="submit"') && html.includes('Sign In</span></button>'));
+    assert.ok(!html.includes('role="alert"'));
   });
 });
 
@@ -42,6 +45,10 @@ describe('signInErrorOf', () => {
     );
     assert.equal(
       signInErrorOf(limited({})),
+      'Too many sign-in attempts. Try again in a few minutes.'
+    );
+    assert.equal(
+      signInErrorOf(limited({ retryAfter: 'soon' })),
       'Too many sign-in attempts. Try again in a few minutes.'
     );
   });

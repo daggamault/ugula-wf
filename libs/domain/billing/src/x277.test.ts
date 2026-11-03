@@ -81,4 +81,31 @@ describe('read277', () => {
     );
     assert.equal(claims[3]?.message, '');
   });
+
+  it('accepts a claim the payer split on acceptance, and reads only 277 transactions', () => {
+    const [split] = read277(
+      file(
+        'ST*277*0001*005010X214',
+        'HL*1**20*1',
+        'HL*2*1*21*1',
+        'HL*3*2*19*1',
+        'HL*4*3*PT',
+        'TRN*2*1005',
+        'STC*A5:20*20261024*WQ*942.5',
+        'REF*1K*ICN555',
+        'SE*9*0001',
+        'ST*999*0002',
+        'AK1*HC*1',
+        'SE*3*0002'
+      )
+    );
+    assert.deepEqual(split, {
+      claimNumber: '1005',
+      status: 'accepted',
+      categories: ['A5'],
+      payerClaimNumber: 'ICN555',
+      message: 'Split claim'
+    });
+    assert.deepEqual(read277(file('ST*999*0001', 'AK1*HC*1', 'SE*3*0001')), []);
+  });
 });

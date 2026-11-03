@@ -36,3 +36,15 @@ describe('createImportsClient', () => {
     ]);
   });
 });
+
+describe('createImportsClient errors', () => {
+  it('rejects uploads with the reason the server gives', async () => {
+    const client = createImportsClient(
+      createApi('', async () => Response.json({ error: 'Not a NEMSIS file' }, { status: 422 }))
+    );
+    await assert.rejects(client.upload(new File(['x'], 'a.xml')), {
+      message: 'Not a NEMSIS file',
+      status: 422
+    });
+  });
+});

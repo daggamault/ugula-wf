@@ -7,7 +7,7 @@ const [readSignature] = documentationNodes(() => {
   throw new Error('no stores');
 });
 
-describe('billing.read-signature', () => {
+describe('documentationNodes', () => {
   it('reads the release-for-billing signature from report signature groups', async () => {
     if (!readSignature) throw new Error('missing node');
     const result = await invokeNode(readSignature, {
@@ -18,6 +18,14 @@ describe('billing.read-signature', () => {
     assert.deepEqual(result.outputs, {
       signature: 'exception',
       signatureNote: 'Not signed because the patient was unconscious'
+    });
+  });
+
+  it('reports a missing release when the report has no signatures', async () => {
+    if (!readSignature) throw new Error('missing node');
+    assert.deepEqual((await invokeNode(readSignature)).outputs, {
+      signature: 'missing',
+      signatureNote: 'The report has no signature for the release for billing'
     });
   });
 });

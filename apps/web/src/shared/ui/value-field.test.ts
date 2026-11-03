@@ -12,20 +12,29 @@ const render = (type: ValueType, value: Json) =>
 
 describe('ValueField', () => {
   it('picks a control that fits the value type', () => {
-    assert.ok(render('boolean', true).includes('type="checkbox"'));
-    assert.ok(render('integer', 3).includes('step="1"'));
-    assert.ok(render('number', null).includes('type="number"'));
+    const toggle = render('boolean', true);
+    assert.ok(toggle.includes('type="checkbox"') && toggle.includes('checked=""'));
+    assert.match(toggle, /<label for="f" class="[^"]*cursor-pointer[^"]*"><input id="f"/);
+    assert.ok(!render('boolean', null).includes('checked=""'));
+    const integer = render('integer', 3);
+    assert.ok(integer.includes('step="1"') && integer.includes('inputMode="numeric"'));
+    const number = render('number', null);
+    assert.ok(number.includes('type="number"') && number.includes('step="any"'));
+    assert.ok(number.includes('inputMode="decimal"') && number.includes('value=""'));
     assert.ok(render('string', 'abc').includes('value="abc"'));
-    assert.ok(render('datetime', '2026-01-02T03:04:00.000Z').includes('value="2026-01-02T03:04"'));
+    assert.ok(render('string', 3).includes('value=""'));
+    const when = render('datetime', '2026-01-02T03:04:00.000Z');
+    assert.ok(when.includes('value="2026-01-02T03:04"') && when.includes('>UTC</p>'));
     const json = render({ list: 'number' }, [1]);
-    assert.ok(json.includes('<textarea'));
-    assert.ok(json.includes('list&lt;number&gt;'));
+    assert.ok(json.includes('<textarea') && json.includes('font-mono'));
+    assert.ok(json.includes('list&lt;number&gt;') && json.includes('[\n  1\n]</textarea>'));
+    assert.ok(render({ list: 'number' }, null).includes('></textarea>'));
     const list = render({ list: 'string' }, ['R07.9', 'I10']);
     assert.ok(list.includes('R07.9\nI10</textarea>') && list.includes('One per line.'));
     const choice = renderToStaticMarkup(
       createElement(ValueField, {
         id: 'pin',
-        label: 'Continue from',
+        label: 'Continue From',
         type: 'string',
         value: 'failed',
         options: [
@@ -36,6 +45,8 @@ describe('ValueField', () => {
       })
     );
     assert.ok(choice.includes('<option value="failed" selected="">Failed</option>'));
+    assert.match(choice, /^<div[^>]*><label for="pin"[^>]*>Continue From<\/label>/);
+    assert.ok(choice.includes('<option value="">Choose…</option>'));
   });
 });
 

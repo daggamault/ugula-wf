@@ -762,6 +762,74 @@ describe('engine', () => {
     assert.equal(new Set(keys).size, 1);
   });
 
+  it('checkpoints after side effects and refuses to advance or repair the wrong run state', async () => {
+    const effect = actionNode({
+      type: 'test.effect',
+      title: 'Effect',
+      category: 'Test',
+      description: 'Has a side effect.',
+      effect: true,
+      inputs: [],
+      outputs: [],
+      compute: () => ({})
+    });
+    const def = graph(
+      { outputs: [pin('x', 'number')] },
+      [
+        n('log', 'std.var.set', { config: { name: 'v' }, inputs: { value: val(1) } }),
+        n('fx', 'test.effect'),
+        n('ret', RETURN_TYPE, { inputs: { x: { expr: 'v' } } })
+      ],
+      [
+        e('entry', 'exec', 'log', 'exec'),
+        e('log', 'then', 'fx', 'exec'),
+        e('fx', 'then', 'ret', 'exec')
+      ],
+      [{ name: 'v', type: 'number', default: 0 }]
+    );
+    const engine = setup({ 'test.main@1': def }, [effect]);
+    const state = engine.start({ type: 'test.main', version: 1 }, {}, { now });
+    const checkpoints: boolean[] = [];
+    while (state.status === 'running')
+      checkpoints.push((await engine.advance(state, cx)).checkpoint);
+    assert.deepEqual(checkpoints, [false, true, true]);
+    assert.deepEqual(state.result, { pin: null, outputs: { x: 1 } });
+    await assert.rejects(engine.advance(state, cx), /Run is completed/);
+    assert.throws(() => engine.retryFault(state), /Run is not faulted/);
+    assert.throws(() => engine.skipFault(state, null, {}), /Run is not faulted/);
+    assert.throws(() => engine.resume(state, '1', null), /not waiting on suspension 1/);
+
+    const endless = graph(
+      {},
+      [n('loop', 'std.flow.for-each', { inputs: { list: val([1, 2, 3]) } })],
+      [e('entry', 'exec', 'loop', 'exec')]
+    );
+    const long = setup({ 'test.main@1': endless });
+    await assert.rejects(
+      long.drain(long.start({ type: 'test.main', version: 1 }, {}, { now }), cx, 2),
+      /Run exceeded 2 steps/
+    );
+  });
+
+  it('faults on mistyped inputs and refuses bad skips', async () => {
+    const def = graph(
+      {},
+      [
+        n('set', 'std.var.set', { config: { name: 'v' }, inputs: { value: val('x') } }),
+        n('ret', RETURN_TYPE)
+      ],
+      [e('entry', 'exec', 'set', 'exec'), e('set', 'then', 'ret', 'exec')],
+      [{ name: 'v', type: 'number', default: 0 }]
+    );
+    const { engine, state } = await run(def);
+    assert.equal(state.fault?.error.message, 'Input "value" of "set": expected number, got string');
+    assert.throws(() => engine.skipFault(state, 'nope', {}), /"set" has no exec output "nope"/);
+    assert.throws(() => engine.skipFault(state, 'then', { x: 1 }), /unknown output "x"/);
+    engine.skipFault(state, 'then', {});
+    await engine.drain(state, cx);
+    assert.equal(state.status, 'completed');
+  });
+
   it('hands nodes the abort signal and stops advancing once it fires', async () => {
     const signals: (AbortSignal | undefined)[] = [];
     const probe = actionNode({

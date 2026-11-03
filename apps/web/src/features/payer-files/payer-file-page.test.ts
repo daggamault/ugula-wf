@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { PayerFileItems } from './payer-file-page.tsx';
+import { idleLive } from '../../shared/testing.ts';
+import type { PayerFilesClient } from './client.ts';
+import { PayerFileItems, PayerFilePage } from './payer-file-page.tsx';
 
 describe('payer file page', () => {
   it('shows each line with its claim, outcome, amounts and why', () => {
@@ -34,6 +36,22 @@ describe('payer file page', () => {
     );
     assert.ok(html.includes('#1001') && html.includes('Posted') && html.includes('$600.00'));
     assert.ok(html.includes('No Match') && html.includes('No claim has number 9999'));
-    assert.ok(html.includes('href="/claims/c1"'));
+    assert.ok(html.includes('href="/claims/c1" aria-label="Open claim 1001"'));
+    assert.equal(html.split('href="/claims/').length, 2);
+    assert.ok(html.includes('>9999<') && html.includes('tabular-nums'));
+    assert.ok(html.includes('>—<'));
+  });
+});
+
+describe('PayerFilePage', () => {
+  it('waits for the file before rendering', () => {
+    const client = {
+      find: () => new Promise(() => undefined),
+      fileHref: () => ''
+    } as unknown as PayerFilesClient;
+    const html = renderToStaticMarkup(
+      createElement(PayerFilePage, { client, live: idleLive, fileId: 'f1' })
+    );
+    assert.ok(html.includes('aria-label="Loading"'));
   });
 });

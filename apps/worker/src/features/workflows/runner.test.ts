@@ -253,6 +253,25 @@ describe('runner', () => {
     assert.match(JSON.stringify(broken.log.saves[0]?.error), /invalid input syntax/);
   });
 
+  it('hands a transient failure back in the status its command claimed it from', async () => {
+    const { store, row, log } = fakeStore({ ms: 1500 });
+    let down = false;
+    const flaky: EngineSource = async (run) => {
+      if (down) throw Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' });
+      return engines(run);
+    };
+    const runner = createRunner({ store, engines: flaky, now: () => now, publish });
+    await runner.process(job({ type: 'advance' }));
+    const resume = log.jobs.at(-1);
+    assert.ok(resume);
+    down = true;
+    await assert.rejects(() => runner.process(resume), /ETIMEDOUT/);
+    assert.deepEqual([log.released, row.status], [['suspended'], 'suspended']);
+    down = false;
+    await runner.process(resume);
+    assert.equal(row.status, 'completed');
+  });
+
   it('stops without writing when another worker took the lease', async () => {
     const stolen = fakeStore({ ms: 1 });
     stolen.store.transaction = async () => {

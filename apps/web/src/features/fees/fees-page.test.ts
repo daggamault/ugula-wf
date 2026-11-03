@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import { searchStateOf } from '../../shared/url-state.ts';
 import type { Fee, FeesClient } from './client.ts';
-import { FEE_TABLE, FeesPage, FeesTable, feeName } from './fees-page.tsx';
+import { FEE_TABLE, FeesPage, FeesTable, feeDeleteNote, feeName } from './fees-page.tsx';
 
 const fee = (over: Partial<Fee> = {}): Fee => ({
   id: 'f1',
@@ -50,5 +50,14 @@ describe('FeesPage', () => {
     assert.ok(html.includes('aria-label="Delete Medicare A0427"'));
     assert.ok(html.includes('>Edit</span>') && html.includes('>Delete</span>'));
     assert.equal(feeName(fee()), 'Default A0427');
+  });
+});
+
+describe('feeDeleteNote', () => {
+  it('says which price claims stop using', () => {
+    assert.equal(
+      feeDeleteNote(fee({ payer: 'Medicare', amount_cents: 50_050 })),
+      'Claims will no longer be priced with $500.50 for Medicare A0427.'
+    );
   });
 });

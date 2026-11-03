@@ -28,6 +28,18 @@ describe('PatientDetails', () => {
     assert.equal(addressOf(patient), '1 Main St, Erie, PA 16501');
   });
 
+  it('joins only the address parts on file', () => {
+    const none = { address_line: null, city: null, state: null, postal_code: null };
+    assert.equal(addressOf({ ...patient, ...none }), '');
+    assert.equal(addressOf({ ...patient, ...none, state: 'PA', postal_code: '16501' }), 'PA 16501');
+    assert.equal(addressOf({ ...patient, city: null }), '1 Main St, PA 16501');
+    assert.equal(addressOf({ ...patient, address_line: null, postal_code: null }), 'Erie, PA');
+    const html = renderToStaticMarkup(
+      createElement(PatientDetails, { patient: { ...patient, ...none } })
+    );
+    assert.match(html, /Address<\/dt><dd[^>]*>—<\/dd>/);
+  });
+
   it('shows an empty value for a blank or unknown sex', () => {
     for (const gender of ['', 'X']) {
       const html = renderToStaticMarkup(

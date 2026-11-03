@@ -7,6 +7,7 @@ import {
   findPayer,
   linkCoverages,
   listPayerNames,
+  saveEmbedding,
   searchPayers,
   upsertPayer
 } from './queries.ts';
@@ -24,6 +25,7 @@ describe('payer queries', () => {
         '(select coalesce(json_agg(agg), \'[]\') from (select "a"."id", "a"."alias" from "payer_aliases" as "a" where "a"."payer_id" = "p"."id" order by lower(a.alias)) as agg) as "aliases"'
       )
     );
+    assert.ok(list?.sql.includes('where "p"."tenant_id" = $1'));
     assert.ok(list?.sql.includes('order by lower(p.name) asc nulls last'));
     assert.deepEqual(list?.parameters, ['t-1', 25, 0]);
   });
@@ -63,6 +65,7 @@ describe('payer queries', () => {
     });
     assert.equal(await deletePayer(db, 't-1', 'p1'), false);
     const [upsert, remove] = queries;
+    assert.equal(upsert?.parameters[0], 't-1');
     assert.ok(upsert?.sql.includes('on conflict (tenant_id, lower(name)) do update set'));
     assert.ok(
       upsert?.sql.includes(
@@ -92,5 +95,15 @@ describe('payer queries', () => {
     );
     assert.ok(link?.sql.includes('"cc"."payer_id" is null'));
     assert.deepEqual(link?.parameters, ['p1', 't-1', 'medicare']);
+  });
+
+  it('saves an embedding only for an unembedded payer of the tenant', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await saveEmbedding(db, 't-1', 'p1', [0.5, -1]);
+    const [save] = queries;
+    assert.ok(save?.sql.startsWith('update "payers" set "embedding" = $1::vector'));
+    assert.ok(save?.sql.endsWith('where "id" = $2 and "tenant_id" = $3 and "embedding" is null'));
+    assert.deepEqual(save?.parameters, ['[0.5,-1]', 'p1', 't-1']);
+    await db.destroy();
   });
 });

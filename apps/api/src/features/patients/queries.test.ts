@@ -53,5 +53,23 @@ describe('patient city and claims sorts', () => {
       queries[0]?.sql.includes("order by lower(p.city || ' ' || coalesce(p.state, '')) asc")
     );
     assert.ok(queries[1]?.sql.includes('order by "claimed"."claim_count" desc'));
+    await db.destroy();
+  });
+
+  it('counts the total on a page past the end so pagers stay right', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('count(*) as "total"') ? [{ total: '3' }] : []
+    );
+    const page = await listPatients(db, 't-1', {
+      birthDate: '1980-01-02',
+      page: 4,
+      pageSize: 10,
+      sort: 'born',
+      dir: 'asc'
+    });
+    assert.deepEqual(page, { items: [], total: 3, page: 4, pageSize: 10 });
+    assert.deepEqual(queries[0]?.parameters, ['t-1', '1980-01-02', 10, 30]);
+    assert.ok(queries[1]?.sql.includes('"p"."tenant_id" = $1'));
+    await db.destroy();
   });
 });

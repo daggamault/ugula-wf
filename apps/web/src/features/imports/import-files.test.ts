@@ -46,3 +46,16 @@ describe('importFiles', () => {
     assert.deepEqual(toasts[0]?.action, { label: 'View Imports', to: '/imports' });
   });
 });
+
+describe('importFiles without files', () => {
+  it('uploads nothing and says nothing', async () => {
+    const toasts: ToastInput[] = [];
+    const received = await importFiles(
+      { upload: () => Promise.reject(new Error('unreachable')) },
+      (t) => toasts.push(t),
+      []
+    );
+    assert.equal(received, 0);
+    assert.deepEqual(toasts, []);
+  });
+});

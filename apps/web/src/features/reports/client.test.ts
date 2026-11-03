@@ -37,3 +37,18 @@ describe('createReportsClient', () => {
     ]);
   });
 });
+
+describe('createReportsClient errors', () => {
+  it('rejects with the server error and its status', async () => {
+    const client = createReportsClient(
+      createApi('http://api.test', async () =>
+        Response.json({ error: 'Unknown report' }, { status: 404 })
+      ),
+      () => 'UTC'
+    );
+    await assert.rejects(client.run('nope', { range: null, group: null }, 1), {
+      message: 'Unknown report',
+      status: 404
+    });
+  });
+});

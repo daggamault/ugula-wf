@@ -38,7 +38,11 @@ describe('flow nodes', () => {
       invoke(switchNode, { config: { cases: ['A', '2'] }, inputs: { value } });
     assert.equal(((await sw(2)) as { pin: string }).pin, '2');
     assert.equal(((await sw('Z')) as { pin: string }).pin, 'default');
-    await assert.rejects(() => invoke(switchNode, { config: { cases: ['a', 'a'] } }));
+    assert.equal(((await sw(null)) as { pin: string }).pin, 'default');
+    const { signature } = await invokeNode(switchNode, { config: { cases: ['A'] } });
+    assert.deepEqual(signature.execOut, ['A', 'default']);
+    for (const cases of [['a', 'a'], ['default'], [], ['']])
+      await assert.rejects(() => invoke(switchNode, { config: { cases } }));
   });
 
   it('drives sequences and loops through call/return', async () => {
@@ -48,6 +52,14 @@ describe('flow nodes', () => {
       state: { index: 0 },
       outputs: {}
     });
+    assert.deepEqual(
+      await invoke(sequenceNode, {
+        config: { count: 3 },
+        event: { type: 'return' },
+        state: { index: 0 }
+      }),
+      { type: 'call', pin: 'then1', state: { index: 1 }, outputs: {} }
+    );
     assert.equal(
       (
         (await invoke(sequenceNode, { event: { type: 'return' }, state: { index: 1 } })) as {
@@ -78,6 +90,10 @@ describe('flow nodes', () => {
       ((await invoke(forEachNode, { event: exec('break') })) as { pin: string }).pin,
       'completed'
     );
+    assert.equal(
+      ((await invoke(forEachNode, { inputs: { list: [] } })) as { pin: string }).pin,
+      'completed'
+    );
 
     await assert.rejects(
       () => invoke(forRangeNode, { inputs: { first: 0, last: 100_000 } }),
@@ -93,8 +109,36 @@ describe('flow nodes', () => {
       ).pin,
       'completed'
     );
+    assert.equal(
+      ((await invoke(forRangeNode, { inputs: { first: 3, last: 2 } })) as { pin: string }).pin,
+      'completed'
+    );
+    assert.equal((await invoke(forRangeNode, { inputs: { first: 0, last: 99_999 } })).type, 'call');
+    assert.equal(
+      ((await invoke(forRangeNode, { event: exec('break') })) as { pin: string }).pin,
+      'completed'
+    );
 
-    assert.equal((await invoke(whileNode, { inputs: { condition: true } })).type, 'call');
+    assert.deepEqual(await invoke(whileNode, { inputs: { condition: true } }), {
+      type: 'call',
+      pin: 'body',
+      state: { count: 1 },
+      outputs: { iteration: 0 }
+    });
+    assert.deepEqual(
+      (
+        await invoke(whileNode, {
+          inputs: { condition: true },
+          event: { type: 'return' },
+          state: { count: 1 }
+        })
+      ).outputs,
+      { iteration: 1 }
+    );
+    assert.equal(
+      ((await invoke(whileNode, { event: exec('break') })) as { pin: string }).pin,
+      'completed'
+    );
     assert.equal(
       ((await invoke(whileNode, { inputs: { condition: false } })) as { pin: string }).pin,
       'completed'
@@ -140,10 +184,19 @@ describe('flow nodes', () => {
       (await invoke(gateNode, { event: exec('toggle'), state: { open: false } })).outputs,
       { isOpen: true }
     );
+    const shut = await invoke(gateNode, { config: { startClosed: true }, event: exec('enter') });
+    assert.deepEqual([(shut as { pin: null }).pin, shut.outputs], [null, { isOpen: false }]);
+    const opened = await invoke(gateNode, { config: { startClosed: true }, event: exec('open') });
+    assert.deepEqual([opened.outputs, opened.state], [{ isOpen: true }, { open: true }]);
 
     const a = await invoke(flipFlopNode);
     const b = await invoke(flipFlopNode, { state: a.state ?? null });
-    assert.deepEqual([a.outputs.isA, b.outputs.isA], [true, false]);
+    const c = await invoke(flipFlopNode, { state: b.state ?? null });
+    assert.deepEqual(
+      [a, b, c].map((r) => (r as { pin: string }).pin),
+      ['a', 'b', 'a']
+    );
+    assert.deepEqual([a.outputs.isA, b.outputs.isA, c.outputs.isA], [true, false, true]);
   });
 
   it('catches and raises errors', async () => {
@@ -206,6 +259,11 @@ describe('flow nodes', () => {
       event: { type: 'resume', payload: { timedOut: true } }
     });
     assert.equal(late.type === 'next' && late.pin, 'timeout');
+    const empty = await invoke(waitSignalNode, { event: { type: 'resume', payload: null } });
+    assert.deepEqual(
+      [empty.type === 'next' && empty.pin, empty.outputs],
+      ['received', { payload: null }]
+    );
   });
 
   it('delegates child workflows to the host', async () => {
@@ -225,6 +283,18 @@ describe('flow nodes', () => {
         invoke(runWorkflowNode, { config, event: { type: 'resume', payload: { error: 'boom' } } }),
       /Child workflow failed: boom/
     );
+    await assert.rejects(
+      () => invoke(runWorkflowNode, { config, event: { type: 'resume', payload: null } }),
+      /Child workflow failed: no result/
+    );
+    const bare = await invoke(runWorkflowNode, { config });
+    assert.deepEqual(bare.type === 'suspend' && bare.suspension.data, {
+      type: 'billing.claim',
+      version: 2,
+      inputs: {}
+    });
+    await assert.rejects(() => invoke(runWorkflowNode, { config: { workflow: '', version: 1 } }));
+    await assert.rejects(() => invoke(runWorkflowNode, { config: { ...config, version: 0 } }));
 
     const detached = await invoke(startWorkflowNode, { config, inputs: { inputs: { id: 1 } } });
     assert.deepEqual(detached.type === 'suspend' && detached.suspension, {
@@ -274,6 +344,10 @@ describe('flow nodes', () => {
         }),
       /1 child workflow\(s\) failed: bad/
     );
+    assert.deepEqual(
+      (await invoke(mapWorkflowNode, { config, event: { type: 'resume', payload: null } })).outputs,
+      { results: [], runIds: [] }
+    );
 
     const spawn = await invoke(spawnWorkflowsNode, { config, inputs: { items: [{ id: 1 }] } });
     assert.deepEqual(spawn.type === 'suspend' && spawn.suspension, {
@@ -295,6 +369,10 @@ describe('flow nodes', () => {
           event: { type: 'resume', payload: { error: 'not published' } }
         }),
       /Could not start workflows: not published/
+    );
+    await assert.rejects(
+      () => invoke(spawnWorkflowsNode, { config, event: { type: 'resume', payload: {} } }),
+      /Could not start workflows: no runs/
     );
   });
 });

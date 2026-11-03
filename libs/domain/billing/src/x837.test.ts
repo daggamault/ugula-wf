@@ -220,6 +220,59 @@ describe('build837', () => {
     assert.ok(replaced.includes('REF*F8*PCN123'));
   });
 
+  it('voids an accepted claim with frequency 8 and the payer claim number', () => {
+    const voided = build({ ...mapped, frequency: '8', payerClaimNumber: 'PCN9' });
+    assert.ok(voided.some((s) => s.startsWith('CLM*c-1*942.5***41:B:8*Y*A*Y*Y')));
+    assert.ok(voided.includes('REF*F8*PCN9'));
+  });
+
+  it('writes 2300 references in implementation guide order, prior authorization first', () => {
+    const refs = build({
+      ...mapped,
+      frequency: '7',
+      payerClaimNumber: 'PCN123',
+      priorAuthorization: 'PA-77'
+    }).filter((s) => s.startsWith('REF*G1') || s.startsWith('REF*F8'));
+    assert.deepEqual(refs, ['REF*G1*PA-77', 'REF*F8*PCN123']);
+  });
+
+  it('reports whole loaded miles from 100 miles up, as CMS requires', () => {
+    assert.ok(build({ ...mapped, loadedMiles: 120.3 }).includes('CR1****A*DH*121'));
+  });
+
+  it('counts SE01 across a batch of self and dependent claims', () => {
+    const batch = build(
+      mapped,
+      { ...mapped, subscriber: { ...mapped.subscriber, relationship: '01', lastName: 'Doe' } },
+      mapped
+    );
+    const st = batch.findIndex((s) => s.startsWith('ST*'));
+    const se = batch.findIndex((s) => s.startsWith('SE*'));
+    assert.equal(batch[se], `SE*${se - st + 1}*0001`);
+    assert.deepEqual(
+      batch.filter((s) => s.startsWith('HL*')),
+      ['HL*1**20*1', 'HL*2*1*22*0', 'HL*3*1*22*1', 'HL*4*3*23*0', 'HL*5*1*22*0']
+    );
+    assert.equal(batch.filter((s) => s.startsWith('CLM*')).length, 3);
+  });
+
+  it('opens with the submitter, receiver and ambulance billing provider loops', () => {
+    const at = segs.findIndex((s) => s.startsWith('BHT*'));
+    assert.deepEqual(segs.slice(at, at + 11), [
+      'BHT*0019*00*000000042*20261023*1405*CH',
+      'NM1*41*2*METRO EMS*****46*SUB01',
+      'PER*IC*METRO EMS*TE*2175550100',
+      'NM1*40*2*DEMO CLEARINGHOUSE*****46*RCV01',
+      'HL*1**20*1',
+      'PRV*BI*PXC*3416L0300X',
+      'NM1*85*2*METRO EMS*****XX*1234567893',
+      'N3*1 MAIN ST',
+      'N4*SPRINGFIELD*IL*627011234',
+      'REF*EI*123456789',
+      'HL*2*1*22*0'
+    ]);
+  });
+
   it('refuses control numbers that do not fit the envelope', () => {
     assert.throws(
       () => build837(submitter, [mapped], { ...envelope, controlNumber: 1e9 }),
@@ -280,6 +333,66 @@ describe('readX837Claim', () => {
     });
     assert.equal(read.lines[0]?.units, 1.1);
     assert.equal(read.diagnoses.length, 12);
+  });
+
+  it('keeps four modifiers and five condition codes, and reports an unknown sex as U', () => {
+    const read = readX837Claim({
+      ...mapped,
+      patient: { ...mapped.patient, sex: ' ' },
+      conditionCodes: ['01', '04', '05', '06', '07', '09'],
+      lines: [{ ...base, modifiers: ['RH', 'GA', '', 'QM', 'GY', 'QN'] }],
+      weightPounds: 180.5
+    });
+    assert.deepEqual(read.lines[0]?.modifiers, ['RH', 'GA', 'QM', 'GY']);
+    assert.deepEqual(read.conditionCodes, ['01', '04', '05', '06', '07']);
+    assert.equal(read.patient.sex, 'U');
+    assert.equal(read.weightPounds, null);
+  });
+
+  it('needs complete prior payers and at most ten of them', () => {
+    const prior = {
+      name: 'Medicare',
+      payerId: 'DEMOMCR',
+      claimFiling: 'MB',
+      memberId: '1EG4TE5MK73',
+      relationship: '18',
+      paidCents: 100,
+      adjustedCents: 0,
+      paidOn: '2026-10-20',
+      adjustments: [
+        { group: 'CO', reason: '45', cents: 10 },
+        { group: 'XX', reason: '1', cents: 5 },
+        { group: 'PR', reason: '1', cents: 0 }
+      ]
+    };
+    const read = readX837Claim({ ...mapped, otherPayers: [prior] });
+    assert.deepEqual(read.otherPayers[0]?.adjustments, [{ group: 'CO', reason: '45', cents: 10 }]);
+    assert.equal(read.otherPayers[0]?.lastName, "O'Brien~*");
+    assert.throws(
+      () => readX837Claim({ ...mapped, otherPayers: [{ ...prior, paidCents: 1.5 }] }),
+      /amount other payer 1 paid in cents/
+    );
+    assert.throws(
+      () => readX837Claim({ ...mapped, otherPayers: [{ ...prior, paidOn: null }] }),
+      /date other payer 1 adjudicated it/
+    );
+    assert.throws(
+      () => readX837Claim({ ...mapped, otherPayers: Array.from({ length: 11 }, () => prior) }),
+      /at most 11 payers/
+    );
+  });
+
+  it('rejects lines without positive units or a date, and loaded miles that are not positive', () => {
+    assert.throws(
+      () => readX837Claim({ ...mapped, lines: [{ ...base, units: 0 }] }),
+      /units on service line 1/
+    );
+    assert.throws(
+      () => readX837Claim({ ...mapped, lines: [{ ...base, serviceDate: '' }] }),
+      /a date on service line 1/
+    );
+    assert.throws(() => readX837Claim({ ...mapped, loadedMiles: -2 }), /loaded miles/);
+    assert.equal(readX837Claim({ ...mapped, loadedMiles: null }).transportReason, null);
   });
 });
 

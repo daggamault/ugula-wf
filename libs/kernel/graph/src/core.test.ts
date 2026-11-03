@@ -56,5 +56,6 @@ describe('graph boundary nodes', () => {
   it('are never run directly', () => {
     assert.throws(() => entryNode.run({} as never), /executed by the engine/);
     assert.throws(() => inputNode.run({} as never), /executed by the engine/);
+    assert.throws(() => returnNode.run({} as never), /executed by the engine/);
   });
 });

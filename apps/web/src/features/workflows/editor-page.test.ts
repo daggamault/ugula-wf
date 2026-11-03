@@ -66,6 +66,17 @@ describe('EditorView', () => {
     assert.ok(html.includes('Add Node') && html.includes('Workflow Settings'));
     assert.ok(html.includes('Drag from one pin to another'));
     assert.ok(html.includes('href="/?panel=settings"') && !html.includes('<dialog open'));
+    assert.ok(html.includes('No changes to save.') && !html.includes('Save your changes first.'));
+    assert.ok(html.includes('aria-label="Version"'));
+    assert.ok(html.includes('<option value="2" selected="">v2 (Draft)</option>'));
+    assert.ok(html.includes('<option value="1">v1</option>'));
+  });
+
+  it('points published versions at the open draft instead of offering a new one', () => {
+    const html = render(detail('t-1', false), 1);
+    assert.ok(html.includes('Published v1') && !html.includes('Edit as New Draft'));
+    assert.ok(html.includes('Published versions are read-only. Open draft v2 to make changes.'));
+    assert.ok(!html.includes('>Save<'));
   });
 
   it('offers a new draft from published versions and locks system graphs', () => {

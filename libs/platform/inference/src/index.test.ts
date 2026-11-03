@@ -46,11 +46,12 @@ describe('createEmbedder', () => {
     const empty = fakeFetch(() => json([]));
     assert.deepEqual(await createEmbedder({ url: 'u', fetch: empty.fetch }).embed([]), []);
     assert.equal(empty.calls.length, 0);
-    const short = fakeFetch(() => json([]));
-    await assert.rejects(
-      createEmbedder({ url: 'u', fetch: short.fetch }).embed(['a']),
-      /malformed vectors/
-    );
+    for (const out of [[], [[]], [['1']], [[1], [2]], { vectors: [[1]] }]) {
+      await assert.rejects(
+        createEmbedder({ url: 'u', fetch: fakeFetch(() => json(out)).fetch }).embed(['a']),
+        /malformed vectors/
+      );
+    }
     const down = fakeFetch(() => new Response('overloaded', { status: 503 }));
     await assert.rejects(
       createEmbedder({ url: 'u', fetch: down.fetch }).embed(['a']),
@@ -71,8 +72,18 @@ describe('createCompleter', () => {
 
   it('asks for deterministic output constrained to the schema and parses it', async () => {
     const { fetch, calls } = fakeFetch(() => answer('{"ok":true}'));
-    const completer = createCompleter({ url: 'http://llm', model: 'm', fetch, limit: direct });
+    let limited = 0;
+    const completer = createCompleter({
+      url: 'http://llm',
+      model: 'm',
+      fetch,
+      limit: (task) => {
+        limited++;
+        return task();
+      }
+    });
     assert.deepEqual(await completer.complete(request), { ok: true });
+    assert.equal(limited, 1);
     assert.equal(calls[0]?.url, 'http://llm/v1/chat/completions');
     assert.deepEqual(calls[0]?.body, {
       model: 'm',
@@ -118,6 +129,10 @@ describe('createCompleter', () => {
     );
     await assert.rejects(
       run(() => json({ choices: [] })),
+      /returned no answer/
+    );
+    await assert.rejects(
+      run(() => json({ choices: [{ message: { content: null } }] })),
       /returned no answer/
     );
     await assert.rejects(

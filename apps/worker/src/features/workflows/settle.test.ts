@@ -296,6 +296,19 @@ describe('settleRun', () => {
       suspensionId: '7',
       payload: { error: 'Workflow x.y@2 is not published' }
     });
+    const unmapped = fakeTx();
+    await settleRun(
+      unmapped.tx,
+      run,
+      waiting('workflows', { type: 'x.y', version: 2, items: [{}] }),
+      []
+    );
+    assert.deepEqual(unmapped.calls.jobs[0]?.command, {
+      type: 'resume',
+      suspensionId: '7',
+      payload: { results: [{ error: 'Workflow x.y@2 is not published' }] }
+    });
+    assert.deepEqual(unmapped.calls.spawned, []);
   });
 
   it('spawns linked children and resumes the parent immediately with their ids', async () => {

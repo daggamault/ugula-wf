@@ -2,12 +2,17 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
 import {
+  claimExists,
   findClaim,
+  findEventDocument,
+  hasActiveRun,
   listClaimEvents,
+  listClaimFiles,
   listClaimPayerFiles,
   listClaims,
   numberOf,
-  reorderCoverages
+  reorderCoverages,
+  setCycleRun
 } from './queries.ts';
 
 describe('claim queries', () => {
@@ -241,22 +246,6 @@ describe('claim queries', () => {
       )
     );
   });
-});
-
-describe('claim status sort', () => {
-  it('orders statuses the way a claim moves through them', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    await listClaims(db, 't-1', {
-      status: 'all',
-      page: 1,
-      pageSize: 25,
-      sort: 'status',
-      dir: 'asc'
-    });
-    assert.ok(
-      queries[0]?.sql.includes("order by array_position(array['draft', 'needs_review', 'ready'")
-    );
-  });
 
   it('lists the payer files that touched a claim with only the lines for that claim', async () => {
     const { db, queries } = createRecordingDb(() => []);
@@ -273,5 +262,61 @@ describe('claim status sort', () => {
     await findClaim(db, 't1', 'c1');
     assert.ok(queries.some((q) => q.sql.includes('left join "imports" as "i"')));
     await db.destroy();
+  });
+
+  it('checks claims, documents and the claim found by id within the tenant only', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await findClaim(db, 't-1', 'c1');
+    assert.equal(await claimExists(db, 't-1', 'c1'), false);
+    assert.equal(await findEventDocument(db, 't-1', 'c1', 'e1'), null);
+    const [find, exists, document] = queries;
+    assert.ok(find?.sql.includes('"c"."tenant_id" = $'));
+    assert.ok(find?.parameters.includes('t-1') && find.parameters.includes('c1'));
+    assert.ok(exists?.sql.endsWith('where "id" = $1 and "tenant_id" = $2'));
+    assert.deepEqual(exists?.parameters, ['c1', 't-1']);
+    assert.ok(document?.sql.includes('"c"."tenant_id" = $3 and "e"."document" is not null'));
+    assert.deepEqual(document?.parameters, ['e1', 'c1', 't-1']);
+    await db.destroy();
+  });
+
+  it('finds active runs of a claim and links a new cycle run to it', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('from "claim_runs" as "cr"') ? [{ id: 'r1' }] : []
+    );
+    assert.equal(await hasActiveRun(db, 'c1'), true);
+    await setCycleRun(db, 'c1', 'r2');
+    const [active, link, cycle] = queries;
+    assert.ok(active?.sql.includes('"r"."status" in ('));
+    assert.equal(active?.parameters[0], 'c1');
+    assert.deepEqual(link?.parameters, ['r2', 'c1']);
+    assert.ok(cycle?.sql.startsWith('update "claims" set "cycle_run_id" = $1'));
+    assert.deepEqual(cycle?.parameters, ['r2', 'c1']);
+    await db.destroy();
+  });
+
+  it('lists the claim files that carry a batch or a document in order', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    assert.deepEqual(await listClaimFiles(db, 'c1'), []);
+    const [files] = queries;
+    assert.ok(files?.sql.includes('("e"."batch_id" is not null or "e"."document" is not null)'));
+    assert.ok(files?.sql.endsWith('order by "e"."created_at", "e"."id"'));
+    assert.deepEqual(files?.parameters, ['c1']);
+    await db.destroy();
+  });
+});
+
+describe('claim status sort', () => {
+  it('orders statuses the way a claim moves through them', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await listClaims(db, 't-1', {
+      status: 'all',
+      page: 1,
+      pageSize: 25,
+      sort: 'status',
+      dir: 'asc'
+    });
+    assert.ok(
+      queries[0]?.sql.includes("order by array_position(array['draft', 'needs_review', 'ready'")
+    );
   });
 });

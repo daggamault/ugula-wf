@@ -9,7 +9,8 @@ import {
   formatMiles,
   labelFromName,
   parseDollars,
-  titleCaseLabel
+  titleCaseLabel,
+  titleCaseWords
 } from './format.ts';
 
 describe('format', () => {
@@ -18,6 +19,8 @@ describe('format', () => {
     assert.ok(formatDateTime('2026-01-02T03:04:05Z').includes('2026'));
     assert.equal(formatDuration(0.2), '<1 ms');
     assert.equal(formatDuration(42.4), '42 ms');
+    assert.equal(formatDuration(999), '999 ms');
+    assert.equal(formatDuration(1000), '1.0 s');
     assert.equal(formatDuration(2500), '2.5 s');
     assert.equal(formatCents(114220), '$1,142.20');
     assert.equal(formatCents(0), '$0.00');
@@ -45,6 +48,7 @@ describe('formatAgo', () => {
     assert.equal(formatAgo('2026-10-23T11:55:00Z', now), '5 minutes ago');
     assert.equal(formatAgo('2026-10-23T09:30:00Z', now), '2 hours ago');
     assert.equal(formatAgo('2026-10-22T11:00:00Z', now), 'yesterday');
+    assert.equal(formatAgo('2026-10-20T11:00:00Z', now), '3 days ago');
     assert.equal(formatAgo(null, now), '—');
   });
 });
@@ -85,6 +89,13 @@ describe('titleCaseLabel edge cases', () => {
     assert.equal(titleCaseLabel('IV/IO doses in the narrative'), 'IV/IO Doses in the Narrative');
     assert.equal(titleCaseLabel('Birth date (YYYY-MM-DD)'), 'Birth Date (YYYY-MM-DD)');
     assert.equal(titleCaseLabel('Close as paid'), 'Close as Paid');
+  });
+});
+
+describe('titleCaseWords', () => {
+  it('title cases words of any case as one label', () => {
+    assert.equal(titleCaseWords(['SEND', 'to', 'Collections']), 'Send to Collections');
+    assert.equal(titleCaseWords(['npi', 'number']), 'NPI Number');
   });
 });
 

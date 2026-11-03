@@ -32,5 +32,10 @@ describe('models', () => {
       inputs: { person: { name: 'Ada', age: 36, x: 1 } }
     });
     assert.deepEqual(broken.outputs, { name: 'Ada', age: 36 });
+    assert.deepEqual((await invokeNode(breaker)).outputs, { name: null, age: null });
+    await assert.rejects(
+      invokeNode(maker, { inputs: { age: 1.5 } }),
+      /Input "Age" of "Make Person": expected integer/
+    );
   });
 });

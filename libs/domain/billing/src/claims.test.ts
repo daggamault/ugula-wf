@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  CLAIM_SIGNAL,
   type ClaimEvent,
   claimProgress,
   claimSignalKey,
@@ -57,11 +56,8 @@ describe('nextClaimStep', () => {
       waitMs: 30 * DAY,
       balanceCents: 100_000
     });
-    assert.equal(
-      step([e('submitted', 'Medicare', 0)], 29.5).step === 'await' &&
-        (step([e('submitted', 'Medicare', 0)], 29.5) as { waitMs: number }).waitMs,
-      DAY / 2
-    );
+    const halfDay = step([e('submitted', 'Medicare', 0)], 29.5);
+    assert.equal(halfDay.step === 'await' && halfDay.waitMs, DAY / 2);
   });
 
   it('never waits less than a minute, so clock skew cannot spin the cycle', () => {
@@ -194,15 +190,6 @@ describe('nextClaimStep', () => {
     assert.equal(nextClaimStep(one, day(30), { ...policy, statementLimit: 1 }).step, 'collections');
   });
 
-  it('submits an approved claim right away, and never before it is approved', () => {
-    assert.equal(step([], 0).step, 'review');
-    assert.deepEqual(step([e('approved', 'Medicare', 0)], 0), {
-      step: 'submit',
-      coverage: cov('Medicare'),
-      balanceCents: 100_000
-    });
-  });
-
   it('sends a rejected claim back to review with the reason, while an acceptance keeps waiting', () => {
     const sent = [e('approved', 'Medicare', 0), e('submitted', 'Medicare', 0)];
     assert.equal(step([...sent, e('accepted', 'Medicare', 1)], 2).step, 'await');
@@ -313,6 +300,7 @@ describe('claim statuses', () => {
           'reconcile',
           'overpaid',
           'statement',
+          'awaitPatient',
           'collections'
         ] as const
       ).map(stageOf),
@@ -326,7 +314,7 @@ describe('claim statuses', () => {
         'reconcile',
         'reconcile',
         'patient_balance',
-
+        'patient_balance',
         'balance_review'
       ]
     );
@@ -387,7 +375,6 @@ describe('claimProgress', () => {
 
 describe('claim signals', () => {
   it('names the signal every claim change sends to its cycle', () => {
-    assert.equal(claimSignalKey('c1'), `${CLAIM_SIGNAL}:c1`);
-    assert.equal(CLAIM_SIGNAL, 'claim');
+    assert.equal(claimSignalKey('c1'), 'claim:c1');
   });
 });

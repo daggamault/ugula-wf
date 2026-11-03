@@ -8,6 +8,8 @@ describe('notification queries', () => {
     const { db, queries } = createRecordingDb(() => []);
     await listNotifications(db, 't', 'u');
     const [list] = queries;
+    assert.ok(list?.sql.includes('on "s"."user_id" = $1'));
+    assert.ok(list?.sql.includes('where "n"."tenant_id" = $2'));
     assert.ok(list?.sql.includes('("n"."user_id" is null or "n"."user_id" = $'));
     assert.ok(list?.sql.includes('s.cleared_at is null or n.created_at > s.cleared_at'));
     assert.ok(list?.sql.includes('order by "n"."created_at" desc, "n"."id" desc limit $'));

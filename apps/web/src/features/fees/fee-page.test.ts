@@ -38,11 +38,14 @@ describe('toFeeInput', () => {
       toFeeInput({ payerId: '', code: 'A0427', amount: '-1' }),
       'Enter an amount of zero or more.'
     );
+    assert.equal(toFeeInput({ payerId: '', code: '  ', amount: '1' }), 'Enter a HCPCS code.');
     assert.deepEqual(toFeeDraft(fee({ payer_id: 'p-m' })), {
       payerId: 'p-m',
       code: 'A0427',
       amount: '950.00'
     });
+    assert.equal(toFeeDraft(fee({ amount_cents: 1555 })).amount, '15.55');
+    assert.deepEqual(toFeeDraft(null), { payerId: '', code: '', amount: '' });
   });
 });
 
@@ -100,5 +103,18 @@ describe('FeePage', () => {
       })
     );
     assert.ok(loading.includes('aria-label="Back to Fees"') && loading.includes('href="/fees"'));
+  });
+
+  it('adds a new fee without loading one or offering to delete it', () => {
+    const html = renderToStaticMarkup(
+      createElement(FeePage, {
+        live: idleLive,
+        client: { fee: pending, payers: pending } as unknown as FeesClient,
+        feeId: null,
+        back: '/fees'
+      })
+    );
+    assert.ok(html.includes('>Add Fee<') && html.includes('>Save Fee<'));
+    assert.ok(!html.includes('Delete Fee') && !html.includes('aria-label="Loading"'));
   });
 });

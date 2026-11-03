@@ -5,8 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { activeCount, type SearchField, SearchForm, searchHref } from './search-form.tsx';
 
 const fields: readonly SearchField[] = [
-  { name: 'lastName', label: 'Last name' },
-  { name: 'birthDate', label: 'Birth date', type: 'date' },
+  { name: 'lastName', label: 'Last Name' },
+  { name: 'birthDate', label: 'Birth Date', type: 'date' },
   {
     name: 'status',
     label: 'Status',
@@ -42,13 +42,18 @@ describe('SearchForm', () => {
   it('renders text, date and select fields, collapsible under a title', () => {
     const html = renderToStaticMarkup(
       createElement(SearchForm, {
-        label: 'Filter claims',
+        label: 'Filter Claims',
         path: '/claims',
         fields,
         collapsibleTitle: 'Filters'
       })
     );
     assert.ok(html.includes('aria-expanded="true"') && html.includes('>Filters'));
+    const [, panel] = html.match(/aria-controls="([^"]+)"/) ?? [];
+    assert.ok(panel && html.includes(`id="${panel}"`));
+    assert.ok(html.includes('<search aria-label="Filter Claims">'));
+    assert.ok(html.includes('type="submit"') && html.includes('Search</span>'));
+    assert.ok(!html.includes('Clear</span>') && !html.includes(' active</span>'));
     assert.ok(html.includes('type="date"') && html.includes('type="search"'));
     assert.ok(html.includes('@lg:grid-cols-2 @3xl:grid-cols-4') && !html.includes('w-44'));
     assert.ok(!html.includes('sr-only'));
@@ -65,6 +70,6 @@ describe('SearchForm', () => {
       createElement(SearchForm, { label: 'Search', path: '/runs', fields: fields.slice(0, 1) })
     );
     assert.ok(html.includes('sm:flex-row sm:items-end') && !html.includes('@container'));
-    assert.ok(html.includes('sr-only">Last name<'));
+    assert.ok(html.includes('sr-only">Last Name<'));
   });
 });

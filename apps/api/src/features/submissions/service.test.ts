@@ -28,15 +28,29 @@ const profile = {
 
 const claimRow = (id: string) => ({ id });
 
-const setup = ({ rows = [claimRow(C1)], withProfile = true } = {}) => {
-  const { db } = createRecordingDb((q: CompiledQuery) => {
-    if (q.sql.startsWith('update "billing_profiles"')) return [{ control_number: 7 }];
+const batch = {
+  document: { bucket: 'ugula', key: 't1/batches/837P-000000007.txt', contentType: 'text/plain' },
+  control_number: 7
+};
+
+const setup = ({ rows = [claimRow(C1)], withProfile = true, controlNumbers = true } = {}) => {
+  const { db, queries } = createRecordingDb((q: CompiledQuery) => {
+    if (q.sql.startsWith('update "billing_profiles"')) {
+      return controlNumbers ? [{ control_number: 7 }] : [];
+    }
+    if (q.sql.includes('from "claim_batches"')) return q.parameters.includes(C1) ? [batch] : [];
     if (q.sql.includes('from "billing_profiles"')) return withProfile ? [profile] : [];
     if (q.sql.includes('from "claims" as "c"')) return rows;
     return [];
   });
-  const blobs = { getBytes: async () => new TextEncoder().encode('ISA*') };
-  return { service: createSubmissionService({ db, blobs, now: () => now }) };
+  const fetched: unknown[] = [];
+  const blobs = {
+    getBytes: async (ref: unknown) => {
+      fetched.push(ref);
+      return new TextEncoder().encode('ISA*');
+    }
+  };
+  return { queries, fetched, service: createSubmissionService({ db, blobs, now: () => now }) };
 };
 
 describe('eligibility requests', () => {
@@ -117,5 +131,46 @@ describe('eligibility requests', () => {
     assert.equal(none.ok ? null : none.failure.code, 'not_found');
     const noProfile = await setup({ withProfile: false }).service.eligibility('t1', C1);
     assert.equal(noProfile.ok ? null : noProfile.failure.code, 'invalid');
+  });
+
+  it('refuses a claim no payer can be asked about and a tenant out of control numbers', async () => {
+    const unlisted = { ...row, coverages: row.coverages.slice(2) };
+    const nobody = await setup({ rows: [{ ...claimRow(C1), ...unlisted }] }).service.eligibility(
+      't1',
+      C1
+    );
+    assert.equal(nobody.ok ? null : nobody.failure.code, 'invalid');
+    assert.match(nobody.ok ? '' : nobody.failure.message, /member ID/);
+    const exhausted = await setup({
+      rows: [{ ...claimRow(C1), ...row }],
+      controlNumbers: false
+    }).service.eligibility('t1', C1);
+    assert.equal(exhausted.ok ? null : exhausted.failure.code, 'conflict');
+  });
+
+  it('looks up the claim, profile and control number of the tenant only', async () => {
+    const { service, queries } = setup({ rows: [{ ...claimRow(C1), ...row }] });
+    assert.ok((await service.eligibility('t1', C1)).ok);
+    assert.equal(queries.length, 3);
+    for (const q of queries) assert.ok(q.parameters.includes('t1'), q.sql);
+  });
+});
+
+describe('batch documents', () => {
+  it('downloads a tenant batch file named after its key, or reports it missing', async () => {
+    const { service, queries, fetched } = setup();
+    assert.deepEqual(await service.document('t1', C1), {
+      ok: true,
+      value: {
+        bytes: new TextEncoder().encode('ISA*'),
+        contentType: 'text/plain',
+        name: '837P-000000007.txt'
+      }
+    });
+    assert.deepEqual(fetched, [batch.document]);
+    assert.deepEqual(queries[0]?.parameters, ['t1', C1]);
+    const missing = await service.document('t1', C2);
+    assert.equal(missing.ok ? null : missing.failure.code, 'not_found');
+    assert.equal(fetched.length, 1);
   });
 });

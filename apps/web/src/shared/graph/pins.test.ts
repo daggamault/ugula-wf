@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { describeType, pinKindOf, toneOf } from './pins.ts';
+import { describeType, pinKindOf, pinLabel, toneOf } from './pins.ts';
 
 describe('pin tones', () => {
   it('classify value types and give each a distinct color', () => {
@@ -23,5 +23,13 @@ describe('describeType', () => {
       'Record With bucket, key'
     );
     assert.equal(describeType({ object: {} }), 'Record');
+  });
+});
+
+describe('pinLabel', () => {
+  it('title cases a given label and otherwise labels the pin from its name', () => {
+    assert.equal(pinLabel({ name: 'x', label: 'Patient date of birth' }), 'Patient Date of Birth');
+    assert.equal(pinLabel({ name: 'claimId' }), 'Claim ID');
+    assert.equal(pinLabel({ name: 'pcrNumber', label: '' }), 'PCR Number');
   });
 });

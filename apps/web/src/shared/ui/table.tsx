@@ -125,7 +125,7 @@ const MobileSort = ({
   const options = byColumn.some((o) => o.value === current)
     ? byColumn
     : [{ value: current, label: 'Default Order' }, ...byColumn];
-  return options.length ? (
+  return byColumn.length ? (
     <div className="flex items-center gap-2 md:hidden">
       <label htmlFor={id} className="text-surface-fg-muted shrink-0 text-sm font-medium">
         Sort By

@@ -24,6 +24,7 @@ type Pkg = {
   dir: string;
   may: readonly Layer[];
   deps: string[];
+  foreign: string[];
 };
 
 const root = resolve(import.meta.dirname, '..');
@@ -37,12 +38,18 @@ const load = (dir: string, may: readonly Layer[]): Pkg => {
   const json = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
     name: string;
     dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
   };
+  const all = { ...json.devDependencies, ...json.peerDependencies, ...json.dependencies };
   return {
     name: json.name,
     dir,
     may,
-    deps: Object.keys(json.dependencies ?? {}).filter((d) => d.startsWith('@ugula/'))
+    deps: Object.keys(json.dependencies ?? {}).filter((d) => d.startsWith('@ugula/')),
+    foreign: Object.entries(all)
+      .filter(([d, v]) => !d.startsWith('@ugula/') || v !== 'workspace:*')
+      .map(([d, v]) => `${d}@${v}`)
   };
 };
 
@@ -110,10 +117,15 @@ test('packages declare exactly the libs they import', () => {
   assert.deepEqual(bad, []);
 });
 
+test('workspace packages declare only libs, linked as workspace:*', () => {
+  const bad = [...libs, ...apps].flatMap((p) => p.foreign.map((d) => `${p.name} declares ${d}`));
+  assert.deepEqual(bad, []);
+});
+
 test('the root declares exactly the libs its scripts import', () => {
   const pkg = load(root, layers);
   const used = new Set(
-    ['.migrations', '.seeds', '.e2e'].flatMap((d) =>
+    ['.migrations', '.seeds', '.e2e', '.dev'].flatMap((d) =>
       (readdirSync(join(root, d), { recursive: true, encoding: 'utf8' }) as string[])
         .filter((f) => /\.tsx?$/.test(f))
         .flatMap((f) => specifiers(join(root, d, f)))

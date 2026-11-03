@@ -8,18 +8,29 @@ describe('Tabs', () => {
   it('renders linked pills, marking the current one and showing counts', () => {
     const html = renderToStaticMarkup(
       createElement(Tabs, {
-        label: 'Claim sections',
+        label: 'Claim Sections',
         tabs: [
           { label: 'Overview', href: '/claims/c1', isSelected: true },
           { label: 'History', href: '/claims/c1?tab=history', isSelected: false, count: 3 }
         ]
       })
     );
-    assert.ok(html.includes('aria-label="Claim sections"'));
+    assert.ok(html.includes('aria-label="Claim Sections"'));
     assert.match(html, /<a href="\/claims\/c1" aria-current="page"/);
     assert.equal(html.match(/aria-current/g)?.length, 1);
     assert.ok(html.includes('rounded-full') && html.includes('>3<'));
     assert.ok(html.includes('aria-[current=page]:bg-primary'));
     assert.ok(!html.includes('shadow'));
+    assert.ok(html.includes('cursor-pointer') && html.includes('tabular-nums'));
+  });
+
+  it('hides an empty count', () => {
+    const html = renderToStaticMarkup(
+      createElement(Tabs, {
+        label: 'Task Queues',
+        tabs: [{ label: 'Review', href: '/tasks', isSelected: true, count: 0 }]
+      })
+    );
+    assert.ok(html.includes('>Review</a>') && !html.includes('tabular-nums'));
   });
 });

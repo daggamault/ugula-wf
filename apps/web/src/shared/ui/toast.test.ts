@@ -35,7 +35,7 @@ describe('Toaster', () => {
             id: 2,
             intent: 'danger',
             title: 'Upload failed',
-            action: { label: 'Open imports', to: '/imports' }
+            action: { label: 'Open Imports', to: '/imports' }
           }
         ],
         onDismiss: () => undefined
@@ -44,8 +44,11 @@ describe('Toaster', () => {
     assert.ok(html.includes('aria-label="Notifications"'));
     assert.ok(html.includes('aria-live="polite"') && !/role="(alert|status)"/.test(html));
     assert.ok(html.includes('Next up: PCR-2'));
-    assert.ok(html.includes('href="/imports"'));
+    assert.ok(html.includes('href="/imports"') && html.includes('>Open Imports</a>'));
     assert.equal(html.match(/aria-label="Dismiss"/g)?.length, 2);
+    assert.ok(html.includes('lucide-circle-check') && html.includes('size-4 text-success'));
+    assert.ok(html.includes('lucide-circle-alert') && html.includes('size-4 text-danger'));
+    assert.ok(html.includes('rounded-xl') && html.includes('shadow-lg'));
   });
 
   it('renders an empty live region under its children from the provider', () => {

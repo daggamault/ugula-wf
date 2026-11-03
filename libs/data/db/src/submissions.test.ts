@@ -3,14 +3,17 @@ import { describe, it } from 'node:test';
 import type { ClaimCheck, ClaimEventKind } from '@ugula/billing';
 import {
   allocateControlNumber,
+  batchKey,
   detailsOf,
+  findProfile,
   findReadyClaim,
   insertBatch,
   insertSubmissionEvent,
   lockReadyClaim,
   markSubmitted,
   pendingClaim,
-  type ReadyClaimRow
+  type ReadyClaimRow,
+  toSubmitter
 } from './submissions.ts';
 import { createRecordingDb } from './testing.ts';
 
@@ -247,6 +250,8 @@ describe('pendingClaim', () => {
       ]
     );
     assert.deepEqual(waiting[0]?.issues, []);
+    assert.equal(waiting[0]?.totalCents, 92_300);
+    assert.equal(waiting[0]?.pcrNumber, 'PCR-1');
     assert.deepEqual(waiting[0]?.claim.payer, {
       name: 'Medicare',
       payerId: 'DEMOMCR',
@@ -322,6 +327,58 @@ describe('pendingClaim', () => {
         ]
       ]
     );
+  });
+});
+
+describe('pendingClaim payers', () => {
+  it('bills an unknown insured relationship as self', () => {
+    const relation = (relationship: string) =>
+      pending(claimRow(C1, { coverages: [{ ...medicare, relationship }] }), [
+        event(C1, 'approved', MEDICARE)
+      ])?.claim.payer.relationship;
+    assert.equal(relation('01'), '01');
+    assert.equal(relation('99'), '18');
+  });
+});
+
+describe('billing profile', () => {
+  it('reads the tenant profile as the 837P submitter', async () => {
+    const profile = {
+      organization_name: 'Metro EMS',
+      npi: '1234567893',
+      tax_id: '123456789',
+      address_line: '1 Main St',
+      city: 'Springfield',
+      state: 'IL',
+      postal_code: '62701',
+      phone: '2175550100',
+      submitter_id: 'S1',
+      receiver_id: null,
+      receiver_name: null,
+      production: true
+    };
+    const { db, queries } = createRecordingDb(() => [profile]);
+    const found = await findProfile(db, 't1');
+    assert.deepEqual(queries[0]?.parameters, ['t1']);
+    assert.deepEqual(found && toSubmitter(found), {
+      organizationName: 'Metro EMS',
+      npi: '1234567893',
+      taxId: '123456789',
+      addressLine: '1 Main St',
+      city: 'Springfield',
+      state: 'IL',
+      postalCode: '62701',
+      phone: '2175550100',
+      submitterId: 'S1',
+      receiverId: null,
+      receiverName: null,
+      production: true
+    });
+    await db.destroy();
+  });
+
+  it('stores each batch under its tenant with a zero-padded control number', () => {
+    assert.equal(batchKey('t1', 'b1', 42), 'batches/t1/b1/837P-000000042.txt');
   });
 });
 

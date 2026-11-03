@@ -29,7 +29,7 @@ const def: GraphDef = {
   ]
 };
 
-const render = (id: string, editable = true) =>
+const render = (id: string, editable = true, onOpen?: () => void) =>
   renderToStaticMarkup(
     createElement(NodeInspector, {
       def,
@@ -38,6 +38,7 @@ const render = (id: string, editable = true) =>
       editable,
       onChange: () => undefined,
       onDelete: () => undefined,
+      onOpen,
       onClose: () => undefined
     })
   );
@@ -62,6 +63,13 @@ describe('NodeInspector', () => {
     assert.ok(add.includes('Round'));
     assert.ok(add.includes('Needs a value: connect a pin on the canvas, or set one here.'));
     assert.ok(!add.includes('Retry on Failure'));
+    assert.ok(add.includes('<option value="value" selected="">A Fixed Value</option>'));
+    assert.ok(add.includes('>Fixed Value<') && add.includes('value="2"'));
+  });
+
+  it('offers to open the workflow a node starts only when it can be opened', () => {
+    assert.ok(!render('delay1').includes('Open Workflow'));
+    assert.ok(render('delay1', true, () => undefined).includes('Open Workflow'));
   });
 
   it('shows settings only for nodes that take them', () => {

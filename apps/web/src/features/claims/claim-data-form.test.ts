@@ -109,6 +109,33 @@ describe('claim data form', () => {
       DESTINATION_OPTIONS.some((o) => o.value === 'X'),
       true
     );
+    assert.ok(html.includes('Diagnosis Codes (ICD-10-CM)') && html.includes('ZIP Code'));
+    assert.ok(!html.includes('<fieldset disabled=""'));
+  });
+
+  it('disables every field and says why while the claim is locked', () => {
+    const html = renderToStaticMarkup(
+      createElement(ClaimDataForm, {
+        claim,
+        locked: 'This claim is closed.',
+        onSave: async () => true
+      })
+    );
+    assert.ok(html.includes('<fieldset disabled=""') && html.includes('This claim is closed.'));
+  });
+
+  it('ignores documentation values that are not a known code', () => {
+    const before = toDraft(claim);
+    assert.equal(
+      fromDraft({ ...before, signature: 'bogus', transportReason: 'Z' }, before).documentation,
+      null
+    );
+    assert.deepEqual(fromDraft({ ...before, pcsSignedOn: ' 2026-09-20 ' }, before).documentation, {
+      signature: null,
+      pcsOnFile: null,
+      pcsSignedOn: '2026-09-20',
+      transportReason: null
+    });
   });
 });
 

@@ -24,6 +24,9 @@ describe('value types', () => {
     assert.throws(() => parseType('money'), /Unknown type "money"/);
     assert.throws(() => parseType('list<number'), /Expected ">"/);
     assert.throws(() => parseType('number>'), /Unexpected/);
+    assert.deepEqual(parseType('object'), { object: {} });
+    assert.throws(() => parseType('object{a string}'), /Expected ":"/);
+    assert.throws(() => parseType('list<>'), /Expected a name/);
   });
 
   it('decides pin compatibility', () => {
@@ -35,6 +38,9 @@ describe('value types', () => {
     assert.equal(isAssignable({ list: 'string' }, 'string'), false);
     assert.equal(isAssignable({ object: {} }, { object: { id: 'string' } }), true);
     assert.equal(isAssignable({ object: { id: 'number' } }, { object: { id: 'string' } }), false);
+    assert.equal(isAssignable('number', 'integer'), true);
+    assert.equal(isAssignable({ list: 'string' }, 'any'), true);
+    assert.equal(isAssignable({ list: 'string' }, { object: {} }), false);
   });
 
   it('checks runtime values with paths in messages', () => {
@@ -48,6 +54,9 @@ describe('value types', () => {
       'id: expected string, got number'
     );
     assert.equal(checkValue('boolean', 'true'), 'expected boolean, got string');
+    assert.equal(checkValue({ list: 'number' }, { a: 1 }), 'expected list<number>, got object');
+    assert.equal(checkValue({ object: { id: 'string' } }, {}), null);
+    assert.equal(checkValue({ list: 'number' }, [1, null]), null);
   });
 
   it('rejects values that would change when saved as JSON', () => {

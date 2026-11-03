@@ -59,6 +59,25 @@ describe('auth routes', () => {
     assert.ok(anon.headers.get('set-cookie')?.includes('ugula_session=;'));
   });
 
+  it('sets an http-only, same-site session cookie that lives as long as the session', async () => {
+    const res = await post('/sign-in', { email: 'dev@example.com', password: 'P@ssw0rd123' });
+    const cookie = res.headers.get('set-cookie') ?? '';
+    assert.match(cookie, /HttpOnly/);
+    assert.match(cookie, /SameSite=Lax/);
+    assert.match(cookie, /Path=\//);
+    assert.match(cookie, /Max-Age=\d+/);
+    assert.doesNotMatch(cookie, /Secure/);
+  });
+
+  it('rejects malformed sign-ins before reaching the service', async () => {
+    const before = ips.length;
+    const res = await post('/sign-in', { email: 'not-an-email', password: '' });
+    assert.equal(res.status, 400);
+    assert.equal(typeof ((await res.json()) as { error: unknown }).error, 'string');
+    assert.equal((await post('/sign-in')).status, 400);
+    assert.equal(ips.length, before);
+  });
+
   it('answers throttled sign-ins with 429 and Retry-After', async () => {
     const res = await post('/sign-in', { email: 'dev@example.com', password: 'locked' });
     assert.equal(res.status, 429);

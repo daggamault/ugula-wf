@@ -52,6 +52,37 @@ describe('settings', () => {
     assert.ok(profile.includes('>Test Files<'));
     assert.ok(profile.includes('>Time Zone<') && profile.includes('pattern="\\d{5}-?\\d{4}"'));
     assert.ok(profile.includes('All 9 digits, like 62704-1234'));
+    assert.ok(profile.includes('aria-label="Billing profile"'));
+    assert.match(profile, /id="profile-npi"[^>]*required=""/);
+    assert.doesNotMatch(profile, /id="profile-submitterId"[^>]*required=""/);
+  });
+
+  it('prefills a saved profile and selects production files', () => {
+    const html = renderToStaticMarkup(
+      createElement(ProfileForm, {
+        profile: {
+          organization_name: 'Acme EMS',
+          npi: '1234567893',
+          tax_id: '123456789',
+          address_line: '1 Rd',
+          city: 'Springfield',
+          state: 'IL',
+          postal_code: '627041234',
+          phone: '2175550100',
+          submitter_id: null,
+          receiver_id: null,
+          receiver_name: null,
+          time_zone: 'America/Chicago',
+          production: true
+        },
+        onSave: async () => null
+      })
+    );
+    assert.ok(html.includes('value="Acme EMS"') && html.includes('value="627041234"'));
+    assert.ok(html.includes('<option value="P" selected="">Production Files</option>'));
+    assert.ok(
+      html.includes('<option value="America/Chicago" selected="">America/Chicago</option>')
+    );
   });
 });
 

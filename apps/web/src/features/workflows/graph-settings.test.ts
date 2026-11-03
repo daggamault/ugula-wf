@@ -17,10 +17,10 @@ const def: GraphDef = {
   edges: []
 };
 
-const render = (editable: boolean) =>
+const render = (editable: boolean, kind: 'workflow' | 'node' = 'workflow') =>
   renderToStaticMarkup(
     createElement(GraphSettings, {
-      kind: 'workflow',
+      kind,
       def,
       editable,
       onChange: () => undefined,
@@ -46,5 +46,12 @@ describe('GraphSettings', () => {
     const html = render(false);
     assert.ok(html.includes('<fieldset disabled'));
     assert.ok(!html.includes('Add Input') && !html.includes('Remove claim'));
+  });
+
+  it('titles the panel for subworkflows and labels its sections', () => {
+    const html = render(true, 'node');
+    assert.ok(html.includes('Subworkflow Settings</h2>') && html.includes('aria-labelledby='));
+    assert.ok(html.includes('for="exec-in"') && html.includes('value="exec"'));
+    assert.ok(html.includes('aria-label="Remove lines"') && html.includes('Add Variable'));
   });
 });

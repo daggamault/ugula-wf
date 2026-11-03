@@ -21,5 +21,7 @@ describe('Breadcrumbs', () => {
     assert.ok(html.includes('<button type="button"') && html.includes('Process PCR</button>'));
     assert.ok(html.includes('aria-current="page"') && html.includes('Resolve Payers</span>'));
     assert.equal(html.match(/<li/g)?.length, 3);
+    assert.equal(html.match(/cursor-pointer/g)?.length, 2);
+    assert.equal(html.match(/lucide-chevron-right/g)?.length, 2);
   });
 });

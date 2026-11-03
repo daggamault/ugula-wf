@@ -20,7 +20,6 @@ const REMITTANCE = file(
   'REF*TJ*123456789',
   'LX*1',
   'CLP*1001*1*942.5*612.35*153.09*MB*ICN111*41',
-  'CAS*CO*45*177.06',
   'NM1*QC*1*DOE*JANE****MI*1EG4TE5MK73',
   'DTM*232*20261001',
   'SVC*HC:A0427:RH*850*552.2**1',
@@ -32,11 +31,12 @@ const REMITTANCE = file(
   'CAS*CO*45*17.11**253*0.0',
   'CLP*1002*4*500*0*0*MB*ICN222',
   'CAS*CO*50*500',
-  'CLP*1003*22*942.5*-612.35*-153.09*MB*ICN111',
+  'CLP*1001*22*-942.5*-612.35*-153.09*MB*ICN111',
   'CAS*CO*45*-177.06',
+  'CAS*PR*1*-100**2*-53.09',
   'CAS*XX*1*5',
   'PLB*1234567893*20261231*WO:ICN999*25.5*L6:INTEREST*-1.25',
-  'SE*30*0001',
+  'SE*29*0001',
   'ST*835*0002',
   'BPR*H*0*C*NON************20261030',
   'TRN*1*NOPAY77*1512345678',
@@ -71,7 +71,6 @@ describe('read835', () => {
       patientCents: 15_309,
       payerClaimNumber: 'ICN111',
       adjustments: [
-        { group: 'CO', reason: '45', cents: 17_706 },
         { group: 'CO', reason: '45', cents: 15_995 },
         { group: 'PR', reason: '1', cents: 10_000 },
         { group: 'PR', reason: '2', cents: 3785 },
@@ -91,9 +90,87 @@ describe('read835', () => {
       [true, 0, [{ group: 'CO', reason: '50', cents: 50_000 }]]
     );
     assert.deepEqual(
-      [reversed?.reversal, reversed?.paidCents, reversed?.patientCents, reversed?.adjustments],
-      [true, -61_235, -15_309, [{ group: 'CO', reason: '45', cents: -17_706 }]]
+      [
+        reversed?.claimNumber,
+        reversed?.reversal,
+        reversed?.denied,
+        reversed?.chargeCents,
+        reversed?.paidCents,
+        reversed?.patientCents,
+        reversed?.adjustments
+      ],
+      [
+        '1001',
+        true,
+        false,
+        -94_250,
+        -61_235,
+        -15_309,
+        [
+          { group: 'CO', reason: '45', cents: -17_706 },
+          { group: 'PR', reason: '1', cents: -10_000 },
+          { group: 'PR', reason: '2', cents: -5309 }
+        ]
+      ]
     );
+  });
+
+  it('balances each claim: charge equals payment plus every adjustment', () => {
+    for (const c of medicare?.claims ?? []) {
+      const adjusted = c.adjustments.reduce((sum, a) => sum + a.cents, 0);
+      assert.equal(c.chargeCents, c.paidCents + adjusted, c.claimNumber);
+    }
+  });
+
+  it('nets every provider-level adjustment pair, interest included', () => {
+    const [plb] = read835(
+      file(
+        'ST*835*0001',
+        'BPR*I*0*C*NON************20261030',
+        'TRN*1*EFT1*1512345678',
+        'N1*PR*MEDICARE*XV*DEMOMCR',
+        'PLB*1234567893*20261231*WO:ICN1*10*WO:ICN2*20*FB:1*-5*L6*-0.5*72:A*1*90:B*2',
+        'PLB*1234567893*20261231*J1*0.25',
+        'SE*7*0001'
+      )
+    );
+    assert.equal(plb?.providerAdjustmentCents, 2775);
+    assert.deepEqual(plb?.claims, []);
+  });
+
+  it('ignores adjustments that come before any claim and reads the payer ID from REF*2U', () => {
+    const [r] = read835(
+      file(
+        'ST*835*0001',
+        'BPR*I*100*C*ACH*CCP*01*1*DA*1*1**01*1*DA*1*20261030',
+        'TRN*1*EFT2*1512345678',
+        'TRN*1*EFT3*1512345678',
+        'N1*PR*MEDICAID',
+        'REF*2U*MCD01',
+        'CAS*CO*45*1',
+        'LX*1',
+        'CLP* 77 *2*100*100*0*MC',
+        'REF*2U*IGNORED',
+        'SE*10*0001'
+      )
+    );
+    assert.deepEqual(
+      [r?.payerId, r?.checkNumber, r?.paidOn, r?.totalCents],
+      ['MCD01', 'EFT2', '2026-10-30', 10_000]
+    );
+    assert.deepEqual(r?.claims, [
+      {
+        claimNumber: '77',
+        status: '2',
+        chargeCents: 10_000,
+        paidCents: 10_000,
+        patientCents: 0,
+        payerClaimNumber: null,
+        adjustments: [],
+        denied: false,
+        reversal: false
+      }
+    ]);
   });
 
   it('reads nothing from files that carry no remittance', () => {

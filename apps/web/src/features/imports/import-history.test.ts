@@ -69,3 +69,29 @@ describe('ImportHistory', () => {
     assert.ok(html.includes('$1,142.20'));
   });
 });
+
+describe('ImportHistory placeholders', () => {
+  it('marks unread counts and files that need nothing, and names workflow-run sources', () => {
+    const html = renderToStaticMarkup(
+      createElement(ImportHistory, {
+        imports: [
+          summary({
+            source: 'manual',
+            report_count: null,
+            run_status: 'running',
+            uploaded_by_email: null,
+            waiting: 0,
+            failed: 0,
+            processing: 0
+          })
+        ]
+      })
+    );
+    assert.ok(html.includes('>—<') && html.includes('>Nothing<'));
+    assert.ok(html.includes('>Workflow run<'));
+    assert.deepEqual(reportOutcomes(summary({ stuck: 2, processing: 1, waiting: 0, failed: 0 })), [
+      '2 stuck',
+      '1 running'
+    ]);
+  });
+});

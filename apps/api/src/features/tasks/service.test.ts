@@ -201,3 +201,50 @@ describe('task service', () => {
     assert.equal((await service.queues('t', 'u1')).ok, true);
   });
 });
+
+describe('task service sources and hand-out', () => {
+  it('links a task to the claim and patient its run works', async () => {
+    const { db } = createRecordingDb((q) =>
+      q.sql.includes('from "workflow_runs"')
+        ? [
+            {
+              report_id: 'rep-1',
+              pcr_number: 'PCR-1',
+              claim_id: 'c1',
+              claim_number: 12,
+              claim_status: 'ready',
+              first_name: 'Jane',
+              last_name: 'Doe'
+            }
+          ]
+        : [task()]
+    );
+    const { announce } = recordAnnouncements();
+    const boss: RunQueueClient = { insert: async () => undefined };
+    const found = await createTaskService({ db, boss, announce }).find('t', 't1');
+    assert.deepEqual(found.ok && found.value.task.source, {
+      reportId: 'rep-1',
+      pcrNumber: 'PCR-1',
+      claim: { id: 'c1', number: 12, status: 'ready', patient: 'Doe, Jane' }
+    });
+  });
+
+  it('reports missing tasks and announces only tasks handed out', async () => {
+    const empty = setup(undefined, false);
+    assert.deepEqual(await empty.service.find('t', 't1'), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Task not found' }
+    });
+    assert.deepEqual(await empty.service.next('t', null, 'u1'), {
+      ok: true,
+      value: { task: null }
+    });
+    assert.deepEqual(empty.announced, []);
+    const full = setup(task());
+    const next = await full.service.next('t', null, 'u1');
+    assert.equal(next.ok && next.value.task?.id, 't1');
+    assert.deepEqual(full.announced, [
+      { tenantId: 't', event: { kind: 'task', id: 't1', runId: null } }
+    ]);
+  });
+});

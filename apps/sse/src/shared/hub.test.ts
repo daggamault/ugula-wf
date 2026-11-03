@@ -34,4 +34,17 @@ describe('createHub', () => {
     hub.broadcast('t-1', '2');
     assert.deepEqual(seen, ['slow:destroyed', 'fast:data: 1\n\n', 'fast:data: 2\n\n']);
   });
+
+  it('keeps a reconnected tenant when a stale client is removed twice', () => {
+    const hub = createHub();
+    const seen: string[] = [];
+    const client = recorder(seen);
+    const removeA = hub.add('t-1', client('a'));
+    removeA();
+    hub.add('t-1', client('b'));
+    removeA();
+    hub.broadcast('t-1', '1');
+    hub.broadcast('t-2', '2');
+    assert.deepEqual(seen, ['b:data: 1\n\n']);
+  });
 });

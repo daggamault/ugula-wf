@@ -38,5 +38,7 @@ describe('api parseConfig', () => {
     assert.equal(config.REDIS_PORT, 6379);
     assert.throws(() => parseConfig({}));
     assert.throws(() => parseConfig({ ...rawEnv, SFTP_HOOK_SECRET: 'short' }));
+    assert.throws(() => parseConfig({ ...rawEnv, API_PORT: 'http' }));
+    assert.throws(() => parseConfig({ ...rawEnv, SSE_URL: 'not a url' }));
   });
 });

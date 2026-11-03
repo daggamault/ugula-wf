@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ToastInput } from '../../shared/ui/toast.tsx';
 import type { PayerFilesClient } from './client.ts';
-import { fileStatus, kindOf, OUTCOME_STYLES, uploadPayerFiles } from './payer-files.ts';
+import { fileStatus, kindOf, uploadPayerFiles } from './payer-files.ts';
 
 describe('payer files', () => {
   it('names the kind and says how many lines need a biller', () => {
@@ -13,7 +13,6 @@ describe('payer files', () => {
     });
     assert.equal(fileStatus({ item_count: 3, problem_count: 0 }).label, 'All Applied');
     assert.equal(fileStatus({ item_count: 0, problem_count: 0 }).label, 'Nothing to Apply');
-    assert.equal(OUTCOME_STYLES.unmatched.intent, 'warning');
   });
 
   it('uploads each file and reports what it did, or why it failed', async () => {
@@ -37,5 +36,22 @@ describe('payer files', () => {
       ]
     );
     assert.deepEqual(toasts[0]?.action, { label: 'Open File', to: '/payer-files/f1' });
+  });
+});
+
+describe('uploadPayerFiles', () => {
+  it('confirms a file that applied cleanly', async () => {
+    const toasts: ToastInput[] = [];
+    const client = {
+      upload: async () => ({ id: 'f2', kind: '999', items: 2, problems: 0 })
+    } as unknown as Pick<PayerFilesClient, 'upload'>;
+    assert.equal(
+      await uploadPayerFiles(client, (t) => void toasts.push(t), [new File(['ISA'], 'ack.999')]),
+      1
+    );
+    assert.deepEqual(
+      toasts.map((t) => [t.intent, t.title, t.description]),
+      [['success', 'ack.999 applied', 'All 2 lines were applied to their claims.']]
+    );
   });
 });

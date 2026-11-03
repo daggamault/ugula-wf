@@ -1,6 +1,7 @@
 import { DownloadIcon } from 'lucide-react';
 import { formatCents, formatDateTime } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
+import { OUTCOME_STYLES } from '../../shared/payer-file-outcomes.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { buttonClasses } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
@@ -11,7 +12,7 @@ import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { PayerFileItem, PayerFilesClient } from './client.ts';
-import { fileStatus, kindOf, OUTCOME_STYLES } from './payer-files.ts';
+import { fileStatus, kindOf } from './payer-files.ts';
 
 const amount = (cents: number | null) => (cents === null ? emptyValue : formatCents(cents));
 

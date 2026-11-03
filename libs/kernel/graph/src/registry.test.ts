@@ -38,6 +38,23 @@ describe('registry', () => {
     assert.throws(() =>
       registry.config({ id: 'b', type: 'std.flow.sequence', version: 1, config: { count: 0 } })
     );
+    assert.throws(() => registry.config({ id: 'x', type: 'nope', version: 1 }), /Unknown node/);
+    assert.equal(registry.graph({ type: 'nope', version: 1 }), undefined);
+    assert.equal(registry.node({ type: 'std.math.add', version: 2 }), undefined);
+  });
+
+  it('asks each graph source in order until one knows the graph', () => {
+    const def = (label: string): GraphDef => ({
+      ...owner,
+      nodes: [{ id: label, type: 'x', version: 1 }]
+    });
+    const source = combineSources(
+      (ref) => (ref.type === 'a' ? def('first') : undefined),
+      (ref) => (ref.type === 'z' ? undefined : def('second'))
+    );
+    assert.equal(source({ type: 'a', version: 1 })?.nodes[0]?.id, 'first');
+    assert.equal(source({ type: 'b', version: 1 })?.nodes[0]?.id, 'second');
+    assert.equal(source({ type: 'z', version: 1 }), undefined);
   });
 
   it('rejects duplicate definitions', () => {

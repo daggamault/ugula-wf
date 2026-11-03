@@ -303,12 +303,14 @@ const RuleEditor = ({
           <div className="flex items-center gap-1">
             <IconButton
               label={`Move ${name} up`}
+              tooltip="Move Up"
               icon={ArrowUpIcon}
               disabledReason={index === 0 ? 'Already first.' : undefined}
               onClick={() => onMove(-1)}
             />
             <IconButton
               label={`Move ${name} down`}
+              tooltip="Move Down"
               icon={ArrowDownIcon}
               disabledReason={index === table.rules.length - 1 ? 'Already last.' : undefined}
               onClick={() => onMove(1)}

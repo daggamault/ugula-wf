@@ -80,4 +80,53 @@ describe('read999', () => {
     assert.deepEqual(group?.transactions[0]?.errors, ['Segment CLM at position 5: Error Q9']);
     assert.equal(group?.transactions[0]?.accepted, false);
   });
+
+  it('accepts a group accepted with errors, and rejects one only partly accepted', () => {
+    const ack = (ak9: string) =>
+      read999(
+        file(
+          'ST*999*0001*005010X231A1',
+          'AK1*HC*45*005010X222A1',
+          'AK2*837*0001*005010X222A1',
+          'IK3*REF*12**I4',
+          'IK4*2**I12',
+          'IK5*E*I5',
+          ak9,
+          'SE*8*0001'
+        )
+      )[0];
+    assert.deepEqual(ack('AK9*E*1*1*1'), {
+      groupControlNumber: '45',
+      accepted: true,
+      transactions: [
+        {
+          controlNumber: '0001',
+          accepted: true,
+          errors: [
+            'Segment REF at position 12: Segment the implementation does not use is present',
+            'Element 2: Implementation pattern match failure'
+          ]
+        }
+      ]
+    });
+    assert.equal(ack('AK9*P*2*2*1')?.accepted, false);
+  });
+
+  it('ignores errors outside a transaction and reads only 999 transactions', () => {
+    assert.deepEqual(
+      read999(
+        file(
+          'ST*999*0001*005010X231A1',
+          'AK1*HC*46',
+          'IK3*CLM*5**8',
+          'AK9*R*1*0*0',
+          'SE*5*0001',
+          'ST*277*0002',
+          'AK1*HC*47',
+          'SE*3*0002'
+        )
+      ),
+      [{ groupControlNumber: '46', accepted: false, transactions: [] }]
+    );
+  });
 });

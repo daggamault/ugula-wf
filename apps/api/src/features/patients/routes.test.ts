@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ok } from '../../shared/result.ts';
+import { fail, ok } from '../../shared/result.ts';
 import { withSession } from '../../shared/testing.ts';
 import { createPatientRoutes } from './routes.ts';
 import type { PatientService } from './service.ts';
@@ -45,5 +45,16 @@ describe('patient routes', () => {
       ],
       ['find', 't-1', ID]
     ]);
+  });
+});
+
+describe('patient route failures', () => {
+  it('answers 404 for patients the tenant does not have', async () => {
+    const missing = {
+      find: async () => fail('not_found', 'Patient not found')
+    } as unknown as PatientService;
+    const res = await withSession(createPatientRoutes(missing))(`/${ID}`);
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { error: 'Patient not found' });
   });
 });

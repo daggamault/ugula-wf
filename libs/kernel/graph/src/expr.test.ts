@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createEvaluator, evaluateExpr, freeIdentifiers, parseExpr } from './expr.ts';
+import { createEvaluator, evaluateExpr, exprProblem, freeIdentifiers, parseExpr } from './expr.ts';
 
 const ev = (src: string, vars = {}) =>
   evaluateExpr(src, vars, { now: new Date('2026-03-01T00:00:00Z') });
@@ -14,6 +14,11 @@ describe('expressions', () => {
     assert.equal(ev('x ?? 5', { x: null }), 5);
     assert.equal(ev('"n=" + 2 + true'), 'n=2true');
     assert.equal(ev('1.5e2 + .5'), 150.5);
+    assert.equal(ev('a?.5:1', { a: true }), 0.5);
+    assert.equal(ev('1 + a ? 2 : 3', { a: -1 }), 3);
+    assert.equal(ev('"b" > "a" && 2 >= 2 && 1 != 2'), true);
+    assert.equal(ev('[1, { a: 2 }] == [1, { a: 2 }]'), true);
+    assert.equal(ev('-x.n', { x: { n: 2 } }), -2);
   });
 
   it('reads members safely and builds literals', () => {
@@ -27,6 +32,9 @@ describe('expressions', () => {
     assert.deepEqual(ev('{ a: 1, "b c": [x, 2], x }', { x: 3 }), { a: 1, 'b c': [3, 2], x: 3 });
     assert.equal(ev("'it\\'s\\n'"), "it's\n");
     assert.throws(() => ev('claim.missing.deep', vars), /Cannot read "deep" of null/);
+    assert.equal(ev('claim.lines[5]', vars), null);
+    assert.throws(() => ev('claim.lines.code', vars), /Cannot read "code" of list/);
+    assert.throws(() => ev('claim["lines"][0][0]', vars), /Cannot read "0" of object/);
   });
 
   it('supports lambdas through list functions', () => {
@@ -45,6 +53,9 @@ describe('expressions', () => {
       '1C',
       '2A'
     ]);
+    assert.equal(ev('map([1, 2], x => map([10], y => x * y + k)[0])[1]', { k: 1 }), 21);
+    assert.equal(ev('map([1], () => 7)[0]'), 7);
+    assert.equal(ev('map([1], (x) => x)[0]'), 1);
   });
 
   it('rejects unsafe or invalid expressions', () => {
@@ -60,6 +71,13 @@ describe('expressions', () => {
     assert.throws(() => ev('1 / 0'), /Division by zero/);
     assert.throws(() => ev('"a" - 1'), /needs numbers/);
     assert.throws(() => ev('x => x'), /function cannot be used/);
+    assert.throws(() => ev('-"a"'), /Unary "-" needs a number/);
+    assert.throws(() => ev('1 < "2"'), /needs two numbers or two strings/);
+    assert.throws(() => ev('5 % 0'), /Division by zero/);
+    assert.throws(() => ev('constructor'), /Unknown name "constructor"/);
+    assert.throws(() => parseExpr('[1, 2'), /Expected "," at 5/);
+    assert.throws(() => parseExpr('(1'), /Expected "\)" at 2/);
+    assert.throws(() => parseExpr('1 2'), /Unexpected "2" at 2/);
     assert.throws(
       () => evaluateExpr('map(range(1000), i => i)', {}, { maxOps: 100 }),
       /evaluation budget/
@@ -108,5 +126,12 @@ describe('expressions', () => {
       'tax'
     ]);
     assert.deepEqual(freeIdentifiers('a.b + c["d"]'), ['a', 'c']);
+    assert.deepEqual(freeIdentifiers('{ x, y: 1 }'), ['x']);
+  });
+
+  it('describes why an expression cannot run', () => {
+    assert.equal(exprProblem('len(items) > 0'), null);
+    assert.equal(exprProblem('nope(1)'), 'Unknown function "nope"');
+    assert.equal(exprProblem('1 +'), 'Unexpected end of expression');
   });
 });

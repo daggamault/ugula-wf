@@ -20,10 +20,16 @@ describe('config primitives', () => {
     assert.throws(() => v.parse(nonEmpty, ''));
 
     assert.equal(v.parse(portInt, '5432'), 5432);
-    assert.throws(() => v.parse(portInt, '70000'));
+    assert.equal(v.parse(portInt, '1'), 1);
+    assert.equal(v.parse(portInt, '65535'), 65535);
+    for (const bad of ['', '0', '65536', '80.5', 'http']) {
+      assert.throws(() => v.parse(portInt, bad), bad);
+    }
 
     assert.equal(v.parse(posInt, '10'), 10);
-    assert.throws(() => v.parse(posInt, '0'));
+    for (const bad of ['', '0', '-1', '1.5', 'ten']) {
+      assert.throws(() => v.parse(posInt, bad), bad);
+    }
 
     assert.equal(v.parse(urlString, 'http://localhost:3000'), 'http://localhost:3000');
     assert.throws(() => v.parse(urlString, 'not-a-url'));
@@ -54,6 +60,8 @@ describe('config primitives', () => {
       REDIS_PASSWORD: 'secret'
     });
     assert.equal(redis.REDIS_PORT, 6379);
+    assert.throws(() => v.parse(dbSchema, { ...db, DB_PORT: '5432', DB_PASSWORD: '' }));
+    assert.throws(() => v.parse(redisSchema, { REDIS_HOST: 'localhost', REDIS_PORT: '6379' }));
 
     const s3 = v.parse(v.object(s3EnvEntries), {
       S3_ENDPOINT: 'http://localhost:9000',

@@ -126,6 +126,31 @@ describe('RunView', () => {
   it('hides cancel once a run is finished', () => {
     assert.ok(!render('completed').includes('Cancel Run'));
   });
+
+  it('flags stuck-point tasks, counts trimmed child runs and goes back to the list for top runs', () => {
+    const base = detail('suspended');
+    const { inputs, result, error, state, ...summary } = base.run;
+    const html = renderToStaticMarkup(
+      createElement(RunView, {
+        detail: {
+          ...base,
+          tasks: [{ ...(base.tasks[0] as RunDetail['tasks'][number]), kind: 'fault' }],
+          ancestors: [],
+          children: [{ ...summary, id: 'c1' }],
+          childCount: 40
+        },
+        nodes: testNodes,
+        graphs,
+        steps: [],
+        stack: [],
+        onCancel: async () => undefined
+      })
+    );
+    assert.ok(html.includes('Needs attention: '));
+    assert.ok(html.includes('The first 1 of 40 runs this run started.'));
+    assert.ok(html.includes('aria-label="Back to Runs"') && html.includes('href="/runs"'));
+    assert.ok(render('running').includes('Waiting on '));
+  });
 });
 
 describe('RunPage', () => {

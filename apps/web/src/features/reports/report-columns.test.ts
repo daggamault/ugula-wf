@@ -7,7 +7,8 @@ import type {
   MonthlyRow,
   PayerRow,
   PaymentRow,
-  WorkQueueRow
+  WorkQueueRow,
+  WriteOffRow
 } from './client.ts';
 import {
   adjustmentGroupLabel,
@@ -17,10 +18,12 @@ import {
   filingLabel,
   formatMonth,
   HCPCS_COLUMNS,
+  LEVEL_COLUMNS,
   MONTHLY_COLUMNS,
   PAYMENT_COLUMNS,
   payerColumns,
   totalsOf,
+  WRITE_OFF_COLUMNS,
   workQueueColumns
 } from './report-columns.ts';
 
@@ -218,7 +221,70 @@ describe('report columns', () => {
     assert.ok(!workQueueColumns('assignee').some((c) => c.label === 'Unassigned'));
   });
 
-  it('formats months', () => {
-    assert.match(formatMonth('2026-10'), /2026/);
+  it('leaves rates without a base blank on screen and in the CSV', () => {
+    const payer: PayerRow = {
+      name: null,
+      in_directory: true,
+      billed: 0,
+      charges_cents: 0,
+      paid_cents: 0,
+      adjusted_cents: 0,
+      responses: 3,
+      denials: 1,
+      paid_claims: 0,
+      pay_days: 0
+    };
+    const columns = payerColumns('payer');
+    const at = (label: string) => columns.find((c) => c.label === label);
+    assert.equal(at('Paid of Charges')?.text(payer, {}), '—');
+    assert.equal(at('Paid of Charges')?.csv(payer, {}), null);
+    assert.equal(at('Days to Pay')?.text(payer, {}), '—');
+    assert.equal(at('Denial Rate')?.csv(payer, {}), 33.3);
+    assert.equal(at('Denial Rate')?.text(payer, {}), '33%');
+    assert.equal(columns[0]?.text(payer, {}), 'Patient');
+  });
+
+  it('marks only number columns numeric so they line up in tabular figures', () => {
+    const columns = agingColumns('payer');
+    assert.deepEqual(
+      columns.map((c) => c.isNumeric ?? false),
+      [false, true, true, true, true, true, true, true]
+    );
+  });
+
+  it('names levels of service, write-off outcomes and unknown filing codes', () => {
+    assert.equal(
+      LEVEL_COLUMNS[0]?.text(
+        { level: 'ALS1', emergency: false, trips: 1, miles: 4, charges_cents: 0 },
+        {}
+      ),
+      'ALS1 Non-Emergency'
+    );
+    const closed: WriteOffRow = {
+      id: 'w1',
+      closed_at: '2026-10-21T15:00:00Z',
+      claim_number: 9,
+      pcr_number: 'P-9',
+      first_name: null,
+      last_name: 'Doe',
+      service_date: null,
+      outcome: 'collections',
+      charges_cents: 100_000,
+      paid_cents: 0,
+      adjusted_cents: 0,
+      balance_cents: 100_000
+    };
+    const shown = Object.fromEntries(WRITE_OFF_COLUMNS.map((c) => [c.label, c.text(closed, {})]));
+    assert.equal(shown.Outcome, 'Sent to Collections');
+    assert.equal(shown.Patient, 'Doe');
+    assert.equal(shown['Date of Service'], '—');
+    assert.equal(shown['Amount Closed'], '$1,000.00');
+    assert.equal(filingLabel('ZZ'), 'ZZ');
+  });
+
+  it('formats months by name and keeps the ISO month in the CSV', () => {
+    assert.equal(formatMonth('2026-10'), 'October 2026');
+    assert.equal(formatMonth('2026-01'), 'January 2026');
+    assert.equal(MONTHLY_COLUMNS[0]?.csv(monthly, {}), '2026-10');
   });
 });

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { RunQueueClient } from '@ugula/run-queue';
-import { signalRuns, startRun } from './runs.ts';
+import { resolveWorkflowVersion, signalRuns, startRun } from './runs.ts';
 import { createRecordingDb } from './testing.ts';
 
 describe('startRun', () => {
@@ -15,6 +15,8 @@ describe('startRun', () => {
     );
     assert.ok(queries[0]?.sql.startsWith('insert into "workflow_runs"'));
     assert.deepEqual(queries[0]?.parameters, ['t', 'v', 'running', '{"a":1}']);
+    assert.match(queries[1]?.sql ?? '', /insert into workflow_run_graphs/);
+    assert.ok(queries[1]?.parameters.includes('r1'));
     assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } } }]);
     await db.destroy();
   });
@@ -23,8 +25,13 @@ describe('startRun', () => {
 describe('signalRuns', () => {
   it('counts the signal before looking for waiters, so a run about to wait sees it', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    const boss: RunQueueClient = { insert: async () => undefined };
-    await signalRuns(db, boss, { tenantId: 't', name: 'claim', key: 'c1', payload: null });
+    let inserts = 0;
+    const boss: RunQueueClient = { insert: async () => void inserts++ };
+    assert.equal(
+      await signalRuns(db, boss, { tenantId: 't', name: 'claim', key: 'c1', payload: null }),
+      0
+    );
+    assert.equal(inserts, 0);
     assert.equal(
       queries[0]?.sql,
       'insert into "signals" ("tenant_id", "key", "received") values ($1, $2, $3) on conflict ("tenant_id", "key") do update set "received" = signals.received + 1, "updated_at" = now()'
@@ -54,6 +61,21 @@ describe('signalRuns', () => {
       runId: 'r2',
       command: { type: 'resume', suspensionId: '9', payload: { payload: { a: 1 } } }
     });
+    await db.destroy();
+  });
+});
+
+describe('resolveWorkflowVersion', () => {
+  it('picks the newest published active workflow, preferring the tenant copy', async () => {
+    const { db, queries } = createRecordingDb(() => [{ id: 'v2', version: 2 }]);
+    assert.deepEqual(await resolveWorkflowVersion(db, 't', 'billing.claim'), {
+      id: 'v2',
+      version: 2
+    });
+    assert.ok(
+      queries[0]?.sql.endsWith('order by g.tenant_id nulls last, "gv"."version" desc limit $5')
+    );
+    assert.deepEqual(queries[0]?.parameters, ['billing.claim', 'workflow', true, 't', 1]);
     await db.destroy();
   });
 });

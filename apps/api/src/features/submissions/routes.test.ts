@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ok } from '../../shared/result.ts';
+import { fail, ok } from '../../shared/result.ts';
 import { withSession } from '../../shared/testing.ts';
 import { createSubmissionRoutes } from './routes.ts';
 import type { SubmissionService } from './service.ts';
@@ -49,5 +49,39 @@ describe('submission routes', () => {
     assert.equal(res.headers.get('content-type'), 'application/edi-x12');
     assert.match(res.headers.get('content-disposition') ?? '', /attachment; filename="837P-/);
     assert.equal(await res.text(), 'ISA*00');
+  });
+});
+
+describe('submission route failures', () => {
+  const failing = withSession(
+    createSubmissionRoutes({
+      eligibility: async (_tenantId: string, claimId: string) =>
+        claimId === ID
+          ? fail('conflict', 'Batch control numbers are used up; contact support')
+          : fail('invalid', 'Add a billing profile in Settings', { issues: [] }),
+      document: async () => fail('not_found', 'Batch not found')
+    } as unknown as SubmissionService)
+  );
+
+  it('maps missing batches, invalid ids and refused requests to their statuses', async () => {
+    const missing = await failing(`/batches/${ID}/file`);
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), { error: 'Batch not found' });
+    assert.equal((await failing('/batches/nope/file')).status, 400);
+    const used = await failing('/eligibility', {
+      method: 'POST',
+      body: JSON.stringify({ claimId: ID })
+    });
+    assert.equal(used.status, 409);
+    const other = '01a16617-7704-7ba6-b9b5-9c79fa44f966';
+    const invalid = await failing('/eligibility', {
+      method: 'POST',
+      body: JSON.stringify({ claimId: other })
+    });
+    assert.equal(invalid.status, 422);
+    assert.deepEqual(await invalid.json(), {
+      error: 'Add a billing profile in Settings',
+      issues: []
+    });
   });
 });

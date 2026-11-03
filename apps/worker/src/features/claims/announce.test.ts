@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ClaimStore } from '@ugula/billing';
+import { memoryClaims } from '@ugula/billing/testing';
 import type { LiveEvent } from '@ugula/live';
 import { announceClaims } from './announce.ts';
 
@@ -68,6 +69,19 @@ describe('announceClaims', () => {
       payerClaimNumber: null
     });
     await claims.closeClaim('r1', 'c1', 'k', 'paid');
+    await claims.saveStatement('r1', 'c1', 'k', { number: 1, count: 3, pdf: new Uint8Array() });
+    assert.equal(
+      await claims.saveSubmission('r1', 'c1', 'k', {
+        coverageId: 'cov-1',
+        resubmission: false,
+        totalCents: 0,
+        production: false,
+        build: () => ''
+      }),
+      'stale'
+    );
+    assert.equal(await claims.sendClaimFile('r1', 'c1', 1), 'manual');
+    await claims.linkRun('r1', 'c1');
     assert.equal(await claims.ledger('r1', 'c1'), null);
     assert.equal(await claims.claimCheck('r1', 'c1'), null);
     assert.deepEqual(log, [
@@ -88,10 +102,32 @@ describe('announceClaims', () => {
       'event',
       'announce',
       'close',
-      'announce'
+      'announce',
+      'statement',
+      'announce',
+      'submission',
+      'announce',
+      'link'
     ]);
     assert.ok(
       announced.every(([runId, e]) => runId === 'r1' && e.kind === 'claim' && e.id === 'c1')
     );
+  });
+
+  it('announces nothing when the store refuses the change', async () => {
+    const { store } = memoryClaims();
+    let announced = 0;
+    const claims = announceClaims(
+      {
+        ...store,
+        closeClaim: async () => {
+          throw new Error('Claim c9 does not exist');
+        }
+      },
+      async () => void announced++
+    );
+    await assert.rejects(() => claims.closeClaim('r1', 'c9', 'k', 'paid'), /does not exist/);
+    await claims.openDraft('r1', 'k', { pcrNumber: null, reportKey: null, claimId: 'c7' });
+    assert.equal(announced, 1);
   });
 });

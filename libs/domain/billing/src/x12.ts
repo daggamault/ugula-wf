@@ -80,6 +80,7 @@ export const clean = (x: string | null | undefined, max = 60) =>
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max)
+    .trimEnd()
     .toUpperCase();
 
 const safe = (x: string) => x.replace(/[^\x20-\x7E]/g, '').replace(/[~*:^]/g, ' ');

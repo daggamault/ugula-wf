@@ -10,19 +10,10 @@ import {
   yyyymmdd
 } from './x12.ts';
 
-/**
- * Builders for the files a clearinghouse sends back (999, 277CA, 835, 271).
- * Test and local-mock use only: they produce what our readers accept, not every
- * shape real payers send.
- */
-
 export type MockOptions = {
-  /** ISA06 / GS02, the clearinghouse. */
   sender?: string;
-  /** ISA08 / GS03, the submitter the file goes back to. */
   receiver?: string;
   production?: boolean;
-  /** ISA13 and GS06; random when omitted. */
   controlNumber?: number;
   createdAt?: Date;
 };
@@ -103,34 +94,26 @@ const envelope = (
   return `${[`${isa}~`, ...segments.map(serialize)].join('\n')}\n`;
 };
 
-// 999
-
 export type Mock999Error = {
   segment: string;
   position: number;
   loop?: string;
-  /** IK304 segment syntax error code. */
   code: string;
-  /** IK4 element error, when the segment error is about one element. */
   element?: { position: string; code: string };
 };
 
 export type Mock999Transaction = {
-  /** The acknowledged ST02. */
   controlNumber: string;
   accepted: boolean;
   errors?: Mock999Error[];
 };
 
 export type Mock999 = {
-  /** The acknowledged GS06. */
   groupControlNumber: string;
-  /** AK101 / AK102 functional identifier and AK2 transaction set of the acknowledged group. */
   functionalId?: string;
   transactionSetId?: string;
   version?: string;
   transactions: Mock999Transaction[];
-  /** Overrides the group status worked out from the transactions. */
   accepted?: boolean;
 };
 
@@ -172,12 +155,9 @@ export const build999 = (ack: Mock999, o: MockOptions = {}) => {
   ]);
 };
 
-// 277CA
-
 export type Mock277Claim = {
   claimNumber: string;
   chargeCents?: number;
-  /** Null accepts the claim; any text rejects it with that message. */
   rejection: string | null;
   payerClaimNumber?: string | null;
   patient?: { lastName: string; firstName?: string | null };
@@ -238,8 +218,6 @@ export const build277 = (ack: Mock277, o: MockOptions = {}) => {
   ]);
 };
 
-// 835
-
 export type Mock835Claim = {
   claimNumber: string;
   chargeCents: number;
@@ -247,7 +225,6 @@ export type Mock835Claim = {
   patientCents?: number;
   payerClaimNumber?: string | null;
   claimFiling?: string;
-  /** Defaults to a CO-45 for whatever the payer and patient do not cover. */
   adjustments?: Adjustment[];
 };
 
@@ -271,7 +248,6 @@ const casOf = (adjustments: Adjustment[]): Segment[] =>
     ...items.slice(0, 6).flatMap((a) => [a.reason, mockDollars(a.cents), ''])
   ]);
 
-/** One 835 transaction per remittance (a real 835 carries one payer per transaction). */
 export const build835 = (remits: Mock835[], o: MockOptions = {}) => {
   const { date } = stamp(o);
   const control = o.controlNumber ?? randomControl();
@@ -326,8 +302,6 @@ export const build835 = (remits: Mock835[], o: MockOptions = {}) => {
   ]);
 };
 
-// 271
-
 export type Mock271 = {
   trace: string;
   active: boolean;
@@ -377,16 +351,10 @@ export const build271 = (e: Mock271, o: MockOptions = {}) => {
   ]);
 };
 
-// Mock clearinghouse: read an 837P and answer it.
-
 export type Mock837Claim = {
-  /** CLM01. */
   claimNumber: string;
-  /** CLM02. */
   chargeCents: number;
-  /** 2010BA NM1*IL member ID. */
   memberId: string | null;
-  /** First DTP*472 under the claim. */
   serviceDate: string | null;
   patient: { lastName: string; firstName: string | null };
   payer: Party | null;
@@ -394,15 +362,12 @@ export type Mock837Claim = {
 };
 
 export type Mock837 = {
-  /** ISA13. */
   interchangeControlNumber: string;
   sender: string;
   receiver: string;
   production: boolean;
-  /** GS06. */
   groupControlNumber: string;
   version: string;
-  /** ST02. */
   transactionControlNumber: string;
   submitter: Party | null;
   provider: Party | null;
@@ -433,7 +398,6 @@ const blankSubscriber = (): Subscriber => ({
   claimFiling: null
 });
 
-/** Reads what a clearinghouse needs from an 837P; throws when it is not one. */
 export const read837 = (text: string): Mock837 => {
   const file = readX12(text);
   const [isa = []] = file.segments;
@@ -502,13 +466,10 @@ export const MOCK_REJECTION = 'Invalid member ID';
 export const MOCK_PAID_SHARE = 0.8;
 
 export type MockResponse = {
-  /** Null when the file could not be read as an 837P. */
   inbound: Mock837 | null;
   error: string | null;
   ack999: string;
-  /** Null when the 837 was rejected as a whole. */
   ack277: string | null;
-  /** Null when no claim was accepted. */
   remit835: string | null;
   accepted: string[];
   rejected: string[];
@@ -564,11 +525,6 @@ export const mockPayerClaimNumber = (claimNumber: string) => `MOCK-${claimNumber
 const isRejected = (c: Mock837Claim) =>
   (c.memberId ?? '').toUpperCase().startsWith(MOCK_REJECT_PREFIX);
 
-/**
- * What the mock clearinghouse sends back for one 837P: a 999 for the group, a 277CA with one
- * status per claim (rejected when the member ID starts with REJECT) and an 835 paying 80% of
- * every accepted claim, the rest as a CO-45. Responses swap the 837's ISA sender and receiver.
- */
 export const respond = (text837: string, now: Date): MockResponse => {
   let inbound: Mock837;
   try {

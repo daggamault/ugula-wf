@@ -102,3 +102,28 @@ describe('run paths', () => {
     assert.deepEqual(parseAt(null), []);
   });
 });
+
+describe('run cursors', () => {
+  it('marks the faulted node as an error next to the node it waits on', () => {
+    const faulted = {
+      ...state,
+      fault: { cursor: cursor('s1', 'post'), error: { message: 'boom' } }
+    } as unknown as RunState;
+    assert.deepEqual(cursorsOf(faulted), [
+      { path: 'sub/', node: 'review', status: 'waiting' },
+      { path: '', node: 'post', status: 'error' }
+    ]);
+    assert.deepEqual(statusAt([], faulted, ''), { sub: 'waiting', post: 'error' });
+    const lost = { ...state, scopes: {} } as unknown as RunState;
+    assert.deepEqual(cursorsOf(lost), []);
+  });
+
+  it('keeps node ids intact through the query string', () => {
+    const href = runPath('r1', ['each payer', 'a&b']);
+    assert.equal(href, '/runs/r1?at=each%20payer/a%26b');
+    assert.deepEqual(parseAt(new URL(href, 'http://x').searchParams.get('at')), [
+      'each payer',
+      'a&b'
+    ]);
+  });
+});

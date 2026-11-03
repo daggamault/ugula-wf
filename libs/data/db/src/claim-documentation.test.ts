@@ -28,4 +28,21 @@ describe('claim documentation columns', () => {
     };
     assert.deepEqual(documentationOf(row), doc);
   });
+
+  it('reads missing weight and times as null', () => {
+    const doc = readDocumentation({ signature: 'signed' });
+    const row = {
+      ...documentationValues(doc),
+      weight_kg: null,
+      at_scene_at: null,
+      left_scene_at: null,
+      at_destination_at: null
+    };
+    const read = documentationOf(row);
+    assert.deepEqual(
+      [read.weightKg, read.atScene, read.leftScene, read.atDestination],
+      [null, null, null, null]
+    );
+    assert.deepEqual(read, doc);
+  });
 });

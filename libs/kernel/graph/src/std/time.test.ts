@@ -52,5 +52,17 @@ describe('time nodes', () => {
     assert.deepEqual(await diff('2026-03-15T00:00:00Z', '2026-03-15T02:30:00Z', 'hours'), {
       amount: 2
     });
+    assert.deepEqual(await diff('2025-03-15', '2026-03-15', 'years'), { amount: 1 });
+    assert.deepEqual(await diff('2026-03-15', '2024-03-16', 'years'), { amount: -1 });
+    assert.deepEqual(await diff('2026-01-15', '2026-02-14', 'months'), { amount: 0 });
+    assert.deepEqual(await diff('2026-03-15T10:00:00Z', '2026-03-13T11:00:00Z', 'days'), {
+      amount: -1
+    });
+    assert.deepEqual(await diff('2026-03-15T00:00:00Z', '2026-03-15T00:01:30Z', 'seconds'), {
+      amount: 90
+    });
+    assert.equal(await add('2026-03-15T00:00:00Z', -90, 'minutes'), '2026-03-14T22:30:00.000Z');
+    assert.equal(await add('2026-03-15T00:00:00Z', 1.5, 'days'), '2026-03-16T12:00:00.000Z');
+    await assert.rejects(() => add('2026-03-15T00:00:00Z', 1, 'weeks'));
   });
 });

@@ -23,12 +23,20 @@ const compile = async (id: string, group = '', page: number | 'all' = 1) => {
 };
 
 describe('report queries', () => {
-  it('runs every report for the tenant only', async () => {
+  it('runs every report and every part of a combined report for the tenant only', async () => {
+    const scoped = (sql: string) => sql.match(/"tenant_id" = \$\d+/g)?.length ?? 0;
+    const parts = (sql: string) => (sql.match(/union all/g)?.length ?? 0) + 1;
     for (const [id, report] of Object.entries(REPORTS)) {
       for (const group of report.groups ?? ['']) {
         const { rows, totals } = await compile(id, group);
-        assert.ok(rows.parameters.includes('t-1'), id);
-        assert.ok(totals.parameters.includes('t-1'), id);
+        for (const q of [rows, totals]) {
+          assert.equal(scoped(q.sql), parts(q.sql), `${id} ${group}`);
+          assert.equal(
+            q.parameters.filter((p) => p === 't-1').length,
+            parts(q.sql),
+            `${id} ${group}`
+          );
+        }
       }
     }
   });
@@ -133,6 +141,35 @@ describe('report queries', () => {
     const { rows } = await compile('imports');
     assert.ok(rows.sql.includes('c.id is null and exists'));
     assert.ok(rows.sql.includes('c.id is null and not exists'));
+    assert.ok(rows.sql.includes('o.tenant_id = i.tenant_id and o.pcr_number = ir.pcr_number'));
+    assert.ok(rows.sql.includes('"ch"."parent_id" = "i"."run_id"'));
+  });
+
+  it('ages claims not yet submitted from their service day with their oldest open task', async () => {
+    const { rows } = await compile('unbilled');
+    assert.ok(rows.sql.includes('"t"."status" = $'));
+    assert.ok(rows.sql.includes('order by "t"."created_at" limit $'));
+    assert.ok(rows.sql.includes('order by "r"."age_days" desc nulls last'));
+    for (const status of ['draft', 'needs_review', 'ready']) {
+      assert.ok(rows.parameters.includes(status), status);
+    }
+    assert.ok(!rows.parameters.includes('submitted'));
+  });
+
+  it('sums trips, miles and charges by level and emergency, leaving drafts and voids out', async () => {
+    const { rows, totals } = await compile('levels');
+    assert.ok(rows.sql.includes('group by "c"."level", "c"."emergency"'));
+    assert.ok(rows.parameters.includes('draft') && rows.parameters.includes('void'));
+    assert.ok(totals.sql.includes('"r"."miles"'));
+  });
+
+  it('credits completed tasks, submissions and postings to the user who did them', async () => {
+    const { rows } = await compile('productivity');
+    assert.ok(rows.sql.includes('"t"."completed_by" is not null'));
+    assert.ok(rows.sql.includes('"e"."created_by" is not null'));
+    assert.ok(rows.sql.includes('inner join "users" as "u" on "u"."id" = "f"."user_id"'));
+    assert.ok(rows.sql.includes('"t"."completed_at" >= ('));
+    assert.ok(rows.sql.includes('group by "u"."email"'));
   });
 
   it('finds reports by id only', () => {

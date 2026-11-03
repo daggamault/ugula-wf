@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ok } from '../../shared/result.ts';
+import { fail, ok } from '../../shared/result.ts';
 import { withSession } from '../../shared/testing.ts';
 import { createPayerRoutes } from './routes.ts';
 import type { PayerService } from './service.ts';
@@ -53,5 +53,23 @@ describe('payer routes', () => {
     });
     assert.equal(bad.status, 400);
     assert.equal((await request('/?sort=nope')).status, 400);
+  });
+});
+
+describe('payer route failures', () => {
+  it('maps payers and learned names the tenant does not have to 404', async () => {
+    const missing = withSession(
+      createPayerRoutes({
+        find: async () => fail('not_found', 'Payer not found'),
+        remove: async () => fail('not_found', 'Payer not found'),
+        forget: async () => fail('not_found', 'Payer name not found')
+      } as unknown as PayerService)
+    );
+    const found = await missing(`/${ID}`);
+    assert.equal(found.status, 404);
+    assert.deepEqual(await found.json(), { error: 'Payer not found' });
+    assert.equal((await missing(`/${ID}`, { method: 'DELETE' })).status, 404);
+    assert.equal((await missing(`/${ID}/aliases/${ID}`, { method: 'DELETE' })).status, 404);
+    assert.equal((await missing('/nope', { method: 'DELETE' })).status, 400);
   });
 });

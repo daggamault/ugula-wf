@@ -55,3 +55,28 @@ describe('task routes', () => {
     assert.equal((await request(`/${ID}`)).status, 200);
   });
 });
+
+describe('task route validation', () => {
+  it('reject bad ids, queues and outcomes before reaching the service', async () => {
+    const count = calls.length;
+    const bad = [
+      await request('/nope'),
+      await request('/nope/claim', { method: 'POST' }),
+      await request('/nope/release', { method: 'POST' }),
+      await request('/next', { method: 'POST', body: '{"queue":""}' }),
+      await request(`/${ID}/complete`, { method: 'POST', body: '{"outcome":""}' }),
+      await request(`/${ID}/complete`, { method: 'POST', body: '{}' }),
+      await request('/nope/complete', { method: 'POST', body: '{"outcome":"ok"}' })
+    ];
+    assert.deepEqual(
+      bad.map((r) => r.status),
+      bad.map(() => 400)
+    );
+    assert.equal(calls.length, count);
+  });
+
+  it('open a task in the session tenant', async () => {
+    await request(`/${ID}`);
+    assert.deepEqual(calls.at(-1), ['t-1', ID]);
+  });
+});

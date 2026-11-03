@@ -27,6 +27,18 @@ describe('web composition root', () => {
     assert.deepEqual(urls, ['http://api.test/api/graphs?show=workflows']);
   });
 
+  it('tells the session a request outside sign-in was refused', async () => {
+    const clients = createClients(
+      { apiUrl: 'http://api.test' },
+      async () => new Response('{"error":"Unauthorized"}', { status: 401 })
+    );
+    let expired = 0;
+    clients.auth.onExpired(() => expired++);
+    await assert.rejects(() => clients.workflows.search(''), /Unauthorized/);
+    assert.equal(await clients.auth.getMe(), null);
+    assert.equal(expired, 1);
+  });
+
   it('throws when the root element is missing', () => {
     assert.throws(
       () => mountApp(null, { apiUrl: 'http://localhost:3001' }),

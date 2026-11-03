@@ -63,4 +63,17 @@ describe('payerFileNodes', () => {
       /"file" of "Apply Payer File" is required/
     );
   });
+
+  it('refuses a file without a storage key or a name before applying anything', async () => {
+    const { node, calls } = applyWith({ status: 'duplicate', fileId: 'f0' });
+    await assert.rejects(
+      () => invokeNode(node, { inputs: { file: { bucket: 'ugula' }, fileName: 'a.835' } }),
+      /No payer file to apply/
+    );
+    await assert.rejects(
+      () => invokeNode(node, { inputs: { file, fileName: ' ' } }),
+      /No payer file name/
+    );
+    assert.deepEqual(calls, []);
+  });
 });

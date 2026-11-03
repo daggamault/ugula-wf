@@ -67,6 +67,48 @@ describe('Table', () => {
   });
 });
 
+describe('Table sorting on phones', () => {
+  it('offers no sort menu when no column sorts', () => {
+    const html = renderToStaticMarkup(
+      createElement(Table, {
+        label: 'Fees',
+        head: ['Code', 'Amount'],
+        sorting: {
+          sort: 'created',
+          dir: 'desc',
+          sortHref: (k) => `/fees?sort=${k}`,
+          sortTo: (k, d) => `/fees?sort=${k}&dir=${d}`
+        },
+        children: createElement(TableRow, null, createElement(TableCell, null, 'A0427'))
+      })
+    );
+    assert.ok(!html.includes('Sort By') && !html.includes('<select'));
+    assert.ok(!html.includes('href='));
+  });
+});
+
+describe('Table cells', () => {
+  it('marks compact and muted cells and right-aligns phone values beside their label', () => {
+    const html = renderToStaticMarkup(
+      createElement(Table, {
+        label: 'Claims',
+        head: ['Patient', { label: 'Due', isCompact: true }],
+        children: createElement(
+          TableRow,
+          null,
+          createElement(TableCell, null, 'Doe, Jane'),
+          createElement(TableCell, { kind: 'date', isMuted: true }, 'Today')
+        )
+      })
+    );
+    assert.ok(html.includes('w-px'));
+    assert.ok(html.includes('justify-between text-surface-fg-muted tabular-nums'));
+    assert.ok(html.includes('max-md:text-right'));
+    assert.ok(html.includes('md:px-4 md:py-3 md:align-middle'));
+    assert.ok(html.includes('rounded-xl') && !html.includes('shadow'));
+  });
+});
+
 describe('Table alignment', () => {
   it('left-aligns every column, numbers included, with the sort arrow after the label', () => {
     const html = render({

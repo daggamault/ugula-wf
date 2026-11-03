@@ -15,7 +15,8 @@ describe('DetailList', () => {
       )
     );
     assert.match(html, /<dl[^>]*><div[^>]*><dt[^>]*>Total<\/dt><dd/);
-    assert.ok(html.includes('text-xl'));
+    assert.ok(html.includes('text-xl font-bold tracking-tight tabular-nums">$10.00</dd>'));
+    assert.ok(html.includes('class="break-words text-sm">1958-04-12</dd>'));
     assert.ok(html.includes('1958-04-12'));
   });
 });

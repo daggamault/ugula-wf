@@ -10,5 +10,7 @@ describe('TextLink', () => {
     assert.ok(html.includes('href="/claims/c1"'));
     assert.ok(textLinkClasses.includes('text-primary'));
     assert.ok(textLinkClasses.includes('cursor-pointer'));
+    assert.ok(textLinkClasses.includes('focus-visible:outline-primary'));
+    assert.ok(html.includes('>Doe, Jane</a>'));
   });
 });

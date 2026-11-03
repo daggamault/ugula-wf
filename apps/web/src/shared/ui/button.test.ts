@@ -42,8 +42,12 @@ describe('Button', () => {
     );
     assert.ok(html.includes('aria-disabled="true"'));
     assert.ok(!html.includes('disabled=""'));
-    assert.ok(html.includes('No changes to save.'));
     assert.ok(html.includes('popover="manual"'));
+    const [, describedBy] = html.match(/aria-describedby="([^"]+)"/) ?? [];
+    assert.ok(
+      describedBy &&
+        html.includes(`<span id="${describedBy}" class="sr-only">No changes to save.</span>`)
+    );
   });
 
   it('skips the tooltip when nothing blocks it', () => {
@@ -54,7 +58,9 @@ describe('Button', () => {
     const html = renderToStaticMarkup(
       createElement(Button, { isPending: true, isBlock: true }, 'Go')
     );
-    assert.ok(html.includes('aria-busy="true"'));
+    assert.ok(html.includes('aria-busy="true"') && html.includes('aria-disabled="true"'));
+    assert.ok(html.includes('inline-flex items-center gap-2 opacity-0'));
+    assert.ok(!html.includes('aria-describedby=') && !html.includes('popover'));
     assert.ok(html.includes('w-full'));
   });
 

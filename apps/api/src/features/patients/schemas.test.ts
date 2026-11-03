@@ -18,3 +18,14 @@ describe('patient schemas', () => {
     assert.equal(v.safeParse(listPatientsQuery, { sort: 'balance' }).success, false);
   });
 });
+
+describe('patient search limits', () => {
+  it('rejects overly long names and unknown sorts and page sizes', () => {
+    const fails = (q: object) => !v.safeParse(listPatientsQuery, { lastName: 'doe', ...q }).success;
+    assert.ok(fails({ lastName: 'x'.repeat(61) }));
+    assert.ok(fails({ firstName: 'x'.repeat(61) }));
+    assert.ok(fails({ sort: 'payer' }));
+    assert.ok(fails({ pageSize: '30' }));
+    assert.ok(!fails({ firstName: 'Jane', sort: 'claims', dir: 'desc', pageSize: '50' }));
+  });
+});

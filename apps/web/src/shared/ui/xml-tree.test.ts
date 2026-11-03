@@ -10,7 +10,7 @@ const report = {
   eSituation: { 'eSituation.11': { '#text': 'R07.9', '@PN': '8801005' } }
 };
 
-const labelOf = (name: string) => ({ 'eRecord.01': 'PCR number', eVitals: 'Vitals' })[name] ?? null;
+const labelOf = (name: string) => ({ 'eRecord.01': 'PCR Number', eVitals: 'Vitals' })[name] ?? null;
 
 const MEANINGS: Record<string, string> = {
   'eSituation.11:R07.9': 'Chest pain',
@@ -33,7 +33,7 @@ describe('xmlNodes', () => {
     assert.deepEqual(root?.children[0]?.children[0], {
       path: '0.0.0',
       name: 'eRecord.01',
-      label: 'PCR number',
+      label: 'PCR Number',
       attributes: [],
       text: 'PCR-1',
       meaning: null,
@@ -75,7 +75,7 @@ describe('XmlTree', () => {
   it('renders a searchable, collapsible element tree', () => {
     const html = renderToStaticMarkup(
       createElement(XmlTree, {
-        label: 'Source report',
+        label: 'Source Report',
         rootName: 'PatientCareReport',
         value: report,
         labelOf,
@@ -84,8 +84,8 @@ describe('XmlTree', () => {
     );
     assert.ok(html.includes('Chest pain'));
     assert.ok(html.includes('(Exam Finding Not Present)'));
-    assert.ok(html.includes('>Search Source report</label>') && html.includes('type="search"'));
-    assert.ok(html.includes('PCR number'));
+    assert.ok(html.includes('>Search Source Report</label>') && html.includes('type="search"'));
+    assert.ok(html.includes('PCR Number'));
     assert.ok(html.includes('PN=&quot;8801005&quot;'));
     assert.equal(html.match(/<details open=""/g)?.length, 4);
     assert.equal(html.match(/<details class=/g)?.length, 2);

@@ -119,7 +119,6 @@ const casePart = (part: string, minor: boolean) => {
   return lead + cased + trail;
 };
 
-/** Title cases a sentence case label, keeping acronyms and mixed case words like eRecord.01. */
 export const titleCaseLabel = (label: string) =>
   label
     .split(' ')
@@ -136,7 +135,6 @@ export const titleCaseWords = (words: readonly string[]) =>
 
 const UNIT_SUFFIX = new Set(['cents', 'ms', 'kg']);
 
-/** Turns an identifier like payerNotes, pcr_number or timeoutMs into a Title Case label. */
 export const labelFromName = (name: string) => {
   const words = name
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')

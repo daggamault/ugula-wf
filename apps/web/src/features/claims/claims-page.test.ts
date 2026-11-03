@@ -3,7 +3,13 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
-import { CLAIM_SEARCH_FIELDS, ClaimsPage, ClaimsTable, claimNumber } from './claims-page.tsx';
+import {
+  assigneeOf,
+  CLAIM_SEARCH_FIELDS,
+  ClaimsPage,
+  ClaimsTable,
+  claimNumber
+} from './claims-page.tsx';
 import type { ClaimSummary, ClaimsClient } from './client.ts';
 
 const claim: ClaimSummary = {
@@ -84,6 +90,12 @@ describe('ClaimsTable', () => {
 
   it('numbers claims and patients with a #', () => {
     assert.equal(claimNumber(7), '#7');
+  });
+
+  it('names the assignee from the signed in user point of view', () => {
+    assert.equal(assigneeOf('me@example.com', 'me@example.com'), 'You');
+    assert.equal(assigneeOf('sam@example.com', 'me@example.com'), 'sam@example.com');
+    assert.equal(assigneeOf(null, 'me@example.com'), 'Unassigned');
   });
 });
 

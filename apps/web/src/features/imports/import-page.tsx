@@ -6,7 +6,7 @@ import { Badge, type StatusBadgeStyle } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
-import { OpenLink } from '../../shared/ui/icon-button.tsx';
+import { OpenLink, WorkLink } from '../../shared/ui/icon-button.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
@@ -23,12 +23,16 @@ type ImportPageProps = {
   back?: string;
 };
 
-type ReportOutcome = StatusBadgeStyle & { link: { name: string; to: string } | null };
+type ReportOutcome = StatusBadgeStyle & {
+  link: { kind: 'claim' | 'task'; name: string; to: string } | null;
+};
 
 const pcrOf = (r: ImportReport) => r.pcr_number ?? `PCR #${r.position + 1}`;
 
 const claimLink = (r: ImportReport) =>
-  r.claim_id ? { name: `claim for ${pcrOf(r)}`, to: `/claims/${r.claim_id}` } : null;
+  r.claim_id
+    ? { kind: 'claim' as const, name: `claim for ${pcrOf(r)}`, to: `/claims/${r.claim_id}` }
+    : null;
 
 export const reportOutcome = (r: ImportReport): ReportOutcome => {
   if (r.task_id) {
@@ -36,6 +40,7 @@ export const reportOutcome = (r: ImportReport): ReportOutcome => {
       intent: r.task_kind === 'fault' ? 'danger' : 'warning',
       label: r.task_kind === 'fault' ? 'Stuck' : 'Waiting',
       link: claimLink(r) ?? {
+        kind: 'task',
         name: `task ${r.task_subject ?? r.task_title ?? pcrOf(r)}`,
         to: `/tasks/${r.task_id}`
       }
@@ -60,7 +65,7 @@ export const reportOutcome = (r: ImportReport): ReportOutcome => {
 };
 
 export const patientOf = (r: ImportReport) =>
-  r.last_name ? `${r.last_name}, ${r.first_name ?? ''}` : (r.task_subject ?? null);
+  r.last_name ? [r.last_name, r.first_name].filter(Boolean).join(', ') : (r.task_subject ?? null);
 
 const REPORT_TABLE = {
   prefix: 'pcr',
@@ -101,7 +106,11 @@ export const ReportsTable = ({
             {r.total_cents === null ? emptyValue : formatCents(r.total_cents)}
           </TableCell>
           <TableCell kind="actions">
-            {outcome.link ? <OpenLink to={outcome.link.to} name={outcome.link.name} /> : null}
+            {outcome.link?.kind === 'task' ? (
+              <WorkLink to={outcome.link.to} name={outcome.link.name} />
+            ) : outcome.link ? (
+              <OpenLink to={outcome.link.to} name={outcome.link.name} />
+            ) : null}
           </TableCell>
         </TableRow>
       );

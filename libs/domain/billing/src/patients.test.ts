@@ -6,6 +6,7 @@ import {
   type Patient,
   readDemographics,
   sameAddress,
+  sexOf,
   toNewPatient
 } from './patients.ts';
 
@@ -46,6 +47,13 @@ describe('readDemographics', () => {
       report
     );
     assert.equal(readDemographics({ gender: '9906003' }).gender, 'M');
+    assert.deepEqual(['9919005', '9906005', '9906007', '9906011', 'f'].map(sexOf), [
+      'U',
+      'U',
+      null,
+      null,
+      'F'
+    ]);
     assert.equal(readDemographics({ gender: 'other' }).gender, null);
     assert.equal(readDemographics({ postalCode: 7 }).postalCode, null);
     assert.equal(readDemographics({ city: '2395220' }).city, null);

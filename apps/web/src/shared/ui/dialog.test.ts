@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Trash2Icon } from 'lucide-react';
+import { CheckIcon, Trash2Icon } from 'lucide-react';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ConfirmDialog, DeleteDialog, Dialog } from './dialog.tsx';
@@ -10,14 +10,17 @@ describe('Dialog', () => {
     const html = renderToStaticMarkup(
       createElement(Dialog, {
         open: true,
-        title: 'New workflow',
+        title: 'New Workflow',
         onClose: () => undefined,
         children: 'Body'
       })
     );
     assert.ok(html.startsWith('<dialog'));
     assert.match(html, /aria-labelledby="([^"]+)".*<h2 id="\1"/);
-    assert.ok(html.includes('New workflow'));
+    assert.ok(html.includes('>New Workflow</h2>'));
+    assert.ok(html.includes('aria-label="Close"'));
+    assert.ok(html.includes('max-w-md') && html.includes('border-border'));
+    assert.ok(!html.includes('lucide-triangle-alert'));
     assert.ok(html.includes('Body'));
     assert.ok(html.includes('rounded-xl') && html.includes('shadow-lg'));
     assert.ok(html.includes('duration-200') && html.includes('starting:open:opacity-0'));
@@ -44,6 +47,23 @@ describe('ConfirmDialog', () => {
     assert.ok(html.includes('>Delete</span>'));
     assert.ok(html.includes('bg-danger'));
     assert.ok(html.includes('border-danger/30') && html.includes('lucide-triangle-alert'));
+    assert.match(html, /<span aria-hidden="true" class="[^"]*bg-danger\/10 text-danger/);
+  });
+
+  it('dismisses with Cancel and confirms with a primary action by default', () => {
+    const html = renderToStaticMarkup(
+      createElement(ConfirmDialog, {
+        open: true,
+        title: 'Publish Workflow?',
+        confirmLabel: 'Publish',
+        confirmIcon: CheckIcon,
+        onConfirm: () => undefined,
+        onClose: () => undefined,
+        children: 'Runs start using it.'
+      })
+    );
+    assert.ok(html.includes('>Cancel</span>') && html.includes('bg-primary'));
+    assert.ok(!html.includes('bg-danger') && !html.includes('lucide-triangle-alert'));
   });
 });
 

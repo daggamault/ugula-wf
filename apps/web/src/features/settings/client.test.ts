@@ -49,3 +49,21 @@ describe('createSettingsClient', () => {
     ]);
   });
 });
+
+describe('settings client errors', () => {
+  it('encodes ids into paths and surfaces API errors', async () => {
+    const seen: string[] = [];
+    const client = createSettingsClient(
+      createApi('http://api.test', async (url) => {
+        seen.push(String(url));
+        return new Response('{"error":"Payer is billed on open claims"}', { status: 409 });
+      })
+    );
+    await assert.rejects(() => client.removePayer('a/b'), /Payer is billed on open claims/);
+    await assert.rejects(() => client.payer('a b'), /Payer is billed on open claims/);
+    assert.deepEqual(seen, [
+      'http://api.test/api/payers/a%2Fb',
+      'http://api.test/api/payers/a%20b'
+    ]);
+  });
+});

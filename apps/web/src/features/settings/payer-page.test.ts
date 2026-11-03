@@ -35,15 +35,30 @@ describe('PayerPage', () => {
     assert.ok(html.includes('>Payer Name<') && html.includes('>Clearinghouse Payer ID<'));
     assert.ok(html.includes('>Claim Filing<') && html.includes('readOnly=""'));
     assert.ok(html.includes('href="/payers?q=part"') && html.includes('>Save Payer<'));
+    assert.ok(html.includes('for="payer-filing-limit"') && html.includes('>Filing Limit (Days)<'));
+    assert.ok(
+      html.includes('type="number"') && html.includes('min="1"') && html.includes('max="3650"')
+    );
+    assert.ok(html.includes('To rename a payer, add it again under the new name.'));
     assert.deepEqual(toPayerDraft(null), {
       name: '',
       payerId: '',
       claimFiling: 'CI',
       filingLimitDays: null
     });
+    assert.deepEqual(toPayerDraft({ ...medicare, filing_limit_days: 365 }), {
+      name: 'Medicare',
+      payerId: '00952',
+      claimFiling: 'MB',
+      filingLimitDays: 365
+    });
+    const added = renderToStaticMarkup(
+      createElement(PayerForm, { payer: null, back: '/payers', onSave: async () => null })
+    );
+    assert.ok(!added.includes('readOnly=""') && !added.includes('To rename a payer'));
   });
 
-  it('lists learned names to forget, and a new payer starts with none', () => {
+  it('adds a new payer without learned names or a delete action', () => {
     const added = renderToStaticMarkup(
       createElement(PayerPage, {
         live: idleLive,

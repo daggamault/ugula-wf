@@ -72,6 +72,13 @@ describe('patientNodes', () => {
     assert.deepEqual(review.outputs.candidates, []);
     const fresh = nodeFor(memoryPatients([]).store, 'match-patient');
     assert.equal((await run(fresh, { demographics })).pin, 'unmatched');
+    const twin = { ...jane, id: 'p2' };
+    const shared = nodeFor(memoryPatients([jane, twin]).store, 'match-patient');
+    const both = await run(shared, { demographics });
+    assert.deepEqual(
+      [both.pin, both.outputs.patient, both.outputs.candidates, both.outputs.reason],
+      ['review', null, [jane, twin], 'Several patients share this name and birth date']
+    );
   });
 
   it('creates patients idempotently per step and loads chosen ones', async () => {

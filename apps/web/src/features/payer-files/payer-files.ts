@@ -1,9 +1,6 @@
 import { PAYER_FILE_LABELS } from '@ugula/billing';
 import { useCallback } from 'react';
 import { messageOf } from '../../shared/api.ts';
-
-export { OUTCOME_STYLES } from '../../shared/payer-file-outcomes.ts';
-
 import { type Notify, useToast } from '../../shared/ui/toast.tsx';
 import type { PayerFileSummary, PayerFilesClient } from './client.ts';
 

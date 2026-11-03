@@ -34,6 +34,22 @@ describe('createAuthClient', () => {
   });
 });
 
+describe('signOut', () => {
+  it('posts to the sign-out endpoint and surfaces failures', async () => {
+    const calls: string[] = [];
+    const client = createAuthClient(
+      createApi('http://api.test', async (url, init = {}) => {
+        calls.push(`${init.method} ${String(url)}`);
+        return new Response('{}', { status: 200 });
+      }),
+      createSignal()
+    );
+    await client.signOut();
+    assert.deepEqual(calls, ['POST http://api.test/api/auth/sign-out']);
+    await assert.rejects(() => respond(500, {}).signOut(), /status 500/);
+  });
+});
+
 describe('session expiry', () => {
   it('passes expiry notices from the API to subscribers', () => {
     const signal = createSignal();

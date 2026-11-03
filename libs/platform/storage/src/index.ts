@@ -95,7 +95,7 @@ export const createBlobStore = (storage: ObjectStorage) => {
     putBytes,
     putJson: (key: string, value: unknown) =>
       putBytes(key, encoder.encode(JSON.stringify(value)), 'application/json'),
-    getBytes: (ref: BlobLocation) => storage.get(check(ref)),
+    getBytes: async (ref: BlobLocation) => storage.get(check(ref)),
     getText,
     getJson: async (ref: BlobLocation): Promise<unknown> => JSON.parse(await getText(ref)),
     ensureBucket: storage.ensure

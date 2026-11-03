@@ -13,6 +13,9 @@ describe('isTransient', () => {
     assert.equal(isTransient(coded('ECONNRESET')), true);
     assert.equal(isTransient(new Error('Connection terminated unexpectedly')), true);
     assert.equal(isTransient(coded('EPIPE')), true);
+    assert.equal(isTransient(coded('57P01')), true);
+    assert.equal(isTransient(coded('58030')), true);
+    assert.equal(isTransient(coded('ENOTFOUND')), true);
   });
 
   it('retries network, upstream and Redis failures raised inside nodes', () => {
@@ -23,6 +26,8 @@ describe('isTransient', () => {
     assert.equal(isTransient(new Error('http://llm/v1 answered 429: slow down')), true);
     assert.equal(isTransient(Object.assign(new Error('aborted'), { name: 'TimeoutError' })), true);
     assert.equal(isTransient(new Error('Connection is closed.')), true);
+    assert.equal(isTransient(Object.assign(new Error('stop'), { name: 'AbortError' })), true);
+    assert.equal(isTransient(new Error('The request timed out')), true);
     assert.equal(isTransient(new Error('http://llm/v1 answered 400: bad prompt')), false);
   });
 
@@ -31,5 +36,7 @@ describe('isTransient', () => {
     assert.equal(isTransient(coded('23505')), false);
     assert.equal(isTransient(new TypeError('x is not a function')), false);
     assert.equal(isTransient('nope'), false);
+    assert.equal(isTransient(coded('42P01', 'relation does not exist')), false);
+    assert.equal(isTransient(new Error('wrapped', { cause: coded('23505') })), false);
   });
 });

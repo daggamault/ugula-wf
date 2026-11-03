@@ -77,7 +77,8 @@ export const textNodes: NodeDef[] = [
     type: 'std.text.replace',
     title: 'Replace',
     category: CATEGORY,
-    description: 'Replaces every occurrence of find with replacement.',
+    description:
+      'Replaces every occurrence of find with replacement; an empty find changes nothing.',
     inputs: [
       pin('text', 'string'),
       pin('find', 'string'),
@@ -85,7 +86,8 @@ export const textNodes: NodeDef[] = [
     ],
     outputs: [pin('result', 'string')],
     compute: ({ text, find, replacement }) => ({
-      result: (text as string).replaceAll(find as string, replacement as string)
+      result:
+        find === '' ? text : (text as string).replaceAll(find as string, replacement as string)
     })
   }),
   pureNode({

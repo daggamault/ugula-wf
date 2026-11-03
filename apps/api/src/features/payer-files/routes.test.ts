@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ok } from '../../shared/result.ts';
+import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
+import { fail, ok } from '../../shared/result.ts';
 import { withSession } from '../../shared/testing.ts';
 import { createPayerFileRoutes } from './routes.ts';
 import type { PayerFileService } from './service.ts';
@@ -54,5 +55,31 @@ describe('payer file routes', () => {
     assert.deepEqual(calls.at(-1), ['upload', 't-1', 'u-1', 'era.835', 6]);
     const missing = new FormData();
     assert.equal((await request('/', { method: 'POST', body: missing })).status, 400);
+    const large = new FormData();
+    large.append('file', new File(['x'.repeat(FORM_OVERHEAD_BYTES + 65)], 'big.835'));
+    const refused = await request('/', { method: 'POST', body: large });
+    assert.equal(refused.status, 413);
+    assert.deepEqual(await refused.json(), { error: 'File too large' });
+    assert.deepEqual(calls.at(-1), ['upload', 't-1', 'u-1', 'era.835', 6]);
+  });
+
+  it('maps missing files and refused uploads to their statuses', async () => {
+    const failing = withSession(
+      createPayerFileRoutes(
+        {
+          find: async () => fail('not_found', 'Payer file not found'),
+          download: async () => fail('not_found', 'Payer file not found'),
+          upload: async () => fail('conflict', 'This file was already imported on 2026-10-01')
+        } as unknown as PayerFileService,
+        64
+      )
+    );
+    assert.equal((await failing(`/${ID}`)).status, 404);
+    const download = await failing(`/${ID}/file`);
+    assert.equal(download.status, 404);
+    assert.equal(download.headers.get('content-disposition'), null);
+    const body = new FormData();
+    body.append('file', new File(['ISA*00'], 'era.835'));
+    assert.equal((await failing('/', { method: 'POST', body })).status, 409);
   });
 });

@@ -174,7 +174,7 @@ export const ClaimFiles = ({
           <li key={e.id} className="flex flex-wrap items-center gap-2">
             <a href={fileUrl(e.batch_id ?? '')} download className={fileLinkClasses}>
               <DownloadIcon aria-hidden="true" className="size-4" />
-              837P file #{e.batch_number}
+              837P File #{e.batch_number}
             </a>
             <span className="text-surface-fg-muted">
               {e.payer} · {formatDateTime(e.created_at)}

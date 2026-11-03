@@ -70,6 +70,55 @@ describe('run input file uploads', () => {
     const form = new FormData();
     form.set('file', new File(['<x/>'], 'a.xml', { type: 'text/xml' }));
     assert.equal((await request('/files', { method: 'POST', body: form })).status, 201);
+    assert.deepEqual(calls.at(-1), [
+      't-1',
+      { name: 'a.xml', type: 'text/xml', bytes: new TextEncoder().encode('<x/>') }
+    ]);
     assert.equal((await request('/files', { method: 'POST', body: new FormData() })).status, 400);
+  });
+});
+
+describe('run route validation', () => {
+  it('pass graph filters and step narrowing through and reject bad values', async () => {
+    await request(`/?graphId=${ID}&root=true`);
+    assert.deepEqual(calls.at(-1), [
+      't-1',
+      { graphId: ID, rootOnly: true, page: 1, pageSize: 25, sort: 'started', dir: 'desc' }
+    ]);
+    await request(`/${ID}/steps?node=n1&limit=20`);
+    assert.deepEqual(calls.at(-1), ['t-1', ID, { node: 'n1', after: 0, limit: 20 }]);
+    const count = calls.length;
+    const bad = [
+      await request('/?graphId=nope'),
+      await request('/?root=yes'),
+      await request('/?sort=key'),
+      await request(`/${ID}/steps?limit=0`),
+      await request(`/${ID}/steps?limit=2001`),
+      await request(`/${ID}/steps?after=-1`),
+      await request('/nope/steps'),
+      await request('/nope/graphs'),
+      await request('/nope/cancel', { method: 'POST' }),
+      await request('/', { method: 'POST', body: JSON.stringify({ graphId: ID, version: 1.5 }) }),
+      await request('/', { method: 'POST', body: JSON.stringify({ graphId: 'nope' }) })
+    ];
+    assert.deepEqual(
+      bad.map((r) => r.status),
+      bad.map(() => 400)
+    );
+    assert.equal(calls.length, count);
+  });
+
+  it('start a chosen version with its inputs', async () => {
+    const body = JSON.stringify({ graphId: ID, version: 2, inputs: { a: 1 } });
+    assert.equal((await request('/', { method: 'POST', body })).status, 201);
+    assert.deepEqual(calls.at(-1), ['t-1', ID, 2, { a: 1 }]);
+  });
+
+  it('refuse files larger than the upload limit', async () => {
+    const form = new FormData();
+    form.set('file', new File(['x'.repeat(100_000)], 'big.xml'));
+    const res = await request('/files', { method: 'POST', body: form });
+    assert.equal(res.status, 413);
+    assert.deepEqual(await res.json(), { error: 'File too large' });
   });
 });

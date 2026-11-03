@@ -115,6 +115,20 @@ describe('ReportOptionsPage', () => {
     assert.ok(!html.includes('type="date"') && html.includes('has no options'));
   });
 
+  it('will not run a range that ends before it starts and says why', () => {
+    const html = page('monthly', 'from=2026-05-01&to=2026-01-01');
+    assert.ok(html.includes('aria-disabled="true"'));
+    assert.ok(html.includes('Choose a start date on or before the end date.'));
+    assert.ok(!page('monthly').includes('aria-disabled="true"'));
+  });
+
+  it('labels the date and group fields for screen readers', () => {
+    const html = page('denials');
+    assert.ok(html.includes('for="report-from"') && html.includes('id="report-from"'));
+    assert.ok(html.includes('aria-label="Report options"'));
+    assert.ok(page('aging').includes('for="report-group"'));
+  });
+
   it('explains unknown reports', () => {
     assert.ok(page('nope').includes('There is no report called “nope”.'));
   });
@@ -135,5 +149,20 @@ describe('ReportResultsPage', () => {
     assert.ok(html.includes('href="/reports/monthly?from=2026-01-01&amp;to=2026-03-31"'));
     assert.ok(html.includes('Collections by Month of Service</h1>'));
     assert.ok(html.includes('Dates of service Jan 1, 2026 to Mar 31, 2026'));
+    assert.ok(!html.includes('Download CSV'));
+  });
+
+  it('explains unknown reports', () => {
+    const client = { run: () => new Promise(() => undefined) } as unknown as ReportsClient;
+    const html = renderToStaticMarkup(
+      createElement(ReportResultsPage, {
+        live: idleLive,
+        client,
+        reportId: 'nope',
+        query: new URLSearchParams(),
+        now
+      })
+    );
+    assert.ok(html.includes('There is no report called “nope”.'));
   });
 });

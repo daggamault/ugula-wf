@@ -17,10 +17,23 @@ describe('expression node', () => {
     assert.deepEqual(outputs, { result: 30 });
   });
 
+  it('evaluates against the step clock', async () => {
+    const { signature, outputs } = await invokeNode(expressionNode, {
+      config: { expression: 'now()' },
+      now: new Date('2026-01-02T03:04:05.000Z')
+    });
+    assert.deepEqual(signature.inputs, []);
+    assert.deepEqual(outputs, { result: '2026-01-02T03:04:05.000Z' });
+  });
+
   it('tolerates unparsable text when deriving pins but fails when run', async () => {
     assert.deepEqual(identifierPins(['max(', 'a + b'], ['b']), [
       { name: 'a', type: 'any', optional: true }
     ]);
+    assert.deepEqual(
+      identifierPins(['a + a', 'b * a']).map((p) => p.name),
+      ['a', 'b']
+    );
     await assert.rejects(
       () => invokeNode(expressionNode, { config: { expression: 'max(' } }),
       /Unexpected end/

@@ -5,6 +5,7 @@ import { createRecordingDb } from '@ugula/db/testing';
 import {
   findDictionary,
   findImport,
+  findReport,
   findSftpTenant,
   insertImport,
   listImportReports,
@@ -148,5 +149,41 @@ describe('import status and attention sorts', () => {
     await listImports(db, 't-1', { page: 1, pageSize: 10, sort: 'attention', dir: 'desc' });
     assert.ok(queries[0]?.sql.includes('order by (r.status, reports.waiting'));
     assert.ok(queries[1]?.sql.includes('order by reports.waiting + reports.failed'));
+  });
+});
+
+describe('import tenant scoping', () => {
+  it('open one import and page its reports within the tenant', async () => {
+    const { db, queries } = createRecordingDb();
+    await findImport(db, 't-1', 'i1');
+    await listImportReports(db, 't-1', 'i1', {
+      page: 2,
+      pageSize: 10,
+      sort: 'patient',
+      dir: 'asc'
+    });
+    const [found, reports, count] = queries;
+    assert.ok(found?.sql.endsWith('where "i"."tenant_id" = $7 and "i"."id" = $8'));
+    assert.deepEqual(found?.parameters.slice(6), ['t-1', 'i1']);
+    assert.ok(
+      reports?.sql.includes(
+        'where "i"."tenant_id" = $3 and "i"."id" = $4 order by lower(p.last_name || \' \' || p.first_name) asc nulls last'
+      )
+    );
+    assert.deepEqual(reports?.parameters, ['open', 1, 't-1', 'i1', 10, 10]);
+    assert.ok(count?.sql.endsWith('where "i"."tenant_id" = $3 and "i"."id" = $4'));
+    await db.destroy();
+  });
+
+  it('read one stored report only through an import of the tenant', async () => {
+    const { db, queries } = createRecordingDb();
+    await findReport(db, 't-1', 'rep-1');
+    assert.ok(
+      queries[0]?.sql.endsWith(
+        'inner join "imports" as "i" on "i"."id" = "r"."import_id" where "r"."id" = $1 and "i"."tenant_id" = $2'
+      )
+    );
+    assert.deepEqual(queries[0]?.parameters, ['rep-1', 't-1']);
+    await db.destroy();
   });
 });

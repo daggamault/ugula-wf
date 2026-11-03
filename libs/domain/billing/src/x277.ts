@@ -20,7 +20,7 @@ const CATEGORIES: Readonly<Record<string, string>> = {
   A8: 'Rejected for relational field error'
 };
 
-const ACCEPTED = ['A0', 'A1', 'A2'];
+const ACCEPTED = ['A0', 'A1', 'A2', 'A5'];
 
 const REJECTED = ['A3', 'A4', 'A6', 'A7', 'A8'];
 

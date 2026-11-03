@@ -34,3 +34,18 @@ describe('createTasksClient', () => {
     ]);
   });
 });
+
+describe('tasks client errors', () => {
+  it('encodes task ids and surfaces API errors', async () => {
+    const urls: string[] = [];
+    const client = createTasksClient(
+      createApi('', async (url) => {
+        urls.push(String(url));
+        return new Response('{"error":"Task is already completed"}', { status: 409 });
+      })
+    );
+    await assert.rejects(() => client.complete('a/b', 'approve', {}), /Task is already completed/);
+    await assert.rejects(() => client.find('a b'), /Task is already completed/);
+    assert.deepEqual(urls, ['/api/tasks/a%2Fb/complete', '/api/tasks/a%20b']);
+  });
+});

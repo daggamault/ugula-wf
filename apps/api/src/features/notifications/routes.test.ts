@@ -54,4 +54,13 @@ describe('notification routes', () => {
     const body = JSON.stringify({ title: 'x', link: { label: 'x', to: 'https://evil.test' } });
     assert.equal((await request('/', { method: 'POST', body })).status, 400);
   });
+
+  it('rejects messages without a title and leaves the service alone', async () => {
+    const before = calls.length;
+    const res = await request('/', { method: 'POST', body: JSON.stringify({ title: ' ' }) });
+    assert.equal(res.status, 400);
+    assert.match(((await res.json()) as { error: string }).error, /^title: /);
+    assert.equal((await request('/', { method: 'POST', body: '{}' })).status, 400);
+    assert.equal(calls.length, before);
+  });
 });

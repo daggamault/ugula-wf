@@ -80,6 +80,26 @@ describe('build270', () => {
     ]);
   });
 
+  it('sends an unknown sex as U and keeps the trace within TRN02 limits', () => {
+    const lines = build270(
+      { ...submitter, production: false },
+      [
+        {
+          ...request,
+          trace: ` ${'t'.repeat(60)} `,
+          subscriber: { ...request.subscriber, lastName: "O'Brién*Jr", sex: 'X' }
+        }
+      ],
+      envelope
+    )
+      .trim()
+      .split('\n');
+    assert.ok(lines[0]?.endsWith('*000000042*0*T*:~'));
+    assert.ok(lines.includes(`TRN*1*${'t'.repeat(50)}*1123456789~`));
+    assert.ok(lines.includes("NM1*IL*1*O'BRIEN JR*JANE****MI*1EG4TE5MK73~"));
+    assert.ok(lines.includes('DMG*D8*19500203*U~'));
+  });
+
   it('needs at least one subscriber', () => {
     assert.throws(() => build270(submitter, [], envelope), /at least one subscriber/);
   });

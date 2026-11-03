@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ok } from '../../shared/result.ts';
+import { fail, ok } from '../../shared/result.ts';
 import { withSession } from '../../shared/testing.ts';
 import { createClaimRoutes } from './routes.ts';
 import type { ClaimService } from './service.ts';
@@ -182,5 +182,35 @@ describe('claim routes', () => {
       body: JSON.stringify({ requestId: ID, paidCents: -5 })
     });
     assert.equal(negative.status, 400);
+  });
+});
+
+describe('claim route failures', () => {
+  const failing = {
+    find: async () => fail('not_found', 'Claim not found'),
+    events: async () => fail('not_found', 'Claim not found'),
+    setPayers: async () => fail('conflict', 'Medicare already has billing activity'),
+    document: async () => fail('not_found', 'Document not found'),
+    saveBillingData: async () => fail('invalid', 'A coverage is not on this claim'),
+    restartCycle: async () => fail('conflict', 'This claim still has an active workflow run'),
+    recordResponse: async () => fail('invalid', 'That payer is not on this claim')
+  } as unknown as ClaimService;
+  const send = withSession(createClaimRoutes(failing));
+
+  it('maps missing claims to 404, conflicts to 409 and rule failures to 422', async () => {
+    const statuses = await Promise.all(
+      [
+        send(`/${ID}`),
+        send(`/${ID}/events`),
+        send(`/${ID}/payers`, { method: 'PUT', body: JSON.stringify({ payers: [] }) }),
+        send(`/${ID}/events/${ID}/document`),
+        send(`/${ID}/billing-data`, { method: 'PUT', body: '{}' }),
+        send(`/${ID}/restart-cycle`, { method: 'POST' }),
+        send(`/${ID}/responses`, { method: 'POST', body: JSON.stringify({ requestId: ID }) })
+      ].map(async (res) => (await res).status)
+    );
+    assert.deepEqual(statuses, [404, 404, 409, 404, 422, 409, 422]);
+    const missing = await send(`/${ID}/events/${ID}/document`);
+    assert.deepEqual(await missing.json(), { error: 'Document not found' });
   });
 });

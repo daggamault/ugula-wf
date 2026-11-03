@@ -112,7 +112,12 @@ describe('TaskView', () => {
       })
     );
     assert.ok(done.includes('as “Keep Waiting”'));
-    assert.ok(!done.includes('>Approve<'));
+    assert.ok(!done.includes('>Approve<') && !done.includes('Assign to Me'));
+    const cancelled = render(task({ status: 'cancelled' }));
+    assert.ok(
+      cancelled.includes('This task was cancelled.') && cancelled.includes('bg-warning/10')
+    );
+    assert.ok(!cancelled.includes('Assign to Me'));
   });
 
   it('marks required fields, blocks the outcomes that need them and themes destructive ones', () => {
@@ -144,6 +149,12 @@ describe('fieldErrorsOf', () => {
     });
     assert.deepEqual(fieldErrorsOf(err), { payerId: 'is required' });
     assert.deepEqual(fieldErrorsOf(new Error('x')), {});
+    const other = Object.assign(new Error('Conflict'), {
+      status: 409,
+      body: { fields: { payerId: 'is required' } }
+    });
+    assert.deepEqual(fieldErrorsOf(other), {});
+    assert.deepEqual(fieldErrorsOf(Object.assign(new Error('x'), { status: 422, body: {} })), {});
   });
 });
 
@@ -176,7 +187,7 @@ describe('NextUp', () => {
 });
 
 describe('TaskPage', () => {
-  it('loads the task before rendering it', () => {
+  it('shows a spinner while the task loads', () => {
     const html = renderToStaticMarkup(
       createElement(TaskPage, {
         client: {
@@ -188,7 +199,7 @@ describe('TaskPage', () => {
         back: null
       })
     );
-    assert.ok(html.length > 0);
+    assert.ok(html.includes('aria-label="Loading"') && !html.includes('<h1'));
   });
 });
 

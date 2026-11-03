@@ -298,4 +298,101 @@ describe('createRunStore', () => {
     assert.equal(await store.transaction((tx) => tx.claimReference('r1')), null);
     await db.destroy();
   });
+
+  it('claims nothing when no run matches the command', async () => {
+    const { db } = recordingDb();
+    assert.equal(
+      await createRunStore({ db, boss: recordingBoss().boss }).claim(advance('r1'), 1000),
+      undefined
+    );
+    await db.destroy();
+  });
+
+  it('reads the parent wait, its children in order and the active ones', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('for update')
+        ? [{ status: 'suspended', wait_id: '7', kind: 'workflows' }]
+        : q.sql.includes('order by "parent_index"')
+          ? [
+              { id: 'c0', status: 'completed', result: { pin: null, outputs: {} }, error: null },
+              { id: 'c1', status: 'failed', result: null, error: { message: 'boom' } }
+            ]
+          : q.sql.includes('limit')
+            ? []
+            : [{ id: 'c2' }]
+    );
+    const store = createRunStore({ db, boss: recordingBoss().boss });
+    await store.transaction(async (tx) => {
+      assert.deepEqual(await tx.lockParent('p'), {
+        status: 'suspended',
+        waitId: '7',
+        kind: 'workflows'
+      });
+      assert.equal(await tx.hasPendingChildren('p', '7'), false);
+      assert.deepEqual(await tx.activeChildren('p'), ['c2']);
+    });
+    assert.deepEqual(await store.children('p', '7'), [
+      { id: 'c0', status: 'completed', result: { pin: null, outputs: {} }, error: null },
+      { id: 'c1', status: 'failed', result: null, error: { message: 'boom' } }
+    ]);
+    const pending = queries.find((q) => q.sql.includes('limit'));
+    assert.deepEqual(pending?.parameters.slice(0, 2), ['p', '7']);
+    assert.ok(
+      pending?.parameters.includes('suspended') && !pending.parameters.includes('completed')
+    );
+    await db.destroy();
+  });
+
+  it('counts signals without consuming them and cancels only open tasks', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('insert into "signals"') ? [{ received: 3 }] : []
+    );
+    const store = createRunStore({ db, boss: recordingBoss().boss });
+    await store.transaction(async (tx) => {
+      assert.equal(await tx.lockSignal('t', 'claim:c1'), 3);
+      await tx.cancelTasks('r1');
+    });
+    const [signal, cancel] = queries.map((q) => q.sql);
+    assert.ok(signal?.endsWith('do update set "received" = signals.received returning "received"'));
+    assert.ok(cancel?.startsWith('update "tasks" set "status" = $1'));
+    assert.deepEqual(queries[1]?.parameters, ['cancelled', 'r1', 'open']);
+    await db.destroy();
+  });
+
+  it('starts detached runs pinned to their graphs and assigns tasks only to users of the tenant', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('insert into "workflow_runs"') || q.sql.startsWith('insert into "tasks"')
+        ? [{ id: 'new-1' }]
+        : []
+    );
+    const store = createRunStore({ db, boss: recordingBoss().boss });
+    await store.transaction(async (tx) => {
+      assert.equal(await tx.insertRun('t', 'v1', { a: 1 }), 'new-1');
+      await tx.insertTask({
+        tenantId: 't',
+        runId: 'r',
+        waitId: '7',
+        kind: 'task',
+        queue: 'q',
+        title: 'T',
+        subject: null,
+        instructions: '',
+        context: null,
+        fields: [],
+        outcomes: ['ok'],
+        defaults: null,
+        priority: 0,
+        assigneeId: 'u1'
+      });
+    });
+    const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
+    assert.deepEqual(run?.parameters, ['t', 'v1', 'running', JSON.stringify({ a: 1 })]);
+    assert.ok(queries.some((q) => /insert into "?workflow_run_graphs/.test(q.sql)));
+    const task = queries.find((q) => q.sql.startsWith('insert into "tasks"'));
+    assert.ok(task?.sql.includes('(select "id" from "users" where id::text = $'));
+    assert.ok(task?.parameters.includes('u1'));
+    const note = queries.find((q) => q.sql.startsWith('insert into "notifications"'));
+    assert.ok(note?.parameters.includes('/tasks/new-1'));
+    await db.destroy();
+  });
 });

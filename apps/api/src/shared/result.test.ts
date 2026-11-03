@@ -9,7 +9,10 @@ describe('result', () => {
       .get('/ok', (c) => respond(c, ok({ id: 1 }), 201))
       .get('/missing', (c) => respond(c, fail('not_found', 'Nope')))
       .get('/invalid', (c) => respond(c, fail('invalid', 'Bad', { issues: ['x'] })))
-      .get('/busy', (c) => respond(c, fail('rate_limited', 'Slow down')));
+      .get('/busy', (c) => respond(c, fail('rate_limited', 'Slow down')))
+      .get('/taken', (c) => respond(c, fail('conflict', 'Taken')))
+      .get('/denied', (c) => respond(c, fail('forbidden', 'No')))
+      .get('/anonymous', (c) => respond(c, fail('unauthorized', 'Who')));
     const created = await app.request('/ok');
     assert.equal(created.status, 201);
     assert.deepEqual(await created.json(), { id: 1 });
@@ -20,5 +23,8 @@ describe('result', () => {
     assert.equal(invalid.status, 422);
     assert.deepEqual(await invalid.json(), { error: 'Bad', issues: ['x'] });
     assert.equal((await app.request('/busy')).status, 429);
+    assert.equal((await app.request('/taken')).status, 409);
+    assert.equal((await app.request('/denied')).status, 403);
+    assert.equal((await app.request('/anonymous')).status, 401);
   });
 });

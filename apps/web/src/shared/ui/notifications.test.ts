@@ -24,13 +24,15 @@ describe('NotificationList', () => {
         items: [
           note('1', {
             description: 'Doe, Jane',
-            action: { label: 'Open claim', to: '/claims/c1' }
+            action: { label: 'Open Claim', to: '/claims/c1' }
           }),
           note('2', { read: true, intent: 'danger' })
         ]
       })
     );
     assert.equal(html.match(/New: /g)?.length, 1);
+    assert.equal(html.match(/bg-primary\/5/g)?.length, 1);
+    assert.ok(html.includes('>Open Claim</a>'));
     assert.ok(html.includes('Doe, Jane') && html.includes('href="/claims/c1"'));
     assert.match(html, /datetime="2026-11-01T00:00:00Z"/i);
     assert.ok(
@@ -51,8 +53,23 @@ describe('NotificationsPanel', () => {
     );
     assert.ok(html.includes('aria-label="Notifications (12 new)"'));
     assert.ok(html.includes('>9+<'));
-    assert.match(html, /popovertarget="notifications-/i);
-    assert.ok(html.includes('Clear All'));
+    const [, target] = html.match(/popovertarget="(notifications-[^"]+)"/i) ?? [];
+    assert.ok(target && html.includes(`id="${target}" popover="auto" role="dialog"`));
+    assert.ok(html.includes('Clear All') && !html.includes('Nothing to clear.'));
+  });
+
+  it('shows a bare bell and blocks clearing an empty list', () => {
+    const html = renderToStaticMarkup(
+      createElement(NotificationsPanel, {
+        items: [],
+        unread: 0,
+        onOpenChange: () => undefined,
+        onClear: () => undefined
+      })
+    );
+    assert.ok(html.includes('aria-label="Notifications"') && !html.includes(' new)'));
+    assert.ok(!html.includes('tabular-nums'));
+    assert.ok(html.includes('aria-disabled="true"') && html.includes('Nothing to clear.'));
   });
 
   it('loads the feed from the server', () => {

@@ -121,5 +121,30 @@ describe('ContextView', () => {
 
   it('shows nothing for an empty context', () => {
     assert.equal(renderToStaticMarkup(createElement(ContextView, { label: 'x', value: null })), '');
+    const blank = renderToStaticMarkup(
+      createElement(ContextView, { label: 'x', value: { a: '', b: [] } })
+    );
+    assert.ok(!blank.includes('<dl') && blank.includes('Show Raw Data'));
+  });
+
+  it('shows a plain value as text with the raw data behind it', () => {
+    const html = renderToStaticMarkup(
+      createElement(ContextView, { label: 'Resolution', value: false })
+    );
+    assert.ok(html.includes('<p class="text-sm">No</p>') && html.includes('Show Raw Data'));
+  });
+
+  it('links runs and tasks, formats numbers and says when nothing changed', () => {
+    const html = renderToStaticMarkup(
+      createElement(ContextView, {
+        label: 'Task context',
+        value: { runId: CLAIM, taskId: CLAIM, attempts: 12_345, changes: [] }
+      })
+    );
+    assert.ok(html.includes(`href="/runs/${CLAIM}"`) && html.includes('Open Run'));
+    assert.ok(html.includes(`href="/tasks/${CLAIM}"`) && html.includes('Open Task'));
+    assert.ok(html.includes((12_345).toLocaleString()));
+    assert.ok(html.includes('Nothing billed from the report changed.'));
+    assert.ok(html.includes('aria-label="Task context"'));
   });
 });

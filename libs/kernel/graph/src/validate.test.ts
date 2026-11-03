@@ -98,6 +98,41 @@ describe('validateGraph', () => {
     assert.ok(found.some((m) => m.startsWith('seq: Invalid config')));
   });
 
+  it('reports duplicate names, extra entries and conflicting input sources', () => {
+    const found = messages({
+      ...base,
+      signature: { ...base.signature, execIn: ['exec', 'n'] },
+      nodes: [
+        ...base.nodes,
+        { id: 'entry', type: ENTRY_TYPE, version: 1 },
+        {
+          id: 'add',
+          type: 'std.math.add',
+          version: 1,
+          inputs: { a: { value: 1 }, b: { expr: '1 +' } }
+        }
+      ],
+      edges: [
+        ...base.edges,
+        { from: 'entry', fromPin: 'n', to: 'add', toPin: 'a' },
+        { from: 'entry', fromPin: 'n', to: 'set', toPin: 'value' }
+      ]
+    });
+    for (const expected of [
+      '-: Duplicate graph pin "n"',
+      'entry: Duplicate node id "entry"',
+      '-: A graph can have only one Entry',
+      'add: Input "a" is both connected and set',
+      'add: Expression for "b": Unexpected end of expression',
+      'set: Input "value" can only have one connection'
+    ]) {
+      assert.ok(
+        found.includes(expected),
+        `missing "${expected}" in ${JSON.stringify(found, null, 1)}`
+      );
+    }
+  });
+
   it('enforces pure graph rules, return pins and pure cycles', () => {
     const pure: GraphDef = {
       signature: { execIn: [], execOut: [], inputs: [], outputs: [pin('x', 'number')] },
@@ -118,6 +153,12 @@ describe('validateGraph', () => {
     assert.ok(found.includes('branch: Pure graphs can only contain pure nodes'));
     assert.ok(found.includes('r: Return pin "nope" is not an exec output of this graph'));
     assert.ok(found.includes('a: Pure nodes form a cycle'));
+    assert.ok(found.includes('b: Pure nodes form a cycle'));
+    assert.ok(
+      messages({ ...pure, nodes: pure.nodes.filter((x) => x.id !== 'r') }).includes(
+        '-: A pure graph needs exactly one Return'
+      )
+    );
     assert.ok(
       messages({ ...base, nodes: base.nodes.slice(1) }).includes(
         '-: Add an Entry node so execution can start'

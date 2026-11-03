@@ -161,6 +161,48 @@ describe('claimNodes', () => {
     assert.equal((all.outputs.defaults as { serviceDate: string }).serviceDate, '2025-12-30');
   });
 
+  it('ignores prices set for the claim that are not whole, non-negative cents', async () => {
+    const node = nodesFor();
+    const priced = await run(node('price-claim'), {
+      lines: [
+        { code: 'A0427', units: 1 },
+        { code: 'A0999', units: 1 }
+      ],
+      fees: { A0427: -5, A0999: 12.5 }
+    });
+    assert.deepEqual([priced.pin, priced.outputs.missing], ['unpriced', ['A0999']]);
+    assert.equal((priced.outputs.lines as { unitCents: number }[])[0]?.unitCents, 95000);
+  });
+
+  it('leaves the issues of skipped payers out of validation', async () => {
+    const check = completeCheck();
+    const claims = memoryClaims({
+      check: {
+        ...check,
+        payers: check.payers.map((p) => (p.name === 'Blue' ? { ...p, payerId: null } : p))
+      }
+    });
+    const validate = nodesFor(claims.store)('validate-claim');
+    const blocked = await run(validate, { claimId: 'c1' });
+    assert.deepEqual(
+      [blocked.pin, (blocked.outputs.issues as { coverageId: string }[])[0]?.coverageId],
+      ['invalid', 'cov-Blue']
+    );
+    claims.events.push({
+      kind: 'payer_skipped',
+      coverageId: 'cov-Blue',
+      key: 'skip',
+      note: '',
+      paidCents: 0,
+      adjustedCents: 0,
+      payerClaimNumber: null,
+      paidOn: null,
+      adjustments: [],
+      at: '2026-01-01T00:00:00.000Z'
+    });
+    assert.equal((await run(validate, { claimId: 'c1' })).pin, 'valid');
+  });
+
   it('patches the claim from a fix task and asks for repricing when charges change', async () => {
     const check = completeCheck();
     const claims = memoryClaims({

@@ -28,9 +28,10 @@ describe('reportOutcome', () => {
     assert.deepEqual(reportOutcome(report({ claim_id: 'c1' })), {
       intent: 'success',
       label: 'Claim Opened',
-      link: { name: 'claim for PCR-1', to: '/claims/c1' }
+      link: { kind: 'claim', name: 'claim for PCR-1', to: '/claims/c1' }
     });
     assert.deepEqual(reportOutcome(report({ task_id: 'k1', task_title: 'Review PCR' })).link, {
+      kind: 'task',
       name: 'task Review PCR',
       to: '/tasks/k1'
     });
@@ -44,6 +45,7 @@ describe('reportOutcome', () => {
     );
     assert.equal(reportOutcome(report({ task_id: 'k1', task_kind: 'fault' })).label, 'Stuck');
     assert.deepEqual(reportOutcome(report({ task_id: 'k1', claim_id: 'c1' })).link, {
+      kind: 'claim',
       name: 'claim for PCR-1',
       to: '/claims/c1'
     });
@@ -51,11 +53,14 @@ describe('reportOutcome', () => {
     assert.equal(reportOutcome(report()).label, 'No Claim');
     assert.equal(reportOutcome(report({ run_status: 'running' })).label, 'Running');
     assert.equal(reportOutcome(report({ run_status: 'failed' })).label, 'Failed');
+    assert.equal(reportOutcome(report({ run_status: 'cancelled' })).label, 'Failed');
+    assert.equal(reportOutcome(report({ run_status: 'faulted' })).intent, 'danger');
   });
 
   it('names the patient from the claim or the open task', () => {
     assert.equal(patientOf(report({ last_name: 'Doe', first_name: 'Jane' })), 'Doe, Jane');
     assert.equal(patientOf(report({ task_subject: 'PCR-1 · Jane Doe' })), 'PCR-1 · Jane Doe');
+    assert.equal(patientOf(report({ last_name: 'Doe' })), 'Doe');
     assert.equal(patientOf(report()), null);
   });
 });
@@ -72,7 +77,8 @@ describe('ReportsTable', () => {
     );
     assert.ok(html.includes('<span class="sr-only">Actions</span>'));
     assert.ok(html.includes('href="/claims/c1" aria-label="Open claim for PCR-1"'));
-    assert.ok(html.includes('href="/tasks/k1" aria-label="Open task Review PCR"'));
+    assert.ok(html.includes('href="/tasks/k1" aria-label="Work task Review PCR"'));
+    assert.ok(html.includes('>Doe, Jane<') && html.includes('tabular-nums'));
     assert.ok(html.includes('$950.00') && html.includes('>Waiting<'));
   });
 });

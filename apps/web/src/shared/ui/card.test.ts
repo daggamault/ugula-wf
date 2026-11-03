@@ -5,11 +5,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Card } from './card.tsx';
 
 describe('Card', () => {
-  it('renders a labelled section', () => {
+  it('renders a flat labelled container section', () => {
     const html = renderToStaticMarkup(
       createElement(Card, { labelledBy: 'title', children: 'Body' })
     );
     assert.ok(html.startsWith('<section aria-labelledby="title"'));
+    assert.ok(html.includes('bg-surface') && html.includes('border-border'));
+    assert.ok(html.includes('rounded-xl') && !html.includes('shadow'));
     assert.ok(html.includes('Body'));
   });
 });

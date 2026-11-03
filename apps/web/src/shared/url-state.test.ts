@@ -57,6 +57,8 @@ describe('tableStateOf', () => {
     const s = state('mineSort=name&minePage=2&page=4', 'mine');
     assert.deepEqual([s.sort, s.page], ['name', 2]);
     assert.equal(s.pageHref(3), '/claims?mineSort=name&minePage=3&page=4');
+    assert.equal(s.sizeHref(50), '/claims?mineSort=name&page=4&minePageSize=50');
+    assert.equal(s.sortHref('name'), '/claims?mineSort=name&page=4&mineDir=desc');
   });
 });
 
@@ -67,6 +69,14 @@ describe('searchStateOf', () => {
     assert.equal(s.apiQuery, 'q=blue%20cross&page=2&pageSize=25&sort=created&dir=desc');
     assert.equal(s.href, '/payers?q=+blue+cross+&page=2');
     assert.equal(searchStateOf('/payers', new URLSearchParams(), spec).href, '/payers');
+  });
+
+  it('caps the search text and leaves it out of the API query when blank', () => {
+    const long = searchStateOf('/payers', new URLSearchParams({ q: 'x'.repeat(100) }), spec);
+    assert.equal(long.q.length, 80);
+    const blank = searchStateOf('/payers', new URLSearchParams('q=+++'), spec);
+    assert.equal(blank.q, '');
+    assert.equal(blank.apiQuery, 'page=1&pageSize=25&sort=created&dir=desc');
   });
 });
 
@@ -84,6 +94,11 @@ describe('withBack and backOf', () => {
     assert.equal(backOf(new URLSearchParams('back=https://evil.test'), '/payers'), '/payers');
     assert.equal(backOf(new URLSearchParams('back=/payersx'), '/payers'), '/payers');
     assert.equal(backOf(new URLSearchParams(), '/fees'), '/fees');
+    assert.equal(
+      withBack('/claims/c1?tab=data', '/patients/p1'),
+      '/claims/c1?tab=data&back=%2Fpatients%2Fp1'
+    );
+    assert.equal(backOf(new URLSearchParams('back=//evil.test'), '/claims', '/'), '/claims');
   });
 });
 

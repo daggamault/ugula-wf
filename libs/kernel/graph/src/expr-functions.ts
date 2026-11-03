@@ -11,6 +11,7 @@ import {
   toText
 } from './json.ts';
 import type { Json } from './types.ts';
+import { checkValue } from './value-types.ts';
 
 export type FnValue = (args: ExprValue[]) => ExprValue;
 
@@ -56,6 +57,14 @@ const isDateOnly = (v: ExprValue) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2
 const finite = (fn: string, n: number) =>
   Number.isFinite(n) ? n : fail(`${fn}: result is not a finite number`);
 
+const parseJsonText = (text: string): Json => {
+  try {
+    return JSON.parse(text) as Json;
+  } catch {
+    return fail('parseJson: invalid JSON');
+  }
+};
+
 const nums = (fn: string, args: ExprValue[]) =>
   (args.length === 1 && Array.isArray(args[0]) ? args[0] : args).map((x) => num(fn, x));
 
@@ -75,7 +84,7 @@ export const ageAt = (born: Date, ref: Date) => {
 
 export const roundTo = (x: number, digits: number) => {
   const f = 10 ** digits;
-  return Math.round((x + Math.sign(x) * Number.EPSILON) * f) / f;
+  return (Math.sign(x) * Math.round((Math.abs(x) + Number.EPSILON) * f)) / f;
 };
 
 const keyOf = (x: Json): string =>
@@ -277,11 +286,9 @@ export const exprFunctions: Record<string, ExprFunction> = {
   isNull: ([x]) => (x ?? null) === null,
   type: ([x]) => describe(x ?? null),
   parseJson: ([s]) => {
-    try {
-      return JSON.parse(str('parseJson', s ?? null)) as Json;
-    } catch {
-      return fail('parseJson: invalid JSON');
-    }
+    const value = parseJsonText(str('parseJson', s ?? null));
+    const err = checkValue('any', value);
+    return err ? fail(`parseJson: ${err}`) : value;
   },
   toJson: ([x]) => JSON.stringify(json('toJson', x ?? null)),
 

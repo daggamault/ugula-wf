@@ -75,4 +75,18 @@ describe('GraphNode', () => {
     assert.ok(html.includes('ring-2'));
     assert.ok(render({ ...base, signature: null }).includes('Unknown node std.math.add@1'));
   });
+
+  it('previews unwired expressions and shortens long literals', () => {
+    const html = render({
+      ...base,
+      connected: [],
+      instance: {
+        ...base.instance,
+        inputs: { a: { value: 'a long literal value' }, b: { expr: 'total * 2' } }
+      }
+    });
+    assert.ok(html.includes('&quot;a long literal v…'));
+    assert.ok(html.includes('= total * 2'));
+    assert.ok(html.includes('>Failed<') && !html.includes('>Then<'));
+  });
 });

@@ -71,6 +71,46 @@ describe('read271', () => {
     });
   });
 
+  it('reads capitated and pending coverage by the first EB status, with plan begin and end dates', () => {
+    const results = read271(
+      file(
+        'ST*271*0001*005010X279A1',
+        'HL*1**20*1',
+        'HL*2*1*21*1',
+        'HL*3*2*22*0',
+        'TRN*2*cov-4',
+        'EB*D**30',
+        'EB*3**30**MANAGED MEDICAID',
+        'EB*6**30**IGNORED',
+        'DTP*346*D8*20260101',
+        'DTP*347*D8*20261231',
+        'HL*4*2*22*0',
+        'TRN*2*cov-5',
+        'EB*8**30',
+        'MSG*Pending investigation',
+        'SE*15*0001'
+      )
+    );
+    assert.deepEqual(results, [
+      {
+        trace: 'cov-4',
+        active: true,
+        planName: 'MANAGED MEDICAID',
+        coverageStart: '2026-01-01',
+        coverageEnd: '2026-12-31',
+        messages: []
+      },
+      {
+        trace: 'cov-5',
+        active: false,
+        planName: null,
+        coverageStart: null,
+        coverageEnd: null,
+        messages: ['Pending investigation']
+      }
+    ]);
+  });
+
   it('adds payer-level rejections to every member', () => {
     const [result] = read271(
       file(

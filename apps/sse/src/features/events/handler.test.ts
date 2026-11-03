@@ -70,4 +70,38 @@ describe('events handler', () => {
       server.close();
     }
   });
+
+  it('streams only the events of the session tenant', async () => {
+    const hub = createHub();
+    const handler = createEventsHandler({
+      hub,
+      origins: ['http://localhost:3000'],
+      sessions: {
+        get: async (token) => ({ userId: `u-${token}`, tenantId: token, email: 'dev@example.com' })
+      },
+      isActiveMember: async () => true
+    });
+    const server = createServer((req, res) => void handler(req, res)).listen(0);
+    await once(server, 'listening');
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    const decoder = new TextDecoder();
+    try {
+      const anonymous = await fetch(url, { headers: { origin: 'http://localhost:3000' } });
+      assert.equal(anonymous.status, 401);
+      assert.equal(anonymous.headers.get('access-control-allow-origin'), 'http://localhost:3000');
+      const reader = (
+        await fetch(url, { headers: { cookie: 'ugula_session=t-1' } })
+      ).body?.getReader();
+      assert.equal(decoder.decode((await reader?.read())?.value), ': connected\n\n');
+      hub.broadcast('t-2', '{"kind":"claim","id":"other"}');
+      hub.broadcast('t-1', '{"kind":"claim","id":"mine"}');
+      assert.equal(
+        decoder.decode((await reader?.read())?.value),
+        'data: {"kind":"claim","id":"mine"}\n\n'
+      );
+    } finally {
+      server.closeAllConnections();
+      server.close();
+    }
+  });
 });

@@ -127,3 +127,41 @@ describe('SFTP hook routes', () => {
     assert.equal((await post('/upload', { action: 'upload' })).status, 400);
   });
 });
+
+describe('import report XML downloads', () => {
+  const id = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
+  const download = withSession(
+    createImportRoutes(
+      {
+        ...service,
+        report: async (tenantId: string, reportId: string) => {
+          calls.push(['report', tenantId, reportId]);
+          return reportId === id
+            ? ok({ report: { id, pcr_number: 'PCR 1/2"' }, data: {}, xml: '<x/>' })
+            : fail('not_found', 'Report not found');
+        }
+      } as unknown as ImportService,
+      16
+    )
+  );
+
+  it('serves the report XML as a private attachment named by a safe PCR number', async () => {
+    const res = await download(`/reports/${id}/xml`);
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), '<x/>');
+    assert.equal(res.headers.get('content-type'), 'application/xml; charset=utf-8');
+    assert.equal(
+      res.headers.get('content-disposition'),
+      'attachment; filename="encounter-PCR_1_2_.xml"'
+    );
+    assert.equal(res.headers.get('cache-control'), 'private, no-store');
+    assert.deepEqual(calls.at(-1), ['report', 't-1', id]);
+  });
+
+  it('maps missing reports and bad ids', async () => {
+    const missing = await download('/reports/01a16617-0000-7ba6-b9b5-9c79fa44f965/xml');
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), { error: 'Report not found' });
+    assert.equal((await download('/reports/nope/xml')).status, 400);
+  });
+});

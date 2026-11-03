@@ -23,6 +23,8 @@ describe('outcomes', () => {
     assert.equal(outcomeLabel('useSelected'), 'Use Selected Patient');
     assert.equal(outcomeLabel('writeOff'), 'Write Off');
     assert.equal(outcomeLabel('somethingNew'), 'Something New');
+    assert.equal(outcomeLabel('toString'), 'To String');
+    assert.equal(outcomeIcon('constructor'), CircleCheckIcon);
   });
 
   it('gives every outcome an icon and marks destructive ones', () => {
@@ -60,6 +62,9 @@ describe('consequenceOf', () => {
       consequenceOf('void'),
       'The claim closes as void and is never billed. This cannot be undone.'
     );
-    assert.match(consequenceOf('other'), /cannot be undone/);
+    assert.equal(
+      consequenceOf('toString'),
+      'The workflow continues from this choice. This cannot be undone.'
+    );
   });
 });

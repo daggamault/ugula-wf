@@ -33,12 +33,23 @@ describe('payer files page', () => {
       })
     );
     assert.ok(html.includes('era.835') && html.includes('Remittance (835)'));
-    assert.ok(html.includes('1 of 4 needs you') && html.includes('href="/payer-files/f1"'));
+    assert.ok(html.includes('1 of 4 needs you'));
+    assert.ok(html.includes('href="/payer-files/f1" aria-label="Open payer file era.835"'));
+    assert.ok(html.includes('<span class="sr-only">Actions</span>'));
   });
 
   it('explains what the page is for', () => {
     const client = { list: () => new Promise(() => undefined) } as unknown as PayerFilesClient;
     const html = renderToStaticMarkup(createElement(PayerFilesPage, { client, live: idleLive }));
     assert.ok(html.includes('Payer Files') && html.includes('clearinghouse'));
+  });
+});
+
+describe('UploadPayerFilesButton', () => {
+  it('shows progress and blocks new picks while uploading', () => {
+    const html = renderToStaticMarkup(
+      createElement(UploadPayerFilesButton, { busy: true, onFiles: () => undefined })
+    );
+    assert.ok(html.includes('aria-busy="true"') && html.includes('disabled=""'));
   });
 });

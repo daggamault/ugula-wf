@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ok } from '../../shared/result.ts';
+import { fail, ok } from '../../shared/result.ts';
 import { withSession } from '../../shared/testing.ts';
 import { createFeeRoutes } from './routes.ts';
 import type { FeeService } from './service.ts';
@@ -55,5 +55,27 @@ describe('fee routes', () => {
     });
     assert.equal(bad.status, 400);
     assert.equal((await request('/not-a-uuid', { method: 'DELETE' })).status, 400);
+  });
+});
+
+describe('fee route failures', () => {
+  it('maps missing fees to 404 and payers outside the directory to 422', async () => {
+    const failing = {
+      search: async () => ok({ items: [] }),
+      find: async () => fail('not_found', 'Fee not found'),
+      save: async () => fail('invalid', 'Choose a payer from the payer directory'),
+      remove: async () => fail('not_found', 'Fee not found')
+    } as unknown as FeeService;
+    const send = withSession(createFeeRoutes(failing));
+    assert.equal((await send(`/${ID}`)).status, 404);
+    assert.equal((await send(`/${ID}`, { method: 'DELETE' })).status, 404);
+    const saved = await send('/', {
+      method: 'PUT',
+      body: JSON.stringify({ payerId: ID, code: 'A0427', amountCents: 1 })
+    });
+    assert.equal(saved.status, 422);
+    assert.deepEqual(await saved.json(), { error: 'Choose a payer from the payer directory' });
+    assert.equal((await send('/?sort=price')).status, 400);
+    assert.equal((await send(`/?q=${'x'.repeat(81)}`)).status, 400);
   });
 });

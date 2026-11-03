@@ -81,6 +81,32 @@ describe('createLive', () => {
     assert.equal(opened.length, 3);
     assert.equal(live.status(), 'online');
   });
+
+  it('caps the back-off, ignores passing errors and stops retrying once closed', () => {
+    const { opened, open, timers, schedule } = fakeStreams();
+    let cancelled = 0;
+    const live = createLive('http://sse.test', {
+      open,
+      schedule: (run, ms) => {
+        schedule(run, ms);
+        return () => void cancelled++;
+      }
+    });
+    live.subscribe(() => undefined);
+    opened[0]?.handlers.onError(false);
+    assert.deepEqual([opened[0]?.closed, timers.length], [false, 0]);
+    for (let i = 0; i < 5; i++) {
+      opened[i]?.handlers.onError(true);
+      timers[i]?.run();
+    }
+    assert.deepEqual(
+      timers.map((t) => t.ms),
+      [1_000, 5_000, 15_000, 30_000, 30_000]
+    );
+    opened.at(-1)?.handlers.onError(true);
+    live.close();
+    assert.equal(cancelled, 1);
+  });
 });
 
 describe('createBurst', () => {
@@ -96,6 +122,19 @@ describe('createBurst', () => {
     assert.equal(runs, 1);
     burst.push();
     assert.equal(timers.length, 2);
+  });
+
+  it('drops a pending run when stopped', () => {
+    let cancelled = 0;
+    const burst = createBurst(
+      () => undefined,
+      250,
+      () => () => void cancelled++
+    );
+    burst.push();
+    burst.stop();
+    burst.stop();
+    assert.equal(cancelled, 1);
   });
 });
 

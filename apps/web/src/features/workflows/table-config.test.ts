@@ -45,6 +45,9 @@ describe('table config', () => {
     assert.equal(parseCell('true', 'boolean'), true);
     assert.equal(parseCell('maybe', 'boolean'), null);
     assert.equal(parseCell('2.5', 'number'), 2.5);
+    assert.equal(parseCell('lots', 'integer'), 'lots');
+    assert.equal(parseCell(' ALS1 ', 'string'), 'ALS1');
+    assert.equal(formatCell({ a: 1 }), '{"a":1}');
     assert.deepEqual(parseCell('09, 06,', { list: 'string' }), ['09', '06']);
     assert.deepEqual(conditionValue('oneOf', '4232003, 4232005', 'string'), ['4232003', '4232005']);
     assert.equal(conditionValue('gte', '3', 'integer'), 3);
@@ -73,18 +76,28 @@ describe('table config', () => {
       'distance'
     );
     assert.equal(takesList('oneOf') && !takesList('is'), true);
+    const noInput = removeColumn(table, 'inputs', 'care');
+    assert.deepEqual(
+      [noInput.inputs, noInput.rules[0]?.when, noInput.otherwise],
+      [[], {}, { level: 'BLS' }]
+    );
     const dropped = removeColumn(table, 'outputs', 'level');
     assert.deepEqual([dropped.outputs, dropped.otherwise, dropped.rules[0]?.set], [[], {}, {}]);
   });
 
   it('names new columns and reorders rules', () => {
     assert.equal(freeName(['input1'], 'input'), 'input2');
+    assert.equal(freeName(['input2'], 'input'), 'input3');
     assert.deepEqual(
       moveRule(table.rules, 1, -1).map((r) => r.label),
       ['Other', 'ALS']
     );
     assert.deepEqual(
       moveRule(table.rules, 0, -1).map((r) => r.label),
+      ['ALS', 'Other']
+    );
+    assert.deepEqual(
+      moveRule(table.rules, 1, 1).map((r) => r.label),
       ['ALS', 'Other']
     );
   });

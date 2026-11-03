@@ -38,7 +38,22 @@ describe('live events', () => {
       kind: 'notification',
       id: 'n1'
     });
+    assert.deepEqual(parseLiveEvent('{"kind":"run","id":"r2","status":"failed","extra":1}'), {
+      kind: 'run',
+      id: 'r2',
+      status: 'failed',
+      parentId: null
+    });
+    assert.deepEqual(parseLiveEvent('{"kind":"task","id":"t1"}'), {
+      kind: 'task',
+      id: 't1',
+      runId: null
+    });
     assert.equal(parseLiveEvent('{"kind":"run"}'), null);
+    assert.equal(parseLiveEvent('{"kind":"run","id":"r1","status":"ok","parentId":3}'), null);
+    assert.equal(parseLiveEvent('{"kind":"claim"}'), null);
+    assert.equal(parseLiveEvent('{"id":"c1"}'), null);
+    assert.equal(parseLiveEvent('null'), null);
     assert.equal(parseLiveEvent('{"kind":"claim","id":7}'), null);
     assert.equal(parseLiveEvent('{"kind":"toString","id":null}'), null);
     assert.equal(parseLiveEvent('[]'), null);

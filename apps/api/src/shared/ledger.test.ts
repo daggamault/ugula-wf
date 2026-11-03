@@ -33,5 +33,6 @@ describe('listLedgerEvents', () => {
     ]);
     assert.match(queries[0]?.sql ?? '', /from "claim_event_adjustments" as "a"/);
     assert.match(queries[0]?.sql ?? '', /order by "e"."created_at", "e"."id"/);
+    assert.deepEqual(queries[0]?.parameters, ['c1']);
   });
 });

@@ -87,3 +87,25 @@ describe('run input files', () => {
     assert.deepEqual(seen, ['POST /api/runs/files true']);
   });
 });
+
+describe('run actions', () => {
+  it('encodes run ids, posts starts and cancels, and surfaces server errors', async () => {
+    const seen: string[] = [];
+    const actions = createRunsClient(
+      createApi('', async (url, init = {}) => {
+        seen.push(`${init.method} ${String(url)} ${init.body ?? ''}`);
+        return String(url).endsWith('/cancel')
+          ? Response.json({ error: 'Run already finished' }, { status: 409 })
+          : Response.json({ id: 'r 1', version: 2 }, { status: 201 });
+      })
+    );
+    assert.deepEqual(await actions.start('g1', { x: 1 }), { id: 'r 1', version: 2 });
+    await actions.find('r/1');
+    await assert.rejects(actions.cancel('r 1'), { message: 'Run already finished', status: 409 });
+    assert.deepEqual(seen, [
+      'POST /api/runs {"graphId":"g1","inputs":{"x":1}}',
+      'GET /api/runs/r%2F1 ',
+      'POST /api/runs/r%201/cancel '
+    ]);
+  });
+});

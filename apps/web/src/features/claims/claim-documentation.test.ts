@@ -60,11 +60,43 @@ describe('claim documentation', () => {
     assert.ok(html.includes('Not signed, with a documented reason the patient could not sign'));
     assert.ok(html.includes('the patient was unconscious') && html.includes('PA-1'));
     assert.ok(html.includes('A · Nearest facility'));
+    assert.ok(html.includes('81.6 kg (180 lb)') && html.includes('06 · Patient was transported'));
+    assert.ok(html.includes('text-warning'));
+  });
+
+  it('shows an empty value for anything the report left out', () => {
+    const html = renderToStaticMarkup(
+      createElement(DocumentationPanel, {
+        claim: {
+          ...documented,
+          signature: 'missing',
+          signature_note: null,
+          pcs_on_file: null,
+          transport_reason: null,
+          condition_codes: [],
+          prior_authorization: null,
+          weight_kg: null
+        }
+      })
+    );
+    assert.ok(html.includes('text-danger') && html.includes('Not recorded'));
+    for (const label of [
+      'Transport Reason',
+      'Ambulance Conditions',
+      'Prior Authorization',
+      'Weight'
+    ]) {
+      assert.match(html, new RegExp(`${label}</dt><dd[^>]*>—</dd>`));
+    }
   });
 
   it('lists each payer with its eligibility and offers a check', () => {
     assert.deepEqual(eligibilityStyle(coverage), { intent: 'danger', label: 'Not Active' });
     assert.equal(eligibilityStyle({ eligibility: null }).label, 'Not Checked');
+    assert.deepEqual(eligibilityStyle({ eligibility: 'active' }), {
+      intent: 'success',
+      label: 'Active'
+    });
     const html = renderToStaticMarkup(
       createElement(EligibilityPanel, {
         coverages: [coverage],
@@ -81,5 +113,13 @@ describe('claim documentation', () => {
       })
     );
     assert.ok(empty.includes('No payer is on this claim.') && empty.includes('disabled'));
+    const locked = renderToStaticMarkup(
+      createElement(EligibilityPanel, {
+        coverages: [coverage],
+        locked: 'This claim is closed.',
+        onCheck: async () => undefined
+      })
+    );
+    assert.ok(locked.includes('This claim is closed.') && locked.includes('disabled'));
   });
 });

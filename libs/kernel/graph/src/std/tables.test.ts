@@ -47,6 +47,23 @@ describe('table nodes', () => {
       value: 'Unknown',
       found: false
     });
+    const numbers = await run(
+      'std.table.lookup',
+      {},
+      { type: 'integer', rows: [{ key: '1', value: 9 }] }
+    );
+    assert.deepEqual(numbers.signature.outputs[0], { name: 'value', type: 'integer' });
+    assert.deepEqual(numbers.outputs, { value: null, found: false });
+    assert.deepEqual(
+      (
+        await run(
+          'std.table.lookup',
+          { key: 1 },
+          { type: 'integer', rows: [{ key: '1', value: 9 }] }
+        )
+      ).outputs,
+      { value: 9, found: true }
+    );
     await assert.rejects(() =>
       run('std.table.lookup', {}, { rows: [...config.rows, ...config.rows] })
     );
@@ -68,6 +85,13 @@ describe('table nodes', () => {
       (await run('std.table.decide', { care: '4232001', ivDoses: null }, LEVELS)).outputs,
       { level: 'BLS', rule: null, rules: [], matched: false }
     );
+    const { otherwise: _, ...always } = { ...LEVELS, rules: [{ label: 'Any', when: {} }] };
+    assert.deepEqual((await run('std.table.decide', {}, always)).outputs, {
+      level: null,
+      rule: 'Any',
+      rules: ['Any'],
+      matched: true
+    });
   });
 
   it('rejects rules on undeclared inputs or outputs', async () => {
@@ -79,18 +103,38 @@ describe('table nodes', () => {
       )
     );
     await assert.rejects(() => run('std.table.decide', {}, { ...LEVELS, otherwise: { nope: 1 } }));
+    await assert.rejects(
+      () => run('std.table.decide', {}, { ...LEVELS, outputs: [{ name: 'rule', type: 'string' }] }),
+      /do not name outputs rule/
+    );
+    await assert.rejects(
+      () => run('std.table.decide', {}, { ...LEVELS, inputs: [], rules: [] }),
+      /at least one input/
+    );
   });
 
   it('tests conditions against scalars and lists', () => {
     assert.equal(holds({ op: 'is', value: 1 }, '1'), true);
     assert.equal(holds({ op: 'is', value: null }, ''), true);
+    assert.equal(holds({ op: 'is' }, []), true);
+    assert.equal(holds({ op: 'is', value: 'b' }, ['a', 'b']), true);
+    assert.equal(holds({ op: 'isNot', value: 'b' }, ['a', 'b']), false);
+    assert.equal(holds({ op: 'isNot', value: 'b' }, null), true);
+    assert.equal(holds({ op: 'oneOf', value: 'a' }, 'a'), true);
     assert.equal(holds({ op: 'oneOf', value: ['a', 'b'] }, ['c', 'b']), true);
     assert.equal(holds({ op: 'notOneOf', value: ['a'] }, ['a']), false);
     assert.equal(holds({ op: 'gt', value: 2 }, '2.5'), true);
+    assert.equal(holds({ op: 'gt', value: '9' }, '10'), true);
+    assert.equal(holds({ op: 'gt', value: 2 }, 2), false);
+    assert.equal(holds({ op: 'gte', value: 2 }, 2), true);
+    assert.equal(holds({ op: 'gte', value: 5 }, [1, 7]), true);
+    assert.equal(holds({ op: 'lt', value: 2 }, 'x'), false);
     assert.equal(holds({ op: 'lt', value: '2026-01-01' }, '2025-12-31'), true);
     assert.equal(holds({ op: 'lte', value: 1 }, null), false);
     assert.equal(holds({ op: 'empty' }, []), true);
+    assert.equal(holds({ op: 'empty' }, 0), false);
     assert.equal(holds({ op: 'present' }, 0), true);
+    assert.equal(holds({ op: 'present' }, ''), false);
   });
 });
 
@@ -99,5 +143,6 @@ describe('startsWith', () => {
     assert.equal(holds({ op: 'startsWith', value: ['Y92.0', 'Y92.1'] }, 'Y92.009'), true);
     assert.equal(holds({ op: 'startsWith', value: 'Y92.2' }, 'Y92.009'), false);
     assert.equal(holds({ op: 'startsWith', value: '' }, 'x'), false);
+    assert.equal(holds({ op: 'startsWith', value: 'Y92' }, ['R10', 'Y92.0']), true);
   });
 });

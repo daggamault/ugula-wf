@@ -355,7 +355,13 @@ export const NodeInspector = ({
                   const max = Number(e.target.value);
                   set({
                     retry:
-                      max > 0 ? { max, delayMs: node.retry?.delayMs ?? 1000, factor: 2 } : undefined
+                      max > 0
+                        ? {
+                            max,
+                            delayMs: node.retry?.delayMs ?? 1000,
+                            factor: node.retry?.factor ?? 2
+                          }
+                        : undefined
                   });
                 }}
               />

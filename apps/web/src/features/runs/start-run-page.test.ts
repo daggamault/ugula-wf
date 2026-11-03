@@ -33,6 +33,22 @@ describe('StartRunPage', () => {
     assert.ok(html.includes('Start Run'));
     assert.ok(html.includes('@3xl:grid-cols-4') && html.includes('href="/workflows/g1"'));
     assert.ok(html.includes('>Cancel<'));
+    assert.ok(html.includes('for="input-limit"') && html.includes('>Limit'));
+  });
+
+  it('says when a workflow takes no inputs', () => {
+    const html = renderToStaticMarkup(
+      createElement(StartRunForm, {
+        client: {} as RunsClient,
+        target: {
+          graphId: 'g1',
+          name: 'Batch',
+          version: 2,
+          signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] }
+        }
+      })
+    );
+    assert.ok(html.includes('This workflow takes no inputs.') && !html.includes('id="input-'));
   });
 
   it('gives scalars one grid column, files two and structured values a whole row', () => {

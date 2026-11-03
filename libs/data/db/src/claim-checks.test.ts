@@ -66,11 +66,18 @@ describe('findClaimCheck', () => {
   });
 
   it('finds nothing for another tenant, and no patient address before the patient is known', async () => {
-    assert.equal(await findClaimCheck(createRecordingDb().db, 't1', 'c1'), null);
+    const missing = createRecordingDb();
+    assert.equal(await findClaimCheck(missing.db, 't1', 'c1'), null);
+    assert.equal(missing.queries.length, 1);
     const { db } = createRecordingDb((q) =>
-      q.sql.includes('from "claims"') ? [{ ...claim, patient_id: null, loaded_miles: null }] : []
+      q.sql.includes('from "claims"')
+        ? [{ ...claim, patient_id: null, loaded_miles: null, destination_code: null }]
+        : []
     );
     const check = await findClaimCheck(db, 't1', 'c1');
-    assert.deepEqual([check?.patient, check?.loadedMiles, check?.payers], [null, null, []]);
+    assert.deepEqual(
+      [check?.patient, check?.loadedMiles, check?.payers, check?.details.originDestination],
+      [null, null, [], null]
+    );
   });
 });

@@ -26,7 +26,8 @@ const XML = `<EMSDataSet xmlns="http://www.nemsis.org" xmlns:xsi="http://www.w3.
   </ePayment>
   <eExam><eExam.01>81.6</eExam.01></eExam>
   <eSituation><eSituation.11>R07.9</eSituation.11><eSituation.12>I10</eSituation.12><eSituation.12>E11.9</eSituation.12></eSituation>
-  <eMedications><eMedications.MedicationGroup><eMedications.03 PN="8801019">4337</eMedications.03><eMedications.04>9927021</eMedications.04></eMedications.MedicationGroup></eMedications>
+  <eMedications><eMedications.MedicationGroup><eMedications.03 PN="8801019">4337</eMedications.03><eMedications.04>9927021</eMedications.04></eMedications.MedicationGroup><eMedications.MedicationGroup><eMedications.03>7242</eMedications.03><eMedications.04>9927023</eMedications.04><eMedications.05>0.5</eMedications.05></eMedications.MedicationGroup></eMedications>
+  <eProcedures><eProcedures.ProcedureGroup><eProcedures.03 PN="8801023">112798008</eProcedures.03></eProcedures.ProcedureGroup><eProcedures.ProcedureGroup><eProcedures.01>2026-09-14T08:10:00-04:00</eProcedures.01><eProcedures.03>392230005</eProcedures.03></eProcedures.ProcedureGroup></eProcedures>
   <eDisposition><eDisposition.12>4212033</eDisposition.12></eDisposition>
   <eNarrative><eNarrative.01>Pt found sitting.</eNarrative.01></eNarrative>
   <eOther><eOther.SignatureGroup><eOther.12>4512015</eOther.12><eOther.13>4513001</eOther.13><eOther.13>4513005</eOther.13><eOther.15>4515031</eOther.15><eOther.19>2026-09-14T08:22:00-04:00</eOther.19></eOther.SignatureGroup></eOther>
@@ -76,11 +77,14 @@ describe('toPcr', () => {
     assert.deepEqual(pcr.medications, [
       {
         administeredAt: null,
-        medication: '4337',
-        route: '9927021',
-        dosage: null,
+        medication: '7242',
+        route: '9927023',
+        dosage: 0.5,
         dosageUnits: null
       }
+    ]);
+    assert.deepEqual(pcr.procedures, [
+      { performedAt: '2026-09-14T08:10:00-04:00', procedure: '392230005' }
     ]);
     assert.equal(
       (pcr.disposition as { incidentDisposition: string }).incidentDisposition,
@@ -105,6 +109,71 @@ describe('toPcr', () => {
         firstName: null
       }
     ]);
+  });
+
+  it('leaves out medications and procedures charted as pertinent negatives', () => {
+    const pcr = toPcr({
+      eMedications: {
+        'eMedications.MedicationGroup': {
+          'eMedications.03': { '#text': '4337', '@PN': '8801007' }
+        }
+      },
+      eProcedures: {
+        'eProcedures.ProcedureGroup': [
+          { 'eProcedures.03': { '#text': '112798008', '@PN': '8801001' } },
+          { 'eProcedures.03': { '#text': '392230005' } }
+        ]
+      }
+    });
+    assert.deepEqual(pcr.medications, []);
+    assert.deepEqual(pcr.procedures, [{ performedAt: null, procedure: '392230005' }]);
+  });
+
+  it('reads NEMSIS 3.4 gender and 3.5 sex and dispositions side by side', () => {
+    const v34 = toPcr({
+      ePatient: { 'ePatient.13': '9906003' },
+      eDisposition: { 'eDisposition.12': '4212033' }
+    });
+    assert.deepEqual(
+      [
+        (v34.patient as Record<string, unknown>).gender,
+        (v34.patient as Record<string, unknown>).sex,
+        (v34.disposition as Record<string, unknown>).incidentDisposition,
+        (v34.disposition as Record<string, unknown>).transportDisposition
+      ],
+      ['9906003', null, '4212033', null]
+    );
+    const v35 = toPcr({
+      ePatient: { 'ePatient.13': { '@NV': '7701003', '@nil': 'true' }, 'ePatient.25': '9919001' },
+      eDisposition: {
+        'eDisposition.IncidentDispositionGroup': {
+          'eDisposition.27': '4227001',
+          'eDisposition.28': '4228001',
+          'eDisposition.29': '4229001',
+          'eDisposition.30': '4230001'
+        }
+      }
+    });
+    assert.deepEqual(
+      [
+        (v35.patient as Record<string, unknown>).gender,
+        (v35.patient as Record<string, unknown>).sex,
+        (v35.disposition as Record<string, unknown>).unitDisposition,
+        (v35.disposition as Record<string, unknown>).transportDisposition
+      ],
+      [null, '9919001', '4227001', '4230001']
+    );
+  });
+
+  it('reads numbers only when they are numbers and integers only when whole', () => {
+    const pcr = toPcr({
+      ePatient: { 'ePatient.AgeGroup': { 'ePatient.15': '76.5' } },
+      eExam: { 'eExam.01': 'heavy' },
+      eResponse: { 'eResponse.19': ' 1042.3 ' }
+    });
+    assert.equal((pcr.patient as Record<string, unknown>).age, null);
+    assert.equal((pcr.exam as Record<string, unknown>).weightKg, null);
+    assert.equal((pcr.response as Record<string, unknown>).beginOdometer, 1042.3);
   });
 
   it('describes the report and each section as labelled models', () => {

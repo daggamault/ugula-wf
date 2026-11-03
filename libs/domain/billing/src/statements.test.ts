@@ -37,6 +37,8 @@ describe('statements', () => {
   it('formats money', () => {
     assert.equal(money(114_220), '$1,142.20');
     assert.equal(money(-500), '-$5.00');
+    assert.equal(money(5), '$0.05');
+    assert.equal(money(0), '$0.00');
   });
 
   it('dates a statement in the agency time zone', () => {
@@ -59,7 +61,6 @@ describe('statements', () => {
     const doc = await PDFDocument.load(bytes);
     assert.equal(doc.getPageCount(), 1);
     assert.equal(doc.getTitle(), 'Statement 2 of 5 - Jose Doe');
-    const again = await renderStatement(statement);
-    assert.deepEqual(again.length, bytes.length);
+    assert.deepEqual(await renderStatement(statement), bytes);
   });
 });

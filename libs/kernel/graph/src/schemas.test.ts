@@ -38,5 +38,27 @@ describe('schemas', () => {
     assert.equal(withRetry({ max: 3, delayMs: 1e16 }), false);
     assert.equal(withRetry({ max: 1000, delayMs: 1 }), false);
     assert.equal(withRetry({ max: 3, delayMs: 1, factor: 100 }), false);
+    const withNode = (patch: Record<string, unknown>) =>
+      v.safeParse(graphDefSchema, {
+        ...clampGraph,
+        nodes: clampGraph.nodes.map((n, i) => (i === 0 ? { ...n, ...patch } : n))
+      }).success;
+    assert.equal(withNode({ id: 'constructor' }), false);
+    assert.equal(withNode({ id: 'x'.repeat(65) }), false);
+    assert.equal(withNode({ version: 0 }), false);
+    assert.equal(withNode({ inputs: { a: { value: Number.NaN } } }), false);
+    assert.equal(withNode({ inputs: { a: { value: 1, expr: '1' } } }), false);
+    assert.equal(v.safeParse(valueTypeSchema, { object: { toString: 'string' } }).success, false);
+    assert.equal(v.safeParse(valueTypeSchema, { object: { 'a-b': 'string' } }).success, false);
+  });
+
+  it('expands bare option strings into labelled options', () => {
+    assert.deepEqual(v.parse(fieldsSchema, [{ name: 'a', type: 'string', options: ['x'] }]), [
+      { name: 'a', type: 'string', options: [{ value: 'x', label: 'x' }] }
+    ]);
+    assert.equal(
+      v.safeParse(fieldsSchema, [{ name: 'a', type: 'string', options: [] }]).success,
+      false
+    );
   });
 });

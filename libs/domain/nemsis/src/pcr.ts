@@ -398,6 +398,13 @@ const groups = (report: unknown, group: string) => {
 const readAll = (report: unknown, group: string, s: Section) =>
   groups(report, group).map((g) => read(g, s));
 
+const isPertinentNegative = (x: unknown) => isRecord(x) && Object.hasOwn(x, '@PN');
+
+const readGiven = (report: unknown, group: string, s: Section, element: string) =>
+  groups(report, group)
+    .filter((g) => !isPertinentNegative(find(g, element)))
+    .map((g) => read(g, s));
+
 export const toPcr = (report: unknown): Fields => ({
   pcrNumber: textOf(find(report, 'eRecord.01')),
   response: read(report, RESPONSE),
@@ -407,8 +414,8 @@ export const toPcr = (report: unknown): Fields => ({
   insurances: readAll(report, 'ePayment.InsuranceGroup', INSURANCE),
   scene: read(report, SCENE),
   situation: read(report, SITUATION),
-  medications: readAll(report, 'eMedications.MedicationGroup', MEDICATION),
-  procedures: readAll(report, 'eProcedures.ProcedureGroup', PROCEDURE),
+  medications: readGiven(report, 'eMedications.MedicationGroup', MEDICATION, 'eMedications.03'),
+  procedures: readGiven(report, 'eProcedures.ProcedureGroup', PROCEDURE, 'eProcedures.03'),
   vitals: readAll(report, 'eVitals.VitalGroup', VITAL),
   exam: read(report, EXAM),
   disposition: read(report, DISPOSITION),

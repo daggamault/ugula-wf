@@ -245,6 +245,114 @@ describe('cycleNodes', () => {
     assert.deepEqual(claims.statuses, ['needs_review']);
   });
 
+  it('reviews a claim the clearinghouse or payer rejected again, flagging the rejection', async () => {
+    const { claims, node } = world();
+    claims.events.push(event('approved', 'cov-Medicare', '2025-12-01T00:00:00Z'));
+    claims.events.push(event('submitted', 'cov-Medicare', '2025-12-02T00:00:00Z'));
+    claims.events.push(event('rejected', 'cov-Medicare', '2025-12-03T00:00:00Z'));
+    const review = await run(node('claim-step'), { claimId: 'c1' });
+    assert.deepEqual(
+      [review.pin, review.outputs.coverageId, review.outputs.issues],
+      [
+        'review',
+        'cov-Medicare',
+        [
+          {
+            level: 'warning',
+            field: 'submission',
+            message: 'The payer or clearinghouse rejected the last submission',
+            coverageId: 'cov-Medicare'
+          }
+        ]
+      ]
+    );
+    assert.deepEqual(claims.statuses, ['needs_review']);
+  });
+
+  it("follows up once the payer's wait is over, and waits out the rest of it before", async () => {
+    const { claims, node } = world();
+    claims.events.push(event('submitted', 'cov-Medicare', '2025-12-01T00:00:00Z'));
+    const step = node('claim-step');
+    const due = await run(step, { claimId: 'c1', payerWaitDays: 0 });
+    assert.deepEqual([due.pin, due.outputs.waitMs], ['followUp', null]);
+    const waiting = await run(step, { claimId: 'c1', payerWaitDays: 45 });
+    assert.deepEqual([waiting.pin, waiting.outputs.waitMs], ['await', 14 * 86_400_000]);
+    assert.deepEqual(claims.statuses, ['follow_up', 'submitted']);
+  });
+
+  it('reconciles an overpayment and closes a paid claim without a status of its own', async () => {
+    const overpaid = world();
+    overpaid.claims.events.push({
+      ...event('response', 'cov-Medicare', '2025-12-20T00:00:00Z'),
+      paidCents: 120_000
+    });
+    const over = await run(overpaid.node('claim-step'), { claimId: 'c1' });
+    assert.deepEqual([over.pin, over.outputs.balanceCents], ['overpaid', -20_000]);
+    assert.deepEqual(overpaid.claims.statuses, ['reconcile']);
+    const paid = world();
+    paid.claims.events.push({
+      ...event('response', 'cov-Medicare', '2025-12-20T00:00:00Z'),
+      paidCents: 80_000,
+      adjustedCents: 20_000
+    });
+    const closed = await run(paid.node('claim-step'), { claimId: 'c1' });
+    assert.deepEqual([closed.pin, closed.outputs.balanceCents], ['closed', 0]);
+    assert.deepEqual(paid.claims.statuses, []);
+  });
+
+  it('asks for payers of a claim without any before billing the patient', async () => {
+    const { claims, node } = world({ coverages: [] });
+    const confirm = await run(node('claim-step'), { claimId: 'c1' });
+    assert.deepEqual([confirm.pin, confirm.outputs.coverageId], ['confirmPayers', null]);
+    assert.deepEqual(claims.statuses, ['needs_review']);
+  });
+
+  it('waits between patient statements, sending the default count when none is set', async () => {
+    const { claims, node } = world();
+    claims.events.push(event('payer_skipped', 'cov-Medicare', '2025-12-01T00:00:00Z'));
+    claims.events.push(event('payer_skipped', 'cov-Blue', '2025-12-01T00:00:00Z'));
+    claims.events.push(event('statement', null, '2025-12-20T00:00:00Z'));
+    const waiting = await run(node('claim-step'), { claimId: 'c1', statementCount: -1 });
+    assert.deepEqual(
+      [waiting.pin, waiting.outputs.waitMs, waiting.outputs.statementCount],
+      ['awaitPatient', 18 * 86_400_000, 3]
+    );
+    const later = await run(node('claim-step'), { claimId: 'c1', statementIntervalDays: 10 });
+    assert.deepEqual([later.pin, later.outputs.statementNumber], ['statement', 2]);
+    assert.deepEqual(claims.statuses, ['patient_balance', 'patient_balance']);
+  });
+
+  it('records only the events that apply to the payer being billed', async () => {
+    const { claims, node } = world();
+    claims.events.push(event('submitted', 'cov-Medicare', '2025-12-01T00:00:00Z'));
+    claims.events.push(event('response', 'cov-Medicare', '2025-12-20T00:00:00Z'));
+    const record = node('record-claim-event');
+    await run(record, { claimId: 'c1', kind: 'follow_up' });
+    await run(record, { claimId: 'c1', kind: 'submitted', coverageId: 'cov-Medicare' });
+    assert.equal(claims.events.length, 2);
+    await run(record, { claimId: 'c1', kind: 'reconciled', coverageId: 'cov-Medicare' });
+    await run(record, {
+      claimId: 'c1',
+      kind: 'statement',
+      note: ' Mailed ',
+      payerClaimNumber: 'X'
+    });
+    assert.deepEqual(
+      claims.events.slice(2).map((e) => [e.kind, e.coverageId, e.note, e.payerClaimNumber]),
+      [
+        ['reconciled', 'cov-Medicare', '', null],
+        ['statement', null, 'Mailed', null]
+      ]
+    );
+  });
+
+  it('links its run to the claim it follows', async () => {
+    const { claims, node } = world();
+    await run(node('follow-claim'), { claimId: 'c1' });
+    assert.deepEqual(claims.attached, ['claim:c1']);
+    await assert.rejects(async () => run(node('follow-claim'), { claimId: ' ' }), /No claim/);
+  });
+
   it('decides again when the claim changed while it decided', async () => {
     const { node } = world({ stale: true });
     assert.equal((await run(node('claim-step'), { claimId: 'c1' })).pin, 'stale');

@@ -17,6 +17,9 @@ describe('HealthStatus', () => {
     assert.ok(down.includes('bg-danger'));
     assert.ok(down.includes('Live updates off, reconnecting'));
 
-    assert.ok(render('connecting').includes('bg-warning'));
+    const connecting = render('connecting');
+    assert.ok(connecting.includes('bg-warning') && connecting.includes('animate-pulse'));
+    assert.ok(connecting.includes('<span class="sr-only">Connecting to live updates</span>'));
+    assert.ok(up.includes('aria-hidden="true"'));
   });
 });

@@ -62,8 +62,14 @@ const ELIGIBILITY = x12(
   'SE*11*0001'
 );
 
+const document = { bucket: 'ugula', key: 't1/payer-files/x/era.835', size: 4 };
+
 const setup = ({ imported = false } = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
+    if (q.sql.includes('from "payer_files" as "f"')) {
+      return q.parameters.includes('f1') ? [{ id: 'f1', file_name: 'era.835', document }] : [];
+    }
+    if (q.sql.includes('from "payer_file_items"')) return [{ position: 1, outcome: 'posted' }];
     if (q.sql.startsWith('select "id", "created_at" from "payer_files"')) {
       return imported ? [{ id: 'f0', created_at: new Date('2026-10-01T00:00:00Z') }] : [];
     }
@@ -179,5 +185,36 @@ describe('payer file service', () => {
     assert.ok(queries[0]?.sql.includes('"f"."tenant_id" = $1'));
     const missing = await service.find('t1', 'f9');
     assert.equal(missing.ok ? null : missing.failure.code, 'not_found');
+    const gone = await service.download('t1', 'f9');
+    assert.equal(gone.ok ? null : gone.failure.code, 'not_found');
+  });
+
+  it('opens a file with its items without exposing where it is stored', async () => {
+    const { service, queries } = setup();
+    assert.deepEqual(await service.find('t1', 'f1'), {
+      ok: true,
+      value: {
+        file: { id: 'f1', file_name: 'era.835' },
+        items: [{ position: 1, outcome: 'posted' }]
+      }
+    });
+    assert.deepEqual(queries[0]?.parameters, ['t1', 'f1']);
+    assert.deepEqual(queries[1]?.parameters, ['f1']);
+    assert.deepEqual(await service.download('t1', 'f1'), {
+      ok: true,
+      value: { name: 'era.835', bytes: new TextEncoder().encode(REMITTANCE) }
+    });
+  });
+
+  it('refuses files over the size limit before reading or storing them', async () => {
+    const { service, queries, stored } = setup();
+    const big = await service.upload('t1', 'u1', {
+      name: 'era.835',
+      type: '',
+      bytes: new Uint8Array(1_000_001)
+    });
+    assert.equal(big.ok ? null : big.failure.code, 'invalid');
+    assert.equal(queries.length, 0);
+    assert.equal(stored.length, 0);
   });
 });

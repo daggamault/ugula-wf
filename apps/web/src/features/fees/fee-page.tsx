@@ -84,9 +84,11 @@ export const toFeeDraft = (f: Fee | null): FeeDraft => ({
 });
 
 export const toFeeInput = (draft: FeeDraft): FeeInput | string => {
+  const code = draft.code.trim().toUpperCase();
+  if (!code) return 'Enter a HCPCS code.';
   const amountCents = parseDollars(draft.amount);
   if (amountCents === null) return 'Enter an amount of zero or more.';
-  return { payerId: draft.payerId || null, code: draft.code.trim().toUpperCase(), amountCents };
+  return { payerId: draft.payerId || null, code, amountCents };
 };
 
 export const FeeForm = ({

@@ -413,3 +413,37 @@ describe('claim service', () => {
     );
   });
 });
+
+describe('claim service tenancy', () => {
+  it('locks every claim write to the tenant and announces only the writes that succeed', async () => {
+    const data = {
+      patient: null,
+      coverages: [],
+      serviceDate: null,
+      pickup: null,
+      destination: null,
+      diagnoses: null,
+      originDestination: null,
+      documentation: null,
+      note: null
+    };
+    const { service, queries, announced } = setup();
+    await service.setPayers('t', 'c1', [entry('Medicare')]);
+    await service.saveBillingData('t', 'u1', 'c1', data);
+    await service.restartCycle('t', 'c1');
+    const locks = queries.filter((q) => q.sql.endsWith('for update'));
+    assert.equal(locks.length, 3);
+    assert.ok(locks.every((q) => q.sql.includes('"tenant_id" = $') && q.parameters.includes('t')));
+    assert.deepEqual(
+      announced.map((a) => a.tenantId),
+      ['t', 't', 't']
+    );
+    const foreign = setup({ row: null });
+    await foreign.service.setPayers('other', 'c1', []);
+    await foreign.service.saveBillingData('other', 'u1', 'c1', data);
+    await foreign.service.restartCycle('other', 'c1');
+    await foreign.service.recordResponse('other', 'u1', 'c1', response());
+    assert.deepEqual(foreign.announced, []);
+    assert.ok(!foreign.queries.some((q) => /^(insert|update|delete)/.test(q.sql.trim())));
+  });
+});

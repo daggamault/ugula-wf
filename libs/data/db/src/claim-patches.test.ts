@@ -104,4 +104,44 @@ describe('applyClaimEdit', () => {
     assert.ok(sqls.some((s) => /row_number\(\) over/.test(s)));
     assert.ok(sqls.some((s) => /insert into "claim_coverages".*select/s.test(s)));
   });
+
+  it('splits origin and destination codes, totals the lines and notes a biller signature', async () => {
+    const { db, queries } = createRecordingDb(logged);
+    const edit: ClaimEdit = {
+      ...empty,
+      originDestination: 'RH',
+      documentation: {
+        signature: 'signed',
+        pcsOnFile: null,
+        pcsSignedOn: null,
+        transportReason: null
+      },
+      lines: [
+        { code: 'A0427', units: 1, unitCents: 90_000, totalCents: 90_000 },
+        { code: 'A0425', units: 7, unitCents: 1_000, totalCents: 7_000 }
+      ]
+    };
+    assert.equal(await applyClaimEdit(db, 't1', 'c1', edit, event), true);
+    const claim = queries.find((q) => q.sql.startsWith('update "claims"'));
+    assert.equal(
+      claim?.sql,
+      'update "claims" set "origin_code" = $1, "destination_code" = $2, "signature" = $3, "signature_note" = $4, "total_cents" = $5, "updated_at" = now() where "id" = $6'
+    );
+    assert.deepEqual(claim?.parameters, ['R', 'H', 'signed', 'Updated by a biller', 97_000, 'c1']);
+  });
+
+  it('clears every line and zeroes the total when the lines are emptied', async () => {
+    const { db, queries } = createRecordingDb(logged);
+    await applyClaimEdit(db, 't1', 'c1', { ...empty, lines: [] }, event);
+    const sqls = queries.map((q) => q.sql);
+    assert.ok(sqls.some((s) => s.startsWith('delete from "claim_lines"')));
+    assert.equal(
+      sqls.some((s) => s.startsWith('insert into "claim_lines"')),
+      false
+    );
+    assert.deepEqual(queries.find((q) => q.sql.startsWith('update "claims"'))?.parameters, [
+      0,
+      'c1'
+    ]);
+  });
 });

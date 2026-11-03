@@ -92,7 +92,9 @@ const tokenize = (src: string): Token[] => {
       out.push({ t: 'str', v: s, pos: i });
       i = j + 1;
     } else {
-      const op = OPS.find((o) => src.startsWith(o, i)) ?? (SINGLE.includes(c) ? c : null);
+      const op =
+        OPS.find((o) => src.startsWith(o, i) && !(o === '?.' && /\d/.test(src.charAt(i + 2)))) ??
+        (SINGLE.includes(c) ? c : null);
       if (!op) return fail(`Unexpected "${c}" at ${i}`);
       out.push({ t: 'op', v: op, pos: i });
       i += op.length;

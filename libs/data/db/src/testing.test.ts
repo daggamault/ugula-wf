@@ -19,7 +19,10 @@ describe('createRecordingDb', () => {
     );
     assert.deepEqual(await db.selectFrom('users').select('id').execute(), [{ id: 'x' }]);
     await db.deleteFrom('users').execute();
-    assert.equal(queries.length, 2);
+    assert.deepEqual(
+      queries.map((q) => q.sql),
+      ['select "id" from "users"', 'delete from "users"']
+    );
     await db.destroy();
   });
 });

@@ -221,3 +221,24 @@ describe('import service SFTP hooks', () => {
     assert.equal(await code({}), 'ok');
   });
 });
+
+describe('import service announcements and names', () => {
+  it('announces new imports to the tenant and names unnamed uploads safely', async () => {
+    const { service, announced, queries } = setup();
+    assert.ok((await service.upload('t-1', 'u-1', 'billing.ingest-nemsis', file('<x/>', '  '))).ok);
+    assert.deepEqual(announced, [{ tenantId: 't-1', event: { kind: 'import', id: null } }]);
+    const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
+    assert.equal(recorded?.parameters[3], 'upload');
+    const refused = setup({ published: false });
+    await refused.service.upload('t-1', 'u-1', 'billing.ingest-nemsis', file('<x/>'));
+    assert.deepEqual(refused.announced, []);
+  });
+
+  it('refuses SFTP logins for tenants without an SFTP password', async () => {
+    const { service } = setup({ tenant: { id: 't-1', sftp_password_hash: '' } });
+    assert.deepEqual(await service.authenticateSftp('acme-ems', ''), {
+      ok: false,
+      failure: { code: 'unauthorized', message: 'Invalid SFTP credentials' }
+    });
+  });
+});

@@ -13,6 +13,11 @@ describe('signInSchema', () => {
       email: 'dev@example.com',
       password: 'P@ssw0rd123'
     });
-    assert.throws(() => v.parse(signInSchema, { email: 'invalid', password: '' }));
+    assert.equal(v.safeParse(signInSchema, { email: 'invalid', password: 'x' }).success, false);
+    assert.equal(
+      v.safeParse(signInSchema, { email: 'dev@example.com', password: '' }).success,
+      false
+    );
+    assert.equal(v.safeParse(signInSchema, { email: 'dev@example.com' }).success, false);
   });
 });
