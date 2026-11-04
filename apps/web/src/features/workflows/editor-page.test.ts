@@ -5,8 +5,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { idleLive, testNodes } from '../../shared/testing.ts';
-import type { GraphDetail, GraphScope, WorkflowsClient } from './client.ts';
+import type { GraphComparison, GraphDetail, GraphScope, WorkflowsClient } from './client.ts';
 import {
+  customizedNodes,
   DocumentationHints,
   documentationHints,
   EditorPage,
@@ -33,13 +34,15 @@ const detail = (
     key: 'acme.flow',
     name: 'Flow',
     kind: 'workflow',
+    role: 'workflow',
     description: '',
     overridden_by: links.overridden_by ?? null,
     overrides: links.overrides ?? null,
     is_stale: false,
     canEdit: scope !== 'system',
     canOverride: { organization: false, agency: scope === 'system' },
-    effectiveId: links.overridden_by ?? 'g1'
+    effectiveId: links.overridden_by ?? 'g1',
+    effectiveScope: links.overridden_by ? 'agency' : scope
   },
   versions: [
     {
@@ -61,17 +64,25 @@ const detail = (
   ]
 });
 
-const render = (d: GraphDetail, version: number, trail: TrailStep[] = []) =>
+const render = (
+  d: GraphDetail,
+  version: number,
+  trail: TrailStep[] = [],
+  extra: { comparison?: GraphComparison; def?: GraphDef } = {}
+) =>
   renderToStaticMarkup(
     createElement(EditorView, {
       detail: d,
       version,
-      source,
+      source: extra.def ?? source,
       catalog: createCatalog(testNodes),
       client: {} as WorkflowsClient,
       trail,
       nameOf: (id) => ({ p1: 'Process PCR', p0: 'Ingest' })[id] ?? 'Workflow',
-      onSaved: () => undefined
+      onSaved: () => undefined,
+      comparison: extra.comparison ?? null,
+      tables: [],
+      onRebased: () => undefined
     })
   );
 
@@ -105,19 +116,22 @@ describe('EditorView', () => {
     assert.ok(!published.includes('Add Node'));
     assert.ok(published.includes('Published versions are read-only. Edit as a new draft'));
     const system = render(detail('system', true), 1);
-    assert.ok(system.includes('System'));
+    assert.ok(system.includes('>Built-in<'));
     assert.ok(!system.includes('Edit as New Draft'));
-    assert.ok(system.includes('>Override<'));
+    assert.ok(system.includes('Override for This Agency'));
+    assert.ok(!system.includes('Override for Organization'));
     assert.ok(system.includes('Override this one to change how your agency runs it'));
   });
 
   it('links a built-in graph to its override, and lets the override be removed', () => {
     const overridden = render(detail('system', true, { overridden_by: 'g9' }), 1);
-    assert.ok(overridden.includes('>Has Your Copy<'));
-    assert.ok(overridden.includes('href="/workflows/g9"') && overridden.includes('Edit Override'));
-    assert.ok(!overridden.includes('>Override<'));
+    assert.ok(overridden.includes('>Has Agency Copy<'));
+    assert.ok(
+      overridden.includes('href="/workflows/g9"') && overridden.includes('Open Agency Copy')
+    );
+    assert.ok(!overridden.includes('Override for This Agency'));
     const copy = render(detail('agency', false, { overrides: 'g0' }), 2);
-    assert.ok(copy.includes('>Your Copy<') && copy.includes('Remove Override'));
+    assert.ok(copy.includes('>Agency<') && copy.includes('Remove Override'));
     assert.ok(copy.includes('>Publish<'));
   });
 
@@ -133,6 +147,110 @@ describe('EditorView', () => {
     assert.ok(nested.includes('href="/workflows/p0?version=1"'));
     assert.ok(nested.includes('href="/workflows/p1?version=3&amp;trail=p0:1"'));
     assert.ok(nested.includes('aria-label="Back to Process PCR"'));
+  });
+});
+
+describe('editing an override', () => {
+  const changed: GraphDef = {
+    ...source,
+    nodes: [...source.nodes, { id: 'add1', type: 'std.math.add', version: 1 }]
+  };
+  const comparison = (baseChanged: boolean): GraphComparison => ({
+    mine: { version: 2, definition: changed },
+    copiedFrom: {
+      version: 1,
+      scope: 'system',
+      definition: {
+        ...source,
+        nodes: [...source.nodes, { id: 'gone', type: 'std.math.add', version: 1 }]
+      }
+    },
+    latest: { version: baseChanged ? 2 : 1, definition: source },
+    baseChanged
+  });
+
+  it('warns when the base moved and offers compare and removed nodes', () => {
+    const html = render(detail('agency', false, { overrides: 'g0' }), 2, [], {
+      comparison: comparison(true),
+      def: changed
+    });
+    assert.ok(html.includes('Base Updated.') && html.includes('href="/?panel=compare"'));
+    assert.ok(html.includes('>Compare<') && html.includes('Show Removed'));
+    assert.ok(html.includes('href="/?removed=shown"'));
+    assert.ok(html.includes('>Base Updated<'));
+    const calm = render(detail('agency', false, { overrides: 'g0' }), 2, [], {
+      comparison: comparison(false),
+      def: changed
+    });
+    assert.ok(!calm.includes('Base Updated.'));
+  });
+
+  it('explains an empty agency rule slot', () => {
+    const slot: GraphDetail = {
+      ...detail('system', true),
+      graph: { ...detail('system', true).graph, kind: 'node', role: 'slot' }
+    };
+    const pass: GraphDef = {
+      signature: {
+        execIn: [],
+        execOut: [],
+        inputs: [{ name: 'x', type: 'number' }],
+        outputs: [{ name: 'x', type: 'number' }]
+      },
+      variables: [],
+      nodes: [
+        { id: 'entry', type: ENTRY_TYPE, version: 1 },
+        { id: 'return', type: 'std.graph.return', version: 1 }
+      ],
+      edges: [{ from: 'entry', fromPin: 'x', to: 'return', toPin: 'x' }]
+    };
+    const html = render(slot, 1, [], { def: pass });
+    assert.ok(html.includes('Agency Rule') && html.includes('This Agency Rule does nothing yet'));
+    assert.ok(html.includes('Override it for your agency'));
+  });
+
+  it('marks nodes whose subworkflow or table is overridden', () => {
+    const def: GraphDef = {
+      ...source,
+      nodes: [
+        { id: 'sub', type: 'acme.rule', version: 1 },
+        {
+          id: 'rates',
+          type: 'std.table.lookup',
+          version: 1,
+          config: { type: 'string', table: { key: 'acme.rates' } }
+        },
+        {
+          id: 'codes',
+          type: 'std.table.lookup',
+          version: 1,
+          config: { type: 'string', table: { key: 'acme.codes' } }
+        }
+      ]
+    };
+    const catalog = createCatalog(testNodes, {
+      published: [
+        {
+          graph_id: 'g2',
+          key: 'acme.rule',
+          name: 'Rule',
+          kind: 'node',
+          role: 'rule',
+          description: '',
+          version: 1,
+          signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
+          overridden: true
+        }
+      ]
+    });
+    const tables = new Map([
+      ['acme.rates', { id: 't1', key: 'acme.rates', name: 'Rates', scope: 'agency' as const }],
+      ['acme.codes', { id: 't2', key: 'acme.codes', name: 'Codes', scope: 'system' as const }]
+    ]);
+    assert.deepEqual(customizedNodes(def, catalog, tables), {
+      sub: 'overridden',
+      rates: 'overridden'
+    });
   });
 });
 

@@ -423,17 +423,3 @@ export const buildEffectiveGraphs = (s: ScopeIds) => sql<EffectiveGraph>`
 
 export const listEffectiveGraphs = async (db: Db, s: ScopeIds) =>
   (await buildEffectiveGraphs(s).execute(db)).rows;
-
-export const buildEffectiveTables = (s: ScopeIds) => sql<{
-  id: string;
-  key: string;
-  name: string;
-  scope: Scope;
-}>`
-  select distinct on (t.key) t.id, t.key, t.name, ${scopeOf('t')} as scope
-  from data_tables t
-  where ${visible('t', s)}
-  order by t.key, ${rankOf('t')}`;
-
-export const listEffectiveTables = async (db: Db, s: ScopeIds) =>
-  (await buildEffectiveTables(s).execute(db)).rows;

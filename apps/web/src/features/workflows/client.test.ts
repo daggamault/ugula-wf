@@ -45,6 +45,38 @@ describe('createWorkflowsClient', () => {
       'DELETE /api/graphs/a%2Fb'
     ]);
   });
+
+  it('calls the customization map and table endpoints', async () => {
+    const calls: string[] = [];
+    const client = createWorkflowsClient(
+      createApi('', async (url, init = {}) => {
+        calls.push(`${init.method} ${String(url)}`);
+        return new Response(JSON.stringify({ tables: [4], graphs: [] }), { status: 200 });
+      })
+    );
+    await client.map();
+    await client.tables.search('show=customized');
+    assert.deepEqual(await client.tables.effective(), [4]);
+    await client.tables.find('t');
+    await client.tables.compare('t');
+    await client.tables.version('t', 2);
+    await client.tables.saveDraft('t', { rows: [] });
+    await client.tables.publish('t');
+    await client.tables.override('t', 'organization');
+    await client.tables.remove('t');
+    assert.deepEqual(calls, [
+      'GET /api/graphs/map',
+      'GET /api/tables?show=customized',
+      'GET /api/tables/effective',
+      'GET /api/tables/t',
+      'GET /api/tables/t/compare',
+      'GET /api/tables/t/versions/2',
+      'PUT /api/tables/t/draft',
+      'POST /api/tables/t/publish',
+      'POST /api/tables/t/override',
+      'DELETE /api/tables/t'
+    ]);
+  });
 });
 
 describe('workflows client errors', () => {

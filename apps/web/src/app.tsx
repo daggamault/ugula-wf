@@ -10,6 +10,7 @@ import {
   ReceiptTextIcon,
   SettingsIcon,
   ShieldCheckIcon,
+  TableIcon,
   UserCogIcon,
   UsersIcon,
   WorkflowIcon
@@ -62,9 +63,13 @@ import { InvitePage } from './features/users/invite-page.tsx';
 import { UserPage } from './features/users/user-page.tsx';
 import { USERS_PATH, UsersPage } from './features/users/users-page.tsx';
 import type { WorkflowsClient } from './features/workflows/client.ts';
+import { CustomizationMapPage } from './features/workflows/customization-map-page.tsx';
 import { graphKindOf, NewWorkflowPage } from './features/workflows/new-workflow-page.tsx';
+import { TablePage } from './features/workflows/table-page.tsx';
+import { TABLES_PATH, TablesPage, tableFilterOf } from './features/workflows/tables-page.tsx';
 import { parseTrail } from './features/workflows/trail.ts';
 import {
+  CUSTOMIZED_PATH,
   graphFilterOf,
   WORKFLOWS_PATH,
   WorkflowsPage
@@ -180,6 +185,14 @@ const SECTIONS: readonly Section[] = [
     permission: 'workflows:read'
   },
   {
+    id: 'tables',
+    label: 'Tables',
+    href: TABLES_PATH,
+    icon: TableIcon,
+    group: 'Automation',
+    permission: 'workflows:read'
+  },
+  {
     id: 'runs',
     label: 'Runs',
     href: '/runs',
@@ -251,6 +264,27 @@ const routes: readonly Route[] = [
         client={c.workflows}
         kind={graphKindOf(q)}
         back={backOf(q, WORKFLOWS_PATH)}
+      />
+    )
+  },
+  {
+    pattern: CUSTOMIZED_PATH,
+    render: (_, q, c) => (
+      <CustomizationMapPage client={c.workflows} live={c.live} showAll={q.get('all') === 'shown'} />
+    )
+  },
+  {
+    pattern: TABLES_PATH,
+    render: (_, q, c) => <TablesPage client={c.workflows} live={c.live} show={tableFilterOf(q)} />
+  },
+  {
+    pattern: `${TABLES_PATH}/:id`,
+    render: (p, q, c) => (
+      <TablePage
+        client={c.workflows}
+        live={c.live}
+        tableId={p.id ?? ''}
+        version={versionParam(q)}
       />
     )
   },

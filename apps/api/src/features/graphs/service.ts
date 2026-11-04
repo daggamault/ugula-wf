@@ -27,6 +27,7 @@ import { fail, ok } from '../../shared/result.ts';
 import {
   canEditScope,
   type EditScope,
+  listEffective,
   ownerOf,
   RANK,
   type Scope,
@@ -47,7 +48,6 @@ import {
   insertDraft,
   insertGraph,
   listEffectiveGraphs,
-  listEffectiveTables,
   listPublishedNodes,
   listVersions,
   nextVersion,
@@ -185,7 +185,7 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
       const ids = scopeIds(access);
       const [graphs, tables] = await Promise.all([
         listEffectiveGraphs(db, ids),
-        listEffectiveTables(db, ids)
+        listEffective(db, 'data_tables', ids)
       ]);
       return ok({ graphs: customizationMap(graphs), tables });
     },
@@ -201,7 +201,8 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
             organization: graph.scope === 'system' && access.isOrganizationAdmin,
             agency: graph.scope !== 'agency' && canEditScope(access, 'agency', graph.role)
           },
-          effectiveId: effective?.id ?? graph.id
+          effectiveId: effective?.id ?? graph.id,
+          effectiveScope: effective?.scope ?? graph.scope
         },
         versions: await listVersions(db, id)
       });

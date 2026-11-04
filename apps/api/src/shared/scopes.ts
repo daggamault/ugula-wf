@@ -1,4 +1,4 @@
-import type { GraphRole } from '@ugula/db';
+import type { Db, GraphRole } from '@ugula/db';
 import { type RawBuilder, sql } from 'kysely';
 import { type AgencyAccess, hasPermission } from './access.ts';
 
@@ -92,3 +92,14 @@ export const ownerOf = (access: AgencyAccess, scope: EditScope) => ({
   organizationId: access.organizationId,
   agencyId: scope === 'agency' ? access.agencyId : null
 });
+
+export type Effective = { id: string; key: string; name: string; scope: Scope };
+
+export const buildEffective = (table: ScopedTable, s: ScopeIds) => sql<Effective>`
+  select distinct on (e.key) e.id, e.key, e.name, ${scopeOf('e')} as scope
+  from ${sql.table(table)} e
+  where ${visible('e', s)}
+  order by e.key, ${rankOf('e')}`;
+
+export const listEffective = async (db: Db, table: ScopedTable, s: ScopeIds) =>
+  (await buildEffective(table, s).execute(db)).rows;

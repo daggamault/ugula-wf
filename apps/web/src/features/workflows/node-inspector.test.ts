@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ENTRY_TYPE, type GraphDef } from '@ugula/graph';
+import { ENTRY_TYPE, type GraphDef, type NodeInstance } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { testNodes } from '../../shared/testing.ts';
+import type { EffectiveTable } from './client.ts';
 import { NodeInspector } from './node-inspector.tsx';
 
 const def: GraphDef = {
@@ -90,6 +91,8 @@ describe('NodeInspector', () => {
                 key: 'acme.rule',
                 name: 'Rule',
                 kind: 'node',
+                role: 'rule',
+                overridden: false,
                 description: '',
                 version: 1,
                 signature: {
@@ -122,5 +125,48 @@ describe('NodeInspector', () => {
     assert.ok(!html.includes('Delete Node'));
     assert.ok(!render('entry').includes('Delete Node'));
     assert.ok(render('entry').includes('Where this graph starts'));
+  });
+
+  const inspect = (
+    node: NodeInstance,
+    extra: { base?: NodeInstance; table?: EffectiveTable } = {},
+    editable = true
+  ) =>
+    renderToStaticMarkup(
+      createElement(NodeInspector, {
+        def: { ...def, nodes: [...def.nodes.filter((n) => n.id !== node.id), node] },
+        node,
+        catalog: createCatalog(testNodes),
+        editable,
+        onChange: () => undefined,
+        onDelete: () => undefined,
+        onClose: () => undefined,
+        ...extra
+      })
+    );
+
+  it('shows what an override changed with the base value and a reset', () => {
+    const node = { id: 'add1', type: 'std.math.add', version: 1, inputs: { a: { value: 5 } } };
+    const html = inspect(node, { base: { ...node, inputs: { a: { value: 2 } } } });
+    assert.ok(html.includes('Changed From Base') && html.includes('Base: 2'));
+    assert.ok(html.includes('Reset to Base') && html.includes('bg-custom'));
+    assert.ok(html.includes('aria-label="Changed from the base"'));
+    assert.ok(!inspect(node, { base: node }).includes('Changed From Base'));
+    assert.ok(!inspect(node, { base: { ...node, inputs: {} } }, false).includes('Reset to Base'));
+  });
+
+  it('links a table node to its shared table and says when it is customized', () => {
+    const node = {
+      id: 'rates',
+      type: 'std.table.lookup',
+      version: 1,
+      config: { type: 'string', table: { key: 'billing.rates' } }
+    };
+    const html = inspect(node, {
+      table: { id: 't1', key: 'billing.rates', name: 'Rates', scope: 'agency' }
+    });
+    assert.ok(html.includes('Uses the shared table') && html.includes('href="/tables/t1"'));
+    assert.ok(html.includes('Customized for This Agency'));
+    assert.ok(inspect(node).includes('This table is not available to your agency.'));
   });
 });

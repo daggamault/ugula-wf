@@ -30,6 +30,10 @@ describe('SectionPanel', () => {
     );
     assert.ok(html.includes('border-primary/40'));
     assert.ok(!html.includes('shadow'));
+    const custom = renderToStaticMarkup(
+      createElement(SectionPanel, { title: 'Changed', accent: 'custom' })
+    );
+    assert.ok(custom.includes('border-custom/40'));
   });
 });
 

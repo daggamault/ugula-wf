@@ -2,11 +2,12 @@ import { type ReactNode, useId } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import type { Intent } from './intent.ts';
 
-type SectionAccent = Extract<Intent, 'primary' | 'warning'>;
+type SectionAccent = Extract<Intent, 'primary' | 'warning'> | 'custom';
 
 const accentClasses: Readonly<Record<SectionAccent, string>> = {
   primary: 'border-primary/40 ring-primary/15 ring-1',
-  warning: 'border-warning/60 ring-warning/25 ring-1'
+  warning: 'border-warning/60 ring-warning/25 ring-1',
+  custom: 'border-custom/40 ring-custom/15 ring-1'
 };
 
 type SectionPanelProps = {

@@ -32,6 +32,8 @@ describe('createCatalog', () => {
           key: 'acme.score',
           name: 'Score v2',
           kind: 'node',
+          role: 'rule',
+          overridden: false,
           description: '',
           version: 2,
           signature
@@ -41,6 +43,8 @@ describe('createCatalog', () => {
           key: 'acme.score',
           name: 'Score',
           kind: 'node',
+          role: 'rule',
+          overridden: false,
           description: '',
           version: 1,
           signature
@@ -73,6 +77,8 @@ describe('createCatalog', () => {
           key: 'acme.score',
           name: 'Score',
           kind: 'node',
+          role: 'rule',
+          overridden: false,
           description: '',
           version: 1,
           signature
@@ -128,6 +134,8 @@ describe('createCatalog', () => {
           key: 'acme.score',
           name: 'Score',
           kind: 'node',
+          role: 'rule',
+          overridden: false,
           description: '',
           version: 1,
           signature
@@ -137,6 +145,8 @@ describe('createCatalog', () => {
           key: 'acme.cycle',
           name: 'Cycle',
           kind: 'workflow',
+          role: 'workflow',
+          overridden: false,
           description: '',
           version: 3,
           signature

@@ -20,6 +20,7 @@ const record =
 const service = {
   search: async (access: AgencyAccess, filters: unknown) =>
     ok({ items: [], args: [access.agencyId, filters] }),
+  effective: async () => ok({ tables: [{ key: 'billing.base-rate' }] }),
   find: async (_a: AgencyAccess, id: string) =>
     id === ID ? ok({ table: { id } }) : fail('not_found', 'Table not found'),
   compare: record(ok({ mine: null, copiedFrom: null, latest: null, baseChanged: false })),
@@ -40,6 +41,9 @@ describe('table routes', () => {
     assert.deepEqual(await (await request('/?show=customized')).json(), {
       items: [],
       args: ['t-1', { show: 'customized', page: 1, pageSize: 25, sort: 'name', dir: 'asc' }]
+    });
+    assert.deepEqual(await (await request('/effective')).json(), {
+      tables: [{ key: 'billing.base-rate' }]
     });
     assert.equal((await request(`/${ID}`)).status, 200);
     assert.equal((await request('/01a16617-7704-7ba6-b9b5-9c79fa44f960')).status, 404);

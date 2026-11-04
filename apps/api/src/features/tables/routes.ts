@@ -16,6 +16,7 @@ export const createTableRoutes = (service: TableService) =>
     .get('/', sValidator('query', searchTablesQuery, invalidRequest), async (c) =>
       respond(c, await service.search(c.get('access'), c.req.valid('query')))
     )
+    .get('/effective', async (c) => respond(c, await service.effective(c.get('access'))))
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.find(c.get('access'), c.req.valid('param').id))
     )

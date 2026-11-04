@@ -48,7 +48,10 @@ describe('app routing', () => {
     for (const path of [
       '/workflows',
       '/workflows/new',
+      '/workflows/customized',
       '/workflows/g1',
+      '/tables',
+      '/tables/t1',
       '/runs',
       '/runs/new',
       '/runs/r1',
@@ -96,6 +99,9 @@ describe('app routing', () => {
     assert.equal(props('/claims/c1', 'back=https://evil.test').back, '/claims');
     assert.equal(props('/workflows/g1', 'version=3').version, 3);
     assert.equal(props('/workflows/g1', 'version=0').version, null);
+    assert.equal(props('/workflows/customized', 'all=shown').showAll, true);
+    assert.equal(props('/tables/t1', 'version=2').version, 2);
+    assert.equal(props('/tables', 'show=customized').show, 'customized');
     assert.equal(props('/tasks/t1', '').back, null);
     assert.equal(props('/tasks/t1', 'back=/runs/r1').back, '/runs/r1');
     assert.equal(props('/fees/new', '').feeId, null);

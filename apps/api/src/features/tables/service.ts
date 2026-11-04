@@ -7,6 +7,7 @@ import { fail, ok } from '../../shared/result.ts';
 import {
   canEditScope,
   type EditScope,
+  listEffective,
   ownerOf,
   RANK,
   type Scope,
@@ -71,6 +72,8 @@ export const createTableService = ({ db }: { db: Db }) => {
   return {
     search: async (access: AgencyAccess, filters: TableFilters) =>
       ok(await searchTables(db, scopeIds(access), filters)),
+    effective: async (access: AgencyAccess) =>
+      ok({ tables: await listEffective(db, 'data_tables', scopeIds(access)) }),
     find: async (access: AgencyAccess, id: string) => {
       const table = await findTable(db, scopeIds(access), id);
       if (!table) return notFound;
@@ -83,7 +86,8 @@ export const createTableService = ({ db }: { db: Db }) => {
             organization: table.scope === 'system' && access.isOrganizationAdmin,
             agency: table.scope !== 'agency' && canEditScope(access, 'agency', 'table')
           },
-          effectiveId: effective?.id ?? table.id
+          effectiveId: effective?.id ?? table.id,
+          effectiveScope: effective?.scope ?? table.scope
         },
         versions: await listTableVersions(db, id)
       });

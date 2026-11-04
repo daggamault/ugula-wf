@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { createDummyDb } from '@ugula/db/testing';
 import { sql } from 'kysely';
 import {
+  buildEffective,
   canEditScope,
   isStaleIn,
   overriddenByIn,
@@ -57,6 +58,9 @@ describe('scope helpers', () => {
     const stale = flat(sql`select ${isStaleIn('data_tables', 't')}`.compile(db).sql);
     assert.ok(stale.includes('from "data_table_versions" sv where sv."table_id" = sg.id'));
     assert.ok(stale.includes('mv."table_id" = "t"."id"'));
+    const effective = flat(buildEffective('data_tables', s).compile(db).sql);
+    assert.ok(effective.includes('select distinct on (e.key) e.id, e.key, e.name'));
+    assert.ok(effective.includes('from "data_tables" e'));
     await db.destroy();
   });
 });

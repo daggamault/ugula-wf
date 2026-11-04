@@ -16,7 +16,6 @@ import {
   insertDraft,
   insertGraph,
   listEffectiveGraphs,
-  listEffectiveTables,
   listPublishedNodes,
   listVersions,
   nextVersion,
@@ -42,12 +41,10 @@ describe('customization queries', () => {
     const graphs = flat(queries[1]?.sql);
     assert.ok(graphs.includes('select distinct on (g.key)'));
     assert.ok(graphs.includes('order by gv.version desc limit 1'));
-    await listEffectiveTables(db, S);
-    assert.ok(flat(queries[2]?.sql).includes('select distinct on (t.key) t.id, t.key, t.name'));
     assert.deepEqual(await findVisibleTableKeys(db, S, []), []);
-    assert.equal(queries.length, 3);
+    assert.equal(queries.length, 2);
     await findVisibleTableKeys(db, S, ['billing.base-rate']);
-    assert.ok(queries[3]?.sql.includes('from "data_tables" as "t"'));
+    assert.ok(queries[2]?.sql.includes('from "data_tables" as "t"'));
     await db.destroy();
   });
 });

@@ -1,4 +1,4 @@
-import { PlayIcon, PlusIcon } from 'lucide-react';
+import { MapIcon, PlayIcon, PlusIcon } from 'lucide-react';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
@@ -17,6 +17,7 @@ import {
 } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { GraphKind, GraphSummary, WorkflowsClient } from './client.ts';
+import { RoleBadge, ScopeBadge, StaleBadge } from './scope-badges.tsx';
 
 type WorkflowsPageProps = {
   client: WorkflowsClient;
@@ -26,12 +27,15 @@ type WorkflowsPageProps = {
 
 export const WORKFLOWS_PATH = '/workflows';
 
-type GraphFilter = 'workflows' | 'blocks' | 'mine' | 'all';
+export const CUSTOMIZED_PATH = `${WORKFLOWS_PATH}/customized`;
+
+type GraphFilter = 'workflows' | 'blocks' | 'mine' | 'customized' | 'all';
 
 const GRAPH_FILTERS: readonly { value: GraphFilter; label: string }[] = [
   { value: 'workflows', label: 'Workflows' },
   { value: 'blocks', label: 'Subworkflows' },
-  { value: 'mine', label: "Your Agency's Copies" },
+  { value: 'mine', label: 'Your Copies' },
+  { value: 'customized', label: 'Customized' },
   { value: 'all', label: 'All' }
 ];
 
@@ -61,6 +65,7 @@ export const WorkflowsTable = ({
       { label: 'Name', sort: 'name' },
       { label: 'Key', isSecondary: true, sort: 'key' },
       { label: 'Kind', sort: 'kind' },
+      'Scope',
       'Published',
       'Draft',
       { label: 'Actions', isLabelHidden: true, isCompact: true }
@@ -81,9 +86,14 @@ export const WorkflowsTable = ({
         <TableCell>
           <span className="flex flex-wrap items-center gap-1">
             <Badge intent={g.kind === 'workflow' ? 'info' : undefined}>{kindLabel(g.kind)}</Badge>
-            {g.isSystem ? <Badge>System</Badge> : null}
-            {g.overriddenBy ? <Badge intent="info">Has Your Copy</Badge> : null}
-            {g.overrides ? <Badge intent="info">Your Copy</Badge> : null}
+            <RoleBadge role={g.role} />
+          </span>
+        </TableCell>
+        <TableCell>
+          <span className="flex flex-wrap items-center gap-1">
+            <ScopeBadge scope={g.scope} />
+            {g.overriddenBy ? <Badge intent="custom">Has Your Copy</Badge> : null}
+            <StaleBadge stale={g.isStale} />
           </span>
         </TableCell>
         <TableCell isMuted>{g.publishedVersion ? `v${g.publishedVersion}` : emptyValue}</TableCell>
@@ -120,10 +130,16 @@ export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
       title="Workflows"
       description="Workflows that run on their own, and the subworkflows they are made of."
       actions={
-        <ButtonLink to={add}>
-          <PlusIcon aria-hidden="true" className="size-4" />
-          {addLabel}
-        </ButtonLink>
+        <>
+          <ButtonLink to={CUSTOMIZED_PATH} variant="outline">
+            <MapIcon aria-hidden="true" className="size-4" />
+            Customization Map
+          </ButtonLink>
+          <ButtonLink to={add}>
+            <PlusIcon aria-hidden="true" className="size-4" />
+            {addLabel}
+          </ButtonLink>
+        </>
       }
     >
       <Search
@@ -148,9 +164,15 @@ export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
             ? {
                 title: 'No Copies Yet',
                 children:
-                  'Your agency has no workflows of its own yet. Create one, or override a system one.'
+                  'Your agency has no workflows of its own yet. Create one, or override a built-in one.'
               }
-            : { title: 'Nothing Here Yet', children: 'Nothing matches this filter.' }
+            : show === 'customized'
+              ? {
+                  title: 'Nothing Customized Yet',
+                  children:
+                    'Every workflow runs as built. Override one for your organization or agency to change it.'
+                }
+              : { title: 'Nothing Here Yet', children: 'Nothing matches this filter.' }
         }
       >
         {(items) => <WorkflowsTable graphs={items} search={search} />}

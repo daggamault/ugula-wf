@@ -6,21 +6,25 @@ import {
   type Json,
   type NodeInstance,
   type PinSpec,
-  RETURN_TYPE
+  RETURN_TYPE,
+  tableRefOf
 } from '@ugula/graph';
-import { ExternalLinkIcon, Trash2Icon, XIcon } from 'lucide-react';
+import { ExternalLinkIcon, RotateCcwIcon, TableIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { useId, useState } from 'react';
 import { labelFromName } from '../../shared/format.ts';
 import type { Catalog } from '../../shared/graph/catalog.ts';
 import { updateNode } from '../../shared/graph/flow.ts';
 import { describeType, pinLabel } from '../../shared/graph/pins.ts';
-import { Button } from '../../shared/ui/button.tsx';
+import { Badge } from '../../shared/ui/badge.tsx';
+import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { Textarea } from '../../shared/ui/textarea.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
+import type { EffectiveTable } from './client.ts';
+import { formatBase, nodeChanges, propertyName, resetProperty } from './override-diff.ts';
 import { DecisionTableEditor, LookupTableEditor } from './table-editors.tsx';
 
 const TABLE_EDITORS = {
@@ -37,6 +41,8 @@ type NodeInspectorProps = {
   onDelete: () => void;
   onOpen?: (() => void) | undefined;
   onClose: () => void;
+  base?: NodeInstance | undefined;
+  table?: EffectiveTable | undefined;
 };
 
 type BindingMode = 'default' | 'value' | 'expr';
@@ -50,10 +56,22 @@ const MODES = [
 const modeOf = (binding: InputBinding | undefined): BindingMode =>
   !binding ? 'default' : 'expr' in binding ? 'expr' : 'value';
 
-const PinHeading = ({ spec }: { spec: PinSpec }) => (
+export const CustomDot = () => (
+  <span
+    role="img"
+    aria-label="Changed from the base"
+    title="Changed from the base"
+    className="bg-custom size-2 shrink-0 rounded-full"
+  />
+);
+
+const PinHeading = ({ spec, changed = false }: { spec: PinSpec; changed?: boolean }) => (
   <span className="flex flex-col gap-0.5">
     <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-      <span className="text-sm font-semibold">{pinLabel(spec)}</span>
+      <span className="flex items-center gap-2 text-sm font-semibold">
+        {changed ? <CustomDot /> : null}
+        {pinLabel(spec)}
+      </span>
       <span className="text-surface-fg-muted text-xs">
         {describeType(spec.type)}
         {spec.optional ? ', optional' : ''}
@@ -77,19 +95,21 @@ const BindingEditor = ({
   spec,
   binding,
   editable,
+  changed,
   onBind
 }: {
   nodeId: string;
   spec: PinSpec;
   binding: InputBinding | undefined;
   editable: boolean;
+  changed: boolean;
   onBind: (binding: InputBinding | undefined) => void;
 }) => {
   const id = `${nodeId}-${spec.name}`;
   const mode = modeOf(binding);
   return (
     <li className="border-border flex flex-col gap-4 rounded-xl border p-4">
-      <PinHeading spec={spec} />
+      <PinHeading spec={spec} changed={changed} />
       <fieldset disabled={!editable} className="flex flex-col gap-3">
         <Select
           id={`${id}-mode`}
@@ -175,6 +195,38 @@ const ConfigEditor = ({
   );
 };
 
+const TableReference = ({
+  tableKey,
+  table
+}: {
+  tableKey: string;
+  table: EffectiveTable | undefined;
+}) => (
+  <div className="flex flex-col gap-3">
+    <p className="text-sm">
+      Uses the shared table <code className="font-mono">{tableKey}</code>, so its rules can change
+      without changing this workflow.
+    </p>
+    {table ? (
+      <span className="flex flex-wrap items-center gap-2">
+        <ButtonLink to={`/tables/${table.id}`} variant="outline">
+          <TableIcon aria-hidden="true" className="size-4" />
+          Open Table
+        </ButtonLink>
+        {table.scope === 'system' ? null : (
+          <Badge intent="custom">
+            {table.scope === 'agency'
+              ? 'Customized for This Agency'
+              : 'Customized for Organization'}
+          </Badge>
+        )}
+      </span>
+    ) : (
+      <p className="text-danger text-sm">This table is not available to your agency.</p>
+    )}
+  </div>
+);
+
 const Links = ({ items, empty }: { items: readonly string[]; empty: string }) => (
   <span className={items.length ? 'text-sm' : 'text-surface-fg-muted text-sm'}>
     {items.length ? items.join(', ') : empty}
@@ -189,7 +241,9 @@ export const NodeInspector = ({
   onChange,
   onDelete,
   onOpen,
-  onClose
+  onClose,
+  base,
+  table
 }: NodeInspectorProps) => {
   const titleId = useId();
   const signature = catalog.signatureOf(node, def);
@@ -219,6 +273,13 @@ export const NodeInspector = ({
     const { [pin]: _, ...rest } = node.inputs ?? {};
     set({ inputs: binding ? { ...rest, [pin]: binding } : rest });
   };
+  const changes = base ? nodeChanges(base, node) : [];
+  const changedPins = new Set(
+    changes.flatMap((c) =>
+      c.property.startsWith('input:') ? [c.property.slice('input:'.length)] : []
+    )
+  );
+  const tableRef = tableRefOf(node);
   const inputs = signature?.inputs ?? [];
   const outputs = signature?.outputs ?? [];
   const exits = signature?.execOut ?? [];
@@ -243,6 +304,40 @@ export const NodeInspector = ({
         <IconButton label="Close" icon={XIcon} tooltipSide="left" onClick={onClose} />
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
+        {base && changes.length ? (
+          <SectionPanel
+            title="Changed From Base"
+            description="What this copy changed on this node, with what the base has."
+          >
+            <ul className="flex flex-col gap-3">
+              {changes.map((c) => (
+                <li key={c.property} className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <CustomDot />
+                      {labelFromName(propertyName(c.property))}
+                    </span>
+                    <span className="text-surface-fg-muted text-xs">
+                      Base: {formatBase(c.base)}
+                    </span>
+                  </span>
+                  {editable ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        onChange(updateNode(def, node.id, resetProperty(node, base, c.property)))
+                      }
+                    >
+                      <RotateCcwIcon aria-hidden="true" className="size-4" />
+                      Reset to Base
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </SectionPanel>
+        ) : null}
         {inputs.length ? (
           <SectionPanel
             title="Inputs"
@@ -260,7 +355,7 @@ export const NodeInspector = ({
                     key={spec.name}
                     className="border-border flex flex-col gap-1 rounded-xl border p-4"
                   >
-                    <PinHeading spec={spec} />
+                    <PinHeading spec={spec} changed={changedPins.has(spec.name)} />
                     <span className="text-sm">From {from.join(', ')}</span>
                   </li>
                 ) : (
@@ -270,6 +365,7 @@ export const NodeInspector = ({
                     spec={spec}
                     binding={node.inputs?.[spec.name]}
                     editable={editable}
+                    changed={changedPins.has(spec.name)}
                     onBind={(binding) => bind(spec.name, binding)}
                   />
                 );
@@ -319,7 +415,9 @@ export const NodeInspector = ({
         ) : null}
         {!boundary && catalog.hasConfig(node) ? (
           <SectionPanel title="Settings" description="How this node is set up, beyond its inputs.">
-            {Object.hasOwn(TABLE_EDITORS, node.type) ? (
+            {tableRef ? (
+              <TableReference tableKey={tableRef.key} table={table} />
+            ) : Object.hasOwn(TABLE_EDITORS, node.type) ? (
               (() => {
                 const TableEditor = TABLE_EDITORS[node.type as keyof typeof TABLE_EDITORS];
                 return (

@@ -22,9 +22,11 @@ export type PublishedNode = {
   key: string;
   name: string;
   kind: 'workflow' | 'node';
+  role: 'workflow' | 'stage' | 'rule' | 'slot';
   description: string;
   version: number;
   signature: Signature;
+  overridden: boolean;
 };
 
 export type PaletteEntry = NodeRef & {
