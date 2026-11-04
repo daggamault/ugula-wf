@@ -4,9 +4,9 @@ import type { GraphKind, GraphRole } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
 import { contractOf, createStdNodes, ENTRY_TYPE, type GraphDef } from '@ugula/graph';
 import type { CompiledQuery } from 'kysely';
+import type { Scope } from '../../shared/scopes.ts';
 import { testAccess } from '../../shared/testing.ts';
-import type { GraphScope } from './queries.ts';
-import { canEditScope, createGraphService, roleFor, templateFor } from './service.ts';
+import { createGraphService, customizationMap, roleFor, templateFor } from './service.ts';
 
 const nodes = createStdNodes({ fetch });
 
@@ -41,7 +41,7 @@ const widened: GraphDef = {
 
 type Graph = {
   id: string;
-  scope: GraphScope;
+  scope: Scope;
   kind?: GraphKind;
   role?: GraphRole;
   key?: string;
@@ -202,28 +202,64 @@ describe('graph templates and scopes', () => {
     assert.equal(flow.nodes.length, 1);
   });
 
-  it('never edits built-ins, leaves organization graphs to owners and agency graphs to permissions', () => {
-    assert.equal(canEditScope(admin, 'system', 'workflow'), false);
-    assert.equal(canEditScope(admin, 'organization', 'workflow'), true);
-    assert.equal(canEditScope(manager, 'organization', 'rule'), false);
-    assert.equal(canEditScope(manager, 'agency', 'workflow'), true);
-    assert.equal(canEditScope(reader, 'agency', 'rule'), false);
-  });
-
-  it('lets workflows:update change rules, slots and tables and keeps stages and workflows to manage', () => {
-    for (const tier of ['rule', 'slot', 'table'] as const) {
-      assert.equal(canEditScope(editor, 'agency', tier), true, tier);
-    }
-    for (const tier of ['stage', 'workflow'] as const) {
-      assert.equal(canEditScope(editor, 'agency', tier), false, tier);
-      assert.equal(canEditScope(manager, 'agency', tier), true, tier);
-    }
-  });
-
   it('gives workflows the workflow role and other graphs the role asked for, rules by default', () => {
     assert.equal(roleFor('workflow', 'slot'), 'workflow');
     assert.equal(roleFor('node', 'stage'), 'stage');
     assert.equal(roleFor('node', undefined), 'rule');
+  });
+});
+
+describe('customization map', () => {
+  it('lists each graph with the visible graphs it calls and the tables it uses', () => {
+    const tableNode = {
+      id: 't',
+      type: 'std.table.decide',
+      version: 1,
+      config: { inputs: [], outputs: [], table: { key: 'acme.rates' } }
+    };
+    const map = customizationMap([
+      {
+        id: 'g1',
+        key: 'acme.flow',
+        name: 'Flow',
+        kind: 'workflow',
+        role: 'workflow',
+        scope: 'system',
+        definition: { ...usesComposite, nodes: [...usesComposite.nodes, tableNode] }
+      },
+      {
+        id: 'g2',
+        key: 'acme.thing',
+        name: 'Thing',
+        kind: 'node',
+        role: 'rule',
+        scope: 'agency',
+        definition: composite
+      }
+    ]);
+    assert.deepEqual(map[0]?.children, ['acme.thing']);
+    assert.deepEqual(map[0]?.tables, ['acme.rates']);
+    assert.deepEqual(map[1]?.children, []);
+    assert.equal(map[1]?.scope, 'agency');
+  });
+
+  it('reports table nodes whose table the agency cannot see', async () => {
+    const { service } = createWorld({ graphs: [] });
+    const def: GraphDef = {
+      ...flow,
+      nodes: [
+        ...flow.nodes,
+        {
+          id: 't',
+          type: 'std.table.lookup',
+          version: 1,
+          config: { type: 'string', table: { key: 'acme.missing' } }
+        }
+      ]
+    };
+    const res = await service.validate(admin, def);
+    assert.ok(res.ok);
+    assert.deepEqual(res.value.issues, [{ node: 't', message: 'Unknown table acme.missing' }]);
   });
 });
 

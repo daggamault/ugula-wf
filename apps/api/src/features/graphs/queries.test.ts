@@ -12,8 +12,11 @@ import {
   findSystemGraph,
   findVersion,
   findVersionById,
+  findVisibleTableKeys,
   insertDraft,
   insertGraph,
+  listEffectiveGraphs,
+  listEffectiveTables,
   listPublishedNodes,
   listVersions,
   nextVersion,
@@ -29,6 +32,25 @@ const S = { agencyId: 'a-1', organizationId: 'o-1' };
 const flat = (sql = '') => sql.replace(/\s+/g, ' ');
 const visibleTo = (alias: string, a: number, o: number) =>
   `( "${alias}"."organization_id" is null or ("${alias}"."is_active" and "${alias}"."agency_id" = $${a}::uuid) or ("${alias}"."is_active" and "${alias}"."agency_id" is null and "${alias}"."organization_id" = $${o}::uuid) )`;
+
+describe('customization queries', () => {
+  it('shows customized graphs, the effective graph and table per key, and known table keys', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await searchGraphs(db, S, { ...BASE, show: 'customized' });
+    assert.ok(flat(queries[0]?.sql).includes(') is not null or (select o.id from "graphs" o'));
+    await listEffectiveGraphs(db, S);
+    const graphs = flat(queries[1]?.sql);
+    assert.ok(graphs.includes('select distinct on (g.key)'));
+    assert.ok(graphs.includes('order by gv.version desc limit 1'));
+    await listEffectiveTables(db, S);
+    assert.ok(flat(queries[2]?.sql).includes('select distinct on (t.key) t.id, t.key, t.name'));
+    assert.deepEqual(await findVisibleTableKeys(db, S, []), []);
+    assert.equal(queries.length, 3);
+    await findVisibleTableKeys(db, S, ['billing.base-rate']);
+    assert.ok(queries[3]?.sql.includes('from "data_tables" as "t"'));
+    await db.destroy();
+  });
+});
 
 describe('graph queries', () => {
   it('pages graphs of every scope with versions, override links and staleness', async () => {

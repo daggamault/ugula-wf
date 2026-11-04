@@ -16,12 +16,22 @@ import {
   RETURN_TYPE,
   refKey,
   stdGraphSource,
+  tableRefOf,
+  tableRefs,
   validateGraph,
   workflowRefs
 } from '@ugula/graph';
-import { type AgencyAccess, hasPermission } from '../../shared/access.ts';
+import type { AgencyAccess } from '../../shared/access.ts';
 import { isForeignKeyViolation, isUniqueViolation } from '../../shared/http.ts';
 import { fail, ok } from '../../shared/result.ts';
+import {
+  canEditScope,
+  type EditScope,
+  ownerOf,
+  RANK,
+  type Scope,
+  scopeIds
+} from '../../shared/scopes.ts';
 import {
   deleteGraph,
   findDraft,
@@ -32,15 +42,16 @@ import {
   findSystemGraph,
   findVersion,
   findVersionById,
+  findVisibleTableKeys,
   type GraphFilters,
-  type GraphScope,
   insertDraft,
   insertGraph,
+  listEffectiveGraphs,
+  listEffectiveTables,
   listPublishedNodes,
   listVersions,
   nextVersion,
   publishVersion,
-  type ScopeIds,
   searchGraphs,
   setGraphActive,
   touchGraph,
@@ -51,8 +62,6 @@ type GraphServiceDeps = {
   db: Db;
   nodes: NodeDef[];
 };
-
-export type EditScope = Exclude<GraphScope, 'system'>;
 
 type NewGraph = {
   key: string;
@@ -90,31 +99,33 @@ const forbidden = (scope: EditScope) =>
       : 'You do not have permission to change this graph'
   );
 
-const RANK: Record<GraphScope, number> = { agency: 0, organization: 1, system: 2 };
-
-export type EditTier = GraphRole | 'table';
-
-const MANAGED: ReadonlySet<EditTier> = new Set(['workflow', 'stage']);
-
-export const canEditScope = (access: AgencyAccess, scope: GraphScope, tier: EditTier) =>
-  scope === 'system'
-    ? false
-    : scope === 'organization'
-      ? access.isOrganizationAdmin
-      : hasPermission(access, MANAGED.has(tier) ? 'workflows:manage' : 'workflows:update');
-
 export const roleFor = (kind: GraphKind, role: GraphRole | undefined): GraphRole =>
   kind === 'workflow' ? 'workflow' : role && role !== 'workflow' ? role : 'rule';
 
-const scopeIds = (access: AgencyAccess): ScopeIds => ({
-  agencyId: access.agencyId,
-  organizationId: access.organizationId
-});
+type MapGraph = {
+  id: string;
+  key: string;
+  name: string;
+  kind: GraphKind;
+  role: GraphRole;
+  scope: Scope;
+  definition: GraphDef;
+};
 
-const ownerOf = (access: AgencyAccess, scope: EditScope) => ({
-  organizationId: access.organizationId,
-  agencyId: scope === 'agency' ? access.agencyId : null
-});
+export const customizationMap = (graphs: readonly MapGraph[]) => {
+  const keys = new Set(graphs.map((g) => g.key));
+  return graphs.map(({ definition, ...g }) => ({
+    ...g,
+    children: [
+      ...new Set(
+        [...graphRefs(definition), ...workflowRefs(definition)]
+          .map((r) => r.type)
+          .filter((k) => k !== g.key && keys.has(k))
+      )
+    ],
+    tables: tableRefs(definition)
+  }));
+};
 
 export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
   const primitives = new Set(nodes.map(refKey));
@@ -131,8 +142,14 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
       combineSources(stdGraphSource, (ref) => byRef.get(refKey(ref)))
     );
     const calls = workflowRefs(def).map((r) => dependencyOf({ key: r.type, version: r.version }));
+    const keys = tableRefs(def);
+    const known = new Set(await findVisibleTableKeys(tx, scopeIds(access), keys));
+    const tableIssues = def.nodes.flatMap((n) => {
+      const key = tableRefOf(n)?.key;
+      return key && !known.has(key) ? [{ node: n.id, message: `Unknown table ${key}` }] : [];
+    });
     return {
-      issues: validateGraph(def, registry),
+      issues: [...validateGraph(def, registry), ...tableIssues],
       dependencies: [...new Set([...composites.map(dependencyOf), ...calls])]
     };
   };
@@ -143,11 +160,7 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
     if (!canEditScope(access, graph.scope, graph.role)) return forbidden(graph.scope);
     return ok({ ...graph, scope: graph.scope as EditScope });
   };
-  const baseOf = async (
-    tx: Db,
-    access: AgencyAccess,
-    graph: { key: string; scope: GraphScope }
-  ) => {
+  const baseOf = async (tx: Db, access: AgencyAccess, graph: { key: string; scope: Scope }) => {
     const below = await findEffectiveBelow(tx, access, graph.key, RANK[graph.scope]);
     return below ? findNewestPublishedVersion(tx, below) : undefined;
   };
@@ -168,6 +181,14 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
       ok(await searchGraphs(db, scopeIds(access), filters)),
     nodes: async (access: AgencyAccess) =>
       ok({ nodes: await listPublishedNodes(db, scopeIds(access)) }),
+    map: async (access: AgencyAccess) => {
+      const ids = scopeIds(access);
+      const [graphs, tables] = await Promise.all([
+        listEffectiveGraphs(db, ids),
+        listEffectiveTables(db, ids)
+      ]);
+      return ok({ graphs: customizationMap(graphs), tables });
+    },
     find: async (access: AgencyAccess, id: string) => {
       const graph = await findGraph(db, scopeIds(access), id);
       if (!graph) return notFound;

@@ -19,6 +19,7 @@ export const createGraphRoutes = (service: GraphService) =>
       respond(c, await service.search(c.get('access'), c.req.valid('query')))
     )
     .get('/nodes', async (c) => respond(c, await service.nodes(c.get('access'))))
+    .get('/map', async (c) => respond(c, await service.map(c.get('access'))))
     .post('/validate', sValidator('json', definitionSchema, invalidRequest), async (c) =>
       respond(c, await service.validate(c.get('access'), c.req.valid('json').definition))
     )

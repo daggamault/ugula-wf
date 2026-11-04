@@ -1,15 +1,19 @@
 import type { Db, GraphKind, GraphRole } from '@ugula/db';
 import { contractOf, type GraphDef } from '@ugula/graph';
-import { type RawBuilder, sql } from 'kysely';
+import { sql } from 'kysely';
 import { type Page, type PageRequest, paged } from '../../shared/paging.ts';
+import {
+  isStaleIn,
+  overriddenByIn,
+  overridesIn,
+  rankOf,
+  type Scope,
+  type ScopeIds,
+  scopeOf,
+  visible
+} from '../../shared/scopes.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { GraphShow, GraphSort } from './schemas.ts';
-
-export const GRAPH_SCOPES = ['system', 'organization', 'agency'] as const;
-
-export type GraphScope = (typeof GRAPH_SCOPES)[number];
-
-export type ScopeIds = { agencyId: string; organizationId: string };
 
 type GraphSummary = {
   id: string;
@@ -18,7 +22,7 @@ type GraphSummary = {
   kind: GraphKind;
   role: GraphRole;
   description: string;
-  scope: GraphScope;
+  scope: Scope;
   isSystem: boolean;
   overrides: string | null;
   overriddenBy: string | null;
@@ -40,7 +44,7 @@ type GraphRow = {
   kind: GraphKind;
   role: GraphRole;
   description: string;
-  scope: GraphScope;
+  scope: Scope;
   updated_at: Date;
   published: number | null;
   draft: number | null;
@@ -56,49 +60,11 @@ const GRAPH_ORDER = {
   updated: sql.ref('g.updated_at')
 };
 
-const scopeOf = (alias: string) =>
-  sql<GraphScope>`case when ${sql.ref(`${alias}.agency_id`)} is not null then 'agency'
-    when ${sql.ref(`${alias}.organization_id`)} is not null then 'organization'
-    else 'system' end`;
+const overriddenBy = (s: ScopeIds) => overriddenByIn('graphs', 'g', s);
 
-const rankOf = (alias: string) =>
-  sql<number>`case when ${sql.ref(`${alias}.agency_id`)} is not null then 0
-    when ${sql.ref(`${alias}.organization_id`)} is not null then 1 else 2 end`;
+const overridesOf = (s: ScopeIds) => overridesIn('graphs', 'g', s);
 
-const visible = (alias: string, s: ScopeIds) => {
-  const a = (c: string) => sql.ref(`${alias}.${c}`);
-  return sql<boolean>`(
-    ${a('organization_id')} is null
-    or (${a('is_active')} and ${a('agency_id')} = ${s.agencyId}::uuid)
-    or (${a('is_active')} and ${a('agency_id')} is null and ${a('organization_id')} = ${s.organizationId}::uuid)
-  )`;
-};
-
-const overriddenBy = (s: ScopeIds): RawBuilder<string | null> => sql`(
-  select o.id from graphs o
-  where o.key = g.key and ${visible('o', s)} and ${rankOf('o')} < ${rankOf('g')}
-  order by ${rankOf('o')} limit 1
-)`;
-
-const overridesOf = (s: ScopeIds): RawBuilder<string | null> => sql`(
-  select o.id from graphs o
-  where o.key = g.key and ${visible('o', s)} and ${rankOf('o')} > ${rankOf('g')}
-  order by ${rankOf('o')} limit 1
-)`;
-
-const isStale = sql<boolean>`g.organization_id is not null and exists (
-  select 1 from graphs sg
-  join lateral (
-    select sv.contract from graph_versions sv
-    where sv.graph_id = sg.id and sv.published_at is not null
-    order by sv.version desc limit 1
-  ) base on true
-  where sg.key = g.key and sg.organization_id is null
-    and not exists (
-      select 1 from graph_versions mv
-      where mv.graph_id = g.id and mv.published_at is not null and mv.contract = base.contract
-    )
-)`;
+const isStale = isStaleIn('graphs', 'g');
 
 const toSummary = (r: GraphRow): GraphSummary => ({
   id: r.id,
@@ -418,3 +384,56 @@ export const deleteGraph = (db: Db, id: string) =>
     .where('organization_id', 'is not', null)
     .returning('id')
     .executeTakeFirst();
+
+export const findVisibleTableKeys = async (db: Db, s: ScopeIds, keys: string[]) =>
+  keys.length
+    ? (
+        await db
+          .selectFrom('data_tables as t')
+          .select('t.key')
+          .distinct()
+          .where('t.key', 'in', keys)
+          .where(visible('t', s))
+          .execute()
+      ).map((r) => r.key)
+    : [];
+
+type EffectiveGraph = {
+  id: string;
+  key: string;
+  name: string;
+  kind: GraphKind;
+  role: GraphRole;
+  scope: Scope;
+  definition: GraphDef;
+};
+
+export const buildEffectiveGraphs = (s: ScopeIds) => sql<EffectiveGraph>`
+  select distinct on (g.key)
+    g.id, g.key, g.name, g.kind, g.role, ${scopeOf('g')} as scope, v.definition
+  from graphs g
+  join lateral (
+    select gv.definition from graph_versions gv
+    where gv.graph_id = g.id and gv.published_at is not null
+    order by gv.version desc
+    limit 1
+  ) v on true
+  where ${visible('g', s)}
+  order by g.key, ${rankOf('g')}`;
+
+export const listEffectiveGraphs = async (db: Db, s: ScopeIds) =>
+  (await buildEffectiveGraphs(s).execute(db)).rows;
+
+export const buildEffectiveTables = (s: ScopeIds) => sql<{
+  id: string;
+  key: string;
+  name: string;
+  scope: Scope;
+}>`
+  select distinct on (t.key) t.id, t.key, t.name, ${scopeOf('t')} as scope
+  from data_tables t
+  where ${visible('t', s)}
+  order by t.key, ${rankOf('t')}`;
+
+export const listEffectiveTables = async (db: Db, s: ScopeIds) =>
+  (await buildEffectiveTables(s).execute(db)).rows;

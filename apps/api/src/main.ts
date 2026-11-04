@@ -47,6 +47,8 @@ import { createRunRoutes } from './features/runs/routes.ts';
 import { createRunService } from './features/runs/service.ts';
 import { createSubmissionRoutes } from './features/submissions/routes.ts';
 import { createSubmissionService } from './features/submissions/service.ts';
+import { createTableRoutes } from './features/tables/routes.ts';
+import { createTableService } from './features/tables/service.ts';
 import { createTaskRoutes } from './features/tasks/routes.ts';
 import { createTaskService } from './features/tasks/service.ts';
 import { createInvitationRoutes, createUserRoutes } from './features/users/routes.ts';
@@ -156,6 +158,16 @@ export const createApp = ({
       })
     )
     .route('/graphs', createGraphRoutes(createGraphService({ db, nodes })))
+    .use(
+      '/tables/*',
+      guardMethods({
+        ...read('workflows:read'),
+        POST: 'workflows:update',
+        PUT: 'workflows:update',
+        DELETE: 'workflows:update'
+      })
+    )
+    .route('/tables', createTableRoutes(createTableService({ db })))
     .use('/runs/*', guardMethods({ ...read('runs:read'), POST: 'runs:create' }))
     .route(
       '/runs',
