@@ -5,16 +5,14 @@ import {
   nameKey,
   payerKey
 } from '@ugula/billing';
-import { ACTIVE_RUN_STATUSES, type Database, DOCUMENTATION_COLUMNS, payerName } from '@ugula/db';
-import { type Kysely, sql } from 'kysely';
+import { ACTIVE_RUN_STATUSES, type Db, DOCUMENTATION_COLUMNS, payerName } from '@ugula/db';
+import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { escapeLike } from '../../shared/search.ts';
 import type { ClaimEventSort, ClaimSort, PayerEntry } from './schemas.ts';
 
-type Db = Kysely<Database>;
-
-export type TaskScope = {
+type TaskScope = {
   task?: string | undefined;
   assignee?: { id: string | null } | undefined;
 };

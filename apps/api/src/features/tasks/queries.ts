@@ -1,7 +1,5 @@
-import type { Database } from '@ugula/db';
-import { type Kysely, sql } from 'kysely';
-
-type Db = Kysely<Database>;
+import type { Db } from '@ugula/db';
+import { sql } from 'kysely';
 
 const detail = [
   'id',

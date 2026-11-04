@@ -1,12 +1,9 @@
-import type { Database, GraphKind } from '@ugula/db';
+import type { Db, GraphKind } from '@ugula/db';
 import type { GraphDef } from '@ugula/graph';
-import { type Kysely, sql } from 'kysely';
-
+import { sql } from 'kysely';
 import { type Page, type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { GraphShow, GraphSort } from './schemas.ts';
-
-type Db = Kysely<Database>;
 
 type GraphSummary = {
   id: string;
@@ -281,7 +278,7 @@ export const listPublishedNodes = (db: Db, tenantId: string) =>
 export const findSystemGraph = (db: Db, key: string) =>
   db
     .selectFrom('graphs')
-    .select(['id', 'key', 'name', 'kind', 'description'])
+    .select('id')
     .where('key', '=', key)
     .where('tenant_id', 'is', null)
     .executeTakeFirst();
@@ -289,7 +286,7 @@ export const findSystemGraph = (db: Db, key: string) =>
 export const findNewestPublishedVersion = (db: Db, graphId: string) =>
   db
     .selectFrom('graph_versions')
-    .select(['id', 'version', 'definition'])
+    .select('definition')
     .where('graph_id', '=', graphId)
     .where('published_at', 'is not', null)
     .orderBy('version', 'desc')

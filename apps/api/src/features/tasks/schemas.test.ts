@@ -9,5 +9,7 @@ describe('task schemas', () => {
     assert.equal(v.safeParse(nextTaskSchema, { queue: '' }).success, false);
     assert.deepEqual(v.parse(nextTaskSchema, {}), { queue: null });
     assert.equal(v.safeParse(completeTaskSchema, { outcome: '' }).success, false);
+    assert.equal(v.safeParse(nextTaskSchema, { queue: 'x'.repeat(61) }).success, false);
+    assert.equal(v.safeParse(completeTaskSchema, { outcome: 'x'.repeat(201) }).success, false);
   });
 });

@@ -1,11 +1,9 @@
-import type { Database } from '@ugula/db';
-import { type Kysely, sql } from 'kysely';
+import type { Db } from '@ugula/db';
+import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { PayerInput, PayerSort } from './schemas.ts';
-
-type Db = Kysely<Database>;
 
 const columns = [
   'id',

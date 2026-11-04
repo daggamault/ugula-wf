@@ -1,8 +1,6 @@
-import type { Database } from '@ugula/db';
-import { type Kysely, sql } from 'kysely';
+import { type Db, payerName } from '@ugula/db';
+import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
-
-type Db = Kysely<Database>;
 
 export const findEligibilityClaim = (db: Db, tenantId: string, id: string) =>
   db
@@ -21,7 +19,7 @@ export const findEligibilityClaim = (db: Db, tenantId: string, id: string) =>
           .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
           .select([
             'cc.id',
-            sql<string>`coalesce(dp.name, cc.payer_name)`.as('payer'),
+            payerName.as('payer'),
             'dp.payer_id',
             'cc.member_id',
             sql<string>`cc.relationship`.as('relationship'),

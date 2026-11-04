@@ -21,6 +21,8 @@ describe('run schemas', () => {
   it('reject bad input', () => {
     assert.equal(v.safeParse(startRunSchema, { graphId: 'x' }).success, false);
     assert.equal(v.safeParse(startRunSchema, { graphId: id, version: 0 }).success, false);
+    assert.equal(v.safeParse(startRunSchema, { graphId: id, version: 2 ** 31 }).success, false);
+    assert.equal(v.safeParse(stepsQuery, { after: '1e300' }).success, false);
     assert.equal(v.safeParse(listRunsQuery, { status: 'odd' }).success, false);
     assert.equal(v.safeParse(listRunsQuery, { q: 'x'.repeat(81) }).success, false);
     assert.equal(v.safeParse(stepsQuery, { path: 'x'.repeat(201) }).success, false);

@@ -1,7 +1,5 @@
-import type { Database, NotificationIntent } from '@ugula/db';
-import { type Kysely, sql } from 'kysely';
-
-type Db = Kysely<Database>;
+import type { Db, NotificationIntent } from '@ugula/db';
+import { sql } from 'kysely';
 
 const NOTIFICATION_LIMIT = 50;
 

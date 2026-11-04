@@ -64,7 +64,7 @@ export const planPayerOrder = (
   return { keep, add, remove: removed.map((c) => c.id), removed };
 };
 
-export const claimEdit = (data: BillingData): ClaimEdit => ({
+const claimEdit = (data: BillingData): ClaimEdit => ({
   serviceDate: data.serviceDate,
   tripType: null,
   level: null,

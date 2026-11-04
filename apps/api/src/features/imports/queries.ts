@@ -1,11 +1,9 @@
-import type { Database, ImportSource, RunStatus } from '@ugula/db';
+import type { Db, ImportSource, RunStatus } from '@ugula/db';
 import type { ReportDictionary, ReportTerms } from '@ugula/nemsis';
-import { type Kysely, sql } from 'kysely';
+import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { ImportSort, ReportSort } from './schemas.ts';
-
-type Db = Kysely<Database>;
 
 export type ImportFilters = PageRequest<ImportSort> & { q?: string | undefined };
 

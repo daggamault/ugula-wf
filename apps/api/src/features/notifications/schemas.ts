@@ -10,7 +10,7 @@ export const notificationSchema = v.object({
     v.nullable(
       v.object({
         label: text(60),
-        to: v.pipe(text(300), v.startsWith('/', 'Links stay inside the app'))
+        to: v.pipe(text(300), v.regex(/^\/(?![/\\])/, 'Links stay inside the app'))
       })
     ),
     null

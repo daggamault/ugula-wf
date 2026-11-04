@@ -7,6 +7,7 @@ import {
   countChildren,
   findPublishedVersion,
   findRun,
+  findRunStatus,
   listAncestors,
   listChildren,
   listRuns,
@@ -54,12 +55,14 @@ export const createRunService = ({ db, boss, blobs, maxBytes }: RunServiceDeps) 
   },
 
   graphs: async (tenantId: string, id: string) => {
-    const run = await findRun(db, tenantId, id);
+    const run = await findRunStatus(db, tenantId, id);
     return run ? ok({ graphs: await findRunGraphs(db, id) }) : notFound;
   },
 
   steps: async (tenantId: string, id: string, filters: StepFilters) =>
-    (await findRun(db, tenantId, id)) ? ok({ steps: await listSteps(db, id, filters) }) : notFound,
+    (await findRunStatus(db, tenantId, id))
+      ? ok({ steps: await listSteps(db, id, filters) })
+      : notFound,
 
   start: (tenantId: string, graphId: string, version: number | undefined, inputs: unknown) =>
     db.transaction().execute(async (tx) => {
@@ -71,7 +74,7 @@ export const createRunService = ({ db, boss, blobs, maxBytes }: RunServiceDeps) 
 
   cancel: (tenantId: string, id: string) =>
     db.transaction().execute(async (tx) => {
-      const run = await findRun(tx, tenantId, id);
+      const run = await findRunStatus(tx, tenantId, id);
       if (!run) return notFound;
       if (TERMINAL_RUN_STATUSES.includes(run.status)) {
         return fail('conflict', 'Run already finished');

@@ -58,6 +58,7 @@ describe('claim schemas', () => {
       false
     );
     assert.equal(v.safeParse(payersSchema, { payers: [' '] }).success, false);
+    assert.equal(v.safeParse(payersSchema, { payers: ['x'.repeat(61)] }).success, false);
   });
 
   it('treats a missing payer as a patient payment and rejects negative amounts', () => {

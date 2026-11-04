@@ -1,7 +1,7 @@
 import { type Expression, type SelectQueryBuilder, sql } from 'kysely';
 import * as v from 'valibot';
 
-export const PAGE_SIZES = [10, 25, 50, 100] as const;
+const PAGE_SIZES = [10, 25, 50, 100] as const;
 
 export type SortDir = 'asc' | 'desc';
 
@@ -27,7 +27,7 @@ export const pageEntries = <K extends string>(
   dir: v.optional(v.picklist(['asc', 'desc'] as const), dir)
 });
 
-export type Orderings<K extends string> = Readonly<Record<K, Expression<unknown>>>;
+type Orderings<K extends string> = Readonly<Record<K, Expression<unknown>>>;
 
 export const paged = async <DB, TB extends keyof DB, O, K extends string>(
   query: SelectQueryBuilder<DB, TB, O>,

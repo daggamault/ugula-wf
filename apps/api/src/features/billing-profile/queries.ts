@@ -1,8 +1,6 @@
-import type { Database } from '@ugula/db';
-import { type Kysely, sql } from 'kysely';
+import type { Db } from '@ugula/db';
+import { sql } from 'kysely';
 import type { BillingProfileInput } from './schemas.ts';
-
-type Db = Kysely<Database>;
 
 const columns = [
   'organization_name',

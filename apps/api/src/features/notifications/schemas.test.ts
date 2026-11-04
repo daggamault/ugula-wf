@@ -21,6 +21,8 @@ describe('notificationSchema', () => {
     );
     for (const bad of [
       { title: 'x', link: { label: 'x', to: 'https://evil.test' } },
+      { title: 'x', link: { label: 'x', to: '//evil.test' } },
+      { title: 'x', link: { label: 'x', to: '/\\evil.test' } },
       { title: '' },
       { title: 'x'.repeat(201) },
       { title: 'x', description: 'x'.repeat(501) },

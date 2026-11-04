@@ -90,7 +90,7 @@ describe('run service', () => {
     const visible = (q: CompiledQuery) =>
       q.sql.includes('count(*)')
         ? [{ count: '1200' }]
-        : q.sql.includes('"r"."id" = $')
+        : q.sql.includes('"id" = $')
           ? [{ id: 'r1', version_id: 'v1' }]
           : [];
     const service = createRunService({

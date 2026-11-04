@@ -35,11 +35,11 @@ const rowsFor =
   ({ owner, draft, definition, system, copy, overrides }: Scenario) =>
   (q: CompiledQuery): unknown[] => {
     if (q.sql.startsWith('select "id", "is_active"')) return copy ? [copy] : [];
-    if (q.sql.includes('"tenant_id" is null') && q.sql.startsWith('select "id", "key"')) {
-      return system ? [{ id: 'g-sys', key: 'acme.flow', name: 'Flow', kind: 'node' }] : [];
+    if (q.sql.includes('"tenant_id" is null') && q.sql.startsWith('select "id" from "graphs"')) {
+      return system ? [{ id: 'g-sys' }] : [];
     }
     if (q.sql.includes('"published_at" is not null') && q.sql.includes('limit')) {
-      return system ? [{ id: 'v-sys', version: 2, definition: system }] : [];
+      return system ? [{ definition: system }] : [];
     }
     if (q.sql.includes('from "graphs"') && q.sql.includes('"tenant_id" = $')) {
       return [

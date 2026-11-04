@@ -1,14 +1,12 @@
 import { CLOSED_CLAIM_STATUSES } from '@ugula/billing';
-import type { Database } from '@ugula/db';
-import { type AliasedExpression, type Expression, type Kysely, sql } from 'kysely';
+import { type Db, payerName } from '@ugula/db';
+import { type AliasedExpression, type Expression, sql } from 'kysely';
 import { type Page, paged, type SortDir } from '../../shared/paging.ts';
 import type { ReportPage } from './schemas.ts';
 
-type Db = Kysely<Database>;
-
 export type DateRange = { from: string; to: string };
 
-export type DateKind = 'service' | 'posted' | 'completed' | 'received';
+type DateKind = 'service' | 'posted' | 'completed' | 'received';
 
 export type ReportContext = {
   tenantId: string;
@@ -19,7 +17,7 @@ export type ReportContext = {
   group: string;
 };
 
-export type ReportResult = Page<unknown> & { totals: Record<string, number> };
+type ReportResult = Page<unknown> & { totals: Record<string, number> };
 
 type ReportSpec<R> = {
   dates: DateKind | null;
@@ -31,7 +29,7 @@ type ReportSpec<R> = {
   totals: readonly (keyof R & string)[];
 };
 
-export type Report = {
+type Report = {
   dates: DateKind | null;
   groups: readonly string[] | null;
   run: (db: Db, ctx: ReportContext, page: ReportPage) => Promise<ReportResult>;
@@ -77,8 +75,6 @@ const monthOf = (at: Expression<unknown>, tz: string) =>
 
 const servedIn = ({ range }: ReportContext) =>
   sql<boolean>`c.service_date between ${range.from}::date and ${range.to}::date`;
-
-const payerName = sql<string>`coalesce(dp.name, cc.payer_name)`;
 
 const balance = sql`c.total_cents - x.payer_paid - x.patient_paid - x.adjusted`;
 
@@ -805,7 +801,7 @@ export const REPORTS = {
   imports
 } as const satisfies Record<string, Report>;
 
-export type ReportId = keyof typeof REPORTS;
+type ReportId = keyof typeof REPORTS;
 
 export const findReport = (id: string): Report | undefined =>
   Object.hasOwn(REPORTS, id) ? REPORTS[id as ReportId] : undefined;

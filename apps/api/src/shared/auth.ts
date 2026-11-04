@@ -8,7 +8,7 @@ export type AuthEnv = {
   };
 };
 
-export type Authenticate = (token: string | undefined) => Promise<SessionData | null>;
+type Authenticate = (token: string | undefined) => Promise<SessionData | null>;
 
 export const requireAuth =
   (authenticate: Authenticate): MiddlewareHandler<AuthEnv> =>

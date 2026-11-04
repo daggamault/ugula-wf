@@ -54,7 +54,12 @@ export type ClaimEventSort = (typeof CLAIM_EVENT_SORTS)[number];
 
 export const claimEventsQuery = v.object(pageEntries(CLAIM_EVENT_SORTS, 'when', 'desc'));
 
-const payerName = v.pipe(v.string(), v.trim(), v.nonEmpty('Payer names cannot be blank'));
+const payerName = v.pipe(
+  v.string(),
+  v.trim(),
+  v.nonEmpty('Payer names cannot be blank'),
+  v.maxLength(60)
+);
 
 const insuredName = v.optional(
   v.nullable(

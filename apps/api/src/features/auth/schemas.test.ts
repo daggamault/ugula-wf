@@ -19,5 +19,9 @@ describe('signInSchema', () => {
       false
     );
     assert.equal(v.safeParse(signInSchema, { email: 'dev@example.com' }).success, false);
+    assert.equal(
+      v.safeParse(signInSchema, { email: 'dev@example.com', password: 'x'.repeat(1025) }).success,
+      false
+    );
   });
 });

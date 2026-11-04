@@ -1,11 +1,9 @@
 import { CLOSED_CLAIM_STATUSES, nameKey } from '@ugula/billing';
-import type { Database } from '@ugula/db';
-import { type Kysely, sql } from 'kysely';
+import type { Db } from '@ugula/db';
+import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { escapeLike } from '../../shared/search.ts';
 import type { PatientSort } from './schemas.ts';
-
-type Db = Kysely<Database>;
 
 export type PatientFilters = PageRequest<PatientSort> & {
   lastName?: string | undefined;

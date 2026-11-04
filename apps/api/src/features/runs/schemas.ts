@@ -7,7 +7,7 @@ import { searchText } from '../../shared/search.ts';
 
 export const startRunSchema = v.object({
   graphId: uuid,
-  version: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
+  version: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(2_147_483_647))),
   inputs: v.optional(valuesSchema, {})
 });
 
@@ -28,7 +28,16 @@ const stepFilter = v.optional(v.pipe(v.string(), v.maxLength(200)));
 export const stepsQuery = v.object({
   path: stepFilter,
   node: stepFilter,
-  after: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(0)), '0'),
+  after: v.optional(
+    v.pipe(
+      v.string(),
+      v.transform(Number),
+      v.integer(),
+      v.minValue(0),
+      v.maxValue(Number.MAX_SAFE_INTEGER)
+    ),
+    '0'
+  ),
   limit: v.optional(
     v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1), v.maxValue(2000)),
     '500'

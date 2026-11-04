@@ -1,10 +1,8 @@
-import type { Database, RunStatus } from '@ugula/db';
-import { type Kysely, sql } from 'kysely';
+import type { Db, RunStatus } from '@ugula/db';
+import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { RunSort } from './schemas.ts';
-
-type Db = Kysely<Database>;
 
 export type RunFilters = PageRequest<RunSort> & {
   status?: RunStatus;
@@ -94,6 +92,14 @@ export const findRun = (db: Db, tenantId: string, id: string) =>
     .select(['r.inputs', 'r.result', 'r.error', 'r.state', 'r.wait_key'])
     .where('r.tenant_id', '=', tenantId)
     .where('r.id', '=', id)
+    .executeTakeFirst();
+
+export const findRunStatus = (db: Db, tenantId: string, id: string) =>
+  db
+    .selectFrom('workflow_runs')
+    .select('status')
+    .where('tenant_id', '=', tenantId)
+    .where('id', '=', id)
     .executeTakeFirst();
 
 const ANCESTOR_LIMIT = 32;

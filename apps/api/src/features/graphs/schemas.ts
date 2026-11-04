@@ -49,5 +49,11 @@ export const definitionSchema = v.object({
 
 export const versionParam = v.object({
   id: uuid,
-  version: v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1))
+  version: v.pipe(
+    v.string(),
+    v.transform(Number),
+    v.integer(),
+    v.minValue(1),
+    v.maxValue(2_147_483_647)
+  )
 });

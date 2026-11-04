@@ -1,9 +1,7 @@
-import type { Database } from '@ugula/db';
-import { type Kysely, sql } from 'kysely';
+import type { Db } from '@ugula/db';
+import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import type { PayerFileSort } from './schemas.ts';
-
-type Db = Kysely<Database>;
 
 const FILE_COLUMNS = [
   'f.id',

@@ -50,6 +50,13 @@ describe('graph schemas', () => {
         .success,
       false
     );
+    assert.equal(
+      v.safeParse(versionParam, {
+        id: '01a16617-7704-7ba6-b9b5-9c79fa44f965',
+        version: '99999999999'
+      }).success,
+      false
+    );
   });
 });
 

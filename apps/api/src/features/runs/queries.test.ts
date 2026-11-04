@@ -5,6 +5,7 @@ import {
   countChildren,
   findPublishedVersion,
   findRun,
+  findRunStatus,
   listAncestors,
   listChildren,
   listRuns,
@@ -76,6 +77,17 @@ describe('run tenant scoping', () => {
     const { db, queries } = createRecordingDb();
     await findRun(db, 't-1', 'r1');
     assert.ok(queries[0]?.sql.endsWith('where "r"."tenant_id" = $1 and "r"."id" = $2'));
+    assert.deepEqual(queries[0]?.parameters, ['t-1', 'r1']);
+    await db.destroy();
+  });
+
+  it('reads only the status of a run within the tenant', async () => {
+    const { db, queries } = createRecordingDb();
+    await findRunStatus(db, 't-1', 'r1');
+    assert.equal(
+      queries[0]?.sql,
+      'select "status" from "workflow_runs" where "tenant_id" = $1 and "id" = $2'
+    );
     assert.deepEqual(queries[0]?.parameters, ['t-1', 'r1']);
     await db.destroy();
   });
