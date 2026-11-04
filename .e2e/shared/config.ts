@@ -23,4 +23,8 @@ const parseE2eConfig = (raw: Record<string, string | undefined>): E2eConfig =>
 
 export const config = parseE2eConfig(process.env);
 
-export const withPcr = (xml: string, pcr: string) => xml.replaceAll('E2E-PCR', pcr);
+export const withPcr = (xml: string, pcr: string) =>
+  xml.replace(
+    /<eRecord\.01>PCR-\d+(-\d+)?<\/eRecord\.01>/g,
+    (_, part = '') => `<eRecord.01>${pcr}${part}</eRecord.01>`
+  );

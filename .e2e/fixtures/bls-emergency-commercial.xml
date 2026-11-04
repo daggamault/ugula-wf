@@ -8,7 +8,7 @@
     </DemographicGroup>
     <PatientCareReport UUID="b2d4f6a8-0001-4c1d-8e2f-000000000001">
       <eRecord>
-        <eRecord.01>E2E-PCR</eRecord.01>
+        <eRecord.01>PCR-1005</eRecord.01>
         <eRecord.SoftwareApplicationGroup>
           <eRecord.02>Ugula Test Fixtures</eRecord.02>
           <eRecord.03>Ugula ePCR</eRecord.03>
