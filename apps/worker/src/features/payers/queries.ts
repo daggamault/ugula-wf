@@ -6,13 +6,11 @@ import {
   payerKey,
   payerQuery
 } from '@ugula/billing';
-import type { Database } from '@ugula/db';
+import type { Db } from '@ugula/db';
 import { EMBED_BATCH_SIZE, type Embedder } from '@ugula/inference';
-import { type Kysely, sql } from 'kysely';
+import { sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runTenant } from '../../shared/tenancy.ts';
-
-type Db = Kysely<Database>;
 
 type PayerRow = { id: string; name: string; claim_filing: string };
 

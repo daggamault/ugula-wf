@@ -139,15 +139,34 @@ describe('createClearinghousePoll', () => {
     );
   });
 
-  it('skips files it already downloaded', async () => {
-    const { db } = createRecordingDb((q: CompiledQuery) =>
-      q.sql.includes('from "clearinghouse_downloads"') ? [{ id: 'd1' }] : []
+  it('skips files it already downloaded in one lookup', async () => {
+    const { db, queries } = createRecordingDb((q: CompiledQuery) =>
+      q.sql.includes('from "clearinghouse_downloads"')
+        ? [{ remote_path: file('a.999').path, size: 10, modified_at: file('a.999').modifiedAt }]
+        : []
     );
     const { clearinghouse, removed } = fakeClearinghouse({ 'a.999': isa('DEVEMS01') });
     const boss: RunQueueClient = { insert: async () => undefined };
     const blobs = { putBytes: async () => assert.fail('should not store') };
     await createClearinghousePoll({ db, boss, blobs, clearinghouse, report: () => undefined })();
     assert.deepEqual(removed, []);
+    assert.equal(queries.length, 1);
     await db.destroy();
+  });
+
+  it('reports a file it cannot receive and goes on to the next', async () => {
+    const { clearinghouse } = fakeClearinghouse({
+      'a.999': isa('DEVEMS01'),
+      'b.999': isa('DEVEMS01')
+    });
+    const download = clearinghouse.download;
+    clearinghouse.download = async (path) =>
+      path.endsWith('a.999') ? Promise.reject(new Error('connection reset')) : download(path);
+    const { jobs, reports } = await poll(clearinghouse);
+    assert.equal(jobs.length, 1);
+    assert.deepEqual(reports, [
+      'Clearinghouse: could not receive /outbound/999/a.999: Error: connection reset',
+      'Clearinghouse: received /outbound/999/b.999, run r1'
+    ]);
   });
 });

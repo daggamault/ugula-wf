@@ -9,8 +9,9 @@ import { type Config, clearinghouseOf, parseConfig } from './config.ts';
 import { createFeeStore } from './features/charges/queries.ts';
 import { announceClaims } from './features/claims/announce.ts';
 import { createClaimStore } from './features/claims/queries.ts';
+import { registerPollJob } from './features/clearinghouse/job.ts';
 import { createPayerFileStore } from './features/clearinghouse/payer-files.ts';
-import { createClearinghousePoll, POLL_QUEUE } from './features/clearinghouse/poll.ts';
+import { createClearinghousePoll } from './features/clearinghouse/poll.ts';
 import { registerHealthJob } from './features/health/job.ts';
 import { announceImports } from './features/imports/announce.ts';
 import { createReportStore } from './features/imports/reports.ts';
@@ -145,11 +146,11 @@ if (import.meta.main) {
     report
   });
   if (clearinghouse) {
-    const poll = createClearinghousePoll({ db, boss, blobs, clearinghouse, report });
-    await boss.createQueue(POLL_QUEUE);
-    await boss.schedule(POLL_QUEUE, `*/${clearinghouse.config.pollMinutes} * * * *`);
-    await boss.work(POLL_QUEUE, { localConcurrency: 1, batchSize: 1 }, async () => {
-      await poll().catch((err: unknown) => report(`Clearinghouse poll failed: ${String(err)}`));
+    await registerPollJob({
+      boss,
+      poll: createClearinghousePoll({ db, boss, blobs, clearinghouse, report }),
+      pollMinutes: clearinghouse.config.pollMinutes,
+      report
     });
   } else {
     report(

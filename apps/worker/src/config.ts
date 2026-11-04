@@ -39,9 +39,9 @@ const clearinghouseEntries = {
   CLEARINGHOUSE_SFTP_PASSWORD: v.optional(v.string()),
   CLEARINGHOUSE_UPLOAD_PATH: v.optional(remotePath, '/'),
   CLEARINGHOUSE_DOWNLOAD_PATHS: v.optional(pathList, '/'),
-  CLEARINGHOUSE_FILE_EXTENSION: v.optional(v.pipe(v.string(), v.regex(/^.[A-Za-z0-9]+$/)), '.txt'),
+  CLEARINGHOUSE_FILE_EXTENSION: v.optional(v.pipe(v.string(), v.regex(/^\.[A-Za-z0-9]+$/)), '.txt'),
   CLEARINGHOUSE_AFTER_DOWNLOAD: v.optional(v.picklist(['delete', 'keep']), 'delete'),
-  CLEARINGHOUSE_POLL_MINUTES: v.optional(posInt, '1')
+  CLEARINGHOUSE_POLL_MINUTES: v.optional(v.pipe(posInt, v.maxValue(59)), '1')
 };
 
 const baseSchema = v.object({

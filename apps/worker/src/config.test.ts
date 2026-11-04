@@ -76,5 +76,7 @@ describe('worker parseConfig', () => {
     });
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_SFTP_HOST: 'sftp.example.com' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_DOWNLOAD_PATHS: 'outbound' }));
+    assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_FILE_EXTENSION: 'xtxt' }));
+    assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_POLL_MINUTES: '60' }));
   });
 });

@@ -35,5 +35,3 @@ export const createRunScope = () => {
       }
   };
 };
-
-export type RunScope = ReturnType<typeof createRunScope>;

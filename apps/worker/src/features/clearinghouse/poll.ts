@@ -3,9 +3,7 @@ import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobStore } from '@ugula/storage';
 import { type Clearinghouse, type RemoteFile, receiverOf } from '../../shared/clearinghouse.ts';
 
-export const POLL_QUEUE = 'clearinghouse-poll';
-
-export const RECEIVE_WORKFLOW = 'billing.receive-payer-file';
+const RECEIVE_WORKFLOW = 'billing.receive-payer-file';
 
 type PollDeps = {
   db: Db;
@@ -15,14 +13,23 @@ type PollDeps = {
   report: (message: string) => void;
 };
 
-const seen = (db: Db, f: RemoteFile) =>
-  db
+const fileKey = (path: string, size: number, modifiedAt: Date) =>
+  `${path}\u0000${size}\u0000${modifiedAt.getTime()}`;
+
+const unseen = async (db: Db, files: RemoteFile[]) => {
+  if (!files.length) return [];
+  const rows = await db
     .selectFrom('clearinghouse_downloads')
-    .select('id')
-    .where('remote_path', '=', f.path)
-    .where('size', '=', f.size)
-    .where('modified_at', '=', f.modifiedAt)
-    .executeTakeFirst();
+    .select(['remote_path', 'size', 'modified_at'])
+    .where(
+      'remote_path',
+      'in',
+      files.map((f) => f.path)
+    )
+    .execute();
+  const seen = new Set(rows.map((r) => fileKey(r.remote_path, r.size, r.modified_at)));
+  return files.filter((f) => !seen.has(fileKey(f.path, f.size, f.modifiedAt)));
+};
 
 const tenantsReceiving = async (db: Db, receiver: string | null) =>
   receiver
@@ -91,8 +98,9 @@ const receive = async (deps: PollDeps, f: RemoteFile) => {
 };
 
 export const createClearinghousePoll = (deps: PollDeps) => async () => {
-  for (const f of await deps.clearinghouse.list()) {
-    if (await seen(deps.db, f)) continue;
-    await receive(deps, f);
+  for (const f of await unseen(deps.db, await deps.clearinghouse.list())) {
+    await receive(deps, f).catch((err: unknown) =>
+      deps.report(`Clearinghouse: could not receive ${f.path}: ${String(err)}`)
+    );
   }
 };

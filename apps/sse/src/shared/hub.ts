@@ -1,4 +1,4 @@
-export type HubClient = {
+type HubClient = {
   readonly writableNeedDrain: boolean;
   write: (chunk: string) => unknown;
   destroy: () => unknown;
