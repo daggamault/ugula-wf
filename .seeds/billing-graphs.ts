@@ -1966,7 +1966,18 @@ const buildClaim = (): GraphDef => {
   g.wire('pcrForClaim.pcr', 'agencyClaim.pcr');
   g.wire('agencyClaim.claim', 'save.claim');
   g.wire('claimIdForClaim.claimId', 'save.claimId');
-  g.wire('save.then', 'savedDone.exec');
+  g.add('eligibilityInputs', 'std.object.make', {
+    label: 'Eligibility Inputs',
+    config: { fields: [{ name: 'claimId', type: 'string' }] }
+  });
+  g.add('eligibility', 'std.flow.start-workflow', {
+    label: 'Check Eligibility of the Payers',
+    config: { workflow: 'billing.check-eligibility', version: 1 }
+  });
+  g.wire('claimIdForClaim.claimId', 'eligibilityInputs.claimId');
+  g.wire('eligibilityInputs.object', 'eligibility.inputs');
+  g.wire('save.then', 'eligibility.exec');
+  g.wire('eligibility.then', 'savedDone.exec');
   return g.def;
 };
 
@@ -2533,23 +2544,50 @@ const FOLLOW_UPS = [
   ['nextPayer', 'payer_skipped', 'Move On From the Payer']
 ] as const;
 
+const STATUS_WAIT_MS = 86_400_000;
+
 const followUpPayer = (): GraphDef => {
   const g = claimStep(['done']);
+  g.add('ask', 'billing.send-276', { label: 'Ask the Payer for Claim Status' });
+  g.add('wait', 'std.flow.wait-signal', {
+    label: 'Await the Claim Status',
+    values: { name: CLAIM_SIGNAL, timeoutMs: STATUS_WAIT_MS }
+  });
+  g.add('latest', 'billing.latest-claim-status', { label: 'Latest Claim Status' });
+  g.add('withStatus', 'std.object.set', {
+    label: 'Show the Claim Status',
+    values: { path: 'claimStatus' }
+  });
   g.add('followUp', 'std.human.task', {
     label: 'Follow Up with Payer',
     config: {
       title: 'Follow up on claim',
       queue: 'billing-followup',
       instructions:
-        'The payer has not responded in time. Resubmit in the next 837P batch, keep waiting, or move on to the next payer. When the payer has the claim on file, enter its claim number so the resubmission replaces it.',
+        "The payer has not responded in time. The payer's latest claim status (277), when it gave one, is in the details. Resubmit in the next 837P batch, keep waiting, or move on to the next payer. When the payer has the claim on file, enter its claim number so the resubmission replaces it.",
       fields: [{ name: 'payerClaimNumber', type: 'string', label: 'Payer claim number' }],
       outcomes: FOLLOW_UPS.map(([outcome]) => outcome)
     }
   });
   g.ret('doneReturn');
-  g.wire('entry.exec', 'followUp.exec');
+  g.wire('entry.exec', 'ask.exec');
+  g.wire('entry.claimId', 'ask.claimId', 'wait.key', 'latest.claimId');
+  g.wire('entry.coverageId', 'ask.coverageId');
+  g.wire('ask.sent', 'wait.exec');
+  g.wire('ask.signalsSeen', 'wait.after');
+  for (const exec of [
+    'ask.answered',
+    'ask.unavailable',
+    'wait.received',
+    'wait.timeout'
+  ] as const) {
+    g.wire(exec, 'latest.exec');
+  }
+  g.wire('latest.then', 'followUp.exec');
   g.wire('entry.subject', 'followUp.subject');
-  g.wire('entry.context', 'followUp.context');
+  g.wire('entry.context', 'withStatus.object');
+  g.wire('latest.status', 'withStatus.value');
+  g.wire('withStatus.object', 'followUp.context');
   for (const [outcome, kind, label] of FOLLOW_UPS) {
     recordEvent(g, outcome, kind, label);
     g.wire(`followUp.${outcome}`, `${outcome}.exec`);
@@ -2878,7 +2916,7 @@ const receivePayerFile = (): GraphDef => {
       title: 'Unreadable clearinghouse file',
       queue: 'billing-reconcile',
       instructions:
-        'The clearinghouse sent a file that is not a remittance (835), acknowledgment (999 or 277CA) or eligibility (271) file. Check it with the clearinghouse; nothing was applied.',
+        'The clearinghouse sent a file that is not a remittance (835), acknowledgment (TA1, 999 or 277CA), claim status (277) or eligibility (271) file. Check it with the clearinghouse; nothing was applied.',
       outcomes: ['resolved']
     }
   });
@@ -2891,10 +2929,35 @@ const receivePayerFile = (): GraphDef => {
     'apply.fileName',
     'why.fileName',
     'unreadable.subject',
-    'shared.fileName'
+    'shared.fileName',
+    'setup.subject',
+    'setupContext.fileName'
   );
   g.wire('shared.result', 'lines.shared');
-  g.wire('apply.applied', 'spawn.exec');
+  g.add('accepted', 'std.logic.is-null', { label: 'Envelope Accepted' });
+  g.add('envelope', 'std.flow.branch', { label: 'Envelope Rejected?' });
+  g.add('setup', 'std.human.task', {
+    label: 'Fix Clearinghouse Setup',
+    config: {
+      title: 'Fix clearinghouse setup',
+      queue: 'billing-review',
+      instructions:
+        'The clearinghouse rejected the file envelope (TA1), so it read none of the claims in the file; they are back in review. This is a setup problem, not a claim problem: check the reason in the details against the billing profile (submitter and receiver IDs, test or production) and the clearinghouse connection in Settings, then mark it fixed.',
+      outcomes: ['fixed']
+    }
+  });
+  g.add(
+    'setupContext',
+    'std.expr',
+    expr('Envelope Context', '{ fileName: fileName, problem: envelopeRejection }')
+  );
+  g.wire('apply.applied', 'envelope.exec');
+  g.wire('apply.envelopeRejection', 'accepted.value', 'setupContext.envelopeRejection');
+  g.wire('accepted.result', 'envelope.condition');
+  g.wire('envelope.true', 'spawn.exec');
+  g.wire('envelope.false', 'setup.exec');
+  g.wire('setupContext.result', 'setup.context');
+  g.wire('setup.fixed', 'spawn.exec');
   g.wire('apply.reviews', 'lines.list', 'count.list');
   g.wire('lines.list', 'spawn.items');
   g.wire('spawn.then', 'return.exec');
@@ -2905,6 +2968,49 @@ const receivePayerFile = (): GraphDef => {
   g.wire('unreadable.resolved', 'return.exec');
   g.wire('apply.fileId', 'return.fileId');
   g.wire('apply.kind', 'return.kind');
+  g.wire('count.length', 'return.reviews');
+  return g.def;
+};
+
+const checkEligibility = (): GraphDef => {
+  const g = graph({
+    execIn: ['exec'],
+    execOut: [],
+    inputs: [p('claimId', 'string')],
+    outputs: [p('sentAs', 'string'), p('reason', 'string'), p('reviews', 'integer')]
+  });
+  g.add('send', 'billing.send-270', { label: 'Send 270 to Clearinghouse' });
+  g.add('lines', 'std.list.reshape', {
+    label: 'One Review per Line',
+    config: {
+      fields: [
+        { name: 'fileName', type: 'string' },
+        { name: 'reference', type: 'string', from: 'reference' },
+        { name: 'claimId', type: 'string', from: 'claimId' },
+        { name: 'outcome', type: 'string', from: 'outcome' },
+        { name: 'message', type: 'string', from: 'message' }
+      ]
+    }
+  });
+  g.add('shared', 'std.expr', expr('Same for Every Line', '{ fileName: fileName }'));
+  g.add('spawn', 'std.flow.spawn-workflows', {
+    label: 'Ask a Biller About Each Line',
+    config: { workflow: 'billing.review-payer-file-line', version: 1 }
+  });
+  g.add('count', 'std.list.length', { label: 'Lines to Review' });
+  g.ret('return');
+  g.wire('entry.exec', 'send.exec');
+  g.wire('entry.claimId', 'send.claimId');
+  g.wire('send.answered', 'spawn.exec');
+  g.wire('send.fileName', 'shared.fileName');
+  g.wire('shared.result', 'lines.shared');
+  g.wire('send.reviews', 'lines.list', 'count.list');
+  g.wire('lines.list', 'spawn.items');
+  g.wire('spawn.then', 'return.exec');
+  g.wire('send.sent', 'return.exec');
+  g.wire('send.unavailable', 'return.exec');
+  g.wire('send.sentAs', 'return.sentAs');
+  g.wire('send.reason', 'return.reason');
   g.wire('count.length', 'return.reviews');
   return g.def;
 };
@@ -3232,7 +3338,7 @@ export const billingGraphs: SeedGraph[] = [
   node(
     'billing.follow-up-payer',
     'Follow Up with Payer',
-    'Asks a biller what to do about a payer that has not responded: resubmit, keep waiting, or move to the next payer.',
+    'Asks the payer for the claim status (276, real time or batch, waiting up to a day for the 277), then asks a biller what to do about a payer that has not responded, showing the latest status: resubmit, keep waiting, or move to the next payer.',
     followUpPayer()
   ),
   node(
@@ -3269,8 +3375,14 @@ export const billingGraphs: SeedGraph[] = [
   workflow(
     'billing.receive-payer-file',
     'Receive Payer File',
-    'Applies a file the clearinghouse sent (835 remittance, 999 or 277CA acknowledgment, 271 eligibility) to its claims, and asks a biller about each line that could not be applied on its own. Started for every file downloaded from the clearinghouse.',
+    'Applies a file the clearinghouse sent (835 remittance, TA1, 999 or 277CA acknowledgment, 277 claim status, 271 eligibility) to its claims, asks whoever sets up the clearinghouse to fix a rejected file envelope (TA1), and asks a biller about each line that could not be applied on its own. Started for every file downloaded from the clearinghouse.',
     receivePayerFile()
+  ),
+  workflow(
+    'billing.check-eligibility',
+    'Check Eligibility',
+    "Asks the clearinghouse whether each payer on a claim covers the patient: a real-time 270 when the agency's connection supports it (its 271 is applied at once, and an inactive coverage blocks billing that payer), else a batch 270 whose 271 arrives with the payer files. Asks a biller about each answer that needs one, such as a Medicare answer naming a Medicare Advantage plan. Started when Encounter to Claim saves a claim's payers, and from Check Eligibility on a claim.",
+    checkEligibility()
   ),
   workflow(
     'billing.ingest-nemsis',
