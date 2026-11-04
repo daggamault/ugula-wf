@@ -424,7 +424,7 @@ export const toPcr = (report: unknown): Fields => ({
   crew: readAll(report, 'eCrew.CrewGroup', CREW)
 });
 
-export type PlaceNames = Readonly<Record<string, string>>;
+type PlaceNames = Readonly<Record<string, string>>;
 
 const PLACED = ['patient', 'scene', 'disposition'] as const;
 

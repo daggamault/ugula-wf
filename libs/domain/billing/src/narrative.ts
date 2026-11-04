@@ -12,7 +12,7 @@ export const ALS2_PROCEDURES = [
   'intraosseous line'
 ] as const;
 
-export type Als2Procedure = (typeof ALS2_PROCEDURES)[number];
+type Als2Procedure = (typeof ALS2_PROCEDURES)[number];
 
 const ROUTES = ['IV', 'IO', 'IM', 'IN', 'PO', 'SL', 'NEB', 'SQ', 'other'] as const;
 
@@ -20,7 +20,7 @@ export type Route = (typeof ROUTES)[number];
 
 export type Medication = { medication: string; route: Route; doses: number };
 
-export type NarrativeFindings = {
+type NarrativeFindings = {
   medications: Medication[];
   procedures: Als2Procedure[];
   ivDoses: number;

@@ -271,7 +271,7 @@ export type CoveragePatch = {
   remove: boolean;
 };
 
-export type NewCoverage = {
+type NewCoverage = {
   payerId: string;
   memberId: string | null;
   relationship: InsuredRelationship;
@@ -279,7 +279,7 @@ export type NewCoverage = {
   insuredLastName: string | null;
 };
 
-export type DocumentationPatch = {
+type DocumentationPatch = {
   signature: SignatureStatus | null;
   pcsOnFile: boolean | null;
   pcsSignedOn: string | null;

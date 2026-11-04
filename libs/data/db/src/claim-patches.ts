@@ -2,7 +2,7 @@ import type { Address, ClaimPatch, CoveragePatch, Location } from '@ugula/billin
 import { sql } from 'kysely';
 import type { Db } from './schema.ts';
 
-export type CoverageEdit = CoveragePatch & { groupId: string | null };
+type CoverageEdit = CoveragePatch & { groupId: string | null };
 
 export type ClaimEdit = Omit<ClaimPatch, 'coverage'> & { coverages: CoverageEdit[] };
 

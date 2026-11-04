@@ -13,15 +13,15 @@ import type {
 } from '@ugula/billing';
 import type { ColumnType, Generated, GeneratedAlways, Kysely } from 'kysely';
 
-export type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
+type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
 
-export type NullableTimestamp = ColumnType<
+type NullableTimestamp = ColumnType<
   Date | null,
   Date | string | null | undefined,
   Date | string | null
 >;
 
-export type TenantsTable = {
+type TenantsTable = {
   id: Generated<string>;
   name: string;
   slug: string;
@@ -32,7 +32,7 @@ export type TenantsTable = {
   updated_at: Timestamp;
 };
 
-export type UsersTable = {
+type UsersTable = {
   id: Generated<string>;
   tenant_id: string;
   email: string;
@@ -46,7 +46,7 @@ export const NOTIFICATION_INTENTS = ['primary', 'success', 'info', 'warning', 'd
 
 export type NotificationIntent = (typeof NOTIFICATION_INTENTS)[number];
 
-export type NotificationsTable = {
+type NotificationsTable = {
   id: Generated<string>;
   tenant_id: string;
   user_id: string | null;
@@ -58,15 +58,15 @@ export type NotificationsTable = {
   created_at: Timestamp;
 };
 
-export type NotificationStatesTable = {
+type NotificationStatesTable = {
   user_id: string;
   read_at: Timestamp;
   cleared_at: NullableTimestamp;
 };
 
-export type JsonColumn<T = unknown> = ColumnType<T, string, string>;
+type JsonColumn<T = unknown> = ColumnType<T, string, string>;
 
-export type NullableJsonColumn<T = unknown> = ColumnType<
+type NullableJsonColumn<T = unknown> = ColumnType<
   T | null,
   string | null | undefined,
   string | null
@@ -76,7 +76,7 @@ export const GRAPH_KINDS = ['workflow', 'node'] as const;
 
 export type GraphKind = (typeof GRAPH_KINDS)[number];
 
-export type GraphsTable = {
+type GraphsTable = {
   id: Generated<string>;
   tenant_id: string | null;
   key: string;
@@ -88,7 +88,7 @@ export type GraphsTable = {
   updated_at: Timestamp;
 };
 
-export type GraphVersionsTable = {
+type GraphVersionsTable = {
   id: Generated<string>;
   graph_id: string;
   version: number;
@@ -111,7 +111,7 @@ export const RUN_STATUSES = [
 
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
-export type WorkflowRunsTable = {
+type WorkflowRunsTable = {
   id: Generated<string>;
   tenant_id: string;
   graph_version_id: string;
@@ -131,40 +131,40 @@ export type WorkflowRunsTable = {
   completed_at: NullableTimestamp;
 };
 
-export type WorkflowRunGraphsTable = {
+type WorkflowRunGraphsTable = {
   run_id: string;
   key: string;
   version: number;
   graph_version_id: string;
 };
 
-export type GnisPlacesTable = {
+type GnisPlacesTable = {
   id: number;
   name: string;
   state: string;
 };
 
-export type NemsisElementsTable = {
+type NemsisElementsTable = {
   element: string;
   name: string;
   definition: string;
   usage: string;
 };
 
-export type NemsisCodesTable = {
+type NemsisCodesTable = {
   list: string;
   code: string;
   description: string;
 };
 
-export type SignalsTable = {
+type SignalsTable = {
   tenant_id: string;
   key: string;
   received: Generated<number>;
   updated_at: Timestamp;
 };
 
-export type WorkflowRunStepsTable = {
+type WorkflowRunStepsTable = {
   run_id: string;
   seq: number;
   scope: string;
@@ -189,7 +189,7 @@ export const TASK_STATUSES = ['open', 'completed', 'cancelled'] as const;
 
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
-export type TasksTable = {
+type TasksTable = {
   id: Generated<string>;
   tenant_id: string;
   run_id: string;
@@ -231,7 +231,7 @@ export type PatientsTable = {
   updated_at: Timestamp;
 };
 
-export type FeeSchedulesTable = {
+type FeeSchedulesTable = {
   id: Generated<string>;
   tenant_id: string;
   payer_id: string | null;
@@ -283,12 +283,12 @@ export type ClaimsTable = {
   updated_at: Timestamp;
 };
 
-export type ClaimRunsTable = {
+type ClaimRunsTable = {
   run_id: string;
   claim_id: string;
 };
 
-export type ClaimLinesTable = {
+type ClaimLinesTable = {
   claim_id: string;
   position: number;
   code: string;
@@ -297,7 +297,7 @@ export type ClaimLinesTable = {
   total_cents: number;
 };
 
-export type ClaimCoveragesTable = {
+type ClaimCoveragesTable = {
   id: Generated<string>;
   tenant_id: string;
   claim_id: string;
@@ -319,20 +319,20 @@ export type ClaimCoveragesTable = {
   eligibility_checked_at: NullableTimestamp;
 };
 
-export type ClaimDiagnosesTable = {
+type ClaimDiagnosesTable = {
   claim_id: string;
   position: number;
   code: string;
 };
 
-export type ClaimBalancesView = {
+type ClaimBalancesView = {
   claim_id: string;
   paid_cents: number;
   adjusted_cents: number;
   balance_cents: number;
 };
 
-export type ClaimEventsTable = {
+type ClaimEventsTable = {
   id: Generated<string>;
   claim_id: string;
   kind: ClaimEventKind;
@@ -350,7 +350,7 @@ export type ClaimEventsTable = {
   created_at: Timestamp;
 };
 
-export type ClaimEventAdjustmentsTable = {
+type ClaimEventAdjustmentsTable = {
   event_id: string;
   position: number;
   group_code: AdjustmentGroup;
@@ -358,7 +358,7 @@ export type ClaimEventAdjustmentsTable = {
   amount_cents: number;
 };
 
-export type ClaimBatchesTable = {
+type ClaimBatchesTable = {
   id: Generated<string>;
   tenant_id: string;
   control_number: number;
@@ -372,7 +372,7 @@ export type ClaimBatchesTable = {
   sent_as: ColumnType<string | null, string | null | undefined, string | null>;
 };
 
-export type ClearinghouseDownloadsTable = {
+type ClearinghouseDownloadsTable = {
   id: Generated<string>;
   remote_path: string;
   size: number;
@@ -397,7 +397,7 @@ export type PayerFilesTable = {
   created_at: Timestamp;
 };
 
-export type PayerFileItemsTable = {
+type PayerFileItemsTable = {
   id: Generated<string>;
   file_id: string;
   position: number;
@@ -413,7 +413,7 @@ export const IMPORT_SOURCES = ['upload', 'sftp', 'manual'] as const;
 
 export type ImportSource = (typeof IMPORT_SOURCES)[number];
 
-export type ImportsTable = {
+type ImportsTable = {
   id: Generated<string>;
   tenant_id: string;
   run_id: string;
@@ -425,7 +425,7 @@ export type ImportsTable = {
   created_at: Timestamp;
 };
 
-export type ImportReportsTable = {
+type ImportReportsTable = {
   id: Generated<string>;
   import_id: string;
   position: number;
@@ -434,7 +434,7 @@ export type ImportReportsTable = {
   created_at: Timestamp;
 };
 
-export type BillingProfilesTable = {
+type BillingProfilesTable = {
   tenant_id: string;
   organization_name: string;
   npi: string;
@@ -467,7 +467,7 @@ export type PayersTable = {
 
 export const EMBEDDING_DIMENSIONS = 1024;
 
-export type PayerAliasesTable = {
+type PayerAliasesTable = {
   id: Generated<string>;
   tenant_id: string;
   payer_id: string;
@@ -476,7 +476,7 @@ export type PayerAliasesTable = {
   created_at: Timestamp;
 };
 
-export type PayerSuggestionsTable = {
+type PayerSuggestionsTable = {
   tenant_id: string;
   name_key: string;
   directory_version: string;

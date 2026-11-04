@@ -24,7 +24,7 @@ export type ObjectStorage = {
   ensure: () => Promise<void>;
 };
 
-export type S3Config = {
+type S3Config = {
   endpoint: string;
   region: string;
   bucket: string;

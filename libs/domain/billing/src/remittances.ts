@@ -1,7 +1,7 @@
 import type { Adjustment } from './claims.ts';
 import type { RemittanceClaim } from './x835.ts';
 
-export type RemittancePosting =
+type RemittancePosting =
   | {
       post: true;
       paidCents: number;
@@ -64,7 +64,7 @@ export const remittancePosting = (c: RemittanceClaim): RemittancePosting => {
   };
 };
 
-export type PostingCoverage = { id: string; payerId: string | null };
+type PostingCoverage = { id: string; payerId: string | null };
 
 export const remittanceCoverage = (
   coverages: readonly PostingCoverage[],

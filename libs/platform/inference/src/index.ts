@@ -5,7 +5,7 @@ import {
   type ScriptRunner
 } from './limiter.ts';
 
-export { busyRetryAfter, type Limiter, type ScriptRunner } from './limiter.ts';
+export { busyRetryAfter } from './limiter.ts';
 
 export type Fetch = typeof fetch;
 

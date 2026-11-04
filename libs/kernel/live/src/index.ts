@@ -5,9 +5,9 @@ export type LiveEvent =
   | { kind: 'import'; id: string | null }
   | { kind: 'notification'; id: string | null };
 
-export type LiveKind = LiveEvent['kind'];
+type LiveKind = LiveEvent['kind'];
 
-export type Publisher = {
+type Publisher = {
   publish: (channel: string, message: string) => Promise<unknown>;
 };
 

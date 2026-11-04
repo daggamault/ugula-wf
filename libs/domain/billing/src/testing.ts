@@ -384,7 +384,7 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
 
 const PLACE = { addressLine: '9 Oak Ave', city: 'Springfield', state: 'IL', postalCode: '62702' };
 
-export const checkedPayer = (name: string, payerId: string | null = `p-${name}`) => ({
+const checkedPayer = (name: string, payerId: string | null = `p-${name}`) => ({
   coverageId: `cov-${name}`,
   name,
   payerId,

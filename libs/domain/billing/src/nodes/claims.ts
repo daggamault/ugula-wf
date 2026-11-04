@@ -1,4 +1,4 @@
-import { actionNode, branchNode, isRecord, type PinSpec, pin } from '@ugula/graph';
+import { actionNode, branchNode, type PinSpec, pin } from '@ugula/graph';
 import { priceLines, readLines, readPricedLines } from '../charges.ts';
 import { CLAIM_FIX_FIELDS, changesCharges, fixForm, readClaimPatch } from '../claim-fix.ts';
 import {
@@ -10,7 +10,7 @@ import {
 } from '../claim-validation.ts';
 import { type ClaimLedger, claimProgress, RESTARTABLE_STATUSES } from '../claims.ts';
 import { BLOB, CLAIM, CLAIM_ISSUE, LINE, PATIENT, SERVICE } from '../models.ts';
-import { recordOf, requiredText, textOrNull } from '../values.ts';
+import { isCents, recordOf, requiredText, textOrNull } from '../values.ts';
 import type { NodesOf } from './stores.ts';
 
 const CATEGORY = 'Billing';
@@ -73,9 +73,7 @@ export const claimNodes: NodesOf = (stores) => {
           ...new Set(lines.map((l) => l.code))
         ]);
         const set = Object.fromEntries(
-          Object.entries(recordOf(inputs.fees)).filter(
-            (e): e is [string, number] => Number.isInteger(e[1]) && (e[1] as number) >= 0
-          )
+          Object.entries(recordOf(inputs.fees)).filter((e): e is [string, number] => isCents(e[1]))
         );
         const priced = priceLines(lines, { ...scheduled, ...set });
         return { exit: priced.missing.length ? 'unpriced' : 'priced', outputs: priced };
@@ -149,7 +147,7 @@ export const claimNodes: NodesOf = (stores) => {
         const before = checkOf(await store.claimCheck(ctx.runId, claimId), claimId);
         const patch = {
           ...readClaimPatch(inputs, before),
-          lines: Array.isArray(inputs.lines) ? readPricedLines(inputs.lines) : null
+          lines: inputs.lines ? readPricedLines(inputs.lines) : null
         };
         await store.patchClaim(ctx.runId, claimId, ctx.key, patch);
         if (!changesCharges(patch)) {
@@ -250,7 +248,7 @@ export const claimNodes: NodesOf = (stores) => {
           exit: (RESTARTABLE_STATUSES as readonly string[]).includes(status)
             ? 'restartable'
             : 'billed',
-          outputs: { status, previous: isRecord(previous) ? previous : null }
+          outputs: { status, previous }
         };
       }
     })

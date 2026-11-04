@@ -41,7 +41,7 @@ export type NewClaim = {
 
 export const CLAIM_ISSUE_LEVELS = ['blocking', 'warning'] as const;
 
-export type ClaimIssueLevel = (typeof CLAIM_ISSUE_LEVELS)[number];
+type ClaimIssueLevel = (typeof CLAIM_ISSUE_LEVELS)[number];
 
 export const CLAIM_FIELDS = [
   'patient',
@@ -78,7 +78,7 @@ export type ClaimIssue = {
   coverageId: string | null;
 };
 
-export type CheckedPayer = {
+type CheckedPayer = {
   coverageId: string | null;
   name: string;
   payerId: string | null;

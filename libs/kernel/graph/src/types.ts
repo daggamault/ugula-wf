@@ -163,7 +163,7 @@ export type Scope = {
 
 export type RunStatus = 'running' | 'suspended' | 'completed' | 'faulted';
 
-export type PendingSuspension = Suspension & {
+type PendingSuspension = Suspension & {
   id: string;
   cursor: Cursor;
   retry: boolean;

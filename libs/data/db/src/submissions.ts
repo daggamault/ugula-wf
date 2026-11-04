@@ -17,7 +17,7 @@ import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { DOCUMENTATION_COLUMNS, documentationOf } from './claim-documentation.ts';
 import type { Db } from './schema.ts';
 
-export type SubmissionEvent = {
+type SubmissionEvent = {
   claimId: string;
   kind: 'submitted' | 'resubmitted';
   coverageId: string;
@@ -121,7 +121,7 @@ export const findProfile = (db: Db, tenantId: string) =>
     .where('tenant_id', '=', tenantId)
     .executeTakeFirst();
 
-export type ProfileRow = NonNullable<Awaited<ReturnType<typeof findProfile>>>;
+type ProfileRow = NonNullable<Awaited<ReturnType<typeof findProfile>>>;
 
 export const toSubmitter = (p: ProfileRow): Submitter => ({
   organizationName: p.organization_name,

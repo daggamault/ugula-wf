@@ -1,7 +1,7 @@
 import { type Kysely, type RawBuilder, sql } from 'kysely';
 import type { Database } from './schema.ts';
 
-export type GraphKey = {
+type GraphKey = {
   key: string;
   version: number;
 };
@@ -81,17 +81,6 @@ export const buildPinRunGraphs = (runId: string, tenantId: string, versionId: st
   select ${runId}::uuid, key, version, id from bundle
   on conflict do nothing`;
 
-const buildResolveBundle = (tenantId: string | null, versionId: string) => sql<GraphRef>`
-  ${bundle(tenantId, versionId)}
-  select id, key, version from bundle`;
-
-export const resolveBundle = async (
-  db: Kysely<Database>,
-  tenantId: string | null,
-  versionId: string
-): Promise<PublishedGraph[]> =>
-  withDefinitions(db, (await buildResolveBundle(tenantId, versionId).execute(db)).rows);
-
 export const pinRunGraphs = async (
   db: Kysely<Database>,
   run: { id: string; tenantId: string; versionId: string }
@@ -99,7 +88,7 @@ export const pinRunGraphs = async (
   await buildPinRunGraphs(run.id, run.tenantId, run.versionId).execute(db);
 };
 
-export const listRunGraphRefs = (db: Kysely<Database>, runId: string): Promise<GraphRef[]> =>
+const listRunGraphRefs = (db: Kysely<Database>, runId: string): Promise<GraphRef[]> =>
   db
     .selectFrom('workflow_run_graphs')
     .select(['graph_version_id as id', 'key', 'version'])

@@ -1,6 +1,6 @@
 import { componentsOf, readX12, textOf, transactionsOf, type X12File } from './x12.ts';
 
-export type TransactionAcknowledgment = {
+type TransactionAcknowledgment = {
   controlNumber: string;
   accepted: boolean;
   errors: string[];

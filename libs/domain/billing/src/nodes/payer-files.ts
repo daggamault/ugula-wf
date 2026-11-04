@@ -5,16 +5,13 @@ import type { NodesOf } from './stores.ts';
 
 const CATEGORY = 'Billing';
 
-export const PAYER_FILE_LINE = {
+const PAYER_FILE_LINE = {
   object: { reference: 'string', claimId: 'string', outcome: 'string', message: 'string' }
 } as const;
 
-const blobOf = (x: unknown) => {
-  const b = x as { bucket?: unknown; key?: unknown } | null;
-  if (typeof b?.bucket !== 'string' || typeof b.key !== 'string') {
-    throw new Error('No payer file to apply');
-  }
-  return { bucket: b.bucket, key: b.key };
+const blobOf = ({ bucket, key }: { bucket: string | null; key: string | null }) => {
+  if (!bucket || !key) throw new Error('No payer file to apply');
+  return { bucket, key };
 };
 
 export const payerFileNodes: NodesOf = (stores) => [

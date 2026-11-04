@@ -10,7 +10,7 @@ import type { StatementData } from '../statements.ts';
 import type { InboundKind } from '../x12.ts';
 import type { PendingSubmission, Submitter } from '../x837.ts';
 
-export type CandidateQuery = {
+type CandidateQuery = {
   birthDate: string | null;
   lastNameKey: string | null;
   firstName: string | null;
@@ -55,7 +55,7 @@ export type PayerStore = {
   cacheSuggestion: (runId: string, name: string, payerId: string | null) => Promise<void>;
 };
 
-export type AgencyProfile = StatementData['agency'] & { timeZone: string };
+type AgencyProfile = StatementData['agency'] & { timeZone: string };
 
 export type StatementSource = Omit<StatementData, 'number' | 'count' | 'issuedOn' | 'agency'> & {
   agency: AgencyProfile | null;
@@ -78,7 +78,7 @@ export type SubmissionSource = {
   pending: PendingSubmission | null;
 };
 
-export type SubmissionFile = {
+type SubmissionFile = {
   coverageId: string;
   resubmission: boolean;
   totalCents: number;
@@ -163,7 +163,7 @@ export type ClaimStore = {
   ) => Promise<void>;
 };
 
-export type PayerFileLine = {
+type PayerFileLine = {
   reference: string;
   claimId: string | null;
   outcome: PayerFileOutcome;
@@ -192,6 +192,6 @@ export type BillingStores = {
   completer: Completer;
 };
 
-export type StoresOf = () => BillingStores;
+type StoresOf = () => BillingStores;
 
 export type NodesOf = (stores: StoresOf) => NodeDef[];

@@ -32,7 +32,7 @@ import type {
 } from './types.ts';
 import { checkValue } from './value-types.ts';
 
-export type EngineOptions = {
+type EngineOptions = {
   nodes: NodeDef[];
   graphs: GraphSource;
   maxDepth?: number;
@@ -43,23 +43,23 @@ export type EngineOptions = {
 
 const TRANSIENT_RETRY: RetryPolicy = { max: 5, delayMs: 5_000, factor: 3 };
 
-export type StepContext = {
+type StepContext = {
   runId: string;
   now: Date;
   signal?: AbortSignal;
 };
 
-export type StepResult = {
+type StepResult = {
   trace: TraceEntry[];
   checkpoint: boolean;
 };
 
-export type StartOptions = {
+type StartOptions = {
   now: Date;
   entry?: string;
 };
 
-export type NodeAtCursor = {
+type NodeAtCursor = {
   instance: NodeInstance;
   title: string;
   signature: Signature;

@@ -59,7 +59,7 @@ export const claimBalance = async (db: Db, id: string) =>
       .executeTakeFirstOrThrow()
   ).balance_cents;
 
-export const hasResponse = async (db: Db, claimId: string, requestId: string) =>
+const hasResponse = async (db: Db, claimId: string, requestId: string) =>
   (await db
     .selectFrom('claim_events')
     .select('id')
@@ -71,7 +71,7 @@ const FOLLOW_UP_QUEUE = 'billing-followup';
 
 const COLLECTIONS_QUEUE = 'billing-collections';
 
-export const resolveMootTasks = (
+const resolveMootTasks = (
   db: Db,
   tenantId: string,
   claimId: string,

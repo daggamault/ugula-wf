@@ -2,7 +2,7 @@ import { type BillingStores, billingModels, createBillingNodes } from '@ugula/bi
 import { createModelNodes, createStdNodes, type NodeDef, type StdDeps } from '@ugula/graph';
 import { createNemsisNodes, nemsisModels, type ReportStore } from '@ugula/nemsis';
 
-export type CatalogDeps = StdDeps & {
+type CatalogDeps = StdDeps & {
   reports?: ReportStore;
   billing?: BillingStores;
 };

@@ -29,7 +29,7 @@ export const findImported = (db: Db, tenantId: string, digest: string) =>
     .where('digest', '=', digest)
     .executeTakeFirst();
 
-export const insertPayerFile = (
+const insertPayerFile = (
   db: Db,
   f: {
     tenantId: string;
@@ -111,7 +111,7 @@ export const findClaimByNumber = (db: Db, tenantId: string, reference: string) =
         .executeTakeFirst();
 };
 
-export const listPostingCoverages = (db: Db, claimId: string) =>
+const listPostingCoverages = (db: Db, claimId: string) =>
   db
     .selectFrom('claim_coverages as cc')
     .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
@@ -122,7 +122,7 @@ export const listPostingCoverages = (db: Db, claimId: string) =>
 
 const SUBMISSIONS = ['submitted', 'resubmitted'] as const;
 
-export const lastSubmittedCoverage = async (db: Db, claimId: string) =>
+const lastSubmittedCoverage = async (db: Db, claimId: string) =>
   (
     await db
       .selectFrom('claim_events')
@@ -186,7 +186,7 @@ export const findTracedCoverage = (db: Db, tenantId: string, trace: string) =>
     .where(sql<string>`id::text`, '=', trace.toLowerCase())
     .executeTakeFirst();
 
-export const saveEligibility = (
+const saveEligibility = (
   db: Db,
   coverageId: string,
   e: { active: boolean; note: string; checkedAt: Date }
@@ -423,7 +423,7 @@ const kindOf = (text: string) => {
   }
 };
 
-export type InboundFile = {
+type InboundFile = {
   kind: InboundKind;
   controlNumber: string | null;
   digest: string;

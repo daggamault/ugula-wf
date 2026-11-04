@@ -4,7 +4,7 @@ export { actionNode, branchNode, pin, pureNode } from './define.ts';
 export { createEngine, type Engine } from './engine.ts';
 export { messageOf } from './errors.ts';
 export { checkField } from './fields.ts';
-export { deepEqual, getPath, isRecord } from './json.ts';
+export { deepEqual, isRecord } from './json.ts';
 export { createModelNodes, type Model, type ModelField, modelType } from './models.ts';
 export { combineSources, createRegistry, isPure } from './registry.ts';
 export { type FieldSpec, graphDefSchema, valuesSchema } from './schemas.ts';

@@ -10,7 +10,7 @@ import {
   yyyymmdd
 } from './x12.ts';
 
-export type MockOptions = {
+type MockOptions = {
   sender?: string;
   receiver?: string;
   production?: boolean;
@@ -40,7 +40,7 @@ const serialize = (seg: Segment) =>
 
 const randomControl = () => Math.floor(Math.random() * (MAX_CONTROL_NUMBER - 1)) + 1;
 
-export const mockDollars = (cents: number) => (cents / 100).toFixed(2);
+const mockDollars = (cents: number) => (cents / 100).toFixed(2);
 
 const stamp = (o: MockOptions) => {
   const iso = (o.createdAt ?? new Date()).toISOString();
@@ -94,7 +94,7 @@ const envelope = (
   return `${[`${isa}~`, ...segments.map(serialize)].join('\n')}\n`;
 };
 
-export type Mock999Error = {
+type Mock999Error = {
   segment: string;
   position: number;
   loop?: string;
@@ -102,13 +102,13 @@ export type Mock999Error = {
   element?: { position: string; code: string };
 };
 
-export type Mock999Transaction = {
+type Mock999Transaction = {
   controlNumber: string;
   accepted: boolean;
   errors?: Mock999Error[];
 };
 
-export type Mock999 = {
+type Mock999 = {
   groupControlNumber: string;
   functionalId?: string;
   transactionSetId?: string;
@@ -155,7 +155,7 @@ export const build999 = (ack: Mock999, o: MockOptions = {}) => {
   ]);
 };
 
-export type Mock277Claim = {
+type Mock277Claim = {
   claimNumber: string;
   chargeCents?: number;
   rejection: string | null;
@@ -164,7 +164,7 @@ export type Mock277Claim = {
   serviceDate?: string | null;
 };
 
-export type Mock277 = {
+type Mock277 = {
   clearinghouse?: Party;
   submitter?: Party;
   provider?: Party;
@@ -218,7 +218,7 @@ export const build277 = (ack: Mock277, o: MockOptions = {}) => {
   ]);
 };
 
-export type Mock835Claim = {
+type Mock835Claim = {
   claimNumber: string;
   chargeCents: number;
   paidCents: number;
@@ -228,7 +228,7 @@ export type Mock835Claim = {
   adjustments?: Adjustment[];
 };
 
-export type Mock835 = {
+type Mock835 = {
   payer?: Party;
   payee?: Party;
   checkNumber?: string;
@@ -302,7 +302,7 @@ export const build835 = (remits: Mock835[], o: MockOptions = {}) => {
   ]);
 };
 
-export type Mock271 = {
+type Mock271 = {
   trace: string;
   active: boolean;
   payer?: Party;
@@ -351,7 +351,7 @@ export const build271 = (e: Mock271, o: MockOptions = {}) => {
   ]);
 };
 
-export type Mock837Claim = {
+type Mock837Claim = {
   claimNumber: string;
   chargeCents: number;
   memberId: string | null;
@@ -361,7 +361,7 @@ export type Mock837Claim = {
   claimFiling: string | null;
 };
 
-export type Mock837 = {
+type Mock837 = {
   interchangeControlNumber: string;
   sender: string;
   receiver: string;
@@ -459,13 +459,13 @@ export const read837 = (text: string): Mock837 => {
   return out;
 };
 
-export const MOCK_REJECT_PREFIX = 'REJECT';
+const MOCK_REJECT_PREFIX = 'REJECT';
 
-export const MOCK_REJECTION = 'Invalid member ID';
+const MOCK_REJECTION = 'Invalid member ID';
 
-export const MOCK_PAID_SHARE = 0.8;
+const MOCK_PAID_SHARE = 0.8;
 
-export type MockResponse = {
+type MockResponse = {
   inbound: Mock837 | null;
   error: string | null;
   ack999: string;
@@ -520,7 +520,7 @@ const rejectFile = (text: string, now: Date, error: string): MockResponse => {
   };
 };
 
-export const mockPayerClaimNumber = (claimNumber: string) => `MOCK-${claimNumber}`;
+const mockPayerClaimNumber = (claimNumber: string) => `MOCK-${claimNumber}`;
 
 const isRejected = (c: Mock837Claim) =>
   (c.memberId ?? '').toUpperCase().startsWith(MOCK_REJECT_PREFIX);

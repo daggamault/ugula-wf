@@ -14,7 +14,7 @@ export const DOCUMENTATION_COLUMNS = [
   'c.at_destination_at'
 ] as const;
 
-export type DocumentationRow = {
+type DocumentationRow = {
   signature: string;
   signature_note: string | null;
   pcs_on_file: boolean | null;

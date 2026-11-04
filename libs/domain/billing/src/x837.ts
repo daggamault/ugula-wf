@@ -40,7 +40,7 @@ export type BatchPayer = {
   insuredLastName: string | null;
 };
 
-export type PriorPayer = BatchPayer & Adjudication;
+type PriorPayer = BatchPayer & Adjudication;
 
 export type BatchClaim = {
   claimId: string;

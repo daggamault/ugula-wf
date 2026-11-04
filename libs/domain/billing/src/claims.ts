@@ -29,7 +29,7 @@ export const COVERAGE_EVENT_KINDS: readonly ClaimEventKind[] = [
   'rejected'
 ];
 
-export const CYCLE_EVENT_KINDS = [
+const CYCLE_EVENT_KINDS = [
   'submitted',
   'resubmit_queued',
   'follow_up',

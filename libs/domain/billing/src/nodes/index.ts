@@ -9,23 +9,14 @@ import { payerNodes } from './payers.ts';
 import type { BillingStores } from './stores.ts';
 
 export type {
-  AgencyProfile,
-  AppliedPayerFile,
   BillingStores,
   BlobRef,
-  CandidateQuery,
   ClaimStore,
   DraftClaim,
   FeeStore,
   PatientStore,
-  PayerFileLine,
   PayerFileStore,
-  PayerStore,
-  SavedSubmission,
-  SentClaimFile,
-  StatementSource,
-  SubmissionFile,
-  SubmissionSource
+  PayerStore
 } from './stores.ts';
 
 export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
