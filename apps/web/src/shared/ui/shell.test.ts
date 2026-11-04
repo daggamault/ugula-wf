@@ -86,19 +86,19 @@ describe('Shell', () => {
     );
 
     const titleOf = (group: string) => {
-      const match = html.match(new RegExp(`<p class="([^"]*)">${group}(.*?)</p>`));
+      const match = html.match(new RegExp(`<p class="([^"]*)">${group}</p>`));
       assert.ok(match, `missing ${group} title`);
-      const [, classes = '', marker = ''] = match;
-      return { classes: classes.split(' '), marker };
+      return (match[1] ?? '').split(' ');
     };
 
     const automation = titleOf('Automation');
-    assert.ok(automation.classes.includes('text-surface-fg'));
-    assert.ok(!automation.classes.includes('text-surface-fg-muted'));
-    assert.ok(automation.marker.includes('bg-primary'));
+    assert.ok(automation.includes('text-surface-fg'));
+    assert.ok(automation.includes('font-bold'));
+    assert.ok(!automation.includes('text-surface-fg-muted'));
 
     const work = titleOf('Work');
-    assert.ok(work.classes.includes('text-surface-fg-muted'));
-    assert.equal(work.marker, '');
+    assert.ok(work.includes('text-surface-fg-muted'));
+    assert.ok(work.includes('font-semibold'));
+    assert.ok(!work.includes('font-bold'));
   });
 });

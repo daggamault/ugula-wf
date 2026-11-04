@@ -56,14 +56,11 @@ const NavMenu = ({ navItems, userEmail, status, onSignOut }: NavMenuProps) => (
           <div key={group} className="flex flex-col gap-1">
             <p
               className={classNamesOf(
-                'flex items-center gap-1.5 px-3 pb-1 text-xs font-semibold tracking-wide uppercase',
-                hasActive ? 'text-surface-fg' : 'text-surface-fg-muted'
+                'px-3 pb-1 text-xs tracking-wide uppercase transition duration-150 ease-out',
+                hasActive ? 'text-surface-fg font-bold' : 'text-surface-fg-muted font-semibold'
               )}
             >
               {group}
-              {hasActive ? (
-                <span aria-hidden="true" className="bg-primary size-1.5 rounded-full" />
-              ) : null}
             </p>
             <ul className="flex flex-col gap-1">
               {items.map(({ id, label, href, icon: Icon, active, badge }) => (
