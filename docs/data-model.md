@@ -16,15 +16,18 @@ Postgres schema, created by `.migrations/*.ts` and typed in `libs/data/db/src/sc
 
 ## Workflows
 
-| Table                 | Holds                                                                                               |
-| --------------------- | --------------------------------------------------------------------------------------------------- |
-| `graphs`              | One row per graph and scope: system (no organization), organization, or agency                      |
-| `graph_versions`      | Immutable published versions and one draft per graph; `contract`, `dependencies`, `base_version_id` |
-| `workflow_runs`       | Runs, their state, status, parent links and leases                                                  |
-| `workflow_run_graphs` | The graph versions each run pinned at start                                                         |
-| `workflow_run_steps`  | Trace of every executed node                                                                        |
-| `signals`             | Counted signals runs wait on                                                                        |
-| `tasks`               | Human tasks, their queue, assignee (a member of the agency) and outcome                             |
+| Table                 | Holds                                                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `graphs`              | One row per graph and scope: system (no organization), organization, or agency; `role` (workflow, stage, rule, slot) |
+| `graph_versions`      | Immutable published versions and one draft per graph; `contract`, `dependencies`, `base_version_id`                  |
+| `workflow_runs`       | Runs, their state, status, parent links and leases                                                                   |
+| `workflow_run_graphs` | The graph versions each run pinned at start                                                                          |
+| `data_tables`         | Shared decision and lookup tables per scope, like `graphs`; `kind` (decide, lookup)                                  |
+| `data_table_versions` | Immutable published versions and one draft per table; `contract` (its fields), `base_version_id`                     |
+| `workflow_run_tables` | The table versions each run pinned at start, one per key                                                             |
+| `workflow_run_steps`  | Trace of every executed node                                                                                         |
+| `signals`             | Counted signals runs wait on                                                                                         |
+| `tasks`               | Human tasks, their queue, assignee (a member of the agency) and outcome                                              |
 
 ## Billing
 

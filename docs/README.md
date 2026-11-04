@@ -7,7 +7,7 @@ How the pieces of Ugula fit together. Start with **Architecture**, then read the
 | [Architecture](architecture.md)                          | Apps, library layers, how a request and a run flow through the system                      |
 | [Tenancy and Access](tenancy-and-access.md)              | Organizations, agencies, users, roles, permissions, invitations, guards, the agency picker |
 | [Workflow Engine](workflow-engine.md)                    | Graphs, nodes, pins, durable runs, waits, child runs, version pinning                      |
-| [Overrides](overrides.md)                                | System, organization and agency graphs; contracts; resolution; compare and rebase          |
+| [Overrides](overrides.md)                                | Graph and table overrides, roles, Agency Rule slots, contracts, compare, showing changes   |
 | [Billing Workflows](billing-workflows.md)                | Every billing workflow and subworkflow today, and the target catalog                       |
 | [EMS Billing Primer](ems-billing-primer.md)              | How ambulance billing works: transactions, codes, Medicare rules, MVP checklist            |
 | [Clearinghouse](clearinghouse.md)                        | SFTP exchange, the mock, Waystar conventions, real-time plans                              |

@@ -4,7 +4,7 @@
 
 - An **organization** is the customer: an EMS service, a county, or a billing company.
 - An **agency** belongs to one organization and owns the billing data: claims, patients, imports, payer files, payers, fees, the billing profile and tasks.
-- Workflows can be customized for the whole organization or for one agency (see [Overrides](overrides.md)).
+- Workflows and shared tables can be customized for the whole organization (owners only) or for one agency (see [Overrides](overrides.md)). In an agency, `workflows:update` may override rules, Agency Rule slots and tables; `workflows:manage` is needed for stages and workflows.
 
 ## Users
 
@@ -22,21 +22,21 @@ A user belongs to at most one organization. Email addresses are unique and store
 - Roles are custom per agency (`roles`, `role_permissions`). Every agency is seeded with **Admin**, **Billing Manager**, **Biller** and **Viewer** (`BUILT_IN_ROLES`), which agencies can change.
 - A membership (`memberships`) gives one user one role in one agency. Composite foreign keys make it impossible to join an agency or role outside your organization.
 
-| Resource    | Actions                                                                            |
-| ----------- | ---------------------------------------------------------------------------------- |
-| settings    | read, update                                                                       |
-| users       | create, read, update, delete                                                       |
-| roles       | create, read, update, delete                                                       |
-| patients    | read, update                                                                       |
-| imports     | create, read                                                                       |
-| claims      | read, update                                                                       |
-| tasks       | read, update                                                                       |
-| payer_files | create, read                                                                       |
-| payers      | create, read, update, delete                                                       |
-| fees        | create, read, update, delete                                                       |
-| reports     | read                                                                               |
-| workflows   | read, update (rules, tables, agency slots), manage (stages, workflows, new graphs) |
-| runs        | create, read, update                                                               |
+| Resource    | Actions                                                                     |
+| ----------- | --------------------------------------------------------------------------- |
+| settings    | read, update                                                                |
+| users       | create, read, update, delete                                                |
+| roles       | create, read, update, delete                                                |
+| patients    | read, update                                                                |
+| imports     | create, read                                                                |
+| claims      | read, update                                                                |
+| tasks       | read, update                                                                |
+| payer_files | create, read                                                                |
+| payers      | create, read, update, delete                                                |
+| fees        | create, read, update, delete                                                |
+| reports     | read                                                                        |
+| workflows   | read, update (rules, tables, agency rule slots), manage (stages, workflows) |
+| runs        | create, read, update                                                        |
 
 ### Rules that prevent escalation
 
@@ -54,13 +54,13 @@ A user belongs to at most one organization. Email addresses are unique and store
 
 ## Guards
 
-| Guard                 | File                                      | Does                                                          |
-| --------------------- | ----------------------------------------- | ------------------------------------------------------------- |
-| `requireAuth`         | `apps/api/src/shared/auth.ts`             | 401 without a valid session                                   |
-| `requireAgencyAccess` | `apps/api/src/shared/access.ts`           | 404 unless the user may open `:agencyId`; sets `c.var.access` |
-| `guardMethods`        | same                                      | Maps GET/POST/PUT/DELETE on a router to permissions           |
-| `requirePermission`   | same                                      | One permission for one route                                  |
-| `canEditScope`        | `apps/api/src/features/graphs/service.ts` | Who may edit organization or agency graphs                    |
+| Guard                 | File                            | Does                                                           |
+| --------------------- | ------------------------------- | -------------------------------------------------------------- |
+| `requireAuth`         | `apps/api/src/shared/auth.ts`   | 401 without a valid session                                    |
+| `requireAgencyAccess` | `apps/api/src/shared/access.ts` | 404 unless the user may open `:agencyId`; sets `c.var.access`  |
+| `guardMethods`        | same                            | Maps GET/POST/PUT/DELETE on a router to permissions            |
+| `requirePermission`   | same                            | One permission for one route                                   |
+| `canEditScope`        | `apps/api/src/shared/scopes.ts` | Who may edit organization or agency graphs and tables, by role |
 
 The SSE stream (`/events?agency=<id>`) runs the same membership check before streaming an agency's events.
 

@@ -31,7 +31,13 @@ React app in `apps/web`, built with Vite. Pages live in `src/features/<area>`; s
 | Patients                | `/patients`, `/patients/:id`                                                                                   |
 | Imports and payer files | `/imports`, `/imports/:id`, `/payer-files`, `/payer-files/:id`                                                 |
 | Reports                 | `/reports`, `/reports/:id`, `/reports/:id/results`                                                             |
-| Workflows and runs      | `/workflows`, `/workflows/:id`, `/runs`, `/runs/:id`                                                           |
+| Workflows and runs      | `/workflows`, `/workflows/customized`, `/workflows/:id`, `/tables`, `/tables/:id`, `/runs`, `/runs/:id`        |
 | Admin                   | `/payers`, `/fees`, `/users`, `/users/invite`, `/users/:id`, `/roles`, `/roles/new`, `/roles/:id`, `/settings` |
+
+## Workflow editor
+
+- `?panel=settings` opens graph settings (paths, exit labels and descriptions, pins with labels and descriptions, variables); `?panel=compare` opens the compare panel of a copy; `?removed=shown` adds the base's removed nodes as ghosts. Documentation hints from `documentationIssues` show as a collapsible warning.
+- On a copy the editor diffs the definition against `compare().copiedFrom` by node id (`override-diff.ts`) and passes `changes`, `changedEdges` and `removed` to the canvas; nodes whose subworkflow (`GET /graphs/nodes` `overridden`) or table (`GET /tables/effective`) is customized get the same outline.
+- `custom` is the accent for anything an organization or agency changed; see [Overrides](overrides.md).
 
 UI rules (tokens, spacing, controls, accessibility) are in the root README.
