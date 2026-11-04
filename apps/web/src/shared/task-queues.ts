@@ -57,8 +57,3 @@ export const queueInfo = (queue: string): QueueInfo =>
     label: titleCase(queue),
     description: ''
   };
-
-export const TASK_FILTERS = [
-  { value: 'any', label: 'Any Task' },
-  ...Object.entries(QUEUES).map(([value, { label }]) => ({ value, label }))
-] as const satisfies readonly { value: string; label: string }[];

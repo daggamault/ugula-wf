@@ -61,16 +61,15 @@ const openClaim = async (claimId: string, tab = '') => {
 
 const toast = (title: string | RegExp) => toasts(s.page).getByText(title).first().waitFor();
 
-const filterClaims = async (fields: Record<string, string>, status = 'all') => {
-  await go(s.page, '/claims');
-  const form = s.page.getByRole('search', { name: 'Filter claims' });
+const searchClaims = async (fields: Record<string, string>) => {
+  await go(s.page, '/claims?tab=search');
+  const form = s.page.getByRole('search', { name: 'Search claims' });
   await form.waitFor();
   for (const [label, value] of Object.entries(fields)) {
     await form.getByLabel(label, { exact: true }).fill(value);
   }
-  await form.getByLabel('Status', { exact: true }).selectOption(status);
   await form.getByRole('button', { name: 'Search' }).click();
-  await s.page.waitForURL(/\/claims\?/);
+  await s.page.waitForURL(/\/claims\?tab=search&/);
 };
 
 const claimRow = (pcr: string) => s.page.getByRole('row').filter({ hasText: pcr });
@@ -113,25 +112,23 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     }
   });
 
-  it('filters claims by encounter number, status and patient', async () => {
+  it('queues open claims and searches claims by encounter number and patient', async () => {
     await reach(claims.worked, 'Review PCR');
-    await filterClaims({ Number: pcrs.worked });
+    await go(s.page, '/claims');
+    await claimRow(pcrs.worked).waitFor();
+    await searchClaims({ Number: pcrs.worked });
     await claimRow(pcrs.worked).waitFor();
     assert.equal(await claimRow(pcrs.held).count(), 0);
-    await filterClaims({ Number: pcrs.worked }, 'paid');
+    await searchClaims({ Number: `${pcrs.worked}-none` });
     await s.page.getByRole('heading', { name: 'No Matching Claims' }).waitFor();
-    await filterClaims({ 'Last Name': LAST_NAME, 'Birth Date': BIRTH_DATE });
+    await searchClaims({ 'Last Name': LAST_NAME, 'Birth Date': BIRTH_DATE });
     await claimRow(pcrs.held).waitFor();
     await claimRow(pcrs.voided).waitFor();
-    const toggle = s.page.getByRole('button', { name: /^Filters/ });
-    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
-    await toggle.click();
-    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
   });
 
   it('opens the waiting task from its claim row', async () => {
     await reach(claims.worked, 'Review PCR');
-    await filterClaims({ Number: pcrs.worked });
+    await searchClaims({ Number: pcrs.worked });
     const row = claimRow(pcrs.worked);
     await row.getByText('Review PCR').waitFor();
     await row.getByRole('link', { name: /^Work Review PCR on claim #\d+$/ }).click();
@@ -167,7 +164,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await decide(s.page, 'Hold');
     await openTaskPage(claims.held, 'Held PCR');
     await s.page.getByText('E2E hold: waiting on signature').first().waitFor();
-    await filterClaims({ Number: pcrs.held });
+    await searchClaims({ Number: pcrs.held });
     await claimRow(pcrs.held).getByText('Held PCR').first().waitFor();
     await openTaskPage(claims.held, 'Held PCR');
     await decide(s.page, 'Release');
@@ -181,7 +178,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await openTaskPage(claims.voided, 'Held PCR');
     await decide(s.page, 'Void');
     await claimStatusIs(s, claims.voided, 'void');
-    await filterClaims({ Number: pcrs.voided }, 'void');
+    await searchClaims({ Number: pcrs.voided });
     await claimRow(pcrs.voided).getByText('Void').first().waitFor();
   });
 

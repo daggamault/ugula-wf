@@ -1,51 +1,36 @@
-import {
-  type AdjustmentGroup,
-  CLAIM_STATUSES,
-  type ClaimEventKind,
-  type ClaimIssue,
-  type ClaimStatus,
-  type ClaimStep,
-  type EligibilityStatus,
-  type InboundKind,
-  type InsuredRelationship,
-  type PayerFileOutcome,
-  type SignatureStatus,
-  type TransportReason,
-  type TripType
+import type {
+  AdjustmentGroup,
+  ClaimEventKind,
+  ClaimIssue,
+  ClaimStatus,
+  ClaimStep,
+  EligibilityStatus,
+  InboundKind,
+  InsuredRelationship,
+  PayerFileOutcome,
+  SignatureStatus,
+  TransportReason,
+  TripType
 } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
 import type { Page } from '../../shared/url-state.ts';
 
 export type { ClaimStatus };
 
-type ClaimFilter = ClaimStatus | 'open' | 'all';
-
-export type Assignee = 'anyone' | 'me' | 'unassigned';
-
 export type ClaimSearch = {
-  status: ClaimFilter;
   firstName: string;
   lastName: string;
   birthDate: string;
   number: string;
-  task: string;
-  assignee: Assignee;
 };
 
-type ClaimQuery = Partial<ClaimSearch> & { patientId?: string };
-
-const FILTERS: readonly ClaimFilter[] = ['open', 'all', ...CLAIM_STATUSES];
-
-const ASSIGNEES: readonly Assignee[] = ['anyone', 'me', 'unassigned'];
+type ClaimQuery = Partial<ClaimSearch> & { status: 'open' | 'all'; patientId?: string };
 
 export const claimSearchOf = (query: URLSearchParams): ClaimSearch => ({
-  status: FILTERS.find((f) => f === query.get('status')) ?? 'open',
   firstName: query.get('firstName') ?? '',
   lastName: query.get('lastName') ?? '',
   birthDate: query.get('birthDate') ?? '',
-  number: query.get('number') ?? '',
-  task: query.get('task') ?? '',
-  assignee: ASSIGNEES.find((a) => a === query.get('assignee')) ?? 'anyone'
+  number: query.get('number') ?? ''
 });
 
 export type Batch = {
@@ -60,9 +45,7 @@ export type Batch = {
 
 const listQuery = (query: ClaimQuery, page: string) => {
   const filters = new URLSearchParams(
-    Object.entries(query).flatMap(([k, v]) =>
-      v?.trim() && !(k === 'assignee' && v === 'anyone') ? [[k, v.trim()]] : []
-    )
+    Object.entries(query).flatMap(([k, v]) => (v?.trim() ? [[k, v.trim()]] : []))
   );
   return `${filters}&${page}`;
 };

@@ -106,7 +106,7 @@ describe('claim queries', () => {
       42
     ]);
     await listClaims(db, 't-1', {
-      status: 'ready',
+      status: 'open',
       number: 'PCR-7',
       page: 1,
       pageSize: 25,
@@ -114,25 +114,23 @@ describe('claim queries', () => {
       dir: 'asc'
     });
     const byPcr = queries.at(-1);
-    assert.ok(byPcr?.sql.includes('"c"."status" = $2'));
-    assert.ok(byPcr?.sql.includes('"c"."pcr_number" = $3'));
+    assert.ok(byPcr?.sql.includes('"c"."status" not in ('));
+    assert.ok(byPcr?.sql.includes('"c"."pcr_number" = $'));
     assert.ok(!byPcr?.sql.includes('"c"."number" ='));
   });
 
-  it('lists claims with the open task waiting on them, filtered by task type and assignee', async () => {
+  it('lists open claims oldest task first with the open task waiting on them', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('select "c"."id", count(*)') ? [{ id: 'c1', total: '1' }] : []
     );
-    const page = { page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' } as const;
-    await listClaims(db, 't-1', { status: 'open', ...page });
     await listClaims(db, 't-1', {
       status: 'open',
-      task: 'billing-review',
-      assignee: { id: 'u-1' },
-      ...page
+      page: 1,
+      pageSize: 25,
+      sort: 'waiting',
+      dir: 'asc'
     });
-    await listClaims(db, 't-1', { status: 'all', task: 'any', assignee: { id: null }, ...page });
-    const [allIds, all, mineIds, mine, unassignedIds] = queries;
+    const [allIds, all] = queries;
     assert.ok(!allIds?.sql.includes('exists'));
     assert.ok(
       allIds?.sql.includes(
@@ -151,13 +149,6 @@ describe('claim queries', () => {
     assert.ok(
       all?.sql.includes('order by "t"."priority" desc, "t"."created_at" limit 1) as "t" on true')
     );
-    assert.ok(mineIds?.sql.includes('and exists (select "t"."id" from "tasks" as "t"'));
-    assert.ok(mineIds?.sql.includes('"t"."queue" = $2 and "t"."assignee_id" = $3'));
-    assert.deepEqual(mineIds?.parameters.slice(0, 3), ['t-1', 'billing-review', 'u-1']);
-    assert.ok(mine?.sql.includes('"t"."queue" = $1 and "t"."assignee_id" = $2'));
-    assert.deepEqual(mine?.parameters.slice(0, 3), ['billing-review', 'u-1', 't-1']);
-    assert.ok(!unassignedIds?.sql.includes('"t"."queue" ='));
-    assert.ok(unassignedIds?.sql.includes('"t"."assignee_id" is null'));
   });
 
   it('reads claim, patient and encounter numbers people type, with or without a #', () => {

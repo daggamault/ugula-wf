@@ -1,10 +1,4 @@
-import {
-  CLAIM_STATUSES,
-  CLOSED_CLAIM_STATUSES,
-  type ClaimStatus,
-  nameKey,
-  payerKey
-} from '@ugula/billing';
+import { CLAIM_STATUSES, CLOSED_CLAIM_STATUSES, nameKey, payerKey } from '@ugula/billing';
 import { ACTIVE_RUN_STATUSES, type Db, DOCUMENTATION_COLUMNS, payerName } from '@ugula/db';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
@@ -12,22 +6,14 @@ import { type PageRequest, paged } from '../../shared/paging.ts';
 import { escapeLike } from '../../shared/search.ts';
 import type { ClaimEventSort, ClaimSort, PayerEntry } from './schemas.ts';
 
-type TaskScope = {
-  task?: string | undefined;
-  assignee?: { id: string | null } | undefined;
+export type ClaimFilters = PageRequest<ClaimSort> & {
+  status: 'open' | 'all';
+  firstName?: string | undefined;
+  lastName?: string | undefined;
+  birthDate?: string | undefined;
+  number?: string | undefined;
+  patientId?: string | undefined;
 };
-
-export type ClaimFilters = PageRequest<ClaimSort> &
-  TaskScope & {
-    status: ClaimStatus | 'open' | 'all';
-    firstName?: string | undefined;
-    lastName?: string | undefined;
-    birthDate?: string | undefined;
-    number?: string | undefined;
-    patientId?: string | undefined;
-  };
-
-const ANY_TASK = 'any';
 
 const claimTasks = (db: Db) =>
   db
@@ -38,19 +24,10 @@ const claimTasks = (db: Db) =>
     .orderBy('t.priority', 'desc')
     .orderBy('t.created_at');
 
-const scopedTasks = (db: Db, { task, assignee }: TaskScope) => {
-  let q = claimTasks(db).where('cr.claim_id', '=', sql.ref<string>('c.id'));
-  if (task && task !== ANY_TASK) q = q.where('t.queue', '=', task);
-  if (assignee) {
-    q = assignee.id
-      ? q.where('t.assignee_id', '=', assignee.id)
-      : q.where('t.assignee_id', 'is', null);
-  }
-  return q;
-};
+const tasksOfClaim = (db: Db) => claimTasks(db).where('cr.claim_id', '=', sql.ref<string>('c.id'));
 
-const nextTask = (db: Db, scope: TaskScope) =>
-  scopedTasks(db, scope)
+const nextTask = (db: Db) =>
+  tasksOfClaim(db)
     .select([
       't.id',
       't.title',
@@ -63,12 +40,12 @@ const nextTask = (db: Db, scope: TaskScope) =>
     .limit(sql.lit(1))
     .as('t');
 
-const claimRows = (db: Db, tenantId: string, scope: TaskScope = {}) =>
+const claimRows = (db: Db, tenantId: string) =>
   db
     .selectFrom('claims as c')
     .leftJoin('patients as p', 'p.id', 'c.patient_id')
     .innerJoin('claim_balances as b', 'b.claim_id', 'c.id')
-    .leftJoinLateral(nextTask(db, scope), (join) => join.onTrue())
+    .leftJoinLateral(nextTask(db), (join) => join.onTrue())
     .select((eb) => [
       't.id as task_id',
       't.title as task_title',
@@ -97,7 +74,7 @@ const claimRows = (db: Db, tenantId: string, scope: TaskScope = {}) =>
     ])
     .where('c.tenant_id', '=', tenantId);
 
-const claimOrder = (db: Db, scope: TaskScope) => ({
+const claimOrder = (db: Db) => ({
   created: sql.ref('c.created_at'),
   number: sql.ref('c.number'),
   service: sql.ref('c.service_date'),
@@ -108,7 +85,7 @@ const claimOrder = (db: Db, scope: TaskScope) => ({
     .selectFrom('claim_balances as b')
     .select('b.balance_cents')
     .where('b.claim_id', '=', sql.ref<string>('c.id')),
-  waiting: scopedTasks(db, scope).select('t.created_at').limit(sql.lit(1)),
+  waiting: tasksOfClaim(db).select('t.created_at').limit(sql.lit(1)),
   status: sql`array_position(array[${sql.join(CLAIM_STATUSES.map((s) => sql.lit(s)))}]::text[], c.status::text)`
 });
 
@@ -126,9 +103,7 @@ const claimIds = (db: Db, tenantId: string, f: ClaimFilters) => {
     .leftJoin('patients as p', 'p.id', 'c.patient_id')
     .select('c.id')
     .where('c.tenant_id', '=', tenantId);
-  if (f.task || f.assignee) q = q.where((eb) => eb.exists(scopedTasks(db, f).select('t.id')));
   if (f.status === 'open') q = q.where('c.status', 'not in', CLOSED_CLAIM_STATUSES);
-  else if (f.status !== 'all') q = q.where('c.status', '=', f.status);
   if (f.patientId) q = q.where('c.patient_id', '=', f.patientId);
   if (f.firstName) {
     q = q.where(sql`lower(p.first_name)`, 'like', `${escapeLike(f.firstName.toLowerCase())}%`);
@@ -150,11 +125,9 @@ const claimIds = (db: Db, tenantId: string, f: ClaimFilters) => {
 };
 
 export const listClaims = async (db: Db, tenantId: string, f: ClaimFilters) => {
-  const page = await paged(claimIds(db, tenantId, f), f, claimOrder(db, f), sql.ref('c.id'));
+  const page = await paged(claimIds(db, tenantId, f), f, claimOrder(db), sql.ref('c.id'));
   const ids = page.items.map((r) => r.id);
-  const rows = ids.length
-    ? await claimRows(db, tenantId, f).where('c.id', 'in', ids).execute()
-    : [];
+  const rows = ids.length ? await claimRows(db, tenantId).where('c.id', 'in', ids).execute() : [];
   const byId = new Map(rows.map((r) => [r.id, r]));
   return { ...page, items: ids.flatMap((id) => byId.get(id) ?? []) };
 };

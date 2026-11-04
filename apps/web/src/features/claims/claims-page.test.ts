@@ -100,34 +100,39 @@ describe('ClaimsTable', () => {
 });
 
 describe('ClaimsPage', () => {
-  it('filters by name, birth date, number and status, defaulting to open claims', () => {
-    assert.deepEqual(
-      CLAIM_SEARCH_FIELDS.map((f) => f.name),
-      ['firstName', 'lastName', 'birthDate', 'number', 'status', 'task', 'assignee']
-    );
-    const pending = () => new Promise(() => undefined);
-    const html = renderToStaticMarkup(
+  const pending = () => new Promise(() => undefined);
+  const noSearch = { firstName: '', lastName: '', birthDate: '', number: '' };
+  const render = (tab: 'queue' | 'search', search = noSearch) =>
+    renderToStaticMarkup(
       createElement(ClaimsPage, {
         client: { list: pending } as unknown as ClaimsClient,
         live: idleLive,
         me: 'me@example.com',
-        search: {
-          status: 'open',
-          firstName: '',
-          lastName: '',
-          birthDate: '',
-          number: '',
-          task: '',
-          assignee: 'anyone'
-        }
+        tab,
+        search
       })
     );
-    assert.ok(!html.includes('Start Working'));
-    assert.ok(html.includes('<option value="billing-review">Billing Review</option>'));
-    assert.ok(html.includes('<option value="unassigned">Unassigned</option>'));
-    assert.ok(html.includes('aria-expanded="true"') && html.includes('>Filters'));
-    assert.ok(html.includes('<option value="needs_review">Needs Review</option>'));
-    assert.ok(html.includes('for="search-number"') && html.includes('for="search-birthDate"'));
-    assert.ok(!html.includes('837P'));
+
+  it('opens on the work queue, with no search form', () => {
+    const html = render('queue');
+    assert.ok(html.includes('aria-label="Claim views"'));
+    assert.ok(html.includes('href="/claims" aria-current="page"'));
+    assert.ok(html.includes('href="/claims?tab=search"'));
+    assert.ok(!html.includes('aria-label="Search claims"'));
+  });
+
+  it('searches every claim by name, birth date or number, asking for a search first', () => {
+    assert.deepEqual(
+      CLAIM_SEARCH_FIELDS.map((f) => f.name),
+      ['firstName', 'lastName', 'birthDate', 'number']
+    );
+    const empty = render('search');
+    assert.ok(empty.includes('href="/claims?tab=search" aria-current="page"'));
+    assert.ok(empty.includes('aria-label="Search claims"'));
+    assert.ok(empty.includes('for="search-number"') && empty.includes('for="search-birthDate"'));
+    assert.ok(empty.includes('Search All Claims'));
+    assert.ok(!empty.includes('<select'));
+    const searching = render('search', { ...noSearch, lastName: 'doe' });
+    assert.ok(!searching.includes('Search All Claims'));
   });
 });

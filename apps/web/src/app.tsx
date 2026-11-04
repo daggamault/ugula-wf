@@ -14,7 +14,7 @@ import { lazy, type ReactNode, Suspense, useEffect, useMemo } from 'react';
 import { AuthGate } from './features/auth/auth-gate.tsx';
 import type { AuthClient } from './features/auth/client.ts';
 import { CLAIM_TABS, ClaimPage } from './features/claims/claim-page.tsx';
-import { ClaimsPage } from './features/claims/claims-page.tsx';
+import { CLAIMS_TABS, ClaimsPage } from './features/claims/claims-page.tsx';
 import { type ClaimsClient, claimSearchOf } from './features/claims/client.ts';
 import { PatientClaims } from './features/claims/patient-claims.tsx';
 import type { FeesClient } from './features/fees/client.ts';
@@ -210,7 +210,13 @@ const routes: readonly Route[] = [
   {
     pattern: '/claims',
     render: (_, q, c) => (
-      <ClaimsPage client={c.claims} live={c.live} me={c.email} search={claimSearchOf(q)} />
+      <ClaimsPage
+        client={c.claims}
+        live={c.live}
+        me={c.email}
+        tab={CLAIMS_TABS.find((t) => t.value === q.get('tab'))?.value ?? 'queue'}
+        search={claimSearchOf(q)}
+      />
     )
   },
   {
