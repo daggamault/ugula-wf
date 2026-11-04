@@ -13,6 +13,11 @@ describe('Badge', () => {
     assert.ok(classes.includes('items-center'));
   });
 
+  it('marks customized things with the custom accent', () => {
+    const classes = String(Badge({ intent: 'custom', children: 'Custom' }).props.className);
+    assert.ok(classes.includes('text-custom') && classes.includes('border-custom/30'));
+  });
+
   it('falls back to a neutral badge without an intent', () => {
     assert.ok(
       String(Badge({ children: 'Default' }).props.className).includes('text-surface-fg-muted')

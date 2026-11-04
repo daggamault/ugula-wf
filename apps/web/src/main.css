@@ -16,6 +16,7 @@
   --color-warning-fg: light-dark(oklch(47% 0.11 65), oklch(82% 0.14 80));
   --color-on-warning: oklch(24% 0.06 65);
   --color-danger: light-dark(oklch(56% 0.21 25), oklch(70% 0.18 25));
+  --color-custom: light-dark(oklch(52% 0.23 325), oklch(74% 0.17 325));
   --color-pin-string: light-dark(oklch(65.6% 0.241 354.3), oklch(71.8% 0.202 349.8));
   --color-pin-number: light-dark(oklch(69.6% 0.17 162.5), oklch(76.5% 0.177 163.2));
   --color-pin-integer: light-dark(oklch(70.4% 0.14 182.5), oklch(77.7% 0.152 181.9));
