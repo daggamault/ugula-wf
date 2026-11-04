@@ -21,7 +21,8 @@ const RATES: Json = {
 const WIDER: Json = {
   ...(RATES as object),
   outputs: [{ name: 'other', type: 'string' }],
-  rules: []
+  rules: [],
+  otherwise: {}
 };
 
 type Table = { id: string; scope: Scope; active?: boolean };

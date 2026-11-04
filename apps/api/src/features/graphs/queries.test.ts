@@ -36,7 +36,7 @@ describe('customization queries', () => {
   it('shows customized graphs, the effective graph and table per key, and known table keys', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await searchGraphs(db, S, { ...BASE, show: 'customized' });
-    assert.ok(flat(queries[0]?.sql).includes(') is not null or (select o.id from "graphs" o'));
+    assert.ok(flat(queries[0]?.sql).includes('is not null or ( select o.id from "graphs" o'));
     await listEffectiveGraphs(db, S);
     const graphs = flat(queries[1]?.sql);
     assert.ok(graphs.includes('select distinct on (g.key)'));

@@ -262,7 +262,9 @@ describe('EditorPage', () => {
         client: {
           find: async () => detail('agency', false),
           nodes: async () => [],
-          version: async () => ({ id: 'v2', version: 2, definition: source, published_at: null })
+          version: async () => ({ id: 'v2', version: 2, definition: source, published_at: null }),
+          compare: async () => ({ mine: null, copiedFrom: null, latest: null, baseChanged: false }),
+          tables: { effective: async () => [] }
         } as unknown as WorkflowsClient,
         nodes: testNodes,
         graphId: 'g1',

@@ -64,7 +64,7 @@ describe('table queries', () => {
     assert.ok(sql.includes('lower(t.name) like $'));
     assert.ok(sql.includes('order by lower(t.name) asc nulls last'));
     await searchTables(db, S, { ...BASE, show: 'customized' });
-    assert.ok(flat(queries[1]?.sql).includes(') is not null or (select o.id from "data_tables" o'));
+    assert.ok(flat(queries[1]?.sql).includes('is not null or ( select o.id from "data_tables" o'));
     await db.destroy();
   });
 
