@@ -11,8 +11,8 @@ import { type Kysely, sql } from 'kysely';
 const buildBillingProfilesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('billing_profiles')
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.primaryKey().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.primaryKey().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('organization_name', 'text', (col) => col.notNull())
     .addColumn('npi', 'text', (col) => col.notNull())
@@ -54,8 +54,8 @@ const buildPayersTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('payers')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('name', 'text', (col) => col.notNull())
     .addColumn('payer_id', 'text', (col) => col.notNull())
@@ -64,7 +64,7 @@ const buildPayersTable = (db: Kysely<Database>) =>
     .addColumn('embedding', sql`vector(${sql.lit(EMBEDDING_DIMENSIONS)})`)
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addUniqueConstraint('payers_tenant_id_id_unique', ['tenant_id', 'id'])
+    .addUniqueConstraint('payers_agency_id_id_unique', ['agency_id', 'id'])
     .addCheckConstraint('payers_name_check', sql`name <> ''`)
     .addCheckConstraint(
       'payers_filing_limit_days_check',
@@ -78,17 +78,17 @@ const buildPayersTable = (db: Kysely<Database>) =>
 
 const buildPayersIndex = (db: Kysely<Database>) =>
   db.schema
-    .createIndex('payers_tenant_name_unique')
+    .createIndex('payers_agency_name_unique')
     .on('payers')
     .unique()
-    .expression(sql`tenant_id, lower(name)`);
+    .expression(sql`agency_id, lower(name)`);
 
 const buildPayerAliasesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('payer_aliases')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('payer_id', 'uuid', (col) => col.notNull())
     .addColumn('alias', 'text', (col) => col.notNull())
@@ -96,12 +96,12 @@ const buildPayerAliasesTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addForeignKeyConstraint(
       'payer_aliases_payer_id_fkey',
-      ['tenant_id', 'payer_id'],
+      ['agency_id', 'payer_id'],
       'payers',
-      ['tenant_id', 'id'],
+      ['agency_id', 'id'],
       (fk) => fk.onDelete('cascade').onUpdate('cascade')
     )
-    .addUniqueConstraint('payer_aliases_tenant_id_alias_key_unique', ['tenant_id', 'alias_key'])
+    .addUniqueConstraint('payer_aliases_agency_id_alias_key_unique', ['agency_id', 'alias_key'])
     .addCheckConstraint('payer_aliases_alias_key_check', sql`alias_key <> ''`);
 
 const buildPayerAliasesIndex = (db: Kysely<Database>) =>
@@ -110,23 +110,23 @@ const buildPayerAliasesIndex = (db: Kysely<Database>) =>
 const buildPayerSuggestionsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('payer_suggestions')
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('name_key', 'text', (col) => col.notNull())
     .addColumn('directory_version', 'text', (col) => col.notNull())
     .addColumn('payer_id', 'uuid')
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addPrimaryKeyConstraint('payer_suggestions_pkey', [
-      'tenant_id',
+      'agency_id',
       'name_key',
       'directory_version'
     ])
     .addForeignKeyConstraint(
       'payer_suggestions_payer_id_fkey',
-      ['tenant_id', 'payer_id'],
+      ['agency_id', 'payer_id'],
       'payers',
-      ['tenant_id', 'id'],
+      ['agency_id', 'id'],
       (fk) => fk.onDelete('cascade').onUpdate('cascade')
     )
     .addCheckConstraint('payer_suggestions_name_key_check', sql`name_key <> ''`);

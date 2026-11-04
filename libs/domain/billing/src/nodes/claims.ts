@@ -59,7 +59,7 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Price Claim',
       category: CATEGORY,
       description:
-        "Prices HCPCS claim lines from the tenant's fee schedule, using the directory payer's prices where they exist and any prices a biller set for this claim first. Continues through unpriced with the codes that have no fee.",
+        "Prices HCPCS claim lines from the agency's fee schedule, using the directory payer's prices where they exist and any prices a biller set for this claim first. Continues through unpriced with the codes that have no fee.",
       inputs: [
         pin('lines', { list: { object: { code: 'string', units: 'number' } } }),
         pin('payerId', 'string', { optional: true }),

@@ -23,7 +23,7 @@ export const rangeOf = (query: Pick<ReportQuery, 'from' | 'to'>, today: string):
 };
 
 export const createReportService = ({ db, now }: ReportServiceDeps) => ({
-  run: async (tenantId: string, id: string, query: ReportQuery) => {
+  run: async (agencyId: string, id: string, query: ReportQuery) => {
     const report = findReport(id);
     if (!report) return fail('not_found', `There is no report called “${id}”.`);
     const group = query.group ?? report.groups?.[0] ?? null;
@@ -35,7 +35,7 @@ export const createReportService = ({ db, now }: ReportServiceDeps) => ({
     const range = rangeOf(query, today);
     const result = await report.run(
       db,
-      { tenantId, tz: query.tz, now: at.toISOString(), today, range, group: group ?? '' },
+      { agencyId, tz: query.tz, now: at.toISOString(), today, range, group: group ?? '' },
       query.page
     );
     return ok({ asOf: today, range: report.dates ? range : null, group, ...result });

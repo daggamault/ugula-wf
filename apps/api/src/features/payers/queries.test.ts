@@ -25,7 +25,7 @@ describe('payer queries', () => {
         '(select coalesce(json_agg(agg), \'[]\') from (select "a"."id", "a"."alias" from "payer_aliases" as "a" where "a"."payer_id" = "p"."id" order by lower(a.alias)) as agg) as "aliases"'
       )
     );
-    assert.ok(list?.sql.includes('where "p"."tenant_id" = $1'));
+    assert.ok(list?.sql.includes('where "p"."agency_id" = $1'));
     assert.ok(list?.sql.includes('order by lower(p.name) asc nulls last'));
     assert.deepEqual(list?.parameters, ['t-1', 25, 0]);
   });
@@ -53,7 +53,7 @@ describe('payer queries', () => {
     assert.deepEqual(queries[2]?.parameters, ['t-1', '%med%', 50]);
   });
 
-  it('upserts by name ignoring case and deletes within the tenant', async () => {
+  it('upserts by name ignoring case and deletes within the agency', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('delete') ? [] : [{ id: 'p1' }]
     );
@@ -66,7 +66,7 @@ describe('payer queries', () => {
     assert.equal(await deletePayer(db, 't-1', 'p1'), false);
     const [upsert, remove] = queries;
     assert.equal(upsert?.parameters[0], 't-1');
-    assert.ok(upsert?.sql.includes('on conflict (tenant_id, lower(name)) do update set'));
+    assert.ok(upsert?.sql.includes('on conflict (agency_id, lower(name)) do update set'));
     assert.ok(
       upsert?.sql.includes(
         '"embedding" = case when payers.claim_filing = excluded.claim_filing then payers.embedding end'
@@ -76,7 +76,7 @@ describe('payer queries', () => {
     await db.destroy();
   });
 
-  it('forgets a learned payer name only within its payer and tenant', async () => {
+  it('forgets a learned payer name only within its payer and agency', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'a1' }]);
     assert.equal(await deleteAlias(db, 't-1', 'p1', 'a1'), true);
     assert.ok(queries[0]?.sql.startsWith('delete from "payer_aliases" where "id" = $1'));
@@ -84,7 +84,7 @@ describe('payer queries', () => {
     await db.destroy();
   });
 
-  it('links unlinked claim coverages of the tenant to a payer by name', async () => {
+  it('links unlinked claim coverages of the agency to a payer by name', async () => {
     const { db, queries } = createRecordingDb(() => [{ claim_id: 'c1' }, { claim_id: 'c2' }]);
     assert.equal(await linkCoverages(db, 't-1', { id: 'p1', name: 'MediCare' }), 2);
     const [link] = queries;
@@ -97,12 +97,12 @@ describe('payer queries', () => {
     assert.deepEqual(link?.parameters, ['p1', 't-1', 'medicare']);
   });
 
-  it('saves an embedding only for an unembedded payer of the tenant', async () => {
+  it('saves an embedding only for an unembedded payer of the agency', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await saveEmbedding(db, 't-1', 'p1', [0.5, -1]);
     const [save] = queries;
     assert.ok(save?.sql.startsWith('update "payers" set "embedding" = $1::vector'));
-    assert.ok(save?.sql.endsWith('where "id" = $2 and "tenant_id" = $3 and "embedding" is null'));
+    assert.ok(save?.sql.endsWith('where "id" = $2 and "agency_id" = $3 and "embedding" is null'));
     assert.deepEqual(save?.parameters, ['[0.5,-1]', 'p1', 't-1']);
     await db.destroy();
   });

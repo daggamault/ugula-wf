@@ -6,8 +6,8 @@ const buildFeeSchedulesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('fee_schedules')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('payer_id', 'uuid')
     .addColumn('code', 'text', (col) => col.notNull())
@@ -16,14 +16,14 @@ const buildFeeSchedulesTable = (db: Kysely<Database>) =>
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addForeignKeyConstraint(
       'fee_schedules_payer_id_fkey',
-      ['tenant_id', 'payer_id'],
+      ['agency_id', 'payer_id'],
       'payers',
-      ['tenant_id', 'id'],
+      ['agency_id', 'id'],
       (fk) => fk.onDelete('cascade').onUpdate('cascade')
     )
     .addUniqueConstraint(
-      'fee_schedules_tenant_payer_code_unique',
-      ['tenant_id', 'payer_id', 'code'],
+      'fee_schedules_agency_payer_code_unique',
+      ['agency_id', 'payer_id', 'code'],
       (c) => c.nullsNotDistinct()
     )
     .addCheckConstraint('fee_schedules_code_check', sql`code ~ ${sql.lit(HCPCS_PATTERN)}`)

@@ -39,7 +39,7 @@ describe('payer service', () => {
       filingLimitDays: null
     });
     assert.equal(saved.ok && saved.value.linkedClaims, 1);
-    assert.deepEqual(events, [{ tenantId: 't-1', event: { kind: 'claim', id: null } }]);
+    assert.deepEqual(events, [{ agencyId: 't-1', event: { kind: 'claim', id: null } }]);
     const removed = await service.remove('t-1', 'p1');
     assert.equal(!removed.ok && removed.failure.code, 'not_found');
     const forgotten = await service.forget('t-1', 'p1', 'a1');
@@ -84,7 +84,7 @@ describe('payer service', () => {
     assert.equal(down.ok && down.value.embedded, false);
   });
 
-  it('reports a payer outside the tenant as not found', async () => {
+  it('reports a payer outside the agency as not found', async () => {
     const { db } = createRecordingDb(() => []);
     const service = createPayerService({
       db,

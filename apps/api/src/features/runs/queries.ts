@@ -20,7 +20,7 @@ export type StepFilters = {
 
 export const findPublishedVersion = (
   db: Db,
-  tenantId: string,
+  agencyId: string,
   graphId: string,
   version?: number
 ) => {
@@ -32,7 +32,7 @@ export const findPublishedVersion = (
     .where('g.kind', '=', 'workflow')
     .where('g.is_active', '=', true)
     .where('gv.published_at', 'is not', null)
-    .where((eb) => eb.or([eb('g.tenant_id', '=', tenantId), eb('g.tenant_id', 'is', null)]));
+    .where((eb) => eb.or([eb('g.agency_id', '=', agencyId), eb('g.agency_id', 'is', null)]));
   return (version === undefined ? base : base.where('gv.version', '=', version))
     .orderBy('gv.version', 'desc')
     .limit(1)
@@ -68,8 +68,8 @@ const RUN_ORDER = {
   finished: sql.ref('r.completed_at')
 };
 
-export const listRuns = (db: Db, tenantId: string, f: RunFilters) => {
-  let q = runColumns(db).where('r.tenant_id', '=', tenantId);
+export const listRuns = (db: Db, agencyId: string, f: RunFilters) => {
+  let q = runColumns(db).where('r.agency_id', '=', agencyId);
   if (f.status) q = q.where('r.status', '=', f.status);
   if (f.graphId) q = q.where('g.id', '=', f.graphId);
   if (f.rootOnly) q = q.where('r.parent_id', 'is', null);
@@ -87,18 +87,18 @@ export const listRuns = (db: Db, tenantId: string, f: RunFilters) => {
   return paged(q, f, RUN_ORDER, sql.ref('r.id'));
 };
 
-export const findRun = (db: Db, tenantId: string, id: string) =>
+export const findRun = (db: Db, agencyId: string, id: string) =>
   runColumns(db)
     .select(['r.inputs', 'r.result', 'r.error', 'r.state', 'r.wait_key'])
-    .where('r.tenant_id', '=', tenantId)
+    .where('r.agency_id', '=', agencyId)
     .where('r.id', '=', id)
     .executeTakeFirst();
 
-export const findRunStatus = (db: Db, tenantId: string, id: string) =>
+export const findRunStatus = (db: Db, agencyId: string, id: string) =>
   db
     .selectFrom('workflow_runs')
     .select('status')
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where('id', '=', id)
     .executeTakeFirst();
 

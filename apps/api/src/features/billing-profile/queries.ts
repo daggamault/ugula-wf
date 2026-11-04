@@ -19,14 +19,14 @@ const columns = [
   'updated_at'
 ] as const;
 
-export const findBillingProfile = (db: Db, tenantId: string) =>
+export const findBillingProfile = (db: Db, agencyId: string) =>
   db
     .selectFrom('billing_profiles')
     .select(columns)
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .executeTakeFirst();
 
-export const upsertBillingProfile = (db: Db, tenantId: string, p: BillingProfileInput) => {
+export const upsertBillingProfile = (db: Db, agencyId: string, p: BillingProfileInput) => {
   const values = {
     organization_name: p.organizationName,
     npi: p.npi,
@@ -44,8 +44,8 @@ export const upsertBillingProfile = (db: Db, tenantId: string, p: BillingProfile
   };
   return db
     .insertInto('billing_profiles')
-    .values({ tenant_id: tenantId, ...values })
-    .onConflict((oc) => oc.column('tenant_id').doUpdateSet({ ...values, updated_at: sql`now()` }))
+    .values({ agency_id: agencyId, ...values })
+    .onConflict((oc) => oc.column('agency_id').doUpdateSet({ ...values, updated_at: sql`now()` }))
     .returning(columns)
     .executeTakeFirstOrThrow();
 };

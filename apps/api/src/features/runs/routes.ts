@@ -21,7 +21,7 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
         const { file } = c.req.valid('form');
         return respond(
           c,
-          await service.uploadFile(c.get('session').tenantId, {
+          await service.uploadFile(c.get('session').agencyId, {
             name: file.name,
             type: file.type,
             bytes: new Uint8Array(await file.arrayBuffer())
@@ -34,7 +34,7 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
       const { q, status, graphId, root, ...page } = c.req.valid('query');
       return respond(
         c,
-        await service.list(c.get('session').tenantId, {
+        await service.list(c.get('session').agencyId, {
           ...(q ? { q } : {}),
           ...(status ? { status } : {}),
           ...(graphId ? { graphId } : {}),
@@ -47,15 +47,15 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
       const { graphId, version, inputs } = c.req.valid('json');
       return respond(
         c,
-        await service.start(c.get('session').tenantId, graphId, version, inputs),
+        await service.start(c.get('session').agencyId, graphId, version, inputs),
         201
       );
     })
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.find(c.get('session').tenantId, c.req.valid('param').id))
+      respond(c, await service.find(c.get('session').agencyId, c.req.valid('param').id))
     )
     .get('/:id/graphs', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.graphs(c.get('session').tenantId, c.req.valid('param').id))
+      respond(c, await service.graphs(c.get('session').agencyId, c.req.valid('param').id))
     )
     .get(
       '/:id/steps',
@@ -65,7 +65,7 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
         const { path, node, after, limit } = c.req.valid('query');
         return respond(
           c,
-          await service.steps(c.get('session').tenantId, c.req.valid('param').id, {
+          await service.steps(c.get('session').agencyId, c.req.valid('param').id, {
             ...(path === undefined ? {} : { path }),
             ...(node === undefined ? {} : { node }),
             after,
@@ -75,5 +75,5 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
       }
     )
     .post('/:id/cancel', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.cancel(c.get('session').tenantId, c.req.valid('param').id), 202)
+      respond(c, await service.cancel(c.get('session').agencyId, c.req.valid('param').id), 202)
     );

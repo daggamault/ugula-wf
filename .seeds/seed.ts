@@ -13,6 +13,7 @@ import {
   validateGraph
 } from '@ugula/graph';
 import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
+import { upsertAgency } from './agencies.ts';
 import { billingGraphs } from './billing-graphs.ts';
 import { buildUpsertDemoPayers, buildUpsertDemoProfile } from './billing-setup.ts';
 import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
@@ -23,7 +24,6 @@ import { PLACES_FILE } from './gnis-build.ts';
 import { publishGraphs, type SeedGraph } from './graphs.ts';
 import { CODES_FILE, ELEMENTS_FILE } from './nemsis-build.ts';
 import { readCodes, readElements, upsertDictionary } from './nemsis-dictionary.ts';
-import { upsertTenant } from './tenants.ts';
 import { upsertUser } from './users.ts';
 
 const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
@@ -73,7 +73,7 @@ const seedDev = async (db: Db, dev: DevSeedConfig) => {
   assertValidGraphs(demoGraphs, nodes);
 
   await db.transaction().execute(async (tx) => {
-    const tenant = await upsertTenant(tx, {
+    const agency = await upsertAgency(tx, {
       name: 'Development',
       slug: 'dev',
       sftpUsername: dev.DEV_SFTP_USERNAME,
@@ -81,14 +81,14 @@ const seedDev = async (db: Db, dev: DevSeedConfig) => {
     });
 
     await upsertUser(tx, {
-      tenantId: tenant.id,
+      agencyId: agency.id,
       email: dev.DEV_USER_EMAIL,
       passwordHash: userPasswordHash
     });
 
-    await buildUpsertDefaultFees(tx, tenant.id, demoFees).execute();
-    await buildUpsertDemoProfile(tx, tenant.id).execute();
-    await buildUpsertDemoPayers(tx, tenant.id).execute();
+    await buildUpsertDefaultFees(tx, agency.id, demoFees).execute();
+    await buildUpsertDemoProfile(tx, agency.id).execute();
+    await buildUpsertDemoPayers(tx, agency.id).execute();
 
     await publishGraphs(tx, demoGraphs, new Set(nodes.map(refKey)));
   });

@@ -3,9 +3,9 @@ import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
 import {
   deleteGraph,
+  findAgencyGraph,
   findGraph,
   findSystemGraph,
-  findTenantGraph,
   findVersion,
   listPublishedNodes,
   listVersions,
@@ -21,7 +21,7 @@ import { templateFor } from './service.ts';
 const BASE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
 
 describe('graph queries', () => {
-  it('pages tenant and system graphs with published and draft versions', async () => {
+  it('pages agency and system graphs with published and draft versions', async () => {
     const { db, queries } = createRecordingDb(() => [
       {
         id: 'g1',
@@ -29,7 +29,7 @@ describe('graph queries', () => {
         name: 'X',
         kind: 'node',
         description: '',
-        tenant_id: null,
+        agency_id: null,
         updated_at: new Date(0),
         published: 2,
         draft: 3,
@@ -60,7 +60,7 @@ describe('graph queries', () => {
         'left join lateral (select max(gv.version) filter (where gv.published_at is not null)'
       )
     );
-    assert.ok(queries[0]?.sql.includes('"g"."tenant_id" is null'));
+    assert.ok(queries[0]?.sql.includes('"g"."agency_id" is null'));
     assert.ok(queries[0]?.sql.includes('order by lower(g.name) asc nulls last'));
     await db.destroy();
   });
@@ -77,7 +77,7 @@ describe('graph queries', () => {
     assert.ok(blocks?.sql.includes('lower(g.key) like $'));
     assert.ok(blocks?.parameters.includes('%match%'));
     assert.ok(blocks?.sql.includes('order by (g.kind, lower(g.name)) desc nulls last'));
-    assert.ok(mine?.sql.includes('"g"."tenant_id" is not null'));
+    assert.ok(mine?.sql.includes('"g"."agency_id" is not null'));
     assert.ok(workflows?.sql.includes('"g"."kind" = $'));
     await db.destroy();
   });
@@ -104,52 +104,52 @@ describe('graph queries', () => {
   });
 });
 
-describe('graph tenant scoping', () => {
-  it('reads system graphs and active graphs of the tenant only', async () => {
+describe('graph agency scoping', () => {
+  it('reads system graphs and active graphs of the agency only', async () => {
     const { db, queries } = createRecordingDb();
     await findGraph(db, 't-1', 'g1');
     assert.ok(
       queries[0]?.sql.includes(
-        '("g"."tenant_id" is null or ("g"."tenant_id" = $3 and "g"."is_active" = $4))'
+        '("g"."agency_id" is null or ("g"."agency_id" = $3 and "g"."is_active" = $4))'
       )
     );
     assert.deepEqual(queries[0]?.parameters, ['t-1', 'g1', 't-1', true]);
     await searchGraphs(db, 't-1', { ...BASE, show: 'all' });
     assert.ok(
       queries[1]?.sql.includes(
-        '("g"."tenant_id" is null or ("g"."tenant_id" = $2 and "g"."is_active" = $3))'
+        '("g"."agency_id" is null or ("g"."agency_id" = $2 and "g"."is_active" = $3))'
       )
     );
     assert.deepEqual(queries[1]?.parameters.slice(0, 3), ['t-1', 't-1', true]);
     await db.destroy();
   });
 
-  it('lists system nodes and tenant nodes that do not shadow a system key', async () => {
+  it('lists system nodes and agency nodes that do not shadow a system key', async () => {
     const { db, queries } = createRecordingDb();
     await listPublishedNodes(db, 't-1');
     assert.ok(
       queries[0]?.sql.includes(
-        '("g"."tenant_id" is null or ("g"."tenant_id" = $1 and not exists (select "s"."id" from "graphs" as "s" where "s"."key" = "g"."key" and "s"."tenant_id" is null)))'
+        '("g"."agency_id" is null or ("g"."agency_id" = $1 and not exists (select "s"."id" from "graphs" as "s" where "s"."key" = "g"."key" and "s"."agency_id" is null)))'
       )
     );
     assert.deepEqual(queries[0]?.parameters, ['t-1']);
     await db.destroy();
   });
 
-  it('changes and removes graphs of the tenant only', async () => {
+  it('changes and removes graphs of the agency only', async () => {
     const { db, queries } = createRecordingDb();
-    await findTenantGraph(db, 't-1', 'acme.flow');
+    await findAgencyGraph(db, 't-1', 'acme.flow');
     await setGraphActive(db, 't-1', 'g1', false);
     await deleteGraph(db, 't-1', 'g1');
     await findSystemGraph(db, 'acme.flow');
     const [copy, toggle, remove, system] = queries;
-    assert.ok(copy?.sql.endsWith('where "tenant_id" = $1 and "key" = $2'));
+    assert.ok(copy?.sql.endsWith('where "agency_id" = $1 and "key" = $2'));
     assert.deepEqual(copy?.parameters, ['t-1', 'acme.flow']);
-    assert.ok(toggle?.sql.includes('where "id" = $2 and "tenant_id" = $3'));
+    assert.ok(toggle?.sql.includes('where "id" = $2 and "agency_id" = $3'));
     assert.deepEqual(toggle?.parameters, [false, 'g1', 't-1']);
-    assert.ok(remove?.sql.includes('where "id" = $1 and "tenant_id" = $2'));
+    assert.ok(remove?.sql.includes('where "id" = $1 and "agency_id" = $2'));
     assert.deepEqual(remove?.parameters, ['g1', 't-1']);
-    assert.ok(system?.sql.endsWith('where "key" = $1 and "tenant_id" is null'));
+    assert.ok(system?.sql.endsWith('where "key" = $1 and "agency_id" is null'));
     await db.destroy();
   });
 

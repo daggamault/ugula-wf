@@ -18,13 +18,13 @@ import type { ImportService } from './service.ts';
 export const createImportRoutes = (service: ImportService, maxBytes: number) =>
   new Hono<AuthEnv>()
     .get('/', sValidator('query', listImportsQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('session').tenantId, c.req.valid('query')))
+      respond(c, await service.list(c.get('session').agencyId, c.req.valid('query')))
     )
     .get('/reports/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.report(c.get('session').tenantId, c.req.valid('param').id))
+      respond(c, await service.report(c.get('session').agencyId, c.req.valid('param').id))
     )
     .get('/reports/:id/xml', sValidator('param', idParam, invalidRequest), async (c) => {
-      const res = await service.report(c.get('session').tenantId, c.req.valid('param').id);
+      const res = await service.report(c.get('session').agencyId, c.req.valid('param').id);
       if (!res.ok) return respond(c, res);
       const name = res.value.report.pcr_number ?? res.value.report.id;
       return c.body(res.value.xml, 200, {
@@ -34,7 +34,7 @@ export const createImportRoutes = (service: ImportService, maxBytes: number) =>
       });
     })
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.find(c.get('session').tenantId, c.req.valid('param').id))
+      respond(c, await service.find(c.get('session').agencyId, c.req.valid('param').id))
     )
     .get(
       '/:id/reports',
@@ -44,7 +44,7 @@ export const createImportRoutes = (service: ImportService, maxBytes: number) =>
         respond(
           c,
           await service.reports(
-            c.get('session').tenantId,
+            c.get('session').agencyId,
             c.req.valid('param').id,
             c.req.valid('query')
           )
@@ -59,10 +59,10 @@ export const createImportRoutes = (service: ImportService, maxBytes: number) =>
       sValidator('form', importFormSchema, invalidRequest),
       async (c) => {
         const { file, workflow } = c.req.valid('form');
-        const { tenantId, userId } = c.get('session');
+        const { agencyId, userId } = c.get('session');
         return respond(
           c,
-          await service.upload(tenantId, userId, workflow, {
+          await service.upload(agencyId, userId, workflow, {
             name: file.name,
             type: file.type,
             bytes: new Uint8Array(await file.arrayBuffer())

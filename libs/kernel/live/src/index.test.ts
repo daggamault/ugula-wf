@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { channelOf, LIVE_PATTERN, parseLiveEvent, publishLiveEvent, tenantOf } from './index.ts';
+import { agencyOf, channelOf, LIVE_PATTERN, parseLiveEvent, publishLiveEvent } from './index.ts';
 
 describe('live events', () => {
-  it('scopes channels per tenant', () => {
+  it('scopes channels per agency', () => {
     assert.equal(channelOf('t-1'), 'live:t-1');
-    assert.equal(tenantOf('live:t-1'), 't-1');
-    assert.equal(tenantOf('other:t-1'), null);
+    assert.equal(agencyOf('live:t-1'), 't-1');
+    assert.equal(agencyOf('other:t-1'), null);
     assert.equal(LIVE_PATTERN, 'live:*');
   });
 

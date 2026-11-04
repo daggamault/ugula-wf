@@ -11,7 +11,7 @@ export type PatientFilters = PageRequest<PatientSort> & {
   birthDate?: string | undefined;
 };
 
-const patientRows = (db: Db, tenantId: string) =>
+const patientRows = (db: Db, agencyId: string) =>
   db
     .selectFrom('patients as p')
     .leftJoinLateral(
@@ -45,7 +45,7 @@ const patientRows = (db: Db, tenantId: string) =>
       'claimed.balance_cents',
       'claimed.last_service_date'
     ])
-    .where('p.tenant_id', '=', tenantId);
+    .where('p.agency_id', '=', agencyId);
 
 const PATIENT_ORDER = {
   name: sql`lower(p.last_name || ' ' || p.first_name)`,
@@ -56,8 +56,8 @@ const PATIENT_ORDER = {
   claims: sql.ref('claimed.claim_count')
 };
 
-export const listPatients = (db: Db, tenantId: string, f: PatientFilters) => {
-  let q = patientRows(db, tenantId);
+export const listPatients = (db: Db, agencyId: string, f: PatientFilters) => {
+  let q = patientRows(db, agencyId);
   const last = f.lastName ? nameKey(f.lastName) : '';
   if (last) q = q.where('p.last_name_key', 'like', `${escapeLike(last)}%`);
   const first = f.firstName?.trim().toLowerCase();
@@ -66,5 +66,5 @@ export const listPatients = (db: Db, tenantId: string, f: PatientFilters) => {
   return paged(q, f, PATIENT_ORDER, sql.ref('p.id'));
 };
 
-export const findPatient = (db: Db, tenantId: string, id: string) =>
-  patientRows(db, tenantId).where('p.id', '=', id).executeTakeFirst();
+export const findPatient = (db: Db, agencyId: string, id: string) =>
+  patientRows(db, agencyId).where('p.id', '=', id).executeTakeFirst();

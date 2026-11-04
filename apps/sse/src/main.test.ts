@@ -26,7 +26,7 @@ describe('sse server', () => {
     }
   });
 
-  it('relays valid tenant events from Redis to the hub', () => {
+  it('relays valid agency events from Redis to the hub', () => {
     const hub = createHub();
     const seen: string[] = [];
     hub.add('t-1', {

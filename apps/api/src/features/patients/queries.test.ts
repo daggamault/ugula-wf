@@ -23,7 +23,7 @@ describe('patient queries', () => {
     await db.destroy();
   });
 
-  it('list every patient when no field is given and find one in the tenant', async () => {
+  it('list every patient when no field is given and find one in the agency', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await listPatients(db, 't-1', {
       lastName: ' ',
@@ -69,7 +69,7 @@ describe('patient city and claims sorts', () => {
     });
     assert.deepEqual(page, { items: [], total: 3, page: 4, pageSize: 10 });
     assert.deepEqual(queries[0]?.parameters, ['t-1', '1980-01-02', 10, 30]);
-    assert.ok(queries[1]?.sql.includes('"p"."tenant_id" = $1'));
+    assert.ok(queries[1]?.sql.includes('"p"."agency_id" = $1'));
     await db.destroy();
   });
 });

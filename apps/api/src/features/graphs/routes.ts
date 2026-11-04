@@ -9,43 +9,43 @@ import type { GraphService } from './service.ts';
 export const createGraphRoutes = (service: GraphService) =>
   new Hono<AuthEnv>()
     .get('/', sValidator('query', searchGraphsQuery, invalidRequest), async (c) =>
-      respond(c, await service.search(c.get('session').tenantId, c.req.valid('query')))
+      respond(c, await service.search(c.get('session').agencyId, c.req.valid('query')))
     )
-    .get('/nodes', async (c) => respond(c, await service.nodes(c.get('session').tenantId)))
+    .get('/nodes', async (c) => respond(c, await service.nodes(c.get('session').agencyId)))
     .post('/validate', sValidator('json', definitionSchema, invalidRequest), async (c) =>
-      respond(c, await service.validate(c.get('session').tenantId, c.req.valid('json').definition))
+      respond(c, await service.validate(c.get('session').agencyId, c.req.valid('json').definition))
     )
     .post('/', sValidator('json', createGraphSchema, invalidRequest), async (c) => {
-      const { tenantId, userId } = c.get('session');
-      return respond(c, await service.create(tenantId, userId, c.req.valid('json')), 201);
+      const { agencyId, userId } = c.get('session');
+      return respond(c, await service.create(agencyId, userId, c.req.valid('json')), 201);
     })
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.find(c.get('session').tenantId, c.req.valid('param').id))
+      respond(c, await service.find(c.get('session').agencyId, c.req.valid('param').id))
     )
     .get('/:id/versions/:version', sValidator('param', versionParam, invalidRequest), async (c) => {
       const { id, version } = c.req.valid('param');
-      return respond(c, await service.version(c.get('session').tenantId, id, version));
+      return respond(c, await service.version(c.get('session').agencyId, id, version));
     })
     .put(
       '/:id/draft',
       sValidator('param', idParam, invalidRequest),
       sValidator('json', definitionSchema, invalidRequest),
       async (c) => {
-        const { tenantId, userId } = c.get('session');
+        const { agencyId, userId } = c.get('session');
         const { id } = c.req.valid('param');
         return respond(
           c,
-          await service.saveDraft(tenantId, userId, id, c.req.valid('json').definition)
+          await service.saveDraft(agencyId, userId, id, c.req.valid('json').definition)
         );
       }
     )
     .post('/:id/publish', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.publish(c.get('session').tenantId, c.req.valid('param').id))
+      respond(c, await service.publish(c.get('session').agencyId, c.req.valid('param').id))
     )
     .post('/:id/override', sValidator('param', idParam, invalidRequest), async (c) => {
-      const { tenantId, userId } = c.get('session');
-      return respond(c, await service.override(tenantId, userId, c.req.valid('param').id), 201);
+      const { agencyId, userId } = c.get('session');
+      return respond(c, await service.override(agencyId, userId, c.req.valid('param').id), 201);
     })
     .delete('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.remove(c.get('session').tenantId, c.req.valid('param').id))
+      respond(c, await service.remove(c.get('session').agencyId, c.req.valid('param').id))
     );

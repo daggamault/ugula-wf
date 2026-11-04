@@ -16,7 +16,7 @@ const columns = [
 
 export type PayerFilters = PageRequest<PayerSort> & { q?: string | undefined };
 
-const payerRows = (db: Db, tenantId: string) =>
+const payerRows = (db: Db, agencyId: string) =>
   db
     .selectFrom('payers as p')
     .select((eb) => [
@@ -29,7 +29,7 @@ const payerRows = (db: Db, tenantId: string) =>
           .orderBy(sql`lower(a.alias)`)
       ).as('aliases')
     ])
-    .where('p.tenant_id', '=', tenantId);
+    .where('p.agency_id', '=', agencyId);
 
 const PAYER_ORDER = {
   name: sql`lower(p.name)`,
@@ -37,8 +37,8 @@ const PAYER_ORDER = {
   filing: sql.ref('p.claim_filing')
 };
 
-export const searchPayers = (db: Db, tenantId: string, f: PayerFilters) => {
-  let q = payerRows(db, tenantId);
+export const searchPayers = (db: Db, agencyId: string, f: PayerFilters) => {
+  let q = payerRows(db, agencyId);
   if (f.q) {
     const like = containsPattern(f.q);
     q = q.where((eb) =>
@@ -58,33 +58,33 @@ export const searchPayers = (db: Db, tenantId: string, f: PayerFilters) => {
   return paged(q, f, PAYER_ORDER, sql.ref('p.id'));
 };
 
-export const findPayer = (db: Db, tenantId: string, id: string) =>
-  payerRows(db, tenantId).where('p.id', '=', id).executeTakeFirst();
+export const findPayer = (db: Db, agencyId: string, id: string) =>
+  payerRows(db, agencyId).where('p.id', '=', id).executeTakeFirst();
 
 const NAME_LIMIT = 50;
 
-export const listPayerNames = (db: Db, tenantId: string, text?: string) => {
+export const listPayerNames = (db: Db, agencyId: string, text?: string) => {
   const q = db
     .selectFrom('payers')
     .select(['id', 'name'])
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .orderBy(sql`lower(name)`)
     .limit(NAME_LIMIT);
   return (text ? q.where(sql`lower(name)`, 'like', containsPattern(text)) : q).execute();
 };
 
-export const upsertPayer = (db: Db, tenantId: string, p: PayerInput) =>
+export const upsertPayer = (db: Db, agencyId: string, p: PayerInput) =>
   db
     .insertInto('payers')
     .values({
-      tenant_id: tenantId,
+      agency_id: agencyId,
       name: p.name,
       payer_id: p.payerId,
       claim_filing: p.claimFiling,
       filing_limit_days: p.filingLimitDays
     })
     .onConflict((oc) =>
-      oc.expression(sql`tenant_id, lower(name)`).doUpdateSet({
+      oc.expression(sql`agency_id, lower(name)`).doUpdateSet({
         payer_id: p.payerId,
         claim_filing: p.claimFiling,
         filing_limit_days: p.filingLimitDays,
@@ -95,35 +95,35 @@ export const upsertPayer = (db: Db, tenantId: string, p: PayerInput) =>
     .returning([...columns, sql<boolean>`embedding is null`.as('unembedded')])
     .executeTakeFirstOrThrow();
 
-export const saveEmbedding = (db: Db, tenantId: string, id: string, embedding: number[]) =>
+export const saveEmbedding = (db: Db, agencyId: string, id: string, embedding: number[]) =>
   db
     .updateTable('payers')
     .set({ embedding: sql`${`[${embedding.join(',')}]`}::vector` })
     .where('id', '=', id)
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where('embedding', 'is', null)
     .execute();
 
-export const deletePayer = async (db: Db, tenantId: string, id: string) =>
+export const deletePayer = async (db: Db, agencyId: string, id: string) =>
   (await db
     .deleteFrom('payers')
     .where('id', '=', id)
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .returning('id')
     .executeTakeFirst()) !== undefined;
 
-export const deleteAlias = async (db: Db, tenantId: string, payerId: string, aliasId: string) =>
+export const deleteAlias = async (db: Db, agencyId: string, payerId: string, aliasId: string) =>
   (await db
     .deleteFrom('payer_aliases')
     .where('id', '=', aliasId)
     .where('payer_id', '=', payerId)
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .returning('id')
     .executeTakeFirst()) !== undefined;
 
 export const linkCoverages = async (
   db: Db,
-  tenantId: string,
+  agencyId: string,
   payer: { id: string; name: string }
 ) =>
   (
@@ -132,7 +132,7 @@ export const linkCoverages = async (
       .set({ payer_id: payer.id })
       .from('claims as c')
       .whereRef('c.id', '=', 'cc.claim_id')
-      .where('c.tenant_id', '=', tenantId)
+      .where('c.agency_id', '=', agencyId)
       .where('cc.payer_id', 'is', null)
       .where(sql`lower(cc.payer_name)`, '=', payer.name.toLowerCase())
       .returning('cc.claim_id')

@@ -21,18 +21,18 @@ import { nudgeClaim, postClaimResponse } from './claim-responses.ts';
 import { fail, ok, type Result } from './result.ts';
 import type { Db } from './schema.ts';
 
-export const findImported = (db: Db, tenantId: string, digest: string) =>
+export const findImported = (db: Db, agencyId: string, digest: string) =>
   db
     .selectFrom('payer_files')
     .select(['id', 'created_at'])
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where('digest', '=', digest)
     .executeTakeFirst();
 
 const insertPayerFile = (
   db: Db,
   f: {
-    tenantId: string;
+    agencyId: string;
     kind: InboundKind;
     fileName: string;
     digest: string;
@@ -44,7 +44,7 @@ const insertPayerFile = (
   db
     .insertInto('payer_files')
     .values({
-      tenant_id: f.tenantId,
+      agency_id: f.agencyId,
       kind: f.kind,
       file_name: f.fileName,
       digest: f.digest,
@@ -99,14 +99,14 @@ const claimNumberOf = (reference: string) => {
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 };
 
-export const findClaimByNumber = (db: Db, tenantId: string, reference: string) => {
+export const findClaimByNumber = (db: Db, agencyId: string, reference: string) => {
   const number = claimNumberOf(reference);
   return number === null
     ? Promise.resolve(undefined)
     : db
         .selectFrom('claims')
         .select(['id', 'status'])
-        .where('tenant_id', '=', tenantId)
+        .where('agency_id', '=', agencyId)
         .where('number', '=', number)
         .executeTakeFirst();
 };
@@ -135,7 +135,7 @@ const lastSubmittedCoverage = async (db: Db, claimId: string) =>
       .executeTakeFirst()
   )?.coverage_id ?? null;
 
-export const findBatchClaims = (db: Db, tenantId: string, controlNumber: string) => {
+export const findBatchClaims = (db: Db, agencyId: string, controlNumber: string) => {
   const number = claimNumberOf(controlNumber);
   return number === null
     ? Promise.resolve([])
@@ -145,7 +145,7 @@ export const findBatchClaims = (db: Db, tenantId: string, controlNumber: string)
         .innerJoin('claims as c', 'c.id', 'e.claim_id')
         .select(['e.claim_id', 'e.coverage_id', 'c.number'])
         .distinct()
-        .where('b.tenant_id', '=', tenantId)
+        .where('b.agency_id', '=', agencyId)
         .where('b.control_number', '=', number)
         .where('e.kind', 'in', SUBMISSIONS)
         .execute();
@@ -178,11 +178,11 @@ export const insertAcknowledgment = async (
     .returning('id')
     .executeTakeFirst()) !== undefined;
 
-export const findTracedCoverage = (db: Db, tenantId: string, trace: string) =>
+export const findTracedCoverage = (db: Db, agencyId: string, trace: string) =>
   db
     .selectFrom('claim_coverages')
     .select(['id', 'claim_id'])
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where(sql<string>`id::text`, '=', trace.toLowerCase())
     .executeTakeFirst();
 
@@ -204,7 +204,7 @@ const saveEligibility = (
 type Context = {
   tx: Db;
   boss: RunQueueClient;
-  tenantId: string;
+  agencyId: string;
   userId: string | null;
   digest: string;
   fileName: string;
@@ -235,7 +235,7 @@ const postRemittances = async (c: Context, remittances: Remittance[]) => {
   for (const remit of remittances) {
     for (const rc of remit.claims) {
       n += 1;
-      const claim = await findClaimByNumber(c.tx, c.tenantId, rc.claimNumber);
+      const claim = await findClaimByNumber(c.tx, c.agencyId, rc.claimNumber);
       if (!claim) {
         items.push(noClaim(rc.claimNumber));
         continue;
@@ -261,7 +261,7 @@ const postRemittances = async (c: Context, remittances: Remittance[]) => {
         );
         continue;
       }
-      const posted = await postClaimResponse(c.tx, c.boss, c.tenantId, claim.id, c.userId, {
+      const posted = await postClaimResponse(c.tx, c.boss, c.agencyId, claim.id, c.userId, {
         requestId: `${c.digest}:${n}`,
         kind: 'response',
         coverageId: coverage.id,
@@ -304,13 +304,13 @@ const acknowledge = async (
     sourceKey: `${c.digest}:${a.key}`,
     createdBy: c.userId
   });
-  await nudgeClaim(c.tx, c.boss, c.tenantId, claimId);
+  await nudgeClaim(c.tx, c.boss, c.agencyId, claimId);
 };
 
 const postBatchAcknowledgments = async (c: Context, groups: GroupAcknowledgment[]) => {
   const items: FileItem[] = [];
   for (const group of groups) {
-    const claims = await findBatchClaims(c.tx, c.tenantId, group.groupControlNumber);
+    const claims = await findBatchClaims(c.tx, c.agencyId, group.groupControlNumber);
     if (!claims.length) {
       items.push(
         item(
@@ -348,7 +348,7 @@ const postClaimAcknowledgments = async (c: Context, acks: ClaimAcknowledgment[])
   let n = 0;
   for (const ack of acks) {
     n += 1;
-    const claim = await findClaimByNumber(c.tx, c.tenantId, ack.claimNumber);
+    const claim = await findClaimByNumber(c.tx, c.agencyId, ack.claimNumber);
     if (!claim) {
       items.push(noClaim(ack.claimNumber));
       continue;
@@ -383,7 +383,7 @@ const postClaimAcknowledgments = async (c: Context, acks: ClaimAcknowledgment[])
 const postEligibility = async (c: Context, results: EligibilityResult[]) => {
   const items: FileItem[] = [];
   for (const r of results) {
-    const coverage = await findTracedCoverage(c.tx, c.tenantId, r.trace);
+    const coverage = await findTracedCoverage(c.tx, c.agencyId, r.trace);
     if (!coverage) {
       items.push(item(r.trace, null, 'unmatched', 'No payer on a claim matches this response'));
       continue;
@@ -402,7 +402,7 @@ const postEligibility = async (c: Context, results: EligibilityResult[]) => {
       continue;
     }
     await saveEligibility(c.tx, coverage.id, { active: r.active, note, checkedAt: c.now });
-    await nudgeClaim(c.tx, c.boss, c.tenantId, coverage.claim_id);
+    await nudgeClaim(c.tx, c.boss, c.agencyId, coverage.claim_id);
     items.push(item(r.trace, coverage.claim_id, r.active ? 'eligible' : 'ineligible', note));
   }
   return items;
@@ -452,7 +452,7 @@ export const applyPayerFile = async (
   tx: Db,
   boss: RunQueueClient,
   f: {
-    tenantId: string;
+    agencyId: string;
     userId: string | null;
     fileName: string;
     document: unknown;
@@ -461,7 +461,7 @@ export const applyPayerFile = async (
   }
 ) => {
   const { id } = await insertPayerFile(tx, {
-    tenantId: f.tenantId,
+    agencyId: f.agencyId,
     kind: f.file.kind,
     fileName: f.fileName,
     digest: f.file.digest,
@@ -473,7 +473,7 @@ export const applyPayerFile = async (
     {
       tx,
       boss,
-      tenantId: f.tenantId,
+      agencyId: f.agencyId,
       userId: f.userId,
       digest: f.file.digest,
       fileName: f.fileName,

@@ -209,7 +209,7 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Issue Patient Statement',
       category: CATEGORY,
       description:
-        "Renders a PDF statement of the claim's charges, payments and balance due, numbered out of the statements the cycle sends and dated in the agency's time zone, stores it and logs it on the claim. Continues through missing, naming what, when the tenant has no billing profile or the patient has no complete mailing address.",
+        "Renders a PDF statement of the claim's charges, payments and balance due, numbered out of the statements the cycle sends and dated in the agency's time zone, stores it and logs it on the claim. Continues through missing, naming what, when the agency has no billing profile or the patient has no complete mailing address.",
       effect: true,
       inputs: [
         claimIdPin,

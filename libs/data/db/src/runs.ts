@@ -5,7 +5,7 @@ import { pinRunGraphs } from './graph-versions.ts';
 import type { Database } from './schema.ts';
 
 type NewRun = {
-  tenantId: string;
+  agencyId: string;
   versionId: string;
   inputs: unknown;
 };
@@ -14,7 +14,7 @@ const buildInsertRun = (db: Kysely<Database>, run: NewRun) =>
   db
     .insertInto('workflow_runs')
     .values({
-      tenant_id: run.tenantId,
+      agency_id: run.agencyId,
       graph_version_id: run.versionId,
       status: 'running',
       inputs: JSON.stringify(run.inputs)
@@ -23,26 +23,26 @@ const buildInsertRun = (db: Kysely<Database>, run: NewRun) =>
 
 export const startRun = async (tx: Kysely<Database>, boss: RunQueueClient, run: NewRun) => {
   const { id } = await buildInsertRun(tx, run).executeTakeFirstOrThrow();
-  await pinRunGraphs(tx, { id, tenantId: run.tenantId, versionId: run.versionId });
+  await pinRunGraphs(tx, { id, agencyId: run.agencyId, versionId: run.versionId });
   await enqueueRuns(boss, sqlExecutor(tx), [advance(id)]);
   return id;
 };
 
-const findRunWait = (db: Kysely<Database>, tenantId: string, waitKey: string) =>
+const findRunWait = (db: Kysely<Database>, agencyId: string, waitKey: string) =>
   db
     .selectFrom('workflow_runs')
     .select(['id', sql<string>`state -> 'suspension' ->> 'id'`.as('wait_id')])
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where('wait_key', '=', waitKey)
     .where('status', '=', 'suspended')
     .execute();
 
-const countSignal = (db: Kysely<Database>, tenantId: string, waitKey: string) =>
+const countSignal = (db: Kysely<Database>, agencyId: string, waitKey: string) =>
   db
     .insertInto('signals')
-    .values({ tenant_id: tenantId, key: waitKey, received: 1 })
+    .values({ agency_id: agencyId, key: waitKey, received: 1 })
     .onConflict((oc) =>
-      oc.columns(['tenant_id', 'key']).doUpdateSet({
+      oc.columns(['agency_id', 'key']).doUpdateSet({
         received: sql`signals.received + 1`,
         updated_at: sql`now()`
       })
@@ -51,11 +51,11 @@ const countSignal = (db: Kysely<Database>, tenantId: string, waitKey: string) =>
 export const signalRuns = async (
   tx: Kysely<Database>,
   boss: RunQueueClient,
-  signal: { tenantId: string; name: string; key: string; payload: unknown }
+  signal: { agencyId: string; name: string; key: string; payload: unknown }
 ) => {
   const waitKey = `${signal.name}:${signal.key}`;
-  await countSignal(tx, signal.tenantId, waitKey).execute();
-  const waiting = await findRunWait(tx, signal.tenantId, waitKey);
+  await countSignal(tx, signal.agencyId, waitKey).execute();
+  const waiting = await findRunWait(tx, signal.agencyId, waitKey);
   await enqueueRuns(
     boss,
     sqlExecutor(tx),
@@ -64,7 +64,7 @@ export const signalRuns = async (
   return waiting.length;
 };
 
-export const resolveWorkflowVersion = (db: Kysely<Database>, tenantId: string, key: string) =>
+export const resolveWorkflowVersion = (db: Kysely<Database>, agencyId: string, key: string) =>
   db
     .selectFrom('graph_versions as gv')
     .innerJoin('graphs as g', 'g.id', 'gv.graph_id')
@@ -73,8 +73,8 @@ export const resolveWorkflowVersion = (db: Kysely<Database>, tenantId: string, k
     .where('g.kind', '=', 'workflow')
     .where('g.is_active', '=', true)
     .where('gv.published_at', 'is not', null)
-    .where((eb) => eb.or([eb('g.tenant_id', '=', tenantId), eb('g.tenant_id', 'is', null)]))
-    .orderBy(sql`g.tenant_id nulls last`)
+    .where((eb) => eb.or([eb('g.agency_id', '=', agencyId), eb('g.agency_id', 'is', null)]))
+    .orderBy(sql`g.agency_id nulls last`)
     .orderBy('gv.version', 'desc')
     .limit(1)
     .executeTakeFirst();

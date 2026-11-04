@@ -14,6 +14,6 @@ export const createReportRoutes = (service: ReportService) =>
     async (c) =>
       respond(
         c,
-        await service.run(c.get('session').tenantId, c.req.valid('param').id, c.req.valid('query'))
+        await service.run(c.get('session').agencyId, c.req.valid('param').id, c.req.valid('query'))
       )
   );

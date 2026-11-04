@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createSessionStore } from '@ugula/auth';
 import { createDb } from '@ugula/db';
-import { LIVE_PATTERN, parseLiveEvent, tenantOf } from '@ugula/live';
+import { agencyOf, LIVE_PATTERN, parseLiveEvent } from '@ugula/live';
 import { Redis } from 'ioredis';
 import { parseConfig } from './config.ts';
 import { createEventsHandler } from './features/events/handler.ts';
@@ -34,8 +34,8 @@ const handleRequest =
 export const createSseServer = (routes: SseRoutes) => createServer(handleRequest(routes));
 
 export const relay = (hub: Hub) => (_pattern: string, channel: string, message: string) => {
-  const tenantId = tenantOf(channel);
-  if (tenantId && parseLiveEvent(message)) hub.broadcast(tenantId, message);
+  const agencyId = agencyOf(channel);
+  if (agencyId && parseLiveEvent(message)) hub.broadcast(agencyId, message);
 };
 
 if (import.meta.main) {
@@ -61,7 +61,7 @@ if (import.meta.main) {
     events: createEventsHandler({
       hub,
       sessions: createSessionStore(new Redis(redis)),
-      isActiveMember: (s) => isActiveMember(db, s.userId, s.tenantId),
+      isActiveMember: (s) => isActiveMember(db, s.userId, s.agencyId),
       origins: config.HTTP_CORS_ORIGINS.split(',').map((o) => o.trim())
     })
   }).listen(config.SSE_PORT);

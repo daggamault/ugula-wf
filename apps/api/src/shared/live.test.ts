@@ -5,13 +5,13 @@ import { fail, ok } from './result.ts';
 import { recordAnnouncements } from './testing.ts';
 
 describe('announced', () => {
-  it('announces the events of a committed write to its tenant', async () => {
+  it('announces the events of a committed write to its agency', async () => {
     const { announce, events } = recordAnnouncements();
     const res = await announced(announce, 't-1', Promise.resolve(ok({ id: 'c1' })), ({ id }) => [
       { kind: 'claim', id }
     ]);
     assert.deepEqual(res, ok({ id: 'c1' }));
-    assert.deepEqual(events, [{ tenantId: 't-1', event: { kind: 'claim', id: 'c1' } }]);
+    assert.deepEqual(events, [{ agencyId: 't-1', event: { kind: 'claim', id: 'c1' } }]);
   });
 
   it('announces nothing for a failed write', async () => {

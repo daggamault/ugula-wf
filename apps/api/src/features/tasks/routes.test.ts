@@ -75,7 +75,7 @@ describe('task route validation', () => {
     assert.equal(calls.length, count);
   });
 
-  it('open a task in the session tenant', async () => {
+  it('open a task in the session agency', async () => {
     await request(`/${ID}`);
     assert.deepEqual(calls.at(-1), ['t-1', ID]);
   });

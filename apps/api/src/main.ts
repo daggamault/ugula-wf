@@ -221,7 +221,7 @@ if (import.meta.main) {
       blobs,
       embedder: createEmbedder({ url: config.EMBEDDINGS_URL, fetch }),
       nodes: createNodeCatalog({ fetch }),
-      announce: (tenantId, event) => publishLiveEvent(redis, tenantId, event),
+      announce: (agencyId, event) => publishLiveEvent(redis, agencyId, event),
       clientIp: (c) => getConnInfo(c).remote.address ?? 'unknown'
     }).fetch,
     port: config.API_PORT

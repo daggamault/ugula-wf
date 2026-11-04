@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-export type RunContext = { runId: string; tenantId: string; signal: AbortSignal };
+export type RunContext = { runId: string; agencyId: string; signal: AbortSignal };
 
 type Fetch = typeof fetch;
 
@@ -9,9 +9,9 @@ export const createRunScope = () => {
   const current = () => als.getStore();
   return {
     within: <T>(ctx: RunContext, fn: () => Promise<T>) => als.run(ctx, fn),
-    tenantOf: (runId: string) => {
+    agencyOf: (runId: string) => {
       const ctx = current();
-      return ctx?.runId === runId ? ctx.tenantId : undefined;
+      return ctx?.runId === runId ? ctx.agencyId : undefined;
     },
     guard: <S extends object>(store: S): S =>
       Object.fromEntries(

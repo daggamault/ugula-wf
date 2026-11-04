@@ -48,9 +48,9 @@ const step = (seq: number): TraceEntry => ({
 
 describe('taskNotification', () => {
   it('announces new tasks and stuck runs with a link to the task', () => {
-    const task = { tenantId: 't', kind: 'task' as const, title: 'Review PCR', subject: 'PCR-1' };
+    const task = { agencyId: 't', kind: 'task' as const, title: 'Review PCR', subject: 'PCR-1' };
     assert.deepEqual(taskNotification(task, 'k1'), {
-      tenant_id: 't',
+      agency_id: 't',
       intent: 'info',
       title: 'New task: Review PCR',
       description: 'PCR-1',
@@ -114,7 +114,7 @@ describe('createRunStore', () => {
       {
         id: 'r1',
         lease_token: 'l1',
-        tenant_id: 't1',
+        agency_id: 't1',
         graph_version_id: 'v1',
         parent_id: null,
         parent_wait: null,
@@ -127,7 +127,7 @@ describe('createRunStore', () => {
     assert.deepEqual(await store.claim(advance('r1'), 1000), {
       id: 'r1',
       lease: 'l1',
-      tenantId: 't1',
+      agencyId: 't1',
       versionId: 'v1',
       parentId: null,
       parentWait: null,
@@ -207,12 +207,12 @@ describe('createRunStore', () => {
     await db.destroy();
   });
 
-  it('upserts tasks idempotently and finds tenant versions before global ones', async () => {
+  it('upserts tasks idempotently and finds agency versions before global ones', async () => {
     const { db, queries } = recordingDb([{ id: 'v1', parent_index: 0 }]);
     const store = createRunStore({ db, boss: recordingBoss().boss });
     await store.transaction(async (tx) => {
       await tx.insertTask({
-        tenantId: 't',
+        agencyId: 't',
         runId: 'r',
         waitId: '7',
         kind: 'task',
@@ -233,7 +233,7 @@ describe('createRunStore', () => {
           {
             id: 'p',
             lease: 'l',
-            tenantId: 't',
+            agencyId: 't',
             versionId: 'v',
             parentId: null,
             parentWait: null,
@@ -251,7 +251,7 @@ describe('createRunStore', () => {
     const sqls = queries.map((q) => q.sql).join('\n');
     assert.ok(sqls.includes('on conflict ("run_id", "wait_id") do nothing returning "id"'));
     assert.ok(sqls.includes('insert into "notifications"'));
-    assert.ok(sqls.includes('g.tenant_id nulls last'));
+    assert.ok(sqls.includes('g.agency_id nulls last'));
     await db.destroy();
   });
 
@@ -267,7 +267,7 @@ describe('createRunStore', () => {
     const run = {
       id: 'r1',
       lease: 'l',
-      tenantId: 't',
+      agencyId: 't',
       versionId: 'v',
       parentId: null,
       parentWait: null,
@@ -359,7 +359,7 @@ describe('createRunStore', () => {
     await db.destroy();
   });
 
-  it('starts detached runs pinned to their graphs and assigns tasks only to users of the tenant', async () => {
+  it('starts detached runs pinned to their graphs and assigns tasks only to users of the agency', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('insert into "workflow_runs"') || q.sql.startsWith('insert into "tasks"')
         ? [{ id: 'new-1' }]
@@ -369,7 +369,7 @@ describe('createRunStore', () => {
     await store.transaction(async (tx) => {
       assert.equal(await tx.insertRun('t', 'v1', { a: 1 }), 'new-1');
       await tx.insertTask({
-        tenantId: 't',
+        agencyId: 't',
         runId: 'r',
         waitId: '7',
         kind: 'task',

@@ -6,28 +6,28 @@ import {
   findDictionary,
   findImport,
   findReport,
-  findSftpTenant,
+  findSftpAgency,
   insertImport,
   listImportReports,
   listImports
 } from './queries.ts';
 
 describe('resolveWorkflowVersion', () => {
-  it('picks the newest published workflow version, preferring an active tenant copy', async () => {
+  it('picks the newest published workflow version, preferring an active agency copy', async () => {
     const { db, queries } = createRecordingDb();
     await resolveWorkflowVersion(db, 't-1', 'billing.ingest-nemsis');
     const [q] = queries;
     assert.ok(q?.sql.includes('"g"."is_active" = $3'));
-    assert.ok(q?.sql.includes('order by g.tenant_id nulls last, "gv"."version" desc'));
+    assert.ok(q?.sql.includes('order by g.agency_id nulls last, "gv"."version" desc'));
     assert.deepEqual(q?.parameters, ['billing.ingest-nemsis', 'workflow', true, 't-1', 1]);
     await db.destroy();
   });
 });
 
-describe('findSftpTenant', () => {
-  it('finds active tenants by SFTP username', async () => {
+describe('findSftpAgency', () => {
+  it('finds active agencies by SFTP username', async () => {
     const { db, queries } = createRecordingDb();
-    await findSftpTenant(db, 'acme-ems');
+    await findSftpAgency(db, 'acme-ems');
     assert.ok(queries[0]?.sql.includes('"is_active" = $'));
     assert.deepEqual(queries[0]?.parameters, ['acme-ems', true]);
     await db.destroy();
@@ -38,7 +38,7 @@ describe('import records', () => {
   it('records an import against its ingest run and uploader', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'i1' }]);
     await insertImport(db, {
-      tenantId: 't-1',
+      agencyId: 't-1',
       runId: 'r1',
       source: 'upload',
       fileName: 'pcrs.xml',
@@ -152,8 +152,8 @@ describe('import status and attention sorts', () => {
   });
 });
 
-describe('import tenant scoping', () => {
-  it('open one import and page its reports within the tenant', async () => {
+describe('import agency scoping', () => {
+  it('open one import and page its reports within the agency', async () => {
     const { db, queries } = createRecordingDb();
     await findImport(db, 't-1', 'i1');
     await listImportReports(db, 't-1', 'i1', {
@@ -163,24 +163,24 @@ describe('import tenant scoping', () => {
       dir: 'asc'
     });
     const [found, reports, count] = queries;
-    assert.ok(found?.sql.endsWith('where "i"."tenant_id" = $7 and "i"."id" = $8'));
+    assert.ok(found?.sql.endsWith('where "i"."agency_id" = $7 and "i"."id" = $8'));
     assert.deepEqual(found?.parameters.slice(6), ['t-1', 'i1']);
     assert.ok(
       reports?.sql.includes(
-        'where "i"."tenant_id" = $3 and "i"."id" = $4 order by lower(p.last_name || \' \' || p.first_name) asc nulls last'
+        'where "i"."agency_id" = $3 and "i"."id" = $4 order by lower(p.last_name || \' \' || p.first_name) asc nulls last'
       )
     );
     assert.deepEqual(reports?.parameters, ['open', 1, 't-1', 'i1', 10, 10]);
-    assert.ok(count?.sql.endsWith('where "i"."tenant_id" = $3 and "i"."id" = $4'));
+    assert.ok(count?.sql.endsWith('where "i"."agency_id" = $3 and "i"."id" = $4'));
     await db.destroy();
   });
 
-  it('read one stored report only through an import of the tenant', async () => {
+  it('read one stored report only through an import of the agency', async () => {
     const { db, queries } = createRecordingDb();
     await findReport(db, 't-1', 'rep-1');
     assert.ok(
       queries[0]?.sql.endsWith(
-        'inner join "imports" as "i" on "i"."id" = "r"."import_id" where "r"."id" = $1 and "i"."tenant_id" = $2'
+        'inner join "imports" as "i" on "i"."id" = "r"."import_id" where "r"."id" = $1 and "i"."agency_id" = $2'
       )
     );
     assert.deepEqual(queries[0]?.parameters, ['rep-1', 't-1']);

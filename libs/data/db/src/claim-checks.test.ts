@@ -65,7 +65,7 @@ describe('findClaimCheck', () => {
     assert.deepEqual(queries[0]?.parameters, ['c1', 't1']);
   });
 
-  it('finds nothing for another tenant, and no patient address before the patient is known', async () => {
+  it('finds nothing for another agency, and no patient address before the patient is known', async () => {
     const missing = createRecordingDb();
     assert.equal(await findClaimCheck(missing.db, 't1', 'c1'), null);
     assert.equal(missing.queries.length, 1);

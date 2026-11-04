@@ -16,10 +16,10 @@ const sftp = {
 
 const setup = ({
   published = true,
-  tenant = null as { id: string; sftp_password_hash: string } | null
+  agency = null as { id: string; sftp_password_hash: string } | null
 } = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
-    if (q.sql.includes('from "tenants"')) return tenant ? [tenant] : [];
+    if (q.sql.includes('from "agencies"')) return agency ? [agency] : [];
     if (q.sql.includes('from "nemsis_elements"'))
       return [{ element: 'eRecord.01', name: 'Patient Care Report Number' }];
     if (q.sql.includes('from "nemsis_codes"')) return [];
@@ -99,7 +99,7 @@ describe('import service uploads', () => {
     assert.deepEqual(stored, []);
   });
 
-  it('finds an import and pages its reports only within the tenant', async () => {
+  it('finds an import and pages its reports only within the agency', async () => {
     const { service, queries } = setup();
     const page = { page: 1, pageSize: 25, sort: 'position' as const, dir: 'asc' as const };
     const found = await service.find('t-1', 'i1');
@@ -111,7 +111,7 @@ describe('import service uploads', () => {
     assert.equal((await empty.find('t-1', 'i9')).ok, false);
   });
 
-  it('reads one stored report of the tenant with its XML', async () => {
+  it('reads one stored report of the agency with its XML', async () => {
     const { service, queries } = setup();
     assert.deepEqual(await service.report('t-1', 'rep-1'), {
       ok: true,
@@ -133,16 +133,16 @@ describe('import service uploads', () => {
     assert.ok(codes?.sql.includes('("list", "code") in (($1, $2))'));
     assert.deepEqual(codes?.parameters, ['eRecord.01', 'PCR-1']);
     const lookup = queries.find((q) => q.sql.includes('from "import_reports"'));
-    assert.ok(lookup?.sql.endsWith('where "r"."id" = $1 and "i"."tenant_id" = $2'));
+    assert.ok(lookup?.sql.endsWith('where "r"."id" = $1 and "i"."agency_id" = $2'));
     const missing = await service.report('t-1', 'rep-9');
     assert.equal(!missing.ok && missing.failure.code, 'not_found');
   });
 });
 
 describe('import service SFTP hooks', () => {
-  it('authenticates tenant SFTP accounts into a tenant-scoped S3 folder', async () => {
-    const tenant = { id: 't-1', sftp_password_hash: await hashPassword('s3cret-pass') };
-    const { service } = setup({ tenant });
+  it('authenticates agency SFTP accounts into a agency-scoped S3 folder', async () => {
+    const agency = { id: 't-1', sftp_password_hash: await hashPassword('s3cret-pass') };
+    const { service } = setup({ agency });
     const res = await service.authenticateSftp('acme-ems', 's3cret-pass');
     assert.deepEqual(res, {
       ok: true,
@@ -168,7 +168,7 @@ describe('import service SFTP hooks', () => {
   });
 
   it('starts ingest for completed uploads and ignores everything else', async () => {
-    const { service, jobs, queries } = setup({ tenant: { id: 't-1', sftp_password_hash: '' } });
+    const { service, jobs, queries } = setup({ agency: { id: 't-1', sftp_password_hash: '' } });
     const event = {
       action: 'upload',
       username: 'acme-ems',
@@ -200,7 +200,7 @@ describe('import service SFTP hooks', () => {
   });
 
   it('refuses oversized files and unsafe paths before recording an import', async () => {
-    const { service, jobs, queries } = setup({ tenant: { id: 't-1', sftp_password_hash: '' } });
+    const { service, jobs, queries } = setup({ agency: { id: 't-1', sftp_password_hash: '' } });
     const event = {
       action: 'upload',
       username: 'acme-ems',
@@ -223,10 +223,10 @@ describe('import service SFTP hooks', () => {
 });
 
 describe('import service announcements and names', () => {
-  it('announces new imports to the tenant and names unnamed uploads safely', async () => {
+  it('announces new imports to the agency and names unnamed uploads safely', async () => {
     const { service, announced, queries } = setup();
     assert.ok((await service.upload('t-1', 'u-1', 'billing.ingest-nemsis', file('<x/>', '  '))).ok);
-    assert.deepEqual(announced, [{ tenantId: 't-1', event: { kind: 'import', id: null } }]);
+    assert.deepEqual(announced, [{ agencyId: 't-1', event: { kind: 'import', id: null } }]);
     const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
     assert.equal(recorded?.parameters[3], 'upload');
     const refused = setup({ published: false });
@@ -234,8 +234,8 @@ describe('import service announcements and names', () => {
     assert.deepEqual(refused.announced, []);
   });
 
-  it('refuses SFTP logins for tenants without an SFTP password', async () => {
-    const { service } = setup({ tenant: { id: 't-1', sftp_password_hash: '' } });
+  it('refuses SFTP logins for agencies without an SFTP password', async () => {
+    const { service } = setup({ agency: { id: 't-1', sftp_password_hash: '' } });
     assert.deepEqual(await service.authenticateSftp('acme-ems', ''), {
       ok: false,
       failure: { code: 'unauthorized', message: 'Invalid SFTP credentials' }

@@ -133,7 +133,7 @@ describe('eligibility requests', () => {
     assert.equal(noProfile.ok ? null : noProfile.failure.code, 'invalid');
   });
 
-  it('refuses a claim no payer can be asked about and a tenant out of control numbers', async () => {
+  it('refuses a claim no payer can be asked about and a agency out of control numbers', async () => {
     const unlisted = { ...row, coverages: row.coverages.slice(2) };
     const nobody = await setup({ rows: [{ ...claimRow(C1), ...unlisted }] }).service.eligibility(
       't1',
@@ -148,7 +148,7 @@ describe('eligibility requests', () => {
     assert.equal(exhausted.ok ? null : exhausted.failure.code, 'conflict');
   });
 
-  it('looks up the claim, profile and control number of the tenant only', async () => {
+  it('looks up the claim, profile and control number of the agency only', async () => {
     const { service, queries } = setup({ rows: [{ ...claimRow(C1), ...row }] });
     assert.ok((await service.eligibility('t1', C1)).ok);
     assert.equal(queries.length, 3);
@@ -157,7 +157,7 @@ describe('eligibility requests', () => {
 });
 
 describe('batch documents', () => {
-  it('downloads a tenant batch file named after its key, or reports it missing', async () => {
+  it('downloads a agency batch file named after its key, or reports it missing', async () => {
     const { service, queries, fetched } = setup();
     assert.deepEqual(await service.document('t1', C1), {
       ok: true,

@@ -120,7 +120,7 @@ describe('claim service', () => {
       ok: true,
       value: { balanceCents: 30_000, duplicate: false }
     });
-    assert.deepEqual(announced, [{ tenantId: 't', event: { kind: 'claim', id: 'c1' } }]);
+    assert.deepEqual(announced, [{ agencyId: 't', event: { kind: 'claim', id: 'c1' } }]);
     assert.ok(queries.some((q) => q.sql.endsWith('for update')));
     const insert = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
     assert.ok(insert?.parameters.includes(REQUEST) && insert.parameters.includes(MEDICARE));
@@ -308,7 +308,7 @@ describe('claim service', () => {
     );
   });
 
-  it('serves stored statement PDFs only for claims of the tenant', async () => {
+  it('serves stored statement PDFs only for claims of the agency', async () => {
     const ref = {
       bucket: 'ugula',
       key: 'statements/t/c1/2-abc.pdf',
@@ -341,7 +341,7 @@ describe('claim service', () => {
       [[BLUE, 1, MEDICARE, 2, 'c1']]
     );
     const added = open.queries.find((q) => q.sql.startsWith('insert into "claim_coverages"'));
-    assert.ok(added?.sql.includes('(select "id" from "payers" where "tenant_id" = $'));
+    assert.ok(added?.sql.includes('(select "id" from "payers" where "agency_id" = $'));
     assert.ok(added?.parameters.includes('Aetna') && added.parameters.includes('aetna'));
     assert.equal(open.jobs.length, 1);
     const closed = setup({ row: { ...claim, status: 'paid' } });
@@ -415,7 +415,7 @@ describe('claim service', () => {
 });
 
 describe('claim service tenancy', () => {
-  it('locks every claim write to the tenant and announces only the writes that succeed', async () => {
+  it('locks every claim write to the agency and announces only the writes that succeed', async () => {
     const data = {
       patient: null,
       coverages: [],
@@ -433,9 +433,9 @@ describe('claim service tenancy', () => {
     await service.restartCycle('t', 'c1');
     const locks = queries.filter((q) => q.sql.endsWith('for update'));
     assert.equal(locks.length, 3);
-    assert.ok(locks.every((q) => q.sql.includes('"tenant_id" = $') && q.parameters.includes('t')));
+    assert.ok(locks.every((q) => q.sql.includes('"agency_id" = $') && q.parameters.includes('t')));
     assert.deepEqual(
-      announced.map((a) => a.tenantId),
+      announced.map((a) => a.agencyId),
       ['t', 't', 't']
     );
     const foreign = setup({ row: null });

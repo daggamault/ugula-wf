@@ -22,7 +22,7 @@ const batch = [
 const rowsFor =
   (imported: boolean): RowsFor =>
   (q) => {
-    if (q.sql.startsWith('select "tenant_id" from "workflow_runs"')) return [{ tenant_id: 't1' }];
+    if (q.sql.startsWith('select "agency_id" from "workflow_runs"')) return [{ agency_id: 't1' }];
     if (q.sql.startsWith('select "id", "created_at" from "payer_files"')) {
       return imported ? [{ id: 'f0', created_at: new Date() }] : [];
     }

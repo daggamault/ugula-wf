@@ -7,7 +7,7 @@ import { createHub } from '../../shared/hub.ts';
 import { createEventsHandler } from './handler.ts';
 
 describe('events handler', () => {
-  it('streams tenant events to signed-in members and rejects others', async () => {
+  it('streams agency events to signed-in members and rejects others', async () => {
     const hub = createHub();
     const valid = new Set(['good', 'expiring', 'deactivated']);
     const members = new Set(['good', 'expiring', 'deactivated']);
@@ -20,7 +20,7 @@ describe('events handler', () => {
           token === 'down'
             ? Promise.reject(new Error('redis down'))
             : valid.has(token)
-              ? { userId: token, tenantId: 't-1', email: 'dev@example.com' }
+              ? { userId: token, agencyId: 't-1', email: 'dev@example.com' }
               : null
       },
       isActiveMember: async ({ userId }) => members.has(userId)
@@ -71,13 +71,13 @@ describe('events handler', () => {
     }
   });
 
-  it('streams only the events of the session tenant', async () => {
+  it('streams only the events of the session agency', async () => {
     const hub = createHub();
     const handler = createEventsHandler({
       hub,
       origins: ['http://localhost:3000'],
       sessions: {
-        get: async (token) => ({ userId: `u-${token}`, tenantId: token, email: 'dev@example.com' })
+        get: async (token) => ({ userId: `u-${token}`, agencyId: token, email: 'dev@example.com' })
       },
       isActiveMember: async () => true
     });

@@ -118,7 +118,7 @@ describe('task service', () => {
     );
     assert.equal(jobs.length, 1);
     assert.deepEqual(announced, [
-      { tenantId: 't', event: { kind: 'task', id: 't1', runId: null } }
+      { agencyId: 't', event: { kind: 'task', id: 't1', runId: null } }
     ]);
   });
 
@@ -244,7 +244,7 @@ describe('task service sources and hand-out', () => {
     const next = await full.service.next('t', null, 'u1');
     assert.equal(next.ok && next.value.task?.id, 't1');
     assert.deepEqual(full.announced, [
-      { tenantId: 't', event: { kind: 'task', id: 't1', runId: null } }
+      { agencyId: 't', event: { kind: 'task', id: 't1', runId: null } }
     ]);
   });
 });

@@ -5,7 +5,7 @@ import type { Signal } from '../../shared/signal.ts';
 
 const authUserSchema = v.object({
   id: nonEmpty,
-  tenantId: nonEmpty,
+  agencyId: nonEmpty,
   email: emailString
 });
 

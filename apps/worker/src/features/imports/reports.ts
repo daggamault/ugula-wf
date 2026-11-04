@@ -2,7 +2,7 @@ import type { Database } from '@ugula/db';
 import type { ReportStore } from '@ugula/nemsis';
 import { type BlobStore, importsPrefix } from '@ugula/storage';
 import type { Kysely } from 'kysely';
-import { runTenant, type TenantOf } from '../../shared/tenancy.ts';
+import { type AgencyOf, runAgency } from '../../shared/tenancy.ts';
 
 type Blobs = Pick<BlobStore, 'getText' | 'getJson' | 'putJson'>;
 
@@ -11,12 +11,12 @@ export const fileNameOf = (key: string) => key.split('/').at(-1) || key;
 export const createReportStore = (
   db: Kysely<Database>,
   blobs: Blobs,
-  tenantOf: TenantOf
+  agencyOf: AgencyOf
 ): ReportStore => {
   const authorize = async (runId: string, key: string) => {
-    const tenantId = await tenantOf(runId);
-    if (!tenantId || !key.startsWith(importsPrefix(tenantId)) || key.split('/').includes('..')) {
-      throw new Error(`Blob ${key} is not one of this tenant's imports`);
+    const agencyId = await agencyOf(runId);
+    if (!agencyId || !key.startsWith(importsPrefix(agencyId)) || key.split('/').includes('..')) {
+      throw new Error(`Blob ${key} is not one of this agency's imports`);
     }
   };
   return {
@@ -48,7 +48,7 @@ export const createReportStore = (
         const { id } = await tx
           .insertInto('imports')
           .values({
-            tenant_id: runTenant(tx, runId),
+            agency_id: runAgency(tx, runId),
             run_id: runId,
             source: 'manual',
             file_name: fileNameOf(file.key),

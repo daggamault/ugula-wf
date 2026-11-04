@@ -15,13 +15,13 @@ const PREFIX = 'live:';
 
 export const LIVE_PATTERN = `${PREFIX}*`;
 
-export const channelOf = (tenantId: string) => `${PREFIX}${tenantId}`;
+export const channelOf = (agencyId: string) => `${PREFIX}${agencyId}`;
 
-export const tenantOf = (channel: string) =>
+export const agencyOf = (channel: string) =>
   channel.startsWith(PREFIX) ? channel.slice(PREFIX.length) : null;
 
-export const publishLiveEvent = async (redis: Publisher, tenantId: string, event: LiveEvent) => {
-  await redis.publish(channelOf(tenantId), JSON.stringify(event));
+export const publishLiveEvent = async (redis: Publisher, agencyId: string, event: LiveEvent) => {
+  await redis.publish(channelOf(agencyId), JSON.stringify(event));
 };
 
 type Fields = Record<string, unknown>;

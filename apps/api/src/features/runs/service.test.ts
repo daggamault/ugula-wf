@@ -166,8 +166,8 @@ describe('run input files', () => {
   });
 });
 
-describe('run service tenant scoping', () => {
-  it('looks runs up in the caller tenant before cancelling or starting', async () => {
+describe('run service agency scoping', () => {
+  it('looks runs up in the caller agency before cancelling or starting', async () => {
     const { db, queries } = createRecordingDb();
     const service = createRunService({ db, boss: recordingBoss().boss, blobs, maxBytes: 100 });
     assert.equal(codeOf(await service.cancel('t-2', 'r1')), 'not_found');

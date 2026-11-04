@@ -49,7 +49,7 @@ const poll = async (
 ) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.includes('from "billing_profiles"')) {
-      return (profiles[String(q.parameters[0])] ?? []).map((tenant_id) => ({ tenant_id }));
+      return (profiles[String(q.parameters[0])] ?? []).map((agency_id) => ({ agency_id }));
     }
     if (q.sql.includes('from "graph_versions"')) return published ? [{ id: 'v1', version: 1 }] : [];
     if (q.sql.startsWith('insert into "workflow_runs"')) return [{ id: 'r1' }];

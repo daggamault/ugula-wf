@@ -23,7 +23,7 @@ const service = {
 const request = withSession(createPatientRoutes(service));
 
 describe('patient routes', () => {
-  it('search and open patients in the session tenant', async () => {
+  it('search and open patients in the session agency', async () => {
     assert.equal((await request('/?lastName=doe&birthDate=1980-01-02')).status, 200);
     assert.equal((await request(`/${ID}`)).status, 200);
     assert.equal((await request('/?birthDate=yesterday')).status, 400);
@@ -49,7 +49,7 @@ describe('patient routes', () => {
 });
 
 describe('patient route failures', () => {
-  it('answers 404 for patients the tenant does not have', async () => {
+  it('answers 404 for patients the agency does not have', async () => {
     const missing = {
       find: async () => fail('not_found', 'Patient not found')
     } as unknown as PatientService;

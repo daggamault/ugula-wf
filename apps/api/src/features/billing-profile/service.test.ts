@@ -20,7 +20,7 @@ const profile = {
 };
 
 describe('billing profile service', () => {
-  it('reads nothing until saved, then upserts one profile per tenant', async () => {
+  it('reads nothing until saved, then upserts one profile per agency', async () => {
     const empty = createBillingProfileService({ db: createRecordingDb(() => []).db });
     assert.deepEqual(await empty.find('t-1'), { ok: true, value: { profile: null } });
     const { db, queries } = createRecordingDb(() => [{ organization_name: 'Acme EMS' }]);
@@ -29,7 +29,7 @@ describe('billing profile service', () => {
       ok: true,
       value: { profile: { organization_name: 'Acme EMS' } }
     });
-    assert.ok(queries[0]?.sql.includes('on conflict ("tenant_id") do update set'));
+    assert.ok(queries[0]?.sql.includes('on conflict ("agency_id") do update set'));
     assert.equal(queries[0]?.parameters[0], 't-1');
   });
 });

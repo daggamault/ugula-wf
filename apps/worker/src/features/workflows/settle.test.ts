@@ -79,7 +79,7 @@ const fakeTx = (opts: FakeOptions = {}) => {
 const run: ClaimedRun = {
   id: 'run-1',
   lease: 'lease-1',
-  tenantId: 't-1',
+  agencyId: 't-1',
   versionId: 'v-1',
   parentId: null,
   parentWait: null,
@@ -246,7 +246,7 @@ describe('settleRun', () => {
       []
     );
     assert.deepEqual(calls.tasks[0], {
-      tenantId: 't-1',
+      agencyId: 't-1',
       runId: 'run-1',
       waitId: '7',
       kind: 'task',

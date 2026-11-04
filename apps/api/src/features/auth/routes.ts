@@ -16,8 +16,8 @@ type AuthRoutesDeps = {
 
 export const createAuthRoutes = ({ service, sseUrl, secureCookie, clientIp }: AuthRoutesDeps) => {
   const app = new Hono();
-  const sessionBody = ({ userId, tenantId, email }: SessionData) => ({
-    user: { id: userId, tenantId, email },
+  const sessionBody = ({ userId, agencyId, email }: SessionData) => ({
+    user: { id: userId, agencyId, email },
     sseUrl
   });
   const clearCookie = (c: Context) => deleteCookie(c, SESSION_COOKIE, { path: '/' });

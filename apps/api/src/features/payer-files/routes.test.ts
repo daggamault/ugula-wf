@@ -23,8 +23,8 @@ const service = {
     calls.push(['download', ...args]);
     return ok({ name: 'era 1.835', bytes: new TextEncoder().encode('ISA*') });
   },
-  upload: async (tenantId: string, userId: string, file: { name: string; bytes: Uint8Array }) => {
-    calls.push(['upload', tenantId, userId, file.name, file.bytes.byteLength]);
+  upload: async (agencyId: string, userId: string, file: { name: string; bytes: Uint8Array }) => {
+    calls.push(['upload', agencyId, userId, file.name, file.bytes.byteLength]);
     return ok({ id: ID, kind: '835', items: 1, problems: 0 });
   }
 } as unknown as PayerFileService;
@@ -32,7 +32,7 @@ const service = {
 const request = withSession(createPayerFileRoutes(service, 64));
 
 describe('payer file routes', () => {
-  it('lists, finds and downloads payer files for the session tenant', async () => {
+  it('lists, finds and downloads payer files for the session agency', async () => {
     assert.equal((await request('/?sort=problems&dir=asc')).status, 200);
     assert.deepEqual(calls.at(-1), [
       'list',

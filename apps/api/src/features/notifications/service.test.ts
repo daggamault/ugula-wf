@@ -31,7 +31,7 @@ describe('toNotification', () => {
 });
 
 describe('notification service', () => {
-  it('counts unread messages and tells the tenant about every change', async () => {
+  it('counts unread messages and tells the agency about every change', async () => {
     const { db, queries } = createRecordingDb(() => [row, { ...row, id: 'n2', read: true }]);
     const { announce, events } = recordAnnouncements();
     const service = createNotificationService({ db, announce });
@@ -57,7 +57,7 @@ describe('notification service', () => {
     assert.deepEqual(
       events,
       Array.from({ length: 3 }, () => ({
-        tenantId: 't',
+        agencyId: 't',
         event: { kind: 'notification', id: null }
       }))
     );

@@ -17,7 +17,7 @@ const service = {
 const request = withSession(createReportRoutes(service));
 
 describe('report routes', () => {
-  it('runs the named report for the session tenant with its options and page', async () => {
+  it('runs the named report for the session agency with its options and page', async () => {
     assert.equal((await request('/aging?page=2&group=class&tz=America/Chicago')).status, 200);
     assert.equal((await request('/monthly?from=2026-01-01&to=2026-06-30')).status, 200);
     assert.equal((await request('/write-offs?all=true')).status, 200);
@@ -42,7 +42,7 @@ describe('report route failures', () => {
   it('maps unknown reports to 404 and groups a report lacks to 422', async () => {
     const failing = withSession(
       createReportRoutes({
-        run: async (_tenantId: string, id: string) =>
+        run: async (_agencyId: string, id: string) =>
           id === 'nope'
             ? fail('not_found', 'There is no report called “nope”.')
             : fail('invalid', 'This report can’t be grouped by “queue”.')

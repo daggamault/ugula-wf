@@ -34,19 +34,19 @@ import type { BlobRef, BlobStore } from '@ugula/storage';
 import { sql } from 'kysely';
 import { type Clearinghouse, claimFileName } from '../../shared/clearinghouse.ts';
 import { isUuid } from '../../shared/ids.ts';
-import { runTenant } from '../../shared/tenancy.ts';
+import { runAgency } from '../../shared/tenancy.ts';
 
 type Blobs = Pick<BlobStore, 'putBytes' | 'getBytes'>;
 
 const BATCH_CONTENT_TYPE = 'application/edi-x12';
 
-const tenantClaim = async (db: Db, runId: string, claimId: string) =>
+const agencyClaim = async (db: Db, runId: string, claimId: string) =>
   (isUuid(claimId)
     ? await db
         .selectFrom('claims')
-        .select(['id', 'tenant_id'])
+        .select(['id', 'agency_id'])
         .where('id', '=', claimId)
-        .where('tenant_id', '=', runTenant(db, runId))
+        .where('agency_id', '=', runAgency(db, runId))
         .executeTakeFirst()
     : undefined) ?? Promise.reject(new Error(`Claim ${claimId} does not exist`));
 
@@ -57,18 +57,18 @@ const REVIEWABLE: ClaimStatus = 'needs_review';
 const day = (d: Date | string) => new Date(d).toISOString().slice(0, 10);
 
 export const statementKey = (
-  tenantId: string,
+  agencyId: string,
   claimId: string,
   number: number,
   sourceKey: string
 ) =>
-  `statements/${tenantId}/${claimId}/${number}-${createHash('sha256').update(sourceKey).digest('hex').slice(0, 16)}.pdf`;
+  `statements/${agencyId}/${claimId}/${number}-${createHash('sha256').update(sourceKey).digest('hex').slice(0, 16)}.pdf`;
 
 const directoryPayer = (db: Db, runId: string, { payer, payerId }: NewClaim['coverages'][number]) =>
   db
     .selectFrom('payers')
     .select('id')
-    .where('tenant_id', '=', runTenant(db, runId))
+    .where('agency_id', '=', runAgency(db, runId))
     .where((eb) =>
       payerId === null
         ? eb(sql`lower(name)`, '=', payer.toLowerCase())
@@ -81,7 +81,7 @@ const sourceReport = (db: Db, runId: string, key: string) =>
     .innerJoin('imports as i', 'i.id', 'r.import_id')
     .select('r.id')
     .where(sql`r.report ->> 'key'`, '=', key)
-    .where('i.tenant_id', '=', runTenant(db, runId));
+    .where('i.agency_id', '=', runAgency(db, runId));
 
 const claimValues = (c: NewClaim) => {
   const { serviceDate, pickup, destination, originDestination } = c.details;
@@ -114,7 +114,7 @@ const insertDraft = async (db: Db, runId: string, sourceKey: string, d: DraftCla
     await db
       .insertInto('claims')
       .values({
-        tenant_id: runTenant(db, runId),
+        agency_id: runAgency(db, runId),
         import_report_id: d.reportKey === null ? null : sourceReport(db, runId, d.reportKey),
         pcr_number: d.pcrNumber,
         source_key: sourceKey
@@ -134,9 +134,9 @@ const linkRun = (db: Db, runId: string, claimId: string) =>
         .select(['id', sql<string>`${claimId}::uuid`.as('claim_id')])
         .where('id', '=', runId)
         .where(
-          'tenant_id',
+          'agency_id',
           '=',
-          db.selectFrom('claims').select('tenant_id').where('id', '=', claimId)
+          db.selectFrom('claims').select('agency_id').where('id', '=', claimId)
         )
     )
     .onConflict((oc) => oc.column('run_id').doNothing())
@@ -149,7 +149,7 @@ const reopenDraft = async (
   claimId: string,
   reportKey: string | null
 ) => {
-  const claim = await tenantClaim(tx, runId, claimId);
+  const claim = await agencyClaim(tx, runId, claimId);
   const report =
     reportKey === null
       ? null
@@ -227,7 +227,7 @@ const replaceClaimRows = async (db: Db, runId: string, claimId: string, c: NewCl
       .values(
         coverages.map((cov, i) => ({
           claim_id: claimId,
-          tenant_id: runTenant(db, runId),
+          agency_id: runAgency(db, runId),
           position: i + 1,
           payer_name: cov.payer,
           payer_id: directoryPayer(db, runId, cov),
@@ -250,21 +250,21 @@ const replaceClaimRows = async (db: Db, runId: string, claimId: string, c: NewCl
   }
 };
 
-const signalClaim = async (tx: Db, boss: RunQueueClient, tenantId: string, claimId: string) => {
+const signalClaim = async (tx: Db, boss: RunQueueClient, agencyId: string, claimId: string) => {
   const key = claimSignalKey(claimId);
   await tx
     .insertInto('signals')
-    .values({ tenant_id: tenantId, key, received: 1 })
+    .values({ agency_id: agencyId, key, received: 1 })
     .onConflict((oc) =>
       oc
-        .columns(['tenant_id', 'key'])
+        .columns(['agency_id', 'key'])
         .doUpdateSet({ received: sql`signals.received + 1`, updated_at: sql`now()` })
     )
     .execute();
   const waiting = await tx
     .selectFrom('workflow_runs')
     .select(['id', sql<string>`state -> 'suspension' ->> 'id'`.as('wait_id')])
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where('wait_key', '=', key)
     .where('status', '=', 'suspended')
     .execute();
@@ -295,7 +295,7 @@ export const createClaimStore = (
       const row = await db
         .selectFrom('claims as c')
         .innerJoin('patients as p', 'p.id', 'c.patient_id')
-        .leftJoin('billing_profiles as b', 'b.tenant_id', 'c.tenant_id')
+        .leftJoin('billing_profiles as b', 'b.agency_id', 'c.agency_id')
         .select([
           'c.id',
           'c.pcr_number',
@@ -316,7 +316,7 @@ export const createClaimStore = (
           'b.time_zone'
         ])
         .where('c.id', '=', isUuid(claimId) ? claimId : null)
-        .where('c.tenant_id', '=', runTenant(db, runId))
+        .where('c.agency_id', '=', runAgency(db, runId))
         .executeTakeFirst();
       if (!row) throw new Error(`Claim ${claimId} does not exist`);
       const [lines, payments] = await Promise.all([
@@ -385,9 +385,9 @@ export const createClaimStore = (
     },
 
     saveStatement: async (runId, claimId, sourceKey, { number, count, pdf }) => {
-      const claim = await tenantClaim(db, runId, claimId);
+      const claim = await agencyClaim(db, runId, claimId);
       const document = await blobs.putBytes(
-        statementKey(claim.tenant_id, claim.id, number, sourceKey),
+        statementKey(claim.agency_id, claim.id, number, sourceKey),
         pdf,
         'application/pdf'
       );
@@ -420,7 +420,7 @@ export const createClaimStore = (
         const existing = await tx
           .selectFrom('claims')
           .select(['id', 'source_key'])
-          .where('tenant_id', '=', runTenant(tx, runId))
+          .where('agency_id', '=', runAgency(tx, runId))
           .where((eb) =>
             eb.or([
               eb('source_key', '=', sourceKey),
@@ -434,12 +434,12 @@ export const createClaimStore = (
       }),
 
     assignPatient: async (runId, claimId, _sourceKey, patientId) => {
-      const claim = await tenantClaim(db, runId, claimId);
+      const claim = await agencyClaim(db, runId, claimId);
       const patient = db
         .selectFrom('patients')
         .select('id')
         .where('id', '=', isUuid(patientId) ? patientId : null)
-        .where('tenant_id', '=', claim.tenant_id);
+        .where('agency_id', '=', claim.agency_id);
       const { numUpdatedRows } = await db
         .updateTable('claims')
         .set({ patient_id: patient, updated_at: sql`now()` })
@@ -457,7 +457,7 @@ export const createClaimStore = (
     },
 
     saveClaim: async (runId, claimId, _sourceKey, c) => {
-      const claim = await tenantClaim(db, runId, claimId);
+      const claim = await agencyClaim(db, runId, claimId);
       await db.transaction().execute(async (tx) => {
         const { numUpdatedRows } = await tx
           .updateTable('claims')
@@ -471,29 +471,29 @@ export const createClaimStore = (
 
     claimCheck: async (runId, claimId) => {
       if (!isUuid(claimId)) return null;
-      const run = await runTenant(db, runId).executeTakeFirst();
-      return run ? findClaimCheck(db, run.tenant_id, claimId) : null;
+      const run = await runAgency(db, runId).executeTakeFirst();
+      return run ? findClaimCheck(db, run.agency_id, claimId) : null;
     },
 
     patchClaim: (runId, claimId, sourceKey, { coverage, ...patch }) =>
       db.transaction().execute(async (tx) => {
-        const claim = await tenantClaim(tx, runId, claimId);
+        const claim = await agencyClaim(tx, runId, claimId);
         const edited = await applyClaimEdit(
           tx,
-          claim.tenant_id,
+          claim.agency_id,
           claim.id,
           { ...patch, coverages: coverage ? [{ ...coverage, groupId: null }] : [] },
           { sourceKey, createdBy: null }
         );
-        if (edited) await signalClaim(tx, boss, claim.tenant_id, claim.id);
+        if (edited) await signalClaim(tx, boss, claim.agency_id, claim.id);
       }),
 
     setStatus: async (runId, claimId, _sourceKey, status, signalsSeen) => {
-      const claim = await tenantClaim(db, runId, claimId);
+      const claim = await agencyClaim(db, runId, claimId);
       const { rows } = await sql<{ received: number }>`
       with current as (
         select coalesce(max(received), 0) as received from signals
-        where tenant_id = ${claim.tenant_id} and key = ${claimSignalKey(claim.id)}
+        where agency_id = ${claim.agency_id} and key = ${claimSignalKey(claim.id)}
       ), changed as (
         update claims set status = ${status}, updated_at = now()
         where id = ${claim.id}
@@ -507,7 +507,7 @@ export const createClaimStore = (
     },
 
     noteRevision: async (runId, claimId, sourceKey, report) => {
-      const claim = await tenantClaim(db, runId, claimId);
+      const claim = await agencyClaim(db, runId, claimId);
       await db
         .insertInto('claim_events')
         .values({
@@ -536,14 +536,14 @@ export const createClaimStore = (
     },
 
     attachCycle: async (runId, claimId, _sourceKey, cycleRunId) => {
-      const claim = await tenantClaim(db, runId, claimId);
+      const claim = await agencyClaim(db, runId, claimId);
       await db.transaction().execute(async (tx) => {
         const cycle = isUuid(cycleRunId)
           ? await tx
               .selectFrom('workflow_runs')
               .select('id')
               .where('id', '=', cycleRunId)
-              .where('tenant_id', '=', claim.tenant_id)
+              .where('agency_id', '=', claim.agency_id)
               .executeTakeFirst()
           : undefined;
         if (!cycle) throw new Error(`Run ${cycleRunId} does not exist`);
@@ -590,12 +590,12 @@ export const createClaimStore = (
               eb
                 .selectFrom('signals as s')
                 .select('s.received')
-                .whereRef('s.tenant_id', '=', 'c.tenant_id')
+                .whereRef('s.agency_id', '=', 'c.agency_id')
                 .where('s.key', '=', claimSignalKey(claimId))
                 .as('received')
             ])
             .where('c.id', '=', claimId)
-            .where('c.tenant_id', '=', runTenant(db, runId))
+            .where('c.agency_id', '=', runAgency(db, runId))
             .executeTakeFirst()
         : undefined;
       if (!claim) return null;
@@ -646,7 +646,7 @@ export const createClaimStore = (
     },
 
     recordEvent: async (runId, claimId, sourceKey, e) => {
-      const claim = await tenantClaim(db, runId, claimId);
+      const claim = await agencyClaim(db, runId, claimId);
       await db
         .insertInto('claim_events')
         .values({
@@ -662,7 +662,7 @@ export const createClaimStore = (
     },
 
     closeClaim: async (runId, claimId, sourceKey, requested) => {
-      const claim = await tenantClaim(db, runId, claimId);
+      const claim = await agencyClaim(db, runId, claimId);
       await db.transaction().execute(async (tx) => {
         const locked = await tx
           .selectFrom('claims')
@@ -689,20 +689,20 @@ export const createClaimStore = (
           .execute();
         await tx
           .deleteFrom('signals')
-          .where('tenant_id', '=', claim.tenant_id)
+          .where('agency_id', '=', claim.agency_id)
           .where('key', '=', claimSignalKey(claim.id))
           .execute();
       });
     },
 
     submission: async (runId, claimId) => {
-      const run = await runTenant(db, runId).executeTakeFirst();
+      const run = await runAgency(db, runId).executeTakeFirst();
       if (!run || !isUuid(claimId)) throw new Error(`Claim ${claimId} does not exist`);
       const [profile, row, ledger, check] = await Promise.all([
-        findProfile(db, run.tenant_id),
-        findReadyClaim(db, run.tenant_id, claimId),
+        findProfile(db, run.agency_id),
+        findReadyClaim(db, run.agency_id, claimId),
         store.ledger(runId, claimId),
-        findClaimCheck(db, run.tenant_id, claimId)
+        findClaimCheck(db, run.agency_id, claimId)
       ]);
       return {
         submitter: profile ? toSubmitter(profile) : null,
@@ -712,7 +712,7 @@ export const createClaimStore = (
 
     saveSubmission: (runId, claimId, sourceKey, file) =>
       db.transaction().execute(async (tx) => {
-        const claim = await tenantClaim(tx, runId, claimId);
+        const claim = await agencyClaim(tx, runId, claimId);
         const filed = await tx
           .selectFrom('claim_events as e')
           .innerJoin('claim_batches as b', 'b.id', 'e.batch_id')
@@ -721,19 +721,19 @@ export const createClaimStore = (
           .where('e.source_key', '=', sourceKey)
           .executeTakeFirst();
         if (filed) return { controlNumber: filed.control_number };
-        const locked = await lockReadyClaim(tx, claim.tenant_id, claim.id);
+        const locked = await lockReadyClaim(tx, claim.agency_id, claim.id);
         if (!locked) return 'stale';
-        const controlNumber = await allocateControlNumber(tx, claim.tenant_id);
+        const controlNumber = await allocateControlNumber(tx, claim.agency_id);
         if (controlNumber === null) return 'exhausted';
         const id = randomUUID();
         const document = await blobs.putBytes(
-          batchKey(claim.tenant_id, id, controlNumber),
+          batchKey(claim.agency_id, id, controlNumber),
           new TextEncoder().encode(file.build(controlNumber)),
           BATCH_CONTENT_TYPE
         );
         await insertBatch(tx, {
           id,
-          tenantId: claim.tenant_id,
+          agencyId: claim.agency_id,
           controlNumber,
           totalCents: file.totalCents,
           production: file.production,
@@ -754,17 +754,17 @@ export const createClaimStore = (
       }),
 
     linkRun: async (runId, claimId) => {
-      const claim = await tenantClaim(db, runId, claimId);
+      const claim = await agencyClaim(db, runId, claimId);
       await linkRun(db, runId, claim.id);
     },
 
     sendClaimFile: async (runId, claimId, controlNumber) => {
       if (!clearinghouse) return 'manual';
-      const claim = await tenantClaim(db, runId, claimId);
+      const claim = await agencyClaim(db, runId, claimId);
       const batch = await db
         .selectFrom('claim_batches')
         .select(['id', 'document', 'sent_as'])
-        .where('tenant_id', '=', claim.tenant_id)
+        .where('agency_id', '=', claim.agency_id)
         .where('control_number', '=', controlNumber)
         .where((eb) =>
           eb.exists(

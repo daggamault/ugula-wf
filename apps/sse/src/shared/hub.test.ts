@@ -11,7 +11,7 @@ describe('createHub', () => {
       destroy: () => void seen.push(`${name}:destroyed`)
     });
 
-  it('fans messages out per tenant and forgets closed clients', () => {
+  it('fans messages out per agency and forgets closed clients', () => {
     const hub = createHub();
     const seen: string[] = [];
     const client = recorder(seen);
@@ -35,7 +35,7 @@ describe('createHub', () => {
     assert.deepEqual(seen, ['slow:destroyed', 'fast:data: 1\n\n', 'fast:data: 2\n\n']);
   });
 
-  it('keeps a reconnected tenant when a stale client is removed twice', () => {
+  it('keeps a reconnected agency when a stale client is removed twice', () => {
     const hub = createHub();
     const seen: string[] = [];
     const client = recorder(seen);

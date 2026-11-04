@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { createTenantOf } from '../../shared/tenancy.ts';
+import { createAgencyOf } from '../../shared/tenancy.ts';
 import { createReportStore, fileNameOf } from './reports.ts';
 
 const blobs = {
@@ -16,12 +16,12 @@ const blobs = {
 };
 
 describe('createReportStore', () => {
-  it("only touches blobs under the run tenant's imports", async () => {
-    const { db, queries } = createRecordingDb(() => [{ tenant_id: 't-1' }]);
+  it("only touches blobs under the run agency's imports", async () => {
+    const { db, queries } = createRecordingDb(() => [{ agency_id: 't-1' }]);
     const store = createReportStore(
       db,
       blobs,
-      createTenantOf(db, () => undefined)
+      createAgencyOf(db, () => undefined)
     );
     const ref = (key: string) => ({ bucket: 'ugula', key });
     assert.equal(await store.getText('r1', ref('imports/t-1/a/pcrs.xml')), '<x/>');
@@ -43,7 +43,7 @@ describe('createReportStore', () => {
     const store = createReportStore(
       db,
       blobs,
-      createTenantOf(db, () => undefined)
+      createAgencyOf(db, () => undefined)
     );
     assert.deepEqual(await store.findPlaces(['1215209', 'x', '0']), { '1215209': 'Erie' });
     assert.ok(queries[0]?.sql.includes('from "gnis_places"'));
@@ -54,7 +54,7 @@ describe('createReportStore', () => {
 
   it('records the import once per run and each report once per position', async () => {
     const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select') ? [{ tenant_id: 't-1' }] : [{ id: 'imp-1' }]
+      q.sql.startsWith('select') ? [{ agency_id: 't-1' }] : [{ id: 'imp-1' }]
     );
     const report = (i: number) => ({
       bucket: 'ugula',
@@ -65,7 +65,7 @@ describe('createReportStore', () => {
     await createReportStore(
       db,
       blobs,
-      createTenantOf(db, () => undefined)
+      createAgencyOf(db, () => undefined)
     ).recordReports('r1', { bucket: 'ugula', key: 'imports/t-1/a/pcrs.xml' }, [
       { position: 0, pcrNumber: 'A', report: report(0) },
       { position: 1, pcrNumber: null, report: report(1) }
@@ -82,7 +82,7 @@ describe('createReportStore', () => {
         createReportStore(
           db,
           blobs,
-          createTenantOf(db, () => undefined)
+          createAgencyOf(db, () => undefined)
         ).recordReports('r1', { bucket: 'ugula', key: 'x/y.xml' }, []),
       /not one of/
     );

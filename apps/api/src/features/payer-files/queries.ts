@@ -20,18 +20,18 @@ const FILE_ORDER = {
   problems: sql.ref('f.problem_count')
 };
 
-const fileRows = (db: Db, tenantId: string) =>
+const fileRows = (db: Db, agencyId: string) =>
   db
     .selectFrom('payer_files as f')
     .leftJoin('users as u', 'u.id', 'f.uploaded_by')
     .select([...FILE_COLUMNS, 'u.email as uploaded_by'])
-    .where('f.tenant_id', '=', tenantId);
+    .where('f.agency_id', '=', agencyId);
 
-export const listPayerFiles = (db: Db, tenantId: string, page: PageRequest<PayerFileSort>) =>
-  paged(fileRows(db, tenantId), page, FILE_ORDER, sql.ref('f.id'));
+export const listPayerFiles = (db: Db, agencyId: string, page: PageRequest<PayerFileSort>) =>
+  paged(fileRows(db, agencyId), page, FILE_ORDER, sql.ref('f.id'));
 
-export const findPayerFile = (db: Db, tenantId: string, id: string) =>
-  fileRows(db, tenantId).select('f.document').where('f.id', '=', id).executeTakeFirst();
+export const findPayerFile = (db: Db, agencyId: string, id: string) =>
+  fileRows(db, agencyId).select('f.document').where('f.id', '=', id).executeTakeFirst();
 
 export const listFileItems = (db: Db, fileId: string) =>
   db

@@ -28,7 +28,7 @@ const patient = {
 };
 
 describe('createPatientStore', () => {
-  it('finds candidates in the run tenant by birth date or a similar last name key', async () => {
+  it('finds candidates in the run agency by birth date or a similar last name key', async () => {
     const { db, queries } = createRecordingDb(() => [row]);
     const store = createPatientStore(db);
     assert.deepEqual(
@@ -41,7 +41,7 @@ describe('createPatientStore', () => {
     );
     assert.match(
       queries[0]?.sql ?? '',
-      /"tenant_id" = \(select "tenant_id" from "workflow_runs" where "id" = \$1\) and \("birth_date" = \$2 or last_name_key % \$3\)/
+      /"agency_id" = \(select "agency_id" from "workflow_runs" where "id" = \$1\) and \("birth_date" = \$2 or last_name_key % \$3\)/
     );
     assert.deepEqual(queries[0]?.parameters, [
       'r1',
@@ -64,7 +64,7 @@ describe('createPatientStore', () => {
     assert.equal(queries.length, 1);
   });
 
-  it('loads tenant patients by id and ignores malformed ids', async () => {
+  it('loads agency patients by id and ignores malformed ids', async () => {
     const { db, queries } = createRecordingDb(() => [row]);
     const store = createPatientStore(db);
     assert.deepEqual(await store.findPatient('r1', row.id), patient);
@@ -98,12 +98,12 @@ describe('createPatientStore', () => {
     const [lock, insert] = sqlOf(queries);
     assert.equal(
       lock,
-      'select pg_advisory_xact_lock(hashtextextended(tenant_id::text || $1, 0)) from workflow_runs where id = $2'
+      'select pg_advisory_xact_lock(hashtextextended(agency_id::text || $1, 0)) from workflow_runs where id = $2'
     );
     assert.deepEqual(queries.find((q) => q.sql === lock)?.parameters, [':obrien:1980-01-02', 'r1']);
     assert.ok(
       insert?.includes(
-        'on conflict ("tenant_id", "source_key") do update set "updated_at" = patients.updated_at returning'
+        'on conflict ("agency_id", "source_key") do update set "updated_at" = patients.updated_at returning'
       )
     );
   });
@@ -132,7 +132,7 @@ describe('createPatientStore', () => {
     }
   });
 
-  it("updates a patient's address in the run tenant and returns the patient", async () => {
+  it("updates a patient's address in the run agency and returns the patient", async () => {
     const moved = {
       addressLine: '9 Oak Ave',
       city: 'Springfield',
@@ -152,7 +152,7 @@ describe('createPatientStore', () => {
     assert.ok(queries[0]?.sql.startsWith('update "patients" set "address_line" = $1'));
     assert.ok(
       queries[0]?.sql.includes(
-        '"tenant_id" = (select "tenant_id" from "workflow_runs" where "id" = $6)'
+        '"agency_id" = (select "agency_id" from "workflow_runs" where "id" = $6)'
       )
     );
     await assert.rejects(store.updateAddress('r1', 'k', 'nope', moved), /does not exist/);

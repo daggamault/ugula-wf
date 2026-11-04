@@ -46,12 +46,12 @@ describe('createFeeStore', () => {
     const [insert] = queries;
     assert.ok(
       insert?.sql.startsWith(
-        'insert into "fee_schedules" ("tenant_id", "payer_id", "code", "amount_cents") select'
+        'insert into "fee_schedules" ("agency_id", "payer_id", "code", "amount_cents") select'
       )
     );
     assert.ok(
       insert?.sql.endsWith(
-        'on conflict on constraint "fee_schedules_tenant_payer_code_unique" do update set "amount_cents" = "excluded"."amount_cents", "updated_at" = now()'
+        'on conflict on constraint "fee_schedules_agency_payer_code_unique" do update set "amount_cents" = "excluded"."amount_cents", "updated_at" = now()'
       )
     );
     assert.deepEqual(insert?.parameters, ['A0427', 52_000, null, 'r1']);

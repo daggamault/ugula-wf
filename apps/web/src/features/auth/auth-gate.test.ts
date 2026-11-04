@@ -6,7 +6,7 @@ import { AuthGate, AuthGateView } from './auth-gate.tsx';
 import type { AuthClient, AuthSession } from './client.ts';
 
 const mockSession: AuthSession = {
-  user: { id: 'u-1', tenantId: 't-1', email: 'dev@example.com' },
+  user: { id: 'u-1', agencyId: 't-1', email: 'dev@example.com' },
   sseUrl: 'http://localhost:3002'
 };
 

@@ -9,7 +9,7 @@ describe('uploaded file names', () => {
     assert.equal(safeName('...'), 'upload');
   });
 
-  it('stores uploads under the tenant import area in their own folder', () => {
+  it('stores uploads under the agency import area in their own folder', () => {
     assert.match(uploadKey('t1', 'a b.xml'), /^imports\/t1\/[0-9a-f-]{36}\/a_b\.xml$/);
     assert.match(
       uploadKey('t1', 'a.xml', 'uploads/'),

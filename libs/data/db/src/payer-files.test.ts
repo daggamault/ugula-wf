@@ -50,7 +50,7 @@ const apply = async (text: string) => {
   assert.ok(read.ok);
   const { db, queries } = fileDb();
   const out = await applyPayerFile(db, boss, {
-    tenantId: 't1',
+    agencyId: 't1',
     userId: 'u1',
     fileName: 'in.x12',
     document: { key: 'k' },

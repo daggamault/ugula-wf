@@ -27,23 +27,23 @@ type RunServiceDeps = {
 const notFound = fail('not_found', 'Run not found');
 
 export const createRunService = ({ db, boss, blobs, maxBytes }: RunServiceDeps) => ({
-  uploadFile: async (tenantId: string, file: UploadedFile) => {
+  uploadFile: async (agencyId: string, file: UploadedFile) => {
     if (!file.bytes.byteLength) return fail('invalid', 'The file is empty');
     if (file.bytes.byteLength > maxBytes) {
       return fail('invalid', `The file is larger than ${maxBytes} bytes`);
     }
     const ref = await blobs.putBytes(
-      uploadKey(tenantId, file.name, 'uploads/'),
+      uploadKey(agencyId, file.name, 'uploads/'),
       file.bytes,
       file.type || 'application/octet-stream'
     );
     return ok({ file: { bucket: ref.bucket, key: ref.key }, name: file.name });
   },
 
-  list: async (tenantId: string, filters: RunFilters) => ok(await listRuns(db, tenantId, filters)),
+  list: async (agencyId: string, filters: RunFilters) => ok(await listRuns(db, agencyId, filters)),
 
-  find: async (tenantId: string, id: string) => {
-    const run = await findRun(db, tenantId, id);
+  find: async (agencyId: string, id: string) => {
+    const run = await findRun(db, agencyId, id);
     if (!run) return notFound;
     const [children, childCount, tasks, ancestors] = await Promise.all([
       listChildren(db, id),
@@ -54,27 +54,27 @@ export const createRunService = ({ db, boss, blobs, maxBytes }: RunServiceDeps) 
     return ok({ run, children, childCount, tasks, ancestors });
   },
 
-  graphs: async (tenantId: string, id: string) => {
-    const run = await findRunStatus(db, tenantId, id);
+  graphs: async (agencyId: string, id: string) => {
+    const run = await findRunStatus(db, agencyId, id);
     return run ? ok({ graphs: await findRunGraphs(db, id) }) : notFound;
   },
 
-  steps: async (tenantId: string, id: string, filters: StepFilters) =>
-    (await findRunStatus(db, tenantId, id))
+  steps: async (agencyId: string, id: string, filters: StepFilters) =>
+    (await findRunStatus(db, agencyId, id))
       ? ok({ steps: await listSteps(db, id, filters) })
       : notFound,
 
-  start: (tenantId: string, graphId: string, version: number | undefined, inputs: unknown) =>
+  start: (agencyId: string, graphId: string, version: number | undefined, inputs: unknown) =>
     db.transaction().execute(async (tx) => {
-      const found = await findPublishedVersion(tx, tenantId, graphId, version);
+      const found = await findPublishedVersion(tx, agencyId, graphId, version);
       if (!found) return fail('not_found', 'No published version to run');
-      const id = await startRun(tx, boss, { tenantId, versionId: found.id, inputs });
+      const id = await startRun(tx, boss, { agencyId, versionId: found.id, inputs });
       return ok({ id, version: found.version });
     }),
 
-  cancel: (tenantId: string, id: string) =>
+  cancel: (agencyId: string, id: string) =>
     db.transaction().execute(async (tx) => {
-      const run = await findRunStatus(tx, tenantId, id);
+      const run = await findRunStatus(tx, agencyId, id);
       if (!run) return notFound;
       if (TERMINAL_RUN_STATUSES.includes(run.status)) {
         return fail('conflict', 'Run already finished');

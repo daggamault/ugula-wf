@@ -148,7 +148,7 @@ describe('payer file service', () => {
     assert.ok(recorded.includes('posted'));
     assert.ok(recorded.includes('unmatched'));
     assert.ok(recorded.includes('review'));
-    assert.deepEqual(events, [{ tenantId: 't1', event: { kind: 'claim', id: 'c1' } }]);
+    assert.deepEqual(events, [{ agencyId: 't1', event: { kind: 'claim', id: 'c1' } }]);
   });
 
   it('refuses files that are not inbound X12 or were already imported', async () => {
@@ -179,10 +179,10 @@ describe('payer file service', () => {
     assert.ok(items(queries).includes('ineligible'));
   });
 
-  it('lists, finds and downloads files of the tenant only', async () => {
+  it('lists, finds and downloads files of the agency only', async () => {
     const { service, queries } = setup();
     await service.list('t1', { page: 1, pageSize: 25, sort: 'received', dir: 'desc' });
-    assert.ok(queries[0]?.sql.includes('"f"."tenant_id" = $1'));
+    assert.ok(queries[0]?.sql.includes('"f"."agency_id" = $1'));
     const missing = await service.find('t1', 'f9');
     assert.equal(missing.ok ? null : missing.failure.code, 'not_found');
     const gone = await service.download('t1', 'f9');

@@ -1,9 +1,9 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-const buildTenantsTable = (db: Kysely<Database>) =>
+const buildAgenciesTable = (db: Kysely<Database>) =>
   db.schema
-    .createTable('tenants')
+    .createTable('agencies')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
     .addColumn('name', 'text', (col) => col.notNull())
     .addColumn('slug', 'text', (col) => col.notNull().unique())
@@ -13,6 +13,6 @@ const buildTenantsTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`));
 
-export const createTenantsTable = async (db: Kysely<Database>) => {
-  await buildTenantsTable(db).execute();
+export const createAgenciesTable = async (db: Kysely<Database>) => {
+  await buildAgenciesTable(db).execute();
 };

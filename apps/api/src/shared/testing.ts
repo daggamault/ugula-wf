@@ -8,7 +8,7 @@ import type { ThrottleStore } from './throttle.ts';
 export const testSessions: SessionStore = {
   create: async () => 'test',
   get: async (token) =>
-    token === 'test' ? { userId: 'u-1', tenantId: 't-1', email: 'dev@example.com' } : null,
+    token === 'test' ? { userId: 'u-1', agencyId: 't-1', email: 'dev@example.com' } : null,
   destroy: async () => undefined,
   destroyAll: async () => undefined
 };
@@ -29,8 +29,8 @@ export const withSession = (routes: Hono<AuthEnv>) => {
 };
 
 export const recordAnnouncements = () => {
-  const events: { tenantId: string; event: LiveEvent }[] = [];
-  const announce: Announce = async (tenantId, event) => void events.push({ tenantId, event });
+  const events: { agencyId: string; event: LiveEvent }[] = [];
+  const announce: Announce = async (agencyId, event) => void events.push({ agencyId, event });
   return { announce, events };
 };
 

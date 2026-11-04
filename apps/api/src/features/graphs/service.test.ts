@@ -35,17 +35,17 @@ const rowsFor =
   ({ owner, draft, definition, system, copy, overrides }: Scenario) =>
   (q: CompiledQuery): unknown[] => {
     if (q.sql.startsWith('select "id", "is_active"')) return copy ? [copy] : [];
-    if (q.sql.includes('"tenant_id" is null') && q.sql.startsWith('select "id" from "graphs"')) {
+    if (q.sql.includes('"agency_id" is null') && q.sql.startsWith('select "id" from "graphs"')) {
       return system ? [{ id: 'g-sys' }] : [];
     }
     if (q.sql.includes('"published_at" is not null') && q.sql.includes('limit')) {
       return system ? [{ definition: system }] : [];
     }
-    if (q.sql.includes('from "graphs"') && q.sql.includes('"tenant_id" = $')) {
+    if (q.sql.includes('from "graphs"') && q.sql.includes('"agency_id" = $')) {
       return [
         {
           id: 'g1',
-          tenant_id: owner,
+          agency_id: owner,
           key: 'acme.flow',
           name: 'Flow',
           kind: 'workflow',
@@ -161,7 +161,7 @@ describe('graph service', () => {
     assert.deepEqual(publish?.parameters[0], ['acme.thing@2']);
   });
 
-  it('copies a system graph into a tenant override that must keep its contract', async () => {
+  it('copies a system graph into a agency override that must keep its contract', async () => {
     const system = createRecordingDb(rowsFor({ owner: null, system: composite }));
     assert.deepEqual(
       await createGraphService({ db: system.db, nodes }).override('t-1', 'u-1', 'g1'),
@@ -219,7 +219,7 @@ describe('graph service', () => {
     assert.equal(!blocked.ok && blocked.failure.code, 'conflict');
   });
 
-  it('turns an override off, and deletes other tenant graphs unless runs still use them', async () => {
+  it('turns an override off, and deletes other agency graphs unless runs still use them', async () => {
     const override = createRecordingDb(rowsFor({ owner: 't-1', overrides: 'g-sys' }));
     assert.deepEqual(await createGraphService({ db: override.db, nodes }).remove('t-1', 'g1'), {
       ok: true,
@@ -269,7 +269,7 @@ describe('graph service', () => {
     });
   });
 
-  it('reads graphs and versions scoped to the tenant', async () => {
+  it('reads graphs and versions scoped to the agency', async () => {
     const { db } = createRecordingDb(rowsFor({ owner: 't-1' }));
     const service = createGraphService({ db, nodes });
     assert.equal((await service.find('t-1', 'g1')).ok, true);
@@ -291,7 +291,7 @@ describe('graph service', () => {
 });
 
 describe('graph service lookups', () => {
-  it('report graphs and versions hidden from the tenant as not found', async () => {
+  it('report graphs and versions hidden from the agency as not found', async () => {
     const { db, queries } = createRecordingDb();
     const service = createGraphService({ db, nodes });
     assert.deepEqual(await service.find('t-2', 'g1'), {

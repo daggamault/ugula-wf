@@ -15,7 +15,7 @@ export type BlobRef = {
 
 export type BlobLocation = Pick<BlobRef, 'bucket' | 'key'>;
 
-export const importsPrefix = (tenantId: string) => `imports/${tenantId}/`;
+export const importsPrefix = (agencyId: string) => `imports/${agencyId}/`;
 
 export type ObjectStorage = {
   bucket: string;

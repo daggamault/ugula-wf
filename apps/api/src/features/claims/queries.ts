@@ -40,7 +40,7 @@ const nextTask = (db: Db) =>
     .limit(sql.lit(1))
     .as('t');
 
-const claimRows = (db: Db, tenantId: string) =>
+const claimRows = (db: Db, agencyId: string) =>
   db
     .selectFrom('claims as c')
     .leftJoin('patients as p', 'p.id', 'c.patient_id')
@@ -72,7 +72,7 @@ const claimRows = (db: Db, tenantId: string) =>
         .whereRef('cc.claim_id', '=', 'c.id')
         .orderBy('cc.position')})`.as('payers')
     ])
-    .where('c.tenant_id', '=', tenantId);
+    .where('c.agency_id', '=', agencyId);
 
 const claimOrder = (db: Db) => ({
   created: sql.ref('c.created_at'),
@@ -97,12 +97,12 @@ export const numberOf = (text: string) => {
   return n !== null && n <= MAX_NUMBER ? n : null;
 };
 
-const claimIds = (db: Db, tenantId: string, f: ClaimFilters) => {
+const claimIds = (db: Db, agencyId: string, f: ClaimFilters) => {
   let q = db
     .selectFrom('claims as c')
     .leftJoin('patients as p', 'p.id', 'c.patient_id')
     .select('c.id')
-    .where('c.tenant_id', '=', tenantId);
+    .where('c.agency_id', '=', agencyId);
   if (f.status === 'open') q = q.where('c.status', 'not in', CLOSED_CLAIM_STATUSES);
   if (f.patientId) q = q.where('c.patient_id', '=', f.patientId);
   if (f.firstName) {
@@ -124,16 +124,16 @@ const claimIds = (db: Db, tenantId: string, f: ClaimFilters) => {
   return q;
 };
 
-export const listClaims = async (db: Db, tenantId: string, f: ClaimFilters) => {
-  const page = await paged(claimIds(db, tenantId, f), f, claimOrder(db), sql.ref('c.id'));
+export const listClaims = async (db: Db, agencyId: string, f: ClaimFilters) => {
+  const page = await paged(claimIds(db, agencyId, f), f, claimOrder(db), sql.ref('c.id'));
   const ids = page.items.map((r) => r.id);
-  const rows = ids.length ? await claimRows(db, tenantId).where('c.id', 'in', ids).execute() : [];
+  const rows = ids.length ? await claimRows(db, agencyId).where('c.id', 'in', ids).execute() : [];
   const byId = new Map(rows.map((r) => [r.id, r]));
   return { ...page, items: ids.flatMap((id) => byId.get(id) ?? []) };
 };
 
-export const findClaim = (db: Db, tenantId: string, id: string) =>
-  claimRows(db, tenantId)
+export const findClaim = (db: Db, agencyId: string, id: string) =>
+  claimRows(db, agencyId)
     .leftJoin('workflow_runs as r', 'r.id', 'c.cycle_run_id')
     .leftJoin('import_reports as ir', 'ir.id', 'c.import_report_id')
     .leftJoin('imports as i', 'i.id', 'ir.import_id')
@@ -225,7 +225,7 @@ export type PayerOrder = {
 
 export const reorderCoverages = async (
   db: Db,
-  tenantId: string,
+  agencyId: string,
   claimId: string,
   order: PayerOrder
 ) => {
@@ -249,7 +249,7 @@ export const reorderCoverages = async (
       .values(
         order.add.map((c) => ({
           claim_id: claimId,
-          tenant_id: tenantId,
+          agency_id: agencyId,
           position: c.position,
           payer_name: c.payer,
           relationship: c.relationship,
@@ -258,7 +258,7 @@ export const reorderCoverages = async (
           payer_id: db
             .selectFrom('payers')
             .select('id')
-            .where('tenant_id', '=', tenantId)
+            .where('agency_id', '=', agencyId)
             .where((eb) =>
               eb.or([
                 eb(sql`lower(name)`, '=', c.payer.toLowerCase()),
@@ -268,7 +268,7 @@ export const reorderCoverages = async (
                   eb
                     .selectFrom('payer_aliases')
                     .select('payer_id')
-                    .where('tenant_id', '=', tenantId)
+                    .where('agency_id', '=', agencyId)
                     .where('alias_key', '=', payerKey(c.payer))
                 )
               ])
@@ -389,17 +389,17 @@ export const listClaimPayerFiles = (db: Db, claimId: string) =>
     .orderBy('f.id')
     .execute();
 
-export const claimExists = async (db: Db, tenantId: string, id: string) =>
+export const claimExists = async (db: Db, agencyId: string, id: string) =>
   (await db
     .selectFrom('claims')
     .select('id')
     .where('id', '=', id)
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .executeTakeFirst()) !== undefined;
 
 export const findEventDocument = async (
   db: Db,
-  tenantId: string,
+  agencyId: string,
   claimId: string,
   eventId: string
 ) =>
@@ -409,6 +409,6 @@ export const findEventDocument = async (
     .select(['e.document', 'e.kind'])
     .where('e.id', '=', eventId)
     .where('c.id', '=', claimId)
-    .where('c.tenant_id', '=', tenantId)
+    .where('c.agency_id', '=', agencyId)
     .where('e.document', 'is not', null)
     .executeTakeFirst()) ?? null;

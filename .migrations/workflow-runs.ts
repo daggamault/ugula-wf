@@ -5,8 +5,8 @@ const buildWorkflowRunsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('workflow_runs')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('graph_version_id', 'uuid', (col) =>
       col.notNull().references('graph_versions.id').onDelete('no action').onUpdate('cascade')
@@ -27,7 +27,7 @@ const buildWorkflowRunsTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('completed_at', 'timestamptz')
-    .addUniqueConstraint('workflow_runs_tenant_id_id_unique', ['tenant_id', 'id'])
+    .addUniqueConstraint('workflow_runs_agency_id_id_unique', ['agency_id', 'id'])
     .addCheckConstraint(
       'workflow_runs_status_check',
       sql`status in (${sql.join(RUN_STATUSES.map((v) => sql.lit(v)))})`
@@ -39,9 +39,9 @@ const buildWorkflowRunsTable = (db: Kysely<Database>) =>
 
 const buildWorkflowRunsIndexes = (db: Kysely<Database>) => [
   db.schema
-    .createIndex('idx_workflow_runs_tenant_status')
+    .createIndex('idx_workflow_runs_agency_status')
     .on('workflow_runs')
-    .columns(['tenant_id', 'status', 'created_at desc']),
+    .columns(['agency_id', 'status', 'created_at desc']),
   db.schema
     .createIndex('idx_workflow_runs_graph_version_id')
     .on('workflow_runs')
@@ -53,7 +53,7 @@ const buildWorkflowRunsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_workflow_runs_wait_key')
     .on('workflow_runs')
-    .columns(['tenant_id', 'wait_key'])
+    .columns(['agency_id', 'wait_key'])
     .where('wait_key', 'is not', null),
   db.schema
     .createIndex('idx_workflow_runs_lease')
@@ -92,13 +92,13 @@ const buildWorkflowRunStepsNodeIndex = (db: Kysely<Database>) =>
 const buildSignalsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('signals')
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('key', 'text', (col) => col.notNull())
     .addColumn('received', 'integer', (col) => col.notNull().defaultTo(0))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addPrimaryKeyConstraint('signals_pkey', ['tenant_id', 'key'])
+    .addPrimaryKeyConstraint('signals_pkey', ['agency_id', 'key'])
     .addCheckConstraint('signals_received_check', sql`received >= 0`);
 
 const buildWorkflowRunGraphsTable = (db: Kysely<Database>) =>

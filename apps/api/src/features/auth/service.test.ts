@@ -16,7 +16,7 @@ describe('auth service', () => {
   it('signs in active users, resolves sessions and signs out', async () => {
     const passwordHash = await hashPassword('P@ssw0rd123');
     const { db } = createRecordingDb(() => [
-      { id: 'u-1', tenant_id: 't-1', email: 'dev@example.com', password_hash: passwordHash }
+      { id: 'u-1', agency_id: 't-1', email: 'dev@example.com', password_hash: passwordHash }
     ]);
     const service = createAuthService({ db, sessions: memorySessions(), throttle: throttle() });
     assert.deepEqual(await service.signIn({ email: 'dev@example.com', password: 'wrong' }, IP), {
@@ -27,7 +27,7 @@ describe('auth service', () => {
     assert.ok(signed.ok);
     assert.deepEqual(signed.value.session, {
       userId: 'u-1',
-      tenantId: 't-1',
+      agencyId: 't-1',
       email: 'dev@example.com'
     });
     assert.deepEqual(await service.session(signed.value.token), {
@@ -43,7 +43,7 @@ describe('auth service', () => {
   it('locks out repeated failures from one address without checking the password', async () => {
     const passwordHash = await hashPassword('P@ssw0rd123');
     const { db, queries } = createRecordingDb(() => [
-      { id: 'u-1', tenant_id: 't-1', email: 'dev@example.com', password_hash: passwordHash }
+      { id: 'u-1', agency_id: 't-1', email: 'dev@example.com', password_hash: passwordHash }
     ]);
     const service = createAuthService({ db, sessions: memorySessions(), throttle: throttle() });
     for (let i = 0; i < 5; i++) {
@@ -68,12 +68,12 @@ describe('auth service', () => {
     await db.destroy();
   });
 
-  it('ends sessions whose user or tenant was removed or deactivated', async () => {
+  it('ends sessions whose user or agency was removed or deactivated', async () => {
     const passwordHash = await hashPassword('P@ssw0rd123');
     let member = true;
     const { db, queries } = createRecordingDb((q) =>
       q.sql.includes('"users"."password_hash"')
-        ? [{ id: 'u-1', tenant_id: 't-1', email: 'dev@example.com', password_hash: passwordHash }]
+        ? [{ id: 'u-1', agency_id: 't-1', email: 'dev@example.com', password_hash: passwordHash }]
         : member
           ? [{ id: 'u-1' }]
           : []
@@ -86,7 +86,7 @@ describe('auth service', () => {
     const check = queries.at(-1);
     assert.ok(
       check?.sql.includes('"users"."is_active" = $') &&
-        check.sql.includes('"tenants"."is_active" = $')
+        check.sql.includes('"agencies"."is_active" = $')
     );
     assert.deepEqual(check?.parameters.slice(0, 2), ['u-1', 't-1']);
     member = false;

@@ -41,12 +41,12 @@ export type ClaimResponse = {
   note: string;
 };
 
-export const lockClaim = (db: Db, tenantId: string, id: string) =>
+export const lockClaim = (db: Db, agencyId: string, id: string) =>
   db
     .selectFrom('claims')
     .select(['id', 'status', 'patient_id'])
     .where('id', '=', id)
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .forUpdate()
     .executeTakeFirst();
 
@@ -73,7 +73,7 @@ const COLLECTIONS_QUEUE = 'billing-collections';
 
 const resolveMootTasks = (
   db: Db,
-  tenantId: string,
+  agencyId: string,
   claimId: string,
   moot: { coverageId: string | null; settled: boolean }
 ) =>
@@ -85,7 +85,7 @@ const resolveMootTasks = (
       resolution: sql`jsonb_build_object('outcome', case when queue = ${FOLLOW_UP_QUEUE} then 'keepWaiting' else 'writeOff' end, 'values', '{}'::jsonb, 'resolvedBy', 'claim response')`,
       updated_at: sql`now()`
     })
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where('status', '=', 'open')
     .where(
       'run_id',
@@ -171,18 +171,18 @@ export const unchangeable = (status: string) =>
 
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-export const nudgeClaim = (tx: Db, boss: RunQueueClient, tenantId: string, claimId: string) =>
-  signalRuns(tx, boss, { tenantId, name: CLAIM_SIGNAL, key: claimId, payload: null });
+export const nudgeClaim = (tx: Db, boss: RunQueueClient, agencyId: string, claimId: string) =>
+  signalRuns(tx, boss, { agencyId, name: CLAIM_SIGNAL, key: claimId, payload: null });
 
 export const postClaimResponse = async (
   tx: Db,
   boss: RunQueueClient,
-  tenantId: string,
+  agencyId: string,
   claimId: string,
   userId: string | null,
   response: ClaimResponse
 ): Promise<Result<{ balanceCents: number; duplicate: boolean }>> => {
-  const claim = await lockClaim(tx, tenantId, claimId);
+  const claim = await lockClaim(tx, agencyId, claimId);
   if (!claim) return notFound;
   if (await hasResponse(tx, claimId, response.requestId)) {
     return ok({ balanceCents: await claimBalance(tx, claimId), duplicate: true });
@@ -205,7 +205,7 @@ export const postClaimResponse = async (
       );
     }
     await insertResponse(tx, claimId, userId, response);
-    await nudgeClaim(tx, boss, tenantId, claimId);
+    await nudgeClaim(tx, boss, agencyId, claimId);
     return ok({ balanceCents: balance + response.paidCents, duplicate: false });
   }
   const amount = response.paidCents + response.adjustedCents;
@@ -217,7 +217,7 @@ export const postClaimResponse = async (
   }
   await insertResponse(tx, claimId, userId, response);
   const remaining = balance - amount;
-  const moot = await resolveMootTasks(tx, tenantId, claimId, {
+  const moot = await resolveMootTasks(tx, agencyId, claimId, {
     coverageId: response.coverageId,
     settled: remaining <= 0
   });
@@ -226,6 +226,6 @@ export const postClaimResponse = async (
     sqlExecutor(tx),
     moot.map((t) => resume(t.run_id, t.wait_id, { outcome: t.outcome, values: {}, userId }))
   );
-  await nudgeClaim(tx, boss, tenantId, claimId);
+  await nudgeClaim(tx, boss, agencyId, claimId);
   return ok({ balanceCents: remaining, duplicate: false });
 };

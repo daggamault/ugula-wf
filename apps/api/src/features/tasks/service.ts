@@ -76,20 +76,20 @@ export const jobFor = (
 export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
   const changed = (id: string): LiveEvent[] => [{ kind: 'task', id, runId: null }];
 
-  const reassign = async (tenantId: string, id: string, userId: string, assignee: string | null) =>
-    (await assignTask(db, { tenantId, id, userId, assignee }))
+  const reassign = async (agencyId: string, id: string, userId: string, assignee: string | null) =>
+    (await assignTask(db, { agencyId, id, userId, assignee }))
       ? ok({ status: assignee ? 'claimed' : 'released' })
-      : (blocked(await findTask(db, tenantId, id), userId) ?? closed);
+      : (blocked(await findTask(db, agencyId, id), userId) ?? closed);
 
-  const assign = (tenantId: string, id: string, userId: string, assignee: string | null) =>
-    announced(announce, tenantId, reassign(tenantId, id, userId, assignee), () => changed(id));
+  const assign = (agencyId: string, id: string, userId: string, assignee: string | null) =>
+    announced(announce, agencyId, reassign(agencyId, id, userId, assignee), () => changed(id));
 
   return {
-    queues: async (tenantId: string, userId: string) =>
-      ok({ queues: await listQueues(db, tenantId, userId) }),
+    queues: async (agencyId: string, userId: string) =>
+      ok({ queues: await listQueues(db, agencyId, userId) }),
 
-    find: async (tenantId: string, id: string) => {
-      const task = await findTask(db, tenantId, id);
+    find: async (agencyId: string, id: string) => {
+      const task = await findTask(db, agencyId, id);
       if (!task) return notFound;
       const source = await findTaskSource(db, task.run_id);
       const claim =
@@ -113,24 +113,24 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
       });
     },
 
-    next: (tenantId: string, queue: string | null, userId: string) =>
+    next: (agencyId: string, queue: string | null, userId: string) =>
       announced(
         announce,
-        tenantId,
-        claimNext(db, tenantId, queue, userId).then((task) => ok({ task: task ?? null })),
+        agencyId,
+        claimNext(db, agencyId, queue, userId).then((task) => ok({ task: task ?? null })),
         ({ task }) => (task ? changed(task.id) : [])
       ),
 
-    claim: (tenantId: string, id: string, userId: string) => assign(tenantId, id, userId, userId),
+    claim: (agencyId: string, id: string, userId: string) => assign(agencyId, id, userId, userId),
 
-    release: (tenantId: string, id: string, userId: string) => assign(tenantId, id, userId, null),
+    release: (agencyId: string, id: string, userId: string) => assign(agencyId, id, userId, null),
 
-    complete: (tenantId: string, userId: string, id: string, completion: Completion) =>
+    complete: (agencyId: string, userId: string, id: string, completion: Completion) =>
       announced(
         announce,
-        tenantId,
+        agencyId,
         db.transaction().execute(async (tx) => {
-          const task = await findTask(tx, tenantId, id);
+          const task = await findTask(tx, agencyId, id);
           if (!task) return notFound;
           const refused = blocked(task, userId);
           if (refused) return refused;
@@ -144,8 +144,8 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
           if (Object.keys(fields).length) {
             return fail('invalid', 'Some fields are invalid', { fields });
           }
-          if (!(await completeTask(tx, { tenantId, id, userId, resolution: completion }))) {
-            return blocked(await findTask(tx, tenantId, id), userId) ?? closed;
+          if (!(await completeTask(tx, { agencyId, id, userId, resolution: completion }))) {
+            return blocked(await findTask(tx, agencyId, id), userId) ?? closed;
           }
           await enqueueRuns(boss, sqlExecutor(tx), [jobFor(task, userId, completion)]);
           return ok({ status: 'completed' });

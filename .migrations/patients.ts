@@ -7,8 +7,8 @@ const buildPatientsTable = (db: Kysely<Database>) =>
     .createTable('patients')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
     .addColumn('number', 'integer', (col) => col.notNull().unique().generatedAlwaysAsIdentity())
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('first_name', 'text', (col) => col.notNull())
     .addColumn('last_name', 'text', (col) => col.notNull())
@@ -22,8 +22,8 @@ const buildPatientsTable = (db: Kysely<Database>) =>
     .addColumn('source_key', 'text', (col) => col.notNull())
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addUniqueConstraint('patients_tenant_id_source_key_unique', ['tenant_id', 'source_key'])
-    .addUniqueConstraint('patients_tenant_id_id_unique', ['tenant_id', 'id'])
+    .addUniqueConstraint('patients_agency_id_source_key_unique', ['agency_id', 'source_key'])
+    .addUniqueConstraint('patients_agency_id_id_unique', ['agency_id', 'id'])
     .addCheckConstraint('patients_last_name_key_check', sql`last_name_key <> ''`)
     .addCheckConstraint(
       'patients_gender_check',
@@ -39,11 +39,11 @@ const buildPatientsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_patients_birth_date')
     .on('patients')
-    .columns(['tenant_id', 'birth_date']),
+    .columns(['agency_id', 'birth_date']),
   db.schema
     .createIndex('idx_patients_last_name_key')
     .on('patients')
-    .columns(['tenant_id', 'last_name_key']),
+    .columns(['agency_id', 'last_name_key']),
   db.schema
     .createIndex('idx_patients_last_name_trgm')
     .on('patients')
@@ -57,7 +57,7 @@ const buildPatientsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_patients_first_name')
     .on('patients')
-    .expression(sql`tenant_id, lower(first_name) text_pattern_ops`)
+    .expression(sql`agency_id, lower(first_name) text_pattern_ops`)
 ];
 
 export const createPatientsTable = async (db: Kysely<Database>) => {

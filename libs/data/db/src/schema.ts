@@ -21,7 +21,7 @@ type NullableTimestamp = ColumnType<
   Date | string | null
 >;
 
-type TenantsTable = {
+type AgenciesTable = {
   id: Generated<string>;
   name: string;
   slug: string;
@@ -34,7 +34,7 @@ type TenantsTable = {
 
 type UsersTable = {
   id: Generated<string>;
-  tenant_id: string;
+  agency_id: string;
   email: string;
   password_hash: string;
   is_active: Generated<boolean>;
@@ -48,7 +48,7 @@ export type NotificationIntent = (typeof NOTIFICATION_INTENTS)[number];
 
 type NotificationsTable = {
   id: Generated<string>;
-  tenant_id: string;
+  agency_id: string;
   user_id: string | null;
   intent: ColumnType<NotificationIntent, NotificationIntent | undefined, NotificationIntent>;
   title: string;
@@ -78,7 +78,7 @@ export type GraphKind = (typeof GRAPH_KINDS)[number];
 
 type GraphsTable = {
   id: Generated<string>;
-  tenant_id: string | null;
+  agency_id: string | null;
   key: string;
   name: string;
   kind: GraphKind;
@@ -113,7 +113,7 @@ export type RunStatus = (typeof RUN_STATUSES)[number];
 
 type WorkflowRunsTable = {
   id: Generated<string>;
-  tenant_id: string;
+  agency_id: string;
   graph_version_id: string;
   parent_id: string | null;
   parent_wait: string | null;
@@ -158,7 +158,7 @@ type NemsisCodesTable = {
 };
 
 type SignalsTable = {
-  tenant_id: string;
+  agency_id: string;
   key: string;
   received: Generated<number>;
   updated_at: Timestamp;
@@ -191,7 +191,7 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 type TasksTable = {
   id: Generated<string>;
-  tenant_id: string;
+  agency_id: string;
   run_id: string;
   wait_id: string;
   kind: TaskKind;
@@ -216,7 +216,7 @@ type TasksTable = {
 export type PatientsTable = {
   id: Generated<string>;
   number: GeneratedAlways<number>;
-  tenant_id: string;
+  agency_id: string;
   first_name: string;
   last_name: string;
   last_name_key: string;
@@ -233,7 +233,7 @@ export type PatientsTable = {
 
 type FeeSchedulesTable = {
   id: Generated<string>;
-  tenant_id: string;
+  agency_id: string;
   payer_id: string | null;
   code: string;
   amount_cents: number;
@@ -244,7 +244,7 @@ type FeeSchedulesTable = {
 export type ClaimsTable = {
   id: Generated<string>;
   number: GeneratedAlways<number>;
-  tenant_id: string;
+  agency_id: string;
   patient_id: string | null;
   import_report_id: string | null;
   pcr_number: string | null;
@@ -299,7 +299,7 @@ type ClaimLinesTable = {
 
 type ClaimCoveragesTable = {
   id: Generated<string>;
-  tenant_id: string;
+  agency_id: string;
   claim_id: string;
   position: number;
   payer_name: string;
@@ -360,7 +360,7 @@ type ClaimEventAdjustmentsTable = {
 
 type ClaimBatchesTable = {
   id: Generated<string>;
-  tenant_id: string;
+  agency_id: string;
   control_number: number;
   claim_count: number;
   total_cents: number;
@@ -377,7 +377,7 @@ type ClearinghouseDownloadsTable = {
   remote_path: string;
   size: number;
   modified_at: ColumnType<Date, Date | string, Date | string>;
-  tenant_id: string | null;
+  agency_id: string | null;
   run_id: string | null;
   note: ColumnType<string, string | undefined, string>;
   created_at: Timestamp;
@@ -385,7 +385,7 @@ type ClearinghouseDownloadsTable = {
 
 export type PayerFilesTable = {
   id: Generated<string>;
-  tenant_id: string;
+  agency_id: string;
   kind: InboundKind;
   file_name: string;
   digest: string;
@@ -415,7 +415,7 @@ export type ImportSource = (typeof IMPORT_SOURCES)[number];
 
 type ImportsTable = {
   id: Generated<string>;
-  tenant_id: string;
+  agency_id: string;
   run_id: string;
   source: ImportSource;
   file_name: string;
@@ -435,7 +435,7 @@ type ImportReportsTable = {
 };
 
 type BillingProfilesTable = {
-  tenant_id: string;
+  agency_id: string;
   organization_name: string;
   npi: string;
   tax_id: string;
@@ -455,7 +455,7 @@ type BillingProfilesTable = {
 
 export type PayersTable = {
   id: Generated<string>;
-  tenant_id: string;
+  agency_id: string;
   name: string;
   payer_id: string;
   claim_filing: string;
@@ -469,7 +469,7 @@ export const EMBEDDING_DIMENSIONS = 1024;
 
 type PayerAliasesTable = {
   id: Generated<string>;
-  tenant_id: string;
+  agency_id: string;
   payer_id: string;
   alias: string;
   alias_key: string;
@@ -477,7 +477,7 @@ type PayerAliasesTable = {
 };
 
 type PayerSuggestionsTable = {
-  tenant_id: string;
+  agency_id: string;
   name_key: string;
   directory_version: string;
   payer_id: string | null;
@@ -485,7 +485,7 @@ type PayerSuggestionsTable = {
 };
 
 export type Database = {
-  tenants: TenantsTable;
+  agencies: AgenciesTable;
   users: UsersTable;
   graphs: GraphsTable;
   graph_versions: GraphVersionsTable;

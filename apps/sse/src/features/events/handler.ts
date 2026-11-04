@@ -43,7 +43,7 @@ export const createEventsHandler = ({
       ...cors
     });
     res.write(': connected\n\n');
-    const remove = hub.add(session.tenantId, res);
+    const remove = hub.add(session.agencyId, res);
     const heartbeat = setInterval(async () => {
       res.write(': ping\n\n');
       if ((await signedIn(token).catch(() => undefined)) === null) res.end();

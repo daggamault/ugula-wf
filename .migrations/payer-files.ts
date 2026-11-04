@@ -8,8 +8,8 @@ const buildPayerFilesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('payer_files')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('kind', 'text', (col) => col.notNull())
     .addColumn('file_name', 'text', (col) => col.notNull())
@@ -22,7 +22,7 @@ const buildPayerFilesTable = (db: Kysely<Database>) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addUniqueConstraint('payer_files_tenant_id_digest_unique', ['tenant_id', 'digest'])
+    .addUniqueConstraint('payer_files_agency_id_digest_unique', ['agency_id', 'digest'])
     .addCheckConstraint('payer_files_kind_check', sql`kind in (${list(PAYER_FILE_KINDS)})`)
     .addCheckConstraint('payer_files_file_name_check', sql`file_name <> ''`)
     .addCheckConstraint(
@@ -60,8 +60,8 @@ const buildClearinghouseDownloadsTable = (db: Kysely<Database>) =>
     .addColumn('remote_path', 'text', (col) => col.notNull())
     .addColumn('size', 'integer', (col) => col.notNull())
     .addColumn('modified_at', 'timestamptz', (col) => col.notNull())
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('run_id', 'uuid', (col) =>
       col.references('workflow_runs.id').onDelete('set null').onUpdate('cascade')
@@ -76,9 +76,9 @@ const buildClearinghouseDownloadsTable = (db: Kysely<Database>) =>
 
 const buildPayerFilesIndexes = (db: Kysely<Database>) => [
   db.schema
-    .createIndex('idx_payer_files_tenant_created')
+    .createIndex('idx_payer_files_agency_created')
     .on('payer_files')
-    .columns(['tenant_id', 'created_at desc']),
+    .columns(['agency_id', 'created_at desc']),
   db.schema.createIndex('idx_payer_files_uploaded_by').on('payer_files').column('uploaded_by'),
   db.schema.createIndex('idx_payer_file_items_claim').on('payer_file_items').column('claim_id')
 ];

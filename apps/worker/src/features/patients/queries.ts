@@ -2,7 +2,7 @@ import { isSamePerson, nameKey, type Patient, type PatientStore, sexOf } from '@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
-import { runTenant } from '../../shared/tenancy.ts';
+import { runAgency } from '../../shared/tenancy.ts';
 
 const CANDIDATE_LIMIT = 50;
 
@@ -48,7 +48,7 @@ export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
     const rows = await db
       .selectFrom('patients')
       .select(COLUMNS)
-      .where('tenant_id', '=', runTenant(db, runId))
+      .where('agency_id', '=', runAgency(db, runId))
       .where((eb) =>
         eb.or([
           ...(birthDate ? [eb('birth_date', '=', birthDate)] : []),
@@ -70,7 +70,7 @@ export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
       .selectFrom('patients')
       .select(COLUMNS)
       .where('id', '=', id)
-      .where('tenant_id', '=', runTenant(db, runId))
+      .where('agency_id', '=', runAgency(db, runId))
       .executeTakeFirst();
     return row ? toPatient(row) : null;
   },
@@ -78,14 +78,14 @@ export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
     db.transaction().execute(async (tx) => {
       const lastNameKey = nameKey(p.lastName);
       const identity = `:${lastNameKey}:${p.birthDate}`;
-      await sql`select pg_advisory_xact_lock(hashtextextended(tenant_id::text || ${identity}, 0)) from workflow_runs where id = ${runId}`.execute(
+      await sql`select pg_advisory_xact_lock(hashtextextended(agency_id::text || ${identity}, 0)) from workflow_runs where id = ${runId}`.execute(
         tx
       );
       if (reuseMatch) {
         const rows = await tx
           .selectFrom('patients')
           .select(COLUMNS)
-          .where('tenant_id', '=', runTenant(tx, runId))
+          .where('agency_id', '=', runAgency(tx, runId))
           .where('last_name_key', '=', lastNameKey)
           .where('birth_date', '=', p.birthDate)
           .orderBy('created_at')
@@ -97,7 +97,7 @@ export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
         await tx
           .insertInto('patients')
           .values({
-            tenant_id: runTenant(tx, runId),
+            agency_id: runAgency(tx, runId),
             first_name: p.firstName,
             last_name: p.lastName,
             last_name_key: lastNameKey,
@@ -111,7 +111,7 @@ export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
           })
           .onConflict((oc) =>
             oc
-              .columns(['tenant_id', 'source_key'])
+              .columns(['agency_id', 'source_key'])
               .doUpdateSet({ updated_at: sql`patients.updated_at` })
           )
           .returning(COLUMNS)
@@ -129,7 +129,7 @@ export const createPatientStore = (db: Kysely<Database>): PatientStore => ({
         updated_at: sql`now()`
       })
       .where('id', '=', isUuid(patientId) ? patientId : null)
-      .where('tenant_id', '=', runTenant(db, runId))
+      .where('agency_id', '=', runAgency(db, runId))
       .returning(COLUMNS)
       .executeTakeFirst();
     if (!row) throw new Error(`Patient ${patientId} does not exist`);

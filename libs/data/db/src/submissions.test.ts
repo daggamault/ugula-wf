@@ -18,13 +18,13 @@ import {
 import { createRecordingDb } from './testing.ts';
 
 describe('submission queries', () => {
-  it('read one ready claim of the tenant, locking it when submitting', async () => {
+  it('read one ready claim of the agency, locking it when submitting', async () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.equal(await findReadyClaim(db, 't1', 'c1'), undefined);
     await lockReadyClaim(db, 't1', 'c1');
     const [find, lock] = queries;
     assert.ok(
-      find?.sql.includes('where "c"."tenant_id" = $1 and "c"."id" = $2 and "c"."status" = $3')
+      find?.sql.includes('where "c"."agency_id" = $1 and "c"."id" = $2 and "c"."status" = $3')
     );
     assert.deepEqual(find?.parameters.slice(-3), ['t1', 'c1', 'ready']);
     assert.ok(find?.sql.includes('coalesce(dp.name, cc.payer_name)'));
@@ -37,7 +37,7 @@ describe('submission queries', () => {
     assert.equal(await allocateControlNumber(db, 't1'), 4);
     assert.equal(
       queries[0]?.sql,
-      'update "billing_profiles" set "next_control_number" = next_control_number + 1 where "tenant_id" = $1 and "next_control_number" <= $2 returning next_control_number - 1 as "control_number"'
+      'update "billing_profiles" set "next_control_number" = next_control_number + 1 where "agency_id" = $1 and "next_control_number" <= $2 returning next_control_number - 1 as "control_number"'
     );
     assert.deepEqual(queries[0]?.parameters, ['t1', 999_999_999]);
     const used = createRecordingDb(() => []);
@@ -49,7 +49,7 @@ describe('submission queries', () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'b1' }]);
     await insertBatch(db, {
       id: 'b1',
-      tenantId: 't1',
+      agencyId: 't1',
       controlNumber: 7,
       totalCents: 100,
       production: false,
@@ -342,7 +342,7 @@ describe('pendingClaim payers', () => {
 });
 
 describe('billing profile', () => {
-  it('reads the tenant profile as the 837P submitter', async () => {
+  it('reads the agency profile as the 837P submitter', async () => {
     const profile = {
       organization_name: 'Metro EMS',
       npi: '1234567893',
@@ -377,7 +377,7 @@ describe('billing profile', () => {
     await db.destroy();
   });
 
-  it('stores each batch under its tenant with a zero-padded control number', () => {
+  it('stores each batch under its agency with a zero-padded control number', () => {
     assert.equal(batchKey('t1', 'b1', 42), 'batches/t1/b1/837P-000000042.txt');
   });
 });

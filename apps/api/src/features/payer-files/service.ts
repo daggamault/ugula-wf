@@ -25,30 +25,30 @@ export const createPayerFileService = ({
   now,
   maxBytes
 }: PayerFileServiceDeps) => ({
-  list: async (tenantId: string, page: PageRequest<PayerFileSort>) =>
-    ok(await listPayerFiles(db, tenantId, page)),
+  list: async (agencyId: string, page: PageRequest<PayerFileSort>) =>
+    ok(await listPayerFiles(db, agencyId, page)),
 
-  find: async (tenantId: string, id: string) => {
-    const file = await findPayerFile(db, tenantId, id);
+  find: async (agencyId: string, id: string) => {
+    const file = await findPayerFile(db, agencyId, id);
     if (!file) return fail('not_found', 'Payer file not found');
     const { document: _, ...meta } = file;
     return ok({ file: meta, items: await listFileItems(db, id) });
   },
 
-  download: async (tenantId: string, id: string) => {
-    const file = await findPayerFile(db, tenantId, id);
+  download: async (agencyId: string, id: string) => {
+    const file = await findPayerFile(db, agencyId, id);
     if (!file) return fail('not_found', 'Payer file not found');
     return ok({ name: file.file_name, bytes: await blobs.getBytes(file.document as BlobRef) });
   },
 
-  upload: async (tenantId: string, userId: string, file: UploadedFile) => {
+  upload: async (agencyId: string, userId: string, file: UploadedFile) => {
     if (file.bytes.byteLength > maxBytes) {
       return fail('invalid', `The file is larger than ${maxBytes} bytes`);
     }
     const read = readPayerFile(file.bytes);
     if (!read.ok) return read;
     const inbound = read.value;
-    const imported = await findImported(db, tenantId, inbound.digest);
+    const imported = await findImported(db, agencyId, inbound.digest);
     if (imported) {
       return fail(
         'conflict',
@@ -58,14 +58,14 @@ export const createPayerFileService = ({
     }
     const fileName = file.name.trim() || safeName(file.name);
     const document = await blobs.putBytes(
-      uploadKey(tenantId, fileName, 'payer-files/'),
+      uploadKey(agencyId, fileName, 'payer-files/'),
       file.bytes,
       'application/edi-x12'
     );
     const touched: string[] = [];
     const saved = db.transaction().execute(async (tx) => {
       const applied = await applyPayerFile(tx, boss, {
-        tenantId,
+        agencyId,
         userId,
         fileName,
         document,
@@ -80,7 +80,7 @@ export const createPayerFileService = ({
         problems: applied.problems
       });
     });
-    return announced(announce, tenantId, saved, () =>
+    return announced(announce, agencyId, saved, () =>
       touched.map((id) => ({ kind: 'claim' as const, id }))
     );
   }

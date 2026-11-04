@@ -10,7 +10,7 @@ import type { Db } from '@ugula/db';
 import { EMBED_BATCH_SIZE, type Embedder } from '@ugula/inference';
 import { sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
-import { runTenant } from '../../shared/tenancy.ts';
+import { runAgency } from '../../shared/tenancy.ts';
 
 type PayerRow = { id: string; name: string; claim_filing: string };
 
@@ -44,20 +44,20 @@ const findKnown = async (db: Db, runId: string, keys: string[]) => {
     claim_filing: string | null;
     stocked: boolean;
   }>`
-    with t as (select tenant_id from workflow_runs where id = ${runId})
+    with t as (select agency_id from workflow_runs where id = ${runId})
     select k.key, m.id, m.name, m.claim_filing,
-      exists (select 1 from payers p join t on t.tenant_id = p.tenant_id) as stocked
+      exists (select 1 from payers p join t on t.agency_id = p.agency_id) as stocked
     from unnest(${keys}::text[]) as k(key)
     left join lateral (
       select id, name, claim_filing from (
         select p.id, p.name, p.claim_filing, 0 as rank
         from payers p
-        join t on t.tenant_id = p.tenant_id
+        join t on t.agency_id = p.agency_id
         where ${nameKey} = k.key
         union all
         select p.id, p.name, p.claim_filing, 1 as rank
         from payer_aliases a
-        join t on t.tenant_id = a.tenant_id
+        join t on t.agency_id = a.agency_id
         join payers p on p.id = a.payer_id
         where a.alias_key = k.key
       ) matched
@@ -73,7 +73,7 @@ const embedPendingPayers = (db: Db, embedder: Embedder, runId: string) =>
     const pending = await tx
       .selectFrom('payers')
       .select(['id', 'name', 'claim_filing'])
-      .where('tenant_id', '=', runTenant(tx, runId))
+      .where('agency_id', '=', runAgency(tx, runId))
       .where('embedding', 'is', null)
       .limit(EMBED_BATCH_SIZE)
       .forUpdate()
@@ -104,7 +104,7 @@ const nearest = async (db: Db, embedder: Embedder, runId: string, names: string[
     cross join lateral (
       select id, name, claim_filing, 1 - (embedding <=> q.v::vector) as similarity
       from payers
-      where tenant_id = ${runTenant(db, runId)} and embedding is not null
+      where agency_id = ${runAgency(db, runId)} and embedding is not null
       order by embedding <=> q.v::vector
       limit ${CANDIDATE_LIMIT}
     ) c
@@ -125,7 +125,7 @@ const directoryVersion = (db: Db, runId: string) =>
         'version'
       )
     )
-    .where('tenant_id', '=', runTenant(db, runId));
+    .where('agency_id', '=', runAgency(db, runId));
 
 export const createPayerStore = (db: Db, embedder: Embedder): PayerStore => ({
   lookup: async (runId, names, similar) => {
@@ -154,7 +154,7 @@ export const createPayerStore = (db: Db, embedder: Embedder): PayerStore => ({
       await db
         .selectFrom('payers as p')
         .select(['p.id', 'p.name', 'p.claim_filing'])
-        .where('p.tenant_id', '=', runTenant(db, runId))
+        .where('p.agency_id', '=', runAgency(db, runId))
         .orderBy('p.name')
         .orderBy('p.id')
         .execute()
@@ -165,21 +165,21 @@ export const createPayerStore = (db: Db, embedder: Embedder): PayerStore => ({
       payerKey(name) && isUuid(payerId)
         ? await db
             .insertInto('payer_aliases')
-            .columns(['tenant_id', 'payer_id', 'alias', 'alias_key'])
+            .columns(['agency_id', 'payer_id', 'alias', 'alias_key'])
             .expression(
               db
                 .selectFrom('payers')
                 .select([
-                  'tenant_id',
+                  'agency_id',
                   'id',
                   sql<string>`${name}::text`.as('alias'),
                   sql<string>`${payerKey(name)}::text`.as('alias_key')
                 ])
                 .where('id', '=', payerId)
-                .where('tenant_id', '=', runTenant(db, runId))
+                .where('agency_id', '=', runAgency(db, runId))
             )
             .onConflict((oc) =>
-              oc.columns(['tenant_id', 'alias_key']).doUpdateSet({
+              oc.columns(['agency_id', 'alias_key']).doUpdateSet({
                 payer_id: (eb) => eb.ref('excluded.payer_id'),
                 alias: (eb) => eb.ref('excluded.alias')
               })
@@ -194,7 +194,7 @@ export const createPayerStore = (db: Db, embedder: Embedder): PayerStore => ({
     const row = await db
       .selectFrom('payer_suggestions')
       .select('payer_id')
-      .where('tenant_id', '=', runTenant(db, runId))
+      .where('agency_id', '=', runAgency(db, runId))
       .where('name_key', '=', payerKey(name))
       .where('directory_version', '=', directoryVersion(db, runId))
       .executeTakeFirst();
@@ -206,19 +206,19 @@ export const createPayerStore = (db: Db, embedder: Embedder): PayerStore => ({
     if (!key) return;
     await db
       .insertInto('payer_suggestions')
-      .columns(['tenant_id', 'name_key', 'directory_version', 'payer_id'])
+      .columns(['agency_id', 'name_key', 'directory_version', 'payer_id'])
       .expression(
         db
           .selectFrom('workflow_runs as r')
           .select((eb) => [
-            'r.tenant_id',
+            'r.agency_id',
             sql<string>`${key}::text`.as('name_key'),
             directoryVersion(db, runId).as('directory_version'),
             (payerId !== null && isUuid(payerId)
               ? eb
                   .selectFrom('payers as p')
                   .select('p.id')
-                  .whereRef('p.tenant_id', '=', 'r.tenant_id')
+                  .whereRef('p.agency_id', '=', 'r.agency_id')
                   .where('p.id', '=', payerId)
               : sql<string | null>`null::uuid`
             ).as('payer_id')
@@ -227,7 +227,7 @@ export const createPayerStore = (db: Db, embedder: Embedder): PayerStore => ({
       )
       .onConflict((oc) =>
         oc
-          .columns(['tenant_id', 'name_key', 'directory_version'])
+          .columns(['agency_id', 'name_key', 'directory_version'])
           .doUpdateSet({ payer_id: (eb) => eb.ref('excluded.payer_id') })
       )
       .execute();

@@ -10,7 +10,7 @@ describe('startRun', () => {
     const jobs: unknown[] = [];
     const boss: RunQueueClient = { insert: async (_name, batch) => void jobs.push(...batch) };
     assert.equal(
-      await startRun(db, boss, { tenantId: 't', versionId: 'v', inputs: { a: 1 } }),
+      await startRun(db, boss, { agencyId: 't', versionId: 'v', inputs: { a: 1 } }),
       'r1'
     );
     assert.ok(queries[0]?.sql.startsWith('insert into "workflow_runs"'));
@@ -28,20 +28,20 @@ describe('signalRuns', () => {
     let inserts = 0;
     const boss: RunQueueClient = { insert: async () => void inserts++ };
     assert.equal(
-      await signalRuns(db, boss, { tenantId: 't', name: 'claim', key: 'c1', payload: null }),
+      await signalRuns(db, boss, { agencyId: 't', name: 'claim', key: 'c1', payload: null }),
       0
     );
     assert.equal(inserts, 0);
     assert.equal(
       queries[0]?.sql,
-      'insert into "signals" ("tenant_id", "key", "received") values ($1, $2, $3) on conflict ("tenant_id", "key") do update set "received" = signals.received + 1, "updated_at" = now()'
+      'insert into "signals" ("agency_id", "key", "received") values ($1, $2, $3) on conflict ("agency_id", "key") do update set "received" = signals.received + 1, "updated_at" = now()'
     );
     assert.deepEqual(queries[0]?.parameters, ['t', 'claim:c1', 1]);
     assert.ok(queries[1]?.sql.startsWith('select'));
     await db.destroy();
   });
 
-  it('resumes every tenant run waiting on the signal key', async () => {
+  it('resumes every agency run waiting on the signal key', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('select')
         ? [
@@ -53,7 +53,7 @@ describe('signalRuns', () => {
     const jobs: unknown[] = [];
     const boss: RunQueueClient = { insert: async (_name, batch) => void jobs.push(...batch) };
     assert.equal(
-      await signalRuns(db, boss, { tenantId: 't', name: 'claim', key: 'c1', payload: { a: 1 } }),
+      await signalRuns(db, boss, { agencyId: 't', name: 'claim', key: 'c1', payload: { a: 1 } }),
       2
     );
     assert.deepEqual(queries[1]?.parameters, ['t', 'claim:c1', 'suspended']);
@@ -66,14 +66,14 @@ describe('signalRuns', () => {
 });
 
 describe('resolveWorkflowVersion', () => {
-  it('picks the newest published active workflow, preferring the tenant copy', async () => {
+  it('picks the newest published active workflow, preferring the agency copy', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'v2', version: 2 }]);
     assert.deepEqual(await resolveWorkflowVersion(db, 't', 'billing.claim'), {
       id: 'v2',
       version: 2
     });
     assert.ok(
-      queries[0]?.sql.endsWith('order by g.tenant_id nulls last, "gv"."version" desc limit $5')
+      queries[0]?.sql.endsWith('order by g.agency_id nulls last, "gv"."version" desc limit $5')
     );
     assert.deepEqual(queries[0]?.parameters, ['billing.claim', 'workflow', true, 't', 1]);
     await db.destroy();

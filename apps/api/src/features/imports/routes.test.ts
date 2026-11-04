@@ -8,17 +8,17 @@ import type { ImportService } from './service.ts';
 const calls: unknown[][] = [];
 
 const service = {
-  list: async (tenantId: string, page: unknown) => {
-    calls.push(['list', tenantId, page]);
+  list: async (agencyId: string, page: unknown) => {
+    calls.push(['list', agencyId, page]);
     return ok({ imports: [] });
   },
   upload: async (
-    tenantId: string,
+    agencyId: string,
     userId: string,
     workflow: string,
     file: { name: string; bytes: Uint8Array }
   ) => {
-    calls.push([tenantId, userId, workflow, file.name, new TextDecoder().decode(file.bytes)]);
+    calls.push([agencyId, userId, workflow, file.name, new TextDecoder().decode(file.bytes)]);
     return workflow === 'billing.missing'
       ? fail('not_found', 'nope')
       : ok({ runId: 'r1', file: { bucket: 'b', key: 'k', size: 4, contentType: 'x' } });
@@ -28,16 +28,16 @@ const service = {
       ? ok({ status: 1, username })
       : fail('unauthorized', 'Invalid SFTP credentials'),
   receiveSftpEvent: async (event: { action: string }) => ok({ received: event.action }),
-  find: async (tenantId: string, id: string) => {
-    calls.push(['find', tenantId, id]);
+  find: async (agencyId: string, id: string) => {
+    calls.push(['find', agencyId, id]);
     return ok({ import: { id } });
   },
-  reports: async (tenantId: string, id: string, page: unknown) => {
-    calls.push(['reports', tenantId, id, page]);
+  reports: async (agencyId: string, id: string, page: unknown) => {
+    calls.push(['reports', agencyId, id, page]);
     return ok({ items: [], total: 0, page: 1, pageSize: 25 });
   },
-  report: async (tenantId: string, id: string) => {
-    calls.push(['report', tenantId, id]);
+  report: async (agencyId: string, id: string) => {
+    calls.push(['report', agencyId, id]);
     return ok({ report: { id }, data: {}, xml: '' });
   }
 } as unknown as ImportService;
@@ -51,7 +51,7 @@ const form = (fields: Record<string, string | File>) => {
 };
 
 describe('import routes', () => {
-  it('lists recent imports for the session tenant', async () => {
+  it('lists recent imports for the session agency', async () => {
     assert.equal((await request('/?q=pcrs&page=2&pageSize=10&sort=claims&dir=asc')).status, 200);
     assert.deepEqual(calls.at(-1), [
       'list',
@@ -78,7 +78,7 @@ describe('import routes', () => {
     assert.equal((await request(`/${id}/reports?sort=odd`)).status, 400);
   });
 
-  it('accepts a multipart file for the session tenant', async () => {
+  it('accepts a multipart file for the session agency', async () => {
     const res = await request('/', form({ file: new File(['<x/>'], 'pcrs.xml') }));
     assert.equal(res.status, 201);
     assert.deepEqual(calls.at(-1), ['t-1', 'u-1', 'billing.ingest-nemsis', 'pcrs.xml', '<x/>']);
@@ -134,8 +134,8 @@ describe('import report XML downloads', () => {
     createImportRoutes(
       {
         ...service,
-        report: async (tenantId: string, reportId: string) => {
-          calls.push(['report', tenantId, reportId]);
+        report: async (agencyId: string, reportId: string) => {
+          calls.push(['report', agencyId, reportId]);
           return reportId === id
             ? ok({ report: { id, pcr_number: 'PCR 1/2"' }, data: {}, xml: '<x/>' })
             : fail('not_found', 'Report not found');

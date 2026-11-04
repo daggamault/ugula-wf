@@ -31,7 +31,7 @@ const service = {
 const request = withSession(createFeeRoutes(service));
 
 describe('fee routes', () => {
-  it('searches, finds, saves and deletes fees for the session tenant', async () => {
+  it('searches, finds, saves and deletes fees for the session agency', async () => {
     assert.equal((await request('/?q=a04&sort=amount')).status, 200);
     assert.equal((await request(`/${ID}`)).status, 200);
     const saved = await request('/', {

@@ -21,14 +21,14 @@ const buildUpsertGraph = (db: Kysely<Database>, graph: SeedGraph) =>
   db
     .insertInto('graphs')
     .values({
-      tenant_id: null,
+      agency_id: null,
       key: graph.key,
       name: graph.name,
       kind: graph.kind,
       description: graph.description
     })
     .onConflict((oc) =>
-      oc.columns(['tenant_id', 'key']).doUpdateSet({
+      oc.columns(['agency_id', 'key']).doUpdateSet({
         name: graph.name,
         kind: graph.kind,
         description: graph.description,

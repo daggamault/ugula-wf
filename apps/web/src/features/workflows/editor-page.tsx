@@ -90,7 +90,7 @@ export const EditorView = ({
   const current = versions.find((v) => v.version === version);
   const draft = versions.find((v) => !v.published_at);
   const isDraft = current !== undefined && !current.published_at;
-  const editable = graph.tenant_id !== null && isDraft;
+  const editable = graph.agency_id !== null && isDraft;
   const [def, setDef] = useState(() => (editable ? placed(source, catalog) : source));
   const [dirty, setDirty] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -222,7 +222,7 @@ export const EditorView = ({
   const graphIssues = issues.filter((i) => !i.node);
   const howTo = editable
     ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them.'
-    : graph.tenant_id === null
+    : graph.agency_id === null
       ? graph.overridden_by
         ? `Your agency has its own copy of this built-in ${noun}; runs use it once it is published. Select a node to see what it does.`
         : `Built-in ${noun}s are read-only. Override this one to change how your agency runs it.`
@@ -245,7 +245,7 @@ export const EditorView = ({
             <Badge intent={isDraft ? 'warning' : 'success'}>
               {isDraft ? `Draft v${version}` : `Published v${version}`}
             </Badge>
-            {graph.tenant_id === null ? <Badge>System</Badge> : null}
+            {graph.agency_id === null ? <Badge>System</Badge> : null}
             {graph.overridden_by ? <Badge intent="info">Has Your Copy</Badge> : null}
             {graph.overrides ? <Badge intent="info">Your Copy</Badge> : null}
             {dirty ? <Badge intent="danger">Unsaved</Badge> : null}
@@ -280,13 +280,13 @@ export const EditorView = ({
                 onChange={(e) => leave(graphPath(graph.id, Number(e.target.value), trail))}
               />
             </div>
-            {graph.tenant_id === null && graph.overridden_by ? (
+            {graph.agency_id === null && graph.overridden_by ? (
               <ButtonLink to={`/workflows/${graph.overridden_by}`} variant="outline">
                 <PencilIcon aria-hidden="true" className="size-4" />
                 Edit Override
               </ButtonLink>
             ) : null}
-            {graph.tenant_id === null && !graph.overridden_by ? (
+            {graph.agency_id === null && !graph.overridden_by ? (
               <Button variant="outline" isPending={busy === 'override'} onClick={override}>
                 <CopyPlusIcon aria-hidden="true" className="size-4" />
                 Override
@@ -303,7 +303,7 @@ export const EditorView = ({
                 Remove Override
               </Button>
             ) : null}
-            {graph.tenant_id !== null && !isDraft && !draft ? (
+            {graph.agency_id !== null && !isDraft && !draft ? (
               <Button variant="outline" isPending={busy === 'save'} onClick={save}>
                 <PencilIcon aria-hidden="true" className="size-4" />
                 Edit as New Draft

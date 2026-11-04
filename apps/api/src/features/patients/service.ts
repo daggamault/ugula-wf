@@ -3,11 +3,11 @@ import { fail, ok } from '../../shared/result.ts';
 import { findPatient, listPatients, type PatientFilters } from './queries.ts';
 
 export const createPatientService = ({ db }: { db: Db }) => ({
-  list: async (tenantId: string, filters: PatientFilters) =>
-    ok(await listPatients(db, tenantId, filters)),
+  list: async (agencyId: string, filters: PatientFilters) =>
+    ok(await listPatients(db, agencyId, filters)),
 
-  find: async (tenantId: string, id: string) => {
-    const patient = await findPatient(db, tenantId, id);
+  find: async (agencyId: string, id: string) => {
+    const patient = await findPatient(db, agencyId, id);
     return patient ? ok({ patient }) : fail('not_found', 'Patient not found');
   }
 });

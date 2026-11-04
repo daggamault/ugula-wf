@@ -5,8 +5,8 @@ const buildGraphsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('graphs')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('key', 'text', (col) => col.notNull())
     .addColumn('name', 'text', (col) => col.notNull())
@@ -15,7 +15,7 @@ const buildGraphsTable = (db: Kysely<Database>) =>
     .addColumn('is_active', 'boolean', (col) => col.notNull().defaultTo(true))
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addUniqueConstraint('graphs_tenant_id_key_unique', ['tenant_id', 'key'], (uc) =>
+    .addUniqueConstraint('graphs_agency_id_key_unique', ['agency_id', 'key'], (uc) =>
       uc.nullsNotDistinct()
     )
     .addCheckConstraint(

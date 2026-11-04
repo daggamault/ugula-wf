@@ -20,7 +20,7 @@ const memory = (): ObjectStorage & { objects: Map<string, Uint8Array> } => {
 };
 
 describe('importsPrefix', () => {
-  it('scopes imports to their tenant', () => {
+  it('scopes imports to their agency', () => {
     assert.equal(importsPrefix('t-1'), 'imports/t-1/');
   });
 });

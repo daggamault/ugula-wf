@@ -14,21 +14,21 @@ export const demoFees: Record<string, number> = {
 
 export const buildUpsertDefaultFees = (
   db: Kysely<Database>,
-  tenantId: string,
+  agencyId: string,
   fees: Record<string, number>
 ) =>
   db
     .insertInto('fee_schedules')
     .values(
       Object.entries(fees).map(([code, amount]) => ({
-        tenant_id: tenantId,
+        agency_id: agencyId,
         payer_id: null,
         code,
         amount_cents: amount
       }))
     )
     .onConflict((oc) =>
-      oc.columns(['tenant_id', 'payer_id', 'code']).doUpdateSet({
+      oc.columns(['agency_id', 'payer_id', 'code']).doUpdateSet({
         amount_cents: (eb) => eb.ref('excluded.amount_cents'),
         updated_at: sql`now()`
       })

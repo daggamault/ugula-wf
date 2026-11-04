@@ -21,7 +21,7 @@ const service = {
 const request = withSession(createBillingProfileRoutes(service));
 
 describe('billing profile routes', () => {
-  it('reads and saves the session tenant profile, rejecting invalid ones', async () => {
+  it('reads and saves the session agency profile, rejecting invalid ones', async () => {
     assert.equal((await request('/')).status, 200);
     const body = {
       organizationName: 'Acme EMS',

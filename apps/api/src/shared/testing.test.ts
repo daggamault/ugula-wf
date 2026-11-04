@@ -20,7 +20,7 @@ describe('withSession', () => {
     const res = await request('/', { method: 'POST', body: '{"a":1}' });
     assert.deepEqual(await res.json(), {
       userId: 'u-1',
-      tenantId: 't-1',
+      agencyId: 't-1',
       email: 'dev@example.com',
       body: { a: 1 }
     });

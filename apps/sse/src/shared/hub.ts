@@ -5,24 +5,24 @@ type HubClient = {
 };
 
 export const createHub = () => {
-  const tenants = new Map<string, Set<HubClient>>();
-  const remove = (tenantId: string, group: Set<HubClient>, client: HubClient) => {
+  const agencies = new Map<string, Set<HubClient>>();
+  const remove = (agencyId: string, group: Set<HubClient>, client: HubClient) => {
     group.delete(client);
-    if (!group.size && tenants.get(tenantId) === group) tenants.delete(tenantId);
+    if (!group.size && agencies.get(agencyId) === group) agencies.delete(agencyId);
   };
   return {
-    add: (tenantId: string, client: HubClient) => {
-      const group = tenants.get(tenantId) ?? new Set<HubClient>();
+    add: (agencyId: string, client: HubClient) => {
+      const group = agencies.get(agencyId) ?? new Set<HubClient>();
       group.add(client);
-      tenants.set(tenantId, group);
-      return () => remove(tenantId, group, client);
+      agencies.set(agencyId, group);
+      return () => remove(agencyId, group, client);
     },
-    broadcast: (tenantId: string, data: string) => {
-      const group = tenants.get(tenantId);
+    broadcast: (agencyId: string, data: string) => {
+      const group = agencies.get(agencyId);
       if (!group) return;
       for (const client of group) {
         if (client.writableNeedDrain) {
-          remove(tenantId, group, client);
+          remove(agencyId, group, client);
           client.destroy();
         } else client.write(`data: ${data}\n\n`);
       }

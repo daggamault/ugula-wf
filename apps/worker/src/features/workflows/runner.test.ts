@@ -125,7 +125,7 @@ const fakeStore = (inputs: Values, opts: { leased?: boolean } = {}) => {
       const run: ClaimedRun = {
         id: 'run-1',
         lease: 'lease-1',
-        tenantId: 't-1',
+        agencyId: 't-1',
         versionId: 'v-1',
         parentId: null,
         parentWait: null,
@@ -154,9 +154,9 @@ const fakeStore = (inputs: Values, opts: { leased?: boolean } = {}) => {
   return { store, row, log };
 };
 
-const events: { tenantId: string; event: LiveEvent }[] = [];
-const publish = async (tenantId: string, event: LiveEvent) => {
-  events.push({ tenantId, event });
+const events: { agencyId: string; event: LiveEvent }[] = [];
+const publish = async (agencyId: string, event: LiveEvent) => {
+  events.push({ agencyId, event });
 };
 
 const job = (command: RunJob['command']): RunJob => ({ runId: 'run-1', command });
@@ -176,10 +176,10 @@ describe('runner', () => {
     assert.deepEqual(log.saves.at(-1)?.result, { pin: null, outputs: { doubled: 3000 } });
     const task = { kind: 'task', id: null, runId: 'run-1' } as const;
     assert.deepEqual(events.slice(-4), [
-      { tenantId: 't-1', event: { kind: 'run', id: 'run-1', status: 'suspended', parentId: null } },
-      { tenantId: 't-1', event: task },
-      { tenantId: 't-1', event: { kind: 'run', id: 'run-1', status: 'completed', parentId: null } },
-      { tenantId: 't-1', event: task }
+      { agencyId: 't-1', event: { kind: 'run', id: 'run-1', status: 'suspended', parentId: null } },
+      { agencyId: 't-1', event: task },
+      { agencyId: 't-1', event: { kind: 'run', id: 'run-1', status: 'completed', parentId: null } },
+      { agencyId: 't-1', event: task }
     ]);
 
     await runner.process(resume);
@@ -510,7 +510,7 @@ describe('runner wakes', () => {
       now: () => now,
       publish,
       within: async (ctx, work) => {
-        scoped.push(`${ctx.tenantId}:${ctx.runId}:${ctx.signal.aborted}`);
+        scoped.push(`${ctx.agencyId}:${ctx.runId}:${ctx.signal.aborted}`);
         await work();
       }
     });

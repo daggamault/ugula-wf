@@ -12,7 +12,7 @@ import {
   findDictionary,
   findImport,
   findReport,
-  findSftpTenant,
+  findSftpAgency,
   type ImportFilters,
   insertImport,
   listImportReports,
@@ -41,9 +41,9 @@ type ImportServiceDeps = {
 
 type SftpReceipt = { runId: string; file: BlobRef } | { ignored: true };
 
-const sftpPrefix = (tenantId: string) => `${importsPrefix(tenantId)}sftp/`;
+const sftpPrefix = (agencyId: string) => `${importsPrefix(agencyId)}sftp/`;
 
-const sftpUser = (username: string, tenantId: string, sftp: SftpStorage) => ({
+const sftpUser = (username: string, agencyId: string, sftp: SftpStorage) => ({
   status: 1,
   username,
   home_dir: `${sftp.homeRoot}/${username}`,
@@ -54,7 +54,7 @@ const sftpUser = (username: string, tenantId: string, sftp: SftpStorage) => ({
       bucket: sftp.bucket,
       region: sftp.region,
       endpoint: sftp.endpoint,
-      key_prefix: sftpPrefix(tenantId),
+      key_prefix: sftpPrefix(agencyId),
       force_path_style: true
     }
   }
@@ -83,36 +83,36 @@ export const createImportService = ({
     fail('not_found', `Workflow ${workflow} has no published version`);
 
   const ingest = async (
-    tenantId: string,
+    agencyId: string,
     versionId: string,
     file: BlobRef,
     origin: Pick<NewImport, 'source' | 'fileName' | 'uploadedBy'>
   ) => {
     const runId = await db.transaction().execute(async (tx) => {
-      const id = await startRun(tx, boss, { tenantId, versionId, inputs: { file } });
-      await insertImport(tx, { tenantId, runId: id, file, ...origin });
+      const id = await startRun(tx, boss, { agencyId, versionId, inputs: { file } });
+      await insertImport(tx, { agencyId, runId: id, file, ...origin });
       return id;
     });
-    await announce(tenantId, { kind: 'import', id: null }).catch(() => undefined);
+    await announce(agencyId, { kind: 'import', id: null }).catch(() => undefined);
     return ok({ runId, file });
   };
 
   return {
-    list: async (tenantId: string, filters: ImportFilters) =>
-      ok(await listImports(db, tenantId, filters)),
+    list: async (agencyId: string, filters: ImportFilters) =>
+      ok(await listImports(db, agencyId, filters)),
 
-    find: async (tenantId: string, id: string) => {
-      const found = await findImport(db, tenantId, id);
+    find: async (agencyId: string, id: string) => {
+      const found = await findImport(db, agencyId, id);
       return found ? ok({ import: found }) : importNotFound;
     },
 
-    reports: async (tenantId: string, id: string, page: PageRequest<ReportSort>) =>
-      (await findImport(db, tenantId, id))
-        ? ok(await listImportReports(db, tenantId, id, page))
+    reports: async (agencyId: string, id: string, page: PageRequest<ReportSort>) =>
+      (await findImport(db, agencyId, id))
+        ? ok(await listImportReports(db, agencyId, id, page))
         : importNotFound,
 
-    report: async (tenantId: string, id: string) => {
-      const found = await findReport(db, tenantId, id);
+    report: async (agencyId: string, id: string) => {
+      const found = await findReport(db, agencyId, id);
       if (!found) return fail('not_found', 'Report not found');
       const { report, ...meta } = found;
       const data = (await blobs.getJson(report as BlobRef)) as Json;
@@ -120,19 +120,19 @@ export const createImportService = ({
       return ok({ report: meta, data, xml: reportXml(data), dictionary });
     },
 
-    upload: async (tenantId: string, userId: string, workflow: string, file: UploadedFile) => {
+    upload: async (agencyId: string, userId: string, workflow: string, file: UploadedFile) => {
       if (!file.bytes.byteLength) return fail('invalid', 'The file is empty');
       if (file.bytes.byteLength > maxBytes) {
         return fail('invalid', `The file is larger than ${maxBytes} bytes`);
       }
-      const version = await resolveWorkflowVersion(db, tenantId, workflow);
+      const version = await resolveWorkflowVersion(db, agencyId, workflow);
       if (!version) return unpublished(workflow);
       const ref = await blobs.putBytes(
-        uploadKey(tenantId, file.name),
+        uploadKey(agencyId, file.name),
         file.bytes,
         file.type || 'application/octet-stream'
       );
-      return ingest(tenantId, version.id, ref, {
+      return ingest(agencyId, version.id, ref, {
         source: 'upload',
         fileName: file.name.trim() || safeName(file.name),
         uploadedBy: userId
@@ -140,11 +140,11 @@ export const createImportService = ({
     },
 
     authenticateSftp: async (username: string, password: string) => {
-      const tenant = await findSftpTenant(db, username);
+      const agency = await findSftpAgency(db, username);
       const valid =
-        tenant?.sftp_password_hash && (await verifyPassword(password, tenant.sftp_password_hash));
-      return valid && tenant
-        ? ok(sftpUser(username, tenant.id, sftp))
+        agency?.sftp_password_hash && (await verifyPassword(password, agency.sftp_password_hash));
+      return valid && agency
+        ? ok(sftpUser(username, agency.id, sftp))
         : fail('unauthorized', 'Invalid SFTP credentials');
     },
 
@@ -156,16 +156,16 @@ export const createImportService = ({
       }
       const path = sftpPathOf(event.virtual_path);
       if (!path) return fail('invalid', 'The SFTP path is not a safe relative file path');
-      const tenant = await findSftpTenant(db, event.username);
-      if (!tenant) return fail('not_found', `No tenant uses SFTP account ${event.username}`);
-      const version = await resolveWorkflowVersion(db, tenant.id, INGEST_WORKFLOW);
+      const agency = await findSftpAgency(db, event.username);
+      if (!agency) return fail('not_found', `No agency uses SFTP account ${event.username}`);
+      const version = await resolveWorkflowVersion(db, agency.id, INGEST_WORKFLOW);
       if (!version) return unpublished(INGEST_WORKFLOW);
       return ingest(
-        tenant.id,
+        agency.id,
         version.id,
         {
           bucket: sftp.bucket,
-          key: `${sftpPrefix(tenant.id)}${path}`,
+          key: `${sftpPrefix(agency.id)}${path}`,
           size: event.file_size,
           contentType: 'application/xml'
         },

@@ -9,7 +9,7 @@ export type DateRange = { from: string; to: string };
 type DateKind = 'service' | 'posted' | 'completed' | 'received';
 
 export type ReportContext = {
-  tenantId: string;
+  agencyId: string;
   tz: string;
   now: string;
   today: string;
@@ -175,7 +175,7 @@ const aging = report({
           centsWhere(sql.ref('b.balance_cents'), inBucket(min, max)).as(key)
         )
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('c.status', 'not in', OPEN_EXCLUDED)
       .where('b.balance_cents', '>', 0)
       .groupBy(sql`1`)
@@ -223,7 +223,7 @@ const monthly = report({
           'bill_days'
         )
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('c.status', 'not in', UNBILLED)
       .where(servedIn(ctx))
       .groupBy(sql`1`)
@@ -293,7 +293,7 @@ const payers = report({
           sql`a.first_paid >= a.first_submitted`
         ).as('pay_days')
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('c.status', 'not in', UNBILLED)
       .where(servedIn(ctx))
       .where(sql<boolean>`a.first_submitted is not null or a.responses > 0`)
@@ -313,7 +313,7 @@ const payers = report({
         zero.as('paid_claims'),
         zero.as('pay_days')
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('e.kind', '=', 'response')
       .where('e.coverage_id', 'is', null)
       .where('c.status', 'not in', UNBILLED)
@@ -348,7 +348,7 @@ const hcpcs = report({
         sql<number>`sum(l.units)::float8`.as('units'),
         cents(sql.ref('l.total_cents')).as('charges_cents')
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('c.status', 'not in', UNBILLED)
       .where(servedIn(ctx))
       .groupBy('l.code')
@@ -371,7 +371,7 @@ const levels = report({
         sql<number>`coalesce(sum(c.loaded_miles), 0)::float8`.as('miles'),
         cents(sql.ref('c.total_cents')).as('charges_cents')
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('c.status', 'not in', UNBILLED)
       .where(servedIn(ctx))
       .groupBy(['c.level', 'c.emergency'])
@@ -416,7 +416,7 @@ const payments = report({
         'u.email as posted_by',
         'e.note'
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('e.kind', 'in', PAYMENTS)
       .where(within(sql.ref('e.created_at'), ctx))
       .as('r'),
@@ -447,7 +447,7 @@ const denials = report({
         sql<number>`count(distinct e.claim_id)::int`.as('claims'),
         cents(sql.ref('a.amount_cents')).as('amount_cents')
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('e.kind', '=', 'response')
       .where(within(sql.ref('e.created_at'), ctx))
       .groupBy([sql`1`, sql`2`])
@@ -475,7 +475,7 @@ const activity = report({
         zero.as('written_off'),
         zero.as('collections')
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('e.kind', 'in', SUBMISSIONS)
       .where(within(sql.ref('e.created_at'), ctx))
       .where(({ not, exists, selectFrom }) =>
@@ -504,7 +504,7 @@ const activity = report({
         zero.as('written_off'),
         zero.as('collections')
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('e.kind', '=', 'response')
       .where(within(sql.ref('e.created_at'), ctx));
     const closed = db
@@ -525,7 +525,7 @@ const activity = report({
           'collections'
         )
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('e.kind', '=', 'closed')
       .where('e.note', 'in', UNRECOVERED)
       .where(within(sql.ref('e.created_at'), ctx));
@@ -590,7 +590,7 @@ const unbilled = report({
         ),
         'c.total_cents as charges_cents'
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('c.status', 'in', PRE_SUBMISSION)
       .as('r'),
   order: 'age_days',
@@ -621,7 +621,7 @@ const writeOffs = report({
         'b.adjusted_cents',
         'b.balance_cents'
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('e.kind', '=', 'closed')
       .where('e.note', 'in', UNRECOVERED)
       .where(within(sql.ref('e.created_at'), ctx))
@@ -664,7 +664,7 @@ const workQueue = report({
         ),
         sql<Date>`min(t.created_at)`.as('oldest_at')
       ])
-      .where('t.tenant_id', '=', ctx.tenantId)
+      .where('t.agency_id', '=', ctx.agencyId)
       .where('t.status', '=', 'open')
       .groupBy(sql`1`)
       .as('r');
@@ -687,7 +687,7 @@ const productivity = report({
         zero.as('submitted'),
         zero.as('posted')
       ])
-      .where('t.tenant_id', '=', ctx.tenantId)
+      .where('t.agency_id', '=', ctx.agencyId)
       .where('t.status', '=', 'completed')
       .where('t.completed_by', 'is not', null)
       .where(within(sql.ref('t.completed_at'), ctx));
@@ -701,7 +701,7 @@ const productivity = report({
         sql<number>`(e.kind <> 'response')::int`.as('submitted'),
         sql<number>`(e.kind = 'response')::int`.as('posted')
       ])
-      .where('c.tenant_id', '=', ctx.tenantId)
+      .where('c.agency_id', '=', ctx.agencyId)
       .where('e.kind', 'in', [...SUBMISSIONS, 'response'])
       .where('e.created_by', 'is not', null)
       .where(within(sql.ref('e.created_at'), ctx));
@@ -740,10 +740,10 @@ const imports = report({
               countWhere(sql`c.status = 'draft'`).as('drafts'),
               countWhere(sql`c.status = 'void'`).as('voided'),
               countWhere(
-                sql`c.id is null and exists (select 1 from claims o where o.tenant_id = i.tenant_id and o.pcr_number = ir.pcr_number)`
+                sql`c.id is null and exists (select 1 from claims o where o.agency_id = i.agency_id and o.pcr_number = ir.pcr_number)`
               ).as('revisions'),
               countWhere(
-                sql`c.id is null and not exists (select 1 from claims o where o.tenant_id = i.tenant_id and o.pcr_number = ir.pcr_number)`
+                sql`c.id is null and not exists (select 1 from claims o where o.agency_id = i.agency_id and o.pcr_number = ir.pcr_number)`
               ).as('no_claim'),
               centsWhere(sql.ref('c.total_cents'), sql`c.status not in ('draft', 'void')`).as(
                 'charges'
@@ -776,7 +776,7 @@ const imports = report({
         'runs.failed',
         'x.charges as charges_cents'
       ])
-      .where('i.tenant_id', '=', ctx.tenantId)
+      .where('i.agency_id', '=', ctx.agencyId)
       .where(within(sql.ref('i.created_at'), ctx))
       .as('r'),
   order: 'received_at',

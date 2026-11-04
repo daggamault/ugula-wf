@@ -7,16 +7,16 @@ import type { ImportSort, ReportSort } from './schemas.ts';
 
 export type ImportFilters = PageRequest<ImportSort> & { q?: string | undefined };
 
-export const findSftpTenant = (db: Db, username: string) =>
+export const findSftpAgency = (db: Db, username: string) =>
   db
-    .selectFrom('tenants')
+    .selectFrom('agencies')
     .select(['id', 'sftp_password_hash'])
     .where('sftp_username', '=', username)
     .where('is_active', '=', true)
     .executeTakeFirst();
 
 export type NewImport = {
-  tenantId: string;
+  agencyId: string;
   runId: string;
   source: ImportSource;
   fileName: string;
@@ -28,7 +28,7 @@ export const insertImport = (db: Db, i: NewImport) =>
   db
     .insertInto('imports')
     .values({
-      tenant_id: i.tenantId,
+      agency_id: i.agencyId,
       run_id: i.runId,
       source: i.source,
       file_name: i.fileName,
@@ -38,7 +38,7 @@ export const insertImport = (db: Db, i: NewImport) =>
     .returning('id')
     .executeTakeFirstOrThrow();
 
-export const findReport = (db: Db, tenantId: string, id: string) =>
+export const findReport = (db: Db, agencyId: string, id: string) =>
   db
     .selectFrom('import_reports as r')
     .innerJoin('imports as i', 'i.id', 'r.import_id')
@@ -52,7 +52,7 @@ export const findReport = (db: Db, tenantId: string, id: string) =>
       'i.created_at'
     ])
     .where('r.id', '=', id)
-    .where('i.tenant_id', '=', tenantId)
+    .where('i.agency_id', '=', agencyId)
     .executeTakeFirst();
 
 const childCount = (status: RunStatus) =>
@@ -68,7 +68,7 @@ const IMPORT_ORDER = {
   attention: sql`reports.waiting + reports.failed + reports.stuck + reports.processing`
 };
 
-const importRows = (db: Db, tenantId: string) =>
+const importRows = (db: Db, agencyId: string) =>
   db
     .selectFrom('imports as i')
     .innerJoin('workflow_runs as r', 'r.id', 'i.run_id')
@@ -119,10 +119,10 @@ const importRows = (db: Db, tenantId: string) =>
       'claimed.claims',
       'claimed.charges_cents'
     ])
-    .where('i.tenant_id', '=', tenantId);
+    .where('i.agency_id', '=', agencyId);
 
-export const listImports = (db: Db, tenantId: string, f: ImportFilters) => {
-  let q = importRows(db, tenantId);
+export const listImports = (db: Db, agencyId: string, f: ImportFilters) => {
+  let q = importRows(db, agencyId);
   if (f.q) {
     const like = containsPattern(f.q);
     q = q.where((eb) =>
@@ -132,8 +132,8 @@ export const listImports = (db: Db, tenantId: string, f: ImportFilters) => {
   return paged(q, f, IMPORT_ORDER, sql.ref('i.id'));
 };
 
-export const findImport = (db: Db, tenantId: string, id: string) =>
-  importRows(db, tenantId).where('i.id', '=', id).executeTakeFirst();
+export const findImport = (db: Db, agencyId: string, id: string) =>
+  importRows(db, agencyId).where('i.id', '=', id).executeTakeFirst();
 
 const REPORT_ORDER = {
   position: sql.ref('ir.position'),
@@ -146,7 +146,7 @@ const REPORT_ORDER = {
 
 export const listImportReports = (
   db: Db,
-  tenantId: string,
+  agencyId: string,
   importId: string,
   page: PageRequest<ReportSort>
 ) =>
@@ -189,7 +189,7 @@ export const listImportReports = (
         't.subject as task_subject',
         't.kind as task_kind'
       ])
-      .where('i.tenant_id', '=', tenantId)
+      .where('i.agency_id', '=', agencyId)
       .where('i.id', '=', importId),
     page,
     REPORT_ORDER,

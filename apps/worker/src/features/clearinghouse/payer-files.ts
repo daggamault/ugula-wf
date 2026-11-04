@@ -3,7 +3,7 @@ import { applyPayerFile, type Db, findImported, readPayerFile } from '@ugula/db'
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobStore } from '@ugula/storage';
 import type { Announce } from '../../shared/live.ts';
-import { runTenant } from '../../shared/tenancy.ts';
+import { runAgency } from '../../shared/tenancy.ts';
 
 type Blobs = Pick<BlobStore, 'getBytes'>;
 
@@ -15,14 +15,14 @@ export const createPayerFileStore = (
   now: () => Date = () => new Date()
 ): PayerFileStore => ({
   apply: async (runId, _sourceKey, { document, fileName }) => {
-    const run = await runTenant(db, runId).executeTakeFirstOrThrow();
+    const run = await runAgency(db, runId).executeTakeFirstOrThrow();
     const read = readPayerFile(await blobs.getBytes(document));
     if (!read.ok) return { status: 'unreadable', reason: read.failure.message };
-    const imported = await findImported(db, run.tenant_id, read.value.digest);
+    const imported = await findImported(db, run.agency_id, read.value.digest);
     if (imported) return { status: 'duplicate', fileId: imported.id };
     const applied = await db.transaction().execute((tx) =>
       applyPayerFile(tx, boss, {
-        tenantId: run.tenant_id,
+        agencyId: run.agency_id,
         userId: null,
         fileName,
         document,

@@ -5,8 +5,8 @@ const buildNotificationsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('notifications')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('user_id', 'uuid', (col) =>
       col.references('users.id').onDelete('cascade').onUpdate('cascade')
@@ -37,9 +37,9 @@ const buildNotificationStatesTable = (db: Kysely<Database>) =>
 
 const buildNotificationsIndexes = (db: Kysely<Database>) => [
   db.schema
-    .createIndex('idx_notifications_tenant_created')
+    .createIndex('idx_notifications_agency_created')
     .on('notifications')
-    .columns(['tenant_id', 'created_at desc']),
+    .columns(['agency_id', 'created_at desc']),
   db.schema.createIndex('idx_notifications_user_id').on('notifications').column('user_id')
 ];
 

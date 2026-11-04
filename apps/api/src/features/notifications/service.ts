@@ -17,24 +17,24 @@ export const toNotification = (r: Row) => ({
 });
 
 export const createNotificationService = ({ db, announce }: { db: Db; announce: Announce }) => {
-  const changed = (tenantId: string, work: Promise<unknown>) =>
+  const changed = (agencyId: string, work: Promise<unknown>) =>
     announced(
       announce,
-      tenantId,
+      agencyId,
       work.then(() => ok({ status: 'ok' })),
       () => [{ kind: 'notification', id: null }]
     );
 
   return {
-    list: async (tenantId: string, userId: string) => {
-      const items = (await listNotifications(db, tenantId, userId)).map(toNotification);
+    list: async (agencyId: string, userId: string) => {
+      const items = (await listNotifications(db, agencyId, userId)).map(toNotification);
       return ok({ items, unread: items.filter((n) => !n.read).length });
     },
 
-    create: (tenantId: string, userId: string, input: NotificationInput) =>
+    create: (agencyId: string, userId: string, input: NotificationInput) =>
       changed(
-        tenantId,
-        insertNotification(db, tenantId, userId, {
+        agencyId,
+        insertNotification(db, agencyId, userId, {
           intent: input.intent,
           title: input.title,
           description: input.description || null,
@@ -42,9 +42,9 @@ export const createNotificationService = ({ db, announce }: { db: Db; announce: 
         })
       ),
 
-    read: (tenantId: string, userId: string) => changed(tenantId, markState(db, userId, false)),
+    read: (agencyId: string, userId: string) => changed(agencyId, markState(db, userId, false)),
 
-    clear: (tenantId: string, userId: string) => changed(tenantId, markState(db, userId, true))
+    clear: (agencyId: string, userId: string) => changed(agencyId, markState(db, userId, true))
   };
 };
 

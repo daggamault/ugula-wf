@@ -4,7 +4,7 @@ import type { Db } from './schema.ts';
 
 export const findClaimCheck = async (
   db: Db,
-  tenantId: string,
+  agencyId: string,
   claimId: string
 ): Promise<ClaimCheck | null> => {
   const claim = await db
@@ -38,7 +38,7 @@ export const findClaimCheck = async (
       'p.postal_code'
     ])
     .where('c.id', '=', claimId)
-    .where('c.tenant_id', '=', tenantId)
+    .where('c.agency_id', '=', agencyId)
     .executeTakeFirst();
   if (!claim) return null;
   const [lines, payers, diagnoses] = await Promise.all([

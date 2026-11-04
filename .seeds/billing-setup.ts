@@ -23,20 +23,20 @@ const demoPayers = [
   { name: 'Blue Plan', payer_id: 'DEMOBCBS', claim_filing: 'BL' }
 ];
 
-export const buildUpsertDemoProfile = (db: Kysely<Database>, tenantId: string) =>
+export const buildUpsertDemoProfile = (db: Kysely<Database>, agencyId: string) =>
   db
     .insertInto('billing_profiles')
-    .values({ tenant_id: tenantId, ...demoProfile })
+    .values({ agency_id: agencyId, ...demoProfile })
     .onConflict((oc) =>
-      oc.column('tenant_id').doUpdateSet({ ...demoProfile, updated_at: sql`now()` })
+      oc.column('agency_id').doUpdateSet({ ...demoProfile, updated_at: sql`now()` })
     );
 
-export const buildUpsertDemoPayers = (db: Kysely<Database>, tenantId: string) =>
+export const buildUpsertDemoPayers = (db: Kysely<Database>, agencyId: string) =>
   db
     .insertInto('payers')
-    .values(demoPayers.map((p) => ({ tenant_id: tenantId, ...p })))
+    .values(demoPayers.map((p) => ({ agency_id: agencyId, ...p })))
     .onConflict((oc) =>
-      oc.expression(sql`tenant_id, lower(name)`).doUpdateSet({
+      oc.expression(sql`agency_id, lower(name)`).doUpdateSet({
         payer_id: (eb) => eb.ref('excluded.payer_id'),
         claim_filing: (eb) => eb.ref('excluded.claim_filing'),
         updated_at: sql`now()`

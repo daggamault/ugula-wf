@@ -10,7 +10,7 @@ type NewNotification = {
   link: { label: string; to: string } | null;
 };
 
-export const listNotifications = (db: Db, tenantId: string, userId: string) =>
+export const listNotifications = (db: Db, agencyId: string, userId: string) =>
   db
     .selectFrom('notifications as n')
     .leftJoin('notification_states as s', (j) => j.on('s.user_id', '=', userId))
@@ -24,7 +24,7 @@ export const listNotifications = (db: Db, tenantId: string, userId: string) =>
       'n.created_at',
       sql<boolean>`s.read_at is not null and n.created_at <= s.read_at`.as('read')
     ])
-    .where('n.tenant_id', '=', tenantId)
+    .where('n.agency_id', '=', agencyId)
     .where((eb) => eb.or([eb('n.user_id', 'is', null), eb('n.user_id', '=', userId)]))
     .where(sql<boolean>`s.cleared_at is null or n.created_at > s.cleared_at`)
     .orderBy('n.created_at', 'desc')
@@ -32,11 +32,11 @@ export const listNotifications = (db: Db, tenantId: string, userId: string) =>
     .limit(NOTIFICATION_LIMIT)
     .execute();
 
-export const insertNotification = (db: Db, tenantId: string, userId: string, n: NewNotification) =>
+export const insertNotification = (db: Db, agencyId: string, userId: string, n: NewNotification) =>
   db
     .insertInto('notifications')
     .values({
-      tenant_id: tenantId,
+      agency_id: agencyId,
       user_id: userId,
       intent: n.intent,
       title: n.title,

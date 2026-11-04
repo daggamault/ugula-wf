@@ -9,8 +9,8 @@ import type { PatientService } from './service.ts';
 export const createPatientRoutes = (service: PatientService) =>
   new Hono<AuthEnv>()
     .get('/', sValidator('query', listPatientsQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('session').tenantId, c.req.valid('query')))
+      respond(c, await service.list(c.get('session').agencyId, c.req.valid('query')))
     )
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.find(c.get('session').tenantId, c.req.valid('param').id))
+      respond(c, await service.find(c.get('session').agencyId, c.req.valid('param').id))
     );

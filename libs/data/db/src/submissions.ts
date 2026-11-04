@@ -23,7 +23,7 @@ type SubmissionEvent = {
   coverageId: string;
 };
 
-const readyClaim = (db: Db, tenantId: string, id: string) =>
+const readyClaim = (db: Db, agencyId: string, id: string) =>
   db
     .selectFrom('claims as c')
     .innerJoin('patients as p', 'p.id', 'c.patient_id')
@@ -87,15 +87,15 @@ const readyClaim = (db: Db, tenantId: string, id: string) =>
         .whereRef('d.claim_id', '=', 'c.id')
         .orderBy('d.position')})`.as('diagnoses')
     ])
-    .where('c.tenant_id', '=', tenantId)
+    .where('c.agency_id', '=', agencyId)
     .where('c.id', '=', id)
     .where('c.status', '=', 'ready');
 
-export const findReadyClaim = (db: Db, tenantId: string, id: string) =>
-  readyClaim(db, tenantId, id).executeTakeFirst();
+export const findReadyClaim = (db: Db, agencyId: string, id: string) =>
+  readyClaim(db, agencyId, id).executeTakeFirst();
 
-export const lockReadyClaim = (db: Db, tenantId: string, id: string) =>
-  readyClaim(db, tenantId, id).forUpdate('c').executeTakeFirst();
+export const lockReadyClaim = (db: Db, agencyId: string, id: string) =>
+  readyClaim(db, agencyId, id).forUpdate('c').executeTakeFirst();
 
 export type ReadyClaimRow = NonNullable<Awaited<ReturnType<typeof findReadyClaim>>>;
 
@@ -114,11 +114,11 @@ const profileColumns = [
   'production'
 ] as const;
 
-export const findProfile = (db: Db, tenantId: string) =>
+export const findProfile = (db: Db, agencyId: string) =>
   db
     .selectFrom('billing_profiles')
     .select(profileColumns)
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .executeTakeFirst();
 
 type ProfileRow = NonNullable<Awaited<ReturnType<typeof findProfile>>>;
@@ -138,12 +138,12 @@ export const toSubmitter = (p: ProfileRow): Submitter => ({
   production: p.production
 });
 
-export const allocateControlNumber = async (db: Db, tenantId: string) =>
+export const allocateControlNumber = async (db: Db, agencyId: string) =>
   (
     await db
       .updateTable('billing_profiles')
       .set({ next_control_number: sql`next_control_number + 1` })
-      .where('tenant_id', '=', tenantId)
+      .where('agency_id', '=', agencyId)
       .where('next_control_number', '<=', MAX_CONTROL_NUMBER)
       .returning(sql<number>`next_control_number - 1`.as('control_number'))
       .executeTakeFirst()
@@ -153,7 +153,7 @@ export const insertBatch = (
   db: Db,
   batch: {
     id: string;
-    tenantId: string;
+    agencyId: string;
     controlNumber: number;
     totalCents: number;
     production: boolean;
@@ -165,7 +165,7 @@ export const insertBatch = (
     .insertInto('claim_batches')
     .values({
       id: batch.id,
-      tenant_id: batch.tenantId,
+      agency_id: batch.agencyId,
       control_number: batch.controlNumber,
       claim_count: 1,
       total_cents: batch.totalCents,
@@ -202,8 +202,8 @@ export const markSubmitted = (db: Db, id: string) =>
     .where('status', '=', 'ready')
     .execute();
 
-export const batchKey = (tenantId: string, batchId: string, controlNumber: number) =>
-  `batches/${tenantId}/${batchId}/837P-${String(controlNumber).padStart(9, '0')}.txt`;
+export const batchKey = (agencyId: string, batchId: string, controlNumber: number) =>
+  `batches/${agencyId}/${batchId}/837P-${String(controlNumber).padStart(9, '0')}.txt`;
 
 type CoverageRow = ReadyClaimRow['coverages'][number];
 

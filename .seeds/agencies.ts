@@ -1,16 +1,16 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-type SeedTenantInput = {
+type SeedAgencyInput = {
   name: string;
   slug: string;
   sftpUsername: string;
   sftpPasswordHash: string;
 };
 
-const buildUpsertTenant = (db: Kysely<Database>, input: SeedTenantInput) =>
+const buildUpsertAgency = (db: Kysely<Database>, input: SeedAgencyInput) =>
   db
-    .insertInto('tenants')
+    .insertInto('agencies')
     .values({
       name: input.name,
       slug: input.slug,
@@ -29,5 +29,5 @@ const buildUpsertTenant = (db: Kysely<Database>, input: SeedTenantInput) =>
     )
     .returning('id');
 
-export const upsertTenant = (db: Kysely<Database>, input: SeedTenantInput) =>
-  buildUpsertTenant(db, input).executeTakeFirstOrThrow();
+export const upsertAgency = (db: Kysely<Database>, input: SeedAgencyInput) =>
+  buildUpsertAgency(db, input).executeTakeFirstOrThrow();

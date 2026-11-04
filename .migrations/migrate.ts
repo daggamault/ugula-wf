@@ -1,5 +1,6 @@
 import { createDb, type Database, type Db } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { createAgenciesTable } from './agencies.ts';
 import { createBillingProfilesTables } from './billing-profiles.ts';
 import { createClaimsTables } from './claims.ts';
 import { parseConfig } from './config.ts';
@@ -13,7 +14,6 @@ import { createNotificationsTables } from './notifications.ts';
 import { createPatientsTable } from './patients.ts';
 import { createPayerFilesTables } from './payer-files.ts';
 import { createTasksTable } from './tasks.ts';
-import { createTenantsTable } from './tenants.ts';
 import { createUsersTable } from './users.ts';
 import { createWorkflowRunsTables } from './workflow-runs.ts';
 
@@ -49,7 +49,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'graph_versions',
     'graphs',
     'users',
-    'tenants',
+    'agencies',
     'gnis_places',
     'nemsis_codes',
     'nemsis_elements'
@@ -64,7 +64,7 @@ const steps = [
   createExtensions,
   createGnisPlacesTable,
   createNemsisDictionaryTables,
-  createTenantsTable,
+  createAgenciesTable,
   createUsersTable,
   createGraphsTables,
   createWorkflowRunsTables,

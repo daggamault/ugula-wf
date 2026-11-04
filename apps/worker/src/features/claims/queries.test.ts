@@ -33,7 +33,7 @@ const ID = '0195f2a4-0000-7000-8000-000000000001';
 
 const OLD_RUN = '0195f2a4-0000-7000-8000-0000000000a1';
 
-const owned = { id: ID, tenant_id: 't-1' };
+const owned = { id: ID, agency_id: 't-1' };
 
 const CYCLE = '0195f2a4-0000-7000-8000-0000000000c1';
 
@@ -105,7 +105,7 @@ const profile = {
   production: sampleSubmitter.production
 };
 
-const ownedClaim = (q: CompiledQuery) => q.sql.startsWith('select "id", "tenant_id" from "claims"');
+const ownedClaim = (q: CompiledQuery) => q.sql.startsWith('select "id", "agency_id" from "claims"');
 
 const sqlOf = (queries: readonly CompiledQuery[], prefix: string) =>
   queries.filter((q) => q.sql.startsWith(prefix));
@@ -135,7 +135,7 @@ describe('createClaimStore', () => {
     assert.deepEqual(link?.parameters.slice(0, 2), [ID, 'r1']);
   });
 
-  it('assigns a patient of the same tenant to a draft, or again to the same patient', async () => {
+  it('assigns a patient of the same agency to a draft, or again to the same patient', async () => {
     const { db, queries } = createRecordingDb((q) =>
       ownedClaim(q) ? [owned] : q.sql.startsWith('update') ? [{}] : []
     );
@@ -143,7 +143,7 @@ describe('createClaimStore', () => {
     const update = queries.at(-1);
     assert.ok(
       update?.sql.startsWith(
-        'update "claims" set "patient_id" = (select "id" from "patients" where "id" = $1 and "tenant_id" = $2)'
+        'update "claims" set "patient_id" = (select "id" from "patients" where "id" = $1 and "agency_id" = $2)'
       )
     );
     assert.ok(update?.sql.includes('exists (select "id" from "patients"'));
@@ -254,7 +254,7 @@ describe('createClaimStore', () => {
       19_220
     ]);
     const [coverages] = sqlOf(queries, 'insert into "claim_coverages"');
-    assert.ok(coverages?.sql.includes('(select "id" from "payers" where "tenant_id" ='));
+    assert.ok(coverages?.sql.includes('(select "id" from "payers" where "agency_id" ='));
     assert.ok(coverages?.parameters.includes('medicare') && coverages.parameters.includes('MCR'));
     assert.ok(coverages?.sql.includes('and "id" = $'));
     assert.ok(coverages?.parameters.includes('0195f2a4-0000-7000-8000-00000000000b'));
@@ -333,9 +333,9 @@ describe('createClaimStore', () => {
     assert.equal(await store.setStatus('r1', ID, 'k', 'submitted', 5), 'set');
   });
 
-  it('reads a claim check for the run tenant', async () => {
+  it('reads a claim check for the run agency', async () => {
     const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select "tenant_id" from "workflow_runs"') ? [{ tenant_id: 't-1' }] : []
+      q.sql.startsWith('select "agency_id" from "workflow_runs"') ? [{ agency_id: 't-1' }] : []
     );
     const store = createClaimStore(db, blobs);
     assert.equal(await store.claimCheck('r1', ID), null);
@@ -428,7 +428,7 @@ describe('createClaimStore', () => {
     assert.ok(insert?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
   });
 
-  it('reads the ledger by coverage in billing order and refuses other tenants or bad ids', async () => {
+  it('reads the ledger by coverage in billing order and refuses other agencies or bad ids', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.includes('left join "patients"')
         ? [
@@ -503,7 +503,7 @@ describe('createClaimStore', () => {
     );
   });
 
-  it('links a claim to a cycle run of the same tenant only', async () => {
+  it('links a claim to a cycle run of the same agency only', async () => {
     const attach = (free: boolean) =>
       createRecordingDb((q) =>
         ownedClaim(q)
@@ -663,9 +663,9 @@ describe('createClaimStore', () => {
     assert.equal((await createClaimStore(missing.db, blobs).statementData('r1', ID)).agency, null);
   });
 
-  it('stores statement PDFs under the tenant and logs them once per step', async () => {
+  it('stores statement PDFs under the agency and logs them once per step', async () => {
     const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select') ? [{ id: ID, tenant_id: 't-1' }] : []
+      q.sql.startsWith('select') ? [{ id: ID, agency_id: 't-1' }] : []
     );
     await createClaimStore(db, blobs).saveStatement('r1', ID, 'r1:s:stmt:0', {
       number: 2,
@@ -685,8 +685,8 @@ describe('createClaimStore', () => {
 
   it('gives the submitter and no pending claim when the claim is not ready to submit', async () => {
     const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select "tenant_id" from "workflow_runs"')
-        ? [{ tenant_id: 't-1' }]
+      q.sql.startsWith('select "agency_id" from "workflow_runs"')
+        ? [{ agency_id: 't-1' }]
         : q.sql.includes('from "billing_profiles"')
           ? [profile]
           : []
@@ -766,7 +766,7 @@ describe('createClaimStore', () => {
     assert.equal(stored.length, 1);
   });
 
-  it('links a run to a claim of its own tenant', async () => {
+  it('links a run to a claim of its own agency', async () => {
     const { db, queries } = createRecordingDb((q) => (ownedClaim(q) ? [owned] : []));
     await createClaimStore(db, blobs).linkRun('r1', ID);
     const [link] = sqlOf(queries, 'insert into "claim_runs"');

@@ -11,13 +11,13 @@ import type { PayerFileService } from './service.ts';
 export const createPayerFileRoutes = (service: PayerFileService, maxBytes: number) =>
   new Hono<AuthEnv>()
     .get('/', sValidator('query', listPayerFilesQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('session').tenantId, c.req.valid('query')))
+      respond(c, await service.list(c.get('session').agencyId, c.req.valid('query')))
     )
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.find(c.get('session').tenantId, c.req.valid('param').id))
+      respond(c, await service.find(c.get('session').agencyId, c.req.valid('param').id))
     )
     .get('/:id/file', sValidator('param', idParam, invalidRequest), async (c) => {
-      const res = await service.download(c.get('session').tenantId, c.req.valid('param').id);
+      const res = await service.download(c.get('session').agencyId, c.req.valid('param').id);
       if (!res.ok) return respond(c, res);
       return c.body(Uint8Array.from(res.value.bytes), 200, {
         'content-type': 'application/edi-x12',
@@ -34,10 +34,10 @@ export const createPayerFileRoutes = (service: PayerFileService, maxBytes: numbe
       sValidator('form', payerFileFormSchema, invalidRequest),
       async (c) => {
         const { file } = c.req.valid('form');
-        const { tenantId, userId } = c.get('session');
+        const { agencyId, userId } = c.get('session');
         return respond(
           c,
-          await service.upload(tenantId, userId, {
+          await service.upload(agencyId, userId, {
             name: file.name,
             type: file.type,
             bytes: new Uint8Array(await file.arrayBuffer())

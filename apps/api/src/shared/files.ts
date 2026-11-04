@@ -15,5 +15,5 @@ export const safeName = (name: string) =>
     .replace(/^[._]+/, '')
     .slice(-120) || 'upload';
 
-export const uploadKey = (tenantId: string, name: string, folder = '') =>
-  `${importsPrefix(tenantId)}${folder}${randomUUID()}/${safeName(name)}`;
+export const uploadKey = (agencyId: string, name: string, folder = '') =>
+  `${importsPrefix(agencyId)}${folder}${randomUUID()}/${safeName(name)}`;

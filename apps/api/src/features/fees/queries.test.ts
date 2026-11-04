@@ -30,7 +30,7 @@ describe('fee queries', () => {
     assert.deepEqual(list?.parameters.slice(1, 3), ['%a04%', '%a04%']);
   });
 
-  it('upserts one price per tenant, payer and code and returns it with its payer name', async () => {
+  it('upserts one price per agency, payer and code and returns it with its payer name', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'f1' }]);
     await upsertFee(db, 't-1', { payerId: PAYER, code: 'A0427', amountCents: 95000 });
     assert.equal(queries.length, 1);
@@ -38,14 +38,14 @@ describe('fee queries', () => {
     assert.ok(upsert?.sql.startsWith('with "saved" as (insert into "fee_schedules"'));
     assert.ok(
       upsert?.sql.includes(
-        'on conflict ("tenant_id", "payer_id", "code") do update set "amount_cents" = $'
+        'on conflict ("agency_id", "payer_id", "code") do update set "amount_cents" = $'
       )
     );
     assert.ok(upsert?.sql.includes('from "saved" as "f" left join "payers" as "p"'));
     assert.deepEqual(upsert?.parameters.slice(0, 4), ['t-1', PAYER, 'A0427', 95000]);
   });
 
-  it('finds, checks payers and deletes only within the tenant', async () => {
+  it('finds, checks payers and deletes only within the agency', async () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.equal(await findFee(db, 't-1', 'f1'), undefined);
     assert.equal(await payerExists(db, 't-1', PAYER), false);

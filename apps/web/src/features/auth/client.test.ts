@@ -5,7 +5,7 @@ import { createSignal } from '../../shared/signal.ts';
 import { createAuthClient } from './client.ts';
 
 const session = {
-  user: { id: 'u-1', tenantId: 't-1', email: 'dev@example.com' },
+  user: { id: 'u-1', agencyId: 't-1', email: 'dev@example.com' },
   sseUrl: 'http://localhost:3002'
 };
 

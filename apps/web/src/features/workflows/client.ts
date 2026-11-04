@@ -29,7 +29,7 @@ type GraphVersionSummary = {
 export type GraphDetail = {
   graph: {
     id: string;
-    tenant_id: string | null;
+    agency_id: string | null;
     key: string;
     name: string;
     kind: GraphKind;

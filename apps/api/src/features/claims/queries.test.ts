@@ -16,7 +16,7 @@ import {
 } from './queries.ts';
 
 describe('claim queries', () => {
-  it('pages claim ids by tenant and filters first, then loads details for that page only', async () => {
+  it('pages claim ids by agency and filters first, then loads details for that page only', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('select "c"."id", count(*) over ()')
         ? [
@@ -52,7 +52,7 @@ describe('claim queries', () => {
     );
     assert.ok(!ids?.sql.includes('lateral'));
     assert.ok(!ids?.sql.includes('array('));
-    assert.ok(ids?.sql.includes('"c"."tenant_id" = $1 and "c"."status" not in ('));
+    assert.ok(ids?.sql.includes('"c"."agency_id" = $1 and "c"."status" not in ('));
     assert.deepEqual(ids?.parameters.slice(1, 5), ['paid', 'written_off', 'collections', 'void']);
     assert.ok(
       ids?.sql.endsWith(
@@ -68,7 +68,7 @@ describe('claim queries', () => {
         'array((select coalesce(dp.name, cc.payer_name) as "payer" from "claim_coverages" as "cc" left join "payers" as "dp"'
       )
     );
-    assert.ok(details?.sql.endsWith('where "c"."tenant_id" = $1 and "c"."id" in ($2, $3)'));
+    assert.ok(details?.sql.endsWith('where "c"."agency_id" = $1 and "c"."id" in ($2, $3)'));
     assert.deepEqual(details?.parameters, ['t-1', 'c2', 'c1']);
   });
 
@@ -198,10 +198,10 @@ describe('claim queries', () => {
     const insert = queries.find((q) => q.sql.startsWith('insert into "claim_coverages"'));
     assert.match(
       insert?.sql ?? '',
-      /\(lower\(name\) = \$\d+ or "id" in \(select "payer_id" from "payer_aliases" where "tenant_id" = \$\d+ and "alias_key" = \$\d+\)\)/
+      /\(lower\(name\) = \$\d+ or "id" in \(select "payer_id" from "payer_aliases" where "agency_id" = \$\d+ and "alias_key" = \$\d+\)\)/
     );
     assert.ok(insert?.parameters.includes('aetna inc'));
-    assert.ok(insert?.sql.includes('"tenant_id", "position", "payer_name", "relationship"'));
+    assert.ok(insert?.sql.includes('"agency_id", "position", "payer_name", "relationship"'));
     assert.deepEqual(insert?.parameters.slice(0, 7), [
       'c1',
       't-1',
@@ -255,17 +255,17 @@ describe('claim queries', () => {
     await db.destroy();
   });
 
-  it('checks claims, documents and the claim found by id within the tenant only', async () => {
+  it('checks claims, documents and the claim found by id within the agency only', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await findClaim(db, 't-1', 'c1');
     assert.equal(await claimExists(db, 't-1', 'c1'), false);
     assert.equal(await findEventDocument(db, 't-1', 'c1', 'e1'), null);
     const [find, exists, document] = queries;
-    assert.ok(find?.sql.includes('"c"."tenant_id" = $'));
+    assert.ok(find?.sql.includes('"c"."agency_id" = $'));
     assert.ok(find?.parameters.includes('t-1') && find.parameters.includes('c1'));
-    assert.ok(exists?.sql.endsWith('where "id" = $1 and "tenant_id" = $2'));
+    assert.ok(exists?.sql.endsWith('where "id" = $1 and "agency_id" = $2'));
     assert.deepEqual(exists?.parameters, ['c1', 't-1']);
-    assert.ok(document?.sql.includes('"c"."tenant_id" = $3 and "e"."document" is not null'));
+    assert.ok(document?.sql.includes('"c"."agency_id" = $3 and "e"."document" is not null'));
     assert.deepEqual(document?.parameters, ['e1', 'c1', 't-1']);
     await db.destroy();
   });

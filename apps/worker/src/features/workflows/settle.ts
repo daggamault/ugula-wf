@@ -75,7 +75,7 @@ const rootKey = (run: ClaimedRun) => run.graphs.find((g) => g.id === run.version
 
 const recoverDrafts = async (tx: RunTx, run: ClaimedRun, reason: string, jobs: RunJob[]) => {
   if (rootKey(run) !== ENCOUNTER_WORKFLOW) return;
-  const versionId = await tx.findVersion(run.tenantId, RECOVER_DRAFT.key, RECOVER_DRAFT.version);
+  const versionId = await tx.findVersion(run.agencyId, RECOVER_DRAFT.key, RECOVER_DRAFT.version);
   if (!versionId) return;
   const ids = await tx.recoverDrafts(run, versionId, reason);
   jobs.push(...ids.map((id) => advance(id)));
@@ -113,7 +113,7 @@ const spawn = async (
   kind: ChildKind,
   jobs: RunJob[]
 ) => {
-  const versionId = await tx.findVersion(run.tenantId, String(data.type), Number(data.version));
+  const versionId = await tx.findVersion(run.agencyId, String(data.type), Number(data.version));
   if (!versionId) {
     const error = `Workflow ${String(data.type)}@${String(data.version)} is not published`;
     jobs.push(resume(run.id, waitId, kind === 'workflows' ? { results: [{ error }] } : { error }));
@@ -133,14 +133,14 @@ const startDetached = async (
   data: Record<string, Json>,
   jobs: RunJob[]
 ) => {
-  const versionId = await tx.findVersion(run.tenantId, String(data.type), Number(data.version));
+  const versionId = await tx.findVersion(run.agencyId, String(data.type), Number(data.version));
   if (!versionId) {
     const error = `Workflow ${String(data.type)}@${String(data.version)} is not published`;
     jobs.push(resume(run.id, waitId, { error }));
     return;
   }
   const inputs = isRecord(data.inputs) ? data.inputs : {};
-  const runId = await tx.insertRun(run.tenantId, versionId, inputs);
+  const runId = await tx.insertRun(run.agencyId, versionId, inputs);
   jobs.push(advance(runId), resume(run.id, waitId, { runId }));
 };
 
@@ -158,7 +158,7 @@ const suspendRun = async (tx: RunTx, run: ClaimedRun, state: RunState, jobs: Run
       const waitKey = `${String(data.name)}:${String(data.key)}`;
       await tx.saveRun(run, { status: 'suspended', state, waitKey });
       const after = typeof data.after === 'number' ? data.after : null;
-      if (after !== null && (await tx.lockSignal(run.tenantId, waitKey)) > after) {
+      if (after !== null && (await tx.lockSignal(run.agencyId, waitKey)) > after) {
         jobs.push(resume(run.id, wait.id, { payload: null }));
       } else if (until) jobs.push(timeout(run.id, wait.id, until));
       return;
@@ -166,7 +166,7 @@ const suspendRun = async (tx: RunTx, run: ClaimedRun, state: RunState, jobs: Run
     case 'task':
       await tx.saveRun(run, { status: 'suspended', state });
       await tx.insertTask({
-        tenantId: run.tenantId,
+        agencyId: run.agencyId,
         runId: run.id,
         waitId: wait.id,
         kind: 'task',
@@ -239,7 +239,7 @@ const faultRun = async (
   await tx.saveRun(run, { status: 'faulted', state, error: fault.error });
   const node = failed?.title ?? fault.error.node;
   await tx.insertTask({
-    tenantId: run.tenantId,
+    agencyId: run.agencyId,
     runId: run.id,
     waitId: rejected ? `fault:${state.seq}:${rejected.at}` : `fault:${state.seq}`,
     kind: 'fault',
@@ -294,7 +294,7 @@ export const stallRun = async (tx: RunTx, run: ClaimedRun, message: string, at: 
   const error = { message };
   await tx.saveRun(run, { status: 'faulted', state: run.state, error });
   await tx.insertTask({
-    tenantId: run.tenantId,
+    agencyId: run.agencyId,
     runId: run.id,
     waitId: `fault:${run.state?.seq ?? 0}:${at}`,
     kind: 'fault',

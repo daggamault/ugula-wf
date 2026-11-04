@@ -4,7 +4,7 @@ import { fail, ok } from '../../shared/result.ts';
 import { createAuthRoutes } from './routes.ts';
 import type { AuthService } from './service.ts';
 
-const session = { userId: 'u-1', tenantId: 't-1', email: 'dev@example.com' };
+const session = { userId: 'u-1', agencyId: 't-1', email: 'dev@example.com' };
 
 const ips: string[] = [];
 
@@ -50,7 +50,7 @@ describe('auth routes', () => {
     assert.equal(cookie, 'ugula_session=tok');
     const me = await routes.request('/me', { headers: { cookie } });
     assert.deepEqual(await me.json(), {
-      user: { id: 'u-1', tenantId: 't-1', email: 'dev@example.com' },
+      user: { id: 'u-1', agencyId: 't-1', email: 'dev@example.com' },
       sseUrl: 'http://localhost:3002'
     });
     assert.equal((await post('/sign-out', undefined, cookie)).status, 200);

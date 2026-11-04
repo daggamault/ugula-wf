@@ -7,7 +7,7 @@ import { SignInForm, signInErrorOf } from './sign-in-form.tsx';
 
 const mockAuth: AuthClient = {
   signIn: async () => ({
-    user: { id: 'u-1', tenantId: 't-1', email: 'dev@example.com' },
+    user: { id: 'u-1', agencyId: 't-1', email: 'dev@example.com' },
     sseUrl: 'http://localhost:3002'
   }),
   signOut: async () => undefined,

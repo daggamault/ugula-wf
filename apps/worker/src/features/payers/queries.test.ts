@@ -117,7 +117,7 @@ describe('createPayerStore', () => {
     assert.equal(empty.queries.length, 1);
   });
 
-  it('learns aliases only for payers in the run tenant directory', async () => {
+  it('learns aliases only for payers in the run agency directory', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('insert') && q.parameters.includes(BLUE) ? [{ id: 'a1' }] : []
     );
@@ -126,12 +126,12 @@ describe('createPayerStore', () => {
     const [insert] = queries;
     assert.ok(
       insert?.sql.startsWith(
-        'insert into "payer_aliases" ("tenant_id", "payer_id", "alias", "alias_key") select "tenant_id", "id"'
+        'insert into "payer_aliases" ("agency_id", "payer_id", "alias", "alias_key") select "agency_id", "id"'
       )
     );
     assert.ok(
       insert?.sql.includes(
-        'on conflict ("tenant_id", "alias_key") do update set "payer_id" = "excluded"."payer_id", "alias" = "excluded"."alias"'
+        'on conflict ("agency_id", "alias_key") do update set "payer_id" = "excluded"."payer_id", "alias" = "excluded"."alias"'
       )
     );
     assert.deepEqual(insert?.parameters, ['BCBS TX', 'bcbs tx', BLUE, 'r1']);
@@ -153,13 +153,13 @@ describe('createPayerStore', () => {
     assert.equal(queries.length, 1);
   });
 
-  it('lists the tenant directory by name', async () => {
+  it('lists the agency directory by name', async () => {
     const { db, queries } = createRecordingDb(() => [
       { id: BLUE, name: 'Blue Cross Blue Shield', claim_filing: 'BL' }
     ]);
     assert.deepEqual(await createPayerStore(db, embedder()).directory('r1'), [blue]);
     assert.ok(
-      queries[0]?.sql.includes('where "p"."tenant_id" = (select "tenant_id" from "workflow_runs"')
+      queries[0]?.sql.includes('where "p"."agency_id" = (select "agency_id" from "workflow_runs"')
     );
     assert.match(queries[0]?.sql ?? '', /order by "p"."name"/);
   });
@@ -179,7 +179,7 @@ describe('createPayerStore', () => {
     assert.match(insert?.sql ?? '', /^insert into "payer_suggestions"/);
     assert.ok(
       insert?.sql.includes(
-        'on conflict ("tenant_id", "name_key", "directory_version") do update set "payer_id" = "excluded"."payer_id"'
+        'on conflict ("agency_id", "name_key", "directory_version") do update set "payer_id" = "excluded"."payer_id"'
       )
     );
     assert.ok(insert?.parameters.includes('bcbs tx'));

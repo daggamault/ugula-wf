@@ -4,7 +4,7 @@ import { createRecordingDb } from '@ugula/db/testing';
 import { findReport, REPORTS, type ReportContext } from './queries.ts';
 
 const ctx: ReportContext = {
-  tenantId: 't-1',
+  agencyId: 't-1',
   tz: 'America/New_York',
   now: '2026-10-23T15:00:00.000Z',
   today: '2026-10-23',
@@ -23,8 +23,8 @@ const compile = async (id: string, group = '', page: number | 'all' = 1) => {
 };
 
 describe('report queries', () => {
-  it('runs every report and every part of a combined report for the tenant only', async () => {
-    const scoped = (sql: string) => sql.match(/"tenant_id" = \$\d+/g)?.length ?? 0;
+  it('runs every report and every part of a combined report for the agency only', async () => {
+    const scoped = (sql: string) => sql.match(/"agency_id" = \$\d+/g)?.length ?? 0;
     const parts = (sql: string) => (sql.match(/union all/g)?.length ?? 0) + 1;
     for (const [id, report] of Object.entries(REPORTS)) {
       for (const group of report.groups ?? ['']) {
@@ -141,7 +141,7 @@ describe('report queries', () => {
     const { rows } = await compile('imports');
     assert.ok(rows.sql.includes('c.id is null and exists'));
     assert.ok(rows.sql.includes('c.id is null and not exists'));
-    assert.ok(rows.sql.includes('o.tenant_id = i.tenant_id and o.pcr_number = ir.pcr_number'));
+    assert.ok(rows.sql.includes('o.agency_id = i.agency_id and o.pcr_number = ir.pcr_number'));
     assert.ok(rows.sql.includes('"ch"."parent_id" = "i"."run_id"'));
   });
 

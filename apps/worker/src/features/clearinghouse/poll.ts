@@ -31,47 +31,47 @@ const unseen = async (db: Db, files: RemoteFile[]) => {
   return files.filter((f) => !seen.has(fileKey(f.path, f.size, f.modifiedAt)));
 };
 
-const tenantsReceiving = async (db: Db, receiver: string | null) =>
+const agenciesReceiving = async (db: Db, receiver: string | null) =>
   receiver
     ? (
         await db
           .selectFrom('billing_profiles')
-          .select('tenant_id')
+          .select('agency_id')
           .where('submitter_id', '=', receiver)
           .execute()
-      ).map((r) => r.tenant_id)
+      ).map((r) => r.agency_id)
     : [];
 
 const receive = async (deps: PollDeps, f: RemoteFile) => {
   const { db, boss, blobs, clearinghouse } = deps;
   const bytes = await clearinghouse.download(f.path);
   const receiver = receiverOf(new TextDecoder().decode(bytes));
-  const tenants = await tenantsReceiving(db, receiver);
-  const [tenantId] = tenants;
+  const agencies = await agenciesReceiving(db, receiver);
+  const [agencyId] = agencies;
   const version =
-    tenants.length === 1 && tenantId
-      ? await resolveWorkflowVersion(db, tenantId, RECEIVE_WORKFLOW)
+    agencies.length === 1 && agencyId
+      ? await resolveWorkflowVersion(db, agencyId, RECEIVE_WORKFLOW)
       : undefined;
   const note = !receiver
     ? 'Not an X12 file'
-    : tenants.length !== 1
-      ? `${tenants.length ? 'More than one agency has' : 'No agency has'} submitter ID ${receiver}`
+    : agencies.length !== 1
+      ? `${agencies.length ? 'More than one agency has' : 'No agency has'} submitter ID ${receiver}`
       : version
         ? ''
         : `The ${RECEIVE_WORKFLOW} workflow is not published`;
   const document =
-    version && tenantId
+    version && agencyId
       ? await blobs.putBytes(
-          `clearinghouse/${tenantId}/${f.modifiedAt.getTime()}-${f.name}`,
+          `clearinghouse/${agencyId}/${f.modifiedAt.getTime()}-${f.name}`,
           bytes,
           'application/edi-x12'
         )
       : null;
   const runId = await db.transaction().execute(async (tx) => {
     const id =
-      version && tenantId && document
+      version && agencyId && document
         ? await startRun(tx, boss, {
-            tenantId,
+            agencyId,
             versionId: version.id,
             inputs: { file: document, fileName: f.name }
           })
@@ -82,7 +82,7 @@ const receive = async (deps: PollDeps, f: RemoteFile) => {
         remote_path: f.path,
         size: f.size,
         modified_at: f.modifiedAt,
-        tenant_id: tenants.length === 1 ? (tenantId ?? null) : null,
+        agency_id: agencies.length === 1 ? (agencyId ?? null) : null,
         run_id: id,
         note
       })

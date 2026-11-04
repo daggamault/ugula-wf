@@ -9,18 +9,18 @@ import type { NotificationService } from './service.ts';
 export const createNotificationRoutes = (service: NotificationService) =>
   new Hono<AuthEnv>()
     .get('/', async (c) => {
-      const { tenantId, userId } = c.get('session');
-      return respond(c, await service.list(tenantId, userId));
+      const { agencyId, userId } = c.get('session');
+      return respond(c, await service.list(agencyId, userId));
     })
     .post('/', sValidator('json', notificationSchema, invalidRequest), async (c) => {
-      const { tenantId, userId } = c.get('session');
-      return respond(c, await service.create(tenantId, userId, c.req.valid('json')), 201);
+      const { agencyId, userId } = c.get('session');
+      return respond(c, await service.create(agencyId, userId, c.req.valid('json')), 201);
     })
     .post('/read', async (c) => {
-      const { tenantId, userId } = c.get('session');
-      return respond(c, await service.read(tenantId, userId));
+      const { agencyId, userId } = c.get('session');
+      return respond(c, await service.read(agencyId, userId));
     })
     .post('/clear', async (c) => {
-      const { tenantId, userId } = c.get('session');
-      return respond(c, await service.clear(tenantId, userId));
+      const { agencyId, userId } = c.get('session');
+      return respond(c, await service.clear(agencyId, userId));
     });

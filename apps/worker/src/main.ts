@@ -30,7 +30,7 @@ import {
   megabytes
 } from './shared/load.ts';
 import { createRunScope } from './shared/run-scope.ts';
-import { createTenantOf } from './shared/tenancy.ts';
+import { createAgencyOf } from './shared/tenancy.ts';
 
 const connection = (config: Config) => ({
   host: config.DB_HOST,
@@ -88,11 +88,11 @@ if (import.meta.main) {
   );
   await blobs.ensureBucket();
   const store = createRunStore({ db, boss });
-  const live = coalescePublish((tenantId, event) => publishLiveEvent(redis, tenantId, event));
+  const live = coalescePublish((agencyId, event) => publishLiveEvent(redis, agencyId, event));
   const publish: Publish = live.publish;
   const scope = createRunScope();
-  const tenantOf = createTenantOf(db, scope.tenantOf);
-  const announce = createAnnouncer(tenantOf, publish);
+  const agencyOf = createAgencyOf(db, scope.agencyOf);
+  const announce = createAnnouncer(agencyOf, publish);
   const guardedFetch = scope.fetch(fetch);
   const exchange = clearinghouseOf(config);
   const clearinghouse = exchange ? createClearinghouse(exchange) : null;
@@ -101,7 +101,7 @@ if (import.meta.main) {
     engines: createEngineCache({
       nodes: createNodeCatalog({
         fetch: guardedFetch,
-        reports: scope.guard(announceImports(createReportStore(db, blobs, tenantOf), announce)),
+        reports: scope.guard(announceImports(createReportStore(db, blobs, agencyOf), announce)),
         billing: {
           patients: scope.guard(createPatientStore(db)),
           payers: scope.guard(

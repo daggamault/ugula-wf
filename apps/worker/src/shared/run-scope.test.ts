@@ -3,13 +3,13 @@ import { describe, it } from 'node:test';
 import { createRunScope } from './run-scope.ts';
 
 describe('createRunScope', () => {
-  it('knows the tenant of the run it is working and nothing else', async () => {
+  it('knows the agency of the run it is working and nothing else', async () => {
     const scope = createRunScope();
     const signal = new AbortController().signal;
-    assert.equal(scope.tenantOf('r1'), undefined);
-    await scope.within({ runId: 'r1', tenantId: 't', signal }, async () => {
-      assert.equal(scope.tenantOf('r1'), 't');
-      assert.equal(scope.tenantOf('r2'), undefined);
+    assert.equal(scope.agencyOf('r1'), undefined);
+    await scope.within({ runId: 'r1', agencyId: 't', signal }, async () => {
+      assert.equal(scope.agencyOf('r1'), 't');
+      assert.equal(scope.agencyOf('r2'), undefined);
     });
   });
 
@@ -25,7 +25,7 @@ describe('createRunScope', () => {
     await store.save('outside');
     await fetch('http://x');
     const lease = new AbortController();
-    await scope.within({ runId: 'r1', tenantId: 't', signal: lease.signal }, async () => {
+    await scope.within({ runId: 'r1', agencyId: 't', signal: lease.signal }, async () => {
       await store.save('held');
       await fetch('http://x', { signal: AbortSignal.timeout(60_000) });
       lease.abort(new Error('lease lost'));

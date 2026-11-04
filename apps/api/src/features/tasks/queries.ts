@@ -23,7 +23,7 @@ const detail = [
   'completed_by'
 ] as const;
 
-export const listQueues = (db: Db, tenantId: string, userId: string) =>
+export const listQueues = (db: Db, agencyId: string, userId: string) =>
   db
     .selectFrom('tasks')
     .select([
@@ -33,17 +33,17 @@ export const listQueues = (db: Db, tenantId: string, userId: string) =>
       sql<number>`(count(*) filter (where assignee_id = ${userId}))::int`.as('mine'),
       sql<Date>`min(created_at)`.as('oldest')
     ])
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where('status', '=', 'open')
     .groupBy('queue')
     .orderBy('queue')
     .execute();
 
-export const findTask = (db: Db, tenantId: string, id: string) =>
+export const findTask = (db: Db, agencyId: string, id: string) =>
   db
     .selectFrom('tasks')
     .select(detail)
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where('id', '=', id)
     .executeTakeFirst();
 
@@ -68,7 +68,7 @@ export const findTaskSource = (db: Db, runId: string) =>
     .where('r.id', '=', runId)
     .executeTakeFirst();
 
-export const claimNext = (db: Db, tenantId: string, queue: string | null, userId: string) =>
+export const claimNext = (db: Db, agencyId: string, queue: string | null, userId: string) =>
   db
     .updateTable('tasks')
     .set({ assignee_id: userId, updated_at: sql`now()` })
@@ -76,7 +76,7 @@ export const claimNext = (db: Db, tenantId: string, queue: string | null, userId
       const open = eb
         .selectFrom('tasks')
         .select('id')
-        .where('tenant_id', '=', tenantId)
+        .where('agency_id', '=', agencyId)
         .where('status', '=', 'open');
       return (queue ? open.where('queue', '=', queue) : open)
         .where((w) => w.or([w('assignee_id', 'is', null), w('assignee_id', '=', userId)]))
@@ -92,12 +92,12 @@ export const claimNext = (db: Db, tenantId: string, queue: string | null, userId
 
 export const assignTask = (
   db: Db,
-  input: { tenantId: string; id: string; userId: string; assignee: string | null }
+  input: { agencyId: string; id: string; userId: string; assignee: string | null }
 ) =>
   db
     .updateTable('tasks')
     .set({ assignee_id: input.assignee, updated_at: sql`now()` })
-    .where('tenant_id', '=', input.tenantId)
+    .where('agency_id', '=', input.agencyId)
     .where('id', '=', input.id)
     .where('status', '=', 'open')
     .where((eb) => eb.or([eb('assignee_id', 'is', null), eb('assignee_id', '=', input.userId)]))
@@ -106,7 +106,7 @@ export const assignTask = (
 
 export const completeTask = (
   db: Db,
-  input: { tenantId: string; id: string; userId: string; resolution: unknown }
+  input: { agencyId: string; id: string; userId: string; resolution: unknown }
 ) =>
   db
     .updateTable('tasks')
@@ -117,7 +117,7 @@ export const completeTask = (
       resolution: JSON.stringify(input.resolution),
       updated_at: sql`now()`
     })
-    .where('tenant_id', '=', input.tenantId)
+    .where('agency_id', '=', input.agencyId)
     .where('id', '=', input.id)
     .where('status', '=', 'open')
     .where((eb) => eb.or([eb('assignee_id', 'is', null), eb('assignee_id', '=', input.userId)]))

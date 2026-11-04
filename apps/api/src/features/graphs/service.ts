@@ -17,11 +17,11 @@ import { isForeignKeyViolation, isUniqueViolation } from '../../shared/http.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
   deleteGraph,
+  findAgencyGraph,
   findDefinition,
   findGraph,
   findNewestPublishedVersion,
   findSystemGraph,
-  findTenantGraph,
   findVersion,
   type GraphFilters,
   insertDraft,
@@ -81,11 +81,11 @@ export const keepsContract = (system: Signature, override: Signature) =>
 export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
   const primitives = new Set(nodes.map(refKey));
 
-  const check = async (tx: Db, tenantId: string, def: GraphDef) => {
+  const check = async (tx: Db, agencyId: string, def: GraphDef) => {
     const refs = graphRefs(def)
       .filter((r) => !r.type.startsWith('std.') && !primitives.has(refKey(r)))
       .map((r) => ({ key: r.type, version: r.version }));
-    const composites = await findPublishedGraphs(tx, tenantId, refs);
+    const composites = await findPublishedGraphs(tx, agencyId, refs);
     const byRef = new Map(
       composites.map((c) => [refKey({ type: c.key, version: c.version }), c.definition as GraphDef])
     );
@@ -96,40 +96,40 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
     return { issues: validateGraph(def, registry), dependencies: composites.map(dependencyOf) };
   };
 
-  const editable = async (tx: Db, tenantId: string, graphId: string) => {
-    const graph = await findGraph(tx, tenantId, graphId);
+  const editable = async (tx: Db, agencyId: string, graphId: string) => {
+    const graph = await findGraph(tx, agencyId, graphId);
     if (!graph) return notFound;
-    if (graph.tenant_id === null) return fail('forbidden', 'System graphs are read-only');
+    if (graph.agency_id === null) return fail('forbidden', 'System graphs are read-only');
     return ok(graph);
   };
 
   return {
-    search: async (tenantId: string, filters: GraphFilters) =>
-      ok(await searchGraphs(db, tenantId, filters)),
+    search: async (agencyId: string, filters: GraphFilters) =>
+      ok(await searchGraphs(db, agencyId, filters)),
 
-    nodes: async (tenantId: string) => ok({ nodes: await listPublishedNodes(db, tenantId) }),
+    nodes: async (agencyId: string) => ok({ nodes: await listPublishedNodes(db, agencyId) }),
 
-    find: async (tenantId: string, id: string) => {
-      const graph = await findGraph(db, tenantId, id);
+    find: async (agencyId: string, id: string) => {
+      const graph = await findGraph(db, agencyId, id);
       return graph ? ok({ graph, versions: await listVersions(db, id) }) : notFound;
     },
 
-    version: async (tenantId: string, id: string, version: number) => {
-      const found = (await findGraph(db, tenantId, id)) && (await findVersion(db, id, version));
+    version: async (agencyId: string, id: string, version: number) => {
+      const found = (await findGraph(db, agencyId, id)) && (await findVersion(db, id, version));
       return found ? ok(found) : fail('not_found', 'Version not found');
     },
 
-    validate: async (tenantId: string, def: GraphDef) =>
-      ok({ issues: (await check(db, tenantId, def)).issues }),
+    validate: async (agencyId: string, def: GraphDef) =>
+      ok({ issues: (await check(db, agencyId, def)).issues }),
 
-    create: async (tenantId: string, userId: string, input: NewGraph) => {
+    create: async (agencyId: string, userId: string, input: NewGraph) => {
       if (await findSystemGraph(db, input.key)) {
         return fail('conflict', 'A system graph uses that key; override it instead');
       }
       try {
         return ok(
           await db.transaction().execute(async (tx) => {
-            const { id } = await insertGraph(tx, { tenantId, ...input });
+            const { id } = await insertGraph(tx, { agencyId, ...input });
             await insertDraft(tx, {
               graphId: id,
               version: 1,
@@ -145,9 +145,9 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
       }
     },
 
-    saveDraft: (tenantId: string, userId: string, graphId: string, def: GraphDef) =>
+    saveDraft: (agencyId: string, userId: string, graphId: string, def: GraphDef) =>
       db.transaction().execute(async (tx) => {
-        const graph = await editable(tx, tenantId, graphId);
+        const graph = await editable(tx, agencyId, graphId);
         if (!graph.ok) return graph;
         const draft = await lockDraft(tx, graphId);
         if (draft) await updateDraft(tx, draft.id, def);
@@ -162,26 +162,26 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
               })
             ).version;
         await touchGraph(tx, graphId);
-        return ok({ version, issues: (await check(tx, tenantId, def)).issues });
+        return ok({ version, issues: (await check(tx, agencyId, def)).issues });
       }),
 
-    override: (tenantId: string, userId: string, graphId: string) =>
+    override: (agencyId: string, userId: string, graphId: string) =>
       db.transaction().execute(async (tx) => {
-        const graph = await findGraph(tx, tenantId, graphId);
+        const graph = await findGraph(tx, agencyId, graphId);
         if (!graph) return notFound;
-        if (graph.tenant_id !== null)
+        if (graph.agency_id !== null)
           return fail('conflict', 'Only system graphs can be overridden');
-        const copy = await findTenantGraph(tx, tenantId, graph.key);
+        const copy = await findAgencyGraph(tx, agencyId, graph.key);
         if (copy?.is_active) return fail('conflict', 'This graph is already overridden');
         if (copy) {
-          await setGraphActive(tx, tenantId, copy.id, true);
+          await setGraphActive(tx, agencyId, copy.id, true);
           return ok({ id: copy.id });
         }
         const latest = await findNewestPublishedVersion(tx, graph.id);
         if (!latest) return fail('conflict', 'This graph has no published version to start from');
         try {
           const { id } = await insertGraph(tx, {
-            tenantId,
+            agencyId,
             key: graph.key,
             name: graph.name,
             kind: graph.kind,
@@ -200,15 +200,15 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
         }
       }),
 
-    remove: async (tenantId: string, graphId: string) => {
-      const graph = await findGraph(db, tenantId, graphId);
-      if (!graph || graph.tenant_id === null) return notFound;
+    remove: async (agencyId: string, graphId: string) => {
+      const graph = await findGraph(db, agencyId, graphId);
+      if (!graph || graph.agency_id === null) return notFound;
       if (graph.overrides) {
-        await setGraphActive(db, tenantId, graphId, false);
+        await setGraphActive(db, agencyId, graphId, false);
         return ok({ id: graphId });
       }
       try {
-        return (await deleteGraph(db, tenantId, graphId)) ? ok({ id: graphId }) : notFound;
+        return (await deleteGraph(db, agencyId, graphId)) ? ok({ id: graphId }) : notFound;
       } catch (err) {
         if (isForeignKeyViolation(err)) {
           return fail('conflict', 'Runs still use this graph, so it cannot be removed');
@@ -217,14 +217,14 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
       }
     },
 
-    publish: (tenantId: string, graphId: string) =>
+    publish: (agencyId: string, graphId: string) =>
       db.transaction().execute(async (tx) => {
-        const graph = await editable(tx, tenantId, graphId);
+        const graph = await editable(tx, agencyId, graphId);
         if (!graph.ok) return graph;
         const draft = await lockDraft(tx, graphId);
         if (!draft) return fail('conflict', 'Nothing to publish');
         const definition = await findDefinition(tx, draft.id);
-        const { issues, dependencies } = await check(tx, tenantId, definition);
+        const { issues, dependencies } = await check(tx, agencyId, definition);
         if (issues.length) return fail('invalid', 'Fix the issues before publishing', { issues });
         const system = await findSystemGraph(tx, graph.value.key);
         const original = system && (await findNewestPublishedVersion(tx, system.id));

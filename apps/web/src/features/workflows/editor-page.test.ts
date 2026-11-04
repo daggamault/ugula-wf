@@ -17,13 +17,13 @@ const source: GraphDef = {
 };
 
 const detail = (
-  tenant: string | null,
+  agency: string | null,
   published: boolean,
   links: { overridden_by?: string; overrides?: string } = {}
 ): GraphDetail => ({
   graph: {
     id: 'g1',
-    tenant_id: tenant,
+    agency_id: agency,
     key: 'acme.flow',
     name: 'Flow',
     kind: 'workflow',
@@ -57,7 +57,7 @@ const render = (d: GraphDetail, version: number, trail: TrailStep[] = []) =>
   );
 
 describe('EditorView', () => {
-  it('lets tenants edit, save and publish drafts', () => {
+  it('lets agencies edit, save and publish drafts', () => {
     const html = render(detail('t-1', false), 2);
     assert.ok(html.includes('Draft v2'));
     assert.ok(html.includes('>Save<'));

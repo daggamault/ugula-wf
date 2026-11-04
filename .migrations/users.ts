@@ -5,15 +5,15 @@ const buildUsersTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('users')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('email', 'text', (col) => col.notNull())
     .addColumn('password_hash', 'text', (col) => col.notNull())
     .addColumn('is_active', 'boolean', (col) => col.notNull().defaultTo(true))
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addUniqueConstraint('users_tenant_id_id_unique', ['tenant_id', 'id'])
+    .addUniqueConstraint('users_agency_id_id_unique', ['agency_id', 'id'])
     .addCheckConstraint('users_email_check', sql`email <> ''`);
 
 const buildUsersEmailIndex = (db: Kysely<Database>) =>

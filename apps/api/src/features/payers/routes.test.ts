@@ -28,7 +28,7 @@ const service = {
 const request = withSession(createPayerRoutes(service));
 
 describe('payer routes', () => {
-  it('searches, finds, saves and deletes payers for the session tenant', async () => {
+  it('searches, finds, saves and deletes payers for the session agency', async () => {
     await request('/?q=blue&page=2&sort=payerId&dir=desc');
     await request('/names');
     await request('/names?q=med');
@@ -57,7 +57,7 @@ describe('payer routes', () => {
 });
 
 describe('payer route failures', () => {
-  it('maps payers and learned names the tenant does not have to 404', async () => {
+  it('maps payers and learned names the agency does not have to 404', async () => {
     const missing = withSession(
       createPayerRoutes({
         find: async () => fail('not_found', 'Payer not found'),

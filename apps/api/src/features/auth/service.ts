@@ -32,13 +32,13 @@ export const createAuthService = ({ db, sessions, throttle }: AuthServiceDeps) =
       return fail('unauthorized', 'Invalid email or password');
     }
     await throttle.succeeded(email, ip);
-    const session = { userId: user.id, tenantId: user.tenant_id, email: user.email };
+    const session = { userId: user.id, agencyId: user.agency_id, email: user.email };
     return ok({ token: await sessions.create(session), session });
   },
   session: async (token: string | undefined): Promise<Result<SessionData>> => {
     const session = token ? await sessions.get(token) : null;
     if (!token || !session) return unauthorized;
-    if (!(await isActiveMember(db, session.userId, session.tenantId))) {
+    if (!(await isActiveMember(db, session.userId, session.agencyId))) {
       await sessions.destroyAll(session.userId);
       return unauthorized;
     }

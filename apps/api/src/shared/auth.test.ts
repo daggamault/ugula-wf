@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { Hono } from 'hono';
 import { type AuthEnv, requireAuth } from './auth.ts';
 
-const session = { userId: 'u-1', tenantId: 't-1', email: 'dev@example.com' };
+const session = { userId: 'u-1', agencyId: 't-1', email: 'dev@example.com' };
 
 describe('requireAuth', () => {
   it('exposes the authenticated session to handlers and rejects everything else', async () => {

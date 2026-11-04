@@ -55,7 +55,7 @@ describe('submission routes', () => {
 describe('submission route failures', () => {
   const failing = withSession(
     createSubmissionRoutes({
-      eligibility: async (_tenantId: string, claimId: string) =>
+      eligibility: async (_agencyId: string, claimId: string) =>
         claimId === ID
           ? fail('conflict', 'Batch control numbers are used up; contact support')
           : fail('invalid', 'Add a billing profile in Settings', { issues: [] }),

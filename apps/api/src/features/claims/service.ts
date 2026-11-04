@@ -92,24 +92,24 @@ const claimEdit = (data: BillingData): ClaimEdit => ({
 });
 
 export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServiceDeps) => {
-  const write = <T>(tenantId: string, id: string, work: (tx: Db) => Promise<Result<T>>) =>
-    announced(announce, tenantId, db.transaction().execute(work), () => [{ kind: 'claim', id }]);
-  const nudge = (tx: Db, tenantId: string, claimId: string) =>
-    nudgeClaim(tx, boss, tenantId, claimId);
+  const write = <T>(agencyId: string, id: string, work: (tx: Db) => Promise<Result<T>>) =>
+    announced(announce, agencyId, db.transaction().execute(work), () => [{ kind: 'claim', id }]);
+  const nudge = (tx: Db, agencyId: string, claimId: string) =>
+    nudgeClaim(tx, boss, agencyId, claimId);
 
   return {
-    list: async (tenantId: string, filters: ClaimFilters) =>
-      ok(await listClaims(db, tenantId, filters)),
+    list: async (agencyId: string, filters: ClaimFilters) =>
+      ok(await listClaims(db, agencyId, filters)),
 
-    find: async (tenantId: string, id: string) => {
-      const claim = await findClaim(db, tenantId, id);
+    find: async (agencyId: string, id: string) => {
+      const claim = await findClaim(db, agencyId, id);
       if (!claim) return notFound;
       const open = unchangeable(claim.status) === null;
       const [files, payerFiles, events, check] = await Promise.all([
         listClaimFiles(db, id),
         listClaimPayerFiles(db, id),
         open ? listLedgerEvents(db, id) : [],
-        findClaimCheck(db, tenantId, id)
+        findClaimCheck(db, agencyId, id)
       ]);
       const progress = open
         ? nextClaimStep(
@@ -130,12 +130,12 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
       });
     },
 
-    events: async (tenantId: string, id: string, page: PageRequest<ClaimEventSort>) =>
-      (await claimExists(db, tenantId, id)) ? ok(await listClaimEvents(db, id, page)) : notFound,
+    events: async (agencyId: string, id: string, page: PageRequest<ClaimEventSort>) =>
+      (await claimExists(db, agencyId, id)) ? ok(await listClaimEvents(db, id, page)) : notFound,
 
-    setPayers: (tenantId: string, id: string, payers: PayerEntry[]) =>
-      write(tenantId, id, async (tx) => {
-        const claim = await lockClaim(tx, tenantId, id);
+    setPayers: (agencyId: string, id: string, payers: PayerEntry[]) =>
+      write(agencyId, id, async (tx) => {
+        const claim = await lockClaim(tx, agencyId, id);
         if (!claim) return notFound;
         const blocked = unchangeable(claim.status);
         if (blocked) return blocked;
@@ -147,13 +147,13 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
             `${active.payer} already has billing activity on this claim, so it cannot be removed`
           );
         }
-        await reorderCoverages(tx, tenantId, id, order);
-        await nudge(tx, tenantId, id);
+        await reorderCoverages(tx, agencyId, id, order);
+        await nudge(tx, agencyId, id);
         return ok({ payers: payers.map((p) => p.name) });
       }),
 
-    document: async (tenantId: string, claimId: string, eventId: string) => {
-      const found = await findEventDocument(db, tenantId, claimId, eventId);
+    document: async (agencyId: string, claimId: string, eventId: string) => {
+      const found = await findEventDocument(db, agencyId, claimId, eventId);
       if (!found) return fail('not_found', 'Document not found');
       const ref = found.document as BlobRef;
       return ok({
@@ -163,9 +163,9 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
       });
     },
 
-    saveBillingData: (tenantId: string, userId: string, id: string, data: BillingData) =>
-      write(tenantId, id, async (tx) => {
-        const claim = await lockClaim(tx, tenantId, id);
+    saveBillingData: (agencyId: string, userId: string, id: string, data: BillingData) =>
+      write(agencyId, id, async (tx) => {
+        const claim = await lockClaim(tx, agencyId, id);
         if (!claim) return notFound;
         const blocked = unchangeable(claim.status);
         if (blocked) return blocked;
@@ -180,27 +180,27 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
             `${coverages.get(active.id)?.payer} already has billing activity on this claim, so it cannot be removed`
           );
         }
-        await applyClaimEdit(tx, tenantId, id, claimEdit(data), {
+        await applyClaimEdit(tx, agencyId, id, claimEdit(data), {
           sourceKey: null,
           createdBy: userId
         });
-        await nudge(tx, tenantId, id);
+        await nudge(tx, agencyId, id);
         return ok({ status: 'saved' });
       }),
 
-    restartCycle: (tenantId: string, id: string) =>
-      write(tenantId, id, async (tx) => {
-        const claim = await lockClaim(tx, tenantId, id);
+    restartCycle: (agencyId: string, id: string) =>
+      write(agencyId, id, async (tx) => {
+        const claim = await lockClaim(tx, agencyId, id);
         if (!claim) return notFound;
         const blocked = unchangeable(claim.status);
         if (blocked) return blocked;
         if (await hasActiveRun(tx, id)) {
           return fail('conflict', 'This claim still has an active workflow run');
         }
-        const [version] = await findPublishedGraphs(tx, tenantId, [CYCLE_WORKFLOW]);
+        const [version] = await findPublishedGraphs(tx, agencyId, [CYCLE_WORKFLOW]);
         if (!version) return fail('not_found', 'The claim cycle workflow is not published');
         const runId = await startRun(tx, boss, {
-          tenantId,
+          agencyId,
           versionId: version.id,
           inputs: { claimId: id }
         });
@@ -208,8 +208,8 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
         return ok({ runId });
       }),
 
-    recordResponse: (tenantId: string, userId: string, id: string, response: ClaimResponse) =>
-      write(tenantId, id, (tx) => postClaimResponse(tx, boss, tenantId, id, userId, response))
+    recordResponse: (agencyId: string, userId: string, id: string, response: ClaimResponse) =>
+      write(agencyId, id, (tx) => postClaimResponse(tx, boss, agencyId, id, userId, response))
   };
 };
 

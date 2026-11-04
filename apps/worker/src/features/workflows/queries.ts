@@ -25,7 +25,7 @@ import { type Kysely, sql } from 'kysely';
 export type ClaimedRun = {
   id: string;
   lease: string;
-  tenantId: string;
+  agencyId: string;
   versionId: string;
   parentId: string | null;
   parentWait: string | null;
@@ -43,7 +43,7 @@ export type RunPatch = {
 };
 
 export type TaskInsert = {
-  tenantId: string;
+  agencyId: string;
   runId: string;
   waitId: string;
   kind: TaskKind;
@@ -79,8 +79,8 @@ export type RunTx = {
   insertSteps: (runId: string, steps: TraceEntry[]) => Promise<void>;
   insertTask: (task: TaskInsert) => Promise<void>;
   cancelTasks: (runId: string) => Promise<void>;
-  findVersion: (tenantId: string, key: string, version: number) => Promise<string | undefined>;
-  insertRun: (tenantId: string, versionId: string, inputs: Values) => Promise<string>;
+  findVersion: (agencyId: string, key: string, version: number) => Promise<string | undefined>;
+  insertRun: (agencyId: string, versionId: string, inputs: Values) => Promise<string>;
   insertChildren: (
     parent: ClaimedRun,
     waitId: string,
@@ -91,7 +91,7 @@ export type RunTx = {
   hasPendingChildren: (parentId: string, waitId: string) => Promise<boolean>;
   children: (parentId: string, waitId: string) => Promise<ChildRun[]>;
   activeChildren: (runId: string) => Promise<string[]>;
-  lockSignal: (tenantId: string, key: string) => Promise<number>;
+  lockSignal: (agencyId: string, key: string) => Promise<number>;
   claimReference: (runId: string) => Promise<string | null>;
   recoverDrafts: (run: ClaimedRun, versionId: string, reason: string) => Promise<string[]>;
   enqueue: (jobs: RunJob[]) => Promise<void>;
@@ -117,10 +117,10 @@ export type RunStore = {
 type QueueClient = RunQueueClient & TimeoutClient;
 
 export const taskNotification = (
-  t: { tenantId: string; kind: 'task' | 'fault'; title: string; subject: string | null },
+  t: { agencyId: string; kind: 'task' | 'fault'; title: string; subject: string | null },
   id: string
 ) => ({
-  tenant_id: t.tenantId,
+  agency_id: t.agencyId,
   intent: t.kind === 'fault' ? ('danger' as const) : ('info' as const),
   title: t.kind === 'fault' ? `Stuck run: ${t.title}` : `New task: ${t.title}`,
   description: t.subject,
@@ -182,7 +182,7 @@ export const buildClaim = (db: Kysely<Database>, { runId, command }: RunJob, lea
   return scoped.returning((eb) => [
     'id',
     'lease_token',
-    'tenant_id',
+    'agency_id',
     'graph_version_id',
     'parent_id',
     'parent_wait',
@@ -251,7 +251,7 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
     const task = await tx
       .insertInto('tasks')
       .values({
-        tenant_id: t.tenantId,
+        agency_id: t.agencyId,
         run_id: t.runId,
         wait_id: t.waitId,
         kind: t.kind,
@@ -271,7 +271,7 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
                 .selectFrom('users')
                 .select('id')
                 .where(sql<string>`id::text`, '=', t.assigneeId)
-                .where('tenant_id', '=', t.tenantId)
+                .where('agency_id', '=', t.agencyId)
       })
       .onConflict((oc) => oc.columns(['run_id', 'wait_id']).doNothing())
       .returning('id')
@@ -286,20 +286,20 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
       .where('status', '=', 'open')
       .execute();
   },
-  findVersion: async (tenantId, key, version) =>
-    (await findPublishedGraphs(tx, tenantId, [{ key, version }]))[0]?.id,
-  insertRun: async (tenantId, versionId, inputs) => {
+  findVersion: async (agencyId, key, version) =>
+    (await findPublishedGraphs(tx, agencyId, [{ key, version }]))[0]?.id,
+  insertRun: async (agencyId, versionId, inputs) => {
     const { id } = await tx
       .insertInto('workflow_runs')
       .values({
-        tenant_id: tenantId,
+        agency_id: agencyId,
         graph_version_id: versionId,
         status: 'running',
         inputs: JSON.stringify(inputs)
       })
       .returning('id')
       .executeTakeFirstOrThrow();
-    await pinRunGraphs(tx, { id, tenantId, versionId });
+    await pinRunGraphs(tx, { id, agencyId, versionId });
     return id;
   },
   insertChildren: async (parent, waitId, versionId, inputs) => {
@@ -309,7 +309,7 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
         .insertInto('workflow_runs')
         .values(
           inputs.slice(i, i + CHILD_CHUNK).map((values, j) => ({
-            tenant_id: parent.tenantId,
+            agency_id: parent.agencyId,
             graph_version_id: versionId,
             parent_id: parent.id,
             parent_wait: waitId,
@@ -324,7 +324,7 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
         ...rows.sort((a, b) => (a.parent_index ?? 0) - (b.parent_index ?? 0)).map((r) => r.id)
       );
     }
-    await pinRunsGraphs(tx, { ids, tenantId: parent.tenantId, versionId });
+    await pinRunsGraphs(tx, { ids, agencyId: parent.agencyId, versionId });
     return ids;
   },
   lockParent: async (parentId) => {
@@ -373,13 +373,13 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
         .where('status', 'in', ACTIVE_RUN_STATUSES)
         .execute()
     ).map((r) => r.id),
-  lockSignal: async (tenantId, key) =>
+  lockSignal: async (agencyId, key) =>
     (
       await tx
         .insertInto('signals')
-        .values({ tenant_id: tenantId, key })
+        .values({ agency_id: agencyId, key })
         .onConflict((oc) =>
-          oc.columns(['tenant_id', 'key']).doUpdateSet({ received: sql`signals.received` })
+          oc.columns(['agency_id', 'key']).doUpdateSet({ received: sql`signals.received` })
         )
         .returning('received')
         .executeTakeFirstOrThrow()
@@ -412,8 +412,8 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
               and w.status in (${sql.join(ACTIVE_RUN_STATUSES)})
           )
       ), started as (
-        insert into workflow_runs (tenant_id, graph_version_id, status, inputs)
-        select ${run.tenantId}, ${versionId}, 'running',
+        insert into workflow_runs (agency_id, graph_version_id, status, inputs)
+        select ${run.agencyId}, ${versionId}, 'running',
           jsonb_build_object('claimId', o.id, 'report', o.report, 'reason', ${reason}::text)
         from orphans o
         returning id, (inputs ->> 'claimId')::uuid as claim_id
@@ -422,7 +422,7 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
       )
       select id from started`.execute(tx);
     const ids = rows.map((r) => r.id);
-    if (ids.length) await pinRunsGraphs(tx, { ids, tenantId: run.tenantId, versionId });
+    if (ids.length) await pinRunsGraphs(tx, { ids, agencyId: run.agencyId, versionId });
     return ids;
   },
   enqueue: (jobs) => enqueueRuns(boss, sqlExecutor(tx), jobs),
@@ -436,7 +436,7 @@ export const createRunStore = ({ db, boss }: { db: Db; boss: QueueClient }): Run
       row && {
         id: row.id,
         lease: row.lease_token ?? '',
-        tenantId: row.tenant_id,
+        agencyId: row.agency_id,
         versionId: row.graph_version_id,
         parentId: row.parent_id,
         parentWait: row.parent_wait,

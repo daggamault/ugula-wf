@@ -9,14 +9,14 @@ import type { FeeService } from './service.ts';
 export const createFeeRoutes = (service: FeeService) =>
   new Hono<AuthEnv>()
     .get('/', sValidator('query', searchFeesQuery, invalidRequest), async (c) =>
-      respond(c, await service.search(c.get('session').tenantId, c.req.valid('query')))
+      respond(c, await service.search(c.get('session').agencyId, c.req.valid('query')))
     )
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.find(c.get('session').tenantId, c.req.valid('param').id))
+      respond(c, await service.find(c.get('session').agencyId, c.req.valid('param').id))
     )
     .put('/', sValidator('json', feeSchema, invalidRequest), async (c) =>
-      respond(c, await service.save(c.get('session').tenantId, c.req.valid('json')))
+      respond(c, await service.save(c.get('session').agencyId, c.req.valid('json')))
     )
     .delete('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.remove(c.get('session').tenantId, c.req.valid('param').id))
+      respond(c, await service.remove(c.get('session').agencyId, c.req.valid('param').id))
     );

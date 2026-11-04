@@ -4,7 +4,7 @@ import { createRecordingDb } from '@ugula/db/testing';
 import { findPayerFile, listFileItems, listPayerFiles } from './queries.ts';
 
 describe('payer file queries', () => {
-  it('pages the tenant files with who uploaded them, newest first by default', async () => {
+  it('pages the agency files with who uploaded them, newest first by default', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'f1', total: '3' }]);
     const page = await listPayerFiles(db, 't-1', {
       page: 2,
@@ -17,7 +17,7 @@ describe('payer file queries', () => {
     assert.ok(list?.sql.includes('left join "users" as "u" on "u"."id" = "f"."uploaded_by"'));
     assert.ok(list?.sql.includes('"u"."email" as "uploaded_by"'));
     assert.ok(!list?.sql.includes('"f"."document"'));
-    assert.ok(list?.sql.includes('where "f"."tenant_id" = $1'));
+    assert.ok(list?.sql.includes('where "f"."agency_id" = $1'));
     assert.ok(list?.sql.includes('order by "f"."created_at" desc nulls last, "f"."id" desc'));
     assert.deepEqual(list?.parameters, ['t-1', 10, 10]);
     await db.destroy();
@@ -35,12 +35,12 @@ describe('payer file queries', () => {
     await db.destroy();
   });
 
-  it('finds one file with its stored document only within the tenant', async () => {
+  it('finds one file with its stored document only within the agency', async () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.equal(await findPayerFile(db, 't-1', 'f1'), undefined);
     const [find] = queries;
     assert.ok(find?.sql.includes('"f"."document"'));
-    assert.ok(find?.sql.includes('where "f"."tenant_id" = $1 and "f"."id" = $2'));
+    assert.ok(find?.sql.includes('where "f"."agency_id" = $1 and "f"."id" = $2'));
     assert.deepEqual(find?.parameters, ['t-1', 'f1']);
     await db.destroy();
   });

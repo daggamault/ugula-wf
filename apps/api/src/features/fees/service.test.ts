@@ -23,7 +23,7 @@ describe('fee service', () => {
     assert.equal(!removed.ok && removed.failure.code, 'not_found');
   });
 
-  it('refuses prices for payers outside the tenant directory', async () => {
+  it('refuses prices for payers outside the agency directory', async () => {
     const { db, queries } = createRecordingDb(() => []);
     const service = createFeeService({ db });
     const saved = await service.save('t-1', { payerId: PAYER, code: 'A0427', amountCents: 1 });

@@ -30,7 +30,7 @@ type GraphRow = {
   name: string;
   kind: GraphKind;
   description: string;
-  tenant_id: string | null;
+  agency_id: string | null;
   updated_at: Date;
   published: number | null;
   draft: number | null;
@@ -51,7 +51,7 @@ const toSummary = (r: GraphRow): GraphSummary => ({
   name: r.name,
   kind: r.kind,
   description: r.description,
-  isSystem: r.tenant_id === null,
+  isSystem: r.agency_id === null,
   overrides: r.overrides,
   overriddenBy: r.overridden_by,
   publishedVersion: r.published,
@@ -61,7 +61,7 @@ const toSummary = (r: GraphRow): GraphSummary => ({
 
 export const searchGraphs = async (
   db: Db,
-  tenantId: string,
+  agencyId: string,
   f: GraphFilters
 ): Promise<Page<GraphSummary>> => {
   let q = db
@@ -86,27 +86,27 @@ export const searchGraphs = async (
       'g.name',
       'g.kind',
       'g.description',
-      'g.tenant_id',
+      'g.agency_id',
       'g.updated_at',
       'v.published',
       'v.draft',
       sql<string | null>`(
         select o.id from graphs o
-        where o.key = g.key and g.tenant_id is null and o.tenant_id = ${tenantId} and o.is_active
+        where o.key = g.key and g.agency_id is null and o.agency_id = ${agencyId} and o.is_active
       )`.as('overridden_by'),
-      sql<boolean>`g.tenant_id is not null and exists (
-        select 1 from graphs s where s.key = g.key and s.tenant_id is null
+      sql<boolean>`g.agency_id is not null and exists (
+        select 1 from graphs s where s.key = g.key and s.agency_id is null
       )`.as('overrides')
     ])
     .where((eb) =>
       eb.or([
-        eb('g.tenant_id', 'is', null),
-        eb.and([eb('g.tenant_id', '=', tenantId), eb('g.is_active', '=', true)])
+        eb('g.agency_id', 'is', null),
+        eb.and([eb('g.agency_id', '=', agencyId), eb('g.is_active', '=', true)])
       ])
     );
   if (f.show === 'workflows') q = q.where('g.kind', '=', 'workflow');
   if (f.show === 'blocks') q = q.where('g.kind', '!=', 'workflow');
-  if (f.show === 'mine') q = q.where('g.tenant_id', 'is not', null);
+  if (f.show === 'mine') q = q.where('g.agency_id', 'is not', null);
   if (f.q) {
     const like = containsPattern(f.q);
     q = q.where((eb) =>
@@ -117,30 +117,30 @@ export const searchGraphs = async (
   return { ...page, items: page.items.map((r) => toSummary(r as GraphRow)) };
 };
 
-export const findGraph = (db: Db, tenantId: string, id: string) =>
+export const findGraph = (db: Db, agencyId: string, id: string) =>
   db
     .selectFrom('graphs as g')
     .select([
       'g.id',
-      'g.tenant_id',
+      'g.agency_id',
       'g.key',
       'g.name',
       'g.kind',
       'g.description',
       sql<string | null>`(
         select o.id from graphs o
-        where o.key = g.key and g.tenant_id is null and o.tenant_id = ${tenantId} and o.is_active
+        where o.key = g.key and g.agency_id is null and o.agency_id = ${agencyId} and o.is_active
       )`.as('overridden_by'),
       sql<string | null>`(
         select s.id from graphs s
-        where s.key = g.key and g.tenant_id is not null and s.tenant_id is null
+        where s.key = g.key and g.agency_id is not null and s.agency_id is null
       )`.as('overrides')
     ])
     .where('g.id', '=', id)
     .where((eb) =>
       eb.or([
-        eb('g.tenant_id', 'is', null),
-        eb.and([eb('g.tenant_id', '=', tenantId), eb('g.is_active', '=', true)])
+        eb('g.agency_id', 'is', null),
+        eb.and([eb('g.agency_id', '=', agencyId), eb('g.is_active', '=', true)])
       ])
     )
     .executeTakeFirst();
@@ -172,12 +172,12 @@ export const findDefinition = async (db: Db, versionId: string) =>
 
 export const insertGraph = (
   db: Db,
-  input: { tenantId: string; key: string; name: string; kind: GraphKind; description: string }
+  input: { agencyId: string; key: string; name: string; kind: GraphKind; description: string }
 ) =>
   db
     .insertInto('graphs')
     .values({
-      tenant_id: input.tenantId,
+      agency_id: input.agencyId,
       key: input.key,
       name: input.name,
       kind: input.kind,
@@ -240,7 +240,7 @@ export const touchGraph = async (db: Db, id: string) => {
   await db.updateTable('graphs').set({ updated_at: sql`now()` }).where('id', '=', id).execute();
 };
 
-export const listPublishedNodes = (db: Db, tenantId: string) =>
+export const listPublishedNodes = (db: Db, agencyId: string) =>
   db
     .selectFrom('graph_versions as gv')
     .innerJoin('graphs as g', 'g.id', 'gv.graph_id')
@@ -256,16 +256,16 @@ export const listPublishedNodes = (db: Db, tenantId: string) =>
     .where('gv.published_at', 'is not', null)
     .where((eb) =>
       eb.or([
-        eb('g.tenant_id', 'is', null),
+        eb('g.agency_id', 'is', null),
         eb.and([
-          eb('g.tenant_id', '=', tenantId),
+          eb('g.agency_id', '=', agencyId),
           eb.not(
             eb.exists(
               eb
                 .selectFrom('graphs as s')
                 .select('s.id')
                 .whereRef('s.key', '=', 'g.key')
-                .where('s.tenant_id', 'is', null)
+                .where('s.agency_id', 'is', null)
             )
           )
         ])
@@ -280,7 +280,7 @@ export const findSystemGraph = (db: Db, key: string) =>
     .selectFrom('graphs')
     .select('id')
     .where('key', '=', key)
-    .where('tenant_id', 'is', null)
+    .where('agency_id', 'is', null)
     .executeTakeFirst();
 
 export const findNewestPublishedVersion = (db: Db, graphId: string) =>
@@ -293,27 +293,27 @@ export const findNewestPublishedVersion = (db: Db, graphId: string) =>
     .limit(1)
     .executeTakeFirst();
 
-export const findTenantGraph = (db: Db, tenantId: string, key: string) =>
+export const findAgencyGraph = (db: Db, agencyId: string, key: string) =>
   db
     .selectFrom('graphs')
     .select(['id', 'is_active'])
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where('key', '=', key)
     .executeTakeFirst();
 
-export const setGraphActive = (db: Db, tenantId: string, id: string, active: boolean) =>
+export const setGraphActive = (db: Db, agencyId: string, id: string, active: boolean) =>
   db
     .updateTable('graphs')
     .set({ is_active: active, updated_at: sql`now()` })
     .where('id', '=', id)
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .returning('id')
     .executeTakeFirst();
 
-export const deleteGraph = (db: Db, tenantId: string, id: string) =>
+export const deleteGraph = (db: Db, agencyId: string, id: string) =>
   db
     .deleteFrom('graphs')
     .where('id', '=', id)
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .returning('id')
     .executeTakeFirst();

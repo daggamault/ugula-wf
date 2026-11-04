@@ -54,7 +54,7 @@ const updateClaim = async (tx: Db, claimId: string, e: ClaimEdit) => {
     .execute();
 };
 
-const updatePatientAddress = (tx: Db, tenantId: string, claimId: string, a: Address) =>
+const updatePatientAddress = (tx: Db, agencyId: string, claimId: string, a: Address) =>
   tx
     .updateTable('patients')
     .set({
@@ -64,7 +64,7 @@ const updatePatientAddress = (tx: Db, tenantId: string, claimId: string, a: Addr
       postal_code: a.postalCode,
       updated_at: sql`now()`
     })
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where('id', '=', tx.selectFrom('claims').select('patient_id').where('id', '=', claimId))
     .execute();
 
@@ -94,11 +94,11 @@ const replaceLines = async (tx: Db, claimId: string, lines: NonNullable<ClaimEdi
     .execute();
 };
 
-const updateCoverages = (tx: Db, tenantId: string, claimId: string, edits: CoverageEdit[]) =>
+const updateCoverages = (tx: Db, agencyId: string, claimId: string, edits: CoverageEdit[]) =>
   sql`
     update claim_coverages cc set
       payer_id = coalesce(
-        (select p.id from payers p where p.id = v.payer_id and p.tenant_id = ${tenantId}),
+        (select p.id from payers p where p.id = v.payer_id and p.agency_id = ${agencyId}),
         cc.payer_id
       ),
       member_id = coalesce(v.member_id, cc.member_id),
@@ -131,14 +131,14 @@ const removeCoverages = async (tx: Db, claimId: string, ids: string[]) => {
 
 const insertCoverage = (
   tx: Db,
-  tenantId: string,
+  agencyId: string,
   claimId: string,
   c: NonNullable<ClaimEdit['newCoverage']>
 ) =>
   tx
     .insertInto('claim_coverages')
     .columns([
-      'tenant_id',
+      'agency_id',
       'claim_id',
       'position',
       'payer_name',
@@ -152,7 +152,7 @@ const insertCoverage = (
       tx
         .selectFrom('payers as p')
         .select((eb) => [
-          'p.tenant_id',
+          'p.agency_id',
           sql<string>`${claimId}::uuid`.as('claim_id'),
           eb
             .selectFrom('claim_coverages')
@@ -167,7 +167,7 @@ const insertCoverage = (
           sql<string | null>`${c.insuredLastName}::text`.as('insured_last_name')
         ])
         .where('p.id', '=', c.payerId)
-        .where('p.tenant_id', '=', tenantId)
+        .where('p.agency_id', '=', agencyId)
     )
     .execute();
 
@@ -187,20 +187,20 @@ const logEdit = async (tx: Db, claimId: string, note: string | null, event: Edit
 
 export const applyClaimEdit = async (
   tx: Db,
-  tenantId: string,
+  agencyId: string,
   claimId: string,
   edit: ClaimEdit,
   event: EditEvent
 ) => {
   if (!(await logEdit(tx, claimId, edit.note, event))) return false;
   await updateClaim(tx, claimId, edit);
-  if (edit.patientAddress) await updatePatientAddress(tx, tenantId, claimId, edit.patientAddress);
+  if (edit.patientAddress) await updatePatientAddress(tx, agencyId, claimId, edit.patientAddress);
   if (edit.diagnoses?.length) await replaceDiagnoses(tx, claimId, edit.diagnoses);
   if (edit.lines) await replaceLines(tx, claimId, edit.lines);
   const updates = edit.coverages.filter((c) => !c.remove);
   const removed = edit.coverages.filter((c) => c.remove).map((c) => c.coverageId);
-  if (updates.length) await updateCoverages(tx, tenantId, claimId, updates);
+  if (updates.length) await updateCoverages(tx, agencyId, claimId, updates);
   if (removed.length) await removeCoverages(tx, claimId, removed);
-  if (edit.newCoverage) await insertCoverage(tx, tenantId, claimId, edit.newCoverage);
+  if (edit.newCoverage) await insertCoverage(tx, agencyId, claimId, edit.newCoverage);
   return true;
 };

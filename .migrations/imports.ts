@@ -5,8 +5,8 @@ const buildImportsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('imports')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('run_id', 'uuid', (col) =>
       col.notNull().unique().references('workflow_runs.id').onDelete('cascade').onUpdate('cascade')
@@ -42,9 +42,9 @@ const buildImportReportsTable = (db: Kysely<Database>) =>
 
 const buildImportsIndexes = (db: Kysely<Database>) => [
   db.schema
-    .createIndex('idx_imports_tenant_created')
+    .createIndex('idx_imports_agency_created')
     .on('imports')
-    .columns(['tenant_id', 'created_at desc']),
+    .columns(['agency_id', 'created_at desc']),
   db.schema.createIndex('idx_imports_uploaded_by').on('imports').column('uploaded_by'),
   db.schema
     .createIndex('import_reports_report_key_unique')

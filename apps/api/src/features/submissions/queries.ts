@@ -2,7 +2,7 @@ import { type Db, payerName } from '@ugula/db';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 
-export const findEligibilityClaim = (db: Db, tenantId: string, id: string) =>
+export const findEligibilityClaim = (db: Db, agencyId: string, id: string) =>
   db
     .selectFrom('claims as c')
     .innerJoin('patients as p', 'p.id', 'c.patient_id')
@@ -30,16 +30,16 @@ export const findEligibilityClaim = (db: Db, tenantId: string, id: string) =>
           .orderBy('cc.position')
       ).as('coverages')
     ])
-    .where('c.tenant_id', '=', tenantId)
+    .where('c.agency_id', '=', agencyId)
     .where('c.id', '=', id)
     .executeTakeFirst();
 
 export type EligibilityClaimRow = NonNullable<Awaited<ReturnType<typeof findEligibilityClaim>>>;
 
-export const findBatchDocument = async (db: Db, tenantId: string, id: string) =>
+export const findBatchDocument = async (db: Db, agencyId: string, id: string) =>
   (await db
     .selectFrom('claim_batches')
     .select(['document', 'control_number'])
-    .where('tenant_id', '=', tenantId)
+    .where('agency_id', '=', agencyId)
     .where('id', '=', id)
     .executeTakeFirst()) ?? null;

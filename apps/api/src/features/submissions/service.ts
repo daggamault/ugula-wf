@@ -36,8 +36,8 @@ export const eligibilityRequests = (
   });
 
 export const createSubmissionService = ({ db, now, blobs }: SubmissionServiceDeps) => ({
-  document: async (tenantId: string, id: string) => {
-    const found = await findBatchDocument(db, tenantId, id);
+  document: async (agencyId: string, id: string) => {
+    const found = await findBatchDocument(db, agencyId, id);
     if (!found) return fail('not_found', 'Batch not found');
     const ref = found.document as BlobRef;
     return ok({
@@ -47,10 +47,10 @@ export const createSubmissionService = ({ db, now, blobs }: SubmissionServiceDep
     });
   },
 
-  eligibility: async (tenantId: string, claimId: string) => {
+  eligibility: async (agencyId: string, claimId: string) => {
     const [profile, row] = await Promise.all([
-      findProfile(db, tenantId),
-      findEligibilityClaim(db, tenantId, claimId)
+      findProfile(db, agencyId),
+      findEligibilityClaim(db, agencyId, claimId)
     ]);
     if (!row) return fail('not_found', 'Claim not found');
     const submitter = profile ? toSubmitter(profile) : null;
@@ -67,7 +67,7 @@ export const createSubmissionService = ({ db, now, blobs }: SubmissionServiceDep
         'No payer on this claim has a directory payer and member ID to check eligibility with'
       );
     }
-    const controlNumber = await allocateControlNumber(db, tenantId);
+    const controlNumber = await allocateControlNumber(db, agencyId);
     if (controlNumber === null) {
       return fail('conflict', 'Batch control numbers are used up; contact support');
     }

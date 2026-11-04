@@ -26,7 +26,7 @@ import {
 } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
-import { tenantSetNullForeignKey } from './foreign-keys.ts';
+import { agencySetNullForeignKey } from './foreign-keys.ts';
 
 const list = (values: readonly string[]) => sql.join(values.map((v) => sql.lit(v)));
 
@@ -45,8 +45,8 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .createTable('claims')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
     .addColumn('number', 'integer', (col) => col.notNull().unique().generatedAlwaysAsIdentity())
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('patient_id', 'uuid')
     .addColumn('import_report_id', 'uuid', (col) =>
@@ -88,13 +88,13 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addForeignKeyConstraint(
       'claims_patient_id_fkey',
-      ['tenant_id', 'patient_id'],
+      ['agency_id', 'patient_id'],
       'patients',
-      ['tenant_id', 'id'],
+      ['agency_id', 'id'],
       (fk) => fk.onDelete('no action').onUpdate('cascade')
     )
-    .addUniqueConstraint('claims_tenant_id_source_key_unique', ['tenant_id', 'source_key'])
-    .addUniqueConstraint('claims_tenant_id_id_unique', ['tenant_id', 'id'])
+    .addUniqueConstraint('claims_agency_id_source_key_unique', ['agency_id', 'source_key'])
+    .addUniqueConstraint('claims_agency_id_id_unique', ['agency_id', 'id'])
     .addCheckConstraint('claims_total_check', sql`total_cents >= 0`)
     .addCheckConstraint('claims_level_check', sql`level in (${list(SERVICE_LEVELS)})`)
     .addCheckConstraint('claims_loaded_miles_check', sql`loaded_miles >= 0`)
@@ -140,7 +140,7 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     );
 
 const buildClaimsCycleRunForeignKey = () =>
-  tenantSetNullForeignKey({ table: 'claims', column: 'cycle_run_id', references: 'workflow_runs' });
+  agencySetNullForeignKey({ table: 'claims', column: 'cycle_run_id', references: 'workflow_runs' });
 
 const buildClaimRunsTable = (db: Kysely<Database>) =>
   db.schema
@@ -173,7 +173,7 @@ const buildClaimCoveragesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('claim_coverages')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('tenant_id', 'uuid', (col) => col.notNull())
+    .addColumn('agency_id', 'uuid', (col) => col.notNull())
     .addColumn('claim_id', 'uuid', (col) => col.notNull())
     .addColumn('position', 'smallint', (col) => col.notNull())
     .addColumn('payer_name', 'text', (col) => col.notNull())
@@ -193,9 +193,9 @@ const buildClaimCoveragesTable = (db: Kysely<Database>) =>
     )
     .addForeignKeyConstraint(
       'claim_coverages_claim_id_fkey',
-      ['tenant_id', 'claim_id'],
+      ['agency_id', 'claim_id'],
       'claims',
-      ['tenant_id', 'id'],
+      ['agency_id', 'id'],
       (fk) => fk.onDelete('cascade').onUpdate('cascade')
     )
     .addUniqueConstraint(
@@ -212,7 +212,7 @@ const buildClaimCoveragesTable = (db: Kysely<Database>) =>
     );
 
 const buildClaimCoveragesPayerForeignKey = () =>
-  tenantSetNullForeignKey({ table: 'claim_coverages', column: 'payer_id', references: 'payers' });
+  agencySetNullForeignKey({ table: 'claim_coverages', column: 'payer_id', references: 'payers' });
 
 const buildClaimDiagnosesTable = (db: Kysely<Database>) =>
   db.schema
@@ -234,8 +234,8 @@ const buildClaimBatchesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('claim_batches')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('tenant_id', 'uuid', (col) =>
-      col.notNull().references('tenants.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('control_number', 'integer', (col) => col.notNull())
     .addColumn('claim_count', 'integer', (col) => col.notNull())
@@ -249,8 +249,8 @@ const buildClaimBatchesTable = (db: Kysely<Database>) =>
     .addColumn('sent_at', 'timestamptz')
     .addColumn('sent_as', 'text')
     .addCheckConstraint('claim_batches_sent_check', sql`(sent_at is null) = (sent_as is null)`)
-    .addUniqueConstraint('claim_batches_tenant_id_control_number_unique', [
-      'tenant_id',
+    .addUniqueConstraint('claim_batches_agency_id_control_number_unique', [
+      'agency_id',
       'control_number'
     ])
     .addCheckConstraint(
@@ -361,18 +361,18 @@ const buildClaimBalancesView = (db: Kysely<Database>) =>
 
 const buildClaimsIndexes = (db: Kysely<Database>) => [
   db.schema
-    .createIndex('idx_claims_tenant_status')
+    .createIndex('idx_claims_agency_status')
     .on('claims')
-    .columns(['tenant_id', 'status', 'created_at desc']),
+    .columns(['agency_id', 'status', 'created_at desc']),
   db.schema
-    .createIndex('idx_claims_tenant_service_date')
+    .createIndex('idx_claims_agency_service_date')
     .on('claims')
-    .columns(['tenant_id', 'service_date']),
+    .columns(['agency_id', 'service_date']),
   db.schema
-    .createIndex('claims_tenant_pcr_number_unique')
+    .createIndex('claims_agency_pcr_number_unique')
     .on('claims')
     .unique()
-    .columns(['tenant_id', 'pcr_number'])
+    .columns(['agency_id', 'pcr_number'])
     .where('pcr_number', 'is not', null),
   db.schema
     .createIndex('idx_claims_pcr_number_trgm')
@@ -400,9 +400,9 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
     .on('claim_events')
     .columns(['kind', 'created_at']),
   db.schema
-    .createIndex('idx_claim_batches_tenant_created')
+    .createIndex('idx_claim_batches_agency_created')
     .on('claim_batches')
-    .columns(['tenant_id', 'created_at desc']),
+    .columns(['agency_id', 'created_at desc']),
   db.schema.createIndex('idx_claim_batches_created_by').on('claim_batches').column('created_by')
 ];
 

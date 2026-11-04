@@ -28,7 +28,7 @@ type RunnerDeps = {
   store: RunStore;
   engines: EngineSource;
   now: () => Date;
-  publish: (tenantId: string, event: LiveEvent) => Promise<void>;
+  publish: (agencyId: string, event: LiveEvent) => Promise<void>;
   within?: (run: RunContext, work: () => Promise<void>) => Promise<void>;
   leaseMs?: number;
   heartbeatMs?: number;
@@ -99,7 +99,7 @@ export const createRunner = ({
   const notify = async (run: ClaimedRun, status: string) => {
     const events: LiveEvent[] = [{ kind: 'run', id: run.id, status, parentId: run.parentId }];
     if (status !== 'running') events.push({ kind: 'task', id: null, runId: run.id });
-    for (const event of events) await publish(run.tenantId, event).catch(() => undefined);
+    for (const event of events) await publish(run.agencyId, event).catch(() => undefined);
   };
 
   const drive = async (
@@ -220,7 +220,7 @@ export const createRunner = ({
     if (!run) return;
     const held = hold(run);
     try {
-      await within({ runId: run.id, tenantId: run.tenantId, signal: held.signal }, () =>
+      await within({ runId: run.id, agencyId: run.agencyId, signal: held.signal }, () =>
         handle(run, job.command, held.signal)
       );
     } catch (err) {
