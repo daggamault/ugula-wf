@@ -11,8 +11,8 @@ const demoProfile = {
   postal_code: '627041234',
   phone: '2175550100',
   submitter_id: 'DEVEMS01',
-  receiver_id: 'DEMOCH',
-  receiver_name: 'Demo Clearinghouse',
+  receiver_id: 'WAYSTAR',
+  receiver_name: 'Waystar',
   time_zone: 'America/Chicago',
   production: false
 };

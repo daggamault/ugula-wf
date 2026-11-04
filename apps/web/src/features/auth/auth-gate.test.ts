@@ -6,7 +6,16 @@ import { AuthGate, AuthGateView } from './auth-gate.tsx';
 import type { AuthClient, AuthSession } from './client.ts';
 
 const mockSession: AuthSession = {
-  user: { id: 'u-1', agencyId: 't-1', email: 'dev@example.com' },
+  user: {
+    id: 'u-1',
+    email: 'dev@example.com',
+    firstName: 'Dev',
+    lastName: 'User',
+    type: 'organization',
+    isOwner: false,
+    organizationId: 'o-1',
+    organizationName: 'Acme'
+  },
   sseUrl: 'http://localhost:3002'
 };
 
@@ -14,7 +23,10 @@ const mockAuth: AuthClient = {
   signIn: async () => mockSession,
   signOut: async () => undefined,
   getMe: async () => null,
-  onExpired: () => () => undefined
+  onExpired: () => () => undefined,
+  previewInvitation: () => new Promise(() => undefined),
+  acceptInvitation: () => new Promise(() => undefined),
+  setPassword: async () => undefined
 };
 
 const workspace = (session: AuthSession) => createElement('p', null, `Hi ${session.user.email}`);

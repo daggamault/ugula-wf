@@ -10,9 +10,21 @@ import {
   type TimeoutClient,
   timeoutJobId
 } from '@ugula/run-queue';
-import { buildClaim, createRunStore, taskNotification } from './queries.ts';
+import { buildClaim, type ClaimedRun, createRunStore, taskNotification } from './queries.ts';
 
 const recordingDb = (rows: Record<string, unknown>[] = []) => createRecordingDb(() => rows);
+
+const parent: ClaimedRun = {
+  id: 'p',
+  lease: 'l',
+  agencyId: 't',
+  versionId: 'v',
+  parentId: null,
+  parentWait: null,
+  inputs: {},
+  state: null,
+  graphs: []
+};
 
 const recordingBoss = () => {
   const inserts: { name: string; jobs: unknown[] }[] = [];
@@ -207,7 +219,7 @@ describe('createRunStore', () => {
     await db.destroy();
   });
 
-  it('upserts tasks idempotently and finds agency versions before global ones', async () => {
+  it('upserts tasks idempotently and finds versions nearest the agency, preferring parent pins', async () => {
     const { db, queries } = recordingDb([{ id: 'v1', parent_index: 0 }]);
     const store = createRunStore({ db, boss: recordingBoss().boss });
     await store.transaction(async (tx) => {
@@ -227,31 +239,15 @@ describe('createRunStore', () => {
         priority: 0,
         assigneeId: null
       });
-      assert.equal(await tx.findVersion('t', 'demo.x', 1), 'v1');
-      assert.deepEqual(
-        await tx.insertChildren(
-          {
-            id: 'p',
-            lease: 'l',
-            agencyId: 't',
-            versionId: 'v',
-            parentId: null,
-            parentWait: null,
-            inputs: {},
-            state: null,
-            graphs: []
-          },
-          '7',
-          'v1',
-          [{}]
-        ),
-        ['v1']
-      );
+      assert.equal(await tx.findVersion(parent, 'demo.x', 1), 'v1');
+      assert.deepEqual(await tx.insertChildren(parent, '7', 'v1', [{}]), ['v1']);
     });
     const sqls = queries.map((q) => q.sql).join('\n');
     assert.ok(sqls.includes('on conflict ("run_id", "wait_id") do nothing returning "id"'));
     assert.ok(sqls.includes('insert into "notifications"'));
-    assert.ok(sqls.includes('g.agency_id nulls last'));
+    assert.ok(sqls.includes('order by g.agency_id is null, g.organization_id is null'));
+    const find = queries.find((q) => q.sql.includes('from workflow_run_graphs p'));
+    assert.ok(find?.parameters.includes('p') && find.parameters.includes('t'));
     await db.destroy();
   });
 
@@ -359,7 +355,7 @@ describe('createRunStore', () => {
     await db.destroy();
   });
 
-  it('starts detached runs pinned to their graphs and assigns tasks only to users of the agency', async () => {
+  it('starts detached runs pinned to their parent graphs and assigns tasks only to agency members', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('insert into "workflow_runs"') || q.sql.startsWith('insert into "tasks"')
         ? [{ id: 'new-1' }]
@@ -367,7 +363,7 @@ describe('createRunStore', () => {
     );
     const store = createRunStore({ db, boss: recordingBoss().boss });
     await store.transaction(async (tx) => {
-      assert.equal(await tx.insertRun('t', 'v1', { a: 1 }), 'new-1');
+      assert.equal(await tx.insertRun(parent, 'v1', { a: 1 }), 'new-1');
       await tx.insertTask({
         agencyId: 't',
         runId: 'r',
@@ -387,9 +383,11 @@ describe('createRunStore', () => {
     });
     const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
     assert.deepEqual(run?.parameters, ['t', 'v1', 'running', JSON.stringify({ a: 1 })]);
-    assert.ok(queries.some((q) => /insert into "?workflow_run_graphs/.test(q.sql)));
+    const pin = queries.find((q) => /insert into "?workflow_run_graphs/.test(q.sql));
+    assert.ok(pin?.sql.includes('where p.run_id = $'));
+    assert.ok(pin?.parameters.includes('p'));
     const task = queries.find((q) => q.sql.startsWith('insert into "tasks"'));
-    assert.ok(task?.sql.includes('(select "id" from "users" where id::text = $'));
+    assert.ok(task?.sql.includes('(select "user_id" from "memberships" where user_id::text = $'));
     assert.ok(task?.parameters.includes('u1'));
     const note = queries.find((q) => q.sql.startsWith('insert into "notifications"'));
     assert.ok(note?.parameters.includes('/tasks/new-1'));

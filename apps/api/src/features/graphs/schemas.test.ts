@@ -1,18 +1,26 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as v from 'valibot';
-import { createGraphSchema, definitionSchema, searchGraphsQuery, versionParam } from './schemas.ts';
+import {
+  createGraphSchema,
+  definitionSchema,
+  overrideSchema,
+  rebaseSchema,
+  searchGraphsQuery,
+  versionParam
+} from './schemas.ts';
 import { templateFor } from './service.ts';
 
 describe('graph schemas', () => {
-  it('normalizes keys and reserves the std namespace', () => {
+  it('normalizes keys, reserves the std namespace and creates for the agency by default', () => {
     assert.deepEqual(
       v.parse(createGraphSchema, { key: ' Billing.Match-Patient ', name: 'Match', kind: 'node' }),
       {
         key: 'billing.match-patient',
         name: 'Match',
         kind: 'node',
-        description: ''
+        description: '',
+        scope: 'agency'
       }
     );
     for (const key of ['std.thing', 'nodot', '1bad.key', 'a..b']) {
@@ -22,6 +30,12 @@ describe('graph schemas', () => {
         key
       );
     }
+    const base = { key: 'a.b', name: 'X', kind: 'node' };
+    assert.equal(
+      v.parse(createGraphSchema, { ...base, scope: 'organization' }).scope,
+      'organization'
+    );
+    assert.equal(v.safeParse(createGraphSchema, { ...base, scope: 'system' }).success, false);
   });
 
   it('bounds names, descriptions and definition size', () => {
@@ -41,22 +55,24 @@ describe('graph schemas', () => {
   });
 
   it('parses version params', () => {
-    assert.equal(
-      v.parse(versionParam, { id: '01a16617-7704-7ba6-b9b5-9c79fa44f965', version: '3' }).version,
-      3
-    );
-    assert.equal(
-      v.safeParse(versionParam, { id: '01a16617-7704-7ba6-b9b5-9c79fa44f965', version: '0' })
-        .success,
-      false
-    );
-    assert.equal(
-      v.safeParse(versionParam, {
-        id: '01a16617-7704-7ba6-b9b5-9c79fa44f965',
-        version: '99999999999'
-      }).success,
-      false
-    );
+    const id = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
+    assert.equal(v.parse(versionParam, { id, version: '3' }).version, 3);
+    assert.equal(v.safeParse(versionParam, { id, version: '0' }).success, false);
+    assert.equal(v.safeParse(versionParam, { id, version: '99999999999' }).success, false);
+  });
+});
+
+describe('graph override and rebase schemas', () => {
+  it('override for the agency by default and rebase by keeping or resetting', () => {
+    assert.deepEqual(v.parse(overrideSchema, {}), { scope: 'agency' });
+    assert.deepEqual(v.parse(overrideSchema, { scope: 'organization' }), {
+      scope: 'organization'
+    });
+    assert.equal(v.safeParse(overrideSchema, { scope: 'system' }).success, false);
+    assert.deepEqual(v.parse(rebaseSchema, { mode: 'keep' }), { mode: 'keep' });
+    assert.deepEqual(v.parse(rebaseSchema, { mode: 'reset' }), { mode: 'reset' });
+    assert.equal(v.safeParse(rebaseSchema, {}).success, false);
+    assert.equal(v.safeParse(rebaseSchema, { mode: 'merge' }).success, false);
   });
 });
 

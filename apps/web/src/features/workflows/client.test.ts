@@ -26,6 +26,9 @@ describe('createWorkflowsClient', () => {
     });
     await client.publish('g');
     await client.override('g');
+    await client.override('g', 'organization');
+    await client.compare('g');
+    await client.rebase('g', 'keep');
     await client.remove('a/b');
     assert.deepEqual(calls, [
       'GET /api/graphs?show=all&q=bat',
@@ -36,6 +39,9 @@ describe('createWorkflowsClient', () => {
       'PUT /api/graphs/g/draft',
       'POST /api/graphs/g/publish',
       'POST /api/graphs/g/override',
+      'POST /api/graphs/g/override',
+      'GET /api/graphs/g/compare',
+      'POST /api/graphs/g/rebase',
       'DELETE /api/graphs/a%2Fb'
     ]);
   });

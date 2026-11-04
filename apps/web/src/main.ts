@@ -10,10 +10,13 @@ import { createImportsClient } from './features/imports/client.ts';
 import { createPatientsClient } from './features/patients/client.ts';
 import { createPayerFilesClient } from './features/payer-files/client.ts';
 import { createReportsClient } from './features/reports/client.ts';
+import { createRolesClient } from './features/roles/client.ts';
 import { createRunsClient } from './features/runs/client.ts';
 import { createSettingsClient } from './features/settings/client.ts';
 import { createTasksClient } from './features/tasks/client.ts';
+import { createUsersClient } from './features/users/client.ts';
 import { createWorkflowsClient } from './features/workflows/client.ts';
+import { createAgenciesClient } from './shared/access.tsx';
 import { createApi } from './shared/api.ts';
 import { createNotificationsClient } from './shared/notifications.ts';
 import { createSignal } from './shared/signal.ts';
@@ -23,6 +26,9 @@ export const createClients = (config: Config, fetchFn: typeof fetch = fetch): Ap
   const api = createApi(config.apiUrl, fetchFn, expired.emit);
   return {
     auth: createAuthClient(api, expired),
+    agencies: createAgenciesClient(api),
+    users: createUsersClient(api),
+    roles: createRolesClient(api),
     workflows: createWorkflowsClient(api),
     runs: createRunsClient(api),
     tasks: createTasksClient(api),

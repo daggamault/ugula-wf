@@ -39,6 +39,7 @@ const pinSpecSchema: v.GenericSchema<PinSpec> = v.strictObject({
   name,
   type: valueTypeSchema,
   label: v.exactOptional(v.string()),
+  description: v.exactOptional(v.string()),
   optional: v.exactOptional(v.boolean()),
   default: v.exactOptional(jsonSchema)
 });
@@ -47,7 +48,16 @@ const signatureSchema: v.GenericSchema<Signature> = v.strictObject({
   execIn: v.array(name),
   execOut: v.array(name),
   inputs: v.array(pinSpecSchema),
-  outputs: v.array(pinSpecSchema)
+  outputs: v.array(pinSpecSchema),
+  exits: v.exactOptional(
+    v.record(
+      name,
+      v.strictObject({
+        label: v.exactOptional(v.string()),
+        description: v.exactOptional(v.string())
+      })
+    )
+  )
 });
 
 export const graphDefSchema: v.GenericSchema<GraphDef> = v.strictObject({
@@ -59,6 +69,7 @@ export const graphDefSchema: v.GenericSchema<GraphDef> = v.strictObject({
       type: v.pipe(v.string(), v.nonEmpty()),
       version: positiveInt,
       label: v.exactOptional(v.string()),
+      note: v.exactOptional(v.string()),
       config: v.exactOptional(jsonSchema),
       inputs: v.exactOptional(
         v.record(

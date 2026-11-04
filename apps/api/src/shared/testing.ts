@@ -1,21 +1,36 @@
+import { PERMISSIONS, type Permission } from '@ugula/access';
 import type { RedisLike, SessionStore } from '@ugula/auth';
 import type { LiveEvent } from '@ugula/live';
 import { Hono } from 'hono';
-import { type AuthEnv, requireAuth } from './auth.ts';
+import type { AgencyAccess, AgencyEnv } from './access.ts';
+import { requireAuth } from './auth.ts';
 import type { Announce } from './live.ts';
 import type { ThrottleStore } from './throttle.ts';
 
 export const testSessions: SessionStore = {
   create: async () => 'test',
-  get: async (token) =>
-    token === 'test' ? { userId: 'u-1', agencyId: 't-1', email: 'dev@example.com' } : null,
+  get: async (token) => (token === 'test' ? { userId: 'u-1', email: 'dev@example.com' } : null),
   destroy: async () => undefined,
   destroyAll: async () => undefined
 };
 
-export const withSession = (routes: Hono<AuthEnv>) => {
-  const app = new Hono<AuthEnv>()
+export const testAccess = (permissions: readonly Permission[] = PERMISSIONS): AgencyAccess => ({
+  agencyId: 't-1',
+  agencyName: 'Development',
+  organizationId: 'o-1',
+  organizationName: 'Development EMS',
+  userId: 'u-1',
+  isOrganizationAdmin: permissions === PERMISSIONS,
+  permissions: [...permissions]
+});
+
+export const withSession = (routes: Hono<AgencyEnv>, access: AgencyAccess = testAccess()) => {
+  const app = new Hono<AgencyEnv>()
     .use(requireAuth(async (token) => (token ? testSessions.get(token) : null)))
+    .use(async (c, next) => {
+      c.set('access', access);
+      await next();
+    })
     .route('/', routes);
   return (path: string, init: RequestInit = {}) =>
     app.request(path, {

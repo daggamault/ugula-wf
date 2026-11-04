@@ -1,30 +1,22 @@
-import { applyPayerFile, type Db, findImported, readPayerFile } from '@ugula/db';
+import { type Db, findImported, readPayerFile, resolveWorkflowVersion, startRun } from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobRef, BlobStore } from '@ugula/storage';
 import { safeName, type UploadedFile, uploadKey } from '../../shared/files.ts';
-import { type Announce, announced } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok } from '../../shared/result.ts';
 import { findPayerFile, listFileItems, listPayerFiles } from './queries.ts';
 import type { PayerFileSort } from './schemas.ts';
 
+export const RECEIVE_WORKFLOW = 'billing.receive-payer-file';
+
 type PayerFileServiceDeps = {
   db: Db;
   boss: RunQueueClient;
   blobs: Pick<BlobStore, 'putBytes' | 'getBytes'>;
-  announce: Announce;
-  now: () => Date;
   maxBytes: number;
 };
 
-export const createPayerFileService = ({
-  db,
-  boss,
-  blobs,
-  announce,
-  now,
-  maxBytes
-}: PayerFileServiceDeps) => ({
+export const createPayerFileService = ({ db, boss, blobs, maxBytes }: PayerFileServiceDeps) => ({
   list: async (agencyId: string, page: PageRequest<PayerFileSort>) =>
     ok(await listPayerFiles(db, agencyId, page)),
 
@@ -41,7 +33,7 @@ export const createPayerFileService = ({
     return ok({ name: file.file_name, bytes: await blobs.getBytes(file.document as BlobRef) });
   },
 
-  upload: async (agencyId: string, userId: string, file: UploadedFile) => {
+  upload: async (agencyId: string, file: UploadedFile) => {
     if (file.bytes.byteLength > maxBytes) {
       return fail('invalid', `The file is larger than ${maxBytes} bytes`);
     }
@@ -57,32 +49,21 @@ export const createPayerFileService = ({
       );
     }
     const fileName = file.name.trim() || safeName(file.name);
+    const version = await resolveWorkflowVersion(db, agencyId, RECEIVE_WORKFLOW);
+    if (!version) return fail('conflict', `The ${RECEIVE_WORKFLOW} workflow is not published`);
     const document = await blobs.putBytes(
       uploadKey(agencyId, fileName, 'payer-files/'),
       file.bytes,
       'application/edi-x12'
     );
-    const touched: string[] = [];
-    const saved = db.transaction().execute(async (tx) => {
-      const applied = await applyPayerFile(tx, boss, {
+    const runId = await db.transaction().execute((tx) =>
+      startRun(tx, boss, {
         agencyId,
-        userId,
-        fileName,
-        document,
-        file: inbound,
-        now: now()
-      });
-      touched.push(...new Set(applied.items.flatMap((i) => (i.claimId ? [i.claimId] : []))));
-      return ok({
-        id: applied.id,
-        kind: applied.kind,
-        items: applied.items.length,
-        problems: applied.problems
-      });
-    });
-    return announced(announce, agencyId, saved, () =>
-      touched.map((id) => ({ kind: 'claim' as const, id }))
+        versionId: version.id,
+        inputs: { file: document, fileName }
+      })
     );
+    return ok({ runId, kind: inbound.kind });
   }
 });
 

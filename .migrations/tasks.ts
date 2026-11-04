@@ -1,6 +1,5 @@
 import { type Database, TASK_KINDS, TASK_STATUSES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
-import { agencySetNullForeignKey } from './foreign-keys.ts';
 
 const buildTasksTable = (db: Kysely<Database>) =>
   db.schema
@@ -61,10 +60,13 @@ const buildTasksIndexes = (db: Kysely<Database>) => [
     .where(sql.ref('status'), '=', 'completed')
 ];
 
-const buildTasksForeignKeys = () =>
-  ['assignee_id', 'completed_by'].map((column) =>
-    agencySetNullForeignKey({ table: 'tasks', column, references: 'users' })
-  );
+const buildTasksForeignKeys = () => [
+  sql`alter table tasks add constraint tasks_assignee_id_fkey
+  foreign key (agency_id, assignee_id) references memberships (agency_id, user_id)
+  on delete set null (assignee_id) on update cascade`,
+  sql`alter table tasks add constraint tasks_completed_by_fkey
+  foreign key (completed_by) references users (id) on delete set null on update cascade`
+];
 
 export const createTasksTable = async (db: Kysely<Database>) => {
   await buildTasksTable(db).execute();

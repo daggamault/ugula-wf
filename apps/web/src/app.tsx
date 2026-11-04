@@ -1,4 +1,6 @@
+import type { Permission } from '@ugula/access';
 import type { NodeDef } from '@ugula/graph';
+import type { LucideIcon } from 'lucide-react';
 import {
   ActivityIcon,
   BadgeDollarSignIcon,
@@ -7,12 +9,16 @@ import {
   FileUpIcon,
   ReceiptTextIcon,
   SettingsIcon,
+  ShieldCheckIcon,
+  UserCogIcon,
   UsersIcon,
   WorkflowIcon
 } from 'lucide-react';
 import { lazy, type ReactNode, Suspense, useEffect, useMemo } from 'react';
+import { ChooseAgencyPage } from './features/agencies/choose-agency-page.tsx';
 import { AuthGate } from './features/auth/auth-gate.tsx';
 import type { AuthClient } from './features/auth/client.ts';
+import { InvitationPage, PasswordPage } from './features/auth/token-pages.tsx';
 import { CLAIM_TABS, ClaimPage } from './features/claims/claim-page.tsx';
 import { CLAIMS_TABS, ClaimsPage } from './features/claims/claims-page.tsx';
 import { type ClaimsClient, claimSearchOf } from './features/claims/client.ts';
@@ -37,6 +43,9 @@ import {
   ReportResultsPage,
   ReportsPage
 } from './features/reports/reports-page.tsx';
+import type { RolesClient } from './features/roles/client.ts';
+import { RolePage } from './features/roles/role-page.tsx';
+import { ROLES_PATH, RolesPage } from './features/roles/roles-page.tsx';
 import type { RunsClient } from './features/runs/client.ts';
 import { parseAt } from './features/runs/inspect.ts';
 import { RunsPage } from './features/runs/runs-page.tsx';
@@ -48,6 +57,10 @@ import { SettingsPage } from './features/settings/settings-page.tsx';
 import type { TasksClient } from './features/tasks/client.ts';
 import { TaskPage } from './features/tasks/task-page.tsx';
 import { useWorkAlerts } from './features/tasks/work-alerts.ts';
+import type { UsersClient } from './features/users/client.ts';
+import { InvitePage } from './features/users/invite-page.tsx';
+import { UserPage } from './features/users/user-page.tsx';
+import { USERS_PATH, UsersPage } from './features/users/users-page.tsx';
 import type { WorkflowsClient } from './features/workflows/client.ts';
 import { graphKindOf, NewWorkflowPage } from './features/workflows/new-workflow-page.tsx';
 import { parseTrail } from './features/workflows/trail.ts';
@@ -56,18 +69,32 @@ import {
   WORKFLOWS_PATH,
   WorkflowsPage
 } from './features/workflows/workflows-page.tsx';
+import {
+  AccessProvider,
+  type AgenciesClient,
+  type Agency,
+  rememberAgency,
+  rememberedAgency,
+  useAccess,
+  useCan
+} from './shared/access.tsx';
 import { createLive, type Live, useLiveStatus } from './shared/live.ts';
 import type { NotificationsClient } from './shared/notifications.ts';
-import { matchPath, navigate, useLocation } from './shared/router.tsx';
+import { agencyPath, matchPath, navigate, useLocation } from './shared/router.tsx';
+import { AgencyPicker } from './shared/ui/agency-picker.tsx';
 import { NotificationsButton } from './shared/ui/notifications.tsx';
-import { PageLoading } from './shared/ui/page.tsx';
+import { PageFailure, PageLoading } from './shared/ui/page.tsx';
 import { RUN_STATUSES } from './shared/ui/run-status-badge.tsx';
 import { Shell } from './shared/ui/shell.tsx';
 import { ToastProvider, useToast } from './shared/ui/toast.tsx';
 import { backOf } from './shared/url-state.ts';
+import { useResource } from './shared/use-resource.ts';
 
 export type AppClients = {
   auth: AuthClient;
+  agencies: AgenciesClient;
+  users: UsersClient;
+  roles: RolesClient;
   workflows: WorkflowsClient;
   runs: RunsClient;
   tasks: TasksClient;
@@ -102,23 +129,105 @@ const RunPage = lazy(() =>
 
 const HOME = '/claims';
 
-const SECTIONS = [
-  { id: 'patients', label: 'Patients', href: '/patients', icon: UsersIcon, group: 'Work' },
-  { id: 'imports', label: 'Imports', href: '/imports', icon: FileUpIcon, group: 'Work' },
-  { id: 'claims', label: 'Claims', href: '/claims', icon: ReceiptTextIcon, group: 'Work' },
-  { id: 'reports', label: 'Reports', href: '/reports', icon: ChartColumnIcon, group: 'Work' },
+type Section = {
+  id: string;
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  group: string;
+  permission: Permission;
+};
+
+const SECTIONS: readonly Section[] = [
+  {
+    id: 'patients',
+    label: 'Patients',
+    href: '/patients',
+    icon: UsersIcon,
+    group: 'Work',
+    permission: 'patients:read'
+  },
+  {
+    id: 'imports',
+    label: 'Imports',
+    href: '/imports',
+    icon: FileUpIcon,
+    group: 'Work',
+    permission: 'imports:read'
+  },
+  {
+    id: 'claims',
+    label: 'Claims',
+    href: '/claims',
+    icon: ReceiptTextIcon,
+    group: 'Work',
+    permission: 'claims:read'
+  },
+  {
+    id: 'reports',
+    label: 'Reports',
+    href: '/reports',
+    icon: ChartColumnIcon,
+    group: 'Work',
+    permission: 'reports:read'
+  },
   {
     id: 'workflows',
     label: 'Workflows',
     href: '/workflows',
     icon: WorkflowIcon,
-    group: 'Automation'
+    group: 'Automation',
+    permission: 'workflows:read'
   },
-  { id: 'runs', label: 'Runs', href: '/runs', icon: ActivityIcon, group: 'Automation' },
-  { id: 'payers', label: 'Payers', href: '/payers', icon: Building2Icon, group: 'Admin' },
-  { id: 'fees', label: 'Fees', href: '/fees', icon: BadgeDollarSignIcon, group: 'Admin' },
-  { id: 'settings', label: 'Settings', href: '/settings', icon: SettingsIcon, group: 'Admin' }
-] as const;
+  {
+    id: 'runs',
+    label: 'Runs',
+    href: '/runs',
+    icon: ActivityIcon,
+    group: 'Automation',
+    permission: 'runs:read'
+  },
+  {
+    id: 'payers',
+    label: 'Payers',
+    href: '/payers',
+    icon: Building2Icon,
+    group: 'Admin',
+    permission: 'payers:read'
+  },
+  {
+    id: 'fees',
+    label: 'Fees',
+    href: '/fees',
+    icon: BadgeDollarSignIcon,
+    group: 'Admin',
+    permission: 'fees:read'
+  },
+  {
+    id: 'users',
+    label: 'Users',
+    href: USERS_PATH,
+    icon: UserCogIcon,
+    group: 'Admin',
+    permission: 'users:read'
+  },
+  {
+    id: 'roles',
+    label: 'Roles',
+    href: ROLES_PATH,
+    icon: ShieldCheckIcon,
+    group: 'Admin',
+    permission: 'roles:read'
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    href: '/settings',
+    icon: SettingsIcon,
+    group: 'Admin',
+    permission: 'settings:read'
+  }
+];
 
 const statusParam = (query: URLSearchParams) =>
   RUN_STATUSES.find((s) => s === query.get('status')) ?? null;
@@ -300,6 +409,28 @@ const routes: readonly Route[] = [
       />
     )
   },
+  { pattern: USERS_PATH, render: (_, __, c) => <UsersPage client={c.users} live={c.live} /> },
+  {
+    pattern: `${USERS_PATH}/invite`,
+    render: (_, q, c) => <InvitePage client={c.users} back={backOf(q, USERS_PATH)} />
+  },
+  {
+    pattern: `${USERS_PATH}/:id`,
+    render: (p, q, c) => (
+      <UserPage key={p.id} client={c.users} userId={p.id ?? ''} back={backOf(q, USERS_PATH)} />
+    )
+  },
+  { pattern: ROLES_PATH, render: (_, __, c) => <RolesPage client={c.roles} live={c.live} /> },
+  {
+    pattern: `${ROLES_PATH}/new`,
+    render: (_, q, c) => <RolePage client={c.roles} roleId={null} back={backOf(q, ROLES_PATH)} />
+  },
+  {
+    pattern: `${ROLES_PATH}/:id`,
+    render: (p, q, c) => (
+      <RolePage key={p.id} client={c.roles} roleId={p.id ?? ''} back={backOf(q, ROLES_PATH)} />
+    )
+  },
   {
     pattern: '/settings',
     render: (_, __, c) => <SettingsPage client={c.settings} live={c.live} />
@@ -333,6 +464,7 @@ type WorkspaceProps = {
   query: URLSearchParams;
   email: string;
   sseUrl: string;
+  agencies: readonly Agency[];
   onSignOut: () => void;
 };
 
@@ -343,9 +475,15 @@ export const Workspace = ({
   query,
   email,
   sseUrl,
+  agencies,
   onSignOut
 }: WorkspaceProps) => {
-  const live = useMemo(() => createLive(sseUrl), [sseUrl]);
+  const access = useAccess();
+  const can = useCan();
+  const live = useMemo(
+    () => createLive(sseUrl, { agencyId: access.agencyId }),
+    [sseUrl, access.agencyId]
+  );
   const liveStatus = useLiveStatus(live);
   const openTasks = useWorkAlerts(clients.tasks, live, useToast(), path.startsWith('/tasks/'));
   const page = resolveRoute(path, query, { ...clients, nodes, live, email });
@@ -360,7 +498,7 @@ export const Workspace = ({
   return (
     <Shell
       path={path}
-      navItems={SECTIONS.map((s) => ({
+      navItems={SECTIONS.filter((s) => can(s.permission)).map(({ permission: _, ...s }) => ({
         ...s,
         active: path.startsWith(s.href),
         ...(s.id === 'claims' && openTasks ? { badge: openTasks } : {})
@@ -368,27 +506,94 @@ export const Workspace = ({
       userEmail={email}
       status={<HealthStatus status={liveStatus} />}
       tools={<NotificationsButton client={clients.notifications} live={live} />}
+      agencyPicker={
+        <AgencyPicker
+          agencies={agencies}
+          current={{
+            id: access.agencyId,
+            name: access.agencyName,
+            organizationName: access.organizationName
+          }}
+        />
+      }
       onSignOut={onSignOut}
     >
       <Suspense fallback={<PageLoading />}>{page}</Suspense>
-      <ImportDrop client={clients.imports} />
+      {can('imports:create') ? <ImportDrop client={clients.imports} /> : null}
     </Shell>
   );
 };
 
+const withQuery = (path: string, query: URLSearchParams) =>
+  query.size ? `${path}?${query}` : path;
+
+type AgencyGateProps = Omit<WorkspaceProps, 'agencies'> & {
+  agencyId: string | null;
+  userId: string;
+};
+
+export const AgencyGate = ({ agencyId, userId, ...workspace }: AgencyGateProps) => {
+  const { clients, path, query, onSignOut } = workspace;
+  const agencies = useResource(`agencies:${userId}`, clients.agencies.list);
+  const access = useResource(`access:${agencyId ?? ''}`, (signal) =>
+    agencyId ? clients.agencies.access(agencyId, signal) : Promise.resolve(null)
+  );
+  const list = agencies.data;
+  const pick =
+    !agencyId && list ? (list.length === 1 ? (list[0] ?? null) : rememberedAgency(list)) : null;
+  const target = pick ? agencyPath(pick.id, withQuery(path === '/' ? HOME : path, query)) : null;
+
+  useEffect(() => {
+    if (target) navigate(target, { replace: true });
+  }, [target]);
+
+  useEffect(() => {
+    if (access.data) rememberAgency(access.data.agencyId);
+  }, [access.data]);
+
+  if (agencies.error) return <PageFailure message={agencies.error.message} />;
+  if (!list) return <PageLoading />;
+  if (!agencyId || access.error) {
+    return target ? (
+      <PageLoading />
+    ) : (
+      <ChooseAgencyPage
+        agencies={list}
+        home={HOME}
+        notice={access.error ? 'You cannot open that agency. Choose another.' : undefined}
+        onSignOut={onSignOut}
+      />
+    );
+  }
+  if (!access.data) return <PageLoading />;
+  return (
+    <AccessProvider access={access.data}>
+      <Workspace key={agencyId} agencies={list} {...workspace} />
+    </AccessProvider>
+  );
+};
+
 export const App = ({ clients, nodes }: { clients: AppClients; nodes: NodeDef[] }) => {
-  const { path, query } = useLocation(HOME);
+  const { path, query, agencyId } = useLocation(HOME);
+  if (path === '/invitation') {
+    return <InvitationPage auth={clients.auth} token={query.get('token') ?? ''} />;
+  }
+  if (path === '/password') {
+    return <PasswordPage auth={clients.auth} token={query.get('token') ?? ''} />;
+  }
   return (
     <AuthGate auth={clients.auth}>
       {(session, signOut) => (
         <ToastProvider
           onNotify={(toast) => void clients.notifications.record(toast).catch(() => undefined)}
         >
-          <Workspace
+          <AgencyGate
             clients={clients}
             nodes={nodes}
             path={path}
             query={query}
+            agencyId={agencyId}
+            userId={session.user.id}
             email={session.user.email}
             sseUrl={session.sseUrl}
             onSignOut={signOut}

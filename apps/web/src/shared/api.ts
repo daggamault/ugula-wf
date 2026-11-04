@@ -1,3 +1,5 @@
+import { currentAgency } from './router.tsx';
+
 type ApiError = Error & {
   status: number;
   body: Record<string, unknown>;
@@ -26,18 +28,27 @@ const apiError = (status: number, body: unknown): ApiError => {
 
 const AUTH_PATH = '/api/auth/';
 
+const UNSCOPED = [AUTH_PATH, '/api/agencies'];
+
+export const scopedPath = (path: string, agencyId: string | null) =>
+  agencyId && path.startsWith('/api/') && !UNSCOPED.some((p) => path.startsWith(p))
+    ? `/api/agencies/${agencyId}${path.slice(4)}`
+    : path;
+
 export const createApi = (
   baseUrl: string,
   fetchFn: typeof fetch = fetch,
-  onUnauthorized: () => void = () => undefined
+  onUnauthorized: () => void = () => undefined,
+  agencyOf: () => string | null = currentAgency
 ): Api => {
+  const url = (path: string) => `${baseUrl}${scopedPath(path, agencyOf())}`;
   const request = async <T>(
     method: string,
     path: string,
     body?: unknown,
     signal?: AbortSignal
   ): Promise<T> => {
-    const res = await fetchFn(`${baseUrl}${path}`, {
+    const res = await fetchFn(url(path), {
       method,
       credentials: 'include',
       ...(signal ? { signal } : {}),
@@ -58,6 +69,6 @@ export const createApi = (
     put: (path, body) => request('PUT', path, body),
     remove: (path) => request('DELETE', path),
     upload: (path, form) => request('POST', path, form),
-    href: (path) => `${baseUrl}${path}`
+    href: url
   };
 };

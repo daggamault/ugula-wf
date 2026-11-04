@@ -13,7 +13,7 @@ import {
   validateGraph
 } from '@ugula/graph';
 import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
-import { upsertAgency } from './agencies.ts';
+import { upsertAgency, upsertBuiltInRoles, upsertOrganization } from './agencies.ts';
 import { billingGraphs } from './billing-graphs.ts';
 import { buildUpsertDemoPayers, buildUpsertDemoProfile } from './billing-setup.ts';
 import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
@@ -24,7 +24,12 @@ import { PLACES_FILE } from './gnis-build.ts';
 import { publishGraphs, type SeedGraph } from './graphs.ts';
 import { CODES_FILE, ELEMENTS_FILE } from './nemsis-build.ts';
 import { readCodes, readElements, upsertDictionary } from './nemsis-dictionary.ts';
-import { upsertUser } from './users.ts';
+import { upsertMembership, upsertUser } from './users.ts';
+
+const DEV_AGENCIES = [
+  { name: 'Development', slug: 'dev', sftp: true },
+  { name: 'Development North', slug: 'dev-north', sftp: false }
+] as const;
 
 const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
   const byRef = new Map(
@@ -73,22 +78,37 @@ const seedDev = async (db: Db, dev: DevSeedConfig) => {
   assertValidGraphs(demoGraphs, nodes);
 
   await db.transaction().execute(async (tx) => {
-    const agency = await upsertAgency(tx, {
-      name: 'Development',
-      slug: 'dev',
-      sftpUsername: dev.DEV_SFTP_USERNAME,
-      sftpPasswordHash
-    });
-
-    await upsertUser(tx, {
-      agencyId: agency.id,
+    const organization = await upsertOrganization(tx, 'Development EMS');
+    const user = await upsertUser(tx, {
+      organizationId: organization.id,
       email: dev.DEV_USER_EMAIL,
-      passwordHash: userPasswordHash
+      firstName: 'Dev',
+      lastName: 'User',
+      passwordHash: userPasswordHash,
+      isOwner: true
     });
-
-    await buildUpsertDefaultFees(tx, agency.id, demoFees).execute();
-    await buildUpsertDemoProfile(tx, agency.id).execute();
-    await buildUpsertDemoPayers(tx, agency.id).execute();
+    for (const seed of DEV_AGENCIES) {
+      const agency = await upsertAgency(tx, {
+        organizationId: organization.id,
+        name: seed.name,
+        slug: seed.slug,
+        sftpUsername: seed.sftp ? dev.DEV_SFTP_USERNAME : null,
+        sftpPasswordHash: seed.sftp ? sftpPasswordHash : null
+      });
+      const roles = await upsertBuiltInRoles(tx, agency.id);
+      const admin = roles.get('Admin');
+      if (admin) {
+        await upsertMembership(tx, {
+          organizationId: organization.id,
+          agencyId: agency.id,
+          userId: user.id,
+          roleId: admin
+        });
+      }
+      await buildUpsertDefaultFees(tx, agency.id, demoFees).execute();
+      await buildUpsertDemoProfile(tx, agency.id).execute();
+      await buildUpsertDemoPayers(tx, agency.id).execute();
+    }
 
     await publishGraphs(tx, demoGraphs, new Set(nodes.map(refKey)));
   });

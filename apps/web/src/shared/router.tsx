@@ -13,16 +13,35 @@ const subscribe = (listener: () => void) => {
 
 const current = () => `${window.location.pathname}${window.location.search}`;
 
+const AGENCY_PATH =
+  /^\/agencies\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?=\/|$)/i;
+
+export const agencyOfPath = (pathname: string) => pathname.match(AGENCY_PATH)?.[1] ?? null;
+
+export const currentAgency = () =>
+  typeof window === 'undefined' ? null : agencyOfPath(window.location.pathname);
+
+export const agencyPath = (agencyId: string, to = '/') =>
+  `/agencies/${agencyId}${to === '/' ? '' : to}`;
+
+export const agencyHref = (to: string, agencyId = currentAgency()) =>
+  agencyId && to.startsWith('/') && !to.startsWith('/agencies') ? agencyPath(agencyId, to) : to;
+
 export const navigate = (to: string, { replace = false } = {}) => {
-  if (replace) window.history.replaceState(null, '', to);
-  else window.history.pushState(null, '', to);
+  const href = agencyHref(to);
+  if (replace) window.history.replaceState(null, '', href);
+  else window.history.pushState(null, '', href);
   for (const listener of listeners) listener();
 };
 
 export const useLocation = (fallback = '/') => {
   const href = useSyncExternalStore(subscribe, current, () => fallback);
   const url = new URL(href, 'http://local');
-  return { path: url.pathname, query: url.searchParams };
+  return {
+    path: url.pathname.replace(AGENCY_PATH, '') || '/',
+    query: url.searchParams,
+    agencyId: agencyOfPath(url.pathname)
+  };
 };
 
 export const matchPath = (pattern: string, path: string): Record<string, string> | null => {
@@ -42,7 +61,7 @@ export type LinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }
 
 export const Link = ({ to, onClick, ...rest }: LinkProps) => (
   <a
-    href={to}
+    href={agencyHref(to)}
     onClick={(e: MouseEvent<HTMLAnchorElement>) => {
       onClick?.(e);
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;

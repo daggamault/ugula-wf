@@ -24,7 +24,7 @@ export type PayerFileItem = {
   adjusted_cents: number | null;
 };
 
-type UploadedPayerFile = { id: string; kind: InboundKind; items: number; problems: number };
+type UploadedPayerFile = { runId: string; kind: InboundKind };
 
 export const createPayerFilesClient = (api: Api) => ({
   list: (query: string, signal?: AbortSignal) =>

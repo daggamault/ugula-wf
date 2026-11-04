@@ -12,6 +12,8 @@ const GRAPH_SHOWS = ['workflows', 'blocks', 'mine', 'all'] as const;
 
 export type GraphShow = (typeof GRAPH_SHOWS)[number];
 
+const EDIT_SCOPES = ['organization', 'agency'] as const;
+
 const DEFINITION_MAX_CHARS = 2_000_000;
 
 export const searchGraphsQuery = v.object({
@@ -34,8 +36,15 @@ export const createGraphSchema = v.object({
   ),
   name: v.pipe(v.string(), v.trim(), v.nonEmpty(), v.maxLength(120)),
   kind: v.picklist(['workflow', 'node']),
-  description: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(2000)), '')
+  description: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(2000)), ''),
+  scope: v.optional(v.picklist(EDIT_SCOPES), 'agency')
 });
+
+export const overrideSchema = v.object({
+  scope: v.optional(v.picklist(EDIT_SCOPES), 'agency')
+});
+
+export const rebaseSchema = v.object({ mode: v.picklist(['keep', 'reset']) });
 
 export const definitionSchema = v.object({
   definition: v.pipe(

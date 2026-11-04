@@ -1,7 +1,7 @@
 import { advance, enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
 import { sqlExecutor } from './client.ts';
-import { pinRunGraphs } from './graph-versions.ts';
+import { buildLatestVersion, findPublishedGraphs, pinRunGraphs } from './graph-versions.ts';
 import type { Database } from './schema.ts';
 
 type NewRun = {
@@ -64,17 +64,13 @@ export const signalRuns = async (
   return waiting.length;
 };
 
-export const resolveWorkflowVersion = (db: Kysely<Database>, agencyId: string, key: string) =>
-  db
-    .selectFrom('graph_versions as gv')
-    .innerJoin('graphs as g', 'g.id', 'gv.graph_id')
-    .select(['gv.id', 'gv.version'])
-    .where('g.key', '=', key)
-    .where('g.kind', '=', 'workflow')
-    .where('g.is_active', '=', true)
-    .where('gv.published_at', 'is not', null)
-    .where((eb) => eb.or([eb('g.agency_id', '=', agencyId), eb('g.agency_id', 'is', null)]))
-    .orderBy(sql`g.agency_id nulls last`)
-    .orderBy('gv.version', 'desc')
-    .limit(1)
-    .executeTakeFirst();
+export const resolveWorkflowVersion = async (
+  db: Kysely<Database>,
+  agencyId: string,
+  key: string
+): Promise<{ id: string; version: number } | undefined> => {
+  const latest = (await buildLatestVersion(agencyId, key).execute(db)).rows[0];
+  if (!latest) return undefined;
+  const [found] = await findPublishedGraphs(db, agencyId, [{ key, version: latest.version }]);
+  return found && { id: found.id, version: found.version };
+};

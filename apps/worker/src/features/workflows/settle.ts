@@ -75,7 +75,7 @@ const rootKey = (run: ClaimedRun) => run.graphs.find((g) => g.id === run.version
 
 const recoverDrafts = async (tx: RunTx, run: ClaimedRun, reason: string, jobs: RunJob[]) => {
   if (rootKey(run) !== ENCOUNTER_WORKFLOW) return;
-  const versionId = await tx.findVersion(run.agencyId, RECOVER_DRAFT.key, RECOVER_DRAFT.version);
+  const versionId = await tx.findVersion(run, RECOVER_DRAFT.key, RECOVER_DRAFT.version);
   if (!versionId) return;
   const ids = await tx.recoverDrafts(run, versionId, reason);
   jobs.push(...ids.map((id) => advance(id)));
@@ -113,7 +113,7 @@ const spawn = async (
   kind: ChildKind,
   jobs: RunJob[]
 ) => {
-  const versionId = await tx.findVersion(run.agencyId, String(data.type), Number(data.version));
+  const versionId = await tx.findVersion(run, String(data.type), Number(data.version));
   if (!versionId) {
     const error = `Workflow ${String(data.type)}@${String(data.version)} is not published`;
     jobs.push(resume(run.id, waitId, kind === 'workflows' ? { results: [{ error }] } : { error }));
@@ -133,14 +133,14 @@ const startDetached = async (
   data: Record<string, Json>,
   jobs: RunJob[]
 ) => {
-  const versionId = await tx.findVersion(run.agencyId, String(data.type), Number(data.version));
+  const versionId = await tx.findVersion(run, String(data.type), Number(data.version));
   if (!versionId) {
     const error = `Workflow ${String(data.type)}@${String(data.version)} is not published`;
     jobs.push(resume(run.id, waitId, { error }));
     return;
   }
   const inputs = isRecord(data.inputs) ? data.inputs : {};
-  const runId = await tx.insertRun(run.agencyId, versionId, inputs);
+  const runId = await tx.insertRun(run, versionId, inputs);
   jobs.push(advance(runId), resume(run.id, waitId, { runId }));
 };
 

@@ -94,7 +94,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     const context = await s.browser.newContext();
     const page = await context.newPage();
     try {
-      await page.goto(new URL('/claims', config.E2E_WEB_URL).href);
+      await page.goto(new URL(`/agencies/${s.agencyId}/claims`, config.E2E_WEB_URL).href);
       await page.getByLabel('Email').fill(config.DEV_USER_EMAIL);
       await page.getByLabel('Password').fill(`${config.DEV_USER_PASSWORD}-wrong`);
       await page.getByRole('button', { name: 'Sign In' }).click();
@@ -105,7 +105,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
       await page.getByRole('heading', { level: 1, name: 'Claims' }).waitFor();
       await page.getByRole('button', { name: 'Sign Out' }).click();
       await page.getByText('Sign In to Your Account').waitFor();
-      await page.goto(new URL('/claims', config.E2E_WEB_URL).href);
+      await page.goto(new URL(`/agencies/${s.agencyId}/claims`, config.E2E_WEB_URL).href);
       await page.getByLabel('Password').waitFor();
     } finally {
       await context.close();
@@ -247,8 +247,11 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await form.getByRole('button', { name: 'Post Payment' }).click();
     await toast('Payment posted');
     const balanceOf = async () =>
-      (await s.page.request.get(`${s.apiUrl}/api/claims/${claims.worked}`).then((r) => r.json()))
-        .claim.balance_cents as number;
+      (
+        await s.page.request
+          .get(`${s.apiUrl}/api/agencies/${s.agencyId}/claims/${claims.worked}`)
+          .then((r) => r.json())
+      ).claim.balance_cents as number;
     await until(
       s.page,
       balanceOf,

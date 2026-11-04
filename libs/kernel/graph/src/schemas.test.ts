@@ -12,6 +12,24 @@ describe('schemas', () => {
     });
   });
 
+  it('accepts pin descriptions, exit docs and node notes', () => {
+    const documented = {
+      ...clampGraph,
+      signature: {
+        ...clampGraph.signature,
+        inputs: clampGraph.signature.inputs.map((p) => ({ ...p, description: 'Value to clamp' })),
+        exits: { exec: { label: 'Done', description: 'Clamped' } }
+      },
+      nodes: clampGraph.nodes.map((n) => ({ ...n, note: 'Why this is here' }))
+    };
+    assert.deepEqual(v.parse(graphDefSchema, documented), documented);
+    const badExit = {
+      ...clampGraph,
+      signature: { ...clampGraph.signature, exits: { exec: { colour: 'red' } } }
+    };
+    assert.equal(v.safeParse(graphDefSchema, badExit).success, false);
+  });
+
   it('rejects malformed input', () => {
     assert.equal(v.safeParse(valueTypeSchema, 'money').success, false);
     assert.equal(v.safeParse(graphDefSchema, { ...clampGraph, extra: 1 }).success, false);

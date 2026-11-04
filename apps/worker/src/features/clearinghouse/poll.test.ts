@@ -51,7 +51,8 @@ const poll = async (
     if (q.sql.includes('from "billing_profiles"')) {
       return (profiles[String(q.parameters[0])] ?? []).map((agency_id) => ({ agency_id }));
     }
-    if (q.sql.includes('from "graph_versions"')) return published ? [{ id: 'v1', version: 1 }] : [];
+    if (q.sql.includes('select v.version')) return published ? [{ version: 1 }] : [];
+    if (q.sql.includes('from unnest')) return published ? [{ id: 'v1', version: 1 }] : [];
     if (q.sql.startsWith('insert into "workflow_runs"')) return [{ id: 'r1' }];
     return [];
   });

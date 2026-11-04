@@ -34,6 +34,7 @@
     "@aws-sdk/client-s3": "3.1161.0",
     "@hono/node-server": "2.1.6",
     "@hono/standard-validator": "0.4.1",
+    "@ugula/access": "workspace:*",
     "@ugula/auth": "workspace:*",
     "@ugula/billing": "workspace:*",
     "@ugula/config": "workspace:*",

@@ -1,3 +1,4 @@
+import type { Permission } from '@ugula/access';
 import type {
   AdjustmentGroup,
   ClaimEventKind,
@@ -21,8 +22,21 @@ type NullableTimestamp = ColumnType<
   Date | string | null
 >;
 
+export const USER_TYPES = ['platform', 'organization'] as const;
+
+export type UserType = (typeof USER_TYPES)[number];
+
+type OrganizationsTable = {
+  id: Generated<string>;
+  name: string;
+  is_active: Generated<boolean>;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+};
+
 type AgenciesTable = {
   id: Generated<string>;
+  organization_id: string;
   name: string;
   slug: string;
   sftp_username: string | null;
@@ -34,12 +48,63 @@ type AgenciesTable = {
 
 type UsersTable = {
   id: Generated<string>;
-  agency_id: string;
+  type: UserType;
+  organization_id: string | null;
+  is_owner: Generated<boolean>;
   email: string;
+  first_name: string;
+  last_name: string;
   password_hash: string;
   is_active: Generated<boolean>;
   created_at: Timestamp;
   updated_at: Timestamp;
+};
+
+type RolesTable = {
+  id: Generated<string>;
+  agency_id: string;
+  name: string;
+  version: Generated<number>;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+};
+
+type RolePermissionsTable = {
+  role_id: string;
+  permission: Permission;
+};
+
+type MembershipsTable = {
+  id: Generated<string>;
+  organization_id: string;
+  user_id: string;
+  agency_id: string;
+  role_id: string;
+  version: Generated<number>;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+};
+
+type InvitationsTable = {
+  id: Generated<string>;
+  agency_id: string;
+  role_id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  token_hash: string;
+  invited_by: string | null;
+  expires_at: Timestamp;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+};
+
+type PasswordTokensTable = {
+  id: Generated<string>;
+  user_id: string;
+  token_hash: string;
+  expires_at: Timestamp;
+  created_at: Timestamp;
 };
 
 export const NOTIFICATION_INTENTS = ['primary', 'success', 'info', 'warning', 'danger'] as const;
@@ -78,6 +143,7 @@ export type GraphKind = (typeof GRAPH_KINDS)[number];
 
 type GraphsTable = {
   id: Generated<string>;
+  organization_id: string | null;
   agency_id: string | null;
   key: string;
   name: string;
@@ -93,6 +159,8 @@ type GraphVersionsTable = {
   graph_id: string;
   version: number;
   definition: JsonColumn;
+  base_version_id: string | null;
+  contract: string;
   dependencies: ColumnType<string[], string[] | undefined, string[]>;
   published_at: NullableTimestamp;
   created_by: string | null;
@@ -485,8 +553,14 @@ type PayerSuggestionsTable = {
 };
 
 export type Database = {
+  organizations: OrganizationsTable;
   agencies: AgenciesTable;
   users: UsersTable;
+  roles: RolesTable;
+  role_permissions: RolePermissionsTable;
+  memberships: MembershipsTable;
+  invitations: InvitationsTable;
+  password_tokens: PasswordTokensTable;
   graphs: GraphsTable;
   graph_versions: GraphVersionsTable;
   workflow_runs: WorkflowRunsTable;

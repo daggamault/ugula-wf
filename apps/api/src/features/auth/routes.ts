@@ -4,7 +4,7 @@ import { type Context, Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { invalidRequest } from '../../shared/http.ts';
 import { ok, respond } from '../../shared/result.ts';
-import { signInSchema } from './schemas.ts';
+import { acceptInvitationSchema, setPasswordSchema, signInSchema, tokenQuery } from './schemas.ts';
 import type { AuthService } from './service.ts';
 
 type AuthRoutesDeps = {
@@ -16,11 +16,19 @@ type AuthRoutesDeps = {
 
 export const createAuthRoutes = ({ service, sseUrl, secureCookie, clientIp }: AuthRoutesDeps) => {
   const app = new Hono();
-  const sessionBody = ({ userId, agencyId, email }: SessionData) => ({
-    user: { id: userId, agencyId, email },
-    sseUrl
-  });
+  const sessionBody = async ({ userId }: SessionData) => {
+    const me = await service.me(userId);
+    return me.ok ? ok({ user: me.value, sseUrl }) : me;
+  };
   const clearCookie = (c: Context) => deleteCookie(c, SESSION_COOKIE, { path: '/' });
+  const startSession = (c: Context, token: string) =>
+    setCookie(c, SESSION_COOKIE, token, {
+      httpOnly: true,
+      sameSite: 'Lax',
+      secure: secureCookie,
+      path: '/',
+      maxAge: SESSION_TTL_SECONDS
+    });
 
   app.post('/sign-in', sValidator('json', signInSchema, invalidRequest), async (c) => {
     const res = await service.signIn(c.req.valid('json'), clientIp(c));
@@ -29,14 +37,8 @@ export const createAuthRoutes = ({ service, sseUrl, secureCookie, clientIp }: Au
       if (typeof wait === 'number') c.header('retry-after', String(wait));
       return respond(c, res);
     }
-    setCookie(c, SESSION_COOKIE, res.value.token, {
-      httpOnly: true,
-      sameSite: 'Lax',
-      secure: secureCookie,
-      path: '/',
-      maxAge: SESSION_TTL_SECONDS
-    });
-    return respond(c, ok(sessionBody(res.value.session)));
+    startSession(c, res.value.token);
+    return respond(c, await sessionBody(res.value.session));
   });
 
   app.post('/sign-out', async (c) => {
@@ -48,8 +50,27 @@ export const createAuthRoutes = ({ service, sseUrl, secureCookie, clientIp }: Au
   app.get('/me', async (c) => {
     const res = await service.session(getCookie(c, SESSION_COOKIE));
     if (!res.ok) clearCookie(c);
-    return respond(c, res.ok ? ok(sessionBody(res.value)) : res);
+    return respond(c, res.ok ? await sessionBody(res.value) : res);
   });
+
+  app.get('/invitation', sValidator('query', tokenQuery, invalidRequest), async (c) =>
+    respond(c, await service.previewInvitation(c.req.valid('query').token))
+  );
+
+  app.post(
+    '/invitation/accept',
+    sValidator('json', acceptInvitationSchema, invalidRequest),
+    async (c) => {
+      const res = await service.acceptInvitation(c.req.valid('json'));
+      if (!res.ok) return respond(c, res);
+      startSession(c, res.value.token);
+      return respond(c, await sessionBody(res.value.session));
+    }
+  );
+
+  app.post('/password', sValidator('json', setPasswordSchema, invalidRequest), async (c) =>
+    respond(c, await service.setPassword(c.req.valid('json')))
+  );
 
   return app;
 };

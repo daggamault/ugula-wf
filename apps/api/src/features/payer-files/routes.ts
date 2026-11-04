@@ -1,7 +1,7 @@
 import { sValidator } from '@hono/standard-validator';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import type { AuthEnv } from '../../shared/auth.ts';
+import type { AgencyEnv } from '../../shared/access.ts';
 import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
@@ -9,15 +9,15 @@ import { listPayerFilesQuery, payerFileFormSchema } from './schemas.ts';
 import type { PayerFileService } from './service.ts';
 
 export const createPayerFileRoutes = (service: PayerFileService, maxBytes: number) =>
-  new Hono<AuthEnv>()
+  new Hono<AgencyEnv>()
     .get('/', sValidator('query', listPayerFilesQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('session').agencyId, c.req.valid('query')))
+      respond(c, await service.list(c.get('access').agencyId, c.req.valid('query')))
     )
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.find(c.get('session').agencyId, c.req.valid('param').id))
+      respond(c, await service.find(c.get('access').agencyId, c.req.valid('param').id))
     )
     .get('/:id/file', sValidator('param', idParam, invalidRequest), async (c) => {
-      const res = await service.download(c.get('session').agencyId, c.req.valid('param').id);
+      const res = await service.download(c.get('access').agencyId, c.req.valid('param').id);
       if (!res.ok) return respond(c, res);
       return c.body(Uint8Array.from(res.value.bytes), 200, {
         'content-type': 'application/edi-x12',
@@ -34,10 +34,9 @@ export const createPayerFileRoutes = (service: PayerFileService, maxBytes: numbe
       sValidator('form', payerFileFormSchema, invalidRequest),
       async (c) => {
         const { file } = c.req.valid('form');
-        const { agencyId, userId } = c.get('session');
         return respond(
           c,
-          await service.upload(agencyId, userId, {
+          await service.upload(c.get('access').agencyId, {
             name: file.name,
             type: file.type,
             bytes: new Uint8Array(await file.arrayBuffer())

@@ -23,7 +23,12 @@ Workflows are built from small, general nodes, so agencies can change billing lo
 - **Lists and logic:** Where, Pluck Field, Reshape Items, Make List, Sort By Field, Coalesce, Select, math and text nodes.
 - **Capability nodes** do what a graph cannot: read and split NEMSIS files, match patients and payers, read narratives with the local model, price lines from fee schedules, save claims, run the claim cycle and render statements.
 
-**Overrides:** every built-in graph can be overridden by an agency. Override copies the graph into the agency's workspace. Once the copy is published, every workflow that uses that graph uses the copy for that agency, as long as it keeps the same inputs, outputs and exits. Each run records which versions it uses when it starts, so publishing or removing an override never changes a run that has already started.
+**Overrides:** every built-in graph can be overridden for a whole organization or for one agency. Override copies the graph and records the version it came from; once the copy is published, every workflow that uses that graph uses it, agency copy first, then the organization's, then the built-in graph. A copy must keep the same inputs, outputs and exits (its contract); when a built-in graph changes its contract, older copies stop applying until they are rebased. Compare shows a copy against the version it came from and the newest base. Each run pins the versions it uses when it starts, and child runs reuse their parent's, so publishing or removing an override never changes a run that has already started. See [docs/overrides.md](docs/overrides.md).
+
+### Organizations, Agencies and Access
+
+An organization (an EMS service or a billing company) has one or more agencies, and each agency owns its claims, patients, payers, fees and tasks. Users belong to one organization; owners see every agency, and everyone else has a role in each agency they work in. Roles are custom per agency, built from `resource:action` permissions, and seeded as Admin, Billing Manager, Biller and Viewer. Admins invite users with a one-time link; nobody can grant permissions they do not hold or remove an agency's last user admin. Agency pages live under `/agencies/:agencyId`, the agency picker in the sidebar switches agencies, and every API route checks membership and permissions. See [docs/tenancy-and-access.md](docs/tenancy-and-access.md).
+
 
 ### The Billing App
 
@@ -43,26 +48,27 @@ Workflows are built from small, general nodes, so agencies can change billing lo
    - **Reconcile payment:** a payer payment posted against the claim that leaves a balance opens a reconcile task (continue to the next payer or the patient, or write off the rest); a payment that settles the claim closes it as paid; a denial records its reason codes but keeps the balance, so a biller reconciles it;
    - **Patient balance:** once all payers are done, up to three patient statements (PDFs) go out 30 days apart;
    - **Balance review:** an unpaid balance after that goes to a biller; claims close as **Paid**, **Written off**, **Sent to collections** or **Void**.
-9. **Payer files:** the worker polls the clearinghouse SFTP download folders, routes each file to the agency it is addressed to (ISA08 is the agency's submitter ID) and starts `Receive Payer File` for it, which applies it and starts `Review Payer File Line` (a task on the claim) for every line a biller has to look at. Each claim lists the payer files that touched it. An 835 posts each claim's payment, contractual adjustments and reason codes (patient responsibility stays on the balance), matched by claim number and payer; a 999 accepts or rejects every claim in its 837P file; a 277CA accepts or rejects single claims; a 271 records whether each payer says the coverage is active, and an inactive coverage blocks billing that payer. Check Eligibility on a claim downloads a 270 for its payers. Every line keeps its outcome, unclear lines (reversals, unknown claims, payers not on the claim) go to a biller, and the same file is never applied twice.
-10. **Admin:** Payers (the directory, with each clearinghouse payer ID, its filing limit and the report names it has learned), Fees, and Settings (the agency's billing profile and clearinghouse IDs) drive the 837P files and statements.
+9. **Payer files:** the worker polls the clearinghouse SFTP download folders, routes each file to the agency it is addressed to (ISA08 is the agency's submitter ID) and starts `Receive Payer File` for it (a file uploaded by hand on Payer Files starts the same workflow), which applies it and starts `Review Payer File Line` (a task on the claim) for every line a biller has to look at. Each claim lists the payer files that touched it. An 835 posts each claim's payment, contractual adjustments and reason codes (patient responsibility stays on the balance), matched by claim number and payer; a 999 accepts or rejects every claim in its 837P file; a 277CA accepts or rejects single claims; a 271 records whether each payer says the coverage is active, and an inactive coverage blocks billing that payer. Check Eligibility on a claim downloads a 270 for its payers. Every line keeps its outcome, unclear lines (reversals, unknown claims, payers not on the claim) go to a biller, and the same file is never applied twice.
+10. **Admin:** Users and Roles, Payers (the directory, with each clearinghouse payer ID, its filing limit and the report names it has learned), Fees, and Settings (the agency's billing profile and clearinghouse IDs) drive the 837P files and statements.
 11. **Working it:** Billers work from Claims, which has two tabs. **Queue** is the work queue: every open claim, paged and sortable, oldest waiting task first, each row showing the task the claim is waiting on (and who that task is assigned to; claims themselves are never assigned) with a Work Task action. **Search** finds any claim, open or closed, by first and last name, birth date or any of the three numbers, all in SQL. A claim's page lists its open tasks, and a task page names its claim and returns to it. Claims and patients get sequential numbers (`claims.number`, `patients.number`, identity columns shared across agencies), and the encounter number is the PCR number. Each claim has Overview, Claim data and History tabs, and its Files list the source encounter (NEMSIS XML), its 837P files and statements. Patients searches by name and birth date; each import lists what every PCR in the file became. New tasks, stuck runs and every message a biller sees are kept in the notification bell, stored per agency and user so they follow the biller across devices.
 12. **Reports:** Every import, report, claim line, coverage, diagnosis and ledger event is a relational row, so A/R aging, monthly collections, payer performance and HCPCS charges are plain SQL. Reports lists them; each one opens an options page (dates of service, where the report uses them) and then a results page that pages at 100 rows, prints the current page as a black and gray document, and downloads as CSV.
 
 ## Layout
 
-| Path                    | Purpose                                                                                                                             |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api`              | Hono HTTP API: auth, graphs, runs, tasks, imports, payer files, claims, patients, notifications, reports                            |
-| `apps/worker`           | Executes workflow runs from the pg-boss queue and implements billing store ports                                                    |
-| `apps/sse`              | Pushes live run, task, claim and import updates over Server-Sent Events (via Redis)                                                 |
-| `apps/web`              | React app: claims and their tasks, patients, imports, payer files, reports, workflows, runs, payers, fees, settings                 |
-| `libs/kernel`           | `graph` (workflow engine, expression language, standard nodes), `config` (validators), `live` (live event contract)                 |
-| `libs/platform`         | Domain-free I/O: `auth` (passwords, sessions), `inference` (embeddings, completions), `run-queue`, `storage` (S3)                   |
-| `libs/domain`           | `billing` (matching, narrative reading, pricing, documentation, claim cycle, X12 837P/835/999/277CA/270/271), `nemsis` (XML, codes) |
-| `libs/data`             | `db`: Postgres/Kysely client and schema                                                                                             |
-| `libs/composition`      | `catalog`: the one node catalog of standard, NEMSIS, billing and model nodes                                                        |
-| `.migrations`, `.seeds` | Schema and seed data (billing graphs, GNIS place names, NEMSIS definitions, demo fees and payers)                                   |
-| `.e2e`                  | Browser tests of every area against a running stack (`pnpm e2e`); suites at the top, helpers in `shared/`                           |
+| Path                    | Purpose                                                                                                                                                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`              | Hono HTTP API: auth, graphs, runs, tasks, imports, payer files, claims, patients, notifications, reports                                                                                 |
+| `apps/worker`           | Executes workflow runs from the pg-boss queue and implements billing store ports                                                                                                         |
+| `apps/sse`              | Pushes live run, task, claim and import updates over Server-Sent Events (via Redis)                                                                                                      |
+| `apps/web`              | React app: claims and their tasks, patients, imports, payer files, reports, workflows, runs, payers, fees, settings                                                                      |
+| `libs/kernel`           | `graph` (workflow engine, expression language, standard nodes), `config` (validators), `live` (live event contract)                                                                      |
+| `libs/platform`         | Domain-free I/O: `auth` (passwords, sessions), `inference` (embeddings, completions), `run-queue`, `storage` (S3)                                                                        |
+| `libs/domain`           | `access` (permissions, built-in roles, grant rules), `billing` (matching, narrative reading, pricing, documentation, claim cycle, X12 837P/835/999/277CA/270/271), `nemsis` (XML, codes) |
+| `libs/data`             | `db`: Postgres/Kysely client and schema                                                                                                                                                  |
+| `libs/composition`      | `catalog`: the one node catalog of standard, NEMSIS, billing and model nodes                                                                                                             |
+| `.migrations`, `.seeds` | Schema and seed data (billing graphs, GNIS place names, NEMSIS definitions, demo fees and payers)                                                                                        |
+| `.e2e`                  | Browser tests of every area against a running stack (`pnpm e2e`); suites at the top, helpers in `shared/`                                                                                |
+| `docs`                  | Overviews of every area: architecture, access, engine, overrides, billing, clearinghouse, data model, web, testing                                                                       |
 
 **Stack:** Node, TypeScript, pnpm workspaces, Postgres (Kysely, pgvector, pg_trgm), pg-boss, Redis, S3-compatible storage (RustFS), local models (text-embeddings-inference with Qwen3-Embedding, llama.cpp with Qwen3.5), Hono, valibot, React, Tailwind, React Flow, Biome.
 
@@ -85,26 +91,30 @@ Copy `.env.example` to `.env` first. Run `pnpm check`, `pnpm typecheck`, and `pn
 
 The worker reads the clearinghouse SFTP connection from `.env`; leave `CLEARINGHOUSE_SFTP_HOST` empty to turn the exchange off. Pointing it at a real clearinghouse is a settings change:
 
-| Setting                             | Mock (default)                              | TriZetto                               | Waystar                          |
-| ----------------------------------- | ------------------------------------------- | -------------------------------------- | -------------------------------- |
-| `CLEARINGHOUSE_SFTP_HOST` / `_PORT` | `localhost` / `2223`                        | from your TriZetto setup               | from your Waystar setup          |
-| `CLEARINGHOUSE_UPLOAD_PATH`         | `/inbound`                                  | the upload folder they give you        | the outbound (write-only) folder |
-| `CLEARINGHOUSE_DOWNLOAD_PATHS`      | `/outbound/999,/outbound/277,/outbound/835` | one folder each for 999, 277CA and 835 | the inbound folder               |
-| `CLEARINGHOUSE_FILE_EXTENSION`      | `.txt`                                      | `.txt`                                 | `.CLP`                           |
-| `CLEARINGHOUSE_AFTER_DOWNLOAD`      | `delete`                                    | `delete`                               | `delete` or `keep`               |
+| Setting                             | Mock (default)       | TriZetto                               | Waystar                     |
+| ----------------------------------- | -------------------- | -------------------------------------- | --------------------------- |
+| `CLEARINGHOUSE_SFTP_HOST` / `_PORT` | `localhost` / `2223` | from your TriZetto setup               | `sshftp.waystar.com` / `22` |
+| `CLEARINGHOUSE_UPLOAD_PATH`         | `/upload`            | the upload folder they give you        | `/upload` (write-only)      |
+| `CLEARINGHOUSE_DOWNLOAD_PATHS`      | `/download`          | one folder each for 999, 277CA and 835 | `/download`                 |
+| `CLEARINGHOUSE_FILE_EXTENSION`      | `.CLP`               | `.txt`                                 | `.CLP`                      |
+| `CLEARINGHOUSE_AFTER_DOWNLOAD`      | `delete`             | `delete`                               | `delete` or `keep`          |
 
 Response files are recognized by content (ISA/GS/ST), not by name, and each agency's billing profile submitter ID must be the ID the clearinghouse addresses its responses to. Confirm folder names, extensions and IDs with the clearinghouse during enrollment.
 
 ### Mock clearinghouse
 
-`.dev/mock-clearinghouse.ts` is a dev-only, in-memory SFTP server that answers 837P files like a clearinghouse. `pnpm dev` starts it (`pnpm dev:clearinghouse` alone) on `CLEARINGHOUSE_SFTP_HOST`:`CLEARINGHOUSE_SFTP_PORT` (localhost:2223 in `.env.example`) for `CLEARINGHOUSE_SFTP_USERNAME` / `CLEARINGHOUSE_SFTP_PASSWORD`. Files live in memory and are gone on restart; the host key is new on every start.
+`.dev/mock-clearinghouse.ts` is a dev-only, in-memory clearinghouse that follows Waystar's conventions, so moving to Waystar is a settings change. `pnpm dev` starts it (`pnpm dev:clearinghouse` alone): SFTP on `CLEARINGHOUSE_SFTP_HOST`:`CLEARINGHOUSE_SFTP_PORT` for `CLEARINGHOUSE_SFTP_USERNAME` / `CLEARINGHOUSE_SFTP_PASSWORD`, and CORE real-time eligibility on `CLEARINGHOUSE_REALTIME_PORT`. Files live in memory and are gone on restart; the host key is new on every start.
 
-- Upload 837P files to `/inbound` (files ending in `.part`, `.tmp` or `.filepart` wait until renamed). About 2s later the file is picked up and removed.
-- `/outbound/999/<name>.999` acknowledges the group (AK1 = the 837 GS06); a file that is not a readable 837P gets a rejected 999 (`AK9*R`).
-- `/outbound/277/<name>.277` has one status per claim (TRN = CLM01): accepted, or rejected with "Invalid member ID" when the subscriber member ID starts with `REJECT`.
-- `/outbound/835/<name>.835` follows after `CLEARINGHOUSE_REMIT_DELAY_SECONDS` (default 20) for accepted claims, one transaction per payer: 80% of the charge paid, the rest a CO-45.
+- Upload to the write-only `/upload` folder: 837P files as `<name>.CLP`, batch 270s as `<name>.ELG`, with no other periods in the name (`.part`, `.tmp` and `.filepart` uploads wait until renamed). About 2s later the file is picked up and removed.
+- Answers arrive in `/download` as `<ISA06>_<type>_<yyyyMMddHHmmss>_<seq>.<ext>` and are recognized by content:
+  - an interchange not addressed to `WAYSTAR` or `ZIRMED` (ISA08) gets a rejected `.TA1` and nothing else;
+  - `.999` acknowledges the group (AK1 = the 837 GS06); an unreadable 837P gets a rejected 999 (`AK9*R`);
+  - `.277` (277CA) has one status per claim (TRN = CLM01): accepted, or rejected with "Invalid member ID" when the subscriber member ID starts with `REJECT`;
+  - `.835` follows after `CLEARINGHOUSE_REMIT_DELAY_SECONDS` (default 20) for accepted claims, one transaction per payer, 80% paid and the rest a CO-45, except payers listed in `CLEARINGHOUSE_ERA_UNENROLLED` (no ERA enrollment, so no 835);
+  - `.271` answers each 270 inquiry: active coverage, or inactive when the member ID starts with `INACTIVE`.
+- `POST /core/realtime` takes a CAQH CORE multipart envelope (Basic auth, `PayloadType` `X12_270_Request_005010X279A1`) and returns the 271 in the same envelope.
 
-`<name>` is the uploaded name without its extension. The responses come from `respond()` in `@ugula/billing/mock`, which also has the 999/277CA/835/271 builders the e2e suites use.
+The answers come from `@ugula/billing/mock-waystar` (built on `@ugula/billing/mock`, which also has the 999/277CA/835/271 builders the e2e suites use).
 
 ---
 

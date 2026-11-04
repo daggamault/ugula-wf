@@ -1,7 +1,7 @@
 import { sValidator } from '@hono/standard-validator';
 import { Hono } from 'hono';
 import * as v from 'valibot';
-import type { AuthEnv } from '../../shared/auth.ts';
+import type { AgencyEnv } from '../../shared/access.ts';
 import { idParam, invalidRequest, uuid } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
 import {
@@ -16,12 +16,12 @@ import type { ClaimService } from './service.ts';
 const documentParam = v.object({ id: uuid, eventId: uuid });
 
 export const createClaimRoutes = (service: ClaimService) =>
-  new Hono<AuthEnv>()
+  new Hono<AgencyEnv>()
     .get('/', sValidator('query', listClaimsQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('session').agencyId, c.req.valid('query')))
+      respond(c, await service.list(c.get('access').agencyId, c.req.valid('query')))
     )
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.find(c.get('session').agencyId, c.req.valid('param').id))
+      respond(c, await service.find(c.get('access').agencyId, c.req.valid('param').id))
     )
     .get(
       '/:id/events',
@@ -31,7 +31,7 @@ export const createClaimRoutes = (service: ClaimService) =>
         respond(
           c,
           await service.events(
-            c.get('session').agencyId,
+            c.get('access').agencyId,
             c.req.valid('param').id,
             c.req.valid('query')
           )
@@ -45,7 +45,7 @@ export const createClaimRoutes = (service: ClaimService) =>
         respond(
           c,
           await service.setPayers(
-            c.get('session').agencyId,
+            c.get('access').agencyId,
             c.req.valid('param').id,
             c.req.valid('json').payers
           )
@@ -56,7 +56,7 @@ export const createClaimRoutes = (service: ClaimService) =>
       sValidator('param', documentParam, invalidRequest),
       async (c) => {
         const { id, eventId } = c.req.valid('param');
-        const res = await service.document(c.get('session').agencyId, id, eventId);
+        const res = await service.document(c.get('access').agencyId, id, eventId);
         if (!res.ok) return respond(c, res);
         return c.body(Uint8Array.from(res.value.bytes), 200, {
           'content-type': res.value.contentType,
@@ -70,7 +70,7 @@ export const createClaimRoutes = (service: ClaimService) =>
       sValidator('param', idParam, invalidRequest),
       sValidator('json', billingDataSchema, invalidRequest),
       async (c) => {
-        const { agencyId, userId } = c.get('session');
+        const { agencyId, userId } = c.get('access');
         return respond(
           c,
           await service.saveBillingData(
@@ -83,18 +83,14 @@ export const createClaimRoutes = (service: ClaimService) =>
       }
     )
     .post('/:id/restart-cycle', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(
-        c,
-        await service.restartCycle(c.get('session').agencyId, c.req.valid('param').id),
-        201
-      )
+      respond(c, await service.restartCycle(c.get('access').agencyId, c.req.valid('param').id), 201)
     )
     .post(
       '/:id/responses',
       sValidator('param', idParam, invalidRequest),
       sValidator('json', responseSchema, invalidRequest),
       async (c) => {
-        const { agencyId, userId } = c.get('session');
+        const { agencyId, userId } = c.get('access');
         return respond(
           c,
           await service.recordResponse(

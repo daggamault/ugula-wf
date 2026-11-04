@@ -30,7 +30,7 @@ const createMemoryRedis = () => {
   return { redis, map, sets, ttls };
 };
 
-const data = { userId: 'u-1', agencyId: 't-1', email: 'dev@example.com' };
+const data = { userId: 'u-1', email: 'dev@example.com' };
 
 describe('createSessionStore', () => {
   it('creates, retrieves, and destroys sessions', async () => {

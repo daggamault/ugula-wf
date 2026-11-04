@@ -79,8 +79,8 @@ export type RunTx = {
   insertSteps: (runId: string, steps: TraceEntry[]) => Promise<void>;
   insertTask: (task: TaskInsert) => Promise<void>;
   cancelTasks: (runId: string) => Promise<void>;
-  findVersion: (agencyId: string, key: string, version: number) => Promise<string | undefined>;
-  insertRun: (agencyId: string, versionId: string, inputs: Values) => Promise<string>;
+  findVersion: (run: ClaimedRun, key: string, version: number) => Promise<string | undefined>;
+  insertRun: (parent: ClaimedRun, versionId: string, inputs: Values) => Promise<string>;
   insertChildren: (
     parent: ClaimedRun,
     waitId: string,
@@ -268,9 +268,9 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
           t.assigneeId === null
             ? null
             : tx
-                .selectFrom('users')
-                .select('id')
-                .where(sql<string>`id::text`, '=', t.assigneeId)
+                .selectFrom('memberships')
+                .select('user_id')
+                .where(sql<string>`user_id::text`, '=', t.assigneeId)
                 .where('agency_id', '=', t.agencyId)
       })
       .onConflict((oc) => oc.columns(['run_id', 'wait_id']).doNothing())
@@ -286,9 +286,10 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
       .where('status', '=', 'open')
       .execute();
   },
-  findVersion: async (agencyId, key, version) =>
-    (await findPublishedGraphs(tx, agencyId, [{ key, version }]))[0]?.id,
-  insertRun: async (agencyId, versionId, inputs) => {
+  findVersion: async (run, key, version) =>
+    (await findPublishedGraphs(tx, run.agencyId, [{ key, version }], run.id))[0]?.id,
+  insertRun: async (parent, versionId, inputs) => {
+    const { agencyId } = parent;
     const { id } = await tx
       .insertInto('workflow_runs')
       .values({
@@ -299,7 +300,7 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
       })
       .returning('id')
       .executeTakeFirstOrThrow();
-    await pinRunGraphs(tx, { id, agencyId, versionId });
+    await pinRunGraphs(tx, { id, agencyId, versionId, parentRunId: parent.id });
     return id;
   },
   insertChildren: async (parent, waitId, versionId, inputs) => {
@@ -324,7 +325,7 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
         ...rows.sort((a, b) => (a.parent_index ?? 0) - (b.parent_index ?? 0)).map((r) => r.id)
       );
     }
-    await pinRunsGraphs(tx, { ids, agencyId: parent.agencyId, versionId });
+    await pinRunsGraphs(tx, { ids, agencyId: parent.agencyId, versionId, parentRunId: parent.id });
     return ids;
   },
   lockParent: async (parentId) => {
@@ -422,7 +423,9 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
       )
       select id from started`.execute(tx);
     const ids = rows.map((r) => r.id);
-    if (ids.length) await pinRunsGraphs(tx, { ids, agencyId: run.agencyId, versionId });
+    if (ids.length) {
+      await pinRunsGraphs(tx, { ids, agencyId: run.agencyId, versionId, parentRunId: run.id });
+    }
     return ids;
   },
   enqueue: (jobs) => enqueueRuns(boss, sqlExecutor(tx), jobs),

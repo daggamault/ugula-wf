@@ -26,12 +26,10 @@ export const uploadPayerFiles = async (
       received += 1;
       notify({
         key: `payer-file:${file.name}`,
-        intent: done.problems ? 'warning' : 'success',
-        title: `${file.name} applied`,
-        description: done.problems
-          ? `${done.problems} of ${done.items} lines need a biller.`
-          : `All ${done.items} lines were applied to their claims.`,
-        action: { label: 'Open File', to: `/payer-files/${done.id}` }
+        intent: 'success',
+        title: `${file.name} received`,
+        description: `The ${PAYER_FILE_LABELS[done.kind]} is being applied to its claims; lines that need a biller become tasks.`,
+        action: { label: 'Open Run', to: `/runs/${done.runId}` }
       });
     } catch (err) {
       notify({

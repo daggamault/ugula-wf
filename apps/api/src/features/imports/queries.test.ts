@@ -13,13 +13,28 @@ import {
 } from './queries.ts';
 
 describe('resolveWorkflowVersion', () => {
-  it('picks the newest published workflow version, preferring an active agency copy', async () => {
+  it('takes the newest built-in version number, then resolves the override in effect for it', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('from unnest')
+        ? [{ id: 'v-agency', key: 'billing.ingest-nemsis', version: 3, definition: {} }]
+        : [{ version: 3 }]
+    );
+    assert.deepEqual(await resolveWorkflowVersion(db, 't-1', 'billing.ingest-nemsis'), {
+      id: 'v-agency',
+      version: 3
+    });
+    const [latest, resolved] = queries.map((q) => ({ ...q, sql: q.sql.replace(/\s+/g, ' ') }));
+    assert.ok(latest?.sql.includes("g.kind = 'workflow' and g.is_active"));
+    assert.ok(latest?.sql.includes('order by g.organization_id is not null, v.version desc'));
+    assert.deepEqual(latest?.parameters.slice(0, 2), ['billing.ingest-nemsis', 't-1']);
+    assert.deepEqual(resolved?.parameters.slice(0, 2), [['billing.ingest-nemsis'], [3]]);
+    await db.destroy();
+  });
+
+  it('finds nothing when no version is published', async () => {
     const { db, queries } = createRecordingDb();
-    await resolveWorkflowVersion(db, 't-1', 'billing.ingest-nemsis');
-    const [q] = queries;
-    assert.ok(q?.sql.includes('"g"."is_active" = $3'));
-    assert.ok(q?.sql.includes('order by g.agency_id nulls last, "gv"."version" desc'));
-    assert.deepEqual(q?.parameters, ['billing.ingest-nemsis', 'workflow', true, 't-1', 1]);
+    assert.equal(await resolveWorkflowVersion(db, 't-1', 'billing.ingest-nemsis'), undefined);
+    assert.equal(queries.length, 1);
     await db.destroy();
   });
 });

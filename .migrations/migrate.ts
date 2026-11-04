@@ -14,7 +14,7 @@ import { createNotificationsTables } from './notifications.ts';
 import { createPatientsTable } from './patients.ts';
 import { createPayerFilesTables } from './payer-files.ts';
 import { createTasksTable } from './tasks.ts';
-import { createUsersTable } from './users.ts';
+import { createUsersTables } from './users.ts';
 import { createWorkflowRunsTables } from './workflow-runs.ts';
 
 const resetSchema = async (db: Kysely<Database>) => {
@@ -48,8 +48,14 @@ const resetSchema = async (db: Kysely<Database>) => {
     'workflow_runs',
     'graph_versions',
     'graphs',
+    'password_tokens',
+    'invitations',
+    'memberships',
+    'role_permissions',
+    'roles',
     'users',
     'agencies',
+    'organizations',
     'gnis_places',
     'nemsis_codes',
     'nemsis_elements'
@@ -65,7 +71,7 @@ const steps = [
   createGnisPlacesTable,
   createNemsisDictionaryTables,
   createAgenciesTable,
-  createUsersTable,
+  createUsersTables,
   createGraphsTables,
   createWorkflowRunsTables,
   createTasksTable,

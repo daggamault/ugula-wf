@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/testing.ts",
-    "./mock": "./src/mock-x12.ts"
+    "./mock": "./src/mock-x12.ts",
+    "./mock-waystar": "./src/mock-waystar.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -8,7 +8,6 @@ const nonEmpty = v.pipe(v.string(), v.nonEmpty());
 
 const sessionDataSchema = v.object({
   userId: nonEmpty,
-  agencyId: nonEmpty,
   email: v.pipe(nonEmpty, v.email())
 });
 

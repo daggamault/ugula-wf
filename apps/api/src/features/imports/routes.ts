@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { sValidator } from '@hono/standard-validator';
 import { Hono, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import type { AuthEnv } from '../../shared/auth.ts';
+import type { AgencyEnv } from '../../shared/access.ts';
 import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
@@ -16,15 +16,15 @@ import {
 import type { ImportService } from './service.ts';
 
 export const createImportRoutes = (service: ImportService, maxBytes: number) =>
-  new Hono<AuthEnv>()
+  new Hono<AgencyEnv>()
     .get('/', sValidator('query', listImportsQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('session').agencyId, c.req.valid('query')))
+      respond(c, await service.list(c.get('access').agencyId, c.req.valid('query')))
     )
     .get('/reports/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.report(c.get('session').agencyId, c.req.valid('param').id))
+      respond(c, await service.report(c.get('access').agencyId, c.req.valid('param').id))
     )
     .get('/reports/:id/xml', sValidator('param', idParam, invalidRequest), async (c) => {
-      const res = await service.report(c.get('session').agencyId, c.req.valid('param').id);
+      const res = await service.report(c.get('access').agencyId, c.req.valid('param').id);
       if (!res.ok) return respond(c, res);
       const name = res.value.report.pcr_number ?? res.value.report.id;
       return c.body(res.value.xml, 200, {
@@ -34,7 +34,7 @@ export const createImportRoutes = (service: ImportService, maxBytes: number) =>
       });
     })
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.find(c.get('session').agencyId, c.req.valid('param').id))
+      respond(c, await service.find(c.get('access').agencyId, c.req.valid('param').id))
     )
     .get(
       '/:id/reports',
@@ -44,7 +44,7 @@ export const createImportRoutes = (service: ImportService, maxBytes: number) =>
         respond(
           c,
           await service.reports(
-            c.get('session').agencyId,
+            c.get('access').agencyId,
             c.req.valid('param').id,
             c.req.valid('query')
           )
@@ -59,7 +59,7 @@ export const createImportRoutes = (service: ImportService, maxBytes: number) =>
       sValidator('form', importFormSchema, invalidRequest),
       async (c) => {
         const { file, workflow } = c.req.valid('form');
-        const { agencyId, userId } = c.get('session');
+        const { agencyId, userId } = c.get('access');
         return respond(
           c,
           await service.upload(agencyId, userId, workflow, {

@@ -24,11 +24,15 @@ type ShellProps = {
   userEmail: string;
   status?: ReactNode;
   tools?: ReactNode;
+  agencyPicker?: ReactNode;
   onSignOut: () => void;
   children?: ReactNode;
 };
 
-type NavMenuProps = Pick<ShellProps, 'navItems' | 'userEmail' | 'status' | 'onSignOut'>;
+type NavMenuProps = Pick<
+  ShellProps,
+  'navItems' | 'userEmail' | 'status' | 'agencyPicker' | 'onSignOut'
+>;
 
 const groupsOf = (items: readonly NavItem[]) => {
   const groups = new Map<string, NavItem[]>();
@@ -47,8 +51,9 @@ const NavHeader = ({ tools, children }: { tools?: ReactNode; children?: ReactNod
   </div>
 );
 
-const NavMenu = ({ navItems, userEmail, status, onSignOut }: NavMenuProps) => (
+const NavMenu = ({ navItems, userEmail, status, agencyPicker, onSignOut }: NavMenuProps) => (
   <div className="flex min-h-0 flex-1 flex-col gap-4">
+    {agencyPicker ? <div className="px-3">{agencyPicker}</div> : null}
     <nav aria-label="Primary" className="flex flex-1 flex-col gap-5 overflow-y-auto px-3">
       {groupsOf(navItems).map(([group, items]) => {
         const hasActive = items.some((item) => item.active);

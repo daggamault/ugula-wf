@@ -2,11 +2,20 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { App, type AppClients, type RouteContext, resolveRoute, Workspace } from './app.tsx';
+import {
+  AgencyGate,
+  App,
+  type AppClients,
+  type RouteContext,
+  resolveRoute,
+  Workspace
+} from './app.tsx';
+import { type Access, AccessProvider } from './shared/access.tsx';
 import { idleLive, testNodes } from './shared/testing.ts';
 
 const clients = {
   auth: { signIn: async () => null, signOut: async () => undefined, getMe: async () => null },
+  agencies: { list: () => new Promise(() => undefined), access: async () => null },
   workflows: { list: async () => [] },
   runs: { list: async () => [] },
   tasks: { queues: async () => [] },
@@ -14,6 +23,18 @@ const clients = {
 } as unknown as AppClients;
 
 const query = (search = '') => new URLSearchParams(search);
+
+const agency = { id: 'a1', name: 'North EMS', organizationId: 'o1', organizationName: 'Acme' };
+
+const access: Access = {
+  agencyId: 'a1',
+  agencyName: 'North EMS',
+  organizationId: 'o1',
+  organizationName: 'Acme',
+  userId: 'u1',
+  isOrganizationAdmin: false,
+  permissions: ['runs:read', 'claims:read']
+};
 
 const ctx: RouteContext = {
   ...clients,
@@ -49,6 +70,12 @@ describe('app routing', () => {
       '/payers',
       '/payers/new',
       '/payers/p1',
+      '/users',
+      '/users/invite',
+      '/users/u1',
+      '/roles',
+      '/roles/new',
+      '/roles/r1',
       '/settings'
     ]) {
       assert.notEqual(resolveRoute(path, query('graph=g1'), ctx), null, path);
@@ -73,18 +100,26 @@ describe('app routing', () => {
     assert.equal(props('/tasks/t1', 'back=/runs/r1').back, '/runs/r1');
     assert.equal(props('/fees/new', '').feeId, null);
     assert.equal(props('/payers/p1', '').payerId, 'p1');
+    assert.equal(props('/users/u1', 'back=/users?q=a').userId, 'u1');
+    assert.equal(props('/users/u1', 'back=/users?q=a').back, '/users?q=a');
+    assert.equal(props('/roles/new', '').roleId, null);
+    assert.equal(props('/roles/r1', '').roleId, 'r1');
   });
 
-  it('renders the workspace shell with the active section and page', () => {
+  it('renders the workspace shell with the active section, page and permitted sections', () => {
     const html = renderToStaticMarkup(
-      createElement(Workspace, {
-        clients,
-        nodes: testNodes,
-        path: '/runs',
-        query: query('status=faulted'),
-        email: 'dev@example.com',
-        sseUrl: 'http://localhost:3002',
-        onSignOut: () => undefined
+      createElement(AccessProvider, {
+        access,
+        children: createElement(Workspace, {
+          clients,
+          nodes: testNodes,
+          path: '/runs',
+          query: query('status=faulted'),
+          email: 'dev@example.com',
+          sseUrl: 'http://localhost:3002',
+          agencies: [agency, { ...agency, id: 'a2', name: 'South EMS' }],
+          onSignOut: () => undefined
+        })
       })
     );
     assert.ok(
@@ -93,7 +128,26 @@ describe('app routing', () => {
     );
     assert.ok(html.includes('dev@example.com'));
     assert.ok(html.includes('<h1'));
-    assert.ok(html.includes('Runs'));
+    assert.ok(html.includes('Runs') && html.includes('href="/claims"'));
+    assert.ok(!html.includes('href="/users"') && !html.includes('href="/roles"'));
+    assert.ok(html.includes('North EMS') && html.includes('Switch agency'));
+  });
+
+  it('waits for the agencies before opening one', () => {
+    const html = renderToStaticMarkup(
+      createElement(AgencyGate, {
+        clients,
+        nodes: testNodes,
+        path: '/claims',
+        query: query(),
+        email: 'dev@example.com',
+        sseUrl: 'http://localhost:3002',
+        agencyId: null,
+        userId: 'u1',
+        onSignOut: () => undefined
+      })
+    );
+    assert.ok(html.includes('aria-label="Loading"'));
   });
 
   it('renders nothing until the session check completes', () => {

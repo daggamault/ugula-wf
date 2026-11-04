@@ -5,7 +5,16 @@ import { createSignal } from '../../shared/signal.ts';
 import { createAuthClient } from './client.ts';
 
 const session = {
-  user: { id: 'u-1', agencyId: 't-1', email: 'dev@example.com' },
+  user: {
+    id: 'u-1',
+    email: 'dev@example.com',
+    firstName: 'Dev',
+    lastName: 'User',
+    type: 'organization',
+    isOwner: false,
+    organizationId: 'o-1',
+    organizationName: 'Acme'
+  },
   sseUrl: 'http://localhost:3002'
 };
 
@@ -60,5 +69,28 @@ describe('session expiry', () => {
     stop();
     signal.emit();
     assert.equal(expired, 1);
+  });
+});
+
+describe('invitations and passwords', () => {
+  it('previews and accepts invitations and sets passwords by token', async () => {
+    const calls: string[] = [];
+    const client = createAuthClient(
+      createApi('http://api.test', async (url, init = {}) => {
+        calls.push(`${init.method} ${String(url)} ${init.body ?? ''}`);
+        const body = String(url).includes('/invitation?') ? { email: 'a@b.co' } : session;
+        return new Response(JSON.stringify(body), { status: 200 });
+      }),
+      createSignal()
+    );
+    assert.deepEqual(await client.previewInvitation('a b'), { email: 'a@b.co' });
+    assert.deepEqual(await client.acceptInvitation('t1', 'pw'), session);
+    await client.setPassword('t2', 'pw2');
+    assert.deepEqual(calls, [
+      'GET http://api.test/api/auth/invitation?token=a%20b ',
+      'POST http://api.test/api/auth/invitation/accept {"token":"t1","password":"pw"}',
+      'POST http://api.test/api/auth/password {"token":"t2","password":"pw2"}'
+    ]);
+    await assert.rejects(() => respond(200, { user: {} }).acceptInvitation('t', 'p'));
   });
 });

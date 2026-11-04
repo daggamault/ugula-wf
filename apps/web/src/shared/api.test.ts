@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createApi, isApiError, messageOf } from './api.ts';
+import { createApi, isApiError, messageOf, scopedPath } from './api.ts';
 
 describe('createApi', () => {
   it('sends JSON with credentials and returns parsed bodies', async () => {
@@ -79,5 +79,34 @@ describe('createApi cancellation', () => {
     await api.get('/a', controller.signal);
     await api.get('/b');
     assert.deepEqual(seen, [controller.signal, undefined]);
+  });
+});
+
+describe('scopedPath', () => {
+  it('moves agency APIs under the current agency and leaves the rest alone', () => {
+    assert.equal(scopedPath('/api/claims?q=1', 'a1'), '/api/agencies/a1/claims?q=1');
+    assert.equal(scopedPath('/api/claims', null), '/api/claims');
+    assert.equal(scopedPath('/api/auth/me', 'a1'), '/api/auth/me');
+    assert.equal(scopedPath('/api/agencies/a2/access', 'a1'), '/api/agencies/a2/access');
+    assert.equal(scopedPath('/health', 'a1'), '/health');
+  });
+
+  it('scopes requests and links to the agency the page is on', async () => {
+    const urls: string[] = [];
+    let agency: string | null = 'a1';
+    const api = createApi(
+      'http://api.test',
+      async (url) => {
+        urls.push(String(url));
+        return new Response('{}', { status: 200 });
+      },
+      () => undefined,
+      () => agency
+    );
+    await api.get('/api/runs');
+    assert.equal(api.href('/api/files/f1'), 'http://api.test/api/agencies/a1/files/f1');
+    agency = null;
+    await api.get('/api/runs');
+    assert.deepEqual(urls, ['http://api.test/api/agencies/a1/runs', 'http://api.test/api/runs']);
   });
 });

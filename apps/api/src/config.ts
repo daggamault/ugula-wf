@@ -14,6 +14,7 @@ const configSchema = v.object({
   NODE_ENV: nodeEnvSchema,
   API_PORT: portInt,
   SSE_URL: urlString,
+  WEB_URL: urlString,
   HTTP_CORS_ORIGINS: nonEmpty,
   HTTP_MAX_BODY_BYTES: posInt,
   ...dbEnvEntries,

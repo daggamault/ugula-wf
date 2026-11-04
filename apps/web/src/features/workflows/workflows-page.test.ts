@@ -19,8 +19,10 @@ const graph = (patch: Partial<GraphSummary>): GraphSummary => ({
   name: 'Batch',
   kind: 'workflow',
   description: '',
+  scope: 'agency',
   isSystem: false,
-  overrides: false,
+  overrides: null,
+  isStale: false,
   overriddenBy: null,
   publishedVersion: 2,
   draftVersion: null,
@@ -38,7 +40,7 @@ describe('WorkflowsPage', () => {
           graph({}),
           graph({ id: 'g2', kind: 'node', isSystem: true, publishedVersion: null }),
           graph({ id: 'g3', kind: 'node', isSystem: true, overriddenBy: 'g4' }),
-          graph({ id: 'g4', kind: 'node', overrides: true })
+          graph({ id: 'g4', kind: 'node', overrides: 'g3' })
         ],
         search: search('q=bat')
       })

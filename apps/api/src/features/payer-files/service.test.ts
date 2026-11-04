@@ -3,8 +3,7 @@ import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
-import { recordAnnouncements } from '../../shared/testing.ts';
-import { createPayerFileService } from './service.ts';
+import { createPayerFileService, RECEIVE_WORKFLOW } from './service.ts';
 
 const ISA = `ISA*00*${' '.repeat(10)}*00*${' '.repeat(10)}*ZZ*${'CLEARHOUSE'.padEnd(15)}*ZZ*${'METROEMS'.padEnd(15)}*261031*0900*^*00501*000000101*0*P*:~`;
 
@@ -64,7 +63,7 @@ const ELIGIBILITY = x12(
 
 const document = { bucket: 'ugula', key: 't1/payer-files/x/era.835', size: 4 };
 
-const setup = ({ imported = false } = {}) => {
+const setup = ({ imported = false, published = true } = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.includes('from "payer_files" as "f"')) {
       return q.parameters.includes('f1') ? [{ id: 'f1', file_name: 'era.835', document }] : [];
@@ -73,26 +72,14 @@ const setup = ({ imported = false } = {}) => {
     if (q.sql.startsWith('select "id", "created_at" from "payer_files"')) {
       return imported ? [{ id: 'f0', created_at: new Date('2026-10-01T00:00:00Z') }] : [];
     }
-    if (q.sql.startsWith('insert into "payer_files"')) return [{ id: 'f1' }];
-    if (q.sql.startsWith('select "id", "status" from "claims"')) {
-      return q.parameters.includes(1001) ? [{ id: 'c1', status: 'submitted' }] : [];
+    if (q.sql.includes('select v.version')) return published ? [{ version: 1 }] : [];
+    if (q.sql.includes('cross join lateral')) {
+      return [{ id: 'v1', key: RECEIVE_WORKFLOW, version: 1, definition: {} }];
     }
-    if (q.sql.endsWith('for update')) return [{ id: 'c1', status: 'submitted', patient_id: 'p1' }];
-    if (q.sql.startsWith('select "cc"."id"')) {
-      return [{ id: 'cov1', payer: 'Medicare', payerId: 'DEMOMCR', has_events: true }];
-    }
-    if (q.sql.includes('from "claim_balances"')) return [{ balance_cents: 100_000 }];
-    if (q.sql.startsWith('select "coverage_id" from "claim_events"')) {
-      return [{ coverage_id: 'cov1' }];
-    }
-    if (q.sql.startsWith('insert into "claim_events"')) return [{ id: 'e1' }];
-    if (q.sql.startsWith('select "id", "claim_id" from "claim_coverages"')) {
-      return [{ id: 'cov1', claim_id: 'c1' }];
-    }
+    if (q.sql.startsWith('insert into "workflow_runs"')) return [{ id: 'r1' }];
     return [];
   });
   const boss: RunQueueClient = { insert: async () => undefined };
-  const { announce, events } = recordAnnouncements();
   const stored: string[] = [];
   const service = createPayerFileService({
     db,
@@ -104,79 +91,54 @@ const setup = ({ imported = false } = {}) => {
       },
       getBytes: async () => new TextEncoder().encode(REMITTANCE)
     },
-    announce,
-    now: () => new Date('2026-10-31T12:00:00Z'),
     maxBytes: 1_000_000
   });
-  return { service, queries, events, stored };
+  return { service, queries, stored };
 };
 
 const upload = (service: ReturnType<typeof setup>['service'], text: string, name = 'era.835') =>
-  service.upload('t1', 'u1', { name, type: '', bytes: new TextEncoder().encode(text) });
-
-const items = (queries: CompiledQuery[]) =>
-  queries.find((q) => q.sql.startsWith('insert into "payer_file_items"'))?.parameters ?? [];
+  service.upload('t1', { name, type: '', bytes: new TextEncoder().encode(text) });
 
 describe('payer file service', () => {
-  it('posts remittance payments, leaving unknown claims and reversals to a biller', async () => {
-    const { service, queries, events, stored } = setup();
+  it('stores an upload and starts Receive Payer File for it, like the clearinghouse poll', async () => {
+    const { service, queries, stored } = setup();
     assert.deepEqual(await upload(service, REMITTANCE), {
       ok: true,
-      value: { id: 'f1', kind: '835', items: 3, problems: 2 }
+      value: { runId: 'r1', kind: '835' }
     });
     assert.match(stored[0] ?? '', /payer-files\/.+\/era\.835$/);
-    const payment = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
-    assert.deepEqual(payment?.parameters.slice(0, 8), [
-      'c1',
-      'response',
-      'cov1',
-      60_000,
-      25_000,
-      'ICN111',
-      '2026-10-30',
-      'EFT0042'
-    ]);
-    assert.ok(
-      queries.some(
-        (q) =>
-          q.sql.startsWith('insert into "claim_event_adjustments"') &&
-          q.parameters.includes('PR') &&
-          q.parameters.includes(15_000)
-      )
-    );
-    const recorded = items(queries);
-    assert.ok(recorded.includes('posted'));
-    assert.ok(recorded.includes('unmatched'));
-    assert.ok(recorded.includes('review'));
-    assert.deepEqual(events, [{ agencyId: 't1', event: { kind: 'claim', id: 'c1' } }]);
+    const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
+    assert.ok(run?.parameters.includes('t1'));
+    assert.ok(run?.parameters.some((p) => String(p).includes('"fileName":"era.835"')));
+    assert.ok(queries.some((q) => q.sql.includes('insert into workflow_run_graphs')));
+    assert.ok(!queries.some((q) => q.sql.startsWith('insert into "payer_files"')));
+  });
+
+  it('reads acknowledgments and eligibility files before starting their run', async () => {
+    const { service } = setup();
+    const ack = await upload(service, CLAIM_ACK, 'ack.277');
+    assert.equal(ack.ok && ack.value.kind, '277');
+    const elig = await upload(service, ELIGIBILITY, 'elig.271');
+    assert.equal(elig.ok && elig.value.kind, '271');
   });
 
   it('refuses files that are not inbound X12 or were already imported', async () => {
-    const { service } = setup();
+    const { service, stored } = setup();
     const bad = await upload(service, 'not edi');
     assert.equal(bad.ok ? null : bad.failure.code, 'invalid');
     assert.equal(((await upload(service, '')) as { ok: boolean }).ok, false);
     const again = await upload(setup({ imported: true }).service, REMITTANCE);
     assert.equal(again.ok ? null : again.failure.code, 'conflict');
     assert.match(again.ok ? '' : again.failure.message, /already imported on 2026-10-01/);
+    assert.equal(stored.length, 0);
   });
 
-  it('records a 277CA rejection on the submitted payer so the claim is reviewed again', async () => {
-    const { service, queries } = setup();
-    const result = await upload(service, CLAIM_ACK, 'ack.277');
-    assert.deepEqual(result.ok && result.value.problems, 1);
-    const rejection = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
-    assert.ok(rejection?.parameters.includes('rejected'));
-    assert.ok(rejection?.parameters.some((p) => String(p).includes('Invalid member ID')));
-  });
-
-  it('saves eligibility on the coverage a 271 traces back to', async () => {
-    const { service, queries } = setup();
-    const result = await upload(service, ELIGIBILITY, 'elig.271');
-    assert.deepEqual(result.ok && result.value, { id: 'f1', kind: '271', items: 1, problems: 1 });
-    const saved = queries.find((q) => q.sql.startsWith('update "claim_coverages"'));
-    assert.ok(saved?.parameters.includes('inactive'));
-    assert.ok(items(queries).includes('ineligible'));
+  it('refuses an upload when the workflow is not published', async () => {
+    const { service, stored } = setup({ published: false });
+    const res = await upload(service, REMITTANCE);
+    assert.equal(res.ok ? null : res.failure.code, 'conflict');
+    assert.match(res.ok ? '' : res.failure.message, /billing\.receive-payer-file workflow/);
+    assert.equal(stored.length, 0);
   });
 
   it('lists, finds and downloads files of the agency only', async () => {
@@ -208,7 +170,7 @@ describe('payer file service', () => {
 
   it('refuses files over the size limit before reading or storing them', async () => {
     const { service, queries, stored } = setup();
-    const big = await service.upload('t1', 'u1', {
+    const big = await service.upload('t1', {
       name: 'era.835',
       type: '',
       bytes: new Uint8Array(1_000_001)

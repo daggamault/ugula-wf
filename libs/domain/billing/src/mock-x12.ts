@@ -351,7 +351,7 @@ export const build271 = (e: Mock271, o: MockOptions = {}) => {
   ]);
 };
 
-type Mock837Claim = {
+export type Mock837Claim = {
   claimNumber: string;
   chargeCents: number;
   memberId: string | null;
@@ -465,7 +465,7 @@ const MOCK_REJECTION = 'Invalid member ID';
 
 const MOCK_PAID_SHARE = 0.8;
 
-type MockResponse = {
+export type MockResponse = {
   inbound: Mock837 | null;
   error: string | null;
   ack999: string;
@@ -525,7 +525,11 @@ const mockPayerClaimNumber = (claimNumber: string) => `MOCK-${claimNumber}`;
 const isRejected = (c: Mock837Claim) =>
   (c.memberId ?? '').toUpperCase().startsWith(MOCK_REJECT_PREFIX);
 
-export const respond = (text837: string, now: Date): MockResponse => {
+export const respond = (
+  text837: string,
+  now: Date,
+  { remits = () => true }: { remits?: (claim: Mock837Claim) => boolean } = {}
+): MockResponse => {
   let inbound: Mock837;
   try {
     inbound = read837(text837);
@@ -563,8 +567,9 @@ export const respond = (text837: string, now: Date): MockResponse => {
     },
     options
   );
-  const byPayer = Map.groupBy(accepted, (c) => c.payer?.id ?? '');
-  const remit835 = accepted.length
+  const paid = accepted.filter(remits);
+  const byPayer = Map.groupBy(paid, (c) => c.payer?.id ?? '');
+  const remit835 = paid.length
     ? build835(
         [...byPayer.values()].map((claims) => ({
           ...(claims[0]?.payer ? { payer: claims[0].payer } : {}),

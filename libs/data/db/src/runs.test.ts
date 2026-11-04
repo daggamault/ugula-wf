@@ -66,16 +66,32 @@ describe('signalRuns', () => {
 });
 
 describe('resolveWorkflowVersion', () => {
-  it('picks the newest published active workflow, preferring the agency copy', async () => {
-    const { db, queries } = createRecordingDb(() => [{ id: 'v2', version: 2 }]);
+  it('takes the newest visible version, then resolves it to the agency or organization override', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('from unnest')
+        ? [{ id: 'v-agency', key: 'billing.claim', version: 2, definition: {} }]
+        : [{ version: 2 }]
+    );
     assert.deepEqual(await resolveWorkflowVersion(db, 't', 'billing.claim'), {
-      id: 'v2',
+      id: 'v-agency',
       version: 2
     });
-    assert.ok(
-      queries[0]?.sql.endsWith('order by g.agency_id nulls last, "gv"."version" desc limit $5')
-    );
-    assert.deepEqual(queries[0]?.parameters, ['billing.claim', 'workflow', true, 't', 1]);
+    const [latest, resolve] = queries;
+    assert.ok(latest?.sql.includes('order by g.organization_id is not null, v.version desc'));
+    assert.deepEqual(latest?.parameters, ['billing.claim', 't', 't']);
+    assert.deepEqual(resolve?.parameters.slice(0, 2), [['billing.claim'], [2]]);
     await db.destroy();
+  });
+
+  it('finds nothing when no version is published or none resolves', async () => {
+    const none = createRecordingDb();
+    assert.equal(await resolveWorkflowVersion(none.db, 't', 'billing.claim'), undefined);
+    assert.equal(none.queries.length, 1);
+    const unresolved = createRecordingDb((q) =>
+      q.sql.includes('from unnest') ? [] : [{ version: 1 }]
+    );
+    assert.equal(await resolveWorkflowVersion(unresolved.db, 't', 'billing.claim'), undefined);
+    await none.db.destroy();
+    await unresolved.db.destroy();
   });
 });

@@ -38,7 +38,7 @@ const setup = ({
           ]
         : [];
     }
-    if (q.sql.startsWith('select')) return published ? [{ id: 'v1', version: 2 }] : [];
+    if (q.sql.trimStart().startsWith('select')) return published ? [{ id: 'v1', version: 2 }] : [];
     return [{ id: 'r1' }];
   });
   const stored: string[] = [];

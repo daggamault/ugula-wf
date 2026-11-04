@@ -15,12 +15,12 @@ describe('payer files', () => {
     assert.equal(fileStatus({ item_count: 0, problem_count: 0 }).label, 'Nothing to Apply');
   });
 
-  it('uploads each file and reports what it did, or why it failed', async () => {
+  it('starts a run for each file, or says why it was refused', async () => {
     const toasts: ToastInput[] = [];
     const client = {
       upload: async (file: File) => {
         if (file.name === 'bad.txt') throw new Error('Not an X12 file');
-        return { id: 'f1', kind: '835', items: 4, problems: 1 };
+        return { runId: 'r1', kind: '835' };
       }
     } as unknown as Pick<PayerFilesClient, 'upload'>;
     const received = await uploadPayerFiles(client, (t) => void toasts.push(t), [
@@ -31,19 +31,23 @@ describe('payer files', () => {
     assert.deepEqual(
       toasts.map((t) => [t.intent, t.title, t.description]),
       [
-        ['warning', 'era.835 applied', '1 of 4 lines need a biller.'],
+        [
+          'success',
+          'era.835 received',
+          'The Remittance (835) is being applied to its claims; lines that need a biller become tasks.'
+        ],
         ['danger', 'bad.txt could not be applied', 'Not an X12 file']
       ]
     );
-    assert.deepEqual(toasts[0]?.action, { label: 'Open File', to: '/payer-files/f1' });
+    assert.deepEqual(toasts[0]?.action, { label: 'Open Run', to: '/runs/r1' });
   });
 });
 
 describe('uploadPayerFiles', () => {
-  it('confirms a file that applied cleanly', async () => {
+  it('names the kind of file it is applying', async () => {
     const toasts: ToastInput[] = [];
     const client = {
-      upload: async () => ({ id: 'f2', kind: '999', items: 2, problems: 0 })
+      upload: async () => ({ runId: 'r2', kind: '999' })
     } as unknown as Pick<PayerFilesClient, 'upload'>;
     assert.equal(
       await uploadPayerFiles(client, (t) => void toasts.push(t), [new File(['ISA'], 'ack.999')]),
@@ -51,7 +55,13 @@ describe('uploadPayerFiles', () => {
     );
     assert.deepEqual(
       toasts.map((t) => [t.intent, t.title, t.description]),
-      [['success', 'ack.999 applied', 'All 2 lines were applied to their claims.']]
+      [
+        [
+          'success',
+          'ack.999 received',
+          'The Acknowledgment (999) is being applied to its claims; lines that need a biller become tasks.'
+        ]
+      ]
     );
   });
 });

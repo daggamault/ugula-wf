@@ -11,6 +11,9 @@ describe('web composition root', () => {
     });
     assert.deepEqual(Object.keys(clients), [
       'auth',
+      'agencies',
+      'users',
+      'roles',
       'workflows',
       'runs',
       'tasks',

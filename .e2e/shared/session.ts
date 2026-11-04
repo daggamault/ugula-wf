@@ -17,7 +17,12 @@ export type Session = {
   browser: Browser;
   page: Page;
   apiUrl: string;
+  agencyId: string;
 };
+
+const AGENCY = /\/agencies\/([0-9a-f-]{36})/i;
+
+export const agencyOf = (url: string) => url.match(AGENCY)?.[1] ?? '';
 
 export const signIn = async (): Promise<Session> => {
   const browser = await chromium.launch({ channel: config.E2E_BROWSER_CHANNEL, headless: true });
@@ -30,13 +35,26 @@ export const signIn = async (): Promise<Session> => {
   await page.getByLabel('Email').fill(config.DEV_USER_EMAIL);
   await page.getByLabel('Password').fill(config.DEV_USER_PASSWORD);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await page.getByRole('heading', { level: 1, name: 'Claims' }).waitFor();
+  const claims = page.getByRole('heading', { level: 1, name: 'Claims' });
+  const chooser = page.getByRole('link', { name: /^Development Development EMS/ });
+  await claims.or(chooser).first().waitFor();
+  if (await chooser.isVisible()) await chooser.click();
+  await claims.waitFor();
+  const agencyId = agencyOf(page.url());
+  assert.ok(agencyId, 'the app opens an agency');
   const apiUrl = (await page.locator('meta[name="api-url"]').getAttribute('content')) ?? '';
   assert.ok(apiUrl, 'the web app names its API');
-  return { browser, page, apiUrl };
+  return { browser, page, apiUrl, agencyId };
 };
 
-export const go = (page: Page, path: string) => page.goto(new URL(path, config.E2E_WEB_URL).href);
+export const go = (page: Page, path: string) => {
+  const agencyId = agencyOf(page.url());
+  const scoped = agencyId && !path.startsWith('/agencies') ? `/agencies/${agencyId}${path}` : path;
+  return page.goto(new URL(scoped, config.E2E_WEB_URL).href);
+};
+
+export const apiPath = (s: Session, path: string) =>
+  `${s.apiUrl}${path.replace(/^\/api\//, `/api/agencies/${s.agencyId}/`)}`;
 
 export const heading = (page: Page, name: string | RegExp) =>
   page.getByRole('heading', { level: 1, name });
@@ -47,7 +65,7 @@ export const section = (page: Page, title: string) =>
   page.locator('section').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
 
 export const api = async <T>(s: Session, path: string) =>
-  (await (await s.page.request.get(`${s.apiUrl}${path}`)).json()) as T;
+  (await (await s.page.request.get(apiPath(s, path))).json()) as T;
 
 export const until = async <T>(
   page: Page,
@@ -187,7 +205,7 @@ export const uploadPayerFile = async (page: Page, name: string, text: string) =>
     buffer: Buffer.from(text)
   });
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const toast = toasts(page).getByText(new RegExp(`^${escaped} (applied|could not be applied)$`));
+  const toast = toasts(page).getByText(new RegExp(`^${escaped} (received|could not be applied)$`));
   await toast.waitFor();
   return (await toast.textContent()) ?? '';
 };

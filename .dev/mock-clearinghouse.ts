@@ -1,6 +1,13 @@
 import { timingSafeEqual } from 'node:crypto';
+import { createServer } from 'node:http';
 import { posix } from 'node:path';
-import { respond } from '@ugula/billing/mock';
+import {
+  downloadName,
+  readInterchange,
+  respondToClaims,
+  respondToEligibility,
+  WAYSTAR_EXTENSIONS
+} from '@ugula/billing/mock-waystar';
 import ssh2, { type Attributes, type FileEntry, type SFTPWrapper } from 'ssh2';
 
 const { Server, utils } = ssh2;
@@ -17,9 +24,16 @@ const PORT = Number(env('CLEARINGHOUSE_SFTP_PORT'));
 const USERNAME = env('CLEARINGHOUSE_SFTP_USERNAME');
 const PASSWORD = env('CLEARINGHOUSE_SFTP_PASSWORD');
 const REMIT_DELAY_MS = Number(env('CLEARINGHOUSE_REMIT_DELAY_SECONDS', '20')) * 1000;
+const REALTIME_PORT = Number(env('CLEARINGHOUSE_REALTIME_PORT', '2224'));
+const ERA_UNENROLLED = new Set(
+  (process.env.CLEARINGHOUSE_ERA_UNENROLLED ?? '')
+    .split(',')
+    .map((p) => p.trim().toUpperCase())
+    .filter(Boolean)
+);
 
-const INBOUND = '/inbound';
-const OUTBOUND = { ack999: '/outbound/999', ack277: '/outbound/277', remit835: '/outbound/835' };
+const UPLOAD = '/upload';
+const DOWNLOAD = '/download';
 const PICKUP_DELAY_MS = 2000;
 const PARTIAL_UPLOAD = /\.(part|tmp|filepart)$/i;
 
@@ -35,7 +49,7 @@ const now = () => Math.floor(Date.now() / 1000);
 
 const norm = (p: string) => posix.resolve('/', p || '.');
 
-for (const dir of ['/', '/outbound', INBOUND, ...Object.values(OUTBOUND)]) dirs.set(dir, now());
+for (const dir of ['/', UPLOAD, DOWNLOAD]) dirs.set(dir, now());
 
 const attrsOf = (p: string): Attributes | null => {
   const file = files.get(p);
@@ -85,34 +99,67 @@ const baseOf = (p: string) => {
   return dot > 0 ? name.slice(0, dot) : name;
 };
 
-const handleUpload = (p: string) => {
-  const file = files.get(p);
-  if (!file) return;
-  const base = baseOf(p);
-  const r = respond(file.data.toString('utf8'), new Date());
-  files.delete(p);
+let seq = 0;
+
+const deliver = (clientId: string, type: string, ext: string, text: string) => {
+  seq += 1;
+  const path = `${DOWNLOAD}/${downloadName(clientId, type, new Date(), seq)}${ext}`;
+  put(path, text);
+  log(`wrote ${path}`);
+};
+
+const answerClaims = (text: string, clientId: string, name: string) => {
+  const r = respondToClaims(text, new Date(), (payerId) => !ERA_UNENROLLED.has(payerId));
+  if (r.ta1) {
+    log(`rejected ${name}: ${r.error}`);
+    deliver(clientId, 'TA1', '.TA1', r.ta1);
+    return;
+  }
   log(
-    `picked up ${p}${r.inbound ? ` (GS06 ${r.inbound.groupControlNumber}, ${r.inbound.claims.length} claims)` : ` (unreadable: ${r.error})`}`
+    `picked up ${name}${r.inbound ? ` (GS06 ${r.inbound.groupControlNumber}, ${r.inbound.claims.length} claims)` : ` (unreadable: ${r.error})`}`
   );
-  put(`${OUTBOUND.ack999}/${base}.999`, r.ack999);
-  log(`wrote ${OUTBOUND.ack999}/${base}.999 (${r.inbound ? 'accepted' : 'rejected'})`);
+  deliver(clientId, '999', '.999', r.ack999);
   if (r.ack277) {
-    put(`${OUTBOUND.ack277}/${base}.277`, r.ack277);
     log(
-      `wrote ${OUTBOUND.ack277}/${base}.277 (accepted: ${r.accepted.join(', ') || 'none'}; rejected: ${r.rejected.join(', ') || 'none'})`
+      `277CA accepted ${r.accepted.join(', ') || 'none'}; rejected ${r.rejected.join(', ') || 'none'}`
     );
+    deliver(clientId, '277CA', '.277', r.ack277);
   }
   const remit = r.remit835;
   if (remit) {
-    log(`835 for ${r.accepted.join(', ')} due in ${REMIT_DELAY_MS / 1000}s`);
-    setTimeout(() => {
-      put(`${OUTBOUND.remit835}/${base}.835`, remit);
-      log(`wrote ${OUTBOUND.remit835}/${base}.835`);
-    }, REMIT_DELAY_MS);
+    log(`835 due in ${REMIT_DELAY_MS / 1000}s`);
+    setTimeout(() => deliver(clientId, 'ERA', '.835', remit), REMIT_DELAY_MS);
   }
 };
 
-const isInboundUpload = (p: string) => posix.dirname(p) === INBOUND && !PARTIAL_UPLOAD.test(p);
+const answerEligibility = (text: string, clientId: string, name: string) => {
+  try {
+    const answers = respondToEligibility(text, new Date());
+    log(`picked up ${name} (${answers.length} inquiries)`);
+    for (const a of answers) deliver(clientId, '271', '.271', a);
+  } catch (e) {
+    log(`rejected ${name}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+};
+
+const handleUpload = (p: string) => {
+  const file = files.get(p);
+  if (!file) return;
+  files.delete(p);
+  const name = posix.basename(p);
+  const text = file.data.toString('utf8');
+  const clientId = readInterchange(text)?.sender || 'UNKNOWN';
+  const ext = name.slice(name.lastIndexOf('.')).toUpperCase();
+  if (baseOf(p).includes('.')) {
+    log(`rejected ${name}: file names may not contain extra periods`);
+    return;
+  }
+  if (ext === WAYSTAR_EXTENSIONS.claims) answerClaims(text, clientId, name);
+  else if (ext === WAYSTAR_EXTENSIONS.eligibility) answerEligibility(text, clientId, name);
+  else log(`rejected ${name}: upload 837P files as .CLP and 270 files as .ELG`);
+};
+
+const isInboundUpload = (p: string) => posix.dirname(p) === UPLOAD && !PARTIAL_UPLOAD.test(p);
 
 const scheduleUpload = (p: string) => {
   if (isInboundUpload(p)) setTimeout(() => handleUpload(p), PICKUP_DELAY_MS);
@@ -136,6 +183,8 @@ const serve = (sftp: SFTPWrapper) => {
     buf.length === 4 ? handles.get(buf.readUInt32BE(0)) : undefined;
   const ok = (id: number) => sftp.status(id, STATUS_CODE.OK);
   const missing = (id: number) => sftp.status(id, STATUS_CODE.NO_SUCH_FILE);
+  const denied = (id: number) =>
+    sftp.status(id, STATUS_CODE.PERMISSION_DENIED, 'Write-only folder');
   const fail = (id: number, message: string) => sftp.status(id, STATUS_CODE.FAILURE, message);
   const stat = (id: number, p: string) => {
     const attrs = attrsOf(norm(p));
@@ -164,6 +213,7 @@ const serve = (sftp: SFTPWrapper) => {
       const exists = files.has(path);
       const writing = (flags & (OPEN_MODE.WRITE | OPEN_MODE.APPEND)) !== 0;
       if (!writing) {
+        if (posix.dirname(path) === UPLOAD) return denied(id);
         return exists ? sftp.handle(id, open({ kind: 'file', path, wrote: false })) : missing(id);
       }
       if (!dirs.has(posix.dirname(path))) return missing(id);
@@ -204,6 +254,7 @@ const serve = (sftp: SFTPWrapper) => {
     })
     .on('OPENDIR', (id, p) => {
       const path = norm(p);
+      if (path === UPLOAD) return denied(id);
       if (dirs.has(path)) sftp.handle(id, open({ kind: 'dir', path, read: false }));
       else missing(id);
     })
@@ -275,4 +326,82 @@ new Server({ hostKeys: [hostKey] }, (client) => {
     .on('error', (e) => log(`client error: ${e.message}`));
 }).listen(PORT, HOST, () => {
   log(`SFTP on ${HOST}:${PORT} as ${USERNAME}; 835s after ${REMIT_DELAY_MS / 1000}s`);
+});
+
+const authorized = (header: string | undefined) => {
+  const [scheme, value] = (header ?? '').split(' ');
+  if (scheme !== 'Basic' || !value) return false;
+  const [user, ...pass] = Buffer.from(value, 'base64').toString('utf8').split(':');
+  return matches(user ?? '', USERNAME) && matches(pass.join(':'), PASSWORD);
+};
+
+const coreReply = (fields: Record<string, string>) => {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  return new Response(form);
+};
+
+const answerRealtime = async (req: Request) => {
+  const form = await req.formData();
+  const field = (name: string) => String(form.get(name) ?? '');
+  const base = {
+    ProcessingMode: 'RealTime',
+    PayloadID: field('PayloadID'),
+    TimeStamp: new Date().toISOString(),
+    SenderID: 'WAYSTAR',
+    ReceiverID: field('SenderID'),
+    CORERuleVersion: '2.2.0'
+  };
+  if (field('PayloadType') !== 'X12_270_Request_005010X279A1') {
+    return coreReply({
+      ...base,
+      PayloadType: 'CoreEnvelopeError',
+      ErrorCode: 'PayloadTypeNotSupported',
+      ErrorMessage: field('PayloadType')
+    });
+  }
+  try {
+    const [answer = ''] = respondToEligibility(field('Payload'), new Date());
+    log(`real-time 270 ${base.PayloadID} answered`);
+    return coreReply({
+      ...base,
+      PayloadType: 'X12_271_Response_005010X279A1',
+      Payload: answer,
+      ErrorCode: 'Success',
+      ErrorMessage: ''
+    });
+  } catch (e) {
+    return coreReply({
+      ...base,
+      PayloadType: 'CoreEnvelopeError',
+      ErrorCode: 'Payload',
+      ErrorMessage: e instanceof Error ? e.message : String(e)
+    });
+  }
+};
+
+createServer(async (req, res) => {
+  if (req.method !== 'POST' || req.url !== '/core/realtime') {
+    res.writeHead(404).end();
+    return;
+  }
+  if (!authorized(req.headers.authorization)) {
+    res.writeHead(401, { 'www-authenticate': 'Basic' }).end();
+    return;
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  const reply = await answerRealtime(
+    new Request(`http://${HOST}${req.url}`, {
+      method: 'POST',
+      headers: { 'content-type': req.headers['content-type'] ?? '' },
+      body: Buffer.concat(chunks)
+    })
+  );
+  res.writeHead(200, {
+    'content-type': reply.headers.get('content-type') ?? 'multipart/form-data'
+  });
+  res.end(Buffer.from(await reply.arrayBuffer()));
+}).listen(REALTIME_PORT, HOST, () => {
+  log(`CORE real-time eligibility on http://${HOST}:${REALTIME_PORT}/core/realtime`);
 });

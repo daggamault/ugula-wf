@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { idleLive, testNodes } from '../../shared/testing.ts';
-import type { GraphDetail, WorkflowsClient } from './client.ts';
+import type { GraphDetail, GraphScope, WorkflowsClient } from './client.ts';
 import { EditorPage, EditorView, leavingHref } from './editor-page.tsx';
 import type { TrailStep } from './trail.ts';
 
@@ -17,28 +17,41 @@ const source: GraphDef = {
 };
 
 const detail = (
-  agency: string | null,
+  scope: GraphScope,
   published: boolean,
   links: { overridden_by?: string; overrides?: string } = {}
 ): GraphDetail => ({
   graph: {
     id: 'g1',
-    agency_id: agency,
+    scope,
     key: 'acme.flow',
     name: 'Flow',
     kind: 'workflow',
     description: '',
     overridden_by: links.overridden_by ?? null,
-    overrides: links.overrides ?? null
+    overrides: links.overrides ?? null,
+    is_stale: false,
+    canEdit: scope !== 'system',
+    canOverride: { organization: false, agency: scope === 'system' },
+    effectiveId: links.overridden_by ?? 'g1'
   },
   versions: [
     {
       id: 'v2',
       version: 2,
       published_at: published ? '2026-01-01' : null,
-      created_at: '2026-01-01'
+      created_at: '2026-01-01',
+      base_version: null,
+      base_graph_id: null
     },
-    { id: 'v1', version: 1, published_at: '2026-01-01', created_at: '2026-01-01' }
+    {
+      id: 'v1',
+      version: 1,
+      published_at: '2026-01-01',
+      created_at: '2026-01-01',
+      base_version: null,
+      base_graph_id: null
+    }
   ]
 });
 
@@ -58,7 +71,7 @@ const render = (d: GraphDetail, version: number, trail: TrailStep[] = []) =>
 
 describe('EditorView', () => {
   it('lets agencies edit, save and publish drafts', () => {
-    const html = render(detail('t-1', false), 2);
+    const html = render(detail('agency', false), 2);
     assert.ok(html.includes('Draft v2'));
     assert.ok(html.includes('>Save<'));
     assert.ok(html.includes('>Publish<'));
@@ -73,19 +86,19 @@ describe('EditorView', () => {
   });
 
   it('points published versions at the open draft instead of offering a new one', () => {
-    const html = render(detail('t-1', false), 1);
+    const html = render(detail('agency', false), 1);
     assert.ok(html.includes('Published v1') && !html.includes('Edit as New Draft'));
     assert.ok(html.includes('Published versions are read-only. Open draft v2 to make changes.'));
     assert.ok(!html.includes('>Save<'));
   });
 
   it('offers a new draft from published versions and locks system graphs', () => {
-    const published = render(detail('t-1', true), 2);
+    const published = render(detail('agency', true), 2);
     assert.ok(published.includes('Edit as New Draft'));
     assert.ok(!published.includes('>Publish<'));
     assert.ok(!published.includes('Add Node'));
     assert.ok(published.includes('Published versions are read-only. Edit as a new draft'));
-    const system = render(detail(null, true), 1);
+    const system = render(detail('system', true), 1);
     assert.ok(system.includes('System'));
     assert.ok(!system.includes('Edit as New Draft'));
     assert.ok(system.includes('>Override<'));
@@ -93,20 +106,20 @@ describe('EditorView', () => {
   });
 
   it('links a built-in graph to its override, and lets the override be removed', () => {
-    const overridden = render(detail(null, true, { overridden_by: 'g9' }), 1);
+    const overridden = render(detail('system', true, { overridden_by: 'g9' }), 1);
     assert.ok(overridden.includes('>Has Your Copy<'));
     assert.ok(overridden.includes('href="/workflows/g9"') && overridden.includes('Edit Override'));
     assert.ok(!overridden.includes('>Override<'));
-    const copy = render(detail('t-1', false, { overrides: 'g0' }), 2);
+    const copy = render(detail('agency', false, { overrides: 'g0' }), 2);
     assert.ok(copy.includes('>Your Copy<') && copy.includes('Remove Override'));
     assert.ok(copy.includes('>Publish<'));
   });
 
   it('shows where a sub-workflow was opened from and leads back up', () => {
-    const top = render(detail('t-1', true), 2);
+    const top = render(detail('agency', true), 2);
     assert.ok(!top.includes('aria-label="Workflow path"'));
     assert.ok(top.includes('href="/workflows"') && top.includes('aria-label="Back to Workflows"'));
-    const nested = render(detail('t-1', true), 2, [
+    const nested = render(detail('agency', true), 2, [
       { graphId: 'p0', version: 1 },
       { graphId: 'p1', version: 3 }
     ]);
@@ -123,7 +136,7 @@ describe('EditorPage', () => {
       createElement(EditorPage, {
         live: idleLive,
         client: {
-          find: async () => detail('t-1', false),
+          find: async () => detail('agency', false),
           nodes: async () => [],
           version: async () => ({ id: 'v2', version: 2, definition: source, published_at: null })
         } as unknown as WorkflowsClient,

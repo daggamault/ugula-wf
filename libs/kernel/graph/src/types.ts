@@ -18,8 +18,14 @@ export type PinSpec = {
   name: string;
   type: ValueType;
   label?: string;
+  description?: string;
   optional?: boolean;
   default?: Json;
+};
+
+export type ExitDoc = {
+  label?: string;
+  description?: string;
 };
 
 export type Signature = {
@@ -27,6 +33,7 @@ export type Signature = {
   execOut: string[];
   inputs: PinSpec[];
   outputs: PinSpec[];
+  exits?: Record<string, ExitDoc>;
 };
 
 export type NodeRef = {
@@ -45,6 +52,7 @@ export type RetryPolicy = {
 export type NodeInstance = NodeRef & {
   id: string;
   label?: string;
+  note?: string;
   config?: Json;
   inputs?: Record<string, InputBinding>;
   retry?: RetryPolicy;

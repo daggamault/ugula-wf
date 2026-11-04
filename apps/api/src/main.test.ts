@@ -10,12 +10,15 @@ import { memoryRedis } from './shared/testing.ts';
 
 const ORIGIN = 'http://localhost:3000';
 
+const AGENCY = '/api/agencies/01a16617-7704-7ba6-b9b5-9c79fa44f965';
+
 const app = createApp({
   config: {
     NODE_ENV: 'test',
     HTTP_CORS_ORIGINS: ORIGIN,
     HTTP_MAX_BODY_BYTES: 1024,
     SSE_URL: 'http://localhost:3002',
+    WEB_URL: ORIGIN,
     SFTP_HOOK_SECRET: 'x'.repeat(32)
   } as Config,
   db: {} as Db,
@@ -36,21 +39,31 @@ describe('api createApp', () => {
 
     for (const path of [
       '/api/auth/me',
-      '/api/graphs',
-      '/api/runs',
-      '/api/tasks/queues',
-      '/api/imports',
-      '/api/fees',
-      '/api/payers',
-      '/api/patients?lastName=doe',
-      '/api/notifications',
-      '/api/billing-profile',
-      '/api/claims',
-      '/api/submissions',
-      '/api/reports/aging',
-      '/api/payer-files'
+      '/api/agencies',
+      `${AGENCY}/access`,
+      `${AGENCY}/roles`,
+      `${AGENCY}/users`,
+      `${AGENCY}/invitations`,
+      ...[
+        '/graphs',
+        '/runs',
+        '/tasks/queues',
+        '/imports',
+        '/fees',
+        '/payers',
+        '/patients?lastName=doe',
+        '/notifications',
+        '/billing-profile',
+        '/claims',
+        '/submissions',
+        '/reports/aging',
+        '/payer-files'
+      ].map((p) => `${AGENCY}${p}`)
     ]) {
       assert.equal((await app.request(path)).status, 401, path);
+    }
+    for (const path of ['/api/graphs', '/api/claims']) {
+      assert.equal((await app.request(path)).status, 404, path);
     }
 
     const hook = await app.request('/api/imports/sftp/upload', {
@@ -74,12 +87,12 @@ describe('api createApp', () => {
       body: '{}'
     });
     assert.equal(forged.status, 403);
-    const bodyless = await app.request('/api/tasks/x/claim', {
+    const bodyless = await app.request(`${AGENCY}/tasks/x/claim`, {
       method: 'POST',
       headers: { origin: 'https://evil.example' }
     });
     assert.equal(bodyless.status, 403);
-    const upload = await app.request('/api/imports', {
+    const upload = await app.request(`${AGENCY}/imports`, {
       method: 'POST',
       headers: { 'content-type': 'multipart/form-data; boundary=x' },
       body: '--x--'

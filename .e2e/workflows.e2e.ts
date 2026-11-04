@@ -32,7 +32,7 @@ const removeDemoOverride = async () => {
     (g) => g.key === 'demo.process-item' && g.overrides
   );
   for (const g of mine) {
-    await s.page.request.delete(`${s.apiUrl}/api/graphs/${g.id}`, {
+    await s.page.request.delete(`${s.apiUrl}/api/agencies/${s.agencyId}/graphs/${g.id}`, {
       headers: { origin: new URL(config.E2E_WEB_URL).origin }
     });
   }

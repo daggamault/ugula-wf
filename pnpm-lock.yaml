@@ -175,6 +175,9 @@ importers:
       '@hono/standard-validator':
         specifier: 0.4.1
         version: 0.4.1(@standard-schema/spec@1.1.0)(hono@4.13.16)
+      '@ugula/access':
+        specifier: workspace:*
+        version: link:libs/domain/access
       '@ugula/auth':
         specifier: workspace:*
         version: link:libs/platform/auth
@@ -284,6 +287,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@ugula/access':
+        specifier: workspace:*
+        version: link:../../libs/domain/access
       '@ugula/auth':
         specifier: workspace:*
         version: link:../../libs/platform/auth
@@ -335,6 +341,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@ugula/access':
+        specifier: workspace:*
+        version: link:../../libs/domain/access
       '@ugula/billing':
         specifier: workspace:*
         version: link:../../libs/domain/billing
@@ -401,12 +410,17 @@ importers:
 
   libs/data/db:
     dependencies:
+      '@ugula/access':
+        specifier: workspace:*
+        version: link:../../domain/access
       '@ugula/billing':
         specifier: workspace:*
         version: link:../../domain/billing
       '@ugula/run-queue':
         specifier: workspace:*
         version: link:../../platform/run-queue
+
+  libs/domain/access: {}
 
   libs/domain/billing:
     dependencies:

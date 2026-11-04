@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { GraphKind } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
-import { createStdNodes, ENTRY_TYPE, type GraphDef } from '@ugula/graph';
+import { contractOf, createStdNodes, ENTRY_TYPE, type GraphDef } from '@ugula/graph';
 import type { CompiledQuery } from 'kysely';
-import { createGraphService, keepsContract, templateFor } from './service.ts';
+import { testAccess } from '../../shared/testing.ts';
+import type { GraphScope } from './queries.ts';
+import { canEditScope, createGraphService, templateFor } from './service.ts';
 
 const nodes = createStdNodes({ fetch });
+
+const admin = testAccess();
+const editor = testAccess(['workflows:read', 'workflows:update']);
+const manager = testAccess(['workflows:read', 'workflows:update', 'workflows:manage']);
+const reader = testAccess(['workflows:read']);
 
 const composite: GraphDef = {
   signature: { execIn: [], execOut: [], inputs: [{ name: 'x', type: 'number' }], outputs: [] },
@@ -14,72 +22,205 @@ const composite: GraphDef = {
   edges: []
 };
 
+const flow = templateFor('workflow');
+
 const usesComposite: GraphDef = {
-  ...templateFor('workflow'),
+  ...flow,
   nodes: [
     { id: 'entry', type: ENTRY_TYPE, version: 1 },
     { id: 'c', type: 'acme.thing', version: 2, inputs: { x: { value: 1 } } }
   ]
 };
 
-type Scenario = {
-  owner: string | null;
-  draft?: { id: string; version: number };
-  definition?: GraphDef;
-  system?: GraphDef;
-  copy?: { id: string; is_active: boolean };
-  overrides?: string;
+const block = templateFor('node');
+
+const widened: GraphDef = {
+  ...block,
+  signature: { ...block.signature, inputs: [{ name: 'x', type: 'number' }] }
 };
 
-const rowsFor =
-  ({ owner, draft, definition, system, copy, overrides }: Scenario) =>
-  (q: CompiledQuery): unknown[] => {
-    if (q.sql.startsWith('select "id", "is_active"')) return copy ? [copy] : [];
-    if (q.sql.includes('"agency_id" is null') && q.sql.startsWith('select "id" from "graphs"')) {
-      return system ? [{ id: 'g-sys' }] : [];
+type Graph = {
+  id: string;
+  scope: GraphScope;
+  kind?: GraphKind;
+  key?: string;
+  overrides?: string;
+  active?: boolean;
+};
+
+type Version = {
+  id: string;
+  version: number;
+  definition: GraphDef;
+  published?: boolean;
+  base?: string;
+};
+
+type World = {
+  graphs: Graph[];
+  versions?: Record<string, Version[]>;
+  fail?: { sql: string; code: string };
+};
+
+const RANK = { agency: 0, organization: 1, system: 2 };
+const KEY = 'acme.flow';
+
+const createWorld = ({ graphs, versions = {}, fail }: World) => {
+  const keyOf = (g: Graph) => g.key ?? KEY;
+  const live = graphs.filter((g) => g.active !== false);
+  const versionsOf = (id: unknown) => versions[id as string] ?? [];
+  const published = (id: unknown) =>
+    versionsOf(id)
+      .filter((v) => v.published)
+      .sort((a, b) => b.version - a.version);
+  const rows = (q: CompiledQuery): unknown[] => {
+    const [p0, p1] = q.parameters;
+    const sql = q.sql;
+    if (fail && sql.startsWith(fail.sql)) {
+      throw Object.assign(new Error('pg'), { code: fail.code });
     }
-    if (q.sql.includes('"published_at" is not null') && q.sql.includes('limit')) {
-      return system ? [{ definition: system }] : [];
+    if (sql.startsWith('select "g"."id", "g"."organization_id"')) {
+      const g = live.find((x) => x.id === q.parameters[4]);
+      return g
+        ? [
+            {
+              id: g.id,
+              key: keyOf(g),
+              name: 'Flow',
+              kind: g.kind ?? 'workflow',
+              description: '',
+              scope: g.scope,
+              overrides: g.overrides ?? null,
+              overridden_by: null,
+              is_stale: false
+            }
+          ]
+        : [];
     }
-    if (q.sql.includes('from "graphs"') && q.sql.includes('"agency_id" = $')) {
-      return [
-        {
-          id: 'g1',
-          agency_id: owner,
-          key: 'acme.flow',
-          name: 'Flow',
-          kind: 'workflow',
-          overrides: overrides ?? null
+    if (sql.startsWith('select "g"."id", case')) {
+      const [g] = live.filter((x) => keyOf(x) === p0).sort((a, b) => RANK[a.scope] - RANK[b.scope]);
+      return g ? [{ id: g.id, scope: g.scope }] : [];
+    }
+    if (sql.startsWith('select "id", "is_active" from "graphs"')) {
+      const scope = q.parameters.length === 2 ? 'organization' : 'agency';
+      const g = graphs.find((x) => x.scope === scope && keyOf(x) === q.parameters.at(-1));
+      return g ? [{ id: g.id, is_active: g.active !== false }] : [];
+    }
+    if (sql.startsWith('select "id" from "graphs"')) {
+      const g = graphs.find((x) => x.scope === 'system' && keyOf(x) === p0);
+      return g ? [{ id: g.id }] : [];
+    }
+    if (sql.startsWith('select "id", "version", "definition", "contract"')) {
+      const [v] = published(p0);
+      return v ? [{ ...v, contract: contractOf(v.definition.signature) }] : [];
+    }
+    if (sql.includes('for update')) {
+      const v = versionsOf(p0).find((x) => !x.published);
+      return v ? [{ ...v, base_version_id: v.base ?? null }] : [];
+    }
+    if (sql.includes('"base_graph_id"')) {
+      return versionsOf(p0)
+        .toSorted((a, b) => b.version - a.version)
+        .map((v) => ({ id: v.id, version: v.version }));
+    }
+    if (sql.startsWith('select "id", "version", "definition", "published_at"')) {
+      const v = versionsOf(p0).find((x) => x.version === p1);
+      return v
+        ? [
+            {
+              id: v.id,
+              version: v.version,
+              definition: v.definition,
+              base_version_id: v.base ?? null
+            }
+          ]
+        : [];
+    }
+    if (sql.startsWith('select "v"."id", "v"."version", "v"."definition"')) {
+      for (const [graphId, list] of Object.entries(versions)) {
+        const v = list.find((x) => x.id === p0);
+        const g = graphs.find((x) => x.id === graphId);
+        if (v && g) {
+          return [
+            {
+              id: v.id,
+              version: v.version,
+              definition: v.definition,
+              graph_id: g.id,
+              scope: g.scope
+            }
+          ];
         }
-      ];
+      }
+      return [];
     }
-    if (q.sql.includes('cross join lateral')) {
+    if (sql.includes('from unnest')) {
       return [{ id: 'v-thing', key: 'acme.thing', version: 2, definition: composite }];
     }
-    if (q.sql.includes('for update')) return draft ? [draft] : [];
-    if (q.sql.includes('max("version")')) return [{ max: 3 }];
-    if (q.sql.startsWith('insert into "graph_versions"')) return [{ id: 'new', version: 4 }];
-    if (q.sql.startsWith('insert into "graphs"')) return [{ id: 'g-new' }];
-    if (q.sql.startsWith('select "definition"')) return [{ definition }];
+    if (sql.includes('max("version")')) {
+      return [{ max: Math.max(0, ...versionsOf(p0).map((v) => v.version)) }];
+    }
+    if (sql.startsWith('insert into "graphs"')) return [{ id: 'g-new' }];
+    if (sql.startsWith('insert into "graph_versions"')) return [{ id: 'v-new', version: p1 }];
+    if (sql.startsWith('delete from "graphs"')) return [{ id: p0 }];
+    if (sql.startsWith('update "graphs" set "is_active"')) return [{ id: p1 }];
     return [];
   };
+  const { db, queries } = createRecordingDb(rows);
+  const find = (prefix: string) => queries.filter((q) => q.sql.startsWith(prefix));
+  return { service: createGraphService({ db, nodes }), queries, find };
+};
 
-describe('graph service', () => {
+const system = (over: Partial<Graph> = {}): Graph => ({ id: 'g-sys', scope: 'system', ...over });
+const org = (over: Partial<Graph> = {}): Graph => ({
+  id: 'g-org',
+  scope: 'organization',
+  overrides: 'g-sys',
+  ...over
+});
+const agency = (over: Partial<Graph> = {}): Graph => ({ id: 'g-agency', scope: 'agency', ...over });
+const sysV = (version: number, definition = flow): Version => ({
+  id: `v-sys-${version}`,
+  version,
+  definition,
+  published: true
+});
+
+const failure = (code: string, message: string) => ({ ok: false, failure: { code, message } });
+
+const READ_ONLY = failure('forbidden', 'Built-in graphs are read-only');
+const ORG_ONLY = failure('forbidden', 'Only organization owners can change organization workflows');
+const NO_PERMISSION = failure('forbidden', 'You do not have permission to change this graph');
+const NOT_FOUND = failure('not_found', 'Graph not found');
+
+describe('graph templates and scopes', () => {
   it('builds starter templates per kind', () => {
-    assert.deepEqual(templateFor('node').signature.execOut, ['then']);
-    assert.equal(templateFor('node').nodes.length, 2);
-    assert.equal(templateFor('workflow').nodes.length, 1);
+    assert.deepEqual(block.signature.execOut, ['then']);
+    assert.equal(block.nodes.length, 2);
+    assert.equal(flow.nodes.length, 1);
   });
 
+  it('never edits built-ins, leaves organization graphs to owners and agency graphs to permissions', () => {
+    assert.equal(canEditScope(admin, 'system', 'workflow'), false);
+    assert.equal(canEditScope(admin, 'organization', 'workflow'), true);
+    assert.equal(canEditScope(manager, 'organization', 'node'), false);
+    assert.equal(canEditScope(manager, 'agency', 'workflow'), true);
+    assert.equal(canEditScope(editor, 'agency', 'workflow'), false);
+    assert.equal(canEditScope(editor, 'agency', 'node'), true);
+    assert.equal(canEditScope(reader, 'agency', 'node'), false);
+  });
+});
+
+describe('graph service reads', () => {
   it('validates against std nodes and visible published composites', async () => {
-    const { db, queries } = createRecordingDb(rowsFor({ owner: 't-1' }));
-    const service = createGraphService({ db, nodes });
-    assert.deepEqual(await service.validate('t-1', usesComposite), {
+    const { service, queries } = createWorld({ graphs: [] });
+    assert.deepEqual(await service.validate(admin, usesComposite), {
       ok: true,
       value: { issues: [] }
     });
-    assert.ok(queries.some((q) => JSON.stringify(q.parameters).includes('acme.thing')));
-    const missing = await service.validate('t-1', {
+    const lookup = queries.find((q) => q.sql.includes('from unnest'));
+    assert.deepEqual(lookup?.parameters.slice(0, 2), [['acme.thing'], [2]]);
+    const missing = await service.validate(admin, {
       ...usesComposite,
       nodes: [...usesComposite.nodes, { id: 'z', type: 'acme.nope', version: 1 }]
     });
@@ -89,251 +230,489 @@ describe('graph service', () => {
     });
   });
 
-  it('creates graphs with a first draft', async () => {
-    const { db, queries } = createRecordingDb(rowsFor({ owner: 't-1' }));
+  it('reports which scopes may edit or override a graph and which graph is in effect', async () => {
+    const world = createWorld({ graphs: [system(), agency({ overrides: 'g-sys' })] });
+    const builtIn = await world.service.find(admin, 'g-sys');
+    assert.ok(builtIn.ok);
+    assert.equal(builtIn.value.graph.canEdit, false);
+    assert.deepEqual(builtIn.value.graph.canOverride, { organization: true, agency: true });
+    assert.equal(builtIn.value.graph.effectiveId, 'g-agency');
+
+    const asEditor = await world.service.find(editor, 'g-sys');
+    assert.ok(asEditor.ok);
+    assert.deepEqual(asEditor.value.graph.canOverride, { organization: false, agency: false });
+
+    const own = await world.service.find(manager, 'g-agency');
+    assert.ok(own.ok);
+    assert.equal(own.value.graph.canEdit, true);
+    assert.deepEqual(own.value.graph.canOverride, { organization: false, agency: false });
+    assert.equal(own.value.graph.effectiveId, 'g-agency');
+
+    const blocks = createWorld({ graphs: [system({ kind: 'node' })] });
+    const node = await blocks.service.find(editor, 'g-sys');
+    assert.ok(node.ok);
+    assert.deepEqual(node.value.graph.canOverride, { organization: false, agency: true });
+  });
+
+  it('reads graphs, versions, search and nodes scoped to the agency and organization', async () => {
+    const { service, queries } = createWorld({
+      graphs: [agency()],
+      versions: { 'g-agency': [{ id: 'v2', version: 2, definition: composite }] }
+    });
+    assert.deepEqual(await service.version(admin, 'g-agency', 2), {
+      ok: true,
+      value: { id: 'v2', version: 2, definition: composite, base_version_id: null }
+    });
     assert.deepEqual(
-      await createGraphService({ db, nodes }).create('t-1', 'u-1', {
-        key: 'acme.flow',
-        name: 'Flow',
-        kind: 'node',
-        description: ''
-      }),
-      { ok: true, value: { id: 'g-new' } }
+      await service.version(admin, 'g-agency', 3),
+      failure('not_found', 'Version not found')
     );
-    const draft = queries.find((q) => q.sql.startsWith('insert into "graph_versions"'));
-    assert.deepEqual(draft?.parameters.slice(0, 2), ['g-new', 1]);
+    const search = await service.search(admin, {
+      page: 1,
+      pageSize: 25,
+      sort: 'name',
+      dir: 'asc',
+      show: 'all'
+    });
+    assert.equal(search.ok, true);
+    assert.equal((await service.nodes(admin)).ok, true);
+    assert.deepEqual(queries.at(-1)?.parameters, ['t-1', 'o-1', 't-1', 'o-1']);
+  });
+
+  it('reports graphs hidden from the agency as not found without writing', async () => {
+    const { service, queries } = createWorld({ graphs: [agency({ active: false })] });
+    assert.deepEqual(await service.find(admin, 'g-agency'), NOT_FOUND);
+    assert.deepEqual(
+      await service.version(admin, 'g-agency', 1),
+      failure('not_found', 'Version not found')
+    );
+    assert.deepEqual(await service.compare(admin, 'g-agency'), NOT_FOUND);
+    assert.deepEqual(await service.remove(admin, 'g-agency'), NOT_FOUND);
+    assert.deepEqual(await service.saveDraft(admin, 'g-agency', block), NOT_FOUND);
+    assert.deepEqual(await service.publish(admin, 'g-agency'), NOT_FOUND);
+    assert.deepEqual(await service.rebase(admin, 'g-agency', 'keep'), NOT_FOUND);
+    assert.deepEqual(await service.override(admin, 'g-agency', 'agency'), NOT_FOUND);
+    assert.ok(queries.every((q) => /^(select|begin|commit)/.test(q.sql)));
+  });
+});
+
+describe('graph service compare', () => {
+  it('has nothing to compare for built-in graphs', async () => {
+    const { service } = createWorld({ graphs: [system()], versions: { 'g-sys': [sysV(1)] } });
+    assert.deepEqual(await service.compare(admin, 'g-sys'), {
+      ok: true,
+      value: { mine: null, copiedFrom: null, latest: null, baseChanged: false }
+    });
+  });
+
+  it('compares an override with the version it copied and the newest version below it', async () => {
+    const versions = {
+      'g-sys': [sysV(1), sysV(2, block)],
+      'g-agency': [
+        { id: 'v-a1', version: 1, definition: usesComposite, published: true, base: 'v-sys-1' }
+      ]
+    };
+    const stale = createWorld({ graphs: [system(), agency({ overrides: 'g-sys' })], versions });
+    assert.deepEqual(await stale.service.compare(admin, 'g-agency'), {
+      ok: true,
+      value: {
+        mine: { version: 1, definition: usesComposite },
+        copiedFrom: { graphId: 'g-sys', scope: 'system', version: 1, definition: flow },
+        latest: { version: 2, definition: block },
+        baseChanged: true
+      }
+    });
+    const current = createWorld({
+      graphs: [system(), agency({ overrides: 'g-sys' })],
+      versions: { ...versions, 'g-sys': [sysV(1)] }
+    });
+    const res = await current.service.compare(admin, 'g-agency');
+    assert.equal(res.ok && res.value.baseChanged, false);
+  });
+
+  it('compares an agency override with the active organization override first', async () => {
+    const { service } = createWorld({
+      graphs: [system(), org(), agency({ overrides: 'g-org' })],
+      versions: {
+        'g-sys': [sysV(1)],
+        'g-org': [{ id: 'v-o1', version: 1, definition: block, published: true }],
+        'g-agency': [{ id: 'v-a1', version: 1, definition: flow, base: 'v-o1' }]
+      }
+    });
+    const res = await service.compare(admin, 'g-agency');
+    assert.ok(res.ok);
+    assert.deepEqual(res.value.latest, { version: 1, definition: block });
+    assert.equal(res.value.copiedFrom?.scope, 'organization');
+    assert.equal(res.value.baseChanged, false);
+  });
+});
+
+describe('graph service create', () => {
+  const input = { key: 'acme.new', name: 'New', kind: 'node', description: '' } as const;
+
+  it('creates agency and organization graphs with a first draft', async () => {
+    const agencyWorld = createWorld({ graphs: [] });
+    assert.deepEqual(await agencyWorld.service.create(manager, { ...input, scope: 'agency' }), {
+      ok: true,
+      value: { id: 'g-new' }
+    });
+    const [graph] = agencyWorld.find('insert into "graphs"');
+    assert.deepEqual(graph?.parameters, ['o-1', 't-1', 'acme.new', 'New', 'node', '']);
+    const [draft] = agencyWorld.find('insert into "graph_versions"');
+    assert.deepEqual(draft?.parameters, [
+      'g-new',
+      1,
+      JSON.stringify(block),
+      contractOf(block.signature),
+      null,
+      'u-1'
+    ]);
+
+    const orgWorld = createWorld({ graphs: [] });
+    await orgWorld.service.create(admin, { ...input, scope: 'organization' });
+    assert.deepEqual(orgWorld.find('insert into "graphs"')[0]?.parameters.slice(0, 2), [
+      'o-1',
+      null
+    ]);
+  });
+
+  it('refuses scopes the user cannot edit, built-in keys and duplicate keys', async () => {
+    const { service, queries } = createWorld({ graphs: [system({ key: 'acme.new' })] });
+    assert.deepEqual(await service.create(manager, { ...input, scope: 'organization' }), ORG_ONLY);
+    assert.deepEqual(await service.create(reader, { ...input, scope: 'agency' }), NO_PERMISSION);
+    assert.deepEqual(
+      await service.create(admin, { ...input, scope: 'agency' }),
+      failure('conflict', 'A built-in graph uses that key; override it instead')
+    );
+    assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
+    const dup = createWorld({ graphs: [], fail: { sql: 'insert into "graphs"', code: '23505' } });
+    assert.deepEqual(
+      await dup.service.create(admin, { ...input, scope: 'agency' }),
+      failure('conflict', 'A graph with that key exists')
+    );
+  });
+});
+
+describe('graph service drafts', () => {
+  it('refuses built-ins, organization graphs for non-owners and workflows without manage', async () => {
+    const { service, queries } = createWorld({ graphs: [system(), org(), agency()] });
+    assert.deepEqual(await service.saveDraft(admin, 'g-sys', flow), READ_ONLY);
+    assert.deepEqual(await service.saveDraft(manager, 'g-org', flow), ORG_ONLY);
+    assert.deepEqual(await service.saveDraft(editor, 'g-agency', flow), NO_PERMISSION);
+    assert.ok(!queries.some((q) => /^(insert|update)/.test(q.sql)));
   });
 
   it('updates the open draft or starts the next version', async () => {
-    const open = createRecordingDb(rowsFor({ owner: 't-1', draft: { id: 'd1', version: 3 } }));
-    const res = await createGraphService({ db: open.db, nodes }).saveDraft(
-      't-1',
-      'u-1',
-      'g1',
-      usesComposite
-    );
-    assert.deepEqual(res, { ok: true, value: { version: 3, issues: [] } });
-    assert.ok(open.queries.some((q) => q.sql.startsWith('update "graph_versions"')));
+    const open = createWorld({
+      graphs: [agency()],
+      versions: { 'g-agency': [{ id: 'd1', version: 3, definition: flow }] }
+    });
+    assert.deepEqual(await open.service.saveDraft(manager, 'g-agency', usesComposite), {
+      ok: true,
+      value: { version: 3, issues: [] }
+    });
+    const [update] = open.find('update "graph_versions"');
+    assert.deepEqual(update?.parameters.at(-1), 'd1');
+    assert.equal(open.find('insert').length, 0);
 
-    const fresh = createRecordingDb(rowsFor({ owner: 't-1' }));
-    const next = await createGraphService({ db: fresh.db, nodes }).saveDraft(
-      't-1',
-      'u-1',
-      'g1',
-      usesComposite
-    );
-    assert.deepEqual(next, { ok: true, value: { version: 4, issues: [] } });
+    const fresh = createWorld({
+      graphs: [agency()],
+      versions: { 'g-agency': [{ id: 'v3', version: 3, definition: flow, published: true }] }
+    });
+    assert.deepEqual(await fresh.service.saveDraft(manager, 'g-agency', usesComposite), {
+      ok: true,
+      value: { version: 4, issues: [] }
+    });
+    const [draft] = fresh.find('insert into "graph_versions"');
+    assert.deepEqual(draft?.parameters.slice(0, 2), ['g-agency', 4]);
+    assert.equal(draft?.parameters[4], null);
+    assert.equal(fresh.find('update "graphs" set "updated_at"').length, 1);
   });
 
-  it('refuses edits to system graphs and publishes only clean drafts with pinned dependencies', async () => {
-    const system = createRecordingDb(rowsFor({ owner: null }));
-    assert.deepEqual(await createGraphService({ db: system.db, nodes }).publish('t-1', 'g1'), {
-      ok: false,
-      failure: { code: 'forbidden', message: 'System graphs are read-only' }
+  it('bases new drafts on the active organization override, else on the built-in', async () => {
+    const versions = {
+      'g-sys': [sysV(2)],
+      'g-org': [{ id: 'v-org', version: 1, definition: flow, published: true }]
+    };
+    const overOrg = createWorld({
+      graphs: [system(), org(), agency({ overrides: 'g-org' })],
+      versions
     });
+    await overOrg.service.saveDraft(manager, 'g-agency', flow);
+    assert.equal(overOrg.find('insert into "graph_versions"')[0]?.parameters[4], 'v-org');
 
-    const nothing = createRecordingDb(rowsFor({ owner: 't-1' }));
-    const nothingToPublish = await createGraphService({ db: nothing.db, nodes }).publish(
-      't-1',
-      'g1'
+    const orgOff = createWorld({
+      graphs: [system(), org({ active: false }), agency({ overrides: 'g-sys' })],
+      versions
+    });
+    await orgOff.service.saveDraft(manager, 'g-agency', flow);
+    assert.equal(orgOff.find('insert into "graph_versions"')[0]?.parameters[4], 'v-sys-2');
+
+    const orgGraph = createWorld({ graphs: [system(), org()], versions });
+    await orgGraph.service.saveDraft(admin, 'g-org', flow);
+    assert.equal(orgGraph.find('insert into "graph_versions"')[0]?.parameters[4], 'v-sys-2');
+  });
+});
+
+describe('graph service publish', () => {
+  it('publishes only clean drafts with pinned dependencies', async () => {
+    const nothing = createWorld({ graphs: [agency()] });
+    assert.deepEqual(
+      await nothing.service.publish(admin, 'g-agency'),
+      failure('conflict', 'Nothing to publish')
     );
-    assert.equal(!nothingToPublish.ok && nothingToPublish.failure.code, 'conflict');
 
     const unwired: GraphDef = {
       ...usesComposite,
       nodes: [...usesComposite.nodes, { id: 'n', type: 'std.math.add', version: 1 }]
     };
-    const broken = createRecordingDb(
-      rowsFor({ owner: 't-1', draft: { id: 'd1', version: 3 }, definition: unwired })
-    );
-    const failed = await createGraphService({ db: broken.db, nodes }).publish('t-1', 'g1');
-    assert.equal(failed.ok, false);
+    const broken = createWorld({
+      graphs: [agency()],
+      versions: { 'g-agency': [{ id: 'd1', version: 3, definition: unwired }] }
+    });
+    const failed = await broken.service.publish(admin, 'g-agency');
     assert.equal(!failed.ok && failed.failure.code, 'invalid');
+    assert.equal(!failed.ok && failed.failure.message, 'Fix the issues before publishing');
+    assert.equal(broken.find('update "graph_versions"').length, 0);
 
-    const clean = createRecordingDb(
-      rowsFor({ owner: 't-1', draft: { id: 'd1', version: 3 }, definition: usesComposite })
-    );
-    assert.deepEqual(await createGraphService({ db: clean.db, nodes }).publish('t-1', 'g1'), {
+    const clean = createWorld({
+      graphs: [agency()],
+      versions: { 'g-agency': [{ id: 'd1', version: 3, definition: usesComposite }] }
+    });
+    assert.deepEqual(await clean.service.publish(admin, 'g-agency'), {
       ok: true,
       value: { version: 3 }
     });
-    const publish = clean.queries.find((q) => q.sql.includes('"published_at" = now()'));
-    assert.deepEqual(publish?.parameters[0], ['acme.thing@2']);
+    const [publish] = clean.find('update "graph_versions"');
+    assert.deepEqual(publish?.parameters, [['acme.thing@2'], 'd1']);
   });
 
-  it('copies a system graph into a agency override that must keep its contract', async () => {
-    const system = createRecordingDb(rowsFor({ owner: null, system: composite }));
-    assert.deepEqual(
-      await createGraphService({ db: system.db, nodes }).override('t-1', 'u-1', 'g1'),
-      { ok: true, value: { id: 'g-new' } }
-    );
-    const copied = system.queries.find((q) => q.sql.startsWith('insert into "graph_versions"'));
-    assert.equal(copied?.parameters[2], JSON.stringify(composite));
-
-    const restored = createRecordingDb(
-      rowsFor({ owner: null, system: composite, copy: { id: 'g-old', is_active: false } })
-    );
-    assert.deepEqual(
-      await createGraphService({ db: restored.db, nodes }).override('t-1', 'u-1', 'g1'),
-      { ok: true, value: { id: 'g-old' } }
-    );
-    assert.ok(restored.queries.some((q) => q.sql.startsWith('update "graphs" set "is_active"')));
-    const twice = createRecordingDb(
-      rowsFor({ owner: null, system: composite, copy: { id: 'g-old', is_active: true } })
-    );
-    const again = await createGraphService({ db: twice.db, nodes }).override('t-1', 'u-1', 'g1');
-    assert.equal(!again.ok && again.failure.code, 'conflict');
-
-    const own = createRecordingDb(rowsFor({ owner: 't-1', system: composite }));
-    const refused = await createGraphService({ db: own.db, nodes }).override('t-1', 'u-1', 'g1');
-    assert.equal(!refused.ok && refused.failure.code, 'conflict');
-
-    const changed: GraphDef = {
-      ...composite,
-      signature: { ...composite.signature, inputs: [{ name: 'y', type: 'number' }] }
-    };
-    const drifted = createRecordingDb(
-      rowsFor({
-        owner: 't-1',
-        draft: { id: 'd1', version: 1 },
-        definition: changed,
-        system: composite
-      })
-    );
-    const failed = await createGraphService({ db: drifted.db, nodes }).publish('t-1', 'g1');
-    assert.equal(!failed.ok && failed.failure.code, 'invalid');
-    assert.equal(
-      keepsContract(composite.signature, {
-        ...composite.signature,
-        inputs: [{ name: 'x', type: 'number', label: 'X' }]
-      }),
-      true
-    );
-
-    const blocked = await createGraphService({ db: own.db, nodes }).create('t-1', 'u-1', {
-      key: 'acme.flow',
-      name: 'Flow',
-      kind: 'node',
-      description: ''
-    });
-    assert.equal(!blocked.ok && blocked.failure.code, 'conflict');
-  });
-
-  it('turns an override off, and deletes other agency graphs unless runs still use them', async () => {
-    const override = createRecordingDb(rowsFor({ owner: 't-1', overrides: 'g-sys' }));
-    assert.deepEqual(await createGraphService({ db: override.db, nodes }).remove('t-1', 'g1'), {
-      ok: true,
-      value: { id: 'g1' }
-    });
-    const off = override.queries.find((q) => q.sql.startsWith('update "graphs" set "is_active"'));
-    assert.equal(off?.parameters[0], false);
-    assert.ok(!override.queries.some((q) => q.sql.startsWith('delete')));
-
-    const own = rowsFor({ owner: 't-1' });
-    const used = createRecordingDb((q) => {
-      if (q.sql.startsWith('delete from "graphs"')) {
-        throw Object.assign(new Error('restrict'), { code: '23001' });
+  it('refuses publishing an override that changes the contract of the built-in', async () => {
+    const draft = (definition: GraphDef) => ({
+      graphs: [system({ kind: 'node' }), org({ kind: 'node' })],
+      versions: {
+        'g-sys': [sysV(1, block)],
+        'g-org': [{ id: 'd1', version: 1, definition }]
       }
-      return own(q);
     });
-    const res = await createGraphService({ db: used.db, nodes }).remove('t-1', 'g1');
-    assert.equal(!res.ok && res.failure.code, 'conflict');
-    const gone = createRecordingDb((q) =>
-      q.sql.startsWith('delete from "graphs"') ? [{ id: 'g1' }] : own(q)
+    const drifted = createWorld(draft(widened));
+    assert.deepEqual(
+      await drifted.service.publish(admin, 'g-org'),
+      failure(
+        'invalid',
+        'An override must keep the inputs, outputs and exits of the built-in graph it replaces'
+      )
     );
-    assert.deepEqual(await createGraphService({ db: gone.db, nodes }).remove('t-1', 'g1'), {
+    assert.equal(drifted.find('update "graph_versions"').length, 0);
+    const moved = block.nodes.map((n) => ({ ...n, position: { x: 1, y: 1 } }));
+    const kept = createWorld(draft({ ...block, nodes: moved }));
+    assert.deepEqual(await kept.service.publish(admin, 'g-org'), {
       ok: true,
-      value: { id: 'g1' }
+      value: { version: 1 }
     });
-    const system = createRecordingDb(rowsFor({ owner: null }));
-    const refused = await createGraphService({ db: system.db, nodes }).remove('t-1', 'g1');
-    assert.equal(!refused.ok && refused.failure.code, 'not_found');
-  });
-
-  it('reports duplicate keys as conflicts', async () => {
-    const { db } = createRecordingDb((q) => {
-      if (q.sql.startsWith('insert into "graphs"')) {
-        throw Object.assign(new Error('dup'), { code: '23505' });
-      }
-      return [];
+    const custom = createWorld({
+      graphs: [agency({ kind: 'node' })],
+      versions: { 'g-agency': [{ id: 'd1', version: 1, definition: widened }] }
     });
-    const res = await createGraphService({ db, nodes }).create('t-1', 'u-1', {
-      key: 'acme.flow',
-      name: 'Flow',
-      kind: 'node',
-      description: ''
-    });
-    assert.deepEqual(res, {
-      ok: false,
-      failure: { code: 'conflict', message: 'A graph with that key exists' }
-    });
-  });
-
-  it('reads graphs and versions scoped to the agency', async () => {
-    const { db } = createRecordingDb(rowsFor({ owner: 't-1' }));
-    const service = createGraphService({ db, nodes });
-    assert.equal((await service.find('t-1', 'g1')).ok, true);
-    assert.equal((await service.version('t-1', 'g1', 1)).ok, false);
-    assert.equal(
-      (
-        await service.search('t-1', {
-          page: 1,
-          pageSize: 25,
-          sort: 'name',
-          dir: 'asc',
-          show: 'all'
-        })
-      ).ok,
-      true
-    );
-    assert.equal((await service.nodes('t-1')).ok, true);
+    assert.equal((await custom.service.publish(editor, 'g-agency')).ok, true);
   });
 });
 
-describe('graph service lookups', () => {
-  it('report graphs and versions hidden from the agency as not found', async () => {
-    const { db, queries } = createRecordingDb();
-    const service = createGraphService({ db, nodes });
-    assert.deepEqual(await service.find('t-2', 'g1'), {
-      ok: false,
-      failure: { code: 'not_found', message: 'Graph not found' }
-    });
-    assert.deepEqual(await service.version('t-2', 'g1', 1), {
-      ok: false,
-      failure: { code: 'not_found', message: 'Version not found' }
-    });
-    assert.deepEqual(await service.remove('t-2', 'g1'), {
-      ok: false,
-      failure: { code: 'not_found', message: 'Graph not found' }
-    });
-    const saved = await service.saveDraft('t-2', 'u-1', 'g1', templateFor('node'));
-    assert.equal(!saved.ok && saved.failure.code, 'not_found');
-    const copied = await service.override('t-2', 'u-1', 'g1');
-    assert.equal(!copied.ok && copied.failure.code, 'not_found');
-    assert.ok(queries.every((q) => !q.sql.startsWith('select "id", "version" from')));
-    assert.ok(queries.every((q) => /^(select|begin|commit)/.test(q.sql)));
-  });
+describe('graph service override', () => {
+  const versions = { 'g-sys': [sysV(1), sysV(2, usesComposite)] };
 
-  it('reads a version of a visible graph', async () => {
-    const { db, queries } = createRecordingDb((q) =>
-      q.sql.includes('"version" = $')
-        ? [{ id: 'v2', version: 2, definition: composite, published_at: null }]
-        : rowsFor({ owner: 't-1' })(q)
-    );
-    assert.deepEqual(await createGraphService({ db, nodes }).version('t-1', 'g1', 2), {
+  it('copies the newest published built-in into an organization or agency override', async () => {
+    const toOrg = createWorld({ graphs: [system()], versions });
+    assert.deepEqual(await toOrg.service.override(admin, 'g-sys', 'organization'), {
       ok: true,
-      value: { id: 'v2', version: 2, definition: composite, published_at: null }
+      value: { id: 'g-new' }
     });
-    assert.deepEqual(queries.at(-1)?.parameters, ['g1', 2]);
+    assert.deepEqual(toOrg.find('insert into "graphs"')[0]?.parameters, [
+      'o-1',
+      null,
+      KEY,
+      'Flow',
+      'workflow',
+      ''
+    ]);
+    const [copy] = toOrg.find('insert into "graph_versions"');
+    assert.deepEqual(copy?.parameters.slice(0, 3), ['g-new', 1, JSON.stringify(usesComposite)]);
+    assert.equal(copy?.parameters[4], 'v-sys-2');
+
+    const toAgency = createWorld({
+      graphs: [system(), org()],
+      versions: {
+        ...versions,
+        'g-org': [{ id: 'v-org', version: 1, definition: flow, published: true }]
+      }
+    });
+    assert.deepEqual(await toAgency.service.override(manager, 'g-org', 'agency'), {
+      ok: true,
+      value: { id: 'g-new' }
+    });
+    assert.deepEqual(toAgency.find('insert into "graphs"')[0]?.parameters.slice(0, 2), [
+      'o-1',
+      't-1'
+    ]);
+    assert.equal(toAgency.find('insert into "graph_versions"')[0]?.parameters[4], 'v-org');
   });
 
-  it('refuses to override a system graph that was never published', async () => {
-    const { db, queries } = createRecordingDb(rowsFor({ owner: null }));
-    const res = await createGraphService({ db, nodes }).override('t-1', 'u-1', 'g1');
-    assert.deepEqual(res, {
-      ok: false,
-      failure: { code: 'conflict', message: 'This graph has no published version to start from' }
+  it('only overrides graphs from a broader scope that the user may edit', async () => {
+    const { service, queries } = createWorld({ graphs: [system(), org(), agency()], versions });
+    const cannot = (scope: string) =>
+      failure('conflict', `This graph cannot be overridden for the ${scope}`);
+    assert.deepEqual(await service.override(admin, 'g-agency', 'agency'), cannot('agency'));
+    assert.deepEqual(
+      await service.override(admin, 'g-org', 'organization'),
+      cannot('organization')
+    );
+    assert.deepEqual(
+      await service.override(admin, 'g-agency', 'organization'),
+      cannot('organization')
+    );
+    assert.deepEqual(await service.override(manager, 'g-sys', 'organization'), ORG_ONLY);
+    assert.deepEqual(await service.override(editor, 'g-sys', 'agency'), NO_PERMISSION);
+    assert.ok(!queries.some((q) => /^(insert|update)/.test(q.sql)));
+  });
+
+  it('turns a switched-off copy back on and refuses a second active copy', async () => {
+    const restored = createWorld({ graphs: [system(), agency({ active: false })], versions });
+    assert.deepEqual(await restored.service.override(admin, 'g-sys', 'agency'), {
+      ok: true,
+      value: { id: 'g-agency' }
     });
-    assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
+    assert.deepEqual(restored.find('update "graphs" set "is_active"')[0]?.parameters, [
+      true,
+      'g-agency'
+    ]);
+    assert.equal(restored.find('insert').length, 0);
+
+    const twice = createWorld({ graphs: [system(), agency()], versions });
+    assert.deepEqual(
+      await twice.service.override(admin, 'g-sys', 'agency'),
+      failure('conflict', 'This graph is already overridden')
+    );
+    const raced = createWorld({
+      graphs: [system()],
+      versions,
+      fail: { sql: 'insert into "graphs"', code: '23505' }
+    });
+    assert.deepEqual(
+      await raced.service.override(admin, 'g-sys', 'agency'),
+      failure('conflict', 'This graph is already overridden')
+    );
+  });
+
+  it('refuses to override a graph that was never published', async () => {
+    const { service, find } = createWorld({ graphs: [system()] });
+    assert.deepEqual(
+      await service.override(admin, 'g-sys', 'agency'),
+      failure('conflict', 'This graph has no published version to start from')
+    );
+    assert.equal(find('insert').length, 0);
+  });
+});
+
+describe('graph service rebase', () => {
+  const graphs = [system(), agency({ overrides: 'g-sys' })];
+  const base = { 'g-sys': [sysV(1), sysV(2, block)] };
+
+  it('keeps the draft but moves its base to the newest version below', async () => {
+    const { service, find } = createWorld({
+      graphs,
+      versions: {
+        ...base,
+        'g-agency': [{ id: 'd1', version: 2, definition: usesComposite, base: 'v-sys-1' }]
+      }
+    });
+    assert.deepEqual(await service.rebase(admin, 'g-agency', 'keep'), {
+      ok: true,
+      value: { id: 'g-agency' }
+    });
+    const [update] = find('update "graph_versions"');
+    assert.deepEqual(update?.parameters, [
+      JSON.stringify(usesComposite),
+      contractOf(usesComposite.signature),
+      'v-sys-2',
+      'd1'
+    ]);
+  });
+
+  it('resets the draft to the newest version below', async () => {
+    const { service, find } = createWorld({
+      graphs,
+      versions: { ...base, 'g-agency': [{ id: 'd1', version: 2, definition: usesComposite }] }
+    });
+    await service.rebase(admin, 'g-agency', 'reset');
+    assert.deepEqual(find('update "graph_versions"')[0]?.parameters.slice(0, 3), [
+      JSON.stringify(block),
+      contractOf(block.signature),
+      'v-sys-2'
+    ]);
+  });
+
+  it('starts a rebased draft from the newest published version when none is open', async () => {
+    const { service, find } = createWorld({
+      graphs,
+      versions: {
+        ...base,
+        'g-agency': [{ id: 'v-a1', version: 1, definition: flow, published: true }]
+      }
+    });
+    await service.rebase(admin, 'g-agency', 'keep');
+    const [draft] = find('insert into "graph_versions"');
+    assert.deepEqual(draft?.parameters, [
+      'g-agency',
+      2,
+      JSON.stringify(flow),
+      contractOf(flow.signature),
+      'v-sys-2',
+      'u-1'
+    ]);
+  });
+
+  it('refuses graphs with nothing below or nothing to keep', async () => {
+    const custom = createWorld({ graphs: [agency()] });
+    assert.deepEqual(
+      await custom.service.rebase(admin, 'g-agency', 'keep'),
+      failure('conflict', 'This graph does not override another graph')
+    );
+    const empty = createWorld({ graphs, versions: base });
+    assert.deepEqual(
+      await empty.service.rebase(admin, 'g-agency', 'keep'),
+      failure('conflict', 'Nothing to rebase')
+    );
+    assert.deepEqual(await empty.service.rebase(admin, 'g-sys', 'reset'), READ_ONLY);
+    assert.deepEqual(await empty.service.rebase(editor, 'g-agency', 'reset'), NO_PERMISSION);
+  });
+});
+
+describe('graph service remove', () => {
+  it('turns an override off instead of deleting it', async () => {
+    const { service, find } = createWorld({ graphs: [system(), agency({ overrides: 'g-sys' })] });
+    assert.deepEqual(await service.remove(admin, 'g-agency'), {
+      ok: true,
+      value: { id: 'g-agency' }
+    });
+    assert.deepEqual(find('update "graphs" set "is_active"')[0]?.parameters, [false, 'g-agency']);
+    assert.equal(find('delete').length, 0);
+  });
+
+  it('deletes custom graphs unless runs still use them, and never built-ins', async () => {
+    const gone = createWorld({ graphs: [system(), agency()] });
+    assert.deepEqual(await gone.service.remove(admin, 'g-agency'), {
+      ok: true,
+      value: { id: 'g-agency' }
+    });
+    assert.deepEqual(gone.find('delete from "graphs"')[0]?.parameters, ['g-agency']);
+    assert.deepEqual(await gone.service.remove(admin, 'g-sys'), READ_ONLY);
+    const used = createWorld({
+      graphs: [agency()],
+      fail: { sql: 'delete from "graphs"', code: '23001' }
+    });
+    assert.deepEqual(
+      await used.service.remove(admin, 'g-agency'),
+      failure('conflict', 'Runs still use this graph, so it cannot be removed')
+    );
   });
 });

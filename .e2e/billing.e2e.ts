@@ -99,7 +99,7 @@ describe('a biller takes an encounter from import to payment', { timeout: SUITE_
     assert.ok(coverage);
     assert.match(
       await uploadPayerFile(s.page, `${pcr}-inactive.271`, eligibility271(coverage.id, false)),
-      /applied$/
+      /received$/
     );
     await until(
       s.page,
@@ -127,7 +127,7 @@ describe('a biller takes an encounter from import to payment', { timeout: SUITE_
     assert.match(file, /CRC\*07\*Y\*04\*06\*09/);
     assert.match(
       await uploadPayerFile(s.page, `${pcr}.999`, batchAcknowledgment999(control, true)),
-      /applied$/
+      /received$/
     );
     await openClaim();
     await s.page.getByRole('link', { name: /History/ }).click();
@@ -160,7 +160,7 @@ describe('a biller takes an encounter from import to payment', { timeout: SUITE_
     const { claim } = await claimState(s, claimId);
     const paid = Math.round(claim.total_cents * 0.6);
     const era = remittance835(claim.number, claim.total_cents, paid);
-    assert.match(await uploadPayerFile(s.page, `${pcr}.835`, era), /applied$/);
+    assert.match(await uploadPayerFile(s.page, `${pcr}.835`, era), /received$/);
     await claimStatusIs(s, claimId, 'paid');
     await go(s.page, '/payer-files');
     await s.page.getByRole('link', { name: `Open payer file ${pcr}.835` }).click();

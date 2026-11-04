@@ -27,6 +27,14 @@ const fakeStreams = () => {
 };
 
 describe('createLive', () => {
+  it('asks the stream for the events of one agency', () => {
+    const { opened, open, schedule } = fakeStreams();
+    const live = createLive('http://sse.test', { agencyId: 'a 1', open, schedule });
+    live.subscribe(() => undefined);
+    assert.equal(opened[0]?.url, 'http://sse.test/events?agency=a%201');
+    live.close();
+  });
+
   it('opens one stream lazily and fans valid events out to subscribers', () => {
     const { opened, open, schedule } = fakeStreams();
     const live = createLive('http://sse.test', { open, schedule });

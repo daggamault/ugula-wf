@@ -9,6 +9,7 @@
     "test": "tsx --test"
   },
   "dependencies": {
+    "@ugula/access": "workspace:*",
     "@ugula/billing": "workspace:*",
     "@ugula/catalog": "workspace:*",
     "@ugula/config": "workspace:*",

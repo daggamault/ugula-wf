@@ -61,7 +61,7 @@ if (import.meta.main) {
     events: createEventsHandler({
       hub,
       sessions: createSessionStore(new Redis(redis)),
-      isActiveMember: (s) => isActiveMember(db, s.userId, s.agencyId),
+      isActiveMember: (userId, agencyId) => isActiveMember(db, userId, agencyId),
       origins: config.HTTP_CORS_ORIGINS.split(',').map((o) => o.trim())
     })
   }).listen(config.SSE_PORT);

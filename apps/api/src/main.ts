@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { getConnInfo } from '@hono/node-server/conninfo';
+import type { Permission } from '@ugula/access';
 import { createSessionStore, type RedisLike } from '@ugula/auth';
 import { createNodeCatalog } from '@ugula/catalog';
 import { createDb, type Db } from '@ugula/db';
@@ -15,6 +16,8 @@ import { csrf } from 'hono/csrf';
 import { Redis } from 'ioredis';
 import { PgBoss } from 'pg-boss';
 import { type Config, parseConfig } from './config.ts';
+import { createAgencyAccessRoutes, createAgencyListRoutes } from './features/agencies/routes.ts';
+import { createAgencyService } from './features/agencies/service.ts';
 import { createAuthRoutes } from './features/auth/routes.ts';
 import { createAuthService } from './features/auth/service.ts';
 import { createBillingProfileRoutes } from './features/billing-profile/routes.ts';
@@ -38,12 +41,17 @@ import { createPayerRoutes } from './features/payers/routes.ts';
 import { createPayerService } from './features/payers/service.ts';
 import { createReportRoutes } from './features/reports/routes.ts';
 import { createReportService } from './features/reports/service.ts';
+import { createRoleRoutes } from './features/roles/routes.ts';
+import { createRoleService } from './features/roles/service.ts';
 import { createRunRoutes } from './features/runs/routes.ts';
 import { createRunService } from './features/runs/service.ts';
 import { createSubmissionRoutes } from './features/submissions/routes.ts';
 import { createSubmissionService } from './features/submissions/service.ts';
 import { createTaskRoutes } from './features/tasks/routes.ts';
 import { createTaskService } from './features/tasks/service.ts';
+import { createInvitationRoutes, createUserRoutes } from './features/users/routes.ts';
+import { createUserService } from './features/users/service.ts';
+import { type AgencyEnv, guardMethods, requireAgencyAccess } from './shared/access.ts';
 import { type AuthEnv, requireAuth } from './shared/auth.ts';
 import type { Announce } from './shared/live.ts';
 import { createSignInThrottle, type ThrottleStore } from './shared/throttle.ts';
@@ -89,8 +97,8 @@ export const createApp = ({
     const res = await auth.session(token);
     return res.ok ? res.value : null;
   };
-  const protect = (routes: Hono<AuthEnv>) =>
-    new Hono<AuthEnv>().use(requireAuth(authenticate)).route('/', routes);
+  const protect = <E extends AuthEnv>(routes: Hono<E>) =>
+    new Hono<E>().use(requireAuth(authenticate)).route('/', routes);
   const limitBody = bodyLimit({
     maxSize: config.HTTP_MAX_BODY_BYTES,
     onError: (c) => c.json({ error: 'Request body too large' }, 413)
@@ -116,45 +124,6 @@ export const createApp = ({
       clientIp
     })
   );
-  app.route('/api/graphs', protect(createGraphRoutes(createGraphService({ db, nodes }))));
-  app.route(
-    '/api/runs',
-    protect(
-      createRunRoutes(
-        createRunService({ db, boss, blobs, maxBytes: config.IMPORT_FILE_MAX_BYTES }),
-        config.IMPORT_FILE_MAX_BYTES
-      )
-    )
-  );
-  app.route('/api/tasks', protect(createTaskRoutes(createTaskService({ db, boss, announce }))));
-  app.route('/api/fees', protect(createFeeRoutes(createFeeService({ db }))));
-  app.route(
-    '/api/payers',
-    protect(createPayerRoutes(createPayerService({ db, announce, embedder })))
-  );
-  app.route('/api/patients', protect(createPatientRoutes(createPatientService({ db }))));
-  app.route(
-    '/api/notifications',
-    protect(createNotificationRoutes(createNotificationService({ db, announce })))
-  );
-  app.route(
-    '/api/billing-profile',
-    protect(createBillingProfileRoutes(createBillingProfileService({ db })))
-  );
-  app.route(
-    '/api/claims',
-    protect(
-      createClaimRoutes(createClaimService({ db, boss, blobs, announce, now: () => new Date() }))
-    )
-  );
-  app.route(
-    '/api/submissions',
-    protect(createSubmissionRoutes(createSubmissionService({ db, blobs, now: () => new Date() })))
-  );
-  app.route(
-    '/api/reports',
-    protect(createReportRoutes(createReportService({ db, now: () => new Date() })))
-  );
   const imports = createImportService({
     db,
     boss,
@@ -163,24 +132,92 @@ export const createApp = ({
     maxBytes: config.IMPORT_FILE_MAX_BYTES,
     sftp: sftpStorage(config)
   });
-  app.route('/api/imports/sftp', createSftpRoutes(imports, config.SFTP_HOOK_SECRET));
-  app.route('/api/imports', protect(createImportRoutes(imports, config.IMPORT_FILE_MAX_BYTES)));
-  app.route(
-    '/api/payer-files',
-    protect(
+  const agencies = createAgencyService({ db });
+  const users = createUserService({
+    db,
+    webUrl: config.WEB_URL,
+    now: () => new Date(),
+    endSessions: sessions.destroyAll
+  });
+  const read = <P extends Permission>(get: P) => ({ GET: get });
+  const agency = new Hono<AgencyEnv>()
+    .use(requireAgencyAccess(agencies.access))
+    .route('/access', createAgencyAccessRoutes())
+    .route('/roles', createRoleRoutes(createRoleService({ db })))
+    .route('/users', createUserRoutes(users))
+    .route('/invitations', createInvitationRoutes(users))
+    .use(
+      '/graphs/*',
+      guardMethods({
+        ...read('workflows:read'),
+        POST: 'workflows:update',
+        PUT: 'workflows:update',
+        DELETE: 'workflows:update'
+      })
+    )
+    .route('/graphs', createGraphRoutes(createGraphService({ db, nodes })))
+    .use('/runs/*', guardMethods({ ...read('runs:read'), POST: 'runs:create' }))
+    .route(
+      '/runs',
+      createRunRoutes(
+        createRunService({ db, boss, blobs, maxBytes: config.IMPORT_FILE_MAX_BYTES }),
+        config.IMPORT_FILE_MAX_BYTES
+      )
+    )
+    .use('/tasks/*', guardMethods({ ...read('tasks:read'), POST: 'tasks:update' }))
+    .route('/tasks', createTaskRoutes(createTaskService({ db, boss, announce })))
+    .use(
+      '/fees/*',
+      guardMethods({ ...read('fees:read'), PUT: 'fees:update', DELETE: 'fees:delete' })
+    )
+    .route('/fees', createFeeRoutes(createFeeService({ db })))
+    .use(
+      '/payers/*',
+      guardMethods({ ...read('payers:read'), PUT: 'payers:update', DELETE: 'payers:delete' })
+    )
+    .route('/payers', createPayerRoutes(createPayerService({ db, announce, embedder })))
+    .use('/patients/*', guardMethods(read('patients:read')))
+    .route('/patients', createPatientRoutes(createPatientService({ db })))
+    .use('/notifications/*', guardMethods({ GET: null, POST: null }))
+    .route('/notifications', createNotificationRoutes(createNotificationService({ db, announce })))
+    .use('/billing-profile/*', guardMethods({ ...read('settings:read'), PUT: 'settings:update' }))
+    .route('/billing-profile', createBillingProfileRoutes(createBillingProfileService({ db })))
+    .use(
+      '/claims/*',
+      guardMethods({ ...read('claims:read'), PUT: 'claims:update', POST: 'claims:update' })
+    )
+    .route(
+      '/claims',
+      createClaimRoutes(createClaimService({ db, boss, blobs, announce, now: () => new Date() }))
+    )
+    .use('/submissions/*', guardMethods({ ...read('claims:read'), POST: 'claims:update' }))
+    .route(
+      '/submissions',
+      createSubmissionRoutes(createSubmissionService({ db, blobs, now: () => new Date() }))
+    )
+    .use('/reports/*', guardMethods(read('reports:read')))
+    .route('/reports', createReportRoutes(createReportService({ db, now: () => new Date() })))
+    .use('/imports/*', guardMethods({ ...read('imports:read'), POST: 'imports:create' }))
+    .route('/imports', createImportRoutes(imports, config.IMPORT_FILE_MAX_BYTES))
+    .use(
+      '/payer-files/*',
+      guardMethods({ ...read('payer_files:read'), POST: 'payer_files:create' })
+    )
+    .route(
+      '/payer-files',
       createPayerFileRoutes(
         createPayerFileService({
           db,
           boss,
           blobs,
-          announce,
-          now: () => new Date(),
           maxBytes: config.IMPORT_FILE_MAX_BYTES
         }),
         config.IMPORT_FILE_MAX_BYTES
       )
-    )
-  );
+    );
+  app.route('/api/imports/sftp', createSftpRoutes(imports, config.SFTP_HOOK_SECRET));
+  app.route('/api/agencies', protect(createAgencyListRoutes(agencies)));
+  app.route('/api/agencies/:agencyId', protect(agency));
 
   return app;
 };

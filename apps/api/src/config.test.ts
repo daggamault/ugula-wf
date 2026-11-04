@@ -6,6 +6,7 @@ const rawEnv = {
   NODE_ENV: 'test',
   API_PORT: '3001',
   SSE_URL: 'http://localhost:3002',
+  WEB_URL: 'http://localhost:3000',
   HTTP_CORS_ORIGINS: 'http://localhost:3000',
   HTTP_MAX_BODY_BYTES: '1000000',
   DB_HOST: 'localhost',
@@ -36,9 +37,11 @@ describe('api parseConfig', () => {
     assert.equal(config.HTTP_MAX_BODY_BYTES, 1_000_000);
     assert.equal(config.DB_PORT, 5432);
     assert.equal(config.REDIS_PORT, 6379);
+    assert.equal(config.WEB_URL, 'http://localhost:3000');
     assert.throws(() => parseConfig({}));
     assert.throws(() => parseConfig({ ...rawEnv, SFTP_HOOK_SECRET: 'short' }));
     assert.throws(() => parseConfig({ ...rawEnv, API_PORT: 'http' }));
     assert.throws(() => parseConfig({ ...rawEnv, SSE_URL: 'not a url' }));
+    assert.throws(() => parseConfig({ ...rawEnv, WEB_URL: undefined }));
   });
 });

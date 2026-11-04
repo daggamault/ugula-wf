@@ -36,6 +36,7 @@ const openEventSource = (url: string): EventStream => {
 const RETRY_MS = [1_000, 5_000, 15_000, 30_000];
 
 type LiveOptions = {
+  agencyId?: string;
   open?: (url: string) => EventStream;
   schedule?: (run: () => void, ms: number) => () => void;
 };
@@ -47,8 +48,9 @@ const after = (run: () => void, ms: number) => {
 
 export const createLive = (
   sseUrl: string,
-  { open = openEventSource, schedule = after }: LiveOptions = {}
+  { agencyId, open = openEventSource, schedule = after }: LiveOptions = {}
 ): Live => {
+  const url = `${sseUrl}/events${agencyId ? `?agency=${encodeURIComponent(agencyId)}` : ''}`;
   const listeners = new Set<LiveListener>();
   const watchers = new Set<() => void>();
   let source: EventStream | null = null;
@@ -65,7 +67,7 @@ export const createLive = (
 
   const connect = () => {
     if (source) return;
-    const stream = open(`${sseUrl}/events`);
+    const stream = open(url);
     source = stream;
     stream.listen({
       onData: (data) => {

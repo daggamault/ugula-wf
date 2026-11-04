@@ -38,14 +38,16 @@ const removeLeftovers = async () => {
     `/api/fees?q=${feeCode}`
   );
   for (const f of fees.items.filter((x) => x.code === feeCode && x.payer === null)) {
-    await s.page.request.delete(`${s.apiUrl}/api/fees/${f.id}`, { headers });
+    await s.page.request.delete(`${s.apiUrl}/api/agencies/${s.agencyId}/fees/${f.id}`, { headers });
   }
   const payers = await api<{ items: { id: string; name: string }[] }>(
     s,
     `/api/payers?q=${encodeURIComponent(payerName)}`
   );
   for (const p of payers.items.filter((x) => x.name === payerName)) {
-    await s.page.request.delete(`${s.apiUrl}/api/payers/${p.id}`, { headers });
+    await s.page.request.delete(`${s.apiUrl}/api/agencies/${s.agencyId}/payers/${p.id}`, {
+      headers
+    });
   }
 };
 
@@ -195,8 +197,7 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     const page = s.page;
     const era = remittance835(UNKNOWN_CLAIM, 10_000, 6_000);
     const eraName = `${uniqueId('E2E-UNKNOWN')}.835`;
-    assert.match(await uploadPayerFile(page, eraName, era), /applied$/);
-    await toasts(page).getByText('1 of 1 lines need a biller.').first().waitFor();
+    assert.match(await uploadPayerFile(page, eraName, era), /received$/);
     await go(page, '/payer-files');
     await fileRow(page, eraName).getByText('1 of 1 needs you').waitFor();
     await fileRow(page, eraName)
@@ -228,7 +229,7 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     const ackName = `${uniqueId('E2E-UNKNOWN')}.999`;
     assert.match(
       await uploadPayerFile(page, ackName, batchAcknowledgment999(987_654_321, true)),
-      /applied$/
+      /received$/
     );
     await go(page, '/payer-files');
     await fileRow(page, ackName)

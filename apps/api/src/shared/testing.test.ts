@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { Hono } from 'hono';
-import type { AuthEnv } from './auth.ts';
+import type { AgencyEnv } from './access.ts';
 import { memoryRedis, testSessions, withSession } from './testing.ts';
 
 describe('testSessions', () => {
@@ -13,8 +13,12 @@ describe('testSessions', () => {
 describe('withSession', () => {
   it('sends requests as the test user', async () => {
     const request = withSession(
-      new Hono<AuthEnv>().post('/', async (c) =>
-        c.json({ ...c.get('session'), body: await c.req.json() })
+      new Hono<AgencyEnv>().post('/', async (c) =>
+        c.json({
+          ...c.get('session'),
+          agencyId: c.get('access').agencyId,
+          body: await c.req.json()
+        })
       )
     );
     const res = await request('/', { method: 'POST', body: '{"a":1}' });

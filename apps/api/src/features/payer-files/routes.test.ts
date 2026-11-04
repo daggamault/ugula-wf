@@ -23,8 +23,8 @@ const service = {
     calls.push(['download', ...args]);
     return ok({ name: 'era 1.835', bytes: new TextEncoder().encode('ISA*') });
   },
-  upload: async (agencyId: string, userId: string, file: { name: string; bytes: Uint8Array }) => {
-    calls.push(['upload', agencyId, userId, file.name, file.bytes.byteLength]);
+  upload: async (agencyId: string, file: { name: string; bytes: Uint8Array }) => {
+    calls.push(['upload', agencyId, file.name, file.bytes.byteLength]);
     return ok({ id: ID, kind: '835', items: 1, problems: 0 });
   }
 } as unknown as PayerFileService;
@@ -52,7 +52,7 @@ describe('payer file routes', () => {
     const body = new FormData();
     body.append('file', new File(['ISA*00'], 'era.835'));
     assert.equal((await request('/', { method: 'POST', body })).status, 201);
-    assert.deepEqual(calls.at(-1), ['upload', 't-1', 'u-1', 'era.835', 6]);
+    assert.deepEqual(calls.at(-1), ['upload', 't-1', 'era.835', 6]);
     const missing = new FormData();
     assert.equal((await request('/', { method: 'POST', body: missing })).status, 400);
     const large = new FormData();
@@ -60,7 +60,7 @@ describe('payer file routes', () => {
     const refused = await request('/', { method: 'POST', body: large });
     assert.equal(refused.status, 413);
     assert.deepEqual(await refused.json(), { error: 'File too large' });
-    assert.deepEqual(calls.at(-1), ['upload', 't-1', 'u-1', 'era.835', 6]);
+    assert.deepEqual(calls.at(-1), ['upload', 't-1', 'era.835', 6]);
   });
 
   it('maps missing files and refused uploads to their statuses', async () => {
