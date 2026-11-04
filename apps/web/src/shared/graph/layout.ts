@@ -1,6 +1,6 @@
 import { type Edge, ENTRY_TYPE, type GraphDef, type Signature } from '@ugula/graph';
 
-export type Point = { x: number; y: number };
+type Point = { x: number; y: number };
 
 export type Shape = {
   top: number;

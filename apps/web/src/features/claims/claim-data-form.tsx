@@ -41,12 +41,12 @@ export const ORIGIN_OPTIONS = [NOT_SET, ...MODIFIER_OPTIONS.filter((o) => o.valu
 
 export const DESTINATION_OPTIONS = [NOT_SET, ...MODIFIER_OPTIONS];
 
-export const SIGNATURE_OPTIONS = SIGNATURE_STATUSES.map((value) => ({
+const SIGNATURE_OPTIONS = SIGNATURE_STATUSES.map((value) => ({
   value,
   label: SIGNATURE_LABELS[value]
 }));
 
-export const TRANSPORT_REASON_OPTIONS = [
+const TRANSPORT_REASON_OPTIONS = [
   NOT_SET,
   ...Object.entries(TRANSPORT_REASONS).map(([value, label]) => ({
     value,

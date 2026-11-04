@@ -4,17 +4,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import type { PayerFilesClient } from './client.ts';
-import { PayerFilesPage, PayerFilesTable, UploadPayerFilesButton } from './payer-files-page.tsx';
+import { PayerFilesPage, PayerFilesTable } from './payer-files-page.tsx';
 
 describe('payer files page', () => {
-  it('uploads several files at once from a button', () => {
-    const html = renderToStaticMarkup(
-      createElement(UploadPayerFilesButton, { busy: false, onFiles: () => undefined })
-    );
-    assert.ok(html.includes('Upload Payer Files') && html.includes('type="file"'));
-    assert.ok(html.includes('multiple'));
-  });
-
   it('lists each file with its kind, lines and outcome', () => {
     const html = renderToStaticMarkup(
       createElement(PayerFilesTable, {
@@ -42,14 +34,7 @@ describe('payer files page', () => {
     const client = { list: () => new Promise(() => undefined) } as unknown as PayerFilesClient;
     const html = renderToStaticMarkup(createElement(PayerFilesPage, { client, live: idleLive }));
     assert.ok(html.includes('Payer Files') && html.includes('clearinghouse'));
-  });
-});
-
-describe('UploadPayerFilesButton', () => {
-  it('shows progress and blocks new picks while uploading', () => {
-    const html = renderToStaticMarkup(
-      createElement(UploadPayerFilesButton, { busy: true, onFiles: () => undefined })
-    );
-    assert.ok(html.includes('aria-busy="true"') && html.includes('disabled=""'));
+    assert.ok(html.includes('Upload Payer Files') && html.includes('type="file"'));
+    assert.ok(html.includes('multiple'));
   });
 });

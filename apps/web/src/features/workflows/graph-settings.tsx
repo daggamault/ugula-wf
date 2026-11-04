@@ -7,13 +7,13 @@ import {
   type ValueType,
   type VariableDef
 } from '@ugula/graph';
-import { PlusIcon, Trash2Icon, XIcon } from 'lucide-react';
+import { PlusIcon, XIcon } from 'lucide-react';
 import { type ReactNode, useId, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { withSignature } from '../../shared/graph/flow.ts';
 import { Button } from '../../shared/ui/button.tsx';
 import { FieldGrid } from '../../shared/ui/field.tsx';
-import { IconButton } from '../../shared/ui/icon-button.tsx';
+import { IconButton, RemoveButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
@@ -43,16 +43,6 @@ const AddButton = ({ children, onClick }: { children: ReactNode; onClick: () => 
       {children}
     </Button>
   </div>
-);
-
-const RemoveButton = ({ name, onClick }: { name: string; onClick: () => void }) => (
-  <IconButton
-    label={`Remove ${name}`}
-    tooltip="Remove"
-    icon={Trash2Icon}
-    intent="danger"
-    onClick={onClick}
-  />
 );
 
 const TypeInput = ({
@@ -122,7 +112,10 @@ const PinsEditor = ({
             onType={(type) => patch(i, { type })}
           />
           {editable ? (
-            <RemoveButton name={pin.name} onClick={() => onPins(pins.filter((_, j) => j !== i))} />
+            <RemoveButton
+              label={`Remove ${pin.name}`}
+              onClick={() => onPins(pins.filter((_, j) => j !== i))}
+            />
           ) : null}
         </div>
       ))}
@@ -175,7 +168,7 @@ const VariablesEditor = ({
             />
             {editable ? (
               <RemoveButton
-                name={variable.name}
+                label={`Remove ${variable.name}`}
                 onClick={() => onVariables(variables.filter((_, j) => j !== i))}
               />
             ) : null}

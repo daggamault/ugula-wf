@@ -1,10 +1,9 @@
-import { FileUpIcon } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { formatDateTime } from '../../shared/format.ts';
 import { LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
-import { Button } from '../../shared/ui/button.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
+import { FileButton } from '../../shared/ui/file-button.tsx';
 import { OpenLink } from '../../shared/ui/icon-button.tsx';
 import { Page } from '../../shared/ui/page.tsx';
 import { Search } from '../../shared/ui/search.tsx';
@@ -16,39 +15,10 @@ import { fileStatus, kindOf, useUploadPayerFiles } from './payer-files.ts';
 
 const PATH = '/payer-files';
 
-export const PAYER_FILE_TABLE = {
+const PAYER_FILE_TABLE = {
   sorts: { received: 'desc', name: 'asc', kind: 'asc', problems: 'desc' },
   sort: 'received'
 } as const;
-
-export const UploadPayerFilesButton = ({
-  busy,
-  onFiles
-}: {
-  busy: boolean;
-  onFiles: (files: File[]) => void;
-}) => {
-  const input = useRef<HTMLInputElement>(null);
-  return (
-    <>
-      <Button isPending={busy} onClick={() => input.current?.click()}>
-        <FileUpIcon aria-hidden="true" className="size-4" />
-        Upload Payer Files
-      </Button>
-      <input
-        ref={input}
-        type="file"
-        multiple
-        hidden
-        disabled={busy}
-        onChange={(e) => {
-          onFiles([...(e.target.files ?? [])]);
-          e.target.value = '';
-        }}
-      />
-    </>
-  );
-};
 
 export const PayerFilesTable = ({
   files,
@@ -122,7 +92,13 @@ export const PayerFilesPage = ({ client, live }: { client: PayerFilesClient; liv
     <Page
       title="Payer Files"
       description="Remittances (835), acknowledgments (999 and 277CA) and eligibility responses (271) from your clearinghouse, applied to their claims."
-      actions={<UploadPayerFilesButton busy={busy} onFiles={(picked) => void choose(picked)} />}
+      actions={
+        <FileButton
+          label="Upload Payer Files"
+          busy={busy}
+          onFiles={(picked) => void choose(picked)}
+        />
+      }
     >
       <Search
         label="Payer Files"

@@ -35,7 +35,7 @@ const nodeTypes = { graph: GraphNode };
 
 export const OPENING_WIDTH = 1800;
 
-export const DOUBLE_CLICK_MS = 300;
+const DOUBLE_CLICK_MS = 300;
 
 type Timer = ReturnType<typeof setTimeout>;
 

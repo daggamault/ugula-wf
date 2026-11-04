@@ -119,6 +119,25 @@ export const DeleteButton = ({ name, onClick }: { name: string; onClick: () => v
   />
 );
 
+export const RemoveButton = ({
+  label,
+  disabledReason,
+  onClick
+}: {
+  label: string;
+  disabledReason?: string | undefined;
+  onClick: () => void;
+}) => (
+  <IconButton
+    label={label}
+    tooltip="Remove"
+    icon={Trash2Icon}
+    intent="danger"
+    disabledReason={disabledReason}
+    onClick={onClick}
+  />
+);
+
 export const RowActions = ({ children }: { children: ReactNode }) => (
   <span className="flex items-center justify-end gap-1">{children}</span>
 );

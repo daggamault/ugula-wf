@@ -1,9 +1,9 @@
 import { type ConditionOp, deepEqual, type Json } from '@ugula/graph';
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { ArrowDownIcon, ArrowUpIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { pinLabel } from '../../shared/graph/pins.ts';
 import { Button } from '../../shared/ui/button.tsx';
-import { IconButton } from '../../shared/ui/icon-button.tsx';
+import { IconButton, RemoveButton } from '../../shared/ui/icon-button.tsx';
 import { Input, type InputProps } from '../../shared/ui/input.tsx';
 import { Section } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
@@ -37,10 +37,6 @@ type TableEditorProps = {
   editable: boolean;
   onConfig: (config: Json) => void;
 };
-
-const RemoveButton = ({ label, onClick }: { label: string; onClick: () => void }) => (
-  <IconButton label={label} tooltip="Remove" icon={Trash2Icon} intent="danger" onClick={onClick} />
-);
 
 const ColumnName = ({
   id,

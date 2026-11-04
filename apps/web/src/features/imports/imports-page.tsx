@@ -1,7 +1,6 @@
-import { FileUpIcon } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
-import { Button } from '../../shared/ui/button.tsx';
+import { FileButton } from '../../shared/ui/file-button.tsx';
 import { Page } from '../../shared/ui/page.tsx';
 import { Search } from '../../shared/ui/search.tsx';
 import { useSearchState } from '../../shared/url-state.ts';
@@ -16,36 +15,6 @@ type ImportsPageProps = {
 };
 
 const PATH = '/imports';
-
-export const ImportButton = ({
-  busy,
-  onFiles
-}: {
-  busy: boolean;
-  onFiles: (files: File[]) => void;
-}) => {
-  const input = useRef<HTMLInputElement>(null);
-  return (
-    <>
-      <Button isPending={busy} onClick={() => input.current?.click()}>
-        <FileUpIcon aria-hidden="true" className="size-4" />
-        Import Files
-      </Button>
-      <input
-        ref={input}
-        type="file"
-        multiple
-        hidden
-        disabled={busy}
-        accept=".xml,application/xml,text/xml"
-        onChange={(e) => {
-          onFiles([...(e.target.files ?? [])]);
-          e.target.value = '';
-        }}
-      />
-    </>
-  );
-};
 
 export const ImportsPage = ({ client, live }: ImportsPageProps) => {
   const search = useSearchState(PATH, IMPORT_TABLE);
@@ -86,7 +55,14 @@ export const ImportsPage = ({ client, live }: ImportsPageProps) => {
     <Page
       title="Imports"
       description="NEMSIS XML from your ePCR system, dropped anywhere in the app or sent to your SFTP folder."
-      actions={<ImportButton busy={busy} onFiles={(files) => void choose(files)} />}
+      actions={
+        <FileButton
+          label="Import Files"
+          accept=".xml,application/xml,text/xml"
+          busy={busy}
+          onFiles={(files) => void choose(files)}
+        />
+      }
     >
       <Search
         label="Imports"

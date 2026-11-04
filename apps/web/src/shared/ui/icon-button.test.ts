@@ -9,6 +9,7 @@ import {
   IconButton,
   IconLink,
   OpenLink,
+  RemoveButton,
   RowActions,
   WorkLink
 } from './icon-button.tsx';
@@ -48,6 +49,24 @@ describe('IconLink', () => {
     assert.ok(html.includes('href="/runs"'));
     assert.ok(html.includes('aria-label="Back to Runs"'));
     assert.ok(html.includes('cursor-pointer') && html.includes('>Back to Runs</span>'));
+  });
+});
+
+describe('RemoveButton', () => {
+  it('names what it removes under a Remove tooltip and can be blocked', () => {
+    const html = renderToStaticMarkup(
+      createElement(RemoveButton, { label: 'Remove Medicare', onClick: () => undefined })
+    );
+    assert.ok(html.includes('aria-label="Remove Medicare"') && html.includes('>Remove</span>'));
+    assert.ok(html.includes('lucide-trash') && html.includes('hover:text-danger'));
+    const blocked = renderToStaticMarkup(
+      createElement(RemoveButton, {
+        label: 'Remove Medicare',
+        disabledReason: 'Closed.',
+        onClick: () => undefined
+      })
+    );
+    assert.ok(blocked.includes('aria-disabled="true"') && blocked.includes('>Closed.</span>'));
   });
 });
 

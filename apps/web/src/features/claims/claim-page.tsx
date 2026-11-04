@@ -21,7 +21,6 @@ import {
   PlusIcon,
   RotateCcwIcon,
   SaveIcon,
-  Trash2Icon,
   UserIcon
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
@@ -49,7 +48,7 @@ import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { FieldGrid, FieldGroup, FormActions } from '../../shared/ui/field.tsx';
-import { IconButton } from '../../shared/ui/icon-button.tsx';
+import { IconButton, RemoveButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
 import { interactiveClasses } from '../../shared/ui/interactive.ts';
@@ -120,7 +119,10 @@ export const lockedReason = (status: ClaimDetail['status']) =>
       ? 'This claim is still a draft. Finish its PCR tasks first.'
       : undefined;
 
-const fileLinkClasses = `inline-flex items-center gap-2 whitespace-nowrap ${textLinkClasses}`;
+const fileLinkClasses = classNamesOf(
+  textLinkClasses,
+  'inline-flex items-center gap-2 whitespace-nowrap'
+);
 
 export const ClaimFiles = ({
   claim,
@@ -570,11 +572,8 @@ const PayersEditor = ({
                     disabledReason={locked ?? (i === list.length - 1 ? 'Already last.' : undefined)}
                     onClick={() => setList(moveItem(list, i, i + 1))}
                   />
-                  <IconButton
+                  <RemoveButton
                     label={`Remove ${p}`}
-                    tooltip="Remove"
-                    icon={Trash2Icon}
-                    intent="danger"
                     disabledReason={locked}
                     onClick={() => setList(removeEntry(list, id))}
                   />
@@ -709,11 +708,8 @@ const ReasonCodes = ({
                 />
               </div>
               <span className="flex h-10 items-center pointer-coarse:h-11">
-                <IconButton
+                <RemoveButton
                   label={`Remove reason code ${i + 1}`}
-                  tooltip="Remove"
-                  icon={Trash2Icon}
-                  intent="danger"
                   onClick={() => onChange(rows.filter((x) => x.id !== r.id))}
                 />
               </span>

@@ -192,11 +192,11 @@ export const freeName = (taken: readonly string[], base: string) => {
   return `${base}${i}`;
 };
 
-export const moveRule = (rules: readonly Rule[], index: number, by: -1 | 1): Rule[] => {
-  const to = index + by;
+export const moveRule = (rules: readonly Rule[], i: number, by: -1 | 1): Rule[] => {
+  const to = i + by;
   if (to < 0 || to >= rules.length) return [...rules];
   const next = [...rules];
-  const [rule] = next.splice(index, 1);
+  const [rule] = next.splice(i, 1);
   if (rule) next.splice(to, 0, rule);
   return next;
 };

@@ -1,5 +1,6 @@
 import type { InputBinding, PinSpec } from '@ugula/graph';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
+import { classNamesOf } from '../class-names.ts';
 import { labelFromName } from '../format.ts';
 import type { GraphFlowNode, NodeStatus } from './flow.ts';
 import { describeType, pinLabel, toneOf } from './pins.ts';
@@ -41,14 +42,21 @@ const PinRow = ({
   binding?: string | null;
 }) => (
   <li
-    className={`text-surface-fg-muted relative flex min-h-6 items-center gap-2 text-xs ${side === 'in' ? 'pr-2 pl-4' : 'justify-end pr-4 pl-2'}`}
+    className={classNamesOf(
+      'text-surface-fg-muted relative flex min-h-6 items-center gap-2 text-xs',
+      side === 'in' ? 'pr-2 pl-4' : 'justify-end pr-4 pl-2'
+    )}
     title={pin.spec ? `${pin.label}: ${describeType(pin.spec.type)}` : 'Execution flow'}
   >
     <Handle
       type={side === 'in' ? 'target' : 'source'}
       position={side === 'in' ? Position.Left : Position.Right}
       id={pin.name}
-      className={`${handleBase} ${pin.exec ? execShape : 'rounded-full!'} ${toneOf(pin.exec ? 'exec' : (pin.spec?.type ?? 'any')).dot}`}
+      className={classNamesOf(
+        handleBase,
+        pin.exec ? execShape : 'rounded-full!',
+        toneOf(pin.exec ? 'exec' : (pin.spec?.type ?? 'any')).dot
+      )}
     />
     <span className="truncate">{pin.label}</span>
     {binding ? (
@@ -66,7 +74,11 @@ export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
   return (
     <article
       aria-label={title}
-      className={`bg-surface text-surface-fg w-60 cursor-pointer rounded-xl border-2 text-left transition-shadow ${statusClasses[status]} ${selected ? 'ring-primary ring-2' : ''}`}
+      className={classNamesOf(
+        'bg-surface text-surface-fg w-60 cursor-pointer rounded-xl border-2 text-left transition duration-150 ease-out',
+        statusClasses[status],
+        selected && 'ring-primary ring-2'
+      )}
     >
       <header className="border-border flex flex-col gap-0.5 border-b px-3 py-1.5">
         <span className="flex items-center justify-between gap-3">

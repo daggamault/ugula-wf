@@ -56,7 +56,7 @@ const signatureById = (def: GraphDef, catalog: Catalog, id: string) => {
   return inst ? catalog.signatureOf(inst, def) : null;
 };
 
-export const arrange = (def: GraphDef, catalog: Catalog) =>
+const arrange = (def: GraphDef, catalog: Catalog) =>
   layout(
     def,
     new Map(
