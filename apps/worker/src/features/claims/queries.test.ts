@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { ClaimPatch, DraftClaim, NewClaim } from '@ugula/billing';
+import type { ClaimPatch, Clearinghouse, DraftClaim, NewClaim } from '@ugula/billing';
 import { COMPLETE_DOCUMENTATION, sampleSubmitter } from '@ugula/billing/testing';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { RunJob, RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
-import type { Clearinghouse } from '../../shared/clearinghouse.ts';
 import { createClaimStore as createStore, statementKey } from './queries.ts';
 
 const stored: { key: string; size: number; type: string }[] = [];
@@ -780,25 +779,23 @@ describe('createClaimStore', () => {
   it('uploads a filed 837P to the clearinghouse once, or leaves it to the biller without one', async () => {
     const BATCH = '0195f2a4-0000-7000-8000-0000000000b1';
     const uploads: [string, string][] = [];
-    const clearinghouse: Clearinghouse = {
-      config: {
-        host: 'localhost',
-        port: 22,
-        username: 'u',
-        password: 'p',
-        uploadPath: '/inbound',
-        downloadPaths: [],
-        fileExtension: '.CLP',
-        afterDownload: 'keep',
-        pollMinutes: 1
-      },
-      upload: async (name, bytes) => {
-        uploads.push([name, new TextDecoder().decode(bytes)]);
-        return `/inbound/${name}`;
-      },
-      list: async () => [],
-      download: async () => new Uint8Array(),
-      remove: async () => undefined
+    const agencies: string[] = [];
+    const clearinghouse = async (agencyId: string): Promise<Clearinghouse> => {
+      agencies.push(agencyId);
+      return {
+        submitClaims: async (name, bytes) => {
+          uploads.push([`${name}.CLP`, new TextDecoder().decode(bytes)]);
+          return `${name}.CLP`;
+        },
+        submitEligibility: async (name) => name,
+        submitClaimStatus: async (name) => name,
+        checkEligibility: null,
+        checkClaimStatus: null,
+        pollResponses: async () => [],
+        download: async () => new Uint8Array(),
+        remove: async () => undefined,
+        afterDownload: 'keep'
+      };
     };
     const files = {
       ...blobs,
@@ -818,6 +815,7 @@ describe('createClaimStore', () => {
       sentAs: '837P-000000007-0195f2a4.CLP'
     });
     assert.deepEqual(uploads, [['837P-000000007-0195f2a4.CLP', 'file:b/7.txt']]);
+    assert.deepEqual(agencies, ['t-1']);
     const lookup = fresh.queries.find((q) => q.sql.includes('from "claim_batches"'));
     assert.deepEqual(lookup?.parameters, ['t-1', 7, ID]);
     assert.ok(lookup?.sql.includes('exists (select "e"."id" from "claim_events" as "e"'));
@@ -838,8 +836,8 @@ describe('createClaimStore', () => {
       () => createStore(none.db, files, boss, clearinghouse).sendClaimFile('r1', ID, 8),
       /No 837P file #8/
     );
-    const offline = createRecordingDb();
-    assert.equal(await createClaimStore(offline.db, blobs).sendClaimFile('r1', ID, 7), 'manual');
-    assert.equal(offline.queries.length, 0);
+    const offline = sending(null);
+    assert.equal(await createStore(offline.db, files, boss).sendClaimFile('r1', ID, 7), 'manual');
+    assert.equal(sqlOf(offline.queries, 'update').length, 0);
   });
 });

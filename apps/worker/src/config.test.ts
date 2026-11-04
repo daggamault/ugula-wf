@@ -60,7 +60,9 @@ describe('worker parseConfig', () => {
         CLEARINGHOUSE_SFTP_USERNAME: 'agency',
         CLEARINGHOUSE_SFTP_PASSWORD: 'secret',
         CLEARINGHOUSE_DOWNLOAD_PATHS: '/outbound/999, /outbound/835',
-        CLEARINGHOUSE_FILE_EXTENSION: '.CLP'
+        CLEARINGHOUSE_FILE_EXTENSION: '.CLP',
+        CLEARINGHOUSE_ELIGIBILITY_EXTENSION: '.ELG',
+        CLEARINGHOUSE_REALTIME_URL: 'http://localhost:2224/core/realtime'
       })
     );
     assert.deepEqual(on, {
@@ -70,10 +72,17 @@ describe('worker parseConfig', () => {
       password: 'secret',
       uploadPath: '/',
       downloadPaths: ['/outbound/999', '/outbound/835'],
-      fileExtension: '.CLP',
+      extensions: { claims: '.CLP', eligibility: '.ELG', claimStatus: '.txt' },
       afterDownload: 'delete',
-      pollMinutes: 1
+      realtimeUrl: 'http://localhost:2224/core/realtime'
     });
+    const config = parseConfig(rawEnv);
+    assert.deepEqual(
+      [config.CLEARINGHOUSE_POLL_MINUTES, config.CLEARINGHOUSE_REALTIME_TIMEOUT_SECONDS],
+      [1, 30]
+    );
+    assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_REALTIME_URL: 'nope' }));
+    assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_SECRET_KEY: 'short' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_SFTP_HOST: 'sftp.example.com' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_DOWNLOAD_PATHS: 'outbound' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_FILE_EXTENSION: 'xtxt' }));

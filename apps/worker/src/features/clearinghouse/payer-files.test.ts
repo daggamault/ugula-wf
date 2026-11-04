@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { build999 } from '@ugula/billing/mock';
+import { buildTA1 } from '@ugula/billing/mock-waystar';
 import { createRecordingDb, type RowsFor } from '@ugula/db/testing';
 import type { LiveEvent } from '@ugula/live';
 import type { RunQueueClient } from '@ugula/run-queue';
@@ -55,6 +56,7 @@ describe('createPayerFileStore', () => {
       status: 'applied',
       fileId: 'f1',
       kind: '999',
+      envelopeRejection: null,
       reviews: [
         { reference: '1001', claimId: 'c1', outcome: 'rejected', message },
         { reference: '1001', claimId: 'c1', outcome: 'rejected', message },
@@ -80,6 +82,7 @@ describe('createPayerFileStore', () => {
       status: 'applied',
       fileId: 'f1',
       kind: '999',
+      envelopeRejection: null,
       reviews: []
     });
     assert.equal(announced.length, 2);
@@ -110,6 +113,23 @@ describe('createPayerFileStore', () => {
     const unread = await text.store.apply('r1', 'k', { document, fileName: 'a.txt' });
     assert.equal(unread.status, 'unreadable');
     assert.equal(text.queries.length, 1);
+  });
+
+  it('passes on why a TA1 rejected the envelope, for whoever sets up the clearinghouse', async () => {
+    const ta1 = buildTA1(
+      { sender: 'SUB01', receiver: 'X', controlNumber: '7', production: false },
+      '008',
+      new Date('2026-11-03T12:00:00Z')
+    );
+    const { store, queries } = storeFor(ta1, rowsFor(false));
+    const applied = await store.applyDocument('r1', document, 'a.TA1');
+    assert.equal(applied.status, 'applied');
+    assert.equal(applied.status === 'applied' && applied.kind, 'TA1');
+    assert.match(
+      applied.status === 'applied' ? (applied.envelopeRejection ?? '') : '',
+      /^The clearinghouse rejected the file envelope: interchange 7: Invalid interchange receiver ID/
+    );
+    assert.ok(queries.some((q) => q.sql.startsWith('update "claim_batches" set "rejected_at"')));
   });
 
   it('refuses files for unknown runs', async () => {

@@ -1,4 +1,5 @@
 import { createNodeCatalog } from '@ugula/catalog';
+import { parseSecretKey } from '@ugula/clearinghouse';
 import { createDb, findDefinitions, findTableDefinitions } from '@ugula/db';
 import { createCompleter, createCompletionLimiter, createEmbedder } from '@ugula/inference';
 import { publishLiveEvent } from '@ugula/live';
@@ -9,6 +10,7 @@ import { type Config, clearinghouseOf, parseConfig } from './config.ts';
 import { createFeeStore } from './features/charges/queries.ts';
 import { announceClaims } from './features/claims/announce.ts';
 import { createClaimStore } from './features/claims/queries.ts';
+import { createExchangeStore } from './features/clearinghouse/exchange.ts';
 import { registerPollJob } from './features/clearinghouse/job.ts';
 import { createPayerFileStore } from './features/clearinghouse/payer-files.ts';
 import { createClearinghousePoll } from './features/clearinghouse/poll.ts';
@@ -21,7 +23,7 @@ import { createEngineCache } from './features/workflows/engines.ts';
 import { registerWorkflowJobs } from './features/workflows/job.ts';
 import { createRunStore } from './features/workflows/queries.ts';
 import { createRunner } from './features/workflows/runner.ts';
-import { createClearinghouse } from './shared/clearinghouse.ts';
+import { createConnections } from './shared/clearinghouse.ts';
 import { coalescePublish, createAnnouncer, type Publish } from './shared/live.ts';
 import {
   createLoadGate,
@@ -94,8 +96,16 @@ if (import.meta.main) {
   const agencyOf = createAgencyOf(db, scope.agencyOf);
   const announce = createAnnouncer(agencyOf, publish);
   const guardedFetch = scope.fetch(fetch);
-  const exchange = clearinghouseOf(config);
-  const clearinghouse = exchange ? createClearinghouse(exchange) : null;
+  const report = (message: string) => process.stderr.write(`${message}\n`);
+  const connections = createConnections({
+    db,
+    key: config.CLEARINGHOUSE_SECRET_KEY ? parseSecretKey(config.CLEARINGHOUSE_SECRET_KEY) : null,
+    fallback: clearinghouseOf(config),
+    fetch: guardedFetch,
+    realtimeTimeoutMs: config.CLEARINGHOUSE_REALTIME_TIMEOUT_SECONDS * 1000,
+    report
+  });
+  const payerFiles = createPayerFileStore(db, blobs, boss, announce);
   const runner = createRunner({
     store,
     engines: createEngineCache({
@@ -112,9 +122,17 @@ if (import.meta.main) {
           ),
           fees: scope.guard(createFeeStore(db)),
           claims: scope.guard(
-            announceClaims(createClaimStore(db, blobs, boss, clearinghouse), announce)
+            announceClaims(createClaimStore(db, blobs, boss, connections.forAgency), announce)
           ),
-          payerFiles: scope.guard(createPayerFileStore(db, blobs, boss, announce)),
+          payerFiles: scope.guard(payerFiles),
+          exchange: scope.guard(
+            createExchangeStore({
+              db,
+              blobs,
+              applyDocument: payerFiles.applyDocument,
+              clearinghouseFor: connections.forAgency
+            })
+          ),
           completer: createCompleter({
             url: config.COMPLETIONS_URL,
             model: config.COMPLETIONS_MODEL,
@@ -131,7 +149,6 @@ if (import.meta.main) {
     within: scope.within
   });
   await registerHealthJob(boss);
-  const report = (message: string) => process.stderr.write(`${message}\n`);
   const jobs = await registerWorkflowJobs({
     boss,
     runner,
@@ -146,18 +163,12 @@ if (import.meta.main) {
     }),
     report
   });
-  if (clearinghouse) {
-    await registerPollJob({
-      boss,
-      poll: createClearinghousePoll({ db, boss, blobs, clearinghouse, report }),
-      pollMinutes: clearinghouse.config.pollMinutes,
-      report
-    });
-  } else {
-    report(
-      'Clearinghouse: no CLEARINGHOUSE_SFTP_HOST, so 837P files are left for billers to upload'
-    );
-  }
+  await registerPollJob({
+    boss,
+    poll: createClearinghousePoll({ db, boss, blobs, targets: connections.pollTargets, report }),
+    pollMinutes: config.CLEARINGHOUSE_POLL_MINUTES,
+    report
+  });
   let stopping = false;
   const shutdown = (signal: NodeJS.Signals) => {
     if (stopping) return;

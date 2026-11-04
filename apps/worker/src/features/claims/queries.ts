@@ -4,9 +4,11 @@ import {
   CLOSED_CLAIM_STATUSES,
   type ClaimStatus,
   type ClaimStore,
+  type Clearinghouse,
   claimSignalKey,
   DIAGNOSIS_LIMIT,
   type DraftClaim,
+  exchangeFileName,
   isClosedStatus,
   type NewClaim
 } from '@ugula/billing';
@@ -32,7 +34,6 @@ import {
 import { cancel, enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
 import type { BlobRef, BlobStore } from '@ugula/storage';
 import { sql } from 'kysely';
-import { type Clearinghouse, claimFileName } from '../../shared/clearinghouse.ts';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
 
@@ -288,7 +289,7 @@ export const createClaimStore = (
   db: Db,
   blobs: Blobs,
   boss: RunQueueClient,
-  clearinghouse: Clearinghouse | null = null
+  clearinghouseFor: (agencyId: string) => Promise<Clearinghouse | null> = async () => null
 ): ClaimStore => {
   const store: ClaimStore = {
     statementData: async (runId, claimId) => {
@@ -759,7 +760,6 @@ export const createClaimStore = (
     },
 
     sendClaimFile: async (runId, claimId, controlNumber) => {
-      if (!clearinghouse) return 'manual';
       const claim = await agencyClaim(db, runId, claimId);
       const batch = await db
         .selectFrom('claim_batches')
@@ -778,8 +778,12 @@ export const createClaimStore = (
         .executeTakeFirst();
       if (!batch) throw new Error(`No 837P file #${controlNumber} for claim ${claimId}`);
       if (batch.sent_as) return { sentAs: batch.sent_as };
-      const name = claimFileName(controlNumber, batch.id, clearinghouse.config.fileExtension);
-      await clearinghouse.upload(name, await blobs.getBytes(batch.document as BlobRef));
+      const clearinghouse = await clearinghouseFor(claim.agency_id);
+      if (!clearinghouse) return 'manual';
+      const name = await clearinghouse.submitClaims(
+        exchangeFileName('claims', controlNumber, batch.id),
+        await blobs.getBytes(batch.document as BlobRef)
+      );
       await db
         .updateTable('claim_batches')
         .set({ sent_at: sql`now()`, sent_as: name })

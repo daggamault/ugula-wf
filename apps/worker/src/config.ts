@@ -5,10 +5,11 @@ import {
   portInt,
   posInt,
   redisEnvEntries,
-  s3EnvEntries
+  s3EnvEntries,
+  secretKeyEnvEntries
 } from '@ugula/config';
 import * as v from 'valibot';
-import type { ClearinghouseConfig } from './shared/clearinghouse.ts';
+import type { ConnectionSettings } from './shared/clearinghouse.ts';
 
 const utilization = v.pipe(
   v.string(),
@@ -32,6 +33,8 @@ const pathList = v.pipe(
   v.minLength(1)
 );
 
+const extension = v.pipe(v.string(), v.regex(/^\.[A-Za-z0-9]+$/));
+
 const clearinghouseEntries = {
   CLEARINGHOUSE_SFTP_HOST: v.optional(v.pipe(v.string(), v.trim())),
   CLEARINGHOUSE_SFTP_PORT: v.optional(portInt, '22'),
@@ -39,8 +42,15 @@ const clearinghouseEntries = {
   CLEARINGHOUSE_SFTP_PASSWORD: v.optional(v.string()),
   CLEARINGHOUSE_UPLOAD_PATH: v.optional(remotePath, '/'),
   CLEARINGHOUSE_DOWNLOAD_PATHS: v.optional(pathList, '/'),
-  CLEARINGHOUSE_FILE_EXTENSION: v.optional(v.pipe(v.string(), v.regex(/^\.[A-Za-z0-9]+$/)), '.txt'),
+  CLEARINGHOUSE_FILE_EXTENSION: v.optional(extension, '.txt'),
+  CLEARINGHOUSE_ELIGIBILITY_EXTENSION: v.optional(extension, '.txt'),
+  CLEARINGHOUSE_CLAIM_STATUS_EXTENSION: v.optional(extension, '.txt'),
   CLEARINGHOUSE_AFTER_DOWNLOAD: v.optional(v.picklist(['delete', 'keep']), 'delete'),
+  CLEARINGHOUSE_REALTIME_URL: v.optional(
+    v.union([v.literal(''), v.pipe(v.string(), v.trim(), v.url())]),
+    ''
+  ),
+  CLEARINGHOUSE_REALTIME_TIMEOUT_SECONDS: v.optional(v.pipe(posInt, v.maxValue(300)), '30'),
   CLEARINGHOUSE_POLL_MINUTES: v.optional(v.pipe(posInt, v.maxValue(59)), '1')
 };
 
@@ -49,6 +59,7 @@ const baseSchema = v.object({
   ...redisEnvEntries,
   ...s3EnvEntries,
   ...inferenceEnvEntries,
+  ...secretKeyEnvEntries,
   WORKFLOW_CONCURRENCY: v.optional(posInt, '8'),
   COMPLETIONS_CONCURRENCY: v.optional(posInt, '2'),
   WORKER_MAX_EVENT_LOOP_UTILIZATION: v.optional(utilization, '0.9'),
@@ -72,7 +83,7 @@ export type Config = v.InferOutput<typeof configSchema>;
 export const parseConfig = (raw: Record<string, string | undefined>): Config =>
   v.parse(configSchema, raw);
 
-export const clearinghouseOf = (c: Config): ClearinghouseConfig | null =>
+export const clearinghouseOf = (c: Config): ConnectionSettings | null =>
   c.CLEARINGHOUSE_SFTP_HOST
     ? {
         host: c.CLEARINGHOUSE_SFTP_HOST,
@@ -81,8 +92,12 @@ export const clearinghouseOf = (c: Config): ClearinghouseConfig | null =>
         password: c.CLEARINGHOUSE_SFTP_PASSWORD ?? '',
         uploadPath: c.CLEARINGHOUSE_UPLOAD_PATH,
         downloadPaths: c.CLEARINGHOUSE_DOWNLOAD_PATHS,
-        fileExtension: c.CLEARINGHOUSE_FILE_EXTENSION,
+        extensions: {
+          claims: c.CLEARINGHOUSE_FILE_EXTENSION,
+          eligibility: c.CLEARINGHOUSE_ELIGIBILITY_EXTENSION,
+          claimStatus: c.CLEARINGHOUSE_CLAIM_STATUS_EXTENSION
+        },
         afterDownload: c.CLEARINGHOUSE_AFTER_DOWNLOAD,
-        pollMinutes: c.CLEARINGHOUSE_POLL_MINUTES
+        realtimeUrl: c.CLEARINGHOUSE_REALTIME_URL || null
       }
     : null;
