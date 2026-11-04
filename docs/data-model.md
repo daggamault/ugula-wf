@@ -31,21 +31,22 @@ Postgres schema, created by `.migrations/*.ts` and typed in `libs/data/db/src/sc
 
 ## Billing
 
-| Table                                                        | Holds                                                               |
-| ------------------------------------------------------------ | ------------------------------------------------------------------- |
-| `imports`, `import_reports`                                  | NEMSIS files and what each report became                            |
-| `patients`                                                   | Patients, matched across reports                                    |
-| `claims`                                                     | One per PCR, with trip, service, documentation and status           |
-| `claim_runs`                                                 | Runs working each claim                                             |
-| `claim_lines`, `claim_coverages`, `claim_diagnoses`          | Service lines, payers in order, ICD-10 codes                        |
-| `claim_events`, `claim_event_adjustments`                    | The ledger: submissions, payments, adjustments, denials, write-offs |
-| `claim_balances`                                             | View of balances per claim                                          |
-| `claim_batches`                                              | 837P files and control numbers                                      |
-| `payer_files`, `payer_file_items`, `clearinghouse_downloads` | Inbound 835/999/277CA/271 files, their lines and outcomes           |
-| `payers`, `payer_aliases`, `payer_suggestions`               | The payer directory, learned names, model suggestions               |
-| `fee_schedules`                                              | Default and payer prices per HCPCS code                             |
-| `billing_profiles`                                           | The agency's billing identity and clearinghouse IDs                 |
-| `notifications`, `notification_states`                       | The notification bell per user and agency                           |
+| Table                                                        | Holds                                                                                                           |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `imports`, `import_reports`                                  | NEMSIS files and what each report became                                                                        |
+| `patients`                                                   | Patients, matched across reports                                                                                |
+| `claims`                                                     | One per PCR, with trip, service, documentation and status                                                       |
+| `claim_runs`                                                 | Runs working each claim                                                                                         |
+| `claim_lines`, `claim_coverages`, `claim_diagnoses`          | Service lines, payers in order, ICD-10 codes                                                                    |
+| `claim_events`, `claim_event_adjustments`                    | The ledger: submissions, payments, adjustments, denials, write-offs, eligibility answers and payer claim status |
+| `claim_balances`                                             | View of balances per claim                                                                                      |
+| `claim_batches`                                              | 837P files, control numbers, and a TA1 envelope rejection                                                       |
+| `payer_files`, `payer_file_items`, `clearinghouse_downloads` | Inbound 835/TA1/999/277CA/277/271 files, their lines and outcomes; downloads per connection                     |
+| `clearinghouse_connections`                                  | One per agency: vendor, SFTP account (password sealed with AES-GCM), folders, extensions, real-time URL         |
+| `payers`, `payer_aliases`, `payer_suggestions`               | The payer directory, learned names, model suggestions                                                           |
+| `fee_schedules`                                              | Default and payer prices per HCPCS code                                                                         |
+| `billing_profiles`                                           | The agency's billing identity and clearinghouse IDs                                                             |
+| `notifications`, `notification_states`                       | The notification bell per user and agency                                                                       |
 
 ## Reference data
 

@@ -10,7 +10,7 @@ Ugula is a durable visual workflow engine with an EMS ambulance billing app buil
 | `apps/worker`                | Leases runs from the pg-boss queue and executes them; implements the billing store ports; polls the clearinghouse.              | `apps/worker/src/main.ts` |
 | `apps/sse`                   | Streams live events (runs, tasks, claims, imports) to browsers, one stream per agency.                                          | `apps/sse/src/main.ts`    |
 | `apps/web`                   | React app: claims, tasks, patients, imports, payer files, reports, workflows, runs, payers, fees, users, roles, settings.       | `apps/web/src/main.ts`    |
-| `.dev/mock-clearinghouse.ts` | Dev-only SFTP server that answers 837P files like a clearinghouse.                                                              | `pnpm dev:clearinghouse`  |
+| `.dev/mock-clearinghouse.ts` | Dev-only SFTP and CORE real-time server that answers 837P, 270 and 276 like Waystar.                                            | `pnpm dev:clearinghouse`  |
 
 ## Library layers
 
@@ -22,13 +22,13 @@ data ─────────► domain, platform, kernel
 platform ─────► kernel
 ```
 
-| Layer         | Libs                                        | Holds                                                                                           |
-| ------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `kernel`      | `graph`, `config`, `live`                   | The engine, expression language, standard nodes, env validators, live event contract            |
-| `platform`    | `auth`, `inference`, `run-queue`, `storage` | Passwords, sessions, tokens; embeddings and completions; the run queue; S3 blobs                |
-| `domain`      | `access`, `billing`, `nemsis`               | Permissions and built-in roles; billing models, rules, nodes and X12; NEMSIS parsing and models |
-| `data`        | `db`                                        | Kysely schema, graph version resolution, run pinning, payer file posting                        |
-| `composition` | `catalog`                                   | The one node catalog every app shares                                                           |
+| Layer         | Libs                                                         | Holds                                                                                                                           |
+| ------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `kernel`      | `graph`, `config`, `live`                                    | The engine, expression language, standard nodes, env validators, live event contract                                            |
+| `platform`    | `auth`, `clearinghouse`, `inference`, `run-queue`, `storage` | Passwords, sessions, tokens; SFTP batch, CORE real-time and sealed secrets; embeddings and completions; the run queue; S3 blobs |
+| `domain`      | `access`, `billing`, `nemsis`                                | Permissions and built-in roles; billing models, rules, nodes and X12; NEMSIS parsing and models                                 |
+| `data`        | `db`                                                         | Kysely schema, graph version resolution, run pinning, payer file posting                                                        |
+| `composition` | `catalog`                                                    | The one node catalog every app shares                                                                                           |
 
 The web app may only import `kernel`, `domain` and `composition`.
 
