@@ -28,7 +28,8 @@ const app = createApp({
   embedder: { embed: async () => [] },
   nodes: [...createStdNodes({ fetch }), ...createNemsisNodes(null)],
   announce: async () => undefined,
-  clientIp: () => '10.0.0.1'
+  clientIp: () => '10.0.0.1',
+  sealSecret: null
 });
 
 describe('api createApp', () => {

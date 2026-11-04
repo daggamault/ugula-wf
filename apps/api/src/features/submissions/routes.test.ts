@@ -17,6 +17,7 @@ const record =
 
 const service = {
   eligibility: record('eligibility', { name: 'eligibility-1-7.x12', file: 'ISA*', payers: [] }),
+  checkEligibility: record('checkEligibility', { runId: 'r1' }),
   document: async () =>
     ok({
       bytes: new TextEncoder().encode('ISA*00'),
@@ -35,6 +36,14 @@ describe('submission routes', () => {
     assert.equal((await post('/eligibility', { claimId: ID })).status, 201);
     assert.deepEqual(calls.splice(0), [['eligibility', 't-1', ID]]);
     assert.equal((await post('/eligibility', {})).status, 400);
+  });
+
+  it('starts an eligibility check through the clearinghouse for one claim', async () => {
+    const res = await post('/eligibility-checks', { claimId: ID });
+    assert.equal(res.status, 201);
+    assert.deepEqual(await res.json(), { runId: 'r1' });
+    assert.deepEqual(calls.splice(0), [['checkEligibility', 't-1', ID]]);
+    assert.equal((await post('/eligibility-checks', { claimId: 'x' })).status, 400);
   });
 
   it('no longer creates 837P files or manual submissions, which the claim cycle does', async () => {

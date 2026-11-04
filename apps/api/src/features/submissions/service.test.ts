@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
+import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
-import { createSubmissionService, eligibilityRequests } from './service.ts';
+import { createSubmissionService } from './service.ts';
 
 const C1 = '01a16617-7704-7ba6-b9b5-9c79fa44f961';
 const C2 = '01a16617-7704-7ba6-b9b5-9c79fa44f962';
@@ -33,7 +34,12 @@ const batch = {
   control_number: 7
 };
 
-const setup = ({ rows = [claimRow(C1)], withProfile = true, controlNumbers = true } = {}) => {
+const setup = ({
+  rows = [claimRow(C1)],
+  withProfile = true,
+  controlNumbers = true,
+  published = true
+} = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.startsWith('update "billing_profiles"')) {
       return controlNumbers ? [{ control_number: 7 }] : [];
@@ -41,6 +47,9 @@ const setup = ({ rows = [claimRow(C1)], withProfile = true, controlNumbers = tru
     if (q.sql.includes('from "claim_batches"')) return q.parameters.includes(C1) ? [batch] : [];
     if (q.sql.includes('from "billing_profiles"')) return withProfile ? [profile] : [];
     if (q.sql.includes('from "claims" as "c"')) return rows;
+    if (q.sql.includes('cross join lateral'))
+      return published ? [{ id: 'v-check', key: 'billing.check-eligibility', version: 1 }] : [];
+    if (q.sql.startsWith('insert into "workflow_runs"')) return [{ id: 'check-1' }];
     return [];
   });
   const fetched: unknown[] = [];
@@ -50,7 +59,14 @@ const setup = ({ rows = [claimRow(C1)], withProfile = true, controlNumbers = tru
       return new TextEncoder().encode('ISA*');
     }
   };
-  return { queries, fetched, service: createSubmissionService({ db, blobs, now: () => now }) };
+  const jobs: unknown[] = [];
+  const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
+  return {
+    queries,
+    fetched,
+    jobs,
+    service: createSubmissionService({ db, boss, blobs, now: () => now })
+  };
 };
 
 describe('eligibility requests', () => {
@@ -92,33 +108,25 @@ describe('eligibility requests', () => {
     ]
   };
 
-  it('asks each linked payer about the patient or the insured, traced by coverage', () => {
-    assert.deepEqual(eligibilityRequests(row, '2026-10-31'), [
-      {
-        trace: MEDICARE,
-        payer: { name: 'Medicare', payerId: 'DEMOMCR' },
-        subscriber: {
-          lastName: 'Doe',
-          firstName: 'Jane',
-          memberId: '1EG4TE5MK73',
-          birthDate: '1950-02-03',
-          sex: 'F'
-        },
-        serviceDate: '2026-10-31'
-      },
-      {
-        trace: BLUE,
-        payer: { name: 'Blue Plan', payerId: 'BCBS1' },
-        subscriber: {
-          lastName: 'Doe',
-          firstName: 'John',
-          memberId: 'XYZ1',
-          birthDate: null,
-          sex: null
-        },
-        serviceDate: '2026-10-31'
-      }
-    ]);
+  it('starts the check eligibility workflow for a claim with a payer to ask', async () => {
+    const { service, jobs } = setup({ rows: [{ ...claimRow(C1), ...row }] });
+    assert.deepEqual(await service.checkEligibility('t1', C1), {
+      ok: true,
+      value: { runId: 'check-1' }
+    });
+    assert.deepEqual(jobs, [{ data: { runId: 'check-1', command: { type: 'advance' } } }]);
+    const unlisted = { ...row, coverages: row.coverages.slice(2) };
+    const nobody = await setup({
+      rows: [{ ...claimRow(C1), ...unlisted }]
+    }).service.checkEligibility('t1', C1);
+    assert.match(nobody.ok ? '' : nobody.failure.message, /member ID/);
+    const missing = await setup({ rows: [] }).service.checkEligibility('t1', C1);
+    assert.equal(missing.ok ? null : missing.failure.code, 'not_found');
+    const unpublished = await setup({
+      rows: [{ ...claimRow(C1), ...row }],
+      published: false
+    }).service.checkEligibility('t1', C1);
+    assert.match(unpublished.ok ? '' : unpublished.failure.message, /not published/);
   });
 
   it('builds a 270 with a fresh control number, or says what is missing', async () => {

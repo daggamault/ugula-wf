@@ -3,6 +3,7 @@ import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Permission } from '@ugula/access';
 import { createSessionStore, type RedisLike } from '@ugula/auth';
 import { createNodeCatalog } from '@ugula/catalog';
+import { parseSecretKey, sealSecret } from '@ugula/clearinghouse';
 import { createDb, type Db } from '@ugula/db';
 import type { NodeDef } from '@ugula/graph';
 import { createEmbedder, type Embedder } from '@ugula/inference';
@@ -24,6 +25,8 @@ import { createBillingProfileRoutes } from './features/billing-profile/routes.ts
 import { createBillingProfileService } from './features/billing-profile/service.ts';
 import { createClaimRoutes } from './features/claims/routes.ts';
 import { createClaimService } from './features/claims/service.ts';
+import { createConnectionRoutes } from './features/clearinghouse-connection/routes.ts';
+import { createConnectionService } from './features/clearinghouse-connection/service.ts';
 import { createFeeRoutes } from './features/fees/routes.ts';
 import { createFeeService } from './features/fees/service.ts';
 import { createGraphRoutes } from './features/graphs/routes.ts';
@@ -68,6 +71,7 @@ type AppDeps = {
   nodes: NodeDef[];
   announce: Announce;
   clientIp: (c: Context) => string;
+  sealSecret: ((secret: string, agencyId: string) => string) | null;
 };
 
 const sftpStorage = (config: Config) => ({
@@ -89,7 +93,8 @@ export const createApp = ({
   embedder,
   nodes,
   announce,
-  clientIp
+  clientIp,
+  sealSecret
 }: AppDeps) => {
   const app = new Hono();
   const origins = config.HTTP_CORS_ORIGINS.split(',').map((o) => o.trim());
@@ -195,6 +200,14 @@ export const createApp = ({
     .use('/billing-profile/*', guardMethods({ ...read('settings:read'), PUT: 'settings:update' }))
     .route('/billing-profile', createBillingProfileRoutes(createBillingProfileService({ db })))
     .use(
+      '/clearinghouse-connection/*',
+      guardMethods({ ...read('settings:read'), PUT: 'settings:update', DELETE: 'settings:update' })
+    )
+    .route(
+      '/clearinghouse-connection',
+      createConnectionRoutes(createConnectionService({ db, seal: sealSecret }))
+    )
+    .use(
       '/claims/*',
       guardMethods({ ...read('claims:read'), PUT: 'claims:update', POST: 'claims:update' })
     )
@@ -205,7 +218,7 @@ export const createApp = ({
     .use('/submissions/*', guardMethods({ ...read('claims:read'), POST: 'claims:update' }))
     .route(
       '/submissions',
-      createSubmissionRoutes(createSubmissionService({ db, blobs, now: () => new Date() }))
+      createSubmissionRoutes(createSubmissionService({ db, boss, blobs, now: () => new Date() }))
     )
     .use('/reports/*', guardMethods(read('reports:read')))
     .route('/reports', createReportRoutes(createReportService({ db, now: () => new Date() })))
@@ -251,6 +264,9 @@ if (import.meta.main) {
   });
   const boss = new PgBoss({ ...connection, supervise: false, schedule: false });
   await boss.start();
+  const secretKey = config.CLEARINGHOUSE_SECRET_KEY
+    ? parseSecretKey(config.CLEARINGHOUSE_SECRET_KEY)
+    : null;
   const blobs = createBlobStore(
     createS3Storage({
       endpoint: config.S3_ENDPOINT,
@@ -271,7 +287,8 @@ if (import.meta.main) {
       embedder: createEmbedder({ url: config.EMBEDDINGS_URL, fetch }),
       nodes: createNodeCatalog({ fetch }),
       announce: (agencyId, event) => publishLiveEvent(redis, agencyId, event),
-      clientIp: (c) => getConnInfo(c).remote.address ?? 'unknown'
+      clientIp: (c) => getConnInfo(c).remote.address ?? 'unknown',
+      sealSecret: secretKey ? (secret, agencyId) => sealSecret(secretKey, secret, agencyId) : null
     }).fetch,
     port: config.API_PORT
   });

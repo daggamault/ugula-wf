@@ -6,6 +6,7 @@ import {
   posInt,
   redisEnvEntries,
   s3EnvEntries,
+  secretKeyEnvEntries,
   urlString
 } from '@ugula/config';
 import * as v from 'valibot';
@@ -21,6 +22,7 @@ const configSchema = v.object({
   API_DB_POOL_MAX: posInt,
   ...redisEnvEntries,
   ...s3EnvEntries,
+  ...secretKeyEnvEntries,
   IMPORT_FILE_MAX_BYTES: posInt,
   SFTP_HOOK_SECRET: v.pipe(nonEmpty, v.minLength(32)),
   SFTP_S3_ENDPOINT: urlString,

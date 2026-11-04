@@ -1,41 +1,30 @@
-import { build270, type EligibilityRequest, SELF, submitterIssues } from '@ugula/billing';
-import { allocateControlNumber, type Db, findProfile, toSubmitter } from '@ugula/db';
+import { build270, submitterIssues } from '@ugula/billing';
+import {
+  allocateControlNumber,
+  type Db,
+  eligibilityRequests,
+  findEligibilityClaim,
+  findProfile,
+  findPublishedGraphs,
+  NO_CHECKABLE_PAYER,
+  startRun,
+  toSubmitter
+} from '@ugula/db';
+import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobRef, BlobStore } from '@ugula/storage';
 import { fail, ok } from '../../shared/result.ts';
-import { type EligibilityClaimRow, findBatchDocument, findEligibilityClaim } from './queries.ts';
+import { findBatchDocument } from './queries.ts';
 
 type SubmissionServiceDeps = {
   db: Db;
+  boss: RunQueueClient;
   now: () => Date;
   blobs: Pick<BlobStore, 'getBytes'>;
 };
 
-export const eligibilityRequests = (
-  row: EligibilityClaimRow,
-  today: string
-): EligibilityRequest[] =>
-  row.coverages.flatMap((c) => {
-    if (!c.payer_id || !c.member_id) return [];
-    const self = c.relationship === SELF;
-    const lastName = self ? row.last_name : c.insured_last_name;
-    if (!lastName) return [];
-    return [
-      {
-        trace: c.id,
-        payer: { name: c.payer, payerId: c.payer_id },
-        subscriber: {
-          lastName,
-          firstName: self ? row.first_name : c.insured_first_name,
-          memberId: c.member_id,
-          birthDate: self ? row.birth_date : null,
-          sex: self ? row.gender : null
-        },
-        serviceDate: row.service_date ?? today
-      }
-    ];
-  });
+const CHECK_ELIGIBILITY_WORKFLOW = { key: 'billing.check-eligibility', version: 1 };
 
-export const createSubmissionService = ({ db, now, blobs }: SubmissionServiceDeps) => ({
+export const createSubmissionService = ({ db, boss, now, blobs }: SubmissionServiceDeps) => ({
   document: async (agencyId: string, id: string) => {
     const found = await findBatchDocument(db, agencyId, id);
     if (!found) return fail('not_found', 'Batch not found');
@@ -61,12 +50,7 @@ export const createSubmissionService = ({ db, now, blobs }: SubmissionServiceDep
       });
     }
     const requests = eligibilityRequests(row, now().toISOString().slice(0, 10));
-    if (!requests.length) {
-      return fail(
-        'invalid',
-        'No payer on this claim has a directory payer and member ID to check eligibility with'
-      );
-    }
+    if (!requests.length) return fail('invalid', NO_CHECKABLE_PAYER);
     const controlNumber = await allocateControlNumber(db, agencyId);
     if (controlNumber === null) {
       return fail('conflict', 'Batch control numbers are used up; contact support');
@@ -76,7 +60,24 @@ export const createSubmissionService = ({ db, now, blobs }: SubmissionServiceDep
       file: build270(submitter, requests, { controlNumber, createdAt: now() }),
       payers: requests.map((r) => r.payer.name)
     });
-  }
+  },
+
+  checkEligibility: (agencyId: string, claimId: string) =>
+    db.transaction().execute(async (tx) => {
+      const row = await findEligibilityClaim(tx, agencyId, claimId);
+      if (!row) return fail('not_found', 'Claim not found');
+      if (!eligibilityRequests(row, now().toISOString().slice(0, 10)).length) {
+        return fail('invalid', NO_CHECKABLE_PAYER);
+      }
+      const [version] = await findPublishedGraphs(tx, agencyId, [CHECK_ELIGIBILITY_WORKFLOW]);
+      if (!version) return fail('not_found', 'The check eligibility workflow is not published');
+      const runId = await startRun(tx, boss, {
+        agencyId,
+        versionId: version.id,
+        inputs: { claimId }
+      });
+      return ok({ runId });
+    })
 });
 
 export type SubmissionService = ReturnType<typeof createSubmissionService>;

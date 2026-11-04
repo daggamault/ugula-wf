@@ -23,4 +23,11 @@ export const createSubmissionRoutes = (service: SubmissionService) =>
         await service.eligibility(c.get('access').agencyId, c.req.valid('json').claimId),
         201
       )
+    )
+    .post('/eligibility-checks', sValidator('json', claimSchema, invalidRequest), async (c) =>
+      respond(
+        c,
+        await service.checkEligibility(c.get('access').agencyId, c.req.valid('json').claimId),
+        201
+      )
     );
