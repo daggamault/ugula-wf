@@ -54,7 +54,11 @@ describe('PatientsPage', () => {
         search: { lastName: '', firstName: '', birthDate: '' }
       })
     );
-    assert.ok(html.includes('<search') && html.includes('>Filters'));
+    assert.ok(
+      html.includes(
+        '<search aria-label="Search patients" class="border-border bg-surface rounded-xl border p-5">'
+      )
+    );
     assert.ok(html.includes('Names match from the start.'));
     assert.ok(html.includes('Last Name') && html.includes('First Name'));
     assert.ok(html.includes('type="date"'));

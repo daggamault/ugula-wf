@@ -134,12 +134,7 @@ export const PatientsPage = ({ client, live, search }: PatientsPageProps) => (
     title="Patients"
     description="Find a patient by name or birth date to see their claims and what they owe."
   >
-    <SearchForm
-      label="Search patients"
-      path={PATH}
-      fields={SEARCH_FIELDS}
-      collapsibleTitle="Filters"
-    />
+    <SearchForm label="Search patients" path={PATH} fields={SEARCH_FIELDS} />
     {isSearching(search) ? (
       <PatientResults client={client} live={live} search={search} />
     ) : (

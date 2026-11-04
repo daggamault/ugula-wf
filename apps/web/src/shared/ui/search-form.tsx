@@ -1,14 +1,11 @@
-import { ChevronDownIcon, SearchIcon, XIcon } from 'lucide-react';
-import { type FormEvent, type ReactNode, useId, useState } from 'react';
+import { SearchIcon, XIcon } from 'lucide-react';
+import { type FormEvent, useState } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { navigate, useLocation } from '../router.tsx';
 import { hrefWith } from '../url-state.ts';
-import { Badge } from './badge.tsx';
 import { Button } from './button.tsx';
-import { Collapse } from './collapse.tsx';
 import { FieldGrid, FormActions } from './field.tsx';
 import { Input } from './input.tsx';
-import { interactiveClasses } from './interactive.ts';
 import { Select, type SelectOption } from './select.tsx';
 
 export type SearchField = {
@@ -105,7 +102,10 @@ const SearchFields = ({
     </FormActions>
   );
   return (
-    <search aria-label={label}>
+    <search
+      aria-label={label}
+      className={isInline ? undefined : 'border-border bg-surface rounded-xl border p-5'}
+    >
       {isInline ? (
         <form onSubmit={submit} className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-2">
           {controls}
@@ -121,65 +121,16 @@ const SearchFields = ({
   );
 };
 
-const CollapsibleFilters = ({
-  title,
-  count,
-  children
-}: {
-  title: string;
-  count: number;
-  children: ReactNode;
-}) => {
-  const id = useId();
-  const [isOpen, setOpen] = useState(true);
-  return (
-    <div className="border-border bg-surface flex flex-col rounded-xl border">
-      <button
-        type="button"
-        aria-expanded={isOpen}
-        aria-controls={id}
-        onClick={() => setOpen(!isOpen)}
-        className={classNamesOf(
-          interactiveClasses,
-          'hover:bg-surface-hover flex h-12 items-center gap-2 rounded-lg px-4 text-left text-sm font-semibold'
-        )}
-      >
-        <ChevronDownIcon
-          aria-hidden="true"
-          className={classNamesOf(
-            'size-4 transition-transform duration-300 ease-out',
-            isOpen ? '' : '-rotate-90'
-          )}
-        />
-        {title}
-        {count ? <Badge intent="info">{count} active</Badge> : null}
-      </button>
-      <Collapse id={id} isOpen={isOpen}>
-        <div className="px-4 pb-4">{children}</div>
-      </Collapse>
-    </div>
-  );
-};
-
 export const SearchForm = ({
   label,
   path,
-  fields,
-  collapsibleTitle
+  fields
 }: {
   label: string;
   path: string;
   fields: readonly SearchField[];
-  collapsibleTitle?: string;
 }) => {
   const { query } = useLocation();
   const key = fields.map((f) => query.get(f.name) ?? '').join('\u0000');
-  const form = <SearchFields key={key} label={label} path={path} fields={fields} query={query} />;
-  return collapsibleTitle ? (
-    <CollapsibleFilters title={collapsibleTitle} count={activeCount(fields, query)}>
-      {form}
-    </CollapsibleFilters>
-  ) : (
-    form
-  );
+  return <SearchFields key={key} label={label} path={path} fields={fields} query={query} />;
 };

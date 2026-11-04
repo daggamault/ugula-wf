@@ -39,19 +39,16 @@ describe('searchHref', () => {
 });
 
 describe('SearchForm', () => {
-  it('renders text, date and select fields, collapsible under a title', () => {
+  it('renders text, date and select fields in a card', () => {
     const html = renderToStaticMarkup(
-      createElement(SearchForm, {
-        label: 'Filter Claims',
-        path: '/claims',
-        fields,
-        collapsibleTitle: 'Filters'
-      })
+      createElement(SearchForm, { label: 'Search Claims', path: '/claims', fields })
     );
-    assert.ok(html.includes('aria-expanded="true"') && html.includes('>Filters'));
-    const [, panel] = html.match(/aria-controls="([^"]+)"/) ?? [];
-    assert.ok(panel && html.includes(`id="${panel}"`));
-    assert.ok(html.includes('<search aria-label="Filter Claims">'));
+    assert.ok(!html.includes('aria-expanded'));
+    assert.ok(
+      html.includes(
+        '<search aria-label="Search Claims" class="border-border bg-surface rounded-xl border p-5">'
+      )
+    );
     assert.ok(html.includes('type="submit"') && html.includes('Search</span>'));
     assert.ok(!html.includes('Clear</span>') && !html.includes(' active</span>'));
     assert.ok(html.includes('type="date"') && html.includes('type="search"'));
@@ -59,10 +56,6 @@ describe('SearchForm', () => {
     assert.ok(!html.includes('sr-only'));
     assert.match(html, /<\/div><\/div><div class="flex flex-col-reverse[^"]*sm:justify-end/);
     assert.match(html, /<option value="open" selected="">Open<\/option>/);
-    const inline = renderToStaticMarkup(
-      createElement(SearchForm, { label: 'Search', path: '/patients', fields })
-    );
-    assert.ok(!inline.includes('aria-expanded'));
   });
 
   it('puts the buttons beside a lone field instead of below a grid', () => {
