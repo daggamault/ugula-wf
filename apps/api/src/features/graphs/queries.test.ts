@@ -38,6 +38,7 @@ describe('graph queries', () => {
         key: 'demo.x',
         name: 'X',
         kind: 'node',
+        role: 'rule',
         description: '',
         scope: 'organization',
         updated_at: new Date(0),
@@ -57,6 +58,7 @@ describe('graph queries', () => {
         key: 'demo.x',
         name: 'X',
         kind: 'node',
+        role: 'rule',
         description: '',
         scope: 'organization',
         isSystem: false,
@@ -155,8 +157,9 @@ describe('graph queries', () => {
         '("g"."organization_id" is null or not exists (select "b"."id" from "graphs" as "b" where "b"."key" = "g"."key"'
       )
     );
-    assert.ok(sql.includes(visibleTo('b', 3, 4)));
-    assert.deepEqual(queries[0]?.parameters, ['a-1', 'o-1', 'a-1', 'o-1']);
+    assert.ok(sql.includes(visibleTo('b', 5, 6)));
+    assert.ok(sql.includes('is not null as "overridden"'));
+    assert.deepEqual(queries[0]?.parameters, ['a-1', 'o-1', 'a-1', 'o-1', 'a-1', 'o-1']);
     await db.destroy();
   });
 
@@ -216,6 +219,7 @@ describe('graph writes', () => {
       key: 'acme.flow',
       name: 'Flow',
       kind: 'workflow',
+      role: 'workflow',
       description: ''
     });
     await insertDraft(db, {
@@ -226,7 +230,15 @@ describe('graph writes', () => {
       userId: 'u-1'
     });
     const [graph, draft] = queries;
-    assert.deepEqual(graph?.parameters, ['o-1', null, 'acme.flow', 'Flow', 'workflow', '']);
+    assert.deepEqual(graph?.parameters, [
+      'o-1',
+      null,
+      'acme.flow',
+      'Flow',
+      'workflow',
+      'workflow',
+      ''
+    ]);
     assert.deepEqual(draft?.parameters, [
       'g1',
       1,

@@ -8,7 +8,7 @@ const GRAPH_SORTS = ['name', 'key', 'kind', 'updated'] as const;
 
 export type GraphSort = (typeof GRAPH_SORTS)[number];
 
-const GRAPH_SHOWS = ['workflows', 'blocks', 'mine', 'all'] as const;
+const GRAPH_SHOWS = ['workflows', 'blocks', 'mine', 'customized', 'all'] as const;
 
 export type GraphShow = (typeof GRAPH_SHOWS)[number];
 
@@ -36,6 +36,7 @@ export const createGraphSchema = v.object({
   ),
   name: v.pipe(v.string(), v.trim(), v.nonEmpty(), v.maxLength(120)),
   kind: v.picklist(['workflow', 'node']),
+  role: v.optional(v.picklist(['stage', 'rule', 'slot'])),
   description: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(2000)), ''),
   scope: v.optional(v.picklist(EDIT_SCOPES), 'agency')
 });

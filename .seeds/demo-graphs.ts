@@ -118,6 +118,7 @@ export const demoGraphs: SeedGraph[] = [
     key: 'demo.line-total',
     name: 'Line Total',
     kind: 'node',
+    role: 'rule',
     description: 'Sums units × charge across lines, rounded to cents.',
     version: 1,
     definition: lineTotalGraph
@@ -126,6 +127,7 @@ export const demoGraphs: SeedGraph[] = [
     key: 'demo.process-item',
     name: 'Process Item',
     kind: 'workflow',
+    role: 'workflow',
     description: 'Totals one item and asks a reviewer to approve large ones.',
     version: 1,
     definition: processItemGraph
@@ -134,6 +136,7 @@ export const demoGraphs: SeedGraph[] = [
     key: 'demo.process-batch',
     name: 'Process Batch',
     kind: 'workflow',
+    role: 'workflow',
     description: 'Processes every item as a parallel child run and sums the totals.',
     version: 1,
     definition: processBatchGraph

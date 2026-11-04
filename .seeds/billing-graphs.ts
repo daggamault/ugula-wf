@@ -11,7 +11,7 @@ import {
 } from '@ugula/billing';
 import type { GraphDef, Json, PinSpec, ValueType } from '@ugula/graph';
 import { PCR_TYPE } from '@ugula/nemsis';
-import { graph } from './builder.ts';
+import { createTables, graph, slot } from './builder.ts';
 import type { SeedGraph } from './graphs.ts';
 
 const {
@@ -46,6 +46,8 @@ const action = (inputs: PinSpec[], outputs: PinSpec[], execOut = ['then']) =>
   graph({ execIn: ['exec'], execOut, inputs, outputs });
 
 type Builder = ReturnType<typeof graph>;
+
+const shared = createTables();
 
 type Rule = { label: string; when?: Record<string, Json>; set?: Record<string, Json> };
 
@@ -95,110 +97,115 @@ const classifyTrip = (): GraphDef => {
   g.add('response', 'nemsis.response.break');
   g.add('trip', 'std.table.decide', {
     label: 'Trip Type',
-    config: table(
-      [
-        field('incidentDisposition', 'string', 'Incident/patient disposition · eDisposition.12'),
-        field('unitDisposition', 'string', 'Unit disposition · eDisposition.27'),
-        field('patientEvaluation', 'string', 'Patient evaluation/care · eDisposition.28'),
-        field('transportDisposition', 'string', 'Transport disposition · eDisposition.30'),
-        field('serviceType', 'string', 'Type of service requested · eResponse.05')
-      ],
-      [field('tripType', 'string', 'Trip type')],
-      [
-        {
-          label: 'Cancelled, or no patient contact',
-          when: { incidentDisposition: oneOf('4212007', '4212009', '4212011') },
-          set: { tripType: 'noClaim' }
-        },
-        {
-          label: 'Assist, standby or non-patient transport',
-          when: {
-            incidentDisposition: oneOf(
-              '4212001',
-              '4212003',
-              '4212005',
-              '4212039',
-              '4212041',
-              '4212043'
-            )
+    config: shared.decision(
+      'billing.trip-type',
+      'Trip Type',
+      'Decides the trip type from the report dispositions and the type of service.',
+      table(
+        [
+          field('incidentDisposition', 'string', 'Incident/patient disposition · eDisposition.12'),
+          field('unitDisposition', 'string', 'Unit disposition · eDisposition.27'),
+          field('patientEvaluation', 'string', 'Patient evaluation/care · eDisposition.28'),
+          field('transportDisposition', 'string', 'Transport disposition · eDisposition.30'),
+          field('serviceType', 'string', 'Type of service requested · eResponse.05')
+        ],
+        [field('tripType', 'string', 'Trip type')],
+        [
+          {
+            label: 'Cancelled, or no patient contact',
+            when: { incidentDisposition: oneOf('4212007', '4212009', '4212011') },
+            set: { tripType: 'noClaim' }
           },
-          set: { tripType: 'noClaim' }
-        },
-        {
-          label: 'Unit cancelled, made no patient contact, or had no patient',
-          when: { unitDisposition: oneOf('4227003', '4227005', '4227007', '4227009', '4227011') },
-          set: { tripType: 'noClaim' }
-        },
-        {
-          label: 'Non-patient transport',
-          when: { transportDisposition: oneOf('4230011') },
-          set: { tripType: 'noClaim' }
-        },
-        {
-          label: 'Non-patient service requested and nobody transported',
-          when: {
-            serviceType: oneOf(...NON_PATIENT_SERVICES),
-            incidentDisposition: notOneOf(...TRANSPORTED_INCIDENTS),
-            transportDisposition: notOneOf(...TRANSPORTED)
+          {
+            label: 'Assist, standby or non-patient transport',
+            when: {
+              incidentDisposition: oneOf(
+                '4212001',
+                '4212003',
+                '4212005',
+                '4212039',
+                '4212041',
+                '4212043'
+              )
+            },
+            set: { tripType: 'noClaim' }
           },
-          set: { tripType: 'noClaim' }
-        },
-        {
-          label: 'Patient refused care',
-          when: { incidentDisposition: oneOf('4212025') },
-          set: { tripType: 'refusal' }
-        },
-        {
-          label: 'Patient refused care and transport',
-          when: {
-            patientEvaluation: oneOf('4228003', '4228007'),
-            transportDisposition: oneOf('4230009', '4230013')
+          {
+            label: 'Unit cancelled, made no patient contact, or had no patient',
+            when: { unitDisposition: oneOf('4227003', '4227005', '4227007', '4227009', '4227011') },
+            set: { tripType: 'noClaim' }
           },
-          set: { tripType: 'refusal' }
-        },
-        {
-          label: 'Patient treated and not transported',
-          when: {
-            incidentDisposition: oneOf(
-              '4212015',
-              '4212019',
-              '4212021',
-              '4212027',
-              '4212029',
-              '4212031',
-              '4212035',
-              '4212037'
-            )
+          {
+            label: 'Non-patient transport',
+            when: { transportDisposition: oneOf('4230011') },
+            set: { tripType: 'noClaim' }
           },
-          set: { tripType: 'treatNoTransport' }
-        },
-        {
-          label: 'Patient not transported by this unit',
-          when: { transportDisposition: oneOf('4230005', '4230007', '4230009', '4230013') },
-          set: { tripType: 'treatNoTransport' }
-        },
-        {
-          label: 'Scheduled or interfacility transport',
-          when: { serviceType: oneOf(...INTERFACILITY, '2205007') },
-          set: { tripType: 'scheduled' }
-        },
-        {
-          label: 'Emergency response',
-          when: { serviceType: oneOf('2205001', '2205003', '2205009') },
-          set: { tripType: 'emergency' }
-        },
-        {
-          label: 'Patient treated and transported by this unit',
-          when: { incidentDisposition: oneOf(...TRANSPORTED_INCIDENTS) },
-          set: { tripType: 'emergency' }
-        },
-        {
-          label: 'Patient transported by this unit',
-          when: { transportDisposition: oneOf(...TRANSPORTED) },
-          set: { tripType: 'emergency' }
-        }
-      ],
-      { tripType: 'emergency' }
+          {
+            label: 'Non-patient service requested and nobody transported',
+            when: {
+              serviceType: oneOf(...NON_PATIENT_SERVICES),
+              incidentDisposition: notOneOf(...TRANSPORTED_INCIDENTS),
+              transportDisposition: notOneOf(...TRANSPORTED)
+            },
+            set: { tripType: 'noClaim' }
+          },
+          {
+            label: 'Patient refused care',
+            when: { incidentDisposition: oneOf('4212025') },
+            set: { tripType: 'refusal' }
+          },
+          {
+            label: 'Patient refused care and transport',
+            when: {
+              patientEvaluation: oneOf('4228003', '4228007'),
+              transportDisposition: oneOf('4230009', '4230013')
+            },
+            set: { tripType: 'refusal' }
+          },
+          {
+            label: 'Patient treated and not transported',
+            when: {
+              incidentDisposition: oneOf(
+                '4212015',
+                '4212019',
+                '4212021',
+                '4212027',
+                '4212029',
+                '4212031',
+                '4212035',
+                '4212037'
+              )
+            },
+            set: { tripType: 'treatNoTransport' }
+          },
+          {
+            label: 'Patient not transported by this unit',
+            when: { transportDisposition: oneOf('4230005', '4230007', '4230009', '4230013') },
+            set: { tripType: 'treatNoTransport' }
+          },
+          {
+            label: 'Scheduled or interfacility transport',
+            when: { serviceType: oneOf(...INTERFACILITY, '2205007') },
+            set: { tripType: 'scheduled' }
+          },
+          {
+            label: 'Emergency response',
+            when: { serviceType: oneOf('2205001', '2205003', '2205009') },
+            set: { tripType: 'emergency' }
+          },
+          {
+            label: 'Patient treated and transported by this unit',
+            when: { incidentDisposition: oneOf(...TRANSPORTED_INCIDENTS) },
+            set: { tripType: 'emergency' }
+          },
+          {
+            label: 'Patient transported by this unit',
+            when: { transportDisposition: oneOf(...TRANSPORTED) },
+            set: { tripType: 'emergency' }
+          }
+        ],
+        { tripType: 'emergency' }
+      )
     )
   });
   g.ret('return');
@@ -344,109 +351,119 @@ const levelOfService = (): GraphDef => {
   });
   g.add('level', 'std.table.decide', {
     label: 'Level of Service',
-    config: table(
-      [
-        field('levelOfCare', 'string', 'Level of care provided · eDisposition.32'),
-        field('cmsServiceLevel', 'string', 'CMS service level · ePayment.50'),
-        field('serviceType', 'string', 'Type of service requested · eResponse.05'),
-        field('codedIvMedications', 'integer', 'IV/IO medications coded'),
-        field('narrativeIvDoses', 'integer', 'IV/IO doses in the narrative'),
-        field('narrativeProcedures', 'integer', 'ALS2 procedures in the narrative'),
-        field('codedProcedures', 'integer', 'ALS2 procedures coded · eProcedures.03'),
-        field('alsAssessment', 'string', 'ALS assessment performed and warranted · ePayment.49')
-      ],
-      [field('level', 'string', 'Level of service')],
-      [
-        {
-          label: 'Critical care documented on an interfacility transport',
-          when: { levelOfCare: is('4232009'), serviceType: oneOf(...INTERFACILITY) },
-          set: { level: 'SCT' }
-        },
-        {
-          label: 'Crew reported specialty care on an interfacility transport',
-          when: { cmsServiceLevel: is('2650015'), serviceType: oneOf(...INTERFACILITY) },
-          set: { level: 'SCT' }
-        },
-        {
-          label: 'ALS2 procedure coded',
-          when: { codedProcedures: atLeast(1) },
-          set: { level: 'ALS2' }
-        },
-        {
-          label: 'ALS2 procedures in the narrative',
-          when: { narrativeProcedures: atLeast(1) },
-          set: { level: 'ALS2' }
-        },
-        {
-          label: 'Three or more IV/IO medications coded',
-          when: { codedIvMedications: atLeast(3) },
-          set: { level: 'ALS2' }
-        },
-        {
-          label: 'Three or more IV/IO doses in the narrative',
-          when: { narrativeIvDoses: atLeast(3) },
-          set: { level: 'ALS2' }
-        },
-        {
-          label: 'Crew reported ALS2',
-          when: { cmsServiceLevel: is('2650005') },
-          set: { level: 'ALS2' }
-        },
-        {
-          label: 'ALS care documented',
-          when: { levelOfCare: oneOf('4232003', '4232005') },
-          set: { level: 'ALS1' }
-        },
-        {
-          label: 'ALS assessment performed and warranted',
-          when: { alsAssessment: is(ALS_ASSESSMENT_YES) },
-          set: { level: 'ALS1' }
-        },
-        {
-          label: 'Crew reported ALS1',
-          when: { cmsServiceLevel: oneOf('2650001', '2650003') },
-          set: { level: 'ALS1' }
-        },
-        {
-          label: 'IV/IO medications coded',
-          when: { codedIvMedications: atLeast(1) },
-          set: { level: 'ALS1' }
-        },
-        {
-          label: 'IV/IO doses in the narrative',
-          when: { narrativeIvDoses: atLeast(1) },
-          set: { level: 'ALS1' }
-        },
-        {
-          label: 'BLS care documented',
-          when: { levelOfCare: is('4232001') },
-          set: { level: 'BLS' }
-        }
-      ],
-      { level: 'BLS' }
+    config: shared.decision(
+      'billing.service-level',
+      'Level of Service',
+      'Decides BLS, ALS1, ALS2 or SCT from the level of care, CMS service level, IV/IO medications, ALS2 procedures and the ALS assessment.',
+      table(
+        [
+          field('levelOfCare', 'string', 'Level of care provided · eDisposition.32'),
+          field('cmsServiceLevel', 'string', 'CMS service level · ePayment.50'),
+          field('serviceType', 'string', 'Type of service requested · eResponse.05'),
+          field('codedIvMedications', 'integer', 'IV/IO medications coded'),
+          field('narrativeIvDoses', 'integer', 'IV/IO doses in the narrative'),
+          field('narrativeProcedures', 'integer', 'ALS2 procedures in the narrative'),
+          field('codedProcedures', 'integer', 'ALS2 procedures coded · eProcedures.03'),
+          field('alsAssessment', 'string', 'ALS assessment performed and warranted · ePayment.49')
+        ],
+        [field('level', 'string', 'Level of service')],
+        [
+          {
+            label: 'Critical care documented on an interfacility transport',
+            when: { levelOfCare: is('4232009'), serviceType: oneOf(...INTERFACILITY) },
+            set: { level: 'SCT' }
+          },
+          {
+            label: 'Crew reported specialty care on an interfacility transport',
+            when: { cmsServiceLevel: is('2650015'), serviceType: oneOf(...INTERFACILITY) },
+            set: { level: 'SCT' }
+          },
+          {
+            label: 'ALS2 procedure coded',
+            when: { codedProcedures: atLeast(1) },
+            set: { level: 'ALS2' }
+          },
+          {
+            label: 'ALS2 procedures in the narrative',
+            when: { narrativeProcedures: atLeast(1) },
+            set: { level: 'ALS2' }
+          },
+          {
+            label: 'Three or more IV/IO medications coded',
+            when: { codedIvMedications: atLeast(3) },
+            set: { level: 'ALS2' }
+          },
+          {
+            label: 'Three or more IV/IO doses in the narrative',
+            when: { narrativeIvDoses: atLeast(3) },
+            set: { level: 'ALS2' }
+          },
+          {
+            label: 'Crew reported ALS2',
+            when: { cmsServiceLevel: is('2650005') },
+            set: { level: 'ALS2' }
+          },
+          {
+            label: 'ALS care documented',
+            when: { levelOfCare: oneOf('4232003', '4232005') },
+            set: { level: 'ALS1' }
+          },
+          {
+            label: 'ALS assessment performed and warranted',
+            when: { alsAssessment: is(ALS_ASSESSMENT_YES) },
+            set: { level: 'ALS1' }
+          },
+          {
+            label: 'Crew reported ALS1',
+            when: { cmsServiceLevel: oneOf('2650001', '2650003') },
+            set: { level: 'ALS1' }
+          },
+          {
+            label: 'IV/IO medications coded',
+            when: { codedIvMedications: atLeast(1) },
+            set: { level: 'ALS1' }
+          },
+          {
+            label: 'IV/IO doses in the narrative',
+            when: { narrativeIvDoses: atLeast(1) },
+            set: { level: 'ALS1' }
+          },
+          {
+            label: 'BLS care documented',
+            when: { levelOfCare: is('4232001') },
+            set: { level: 'BLS' }
+          }
+        ],
+        { level: 'BLS' }
+      )
     )
   });
   g.add('emergency', 'std.table.decide', {
     label: 'Emergency Response',
-    config: table(
-      [
-        field('responseMode', 'string', 'Response mode to scene · eResponse.23'),
-        field('cmsServiceLevel', 'string', 'CMS service level · ePayment.50')
-      ],
-      [field('emergency', 'boolean', 'Emergency')],
-      [
-        {
-          label: 'Immediate response to the call',
-          when: { responseMode: oneOf('2223001', '2223003', '2223007') },
-          set: { emergency: true }
-        },
-        {
-          label: 'Crew reported an emergency level',
-          when: { cmsServiceLevel: oneOf('2650003', '2650009') },
-          set: { emergency: true }
-        }
-      ],
-      { emergency: false }
+    config: shared.decision(
+      'billing.emergency-response',
+      'Emergency Response',
+      'Decides whether a trip is billed as an emergency from the response mode and the CMS service level.',
+      table(
+        [
+          field('responseMode', 'string', 'Response mode to scene · eResponse.23'),
+          field('cmsServiceLevel', 'string', 'CMS service level · ePayment.50')
+        ],
+        [field('emergency', 'boolean', 'Emergency')],
+        [
+          {
+            label: 'Immediate response to the call',
+            when: { responseMode: oneOf('2223001', '2223003', '2223007') },
+            set: { emergency: true }
+          },
+          {
+            label: 'Crew reported an emergency level',
+            when: { cmsServiceLevel: oneOf('2650003', '2650009') },
+            set: { emergency: true }
+          }
+        ],
+        { emergency: false }
+      )
     )
   });
   g.add('miles', 'billing.loaded-miles', { label: 'Loaded Miles' });
@@ -535,48 +552,58 @@ const mapCharges = (): GraphDef => {
   g.add('service', 'billing.service.break');
   g.add('base', 'std.table.decide', {
     label: 'Base Rate',
-    config: table(
-      [
-        field('tripType', 'string', 'Trip type'),
-        field('level', 'string', 'Level of service'),
-        field('emergency', 'boolean', 'Emergency')
-      ],
-      [field('code', 'string', 'HCPCS code')],
-      [
-        {
-          label: 'Treated without transport',
-          when: { tripType: oneOf('treatNoTransport', 'refusal') },
-          set: { code: NO_TRANSPORT_CODE }
-        },
-        { label: 'Specialty care transport', when: { level: is('SCT') }, set: { code: 'A0434' } },
-        { label: 'ALS2', when: { level: is('ALS2') }, set: { code: 'A0433' } },
-        {
-          label: 'ALS1 emergency',
-          when: { level: is('ALS1'), emergency: is(true) },
-          set: { code: 'A0427' }
-        },
-        { label: 'ALS1 non-emergency', when: { level: is('ALS1') }, set: { code: 'A0426' } },
-        { label: 'BLS emergency', when: { emergency: is(true) }, set: { code: 'A0429' } }
-      ],
-      { code: 'A0428' }
+    config: shared.decision(
+      'billing.base-rate',
+      'Base Rate',
+      'Picks the HCPCS base rate code from the trip type, level of service and emergency status.',
+      table(
+        [
+          field('tripType', 'string', 'Trip type'),
+          field('level', 'string', 'Level of service'),
+          field('emergency', 'boolean', 'Emergency')
+        ],
+        [field('code', 'string', 'HCPCS code')],
+        [
+          {
+            label: 'Treated without transport',
+            when: { tripType: oneOf('treatNoTransport', 'refusal') },
+            set: { code: NO_TRANSPORT_CODE }
+          },
+          { label: 'Specialty care transport', when: { level: is('SCT') }, set: { code: 'A0434' } },
+          { label: 'ALS2', when: { level: is('ALS2') }, set: { code: 'A0433' } },
+          {
+            label: 'ALS1 emergency',
+            when: { level: is('ALS1'), emergency: is(true) },
+            set: { code: 'A0427' }
+          },
+          { label: 'ALS1 non-emergency', when: { level: is('ALS1') }, set: { code: 'A0426' } },
+          { label: 'BLS emergency', when: { emergency: is(true) }, set: { code: 'A0429' } }
+        ],
+        { code: 'A0428' }
+      )
     )
   });
   g.add('baseLine', 'billing.line.make', { label: 'Base Rate Line', values: { units: 1 } });
   g.add('mileage', 'std.table.decide', {
     label: 'Mileage',
-    config: table(
-      [field('tripType', 'string', 'Trip type'), field('loadedMiles', 'number', 'Loaded miles')],
-      [field('code', 'string', 'HCPCS code')],
-      [
-        {
-          label: 'Loaded miles transported',
-          when: {
-            tripType: { op: 'notOneOf', value: ['treatNoTransport', 'refusal'] },
-            loadedMiles: { op: 'gt', value: 0 }
-          },
-          set: { code: 'A0425' }
-        }
-      ]
+    config: shared.decision(
+      'billing.mileage-code',
+      'Mileage',
+      'Picks the HCPCS mileage code for trips that transported the patient.',
+      table(
+        [field('tripType', 'string', 'Trip type'), field('loadedMiles', 'number', 'Loaded miles')],
+        [field('code', 'string', 'HCPCS code')],
+        [
+          {
+            label: 'Loaded miles transported',
+            when: {
+              tripType: { op: 'notOneOf', value: ['treatNoTransport', 'refusal'] },
+              loadedMiles: { op: 'gt', value: 0 }
+            },
+            set: { code: 'A0425' }
+          }
+        ]
+      )
     )
   });
   g.add('miles', 'std.logic.coalesce', { label: 'Loaded Miles or 0', values: { fallback: 0 } });
@@ -1507,6 +1534,7 @@ const repriceClaim = (): GraphDef => {
     outputs: []
   });
   g.add('charges', 'billing.map-charges', { label: 'Charges' });
+  g.add('agencyCharges', 'billing.agency-charges', { label: 'Agency Charges' });
   g.add('price', 'billing.price-charges', { label: 'Price Charges' });
   g.add('save', 'billing.patch-claim', { label: 'Save the Repriced Lines' });
   g.ret('repricedDone', 'repriced');
@@ -1514,7 +1542,10 @@ const repriceClaim = (): GraphDef => {
   g.wire('entry.exec', 'price.exec');
   g.wire('entry.tripType', 'charges.tripType');
   g.wire('entry.service', 'charges.service');
-  g.wire('charges.lines', 'price.lines');
+  g.wire('charges.lines', 'agencyCharges.lines');
+  g.wire('entry.tripType', 'agencyCharges.tripType');
+  g.wire('entry.service', 'agencyCharges.service');
+  g.wire('agencyCharges.lines', 'price.lines');
   g.wire('entry.payerId', 'price.payerId');
   g.wire('entry.subject', 'price.subject');
   g.wire('entry.context', 'price.context');
@@ -1900,6 +1931,7 @@ const buildClaim = (): GraphDef => {
     outputs: []
   });
   g.add('charges', 'billing.map-charges', { label: 'Charges' });
+  g.add('agencyCharges', 'billing.agency-charges', { label: 'Agency Charges' });
   g.add('primary', 'std.list.first', { label: 'Primary Payer' });
   g.add('primaryPayer', 'billing.coverage.break');
   g.add('price', 'billing.price-charges', { label: 'Price Charges' });
@@ -1907,13 +1939,17 @@ const buildClaim = (): GraphDef => {
     g.input(`${pin}ForClaim`, pin);
   }
   g.add('claim', 'billing.map-claim', { label: 'Map Claim' });
+  g.add('agencyClaim', 'billing.agency-claim', { label: 'Agency Claim Rules' });
   g.add('save', 'billing.save-claim', { label: 'Save Draft Claim' });
   g.ret('savedDone', 'saved');
   g.ret('voidedDone', 'voided');
   g.wire('entry.exec', 'price.exec');
   g.wire('entry.tripType', 'charges.tripType');
   g.wire('entry.service', 'charges.service');
-  g.wire('charges.lines', 'price.lines');
+  g.wire('charges.lines', 'agencyCharges.lines');
+  g.wire('entry.tripType', 'agencyCharges.tripType');
+  g.wire('entry.service', 'agencyCharges.service');
+  g.wire('agencyCharges.lines', 'price.lines');
   g.wire('entry.coverages', 'primary.list');
   g.wire('primary.item', 'primaryPayer.coverage');
   g.wire('primaryPayer.payerId', 'price.payerId');
@@ -1926,7 +1962,9 @@ const buildClaim = (): GraphDef => {
   for (const pin of ['report', 'pcr', 'tripType', 'patient', 'coverages', 'service']) {
     g.wire(`${pin}ForClaim.${pin}`, `claim.${pin}`);
   }
-  g.wire('claim.claim', 'save.claim');
+  g.wire('claim.claim', 'agencyClaim.claim');
+  g.wire('pcrForClaim.pcr', 'agencyClaim.pcr');
+  g.wire('agencyClaim.claim', 'save.claim');
   g.wire('claimIdForClaim.claimId', 'save.claimId');
   g.wire('save.then', 'savedDone.exec');
   return g.def;
@@ -2173,6 +2211,7 @@ const workDraftClaim = (): GraphDef => {
     config: { template: '{{ demographics.firstName }} {{ demographics.lastName }}' }
   });
   g.add('payers', 'billing.resolve-payers', { label: 'Resolve Payers' });
+  g.add('agencyPayers', 'billing.agency-payers', { label: 'Agency Payer Rules' });
   for (const pin of ['claimId', 'report', 'pcr']) g.input(`${pin}ToBill`, pin);
   g.add('bill', 'billing.bill-claim', { label: 'Bill the Claim' });
   g.ret('claimed', 'claimed');
@@ -2198,7 +2237,9 @@ const workDraftClaim = (): GraphDef => {
   g.wire('payers.then', 'bill.exec');
   for (const pin of ['claimId', 'report', 'pcr']) g.wire(`${pin}ToBill.${pin}`, `bill.${pin}`);
   g.wire('patient.patient', 'bill.patient', 'claimed.patient', 'voided.patient');
-  g.wire('payers.coverages', 'bill.coverages');
+  g.wire('payers.coverages', 'agencyPayers.coverages');
+  g.wire('pcrToBill.pcr', 'agencyPayers.pcr');
+  g.wire('agencyPayers.coverages', 'bill.coverages');
   g.wire('payers.notes', 'bill.payerNotes');
   g.wire('findings.findings', 'bill.findings');
   g.wire('bill.claimed', 'claimed.exec');
@@ -2872,6 +2913,7 @@ const node = (key: string, name: string, description: string, definition: GraphD
   key,
   name,
   kind: 'node',
+  role: definition.signature.execIn.length ? 'stage' : 'rule',
   description,
   version: 1,
   definition
@@ -2882,9 +2924,89 @@ const workflow = (
   name: string,
   description: string,
   definition: GraphDef
-): SeedGraph => ({ key, name, kind: 'workflow', description, version: 1, definition });
+): SeedGraph => ({
+  key,
+  name,
+  kind: 'workflow',
+  role: 'workflow',
+  description,
+  version: 1,
+  definition
+});
+
+const doc = (
+  name: string,
+  type: ValueType,
+  label: string,
+  description: string,
+  optional = false
+) => ({
+  ...p(name, type, optional),
+  label,
+  description
+});
+
+const pureSlot = (inputs: PinSpec[], outputs: PinSpec[]) => ({
+  execIn: [],
+  execOut: [],
+  inputs,
+  outputs
+});
+
+const PCR_CONTEXT = doc(
+  'pcr',
+  PCR_TYPE,
+  'PCR',
+  'The patient care report the claim is billed from.',
+  true
+);
 
 export const billingGraphs: SeedGraph[] = [
+  slot(
+    'billing.agency-charges',
+    'Agency Charges',
+    'An agency rule after the base charges: add, change or drop charge lines before they are priced. Passes the lines through unchanged until an agency overrides it.',
+    pureSlot(
+      [
+        doc('lines', CHARGE_LINES, 'Charge Lines', 'The HCPCS lines the base rules charged.'),
+        doc('tripType', 'string', 'Trip Type', 'The confirmed trip type.', true),
+        doc(
+          'service',
+          SERVICE,
+          'Service',
+          'The confirmed level of service, emergency and loaded miles.',
+          true
+        )
+      ],
+      [doc('lines', CHARGE_LINES, 'Charge Lines', 'The lines to price and bill.')]
+    )
+  ),
+  slot(
+    'billing.agency-claim',
+    'Agency Claim Rules',
+    'An agency rule after the claim is mapped: change claim properties such as modifiers, notes or documentation before the draft is saved. Passes the claim through unchanged until an agency overrides it.',
+    pureSlot(
+      [doc('claim', CLAIM, 'Claim', 'The claim the base rules mapped.'), PCR_CONTEXT],
+      [doc('claim', CLAIM, 'Claim', 'The claim to save.')]
+    )
+  ),
+  slot(
+    'billing.agency-payers',
+    'Agency Payer Rules',
+    'An agency rule after payers are resolved: reorder, add or drop coverages before the claim is billed. Passes the coverages through unchanged until an agency overrides it.',
+    pureSlot(
+      [
+        doc(
+          'coverages',
+          COVERAGES,
+          'Coverages',
+          'The payers resolved from the report, in billing order.'
+        ),
+        PCR_CONTEXT
+      ],
+      [doc('coverages', COVERAGES, 'Coverages', 'The payers to bill, in order.')]
+    )
+  ),
   node(
     'billing.classify-trip',
     'Classify Trip',
@@ -3157,3 +3279,5 @@ export const billingGraphs: SeedGraph[] = [
     ingestNemsis()
   )
 ];
+
+export const billingTables = shared.list();

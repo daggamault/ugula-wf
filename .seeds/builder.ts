@@ -1,3 +1,4 @@
+import type { TableKind } from '@ugula/db';
 import {
   ENTRY_TYPE,
   type GraphDef,
@@ -7,8 +8,11 @@ import {
   type NodeInstance,
   RETURN_TYPE,
   type Signature,
+  slotGraph,
+  type ValueType,
   type VariableDef
 } from '@ugula/graph';
+import type { SeedGraph } from './graphs.ts';
 
 type Port = `${string}.${string}`;
 
@@ -47,4 +51,50 @@ export const graph = (signature: Signature, variables: VariableDef[] = []) => {
   const ret = (id: string, pin?: string) => add(id, RETURN_TYPE, pin ? { config: { pin } } : {});
   const input = (id: string, pin: string) => add(id, INPUT_TYPE, { config: { pin } });
   return { add, wire, ret, input, def };
+};
+
+export const slot = (
+  key: string,
+  name: string,
+  description: string,
+  signature: Signature
+): SeedGraph => ({
+  key,
+  name,
+  kind: 'node',
+  role: 'slot',
+  description,
+  version: 1,
+  definition: slotGraph(signature)
+});
+
+export type SeedTable = {
+  key: string;
+  name: string;
+  kind: TableKind;
+  description: string;
+  definition: Json;
+};
+
+type Field = { name: string; type: ValueType; label?: string };
+
+type DecisionDefinition = {
+  inputs: Field[];
+  outputs: Field[];
+  rules: Json[];
+  otherwise: Record<string, Json>;
+};
+
+export const createTables = () => {
+  const tables = new Map<string, SeedTable>();
+  const decision = (
+    key: string,
+    name: string,
+    description: string,
+    definition: DecisionDefinition
+  ): Json => {
+    tables.set(key, { key, name, kind: 'decide', description, definition: definition as Json });
+    return { inputs: definition.inputs, outputs: definition.outputs, table: { key } } as Json;
+  };
+  return { decision, list: () => [...tables.values()] };
 };

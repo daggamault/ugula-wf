@@ -1,4 +1,5 @@
 import { type Kysely, type RawBuilder, sql } from 'kysely';
+import { buildCopyRunTables, buildPinRunTables } from './data-tables.ts';
 import type { Database } from './schema.ts';
 
 type GraphKey = {
@@ -121,7 +122,9 @@ export const buildPinRunGraphs = (
 type PinRun = { agencyId: string; versionId: string; parentRunId?: string | null };
 
 export const pinRunGraphs = async (db: Kysely<Database>, run: PinRun & { id: string }) => {
-  await buildPinRunGraphs(run.id, run.agencyId, run.versionId, run.parentRunId ?? null).execute(db);
+  const parent = run.parentRunId ?? null;
+  await buildPinRunGraphs(run.id, run.agencyId, run.versionId, parent).execute(db);
+  await buildPinRunTables(run.id, run.agencyId, parent).execute(db);
 };
 
 const listRunGraphRefs = (db: Kysely<Database>, runId: string): Promise<GraphRef[]> =>
@@ -174,7 +177,9 @@ export const pinRunsGraphs = async (db: Kysely<Database>, runs: PinRun & { ids: 
   const [first, ...rest] = runs.ids;
   if (!first) return;
   await pinRunGraphs(db, { ...runs, id: first });
-  if (rest.length) await buildCopyRunGraphs(first, rest).execute(db);
+  if (!rest.length) return;
+  await buildCopyRunGraphs(first, rest).execute(db);
+  await buildCopyRunTables(first, rest).execute(db);
 };
 
 export const buildLatestVersion = (agencyId: string, key: string) => sql<{ version: number }>`

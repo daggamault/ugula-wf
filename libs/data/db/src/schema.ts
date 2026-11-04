@@ -141,6 +141,10 @@ export const GRAPH_KINDS = ['workflow', 'node'] as const;
 
 export type GraphKind = (typeof GRAPH_KINDS)[number];
 
+export const GRAPH_ROLES = ['workflow', 'stage', 'rule', 'slot'] as const;
+
+export type GraphRole = (typeof GRAPH_ROLES)[number];
+
 type GraphsTable = {
   id: Generated<string>;
   organization_id: string | null;
@@ -148,6 +152,7 @@ type GraphsTable = {
   key: string;
   name: string;
   kind: GraphKind;
+  role: GraphRole;
   description: Generated<string>;
   is_active: Generated<boolean>;
   created_at: Timestamp;
@@ -204,6 +209,42 @@ type WorkflowRunGraphsTable = {
   key: string;
   version: number;
   graph_version_id: string;
+};
+
+export const TABLE_KINDS = ['decide', 'lookup'] as const;
+
+export type TableKind = (typeof TABLE_KINDS)[number];
+
+type DataTablesTable = {
+  id: Generated<string>;
+  organization_id: string | null;
+  agency_id: string | null;
+  key: string;
+  name: string;
+  kind: TableKind;
+  description: Generated<string>;
+  is_active: Generated<boolean>;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+};
+
+type DataTableVersionsTable = {
+  id: Generated<string>;
+  table_id: string;
+  version: number;
+  definition: JsonColumn;
+  base_version_id: string | null;
+  contract: string;
+  published_at: NullableTimestamp;
+  created_by: string | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+};
+
+type WorkflowRunTablesTable = {
+  run_id: string;
+  key: string;
+  table_version_id: string;
 };
 
 type GnisPlacesTable = {
@@ -566,6 +607,9 @@ export type Database = {
   workflow_runs: WorkflowRunsTable;
   workflow_run_steps: WorkflowRunStepsTable;
   workflow_run_graphs: WorkflowRunGraphsTable;
+  data_tables: DataTablesTable;
+  data_table_versions: DataTableVersionsTable;
+  workflow_run_tables: WorkflowRunTablesTable;
   gnis_places: GnisPlacesTable;
   nemsis_elements: NemsisElementsTable;
   nemsis_codes: NemsisCodesTable;

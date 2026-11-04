@@ -77,6 +77,62 @@ describe('buildEngine', () => {
   });
 });
 
+const tableFlow: GraphDef = {
+  signature: {
+    execIn: ['exec'],
+    execOut: [],
+    inputs: [],
+    outputs: [{ name: 'code', type: 'string' }]
+  },
+  variables: [],
+  nodes: [
+    { id: 'entry', type: ENTRY_TYPE, version: 1 },
+    {
+      id: 'codes',
+      type: 'std.table.lookup',
+      version: 1,
+      config: { type: 'string', table: { key: 'demo.codes' } },
+      inputs: { key: { value: 'a' } }
+    },
+    { id: 'return', type: 'std.graph.return', version: 1 }
+  ],
+  edges: [
+    { from: 'entry', fromPin: 'exec', to: 'return', toPin: 'exec' },
+    { from: 'codes', fromPin: 'value', to: 'return', toPin: 'code' }
+  ]
+};
+
+describe('pinned tables', () => {
+  it('runs table nodes on the table versions the run pinned', async () => {
+    const loaded: string[][] = [];
+    const engines = createEngineCache({
+      nodes,
+      loadDefinitions: async () => [{ id: 'v-t', definition: tableFlow }],
+      loadTables: async (ids) => {
+        loaded.push(ids);
+        return [{ id: 'tv-1', kind: 'lookup', definition: { rows: [{ key: 'a', value: 'A1' }] } }];
+      }
+    });
+    const graphs = [{ id: 'v-t', key: 'demo.tables', version: 1 }];
+    const { engine, root } = await engines({
+      versionId: 'v-t',
+      graphs,
+      tables: [{ id: 'tv-1', key: 'demo.codes' }]
+    });
+    const state = engine.start(root, {}, { now: new Date(0) });
+    await engine.drain(state, { runId: 'r', now: new Date(0) });
+    assert.deepEqual(state.result?.outputs, { code: 'A1' });
+    assert.deepEqual(loaded, [['tv-1']]);
+
+    const missing = await engines({ versionId: 'v-t', graphs, tables: [] });
+    const faulted = missing.engine.start(missing.root, {}, { now: new Date(0) });
+    await missing.engine.drain(faulted, { runId: 'r', now: new Date(0) });
+    assert.equal(faulted.status, 'faulted');
+    assert.match(faulted.fault?.error.message ?? '', /demo.codes is not available/);
+    assert.equal(loaded.length, 1);
+  });
+});
+
 describe('createEngineCache', () => {
   it('reuses engines per pinned bundle, evicts least recently used, and forgets failures', async () => {
     const loads: string[][] = [];
@@ -88,6 +144,7 @@ describe('createEngineCache', () => {
     const engines = createEngineCache({
       nodes,
       max: 1,
+      loadTables: async () => [],
       loadDefinitions: async (ids) => {
         loads.push(ids);
         if (ids.includes('v-root') && loads.length > 3) throw new Error('db down');
@@ -103,7 +160,8 @@ describe('createEngineCache', () => {
     const run = (id: string) =>
       engines({
         versionId: 'v-root',
-        graphs: (bundles[id] ?? []).map(({ definition: _, ...ref }) => ref)
+        graphs: (bundles[id] ?? []).map(({ definition: _, ...ref }) => ref),
+        tables: []
       });
     await run('a');
     await run('a');
@@ -113,5 +171,6 @@ describe('createEngineCache', () => {
     await assert.rejects(() => run('bad'), /db down/);
     assert.equal(loads.length, 4);
     assert.equal(bundleKey('v', [{ id: 'x', key: 'k.a', version: 2 }]), 'v|k.a@2=x');
+    assert.equal(bundleKey('v', [], [{ id: 't2', key: 'k.t' }]), 'v|#k.t=t2');
   });
 });

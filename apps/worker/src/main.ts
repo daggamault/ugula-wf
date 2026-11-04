@@ -1,5 +1,5 @@
 import { createNodeCatalog } from '@ugula/catalog';
-import { createDb, findDefinitions } from '@ugula/db';
+import { createDb, findDefinitions, findTableDefinitions } from '@ugula/db';
 import { createCompleter, createCompletionLimiter, createEmbedder } from '@ugula/inference';
 import { publishLiveEvent } from '@ugula/live';
 import { createBlobStore, createS3Storage } from '@ugula/storage';
@@ -123,7 +123,8 @@ if (import.meta.main) {
           })
         }
       }),
-      loadDefinitions: (ids) => findDefinitions(db, ids)
+      loadDefinitions: (ids) => findDefinitions(db, ids),
+      loadTables: (ids) => findTableDefinitions(db, ids)
     }),
     now: () => new Date(),
     publish,

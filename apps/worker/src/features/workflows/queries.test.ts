@@ -23,7 +23,8 @@ const parent: ClaimedRun = {
   parentWait: null,
   inputs: {},
   state: null,
-  graphs: []
+  graphs: [],
+  tables: []
 };
 
 const recordingBoss = () => {
@@ -132,7 +133,8 @@ describe('createRunStore', () => {
         parent_wait: null,
         inputs: { a: 1 },
         state: null,
-        graphs: [{ id: 'v1', key: 'demo.x', version: 1 }]
+        graphs: [{ id: 'v1', key: 'demo.x', version: 1 }],
+        tables: [{ id: 't1', key: 'demo.table' }]
       }
     ]);
     const store = createRunStore({ db, boss: recordingBoss().boss });
@@ -145,7 +147,8 @@ describe('createRunStore', () => {
       parentWait: null,
       inputs: { a: 1 },
       state: null,
-      graphs: [{ id: 'v1', key: 'demo.x', version: 1 }]
+      graphs: [{ id: 'v1', key: 'demo.x', version: 1 }],
+      tables: [{ id: 't1', key: 'demo.table' }]
     });
     await db.destroy();
   });
@@ -269,7 +272,8 @@ describe('createRunStore', () => {
       parentWait: null,
       inputs: {},
       state: null,
-      graphs: []
+      graphs: [],
+      tables: []
     };
     await store.transaction(async (tx) => {
       assert.equal(await tx.claimReference('r1'), 'PCR-1 · Jane Doe');

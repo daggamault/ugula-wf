@@ -1,4 +1,10 @@
-import { type Db, dependencyOf, findPublishedGraphs, type GraphKind } from '@ugula/db';
+import {
+  type Db,
+  dependencyOf,
+  findPublishedGraphs,
+  type GraphKind,
+  type GraphRole
+} from '@ugula/db';
 import {
   combineSources,
   contractOf,
@@ -52,6 +58,7 @@ type NewGraph = {
   key: string;
   name: string;
   kind: GraphKind;
+  role?: GraphRole | undefined;
   description: string;
   scope: EditScope;
 };
@@ -85,12 +92,19 @@ const forbidden = (scope: EditScope) =>
 
 const RANK: Record<GraphScope, number> = { agency: 0, organization: 1, system: 2 };
 
-export const canEditScope = (access: AgencyAccess, scope: GraphScope, kind: GraphKind) =>
+export type EditTier = GraphRole | 'table';
+
+const MANAGED: ReadonlySet<EditTier> = new Set(['workflow', 'stage']);
+
+export const canEditScope = (access: AgencyAccess, scope: GraphScope, tier: EditTier) =>
   scope === 'system'
     ? false
     : scope === 'organization'
       ? access.isOrganizationAdmin
-      : hasPermission(access, kind === 'workflow' ? 'workflows:manage' : 'workflows:update');
+      : hasPermission(access, MANAGED.has(tier) ? 'workflows:manage' : 'workflows:update');
+
+export const roleFor = (kind: GraphKind, role: GraphRole | undefined): GraphRole =>
+  kind === 'workflow' ? 'workflow' : role && role !== 'workflow' ? role : 'rule';
 
 const scopeIds = (access: AgencyAccess): ScopeIds => ({
   agencyId: access.agencyId,
@@ -126,7 +140,7 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
     const graph = await findGraph(tx, scopeIds(access), graphId);
     if (!graph) return notFound;
     if (graph.scope === 'system') return fail('forbidden', 'Built-in graphs are read-only');
-    if (!canEditScope(access, graph.scope, graph.kind)) return forbidden(graph.scope);
+    if (!canEditScope(access, graph.scope, graph.role)) return forbidden(graph.scope);
     return ok({ ...graph, scope: graph.scope as EditScope });
   };
   const baseOf = async (
@@ -161,10 +175,10 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
       return ok({
         graph: {
           ...graph,
-          canEdit: canEditScope(access, graph.scope, graph.kind),
+          canEdit: canEditScope(access, graph.scope, graph.role),
           canOverride: {
             organization: graph.scope === 'system' && access.isOrganizationAdmin,
-            agency: graph.scope !== 'agency' && canEditScope(access, 'agency', graph.kind)
+            agency: graph.scope !== 'agency' && canEditScope(access, 'agency', graph.role)
           },
           effectiveId: effective?.id ?? graph.id
         },
@@ -205,7 +219,8 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
     validate: async (access: AgencyAccess, def: GraphDef) =>
       ok({ issues: (await check(db, access, def)).issues }),
     create: async (access: AgencyAccess, input: NewGraph) => {
-      if (!canEditScope(access, input.scope, input.kind)) return forbidden(input.scope);
+      const role = roleFor(input.kind, input.role);
+      if (!canEditScope(access, input.scope, role)) return forbidden(input.scope);
       if (await findSystemGraph(db, input.key)) {
         return fail('conflict', 'A built-in graph uses that key; override it instead');
       }
@@ -217,6 +232,7 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
               key: input.key,
               name: input.name,
               kind: input.kind,
+              role,
               description: input.description
             });
             await insertDraft(tx, {
@@ -261,7 +277,7 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
         if (RANK[graph.scope] <= RANK[scope]) {
           return fail('conflict', `This graph cannot be overridden for the ${scope}`);
         }
-        if (!canEditScope(access, scope, graph.kind)) return forbidden(scope);
+        if (!canEditScope(access, scope, graph.role)) return forbidden(scope);
         const owner = ownerOf(access, scope);
         const copy = await findScopedGraph(tx, owner, graph.key);
         if (copy?.is_active) return fail('conflict', 'This graph is already overridden');
@@ -277,6 +293,7 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
             key: graph.key,
             name: graph.name,
             kind: graph.kind,
+            role: graph.role,
             description: graph.description
           });
           await insertDraft(tx, {

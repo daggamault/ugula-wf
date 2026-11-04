@@ -84,6 +84,7 @@ const run: ClaimedRun = {
   parentId: null,
   parentWait: null,
   graphs: [],
+  tables: [],
   inputs: {},
   state: null
 };

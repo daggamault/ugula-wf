@@ -1,4 +1,4 @@
-import { type Database, GRAPH_KINDS, PUBLISHED_IMMUTABLE_TRIGGER } from '@ugula/db';
+import { type Database, GRAPH_KINDS, GRAPH_ROLES, PUBLISHED_IMMUTABLE_TRIGGER } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
 const buildGraphsTable = (db: Kysely<Database>) =>
@@ -12,6 +12,7 @@ const buildGraphsTable = (db: Kysely<Database>) =>
     .addColumn('key', 'text', (col) => col.notNull())
     .addColumn('name', 'text', (col) => col.notNull())
     .addColumn('kind', 'text', (col) => col.notNull())
+    .addColumn('role', 'text', (col) => col.notNull())
     .addColumn('description', 'text', (col) => col.notNull().defaultTo(''))
     .addColumn('is_active', 'boolean', (col) => col.notNull().defaultTo(true))
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -30,6 +31,11 @@ const buildGraphsTable = (db: Kysely<Database>) =>
     .addCheckConstraint(
       'graphs_kind_check',
       sql`kind in (${sql.join(GRAPH_KINDS.map((v) => sql.lit(v)))})`
+    )
+    .addCheckConstraint(
+      'graphs_role_check',
+      sql`role in (${sql.join(GRAPH_ROLES.map((v) => sql.lit(v)))})
+        and (kind = 'workflow') = (role = 'workflow')`
     )
     .addCheckConstraint(
       'graphs_key_check',

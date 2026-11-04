@@ -84,8 +84,10 @@ describe('shared graph queries', () => {
     assert.ok(pin?.sql.includes('from workflow_run_graphs p'));
     assert.ok(pin?.sql.includes('p.key = "dep"."key" and p.version = "dep"."version"'));
     assert.ok(pin?.parameters.includes('p-1') && pin.parameters.includes('r-1'));
+    assert.ok(queries[1]?.sql.includes('from workflow_run_tables p'));
     await pinRunGraphs(db, { id: 'r-2', agencyId: 't-1', versionId: 'v-1' });
-    assert.ok(!queries[1]?.sql.includes('workflow_run_graphs p'));
+    assert.ok(!queries[2]?.sql.includes('workflow_run_graphs p'));
+    assert.ok(!queries[3]?.sql.includes('workflow_run_tables p'));
     await db.destroy();
   });
 
@@ -105,18 +107,20 @@ describe('shared graph queries', () => {
     await pinRunsGraphs(db, { ids: [], agencyId: 't-1', versionId: 'v-1' });
     assert.equal(queries.length, 0);
     await pinRunsGraphs(db, { ids: ['r-1'], agencyId: 't-1', versionId: 'v-1' });
-    assert.equal(queries.length, 1);
+    assert.equal(queries.length, 2);
     await pinRunsGraphs(db, {
       ids: ['r-1', 'r-2', 'r-3'],
       agencyId: 't-1',
       versionId: 'v-1',
       parentRunId: 'p-1'
     });
-    const [pin, copy] = queries.slice(1);
+    const [pin, , copy, copyTables] = queries.slice(2);
     assert.match(pin?.sql ?? '', /with recursive bundle/);
     assert.ok(pin?.parameters.includes('r-1') && pin.parameters.includes('p-1'));
     assert.match(copy?.sql ?? '', /from workflow_run_graphs g/);
     assert.deepEqual(copy?.parameters, [['r-2', 'r-3'], 'r-1']);
+    assert.match(copyTables?.sql ?? '', /from workflow_run_tables p/);
+    assert.deepEqual(copyTables?.parameters, [['r-2', 'r-3'], 'r-1']);
     await db.destroy();
   });
 

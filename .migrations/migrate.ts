@@ -4,6 +4,7 @@ import { createAgenciesTable } from './agencies.ts';
 import { createBillingProfilesTables } from './billing-profiles.ts';
 import { createClaimsTables } from './claims.ts';
 import { parseConfig } from './config.ts';
+import { createDataTablesTables } from './data-tables.ts';
 import { createExtensions } from './extensions.ts';
 import { createFeeSchedulesTable } from './fee-schedules.ts';
 import { createGnisPlacesTable } from './gnis-places.ts';
@@ -43,6 +44,9 @@ const resetSchema = async (db: Kysely<Database>) => {
     'clearinghouse_downloads',
     'payer_file_items',
     'payer_files',
+    'workflow_run_tables',
+    'data_table_versions',
+    'data_tables',
     'workflow_run_steps',
     'workflow_run_graphs',
     'workflow_runs',
@@ -63,6 +67,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     await db.schema.dropTable(table).ifExists().cascade().execute();
   }
   await sql`drop function if exists prevent_published_graph_change`.execute(db);
+  await sql`drop function if exists prevent_published_table_change`.execute(db);
 };
 
 const steps = [
@@ -74,6 +79,7 @@ const steps = [
   createUsersTables,
   createGraphsTables,
   createWorkflowRunsTables,
+  createDataTablesTables,
   createTasksTable,
   createPatientsTable,
   createBillingProfilesTables,

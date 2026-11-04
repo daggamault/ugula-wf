@@ -19,9 +19,20 @@ export { deepEqual, isRecord } from './json.ts';
 export { createModelNodes, type Model, type ModelField, modelType } from './models.ts';
 export { combineSources, createRegistry, isPure } from './registry.ts';
 export { type FieldSpec, graphDefSchema, valuesSchema } from './schemas.ts';
+export { isPassThrough, slotGraph } from './slot.ts';
 export { stdGraphInfo, stdGraphSource, stdGraphs } from './std/composites.ts';
 export { createStdNodes, type StdDeps } from './std/index.ts';
 export type { ConditionOp } from './std/tables.ts';
+export {
+  inlineTables,
+  type ResolvedTable,
+  TABLE_KEY_PATTERN,
+  TABLE_NODE_KINDS,
+  tableContract,
+  tableRefOf,
+  tableRefs,
+  tableSchemas
+} from './std/tables.ts';
 export type * from './types.ts';
 export { type Issue, validateGraph } from './validate.ts';
 export { checkValue, formatType, isAssignable, parseType } from './value-types.ts';

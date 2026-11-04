@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { invokeNode } from '../testing.ts';
-import type { Json, Values } from '../types.ts';
-import { holds, tableNodes } from './tables.ts';
+import type { GraphDef, Json, NodeInstance, Values } from '../types.ts';
+import {
+  holds,
+  inlineTables,
+  type ResolvedTable,
+  tableContract,
+  tableNodes,
+  tableRefOf,
+  tableRefs
+} from './tables.ts';
 
 const run = async (type: string, inputs: Values, config: Json) => {
   const def = tableNodes.find((d) => d.type === type);
@@ -135,6 +143,86 @@ describe('table nodes', () => {
     assert.equal(holds({ op: 'empty' }, 0), false);
     assert.equal(holds({ op: 'present' }, 0), true);
     assert.equal(holds({ op: 'present' }, ''), false);
+  });
+});
+
+describe('shared tables', () => {
+  const ref = { inputs: LEVELS.inputs, outputs: LEVELS.outputs, table: { key: 'billing.level' } };
+  const graph: GraphDef = {
+    signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
+    variables: [],
+    nodes: [
+      { id: 'level', type: 'std.table.decide', version: 1, config: ref },
+      {
+        id: 'codes',
+        type: 'std.table.lookup',
+        version: 1,
+        config: { type: 'string', table: { key: 'billing.codes' } }
+      },
+      { id: 'own', type: 'std.table.lookup', version: 1, config: { rows: [] } }
+    ],
+    edges: []
+  };
+
+  it('accepts a table key in place of rules, and fails until the table is inlined', async () => {
+    await assert.rejects(
+      run('std.table.decide', { care: '4232009' }, ref),
+      /The table billing\.level is not available to this run/
+    );
+    await assert.rejects(
+      run('std.table.lookup', {}, { table: { key: 'billing.codes' } }),
+      /billing\.codes/
+    );
+    await assert.rejects(run('std.table.lookup', {}, { table: { key: 'Bad Key' } }));
+  });
+
+  it('lists the tables a graph references and fingerprints their fields', () => {
+    assert.deepEqual(tableRefs(graph), ['billing.level', 'billing.codes']);
+    assert.equal(tableContract(LEVELS), tableContract(ref));
+    assert.notEqual(tableContract(LEVELS), tableContract({ ...LEVELS, outputs: [] }));
+    assert.equal(tableContract({ rows: [] }), tableContract({ type: 'string', table: {} }));
+    assert.equal(tableContract(null), '');
+    assert.deepEqual(tableRefOf({ id: 'x', type: 'std.math.add', version: 1, config: ref }), null);
+  });
+
+  it('inlines resolved tables with matching fields and keeps the rest as references', async () => {
+    const codes: ResolvedTable = {
+      kind: 'lookup',
+      definition: { type: 'string', rows: [{ key: 'a', value: 'A' }], fallback: '?' }
+    };
+    const inlined = inlineTables(graph, (key) =>
+      key === 'billing.level' ? { kind: 'decide', definition: LEVELS } : codes
+    );
+    const [level, lookup, own] = inlined.nodes;
+    assert.deepEqual(level?.config, {
+      inputs: LEVELS.inputs,
+      outputs: LEVELS.outputs,
+      rules: LEVELS.rules,
+      otherwise: LEVELS.otherwise
+    });
+    assert.deepEqual(lookup?.config, {
+      type: 'string',
+      rows: [{ key: 'a', value: 'A' }],
+      fallback: '?'
+    });
+    assert.equal(own, graph.nodes[2]);
+    const decided = await run('std.table.decide', { care: '4232009' }, level?.config ?? null);
+    assert.equal(decided.outputs.level, 'SCT');
+
+    const drifted = inlineTables(graph, () => ({
+      kind: 'decide',
+      definition: { ...LEVELS, outputs: [{ name: 'other', type: 'string' }] }
+    }));
+    assert.deepEqual(
+      drifted.nodes.map((n) => n.config),
+      graph.nodes.map((n) => n.config)
+    );
+    assert.equal(inlineTables(graph, () => undefined).nodes[0], graph.nodes[0]);
+    const plain = { ...graph, nodes: [graph.nodes[2] as NodeInstance] };
+    assert.equal(
+      inlineTables(plain, () => codes),
+      plain
+    );
   });
 });
 

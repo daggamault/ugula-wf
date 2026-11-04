@@ -131,7 +131,8 @@ const fakeStore = (inputs: Values, opts: { leased?: boolean } = {}) => {
         parentWait: null,
         inputs,
         state: row.state && (JSON.parse(JSON.stringify(row.state)) as RunState),
-        graphs: []
+        graphs: [],
+        tables: []
       };
       return run;
     },

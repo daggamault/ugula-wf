@@ -7,6 +7,7 @@ import {
   pinRunGraphs,
   pinRunsGraphs,
   type RunStatus,
+  type RunTableRef,
   sqlExecutor,
   type TaskKind,
   TERMINAL_RUN_STATUSES
@@ -32,6 +33,7 @@ export type ClaimedRun = {
   inputs: Values;
   state: RunState | null;
   graphs: GraphRef[];
+  tables: RunTableRef[];
 };
 
 export type RunPatch = {
@@ -198,7 +200,18 @@ export const buildClaim = (db: Kysely<Database>, { runId, command }: RunJob, lea
         )
       )
       .whereRef('g.run_id', '=', 'workflow_runs.id')
-      .as('graphs')
+      .as('graphs'),
+    eb
+      .selectFrom('workflow_run_tables as t')
+      .select(
+        sql<
+          RunTableRef[]
+        >`coalesce(json_agg(json_build_object('id', t.table_version_id, 'key', t.key) order by t.key), '[]')`.as(
+          'tables'
+        )
+      )
+      .whereRef('t.run_id', '=', 'workflow_runs.id')
+      .as('tables')
   ]);
 };
 
@@ -445,7 +458,8 @@ export const createRunStore = ({ db, boss }: { db: Db; boss: QueueClient }): Run
         parentWait: row.parent_wait,
         inputs: row.inputs as Values,
         state: (row.state ?? null) as RunState | null,
-        graphs: row.graphs ?? []
+        graphs: row.graphs ?? [],
+        tables: row.tables ?? []
       }
     );
   },

@@ -1,4 +1,4 @@
-import type { Db, GraphKind } from '@ugula/db';
+import type { Db, GraphKind, GraphRole } from '@ugula/db';
 import { contractOf, type GraphDef } from '@ugula/graph';
 import { type RawBuilder, sql } from 'kysely';
 import { type Page, type PageRequest, paged } from '../../shared/paging.ts';
@@ -16,6 +16,7 @@ type GraphSummary = {
   key: string;
   name: string;
   kind: GraphKind;
+  role: GraphRole;
   description: string;
   scope: GraphScope;
   isSystem: boolean;
@@ -37,6 +38,7 @@ type GraphRow = {
   key: string;
   name: string;
   kind: GraphKind;
+  role: GraphRole;
   description: string;
   scope: GraphScope;
   updated_at: Date;
@@ -103,6 +105,7 @@ const toSummary = (r: GraphRow): GraphSummary => ({
   key: r.key,
   name: r.name,
   kind: r.kind,
+  role: r.role,
   description: r.description,
   scope: r.scope,
   isSystem: r.scope === 'system',
@@ -140,6 +143,7 @@ export const searchGraphs = async (
       'g.key',
       'g.name',
       'g.kind',
+      'g.role',
       'g.description',
       scopeOf('g').as('scope'),
       'g.updated_at',
@@ -153,6 +157,11 @@ export const searchGraphs = async (
   if (f.show === 'workflows') q = q.where('g.kind', '=', 'workflow');
   if (f.show === 'blocks') q = q.where('g.kind', '!=', 'workflow');
   if (f.show === 'mine') q = q.where('g.organization_id', 'is not', null);
+  if (f.show === 'customized') {
+    q = q.where((eb) =>
+      eb.or([eb(overriddenBy(s), 'is not', null), eb(overridesOf(s), 'is not', null)])
+    );
+  }
   if (f.q) {
     const like = containsPattern(f.q);
     q = q.where((eb) =>
@@ -173,6 +182,7 @@ export const findGraph = (db: Db, s: ScopeIds, id: string) =>
       'g.key',
       'g.name',
       'g.kind',
+      'g.role',
       'g.description',
       scopeOf('g').as('scope'),
       overriddenBy(s).as('overridden_by'),
@@ -244,6 +254,7 @@ export const insertGraph = (
     key: string;
     name: string;
     kind: GraphKind;
+    role: GraphRole;
     description: string;
   }
 ) =>
@@ -255,6 +266,7 @@ export const insertGraph = (
       key: input.key,
       name: input.name,
       kind: input.kind,
+      role: input.role,
       description: input.description
     })
     .returning('id')
@@ -332,9 +344,11 @@ export const listPublishedNodes = (db: Db, s: ScopeIds) =>
       'g.key',
       'g.name',
       'g.kind',
+      'g.role',
       'g.description',
       'gv.version',
-      sql<GraphDef['signature']>`gv.definition -> 'signature'`.as('signature')
+      sql<GraphDef['signature']>`gv.definition -> 'signature'`.as('signature'),
+      sql<boolean>`${overriddenBy(s)} is not null`.as('overridden')
     ])
     .where('gv.published_at', 'is not', null)
     .where(visible('g', s))

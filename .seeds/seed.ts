@@ -10,12 +10,18 @@ import {
   type NodeDef,
   refKey,
   stdGraphSource,
+  TABLE_NODE_KINDS,
+  tableContract,
+  tableRefOf,
+  tableSchemas,
   validateGraph
 } from '@ugula/graph';
 import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
+import * as v from 'valibot';
 import { upsertAgency, upsertBuiltInRoles, upsertOrganization } from './agencies.ts';
-import { billingGraphs } from './billing-graphs.ts';
+import { billingGraphs, billingTables } from './billing-graphs.ts';
 import { buildUpsertDemoPayers, buildUpsertDemoProfile } from './billing-setup.ts';
+import type { SeedTable } from './builder.ts';
 import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
 import { demoGraphs } from './demo-graphs.ts';
 import { buildUpsertDefaultFees, demoFees } from './fees.ts';
@@ -24,6 +30,7 @@ import { PLACES_FILE } from './gnis-build.ts';
 import { publishGraphs, type SeedGraph } from './graphs.ts';
 import { CODES_FILE, ELEMENTS_FILE } from './nemsis-build.ts';
 import { readCodes, readElements, upsertDictionary } from './nemsis-dictionary.ts';
+import { publishTables } from './tables.ts';
 import { upsertMembership, upsertUser } from './users.ts';
 
 const DEV_AGENCIES = [
@@ -47,6 +54,28 @@ const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
   if (problems.length) throw new Error(`Invalid seed graphs:\n${problems.join('\n')}`);
 };
 
+const assertValidTables = (tables: SeedTable[], graphs: SeedGraph[]) => {
+  const byKey = new Map(tables.map((t) => [t.key, t]));
+  const problems = [
+    ...tables.flatMap((t) =>
+      v.safeParse(tableSchemas[t.kind], t.definition).success ? [] : [`${t.key}: invalid table`]
+    ),
+    ...graphs.flatMap((g) =>
+      g.definition.nodes.flatMap((n) => {
+        const ref = tableRefOf(n);
+        const table = ref && byKey.get(ref.key);
+        if (!ref) return [];
+        return table &&
+          TABLE_NODE_KINDS[n.type as keyof typeof TABLE_NODE_KINDS] === table.kind &&
+          tableContract(table.definition) === tableContract(n.config ?? null)
+          ? []
+          : [`${g.key}#${n.id}: table ${ref.key} is missing or has other fields`];
+      })
+    )
+  ];
+  if (problems.length) throw new Error(`Invalid seed tables:\n${problems.join('\n')}`);
+};
+
 const graphNodes = () => [
   ...createStdNodes({ fetch }),
   ...createNemsisNodes(null),
@@ -57,6 +86,7 @@ const graphNodes = () => [
 const seedBase = async (db: Db) => {
   const nodes = graphNodes();
   assertValidGraphs(billingGraphs, nodes);
+  assertValidTables(billingTables, billingGraphs);
   const places = readPlaces(await readFile(PLACES_FILE));
   const dictionary = {
     elements: readElements(await readFile(ELEMENTS_FILE)),
@@ -65,6 +95,7 @@ const seedBase = async (db: Db) => {
   await db.transaction().execute(async (tx) => {
     await upsertPlaces(tx, places);
     await upsertDictionary(tx, dictionary);
+    await publishTables(tx, billingTables);
     await publishGraphs(tx, billingGraphs, new Set(nodes.map(refKey)));
   });
 };

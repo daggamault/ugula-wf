@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { GraphKind } from '@ugula/db';
+import type { GraphKind, GraphRole } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
 import { contractOf, createStdNodes, ENTRY_TYPE, type GraphDef } from '@ugula/graph';
 import type { CompiledQuery } from 'kysely';
 import { testAccess } from '../../shared/testing.ts';
 import type { GraphScope } from './queries.ts';
-import { canEditScope, createGraphService, templateFor } from './service.ts';
+import { canEditScope, createGraphService, roleFor, templateFor } from './service.ts';
 
 const nodes = createStdNodes({ fetch });
 
@@ -43,6 +43,7 @@ type Graph = {
   id: string;
   scope: GraphScope;
   kind?: GraphKind;
+  role?: GraphRole;
   key?: string;
   overrides?: string;
   active?: boolean;
@@ -88,6 +89,7 @@ const createWorld = ({ graphs, versions = {}, fail }: World) => {
               key: keyOf(g),
               name: 'Flow',
               kind: g.kind ?? 'workflow',
+              role: g.role ?? ((g.kind ?? 'workflow') === 'workflow' ? 'workflow' : 'rule'),
               description: '',
               scope: g.scope,
               overrides: g.overrides ?? null,
@@ -203,11 +205,25 @@ describe('graph templates and scopes', () => {
   it('never edits built-ins, leaves organization graphs to owners and agency graphs to permissions', () => {
     assert.equal(canEditScope(admin, 'system', 'workflow'), false);
     assert.equal(canEditScope(admin, 'organization', 'workflow'), true);
-    assert.equal(canEditScope(manager, 'organization', 'node'), false);
+    assert.equal(canEditScope(manager, 'organization', 'rule'), false);
     assert.equal(canEditScope(manager, 'agency', 'workflow'), true);
-    assert.equal(canEditScope(editor, 'agency', 'workflow'), false);
-    assert.equal(canEditScope(editor, 'agency', 'node'), true);
-    assert.equal(canEditScope(reader, 'agency', 'node'), false);
+    assert.equal(canEditScope(reader, 'agency', 'rule'), false);
+  });
+
+  it('lets workflows:update change rules, slots and tables and keeps stages and workflows to manage', () => {
+    for (const tier of ['rule', 'slot', 'table'] as const) {
+      assert.equal(canEditScope(editor, 'agency', tier), true, tier);
+    }
+    for (const tier of ['stage', 'workflow'] as const) {
+      assert.equal(canEditScope(editor, 'agency', tier), false, tier);
+      assert.equal(canEditScope(manager, 'agency', tier), true, tier);
+    }
+  });
+
+  it('gives workflows the workflow role and other graphs the role asked for, rules by default', () => {
+    assert.equal(roleFor('workflow', 'slot'), 'workflow');
+    assert.equal(roleFor('node', 'stage'), 'stage');
+    assert.equal(roleFor('node', undefined), 'rule');
   });
 });
 
@@ -252,6 +268,10 @@ describe('graph service reads', () => {
     const node = await blocks.service.find(editor, 'g-sys');
     assert.ok(node.ok);
     assert.deepEqual(node.value.graph.canOverride, { organization: false, agency: true });
+    const stages = createWorld({ graphs: [system({ kind: 'node', role: 'stage' })] });
+    const stage = await stages.service.find(editor, 'g-sys');
+    assert.ok(stage.ok);
+    assert.deepEqual(stage.value.graph.canOverride, { organization: false, agency: false });
   });
 
   it('reads graphs, versions, search and nodes scoped to the agency and organization', async () => {
@@ -276,7 +296,7 @@ describe('graph service reads', () => {
     });
     assert.equal(search.ok, true);
     assert.equal((await service.nodes(admin)).ok, true);
-    assert.deepEqual(queries.at(-1)?.parameters, ['t-1', 'o-1', 't-1', 'o-1']);
+    assert.deepEqual(queries.at(-1)?.parameters, ['t-1', 'o-1', 't-1', 'o-1', 't-1', 'o-1']);
   });
 
   it('reports graphs hidden from the agency as not found without writing', async () => {
@@ -357,7 +377,7 @@ describe('graph service create', () => {
       value: { id: 'g-new' }
     });
     const [graph] = agencyWorld.find('insert into "graphs"');
-    assert.deepEqual(graph?.parameters, ['o-1', 't-1', 'acme.new', 'New', 'node', '']);
+    assert.deepEqual(graph?.parameters, ['o-1', 't-1', 'acme.new', 'New', 'node', 'rule', '']);
     const [draft] = agencyWorld.find('insert into "graph_versions"');
     assert.deepEqual(draft?.parameters, [
       'g-new',
@@ -532,6 +552,7 @@ describe('graph service override', () => {
       null,
       KEY,
       'Flow',
+      'workflow',
       'workflow',
       ''
     ]);

@@ -1,4 +1,4 @@
-import { type Database, dependencyOf, type GraphKind } from '@ugula/db';
+import { type Database, dependencyOf, type GraphKind, type GraphRole } from '@ugula/db';
 import {
   contractOf,
   deepEqual,
@@ -15,6 +15,7 @@ export type SeedGraph = {
   key: string;
   name: string;
   kind: GraphKind;
+  role: GraphRole;
   description: string;
   version: number;
   definition: GraphDef;
@@ -29,12 +30,14 @@ const buildUpsertGraph = (db: Kysely<Database>, graph: SeedGraph) =>
       key: graph.key,
       name: graph.name,
       kind: graph.kind,
+      role: graph.role,
       description: graph.description
     })
     .onConflict((oc) =>
       oc.columns(['organization_id', 'agency_id', 'key']).doUpdateSet({
         name: graph.name,
         kind: graph.kind,
+        role: graph.role,
         description: graph.description,
         updated_at: sql`now()`
       })

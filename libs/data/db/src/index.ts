@@ -3,6 +3,7 @@ export * from './claim-documentation.ts';
 export * from './claim-patches.ts';
 export * from './claim-responses.ts';
 export { createDb, type SqlExecutor, sqlExecutor } from './client.ts';
+export * from './data-tables.ts';
 export * from './graph-versions.ts';
 export * from './payer-files.ts';
 export * from './result.ts';
