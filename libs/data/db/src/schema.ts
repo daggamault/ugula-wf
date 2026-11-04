@@ -1,8 +1,10 @@
 import type { Permission } from '@ugula/access';
 import type {
   AdjustmentGroup,
+  AfterDownload,
   ClaimEventKind,
   ClaimStatus,
+  ClearinghouseVendor,
   EligibilityStatus,
   InboundKind,
   InsuredRelationship,
@@ -479,10 +481,31 @@ type ClaimBatchesTable = {
   created_at: Timestamp;
   sent_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
   sent_as: ColumnType<string | null, string | null | undefined, string | null>;
+  rejected_at: NullableTimestamp;
+  rejection: ColumnType<string | null, string | null | undefined, string | null>;
+};
+
+type ClearinghouseConnectionsTable = {
+  agency_id: string;
+  vendor: ClearinghouseVendor;
+  enabled: Generated<boolean>;
+  sftp_host: string;
+  sftp_port: number;
+  sftp_username: string;
+  sftp_secret: string;
+  upload_path: string;
+  download_paths: string[];
+  claim_extension: string;
+  eligibility_extension: string;
+  claim_status_extension: string;
+  after_download: AfterDownload;
+  realtime_url: string | null;
+  updated_at: Timestamp;
 };
 
 type ClearinghouseDownloadsTable = {
   id: Generated<string>;
+  source: string;
   remote_path: string;
   size: number;
   modified_at: ColumnType<Date, Date | string, Date | string>;
@@ -629,6 +652,7 @@ export type Database = {
   claim_event_adjustments: ClaimEventAdjustmentsTable;
   claim_batches: ClaimBatchesTable;
   payer_files: PayerFilesTable;
+  clearinghouse_connections: ClearinghouseConnectionsTable;
   clearinghouse_downloads: ClearinghouseDownloadsTable;
   payer_file_items: PayerFileItemsTable;
   billing_profiles: BillingProfilesTable;

@@ -248,7 +248,13 @@ const buildClaimBatchesTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('sent_at', 'timestamptz')
     .addColumn('sent_as', 'text')
+    .addColumn('rejected_at', 'timestamptz')
+    .addColumn('rejection', 'text')
     .addCheckConstraint('claim_batches_sent_check', sql`(sent_at is null) = (sent_as is null)`)
+    .addCheckConstraint(
+      'claim_batches_rejected_check',
+      sql`(rejected_at is null) = (rejection is null)`
+    )
     .addUniqueConstraint('claim_batches_agency_id_control_number_unique', [
       'agency_id',
       'control_number'

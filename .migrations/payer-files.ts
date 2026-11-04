@@ -57,6 +57,7 @@ const buildClearinghouseDownloadsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('clearinghouse_downloads')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
+    .addColumn('source', 'text', (col) => col.notNull())
     .addColumn('remote_path', 'text', (col) => col.notNull())
     .addColumn('size', 'integer', (col) => col.notNull())
     .addColumn('modified_at', 'timestamptz', (col) => col.notNull())
@@ -69,6 +70,7 @@ const buildClearinghouseDownloadsTable = (db: Kysely<Database>) =>
     .addColumn('note', 'text', (col) => col.notNull().defaultTo(''))
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('clearinghouse_downloads_file_unique', [
+      'source',
       'remote_path',
       'size',
       'modified_at'

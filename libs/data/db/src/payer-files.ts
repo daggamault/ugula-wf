@@ -1,9 +1,13 @@
 import { createHash } from 'node:crypto';
 import {
   type ClaimAcknowledgment,
+  claimStatusNote,
   type EligibilityResult,
+  eligibilityFinding,
   type GroupAcknowledgment,
   type InboundKind,
+  type InterchangeAcknowledgment,
+  type PayerClaimStatus,
   type PayerFileOutcome,
   PROBLEM_OUTCOMES,
   type Remittance,
@@ -11,6 +15,8 @@ import {
   read277,
   read835,
   read999,
+  readClaimStatus,
+  readTA1,
   readX12,
   remittanceCoverage,
   remittancePosting
@@ -151,12 +157,12 @@ export const findBatchClaims = (db: Db, agencyId: string, controlNumber: string)
         .execute();
 };
 
-export const insertAcknowledgment = async (
+export const insertPayerEvent = async (
   db: Db,
   a: {
     claimId: string;
     coverageId: string;
-    kind: 'accepted' | 'rejected';
+    kind: 'accepted' | 'rejected' | 'eligibility' | 'claim_status';
     note: string;
     payerClaimNumber: string | null;
     sourceKey: string;
@@ -181,10 +187,25 @@ export const insertAcknowledgment = async (
 export const findTracedCoverage = (db: Db, agencyId: string, trace: string) =>
   db
     .selectFrom('claim_coverages')
-    .select(['id', 'claim_id'])
-    .where('agency_id', '=', agencyId)
-    .where(sql<string>`id::text`, '=', trace.toLowerCase())
+    .leftJoin('payers', 'payers.id', 'claim_coverages.payer_id')
+    .select(['claim_coverages.id', 'claim_coverages.claim_id', 'payers.claim_filing'])
+    .where('claim_coverages.agency_id', '=', agencyId)
+    .where(sql<string>`claim_coverages.id::text`, '=', trace.toLowerCase())
     .executeTakeFirst();
+
+const markBatchRejected = (
+  db: Db,
+  agencyId: string,
+  controlNumber: number,
+  rejection: string,
+  at: Date
+) =>
+  db
+    .updateTable('claim_batches')
+    .set({ rejected_at: at, rejection })
+    .where('agency_id', '=', agencyId)
+    .where('control_number', '=', controlNumber)
+    .execute();
 
 const saveEligibility = (
   db: Db,
@@ -289,58 +310,108 @@ const postRemittances = async (c: Context, remittances: Remittance[]) => {
   return items;
 };
 
-const acknowledge = async (
+const recordPayerEvent = async (
   c: Context,
   claimId: string,
   coverageId: string,
-  a: { accepted: boolean; note: string; payerClaimNumber: string | null; key: string }
+  e: {
+    kind: 'accepted' | 'rejected' | 'eligibility' | 'claim_status';
+    note: string;
+    payerClaimNumber: string | null;
+    key: string;
+  }
 ) => {
-  await insertAcknowledgment(c.tx, {
+  await insertPayerEvent(c.tx, {
     claimId,
     coverageId,
-    kind: a.accepted ? 'accepted' : 'rejected',
-    note: a.note,
-    payerClaimNumber: a.payerClaimNumber,
-    sourceKey: `${c.digest}:${a.key}`,
+    kind: e.kind,
+    note: e.note,
+    payerClaimNumber: e.payerClaimNumber,
+    sourceKey: `${c.digest}:${e.key}`,
     createdBy: c.userId
   });
   await nudgeClaim(c.tx, c.boss, c.agencyId, claimId);
 };
 
+const noBatch = (controlNumber: string) =>
+  item(controlNumber, null, 'unmatched', `No 837P file has control number ${controlNumber}`);
+
+const acknowledgeBatch = async (
+  c: Context,
+  controlNumber: string,
+  accepted: boolean,
+  note: string
+) => {
+  const claims = await findBatchClaims(c.tx, c.agencyId, controlNumber);
+  if (!claims.length) return [noBatch(controlNumber)];
+  const items: FileItem[] = [];
+  for (const claim of claims) {
+    if (claim.coverage_id === null) continue;
+    await recordPayerEvent(c, claim.claim_id, claim.coverage_id, {
+      kind: accepted ? 'accepted' : 'rejected',
+      note,
+      payerClaimNumber: null,
+      key: `${controlNumber}:${claim.claim_id}`
+    });
+    items.push(
+      item(String(claim.number), claim.claim_id, accepted ? 'accepted' : 'rejected', note)
+    );
+  }
+  return items;
+};
+
 const postBatchAcknowledgments = async (c: Context, groups: GroupAcknowledgment[]) => {
   const items: FileItem[] = [];
   for (const group of groups) {
-    const claims = await findBatchClaims(c.tx, c.agencyId, group.groupControlNumber);
-    if (!claims.length) {
-      items.push(
-        item(
-          group.groupControlNumber,
-          null,
-          'unmatched',
-          `No 837P file has control number ${group.groupControlNumber}`
-        )
-      );
-      continue;
-    }
     const errors = group.transactions.flatMap((t) => t.errors);
     const accepted = group.accepted && group.transactions.every((t) => t.accepted);
     const note = accepted
       ? `The clearinghouse accepted 837P file ${group.groupControlNumber}`
       : `The clearinghouse rejected 837P file ${group.groupControlNumber}${errors.length ? `: ${errors.join('; ')}` : ''}`;
-    for (const claim of claims) {
-      if (claim.coverage_id === null) continue;
-      await acknowledge(c, claim.claim_id, claim.coverage_id, {
-        accepted,
-        note,
-        payerClaimNumber: null,
-        key: `${group.groupControlNumber}:${claim.claim_id}`
-      });
-      items.push(
-        item(String(claim.number), claim.claim_id, accepted ? 'accepted' : 'rejected', note)
-      );
-    }
+    items.push(...(await acknowledgeBatch(c, group.groupControlNumber, accepted, note)));
   }
-  return items;
+  return { items, envelopeRejection: null };
+};
+
+const ENVELOPE_REJECTION = 'The clearinghouse rejected the file envelope';
+
+const postInterchangeAcknowledgments = async (c: Context, acks: InterchangeAcknowledgment[]) => {
+  const items: FileItem[] = [];
+  const reasons: string[] = [];
+  for (const ack of acks) {
+    const number = String(Number(ack.controlNumber) || ack.controlNumber);
+    if (ack.status !== 'rejected') {
+      items.push(
+        item(
+          number,
+          null,
+          'accepted',
+          ack.status === 'accepted'
+            ? `The clearinghouse accepted interchange ${number}`
+            : `The clearinghouse accepted interchange ${number} with errors: ${ack.message}`
+        )
+      );
+      continue;
+    }
+    const reason = `${ack.message} (TA1 note ${ack.noteCode || 'not given'})`;
+    reasons.push(`interchange ${number}: ${reason}`);
+    const control = Number(ack.controlNumber);
+    if (Number.isSafeInteger(control) && control > 0) {
+      await markBatchRejected(c.tx, c.agencyId, control, reason, c.now);
+    }
+    items.push(
+      ...(await acknowledgeBatch(
+        c,
+        ack.controlNumber,
+        false,
+        `${ENVELOPE_REJECTION} of 837P file ${number}: ${reason}`
+      ))
+    );
+  }
+  return {
+    items,
+    envelopeRejection: reasons.length ? `${ENVELOPE_REJECTION}: ${reasons.join('; ')}` : null
+  };
 };
 
 const postClaimAcknowledgments = async (c: Context, acks: ClaimAcknowledgment[]) => {
@@ -361,7 +432,7 @@ const postClaimAcknowledgments = async (c: Context, acks: ClaimAcknowledgment[])
           claim.id,
           'review',
           coverageId === null
-            ? 'The claim has not been submitted from here'
+            ? NOT_SUBMITTED
             : `Pending: ${ack.message || ack.categories.join(', ')}`
         )
       );
@@ -369,50 +440,90 @@ const postClaimAcknowledgments = async (c: Context, acks: ClaimAcknowledgment[])
     }
     const accepted = ack.status === 'accepted';
     const note = `${accepted ? 'Accepted' : 'Rejected'} (${ack.categories.join(', ')})${ack.message ? `: ${ack.message}` : ''}`;
-    await acknowledge(c, claim.id, coverageId, {
-      accepted,
+    await recordPayerEvent(c, claim.id, coverageId, {
+      kind: accepted ? 'accepted' : 'rejected',
       note,
       payerClaimNumber: ack.payerClaimNumber,
       key: String(n)
     });
     items.push(item(ack.claimNumber, claim.id, accepted ? 'accepted' : 'rejected', note));
   }
-  return items;
+  return { items, envelopeRejection: null };
 };
+
+const NOT_SUBMITTED = 'The claim has not been submitted from here';
+
+const postClaimStatuses = async (c: Context, statuses: PayerClaimStatus[]) => {
+  const items: FileItem[] = [];
+  let n = 0;
+  for (const s of statuses) {
+    n += 1;
+    const claim = await findClaimByNumber(c.tx, c.agencyId, s.claimNumber);
+    if (!claim) {
+      items.push(noClaim(s.claimNumber));
+      continue;
+    }
+    const coverageId = await lastSubmittedCoverage(c.tx, claim.id);
+    if (coverageId === null) {
+      items.push(item(s.claimNumber, claim.id, 'review', NOT_SUBMITTED));
+      continue;
+    }
+    const note = claimStatusNote(s);
+    await recordPayerEvent(c, claim.id, coverageId, {
+      kind: 'claim_status',
+      note,
+      payerClaimNumber: s.payerClaimNumber,
+      key: String(n)
+    });
+    items.push(item(s.claimNumber, claim.id, 'status', note));
+  }
+  return { items, envelopeRejection: null };
+};
+
+const eligibilityLabel = (active: boolean | null) =>
+  active === null ? null : active ? 'Coverage active' : 'Coverage not active';
 
 const postEligibility = async (c: Context, results: EligibilityResult[]) => {
   const items: FileItem[] = [];
+  let n = 0;
   for (const r of results) {
+    n += 1;
     const coverage = await findTracedCoverage(c.tx, c.agencyId, r.trace);
     if (!coverage) {
       items.push(item(r.trace, null, 'unmatched', 'No payer on a claim matches this response'));
       continue;
     }
-    const note = [
-      r.planName,
-      r.coverageStart || r.coverageEnd
-        ? `Covered ${r.coverageStart ?? '?'} to ${r.coverageEnd ?? 'now'}`
-        : null,
-      ...r.messages
-    ]
-      .filter(Boolean)
-      .join('; ');
-    if (r.active === null) {
-      items.push(item(r.trace, coverage.claim_id, 'review', note || 'The payer did not say'));
-      continue;
+    const found = eligibilityFinding(r, coverage.claim_filing);
+    if (found.active !== null) {
+      await saveEligibility(c.tx, coverage.id, {
+        active: found.active,
+        note: found.note,
+        checkedAt: c.now
+      });
     }
-    await saveEligibility(c.tx, coverage.id, { active: r.active, note, checkedAt: c.now });
-    await nudgeClaim(c.tx, c.boss, c.agencyId, coverage.claim_id);
-    items.push(item(r.trace, coverage.claim_id, r.active ? 'eligible' : 'ineligible', note));
+    await recordPayerEvent(c, coverage.claim_id, coverage.id, {
+      kind: 'eligibility',
+      note: [eligibilityLabel(found.active), found.note].filter(Boolean).join(': '),
+      payerClaimNumber: null,
+      key: String(n)
+    });
+    items.push(item(r.trace, coverage.claim_id, found.outcome, found.note));
   }
-  return items;
+  return { items, envelopeRejection: null };
 };
 
-const PROCESSORS: Record<InboundKind, (c: Context, text: string) => Promise<FileItem[]>> = {
-  '835': (c, text) => postRemittances(c, read835(text)),
+type Posted = { items: FileItem[]; envelopeRejection: string | null };
+
+const PROCESSORS: Record<InboundKind, (c: Context, text: string) => Promise<Posted>> = {
+  '835': async (c, text) => ({
+    items: await postRemittances(c, read835(text)),
+    envelopeRejection: null
+  }),
   '999': (c, text) => postBatchAcknowledgments(c, read999(text)),
   '277': (c, text) => postClaimAcknowledgments(c, read277(text)),
-  '271': (c, text) => postEligibility(c, read271(text))
+  '271': (c, text) => postEligibility(c, read271(text)),
+  TA1: (c, text) => postInterchangeAcknowledgments(c, readTA1(text)),
+  '277S': (c, text) => postClaimStatuses(c, readClaimStatus(text))
 };
 
 const kindOf = (text: string) => {
@@ -437,7 +548,7 @@ export const readPayerFile = (bytes: Uint8Array): Result<InboundFile> => {
   if (!x12?.kind) {
     return fail(
       'invalid',
-      'This is not a remittance (835), acknowledgment (999 or 277CA) or eligibility (271) file'
+      'This is not a remittance (835), acknowledgment (TA1, 999 or 277CA), claim status (277) or eligibility (271) file'
     );
   }
   return ok({
@@ -469,7 +580,7 @@ export const applyPayerFile = async (
     controlNumber: f.file.controlNumber,
     uploadedBy: f.userId
   });
-  const items = await PROCESSORS[f.file.kind](
+  const { items, envelopeRejection } = await PROCESSORS[f.file.kind](
     {
       tx,
       boss,
@@ -483,5 +594,5 @@ export const applyPayerFile = async (
   );
   const problems = items.filter((i) => PROBLEM_OUTCOMES.includes(i.outcome)).length;
   await saveFileItems(tx, id, items, problems);
-  return { id, kind: f.file.kind, items, problems };
+  return { id, kind: f.file.kind, items, problems, envelopeRejection };
 };

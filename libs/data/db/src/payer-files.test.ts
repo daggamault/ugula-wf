@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
-import { build271, build277, build835, build999 } from '@ugula/billing/mock';
+import { build271, build277, build277Status, build835, build999 } from '@ugula/billing/mock';
+import { buildTA1 } from '@ugula/billing/mock-waystar';
 import type { RunQueueClient } from '@ugula/run-queue';
 import {
   applyPayerFile,
@@ -9,7 +10,7 @@ import {
   findBatchClaims,
   findClaimByNumber,
   findTracedCoverage,
-  insertAcknowledgment,
+  insertPayerEvent,
   readPayerFile,
   saveFileItems
 } from './payer-files.ts';
@@ -83,7 +84,7 @@ describe('payer file queries', () => {
 
   it('records acknowledgments once per file line and counts problems', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    const inserted = await insertAcknowledgment(db, {
+    const inserted = await insertPayerEvent(db, {
       claimId: 'c1',
       coverageId: 'cov1',
       kind: 'rejected',
@@ -214,5 +215,102 @@ describe('applyPayerFile', () => {
     assert.deepEqual(outcomes(unknown.out.items), [
       ['cov9', null, 'unmatched', 'No payer on a claim matches this response']
     ]);
+  });
+
+  it('logs each eligibility answer on the claim history', async () => {
+    const { events } = await apply(build271({ trace: 'cov1', active: false }, { createdAt }));
+    assert.equal(events.length, 1);
+    assert.ok(events[0]?.parameters.includes('eligibility'));
+    assert.ok(events[0]?.parameters.includes('cov1'));
+    assert.ok(
+      events[0]?.parameters.some(
+        (p) => typeof p === 'string' && p.startsWith('Coverage not active')
+      )
+    );
+  });
+
+  it('asks a biller to bill the Medicare Advantage plan a Medicare answer names', async () => {
+    const { db } = createRecordingDb(({ sql }) =>
+      sql.includes('id::text')
+        ? [{ id: 'cov1', claim_id: 'c1', claim_filing: 'MB' }]
+        : sql.startsWith('insert into "payer_files"')
+          ? [{ id: 'f1' }]
+          : []
+    );
+    const read = readPayerFile(
+      bytes(
+        build271(
+          { trace: 'cov1', active: true, advantagePlan: { name: 'SUNSHINE', id: 'H1' } },
+          { createdAt }
+        )
+      )
+    );
+    assert.ok(read.ok);
+    const out = await applyPayerFile(db, boss, {
+      agencyId: 't1',
+      userId: null,
+      fileName: 'a.271',
+      document: {},
+      file: read.value,
+      now: createdAt
+    });
+    assert.equal(out.items[0]?.outcome, 'review');
+    assert.match(
+      out.items[0]?.message ?? '',
+      /^Bill the Medicare Advantage plan instead: SUNSHINE/
+    );
+  });
+
+  it('rejects the 837P batch a TA1 rejects, sending its claims back to review', async () => {
+    const ta1 = buildTA1(
+      { sender: 'SUB01', receiver: 'X', controlNumber: '55', production: false },
+      '008',
+      createdAt
+    );
+    const { out, queries, events } = await apply(ta1);
+    assert.equal(out.kind, 'TA1');
+    assert.equal(
+      out.envelopeRejection,
+      'The clearinghouse rejected the file envelope: interchange 55: Invalid interchange receiver ID (TA1 note 008)'
+    );
+    assert.deepEqual(outcomes(out.items), [
+      [
+        '1001',
+        'c1',
+        'rejected',
+        'The clearinghouse rejected the file envelope of 837P file 55: Invalid interchange receiver ID (TA1 note 008)'
+      ]
+    ]);
+    const marked = queries.find((q) => q.sql.startsWith('update "claim_batches"'));
+    assert.deepEqual(marked?.parameters.slice(0, 1), [createdAt]);
+    assert.ok(marked?.parameters.includes(55));
+    assert.ok(events[0]?.parameters.includes('rejected'));
+    const unknown = await apply(
+      buildTA1(
+        { sender: 'S', receiver: 'X', controlNumber: '77', production: false },
+        '008',
+        createdAt
+      )
+    );
+    assert.equal(unknown.out.items[0]?.outcome, 'unmatched');
+    assert.ok(unknown.out.envelopeRejection);
+  });
+
+  it('logs payer claim status answers on the claim they name', async () => {
+    const { out, events } = await apply(
+      build277Status([
+        { trace: '1001', claimNumber: '1001', category: 'F1', code: '65', payerClaimNumber: 'P9' },
+        { trace: '2002', claimNumber: '2002', category: 'A4', code: '35' }
+      ])
+    );
+    assert.equal(out.kind, '277S');
+    assert.deepEqual(outcomes(out.items), [
+      ['1001', 'c1', 'status', 'Paid (F1:65): Finalized: payment: Claim has been paid'],
+      ['2002', null, 'unmatched', 'No claim has number 2002']
+    ]);
+    assert.equal(out.envelopeRejection, null);
+    for (const value of ['claim_status', 'cov1', 'P9']) {
+      assert.ok(events[0]?.parameters.includes(value), value);
+    }
   });
 });
