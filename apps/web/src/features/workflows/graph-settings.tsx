@@ -1,9 +1,11 @@
 import {
   checkValue,
+  type ExitDoc,
   formatType,
   type GraphDef,
   type PinSpec,
   parseType,
+  type Signature,
   type ValueType,
   type VariableDef
 } from '@ugula/graph';
@@ -76,6 +78,78 @@ const TypeInput = ({
   );
 };
 
+type Doc = { label?: string | undefined; description?: string | undefined };
+
+export const withDoc = <T extends Doc>(doc: T, key: keyof Doc, text: string): T => {
+  const { [key]: _, ...rest } = doc;
+  return (text.trim() ? { ...rest, [key]: text } : rest) as T;
+};
+
+const DocFields = ({
+  id,
+  doc,
+  onDoc
+}: {
+  id: string;
+  doc: Doc;
+  onDoc: (key: keyof Doc, text: string) => void;
+}) => (
+  <FieldGrid>
+    <Input
+      id={`${id}-label`}
+      label="Label"
+      hint="Title Case, shown on the pin."
+      value={doc.label ?? ''}
+      onChange={(e) => onDoc('label', e.target.value)}
+    />
+    <Input
+      id={`${id}-description`}
+      label="Description"
+      hint="One sentence on what it means."
+      value={doc.description ?? ''}
+      onChange={(e) => onDoc('description', e.target.value)}
+    />
+  </FieldGrid>
+);
+
+const ExitsEditor = ({
+  signature,
+  onExits
+}: {
+  signature: Signature;
+  onExits: (exits: Record<string, ExitDoc>) => void;
+}) => {
+  const exits = signature.exits ?? {};
+  return signature.execOut.length ? (
+    <SectionPanel
+      title="Exits"
+      description="What each way out means, shown on the node and in the inspector."
+    >
+      {signature.execOut.map((name) => (
+        <div key={name} className="border-border flex flex-col gap-4 rounded-xl border p-4">
+          <code className="font-mono text-sm">{name}</code>
+          <DocFields
+            id={`exit-${name}`}
+            doc={exits[name] ?? {}}
+            onDoc={(key, text) =>
+              onExits(
+                Object.fromEntries(
+                  signature.execOut
+                    .map((n) => [n, n === name ? withDoc(exits[n] ?? {}, key, text) : exits[n]])
+                    .filter(
+                      (e): e is [string, ExitDoc] =>
+                        e[1] !== undefined && Object.keys(e[1]).length > 0
+                    )
+                )
+              )
+            }
+          />
+        </div>
+      ))}
+    </SectionPanel>
+  ) : null;
+};
+
 const PinsEditor = ({
   id,
   title,
@@ -93,30 +167,38 @@ const PinsEditor = ({
   pins: readonly PinSpec[];
   onPins: (pins: PinSpec[]) => void;
 }) => {
+  const replace = (i: number, next: PinSpec) => onPins(pins.map((p, j) => (j === i ? next : p)));
   const patch = (i: number, next: Partial<PinSpec>) =>
     onPins(pins.map((p, j) => (j === i ? { ...p, ...next } : p)));
   return (
     <SectionPanel title={title} description={description}>
       {pins.map((pin, i) => (
-        <div key={`${id}-${i}`} className={rowClass}>
-          <Input
-            id={`${id}-${i}-name`}
-            label="Name"
-            value={pin.name}
-            onChange={(e) => patch(i, { name: e.target.value })}
-          />
-          <TypeInput
-            key={formatType(pin.type)}
-            id={`${id}-${i}-type`}
-            type={pin.type}
-            onType={(type) => patch(i, { type })}
-          />
-          {editable ? (
-            <RemoveButton
-              label={`Remove ${pin.name}`}
-              onClick={() => onPins(pins.filter((_, j) => j !== i))}
+        <div key={`${id}-${i}`} className="border-border flex flex-col gap-4 rounded-xl border p-4">
+          <div className={rowClass}>
+            <Input
+              id={`${id}-${i}-name`}
+              label="Name"
+              value={pin.name}
+              onChange={(e) => patch(i, { name: e.target.value })}
             />
-          ) : null}
+            <TypeInput
+              key={formatType(pin.type)}
+              id={`${id}-${i}-type`}
+              type={pin.type}
+              onType={(type) => patch(i, { type })}
+            />
+            {editable ? (
+              <RemoveButton
+                label={`Remove ${pin.name}`}
+                onClick={() => onPins(pins.filter((_, j) => j !== i))}
+              />
+            ) : null}
+          </div>
+          <DocFields
+            id={`${id}-${i}`}
+            doc={pin}
+            onDoc={(key, text) => replace(i, withDoc(pin, key, text))}
+          />
         </div>
       ))}
       {editable ? (
@@ -247,6 +329,7 @@ export const GraphSettings = ({ kind, def, editable, onChange, onClose }: GraphS
             />
           </FieldGrid>
         </SectionPanel>
+        <ExitsEditor signature={signature} onExits={(exits) => setSignature({ exits })} />
         <PinsEditor
           id="in"
           title="Inputs"

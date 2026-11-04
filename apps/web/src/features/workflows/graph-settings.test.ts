@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { GraphDef } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { GraphSettings } from './graph-settings.tsx';
+import { GraphSettings, withDoc } from './graph-settings.tsx';
 
 const def: GraphDef = {
   signature: {
@@ -53,5 +53,38 @@ describe('GraphSettings', () => {
     assert.ok(html.includes('Subworkflow Settings</h2>') && html.includes('aria-labelledby='));
     assert.ok(html.includes('for="exec-in"') && html.includes('value="exec"'));
     assert.ok(html.includes('aria-label="Remove lines"') && html.includes('Add Variable'));
+  });
+});
+
+describe('pin and exit documentation', () => {
+  it('edits labels and descriptions of pins and exits', () => {
+    const html = renderToStaticMarkup(
+      createElement(GraphSettings, {
+        kind: 'node',
+        def: {
+          ...def,
+          signature: {
+            ...def.signature,
+            inputs: [{ name: 'claim', type: 'any', label: 'Claim', description: 'The claim' }],
+            exits: { rejected: { label: 'Rejected', description: 'The payer said no' } }
+          }
+        },
+        editable: true,
+        onChange: () => undefined,
+        onClose: () => undefined
+      })
+    );
+    assert.ok(html.includes('>Exits<') && html.includes('id="exit-ok-label"'));
+    assert.ok(html.includes('value="The payer said no"'));
+    assert.ok(html.includes('id="in-0-description"') && html.includes('value="The claim"'));
+  });
+
+  it('sets a doc field or drops it when cleared', () => {
+    assert.deepEqual(withDoc({ name: 'a', label: 'A' }, 'description', 'About a'), {
+      name: 'a',
+      label: 'A',
+      description: 'About a'
+    });
+    assert.deepEqual(withDoc({ name: 'a', label: 'A' }, 'label', ' '), { name: 'a' });
   });
 });

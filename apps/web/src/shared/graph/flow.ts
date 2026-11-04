@@ -15,6 +15,8 @@ import { toneOf } from './pins.ts';
 
 export type NodeStatus = 'idle' | 'done' | 'error' | 'waiting';
 
+export type NodeChange = 'added' | 'changed' | 'overridden';
+
 export type GraphNodeData = {
   instance: NodeInstance;
   title: string;
@@ -24,6 +26,8 @@ export type GraphNodeData = {
   status: NodeStatus;
   issues: string[];
   opens: 'graph' | 'workflow' | null;
+  change: NodeChange | null;
+  ghost: boolean;
 };
 
 export type GraphFlowNode = Node<GraphNodeData, 'graph'>;
@@ -31,7 +35,14 @@ export type GraphFlowNode = Node<GraphNodeData, 'graph'>;
 export type Decorations = {
   status?: Readonly<Record<string, NodeStatus>>;
   issues?: Readonly<Record<string, readonly string[]>>;
+  changes?: Readonly<Record<string, NodeChange>>;
+  changedEdges?: ReadonlySet<string>;
+  removed?: readonly NodeInstance[];
 };
+
+export const GHOST_PREFIX = 'removed:';
+
+const CUSTOM_EDGE = '[&_.react-flow__edge-path]:stroke-custom';
 
 type PinEnd = { exec: boolean; type: ValueType | null };
 
@@ -67,7 +78,7 @@ const arrange = (def: GraphDef, catalog: Catalog) =>
 export const toFlow = (
   def: GraphDef,
   catalog: Catalog,
-  { status = {}, issues = {} }: Decorations = {}
+  { status = {}, issues = {}, changes = {}, changedEdges, removed = [] }: Decorations = {}
 ) => {
   const placed = def.nodes.every((n) => n.position) ? {} : arrange(def, catalog);
   const nodes: GraphFlowNode[] = def.nodes.map((inst) => {
@@ -85,10 +96,34 @@ export const toFlow = (
         connected: def.edges.filter((e) => e.to === inst.id).map((e) => e.toPin),
         status: status[inst.id] ?? 'idle',
         issues: [...(issues[inst.id] ?? [])],
-        opens: catalog.opensAs(inst)
+        opens: catalog.opensAs(inst),
+        change: changes[inst.id] ?? null,
+        ghost: false
       }
     };
   });
+  const ghosts: GraphFlowNode[] = removed.map((inst) => ({
+    id: `${GHOST_PREFIX}${inst.id}`,
+    type: 'graph',
+    position: inst.position ?? { x: 0, y: 0 },
+    deletable: false,
+    draggable: false,
+    selectable: false,
+    connectable: false,
+    zIndex: -1,
+    data: {
+      instance: inst,
+      title: catalog.titleOf(inst),
+      description: catalog.describe(inst),
+      signature: catalog.signatureOf(inst, def),
+      connected: [],
+      status: 'idle',
+      issues: [],
+      opens: null,
+      change: null,
+      ghost: true
+    }
+  }));
   const edges: Edge[] = def.edges.map((e) => {
     const end = outputOf(signatureById(def, catalog, e.from), e.fromPin);
     return {
@@ -97,11 +132,13 @@ export const toFlow = (
       sourceHandle: e.fromPin,
       target: e.to,
       targetHandle: e.toPin,
-      className: toneOf(end?.exec ? 'exec' : (end?.type ?? 'any')).edge,
+      className: changedEdges?.has(edgeId(e))
+        ? CUSTOM_EDGE
+        : toneOf(end?.exec ? 'exec' : (end?.type ?? 'any')).edge,
       animated: status[e.to] === 'waiting'
     };
   });
-  return { nodes, edges };
+  return { nodes: [...ghosts, ...nodes], edges };
 };
 
 export const connectionKind = (def: GraphDef, catalog: Catalog, c: Connection) => {

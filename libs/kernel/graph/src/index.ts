@@ -11,6 +11,7 @@ export {
 } from './compile.ts';
 export { inputNode } from './core.ts';
 export { actionNode, branchNode, pin, pureNode } from './define.ts';
+export { documentationIssues, isTitleCase } from './documentation.ts';
 export { createEngine, type Engine } from './engine.ts';
 export { messageOf } from './errors.ts';
 export { checkField } from './fields.ts';

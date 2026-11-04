@@ -1,4 +1,4 @@
-import type { GraphDef, Issue, NodeDef } from '@ugula/graph';
+import { documentationIssues, type GraphDef, type Issue, type NodeDef } from '@ugula/graph';
 import {
   CopyPlusIcon,
   NetworkIcon,
@@ -75,6 +75,29 @@ const issuesByNode = (issues: readonly Issue[]) => {
   }
   return map;
 };
+
+export const documentationHints = (def: GraphDef, catalog: Catalog) =>
+  documentationIssues(def).map((i) => {
+    const inst = i.node ? def.nodes.find((n) => n.id === i.node) : undefined;
+    if (!inst) return i.message;
+    const { label: _, ...plain } = inst;
+    return `${catalog.titleOf(plain)}: ${i.message}`;
+  });
+
+export const DocumentationHints = ({ hints }: { hints: readonly string[] }) => (
+  <Alert intent="warning">
+    <details className="flex flex-col gap-1">
+      <summary className="cursor-pointer font-semibold">
+        {hints.length} Documentation {hints.length === 1 ? 'Hint' : 'Hints'}
+      </summary>
+      <ul className="flex list-disc flex-col gap-1 pt-1 pl-4">
+        {hints.map((h) => (
+          <li key={h}>{h}</li>
+        ))}
+      </ul>
+    </details>
+  </Alert>
+);
 
 export const EditorView = ({
   detail,
@@ -220,6 +243,7 @@ export const EditorView = ({
     });
   };
   const graphIssues = issues.filter((i) => !i.node);
+  const hints = editable ? documentationHints(def, catalog) : [];
   const howTo = editable
     ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them.'
     : graph.scope === 'system'
@@ -354,7 +378,7 @@ export const EditorView = ({
       <p className="border-border bg-surface text-surface-fg-muted border-b px-4 py-2 text-xs">
         {howTo}
       </p>
-      {error || graphIssues.length ? (
+      {error || graphIssues.length || hints.length ? (
         <div className="flex flex-col gap-2 px-4 py-3">
           {error ? <Alert>{error}</Alert> : null}
           {graphIssues.map((issue, i) => (
@@ -362,6 +386,7 @@ export const EditorView = ({
               {issue.message}
             </Alert>
           ))}
+          {hints.length ? <DocumentationHints hints={hints} /> : null}
         </div>
       ) : null}
       <div className="relative min-h-0 flex-1">

@@ -74,6 +74,9 @@ export const GraphCanvas = ({
   catalog,
   status,
   issues,
+  changes,
+  changedEdges,
+  removed,
   selected,
   onSelect,
   onOpen,
@@ -82,8 +85,15 @@ export const GraphCanvas = ({
   const theme = useDocumentTheme();
   const editable = onChange !== undefined;
   const flow = useMemo(
-    () => toFlow(def, catalog, { ...(status ? { status } : {}), ...(issues ? { issues } : {}) }),
-    [def, catalog, status, issues]
+    () =>
+      toFlow(def, catalog, {
+        ...(status ? { status } : {}),
+        ...(issues ? { issues } : {}),
+        ...(changes ? { changes } : {}),
+        ...(changedEdges ? { changedEdges } : {}),
+        ...(removed ? { removed } : {})
+      }),
+    [def, catalog, status, issues, changes, changedEdges, removed]
   );
   const [nodes, setNodes] = useState<GraphFlowNode[]>(flow.nodes);
   const [opening] = useState(() => openingNodes(flow.nodes));
@@ -138,7 +148,9 @@ export const GraphCanvas = ({
         onNodesChange={(changes) => setNodes((ns) => applyNodeChanges(changes, ns))}
         onEdgesChange={(changes) => setEdges((es) => applyEdgeChanges(changes, es))}
         onNodeClick={(_, node) =>
-          clicks.click(node.id, node.data.opens !== null && onOpen !== undefined)
+          node.data.ghost
+            ? undefined
+            : clicks.click(node.id, node.data.opens !== null && onOpen !== undefined)
         }
         onPaneClick={() => onSelect(null)}
         onNodeDoubleClick={(_, node) => clicks.doubleClick(node.id, node.data.opens !== null)}

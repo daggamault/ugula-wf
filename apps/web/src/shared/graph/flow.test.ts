@@ -45,6 +45,23 @@ const link = (source: string, sourceHandle: string, target: string, targetHandle
 });
 
 describe('toFlow', () => {
+  it('marks customized nodes and wires and adds removed base nodes as ghosts', () => {
+    const wire = def.edges[0];
+    assert.ok(wire);
+    const { nodes, edges } = toFlow(def, catalog, {
+      changes: { add1: 'changed' },
+      changedEdges: new Set([edgeId(wire)]),
+      removed: [{ id: 'old1', type: 'std.math.add', version: 1, position: { x: 5, y: 6 } }]
+    });
+    assert.equal(nodes.find((n) => n.id === 'add1')?.data.change, 'changed');
+    assert.equal(nodes.find((n) => n.id === 'up1')?.data.change, null);
+    const ghost = nodes.find((n) => n.id === 'removed:old1');
+    assert.equal(ghost?.data.ghost, true);
+    assert.equal(ghost?.selectable, false);
+    assert.deepEqual(ghost?.position, { x: 5, y: 6 });
+    assert.ok(String(edges[0]?.className).includes('stroke-custom'));
+  });
+
   it('maps nodes with signatures, decorations and default positions', () => {
     const { nodes, edges } = toFlow(def, catalog, {
       status: { add1: 'error' },

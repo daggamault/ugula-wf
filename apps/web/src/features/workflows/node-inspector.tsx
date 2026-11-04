@@ -10,6 +10,7 @@ import {
 } from '@ugula/graph';
 import { ExternalLinkIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { useId, useState } from 'react';
+import { labelFromName } from '../../shared/format.ts';
 import type { Catalog } from '../../shared/graph/catalog.ts';
 import { updateNode } from '../../shared/graph/flow.ts';
 import { describeType, pinLabel } from '../../shared/graph/pins.ts';
@@ -50,12 +51,17 @@ const modeOf = (binding: InputBinding | undefined): BindingMode =>
   !binding ? 'default' : 'expr' in binding ? 'expr' : 'value';
 
 const PinHeading = ({ spec }: { spec: PinSpec }) => (
-  <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-    <span className="text-sm font-semibold">{pinLabel(spec)}</span>
-    <span className="text-surface-fg-muted text-xs">
-      {describeType(spec.type)}
-      {spec.optional ? ', optional' : ''}
+  <span className="flex flex-col gap-0.5">
+    <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+      <span className="text-sm font-semibold">{pinLabel(spec)}</span>
+      <span className="text-surface-fg-muted text-xs">
+        {describeType(spec.type)}
+        {spec.optional ? ', optional' : ''}
+      </span>
     </span>
+    {spec.description ? (
+      <span className="text-surface-fg-muted text-xs">{spec.description}</span>
+    ) : null}
   </span>
 );
 
@@ -292,12 +298,22 @@ export const NodeInspector = ({
             description="Where the run goes next, each path a separate connection on the canvas."
           >
             <ul className="flex flex-col gap-2">
-              {exits.map((pin) => (
-                <li key={pin} className="flex flex-wrap justify-between gap-x-3">
-                  <span className="text-sm font-semibold">{pin === 'exec' ? 'Next' : pin}</span>
-                  <Links items={outgoing(pin)} empty="Not connected" />
-                </li>
-              ))}
+              {exits.map((pin) => {
+                const doc = signature?.exits?.[pin];
+                return (
+                  <li key={pin} className="flex flex-col gap-0.5">
+                    <span className="flex flex-wrap justify-between gap-x-3">
+                      <span className="text-sm font-semibold">
+                        {doc?.label ?? (pin === 'exec' ? 'Next' : labelFromName(pin))}
+                      </span>
+                      <Links items={outgoing(pin)} empty="Not connected" />
+                    </span>
+                    {doc?.description ? (
+                      <span className="text-surface-fg-muted text-xs">{doc.description}</span>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           </SectionPanel>
         ) : null}
@@ -327,8 +343,8 @@ export const NodeInspector = ({
         ) : null}
         {editable ? (
           <SectionPanel
-            title="Name"
-            description="Shown on the canvas instead of the node's usual name."
+            title="Name and Note"
+            description="Shown on the canvas: a name instead of the node's usual one, and a note for whoever reads this next."
           >
             <Input
               id={`${node.id}-label`}
@@ -337,6 +353,17 @@ export const NodeInspector = ({
               value={node.label ?? ''}
               onChange={(e) => set({ label: e.target.value || undefined })}
             />
+            <Textarea
+              id={`${node.id}-note`}
+              label="Note"
+              hint="Why this node is here or what to check before changing it."
+              value={node.note ?? ''}
+              onChange={(e) => set({ note: e.target.value || undefined })}
+            />
+          </SectionPanel>
+        ) : node.note ? (
+          <SectionPanel title="Note" description="Left by whoever set this node up.">
+            <p className="text-sm whitespace-pre-line">{node.note}</p>
           </SectionPanel>
         ) : null}
         {signature && !isPure(signature) && !boundary ? (

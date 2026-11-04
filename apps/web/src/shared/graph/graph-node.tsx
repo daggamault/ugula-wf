@@ -1,11 +1,11 @@
-import type { InputBinding, PinSpec } from '@ugula/graph';
+import type { ExitDoc, InputBinding, PinSpec } from '@ugula/graph';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
 import { classNamesOf } from '../class-names.ts';
 import { labelFromName } from '../format.ts';
 import type { GraphFlowNode, NodeStatus } from './flow.ts';
 import { describeType, pinLabel, toneOf } from './pins.ts';
 
-type Pin = { name: string; label: string; exec: boolean; spec?: PinSpec };
+type Pin = { name: string; label: string; exec: boolean; spec?: PinSpec; doc?: ExitDoc };
 
 const statusClasses: Record<NodeStatus, string> = {
   idle: 'border-border',
@@ -17,14 +17,26 @@ const statusClasses: Record<NodeStatus, string> = {
 const handleBase = 'size-3! border-0! transition-transform hover:scale-125';
 const execShape = 'rounded-none! [clip-path:polygon(0_0,100%_50%,0_100%)]';
 
-const pinsOf = (exec: string[], data: PinSpec[]): Pin[] => [
-  ...exec.map((name) => ({
-    name,
-    label: name === 'exec' || name === 'then' ? '' : labelFromName(name),
-    exec: true
-  })),
+const execLabel = (name: string, doc: ExitDoc | undefined) =>
+  doc?.label ?? (name === 'exec' || name === 'then' ? '' : labelFromName(name));
+
+const pinsOf = (exec: string[], data: PinSpec[], exits: Record<string, ExitDoc> = {}): Pin[] => [
+  ...exec.map((name) => {
+    const doc = exits[name];
+    return { name, label: execLabel(name, doc), exec: true, ...(doc ? { doc } : {}) };
+  }),
   ...data.map((spec) => ({ name: spec.name, label: pinLabel(spec), exec: false, spec }))
 ];
+
+export const pinTitle = (pin: Pin) => {
+  const head = pin.spec
+    ? `${pin.label}: ${describeType(pin.spec.type)}`
+    : pin.label
+      ? `${pin.label}: Execution flow`
+      : 'Execution flow';
+  const about = pin.spec?.description ?? pin.doc?.description;
+  return about ? `${head}. ${about}` : head;
+};
 
 const preview = (binding: InputBinding | undefined) => {
   if (!binding) return null;
@@ -46,7 +58,7 @@ const PinRow = ({
       'text-surface-fg-muted relative flex min-h-6 items-center gap-2 text-xs',
       side === 'in' ? 'pr-2 pl-4' : 'justify-end pr-4 pl-2'
     )}
-    title={pin.spec ? `${pin.label}: ${describeType(pin.spec.type)}` : 'Execution flow'}
+    title={pinTitle(pin)}
   >
     <Handle
       type={side === 'in' ? 'target' : 'source'}
@@ -67,32 +79,62 @@ const PinRow = ({
   </li>
 );
 
+const CHANGE_TITLES = {
+  added: 'Added in this copy',
+  changed: 'Changed from the base',
+  overridden: 'Your organization or agency overrides this'
+} as const;
+
+const borderOf = (status: NodeStatus, custom: boolean, ghost: boolean) =>
+  ghost
+    ? 'border-custom border-dashed opacity-60'
+    : custom && status === 'idle'
+      ? 'border-custom'
+      : statusClasses[status];
+
 export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
   const { instance, signature, title, description, status, issues, opens, connected } = data;
+  const { change, ghost } = data;
   const inputs = signature ? pinsOf(signature.execIn, signature.inputs) : [];
-  const outputs = signature ? pinsOf(signature.execOut, signature.outputs) : [];
+  const outputs = signature ? pinsOf(signature.execOut, signature.outputs, signature.exits) : [];
   return (
     <article
-      aria-label={title}
+      aria-label={ghost ? `${title} (removed)` : title}
       className={classNamesOf(
-        'bg-surface text-surface-fg w-60 cursor-pointer rounded-xl border-2 text-left transition duration-150 ease-out',
-        statusClasses[status],
+        'bg-surface text-surface-fg w-60 rounded-xl border-2 text-left transition duration-150 ease-out',
+        ghost ? 'pointer-events-none' : 'cursor-pointer',
+        borderOf(status, change !== null, ghost),
         selected && 'ring-primary ring-2'
       )}
     >
       <header className="border-border flex flex-col gap-0.5 border-b px-3 py-1.5">
         <span className="flex items-center justify-between gap-3">
           <span className="truncate text-sm font-semibold">{title}</span>
-          {opens ? (
-            <span className="text-primary shrink-0 text-xs font-semibold tracking-wide uppercase">
-              {opens === 'graph' ? 'Subworkflow' : 'Workflow'}
-            </span>
-          ) : null}
+          <span className="flex shrink-0 items-center gap-1.5">
+            {change || ghost ? (
+              <span
+                className="border-custom/30 bg-custom/10 text-custom rounded-full border px-1.5 text-xs/5 font-semibold"
+                title={ghost ? 'Removed from the base' : CHANGE_TITLES[change ?? 'changed']}
+              >
+                {ghost ? 'Removed' : 'Custom'}
+              </span>
+            ) : null}
+            {opens ? (
+              <span className="text-primary text-xs font-semibold tracking-wide uppercase">
+                {opens === 'graph' ? 'Subworkflow' : 'Workflow'}
+              </span>
+            ) : null}
+          </span>
         </span>
         {description ? (
           <span className="text-surface-fg-muted line-clamp-2 text-xs">{description}</span>
         ) : null}
       </header>
+      {instance.note ? (
+        <p className="border-border bg-surface-fg/6 text-surface-fg line-clamp-3 border-b px-3 py-1.5 text-xs whitespace-pre-line">
+          {instance.note}
+        </p>
+      ) : null}
       {signature ? (
         <div className="grid grid-cols-2 gap-x-2 py-1.5">
           <ul className="flex flex-col">

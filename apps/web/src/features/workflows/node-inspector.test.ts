@@ -76,6 +76,46 @@ describe('NodeInspector', () => {
     assert.ok(render('expr1').includes('Settings (JSON)'));
   });
 
+  it('shows pin and exit documentation and the node note', () => {
+    const rule = { id: 'rule1', type: 'acme.rule', version: 1, note: 'Check with billing' };
+    const html = (editable: boolean) =>
+      renderToStaticMarkup(
+        createElement(NodeInspector, {
+          def: { ...def, nodes: [...def.nodes, rule] },
+          node: rule,
+          catalog: createCatalog(testNodes, {
+            published: [
+              {
+                graph_id: 'g1',
+                key: 'acme.rule',
+                name: 'Rule',
+                kind: 'node',
+                description: '',
+                version: 1,
+                signature: {
+                  execIn: ['exec'],
+                  execOut: ['held'],
+                  inputs: [{ name: 'claim', type: 'any', description: 'The claim to check' }],
+                  outputs: [],
+                  exits: { held: { label: 'On Hold', description: 'A biller holds it' } }
+                }
+              }
+            ]
+          }),
+          editable,
+          onChange: () => undefined,
+          onDelete: () => undefined,
+          onClose: () => undefined
+        })
+      );
+    const edit = html(true);
+    assert.ok(edit.includes('The claim to check'));
+    assert.ok(edit.includes('On Hold') && edit.includes('A biller holds it'));
+    assert.ok(edit.includes('Name and Note') && edit.includes('Check with billing</textarea>'));
+    const read = html(false);
+    assert.ok(read.includes('Check with billing</p>') && !read.includes('<textarea'));
+  });
+
   it('locks every field and hides delete in read-only graphs, and never deletes the start', () => {
     const html = render('add1', false);
     assert.ok(html.includes('disabled'));

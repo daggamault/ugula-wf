@@ -4,7 +4,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { GraphNodeData } from './flow.ts';
-import { GraphNode } from './graph-node.tsx';
+import { GraphNode, pinTitle } from './graph-node.tsx';
 
 const render = (data: GraphNodeData, selected = false) =>
   renderToStaticMarkup(
@@ -47,7 +47,9 @@ const base: GraphNodeData = {
   connected: ['b'],
   status: 'idle',
   issues: [],
-  opens: null
+  opens: null,
+  change: null,
+  ghost: false
 };
 
 describe('GraphNode', () => {
@@ -74,6 +76,35 @@ describe('GraphNode', () => {
     assert.ok(html.includes('Subworkflow'));
     assert.ok(html.includes('ring-2'));
     assert.ok(render({ ...base, signature: null }).includes('Unknown node std.math.add@1'));
+  });
+
+  it('documents pins and exits in tooltips and shows the node note', () => {
+    const html = render({
+      ...base,
+      instance: { ...base.instance, note: 'Ask billing first' },
+      signature: {
+        execIn: [],
+        execOut: ['failed'],
+        inputs: [{ name: 'a', type: 'number', description: 'The first number' }],
+        outputs: [],
+        exits: { failed: { label: 'Gave Up', description: 'Every retry failed' } }
+      }
+    });
+    assert.ok(html.includes('title="A: Number. The first number"'));
+    assert.ok(html.includes('title="Gave Up: Execution flow. Every retry failed"'));
+    assert.ok(html.includes('>Gave Up<'));
+    assert.ok(html.includes('Ask billing first'));
+    assert.equal(pinTitle({ name: 'then', label: '', exec: true }), 'Execution flow');
+  });
+
+  it('outlines customized nodes and dims removed ones', () => {
+    const custom = render({ ...base, change: 'changed' });
+    assert.ok(custom.includes('border-custom') && custom.includes('>Custom<'));
+    assert.ok(!render(base).includes('border-custom'));
+    const ghost = render({ ...base, ghost: true });
+    assert.ok(ghost.includes('border-dashed') && ghost.includes('>Removed<'));
+    assert.ok(ghost.includes('aria-label="Add (removed)"'));
+    assert.ok(render({ ...base, change: 'added', status: 'error' }).includes('border-danger'));
   });
 
   it('previews unwired expressions and shortens long literals', () => {

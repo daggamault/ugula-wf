@@ -6,7 +6,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { idleLive, testNodes } from '../../shared/testing.ts';
 import type { GraphDetail, GraphScope, WorkflowsClient } from './client.ts';
-import { EditorPage, EditorView, leavingHref } from './editor-page.tsx';
+import {
+  DocumentationHints,
+  documentationHints,
+  EditorPage,
+  EditorView,
+  leavingHref
+} from './editor-page.tsx';
 import type { TrailStep } from './trail.ts';
 
 const source: GraphDef = {
@@ -147,6 +153,24 @@ describe('EditorPage', () => {
       })
     );
     assert.ok(html.includes('aria-label="Loading"'));
+  });
+});
+
+describe('documentation hints', () => {
+  it('names the node a hint is about and shows them as a warning to expand', () => {
+    const def: GraphDef = {
+      ...source,
+      signature: { ...source.signature, inputs: [{ name: 'x', type: 'number' }] },
+      nodes: [{ id: 'entry', type: ENTRY_TYPE, version: 1, label: 'go here' }]
+    };
+    const hints = documentationHints(def, createCatalog(testNodes));
+    assert.deepEqual(hints, [
+      'Describe the input "x"',
+      'Entry: Write the label "go here" in Title Case'
+    ]);
+    const html = renderToStaticMarkup(createElement(DocumentationHints, { hints }));
+    assert.ok(html.includes('<details') && html.includes('2 Documentation Hints'));
+    assert.ok(render(detail('agency', false), 2).includes('Documentation Hint') === false);
   });
 });
 
