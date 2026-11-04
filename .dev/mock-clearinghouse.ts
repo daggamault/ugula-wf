@@ -3,7 +3,9 @@ import { createServer } from 'node:http';
 import { posix } from 'node:path';
 import {
   downloadName,
+  type MockClaimState,
   readInterchange,
+  respondToClaimStatus,
   respondToClaims,
   respondToEligibility,
   WAYSTAR_EXTENSIONS
@@ -99,6 +101,10 @@ const baseOf = (p: string) => {
   return dot > 0 ? name.slice(0, dot) : name;
 };
 
+const claimStates = new Map<string, MockClaimState>();
+
+const stateOf = (claimNumber: string) => claimStates.get(claimNumber) ?? 'unknown';
+
 let seq = 0;
 
 const deliver = (clientId: string, type: string, ext: string, text: string) => {
@@ -119,6 +125,8 @@ const answerClaims = (text: string, clientId: string, name: string) => {
     `picked up ${name}${r.inbound ? ` (GS06 ${r.inbound.groupControlNumber}, ${r.inbound.claims.length} claims)` : ` (unreadable: ${r.error})`}`
   );
   deliver(clientId, '999', '.999', r.ack999);
+  for (const n of r.accepted) claimStates.set(n, 'accepted');
+  for (const n of r.rejected) claimStates.set(n, 'rejected');
   if (r.ack277) {
     log(
       `277CA accepted ${r.accepted.join(', ') || 'none'}; rejected ${r.rejected.join(', ') || 'none'}`
@@ -128,7 +136,13 @@ const answerClaims = (text: string, clientId: string, name: string) => {
   const remit = r.remit835;
   if (remit) {
     log(`835 due in ${REMIT_DELAY_MS / 1000}s`);
-    setTimeout(() => deliver(clientId, 'ERA', '.835', remit), REMIT_DELAY_MS);
+    const remitted = (r.inbound?.claims ?? []).filter(
+      (c) => r.accepted.includes(c.claimNumber) && !ERA_UNENROLLED.has(c.payer?.id ?? '')
+    );
+    setTimeout(() => {
+      deliver(clientId, 'ERA', '.835', remit);
+      for (const c of remitted) claimStates.set(c.claimNumber, 'paid');
+    }, REMIT_DELAY_MS);
   }
 };
 
@@ -137,6 +151,15 @@ const answerEligibility = (text: string, clientId: string, name: string) => {
     const answers = respondToEligibility(text, new Date());
     log(`picked up ${name} (${answers.length} inquiries)`);
     for (const a of answers) deliver(clientId, '271', '.271', a);
+  } catch (e) {
+    log(`rejected ${name}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+};
+
+const answerClaimStatus = (text: string, clientId: string, name: string) => {
+  try {
+    deliver(clientId, 'CLAIMSTATUS', '.277', respondToClaimStatus(text, new Date(), stateOf));
+    log(`picked up ${name}`);
   } catch (e) {
     log(`rejected ${name}: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -156,7 +179,8 @@ const handleUpload = (p: string) => {
   }
   if (ext === WAYSTAR_EXTENSIONS.claims) answerClaims(text, clientId, name);
   else if (ext === WAYSTAR_EXTENSIONS.eligibility) answerEligibility(text, clientId, name);
-  else log(`rejected ${name}: upload 837P files as .CLP and 270 files as .ELG`);
+  else if (ext === WAYSTAR_EXTENSIONS.claimStatus) answerClaimStatus(text, clientId, name);
+  else log(`rejected ${name}: upload 837P files as .CLP, 270 as .ELG and 276 as .CLS`);
 };
 
 const isInboundUpload = (p: string) => posix.dirname(p) === UPLOAD && !PARTIAL_UPLOAD.test(p);
@@ -352,7 +376,18 @@ const answerRealtime = async (req: Request) => {
     ReceiverID: field('SenderID'),
     CORERuleVersion: '2.2.0'
   };
-  if (field('PayloadType') !== 'X12_270_Request_005010X279A1') {
+  const answers: Record<string, [string, (x12: string) => string]> = {
+    X12_270_Request_005010X279A1: [
+      'X12_271_Response_005010X279A1',
+      (x12) => respondToEligibility(x12, new Date())[0] ?? ''
+    ],
+    X12_276_Request_005010X212: [
+      'X12_277_Response_005010X212',
+      (x12) => respondToClaimStatus(x12, new Date(), stateOf)
+    ]
+  };
+  const handler = answers[field('PayloadType')];
+  if (!handler) {
     return coreReply({
       ...base,
       PayloadType: 'CoreEnvelopeError',
@@ -361,12 +396,13 @@ const answerRealtime = async (req: Request) => {
     });
   }
   try {
-    const [answer = ''] = respondToEligibility(field('Payload'), new Date());
-    log(`real-time 270 ${base.PayloadID} answered`);
+    const [payloadType, answer] = handler;
+    const payload = answer(field('Payload'));
+    log(`real-time ${field('PayloadType')} ${base.PayloadID} answered`);
     return coreReply({
       ...base,
-      PayloadType: 'X12_271_Response_005010X279A1',
-      Payload: answer,
+      PayloadType: payloadType,
+      Payload: payload,
       ErrorCode: 'Success',
       ErrorMessage: ''
     });
@@ -403,5 +439,7 @@ createServer(async (req, res) => {
   });
   res.end(Buffer.from(await reply.arrayBuffer()));
 }).listen(REALTIME_PORT, HOST, () => {
-  log(`CORE real-time eligibility on http://${HOST}:${REALTIME_PORT}/core/realtime`);
+  log(
+    `CORE real-time eligibility and claim status on http://${HOST}:${REALTIME_PORT}/core/realtime`
+  );
 });
