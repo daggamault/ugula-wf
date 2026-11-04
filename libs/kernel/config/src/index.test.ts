@@ -11,6 +11,7 @@ import {
   posInt,
   redisEnvEntries,
   s3EnvEntries,
+  secretKeyEnvEntries,
   urlString
 } from './index.ts';
 
@@ -82,5 +83,17 @@ describe('config primitives', () => {
     assert.throws(() =>
       v.parse(v.object(inferenceEnvEntries), { ...inference, EMBEDDINGS_URL: 'nope' })
     );
+  });
+
+  it('accepts a 32 byte base64 secret key, or none', () => {
+    const schema = v.object(secretKeyEnvEntries);
+    const key = Buffer.alloc(32, 7).toString('base64');
+    assert.equal(
+      v.parse(schema, { CLEARINGHOUSE_SECRET_KEY: ` ${key} ` }).CLEARINGHOUSE_SECRET_KEY,
+      key
+    );
+    assert.equal(v.parse(schema, {}).CLEARINGHOUSE_SECRET_KEY, undefined);
+    assert.equal(v.parse(schema, { CLEARINGHOUSE_SECRET_KEY: '' }).CLEARINGHOUSE_SECRET_KEY, '');
+    assert.throws(() => v.parse(schema, { CLEARINGHOUSE_SECRET_KEY: 'short' }), /openssl rand/);
   });
 });

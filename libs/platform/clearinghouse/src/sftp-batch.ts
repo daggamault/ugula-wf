@@ -1,30 +1,29 @@
 import SftpClient from 'ssh2-sftp-client';
 
-export type ClearinghouseConfig = {
+export type SftpConfig = {
   host: string;
   port: number;
   username: string;
   password: string;
   uploadPath: string;
   downloadPaths: string[];
-  fileExtension: string;
-  afterDownload: 'delete' | 'keep';
-  pollMinutes: number;
+  readyTimeoutMs?: number;
 };
 
 export type RemoteFile = { path: string; name: string; size: number; modifiedAt: Date };
 
-export type Clearinghouse = {
-  config: ClearinghouseConfig;
+export type SftpBatch = {
   upload: (name: string, bytes: Uint8Array) => Promise<string>;
   list: () => Promise<RemoteFile[]>;
   download: (path: string) => Promise<Uint8Array>;
   remove: (path: string) => Promise<void>;
 };
 
+const READY_TIMEOUT_MS = 20_000;
+
 const joinPath = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`;
 
-export const createClearinghouse = (config: ClearinghouseConfig): Clearinghouse => {
+export const createSftpBatch = (config: SftpConfig): SftpBatch => {
   const session = async <T>(work: (sftp: SftpClient) => Promise<T>) => {
     const sftp = new SftpClient('clearinghouse');
     await sftp.connect({
@@ -32,7 +31,7 @@ export const createClearinghouse = (config: ClearinghouseConfig): Clearinghouse 
       port: config.port,
       username: config.username,
       password: config.password,
-      readyTimeout: 20_000
+      readyTimeout: config.readyTimeoutMs ?? READY_TIMEOUT_MS
     });
     try {
       return await work(sftp);
@@ -41,7 +40,6 @@ export const createClearinghouse = (config: ClearinghouseConfig): Clearinghouse 
     }
   };
   return {
-    config,
     upload: (name, bytes) =>
       session(async (sftp) => {
         const path = joinPath(config.uploadPath, name);
@@ -70,16 +68,4 @@ export const createClearinghouse = (config: ClearinghouseConfig): Clearinghouse 
         await sftp.delete(path);
       })
   };
-};
-
-export const claimFileName = (controlNumber: number, batchId: string, extension: string) =>
-  `837P-${String(controlNumber).padStart(9, '0')}-${batchId.replaceAll('-', '').slice(0, 8)}${extension}`;
-
-const ISA_LENGTH = 106;
-
-export const receiverOf = (text: string) => {
-  const start = text.indexOf('ISA');
-  if (start < 0 || text.length < start + ISA_LENGTH) return null;
-  const isa = text.slice(start, start + ISA_LENGTH).split(text.charAt(start + 3));
-  return isa[8]?.trim() || null;
 };

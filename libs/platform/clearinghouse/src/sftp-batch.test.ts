@@ -2,12 +2,7 @@ import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import ssh2, { type Attributes, type SFTPWrapper } from 'ssh2';
-import {
-  type ClearinghouseConfig,
-  claimFileName,
-  createClearinghouse,
-  receiverOf
-} from './clearinghouse.ts';
+import { createSftpBatch, type SftpConfig } from './sftp-batch.ts';
 
 const { Server, utils } = ssh2;
 const { OPEN_MODE, STATUS_CODE } = utils.sftp;
@@ -108,16 +103,14 @@ const server = new Server(
   }
 );
 
-const config = (): ClearinghouseConfig => ({
+const config = (): SftpConfig => ({
   host: '127.0.0.1',
   port: (server.address() as AddressInfo).port,
   username: 'ugula',
   password: 'secret',
   uploadPath: '/inbound/',
   downloadPaths: ['/outbound/999', '/outbound/277'],
-  fileExtension: '.txt',
-  afterDownload: 'delete',
-  pollMinutes: 1
+  readyTimeoutMs: 5000
 });
 
 const settled = async () => {
@@ -127,39 +120,12 @@ const settled = async () => {
   return sessions.closed === sessions.opened;
 };
 
-const isa = (receiver: string, separator = '*') =>
-  ['ISA', '00', ' '.repeat(10), '00', ' '.repeat(10), 'ZZ', 'CLEARING'.padEnd(15), 'ZZ']
-    .concat([receiver.padEnd(15), '261103', '1200', '^', '00501', '000000001', '0', 'T', ':~'])
-    .join(separator);
-
-describe('claimFileName', () => {
-  it('numbers claim files by control number and batch, with the clearinghouse extension', () => {
-    assert.equal(
-      claimFileName(7, '0195f2a4-0000-7000-8000-000000000001', '.CLP'),
-      '837P-000000007-0195f2a4.CLP'
-    );
-  });
-});
-
-describe('receiverOf', () => {
-  it('reads the interchange receiver with whatever element separator the file uses', () => {
-    assert.equal(receiverOf(isa('DEVEMS01')), 'DEVEMS01');
-    assert.equal(receiverOf(`\n${isa('DEVEMS01', '|')}GS|FA~`), 'DEVEMS01');
-  });
-
-  it('has no receiver for text that is not X12 or an interchange cut short', () => {
-    assert.equal(receiverOf('not x12'), null);
-    assert.equal(receiverOf(isa('DEVEMS01').slice(0, 90)), null);
-    assert.equal(receiverOf(isa('')), null);
-  });
-});
-
-describe('createClearinghouse', () => {
+describe('createSftpBatch', () => {
   before(() => new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve)));
   after(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
-  it('uploads claim files into the upload folder over its own session', async () => {
-    const clearinghouse = createClearinghouse(config());
+  it('uploads files into the upload folder over its own session', async () => {
+    const clearinghouse = createSftpBatch(config());
     const path = await clearinghouse.upload('837P-1.txt', new TextEncoder().encode('ISA*00~'));
     assert.equal(path, '/inbound/837P-1.txt');
     assert.equal(files.get(path)?.toString(), 'ISA*00~');
@@ -169,7 +135,7 @@ describe('createClearinghouse', () => {
   it('lists the files of every download folder, skipping folders, then downloads and removes them', async () => {
     files.set('/outbound/999/a.999', Buffer.from('ack'));
     files.set('/outbound/277/b.277', Buffer.from('status'));
-    const clearinghouse = createClearinghouse(config());
+    const clearinghouse = createSftpBatch(config());
     assert.deepEqual(await clearinghouse.list(), [
       { path: '/outbound/999/a.999', name: 'a.999', size: 3, modifiedAt: new Date(MTIME * 1000) },
       { path: '/outbound/277/b.277', name: 'b.277', size: 6, modifiedAt: new Date(MTIME * 1000) }
@@ -184,14 +150,14 @@ describe('createClearinghouse', () => {
   });
 
   it('closes the session when the server refuses an operation', async () => {
-    const clearinghouse = createClearinghouse(config());
+    const clearinghouse = createSftpBatch(config());
     await assert.rejects(() => clearinghouse.remove('/outbound/999/gone.999'));
     await assert.rejects(() => clearinghouse.download('/outbound/999/gone.999'));
     assert.ok(await settled());
   });
 
   it('fails to connect with the wrong password', async () => {
-    const clearinghouse = createClearinghouse({ ...config(), password: 'wrong' });
+    const clearinghouse = createSftpBatch({ ...config(), password: 'wrong' });
     await assert.rejects(() => clearinghouse.list());
   });
 });

@@ -299,6 +299,9 @@ importers:
       '@ugula/catalog':
         specifier: workspace:*
         version: link:../../libs/composition/catalog
+      '@ugula/clearinghouse':
+        specifier: workspace:*
+        version: link:../../libs/platform/clearinghouse
       '@ugula/config':
         specifier: workspace:*
         version: link:../../libs/kernel/config
@@ -371,6 +374,9 @@ importers:
       '@ugula/catalog':
         specifier: workspace:*
         version: link:../../libs/composition/catalog
+      '@ugula/clearinghouse':
+        specifier: workspace:*
+        version: link:../../libs/platform/clearinghouse
       '@ugula/config':
         specifier: workspace:*
         version: link:../../libs/kernel/config
@@ -441,6 +447,8 @@ importers:
   libs/kernel/live: {}
 
   libs/platform/auth: {}
+
+  libs/platform/clearinghouse: {}
 
   libs/platform/inference: {}
 

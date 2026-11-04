@@ -46,3 +46,16 @@ export const inferenceEnvEntries = {
   COMPLETIONS_URL: urlString,
   COMPLETIONS_MODEL: nonEmpty
 } as const;
+
+export const secretKeyEnvEntries = {
+  CLEARINGHOUSE_SECRET_KEY: v.optional(
+    v.pipe(
+      v.string(),
+      v.trim(),
+      v.check(
+        (s) => s === '' || /^[A-Za-z0-9+/]{43}=$/.test(s),
+        'Use 32 random bytes, base64 encoded (openssl rand -base64 32)'
+      )
+    )
+  )
+} as const;
