@@ -1,12 +1,3 @@
-/**
- * Dev-only mock clearinghouse: an in-memory SFTP server plus a responder.
- *
- * The app uploads 837P files to /inbound; for each one this answers like a clearinghouse
- * (see respond() in @ugula/billing/mock): a 999 to /outbound/999 and a 277CA to /outbound/277
- * straight away, an 835 to /outbound/835 after CLEARINGHOUSE_REMIT_DELAY_SECONDS, and the 837
- * is removed from /inbound. Claims whose member ID starts with REJECT are rejected in the 277CA.
- * Everything lives in memory and is lost on restart.
- */
 import { timingSafeEqual } from 'node:crypto';
 import { posix } from 'node:path';
 import { respond } from '@ugula/billing/mock';
@@ -29,15 +20,11 @@ const REMIT_DELAY_MS = Number(env('CLEARINGHOUSE_REMIT_DELAY_SECONDS', '20')) * 
 
 const INBOUND = '/inbound';
 const OUTBOUND = { ack999: '/outbound/999', ack277: '/outbound/277', remit835: '/outbound/835' };
-/** Like a clearinghouse polling its upload folder, uploads are picked up shortly after they land. */
 const PICKUP_DELAY_MS = 2000;
-/** Uploads still being written under a temporary name are left alone until renamed. */
-const TEMPORARY = /\.(part|tmp|filepart)$/i;
+const PARTIAL_UPLOAD = /\.(part|tmp|filepart)$/i;
 
 const log = (line: string) =>
   process.stdout.write(`[mock-clearinghouse] ${new Date().toISOString()} ${line}\n`);
-
-// In-memory filesystem
 
 type File = { data: Buffer; mtime: number };
 
@@ -90,10 +77,7 @@ const entriesOf = (dir: string): FileEntry[] => {
   });
 };
 
-/** Writes a whole file in one step, so a client never sees half of it. */
 const put = (p: string, text: string) => files.set(p, { data: Buffer.from(text), mtime: now() });
-
-// Responder
 
 const baseOf = (p: string) => {
   const name = posix.basename(p);
@@ -128,13 +112,11 @@ const handleUpload = (p: string) => {
   }
 };
 
-const isInboundUpload = (p: string) => posix.dirname(p) === INBOUND && !TEMPORARY.test(p);
+const isInboundUpload = (p: string) => posix.dirname(p) === INBOUND && !PARTIAL_UPLOAD.test(p);
 
 const scheduleUpload = (p: string) => {
   if (isInboundUpload(p)) setTimeout(() => handleUpload(p), PICKUP_DELAY_MS);
 };
-
-// SFTP subsystem
 
 type Handle =
   | { kind: 'file'; path: string; wrote: boolean }
@@ -155,22 +137,19 @@ const serve = (sftp: SFTPWrapper) => {
   const ok = (id: number) => sftp.status(id, STATUS_CODE.OK);
   const missing = (id: number) => sftp.status(id, STATUS_CODE.NO_SUCH_FILE);
   const fail = (id: number, message: string) => sftp.status(id, STATUS_CODE.FAILURE, message);
+  const stat = (id: number, p: string) => {
+    const attrs = attrsOf(norm(p));
+    if (attrs) sftp.attrs(id, attrs);
+    else missing(id);
+  };
 
   sftp
     .on('REALPATH', (id, p) => {
       const path = norm(p);
       sftp.name(id, [{ filename: path, longname: path, attrs: {} as Attributes }]);
     })
-    .on('STAT', (id, p) => {
-      const attrs = attrsOf(norm(p));
-      if (attrs) sftp.attrs(id, attrs);
-      else missing(id);
-    })
-    .on('LSTAT', (id, p) => {
-      const attrs = attrsOf(norm(p));
-      if (attrs) sftp.attrs(id, attrs);
-      else missing(id);
-    })
+    .on('STAT', stat)
+    .on('LSTAT', stat)
     .on('FSTAT', (id, buf) => {
       const h = handleOf(buf);
       const attrs = h && attrsOf(h.path);
@@ -266,8 +245,6 @@ const serve = (sftp: SFTPWrapper) => {
       scheduleUpload(dst);
     });
 };
-
-// SSH server
 
 const matches = (given: string, expected: string) => {
   const a = Buffer.from(given);

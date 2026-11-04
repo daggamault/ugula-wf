@@ -59,7 +59,7 @@ const resetSchema = async (db: Kysely<Database>) => {
   await sql`drop function if exists prevent_published_graph_change`.execute(db);
 };
 
-export const steps = [
+const steps = [
   resetSchema,
   createExtensions,
   createGnisPlacesTable,

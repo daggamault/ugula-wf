@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { ClaimState } from './session.ts';
 
-export type ExpectedClaim = {
+type ExpectedClaim = {
   tripType: string;
   level: string;
   emergency: boolean;

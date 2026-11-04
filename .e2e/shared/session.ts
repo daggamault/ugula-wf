@@ -5,7 +5,7 @@ import { config, withPcr } from './config.ts';
 
 export { config };
 
-export const STEP_MS = config.E2E_STEP_MS;
+const STEP_MS = config.E2E_STEP_MS;
 
 export const FLOW_MS = config.E2E_FLOW_MS;
 
@@ -133,7 +133,7 @@ export const claimStatusIs = (s: Session, claimId: string, status: string) =>
     `the claim to be ${status}`
   );
 
-export const openTask = (s: Session, claimId: string, title: string) =>
+const openTask = (s: Session, claimId: string, title: string) =>
   until(
     s.page,
     async () => (await claimState(s, claimId)).claim.tasks.find((t) => t.title === title),
@@ -192,11 +192,11 @@ export const uploadPayerFile = async (page: Page, name: string, text: string) =>
   return (await toast.textContent()) ?? '';
 };
 
-export type TaskPlan = Readonly<
+type TaskPlan = Readonly<
   Record<string, { outcome?: string; check?: () => Promise<void> } | undefined>
 >;
 
-export const workTasks = async (
+const workTasks = async (
   s: Session,
   claimId: string,
   done: (c: ClaimState) => boolean,
