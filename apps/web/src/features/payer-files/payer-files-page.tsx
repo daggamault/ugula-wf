@@ -91,7 +91,7 @@ export const PayerFilesPage = ({ client, live }: { client: PayerFilesClient; liv
   return (
     <Page
       title="Payer Files"
-      description="Remittances (835), acknowledgments (999 and 277CA) and eligibility responses (271) from your clearinghouse, applied to their claims."
+      description="Remittances (835), acknowledgments (TA1, 999 and 277CA), claim status (277) and eligibility responses (271) from your clearinghouse, applied to their claims."
       actions={
         <FileButton
           label="Upload Payer Files"

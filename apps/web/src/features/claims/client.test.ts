@@ -49,6 +49,7 @@ describe('createClaimsClient', () => {
       documentation: null
     });
     await client.eligibilityRequest('c1');
+    await client.checkEligibility('c1');
     assert.equal(client.fileUrl('b1'), 'http://api.test/api/submissions/batches/b1/file');
     assert.equal(
       client.documentUrl('c 1', 'e/1'),
@@ -64,7 +65,8 @@ describe('createClaimsClient', () => {
       'POST http://api.test/api/claims/c1/restart-cycle ',
       'POST http://api.test/api/claims/c1/responses {"requestId":"q1","kind":"response","coverageId":null,"paidCents":500,"adjustedCents":0,"paidOn":null,"checkNumber":null,"payerClaimNumber":null,"adjustments":[],"note":""}',
       'PUT http://api.test/api/claims/c1/billing-data {"serviceDate":null,"pickup":{"name":null,"addressLine":null,"city":null,"state":null,"postalCode":null},"destination":{"name":null,"addressLine":null,"city":null,"state":null,"postalCode":null},"diagnoses":["I10"],"originDestination":"RH","patient":{"addressLine":null,"city":null,"state":null,"postalCode":null},"coverages":[],"documentation":null}',
-      'POST http://api.test/api/submissions/eligibility {"claimId":"c1"}'
+      'POST http://api.test/api/submissions/eligibility {"claimId":"c1"}',
+      'POST http://api.test/api/submissions/eligibility-checks {"claimId":"c1"}'
     ]);
   });
 

@@ -101,15 +101,18 @@ describe('claim documentation', () => {
       createElement(EligibilityPanel, {
         coverages: [coverage],
         locked: undefined,
-        onCheck: async () => undefined
+        onCheck: async () => undefined,
+        onDownload: async () => undefined
       })
     );
     assert.ok(html.includes('Check Eligibility') && html.includes('Not covered after 2026-09-30'));
+    assert.ok(html.includes('Download 270'));
     const empty = renderToStaticMarkup(
       createElement(EligibilityPanel, {
         coverages: [],
         locked: undefined,
-        onCheck: async () => undefined
+        onCheck: async () => undefined,
+        onDownload: async () => undefined
       })
     );
     assert.ok(empty.includes('No payer is on this claim.') && empty.includes('disabled'));
@@ -117,7 +120,8 @@ describe('claim documentation', () => {
       createElement(EligibilityPanel, {
         coverages: [coverage],
         locked: 'This claim is closed.',
-        onCheck: async () => undefined
+        onCheck: async () => undefined,
+        onDownload: async () => undefined
       })
     );
     assert.ok(locked.includes('This claim is closed.') && locked.includes('disabled'));

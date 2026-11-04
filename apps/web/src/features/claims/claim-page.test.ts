@@ -177,6 +177,7 @@ const render = (
       onRestart: async () => undefined,
       onSaveData: async () => true,
       onCheckEligibility: async () => undefined,
+      onDownloadEligibility: async () => undefined,
       documentUrl: (eventId: string) => `/docs/${eventId}`
     })
   );
@@ -616,6 +617,7 @@ describe('ClaimView submission', () => {
         onRestart: async () => undefined,
         onSaveData: async () => true,
         onCheckEligibility: async () => undefined,
+        onDownloadEligibility: async () => undefined,
         documentUrl: () => '',
         submission: { fileUrl: (id) => `/files/${id}`, encounterUrl: (id) => `/encounters/${id}` }
       })

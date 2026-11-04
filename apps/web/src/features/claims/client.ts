@@ -258,6 +258,8 @@ export const createClaimsClient = (api: Api) => ({
     api.post<{ name: string; file: string; payers: string[] }>('/api/submissions/eligibility', {
       claimId
     }),
+  checkEligibility: (claimId: string) =>
+    api.post<{ runId: string }>('/api/submissions/eligibility-checks', { claimId }),
   fileUrl: (batchId: string) =>
     api.href(`/api/submissions/batches/${encodeURIComponent(batchId)}/file`),
   encounterUrl: (reportId: string) =>

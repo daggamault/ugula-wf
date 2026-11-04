@@ -1,3 +1,4 @@
+import type { AfterDownload, ClearinghouseVendor } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
 import type { Page } from '../../shared/url-state.ts';
 
@@ -33,6 +34,38 @@ export type BillingProfileInput = {
   production: boolean;
 };
 
+export type ClearinghouseConnection = {
+  vendor: ClearinghouseVendor;
+  enabled: boolean;
+  sftp_host: string;
+  sftp_port: number;
+  sftp_username: string;
+  secret_set: boolean;
+  upload_path: string;
+  download_paths: string[];
+  claim_extension: string;
+  eligibility_extension: string;
+  claim_status_extension: string;
+  after_download: AfterDownload;
+  realtime_url: string | null;
+};
+
+export type ConnectionInput = {
+  vendor: ClearinghouseVendor;
+  enabled: boolean;
+  sftpHost: string;
+  sftpPort: number;
+  sftpUsername: string;
+  secret: string | null;
+  uploadPath: string;
+  downloadPaths: string[];
+  claimExtension: string;
+  eligibilityExtension: string;
+  claimStatusExtension: string;
+  afterDownload: AfterDownload;
+  realtimeUrl: string | null;
+};
+
 export type PayerAlias = { id: string; alias: string };
 
 export type Payer = {
@@ -55,6 +88,13 @@ export const createSettingsClient = (api: Api) => ({
   profile: async () =>
     (await api.get<{ profile: BillingProfile | null }>('/api/billing-profile')).profile,
   saveProfile: (profile: BillingProfileInput) => api.put('/api/billing-profile', profile),
+  connection: () =>
+    api.get<{ connection: ClearinghouseConnection | null; canStoreSecrets: boolean }>(
+      '/api/clearinghouse-connection'
+    ),
+  saveConnection: (connection: ConnectionInput) =>
+    api.put('/api/clearinghouse-connection', connection),
+  removeConnection: () => api.remove('/api/clearinghouse-connection'),
   searchPayers: (query: string, signal?: AbortSignal) =>
     api.get<Page<Payer>>(`/api/payers?${query}`, signal),
   payer: async (id: string, signal?: AbortSignal) =>

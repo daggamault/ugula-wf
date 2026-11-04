@@ -38,6 +38,8 @@ describe('createSettingsClient', () => {
       timeZone: 'America/Chicago',
       production: false
     });
+    await client.connection();
+    await client.removeConnection();
     assert.deepEqual(seen, [
       'GET http://api.test/api/billing-profile',
       'GET http://api.test/api/payers?q=blue&page=1',
@@ -45,7 +47,9 @@ describe('createSettingsClient', () => {
       'PUT http://api.test/api/payers',
       'DELETE http://api.test/api/payers/p1',
       'DELETE http://api.test/api/payers/p1/aliases/a1',
-      'PUT http://api.test/api/billing-profile'
+      'PUT http://api.test/api/billing-profile',
+      'GET http://api.test/api/clearinghouse-connection',
+      'DELETE http://api.test/api/clearinghouse-connection'
     ]);
   });
 });

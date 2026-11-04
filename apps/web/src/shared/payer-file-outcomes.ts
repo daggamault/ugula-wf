@@ -9,5 +9,6 @@ export const OUTCOME_STYLES: Readonly<Record<PayerFileOutcome, StatusBadgeStyle>
   rejected: { intent: 'danger', label: 'Rejected' },
   ineligible: { intent: 'danger', label: 'Not Eligible' },
   unmatched: { intent: 'warning', label: 'No Match' },
-  review: { intent: 'warning', label: 'Needs Review' }
+  review: { intent: 'warning', label: 'Needs Review' },
+  status: { intent: 'info', label: 'Status' }
 };

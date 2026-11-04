@@ -4,7 +4,7 @@ import {
   SIGNATURE_LABELS,
   TRANSPORT_REASONS
 } from '@ugula/billing';
-import { ShieldCheckIcon } from 'lucide-react';
+import { DownloadIcon, ShieldCheckIcon } from 'lucide-react';
 import { useState } from 'react';
 import { formatDate, formatDateTime } from '../../shared/format.ts';
 import { Badge, type StatusBadgeStyle } from '../../shared/ui/badge.tsx';
@@ -102,32 +102,46 @@ export const eligibilityStyle = (c: Pick<ClaimCoverage, 'eligibility'>): StatusB
 export const EligibilityPanel = ({
   coverages,
   locked,
-  onCheck
+  onCheck,
+  onDownload
 }: {
   coverages: readonly ClaimCoverage[];
   locked: string | undefined;
   onCheck: () => Promise<void>;
+  onDownload: () => Promise<void>;
 }) => {
-  const [busy, setBusy] = useState(false);
-  const check = async () => {
-    setBusy(true);
-    await onCheck();
-    setBusy(false);
+  const [busy, setBusy] = useState<'check' | 'download' | null>(null);
+  const run = async (which: 'check' | 'download', action: () => Promise<void>) => {
+    setBusy(which);
+    await action();
+    setBusy(null);
   };
+  const disabledReason = locked ?? (coverages.length ? undefined : 'The claim has no payers.');
   return (
     <SectionPanel
       title="Eligibility"
-      description="Whether each payer says the coverage is active, from the 271 responses uploaded to Payer Files."
+      description="Whether each payer says the coverage is active, from the 271 answers of the clearinghouse or uploaded to Payer Files."
       actions={
-        <Button
-          variant="outline"
-          isPending={busy}
-          disabledReason={locked ?? (coverages.length ? undefined : 'The claim has no payers.')}
-          onClick={() => void check()}
-        >
-          <ShieldCheckIcon aria-hidden="true" className="size-4" />
-          Check Eligibility
-        </Button>
+        <>
+          <Button
+            variant="outline"
+            isPending={busy === 'download'}
+            disabledReason={disabledReason}
+            onClick={() => void run('download', onDownload)}
+          >
+            <DownloadIcon aria-hidden="true" className="size-4" />
+            Download 270
+          </Button>
+          <Button
+            variant="outline"
+            isPending={busy === 'check'}
+            disabledReason={disabledReason}
+            onClick={() => void run('check', onCheck)}
+          >
+            <ShieldCheckIcon aria-hidden="true" className="size-4" />
+            Check Eligibility
+          </Button>
+        </>
       }
     >
       {coverages.length ? (

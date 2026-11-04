@@ -19,6 +19,7 @@ import { Select } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { BillingProfile, BillingProfileInput, SettingsClient } from './client.ts';
+import { ConnectionForm } from './connection-form.tsx';
 
 type SettingsPageProps = {
   client: SettingsClient;
@@ -198,9 +199,24 @@ export const ProfileForm = ({
 
 export const SettingsPage = ({ client, live }: SettingsPageProps) => {
   const profile = useResource('billing-profile', client.profile);
-  useReconnect(live, profile.reload);
+  const connection = useResource('clearinghouse-connection', client.connection);
+  useReconnect(live, () => {
+    profile.reload();
+    connection.reload();
+  });
   const notify = useToast();
   if (profile.error) return <PageFailure message={profile.error.message} />;
+  if (connection.error) return <PageFailure message={connection.error.message} />;
+  const saved = (title: string, action: () => Promise<unknown>) => async () => {
+    try {
+      await action();
+      notify({ title });
+      connection.reload();
+      return null;
+    } catch (err) {
+      return messageOf(err);
+    }
+  };
   return (
     <Page
       title="Settings"
@@ -223,6 +239,17 @@ export const SettingsPage = ({ client, live }: SettingsPageProps) => {
       ) : (
         <PageLoading />
       )}
+      {connection.data ? (
+        <ConnectionForm
+          key={connection.data.connection ? 'saved' : 'new'}
+          connection={connection.data.connection}
+          canStoreSecrets={connection.data.canStoreSecrets}
+          onSave={(input) =>
+            saved('Clearinghouse connection saved', () => client.saveConnection(input))()
+          }
+          onRemove={saved('Clearinghouse connection removed', client.removeConnection)}
+        />
+      ) : null}
     </Page>
   );
 };

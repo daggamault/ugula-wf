@@ -109,7 +109,9 @@ const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
   refunded: 'Refunded',
   closed: 'Closed',
   accepted: 'Accepted by the payer',
-  rejected: 'Rejected'
+  rejected: 'Rejected',
+  eligibility: 'Eligibility checked',
+  claim_status: 'Claim status from the payer'
 };
 
 export const lockedReason = (status: ClaimDetail['status']) =>
@@ -1034,6 +1036,7 @@ export const ClaimView = ({
   onRestart,
   onSaveData,
   onCheckEligibility,
+  onDownloadEligibility,
   documentUrl,
   submission,
   tab = 'overview',
@@ -1052,6 +1055,7 @@ export const ClaimView = ({
   onRestart: () => Promise<void>;
   onSaveData: (data: BillingDataInput) => Promise<boolean>;
   onCheckEligibility: () => Promise<void>;
+  onDownloadEligibility: () => Promise<void>;
   documentUrl: (eventId: string) => string;
   submission?: ClaimLinks;
   tab?: ClaimTab;
@@ -1143,6 +1147,7 @@ export const ClaimView = ({
                 coverages={claim.coverages}
                 locked={locked}
                 onCheck={onCheckEligibility}
+                onDownload={onDownloadEligibility}
               />
               {submission ? (
                 <ClaimFiles
@@ -1248,6 +1253,12 @@ export const ClaimPage = ({
       }
       documentUrl={(eventId) => client.documentUrl(claimId, eventId)}
       onCheckEligibility={async () => {
+        await act(
+          () => client.checkEligibility(claimId),
+          'Eligibility check sent to the clearinghouse'
+        );
+      }}
+      onDownloadEligibility={async () => {
         await act(async () => {
           const request = await client.eligibilityRequest(claimId);
           downloadText(request.name, request.file, 'application/edi-x12');
