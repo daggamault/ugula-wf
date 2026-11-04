@@ -171,7 +171,13 @@ type PayerFileLine = {
 };
 
 export type AppliedPayerFile =
-  | { status: 'applied'; fileId: string; kind: InboundKind; reviews: PayerFileLine[] }
+  | {
+      status: 'applied';
+      fileId: string;
+      kind: InboundKind;
+      reviews: PayerFileLine[];
+      envelopeRejection: string | null;
+    }
   | { status: 'duplicate'; fileId: string }
   | { status: 'unreadable'; reason: string };
 
@@ -183,12 +189,41 @@ export type PayerFileStore = {
   ) => Promise<AppliedPayerFile>;
 };
 
+type Unavailable = { status: 'unavailable'; reason: string };
+
+type SentBatch = { status: 'sent'; sentAs: string; reason: string | null };
+
+export type EligibilityCheck =
+  | { status: 'answered'; fileName: string; reviews: PayerFileLine[] }
+  | SentBatch
+  | Unavailable;
+
+export type ClaimStatusCheck =
+  | { status: 'answered'; note: string }
+  | (SentBatch & { signalsSeen: number })
+  | Unavailable;
+
+export type ExchangeStore = {
+  checkEligibility: (
+    runId: string,
+    claimId: string,
+    sourceKey: string
+  ) => Promise<EligibilityCheck>;
+  checkClaimStatus: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    coverageId: string
+  ) => Promise<ClaimStatusCheck>;
+};
+
 export type BillingStores = {
   patients: PatientStore;
   payers: PayerStore;
   fees: FeeStore;
   claims: ClaimStore;
   payerFiles: PayerFileStore;
+  exchange: ExchangeStore;
   completer: Completer;
 };
 

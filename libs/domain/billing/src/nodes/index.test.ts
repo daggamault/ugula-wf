@@ -34,6 +34,9 @@ describe('createBillingNodes', () => {
         'billing.send-837p@1',
         'billing.close-claim@1',
         'billing.apply-payer-file@1',
+        'billing.send-270@1',
+        'billing.send-276@1',
+        'billing.latest-claim-status@1',
         'billing.read-signature@1'
       ]
     );

@@ -207,6 +207,28 @@ describe('nextClaimStep', () => {
     );
   });
 
+  it('keeps the latest payer claim status since the last contact, without resetting the wait', () => {
+    const sent = [e('approved', 'Medicare', 0), e('submitted', 'Medicare', 0)];
+    const status = (note: string, onDay: number) => ({
+      ...e('claim_status', 'Medicare', onDay),
+      note
+    });
+    const answered = [...sent, status('Pending (P1:20)', 31), status('Paid (F1:65)', 32)];
+    const ledger = (events: ClaimEvent[]) => ({
+      totalCents: 100_000,
+      coverages: [cov('Medicare')],
+      events
+    });
+    assert.equal(claimProgress(ledger(answered)).claimStatus, 'Paid (F1:65)');
+    assert.equal(claimProgress(ledger(sent)).claimStatus, null);
+    assert.equal(
+      claimProgress(ledger([...answered, e('follow_up', 'Medicare', 33)])).claimStatus,
+      null
+    );
+    assert.equal(step(answered, 33).step, 'followUp');
+    assert.equal(step([...sent, e('eligibility', 'Medicare', 20)], 25).step, 'await');
+  });
+
   it('re-requires review when the claim is edited after approval', () => {
     const approved = [e('approved', 'Medicare', 0)];
     assert.equal(step([...approved, e('edited', null, 1)], 1).step, 'review');

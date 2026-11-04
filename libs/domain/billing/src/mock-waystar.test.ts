@@ -4,14 +4,19 @@ import {
   buildTA1,
   downloadName,
   isActiveMember,
+  type MockClaimState,
   read270,
+  read276,
   readInterchange,
+  respondToClaimStatus,
   respondToClaims,
   respondToEligibility
 } from './mock-waystar.ts';
 import { sampleSubmitter, sampleX837 } from './testing.ts';
 import { build270, type EligibilityRequest } from './x270.ts';
 import { read271 } from './x271.ts';
+import { build276 } from './x276.ts';
+import { readClaimStatus } from './x277-status.ts';
 import { read835 } from './x835.ts';
 import { build837 } from './x837.ts';
 import { read999 } from './x999.ts';
@@ -113,6 +118,71 @@ describe('eligibility', () => {
       [
         ['T-ABC1', true],
         ['T-INACTIVE9', false]
+      ]
+    );
+  });
+});
+
+describe('Medicare Advantage', () => {
+  it('names a Medicare Advantage plan for member IDs that start with ADVANTAGE', () => {
+    const file = build270(waystar, [inquiry('ADVANTAGE1'), inquiry('B2')], envelope);
+    assert.deepEqual(
+      respondToEligibility(file, now).map((a) => read271(a)[0]?.advantagePlan),
+      ['SUNSHINE MEDICARE ADVANTAGE', null]
+    );
+  });
+});
+
+describe('claim status', () => {
+  const status = (claimNumber: string, payerClaimNumber: string | null = null) => ({
+    trace: claimNumber,
+    payer: { name: 'MEDICARE', payerId: 'MCR' },
+    subscriber: { ...inquiry('A1').subscriber },
+    patient: null,
+    claimNumber,
+    payerClaimNumber,
+    chargeCents: 100_000,
+    serviceDate: '2026-10-01'
+  });
+  const file = build276(
+    waystar,
+    [status('11'), status('12', 'PCN-12'), status('13'), status('14')],
+    envelope
+  );
+
+  it('reads each 276 query with its payer, claim number and charge', () => {
+    const { interchange, queries } = read276(file);
+    assert.equal(interchange?.sender, waystar.submitterId);
+    assert.deepEqual(queries[1], {
+      trace: '12',
+      claimNumber: '12',
+      payerClaimNumber: 'PCN-12',
+      chargeCents: 100_000,
+      payer: { name: 'MEDICARE', id: 'MCR' }
+    });
+    assert.throws(() => read276(build270(waystar, [inquiry('A1')], envelope)), /No 276/);
+  });
+
+  it('answers in process, paid, rejected or not found by what happened to each claim', () => {
+    const states: Record<string, MockClaimState> = {
+      '11': 'accepted',
+      '12': 'paid',
+      '13': 'rejected'
+    };
+    const answer = respondToClaimStatus(file, now, (n) => states[n] ?? 'unknown');
+    assert.equal(readInterchange(answer)?.receiver, waystar.submitterId);
+    assert.deepEqual(
+      readClaimStatus(answer).map((s) => [
+        s.claimNumber,
+        s.meaning,
+        s.paidCents,
+        s.payerClaimNumber
+      ]),
+      [
+        ['11', 'inProcess', 0, 'MOCK-11'],
+        ['12', 'paid', 80_000, 'PCN-12'],
+        ['13', 'rejected', 0, 'MOCK-13'],
+        ['14', 'notFound', 0, null]
       ]
     );
   });

@@ -35,7 +35,8 @@ describe('payerFileNodes', () => {
       status: 'applied',
       fileId: 'f1',
       kind: '835',
-      reviews: [review]
+      reviews: [review],
+      envelopeRejection: null
     });
     const out = await invokeNode(node, { inputs: { file, fileName: 'a.835' } });
     assert.equal(out.pin, 'applied');

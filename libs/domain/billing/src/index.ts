@@ -60,6 +60,24 @@ export {
   PATIENT_EVENT_KINDS
 } from './claims.ts';
 export {
+  AFTER_DOWNLOAD,
+  type AfterDownload,
+  type BatchTransport,
+  CLEARINGHOUSE_VENDORS,
+  type Clearinghouse,
+  type ClearinghouseExtensions,
+  type ClearinghouseFile,
+  type ClearinghouseSettings,
+  type ClearinghouseVendor,
+  createClearinghouse,
+  exchangeFileName,
+  FILE_EXTENSION_PATTERN,
+  type RealtimeAnswer,
+  type RealtimeTransport,
+  VENDOR_PRESETS,
+  WAYSTAR_EXTENSIONS
+} from './clearinghouse.ts';
+export {
   AMBULANCE_CONDITIONS,
   CONDITION_LIMIT,
   type Documentation,
@@ -73,16 +91,21 @@ export {
   TRANSPORT_REASONS,
   type TransportReason
 } from './documentation.ts';
+export { ADVANTAGE_NOTE, eligibilityFinding } from './eligibility.ts';
 export { US_STATE_PATTERN, usState, ZIP_CODE_PATTERN, ZIP_PLUS_4_PATTERN } from './geo.ts';
 export { billingModels, billingTypes } from './models.ts';
 export { nameKey } from './names.ts';
 export { UNREAD_FINDINGS } from './narrative.ts';
 export {
+  type AppliedPayerFile,
   type BillingStores,
   type BlobRef,
+  type ClaimStatusCheck,
   type ClaimStore,
   createBillingNodes,
   type DraftClaim,
+  type EligibilityCheck,
+  type ExchangeStore,
   type FeeStore,
   type PatientStore,
   type PayerFileStore,
@@ -119,10 +142,20 @@ export {
 } from './payers.ts';
 export { remittanceCoverage, remittancePosting } from './remittances.ts';
 export { HCPCS_LABELS, money } from './statements.ts';
+export { type InterchangeAcknowledgment, readTA1 } from './ta1.ts';
 export { type InboundKind, readX12 } from './x12.ts';
 export { build270, type EligibilityRequest } from './x270.ts';
 export { type EligibilityResult, read271 } from './x271.ts';
+export { build276, type ClaimStatusInquiry } from './x276.ts';
 export { type ClaimAcknowledgment, read277 } from './x277.ts';
+export {
+  CLAIM_STATUS_LABELS,
+  CLAIM_STATUS_MEANINGS,
+  type ClaimStatusMeaning,
+  claimStatusNote,
+  type PayerClaimStatus,
+  readClaimStatus
+} from './x277-status.ts';
 export { type Remittance, read835 } from './x835.ts';
 export {
   type BatchClaim,

@@ -6,6 +6,7 @@ export type EligibilityResult = {
   planName: string | null;
   coverageStart: string | null;
   coverageEnd: string | null;
+  advantagePlan: string | null;
   messages: string[];
 };
 
@@ -14,6 +15,14 @@ const ACTIVE = ['1', '2', '3', '4', '5'];
 const INACTIVE = ['6', '7', '8'];
 
 const MEMBER_LEVELS = ['22', '23'];
+
+const OTHER_PAYER = 'R';
+
+const MANAGED_CARE_PLANS = ['HM', 'HN', 'PR', 'PS'];
+
+const PLAN_ENTITIES = ['PRP', 'PR', 'P3'];
+
+const UNNAMED_PLAN = 'A Medicare Advantage plan';
 
 const REJECTS: Readonly<Record<string, string>> = {
   '15': 'Required application data missing',
@@ -28,7 +37,7 @@ const REJECTS: Readonly<Record<string, string>> = {
   '79': 'Invalid participant identification'
 };
 
-type Draft = EligibilityResult & { traced: boolean };
+type Draft = EligibilityResult & { traced: boolean; otherPlan: boolean };
 
 const rejectOf = (aaa: string[]) => {
   const code = aaa[3]?.trim() ?? '';
@@ -46,7 +55,7 @@ const resultsOf = (segments: string[][]) => {
   let draft: Draft | null = null;
   const close = () => {
     if (draft?.traced) {
-      const { traced: _, ...result } = draft;
+      const { traced: _, otherPlan: __, ...result } = draft;
       results.push({ ...result, messages: [...shared, ...result.messages] });
     }
   };
@@ -62,6 +71,8 @@ const resultsOf = (segments: string[][]) => {
               planName: null,
               coverageStart: null,
               coverageEnd: null,
+              advantagePlan: null,
+              otherPlan: false,
               messages: []
             }
           : null;
@@ -75,14 +86,21 @@ const resultsOf = (segments: string[][]) => {
       case 'EB': {
         if (!draft) break;
         const code = seg[1] ?? '';
+        draft.otherPlan = code === OTHER_PAYER && MANAGED_CARE_PLANS.includes(seg[4] ?? '');
+        if (draft.otherPlan) draft.advantagePlan ??= textOf(seg[5]) ?? UNNAMED_PLAN;
         if (draft.active === null && (ACTIVE.includes(code) || INACTIVE.includes(code))) {
           draft.active = ACTIVE.includes(code);
           draft.planName ??= textOf(seg[5]);
         }
         break;
       }
+      case 'NM1':
+        if (draft?.otherPlan && PLAN_ENTITIES.includes(seg[1] ?? '')) {
+          draft.advantagePlan = textOf(seg[3]) ?? draft.advantagePlan;
+        }
+        break;
       case 'DTP': {
-        if (!draft) break;
+        if (!draft || draft.otherPlan) break;
         const [from, to] = rangeOf(seg);
         if (seg[1] === '346') draft.coverageStart ??= from ?? null;
         if (seg[1] === '347') draft.coverageEnd ??= from ?? null;

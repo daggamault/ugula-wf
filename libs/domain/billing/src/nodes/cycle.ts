@@ -323,7 +323,7 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Send 837P to Clearinghouse',
       category: CATEGORY,
       description:
-        "Uploads a claim's 837P file to the clearinghouse over SFTP, once; sending it again does nothing. Continues through manual when no clearinghouse connection is set up, so the biller uploads the file from the claim page.",
+        "Uploads a claim's 837P file through the agency's clearinghouse connection (or the server default), once; sending it again does nothing. Continues through manual when no clearinghouse connection is set up, so the biller uploads the file from the claim page.",
       effect: true,
       inputs: [claimIdPin, pin('controlNumber', 'integer')],
       outputs: [pin('sentAs', 'string')],

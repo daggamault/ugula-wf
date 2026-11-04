@@ -1,11 +1,23 @@
-import { build271, type MockResponse, respond } from './mock-x12.ts';
-import { readX12, textOf } from './x12.ts';
+import { WAYSTAR_EXTENSIONS } from './clearinghouse.ts';
+import {
+  build271,
+  build277Status,
+  MOCK_PAID_SHARE,
+  type MockResponse,
+  mockPayerClaimNumber,
+  respond
+} from './mock-x12.ts';
+import { centsOf, readX12, textOf } from './x12.ts';
+
+export { WAYSTAR_EXTENSIONS };
 
 export const WAYSTAR_RECEIVERS = ['WAYSTAR', 'ZIRMED'] as const;
 
-export const WAYSTAR_EXTENSIONS = { claims: '.CLP', eligibility: '.ELG' } as const;
-
 export const INACTIVE_MEMBER_PREFIX = 'INACTIVE';
+
+export const ADVANTAGE_MEMBER_PREFIX = 'ADVANTAGE';
+
+const MOCK_ADVANTAGE_PLAN = { name: 'SUNSHINE MEDICARE ADVANTAGE', id: 'H1234' };
 
 type Interchange = {
   sender: string;
@@ -133,7 +145,10 @@ export const respondToEligibility = (text: string, now: Date) => {
         active: isActiveMember(q.subscriber.memberId),
         payer: q.payer,
         subscriber: q.subscriber,
-        ...(isActiveMember(q.subscriber.memberId) ? {} : { message: 'COVERAGE TERMINATED' })
+        ...(isActiveMember(q.subscriber.memberId) ? {} : { message: 'COVERAGE TERMINATED' }),
+        ...(q.subscriber.memberId.toUpperCase().startsWith(ADVANTAGE_MEMBER_PREFIX)
+          ? { advantagePlan: MOCK_ADVANTAGE_PLAN }
+          : {})
       },
       {
         sender: 'WAYSTAR',
@@ -142,6 +157,76 @@ export const respondToEligibility = (text: string, now: Date) => {
         createdAt: now
       }
     )
+  );
+};
+
+export type ClaimStatusQuery = {
+  trace: string;
+  claimNumber: string;
+  payerClaimNumber: string | null;
+  chargeCents: number;
+  payer: { name: string; id: string };
+};
+
+export const read276 = (text: string) => {
+  const file = readX12(text);
+  const st = file.segments.find((s) => s[0] === 'ST');
+  if (st?.[1] !== '276') throw new Error('No 276 transaction set');
+  const queries: ClaimStatusQuery[] = [];
+  let payer = { name: '', id: '' };
+  let query: ClaimStatusQuery | null = null;
+  for (const seg of file.segments) {
+    const [id, q] = seg;
+    if (id === 'NM1' && q === 'PR')
+      payer = { name: textOf(seg[3]) ?? '', id: textOf(seg[9]) ?? '' };
+    if (id === 'TRN') {
+      const trace = textOf(seg[2]) ?? '';
+      query = { trace, claimNumber: trace, payerClaimNumber: null, chargeCents: 0, payer };
+      queries.push(query);
+    }
+    if (!query) continue;
+    if (id === 'REF' && q === 'EJ') query.claimNumber = textOf(seg[2]) ?? query.claimNumber;
+    if (id === 'REF' && q === '1K') query.payerClaimNumber = textOf(seg[2]);
+    if (id === 'AMT' && q === 'T3') query.chargeCents = centsOf(seg[2]);
+  }
+  return { interchange: readInterchange(text), queries };
+};
+
+export type MockClaimState = 'accepted' | 'rejected' | 'paid' | 'unknown';
+
+const STATUS_ANSWERS: Record<MockClaimState, { category: string; code: string }> = {
+  accepted: { category: 'A2', code: '20' },
+  paid: { category: 'F1', code: '65' },
+  rejected: { category: 'A3', code: '21' },
+  unknown: { category: 'A4', code: '35' }
+};
+
+export const respondToClaimStatus = (
+  text: string,
+  now: Date,
+  stateOf: (claimNumber: string) => MockClaimState
+) => {
+  const { interchange, queries } = read276(text);
+  return build277Status(
+    queries.map((q) => {
+      const state = stateOf(q.claimNumber);
+      return {
+        trace: q.trace,
+        claimNumber: q.claimNumber,
+        ...STATUS_ANSWERS[state],
+        chargeCents: q.chargeCents,
+        paidCents: state === 'paid' ? Math.round(q.chargeCents * MOCK_PAID_SHARE) : 0,
+        payerClaimNumber:
+          state === 'unknown' ? null : (q.payerClaimNumber ?? mockPayerClaimNumber(q.claimNumber)),
+        payer: q.payer
+      };
+    }),
+    {
+      sender: 'WAYSTAR',
+      receiver: interchange?.sender ?? '',
+      production: interchange?.production ?? false,
+      createdAt: now
+    }
   );
 };
 

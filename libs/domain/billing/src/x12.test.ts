@@ -51,6 +51,14 @@ describe('readX12', () => {
 
   it('knows only inbound kinds and rejects text that is not X12', () => {
     assert.equal(readX12(`${isa()}ST*837*0001~SE*2*0001~`).kind, null);
+    assert.equal(readX12(`${isa()}TA1*000000042*261023*1405*R*008~IEA*0*000000042~`).kind, 'TA1');
+    assert.equal(readX12(`${isa()}IEA*0*000000042~`).kind, null);
+    assert.equal(readX12(`${isa()}ST*277*0001*005010X214~SE*2*0001~`).kind, '277');
+    assert.equal(readX12(`${isa()}ST*277*0001*005010X212~SE*2*0001~`).kind, '277S');
+    assert.equal(
+      readX12(`${isa()}GS*HN*P*A*20261023*1405*1*X*005010X212~ST*277*0001~SE*2*0001~`).kind,
+      '277S'
+    );
     assert.throws(() => readX12('hello'), /Not an X12 file/);
     assert.throws(() => readX12('ISA*00'), /Not an X12 file/);
   });

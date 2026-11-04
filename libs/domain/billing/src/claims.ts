@@ -13,7 +13,9 @@ export const CLAIM_EVENT_KINDS = [
   'revised',
   'closed',
   'accepted',
-  'rejected'
+  'rejected',
+  'eligibility',
+  'claim_status'
 ] as const;
 
 export type ClaimEventKind = (typeof CLAIM_EVENT_KINDS)[number];
@@ -26,7 +28,9 @@ export const COVERAGE_EVENT_KINDS: readonly ClaimEventKind[] = [
   'payer_skipped',
   'reconciled',
   'accepted',
-  'rejected'
+  'rejected',
+  'eligibility',
+  'claim_status'
 ];
 
 const CYCLE_EVENT_KINDS = [
@@ -206,6 +210,10 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
       .map((c) => c.id),
     submittedBefore: contacts.some((e) => e.kind === 'submitted' || e.kind === 'resubmitted'),
     rejection: last?.kind === 'rejected' ? last.note || REJECTION_NOTE : null,
+    claimStatus:
+      coverage === null || lastOf(coverage.id, ['claim_status']) < lastOf(coverage.id, CONTACTS)
+        ? null
+        : (events[lastOf(coverage.id, ['claim_status'])]?.note ?? null),
     payerClaimNumber:
       events.findLast((e) => e.coverageId === coverage?.id && e.payerClaimNumber !== null)
         ?.payerClaimNumber ?? null,

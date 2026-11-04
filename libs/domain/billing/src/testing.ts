@@ -370,6 +370,10 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
     updateAddress: unused('patient')
   },
   payerFiles: stores.payerFiles ?? { apply: unused('payer file') },
+  exchange: stores.exchange ?? {
+    checkEligibility: unused('clearinghouse'),
+    checkClaimStatus: unused('clearinghouse')
+  },
   payers: stores.payers ?? {
     lookup: unused('payer'),
     directory: async () => [],

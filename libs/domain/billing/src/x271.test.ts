@@ -46,6 +46,7 @@ describe('read271', () => {
       planName: 'MEDICARE PART B',
       coverageStart: '2015-01-01',
       coverageEnd: null,
+      advantagePlan: null,
       messages: []
     });
     assert.deepEqual(inactive, {
@@ -54,6 +55,7 @@ describe('read271', () => {
       planName: 'BLUE PPO',
       coverageStart: '2024-01-01',
       coverageEnd: '2025-12-31',
+      advantagePlan: null,
       messages: ['Coverage terminated']
     });
   });
@@ -67,6 +69,7 @@ describe('read271', () => {
       planName: null,
       coverageStart: null,
       coverageEnd: null,
+      advantagePlan: null,
       messages: ['Invalid or missing member ID']
     });
   });
@@ -98,6 +101,7 @@ describe('read271', () => {
         planName: 'MANAGED MEDICAID',
         coverageStart: '2026-01-01',
         coverageEnd: '2026-12-31',
+        advantagePlan: null,
         messages: []
       },
       {
@@ -106,6 +110,7 @@ describe('read271', () => {
         planName: null,
         coverageStart: null,
         coverageEnd: null,
+        advantagePlan: null,
         messages: ['Pending investigation']
       }
     ]);
@@ -129,5 +134,33 @@ describe('read271', () => {
       'The payer is unable to respond now',
       'Rejected with reason 99'
     ]);
+  });
+
+  it('names the Medicare Advantage plan a Medicare response points to', () => {
+    const [named, unnamed] = read271(
+      file(
+        'ST*271*0001*005010X279A1',
+        'HL*1**20*1',
+        'HL*2*1*21*1',
+        'HL*3*2*22*0',
+        'TRN*2*cov-7',
+        'EB*1**30**MEDICARE PART B',
+        'EB*R**30*HN',
+        'DTP*290*RD8*20260101-20261231',
+        'LS*2120',
+        'NM1*PRP*2*SUNSHINE ADVANTAGE*****PI*H1234',
+        'LE*2120',
+        'HL*4*2*22*0',
+        'TRN*2*cov-8',
+        'EB*1**30',
+        'EB*R**30*PR*SILVER PPO PLAN',
+        'EB*R**30*MB',
+        'SE*17*0001'
+      )
+    );
+    assert.equal(named?.advantagePlan, 'SUNSHINE ADVANTAGE');
+    assert.equal(named?.coverageStart, null);
+    assert.equal(unnamed?.advantagePlan, 'SILVER PPO PLAN');
+    assert.equal(read271(RESPONSE)[0]?.advantagePlan, null);
   });
 });

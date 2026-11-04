@@ -1,4 +1,4 @@
-export type InboundKind = '835' | '999' | '277' | '271';
+export type InboundKind = '835' | '999' | '277' | '271' | 'TA1' | '277S';
 
 export type X12File = {
   kind: InboundKind | null;
@@ -19,6 +19,17 @@ export const MAX_CONTROL_NUMBER = 999_999_999;
 
 const INBOUND: readonly string[] = ['835', '999', '277', '271'];
 
+const CLAIM_STATUS_VERSION = 'X212';
+
+const kindOf = (segments: string[][]): InboundKind | null => {
+  const st = segments.find((s) => s[0] === 'ST');
+  if (!st) return segments.some((s) => s[0] === 'TA1') ? 'TA1' : null;
+  const id = st[1] ?? '';
+  if (!INBOUND.includes(id)) return null;
+  const version = st[3] || (segments.find((s) => s[0] === 'GS')?.[8] ?? '');
+  return id === '277' && version.includes(CLAIM_STATUS_VERSION) ? '277S' : (id as InboundKind);
+};
+
 const ISA_LENGTH = 106;
 
 export const readX12 = (text: string): X12File => {
@@ -35,9 +46,8 @@ export const readX12 = (text: string): X12File => {
     .map((s) => s.split(separator));
   const [isa] = segments;
   if (isa?.[0] !== 'ISA') throw new Error('Not an X12 file');
-  const st = segments.find((s) => s[0] === 'ST')?.[1] ?? '';
   return {
-    kind: INBOUND.includes(st) ? (st as InboundKind) : null,
+    kind: kindOf(segments),
     controlNumber: isa[13]?.trim() || null,
     component,
     segments

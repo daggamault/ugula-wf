@@ -10,7 +10,9 @@ describe('payer files', () => {
         'Remittance (835)',
         'Acknowledgment (999)',
         'Claim acknowledgment (277CA)',
-        'Eligibility response (271)'
+        'Eligibility response (271)',
+        'Interchange acknowledgment (TA1)',
+        'Claim status (277)'
       ]
     );
     assert.ok(PROBLEM_OUTCOMES.includes('review'));
