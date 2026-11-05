@@ -65,7 +65,10 @@ const claim: ClaimDetail = {
       insured_last_name: null,
       eligibility: null,
       eligibility_note: null,
-      eligibility_checked_at: null
+      eligibility_checked_at: null,
+      stay_kind: null,
+      stay_admitted_on: null,
+      stay_discharged_on: null
     },
     {
       id: 'cov-b',
@@ -80,7 +83,10 @@ const claim: ClaimDetail = {
       insured_last_name: 'Doe',
       eligibility: null,
       eligibility_note: null,
-      eligibility_checked_at: null
+      eligibility_checked_at: null,
+      stay_kind: null,
+      stay_admitted_on: null,
+      stay_discharged_on: null
     }
   ],
   diagnoses: ['R079', 'I10'],
@@ -112,6 +118,22 @@ const claim: ClaimDetail = {
   weight_kg: '81.6',
   at_scene_at: '2026-10-01T10:05:00Z',
   left_scene_at: '2026-10-01T10:25:00Z',
+  patient_count: null,
+  closest_facility_miles: null,
+  abn_on_file: null,
+  abn_signed_on: null,
+  denial_expected: null,
+  msp_employer_plan: null,
+  msp_esrd: null,
+  msp_disability: null,
+  msp_accident: null,
+  prior_authorization_expires_on: null,
+  pcs_type: null,
+  round_trips: null,
+  admission_date: null,
+  facility_stay: null,
+  deceased: false,
+  non_covered_miles: null,
   at_destination_at: '2026-10-01T10:40:00Z',
   tasks: [],
   task_id: null,
@@ -362,7 +384,10 @@ describe('payer relationships', () => {
         insured_last_name: null,
         eligibility: null,
         eligibility_note: null,
-        eligibility_checked_at: null
+        eligibility_checked_at: null,
+        stay_kind: null,
+        stay_admitted_on: null,
+        stay_discharged_on: null
       }),
       entry('c', 'A')
     );
@@ -581,6 +606,7 @@ describe('ClaimView', () => {
       kind: 'task',
       assignee_id: null,
       assignee_email: null,
+      due_at: null,
       created_at: '2026-10-01T00:00:00Z'
     } as const;
     const html = render({

@@ -3,11 +3,16 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
+  abnText,
+  authorizationText,
   conditionsText,
   DocumentationPanel,
   EligibilityPanel,
   eligibilityStyle,
+  milesText,
+  mspText,
   pcsText,
+  stayText,
   weightText
 } from './claim-documentation.tsx';
 import type { ClaimCoverage } from './client.ts';
@@ -23,7 +28,23 @@ const documented = {
   weight_kg: '81.6',
   at_scene_at: '2026-10-01T10:05:00Z',
   left_scene_at: null,
-  at_destination_at: null
+  at_destination_at: null,
+  patient_count: 2,
+  closest_facility_miles: '4.6',
+  abn_on_file: true,
+  abn_signed_on: '2026-09-30',
+  denial_expected: true,
+  msp_employer_plan: false,
+  msp_esrd: false,
+  msp_disability: false,
+  msp_accident: 'none' as const,
+  prior_authorization_expires_on: '2026-12-01',
+  pcs_type: 'repetitive' as const,
+  round_trips: 4,
+  admission_date: null,
+  facility_stay: null,
+  deceased: false,
+  non_covered_miles: '2.4'
 };
 
 const coverage: ClaimCoverage = {
@@ -39,7 +60,10 @@ const coverage: ClaimCoverage = {
   insured_last_name: null,
   eligibility: 'inactive',
   eligibility_note: 'Not covered after 2026-09-30',
-  eligibility_checked_at: '2026-10-31T12:00:00Z'
+  eligibility_checked_at: '2026-10-31T12:00:00Z',
+  stay_kind: null,
+  stay_admitted_on: null,
+  stay_discharged_on: null
 };
 
 describe('claim documentation', () => {
@@ -53,6 +77,39 @@ describe('claim documentation', () => {
       conditionsText(['06', 'ZZ']),
       '06 · Patient was transported in an emergency situation; ZZ'
     );
+  });
+
+  it('describes the MSP answers, ABN, authorization, stay and miles', () => {
+    assert.equal(mspText(documented), 'Medicare pays first');
+    assert.equal(
+      mspText({ ...documented, msp_accident: 'workersComp', msp_esrd: true }),
+      "Medicare pays second: Workers' compensation; End-stage renal disease"
+    );
+    assert.equal(mspText({ ...documented, msp_esrd: null }), 'Not answered');
+    assert.match(abnText(documented), /^On file, signed .+ \(GA\)$/);
+    assert.equal(
+      abnText({ ...documented, abn_on_file: null }),
+      'Not recorded, and Medicare is expected to deny (GZ)'
+    );
+    assert.equal(
+      abnText({ ...documented, abn_on_file: false, denial_expected: false }),
+      'Not on file'
+    );
+    assert.match(authorizationText(documented) ?? '', /^PA-1, expires .+ · round trip 4$/);
+    assert.equal(
+      authorizationText({ ...documented, prior_authorization: null, round_trips: null }),
+      null
+    );
+    assert.match(
+      stayText({ facility_stay: 'snf', admission_date: '2026-09-29' }) ?? '',
+      /^Skilled nursing facility stay \(Part A\), admitted /
+    );
+    assert.equal(stayText(documented), null);
+    assert.equal(
+      milesText(documented),
+      '4.6 mi to the closest hospital, 2.4 mi non-covered (A0888)'
+    );
+    assert.match(milesText({ ...documented, deceased: true }) ?? '', /QL, no mileage/);
   });
 
   it('shows the signature with why, and every documented field', () => {
@@ -75,6 +132,11 @@ describe('claim documentation', () => {
           transport_reason: null,
           condition_codes: [],
           prior_authorization: null,
+          prior_authorization_expires_on: null,
+          round_trips: null,
+          patient_count: null,
+          closest_facility_miles: null,
+          non_covered_miles: null,
           weight_kg: null
         }
       })
@@ -84,6 +146,9 @@ describe('claim documentation', () => {
       'Transport Reason',
       'Ambulance Conditions',
       'Prior Authorization',
+      'Facility Stay',
+      'Patients Transported',
+      'Mileage',
       'Weight'
     ]) {
       assert.match(html, new RegExp(`${label}</dt><dd[^>]*>—</dd>`));

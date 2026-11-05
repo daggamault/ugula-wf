@@ -38,7 +38,22 @@ const claim = {
   signature: 'missing',
   transport_reason: null,
   pcs_on_file: null,
-  pcs_signed_on: null
+  pcs_signed_on: null,
+  patient_count: null,
+  closest_facility_miles: null,
+  abn_on_file: null,
+  abn_signed_on: null,
+  denial_expected: null,
+  msp_employer_plan: null,
+  msp_esrd: null,
+  msp_disability: null,
+  msp_accident: null,
+  prior_authorization: null,
+  prior_authorization_expires_on: null,
+  pcs_type: null,
+  round_trips: null,
+  admission_date: null,
+  facility_stay: null
 } as unknown as ClaimDetail;
 
 describe('claim data form', () => {
@@ -56,14 +71,94 @@ describe('claim data form', () => {
         },
         before
       ).documentation,
-      { signature: 'signed', pcsOnFile: true, pcsSignedOn: '2026-09-20', transportReason: 'D' }
+      {
+        signature: 'signed',
+        pcsOnFile: true,
+        pcsSignedOn: '2026-09-20',
+        transportReason: 'D',
+        patientCount: null,
+        abnOnFile: null,
+        abnSignedOn: null,
+        denialExpected: null,
+        mspEmployerPlan: null,
+        mspEsrd: null,
+        mspDisability: null,
+        mspAccident: null,
+        priorAuthorization: null,
+        priorAuthorizationExpiresOn: null,
+        pcsType: null,
+        roundTrips: null,
+        admissionDate: null,
+        facilityStay: null
+      }
     );
     assert.deepEqual(fromDraft({ ...before, pcsOnFile: 'no' }, before).documentation, {
       signature: null,
       pcsOnFile: false,
       pcsSignedOn: null,
-      transportReason: null
+      transportReason: null,
+      patientCount: null,
+      abnOnFile: null,
+      abnSignedOn: null,
+      denialExpected: null,
+      mspEmployerPlan: null,
+      mspEsrd: null,
+      mspDisability: null,
+      mspAccident: null,
+      priorAuthorization: null,
+      priorAuthorizationExpiresOn: null,
+      pcsType: null,
+      roundTrips: null,
+      admissionDate: null,
+      facilityStay: null
     });
+  });
+
+  it('sends the MSP answers, ABN, authorization, counts and facility stay a biller changed', () => {
+    const before = toDraft(claim);
+    assert.deepEqual(
+      fromDraft(
+        {
+          ...before,
+          patientCount: '2',
+          abnOnFile: 'yes',
+          abnSignedOn: '2026-09-30',
+          denialExpected: 'no',
+          mspEmployerPlan: 'no',
+          mspAccident: 'workersComp',
+          priorAuthorization: ' UTN-7 ',
+          priorAuthorizationExpiresOn: '2026-12-01',
+          pcsType: 'repetitive',
+          roundTrips: '4',
+          admissionDate: '2026-09-29',
+          facilityStay: 'snf'
+        },
+        before
+      ).documentation,
+      {
+        signature: null,
+        pcsOnFile: null,
+        pcsSignedOn: null,
+        transportReason: null,
+        patientCount: 2,
+        abnOnFile: true,
+        abnSignedOn: '2026-09-30',
+        denialExpected: false,
+        mspEmployerPlan: false,
+        mspEsrd: null,
+        mspDisability: null,
+        mspAccident: 'workersComp',
+        priorAuthorization: 'UTN-7',
+        priorAuthorizationExpiresOn: '2026-12-01',
+        pcsType: 'repetitive',
+        roundTrips: 4,
+        admissionDate: '2026-09-29',
+        facilityStay: 'snf'
+      }
+    );
+    assert.equal(fromDraft({ ...before, patientCount: 'x' }, before).documentation, null);
+    const answered = toDraft({ ...claim, msp_esrd: true, round_trips: 3 } as ClaimDetail);
+    assert.deepEqual([answered.mspEsrd, answered.roundTrips], ['yes', '3']);
   });
 
   it('round-trips claim data, blanks becoming missing values', () => {
@@ -130,12 +225,10 @@ describe('claim data form', () => {
       fromDraft({ ...before, signature: 'bogus', transportReason: 'Z' }, before).documentation,
       null
     );
-    assert.deepEqual(fromDraft({ ...before, pcsSignedOn: ' 2026-09-20 ' }, before).documentation, {
-      signature: null,
-      pcsOnFile: null,
-      pcsSignedOn: '2026-09-20',
-      transportReason: null
-    });
+    assert.equal(
+      fromDraft({ ...before, pcsSignedOn: ' 2026-09-20 ' }, before).documentation?.pcsSignedOn,
+      '2026-09-20'
+    );
   });
 });
 

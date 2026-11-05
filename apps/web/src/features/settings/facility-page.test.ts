@@ -11,7 +11,17 @@ describe('FacilityPage', () => {
     const html = renderToStaticMarkup(
       createElement(FacilityForm, { facility: null, back: '/facilities', onSave: async () => null })
     );
-    for (const label of ['Facility Name', 'Street Address', 'City', 'State', 'ZIP Code', 'Phone']) {
+    for (const label of [
+      'Facility Name',
+      'Street Address',
+      'City',
+      'State',
+      'ZIP Code',
+      'Phone',
+      'Kind',
+      'Contract',
+      'Contract Note'
+    ]) {
       assert.ok(html.includes(`>${label}<`), label);
     }
     assert.ok(html.includes('Save Facility') && html.includes('href="/facilities"'));
@@ -21,7 +31,10 @@ describe('FacilityPage', () => {
       city: null,
       state: null,
       postalCode: null,
-      phone: null
+      phone: null,
+      kind: 'other',
+      contract: false,
+      contractNote: null
     });
     const page = renderToStaticMarkup(
       createElement(FacilityPage, {

@@ -1,3 +1,4 @@
+import { FACILITY_KINDS } from '@ugula/billing';
 import { PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
@@ -40,6 +41,7 @@ export const FacilitiesTable = ({
     head={[
       { label: 'Facility', sort: 'name' },
       { label: 'Address', isSecondary: true, sort: 'city' },
+      'Kind',
       'Owed',
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
@@ -53,6 +55,10 @@ export const FacilitiesTable = ({
         </TableCell>
         <TableCell isMuted isSecondary>
           {placeOf(f)}
+        </TableCell>
+        <TableCell>
+          {FACILITY_KINDS[f.kind]}
+          {f.contract ? ' · contract' : ''}
         </TableCell>
         <TableCell kind="numeric">{formatCents(f.balance_cents)}</TableCell>
         <TableCell kind="actions">

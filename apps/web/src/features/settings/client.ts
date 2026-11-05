@@ -2,6 +2,7 @@ import type {
   AfterDownload,
   ClearinghouseVendor,
   CorrectionMethod,
+  FacilityKind,
   PlanType
 } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
@@ -93,6 +94,9 @@ export type Facility = {
   state: string | null;
   postal_code: string | null;
   phone: string | null;
+  kind: FacilityKind;
+  contract: boolean;
+  contract_note: string | null;
   balance_cents: number;
 };
 
@@ -103,6 +107,9 @@ export type FacilityInput = {
   state: string | null;
   postalCode: string | null;
   phone: string | null;
+  kind: FacilityKind;
+  contract: boolean;
+  contractNote: string | null;
 };
 
 export type PayerInput = {

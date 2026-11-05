@@ -69,6 +69,7 @@ import {
 import { type Resource, useResource } from '../../shared/use-resource.ts';
 import { ClaimDataForm } from './claim-data-form.tsx';
 import { DocumentationPanel, EligibilityPanel } from './claim-documentation.tsx';
+import { DocumentsPanel } from './claim-documents.tsx';
 import { ClaimRecovery } from './claim-recovery.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
 import { assigneeOf, claimNumber } from './claims-page.tsx';
@@ -122,7 +123,9 @@ const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
   records_sent: 'Records sent',
   closing_approved: 'Closing approved',
   balance_protected: 'Balance-billing protection',
-  facility_invoiced: 'Facility invoice'
+  facility_invoiced: 'Facility invoice',
+  responsibility: 'Responsible party recorded',
+  document: 'Document received'
 };
 
 export const lockedReason = (status: ClaimDetail['status']) =>
@@ -1057,6 +1060,7 @@ export const ClaimView = ({
   documentUrl,
   submission,
   recovery,
+  documents,
   tab = 'overview',
   back = '/claims',
   error = '',
@@ -1077,6 +1081,7 @@ export const ClaimView = ({
   documentUrl: (eventId: string) => string;
   submission?: ClaimLinks;
   recovery?: ReactNode;
+  documents?: ReactNode;
   tab?: ClaimTab;
   back?: string;
   error?: string;
@@ -1151,6 +1156,7 @@ export const ClaimView = ({
             </DetailList>
           </SectionPanel>
           <DocumentationPanel claim={claim} />
+          {documents}
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             <div className="flex min-w-0 flex-col gap-6">
               <SectionPanel title="Charges" description="Priced from the fee schedule.">
@@ -1288,6 +1294,26 @@ export const ClaimPage = ({
         await act(() => client.restartCycle(claimId), 'Payer cycle restarted');
       }}
       submission={{ fileUrl: client.fileUrl, encounterUrl: client.encounterUrl }}
+      documents={
+        <DocumentsPanel
+          documents={detail.data.documents}
+          locked={
+            isClosedStatus(detail.data.claim.status)
+              ? lockedReason(detail.data.claim.status)
+              : undefined
+          }
+          documentUrl={(documentId) => client.claimDocumentUrl(claimId, documentId)}
+          onUpload={(kind, signedOn, file) =>
+            act(
+              () => client.uploadDocument(claimId, { kind, signedOn, file }),
+              `${file.name} uploaded`
+            )
+          }
+          onChase={(kind, note) =>
+            act(() => client.chaseDocument(claimId, kind, note), 'Document chase started')
+          }
+        />
+      }
       recovery={
         <ClaimRecovery
           client={client}

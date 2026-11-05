@@ -1,3 +1,4 @@
+import { FACILITY_KINDS, type FacilityKind } from '@ugula/billing';
 import { SaveIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
@@ -9,6 +10,7 @@ import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { Select } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { Facility, FacilityInput, SettingsClient } from './client.ts';
@@ -19,8 +21,18 @@ export const toFacilityDraft = (f: Facility | null): FacilityInput => ({
   city: f?.city ?? null,
   state: f?.state ?? null,
   postalCode: f?.postal_code ?? null,
-  phone: f?.phone ?? null
+  phone: f?.phone ?? null,
+  kind: f?.kind ?? 'other',
+  contract: f?.contract ?? false,
+  contractNote: f?.contract_note ?? null
 });
+
+const KIND_OPTIONS = Object.entries(FACILITY_KINDS).map(([value, label]) => ({ value, label }));
+
+const CONTRACT_OPTIONS = [
+  { value: 'no', label: 'No: its patients’ payers are billed' },
+  { value: 'yes', label: 'Yes: the facility pays for its transports' }
+];
 
 const FIELDS = [
   { key: 'addressLine', label: 'Street Address', span: 2 },
@@ -54,7 +66,7 @@ export const FacilityForm = ({
     <form onSubmit={submit} aria-label="Save facility">
       <SectionPanel
         title="Facility"
-        description="The name and mailing address its monthly invoice goes to."
+        description="The name and mailing address its monthly invoice goes to, its kind, and whether it pays for its transports under contract."
       >
         <fieldset disabled={busy}>
           <FieldGrid>
@@ -76,6 +88,30 @@ export const FacilityForm = ({
                 onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value || null })}
               />
             ))}
+            <Select
+              id="facility-kind"
+              label="Kind"
+              span={1}
+              options={KIND_OPTIONS}
+              value={draft.kind}
+              onChange={(e) => setDraft({ ...draft, kind: e.target.value as FacilityKind })}
+            />
+            <Select
+              id="facility-contract"
+              label="Contract"
+              hint="Transports to or from a contract facility are billed to it"
+              span={1}
+              options={CONTRACT_OPTIONS}
+              value={draft.contract ? 'yes' : 'no'}
+              onChange={(e) => setDraft({ ...draft, contract: e.target.value === 'yes' })}
+            />
+            <Input
+              id="facility-contract-note"
+              label="Contract Note"
+              span={2}
+              value={draft.contractNote ?? ''}
+              onChange={(e) => setDraft({ ...draft, contractNote: e.target.value || null })}
+            />
           </FieldGrid>
         </fieldset>
         {error ? <Alert>{error}</Alert> : null}

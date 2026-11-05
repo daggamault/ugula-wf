@@ -4,11 +4,16 @@ import type {
   ClaimIssue,
   ClaimStatus,
   ClaimStep,
+  DocumentKind,
   EligibilityStatus,
+  FacilityStay,
   InboundKind,
   InsuredRelationship,
+  MspAccident,
   PayerFileOutcome,
+  PcsType,
   SignatureStatus,
+  StayKind,
   TransportReason,
   TripType
 } from '@ugula/billing';
@@ -84,6 +89,7 @@ export type ClaimTask = {
   kind: TaskKind;
   assignee_id: string | null;
   assignee_email: string | null;
+  due_at: string | null;
   created_at: string;
 };
 
@@ -109,6 +115,18 @@ export type ClaimCoverage = {
   eligibility: EligibilityStatus | null;
   eligibility_note: string | null;
   eligibility_checked_at: string | null;
+  stay_kind: StayKind | null;
+  stay_admitted_on: string | null;
+  stay_discharged_on: string | null;
+};
+
+export type ClaimDocument = {
+  id: string;
+  kind: DocumentKind;
+  file_name: string;
+  signed_on: string | null;
+  created_at: string;
+  uploaded_by_email: string | null;
 };
 
 export type ClaimPayerFile = {
@@ -157,6 +175,22 @@ export type ClaimDetail = ClaimSummary & {
   at_scene_at: string | null;
   left_scene_at: string | null;
   at_destination_at: string | null;
+  patient_count: number | null;
+  closest_facility_miles: string | null;
+  abn_on_file: boolean | null;
+  abn_signed_on: string | null;
+  denial_expected: boolean | null;
+  msp_employer_plan: boolean | null;
+  msp_esrd: boolean | null;
+  msp_disability: boolean | null;
+  msp_accident: MspAccident | null;
+  prior_authorization_expires_on: string | null;
+  pcs_type: PcsType | null;
+  round_trips: number | null;
+  admission_date: string | null;
+  facility_stay: FacilityStay | null;
+  deceased: boolean;
+  non_covered_miles: string | null;
   coverages: ClaimCoverage[];
   lines: ClaimLine[];
   diagnoses: string[];
@@ -186,13 +220,31 @@ export type BillingDataInput = {
   originDestination: string | null;
   patient: AddressInput;
   coverages: { id: string; memberId: string | null; groupId: string | null }[];
-  documentation: {
-    signature: SignatureStatus | null;
-    pcsOnFile: boolean | null;
-    pcsSignedOn: string | null;
-    transportReason: TransportReason | null;
-  } | null;
+  documentation: DocumentationInput | null;
 };
+
+export type DocumentationInput = {
+  signature: SignatureStatus | null;
+  pcsOnFile: boolean | null;
+  pcsSignedOn: string | null;
+  transportReason: TransportReason | null;
+  patientCount: number | null;
+  abnOnFile: boolean | null;
+  abnSignedOn: string | null;
+  denialExpected: boolean | null;
+  mspEmployerPlan: boolean | null;
+  mspEsrd: boolean | null;
+  mspDisability: boolean | null;
+  mspAccident: MspAccident | null;
+  priorAuthorization: string | null;
+  priorAuthorizationExpiresOn: string | null;
+  pcsType: PcsType | null;
+  roundTrips: number | null;
+  admissionDate: string | null;
+  facilityStay: FacilityStay | null;
+};
+
+export type DocumentUpload = { kind: DocumentKind; signedOn: string; file: File };
 
 export type PayerInput = {
   name: string;
@@ -246,6 +298,7 @@ export const createClaimsClient = (api: Api) => ({
       claim: ClaimDetail;
       files: ClaimEvent[];
       payerFiles: ClaimPayerFile[];
+      documents: ClaimDocument[];
       progress: ClaimProgress | null;
       issues: ClaimIssue[];
     }>(claimPath(id), signal),
@@ -264,6 +317,17 @@ export const createClaimsClient = (api: Api) => ({
     api.put<{ facilityId: string | null }>(`${claimPath(id)}/facility`, { facilityId }),
   requestRecords: (id: string, request: RecordsRequestInput) =>
     api.post<{ runId: string }>(`${claimPath(id)}/records-request`, request),
+  uploadDocument: (id: string, upload: DocumentUpload) => {
+    const form = new FormData();
+    form.set('kind', upload.kind);
+    form.set('signedOn', upload.signedOn);
+    form.set('file', upload.file);
+    return api.upload<{ id: string; runId: string }>(`${claimPath(id)}/documents`, form);
+  },
+  claimDocumentUrl: (claimId: string, documentId: string) =>
+    api.href(`${claimPath(claimId)}/documents/${encodeURIComponent(documentId)}`),
+  chaseDocument: (id: string, kind: DocumentKind, note: string | null) =>
+    api.post<{ runId: string }>(`${claimPath(id)}/document-chases`, { kind, note }),
   recordResponse: (id: string, response: ClaimResponseInput) =>
     api.post<{ balanceCents: number; duplicate: boolean }>(`${claimPath(id)}/responses`, response),
   eligibilityRequest: (claimId: string) =>

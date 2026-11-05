@@ -1,7 +1,13 @@
 import {
+  FACILITY_STAYS,
+  type FacilityStay,
   isSignatureStatus,
   isTransportReason,
+  MSP_ACCIDENTS,
+  type MspAccident,
   ORIGIN_DESTINATION_CODES,
+  PCS_TYPES,
+  type PcsType,
   SIGNATURE_LABELS,
   SIGNATURE_STATUSES,
   TRANSPORT_REASONS
@@ -13,7 +19,7 @@ import { FieldGrid, FieldGroup, FieldGroups, type FieldSpan } from '../../shared
 import { Input } from '../../shared/ui/input.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
-import type { BillingDataInput, ClaimDetail, LocationInput } from './client.ts';
+import type { BillingDataInput, ClaimDetail, DocumentationInput, LocationInput } from './client.ts';
 
 type Draft = {
   patient: Record<'addressLine' | 'city' | 'state' | 'postalCode', string>;
@@ -28,7 +34,25 @@ type Draft = {
   transportReason: string;
   pcsOnFile: string;
   pcsSignedOn: string;
+  pcsType: string;
+  patientCount: string;
+  abnOnFile: string;
+  abnSignedOn: string;
+  denialExpected: string;
+  mspEmployerPlan: string;
+  mspEsrd: string;
+  mspDisability: string;
+  mspAccident: string;
+  priorAuthorization: string;
+  priorAuthorizationExpiresOn: string;
+  roundTrips: string;
+  admissionDate: string;
+  facilityStay: string;
 };
+
+type TextKey = { [K in keyof Draft]: Draft[K] extends string ? K : never }[keyof Draft];
+
+type Flag = 'abnOnFile' | 'denialExpected' | 'mspEmployerPlan' | 'mspEsrd' | 'mspDisability';
 
 const MODIFIER_OPTIONS = Object.entries(ORIGIN_DESTINATION_CODES).map(([value, label]) => ({
   value,
@@ -60,7 +84,49 @@ const PCS_OPTIONS = [
   { value: 'no', label: 'Not on File' }
 ];
 
+const YES_NO = [
+  { value: '', label: 'Unknown' },
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' }
+];
+
+const choicesOf = (labels: Readonly<Record<string, string>>) => [
+  { value: '', label: 'Unknown' },
+  ...Object.entries(labels).map(([value, label]) => ({ value, label }))
+];
+
+const MSP_ACCIDENT_OPTIONS = choicesOf(MSP_ACCIDENTS);
+
+const PCS_TYPE_OPTIONS = choicesOf(PCS_TYPES);
+
+const FACILITY_STAY_OPTIONS = choicesOf(FACILITY_STAYS);
+
+const MSP_QUESTIONS: { key: Flag; label: string; hint: string }[] = [
+  {
+    key: 'mspEmployerPlan',
+    label: 'Employer Group Health Plan',
+    hint: 'Covered through the patient’s or spouse’s current employment'
+  },
+  {
+    key: 'mspEsrd',
+    label: 'End-Stage Renal Disease',
+    hint: 'In the 30-month coordination period'
+  },
+  {
+    key: 'mspDisability',
+    label: 'Disability With a Large Group Plan',
+    hint: 'Under 65, covered through a plan of 100 or more employees'
+  }
+];
+
 const pcsOf = (x: boolean | null) => (x === null ? '' : x ? 'yes' : 'no');
+
+const flagOf = (x: string) => (x === 'yes' ? true : x === 'no' ? false : null);
+
+const countOf = (x: string) => {
+  const n = x.trim() ? Number(x) : Number.NaN;
+  return Number.isInteger(n) ? n : null;
+};
 
 const blank = (x: string | null | undefined) => x ?? '';
 
@@ -100,7 +166,21 @@ export const toDraft = (claim: ClaimDetail): Draft => ({
   signature: claim.signature,
   transportReason: blank(claim.transport_reason),
   pcsOnFile: pcsOf(claim.pcs_on_file),
-  pcsSignedOn: blank(claim.pcs_signed_on)
+  pcsSignedOn: blank(claim.pcs_signed_on),
+  pcsType: blank(claim.pcs_type),
+  patientCount: claim.patient_count === null ? '' : String(claim.patient_count),
+  abnOnFile: pcsOf(claim.abn_on_file),
+  abnSignedOn: blank(claim.abn_signed_on),
+  denialExpected: pcsOf(claim.denial_expected),
+  mspEmployerPlan: pcsOf(claim.msp_employer_plan),
+  mspEsrd: pcsOf(claim.msp_esrd),
+  mspDisability: pcsOf(claim.msp_disability),
+  mspAccident: blank(claim.msp_accident),
+  priorAuthorization: blank(claim.prior_authorization),
+  priorAuthorizationExpiresOn: blank(claim.prior_authorization_expires_on),
+  roundTrips: claim.round_trips === null ? '' : String(claim.round_trips),
+  admissionDate: blank(claim.admission_date),
+  facilityStay: blank(claim.facility_stay)
 });
 
 const fromLocation = (l: Record<keyof LocationInput, string>): LocationInput => ({
@@ -113,16 +193,38 @@ const fromLocation = (l: Record<keyof LocationInput, string>): LocationInput => 
 
 const changed = <T, V>(next: T, before: T, value: V): V | null => (next === before ? null : value);
 
+const text = (d: Draft, before: Draft, key: TextKey) =>
+  orNull(changed(d[key], before[key], d[key]) ?? '');
+
+const flag = (d: Draft, before: Draft, key: Flag) => changed(d[key], before[key], flagOf(d[key]));
+
+const choice = <T extends string>(d: Draft, before: Draft, key: TextKey) =>
+  (orNull(changed(d[key], before[key], d[key]) ?? '') as T | null) ?? null;
+
 const documentationOf = (d: Draft, before: Draft): BillingDataInput['documentation'] => {
-  const doc = {
+  const doc: DocumentationInput = {
     signature: isSignatureStatus(d.signature)
       ? changed(d.signature, before.signature, d.signature)
       : null,
     pcsOnFile: d.pcsOnFile ? changed(d.pcsOnFile, before.pcsOnFile, d.pcsOnFile === 'yes') : null,
-    pcsSignedOn: orNull(changed(d.pcsSignedOn, before.pcsSignedOn, d.pcsSignedOn) ?? ''),
+    pcsSignedOn: text(d, before, 'pcsSignedOn'),
     transportReason: isTransportReason(d.transportReason)
       ? changed(d.transportReason, before.transportReason, d.transportReason)
-      : null
+      : null,
+    patientCount: changed(d.patientCount, before.patientCount, countOf(d.patientCount)),
+    abnOnFile: flag(d, before, 'abnOnFile'),
+    abnSignedOn: text(d, before, 'abnSignedOn'),
+    denialExpected: flag(d, before, 'denialExpected'),
+    mspEmployerPlan: flag(d, before, 'mspEmployerPlan'),
+    mspEsrd: flag(d, before, 'mspEsrd'),
+    mspDisability: flag(d, before, 'mspDisability'),
+    mspAccident: choice<MspAccident>(d, before, 'mspAccident'),
+    priorAuthorization: text(d, before, 'priorAuthorization'),
+    priorAuthorizationExpiresOn: text(d, before, 'priorAuthorizationExpiresOn'),
+    pcsType: choice<PcsType>(d, before, 'pcsType'),
+    roundTrips: changed(d.roundTrips, before.roundTrips, countOf(d.roundTrips)),
+    admissionDate: text(d, before, 'admissionDate'),
+    facilityStay: choice<FacilityStay>(d, before, 'facilityStay')
   };
   return Object.values(doc).some((v) => v !== null) ? doc : null;
 };
@@ -194,6 +296,8 @@ export const ClaimDataForm = ({
     await onSave(fromDraft(draft, initial));
     setBusy(false);
   };
+  const set = (key: TextKey) => (e: { target: { value: string } }) =>
+    setDraft({ ...draft, [key]: e.target.value });
   const address = <K extends 'patient' | 'pickup' | 'destination'>(
     group: K,
     prefix: string,
@@ -215,7 +319,7 @@ export const ClaimDataForm = ({
     <form onSubmit={submit} aria-label="Claim data">
       <SectionPanel
         title="Claim Data"
-        description="What goes on the 837P: patient address, member IDs, transport details and documentation."
+        description="What goes on the 837P: patient address, member IDs, transport details, documentation, Medicare Secondary Payer answers and the facility stay."
         actions={
           <Button type="submit" isPending={busy} disabledReason={locked}>
             <SaveIcon aria-hidden="true" className="size-4" />
@@ -290,6 +394,16 @@ export const ClaimDataForm = ({
                   value={draft.destinationCode}
                   onChange={(e) => setDraft({ ...draft, destinationCode: e.target.value })}
                 />
+                <Input
+                  id="patient-count"
+                  label="Patients Transported"
+                  hint="Two or more add GM to every line"
+                  type="number"
+                  min={1}
+                  span={2}
+                  value={draft.patientCount}
+                  onChange={set('patientCount')}
+                />
               </FieldGrid>
             </FieldGroup>
             <FieldGroup title="Documentation">
@@ -325,6 +439,115 @@ export const ClaimDataForm = ({
                   span={2}
                   value={draft.pcsSignedOn}
                   onChange={(e) => setDraft({ ...draft, pcsSignedOn: e.target.value })}
+                />
+                <Select
+                  id="pcs-type"
+                  label="Certification Type"
+                  span={2}
+                  options={PCS_TYPE_OPTIONS}
+                  value={draft.pcsType}
+                  onChange={set('pcsType')}
+                />
+                <Input
+                  id="prior-authorization"
+                  label="Prior Authorization (UTN)"
+                  span={2}
+                  isMonospace
+                  value={draft.priorAuthorization}
+                  onChange={set('priorAuthorization')}
+                />
+                <Input
+                  id="prior-authorization-expires-on"
+                  label="Authorization Expires On"
+                  type="date"
+                  span={2}
+                  value={draft.priorAuthorizationExpiresOn}
+                  onChange={set('priorAuthorizationExpiresOn')}
+                />
+                <Input
+                  id="round-trips"
+                  label="Round Trips in the Series"
+                  hint="Repetitive Medicare trips need a UTN after the third"
+                  type="number"
+                  min={0}
+                  span={2}
+                  value={draft.roundTrips}
+                  onChange={set('roundTrips')}
+                />
+              </FieldGrid>
+            </FieldGroup>
+            <FieldGroup title="Medicare Secondary Payer">
+              <FieldGrid>
+                {MSP_QUESTIONS.map((q) => (
+                  <Select
+                    key={q.key}
+                    id={`msp-${q.key}`}
+                    label={q.label}
+                    hint={q.hint}
+                    span={2}
+                    options={YES_NO}
+                    value={draft[q.key]}
+                    onChange={set(q.key)}
+                  />
+                ))}
+                <Select
+                  id="msp-accident"
+                  label="Accident or Work Injury"
+                  span={2}
+                  options={MSP_ACCIDENT_OPTIONS}
+                  value={draft.mspAccident}
+                  onChange={set('mspAccident')}
+                />
+              </FieldGrid>
+            </FieldGroup>
+            <FieldGroup title="Advance Beneficiary Notice">
+              <FieldGrid>
+                <Select
+                  id="denial-expected"
+                  label="Medicare Expected to Deny"
+                  hint="Not reasonable and necessary for this patient"
+                  span={2}
+                  options={YES_NO}
+                  value={draft.denialExpected}
+                  onChange={set('denialExpected')}
+                />
+                <Select
+                  id="abn-on-file"
+                  label="ABN on File"
+                  hint="Bills GA; without one an expected denial bills GZ"
+                  span={2}
+                  options={YES_NO}
+                  value={draft.abnOnFile}
+                  onChange={set('abnOnFile')}
+                />
+                <Input
+                  id="abn-signed-on"
+                  label="ABN Signed On"
+                  type="date"
+                  span={2}
+                  value={draft.abnSignedOn}
+                  onChange={set('abnSignedOn')}
+                />
+              </FieldGrid>
+            </FieldGroup>
+            <FieldGroup title="Facility Stay">
+              <FieldGrid>
+                <Select
+                  id="facility-stay"
+                  label="Facility Stay During the Trip"
+                  hint="A Part A stay can make the facility responsible"
+                  span={2}
+                  options={FACILITY_STAY_OPTIONS}
+                  value={draft.facilityStay}
+                  onChange={set('facilityStay')}
+                />
+                <Input
+                  id="admission-date"
+                  label="Admission Date"
+                  type="date"
+                  span={2}
+                  value={draft.admissionDate}
+                  onChange={set('admissionDate')}
                 />
               </FieldGrid>
             </FieldGroup>

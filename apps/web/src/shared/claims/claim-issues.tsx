@@ -30,7 +30,14 @@ const CLAIM_FIELD_LABELS: Readonly<Record<ClaimField, string>> = {
   payers: 'Payers',
   payer: 'Payer',
   memberId: 'Member ID',
-  insured: 'Insured'
+  insured: 'Insured',
+  deceased: 'Pronounced Dead',
+  nonCoveredMiles: 'Non-Covered Miles',
+  patientCount: 'Patients Transported',
+  abn: 'Advance Beneficiary Notice',
+  msp: 'Medicare Secondary Payer',
+  priorAuthorization: 'Prior Authorization',
+  facility: 'Facility Responsibility'
 };
 
 const isIssue = (x: Json): x is ClaimIssue =>

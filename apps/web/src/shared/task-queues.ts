@@ -36,6 +36,11 @@ const QUEUES: Readonly<Record<string, QueueInfo>> = {
     label: 'Balance Review',
     description: 'Balances left after every payer and three patient statements.'
   },
+  'billing-documents': {
+    label: 'Document Chase',
+    description:
+      'Missing facesheets, certifications, signature forms, ABNs and MSP forms to get and upload, each due by its date.'
+  },
   'billing-approvals': {
     label: 'Approvals',
     description:

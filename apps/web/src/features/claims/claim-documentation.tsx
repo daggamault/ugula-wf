@@ -1,5 +1,8 @@
 import {
   AMBULANCE_CONDITIONS,
+  FACILITY_STAYS,
+  MSP_ACCIDENTS,
+  PCS_TYPES,
   poundsOf,
   SIGNATURE_LABELS,
   TRANSPORT_REASONS
@@ -28,6 +31,22 @@ type Documented = Pick<
   | 'at_scene_at'
   | 'left_scene_at'
   | 'at_destination_at'
+  | 'patient_count'
+  | 'closest_facility_miles'
+  | 'abn_on_file'
+  | 'abn_signed_on'
+  | 'denial_expected'
+  | 'msp_employer_plan'
+  | 'msp_esrd'
+  | 'msp_disability'
+  | 'msp_accident'
+  | 'prior_authorization_expires_on'
+  | 'pcs_type'
+  | 'round_trips'
+  | 'admission_date'
+  | 'facility_stay'
+  | 'deceased'
+  | 'non_covered_miles'
 >;
 
 const SIGNATURE_INTENTS: Record<ClaimDetail['signature'], StatusBadgeStyle['intent']> = {
@@ -44,6 +63,73 @@ export const pcsText = (c: Pick<Documented, 'pcs_on_file' | 'pcs_signed_on'>) =>
       ? `On file${c.pcs_signed_on ? `, signed ${formatDate(c.pcs_signed_on)}` : ''}`
       : 'Not on file';
 
+export const abnText = (
+  c: Pick<Documented, 'abn_on_file' | 'abn_signed_on' | 'denial_expected'>
+) =>
+  c.abn_on_file === null
+    ? c.denial_expected
+      ? 'Not recorded, and Medicare is expected to deny (GZ)'
+      : 'Not recorded'
+    : c.abn_on_file
+      ? `On file${c.abn_signed_on ? `, signed ${formatDate(c.abn_signed_on)}` : ''} (GA)`
+      : c.denial_expected
+        ? 'Not on file, and Medicare is expected to deny (GZ)'
+        : 'Not on file';
+
+const MSP_REASONS = [
+  ['msp_employer_plan', 'Employer group health plan'],
+  ['msp_esrd', 'End-stage renal disease'],
+  ['msp_disability', 'Disability with a large group plan']
+] as const;
+
+export const mspText = (
+  c: Pick<Documented, 'msp_employer_plan' | 'msp_esrd' | 'msp_disability' | 'msp_accident'>
+) => {
+  const first = [
+    ...(c.msp_accident && c.msp_accident !== 'none' ? [MSP_ACCIDENTS[c.msp_accident]] : []),
+    ...MSP_REASONS.flatMap(([key, label]) => (c[key] ? [label] : []))
+  ];
+  if (first.length) return `Medicare pays second: ${first.join('; ')}`;
+  const answered = c.msp_accident !== null && MSP_REASONS.every(([key]) => c[key] !== null);
+  return answered ? 'Medicare pays first' : 'Not answered';
+};
+
+export const authorizationText = (
+  c: Pick<Documented, 'prior_authorization' | 'prior_authorization_expires_on' | 'round_trips'>
+) =>
+  [
+    c.prior_authorization
+      ? `${c.prior_authorization}${c.prior_authorization_expires_on ? `, expires ${formatDate(c.prior_authorization_expires_on)}` : ''}`
+      : null,
+    c.round_trips === null ? null : `round trip ${c.round_trips}`
+  ]
+    .filter(Boolean)
+    .join(' · ') || null;
+
+export const stayText = (c: Pick<Documented, 'facility_stay' | 'admission_date'>) =>
+  [
+    c.facility_stay ? FACILITY_STAYS[c.facility_stay] : null,
+    c.admission_date ? `admitted ${formatDate(c.admission_date)}` : null
+  ]
+    .filter(Boolean)
+    .join(', ') || null;
+
+export const milesText = (
+  c: Pick<Documented, 'closest_facility_miles' | 'non_covered_miles' | 'deceased'>
+) =>
+  c.deceased
+    ? 'Pronounced dead before loading: BLS with QL, no mileage'
+    : [
+        c.closest_facility_miles === null
+          ? null
+          : `${Number(c.closest_facility_miles)} mi to the closest hospital`,
+        c.non_covered_miles === null
+          ? null
+          : `${Number(c.non_covered_miles)} mi non-covered (A0888)`
+      ]
+        .filter(Boolean)
+        .join(', ') || null;
+
 export const weightText = (kg: string | null) =>
   kg === null ? null : `${Number(kg)} kg (${poundsOf(Number(kg))} lb)`;
 
@@ -59,7 +145,7 @@ export const conditionsText = (codes: readonly string[]) =>
 export const DocumentationPanel = ({ claim }: { claim: Documented }) => (
   <SectionPanel
     title="Documentation"
-    description="What the report documents for billing: signature, physician certification, transport reason and trip times."
+    description="What the report and billers document for billing: signature, certification, transport reason, MSP answers, ABN, authorization, facility stay and trip times."
   >
     <DetailList>
       <Detail label="Billing Signature">
@@ -74,7 +160,12 @@ export const DocumentationPanel = ({ claim }: { claim: Documented }) => (
           ) : null}
         </span>
       </Detail>
-      <Detail label="Physician Certification">{pcsText(claim)}</Detail>
+      <Detail label="Physician Certification">
+        {pcsText(claim)}
+        {claim.pcs_type ? ` · ${PCS_TYPES[claim.pcs_type]}` : ''}
+      </Detail>
+      <Detail label="Medicare Secondary Payer">{mspText(claim)}</Detail>
+      <Detail label="Advance Beneficiary Notice">{abnText(claim)}</Detail>
       <Detail label="Transport Reason">
         {claim.transport_reason
           ? `${claim.transport_reason} · ${TRANSPORT_REASONS[claim.transport_reason]}`
@@ -83,7 +174,10 @@ export const DocumentationPanel = ({ claim }: { claim: Documented }) => (
       <Detail label="Ambulance Conditions">
         {claim.condition_codes.length ? conditionsText(claim.condition_codes) : emptyValue}
       </Detail>
-      <Detail label="Prior Authorization">{claim.prior_authorization ?? emptyValue}</Detail>
+      <Detail label="Prior Authorization">{authorizationText(claim) ?? emptyValue}</Detail>
+      <Detail label="Facility Stay">{stayText(claim) ?? emptyValue}</Detail>
+      <Detail label="Patients Transported">{claim.patient_count ?? emptyValue}</Detail>
+      <Detail label="Mileage">{milesText(claim) ?? emptyValue}</Detail>
       <Detail label="Weight">{weightText(claim.weight_kg) ?? emptyValue}</Detail>
       <Detail label="On Scene">{formatDateTime(claim.at_scene_at)}</Detail>
       <Detail label="Left Scene">{formatDateTime(claim.left_scene_at)}</Detail>
