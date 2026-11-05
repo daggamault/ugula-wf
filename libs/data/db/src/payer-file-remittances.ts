@@ -1,5 +1,6 @@
 import {
   isDenialRoute,
+  money,
   type Remittance,
   type RemittanceLine,
   read835,
@@ -128,6 +129,17 @@ export const postRemittances = async (c: Context, remittances: Remittance[]) => 
             { ...amounts, adjustedCents: posted.value.adjustedCents }
           )
         : item(rc.claimNumber, claimId, 'review', posted.failure.message)
+    );
+  }
+  for (const remit of remittances) {
+    if (remit.providerAdjustmentCents === 0) continue;
+    items.push(
+      item(
+        `PLB ${remit.checkNumber ?? remit.payerName ?? 'payment'}`,
+        null,
+        'review',
+        `${remit.payerName ?? 'The payer'} made provider-level adjustments (PLB) of ${money(remit.providerAdjustmentCents)} on this payment, such as a recoupment of an earlier payment; post them on the claims they belong to by hand`
+      )
     );
   }
   return items;

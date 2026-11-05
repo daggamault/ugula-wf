@@ -48,6 +48,8 @@ const apply = async (text: string, postings: RemittancePosting[] = []) => {
   const out = await applyPayerFile(db, boss, {
     agencyId: 't1',
     userId: 'u1',
+    runId: 'r1',
+    sourceKey: 'r1:apply',
     fileName: 'in.x12',
     document: { key: 'k' },
     file: read.value,
@@ -120,7 +122,28 @@ describe('applyPayerFile', () => {
     for (const value of [`${digest}:1`, 'ICN-1', 'CHK-1', 60_000, 40_000]) {
       assert.ok(events[0]?.parameters.includes(value), String(value));
     }
-    assert.deepEqual(queries.at(-1)?.parameters, [2, 1, 'f1']);
+    assert.deepEqual(queries.at(-1)?.parameters, [2, 1, null, 'f1']);
+    const file = queries.find((q) => q.sql.startsWith('insert into "payer_files"'));
+    assert.ok(file?.parameters.includes('r1') && file.parameters.includes('r1:apply'));
+  });
+
+  it('asks a biller about provider-level adjustments (PLB) instead of dropping them', async () => {
+    const text = build835(
+      [
+        {
+          checkNumber: 'CHK-9',
+          claims: [{ claimNumber: '20261105-2002', chargeCents: 1_000, paidCents: 0 }]
+        }
+      ],
+      { createdAt }
+    ).replace('\nSE*', '\nPLB*1234567893*20261231*WO:ICN-7*125.50~\nSE*');
+    const { out } = await apply(text, [
+      { position: 1, route: 'unmatched', message: '', adjustedCents: 0 }
+    ]);
+    const plb = out.items.at(-1);
+    assert.equal(plb?.reference, 'PLB CHK-9');
+    assert.equal(plb?.outcome, 'review');
+    assert.match(plb?.message ?? '', /provider-level adjustments \(PLB\) of \$125\.50/);
   });
 
   it('reads each 835 claim payment with the claim and payer it matches, posting nothing', async () => {
@@ -325,6 +348,8 @@ describe('applyPayerFile', () => {
     const out = await applyPayerFile(db, boss, {
       agencyId: 't1',
       userId: null,
+      runId: null,
+      sourceKey: null,
       fileName: 'a.271',
       document: {},
       file: read.value,

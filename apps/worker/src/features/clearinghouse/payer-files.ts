@@ -2,13 +2,14 @@ import {
   type AppliedPayerFile,
   type BlobRef,
   type PayerFileStore,
-  PROBLEM_OUTCOMES,
+  REVIEW_OUTCOMES,
   type RemittancePosting
 } from '@ugula/billing';
 import {
   applyPayerFile,
   type Db,
   findImported,
+  findReviewLines,
   readPayerFile,
   readRemittanceLines
 } from '@ugula/db';
@@ -20,6 +21,7 @@ type Blobs = Pick<BlobStore, 'getBytes'>;
 
 export type ApplyDocument = (
   runId: string,
+  sourceKey: string,
   document: BlobRef,
   fileName: string,
   postings?: readonly RemittancePosting[]
@@ -45,15 +47,35 @@ export const createPayerFileStore = (
     return { agencyId: run.agency_id, userId, read, imported } as const;
   };
 
-  const applyDocument: ApplyDocument = async (runId, document, fileName, postings = []) => {
+  const applyDocument: ApplyDocument = async (
+    runId,
+    sourceKey,
+    document,
+    fileName,
+    postings = []
+  ) => {
     const loaded = await load(runId, document);
     if (!loaded.read.ok) return { status: 'unreadable', reason: loaded.read.failure.message };
-    if (loaded.imported) return { status: 'duplicate', fileId: loaded.imported.id };
+    const { imported } = loaded;
+    if (imported && imported.source_key !== sourceKey) {
+      return { status: 'duplicate', fileId: imported.id };
+    }
+    if (imported) {
+      return {
+        status: 'applied',
+        fileId: imported.id,
+        kind: imported.kind,
+        envelopeRejection: imported.envelope_rejection,
+        reviews: await findReviewLines(db, imported.id)
+      };
+    }
     const file = loaded.read.value;
     const applied = await db.transaction().execute((tx) =>
       applyPayerFile(tx, boss, {
         agencyId: loaded.agencyId,
         userId: loaded.userId,
+        runId,
+        sourceKey,
         fileName,
         document,
         file,
@@ -70,7 +92,7 @@ export const createPayerFileStore = (
       kind: applied.kind,
       envelopeRejection: applied.envelopeRejection,
       reviews: applied.items
-        .filter((i) => PROBLEM_OUTCOMES.includes(i.outcome))
+        .filter((i) => REVIEW_OUTCOMES.includes(i.outcome))
         .map(({ reference, claimId, outcome, message }) => ({
           reference,
           claimId,
@@ -84,7 +106,9 @@ export const createPayerFileStore = (
     read: async (runId, { document }) => {
       const loaded = await load(runId, document);
       if (!loaded.read.ok) return { status: 'unreadable', reason: loaded.read.failure.message };
-      if (loaded.imported) return { status: 'duplicate', fileId: loaded.imported.id };
+      if (loaded.imported && loaded.imported.run_id !== runId) {
+        return { status: 'duplicate', fileId: loaded.imported.id };
+      }
       const { kind, text } = loaded.read.value;
       return {
         status: 'read',
@@ -92,8 +116,8 @@ export const createPayerFileStore = (
         lines: kind === '835' ? await readRemittanceLines(db, loaded.agencyId, text) : []
       };
     },
-    apply: (runId, _sourceKey, { document, fileName, postings }) =>
-      applyDocument(runId, document, fileName, postings),
+    apply: (runId, sourceKey, { document, fileName, postings }) =>
+      applyDocument(runId, sourceKey, document, fileName, postings),
     applyDocument
   };
 };

@@ -113,16 +113,23 @@ describe('remittanceCoverage', () => {
 
   it('matches the payer by its clearinghouse ID, else by the order it processed the claim in', () => {
     assert.equal(remittanceCoverage(coverages, 'bcbs1', '1')?.id, 'blue');
-    assert.equal(remittanceCoverage(coverages, 'OTHER', '2')?.id, 'blue');
     assert.equal(remittanceCoverage(coverages, null, '19')?.id, 'mcr');
     assert.equal(remittanceCoverage(coverages, null, '4'), null);
     assert.equal(remittanceCoverage(coverages, null, '3'), null);
   });
 
-  it('falls back to the processing order when one payer ID covers several plans', () => {
-    const twice = [...coverages, { id: 'mcr-2', payerId: 'demomcr' }];
-    assert.equal(remittanceCoverage(twice, 'DEMOMCR', '20')?.id, 'blue');
-    assert.equal(remittanceCoverage(twice, 'DEMOMCR', '22'), null);
+  it('never posts a payer that is not on the claim to another payer', () => {
+    assert.equal(remittanceCoverage(coverages, 'OTHER', '2'), null);
+    assert.equal(remittanceCoverage(coverages, 'OTHER', '1'), null);
+    const unlinked = [{ id: 'x', payerId: null }, ...coverages];
+    assert.equal(remittanceCoverage(unlinked, 'OTHER', '1')?.id, 'x');
     assert.equal(remittanceCoverage([{ id: 'x', payerId: null }], null, '1')?.id, 'x');
+  });
+
+  it('picks by processing order among the plans one payer ID covers', () => {
+    const twice = [...coverages, { id: 'mcr-2', payerId: 'demomcr' }];
+    assert.equal(remittanceCoverage(twice, 'DEMOMCR', '21')?.id, 'mcr-2');
+    assert.equal(remittanceCoverage(twice, 'DEMOMCR', '20'), null);
+    assert.equal(remittanceCoverage(twice, 'DEMOMCR', '22'), null);
   });
 });

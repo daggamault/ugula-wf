@@ -72,12 +72,13 @@ export const remittanceCoverage = (
   payerId: string | null,
   status: string
 ) => {
-  const byPayer = payerId
-    ? coverages.filter((c) => c.payerId?.toUpperCase() === payerId.toUpperCase())
-    : [];
-  if (byPayer.length === 1) return byPayer[0] ?? null;
   const position = POSITIONS[status];
-  return position === undefined ? null : (coverages[position] ?? null);
+  const inOrder = position === undefined ? null : (coverages[position] ?? null);
+  if (!payerId) return inOrder;
+  const byPayer = coverages.filter((c) => c.payerId?.toUpperCase() === payerId.toUpperCase());
+  if (byPayer.length === 1) return byPayer[0] ?? null;
+  if (byPayer.length > 1) return inOrder && byPayer.includes(inOrder) ? inOrder : null;
+  return inOrder?.payerId === null ? inOrder : null;
 };
 
 export const readPostings = (x: unknown): RemittancePosting[] =>

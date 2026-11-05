@@ -69,7 +69,7 @@ const setup = ({ imported = false, published = true, failing = false } = {}) => 
       return q.parameters.includes('f1') ? [{ id: 'f1', file_name: 'era.835', document }] : [];
     }
     if (q.sql.includes('from "payer_file_items"')) return [{ position: 1, outcome: 'posted' }];
-    if (q.sql.startsWith('select "id", "created_at" from "payer_files"')) {
+    if (q.sql.includes('from "payer_files" where')) {
       return imported ? [{ id: 'f0', created_at: new Date('2026-10-01T00:00:00Z') }] : [];
     }
     if (q.sql.includes('select v.version')) return published ? [{ version: 1 }] : [];

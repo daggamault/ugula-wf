@@ -164,21 +164,27 @@ export const createExchangeStore = ({
     return { status: 'ready' as const, submitter, clearinghouse, controlNumber };
   };
 
-  const keep = async (runId: string, agencyId: string, name: string, text: string) => {
+  const keep = async (
+    runId: string,
+    sourceKey: string,
+    agencyId: string,
+    name: string,
+    text: string
+  ) => {
     const fileName = `${name}.x12`;
     const ref = await blobs.putBytes(
       `clearinghouse/${agencyId}/${now().getTime()}-${randomUUID().slice(0, 8)}-${fileName}`,
       bytesOf(text),
       'application/edi-x12'
     );
-    return { fileName, applied: await applyDocument(runId, ref, fileName) };
+    return { fileName, applied: await applyDocument(runId, sourceKey, ref, fileName) };
   };
 
   const agencyOf = async (runId: string) =>
     (await runAgency(db, runId).executeTakeFirstOrThrow()).agency_id;
 
   return {
-    checkEligibility: async (runId, claimId, _sourceKey, force) => {
+    checkEligibility: async (runId, claimId, sourceKey, force) => {
       const agencyId = await agencyOf(runId);
       if (!isUuid(claimId)) return unavailable('The claim has no patient to ask about yet');
       if (!force) await reuseEligibility(db, agencyId, claimId);
@@ -204,7 +210,13 @@ export const createExchangeStore = ({
         const answer = await clearinghouse.checkEligibility(text);
         if (answer.ok) {
           await asked();
-          const { fileName, applied } = await keep(runId, agencyId, `271-${name}`, answer.text);
+          const { fileName, applied } = await keep(
+            runId,
+            sourceKey,
+            agencyId,
+            `271-${name}`,
+            answer.text
+          );
           if (applied.status === 'unreadable') {
             return unavailable(`The real-time answer could not be read: ${applied.reason}`);
           }
@@ -221,7 +233,7 @@ export const createExchangeStore = ({
       return { status: 'sent', sentAs, reason };
     },
 
-    checkClaimStatus: async (runId, claimId, _sourceKey, coverageId) => {
+    checkClaimStatus: async (runId, claimId, sourceKey, coverageId) => {
       const agencyId = await agencyOf(runId);
       const row = await statusClaim(db, agencyId, claimId, coverageId);
       if (!row) return unavailable('The payer is not a directory payer on this claim');
@@ -238,7 +250,7 @@ export const createExchangeStore = ({
         const answer = await clearinghouse.checkClaimStatus(text);
         const status = answer.ok ? statusFor(answer.text, inquiry.claimNumber) : undefined;
         if (answer.ok && status) {
-          await keep(runId, agencyId, `277-${name}`, answer.text);
+          await keep(runId, sourceKey, agencyId, `277-${name}`, answer.text);
           return { status: 'answered', note: claimStatusNote(status) };
         }
         reason = answer.ok ? 'The answer did not name the claim' : answer.error;

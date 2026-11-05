@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   type InboundKind,
   PROBLEM_OUTCOMES,
+  REVIEW_OUTCOMES,
   type RemittancePosting,
   read271,
   read277,
@@ -29,10 +30,19 @@ export { readRemittanceLines } from './payer-file-remittances.ts';
 export const findImported = (db: Db, agencyId: string, digest: string) =>
   db
     .selectFrom('payer_files')
-    .select(['id', 'created_at'])
+    .select(['id', 'kind', 'run_id', 'source_key', 'envelope_rejection', 'created_at'])
     .where('agency_id', '=', agencyId)
     .where('digest', '=', digest)
     .executeTakeFirst();
+
+export const findReviewLines = (db: Db, fileId: string) =>
+  db
+    .selectFrom('payer_file_items')
+    .select(['reference', 'claim_id as claimId', 'outcome', 'message'])
+    .where('file_id', '=', fileId)
+    .where('outcome', 'in', REVIEW_OUTCOMES)
+    .orderBy('position')
+    .execute();
 
 const insertPayerFile = (
   db: Db,
@@ -44,6 +54,8 @@ const insertPayerFile = (
     document: unknown;
     controlNumber: string | null;
     uploadedBy: string | null;
+    runId: string | null;
+    sourceKey: string | null;
   }
 ) =>
   db
@@ -55,7 +67,9 @@ const insertPayerFile = (
       digest: f.digest,
       document: JSON.stringify(f.document),
       control_number: f.controlNumber,
-      uploaded_by: f.uploadedBy
+      uploaded_by: f.uploadedBy,
+      run_id: f.runId,
+      source_key: f.sourceKey
     })
     .returning('id')
     .executeTakeFirstOrThrow();
@@ -64,7 +78,8 @@ const saveFileItems = async (
   db: Db,
   fileId: string,
   items: readonly FileItem[],
-  problems: number
+  problems: number,
+  envelopeRejection: string | null
 ) => {
   if (items.length) {
     await db
@@ -85,7 +100,11 @@ const saveFileItems = async (
   }
   await db
     .updateTable('payer_files')
-    .set({ item_count: items.length, problem_count: problems })
+    .set({
+      item_count: items.length,
+      problem_count: problems,
+      envelope_rejection: envelopeRejection
+    })
     .where('id', '=', fileId)
     .execute();
 };
@@ -141,6 +160,8 @@ export const applyPayerFile = async (
   f: {
     agencyId: string;
     userId: string | null;
+    runId: string | null;
+    sourceKey: string | null;
     fileName: string;
     document: unknown;
     file: InboundFile;
@@ -155,7 +176,9 @@ export const applyPayerFile = async (
     digest: f.file.digest,
     document: f.document,
     controlNumber: f.file.controlNumber,
-    uploadedBy: f.userId
+    uploadedBy: f.userId,
+    runId: f.runId,
+    sourceKey: f.sourceKey
   });
   const { items, envelopeRejection } = await PROCESSORS[f.file.kind](
     {
@@ -171,6 +194,6 @@ export const applyPayerFile = async (
     f.file.text
   );
   const problems = items.filter((i) => PROBLEM_OUTCOMES.includes(i.outcome)).length;
-  await saveFileItems(tx, id, items, problems);
+  await saveFileItems(tx, id, items, problems, envelopeRejection);
   return { id, kind: f.file.kind, items, problems, envelopeRejection };
 };

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 import type {
   AfterDownload,
@@ -56,7 +57,13 @@ const target = (clearinghouse: Clearinghouse, agencyIds: string[] | null = null)
   agencyIds
 });
 
-type Seen = { run_id: string | null; note: string };
+type Seen = { run_id: string | null; note: string; tried_at?: Date };
+
+const NOW = new Date('2026-11-05T12:00:00Z');
+
+const LONG_AGO = new Date('2026-11-05T10:00:00Z');
+
+const RECENTLY = new Date('2026-11-05T11:30:00Z');
 
 type Directory = {
   profiles?: Record<string, string[]>;
@@ -81,6 +88,7 @@ const poll = async (
         remote_path: file(name).path,
         size: 10,
         modified_at: file(name).modifiedAt,
+        tried_at: LONG_AGO,
         ...row
       }));
     }
@@ -110,7 +118,8 @@ const poll = async (
     boss,
     blobs,
     targets: async () => [target(clearinghouse, owners)],
-    report: (m) => reports.push(m)
+    report: (m) => reports.push(m),
+    now: () => NOW
   })();
   await db.destroy();
   const downloads = queries.filter((q) =>
@@ -126,7 +135,9 @@ describe('createClearinghousePoll', () => {
   it('starts a Receive Payer File run per new file for the agency it is addressed to', async () => {
     const { clearinghouse, removed, sessions } = fakeClearinghouse({ 'a.999': isa('DEVEMS01') });
     const { downloads, linked, run, jobs, stored, reports } = await poll(clearinghouse);
-    assert.deepEqual(stored, [`clearinghouse/t1/${Date.parse('2026-11-03T12:00:00Z')}-a.999`]);
+    assert.deepEqual(stored, [
+      `clearinghouse/t1/${Date.parse('2026-11-03T12:00:00Z')}-${createHash('sha256').update('/outbound/999/a.999').digest('hex').slice(0, 8)}-a.999`
+    ]);
     assert.ok(run?.parameters.includes('t1') && run.parameters.includes('v1'));
     assert.ok(
       run?.parameters.some((p) => typeof p === 'string' && p.includes('"fileName":"a.999"'))
@@ -188,6 +199,25 @@ describe('createClearinghousePoll', () => {
       'Clearinghouse: received /outbound/999/a.999, run r1',
       'Clearinghouse: left /outbound/999/c.999 on the server: No agency has submitter ID NOBODY'
     ]);
+  });
+
+  it('waits an hour before trying a file it left on the server again', async () => {
+    const { clearinghouse } = fakeClearinghouse({
+      'a.999': isa('DEVEMS01'),
+      'b.999': isa('DEVEMS01')
+    });
+    const { jobs, downloads } = await poll(clearinghouse, {
+      seen: {
+        'a.999': { run_id: null, note: 'No agency has submitter ID DEVEMS01', tried_at: RECENTLY },
+        'b.999': { run_id: null, note: 'No agency has submitter ID DEVEMS01' }
+      }
+    });
+    assert.equal(jobs.length, 1);
+    assert.deepEqual(
+      downloads.map((q) => q.parameters[1]),
+      ['/outbound/999/b.999']
+    );
+    assert.ok(downloads[0]?.parameters.includes(NOW));
   });
 
   it('keeps received files on the server when configured to', async () => {

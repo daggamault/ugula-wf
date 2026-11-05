@@ -20,13 +20,34 @@ const batch = [
   { claim_id: 'c2', coverage_id: 'cov-3', number: '20261105-1002' }
 ];
 
+const earlier: {
+  id: string;
+  kind: string;
+  run_id: string;
+  source_key: string;
+  envelope_rejection: string | null;
+} = {
+  id: 'f0',
+  kind: '999',
+  run_id: 'r0',
+  source_key: 'r0:apply',
+  envelope_rejection: null
+};
+
 const rowsFor =
-  (imported: boolean): RowsFor =>
+  (imported: boolean | Partial<typeof earlier>): RowsFor =>
   (q) => {
     if (q.sql.startsWith('select "agency_id", "started_by" from "workflow_runs"'))
       return [{ agency_id: 't1', started_by: 'u1' }];
-    if (q.sql.startsWith('select "id", "created_at" from "payer_files"')) {
-      return imported ? [{ id: 'f0', created_at: new Date() }] : [];
+    if (q.sql.includes('from "payer_files" where')) {
+      return imported
+        ? [{ ...earlier, ...(imported === true ? {} : imported), created_at: new Date() }]
+        : [];
+    }
+    if (q.sql.includes('from "payer_file_items"')) {
+      return [
+        { reference: '20261105-9', claimId: null, outcome: 'unmatched', message: 'No claim' }
+      ];
     }
     if (q.sql.startsWith('insert into "payer_files"')) return [{ id: 'f1' }];
     if (q.sql.includes('from "claim_batches" as "b"')) return batch;
@@ -82,17 +103,12 @@ describe('createPayerFileStore', () => {
   it("applies a file for the run's agency and announces it and each claim it touched once", async () => {
     const { store, queries, announced } = storeFor(rejected, rowsFor(false));
     const applied = await store.apply('r1', 'k', { document, fileName: 'a.999', postings: [] });
-    const message = 'The clearinghouse rejected 837P file 7';
     assert.deepEqual(applied, {
       status: 'applied',
       fileId: 'f1',
       kind: '999',
       envelopeRejection: null,
-      reviews: [
-        { reference: '20261105-1001', claimId: 'c1', outcome: 'rejected', message },
-        { reference: '20261105-1001', claimId: 'c1', outcome: 'rejected', message },
-        { reference: '20261105-1002', claimId: 'c2', outcome: 'rejected', message }
-      ]
+      reviews: []
     });
     assert.deepEqual(announced, [
       ['r1', { kind: 'claim', id: 'c1' }],
@@ -103,6 +119,7 @@ describe('createPayerFileStore', () => {
     assert.ok(file?.parameters.includes('t1') && file.parameters.includes('a.999'));
     assert.ok(file?.parameters.includes(JSON.stringify(document)));
     assert.ok(file?.parameters.includes('u1'), 'the uploader who started the run');
+    assert.ok(file?.parameters.includes('r1') && file.parameters.includes('k'));
   });
 
   it('lists only the lines a biller has to look at', async () => {
@@ -136,6 +153,33 @@ describe('createPayerFileStore', () => {
     assert.deepEqual(announced, []);
   });
 
+  it('replays its own apply with the stored result instead of calling it a duplicate', async () => {
+    const own = { run_id: 'r1', source_key: 'r1:apply', envelope_rejection: 'Bad receiver' };
+    const { store, queries, announced } = storeFor(rejected, rowsFor(own));
+    assert.deepEqual(
+      await store.apply('r1', 'r1:apply', { document, fileName: 'a.999', postings: [] }),
+      {
+        status: 'applied',
+        fileId: 'f0',
+        kind: '999',
+        envelopeRejection: 'Bad receiver',
+        reviews: [
+          { reference: '20261105-9', claimId: null, outcome: 'unmatched', message: 'No claim' }
+        ]
+      }
+    );
+    assert.equal(
+      queries.some((q) => q.sql.startsWith('insert')),
+      false
+    );
+    assert.deepEqual(announced, []);
+    const read = await storeFor(rejected, rowsFor(own)).store.read('r1', {
+      document,
+      fileName: 'a.999'
+    });
+    assert.equal(read.status, 'read');
+  });
+
   it('says why a file cannot be read without writing anything', async () => {
     const empty = storeFor('', rowsFor(false));
     assert.deepEqual(
@@ -158,7 +202,7 @@ describe('createPayerFileStore', () => {
       new Date('2026-11-03T12:00:00Z')
     );
     const { store, queries } = storeFor(ta1, rowsFor(false));
-    const applied = await store.applyDocument('r1', document, 'a.TA1');
+    const applied = await store.applyDocument('r1', 'k', document, 'a.TA1');
     assert.equal(applied.status, 'applied');
     assert.equal(applied.status === 'applied' && applied.kind, 'TA1');
     assert.match(

@@ -125,7 +125,7 @@ const setup = ({
         return { bucket: 'b', key, size: body.byteLength, contentType };
       }
     },
-    applyDocument: async (_runId, ref, fileName): Promise<AppliedPayerFile> => {
+    applyDocument: async (_runId, _key, ref, fileName): Promise<AppliedPayerFile> => {
       applied.push(`${fileName}@${ref.key}`);
       if (!readable) return { status: 'unreadable', reason: 'Not a 271' };
       return {

@@ -21,6 +21,11 @@ const buildPayerFilesTable = (db: Kysely<Database>) =>
     .addColumn('uploaded_by', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
+    .addColumn('run_id', 'uuid', (col) =>
+      col.references('workflow_runs.id').onDelete('set null').onUpdate('cascade')
+    )
+    .addColumn('source_key', 'text')
+    .addColumn('envelope_rejection', 'text')
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('payer_files_agency_id_digest_unique', ['agency_id', 'digest'])
     .addCheckConstraint('payer_files_kind_check', sql`kind in (${list(PAYER_FILE_KINDS)})`)
@@ -68,6 +73,7 @@ const buildClearinghouseDownloadsTable = (db: Kysely<Database>) =>
       col.references('workflow_runs.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('note', 'text', (col) => col.notNull().defaultTo(''))
+    .addColumn('tried_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('clearinghouse_downloads_file_unique', [
       'source',
@@ -82,6 +88,7 @@ const buildPayerFilesIndexes = (db: Kysely<Database>) => [
     .on('payer_files')
     .columns(['agency_id', 'created_at desc']),
   db.schema.createIndex('idx_payer_files_uploaded_by').on('payer_files').column('uploaded_by'),
+  db.schema.createIndex('idx_payer_files_run').on('payer_files').column('run_id'),
   db.schema.createIndex('idx_payer_file_items_claim').on('payer_file_items').column('claim_id')
 ];
 

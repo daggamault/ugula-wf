@@ -39,6 +39,8 @@ export const PROBLEM_OUTCOMES: readonly PayerFileOutcome[] = [
   'review'
 ];
 
+export const REVIEW_OUTCOMES: readonly PayerFileOutcome[] = ['unmatched', 'review'];
+
 export const ELIGIBILITY_STATUSES = ['active', 'inactive'] as const;
 
 export type EligibilityStatus = (typeof ELIGIBILITY_STATUSES)[number];

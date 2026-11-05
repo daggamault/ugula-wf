@@ -604,6 +604,7 @@ type ClearinghouseDownloadsTable = {
   agency_id: string | null;
   run_id: string | null;
   note: ColumnType<string, string | undefined, string>;
+  tried_at: ColumnType<Date, Date | string | undefined, Date | string>;
   created_at: Timestamp;
 };
 
@@ -618,6 +619,9 @@ export type PayerFilesTable = {
   item_count: ColumnType<number, number | undefined, number>;
   problem_count: ColumnType<number, number | undefined, number>;
   uploaded_by: string | null;
+  run_id: string | null;
+  source_key: string | null;
+  envelope_rejection: string | null;
   created_at: Timestamp;
 };
 

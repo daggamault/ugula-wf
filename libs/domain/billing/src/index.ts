@@ -185,7 +185,8 @@ export {
   PAYER_FILE_LABELS,
   PAYER_FILE_OUTCOMES,
   type PayerFileOutcome,
-  PROBLEM_OUTCOMES
+  PROBLEM_OUTCOMES,
+  REVIEW_OUTCOMES
 } from './payer-files.ts';
 export {
   CLAIM_FILING_CODES,
