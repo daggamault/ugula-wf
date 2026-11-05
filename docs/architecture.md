@@ -4,13 +4,13 @@ Ugula is a durable visual workflow engine with an EMS ambulance billing app buil
 
 ## Apps
 
-| App                          | Role                                                                                                                            | Entry                     |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| `apps/api`                   | Hono HTTP API. Signs users in, checks agency access and permissions, serves every page's data, starts runs and completes tasks. | `apps/api/src/main.ts`    |
+| App                          | Role                                                                                                                                                                                         | Entry                     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `apps/api`                   | Hono HTTP API. Signs users in, checks agency access and permissions, serves every page's data, starts runs and completes tasks.                                                              | `apps/api/src/main.ts`    |
 | `apps/worker`                | Leases runs from the pg-boss queue and executes them; implements the billing store ports; polls the clearinghouse; starts the daily deadline watch and monthly facility invoices per agency. | `apps/worker/src/main.ts` |
-| `apps/sse`                   | Streams live events (runs, tasks, claims, imports) to browsers, one stream per agency.                                          | `apps/sse/src/main.ts`    |
-| `apps/web`                   | React app: claims, tasks, patients, imports, payer files, reports, workflows, runs, payers, fees, users, roles, settings.       | `apps/web/src/main.ts`    |
-| `.dev/mock-clearinghouse.ts` | Dev-only SFTP and CORE real-time server that answers 837P, 270 and 276 like Waystar.                                            | `pnpm dev:clearinghouse`  |
+| `apps/sse`                   | Streams live events (runs, tasks, claims, imports) to browsers, one stream per agency.                                                                                                       | `apps/sse/src/main.ts`    |
+| `apps/web`                   | React app: claims, tasks, patients, imports, payer files, reports, workflows, runs, payers, fees, users, roles, settings.                                                                    | `apps/web/src/main.ts`    |
+| `.dev/mock-clearinghouse.ts` | Dev-only SFTP and CORE real-time server that answers 837P, 270 and 276 like Waystar.                                                                                                         | `pnpm dev:clearinghouse`  |
 
 ## Library layers
 

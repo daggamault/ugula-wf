@@ -34,8 +34,7 @@ const QUEUES: Readonly<Record<string, QueueInfo>> = {
   },
   'billing-collections': {
     label: 'Balance Review',
-    description:
-      'Balances left after every payer and three patient statements.'
+    description: 'Balances left after every payer and three patient statements.'
   },
   'billing-approvals': {
     label: 'Approvals',

@@ -61,15 +61,15 @@ A working summary of US ground ambulance billing for people building Ugula. Rule
 
 The full tagged checklist (MVP vs later) with sources is in the [Workflow Architecture Review](workflow-architecture.md#billing-coverage-gaps-for-mvp) and its sources section. Post-payment status:
 
-| Item                                                                   | Status                                                                                                   |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Denial routing by CARC and a denial decision                           | Built: Remittance Routing, Work Denial, Denial Categories                                                |
-| Corrected claims (frequency 7/8 with REF F8) vs Medicare reopenings    | Built: Correct Claim, Correction Methods, payer Corrections setting (_verify_ Medicare Part B 7/8)        |
-| Redetermination (120 days) and reconsideration (180 days)              | Built: Appeal Claim, Appeal Levels, appeal packet PDF; ALJ and Medicaid limits _verify_                  |
-| Records requests (ADR)                                                 | Built as a task with a due date (Medicare 45 days _verify_)                                              |
-| Refunds and the Medicare 60-day overpayment deadline                   | Built: Refund Overpayment, Approve Refund (`claims:approve`), Refund Deadlines                          |
-| Collections placement and large write-offs                             | Built: Approve Closing under the Claim Policy thresholds                                                 |
-| Deadlines (timely filing, appeals, records, refunds, PCS expiry)       | Built: Watch Deadlines every morning                                                                     |
-| State balance-billing laws                                             | Built: Balance-Billing Protection with example rows NH, OR (2026-01-01), AL (2026-10-01), all _verify_    |
-| Facility invoicing (Part A/SNF, contract facilities)                   | Built: monthly invoice per facility; deciding responsibility at intake is not built here                |
-| EFT reassociation, payment plans                                       | Not built                                                                                                |
+| Item                                                                | Status                                                                                                 |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Denial routing by CARC and a denial decision                        | Built: Remittance Routing, Work Denial, Denial Categories                                              |
+| Corrected claims (frequency 7/8 with REF F8) vs Medicare reopenings | Built: Correct Claim, Correction Methods, payer Corrections setting (_verify_ Medicare Part B 7/8)     |
+| Redetermination (120 days) and reconsideration (180 days)           | Built: Appeal Claim, Appeal Levels, appeal packet PDF; ALJ and Medicaid limits _verify_                |
+| Records requests (ADR)                                              | Built as a task with a due date (Medicare 45 days _verify_)                                            |
+| Refunds and the Medicare 60-day overpayment deadline                | Built: Refund Overpayment, Approve Refund (`claims:approve`), Refund Deadlines                         |
+| Collections placement and large write-offs                          | Built: Approve Closing under the Claim Policy thresholds                                               |
+| Deadlines (timely filing, appeals, records, refunds, PCS expiry)    | Built: Watch Deadlines every morning                                                                   |
+| State balance-billing laws                                          | Built: Balance-Billing Protection with example rows NH, OR (2026-01-01), AL (2026-10-01), all _verify_ |
+| Facility invoicing (Part A/SNF, contract facilities)                | Built: monthly invoice per facility; deciding responsibility at intake is not built here               |
+| EFT reassociation, payment plans                                    | Not built                                                                                              |

@@ -22,21 +22,21 @@ A user belongs to at most one organization. Email addresses are unique and store
 - Roles are custom per agency (`roles`, `role_permissions`). Every agency is seeded with **Admin**, **Billing Manager**, **Biller** and **Viewer** (`BUILT_IN_ROLES`), which agencies can change.
 - A membership (`memberships`) gives one user one role in one agency. Composite foreign keys make it impossible to join an agency or role outside your organization.
 
-| Resource    | Actions                                                                     |
-| ----------- | --------------------------------------------------------------------------- |
-| settings    | read, update                                                                |
-| users       | create, read, update, delete                                                |
-| roles       | create, read, update, delete                                                |
-| patients    | read, update                                                                |
-| imports     | create, read                                                                |
+| Resource    | Actions                                                                                       |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| settings    | read, update                                                                                  |
+| users       | create, read, update, delete                                                                  |
+| roles       | create, read, update, delete                                                                  |
+| patients    | read, update                                                                                  |
+| imports     | create, read                                                                                  |
 | claims      | read, update, approve (refunds, write-offs and collections above the Claim Policy thresholds) |
-| tasks       | read, update                                                                |
-| payer_files | create, read                                                                |
-| payers      | create, read, update, delete (the payer directory and facilities)           |
-| fees        | create, read, update, delete                                                |
-| reports     | read                                                                        |
-| workflows   | read, update (rules, tables, agency rule slots), manage (stages, workflows) |
-| runs        | create, read, update                                                        |
+| tasks       | read, update                                                                                  |
+| payer_files | create, read                                                                                  |
+| payers      | create, read, update, delete (the payer directory and facilities)                             |
+| fees        | create, read, update, delete                                                                  |
+| reports     | read                                                                                          |
+| workflows   | read, update (rules, tables, agency rule slots), manage (stages, workflows)                   |
+| runs        | create, read, update                                                                          |
 
 ### Tasks that need a permission
 
