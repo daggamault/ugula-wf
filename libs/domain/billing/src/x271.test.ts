@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { read271 } from './x271.ts';
 
-const ISA = `ISA*00*${' '.repeat(10)}*00*${' '.repeat(10)}*ZZ*${'CLEARING'.padEnd(15)}*ZZ*${'METROEMS'.padEnd(15)}*261024*0805*^*00501*000000888*0*P*:~`;
+const isaOf = (repetition: string) =>
+  `ISA*00*${' '.repeat(10)}*00*${' '.repeat(10)}*ZZ*${'CLEARING'.padEnd(15)}*ZZ*${'METROEMS'.padEnd(15)}*261024*0805*${repetition}*00501*000000888*0*P*:~`;
+
+const ISA = isaOf('^');
 
 const file = (...segments: string[]) =>
   `${ISA}GS*HB*CLEARING*METROEMS*20261024*0805*888*X*005010X279A1~${segments.map((s) => `${s}~`).join('')}GE*1*888~IEA*1*000000888~`;
@@ -175,6 +178,23 @@ describe('read271', () => {
       dischargedOn: '2026-10-15'
     });
     assert.equal(undated?.stay, null);
+  });
+
+  it('splits repeated service types on the separator the interchange declares', () => {
+    const text = file(
+      'ST*271*0001*005010X279A1',
+      'HL*1**20*1',
+      'HL*2*1*21*1',
+      'HL*3*2*22*0',
+      'TRN*2*cov-20',
+      'EB*1**30{AG',
+      'DTP*472*RD8*20261001-20261015',
+      'SE*8*0001'
+    );
+    const [braced] = read271(text.replace(ISA, isaOf('{')));
+    assert.equal(braced?.stay?.kind, 'snf');
+    const [caret] = read271(text);
+    assert.equal(caret?.stay, null);
   });
 
   it('names the Medicare Advantage plan a Medicare response points to', () => {

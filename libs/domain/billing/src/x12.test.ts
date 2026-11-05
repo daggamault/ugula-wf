@@ -15,7 +15,7 @@ import {
   yyyymmdd
 } from './x12.ts';
 
-const isa = (sep = '*', component = ':', end = '~') =>
+const isa = (sep = '*', component = ':', end = '~', repetition = '^') =>
   [
     'ISA',
     '00',
@@ -28,7 +28,7 @@ const isa = (sep = '*', component = ':', end = '~') =>
     'AGENCY'.padEnd(15),
     '261023',
     '1405',
-    '^',
+    repetition,
     '00501',
     '000000042',
     '0',
@@ -47,6 +47,12 @@ describe('readX12', () => {
     assert.deepEqual(file.segments[3], ['SVC', 'HC>A0427', '100']);
     assert.deepEqual(componentsOf(file.segments[3]?.[1], file), ['HC', 'A0427']);
     assert.deepEqual(componentsOf(undefined, file), ['']);
+    assert.equal(file.repetition, '^');
+  });
+
+  it('reads the repetition separator from ISA11, with none for the 4010 U', () => {
+    assert.equal(readX12(`${isa('*', ':', '~', '{')}IEA*0*1~`).repetition, '{');
+    assert.equal(readX12(`${isa('*', ':', '~', 'U')}IEA*0*1~`).repetition, null);
   });
 
   it('knows only inbound kinds and rejects text that is not X12', () => {

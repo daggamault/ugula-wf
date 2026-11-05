@@ -1,4 +1,4 @@
-import { dateOf, readX12, textOf, transactionsOf } from './x12.ts';
+import { dateOf, readX12, textOf, transactionsOf, type X12File } from './x12.ts';
 
 export type FacilityStayHint = {
   kind: 'inpatient' | 'snf';
@@ -36,9 +36,8 @@ const STAY_SERVICES: Readonly<Record<string, FacilityStayHint['kind']>> = {
   AG: 'snf'
 };
 
-const stayKindOf = (eb: string[]) =>
-  (eb[3] ?? '')
-    .split('^')
+const stayKindOf = (eb: string[], repetition: string | null) =>
+  (repetition ? (eb[3] ?? '').split(repetition) : [eb[3] ?? ''])
     .map((code) => STAY_SERVICES[code.trim()])
     .find((kind) => kind !== undefined) ?? null;
 
@@ -67,7 +66,7 @@ const rangeOf = (dtp: string[]) => {
   return dtp[2] === 'RD8' ? [dateOf(from), dateOf(to)] : [dateOf(dtp[3]), null];
 };
 
-const resultsOf = (segments: string[][]) => {
+const resultsOf = (segments: string[][], file: X12File) => {
   const results: EligibilityResult[] = [];
   const shared: string[] = [];
   let draft: Draft | null = null;
@@ -112,7 +111,7 @@ const resultsOf = (segments: string[][]) => {
         const code = seg[1] ?? '';
         draft.otherPlan = code === OTHER_PAYER && MANAGED_CARE_PLANS.includes(seg[4] ?? '');
         if (draft.otherPlan) draft.advantagePlan ??= textOf(seg[5]) ?? UNNAMED_PLAN;
-        const stay = stayKindOf(seg);
+        const stay = stayKindOf(seg, file.repetition);
         draft.staying = stay !== null && (draft.stay === null || draft.stay.kind === stay);
         if (stay && !draft.stay) draft.stay = { kind: stay, admittedOn: null, dischargedOn: null };
         if (draft.active === null && (ACTIVE.includes(code) || INACTIVE.includes(code))) {
@@ -157,5 +156,7 @@ const resultsOf = (segments: string[][]) => {
   return results;
 };
 
-export const read271 = (text: string): EligibilityResult[] =>
-  transactionsOf(readX12(text), '271').flatMap(resultsOf);
+export const read271 = (text: string): EligibilityResult[] => {
+  const file = readX12(text);
+  return transactionsOf(file, '271').flatMap((segments) => resultsOf(segments, file));
+};

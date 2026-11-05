@@ -4,6 +4,7 @@ export type X12File = {
   kind: InboundKind | null;
   controlNumber: string | null;
   component: string;
+  repetition: string | null;
   segments: string[][];
 };
 
@@ -32,6 +33,8 @@ const kindOf = (segments: string[][]): InboundKind | null => {
 
 const ISA_LENGTH = 106;
 
+const NO_REPETITION = /^[A-Za-z0-9 ]?$/;
+
 export const readX12 = (text: string): X12File => {
   const start = text.indexOf('ISA');
   if (start < 0 || text.length < start + ISA_LENGTH) throw new Error('Not an X12 file');
@@ -46,10 +49,12 @@ export const readX12 = (text: string): X12File => {
     .map((s) => s.split(separator));
   const [isa] = segments;
   if (isa?.[0] !== 'ISA') throw new Error('Not an X12 file');
+  const repetition = isa[11] ?? '';
   return {
     kind: kindOf(segments),
     controlNumber: isa[13]?.trim() || null,
     component,
+    repetition: NO_REPETITION.test(repetition) ? null : repetition,
     segments
   };
 };
