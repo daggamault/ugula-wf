@@ -162,7 +162,7 @@ export const ProfileForm = ({
                   required
                   options={timeZoneOptions(draft.timeZone)}
                   value={draft.timeZone}
-                  onChange={(e) => setDraft({ ...draft, timeZone: e.target.value })}
+                  onChange={(v) => setDraft({ ...draft, timeZone: v })}
                 />
               </FieldGrid>
             </FieldGroup>
@@ -177,9 +177,7 @@ export const ProfileForm = ({
                   label="837P Files"
                   options={USAGE_OPTIONS}
                   value={draft.usage}
-                  onChange={(e) =>
-                    setDraft({ ...draft, usage: e.target.value === 'P' ? 'P' : 'T' })
-                  }
+                  onChange={(v) => setDraft({ ...draft, usage: v === 'P' ? 'P' : 'T' })}
                 />
               </FieldGrid>
             </FieldGroup>

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { Page } from 'playwright-core';
+import { chooseOption, listboxByLabel } from './shared/listbox.ts';
 import {
   api,
   config,
@@ -82,7 +83,7 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     const table = () => s.page.getByRole('table', { name: 'Workflows and subworkflows' });
     await table().getByText('Encounter to Claim', { exact: true }).waitFor();
     assert.equal(await table().getByText('Work Draft Claim', { exact: true }).count(), 0);
-    await s.page.getByLabel('Show').selectOption('blocks');
+    await chooseOption(listboxByLabel(s.page, 'Show'), 'blocks');
     await s.page.waitForURL(/kind=blocks/);
     await table().getByText('Bill the Claim', { exact: true }).waitFor();
     const kinds = await table()
@@ -135,7 +136,7 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await go(s.page, '/runs');
     await heading(s.page, 'Runs').waitFor();
     await rowsOf('Workflow runs').filter({ hasText: 'Ingest NEMSIS File' }).first().waitFor();
-    await s.page.getByLabel('Status').selectOption('completed');
+    await chooseOption(listboxByLabel(s.page, 'Status'), 'completed');
     await s.page.waitForURL(/status=completed/);
     await rowsOf('Workflow runs').nth(1).waitFor();
     const statuses = await rowsOf('Workflow runs').evaluateAll((rows) =>

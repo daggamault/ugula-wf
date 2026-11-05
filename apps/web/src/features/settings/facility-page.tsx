@@ -94,8 +94,7 @@ export const FacilityForm = ({
               span={1}
               options={KIND_OPTIONS}
               value={draft.kind}
-              onChange={(e) => {
-                const kind = e.target.value;
+              onChange={(kind) => {
                 if (isFacilityKind(kind)) setDraft({ ...draft, kind });
               }}
             />
@@ -106,7 +105,7 @@ export const FacilityForm = ({
               span={1}
               options={CONTRACT_OPTIONS}
               value={draft.contract ? 'yes' : 'no'}
-              onChange={(e) => setDraft({ ...draft, contract: e.target.value === 'yes' })}
+              onChange={(v) => setDraft({ ...draft, contract: v === 'yes' })}
             />
             <Input
               id="facility-contract-note"

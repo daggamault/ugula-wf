@@ -185,7 +185,7 @@ const ReportOptionsForm = ({ report, initial }: { report: AnyReport; initial: Re
                 label="Group By"
                 value={draft.group ?? ''}
                 options={report.groups}
-                onChange={(e) => setDraft({ ...draft, group: e.target.value })}
+                onChange={(v) => setDraft({ ...draft, group: v })}
               />
             ) : null}
           </FieldGrid>

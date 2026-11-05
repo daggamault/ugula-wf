@@ -47,9 +47,15 @@ describe('ValueField', () => {
         onChange: () => undefined
       })
     );
-    assert.ok(choice.includes('<option value="failed" selected="">Failed</option>'));
+    assert.match(
+      choice,
+      /role="option"[^>]*aria-selected="true" data-value="failed"[^>]*><span[^>]*>Failed<\/span>/
+    );
     assert.match(choice, /^<div[^>]*><label for="pin"[^>]*>Continue From<\/label>/);
-    assert.ok(choice.includes('<option value="">Choose…</option>'));
+    assert.match(
+      choice,
+      /role="option"[^>]*aria-selected="false" data-value=""[^>]*><span[^>]*>Choose…<\/span>/
+    );
   });
 });
 

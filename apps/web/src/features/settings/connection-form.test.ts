@@ -116,6 +116,9 @@ describe('connection form', () => {
     assert.ok(html.includes('>Remove Connection<') && html.includes('value="sftp.example.com"'));
     assert.doesNotMatch(html, /id="connection-secret"[^>]*required=""/);
     assert.doesNotMatch(html, /<button[^>]*type="submit"[^>]*aria-disabled="true"/);
-    assert.ok(html.includes('<option value="keep" selected="">Keep on the Server</option>'));
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="keep"[^>]*><span[^>]*>Keep on the Server<\/span>/
+    );
   });
 });

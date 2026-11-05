@@ -100,7 +100,7 @@ export const UserPage = ({ client, userId, back }: UserPageProps) => {
                 span={2}
                 options={options.map((r) => ({ value: r.id, label: r.name }))}
                 value={chosen}
-                onChange={(e) => setRoleId(e.target.value)}
+                onChange={setRoleId}
               />
             </FieldGrid>
           </fieldset>

@@ -80,7 +80,7 @@ export const FacilityPanel = ({
               hint={locked ?? 'Facilities are listed under Admin, Facilities.'}
               options={facilityOptions(facilities.data ?? [], current)}
               value={chosen}
-              onChange={(e) => setChosen(e.target.value)}
+              onChange={setChosen}
             />
           </FieldGrid>
         </fieldset>

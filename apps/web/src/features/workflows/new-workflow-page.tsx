@@ -87,7 +87,7 @@ export const NewWorkflowForm = ({
               span={2}
               options={GRAPH_KINDS}
               value={form.kind}
-              onChange={(e) => onKindChange(e.target.value === 'node' ? 'node' : 'workflow')}
+              onChange={(v) => onKindChange(v === 'node' ? 'node' : 'workflow')}
             />
             <Input
               id="graph-description"

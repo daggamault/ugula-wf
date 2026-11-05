@@ -155,7 +155,7 @@ export const ValueField = (props: ValueFieldProps) => {
         {...common}
         options={[{ value: '', label: 'Choose…' }, ...options]}
         value={textOf(value)}
-        onChange={(e) => onChange(e.target.value || null)}
+        onChange={(v) => onChange(v || null)}
       />
     );
   }

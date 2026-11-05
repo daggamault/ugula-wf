@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { type Browser, chromium, type Page } from 'playwright-core';
 import { config, withPcr } from './config.ts';
+import { chooseOption, chosenValue, listboxTriggers, optionValues } from './listbox.ts';
 
 export { config };
 
@@ -35,11 +36,11 @@ export const signIn = async (): Promise<Session> => {
   await page.getByLabel('Email').fill(config.DEV_USER_EMAIL);
   await page.getByLabel('Password').fill(config.DEV_USER_PASSWORD);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  const claims = page.getByRole('heading', { level: 1, name: 'Claims' });
+  const home = page.getByRole('heading', { level: 1, name: /^(Claims|Tasks)$/ });
   const chooser = page.getByRole('link', { name: /^Development Development EMS/ });
-  await claims.or(chooser).first().waitFor();
+  await home.or(chooser).first().waitFor();
   if (await chooser.isVisible()) await chooser.click();
-  await claims.waitFor();
+  await home.waitFor();
   const agencyId = agencyOf(page.url());
   assert.ok(agencyId, 'the app opens an agency');
   const apiUrl = (await page.locator('meta[name="api-url"]').getAttribute('content')) ?? '';
@@ -162,12 +163,10 @@ const openTask = (s: Session, claimId: string, title: string) =>
 export const decide = async (page: Page, outcome?: string) => {
   const decision = section(page, 'Your Decision').last();
   await decision.waitFor();
-  for (const select of await decision.locator('select').all()) {
-    if (await select.inputValue()) continue;
-    const values = await select
-      .locator('option')
-      .evaluateAll((options) => options.map((o) => o.getAttribute('value') ?? '').filter(Boolean));
-    if (values[0]) await select.selectOption(values[0]);
+  for (const trigger of await listboxTriggers(decision).all()) {
+    if (await chosenValue(trigger)) continue;
+    const [value] = (await optionValues(trigger)).filter(Boolean);
+    if (value) await chooseOption(trigger, value);
   }
   const buttons = decision
     .locator('form > div')

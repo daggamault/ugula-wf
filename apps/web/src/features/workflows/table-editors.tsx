@@ -115,7 +115,7 @@ export const LookupTableEditor = ({ nodeId, config, editable, onConfig }: TableE
         label="Values Are"
         options={COLUMN_TYPES}
         value={columnKind(table.type)}
-        onChange={(e) => set({ type: columnType(e.target.value) })}
+        onChange={(v) => set({ type: columnType(v) })}
       />
       <ul className="flex flex-col gap-3">
         {table.rows.map((row, i) => (
@@ -216,11 +216,11 @@ const ColumnsEditor = ({
               label="Type"
               options={COLUMN_TYPES}
               value={columnKind(c.type)}
-              onChange={(e) =>
+              onChange={(v) =>
                 onChange({
                   ...table,
                   [side]: columns.map((x) =>
-                    x.name === c.name ? { ...x, type: columnType(e.target.value) } : x
+                    x.name === c.name ? { ...x, type: columnType(v) } : x
                   )
                 })
               }
@@ -324,8 +324,8 @@ const RuleEditor = ({
               label={`When ${pinLabel(c)}`}
               options={OPS}
               value={op}
-              onChange={(e) => {
-                const next = e.target.value as ConditionOp | '';
+              onChange={(v) => {
+                const next = v as ConditionOp | '';
                 const { [c.name]: _, ...rest } = rule.when;
                 onRule({
                   ...rule,

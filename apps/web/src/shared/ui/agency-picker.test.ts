@@ -29,7 +29,9 @@ describe('AgencyPicker', () => {
     assert.equal(html.split('aria-current="true"').length, 2);
     assert.ok(html.includes('Agency 2'));
     assert.ok(!html.includes('Find an'));
-    assert.ok(html.includes('h-10') && !html.includes('h-12'));
+    assert.ok(
+      html.includes('h-12 ') && html.includes('pointer-coarse:h-14') && !html.includes('h-10')
+    );
   });
 
   it('locks the button when there is nowhere to switch to', () => {

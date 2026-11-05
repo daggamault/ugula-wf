@@ -11,7 +11,7 @@ import { classNamesOf } from '../class-names.ts';
 import { Link, navigate } from '../router.tsx';
 import type { SortDir } from '../url-state.ts';
 import { interactiveClasses } from './interactive.ts';
-import { NativeSelect } from './select.tsx';
+import { SelectControl } from './select.tsx';
 
 type TableColumn =
   | string
@@ -130,12 +130,12 @@ const MobileSort = ({
       <label htmlFor={id} className="text-surface-fg-muted shrink-0 text-sm font-medium">
         Sort By
       </label>
-      <NativeSelect
+      <SelectControl
         id={id}
         value={current}
         options={options}
-        onChange={(e) => {
-          const [key = '', dir] = e.target.value.split(':');
+        onChange={(v) => {
+          const [key = '', dir] = v.split(':');
           navigate(sorting.sortTo(key, dir === 'asc' ? 'asc' : 'desc'));
         }}
       />

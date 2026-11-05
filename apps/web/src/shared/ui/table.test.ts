@@ -54,7 +54,10 @@ describe('Table', () => {
     assert.ok(html.includes('href="/runs?sort=name"') && html.includes('href="/runs?sort=total"'));
     assert.equal(html.match(/aria-sort=/g)?.length, 1);
     assert.ok(html.includes('Sort By'));
-    assert.ok(html.includes('<option value="total:desc" selected="">Total, Descending</option>'));
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="total:desc"[^>]*><span[^>]*>Total, Descending<\/span>/
+    );
     assert.ok(!html.includes('Default Order'));
     const unlisted = render({
       sort: 'created',
@@ -62,7 +65,10 @@ describe('Table', () => {
       sortHref: (k) => `/runs?sort=${k}`,
       sortTo: (k, d) => `/runs?sort=${k}&dir=${d}`
     });
-    assert.ok(unlisted.includes('<option value="created:desc" selected="">Default Order</option>'));
+    assert.match(
+      unlisted,
+      /role="option"[^>]*aria-selected="true" data-value="created:desc"[^>]*><span[^>]*>Default Order<\/span>/
+    );
     assert.ok(!unlisted.includes('aria-sort='));
   });
 });
@@ -82,7 +88,7 @@ describe('Table sorting on phones', () => {
         children: createElement(TableRow, null, createElement(TableCell, null, 'A0427'))
       })
     );
-    assert.ok(!html.includes('Sort By') && !html.includes('<select'));
+    assert.ok(!html.includes('Sort By') && !html.includes('aria-haspopup="listbox"'));
     assert.ok(!html.includes('href='));
   });
 });

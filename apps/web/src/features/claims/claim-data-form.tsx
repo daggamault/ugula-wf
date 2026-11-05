@@ -68,8 +68,8 @@ export const ClaimDataForm = ({
     await onSave(fromDraft(draft, initial));
     setBusy(false);
   };
-  const set = (key: TextKey) => (e: { target: { value: string } }) =>
-    setDraft({ ...draft, [key]: e.target.value });
+  const pick = (key: TextKey) => (v: string) => setDraft({ ...draft, [key]: v });
+  const set = (key: TextKey) => (e: { target: { value: string } }) => pick(key)(e.target.value);
   const address = <K extends 'patient' | 'pickup' | 'destination'>(
     group: K,
     prefix: string,
@@ -155,7 +155,7 @@ export const ClaimDataForm = ({
                   options={ORIGIN_OPTIONS}
                   error={draft.originCode ? undefined : modifierError}
                   value={draft.originCode}
-                  onChange={(e) => setDraft({ ...draft, originCode: e.target.value })}
+                  onChange={pick('originCode')}
                 />
                 <Select
                   id="destination-code"
@@ -164,7 +164,7 @@ export const ClaimDataForm = ({
                   options={DESTINATION_OPTIONS}
                   error={draft.destinationCode ? undefined : modifierError}
                   value={draft.destinationCode}
-                  onChange={(e) => setDraft({ ...draft, destinationCode: e.target.value })}
+                  onChange={pick('destinationCode')}
                 />
                 <Input
                   id="patient-count"
@@ -187,7 +187,7 @@ export const ClaimDataForm = ({
                   span={2}
                   options={SIGNATURE_OPTIONS}
                   value={draft.signature}
-                  onChange={(e) => setDraft({ ...draft, signature: e.target.value })}
+                  onChange={pick('signature')}
                 />
                 <Select
                   id="transport-reason"
@@ -195,7 +195,7 @@ export const ClaimDataForm = ({
                   span={2}
                   options={TRANSPORT_REASON_OPTIONS}
                   value={draft.transportReason}
-                  onChange={(e) => setDraft({ ...draft, transportReason: e.target.value })}
+                  onChange={pick('transportReason')}
                 />
                 <Select
                   id="pcs-on-file"
@@ -203,7 +203,7 @@ export const ClaimDataForm = ({
                   span={2}
                   options={PCS_OPTIONS}
                   value={draft.pcsOnFile}
-                  onChange={(e) => setDraft({ ...draft, pcsOnFile: e.target.value })}
+                  onChange={pick('pcsOnFile')}
                 />
                 <Input
                   id="pcs-signed-on"
@@ -219,7 +219,7 @@ export const ClaimDataForm = ({
                   span={2}
                   options={PCS_TYPE_OPTIONS}
                   value={draft.pcsType}
-                  onChange={set('pcsType')}
+                  onChange={pick('pcsType')}
                 />
                 <Input
                   id="prior-authorization"
@@ -261,7 +261,7 @@ export const ClaimDataForm = ({
                     span={2}
                     options={YES_NO}
                     value={draft[q.key]}
-                    onChange={set(q.key)}
+                    onChange={pick(q.key)}
                   />
                 ))}
                 <Select
@@ -270,7 +270,7 @@ export const ClaimDataForm = ({
                   span={2}
                   options={MSP_ACCIDENT_OPTIONS}
                   value={draft.mspAccident}
-                  onChange={set('mspAccident')}
+                  onChange={pick('mspAccident')}
                 />
               </FieldGrid>
             </FieldGroup>
@@ -283,7 +283,7 @@ export const ClaimDataForm = ({
                   span={2}
                   options={YES_NO}
                   value={draft.denialExpected}
-                  onChange={set('denialExpected')}
+                  onChange={pick('denialExpected')}
                 />
                 <Select
                   id="abn-on-file"
@@ -292,7 +292,7 @@ export const ClaimDataForm = ({
                   span={2}
                   options={YES_NO}
                   value={draft.abnOnFile}
-                  onChange={set('abnOnFile')}
+                  onChange={pick('abnOnFile')}
                 />
                 <Input
                   id="abn-signed-on"
@@ -314,7 +314,7 @@ export const ClaimDataForm = ({
                   span={2}
                   options={FACILITY_STAY_OPTIONS}
                   value={draft.facilityStay}
-                  onChange={set('facilityStay')}
+                  onChange={pick('facilityStay')}
                 />
                 <Input
                   id="admission-date"

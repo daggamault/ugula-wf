@@ -69,9 +69,7 @@ const PayerPicker = ({
         hint={payers.length === 50 ? 'Showing the first 50 matches.' : undefined}
         options={payerOptions(payers, value)}
         value={value?.id ?? ''}
-        onChange={(e) =>
-          onChange([value, ...payers].find((p) => p !== null && p.id === e.target.value) ?? null)
-        }
+        onChange={(v) => onChange([value, ...payers].find((p) => p !== null && p.id === v) ?? null)}
       />
     </>
   );

@@ -45,7 +45,10 @@ describe('table editors', () => {
     });
     assert.ok(list.includes('value="a, b"') && list.includes('Separate items with commas.'));
     assert.ok(list.includes('aria-label="Remove row"'));
-    assert.ok(list.includes('<option value="list" selected="">List of Text</option>'));
+    assert.match(
+      list,
+      /role="option"[^>]*aria-selected="true" data-value="list"[^>]*><span[^>]*>List of Text<\/span>/
+    );
     assert.ok(
       render(LookupTableEditor, { type: 'boolean', rows: [{ key: 'k', value: true }] }).includes(
         'true or false.'

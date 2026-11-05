@@ -114,7 +114,10 @@ describe('TaskView', () => {
     assert.ok(fault.includes('Retry the failed step'));
     assert.ok(fault.includes('Unassign'));
     assert.ok(fault.includes('href="/runs/r1"') && fault.includes('Open Run'));
-    assert.ok(fault.includes('<option value="then">Then</option>'));
+    assert.match(
+      fault,
+      /role="option"[^>]*aria-selected="false" data-value="then"[^>]*><span[^>]*>Then<\/span>/
+    );
     const done = render(
       task({
         status: 'completed',

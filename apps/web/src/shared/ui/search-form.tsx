@@ -72,7 +72,7 @@ const SearchFields = ({
           isLabelHidden={isInline}
           options={f.options ?? []}
           value={values[f.name] ?? ''}
-          onChange={(e) => set(f.name, e.target.value)}
+          onChange={(v) => set(f.name, v)}
         />
       ) : (
         <Input

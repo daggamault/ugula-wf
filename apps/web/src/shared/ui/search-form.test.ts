@@ -43,7 +43,10 @@ describe('SearchForm', () => {
     const html = renderToStaticMarkup(
       createElement(SearchForm, { label: 'Search Claims', path: '/claims', fields })
     );
-    assert.ok(!html.includes('aria-expanded'));
+    assert.equal(
+      html.match(/aria-expanded/g)?.length,
+      html.match(/aria-haspopup="listbox"/g)?.length
+    );
     assert.ok(
       html.includes(
         '<search aria-label="Search Claims" class="border-border bg-surface rounded-xl border p-5">'
@@ -55,7 +58,10 @@ describe('SearchForm', () => {
     assert.ok(html.includes('@lg:grid-cols-2 @3xl:grid-cols-4') && !html.includes('w-44'));
     assert.ok(!html.includes('sr-only'));
     assert.match(html, /<\/div><\/div><div class="flex flex-col-reverse[^"]*sm:justify-end/);
-    assert.match(html, /<option value="open" selected="">Open<\/option>/);
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="open"[^>]*><span[^>]*>Open<\/span>/
+    );
   });
 
   it('puts the buttons beside a lone field instead of below a grid', () => {

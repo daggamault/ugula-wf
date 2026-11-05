@@ -30,7 +30,10 @@ describe('claim recovery panels', () => {
     );
     assert.ok(html.includes('>Responsible Facility<') && html.includes('Save Facility'));
     assert.ok(html.includes('>Find Facility<') && html.includes('type="search"'));
-    assert.match(html, /<option value="f1" selected="">Sunrise SNF<\/option>/);
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="f1"[^>]*><span[^>]*>Sunrise SNF<\/span>/
+    );
     assert.ok(html.includes('Choose another facility first.'));
   });
 

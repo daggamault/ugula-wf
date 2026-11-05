@@ -112,7 +112,7 @@ export const PayerForm = ({
               label="Claim Filing"
               options={FILING_OPTIONS}
               value={draft.claimFiling}
-              onChange={(e) => setDraft({ ...draft, claimFiling: e.target.value })}
+              onChange={(v) => setDraft({ ...draft, claimFiling: v })}
             />
             <Input
               id="payer-filing-limit"
@@ -130,10 +130,10 @@ export const PayerForm = ({
               hint="Whether the payer takes replacement and void claims (frequency 7 or 8) or reopening requests."
               options={CORRECTION_OPTIONS}
               value={draft.correctionMethod ?? ''}
-              onChange={(e) =>
+              onChange={(v) =>
                 setDraft({
                   ...draft,
-                  correctionMethod: isCorrectionMethod(e.target.value) ? e.target.value : null
+                  correctionMethod: isCorrectionMethod(v) ? v : null
                 })
               }
             />
@@ -153,9 +153,7 @@ export const PayerForm = ({
               hint="Decides which balance-billing laws protect its members."
               options={PLAN_OPTIONS}
               value={draft.planType ?? ''}
-              onChange={(e) =>
-                setDraft({ ...draft, planType: isPlanType(e.target.value) ? e.target.value : null })
-              }
+              onChange={(v) => setDraft({ ...draft, planType: isPlanType(v) ? v : null })}
             />
           </FieldGrid>
         </fieldset>

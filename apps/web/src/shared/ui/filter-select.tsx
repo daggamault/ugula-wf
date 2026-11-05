@@ -25,8 +25,8 @@ export const FilterSelect = ({ id, label, value, options }: FilterSelectProps) =
       isLabelHidden
       value={value}
       options={options}
-      onChange={(e) => {
-        const href = hrefOf(options, e.target.value);
+      onChange={(v) => {
+        const href = hrefOf(options, v);
         if (href) navigate(href);
       }}
     />

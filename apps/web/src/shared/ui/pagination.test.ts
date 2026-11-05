@@ -47,7 +47,10 @@ describe('Pagination', () => {
     assert.equal(first.match(/aria-disabled="true"/g)?.length, 4);
     assert.ok(first.includes('Already on the first page'));
     assert.ok(first.includes('Already on the last page'));
-    assert.ok(first.includes('<option value="100">100</option>'));
+    assert.match(
+      first,
+      /role="option"[^>]*aria-selected="false" data-value="100"[^>]*><span[^>]*>100<\/span>/
+    );
     assert.equal(render(1, 4), '<p class="text-surface-fg-muted text-sm">1–4 of 4</p>');
   });
 
@@ -59,6 +62,6 @@ describe('Pagination', () => {
 
   it('leaves out the page size picker when the list has fixed pages', () => {
     const html = render(2, 132, false);
-    assert.ok(!html.includes('Rows Per Page') && !html.includes('<select'));
+    assert.ok(!html.includes('Rows Per Page') && !html.includes('aria-haspopup="listbox"'));
   });
 });

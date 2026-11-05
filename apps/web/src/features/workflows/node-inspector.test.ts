@@ -64,7 +64,10 @@ describe('NodeInspector', () => {
     assert.ok(add.includes('Round'));
     assert.ok(add.includes('Needs a value: connect a pin on the canvas, or set one here.'));
     assert.ok(!add.includes('Retry on Failure'));
-    assert.ok(add.includes('<option value="value" selected="">A Fixed Value</option>'));
+    assert.match(
+      add,
+      /role="option"[^>]*aria-selected="true" data-value="value"[^>]*><span[^>]*>A Fixed Value<\/span>/
+    );
     assert.ok(add.includes('>Fixed Value<') && add.includes('value="2"'));
   });
 

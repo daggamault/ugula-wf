@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { Page } from 'playwright-core';
+import { chooseOption, chosenValue, listboxByLabel } from './shared/listbox.ts';
 import {
   claimState,
   claimStatusIs,
@@ -145,9 +146,9 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await toast('Unassigned');
     await section(s.page, 'Details').first().waitFor();
     const decision = section(s.page, 'Your Decision').last();
-    const level = decision.getByLabel(/^Level of Service/i);
-    const chosen = await level.inputValue();
-    await level.selectOption('');
+    const level = listboxByLabel(decision, /^Level of Service/i);
+    const chosen = await chosenValue(level);
+    await chooseOption(level, '');
     const approve = decision.getByRole('button', { name: 'Approve' });
     assert.equal(await approve.getAttribute('aria-disabled'), 'true');
     const reason = await approve.getAttribute('aria-describedby');
@@ -155,7 +156,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
       (await s.page.locator(`[id="${reason}"]`).textContent()) ?? '',
       /Fill in Level of Service/i
     );
-    await level.selectOption(chosen);
+    await chooseOption(level, chosen);
     assert.equal(await approve.getAttribute('aria-disabled'), null);
   });
 
@@ -204,7 +205,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
   it('edits documentation on the claim data tab and shows it on the overview', async () => {
     await openClaim(claims.worked, 'data');
     const form = s.page.getByRole('form', { name: 'Claim data' });
-    await form.getByLabel('Transport Reason').selectOption('D');
+    await chooseOption(listboxByLabel(form, 'Transport Reason'), 'D');
     await form.getByRole('button', { name: 'Save Claim Data' }).click();
     await toast('Billing details saved');
     await openClaim(claims.worked);
@@ -246,7 +247,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await form.getByLabel('Adjusted (USD)').fill('50.00');
     await form.getByLabel('Paid On').fill('2026-10-20');
     await form.getByRole('button', { name: 'Add Reason Code' }).click();
-    await form.getByLabel('Group', { exact: true }).last().selectOption('CO');
+    await chooseOption(listboxByLabel(form, 'Group', true).last(), 'CO');
     await form.getByLabel('Code', { exact: true }).last().fill('45');
     await form.getByLabel('Amount (USD)', { exact: true }).last().fill('50.00');
     await form.getByRole('button', { name: 'Post Payment' }).click();

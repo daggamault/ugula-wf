@@ -25,6 +25,10 @@
   --color-pin-list: light-dark(oklch(68.5% 0.169 237.3), oklch(74.6% 0.16 232.7));
   --color-pin-object: light-dark(oklch(60.6% 0.25 292.7), oklch(70.2% 0.183 293.5));
 
+  --shadow-lg:
+    0 8px 20px -6px light-dark(oklch(0% 0 0 / 0.08), oklch(0% 0 0 / 0.35)),
+    0 2px 6px -2px light-dark(oklch(0% 0 0 / 0.05), oklch(0% 0 0 / 0.25));
+
   --animate-bars: bars 900ms ease-in-out infinite;
   --animate-reveal: reveal 150ms ease-out 150ms both;
   --animate-toast: toast 200ms ease-out both;

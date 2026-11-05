@@ -81,7 +81,7 @@ export const BindingEditor = ({
           label="Value"
           options={MODES}
           value={mode}
-          onChange={(e) => onBind(bindingFor(e.target.value, spec))}
+          onChange={(v) => onBind(bindingFor(v, spec))}
         />
         {binding && 'value' in binding ? (
           <ValueField

@@ -48,8 +48,14 @@ describe('RunsPage', () => {
       })
     );
     assert.ok(html.includes('>Status<'));
-    assert.match(html, /<option value="faulted" selected="">Stuck<\/option>/);
-    assert.ok(html.includes('<option value="suspended">Waiting</option>'));
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="faulted"[^>]*><span[^>]*>Stuck<\/span>/
+    );
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="false" data-value="suspended"[^>]*><span[^>]*>Waiting<\/span>/
+    );
   });
 
   it('links each status option to its filter', () => {

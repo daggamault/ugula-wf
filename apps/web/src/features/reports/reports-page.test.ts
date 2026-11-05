@@ -107,7 +107,10 @@ describe('ReportOptionsPage', () => {
   it('offers a group choice where the report has one', () => {
     const html = page('aging', 'group=class');
     assert.ok(!html.includes('type="date"') && html.includes('Group By'));
-    assert.ok(html.includes('<option value="class" selected="">Financial Class</option>'));
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="class"[^>]*><span[^>]*>Financial Class<\/span>/
+    );
   });
 
   it('runs reports without options from a single button', () => {

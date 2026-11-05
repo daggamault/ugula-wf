@@ -242,7 +242,10 @@ describe('ClaimView', () => {
       }
     );
     assert.ok(html.includes('Waiting on Blue Plan'));
-    assert.ok(html.includes('<option value="cov-b" selected="">Blue Plan</option>'));
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="cov-b"[^>]*><span[^>]*>Blue Plan<\/span>/
+    );
     assert.ok(html.includes('Doe, Jane'));
     assert.ok(html.includes('Claim 20261001-0012') && html.includes('Patient 20260915-0003'));
     assert.ok(html.includes('Encounter 20261001-0007') && html.includes('PCR PCR-1001'));
@@ -272,7 +275,10 @@ describe('ClaimView', () => {
 
   it('defaults payments to the patient once no payer is being billed', () => {
     const html = render({}, { step: 'awaitPatient', waitMs: 1, balanceCents: 1 });
-    assert.ok(html.includes('<option value="" selected="">Patient</option>'));
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value=""[^>]*><span[^>]*>Patient<\/span>/
+    );
   });
 
   it('links to the cycle run when it has stopped', () => {

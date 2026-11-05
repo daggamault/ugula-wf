@@ -20,7 +20,10 @@ describe('NewWorkflowPage', () => {
       html.includes('for="graph-name"') && html.includes('>Name<') && html.includes('>Key<')
     );
     assert.ok(html.includes('aria-label="Create Subworkflow"'));
-    assert.ok(html.includes('<option value="node" selected="">Subworkflow</option>'));
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="node"[^>]*><span[^>]*>Subworkflow<\/span>/
+    );
     assert.ok(
       html.includes('href="/workflows?kind=blocks"') && html.includes('Create Subworkflow')
     );

@@ -87,8 +87,7 @@ export const DocumentsPanel = ({
                 span={2}
                 options={KIND_OPTIONS}
                 value={kind}
-                onChange={(e) => {
-                  const next = e.target.value;
+                onChange={(next) => {
                   if (isDocumentKind(next)) setKind(next);
                 }}
               />

@@ -264,9 +264,7 @@ export const ConnectionForm = ({
                   span={2}
                   options={VENDOR_OPTIONS}
                   value={draft.vendor}
-                  onChange={(e) =>
-                    isVendor(e.target.value) && setDraft(withVendor(draft, e.target.value))
-                  }
+                  onChange={(v) => isVendor(v) && setDraft(withVendor(draft, v))}
                 />
                 <Select
                   id="connection-enabled"
@@ -275,9 +273,7 @@ export const ConnectionForm = ({
                   span={2}
                   options={ENABLED_OPTIONS}
                   value={draft.enabled}
-                  onChange={(e) =>
-                    setDraft({ ...draft, enabled: e.target.value === 'off' ? 'off' : 'on' })
-                  }
+                  onChange={(v) => setDraft({ ...draft, enabled: v === 'off' ? 'off' : 'on' })}
                 />
               </FieldGrid>
             </FieldGroup>
@@ -304,10 +300,10 @@ export const ConnectionForm = ({
                   label="After Download"
                   options={AFTER_DOWNLOAD_OPTIONS}
                   value={draft.afterDownload}
-                  onChange={(e) =>
+                  onChange={(v) =>
                     setDraft({
                       ...draft,
-                      afterDownload: e.target.value === 'keep' ? 'keep' : 'delete'
+                      afterDownload: v === 'keep' ? 'keep' : 'delete'
                     })
                   }
                 />

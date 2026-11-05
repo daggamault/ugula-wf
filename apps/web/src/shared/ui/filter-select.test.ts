@@ -15,7 +15,10 @@ describe('FilterSelect', () => {
       createElement(FilterSelect, { id: 'status', label: 'Status', value: 'paid', options })
     );
     assert.ok(html.includes('class="text-sm font-medium sr-only"') && html.includes('>Status<'));
-    assert.match(html, /<option value="paid" selected="">Paid<\/option>/);
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="paid"[^>]*><span[^>]*>Paid<\/span>/
+    );
   });
 
   it('finds the link for a chosen value', () => {

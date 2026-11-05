@@ -19,7 +19,7 @@ import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
-import { NativeSelect } from '../../shared/ui/select.tsx';
+import { SelectControl } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { EditScope, TableComparison, TableDetail, WorkflowsClient } from './client.ts';
@@ -134,14 +134,14 @@ export const TableView = ({
       actions={
         <>
           <div className="w-36">
-            <NativeSelect
+            <SelectControl
               aria-label="Version"
               value={String(version)}
               options={versions.map((v) => ({
                 value: String(v.version),
                 label: `v${v.version}${v.published_at ? '' : ' (Draft)'}`
               }))}
-              onChange={(e) => navigate(tablePath(table.id, Number(e.target.value)))}
+              onChange={(v) => navigate(tablePath(table.id, Number(v)))}
             />
           </div>
           {table.effectiveId !== table.id ? (

@@ -145,7 +145,7 @@ describe('ClaimsPage', () => {
     assert.ok(empty.includes('aria-label="Search claims"'));
     assert.ok(empty.includes('for="search-number"') && empty.includes('for="search-birthDate"'));
     assert.ok(empty.includes('Enter a name, birth date, or a claim, patient or encounter number.'));
-    assert.ok(!empty.includes('<select'));
+    assert.ok(!empty.includes('aria-haspopup="listbox"'));
     const searching = render({ ...noSearch, lastName: 'doe' });
     assert.ok(searching.includes('aria-label="Search claims"'));
     assert.ok(!searching.includes('Enter a name, birth date'));

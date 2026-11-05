@@ -31,9 +31,13 @@ export const InvitePage = ({ client, back }: { client: UsersClient; back: string
   if (roles.error) return <PageFailure message={roles.error.message} />;
   if (!roles.data) return <PageLoading />;
   const grantable = roles.data.filter((r) => r.isGrantable);
+  const choice = (key: keyof InviteInput) => ({
+    value: draft[key],
+    onChange: (v: string) => setDraft({ ...draft, [key]: v })
+  });
   const field = (key: keyof InviteInput) => ({
     value: draft[key],
-    onChange: (e: { target: { value: string } }) => setDraft({ ...draft, [key]: e.target.value })
+    onChange: (e: { target: { value: string } }) => choice(key).onChange(e.target.value)
   });
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -75,7 +79,7 @@ export const InvitePage = ({ client, back }: { client: UsersClient; back: string
                     { value: '', label: 'Choose a role' },
                     ...grantable.map((r) => ({ value: r.id, label: r.name }))
                   ]}
-                  {...field('roleId')}
+                  {...choice('roleId')}
                 />
               </FieldGrid>
             </fieldset>

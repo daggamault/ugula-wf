@@ -82,9 +82,13 @@ describe('settings', () => {
       })
     );
     assert.ok(html.includes('value="Acme EMS"') && html.includes('value="627041234"'));
-    assert.ok(html.includes('<option value="P" selected="">Production Files</option>'));
-    assert.ok(
-      html.includes('<option value="America/Chicago" selected="">America/Chicago</option>')
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="P"[^>]*><span[^>]*>Production Files<\/span>/
+    );
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="America\/Chicago"[^>]*><span[^>]*>America\/Chicago<\/span>/
     );
   });
 });

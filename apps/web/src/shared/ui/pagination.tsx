@@ -9,7 +9,7 @@ import { useId } from 'react';
 import { navigate } from '../router.tsx';
 import { PAGE_SIZES, type TableState } from '../url-state.ts';
 import { IconButton, IconLink } from './icon-button.tsx';
-import { NativeSelect } from './select.tsx';
+import { SelectControl } from './select.tsx';
 
 type PaginationProps = {
   label: string;
@@ -69,17 +69,19 @@ export const Pagination = ({ label, total, state }: PaginationProps) => {
       </p>
       <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
         {sizeHref ? (
-          <label htmlFor={sizeId} className="text-surface-fg-muted flex items-center gap-2">
-            Rows Per Page
+          <div className="flex items-center gap-2">
+            <label htmlFor={sizeId} className="text-surface-fg-muted">
+              Rows Per Page
+            </label>
             <span className="w-20">
-              <NativeSelect
+              <SelectControl
                 id={sizeId}
                 value={String(pageSize)}
                 options={PAGE_SIZES.map((s) => ({ value: String(s), label: String(s) }))}
-                onChange={(e) => navigate(sizeHref(Number(e.target.value)))}
+                onChange={(v) => navigate(sizeHref(Number(v)))}
               />
             </span>
-          </label>
+          </div>
         ) : null}
         <div className="flex items-center gap-1">
           <PageLink

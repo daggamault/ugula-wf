@@ -192,9 +192,9 @@ export const PayersEditor = ({
                     span={relationship === SELF ? 4 : 2}
                     options={RELATIONSHIP_OPTIONS}
                     value={relationship}
-                    onChange={(e) => {
-                      if (isRelationshipCode(e.target.value)) {
-                        patch(id, { relationship: e.target.value });
+                    onChange={(v) => {
+                      if (isRelationshipCode(v)) {
+                        patch(id, { relationship: v });
                       }
                     }}
                   />

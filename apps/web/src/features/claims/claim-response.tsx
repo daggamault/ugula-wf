@@ -113,8 +113,8 @@ const ReasonCodes = ({
                   label="Group"
                   options={GROUP_OPTIONS}
                   value={r.group}
-                  onChange={(e) => {
-                    if (isGroup(e.target.value)) patch(r.id, { group: e.target.value });
+                  onChange={(v) => {
+                    if (isGroup(v)) patch(r.id, { group: v });
                   }}
                 />
               </div>
@@ -207,9 +207,13 @@ export const ResponseForm = ({
       setRequestId(crypto.randomUUID());
     }
   };
+  const choice = (key: Exclude<keyof ResponseDraft, 'adjustments'>) => ({
+    value: draft[key],
+    onChange: (v: string) => setDraft({ ...draft, [key]: v })
+  });
   const field = (key: Exclude<keyof ResponseDraft, 'adjustments'>) => ({
     value: draft[key],
-    onChange: (e: { target: { value: string } }) => setDraft({ ...draft, [key]: e.target.value })
+    onChange: (e: { target: { value: string } }) => choice(key).onChange(e.target.value)
   });
   return (
     <SectionPanel
@@ -227,9 +231,9 @@ export const ResponseForm = ({
                 ...coverages.map((c) => ({ value: c.id, label: c.payer })),
                 { value: '', label: 'Patient' }
               ]}
-              {...field('coverageId')}
+              {...choice('coverageId')}
             />
-            <Select id="response-kind" label="Type" options={KIND_OPTIONS} {...field('kind')} />
+            <Select id="response-kind" label="Type" options={KIND_OPTIONS} {...choice('kind')} />
             <Input id="response-paid-on" label="Paid On" type="date" {...field('paidOn')} />
             <Input
               id="response-paid"

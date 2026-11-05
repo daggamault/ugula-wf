@@ -61,6 +61,9 @@ describe('TablesPage', () => {
       })
     );
     assert.ok(html.includes('<h1') && html.includes('Tables'));
-    assert.ok(html.includes('<option value="customized" selected="">Customized</option>'));
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="customized"[^>]*><span[^>]*>Customized<\/span>/
+    );
   });
 });

@@ -33,7 +33,7 @@ export const AgencyPicker = ({ agencies, current }: AgencyPickerProps) => {
         disabled={agencies.length < 2}
         className={classNamesOf(
           interactiveClasses,
-          'border-border bg-surface enabled:hover:bg-surface-hover flex h-10 min-w-0 pointer-coarse:h-11 flex-1 items-center gap-2 rounded-lg border px-3 text-left'
+          'border-border bg-surface enabled:hover:bg-surface-hover flex h-12 min-w-0 pointer-coarse:h-14 flex-1 items-center gap-2 rounded-lg border px-3 text-left'
         )}
       >
         <Building2Icon aria-hidden="true" className="text-surface-fg-muted size-4 shrink-0" />

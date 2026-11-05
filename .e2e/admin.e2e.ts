@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, it } from 'node:test';
 import type { Page } from 'playwright-core';
+import { chooseOption, listboxByLabel } from './shared/listbox.ts';
 import {
   api,
   FLOW_MS,
@@ -121,7 +122,7 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     await heading(page, 'Add Payer').waitFor();
     await page.getByLabel('Payer Name').fill(payerName);
     await page.getByLabel('Clearinghouse Payer ID').fill(payerCode);
-    await page.getByLabel('Claim Filing').selectOption('CI');
+    await chooseOption(listboxByLabel(page, 'Claim Filing'), 'CI');
     await page.getByLabel('Filing Limit (Days)').fill('90');
     await page.getByRole('button', { name: 'Save Payer' }).click();
     await toasts(page).getByText(`${payerName} saved`).waitFor();

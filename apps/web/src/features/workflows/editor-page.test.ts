@@ -91,8 +91,14 @@ describe('EditorView', () => {
     assert.ok(html.includes('href="/?panel=settings"') && !html.includes('<dialog open'));
     assert.ok(html.includes('No changes to save.') && !html.includes('Save your changes first.'));
     assert.ok(html.includes('aria-label="Version"'));
-    assert.ok(html.includes('<option value="2" selected="">v2 (Draft)</option>'));
-    assert.ok(html.includes('<option value="1">v1</option>'));
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="2"[^>]*><span[^>]*>v2 \(Draft\)<\/span>/
+    );
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="false" data-value="1"[^>]*><span[^>]*>v1<\/span>/
+    );
   });
 
   it('points published versions at the open draft instead of offering a new one', () => {

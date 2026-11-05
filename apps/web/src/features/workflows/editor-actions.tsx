@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
-import { NativeSelect } from '../../shared/ui/select.tsx';
+import { SelectControl } from '../../shared/ui/select.tsx';
 import type { EditScope, GraphDetail } from './client.ts';
 import { scopeLabel } from './scope-badges.tsx';
 import { kindLabel } from './workflows-page.tsx';
@@ -81,14 +81,14 @@ export const EditorActions = ({
         {label} Settings
       </ButtonLink>
       <div className="w-36">
-        <NativeSelect
+        <SelectControl
           aria-label="Version"
           value={String(version)}
           options={versions.map((v) => ({
             value: String(v.version),
             label: `v${v.version}${v.published_at ? '' : ' (Draft)'}`
           }))}
-          onChange={(e) => onVersion(Number(e.target.value))}
+          onChange={(v) => onVersion(Number(v))}
         />
       </div>
       {graph.effectiveId !== graph.id ? (

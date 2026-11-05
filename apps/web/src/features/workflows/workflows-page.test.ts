@@ -77,10 +77,16 @@ describe('WorkflowsPage', () => {
     );
     assert.ok(html.includes('<h1'));
     assert.ok(html.includes('href="/workflows/new?kind=node"') && html.includes('New Subworkflow'));
-    assert.ok(html.includes('<option value="blocks" selected="">Subworkflows</option>'));
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="true" data-value="blocks"[^>]*><span[^>]*>Subworkflows<\/span>/
+    );
     assert.ok(html.includes('aria-label="Search Subworkflows"') && html.includes('id="search-q"'));
     assert.ok(html.includes('href="/workflows/customized"') && html.includes('Customization Map'));
-    assert.ok(html.includes('<option value="customized">Customized</option>'));
+    assert.match(
+      html,
+      /role="option"[^>]*aria-selected="false" data-value="customized"[^>]*><span[^>]*>Customized<\/span>/
+    );
   });
 
   it('defaults to workflows, reads the kind param and asks the API for that kind', () => {
