@@ -31,7 +31,8 @@ const ACTION_LABELS: Record<PermissionAction, string> = {
   read: 'View',
   update: 'Change',
   delete: 'Delete',
-  manage: 'Manage'
+  manage: 'Manage',
+  approve: 'Approve'
 };
 
 const usedActions = (grants: readonly PermissionGrant[]) =>

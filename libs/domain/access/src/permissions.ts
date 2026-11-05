@@ -16,7 +16,14 @@ export const PERMISSION_RESOURCES = [
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number];
 
-export const PERMISSION_ACTIONS = ['create', 'read', 'update', 'delete', 'manage'] as const;
+export const PERMISSION_ACTIONS = [
+  'create',
+  'read',
+  'update',
+  'delete',
+  'manage',
+  'approve'
+] as const;
 
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
@@ -37,6 +44,7 @@ export const PERMISSIONS = [
   'imports:read',
   'claims:read',
   'claims:update',
+  'claims:approve',
   'tasks:read',
   'tasks:update',
   'payer_files:create',
@@ -77,6 +85,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'imports:read': 'See imports and what each report became.',
   'claims:read': 'See claims, their files and history.',
   'claims:update': 'Change claims, restart their cycle and check eligibility.',
+  'claims:approve':
+    'Approve refunds, write-offs above the Claim Policy limit and placing balances in collections.',
   'tasks:read': 'See tasks.',
   'tasks:update': 'Work and assign tasks.',
   'payer_files:create': 'Upload payer files.',

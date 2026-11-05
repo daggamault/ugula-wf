@@ -45,4 +45,9 @@ describe('roles', () => {
     assert.equal(isUserAdmin(manager), false);
     assert.ok(!role('Biller').includes('workflows:update'));
   });
+
+  it('lets billing managers, not billers, approve refunds, write-offs and collections', () => {
+    assert.ok(role('Billing Manager').includes('claims:approve'));
+    assert.ok(!role('Biller').includes('claims:approve'));
+  });
 });
