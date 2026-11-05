@@ -222,34 +222,34 @@ export const SettingsPage = ({ client, live }: SettingsPageProps) => {
       title="Settings"
       description="Your agency's billing identity and clearinghouse, used on every claim and statement."
     >
-      {profile.data !== undefined ? (
-        <ProfileForm
-          profile={profile.data}
-          onSave={async (p) => {
-            try {
-              await client.saveProfile(p);
-              notify({ title: 'Billing profile saved' });
-              profile.reload();
-              return null;
-            } catch (err) {
-              return messageOf(err);
-            }
-          }}
-        />
-      ) : (
+      {profile.data === undefined || connection.data === undefined ? (
         <PageLoading />
+      ) : (
+        <>
+          <ProfileForm
+            profile={profile.data}
+            onSave={async (p) => {
+              try {
+                await client.saveProfile(p);
+                notify({ title: 'Billing profile saved' });
+                profile.reload();
+                return null;
+              } catch (err) {
+                return messageOf(err);
+              }
+            }}
+          />
+          <ConnectionForm
+            key={connection.data.connection ? 'saved' : 'new'}
+            connection={connection.data.connection}
+            canStoreSecrets={connection.data.canStoreSecrets}
+            onSave={(input) =>
+              saved('Clearinghouse connection saved', () => client.saveConnection(input))()
+            }
+            onRemove={saved('Clearinghouse connection removed', client.removeConnection)}
+          />
+        </>
       )}
-      {connection.data ? (
-        <ConnectionForm
-          key={connection.data.connection ? 'saved' : 'new'}
-          connection={connection.data.connection}
-          canStoreSecrets={connection.data.canStoreSecrets}
-          onSave={(input) =>
-            saved('Clearinghouse connection saved', () => client.saveConnection(input))()
-          }
-          onRemove={saved('Clearinghouse connection removed', client.removeConnection)}
-        />
-      ) : null}
     </Page>
   );
 };

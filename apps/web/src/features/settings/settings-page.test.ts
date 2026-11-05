@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { idleLive } from '../../shared/testing.ts';
+import type { SettingsClient } from './client.ts';
 import {
   FILING_OPTIONS,
   fromProfileDraft,
   ProfileForm,
+  SettingsPage,
   timeZoneOptions,
   toProfileDraft
 } from './settings-page.tsx';
@@ -91,5 +94,18 @@ describe('timeZoneOptions', () => {
     assert.ok(timeZoneOptions('America/Chicago').some((o) => o.value === 'America/Chicago'));
     assert.equal(timeZoneOptions('Mars/Base')[0]?.value, 'Mars/Base');
     assert.ok(timeZoneOptions('America/New_York').some((o) => o.label === 'America/New York'));
+  });
+
+  it('shows one loading state until the profile and the connection are both loaded', () => {
+    const pending = () => new Promise<never>(() => undefined);
+    const html = renderToStaticMarkup(
+      createElement(SettingsPage, {
+        live: idleLive,
+        client: { profile: pending, connection: pending } as unknown as SettingsClient
+      })
+    );
+    assert.equal(html.split('aria-label="Loading"').length - 1, 1);
+    assert.ok(!html.includes('aria-label="Billing profile"'));
+    assert.ok(!html.includes('aria-label="Clearinghouse connection"'));
   });
 });
