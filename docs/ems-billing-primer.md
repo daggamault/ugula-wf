@@ -59,17 +59,25 @@ A working summary of US ground ambulance billing for people building Ugula. Rule
 
 ## MVP checklist
 
-The full tagged checklist (MVP vs later) with sources is in the [Workflow Architecture Review](workflow-architecture.md#billing-coverage-gaps-for-mvp) and its sources section. Post-payment status:
+The full tagged checklist (MVP vs later) with sources is in the [Workflow Architecture Review](workflow-architecture.md#billing-coverage-gaps-for-mvp) and its sources section. Status:
 
-| Item                                                                | Status                                                                                                 |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Denial routing by CARC and a denial decision                        | Built: Remittance Routing, Work Denial, Denial Categories                                              |
-| Corrected claims (frequency 7/8 with REF F8) vs Medicare reopenings | Built: Correct Claim, Correction Methods, payer Corrections setting (_verify_ Medicare Part B 7/8)     |
-| Redetermination (120 days) and reconsideration (180 days)           | Built: Appeal Claim, Appeal Levels, appeal packet PDF; ALJ and Medicaid limits _verify_                |
-| Records requests (ADR)                                              | Built as a task with a due date (Medicare 45 days _verify_)                                            |
-| Refunds and the Medicare 60-day overpayment deadline                | Built: Refund Overpayment, Approve Refund (`claims:approve`), Refund Deadlines                         |
-| Collections placement and large write-offs                          | Built: Approve Closing under the Claim Policy thresholds                                               |
-| Deadlines (timely filing, appeals, records, refunds, PCS expiry)    | Built: Watch Deadlines every morning                                                                   |
-| State balance-billing laws                                          | Built: Balance-Billing Protection with example rows NH, OR (2026-01-01), AL (2026-10-01), all _verify_ |
-| Facility invoicing (Part A/SNF, contract facilities)                | Built: monthly invoice per facility; deciding responsibility at intake is not built here               |
-| EFT reassociation, payment plans                                    | Not built                                                                                              |
+| Item                                                                | Status                                                                                                                                                                      |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Denial routing by CARC and a denial decision                        | Built: Remittance Routing, Work Denial, Denial Categories                                                                                                                   |
+| Corrected claims (frequency 7/8 with REF F8) vs Medicare reopenings | Built: Correct Claim, Correction Methods, payer Corrections setting (_verify_ Medicare Part B 7/8)                                                                          |
+| Redetermination (120 days) and reconsideration (180 days)           | Built: Appeal Claim, Appeal Levels, appeal packet PDF; ALJ and Medicaid limits _verify_                                                                                     |
+| Records requests (ADR)                                              | Built as a task with a due date (Medicare 45 days _verify_)                                                                                                                 |
+| Refunds and the Medicare 60-day overpayment deadline                | Built: Refund Overpayment, Approve Refund (`claims:approve`), Refund Deadlines                                                                                              |
+| Collections placement and large write-offs                          | Built: Approve Closing under the Claim Policy thresholds                                                                                                                    |
+| Deadlines (timely filing, appeals, records, refunds, PCS expiry)    | Built: Watch Deadlines every morning                                                                                                                                        |
+| State balance-billing laws                                          | Built: Balance-Billing Protection with example rows NH, OR (2026-01-01), AL (2026-10-01), all _verify_                                                                      |
+| Facility invoicing (Part A/SNF, contract facilities)                | Built: monthly invoice per facility; Facility Responsibility decides at intake (contract flag per facility, biller-confirmed Part A/SNF stays, 271 stay hints as a warning) |
+| Medicare Secondary Payer questions                                  | Built: MSP answers on the claim data tab (accident prefilled from the PCR), Medicare Secondary Payer rule feeds Coordination Order and SBR05, MSP checks                    |
+| ABN with GA/GZ, GY                                                  | Built: ABN and expected denial on the claim, Coverage Modifier rows, ABN checks                                                                                             |
+| QL (pronounced dead before loading)                                 | Built: Pronounced Dead table, BLS base rate with QL, no mileage                                                                                                             |
+| GM (several patients on one trip)                                   | Built: eDisposition.11 or the claim data tab, GM on every line and an NTE note                                                                                              |
+| A0888 non-covered miles                                             | Built: miles past the closest hospital (ePayment.48) when the patient chose a farther facility, own line with GY                                                            |
+| NTE narrative and admission date                                    | Built: Narrative Note (NTE*ADD, 80 characters, for QL, GM and A0888 by default) and DTP*435                                                                                 |
+| Prior authorization (RSNAT) and PCS tracking                        | Built: UTN with expiry on REF*G1, round trips, PCS type; PA and 60-day PCS checks                                                                                           |
+| Documents (facesheet, PCS, signature, ABN, MSP)                     | Built: uploads to S3, Receive Document, Chase Document task with a due date                                                                                                 |
+| EFT reassociation, payment plans                                    | Not built                                                                                                                                                                   |
