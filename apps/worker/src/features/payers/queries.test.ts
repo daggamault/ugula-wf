@@ -82,6 +82,8 @@ describe('createPayerStore', () => {
       ]
     });
     assert.deepEqual(model.asked[0], ['Blue Cross Blue Shield (Blue Cross/Blue Shield)']);
+    const pending = queries.find((q) => q.sql.includes('"embedding" is null'));
+    assert.ok(pending?.sql.endsWith('for update'));
     assert.match(model.asked[1]?.[0] ?? '', /Query: BCBS$/);
     assert.equal(model.asked[1]?.length, 1);
     const update = queries.find((q) => q.sql.startsWith('update "payers"'));

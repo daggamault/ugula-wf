@@ -77,7 +77,6 @@ const embedPendingPayers = (db: Db, embedder: Embedder, runId: string) =>
       .where('embedding', 'is', null)
       .limit(EMBED_BATCH_SIZE)
       .forUpdate()
-      .skipLocked()
       .execute();
     if (!pending.length) return;
     const vectors = await embedAll(
