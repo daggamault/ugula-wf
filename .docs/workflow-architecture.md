@@ -207,7 +207,7 @@ The editor offers them in that order: on any node, **Customize** opens a menu "E
 
 ### Showing changes
 
-Add one semantic token, `--color-custom` (a pink/fuchsia `light-dark()` oklch, distinct from `danger` and `primary`), and update the README colour rules to list it. It means "this agency changed this" everywhere:
+Add one semantic token, `--color-custom` (a pink/fuchsia `light-dark()` oklch, distinct from `danger` and `primary`), and update the colour rules in [Standards](standards.md) to list it. It means "this agency changed this" everywhere:
 
 - **Canvas:** nodes added or changed in an override get a `border-custom` outline and a small **Custom** chip; base nodes the override removed appear as dashed ghost nodes behind a "Show removed" toggle; wires that differ from the base use the custom colour.
 - **Parent graphs:** a subworkflow node whose key the agency overrides (or whose slot is filled) gets the custom outline, so customizations are visible from the top workflow down.

@@ -46,4 +46,4 @@ The claim page (`/claims/:id`) is a read-only record. Its **Start Task** menu st
 - On a copy the editor diffs the definition against `compare().copiedFrom` by node id (`override-diff.ts`) and passes `changes`, `changedEdges` and `removed` to the canvas; nodes whose subworkflow (`GET /graphs/nodes` `overridden`) or table (`GET /tables/effective`) is customized get the same outline.
 - `custom` is the accent for anything an organization or agency changed; see [Overrides](overrides.md).
 
-UI rules (tokens, spacing, controls, accessibility) are in the root README.
+UI rules (tokens, spacing, controls, accessibility) are in [Standards](standards.md).
