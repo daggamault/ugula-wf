@@ -4,7 +4,7 @@ import { assigneeOf, queueInfo } from '../../shared/task-queues.ts';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
 import { FilterSelect } from '../../shared/ui/filter-select.tsx';
 import { Highlight, NumberHighlight } from '../../shared/ui/highlight.tsx';
-import { OpenLink, RowActions, WorkLink } from '../../shared/ui/icon-button.tsx';
+import { OpenLink, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Page } from '../../shared/ui/page.tsx';
 import { Search } from '../../shared/ui/search.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
@@ -137,13 +137,7 @@ export const TasksTable = ({
             </TableCell>
             <TableCell kind="actions">
               <RowActions>
-                <WorkLink to={withBack(`/tasks/${t.id}`, back)} name={`task ${t.title}`} />
-                {t.claim_id && t.claim_number !== null ? (
-                  <OpenLink
-                    to={withBack(`/claims/${t.claim_id}`, back)}
-                    name={`claim ${t.claim_number}`}
-                  />
-                ) : null}
+                <OpenLink to={withBack(`/tasks/${t.id}`, back)} name={`task ${t.title}`} />
               </RowActions>
             </TableCell>
           </TableRow>

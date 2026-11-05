@@ -90,12 +90,9 @@ describe('TasksTable', () => {
     assert.ok(!html.includes('#'));
     assert.ok(html.includes('>You<') && html.includes('sam@example.com'));
     assert.ok(html.includes('text-danger font-medium'));
-    assert.ok(html.includes('href="/tasks/t1" aria-label="Work task Review PCR"'));
-    assert.ok(html.includes('aria-label="Work task Fix import"'));
-    assert.ok(
-      html.includes('href="/claims/c1?back=%2Ftasks" aria-label="Open claim 20261101-0012"')
-    );
-    assert.equal(html.split('href="/claims/').length, 2);
+    assert.ok(html.includes('href="/tasks/t1" aria-label="Open task Review PCR"'));
+    assert.ok(html.includes('aria-label="Open task Fix import"'));
+    assert.ok(!html.includes('Work task') && !html.includes('href="/claims/'));
     assert.ok(!html.includes('<mark'));
   });
 
