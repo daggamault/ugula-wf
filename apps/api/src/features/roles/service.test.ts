@@ -19,7 +19,7 @@ const roleRow = (permissions: readonly string[], users = 0) => ({
 
 type Rows = {
   role?: ReturnType<typeof roleRow> & { total?: string };
-  admins?: { permissions: string[] }[];
+  admin?: boolean;
   updated?: boolean;
   fail?: (q: CompiledQuery) => Error | null;
 };
@@ -31,7 +31,7 @@ const roleDb = (rows: Rows) =>
     if (q.sql.startsWith('select') && q.sql.includes('from "roles" as "r"')) {
       return rows.role ? [rows.role] : [];
     }
-    if (q.sql.includes('from "memberships" as "m"')) return rows.admins ?? [];
+    if (q.sql.startsWith('select exists')) return [{ found: rows.admin ?? false }];
     if (q.sql.startsWith('update "roles"')) return rows.updated === false ? [] : [{ id: 'r-1' }];
     if (q.sql.includes('returning "id"')) return [{ id: 'r-1' }];
     return [];
@@ -186,7 +186,7 @@ describe('role service', () => {
     await last.db.destroy();
     const other = roleDb({
       role: roleRow(USER_ADMIN_PERMISSIONS, 2),
-      admins: [{ permissions: [...USER_ADMIN_PERMISSIONS] }]
+      admin: true
     });
     assert.equal(
       (await createRoleService({ db: other.db }).update(testAccess(), 'r-1', input([]))).ok,

@@ -34,7 +34,7 @@ describe('events handler', () => {
               ? { userId: token, email: 'dev@example.com' }
               : null
       },
-      isActiveMember: async (userId, agencyId) => {
+      canOpenAgency: async (userId, agencyId) => {
         checked.push(`${userId}:${agencyId}`);
         return members.has(`${userId}:${agencyId}`);
       }
@@ -98,7 +98,7 @@ describe('events handler', () => {
           return { userId: 'u-1', email: 'dev@example.com' };
         }
       },
-      isActiveMember: async () => true
+      canOpenAgency: async () => true
     });
     const { server, at } = await serve(handler);
     try {
@@ -119,7 +119,7 @@ describe('events handler', () => {
       hub,
       origins: ['http://localhost:3000'],
       sessions: { get: async (token) => ({ userId: `u-${token}`, email: 'dev@example.com' }) },
-      isActiveMember: async () => true
+      canOpenAgency: async () => true
     });
     const { server, at } = await serve(handler);
     const decoder = new TextDecoder();

@@ -5,10 +5,10 @@ import {
   PERMISSIONS,
   type Permission
 } from '@ugula/access';
-import type { Db } from '@ugula/db';
+import { type Db, permissionsOf } from '@ugula/db';
 import type { AgencyAccess } from '../../shared/access.ts';
 import { isForeignKeyViolation, isUniqueViolation } from '../../shared/http.ts';
-import { hasUserAdmin, lockMemberships, permissionsOf } from '../../shared/memberships.ts';
+import { hasUserAdmin, lockMemberships } from '../../shared/memberships.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
   deleteRole,

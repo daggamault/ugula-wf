@@ -1,8 +1,8 @@
 import { canGrant, isUserAdmin, type Permission } from '@ugula/access';
 import { createToken } from '@ugula/auth';
-import type { Db } from '@ugula/db';
+import { type Db, permissionsOf } from '@ugula/db';
 import type { AgencyAccess } from '../../shared/access.ts';
-import { hasUserAdmin, lockMemberships, permissionsOf } from '../../shared/memberships.ts';
+import { hasUserAdmin, lockMemberships } from '../../shared/memberships.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
   deleteInvitation,

@@ -30,7 +30,7 @@ const member = (
 type Rows = {
   member?: ReturnType<typeof member> & { total?: string };
   role?: { id: string; name: string; permissions: string[] } | undefined;
-  admins?: { permissions: string[] }[];
+  admin?: boolean;
   updated?: boolean;
   memberships?: boolean;
   isMember?: boolean;
@@ -45,7 +45,7 @@ const userDb = (rows: Rows) =>
       return rows.member ? [rows.member] : [];
     }
     if (s.startsWith('select "m"."id"')) return rows.isMember ? [{ id: 'm-1' }] : [];
-    if (s.includes('from "memberships" as "m"')) return rows.admins ?? [];
+    if (s.startsWith('select exists')) return [{ found: rows.admin ?? false }];
     if (s.includes('from "memberships" where "user_id"'))
       return rows.memberships ? [{ id: 'm-2' }] : [];
     if (s.includes('from "roles" as "r"')) return rows.role ? [rows.role] : [];

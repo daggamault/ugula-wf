@@ -1,6 +1,5 @@
-import type { Db } from '@ugula/db';
+import { type Db, rolePermissionsSql } from '@ugula/db';
 import { sql } from 'kysely';
-import { rolePermissionsSql } from '../../shared/memberships.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { UserSort } from './schemas.ts';

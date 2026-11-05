@@ -7,7 +7,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type EventsHandlerDeps = {
   sessions: Pick<SessionStore, 'get'>;
-  isActiveMember: (userId: string, agencyId: string) => Promise<boolean>;
+  canOpenAgency: (userId: string, agencyId: string) => Promise<boolean>;
   hub: Hub;
   origins: readonly string[];
   heartbeatMs?: number;
@@ -15,14 +15,14 @@ type EventsHandlerDeps = {
 
 export const createEventsHandler = ({
   sessions,
-  isActiveMember,
+  canOpenAgency,
   hub,
   origins,
   heartbeatMs = 30_000
 }: EventsHandlerDeps) => {
   const signedIn = async (token: string, agencyId: string) => {
     const session = await sessions.get(token);
-    return session && (await isActiveMember(session.userId, agencyId)) ? session : null;
+    return session && (await canOpenAgency(session.userId, agencyId)) ? session : null;
   };
 
   const agencyOf = (req: IncomingMessage) => {

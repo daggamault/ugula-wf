@@ -1,14 +1,6 @@
-import { isPermission, isUserAdmin, type Permission } from '@ugula/access';
-import type { Db } from '@ugula/db';
+import { USER_ADMIN_PERMISSIONS } from '@ugula/access';
+import { type Db, rolePermissionsSql } from '@ugula/db';
 import { sql } from 'kysely';
-
-export const rolePermissionsSql = (role: string) => sql<string[]>`coalesce((
-  select array_agg(rp.permission order by rp.permission)
-  from role_permissions rp where rp.role_id = ${sql.ref(role)}
-), '{}')`;
-
-export const permissionsOf = (row: { permissions: string[] }): Permission[] =>
-  row.permissions.filter(isPermission);
 
 export const lockMemberships = async (db: Db, agencyId: string) => {
   await db
@@ -24,11 +16,17 @@ export const hasUserAdmin = async (
   agencyId: string,
   except: { roleId?: string; userId?: string }
 ) => {
-  let q = db
+  let admins = db
     .selectFrom('memberships as m')
-    .select(rolePermissionsSql('m.role_id').as('permissions'))
-    .where('m.agency_id', '=', agencyId);
-  if (except.roleId) q = q.where('m.role_id', '!=', except.roleId);
-  if (except.userId) q = q.where('m.user_id', '!=', except.userId);
-  return (await q.execute()).some((r) => isUserAdmin(permissionsOf(r)));
+    .innerJoin('users as u', 'u.id', 'm.user_id')
+    .select('m.id')
+    .where('m.agency_id', '=', agencyId)
+    .where('u.is_active', '=', true)
+    .where(sql<boolean>`${rolePermissionsSql('m.role_id')} @> ${USER_ADMIN_PERMISSIONS}::text[]`);
+  if (except.roleId) admins = admins.where('m.role_id', '!=', except.roleId);
+  if (except.userId) admins = admins.where('m.user_id', '!=', except.userId);
+  const found = await db
+    .selectNoFrom((eb) => eb.exists(admins).as('found'))
+    .executeTakeFirstOrThrow();
+  return found.found;
 };

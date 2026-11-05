@@ -1,18 +1,11 @@
 import type { Permission } from '@ugula/access';
 import type { SessionData } from '@ugula/auth';
+import type { AgencyAccess } from '@ugula/db';
 import type { MiddlewareHandler } from 'hono';
 import * as v from 'valibot';
 import { uuid } from './http.ts';
 
-export type AgencyAccess = {
-  agencyId: string;
-  agencyName: string;
-  organizationId: string;
-  organizationName: string;
-  userId: string;
-  isOrganizationAdmin: boolean;
-  permissions: Permission[];
-};
+export type { AgencyAccess } from '@ugula/db';
 
 export type AgencyEnv = {
   Variables: {

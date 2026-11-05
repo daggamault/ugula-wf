@@ -1,5 +1,4 @@
-import type { Db } from '@ugula/db';
-import { findAgencyAccess, listAccessibleAgencies } from './queries.ts';
+import { type Db, findAgencyAccess, listAccessibleAgencies } from '@ugula/db';
 
 export const createAgencyService = ({ db }: { db: Db }) => ({
   list: (userId: string) => listAccessibleAgencies(db, userId),

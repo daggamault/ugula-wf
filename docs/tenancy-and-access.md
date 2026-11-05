@@ -19,7 +19,15 @@ A user belongs to at most one organization. Email addresses are unique and store
 ## Roles and permissions
 
 - Permissions are `resource:action` strings defined once in `libs/domain/access/src/permissions.ts` and checked by a database `CHECK` constraint.
-- Roles are custom per agency (`roles`, `role_permissions`). Every agency is seeded with **Admin**, **Billing Manager**, **Biller** and **Viewer** (`BUILT_IN_ROLES`), which agencies can change.
+- Roles are custom per agency (`roles`, `role_permissions`). Every agency starts with the built-in roles below (`BUILT_IN_ROLES` in `@ugula/access`), which it can change afterwards. Whatever creates an agency calls `saveBuiltInRoles` from `@ugula/db` in the same transaction; seeding calls it too and so resets the built-in roles to their definitions.
+
+| Built-in role   | Holds                                                                                                                                                                                                 |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admin           | Every permission                                                                                                                                                                                      |
+| Billing Manager | Everything on patients, imports, claims (`claims:approve` included), tasks, payer files, payers, facilities, fees, reports and runs; reading settings, users, roles and workflows; `workflows:update` |
+| Biller          | Create, read and update on patients, imports, claims, tasks and payer files (not `claims:approve`); reading everything else                                                                           |
+| Viewer          | Reading everything                                                                                                                                                                                    |
+
 - A membership (`memberships`) gives one user one role in one agency. Composite foreign keys make it impossible to join an agency or role outside your organization.
 
 | Resource    | Actions                                                                                       |
@@ -49,7 +57,7 @@ A human task can name the permission whoever completes it needs (`permission` in
 
 - You can only create, change, give or delete a role whose permissions you all hold (`canGrant`).
 - You cannot change or remove a user whose role has permissions you do not hold, or yourself.
-- An agency always keeps at least one user who can manage users; changes that would remove the last one fail with 409.
+- An agency always keeps at least one active user who can manage users; changes that would remove the last one fail with 409. Deactivated users do not count.
 - Membership changes lock the agency row so concurrent edits cannot race past these checks.
 
 ## Invitations and passwords
@@ -69,7 +77,7 @@ A human task can name the permission whoever completes it needs (`permission` in
 | `requirePermission`   | same                            | One permission for one route                                   |
 | `canEditScope`        | `apps/api/src/shared/scopes.ts` | Who may edit organization or agency graphs and tables, by role |
 
-The SSE stream (`/events?agency=<id>`) runs the same membership check before streaming an agency's events.
+Both checks come from `libs/data/db/src/access.ts`: `findAgencyAccess` for the API and `canOpenAgency`, the same query, for the SSE stream (`/events?agency=<id>`) before it streams an agency's events.
 
 ## In the browser
 

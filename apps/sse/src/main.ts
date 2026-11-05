@@ -1,11 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createSessionStore } from '@ugula/auth';
-import { createDb } from '@ugula/db';
+import { canOpenAgency, createDb } from '@ugula/db';
 import { agencyOf, LIVE_PATTERN, parseLiveEvent } from '@ugula/live';
 import { Redis } from 'ioredis';
 import { parseConfig } from './config.ts';
 import { createEventsHandler } from './features/events/handler.ts';
-import { isActiveMember } from './features/events/queries.ts';
 import { handleHealth } from './features/health/handler.ts';
 import { sendJson } from './shared/http.ts';
 import { createHub, type Hub } from './shared/hub.ts';
@@ -61,7 +60,7 @@ if (import.meta.main) {
     events: createEventsHandler({
       hub,
       sessions: createSessionStore(new Redis(redis)),
-      isActiveMember: (userId, agencyId) => isActiveMember(db, userId, agencyId),
+      canOpenAgency: (userId, agencyId) => canOpenAgency(db, userId, agencyId),
       origins: config.HTTP_CORS_ORIGINS.split(',').map((o) => o.trim())
     })
   }).listen(config.SSE_PORT);

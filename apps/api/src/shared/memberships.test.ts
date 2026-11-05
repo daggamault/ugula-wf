@@ -2,16 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { USER_ADMIN_PERMISSIONS } from '@ugula/access';
 import { createRecordingDb } from '@ugula/db/testing';
-import { hasUserAdmin, lockMemberships, permissionsOf } from './memberships.ts';
-
-describe('permissionsOf', () => {
-  it('keeps only known permissions', () => {
-    assert.deepEqual(permissionsOf({ permissions: ['fees:read', 'nope', 'users:read'] }), [
-      'fees:read',
-      'users:read'
-    ]);
-  });
-});
+import { hasUserAdmin, lockMemberships } from './memberships.ts';
 
 describe('lockMemberships', () => {
   it('locks the agency row so membership changes serialize', async () => {
@@ -24,19 +15,20 @@ describe('lockMemberships', () => {
 });
 
 describe('hasUserAdmin', () => {
-  it('looks for another member holding every user permission', async () => {
-    let rows = [{ permissions: ['fees:read'] }, { permissions: [...USER_ADMIN_PERMISSIONS] }];
-    const { db, queries } = createRecordingDb(() => rows);
+  it('asks the database whether another active member holds every user permission', async () => {
+    let found = true;
+    const { db, queries } = createRecordingDb(() => [{ found }]);
     assert.equal(await hasUserAdmin(db, 't-1', { roleId: 'r-1', userId: 'u-1' }), true);
     const [q] = queries;
-    assert.ok(q?.sql.includes('from role_permissions rp where rp.role_id = "m"."role_id"'));
-    assert.ok(
-      q?.sql.includes('"m"."agency_id" = $1 and "m"."role_id" != $2 and "m"."user_id" != $3')
-    );
-    assert.deepEqual(q?.parameters, ['t-1', 'r-1', 'u-1']);
-    rows = [{ permissions: ['users:read', 'users:create'] }];
+    assert.ok(q?.sql.startsWith('select exists (select "m"."id" from "memberships" as "m"'));
+    assert.ok(q?.sql.includes('inner join "users" as "u" on "u"."id" = "m"."user_id"'));
+    assert.ok(q?.sql.includes('"u"."is_active" = $2'));
+    assert.ok(q?.sql.includes('rp.role_id = "m"."role_id"'));
+    assert.ok(q?.sql.includes(') @> $3::text[] and "m"."role_id" != $4 and "m"."user_id" != $5'));
+    assert.deepEqual(q?.parameters, ['t-1', true, USER_ADMIN_PERMISSIONS, 'r-1', 'u-1']);
+    found = false;
     assert.equal(await hasUserAdmin(db, 't-1', {}), false);
-    assert.deepEqual(queries[1]?.parameters, ['t-1']);
+    assert.deepEqual(queries[1]?.parameters, ['t-1', true, USER_ADMIN_PERMISSIONS]);
     await db.destroy();
   });
 });

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { hashPassword } from '@ugula/auth';
 import { billingModels, createBillingNodes } from '@ugula/billing';
-import { createDb, type Db } from '@ugula/db';
+import { createDb, type Db, saveBuiltInRoles } from '@ugula/db';
 import {
   combineSources,
   createModelNodes,
@@ -19,7 +19,7 @@ import {
 } from '@ugula/graph';
 import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
 import * as v from 'valibot';
-import { upsertAgency, upsertBuiltInRoles, upsertOrganization } from './agencies.ts';
+import { upsertAgency, upsertOrganization } from './agencies.ts';
 import { billingGraphs, billingTables } from './billing/index.ts';
 import {
   buildUpsertDemoFacilities,
@@ -131,7 +131,7 @@ const seedDev = async (db: Db, dev: DevSeedConfig) => {
         sftpUsername: seed.sftp ? dev.DEV_SFTP_USERNAME : null,
         sftpPasswordHash: seed.sftp ? sftpPasswordHash : null
       });
-      const roles = await upsertBuiltInRoles(tx, agency.id);
+      const roles = await saveBuiltInRoles(tx, agency.id);
       const admin = roles.get('Admin');
       if (admin) {
         await upsertMembership(tx, {
