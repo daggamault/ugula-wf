@@ -112,7 +112,7 @@ const buildInvitationsTable = (db: Kysely<Database>) =>
       ['role_id', 'agency_id'],
       'roles',
       ['id', 'agency_id'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+      (fk) => fk.onDelete('restrict').onUpdate('cascade')
     )
     .addCheckConstraint('invitations_email_check', normalizedEmail('email'))
     .addCheckConstraint('invitations_first_name_check', trimmed('first_name'))

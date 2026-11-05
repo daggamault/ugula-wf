@@ -7,6 +7,8 @@ import type { RoleSort } from './schemas.ts';
 
 export type RoleFilters = PageRequest<RoleSort> & { q?: string | undefined };
 
+const memberCount = sql<number>`(select count(*)::int from memberships m where m.role_id = r.id)`;
+
 const roleRows = (db: Db, agencyId: string) =>
   db
     .selectFrom('roles as r')
@@ -16,13 +18,13 @@ const roleRows = (db: Db, agencyId: string) =>
       'r.version',
       'r.updated_at',
       rolePermissionsSql('r.id').as('permissions'),
-      sql<number>`(select count(*)::int from memberships m where m.role_id = r.id)`.as('users')
+      memberCount.as('users')
     ])
     .where('r.agency_id', '=', agencyId);
 
 const ROLE_ORDER = {
   name: sql`lower(r.name)`,
-  users: sql`(select count(*) from memberships m where m.role_id = r.id)`,
+  users: memberCount,
   updated: sql.ref('r.updated_at')
 };
 

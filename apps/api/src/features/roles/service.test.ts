@@ -233,4 +233,19 @@ describe('role service', () => {
     });
     await used.db.destroy();
   });
+
+  it('refuses to delete a role pending invitations still give', async () => {
+    const invited = roleDb({
+      role: roleRow([]),
+      fail: (q) =>
+        q.sql.startsWith('delete from "roles"')
+          ? Object.assign(pgError('23503'), { constraint: 'invitations_role_fkey' })
+          : null
+    });
+    assert.deepEqual(await createRoleService({ db: invited.db }).remove(testAccess(), 'r-1'), {
+      ok: false,
+      failure: { code: 'conflict', message: 'Invitations still give this role; delete them first' }
+    });
+    await invited.db.destroy();
+  });
 });

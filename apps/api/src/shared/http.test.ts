@@ -4,6 +4,7 @@ import { sValidator } from '@hono/standard-validator';
 import { Hono } from 'hono';
 import * as v from 'valibot';
 import {
+  constraintOf,
   describeIssue,
   idParam,
   invalidRequest,
@@ -26,6 +27,9 @@ describe('http helpers', () => {
     assert.equal(isForeignKeyViolation({ code: '23503' }), true);
     assert.equal(isForeignKeyViolation({ code: '23505' }), false);
     assert.equal(isUniqueViolation(new Error('x')), false);
+    assert.equal(constraintOf({ code: '23503', constraint: 'roles_fkey' }), 'roles_fkey');
+    assert.equal(constraintOf({ code: '23503' }), null);
+    assert.equal(constraintOf(null), null);
   });
 
   it('answers invalid requests with a readable first issue', async () => {

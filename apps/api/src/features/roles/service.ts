@@ -7,7 +7,7 @@ import {
 } from '@ugula/access';
 import { type Db, permissionsOf } from '@ugula/db';
 import type { AgencyAccess } from '../../shared/access.ts';
-import { isForeignKeyViolation, isUniqueViolation } from '../../shared/http.ts';
+import { constraintOf, isForeignKeyViolation, isUniqueViolation } from '../../shared/http.ts';
 import { hasUserAdmin, lockMemberships } from '../../shared/memberships.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
@@ -114,7 +114,9 @@ export const createRoleService = ({ db }: { db: Db }) => ({
       return (await deleteRole(db, access.agencyId, id)) ? ok({ id }) : notFound;
     } catch (err) {
       if (isForeignKeyViolation(err)) {
-        return fail('conflict', 'Users still have this role; give them another role first');
+        return constraintOf(err) === 'invitations_role_fkey'
+          ? fail('conflict', 'Invitations still give this role; delete them first')
+          : fail('conflict', 'Users still have this role; give them another role first');
       }
       throw err;
     }

@@ -13,6 +13,14 @@ export const isUniqueViolation = (err: unknown) => hasCode(err, '23505');
 export const isForeignKeyViolation = (err: unknown) =>
   hasCode(err, '23503') || hasCode(err, '23001');
 
+export const constraintOf = (err: unknown) =>
+  typeof err === 'object' &&
+  err !== null &&
+  'constraint' in err &&
+  typeof err.constraint === 'string'
+    ? err.constraint
+    : null;
+
 type Issue = { message: string; path?: ReadonlyArray<unknown> };
 
 type ValidationResult = { success: boolean; error?: ReadonlyArray<unknown> };

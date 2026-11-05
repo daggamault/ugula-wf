@@ -22,7 +22,7 @@ describe('role queries', () => {
     assert.ok(q?.sql.includes('"r"."agency_id" = $1 and lower(r.name) like $2'));
     assert.ok(
       q?.sql.includes(
-        'order by (select count(*) from memberships m where m.role_id = r.id) desc nulls last'
+        'order by (select count(*)::int from memberships m where m.role_id = r.id) desc nulls last'
       )
     );
     assert.deepEqual(q?.parameters.slice(0, 2), ['t-1', '%bill%']);
