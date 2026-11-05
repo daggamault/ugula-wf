@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { Permission } from '@ugula/access';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import { recordAnnouncements } from '../../shared/testing.ts';
@@ -37,7 +38,13 @@ describe('task service', () => {
     assert.deepEqual(await theirs.service.claim('t', 't1', 'u1'), refused);
     assert.deepEqual(await theirs.service.release('t', 't1', 'u1'), refused);
     assert.deepEqual(
-      await theirs.service.complete('t', 'u1', 't1', { outcome: 'approve', values: { note: 'x' } }),
+      await theirs.service.complete(
+        't',
+        'u1',
+        't1',
+        { outcome: 'approve', values: { note: 'x' } },
+        []
+      ),
       refused
     );
     assert.equal(theirs.jobs.length, 0);
@@ -50,8 +57,15 @@ describe('task service', () => {
     });
     const mine = setup(task({ assignee_id: 'u1' }));
     assert.equal(
-      (await mine.service.complete('t', 'u1', 't1', { outcome: 'approve', values: { note: 'x' } }))
-        .ok,
+      (
+        await mine.service.complete(
+          't',
+          'u1',
+          't1',
+          { outcome: 'approve', values: { note: 'x' } },
+          []
+        )
+      ).ok,
       true
     );
   });
@@ -113,7 +127,7 @@ describe('task service', () => {
   it('completes open tasks and resumes the run atomically', async () => {
     const { service, jobs, announced } = setup(task());
     assert.deepEqual(
-      await service.complete('t', 'u1', 't1', { outcome: 'approve', values: { note: 'ok' } }),
+      await service.complete('t', 'u1', 't1', { outcome: 'approve', values: { note: 'ok' } }, []),
       { ok: true, value: { status: 'completed' } }
     );
     assert.equal(jobs.length, 1);
@@ -129,7 +143,13 @@ describe('task service', () => {
       values = {},
       updated = true
     ) => {
-      const res = await setup(row, updated).service.complete('t', 'u1', 't1', { outcome, values });
+      const res = await setup(row, updated).service.complete(
+        't',
+        'u1',
+        't1',
+        { outcome, values },
+        []
+      );
       return res.ok ? 'ok' : res.failure.code;
     };
     assert.equal(await status(undefined), 'not_found');
@@ -146,8 +166,25 @@ describe('task service', () => {
       'ok'
     );
     assert.equal(await status(task(), 'approve', { note: 'x' }, false), 'conflict');
+    const approval = task({ permission: 'claims:approve' });
+    const approve = (permissions: Permission[]) =>
+      setup(approval).service.complete(
+        't',
+        'u1',
+        't1',
+        { outcome: 'approve', values: {} },
+        permissions
+      );
+    assert.deepEqual(await approve(['tasks:update']), {
+      ok: false,
+      failure: {
+        code: 'forbidden',
+        message: 'Completing this task needs the claims:approve permission'
+      }
+    });
+    assert.equal((await approve(['claims:approve'])).ok, true);
     const rejected = setup(undefined);
-    await rejected.service.complete('t', 'u1', 't1', { outcome: 'approve', values: {} });
+    await rejected.service.complete('t', 'u1', 't1', { outcome: 'approve', values: {} }, []);
     assert.deepEqual(rejected.announced, []);
   });
 
@@ -161,10 +198,13 @@ describe('task service', () => {
       ]
     });
     const code = async (outcome: string, values: Record<string, unknown>) => {
-      const res = await setup(fault).service.complete('t', 'u1', 't1', {
-        outcome,
-        values: values as never
-      });
+      const res = await setup(fault).service.complete(
+        't',
+        'u1',
+        't1',
+        { outcome, values: values as never },
+        []
+      );
       return res.ok ? 'ok' : res.failure.code;
     };
     assert.equal(await code('skip', { pin: 'nope' }), 'invalid');

@@ -240,7 +240,9 @@ describe('createRunStore', () => {
         outcomes: ['ok'],
         defaults: null,
         priority: 0,
-        assigneeId: null
+        assigneeId: null,
+        dueAt: null,
+        permission: null
       });
       assert.equal(await tx.findVersion(parent, 'demo.x', 1), 'v1');
       assert.deepEqual(await tx.insertChildren(parent, '7', 'v1', [{}]), ['v1']);
@@ -382,7 +384,9 @@ describe('createRunStore', () => {
         outcomes: ['ok'],
         defaults: null,
         priority: 0,
-        assigneeId: 'u1'
+        assigneeId: 'u1',
+        dueAt: '2026-12-01T00:00:00.000Z',
+        permission: 'claims:approve'
       });
     });
     const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));

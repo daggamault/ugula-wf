@@ -23,8 +23,13 @@ const reasonField = {
 describe('human task node', () => {
   it('exposes outcomes as exec outputs and fields as outputs', async () => {
     const { signature, result } = await invokeNode(humanTaskNode, {
-      config,
-      inputs: { subject: 'Claim C1 · Jane Doe', context: { claimId: 'C1' }, priority: 2 }
+      config: { ...config, permission: 'claims:approve' },
+      inputs: {
+        subject: 'Claim C1 · Jane Doe',
+        context: { claimId: 'C1' },
+        priority: 2,
+        due: '2026-12-01T00:00:00.000Z'
+      }
     });
     assert.deepEqual(signature.execOut, ['approve', 'reject']);
     assert.deepEqual(
@@ -44,7 +49,9 @@ describe('human task node', () => {
         context: { claimId: 'C1' },
         defaults: null,
         assignee: null,
-        priority: 2
+        priority: 2,
+        due: '2026-12-01T00:00:00.000Z',
+        permission: 'claims:approve'
       }
     });
   });
@@ -74,9 +81,12 @@ describe('human task node', () => {
     );
   });
 
-  it('rejects tasks without unique identifier outcomes', async () => {
+  it('rejects tasks without unique identifier outcomes or a permission name', async () => {
     for (const outcomes of [[], ['ok', 'ok'], ['not ok']])
       await assert.rejects(() => invokeNode(humanTaskNode, { config: { ...config, outcomes } }));
+    await assert.rejects(() =>
+      invokeNode(humanTaskNode, { config: { ...config, permission: 'approve' } })
+    );
   });
 
   it('offers run-time options and validates the answer against them', async () => {
@@ -101,7 +111,9 @@ describe('human task node', () => {
       context: null,
       defaults: null,
       assignee: null,
-      priority: 0
+      priority: 0,
+      due: null,
+      permission: null
     });
     assert.deepEqual(result.state, fields);
     const resume = (reason: string) =>

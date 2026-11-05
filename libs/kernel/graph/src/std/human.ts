@@ -10,6 +10,7 @@ const taskConfig = v.object({
   title: v.pipe(v.string(), v.nonEmpty()),
   queue: v.pipe(v.string(), v.nonEmpty()),
   instructions: v.optional(v.string(), ''),
+  permission: v.optional(v.pipe(v.string(), v.regex(/^[a-z_]+:[a-z]+$/))),
   fields: v.optional(fieldsSchema, []),
   outcomes: v.pipe(
     v.array(v.pipe(v.string(), v.regex(/^[A-Za-z_$][\w$]*$/))),
@@ -41,7 +42,7 @@ export const humanTaskNode = defineNode<v.InferOutput<typeof taskConfig>>({
   title: 'Human Task',
   category: 'Human',
   description:
-    'Pauses the run and queues a task for a person, continuing through the outcome they choose. Visible limits the task to some of its fields; the others output nothing.',
+    'Pauses the run and queues a task for a person, continuing through the outcome they choose. Visible limits the task to some of its fields; the others output nothing. Due is when the task must be done by; Permission names the permission whoever completes it needs.',
   config: taskConfig,
   signature: ({ fields, outcomes }) => ({
     execIn: ['exec'],
@@ -53,7 +54,8 @@ export const humanTaskNode = defineNode<v.InferOutput<typeof taskConfig>>({
       pin('options', { object: {} }, { optional: true }),
       pin('visible', { list: 'string' }, { optional: true }),
       pin('assignee', 'string', { optional: true }),
-      pin('priority', 'integer', { default: 0 })
+      pin('priority', 'integer', { default: 0 }),
+      pin('due', 'datetime', { optional: true })
     ],
     outputs: [
       ...fields.map((f) => pin(f.name, f.type, f.label ? { label: f.label } : {})),
@@ -79,7 +81,9 @@ export const humanTaskNode = defineNode<v.InferOutput<typeof taskConfig>>({
             context: await read('context'),
             defaults: await read('defaults'),
             assignee: await read('assignee'),
-            priority: await read('priority')
+            priority: await read('priority'),
+            due: await read('due'),
+            permission: config.permission ?? null
           }
         },
         fields

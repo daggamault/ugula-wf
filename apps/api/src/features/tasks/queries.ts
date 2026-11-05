@@ -9,6 +9,8 @@ const detail = [
   'title',
   'subject',
   'priority',
+  'due_at',
+  'permission',
   'status',
   'assignee_id',
   'created_at',

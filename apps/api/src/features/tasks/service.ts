@@ -1,3 +1,4 @@
+import type { Permission } from '@ugula/access';
 import { type Db, sqlExecutor } from '@ugula/db';
 import { checkField, type FieldSpec, isRecord, type Json } from '@ugula/graph';
 import type { LiveEvent } from '@ugula/live';
@@ -35,6 +36,9 @@ type Completion = {
 const notFound = fail('not_found', 'Task not found');
 const closed = fail('conflict', 'Task is already closed');
 const taken = fail('conflict', 'Another user is working this task');
+
+const unpermitted = (permission: Permission) =>
+  fail('forbidden', `Completing this task needs the ${permission} permission`);
 
 const blocked = (
   task: { status: string; assignee_id: string | null } | undefined,
@@ -125,7 +129,13 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
 
     release: (agencyId: string, id: string, userId: string) => assign(agencyId, id, userId, null),
 
-    complete: (agencyId: string, userId: string, id: string, completion: Completion) =>
+    complete: (
+      agencyId: string,
+      userId: string,
+      id: string,
+      completion: Completion,
+      permissions: readonly Permission[]
+    ) =>
       announced(
         announce,
         agencyId,
@@ -134,6 +144,9 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
           if (!task) return notFound;
           const refused = blocked(task, userId);
           if (refused) return refused;
+          if (task.permission && !permissions.includes(task.permission)) {
+            return unpermitted(task.permission);
+          }
           if (!task.outcomes.includes(completion.outcome)) {
             return fail('invalid', `Unknown outcome "${completion.outcome}"`);
           }

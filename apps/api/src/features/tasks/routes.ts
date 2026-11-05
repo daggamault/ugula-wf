@@ -32,8 +32,11 @@ export const createTaskRoutes = (service: TaskService) =>
       sValidator('param', idParam, invalidRequest),
       sValidator('json', completeTaskSchema, invalidRequest),
       async (c) => {
-        const { agencyId, userId } = c.get('access');
+        const { agencyId, userId, permissions } = c.get('access');
         const { id } = c.req.valid('param');
-        return respond(c, await service.complete(agencyId, userId, id, c.req.valid('json')));
+        return respond(
+          c,
+          await service.complete(agencyId, userId, id, c.req.valid('json'), permissions)
+        );
       }
     );

@@ -1,3 +1,4 @@
+import { isPermission } from '@ugula/access';
 import type { RunStatus } from '@ugula/db';
 import { isRecord, type Json, type RunState, type TraceEntry, type Values } from '@ugula/graph';
 import { advance, cancel, type RunJob, resume, timeout } from '@ugula/run-queue';
@@ -179,7 +180,12 @@ const suspendRun = async (tx: RunTx, run: ClaimedRun, state: RunState, jobs: Run
         outcomes: Array.isArray(data.outcomes) ? data.outcomes.map(String) : [],
         defaults: data.defaults ?? null,
         priority: typeof data.priority === 'number' ? data.priority : 0,
-        assigneeId: typeof data.assignee === 'string' ? data.assignee : null
+        assigneeId: typeof data.assignee === 'string' ? data.assignee : null,
+        dueAt: typeof data.due === 'string' ? data.due : null,
+        permission:
+          typeof data.permission === 'string' && isPermission(data.permission)
+            ? data.permission
+            : null
       });
       return;
     case 'workflow':
@@ -252,7 +258,9 @@ const faultRun = async (
     outcomes: FAULT_OUTCOMES,
     defaults: null,
     priority: 0,
-    assigneeId: null
+    assigneeId: null,
+    dueAt: null,
+    permission: null
   });
 };
 
@@ -307,7 +315,9 @@ export const stallRun = async (tx: RunTx, run: ClaimedRun, message: string, at: 
     outcomes: STALL_OUTCOMES,
     defaults: null,
     priority: 0,
-    assigneeId: null
+    assigneeId: null,
+    dueAt: null,
+    permission: null
   });
 };
 

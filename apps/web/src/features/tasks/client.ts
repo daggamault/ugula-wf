@@ -1,3 +1,4 @@
+import type { Permission } from '@ugula/access';
 import type { ClaimStatus } from '@ugula/billing';
 import type { FieldSpec, Json } from '@ugula/graph';
 import type { ReportDictionary } from '@ugula/nemsis';
@@ -21,6 +22,8 @@ type TaskSummary = {
   title: string;
   subject: string | null;
   priority: number;
+  due_at: string | null;
+  permission: Permission | null;
   status: TaskStatus;
   assignee_id: string | null;
   created_at: string;

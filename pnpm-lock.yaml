@@ -368,6 +368,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@ugula/access':
+        specifier: workspace:*
+        version: link:../../libs/domain/access
       '@ugula/billing':
         specifier: workspace:*
         version: link:../../libs/domain/billing

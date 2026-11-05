@@ -9,6 +9,7 @@ import {
   UndoIcon
 } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { useCan } from '../../shared/access.tsx';
 import { isApiError, messageOf } from '../../shared/api.ts';
 import { formatAgo, formatDateTime } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
@@ -161,6 +162,11 @@ const Decision = ({
   onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
 }) => {
   const isFault = task.kind === 'fault';
+  const can = useCan();
+  const unpermitted =
+    task.permission && !can(task.permission)
+      ? `Completing this task needs the ${task.permission} permission.`
+      : null;
   const [values, setValues] = useState<Record<string, Json>>(() =>
     Object.fromEntries(task.fields.map((f) => [f.name, task.defaults?.[f.name] ?? null]))
   );
@@ -215,9 +221,10 @@ const Decision = ({
                 variant={isFault || (i === 0 && intent === 'primary') ? 'solid' : 'outline'}
                 isPending={busy === outcome}
                 disabledReason={
-                  busy && busy !== outcome
+                  unpermitted ??
+                  (busy && busy !== outcome
                     ? pendingActionMessage
-                    : missingReason(missingFor(task.fields, values, outcome))
+                    : missingReason(missingFor(task.fields, values, outcome)))
                 }
                 onClick={() =>
                   isDestructive(outcome) ? setConfirming(outcome) : void act(outcome)
@@ -321,6 +328,11 @@ export const TaskView = ({
                 <span className="sr-only"> ({formatDateTime(task.created_at)})</span>
               </time>
             </Tooltip>
+            {task.due_at ? (
+              <>
+                , due <time dateTime={task.due_at}>{formatDateTime(task.due_at)}</time>
+              </>
+            ) : null}
             .
           </span>
         </span>

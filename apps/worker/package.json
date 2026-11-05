@@ -9,6 +9,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@ugula/access": "workspace:*",
     "@ugula/billing": "workspace:*",
     "@ugula/catalog": "workspace:*",
     "@ugula/clearinghouse": "workspace:*",

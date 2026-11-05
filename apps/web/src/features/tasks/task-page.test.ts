@@ -21,6 +21,8 @@ const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
   title: 'Review PCR',
   subject: 'PCR-1 · Jane Doe',
   priority: 0,
+  due_at: null,
+  permission: null,
   status: 'open',
   assignee_id: null,
   created_at: '2026-01-01T00:00:00Z',
@@ -62,6 +64,12 @@ describe('TaskView', () => {
     assert.ok(html.includes('href="/claims"') && html.includes('Back to Claims'));
     assert.ok(html.includes('SOURCE PANEL'));
     assert.ok(!html.includes('Open Claim'));
+  });
+
+  it('shows when a task is due and blocks completing it without its permission', () => {
+    const html = render(task({ due_at: '2026-02-01T00:00:00Z', permission: 'claims:approve' }));
+    assert.ok(html.includes('due <time dateTime="2026-02-01T00:00:00Z"'));
+    assert.ok(html.includes('needs the claims:approve permission'));
   });
 
   it('names and links the claim a task is about, and goes back where the biller came from', () => {

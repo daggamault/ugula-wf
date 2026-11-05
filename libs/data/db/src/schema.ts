@@ -315,6 +315,8 @@ type TasksTable = {
   outcomes: ColumnType<string[], string[], string[]>;
   defaults: NullableJsonColumn;
   priority: Generated<number>;
+  due_at: NullableTimestamp;
+  permission: Permission | null;
   status: Generated<TaskStatus>;
   assignee_id: string | null;
   resolution: NullableJsonColumn;

@@ -1,3 +1,4 @@
+import type { Permission } from '@ugula/access';
 import {
   ACTIVE_RUN_STATUSES,
   type Database,
@@ -59,6 +60,8 @@ export type TaskInsert = {
   defaults: Json;
   priority: number;
   assigneeId: string | null;
+  dueAt: string | null;
+  permission: Permission | null;
 };
 
 export type ParentWait = {
@@ -277,6 +280,8 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
         outcomes: t.outcomes,
         defaults: json(t.defaults),
         priority: t.priority,
+        due_at: t.dueAt,
+        permission: t.permission,
         assignee_id:
           t.assigneeId === null
             ? null

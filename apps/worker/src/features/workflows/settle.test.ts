@@ -242,7 +242,9 @@ describe('settleRun', () => {
         context: { claim: 'C1' },
         defaults: null,
         assignee: 'u-9',
-        priority: 3
+        priority: 3,
+        due: '2026-12-01T00:00:00.000Z',
+        permission: 'claims:approve'
       }),
       []
     );
@@ -260,7 +262,9 @@ describe('settleRun', () => {
       outcomes: ['approve', 'reject'],
       defaults: null,
       priority: 3,
-      assigneeId: 'u-9'
+      assigneeId: 'u-9',
+      dueAt: '2026-12-01T00:00:00.000Z',
+      permission: 'claims:approve'
     });
   });
 

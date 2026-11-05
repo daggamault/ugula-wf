@@ -1,3 +1,4 @@
+import { PERMISSIONS } from '@ugula/access';
 import { type Database, TASK_KINDS, TASK_STATUSES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
@@ -22,6 +23,8 @@ const buildTasksTable = (db: Kysely<Database>) =>
     .addColumn('outcomes', sql`text[]`, (col) => col.notNull())
     .addColumn('defaults', 'jsonb')
     .addColumn('priority', 'integer', (col) => col.notNull().defaultTo(0))
+    .addColumn('due_at', 'timestamptz')
+    .addColumn('permission', 'text')
     .addColumn('status', 'text', (col) => col.notNull().defaultTo('open'))
     .addColumn('assignee_id', 'uuid')
     .addColumn('resolution', 'jsonb')
@@ -38,7 +41,11 @@ const buildTasksTable = (db: Kysely<Database>) =>
       'tasks_status_check',
       sql`status in (${sql.join(TASK_STATUSES.map((v) => sql.lit(v)))})`
     )
-    .addCheckConstraint('tasks_outcomes_check', sql`cardinality(outcomes) > 0`);
+    .addCheckConstraint('tasks_outcomes_check', sql`cardinality(outcomes) > 0`)
+    .addCheckConstraint(
+      'tasks_permission_check',
+      sql`permission in (${sql.join(PERMISSIONS.map((v) => sql.lit(v)))})`
+    );
 
 const buildTasksIndexes = (db: Kysely<Database>) => [
   db.schema
