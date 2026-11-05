@@ -39,7 +39,7 @@ describe('run service', () => {
       }
     );
     assert.ok(queries.some((q) => q.parameters.includes('{"a":1}')));
-    assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } } }]);
+    assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } }, priority: 2 }]);
   });
 
   it('fails to start when nothing is published', async () => {

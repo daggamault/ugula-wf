@@ -292,7 +292,9 @@ describe('claim service', () => {
     });
     assert.ok(stopped.queries.some((q) => q.sql.startsWith('update "claims" set "cycle_run_id"')));
     assert.ok(stopped.queries.some((q) => q.sql.startsWith('insert into "claim_runs"')));
-    assert.deepEqual(stopped.jobs, [{ data: { runId: 'cycle-2', command: { type: 'advance' } } }]);
+    assert.deepEqual(stopped.jobs, [
+      { data: { runId: 'cycle-2', command: { type: 'advance' } }, priority: 2 }
+    ]);
     const active = stopped.queries.find((q) => q.sql.includes('from "claim_runs" as "cr"'));
     assert.ok(active?.parameters.includes('running') && active.parameters.includes('faulted'));
     const restart = (row: Record<string, unknown> | null, published = true, activeRun = false) =>

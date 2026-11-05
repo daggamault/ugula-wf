@@ -89,7 +89,12 @@ export const createImportService = ({
     origin: Pick<NewImport, 'source' | 'fileName' | 'uploadedBy'>
   ) => {
     const runId = await db.transaction().execute(async (tx) => {
-      const id = await startRun(tx, boss, { agencyId, versionId, inputs: { file } });
+      const id = await startRun(tx, boss, {
+        agencyId,
+        versionId,
+        inputs: { file },
+        interactive: true
+      });
       await insertImport(tx, { agencyId, runId: id, file, ...origin });
       return id;
     });

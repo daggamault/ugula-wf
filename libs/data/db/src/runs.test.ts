@@ -18,6 +18,9 @@ describe('startRun', () => {
     assert.match(queries[1]?.sql ?? '', /insert into workflow_run_graphs/);
     assert.ok(queries[1]?.parameters.includes('r1'));
     assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } } }]);
+    jobs.length = 0;
+    await startRun(db, boss, { agencyId: 't', versionId: 'v', inputs: {}, interactive: true });
+    assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } }, priority: 2 }]);
     await db.destroy();
   });
 });

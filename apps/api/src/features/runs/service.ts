@@ -68,7 +68,12 @@ export const createRunService = ({ db, boss, blobs, maxBytes }: RunServiceDeps) 
     db.transaction().execute(async (tx) => {
       const found = await findPublishedVersion(tx, agencyId, graphId, version);
       if (!found) return fail('not_found', 'No published version to run');
-      const id = await startRun(tx, boss, { agencyId, versionId: found.id, inputs });
+      const id = await startRun(tx, boss, {
+        agencyId,
+        versionId: found.id,
+        inputs,
+        interactive: true
+      });
       return ok({ id, version: found.version });
     }),
 

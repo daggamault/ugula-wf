@@ -10,6 +10,7 @@ import {
   resume,
   retry,
   skip,
+  start,
   timeout,
   timeoutJobId
 } from './index.ts';
@@ -19,6 +20,7 @@ describe('run jobs', () => {
     assert.deepEqual(advance('r'), { runId: 'r', command: { type: 'advance' } });
     assert.deepEqual(advance('r', null), advance('r'));
     assert.deepEqual(advance('r', 'p'), { runId: 'r', command: { type: 'advance' }, group: 'p' });
+    assert.deepEqual(start('r'), { runId: 'r', command: { type: 'advance' }, interactive: true });
     assert.deepEqual(cancel('r').command, { type: 'cancel' });
     assert.deepEqual(retry('r').command, { type: 'retry' });
     assert.deepEqual(skip('r', 'then', { a: 1 }).command, {
@@ -33,7 +35,7 @@ describe('run jobs', () => {
     assert.equal(resume('r', '7', null, '2026-01-01').startAfter, '2026-01-01');
   });
 
-  it('enqueue through the caller transaction, keep retrying commands other than advance, and skip empty batches', async () => {
+  it('enqueue through the caller transaction, keep retrying commands other than advance, put runs a person started first, and skip empty batches', async () => {
     const calls: unknown[][] = [];
     const boss: RunQueueClient = { insert: async (...args) => void calls.push(args) };
     const db = { executeSql: async () => ({ rows: [] }) };
@@ -43,7 +45,8 @@ describe('run jobs', () => {
       resume('b', '1', null, '2026-01-01'),
       advance('c', 'parent'),
       cancel('d'),
-      timeout('e', '2', '2026-01-02')
+      timeout('e', '2', '2026-01-02'),
+      start('f')
     ]);
     assert.deepEqual(calls, [
       [
@@ -71,7 +74,8 @@ describe('run jobs', () => {
             startAfter: '2026-01-02',
             retryLimit: 1_000_000,
             priority: 1
-          }
+          },
+          { data: { runId: 'f', command: { type: 'advance' } }, priority: 2 }
         ],
         { db }
       ]

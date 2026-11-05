@@ -114,7 +114,9 @@ describe('eligibility requests', () => {
       ok: true,
       value: { runId: 'check-1' }
     });
-    assert.deepEqual(jobs, [{ data: { runId: 'check-1', command: { type: 'advance' } } }]);
+    assert.deepEqual(jobs, [
+      { data: { runId: 'check-1', command: { type: 'advance' } }, priority: 2 }
+    ]);
     const unlisted = { ...row, coverages: row.coverages.slice(2) };
     const nobody = await setup({
       rows: [{ ...claimRow(C1), ...unlisted }]

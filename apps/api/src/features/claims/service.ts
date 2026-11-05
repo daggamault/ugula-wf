@@ -262,7 +262,8 @@ export const createClaimService = ({
         const runId = await startRun(tx, boss, {
           agencyId,
           versionId: version.id,
-          inputs: { claimId: id, documentId: saved.id }
+          inputs: { claimId: id, documentId: saved.id },
+          interactive: true
         });
         return ok({ id: saved.id, runId });
       });
@@ -287,7 +288,8 @@ export const createClaimService = ({
         const runId = await startRun(tx, boss, {
           agencyId,
           versionId: version.id,
-          inputs: { claimId: id, kind: chase.kind, note: chase.note }
+          inputs: { claimId: id, kind: chase.kind, note: chase.note },
+          interactive: true
         });
         return ok({ runId });
       }),
@@ -331,7 +333,8 @@ export const createClaimService = ({
         const runId = await startRun(tx, boss, {
           agencyId,
           versionId: version.id,
-          inputs: { claimId: id }
+          inputs: { claimId: id },
+          interactive: true
         });
         await setCycleRun(tx, id, runId);
         return ok({ runId });
@@ -348,7 +351,8 @@ export const createClaimService = ({
         const runId = await startRun(tx, boss, {
           agencyId,
           versionId: version.id,
-          inputs: { claimId: id, dueOn: request.dueOn, note: request.note }
+          inputs: { claimId: id, dueOn: request.dueOn, note: request.note },
+          interactive: true
         });
         return ok({ runId });
       }),

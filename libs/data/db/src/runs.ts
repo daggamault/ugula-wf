@@ -1,4 +1,4 @@
-import { advance, enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
+import { advance, enqueueRuns, type RunQueueClient, resume, start } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
 import { sqlExecutor } from './client.ts';
 import { buildLatestVersion, findPublishedGraphs, pinRunGraphs } from './graph-versions.ts';
@@ -8,6 +8,7 @@ type NewRun = {
   agencyId: string;
   versionId: string;
   inputs: unknown;
+  interactive?: boolean;
 };
 
 const buildInsertRun = (db: Kysely<Database>, run: NewRun) =>
@@ -24,7 +25,7 @@ const buildInsertRun = (db: Kysely<Database>, run: NewRun) =>
 export const startRun = async (tx: Kysely<Database>, boss: RunQueueClient, run: NewRun) => {
   const { id } = await buildInsertRun(tx, run).executeTakeFirstOrThrow();
   await pinRunGraphs(tx, { id, agencyId: run.agencyId, versionId: run.versionId });
-  await enqueueRuns(boss, sqlExecutor(tx), [advance(id)]);
+  await enqueueRuns(boss, sqlExecutor(tx), [run.interactive ? start(id) : advance(id)]);
   return id;
 };
 

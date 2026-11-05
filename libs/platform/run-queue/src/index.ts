@@ -17,6 +17,7 @@ export type RunJob = {
   startAfter?: string;
   group?: string;
   id?: string;
+  interactive?: boolean;
 };
 
 export type SqlExecutor = {
@@ -54,6 +55,8 @@ export const advance = (runId: string, group?: string | null): RunJob => ({
   ...(group ? { group } : {})
 });
 
+export const start = (runId: string): RunJob => ({ ...advance(runId), interactive: true });
+
 export const resume = (
   runId: string,
   suspensionId: string,
@@ -84,8 +87,14 @@ export const dropTimeout = async (
   await boss.deleteJob(RUN_QUEUE, timeoutJobId(runId, waitId), { db });
 };
 
-const priorityOf = ({ command, startAfter }: RunJob) =>
-  command.type === 'advance' ? 0 : startAfter ? DEFERRED_PRIORITY : INTERACTIVE_PRIORITY;
+const priorityOf = ({ command, startAfter, interactive }: RunJob) =>
+  interactive
+    ? INTERACTIVE_PRIORITY
+    : command.type === 'advance'
+      ? 0
+      : startAfter
+        ? DEFERRED_PRIORITY
+        : INTERACTIVE_PRIORITY;
 
 export const retry = (runId: string): RunJob => ({ runId, command: { type: 'retry' } });
 

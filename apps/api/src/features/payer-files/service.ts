@@ -60,7 +60,8 @@ export const createPayerFileService = ({ db, boss, blobs, maxBytes }: PayerFileS
       startRun(tx, boss, {
         agencyId,
         versionId: version.id,
-        inputs: { file: document, fileName }
+        inputs: { file: document, fileName },
+        interactive: true
       })
     );
     return ok({ runId, kind: inbound.kind });
