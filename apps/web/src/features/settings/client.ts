@@ -85,6 +85,26 @@ export type Payer = {
   aliases: PayerAlias[];
 };
 
+export type Facility = {
+  id: string;
+  name: string;
+  address_line: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  phone: string | null;
+  balance_cents: number;
+};
+
+export type FacilityInput = {
+  name: string;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  phone: string | null;
+};
+
 export type PayerInput = {
   name: string;
   payerId: string;
@@ -113,6 +133,16 @@ export const createSettingsClient = (api: Api) => ({
   savePayer: (payer: PayerInput) =>
     api.put<{ payer: Payer; linkedClaims: number }>('/api/payers', payer),
   removePayer: (id: string) => api.remove(`/api/payers/${encodeURIComponent(id)}`),
+  searchFacilities: (query: string, signal?: AbortSignal) =>
+    api.get<Page<Facility>>(`/api/facilities?${query}`, signal),
+  facility: async (id: string, signal?: AbortSignal) =>
+    (await api.get<{ facility: Facility }>(`/api/facilities/${encodeURIComponent(id)}`, signal))
+      .facility,
+  saveFacility: (id: string | null, facility: FacilityInput) =>
+    id
+      ? api.put<{ id: string }>(`/api/facilities/${encodeURIComponent(id)}`, facility)
+      : api.post<{ id: string }>('/api/facilities', facility),
+  removeFacility: (id: string) => api.remove(`/api/facilities/${encodeURIComponent(id)}`),
   forgetAlias: (payerId: string, aliasId: string) =>
     api.remove(`/api/payers/${encodeURIComponent(payerId)}/aliases/${encodeURIComponent(aliasId)}`)
 });

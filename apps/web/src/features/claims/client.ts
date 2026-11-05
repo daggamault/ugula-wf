@@ -161,7 +161,13 @@ export type ClaimDetail = ClaimSummary & {
   lines: ClaimLine[];
   diagnoses: string[];
   tasks: ClaimTask[];
+  facility_id: string | null;
+  facility_name: string | null;
 };
+
+export type FacilityOption = { id: string; name: string };
+
+export type RecordsRequestInput = { dueOn: string | null; note: string };
 
 type AddressInput = {
   addressLine: string | null;
@@ -252,6 +258,12 @@ export const createClaimsClient = (api: Api) => ({
   saveBillingData: (id: string, data: BillingDataInput) =>
     api.put<{ status: string }>(`${claimPath(id)}/billing-data`, data),
   restartCycle: (id: string) => api.post<{ runId: string }>(`${claimPath(id)}/restart-cycle`),
+  facilities: async (signal?: AbortSignal) =>
+    (await api.get<Page<FacilityOption>>('/api/facilities?pageSize=100&sort=name', signal)).items,
+  setFacility: (id: string, facilityId: string | null) =>
+    api.put<{ facilityId: string | null }>(`${claimPath(id)}/facility`, { facilityId }),
+  requestRecords: (id: string, request: RecordsRequestInput) =>
+    api.post<{ runId: string }>(`${claimPath(id)}/records-request`, request),
   recordResponse: (id: string, response: ClaimResponseInput) =>
     api.post<{ balanceCents: number; duplicate: boolean }>(`${claimPath(id)}/responses`, response),
   eligibilityRequest: (claimId: string) =>

@@ -23,7 +23,7 @@ import {
   SaveIcon,
   UserIcon
 } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, type ReactNode, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { ChargeLines } from '../../shared/claims/charge-lines.tsx';
 import { ClaimIssues } from '../../shared/claims/claim-issues.tsx';
@@ -69,6 +69,7 @@ import {
 import { type Resource, useResource } from '../../shared/use-resource.ts';
 import { ClaimDataForm } from './claim-data-form.tsx';
 import { DocumentationPanel, EligibilityPanel } from './claim-documentation.tsx';
+import { ClaimRecovery } from './claim-recovery.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
 import { assigneeOf, claimNumber } from './claims-page.tsx';
 import type {
@@ -1055,6 +1056,7 @@ export const ClaimView = ({
   onDownloadEligibility,
   documentUrl,
   submission,
+  recovery,
   tab = 'overview',
   back = '/claims',
   error = '',
@@ -1074,6 +1076,7 @@ export const ClaimView = ({
   onDownloadEligibility: () => Promise<void>;
   documentUrl: (eventId: string) => string;
   submission?: ClaimLinks;
+  recovery?: ReactNode;
   tab?: ClaimTab;
   back?: string;
   error?: string;
@@ -1165,6 +1168,7 @@ export const ClaimView = ({
                 onCheck={onCheckEligibility}
                 onDownload={onDownloadEligibility}
               />
+              {recovery}
               {submission ? (
                 <ClaimFiles
                   claim={claim}
@@ -1284,6 +1288,14 @@ export const ClaimPage = ({
         await act(() => client.restartCycle(claimId), 'Payer cycle restarted');
       }}
       submission={{ fileUrl: client.fileUrl, encounterUrl: client.encounterUrl }}
+      recovery={
+        <ClaimRecovery
+          client={client}
+          claim={detail.data.claim}
+          locked={lockedReason(detail.data.claim.status)}
+          onChanged={reload}
+        />
+      }
     />
   );
 };

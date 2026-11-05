@@ -84,6 +84,8 @@ const claim: ClaimDetail = {
     }
   ],
   diagnoses: ['R079', 'I10'],
+  facility_id: null,
+  facility_name: null,
   origin_code: null,
   destination_code: null,
   pickup_address_line: '9 Elm St',

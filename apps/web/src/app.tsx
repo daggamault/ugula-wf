@@ -7,6 +7,7 @@ import {
   Building2Icon,
   ChartColumnIcon,
   FileUpIcon,
+  HospitalIcon,
   ReceiptTextIcon,
   SettingsIcon,
   ShieldCheckIcon,
@@ -52,6 +53,8 @@ import { parseAt } from './features/runs/inspect.ts';
 import { RunsPage } from './features/runs/runs-page.tsx';
 import { StartRunPage } from './features/runs/start-run-page.tsx';
 import type { SettingsClient } from './features/settings/client.ts';
+import { FACILITIES_PATH, FacilitiesPage } from './features/settings/facilities-page.tsx';
+import { FacilityPage } from './features/settings/facility-page.tsx';
 import { PayerPage } from './features/settings/payer-page.tsx';
 import { PAYERS_PATH, PayersPage } from './features/settings/payers-page.tsx';
 import { SettingsPage } from './features/settings/settings-page.tsx';
@@ -205,6 +208,14 @@ const SECTIONS: readonly Section[] = [
     label: 'Payers',
     href: '/payers',
     icon: Building2Icon,
+    group: 'Admin',
+    permission: 'payers:read'
+  },
+  {
+    id: 'facilities',
+    label: 'Facilities',
+    href: FACILITIES_PATH,
+    icon: HospitalIcon,
     group: 'Admin',
     permission: 'payers:read'
   },
@@ -440,6 +451,33 @@ const routes: readonly Route[] = [
         live={c.live}
         payerId={p.id ?? ''}
         back={backOf(q, PAYERS_PATH)}
+      />
+    )
+  },
+  {
+    pattern: FACILITIES_PATH,
+    render: (_, __, c) => <FacilitiesPage client={c.settings} live={c.live} />
+  },
+  {
+    pattern: `${FACILITIES_PATH}/new`,
+    render: (_, q, c) => (
+      <FacilityPage
+        client={c.settings}
+        live={c.live}
+        facilityId={null}
+        back={backOf(q, FACILITIES_PATH)}
+      />
+    )
+  },
+  {
+    pattern: `${FACILITIES_PATH}/:id`,
+    render: (p, q, c) => (
+      <FacilityPage
+        key={p.id}
+        client={c.settings}
+        live={c.live}
+        facilityId={p.id ?? ''}
+        back={backOf(q, FACILITIES_PATH)}
       />
     )
   },
