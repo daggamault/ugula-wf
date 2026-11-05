@@ -1,23 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import {
-  claimExists,
-  findClaim,
-  findClaimDocument,
-  findEventDocument,
-  hasActiveRun,
-  insertClaimDocument,
-  insertDocumentEvent,
-  listClaimDocuments,
-  listClaimEvents,
-  listClaimFiles,
-  listClaimPayerFiles,
-  listClaims,
-  numberOf,
-  reorderCoverages,
-  setCycleRun
-} from './queries.ts';
+import { claimExists, findClaim, listClaims, numberOf } from './claim-queries.ts';
 
 describe('claim queries', () => {
   it('pages claim ids by agency and filters first, then loads details for that page only', async () => {
@@ -187,106 +171,6 @@ describe('claim queries', () => {
     assert.ok(find?.sql.includes('"cc"."stay_kind"'));
   });
 
-  it('lists, finds and stores claim documents and logs their arrival', async () => {
-    const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('insert into "claim_documents"') ? [{ id: 'd1' }] : []
-    );
-    assert.deepEqual(await listClaimDocuments(db, 'c1'), []);
-    assert.equal(await findClaimDocument(db, 't-1', 'c1', 'd1'), null);
-    const ref = {
-      bucket: 'ugula',
-      key: 'documents/t-1/c1/x/pcs.pdf',
-      size: 3,
-      contentType: 'application/pdf'
-    };
-    assert.deepEqual(
-      await insertClaimDocument(db, {
-        agencyId: 't-1',
-        claimId: 'c1',
-        kind: 'pcs',
-        fileName: 'pcs.pdf',
-        document: ref,
-        signedOn: null,
-        uploadedBy: 'u1'
-      }),
-      { id: 'd1' }
-    );
-    await insertDocumentEvent(db, 'c1', 'PCS uploaded', 'u1');
-    const [list, find, insert, event] = queries;
-    assert.ok(list?.sql.includes('left join "users" as "u" on "u"."id" = "d"."uploaded_by"'));
-    assert.deepEqual(find?.parameters, ['d1', 'c1', 't-1']);
-    assert.ok(insert?.parameters.includes(JSON.stringify(ref)));
-    assert.deepEqual(event?.parameters, ['c1', 'document', 'PCS uploaded', 'u1']);
-  });
-
-  it('removes, repositions and adds coverages, then touches the claim', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    await reorderCoverages(db, 't-1', 'c1', {
-      keep: [{ id: 'k1', position: 2 }],
-      add: [
-        {
-          payer: 'Aetna Inc.',
-          position: 1,
-          relationship: '01',
-          insuredFirstName: 'Sam',
-          insuredLastName: 'Doe'
-        }
-      ],
-      remove: ['r1']
-    });
-    const insert = queries.find((q) => q.sql.startsWith('insert into "claim_coverages"'));
-    assert.match(
-      insert?.sql ?? '',
-      /\(lower\(name\) = \$\d+ or "id" in \(select "payer_id" from "payer_aliases" where "agency_id" = \$\d+ and "alias_key" = \$\d+\)\)/
-    );
-    assert.ok(insert?.parameters.includes('aetna inc'));
-    assert.ok(insert?.sql.includes('"agency_id", "position", "payer_name", "relationship"'));
-    assert.deepEqual(insert?.parameters.slice(0, 7), [
-      'c1',
-      't-1',
-      1,
-      'Aetna Inc.',
-      '01',
-      'Sam',
-      'Doe'
-    ]);
-    assert.deepEqual(
-      queries.map((q) => q.sql.trim().split(/\s+/).slice(0, 3).join(' ')),
-      [
-        'delete from "claim_coverages"',
-        'update claim_coverages cc',
-        'insert into "claim_coverages"',
-        'update "claims" set'
-      ]
-    );
-  });
-
-  it('reads events with payer names, amounts and reason codes', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    await listClaimEvents(db, 'c1', { page: 1, pageSize: 25, sort: 'amount', dir: 'asc' });
-    const [events] = queries;
-    assert.ok(events?.sql.includes('case when e.coverage_id is null then null else coalesce('));
-    assert.ok(
-      events?.sql.includes('order by e.paid_cents + e.adjusted_cents asc nulls last, "e"."id" asc')
-    );
-    assert.ok(events?.sql.includes('count(*) over ()'));
-    assert.ok(
-      events?.sql.includes(
-        'select "a"."group_code" as "group", "a"."reason_code" as "reason", "a"."amount_cents" as "cents" from "claim_event_adjustments" as "a"'
-      )
-    );
-  });
-
-  it('lists the payer files that touched a claim with only the lines for that claim', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    assert.deepEqual(await listClaimPayerFiles(db, 'c1'), []);
-    const [q] = queries;
-    assert.ok(q?.sql.includes('from "payer_files" as "f"'));
-    assert.ok(q?.sql.includes('where exists (select "fi"."id" from "payer_file_items" as "fi"'));
-    assert.deepEqual(q?.parameters, ['c1', 'c1']);
-    await db.destroy();
-  });
-
   it('names the import a claim came from', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await findClaim(db, 't1', 'c1');
@@ -294,43 +178,15 @@ describe('claim queries', () => {
     await db.destroy();
   });
 
-  it('checks claims, documents and the claim found by id within the agency only', async () => {
+  it('checks claims and the claim found by id within the agency only', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await findClaim(db, 't-1', 'c1');
     assert.equal(await claimExists(db, 't-1', 'c1'), false);
-    assert.equal(await findEventDocument(db, 't-1', 'c1', 'e1'), null);
-    const [find, exists, document] = queries;
+    const [find, exists] = queries;
     assert.ok(find?.sql.includes('"c"."agency_id" = $'));
     assert.ok(find?.parameters.includes('t-1') && find.parameters.includes('c1'));
     assert.ok(exists?.sql.endsWith('where "id" = $1 and "agency_id" = $2'));
     assert.deepEqual(exists?.parameters, ['c1', 't-1']);
-    assert.ok(document?.sql.includes('"c"."agency_id" = $3 and "e"."document" is not null'));
-    assert.deepEqual(document?.parameters, ['e1', 'c1', 't-1']);
-    await db.destroy();
-  });
-
-  it('finds active runs of a claim and links a new cycle run to it', async () => {
-    const { db, queries } = createRecordingDb((q) =>
-      q.sql.includes('from "claim_runs" as "cr"') ? [{ id: 'r1' }] : []
-    );
-    assert.equal(await hasActiveRun(db, 'c1'), true);
-    await setCycleRun(db, 'c1', 'r2');
-    const [active, link, cycle] = queries;
-    assert.ok(active?.sql.includes('"r"."status" in ('));
-    assert.equal(active?.parameters[0], 'c1');
-    assert.deepEqual(link?.parameters, ['r2', 'c1']);
-    assert.ok(cycle?.sql.startsWith('update "claims" set "cycle_run_id" = $1'));
-    assert.deepEqual(cycle?.parameters, ['r2', 'c1']);
-    await db.destroy();
-  });
-
-  it('lists the claim files that carry a batch or a document in order', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    assert.deepEqual(await listClaimFiles(db, 'c1'), []);
-    const [files] = queries;
-    assert.ok(files?.sql.includes('("e"."batch_id" is not null or "e"."document" is not null)'));
-    assert.ok(files?.sql.endsWith('order by "e"."created_at", "e"."id"'));
-    assert.deepEqual(files?.parameters, ['c1']);
     await db.destroy();
   });
 });
