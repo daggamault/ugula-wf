@@ -5,8 +5,15 @@ import {
   claimSignalKey,
   isClosedStatus
 } from '@ugula/billing';
-import { applyClaimEdit, type Db, findClaimCheck, TERMINAL_RUN_STATUSES } from '@ugula/db';
-import type { RunQueueClient } from '@ugula/run-queue';
+import {
+  ACTIVE_RUN_STATUSES,
+  applyClaimEdit,
+  type Db,
+  findClaimCheck,
+  sqlExecutor,
+  TERMINAL_RUN_STATUSES
+} from '@ugula/db';
+import { cancel, enqueueRuns, type RunQueueClient } from '@ugula/run-queue';
 import { sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
@@ -15,6 +22,21 @@ import { agencyClaim, linkClaimRun, signalClaim } from './claim-scope.ts';
 const DRAFT: ClaimStatus = 'draft';
 
 const REVIEWABLE: ClaimStatus = 'needs_review';
+
+export const otherClaimRuns = (runId: string, claimId: string) =>
+  sql<{ id: string }>`
+    with recursive closing (id, parent_id) as (
+      select id, parent_id from workflow_runs where id = ${runId}
+      union all
+      select r.id, r.parent_id from workflow_runs r join closing c on r.id = c.parent_id
+    )
+    select r.id from workflow_runs r
+    where r.status in (${sql.join(ACTIVE_RUN_STATUSES)})
+      and r.id not in (select id from closing)
+      and (
+        r.id in (select cr.run_id from claim_runs cr where cr.claim_id = ${claimId})
+        or r.id = (select cycle_run_id from claims where id = ${claimId})
+      )`;
 
 export const createCycleStore = (
   db: Db,
@@ -133,6 +155,12 @@ export const createCycleStore = (
         .where('agency_id', '=', claim.agency_id)
         .where('key', '=', claimSignalKey(claim.id))
         .execute();
+      const { rows } = await otherClaimRuns(runId, claim.id).execute(tx);
+      await enqueueRuns(
+        boss,
+        sqlExecutor(tx),
+        rows.map((r) => cancel(r.id))
+      );
     });
   },
 

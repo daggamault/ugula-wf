@@ -103,14 +103,7 @@ export const placeOf = (place: string) =>
 export const nameOf = (person: string) =>
   `join(filter([${person}.firstName, ${person}.lastName], x => x != null), ' ')`;
 
-export const dollars = (cents: string) => {
-  const whole = `floor(round(abs(${cents})) / 100)`;
-  const thousands = (by: number) => `padStart(text(floor(${whole} / ${by}) % 1000), 3, '0')`;
-  return `((${cents} < 0 ? '-$' : '$') + (${whole} >= 1000000
-    ? text(floor(${whole} / 1000000)) + ',' + ${thousands(1000)} + ',' + ${thousands(1)}
-    : ${whole} >= 1000 ? text(floor(${whole} / 1000)) + ',' + ${thousands(1)} : text(${whole})) +
-    '.' + padStart(text(round(abs(${cents})) % 100), 2, '0'))`;
-};
+export const dollars = (cents: string) => `money(${cents})`;
 
 export const named = (value: string, fallback: string) =>
   `(${value} != null && ${value} != '' ? ${value} : ${fallback})`;

@@ -34,6 +34,12 @@ React app in `apps/web`, built with Vite. Pages live in `src/features/<area>`; s
 | Workflows and runs      | `/workflows`, `/workflows/customized`, `/workflows/:id`, `/tables`, `/tables/:id`, `/runs`, `/runs/:id`                                             |
 | Admin                   | `/payers`, `/facilities`, `/fees`, `/users`, `/users/invitations`, `/users/invite`, `/users/:id`, `/roles`, `/roles/new`, `/roles/:id`, `/settings` |
 
+## Tasks and claims
+
+Billers work tasks, not claims. `/tasks` is the work queue (by queue and assignee, Next Task moves through it), and a task page (`/tasks/:id`) holds everything its decision needs, in order: **The Issue** (the task's one-line summary, else its first blocking claim issue; the issues or reasons; what is needed), **Claim** (a snapshot the API builds for every claim task: patient, date of service, trip, payers with eligibility, charges and balance), **Source Report** (a readable PCR summary over the raw XML), the raw **Workflow Details**, and **Your Decision**. Back returns to the tasks list, and the claim is a reference link.
+
+The claim page (`/claims/:id`) is a read-only record. Its **Start Task** menu starts a claim task workflow through `POST /api/claims/:id/tasks`, waits for the run's first task (`GET /api/tasks?runId=`) and opens it; files for task fields upload through `POST /api/tasks/:id/files`.
+
 ## Workflow editor
 
 - `?panel=settings` opens graph settings (paths, exit labels and descriptions, pins with labels and descriptions, variables); `?panel=compare` opens the compare panel of a copy; `?removed=shown` adds the base's removed nodes as ghosts. Documentation hints from `documentationIssues` show as a collapsible warning.

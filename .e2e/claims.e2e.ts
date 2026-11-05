@@ -255,7 +255,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await openClaim(claims.worked);
     await startClaimTask(s.page, 'Add Document');
     const upload = section(s.page, 'Your Decision').last();
-    await chooseOption(listboxByLabel(upload, 'Document', true), 'facesheet');
+    await chooseOption(listboxByLabel(upload, /^Document\b/), 'facesheet');
     await upload.locator('input[type="file"]').setInputFiles({
       name: 'facesheet.pdf',
       mimeType: 'application/pdf',

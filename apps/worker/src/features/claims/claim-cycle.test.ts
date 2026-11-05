@@ -205,6 +205,33 @@ describe('createCycleStore', () => {
     );
   });
 
+  it('cancels the claim cycle and open claim tasks, never the closing run or its parents', async () => {
+    jobs.length = 0;
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('for update')
+        ? [{ status: 'needs_review' }]
+        : q.sql.includes('from "claim_balances"')
+          ? [{ balance_cents: 500 }]
+          : q.sql.includes('with recursive closing')
+            ? [{ id: CYCLE }, { id: 'chase-1' }]
+            : ownedClaim(q)
+              ? [owned]
+              : []
+    );
+    await createCycleStore(db, boss).closeClaim('r1', ID, 'k2', 'void');
+    const others = queries.find((q) => q.sql.includes('with recursive closing'));
+    assert.ok(others?.sql.includes('r.id not in (select id from closing)'));
+    assert.deepEqual(others?.parameters.slice(0, 1), ['r1']);
+    assert.deepEqual(
+      jobs.map((j) => [j.runId, j.command.type]),
+      [
+        [CYCLE, 'cancel'],
+        ['chase-1', 'cancel']
+      ]
+    );
+    jobs.length = 0;
+  });
+
   it('links a run to a claim of its own agency', async () => {
     const { db, queries } = createRecordingDb((q) => (ownedClaim(q) ? [owned] : []));
     await createCycleStore(db, boss).linkRun('r1', ID);
