@@ -144,7 +144,7 @@ const missingParts = (a: Address | null) =>
 
 const MEDICARE_FILINGS: readonly (string | null)[] = ['MA', 'MB'];
 
-export const isMedicare = (claimFiling: string | null) => MEDICARE_FILINGS.includes(claimFiling);
+const isMedicare = (claimFiling: string | null) => MEDICARE_FILINGS.includes(claimFiling);
 
 export const STAY_KINDS = ['inpatient', 'snf'] as const;
 

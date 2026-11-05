@@ -35,7 +35,6 @@ export {
   CLAIM_FIX_FIELDS,
   type ClaimPatch,
   type CoveragePatch,
-  type DocumentationPatch,
   LEVEL_FIELD,
   LOADED_MILES_FIELD,
   TRIP_TYPE_FIELD
@@ -140,7 +139,6 @@ export {
   FACILITY_KINDS,
   type FacilityKind,
   isFacilityKind,
-  RESPONSIBLE_PARTIES,
   type ResponsibleParty
 } from './facilities.ts';
 export { US_STATE_PATTERN, usState, ZIP_CODE_PATTERN, ZIP_PLUS_4_PATTERN } from './geo.ts';

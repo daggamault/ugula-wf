@@ -208,7 +208,7 @@ export const MAX_DOCUMENTED_COUNT = 99;
 const countOf = (min: number) => (x: unknown) =>
   typeof x === 'number' && Number.isInteger(x) && x >= min && x <= MAX_DOCUMENTED_COUNT ? x : null;
 
-export const MAX_DOCUMENTED_MILES = 999;
+const MAX_DOCUMENTED_MILES = 999;
 
 const milesOf = (x: unknown) =>
   typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= MAX_DOCUMENTED_MILES ? x : null;
