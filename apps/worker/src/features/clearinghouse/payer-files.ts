@@ -15,7 +15,6 @@ import {
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobStore } from '@ugula/storage';
 import type { Announce } from '../../shared/live.ts';
-import { runAgency } from '../../shared/tenancy.ts';
 
 type Blobs = Pick<BlobStore, 'getBytes'>;
 
@@ -34,11 +33,16 @@ export const createPayerFileStore = (
   now: () => Date = () => new Date()
 ): PayerFileStore & { applyDocument: ApplyDocument } => {
   const load = async (runId: string, document: BlobRef) => {
-    const run = await runAgency(db, runId).executeTakeFirstOrThrow();
+    const run = await db
+      .selectFrom('workflow_runs')
+      .select(['agency_id', 'started_by'])
+      .where('id', '=', runId)
+      .executeTakeFirstOrThrow();
     const read = readPayerFile(await blobs.getBytes(document));
-    if (!read.ok) return { agencyId: run.agency_id, read } as const;
+    const userId = run.started_by;
+    if (!read.ok) return { agencyId: run.agency_id, userId, read } as const;
     const imported = await findImported(db, run.agency_id, read.value.digest);
-    return { agencyId: run.agency_id, read, imported } as const;
+    return { agencyId: run.agency_id, userId, read, imported } as const;
   };
 
   const applyDocument: ApplyDocument = async (runId, document, fileName, postings = []) => {
@@ -49,7 +53,7 @@ export const createPayerFileStore = (
     const applied = await db.transaction().execute((tx) =>
       applyPayerFile(tx, boss, {
         agencyId: loaded.agencyId,
-        userId: null,
+        userId: loaded.userId,
         fileName,
         document,
         file,

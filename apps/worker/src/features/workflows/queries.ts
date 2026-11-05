@@ -1,6 +1,7 @@
 import type { Permission } from '@ugula/access';
 import {
   ACTIVE_RUN_STATUSES,
+  agencyTimeZone,
   type Database,
   type Db,
   findPublishedGraphs,
@@ -161,6 +162,13 @@ const json = (value: Json | undefined) => (value === undefined ? null : JSON.str
 
 const leaseUntil = (ms: number) => sql<Date>`now() + ${ms} * interval '1 millisecond'`;
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+const dueAtOf = (agencyId: string, due: string) =>
+  DATE_ONLY.test(due)
+    ? sql<string>`(${due}::date + interval '1 day' - interval '1 second') at time zone ${agencyTimeZone(agencyId)}`
+    : due;
+
 export const buildClaim = (db: Kysely<Database>, { runId, command }: RunJob, leaseMs: number) => {
   const base = db
     .updateTable('workflow_runs')
@@ -280,7 +288,7 @@ const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
         outcomes: t.outcomes,
         defaults: json(t.defaults),
         priority: t.priority,
-        due_at: t.dueAt,
+        due_at: t.dueAt === null ? null : dueAtOf(t.agencyId, t.dueAt),
         permission: t.permission,
         assignee_id:
           t.assigneeId === null

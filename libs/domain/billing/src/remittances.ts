@@ -1,11 +1,11 @@
 import { type Adjustment, DENIAL_ROUTES } from './claims.ts';
 import type { RemittanceClaim } from './x835.ts';
 
-export const REMITTANCE_ROUTES = ['reconcile', ...DENIAL_ROUTES, 'review', 'unmatched'] as const;
+const REMITTANCE_ROUTES = ['reconcile', ...DENIAL_ROUTES, 'review', 'unmatched'] as const;
 
 export type RemittanceRoute = (typeof REMITTANCE_ROUTES)[number];
 
-export const isRemittanceRoute = (x: unknown): x is RemittanceRoute =>
+const isRemittanceRoute = (x: unknown): x is RemittanceRoute =>
   REMITTANCE_ROUTES.includes(x as RemittanceRoute);
 
 export type RemittanceLine = {
@@ -84,17 +84,19 @@ export const readPostings = (x: unknown): RemittancePosting[] =>
   (Array.isArray(x) ? x : []).flatMap((p) => {
     if (typeof p !== 'object' || p === null) return [];
     const { position, route, message, adjustedCents } = p as Record<string, unknown>;
-    return typeof position === 'number' && isRemittanceRoute(route)
-      ? [
+    if (typeof position !== 'number' || !isRemittanceRoute(route)) return [];
+    const text = typeof message === 'string' ? message : '';
+    if (adjustedCents == null) return [{ position, route, message: text, adjustedCents: 0 }];
+    return typeof adjustedCents === 'number' &&
+      Number.isInteger(adjustedCents) &&
+      adjustedCents >= 0
+      ? [{ position, route, message: text, adjustedCents }]
+      : [
           {
             position,
-            route,
-            message: typeof message === 'string' ? message : '',
-            adjustedCents:
-              typeof adjustedCents === 'number' && Number.isInteger(adjustedCents)
-                ? adjustedCents
-                : 0
+            route: 'review' as const,
+            message: `The adjustment of ${String(adjustedCents)} cents is not a whole, non-negative amount; post it by hand`,
+            adjustedCents: 0
           }
-        ]
-      : [];
+        ];
   });

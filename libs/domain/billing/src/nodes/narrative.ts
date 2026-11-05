@@ -1,5 +1,5 @@
 import { actionNode, pin } from '@ugula/graph';
-import { FINDINGS } from '../models.ts';
+import { FINDINGS } from '../claim-models.ts';
 import { readNarrative } from '../narrative.ts';
 import { textOrNull } from '../values.ts';
 import type { NodesOf } from './stores.ts';

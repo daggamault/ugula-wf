@@ -98,7 +98,7 @@ export const retargetRefs = (def: GraphDef, versionOf: (key: string) => number |
   })
 });
 
-const pinContract = (p: PinSpec) => [p.name, p.type, p.optional === true];
+const pinContract = (p: PinSpec) => [p.name, p.type, p.optional === true, p.default !== undefined];
 
 export const contractOf = (signature: Signature) =>
   JSON.stringify([

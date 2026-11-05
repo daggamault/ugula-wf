@@ -13,13 +13,13 @@ import {
   PCS_TYPES,
   SIGNATURE_STATUSES,
   TRANSPORT_REASONS,
-  type TransportReason,
   US_STATE_PATTERN,
   ZIP_CODE_PATTERN
 } from '@ugula/billing';
 import * as v from 'valibot';
 import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
+import { searchText } from '../../shared/search.ts';
 
 const cents = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(100_000_000));
 
@@ -177,23 +177,32 @@ export const recordsRequestSchema = v.object({
 export type RecordsRequest = v.InferOutput<typeof recordsRequestSchema>;
 
 export const facilitySchema = v.object({ facilityId: v.nullable(uuid) });
-const isoDay = v.optional(
-  v.nullable(v.pipe(v.string(), v.isoDate('Use a date like 2026-10-01'))),
-  null
-);
 
-const flag = v.optional(v.nullable(v.boolean()), null);
+export const facilityOptionsQuery = v.object({ q: searchText });
+const isoDay = v.optional(v.nullable(v.pipe(v.string(), v.isoDate('Use a date like 2026-10-01'))));
+
+const flag = v.optional(v.nullable(v.boolean()));
+
+const clearableText = (max: number) =>
+  v.optional(
+    v.nullable(
+      v.pipe(
+        v.string(),
+        v.trim(),
+        v.maxLength(max),
+        v.transform((s) => s || null)
+      )
+    )
+  );
 
 const count = (min: number) =>
   v.optional(
-    v.nullable(v.pipe(v.number(), v.integer(), v.minValue(min), v.maxValue(MAX_DOCUMENTED_COUNT))),
-    null
+    v.nullable(v.pipe(v.number(), v.integer(), v.minValue(min), v.maxValue(MAX_DOCUMENTED_COUNT)))
   );
 
 const choiceOf = <T extends Record<string, string>>(labels: T) =>
   v.optional(
-    v.nullable(v.picklist(Object.keys(labels) as [keyof T & string, ...(keyof T & string)[]])),
-    null
+    v.nullable(v.picklist(Object.keys(labels) as [keyof T & string, ...(keyof T & string)[]]))
   );
 
 const addressSchema = v.object({
@@ -286,15 +295,10 @@ export const billingDataSchema = v.object({
   documentation: v.optional(
     v.nullable(
       v.object({
-        signature: v.optional(v.nullable(v.picklist(SIGNATURE_STATUSES)), null),
-        pcsOnFile: v.optional(v.nullable(v.boolean()), null),
+        signature: v.optional(v.picklist(SIGNATURE_STATUSES)),
+        pcsOnFile: flag,
         pcsSignedOn: isoDay,
-        transportReason: v.optional(
-          v.nullable(
-            v.picklist(Object.keys(TRANSPORT_REASONS) as [TransportReason, ...TransportReason[]])
-          ),
-          null
-        ),
+        transportReason: choiceOf(TRANSPORT_REASONS),
         patientCount: count(1),
         abnOnFile: flag,
         abnSignedOn: isoDay,
@@ -303,7 +307,7 @@ export const billingDataSchema = v.object({
         mspEsrd: flag,
         mspDisability: flag,
         mspAccident: choiceOf(MSP_ACCIDENTS),
-        priorAuthorization: optionalText(50),
+        priorAuthorization: clearableText(50),
         priorAuthorizationExpiresOn: isoDay,
         pcsType: choiceOf(PCS_TYPES),
         roundTrips: count(0),

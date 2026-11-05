@@ -15,6 +15,7 @@ export type {
   AppliedPayerFile,
   BillingStores,
   BlobRef,
+  CalendarStore,
   ClaimStatusCheck,
   ClaimStore,
   Deadline,

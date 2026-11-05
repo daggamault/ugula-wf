@@ -6,7 +6,6 @@ import {
   isStaleIn,
   overriddenByIn,
   overridesIn,
-  rankOf,
   type Scope,
   type ScopeIds,
   scopeOf,
@@ -133,16 +132,6 @@ export const findTable = (db: Db, s: ScopeIds, id: string) =>
     .where(visible('t', s))
     .executeTakeFirst();
 
-export const findEffectiveTable = (db: Db, s: ScopeIds, key: string) =>
-  db
-    .selectFrom('data_tables as t')
-    .select(['t.id', scopeOf('t').as('scope')])
-    .where('t.key', '=', key)
-    .where(visible('t', s))
-    .orderBy(rankOf('t'))
-    .limit(1)
-    .executeTakeFirst();
-
 export const listTableVersions = (db: Db, tableId: string) =>
   db
     .selectFrom('data_table_versions as v')
@@ -159,31 +148,6 @@ export const listTableVersions = (db: Db, tableId: string) =>
     .where('v.table_id', '=', tableId)
     .orderBy('v.version', 'desc')
     .execute();
-
-export const findTableVersion = (db: Db, tableId: string, version: number) =>
-  db
-    .selectFrom('data_table_versions')
-    .select(['id', 'version', 'definition', 'published_at', 'base_version_id'])
-    .where('table_id', '=', tableId)
-    .where('version', '=', version)
-    .executeTakeFirst();
-
-export const findTableVersionById = (db: Db, id: string) =>
-  db
-    .selectFrom('data_table_versions as v')
-    .innerJoin('data_tables as t', 't.id', 'v.table_id')
-    .select(['v.id', 'v.version', 'v.definition', 't.id as table_id', scopeOf('t').as('scope')])
-    .where('v.id', '=', id)
-    .executeTakeFirst();
-
-export const findTableDraft = (db: Db, tableId: string) =>
-  db
-    .selectFrom('data_table_versions')
-    .select(['id', 'version', 'definition', 'base_version_id'])
-    .where('table_id', '=', tableId)
-    .where('published_at', 'is', null)
-    .forUpdate()
-    .executeTakeFirst();
 
 export const insertTable = (
   db: Db,
@@ -208,15 +172,6 @@ export const insertTable = (
     })
     .returning('id')
     .executeTakeFirstOrThrow();
-
-export const nextTableVersion = async (db: Db, tableId: string) =>
-  ((
-    await db
-      .selectFrom('data_table_versions')
-      .select((eb) => eb.fn.max('version').as('max'))
-      .where('table_id', '=', tableId)
-      .executeTakeFirst()
-  )?.max ?? 0) + 1;
 
 export const insertTableDraft = (
   db: Db,
@@ -261,51 +216,3 @@ export const publishTableVersion = async (db: Db, id: string) => {
     .where('published_at', 'is', null)
     .execute();
 };
-
-export const touchTable = async (db: Db, id: string) => {
-  await db
-    .updateTable('data_tables')
-    .set({ updated_at: sql`now()` })
-    .where('id', '=', id)
-    .execute();
-};
-
-export const findSystemTable = (db: Db, key: string) =>
-  db
-    .selectFrom('data_tables')
-    .select('id')
-    .where('key', '=', key)
-    .where('organization_id', 'is', null)
-    .executeTakeFirst();
-
-export const findNewestPublishedTableVersion = (db: Db, tableId: string) =>
-  db
-    .selectFrom('data_table_versions')
-    .select(['id', 'version', 'definition', 'contract'])
-    .where('table_id', '=', tableId)
-    .where('published_at', 'is not', null)
-    .orderBy('version', 'desc')
-    .limit(1)
-    .executeTakeFirst();
-
-export const findScopedTable = (
-  db: Db,
-  scope: { organizationId: string; agencyId: string | null },
-  key: string
-) =>
-  db
-    .selectFrom('data_tables')
-    .select(['id', 'is_active'])
-    .where('organization_id', '=', scope.organizationId)
-    .where('agency_id', scope.agencyId === null ? 'is' : '=', scope.agencyId)
-    .where('key', '=', key)
-    .executeTakeFirst();
-
-export const setTableActive = (db: Db, id: string, active: boolean) =>
-  db
-    .updateTable('data_tables')
-    .set({ is_active: active, updated_at: sql`now()` })
-    .where('id', '=', id)
-    .where('organization_id', 'is not', null)
-    .returning('id')
-    .executeTakeFirst();

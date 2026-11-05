@@ -721,6 +721,17 @@ const cycleClaim = (): GraphDef => {
     label: 'By Step',
     config: { cases: ROUTES }
   });
+  g.add('unknownStepContext', 'std.expr', expr('Step Not Handled', '{ step: step }'));
+  g.add('unknownStep', 'std.human.task', {
+    label: 'Claim Step Not Handled',
+    config: {
+      title: 'Claim step not handled',
+      queue: 'billing-review',
+      instructions:
+        'The Next Claim Step rule chose a step this claim cycle has no branch for (the details name it), so the claim cannot move on. Correct the Claim Steps table or the rule override that returns it, then retry the cycle.',
+      outcomes: ['retry']
+    }
+  });
   g.add('payerSubject', 'std.expr', subject('reference', 'payer'));
   g.add('claimSubject', 'std.expr', subject('reference'));
   g.add('claimContext', 'std.expr', expr('Claim Context', CLAIM_CONTEXT));
@@ -894,6 +905,10 @@ const cycleClaim = (): GraphDef => {
   g.wire('route.collections', 'collections.exec');
   g.wire('route.writeOff', 'approveWriteOff.exec');
   g.wire('route.closed', 'closePaid.exec');
+  g.wire('route.default', 'unknownStep.exec');
+  g.wire('claimSubject.result', 'unknownStep.subject');
+  g.wire('next.step', 'unknownStepContext.step');
+  g.wire('unknownStepContext.result', 'unknownStep.context');
 
   for (const id of ['fix.voided', 'review.void', 'confirmPayers.void', 'submit.void'] as const) {
     g.wire(id, 'closeVoid.exec');

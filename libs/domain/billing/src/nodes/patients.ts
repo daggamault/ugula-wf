@@ -1,6 +1,6 @@
 import { actionNode, branchNode, pin } from '@ugula/graph';
-import { DEMOGRAPHICS, PATIENT } from '../models.ts';
 import { nameKey } from '../names.ts';
+import { DEMOGRAPHICS, PATIENT } from '../party-models.ts';
 import {
   isCompleteAddress,
   matchPatient,

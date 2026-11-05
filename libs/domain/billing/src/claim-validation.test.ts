@@ -55,6 +55,7 @@ const check: ClaimCheck = {
   responsibleParty: 'payer',
   responsibilityRecorded: false,
   documents: ['pcs'],
+  timeZone: 'America/Chicago',
   lines: [
     { code: 'A0427', units: 1, unitCents: 85_000, totalCents: 85_000 },
     { code: 'A0425', units: 7.3, unitCents: 1_000, totalCents: 7_300 }
@@ -201,6 +202,15 @@ describe('checkFactsOf', () => {
     assert.deepEqual(facts.patientAddressMissing, []);
     assert.equal(facts.pcsDaysBeforeTrip, null);
     assert.equal(facts.payers[0]?.filingDaysLeft, null);
+  });
+
+  it("counts filing days left by the agency's calendar, not UTC", () => {
+    const evening = new Date('2027-09-21T03:00:00Z');
+    assert.equal(checkFactsOf(check, evening).payers[0]?.filingDaysLeft, 11);
+    assert.equal(
+      checkFactsOf({ ...check, timeZone: 'UTC' }, evening).payers[0]?.filingDaysLeft,
+      10
+    );
   });
 });
 

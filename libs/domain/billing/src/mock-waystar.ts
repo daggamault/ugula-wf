@@ -11,7 +11,7 @@ import { centsOf, dateOf, readX12, textOf } from './x12.ts';
 
 export { WAYSTAR_EXTENSIONS };
 
-export const WAYSTAR_RECEIVERS = ['WAYSTAR', 'ZIRMED'] as const;
+const WAYSTAR_RECEIVERS = ['WAYSTAR', 'ZIRMED'] as const;
 
 export const INACTIVE_MEMBER_PREFIX = 'INACTIVE';
 
@@ -89,7 +89,7 @@ export const buildTA1 = (rejected: Interchange, noteCode: string, now: Date) => 
   return `${isa}~\n${ta1}~\nIEA*0*${rejected.controlNumber.padStart(9, '0')}~\n`;
 };
 
-export type WaystarClaimsResponse = MockResponse & { ta1: string | null };
+type WaystarClaimsResponse = MockResponse & { ta1: string | null };
 
 export const respondToClaims = (
   text: string,
@@ -112,7 +112,7 @@ export const respondToClaims = (
   return { ...respond(text, now, { remits: (c) => isEraEnrolled(c.payer?.id ?? '') }), ta1: null };
 };
 
-export type EligibilityInquiry = {
+type EligibilityInquiry = {
   trace: string;
   payer: { name: string; id: string };
   subscriber: { lastName: string; firstName: string | null; memberId: string };
@@ -177,7 +177,7 @@ export const respondToEligibility = (text: string, now: Date) => {
   );
 };
 
-export type ClaimStatusQuery = {
+type ClaimStatusQuery = {
   trace: string;
   claimNumber: string;
   payerClaimNumber: string | null;

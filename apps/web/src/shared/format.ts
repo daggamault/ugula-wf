@@ -2,6 +2,10 @@ const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeS
 
 export const formatDateTime = (iso: string | null) => (iso ? dateTime.format(new Date(iso)) : '—');
 
+const localDay = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
+
+export const formatDay = (iso: string | null) => (iso ? localDay.format(new Date(iso)) : '—');
+
 const calendarDay = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeZone: 'UTC' });
 
 export const formatDate = (day: string | null) =>

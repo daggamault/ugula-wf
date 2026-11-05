@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { MAX_LOADED_MILES } from './charges.ts';
 import {
   daysBetween,
   pcsOnFileOf,
@@ -172,6 +173,14 @@ describe('readDocumentation', () => {
         bad.facilityStay
       ],
       [null, null, null, null, null, null]
+    );
+    assert.equal(
+      readDocumentation({ closestFacilityMiles: MAX_LOADED_MILES }).closestFacilityMiles,
+      MAX_LOADED_MILES
+    );
+    assert.equal(
+      readDocumentation({ closestFacilityMiles: MAX_LOADED_MILES + 1 }).closestFacilityMiles,
+      null
     );
   });
 

@@ -1,9 +1,8 @@
 import type { PayerFileOutcome } from './payer-files.ts';
+import { isMedicareFiling } from './payers.ts';
 import type { EligibilityResult } from './x271.ts';
 
-const MEDICARE_FILINGS: readonly (string | null)[] = ['MA', 'MB'];
-
-export const ADVANTAGE_NOTE = 'Bill the Medicare Advantage plan instead';
+const ADVANTAGE_NOTE = 'Bill the Medicare Advantage plan instead';
 
 type EligibilityFinding = {
   active: boolean | null;
@@ -27,7 +26,7 @@ export const eligibilityFinding = (
   if (r.active === null) {
     return { active: null, outcome: 'review', note: note || 'The payer did not say' };
   }
-  if (r.advantagePlan && MEDICARE_FILINGS.includes(claimFiling)) {
+  if (r.advantagePlan && isMedicareFiling(claimFiling)) {
     return {
       active: r.active,
       outcome: 'review',

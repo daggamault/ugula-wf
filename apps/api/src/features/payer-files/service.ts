@@ -12,7 +12,7 @@ export const RECEIVE_WORKFLOW = 'billing.receive-payer-file';
 type PayerFileServiceDeps = {
   db: Db;
   boss: RunQueueClient;
-  blobs: Pick<BlobStore, 'putBytes' | 'getBytes'>;
+  blobs: Pick<BlobStore, 'putBytes' | 'getBytes' | 'remove'>;
   maxBytes: number;
 };
 
@@ -33,7 +33,7 @@ export const createPayerFileService = ({ db, boss, blobs, maxBytes }: PayerFileS
     return ok({ name: file.file_name, bytes: await blobs.getBytes(file.document as BlobRef) });
   },
 
-  upload: async (agencyId: string, file: UploadedFile) => {
+  upload: async (agencyId: string, userId: string, file: UploadedFile) => {
     if (file.bytes.byteLength > maxBytes) {
       return fail('invalid', `The file is larger than ${maxBytes} bytes`);
     }
@@ -56,14 +56,21 @@ export const createPayerFileService = ({ db, boss, blobs, maxBytes }: PayerFileS
       file.bytes,
       'application/edi-x12'
     );
-    const runId = await db.transaction().execute((tx) =>
-      startRun(tx, boss, {
-        agencyId,
-        versionId: version.id,
-        inputs: { file: document, fileName },
-        interactive: true
-      })
-    );
+    const runId = await db
+      .transaction()
+      .execute((tx) =>
+        startRun(tx, boss, {
+          agencyId,
+          versionId: version.id,
+          inputs: { file: document, fileName },
+          interactive: true,
+          startedBy: userId
+        })
+      )
+      .catch(async (err: unknown) => {
+        await blobs.remove(document);
+        throw err;
+      });
     return ok({ runId, kind: inbound.kind });
   }
 });

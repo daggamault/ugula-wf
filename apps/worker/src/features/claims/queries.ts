@@ -26,6 +26,7 @@ import {
   findReadyClaim,
   insertBatch,
   insertSubmissionEvent,
+  lockClaim,
   lockReadyClaim,
   markSubmitted,
   pendingClaim,
@@ -687,7 +688,32 @@ export const createClaimStore = (
     setResponsibility: async (runId, claimId, sourceKey, r) => {
       const claim = await agencyClaim(db, runId, claimId);
       await db.transaction().execute(async (tx) => {
-        const logged = await tx
+        const locked = await lockClaim(tx, claim.agency_id, claim.id);
+        if (!locked) throw new Error(`Claim ${claimId} does not exist`);
+        const recorded = await tx
+          .selectFrom('claim_events')
+          .select('id')
+          .where('claim_id', '=', claim.id)
+          .where('source_key', '=', sourceKey)
+          .executeTakeFirst();
+        if (recorded) return;
+        if (isClosedStatus(locked.status)) throw new Error('The claim is already closed');
+        const facility = r.party === FACILITY ? r.facilityId : null;
+        if (r.party === FACILITY && !(facility && isUuid(facility))) {
+          throw new Error('Choose the facility the claim is billed to');
+        }
+        if (
+          facility &&
+          !(await tx
+            .selectFrom('facilities')
+            .select('id')
+            .where('id', '=', facility)
+            .where('agency_id', '=', claim.agency_id)
+            .executeTakeFirst())
+        ) {
+          throw new Error(`Facility ${facility} is not in the facility directory`);
+        }
+        await tx
           .insertInto('claim_events')
           .values({
             claim_id: claim.id,
@@ -695,26 +721,10 @@ export const createClaimStore = (
             note: r.note,
             source_key: sourceKey
           })
-          .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
-          .returning('id')
-          .executeTakeFirst();
-        if (!logged) return;
-        const facility = r.party === FACILITY ? r.facilityId : null;
-        if (r.party === FACILITY && !(facility && isUuid(facility))) {
-          throw new Error('Choose the facility the claim is billed to');
-        }
+          .execute();
         await tx
           .updateTable('claims')
-          .set({
-            facility_id: facility
-              ? tx
-                  .selectFrom('facilities')
-                  .select('id')
-                  .where('id', '=', facility)
-                  .where('agency_id', '=', claim.agency_id)
-              : null,
-            updated_at: sql`now()`
-          })
+          .set({ facility_id: facility, updated_at: sql`now()` })
           .where('id', '=', claim.id)
           .execute();
       });

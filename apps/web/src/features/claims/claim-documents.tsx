@@ -1,24 +1,26 @@
-import { DOCUMENT_CONTENT_TYPES, DOCUMENT_KINDS, type DocumentKind } from '@ugula/billing';
+import {
+  DOCUMENT_CONTENT_TYPES,
+  DOCUMENT_KINDS,
+  type DocumentKind,
+  isDocumentKind
+} from '@ugula/billing';
 import { DownloadIcon, SendIcon } from 'lucide-react';
 import { useState } from 'react';
 import { classNamesOf } from '../../shared/class-names.ts';
 import { formatDate, formatDateTime } from '../../shared/format.ts';
 import { Button } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
-import { FieldGrid, FieldGroup, FieldGroups } from '../../shared/ui/field.tsx';
+import { FieldGrid, FieldGroup, FieldGroups, FormActions } from '../../shared/ui/field.tsx';
 import { FileButton } from '../../shared/ui/file-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
-import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
+import { textLinkClasses } from '../../shared/ui/text-link.tsx';
 import type { ClaimDocument } from './client.ts';
 
 const KIND_OPTIONS = Object.entries(DOCUMENT_KINDS).map(([value, label]) => ({ value, label }));
 
-const linkClasses = classNamesOf(
-  interactiveClasses,
-  'text-primary inline-flex items-center gap-2 rounded-lg font-medium hover:underline'
-);
+const linkClasses = classNamesOf(textLinkClasses, 'inline-flex items-center gap-2');
 
 export const documentMeta = (
   d: Pick<ClaimDocument, 'signed_on' | 'created_at' | 'uploaded_by_email'>
@@ -85,7 +87,10 @@ export const DocumentsPanel = ({
                 span={2}
                 options={KIND_OPTIONS}
                 value={kind}
-                onChange={(e) => setKind(e.target.value as DocumentKind)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (isDocumentKind(next)) setKind(next);
+                }}
               />
               <Input
                 id="document-signed-on"
@@ -107,7 +112,7 @@ export const DocumentsPanel = ({
             </FieldGrid>
           </FieldGroup>
         </FieldGroups>
-        <div className="flex flex-wrap items-center gap-2">
+        <FormActions>
           <FileButton
             label="Upload Document"
             accept={DOCUMENT_CONTENT_TYPES.join(',')}
@@ -125,7 +130,7 @@ export const DocumentsPanel = ({
             <SendIcon aria-hidden="true" className="size-4" />
             Chase Document
           </Button>
-        </div>
+        </FormActions>
       </fieldset>
     </SectionPanel>
   );

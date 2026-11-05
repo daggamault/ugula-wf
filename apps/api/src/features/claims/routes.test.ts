@@ -25,6 +25,7 @@ const service = {
   saveBillingData: record('saveBillingData', { status: 'saved' }),
   requestRecords: record('requestRecords', { runId: 'r3' }),
   setFacility: record('setFacility', { facilityId: null }),
+  facilityOptions: record('facilityOptions', { items: [] }),
   uploadDocument: record('uploadDocument', { id: 'd1', runId: 'r3' }),
   chaseDocument: record('chaseDocument', { runId: 'r4' }),
   documentFile: async () =>
@@ -118,7 +119,18 @@ describe('claim routes', () => {
     assert.equal(facility.status, 200);
     assert.deepEqual(calls, [
       ['requestRecords', 't-1', ID, { dueOn: '2026-12-01', note: 'PCS' }],
-      ['setFacility', 't-1', ID, null]
+      ['setFacility', 't-1', 'u-1', ID, null]
+    ]);
+    calls.length = 0;
+  });
+
+  it('search the facility choices of a claim by name', async () => {
+    calls.length = 0;
+    assert.equal((await request('/facility-options?q=%20oak%20')).status, 200);
+    assert.equal((await request('/facility-options')).status, 200);
+    assert.deepEqual(calls, [
+      ['facilityOptions', 't-1', 'oak'],
+      ['facilityOptions', 't-1', undefined]
     ]);
     calls.length = 0;
   });

@@ -54,8 +54,9 @@ describe('run queries', () => {
 
   it('pick the newest published version of an active workflow unless one is requested', async () => {
     const { db, queries } = createRecordingDb();
-    await findPublishedVersion(db, 't', 'g');
-    await findPublishedVersion(db, 't', 'g', 3);
+    const s = { agencyId: 't', organizationId: 'o' };
+    await findPublishedVersion(db, s, 'g');
+    await findPublishedVersion(db, s, 'g', 3);
     assert.ok(queries[0]?.sql.includes('"g"."kind" = $2 and "g"."is_active" = $3'));
     assert.deepEqual(queries[0]?.parameters.slice(0, 3), ['g', 'workflow', true]);
     assert.ok(!queries[0]?.sql.includes('"gv"."version" = $'));
@@ -65,11 +66,17 @@ describe('run queries', () => {
 });
 
 describe('run agency scoping', () => {
-  it('start only system workflows or those of the agency', async () => {
+  it('start only system workflows or those visible to the agency and its organization', async () => {
     const { db, queries } = createRecordingDb();
-    await findPublishedVersion(db, 't-1', 'g1', 2);
-    assert.ok(queries[0]?.sql.includes('("g"."agency_id" = $4 or "g"."agency_id" is null)'));
-    assert.deepEqual(queries[0]?.parameters, ['g1', 'workflow', true, 't-1', 2, 1]);
+    await findPublishedVersion(db, { agencyId: 't-1', organizationId: 'o-1' }, 'g1', 2);
+    assert.ok(queries[0]?.sql.includes('"g"."organization_id" is null'));
+    assert.ok(queries[0]?.sql.includes('s.key = g.key and s.organization_id is null'));
+    assert.ok(queries[0]?.sql.includes('"g"."agency_id" = $4::uuid'));
+    assert.ok(
+      queries[0]?.sql.includes('"g"."agency_id" is null and "g"."organization_id" = $5::uuid')
+    );
+    assert.ok(!queries[0]?.sql.includes('"g"."agency_id" is null)'));
+    assert.deepEqual(queries[0]?.parameters, ['g1', 'workflow', true, 't-1', 'o-1', 2, 1]);
     await db.destroy();
   });
 

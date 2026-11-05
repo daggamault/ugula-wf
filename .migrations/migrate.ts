@@ -7,7 +7,7 @@ import { createClearinghouseConnectionsTable } from './clearinghouse-connections
 import { parseConfig } from './config.ts';
 import { createDataTablesTables } from './data-tables.ts';
 import { createExtensions } from './extensions.ts';
-import { createFacilitiesTables } from './facilities.ts';
+import { createFacilitiesTables, createFacilityInvoiceClaimsTable } from './facilities.ts';
 import { createFeeSchedulesTable } from './fee-schedules.ts';
 import { createGnisPlacesTable } from './gnis-places.ts';
 import { createGraphsTables } from './graphs.ts';
@@ -34,6 +34,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'claim_runs',
     'claim_documents',
     'claims',
+    'facility_invoice_claims',
     'facility_invoices',
     'facilities',
     'import_reports',
@@ -47,6 +48,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'patients',
     'tasks',
     'signals',
+    'schedule_runs',
     'clearinghouse_downloads',
     'payer_file_items',
     'payer_files',
@@ -74,6 +76,14 @@ const resetSchema = async (db: Kysely<Database>) => {
   }
   await sql`drop function if exists prevent_published_graph_change`.execute(db);
   await sql`drop function if exists prevent_published_table_change`.execute(db);
+  for (const name of [
+    'check_graph_version_base',
+    'check_run_graph_key',
+    'check_table_version_base',
+    'check_run_table_key'
+  ]) {
+    await sql`drop function if exists ${sql.id(name)}`.execute(db);
+  }
 };
 
 const steps = [
@@ -94,6 +104,7 @@ const steps = [
   createImportsTables,
   createFacilitiesTables,
   createClaimsTables,
+  createFacilityInvoiceClaimsTable,
   createPayerFilesTables,
   createNotificationsTables
 ] as const;

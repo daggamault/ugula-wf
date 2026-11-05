@@ -15,46 +15,76 @@ export const PUBLISHED_IMMUTABLE_TRIGGER = 'graph_versions_published_immutable';
 
 export const dependencyOf = (ref: GraphKey) => `${ref.key}@${ref.version}`;
 
-const organizationOf = (agencyId: string | null) =>
-  sql`(select a.organization_id from agencies a where a.id = ${agencyId}::uuid)`;
+type Viewer = { agency: RawBuilder<unknown>; organization: RawBuilder<unknown> };
 
-const resolved = (
-  agencyId: string | null,
-  key: RawBuilder<unknown>,
-  version: RawBuilder<unknown>
-) =>
+const agencyViewer = (agencyId: string | null): Viewer => ({
+  agency: sql`${agencyId}::uuid`,
+  organization: sql`(select a.organization_id from agencies a where a.id = ${agencyId}::uuid)`
+});
+
+const organizationViewer = (organizationId: string): Viewer => ({
+  agency: sql`null::uuid`,
+  organization: sql`${organizationId}::uuid`
+});
+
+const visibleTo = (alias: string, w: Viewer) => {
+  const a = (c: string) => sql.ref(`${alias}.${c}`);
+  return sql`(
+    ${a('organization_id')} is null
+    or ${a('agency_id')} = ${w.agency}
+    or (${a('agency_id')} is null and ${a('organization_id')} = ${w.organization})
+  )`;
+};
+
+const resolved = (w: Viewer, key: RawBuilder<unknown>, version: RawBuilder<unknown>) =>
   sql<{ id: string }>`(
     select v.id
     from graphs g
     join graph_versions v on v.graph_id = g.id
     left join lateral (
-      select sv.contract
-      from graphs sg
-      join graph_versions sv on sv.graph_id = sg.id
-      where sg.key = g.key and sg.organization_id is null
-        and sv.version = ${version} and sv.published_at is not null
+      select bg.id, bv.contract
+      from graphs bg
+      left join graph_versions bv
+        on bv.graph_id = bg.id and bv.version = ${version} and bv.published_at is not null
+      where bg.key = g.key
+        and (
+          bg.organization_id is null
+          or (bg.is_active and bg.agency_id is null and bg.organization_id = ${w.organization})
+        )
+      order by bg.organization_id is not null
+      limit 1
     ) base on true
     where g.key = ${key}
       and g.is_active
       and v.published_at is not null
-      and (
-        (g.organization_id is null and v.version = ${version})
-        or (
-          (
-            g.agency_id = ${agencyId}::uuid
-            or (g.agency_id is null and g.organization_id = ${organizationOf(agencyId)})
-          )
-          and case when base.contract is null then v.version = ${version}
-            else v.contract = base.contract end
-        )
-      )
+      and ${visibleTo('g', w)}
+      and case when base.id is null or base.id = g.id then v.version = ${version}
+        else v.contract = base.contract end
     order by g.agency_id is null, g.organization_id is null, v.version desc
     limit 1
   )`;
 
+const newestVersion = (w: Viewer, key: RawBuilder<unknown>, kind: RawBuilder<unknown>) =>
+  sql<{ version: number }>`
+    select v.version
+    from graphs g
+    join graph_versions v on v.graph_id = g.id
+    where g.key = ${key}
+      ${kind}
+      and g.is_active
+      and v.published_at is not null
+      and ${visibleTo('g', w)}
+    order by g.agency_id is not null, g.organization_id is not null, v.version desc
+    limit 1`;
+
+export const resolvedGraph = (agencyId: string, key: RawBuilder<unknown>) => {
+  const w = agencyViewer(agencyId);
+  return resolved(w, key, sql`(${newestVersion(w, key, sql``)})`);
+};
+
 const pinnedOr = (
   parentRunId: string | null,
-  agencyId: string | null,
+  w: Viewer,
   key: RawBuilder<unknown>,
   version: RawBuilder<unknown>
 ) =>
@@ -65,22 +95,24 @@ const pinnedOr = (
             select p.graph_version_id from workflow_run_graphs p
             where p.run_id = ${parentRunId}::uuid and p.key = ${key} and p.version = ${version}
           ),
-          ${resolved(agencyId, key, version)}
+          ${resolved(w, key, version)}
         ) as id
       )`
-    : resolved(agencyId, key, version);
+    : resolved(w, key, version);
+
+const buildFind = (w: Viewer, refs: GraphKey[], parentRunId: string | null) => sql<PublishedGraph>`
+  select r.id, req.key, req.version, gv.definition
+  from unnest(${refs.map((r) => r.key)}::text[], ${refs.map((r) => r.version)}::int[])
+    as req (key, version)
+  cross join lateral ${pinnedOr(parentRunId, w, sql.ref('req.key'), sql.ref('req.version'))} r
+  join graph_versions gv on gv.id = r.id
+  order by req.key, req.version`;
 
 export const buildFindPublishedGraphs = (
   agencyId: string | null,
   refs: GraphKey[],
   parentRunId: string | null = null
-) => sql<PublishedGraph>`
-  select r.id, req.key, req.version, gv.definition
-  from unnest(${refs.map((r) => r.key)}::text[], ${refs.map((r) => r.version)}::int[])
-    as req (key, version)
-  cross join lateral ${pinnedOr(parentRunId, agencyId, sql.ref('req.key'), sql.ref('req.version'))} r
-  join graph_versions gv on gv.id = r.id
-  order by req.key, req.version`;
+) => buildFind(agencyViewer(agencyId), refs, parentRunId);
 
 export const findPublishedGraphs = async (
   db: Kysely<Database>,
@@ -89,6 +121,15 @@ export const findPublishedGraphs = async (
   parentRunId: string | null = null
 ): Promise<PublishedGraph[]> =>
   refs.length ? (await buildFindPublishedGraphs(agencyId, refs, parentRunId).execute(db)).rows : [];
+
+export const findOrganizationGraphs = async (
+  db: Kysely<Database>,
+  organizationId: string,
+  refs: GraphKey[]
+): Promise<PublishedGraph[]> =>
+  refs.length
+    ? (await buildFind(organizationViewer(organizationId), refs, null).execute(db)).rows
+    : [];
 
 const bundle = (agencyId: string, versionId: string, parentRunId: string | null) => sql`
   with recursive bundle (id, key, version) as (
@@ -104,7 +145,7 @@ const bundle = (agencyId: string, versionId: string, parentRunId: string | null)
       select split_part(d, '@', 1) as key, split_part(d, '@', 2)::int as version
       from unnest(gv.dependencies) as d
     ) dep
-    cross join lateral ${pinnedOr(parentRunId, agencyId, sql.ref('dep.key'), sql.ref('dep.version'))} r
+    cross join lateral ${pinnedOr(parentRunId, agencyViewer(agencyId), sql.ref('dep.key'), sql.ref('dep.version'))} r
     where r.id is not null
   )`;
 
@@ -182,21 +223,8 @@ export const pinRunsGraphs = async (db: Kysely<Database>, runs: PinRun & { ids: 
   await buildCopyRunTables(first, rest).execute(db);
 };
 
-export const buildLatestVersion = (agencyId: string, key: string) => sql<{ version: number }>`
-  select v.version
-  from graphs g
-  join graph_versions v on v.graph_id = g.id
-  where g.key = ${key}
-    and g.kind = 'workflow'
-    and g.is_active
-    and v.published_at is not null
-    and (
-      g.organization_id is null
-      or g.agency_id = ${agencyId}::uuid
-      or (g.agency_id is null and g.organization_id = ${organizationOf(agencyId)})
-    )
-  order by g.organization_id is not null, v.version desc
-  limit 1`;
+export const buildLatestVersion = (agencyId: string, key: string) =>
+  newestVersion(agencyViewer(agencyId), sql`${key}`, sql`and g.kind = 'workflow'`);
 
 const newestSystemVersion = (key: RawBuilder<unknown>) => sql`(
   select max(v.version)
@@ -209,7 +237,7 @@ export const buildFindRuleBundle = (agencyId: string, key: string) => sql<Publis
   with recursive bundle (id, key, version) as (
     select r.id, req.key, req.version
     from (select ${key}::text as key, ${newestSystemVersion(sql`${key}::text`)} as version) req
-    cross join lateral ${resolved(agencyId, sql.ref('req.key'), sql.ref('req.version'))} r
+    cross join lateral ${resolved(agencyViewer(agencyId), sql.ref('req.key'), sql.ref('req.version'))} r
     where r.id is not null
     union
     select r.id, dep.key, dep.version
@@ -219,7 +247,7 @@ export const buildFindRuleBundle = (agencyId: string, key: string) => sql<Publis
       select split_part(d, '@', 1) as key, split_part(d, '@', 2)::int as version
       from unnest(gv.dependencies) as d
     ) dep
-    cross join lateral ${resolved(agencyId, sql.ref('dep.key'), sql.ref('dep.version'))} r
+    cross join lateral ${resolved(agencyViewer(agencyId), sql.ref('dep.key'), sql.ref('dep.version'))} r
     where r.id is not null
   )
   select b.id, b.key, b.version, gv.definition

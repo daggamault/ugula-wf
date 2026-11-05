@@ -85,38 +85,50 @@ const findPublishedVersions = async (db: Kysely<Database>, keys: string[]) =>
     ).map((r) => [r.key, r.version])
   );
 
-const publishGraph = async (
-  db: Kysely<Database>,
+const inSubgraphOrder = (graphs: readonly SeedGraph[]) => {
+  const byKey = new Map(graphs.map((g) => [g.key, g]));
+  const ordered: SeedGraph[] = [];
+  const placed = new Set<string>();
+  const place = (g: SeedGraph, path: string[]) => {
+    if (placed.has(g.key)) return;
+    if (path.includes(g.key)) {
+      throw new Error(`Seed graphs call each other: ${[...path, g.key].join(' > ')}`);
+    }
+    for (const ref of graphRefs(g.definition)) {
+      const dependency = byKey.get(ref.type);
+      if (dependency) place(dependency, [...path, g.key]);
+    }
+    placed.add(g.key);
+    ordered.push(g);
+  };
+  for (const g of graphs) place(g, []);
+  return ordered;
+};
+
+type Latest = NonNullable<Awaited<ReturnType<typeof findLatest>>>;
+
+type Stored = { graph: SeedGraph; id: string; latest: Latest | undefined };
+
+const planOf = (
   graph: SeedGraph,
   primitives: ReadonlySet<string>,
-  versions: Map<string, number>
+  versions: ReadonlyMap<string, number>
 ) => {
   const definition = retargetRefs(graph.definition, (key) => versions.get(key));
   const subgraphs = graphRefs(definition).filter(
     (r) => !r.type.startsWith('std.') && !primitives.has(refKey(r))
   );
-  const missing = subgraphs.filter((r) => versions.get(r.type) !== r.version);
-  if (missing.length) {
-    throw new Error(`${graph.key} depends on unpublished ${missing.map(refKey).join(', ')}`);
-  }
   const dependencies = [...subgraphs, ...workflowRefs(definition)]
     .map((r) => dependencyOf({ key: r.type, version: r.version }))
     .filter((d, i, all) => all.indexOf(d) === i)
     .sort();
-  const { id } = await buildUpsertGraph(db, graph).executeTakeFirstOrThrow();
-  const latest = await findLatest(db, id);
-  if (
-    latest &&
-    deepEqual(latest.definition as Json, definition as unknown as Json) &&
-    deepEqual([...latest.dependencies].sort(), dependencies)
-  ) {
-    versions.set(graph.key, latest.version);
-    return;
-  }
-  const version = (latest?.version ?? 0) + 1;
-  await buildInsertVersion(db, id, version, definition, dependencies).execute();
-  versions.set(graph.key, version);
+  return { definition, dependencies, subgraphs };
 };
+
+const isStored = (latest: Latest | undefined, plan: ReturnType<typeof planOf>) =>
+  latest !== undefined &&
+  deepEqual(latest.definition as Json, plan.definition as unknown as Json) &&
+  deepEqual([...latest.dependencies].sort(), plan.dependencies);
 
 export const publishGraphs = async (
   db: Kysely<Database>,
@@ -127,5 +139,29 @@ export const publishGraphs = async (
     db,
     graphs.map((g) => g.key)
   );
-  for (const graph of graphs) await publishGraph(db, graph, primitives, versions);
+  const stored: Stored[] = [];
+  for (const graph of inSubgraphOrder(graphs)) {
+    const { id } = await buildUpsertGraph(db, graph).executeTakeFirstOrThrow();
+    stored.push({ graph, id, latest: await findLatest(db, id) });
+  }
+  const changed = new Set<string>();
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const { graph, latest } of stored) {
+      if (changed.has(graph.key) || isStored(latest, planOf(graph, primitives, versions))) continue;
+      changed.add(graph.key);
+      versions.set(graph.key, (latest?.version ?? 0) + 1);
+      grew = true;
+    }
+  }
+  for (const { graph, id } of stored) {
+    if (!changed.has(graph.key)) continue;
+    const plan = planOf(graph, primitives, versions);
+    const missing = plan.subgraphs.filter((r) => versions.get(r.type) !== r.version);
+    if (missing.length) {
+      throw new Error(`${graph.key} depends on unpublished ${missing.map(refKey).join(', ')}`);
+    }
+    const version = versions.get(graph.key) ?? 1;
+    await buildInsertVersion(db, id, version, plan.definition, plan.dependencies).execute();
+  }
 };

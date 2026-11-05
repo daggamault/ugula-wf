@@ -6,14 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { idleLive, testNodes } from '../../shared/testing.ts';
 import type { GraphComparison, GraphDetail, GraphScope, WorkflowsClient } from './client.ts';
-import {
-  customizedNodes,
-  DocumentationHints,
-  documentationHints,
-  EditorPage,
-  EditorView,
-  leavingHref
-} from './editor-page.tsx';
+import { customizedNodes, EditorPage, EditorView, leavingHref } from './editor-page.tsx';
 import type { TrailStep } from './trail.ts';
 
 const source: GraphDef = {
@@ -133,6 +126,17 @@ describe('EditorView', () => {
     const copy = render(detail('agency', false, { overrides: 'g0' }), 2);
     assert.ok(copy.includes('>Agency<') && copy.includes('Remove Override'));
     assert.ok(copy.includes('>Publish<'));
+    assert.ok(!copy.includes('Delete Workflow'));
+  });
+
+  it('lets a custom graph that overrides nothing be deleted, and hides it without edit rights', () => {
+    const custom = render(detail('agency', true), 2);
+    assert.ok(custom.includes('Delete Workflow') && !custom.includes('Remove Override'));
+    const system = render(detail('system', true), 1);
+    assert.ok(!system.includes('Delete Workflow') && !system.includes('Remove Override'));
+    const readOnly = detail('agency', true, { overrides: 'g0' });
+    const locked = render({ ...readOnly, graph: { ...readOnly.graph, canEdit: false } }, 2);
+    assert.ok(!locked.includes('Remove Override'));
   });
 
   it('shows where a sub-workflow was opened from and leads back up', () => {
@@ -273,24 +277,6 @@ describe('EditorPage', () => {
       })
     );
     assert.ok(html.includes('aria-label="Loading"'));
-  });
-});
-
-describe('documentation hints', () => {
-  it('names the node a hint is about and shows them as a warning to expand', () => {
-    const def: GraphDef = {
-      ...source,
-      signature: { ...source.signature, inputs: [{ name: 'x', type: 'number' }] },
-      nodes: [{ id: 'entry', type: ENTRY_TYPE, version: 1, label: 'go here' }]
-    };
-    const hints = documentationHints(def, createCatalog(testNodes));
-    assert.deepEqual(hints, [
-      'Describe the input "x"',
-      'Entry: Write the label "go here" in Title Case'
-    ]);
-    const html = renderToStaticMarkup(createElement(DocumentationHints, { hints }));
-    assert.ok(html.includes('<details') && html.includes('2 Documentation Hints'));
-    assert.ok(render(detail('agency', false), 2).includes('Documentation Hint') === false);
   });
 });
 

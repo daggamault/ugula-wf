@@ -84,13 +84,13 @@ export const WorkflowsTable = ({
           </code>
         </TableCell>
         <TableCell>
-          <span className="flex flex-wrap items-center gap-1">
+          <span className="flex flex-wrap items-center gap-2">
             <Badge intent={g.kind === 'workflow' ? 'info' : undefined}>{kindLabel(g.kind)}</Badge>
             <RoleBadge role={g.role} />
           </span>
         </TableCell>
         <TableCell>
-          <span className="flex flex-wrap items-center gap-1">
+          <span className="flex flex-wrap items-center gap-2">
             <ScopeBadge scope={g.scope} />
             {g.overriddenBy ? <Badge intent="custom">Has Your Copy</Badge> : null}
             <StaleBadge stale={g.isStale} />

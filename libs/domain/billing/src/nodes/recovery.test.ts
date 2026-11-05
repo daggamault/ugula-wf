@@ -81,7 +81,7 @@ describe('recoveryNodes', () => {
     await assert.rejects(() => run('read-refund', { claimId: 'other' }), /does not exist/);
   });
 
-  it('records refunds, protected balances and skipped payers once per step', async () => {
+  it('records refunds on the agency date, protected balances and skipped payers once per step', async () => {
     const { calls, run } = setup();
     await run('record-refund', { claimId: 'c1', coverageId: 'cov-Medicare', amountCents: 2_500 });
     await run('protect-balance', { claimId: 'c1', adjustedCents: 0, note: 'NH law' });
@@ -97,7 +97,8 @@ describe('recoveryNodes', () => {
       key: 'key',
       coverageId: 'cov-Medicare',
       cents: 2_500,
-      note: 'Refund of a credit balance'
+      note: 'Refund of a credit balance',
+      paidOn: '2026-02-28'
     });
     assert.deepEqual(calls[3]?.[1], { payerId: 'p-blue', memberId: 'M1' });
     await assert.rejects(

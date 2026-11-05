@@ -1,11 +1,13 @@
+import { createHash } from 'node:crypto';
 import {
+  type CalendarStore,
   CLOSED_CLAIM_STATUSES,
   type Deadline,
   type FacilityInvoiceSource,
   money,
   type ScheduleStore
 } from '@ugula/billing';
-import { type Db, findProfile } from '@ugula/db';
+import { agencyTimeZone, agencyToday, type Db, findProfile } from '@ugula/db';
 import type { BlobStore } from '@ugula/storage';
 import { sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
@@ -46,8 +48,8 @@ type DeadlineRow = {
   reminded: boolean;
 };
 
-export const invoiceKey = (agencyId: string, facilityId: string, period: string) =>
-  `facility-invoices/${agencyId}/${facilityId}/${period}.pdf`;
+export const invoiceKey = (agencyId: string, facilityId: string, sourceKey: string) =>
+  `facility-invoices/${agencyId}/${facilityId}/${createHash('sha256').update(sourceKey).digest('hex').slice(0, 16)}.pdf`;
 
 const addressOf = (f: {
   name: string;
@@ -65,7 +67,10 @@ const addressOf = (f: {
 export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
   deadlines: async (runId, today) => {
     const { rows } = await sql<DeadlineRow>`
-      with agency as (select agency_id from workflow_runs where id = ${runId}),
+      with agency as (
+        select r.agency_id, ${agencyTimeZone(sql.ref('r.agency_id'))} as zone
+        from workflow_runs r where r.id = ${runId}
+      ),
       filing as (
         select 'timelyFiling' as kind, c.id as claim_id, cc.id as coverage_id, ${reference} as reference,
           (c.service_date + coalesce(dp.filing_limit_days, case when dp.claim_filing in ('MA', 'MB', 'CH') then 365 end))::date as due_on,
@@ -88,7 +93,7 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
       ),
       due as (
         select ${taskKind} as kind, c.id as claim_id, null::uuid as coverage_id, ${reference} as reference,
-          (t.due_at at time zone 'UTC')::date as due_on, t.id as task_id, t.priority
+          (t.due_at at time zone a.zone)::date as due_on, t.id as task_id, t.priority
         from tasks t
         join agency a on a.agency_id = t.agency_id
         join claim_runs cr on cr.run_id = t.run_id
@@ -120,7 +125,11 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
           where cr.claim_id = d.claim_id and t.status = 'open' and g.key = ${REMINDER_WORKFLOW}
             and r.inputs ->> 'kind' = d.kind
         ) as reminded
-      from (select * from filing union all select * from due union all select * from pcs) d
+      from (
+        select kind, claim_id, coverage_id, reference, due_on, task_id, priority from filing
+        union all select kind, claim_id, coverage_id, reference, due_on, task_id, priority from due
+        union all select kind, claim_id, coverage_id, reference, due_on, task_id, priority from pcs
+      ) d
       where d.due_on is not null and d.due_on - ${today}::date <= ${WINDOW_DAYS}::int
       order by d.due_on, d.kind, d.claim_id`.execute(db);
     return rows.map(
@@ -178,15 +187,14 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
         .where('c.agency_id', '=', agency.agency_id)
         .where(sql<boolean>`c.status not in (${OPEN_EXCLUDED})`)
         .where('b.balance_cents', '>', 0)
-        .where(sql<boolean>`c.service_date >= ${period}::date`)
         .where(sql<boolean>`c.service_date < ${period}::date + interval '1 month'`)
         .where(({ not, exists, selectFrom }) =>
           not(
             exists(
-              selectFrom('facility_invoices as i')
-                .select('i.id')
-                .whereRef('i.facility_id', '=', 'f.id')
-                .where('i.period', '=', period)
+              selectFrom('facility_invoice_claims as l')
+                .select('l.claim_id')
+                .whereRef('l.facility_id', '=', 'f.id')
+                .whereRef('l.claim_id', '=', 'c.id')
             )
           )
         )
@@ -234,25 +242,57 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
   saveFacilityInvoice: async (runId, sourceKey, { source, pdf, totalCents }) => {
     const agency = await runAgency(db, runId).executeTakeFirstOrThrow();
     const document = await blobs.putBytes(
-      invoiceKey(agency.agency_id, source.facilityId, source.period),
+      invoiceKey(agency.agency_id, source.facilityId, sourceKey),
       pdf,
       'application/pdf'
     );
+    const claimIds = source.claims.map((c) => c.claimId);
     await db.transaction().execute(async (tx) => {
+      await tx
+        .selectFrom('facilities')
+        .select('id')
+        .where('agency_id', '=', agency.agency_id)
+        .where('id', '=', source.facilityId)
+        .forUpdate()
+        .executeTakeFirstOrThrow();
+      const invoiced = await tx
+        .selectFrom('facility_invoice_claims')
+        .select('claim_id')
+        .where('facility_id', '=', source.facilityId)
+        .where('claim_id', 'in', claimIds)
+        .executeTakeFirst();
+      if (invoiced) return;
       const invoice = await tx
         .insertInto('facility_invoices')
         .values({
           agency_id: agency.agency_id,
           facility_id: source.facilityId,
           period: source.period,
+          sequence: sql<number>`(
+            select coalesce(max(i.sequence), 0) + 1 from facility_invoices i
+            where i.agency_id = ${agency.agency_id} and i.facility_id = ${source.facilityId}
+              and i.period = ${source.period}
+          )`,
+          source_key: sourceKey,
           claim_count: source.claims.length,
           total_cents: totalCents,
           document: JSON.stringify(document)
         })
-        .onConflict((oc) => oc.columns(['agency_id', 'facility_id', 'period']).doNothing())
+        .onConflict((oc) => oc.columns(['agency_id', 'source_key']).doNothing())
         .returning('id')
         .executeTakeFirst();
       if (!invoice) return;
+      await tx
+        .insertInto('facility_invoice_claims')
+        .values(
+          claimIds.map((claimId) => ({
+            agency_id: agency.agency_id,
+            invoice_id: invoice.id,
+            facility_id: source.facilityId,
+            claim_id: claimId
+          }))
+        )
+        .execute();
       await tx
         .insertInto('claim_events')
         .values(
@@ -267,5 +307,13 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
         .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
         .execute();
     });
+  }
+});
+
+export const createCalendarStore = (db: Db): CalendarStore => ({
+  today: async (runId, at) => {
+    const run = await runAgency(db, runId).executeTakeFirst();
+    if (!run) throw new Error(`Run ${runId} does not exist`);
+    return agencyToday(db, run.agency_id, at);
   }
 });

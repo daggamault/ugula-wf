@@ -63,7 +63,7 @@ const ELIGIBILITY = x12(
 
 const document = { bucket: 'ugula', key: 't1/payer-files/x/era.835', size: 4 };
 
-const setup = ({ imported = false, published = true } = {}) => {
+const setup = ({ imported = false, published = true, failing = false } = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.includes('from "payer_files" as "f"')) {
       return q.parameters.includes('f1') ? [{ id: 'f1', file_name: 'era.835', document }] : [];
@@ -76,11 +76,15 @@ const setup = ({ imported = false, published = true } = {}) => {
     if (q.sql.includes('cross join lateral')) {
       return [{ id: 'v1', key: RECEIVE_WORKFLOW, version: 1, definition: {} }];
     }
-    if (q.sql.startsWith('insert into "workflow_runs"')) return [{ id: 'r1' }];
+    if (q.sql.startsWith('insert into "workflow_runs"')) {
+      if (failing) throw new Error('database down');
+      return [{ id: 'r1' }];
+    }
     return [];
   });
   const boss: RunQueueClient = { insert: async () => undefined };
   const stored: string[] = [];
+  const removed: string[] = [];
   const service = createPayerFileService({
     db,
     boss,
@@ -89,15 +93,16 @@ const setup = ({ imported = false, published = true } = {}) => {
         stored.push(key);
         return { bucket: 'ugula', key, size: 1, contentType: 'application/edi-x12' };
       },
-      getBytes: async () => new TextEncoder().encode(REMITTANCE)
+      getBytes: async () => new TextEncoder().encode(REMITTANCE),
+      remove: async (ref) => void removed.push(ref.key)
     },
     maxBytes: 1_000_000
   });
-  return { service, queries, stored };
+  return { service, queries, stored, removed };
 };
 
 const upload = (service: ReturnType<typeof setup>['service'], text: string, name = 'era.835') =>
-  service.upload('t1', { name, type: '', bytes: new TextEncoder().encode(text) });
+  service.upload('t1', 'u1', { name, type: '', bytes: new TextEncoder().encode(text) });
 
 describe('payer file service', () => {
   it('stores an upload and starts Receive Payer File for it, like the clearinghouse poll', async () => {
@@ -108,10 +113,17 @@ describe('payer file service', () => {
     });
     assert.match(stored[0] ?? '', /payer-files\/.+\/era\.835$/);
     const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
-    assert.ok(run?.parameters.includes('t1'));
+    assert.ok(run?.parameters.includes('t1') && run.parameters.includes('u1'));
     assert.ok(run?.parameters.some((p) => String(p).includes('"fileName":"era.835"')));
     assert.ok(queries.some((q) => q.sql.includes('insert into workflow_run_graphs')));
     assert.ok(!queries.some((q) => q.sql.startsWith('insert into "payer_files"')));
+  });
+
+  it('drops the stored file when its run cannot start', async () => {
+    const { service, stored, removed } = setup({ failing: true });
+    await assert.rejects(() => upload(service, REMITTANCE), /database down/);
+    assert.equal(stored.length, 1);
+    assert.deepEqual(removed, stored);
   });
 
   it('reads acknowledgments and eligibility files before starting their run', async () => {
@@ -170,7 +182,7 @@ describe('payer file service', () => {
 
   it('refuses files over the size limit before reading or storing them', async () => {
     const { service, queries, stored } = setup();
-    const big = await service.upload('t1', {
+    const big = await service.upload('t1', 'u1', {
       name: 'era.835',
       type: '',
       bytes: new Uint8Array(1_000_001)

@@ -62,10 +62,10 @@ Decision and lookup table nodes either carry their rules inline or reference a s
 
 ## Contracts
 
-An override must keep the signature of the system graph it replaces: the same exec ins, exits, inputs and outputs with the same names, types and optionality. This is the **contract** (`contractOf`), stored on every version.
+An override must keep the signature of the system graph it replaces: the same exec ins, exits, inputs and outputs with the same names, types, optionality and whether each has a default (its value may change). This is the **contract** (`contractOf`), stored on every version.
 
-- Publishing an override whose contract differs from the newest system version fails; the same holds for table overrides and their fields.
-- At run time an override applies only to the system version whose contract it matches. When Ugula ships a new system version with a different contract, older overrides stop applying (runs fall back to the system graph) until they are rebased, and the graph is marked **stale**.
+- Publishing an override whose contract differs from the newest version of the graph at the bottom of its key fails: the system graph, or for an agency copy of an organization custom graph, that organization graph. The same holds for table overrides and their fields.
+- At run time an override applies only to the version of the graph at the bottom (system, else the organization custom graph) whose contract it matches. When Ugula ships a new system version with a different contract, older overrides stop applying (runs fall back to the system graph) until they are rebased, and the graph is marked **stale**.
 
 ## Lifecycle
 
@@ -76,7 +76,7 @@ An override must keep the signature of the system graph it replaces: the same ex
 | Publish    | `POST /graphs/:id/publish`            | Checks issues and the contract; new runs use it immediately                                                                                                                      |
 | Compare    | `GET /graphs/:id/compare`             | Returns your newest version, the base version it was copied from and the base's newest version, and whether the base changed                                                     |
 | Rebase     | `POST /graphs/:id/rebase { mode }`    | `keep` keeps your definition and marks it as based on the newest base; `reset` replaces your draft with the newest base                                                          |
-| Remove     | `DELETE /graphs/:id`                  | Turns an override off (runs go back to the level below); a custom graph that overrides nothing is deleted                                                                        |
+| Remove     | `DELETE /graphs/:id`                  | Turns an override off (runs go back to the level below); a custom graph that overrides nothing is deleted, unless published graphs still call it                                 |
 | Map        | `GET /graphs/map`                     | Every effective graph with the graphs and tables it uses, and the effective table per key                                                                                        |
 | Tables     | `GET, PUT, POST, DELETE /tables/...`  | List (`show=customized`), `effective`, open, versions, compare, override, save draft, publish and remove table copies                                                            |
 
@@ -96,7 +96,7 @@ An override must keep the signature of the system graph it replaces: the same ex
 `libs/data/db/src/graph-versions.ts` resolves `key@version` for an agency, and `libs/data/db/src/data-tables.ts` resolves table keys the same way:
 
 1. Active graphs (or tables) with that key that are system, the agency's organization (agency null), or the agency.
-2. For organization and agency copies, the newest published version whose contract equals the requested system version's contract (the newest system version for tables), or the exact version for custom graphs with no system graph.
+2. A reference `key@version` names a version of the graph at the bottom of that key: the system graph, else the organization's active custom graph, else the agency's. That graph matches on the exact version; every copy above it uses its newest published version whose contract equals that version's contract (the newest system version for tables). So an agency copy of an organization custom graph applies by the organization version's contract, never by its own version numbers.
 3. Agency first, then organization, then system.
 
 ## Not built yet

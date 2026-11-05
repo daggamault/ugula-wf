@@ -33,7 +33,7 @@ import {
 } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
-import { agencySetNullForeignKey } from './foreign-keys.ts';
+import { agencyNoActionForeignKey, agencySetNullForeignKey } from './foreign-keys.ts';
 
 const list = (values: readonly string[]) => sql.join(values.map((v) => sql.lit(v)));
 
@@ -184,13 +184,14 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addCheckConstraint(
       'claims_service_check',
       sql`status in (${UNSENT}) or (level is not null and emergency is not null and service_date is not null)`
-    );
+    )
+    .addCheckConstraint('claims_abn_signed_on_check', sql`abn_signed_on is null or abn_on_file`);
 
 const buildClaimsCycleRunForeignKey = () =>
   agencySetNullForeignKey({ table: 'claims', column: 'cycle_run_id', references: 'workflow_runs' });
 
 const buildClaimsFacilityForeignKey = () =>
-  agencySetNullForeignKey({ table: 'claims', column: 'facility_id', references: 'facilities' });
+  agencyNoActionForeignKey({ table: 'claims', column: 'facility_id', references: 'facilities' });
 
 const buildClaimRunsTable = (db: Kysely<Database>) =>
   db.schema
@@ -397,7 +398,7 @@ const buildClaimEventsTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint(
       'claim_events_route_check',
-      sql`(kind = ${DENIED}) = (route is not null) and route in (${list(DENIAL_ROUTES)})`
+      sql`(kind = ${DENIED} and route is not null and route in (${list(DENIAL_ROUTES)})) or (kind <> ${DENIED} and route is null)`
     )
     .addCheckConstraint(
       'claim_events_check_number_check',

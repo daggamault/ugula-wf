@@ -15,6 +15,7 @@ const memory = (): ObjectStorage & { objects: Map<string, Uint8Array> } => {
       return body;
     },
     put: async (key, body) => void objects.set(key, body),
+    remove: async (key) => void objects.delete(key),
     ensure: async () => undefined
   };
 };
@@ -40,6 +41,9 @@ describe('createBlobStore', () => {
     const xml = await blobs.putBytes('a.xml', new TextEncoder().encode('<x/>'), 'application/xml');
     assert.equal(await blobs.getText(xml), '<x/>');
     assert.equal(new TextDecoder().decode(await blobs.getBytes(xml)), '<x/>');
+    await blobs.remove(xml);
+    await assert.rejects(() => blobs.getBytes(xml), /missing a.xml/);
+    await assert.rejects(() => blobs.remove({ bucket: 'other', key: 'a.xml' }), /not in bucket/);
   });
 
   it('refuses references to other buckets', async () => {
@@ -114,6 +118,11 @@ describe('createS3Storage', () => {
         assert.deepEqual(
           seen.map(({ method, url, type, body }) => [method, url.split('?')[0], type, body]),
           [['PUT', '/ugula/a/b.json', 'application/json', '{}']]
+        );
+        await storage.remove('a/b.json');
+        assert.deepEqual(
+          seen.slice(1).map(({ method, url }) => [method, url.split('?')[0]]),
+          [['DELETE', '/ugula/a/b.json']]
         );
       }
     );

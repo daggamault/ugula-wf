@@ -1,6 +1,7 @@
 import type { Db, RunStatus } from '@ugula/db';
 import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
+import { type ScopeIds, visible } from '../../shared/scopes.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { RunSort } from './schemas.ts';
 
@@ -18,21 +19,23 @@ export type StepFilters = {
   limit: number;
 };
 
-export const findPublishedVersion = (
-  db: Db,
-  agencyId: string,
-  graphId: string,
-  version?: number
-) => {
+export const findPublishedVersion = (db: Db, s: ScopeIds, graphId: string, version?: number) => {
   const base = db
     .selectFrom('graph_versions as gv')
     .innerJoin('graphs as g', 'g.id', 'gv.graph_id')
-    .select(['gv.id', 'gv.version'])
+    .select([
+      'gv.id',
+      'gv.version',
+      'g.key',
+      sql<boolean>`g.organization_id is null or (g.agency_id is null and not exists (
+        select 1 from graphs s where s.key = g.key and s.organization_id is null
+      ))`.as('base')
+    ])
     .where('g.id', '=', graphId)
     .where('g.kind', '=', 'workflow')
     .where('g.is_active', '=', true)
     .where('gv.published_at', 'is not', null)
-    .where((eb) => eb.or([eb('g.agency_id', '=', agencyId), eb('g.agency_id', 'is', null)]));
+    .where(visible('g', s));
   return (version === undefined ? base : base.where('gv.version', '=', version))
     .orderBy('gv.version', 'desc')
     .limit(1)

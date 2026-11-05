@@ -5,6 +5,7 @@ import { type AgencyEnv, requirePermission } from '../../shared/access.ts';
 import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
+import { scopeIds } from '../../shared/scopes.ts';
 import { fileFormSchema, listRunsQuery, startRunSchema, stepsQuery } from './schemas.ts';
 import type { RunService } from './service.ts';
 
@@ -52,7 +53,13 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
         const { graphId, version, inputs } = c.req.valid('json');
         return respond(
           c,
-          await service.start(c.get('access').agencyId, graphId, version, inputs),
+          await service.start(
+            scopeIds(c.get('access')),
+            c.get('access').userId,
+            graphId,
+            version,
+            inputs
+          ),
           201
         );
       }

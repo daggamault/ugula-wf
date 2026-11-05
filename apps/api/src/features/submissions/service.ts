@@ -49,7 +49,7 @@ export const createSubmissionService = ({ db, boss, now, blobs }: SubmissionServ
         issues: problems
       });
     }
-    const requests = eligibilityRequests(row, now().toISOString().slice(0, 10));
+    const requests = eligibilityRequests(row, now());
     if (!requests.length) return fail('invalid', NO_CHECKABLE_PAYER);
     const controlNumber = await allocateControlNumber(db, agencyId);
     if (controlNumber === null) {
@@ -66,7 +66,7 @@ export const createSubmissionService = ({ db, boss, now, blobs }: SubmissionServ
     db.transaction().execute(async (tx) => {
       const row = await findEligibilityClaim(tx, agencyId, claimId);
       if (!row) return fail('not_found', 'Claim not found');
-      if (!eligibilityRequests(row, now().toISOString().slice(0, 10)).length) {
+      if (!eligibilityRequests(row, now()).length) {
         return fail('invalid', NO_CHECKABLE_PAYER);
       }
       const [version] = await findPublishedGraphs(tx, agencyId, [CHECK_ELIGIBILITY_WORKFLOW]);

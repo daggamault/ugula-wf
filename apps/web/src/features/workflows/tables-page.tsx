@@ -68,7 +68,7 @@ export const TablesTable = ({
           <Badge>{tableKindLabel(t.kind)}</Badge>
         </TableCell>
         <TableCell>
-          <span className="flex flex-wrap items-center gap-1">
+          <span className="flex flex-wrap items-center gap-2">
             <ScopeBadge scope={t.scope} />
             {t.overriddenBy ? <Badge intent="custom">Has Your Copy</Badge> : null}
             <StaleBadge stale={t.isStale} />

@@ -13,25 +13,40 @@ import type { ClaimDetail, ClaimsClient, FacilityOption, RecordsRequestInput } f
 
 const NO_FACILITY = '';
 
-export const facilityOptions = (facilities: readonly FacilityOption[]) => [
+export const facilityOptions = (
+  facilities: readonly FacilityOption[],
+  current: FacilityOption | null
+) => [
   { value: NO_FACILITY, label: 'None: bill the payers and the patient' },
+  ...(current && !facilities.some((f) => f.id === current.id) ? [current] : []).map((f) => ({
+    value: f.id,
+    label: f.name
+  })),
   ...facilities.map((f) => ({ value: f.id, label: f.name }))
 ];
 
 export const FacilityPanel = ({
   claim,
-  facilities,
+  findFacilities,
   locked,
   onSave
 }: {
   claim: Pick<ClaimDetail, 'facility_id' | 'facility_name'>;
-  facilities: readonly FacilityOption[];
+  findFacilities: (q: string, signal: AbortSignal) => Promise<FacilityOption[]>;
   locked: string | undefined;
   onSave: (facilityId: string | null) => Promise<void>;
 }) => {
+  const [query, setQuery] = useState('');
+  const facilities = useResource(`facility-options:${query.trim()}`, (signal) =>
+    findFacilities(query, signal)
+  );
   const [chosen, setChosen] = useState(claim.facility_id ?? NO_FACILITY);
   const [busy, setBusy] = useState(false);
   const saved = claim.facility_id ?? NO_FACILITY;
+  const current =
+    claim.facility_id && claim.facility_name
+      ? { id: claim.facility_id, name: claim.facility_name }
+      : null;
   const save = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
@@ -47,15 +62,27 @@ export const FacilityPanel = ({
         title="Responsible Facility"
         description="A hospital or nursing facility that pays for this trip instead of the payers, on its monthly invoice."
       >
+        {facilities.error ? <Alert>{facilities.error.message}</Alert> : null}
         <fieldset disabled={busy || locked !== undefined}>
-          <Select
-            id="claim-facility"
-            label="Facility"
-            hint={locked ?? 'Facilities are listed under Admin, Facilities.'}
-            options={facilityOptions(facilities)}
-            value={chosen}
-            onChange={(e) => setChosen(e.target.value)}
-          />
+          <FieldGrid>
+            <Input
+              id="claim-facility-search"
+              label="Find Facility"
+              type="search"
+              hint="Type part of a name to list matching facilities."
+              maxLength={80}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <Select
+              id="claim-facility"
+              label="Facility"
+              hint={locked ?? 'Facilities are listed under Admin, Facilities.'}
+              options={facilityOptions(facilities.data ?? [], current)}
+              value={chosen}
+              onChange={(e) => setChosen(e.target.value)}
+            />
+          </FieldGrid>
         </fieldset>
         <FormActions>
           <Button
@@ -142,7 +169,6 @@ export const ClaimRecovery = ({
   locked: string | undefined;
   onChanged: () => void;
 }) => {
-  const facilities = useResource('facility-options', client.facilities);
   const [error, setError] = useState('');
   const notify = useToast();
   const setFacility = async (facilityId: string | null) => {
@@ -175,7 +201,7 @@ export const ClaimRecovery = ({
       <FacilityPanel
         key={claim.facility_id ?? 'none'}
         claim={claim}
-        facilities={facilities.data ?? []}
+        findFacilities={client.facilities}
         locked={locked}
         onSave={setFacility}
       />

@@ -164,7 +164,17 @@ const suspendRun = async (tx: RunTx, run: ClaimedRun, state: RunState, jobs: Run
       } else if (until) jobs.push(timeout(run.id, wait.id, until));
       return;
     }
-    case 'task':
+    case 'task': {
+      const permission = data.permission ?? null;
+      if (permission !== null && !(typeof permission === 'string' && isPermission(permission))) {
+        await stallRun(
+          tx,
+          run,
+          `The task needs the permission ${String(permission)}, which does not exist`,
+          wait.id
+        );
+        return;
+      }
       await tx.saveRun(run, { status: 'suspended', state });
       await tx.insertTask({
         agencyId: run.agencyId,
@@ -182,12 +192,10 @@ const suspendRun = async (tx: RunTx, run: ClaimedRun, state: RunState, jobs: Run
         priority: typeof data.priority === 'number' ? data.priority : 0,
         assigneeId: typeof data.assignee === 'string' ? data.assignee : null,
         dueAt: typeof data.due === 'string' ? data.due : null,
-        permission:
-          typeof data.permission === 'string' && isPermission(data.permission)
-            ? data.permission
-            : null
+        permission
       });
       return;
+    }
     case 'workflow':
     case 'workflows':
     case 'spawn':

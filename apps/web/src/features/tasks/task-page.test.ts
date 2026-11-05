@@ -69,7 +69,8 @@ describe('TaskView', () => {
   it('shows when a task is due and blocks completing it without its permission', () => {
     const html = render(task({ due_at: '2026-02-01T00:00:00Z', permission: 'claims:approve' }));
     assert.ok(html.includes('due <time dateTime="2026-02-01T00:00:00Z"'));
-    assert.ok(html.includes('needs the claims:approve permission'));
+    assert.ok(html.includes('needs a role allowed to: Approve refunds'));
+    assert.ok(!html.includes('claims:approve'));
   });
 
   it('names and links the claim a task is about, and goes back where the biller came from', () => {

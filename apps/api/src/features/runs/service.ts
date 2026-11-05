@@ -1,8 +1,16 @@
-import { type Db, findRunGraphs, sqlExecutor, startRun, TERMINAL_RUN_STATUSES } from '@ugula/db';
+import {
+  type Db,
+  findPublishedGraphs,
+  findRunGraphs,
+  sqlExecutor,
+  startRun,
+  TERMINAL_RUN_STATUSES
+} from '@ugula/db';
 import { cancel, enqueueRuns, type RunQueueClient } from '@ugula/run-queue';
 import type { BlobStore } from '@ugula/storage';
 import { type UploadedFile, uploadKey } from '../../shared/files.ts';
 import { fail, ok } from '../../shared/result.ts';
+import type { ScopeIds } from '../../shared/scopes.ts';
 import {
   countChildren,
   findPublishedVersion,
@@ -64,15 +72,27 @@ export const createRunService = ({ db, boss, blobs, maxBytes }: RunServiceDeps) 
       ? ok({ steps: await listSteps(db, id, filters) })
       : notFound,
 
-  start: (agencyId: string, graphId: string, version: number | undefined, inputs: unknown) =>
+  start: (
+    s: ScopeIds,
+    userId: string,
+    graphId: string,
+    version: number | undefined,
+    inputs: unknown
+  ) =>
     db.transaction().execute(async (tx) => {
-      const found = await findPublishedVersion(tx, agencyId, graphId, version);
-      if (!found) return fail('not_found', 'No published version to run');
+      const found = await findPublishedVersion(tx, s, graphId, version);
+      const [effective] = !found
+        ? []
+        : found.base
+          ? await findPublishedGraphs(tx, s.agencyId, [found])
+          : [found];
+      if (!found || !effective) return fail('not_found', 'No published version to run');
       const id = await startRun(tx, boss, {
-        agencyId,
-        versionId: found.id,
+        agencyId: s.agencyId,
+        versionId: effective.id,
         inputs,
-        interactive: true
+        interactive: true,
+        startedBy: userId
       });
       return ok({ id, version: found.version });
     }),

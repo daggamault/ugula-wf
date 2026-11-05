@@ -1,3 +1,4 @@
+import { PERMISSION_DESCRIPTIONS } from '@ugula/access';
 import type { Json } from '@ugula/graph';
 import {
   ActivityIcon,
@@ -11,7 +12,7 @@ import {
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useCan } from '../../shared/access.tsx';
 import { isApiError, messageOf } from '../../shared/api.ts';
-import { formatAgo, formatDateTime } from '../../shared/format.ts';
+import { formatAgo, formatDateTime, formatDay } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { queueInfo } from '../../shared/task-queues.ts';
@@ -165,7 +166,7 @@ const Decision = ({
   const can = useCan();
   const unpermitted =
     task.permission && !can(task.permission)
-      ? `Completing this task needs the ${task.permission} permission.`
+      ? `Completing this task needs a role allowed to: ${PERMISSION_DESCRIPTIONS[task.permission]}`
       : null;
   const [values, setValues] = useState<Record<string, Json>>(() =>
     Object.fromEntries(task.fields.map((f) => [f.name, task.defaults?.[f.name] ?? null]))
@@ -330,7 +331,7 @@ export const TaskView = ({
             </Tooltip>
             {task.due_at ? (
               <>
-                , due <time dateTime={task.due_at}>{formatDateTime(task.due_at)}</time>
+                , due <time dateTime={task.due_at}>{formatDay(task.due_at)}</time>
               </>
             ) : null}
             .

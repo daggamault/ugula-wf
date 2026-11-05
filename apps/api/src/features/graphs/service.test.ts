@@ -61,12 +61,13 @@ type World = {
   graphs: Graph[];
   versions?: Record<string, Version[]>;
   fail?: { sql: string; code: string };
+  dependents?: string[];
 };
 
 const RANK = { agency: 0, organization: 1, system: 2 };
 const KEY = 'acme.flow';
 
-const createWorld = ({ graphs, versions = {}, fail }: World) => {
+const createWorld = ({ graphs, versions = {}, fail, dependents = [] }: World) => {
   const keyOf = (g: Graph) => g.key ?? KEY;
   const live = graphs.filter((g) => g.active !== false);
   const versionsOf = (id: unknown) => versions[id as string] ?? [];
@@ -81,11 +82,12 @@ const createWorld = ({ graphs, versions = {}, fail }: World) => {
       throw Object.assign(new Error('pg'), { code: fail.code });
     }
     if (sql.startsWith('select "g"."id", "g"."organization_id"')) {
-      const g = live.find((x) => x.id === q.parameters[4]);
+      const g = live.find((x) => x.id === q.parameters.at(-3));
       return g
         ? [
             {
               id: g.id,
+              agency_id: g.scope === 'agency' ? 't-1' : null,
               key: keyOf(g),
               name: 'Flow',
               kind: g.kind ?? 'workflow',
@@ -99,8 +101,10 @@ const createWorld = ({ graphs, versions = {}, fail }: World) => {
           ]
         : [];
     }
-    if (sql.startsWith('select "g"."id", case')) {
-      const [g] = live.filter((x) => keyOf(x) === p0).sort((a, b) => RANK[a.scope] - RANK[b.scope]);
+    if (sql.startsWith('select "g"."id" as "id", case')) {
+      const [g] = live
+        .filter((x) => keyOf(x) === q.parameters.at(-1))
+        .sort((a, b) => RANK[a.scope] - RANK[b.scope]);
       return g ? [{ id: g.id, scope: g.scope }] : [];
     }
     if (sql.startsWith('select "id", "is_active" from "graphs"')) {
@@ -118,6 +122,10 @@ const createWorld = ({ graphs, versions = {}, fail }: World) => {
     }
     if (sql.includes('for update')) {
       const v = versionsOf(p0).find((x) => !x.published);
+      return v ? [{ ...v, base_version_id: v.base ?? null }] : [];
+    }
+    if (sql.startsWith('select "id", "version", "definition", "base_version_id"')) {
+      const [v] = versionsOf(p0).toSorted((a, b) => b.version - a.version);
       return v ? [{ ...v, base_version_id: v.base ?? null }] : [];
     }
     if (sql.includes('"base_graph_id"')) {
@@ -138,7 +146,7 @@ const createWorld = ({ graphs, versions = {}, fail }: World) => {
           ]
         : [];
     }
-    if (sql.startsWith('select "v"."id", "v"."version", "v"."definition"')) {
+    if (sql.trimStart().startsWith('select v.id, v.version, v.definition')) {
       for (const [graphId, list] of Object.entries(versions)) {
         const v = list.find((x) => x.id === p0);
         const g = graphs.find((x) => x.id === graphId);
@@ -148,7 +156,7 @@ const createWorld = ({ graphs, versions = {}, fail }: World) => {
               id: v.id,
               version: v.version,
               definition: v.definition,
-              graph_id: g.id,
+              owner_id: g.id,
               scope: g.scope
             }
           ];
@@ -156,6 +164,8 @@ const createWorld = ({ graphs, versions = {}, fail }: World) => {
       }
       return [];
     }
+    if (sql.trimStart().startsWith('select distinct g.name'))
+      return dependents.map((name) => ({ name }));
     if (sql.includes('from unnest')) {
       return [{ id: 'v-thing', key: 'acme.thing', version: 2, definition: composite }];
     }
@@ -261,6 +271,32 @@ describe('customization map', () => {
     assert.ok(res.ok);
     assert.deepEqual(res.value.issues, [{ node: 't', message: 'Unknown table acme.missing' }]);
   });
+
+  it('checks organization graphs against built-in and organization graphs and tables only', async () => {
+    const { service, queries } = createWorld({
+      graphs: [{ id: 'g-org', scope: 'organization' }],
+      versions: { 'g-org': [{ id: 'd1', version: 1, definition: flow }] }
+    });
+    const def: GraphDef = {
+      ...usesComposite,
+      nodes: [
+        ...usesComposite.nodes,
+        {
+          id: 't',
+          type: 'std.table.lookup',
+          version: 1,
+          config: { type: 'string', table: { key: 'acme.rates' } }
+        }
+      ]
+    };
+    assert.ok((await service.saveDraft(admin, 'g-org', def)).ok);
+    const lookup = queries.find((q) => q.sql.includes('from unnest'));
+    assert.ok(lookup?.sql.includes('= null::uuid'));
+    assert.ok(!lookup?.parameters.includes('t-1'));
+    assert.ok(lookup?.parameters.includes('o-1'));
+    const tables = queries.find((q) => q.sql.includes('from "data_tables" as "t"'));
+    assert.deepEqual(tables?.parameters.slice(0, 3), ['acme.rates', null, 'o-1']);
+  });
 });
 
 describe('graph service reads', () => {
@@ -332,7 +368,7 @@ describe('graph service reads', () => {
     });
     assert.equal(search.ok, true);
     assert.equal((await service.nodes(admin)).ok, true);
-    assert.deepEqual(queries.at(-1)?.parameters, ['t-1', 'o-1', 't-1', 'o-1', 't-1', 'o-1']);
+    assert.ok(queries.at(-1)?.parameters.every((p) => p === 't-1' || p === 'o-1'));
   });
 
   it('reports graphs hidden from the agency as not found without writing', async () => {
@@ -485,6 +521,17 @@ describe('graph service drafts', () => {
     assert.equal(fresh.find('update "graphs" set "updated_at"').length, 1);
   });
 
+  it('locks the graph before looking for its draft, so two first saves cannot both insert one', async () => {
+    const { service, queries } = createWorld({ graphs: [agency()] });
+    await service.saveDraft(manager, 'g-agency', usesComposite);
+    const lock = queries.findIndex(
+      (q) => q.sql === 'select "id" from "graphs" where "id" = $1 for update'
+    );
+    const draft = queries.findIndex((q) => q.sql.includes('for update') && q !== queries[lock]);
+    assert.ok(lock >= 0 && lock < draft);
+    assert.deepEqual(queries[lock]?.parameters, ['g-agency']);
+  });
+
   it('bases new drafts on the active organization override, else on the built-in', async () => {
     const versions = {
       'g-sys': [sysV(2)],
@@ -556,7 +603,7 @@ describe('graph service publish', () => {
       await drifted.service.publish(admin, 'g-org'),
       failure(
         'invalid',
-        'An override must keep the inputs, outputs and exits of the built-in graph it replaces'
+        'An override must keep the inputs, outputs and exits of the graph it replaces'
       )
     );
     assert.equal(drifted.find('update "graph_versions"').length, 0);
@@ -571,6 +618,29 @@ describe('graph service publish', () => {
       versions: { 'g-agency': [{ id: 'd1', version: 1, definition: widened }] }
     });
     assert.equal((await custom.service.publish(editor, 'g-agency')).ok, true);
+  });
+
+  it('holds an agency copy of an organization custom graph to the organization contract', async () => {
+    const world = (definition: GraphDef, active = true) =>
+      createWorld({
+        graphs: [
+          { id: 'g-org', scope: 'organization', kind: 'node', active },
+          agency({ kind: 'node', overrides: 'g-org' })
+        ],
+        versions: {
+          'g-org': [{ id: 'v-org', version: 4, definition: block, published: true }],
+          'g-agency': [{ id: 'd1', version: 1, definition }]
+        }
+      });
+    assert.deepEqual(
+      await world(widened).service.publish(editor, 'g-agency'),
+      failure(
+        'invalid',
+        'An override must keep the inputs, outputs and exits of the graph it replaces'
+      )
+    );
+    assert.equal((await world(block).service.publish(editor, 'g-agency')).ok, true);
+    assert.equal((await world(widened, false).service.publish(editor, 'g-agency')).ok, true);
   });
 });
 
@@ -770,6 +840,25 @@ describe('graph service remove', () => {
     assert.deepEqual(
       await used.service.remove(admin, 'g-agency'),
       failure('conflict', 'Runs still use this graph, so it cannot be removed')
+    );
+  });
+
+  it('keeps a custom graph that published graphs still call', async () => {
+    const one = createWorld({
+      graphs: [{ id: 'g-org', scope: 'organization' }],
+      dependents: ['Flow A']
+    });
+    assert.deepEqual(
+      await one.service.remove(admin, 'g-org'),
+      failure('conflict', 'Flow A uses this graph, so it cannot be removed')
+    );
+    assert.equal(one.find('delete from "graphs"').length, 0);
+    const lookup = one.queries.find((q) => q.sql.includes('select distinct g.name'));
+    assert.deepEqual(lookup?.parameters, ['g-org', 'o-1', null, null, 'acme.flow']);
+    const two = createWorld({ graphs: [agency()], dependents: ['Flow A', 'Flow B'] });
+    assert.deepEqual(
+      await two.service.remove(admin, 'g-agency'),
+      failure('conflict', 'Flow A, Flow B use this graph, so it cannot be removed')
     );
   });
 });

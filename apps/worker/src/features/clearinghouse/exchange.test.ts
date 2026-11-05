@@ -30,7 +30,8 @@ const patient = {
   first_name: 'Jane',
   last_name: 'Doe',
   birth_date: '1950-02-03',
-  gender: 'F' as const
+  gender: 'F' as const,
+  time_zone: 'America/Chicago'
 };
 
 const eligibilityRow = {
@@ -211,10 +212,10 @@ describe('checkClaimStatus', () => {
 });
 
 describe('statusInquiry', () => {
-  it('asks about the insured when the patient is a dependent', () => {
+  it('asks about the insured when the patient is a dependent, dated by the agency calendar', () => {
     const dependent = statusInquiry(
       { ...statusRow, relationship: '19', insured_first_name: 'John', insured_last_name: 'Doe' },
-      '2026-11-04'
+      new Date('2026-11-04T12:00:00Z')
     );
     assert.deepEqual(dependent?.subscriber, {
       lastName: 'Doe',
@@ -224,9 +225,13 @@ describe('statusInquiry', () => {
       memberId: '1EG4TE5MK73'
     });
     assert.equal(dependent?.patient?.firstName, 'Jane');
-    assert.equal(statusInquiry({ ...statusRow, member_id: null }, '2026-11-04'), null);
     assert.equal(
-      statusInquiry({ ...statusRow, service_date: null }, '2026-11-04')?.serviceDate,
+      statusInquiry({ ...statusRow, member_id: null }, new Date('2026-11-04T12:00:00Z')),
+      null
+    );
+    assert.equal(
+      statusInquiry({ ...statusRow, service_date: null }, new Date('2026-11-05T03:00:00Z'))
+        ?.serviceDate,
       '2026-11-04'
     );
   });

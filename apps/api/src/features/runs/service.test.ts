@@ -14,6 +14,8 @@ const recordingBoss = () => {
 const codeOf = (res: { ok: boolean; failure?: { code: string } }) =>
   res.ok ? 'ok' : res.failure?.code;
 
+const scope = { agencyId: 't-1', organizationId: 'o-1' };
+
 const stored: string[] = [];
 
 const blobs = {
@@ -26,20 +28,51 @@ const blobs = {
 describe('run service', () => {
   it('starts the latest published version and enqueues it in the same transaction', async () => {
     const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select') ? [{ id: 'v1', version: 4 }] : [{ id: 'r1' }]
+      q.sql.startsWith('select')
+        ? [{ id: 'v1', version: 4, key: 'k', base: false }]
+        : [{ id: 'r1' }]
     );
     const { boss, jobs } = recordingBoss();
     assert.deepEqual(
-      await createRunService({ db, boss, blobs, maxBytes: 100 }).start('t-1', 'g1', undefined, {
-        a: 1
-      }),
+      await createRunService({ db, boss, blobs, maxBytes: 100 }).start(
+        scope,
+        'u1',
+        'g1',
+        undefined,
+        {
+          a: 1
+        }
+      ),
       {
         ok: true,
         value: { id: 'r1', version: 4 }
       }
     );
-    assert.ok(queries.some((q) => q.parameters.includes('{"a":1}')));
+    assert.ok(queries.some((q) => q.parameters.includes('{"a":1}') && q.parameters.includes('u1')));
+    assert.ok(!queries.some((q) => q.sql.includes('as req (key, version)')));
     assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } }, priority: 2 }]);
+  });
+
+  it('runs the effective override of a built-in or organization workflow', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('as req (key, version)')
+        ? [{ id: 'override-v2', key: 'k', version: 4 }]
+        : q.sql.startsWith('select')
+          ? [{ id: 'v1', version: 4, key: 'k', base: true }]
+          : [{ id: 'r1' }]
+    );
+    const res = await createRunService({
+      db,
+      boss: recordingBoss().boss,
+      blobs,
+      maxBytes: 100
+    }).start(scope, 'u1', 'g1', 4, {});
+    assert.deepEqual(res, { ok: true, value: { id: 'r1', version: 4 } });
+    const lookup = queries.find((q) => q.sql.includes('as req (key, version)'));
+    assert.deepEqual(lookup?.parameters.slice(0, 2), [['k'], [4]]);
+    assert.ok(
+      queries.some((q) => q.sql.startsWith('insert') && q.parameters.includes('override-v2'))
+    );
   });
 
   it('fails to start when nothing is published', async () => {
@@ -49,7 +82,7 @@ describe('run service', () => {
       boss: recordingBoss().boss,
       blobs,
       maxBytes: 100
-    }).start('t', 'g', 2, {});
+    }).start(scope, 'u1', 'g', 2, {});
     assert.equal(codeOf(res), 'not_found');
   });
 
@@ -171,7 +204,12 @@ describe('run service agency scoping', () => {
     const { db, queries } = createRecordingDb();
     const service = createRunService({ db, boss: recordingBoss().boss, blobs, maxBytes: 100 });
     assert.equal(codeOf(await service.cancel('t-2', 'r1')), 'not_found');
-    assert.equal(codeOf(await service.start('t-2', 'g1', undefined, {})), 'not_found');
+    assert.equal(
+      codeOf(
+        await service.start({ agencyId: 't-2', organizationId: 'o-2' }, 'u2', 'g1', undefined, {})
+      ),
+      'not_found'
+    );
     const [cancel, start] = queries.filter((q) => q.sql.startsWith('select'));
     assert.deepEqual(cancel?.parameters, ['t-2', 'r1']);
     assert.ok(start?.parameters.includes('t-2'));

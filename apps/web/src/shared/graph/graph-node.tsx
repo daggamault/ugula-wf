@@ -2,6 +2,7 @@ import type { ExitDoc, InputBinding, PinSpec } from '@ugula/graph';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
 import { classNamesOf } from '../class-names.ts';
 import { labelFromName } from '../format.ts';
+import { Badge } from '../ui/badge.tsx';
 import type { GraphFlowNode, NodeStatus } from './flow.ts';
 import { describeType, pinLabel, toneOf } from './pins.ts';
 
@@ -112,11 +113,8 @@ export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
           <span className="truncate text-sm font-semibold">{title}</span>
           <span className="flex shrink-0 items-center gap-1.5">
             {change || ghost ? (
-              <span
-                className="border-custom/30 bg-custom/10 text-custom rounded-full border px-1.5 text-xs/5 font-semibold"
-                title={ghost ? 'Removed from the base' : CHANGE_TITLES[change ?? 'changed']}
-              >
-                {ghost ? 'Removed' : 'Custom'}
+              <span title={ghost ? 'Removed from the base' : CHANGE_TITLES[change ?? 'changed']}>
+                <Badge intent="custom">{ghost ? 'Removed' : 'Custom'}</Badge>
               </span>
             ) : null}
             {opens ? (

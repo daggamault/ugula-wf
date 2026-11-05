@@ -7,7 +7,15 @@ import {
   type RecoveryStore,
   SELF
 } from '@ugula/billing';
-import { type Db, findProfile, nudgeClaim, postClaimResponse } from '@ugula/db';
+import {
+  claimBalance,
+  type Db,
+  findProfile,
+  lockClaim,
+  nudgeClaim,
+  postClaimResponse,
+  unchangeable
+} from '@ugula/db';
 import { toPcr } from '@ugula/nemsis';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobRef, BlobStore } from '@ugula/storage';
@@ -37,8 +45,6 @@ const isBlobRef = (x: unknown): x is BlobRef =>
   typeof (x as BlobRef).bucket === 'string' &&
   typeof (x as BlobRef).key === 'string';
 
-const today = () => new Date().toISOString().slice(0, 10);
-
 export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient): RecoveryStore => {
   const claimOf = async (runId: string, claimId: string) =>
     (isUuid(claimId)
@@ -60,7 +66,7 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
           coverageId: refund.coverageId,
           paidCents: refund.cents,
           adjustedCents: 0,
-          paidOn: today(),
+          paidOn: refund.paidOn,
           checkNumber: null,
           payerClaimNumber: null,
           adjustments: [],
@@ -72,17 +78,32 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
 
     protectBalance: async (runId, claimId, sourceKey, { adjustedCents, note }) => {
       const claim = await claimOf(runId, claimId);
-      await db
-        .insertInto('claim_events')
-        .values({
-          claim_id: claim.id,
-          kind: 'balance_protected',
-          adjusted_cents: adjustedCents,
-          note,
-          source_key: sourceKey
-        })
-        .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
-        .execute();
+      await db.transaction().execute(async (tx) => {
+        const locked = await lockClaim(tx, claim.agency_id, claim.id);
+        if (!locked) throw new Error(`Claim ${claimId} does not exist`);
+        const recorded = await tx
+          .selectFrom('claim_events')
+          .select('id')
+          .where('claim_id', '=', claim.id)
+          .where('source_key', '=', sourceKey)
+          .executeTakeFirst();
+        if (recorded) return;
+        const blocked = unchangeable(locked.status);
+        if (blocked) throw new Error(blocked.failure.message);
+        const cents = Math.min(adjustedCents, Math.max(await claimBalance(tx, claim.id), 0));
+        if (cents <= 0) return;
+        await tx
+          .insertInto('claim_events')
+          .values({
+            claim_id: claim.id,
+            kind: 'balance_protected',
+            adjusted_cents: cents,
+            note,
+            source_key: sourceKey
+          })
+          .execute();
+        await nudgeClaim(tx, boss, claim.agency_id, claim.id);
+      });
     },
 
     skipRemainingPayers: (runId, claimId, sourceKey, note) =>
@@ -214,11 +235,18 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
           .execute(),
         db
           .selectFrom('claim_events')
-          .select('document')
+          .select(['document', 'created_at'])
           .where('claim_id', '=', claim.id)
           .where('document', 'is not', null)
           .where('kind', 'not in', OWN_DOCUMENTS)
           .where(sql<string>`document ->> 'key'`, 'like', '%.pdf')
+          .unionAll(
+            db
+              .selectFrom('claim_documents')
+              .select(['document', 'created_at'])
+              .where('claim_id', '=', claim.id)
+              .where(sql<string>`document ->> 'contentType'`, '=', PDF)
+          )
           .orderBy('created_at')
           .execute()
       ]);

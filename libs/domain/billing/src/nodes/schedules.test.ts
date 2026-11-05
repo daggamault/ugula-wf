@@ -44,31 +44,46 @@ const setup = () => {
     saveFacilityInvoice: async (_, key, invoice) =>
       void calls.push(['invoice', key, invoice.totalCents, invoice.pdf.length > 0])
   };
-  const nodes = scheduleNodes(() => billingStores({ schedules }));
+  const calendar = {
+    today: async (_: string, at: Date) => {
+      calls.push(['today', at.toISOString()]);
+      return '2026-10-31';
+    }
+  };
+  const nodes = scheduleNodes(() => billingStores({ schedules, calendar }));
   const run = (type: string, inputs: Values) => {
     const node = nodes.find((n) => n.type === `billing.${type}`);
     if (!node) throw new Error(`No node ${type}`);
-    return invokeNode(node, { inputs, now: new Date('2026-11-01T06:00:00.000Z') });
+    return invokeNode(node, { inputs, now: new Date('2026-11-01T03:00:00.000Z') });
   };
   return { calls, run };
 };
 
 describe('scheduleNodes', () => {
-  it('finds the deadlines as of today and raises tasks', async () => {
+  it("finds the deadlines as of the agency's today and raises tasks", async () => {
     const { calls, run } = setup();
     assert.deepEqual((await run('find-deadlines', {})).outputs.deadlines, []);
     await run('raise-task', { taskId: 't1', priority: 3 });
     assert.deepEqual(calls, [
-      ['deadlines', '2026-11-01'],
+      ['today', '2026-11-01T03:00:00.000Z'],
+      ['deadlines', '2026-10-31'],
       ['raise', 't1', 3]
     ]);
   });
 
-  it('issues one invoice per facility for a month, and refuses other days', async () => {
+  it("gives today's date in the agency's time zone, not UTC", async () => {
+    const { run } = setup();
+    assert.deepEqual((await run('agency-today', {})).outputs, { today: '2026-10-31' });
+  });
+
+  it('issues one invoice per facility for a month on the agency date, and refuses other days', async () => {
     const { calls, run } = setup();
     const issued = await run('issue-facility-invoices', { period: '2026-10-01' });
     assert.deepEqual(issued.outputs, { invoices: 1, claims: 1 });
-    assert.deepEqual(calls, [['invoice', 'key:f1', 75_000, true]]);
+    assert.deepEqual(calls, [
+      ['today', '2026-11-01T03:00:00.000Z'],
+      ['invoice', 'key:f1', 75_000, true]
+    ]);
     await assert.rejects(
       () => run('issue-facility-invoices', { period: '2026-10-15' }),
       /not the first day of a month/

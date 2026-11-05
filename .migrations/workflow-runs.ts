@@ -27,6 +27,9 @@ const buildWorkflowRunsTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('completed_at', 'timestamptz')
+    .addColumn('started_by', 'uuid', (col) =>
+      col.references('users.id').onDelete('set null').onUpdate('cascade')
+    )
     .addUniqueConstraint('workflow_runs_agency_id_id_unique', ['agency_id', 'id'])
     .addCheckConstraint(
       'workflow_runs_status_check',
@@ -59,7 +62,12 @@ const buildWorkflowRunsIndexes = (db: Kysely<Database>) => [
     .createIndex('idx_workflow_runs_lease')
     .on('workflow_runs')
     .column('lease_until')
-    .where(sql.ref('status'), '=', 'running')
+    .where(sql.ref('status'), '=', 'running'),
+  db.schema
+    .createIndex('idx_workflow_runs_started_by')
+    .on('workflow_runs')
+    .column('started_by')
+    .where('started_by', 'is not', null)
 ];
 
 const buildWorkflowRunStepsTable = (db: Kysely<Database>) =>
@@ -101,6 +109,18 @@ const buildSignalsTable = (db: Kysely<Database>) =>
     .addPrimaryKeyConstraint('signals_pkey', ['agency_id', 'key'])
     .addCheckConstraint('signals_received_check', sql`received >= 0`);
 
+const buildScheduleRunsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('schedule_runs')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
+    )
+    .addColumn('workflow', 'text', (col) => col.notNull())
+    .addColumn('fire_on', 'date', (col) => col.notNull())
+    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addPrimaryKeyConstraint('schedule_runs_pkey', ['agency_id', 'workflow', 'fire_on'])
+    .addCheckConstraint('schedule_runs_workflow_check', sql`workflow <> ''`);
+
 const buildWorkflowRunGraphsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('workflow_run_graphs')
@@ -120,12 +140,34 @@ const buildWorkflowRunGraphsVersionIndex = (db: Kysely<Database>) =>
     .on('workflow_run_graphs')
     .column('graph_version_id');
 
+const runGraphKeyChecks = [
+  sql`
+    create function check_run_graph_key() returns trigger language plpgsql as $$
+    begin
+      if not exists (
+        select 1 from graph_versions v
+        join graphs g on g.id = v.graph_id
+        where v.id = new.graph_version_id and g.key = new.key
+      ) then
+        raise exception 'run % pins graph % to a version of another graph', new.run_id, new.key;
+      end if;
+      return new;
+    end;
+    $$`,
+  sql`
+    create trigger workflow_run_graphs_key
+    before insert or update on workflow_run_graphs
+    for each row execute function check_run_graph_key()`
+];
+
 export const createWorkflowRunsTables = async (db: Kysely<Database>) => {
   await buildWorkflowRunsTable(db).execute();
   for (const index of buildWorkflowRunsIndexes(db)) await index.execute();
   await buildWorkflowRunGraphsTable(db).execute();
   await buildWorkflowRunGraphsVersionIndex(db).execute();
+  for (const check of runGraphKeyChecks) await check.execute(db);
   await buildWorkflowRunStepsTable(db).execute();
   await buildWorkflowRunStepsNodeIndex(db).execute();
   await buildSignalsTable(db).execute();
+  await buildScheduleRunsTable(db).execute();
 };

@@ -268,6 +268,20 @@ describe('settleRun', () => {
     });
   });
 
+  it('stops the run instead of opening an unrestricted task for an unknown permission', async () => {
+    const { tx, calls } = fakeTx();
+    await settleRun(
+      tx,
+      run,
+      waiting('task', { title: 'Approve', queue: 'billing', outcomes: ['ok'], permission: 'x:y' }),
+      []
+    );
+    assert.deepEqual(
+      calls.tasks.map((t) => [t.kind, t.title, t.instructions.split('\n')[0]]),
+      [['fault', 'Could not continue', 'The task needs the permission x:y, which does not exist.']]
+    );
+  });
+
   it('spawns child runs or resumes immediately when there is nothing to wait for', async () => {
     const one = fakeTx({ version: 'v-9' });
     await settleRun(

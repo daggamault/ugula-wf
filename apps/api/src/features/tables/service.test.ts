@@ -41,7 +41,7 @@ const createWorld = (tables: Table[], versions: Record<string, Version[]> = {}) 
     const [p0, p1] = q.parameters;
     const sql = q.sql;
     if (sql.startsWith('select "t"."id", "t"."key"')) {
-      const t = live.find((x) => x.id === q.parameters[4]);
+      const t = live.find((x) => x.id === q.parameters.at(-3));
       return t
         ? [
             {
@@ -58,7 +58,7 @@ const createWorld = (tables: Table[], versions: Record<string, Version[]> = {}) 
           ]
         : [];
     }
-    if (sql.startsWith('select "t"."id", case')) {
+    if (sql.startsWith('select "t"."id" as "id", case')) {
       const order = { agency: 0, organization: 1, system: 2 };
       const [t] = live.toSorted((a, b) => order[a.scope] - order[b.scope]);
       return t ? [{ id: t.id, scope: t.scope }] : [];
@@ -82,6 +82,10 @@ const createWorld = (tables: Table[], versions: Record<string, Version[]> = {}) 
       const v = of(p0).find((x) => !x.published);
       return v ? [{ ...v, base_version_id: v.base ?? null }] : [];
     }
+    if (sql.startsWith('select "id", "version", "definition", "base_version_id"')) {
+      const [v] = of(p0).toSorted((a, b) => b.version - a.version);
+      return v ? [{ ...v, base_version_id: v.base ?? null }] : [];
+    }
     if (sql.includes('"base_table_id"')) {
       return of(p0)
         .toSorted((a, b) => b.version - a.version)
@@ -91,11 +95,11 @@ const createWorld = (tables: Table[], versions: Record<string, Version[]> = {}) 
       const v = of(p0).find((x) => x.version === p1);
       return v ? [{ ...v, base_version_id: v.base ?? null }] : [];
     }
-    if (sql.startsWith('select "v"."id", "v"."version", "v"."definition"')) {
+    if (sql.trimStart().startsWith('select v.id, v.version, v.definition')) {
       for (const [tableId, list] of Object.entries(versions)) {
         const v = list.find((x) => x.id === p0);
         const t = tables.find((x) => x.id === tableId);
-        if (v && t) return [{ ...v, table_id: t.id, scope: t.scope }];
+        if (v && t) return [{ ...v, owner_id: t.id, scope: t.scope }];
       }
       return [];
     }
@@ -163,6 +167,8 @@ describe('table service', () => {
       ok: true,
       value: { version: 1 }
     });
+    const [lock] = world.find('select "id" from "data_tables" where "id" = $1 for update');
+    assert.deepEqual(lock?.parameters, ['t-agency']);
     const bad = await world.service.saveDraft(editor, 't-agency', { inputs: 1 });
     assert.equal(!bad.ok && bad.failure.code, 'invalid');
     assert.deepEqual(await world.service.publish(editor, 't-agency'), {

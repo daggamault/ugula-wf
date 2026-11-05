@@ -1,12 +1,13 @@
 import { actionNode, pin, pureNode } from '@ugula/graph';
 import { renderAppealPacket } from '../documents.ts';
-import { DENIAL_FACTS, PATIENT_BALANCE_FACTS, REFUND_FACTS, X837_CLAIM } from '../models.ts';
+import { DENIAL_FACTS, PATIENT_BALANCE_FACTS, REFUND_FACTS } from '../ledger-models.ts';
 import {
   appealOutcomeOf,
   denialFactsOf,
   patientBalanceFactsOf,
   refundFactsOf
 } from '../recovery.ts';
+import { X837_CLAIM } from '../submission-models.ts';
 import { isCents, recordOf, requiredText, textOrNull } from '../values.ts';
 import { claimIdOf, claimIdPin } from './claims.ts';
 import type { NodesOf } from './stores.ts';
@@ -25,6 +26,7 @@ const centsOf = (x: unknown, what: string) => {
 export const recoveryNodes: NodesOf = (stores) => {
   const claims = () => stores().claims;
   const recovery = () => stores().recovery;
+  const today = (runId: string, at: Date) => stores().calendar.today(runId, at);
   const ledgerOf = async (runId: string, claimId: string) => {
     const ledger = await claims().ledger(runId, claimId);
     if (!ledger) throw new Error(`Claim ${claimId} does not exist`);
@@ -110,7 +112,8 @@ export const recoveryNodes: NodesOf = (stores) => {
         await recovery().recordRefund(ctx.runId, claimIdOf(inputs.claimId), ctx.key, {
           coverageId: textOrNull(inputs.coverageId),
           cents: centsOf(inputs.amountCents, 'The refund'),
-          note: textOrNull(inputs.note) ?? 'Refund of a credit balance'
+          note: textOrNull(inputs.note) ?? 'Refund of a credit balance',
+          paidOn: await today(ctx.runId, ctx.now)
         });
         return {};
       }
@@ -192,7 +195,7 @@ export const recoveryNodes: NodesOf = (stores) => {
         const source = await recovery().appealPacket(ctx.runId, claimId, coverageId);
         const pdf = await renderAppealPacket(
           { ...source, level, dueOn },
-          ctx.now.toISOString().slice(0, 10)
+          await today(ctx.runId, ctx.now)
         );
         await recovery().saveAppealPacket(ctx.runId, claimId, ctx.key, {
           coverageId,

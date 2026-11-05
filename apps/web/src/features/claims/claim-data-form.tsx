@@ -52,7 +52,13 @@ type Draft = {
 
 type TextKey = { [K in keyof Draft]: Draft[K] extends string ? K : never }[keyof Draft];
 
-type Flag = 'abnOnFile' | 'denialExpected' | 'mspEmployerPlan' | 'mspEsrd' | 'mspDisability';
+type Flag =
+  | 'pcsOnFile'
+  | 'abnOnFile'
+  | 'denialExpected'
+  | 'mspEmployerPlan'
+  | 'mspEsrd'
+  | 'mspDisability';
 
 const MODIFIER_OPTIONS = Object.entries(ORIGIN_DESTINATION_CODES).map(([value, label]) => ({
   value,
@@ -119,13 +125,14 @@ const MSP_QUESTIONS: { key: Flag; label: string; hint: string }[] = [
   }
 ];
 
-const pcsOf = (x: boolean | null) => (x === null ? '' : x ? 'yes' : 'no');
+const answerOf = (x: boolean | null) => (x === null ? '' : x ? 'yes' : 'no');
 
 const flagOf = (x: string) => (x === 'yes' ? true : x === 'no' ? false : null);
 
 const countOf = (x: string) => {
-  const n = x.trim() ? Number(x) : Number.NaN;
-  return Number.isInteger(n) ? n : null;
+  if (!x.trim()) return null;
+  const n = Number(x);
+  return Number.isInteger(n) ? n : undefined;
 };
 
 const blank = (x: string | null | undefined) => x ?? '';
@@ -165,16 +172,16 @@ export const toDraft = (claim: ClaimDetail): Draft => ({
   destinationCode: blank(claim.destination_code),
   signature: claim.signature,
   transportReason: blank(claim.transport_reason),
-  pcsOnFile: pcsOf(claim.pcs_on_file),
+  pcsOnFile: answerOf(claim.pcs_on_file),
   pcsSignedOn: blank(claim.pcs_signed_on),
   pcsType: blank(claim.pcs_type),
   patientCount: claim.patient_count === null ? '' : String(claim.patient_count),
-  abnOnFile: pcsOf(claim.abn_on_file),
+  abnOnFile: answerOf(claim.abn_on_file),
   abnSignedOn: blank(claim.abn_signed_on),
-  denialExpected: pcsOf(claim.denial_expected),
-  mspEmployerPlan: pcsOf(claim.msp_employer_plan),
-  mspEsrd: pcsOf(claim.msp_esrd),
-  mspDisability: pcsOf(claim.msp_disability),
+  denialExpected: answerOf(claim.denial_expected),
+  mspEmployerPlan: answerOf(claim.msp_employer_plan),
+  mspEsrd: answerOf(claim.msp_esrd),
+  mspDisability: answerOf(claim.msp_disability),
   mspAccident: blank(claim.msp_accident),
   priorAuthorization: blank(claim.prior_authorization),
   priorAuthorizationExpiresOn: blank(claim.prior_authorization_expires_on),
@@ -191,26 +198,29 @@ const fromLocation = (l: Record<keyof LocationInput, string>): LocationInput => 
   postalCode: orNull(l.postalCode)
 });
 
-const changed = <T, V>(next: T, before: T, value: V): V | null => (next === before ? null : value);
+const changed = <T, V>(next: T, before: T, value: V): V | undefined =>
+  next === before ? undefined : value;
 
 const text = (d: Draft, before: Draft, key: TextKey) =>
-  orNull(changed(d[key], before[key], d[key]) ?? '');
+  changed(d[key], before[key], orNull(d[key]));
 
 const flag = (d: Draft, before: Draft, key: Flag) => changed(d[key], before[key], flagOf(d[key]));
 
 const choice = <T extends string>(d: Draft, before: Draft, key: TextKey) =>
-  (orNull(changed(d[key], before[key], d[key]) ?? '') as T | null) ?? null;
+  changed(d[key], before[key], orNull(d[key]) as T | null);
 
 const documentationOf = (d: Draft, before: Draft): BillingDataInput['documentation'] => {
   const doc: DocumentationInput = {
     signature: isSignatureStatus(d.signature)
       ? changed(d.signature, before.signature, d.signature)
-      : null,
-    pcsOnFile: d.pcsOnFile ? changed(d.pcsOnFile, before.pcsOnFile, d.pcsOnFile === 'yes') : null,
+      : undefined,
+    pcsOnFile: flag(d, before, 'pcsOnFile'),
     pcsSignedOn: text(d, before, 'pcsSignedOn'),
     transportReason: isTransportReason(d.transportReason)
       ? changed(d.transportReason, before.transportReason, d.transportReason)
-      : null,
+      : d.transportReason.trim()
+        ? undefined
+        : changed(d.transportReason, before.transportReason, null),
     patientCount: changed(d.patientCount, before.patientCount, countOf(d.patientCount)),
     abnOnFile: flag(d, before, 'abnOnFile'),
     abnSignedOn: text(d, before, 'abnSignedOn'),
@@ -226,7 +236,10 @@ const documentationOf = (d: Draft, before: Draft): BillingDataInput['documentati
     admissionDate: text(d, before, 'admissionDate'),
     facilityStay: choice<FacilityStay>(d, before, 'facilityStay')
   };
-  return Object.values(doc).some((v) => v !== null) ? doc : null;
+  const sent: DocumentationInput = Object.fromEntries(
+    Object.entries(doc).filter(([, v]) => v !== undefined)
+  );
+  return Object.keys(sent).length ? sent : null;
 };
 
 export const fromDraft = (d: Draft, before: Draft = d): BillingDataInput => ({
@@ -252,10 +265,31 @@ export const fromDraft = (d: Draft, before: Draft = d): BillingDataInput => ({
   documentation: documentationOf(d, before)
 });
 
+const COUNT_KEYS = ['patientCount', 'roundTrips'] as const;
+
+type CountKey = (typeof COUNT_KEYS)[number];
+
+const COUNT_MINIMUMS: Readonly<Record<CountKey, number>> = { patientCount: 1, roundTrips: 0 };
+
+export const countErrorOf = (d: Pick<Draft, CountKey>, key: CountKey) => {
+  const x = d[key];
+  if (!x.trim()) return undefined;
+  const n = countOf(x);
+  const min = COUNT_MINIMUMS[key];
+  return n != null && n >= min ? undefined : `Enter a whole number of ${min} or more.`;
+};
+
+const hasCountError = (d: Pick<Draft, CountKey>) => COUNT_KEYS.some((k) => countErrorOf(d, k));
+
 export const modifierErrorOf = (d: Pick<Draft, 'originCode' | 'destinationCode'>) =>
   Boolean(d.originCode) === Boolean(d.destinationCode)
     ? undefined
     : 'Choose both a pickup and a destination type, or neither.';
+
+export const abnErrorOf = (d: Pick<Draft, 'abnOnFile' | 'abnSignedOn'>) =>
+  d.abnSignedOn.trim() && d.abnOnFile !== 'yes'
+    ? 'Answer yes to ABN on file before dating it, or clear the date.'
+    : undefined;
 
 const ADDRESS_LABELS: Record<string, string> = {
   name: 'Facility',
@@ -291,7 +325,7 @@ export const ClaimDataForm = ({
     e.preventDefault();
     if (locked) return;
     setChecked(true);
-    if (modifierErrorOf(draft)) return;
+    if (modifierErrorOf(draft) || hasCountError(draft) || abnErrorOf(draft)) return;
     setBusy(true);
     await onSave(fromDraft(draft, initial));
     setBusy(false);
@@ -402,6 +436,7 @@ export const ClaimDataForm = ({
                   min={1}
                   span={2}
                   value={draft.patientCount}
+                  error={isChecked ? countErrorOf(draft, 'patientCount') : undefined}
                   onChange={set('patientCount')}
                 />
               </FieldGrid>
@@ -472,6 +507,7 @@ export const ClaimDataForm = ({
                   min={0}
                   span={2}
                   value={draft.roundTrips}
+                  error={isChecked ? countErrorOf(draft, 'roundTrips') : undefined}
                   onChange={set('roundTrips')}
                 />
               </FieldGrid>
@@ -525,6 +561,7 @@ export const ClaimDataForm = ({
                   label="ABN Signed On"
                   type="date"
                   span={2}
+                  error={isChecked ? abnErrorOf(draft) : undefined}
                   value={draft.abnSignedOn}
                   onChange={set('abnSignedOn')}
                 />

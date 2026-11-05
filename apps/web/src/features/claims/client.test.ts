@@ -70,6 +70,22 @@ describe('createClaimsClient', () => {
     ]);
   });
 
+  it('searches facility choices under the claims endpoint', async () => {
+    const seen: string[] = [];
+    const client = createClaimsClient(
+      createApi('http://api.test', async (url) => {
+        seen.push(String(url));
+        return new Response('{"items":[{"id":"f1","name":"Oak Manor"}]}', { status: 200 });
+      })
+    );
+    assert.deepEqual(await client.facilities(' oak '), [{ id: 'f1', name: 'Oak Manor' }]);
+    await client.facilities('');
+    assert.deepEqual(seen, [
+      'http://api.test/api/claims/facility-options?q=oak',
+      'http://api.test/api/claims/facility-options'
+    ]);
+  });
+
   it('rejects with the message the server sends back', async () => {
     const client = createClaimsClient(
       createApi('', async () => new Response('{"error":"Claim is closed"}', { status: 409 }))

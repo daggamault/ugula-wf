@@ -3,16 +3,12 @@ import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
 import { tableContract } from '@ugula/graph';
 import {
-  findEffectiveTable,
-  findScopedTable,
   findTable,
   insertTable,
   insertTableDraft,
   listTableVersions,
-  nextTableVersion,
   publishTableVersion,
   searchTables,
-  setTableActive,
   updateTableDraft
 } from './queries.ts';
 
@@ -68,22 +64,18 @@ describe('table queries', () => {
     await db.destroy();
   });
 
-  it('finds a visible table, the effective table for a key and its versions', async () => {
+  it('finds a visible table and its versions', async () => {
     const { db, queries } = createRecordingDb();
     await findTable(db, S, 't1');
-    await findEffectiveTable(db, S, 'billing.base-rate');
     await listTableVersions(db, 't1');
-    await findScopedTable(db, { organizationId: 'o-1', agencyId: null }, 'billing.base-rate');
-    const [one, effective, versions, scoped] = queries;
+    const [one, versions] = queries;
     assert.ok(one?.parameters.includes('t1'));
-    assert.ok(flat(effective?.sql).endsWith('else 2 end limit $4'));
     assert.ok(versions?.sql.includes('"b"."table_id" as "base_table_id"'));
-    assert.ok(scoped?.sql.includes('"agency_id" is null'));
     await db.destroy();
   });
 
   it('writes tables, drafts with their contract and publishes once', async () => {
-    const { db, queries } = createRecordingDb(() => [{ id: 'x', version: 1, max: 2 }]);
+    const { db, queries } = createRecordingDb(() => [{ id: 'x', version: 1 }]);
     await insertTable(db, {
       organizationId: 'o-1',
       agencyId: 'a-1',
@@ -101,9 +93,7 @@ describe('table queries', () => {
     });
     await updateTableDraft(db, 'd1', LOOKUP);
     await publishTableVersion(db, 'd1');
-    await setTableActive(db, 't1', false);
-    assert.equal(await nextTableVersion(db, 't1'), 3);
-    const [table, draft, update, publish, active] = queries;
+    const [table, draft, update, publish] = queries;
     assert.deepEqual(table?.parameters, ['o-1', 'a-1', 'billing.codes', 'Codes', 'lookup', '']);
     assert.deepEqual(draft?.parameters, [
       't1',
@@ -115,7 +105,6 @@ describe('table queries', () => {
     ]);
     assert.ok(update?.sql.includes('"published_at" is null'));
     assert.ok(publish?.sql.includes('"published_at" = now()'));
-    assert.ok(active?.sql.includes('"organization_id" is not null'));
     await db.destroy();
   });
 });

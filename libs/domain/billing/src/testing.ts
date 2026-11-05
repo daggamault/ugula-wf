@@ -21,6 +21,7 @@ import type {
 } from './nodes/stores.ts';
 import type { Patient } from './patients.ts';
 import type { DirectoryPayer, PayerCandidate } from './payers.ts';
+import { localDate } from './statements.ts';
 import type { Submitter, X837Claim } from './x837.ts';
 
 export type RecordedEvent = ClaimEvent & { key: string; note: string };
@@ -150,6 +151,7 @@ const checkOfSaved = (c: NewClaim): ClaimCheck => ({
   responsibleParty: 'payer',
   responsibilityRecorded: false,
   documents: [],
+  timeZone: 'America/Chicago',
   payers: c.coverages.map((cov) => ({
     coverageId: `cov-${cov.payer}`,
     name: cov.payer,
@@ -425,6 +427,7 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
     facilityInvoices: unused('schedule'),
     saveFacilityInvoice: unused('schedule')
   },
+  calendar: stores.calendar ?? { today: async (_, at) => localDate(at, 'America/Chicago') },
   completer: stores.completer ?? { complete: unused('completion') }
 });
 
@@ -488,6 +491,7 @@ export const completeCheck = (payers = ['Medicare', 'Blue']): ClaimCheck => ({
   responsibleParty: 'payer',
   responsibilityRecorded: false,
   documents: [],
+  timeZone: 'America/Chicago',
   lines: [
     { code: 'A0427', units: 1, unitCents: 92_700, totalCents: 92_700 },
     { code: 'A0425', units: 7.3, unitCents: 1_000, totalCents: 7_300 }

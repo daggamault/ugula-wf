@@ -50,7 +50,13 @@ describe('run routes', () => {
   it('start runs and accept no signals from users', async () => {
     const started = await request('/', { method: 'POST', body: JSON.stringify({ graphId: ID }) });
     assert.equal(started.status, 201);
-    assert.deepEqual(calls.at(-1), ['t-1', ID, undefined, {}]);
+    assert.deepEqual(calls.at(-1), [
+      { agencyId: 't-1', organizationId: 'o-1' },
+      'u-1',
+      ID,
+      undefined,
+      {}
+    ]);
     const signal = await request('/signals', { method: 'POST', body: '{"name":"ack","key":"C1"}' });
     assert.equal(signal.status, 404);
   });
@@ -112,7 +118,13 @@ describe('run route validation', () => {
   it('start a chosen version with its inputs', async () => {
     const body = JSON.stringify({ graphId: ID, version: 2, inputs: { a: 1 } });
     assert.equal((await request('/', { method: 'POST', body })).status, 201);
-    assert.deepEqual(calls.at(-1), ['t-1', ID, 2, { a: 1 }]);
+    assert.deepEqual(calls.at(-1), [
+      { agencyId: 't-1', organizationId: 'o-1' },
+      'u-1',
+      ID,
+      2,
+      { a: 1 }
+    ]);
   });
 
   it('refuse files larger than the upload limit', async () => {

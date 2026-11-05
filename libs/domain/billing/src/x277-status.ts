@@ -1,6 +1,6 @@
 import { centsOf, componentsOf, readX12, textOf, transactionsOf, type X12File } from './x12.ts';
 
-export const CLAIM_STATUS_MEANINGS = [
+const CLAIM_STATUS_MEANINGS = [
   'inProcess',
   'pending',
   'paid',
@@ -135,7 +135,7 @@ export const readClaimStatus = (text: string): PayerClaimStatus[] => {
   return transactionsOf(file, '277').flatMap((segments) => statusesOf(segments, file));
 };
 
-export const CLAIM_STATUS_LABELS: Record<ClaimStatusMeaning, string> = {
+const CLAIM_STATUS_LABELS: Record<ClaimStatusMeaning, string> = {
   inProcess: 'In process',
   pending: 'Pending',
   paid: 'Paid',

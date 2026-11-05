@@ -325,7 +325,7 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
 
 const UNKNOWN_KIND = 'unknown';
 
-const PATIENT_KIND = 'patient';
+export const PATIENT_KIND = 'patient';
 
 const PAYER_KINDS: readonly string[] = [UNKNOWN_KIND, PATIENT_KIND];
 

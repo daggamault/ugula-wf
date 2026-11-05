@@ -9,6 +9,7 @@ import { type ExpressionBuilder, sql } from 'kysely';
 import { jsonObjectFrom } from 'kysely/helpers/postgres';
 import { DOCUMENTATION_COLUMNS, documentationOf } from './claim-documentation.ts';
 import type { Database, Db } from './schema.ts';
+import { agencyTimeZone } from './time-zones.ts';
 
 type ClaimRow = ExpressionBuilder<Database & { c: Database['claims'] }, 'c'>;
 
@@ -72,6 +73,7 @@ export const findClaimCheck = async (
       'c.deceased',
       'c.non_covered_miles',
       'c.facility_id',
+      agencyTimeZone(sql.ref('c.agency_id')).as('time_zone'),
       eb
         .exists(
           eb
@@ -183,6 +185,7 @@ export const findClaimCheck = async (
     responsibleParty: claim.facility_id ? 'facility' : 'payer',
     responsibilityRecorded: claim.facility_id !== null || claim.responsibility_recorded === true,
     documents: documents.map((d) => d.kind).filter(isDocumentKind),
+    timeZone: claim.time_zone,
     details: {
       serviceDate: claim.service_date,
       pickup: {

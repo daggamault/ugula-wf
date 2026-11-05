@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { billingModels, CLAIM, ENCOUNTER_FACTS, X837_CLAIM } from './models.ts';
+import { CLAIM, ENCOUNTER_FACTS } from './claim-models.ts';
+import { billingModels } from './models.ts';
+import { X837_CLAIM } from './submission-models.ts';
 
 describe('billingModels', () => {
   it('declares unique, labelled models for claims and 837P claims', () => {

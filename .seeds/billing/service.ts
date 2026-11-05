@@ -620,7 +620,7 @@ const nonCoveredMiles = (): GraphDef => {
   return g.def;
 };
 
-const DEAD_AT_SCENE = ['4212015', '4212019'];
+const DEAD_AT_SCENE = ['4212013', '4212015', '4212017', '4212019'];
 
 const NOT_TRANSPORTED = ['4230005', '4230007', '4230009', '4230013'];
 
@@ -640,7 +640,7 @@ const deceasedHandling = (): GraphDef => {
     config: shared.decision(
       'billing.pronounced-dead',
       'Pronounced Dead',
-      'Decides whether the patient was pronounced dead after the ambulance was called and before being loaded, which CMS bills as BLS with QL and no mileage.',
+      'Decides whether the patient was pronounced dead after the ambulance was called and before being loaded, before or after it reached them, which Medicare pays as the BLS base rate with QL and no mileage (Benefit Policy Manual ch. 10 §10.2.6); a death after loading is billed as the service furnished.',
       table(
         [
           field('incidentDisposition', 'string', 'Incident/patient disposition · eDisposition.12'),
@@ -650,7 +650,7 @@ const deceasedHandling = (): GraphDef => {
         [field('deceased', 'boolean', 'Pronounced dead before loading')],
         [
           {
-            label: 'Dead at the scene and not transported',
+            label: 'Pronounced dead at the scene, whether or not the body was then transported',
             when: { incidentDisposition: oneOf(...DEAD_AT_SCENE) },
             set: { deceased: true }
           },

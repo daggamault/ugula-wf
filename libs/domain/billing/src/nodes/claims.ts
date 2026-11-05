@@ -1,19 +1,15 @@
 import { actionNode, branchNode, type PinSpec, pin, pureNode } from '@ugula/graph';
 import { priceLines, readLines, readPricedLines } from '../charges.ts';
-import { CLAIM_FIX_FIELDS, chargeChanges, fixForm, readClaimPatch } from '../claim-fix.ts';
+import { CHECK_FACTS, CLAIM_DOCUMENT, CLAIM_ISSUE } from '../check-models.ts';
+import { chargeChanges, readClaimPatch } from '../claim-fix.ts';
+import { CLAIM_FIX_FIELDS } from '../claim-fix-fields.ts';
+import { fixForm } from '../claim-fix-form.ts';
+import { CLAIM, LINE, SERVICE } from '../claim-models.ts';
 import { type ClaimCheck, checkFactsOf, readIssues, readNewClaim } from '../claim-validation.ts';
 import { claimProgress, RESTARTABLE_STATUSES } from '../claims.ts';
 import { FACILITY_KINDS, isResponsibleParty } from '../facilities.ts';
-import {
-  BLOB,
-  CHECK_FACTS,
-  CLAIM,
-  CLAIM_DOCUMENT,
-  CLAIM_ISSUE,
-  LINE,
-  PATIENT,
-  SERVICE
-} from '../models.ts';
+import { BLOB } from '../model-kit.ts';
+import { PATIENT } from '../party-models.ts';
 import { isCents, recordOf, requiredText, textOrNull } from '../values.ts';
 import type { NodesOf } from './stores.ts';
 

@@ -223,8 +223,8 @@ export type BillingDataInput = {
   documentation: DocumentationInput | null;
 };
 
-export type DocumentationInput = {
-  signature: SignatureStatus | null;
+type DocumentationValues = {
+  signature: SignatureStatus;
   pcsOnFile: boolean | null;
   pcsSignedOn: string | null;
   transportReason: TransportReason | null;
@@ -242,6 +242,10 @@ export type DocumentationInput = {
   roundTrips: number | null;
   admissionDate: string | null;
   facilityStay: FacilityStay | null;
+};
+
+export type DocumentationInput = {
+  [K in keyof DocumentationValues]?: DocumentationValues[K] | undefined;
 };
 
 export type DocumentUpload = { kind: DocumentKind; signedOn: string; file: File };
@@ -311,8 +315,13 @@ export const createClaimsClient = (api: Api) => ({
   saveBillingData: (id: string, data: BillingDataInput) =>
     api.put<{ status: string }>(`${claimPath(id)}/billing-data`, data),
   restartCycle: (id: string) => api.post<{ runId: string }>(`${claimPath(id)}/restart-cycle`),
-  facilities: async (signal?: AbortSignal) =>
-    (await api.get<Page<FacilityOption>>('/api/facilities?pageSize=100&sort=name', signal)).items,
+  facilities: async (q: string, signal?: AbortSignal) =>
+    (
+      await api.get<{ items: FacilityOption[] }>(
+        `/api/claims/facility-options${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`,
+        signal
+      )
+    ).items,
   setFacility: (id: string, facilityId: string | null) =>
     api.put<{ facilityId: string | null }>(`${claimPath(id)}/facility`, { facilityId }),
   requestRecords: (id: string, request: RecordsRequestInput) =>

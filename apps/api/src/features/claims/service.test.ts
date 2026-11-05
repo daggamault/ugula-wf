@@ -64,6 +64,10 @@ const setup = ({
       return document ? [{ ...document, file_name: 'pcs.pdf' }] : [];
     }
     if (q.sql.startsWith('update "tasks"')) return moot;
+    if (q.sql.startsWith('select "name" from "facilities"'))
+      return facility ? [{ name: 'Oak Manor' }] : [];
+    if (q.sql.startsWith('select "id", "name" from "facilities"'))
+      return [{ id: 'f1', name: 'Oak Manor' }];
     if (q.sql.startsWith('update "claims" set "facility_id"'))
       return facility ? [{ id: 'c1' }] : [];
     return [];
@@ -72,7 +76,9 @@ const setup = ({
   const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
   const now = () => new Date('2026-01-01T12:00:00.000Z');
   const stored: string[] = [];
+  const removed: string[] = [];
   const blobs = {
+    remove: async (ref: { key: string }) => void removed.push(ref.key),
     getBytes: async () => new TextEncoder().encode('%PDF-1.7'),
     putBytes: async (key: string, body: Uint8Array, contentType: string) => {
       stored.push(key);
@@ -100,6 +106,7 @@ const setup = ({
   return {
     service: createClaimService({ db, boss, now, blobs, announce, rules, maxBytes: 100 }),
     stored,
+    removed,
     jobs,
     queries,
     announced,
@@ -157,7 +164,7 @@ describe('claim service', () => {
     const { service, jobs, queries, announced } = setup();
     assert.deepEqual(await service.recordResponse('t', 'u1', 'c1', response()), {
       ok: true,
-      value: { balanceCents: 30_000, duplicate: false }
+      value: { balanceCents: 30_000, adjustedCents: 10_000, duplicate: false }
     });
     assert.deepEqual(announced, [{ agencyId: 't', event: { kind: 'claim', id: 'c1' } }]);
     assert.ok(queries.some((q) => q.sql.endsWith('for update')));
@@ -191,13 +198,18 @@ describe('claim service', () => {
     assert.deepEqual(reasons?.parameters, ['e1', 1, 'CO', '45', 10_000, 'e1', 2, 'PR', '2', 5_000]);
   });
 
-  it('records refunds as negative payments up to what was paid', async () => {
+  it('records refunds as negative payments up to what was paid and the credit balance', async () => {
     const refund = response({ kind: 'refunded', paidCents: 20_000, adjustedCents: 0 });
-    const { service, queries, jobs } = setup({ paid: 50_000 });
+    const credit = { ...claim, balance_cents: -20_000 };
+    const { service, queries, jobs } = setup({ paid: 50_000, row: credit });
     assert.deepEqual(await service.recordResponse('t', 'u1', 'c1', refund), {
       ok: true,
-      value: { balanceCents: 120_000, duplicate: false }
+      value: { balanceCents: 0, adjustedCents: 0, duplicate: false }
     });
+    assert.equal(
+      failure(await setup({ paid: 50_000 }).service.recordResponse('t', 'u1', 'c1', refund)),
+      'invalid: $200.00 is more than the $0.00 credit balance that can be refunded'
+    );
     const event = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
     assert.ok(event?.parameters.includes('refunded') && event.parameters.includes(-20_000));
     assert.ok(!queries.some((q) => q.sql.startsWith('update "tasks"')));
@@ -234,18 +246,18 @@ describe('claim service', () => {
     const { service, jobs } = setup({ duplicate: true, row: { ...claim, status: 'paid' } });
     assert.deepEqual(await service.recordResponse('t', 'u1', 'c1', response()), {
       ok: true,
-      value: { balanceCents: 100_000, duplicate: true }
+      value: { balanceCents: 100_000, adjustedCents: 10_000, duplicate: true }
     });
     assert.equal(jobs.length, 0);
   });
 
-  it('rejects overpayments and responses for unknown, closed or foreign coverages', async () => {
+  it('posts overpayments as a credit and rejects responses for unknown, closed or foreign coverages', async () => {
     const record = (opts: Parameters<typeof setup>[0], over: Record<string, unknown> = {}) =>
       setup(opts).service.recordResponse('t', 'u', 'c1', response(over));
-    assert.equal(
-      failure(await record({}, { paidCents: 95_000, adjustedCents: 10_000 })),
-      'invalid: $1050.00 is more than the remaining balance of $1000.00'
-    );
+    assert.deepEqual(await record({}, { paidCents: 105_000, adjustedCents: 10_000 }), {
+      ok: true,
+      value: { balanceCents: -5_000, adjustedCents: 0, duplicate: false }
+    });
     assert.match(failure(await record({ row: null })), /^not_found/);
     assert.match(failure(await record({ row: { ...claim, status: 'paid' } })), /^conflict/);
     assert.match(failure(await record({}, { coverageId: BLUE })), /^invalid: That payer is not/);
@@ -269,7 +281,7 @@ describe('claim service', () => {
 
   it('makes a facility responsible for a claim, or no facility, and wakes its cycle', async () => {
     const assigned = setup();
-    assert.deepEqual(await assigned.service.setFacility('t', 'c1', null), {
+    assert.deepEqual(await assigned.service.setFacility('t', 'u1', 'c1', null), {
       ok: true,
       value: { facilityId: null }
     });
@@ -278,10 +290,29 @@ describe('claim service', () => {
     );
     assert.ok(update?.parameters.includes('t'));
     assert.ok(assigned.queries.some((q) => q.sql.startsWith('insert into "signals"')));
+    const toPayers = assigned.queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.deepEqual(toPayers?.parameters, ['c1', 'responsibility', 'Billed to the payers', 'u1']);
+    const facility = setup();
+    assert.equal(failure(await facility.service.setFacility('t', 'u1', 'c1', MEDICARE)), 'ok');
+    const billed = facility.queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.deepEqual(billed?.parameters, ['c1', 'responsibility', 'Billed to Oak Manor', 'u1']);
+    const unknown = setup({ facility: false });
     assert.match(
-      failure(await setup({ facility: false }).service.setFacility('t', 'c1', MEDICARE)),
+      failure(await unknown.service.setFacility('t', 'u1', 'c1', MEDICARE)),
       /^invalid: That facility/
     );
+    assert.ok(!unknown.queries.some((q) => q.sql.startsWith('update "claims" set "facility_id"')));
+  });
+
+  it('lists facility choices by name within the agency', async () => {
+    const { service, queries } = setup();
+    assert.deepEqual(await service.facilityOptions('t', 'oak'), {
+      ok: true,
+      value: { items: [{ id: 'f1', name: 'Oak Manor' }] }
+    });
+    const [q] = queries;
+    assert.ok(q?.sql.includes('lower(name) like $'));
+    assert.deepEqual(q?.parameters, ['t', '%oak%', 20]);
   });
 
   it('restarts a stopped payer cycle and links the claim to the new run', async () => {
@@ -355,6 +386,27 @@ describe('claim service', () => {
       failure(await setup({ published: false }).service.uploadDocument('t', 'u1', 'c1', pdf(5))),
       /billing.receive-document workflow is not published/
     );
+  });
+
+  it('refuses documents for closed claims and drops the file it stored', async () => {
+    const pdf = {
+      kind: 'pcs' as const,
+      signedOn: null,
+      file: { name: 'pcs.pdf', type: 'application/pdf', bytes: new Uint8Array(5) }
+    };
+    const closed = setup({ row: { ...claim, status: 'paid' } });
+    assert.match(
+      failure(await closed.service.uploadDocument('t', 'u1', 'c1', pdf)),
+      /^conflict: Claim is already closed/
+    );
+    assert.equal(closed.stored.length, 1);
+    assert.deepEqual(closed.removed, closed.stored);
+    assert.ok(!closed.queries.some((q) => q.sql.startsWith('insert into "claim_documents"')));
+    assert.match(
+      failure(await closed.service.chaseDocument('t', 'c1', { kind: 'abn', note: null })),
+      /^conflict: Claim is already closed/
+    );
+    assert.ok(!closed.queries.some((q) => q.sql.startsWith('insert into "workflow_runs"')));
   });
 
   it('serves a claim document and starts a chase for a missing one', async () => {

@@ -1,6 +1,4 @@
-import { type ClaimEvent, type ClaimLedger, claimProgress } from './claims.ts';
-
-const PATIENT_KIND = 'patient';
+import { type ClaimEvent, type ClaimLedger, claimProgress, PATIENT_KIND } from './claims.ts';
 
 const dayOf = (e: ClaimEvent) => e.paidOn ?? e.at.slice(0, 10);
 

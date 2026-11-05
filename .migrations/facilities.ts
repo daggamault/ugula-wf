@@ -37,6 +37,8 @@ const buildFacilityInvoicesTable = (db: Kysely<Database>) =>
     .addColumn('agency_id', 'uuid', (col) => col.notNull())
     .addColumn('facility_id', 'uuid', (col) => col.notNull())
     .addColumn('period', 'date', (col) => col.notNull())
+    .addColumn('sequence', 'integer', (col) => col.notNull())
+    .addColumn('source_key', 'text', (col) => col.notNull())
     .addColumn('claim_count', 'integer', (col) => col.notNull())
     .addColumn('total_cents', 'integer', (col) => col.notNull())
     .addColumn('document', 'jsonb', (col) => col.notNull())
@@ -46,18 +48,53 @@ const buildFacilityInvoicesTable = (db: Kysely<Database>) =>
       ['agency_id', 'facility_id'],
       'facilities',
       ['agency_id', 'id'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+      (fk) => fk.onDelete('no action').onUpdate('cascade')
     )
+    .addUniqueConstraint('facility_invoices_agency_id_id_unique', ['agency_id', 'id'])
     .addUniqueConstraint('facility_invoices_facility_period_unique', [
       'agency_id',
       'facility_id',
-      'period'
+      'period',
+      'sequence'
     ])
+    .addUniqueConstraint('facility_invoices_source_key_unique', ['agency_id', 'source_key'])
     .addCheckConstraint('facility_invoices_period_check', sql`extract(day from period) = 1`)
+    .addCheckConstraint('facility_invoices_sequence_check', sql`sequence >= 1`)
+    .addCheckConstraint('facility_invoices_source_key_check', sql`source_key <> ''`)
     .addCheckConstraint(
       'facility_invoices_counts_check',
       sql`claim_count > 0 and total_cents >= 0`
     );
+
+const buildFacilityInvoiceClaimsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('facility_invoice_claims')
+    .addColumn('agency_id', 'uuid', (col) => col.notNull())
+    .addColumn('invoice_id', 'uuid', (col) => col.notNull())
+    .addColumn('facility_id', 'uuid', (col) => col.notNull())
+    .addColumn('claim_id', 'uuid', (col) => col.notNull())
+    .addPrimaryKeyConstraint('facility_invoice_claims_pkey', ['invoice_id', 'claim_id'])
+    .addForeignKeyConstraint(
+      'facility_invoice_claims_invoice_id_fkey',
+      ['agency_id', 'invoice_id'],
+      'facility_invoices',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
+    .addForeignKeyConstraint(
+      'facility_invoice_claims_claim_id_fkey',
+      ['agency_id', 'claim_id'],
+      'claims',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
+    .addUniqueConstraint('facility_invoice_claims_claim_unique', ['facility_id', 'claim_id']);
+
+const buildFacilityInvoiceClaimsIndex = (db: Kysely<Database>) =>
+  db.schema
+    .createIndex('idx_facility_invoice_claims_agency_claim')
+    .on('facility_invoice_claims')
+    .columns(['agency_id', 'claim_id']);
 
 const buildFacilitiesIndexes = (db: Kysely<Database>) => [
   db.schema
@@ -75,4 +112,9 @@ export const createFacilitiesTables = async (db: Kysely<Database>) => {
   await buildFacilitiesTable(db).execute();
   for (const index of buildFacilitiesIndexes(db)) await index.execute();
   await buildFacilityInvoicesTable(db).execute();
+};
+
+export const createFacilityInvoiceClaimsTable = async (db: Kysely<Database>) => {
+  await buildFacilityInvoiceClaimsTable(db).execute();
+  await buildFacilityInvoiceClaimsIndex(db).execute();
 };

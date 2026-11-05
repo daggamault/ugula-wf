@@ -23,7 +23,8 @@ const batch = [
 const rowsFor =
   (imported: boolean): RowsFor =>
   (q) => {
-    if (q.sql.startsWith('select "agency_id" from "workflow_runs"')) return [{ agency_id: 't1' }];
+    if (q.sql.startsWith('select "agency_id", "started_by" from "workflow_runs"'))
+      return [{ agency_id: 't1', started_by: 'u1' }];
     if (q.sql.startsWith('select "id", "created_at" from "payer_files"')) {
       return imported ? [{ id: 'f0', created_at: new Date() }] : [];
     }
@@ -101,6 +102,7 @@ describe('createPayerFileStore', () => {
     const file = queries.find((q) => q.sql.startsWith('insert into "payer_files"'));
     assert.ok(file?.parameters.includes('t1') && file.parameters.includes('a.999'));
     assert.ok(file?.parameters.includes(JSON.stringify(document)));
+    assert.ok(file?.parameters.includes('u1'), 'the uploader who started the run');
   });
 
   it('lists only the lines a biller has to look at', async () => {

@@ -410,6 +410,9 @@ importers:
 
   libs/composition/catalog:
     dependencies:
+      '@ugula/access':
+        specifier: workspace:*
+        version: link:../../domain/access
       '@ugula/billing':
         specifier: workspace:*
         version: link:../../domain/billing

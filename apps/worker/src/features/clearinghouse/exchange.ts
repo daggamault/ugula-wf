@@ -8,12 +8,14 @@ import {
   claimStatusNote,
   type ExchangeStore,
   exchangeFileName,
+  localDate,
   readClaimStatus,
   SELF,
   type Submitter,
   submitterIssues
 } from '@ugula/billing';
 import {
+  agencyTimeZone,
   allocateControlNumber,
   type Db,
   eligibilityRequests,
@@ -23,6 +25,7 @@ import {
   toSubmitter
 } from '@ugula/db';
 import type { BlobStore } from '@ugula/storage';
+import { sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
 import type { ApplyDocument } from './payer-files.ts';
@@ -64,6 +67,7 @@ const statusClaim = (db: Db, agencyId: string, claimId: string, coverageId: stri
       'cc.insured_last_name',
       'dp.name as payer',
       'dp.payer_id',
+      agencyTimeZone(sql.ref('c.agency_id')).as('time_zone'),
       eb
         .selectFrom('claim_events as e')
         .select('e.payer_claim_number')
@@ -103,7 +107,7 @@ const statusFor = (text: string, claimNumber: string) => {
 
 type StatusRow = NonNullable<Awaited<ReturnType<typeof statusClaim>>>;
 
-export const statusInquiry = (r: StatusRow, today: string): ClaimStatusInquiry | null => {
+export const statusInquiry = (r: StatusRow, at: Date): ClaimStatusInquiry | null => {
   if (!r.member_id) return null;
   const self = r.relationship === SELF;
   const patient = {
@@ -130,7 +134,7 @@ export const statusInquiry = (r: StatusRow, today: string): ClaimStatusInquiry |
     claimNumber: String(r.number),
     payerClaimNumber: r.payer_claim_number,
     chargeCents: r.total_cents,
-    serviceDate: r.service_date ?? today
+    serviceDate: r.service_date ?? localDate(at, r.time_zone)
   };
 };
 
@@ -175,7 +179,7 @@ export const createExchangeStore = ({
       const agencyId = await agencyOf(runId);
       const row = isUuid(claimId) ? await findEligibilityClaim(db, agencyId, claimId) : undefined;
       if (!row) return unavailable('The claim has no patient to ask about yet');
-      const requests = eligibilityRequests(row, now().toISOString().slice(0, 10));
+      const requests = eligibilityRequests(row, now());
       if (!requests.length) return unavailable(NO_CHECKABLE_PAYER);
       const ready = await prepare(agencyId);
       if (ready.status !== 'ready') return ready;
@@ -208,7 +212,7 @@ export const createExchangeStore = ({
       const row = await statusClaim(db, agencyId, claimId, coverageId);
       if (!row) return unavailable('The payer is not a directory payer on this claim');
       if (!row.submitted) return unavailable('The claim has not been submitted to this payer');
-      const inquiry = statusInquiry(row, now().toISOString().slice(0, 10));
+      const inquiry = statusInquiry(row, now());
       if (!inquiry) return unavailable('The payer has no member ID or insured to ask about');
       const ready = await prepare(agencyId);
       if (ready.status !== 'ready') return ready;

@@ -112,26 +112,7 @@ describe('applyClaimEdit', () => {
     const edit: ClaimEdit = {
       ...empty,
       originDestination: 'RH',
-      documentation: {
-        signature: 'signed',
-        pcsOnFile: null,
-        pcsSignedOn: null,
-        transportReason: null,
-        patientCount: null,
-        abnOnFile: null,
-        abnSignedOn: null,
-        denialExpected: null,
-        mspEmployerPlan: null,
-        mspEsrd: null,
-        mspDisability: null,
-        mspAccident: null,
-        priorAuthorization: null,
-        priorAuthorizationExpiresOn: null,
-        pcsType: null,
-        roundTrips: null,
-        admissionDate: null,
-        facilityStay: null
-      },
+      documentation: { signature: 'signed' },
       lines: [
         { code: 'A0427', units: 1, unitCents: 90_000, totalCents: 90_000 },
         { code: 'A0425', units: 7, unitCents: 1_000, totalCents: 7_000 }
@@ -149,23 +130,11 @@ describe('applyClaimEdit', () => {
   it('writes the MSP answers, ABN, QL and A0888 miles a biller changed', async () => {
     const { db, queries } = createRecordingDb(logged);
     const documentation = {
-      signature: null,
-      pcsOnFile: null,
-      pcsSignedOn: null,
-      transportReason: null,
       patientCount: 2,
       abnOnFile: true,
-      abnSignedOn: null,
-      denialExpected: null,
       mspEmployerPlan: false,
-      mspEsrd: null,
-      mspDisability: null,
       mspAccident: 'workersComp' as const,
-      priorAuthorization: null,
-      priorAuthorizationExpiresOn: null,
-      pcsType: null,
-      roundTrips: null,
-      admissionDate: null,
+      roundTrips: undefined,
       facilityStay: 'snf' as const
     };
     await applyClaimEdit(
@@ -181,6 +150,26 @@ describe('applyClaimEdit', () => {
       'update "claims" set "deceased" = $1, "non_covered_miles" = $2, "patient_count" = $3, "abn_on_file" = $4, "msp_employer_plan" = $5, "msp_accident" = $6, "facility_stay" = $7, "updated_at" = now() where "id" = $8'
     );
     assert.deepEqual(claim?.parameters, [true, null, 2, true, false, 'workersComp', 'snf', 'c1']);
+  });
+
+  it('clears documentation a biller emptied and leaves what they did not send', async () => {
+    const { db, queries } = createRecordingDb(logged);
+    await applyClaimEdit(
+      db,
+      't1',
+      'c1',
+      {
+        ...empty,
+        documentation: { roundTrips: null, pcsSignedOn: null, priorAuthorization: 'UTN-1' }
+      },
+      event
+    );
+    const claim = queries.find((q) => q.sql.startsWith('update "claims"'));
+    assert.equal(
+      claim?.sql,
+      'update "claims" set "pcs_signed_on" = $1, "prior_authorization" = $2, "round_trips" = $3, "updated_at" = now() where "id" = $4'
+    );
+    assert.deepEqual(claim?.parameters, [null, 'UTN-1', null, 'c1']);
   });
 
   it('clears every line and zeroes the total when the lines are emptied', async () => {

@@ -113,6 +113,44 @@ const publishedImmutableTrigger = sql`
   before update on data_table_versions
   for each row execute function prevent_published_table_change()`;
 
+const versionKeyChecks = [
+  sql`
+    create function check_table_version_base() returns trigger language plpgsql as $$
+    begin
+      if new.base_version_id is not null and not exists (
+        select 1 from data_table_versions b
+        join data_tables bt on bt.id = b.table_id
+        join data_tables t on t.id = new.table_id
+        where b.id = new.base_version_id and bt.key = t.key and bt.id <> t.id
+      ) then
+        raise exception 'table version % must be based on a version of another table with its key', new.id;
+      end if;
+      return new;
+    end;
+    $$`,
+  sql`
+    create trigger data_table_versions_base_key
+    before insert or update of base_version_id on data_table_versions
+    for each row execute function check_table_version_base()`,
+  sql`
+    create function check_run_table_key() returns trigger language plpgsql as $$
+    begin
+      if not exists (
+        select 1 from data_table_versions v
+        join data_tables t on t.id = v.table_id
+        where v.id = new.table_version_id and t.key = new.key
+      ) then
+        raise exception 'run % pins table % to a version of another table', new.run_id, new.key;
+      end if;
+      return new;
+    end;
+    $$`,
+  sql`
+    create trigger workflow_run_tables_key
+    before insert or update on workflow_run_tables
+    for each row execute function check_run_table_key()`
+];
+
 export const createDataTablesTables = async (db: Kysely<Database>) => {
   await buildDataTablesTable(db).execute();
   await buildDataTableVersionsTable(db).execute();
@@ -121,4 +159,5 @@ export const createDataTablesTables = async (db: Kysely<Database>) => {
   await buildWorkflowRunTablesVersionIndex(db).execute();
   await publishedImmutableFunction.execute(db);
   await publishedImmutableTrigger.execute(db);
+  for (const check of versionKeyChecks) await check.execute(db);
 };

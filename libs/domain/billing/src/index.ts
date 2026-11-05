@@ -31,16 +31,14 @@ export {
   isDocumentContentType,
   isDocumentKind
 } from './claim-documents.ts';
+export type { ClaimPatch, CoveragePatch } from './claim-fix.ts';
 export {
   CLAIM_FIX_FIELDS,
-  type ClaimPatch,
-  type CoveragePatch,
   LEVEL_FIELD,
   LOADED_MILES_FIELD,
   TRIP_TYPE_FIELD
-} from './claim-fix.ts';
+} from './claim-fix-fields.ts';
 export {
-  CHECK_SEVERITIES,
   type CheckFacts,
   CLAIM_FIELDS,
   CLAIM_ISSUE_SEVERITIES,
@@ -136,7 +134,7 @@ export type {
   InvoicedClaim
 } from './documents.ts';
 export { fieldSections } from './documents.ts';
-export { ADVANTAGE_NOTE, eligibilityFinding } from './eligibility.ts';
+export { eligibilityFinding } from './eligibility.ts';
 export {
   type CheckedFacility,
   FACILITY_KINDS,
@@ -152,6 +150,7 @@ export {
   type AppliedPayerFile,
   type BillingStores,
   type BlobRef,
+  type CalendarStore,
   type ClaimStatusCheck,
   type ClaimStore,
   createBillingNodes,
@@ -204,14 +203,13 @@ export {
   payerQuery
 } from './payers.ts';
 export {
-  REMITTANCE_ROUTES,
   type RemittanceLine,
   type RemittancePosting,
   type RemittanceRoute,
   remittanceCoverage,
   remittanceLine
 } from './remittances.ts';
-export { HCPCS_LABELS, money } from './statements.ts';
+export { HCPCS_LABELS, localDate, money } from './statements.ts';
 export { type InterchangeAcknowledgment, readTA1 } from './ta1.ts';
 export { type InboundKind, readX12 } from './x12.ts';
 export { build270, type EligibilityRequest } from './x270.ts';
@@ -219,8 +217,6 @@ export { type EligibilityResult, type FacilityStayHint, read271 } from './x271.t
 export { build276, type ClaimStatusInquiry } from './x276.ts';
 export { type ClaimAcknowledgment, read277 } from './x277.ts';
 export {
-  CLAIM_STATUS_LABELS,
-  CLAIM_STATUS_MEANINGS,
   type ClaimStatusMeaning,
   claimStatusNote,
   type PayerClaimStatus,

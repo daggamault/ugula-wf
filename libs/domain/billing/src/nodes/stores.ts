@@ -90,7 +90,7 @@ export type RecoveryStore = {
     runId: string,
     claimId: string,
     sourceKey: string,
-    refund: { coverageId: string | null; cents: number; note: string }
+    refund: { coverageId: string | null; cents: number; note: string; paidOn: string }
   ) => Promise<void>;
   protectBalance: (
     runId: string,
@@ -120,6 +120,10 @@ export type RecoveryStore = {
     sourceKey: string,
     packet: { coverageId: string; note: string; pdf: Uint8Array }
   ) => Promise<void>;
+};
+
+export type CalendarStore = {
+  today: (runId: string, at: Date) => Promise<string>;
 };
 
 export type ScheduleStore = {
@@ -314,6 +318,7 @@ export type BillingStores = {
   exchange: ExchangeStore;
   recovery: RecoveryStore;
   schedules: ScheduleStore;
+  calendar: CalendarStore;
   completer: Completer;
 };
 

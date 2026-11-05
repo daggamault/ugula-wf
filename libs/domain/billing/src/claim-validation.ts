@@ -22,7 +22,8 @@ import { daysBetween } from './documentation.ts';
 import type { CheckedFacility, ResponsibleParty } from './facilities.ts';
 import type { Address } from './patients.ts';
 import type { EligibilityStatus } from './payer-files.ts';
-import { filingLimitOf } from './payers.ts';
+import { filingLimitOf, isMedicareFiling } from './payers.ts';
+import { localDate } from './statements.ts';
 import { recordOf, textOrNull } from './values.ts';
 
 export type NewClaim = {
@@ -44,8 +45,6 @@ export type NewClaim = {
 export const CLAIM_ISSUE_SEVERITIES = ['blocking', 'warning'] as const;
 
 export type ClaimIssueSeverity = (typeof CLAIM_ISSUE_SEVERITIES)[number];
-
-export const CHECK_SEVERITIES = [...CLAIM_ISSUE_SEVERITIES, 'off'] as const;
 
 export const CLAIM_FIELDS = [
   'patient',
@@ -130,6 +129,7 @@ export type ClaimCheck = {
   responsibleParty: ResponsibleParty;
   responsibilityRecorded: boolean;
   documents: DocumentKind[];
+  timeZone: string;
 };
 
 const ADDRESS_PARTS = [
@@ -141,10 +141,6 @@ const ADDRESS_PARTS = [
 
 const missingParts = (a: Address | null) =>
   a ? ADDRESS_PARTS.flatMap(([part, name]) => (a[part] ? [] : [name])) : [];
-
-const MEDICARE_FILINGS: readonly (string | null)[] = ['MA', 'MB'];
-
-const isMedicare = (claimFiling: string | null) => MEDICARE_FILINGS.includes(claimFiling);
 
 export const STAY_KINDS = ['inpatient', 'snf'] as const;
 
@@ -161,7 +157,7 @@ const within = (day: string | null, stay: ReportedStay) =>
   (stay.admittedOn === null || stay.admittedOn <= day) &&
   (stay.dischargedOn === null || day <= stay.dischargedOn);
 
-const payerFacts = (serviceDate: string | null, asOf: Date) => (p: CheckedPayer) => {
+const payerFacts = (serviceDate: string | null, today: string) => (p: CheckedPayer) => {
   const limit = filingLimitOf(p.claimFiling, p.filingLimitDays);
   return {
     coverageId: p.coverageId,
@@ -173,9 +169,8 @@ const payerFacts = (serviceDate: string | null, asOf: Date) => (p: CheckedPayer)
     eligibility: p.eligibility,
     eligibilityNote: p.eligibilityNote,
     filingLimitDays: limit,
-    filingDaysLeft:
-      limit === null || !serviceDate ? null : limit - daysBetween(serviceDate, asOf.toISOString()),
-    medicare: isMedicare(p.claimFiling),
+    filingDaysLeft: limit === null || !serviceDate ? null : limit - daysBetween(serviceDate, today),
+    medicare: isMedicareFiling(p.claimFiling),
     stayReported: p.stay && within(serviceDate, p.stay) ? p.stay.kind : null
   };
 };
@@ -210,8 +205,8 @@ export const checkFactsOf = (c: ClaimCheck, asOf: Date) => {
     pcsSignedOn: d.pcsSignedOn,
     pcsDaysBeforeTrip:
       d.pcsSignedOn && serviceDate ? daysBetween(d.pcsSignedOn, serviceDate) : null,
-    billsMedicare: c.payers.some((p) => isMedicare(p.claimFiling)),
-    payers: c.payers.map(payerFacts(serviceDate, asOf)),
+    billsMedicare: c.payers.some((p) => isMedicareFiling(p.claimFiling)),
+    payers: c.payers.map(payerFacts(serviceDate, localDate(asOf, c.timeZone))),
     deceased: c.deceased,
     nonCoveredMiles: c.nonCoveredMiles,
     patientCount: d.patientCount,

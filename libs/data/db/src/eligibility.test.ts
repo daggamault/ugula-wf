@@ -6,6 +6,8 @@ import { createRecordingDb } from './testing.ts';
 const MEDICARE = '01a16617-7704-7ba6-b9b5-000000000001';
 const BLUE = '01a16617-7704-7ba6-b9b5-000000000002';
 
+const evening = new Date('2026-11-01T03:00:00Z');
+
 const row = {
   number: 1001,
   service_date: null,
@@ -13,6 +15,7 @@ const row = {
   last_name: 'Doe',
   birth_date: '1950-02-03',
   gender: 'F' as const,
+  time_zone: 'America/Chicago',
   coverages: [
     {
       id: MEDICARE,
@@ -56,8 +59,8 @@ describe('findEligibilityClaim', () => {
 });
 
 describe('eligibilityRequests', () => {
-  it('asks each linked payer about the patient or the insured, traced by coverage', () => {
-    assert.deepEqual(eligibilityRequests(row, '2026-10-31'), [
+  it('asks each linked payer about the patient or the insured, traced by coverage, on the agency date', () => {
+    assert.deepEqual(eligibilityRequests(row, evening), [
       {
         trace: MEDICARE,
         payer: { name: 'Medicare', payerId: 'DEMOMCR' },
@@ -84,13 +87,13 @@ describe('eligibilityRequests', () => {
       }
     ]);
     assert.equal(
-      eligibilityRequests({ ...row, service_date: '2026-09-01' }, '2026-10-31')[0]?.serviceDate,
+      eligibilityRequests({ ...row, service_date: '2026-09-01' }, evening)[0]?.serviceDate,
       '2026-09-01'
     );
     assert.deepEqual(
       eligibilityRequests(
         { ...row, coverages: [{ ...row.coverages[1], insured_last_name: null }] } as typeof row,
-        '2026-10-31'
+        evening
       ),
       []
     );

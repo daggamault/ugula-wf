@@ -55,6 +55,7 @@ describe('createBillingNodes', () => {
         'billing.add-payer@1',
         'billing.build-appeal-packet@1',
         'billing.with-frequency@1',
+        'billing.agency-today@1',
         'billing.find-deadlines@1',
         'billing.raise-task@1',
         'billing.issue-facility-invoices@1'

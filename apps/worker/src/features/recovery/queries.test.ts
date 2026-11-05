@@ -51,27 +51,85 @@ describe('createRecoveryStore', () => {
               : []
     );
     const store = createRecoveryStore(db, blobs, boss);
-    await store.recordRefund('r1', ID, 'step-1', { coverageId: COV, cents: 5_000, note: 'Refund' });
+    await store.recordRefund('r1', ID, 'step-1', {
+      coverageId: COV,
+      cents: 5_000,
+      note: 'Refund',
+      paidOn: '2026-10-31'
+    });
     const refund = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
     assert.ok(refund?.parameters.includes(-5_000) && refund.parameters.includes('refunded'));
+    assert.ok(refund?.parameters.includes('2026-10-31'));
     await assert.rejects(
-      () => store.recordRefund('r1', ID, 'step-2', { coverageId: COV, cents: 90_000, note: '' }),
+      () =>
+        store.recordRefund('r1', ID, 'step-2', {
+          coverageId: COV,
+          cents: 90_000,
+          note: '',
+          paidOn: '2026-10-31'
+        }),
       /more than the \$800.00 paid/
     );
     await assert.rejects(() =>
-      store.recordRefund('r1', 'bad', 'k', { coverageId: null, cents: 1, note: '' })
+      store.recordRefund('r1', 'bad', 'k', {
+        coverageId: null,
+        cents: 1,
+        note: '',
+        paidOn: '2026-10-31'
+      })
     );
   });
 
-  it('protects a balance and skips every payer that has not answered', async () => {
-    const { db, queries } = recording(() => []);
+  const protecting = (status: string, balance: number, recorded = false) =>
+    recording((sql) =>
+      sql.includes('for update')
+        ? [{ id: ID, status, patient_id: 'p1' }]
+        : sql.includes('claim_balances')
+          ? [{ balance_cents: balance }]
+          : sql.startsWith('select "id" from "claim_events"') && recorded
+            ? [{ id: 'e1' }]
+            : []
+    );
+
+  const protections = (queries: { sql: string; parameters: readonly unknown[] }[]) =>
+    queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
+
+  it('protects at most the balance under the claim lock, nudges the claim and skips every payer that has not answered', async () => {
+    const { db, queries } = protecting('patient_balance', 2_500);
     const store = createRecoveryStore(db, blobs, boss);
     await store.protectBalance('r1', ID, 'step-1', { adjustedCents: 4_000, note: 'NH law' });
     await store.skipRemainingPayers('r1', ID, 'step-2', 'Moved to the patient');
-    const [protect, skip] = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
+    const [protect, skip] = protections(queries);
+    assert.ok(queries.some((q) => q.sql.includes('for update')));
     assert.ok(protect?.parameters.includes('balance_protected'));
+    assert.ok(protect?.parameters.includes(2_500) && !protect.parameters.includes(4_000));
+    assert.ok(queries.some((q) => q.sql.startsWith('insert into "signals"')));
     assert.ok(skip?.sql.includes('select "cc"."claim_id"'));
     assert.ok(skip?.sql.includes('"e"."kind" in ($'));
+  });
+
+  it('protects nothing on a settled claim or a step already recorded, and refuses a closed claim', async () => {
+    const settled = protecting('patient_balance', 0);
+    await createRecoveryStore(settled.db, blobs, boss).protectBalance('r1', ID, 'k', {
+      adjustedCents: 4_000,
+      note: 'NH law'
+    });
+    assert.equal(protections(settled.queries).length, 0);
+    const replay = protecting('paid', 4_000, true);
+    await createRecoveryStore(replay.db, blobs, boss).protectBalance('r1', ID, 'k', {
+      adjustedCents: 4_000,
+      note: 'NH law'
+    });
+    assert.equal(protections(replay.queries).length, 0);
+    const closed = protecting('paid', 4_000);
+    await assert.rejects(
+      () =>
+        createRecoveryStore(closed.db, blobs, boss).protectBalance('r1', ID, 'k', {
+          adjustedCents: 4_000,
+          note: 'NH law'
+        }),
+      /already closed/
+    );
   });
 
   it('adds a directory payer after the others, once, and refuses one not in the directory', async () => {
@@ -124,7 +182,17 @@ describe('createRecoveryStore', () => {
           : sql.includes('from "claim_lines"')
             ? [{ code: 'A0427', units: '1', total_cents: 80_000 }]
             : sql.includes('"document" is not null')
-              ? [{ document: { bucket: 'ugula', key: 'docs/pcs.pdf' } }, { document: 'x' }]
+              ? [
+                  { document: { bucket: 'ugula', key: 'docs/pcs.pdf' } },
+                  { document: 'x' },
+                  {
+                    document: {
+                      bucket: 'ugula',
+                      key: 'docs/facesheet',
+                      contentType: 'application/pdf'
+                    }
+                  }
+                ]
               : []
     );
     const store = createRecoveryStore(db, blobs, boss);
@@ -135,7 +203,12 @@ describe('createRecoveryStore', () => {
       { label: 'PCR', value: 'PCR-1' },
       { label: 'Patient', value: 'Jane Doe' }
     ]);
-    assert.equal(source.attachments.length, 1);
+    assert.equal(source.attachments.length, 2);
+    const documents = queries.find((q) => q.sql.includes('"document" is not null'));
+    assert.ok(
+      documents?.sql.includes('union all select "document", "created_at" from "claim_documents"')
+    );
+    assert.ok(documents?.parameters.includes('application/pdf'));
     await store.saveAppealPacket('r1', ID, 'step-3', {
       coverageId: COV,
       note: 'Redetermination packet',

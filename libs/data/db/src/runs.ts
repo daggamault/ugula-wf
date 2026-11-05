@@ -9,6 +9,7 @@ type NewRun = {
   versionId: string;
   inputs: unknown;
   interactive?: boolean;
+  startedBy?: string;
 };
 
 const buildInsertRun = (db: Kysely<Database>, run: NewRun) =>
@@ -18,7 +19,8 @@ const buildInsertRun = (db: Kysely<Database>, run: NewRun) =>
       agency_id: run.agencyId,
       graph_version_id: run.versionId,
       status: 'running',
-      inputs: JSON.stringify(run.inputs)
+      inputs: JSON.stringify(run.inputs),
+      started_by: run.startedBy ?? null
     })
     .returning('id');
 

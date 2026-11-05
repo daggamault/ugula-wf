@@ -1,9 +1,10 @@
-import type { Db, GraphKind, GraphRole } from '@ugula/db';
+import { type Db, type GraphKind, type GraphRole, resolvedGraph } from '@ugula/db';
 import { contractOf, type GraphDef } from '@ugula/graph';
 import { sql } from 'kysely';
 import { type Page, type PageRequest, paged } from '../../shared/paging.ts';
 import {
   isStaleIn,
+  type Owner,
   overriddenByIn,
   overridesIn,
   rankOf,
@@ -159,16 +160,6 @@ export const findGraph = (db: Db, s: ScopeIds, id: string) =>
     .where(visible('g', s))
     .executeTakeFirst();
 
-export const findEffectiveGraph = (db: Db, s: ScopeIds, key: string) =>
-  db
-    .selectFrom('graphs as g')
-    .select(['g.id', scopeOf('g').as('scope')])
-    .where('g.key', '=', key)
-    .where(visible('g', s))
-    .orderBy(rankOf('g'))
-    .limit(1)
-    .executeTakeFirst();
-
 export const listVersions = (db: Db, graphId: string) =>
   db
     .selectFrom('graph_versions as v')
@@ -186,31 +177,6 @@ export const listVersions = (db: Db, graphId: string) =>
     .where('v.graph_id', '=', graphId)
     .orderBy('v.version', 'desc')
     .execute();
-
-export const findVersion = (db: Db, graphId: string, version: number) =>
-  db
-    .selectFrom('graph_versions')
-    .select(['id', 'version', 'definition', 'published_at', 'base_version_id'])
-    .where('graph_id', '=', graphId)
-    .where('version', '=', version)
-    .executeTakeFirst();
-
-export const findVersionById = (db: Db, id: string) =>
-  db
-    .selectFrom('graph_versions as v')
-    .innerJoin('graphs as g', 'g.id', 'v.graph_id')
-    .select(['v.id', 'v.version', 'v.definition', 'g.id as graph_id', scopeOf('g').as('scope')])
-    .where('v.id', '=', id)
-    .executeTakeFirst();
-
-export const findDraft = (db: Db, graphId: string) =>
-  db
-    .selectFrom('graph_versions')
-    .select(['id', 'version', 'definition', 'base_version_id'])
-    .where('graph_id', '=', graphId)
-    .where('published_at', 'is', null)
-    .forUpdate()
-    .executeTakeFirst();
 
 export const insertGraph = (
   db: Db,
@@ -237,15 +203,6 @@ export const insertGraph = (
     })
     .returning('id')
     .executeTakeFirstOrThrow();
-
-export const nextVersion = async (db: Db, graphId: string) =>
-  ((
-    await db
-      .selectFrom('graph_versions')
-      .select((eb) => eb.fn.max('version').as('max'))
-      .where('graph_id', '=', graphId)
-      .executeTakeFirst()
-  )?.max ?? 0) + 1;
 
 export const insertDraft = (
   db: Db,
@@ -297,10 +254,6 @@ export const publishVersion = async (db: Db, id: string, dependencies: string[])
     .execute();
 };
 
-export const touchGraph = async (db: Db, id: string) => {
-  await db.updateTable('graphs').set({ updated_at: sql`now()` }).where('id', '=', id).execute();
-};
-
 export const listPublishedNodes = (db: Db, s: ScopeIds) =>
   db
     .selectFrom('graph_versions as gv')
@@ -337,46 +290,6 @@ export const listPublishedNodes = (db: Db, s: ScopeIds) =>
     .orderBy('gv.version', 'desc')
     .execute();
 
-export const findSystemGraph = (db: Db, key: string) =>
-  db
-    .selectFrom('graphs')
-    .select('id')
-    .where('key', '=', key)
-    .where('organization_id', 'is', null)
-    .executeTakeFirst();
-
-export const findNewestPublishedVersion = (db: Db, graphId: string) =>
-  db
-    .selectFrom('graph_versions')
-    .select(['id', 'version', 'definition', 'contract'])
-    .where('graph_id', '=', graphId)
-    .where('published_at', 'is not', null)
-    .orderBy('version', 'desc')
-    .limit(1)
-    .executeTakeFirst();
-
-export const findScopedGraph = (
-  db: Db,
-  scope: { organizationId: string; agencyId: string | null },
-  key: string
-) =>
-  db
-    .selectFrom('graphs')
-    .select(['id', 'is_active'])
-    .where('organization_id', '=', scope.organizationId)
-    .where('agency_id', scope.agencyId === null ? 'is' : '=', scope.agencyId)
-    .where('key', '=', key)
-    .executeTakeFirst();
-
-export const setGraphActive = (db: Db, id: string, active: boolean) =>
-  db
-    .updateTable('graphs')
-    .set({ is_active: active, updated_at: sql`now()` })
-    .where('id', '=', id)
-    .where('organization_id', 'is not', null)
-    .returning('id')
-    .executeTakeFirst();
-
 export const deleteGraph = (db: Db, id: string) =>
   db
     .deleteFrom('graphs')
@@ -385,7 +298,28 @@ export const deleteGraph = (db: Db, id: string) =>
     .returning('id')
     .executeTakeFirst();
 
-export const findVisibleTableKeys = async (db: Db, s: ScopeIds, keys: string[]) =>
+export const listDependents = async (db: Db, owner: Owner, key: string, graphId: string) =>
+  (
+    await sql<{ name: string }>`
+      select distinct g.name
+      from graphs g
+      join lateral (
+        select v.dependencies from graph_versions v
+        where v.graph_id = g.id and v.published_at is not null
+        order by v.version desc
+        limit 1
+      ) newest on true
+      where g.id <> ${graphId}::uuid
+        and g.is_active
+        and g.organization_id = ${owner.organizationId}::uuid
+        and (${owner.agencyId}::uuid is null or g.agency_id = ${owner.agencyId}::uuid)
+        and exists (
+          select 1 from unnest(newest.dependencies) d where split_part(d, '@', 1) = ${key}
+        )
+      order by g.name`.execute(db)
+  ).rows;
+
+export const findVisibleTableKeys = async (db: Db, s: Owner, keys: string[]) =>
   keys.length
     ? (
         await db
@@ -409,17 +343,12 @@ type EffectiveGraph = {
 };
 
 export const buildEffectiveGraphs = (s: ScopeIds) => sql<EffectiveGraph>`
-  select distinct on (g.key)
-    g.id, g.key, g.name, g.kind, g.role, ${scopeOf('g')} as scope, v.definition
-  from graphs g
-  join lateral (
-    select gv.definition from graph_versions gv
-    where gv.graph_id = g.id and gv.published_at is not null
-    order by gv.version desc
-    limit 1
-  ) v on true
-  where ${visible('g', s)}
-  order by g.key, ${rankOf('g')}`;
+  select g.id, g.key, g.name, g.kind, g.role, ${scopeOf('g')} as scope, v.definition
+  from (select distinct k.key from graphs k where ${visible('k', s)}) keys
+  cross join lateral (select ${resolvedGraph(s.agencyId, sql.ref('keys.key'))} as id) r
+  join graph_versions v on v.id = r.id
+  join graphs g on g.id = v.graph_id
+  order by g.key`;
 
 export const listEffectiveGraphs = async (db: Db, s: ScopeIds) =>
   (await buildEffectiveGraphs(s).execute(db)).rows;

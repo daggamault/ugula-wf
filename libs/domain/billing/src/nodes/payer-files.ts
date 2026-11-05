@@ -1,5 +1,6 @@
 import { branchNode, pin } from '@ugula/graph';
-import { BLOB, billingTypes } from '../models.ts';
+import { BLOB } from '../model-kit.ts';
+import { billingTypes } from '../models.ts';
 import { readPostings } from '../remittances.ts';
 import { requiredText } from '../values.ts';
 import type { NodesOf } from './stores.ts';

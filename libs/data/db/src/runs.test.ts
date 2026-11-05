@@ -14,12 +14,20 @@ describe('startRun', () => {
       'r1'
     );
     assert.ok(queries[0]?.sql.startsWith('insert into "workflow_runs"'));
-    assert.deepEqual(queries[0]?.parameters, ['t', 'v', 'running', '{"a":1}']);
+    assert.deepEqual(queries[0]?.parameters, ['t', 'v', 'running', '{"a":1}', null]);
     assert.match(queries[1]?.sql ?? '', /insert into workflow_run_graphs/);
     assert.ok(queries[1]?.parameters.includes('r1'));
     assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } } }]);
     jobs.length = 0;
-    await startRun(db, boss, { agencyId: 't', versionId: 'v', inputs: {}, interactive: true });
+    await startRun(db, boss, {
+      agencyId: 't',
+      versionId: 'v',
+      inputs: {},
+      interactive: true,
+      startedBy: 'u1'
+    });
+    const started = queries.filter((q) => q.sql.startsWith('insert into "workflow_runs"')).at(-1);
+    assert.equal(started?.parameters.at(-1), 'u1');
     assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } }, priority: 2 }]);
     await db.destroy();
   });
@@ -80,7 +88,11 @@ describe('resolveWorkflowVersion', () => {
       version: 2
     });
     const [latest, resolve] = queries;
-    assert.ok(latest?.sql.includes('order by g.organization_id is not null, v.version desc'));
+    assert.ok(
+      latest?.sql.includes(
+        'order by g.agency_id is not null, g.organization_id is not null, v.version desc'
+      )
+    );
     assert.deepEqual(latest?.parameters, ['billing.claim', 't', 't']);
     assert.deepEqual(resolve?.parameters.slice(0, 2), [['billing.claim'], [2]]);
     await db.destroy();

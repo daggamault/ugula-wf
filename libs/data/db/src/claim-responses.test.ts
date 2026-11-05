@@ -94,7 +94,7 @@ describe('claim responses', () => {
     assert.ok(queries[1]?.sql.endsWith('"coverage_id" is null'));
   });
 
-  it('posts nothing to a missing, closed, draft or overpaid claim', async () => {
+  it('posts nothing to a missing, closed or draft claim', async () => {
     const claimOf = (status: string | null) =>
       createRecordingDb((q) =>
         q.sql.includes('for update')
@@ -113,17 +113,48 @@ describe('claim responses', () => {
     assert.match(closed.ok ? '' : closed.failure.message, /already closed/);
     const draft = await post('draft');
     assert.match(draft.ok ? '' : draft.failure.message, /still a draft/);
-    const over = await post('submitted');
-    assert.equal(over.ok, false);
-    assert.match(over.ok ? '' : over.failure.message, /more than the remaining balance of \$0\.03/);
     assert.equal(unchangeable('submitted'), null);
+  });
+
+  it('posts an overpayment as a credit balance and caps adjustments at what remains unpaid', async () => {
+    const over = claimDb({ balance: 3 });
+    assert.deepEqual(
+      await postClaimResponse(over.db, boss, 't', 'c1', null, { ...response, adjustedCents: 4 }),
+      { ok: true, value: { balanceCents: -2, adjustedCents: 0, duplicate: false } }
+    );
+    const insert = over.queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.deepEqual(insert?.parameters.slice(2, 5), [null, 5, 0]);
+    const capped = claimDb({ balance: 100 });
+    assert.deepEqual(
+      await postClaimResponse(capped.db, boss, 't', 'c1', null, {
+        ...response,
+        paidCents: 70,
+        adjustedCents: 45
+      }),
+      { ok: true, value: { balanceCents: 0, adjustedCents: 30, duplicate: false } }
+    );
+    assert.ok(
+      capped.queries
+        .find((q) => q.sql.startsWith('insert into "claim_events"'))
+        ?.parameters.slice(2, 5)
+        .includes(30)
+    );
+  });
+
+  it('refuses negative amounts so takebacks and reversals reach a biller', async () => {
+    for (const amounts of [{ paidCents: -10 }, { adjustedCents: -1 }]) {
+      const { db, queries } = claimDb({ balance: 100 });
+      const out = await postClaimResponse(db, boss, 't', 'c1', null, { ...response, ...amounts });
+      assert.match(out.ok ? '' : out.failure.message, /need a biller to post them/);
+      assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
+    }
   });
 
   it('returns the balance without posting again for a request already applied', async () => {
     const { db, queries } = claimDb({ status: 'paid', balance: 40, duplicate: true });
     assert.deepEqual(await postClaimResponse(db, boss, 't', 'c1', null, response), {
       ok: true,
-      value: { balanceCents: 40, duplicate: true }
+      value: { balanceCents: 40, adjustedCents: 0, duplicate: true }
     });
     assert.equal(
       queries.some((q) => q.sql.startsWith('insert into "claim_events"')),
@@ -157,7 +188,10 @@ describe('claim responses', () => {
       adjustedCents: 40,
       payerClaimNumber: 'ICN-1'
     });
-    assert.deepEqual(out, { ok: true, value: { balanceCents: 0, duplicate: false } });
+    assert.deepEqual(out, {
+      ok: true,
+      value: { balanceCents: 0, adjustedCents: 40, duplicate: false }
+    });
     const insert = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
     assert.ok(insert?.parameters.includes('ICN-1'));
     assert.ok(insert?.parameters.includes(60));
@@ -188,21 +222,52 @@ describe('claim responses', () => {
   it('keeps collections open while a balance remains', async () => {
     const { db, queries } = claimDb({ balance: 100 });
     const out = await postClaimResponse(db, boss, 't', 'c1', null, response);
-    assert.deepEqual(out, { ok: true, value: { balanceCents: 95, duplicate: false } });
+    assert.deepEqual(out, {
+      ok: true,
+      value: { balanceCents: 95, adjustedCents: 0, duplicate: false }
+    });
     assert.ok(queries.find((q) => q.sql.startsWith('update "tasks"'))?.sql.includes('and false'));
   });
 
-  it('refunds up to what was paid, raising the balance', async () => {
+  it('refunds up to what was paid and the credit balance, raising the balance', async () => {
     const refund = { ...response, kind: 'refunded' as const, paidCents: 30, adjustments: [] };
-    const over = await postClaimResponse(claimDb({ paid: 20 }).db, boss, 't', 'c1', null, refund);
+    const over = await postClaimResponse(
+      claimDb({ balance: -40, paid: 20 }).db,
+      boss,
+      't',
+      'c1',
+      null,
+      refund
+    );
     assert.equal(
       over.ok ? '' : over.failure.message,
       '$0.30 is more than the $0.20 paid that can be refunded'
     );
-    const { db, queries } = claimDb({ balance: 10, paid: 30 });
+    const beyondCredit = await postClaimResponse(
+      claimDb({ balance: -10, paid: 30 }).db,
+      boss,
+      't',
+      'c1',
+      null,
+      refund
+    );
+    assert.equal(
+      beyondCredit.ok ? '' : beyondCredit.failure.message,
+      '$0.30 is more than the $0.10 credit balance that can be refunded'
+    );
+    const owed = await postClaimResponse(
+      claimDb({ balance: 10, paid: 30 }).db,
+      boss,
+      't',
+      'c1',
+      null,
+      refund
+    );
+    assert.match(owed.ok ? '' : owed.failure.message, /\$0\.00 credit balance/);
+    const { db, queries } = claimDb({ balance: -30, paid: 30 });
     assert.deepEqual(await postClaimResponse(db, boss, 't', 'c1', null, refund), {
       ok: true,
-      value: { balanceCents: 40, duplicate: false }
+      value: { balanceCents: 0, adjustedCents: 0, duplicate: false }
     });
     assert.ok(
       queries.find((q) => q.sql.startsWith('insert into "claim_events"'))?.parameters.includes(-30)

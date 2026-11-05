@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { PERMISSIONS } from '@ugula/access';
 import { hashPassword } from '@ugula/auth';
 import { billingModels, createBillingNodes } from '@ugula/billing';
 import { createDb, type Db, saveBuiltInRoles } from '@ugula/db';
@@ -82,7 +83,7 @@ const assertValidTables = (tables: SeedTable[], graphs: SeedGraph[]) => {
 };
 
 const graphNodes = () => [
-  ...createStdNodes({ fetch }),
+  ...createStdNodes({ fetch, permissions: PERMISSIONS }),
   ...createNemsisNodes(null),
   ...createBillingNodes(null),
   ...createModelNodes([...nemsisModels, ...billingModels])

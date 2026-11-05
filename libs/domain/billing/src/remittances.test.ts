@@ -84,6 +84,25 @@ describe('readPostings', () => {
       ]
     );
   });
+
+  it('sends a negative or fractional adjustment to a biller instead of posting it', () => {
+    assert.deepEqual(
+      readPostings([
+        { position: 1, route: 'reconcile', adjustedCents: -500 },
+        { position: 2, route: 'reconcile', adjustedCents: 1.5 },
+        { position: 3, route: 'reconcile', adjustedCents: null }
+      ]).map((p) => [p.position, p.route, p.adjustedCents]),
+      [
+        [1, 'review', 0],
+        [2, 'review', 0],
+        [3, 'reconcile', 0]
+      ]
+    );
+    assert.match(
+      readPostings([{ position: 1, route: 'appeal', adjustedCents: -500 }])[0]?.message ?? '',
+      /-500 cents .*post it by hand/
+    );
+  });
 });
 
 describe('remittanceCoverage', () => {

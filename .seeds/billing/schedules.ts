@@ -220,14 +220,17 @@ const invoiceFacilities = (): GraphDef => {
       d('claims', 'integer', 'Claims', 'How many trips they bill.')
     ]
   });
+  g.add('today', 'billing.agency-today', { label: 'Agency Today' });
   g.add(
     'period',
     'std.expr',
-    expr('Last Month', 'substr(addDays(substr(date(now()), 0, 8) + "01", -1), 0, 8) + "01"')
+    expr('Last Month', 'substr(addDays(substr(today, 0, 8) + "01", -1), 0, 8) + "01"')
   );
   g.add('issue', 'billing.issue-facility-invoices', { label: 'Issue Facility Invoices' });
   g.ret('return');
-  g.wire('entry.exec', 'issue.exec');
+  g.wire('entry.exec', 'today.exec');
+  g.wire('today.then', 'issue.exec');
+  g.wire('today.today', 'period.today');
   g.wire('period.result', 'issue.period');
   g.wire('issue.then', 'return.exec');
   g.wire('issue.invoices', 'return.invoices');

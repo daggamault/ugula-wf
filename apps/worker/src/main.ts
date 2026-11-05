@@ -20,8 +20,8 @@ import { createReportStore } from './features/imports/reports.ts';
 import { createPatientStore } from './features/patients/queries.ts';
 import { createPayerStore } from './features/payers/queries.ts';
 import { createRecoveryStore } from './features/recovery/queries.ts';
-import { registerScheduleJobs, startForEveryAgency } from './features/schedules/job.ts';
-import { createScheduleStore } from './features/schedules/queries.ts';
+import { registerScheduleJobs, startDueAgencies } from './features/schedules/job.ts';
+import { createCalendarStore, createScheduleStore } from './features/schedules/queries.ts';
 import { createEngineCache } from './features/workflows/engines.ts';
 import { registerWorkflowJobs } from './features/workflows/job.ts';
 import { createRunStore } from './features/workflows/queries.ts';
@@ -140,6 +140,7 @@ if (import.meta.main) {
           ),
           recovery: scope.guard(createRecoveryStore(db, blobs, boss)),
           schedules: scope.guard(createScheduleStore(db, blobs)),
+          calendar: scope.guard(createCalendarStore(db)),
           completer: createCompleter({
             url: config.COMPLETIONS_URL,
             model: config.COMPLETIONS_MODEL,
@@ -178,8 +179,7 @@ if (import.meta.main) {
   });
   await registerScheduleJobs({
     boss,
-    start: startForEveryAgency({ db, boss, report }),
-    report
+    start: startDueAgencies({ db, boss, report })
   });
   let stopping = false;
   const shutdown = (signal: NodeJS.Signals) => {

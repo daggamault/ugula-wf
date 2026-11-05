@@ -5,6 +5,7 @@ import {
   formatCents,
   formatDate,
   formatDateTime,
+  formatDay,
   formatDuration,
   formatMiles,
   labelFromName,
@@ -17,6 +18,9 @@ describe('format', () => {
   it('formats timestamps and durations for display', () => {
     assert.equal(formatDateTime(null), '—');
     assert.ok(formatDateTime('2026-01-02T03:04:05Z').includes('2026'));
+    assert.ok(formatDay('2026-01-02T03:04:05Z').includes('2026'));
+    assert.doesNotMatch(formatDay('2026-01-02T03:04:05Z'), /\d:\d\d/);
+    assert.equal(formatDay(null), '—');
     assert.equal(formatDuration(0.2), '<1 ms');
     assert.equal(formatDuration(42.4), '42 ms');
     assert.equal(formatDuration(999), '999 ms');

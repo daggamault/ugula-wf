@@ -1,4 +1,5 @@
 import type { Db } from '@ugula/db';
+import { isForeignKeyViolation, isUniqueViolation } from '../../shared/http.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
   deleteFacility,
@@ -14,8 +15,10 @@ const notFound = fail('not_found', 'Facility not found');
 
 const taken = (name: string) => fail('conflict', `A facility named ${name} already exists`);
 
-const isUniqueViolation = (err: unknown) =>
-  typeof err === 'object' && err !== null && (err as { code?: unknown }).code === '23505';
+const inUse = fail(
+  'conflict',
+  'This facility is responsible for claims or has been invoiced, so it cannot be deleted'
+);
 
 export const createFacilityService = ({ db }: { db: Db }) => ({
   search: async (agencyId: string, filters: FacilityFilters) =>
@@ -41,8 +44,14 @@ export const createFacilityService = ({ db }: { db: Db }) => ({
     }
   },
 
-  remove: async (agencyId: string, id: string) =>
-    (await deleteFacility(db, agencyId, id)) ? ok({ status: 'deleted' }) : notFound
+  remove: async (agencyId: string, id: string) => {
+    try {
+      return (await deleteFacility(db, agencyId, id)) ? ok({ status: 'deleted' }) : notFound;
+    } catch (err) {
+      if (isForeignKeyViolation(err)) return inUse;
+      throw err;
+    }
+  }
 });
 
 export type FacilityService = ReturnType<typeof createFacilityService>;

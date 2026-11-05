@@ -1,6 +1,6 @@
 import { actionNode, pin } from '@ugula/graph';
 import { invoiceTotal, renderFacilityInvoice } from '../documents.ts';
-import { DEADLINE } from '../models.ts';
+import { DEADLINE } from '../ledger-models.ts';
 import { requiredText } from '../values.ts';
 import type { NodesOf } from './stores.ts';
 
@@ -10,7 +10,18 @@ const PERIOD = /^\d{4}-\d{2}-01$/;
 
 export const scheduleNodes: NodesOf = (stores) => {
   const schedules = () => stores().schedules;
+  const today = (runId: string, at: Date) => stores().calendar.today(runId, at);
   return [
+    actionNode({
+      type: 'billing.agency-today',
+      title: 'Agency Today',
+      category: CATEGORY,
+      description:
+        "Today's date (YYYY-MM-DD) in the agency's time zone from its billing profile, or in UTC without one.",
+      inputs: [],
+      outputs: [pin('today', 'string', { label: 'Today' })],
+      compute: async (_, __, ctx) => ({ today: await today(ctx.runId, ctx.now) })
+    }),
     actionNode({
       type: 'billing.find-deadlines',
       title: 'Find Deadlines',
@@ -20,7 +31,7 @@ export const scheduleNodes: NodesOf = (stores) => {
       inputs: [],
       outputs: [pin('deadlines', { list: DEADLINE.type })],
       compute: async (_, __, ctx) => ({
-        deadlines: await schedules().deadlines(ctx.runId, ctx.now.toISOString().slice(0, 10))
+        deadlines: await schedules().deadlines(ctx.runId, await today(ctx.runId, ctx.now))
       })
     }),
     actionNode({
@@ -46,7 +57,7 @@ export const scheduleNodes: NodesOf = (stores) => {
       title: 'Issue Facility Invoices',
       category: CATEGORY,
       description:
-        'Renders one PDF invoice per facility for the month starting on the period: every trip that month the facility is responsible for with a balance left. Stores each, and logs it in the files of each claim it bills, once per facility and month.',
+        'Renders one PDF invoice per facility for the month starting on the period: every trip through that month the facility is responsible for with a balance left that no invoice to it has billed yet, so trips added late go on a supplemental invoice. Stores each, and logs it in the files of each claim it bills, once per run step.',
       effect: true,
       inputs: [pin('period', 'string', { label: 'First Day of the Month' })],
       outputs: [pin('invoices', 'integer'), pin('claims', 'integer')],
@@ -54,7 +65,7 @@ export const scheduleNodes: NodesOf = (stores) => {
         const period = requiredText(inputs.period, 'No month to invoice');
         if (!PERIOD.test(period)) throw new Error(`${period} is not the first day of a month`);
         const sources = await schedules().facilityInvoices(ctx.runId, period);
-        const issuedOn = ctx.now.toISOString().slice(0, 10);
+        const issuedOn = await today(ctx.runId, ctx.now);
         for (const source of sources) {
           await schedules().saveFacilityInvoice(ctx.runId, `${ctx.key}:${source.facilityId}`, {
             source,

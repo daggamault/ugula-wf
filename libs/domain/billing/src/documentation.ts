@@ -1,3 +1,4 @@
+import { MAX_LOADED_MILES } from './charges.ts';
 import { recordOf, textOrNull } from './values.ts';
 
 export const SIGNATURE_STATUSES = ['signed', 'exception', 'refused', 'missing'] as const;
@@ -208,10 +209,8 @@ export const MAX_DOCUMENTED_COUNT = 99;
 const countOf = (min: number) => (x: unknown) =>
   typeof x === 'number' && Number.isInteger(x) && x >= min && x <= MAX_DOCUMENTED_COUNT ? x : null;
 
-const MAX_DOCUMENTED_MILES = 999;
-
 const milesOf = (x: unknown) =>
-  typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= MAX_DOCUMENTED_MILES ? x : null;
+  typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= MAX_LOADED_MILES ? x : null;
 
 const flagOf = (x: unknown) => (typeof x === 'boolean' ? x : null);
 

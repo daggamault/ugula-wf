@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { FacilityInvoiceSource } from '@ugula/billing';
 import { createRecordingDb } from '@ugula/db/testing';
-import { createScheduleStore, invoiceKey } from './queries.ts';
+import { createCalendarStore, createScheduleStore, invoiceKey } from './queries.ts';
 
 const TASK = '0195f2a4-0000-7000-8000-0000000000a1';
 
@@ -42,7 +42,7 @@ const claimRow = (id: string, number: number, facility = 'f1') => ({
 });
 
 describe('createScheduleStore', () => {
-  it('reads every kind of deadline in one query, with whether a reminder is open', async () => {
+  it('reads every kind of deadline in one query, dated in the agency time zone, with whether a reminder is open', async () => {
     const { db, queries } = createRecordingDb(() => [
       {
         kind: 'appeal',
@@ -73,6 +73,8 @@ describe('createScheduleStore', () => {
       assert.ok(q?.sql.includes(part) || q?.parameters.includes(part), part);
     }
     assert.ok(q?.parameters.includes('billing.appeal-claim'));
+    assert.ok(q?.sql.includes('(t.due_at at time zone a.zone)::date as due_on'));
+    assert.ok(!q?.sql.includes('select *'));
   });
 
   it('raises open tasks only, never lowering them', async () => {
@@ -150,24 +152,78 @@ describe('createScheduleStore', () => {
         }
       ]
     };
-    const run = async (inserted: boolean) => {
+    const run = async ({ inserted = true, invoiced = false } = {}) => {
       const { db, queries } = createRecordingDb(({ sql }) =>
         sql.startsWith('select "agency_id"')
           ? [{ agency_id: 't-1' }]
-          : sql.startsWith('insert into "facility_invoices"') && inserted
-            ? [{ id: 'i1' }]
-            : []
+          : sql.startsWith('select "id" from "facilities"')
+            ? [{ id: 'f1' }]
+            : sql.startsWith('select "claim_id" from "facility_invoice_claims"') && invoiced
+              ? [{ claim_id: 'c1' }]
+              : sql.startsWith('insert into "facility_invoices"') && inserted
+                ? [{ id: 'i1' }]
+                : []
       );
       await createScheduleStore(db, blobs).saveFacilityInvoice('r1', 'step:f1', {
         source,
         pdf: new Uint8Array([1]),
         totalCents: 1
       });
-      return queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
+      return queries;
     };
-    const [logged] = await run(true);
-    assert.ok(logged?.parameters.includes('step:f1:c1'));
-    assert.deepEqual(await run(false), []);
-    assert.ok(stored.includes(invoiceKey('t-1', 'f1', '2026-10-01')));
+    const inserts = (queries: { sql: string; parameters: readonly unknown[] }[], table: string) =>
+      queries.filter((q) => q.sql.startsWith(`insert into "${table}"`));
+    const queries = await run();
+    assert.ok(
+      queries.some((q) => q.sql.includes('from "facilities"') && q.sql.endsWith('for update'))
+    );
+    const [invoice] = inserts(queries, 'facility_invoices');
+    assert.ok(invoice?.sql.includes('coalesce(max(i.sequence), 0) + 1'));
+    assert.ok(invoice?.sql.includes('on conflict ("agency_id", "source_key") do nothing'));
+    assert.deepEqual(inserts(queries, 'facility_invoice_claims')[0]?.parameters, [
+      't-1',
+      'i1',
+      'f1',
+      'c1'
+    ]);
+    assert.ok(inserts(queries, 'claim_events')[0]?.parameters.includes('step:f1:c1'));
+    for (const replay of [await run({ inserted: false }), await run({ invoiced: true })]) {
+      assert.deepEqual(inserts(replay, 'claim_events'), []);
+      assert.deepEqual(inserts(replay, 'facility_invoice_claims'), []);
+    }
+    assert.ok(stored.includes(invoiceKey('t-1', 'f1', 'step:f1')));
+    assert.notEqual(invoiceKey('t-1', 'f1', 'step:f1'), invoiceKey('t-1', 'f1', 'step-2:f1'));
+  });
+
+  it('invoices every trip through the month that no invoice to the facility has billed', async () => {
+    const { db, queries } = createRecordingDb(({ sql }) =>
+      sql.startsWith('select "agency_id"') ? [{ agency_id: 't-1' }] : []
+    );
+    await createScheduleStore(db, blobs).facilityInvoices('r1', '2026-10-01');
+    const trips = queries.find((q) => q.sql.includes('from "claims"'));
+    assert.ok(trips?.sql.includes('c.service_date < $'));
+    assert.ok(!trips?.sql.includes('c.service_date >= $'));
+    assert.ok(
+      trips?.sql.includes(
+        'not exists (select "l"."claim_id" from "facility_invoice_claims" as "l" where "l"."facility_id" = "f"."id" and "l"."claim_id" = "c"."id")'
+      )
+    );
+  });
+});
+
+describe('createCalendarStore', () => {
+  it("dates a moment by the run agency's time zone", async () => {
+    const { db, queries } = createRecordingDb(({ sql }) =>
+      sql.startsWith('select "agency_id" from "workflow_runs"')
+        ? [{ agency_id: 't-1' }]
+        : [{ zone: 'America/Chicago' }]
+    );
+    const calendar = createCalendarStore(db);
+    assert.equal(await calendar.today('r1', new Date('2026-11-01T03:00:00Z')), '2026-10-31');
+    assert.deepEqual(queries[1]?.parameters, ['t-1']);
+    await assert.rejects(
+      () => createCalendarStore(createRecordingDb().db).today('r1', new Date()),
+      /does not exist/
+    );
   });
 });

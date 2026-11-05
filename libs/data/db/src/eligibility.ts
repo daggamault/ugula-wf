@@ -1,8 +1,9 @@
-import { type EligibilityRequest, SELF } from '@ugula/billing';
+import { type EligibilityRequest, localDate, SELF } from '@ugula/billing';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { payerName } from './claim-responses.ts';
 import type { Db } from './schema.ts';
+import { agencyTimeZone } from './time-zones.ts';
 
 export const NO_CHECKABLE_PAYER =
   'No payer on this claim has a directory payer and member ID to check eligibility with';
@@ -18,6 +19,7 @@ export const findEligibilityClaim = (db: Db, agencyId: string, id: string) =>
       'p.last_name',
       'p.birth_date',
       'p.gender',
+      agencyTimeZone(sql.ref('c.agency_id')).as('time_zone'),
       jsonArrayFrom(
         eb
           .selectFrom('claim_coverages as cc')
@@ -41,10 +43,7 @@ export const findEligibilityClaim = (db: Db, agencyId: string, id: string) =>
 
 export type EligibilityClaimRow = NonNullable<Awaited<ReturnType<typeof findEligibilityClaim>>>;
 
-export const eligibilityRequests = (
-  row: EligibilityClaimRow,
-  today: string
-): EligibilityRequest[] =>
+export const eligibilityRequests = (row: EligibilityClaimRow, at: Date): EligibilityRequest[] =>
   row.coverages.flatMap((c) => {
     if (!c.payer_id || !c.member_id) return [];
     const self = c.relationship === SELF;
@@ -61,7 +60,7 @@ export const eligibilityRequests = (
           birthDate: self ? row.birth_date : null,
           sex: self ? row.gender : null
         },
-        serviceDate: row.service_date ?? today
+        serviceDate: row.service_date ?? localDate(at, row.time_zone)
       }
     ];
   });

@@ -13,7 +13,7 @@ import {
 } from './queries.ts';
 
 describe('resolveWorkflowVersion', () => {
-  it('takes the newest built-in version number, then resolves the override in effect for it', async () => {
+  it('takes the newest version number of the graph at the bottom, then resolves the override in effect for it', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.includes('from unnest')
         ? [{ id: 'v-agency', key: 'billing.ingest-nemsis', version: 3, definition: {} }]
@@ -25,7 +25,11 @@ describe('resolveWorkflowVersion', () => {
     });
     const [latest, resolved] = queries.map((q) => ({ ...q, sql: q.sql.replace(/\s+/g, ' ') }));
     assert.ok(latest?.sql.includes("g.kind = 'workflow' and g.is_active"));
-    assert.ok(latest?.sql.includes('order by g.organization_id is not null, v.version desc'));
+    assert.ok(
+      latest?.sql.includes(
+        'order by g.agency_id is not null, g.organization_id is not null, v.version desc'
+      )
+    );
     assert.deepEqual(latest?.parameters.slice(0, 2), ['billing.ingest-nemsis', 't-1']);
     assert.deepEqual(resolved?.parameters.slice(0, 2), [['billing.ingest-nemsis'], [3]]);
     await db.destroy();

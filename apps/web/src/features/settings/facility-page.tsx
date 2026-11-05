@@ -1,4 +1,4 @@
-import { FACILITY_KINDS, type FacilityKind } from '@ugula/billing';
+import { FACILITY_KINDS, isFacilityKind } from '@ugula/billing';
 import { SaveIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
@@ -94,7 +94,10 @@ export const FacilityForm = ({
               span={1}
               options={KIND_OPTIONS}
               value={draft.kind}
-              onChange={(e) => setDraft({ ...draft, kind: e.target.value as FacilityKind })}
+              onChange={(e) => {
+                const kind = e.target.value;
+                if (isFacilityKind(kind)) setDraft({ ...draft, kind });
+              }}
             />
             <Select
               id="facility-contract"

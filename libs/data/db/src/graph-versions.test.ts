@@ -1,16 +1,19 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { sql } from 'kysely';
 import {
   buildFindPublishedGraphs,
   buildLatestVersion,
   buildPinRunGraphs,
   dependencyOf,
   findDefinitions,
+  findOrganizationGraphs,
   findPublishedGraphs,
   findRuleBundle,
   findRunGraphs,
   pinRunGraphs,
-  pinRunsGraphs
+  pinRunsGraphs,
+  resolvedGraph
 } from './graph-versions.ts';
 import { createDummyDb, createRecordingDb } from './testing.ts';
 
@@ -23,21 +26,23 @@ describe('shared graph queries', () => {
     assert.ok(
       sql.includes('order by g.agency_id is null, g.organization_id is null, v.version desc')
     );
-    assert.ok(sql.includes('(g.organization_id is null and v.version = "req"."version")'));
     assert.ok(
       sql.includes(
-        'g.agency_id is null and g.organization_id = (select a.organization_id from agencies a where a.id = $'
+        '"g"."agency_id" is null and "g"."organization_id" = (select a.organization_id from agencies a where a.id = $'
       )
     );
-    assert.ok(sql.includes('where sg.key = g.key and sg.organization_id is null'));
+    assert.ok(
+      sql.includes('or (bg.is_active and bg.agency_id is null and bg.organization_id = (select')
+    );
+    assert.ok(sql.includes('order by bg.organization_id is not null limit 1'));
     assert.ok(
       sql.includes(
-        'case when base.contract is null then v.version = "req"."version" else v.contract = base.contract end'
+        'case when base.id is null or base.id = g.id then v.version = "req"."version" else v.contract = base.contract end'
       )
     );
     assert.ok(!sql.includes('workflow_run_graphs'));
     assert.deepEqual(compiled.parameters.slice(0, 2), [['a.b'], [2]]);
-    assert.equal(compiled.parameters.filter((p) => p === 't-1').length, 2);
+    assert.equal(compiled.parameters.filter((p) => p === 't-1').length, 3);
     assert.deepEqual(await findPublishedGraphs(db, 't-1', []), []);
     assert.deepEqual(await findDefinitions(db, []), []);
     await db.destroy();
@@ -92,14 +97,40 @@ describe('shared graph queries', () => {
     await db.destroy();
   });
 
-  it('finds the latest published workflow version visible to an agency, system first', async () => {
+  it('finds the latest published workflow version of the graph at the bottom: system, organization, agency', async () => {
     const db = createDummyDb();
     const compiled = buildLatestVersion('t-1', 'billing.claim').compile(db);
     const sql = compiled.sql.replace(/\s+/g, ' ');
     assert.ok(sql.includes("g.kind = 'workflow'"));
-    assert.ok(sql.includes('g.organization_id is null or g.agency_id = $'));
-    assert.ok(sql.endsWith('order by g.organization_id is not null, v.version desc limit 1'));
+    assert.ok(sql.includes('"g"."organization_id" is null or "g"."agency_id" = $'));
+    assert.ok(
+      sql.endsWith(
+        'order by g.agency_id is not null, g.organization_id is not null, v.version desc limit 1'
+      )
+    );
     assert.deepEqual(compiled.parameters, ['billing.claim', 't-1', 't-1']);
+    await db.destroy();
+  });
+
+  it('resolves for an organization alone, never seeing agency copies', async () => {
+    const { db, queries } = createRecordingDb(() => [{ id: 'v-org' }]);
+    assert.deepEqual(await findOrganizationGraphs(db, 'o-1', []), []);
+    assert.equal(queries.length, 0);
+    await findOrganizationGraphs(db, 'o-1', [{ key: 'a.b', version: 1 }]);
+    const sql = queries[0]?.sql.replace(/\s+/g, ' ') ?? '';
+    assert.ok(sql.includes('"g"."agency_id" = null::uuid'));
+    assert.ok(!sql.includes('from agencies'));
+    assert.equal(queries[0]?.parameters.filter((p) => p === 'o-1').length, 2);
+    await db.destroy();
+  });
+
+  it('resolves the graph in effect for a key from the newest version at the bottom', async () => {
+    const db = createDummyDb();
+    const compiled = sql`select ${resolvedGraph('t-1', sql`'k'`)}`.compile(db);
+    const text = compiled.sql.replace(/\s+/g, ' ');
+    assert.ok(text.includes('bv.version = ( select v.version from graphs g'));
+    assert.ok(text.includes('order by g.agency_id is not null, g.organization_id is not null'));
+    assert.equal(compiled.parameters.filter((p) => p === 't-1').length, 7);
     await db.destroy();
   });
 

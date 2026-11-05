@@ -12,6 +12,7 @@ import {
   documentParam as claimDocumentParam,
   claimEventsQuery,
   documentFormSchema,
+  facilityOptionsQuery,
   facilitySchema,
   listClaimsQuery,
   payersSchema,
@@ -32,6 +33,12 @@ export const createClaimRoutes = (service: ClaimService, maxBytes: number) =>
   new Hono<AgencyEnv>()
     .get('/', sValidator('query', listClaimsQuery, invalidRequest), async (c) =>
       respond(c, await service.list(c.get('access').agencyId, c.req.valid('query')))
+    )
+    .get(
+      '/facility-options',
+      sValidator('query', facilityOptionsQuery, invalidRequest),
+      async (c) =>
+        respond(c, await service.facilityOptions(c.get('access').agencyId, c.req.valid('query').q))
     )
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.find(c.get('access').agencyId, c.req.valid('param').id))
@@ -104,6 +111,7 @@ export const createClaimRoutes = (service: ClaimService, maxBytes: number) =>
           c,
           await service.setFacility(
             c.get('access').agencyId,
+            c.get('access').userId,
             c.req.valid('param').id,
             c.req.valid('json').facilityId
           )

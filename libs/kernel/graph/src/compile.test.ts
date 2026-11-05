@@ -121,24 +121,30 @@ describe('contractOf', () => {
     exits: { done: { label: 'Done' } }
   };
 
-  it('ignores labels, descriptions, defaults and exit docs', () => {
+  it('ignores labels, descriptions, default values and exit docs', () => {
     assert.equal(
       contractOf(signature),
       contractOf({
         execIn: ['exec'],
         execOut: ['done', 'failed'],
-        inputs: [{ name: 'claim', type: 'string', optional: false, default: 'x' }],
+        inputs: [{ name: 'claim', type: 'string', optional: false }],
         outputs: [{ name: 'total', type: 'number', optional: true, label: 'Total' }]
       })
     );
+    const defaulted = (value: string) => ({
+      ...signature,
+      inputs: [{ name: 'claim', type: 'string' as const, default: value }]
+    });
+    assert.equal(contractOf(defaulted('x')), contractOf(defaulted('y')));
   });
 
-  it('changes with exec pins, pin names, types, optionality and order', () => {
+  it('changes with exec pins, pin names, types, optionality, defaults and order', () => {
     const variants: Signature[] = [
       { ...signature, execOut: ['done'] },
       { ...signature, execIn: [] },
       { ...signature, inputs: [{ name: 'id', type: 'string' }] },
       { ...signature, inputs: [{ name: 'claim', type: 'number' }] },
+      { ...signature, inputs: [{ name: 'claim', type: 'string', default: 'x' }] },
       { ...signature, outputs: [{ name: 'total', type: 'number' }] },
       { ...signature, execOut: ['failed', 'done'] }
     ];

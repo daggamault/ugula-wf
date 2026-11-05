@@ -554,27 +554,33 @@ describe('createClaimStore', () => {
 
   it('bills a claim to a facility of its own agency once per step, and back to the payers', async () => {
     const FACILITY_ID = '0195f2a4-0000-7000-8000-0000000000f1';
-    const respond = (logged: boolean) =>
+    const respond = ({ recorded = false, status = 'needs_review', known = true } = {}) =>
       createRecordingDb((q) =>
         ownedClaim(q)
           ? [owned]
-          : q.sql.startsWith('insert into "claim_events"') && logged
-            ? [{ id: 'e1' }]
-            : []
+          : q.sql.includes('for update')
+            ? [{ id: ID, status, patient_id: null }]
+            : q.sql.startsWith('select "id" from "claim_events"') && recorded
+              ? [{ id: 'e0' }]
+              : q.sql.startsWith('select "id" from "facilities"') && known
+                ? [{ id: FACILITY_ID }]
+                : []
       );
-    const { db, queries } = respond(true);
+    const { db, queries } = respond();
     await createClaimStore(db, blobs).setResponsibility('r1', ID, 'k', {
       party: 'facility',
       facilityId: FACILITY_ID,
       note: 'Contract with Oak Manor'
     });
+    assert.ok(queries.some((q) => q.sql.endsWith('for update')));
+    const [lookup] = sqlOf(queries, 'select "id" from "facilities"');
+    assert.deepEqual(lookup?.parameters, [FACILITY_ID, 't-1']);
     const [event] = sqlOf(queries, 'insert into "claim_events"');
     assert.ok(event?.parameters.includes('responsibility'));
     assert.ok(event?.parameters.includes('Contract with Oak Manor'));
     const [update] = sqlOf(queries, 'update "claims"');
-    assert.ok(update?.sql.includes('select "id" from "facilities"'));
-    assert.deepEqual(update?.parameters.slice(0, 2), [FACILITY_ID, 't-1']);
-    const back = respond(true);
+    assert.deepEqual(update?.parameters.slice(0, 1), [FACILITY_ID]);
+    const back = respond();
     await createClaimStore(back.db, blobs).setResponsibility('r1', ID, 'k', {
       party: 'payer',
       facilityId: null,
@@ -582,16 +588,28 @@ describe('createClaimStore', () => {
     });
     const [reset] = sqlOf(back.queries, 'update "claims"');
     assert.deepEqual(reset?.parameters, [null, ID]);
+    const facility = { party: 'facility' as const, facilityId: FACILITY_ID, note: '' };
+    for (const [opts, fault] of [
+      [{ known: false }, /is not in the facility directory/],
+      [{ status: 'paid' }, /already closed/]
+    ] as const) {
+      const refused = respond(opts);
+      await assert.rejects(
+        () => createClaimStore(refused.db, blobs).setResponsibility('r1', ID, 'k', facility),
+        fault
+      );
+      assert.equal(sqlOf(refused.queries, 'update "claims"').length, 0);
+    }
     await assert.rejects(
       () =>
-        createClaimStore(respond(true).db, blobs).setResponsibility('r1', ID, 'k', {
+        createClaimStore(respond().db, blobs).setResponsibility('r1', ID, 'k', {
           party: 'facility',
           facilityId: null,
           note: ''
         }),
       /Choose the facility/
     );
-    const replay = respond(false);
+    const replay = respond({ recorded: true, status: 'paid' });
     await createClaimStore(replay.db, blobs).setResponsibility('r1', ID, 'k', {
       party: 'payer',
       facilityId: null,

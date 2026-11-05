@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { invokeNode } from '../testing.ts';
-import { humanTaskNode } from './human.ts';
+import { createHumanTaskNode } from './human.ts';
+
+const humanTaskNode = createHumanTaskNode(['claims:approve', 'claims:update']);
 
 const config = {
   title: 'Review claim',
@@ -87,6 +89,21 @@ describe('human task node', () => {
     await assert.rejects(() =>
       invokeNode(humanTaskNode, { config: { ...config, permission: 'approve' } })
     );
+  });
+
+  it('accepts only permissions the catalog knows, any well-formed one without a list', async () => {
+    await assert.rejects(
+      () => invokeNode(humanTaskNode, { config: { ...config, permission: 'claims:approv' } }),
+      /Unknown permission/
+    );
+    const { result } = await invokeNode(humanTaskNode, {
+      config: { ...config, permission: 'claims:approve' }
+    });
+    assert.equal(
+      result.type === 'suspend' && (result.suspension.data as { permission: string }).permission,
+      'claims:approve'
+    );
+    await invokeNode(createHumanTaskNode(), { config: { ...config, permission: 'x:y' } });
   });
 
   it('offers run-time options and validates the answer against them', async () => {

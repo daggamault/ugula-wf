@@ -1,5 +1,6 @@
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
@@ -21,6 +22,7 @@ export type ObjectStorage = {
   bucket: string;
   get: (key: string) => Promise<Uint8Array>;
   put: (key: string, body: Uint8Array, contentType: string) => Promise<void>;
+  remove: (key: string) => Promise<void>;
   ensure: () => Promise<void>;
 };
 
@@ -67,6 +69,9 @@ export const createS3Storage = ({
         new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType })
       );
     },
+    remove: async (key) => {
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    },
     ensure: async () => {
       try {
         await client.send(new HeadBucketCommand({ Bucket: bucket }));
@@ -98,6 +103,7 @@ export const createBlobStore = (storage: ObjectStorage) => {
     getBytes: async (ref: BlobLocation) => storage.get(check(ref)),
     getText,
     getJson: async (ref: BlobLocation): Promise<unknown> => JSON.parse(await getText(ref)),
+    remove: async (ref: BlobLocation) => storage.remove(check(ref)),
     ensureBucket: storage.ensure
   };
 };

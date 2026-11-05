@@ -1,6 +1,7 @@
 import {
   type Db,
   dependencyOf,
+  findOrganizationGraphs,
   findPublishedGraphs,
   type GraphKind,
   type GraphRole
@@ -22,39 +23,40 @@ import {
   workflowRefs
 } from '@ugula/graph';
 import type { AgencyAccess } from '../../shared/access.ts';
+import { compareCopy, findBaseVersion, overrideCopy } from '../../shared/copies.ts';
 import { isForeignKeyViolation, isUniqueViolation } from '../../shared/http.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
   canEditScope,
   type EditScope,
+  findDraftOf,
+  findEffectiveIn,
+  findNewestPublished,
+  findScoped,
+  findSystem,
+  findVersionOf,
   listEffective,
+  lockOwner,
+  nextVersionOf,
   ownerOf,
-  RANK,
   type Scope,
-  scopeIds
+  scopeIds,
+  setActive,
+  touch
 } from '../../shared/scopes.ts';
 import {
   deleteGraph,
-  findDraft,
-  findEffectiveGraph,
   findGraph,
-  findNewestPublishedVersion,
-  findScopedGraph,
-  findSystemGraph,
-  findVersion,
-  findVersionById,
   findVisibleTableKeys,
   type GraphFilters,
   insertDraft,
   insertGraph,
+  listDependents,
   listEffectiveGraphs,
   listPublishedNodes,
   listVersions,
-  nextVersion,
   publishVersion,
   searchGraphs,
-  setGraphActive,
-  touchGraph,
   updateDraft
 } from './queries.ts';
 
@@ -129,11 +131,20 @@ export const customizationMap = (graphs: readonly MapGraph[]) => {
 
 export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
   const primitives = new Set(nodes.map(refKey));
-  const check = async (tx: Db, access: AgencyAccess, def: GraphDef) => {
+  const check = async (
+    tx: Db,
+    access: AgencyAccess,
+    def: GraphDef,
+    scope: EditScope = 'agency'
+  ) => {
     const refs = graphRefs(def)
       .filter((r) => !r.type.startsWith('std.') && !primitives.has(refKey(r)))
       .map((r) => ({ key: r.type, version: r.version }));
-    const composites = await findPublishedGraphs(tx, access.agencyId, refs);
+    const owner = ownerOf(access, scope);
+    const composites =
+      scope === 'organization'
+        ? await findOrganizationGraphs(tx, access.organizationId, refs)
+        : await findPublishedGraphs(tx, access.agencyId, refs);
     const byRef = new Map(
       composites.map((c) => [refKey({ type: c.key, version: c.version }), c.definition as GraphDef])
     );
@@ -143,7 +154,7 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
     );
     const calls = workflowRefs(def).map((r) => dependencyOf({ key: r.type, version: r.version }));
     const keys = tableRefs(def);
-    const known = new Set(await findVisibleTableKeys(tx, scopeIds(access), keys));
+    const known = new Set(await findVisibleTableKeys(tx, owner, keys));
     const tableIssues = def.nodes.flatMap((n) => {
       const key = tableRefOf(n)?.key;
       return key && !known.has(key) ? [{ node: n.id, message: `Unknown table ${key}` }] : [];
@@ -158,23 +169,16 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
     if (!graph) return notFound;
     if (graph.scope === 'system') return fail('forbidden', 'Built-in graphs are read-only');
     if (!canEditScope(access, graph.scope, graph.role)) return forbidden(graph.scope);
+    await lockOwner(tx, 'graphs', graphId);
     return ok({ ...graph, scope: graph.scope as EditScope });
   };
-  const baseOf = async (tx: Db, access: AgencyAccess, graph: { key: string; scope: Scope }) => {
-    const below = await findEffectiveBelow(tx, access, graph.key, RANK[graph.scope]);
-    return below ? findNewestPublishedVersion(tx, below) : undefined;
-  };
-  const findEffectiveBelow = async (tx: Db, access: AgencyAccess, key: string, rank: number) => {
-    const ids = scopeIds(access);
-    if (rank === 0) {
-      const org = await findScopedGraph(
-        tx,
-        { organizationId: ids.organizationId, agencyId: null },
-        key
-      );
-      if (org?.is_active) return org.id;
-    }
-    return (await findSystemGraph(tx, key))?.id;
+  const baseOf = (tx: Db, access: AgencyAccess, graph: { key: string; scope: Scope }) =>
+    findBaseVersion(tx, 'graphs', access, graph);
+  const bottomOf = async (tx: Db, access: AgencyAccess, graph: { key: string; scope: Scope }) => {
+    const system = await findSystem(tx, 'graphs', graph.key);
+    if (system || graph.scope !== 'agency') return system?.id;
+    const org = await findScoped(tx, 'graphs', ownerOf(access, 'organization'), graph.key);
+    return org?.is_active ? org.id : undefined;
   };
   return {
     search: async (access: AgencyAccess, filters: GraphFilters) =>
@@ -192,7 +196,7 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
     find: async (access: AgencyAccess, id: string) => {
       const graph = await findGraph(db, scopeIds(access), id);
       if (!graph) return notFound;
-      const effective = await findEffectiveGraph(db, scopeIds(access), graph.key);
+      const effective = await findEffectiveIn(db, 'graphs', scopeIds(access), graph.key);
       return ok({
         graph: {
           ...graph,
@@ -209,33 +213,22 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
     },
     version: async (access: AgencyAccess, id: string, version: number) => {
       const found =
-        (await findGraph(db, scopeIds(access), id)) && (await findVersion(db, id, version));
+        (await findGraph(db, scopeIds(access), id)) &&
+        (await findVersionOf(db, 'graphs', id, version));
       return found ? ok(found) : fail('not_found', 'Version not found');
     },
     compare: async (access: AgencyAccess, id: string) => {
       const graph = await findGraph(db, scopeIds(access), id);
       if (!graph) return notFound;
-      if (graph.scope === 'system')
-        return ok({ mine: null, copiedFrom: null, latest: null, baseChanged: false });
-      const versions = await listVersions(db, id);
-      const head = versions[0];
-      const mine = head ? await findVersion(db, id, head.version) : undefined;
-      const copied = mine?.base_version_id
-        ? await findVersionById(db, mine.base_version_id)
-        : undefined;
-      const latest = await baseOf(db, access, graph);
+      const { copiedFrom, ...rest } = await compareCopy(db, 'graphs', access, graph);
       return ok({
-        mine: mine ? { version: mine.version, definition: mine.definition } : null,
-        copiedFrom: copied
-          ? {
-              graphId: copied.graph_id,
-              scope: copied.scope,
-              version: copied.version,
-              definition: copied.definition
-            }
-          : null,
-        latest: latest ? { version: latest.version, definition: latest.definition } : null,
-        baseChanged: !!latest && !!copied && latest.id !== copied.id
+        ...rest,
+        copiedFrom: copiedFrom && {
+          graphId: copiedFrom.ownerId,
+          scope: copiedFrom.scope,
+          version: copiedFrom.version,
+          definition: copiedFrom.definition
+        }
       });
     },
     validate: async (access: AgencyAccess, def: GraphDef) =>
@@ -243,7 +236,7 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
     create: async (access: AgencyAccess, input: NewGraph) => {
       const role = roleFor(input.kind, input.role);
       if (!canEditScope(access, input.scope, role)) return forbidden(input.scope);
-      if (await findSystemGraph(db, input.key)) {
+      if (await findSystem(db, 'graphs', input.key)) {
         return fail('conflict', 'A built-in graph uses that key; override it instead');
       }
       try {
@@ -276,60 +269,48 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
       db.transaction().execute(async (tx) => {
         const graph = await editable(tx, access, graphId);
         if (!graph.ok) return graph;
-        const draft = await findDraft(tx, graphId);
+        const draft = await findDraftOf(tx, 'graphs', graphId);
         if (draft) await updateDraft(tx, draft.id, def);
         const version = draft
           ? draft.version
           : (
               await insertDraft(tx, {
                 graphId,
-                version: await nextVersion(tx, graphId),
+                version: await nextVersionOf(tx, 'graphs', graphId),
                 definition: def,
                 baseVersionId: (await baseOf(tx, access, graph.value))?.id ?? null,
                 userId: access.userId
               })
             ).version;
-        await touchGraph(tx, graphId);
-        return ok({ version, issues: (await check(tx, access, def)).issues });
+        await touch(tx, 'graphs', graphId);
+        return ok({ version, issues: (await check(tx, access, def, graph.value.scope)).issues });
       }),
     override: (access: AgencyAccess, graphId: string, scope: EditScope) =>
       db.transaction().execute(async (tx) => {
         const graph = await findGraph(tx, scopeIds(access), graphId);
         if (!graph) return notFound;
-        if (RANK[graph.scope] <= RANK[scope]) {
-          return fail('conflict', `This graph cannot be overridden for the ${scope}`);
-        }
-        if (!canEditScope(access, scope, graph.role)) return forbidden(scope);
-        const owner = ownerOf(access, scope);
-        const copy = await findScopedGraph(tx, owner, graph.key);
-        if (copy?.is_active) return fail('conflict', 'This graph is already overridden');
-        if (copy) {
-          await setGraphActive(tx, copy.id, true);
-          return ok({ id: copy.id });
-        }
-        const latest = await findNewestPublishedVersion(tx, graph.id);
-        if (!latest) return fail('conflict', 'This graph has no published version to start from');
-        try {
-          const { id } = await insertGraph(tx, {
-            ...owner,
-            key: graph.key,
-            name: graph.name,
-            kind: graph.kind,
-            role: graph.role,
-            description: graph.description
-          });
-          await insertDraft(tx, {
-            graphId: id,
-            version: 1,
-            definition: latest.definition as GraphDef,
-            baseVersionId: latest.id,
-            userId: access.userId
-          });
-          return ok({ id });
-        } catch (err) {
-          if (isUniqueViolation(err)) return fail('conflict', 'This graph is already overridden');
-          throw err;
-        }
+        return overrideCopy(tx, 'graphs', access, graph, scope, {
+          noun: 'graph',
+          tier: graph.role,
+          forbidden,
+          insertCopy: (t, owner) =>
+            insertGraph(t, {
+              ...owner,
+              key: graph.key,
+              name: graph.name,
+              kind: graph.kind,
+              role: graph.role,
+              description: graph.description
+            }),
+          insertDraft: (t, id, latest) =>
+            insertDraft(t, {
+              graphId: id,
+              version: 1,
+              definition: latest.definition as GraphDef,
+              baseVersionId: latest.id,
+              userId: access.userId
+            })
+        });
       }),
     rebase: (access: AgencyAccess, graphId: string, mode: 'keep' | 'reset') =>
       db.transaction().execute(async (tx) => {
@@ -337,33 +318,43 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
         if (!graph.ok) return graph;
         const base = await baseOf(tx, access, graph.value);
         if (!base) return fail('conflict', 'This graph does not override another graph');
-        const draft = await findDraft(tx, graphId);
+        const draft = await findDraftOf(tx, 'graphs', graphId);
         const current =
-          draft?.definition ?? (await findNewestPublishedVersion(tx, graphId))?.definition;
+          draft?.definition ?? (await findNewestPublished(tx, 'graphs', graphId))?.definition;
         const definition = (mode === 'reset' ? base.definition : current) as GraphDef | undefined;
         if (!definition) return fail('conflict', 'Nothing to rebase');
         if (draft) await updateDraft(tx, draft.id, definition, base.id);
         else {
           await insertDraft(tx, {
             graphId,
-            version: await nextVersion(tx, graphId),
+            version: await nextVersionOf(tx, 'graphs', graphId),
             definition,
             baseVersionId: base.id,
             userId: access.userId
           });
         }
-        await touchGraph(tx, graphId);
+        await touch(tx, 'graphs', graphId);
         return ok({ id: graphId });
       }),
     remove: async (access: AgencyAccess, graphId: string) => {
-      const graph = await editable(db, access, graphId);
-      if (!graph.ok) return graph;
-      if (graph.value.overrides) {
-        await setGraphActive(db, graphId, false);
-        return ok({ id: graphId });
-      }
       try {
-        return (await deleteGraph(db, graphId)) ? ok({ id: graphId }) : notFound;
+        return await db.transaction().execute(async (tx) => {
+          const graph = await editable(tx, access, graphId);
+          if (!graph.ok) return graph;
+          if (graph.value.overrides) {
+            await setActive(tx, 'graphs', graphId, false);
+            return ok({ id: graphId });
+          }
+          const owner = { organizationId: access.organizationId, agencyId: graph.value.agency_id };
+          const users = await listDependents(tx, owner, graph.value.key, graphId);
+          if (users.length) {
+            return fail(
+              'conflict',
+              `${users.map((u) => u.name).join(', ')} ${users.length === 1 ? 'uses' : 'use'} this graph, so it cannot be removed`
+            );
+          }
+          return (await deleteGraph(tx, graphId)) ? ok({ id: graphId }) : notFound;
+        });
       } catch (err) {
         if (isForeignKeyViolation(err)) {
           return fail('conflict', 'Runs still use this graph, so it cannot be removed');
@@ -375,21 +366,21 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
       db.transaction().execute(async (tx) => {
         const graph = await editable(tx, access, graphId);
         if (!graph.ok) return graph;
-        const draft = await findDraft(tx, graphId);
+        const draft = await findDraftOf(tx, 'graphs', graphId);
         if (!draft) return fail('conflict', 'Nothing to publish');
         const definition = draft.definition as GraphDef;
-        const { issues, dependencies } = await check(tx, access, definition);
+        const { issues, dependencies } = await check(tx, access, definition, graph.value.scope);
         if (issues.length) return fail('invalid', 'Fix the issues before publishing', { issues });
-        const system = await findSystemGraph(tx, graph.value.key);
-        const original = system && (await findNewestPublishedVersion(tx, system.id));
+        const bottom = await bottomOf(tx, access, graph.value);
+        const original = bottom && (await findNewestPublished(tx, 'graphs', bottom));
         if (original && original.contract !== contractOf(definition.signature)) {
           return fail(
             'invalid',
-            'An override must keep the inputs, outputs and exits of the built-in graph it replaces'
+            'An override must keep the inputs, outputs and exits of the graph it replaces'
           );
         }
         await publishVersion(tx, draft.id, dependencies);
-        await touchGraph(tx, graphId);
+        await touch(tx, 'graphs', graphId);
         return ok({ version: draft.version });
       })
   };

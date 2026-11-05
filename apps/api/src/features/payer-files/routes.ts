@@ -36,7 +36,7 @@ export const createPayerFileRoutes = (service: PayerFileService, maxBytes: numbe
         const { file } = c.req.valid('form');
         return respond(
           c,
-          await service.upload(c.get('access').agencyId, {
+          await service.upload(c.get('access').agencyId, c.get('access').userId, {
             name: file.name,
             type: file.type,
             bytes: new Uint8Array(await file.arrayBuffer())

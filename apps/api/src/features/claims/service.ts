@@ -37,6 +37,7 @@ import {
   findClaim,
   findClaimDocument,
   findEventDocument,
+  findFacilityName,
   hasActiveRun,
   insertClaimDocument,
   insertDocumentEvent,
@@ -45,6 +46,7 @@ import {
   listClaimFiles,
   listClaimPayerFiles,
   listClaims,
+  listFacilityOptions,
   type PayerOrder,
   reorderCoverages,
   setCycleRun
@@ -62,7 +64,7 @@ type ClaimServiceDeps = {
   db: Db;
   boss: RunQueueClient;
   now: () => Date;
-  blobs: Pick<BlobStore, 'getBytes' | 'putBytes'>;
+  blobs: Pick<BlobStore, 'getBytes' | 'putBytes' | 'remove'>;
   announce: Announce;
   rules: RuleRunner;
   maxBytes: number;
@@ -81,7 +83,7 @@ const RECEIVE_DOCUMENT_WORKFLOW = { key: 'billing.receive-document', version: 1 
 
 const CHASE_DOCUMENT_WORKFLOW = { key: 'billing.chase-document', version: 1 };
 
-export const documentKey = (agencyId: string, claimId: string, name: string) =>
+const documentKey = (agencyId: string, claimId: string, name: string) =>
   `documents/${agencyId}/${claimId}/${randomUUID()}/${safeName(name)}`;
 
 const unpublished = (key: string) => fail('not_found', `The ${key} workflow is not published`);
@@ -243,8 +245,12 @@ export const createClaimService = ({
         d.file.bytes,
         d.file.type
       );
-      return write(agencyId, id, async (tx) => {
-        const saved = await insertClaimDocument(tx, {
+      const saved = await write(agencyId, id, async (tx) => {
+        const claim = await lockClaim(tx, agencyId, id);
+        if (!claim) return notFound;
+        const blocked = unchangeable(claim.status);
+        if (blocked) return blocked;
+        const row = await insertClaimDocument(tx, {
           agencyId,
           claimId: id,
           kind: d.kind,
@@ -262,11 +268,17 @@ export const createClaimService = ({
         const runId = await startRun(tx, boss, {
           agencyId,
           versionId: version.id,
-          inputs: { claimId: id, documentId: saved.id },
-          interactive: true
+          inputs: { claimId: id, documentId: row.id },
+          interactive: true,
+          startedBy: userId
         });
-        return ok({ id: saved.id, runId });
+        return ok({ id: row.id, runId });
+      }).catch(async (err: unknown) => {
+        await blobs.remove(document);
+        throw err;
       });
+      if (!saved.ok) await blobs.remove(document);
+      return saved;
     },
 
     documentFile: async (agencyId: string, id: string, documentId: string) => {
@@ -282,7 +294,10 @@ export const createClaimService = ({
 
     chaseDocument: (agencyId: string, id: string, chase: ChaseRequest) =>
       write(agencyId, id, async (tx) => {
-        if (!(await claimExists(tx, agencyId, id))) return notFound;
+        const claim = await lockClaim(tx, agencyId, id);
+        if (!claim) return notFound;
+        const blocked = unchangeable(claim.status);
+        if (blocked) return blocked;
         const [version] = await findPublishedGraphs(tx, agencyId, [CHASE_DOCUMENT_WORKFLOW]);
         if (!version) return unpublished(CHASE_DOCUMENT_WORKFLOW.key);
         const runId = await startRun(tx, boss, {
@@ -357,15 +372,24 @@ export const createClaimService = ({
         return ok({ runId });
       }),
 
-    setFacility: (agencyId: string, id: string, facilityId: string | null) =>
+    facilityOptions: async (agencyId: string, q: string | undefined) =>
+      ok({ items: await listFacilityOptions(db, agencyId, q) }),
+
+    setFacility: (agencyId: string, userId: string, id: string, facilityId: string | null) =>
       write(agencyId, id, async (tx) => {
         const claim = await lockClaim(tx, agencyId, id);
         if (!claim) return notFound;
         const blocked = unchangeable(claim.status);
         if (blocked) return blocked;
-        if (!(await assignFacility(tx, agencyId, id, facilityId))) {
+        const name = facilityId === null ? null : await findFacilityName(tx, agencyId, facilityId);
+        if (facilityId !== null && !name) {
           return fail('invalid', 'That facility is not in this agency');
         }
+        await assignFacility(
+          tx,
+          { agencyId, claimId: id, userId },
+          facilityId && name ? { id: facilityId, name } : null
+        );
         await nudge(tx, agencyId, id);
         return ok({ facilityId });
       }),

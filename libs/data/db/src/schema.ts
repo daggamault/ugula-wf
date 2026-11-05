@@ -215,6 +215,7 @@ type WorkflowRunsTable = {
   created_at: Timestamp;
   updated_at: Timestamp;
   completed_at: NullableTimestamp;
+  started_by: string | null;
 };
 
 type WorkflowRunGraphsTable = {
@@ -284,6 +285,13 @@ type SignalsTable = {
   key: string;
   received: Generated<number>;
   updated_at: Timestamp;
+};
+
+type ScheduleRunsTable = {
+  agency_id: string;
+  workflow: string;
+  fire_on: string;
+  created_at: Timestamp;
 };
 
 type WorkflowRunStepsTable = {
@@ -445,10 +453,19 @@ type FacilityInvoicesTable = {
   agency_id: string;
   facility_id: string;
   period: ColumnType<string, string, string>;
+  sequence: number;
+  source_key: string;
   claim_count: number;
   total_cents: number;
   document: JsonColumn;
   created_at: Timestamp;
+};
+
+type FacilityInvoiceClaimsTable = {
+  agency_id: string;
+  invoice_id: string;
+  facility_id: string;
+  claim_id: string;
 };
 
 type ClaimRunsTable = {
@@ -718,6 +735,7 @@ export type Database = {
   nemsis_elements: NemsisElementsTable;
   nemsis_codes: NemsisCodesTable;
   signals: SignalsTable;
+  schedule_runs: ScheduleRunsTable;
   tasks: TasksTable;
   patients: PatientsTable;
   fee_schedules: FeeSchedulesTable;
@@ -726,6 +744,7 @@ export type Database = {
   claims: ClaimsTable;
   facilities: FacilitiesTable;
   facility_invoices: FacilityInvoicesTable;
+  facility_invoice_claims: FacilityInvoiceClaimsTable;
   claim_runs: ClaimRunsTable;
   claim_lines: ClaimLinesTable;
   claim_coverages: ClaimCoveragesTable;

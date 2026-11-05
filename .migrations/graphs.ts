@@ -98,6 +98,26 @@ const publishedImmutableTrigger = sql`
   before update on graph_versions
   for each row execute function prevent_published_graph_change()`;
 
+const baseKeyFunction = sql`
+  create function check_graph_version_base() returns trigger language plpgsql as $$
+  begin
+    if new.base_version_id is not null and not exists (
+      select 1 from graph_versions b
+      join graphs bg on bg.id = b.graph_id
+      join graphs g on g.id = new.graph_id
+      where b.id = new.base_version_id and bg.key = g.key and bg.id <> g.id
+    ) then
+      raise exception 'graph version % must be based on a version of another graph with its key', new.id;
+    end if;
+    return new;
+  end;
+  $$`;
+
+const baseKeyTrigger = sql`
+  create trigger graph_versions_base_key
+  before insert or update of base_version_id on graph_versions
+  for each row execute function check_graph_version_base()`;
+
 export const createGraphsTables = async (db: Kysely<Database>) => {
   await buildGraphsTable(db).execute();
   await buildGraphVersionsTable(db).execute();
@@ -106,4 +126,6 @@ export const createGraphsTables = async (db: Kysely<Database>) => {
   for (const index of buildGraphScopeIndexes(db)) await index.execute();
   await publishedImmutableFunction.execute(db);
   await publishedImmutableTrigger.execute(db);
+  await baseKeyFunction.execute(db);
+  await baseKeyTrigger.execute(db);
 };

@@ -230,7 +230,7 @@ export const invoiceTotal = (claims: readonly InvoicedClaim[]) =>
 export const renderFacilityInvoice = (s: FacilityInvoiceSource, issuedOn: string) =>
   renderDocument({
     title: 'Facility Invoice',
-    subtitle: `Services in ${s.period.slice(0, 7)}`,
+    subtitle: `Services through ${s.period.slice(0, 7)}`,
     issuedOn,
     from: letterhead(s.agency),
     to: s.facility,

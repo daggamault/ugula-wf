@@ -1,6 +1,6 @@
 import { branchNode, pin } from '@ugula/graph';
 import { type Coverage, coverageKey, readCoverages } from '../claim-details.ts';
-import { COVERAGE } from '../models.ts';
+import { COVERAGE } from '../party-models.ts';
 import {
   type DirectoryPayer,
   type PayerCandidate,

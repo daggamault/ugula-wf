@@ -10,7 +10,7 @@ export type FacilityKind = keyof typeof FACILITY_KINDS;
 export const isFacilityKind = (x: unknown): x is FacilityKind =>
   typeof x === 'string' && Object.hasOwn(FACILITY_KINDS, x);
 
-export const RESPONSIBLE_PARTIES = ['payer', 'facility'] as const;
+const RESPONSIBLE_PARTIES = ['payer', 'facility'] as const;
 
 export type ResponsibleParty = (typeof RESPONSIBLE_PARTIES)[number];
 

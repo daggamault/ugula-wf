@@ -438,7 +438,7 @@ export const build277Status = (answers: Mock277Status[], o: MockOptions = {}) =>
   ]);
 };
 
-export type Mock837Claim = {
+type Mock837Claim = {
   claimNumber: string;
   chargeCents: number;
   memberId: string | null;

@@ -44,6 +44,19 @@ describe('facility service', () => {
       }).db
     });
     assert.equal((await clash.update('t', 'f1', input)).ok, false);
+    const used = createFacilityService({
+      db: createRecordingDb(() => {
+        throw Object.assign(new Error('still referenced'), { code: '23503' });
+      }).db
+    });
+    assert.deepEqual(await used.remove('t', 'f1'), {
+      ok: false,
+      failure: {
+        code: 'conflict',
+        message:
+          'This facility is responsible for claims or has been invoiced, so it cannot be deleted'
+      }
+    });
     assert.equal(
       (await none.search('t', { page: 1, pageSize: 25, sort: 'name', dir: 'asc' })).ok,
       true

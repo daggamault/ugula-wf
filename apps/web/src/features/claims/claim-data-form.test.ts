@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
+  abnErrorOf,
   ClaimDataForm,
+  countErrorOf,
   DESTINATION_OPTIONS,
   fromDraft,
   modifierErrorOf,
@@ -75,43 +77,46 @@ describe('claim data form', () => {
         signature: 'signed',
         pcsOnFile: true,
         pcsSignedOn: '2026-09-20',
-        transportReason: 'D',
-        patientCount: null,
-        abnOnFile: null,
-        abnSignedOn: null,
-        denialExpected: null,
-        mspEmployerPlan: null,
-        mspEsrd: null,
-        mspDisability: null,
-        mspAccident: null,
-        priorAuthorization: null,
-        priorAuthorizationExpiresOn: null,
-        pcsType: null,
-        roundTrips: null,
-        admissionDate: null,
-        facilityStay: null
+        transportReason: 'D'
       }
     );
     assert.deepEqual(fromDraft({ ...before, pcsOnFile: 'no' }, before).documentation, {
-      signature: null,
-      pcsOnFile: false,
-      pcsSignedOn: null,
-      transportReason: null,
-      patientCount: null,
-      abnOnFile: null,
-      abnSignedOn: null,
-      denialExpected: null,
-      mspEmployerPlan: null,
-      mspEsrd: null,
-      mspDisability: null,
-      mspAccident: null,
-      priorAuthorization: null,
-      priorAuthorizationExpiresOn: null,
-      pcsType: null,
-      roundTrips: null,
-      admissionDate: null,
-      facilityStay: null
+      pcsOnFile: false
     });
+  });
+
+  it('clears documentation a biller emptied', () => {
+    const before = toDraft({
+      ...claim,
+      round_trips: 3,
+      patient_count: 2,
+      pcs_signed_on: '2026-09-01',
+      prior_authorization: 'UTN-1',
+      transport_reason: 'D',
+      msp_esrd: true
+    } as ClaimDetail);
+    assert.deepEqual(
+      fromDraft(
+        {
+          ...before,
+          roundTrips: '',
+          patientCount: ' ',
+          pcsSignedOn: '',
+          priorAuthorization: '',
+          transportReason: '',
+          mspEsrd: ''
+        },
+        before
+      ).documentation,
+      {
+        pcsSignedOn: null,
+        transportReason: null,
+        patientCount: null,
+        mspEsrd: null,
+        priorAuthorization: null,
+        roundTrips: null
+      }
+    );
   });
 
   it('sends the MSP answers, ABN, authorization, counts and facility stay a biller changed', () => {
@@ -136,17 +141,11 @@ describe('claim data form', () => {
         before
       ).documentation,
       {
-        signature: null,
-        pcsOnFile: null,
-        pcsSignedOn: null,
-        transportReason: null,
         patientCount: 2,
         abnOnFile: true,
         abnSignedOn: '2026-09-30',
         denialExpected: false,
         mspEmployerPlan: false,
-        mspEsrd: null,
-        mspDisability: null,
         mspAccident: 'workersComp',
         priorAuthorization: 'UTN-7',
         priorAuthorizationExpiresOn: '2026-12-01',
@@ -229,6 +228,34 @@ describe('claim data form', () => {
       fromDraft({ ...before, pcsSignedOn: ' 2026-09-20 ' }, before).documentation?.pcsSignedOn,
       '2026-09-20'
     );
+  });
+});
+
+describe('countErrorOf', () => {
+  it('refuses counts that are not whole numbers at or above their minimum, and allows blanks', () => {
+    const d = { patientCount: '2', roundTrips: '0' };
+    assert.equal(countErrorOf(d, 'patientCount'), undefined);
+    assert.equal(countErrorOf(d, 'roundTrips'), undefined);
+    assert.equal(countErrorOf({ ...d, patientCount: ' ' }, 'patientCount'), undefined);
+    for (const bad of ['x', '1.5', '0', '-2']) {
+      assert.match(
+        countErrorOf({ ...d, patientCount: bad }, 'patientCount') ?? '',
+        /whole number of 1 or more/
+      );
+    }
+    assert.match(countErrorOf({ ...d, roundTrips: '-1' }, 'roundTrips') ?? '', /0 or more/);
+  });
+});
+
+describe('abnErrorOf', () => {
+  it('dates an ABN only when one is on file', () => {
+    assert.equal(abnErrorOf({ abnOnFile: 'yes', abnSignedOn: '2026-09-01' }), undefined);
+    assert.equal(abnErrorOf({ abnOnFile: '', abnSignedOn: '' }), undefined);
+    assert.match(
+      abnErrorOf({ abnOnFile: 'no', abnSignedOn: '2026-09-01' }) ?? '',
+      /before dating it/
+    );
+    assert.match(abnErrorOf({ abnOnFile: '', abnSignedOn: '2026-09-01' }) ?? '', /ABN on file/);
   });
 });
 

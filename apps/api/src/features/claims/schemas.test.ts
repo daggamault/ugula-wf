@@ -222,25 +222,23 @@ describe('claim schemas', () => {
       }).documentation,
       {
         signature: 'signed',
-        pcsOnFile: null,
-        pcsSignedOn: null,
         transportReason: 'D',
         patientCount: 2,
         abnOnFile: true,
-        abnSignedOn: null,
-        denialExpected: null,
-        mspEmployerPlan: null,
-        mspEsrd: null,
-        mspDisability: null,
         mspAccident: 'workersComp',
         priorAuthorization: 'UTN-1',
-        priorAuthorizationExpiresOn: null,
         pcsType: 'repetitive',
         roundTrips: 4,
-        admissionDate: null,
         facilityStay: 'snf'
       }
     );
+    assert.deepEqual(
+      v.parse(billingDataSchema, {
+        documentation: { roundTrips: null, priorAuthorization: ' ', pcsSignedOn: null }
+      }).documentation,
+      { roundTrips: null, priorAuthorization: null, pcsSignedOn: null }
+    );
+    assert.ok(fails({ documentation: { signature: null } }));
     assert.ok(!fails({}));
   });
 });

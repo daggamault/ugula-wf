@@ -21,25 +21,25 @@ const addressValues = (prefix: 'pickup' | 'destination', a: Location | null) =>
 
 const documentationValues = (d: ClaimEdit['documentation']) =>
   d && {
-    signature: d.signature ?? undefined,
+    signature: d.signature,
     signature_note: d.signature ? 'Updated by a biller' : undefined,
-    pcs_on_file: d.pcsOnFile ?? undefined,
-    pcs_signed_on: d.pcsSignedOn ?? undefined,
-    transport_reason: d.transportReason ?? undefined,
-    patient_count: d.patientCount ?? undefined,
-    abn_on_file: d.abnOnFile ?? undefined,
-    abn_signed_on: d.abnSignedOn ?? undefined,
-    denial_expected: d.denialExpected ?? undefined,
-    msp_employer_plan: d.mspEmployerPlan ?? undefined,
-    msp_esrd: d.mspEsrd ?? undefined,
-    msp_disability: d.mspDisability ?? undefined,
-    msp_accident: d.mspAccident ?? undefined,
-    prior_authorization: d.priorAuthorization ?? undefined,
-    prior_authorization_expires_on: d.priorAuthorizationExpiresOn ?? undefined,
-    pcs_type: d.pcsType ?? undefined,
-    round_trips: d.roundTrips ?? undefined,
-    admission_date: d.admissionDate ?? undefined,
-    facility_stay: d.facilityStay ?? undefined
+    pcs_on_file: d.pcsOnFile,
+    pcs_signed_on: d.pcsSignedOn,
+    transport_reason: d.transportReason,
+    patient_count: d.patientCount,
+    abn_on_file: d.abnOnFile,
+    abn_signed_on: d.abnSignedOn,
+    denial_expected: d.denialExpected,
+    msp_employer_plan: d.mspEmployerPlan,
+    msp_esrd: d.mspEsrd,
+    msp_disability: d.mspDisability,
+    msp_accident: d.mspAccident,
+    prior_authorization: d.priorAuthorization,
+    prior_authorization_expires_on: d.priorAuthorizationExpiresOn,
+    pcs_type: d.pcsType,
+    round_trips: d.roundTrips,
+    admission_date: d.admissionDate,
+    facility_stay: d.facilityStay
   };
 
 const claimValues = (e: ClaimEdit) =>

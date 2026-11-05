@@ -169,7 +169,14 @@ const draft = fail(
 export const unchangeable = (status: string) =>
   isClosedStatus(status) ? closed : status === 'draft' ? draft : null;
 
+const negative = fail(
+  'invalid',
+  'Negative amounts (reversals and takebacks) need a biller to post them'
+);
+
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+export type PostedResponse = { balanceCents: number; adjustedCents: number; duplicate: boolean };
 
 export const nudgeClaim = (tx: Db, boss: RunQueueClient, agencyId: string, claimId: string) =>
   signalRuns(tx, boss, { agencyId, name: CLAIM_SIGNAL, key: claimId, payload: null });
@@ -181,14 +188,19 @@ export const postClaimResponse = async (
   claimId: string,
   userId: string | null,
   response: ClaimResponse
-): Promise<Result<{ balanceCents: number; duplicate: boolean }>> => {
+): Promise<Result<PostedResponse>> => {
   const claim = await lockClaim(tx, agencyId, claimId);
   if (!claim) return notFound;
   if (await hasResponse(tx, claimId, response.requestId)) {
-    return ok({ balanceCents: await claimBalance(tx, claimId), duplicate: true });
+    return ok({
+      balanceCents: await claimBalance(tx, claimId),
+      adjustedCents: response.adjustedCents,
+      duplicate: true
+    });
   }
   const blocked = unchangeable(claim.status);
   if (blocked) return blocked;
+  if (response.paidCents < 0 || response.adjustedCents < 0) return negative;
   if (
     response.coverageId !== null &&
     !(await listCoverages(tx, claimId)).some((c) => c.id === response.coverageId)
@@ -204,19 +216,20 @@ export const postClaimResponse = async (
         `${dollars(response.paidCents)} is more than the ${dollars(paid)} paid that can be refunded`
       );
     }
+    const credit = Math.max(0, -balance);
+    if (response.paidCents > credit) {
+      return fail(
+        'invalid',
+        `${dollars(response.paidCents)} is more than the ${dollars(credit)} credit balance that can be refunded`
+      );
+    }
     await insertResponse(tx, claimId, userId, response);
     await nudgeClaim(tx, boss, agencyId, claimId);
-    return ok({ balanceCents: balance + response.paidCents, duplicate: false });
+    return ok({ balanceCents: balance + response.paidCents, adjustedCents: 0, duplicate: false });
   }
-  const amount = response.paidCents + response.adjustedCents;
-  if (amount > balance) {
-    return fail(
-      'invalid',
-      `${dollars(amount)} is more than the remaining balance of ${dollars(balance)}`
-    );
-  }
-  await insertResponse(tx, claimId, userId, response);
-  const remaining = balance - amount;
+  const adjustedCents = Math.min(response.adjustedCents, Math.max(balance - response.paidCents, 0));
+  await insertResponse(tx, claimId, userId, { ...response, adjustedCents });
+  const remaining = balance - response.paidCents - adjustedCents;
   const moot = await resolveMootTasks(tx, agencyId, claimId, {
     coverageId: response.coverageId,
     settled: remaining <= 0
@@ -227,5 +240,5 @@ export const postClaimResponse = async (
     moot.map((t) => resume(t.run_id, t.wait_id, { outcome: t.outcome, values: {}, userId }))
   );
   await nudgeClaim(tx, boss, agencyId, claimId);
-  return ok({ balanceCents: remaining, duplicate: false });
+  return ok({ balanceCents: remaining, adjustedCents, duplicate: false });
 };

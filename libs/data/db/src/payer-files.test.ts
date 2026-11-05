@@ -5,20 +5,13 @@ import type { RemittancePosting } from '@ugula/billing';
 import { build271, build277, build277Status, build835, build999 } from '@ugula/billing/mock';
 import { buildTA1 } from '@ugula/billing/mock-waystar';
 import type { RunQueueClient } from '@ugula/run-queue';
-import {
-  applyPayerFile,
-  type FileItem,
-  findBatchClaims,
-  findClaimByNumber,
-  findTracedCoverage,
-  insertPayerEvent,
-  readPayerFile,
-  readRemittanceLines,
-  saveFileItems
-} from './payer-files.ts';
+import type { FileItem } from './payer-file-items.ts';
+import { applyPayerFile, readPayerFile, readRemittanceLines } from './payer-files.ts';
 import { createRecordingDb } from './testing.ts';
 
 const createdAt = new Date('2026-10-31T09:00:00Z');
+
+const TRACE = '0195f2a4-0000-7000-8000-0000000000c1';
 
 const bytes = (text: string) => new TextEncoder().encode(text);
 
@@ -43,8 +36,8 @@ const fileDb = () =>
             { claim_id: 'c2', coverage_id: null, number: 1002 }
           ]
         : [];
-    if (sql.includes('id::text'))
-      return parameters.includes('cov1') ? [{ id: 'cov1', claim_id: 'c1' }] : [];
+    if (sql.includes('"claim_coverages"."id" = $'))
+      return parameters.includes(TRACE) ? [{ id: 'cov1', claim_id: 'c1' }] : [];
     return [];
   });
 
@@ -68,45 +61,9 @@ const apply = async (text: string, postings: RemittancePosting[] = []) => {
 const outcomes = (items: readonly FileItem[]) =>
   items.map((i) => [i.reference, i.claimId, i.outcome, i.message]);
 
-describe('payer file queries', () => {
-  it('finds claims by the number billed as CLM01 and batches by control number', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    for (const reference of ['not a number', '0', '-5', '1.5']) {
-      assert.equal(await findClaimByNumber(db, 't1', reference), undefined, reference);
-    }
-    assert.equal(queries.length, 0);
-    await findClaimByNumber(db, 't1', ' 1001 ');
-    assert.deepEqual(queries[0]?.parameters, ['t1', 1001]);
-    assert.deepEqual(await findBatchClaims(db, 't1', 'X'), []);
-    await findBatchClaims(db, 't1', '000000101');
-    assert.ok(queries[1]?.sql.includes('"b"."control_number" = $2'));
-    assert.ok(queries[1]?.parameters.includes(101));
-    await findTracedCoverage(db, 't1', 'ABC');
-    assert.ok(queries[2]?.parameters.includes('abc'));
-  });
-
-  it('records acknowledgments once per file line and counts problems', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    const inserted = await insertPayerEvent(db, {
-      claimId: 'c1',
-      coverageId: 'cov1',
-      kind: 'rejected',
-      note: 'Rejected',
-      payerClaimNumber: null,
-      sourceKey: 'd:1',
-      createdBy: 'u1'
-    });
-    assert.equal(inserted, false);
-    assert.ok(queries[0]?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
-    await saveFileItems(db, 'f1', [], 0);
-    assert.equal(queries.length, 2);
-    assert.ok(queries[1]?.sql.startsWith('update "payer_files"'));
-  });
-});
-
 describe('readPayerFile', () => {
   it('reads the kind and digest of an X12 file', () => {
-    const text = build271({ trace: 'cov1', active: true }, { createdAt });
+    const text = build271({ trace: TRACE, active: true }, { createdAt });
     const read = readPayerFile(bytes(text));
     assert.equal(read.ok && read.value.kind, '271');
     assert.equal(read.ok && read.value.text, text);
@@ -223,6 +180,42 @@ describe('applyPayerFile', () => {
     await assert.rejects(() => apply(text), /No posting was decided/);
   });
 
+  it('sends a takeback to a biller instead of rolling the whole file back', async () => {
+    const text = build835(
+      [
+        {
+          claims: [
+            { claimNumber: '1001', chargeCents: 100_000, paidCents: -20_000 },
+            { claimNumber: '2002', chargeCents: 1_000, paidCents: 500 }
+          ]
+        }
+      ],
+      { createdAt }
+    );
+    const { out, events } = await apply(text, [
+      { position: 1, route: 'reconcile', message: '', adjustedCents: 0 },
+      { position: 2, route: 'unmatched', message: '', adjustedCents: 0 }
+    ]);
+    assert.deepEqual(outcomes(out.items)[0], [
+      '1001',
+      'c1',
+      'review',
+      'Negative amounts (reversals and takebacks) need a biller to post them'
+    ]);
+    assert.equal(events.length, 0);
+  });
+
+  it('records the adjustment actually posted when a payment overpays the claim', async () => {
+    const text = build835(
+      [{ claims: [{ claimNumber: '1001', chargeCents: 100_000, paidCents: 90_000 }] }],
+      { createdAt }
+    );
+    const { out } = await apply(text, [
+      { position: 1, route: 'reconcile', message: '', adjustedCents: 40_000 }
+    ]);
+    assert.deepEqual([out.items[0]?.paidCents, out.items[0]?.adjustedCents], [90_000, 10_000]);
+  });
+
   it('acknowledges every submitted claim in an 837P batch the clearinghouse answered', async () => {
     const { out, events } = await apply(
       build999(
@@ -267,27 +260,36 @@ describe('applyPayerFile', () => {
   });
 
   it('saves eligibility for traced coverages and nudges their claims', async () => {
-    const active = await apply(build271({ trace: 'COV1', active: true }, { createdAt }));
+    const active = await apply(
+      build271({ trace: TRACE.toUpperCase(), active: true }, { createdAt })
+    );
     assert.deepEqual(
       active.out.items.map((i) => [i.reference, i.claimId, i.outcome]),
-      [['COV1', 'c1', 'eligible']]
+      [[TRACE.toUpperCase(), 'c1', 'eligible']]
     );
     assert.equal(active.out.problems, 0);
     const saved = active.queries.find((q) => q.sql.startsWith('update "claim_coverages"'));
     assert.equal(saved?.parameters[0], 'active');
     assert.ok(saved?.parameters.includes(createdAt));
     assert.ok(active.queries.some((q) => q.sql.startsWith('insert into "signals"')));
-    const inactive = await apply(build271({ trace: 'cov1', active: false }, { createdAt }));
+    const inactive = await apply(build271({ trace: TRACE, active: false }, { createdAt }));
     assert.equal(inactive.out.items[0]?.outcome, 'ineligible');
     assert.equal(inactive.out.problems, 1);
-    const unknown = await apply(build271({ trace: 'cov9', active: true }, { createdAt }));
+    const unknown = await apply(
+      build271({ trace: '0195f2a4-0000-7000-8000-0000000000c9', active: true }, { createdAt })
+    );
     assert.deepEqual(outcomes(unknown.out.items), [
-      ['cov9', null, 'unmatched', 'No payer on a claim matches this response']
+      [
+        '0195f2a4-0000-7000-8000-0000000000c9',
+        null,
+        'unmatched',
+        'No payer on a claim matches this response'
+      ]
     ]);
   });
 
   it('logs each eligibility answer on the claim history', async () => {
-    const { events } = await apply(build271({ trace: 'cov1', active: false }, { createdAt }));
+    const { events } = await apply(build271({ trace: TRACE, active: false }, { createdAt }));
     assert.equal(events.length, 1);
     assert.ok(events[0]?.parameters.includes('eligibility'));
     assert.ok(events[0]?.parameters.includes('cov1'));
@@ -300,7 +302,7 @@ describe('applyPayerFile', () => {
 
   it('asks a biller to bill the Medicare Advantage plan a Medicare answer names', async () => {
     const { db } = createRecordingDb(({ sql }) =>
-      sql.includes('id::text')
+      sql.includes('"claim_coverages"."id" = $')
         ? [{ id: 'cov1', claim_id: 'c1', claim_filing: 'MB' }]
         : sql.startsWith('insert into "payer_files"')
           ? [{ id: 'f1' }]
@@ -309,7 +311,7 @@ describe('applyPayerFile', () => {
     const read = readPayerFile(
       bytes(
         build271(
-          { trace: 'cov1', active: true, advantagePlan: { name: 'SUNSHINE', id: 'H1' } },
+          { trace: TRACE, active: true, advantagePlan: { name: 'SUNSHINE', id: 'H1' } },
           { createdAt }
         )
       )

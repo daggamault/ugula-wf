@@ -3,34 +3,24 @@ import {
   type GraphDef,
   type InputBinding,
   isPure,
-  type Json,
   type NodeInstance,
-  type PinSpec,
   RETURN_TYPE,
   tableRefOf
 } from '@ugula/graph';
-import { ExternalLinkIcon, RotateCcwIcon, TableIcon, Trash2Icon, XIcon } from 'lucide-react';
-import { useId, useState } from 'react';
+import { ExternalLinkIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react';
+import { useId } from 'react';
 import { labelFromName } from '../../shared/format.ts';
 import type { Catalog } from '../../shared/graph/catalog.ts';
 import { updateNode } from '../../shared/graph/flow.ts';
-import { describeType, pinLabel } from '../../shared/graph/pins.ts';
-import { Badge } from '../../shared/ui/badge.tsx';
-import { Button, ButtonLink } from '../../shared/ui/button.tsx';
+import { Button } from '../../shared/ui/button.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
-import { Select } from '../../shared/ui/select.tsx';
 import { Textarea } from '../../shared/ui/textarea.tsx';
-import { ValueField } from '../../shared/ui/value-field.tsx';
+import { BindingEditor, CustomDot, PinHeading } from './binding-editor.tsx';
 import type { EffectiveTable } from './client.ts';
+import { ConfigEditor, TABLE_EDITORS, TableReference } from './node-settings.tsx';
 import { formatBase, nodeChanges, propertyName, resetProperty } from './override-diff.ts';
-import { DecisionTableEditor, LookupTableEditor } from './table-editors.tsx';
-
-const TABLE_EDITORS = {
-  'std.table.lookup': LookupTableEditor,
-  'std.table.decide': DecisionTableEditor
-} as const;
 
 type NodeInspectorProps = {
   def: GraphDef;
@@ -44,188 +34,6 @@ type NodeInspectorProps = {
   base?: NodeInstance | undefined;
   table?: EffectiveTable | undefined;
 };
-
-type BindingMode = 'default' | 'value' | 'expr';
-
-const MODES = [
-  { value: 'default', label: 'Not Set' },
-  { value: 'value', label: 'A Fixed Value' },
-  { value: 'expr', label: 'An Expression' }
-] as const;
-
-const modeOf = (binding: InputBinding | undefined): BindingMode =>
-  !binding ? 'default' : 'expr' in binding ? 'expr' : 'value';
-
-export const CustomDot = () => (
-  <span
-    role="img"
-    aria-label="Changed from the base"
-    title="Changed from the base"
-    className="bg-custom size-2 shrink-0 rounded-full"
-  />
-);
-
-const PinHeading = ({ spec, changed = false }: { spec: PinSpec; changed?: boolean }) => (
-  <span className="flex flex-col gap-0.5">
-    <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-      <span className="flex items-center gap-2 text-sm font-semibold">
-        {changed ? <CustomDot /> : null}
-        {pinLabel(spec)}
-      </span>
-      <span className="text-surface-fg-muted text-xs">
-        {describeType(spec.type)}
-        {spec.optional ? ', optional' : ''}
-      </span>
-    </span>
-    {spec.description ? (
-      <span className="text-surface-fg-muted text-xs">{spec.description}</span>
-    ) : null}
-  </span>
-);
-
-const unsetText = (spec: PinSpec) =>
-  spec.default !== undefined
-    ? `Uses ${JSON.stringify(spec.default)} unless you set it.`
-    : spec.optional
-      ? 'Left empty unless you set it.'
-      : 'Needs a value: connect a pin on the canvas, or set one here.';
-
-const BindingEditor = ({
-  nodeId,
-  spec,
-  binding,
-  editable,
-  changed,
-  onBind
-}: {
-  nodeId: string;
-  spec: PinSpec;
-  binding: InputBinding | undefined;
-  editable: boolean;
-  changed: boolean;
-  onBind: (binding: InputBinding | undefined) => void;
-}) => {
-  const id = `${nodeId}-${spec.name}`;
-  const mode = modeOf(binding);
-  return (
-    <li className="border-border flex flex-col gap-4 rounded-xl border p-4">
-      <PinHeading spec={spec} changed={changed} />
-      <fieldset disabled={!editable} className="flex flex-col gap-3">
-        <Select
-          id={`${id}-mode`}
-          label="Value"
-          options={MODES}
-          value={mode}
-          onChange={(e) => {
-            const next = e.target.value as BindingMode;
-            onBind(
-              next === 'default'
-                ? undefined
-                : next === 'value'
-                  ? { value: spec.default ?? null }
-                  : { expr: '' }
-            );
-          }}
-        />
-        {binding && 'value' in binding ? (
-          <ValueField
-            key={id}
-            id={`${id}-value`}
-            label="Fixed Value"
-            type={spec.type}
-            value={binding.value}
-            onChange={(value: Json) => onBind({ value })}
-          />
-        ) : null}
-        {binding && 'expr' in binding ? (
-          <Input
-            id={`${id}-expr`}
-            label="Expression"
-            hint="Use graph variables and functions such as round(), sum() or map()."
-            isMonospace
-            value={binding.expr}
-            onChange={(e) => onBind({ expr: e.target.value })}
-          />
-        ) : null}
-        {mode === 'default' ? (
-          <p className="text-surface-fg-muted text-xs">{unsetText(spec)}</p>
-        ) : null}
-      </fieldset>
-    </li>
-  );
-};
-
-const ConfigEditor = ({
-  node,
-  editable,
-  onConfig
-}: {
-  node: NodeInstance;
-  editable: boolean;
-  onConfig: (config: Json | undefined) => void;
-}) => {
-  const [text, setText] = useState(() =>
-    node.config === undefined ? '' : JSON.stringify(node.config, null, 2)
-  );
-  const [error, setError] = useState<string>();
-  return (
-    <Textarea
-      isMonospace
-      id={`${node.id}-config`}
-      label="Settings (JSON)"
-      hint="For example the expression to evaluate, the fields of a task, or which workflow to start."
-      error={error}
-      disabled={!editable}
-      value={text}
-      onChange={(e) => {
-        setText(e.target.value);
-        if (!e.target.value.trim()) {
-          setError(undefined);
-          onConfig(undefined);
-          return;
-        }
-        try {
-          onConfig(JSON.parse(e.target.value) as Json);
-          setError(undefined);
-        } catch {
-          setError('This is not valid JSON yet.');
-        }
-      }}
-    />
-  );
-};
-
-const TableReference = ({
-  tableKey,
-  table
-}: {
-  tableKey: string;
-  table: EffectiveTable | undefined;
-}) => (
-  <div className="flex flex-col gap-3">
-    <p className="text-sm">
-      Uses the shared table <code className="font-mono">{tableKey}</code>, so its rules can change
-      without changing this workflow.
-    </p>
-    {table ? (
-      <span className="flex flex-wrap items-center gap-2">
-        <ButtonLink to={`/tables/${table.id}`} variant="outline">
-          <TableIcon aria-hidden="true" className="size-4" />
-          Open Table
-        </ButtonLink>
-        {table.scope === 'system' ? null : (
-          <Badge intent="custom">
-            {table.scope === 'agency'
-              ? 'Customized for This Agency'
-              : 'Customized for Organization'}
-          </Badge>
-        )}
-      </span>
-    ) : (
-      <p className="text-danger text-sm">This table is not available to your agency.</p>
-    )}
-  </div>
-);
 
 const Links = ({ items, empty }: { items: readonly string[]; empty: string }) => (
   <span className={items.length ? 'text-sm' : 'text-surface-fg-muted text-sm'}>

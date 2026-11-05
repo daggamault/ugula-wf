@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import type { CompletionRequest } from './completions.ts';
 import {
   CLAIM_FILING_CODES,
+  isMedicareFiling,
   isValidNpi,
   payerDocument,
   payerKey,
@@ -66,5 +67,17 @@ describe('payer matching', () => {
     const before = asked.length;
     assert.equal(await suggestPayer(answering({ choice: 1 }), 'X', []), null);
     assert.equal(asked.length, before);
+  });
+});
+
+describe('isMedicareFiling', () => {
+  it('knows Medicare Part A and B claim filing indicators only', () => {
+    assert.deepEqual(['MA', 'MB', 'MC', 'CI', null].map(isMedicareFiling), [
+      true,
+      true,
+      false,
+      false,
+      false
+    ]);
   });
 });

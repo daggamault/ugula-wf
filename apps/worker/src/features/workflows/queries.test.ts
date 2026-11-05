@@ -399,6 +399,41 @@ describe('createRunStore', () => {
     assert.ok(task?.parameters.includes('u1'));
     const note = queries.find((q) => q.sql.startsWith('insert into "notifications"'));
     assert.ok(note?.parameters.includes('/tasks/new-1'));
+    assert.ok(task?.parameters.includes('2026-12-01T00:00:00.000Z'));
+    await db.destroy();
+  });
+
+  it('makes a date-only due date the end of that day in the agency time zone', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('insert into "tasks"') ? [{ id: 'new-1' }] : []
+    );
+    await createRunStore({ db, boss: recordingBoss().boss }).transaction((tx) =>
+      tx.insertTask({
+        agencyId: 't',
+        runId: 'r',
+        waitId: '7',
+        kind: 'task',
+        queue: 'q',
+        title: 'T',
+        subject: null,
+        instructions: '',
+        context: null,
+        fields: [],
+        outcomes: ['ok'],
+        defaults: null,
+        priority: 0,
+        assigneeId: null,
+        dueAt: '2026-11-10',
+        permission: null
+      })
+    );
+    const task = queries.find((q) => q.sql.startsWith('insert into "tasks"'));
+    assert.ok(
+      task?.sql.includes(
+        "::date + interval '1 day' - interval '1 second') at time zone coalesce((select bp.time_zone from billing_profiles bp where bp.agency_id = $"
+      )
+    );
+    assert.ok(task?.parameters.includes('2026-11-10'));
     await db.destroy();
   });
 });

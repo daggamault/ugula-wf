@@ -37,6 +37,8 @@ describe('claim documents', () => {
         html.includes('Physician certification statement: pcs.pdf')
     );
     assert.ok(html.includes('Upload Document') && html.includes('Chase Document'));
+    assert.ok(html.includes('underline-offset-2'));
+    assert.ok(html.includes('sm:justify-end'));
     assert.ok(html.includes('application/pdf,image/png'));
   });
 

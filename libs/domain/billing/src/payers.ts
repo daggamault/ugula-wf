@@ -40,6 +40,11 @@ const FEDERAL_FILING_LIMIT_DAYS: Partial<Record<ClaimFilingCode, number>> = {
   CH: 365
 };
 
+const MEDICARE_FILINGS: readonly (string | null)[] = ['MA', 'MB'];
+
+export const isMedicareFiling = (claimFiling: string | null) =>
+  MEDICARE_FILINGS.includes(claimFiling);
+
 export const filingLimitOf = (claimFiling: string | null, days: number | null) =>
   days ??
   (isClaimFilingCode(claimFiling) ? (FEDERAL_FILING_LIMIT_DAYS[claimFiling] ?? null) : null);
