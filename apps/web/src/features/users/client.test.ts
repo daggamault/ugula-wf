@@ -18,18 +18,18 @@ describe('createUsersClient', () => {
     await client.setRole('u1', { roleId: 'r1', version: 2 });
     await client.remove('u1');
     assert.deepEqual(await client.passwordLink('u1'), { items: [1], link: 'l' });
-    assert.deepEqual(await client.invitations(), [1]);
+    assert.deepEqual(await client.invitations('q=ann'), { items: [1], link: 'l' });
     await client.invite({ email: 'a@b.co', firstName: 'A', lastName: 'B', roleId: 'r1' });
     await client.resend('i1');
     await client.removeInvitation('i1');
     assert.deepEqual(calls, [
       'GET /api/users?q=ann',
       'GET /api/users/u%2F1',
-      'GET /api/roles?pageSize=100&sort=name&dir=asc',
+      'GET /api/users/roles',
       'PUT /api/users/u1',
       'DELETE /api/users/u1',
       'POST /api/users/u1/password-link',
-      'GET /api/invitations',
+      'GET /api/invitations?q=ann',
       'POST /api/invitations',
       'POST /api/invitations/i1/resend',
       'DELETE /api/invitations/i1'

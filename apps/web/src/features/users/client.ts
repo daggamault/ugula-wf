@@ -39,13 +39,13 @@ export const createUsersClient = (api: Api) => ({
     api.get<Page<AgencyUser>>(`/api/users?${query}`, signal),
   user: (id: string, signal?: AbortSignal) => api.get<AgencyUser>(userPath(id), signal),
   roles: async (signal?: AbortSignal) =>
-    (await api.get<Page<RoleOption>>('/api/roles?pageSize=100&sort=name&dir=asc', signal)).items,
+    (await api.get<{ items: RoleOption[] }>('/api/users/roles', signal)).items,
   setRole: (id: string, input: { roleId: string; version: number }) =>
     api.put<AgencyUser>(userPath(id), input),
   remove: (id: string) => api.remove<{ id: string }>(userPath(id)),
   passwordLink: (id: string) => api.post<{ link: string }>(`${userPath(id)}/password-link`),
-  invitations: async (signal?: AbortSignal) =>
-    (await api.get<{ items: Invitation[] }>('/api/invitations', signal)).items,
+  invitations: (query: string, signal?: AbortSignal) =>
+    api.get<Page<Invitation>>(`/api/invitations?${query}`, signal),
   invite: (input: InviteInput) => api.post<{ id: string; link: string }>('/api/invitations', input),
   resend: (id: string) => api.post<{ id: string; link: string }>(`${invitationPath(id)}/resend`),
   removeInvitation: (id: string) => api.remove<{ id: string }>(invitationPath(id))

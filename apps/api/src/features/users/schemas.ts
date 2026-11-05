@@ -13,6 +13,15 @@ export const listUsersQuery = v.object({
   ...pageEntries(USER_SORTS, 'name', 'asc')
 });
 
+const INVITATION_SORTS = ['name', 'email', 'role', 'expires'] as const;
+
+export type InvitationSort = (typeof INVITATION_SORTS)[number];
+
+export const listInvitationsQuery = v.object({
+  q: searchText,
+  ...pageEntries(INVITATION_SORTS, 'expires', 'asc')
+});
+
 export const updateUserSchema = v.object({
   roleId: uuid,
   version: v.pipe(v.number(), v.integer(), v.minValue(1))

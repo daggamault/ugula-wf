@@ -36,6 +36,7 @@ type Rows = {
   isMember?: boolean;
   invitation?: { id: string; email: string; permissions: string[] } | undefined;
   invitations?: unknown[];
+  ranks?: { permissions: string[]; held: string[] }[];
 };
 
 const userDb = (rows: Rows) =>
@@ -50,7 +51,10 @@ const userDb = (rows: Rows) =>
       return rows.memberships ? [{ id: 'm-2' }] : [];
     if (s.includes('from "roles" as "r"')) return rows.role ? [rows.role] : [];
     if (s.startsWith('update "memberships"')) return rows.updated === false ? [] : [{ id: 'm-1' }];
-    if (s.includes('order by "i"."created_at"')) return rows.invitations ?? [];
+    if (s.includes('from "memberships" as "t"')) return rows.ranks ?? [];
+    if (s.includes('count(*) over ()') && s.includes('from "invitations"')) {
+      return (rows.invitations ?? []).map((i) => ({ ...(i as object), total: '1' }));
+    }
     if (s.startsWith('select') && s.includes('from "invitations"')) {
       return rows.invitation ? [rows.invitation] : [];
     }
@@ -230,6 +234,9 @@ describe('user service members', () => {
       hashToken(tokenOf(res.value.link)),
       new Date(NOW.getTime() + DAY_MS)
     ]);
+    const cleared = queries.find((q) => q.sql.startsWith('delete from "password_tokens"'));
+    assert.ok(cleared?.sql.endsWith('where ("user_id" = $1 or "expires_at" <= $2)'));
+    assert.deepEqual(cleared?.parameters, ['u-2', NOW]);
     await db.destroy();
     const high = setup({ member: member(['fees:update']) });
     assert.deepEqual(await high.service.passwordLink(limited(), 'u-2'), outranked);
@@ -251,6 +258,41 @@ describe('user service members', () => {
     await high.db.destroy();
     await self.db.destroy();
   });
+
+  it('refuses a password link for a member who outranks the caller in another agency', async () => {
+    const elsewhere = setup({
+      member: member(['fees:read']),
+      ranks: [
+        { permissions: ['fees:read'], held: ['fees:read'] },
+        { permissions: ['users:update'], held: [] }
+      ]
+    });
+    assert.deepEqual(await elsewhere.service.passwordLink(limited(), 'u-2'), outranked);
+    const ranks = elsewhere.queries.find((q) => q.sql.includes('from "memberships" as "t"'));
+    assert.ok(
+      ranks?.sql.includes('left join "memberships" as "r" on "r"."agency_id" = "t"."agency_id"')
+    );
+    assert.deepEqual(ranks?.parameters, ['u-1', 'u-2']);
+    assert.ok(!elsewhere.queries.some((q) => q.sql.includes('"password_tokens"')));
+    await elsewhere.db.destroy();
+    const everywhere = setup({
+      member: member(['fees:read']),
+      ranks: [{ permissions: ['users:update'], held: ['users:update', 'users:read'] }]
+    });
+    assert.equal((await everywhere.service.passwordLink(limited(), 'u-2')).ok, true);
+    await everywhere.db.destroy();
+  });
+
+  it('lists every agency role, marking the ones the caller may give', async () => {
+    const { db, service } = setup({
+      role: { id: 'r-1', name: 'Admin', permissions: ['users:delete'] }
+    });
+    assert.deepEqual(await service.roles(limited()), {
+      ok: true,
+      value: { items: [{ id: 'r-1', name: 'Admin', isGrantable: false }] }
+    });
+    await db.destroy();
+  });
 });
 
 describe('user service invitations', () => {
@@ -267,9 +309,13 @@ describe('user service invitations', () => {
       permissions: ['fees:update']
     };
     const { db, service } = setup({ invitations: [row] });
-    assert.deepEqual(await service.invitations(limited()), {
+    const page = { q: 'ada', page: 1, pageSize: 25, sort: 'expires', dir: 'asc' } as const;
+    assert.deepEqual(await service.invitations(limited(), page), {
       ok: true,
       value: {
+        total: 1,
+        page: 1,
+        pageSize: 25,
         items: [
           {
             id: 'i-1',

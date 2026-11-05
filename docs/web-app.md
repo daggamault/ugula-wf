@@ -25,14 +25,14 @@ React app in `apps/web`, built with Vite. Pages live in `src/features/<area>`; s
 
 ## Pages
 
-| Area                    | Paths                                                                                                                         |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Claims and tasks        | `/claims`, `/claims/:id`, `/tasks/:id`                                                                                        |
-| Patients                | `/patients`, `/patients/:id`                                                                                                  |
-| Imports and payer files | `/imports`, `/imports/:id`, `/payer-files`, `/payer-files/:id`                                                                |
-| Reports                 | `/reports`, `/reports/:id`, `/reports/:id/results`                                                                            |
-| Workflows and runs      | `/workflows`, `/workflows/customized`, `/workflows/:id`, `/tables`, `/tables/:id`, `/runs`, `/runs/:id`                       |
-| Admin                   | `/payers`, `/facilities`, `/fees`, `/users`, `/users/invite`, `/users/:id`, `/roles`, `/roles/new`, `/roles/:id`, `/settings` |
+| Area                    | Paths                                                                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claims and tasks        | `/claims`, `/claims/:id`, `/tasks/:id`                                                                                                              |
+| Patients                | `/patients`, `/patients/:id`                                                                                                                        |
+| Imports and payer files | `/imports`, `/imports/:id`, `/payer-files`, `/payer-files/:id`                                                                                      |
+| Reports                 | `/reports`, `/reports/:id`, `/reports/:id/results`                                                                                                  |
+| Workflows and runs      | `/workflows`, `/workflows/customized`, `/workflows/:id`, `/tables`, `/tables/:id`, `/runs`, `/runs/:id`                                             |
+| Admin                   | `/payers`, `/facilities`, `/fees`, `/users`, `/users/invitations`, `/users/invite`, `/users/:id`, `/roles`, `/roles/new`, `/roles/:id`, `/settings` |
 
 ## Workflow editor
 

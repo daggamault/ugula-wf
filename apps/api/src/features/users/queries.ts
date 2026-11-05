@@ -2,7 +2,7 @@ import { type Db, rolePermissionsSql } from '@ugula/db';
 import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
-import type { UserSort } from './schemas.ts';
+import type { InvitationSort, UserSort } from './schemas.ts';
 
 export type UserFilters = PageRequest<UserSort> & { q?: string | undefined };
 
@@ -98,18 +98,53 @@ export const hasMemberships = async (db: Db, userId: string) =>
     .limit(1)
     .executeTakeFirst()) !== undefined;
 
-export const insertPasswordToken = async (
+export const findMemberRanks = (db: Db, userId: string, requesterId: string) =>
+  db
+    .selectFrom('memberships as t')
+    .leftJoin('memberships as r', (j) =>
+      j.onRef('r.agency_id', '=', 't.agency_id').on('r.user_id', '=', requesterId)
+    )
+    .select([
+      't.agency_id',
+      rolePermissionsSql('t.role_id').as('permissions'),
+      rolePermissionsSql('r.role_id').as('held')
+    ])
+    .where('t.user_id', '=', userId)
+    .execute();
+
+export const listGrantableRoles = (db: Db, agencyId: string) =>
+  db
+    .selectFrom('roles as r')
+    .select(['r.id', 'r.name', rolePermissionsSql('r.id').as('permissions')])
+    .where('r.agency_id', '=', agencyId)
+    .orderBy(sql`lower(r.name)`)
+    .execute();
+
+export const replacePasswordToken = async (
   db: Db,
-  input: { userId: string; hash: string; expiresAt: Date }
+  input: { userId: string; hash: string; expiresAt: Date; now: Date }
 ) => {
+  await db
+    .deleteFrom('password_tokens')
+    .where((eb) => eb.or([eb('user_id', '=', input.userId), eb('expires_at', '<=', input.now)]))
+    .execute();
   await db
     .insertInto('password_tokens')
     .values({ user_id: input.userId, token_hash: input.hash, expires_at: input.expiresAt })
     .execute();
 };
 
-export const listInvitations = (db: Db, agencyId: string) =>
-  db
+export type InvitationFilters = PageRequest<InvitationSort> & { q?: string | undefined };
+
+const INVITATION_ORDER = {
+  name: sql`(lower(i.last_name), lower(i.first_name))`,
+  email: sql.ref('i.email'),
+  role: sql`lower(r.name)`,
+  expires: sql.ref('i.expires_at')
+};
+
+export const searchInvitations = (db: Db, agencyId: string, f: InvitationFilters) => {
+  let q = db
     .selectFrom('invitations as i')
     .innerJoin('roles as r', 'r.id', 'i.role_id')
     .select([
@@ -123,9 +158,18 @@ export const listInvitations = (db: Db, agencyId: string) =>
       'r.name as role_name',
       rolePermissionsSql('r.id').as('permissions')
     ])
-    .where('i.agency_id', '=', agencyId)
-    .orderBy('i.created_at', 'desc')
-    .execute();
+    .where('i.agency_id', '=', agencyId);
+  if (f.q) {
+    const like = containsPattern(f.q);
+    q = q.where((eb) =>
+      eb.or([
+        eb(sql`lower(i.first_name || ' ' || i.last_name)`, 'like', like),
+        eb('i.email', 'like', like)
+      ])
+    );
+  }
+  return paged(q, f, INVITATION_ORDER, sql.ref('i.id'));
+};
 
 export const findInvitation = (db: Db, agencyId: string, id: string) =>
   db

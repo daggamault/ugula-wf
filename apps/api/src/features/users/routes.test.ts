@@ -23,6 +23,7 @@ const service = Object.fromEntries(
     'update',
     'remove',
     'passwordLink',
+    'roles',
     'invitations',
     'invite',
     'resend',
@@ -51,6 +52,17 @@ describe('user routes', () => {
     ]);
   });
 
+  it('lists the roles to choose from to anyone who can see users', async () => {
+    calls.length = 0;
+    const reader = withSession(createUserRoutes(service), testAccess(['users:read']));
+    assert.equal((await reader('/roles')).status, 200);
+    assert.deepEqual(calls, [['roles']]);
+    assert.equal(
+      (await withSession(createUserRoutes(service), testAccess([]))('/roles')).status,
+      403
+    );
+  });
+
   it('requires the matching users permission and valid input', async () => {
     calls.length = 0;
     const request = withSession(createUserRoutes(service), testAccess(['users:read']));
@@ -73,7 +85,7 @@ describe('invitation routes', () => {
   it('lists, sends, resends and removes invitations', async () => {
     calls.length = 0;
     const request = withSession(createInvitationRoutes(service));
-    assert.equal((await request('/')).status, 200);
+    assert.equal((await request('/?q=ada&sort=email&dir=desc')).status, 200);
     assert.equal(
       (await request('/', { method: 'POST', body: JSON.stringify(invite) })).status,
       201
@@ -81,7 +93,7 @@ describe('invitation routes', () => {
     assert.equal((await request(`/${ID}/resend`, { method: 'POST' })).status, 201);
     assert.equal((await request(`/${ID}`, { method: 'DELETE' })).status, 200);
     assert.deepEqual(calls, [
-      ['invitations'],
+      ['invitations', { q: 'ada', page: 1, pageSize: 25, sort: 'email', dir: 'desc' }],
       ['invite', { ...invite, email: 'ada@example.com' }],
       ['resend', ID],
       ['removeInvitation', ID]

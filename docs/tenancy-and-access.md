@@ -64,7 +64,8 @@ A human task can name the permission whoever completes it needs (`permission` in
 
 - `POST /api/agencies/:id/invitations` creates an invitation and returns a one-time link (`/invitation?token=…`) valid for 7 days. Only the token's SHA-256 hash is stored.
 - Opening the link shows the agency and role. A new person chooses a password; someone who already has an account in the organization enters theirs. Accepting creates the membership and signs them in.
-- `POST /api/agencies/:id/users/:userId/password-link` returns a 24-hour `/password?token=…` link. Setting a password ends all of the user's sessions.
+- `POST /api/agencies/:id/users/:userId/password-link` returns a 24-hour `/password?token=…` link and voids the user's earlier ones. A password covers every agency, so only an owner, or someone holding every permission the user has in each of their agencies, can make one. Setting a password ends all of the user's sessions.
+- The invite and user pages pick roles from `GET /api/agencies/:id/users/roles`, which needs only `users:read`. A role pending invitations still give cannot be deleted.
 - Links are shown to the inviter to copy; email delivery is not built yet.
 
 ## Guards

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as v from 'valibot';
-import { inviteSchema, listUsersQuery, updateUserSchema } from './schemas.ts';
+import { inviteSchema, listInvitationsQuery, listUsersQuery, updateUserSchema } from './schemas.ts';
 
 const ROLE = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 
@@ -36,5 +36,16 @@ describe('user schemas', () => {
       dir: 'asc'
     });
     assert.equal(v.safeParse(listUsersQuery, { sort: 'nope' }).success, false);
+  });
+
+  it('pages invitations by soonest expiry by default', () => {
+    assert.deepEqual(v.parse(listInvitationsQuery, { q: ' Ada ' }), {
+      q: 'Ada',
+      page: 1,
+      pageSize: 25,
+      sort: 'expires',
+      dir: 'asc'
+    });
+    assert.equal(v.safeParse(listInvitationsQuery, { sort: 'created' }).success, false);
   });
 });

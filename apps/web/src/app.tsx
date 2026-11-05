@@ -64,7 +64,7 @@ import { useWorkAlerts } from './features/tasks/work-alerts.ts';
 import type { UsersClient } from './features/users/client.ts';
 import { InvitePage } from './features/users/invite-page.tsx';
 import { UserPage } from './features/users/user-page.tsx';
-import { USERS_PATH, UsersPage } from './features/users/users-page.tsx';
+import { INVITATIONS_PATH, USERS_PATH, UsersPage } from './features/users/users-page.tsx';
 import type { WorkflowsClient } from './features/workflows/client.ts';
 import { CustomizationMapPage } from './features/workflows/customization-map-page.tsx';
 import { graphKindOf, NewWorkflowPage } from './features/workflows/new-workflow-page.tsx';
@@ -481,7 +481,14 @@ const routes: readonly Route[] = [
       />
     )
   },
-  { pattern: USERS_PATH, render: (_, __, c) => <UsersPage client={c.users} live={c.live} /> },
+  {
+    pattern: USERS_PATH,
+    render: (_, __, c) => <UsersPage client={c.users} live={c.live} tab="users" />
+  },
+  {
+    pattern: INVITATIONS_PATH,
+    render: (_, __, c) => <UsersPage client={c.users} live={c.live} tab="invitations" />
+  },
   {
     pattern: `${USERS_PATH}/invite`,
     render: (_, q, c) => <InvitePage client={c.users} back={backOf(q, USERS_PATH)} />

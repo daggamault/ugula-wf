@@ -249,7 +249,7 @@ This repository enforces strict, consistent standards across all applications, l
   - All interactive and clickable elements (`<button>`, `<a>`, clickable cards/rows, toggles) must explicitly include `cursor-pointer` when enabled and clear disabled states when inactive.
   - Incorporate smooth, subtle transitions and micro-animations for state changes, hover/focus feedback, and layout transitions.
 - **One Way to Do Each Thing:**
-  - Every table row's actions are icon buttons in a last, hidden-label `Actions` column: work task (list), open (chevron right), edit (pencil), delete (trash, danger), run (play). The row's name is plain text, never a link. Each action's label names the row.
+  - Every table row's actions are icon buttons in a last, hidden-label `Actions` column: work task (list), open (chevron right), edit (pencil), delete (trash, danger), run (play), new link (refresh, for an invitation that has no page of its own). The row's name is plain text, never a link. Each action's label names the row.
   - Hover feedback belongs only on things that react to a click. Rows, cards and panels that do nothing stay still.
   - Page and form actions are text buttons with a leading icon (`Save`, `Add Fee`, `Run Report`). Icon-only buttons are reserved for table row actions and chrome that every app shares: close, dismiss, back, menu, theme, sign out and reorder arrows. Each one carries a tooltip.
   - Every page and section has a title and one plain sentence saying what it is for. Field hints are the only other help text.

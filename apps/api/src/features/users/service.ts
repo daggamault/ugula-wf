@@ -9,13 +9,16 @@ import {
   deleteMember,
   findInvitation,
   findMember,
+  findMemberRanks,
   findRolePermissions,
   hasMemberships,
-  insertPasswordToken,
+  type InvitationFilters,
   isMemberEmail,
-  listInvitations,
+  listGrantableRoles,
   type MemberRow,
   renewInvitation,
+  replacePasswordToken,
+  searchInvitations,
   searchMembers,
   setMemberRole,
   type UserFilters,
@@ -66,6 +69,11 @@ const lastAdmin = fail('conflict', 'The agency needs at least one user who can m
 export const createUserService = ({ db, webUrl, now, endSessions }: UserServiceDeps) => {
   const link = (path: string, token: string) =>
     `${webUrl}${path}?token=${encodeURIComponent(token)}`;
+  const outranksEverywhere = async (access: AgencyAccess, userId: string) =>
+    access.isOrganizationAdmin ||
+    (await findMemberRanks(db, userId, access.userId)).every((r) =>
+      canGrant(permissionsOf({ permissions: r.held }), permissionsOf(r))
+    );
   const grantableRole = async (tx: Db, access: AgencyAccess, roleId: string) => {
     const role = await findRolePermissions(tx, access.agencyId, roleId);
     if (!role) return roleNotFound;
@@ -127,20 +135,35 @@ export const createUserService = ({ db, webUrl, now, endSessions }: UserServiceD
     passwordLink: async (access: AgencyAccess, userId: string) => {
       const row = await findMember(db, access.agencyId, userId);
       if (!row) return notFound;
-      if (blockedReason(access, row) === 'outranked') {
+      if (
+        blockedReason(access, row) === 'outranked' ||
+        !(await outranksEverywhere(access, userId))
+      ) {
         return fail('forbidden', 'This user has permissions you do not hold');
       }
       const { token, hash } = createToken();
-      await insertPasswordToken(db, {
+      const at = now();
+      await replacePasswordToken(db, {
         userId,
         hash,
-        expiresAt: new Date(now().getTime() + DAY_MS)
+        expiresAt: new Date(at.getTime() + DAY_MS),
+        now: at
       });
       return ok({ link: link('/password', token) });
     },
-    invitations: async (access: AgencyAccess) =>
+    roles: async (access: AgencyAccess) =>
       ok({
-        items: (await listInvitations(db, access.agencyId)).map((i) => ({
+        items: (await listGrantableRoles(db, access.agencyId)).map((r) => ({
+          id: r.id,
+          name: r.name,
+          isGrantable: canGrant(access.permissions, permissionsOf(r))
+        }))
+      }),
+    invitations: async (access: AgencyAccess, filters: InvitationFilters) => {
+      const page = await searchInvitations(db, access.agencyId, filters);
+      return ok({
+        ...page,
+        items: page.items.map((i) => ({
           id: i.id,
           email: i.email,
           firstName: i.first_name,
@@ -151,7 +174,8 @@ export const createUserService = ({ db, webUrl, now, endSessions }: UserServiceD
           expiresAt: i.expires_at,
           createdAt: i.created_at
         }))
-      }),
+      });
+    },
     invite: (access: AgencyAccess, input: InviteInput) =>
       db.transaction().execute(async (tx) => {
         const role = await grantableRole(tx, access, input.roleId);

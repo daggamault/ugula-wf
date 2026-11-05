@@ -75,6 +75,7 @@ describe('app routing', () => {
       '/payers/p1',
       '/users',
       '/users/invite',
+      '/users/invitations',
       '/users/u1',
       '/roles',
       '/roles/new',
@@ -108,6 +109,8 @@ describe('app routing', () => {
     assert.equal(props('/payers/p1', '').payerId, 'p1');
     assert.equal(props('/users/u1', 'back=/users?q=a').userId, 'u1');
     assert.equal(props('/users/u1', 'back=/users?q=a').back, '/users?q=a');
+    assert.equal(props('/users', '').tab, 'users');
+    assert.equal(props('/users/invitations', '').tab, 'invitations');
     assert.equal(props('/roles/new', '').roleId, null);
     assert.equal(props('/roles/r1', '').roleId, 'r1');
   });

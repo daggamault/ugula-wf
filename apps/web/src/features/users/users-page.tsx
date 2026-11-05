@@ -7,7 +7,6 @@ import { type Live, useReconnect } from '../../shared/live.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
 import { ConfirmDialog, DeleteDialog } from '../../shared/ui/dialog.tsx';
-import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
 import {
   DeleteButton,
@@ -18,8 +17,8 @@ import {
 } from '../../shared/ui/icon-button.tsx';
 import { Page } from '../../shared/ui/page.tsx';
 import { Search } from '../../shared/ui/search.tsx';
-import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { Tabs } from '../../shared/ui/tabs.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { type SearchView, useSearchState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
@@ -28,9 +27,23 @@ import { LinkPanel } from './link-panel.tsx';
 
 export const USERS_PATH = '/users';
 
+export const INVITATIONS_PATH = `${USERS_PATH}/invitations`;
+
+export type UsersTab = 'users' | 'invitations';
+
+const USERS_TABS: readonly { value: UsersTab; label: string; href: string }[] = [
+  { value: 'users', label: 'Users', href: USERS_PATH },
+  { value: 'invitations', label: 'Invitations', href: INVITATIONS_PATH }
+];
+
 export const USER_TABLE = {
   sorts: { name: 'asc', email: 'asc', role: 'asc' },
   sort: 'name'
+} as const;
+
+export const INVITATION_TABLE = {
+  sorts: { name: 'asc', email: 'asc', role: 'asc', expires: 'asc' },
+  sort: 'expires'
 } as const;
 
 export const UsersTable = ({
@@ -82,14 +95,16 @@ export const UsersTable = ({
   </Table>
 );
 
-const InvitationsTable = ({
+export const InvitationsTable = ({
   invitations,
+  search,
   canInvite,
   canRemove,
   onResend,
   onRemove
 }: {
   invitations: readonly Invitation[];
+  search: SearchView;
   canInvite: boolean;
   canRemove: boolean;
   onResend: (i: Invitation) => void;
@@ -97,20 +112,25 @@ const InvitationsTable = ({
 }) => (
   <Table
     label="Invitations"
+    sorting={search}
     head={[
-      { label: 'Name' },
-      { label: 'Email' },
-      { label: 'Role' },
-      { label: 'Expires', isSecondary: true },
+      { label: 'Name', sort: 'name' },
+      { label: 'Email', sort: 'email' },
+      { label: 'Role', sort: 'role' },
+      { label: 'Expires', sort: 'expires', isSecondary: true },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
   >
     {invitations.map((i) => (
       <TableRow key={i.id}>
         <TableCell>
-          <span className="font-medium">{fullName(i)}</span>
+          <span className="font-medium">
+            <Highlight text={fullName(i)} query={search.q} />
+          </span>
         </TableCell>
-        <TableCell isMuted>{i.email}</TableCell>
+        <TableCell isMuted>
+          <Highlight text={i.email} query={search.q} />
+        </TableCell>
         <TableCell>{i.role.name}</TableCell>
         <TableCell kind="date" isMuted isSecondary>
           {i.isExpired ? <Badge intent="warning">Expired</Badge> : formatDateTime(i.expiresAt)}
@@ -134,16 +154,34 @@ const InvitationsTable = ({
   </Table>
 );
 
-export const UsersPage = ({ client, live }: { client: UsersClient; live: Live }) => {
+type ListProps = { client: UsersClient; live: Live };
+
+const UserList = ({ client, live }: ListProps) => {
   const can = useCan();
-  const notify = useToast();
   const search = useSearchState(USERS_PATH, USER_TABLE);
   const users = useResource(`users:${search.apiQuery}`, () => client.search(search.apiQuery));
-  const invitations = useResource('invitations', client.invitations);
-  useReconnect(live, () => {
-    users.reload();
-    invitations.reload();
-  });
+  useReconnect(live, users.reload);
+  return (
+    <Search
+      label="Users"
+      path={USERS_PATH}
+      search={search}
+      results={users}
+      empty={{ title: 'No Users Yet', children: 'Invite someone to work in this agency.' }}
+    >
+      {(items) => <UsersTable users={items} search={search} canEdit={can('users:update')} />}
+    </Search>
+  );
+};
+
+const InvitationList = ({ client, live }: ListProps) => {
+  const can = useCan();
+  const notify = useToast();
+  const search = useSearchState(INVITATIONS_PATH, INVITATION_TABLE);
+  const invitations = useResource(`invitations:${search.apiQuery}`, () =>
+    client.invitations(search.apiQuery)
+  );
+  useReconnect(live, invitations.reload);
   const [link, setLink] = useState<{ name: string; link: string } | null>(null);
   const [resending, setResending] = useState<Invitation | null>(null);
   const [removing, setRemoving] = useState<Invitation | null>(null);
@@ -173,21 +211,8 @@ export const UsersPage = ({ client, live }: { client: UsersClient; live: Live })
       });
     }
   };
-  const invite = withBack(`${USERS_PATH}/invite`, search.href);
-  const pending = invitations.data ?? [];
   return (
-    <Page
-      title="Users"
-      description="Who can work in this agency, and the role each one has."
-      actions={
-        can('users:create') ? (
-          <ButtonLink to={invite}>
-            <UserPlusIcon aria-hidden="true" className="size-4" />
-            Invite User
-          </ButtonLink>
-        ) : undefined
-      }
-    >
+    <>
       {link ? (
         <LinkPanel
           title={`Invitation for ${link.name}`}
@@ -196,30 +221,23 @@ export const UsersPage = ({ client, live }: { client: UsersClient; live: Live })
         />
       ) : null}
       <Search
-        label="Users"
-        path={USERS_PATH}
+        label="Invitations"
+        path={INVITATIONS_PATH}
         search={search}
-        results={users}
-        empty={{ title: 'No Users Yet', children: 'Invite someone to work in this agency.' }}
+        results={invitations}
+        empty={{ title: 'No Invitations', children: 'No one is waiting to join.' }}
       >
-        {(items) => <UsersTable users={items} search={search} canEdit={can('users:update')} />}
-      </Search>
-      <SectionPanel
-        title="Invitations"
-        description="People who were invited and have not joined yet."
-      >
-        {pending.length ? (
+        {(items) => (
           <InvitationsTable
-            invitations={pending}
+            invitations={items}
+            search={search}
             canInvite={can('users:create')}
             canRemove={can('users:delete')}
             onResend={setResending}
             onRemove={setRemoving}
           />
-        ) : (
-          <EmptyText>No one is waiting to join.</EmptyText>
         )}
-      </SectionPanel>
+      </Search>
       <ConfirmDialog
         open={resending !== null}
         title="Make a new invitation link?"
@@ -246,6 +264,38 @@ export const UsersPage = ({ client, live }: { client: UsersClient; live: Live })
       >
         Their link stops working.
       </DeleteDialog>
+    </>
+  );
+};
+
+export const UsersPage = ({ client, live, tab }: ListProps & { tab: UsersTab }) => {
+  const can = useCan();
+  return (
+    <Page
+      title="Users"
+      description="Who can work in this agency, the role each one has, and who is invited to join."
+      actions={
+        can('users:create') ? (
+          <ButtonLink to={`${USERS_PATH}/invite`}>
+            <UserPlusIcon aria-hidden="true" className="size-4" />
+            Invite User
+          </ButtonLink>
+        ) : undefined
+      }
+    >
+      <Tabs
+        label="User views"
+        tabs={USERS_TABS.map((t) => ({
+          label: t.label,
+          href: t.href,
+          isSelected: t.value === tab
+        }))}
+      />
+      {tab === 'invitations' ? (
+        <InvitationList client={client} live={live} />
+      ) : (
+        <UserList client={client} live={live} />
+      )}
     </Page>
   );
 };

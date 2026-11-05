@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { type AgencyEnv, requirePermission } from '../../shared/access.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { inviteSchema, listUsersQuery, updateUserSchema } from './schemas.ts';
+import { inviteSchema, listInvitationsQuery, listUsersQuery, updateUserSchema } from './schemas.ts';
 import type { UserService } from './service.ts';
 
 const id = sValidator('param', idParam, invalidRequest);
@@ -15,6 +15,9 @@ export const createUserRoutes = (service: UserService) =>
       requirePermission('users:read'),
       sValidator('query', listUsersQuery, invalidRequest),
       async (c) => respond(c, await service.list(c.get('access'), c.req.valid('query')))
+    )
+    .get('/roles', requirePermission('users:read'), async (c) =>
+      respond(c, await service.roles(c.get('access')))
     )
     .get('/:id', requirePermission('users:read'), id, async (c) =>
       respond(c, await service.find(c.get('access'), c.req.valid('param').id))
@@ -39,8 +42,11 @@ export const createUserRoutes = (service: UserService) =>
 
 export const createInvitationRoutes = (service: UserService) =>
   new Hono<AgencyEnv>()
-    .get('/', requirePermission('users:read'), async (c) =>
-      respond(c, await service.invitations(c.get('access')))
+    .get(
+      '/',
+      requirePermission('users:read'),
+      sValidator('query', listInvitationsQuery, invalidRequest),
+      async (c) => respond(c, await service.invitations(c.get('access'), c.req.valid('query')))
     )
     .post(
       '/',

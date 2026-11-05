@@ -6,12 +6,14 @@ import {
   deleteMember,
   findInvitation,
   findMember,
+  findMemberRanks,
   findRolePermissions,
   hasMemberships,
-  insertPasswordToken,
   isMemberEmail,
-  listInvitations,
+  listGrantableRoles,
   renewInvitation,
+  replacePasswordToken,
+  searchInvitations,
   searchMembers,
   setMemberRole,
   upsertInvitation
@@ -67,22 +69,64 @@ describe('member queries', () => {
     await db.destroy();
   });
 
-  it('stores password tokens by hash', async () => {
+  it('replaces a user’s password tokens and drops expired ones, storing only the hash', async () => {
     const { db, queries } = createRecordingDb();
-    await insertPasswordToken(db, { userId: 'u-1', hash: 'h', expiresAt: EXPIRES });
-    assert.deepEqual(queries[0]?.parameters, ['u-1', 'h', EXPIRES]);
+    const now = new Date('2026-01-01T00:00:00Z');
+    await replacePasswordToken(db, { userId: 'u-1', hash: 'h', expiresAt: EXPIRES, now });
+    const [cleared, inserted] = queries;
+    assert.equal(
+      cleared?.sql,
+      'delete from "password_tokens" where ("user_id" = $1 or "expires_at" <= $2)'
+    );
+    assert.deepEqual(cleared?.parameters, ['u-1', now]);
+    assert.deepEqual(inserted?.parameters, ['u-1', 'h', EXPIRES]);
+    await db.destroy();
+  });
+
+  it('pairs each agency of a member with the caller’s role there, if any', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await findMemberRanks(db, 'u-2', 'u-1');
+    const [q] = queries;
+    assert.ok(
+      q?.sql.includes(
+        'from "memberships" as "t" left join "memberships" as "r" on "r"."agency_id" = "t"."agency_id" and "r"."user_id" = $1'
+      )
+    );
+    assert.ok(
+      q?.sql.includes('rp.role_id = "t"."role_id"') && q.sql.includes('rp.role_id = "r"."role_id"')
+    );
+    assert.deepEqual(q?.parameters, ['u-1', 'u-2']);
+    await db.destroy();
+  });
+
+  it('lists every role of the agency by name', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await listGrantableRoles(db, 't-1');
+    assert.ok(queries[0]?.sql.endsWith('where "r"."agency_id" = $1 order by lower(r.name)'));
     await db.destroy();
   });
 });
 
 describe('invitation queries', () => {
-  it('lists, finds and checks invitations within the agency', async () => {
+  it('searches, pages, finds and checks invitations within the agency', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await listInvitations(db, 't-1');
+    await searchInvitations(db, 't-1', {
+      q: 'Ada',
+      page: 1,
+      pageSize: 25,
+      sort: 'expires',
+      dir: 'asc'
+    });
     await findInvitation(db, 't-1', 'i-1');
     assert.equal(await isMemberEmail(db, 't-1', 'a@example.com'), false);
     const [list, find, member] = queries;
-    assert.ok(list?.sql.endsWith('where "i"."agency_id" = $1 order by "i"."created_at" desc'));
+    assert.ok(
+      list?.sql.includes(
+        `where "i"."agency_id" = $1 and (lower(i.first_name || ' ' || i.last_name) like $2 or "i"."email" like $3)`
+      )
+    );
+    assert.ok(list?.sql.includes('order by "i"."expires_at" asc nulls last, "i"."id" asc'));
+    assert.deepEqual(list?.parameters, ['t-1', '%ada%', '%ada%', 25, 0]);
     assert.ok(find?.sql.includes('rp.role_id = "i"."role_id"'));
     assert.deepEqual(find?.parameters, ['t-1', 'i-1']);
     assert.deepEqual(member?.parameters, ['t-1', 'a@example.com']);
