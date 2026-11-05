@@ -184,14 +184,23 @@ const classifyTrip = (): GraphDef => {
   g.add('facts', 'billing.encounter-facts.break');
   g.add('base', 'billing.trip-type', { label: 'Trip Type' });
   g.add('agency', 'billing.agency-trip-type', { label: 'Agency Trip Type' });
+  g.add(
+    'reasons',
+    'std.expr',
+    expr(
+      'Reasons for the Trip Type Billed',
+      "tripType == baseType ? reasons : [reason ?? 'Changed by an agency rule']"
+    )
+  );
   g.ret('return');
   g.wire('entry.facts', 'facts.facts', 'agency.facts');
   g.wire('facts.trip', 'base.trip');
-  g.wire('base.tripType', 'agency.tripType');
+  g.wire('base.tripType', 'agency.tripType', 'reasons.baseType');
   g.wire('base.reason', 'agency.reason');
-  g.wire('agency.tripType', 'return.tripType');
-  g.wire('agency.reason', 'return.reason');
-  g.wire('base.reasons', 'return.reasons');
+  g.wire('agency.tripType', 'return.tripType', 'reasons.tripType');
+  g.wire('agency.reason', 'return.reason', 'reasons.reason');
+  g.wire('base.reasons', 'reasons.reasons');
+  g.wire('reasons.result', 'return.reasons');
   return g.def;
 };
 
@@ -532,8 +541,8 @@ const emergencyStatus = (): GraphDef => {
             set: { emergency: true }
           },
           {
-            label: 'Crew reported an emergency level',
-            when: { cmsServiceLevel: oneOf('2650003', '2650009') },
+            label: 'No response mode, and the crew reported an emergency level',
+            when: { responseMode: is(null), cmsServiceLevel: oneOf('2650003', '2650009') },
             set: { emergency: true }
           }
         ],
@@ -626,6 +635,8 @@ const NOT_TRANSPORTED = ['4230005', '4230007', '4230009', '4230013'];
 
 const EXPIRED_IN_FIELD = '3018003';
 
+const ARREST_AFTER_LOADING = ['3018001', '3018005', '3018009'];
+
 const deceasedHandling = (): GraphDef => {
   const g = rule(
     [
@@ -649,6 +660,11 @@ const deceasedHandling = (): GraphDef => {
         ],
         [field('deceased', 'boolean', 'Pronounced dead before loading')],
         [
+          {
+            label: 'Resuscitation went on after loading (expired in the ED, ROSC or ongoing)',
+            when: { arrestOutcome: oneOf(...ARREST_AFTER_LOADING) },
+            set: { deceased: false }
+          },
           {
             label: 'Pronounced dead at the scene, whether or not the body was then transported',
             when: { incidentDisposition: oneOf(...DEAD_AT_SCENE) },

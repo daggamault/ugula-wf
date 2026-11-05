@@ -320,7 +320,15 @@ const resolvePayers = (): GraphDef => {
     [{ name: 'removed', type: { list: 'string' }, default: [] }]
   );
   g.add('match', 'billing.match-payers');
-  g.add('each', 'std.flow.for-each', { label: 'Each Unlinked Payer' });
+  g.add(
+    'byName',
+    'std.expr',
+    expr(
+      'One Task per Payer Name',
+      'map(values(groupBy(unmatched, x => lower(x.payer))), g => merge(first(g), { keys: map(g, x => x.key) }))'
+    )
+  );
+  g.add('each', 'std.flow.for-each', { label: 'Each Unlinked Payer Name' });
   g.add(
     'choices',
     'std.expr',
@@ -347,11 +355,12 @@ const resolvePayers = (): GraphDef => {
     }
   });
   g.add('reported', 'std.object.get', { label: 'Reported Name', values: { path: 'payer' } });
-  g.add('key', 'std.object.get', { label: 'Coverage Key', values: { path: 'key' } });
+  g.add('keys', 'std.object.get', { label: 'Coverage Keys', values: { path: 'keys' } });
   g.add('subject', 'std.expr', subject('pcrNumber', 'item.payer'));
   g.add('link', 'billing.link-payer', { label: 'Remember Payer Name' });
-  g.add('remove', 'std.var.append', {
-    label: 'Leave Out This Coverage',
+  g.add('leaveOut', 'std.expr', expr('Coverages Left Out', 'concat(removed, keys)'));
+  g.add('remove', 'std.var.set', {
+    label: 'Leave Out the Coverages With This Name',
     config: { name: 'removed' }
   });
   g.add('removed', 'std.var.get', { config: { name: 'removed' } });
@@ -367,10 +376,11 @@ const resolvePayers = (): GraphDef => {
   g.wire('match.coverages', 'matched.coverages');
   g.wire('match.notes', 'matched.notes');
   g.wire('match.review', 'each.exec');
-  g.wire('match.unmatched', 'each.list');
+  g.wire('match.unmatched', 'byName.unmatched');
+  g.wire('byName.result', 'each.list');
   g.wire('each.body', 'confirm.exec');
   g.wire('each.item', 'choices.item', 'suggestion.item', 'context.item', 'subject.item');
-  g.wire('each.item', 'reported.object', 'key.object');
+  g.wire('each.item', 'reported.object', 'keys.object');
   g.wire('entry.pcrNumber', 'context.pcrNumber', 'subject.pcrNumber');
   g.wire('entry.patientName', 'context.patientName');
   g.wire('choices.result', 'confirm.options');
@@ -382,8 +392,9 @@ const resolvePayers = (): GraphDef => {
   g.wire('confirm.payerId', 'link.payerId');
   g.wire('link.invalid', 'confirm.exec');
   g.wire('confirm.remove', 'remove.exec');
-  g.wire('key.value', 'remove.item');
-  g.wire('removed.value', 'rematch.exclude');
+  g.wire('keys.value', 'leaveOut.keys');
+  g.wire('leaveOut.result', 'remove.value');
+  g.wire('removed.value', 'rematch.exclude', 'leaveOut.removed');
   g.wire('each.completed', 'rematch.exec');
   g.wire('rematch.matched', 'reviewed.exec');
   g.wire('rematch.review', 'reviewed.exec');
@@ -582,6 +593,13 @@ const reviewPcr = (): GraphDef => {
   g.add('suggested', 'billing.service.break', { label: 'Suggested Service' });
   g.add('level', 'std.logic.coalesce', { label: 'Confirmed Level' });
   g.add('emergency', 'std.logic.coalesce', { label: 'Confirmed Emergency' });
+  g.add('miles', 'std.logic.coalesce', { label: 'Confirmed Loaded Miles' });
+  g.add('nonCovered', 'billing.non-covered-miles', { label: 'Non-Covered Miles' });
+  g.add(
+    'nonCoveredUnlessDead',
+    'std.expr',
+    expr('No Non-Covered Miles When Pronounced Dead', 'deceased == true ? null : miles')
+  );
   g.add('confirmed', 'billing.service.make', { label: 'Confirmed Service' });
   g.ret('approvedDone', 'approved');
   g.ret('voidedDone', 'voided');
@@ -625,10 +643,14 @@ const reviewPcr = (): GraphDef => {
   g.wire('suggested.emergency', 'emergency.fallback');
   g.wire('level.result', 'confirmed.level');
   g.wire('emergency.result', 'confirmed.emergency');
-  g.wire('review.loadedMiles', 'confirmed.loadedMiles');
+  g.wire('review.loadedMiles', 'miles.value');
+  g.wire('suggested.loadedMiles', 'miles.fallback');
+  g.wire('miles.result', 'confirmed.loadedMiles', 'nonCovered.loadedMiles');
+  g.wire('entry.facts', 'nonCovered.facts');
+  g.wire('suggested.deceased', 'confirmed.deceased', 'nonCoveredUnlessDead.deceased');
+  g.wire('nonCovered.nonCoveredMiles', 'nonCoveredUnlessDead.miles');
+  g.wire('nonCoveredUnlessDead.result', 'confirmed.nonCoveredMiles');
   g.wire('suggested.basis', 'confirmed.basis');
-  g.wire('suggested.deceased', 'confirmed.deceased');
-  g.wire('suggested.nonCoveredMiles', 'confirmed.nonCoveredMiles');
   g.wire('confirmed.service', 'approvedDone.service');
   return g.def;
 };
@@ -709,11 +731,12 @@ const reviewRevision = (): GraphDef => {
       title: 'Review updated PCR',
       queue: 'billing-review',
       instructions:
-        'A newer version of this patient care report arrived after its claim was opened, so it was not billed again; the changes list what differs from the report the claim came from. Apply works the claim again from the new report while it is a draft, needs review or is void; a claim already on its way to payers is corrected on its claim page. Acknowledge keeps the claim as it is, or void it.',
+        'A newer version of this patient care report arrived after its claim was opened, so it was not billed again; the changes list what differs from the report the claim came from. Apply works the claim again from the new report while it is a draft, needs review or is void; a claim already on its way to payers is corrected on its claim page. Acknowledge keeps the claim as it is; Void closes it, only while it has not gone to payers.',
       outcomes: ['apply', 'acknowledge', 'void']
     }
   });
   g.add('applies', 'std.flow.branch', { label: 'Can It Be Worked Again?' });
+  g.add('voidable', 'std.flow.branch', { label: 'Can It Be Voided Here?' });
   g.input('report', 'report');
   g.input('claimId', 'claimId');
   g.add('rework', 'billing.rework-claim', { label: 'Work the Claim From the New Report' });
@@ -747,14 +770,16 @@ const reviewRevision = (): GraphDef => {
   g.wire('subject.subject', 'revision.subject');
   g.wire('context.result', 'revision.context', 'canApply.object');
   g.wire('revision.apply', 'applies.exec');
-  g.wire('canApply.value', 'applies.condition');
+  g.wire('canApply.value', 'applies.condition', 'voidable.condition');
   g.wire('applies.true', 'rework.exec');
   g.wire('applies.false', 'revision.exec');
   g.wire('report.report', 'rework.report');
   g.wire('claimId.claimId', 'rework.claimId', 'void.claimId');
   g.wire('rework.then', 'done.exec');
   g.wire('revision.acknowledge', 'done.exec');
-  g.wire('revision.void', 'void.exec');
+  g.wire('revision.void', 'voidable.exec');
+  g.wire('voidable.true', 'void.exec');
+  g.wire('voidable.false', 'revision.exec');
   g.wire('void.then', 'done.exec');
   return g.def;
 };
