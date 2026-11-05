@@ -1,5 +1,6 @@
+import { usState } from '@ugula/billing';
 import type { Db, ImportSource, RunStatus } from '@ugula/db';
-import type { ReportDictionary, ReportTerms } from '@ugula/nemsis';
+import { codeSystemOf, type ReportDictionary, type ReportTerms } from '@ugula/nemsis';
 import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
@@ -197,11 +198,31 @@ export const listImportReports = (
     sql.ref('ir.id')
   );
 
+const describePlaces = async (db: Db, codes: ReportTerms['codes']) => {
+  const places = codes.filter((c) => codeSystemOf(c.list) === 'gnis' && /^\d{1,9}$/.test(c.code));
+  const ids = [...new Set(places.map((c) => Number(c.code)))].filter((id) => id > 0);
+  const rows = ids.length
+    ? await db.selectFrom('gnis_places').select(['id', 'name']).where('id', 'in', ids).execute()
+    : [];
+  const names = new Map(rows.map((p) => [p.id, p.name]));
+  const states = codes.filter((c) => codeSystemOf(c.list) === 'state');
+  return [
+    ...places.flatMap((c) => {
+      const description = names.get(Number(c.code));
+      return description ? [{ ...c, description }] : [];
+    }),
+    ...states.flatMap((c) => {
+      const description = usState(c.code);
+      return description ? [{ ...c, description }] : [];
+    })
+  ];
+};
+
 export const findDictionary = async (
   db: Db,
   { elements, codes }: ReportTerms
 ): Promise<ReportDictionary> => {
-  const [named, described] = await Promise.all([
+  const [named, described, outside] = await Promise.all([
     elements.length
       ? db
           .selectFrom('nemsis_elements')
@@ -221,13 +242,14 @@ export const findDictionary = async (
             )
           )
           .execute()
-      : []
+      : [],
+    describePlaces(db, codes)
   ]);
   const dictionary: ReportDictionary = {
     elements: Object.fromEntries(named.map((e) => [e.element, e.name])),
     codes: {}
   };
-  for (const c of described) {
+  for (const c of [...outside, ...described]) {
     dictionary.codes[c.list] = { ...dictionary.codes[c.list], [c.code]: c.description };
   }
   return dictionary;

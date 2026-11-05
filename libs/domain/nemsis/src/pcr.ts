@@ -132,6 +132,7 @@ const SCENE: Section = {
   elements: [
     el('patientsAtScene', 'eScene.06'),
     el('locationType', 'eScene.09'),
+    el('facilityName', 'eScene.13'),
     el('addressLine', 'eScene.15'),
     el('city', 'eScene.17'),
     { ...el('cityCode', 'eScene.17'), label: 'GNIS code' },
@@ -149,6 +150,7 @@ const SITUATION: Section = {
   elements: [
     el('complaint', 'eSituation.04'),
     el('primarySymptom', 'eSituation.09'),
+    el('otherSymptoms', 'eSituation.10', 'texts'),
     el('primaryImpression', 'eSituation.11'),
     el('secondaryImpressions', 'eSituation.12', 'texts'),
     el('workRelated', 'eSituation.14')

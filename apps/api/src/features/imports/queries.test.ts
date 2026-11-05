@@ -159,6 +159,32 @@ describe('findDictionary', () => {
     assert.equal(queries.length, 2);
     await db.destroy();
   });
+
+  it('names GNIS place codes and ANSI state codes the NEMSIS lists do not describe', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('from "gnis_places"') ? [{ id: 1215162, name: 'Harrisburg' }] : []
+    );
+    const dictionary = await findDictionary(db, {
+      elements: [],
+      codes: [
+        { list: 'eDisposition.04', code: '1215162' },
+        { list: 'eScene.17', code: '999' },
+        { list: 'ePatient.06', code: 'Harrisburg' },
+        { list: 'ePatient.08', code: '42' },
+        { list: 'eScene.18', code: '99' }
+      ]
+    });
+    assert.deepEqual(dictionary.codes, {
+      'eDisposition.04': { '1215162': 'Harrisburg' },
+      'ePatient.08': { '42': 'PA' }
+    });
+    assert.equal(queries.length, 2);
+    assert.deepEqual(
+      queries.find((q) => q.sql.includes('gnis_places'))?.parameters,
+      [1215162, 999]
+    );
+    await db.destroy();
+  });
 });
 
 describe('import status and attention sorts', () => {

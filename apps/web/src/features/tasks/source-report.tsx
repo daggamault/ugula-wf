@@ -1,15 +1,19 @@
 import { describeCode, elementLabel } from '@ugula/nemsis';
 import { CopyIcon } from 'lucide-react';
 import { messageOf } from '../../shared/api.ts';
+import { classNamesOf } from '../../shared/class-names.ts';
 import { formatDateTime } from '../../shared/format.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
+import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { XmlTree } from '../../shared/ui/xml-tree.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { SourceReport, TasksClient } from './client.ts';
+import { readPcr } from './pcr-reader.ts';
+import { PcrSummaryView } from './pcr-summary.tsx';
 
 export const SourceReportView = ({ source }: { source: SourceReport }) => {
   const notify = useToast();
@@ -32,13 +36,26 @@ export const SourceReportView = ({ source }: { source: SourceReport }) => {
         </Button>
       }
     >
-      <XmlTree
-        label="Source Report"
-        rootName="PatientCareReport"
-        value={source.data}
-        labelOf={(name) => elementLabel(name) ?? source.dictionary.elements[name] ?? null}
-        meaningOf={(name, value) => describeCode(source.dictionary, name, value)}
-      />
+      <PcrSummaryView pcr={readPcr(source.data, source.dictionary)} />
+      <details className="border-border border-t pt-4 text-sm">
+        <summary
+          className={classNamesOf(
+            interactiveClasses,
+            'text-surface-fg-muted hover:text-surface-fg w-fit rounded-lg select-none'
+          )}
+        >
+          Show XML
+        </summary>
+        <div className="pt-3">
+          <XmlTree
+            label="Source Report"
+            rootName="PatientCareReport"
+            value={source.data}
+            labelOf={(name) => elementLabel(name) ?? source.dictionary.elements[name] ?? null}
+            meaningOf={(name, value) => describeCode(source.dictionary, name, value)}
+          />
+        </div>
+      </details>
     </SectionPanel>
   );
 };

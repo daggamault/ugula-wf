@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { describeCode, reportTerms } from './dictionary.ts';
+import { codeSystemOf, describeCode, reportTerms } from './dictionary.ts';
 
 describe('reportTerms', () => {
   it('collects element names and coded values, including attributes, once each', () => {
@@ -33,6 +33,18 @@ describe('reportTerms', () => {
 
   it('finds nothing in a report that is not an object', () => {
     assert.deepEqual(reportTerms(null), { elements: [], codes: [] });
+  });
+});
+
+describe('codeSystemOf', () => {
+  it('names the outside code system of elements NEMSIS does not enumerate', () => {
+    assert.equal(codeSystemOf('eSituation.11'), 'icd10');
+    assert.equal(codeSystemOf('eMedications.03'), 'rxnorm');
+    assert.equal(codeSystemOf('eProcedures.03'), 'snomed');
+    assert.equal(codeSystemOf('eDisposition.04'), 'gnis');
+    assert.equal(codeSystemOf('ePatient.08'), 'state');
+    assert.equal(codeSystemOf('eResponse.05'), null);
+    assert.equal(codeSystemOf('toString'), null);
   });
 });
 

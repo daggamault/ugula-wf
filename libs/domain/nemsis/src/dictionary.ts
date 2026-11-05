@@ -43,5 +43,29 @@ export const reportTerms = (report: Json): ReportTerms => {
   return { elements: [...elements].sort(), codes: [...codes.values()] };
 };
 
+type CodeSystem = 'icd10' | 'rxnorm' | 'snomed' | 'gnis' | 'state';
+
+const CODE_SYSTEMS: Readonly<Record<string, CodeSystem>> = {
+  'eHistory.08': 'icd10',
+  'eInjury.01': 'icd10',
+  'eScene.09': 'icd10',
+  'eSituation.09': 'icd10',
+  'eSituation.10': 'icd10',
+  'eSituation.11': 'icd10',
+  'eSituation.12': 'icd10',
+  'eHistory.12': 'rxnorm',
+  'eMedications.03': 'rxnorm',
+  'eProcedures.03': 'snomed',
+  'ePatient.06': 'gnis',
+  'eScene.17': 'gnis',
+  'eDisposition.04': 'gnis',
+  'ePatient.08': 'state',
+  'eScene.18': 'state',
+  'eDisposition.05': 'state'
+};
+
+export const codeSystemOf = (list: string) =>
+  Object.hasOwn(CODE_SYSTEMS, list) ? (CODE_SYSTEMS[list] ?? null) : null;
+
 export const describeCode = (dictionary: ReportDictionary, list: string, code: string) =>
   dictionary.codes[list]?.[code] ?? null;

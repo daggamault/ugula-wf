@@ -8,6 +8,7 @@ const REPEATING = new Set([
   'ePayment.InsuranceGroup',
   'eMedications.MedicationGroup',
   'eProcedures.ProcedureGroup',
+  'eSituation.10',
   'eSituation.12',
   'eVitals.VitalGroup'
 ]);
