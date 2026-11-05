@@ -1,5 +1,6 @@
 import { valuesSchema } from '@ugula/graph';
 import * as v from 'valibot';
+import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
 import { searchText } from '../../shared/search.ts';
 
@@ -20,5 +21,8 @@ export const listTasksQuery = v.object({
   q: searchText,
   queue: v.optional(v.pipe(v.string(), v.nonEmpty(), v.maxLength(60))),
   assignee: v.optional(v.picklist(['mine', 'unassigned', 'all']), 'all'),
+  runId: v.optional(uuid),
   ...pageEntries(TASK_SORTS, 'waiting', 'asc')
 });
+
+export const taskFileSchema = v.object({ file: v.instance(File) });

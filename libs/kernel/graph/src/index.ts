@@ -36,4 +36,4 @@ export {
 } from './std/tables.ts';
 export type * from './types.ts';
 export { type Issue, validateGraph } from './validate.ts';
-export { checkValue, formatType, isAssignable, parseType } from './value-types.ts';
+export { checkValue, formatType, isAssignable, isFileType, parseType } from './value-types.ts';

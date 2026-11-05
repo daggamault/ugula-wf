@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { Json, ValueType } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { isFileType, linesOf, ValueField } from './value-field.tsx';
+import { linesOf, ValueField } from './value-field.tsx';
 
 const render = (type: ValueType, value: Json) =>
   renderToStaticMarkup(
@@ -85,12 +85,6 @@ describe('field specs', () => {
 
 describe('file inputs', () => {
   const file: ValueType = { object: { bucket: 'string', key: 'string' } };
-
-  it('recognizes stored file references', () => {
-    assert.equal(isFileType(file), true);
-    assert.equal(isFileType({ object: { key: 'string' } }), false);
-    assert.equal(isFileType('string'), false);
-  });
 
   it('offers a file picker when the field can upload, and JSON otherwise', () => {
     const picker = renderToStaticMarkup(

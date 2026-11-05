@@ -11,6 +11,7 @@ export type TaskFilters = PageRequest<TaskSort> & {
   q?: string | undefined;
   queue?: string | undefined;
   assignee: 'mine' | 'unassigned' | 'all';
+  runId?: string | undefined;
 };
 
 const taskOrder = {
@@ -49,6 +50,7 @@ export const listTasks = (db: Db, agencyId: string, userId: string, f: TaskFilte
     .where('t.agency_id', '=', agencyId)
     .where('t.status', '=', 'open');
   if (f.queue) q = q.where('t.queue', '=', f.queue);
+  if (f.runId) q = q.where('t.run_id', '=', f.runId);
   if (f.assignee === 'mine') q = q.where('t.assignee_id', '=', userId);
   if (f.assignee === 'unassigned') q = q.where('t.assignee_id', 'is', null);
   if (f.q) {

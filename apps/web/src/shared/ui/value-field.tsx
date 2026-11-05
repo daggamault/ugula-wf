@@ -1,4 +1,4 @@
-import { formatType, type Json, type ValueType } from '@ugula/graph';
+import { formatType, isFileType, type Json, type ValueType } from '@ugula/graph';
 import { useState } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { Checkbox } from './checkbox.tsx';
@@ -23,11 +23,6 @@ type ValueFieldProps = {
 };
 
 type UploadedValue = { file: Json; name: string };
-
-export const isFileType = (type: ValueType) =>
-  typeof type === 'object' &&
-  'object' in type &&
-  Object.keys(type.object).sort().join(',') === 'bucket,key';
 
 const FileField = ({
   id,

@@ -1,6 +1,4 @@
-import type { DocumentKind } from '@ugula/billing';
 import type { Db } from '@ugula/db';
-import type { BlobRef } from '@ugula/storage';
 
 export const listClaimDocuments = (db: Db, claimId: string) =>
   db
@@ -32,34 +30,3 @@ export const findClaimDocument = async (
     .where('claim_id', '=', claimId)
     .where('agency_id', '=', agencyId)
     .executeTakeFirst()) ?? null;
-
-type NewDocument = {
-  agencyId: string;
-  claimId: string;
-  kind: DocumentKind;
-  fileName: string;
-  document: BlobRef;
-  signedOn: string | null;
-  uploadedBy: string;
-};
-
-export const insertClaimDocument = (db: Db, d: NewDocument) =>
-  db
-    .insertInto('claim_documents')
-    .values({
-      agency_id: d.agencyId,
-      claim_id: d.claimId,
-      kind: d.kind,
-      file_name: d.fileName,
-      document: JSON.stringify(d.document),
-      signed_on: d.signedOn,
-      uploaded_by: d.uploadedBy
-    })
-    .returning('id')
-    .executeTakeFirstOrThrow();
-
-export const insertDocumentEvent = (db: Db, claimId: string, note: string, createdBy: string) =>
-  db
-    .insertInto('claim_events')
-    .values({ claim_id: claimId, kind: 'document', note, created_by: createdBy })
-    .execute();

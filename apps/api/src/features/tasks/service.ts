@@ -1,6 +1,6 @@
 import type { Permission } from '@ugula/access';
 import { type Db, sqlExecutor } from '@ugula/db';
-import { checkField, type FieldSpec, isRecord, type Json } from '@ugula/graph';
+import { checkField, type FieldSpec, isFileType, isRecord, type Json } from '@ugula/graph';
 import type { LiveEvent } from '@ugula/live';
 import {
   cancel,
@@ -11,6 +11,8 @@ import {
   retry,
   skip
 } from '@ugula/run-queue';
+import type { BlobStore } from '@ugula/storage';
+import { type UploadedFile, uploadKey } from '../../shared/files.ts';
 import { type Announce, announced } from '../../shared/live.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
@@ -28,6 +30,8 @@ type TaskServiceDeps = {
   db: Db;
   boss: RunQueueClient;
   announce: Announce;
+  blobs: Pick<BlobStore, 'putBytes'>;
+  maxBytes: number;
 };
 
 type Completion = {
@@ -79,7 +83,10 @@ export const jobFor = (
   return cancel(task.run_id);
 };
 
-export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
+export const takesFiles = (fields: unknown) =>
+  Array.isArray(fields) && (fields as FieldSpec[]).some((f) => isFileType(f.type));
+
+export const createTaskService = ({ db, boss, announce, blobs, maxBytes }: TaskServiceDeps) => {
   const changed = (id: string): LiveEvent[] => [{ kind: 'task', id, runId: null }];
 
   const reassign = async (agencyId: string, id: string, userId: string, assignee: string | null) =>
@@ -162,6 +169,25 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
     },
 
     release: (agencyId: string, id: string, userId: string) => assign(agencyId, id, userId, null),
+
+    uploadFile: async (agencyId: string, id: string, userId: string, file: UploadedFile) => {
+      const task = await findTask(db, agencyId, id);
+      const refused = blocked(task, userId);
+      if (refused || !task) return refused ?? notFound;
+      if (task.kind !== 'task' || !takesFiles(task.fields)) {
+        return fail('invalid', 'This task takes no files');
+      }
+      if (!file.bytes.byteLength) return fail('invalid', 'The file is empty');
+      if (file.bytes.byteLength > maxBytes) {
+        return fail('invalid', `The file is larger than ${maxBytes} bytes`);
+      }
+      const ref = await blobs.putBytes(
+        uploadKey(agencyId, file.name, 'uploads/'),
+        file.bytes,
+        file.type || 'application/octet-stream'
+      );
+      return ok({ file: { bucket: ref.bucket, key: ref.key }, name: file.name });
+    },
 
     complete: (
       agencyId: string,

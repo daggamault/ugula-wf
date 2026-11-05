@@ -25,7 +25,20 @@ const setup = (row: Record<string, unknown> | undefined, updated = true) => {
   const jobs: unknown[] = [];
   const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
   const { announce, events: announced } = recordAnnouncements();
-  return { service: createTaskService({ db, boss, announce }), jobs, queries, announced };
+  const stored: string[] = [];
+  const blobs = {
+    putBytes: async (key: string, body: Uint8Array, contentType: string) => {
+      stored.push(key);
+      return { bucket: 'ugula', key, size: body.byteLength, contentType };
+    }
+  };
+  return {
+    service: createTaskService({ db, boss, announce, blobs, maxBytes: 10 }),
+    jobs,
+    queries,
+    announced,
+    stored
+  };
 };
 
 describe('task service', () => {
@@ -307,7 +320,13 @@ describe('task service sources and hand-out', () => {
     );
     const { announce } = recordAnnouncements();
     const boss: RunQueueClient = { insert: async () => undefined };
-    const found = await createTaskService({ db, boss, announce }).find('t', 't1');
+    const found = await createTaskService({
+      db,
+      boss,
+      announce,
+      blobs: { putBytes: async () => Promise.reject(new Error('unused')) },
+      maxBytes: 10
+    }).find('t', 't1');
     assert.deepEqual(found.ok && found.value.task.source, {
       reportId: 'rep-1',
       pcrNumber: 'PCR-1',
@@ -347,5 +366,41 @@ describe('task service sources and hand-out', () => {
     assert.deepEqual(full.announced, [
       { agencyId: 't', event: { kind: 'task', id: 't1', runId: null } }
     ]);
+  });
+});
+
+describe('task files', () => {
+  const pdf = (bytes: number) => ({
+    name: 'pcs.pdf',
+    type: 'application/pdf',
+    bytes: new Uint8Array(bytes)
+  });
+  const fileTask = task({
+    fields: [{ name: 'file', type: { object: { bucket: 'string', key: 'string' } } }]
+  });
+
+  it('stores a file for an open task that asks for one, under the agency uploads', async () => {
+    const { service, stored } = setup(fileTask);
+    const res = await service.uploadFile('a1', 't1', 'u1', pdf(3));
+    assert.ok(res.ok);
+    assert.deepEqual(res.value.name, 'pcs.pdf');
+    assert.match(stored[0] ?? '', /^imports\/a1\/uploads\/[0-9a-f-]{36}\/pcs\.pdf$/);
+    assert.deepEqual(res.value.file, { bucket: 'ugula', key: stored[0] });
+  });
+
+  it('refuses files for tasks that take none, closed or taken tasks, and empty or large files', async () => {
+    const message = async (row: Record<string, unknown> | undefined, bytes = 3) => {
+      const res = await setup(row).service.uploadFile('a1', 't1', 'u1', pdf(bytes));
+      return res.ok ? 'ok' : res.failure.message;
+    };
+    assert.equal(await message(task()), 'This task takes no files');
+    assert.equal(await message(undefined), 'Task not found');
+    assert.equal(await message({ ...fileTask, status: 'completed' }), 'Task is already closed');
+    assert.equal(
+      await message({ ...fileTask, assignee_id: 'u2' }),
+      'Another user is working this task'
+    );
+    assert.equal(await message(fileTask, 0), 'The file is empty');
+    assert.equal(await message(fileTask, 11), 'The file is larger than 10 bytes');
   });
 });

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ValueType } from './types.ts';
-import { checkValue, formatType, isAssignable, parseType } from './value-types.ts';
+import { checkValue, formatType, isAssignable, isFileType, parseType } from './value-types.ts';
 
 describe('value types', () => {
   it('formats nested types', () => {
@@ -68,5 +68,11 @@ describe('value types', () => {
     assert.equal(checkValue({ object: {} }, { extra: Number.NaN }), 'extra: not a finite number');
     const inherited = JSON.parse('{"object":{"toString":"string"}}') as ValueType;
     assert.equal(checkValue(inherited, {}), null);
+  });
+
+  it('tells a file reference type, an object of exactly a bucket and a key', () => {
+    assert.equal(isFileType({ object: { key: 'string', bucket: 'string' } }), true);
+    assert.equal(isFileType({ object: { key: 'string' } }), false);
+    assert.equal(isFileType('string'), false);
   });
 });

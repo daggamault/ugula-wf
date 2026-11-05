@@ -26,10 +26,14 @@ const service = {
     calls.push(args);
     return fail('conflict', 'Another user is working this task');
   },
-  complete: async () => fail('invalid', 'Some fields are invalid', { fields: { note: 'x' } })
+  complete: async () => fail('invalid', 'Some fields are invalid', { fields: { note: 'x' } }),
+  uploadFile: async (...args: unknown[]) => {
+    calls.push(args);
+    return ok({ file: { bucket: 'b', key: 'k' }, name: 'pcs.pdf' });
+  }
 } as unknown as TaskService;
 
-const request = withSession(createTaskRoutes(service));
+const request = withSession(createTaskRoutes(service, 1_000));
 
 describe('task routes', () => {
   it('summarize queues for the session user', async () => {
@@ -63,6 +67,13 @@ describe('task routes', () => {
         queue: 'billing'
       }
     ]);
+    await request(`/?runId=${ID}`);
+    assert.deepEqual(calls.at(-1), [
+      't-1',
+      'u-1',
+      { assignee: 'all', runId: ID, page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }
+    ]);
+    assert.equal((await request('/?runId=nope')).status, 400);
     await request('/?q=%20%20&assignee=unassigned');
     assert.deepEqual(calls.at(-1), [
       't-1',
@@ -80,6 +91,23 @@ describe('task routes', () => {
     assert.deepEqual(calls.at(-1), ['t-1', ID, 'u-1', [...PERMISSIONS]]);
     assert.equal((await request(`/${ID}/release`, { method: 'POST' })).status, 409);
     assert.deepEqual(calls.at(-1), ['t-1', ID, 'u-1']);
+  });
+
+  it('take a file for a task as the session user, up to the size limit', async () => {
+    const form = new FormData();
+    form.set('file', new File(['%PDF-1.7'], 'pcs.pdf', { type: 'application/pdf' }));
+    const res = await request(`/${ID}/files`, { method: 'POST', body: form });
+    assert.equal(res.status, 201);
+    assert.deepEqual(await res.json(), { file: { bucket: 'b', key: 'k' }, name: 'pcs.pdf' });
+    const [agency, id, user, file] = calls.at(-1) as [string, string, string, { name: string }];
+    assert.deepEqual([agency, id, user, file.name], ['t-1', ID, 'u-1', 'pcs.pdf']);
+    const big = new FormData();
+    big.set('file', new File(['x'.repeat(70_000)], 'big.pdf'));
+    assert.equal((await request(`/${ID}/files`, { method: 'POST', body: big })).status, 413);
+    assert.equal(
+      (await request(`/${ID}/files`, { method: 'POST', body: new FormData() })).status,
+      400
+    );
   });
 
   it('surface field errors when completing', async () => {

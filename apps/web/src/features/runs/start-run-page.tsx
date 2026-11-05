@@ -1,4 +1,4 @@
-import type { Json, ValueType } from '@ugula/graph';
+import { isFileType, type Json, type ValueType } from '@ugula/graph';
 import { PlayIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
@@ -13,7 +13,7 @@ import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
-import { isFileType, ValueField } from '../../shared/ui/value-field.tsx';
+import { ValueField } from '../../shared/ui/value-field.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { RunsClient, Startable } from './client.ts';
 

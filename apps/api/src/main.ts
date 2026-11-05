@@ -185,7 +185,13 @@ export const createApp = ({
       )
     )
     .use('/tasks/*', guardMethods({ ...read('tasks:read'), POST: 'tasks:update' }))
-    .route('/tasks', createTaskRoutes(createTaskService({ db, boss, announce })))
+    .route(
+      '/tasks',
+      createTaskRoutes(
+        createTaskService({ db, boss, announce, blobs, maxBytes: config.IMPORT_FILE_MAX_BYTES }),
+        config.IMPORT_FILE_MAX_BYTES
+      )
+    )
     .use(
       '/fees/*',
       guardMethods({
@@ -247,10 +253,8 @@ export const createApp = ({
           blobs,
           announce,
           now: () => new Date(),
-          rules: createRuleRunner(db, nodes),
-          maxBytes: config.IMPORT_FILE_MAX_BYTES
-        }),
-        config.IMPORT_FILE_MAX_BYTES
+          rules: createRuleRunner(db, nodes)
+        })
       )
     )
     .use('/submissions/*', guardMethods({ ...read('claims:read'), POST: 'claims:update' }))

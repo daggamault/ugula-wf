@@ -129,3 +129,8 @@ const checkShape = (type: ValueType, value: Json): string | null => {
   }
   return null;
 };
+
+export const isFileType = (type: ValueType) =>
+  typeof type === 'object' &&
+  'object' in type &&
+  Object.keys(type.object).sort().join(',') === 'bucket,key';

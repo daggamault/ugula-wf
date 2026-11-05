@@ -1,12 +1,14 @@
 import { sValidator } from '@hono/standard-validator';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { AgencyEnv } from '../../shared/access.ts';
+import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { completeTaskSchema, listTasksQuery, nextTaskSchema } from './schemas.ts';
+import { completeTaskSchema, listTasksQuery, nextTaskSchema, taskFileSchema } from './schemas.ts';
 import type { TaskService } from './service.ts';
 
-export const createTaskRoutes = (service: TaskService) =>
+export const createTaskRoutes = (service: TaskService, maxBytes: number) =>
   new Hono<AgencyEnv>()
     .get('/', sValidator('query', listTasksQuery, invalidRequest), async (c) => {
       const { agencyId, userId } = c.get('access');
@@ -45,6 +47,28 @@ export const createTaskRoutes = (service: TaskService) =>
       const { agencyId, userId } = c.get('access');
       return respond(c, await service.release(agencyId, c.req.valid('param').id, userId));
     })
+    .post(
+      '/:id/files',
+      bodyLimit({
+        maxSize: maxBytes + FORM_OVERHEAD_BYTES,
+        onError: (c) => c.json({ error: 'File too large' }, 413)
+      }),
+      sValidator('param', idParam, invalidRequest),
+      sValidator('form', taskFileSchema, invalidRequest),
+      async (c) => {
+        const { agencyId, userId } = c.get('access');
+        const { file } = c.req.valid('form');
+        return respond(
+          c,
+          await service.uploadFile(agencyId, c.req.valid('param').id, userId, {
+            name: file.name,
+            type: file.type,
+            bytes: new Uint8Array(await file.arrayBuffer())
+          }),
+          201
+        );
+      }
+    )
     .post(
       '/:id/complete',
       sValidator('param', idParam, invalidRequest),
