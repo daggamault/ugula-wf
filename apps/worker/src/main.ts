@@ -24,7 +24,7 @@ import { registerScheduleJobs, startDueAgencies } from './features/schedules/job
 import { createCalendarStore, createScheduleStore } from './features/schedules/queries.ts';
 import { createEngineCache } from './features/workflows/engines.ts';
 import { registerWorkflowJobs } from './features/workflows/job.ts';
-import { createRunStore } from './features/workflows/queries.ts';
+import { createRunStore } from './features/workflows/run-store.ts';
 import { createRunner } from './features/workflows/runner.ts';
 import { createConnections } from './shared/clearinghouse.ts';
 import { coalescePublish, createAnnouncer, type Publish } from './shared/live.ts';

@@ -16,7 +16,10 @@ import {
 import type { LiveEvent } from '@ugula/live';
 import type { RunJob } from '@ugula/run-queue';
 import type { EngineSource } from './engines.ts';
-import type { ClaimedRun, RunPatch, RunStore, RunTx, TaskInsert } from './queries.ts';
+import type { ClaimedRun } from './run-lease.ts';
+import type { RunStore } from './run-store.ts';
+import type { TaskInsert } from './run-tasks.ts';
+import type { RunPatch, RunTx } from './run-tx.ts';
 import { createRunner } from './runner.ts';
 
 const now = new Date('2026-01-01T00:00:00.000Z');

@@ -13,7 +13,8 @@ import type { RunCommand, RunJob } from '@ugula/run-queue';
 import type { RunContext } from '../../shared/run-scope.ts';
 import type { EngineSource } from './engines.ts';
 import { isTransient } from './errors.ts';
-import { type ClaimedRun, isLeaseLost, type RunStore } from './queries.ts';
+import { type ClaimedRun, isLeaseLost } from './run-lease.ts';
+import type { RunStore } from './run-store.ts';
 import {
   cancelRun,
   childrenPayload,

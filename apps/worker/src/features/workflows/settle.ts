@@ -2,7 +2,8 @@ import { isPermission } from '@ugula/access';
 import type { RunStatus } from '@ugula/db';
 import { isRecord, type Json, type RunState, type TraceEntry, type Values } from '@ugula/graph';
 import { advance, cancel, type RunJob, resume, timeout } from '@ugula/run-queue';
-import type { ChildRun, ClaimedRun, RunTx } from './queries.ts';
+import type { ClaimedRun } from './run-lease.ts';
+import type { ChildRun, RunTx } from './run-tx.ts';
 
 const FAULT_QUEUE = 'exceptions';
 export const FAULT_OUTCOMES = ['retry', 'skip', 'cancel'];

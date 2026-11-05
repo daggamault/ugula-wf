@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { advance, PRUNE_QUEUE, RUN_QUEUE, type RunJob, SWEEP_QUEUE } from '@ugula/run-queue';
 import type { Job } from 'pg-boss';
 import { registerWorkflowJobs, type WorkflowBoss } from './job.ts';
-import type { RunStore } from './queries.ts';
+import type { RunStore } from './run-store.ts';
 
 describe('registerWorkflowJobs', () => {
   it('creates queues, schedules the sweeper, and routes jobs to the runner through load-gated slots', async () => {

@@ -1,7 +1,7 @@
 import { PRUNE_QUEUE, RUN_QUEUE, type RunJob, SWEEP_QUEUE } from '@ugula/run-queue';
 import { createGatedWork, type SlotBoss } from '../../shared/gated-work.ts';
 import type { LoadGate } from '../../shared/load.ts';
-import type { RunStore } from './queries.ts';
+import type { RunStore } from './run-store.ts';
 import type { Runner } from './runner.ts';
 
 export type WorkflowBoss = SlotBoss & {
