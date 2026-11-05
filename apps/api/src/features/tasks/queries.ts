@@ -1,3 +1,4 @@
+import type { Permission } from '@ugula/access';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
 
@@ -70,7 +71,13 @@ export const findTaskSource = (db: Db, runId: string) =>
     .where('r.id', '=', runId)
     .executeTakeFirst();
 
-export const claimNext = (db: Db, agencyId: string, queue: string | null, userId: string) =>
+export const claimNext = (
+  db: Db,
+  agencyId: string,
+  queue: string | null,
+  userId: string,
+  permissions: readonly Permission[]
+) =>
   db
     .updateTable('tasks')
     .set({ assignee_id: userId, updated_at: sql`now()` })
@@ -82,6 +89,12 @@ export const claimNext = (db: Db, agencyId: string, queue: string | null, userId
         .where('status', '=', 'open');
       return (queue ? open.where('queue', '=', queue) : open)
         .where((w) => w.or([w('assignee_id', 'is', null), w('assignee_id', '=', userId)]))
+        .where((w) =>
+          w.or([
+            w('permission', 'is', null),
+            sql<boolean>`permission = any(${[...permissions]}::text[])`
+          ])
+        )
         .orderBy(sql`assignee_id is null`)
         .orderBy('priority', 'desc')
         .orderBy('created_at')

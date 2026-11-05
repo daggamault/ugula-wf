@@ -22,9 +22,9 @@ describe('task queries', () => {
 
   it('claim, assign and complete only open tasks', async () => {
     const { db, queries } = createRecordingDb();
-    await claimNext(db, 't', 'billing', 'u1');
+    await claimNext(db, 't', 'billing', 'u1', []);
     await assignTask(db, { agencyId: 't', id: 'x', userId: 'u1', assignee: null });
-    await claimNext(db, 't', null, 'u1');
+    await claimNext(db, 't', null, 'u1', []);
     await completeTask(db, { agencyId: 't', id: 'x', userId: 'u1', resolution: { outcome: 'ok' } });
     assert.ok(queries[0]?.sql.includes('("assignee_id" is null or "assignee_id" = $'));
     assert.ok(queries[0]?.sql.includes('order by assignee_id is null'));
@@ -44,14 +44,14 @@ describe('task agency scoping', () => {
   it('count, hand out and assign only open tasks of the agency', async () => {
     const { db, queries } = createRecordingDb();
     await listQueues(db, 't-1', 'u1');
-    await claimNext(db, 't-1', 'billing', 'u1');
+    await claimNext(db, 't-1', 'billing', 'u1', []);
     await assignTask(db, { agencyId: 't-1', id: 'x', userId: 'u1', assignee: 'u1' });
     await completeTask(db, { agencyId: 't-1', id: 'x', userId: 'u1', resolution: {} });
     const [queues, next, assign, complete] = queries;
     assert.ok(queues?.sql.includes('where "agency_id" = $2 and "status" = $3 group by "queue"'));
     assert.deepEqual(queues?.parameters, ['u1', 't-1', 'open']);
     assert.ok(next?.sql.includes('(select "id" from "tasks" where "agency_id" = $2'));
-    assert.deepEqual(next?.parameters, ['u1', 't-1', 'open', 'billing', 'u1', 1]);
+    assert.deepEqual(next?.parameters, ['u1', 't-1', 'open', 'billing', 'u1', [], 1]);
     assert.deepEqual(assign?.parameters, ['u1', 't-1', 'x', 'open', 'u1']);
     assert.ok(complete?.sql.includes('where "agency_id" = $'));
     assert.ok(complete?.parameters.includes('t-1'));

@@ -35,7 +35,7 @@ describe('task service', () => {
       ok: false,
       failure: { code: 'conflict', message: 'Another user is working this task' }
     };
-    assert.deepEqual(await theirs.service.claim('t', 't1', 'u1'), refused);
+    assert.deepEqual(await theirs.service.claim('t', 't1', 'u1', []), refused);
     assert.deepEqual(await theirs.service.release('t', 't1', 'u1'), refused);
     assert.deepEqual(
       await theirs.service.complete(
@@ -51,7 +51,7 @@ describe('task service', () => {
     const gone = setup(undefined, false);
     assert.equal((await gone.service.release('t', 't1', 'u1')).ok, false);
     const done = setup(task({ status: 'completed' }), false);
-    assert.deepEqual(await done.service.claim('t', 't1', 'u1'), {
+    assert.deepEqual(await done.service.claim('t', 't1', 'u1', []), {
       ok: false,
       failure: { code: 'conflict', message: 'Task is already closed' }
     });
@@ -188,6 +188,26 @@ describe('task service', () => {
     assert.deepEqual(rejected.announced, []);
   });
 
+  it('refuses to claim a task that needs a permission the user lacks', async () => {
+    const approval = setup(task({ permission: 'claims:approve' }));
+    assert.deepEqual(await approval.service.claim('t', 't1', 'u1', ['tasks:update']), {
+      ok: false,
+      failure: {
+        code: 'forbidden',
+        message: 'Completing this task needs the claims:approve permission'
+      }
+    });
+    assert.ok(!approval.queries.some((q) => q.sql.startsWith('update "tasks"')));
+    assert.equal((await approval.service.claim('t', 't1', 'u1', ['claims:approve'])).ok, true);
+  });
+
+  it('hands out next only tasks the user may complete', async () => {
+    const { service, queries } = setup(task());
+    await service.next('t', null, 'u1', ['tasks:update', 'claims:read']);
+    assert.ok(queries[0]?.sql.includes('("permission" is null or permission = any($'));
+    assert.ok(queries[0]?.parameters.some((p) => Array.isArray(p) && p.includes('claims:read')));
+  });
+
   it('validates the pin and outputs of skipped faults only', async () => {
     const fault = task({
       kind: 'fault',
@@ -215,13 +235,13 @@ describe('task service', () => {
 
   it('reads, hands out and assigns tasks', async () => {
     const { service, queries } = setup(task());
-    await service.next('t', 'billing', 'u1');
+    await service.next('t', 'billing', 'u1', []);
     assert.ok(queries[0]?.sql.includes('for update skip locked'));
     assert.deepEqual(await service.release('t', 't1', 'u1'), {
       ok: true,
       value: { status: 'released' }
     });
-    assert.deepEqual(await service.claim('t', 't1', 'u1'), {
+    assert.deepEqual(await service.claim('t', 't1', 'u1', []), {
       ok: true,
       value: { status: 'claimed' }
     });
@@ -275,13 +295,13 @@ describe('task service sources and hand-out', () => {
       ok: false,
       failure: { code: 'not_found', message: 'Task not found' }
     });
-    assert.deepEqual(await empty.service.next('t', null, 'u1'), {
+    assert.deepEqual(await empty.service.next('t', null, 'u1', []), {
       ok: true,
       value: { task: null }
     });
     assert.deepEqual(empty.announced, []);
     const full = setup(task());
-    const next = await full.service.next('t', null, 'u1');
+    const next = await full.service.next('t', null, 'u1', []);
     assert.equal(next.ok && next.value.task?.id, 't1');
     assert.deepEqual(full.announced, [
       { agencyId: 't', event: { kind: 'task', id: 't1', runId: null } }

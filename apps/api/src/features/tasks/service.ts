@@ -117,15 +117,34 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
       });
     },
 
-    next: (agencyId: string, queue: string | null, userId: string) =>
+    next: (
+      agencyId: string,
+      queue: string | null,
+      userId: string,
+      permissions: readonly Permission[]
+    ) =>
       announced(
         announce,
         agencyId,
-        claimNext(db, agencyId, queue, userId).then((task) => ok({ task: task ?? null })),
+        claimNext(db, agencyId, queue, userId, permissions).then((task) =>
+          ok({ task: task ?? null })
+        ),
         ({ task }) => (task ? changed(task.id) : [])
       ),
 
-    claim: (agencyId: string, id: string, userId: string) => assign(agencyId, id, userId, userId),
+    claim: async (
+      agencyId: string,
+      id: string,
+      userId: string,
+      permissions: readonly Permission[]
+    ) => {
+      const task = await findTask(db, agencyId, id);
+      if (!task) return notFound;
+      if (task.permission && !permissions.includes(task.permission)) {
+        return unpermitted(task.permission);
+      }
+      return assign(agencyId, id, userId, userId);
+    },
 
     release: (agencyId: string, id: string, userId: string) => assign(agencyId, id, userId, null),
 

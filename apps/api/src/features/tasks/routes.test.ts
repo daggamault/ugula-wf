@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { PERMISSIONS } from '@ugula/access';
 import { fail, ok } from '../../shared/result.ts';
 import { withSession } from '../../shared/testing.ts';
 import { createTaskRoutes } from './routes.ts';
@@ -38,11 +39,11 @@ describe('task routes', () => {
 
   it('hand out work and claim tasks as the session user', async () => {
     await request('/next', { method: 'POST', body: '{"queue":"billing"}' });
-    assert.deepEqual(calls.at(-1), ['t-1', 'billing', 'u-1']);
+    assert.deepEqual(calls.at(-1), ['t-1', 'billing', 'u-1', [...PERMISSIONS]]);
     await request('/next', { method: 'POST', body: '{}' });
-    assert.deepEqual(calls.at(-1), ['t-1', null, 'u-1']);
+    assert.deepEqual(calls.at(-1), ['t-1', null, 'u-1', [...PERMISSIONS]]);
     await request(`/${ID}/claim`, { method: 'POST' });
-    assert.deepEqual(calls.at(-1), ['t-1', ID, 'u-1']);
+    assert.deepEqual(calls.at(-1), ['t-1', ID, 'u-1', [...PERMISSIONS]]);
     assert.equal((await request(`/${ID}/release`, { method: 'POST' })).status, 409);
     assert.deepEqual(calls.at(-1), ['t-1', ID, 'u-1']);
   });

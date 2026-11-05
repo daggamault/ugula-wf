@@ -13,15 +13,21 @@ export const createTaskRoutes = (service: TaskService) =>
       return respond(c, await service.queues(agencyId, userId));
     })
     .post('/next', sValidator('json', nextTaskSchema, invalidRequest), async (c) => {
-      const { agencyId, userId } = c.get('access');
-      return respond(c, await service.next(agencyId, c.req.valid('json').queue, userId));
+      const { agencyId, userId, permissions } = c.get('access');
+      return respond(
+        c,
+        await service.next(agencyId, c.req.valid('json').queue, userId, permissions)
+      );
     })
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.find(c.get('access').agencyId, c.req.valid('param').id))
     )
     .post('/:id/claim', sValidator('param', idParam, invalidRequest), async (c) => {
-      const { agencyId, userId } = c.get('access');
-      return respond(c, await service.claim(agencyId, c.req.valid('param').id, userId));
+      const { agencyId, userId, permissions } = c.get('access');
+      return respond(
+        c,
+        await service.claim(agencyId, c.req.valid('param').id, userId, permissions)
+      );
     })
     .post('/:id/release', sValidator('param', idParam, invalidRequest), async (c) => {
       const { agencyId, userId } = c.get('access');
