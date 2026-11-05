@@ -536,12 +536,15 @@ describe('createClaimStore', () => {
     assert.ok(update?.sql.includes('not exists (select "r"."id" from "workflow_runs" as "r"'));
     const [link] = sqlOf(queries, 'insert into "claim_runs"');
     assert.deepEqual(link?.parameters.slice(0, 2), [ID, CYCLE]);
+    const [signal] = sqlOf(queries, 'insert into "signals"');
+    assert.ok(signal?.parameters.includes(`claim:${ID}`));
     const busy = attach(false);
     await assert.rejects(
       () => createClaimStore(busy.db, blobs).attachCycle('r1', ID, 'k', CYCLE),
       /already has an active payer cycle/
     );
     assert.equal(sqlOf(busy.queries, 'insert into "claim_runs"').length, 0);
+    assert.equal(sqlOf(busy.queries, 'insert into "signals"').length, 0);
     const missing = createRecordingDb((q) => (ownedClaim(q) ? [owned] : []));
     const store = createClaimStore(missing.db, blobs);
     await assert.rejects(() => store.attachCycle('r1', ID, 'k', CYCLE), /does not exist/);

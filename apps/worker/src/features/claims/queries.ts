@@ -580,6 +580,7 @@ export const createClaimStore = (
           .executeTakeFirst();
         if (!numUpdatedRows) throw new Error(`Claim ${claimId} already has an active payer cycle`);
         await linkRun(tx, cycle.id, claim.id);
+        await signalClaim(tx, boss, claim.agency_id, claim.id);
       });
     },
 

@@ -38,7 +38,7 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Attach Claim Cycle',
       category: CATEGORY,
       description:
-        'Links a claim to the run that cycles it through payers, so its status can be shown.',
+        'Links a claim to the run that cycles it through payers, so its status can be shown, and wakes the run to record the status of its step now that the claim is out of draft.',
       effect: true,
       inputs: [claimIdPin, pin('cycleRunId', 'string')],
       outputs: [],
