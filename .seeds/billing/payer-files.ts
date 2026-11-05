@@ -10,6 +10,7 @@ import {
   expr,
   field,
   is,
+  oneOf,
   P,
   rule,
   shared,
@@ -240,7 +241,7 @@ const routeRemittance = (): GraphDef => {
     config: shared.decision(
       'billing.remittance-routing',
       'Remittance Routing',
-      'Routes each 835 claim payment by what the payer sent and its reason codes (CARC): reconcile posts it and the claim cycle has a biller reconcile the balance; review leaves it to a biller without posting; unmatched names no claim. {payer} and {reference} in a message are the payer name and claim number.',
+      'Routes each 835 claim payment by what the payer sent and its reason codes (CARC): reconcile posts it and the claim cycle has a biller reconcile the balance; denial, appeal and fix post it and the claim cycle works the denial (Work Denial); review leaves it to a biller without posting; unmatched names no claim. {payer} and {reference} in a message are the payer name and claim number.',
       table(
         [
           field('matched', 'boolean', 'A claim has this number'),
@@ -291,6 +292,23 @@ const routeRemittance = (): GraphDef => {
               route: 'review',
               message: '{payer} is not a payer on this claim; post the payment by hand'
             }
+          },
+          {
+            label:
+              'The payer needs corrected or missing claim data (CARC 4, 11, 16, 146, 181, 182)',
+            when: { codes: oneOf('CO-4', 'CO-11', 'CO-16', 'CO-146', 'CO-181', 'CO-182') },
+            set: { route: 'fix', message: '{payer} needs corrected or missing claim data' }
+          },
+          {
+            label:
+              'The payer denied medical necessity or authorization (CARC 50, 56, 150, 151, 197)',
+            when: { codes: oneOf('CO-50', 'CO-56', 'CO-150', 'CO-151', 'CO-197') },
+            set: { route: 'appeal', message: '{payer} denied medical necessity or authorization' }
+          },
+          {
+            label: 'The payer denied the claim',
+            when: { denied: is(true) },
+            set: { route: 'denial', message: 'Denied by {payer}' }
           }
         ],
         { route: 'reconcile', message: '' }
@@ -470,7 +488,7 @@ export const payerFileGraphs: SeedGraph[] = [
   asRule(
     'billing.route-remittance',
     'Route Remittance',
-    'Routes one 835 claim payment (Remittance Routing table): post it for a biller to reconcile, leave it to a biller (reversals, takebacks, too many reason codes, a payer not on the claim) or report that no claim has its number; with Classify Adjustments for what lowers the balance.',
+    'Routes one 835 claim payment (Remittance Routing table): post it for a biller to reconcile, post it as a denial to work (denied, medical necessity or authorization to appeal, claim data to fix), leave it to a biller (reversals, takebacks, too many reason codes, a payer not on the claim) or report that no claim has its number; with Classify Adjustments for what lowers the balance.',
     routeRemittance()
   ),
   asStage(

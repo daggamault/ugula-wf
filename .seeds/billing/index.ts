@@ -7,6 +7,8 @@ import { cycleGraphs } from './cycle.ts';
 import { factGraphs } from './facts.ts';
 import { intakeGraphs } from './intake.ts';
 import { payerFileGraphs } from './payer-files.ts';
+import { recoveryGraphs } from './recovery.ts';
+import { scheduleGraphs } from './schedules.ts';
 import { serviceGraphs } from './service.ts';
 import { shared } from './shared.ts';
 
@@ -36,8 +38,10 @@ const all = [
   ...claimGraphs,
   ...checkGraphs,
   ...intakeGraphs,
+  ...recoveryGraphs,
   ...cycleGraphs,
-  ...payerFileGraphs
+  ...payerFileGraphs,
+  ...scheduleGraphs
 ];
 
 export const billingGraphs: SeedGraph[] = inDependencyOrder(all);

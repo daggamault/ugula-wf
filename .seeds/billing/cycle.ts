@@ -302,6 +302,12 @@ const sendStatement = (): GraphDef => {
     ['done', 'writeOff'],
     [p('statementNumber', 'integer'), p('statementCount', 'integer')]
   );
+  g.add('balance', 'billing.read-patient-balance', { label: 'Read Patient Balance' });
+  g.add('responsibility', 'billing.patient-responsibility', { label: 'Patient Responsibility' });
+  g.add('why', 'std.expr', expr('Why Protected', 'join(reasons, "; ")'));
+  g.add('protect', 'billing.protect-balance', { label: 'Protect Patient Balance' });
+  g.add('owes', 'std.expr', expr('Anything to Bill', 'responsibilityCents > 0'));
+  g.add('billable', 'std.flow.branch', { label: 'Bill the Patient?' });
   g.add('statement', 'billing.issue-statement', { label: 'Send Patient Statement' });
   g.add('missing', 'std.flow.switch', {
     label: 'What the Statement Needs',
@@ -331,8 +337,24 @@ const sendStatement = (): GraphDef => {
   g.add('addAddress', 'billing.patch-claim', { label: 'Save the Patient Address' });
   g.ret('doneReturn', 'done');
   g.ret('writeOffReturn', 'writeOff');
-  g.wire('entry.exec', 'statement.exec');
-  g.wire('entry.claimId', 'statement.claimId', 'addAddress.claimId');
+  g.wire('entry.exec', 'balance.exec');
+  g.wire(
+    'entry.claimId',
+    'balance.claimId',
+    'protect.claimId',
+    'statement.claimId',
+    'addAddress.claimId'
+  );
+  g.wire('balance.patientBalance', 'responsibility.patientBalance');
+  g.wire('responsibility.reasons', 'why.reasons');
+  g.wire('why.result', 'protect.note');
+  g.wire('responsibility.excessCents', 'protect.adjustedCents');
+  g.wire('responsibility.responsibilityCents', 'owes.responsibilityCents');
+  g.wire('balance.then', 'protect.exec');
+  g.wire('protect.then', 'billable.exec');
+  g.wire('owes.result', 'billable.condition');
+  g.wire('billable.true', 'statement.exec');
+  g.wire('billable.false', 'doneReturn.exec');
   g.wire('entry.statementNumber', 'statement.statementNumber');
   g.wire('entry.statementCount', 'statement.statementCount');
   g.wire('entry.subject', 'profileNeeded.subject', 'addressNeeded.subject');
@@ -376,12 +398,20 @@ const POLICY_FIELDS = [
     'integer',
     'Largest patient balance written off without statements (cents)'
   ),
-  field('reviewRequired', 'boolean', 'A biller reviews the claim before it goes to the payer')
+  field('reviewRequired', 'boolean', 'A biller reviews the claim before it goes to the payer'),
+  field('writeOffApprovalCents', 'integer', 'Largest write-off closed without approval (cents)'),
+  field(
+    'collectionsApprovalCents',
+    'integer',
+    'Largest balance sent to collections without approval (cents)'
+  )
 ];
 
 const STEP_INPUTS = [
   field('balanceCents', 'integer', 'Balance (cents)'),
   field('reconciling', 'boolean', 'A payer response waits to be reconciled'),
+  field('denialOpen', 'boolean', 'A payer denial waits to be worked'),
+  field('billFacility', 'boolean', 'A facility is responsible for the trip'),
   field('hasPayer', 'boolean', 'A payer is still to be billed'),
   field('contacted', 'boolean', 'The payer has the claim'),
   field('approved', 'boolean', 'Approved for the payer'),
@@ -407,6 +437,7 @@ const step = (
 const DERIVED: [string, string, string][] = [
   ['hasPayer', 'A Payer to Bill', 'coverageId != null'],
   ['reconciling', 'A Response to Reconcile', 'unreconciledCoverageId != null'],
+  ['denialOpen', 'A Denial to Work', 'denialRoute != null'],
   [
     'payerWaitLeftMs',
     'Payer Wait Left',
@@ -438,6 +469,18 @@ const nextClaimStep = (): GraphDef => {
       d('waitMs', 'integer', 'Wait Milliseconds', 'How long to wait on the await steps.', true),
       d('statementNumber', 'integer', 'Statement', 'Which patient statement to send.', true),
       d('statementCount', 'integer', 'Statements', 'How many patient statements the policy sends.'),
+      d(
+        'writeOffApprovalCents',
+        'integer',
+        'Write-Off Approval Threshold',
+        'The largest write-off closed without approval (cents).'
+      ),
+      d(
+        'collectionsApprovalCents',
+        'integer',
+        'Collections Approval Threshold',
+        'The largest balance sent to collections without approval (cents).'
+      ),
       d('check', 'boolean', 'Check First', 'Whether the claim checks run before the step.'),
       d(
         'patientOnly',
@@ -465,7 +508,9 @@ const nextClaimStep = (): GraphDef => {
           statementIntervalDays: 30,
           collectionsThresholdCents: 0,
           autoWriteOffCents: 0,
-          reviewRequired: true
+          reviewRequired: true,
+          writeOffApprovalCents: 50_000,
+          collectionsApprovalCents: 0
         }
       )
     )
@@ -487,7 +532,9 @@ const nextClaimStep = (): GraphDef => {
         [
           step('More was paid than charged', { balanceCents: below(0) }, 'overpaid'),
           step('Nothing is owed', { balanceCents: atMost(0) }, 'closed'),
+          step('A payer denial waits to be worked', { denialOpen: is(true) }, 'workDenial'),
           step('A payer response waits to be reconciled', { reconciling: is(true) }, 'reconcile'),
+          step('A facility is responsible for the trip', { billFacility: is(true) }, 'facility'),
           step(
             'Review before this payer',
             {
@@ -552,7 +599,7 @@ const nextClaimStep = (): GraphDef => {
     'std.expr',
     expr(
       'Payer of the Step',
-      `step == "reconcile" ? { id: unreconciledCoverageId, name: unreconciledPayer } : contains(${JSON.stringify(PAYER_STEPS)}, step) ? { id: coverageId, name: payer } : { id: null, name: null }`
+      `step == "reconcile" || step == "workDenial" ? { id: unreconciledCoverageId, name: unreconciledPayer } : contains(${JSON.stringify(PAYER_STEPS)}, step) ? { id: coverageId, name: payer } : { id: null, name: null }`
     )
   );
   g.add('coverageId', 'std.object.get', { label: 'Payer ID', values: { path: 'id' } });
@@ -563,6 +610,7 @@ const nextClaimStep = (): GraphDef => {
   const uses: Record<string, string[]> = {
     hasPayer: ['coverageId'],
     reconciling: ['unreconciledCoverageId'],
+    denialOpen: ['denialRoute'],
     payerWaitLeftMs: ['contacted', 'sinceContactMs'],
     statementWaitLeftMs: ['statements', 'sinceStatementMs'],
     statementsLeft: ['statements'],
@@ -578,6 +626,8 @@ const nextClaimStep = (): GraphDef => {
   g.wire('policy.autoWriteOffCents', 'withinWriteOff.autoWriteOffCents');
   g.wire('policy.collectionsThresholdCents', 'underCollections.collectionsThresholdCents');
   g.wire('policy.reviewRequired', 'decide.reviewRequired');
+  g.wire('policy.writeOffApprovalCents', 'return.writeOffApprovalCents');
+  g.wire('policy.collectionsApprovalCents', 'return.collectionsApprovalCents');
   for (const [id] of DERIVED) g.wire(`${id}.result`, `decide.${id}`);
   for (const f of [
     'balanceCents',
@@ -585,7 +635,8 @@ const nextClaimStep = (): GraphDef => {
     'approved',
     'statements',
     'patientApproved',
-    'coverageCount'
+    'coverageCount',
+    'billFacility'
   ]) {
     g.wire(`ledger.${f}`, `decide.${f}`);
   }
@@ -613,7 +664,9 @@ const ROUTES = [
   'confirmPayers',
   'submit',
   'reconcile',
+  'workDenial',
   'overpaid',
+  'facility',
   'await',
   'awaitPatient',
   'followUp',
@@ -686,15 +739,39 @@ const cycleClaim = (): GraphDef => {
   g.add('filingContext', 'std.expr', expr('Filing Context', FILING_CONTEXT));
   g.add('submit', 'billing.submit-claim', { label: 'Claim Could Not Be Filed' });
   g.add('reconcile', 'billing.reconcile-payment', { label: 'Reconcile Payment' });
-  g.add('overpaid', 'std.human.task', {
-    label: 'Refund Overpayment',
+  g.add('denialInputs', 'std.expr', {
+    label: 'Denial Inputs',
     config: {
-      title: 'Refund overpayment',
-      queue: 'billing-reconcile',
-      instructions:
-        'More has been paid than the claim charges. Refund the difference and record the refund on the claim page, or keep the credit and close the claim as paid.',
-      outcomes: ['refunded', 'keepCredit']
+      expression: '{ claimId: claimId, coverageId: coverageId, subject: subject, context: context }'
     }
+  });
+  g.add('denial', 'std.flow.run-workflow', {
+    label: 'Work Denial',
+    config: { workflow: 'billing.work-denial', version: 1 }
+  });
+  g.add('denied', 'std.flow.switch', {
+    label: 'How the Denial Ended',
+    config: { cases: ['writeOff', 'void'] }
+  });
+  g.add('refundInputs', 'std.expr', {
+    label: 'Refund Inputs',
+    config: { expression: '{ claimId: claimId, subject: subject, context: context }' }
+  });
+  g.add('overpaid', 'std.flow.run-workflow', {
+    label: 'Refund Overpayment',
+    config: { workflow: 'billing.refund-overpayment', version: 1 }
+  });
+  g.add('refunded', 'std.flow.switch', {
+    label: 'How the Refund Ended',
+    config: { cases: ['keptCredit'] }
+  });
+  g.add('approveWriteOff', 'billing.approve-closing', {
+    label: 'Approve Write-Off',
+    values: { closing: 'writeOff' }
+  });
+  g.add('approveCollections', 'billing.approve-closing', {
+    label: 'Approve Collections',
+    values: { closing: 'collections' }
   });
   g.add('followUp', 'billing.follow-up-payer', { label: 'Follow Up with Payer' });
   g.add('statement', 'billing.send-statement', { label: 'Send Patient Statement' });
@@ -770,10 +847,20 @@ const cycleClaim = (): GraphDef => {
     g.wire(id === 'submit' ? 'filingContext.result' : 'claimContext.result', `${id}.context`);
     if (id !== 'fix' && id !== 'statement') g.wire('next.coverageId', `${id}.coverageId`);
   }
-  for (const id of ['overpaid', 'collections']) {
+  g.wire('claimSubject.result', 'collections.subject', 'refundInputs.subject');
+  g.wire('claimContext.result', 'collections.context', 'refundInputs.context');
+  g.wire('entry.claimId', 'denialInputs.claimId', 'refundInputs.claimId');
+  g.wire('next.coverageId', 'denialInputs.coverageId');
+  g.wire('payerSubject.result', 'denialInputs.subject');
+  g.wire('claimContext.result', 'denialInputs.context');
+  for (const id of ['approveWriteOff', 'approveCollections']) {
+    g.wire('entry.claimId', `${id}.claimId`);
+    g.wire('balance.value', `${id}.balanceCents`);
     g.wire('claimSubject.result', `${id}.subject`);
     g.wire('claimContext.result', `${id}.context`);
   }
+  g.wire('next.writeOffApprovalCents', 'approveWriteOff.thresholdCents');
+  g.wire('next.collectionsApprovalCents', 'approveCollections.thresholdCents');
   g.wire('route.review', 'review.exec');
   g.wire('route.reviewPatient', 'review.exec');
   g.wire('route.confirmPayers', 'confirmPayers.exec');
@@ -788,23 +875,35 @@ const cycleClaim = (): GraphDef => {
   g.wire('file.blocked', 'submit.exec');
   g.wire('file.reason', 'filingContext.reason');
   g.wire('route.reconcile', 'reconcile.exec');
+  g.wire('route.workDenial', 'denial.exec');
+  g.wire('denialInputs.result', 'denial.inputs');
+  g.wire('denial.then', 'denied.exec');
+  g.wire('denial.pin', 'denied.value');
+  g.wire('denied.writeOff', 'approveWriteOff.exec');
+  g.wire('denied.void', 'closeVoid.exec');
   g.wire('route.overpaid', 'overpaid.exec');
+  g.wire('refundInputs.result', 'overpaid.inputs');
+  g.wire('overpaid.then', 'refunded.exec');
+  g.wire('overpaid.pin', 'refunded.value');
+  g.wire('refunded.keptCredit', 'closePaid.exec');
+  g.wire('route.facility', 'wait.exec');
   g.wire('route.followUp', 'followUp.exec');
   g.wire('route.statement', 'statement.exec');
   g.wire('next.statementNumber', 'statement.statementNumber');
   g.wire('next.statementCount', 'statement.statementCount');
   g.wire('route.collections', 'collections.exec');
-  g.wire('route.writeOff', 'closeWrittenOff.exec');
+  g.wire('route.writeOff', 'approveWriteOff.exec');
   g.wire('route.closed', 'closePaid.exec');
 
   for (const id of ['fix.voided', 'review.void', 'confirmPayers.void', 'submit.void'] as const) {
     g.wire(id, 'closeVoid.exec');
   }
   for (const id of ['reconcile.writeOff', 'statement.writeOff', 'collections.writeOff'] as const) {
-    g.wire(id, 'closeWrittenOff.exec');
+    g.wire(id, 'approveWriteOff.exec');
   }
-  g.wire('collections.sendToCollections', 'closeCollections.exec');
-  g.wire('overpaid.keepCredit', 'closePaid.exec');
+  g.wire('approveWriteOff.approved', 'closeWrittenOff.exec');
+  g.wire('collections.sendToCollections', 'approveCollections.exec');
+  g.wire('approveCollections.approved', 'closeCollections.exec');
   for (const [id] of CLOSINGS) {
     g.wire('entry.claimId', `${id}.claimId`);
     g.wire(`${id}.then`, 'stop.exec');
