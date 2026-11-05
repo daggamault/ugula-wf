@@ -36,7 +36,10 @@ describe('payer service', () => {
       name: 'Medicare',
       payerId: '00952',
       claimFiling: 'MB',
-      filingLimitDays: null
+      filingLimitDays: null,
+      correctionMethod: null,
+      appealDays: null,
+      planType: null
     });
     assert.equal(saved.ok && saved.value.linkedClaims, 1);
     assert.deepEqual(events, [{ agencyId: 't-1', event: { kind: 'claim', id: null } }]);
@@ -51,7 +54,10 @@ describe('payer service', () => {
       name: 'Medicare',
       payerId: '00952',
       claimFiling: 'MB',
-      filingLimitDays: null
+      filingLimitDays: null,
+      correctionMethod: null,
+      appealDays: null,
+      planType: null
     } as const;
     const setup = (unembedded: boolean, e: ReturnType<typeof embedder>) => {
       const { db, queries } = createRecordingDb((q) =>

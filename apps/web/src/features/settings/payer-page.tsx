@@ -1,4 +1,11 @@
-import { MAX_FILING_LIMIT_DAYS } from '@ugula/billing';
+import {
+  CORRECTION_METHODS,
+  type CorrectionMethod,
+  MAX_APPEAL_DAYS,
+  MAX_FILING_LIMIT_DAYS,
+  PLAN_TYPES,
+  type PlanType
+} from '@ugula/billing';
 import { SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
@@ -26,11 +33,31 @@ export const payerSavedNotice = (name: string, linkedClaims: number) =>
     ? `${name} saved and linked to ${linkedClaims} ${linkedClaims === 1 ? 'claim' : 'claims'}`
     : `${name} saved`;
 
+const CORRECTION_OPTIONS = [
+  { value: '', label: 'By kind of payer (Medicare reopens, others replace)' },
+  ...Object.entries(CORRECTION_METHODS).map(([value, label]) => ({ value, label }))
+];
+
+const PLAN_OPTIONS = [
+  { value: '', label: 'Unknown' },
+  ...Object.entries(PLAN_TYPES).map(([value, label]) => ({ value, label }))
+];
+
+const isCorrectionMethod = (x: string): x is CorrectionMethod =>
+  Object.hasOwn(CORRECTION_METHODS, x);
+
+const isPlanType = (x: string): x is PlanType => Object.hasOwn(PLAN_TYPES, x);
+
+const daysOf = (text: string) => (text === '' ? null : Number(text));
+
 export const toPayerDraft = (p: Payer | null): PayerInput => ({
   name: p?.name ?? '',
   payerId: p?.payer_id ?? '',
   claimFiling: p?.claim_filing ?? 'CI',
-  filingLimitDays: p?.filing_limit_days ?? null
+  filingLimitDays: p?.filing_limit_days ?? null,
+  correctionMethod: p?.correction_method ?? null,
+  appealDays: p?.appeal_days ?? null,
+  planType: p?.plan_type ?? null
 });
 
 export const PayerForm = ({
@@ -95,11 +122,39 @@ export const PayerForm = ({
               max={MAX_FILING_LIMIT_DAYS}
               hint="Days from the date of service to file. Leave empty for 365 days on Medicare and TRICARE, and no limit otherwise."
               value={draft.filingLimitDays ?? ''}
+              onChange={(e) => setDraft({ ...draft, filingLimitDays: daysOf(e.target.value) })}
+            />
+            <Select
+              id="payer-corrections"
+              label="Corrections"
+              hint="Whether the payer takes replacement and void claims (frequency 7 or 8) or reopening requests."
+              options={CORRECTION_OPTIONS}
+              value={draft.correctionMethod ?? ''}
               onChange={(e) =>
                 setDraft({
                   ...draft,
-                  filingLimitDays: e.target.value === '' ? null : Number(e.target.value)
+                  correctionMethod: isCorrectionMethod(e.target.value) ? e.target.value : null
                 })
+              }
+            />
+            <Input
+              id="payer-appeal-days"
+              label="Appeal Limit (Days)"
+              type="number"
+              min={1}
+              max={MAX_APPEAL_DAYS}
+              hint="Days from the remittance to appeal. Leave empty for the Appeal Levels table default; Medicare always uses its own limits."
+              value={draft.appealDays ?? ''}
+              onChange={(e) => setDraft({ ...draft, appealDays: daysOf(e.target.value) })}
+            />
+            <Select
+              id="payer-plan-type"
+              label="Plan Type"
+              hint="Decides which balance-billing laws protect its members."
+              options={PLAN_OPTIONS}
+              value={draft.planType ?? ''}
+              onChange={(e) =>
+                setDraft({ ...draft, planType: isPlanType(e.target.value) ? e.target.value : null })
               }
             />
           </FieldGrid>

@@ -18,6 +18,9 @@ const medicare: Payer = {
   payer_id: '00952',
   claim_filing: 'MB',
   filing_limit_days: null,
+  correction_method: null,
+  appeal_days: null,
+  plan_type: null,
   aliases: [{ id: 'a1', alias: 'MCR Part B' }]
 };
 
@@ -44,14 +47,31 @@ describe('PayerPage', () => {
       name: '',
       payerId: '',
       claimFiling: 'CI',
-      filingLimitDays: null
+      filingLimitDays: null,
+      correctionMethod: null,
+      appealDays: null,
+      planType: null
     });
-    assert.deepEqual(toPayerDraft({ ...medicare, filing_limit_days: 365 }), {
-      name: 'Medicare',
-      payerId: '00952',
-      claimFiling: 'MB',
-      filingLimitDays: 365
-    });
+    assert.deepEqual(
+      toPayerDraft({
+        ...medicare,
+        filing_limit_days: 365,
+        correction_method: 'reopening',
+        appeal_days: 120,
+        plan_type: 'government'
+      }),
+      {
+        name: 'Medicare',
+        payerId: '00952',
+        claimFiling: 'MB',
+        filingLimitDays: 365,
+        correctionMethod: 'reopening',
+        appealDays: 120,
+        planType: 'government'
+      }
+    );
+    assert.ok(html.includes('>Corrections<') && html.includes('>Appeal Limit (Days)<'));
+    assert.ok(html.includes('>Plan Type<') && html.includes('Self-funded (ERISA)'));
     const added = renderToStaticMarkup(
       createElement(PayerForm, { payer: null, back: '/payers', onSave: async () => null })
     );

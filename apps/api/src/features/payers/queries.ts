@@ -11,6 +11,9 @@ const columns = [
   'payer_id',
   'claim_filing',
   'filing_limit_days',
+  'correction_method',
+  'appeal_days',
+  'plan_type',
   'updated_at'
 ] as const;
 
@@ -81,13 +84,19 @@ export const upsertPayer = (db: Db, agencyId: string, p: PayerInput) =>
       name: p.name,
       payer_id: p.payerId,
       claim_filing: p.claimFiling,
-      filing_limit_days: p.filingLimitDays
+      filing_limit_days: p.filingLimitDays,
+      correction_method: p.correctionMethod,
+      appeal_days: p.appealDays,
+      plan_type: p.planType
     })
     .onConflict((oc) =>
       oc.expression(sql`agency_id, lower(name)`).doUpdateSet({
         payer_id: p.payerId,
         claim_filing: p.claimFiling,
         filing_limit_days: p.filingLimitDays,
+        correction_method: p.correctionMethod,
+        appeal_days: p.appealDays,
+        plan_type: p.planType,
         embedding: sql`case when payers.claim_filing = excluded.claim_filing then payers.embedding end`,
         updated_at: sql`now()`
       })

@@ -14,7 +14,10 @@ describe('payerSchema', () => {
         name: 'Medicare',
         payerId: '00952',
         claimFiling: 'MB',
-        filingLimitDays: null
+        filingLimitDays: null,
+        correctionMethod: null,
+        appealDays: null,
+        planType: null
       }
     );
     assert.equal(
@@ -25,6 +28,21 @@ describe('payerSchema', () => {
         filingLimitDays: MAX_FILING_LIMIT_DAYS
       }).filingLimitDays,
       MAX_FILING_LIMIT_DAYS
+    );
+    const settings = {
+      correctionMethod: 'reopening',
+      appealDays: 120,
+      planType: 'government'
+    } as const;
+    assert.deepEqual(
+      v.parse(payerSchema, { name: 'Medicare', payerId: '00952', claimFiling: 'MB', ...settings }),
+      {
+        name: 'Medicare',
+        payerId: '00952',
+        claimFiling: 'MB',
+        filingLimitDays: null,
+        ...settings
+      }
     );
   });
 
@@ -41,6 +59,9 @@ describe('payerSchema', () => {
       { ...base, filingLimitDays: 1.5 },
       { ...base, filingLimitDays: MAX_FILING_LIMIT_DAYS + 1 },
       { ...base, filingLimitDays: '90' },
+      { ...base, correctionMethod: 'resubmit' },
+      { ...base, appealDays: 0 },
+      { ...base, planType: 'hmo' },
       { name: 'X', payerId: '00952' }
     ]) {
       assert.equal(v.safeParse(payerSchema, bad).success, false, JSON.stringify(bad));

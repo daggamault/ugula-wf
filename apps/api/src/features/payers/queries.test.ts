@@ -61,7 +61,10 @@ describe('payer queries', () => {
       name: 'Medicare',
       payerId: '00952',
       claimFiling: 'MB',
-      filingLimitDays: null
+      filingLimitDays: null,
+      correctionMethod: null,
+      appealDays: null,
+      planType: null
     });
     assert.equal(await deletePayer(db, 't-1', 'p1'), false);
     const [upsert, remove] = queries;

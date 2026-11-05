@@ -1,4 +1,9 @@
-import type { AfterDownload, ClearinghouseVendor } from '@ugula/billing';
+import type {
+  AfterDownload,
+  ClearinghouseVendor,
+  CorrectionMethod,
+  PlanType
+} from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
 import type { Page } from '../../shared/url-state.ts';
 
@@ -74,6 +79,9 @@ export type Payer = {
   payer_id: string;
   claim_filing: string;
   filing_limit_days: number | null;
+  correction_method: CorrectionMethod | null;
+  appeal_days: number | null;
+  plan_type: PlanType | null;
   aliases: PayerAlias[];
 };
 
@@ -82,6 +90,9 @@ export type PayerInput = {
   payerId: string;
   claimFiling: string;
   filingLimitDays: number | null;
+  correctionMethod: CorrectionMethod | null;
+  appealDays: number | null;
+  planType: PlanType | null;
 };
 
 export const createSettingsClient = (api: Api) => ({

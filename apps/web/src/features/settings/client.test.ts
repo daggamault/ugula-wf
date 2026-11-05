@@ -19,7 +19,10 @@ describe('createSettingsClient', () => {
       name: 'Medicare',
       payerId: '00952',
       claimFiling: 'MB',
-      filingLimitDays: null
+      filingLimitDays: null,
+      correctionMethod: null,
+      appealDays: null,
+      planType: null
     });
     await client.removePayer('p1');
     await client.forgetAlias('p1', 'a1');
