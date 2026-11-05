@@ -239,14 +239,28 @@ export const tableNodes: NodeDef[] = [
     title: 'Lookup Table',
     category: CATEGORY,
     description:
-      'Looks a key up in a table you fill in, or a shared table, such as a code and its meaning, and outputs its value, or the fallback when the key is not listed.',
+      'Looks a key up in a table you fill in, or a shared table, such as a code and its meaning, and outputs its value, or the fallback when the key is not listed. Also looks up every key of a list at once, in order.',
     config: v.union([lookupRef, lookupConfig]),
-    inputs: [pin('key', 'any', { optional: true })],
-    outputs: ({ type }) => [pin('value', type), pin('found', 'boolean')],
-    compute: ({ key }, config) => {
+    inputs: [
+      pin('key', 'any', { optional: true }),
+      pin('keys', { list: 'any' }, { optional: true, label: 'Keys to Look Up Together' })
+    ],
+    outputs: ({ type }) => [
+      pin('value', type),
+      pin('found', 'boolean'),
+      pin('values', { list: type }, { label: 'Value of Each Key' })
+    ],
+    compute: ({ key, keys }, config) => {
       if ('table' in config) throw unresolved(config.table.key);
-      const row = config.rows.find((r) => r.key === toText(key ?? null));
-      return { value: row ? row.value : (config.fallback ?? null), found: row !== undefined };
+      const rowOf = (k: Json) => config.rows.find((r) => r.key === toText(k));
+      const row = rowOf(key ?? null);
+      return {
+        value: row ? row.value : (config.fallback ?? null),
+        found: row !== undefined,
+        values: (Array.isArray(keys) ? keys : []).map(
+          (k) => rowOf(k)?.value ?? config.fallback ?? null
+        )
+      };
     }
   }),
   pureNode<DecideConfig | v.InferOutput<typeof decideRef>>({

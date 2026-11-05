@@ -49,11 +49,13 @@ describe('table nodes', () => {
     const config = { rows: [{ key: '2223001', value: 'Emergent' }], fallback: 'Unknown' };
     assert.deepEqual((await run('std.table.lookup', { key: '2223001' }, config)).outputs, {
       value: 'Emergent',
-      found: true
+      found: true,
+      values: []
     });
     assert.deepEqual((await run('std.table.lookup', { key: 7 }, config)).outputs, {
       value: 'Unknown',
-      found: false
+      found: false,
+      values: []
     });
     const numbers = await run(
       'std.table.lookup',
@@ -61,7 +63,7 @@ describe('table nodes', () => {
       { type: 'integer', rows: [{ key: '1', value: 9 }] }
     );
     assert.deepEqual(numbers.signature.outputs[0], { name: 'value', type: 'integer' });
-    assert.deepEqual(numbers.outputs, { value: null, found: false });
+    assert.deepEqual(numbers.outputs, { value: null, found: false, values: [] });
     assert.deepEqual(
       (
         await run(
@@ -70,7 +72,11 @@ describe('table nodes', () => {
           { type: 'integer', rows: [{ key: '1', value: 9 }] }
         )
       ).outputs,
-      { value: 9, found: true }
+      { value: 9, found: true, values: [] }
+    );
+    assert.deepEqual(
+      (await run('std.table.lookup', { keys: ['2223001', 'x', null] }, config)).outputs.values,
+      ['Emergent', 'Unknown', 'Unknown']
     );
     await assert.rejects(() =>
       run('std.table.lookup', {}, { rows: [...config.rows, ...config.rows] })

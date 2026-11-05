@@ -18,6 +18,7 @@ export { checkField } from './fields.ts';
 export { deepEqual, isRecord } from './json.ts';
 export { createModelNodes, type Model, type ModelField, modelType } from './models.ts';
 export { combineSources, createRegistry, isPure } from './registry.ts';
+export { runRule } from './rules.ts';
 export { type FieldSpec, graphDefSchema, valuesSchema } from './schemas.ts';
 export { isPassThrough, slotGraph } from './slot.ts';
 export { stdGraphInfo, stdGraphSource, stdGraphs } from './std/composites.ts';
