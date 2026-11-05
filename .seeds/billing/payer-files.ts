@@ -106,7 +106,11 @@ const checkEligibility = (): GraphDef => {
     execIn: ['exec'],
     execOut: [],
     inputs: [p('claimId', 'string')],
-    outputs: [p('sentAs', 'string'), p('reason', 'string'), p('reviews', 'integer')]
+    outputs: [
+      p('sentAs', 'string', true),
+      p('reason', 'string', true),
+      p('reviews', 'integer', true)
+    ]
   });
   g.add('send', 'billing.send-270', { label: 'Send 270 to Clearinghouse' });
   g.add('lines', 'std.list.reshape', {
