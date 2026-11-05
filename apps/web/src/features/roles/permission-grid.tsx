@@ -20,6 +20,7 @@ export const RESOURCE_LABELS: Record<PermissionResource, string> = {
   tasks: 'Tasks',
   payer_files: 'Payer Files',
   payers: 'Payers',
+  facilities: 'Facilities',
   fees: 'Fees',
   reports: 'Reports',
   workflows: 'Workflows',

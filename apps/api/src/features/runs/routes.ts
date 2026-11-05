@@ -1,7 +1,7 @@
 import { sValidator } from '@hono/standard-validator';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import type { AgencyEnv } from '../../shared/access.ts';
+import { type AgencyEnv, requirePermission } from '../../shared/access.ts';
 import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
@@ -12,6 +12,7 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
   new Hono<AgencyEnv>()
     .post(
       '/files',
+      requirePermission('runs:create'),
       bodyLimit({
         maxSize: maxBytes + FORM_OVERHEAD_BYTES,
         onError: (c) => c.json({ error: 'File too large' }, 413)
@@ -43,14 +44,19 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
         })
       );
     })
-    .post('/', sValidator('json', startRunSchema, invalidRequest), async (c) => {
-      const { graphId, version, inputs } = c.req.valid('json');
-      return respond(
-        c,
-        await service.start(c.get('access').agencyId, graphId, version, inputs),
-        201
-      );
-    })
+    .post(
+      '/',
+      requirePermission('runs:create'),
+      sValidator('json', startRunSchema, invalidRequest),
+      async (c) => {
+        const { graphId, version, inputs } = c.req.valid('json');
+        return respond(
+          c,
+          await service.start(c.get('access').agencyId, graphId, version, inputs),
+          201
+        );
+      }
+    )
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.find(c.get('access').agencyId, c.req.valid('param').id))
     )
@@ -74,6 +80,10 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
         );
       }
     )
-    .post('/:id/cancel', sValidator('param', idParam, invalidRequest), async (c) =>
-      respond(c, await service.cancel(c.get('access').agencyId, c.req.valid('param').id), 202)
+    .post(
+      '/:id/cancel',
+      requirePermission('runs:update'),
+      sValidator('param', idParam, invalidRequest),
+      async (c) =>
+        respond(c, await service.cancel(c.get('access').agencyId, c.req.valid('param').id), 202)
     );

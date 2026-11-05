@@ -43,7 +43,12 @@ describe('fee routes', () => {
     assert.deepEqual(calls, [
       ['search', 't-1', { q: 'a04', page: 1, pageSize: 25, sort: 'amount', dir: 'asc' }],
       ['find', 't-1', ID],
-      ['save', 't-1', { payerId: null, code: 'A0427', amountCents: 50000 }],
+      [
+        'save',
+        't-1',
+        { payerId: null, code: 'A0427', amountCents: 50000 },
+        { create: true, update: true }
+      ],
       ['remove', 't-1', ID]
     ]);
   });

@@ -49,7 +49,9 @@ export const requirePermission =
     await next();
   };
 
-type MethodPermissions = Partial<Record<'GET' | 'POST' | 'PUT' | 'DELETE', Permission | null>>;
+type MethodPermissions = Partial<
+  Record<'GET' | 'POST' | 'PUT' | 'DELETE', Permission | readonly Permission[] | null>
+>;
 
 export const guardMethods =
   (permissions: MethodPermissions): MiddlewareHandler<AgencyEnv> =>
@@ -57,8 +59,16 @@ export const guardMethods =
     const method = c.req.method === 'HEAD' ? 'GET' : c.req.method;
     const permission = permissions[method as keyof MethodPermissions];
     if (permission === undefined) return c.json(forbidden, 403);
-    if (permission !== null && !hasPermission(c.get('access'), permission)) {
+    const anyOf = typeof permission === 'string' ? [permission] : permission;
+    if (anyOf !== null && !anyOf.some((p) => hasPermission(c.get('access'), p))) {
       return c.json(forbidden, 403);
     }
     await next();
   };
+
+export type Writes = { create: boolean; update: boolean };
+
+export const writesOn = (access: AgencyAccess, resource: 'fees' | 'payers'): Writes => ({
+  create: hasPermission(access, `${resource}:create`),
+  update: hasPermission(access, `${resource}:update`)
+});

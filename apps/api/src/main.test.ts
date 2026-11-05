@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { createSessionStore } from '@ugula/auth';
 import type { Db } from '@ugula/db';
+import { createRecordingDb } from '@ugula/db/testing';
 import { createStdNodes } from '@ugula/graph';
 import { createNemsisNodes } from '@ugula/nemsis';
 import type { BlobStore } from '@ugula/storage';
@@ -10,9 +12,13 @@ import { memoryRedis } from './shared/testing.ts';
 
 const ORIGIN = 'http://localhost:3000';
 
-const AGENCY = '/api/agencies/01a16617-7704-7ba6-b9b5-9c79fa44f965';
+const AGENCY_ID = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 
-const app = createApp({
+const AGENCY = `/api/agencies/${AGENCY_ID}`;
+
+const ID = '01a16617-7704-7ba6-b9b5-9c79fa44f966';
+
+const deps: Parameters<typeof createApp>[0] = {
   config: {
     NODE_ENV: 'test',
     HTTP_CORS_ORIGINS: ORIGIN,
@@ -30,7 +36,9 @@ const app = createApp({
   announce: async () => undefined,
   clientIp: () => '10.0.0.1',
   sealSecret: null
-});
+};
+
+const app = createApp(deps);
 
 describe('api createApp', () => {
   it('mounts public health and auth routes and protects workflow routes', async () => {
@@ -104,6 +112,65 @@ describe('api createApp', () => {
       headers: { origin: ORIGIN }
     });
     assert.equal(signOut.status, 200);
+  });
+
+  it('maps agency routes to the permission each action needs', async () => {
+    const { redis } = memoryRedis();
+    const permissions: string[] = [];
+    const { db } = createRecordingDb((q) =>
+      q.sql.includes('is_full')
+        ? [
+            {
+              agency_id: AGENCY_ID,
+              agency_name: 'Development',
+              organization_id: 'o-1',
+              organization_name: 'Development EMS',
+              is_full: false,
+              permissions
+            }
+          ]
+        : q.sql.includes('from "users"')
+          ? [{ id: 'u-1', email: 'dev@example.com' }]
+          : []
+    );
+    const guarded = createApp({ ...deps, db, redis });
+    const token = await createSessionStore(redis).create({
+      userId: 'u-1',
+      email: 'dev@example.com'
+    });
+    const send = async (held: string[], method: string, path: string, body?: unknown) => {
+      permissions.splice(0, permissions.length, ...held);
+      const res = await guarded.request(`${AGENCY}${path}`, {
+        method,
+        headers: {
+          origin: ORIGIN,
+          cookie: `ugula_session=${token}`,
+          'content-type': 'application/json'
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) })
+      });
+      const text = await res.text();
+      return res.status === 403 && text.includes('You do not have permission to do this');
+    };
+    const fee = { code: 'A0427', amountCents: 1 };
+    const facility = { name: 'Mercy', kind: 'hospital', isContract: false };
+    const cases: [string[], string, string, unknown, boolean][] = [
+      [['runs:create'], 'POST', `/runs/${ID}/cancel`, undefined, false],
+      [['runs:update'], 'POST', `/runs/${ID}/cancel`, undefined, true],
+      [['runs:update'], 'POST', '/runs', { graphId: ID }, false],
+      [['fees:create'], 'PUT', '/fees', fee, true],
+      [['fees:update'], 'PUT', '/fees', fee, true],
+      [['fees:read'], 'PUT', '/fees', fee, false],
+      [['payers:read'], 'GET', '/facilities', undefined, false],
+      [['facilities:read'], 'GET', '/facilities', undefined, true],
+      [['payers:create'], 'POST', '/facilities', facility, false],
+      [['facilities:create'], 'POST', '/facilities', facility, true],
+      [['payers:update'], 'PUT', `/facilities/${ID}`, facility, false],
+      [['facilities:delete'], 'DELETE', `/facilities/${ID}`, undefined, true]
+    ];
+    for (const [held, method, path, body, allowed] of cases) {
+      assert.equal(!(await send(held, method, path, body)), allowed, `${held} ${method} ${path}`);
+    }
   });
 
   it('caps JSON request bodies', async () => {

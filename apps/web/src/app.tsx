@@ -217,7 +217,7 @@ const SECTIONS: readonly Section[] = [
     href: FACILITIES_PATH,
     icon: HospitalIcon,
     group: 'Admin',
-    permission: 'payers:read'
+    permission: 'facilities:read'
   },
   {
     id: 'fees',

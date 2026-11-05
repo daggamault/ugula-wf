@@ -1,6 +1,7 @@
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
+import type { Writes } from '../../shared/access.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { PayerInput, PayerSort } from './schemas.ts';
@@ -76,7 +77,19 @@ export const listPayerNames = (db: Db, agencyId: string, text?: string) => {
   return (text ? q.where(sql`lower(name)`, 'like', containsPattern(text)) : q).execute();
 };
 
-export const upsertPayer = (db: Db, agencyId: string, p: PayerInput) =>
+const changes = (p: PayerInput) => ({
+  payer_id: p.payerId,
+  claim_filing: p.claimFiling,
+  filing_limit_days: p.filingLimitDays,
+  correction_method: p.correctionMethod,
+  appeal_days: p.appealDays,
+  plan_type: p.planType,
+  updated_at: sql<Date>`now()`
+});
+
+const saved = [...columns, sql<boolean>`embedding is null`.as('unembedded')] as const;
+
+const insertPayer = (db: Db, agencyId: string, p: PayerInput, update: boolean) =>
   db
     .insertInto('payers')
     .values({
@@ -89,20 +102,32 @@ export const upsertPayer = (db: Db, agencyId: string, p: PayerInput) =>
       appeal_days: p.appealDays,
       plan_type: p.planType
     })
-    .onConflict((oc) =>
-      oc.expression(sql`agency_id, lower(name)`).doUpdateSet({
-        payer_id: p.payerId,
-        claim_filing: p.claimFiling,
-        filing_limit_days: p.filingLimitDays,
-        correction_method: p.correctionMethod,
-        appeal_days: p.appealDays,
-        plan_type: p.planType,
-        embedding: sql`case when payers.claim_filing = excluded.claim_filing then payers.embedding end`,
-        updated_at: sql`now()`
-      })
-    )
-    .returning([...columns, sql<boolean>`embedding is null`.as('unembedded')])
-    .executeTakeFirstOrThrow();
+    .onConflict((oc) => {
+      const key = oc.expression(sql`agency_id, lower(name)`);
+      return update
+        ? key.doUpdateSet({
+            ...changes(p),
+            embedding: sql`case when payers.claim_filing = excluded.claim_filing then payers.embedding end`
+          })
+        : key.doNothing();
+    })
+    .returning(saved)
+    .executeTakeFirst();
+
+const updatePayer = (db: Db, agencyId: string, p: PayerInput) =>
+  db
+    .updateTable('payers')
+    .set({
+      ...changes(p),
+      embedding: sql`case when claim_filing = ${p.claimFiling} then embedding end`
+    })
+    .where('agency_id', '=', agencyId)
+    .where(sql`lower(name)`, '=', p.name.toLowerCase())
+    .returning(saved)
+    .executeTakeFirst();
+
+export const savePayer = (db: Db, agencyId: string, p: PayerInput, writes: Writes) =>
+  writes.create ? insertPayer(db, agencyId, p, writes.update) : updatePayer(db, agencyId, p);
 
 export const saveEmbedding = (db: Db, agencyId: string, id: string, embedding: number[]) =>
   db

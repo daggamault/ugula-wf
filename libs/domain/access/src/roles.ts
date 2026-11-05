@@ -10,14 +10,23 @@ export const isUserAdmin = (permissions: readonly Permission[]) =>
 
 const WORK = ['patients', 'imports', 'claims', 'tasks', 'payer_files'] as const;
 
-const SETUP = ['settings', 'users', 'roles', 'payers', 'fees', 'workflows', 'runs'] as const;
+const SETUP = [
+  'settings',
+  'users',
+  'roles',
+  'payers',
+  'facilities',
+  'fees',
+  'workflows',
+  'runs'
+] as const;
 
 export const BUILT_IN_ROLES: readonly { name: string; permissions: readonly Permission[] }[] = [
   { name: 'Admin', permissions: PERMISSIONS },
   {
     name: 'Billing Manager',
     permissions: [
-      ...grantsOf([...WORK, 'payers', 'fees', 'reports', 'runs']),
+      ...grantsOf([...WORK, 'payers', 'facilities', 'fees', 'reports', 'runs']),
       ...grantsOf(['settings', 'users', 'roles', 'workflows'], ['read']),
       'workflows:update'
     ]

@@ -7,7 +7,8 @@ import {
   guardMethods,
   hasPermission,
   requireAgencyAccess,
-  requirePermission
+  requirePermission,
+  writesOn
 } from './access.ts';
 import { testAccess } from './testing.ts';
 
@@ -85,5 +86,29 @@ describe('guardMethods', () => {
     const res = await app(testAccess()).request('/', { method: 'DELETE' });
     assert.equal(res.status, 403);
     assert.deepEqual(await res.json(), forbidden);
+  });
+
+  it('lets through holders of any permission in a list', async () => {
+    const put = (access: AgencyAccess) =>
+      withAccess(access)
+        .use(guardMethods({ PUT: ['fees:create', 'fees:update'] }))
+        .put('/', (c) => c.text('ok'))
+        .request('/', { method: 'PUT' });
+    assert.equal((await put(testAccess(['fees:create']))).status, 200);
+    assert.equal((await put(testAccess(['fees:update']))).status, 200);
+    assert.equal((await put(testAccess(['fees:read']))).status, 403);
+  });
+});
+
+describe('writesOn', () => {
+  it('says whether the caller may add and may change rows of a resource', () => {
+    assert.deepEqual(writesOn(testAccess(['fees:create']), 'fees'), {
+      create: true,
+      update: false
+    });
+    assert.deepEqual(writesOn(testAccess(['payers:update']), 'payers'), {
+      create: false,
+      update: true
+    });
   });
 });

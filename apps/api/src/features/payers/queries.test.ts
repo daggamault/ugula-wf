@@ -8,11 +8,21 @@ import {
   linkCoverages,
   listPayerNames,
   saveEmbedding,
-  searchPayers,
-  upsertPayer
+  savePayer,
+  searchPayers
 } from './queries.ts';
 
 const PAGE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
+
+const MEDICARE = {
+  name: 'Medicare',
+  payerId: '00952',
+  claimFiling: 'MB',
+  filingLimitDays: null,
+  correctionMethod: null,
+  appealDays: null,
+  planType: null
+} as const;
 
 describe('payer queries', () => {
   it('pages payers with their learned names, sorted by name', async () => {
@@ -57,15 +67,7 @@ describe('payer queries', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('delete') ? [] : [{ id: 'p1' }]
     );
-    await upsertPayer(db, 't-1', {
-      name: 'Medicare',
-      payerId: '00952',
-      claimFiling: 'MB',
-      filingLimitDays: null,
-      correctionMethod: null,
-      appealDays: null,
-      planType: null
-    });
+    await savePayer(db, 't-1', MEDICARE, { create: true, update: true });
     assert.equal(await deletePayer(db, 't-1', 'p1'), false);
     const [upsert, remove] = queries;
     assert.equal(upsert?.parameters[0], 't-1');
@@ -76,6 +78,19 @@ describe('payer queries', () => {
       )
     );
     assert.deepEqual(remove?.parameters, ['p1', 't-1']);
+    await db.destroy();
+  });
+
+  it('only inserts without update and only updates the same name without create', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    assert.equal(await savePayer(db, 't-1', MEDICARE, { create: true, update: false }), undefined);
+    assert.ok(queries[0]?.sql.includes('on conflict (agency_id, lower(name)) do nothing'));
+    await savePayer(db, 't-1', MEDICARE, { create: false, update: true });
+    const update = queries[1];
+    assert.ok(update?.sql.startsWith('update "payers" set'));
+    assert.ok(update?.sql.includes('"embedding" = case when claim_filing = $'));
+    assert.ok(update?.sql.includes('where "agency_id" = $8 and lower(name) = $9'));
+    assert.deepEqual(update?.parameters.slice(-2), ['t-1', 'medicare']);
     await db.destroy();
   });
 

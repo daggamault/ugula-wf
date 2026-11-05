@@ -1,5 +1,6 @@
-import type { Db } from '@ugula/db';
-import { sql } from 'kysely';
+import type { Database, Db } from '@ugula/db';
+import { type QueryCreator, sql } from 'kysely';
+import type { Writes } from '../../shared/access.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { FeeInput, FeeSort } from './schemas.ts';
@@ -45,28 +46,43 @@ export const payerExists = async (db: Db, agencyId: string, id: string) =>
     .where('agency_id', '=', agencyId)
     .executeTakeFirst()) !== undefined;
 
-export const upsertFee = (db: Db, agencyId: string, fee: FeeInput) =>
+const SAVED = ['id', 'payer_id', 'code', 'amount_cents', 'updated_at'] as const;
+
+const insertFee = (db: QueryCreator<Database>, agencyId: string, fee: FeeInput, update: boolean) =>
+  db
+    .insertInto('fee_schedules')
+    .values({
+      agency_id: agencyId,
+      payer_id: fee.payerId,
+      code: fee.code,
+      amount_cents: fee.amountCents
+    })
+    .onConflict((oc) => {
+      const key = oc.columns(['agency_id', 'payer_id', 'code']);
+      return update
+        ? key.doUpdateSet({ amount_cents: fee.amountCents, updated_at: sql`now()` })
+        : key.doNothing();
+    })
+    .returning(SAVED);
+
+const updateFee = (db: QueryCreator<Database>, agencyId: string, fee: FeeInput) =>
+  db
+    .updateTable('fee_schedules')
+    .set({ amount_cents: fee.amountCents, updated_at: sql`now()` })
+    .where('agency_id', '=', agencyId)
+    .where(sql<boolean>`payer_id is not distinct from ${fee.payerId}`)
+    .where('code', '=', fee.code)
+    .returning(SAVED);
+
+export const saveFee = (db: Db, agencyId: string, fee: FeeInput, writes: Writes) =>
   db
     .with('saved', (w) =>
-      w
-        .insertInto('fee_schedules')
-        .values({
-          agency_id: agencyId,
-          payer_id: fee.payerId,
-          code: fee.code,
-          amount_cents: fee.amountCents
-        })
-        .onConflict((oc) =>
-          oc
-            .columns(['agency_id', 'payer_id', 'code'])
-            .doUpdateSet({ amount_cents: fee.amountCents, updated_at: sql`now()` })
-        )
-        .returning(['id', 'payer_id', 'code', 'amount_cents', 'updated_at'])
+      writes.create ? insertFee(w, agencyId, fee, writes.update) : updateFee(w, agencyId, fee)
     )
     .selectFrom('saved as f')
     .leftJoin('payers as p', 'p.id', 'f.payer_id')
     .select(['f.id', 'f.payer_id', 'p.name as payer', 'f.code', 'f.amount_cents', 'f.updated_at'])
-    .executeTakeFirstOrThrow();
+    .executeTakeFirst();
 
 export const deleteFee = async (db: Db, agencyId: string, id: string) =>
   (await db

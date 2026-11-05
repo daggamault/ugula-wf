@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { Permission } from '@ugula/access';
 import { fail, ok } from '../../shared/result.ts';
-import { withSession } from '../../shared/testing.ts';
+import { testAccess, withSession } from '../../shared/testing.ts';
 import { createRunRoutes } from './routes.ts';
 import type { RunService } from './service.ts';
 
@@ -120,5 +121,24 @@ describe('run route validation', () => {
     const res = await request('/files', { method: 'POST', body: form });
     assert.equal(res.status, 413);
     assert.deepEqual(await res.json(), { error: 'File too large' });
+  });
+
+  it('start runs and upload their files with runs:create, and cancel with runs:update', async () => {
+    const as = (permissions: Permission[]) =>
+      withSession(createRunRoutes(service, 1_000), testAccess(permissions));
+    const start = { method: 'POST', body: JSON.stringify({ graphId: ID }) };
+    const upload = () => {
+      const form = new FormData();
+      form.set('file', new File(['<x/>'], 'a.xml'));
+      return { method: 'POST', body: form };
+    };
+    const starter = as(['runs:read', 'runs:create']);
+    assert.equal((await starter('/', start)).status, 201);
+    assert.equal((await starter('/files', upload())).status, 201);
+    assert.equal((await starter(`/${ID}/cancel`, { method: 'POST' })).status, 403);
+    const canceller = as(['runs:read', 'runs:update']);
+    assert.equal((await canceller('/', start)).status, 403);
+    assert.equal((await canceller('/files', upload())).status, 403);
+    assert.equal((await canceller(`/${ID}/cancel`, { method: 'POST' })).status, 409);
   });
 });

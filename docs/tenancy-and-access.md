@@ -27,16 +27,19 @@ A user belongs to at most one organization. Email addresses are unique and store
 | settings    | read, update                                                                                  |
 | users       | create, read, update, delete                                                                  |
 | roles       | create, read, update, delete                                                                  |
-| patients    | read, update                                                                                  |
+| patients    | read                                                                                          |
 | imports     | create, read                                                                                  |
 | claims      | read, update, approve (refunds, write-offs and collections above the Claim Policy thresholds) |
 | tasks       | read, update                                                                                  |
 | payer_files | create, read                                                                                  |
-| payers      | create, read, update, delete (the payer directory and facilities)                             |
+| payers      | create, read, update, delete (the payer directory)                                            |
+| facilities  | create, read, update, delete (facilities that pay for the trips they are responsible for)     |
 | fees        | create, read, update, delete                                                                  |
 | reports     | read                                                                                          |
 | workflows   | read, update (rules, tables, agency rule slots), manage (stages, workflows)                   |
-| runs        | create, read, update                                                                          |
+| runs        | create (start runs, upload their files), read, update (cancel runs)                           |
+
+Saving a payer or fee adds it or changes the one with the same name or code, so it needs `create` when it is new and `update` when it exists; the write itself checks which one happens, so a race cannot slip past either.
 
 ### Tasks that need a permission
 

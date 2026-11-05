@@ -46,6 +46,14 @@ describe('roles', () => {
     assert.ok(!role('Biller').includes('workflows:update'));
   });
 
+  it('lets every role see facilities and billing managers, not billers, change them', () => {
+    for (const r of BUILT_IN_ROLES) assert.ok(r.permissions.includes('facilities:read'), r.name);
+    assert.ok(role('Billing Manager').includes('facilities:update'));
+    assert.ok(!role('Biller').includes('facilities:update'));
+    assert.ok(role('Billing Manager').includes('runs:update'));
+    assert.ok(!role('Biller').includes('runs:create'));
+  });
+
   it('lets billing managers, not billers, approve refunds, write-offs and collections', () => {
     assert.ok(role('Billing Manager').includes('claims:approve'));
     assert.ok(!role('Biller').includes('claims:approve'));

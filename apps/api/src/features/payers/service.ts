@@ -1,6 +1,7 @@
 import { payerDocument } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import type { Embedder } from '@ugula/inference';
+import type { Writes } from '../../shared/access.ts';
 import { type Announce, announced } from '../../shared/live.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
@@ -11,8 +12,8 @@ import {
   listPayerNames,
   type PayerFilters,
   saveEmbedding,
-  searchPayers,
-  upsertPayer
+  savePayer,
+  searchPayers
 } from './queries.ts';
 import type { PayerInput } from './schemas.ts';
 
@@ -33,12 +34,20 @@ export const createPayerService = ({ db, announce, embedder }: PayerServiceDeps)
       const payer = await findPayer(db, agencyId, id);
       return payer ? ok({ payer }) : fail('not_found', 'Payer not found');
     },
-    save: async (agencyId: string, input: PayerInput) => {
+    save: async (agencyId: string, input: PayerInput, writes: Writes) => {
+      if (!writes.create && !writes.update) return fail('forbidden', "You can't save payers");
       const saved = await announced(
         announce,
         agencyId,
         db.transaction().execute(async (tx) => {
-          const { unembedded, ...payer } = await upsertPayer(tx, agencyId, input);
+          const row = await savePayer(tx, agencyId, input, writes);
+          if (!row) {
+            return fail(
+              'forbidden',
+              writes.create ? "You can't change payers" : "You can't add payers"
+            );
+          }
+          const { unembedded, ...payer } = row;
           return ok({ payer, unembedded, linkedClaims: await linkCoverages(tx, agencyId, payer) });
         }),
         ({ linkedClaims }) => (linkedClaims ? [{ kind: 'claim', id: null }] : [])

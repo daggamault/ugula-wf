@@ -8,6 +8,7 @@ export const PERMISSION_RESOURCES = [
   'tasks',
   'payer_files',
   'payers',
+  'facilities',
   'fees',
   'reports',
   'workflows',
@@ -39,7 +40,6 @@ export const PERMISSIONS = [
   'roles:update',
   'roles:delete',
   'patients:read',
-  'patients:update',
   'imports:create',
   'imports:read',
   'claims:read',
@@ -53,6 +53,10 @@ export const PERMISSIONS = [
   'payers:read',
   'payers:update',
   'payers:delete',
+  'facilities:create',
+  'facilities:read',
+  'facilities:update',
+  'facilities:delete',
   'fees:create',
   'fees:read',
   'fees:update',
@@ -80,7 +84,6 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'roles:update': 'Change roles and their permissions.',
   'roles:delete': 'Delete roles.',
   'patients:read': 'See patients.',
-  'patients:update': 'Change patients.',
   'imports:create': 'Upload NEMSIS files.',
   'imports:read': 'See imports and what each report became.',
   'claims:read': 'See claims, their files and history.',
@@ -95,6 +98,10 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'payers:read': 'See the payer directory.',
   'payers:update': 'Change payers.',
   'payers:delete': 'Remove payers.',
+  'facilities:create': 'Add facilities that pay for the trips they are responsible for.',
+  'facilities:read': 'See facilities.',
+  'facilities:update': 'Change facilities.',
+  'facilities:delete': 'Remove facilities.',
   'fees:create': 'Add fees.',
   'fees:read': 'See fee schedules.',
   'fees:update': 'Change fees.',
@@ -105,7 +112,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'workflows:manage': 'Customize stages and workflows, and create new ones.',
   'runs:create': 'Start workflow runs.',
   'runs:read': 'See workflow runs.',
-  'runs:update': 'Retry and cancel workflow runs.'
+  'runs:update': 'Cancel workflow runs.'
 };
 
 export const isPermission = (value: string): value is Permission =>

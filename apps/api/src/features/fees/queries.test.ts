@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { deleteFee, findFee, payerExists, searchFees, upsertFee } from './queries.ts';
+import { deleteFee, findFee, payerExists, saveFee, searchFees } from './queries.ts';
 
 const PAYER = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 
@@ -32,7 +32,8 @@ describe('fee queries', () => {
 
   it('upserts one price per agency, payer and code and returns it with its payer name', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'f1' }]);
-    await upsertFee(db, 't-1', { payerId: PAYER, code: 'A0427', amountCents: 95000 });
+    const fee = { payerId: PAYER, code: 'A0427', amountCents: 95000 };
+    await saveFee(db, 't-1', fee, { create: true, update: true });
     assert.equal(queries.length, 1);
     const [upsert] = queries;
     assert.ok(upsert?.sql.startsWith('with "saved" as (insert into "fee_schedules"'));
@@ -43,6 +44,21 @@ describe('fee queries', () => {
     );
     assert.ok(upsert?.sql.includes('from "saved" as "f" left join "payers" as "p"'));
     assert.deepEqual(upsert?.parameters.slice(0, 4), ['t-1', PAYER, 'A0427', 95000]);
+  });
+
+  it('only inserts without update and only updates the same key without create', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    const fee = { payerId: null, code: 'A0427', amountCents: 1 };
+    assert.equal(await saveFee(db, 't-1', fee, { create: true, update: false }), undefined);
+    assert.ok(queries[0]?.sql.includes('on conflict ("agency_id", "payer_id", "code") do nothing'));
+    await saveFee(db, 't-1', fee, { create: false, update: true });
+    assert.ok(queries[1]?.sql.startsWith('with "saved" as (update "fee_schedules" set'));
+    assert.ok(
+      queries[1]?.sql.includes(
+        '"agency_id" = $2 and payer_id is not distinct from $3 and "code" = $4'
+      )
+    );
+    assert.deepEqual(queries[1]?.parameters, [1, 't-1', null, 'A0427']);
   });
 
   it('finds, checks payers and deletes only within the agency', async () => {

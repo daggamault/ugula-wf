@@ -46,7 +46,14 @@ describe('payer routes', () => {
       [
         'save',
         't-1',
-        { ...body, filingLimitDays: null, correctionMethod: null, appealDays: null, planType: null }
+        {
+          ...body,
+          filingLimitDays: null,
+          correctionMethod: null,
+          appealDays: null,
+          planType: null
+        },
+        { create: true, update: true }
       ],
       ['remove', 't-1', ID],
       ['forget', 't-1', ID, ID]

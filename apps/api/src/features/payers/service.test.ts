@@ -6,6 +6,8 @@ import { createPayerService } from './service.ts';
 
 const PAGE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
 
+const ALL = { create: true, update: true };
+
 const embedder = (vectors: number[][] | Error) => {
   const texts: string[][] = [];
   return {
@@ -32,15 +34,19 @@ describe('payer service', () => {
     });
     assert.equal((await service.find('t-1', 'p1')).ok, true);
     assert.equal((await service.names('t-1')).ok, true);
-    const saved = await service.save('t-1', {
-      name: 'Medicare',
-      payerId: '00952',
-      claimFiling: 'MB',
-      filingLimitDays: null,
-      correctionMethod: null,
-      appealDays: null,
-      planType: null
-    });
+    const saved = await service.save(
+      't-1',
+      {
+        name: 'Medicare',
+        payerId: '00952',
+        claimFiling: 'MB',
+        filingLimitDays: null,
+        correctionMethod: null,
+        appealDays: null,
+        planType: null
+      },
+      ALL
+    );
     assert.equal(saved.ok && saved.value.linkedClaims, 1);
     assert.deepEqual(events, [{ agencyId: 't-1', event: { kind: 'claim', id: null } }]);
     const removed = await service.remove('t-1', 'p1');
@@ -70,7 +76,7 @@ describe('payer service', () => {
     };
     const fresh = embedder([[0.25, 0.5]]);
     const created = setup(true, fresh);
-    const saved = await created.service.save('t-1', input);
+    const saved = await created.service.save('t-1', input, ALL);
     assert.deepEqual(saved.ok && saved.value, {
       payer: { id: 'p1', name: 'Medicare' },
       linkedClaims: 0,
@@ -82,12 +88,42 @@ describe('payer service', () => {
     assert.deepEqual(update?.parameters, ['[0.25,0.5]', 'p1', 't-1']);
 
     const unchanged = embedder([[1]]);
-    const kept = await setup(false, unchanged).service.save('t-1', input);
+    const kept = await setup(false, unchanged).service.save('t-1', input, ALL);
     assert.equal(kept.ok && kept.value.embedded, true);
     assert.equal(unchanged.texts.length, 0);
 
-    const down = await setup(true, embedder(new Error('offline'))).service.save('t-1', input);
+    const down = await setup(true, embedder(new Error('offline'))).service.save('t-1', input, ALL);
     assert.equal(down.ok && down.value.embedded, false);
+  });
+
+  it('adds payers only with create and changes them only with update', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    const { announce, events } = recordAnnouncements();
+    const service = createPayerService({ db, announce, embedder: embedder([]) });
+    const input = {
+      name: 'Medicare',
+      payerId: '00952',
+      claimFiling: 'MB',
+      filingLimitDays: null,
+      correctionMethod: null,
+      appealDays: null,
+      planType: null
+    } as const;
+    assert.deepEqual(await service.save('t-1', input, { create: false, update: true }), {
+      ok: false,
+      failure: { code: 'forbidden', message: "You can't add payers" }
+    });
+    assert.ok(queries.some((q) => q.sql.startsWith('update "payers" set')));
+    assert.deepEqual(await service.save('t-1', input, { create: true, update: false }), {
+      ok: false,
+      failure: { code: 'forbidden', message: "You can't change payers" }
+    });
+    assert.ok(
+      queries.some((q) => q.sql.includes('on conflict (agency_id, lower(name)) do nothing'))
+    );
+    const none = await service.save('t-1', input, { create: false, update: false });
+    assert.equal(!none.ok && none.failure.code, 'forbidden');
+    assert.deepEqual(events, []);
   });
 
   it('reports a payer outside the agency as not found', async () => {

@@ -176,7 +176,7 @@ export const createApp = ({
       })
     )
     .route('/tables', createTableRoutes(createTableService({ db })))
-    .use('/runs/*', guardMethods({ ...read('runs:read'), POST: 'runs:create' }))
+    .use('/runs/*', guardMethods({ ...read('runs:read'), POST: ['runs:create', 'runs:update'] }))
     .route(
       '/runs',
       createRunRoutes(
@@ -188,21 +188,29 @@ export const createApp = ({
     .route('/tasks', createTaskRoutes(createTaskService({ db, boss, announce })))
     .use(
       '/fees/*',
-      guardMethods({ ...read('fees:read'), PUT: 'fees:update', DELETE: 'fees:delete' })
+      guardMethods({
+        ...read('fees:read'),
+        PUT: ['fees:create', 'fees:update'],
+        DELETE: 'fees:delete'
+      })
     )
     .route('/fees', createFeeRoutes(createFeeService({ db })))
     .use(
       '/payers/*',
-      guardMethods({ ...read('payers:read'), PUT: 'payers:update', DELETE: 'payers:delete' })
+      guardMethods({
+        ...read('payers:read'),
+        PUT: ['payers:create', 'payers:update'],
+        DELETE: 'payers:delete'
+      })
     )
     .route('/payers', createPayerRoutes(createPayerService({ db, announce, embedder })))
     .use(
       '/facilities/*',
       guardMethods({
-        ...read('payers:read'),
-        POST: 'payers:create',
-        PUT: 'payers:update',
-        DELETE: 'payers:delete'
+        ...read('facilities:read'),
+        POST: 'facilities:create',
+        PUT: 'facilities:update',
+        DELETE: 'facilities:delete'
       })
     )
     .route('/facilities', createFacilityRoutes(createFacilityService({ db })))
