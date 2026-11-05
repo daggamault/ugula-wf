@@ -14,6 +14,7 @@ import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate, useLocation } from '../../shared/router.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Breadcrumbs } from '../../shared/ui/breadcrumbs.tsx';
+import { Drawer } from '../../shared/ui/drawer.tsx';
 import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { hrefWith } from '../../shared/url-state.ts';
@@ -371,7 +372,7 @@ export const EditorView = ({
           />
         </div>
         {isSettingsOpen ? (
-          <div className="border-border bg-surface absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l shadow-lg transition-[opacity,translate] duration-200 ease-out sm:w-[32rem] starting:translate-x-4 starting:opacity-0">
+          <Drawer width="lg">
             <GraphSettings
               key={version}
               kind={graph.kind}
@@ -380,9 +381,9 @@ export const EditorView = ({
               onChange={change}
               onClose={() => navigate(settingsHref(false))}
             />
-          </div>
+          </Drawer>
         ) : isCompareOpen && comparison ? (
-          <div className="border-border bg-surface absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l shadow-lg transition-[opacity,translate] duration-200 ease-out sm:w-[32rem] starting:translate-x-4 starting:opacity-0">
+          <Drawer width="lg">
             <ComparePanel
               comparison={comparison}
               current={def}
@@ -394,9 +395,9 @@ export const EditorView = ({
               onReset={() => setDialog('reset')}
               onClose={() => navigate(panelHref(null))}
             />
-          </div>
+          </Drawer>
         ) : node ? (
-          <div className="border-border bg-surface absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l shadow-lg transition-[opacity,translate] duration-200 ease-out sm:w-96 starting:translate-x-4 starting:opacity-0">
+          <Drawer width="md">
             <NodeInspector
               key={node.id}
               def={def}
@@ -413,7 +414,7 @@ export const EditorView = ({
               base={baseNode}
               table={nodeTable}
             />
-          </div>
+          </Drawer>
         ) : null}
       </div>
       {editable ? (
