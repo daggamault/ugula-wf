@@ -9,7 +9,7 @@ export const Checkbox = (props: CheckboxProps) => (
     type="checkbox"
     className={classNamesOf(
       interactiveClasses,
-      'accent-primary size-4 rounded enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 pointer-coarse:size-5'
+      'accent-primary size-4 rounded disabled:opacity-60 pointer-coarse:size-5'
     )}
     {...props}
   />

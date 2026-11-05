@@ -33,7 +33,7 @@ export const AgencyPicker = ({ agencies, current }: AgencyPickerProps) => {
         disabled={agencies.length < 2}
         className={classNamesOf(
           interactiveClasses,
-          'border-border bg-surface enabled:hover:bg-surface-hover flex h-10 min-w-0 pointer-coarse:h-11 flex-1 items-center gap-2 rounded-lg border px-3 text-left transition duration-150 ease-out enabled:cursor-pointer'
+          'border-border bg-surface enabled:hover:bg-surface-hover flex h-10 min-w-0 pointer-coarse:h-11 flex-1 items-center gap-2 rounded-lg border px-3 text-left'
         )}
       >
         <Building2Icon aria-hidden="true" className="text-surface-fg-muted size-4 shrink-0" />
@@ -78,7 +78,7 @@ export const AgencyPicker = ({ agencies, current }: AgencyPickerProps) => {
                 aria-current={a.id === current.id ? 'true' : undefined}
                 className={classNamesOf(
                   interactiveClasses,
-                  'hover:bg-surface-fg/6 aria-[current=true]:bg-primary/10 aria-[current=true]:text-primary flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left transition duration-150 ease-out'
+                  'hover:bg-surface-fg/6 aria-[current=true]:bg-primary/10 aria-[current=true]:text-primary flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-left'
                 )}
               >
                 <span className="flex min-w-0 flex-1 flex-col">

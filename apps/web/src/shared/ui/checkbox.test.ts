@@ -10,9 +10,13 @@ describe('Checkbox', () => {
       createElement(Checkbox, { 'aria-label': 'View Claims', checked: true, onChange: () => {} })
     );
     assert.ok(html.startsWith('<input type="checkbox"'));
-    assert.ok(html.includes('accent-primary') && html.includes('enabled:cursor-pointer'));
+    assert.ok(html.includes('accent-primary') && html.includes('cursor-pointer'));
     assert.ok(html.includes('aria-label="View Claims"') && html.includes('checked=""'));
     const off = renderToStaticMarkup(createElement(Checkbox, { disabled: true, readOnly: true }));
-    assert.ok(off.includes('disabled=""') && off.includes('disabled:opacity-60'));
+    assert.ok(
+      off.includes('disabled=""') &&
+        off.includes('disabled:cursor-not-allowed') &&
+        off.includes('disabled:opacity-60')
+    );
   });
 });
