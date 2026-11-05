@@ -1,7 +1,6 @@
 import { KeyRoundIcon, SaveIcon, UserMinusIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useCan } from '../../shared/access.tsx';
-import { messageOf } from '../../shared/api.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
@@ -12,6 +11,7 @@ import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
+import { usePending } from '../../shared/use-pending.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { BLOCKED_MESSAGES, fullName, type UsersClient } from './client.ts';
 import { LinkPanel } from './link-panel.tsx';
@@ -26,8 +26,7 @@ export const UserPage = ({ client, userId, back }: UserPageProps) => {
     roles: await client.roles(signal)
   }));
   const [roleId, setRoleId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const { busy, error, run } = usePending();
   const [link, setLink] = useState('');
   const [removing, setRemoving] = useState(false);
   if (data.error) return <PageFailure message={data.error.message} />;
@@ -36,17 +35,6 @@ export const UserPage = ({ client, userId, back }: UserPageProps) => {
   const blocked = user.blockedReason ? BLOCKED_MESSAGES[user.blockedReason] : undefined;
   const chosen = roleId ?? user.role.id;
   const options = roles.filter((r) => r.isGrantable || r.id === user.role.id);
-  const run = async (work: () => Promise<void>) => {
-    setBusy(true);
-    setError('');
-    try {
-      await work();
-    } catch (err) {
-      setError(messageOf(err));
-    } finally {
-      setBusy(false);
-    }
-  };
   const save = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     void run(async () => {

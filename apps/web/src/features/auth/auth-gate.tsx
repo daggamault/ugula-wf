@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react';
-import { ThemeToggle } from '../../shared/ui/theme-toggle.tsx';
+import { Centered } from '../../shared/ui/centered.tsx';
 import type { AuthClient, AuthSession } from './client.ts';
 import { SignInForm } from './sign-in-form.tsx';
 
@@ -27,12 +27,9 @@ export const AuthGateView = ({
 
   if (!session) {
     return (
-      <main className="grid min-h-dvh place-items-center p-4">
-        <div className="fixed top-4 right-4">
-          <ThemeToggle tooltipSide="left" />
-        </div>
+      <Centered>
         <SignInForm auth={auth} onSuccess={onSessionChange} />
-      </main>
+      </Centered>
     );
   }
 

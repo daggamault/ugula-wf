@@ -1,6 +1,5 @@
 import { SendIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
-import { messageOf } from '../../shared/api.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
@@ -8,6 +7,7 @@ import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
+import { usePending } from '../../shared/use-pending.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { InviteInput, UsersClient } from './client.ts';
 import { LinkPanel } from './link-panel.tsx';
@@ -26,8 +26,7 @@ export const inviteProblem = (input: InviteInput) =>
 export const InvitePage = ({ client, back }: { client: UsersClient; back: string }) => {
   const roles = useResource('invite-roles', client.roles);
   const [draft, setDraft] = useState(EMPTY);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const { busy, error, setError, run } = usePending();
   const [link, setLink] = useState('');
   if (roles.error) return <PageFailure message={roles.error.message} />;
   if (!roles.data) return <PageLoading />;
@@ -36,22 +35,16 @@ export const InvitePage = ({ client, back }: { client: UsersClient; back: string
     value: draft[key],
     onChange: (e: { target: { value: string } }) => setDraft({ ...draft, [key]: e.target.value })
   });
-  const submit = async (e: FormEvent<HTMLFormElement>) => {
+  const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const problem = inviteProblem(draft);
     if (problem) {
       setError(problem);
       return;
     }
-    setBusy(true);
-    setError('');
-    try {
+    void run(async () => {
       setLink((await client.invite({ ...draft, email: draft.email.trim() })).link);
-    } catch (err) {
-      setError(messageOf(err));
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   return (
     <Page

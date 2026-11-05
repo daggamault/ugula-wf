@@ -1,54 +1,44 @@
-import { CheckIcon, KeyRoundIcon } from 'lucide-react';
-import { type FormEvent, type ReactNode, useState } from 'react';
-import { messageOf } from '../../shared/api.ts';
+import { isLongEnoughPassword, PASSWORD_TOO_SHORT } from '@ugula/access';
+import { CheckIcon, KeyRoundIcon, LogInIcon } from 'lucide-react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { BrandHeader } from '../../shared/ui/brand.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { Card } from '../../shared/ui/card.tsx';
+import { Centered } from '../../shared/ui/centered.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { PageLoading } from '../../shared/ui/page.tsx';
-import { ThemeToggle } from '../../shared/ui/theme-toggle.tsx';
+import { usePending } from '../../shared/use-pending.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import type { AuthClient } from './client.ts';
 
-const Centered = ({ children }: { children: ReactNode }) => (
-  <main className="grid min-h-dvh place-items-center p-4">
-    <div className="fixed top-4 right-4">
-      <ThemeToggle tooltipSide="left" />
-    </div>
-    {children}
-  </main>
-);
-
-export const MIN_PASSWORD = 12;
-
 export const passwordProblem = (password: string, confirm: string) =>
-  password.length < MIN_PASSWORD
-    ? `Use at least ${MIN_PASSWORD} characters.`
+  !isLongEnoughPassword(password)
+    ? `${PASSWORD_TOO_SHORT}.`
     : password !== confirm
       ? 'The passwords do not match.'
       : null;
 
-const usePending = () => {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const run = async (work: () => Promise<void>) => {
-    setBusy(true);
-    setError('');
-    try {
-      await work();
-    } catch (err) {
-      setError(messageOf(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return { busy, error, setError, run };
+export const pathWithoutToken = (location: { pathname: string; search: string }) => {
+  const query = new URLSearchParams(location.search);
+  if (!query.has('token')) return null;
+  query.delete('token');
+  return query.size ? `${location.pathname}?${query}` : location.pathname;
+};
+
+const useLinkToken = (token: string) => {
+  const [kept] = useState(token);
+  useEffect(() => {
+    const clean = pathWithoutToken(window.location);
+    if (clean) navigate(clean, { replace: true });
+  }, []);
+  return kept;
 };
 
 export const InvitationPage = ({ auth, token }: { auth: AuthClient; token: string }) => {
-  const preview = useResource(`invitation:${token}`, () => auth.previewInvitation(token));
+  const link = useLinkToken(token);
+  const preview = useResource(`invitation:${link}`, () => auth.previewInvitation(link));
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const { busy, error, setError, run } = usePending();
@@ -62,7 +52,7 @@ export const InvitationPage = ({ auth, token }: { auth: AuthClient; token: strin
       return;
     }
     void run(async () => {
-      await auth.acceptInvitation(token, password);
+      await auth.acceptInvitation(link, password);
       window.location.assign('/');
     });
   };
@@ -116,6 +106,7 @@ export const InvitationPage = ({ auth, token }: { auth: AuthClient; token: strin
 };
 
 export const PasswordPage = ({ auth, token }: { auth: AuthClient; token: string }) => {
+  const link = useLinkToken(token);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [done, setDone] = useState(false);
@@ -128,18 +119,24 @@ export const PasswordPage = ({ auth, token }: { auth: AuthClient; token: string 
       return;
     }
     void run(async () => {
-      await auth.setPassword(token, password);
+      await auth.setPassword(link, password);
       setDone(true);
     });
   };
   return (
     <Centered>
       <Card labelledBy="password-heading">
-        <BrandHeader id="password-heading">Set Your Password</BrandHeader>
+        <BrandHeader
+          id="password-heading"
+          description="Choose the password you will sign in with from now on."
+        >
+          Set Your Password
+        </BrandHeader>
         {done ? (
           <div className="flex flex-col gap-5">
             <Alert intent="success">Your password is set. Sign in with it now.</Alert>
             <Button isBlock onClick={() => navigate('/', { replace: true })}>
+              <LogInIcon aria-hidden="true" className="size-4" />
               Sign In
             </Button>
           </div>

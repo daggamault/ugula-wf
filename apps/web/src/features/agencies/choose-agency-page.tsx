@@ -6,9 +6,9 @@ import { Alert } from '../../shared/ui/alert.tsx';
 import { BrandHeader } from '../../shared/ui/brand.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { Card } from '../../shared/ui/card.tsx';
+import { Centered } from '../../shared/ui/centered.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { interactiveClasses } from '../../shared/ui/interactive.ts';
-import { ThemeToggle } from '../../shared/ui/theme-toggle.tsx';
 
 type ChooseAgencyPageProps = {
   agencies: readonly Agency[];
@@ -18,12 +18,14 @@ type ChooseAgencyPageProps = {
 };
 
 export const ChooseAgencyPage = ({ agencies, home, notice, onSignOut }: ChooseAgencyPageProps) => (
-  <main className="grid min-h-dvh place-items-center p-4">
-    <div className="fixed top-4 right-4">
-      <ThemeToggle tooltipSide="left" />
-    </div>
+  <Centered>
     <Card labelledBy="agency-heading">
-      <BrandHeader id="agency-heading">Choose an Agency</BrandHeader>
+      <BrandHeader
+        id="agency-heading"
+        description="Pick the agency whose billing you want to work."
+      >
+        Choose an Agency
+      </BrandHeader>
       {notice ? <Alert intent="warning">{notice}</Alert> : null}
       {agencies.length ? (
         <ul className="flex flex-col gap-2">
@@ -58,5 +60,5 @@ export const ChooseAgencyPage = ({ agencies, home, notice, onSignOut }: ChooseAg
         Sign Out
       </Button>
     </Card>
-  </main>
+  </Centered>
 );

@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { AuthClient } from './client.ts';
-import { InvitationPage, PasswordPage, passwordProblem } from './token-pages.tsx';
+import { InvitationPage, PasswordPage, passwordProblem, pathWithoutToken } from './token-pages.tsx';
 
 const auth = {
   previewInvitation: () => new Promise(() => undefined),
@@ -21,6 +21,20 @@ describe('passwordProblem', () => {
   });
 });
 
+describe('pathWithoutToken', () => {
+  it('drops the one-time token from the address and keeps the rest', () => {
+    assert.equal(
+      pathWithoutToken({ pathname: '/invitation', search: '?token=abc' }),
+      '/invitation'
+    );
+    assert.equal(
+      pathWithoutToken({ pathname: '/password', search: '?token=abc&x=1' }),
+      '/password?x=1'
+    );
+    assert.equal(pathWithoutToken({ pathname: '/password', search: '' }), null);
+  });
+});
+
 describe('token pages', () => {
   it('waits for the invitation before showing it', () => {
     const html = renderToStaticMarkup(createElement(InvitationPage, { auth, token: 't1' }));
@@ -30,6 +44,7 @@ describe('token pages', () => {
   it('asks for a new password twice', () => {
     const html = renderToStaticMarkup(createElement(PasswordPage, { auth, token: 't1' }));
     assert.ok(html.includes('Set Your Password'));
+    assert.ok(html.includes('Choose the password you will sign in with from now on.'));
     assert.ok(html.includes('for="new-password"') && html.includes('for="confirm-password"'));
     assert.ok(html.includes('autoComplete="new-password"'));
     assert.ok(html.includes('Set Password</span></button>'));
