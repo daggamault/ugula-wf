@@ -497,7 +497,7 @@ const nextClaimStep = (): GraphDef => {
     config: shared.decision(
       'billing.claim-policy',
       'Claim Policy',
-      'The waits, statements, collections threshold, write-off limit and review rule of the claim cycle, by the kind of payer being billed (its claim filing indicator, or patient).',
+      'The waits, statements, collections threshold, write-off limit, review rule and approval thresholds (write-offs and collections above them need someone with claims:approve) of the claim cycle, by the kind of payer being billed (its claim filing indicator, or patient).',
       table(
         [field('payerKind', 'string', 'Claim filing indicator of the payer billed, or patient')],
         POLICY_FIELDS,
@@ -915,7 +915,7 @@ export const cycleGraphs: SeedGraph[] = [
   asRule(
     'billing.next-claim-step',
     'Next Claim Step',
-    'Decides what a claim needs next from its ledger (Claim Steps table) under the Claim Policy table: reconcile a payer response or an overpayment, review before a payer and submit once approved, wait out the payer and follow up, review before the patient is billed or confirm payers, send or wait on patient statements, write off a small balance, balance review, or close.',
+    'Decides what a claim needs next from its ledger (Claim Steps table) under the Claim Policy table: refund an overpayment, work a payer denial, reconcile a payer response, wait on a facility that is responsible, review before a payer and submit once approved, wait out the payer and follow up, review before the patient is billed or confirm payers, send or wait on patient statements, write off a small balance, balance review, or close.',
     nextClaimStep()
   ),
   asStage(
@@ -951,13 +951,13 @@ export const cycleGraphs: SeedGraph[] = [
   asStage(
     'billing.send-statement',
     'Send Patient Statement',
-    'Sends the next patient statement, or asks for the billing profile or patient address it needs first.',
+    'Takes off what balance-billing law keeps off the patient (Patient Responsibility), then sends the next patient statement for what is left, or asks for the billing profile or patient address it needs first.',
     sendStatement()
   ),
   asWorkflow(
     'billing.cycle-claim',
     'Cycle Claim',
-    "Bills each payer in claim order, one step at a time: reads the claim ledger, decides the Next Claim Step and records it as the claim's status, runs Check Claim before a review or submission (fixing what blocks the claim), has it reviewed, files each approved claim as its own 837P (asking a biller when it cannot), follows up, reconciles responses (or resubmits a corrected claim), confirms payers when there are none, reviews before the first patient statement and sends statements before collections review. Sleeps until a claim change or a deadline.",
+    "Bills each payer in claim order, one step at a time: reads the claim ledger, decides the Next Claim Step and records it as the claim's status, runs Check Claim before a review or submission (fixing what blocks the claim), has it reviewed, files each approved claim as its own 837P (asking a biller when it cannot), follows up, works denials (Work Denial), reconciles responses (or resubmits a corrected claim), refunds credit balances (Refund Overpayment), waits on a responsible facility, confirms payers when there are none, reviews before the first patient statement, sends statements before collections review, and has write-offs and collections placements above the Claim Policy thresholds approved. Sleeps until a claim change or a deadline.",
     cycleClaim()
   )
 ];
