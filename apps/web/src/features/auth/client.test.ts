@@ -78,7 +78,7 @@ describe('invitations and passwords', () => {
     const client = createAuthClient(
       createApi('http://api.test', async (url, init = {}) => {
         calls.push(`${init.method} ${String(url)} ${init.body ?? ''}`);
-        const body = String(url).includes('/invitation?') ? { email: 'a@b.co' } : session;
+        const body = String(url).includes('/invitation/preview') ? { email: 'a@b.co' } : session;
         return new Response(JSON.stringify(body), { status: 200 });
       }),
       createSignal()
@@ -87,7 +87,7 @@ describe('invitations and passwords', () => {
     assert.deepEqual(await client.acceptInvitation('t1', 'pw'), session);
     await client.setPassword('t2', 'pw2');
     assert.deepEqual(calls, [
-      'GET http://api.test/api/auth/invitation?token=a%20b ',
+      'POST http://api.test/api/auth/invitation/preview {"token":"a b"}',
       'POST http://api.test/api/auth/invitation/accept {"token":"t1","password":"pw"}',
       'POST http://api.test/api/auth/password {"token":"t2","password":"pw2"}'
     ]);

@@ -57,7 +57,7 @@ export const createAuthClient = (api: Api, expired: Pick<Signal, 'subscribe'>): 
   },
   onExpired: expired.subscribe,
   previewInvitation: (token) =>
-    api.get<InvitationPreview>(`/api/auth/invitation?token=${encodeURIComponent(token)}`),
+    api.post<InvitationPreview>('/api/auth/invitation/preview', { token }),
   acceptInvitation: async (token, password) =>
     v.parse(authSessionSchema, await api.post('/api/auth/invitation/accept', { token, password })),
   setPassword: async (token, password) => {

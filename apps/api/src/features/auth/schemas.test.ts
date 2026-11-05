@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as v from 'valibot';
-import { acceptInvitationSchema, setPasswordSchema, signInSchema, tokenQuery } from './schemas.ts';
+import { acceptInvitationSchema, setPasswordSchema, signInSchema, tokenSchema } from './schemas.ts';
 
 describe('signInSchema', () => {
   it('normalizes email and validates password', () => {
@@ -40,7 +40,7 @@ describe('token schemas', () => {
       v.safeParse(setPasswordSchema, { token: '', password: 'x'.repeat(12) }).success,
       false
     );
-    assert.equal(v.safeParse(tokenQuery, { token: 'x'.repeat(201) }).success, false);
+    assert.equal(v.safeParse(tokenSchema, { token: 'x'.repeat(201) }).success, false);
     assert.equal(
       v.safeParse(acceptInvitationSchema, { token: 't', password: 'short' }).success,
       true

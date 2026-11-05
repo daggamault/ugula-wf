@@ -1,3 +1,4 @@
+import { MIN_PASSWORD_LENGTH, PASSWORD_TOO_SHORT } from '@ugula/access';
 import { emailString, nonEmpty } from '@ugula/config';
 import * as v from 'valibot';
 
@@ -8,9 +9,9 @@ export const signInSchema = v.object({
 
 export type SignInInput = v.InferOutput<typeof signInSchema>;
 
-export const newPassword = v.pipe(
+const newPassword = v.pipe(
   v.string(),
-  v.minLength(12, 'Use at least 12 characters'),
+  v.minLength(MIN_PASSWORD_LENGTH, PASSWORD_TOO_SHORT),
   v.maxLength(1024)
 );
 
@@ -18,7 +19,7 @@ const token = v.pipe(v.string(), v.nonEmpty(), v.maxLength(200));
 
 export const setPasswordSchema = v.object({ token, password: newPassword });
 
-export const tokenQuery = v.object({ token });
+export const tokenSchema = v.object({ token });
 
 export const acceptInvitationSchema = v.object({
   token,

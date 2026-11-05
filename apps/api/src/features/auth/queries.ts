@@ -91,8 +91,8 @@ export const insertOrganizationUser = (
 export const insertMembership = async (
   db: Db,
   input: { organizationId: string; agencyId: string; userId: string; roleId: string }
-) => {
-  await db
+) =>
+  (await db
     .insertInto('memberships')
     .values({
       organization_id: input.organizationId,
@@ -100,13 +100,18 @@ export const insertMembership = async (
       user_id: input.userId,
       role_id: input.roleId
     })
-    .onConflict((oc) => oc.columns(['agency_id', 'user_id']).doUpdateSet({ role_id: input.roleId }))
-    .execute();
-};
+    .onConflict((oc) => oc.columns(['agency_id', 'user_id']).doNothing())
+    .returning('id')
+    .executeTakeFirst()) !== undefined;
 
-export const deleteInvitationById = async (db: Db, id: string) => {
-  await db.deleteFrom('invitations').where('id', '=', id).execute();
-};
+export const consumeInvitation = async (db: Db, id: string, hash: string, now: Date) =>
+  (await db
+    .deleteFrom('invitations')
+    .where('id', '=', id)
+    .where('token_hash', '=', hash)
+    .where('expires_at', '>', now)
+    .returning('id')
+    .executeTakeFirst()) !== undefined;
 
 export const consumePasswordToken = (db: Db, hash: string, now: Date) =>
   db

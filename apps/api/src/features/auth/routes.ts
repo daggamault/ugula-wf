@@ -3,8 +3,8 @@ import { SESSION_COOKIE, SESSION_TTL_SECONDS, type SessionData } from '@ugula/au
 import { type Context, Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { invalidRequest } from '../../shared/http.ts';
-import { ok, respond } from '../../shared/result.ts';
-import { acceptInvitationSchema, setPasswordSchema, signInSchema, tokenQuery } from './schemas.ts';
+import { ok, type Result, respond } from '../../shared/result.ts';
+import { acceptInvitationSchema, setPasswordSchema, signInSchema, tokenSchema } from './schemas.ts';
 import type { AuthService } from './service.ts';
 
 type AuthRoutesDeps = {
@@ -30,8 +30,7 @@ export const createAuthRoutes = ({ service, sseUrl, secureCookie, clientIp }: Au
       maxAge: SESSION_TTL_SECONDS
     });
 
-  app.post('/sign-in', sValidator('json', signInSchema, invalidRequest), async (c) => {
-    const res = await service.signIn(c.req.valid('json'), clientIp(c));
+  const signedIn = async (c: Context, res: Result<{ token: string; session: SessionData }>) => {
     if (!res.ok) {
       const wait = res.failure.details?.retryAfter;
       if (typeof wait === 'number') c.header('retry-after', String(wait));
@@ -39,7 +38,11 @@ export const createAuthRoutes = ({ service, sseUrl, secureCookie, clientIp }: Au
     }
     startSession(c, res.value.token);
     return respond(c, await sessionBody(res.value.session));
-  });
+  };
+
+  app.post('/sign-in', sValidator('json', signInSchema, invalidRequest), async (c) =>
+    signedIn(c, await service.signIn(c.req.valid('json'), clientIp(c)))
+  );
 
   app.post('/sign-out', async (c) => {
     await service.signOut(getCookie(c, SESSION_COOKIE));
@@ -53,19 +56,14 @@ export const createAuthRoutes = ({ service, sseUrl, secureCookie, clientIp }: Au
     return respond(c, res.ok ? await sessionBody(res.value) : res);
   });
 
-  app.get('/invitation', sValidator('query', tokenQuery, invalidRequest), async (c) =>
-    respond(c, await service.previewInvitation(c.req.valid('query').token))
+  app.post('/invitation/preview', sValidator('json', tokenSchema, invalidRequest), async (c) =>
+    respond(c, await service.previewInvitation(c.req.valid('json').token))
   );
 
   app.post(
     '/invitation/accept',
     sValidator('json', acceptInvitationSchema, invalidRequest),
-    async (c) => {
-      const res = await service.acceptInvitation(c.req.valid('json'));
-      if (!res.ok) return respond(c, res);
-      startSession(c, res.value.token);
-      return respond(c, await sessionBody(res.value.session));
-    }
+    async (c) => signedIn(c, await service.acceptInvitation(c.req.valid('json'), clientIp(c)))
   );
 
   app.post('/password', sValidator('json', setPasswordSchema, invalidRequest), async (c) =>

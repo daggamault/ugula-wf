@@ -48,8 +48,15 @@ const service: AuthService = {
           hasAccount: false
         })
       : invalidLink,
-  acceptInvitation: async ({ token }) =>
-    token === 'invite' ? ok({ token: 'tok', session }) : invalidLink,
+  acceptInvitation: async ({ token, password }, ip) => {
+    ips.push(ip);
+    if (password === 'locked') {
+      return fail('rate_limited', 'Too many failed sign-ins. Try again later.', {
+        retryAfter: 30
+      });
+    }
+    return token === 'invite' ? ok({ token: 'tok', session }) : invalidLink;
+  },
   setPassword: async ({ token }) => (token === 'reset' ? ok({ status: 'ok' }) : invalidLink)
 };
 
@@ -117,12 +124,13 @@ describe('auth routes', () => {
     });
   });
 
-  it('previews invitations by token', async () => {
-    const res = await routes.request('/invitation?token=invite');
+  it('previews invitations by a token sent in the body, never the URL', async () => {
+    const res = await post('/invitation/preview', { token: 'invite' });
     assert.equal(res.status, 200);
     assert.equal(((await res.json()) as { roleName: string }).roleName, 'Biller');
-    assert.equal((await routes.request('/invitation?token=nope')).status, 422);
-    assert.equal((await routes.request('/invitation')).status, 400);
+    assert.equal((await post('/invitation/preview', { token: 'nope' })).status, 422);
+    assert.equal((await post('/invitation/preview')).status, 400);
+    assert.equal((await routes.request('/invitation?token=invite')).status, 404);
   });
 
   it('accepts an invitation into a signed-in session', async () => {
@@ -130,10 +138,18 @@ describe('auth routes', () => {
     assert.equal(res.status, 200);
     assert.equal(sessionCookie(res), 'ugula_session=tok');
     assert.deepEqual(await res.json(), { user, sseUrl: 'http://localhost:3002' });
+    assert.equal(ips.at(-1), '10.0.0.1');
     const bad = await post('/invitation/accept', { token: 'nope', password: 'P@ssw0rd123' });
     assert.equal(bad.status, 422);
     assert.equal(bad.headers.get('set-cookie'), null);
     assert.equal((await post('/invitation/accept', { token: 'invite' })).status, 400);
+  });
+
+  it('answers throttled invitation passwords with 429 and Retry-After', async () => {
+    const res = await post('/invitation/accept', { token: 'invite', password: 'locked' });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get('retry-after'), '30');
+    assert.equal(res.headers.get('set-cookie'), null);
   });
 
   it('sets a password from a reset token', async () => {

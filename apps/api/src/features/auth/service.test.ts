@@ -119,14 +119,25 @@ describe('auth service', () => {
     await db.destroy();
   });
 
-  it('rejects unknown users', async () => {
-    const { db } = createRecordingDb();
-    const res = await createAuthService({
-      db,
-      sessions: memorySessions(),
-      throttle: throttle()
-    }).signIn({ email: 'nobody@example.com', password: 'x' }, IP);
-    assert.equal(res.ok, false);
+  it('rejects unknown users after the same password work as known ones', async () => {
+    const user = await credentials();
+    const { db } = createRecordingDb((q) =>
+      q.parameters.includes('dev@example.com') ? [user] : []
+    );
+    const service = createAuthService({ db, sessions: memorySessions(), throttle: throttle() });
+    await service.signIn({ email: 'nobody@example.com', password: 'warm-up' }, IP);
+    const timed = async (email: string) => {
+      const start = performance.now();
+      const res = await service.signIn({ email, password: 'wrong' }, IP);
+      assert.deepEqual(res, {
+        ok: false,
+        failure: { code: 'unauthorized', message: 'Invalid email or password' }
+      });
+      return performance.now() - start;
+    };
+    const known = await timed('dev@example.com');
+    const unknown = await timed('nobody@example.com');
+    assert.ok(unknown > known / 3, `unknown ${unknown}ms vs known ${known}ms`);
     await db.destroy();
   });
 
@@ -161,16 +172,23 @@ const invalid = {
   failure: { code: 'invalid', message: 'This link is invalid or has expired' }
 };
 
-const invitationService = (row: typeof invitation | undefined) => {
-  const { db, queries } = createRecordingDb((q) =>
-    q.sql.includes('from "invitations"')
-      ? row
-        ? [row]
-        : []
-      : q.sql.startsWith('insert into "users"')
-        ? [{ id: 'u-new' }]
-        : []
-  );
+type Outcome = { consumed?: boolean; joined?: boolean; fail?: Error };
+
+const invitationService = (row: typeof invitation | undefined, outcome: Outcome = {}) => {
+  const { db, queries } = createRecordingDb((q) => {
+    if (q.sql.startsWith('delete from "invitations"')) {
+      return outcome.consumed === false ? [] : [{ id: 'i-1' }];
+    }
+    if (q.sql.includes('from "invitations"')) return row ? [row] : [];
+    if (q.sql.startsWith('insert into "users"')) {
+      if (outcome.fail) throw outcome.fail;
+      return [{ id: 'u-new' }];
+    }
+    if (q.sql.startsWith('insert into "memberships"')) {
+      return outcome.joined === false ? [] : [{ id: 'm-1' }];
+    }
+    return [];
+  });
   const sessions = memorySessions();
   return {
     db,
@@ -215,7 +233,7 @@ describe('auth service invitations', () => {
       const { db, service } = invitationService(row);
       assert.deepEqual(await service.previewInvitation('tok'), invalid);
       assert.deepEqual(
-        await service.acceptInvitation({ token: 'tok', password: 'P@ssw0rd123456' }),
+        await service.acceptInvitation({ token: 'tok', password: 'P@ssw0rd123456' }, IP),
         invalid
       );
       await db.destroy();
@@ -224,22 +242,85 @@ describe('auth service invitations', () => {
 
   it('creates the account and membership for a new user, then signs them in', async () => {
     const { db, queries, sessions, service } = invitationService(invitation);
-    assert.deepEqual(await service.acceptInvitation({ token: 'tok', password: 'short' }), {
+    assert.deepEqual(await service.acceptInvitation({ token: 'tok', password: 'short' }, IP), {
       ok: false,
       failure: { code: 'invalid', message: 'Use at least 12 characters' }
     });
-    const res = await service.acceptInvitation({ token: 'tok', password: 'P@ssw0rd123456' });
+    const res = await service.acceptInvitation({ token: 'tok', password: 'P@ssw0rd123456' }, IP);
     assert.ok(res.ok);
     assert.deepEqual(res.value.session, { userId: 'u-new', email: 'new@example.com' });
     assert.deepEqual(await sessions.get(res.value.token), res.value.session);
-    const writes = queries.filter((q) => !q.sql.startsWith('select'));
+    const writes = queries.filter((q) => !/^(select|begin|commit|rollback)/.test(q.sql));
     assert.deepEqual(
       writes.map((q) => q.sql.split(' ').slice(0, 3).join(' ')),
-      ['insert into "users"', 'insert into "memberships"', 'delete from "invitations"']
+      ['delete from "invitations"', 'insert into "users"', 'insert into "memberships"']
     );
-    assert.equal(writes[0]?.parameters[1], 'o-1');
-    assert.notEqual(writes[0]?.parameters[5], 'P@ssw0rd123456');
-    assert.deepEqual(writes[1]?.parameters.slice(0, 4), ['o-1', 't-1', 'u-new', 'r-1']);
+    assert.deepEqual(writes[0]?.parameters, ['i-1', hashToken('tok'), NOW]);
+    assert.equal(writes[1]?.parameters[1], 'o-1');
+    assert.notEqual(writes[1]?.parameters[5], 'P@ssw0rd123456');
+    assert.deepEqual(writes[2]?.parameters, ['o-1', 't-1', 'u-new', 'r-1']);
+    await db.destroy();
+  });
+
+  it('accepts an invitation only once, even when two accepts race', async () => {
+    const spent = invitationService(invitation, { consumed: false });
+    assert.deepEqual(
+      await spent.service.acceptInvitation({ token: 'tok', password: 'P@ssw0rd123456' }, IP),
+      invalid
+    );
+    assert.ok(!spent.queries.some((q) => q.sql.startsWith('insert into')));
+    await spent.db.destroy();
+    const taken = invitationService(invitation, {
+      fail: Object.assign(new Error('dup'), { code: '23505' })
+    });
+    assert.deepEqual(
+      await taken.service.acceptInvitation({ token: 'tok', password: 'P@ssw0rd123456' }, IP),
+      invalid
+    );
+    await taken.db.destroy();
+  });
+
+  it('never changes the role of someone already in the agency', async () => {
+    const member = invitationService(
+      {
+        ...invitation,
+        user_id: 'u-2',
+        user_organization_id: 'o-1',
+        password_hash: await hashPassword('Existing-pass1')
+      },
+      { joined: false }
+    );
+    assert.deepEqual(
+      await member.service.acceptInvitation({ token: 'tok', password: 'Existing-pass1' }, IP),
+      { ok: false, failure: { code: 'conflict', message: 'You already belong to this agency' } }
+    );
+    assert.ok(!member.queries.some((q) => q.sql.includes('do update')));
+    await member.db.destroy();
+  });
+
+  it('throttles wrong passwords for an existing account', async () => {
+    const existing = {
+      ...invitation,
+      user_id: 'u-2',
+      user_organization_id: 'o-1',
+      password_hash: await hashPassword('Existing-pass1')
+    };
+    const { db, queries, service } = invitationService(existing);
+    for (let i = 0; i < 5; i++) {
+      await service.acceptInvitation({ token: 'tok', password: 'wrong' }, IP);
+    }
+    assert.deepEqual(
+      await service.acceptInvitation({ token: 'tok', password: 'Existing-pass1' }, IP),
+      {
+        ok: false,
+        failure: {
+          code: 'rate_limited',
+          message: 'Too many failed sign-ins. Try again later.',
+          details: { retryAfter: 30 }
+        }
+      }
+    );
+    assert.ok(!queries.some((q) => q.sql.startsWith('delete from "invitations"')));
     await db.destroy();
   });
 
@@ -254,11 +335,11 @@ describe('auth service invitations', () => {
     const preview = await service.previewInvitation('tok');
     assert.ok(preview.ok);
     assert.equal(preview.value.hasAccount, true);
-    assert.deepEqual(await service.acceptInvitation({ token: 'tok', password: 'wrong' }), {
+    assert.deepEqual(await service.acceptInvitation({ token: 'tok', password: 'wrong' }, IP), {
       ok: false,
       failure: { code: 'unauthorized', message: 'Invalid email or password' }
     });
-    const res = await service.acceptInvitation({ token: 'tok', password: 'Existing-pass1' });
+    const res = await service.acceptInvitation({ token: 'tok', password: 'Existing-pass1' }, IP);
     assert.ok(res.ok);
     assert.deepEqual(res.value.session, { userId: 'u-2', email: 'new@example.com' });
     assert.equal(

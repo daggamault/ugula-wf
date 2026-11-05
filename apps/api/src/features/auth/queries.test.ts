@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
 import {
+  consumeInvitation,
   consumePasswordToken,
-  deleteInvitationById,
   findActiveUser,
   findActiveUserByEmail,
   findInvitationByHash,
@@ -60,7 +60,8 @@ describe('findInvitationByHash', () => {
 });
 
 describe('invitation writes', () => {
-  it('inserts organization users, upserts memberships and deletes the invitation', async () => {
+  it('inserts organization users, adds memberships only once and consumes the invitation', async () => {
+    const at = new Date('2026-01-01T00:00:00Z');
     const { db, queries } = createRecordingDb((q) =>
       q.sql.includes('returning') ? [{ id: 'u-9' }] : []
     );
@@ -74,13 +75,16 @@ describe('invitation writes', () => {
       }),
       { id: 'u-9' }
     );
-    await insertMembership(db, {
-      organizationId: 'o-1',
-      agencyId: 't-1',
-      userId: 'u-9',
-      roleId: 'r-1'
-    });
-    await deleteInvitationById(db, 'i-1');
+    assert.equal(
+      await insertMembership(db, {
+        organizationId: 'o-1',
+        agencyId: 't-1',
+        userId: 'u-9',
+        roleId: 'r-1'
+      }),
+      true
+    );
+    assert.equal(await consumeInvitation(db, 'i-1', 'h', at), true);
     const [user, membership, del] = queries;
     assert.ok(user?.sql.startsWith('insert into "users"'));
     assert.deepEqual(user?.parameters, [
@@ -92,10 +96,22 @@ describe('invitation writes', () => {
       'h'
     ]);
     assert.ok(
-      membership?.sql.includes('on conflict ("agency_id", "user_id") do update set "role_id" = $5')
+      membership?.sql.endsWith('on conflict ("agency_id", "user_id") do nothing returning "id"')
     );
-    assert.deepEqual(membership?.parameters, ['o-1', 't-1', 'u-9', 'r-1', 'r-1']);
-    assert.equal(del?.sql, 'delete from "invitations" where "id" = $1');
+    assert.deepEqual(membership?.parameters, ['o-1', 't-1', 'u-9', 'r-1']);
+    assert.equal(
+      del?.sql,
+      'delete from "invitations" where "id" = $1 and "token_hash" = $2 and "expires_at" > $3 returning "id"'
+    );
+    assert.deepEqual(del?.parameters, ['i-1', 'h', at]);
+    await db.destroy();
+  });
+
+  it('reports an existing membership and a spent invitation', async () => {
+    const { db } = createRecordingDb(() => []);
+    const input = { organizationId: 'o-1', agencyId: 't-1', userId: 'u-9', roleId: 'r-1' };
+    assert.equal(await insertMembership(db, input), false);
+    assert.equal(await consumeInvitation(db, 'i-1', 'h', new Date()), false);
     await db.destroy();
   });
 });
