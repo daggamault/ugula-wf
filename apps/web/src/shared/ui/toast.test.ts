@@ -5,22 +5,32 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { addToast, TOAST_LIMIT, Toaster, ToastProvider } from './toast.tsx';
 
 describe('addToast', () => {
-  it('keeps the newest few and replaces a repeat of the same message', () => {
+  it('keeps the newest few and updates a repeat of the same message in place, keeping its timer', () => {
     const toasts = Array.from({ length: TOAST_LIMIT + 2 }, (_, i) => ({ id: i, title: `T${i}` }));
     const kept = toasts.reduce(addToast, []);
     assert.deepEqual(
       kept.map((t) => t.id),
       [2, 3, 4, 5]
     );
-    const repeated = addToast(kept, { id: 9, title: 'T3' });
+    const repeated = addToast(kept, { id: 9, title: 'T3', description: 'Again' });
     assert.deepEqual(
-      repeated.map((t) => t.id),
-      [2, 4, 5, 9]
+      repeated.map((t) => [t.id, t.description]),
+      [
+        [2, undefined],
+        [3, 'Again'],
+        [4, undefined],
+        [5, undefined]
+      ]
     );
     const keyed = addToast(repeated, { id: 10, key: 'T2', title: 'Something else' });
     assert.deepEqual(
-      keyed.map((t) => t.id),
-      [4, 5, 9, 10]
+      keyed.map((t) => [t.id, t.title]),
+      [
+        [2, 'Something else'],
+        [3, 'T3'],
+        [4, 'T4'],
+        [5, 'T5']
+      ]
     );
   });
 });

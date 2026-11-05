@@ -34,8 +34,12 @@ const TOAST_MS = 6_000;
 
 const keyOf = (toast: ToastInput) => toast.key ?? toast.title;
 
-export const addToast = (toasts: readonly ToastItem[], toast: ToastItem) =>
-  [...toasts.filter((t) => keyOf(t) !== keyOf(toast)), toast].slice(-TOAST_LIMIT);
+export const addToast = (toasts: readonly ToastItem[], toast: ToastItem) => {
+  const shown = toasts.find((t) => keyOf(t) === keyOf(toast));
+  return shown
+    ? toasts.map((t) => (t === shown ? { ...toast, id: shown.id } : t))
+    : [...toasts, toast].slice(-TOAST_LIMIT);
+};
 
 export type Notify = (toast: ToastInput) => void;
 
