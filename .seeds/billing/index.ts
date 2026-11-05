@@ -4,6 +4,8 @@ import { chargeGraphs } from './charges.ts';
 import { checkGraphs } from './checks.ts';
 import { claimGraphs } from './claim.ts';
 import { cycleGraphs } from './cycle.ts';
+import { documentGraphs } from './documents.ts';
+import { facilityGraphs } from './facility.ts';
 import { factGraphs } from './facts.ts';
 import { intakeGraphs } from './intake.ts';
 import { payerFileGraphs } from './payer-files.ts';
@@ -37,6 +39,8 @@ const all = [
   ...chargeGraphs,
   ...claimGraphs,
   ...checkGraphs,
+  ...facilityGraphs,
+  ...documentGraphs,
   ...intakeGraphs,
   ...recoveryGraphs,
   ...cycleGraphs,

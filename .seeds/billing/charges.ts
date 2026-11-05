@@ -35,15 +35,26 @@ const baseRateCode = (): GraphDef => {
     config: shared.decision(
       'billing.base-rate',
       'Base Rate',
-      'Picks the HCPCS base rate code from the trip type, level of service and emergency status.',
+      'Picks the HCPCS base rate code from the trip type, level of service and emergency status; a patient pronounced dead before loading is billed at the BLS rate.',
       table(
         [
           field('tripType', 'string', 'Trip type'),
           field('level', 'string', 'Level of service'),
-          field('emergency', 'boolean', 'Emergency')
+          field('emergency', 'boolean', 'Emergency'),
+          field('deceased', 'boolean', 'Pronounced dead before loading')
         ],
         [field('code', 'string', 'HCPCS code')],
         [
+          {
+            label: 'Pronounced dead before loading, emergency response',
+            when: { deceased: is(true), emergency: is(true) },
+            set: { code: 'A0429' }
+          },
+          {
+            label: 'Pronounced dead before loading',
+            when: { deceased: is(true) },
+            set: { code: 'A0428' }
+          },
           {
             label: 'Treated without transport',
             when: { tripType: oneOf(...NO_TRANSPORT) },
@@ -68,6 +79,7 @@ const baseRateCode = (): GraphDef => {
   g.wire('entry.tripType', 'base.tripType');
   g.wire('service.level', 'base.level');
   g.wire('service.emergency', 'base.emergency');
+  g.wire('service.deceased', 'base.deceased');
   g.wire('base.code', 'return.code');
   g.wire('base.rules', 'return.reasons');
   return g.def;
@@ -81,7 +93,7 @@ const mileageLines = (): GraphDef => {
         'lines',
         CHARGE_LINES,
         'Mileage Lines',
-        'The mileage line, or none when no miles are billed.'
+        'The covered mileage line and the non-covered (A0888) line, or none when no miles are billed.'
       ),
       P.reasons('miles were or were not billed')
     ]
@@ -92,9 +104,12 @@ const mileageLines = (): GraphDef => {
     config: shared.decision(
       'billing.mileage-code',
       'Mileage',
-      'Picks the HCPCS mileage code for trips that transported the patient.',
+      'Picks the HCPCS mileage code for trips that transported the patient, for the loaded miles that are covered.',
       table(
-        [field('tripType', 'string', 'Trip type'), field('loadedMiles', 'number', 'Loaded miles')],
+        [
+          field('tripType', 'string', 'Trip type'),
+          field('loadedMiles', 'number', 'Covered loaded miles')
+        ],
         [field('code', 'string', 'HCPCS code')],
         [
           {
@@ -109,21 +124,66 @@ const mileageLines = (): GraphDef => {
       )
     )
   });
-  g.add('miles', 'std.logic.coalesce', { label: 'Loaded Miles or 0', values: { fallback: 0 } });
+  g.add(
+    'covered',
+    'std.expr',
+    expr(
+      'Loaded Miles Less Non-Covered Miles',
+      'loadedMiles == null ? null : round(loadedMiles - (nonCoveredMiles ?? 0), 2)'
+    )
+  );
+  g.add('miles', 'std.logic.coalesce', { label: 'Covered Miles or 0', values: { fallback: 0 } });
   g.add('line', 'billing.line.make', { label: 'Mileage Line' });
   g.add('keep', 'std.logic.select', { label: 'Only When Miles Are Billed' });
-  g.add('lines', 'std.list.make', { label: 'As a List', config: { count: 1 } });
+  g.add('nonCovered', 'std.table.decide', {
+    label: 'Non-Covered Mileage',
+    config: shared.decision(
+      'billing.non-covered-mileage-code',
+      'Non-Covered Mileage',
+      'Picks the HCPCS code for miles beyond the nearest appropriate facility, billed on their own line.',
+      table(
+        [
+          field('tripType', 'string', 'Trip type'),
+          field('nonCoveredMiles', 'number', 'Non-covered miles')
+        ],
+        [field('code', 'string', 'HCPCS code')],
+        [
+          {
+            label: 'Miles beyond the nearest appropriate facility',
+            when: {
+              tripType: { op: 'notOneOf', value: NO_TRANSPORT },
+              nonCoveredMiles: { op: 'gt', value: 0 }
+            },
+            set: { code: 'A0888' }
+          }
+        ]
+      )
+    )
+  });
+  g.add('excess', 'billing.line.make', { label: 'Non-Covered Mileage Line' });
+  g.add('keepExcess', 'std.logic.select', { label: 'Only When Non-Covered Miles Are Billed' });
+  g.add('lines', 'std.list.make', { label: 'As a List', config: { count: 2 } });
+  g.add('reasons', 'std.list.concat', { label: 'Both Tables' });
   g.ret('return');
   g.wire('entry.service', 'service.service');
-  g.wire('entry.tripType', 'mileage.tripType');
-  g.wire('service.loadedMiles', 'mileage.loadedMiles', 'miles.value');
+  g.wire('entry.tripType', 'mileage.tripType', 'nonCovered.tripType');
+  g.wire('service.loadedMiles', 'covered.loadedMiles');
+  g.wire('service.nonCoveredMiles', 'covered.nonCoveredMiles', 'nonCovered.nonCoveredMiles');
+  g.wire('service.nonCoveredMiles', 'excess.units');
+  g.wire('covered.result', 'mileage.loadedMiles', 'miles.value');
   g.wire('mileage.code', 'line.code');
   g.wire('miles.result', 'line.units');
   g.wire('mileage.matched', 'keep.condition');
   g.wire('line.line', 'keep.whenTrue');
+  g.wire('nonCovered.code', 'excess.code');
+  g.wire('nonCovered.matched', 'keepExcess.condition');
+  g.wire('excess.line', 'keepExcess.whenTrue');
   g.wire('keep.result', 'lines.item1');
+  g.wire('keepExcess.result', 'lines.item2');
   g.wire('lines.list', 'return.lines');
-  g.wire('mileage.rules', 'return.reasons');
+  g.wire('mileage.rules', 'reasons.list');
+  g.wire('nonCovered.rules', 'reasons.other');
+  g.wire('reasons.list', 'return.reasons');
   return g.def;
 };
 
@@ -322,13 +382,23 @@ const assignCharges = (): GraphDef => {
   return g.def;
 };
 
-const CHANGES = ['tripType', 'level', 'emergency', 'loadedMiles', 'payers'] as const;
+const CHANGES = [
+  'tripType',
+  'level',
+  'emergency',
+  'loadedMiles',
+  'deceased',
+  'nonCoveredMiles',
+  'payers'
+] as const;
 
 const CHANGE_LABELS: Record<(typeof CHANGES)[number], string> = {
   tripType: 'Trip type',
   level: 'Level of service',
   emergency: 'Emergency status',
   loadedMiles: 'Loaded miles',
+  deceased: 'Pronounced dead',
+  nonCoveredMiles: 'Non-covered miles',
   payers: 'Payers'
 };
 
@@ -339,7 +409,7 @@ const repriceTriggers = (): GraphDef => {
         'changes',
         { object: {} },
         'What Changed',
-        'Which claim fields an edit changed: tripType, level, emergency, loadedMiles and payers.'
+        'Which claim fields an edit changed: tripType, level, emergency, loadedMiles, deceased, nonCoveredMiles and payers.'
       )
     ],
     [
@@ -427,13 +497,13 @@ export const chargeGraphs: SeedGraph[] = [
   asRule(
     'billing.base-rate-code',
     'Base Rate Code',
-    'Picks the HCPCS base rate by trip type, level and emergency (Base Rate table): A0998 without transport, A0434 SCT, A0433 ALS2, A0427/A0426 ALS1, A0429/A0428 BLS.',
+    'Picks the HCPCS base rate by trip type, level and emergency (Base Rate table): A0429/A0428 when pronounced dead before loading, A0998 without transport, A0434 SCT, A0433 ALS2, A0427/A0426 ALS1, A0429/A0428 BLS.',
     baseRateCode()
   ),
   asRule(
     'billing.mileage-lines',
     'Mileage Lines',
-    'Bills A0425 loaded miles for trips that transported the patient (Mileage table); units are rounded up to the tenth, or to the whole mile from 100 miles, when priced.',
+    'Bills A0425 for the covered loaded miles of trips that transported the patient (Mileage table), and A0888 for miles beyond the nearest appropriate facility (Non-Covered Mileage table); units are rounded up to the tenth, or to the whole mile from 100 miles, when priced.',
     mileageLines()
   ),
   asRule(
@@ -463,7 +533,7 @@ export const chargeGraphs: SeedGraph[] = [
   asRule(
     'billing.reprice-triggers',
     'Reprice Triggers',
-    'Decides whether a claim edit maps and prices the charges again (Reprice Triggers table): a changed trip type, level, emergency status, loaded miles or payers does.',
+    'Decides whether a claim edit maps and prices the charges again (Reprice Triggers table): a changed trip type, level, emergency status, loaded or non-covered miles, pronounced-dead status or payers does.',
     repriceTriggers()
   ),
   asStage(

@@ -17,6 +17,14 @@ const issue = (code: string, field: string, message: string, coverageId = 'null'
 const when = (condition: string, ...issues: string[]) =>
   `(${condition} ? [${issues.join(', ')}] : [])`;
 
+type Use = {
+  id: string;
+  type: string;
+  label: string;
+  inputs: string[];
+  outputs: Record<string, string>;
+};
+
 type Check = {
   key: string;
   name: string;
@@ -25,9 +33,10 @@ type Check = {
   facts: string[];
   expression: string;
   values?: Record<string, Json>;
+  uses?: Use[];
 };
 
-const checkGraph = ({ facts, expression, values }: Check): GraphDef => {
+const checkGraph = ({ facts, expression, values, uses = [] }: Check): GraphDef => {
   const g = rule([CHECK_FACTS_IN], [P.issues('What this check found, before severities apply.')]);
   g.add('facts', 'billing.check-facts.break');
   g.add('issues', 'std.expr', {
@@ -37,6 +46,11 @@ const checkGraph = ({ facts, expression, values }: Check): GraphDef => {
   g.ret('return');
   g.wire('entry.facts', 'facts.facts');
   for (const f of facts) g.wire(`facts.${f}`, `issues.${f}`);
+  for (const u of uses) {
+    g.add(u.id, u.type, { label: u.label });
+    for (const pin of u.inputs) g.wire(`facts.${pin}`, `${u.id}.${pin}`);
+    for (const [pin, as] of Object.entries(u.outputs)) g.wire(`${u.id}.${pin}`, `issues.${as}`);
+  }
   g.wire('issues.result', 'return.issues');
   return g.def;
 };
@@ -50,6 +64,10 @@ const PCS_LATE_DAYS = 2;
 const FILING_WARNING_DAYS = 30;
 
 const MAX_PAYERS = 11;
+
+const ROUND_TRIPS_WITHOUT_AUTHORIZATION = 3;
+
+const MSP_ANSWERS = ['mspEmployerPlan', 'mspEsrd', 'mspDisability', 'mspAccident'];
 
 const addressIssues = (list: string, code: string, field: string, label: string) =>
   `map(${list} ?? [], p => ${issue(code, field, `"The ${label} " + p + " is missing"`)})`;
@@ -266,7 +284,7 @@ const CHECKS: Check[] = [
     key: 'billing.check-pcs',
     name: 'Check Physician Certification',
     description:
-      'A scheduled non-emergency transport has a physician certification statement (required for Medicare), signed within the days before the trip or shortly after.',
+      'A scheduled non-emergency transport has a physician certification statement (required for Medicare), signed within the 60 days before the trip when it covers repetitive transports, and not long after.',
     codes: {
       'pcs-missing-medicare': 'blocking',
       'pcs-missing': 'warning',
@@ -274,7 +292,7 @@ const CHECKS: Check[] = [
       'pcs-expired': 'warning',
       'pcs-late': 'warning'
     },
-    facts: ['tripType', 'emergency', 'pcsOnFile', 'pcsDaysBeforeTrip', 'billsMedicare'],
+    facts: ['tripType', 'emergency', 'pcsOnFile', 'pcsDaysBeforeTrip', 'billsMedicare', 'pcsType'],
     values: { validDays: PCS_VALID_DAYS, lateDays: PCS_LATE_DAYS },
     expression: `tripType != "scheduled" || emergency == true ? [] : pcsOnFile != true
   ? [${issue(
@@ -284,7 +302,7 @@ const CHECKS: Check[] = [
   ).replace('code: "pcs-missing"', 'code: billsMedicare ? "pcs-missing-medicare" : "pcs-missing"')}]
   : pcsDaysBeforeTrip == null
     ? [${issue('pcs-undated', 'pcs', '"The physician certification statement has no signed date"')}]
-    : pcsDaysBeforeTrip > validDays
+    : pcsDaysBeforeTrip > validDays && pcsType != "nonRepetitive"
       ? [${issue(
         'pcs-expired',
         'pcs',
@@ -298,6 +316,154 @@ const CHECKS: Check[] = [
           '"The physician certification statement was signed more than " + text(lateDays) + " days after the trip"'
         )
       )}`
+  },
+  {
+    key: 'billing.check-prior-authorization',
+    name: 'Check Prior Authorization',
+    description:
+      'A repetitive scheduled non-emergency Medicare transport past the third round trip has a prior authorization (UTN) that has not expired by the date of service.',
+    codes: {
+      'prior-authorization-missing': 'warning',
+      'prior-authorization-expired': 'warning'
+    },
+    facts: [
+      'tripType',
+      'emergency',
+      'billsMedicare',
+      'roundTrips',
+      'priorAuthorization',
+      'priorAuthorizationDaysLeft'
+    ],
+    values: { freeTrips: ROUND_TRIPS_WITHOUT_AUTHORIZATION },
+    expression: `tripType != "scheduled" || emergency == true || !billsMedicare ? [] : (priorAuthorization == null || priorAuthorization == "")
+  ? ${when(
+    'roundTrips != null && roundTrips > freeTrips',
+    issue(
+      'prior-authorization-missing',
+      'priorAuthorization',
+      '"Repetitive scheduled Medicare transports need a prior authorization (UTN) after " + text(freeTrips) + " round trips; this is round trip " + text(roundTrips)'
+    )
+  )}
+  : ${when(
+    'priorAuthorizationDaysLeft != null && priorAuthorizationDaysLeft < 0',
+    issue(
+      'prior-authorization-expired',
+      'priorAuthorization',
+      '"The prior authorization expired " + text(0 - priorAuthorizationDaysLeft) + " days before the trip"'
+    )
+  )}`
+  },
+  {
+    key: 'billing.check-abn',
+    name: 'Check Advance Beneficiary Notice',
+    description:
+      'A Medicare transport expected to be denied has an ABN on file (else it is billed with GZ and the patient cannot be billed); an ABN is dated and is not used for an emergency.',
+    codes: { 'abn-missing': 'warning', 'abn-undated': 'warning', 'abn-emergency': 'warning' },
+    facts: ['billsMedicare', 'emergency', 'abnOnFile', 'abnSignedOn', 'denialExpected'],
+    expression: `!billsMedicare ? [] : concat(
+  ${when(
+    'denialExpected == true && abnOnFile != true',
+    issue(
+      'abn-missing',
+      'abn',
+      '"Medicare is expected to deny this transport and no ABN is on file, so it is billed with GZ and the patient cannot be billed"'
+    )
+  )},
+  ${when('abnOnFile == true && abnSignedOn == null', issue('abn-undated', 'abn', '"The ABN on file has no signed date"'))},
+  ${when(
+    'abnOnFile == true && emergency == true',
+    issue('abn-emergency', 'abn', '"An ABN cannot be used for an emergency transport"')
+  )}
+)`
+  },
+  {
+    key: 'billing.check-msp',
+    name: 'Check Medicare Secondary Payer',
+    description:
+      'A claim billing Medicare answers the MSP questions, and when another payer pays first (Medicare Secondary Payer rule) that payer is on the claim and billed before Medicare.',
+    codes: {
+      'msp-unanswered': 'warning',
+      'msp-primary-missing': 'blocking',
+      'msp-order': 'blocking'
+    },
+    facts: ['billsMedicare', 'payers', ...MSP_ANSWERS],
+    uses: [
+      {
+        id: 'msp',
+        type: 'billing.medicare-secondary-payer',
+        label: 'Medicare Secondary Payer',
+        inputs: MSP_ANSWERS,
+        outputs: { medicareSecondary: 'secondary', reasons: 'why' }
+      }
+    ],
+    expression: `!billsMedicare ? [] : concat(
+  ${when(
+    MSP_ANSWERS.map((a) => `${a} == null`).join(' || '),
+    issue(
+      'msp-unanswered',
+      'msp',
+      '"Answer the Medicare Secondary Payer questions before billing Medicare"'
+    )
+  )},
+  secondary && !some(payers ?? [], p => !p.medicare)
+    ? [${issue(
+      'msp-primary-missing',
+      'payers',
+      '"Medicare pays second (" + first(why) + "), but no payer to bill first is on the claim"'
+    )}]
+    : ${when(
+      'secondary && len(payers ?? []) > 0 && payers[0].medicare',
+      issue(
+        'msp-order',
+        'payers',
+        '"Medicare pays second (" + first(why) + "); put the payer that pays first ahead of Medicare"'
+      )
+    )}
+)`
+  },
+  {
+    key: 'billing.check-facility',
+    name: 'Check Facility Responsibility',
+    description:
+      'A claim the Facility Responsibility rule bills to a facility is billed to it rather than the payers, and a stay a payer reports on the date of service is confirmed by a biller.',
+    codes: {
+      'facility-responsible': 'blocking',
+      'facility-stay-reported': 'warning'
+    },
+    facts: ['responsibleParty', 'facilityStay', 'payers'],
+    uses: [
+      {
+        id: 'responsibility',
+        type: 'billing.facility-responsibility',
+        label: 'Facility Responsibility',
+        inputs: [
+          'recordedParty',
+          'facilityStay',
+          'emergency',
+          'pickupFacility',
+          'destinationFacility'
+        ],
+        outputs: { party: 'party', facilityName: 'facilityName', reasons: 'why' }
+      }
+    ],
+    expression: `responsibleParty == "facility"
+  ? []
+  : concat(
+    ${when(
+      'party == "facility"',
+      issue(
+        'facility-responsible',
+        'facility',
+        'first(why) + ": bill " + (facilityName ?? "the facility") + ", not the payers"'
+      )
+    )},
+    flatten(map(filter(payers ?? [], p => p.stayReported != null && facilityStay == null), p => [${issue(
+      'facility-stay-reported',
+      'facility',
+      'p.name + " reports a " + (p.stayReported == "snf" ? "skilled nursing facility" : "hospital inpatient") + " stay on the date of service; confirm the facility stay"',
+      'p.coverageId'
+    )}]))
+  )`
   },
   {
     key: 'billing.check-payers',

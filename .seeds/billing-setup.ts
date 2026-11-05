@@ -20,8 +20,42 @@ const demoProfile = {
 const demoPayers = [
   { name: 'Medicare', payer_id: 'DEMOMCR', claim_filing: 'MB' },
   { name: 'Medicaid', payer_id: 'DEMOMCD', claim_filing: 'MC' },
-  { name: 'Blue Plan', payer_id: 'DEMOBCBS', claim_filing: 'BL' }
+  { name: 'Blue Plan', payer_id: 'DEMOBCBS', claim_filing: 'BL' },
+  { name: 'Keystone Comp', payer_id: 'DEMOWC', claim_filing: 'WC' }
 ];
+
+const demoFacilities = [
+  {
+    name: 'UPMC Harrisburg',
+    kind: 'hospital',
+    address_line: '111 S Front St',
+    city: 'Harrisburg',
+    state: 'PA',
+    postal_code: '17101',
+    contract: false,
+    contract_note: null
+  },
+  {
+    name: 'Spring Creek Skilled Nursing and Rehabilitation',
+    kind: 'snf',
+    address_line: null,
+    city: 'Harrisburg',
+    state: 'PA',
+    postal_code: null,
+    contract: false,
+    contract_note: null
+  },
+  {
+    name: 'Riverside Rehabilitation Center',
+    kind: 'other',
+    address_line: '3800 Riverside Dr',
+    city: 'Harrisburg',
+    state: 'PA',
+    postal_code: '17110',
+    contract: true,
+    contract_note: 'Pays every scheduled transport of its residents under contract'
+  }
+] as const;
 
 export const buildUpsertDemoProfile = (db: Kysely<Database>, agencyId: string) =>
   db
@@ -29,6 +63,23 @@ export const buildUpsertDemoProfile = (db: Kysely<Database>, agencyId: string) =
     .values({ agency_id: agencyId, ...demoProfile })
     .onConflict((oc) =>
       oc.column('agency_id').doUpdateSet({ ...demoProfile, updated_at: sql`now()` })
+    );
+
+export const buildUpsertDemoFacilities = (db: Kysely<Database>, agencyId: string) =>
+  db
+    .insertInto('facilities')
+    .values(demoFacilities.map((f) => ({ agency_id: agencyId, ...f })))
+    .onConflict((oc) =>
+      oc.expression(sql`agency_id, lower(name)`).doUpdateSet({
+        kind: (eb) => eb.ref('excluded.kind'),
+        address_line: (eb) => eb.ref('excluded.address_line'),
+        city: (eb) => eb.ref('excluded.city'),
+        state: (eb) => eb.ref('excluded.state'),
+        postal_code: (eb) => eb.ref('excluded.postal_code'),
+        contract: (eb) => eb.ref('excluded.contract'),
+        contract_note: (eb) => eb.ref('excluded.contract_note'),
+        updated_at: sql`now()`
+      })
     );
 
 export const buildUpsertDemoPayers = (db: Kysely<Database>, agencyId: string) =>

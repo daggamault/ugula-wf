@@ -1,7 +1,22 @@
 import type { GraphDef } from '@ugula/graph';
 import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
-import { ADDRESS_PINS, asRule, asStage, d, exit, P, rule, shared, stage, T } from './shared.ts';
+import {
+  ADDRESS_PINS,
+  asRule,
+  asStage,
+  d,
+  exit,
+  field,
+  is,
+  P,
+  rule,
+  shared,
+  stage,
+  startsWith,
+  T,
+  table
+} from './shared.ts';
 
 const PCR_IN = P.pcr();
 
@@ -12,6 +27,7 @@ const tripFacts = (): GraphDef => {
   g.add('response', 'nemsis.response.break');
   g.add('disposition', 'nemsis.disposition.break');
   g.add('payment', 'nemsis.payment.break');
+  g.add('arrest', 'nemsis.arrest.break');
   g.add('called', 'std.logic.coalesce', { label: 'Call Time, Else Dispatch Time' });
   g.add('when', 'std.logic.coalesce', { label: 'Or Nothing', values: { fallback: '' } });
   g.add('serviceDate', 'std.text.substring', { label: 'Date Part', values: { end: 10 } });
@@ -22,6 +38,8 @@ const tripFacts = (): GraphDef => {
   g.wire('pcr.response', 'response.response');
   g.wire('pcr.disposition', 'disposition.disposition');
   g.wire('pcr.payment', 'payment.payment');
+  g.wire('pcr.arrest', 'arrest.arrest');
+  g.wire('arrest.outcome', 'trip.arrestOutcome');
   g.wire('pcr.pcrNumber', 'trip.pcrNumber');
   g.wire('times.psapCall', 'called.value', 'trip.calledAt');
   g.wire('times.unitNotified', 'called.fallback');
@@ -119,6 +137,40 @@ const clinicalFacts = (): GraphDef => {
   return g.def;
 };
 
+const TRANSPORT_ACCIDENTS = ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8'];
+
+const mspFromReport = () =>
+  shared.decision(
+    'billing.msp-from-report',
+    'MSP From the Report',
+    'Prefills the Medicare Secondary Payer accident answer from what the report records: workers compensation as the payment method or a work-related injury, or a transport accident as the cause of injury. The other MSP answers come from the patient, so a biller enters them.',
+    table(
+      [
+        field('paymentMethod', 'string', 'Primary method of payment · ePayment.01'),
+        field('workRelated', 'string', 'Work-related illness or injury · eSituation.14'),
+        field('injuryCauses', { list: 'string' }, 'Cause of injury (ICD-10) · eInjury.01')
+      ],
+      [field('mspAccident', 'string', 'MSP accident answer')],
+      [
+        {
+          label: "Workers' compensation is the payment method",
+          when: { paymentMethod: is('2601013') },
+          set: { mspAccident: 'workersComp' }
+        },
+        {
+          label: 'The illness or injury is work related',
+          when: { workRelated: is('9922005') },
+          set: { mspAccident: 'workersComp' }
+        },
+        {
+          label: 'A transport accident caused the injury',
+          when: { injuryCauses: startsWith(...TRANSPORT_ACCIDENTS) },
+          set: { mspAccident: 'noFault' }
+        }
+      ]
+    )
+  );
+
 const documentationFacts = (): GraphDef => {
   const g = rule(
     [PCR_IN],
@@ -127,7 +179,7 @@ const documentationFacts = (): GraphDef => {
         'documentation',
         T.documentation,
         'Documentation',
-        'Signature, certification, reported transport reason, conditions, prior authorization, weight and trip times.'
+        'Signature, certification, reported transport reason, conditions, prior authorization, weight, trip times, patients transported, the closest hospital and the MSP accident answer.'
       )
     ]
   );
@@ -135,6 +187,10 @@ const documentationFacts = (): GraphDef => {
   g.add('payment', 'nemsis.payment.break');
   g.add('times', 'nemsis.times.break');
   g.add('exam', 'nemsis.exam.break');
+  g.add('disposition', 'nemsis.disposition.break');
+  g.add('situation', 'nemsis.situation.break');
+  g.add('injury', 'nemsis.injury.break');
+  g.add('msp', 'std.table.decide', { label: 'MSP From the Report', config: mspFromReport() });
   g.add('signature', 'billing.read-signature', { label: 'Billing Signature' });
   g.add('pcs', 'std.table.lookup', {
     label: 'Physician Certification on File',
@@ -154,6 +210,15 @@ const documentationFacts = (): GraphDef => {
   g.wire('pcr.payment', 'payment.payment');
   g.wire('pcr.times', 'times.times');
   g.wire('pcr.exam', 'exam.exam');
+  g.wire('pcr.disposition', 'disposition.disposition');
+  g.wire('pcr.situation', 'situation.situation');
+  g.wire('pcr.injury', 'injury.injury');
+  g.wire('payment.method', 'msp.paymentMethod');
+  g.wire('situation.workRelated', 'msp.workRelated');
+  g.wire('injury.causes', 'msp.injuryCauses');
+  g.wire('msp.mspAccident', 'documentation.mspAccident');
+  g.wire('disposition.patientsTransported', 'documentation.patientCount');
+  g.wire('payment.closestFacilityMiles', 'documentation.closestFacilityMiles');
   g.wire('pcr.signatures', 'signature.signatures');
   g.wire('signature.signature', 'documentation.signature');
   g.wire('signature.signatureNote', 'documentation.signatureNote');
@@ -339,7 +404,7 @@ export const factGraphs: SeedGraph[] = [
   asRule(
     'billing.trip-facts',
     'Trip Facts',
-    'Maps the report to the trip facts: PCR number, date of service, call time, type of service, response mode, dispositions, level of care, CMS service level, ALS assessment and odometers.',
+    'Maps the report to the trip facts: PCR number, date of service, call time, type of service, response mode, dispositions, level of care, cardiac arrest outcome, CMS service level, ALS assessment and odometers.',
     tripFacts()
   ),
   asRule(
@@ -357,7 +422,7 @@ export const factGraphs: SeedGraph[] = [
   asRule(
     'billing.documentation-facts',
     'Documentation Facts',
-    'Maps what the report documents for billing: the release-for-billing signature, physician certification, the transport reason as reported, ambulance conditions, prior authorization, weight and trip times.',
+    'Maps what the report documents for billing: the release-for-billing signature, physician certification, the transport reason as reported, ambulance conditions, prior authorization, weight, trip times, patients transported, miles to the closest hospital, and the MSP accident answer (MSP From the Report table).',
     documentationFacts()
   ),
   asRule(

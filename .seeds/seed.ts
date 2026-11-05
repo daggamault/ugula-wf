@@ -21,7 +21,11 @@ import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
 import * as v from 'valibot';
 import { upsertAgency, upsertBuiltInRoles, upsertOrganization } from './agencies.ts';
 import { billingGraphs, billingTables } from './billing/index.ts';
-import { buildUpsertDemoPayers, buildUpsertDemoProfile } from './billing-setup.ts';
+import {
+  buildUpsertDemoFacilities,
+  buildUpsertDemoPayers,
+  buildUpsertDemoProfile
+} from './billing-setup.ts';
 import type { SeedTable } from './builder.ts';
 import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
 import { demoGraphs } from './demo-graphs.ts';
@@ -140,6 +144,7 @@ const seedDev = async (db: Db, dev: DevSeedConfig) => {
       await buildUpsertDefaultFees(tx, agency.id, demoFees).execute();
       await buildUpsertDemoProfile(tx, agency.id).execute();
       await buildUpsertDemoPayers(tx, agency.id).execute();
+      await buildUpsertDemoFacilities(tx, agency.id).execute();
     }
 
     await publishGraphs(tx, demoGraphs, new Set(nodes.map(refKey)));

@@ -3,6 +3,7 @@ import type { GraphDef, Json } from '@ugula/graph';
 import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
 import {
+  above,
   asRule,
   asStage,
   atLeast,
@@ -556,6 +557,136 @@ const SERVICE_OUT = d(
   'The suggested level of service, emergency status and loaded miles, with the reasons for the level.'
 );
 
+const nonCoveredMiles = (): GraphDef => {
+  const g = rule(
+    [P.facts(), d('loadedMiles', 'number', 'Loaded Miles', 'The loaded miles of the trip.', true)],
+    [
+      d(
+        'nonCoveredMiles',
+        'number',
+        'Non-Covered Miles',
+        'Miles beyond the nearest appropriate facility, billed on A0888, or nothing.',
+        true
+      ),
+      P.reasons('miles were or were not billed as non-covered')
+    ]
+  );
+  g.add('facts', 'billing.encounter-facts.break');
+  g.add('documentation', 'billing.documentation.break');
+  g.add('reason', 'billing.transport-reason', { label: 'Transport Reason' });
+  g.add(
+    'excess',
+    'std.expr',
+    expr(
+      'Miles Past the Closest Hospital',
+      'loadedMiles == null || closest == null ? null : round(loadedMiles - closest, 2)'
+    )
+  );
+  g.add('decide', 'std.table.decide', {
+    label: 'Non-Covered Miles',
+    config: shared.decision(
+      'billing.non-covered-miles',
+      'Non-Covered Miles',
+      'Decides when the miles past the closest hospital (ePayment.48) are billed as non-covered (A0888 with GY): when the patient chose a farther facility.',
+      table(
+        [
+          field('transportReason', 'string', 'Transport reason (CR104)'),
+          field('excessMiles', 'number', 'Miles past the closest hospital')
+        ],
+        [field('nonCovered', 'boolean', 'Bill the excess as non-covered')],
+        [
+          {
+            label: 'The patient chose a farther facility',
+            when: { transportReason: oneOf('B', 'C'), excessMiles: above(0) },
+            set: { nonCovered: true }
+          }
+        ],
+        { nonCovered: false }
+      )
+    )
+  });
+  g.add('miles', 'std.logic.select', { label: 'Excess Miles When Non-Covered' });
+  g.ret('return');
+  g.wire('entry.facts', 'facts.facts');
+  g.wire('facts.documentation', 'documentation.documentation', 'reason.documentation');
+  g.wire('facts.locations', 'reason.locations');
+  g.wire('entry.loadedMiles', 'excess.loadedMiles');
+  g.wire('documentation.closestFacilityMiles', 'excess.closest');
+  g.wire('reason.transportReason', 'decide.transportReason');
+  g.wire('excess.result', 'decide.excessMiles', 'miles.whenTrue');
+  g.wire('decide.nonCovered', 'miles.condition');
+  g.wire('miles.result', 'return.nonCoveredMiles');
+  g.wire('decide.rules', 'return.reasons');
+  return g.def;
+};
+
+const DEAD_AT_SCENE = ['4212015', '4212019'];
+
+const NOT_TRANSPORTED = ['4230005', '4230007', '4230009', '4230013'];
+
+const EXPIRED_IN_FIELD = '3018003';
+
+const deceasedHandling = (): GraphDef => {
+  const g = rule(
+    [
+      d('service', T.service, 'Service', 'The service suggested for the trip type.'),
+      d('trip', T.trip, 'Trip Facts', 'The dispositions and cardiac arrest outcome of the trip.')
+    ],
+    [SERVICE_OUT]
+  );
+  g.add('trip', 'billing.trip-facts.break');
+  g.add('decide', 'std.table.decide', {
+    label: 'Pronounced Dead',
+    config: shared.decision(
+      'billing.pronounced-dead',
+      'Pronounced Dead',
+      'Decides whether the patient was pronounced dead after the ambulance was called and before being loaded, which CMS bills as BLS with QL and no mileage.',
+      table(
+        [
+          field('incidentDisposition', 'string', 'Incident/patient disposition · eDisposition.12'),
+          field('transportDisposition', 'string', 'Transport disposition · eDisposition.30'),
+          field('arrestOutcome', 'string', 'End of the cardiac arrest event · eArrest.18')
+        ],
+        [field('deceased', 'boolean', 'Pronounced dead before loading')],
+        [
+          {
+            label: 'Dead at the scene and not transported',
+            when: { incidentDisposition: oneOf(...DEAD_AT_SCENE) },
+            set: { deceased: true }
+          },
+          {
+            label: 'Expired in the field and not transported',
+            when: {
+              arrestOutcome: is(EXPIRED_IN_FIELD),
+              transportDisposition: oneOf(...NOT_TRANSPORTED)
+            },
+            set: { deceased: true }
+          }
+        ],
+        { deceased: false }
+      )
+    )
+  });
+  g.add(
+    'service',
+    'std.expr',
+    expr(
+      'BLS Without Miles When Pronounced Dead',
+      "deceased ? merge(service, { level: 'BLS', loadedMiles: null, nonCoveredMiles: null, deceased: true, basis: concat(service.basis ?? [], rules, ['Billed as BLS with QL and no mileage']) }) : merge(service, { deceased: false })"
+    )
+  );
+  g.ret('return');
+  g.wire('entry.trip', 'trip.trip');
+  for (const pin of ['incidentDisposition', 'transportDisposition', 'arrestOutcome']) {
+    g.wire(`trip.${pin}`, `decide.${pin}`);
+  }
+  g.wire('entry.service', 'service.service');
+  g.wire('decide.deceased', 'service.deceased');
+  g.wire('decide.rules', 'service.rules');
+  g.wire('service.result', 'return.service');
+  return g.def;
+};
+
 const baseService = (): GraphDef => {
   const g = rule([P.facts(), P.findings(true)], [SERVICE_OUT]);
   g.add('facts', 'billing.encounter-facts.break');
@@ -563,9 +694,10 @@ const baseService = (): GraphDef => {
   g.add('level', 'billing.level-of-service', { label: 'Level of Service' });
   g.add('emergency', 'billing.emergency-status', { label: 'Emergency Status' });
   g.add('miles', 'billing.loaded-miles', { label: 'Loaded Miles' });
+  g.add('nonCovered', 'billing.non-covered-miles', { label: 'Non-Covered Miles' });
   g.add('service', 'billing.service.make');
   g.ret('return');
-  g.wire('entry.facts', 'facts.facts', 'level.facts');
+  g.wire('entry.facts', 'facts.facts', 'level.facts', 'nonCovered.facts');
   g.wire('entry.findings', 'level.findings');
   g.wire('facts.trip', 'trip.trip', 'emergency.trip');
   g.wire('trip.sceneOdometer', 'miles.sceneOdometer');
@@ -573,7 +705,8 @@ const baseService = (): GraphDef => {
   g.wire('level.level', 'service.level');
   g.wire('level.reasons', 'service.basis');
   g.wire('emergency.emergency', 'service.emergency');
-  g.wire('miles.loadedMiles', 'service.loadedMiles');
+  g.wire('miles.loadedMiles', 'service.loadedMiles', 'nonCovered.loadedMiles');
+  g.wire('nonCovered.nonCoveredMiles', 'service.nonCoveredMiles');
   g.wire('service.service', 'return.service');
   return g.def;
 };
@@ -591,7 +724,9 @@ const tripService = (fixed: Record<string, Json>): GraphDef => {
   g.add('parts', 'billing.service.break');
   g.add('service', 'billing.service.make', { values: fixed });
   g.wire('suggested.service', 'parts.service');
-  for (const pin of ['level', 'emergency', 'loadedMiles', 'basis'].filter((x) => !(x in fixed))) {
+  for (const pin of ['level', 'emergency', 'loadedMiles', 'basis', 'nonCoveredMiles'].filter(
+    (x) => !(x in fixed)
+  )) {
     g.wire(`parts.${pin}`, `service.${pin}`);
   }
   g.wire('service.service', 'return.service');
@@ -620,12 +755,16 @@ const determineService = (): GraphDef => {
       '{ scheduled: scheduled, treatNoTransport: treatNoTransport, refusal: refusal }[tripType] ?? emergency'
     )
   );
+  g.add('facts', 'billing.encounter-facts.break');
+  g.add('deceased', 'billing.deceased-handling', { label: 'Deceased Handling (QL)' });
   g.add('agency', 'billing.agency-service', { label: 'Agency Service' });
   g.ret('return');
   g.wire('entry.tripType', 'byTrip.tripType', 'agency.tripType');
   for (const [id] of TRIP_SERVICES) g.wire(`${id}.service`, `byTrip.${id}`);
-  g.wire('byTrip.result', 'agency.service');
-  g.wire('entry.facts', 'agency.facts');
+  g.wire('entry.facts', 'facts.facts', 'agency.facts');
+  g.wire('facts.trip', 'deceased.trip');
+  g.wire('byTrip.result', 'deceased.service');
+  g.wire('deceased.service', 'agency.service');
   g.wire('agency.service', 'return.service');
   return g.def;
 };
@@ -751,9 +890,21 @@ export const serviceGraphs: SeedGraph[] = [
     emergencyStatus()
   ),
   asRule(
+    'billing.non-covered-miles',
+    'Non-Covered Miles',
+    'The miles past the closest hospital (ePayment.48) billed as non-covered on A0888, when the Non-Covered Miles table says the patient chose a farther facility.',
+    nonCoveredMiles()
+  ),
+  asRule(
+    'billing.deceased-handling',
+    'Deceased Handling (QL)',
+    'Bills a patient pronounced dead after the call and before loading (Pronounced Dead table) as BLS with no loaded or non-covered miles, so the base rate carries QL.',
+    deceasedHandling()
+  ),
+  asRule(
     'billing.base-service',
     'Base Service',
-    'The service every trip type starts from: Level of Service, Emergency Status and Loaded Miles.',
+    'The service every trip type starts from: Level of Service, Emergency Status, Loaded Miles and Non-Covered Miles.',
     baseService()
   ),
   asRule(
@@ -771,19 +922,19 @@ export const serviceGraphs: SeedGraph[] = [
   asRule(
     'billing.trip-treat-no-transport',
     'Treat, No Transport',
-    'The service a trip where the crew treated but did not transport is billed for: no loaded miles.',
-    tripService({ loadedMiles: null })
+    'The service a trip where the crew treated but did not transport is billed for: no loaded or non-covered miles.',
+    tripService({ loadedMiles: null, nonCoveredMiles: null })
   ),
   asRule(
     'billing.trip-refusal',
     'Refusal',
-    'The service a trip where the patient refused care or transport is billed for: no loaded miles.',
-    tripService({ loadedMiles: null })
+    'The service a trip where the patient refused care or transport is billed for: no loaded or non-covered miles.',
+    tripService({ loadedMiles: null, nonCoveredMiles: null })
   ),
   asRule(
     'billing.determine-service',
     'Determine Service',
-    'Suggests the service for the trip type (Emergency Trip, Scheduled Trip, Treat, No Transport or Refusal), then the Agency Service rule.',
+    'Suggests the service for the trip type (Emergency Trip, Scheduled Trip, Treat, No Transport or Refusal), bills a patient pronounced dead before loading as BLS without miles (Deceased Handling), then the Agency Service rule.',
     determineService()
   ),
   asRule(

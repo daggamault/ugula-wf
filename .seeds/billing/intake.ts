@@ -11,13 +11,16 @@ import {
   asWorkflow,
   d,
   expr,
+  field,
+  is,
   nameOf,
   P,
   placeOf,
   rule,
   shared,
   subject,
-  T
+  T,
+  table
 } from './shared.ts';
 
 const {
@@ -93,7 +96,9 @@ const REVIEW_CONTEXT = `{
     signatureNote: documentation.signatureNote,
     physicianCertification: documentation.pcsOnFile,
     transportReason: documentation.transportReason,
-    conditionCodes: documentation.conditionCodes
+    conditionCodes: documentation.conditionCodes,
+    patientsTransported: documentation.patientCount,
+    mspAccident: documentation.mspAccident
   },
   suggested: service,
   warnings: concat(
@@ -101,6 +106,9 @@ const REVIEW_CONTEXT = `{
     documentation.signature == 'signed' ? [] : [documentation.signatureNote ?? 'No billing signature'],
     tripType == 'scheduled' && documentation.pcsOnFile != true ? ['This scheduled trip has no physician certification statement'] : [],
     len(pcr.vitals ?? []) == 0 ? ['No vital signs are recorded to support medical necessity'] : [],
+    service.deceased == true ? ['The patient was pronounced dead before loading, so the trip is billed as BLS with QL and no mileage'] : [],
+    (service.nonCoveredMiles ?? 0) > 0 ? [text(service.nonCoveredMiles) + ' miles past the closest hospital are billed as non-covered (A0888)'] : [],
+    (documentation.patientCount ?? 1) > 1 ? [text(documentation.patientCount) + ' patients rode on this trip, so its lines carry GM'] : [],
     findings.notes,
     payerNotes
   )
@@ -619,6 +627,8 @@ const reviewPcr = (): GraphDef => {
   g.wire('emergency.result', 'confirmed.emergency');
   g.wire('review.loadedMiles', 'confirmed.loadedMiles');
   g.wire('suggested.basis', 'confirmed.basis');
+  g.wire('suggested.deceased', 'confirmed.deceased');
+  g.wire('suggested.nonCoveredMiles', 'confirmed.nonCoveredMiles');
   g.wire('confirmed.service', 'approvedDone.service');
   return g.def;
 };
@@ -841,9 +851,127 @@ const PRIORITY_RANKS = [
   '2611023'
 ].map((key, value) => ({ key, value }));
 
+const MSP_ANSWERS = [
+  d(
+    'mspEmployerPlan',
+    'boolean',
+    'Employer Plan',
+    'The patient or spouse has a group health plan through current employment (working aged).',
+    true
+  ),
+  d(
+    'mspEsrd',
+    'boolean',
+    'End-Stage Renal Disease',
+    'The patient has end-stage renal disease and is in the 30-month coordination period.',
+    true
+  ),
+  d(
+    'mspDisability',
+    'boolean',
+    'Disability',
+    'The patient is under 65, disabled, with a large group health plan.',
+    true
+  ),
+  d(
+    'mspAccident',
+    'string',
+    'Accident',
+    'An accident or work injury someone else pays for: none, liability, noFault or workersComp.',
+    true
+  )
+];
+
+const medicareSecondaryPayer = (): GraphDef => {
+  const g = rule(MSP_ANSWERS, [
+    d(
+      'medicareSecondary',
+      'boolean',
+      'Medicare Secondary',
+      'Whether another payer pays before Medicare.'
+    ),
+    d(
+      'insuranceType',
+      'string',
+      'MSP Type',
+      'The Medicare secondary payer type (SBR05): 12 working aged, 13 ESRD, 14 no-fault, 15 workers compensation, 43 disability, 47 liability.',
+      true
+    ),
+    P.reasons('Medicare pays first or second')
+  ]);
+  g.add('decide', 'std.table.decide', {
+    label: 'Medicare Secondary Payer',
+    config: shared.decision(
+      'billing.medicare-secondary-payer',
+      'Medicare Secondary Payer',
+      'Decides from the MSP answers whether another payer pays before Medicare, and the MSP type the 837P names for it.',
+      table(
+        [
+          field('mspAccident', 'string', 'Accident or work injury'),
+          field('mspEsrd', 'boolean', 'End-stage renal disease coordination period'),
+          field('mspEmployerPlan', 'boolean', 'Group health plan from current employment'),
+          field('mspDisability', 'boolean', 'Disabled with a large group health plan')
+        ],
+        [
+          field('secondary', 'boolean', 'Medicare pays second'),
+          field('insuranceType', 'string', 'MSP type (SBR05)')
+        ],
+        [
+          {
+            label: "Workers' compensation pays first",
+            when: { mspAccident: is('workersComp') },
+            set: { secondary: true, insuranceType: '15' }
+          },
+          {
+            label: 'No-fault or auto insurance pays first',
+            when: { mspAccident: is('noFault') },
+            set: { secondary: true, insuranceType: '14' }
+          },
+          {
+            label: 'Liability insurance pays first',
+            when: { mspAccident: is('liability') },
+            set: { secondary: true, insuranceType: '47' }
+          },
+          {
+            label: 'End-stage renal disease coordination period',
+            when: { mspEsrd: is(true) },
+            set: { secondary: true, insuranceType: '13' }
+          },
+          {
+            label: 'Working aged with an employer group health plan',
+            when: { mspEmployerPlan: is(true) },
+            set: { secondary: true, insuranceType: '12' }
+          },
+          {
+            label: 'Disabled with a large group health plan',
+            when: { mspDisability: is(true) },
+            set: { secondary: true, insuranceType: '43' }
+          }
+        ],
+        { secondary: false }
+      )
+    )
+  });
+  g.ret('return');
+  for (const { name } of MSP_ANSWERS) g.wire(`entry.${name}`, `decide.${name}`);
+  g.wire('decide.secondary', 'return.medicareSecondary');
+  g.wire('decide.insuranceType', 'return.insuranceType');
+  g.wire('decide.rules', 'return.reasons');
+  return g.def;
+};
+
 const coordinationOrder = (): GraphDef => {
   const g = rule(
-    [P.coverages('The payers as resolved.')],
+    [
+      P.coverages('The payers as resolved.'),
+      d(
+        'medicareSecondary',
+        'boolean',
+        'Medicare Secondary',
+        'Another payer pays before Medicare, as the Medicare Secondary Payer rule decided.',
+        true
+      )
+    ],
     [
       P.coverages('The payers in the order they are billed.'),
       P.reasons('the payers are in this order')
@@ -867,7 +995,7 @@ const coordinationOrder = (): GraphDef => {
     'std.expr',
     expr(
       'By Priority, Then as Reported',
-      'map(sort(map(coverages, (c, n) => { c: c, rank: (ranks[n] ?? 99) * 1000 + n }), x => x.rank), x => x.c)'
+      "map(sort(map(coverages, (c, n) => { c: c, rank: (medicareSecondary == true && contains(['MA', 'MB'], c.claimFiling) ? 1000000 : 0) + (ranks[n] ?? 99) * 1000 + n }), x => x.rank), x => x.c)"
     )
   );
   g.add(
@@ -875,11 +1003,12 @@ const coordinationOrder = (): GraphDef => {
     'std.expr',
     expr(
       'Why',
-      "len(coverages) > 1 ? ['Billed in the priority order the report gives, then as reported'] : []"
+      "concat(len(coverages) > 1 ? ['Billed in the priority order the report gives, then as reported'] : [], medicareSecondary == true && some(coverages, c => !contains(['MA', 'MB'], c.claimFiling)) ? ['Medicare is billed after the payers that pay first'] : [])"
     )
   );
   g.ret('return');
   g.wire('entry.coverages', 'priorities.list', 'ordered.coverages', 'reasons.coverages');
+  g.wire('entry.medicareSecondary', 'ordered.medicareSecondary', 'reasons.medicareSecondary');
   g.wire('priorities.list', 'ranks.keys');
   g.wire('ranks.values', 'ordered.ranks');
   g.wire('ordered.result', 'return.coverages');
@@ -895,11 +1024,15 @@ const determinePayers = (): GraphDef => {
       d('coverages', COVERAGES, 'Reported Coverages', 'The coverages the report lists.'),
       p('pcr', PCR_TYPE, true),
       p('pcrNumber', 'string', true),
-      p('patientName', 'string', true)
+      p('patientName', 'string', true),
+      p('facts', FACTS, true)
     ],
     outputs: [p('coverages', COVERAGES), p('notes', { list: 'string' })]
   });
   g.add('resolve', 'billing.resolve-payers', { label: 'Match Payer Directory' });
+  g.add('facts', 'billing.encounter-facts.break');
+  g.add('documentation', 'billing.documentation.break');
+  g.add('msp', 'billing.medicare-secondary-payer', { label: 'Medicare Secondary Payer' });
   g.add('order', 'billing.coordination-order', { label: 'Coordination Order' });
   g.add('agency', 'billing.agency-payers', { label: 'Agency Payer Rules' });
   g.ret('done');
@@ -909,6 +1042,10 @@ const determinePayers = (): GraphDef => {
   g.wire('entry.patientName', 'resolve.patientName');
   g.wire('resolve.then', 'done.exec');
   g.wire('resolve.coverages', 'order.coverages');
+  g.wire('entry.facts', 'facts.facts');
+  g.wire('facts.documentation', 'documentation.documentation');
+  for (const { name } of MSP_ANSWERS) g.wire(`documentation.${name}`, `msp.${name}`);
+  g.wire('msp.medicareSecondary', 'order.medicareSecondary');
   g.wire('order.coverages', 'agency.coverages');
   g.wire('entry.pcr', 'agency.pcr');
   g.wire('agency.coverages', 'done.coverages');
@@ -1017,6 +1154,8 @@ const billClaim = (): GraphDef => {
   tripContext(g, 'claimContext');
   g.add('subject', 'billing.pcr-subject', { label: 'Task Subject' });
   g.add('build', 'billing.build-claim', { label: 'Build Claim' });
+  g.add('responsibility', 'billing.decide-responsibility', { label: 'Decide Responsibility' });
+  g.add('facility', 'billing.bill-facility', { label: 'Bill Facility' });
   g.add('fix', 'billing.fix-claim', { label: 'Check and Fix Claim', values: { all: false } });
   g.add('cycle', 'billing.start-cycle', { label: 'Start Payer Cycle' });
   g.add('finalTrip', 'std.var.get', { label: 'Final Trip Type', config: { name: 'tripType' } });
@@ -1050,10 +1189,18 @@ const billClaim = (): GraphDef => {
     g.wire(`entry.${pin}`, `build.${pin}`);
   }
   g.wire('review.service', 'build.service');
-  g.wire('subject.subject', 'build.subject', 'fix.subject');
-  g.wire('claimContext.result', 'build.context', 'fix.context');
+  g.wire('subject.subject', 'build.subject', 'fix.subject', 'facility.subject');
+  g.wire('claimContext.result', 'build.context', 'fix.context', 'facility.context');
   g.wire('entry.claimId', 'fix.claimId', 'cycle.claimId', 'void.claimId');
-  g.wire('build.saved', 'fix.exec');
+  g.wire('entry.claimId', 'responsibility.claimId', 'facility.claimId');
+  g.wire('build.saved', 'responsibility.exec');
+  g.wire('responsibility.payers', 'fix.exec');
+  g.wire('responsibility.facility', 'facility.exec');
+  g.wire('responsibility.facilityId', 'facility.facilityId');
+  g.wire('responsibility.reason', 'facility.reason');
+  g.wire('facility.billed', 'cycle.exec');
+  g.wire('facility.payers', 'fix.exec');
+  g.wire('facility.voided', 'void.exec');
   g.wire('build.voided', 'void.exec');
   g.wire('fix.fixed', 'cycle.exec');
   g.wire('fix.backToReview', 'review.exec');
@@ -1110,6 +1257,7 @@ const workDraftClaim = (): GraphDef => {
   g.wire('trip.pcrNumber', 'patient.pcrNumber', 'payers.pcrNumber');
   g.wire('patient.then', 'payers.exec');
   g.wire('parts.coverages', 'payers.coverages');
+  g.wire('facts.facts', 'payers.facts');
   g.wire('patientName.text', 'payers.patientName');
   g.wire('payers.then', 'bill.exec');
   g.wire('entry.report', 'bill.report');
@@ -1162,15 +1310,21 @@ export const intakeGraphs: SeedGraph[] = [
     resolvePayers()
   ),
   asRule(
+    'billing.medicare-secondary-payer',
+    'Medicare Secondary Payer',
+    'Decides from the MSP answers (employer plan, ESRD, disability, accident or work injury) whether another payer pays before Medicare, with the MSP type the 837P names (Medicare Secondary Payer table).',
+    medicareSecondaryPayer()
+  ),
+  asRule(
     'billing.coordination-order',
     'Coordination Order',
-    'Puts the payers in billing order: by the priority the report gives each coverage (Coverage Priority table), then as reported.',
+    'Puts the payers in billing order: by the priority the report gives each coverage (Coverage Priority table), then as reported, with Medicare after the other payers when the Medicare Secondary Payer rule says another payer pays first.',
     coordinationOrder()
   ),
   asStage(
     'billing.determine-payers',
     'Determine Payers',
-    'Determines the payers to bill from the reported coverages: Match Payer Directory, Coordination Order, then the Agency Payer Rules.',
+    'Determines the payers to bill from the reported coverages: Match Payer Directory, Medicare Secondary Payer from the MSP answers the report gives, Coordination Order, then the Agency Payer Rules.',
     determinePayers()
   ),
   asRule(
@@ -1230,7 +1384,7 @@ export const intakeGraphs: SeedGraph[] = [
   asStage(
     'billing.bill-claim',
     'Bill the Claim',
-    'Determines the service for the trip type, has a biller review it, builds and checks the claim and starts its payer cycle. A claim sent back to review is reviewed again with the answers given before.',
+    'Determines the service for the trip type, has a biller review it, builds the claim, has a biller bill a facility instead when the Facility Responsibility rule says so (Bill Facility, then the payer cycle waits on the facility invoice), else checks the claim, and starts its payer cycle. A claim sent back to review is reviewed again with the answers given before.',
     billClaim()
   ),
   asStage(

@@ -1,10 +1,11 @@
-import { NO_TRANSPORT_CODE } from '@ugula/billing';
+import { NO_TRANSPORT_CODE, NOTE_LENGTH } from '@ugula/billing';
 import type { GraphDef } from '@ugula/graph';
 import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
 import {
   ADDRESS_PINS,
   asRule,
+  atLeast,
   d,
   expr,
   field,
@@ -229,7 +230,9 @@ const mapClaim = (): GraphDef => {
   g.wire('locations.destination', 'claim.destination');
   g.wire('diagnoses.diagnoses', 'claim.diagnoses');
   g.wire('modifier.originDestination', 'claim.originDestination');
-  for (const pin of ['level', 'emergency', 'loadedMiles']) g.wire(`service.${pin}`, `claim.${pin}`);
+  for (const pin of ['level', 'emergency', 'loadedMiles', 'deceased', 'nonCoveredMiles']) {
+    g.wire(`service.${pin}`, `claim.${pin}`);
+  }
   for (const pin of ['tripType', 'coverages', 'lines', 'totalCents', 'report']) {
     g.wire(`entry.${pin}`, `claim.${pin}`);
   }
@@ -295,6 +298,13 @@ const ambulanceConditions = (): GraphDef => {
   return g.def;
 };
 
+const MEDICARE = ['MA', 'MB'];
+
+const MAX_LINE_MODIFIERS = 4;
+
+const flagIn = (name: string, label: string, description: string) =>
+  d(name, 'boolean', label, description, true);
+
 const lineModifiers = (): GraphDef => {
   const g = rule(
     [
@@ -312,43 +322,269 @@ const lineModifiers = (): GraphDef => {
         'The claim filing indicator of the payer billed.',
         true
       ),
-      d('codes', { list: 'string' }, 'Line Codes', 'The HCPCS codes on the claim.')
+      d('codes', { list: 'string' }, 'Line Codes', 'The HCPCS codes on the claim, line by line.'),
+      flagIn('emergency', 'Emergency', 'Whether the trip is billed as an emergency.'),
+      flagIn('deceased', 'Pronounced Dead', 'The patient was pronounced dead before loading.'),
+      d(
+        'patientCount',
+        'integer',
+        'Patients Transported',
+        'How many patients the trip transported.',
+        true
+      ),
+      flagIn('abnOnFile', 'ABN on File', 'An Advance Beneficiary Notice is on file.'),
+      flagIn(
+        'denialExpected',
+        'Denial Expected',
+        'Medicare is expected to deny the transport as not reasonable and necessary.'
+      )
     ],
     [
-      d('modifiers', { list: 'string' }, 'Modifiers', 'The modifiers every service line carries.'),
+      d(
+        'modifiers',
+        { list: { list: 'string' } },
+        'Modifiers',
+        'The modifiers of each service line, in line order, at most four each.'
+      ),
       P.reasons('these modifiers were added')
     ]
   );
-  g.add('coverage', 'std.table.decide', {
-    label: 'Coverage Modifier',
+  g.add('trip', 'std.table.decide', {
+    label: 'Trip Modifiers',
     config: shared.decision(
-      'billing.coverage-modifier',
-      'Coverage Modifier',
-      'Adds a liability modifier for the payer being billed, such as GY when Medicare does not cover the service.',
+      'billing.trip-modifiers',
+      'Trip Modifiers',
+      'Modifiers the trip itself calls for on every line: QL in place of the origin/destination letters when the patient was pronounced dead before loading, GM when several patients rode on one trip.',
       table(
         [
-          field('claimFiling', 'string', 'Claim filing indicator'),
-          field('codes', { list: 'string' }, 'HCPCS codes')
+          field('deceased', 'boolean', 'Pronounced dead before loading'),
+          field('patientCount', 'integer', 'Patients transported')
         ],
-        [field('modifier', 'string', 'Modifier')],
+        [
+          field('leading', 'string', 'Modifier in place of the origin/destination letters'),
+          field('added', 'string', 'Modifier added to every line')
+        ],
         [
           {
-            label: 'Medicare does not cover treatment without transport',
-            when: { claimFiling: oneOf('MA', 'MB'), codes: oneOf(NO_TRANSPORT_CODE) },
-            set: { modifier: 'GY' }
+            label: 'Pronounced dead before loading, with other patients on the trip',
+            when: { deceased: is(true), patientCount: atLeast(2) },
+            set: { leading: 'QL', added: 'GM' }
+          },
+          {
+            label: 'Pronounced dead before loading',
+            when: { deceased: is(true) },
+            set: { leading: 'QL' }
+          },
+          {
+            label: 'Several patients transported on one trip',
+            when: { patientCount: atLeast(2) },
+            set: { added: 'GM' }
           }
         ]
       )
     )
   });
-  g.add('modifiers', 'std.list.make', { label: 'Line Modifiers', config: { count: 2 } });
+  g.add('coverage', 'std.table.decide', {
+    label: 'Coverage Modifier',
+    config: shared.decision(
+      'billing.coverage-modifier',
+      'Coverage Modifier',
+      'Adds a liability modifier for the payer being billed: GY when Medicare does not cover the service, GA when an ABN is on file for a non-emergency transport, GZ when Medicare is expected to deny and no ABN is on file.',
+      table(
+        [
+          field('claimFiling', 'string', 'Claim filing indicator'),
+          field('codes', { list: 'string' }, 'HCPCS codes'),
+          field('emergency', 'boolean', 'Emergency'),
+          field('abnOnFile', 'boolean', 'ABN on file'),
+          field('denialExpected', 'boolean', 'Medicare denial expected')
+        ],
+        [field('modifier', 'string', 'Modifier')],
+        [
+          {
+            label: 'Medicare does not cover treatment without transport',
+            when: { claimFiling: oneOf(...MEDICARE), codes: oneOf(NO_TRANSPORT_CODE) },
+            set: { modifier: 'GY' }
+          },
+          {
+            label: 'ABN on file for a non-emergency Medicare transport',
+            when: { claimFiling: oneOf(...MEDICARE), abnOnFile: is(true), emergency: is(false) },
+            set: { modifier: 'GA' }
+          },
+          {
+            label: 'Medicare is expected to deny and no ABN is on file',
+            when: { claimFiling: oneOf(...MEDICARE), denialExpected: is(true) },
+            set: { modifier: 'GZ' }
+          }
+        ]
+      )
+    )
+  });
+  g.add('byCode', 'std.table.lookup', {
+    label: 'Line Code Modifier',
+    config: shared.lookup(
+      'billing.code-modifier',
+      'Line Code Modifier',
+      'A modifier a single line carries because of its HCPCS code, such as GY on A0888 non-covered miles.',
+      { type: 'string', rows: [{ key: 'A0888', value: 'GY' }] }
+    )
+  });
+  g.add('modifiers', 'std.expr', {
+    ...expr(
+      'Each Line, Trip Then Liability Then Code',
+      "map(codes, (c, n) => slice(unique(filter([leading ?? originDestination, added, coverage, byCode[n]], m => m != null && m != '')), 0, max))"
+    ),
+    values: { max: MAX_LINE_MODIFIERS }
+  });
+  g.add('reasons', 'std.expr', expr('Why', 'concat(trip, coverage, byCode)'));
   g.ret('return');
-  g.wire('entry.claimFiling', 'coverage.claimFiling');
-  g.wire('entry.codes', 'coverage.codes');
-  g.wire('entry.originDestination', 'modifiers.item1');
-  g.wire('coverage.modifier', 'modifiers.item2');
-  g.wire('modifiers.list', 'return.modifiers');
-  g.wire('coverage.rules', 'return.reasons');
+  g.wire('entry.deceased', 'trip.deceased');
+  g.wire('entry.patientCount', 'trip.patientCount');
+  for (const pin of ['claimFiling', 'codes', 'emergency', 'abnOnFile', 'denialExpected']) {
+    g.wire(`entry.${pin}`, `coverage.${pin}`);
+  }
+  g.wire('entry.codes', 'byCode.keys', 'modifiers.codes');
+  g.wire('entry.originDestination', 'modifiers.originDestination');
+  g.wire('trip.leading', 'modifiers.leading');
+  g.wire('trip.added', 'modifiers.added');
+  g.wire('coverage.modifier', 'modifiers.coverage');
+  g.wire('byCode.values', 'modifiers.byCode');
+  g.wire('modifiers.result', 'return.modifiers');
+  g.wire('trip.rules', 'reasons.trip');
+  g.wire('coverage.rules', 'reasons.coverage');
+  g.wire('byCode.values', 'reasons.byCode');
+  g.wire('reasons.result', 'return.reasons');
+  return g.def;
+};
+
+const NOTE_IN = [
+  d('claim', T.submission, 'Claim', 'The claim as it goes to this payer.'),
+  d(
+    'conditionCodes',
+    { list: 'string' },
+    'Condition Codes',
+    'The CRC ambulance condition codes billed.',
+    true
+  )
+];
+
+const NARRATIVE = `substr(join(filter([
+  lines[0].code + (emergency ? ' EMERGENCY' : ' NON-EMERGENCY'),
+  deceased ? 'PRONOUNCED DEAD BEFORE LOADING' : null,
+  (patientCount ?? 1) > 1 ? text(patientCount) + ' PATIENTS TRANSPORTED' : null,
+  nonCoveredMiles > 0 ? text(nonCoveredMiles) + ' MI PAST NEAREST FACILITY' : null,
+  transportReason != null ? 'REASON ' + transportReason : null,
+  len(conditionCodes ?? []) > 0 ? 'COND ' + join(conditionCodes, ' ') : null,
+  len(diagnoses) > 0 ? 'DX ' + diagnoses[0] : null
+], x => x != null), '; '), 0, length)`;
+
+const narrativeNote = (): GraphDef => {
+  const g = rule(NOTE_IN, [
+    d(
+      'note',
+      'string',
+      'Narrative Note',
+      'An 80-character medical necessity summary for the claim note (NTE ADD), or nothing.',
+      true
+    ),
+    P.reasons('a note was or was not sent')
+  ]);
+  g.add('claim', 'billing.submission.break');
+  g.add('payer', 'billing.submitted-payer.break');
+  g.add('details', 'billing.submitted-details.break');
+  g.add('documentation', 'billing.documentation.break');
+  g.add(
+    'nonCovered',
+    'std.expr',
+    expr(
+      'Non-Covered Miles Billed',
+      "sum(map(filter(lines, l => l.code == 'A0888'), l => l.units))"
+    )
+  );
+  g.add('decide', 'std.table.decide', {
+    label: 'Narrative Note',
+    config: shared.decision(
+      'billing.narrative-note',
+      'Narrative Note',
+      'Decides when the claim carries a medical necessity note (NTE ADD): when it explains QL, GM or A0888. Add a row, for a claim filing indicator say, to send it on more claims.',
+      table(
+        [
+          field('claimFiling', 'string', 'Claim filing indicator'),
+          field('deceased', 'boolean', 'Pronounced dead before loading'),
+          field('patientCount', 'integer', 'Patients transported'),
+          field('nonCoveredMiles', 'number', 'Non-covered miles billed')
+        ],
+        [field('send', 'boolean', 'Send the note')],
+        [
+          {
+            label: 'Explains QL: pronounced dead before loading',
+            when: { deceased: is(true) },
+            set: { send: true }
+          },
+          {
+            label: 'Explains GM: several patients on one trip',
+            when: { patientCount: atLeast(2) },
+            set: { send: true }
+          },
+          {
+            label: 'Explains A0888: miles past the nearest facility',
+            when: { nonCoveredMiles: { op: 'gt', value: 0 } },
+            set: { send: true }
+          }
+        ],
+        { send: false }
+      )
+    )
+  });
+  g.add('text', 'std.expr', {
+    ...expr('Medical Necessity Summary', NARRATIVE),
+    values: { length: NOTE_LENGTH }
+  });
+  g.add('note', 'std.logic.select', { label: 'Only When Sent' });
+  g.ret('return');
+  g.wire('entry.claim', 'claim.claim');
+  g.wire('claim.payer', 'payer.payer');
+  g.wire('claim.details', 'details.details');
+  g.wire('details.documentation', 'documentation.documentation');
+  g.wire('claim.lines', 'nonCovered.lines', 'text.lines');
+  g.wire('payer.claimFiling', 'decide.claimFiling');
+  g.wire('claim.deceased', 'decide.deceased', 'text.deceased');
+  g.wire('documentation.patientCount', 'decide.patientCount', 'text.patientCount');
+  g.wire('nonCovered.result', 'decide.nonCoveredMiles', 'text.nonCoveredMiles');
+  g.wire('claim.emergency', 'text.emergency');
+  g.wire('documentation.transportReason', 'text.transportReason');
+  g.wire('entry.conditionCodes', 'text.conditionCodes');
+  g.wire('details.diagnoses', 'text.diagnoses');
+  g.wire('decide.send', 'note.condition');
+  g.wire('text.result', 'note.whenTrue');
+  g.wire('note.result', 'return.note');
+  g.wire('decide.rules', 'return.reasons');
+  return g.def;
+};
+
+const admissionDate = (): GraphDef => {
+  const g = rule(
+    [d('documentation', T.documentation, 'Documentation', 'What the claim documents.')],
+    [
+      d(
+        'admissionDate',
+        'string',
+        'Admission Date',
+        'The date the patient was admitted (DTP 435), when known.',
+        true
+      ),
+      P.reasons('an admission date was or was not sent')
+    ]
+  );
+  g.add('documentation', 'billing.documentation.break');
+  g.add(
+    'reasons',
+    'std.expr',
+    expr('Why', "admissionDate != null ? ['The admission date is documented'] : []")
+  );
+  g.ret('return');
+  g.wire('entry.documentation', 'documentation.documentation');
+  g.wire('documentation.admissionDate', 'return.admissionDate', 'reasons.admissionDate');
+  g.wire('reasons.result', 'return.reasons');
   return g.def;
 };
 
@@ -447,27 +683,25 @@ const map837p = (): GraphDef => {
   g.add('place', 'billing.place-of-service', { label: 'Place of Service' });
   g.add('codes', 'std.list.pluck', { label: 'Line Codes', values: { field: 'code' } });
   g.add('modifiers', 'billing.line-modifiers', { label: 'Line Modifiers' });
-  g.add('shared', 'std.object.make', {
-    label: 'Every Line',
-    config: {
-      fields: [
-        { name: 'modifiers', type: { list: 'string' } },
-        { name: 'serviceDate', type: 'string' }
-      ]
-    }
-  });
-  g.add('lines', 'std.list.reshape', {
-    label: 'Service Lines',
-    config: {
-      fields: [
-        { name: 'code', type: 'string', from: 'code' },
-        { name: 'modifiers', type: { list: 'string' } },
-        { name: 'chargeCents', type: 'integer', from: 'totalCents' },
-        { name: 'units', type: 'number', from: 'units' },
-        { name: 'serviceDate', type: 'string' }
-      ]
-    }
-  });
+  g.add(
+    'lines',
+    'std.expr',
+    expr(
+      'Service Lines',
+      'map(lines, (l, n) => { code: l.code, modifiers: modifiers[n] ?? [], chargeCents: l.totalCents, units: l.units, serviceDate: serviceDate })'
+    )
+  );
+  g.add('note', 'billing.narrative-note', { label: 'Narrative Note' });
+  g.add('admitted', 'billing.admission-date', { label: 'Admission Date' });
+  g.add('msp', 'billing.medicare-secondary-payer', { label: 'Medicare Secondary Payer' });
+  g.add(
+    'insuranceType',
+    'std.expr',
+    expr(
+      'Only When Medicare Is Billed After Another Payer',
+      "contains(['MA', 'MB'], claimFiling) && len(priorPayers ?? []) > 0 ? insuranceType : null"
+    )
+  );
   g.add('x837', 'x837.claim.make');
   g.add('agency', 'billing.agency-837p', { label: 'Agency 837P Rules' });
   g.ret('return');
@@ -491,6 +725,18 @@ const map837p = (): GraphDef => {
   g.wire('payer.insuredLastName', 'subscriber.lastName');
   g.wire('payer.insuredFirstName', 'subscriber.firstName');
   for (const pin of ['name', 'payerId', 'claimFiling']) g.wire(`payer.${pin}`, `x12Payer.${pin}`);
+  for (const pin of ['mspEmployerPlan', 'mspEsrd', 'mspDisability', 'mspAccident']) {
+    g.wire(`documentation.${pin}`, `msp.${pin}`);
+  }
+  g.wire('payer.claimFiling', 'insuranceType.claimFiling');
+  g.wire('claim.priorPayers', 'insuranceType.priorPayers');
+  g.wire('msp.insuranceType', 'insuranceType.insuranceType');
+  g.wire('insuranceType.result', 'x12Payer.insuranceType');
+  g.wire('entry.claim', 'note.claim');
+  g.wire('conditions.codes', 'note.conditionCodes');
+  g.wire('note.note', 'x837.note');
+  g.wire('details.documentation', 'admitted.documentation');
+  g.wire('admitted.admissionDate', 'x837.admissionDate');
   g.wire('claim.priorPayers', 'otherPayers.list');
   g.wire('claim.payerClaimNumber', 'frequency.payerClaimNumber', 'x837.payerClaimNumber');
   g.wire('frequency.frequency', 'x837.frequency');
@@ -499,10 +745,14 @@ const map837p = (): GraphDef => {
   g.wire('claim.lines', 'codes.list');
   g.wire('payer.claimFiling', 'modifiers.claimFiling');
   g.wire('codes.list', 'modifiers.codes');
-  g.wire('modifiers.modifiers', 'shared.modifiers');
-  g.wire('details.serviceDate', 'shared.serviceDate');
-  g.wire('claim.lines', 'lines.list');
-  g.wire('shared.object', 'lines.shared');
+  g.wire('claim.emergency', 'modifiers.emergency');
+  g.wire('claim.deceased', 'modifiers.deceased');
+  g.wire('documentation.patientCount', 'modifiers.patientCount');
+  g.wire('documentation.abnOnFile', 'modifiers.abnOnFile');
+  g.wire('documentation.denialExpected', 'modifiers.denialExpected');
+  g.wire('modifiers.modifiers', 'lines.modifiers');
+  g.wire('details.serviceDate', 'lines.serviceDate');
+  g.wire('claim.lines', 'lines.lines');
   g.wire('claim.claimId', 'x837.claimId');
   g.wire('subscriber.subscriber', 'x837.subscriber');
   g.wire('x12Patient.patient', 'x837.patient');
@@ -513,7 +763,7 @@ const map837p = (): GraphDef => {
   g.wire('details.diagnoses', 'x837.diagnoses');
   g.wire('details.pickup', 'x837.pickup');
   g.wire('details.destination', 'x837.dropoff');
-  g.wire('lines.list', 'x837.lines');
+  g.wire('lines.result', 'x837.lines');
   g.wire('x837.x837', 'agency.x837');
   g.wire('agency.x837', 'return.x837');
   return g.def;
@@ -575,8 +825,20 @@ export const claimGraphs: SeedGraph[] = [
   asRule(
     'billing.line-modifiers',
     'Line Modifiers',
-    'The modifiers on every service line: the origin/destination letters, then a liability modifier for the payer billed (Coverage Modifier table), such as GY for Medicare treat-no-transport.',
+    'The modifiers of each service line: the origin/destination letters, or QL when the patient was pronounced dead before loading, and GM for several patients (Trip Modifiers table); a liability modifier for the payer billed, GY, GA or GZ (Coverage Modifier table); and a modifier for the line code, such as GY on A0888 (Line Code Modifier table).',
     lineModifiers()
+  ),
+  asRule(
+    'billing.narrative-note',
+    'Narrative Note',
+    'An 80-character medical necessity summary for the claim note (NTE ADD): level and emergency, pronounced dead, patients transported, miles past the nearest facility, transport reason, conditions and the primary diagnosis, sent when the Narrative Note table says so.',
+    narrativeNote()
+  ),
+  asRule(
+    'billing.admission-date',
+    'Admission Date',
+    'The admission date the claim carries (DTP 435), when it is documented.',
+    admissionDate()
   ),
   asRule(
     'billing.place-of-service',
@@ -593,7 +855,7 @@ export const claimGraphs: SeedGraph[] = [
   asRule(
     'billing.map-837p',
     'Map 837P Claim',
-    'Maps a claim on its way to a payer onto an 837P claim: subscriber and patient, payer, prior payers for coordination of benefits, Claim Frequency, Place of Service, Ambulance Conditions, Line Modifiers and service lines, then the Agency 837P Rules.',
+    'Maps a claim on its way to a payer onto an 837P claim: subscriber and patient, payer (with the Medicare Secondary Payer type when Medicare is billed second), prior payers for coordination of benefits, Claim Frequency, Admission Date, Narrative Note, Place of Service, Ambulance Conditions, Line Modifiers and service lines, then the Agency 837P Rules.',
     map837p()
   )
 ];
