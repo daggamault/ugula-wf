@@ -101,12 +101,12 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
       ),
       pcs as (
         select distinct on (c.patient_id) 'pcs' as kind, c.id as claim_id, null::uuid as coverage_id,
-          ${reference} as reference, (c.pcs_signed_on + ${PCS_DAYS})::date as due_on, null::uuid as task_id, 0 as priority
+          ${reference} as reference, (c.pcs_signed_on + ${PCS_DAYS}::int)::date as due_on, null::uuid as task_id, 0 as priority
         from claims c
         join agency a on a.agency_id = c.agency_id
         left join patients p on p.id = c.patient_id
         where c.trip_type = 'scheduled' and c.pcs_signed_on is not null and c.patient_id is not null
-          and c.service_date >= ${today}::date - ${PCS_DAYS}
+          and c.service_date >= ${today}::date - ${PCS_DAYS}::int
         order by c.patient_id, c.service_date desc, c.number desc
       )
       select d.kind, d.claim_id, d.coverage_id, d.reference, d.due_on::text as due_on,
@@ -121,7 +121,7 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
             and r.inputs ->> 'kind' = d.kind
         ) as reminded
       from (select * from filing union all select * from due union all select * from pcs) d
-      where d.due_on is not null and d.due_on - ${today}::date <= ${WINDOW_DAYS}
+      where d.due_on is not null and d.due_on - ${today}::date <= ${WINDOW_DAYS}::int
       order by d.due_on, d.kind, d.claim_id`.execute(db);
     return rows.map(
       (r): Deadline => ({
