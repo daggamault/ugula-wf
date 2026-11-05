@@ -30,8 +30,8 @@
 ## Polling and routing
 
 - Every `CLEARINGHOUSE_POLL_MINUTES` the worker lists the download folders of the default connection and every enabled agency connection, once per distinct `username@host:port` and folders (agencies sharing an account are polled once).
-- Each new file (by connection, path, size and modification time, `clearinghouse_downloads`) is recognized by content (ISA/GS/ST), routed to the agency whose billing profile submitter ID is the interchange receiver (ISA08) and starts `billing.receive-payer-file`. A file from an agency's own connection only goes to an agency using that connection; only the server default routes to any agency.
-- A file no single agency takes (not X12, no or several agencies with that submitter ID, the workflow not published) stays on the server and its `clearinghouse_downloads` row keeps the reason but no run. The worker tries it again on every poll, logging the reason only when it changes, so fixing a submitter ID or publishing the workflow picks it up.
+- Each new file (by connection, path, size and modification time, `clearinghouse_downloads`) is recognized by content (ISA/GS/ST), routed to the agency whose billing profile submitter ID is the interchange receiver (ISA08) and starts `billing.receive-payer-file`; it is stored under a key that includes a hash of its remote path, so files with the same name in two folders never overwrite each other. A file from an agency's own connection only goes to an agency using that connection; only the server default routes to any agency.
+- A file no single agency takes (not X12, no or several agencies with that submitter ID, the workflow not published) stays on the server and its `clearinghouse_downloads` row keeps the reason but no run. The worker tries it again at most once an hour (`clearinghouse_downloads.tried_at`), logging the reason only when it changes, so fixing a submitter ID or publishing the workflow picks it up within the hour.
 - Kinds: 835, 999, 277CA (`005010X214`, kind `277`), 271, TA1 (an interchange with a `TA1` segment and no transaction set) and 277 claim status (`005010X212`, kind `277S`). Payer Files lists them all with `PAYER_FILE_LABELS`.
 
 ## What each answer does
@@ -43,7 +43,7 @@
 ## Eligibility and claim status requests
 
 - `billing.check-eligibility` runs `Check Eligibility with Clearinghouse` (`billing.send-270`): real time when the connection has a real-time URL, applying the 271 at once as a payer file; otherwise, or when real time gets no answer, a batch `.ELG` upload (an answer that cannot be read is not re-sent in batch). Coverages already answered or with a request pending (`eligibility_requested_at`) are skipped, and an answer from another claim of the same patient, payer and member ID in the same month of service is copied instead of asking. It starts when Encounter to Claim saves a claim's payers and from **Check Eligibility** on a claim, which forces a new request; **Download 270** still builds the file for a biller.
-- `Follow Up with Payer` first runs `Check Claim Status with Clearinghouse` (`billing.send-276`): real time, or a batch `.CLS` upload followed by a wait of up to a day for the claim to change, then shows the latest status in the follow-up task.
+- `Follow Up with Payer` first runs `Check Claim Status with Clearinghouse` (`billing.send-276`): real time, or, when real time gets no answer, a batch `.CLS` upload followed by a wait of up to a day for the claim to change, then shows the latest status in the follow-up task. Each request is recorded per run step in `claim_status_requests`, so a retried step returns what was already sent instead of paying for another 276.
 
 ## Waystar conventions
 
