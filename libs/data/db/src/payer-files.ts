@@ -7,6 +7,7 @@ import {
   type GroupAcknowledgment,
   type InboundKind,
   type InterchangeAcknowledgment,
+  isDenialRoute,
   type PayerClaimStatus,
   type PayerFileOutcome,
   PROBLEM_OUTCOMES,
@@ -337,6 +338,21 @@ const postRemittances = async (c: Context, remittances: Remittance[]) => {
       adjustments: line.adjustments,
       note: `${rc.denied ? 'Denied' : 'Remittance'} from ${remit.payerName ?? 'the payer'} in ${c.fileName}`
     });
+    if (posted.ok && !posted.value.duplicate && isDenialRoute(posting.route)) {
+      await c.tx
+        .insertInto('claim_events')
+        .values({
+          claim_id: claimId,
+          kind: 'denied',
+          coverage_id: coverageId,
+          route: posting.route,
+          note: posting.message || `Denied by ${remit.payerName ?? 'the payer'}`,
+          created_by: c.userId,
+          source_key: `${c.digest}:${position}:denied`
+        })
+        .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
+        .execute();
+    }
     items.push(
       posted.ok
         ? item(

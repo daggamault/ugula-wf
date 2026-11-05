@@ -111,7 +111,17 @@ const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
   accepted: 'Accepted by the payer',
   rejected: 'Rejected',
   eligibility: 'Eligibility checked',
-  claim_status: 'Claim status from the payer'
+  claim_status: 'Claim status from the payer',
+  denied: 'Denied',
+  appeal_packet: 'Appeal packet',
+  appealed: 'Appeal sent',
+  appeal_decided: 'Appeal decided',
+  reopening_requested: 'Reopening requested',
+  records_requested: 'Records requested',
+  records_sent: 'Records sent',
+  closing_approved: 'Closing approved',
+  balance_protected: 'Balance-billing protection',
+  facility_invoiced: 'Facility invoice'
 };
 
 export const lockedReason = (status: ClaimDetail['status']) =>
@@ -856,6 +866,8 @@ export const describeProgress = (progress: ClaimProgress): string => {
       return `Approved. Creating its 837P file for ${progress.coverage.payer}; a task opens if it cannot be created.`;
     case 'reconcile':
       return `${progress.coverage.payer} answered and a balance remains. A reconcile task is waiting.`;
+    case 'workDenial':
+      return `${progress.coverage.payer} denied the claim. A denial decision, correction or appeal is being worked.`;
     case 'await':
       return `Waiting on ${progress.coverage.payer}. A follow-up task opens if they have not answered 30 days after submission.`;
     case 'followUp':
@@ -870,6 +882,8 @@ export const describeProgress = (progress: ClaimProgress): string => {
       return `Sending patient statement ${progress.statement} of 3.`;
     case 'awaitPatient':
       return 'Waiting on the patient. The next statement goes out 30 days after the last one.';
+    case 'facility':
+      return 'A facility is responsible for this trip. It is billed on the monthly facility invoice.';
     case 'collections':
       return 'Every payer and patient statement is done. A balance review task is waiting for a decision.';
     case 'writeOff':

@@ -15,7 +15,17 @@ export const CLAIM_EVENT_KINDS = [
   'accepted',
   'rejected',
   'eligibility',
-  'claim_status'
+  'claim_status',
+  'denied',
+  'appeal_packet',
+  'appealed',
+  'appeal_decided',
+  'reopening_requested',
+  'records_requested',
+  'records_sent',
+  'closing_approved',
+  'balance_protected',
+  'facility_invoiced'
 ] as const;
 
 export type ClaimEventKind = (typeof CLAIM_EVENT_KINDS)[number];
@@ -30,7 +40,12 @@ export const COVERAGE_EVENT_KINDS: readonly ClaimEventKind[] = [
   'accepted',
   'rejected',
   'eligibility',
-  'claim_status'
+  'claim_status',
+  'denied',
+  'appeal_packet',
+  'appealed',
+  'appeal_decided',
+  'reopening_requested'
 ];
 
 const CYCLE_EVENT_KINDS = [
@@ -40,7 +55,13 @@ const CYCLE_EVENT_KINDS = [
   'payer_skipped',
   'approved',
   'reconciled',
-  'statement'
+  'statement',
+  'appealed',
+  'appeal_decided',
+  'reopening_requested',
+  'records_requested',
+  'records_sent',
+  'closing_approved'
 ] as const satisfies readonly ClaimEventKind[];
 
 export type CycleEventKind = (typeof CYCLE_EVENT_KINDS)[number];
@@ -48,7 +69,21 @@ export type CycleEventKind = (typeof CYCLE_EVENT_KINDS)[number];
 export const isCycleEventKind = (x: string): x is CycleEventKind =>
   (CYCLE_EVENT_KINDS as readonly string[]).includes(x);
 
-export const PATIENT_EVENT_KINDS: readonly ClaimEventKind[] = ['statement', 'revised', 'closed'];
+export const PATIENT_EVENT_KINDS: readonly ClaimEventKind[] = [
+  'statement',
+  'revised',
+  'closed',
+  'closing_approved',
+  'balance_protected',
+  'facility_invoiced'
+];
+
+export const DENIAL_ROUTES = ['denial', 'appeal', 'fix'] as const;
+
+export type DenialRoute = (typeof DENIAL_ROUTES)[number];
+
+export const isDenialRoute = (x: unknown): x is DenialRoute =>
+  DENIAL_ROUTES.includes(x as DenialRoute);
 
 export const ADJUSTMENT_GROUPS = {
   CO: 'Contractual obligation',
@@ -74,6 +109,8 @@ export const CLAIM_STATUSES = [
   'submitted',
   'follow_up',
   'reconcile',
+  'denied',
+  'facility_billing',
   'patient_balance',
   'balance_review',
   'paid',
@@ -108,6 +145,7 @@ export type ClaimEvent = {
   paidOn: string | null;
   adjustments: Adjustment[];
   note: string;
+  route?: DenialRoute | null;
   at: string;
 };
 
@@ -122,6 +160,7 @@ export type ClaimLedger = {
   totalCents: number;
   coverages: LedgerCoverage[];
   events: ClaimEvent[];
+  facilityId?: string | null;
 };
 
 export const MIN_WAIT_MS = 60_000;
@@ -132,11 +171,13 @@ export const CLAIM_STEPS = [
   'confirmPayers',
   'submit',
   'reconcile',
+  'workDenial',
   'overpaid',
   'await',
   'followUp',
   'statement',
   'awaitPatient',
+  'facility',
   'collections',
   'writeOff',
   'closed'
@@ -153,31 +194,36 @@ export const STEP_STATUSES: Readonly<Partial<Record<ClaimStepName, ClaimStatus>>
   confirmPayers: 'needs_review',
   submit: 'ready',
   reconcile: 'reconcile',
+  workDenial: 'denied',
   overpaid: 'reconcile',
   await: 'submitted',
   followUp: 'follow_up',
   statement: 'patient_balance',
   awaitPatient: 'patient_balance',
+  facility: 'facility_billing',
   collections: 'balance_review'
 };
 
 type CoverageStep = { coverage: LedgerCoverage; balanceCents: number };
 
 export type ClaimStep =
-  | ({ step: 'review' | 'submit' | 'reconcile' | 'followUp' } & CoverageStep)
+  | ({ step: 'review' | 'submit' | 'reconcile' | 'workDenial' | 'followUp' } & CoverageStep)
   | ({ step: 'await'; waitMs: number } & CoverageStep)
   | { step: 'reviewPatient' | 'confirmPayers' | 'overpaid'; balanceCents: number }
   | { step: 'statement'; statement: number; balanceCents: number }
   | { step: 'awaitPatient'; waitMs: number; balanceCents: number }
-  | { step: 'collections' | 'writeOff' | 'closed'; balanceCents: number };
+  | { step: 'facility' | 'collections' | 'writeOff' | 'closed'; balanceCents: number };
 
 const CONTACTS: readonly ClaimEventKind[] = [
   'submitted',
   'resubmitted',
   'resubmit_queued',
   'follow_up',
-  'rejected'
+  'rejected',
+  'reopening_requested'
 ];
+
+const REOPENED: readonly ClaimEventKind[] = ['resubmit_queued', 'reopening_requested'];
 
 const REOPENING: readonly ClaimEventKind[] = ['resubmit_queued', 'rejected'];
 
@@ -205,7 +251,7 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
   const lastOf = (coverageId: string | null, kinds: readonly ClaimEventKind[]) =>
     events.findLastIndex((e) => e.coverageId === coverageId && kinds.includes(e.kind));
   const edited = events.findLastIndex((e) => e.kind === 'edited');
-  const reopened = (id: string) => lastOf(id, ['resubmit_queued']);
+  const reopened = (id: string) => lastOf(id, REOPENED);
   const isDone = (id: string) => lastOf(id, ['response', 'payer_skipped']) > reopened(id);
   const coverage = coverages.find((c) => !isDone(c.id)) ?? null;
   const contacts = events
@@ -218,10 +264,15 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
     coverage !== null && approvedAt > Math.max(lastOf(coverage.id, CONTACTS), edited)
       ? approvedAt
       : -1;
-  const unreconciled =
-    coverages.find(
-      (c) => lastOf(c.id, ['response']) > lastOf(c.id, ['reconciled', 'resubmit_queued'])
-    ) ?? null;
+  const settled = (id: string) => lastOf(id, ['reconciled', ...REOPENED]);
+  const unreconciled = coverages.find((c) => lastOf(c.id, ['response']) > settled(c.id)) ?? null;
+  const denialAt = unreconciled ? lastOf(unreconciled.id, ['denied']) : -1;
+  const denial =
+    unreconciled &&
+    denialAt > settled(unreconciled.id) &&
+    denialAt > lastOf(unreconciled.id, ['response'])
+      ? (events[denialAt] ?? null)
+      : null;
   const statements = events.filter((e) => e.kind === 'statement');
   const answered = coverages.filter(
     (c) => c.id !== coverage?.id && lastOf(c.id, ['response']) >= 0
@@ -234,6 +285,10 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
     approvedAt: approval >= 0 ? Date.parse(events[approval]?.at ?? '') : null,
     patientApproved: lastOf(null, ['approved']) > edited,
     unreconciled,
+    denial: denial ? { route: denial.route ?? 'denial', note: denial.note } : null,
+    appeals: unreconciled
+      ? events.filter((e) => e.coverageId === unreconciled.id && e.kind === 'appealed').length
+      : 0,
     skipped: coverages
       .filter((c) => lastOf(c.id, ['payer_skipped']) > reopened(c.id))
       .map((c) => c.id),
@@ -278,6 +333,9 @@ export const ledgerFactsOf = (ledger: ClaimLedger, now: Date) => {
     approved: p.approved,
     unreconciledCoverageId: p.unreconciled?.id ?? null,
     unreconciledPayer: p.unreconciled?.payer ?? null,
+    denialRoute: p.denial?.route ?? null,
+    appeals: p.appeals,
+    billFacility: (ledger.facilityId ?? null) !== null,
     patientApproved: p.patientApproved,
     statements: p.statements,
     sinceStatementMs: sinceMs(p.lastStatement, now),
@@ -304,6 +362,7 @@ export const readClaimStep = (decision: Record<string, unknown>, facts: LedgerFa
     );
   switch (step) {
     case 'reconcile':
+    case 'workDenial':
       return {
         step,
         coverage: coverageOf(facts.unreconciledCoverageId, facts.unreconciledPayer, null),

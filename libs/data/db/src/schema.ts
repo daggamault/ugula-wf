@@ -5,10 +5,13 @@ import type {
   ClaimEventKind,
   ClaimStatus,
   ClearinghouseVendor,
+  CorrectionMethod,
+  DenialRoute,
   EligibilityStatus,
   InboundKind,
   InsuredRelationship,
   PayerFileOutcome,
+  PlanType,
   Sex,
   SignatureStatus,
   TransportReason,
@@ -391,9 +394,34 @@ export type ClaimsTable = {
   at_destination_at: NullableTimestamp;
   status: Generated<ClaimStatus>;
   cycle_run_id: string | null;
+  facility_id: ColumnType<string | null, string | null | undefined, string | null>;
   source_key: string;
   created_at: Timestamp;
   updated_at: Timestamp;
+};
+
+type FacilitiesTable = {
+  id: Generated<string>;
+  agency_id: string;
+  name: string;
+  address_line: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  phone: string | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+};
+
+type FacilityInvoicesTable = {
+  id: Generated<string>;
+  agency_id: string;
+  facility_id: string;
+  period: ColumnType<string, string, string>;
+  claim_count: number;
+  total_cents: number;
+  document: JsonColumn;
+  created_at: Timestamp;
 };
 
 type ClaimRunsTable = {
@@ -456,6 +484,7 @@ type ClaimEventsTable = {
   paid_on: ColumnType<string | null, string | null | undefined, string | null>;
   check_number: string | null;
   note: Generated<string>;
+  route: ColumnType<DenialRoute | null, DenialRoute | null | undefined, DenialRoute | null>;
   document: NullableJsonColumn;
   created_by: string | null;
   source_key: string | null;
@@ -594,6 +623,13 @@ export type PayersTable = {
   payer_id: string;
   claim_filing: string;
   filing_limit_days: ColumnType<number | null, number | null | undefined, number | null>;
+  correction_method: ColumnType<
+    CorrectionMethod | null,
+    CorrectionMethod | null | undefined,
+    CorrectionMethod | null
+  >;
+  appeal_days: ColumnType<number | null, number | null | undefined, number | null>;
+  plan_type: ColumnType<PlanType | null, PlanType | null | undefined, PlanType | null>;
   embedding: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: Timestamp;
   updated_at: Timestamp;
@@ -645,6 +681,8 @@ export type Database = {
   imports: ImportsTable;
   import_reports: ImportReportsTable;
   claims: ClaimsTable;
+  facilities: FacilitiesTable;
+  facility_invoices: FacilityInvoicesTable;
   claim_runs: ClaimRunsTable;
   claim_lines: ClaimLinesTable;
   claim_coverages: ClaimCoveragesTable;

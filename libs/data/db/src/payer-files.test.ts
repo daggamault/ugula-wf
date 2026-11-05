@@ -185,6 +185,31 @@ describe('applyPayerFile', () => {
     assert.ok(queries.every((q) => q.sql.startsWith('select')));
   });
 
+  it('posts a denial the rules routed to be worked and records the denial with its route', async () => {
+    const text = build835(
+      [{ claims: [{ claimNumber: '1001', chargeCents: 100_000, paidCents: 0 }] }],
+      { createdAt }
+    );
+    const { out, events, digest } = await apply(text, [
+      {
+        position: 1,
+        route: 'appeal',
+        message: 'Medicare denied medical necessity',
+        adjustedCents: 0
+      }
+    ]);
+    assert.deepEqual(outcomes(out.items), [['1001', 'c1', 'posted', 'Denied']]);
+    assert.equal(events.length, 2);
+    for (const value of [
+      'denied',
+      'appeal',
+      'Medicare denied medical necessity',
+      `${digest}:1:denied`
+    ]) {
+      assert.ok(events[1]?.parameters.includes(value), value);
+    }
+  });
+
   it('leaves a payment the rules routed to review unposted, and faults without a decision', async () => {
     const text = build835(
       [{ claims: [{ claimNumber: '1001', chargeCents: 100_000, paidCents: 60_000 }] }],

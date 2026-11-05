@@ -7,6 +7,7 @@ import { createClearinghouseConnectionsTable } from './clearinghouse-connections
 import { parseConfig } from './config.ts';
 import { createDataTablesTables } from './data-tables.ts';
 import { createExtensions } from './extensions.ts';
+import { createFacilitiesTables } from './facilities.ts';
 import { createFeeSchedulesTable } from './fee-schedules.ts';
 import { createGnisPlacesTable } from './gnis-places.ts';
 import { createGraphsTables } from './graphs.ts';
@@ -32,6 +33,8 @@ const resetSchema = async (db: Kysely<Database>) => {
     'claim_lines',
     'claim_runs',
     'claims',
+    'facility_invoices',
+    'facilities',
     'import_reports',
     'imports',
     'fee_schedules',
@@ -88,6 +91,7 @@ const steps = [
   createClearinghouseConnectionsTable,
   createFeeSchedulesTable,
   createImportsTables,
+  createFacilitiesTables,
   createClaimsTables,
   createPayerFilesTables,
   createNotificationsTables

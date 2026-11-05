@@ -137,8 +137,11 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
     .leftJoin('workflow_runs as r', 'r.id', 'c.cycle_run_id')
     .leftJoin('import_reports as ir', 'ir.id', 'c.import_report_id')
     .leftJoin('imports as i', 'i.id', 'ir.import_id')
+    .leftJoin('facilities as f', 'f.id', 'c.facility_id')
     .select((eb) => [
       'i.id as import_id',
+      'c.facility_id',
+      'f.name as facility_name',
       'i.file_name as import_file_name',
       'c.trip_type',
       'c.emergency',

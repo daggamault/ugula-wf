@@ -437,6 +437,7 @@ describe('createClaimStore', () => {
               pcr_number: 'PCR-1',
               first_name: 'Jane',
               last_name: 'Doe',
+              facility_id: null,
               received: 4
             }
           ]
@@ -452,6 +453,7 @@ describe('createClaimStore', () => {
                 paid_on: null,
                 adjustments: [],
                 note: 'ICN 1',
+                route: null,
                 created_at: new Date('2026-01-01T00:00:00.000Z')
               }
             ]
@@ -459,6 +461,7 @@ describe('createClaimStore', () => {
     const store = createClaimStore(db, blobs);
     assert.deepEqual(await store.ledger('r1', ID), {
       totalCents: 95_000,
+      facilityId: null,
       signalsSeen: 4,
       reference: 'PCR-1 · Jane Doe',
       coverages: [{ id: 'cov-1', payer: 'Medicare' }],
@@ -472,6 +475,7 @@ describe('createClaimStore', () => {
           paidOn: null,
           adjustments: [],
           note: 'ICN 1',
+          route: null,
           at: '2026-01-01T00:00:00.000Z'
         }
       ]

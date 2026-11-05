@@ -74,11 +74,13 @@ describe('readPostings', () => {
         { position: 1, route: 'reconcile', message: '', adjustedCents: 2_500, reasons: [] },
         { position: 2, route: 'review', message: 'Reversed' },
         { position: 3, route: 'appeal' },
+        { position: 4, route: 'escalate' },
         null
       ]),
       [
         { position: 1, route: 'reconcile', message: '', adjustedCents: 2_500 },
-        { position: 2, route: 'review', message: 'Reversed', adjustedCents: 0 }
+        { position: 2, route: 'review', message: 'Reversed', adjustedCents: 0 },
+        { position: 3, route: 'appeal', message: '', adjustedCents: 0 }
       ]
     );
   });

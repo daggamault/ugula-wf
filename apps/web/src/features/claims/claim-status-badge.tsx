@@ -8,6 +8,8 @@ const STATUS: Record<ClaimStatus, StatusBadgeStyle> = {
   submitted: { intent: 'info', label: 'Submitted' },
   follow_up: { intent: 'warning', label: 'Needs Follow-Up' },
   reconcile: { intent: 'warning', label: 'Reconcile Payment' },
+  denied: { intent: 'danger', label: 'Denied' },
+  facility_billing: { intent: 'info', label: 'Billed to Facility' },
   patient_balance: { intent: 'info', label: 'Patient Balance' },
   balance_review: { intent: 'warning', label: 'Balance Review' },
   paid: { intent: 'success', label: 'Paid' },

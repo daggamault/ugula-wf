@@ -1,7 +1,10 @@
 import {
   CLAIM_FILING_CODES,
+  CORRECTION_METHODS,
+  MAX_APPEAL_DAYS,
   MAX_CONTROL_NUMBER,
   MAX_FILING_LIMIT_DAYS,
+  PLAN_TYPES,
   US_STATE_PATTERN,
   ZIP_PLUS_4_PATTERN
 } from '@ugula/billing';
@@ -61,6 +64,9 @@ const buildPayersTable = (db: Kysely<Database>) =>
     .addColumn('payer_id', 'text', (col) => col.notNull())
     .addColumn('claim_filing', 'text', (col) => col.notNull())
     .addColumn('filing_limit_days', 'integer')
+    .addColumn('correction_method', 'text')
+    .addColumn('appeal_days', 'integer')
+    .addColumn('plan_type', 'text')
     .addColumn('embedding', sql`vector(${sql.lit(EMBEDDING_DIMENSIONS)})`)
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -69,6 +75,18 @@ const buildPayersTable = (db: Kysely<Database>) =>
     .addCheckConstraint(
       'payers_filing_limit_days_check',
       sql`filing_limit_days between 1 and ${sql.lit(MAX_FILING_LIMIT_DAYS)}`
+    )
+    .addCheckConstraint(
+      'payers_correction_method_check',
+      sql`correction_method in (${sql.join(Object.keys(CORRECTION_METHODS).map((c) => sql.lit(c)))})`
+    )
+    .addCheckConstraint(
+      'payers_appeal_days_check',
+      sql`appeal_days between 1 and ${sql.lit(MAX_APPEAL_DAYS)}`
+    )
+    .addCheckConstraint(
+      'payers_plan_type_check',
+      sql`plan_type in (${sql.join(Object.keys(PLAN_TYPES).map((c) => sql.lit(c)))})`
     )
     .addCheckConstraint('payers_payer_id_check', sql`payer_id ~ '^[A-Za-z0-9]{2,80}$'`)
     .addCheckConstraint(

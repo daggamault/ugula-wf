@@ -127,7 +127,8 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
                 payer: c.payer,
                 claimFiling: c.claim_filing
               })),
-              events
+              events,
+              facilityId: claim.facility_id
             },
             at
           )

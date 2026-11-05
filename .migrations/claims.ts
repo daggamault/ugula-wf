@@ -8,6 +8,7 @@ import {
   type ClaimStatus,
   CONDITION_LIMIT,
   COVERAGE_EVENT_KINDS,
+  DENIAL_ROUTES,
   DIAGNOSIS_LIMIT,
   ELIGIBILITY_STATUSES,
   HCPCS_PATTERN,
@@ -39,6 +40,10 @@ const UNSENT = list(['draft', 'void'] satisfies ClaimStatus[]);
 const RESPONSE = sql.lit('response' satisfies ClaimEventKind);
 
 const REFUNDED = sql.lit('refunded' satisfies ClaimEventKind);
+
+const PROTECTED = sql.lit('balance_protected' satisfies ClaimEventKind);
+
+const DENIED = sql.lit('denied' satisfies ClaimEventKind);
 
 const buildClaimsTable = (db: Kysely<Database>) =>
   db.schema
@@ -83,6 +88,7 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('at_destination_at', 'timestamptz')
     .addColumn('status', 'text', (col) => col.notNull().defaultTo('draft'))
     .addColumn('cycle_run_id', 'uuid')
+    .addColumn('facility_id', 'uuid')
     .addColumn('source_key', 'text', (col) => col.notNull())
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -141,6 +147,9 @@ const buildClaimsTable = (db: Kysely<Database>) =>
 
 const buildClaimsCycleRunForeignKey = () =>
   agencySetNullForeignKey({ table: 'claims', column: 'cycle_run_id', references: 'workflow_runs' });
+
+const buildClaimsFacilityForeignKey = () =>
+  agencySetNullForeignKey({ table: 'claims', column: 'facility_id', references: 'facilities' });
 
 const buildClaimRunsTable = (db: Kysely<Database>) =>
   db.schema
@@ -280,6 +289,7 @@ const buildClaimEventsTable = (db: Kysely<Database>) =>
     .addColumn('paid_on', 'date')
     .addColumn('check_number', 'text')
     .addColumn('note', 'text', (col) => col.notNull().defaultTo(''))
+    .addColumn('route', 'text')
     .addColumn('document', 'jsonb')
     .addColumn('created_by', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
@@ -304,11 +314,15 @@ const buildClaimEventsTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint(
       'claim_events_amounts_check',
-      sql`(kind = ${RESPONSE} and paid_cents >= 0 and adjusted_cents >= 0) or (kind = ${REFUNDED} and paid_cents < 0 and adjusted_cents = 0) or (paid_cents = 0 and adjusted_cents = 0)`
+      sql`(kind = ${RESPONSE} and paid_cents >= 0 and adjusted_cents >= 0) or (kind = ${REFUNDED} and paid_cents < 0 and adjusted_cents = 0) or (kind = ${PROTECTED} and paid_cents = 0 and adjusted_cents > 0) or (paid_cents = 0 and adjusted_cents = 0)`
     )
     .addCheckConstraint(
       'claim_events_payment_check',
       sql`kind in (${RESPONSE}, ${REFUNDED}) or (paid_on is null and check_number is null)`
+    )
+    .addCheckConstraint(
+      'claim_events_route_check',
+      sql`(kind = ${DENIED}) = (route is not null) and route in (${list(DENIAL_ROUTES)})`
     )
     .addCheckConstraint(
       'claim_events_check_number_check',
@@ -387,6 +401,7 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
     .expression(sql`(lower(coalesce(pcr_number, ''))) gin_trgm_ops`),
   db.schema.createIndex('idx_claims_patient_id').on('claims').column('patient_id'),
   db.schema.createIndex('idx_claims_cycle_run_id').on('claims').column('cycle_run_id'),
+  db.schema.createIndex('idx_claims_facility_id').on('claims').column('facility_id'),
   db.schema.createIndex('idx_claim_runs_claim_id').on('claim_runs').column('claim_id'),
   db.schema
     .createIndex('claim_coverages_claim_payer_name_unique')
@@ -415,6 +430,7 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
 export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimsTable(db).execute();
   await buildClaimsCycleRunForeignKey().execute(db);
+  await buildClaimsFacilityForeignKey().execute(db);
   await buildClaimRunsTable(db).execute();
   await buildClaimLinesTable(db).execute();
   await buildClaimCoveragesTable(db).execute();

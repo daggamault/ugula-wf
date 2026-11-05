@@ -17,6 +17,23 @@ export type ClaimFilingCode = keyof typeof CLAIM_FILING_CODES;
 
 export const MAX_FILING_LIMIT_DAYS = 3650;
 
+export const CORRECTION_METHODS = {
+  replacement: 'Replacement claim (frequency 7 or 8)',
+  reopening: 'Reopening request (Medicare)'
+} as const;
+
+export type CorrectionMethod = keyof typeof CORRECTION_METHODS;
+
+export const PLAN_TYPES = {
+  fully_insured: 'Fully insured',
+  self_funded: 'Self-funded (ERISA)',
+  government: 'Government'
+} as const;
+
+export type PlanType = keyof typeof PLAN_TYPES;
+
+export const MAX_APPEAL_DAYS = 730;
+
 const FEDERAL_FILING_LIMIT_DAYS: Partial<Record<ClaimFilingCode, number>> = {
   MA: 365,
   MB: 365,

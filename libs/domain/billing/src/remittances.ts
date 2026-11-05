@@ -1,7 +1,7 @@
-import type { Adjustment } from './claims.ts';
+import { type Adjustment, DENIAL_ROUTES } from './claims.ts';
 import type { RemittanceClaim } from './x835.ts';
 
-export const REMITTANCE_ROUTES = ['reconcile', 'review', 'unmatched'] as const;
+export const REMITTANCE_ROUTES = ['reconcile', ...DENIAL_ROUTES, 'review', 'unmatched'] as const;
 
 export type RemittanceRoute = (typeof REMITTANCE_ROUTES)[number];
 

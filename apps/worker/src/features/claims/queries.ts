@@ -586,6 +586,7 @@ export const createClaimStore = (
               'c.id',
               'c.total_cents',
               'c.pcr_number',
+              'c.facility_id',
               'p.first_name',
               'p.last_name',
               eb
@@ -619,6 +620,7 @@ export const createClaimStore = (
             'e.payer_claim_number',
             'e.paid_on',
             'e.note',
+            'e.route',
             adjustmentsOf.as('adjustments'),
             'e.created_at'
           ])
@@ -629,6 +631,7 @@ export const createClaimStore = (
       ]);
       return {
         totalCents: claim.total_cents,
+        facilityId: claim.facility_id,
         signalsSeen: claim.received ?? 0,
         reference: [claim.pcr_number, patient].filter(Boolean).join(' · '),
         coverages,
@@ -641,6 +644,7 @@ export const createClaimStore = (
           paidOn: e.paid_on,
           adjustments: e.adjustments,
           note: e.note,
+          route: e.route,
           at: new Date(e.created_at).toISOString()
         }))
       };

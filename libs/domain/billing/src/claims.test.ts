@@ -53,6 +53,9 @@ describe('ledgerFactsOf', () => {
       approved: false,
       unreconciledCoverageId: null,
       unreconciledPayer: null,
+      denialRoute: null,
+      appeals: 0,
+      billFacility: false,
       patientApproved: false,
       statements: 0,
       sinceStatementMs: null,
@@ -76,6 +79,30 @@ describe('ledgerFactsOf', () => {
       [patient.payerKind, patient.coverageId, patient.statements, patient.sinceStatementMs],
       ['patient', null, 1, 30 * DAY]
     );
+  });
+
+  it('opens a denial routed on the response until a biller settles it, counting appeals', () => {
+    const denied = (route: 'denial' | 'appeal' | 'fix', onDay: number) => ({
+      ...e('denied', 'Medicare', onDay),
+      route,
+      note: 'Denied'
+    });
+    const base = [e('submitted', 'Medicare', 1), e('response', 'Medicare', 5), denied('appeal', 5)];
+    const open = facts([...base, e('appealed', 'Medicare', 6)], 7);
+    assert.deepEqual([open.denialRoute, open.appeals], ['appeal', 1]);
+    assert.equal(facts([...base, e('reconciled', 'Medicare', 6)], 7).denialRoute, null);
+    const paid = facts([...base, e('response', 'Medicare', 9, 100)], 10);
+    assert.equal(paid.denialRoute, null);
+    const reopened = facts([...base, e('reopening_requested', 'Medicare', 6)], 7);
+    assert.deepEqual(
+      [reopened.denialRoute, reopened.coverageId, reopened.contacted],
+      [null, 'cov-Medicare', true]
+    );
+  });
+
+  it('bills a facility instead of payers when one is responsible', () => {
+    const ledger = { totalCents: 1, coverages: [], events: [], facilityId: 'f1' };
+    assert.equal(ledgerFactsOf(ledger, day(0)).billFacility, true);
   });
 
   it('says why the last submission was rejected', () => {
@@ -120,6 +147,11 @@ describe('readClaimStep', () => {
 
   it('reconciles the payer whose response waits, and refuses unknown or payerless steps', () => {
     const answered = facts([e('submitted', 'Medicare', 1), e('response', 'Medicare', 2, 1)], 3);
+    assert.deepEqual(readClaimStep({ step: 'workDenial' }, answered), {
+      step: 'workDenial',
+      coverage: { id: 'cov-Medicare', payer: 'Medicare', claimFiling: null },
+      balanceCents: 99_999
+    });
     assert.deepEqual(readClaimStep({ step: 'reconcile' }, answered), {
       step: 'reconcile',
       coverage: { id: 'cov-Medicare', payer: 'Medicare', claimFiling: null },
@@ -140,11 +172,13 @@ describe('claim statuses', () => {
         'needs_review',
         'ready',
         'reconcile',
+        'denied',
         'reconcile',
         'submitted',
         'follow_up',
         'patient_balance',
         'patient_balance',
+        'facility_billing',
         'balance_review',
         null,
         null
