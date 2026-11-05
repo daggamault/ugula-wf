@@ -6,7 +6,7 @@ import { assigneeOf, queueInfo } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyState, EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Highlight, NumberHighlight } from '../../shared/ui/highlight.tsx';
-import { OpenLink, RowActions, WorkLink } from '../../shared/ui/icon-button.tsx';
+import { OpenLink, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { type SearchField, SearchForm } from '../../shared/ui/search-form.tsx';
@@ -47,8 +47,6 @@ export const CLAIM_SEARCH_FIELDS: readonly SearchField[] = [
   { name: 'birthDate', label: 'Birth Date', type: 'date' },
   { name: 'number', label: 'Number', placeholder: 'Claim, Patient or Encounter #' }
 ];
-
-const taskName = (c: ClaimSummary) => `${c.task_title ?? 'task'} on claim ${c.number}`;
 
 const WaitingOn = ({ claim, me }: { claim: ClaimSummary; me: string }) =>
   claim.task_id ? (
@@ -167,9 +165,6 @@ export const ClaimsTable = ({
         </TableCell>
         <TableCell kind="actions">
           <RowActions>
-            {c.task_id ? (
-              <WorkLink to={withBack(`/tasks/${c.task_id}`, back)} name={taskName(c)} />
-            ) : null}
             <OpenLink to={withBack(`/claims/${c.id}`, back)} name={`claim ${c.number}`} />
           </RowActions>
         </TableCell>

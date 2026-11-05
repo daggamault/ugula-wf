@@ -6,7 +6,6 @@ import {
   ArrowRightIcon,
   CircleCheckBigIcon,
   HandIcon,
-  ReceiptTextIcon,
   UndoIcon
 } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
@@ -25,6 +24,7 @@ import { FieldGrid } from '../../shared/ui/field.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { TextLink } from '../../shared/ui/text-link.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { Tooltip } from '../../shared/ui/tooltip.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
@@ -74,17 +74,24 @@ export const fieldErrorsOf = (err: unknown): FieldErrors => {
 const FAULT_HELP =
   'Retry the failed step, skip it with the outputs below (and the exec pin to continue from), or cancel the run.';
 
-export const describeTask = (task: Pick<TaskDetail, 'title' | 'subject' | 'source'>) => {
+export const TaskAbout = ({
+  task
+}: {
+  task: Pick<TaskDetail, 'id' | 'title' | 'subject' | 'source'>;
+}) => {
   const { claim } = task.source;
   const about = task.subject ? task.title : null;
-  const on = claim
-    ? `claim ${claim.number} for ${claim.patient ?? 'a patient not matched yet'}`
-    : null;
-  return about && on ? `${about} on ${on}` : (about ?? (on ? `On ${on}` : 'Waiting on a decision'));
+  if (!claim) return about ?? 'Waiting on a decision';
+  return (
+    <>
+      {about ? `${about} on claim ` : 'On claim '}
+      <TextLink to={withBack(`/claims/${claim.id}`, `/tasks/${task.id}`)}>{claim.number}</TextLink>
+      {` for ${claim.patient ?? 'a patient not matched yet'}`}
+    </>
+  );
 };
 
-export const backOfTask = (back: string | null, task: Pick<TaskDetail, 'source'>) =>
-  back ?? (task.source.claim ? `/claims/${task.source.claim.id}` : '/tasks');
+export const backOfTask = (back: string | null) => back ?? '/tasks';
 
 export const NextUp = ({
   outcome,
@@ -275,7 +282,6 @@ export const TaskView = ({
   const [assigning, setAssigning] = useState(false);
   const notify = useToast();
   const isUnassigned = task.assignee_id === null;
-  const { claim } = task.source;
   const open = task.status === 'open' && done === null;
 
   const complete = async (outcome: string, values: Record<string, Json>) => {
@@ -322,7 +328,7 @@ export const TaskView = ({
         <span className="flex flex-wrap items-center gap-2">
           <Badge intent={isFault ? 'danger' : 'info'}>{info.label}</Badge>
           <span>
-            {describeTask(task)}, opened{' '}
+            <TaskAbout task={task} />, opened{' '}
             <Tooltip label={formatDateTime(task.created_at)} side="bottom">
               <time dateTime={task.created_at}>
                 {formatAgo(task.created_at)}
@@ -340,12 +346,6 @@ export const TaskView = ({
       }
       actions={
         <>
-          {claim && back !== `/claims/${claim.id}` ? (
-            <ButtonLink to={`/claims/${claim.id}`} variant="outline">
-              <ReceiptTextIcon aria-hidden="true" className="size-4" />
-              Open Claim
-            </ButtonLink>
-          ) : null}
           {isFault ? (
             <ButtonLink to={`/runs/${task.run_id}`} variant="outline">
               <ActivityIcon aria-hidden="true" className="size-4" />
@@ -430,7 +430,7 @@ export const TaskPage = ({ client, live, taskId, back }: TaskPageProps) => {
   if (task.error) return <PageFailure message={task.error.message} />;
   if (!task.data) return <PageLoading />;
   const { queue, source } = task.data;
-  const backTo = backOfTask(back, task.data);
+  const backTo = backOfTask(back);
   const waiting = queues.data?.find((q) => q.queue === queue)?.unassigned;
   return (
     <TaskView

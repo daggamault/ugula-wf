@@ -4,14 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import type { TaskDetail, TasksClient } from './client.ts';
-import {
-  backOfTask,
-  describeTask,
-  fieldErrorsOf,
-  NextUp,
-  TaskPage,
-  TaskView
-} from './task-page.tsx';
+import { backOfTask, fieldErrorsOf, NextUp, TaskAbout, TaskPage, TaskView } from './task-page.tsx';
 
 const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
   id: 't1',
@@ -73,19 +66,16 @@ describe('TaskView', () => {
     assert.ok(!html.includes('claims:approve'));
   });
 
-  it('names and links the claim a task is about, and goes back where the biller came from', () => {
+  it('links the claim a task is about as a reference, and goes back to the tasks', () => {
     const claim = { id: 'c1', number: '20261101-0012', status: 'draft', patient: null } as const;
     const onClaim = task({ source: { reportId: null, pcrNumber: 'PCR-1', claim } });
     const html = render(onClaim);
-    assert.ok(
-      html.includes('Review PCR on claim 20261101-0012 for a patient not matched yet, opened')
-    );
-    assert.ok(html.includes('href="/claims/c1"') && html.includes('Open Claim'));
-    const fromClaim = render(onClaim, null, '/claims/c1');
-    assert.ok(!fromClaim.includes('Open Claim') && fromClaim.includes('Back to Claim'));
-    assert.equal(backOfTask(null, onClaim), '/claims/c1');
-    assert.equal(backOfTask(null, task()), '/tasks');
-    assert.equal(backOfTask('/runs/r1', onClaim), '/runs/r1');
+    assert.ok(html.includes('Review PCR on claim <a'));
+    assert.ok(html.includes('href="/claims/c1?back=%2Ftasks%2Ft1"'));
+    assert.ok(html.includes('>20261101-0012</a> for a patient not matched yet, opened'));
+    assert.ok(!html.includes('Open Claim'));
+    assert.equal(backOfTask(null), '/tasks');
+    assert.equal(backOfTask('/runs/r1'), '/runs/r1');
   });
 
   it('explains stuck-run resolutions and shows completed decisions', () => {
@@ -217,7 +207,7 @@ describe('TaskPage', () => {
   });
 });
 
-describe('describeTask', () => {
+describe('TaskAbout', () => {
   it('says what a task is and which claim it is on in one sentence', () => {
     const claim = {
       id: 'c1',
@@ -225,11 +215,13 @@ describe('describeTask', () => {
       status: 'draft',
       patient: 'Doe, Jane'
     } as const;
-    assert.equal(describeTask(task()), 'Review PCR');
+    const text = (t: ReturnType<typeof task>) =>
+      renderToStaticMarkup(createElement(TaskAbout, { task: t })).replace(/<[^>]+>/g, '');
+    assert.equal(text(task()), 'Review PCR');
     assert.equal(
-      describeTask(task({ subject: null, source: { reportId: null, pcrNumber: null, claim } })),
+      text(task({ subject: null, source: { reportId: null, pcrNumber: null, claim } })),
       'On claim 20261101-0012 for Doe, Jane'
     );
-    assert.equal(describeTask(task({ subject: null })), 'Waiting on a decision');
+    assert.equal(text(task({ subject: null })), 'Waiting on a decision');
   });
 });

@@ -82,7 +82,7 @@ describe('ClaimsTable', () => {
     assert.match(partial, marked('Do'));
   });
 
-  it('shows the task each claim is waiting on and links straight to it', () => {
+  it('shows the task each claim is waiting on and opens only the claim', () => {
     const waiting = {
       ...claim,
       status: 'draft',
@@ -109,9 +109,7 @@ describe('ClaimsTable', () => {
       html.includes('Patient Matching · You') && html.includes('Patient Matching · Unassigned')
     );
     assert.ok(
-      html.includes(
-        'href="/tasks/t1?back=%2Fclaims%3Ftask%3Dany" aria-label="Work Confirm patient on claim 20261001-0012"'
-      )
+      !html.includes('href="/tasks/') && html.includes('aria-label="Open claim 20261001-0012"')
     );
     assert.ok(html.includes('text-danger font-medium'));
     assert.ok(html.includes('>Draft<'));

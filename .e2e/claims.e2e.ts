@@ -114,10 +114,8 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     }
   });
 
-  it('queues open claims and searches claims by encounter number and patient', async () => {
+  it('searches claims by encounter number and patient', async () => {
     for (const claimId of Object.values(claims)) await reach(claimId, 'Review PCR');
-    await go(s.page, '/claims?sort=created&dir=desc&pageSize=100');
-    await claimRow(pcrs.worked).waitFor();
     await searchClaims({ Number: pcrs.worked });
     await claimRow(pcrs.worked).waitFor();
     assert.equal(await claimRow(pcrs.held).count(), 0);
@@ -128,12 +126,20 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await claimRow(pcrs.voided).waitFor();
   });
 
-  it('opens the waiting task from its claim row', async () => {
+  it('opens the waiting task from the tasks list, not from its claim', async () => {
     await reach(claims.worked, 'Review PCR');
+    const { claim } = await claimState(s, claims.worked);
     await searchClaims({ Number: pcrs.worked });
-    const row = claimRow(pcrs.worked);
-    await row.getByText('Review PCR').waitFor();
-    await row.getByRole('link', { name: /^Work Review PCR on claim \d{8}-\d{4,}$/ }).click();
+    await claimRow(pcrs.worked).waitFor();
+    assert.equal(
+      await claimRow(pcrs.worked)
+        .getByRole('link', { name: /^Work / })
+        .count(),
+      0
+    );
+    await go(s.page, `/tasks?q=${encodeURIComponent(claim.number)}`);
+    const row = s.page.getByRole('row').filter({ hasText: claim.number });
+    await row.getByRole('link', { name: /^Open task Review PCR/ }).click();
     await section(s.page, 'Your Decision').last().waitFor();
     assert.match(s.page.url(), /\/tasks\//);
   });
