@@ -1,7 +1,7 @@
 import { createNodeCatalog } from '@ugula/catalog';
 import { createElement, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { App, type AppClients } from './app.tsx';
+import { App } from './app.tsx';
 import { type Config, parseConfig } from './config.ts';
 import { createAuthClient } from './features/auth/client.ts';
 import { createClaimsClient } from './features/claims/client.ts';
@@ -16,6 +16,7 @@ import { createSettingsClient } from './features/settings/client.ts';
 import { createTasksClient } from './features/tasks/client.ts';
 import { createUsersClient } from './features/users/client.ts';
 import { createWorkflowsClient } from './features/workflows/client.ts';
+import type { AppClients } from './routes.tsx';
 import { createAgenciesClient } from './shared/access.tsx';
 import { createApi } from './shared/api.ts';
 import { createNotificationsClient } from './shared/notifications.ts';
