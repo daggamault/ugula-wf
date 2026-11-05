@@ -3,6 +3,7 @@ import type { ClaimPatch } from '../claim-fix.ts';
 import type { ClaimCheck, NewClaim } from '../claim-validation.ts';
 import type { ClaimLedger, ClaimStatus, ClosedStatus, CycleEventKind } from '../claims.ts';
 import type { Completer } from '../completions.ts';
+import type { AppealPacketSource, FacilityInvoiceSource } from '../documents.ts';
 import type { Address, NewPatient, Patient } from '../patients.ts';
 import type { PayerFileOutcome } from '../payer-files.ts';
 import type { DirectoryPayer, PayerLookup } from '../payers.ts';
@@ -69,6 +70,61 @@ export type DraftClaim = {
 type OpenedClaim = { id: string; duplicate: boolean };
 
 type TrackedLedger = ClaimLedger & { signalsSeen: number; reference: string };
+
+export type Deadline = {
+  kind: string;
+  claimId: string;
+  coverageId: string | null;
+  reference: string;
+  dueOn: string;
+  daysLeft: number;
+  taskId: string | null;
+  priority: number;
+  reminded: boolean;
+};
+
+export type RecoveryStore = {
+  recordRefund: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    refund: { coverageId: string | null; cents: number; note: string }
+  ) => Promise<void>;
+  protectBalance: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    protection: { adjustedCents: number; note: string }
+  ) => Promise<void>;
+  skipRemainingPayers: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    note: string
+  ) => Promise<void>;
+  appealPacket: (
+    runId: string,
+    claimId: string,
+    coverageId: string
+  ) => Promise<Omit<AppealPacketSource, 'level' | 'dueOn'>>;
+  saveAppealPacket: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    packet: { coverageId: string; note: string; pdf: Uint8Array }
+  ) => Promise<void>;
+};
+
+export type ScheduleStore = {
+  deadlines: (runId: string, today: string) => Promise<Deadline[]>;
+  raiseTask: (runId: string, taskId: string, priority: number) => Promise<void>;
+  facilityInvoices: (runId: string, period: string) => Promise<FacilityInvoiceSource[]>;
+  saveFacilityInvoice: (
+    runId: string,
+    sourceKey: string,
+    invoice: { source: FacilityInvoiceSource; pdf: Uint8Array; totalCents: number }
+  ) => Promise<void>;
+};
 
 export type BlobRef = { bucket: string; key: string };
 
@@ -231,6 +287,8 @@ export type BillingStores = {
   claims: ClaimStore;
   payerFiles: PayerFileStore;
   exchange: ExchangeStore;
+  recovery: RecoveryStore;
+  schedules: ScheduleStore;
   completer: Completer;
 };
 

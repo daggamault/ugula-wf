@@ -587,6 +587,8 @@ export const createClaimStore = (
               'c.total_cents',
               'c.pcr_number',
               'c.facility_id',
+              'c.service_date',
+              'c.pickup_state',
               'p.first_name',
               'p.last_name',
               eb
@@ -606,7 +608,14 @@ export const createClaimStore = (
         db
           .selectFrom('claim_coverages as cc')
           .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
-          .select(['cc.id', payerName.as('payer'), 'dp.claim_filing as claimFiling'])
+          .select([
+            'cc.id',
+            payerName.as('payer'),
+            'dp.claim_filing as claimFiling',
+            'dp.correction_method as correctionMethod',
+            'dp.appeal_days as appealDays',
+            'dp.plan_type as planType'
+          ])
           .where('cc.claim_id', '=', claim.id)
           .orderBy('cc.position')
           .execute(),
@@ -632,6 +641,8 @@ export const createClaimStore = (
       return {
         totalCents: claim.total_cents,
         facilityId: claim.facility_id,
+        serviceDate: claim.service_date,
+        pickupState: claim.pickup_state,
         signalsSeen: claim.received ?? 0,
         reference: [claim.pcr_number, patient].filter(Boolean).join(' · '),
         coverages,

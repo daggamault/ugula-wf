@@ -7,6 +7,8 @@ import { narrativeNodes } from './narrative.ts';
 import { patientNodes } from './patients.ts';
 import { payerFileNodes } from './payer-files.ts';
 import { payerNodes } from './payers.ts';
+import { recoveryNodes } from './recovery.ts';
+import { scheduleNodes } from './schedules.ts';
 import type { BillingStores } from './stores.ts';
 
 export type {
@@ -15,6 +17,7 @@ export type {
   BlobRef,
   ClaimStatusCheck,
   ClaimStore,
+  Deadline,
   DraftClaim,
   EligibilityCheck,
   ExchangeStore,
@@ -23,7 +26,9 @@ export type {
   PatientStore,
   PayerFileStore,
   PayerStore,
-  ReadPayerFile
+  ReadPayerFile,
+  RecoveryStore,
+  ScheduleStore
 } from './stores.ts';
 
 export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
@@ -39,6 +44,8 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
     cycleNodes,
     payerFileNodes,
     exchangeNodes,
-    documentationNodes
+    documentationNodes,
+    recoveryNodes,
+    scheduleNodes
   ].flatMap((nodes) => nodes(storesOf));
 };

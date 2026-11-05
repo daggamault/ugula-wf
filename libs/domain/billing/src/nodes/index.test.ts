@@ -41,7 +41,19 @@ describe('createBillingNodes', () => {
         'billing.send-270@1',
         'billing.send-276@1',
         'billing.latest-claim-status@1',
-        'billing.read-signature@1'
+        'billing.read-signature@1',
+        'billing.read-denial@1',
+        'billing.read-appeal@1',
+        'billing.read-refund@1',
+        'billing.read-patient-balance@1',
+        'billing.record-refund@1',
+        'billing.protect-balance@1',
+        'billing.skip-remaining-payers@1',
+        'billing.build-appeal-packet@1',
+        'billing.with-frequency@1',
+        'billing.find-deadlines@1',
+        'billing.raise-task@1',
+        'billing.issue-facility-invoices@1'
       ]
     );
     const [match] = nodes;

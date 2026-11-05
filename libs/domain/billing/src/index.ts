@@ -107,6 +107,14 @@ export {
   TRANSPORT_REASONS,
   type TransportReason
 } from './documentation.ts';
+export type {
+  AgencyLetterhead,
+  AppealPacketSource,
+  DocumentSection,
+  FacilityInvoiceSource,
+  InvoicedClaim
+} from './documents.ts';
+export { fieldSections } from './documents.ts';
 export { ADVANTAGE_NOTE, eligibilityFinding } from './eligibility.ts';
 export { US_STATE_PATTERN, usState, ZIP_CODE_PATTERN, ZIP_PLUS_4_PATTERN } from './geo.ts';
 export { billingModels, billingTypes } from './models.ts';
@@ -119,6 +127,7 @@ export {
   type ClaimStatusCheck,
   type ClaimStore,
   createBillingNodes,
+  type Deadline,
   type DraftClaim,
   type EligibilityCheck,
   type ExchangeStore,
@@ -127,7 +136,9 @@ export {
   type PatientStore,
   type PayerFileStore,
   type PayerStore,
-  type ReadPayerFile
+  type ReadPayerFile,
+  type RecoveryStore,
+  type ScheduleStore
 } from './nodes/index.ts';
 export {
   type Address,

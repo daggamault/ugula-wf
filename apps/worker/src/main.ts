@@ -19,6 +19,9 @@ import { announceImports } from './features/imports/announce.ts';
 import { createReportStore } from './features/imports/reports.ts';
 import { createPatientStore } from './features/patients/queries.ts';
 import { createPayerStore } from './features/payers/queries.ts';
+import { createRecoveryStore } from './features/recovery/queries.ts';
+import { registerScheduleJobs, startForEveryAgency } from './features/schedules/job.ts';
+import { createScheduleStore } from './features/schedules/queries.ts';
 import { createEngineCache } from './features/workflows/engines.ts';
 import { registerWorkflowJobs } from './features/workflows/job.ts';
 import { createRunStore } from './features/workflows/queries.ts';
@@ -133,6 +136,8 @@ if (import.meta.main) {
               clearinghouseFor: connections.forAgency
             })
           ),
+          recovery: scope.guard(createRecoveryStore(db, blobs, boss)),
+          schedules: scope.guard(createScheduleStore(db, blobs)),
           completer: createCompleter({
             url: config.COMPLETIONS_URL,
             model: config.COMPLETIONS_MODEL,
@@ -167,6 +172,11 @@ if (import.meta.main) {
     boss,
     poll: createClearinghousePoll({ db, boss, blobs, targets: connections.pollTargets, report }),
     pollMinutes: config.CLEARINGHOUSE_POLL_MINUTES,
+    report
+  });
+  await registerScheduleJobs({
+    boss,
+    start: startForEveryAgency({ db, boss, report }),
     report
   });
   let stopping = false;

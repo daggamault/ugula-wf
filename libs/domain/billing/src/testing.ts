@@ -385,6 +385,19 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
   },
   fees: stores.fees ?? { findSchedules: unused('fee'), saveFee: unused('fee') },
   claims: stores.claims ?? memoryClaims().store,
+  recovery: stores.recovery ?? {
+    recordRefund: unused('recovery'),
+    protectBalance: unused('recovery'),
+    skipRemainingPayers: unused('recovery'),
+    appealPacket: unused('recovery'),
+    saveAppealPacket: unused('recovery')
+  },
+  schedules: stores.schedules ?? {
+    deadlines: unused('schedule'),
+    raiseTask: unused('schedule'),
+    facilityInvoices: unused('schedule'),
+    saveFacilityInvoice: unused('schedule')
+  },
   completer: stores.completer ?? { complete: unused('completion') }
 });
 

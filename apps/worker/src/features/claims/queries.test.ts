@@ -438,6 +438,8 @@ describe('createClaimStore', () => {
               first_name: 'Jane',
               last_name: 'Doe',
               facility_id: null,
+              service_date: '2026-01-01',
+              pickup_state: 'IL',
               received: 4
             }
           ]
@@ -462,6 +464,8 @@ describe('createClaimStore', () => {
     assert.deepEqual(await store.ledger('r1', ID), {
       totalCents: 95_000,
       facilityId: null,
+      serviceDate: '2026-01-01',
+      pickupState: 'IL',
       signalsSeen: 4,
       reference: 'PCR-1 · Jane Doe',
       coverages: [{ id: 'cov-1', payer: 'Medicare' }],

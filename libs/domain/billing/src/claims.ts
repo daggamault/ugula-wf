@@ -134,7 +134,14 @@ export const RESTARTABLE_STATUSES = [
   'void'
 ] as const satisfies readonly ClaimStatus[];
 
-export type LedgerCoverage = { id: string; payer: string; claimFiling?: string | null };
+export type LedgerCoverage = {
+  id: string;
+  payer: string;
+  claimFiling?: string | null;
+  correctionMethod?: string | null;
+  appealDays?: number | null;
+  planType?: string | null;
+};
 
 export type ClaimEvent = {
   kind: ClaimEventKind;
@@ -161,6 +168,8 @@ export type ClaimLedger = {
   coverages: LedgerCoverage[];
   events: ClaimEvent[];
   facilityId?: string | null;
+  serviceDate?: string | null;
+  pickupState?: string | null;
 };
 
 export const MIN_WAIT_MS = 60_000;
