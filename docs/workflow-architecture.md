@@ -27,16 +27,16 @@ A critical review of today's billing workflows and override mechanism, what EMS 
 
 ### Billing logic hidden in code (not overridable)
 
-| Node                                                               | Hidden decisions                                                                                                                      |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `billing.claim-step`                                               | Payer order, when review is required, follow-up timing, when to bill the patient, overpayment, collections threshold, step→status map |
-| `billing.validate-claim`                                           | Every blocking/warning rule, including payer-specific ones (Medicare PCS, filing limits, max miles)                                   |
-| `billing.apply-payer-file` (+ `libs/data/db/src/payer-files.ts`)   | 835 posting, CARC/group-code handling, what is a "problem" line, how an inactive 271 blocks billing                                   |
-| `billing.prepare-837p`                                             | Frequency, prior-payer adjudication, pending issues                                                                                   |
-| `billing.price-claim`                                              | Precedence (claim → payer → default)                                                                                                  |
-| `billing.read-signature`, `billing.patch-claim` (`changesCharges`) | Signature classification; which edits force a reprice                                                                                 |
+| Node                                                               | Hidden decisions                                                                                                                      | Now                                                                                                                                                     |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `billing.claim-step`                                               | Payer order, when review is required, follow-up timing, when to bill the patient, overpayment, collections threshold, step→status map | **Done:** Read Claim Ledger (action) → Next Claim Step (rule, Claim Policy and Claim Steps tables) → Record Claim Step; status lookup in the cycle      |
+| `billing.validate-claim`                                           | Every blocking/warning rule, including payer-specific ones (Medicare PCS, filing limits, max miles)                                   | **Done:** Check Claim stage, 14 check rules, Check Severity table, Agency Checks slot; code only computes Check Facts                                   |
+| `billing.apply-payer-file` (+ `libs/data/db/src/payer-files.ts`)   | 835 posting, CARC/group-code handling, what is a "problem" line, how an inactive 271 blocks billing                                   | **Done for 835:** Classify Adjustments, Route Remittance (Adjustment Classes, Remittance Routing tables); inactive 271 is the `coverage-inactive` check |
+| `billing.prepare-837p`                                             | Frequency, prior-payer adjudication, pending issues                                                                                   | **Done:** Claim Frequency rule; prepare takes the payer the cycle decided; blocking issues come from Check Claim                                        |
+| `billing.price-claim`                                              | Precedence (claim → payer → default)                                                                                                  | **Done:** Find Fees (action) → Price Precedence (rule) → Price Lines                                                                                    |
+| `billing.read-signature`, `billing.patch-claim` (`changesCharges`) | Signature classification; which edits force a reprice                                                                                 | **Done:** Reprice Triggers rule and table; signature classification stays a fact read in code                                                           |
 
-`payer-files.ts` (490 lines of posting rules) sitting in the **data** layer also breaks the layer rule that domain logic lives in `domain`.
+The posting decisions left `payer-files.ts`; it now only reads, matches and persists.
 
 ### Billing coverage gaps for MVP
 
@@ -82,6 +82,8 @@ Each later stage adds its own section to a **Claim Draft** (`Service`, `Diagnose
 ## 4. Workflow Catalog
 
 Each row is a top-level workflow (W) started by an event. Stages (S) are overridable subworkflows; rules (R) are the small override points. `+slot` marks an empty Agency Rule slot.
+
+**Built:** §4.1 Map Encounter Facts (with Agency Facts), Classify Trip, Determine Service (Level of Service, Emergency Status, Loaded Miles), Assign Diagnoses (from coded impressions), Determine Payers (Coverages From PCR, Match Payer Directory, Coordination Order), Assign Charges (Base Rate Code, Mileage Lines, Price Precedence), Assign Claim Properties (Origin/Destination Modifiers, Transport Reason; Place of Service, Ambulance Conditions, Claim Frequency and Line Modifiers at 837P time), Check Claim (§4.6 base checks except ABN, prior authorization, weight, duplicate, member ID format and PO box) and Coding Review, each with its slot; §4.4 Read Claim Ledger, Next Claim Step and Claim Policy; §4.7 Classify Adjustments and Route Outcome (Remittance Routing) inside Receive Payer File. The catalog with keys is in [Billing Workflows](billing-workflows.md). Narrative Note, Admission Date, Medicare Secondary Payer, Facility Responsibility, QL, GM and A0888 are not built yet.
 
 ### 4.1 Intake: PCR received → Ready for review
 
@@ -251,7 +253,7 @@ Batch SFTP covers 837P, 999, 277CA, 835 and batch 270/271/276/277. **Real-time**
 
 1. Engine fixes E1–E8 (pinning, base reference, immutable seeds, pin descriptions, tables as assets, slots).
 2. Diff and custom-accent UI, customization map, rule Test panel.
-3. Encounter Facts model; split `validate-claim` into check rules; move claim-step and posting decisions into rules and tables.
+3. **Done:** Encounter Facts model; split `validate-claim` into check rules; move claim-step and posting decisions into rules and tables (see [Billing Workflows](billing-workflows.md)).
 4. Missing MVP billing: TA1, 276/277, real-time and batch 270/271 through the port, MSP, facility responsibility, ABN/GA/GZ, QL, GM, A0888, CARC routing, denials, corrected claims, appeals, refunds, deadlines, balance-billing suppression.
 5. Per-agency clearinghouse connections; post-MVP items (discovery, EFT reassociation, payment plans, esMD).
 

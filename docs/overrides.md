@@ -37,11 +37,17 @@ Tables need `workflows:update`. Organization copies always need an organization 
 
 A slot is a subworkflow whose system version hands its inputs straight back (`slotGraph` in `libs/kernel/graph/src/slot.ts`; `isPassThrough` tells the editor it is still empty). Every output has an input of the same name and type, plus optional context inputs. The seeds build them with `slot(key, name, description, signature)` from `.seeds/builder.ts`. Nothing is special at run time: an agency overrides the slot like any rule, and only that agency's runs see the change.
 
-| Slot                     | Runs after                               | Passes through | Context               |
-| ------------------------ | ---------------------------------------- | -------------- | --------------------- |
-| `billing.agency-charges` | Map Charges (in Build Claim and Reprice) | `lines`        | `tripType`, `service` |
-| `billing.agency-claim`   | Map Claim (in Build Claim)               | `claim`        | `pcr`                 |
-| `billing.agency-payers`  | Resolve Payers (in Work Draft Claim)     | `coverages`    | `pcr`                 |
+| Slot                       | Runs after                                        | Passes through       | Context               |
+| -------------------------- | ------------------------------------------------- | -------------------- | --------------------- |
+| `billing.agency-facts`     | Map Encounter Facts                               | `facts`              | `pcr`                 |
+| `billing.agency-trip-type` | Trip Type (in Classify Trip)                      | `tripType`, `reason` | `facts`               |
+| `billing.agency-service`   | the trip type's service (in Determine Service)    | `service`            | `tripType`, `facts`   |
+| `billing.agency-diagnoses` | Diagnoses From Coded Impressions                  | `diagnoses`          | `facts`               |
+| `billing.agency-payers`    | Coordination Order (in Determine Payers)          | `coverages`          | `pcr`                 |
+| `billing.agency-charges`   | Map Charges (in Assign Charges)                   | `lines`              | `tripType`, `service` |
+| `billing.agency-claim`     | Assign Claim Properties (in Build Claim)          | `claim`              | `pcr`                 |
+| `billing.agency-checks`    | the base checks, before severities (Claim Checks) | `issues`             | `facts`               |
+| `billing.agency-837p`      | Map 837P Claim                                    | `x837`               | `claim`               |
 
 ## Shared tables
 
@@ -50,7 +56,9 @@ Decision and lookup table nodes either carry their rules inline or reference a s
 - Tables live in `data_tables` / `data_table_versions` with the same scopes, `base_version_id`, one draft and immutable published versions as graphs. Their **contract** is their fields: input and output names and types (decision) or the value type (lookup) (`tableContract`).
 - When a run starts, `pinRunGraphs` also pins every table its graphs reference into `workflow_run_tables`, agency first, then organization, then system; organization and agency copies apply only while their contract matches the newest system version. Child runs reuse their parent's pins.
 - The worker inlines the pinned tables into the graphs before running them (`inlineTables`). A table that is missing or no longer has the node's fields faults the node with a clear message.
-- The seeds declare shared tables with `createTables().decision(...)` in `.seeds/billing-graphs.ts`: `billing.trip-type`, `billing.service-level`, `billing.emergency-response`, `billing.base-rate` and `billing.mileage-code`. The seed checks every reference resolves to a table with the same fields.
+- The seeds declare shared tables with `createTables().decision(...)` and `.lookup(...)` in `.seeds/billing/`: Trip Type, Level of Service, Emergency Response, Base Rate, Mileage, Origin Modifier, Destination Modifier, Transport Reason by Destination Reason, Payer by Payment Method, Coverage Priority, Ambulance Conditions, Coverage Modifier, Reprice Triggers, Check Severity, Claim Policy, Claim Steps, Adjustment Classes and Remittance Routing (keys in [Billing Workflows](billing-workflows.md)). The seed checks every reference resolves to a table with the same fields.
+- A Lookup Table also looks up a list of keys at once (`keys` → `values`), which is how one Check Severity table rates every issue and Adjustment Classes classes every adjustment.
+- The API runs an agency's effective rule outside any run (`findRuleBundle`, `findGraphTables`, `runRule`) for the claim page's issues and next step, so table and rule overrides show there as they apply in runs.
 
 ## Contracts
 

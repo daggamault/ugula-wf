@@ -12,6 +12,7 @@ A graph (`GraphDef`) has a **signature**, **variables**, **nodes** and **edges**
 - `documentationIssues(def)` lists pins without a description, exits without a label or description and labels that are not Title Case; the editor shows them as warnings, never blocking.
 - Graph kinds: `workflow` (runs on its own) and `node` (a subworkflow other graphs call as a node). Every graph also has a role (`workflow`, `stage`, `rule`, `slot`) that sets who may override it; see [Overrides](overrides.md).
 - `slotGraph(signature)` builds an empty Agency Rule: a pass-through whose outputs are its same-named inputs; `isPassThrough(def)` says whether a slot is still empty.
+- `runRule({ nodes, graphs }, ref, inputs, now)` evaluates a pure graph (a rule) outside a run, through a one-step host graph, and returns its outputs; the API uses it to show the agency's own rules on a claim.
 
 ## Nodes
 

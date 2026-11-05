@@ -27,7 +27,7 @@ platform ─────► kernel
 | `kernel`      | `graph`, `config`, `live`                                    | The engine, expression language, standard nodes, env validators, live event contract                                            |
 | `platform`    | `auth`, `clearinghouse`, `inference`, `run-queue`, `storage` | Passwords, sessions, tokens; SFTP batch, CORE real-time and sealed secrets; embeddings and completions; the run queue; S3 blobs |
 | `domain`      | `access`, `billing`, `nemsis`                                | Permissions and built-in roles; billing models, rules, nodes and X12; NEMSIS parsing and models                                 |
-| `data`        | `db`                                                         | Kysely schema, graph version resolution, run pinning, payer file posting                                                        |
+| `data`        | `db`                                                         | Kysely schema, graph and rule resolution, run pinning, payer file persistence                                                   |
 | `composition` | `catalog`                                                    | The one node catalog every app shares                                                                                           |
 
 The web app may only import `kernel`, `domain` and `composition`.
