@@ -145,7 +145,16 @@ const reviewClaim = (): GraphDef => {
       queue: 'billing-review',
       instructions:
         'Check the claim before it goes to this payer, or before the patient is billed when no payer is left: patient, member ID, service, charges, diagnoses and trip details, with any warnings. Approve it to make it ready, fix its data, skip this payer, or void the claim.',
-      outcomes: ['approve', 'fixData', 'skipPayer', 'void']
+      outcomes: ['approve', 'fixData', 'skipPayer', 'void'],
+      hints: {
+        approve:
+          'Approves the claim, so it is filed to this payer next, or the patient is billed when no payer is left.',
+        fixData:
+          'Closes this review and opens a Fix Claim Data task to edit the claim; it comes back for review after.',
+        skipPayer:
+          'Skips this payer; the claim moves on to the next payer, or to the patient when none is left.',
+        void: 'Voids the claim and closes it; it is never billed.'
+      }
     }
   });
   recordEvent(g, 'approve', 'approved', 'Approve');
@@ -198,7 +207,11 @@ const confirmPayers = (): GraphDef => {
       fields: CLAIM_FIX_FIELDS.filter((f) => CONFIRM_PAYER_PINS.includes(f.name)).map((f) =>
         f.name === 'payerId' || f.name === 'memberId' ? { ...f, required: ['save'] } : f
       ),
-      outcomes: ['save', 'selfPay']
+      outcomes: ['save', 'selfPay'],
+      hints: {
+        save: 'Adds this payer to the claim, reprices the charges if needed, and goes on to bill it.',
+        selfPay: 'Approves the claim with no payer; the patient is billed.'
+      }
     }
   });
   for (const pin of ['claimId', 'subject', 'context']) g.input(`${pin}ToReprice`, pin);
@@ -247,7 +260,17 @@ const submitClaim = (): GraphDef => {
       queue: 'billing-review',
       instructions:
         'This claim was approved, but its 837P file could not be created for the reason in the details. Fix what it names (the billing profile is in Settings) and try again, fix the claim data (it is reviewed again), skip this payer, or mark it submitted if it went out another way.',
-      outcomes: ['tryAgain', 'fixData', 'skipPayer', 'submitted']
+      outcomes: ['tryAgain', 'fixData', 'skipPayer', 'submitted'],
+      hints: {
+        tryAgain:
+          'Creates and files the 837P again; this task comes back if it still cannot be filed.',
+        fixData:
+          'Opens a Fix Claim Data task to edit the claim; it is reviewed again before it is filed.',
+        skipPayer:
+          'Skips this payer; the claim moves on to the next payer, or to the patient when none is left.',
+        submitted:
+          'Records the claim as sent to this payer outside the app; the claim then waits for the payer.'
+      }
     }
   });
   recordEvent(g, 'submitted', 'submitted', 'Submitted Outside the App');
@@ -286,7 +309,15 @@ const reconcilePayment = (): GraphDef => {
       queue: 'billing-reconcile',
       instructions:
         'The payer answered and a balance remains. Check what they paid and adjusted, with their reason codes, against the claim, and record anything missing. Continue to the next payer or the patient, write off the rest, or correct the claim and resubmit it to this payer as a replacement of their claim.',
-      outcomes: ['continue', 'writeOff', 'resubmitCorrected']
+      outcomes: ['continue', 'writeOff', 'resubmitCorrected'],
+      hints: {
+        continue:
+          'Marks the response reconciled; the claim moves on to the next payer, or to the patient.',
+        writeOff:
+          'Writes off the balance and closes the claim, once approved when it is above the approval limit.',
+        resubmitCorrected:
+          'Queues a corrected claim to this payer, sent in the next batch as a replacement of their claim.'
+      }
     }
   });
   recordEvent(g, 'reconciled', 'reconciled', 'Mark the Response Reconciled');
@@ -308,9 +339,24 @@ const reconcilePayment = (): GraphDef => {
 };
 
 const FOLLOW_UPS = [
-  ['resubmit', 'resubmit_queued', 'Queue for the Next Batch'],
-  ['keepWaiting', 'follow_up', 'Keep Waiting on Payer'],
-  ['nextPayer', 'payer_skipped', 'Move On From the Payer']
+  [
+    'resubmit',
+    'resubmit_queued',
+    'Queue for the Next Batch',
+    'Queues the claim for the next 837P batch to this payer, replacing their claim when its number is entered.'
+  ],
+  [
+    'keepWaiting',
+    'follow_up',
+    'Keep Waiting on Payer',
+    'Keeps waiting on this payer; the claim is followed up again if it still does not answer.'
+  ],
+  [
+    'nextPayer',
+    'payer_skipped',
+    'Move On From the Payer',
+    'Moves on from this payer to the next payer, or to the patient when none is left.'
+  ]
 ] as const;
 
 const STATUS_WAIT_MS = 86_400_000;
@@ -335,7 +381,8 @@ const followUpPayer = (): GraphDef => {
       instructions:
         "The payer has not responded in time. The payer's latest claim status (277), when it gave one, is in the details. Resubmit in the next 837P batch, keep waiting, or move on to the next payer. When the payer has the claim on file, enter its claim number so the resubmission replaces it.",
       fields: [{ name: 'payerClaimNumber', type: 'string', label: 'Payer claim number' }],
-      outcomes: FOLLOW_UPS.map(([outcome]) => outcome)
+      outcomes: FOLLOW_UPS.map(([outcome]) => outcome),
+      hints: Object.fromEntries(FOLLOW_UPS.map(([outcome, , , hint]) => [outcome, hint]))
     }
   });
   g.ret('doneReturn');
@@ -392,7 +439,11 @@ const sendStatement = (): GraphDef => {
       queue: 'billing-review',
       instructions:
         "Patient statements carry the agency's name, address, phone and time zone from the billing profile, and there is none. Add it in Settings, then continue.",
-      outcomes: ['continue']
+      outcomes: ['continue'],
+      hints: {
+        continue:
+          'Tries the statement again; this task comes back if there is still no billing profile.'
+      }
     }
   });
   g.add('addressNeeded', 'std.human.task', {
@@ -403,7 +454,12 @@ const sendStatement = (): GraphDef => {
       instructions:
         "The patient's mailing address is incomplete, so a statement cannot be sent. Enter it and save, or write off the balance.",
       fields: PATIENT_ADDRESS_FIELDS,
-      outcomes: ['save', 'writeOff']
+      outcomes: ['save', 'writeOff'],
+      hints: {
+        save: "Saves the patient's address on the claim; the statement is sent next.",
+        writeOff:
+          'Writes off the balance and closes the claim, once approved when it is above the approval limit.'
+      }
     }
   });
   g.add('addAddress', 'billing.patch-claim', { label: 'Save the Patient Address' });
@@ -832,7 +888,10 @@ const cycleClaim = (): GraphDef => {
       queue: 'billing-review',
       instructions:
         'The Next Claim Step rule chose a step this claim cycle has no branch for (the details name it), so the claim cannot move on. Correct the Claim Steps table or the rule override that returns it, then retry the cycle.',
-      outcomes: ['retry']
+      outcomes: ['retry'],
+      hints: {
+        retry: 'Runs the claim cycle again; this task comes back if the step is still not handled.'
+      }
     }
   });
   g.add('payerSubject', 'std.expr', subject('reference', 'payer'));
@@ -896,7 +955,13 @@ const cycleClaim = (): GraphDef => {
       queue: 'billing-collections',
       instructions:
         'Every payer and patient statement is done and a balance remains. Write it off or send it to collections. If it has been paid in the meantime, either choice closes it as paid.',
-      outcomes: ['writeOff', 'sendToCollections']
+      outcomes: ['writeOff', 'sendToCollections'],
+      hints: {
+        writeOff:
+          'Writes off the balance and closes the claim, once approved when it is above the approval limit.',
+        sendToCollections:
+          'Closes the claim as sent to collections, once approved when the balance needs approval.'
+      }
     }
   });
   g.add('facilityFollowUp', 'std.human.task', {
@@ -906,7 +971,14 @@ const cycleClaim = (): GraphDef => {
       queue: 'billing-followup',
       instructions:
         'The facility responsible for this trip has not paid its invoice in time. Contact the facility, then keep waiting, write off the balance, or send it to collections.',
-      outcomes: ['keepWaiting', 'writeOff', 'sendToCollections']
+      outcomes: ['keepWaiting', 'writeOff', 'sendToCollections'],
+      hints: {
+        keepWaiting: 'Logs the follow-up and waits on the facility for another period.',
+        writeOff:
+          'Writes off the balance and closes the claim, once approved when it is above the approval limit.',
+        sendToCollections:
+          'Closes the claim as sent to collections, once approved when the balance needs approval.'
+      }
     }
   });
   recordEvent(g, 'facilityKeepWaiting', 'facility_follow_up', 'Keep Waiting on Facility');

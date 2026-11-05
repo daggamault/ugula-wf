@@ -4,8 +4,18 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import type { TaskClaim, TaskDetail, TasksClient } from './client.ts';
+import type { Mismatch } from './encounter-check.ts';
 import { headlineOf } from './task-brief.tsx';
-import { backOfTask, fieldErrorsOf, NextUp, TaskAbout, TaskPage, TaskView } from './task-page.tsx';
+import {
+  backOfTask,
+  fieldErrorsOf,
+  NextUp,
+  TaskAbout,
+  TaskPage,
+  type TaskTab,
+  TaskView,
+  taskTabOf
+} from './task-page.tsx';
 
 const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
   id: 't1',
@@ -26,9 +36,11 @@ const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
   context: { suggested: { level: 'ALS1' } },
   fields: [{ name: 'note', type: 'string', label: 'Note' }],
   outcomes: ['approve', 'keepWaiting'],
+  hints: {},
   defaults: { note: 'looks fine' },
+  prefill: null,
   resolution: null,
-  source: { reportId: null, pcrNumber: null, claim: null },
+  source: { reportId: null, pcrNumber: null, claim: null, patient: null },
   ...patch
 });
 
@@ -50,12 +62,21 @@ const claimOf = (patch: Partial<TaskClaim> = {}): TaskClaim => ({
   ...patch
 });
 
-const render = (t: TaskDetail, source: string | null = null, back = '/claims') =>
+const render = (
+  t: TaskDetail,
+  source: string | null = null,
+  back = '/claims',
+  tab: TaskTab = 'claim',
+  mismatches: readonly Mismatch[] = []
+) =>
   renderToStaticMarkup(
     createElement(TaskView, {
       task: t,
       back,
       remaining: 2,
+      tab,
+      tabHref: (to) => `/tasks/t1?tab=${to}`,
+      mismatches,
       source,
       onComplete: async () => undefined,
       onAssign: async () => undefined,
@@ -76,8 +97,96 @@ describe('TaskView', () => {
     assert.ok(html.includes('Assign to Me'));
     assert.ok(!html.includes('href="/runs/r1"'));
     assert.ok(html.includes('href="/claims"') && html.includes('Back to Claims'));
-    assert.ok(html.includes('SOURCE PANEL'));
+    assert.ok(!html.includes('SOURCE PANEL'));
     assert.ok(!html.includes('Open Claim'));
+    assert.ok(render(task(), 'SOURCE PANEL', '/claims', 'encounter').includes('SOURCE PANEL'));
+  });
+
+  it('splits the data into Claim, Encounter and Patient tabs', () => {
+    const patient = {
+      id: 'p1',
+      number: 'P-7',
+      firstName: 'Jane',
+      lastName: 'Doe',
+      birthDate: '1950-02-03',
+      sex: 'F',
+      addressLine: '1 Main St',
+      city: 'Harrisburg',
+      state: 'PA',
+      postalCode: '17101'
+    };
+    const t = task({ source: { reportId: null, pcrNumber: null, claim: claimOf(), patient } });
+    const onClaim = render(t);
+    assert.ok(onClaim.includes('href="/tasks/t1?tab=encounter"') && onClaim.includes('>Patient<'));
+    assert.ok(onClaim.includes('aria-current="page"') && onClaim.includes('Workflow Details'));
+    const onPatient = render(t, null, '/claims', 'patient');
+    assert.ok(
+      onPatient.includes('Doe, Jane') && onPatient.includes('1 Main St, Harrisburg, PA 17101')
+    );
+    assert.ok(onPatient.includes('Female') && onPatient.includes('Patient P-7'));
+    assert.ok(!onPatient.includes('Charges') && onPatient.includes('Workflow Details'));
+    const noReport = render(t, null, '/claims', 'encounter');
+    assert.ok(noReport.includes('No patient care report is linked to this task.'));
+    assert.ok(!render(task()).includes('Task data'));
+  });
+
+  it('shows workflow details under the tabs, open, with a way to hide them', () => {
+    const t = task({
+      source: { reportId: null, pcrNumber: null, claim: claimOf(), patient: null }
+    });
+    const html = render(t);
+    assert.ok(html.includes('aria-expanded="true"') && html.includes('>Hide<'));
+    assert.ok(html.indexOf('Task data') < html.indexOf('Workflow Details'));
+  });
+
+  it('flags claim values that differ from the encounter', () => {
+    const claim = claimOf({ loadedMiles: '12', serviceDate: '2026-09-14' });
+    const t = task({ source: { reportId: 'rep-1', pcrNumber: 'PCR-1', claim, patient: null } });
+    const html = render(t, 'SOURCE', '/claims', 'claim', [
+      { field: 'loadedMiles', label: 'Loaded Miles', encounter: '12.4' }
+    ]);
+    assert.ok(
+      html.includes('1 value differs') && html.includes('from the encounter: Loaded Miles.')
+    );
+    assert.ok(html.includes('Encounter says 12.4'));
+    assert.ok(html.includes('href="/tasks/t1?tab=encounter"'));
+    assert.ok(!render(t, 'SOURCE').includes('Encounter says'));
+  });
+
+  it("says what each option does in the workflow's words", () => {
+    const html = render(
+      task({
+        outcomes: ['approve', 'fixData', 'continue'],
+        hints: { fixData: 'Opens a Fix Claim Data task.' }
+      })
+    );
+    assert.ok(
+      html.includes('id="outcome-t1-fixData"') && html.includes('Opens a Fix Claim Data task.')
+    );
+    assert.ok(html.includes('aria-describedby="outcome-t1-fixData"'));
+    assert.ok(!html.includes('id="outcome-t1-continue"'));
+  });
+
+  it('lists edits as current → new only when the fields hold current values', () => {
+    const fields = [
+      { name: 'memberId', type: 'string', label: 'Member ID' },
+      { name: 'level', type: 'string', options: [{ value: 'BLS', label: 'Basic' }] }
+    ] as TaskDetail['fields'];
+    const defaults = { memberId: '1EG4', level: 'BLS' };
+    const current = render(task({ fields, defaults, prefill: 'current' }));
+    assert.ok(current.includes('Fields start with the current values'));
+    assert.ok(current.includes('No Changes Yet'));
+    const suggested = render(task({ fields, defaults, prefill: 'suggested' }));
+    assert.ok(suggested.includes('Fields start with what the workflow suggests'));
+    assert.ok(!suggested.includes('No Changes Yet'));
+    assert.ok(!render(task({ fields, defaults })).includes('No Changes Yet'));
+  });
+
+  it('confirms cancel only on a stuck run', () => {
+    const form = render(task({ outcomes: ['save', 'cancel'] }));
+    assert.ok(!form.includes('border-danger/40'));
+    const fault = render(task({ kind: 'fault', outcomes: ['retry', 'skip', 'cancel'] }));
+    assert.ok(fault.includes('bg-danger'));
   });
 
   it('leads with the summary, else the first blocking issue, and shows the claim it is about', () => {
@@ -113,7 +222,9 @@ describe('TaskView', () => {
       lines: [{ code: 'A0429', units: 1, totalCents: 80000 }],
       balanceCents: 80000
     });
-    const html = render(task({ source: { reportId: null, pcrNumber: null, claim } }));
+    const html = render(
+      task({ source: { reportId: null, pcrNumber: null, claim, patient: null } })
+    );
     assert.ok(html.includes('Medicare') && html.includes('1EG4 · active'));
     assert.ok(html.includes('A0429 × 1') && html.includes('BLS emergency'));
     assert.ok(html.indexOf('The Issue') < html.indexOf('Workflow Details'));
@@ -128,7 +239,7 @@ describe('TaskView', () => {
 
   it('links the claim a task is about as a reference, and goes back to the tasks', () => {
     const claim = claimOf();
-    const onClaim = task({ source: { reportId: null, pcrNumber: 'PCR-1', claim } });
+    const onClaim = task({ source: { reportId: null, pcrNumber: 'PCR-1', claim, patient: null } });
     const html = render(onClaim);
     assert.ok(html.includes('Review PCR on claim <a'));
     assert.ok(html.includes('href="/claims/c1?back=%2Ftasks%2Ft1"'));
@@ -274,7 +385,9 @@ describe('TaskAbout', () => {
       renderToStaticMarkup(createElement(TaskAbout, { task: t })).replace(/<[^>]+>/g, '');
     assert.equal(text(task()), 'Review PCR');
     assert.equal(
-      text(task({ subject: null, source: { reportId: null, pcrNumber: null, claim } })),
+      text(
+        task({ subject: null, source: { reportId: null, pcrNumber: null, claim, patient: null } })
+      ),
       'On claim 20261101-0012 for Doe, Jane'
     );
     assert.equal(text(task({ subject: null })), 'Waiting on a decision');
@@ -299,5 +412,13 @@ describe('TaskView files', () => {
     );
     assert.ok(html.includes('type="file"') && html.includes('Choose a file to upload.'));
     assert.ok(html.includes('>Add Document<'));
+  });
+});
+
+describe('taskTabOf', () => {
+  it('opens the claim tab unless the URL names another', () => {
+    assert.equal(taskTabOf(null), 'claim');
+    assert.equal(taskTabOf('patient'), 'patient');
+    assert.equal(taskTabOf('nope'), 'claim');
   });
 });

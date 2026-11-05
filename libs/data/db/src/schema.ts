@@ -319,6 +319,10 @@ export const TASK_STATUSES = ['open', 'completed', 'cancelled'] as const;
 
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
+export const TASK_PREFILLS = ['current', 'suggested'] as const;
+
+export type TaskPrefill = (typeof TASK_PREFILLS)[number];
+
 export const CLAIM_STATUS_REQUEST_STATUSES = [
   'pending',
   'answered',
@@ -342,7 +346,9 @@ type TasksTable = {
   context: JsonColumn;
   fields: JsonColumn;
   outcomes: ColumnType<string[], string[], string[]>;
+  hints: JsonColumn<Record<string, string>>;
   defaults: NullableJsonColumn;
+  prefill: TaskPrefill | null;
   priority: Generated<number>;
   due_at: NullableTimestamp;
   permission: Permission | null;

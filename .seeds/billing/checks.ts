@@ -828,7 +828,13 @@ const fixClaim = (): GraphDef => {
       instructions:
         'The claim is missing something or has something wrong, listed with the field it is fixed in. Correct the fields below and save, and the claim is checked again; empty fields are left as they are. Charges are mapped and priced again when the trip type, service, miles or payers change. Void the claim if it should never be billed.',
       fields: CLAIM_FIX_FIELDS,
-      outcomes: ['save', 'void', 'backToReview']
+      outcomes: ['save', 'void', 'backToReview'],
+      hints: {
+        save: 'Applies the fixes, reprices if needed and checks the claim; this task comes back while anything blocks it.',
+        void: 'Voids the claim so it is never billed.',
+        backToReview: 'Saves nothing and hands the claim back to the step that asked for this fix.'
+      },
+      prefill: 'current'
     }
   });
   g.add('stopAsking', 'std.var.set', {

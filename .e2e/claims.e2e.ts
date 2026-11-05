@@ -155,17 +155,35 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await section(s.page, 'The Issue').first().waitFor();
     await section(s.page, 'Claim').first().waitFor();
     await section(s.page, 'Workflow Details').first().waitFor();
+    const tabs = s.page.getByRole('navigation', { name: 'Task data' });
+    await tabs.getByRole('link', { name: 'Encounter' }).click();
+    await section(s.page, 'Encounter')
+      .getByText(/What the crew documented/)
+      .waitFor();
+    await tabs.getByRole('link', { name: 'Patient' }).click();
+    await section(s.page, 'Patient').first().waitFor();
+    assert.match(s.page.url(), /[?&]tab=patient/);
+    await tabs.getByRole('link', { name: 'Claim' }).click();
     const decision = section(s.page, 'Your Decision').last();
+    for (const option of await decision
+      .getByRole('list', { name: 'Options' })
+      .getByRole('button')
+      .all()) {
+      const ids = ((await option.getAttribute('aria-describedby')) ?? '').split(' ');
+      const hint = ids.find((id) => id.startsWith('outcome-'));
+      assert.ok(hint, `${await option.textContent()} says what it does`);
+      assert.ok(((await s.page.locator(`[id="${hint}"]`).textContent()) ?? '').length > 10);
+    }
     const level = listboxByLabel(decision, /^Level of Service/i);
     const chosen = await chosenValue(level);
     await chooseOption(level, '');
     const approve = decision.getByRole('button', { name: 'Approve' });
     assert.equal(await approve.getAttribute('aria-disabled'), 'true');
-    const reason = await approve.getAttribute('aria-describedby');
-    assert.match(
-      (await s.page.locator(`[id="${reason}"]`).textContent()) ?? '',
-      /Fill in Level of Service/i
+    const described = ((await approve.getAttribute('aria-describedby')) ?? '').split(' ');
+    const reasons = await Promise.all(
+      described.map(async (id) => (await s.page.locator(`[id="${id}"]`).textContent()) ?? '')
     );
+    assert.ok(reasons.some((r) => /Fill in Level of Service/i.test(r)));
     await chooseOption(level, chosen);
     assert.equal(await approve.getAttribute('aria-disabled'), null);
   });
@@ -212,11 +230,44 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
       .waitFor({ timeout: FLOW_MS });
   });
 
+  it('sends a claim from review to a Fix Claim Data task and back, saying where each option leads', async () => {
+    await openTaskPage(claims.worked, 'Review claim');
+    const fix = section(s.page, 'Your Decision')
+      .last()
+      .getByRole('button', { name: 'Fix Claim Data' });
+    const hintId = ((await fix.getAttribute('aria-describedby')) ?? '')
+      .split(' ')
+      .find((id) => id.startsWith('outcome-'));
+    assert.match(
+      (await s.page.locator(`[id="${hintId}"]`).textContent()) ?? '',
+      /Fix Claim Data task/
+    );
+    await decide(s.page, 'Fix Claim Data');
+    const next = s.page.getByRole('link', { name: /^Open Fix claim data/i });
+    await next.waitFor({ timeout: FLOW_MS });
+    await next.click();
+    const decision = section(s.page, 'Your Decision').last();
+    await decision.getByText('Fields start with the current values').waitFor();
+    await decision.getByText('No Changes Yet').waitFor();
+    await finishTask(s.page, 'Back to Review');
+    await reach(claims.worked, 'Review claim');
+  });
+
   it('corrects documentation with a Correct Claim Data task and shows it on the overview', async () => {
     await openClaim(claims.worked);
     await startClaimTask(s.page, 'Correct Claim Data');
     const decision = section(s.page, 'Your Decision').last();
     await chooseOption(listboxByLabel(decision, /^Ambulance Transport Reason/i), 'D');
+    await decision
+      .getByText(/^Changed from/)
+      .first()
+      .waitFor();
+    const changes = decision.getByRole('region', { name: 'Your changes' });
+    await changes.getByText('Ambulance Transport Reason').waitFor();
+    await changes
+      .getByText(/specialist or equipment/)
+      .first()
+      .waitFor();
     await finishTask(s.page, 'Save');
     await until(
       s.page,

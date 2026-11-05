@@ -27,8 +27,8 @@ export const SourceReportView = ({ source }: { source: SourceReport }) => {
   };
   return (
     <SectionPanel
-      title="Source Report"
-      description={`Patient care report ${source.report.pcr_number ?? `#${source.report.position + 1}`} from ${source.report.file_name}, received ${formatDateTime(source.report.created_at)}.`}
+      title="Encounter"
+      description={`What the crew documented: patient care report ${source.report.pcr_number ?? `#${source.report.position + 1}`} from ${source.report.file_name}, received ${formatDateTime(source.report.created_at)}.`}
       actions={
         <Button variant="outline" onClick={() => void copy()}>
           <CopyIcon aria-hidden="true" className="size-4" />

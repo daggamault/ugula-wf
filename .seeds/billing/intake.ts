@@ -222,7 +222,12 @@ const reviewPatientMatch = (): GraphDef => {
           required: ['useSelected']
         }
       ],
-      outcomes: ['useSelected', 'createNew']
+      outcomes: ['useSelected', 'createNew'],
+      hints: {
+        useSelected: 'Uses the chosen patient for this report and its claim.',
+        createNew: "Creates a new patient from the report's details and uses it for the claim."
+      },
+      prefill: 'suggested'
     }
   });
   g.add('createNew', 'billing.create-patient', { label: 'Create New Patient' });
@@ -291,7 +296,12 @@ const resolvePatient = (): GraphDef => {
           required: ['savePatient']
         }
       ],
-      outcomes: ['savePatient']
+      outcomes: ['savePatient'],
+      hints: {
+        savePatient:
+          'Matches or creates the patient from these details; a likely match opens a Confirm patient task.'
+      },
+      prefill: 'current'
     }
   });
   g.add('reported', 'billing.demographics.break', { label: 'Cleaned Demographics' });
@@ -411,7 +421,14 @@ const resolvePayers = (): GraphDef => {
       instructions:
         'The report names a payer that is not in the payer directory by that name. Choose the directory payer it means, and later reports with this name link automatically; similar payers come first with how close they are. Mark it unlisted when the payer is real but not in the directory yet, or remove it when it is not insurance (self pay, unknown).',
       fields: [{ name: 'payerId', type: 'string', label: 'Directory payer', required: ['link'] }],
-      outcomes: ['link', 'unlisted', 'remove']
+      outcomes: ['link', 'unlisted', 'remove'],
+      hints: {
+        link: 'Links this payer name to the directory payer; later reports with this name link automatically.',
+        unlisted:
+          'Keeps the payer on the claim without a directory link until it is added to the directory.',
+        remove: 'Leaves every payer with this name off the claim.'
+      },
+      prefill: 'suggested'
     }
   });
   g.add('reported', 'std.object.get', { label: 'Reported Name', values: { path: 'payer' } });
@@ -620,7 +637,13 @@ const reviewPcr = (): GraphDef => {
       instructions:
         'Check the patient, payers and impression codes, and confirm the trip type, level of service and loaded miles before this claim is priced. The suggestion lists what supports it, including what the narrative documents; warnings say what could not be read or decided.',
       fields: REVIEW_FIELDS,
-      outcomes: ['approve', 'hold']
+      outcomes: ['approve', 'hold'],
+      hints: {
+        approve:
+          'Confirms the trip type, level of service and loaded miles; the claim is priced next.',
+        hold: 'Holds the PCR in a Held PCR task until it is released back to review or voided.'
+      },
+      prefill: 'suggested'
     }
   });
   g.add('given', 'std.object.make', {
@@ -648,7 +671,11 @@ const reviewPcr = (): GraphDef => {
       queue: 'billing-holds',
       instructions:
         'A reviewer held this PCR. Release it back to review once the report is sorted out, or void it so it is never billed.',
-      outcomes: ['release', 'void']
+      outcomes: ['release', 'void'],
+      hints: {
+        release: 'Sends the PCR back to review, with the answers given before.',
+        void: 'Voids the claim so it is never billed.'
+      }
     }
   });
   g.add('suggested', 'billing.service.break', { label: 'Suggested Service' });
@@ -799,7 +826,13 @@ const reviewRevision = (): GraphDef => {
       queue: 'billing-review',
       instructions:
         'A newer version of this patient care report arrived after its claim was opened, so it was not billed again; the changes list what differs from the report the claim came from. Apply works the claim again from the new report while it is a draft, needs review or is void; a claim already on its way to payers is corrected with a Correct Claim Data task, started from Start Task on its claim. Acknowledge keeps the claim as it is; Void closes it, only while it has not gone to payers.',
-      outcomes: ['apply', 'acknowledge', 'void']
+      outcomes: ['apply', 'acknowledge', 'void'],
+      hints: {
+        apply:
+          'Works the claim again from the new report; not possible once the claim has gone to payers.',
+        acknowledge: 'Keeps the claim as it is; the new report is not billed.',
+        void: 'Voids the claim so it is never billed; not possible once it has gone to payers.'
+      }
     }
   });
   g.add('applies', 'std.flow.branch', { label: 'Can It Be Worked Again?' });
@@ -909,7 +942,11 @@ const recoverDraft = (): GraphDef => {
       queue: 'billing-review',
       instructions:
         'The workflow working this draft claim stopped before the claim was ready, so nothing would happen to it. Restart works it again from its report, or void it.',
-      outcomes: ['restart', 'void']
+      outcomes: ['restart', 'void'],
+      hints: {
+        restart: 'Works the draft claim again from its report.',
+        void: 'Voids the draft claim so it is never billed.'
+      }
     }
   });
   g.add('rework', 'billing.rework-claim', { label: 'Work the Claim Again' });

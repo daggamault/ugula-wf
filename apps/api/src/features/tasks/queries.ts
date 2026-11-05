@@ -91,6 +91,8 @@ const detail = [
   'fields',
   'outcomes',
   'defaults',
+  'hints',
+  'prefill',
   'resolution',
   'completed_by'
 ] as const;
@@ -142,9 +144,16 @@ export const findTaskSource = (db: Db, runId: string) =>
       'c.loaded_miles',
       'c.total_cents',
       'b.balance_cents',
+      'p.id as patient_id',
+      'p.number as patient_number',
       'p.first_name',
       'p.last_name',
       'p.birth_date',
+      'p.gender',
+      'p.address_line',
+      'p.city',
+      'p.state',
+      'p.postal_code',
       jsonArrayFrom(
         eb
           .selectFrom('claim_coverages as cc')

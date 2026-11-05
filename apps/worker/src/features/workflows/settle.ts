@@ -9,6 +9,26 @@ const FAULT_QUEUE = 'exceptions';
 export const FAULT_OUTCOMES = ['retry', 'skip', 'cancel'];
 const STALL_OUTCOMES = ['retry', 'cancel'];
 
+const FAULT_HINTS = {
+  retry: 'Runs the failed step again, after you fix what it names.',
+  skip: 'Skips the failed step with the outputs below and continues from the chosen pin.',
+  cancel: 'Stops the run for good. The claim stays as it is now.'
+};
+
+const STALL_HINTS = {
+  retry: 'Tries to continue the run again, after you fix what it names.',
+  cancel: 'Stops the run for good. The claim stays as it is now.'
+};
+
+const hintsOf = (value: unknown): Record<string, string> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? Object.fromEntries(
+        Object.entries(value).filter((e): e is [string, string] => typeof e[1] === 'string')
+      )
+    : {};
+
+const prefillOf = (value: unknown) => (value === 'current' || value === 'suggested' ? value : null);
+
 const ENCOUNTER_WORKFLOW = 'billing.encounter-to-claim';
 
 const RECOVER_DRAFT = { key: 'billing.recover-draft', version: 1 };
@@ -190,7 +210,9 @@ const suspendRun = async (tx: RunTx, run: ClaimedRun, state: RunState, jobs: Run
         context: data.context ?? null,
         fields: data.fields ?? [],
         outcomes: Array.isArray(data.outcomes) ? data.outcomes.map(String) : [],
+        hints: hintsOf(data.hints),
         defaults: data.defaults ?? null,
+        prefill: prefillOf(data.prefill),
         priority: typeof data.priority === 'number' ? data.priority : 0,
         assigneeId: typeof data.assignee === 'string' ? data.assignee : null,
         dueAt: typeof data.due === 'string' ? data.due : null,
@@ -267,6 +289,7 @@ const faultRun = async (
     context: { runId: run.id, node, error: fault.error },
     fields: faultFields(failed),
     outcomes: FAULT_OUTCOMES,
+    hints: FAULT_HINTS,
     defaults: null,
     priority: 0,
     assigneeId: null,
@@ -325,6 +348,7 @@ export const stallRun = async (tx: RunTx, run: ClaimedRun, message: string, at: 
     context: { runId: run.id, error },
     fields: [],
     outcomes: STALL_OUTCOMES,
+    hints: STALL_HINTS,
     defaults: null,
     priority: 0,
     assigneeId: null,

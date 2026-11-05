@@ -238,7 +238,15 @@ const billFacility = (): GraphDef => {
         },
         { name: 'note', type: 'string', label: 'Note' }
       ],
-      outcomes: ['billFacility', 'billPayers', 'void']
+      outcomes: ['billFacility', 'billPayers', 'void'],
+      hints: {
+        billFacility:
+          'Bills the facility; the claim waits for its monthly invoice instead of going to payers.',
+        billPayers:
+          'Records that the facility is not responsible; the claim goes on to its payers.',
+        void: 'Voids the claim so it is never billed.'
+      },
+      prefill: 'suggested'
     }
   });
   g.add('facility', 'std.logic.coalesce', { label: 'Chosen, Else Suggested' });

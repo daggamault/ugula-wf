@@ -48,6 +48,8 @@ describe('human task node', () => {
         instructions: '',
         fields: [reasonField],
         outcomes: ['approve', 'reject'],
+        hints: {},
+        prefill: null,
         subject: 'Claim C1 · Jane Doe',
         summary: 'Medicare needs a PCS',
         context: { claimId: 'C1' },
@@ -58,6 +60,26 @@ describe('human task node', () => {
         permission: 'claims:approve'
       }
     });
+  });
+
+  it('carries what each outcome does and what the defaults hold', async () => {
+    const { result } = await invokeNode(humanTaskNode, {
+      config: { ...config, hints: { reject: 'Sends it back.' }, prefill: 'current' }
+    });
+    assert.ok(result.type === 'suspend');
+    const data =
+      result.type === 'suspend' ? (result.suspension.data as Record<string, unknown>) : {};
+    assert.deepEqual(data.hints, { reject: 'Sends it back.' });
+    assert.equal(data.prefill, 'current');
+    await assert.rejects(
+      () =>
+        invokeNode(humanTaskNode, { config: { ...config, hints: { maybe: 'No such outcome.' } } }),
+      /Hints must name outcomes of the task/
+    );
+    await assert.rejects(
+      () => invokeNode(humanTaskNode, { config: { ...config, prefill: 'guessed' } }),
+      /received "guessed"/
+    );
   });
 
   it('continues through the chosen outcome with validated values', async () => {
@@ -126,6 +148,8 @@ describe('human task node', () => {
       instructions: '',
       fields,
       outcomes: ['approve', 'reject'],
+      hints: {},
+      prefill: null,
       subject: null,
       summary: null,
       context: null,

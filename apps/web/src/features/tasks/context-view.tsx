@@ -15,6 +15,7 @@ import { ClaimCheckView, isClaimCheck } from './claim-check.tsx';
 type ContextViewProps = {
   value: Json | undefined;
   label: string;
+  hideNotices?: boolean;
 };
 
 export const labelOf = (key: string) => {
@@ -156,7 +157,15 @@ const NOTICES = {
 
 const SPECIAL = new Set(['issues', 'warnings', 'notes', 'changes', 'claim']);
 
-const ContextBody = ({ value, hasIssues }: { value: Record<string, Json>; hasIssues: boolean }) => {
+const ContextBody = ({
+  value,
+  hasIssues,
+  hideNotices = false
+}: {
+  value: Record<string, Json>;
+  hasIssues: boolean;
+  hideNotices?: boolean;
+}) => {
   const entries = entriesOf(value).filter(([key]) => !SPECIAL.has(key));
   const simple = Object.fromEntries(
     entries.filter(([, v]) => !isRecord(v) && !isRecordList(v))
@@ -168,7 +177,7 @@ const ContextBody = ({ value, hasIssues }: { value: Record<string, Json>; hasIss
       {showIssues ? <ClaimIssues issues={issues} /> : null}
       {(['warnings', 'notes'] as const).map((key) => {
         const items = value[key];
-        return isTextList(items) ? (
+        return !hideNotices && isTextList(items) ? (
           <AlertList
             key={key}
             intent={NOTICES[key].intent}
@@ -212,7 +221,7 @@ const ContextBody = ({ value, hasIssues }: { value: Record<string, Json>; hasIss
   );
 };
 
-export const ContextView = ({ value, label }: ContextViewProps) => {
+export const ContextView = ({ value, label, hideNotices = false }: ContextViewProps) => {
   const raw = (
     <details className="group text-sm">
       <summary
@@ -238,7 +247,7 @@ export const ContextView = ({ value, label }: ContextViewProps) => {
   }
   return (
     <figure aria-label={label} className="flex min-w-0 flex-col gap-5">
-      <ContextBody value={value} hasIssues={false} />
+      <ContextBody value={value} hasIssues={hideNotices} hideNotices={hideNotices} />
       {raw}
     </figure>
   );

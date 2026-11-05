@@ -190,8 +190,7 @@ export const decide = async (page: Page, outcome?: string) => {
     if (value) await chooseOption(trigger, value);
   }
   const buttons = decision
-    .locator('form > div')
-    .last()
+    .getByRole('list', { name: 'Options' })
     .locator('button:not([aria-disabled="true"])');
   await (outcome ? buttons.filter({ hasText: outcome }) : buttons).first().click();
   const dialog = page.getByRole('dialog');

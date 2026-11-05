@@ -8,6 +8,7 @@ import {
   isDestructive,
   missingFor,
   missingReason,
+  outcomeHint,
   outcomeIcon,
   outcomeLabel
 } from './outcomes.ts';
@@ -35,6 +36,8 @@ describe('outcomes', () => {
     assert.equal(isDestructive('void'), true);
     assert.equal(isDestructive('writeOff'), true);
     assert.equal(isDestructive('approve'), false);
+    assert.equal(isDestructive('cancel'), false);
+    assert.equal(isDestructive('cancel', 'fault'), true);
   });
 
   it('labels fields in title case', () => {
@@ -58,14 +61,31 @@ describe('outcomes', () => {
   });
 });
 
+describe('outcomeHint', () => {
+  it("prefers the workflow's hint, falls back only for outcomes that mean one thing", () => {
+    assert.equal(outcomeHint({ hints: { void: 'Voids it here.' } }, 'void'), 'Voids it here.');
+    assert.equal(
+      outcomeHint({ hints: {} }, 'void'),
+      'Closes the claim as void; it is never billed.'
+    );
+    assert.equal(outcomeHint({ hints: {} }, 'continue'), null);
+    assert.equal(outcomeHint({ hints: {} }, 'save'), null);
+    assert.equal(outcomeHint({}, 'toString'), null);
+  });
+});
+
 describe('consequenceOf', () => {
   it('says what a destructive outcome does before it is confirmed', () => {
     assert.equal(
-      consequenceOf('void'),
-      'The claim closes as void and is never billed. This cannot be undone.'
+      consequenceOf({ hints: {} }, 'void'),
+      'Closes the claim as void; it is never billed. This cannot be undone.'
     );
     assert.equal(
-      consequenceOf('toString'),
+      consequenceOf({ hints: { cancel: 'Stops the run.' } }, 'cancel'),
+      'Stops the run. This cannot be undone.'
+    );
+    assert.equal(
+      consequenceOf({}, 'toString'),
       'The workflow continues from this choice. This cannot be undone.'
     );
   });

@@ -236,7 +236,11 @@ const decideClaim = (): GraphDef => {
       instructions:
         'This report looks like a cancelled call or a trip without patient contact, so no claim would be made. Skip it, or choose the trip type that was billed and make a claim if care was given.',
       fields: [{ ...TRIP_TYPE_FIELD, required: ['claim'] }],
-      outcomes: ['skip', 'claim']
+      outcomes: ['skip', 'claim'],
+      hints: {
+        skip: 'Makes no claim for this report.',
+        claim: 'Makes a claim for this report as the chosen trip type.'
+      }
     }
   });
   g.ret('classified', 'claim');

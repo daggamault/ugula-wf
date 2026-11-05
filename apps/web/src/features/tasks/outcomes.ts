@@ -100,7 +100,29 @@ const OUTCOMES: Readonly<Record<string, OutcomeStyle>> = {
   billPayers: { icon: LandmarkIcon, label: 'Bill Payers' }
 };
 
-const DESTRUCTIVE = new Set(['void', 'writeOff', 'cancel']);
+// Fallbacks for workflows that do not give hints, only for outcomes that mean
+// the same thing in every task. Words like continue, save or cancel do not.
+const HINTS: Readonly<Record<string, string>> = {
+  void: 'Closes the claim as void; it is never billed.',
+  writeOff: 'Writes off the balance left and closes the claim.',
+  skipPayer: 'Does not bill this payer; bills the next payer, or the patient if none is left.',
+  selfPay: 'Bills the patient; no payer is billed.',
+  submitted: 'Records that it went to the payer another way.',
+  keepWaiting: 'Waits longer for an answer; this task comes back if none arrives.',
+  sendToCollections: 'Sends the balance to collections.',
+  moveToPatient: 'Moves the balance to the patient.',
+  keepCredit: 'Keeps the credit on the claim; no refund is sent.'
+};
+
+export const outcomeHint = (
+  task: { hints?: Readonly<Record<string, string>> | null },
+  outcome: string
+) =>
+  (task.hints && Object.hasOwn(task.hints, outcome) ? task.hints[outcome] : null) ??
+  (Object.hasOwn(HINTS, outcome) ? HINTS[outcome] : null) ??
+  null;
+
+const DESTRUCTIVE = new Set(['void', 'writeOff']);
 
 const styleOf = (outcome: string) => (Object.hasOwn(OUTCOMES, outcome) ? OUTCOMES[outcome] : null);
 
@@ -108,7 +130,9 @@ export const outcomeLabel = (outcome: string) => styleOf(outcome)?.label ?? titl
 
 export const outcomeIcon = (outcome: string) => styleOf(outcome)?.icon ?? CircleCheckIcon;
 
-export const isDestructive = (outcome: string) => DESTRUCTIVE.has(outcome);
+// Cancel only ends something for good on a stuck run; in a form it changes nothing.
+export const isDestructive = (outcome: string, kind: 'task' | 'fault' = 'task') =>
+  DESTRUCTIVE.has(outcome) || (kind === 'fault' && outcome === 'cancel');
 
 export const fieldLabel = (f: Pick<FieldSpec, 'name' | 'label'>) =>
   f.label ? titleCaseLabel(f.label) : labelOf(f.name);
@@ -128,11 +152,8 @@ export const missingFor = (
 export const missingReason = (missing: readonly FieldSpec[]) =>
   missing.length ? `Fill in ${missing.map(fieldLabel).join(', ')} first.` : undefined;
 
-const CONSEQUENCES: Readonly<Record<string, string>> = {
-  void: 'The claim closes as void and is never billed.',
-  writeOff: 'The balance left on the claim is written off and the claim closes.',
-  cancel: 'The run stops for good and does not continue.'
-};
-
-export const consequenceOf = (outcome: string) =>
-  `${(Object.hasOwn(CONSEQUENCES, outcome) ? CONSEQUENCES[outcome] : null) ?? 'The workflow continues from this choice.'} This cannot be undone.`;
+export const consequenceOf = (
+  task: { hints?: Readonly<Record<string, string>> | null },
+  outcome: string
+) =>
+  `${outcomeHint(task, outcome) ?? 'The workflow continues from this choice.'} This cannot be undone.`;

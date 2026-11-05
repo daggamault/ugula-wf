@@ -96,7 +96,11 @@ const reviewPayerFileLine = (): GraphDef => {
       queue: 'billing-reconcile',
       instructions:
         'The clearinghouse sent a line that could not be applied on its own: a claim number that matches no claim, a reversal, a pending status, or a payer that is not on the claim. Post it with a Post Payment task or correct the claim with a Correct Claim Data task, both started from Start Task on the claim (or check the claim number with the clearinghouse), then mark it resolved.',
-      outcomes: ['resolved']
+      outcomes: ['resolved'],
+      hints: {
+        resolved:
+          'Closes this line; it changes nothing on the claim, so post the payment or correct the claim first.'
+      }
     }
   });
   g.ret('done');
@@ -437,7 +441,8 @@ const receivePayerFile = (): GraphDef => {
       queue: 'billing-reconcile',
       instructions:
         'The clearinghouse sent a file that is not a remittance (835), acknowledgment (TA1, 999 or 277CA), claim status (277) or eligibility (271) file. Check it with the clearinghouse; nothing was applied.',
-      outcomes: ['resolved']
+      outcomes: ['resolved'],
+      hints: { resolved: 'Closes the task; nothing from the file is applied.' }
     }
   });
   g.add('why', 'std.expr', expr('File Context', '{ fileName: fileName, problem: reason }'));
@@ -450,7 +455,10 @@ const receivePayerFile = (): GraphDef => {
       queue: 'billing-review',
       instructions:
         'The clearinghouse rejected the file envelope (TA1), so it read none of the claims in the file; they are back in review. This is a setup problem, not a claim problem: check the reason in the details against the billing profile (submitter and receiver IDs, test or production) and the clearinghouse connection in Settings, then mark it fixed.',
-      outcomes: ['fixed']
+      outcomes: ['fixed'],
+      hints: {
+        fixed: 'Opens a review task for each line of the file that could not be applied on its own.'
+      }
     }
   });
   g.add(

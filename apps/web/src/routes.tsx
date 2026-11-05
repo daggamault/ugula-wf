@@ -38,7 +38,7 @@ import { PAYERS_PATH, PayersPage } from './features/settings/payers-page.tsx';
 import { SettingsPage } from './features/settings/settings-page.tsx';
 import type { TasksClient } from './features/tasks/client.ts';
 import { taskFilterOf } from './features/tasks/client.ts';
-import { TaskPage } from './features/tasks/task-page.tsx';
+import { TaskPage, taskTabOf } from './features/tasks/task-page.tsx';
 import { TASKS_PATH, TasksPage } from './features/tasks/tasks-page.tsx';
 import type { UsersClient } from './features/users/client.ts';
 import { InvitePage } from './features/users/invite-page.tsx';
@@ -370,6 +370,7 @@ const routes: readonly Route[] = [
         live={c.live}
         taskId={p.id ?? ''}
         back={q.has('back') ? backOf(q, TASKS_PATH, '/claims', '/runs/', '/imports/') : null}
+        tab={taskTabOf(q.get('tab'))}
       />
     )
   }

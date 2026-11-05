@@ -180,7 +180,12 @@ const chaseDocument = (): GraphDef => {
         },
         { name: 'note', type: 'string', label: 'Who to ask, and for what' }
       ],
-      outcomes: ['chase', 'cancel']
+      outcomes: ['chase', 'cancel'],
+      hints: {
+        chase:
+          'Opens a Chase document task for it, due by the days its kind allows, unless it is already on file.',
+        cancel: 'Closes the task without chasing anything.'
+      }
     }
   });
   claimSummary(
@@ -219,7 +224,12 @@ const chaseDocument = (): GraphDef => {
       instructions:
         'The claim is missing a document. Get it from the patient, the facility or the physician, upload it here and mark it received; the claim is checked again when it arrives. Mark it received without a file when it was added another way. Stop chasing when it will not come.',
       fields: DOCUMENT_FIELDS,
-      outcomes: ['received', 'stop']
+      outcomes: ['received', 'stop'],
+      hints: {
+        received:
+          'Adds the uploaded file to the claim and checks it again; this task comes back while it is not on file.',
+        stop: 'Stops chasing the document; the claim is left as it is.'
+      }
     }
   });
   g.add('problem', 'std.var.get', { label: 'Why It Was Refused', config: { name: 'problem' } });

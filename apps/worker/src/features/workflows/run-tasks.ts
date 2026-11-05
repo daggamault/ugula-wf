@@ -1,5 +1,5 @@
 import type { Permission } from '@ugula/access';
-import { agencyTimeZone, type Database, type TaskKind } from '@ugula/db';
+import { agencyTimeZone, type Database, type TaskKind, type TaskPrefill } from '@ugula/db';
 import type { Json } from '@ugula/graph';
 import { type Kysely, sql } from 'kysely';
 
@@ -16,7 +16,9 @@ export type TaskInsert = {
   context: Json;
   fields: Json;
   outcomes: string[];
+  hints?: Readonly<Record<string, string>>;
   defaults: Json;
+  prefill?: TaskPrefill | null;
   priority: number;
   assigneeId: string | null;
   dueAt: string | null;
@@ -58,7 +60,9 @@ export const insertTask = async (tx: Kysely<Database>, t: TaskInsert) => {
       context: JSON.stringify(t.context),
       fields: JSON.stringify(t.fields),
       outcomes: t.outcomes,
+      hints: JSON.stringify(t.hints ?? {}),
       defaults: JSON.stringify(t.defaults),
+      prefill: t.prefill ?? null,
       priority: t.priority,
       due_at: t.dueAt === null ? null : dueAtOf(t.agencyId, t.dueAt),
       permission: t.permission,

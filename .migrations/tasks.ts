@@ -1,5 +1,5 @@
 import { PERMISSIONS } from '@ugula/access';
-import { type Database, TASK_KINDS, TASK_STATUSES } from '@ugula/db';
+import { type Database, TASK_KINDS, TASK_PREFILLS, TASK_STATUSES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
 const buildTasksTable = (db: Kysely<Database>) =>
@@ -22,7 +22,9 @@ const buildTasksTable = (db: Kysely<Database>) =>
     .addColumn('context', 'json', (col) => col.notNull())
     .addColumn('fields', 'jsonb', (col) => col.notNull())
     .addColumn('outcomes', sql`text[]`, (col) => col.notNull())
+    .addColumn('hints', 'jsonb', (col) => col.notNull().defaultTo(sql`'{}'::jsonb`))
     .addColumn('defaults', 'jsonb')
+    .addColumn('prefill', 'text')
     .addColumn('priority', 'integer', (col) => col.notNull().defaultTo(0))
     .addColumn('due_at', 'timestamptz')
     .addColumn('permission', 'text')
@@ -43,6 +45,10 @@ const buildTasksTable = (db: Kysely<Database>) =>
       sql`status in (${sql.join(TASK_STATUSES.map((v) => sql.lit(v)))})`
     )
     .addCheckConstraint('tasks_outcomes_check', sql`cardinality(outcomes) > 0`)
+    .addCheckConstraint(
+      'tasks_prefill_check',
+      sql`prefill in (${sql.join(TASK_PREFILLS.map((v) => sql.lit(v)))})`
+    )
     .addCheckConstraint(
       'tasks_permission_check',
       sql`permission in (${sql.join(PERMISSIONS.map((v) => sql.lit(v)))})`

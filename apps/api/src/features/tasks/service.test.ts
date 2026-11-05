@@ -262,7 +262,8 @@ describe('task service', () => {
     assert.deepEqual(found.ok && found.value.task.source, {
       reportId: null,
       pcrNumber: null,
-      claim: null
+      claim: null,
+      patient: null
     });
     const source = queries.find((q) => q.sql.includes('left join "import_reports"'));
     assert.ok(
@@ -305,6 +306,13 @@ describe('task service sources and hand-out', () => {
               first_name: 'Jane',
               last_name: 'Doe',
               birth_date: '1950-02-03',
+              patient_id: 'p1',
+              patient_number: 'P-7',
+              gender: 'F',
+              address_line: '1 Main St',
+              city: 'Harrisburg',
+              state: 'PA',
+              postal_code: '17101',
               service_date: '2026-09-14',
               trip_type: 'emergency',
               level: 'BLS',
@@ -345,6 +353,18 @@ describe('task service sources and hand-out', () => {
         balanceCents: 12865,
         payers: [{ payer: 'Medicare', memberId: '1EG4', eligibility: 'active' }],
         lines: [{ code: 'A0429', units: 1, totalCents: 80000 }]
+      },
+      patient: {
+        id: 'p1',
+        number: 'P-7',
+        firstName: 'Jane',
+        lastName: 'Doe',
+        birthDate: '1950-02-03',
+        sex: 'F',
+        addressLine: '1 Main St',
+        city: 'Harrisburg',
+        state: 'PA',
+        postalCode: '17101'
       }
     });
   });

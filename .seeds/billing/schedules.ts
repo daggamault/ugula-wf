@@ -204,7 +204,8 @@ const deadlineReminder = (): GraphDef => {
       queue: 'billing-followup',
       instructions:
         'A deadline on this claim is near or has passed; the details say which and when. Do what it asks with the matching task from Start Task on the claim, then mark it done.',
-      outcomes: ['done']
+      outcomes: ['done'],
+      hints: { done: 'Closes the reminder; it changes nothing on the claim.' }
     }
   });
   g.ret('done');

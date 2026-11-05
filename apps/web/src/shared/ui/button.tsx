@@ -74,6 +74,7 @@ export const Button = ({
   disabledReason,
   tooltipSide = 'bottom',
   onClick,
+  'aria-describedby': describedBy,
   children,
   ...props
 }: ButtonProps) => {
@@ -84,7 +85,10 @@ export const Button = ({
       type={type}
       aria-busy={isPending || undefined}
       aria-disabled={!isEnabled || undefined}
-      aria-describedby={disabledReason === undefined ? undefined : reasonId}
+      aria-describedby={
+        [disabledReason === undefined ? null : reasonId, describedBy].filter(Boolean).join(' ') ||
+        undefined
+      }
       className={classNamesOf(buttonClasses({ intent, variant, size }), isBlock && 'w-full')}
       onClick={isEnabled ? onClick : preventDisabledClick}
       {...props}

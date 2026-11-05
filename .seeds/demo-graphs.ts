@@ -70,7 +70,8 @@ const processItemGraph: GraphDef = {
         title: 'Approve large item',
         queue: 'review',
         fields: [{ name: 'note', type: 'string' }],
-        outcomes: ['approve']
+        outcomes: ['approve'],
+        hints: { approve: 'Approves the item; the run returns its total.' }
       }
     }),
     node('summary', 'std.expr', {

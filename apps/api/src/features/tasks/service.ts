@@ -127,13 +127,29 @@ export const createTaskService = ({ db, boss, announce, blobs, maxBytes }: TaskS
               lines: source.lines
             }
           : null;
+      const patient =
+        source?.patient_id && source.patient_number !== null
+          ? {
+              id: source.patient_id,
+              number: source.patient_number,
+              firstName: source.first_name,
+              lastName: source.last_name,
+              birthDate: source.birth_date,
+              sex: source.gender,
+              addressLine: source.address_line,
+              city: source.city,
+              state: source.state,
+              postalCode: source.postal_code
+            }
+          : null;
       return ok({
         task: {
           ...task,
           source: {
             reportId: source?.report_id ?? null,
             pcrNumber: source?.pcr_number ?? null,
-            claim
+            claim,
+            patient
           }
         }
       });

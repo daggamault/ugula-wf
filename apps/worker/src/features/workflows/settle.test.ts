@@ -158,6 +158,7 @@ describe('settleRun', () => {
       }
     ]);
     assert.deepEqual(calls.tasks[0]?.outcomes, FAULT_OUTCOMES);
+    assert.deepEqual(Object.keys(calls.tasks[0]?.hints ?? {}), FAULT_OUTCOMES);
   });
 
   it('asks only for the decisions that apply to the failed node', () => {
@@ -242,8 +243,10 @@ describe('settleRun', () => {
         instructions: 'Check codes',
         fields: [{ name: 'note', type: 'string' }],
         outcomes: ['approve', 'reject'],
+        hints: { reject: 'Sends it back.', other: 7 },
         context: { claim: 'C1' },
         defaults: null,
+        prefill: 'current',
         assignee: 'u-9',
         priority: 3,
         due: '2026-12-01T00:00:00.000Z',
@@ -264,7 +267,9 @@ describe('settleRun', () => {
       context: { claim: 'C1' },
       fields: [{ name: 'note', type: 'string' }],
       outcomes: ['approve', 'reject'],
+      hints: { reject: 'Sends it back.' },
       defaults: null,
+      prefill: 'current',
       priority: 3,
       assigneeId: 'u-9',
       dueAt: '2026-12-01T00:00:00.000Z',

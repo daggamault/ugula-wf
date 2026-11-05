@@ -66,7 +66,12 @@ const correctClaimData = (): GraphDef => {
       instructions:
         'Every field starts with what the claim says now, with its issues in the details. Change what is wrong and save; empty fields are left as they are. Charges are mapped and priced again when the trip type, service, miles or payers change, the change is logged so an approved claim is reviewed again, and the claim is checked again. Cancel to change nothing.',
       fields: CLAIM_FIX_FIELDS,
-      outcomes: ['save', 'cancel']
+      outcomes: ['save', 'cancel'],
+      hints: {
+        save: 'Applies the changes, reprices charges if the trip, service, miles or payers changed, and checks the claim.',
+        cancel: 'Closes the task without changing the claim.'
+      },
+      prefill: 'current'
     }
   });
   g.add('patch', 'billing.patch-claim', { label: 'Apply the Corrections' });
@@ -140,7 +145,12 @@ const changePayers = (): GraphDef => {
           label: 'Payers, in billing order'
         }
       ],
-      outcomes: ['save', 'cancel']
+      outcomes: ['save', 'cancel'],
+      hints: {
+        save: 'Sets the claim to these payers and checks their eligibility; if refused, this task comes back with why.',
+        cancel: 'Closes the task and keeps the payers as they are.'
+      },
+      prefill: 'current'
     }
   });
   g.add('set', 'billing.set-claim-payers', { label: 'Set the Payers' });
@@ -195,7 +205,13 @@ const setFacility = (): GraphDef => {
         },
         { name: 'note', type: 'string', label: 'Note' }
       ],
-      outcomes: ['billFacility', 'billPayers', 'cancel']
+      outcomes: ['billFacility', 'billPayers', 'cancel'],
+      hints: {
+        billFacility:
+          'Records the facility as responsible; the claim waits for its monthly invoice instead of an 837P.',
+        billPayers: 'Records that no facility is responsible; the claim is billed to its payers.',
+        cancel: 'Closes the task and records nothing.'
+      }
     }
   });
   g.add('toFacility', 'billing.record-responsibility', {
@@ -275,7 +291,11 @@ const addDocument = (): GraphDef => {
         },
         ...DOCUMENT_FIELDS.map((f) => (f.name === 'file' ? { ...f, required: ['add'] } : f))
       ],
-      outcomes: ['add', 'cancel']
+      outcomes: ['add', 'cancel'],
+      hints: {
+        add: 'Keeps the document with the claim, puts what it records on the claim and checks it again.',
+        cancel: 'Closes the task without adding a document.'
+      }
     }
   });
   g.add('add', 'billing.add-claim-document', { label: 'Add Claim Document' });
@@ -346,7 +366,12 @@ const postPayment = (): GraphDef => {
       instructions:
         "Enter a payer's or the patient's payment that came by mail, phone or card, or a refund paid back, in dollars, with each reason code on its own line (group, code and amount, like CO-45 12.50). Leave the payer empty for a patient payment. A payer payment that leaves a balance opens a reconcile task, and one that settles the claim closes it as paid.",
       fields: PAYMENT_FIELDS,
-      outcomes: ['post', 'cancel']
+      outcomes: ['post', 'cancel'],
+      hints: {
+        post: 'Posts it like a remittance; a balance left opens a reconcile task, and a settled claim closes as paid.',
+        cancel: 'Closes the task without posting anything.'
+      },
+      prefill: 'suggested'
     }
   });
   g.add('post', 'billing.post-claim-payment', { label: 'Post the Payment' });

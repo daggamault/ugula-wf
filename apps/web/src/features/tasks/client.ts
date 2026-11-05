@@ -65,7 +65,9 @@ export type TaskDetail = TaskSummary & {
   context: Json;
   fields: FieldSpec[];
   outcomes: string[];
+  hints: Readonly<Record<string, string>>;
   defaults: Record<string, Json> | null;
+  prefill: 'current' | 'suggested' | null;
   resolution: { outcome: string; values: Record<string, Json> } | null;
   source: TaskSource;
 };
@@ -87,10 +89,24 @@ export type TaskClaim = {
   lines: { code: string; units: number | string; totalCents: number }[];
 };
 
+export type TaskPatient = {
+  id: string;
+  number: string;
+  firstName: string | null;
+  lastName: string | null;
+  birthDate: string | null;
+  sex: string | null;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+};
+
 type TaskSource = {
   reportId: string | null;
   pcrNumber: string | null;
   claim: TaskClaim | null;
+  patient: TaskPatient | null;
 };
 
 export type SourceReport = {
@@ -123,6 +139,12 @@ export const createTasksClient = (api: Api) => ({
     api.post<{ status: string }>(`/api/tasks/${encodeURIComponent(id)}/claim`),
   unassign: (id: string) =>
     api.post<{ status: string }>(`/api/tasks/${encodeURIComponent(id)}/release`),
+  followUp: async (runId: string, after: string) =>
+    (
+      await api.get<Page<{ id: string; title: string; subject: string | null }>>(
+        `/api/tasks?runId=${encodeURIComponent(runId)}`
+      )
+    ).items.find((t) => t.id !== after) ?? null,
   complete: (id: string, outcome: string, values: Record<string, Json>) =>
     api.post<{ status: string }>(`/api/tasks/${encodeURIComponent(id)}/complete`, {
       outcome,

@@ -323,7 +323,13 @@ const priceCharges = (): GraphDef => {
         },
         { name: 'saveToSchedule', type: 'boolean', label: 'Save to the default fee schedule' }
       ],
-      outcomes: ['price', 'void']
+      outcomes: ['price', 'void'],
+      hints: {
+        price:
+          'Prices the code at this amount, saving it to the fee schedule if asked; any other unpriced code comes next.',
+        void: 'Voids the claim instead of pricing it.'
+      },
+      prefill: 'suggested'
     }
   });
   g.add('setFee', 'billing.set-fee');

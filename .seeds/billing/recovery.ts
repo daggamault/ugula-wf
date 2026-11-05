@@ -787,7 +787,18 @@ const workDenial = (): GraphDef => {
       instructions:
         'The payer denied this claim. The denial, its reason codes and the suggested decision with why are in the details. Correct the claim (a replacement or void, or a reopening where the payer takes no corrected claims), appeal it, bill another payer (choose it), move the balance to the patient, or write it off.',
       fields: DECISION_FIELDS,
-      outcomes: ['correctClaim', 'appeal', 'billAnotherPayer', 'moveToPatient', 'writeOff']
+      outcomes: ['correctClaim', 'appeal', 'billAnotherPayer', 'moveToPatient', 'writeOff'],
+      hints: {
+        correctClaim:
+          'Queues a replacement or files a void, or opens a Request Reopening task where the payer needs one.',
+        appeal:
+          'Builds the appeal packet and opens a Send Appeal task, then waits for the payer to decide.',
+        billAnotherPayer: 'Adds the chosen payer to the claim and moves on to bill it.',
+        moveToPatient: 'Skips the remaining payers; the balance is billed to the patient.',
+        writeOff:
+          'Writes off the balance and closes the claim, once approved when it is above the approval limit.'
+      },
+      prefill: 'suggested'
     }
   });
   g.add('correctInputs', 'std.expr', {
@@ -946,7 +957,16 @@ const correctClaim = (): GraphDef => {
       queue: 'billing-review',
       instructions:
         'The void (frequency 8) of this claim could not be filed for the reason in the details. Fix what it names (the billing profile is in Settings) and try again, fix the claim data and try again, skip this payer, or mark the void submitted if it went out another way. Until it is filed the payer still has the claim.',
-      outcomes: ['tryAgain', 'fixData', 'skipPayer', 'submitted']
+      outcomes: ['tryAgain', 'fixData', 'skipPayer', 'submitted'],
+      hints: {
+        tryAgain:
+          'Prepares and files the void again; this task comes back if it still cannot be filed.',
+        fixData:
+          'Opens a Fix Claim Data task to edit the claim, then tries to file the void again.',
+        skipPayer:
+          'Moves on from this payer without filing the void; the payer still has the claim.',
+        submitted: 'Records the void as sent outside the app and moves on from this payer.'
+      }
     }
   });
   g.add('fixVoid', 'billing.fix-claim', {
@@ -969,7 +989,13 @@ const correctClaim = (): GraphDef => {
           required: ['requested']
         }
       ],
-      outcomes: ['requested', 'cannotReopen']
+      outcomes: ['requested', 'cannotReopen'],
+      hints: {
+        requested:
+          'Logs the reopening with its reference; the claim waits for the payer to reprocess it.',
+        cannotReopen:
+          'Ends this correction without logging anything; the denial comes back for a new decision.'
+      }
     }
   });
   g.add('reopenNote', 'std.expr', expr('Reopening Note', '"Reopening requested: " + reference'));
@@ -1092,7 +1118,12 @@ const appealClaim = (): GraphDef => {
       instructions:
         'The appeal packet (request letter, claim summary, patient care report and the documents on the claim) is in the claim files. Add anything else that supports the claim, send it to the payer before the due date, and mark it sent. If the claim is not worth appealing, say so and decide again.',
       fields: [{ name: 'note', type: 'string', label: 'How it was sent' }],
-      outcomes: ['sent', 'notAppealing']
+      outcomes: ['sent', 'notAppealing'],
+      hints: {
+        sent: "Logs the appeal as sent and waits for the payer's decision; a task comes if it is overdue.",
+        notAppealing:
+          'Ends the appeal without sending it; the denial comes back for a new decision.'
+      }
     }
   });
   g.add(
@@ -1139,7 +1170,15 @@ const appealClaim = (): GraphDef => {
       queue: 'billing-followup',
       instructions:
         'The payer has not answered the appeal in the time it allows. Check its status with the payer. Keep waiting, record that it upheld the denial (the claim goes back to a denial decision, where the next level can be appealed), or withdraw the appeal.',
-      outcomes: ['keepWaiting', 'upheld', 'withdrawn']
+      outcomes: ['keepWaiting', 'upheld', 'withdrawn'],
+      hints: {
+        keepWaiting:
+          "Waits another period for the payer's decision; this task comes back if it is still overdue.",
+        upheld:
+          'Logs the denial as upheld; the claim goes back to a denial decision, where the next level can be appealed.',
+        withdrawn:
+          'Stops waiting on the appeal and ends it without logging a decision; the claim cycle goes on.'
+      }
     }
   });
   recordEvent(g, 'upheld', 'appeal_decided', 'Log the Upheld Denial');
@@ -1281,7 +1320,11 @@ const respondRecordsRequest = (): GraphDef => {
       instructions:
         'The payer asked for records on this claim (an additional documentation request). Gather what it asks for, usually the patient care report, the physician certification, signatures and the facesheet, and send it before the due date, then mark it sent.',
       fields: [{ name: 'note', type: 'string', label: 'What was sent' }],
-      outcomes: ['sent', 'cannotSend']
+      outcomes: ['sent', 'cannotSend'],
+      hints: {
+        sent: 'Logs the records as sent on the claim, with what was sent, and closes the request.',
+        cannotSend: 'Closes the request without logging records as sent.'
+      }
     }
   });
   recordEvent(g, 'sent', 'records_sent', 'Log the Records Sent');
@@ -1302,7 +1345,11 @@ const respondRecordsRequest = (): GraphDef => {
         },
         { name: 'note', type: 'string', label: 'Records requested' }
       ],
-      outcomes: ['log', 'cancel']
+      outcomes: ['log', 'cancel'],
+      hints: {
+        log: 'Logs the request on the claim and opens a Send records task due on its due date.',
+        cancel: 'Closes the task without logging a request.'
+      }
     }
   });
   summarize(
@@ -1388,7 +1435,12 @@ const refundOverpayment = (): GraphDef => {
       instructions:
         'More has been paid on this claim than it charges. The credit balance, who paid it and the day the refund is due are in the details (Medicare and Medicaid overpayments must be returned within 60 days of being identified). Approve the refund to record it on the claim, then send it; or keep the credit.',
       fields: [{ name: 'note', type: 'string', label: 'Refund reference' }],
-      outcomes: ['refund', 'keepCredit']
+      outcomes: ['refund', 'keepCredit'],
+      hints: {
+        refund:
+          'Records a refund of the credit still owed on the claim, to whoever paid it; then send the refund.',
+        keepCredit: 'Keeps the credit and closes the claim as paid.'
+      }
     }
   });
   g.add(
@@ -1460,7 +1512,7 @@ const approveClosing = (): GraphDef => {
   g.add('rule', 'billing.closing-approval', { label: 'Closing Approval' });
   g.add('needed', 'std.flow.branch', { label: 'Needs Approval?' });
   g.add('which', 'std.flow.switch', { label: 'Which Closing', config: { cases: ['collections'] } });
-  const task = (id: string, title: string, instructions: string) =>
+  const task = (id: string, title: string, instructions: string, approve: string) =>
     g.add(id, 'std.human.task', {
       label: `Approve ${title}`,
       config: {
@@ -1468,18 +1520,25 @@ const approveClosing = (): GraphDef => {
         queue: 'billing-approvals',
         permission: 'claims:approve',
         instructions,
-        outcomes: ['approve', 'reject']
+        outcomes: ['approve', 'reject'],
+        hints: {
+          approve,
+          reject:
+            'Sends it back without closing the claim; the claim cycle decides its next step again.'
+        }
       }
     });
   task(
     'writeOff',
     'Write-Off',
-    'A biller chose to write off a balance above the approval threshold of the Claim Policy. Approve the write-off to close the claim, or reject it to send it back.'
+    'A biller chose to write off a balance above the approval threshold of the Claim Policy. Approve the write-off to close the claim, or reject it to send it back.',
+    'Logs the approval and closes the claim as written off.'
   );
   task(
     'collections',
     'Collections',
-    'A biller chose to send this balance to collections, which needs approval under the Claim Policy. Approve the placement to close the claim as sent to collections, or reject it to send it back.'
+    'A biller chose to send this balance to collections, which needs approval under the Claim Policy. Approve the placement to close the claim as sent to collections, or reject it to send it back.',
+    'Logs the approval and closes the claim as sent to collections.'
   );
   g.add(
     'note',
