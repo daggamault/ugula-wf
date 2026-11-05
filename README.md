@@ -178,8 +178,8 @@ This repository enforces strict, consistent standards across all applications, l
   - Libraries are pure TypeScript source packages referenced directly by applications with no separate build step.
   - Libraries live in layer folders, `libs/<layer>/<name>`, and import only libs in the layers their layer allows. A lib never imports a lib in its own layer, so nothing points sideways or upward:
     - **`kernel`** (`graph`, `config`, `live`): pure, runtime-agnostic foundations and contracts. Imports no lib.
-    - **`platform`** (`auth`, `inference`, `run-queue`, `storage`): I/O adapters with no domain knowledge. Imports `kernel`.
-    - **`domain`** (`billing`, `nemsis`): the business models, rules and nodes every feature builds on. No I/O; it reaches the outside world through ports (store types) that apps implement. Imports `kernel`.
+    - **`platform`** (`auth`, `clearinghouse`, `inference`, `run-queue`, `storage`): I/O adapters with no domain knowledge. Imports `kernel`.
+    - **`domain`** (`access`, `billing`, `nemsis`): the business models, rules and nodes every feature builds on. No I/O; it reaches the outside world through ports (store types) that apps implement. Imports `kernel`.
     - **`data`** (`db`): persistence over domain types, so an enum has one definition shared by code, Kysely types and migration `CHECK` constraints. Imports `domain`, `platform` and `kernel`.
     - **`composition`** (`catalog`): assembles several domains into one thing all apps share. Imports `domain` and `kernel`.
   - Apps sit on top of every layer; `web` runs in the browser and imports only `kernel`, `domain` and `composition`.
