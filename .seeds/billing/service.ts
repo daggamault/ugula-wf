@@ -12,12 +12,14 @@ import {
   expr,
   field,
   is,
+  named,
   notOneOf,
   oneOf,
   P,
   rule,
   shared,
   stage,
+  summarize,
   T,
   table
 } from './shared.ts';
@@ -206,6 +208,10 @@ const classifyTrip = (): GraphDef => {
 
 const tripContext = `{ trip: trip }`;
 
+const NO_CLAIM_SUMMARY = `'No claim looks needed for this report' +
+  (${named('reason', 'null')} != null ? ' (' + reason + ')' : '') +
+  '; skip it, or choose the trip type and make a claim if care was given'`;
+
 const decideClaim = (): GraphDef => {
   const g = stage([P.pcr(), P.facts()], [TRIP_TYPE_OUT, P.reason()], {
     claim: exit(
@@ -248,6 +254,7 @@ const decideClaim = (): GraphDef => {
   g.wire('needed.noClaim', 'noClaim.exec');
   g.wire('context.result', 'noClaim.context');
   g.wire('subject.subject', 'noClaim.subject');
+  summarize(g, 'noClaim', NO_CLAIM_SUMMARY, { reason: 'classify.reason' });
   g.wire('noClaim.claim', 'confirmed.exec');
   g.wire('noClaim.tripType', 'confirmed.tripType');
   g.wire('noClaim.skip', 'skipped.exec');

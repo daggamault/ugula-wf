@@ -2,7 +2,29 @@ import { CLAIM_FIX_FIELDS, type ClaimField, MAX_LOADED_MILES } from '@ugula/bill
 import type { GraphDef, Json } from '@ugula/graph';
 import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
-import { asRule, asStage, d, exit, expr, P, rule, shared, stage, T } from './shared.ts';
+import {
+  asRule,
+  asStage,
+  d,
+  exit,
+  expr,
+  issuesSummary,
+  named,
+  P,
+  rule,
+  shared,
+  stage,
+  summarize,
+  T
+} from './shared.ts';
+
+const BILLED = `(patientOnly == true ? 'the patient' : ${named('context?.payer', "'this claim'")})`;
+
+const FIX_SUMMARY = issuesSummary(
+  'issues',
+  BILLED,
+  `'Nothing blocks billing ' + ${BILLED} + '; correct any field below and save to check the claim again'`
+);
 
 const CHECK_FACTS_IN = d(
   'facts',
@@ -855,6 +877,11 @@ const fixClaim = (): GraphDef => {
   g.wire('check.defaults', 'fix.defaults');
   g.wire('check.options', 'fix.options');
   g.wire('entry.subject', 'fix.subject');
+  summarize(g, 'fix', FIX_SUMMARY, {
+    issues: 'check.issues',
+    context: 'entry.context',
+    patientOnly: 'entry.patientOnly'
+  });
   g.wire('subjectToReprice.subject', 'reprice.subject');
   g.wire('fix.save', 'stopAsking.exec');
   g.wire('stopAsking.then', 'patch.exec');

@@ -17,13 +17,17 @@ import {
   type Builder,
   below,
   d,
+  dollars,
   expr,
   field,
   is,
+  issuesSummary,
+  named,
   P,
   rule,
   shared,
   subject,
+  summarize,
   T,
   table
 } from './shared.ts';
@@ -45,6 +49,69 @@ const FILING_CONTEXT = `{
   whyNotFiled: reason,
   claim: checked.claim
 }`;
+
+const PAYER = named('context?.payer', "'the patient'");
+
+const THE_PAYER = named('context?.payer', "'The payer'");
+
+const TOTAL = 'context?.claim?.totalCents';
+
+const BALANCE = 'context?.balanceCents';
+
+const WARNINGS = 'filter(context?.issues ?? [], i => i?.severity != "blocking")';
+
+const REVIEW_SUMMARY = issuesSummary(
+  'context?.issues',
+  PAYER,
+  `'Approve billing ' + ${PAYER} + (${TOTAL} != null ? ' ' + ${dollars(TOTAL)} : '') +
+    (len(${WARNINGS}) == 0
+      ? ', or fix, skip or void the claim'
+      : len(${WARNINGS}) == 1
+        ? ' after checking its warning: ' + first(${WARNINGS})?.message
+        : ' after checking its ' + text(len(${WARNINGS})) + ' warnings, first: ' + first(${WARNINGS})?.message)`
+);
+
+const CONFIRM_PAYERS_SUMMARY = `'The report names no payer to bill' +
+  (${TOTAL} != null ? ' for ' + ${dollars(TOTAL)} : '') +
+  '; add one from the directory with the member ID, or confirm the patient pays'`;
+
+const SUBMIT_SUMMARY = `'The 837P to ' + ${named('context?.payer', "'the payer'")} + ' could not be created: ' +
+  ${named('context?.whyNotFiled', "'no reason was given'")} + '; fix it and try again, or skip the payer'`;
+
+const RECONCILE_SUMMARY = `${THE_PAYER} + ' answered and ' +
+  (${BALANCE} != null ? ${dollars(BALANCE)} + (${TOTAL} != null ? ' of ' + ${dollars(TOTAL)} : '') + ' is' : 'a balance is') +
+  ' still open; reconcile it, move on or write it off'`;
+
+const FOLLOW_UP_SUMMARY = `${THE_PAYER} + ' has not answered this claim in time' +
+  (${named('context?.claimStatus', 'null')} != null ? ' (latest status: ' + context?.claimStatus + ')' : '') +
+  '; resubmit it, keep waiting or move on'`;
+
+const STATEMENT = `(statementNumber != null
+  ? 'statement ' + text(statementNumber) + (statementCount != null ? ' of ' + text(statementCount) : '')
+  : 'a statement')`;
+
+const PROFILE_SUMMARY = `'Add the billing profile in Settings so ' + ${STATEMENT} + ' can go to the patient' +
+  (${BALANCE} != null ? ' for ' + ${dollars(BALANCE)} : '')`;
+
+const ADDRESS_PARTS = `join(filter([
+  (context?.claim?.patient?.addressLine ?? '') == '' ? 'street address' : null,
+  (context?.claim?.patient?.city ?? '') == '' ? 'city' : null,
+  (context?.claim?.patient?.state ?? '') == '' ? 'state' : null,
+  (context?.claim?.patient?.postalCode ?? '') == '' ? 'ZIP code' : null
+], x => x != null), ', ')`;
+
+const ADDRESS_SUMMARY = `'The patient address has no ' + (${ADDRESS_PARTS} == '' ? 'usable mailing address' : ${ADDRESS_PARTS}) +
+  ', so ' + ${STATEMENT} + ' cannot be sent; enter it or write off ' +
+  (${BALANCE} != null ? ${dollars(BALANCE)} : 'the balance')`;
+
+const UNKNOWN_STEP_SUMMARY = `'The claim cycle has no branch for the step "' + text(step) + '"; correct the Claim Steps table, then retry'`;
+
+const COLLECTIONS_SUMMARY = `(${BALANCE} != null ? ${dollars(BALANCE)} : 'A balance') +
+  ' is still unpaid after every payer and patient statement; write it off or send it to collections'`;
+
+const FACILITY_SUMMARY = `'The facility has not paid its invoice for this trip' +
+  (${BALANCE} != null ? ' (' + ${dollars(BALANCE)} + ' open)' : '') +
+  '; contact it, then keep waiting, write it off or send it to collections'`;
 
 const PATIENT_ADDRESS_FIELDS = ['AddressLine', 'City', 'State', 'PostalCode'].map((part) => ({
   name: `patient${part}`,
@@ -89,6 +156,7 @@ const reviewClaim = (): GraphDef => {
   g.wire('entry.exec', 'review.exec');
   g.wire('entry.subject', 'review.subject', 'fix.subject');
   g.wire('entry.context', 'review.context', 'fix.context');
+  summarize(g, 'review', REVIEW_SUMMARY, { context: 'entry.context' });
   g.wire('entry.claimId', 'approve.claimId', 'skip.claimId', 'fix.claimId');
   g.wire('entry.coverageId', 'approve.coverageId', 'skip.coverageId');
   g.wire('review.approve', 'approve.exec');
@@ -147,6 +215,7 @@ const confirmPayers = (): GraphDef => {
   g.wire('entry.coverageId', 'selfPay.coverageId');
   g.wire('entry.subject', 'confirm.subject');
   g.wire('entry.context', 'confirm.context');
+  summarize(g, 'confirm', CONFIRM_PAYERS_SUMMARY, { context: 'entry.context' });
   g.wire('subjectToReprice.subject', 'reprice.subject');
   g.wire('contextToReprice.context', 'reprice.context');
   g.wire('choices.then', 'confirm.exec');
@@ -189,6 +258,7 @@ const submitClaim = (): GraphDef => {
   g.wire('entry.exec', 'submit.exec');
   g.wire('entry.subject', 'submit.subject', 'fix.subject');
   g.wire('entry.context', 'submit.context', 'fix.context');
+  summarize(g, 'submit', SUBMIT_SUMMARY, { context: 'entry.context' });
   g.wire('entry.claimId', 'submitted.claimId', 'skip.claimId', 'fix.claimId');
   g.wire('entry.coverageId', 'submitted.coverageId', 'skip.coverageId');
   g.wire('submit.submitted', 'submitted.exec');
@@ -226,6 +296,7 @@ const reconcilePayment = (): GraphDef => {
   g.wire('entry.exec', 'reconcile.exec');
   g.wire('entry.subject', 'reconcile.subject');
   g.wire('entry.context', 'reconcile.context');
+  summarize(g, 'reconcile', RECONCILE_SUMMARY, { context: 'entry.context' });
   g.wire('entry.claimId', 'reconciled.claimId', 'correct.claimId');
   g.wire('entry.coverageId', 'reconciled.coverageId', 'correct.coverageId');
   g.wire('reconcile.continue', 'reconciled.exec');
@@ -286,6 +357,7 @@ const followUpPayer = (): GraphDef => {
   g.wire('entry.context', 'withStatus.object');
   g.wire('latest.status', 'withStatus.value');
   g.wire('withStatus.object', 'followUp.context');
+  summarize(g, 'followUp', FOLLOW_UP_SUMMARY, { context: 'withStatus.object' });
   for (const [outcome, kind, label] of FOLLOW_UPS) {
     recordEvent(g, outcome, kind, label);
     g.wire(`followUp.${outcome}`, `${outcome}.exec`);
@@ -359,6 +431,16 @@ const sendStatement = (): GraphDef => {
   g.wire('entry.statementCount', 'statement.statementCount');
   g.wire('entry.subject', 'profileNeeded.subject', 'addressNeeded.subject');
   g.wire('entry.context', 'profileNeeded.context', 'addressNeeded.context');
+  for (const [id, summary] of [
+    ['profileNeeded', PROFILE_SUMMARY],
+    ['addressNeeded', ADDRESS_SUMMARY]
+  ] as const) {
+    summarize(g, id, summary, {
+      context: 'entry.context',
+      statementNumber: 'entry.statementNumber',
+      statementCount: 'entry.statementCount'
+    });
+  }
   g.wire('statement.issued', 'doneReturn.exec');
   g.wire('statement.missing', 'missing.exec');
   g.wire('statement.need', 'missing.value');
@@ -948,6 +1030,9 @@ const cycleClaim = (): GraphDef => {
   g.wire('claimSubject.result', 'unknownStep.subject');
   g.wire('next.step', 'unknownStepContext.step');
   g.wire('unknownStepContext.result', 'unknownStep.context');
+  summarize(g, 'unknownStep', UNKNOWN_STEP_SUMMARY, { step: 'next.step' });
+  summarize(g, 'collections', COLLECTIONS_SUMMARY, { context: 'claimContext.result' });
+  summarize(g, 'facilityFollowUp', FACILITY_SUMMARY, { context: 'claimContext.result' });
 
   for (const id of ['fix.voided', 'review.void', 'confirmPayers.void', 'submit.void'] as const) {
     g.wire(id, 'closeVoid.exec');

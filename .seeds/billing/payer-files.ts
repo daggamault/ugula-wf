@@ -10,11 +10,13 @@ import {
   expr,
   field,
   is,
+  named,
   oneOf,
   P,
   rule,
   shared,
   subject,
+  summarize,
   T,
   table
 } from './shared.ts';
@@ -55,6 +57,19 @@ const LINE_CONTEXT = `{
   problem: message,
   fileName: fileName
 }`;
+
+const LINE_SUMMARY = `${named('message', "'The clearinghouse sent a line that could not be applied on its own'")} +
+  (claimId == null
+    ? '; ' + (${named('reference', 'null')} != null ? 'no claim has the number ' + reference : 'it names no claim') + ', so check it with the clearinghouse and post it by hand'
+    : '; post or correct it on the claim, then mark it resolved')`;
+
+const UNREADABLE_SUMMARY = `'Nothing was applied from ' + ${named('fileName', "'this file'")} +
+  (${named('reason', 'null')} != null ? ' (' + reason + ')' : ', as it is not a file the app reads') +
+  '; check it with the clearinghouse'`;
+
+const SETUP_SUMMARY = `'The clearinghouse rejected the envelope of ' + ${named('fileName', "'a file'")} +
+  (${named('envelopeRejection', 'null')} != null ? ' (' + envelopeRejection + ')' : '') +
+  '; fix the clearinghouse setup in Settings, then mark it fixed'`;
 
 const reviewPayerFileLine = (): GraphDef => {
   const g = graph({
@@ -97,6 +112,11 @@ const reviewPayerFileLine = (): GraphDef => {
   g.wire('entry.message', 'context.message');
   g.wire('subject.result', 'review.subject');
   g.wire('context.result', 'review.context');
+  summarize(g, 'review', LINE_SUMMARY, {
+    message: 'entry.message',
+    claimId: 'entry.claimId',
+    reference: 'entry.reference'
+  });
   g.wire('review.resolved', 'done.exec');
   return g.def;
 };
@@ -465,6 +485,10 @@ const receivePayerFile = (): GraphDef => {
   g.wire('envelope.true', 'spawn.exec');
   g.wire('envelope.false', 'setup.exec');
   g.wire('setupContext.result', 'setup.context');
+  summarize(g, 'setup', SETUP_SUMMARY, {
+    fileName: 'entry.fileName',
+    envelopeRejection: 'apply.envelopeRejection'
+  });
   g.wire('setup.fixed', 'spawn.exec');
   g.wire('apply.reviews', 'lines.list', 'count.list');
   g.wire('lines.list', 'spawn.items');
@@ -479,6 +503,10 @@ const receivePayerFile = (): GraphDef => {
   g.wire('read.unreadable', 'unreadable.exec');
   g.wire('read.reason', 'why.reason');
   g.wire('why.result', 'unreadable.context');
+  summarize(g, 'unreadable', UNREADABLE_SUMMARY, {
+    fileName: 'entry.fileName',
+    reason: 'read.reason'
+  });
   g.wire('unreadable.resolved', 'notApplied.exec');
   return g.def;
 };

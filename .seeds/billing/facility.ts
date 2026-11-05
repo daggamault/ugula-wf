@@ -8,13 +8,19 @@ import {
   expr,
   field,
   is,
+  named,
   P,
   rule,
   shared,
   stage,
+  summarize,
   T,
   table
 } from './shared.ts';
+
+const BILL_FACILITY_SUMMARY = `'This trip looks billable to a facility, not to the payers' +
+  (${named('reason', 'null')} != null ? ' (' + reason + ')' : '') +
+  '; choose the facility to bill, or bill the payers'`;
 
 const FACILITY_IN = (name: string, label: string, description: string) =>
   d(name, T.facility, label, description, true);
@@ -262,6 +268,7 @@ const billFacility = (): GraphDef => {
   g.wire('choices.options', 'task.options');
   g.wire('defaults.result', 'task.defaults');
   g.wire('context.result', 'task.context');
+  summarize(g, 'task', BILL_FACILITY_SUMMARY, { reason: 'entry.reason' });
   g.wire('task.facilityId', 'facility.value');
   g.wire('task.note', 'billedNote.value', 'payersNote.value');
   g.wire('task.billFacility', 'confirm.exec');

@@ -10,19 +10,69 @@ import {
   atMost,
   type Builder,
   d,
+  dollars,
   exit,
   expr,
   field,
   is,
+  named,
   oneOf,
   P,
   rule,
   shared,
+  summarize,
   T,
   table
 } from './shared.ts';
 
 const DAY_MS = 86_400_000;
+
+const DENIED_BY = named('denial?.payer', "'The payer'");
+
+const SUGGESTED = `({
+  correctClaim: 'correcting it is suggested',
+  appeal: 'an appeal is suggested',
+  billAnotherPayer: 'billing another payer is suggested',
+  moveToPatient: 'moving the balance to the patient is suggested',
+  writeOff: 'writing it off is suggested'
+}[suggestion ?? ''] ?? 'decide whether to correct, appeal, rebill or write it off')`;
+
+const DENIAL_SUMMARY = `${DENIED_BY} + ' denied this claim' +
+  (len(denial?.codes ?? []) > 0 ? ' (' + join(denial?.codes, ', ') + ')' : '') +
+  ((denial?.balanceCents ?? 0) > 0 ? ', leaving ' + ${dollars('denial?.balanceCents')} + ' open' : '') +
+  '; ' + ${SUGGESTED}`;
+
+const VOID_BLOCKED_SUMMARY = `'The void of this claim to ' + ${named('context?.payer', "'the payer'")} + ' could not be filed: ' +
+  ${named('why', "'no reason was given'")} + '; fix it and try again, or skip the payer'`;
+
+const REOPENING_SUMMARY = `'Request a reopening from ' + ${named('denial?.payer', "'the payer'")} +
+  (${named('denial?.payerClaimNumber', 'null')} != null ? ' of its claim ' + denial?.payerClaimNumber : '') +
+  ', since it takes no corrected claims, and enter the reference you are given'`;
+
+const LEVEL = `lower(${named('levelName', "'appeal'")})`;
+
+const SEND_APPEAL_SUMMARY = `'Send the ' + ${LEVEL} + ' to ' + ${named('denial?.payer', "'the payer'")} +
+  (len(denial?.codes ?? []) > 0 ? ' against its ' + join(denial?.codes, ', ') + ' denial' : '') +
+  (${named('dueOn', 'null')} != null ? ' by ' + dueOn : '') + '; the packet is in the claim files'`;
+
+const APPEAL_OVERDUE_SUMMARY = `${DENIED_BY} + ' has not decided the ' + ${LEVEL} +
+  ' in time; check its status, then keep waiting, record it upheld or withdraw it'`;
+
+const RECORDS_SUMMARY = `${named('payer', "'The payer'")} + ' asked for records on this claim' +
+  (${named('dueOn', 'null')} != null ? ', due ' + dueOn : '') +
+  (${named('note', 'null')} != null ? ' (' + note + ')' : '') + '; send them and mark it sent'`;
+
+const REFUND_SUMMARY = `${named('refund?.payer', "'The patient'")} +
+  (refund?.overpaidCents != null ? ' paid ' + ${dollars('refund?.overpaidCents')} + ' more than this claim charges' : ' overpaid this claim') +
+  '; refund it' + (${named('dueOn', 'null')} != null ? ' by ' + dueOn : '') + ' or keep the credit'`;
+
+const BALANCE = `(balanceCents != null ? ${dollars('balanceCents')} : 'this balance')`;
+
+const WRITE_OFF_SUMMARY = `'Approve writing off ' + ${BALANCE} +
+  (thresholdCents != null ? ', above the ' + ${dollars('thresholdCents')} + ' limit,' : ',') +
+  ' or reject it to send it back'`;
+
+const COLLECTIONS_SUMMARY = `'Approve sending ' + ${BALANCE} + ' to collections, or reject it to send it back'`;
 
 const MEDICARE = ['MA', 'MB'];
 
@@ -798,6 +848,10 @@ const workDenial = (): GraphDef => {
   g.wire('category.suggestion', 'details.suggestion');
   g.wire('category.reasons', 'details.reasons');
   g.wire('details.result', 'decide.context');
+  summarize(g, 'decide', DENIAL_SUMMARY, {
+    denial: 'read.denial',
+    suggestion: 'category.suggestion'
+  });
   g.wire('defaults.result', 'decide.defaults');
   g.wire('choices.then', 'decide.exec');
   g.wire('choices.options', 'directory.object');
@@ -982,6 +1036,8 @@ const correctClaim = (): GraphDef => {
   g.wire('staleWhy.then', 'blocked.exec');
   g.wire('why.value', 'filingContext.reason');
   g.wire('filingContext.result', 'blocked.context');
+  summarize(g, 'blocked', VOID_BLOCKED_SUMMARY, { context: 'entry.context', why: 'why.value' });
+  summarize(g, 'reopening', REOPENING_SUMMARY, { denial: 'read.denial' });
   g.wire('blocked.tryAgain', 'prepare.exec');
   g.wire('blocked.fixData', 'fixVoid.exec');
   g.wire('fixVoid.fixed', 'prepare.exec');
@@ -1131,6 +1187,15 @@ const appealClaim = (): GraphDef => {
   g.wire('level.dueOn', 'packet.dueOn', 'details.dueOn', 'send.due', 'sentNote.dueOn');
   g.wire('level.reasons', 'details.reasons');
   g.wire('details.result', 'send.context', 'overdue.context');
+  summarize(g, 'send', SEND_APPEAL_SUMMARY, {
+    levelName: 'level.levelName',
+    denial: 'read.denial',
+    dueOn: 'level.dueOn'
+  });
+  summarize(g, 'overdue', APPEAL_OVERDUE_SUMMARY, {
+    levelName: 'level.levelName',
+    denial: 'read.denial'
+  });
   g.wire('packet.then', 'send.exec');
   g.wire('send.notAppealing', 'doneReturn.exec');
   g.wire('send.sent', 'appealed.exec');
@@ -1251,6 +1316,11 @@ const respondRecordsRequest = (): GraphDef => {
   g.wire('requested.then', 'gather.exec');
   g.wire('subject.result', 'gather.subject');
   g.wire('details.result', 'gather.context');
+  summarize(g, 'gather', RECORDS_SUMMARY, {
+    payer: 'asking.payer',
+    dueOn: 'due.dueOn',
+    note: 'entry.note'
+  });
   g.wire('gather.sent', 'sent.exec');
   g.wire('gather.note', 'sent.note');
   g.wire('sent.then', 'done.exec');
@@ -1318,6 +1388,7 @@ const refundOverpayment = (): GraphDef => {
   g.wire('due.dueOn', 'details.dueOn', 'approve.due');
   g.wire('due.reasons', 'details.reasons');
   g.wire('details.result', 'approve.context');
+  summarize(g, 'approve', REFUND_SUMMARY, { refund: 'read.refund', dueOn: 'due.dueOn' });
   g.wire('read.then', 'approve.exec');
   g.wire('approve.refund', 'reread.exec');
   g.wire('reread.refund', 'amount.refund', 'payer.object');
@@ -1404,6 +1475,11 @@ const approveClosing = (): GraphDef => {
   g.wire('which.default', 'writeOff.exec');
   g.wire('entry.subject', 'writeOff.subject', 'collections.subject');
   g.wire('entry.context', 'writeOff.context', 'collections.context');
+  summarize(g, 'writeOff', WRITE_OFF_SUMMARY, {
+    balanceCents: 'entry.balanceCents',
+    thresholdCents: 'entry.thresholdCents'
+  });
+  summarize(g, 'collections', COLLECTIONS_SUMMARY, { balanceCents: 'entry.balanceCents' });
   g.wire('entry.claimId', 'approvedWriteOff.claimId', 'approvedCollections.claimId');
   g.wire('note.result', 'approvedWriteOff.note', 'approvedCollections.note');
   g.wire('writeOff.approve', 'approvedWriteOff.exec');

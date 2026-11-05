@@ -10,13 +10,24 @@ import {
   expr,
   field,
   is,
+  named,
   oneOf,
   P,
   rule,
   shared,
+  summarize,
   T,
   table
 } from './shared.ts';
+
+const REMINDER_SUMMARY = `kind == 'pcs'
+  ? "The patient's physician certification expires" + (${named('dueOn', 'null')} != null ? ' on ' + dueOn : '') +
+    '; get a new one before the next scheduled trip'
+  : kind == 'timelyFiling'
+    ? (${named('dueOn', 'null')} != null && dueOn < date(now())
+      ? 'The filing limit passed on ' + dueOn + '; file the claim with proof of timely filing or write it off'
+      : 'File this claim before its filing limit' + (${named('dueOn', 'null')} != null ? ' on ' + dueOn : ''))
+    : ${named('message', "'A deadline on this claim is near or has passed'")}`;
 
 const TASK_KINDS = ['appeal', 'records', 'refund', 'task'];
 
@@ -205,6 +216,11 @@ const deadlineReminder = (): GraphDef => {
   g.wire('entry.reference', 'remind.subject');
   g.wire('entry.priority', 'remind.priority');
   g.wire('details.result', 'remind.context');
+  summarize(g, 'remind', REMINDER_SUMMARY, {
+    kind: 'entry.kind',
+    dueOn: 'entry.dueOn',
+    message: 'entry.message'
+  });
   g.wire('follow.then', 'remind.exec');
   g.wire('remind.done', 'done.exec');
   return g.def;

@@ -73,6 +73,12 @@ const processItemGraph: GraphDef = {
         outcomes: ['approve']
       }
     }),
+    node('summary', 'std.expr', {
+      config: {
+        expression:
+          "'Item ' + text(item?.id ?? '?') + ' totals ' + text(round(total ?? 0, 2)) + ', above the 1000 review limit; approve it to continue'"
+      }
+    }),
     node('done', RETURN_TYPE),
     node('approved', RETURN_TYPE)
   ],
@@ -86,6 +92,9 @@ const processItemGraph: GraphDef = {
     edge('branch', 'false', 'done', 'exec'),
     edge('branch', 'true', 'review', 'exec'),
     edge('entry', 'item', 'review', 'context'),
+    edge('entry', 'item', 'summary', 'item'),
+    edge('total', 'total', 'summary', 'total'),
+    edge('summary', 'result', 'review', 'summary'),
     edge('review', 'approve', 'approved', 'exec'),
     edge('total', 'total', 'done', 'total'),
     edge('total', 'total', 'approved', 'total')

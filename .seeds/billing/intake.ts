@@ -13,12 +13,14 @@ import {
   expr,
   field,
   is,
+  named,
   nameOf,
   P,
   placeOf,
   rule,
   shared,
   subject,
+  summarize,
   T,
   table
 } from './shared.ts';
@@ -32,6 +34,58 @@ const {
   findings: FINDINGS,
   facts: FACTS
 } = T;
+
+const CONFIRM_PATIENT_SUMMARY = `'Decide whether ' + ${named(nameOf('demographics?'), "'the patient on the report'")} +
+  (${named('demographics?.birthDate', 'null')} != null ? ', born ' + demographics?.birthDate + ',' : '') +
+  (len(candidates ?? []) <= 1 ? ' is an existing patient' : ' is one of ' + text(len(candidates ?? [])) + ' existing patients') +
+  (${named('reason', 'null')} != null ? ' (' + reason + ')' : '') + ', or create a new patient'`;
+
+const MISSING_DETAILS = `join(filter([
+  (reported?.firstName ?? '') == '' ? 'first name' : null,
+  (reported?.lastName ?? '') == '' ? 'last name' : null,
+  (reported?.birthDate ?? '') == '' ? 'birth date' : null
+], x => x != null), ', ')`;
+
+const COMPLETE_PATIENT_SUMMARY = `${MISSING_DETAILS} == ''
+  ? 'The patient name or birth date on the report is not valid; correct them so the patient can be matched or created'
+  : 'The report has no patient ' + ${MISSING_DETAILS} + '; fill it in so the patient can be matched or created'`;
+
+const MATCH_PAYER_SUMMARY = `'Link the reported payer "' + text(item?.payer) + '" to a directory payer' +
+  (find(item?.candidates ?? [], c => c?.value == item?.suggested)?.label != null
+    ? ' (likely ' + find(item?.candidates ?? [], c => c?.value == item?.suggested)?.label + ')'
+    : '') +
+  ', mark it unlisted, or remove it if it is not insurance'`;
+
+const SERVICE_PARTS = `filter([
+  { scheduled: 'scheduled trip', treatNoTransport: 'treat-no-transport', refusal: 'refusal', noClaim: 'no-claim trip' }[tripType ?? ''],
+  service?.level,
+  service?.emergency == true ? 'emergency' : service?.emergency == false ? 'non-emergency' : null,
+  service?.loadedMiles != null ? text(round(service?.loadedMiles, 1)) + ' loaded miles' : null,
+  service?.deceased == true ? 'pronounced dead before loading' : null
+], x => x != null && x != '')`;
+
+const REVIEW_PCR_SUMMARY = `len(${SERVICE_PARTS}) == 0
+  ? 'Confirm the trip type, level of service and loaded miles before this claim is priced'
+  : 'Confirm the service: ' + join(${SERVICE_PARTS}, ', ') +
+    (len(findings?.medications ?? []) + len(findings?.procedures ?? []) > 0 ? ', suggested from the narrative' : '') +
+    ', before this claim is priced'`;
+
+const HELD_SUMMARY = `'This PCR is on hold' + (${named('note', 'null')} != null ? ': ' + note : '') +
+  '; release it back to review once it is sorted out, or void it'`;
+
+const REVISION_SUMMARY = `(context?.changes == null
+  ? 'A newer version of this report arrived'
+  : len(context?.changes) == 0
+    ? 'A newer version of this report arrived with no changes to its billing details'
+    : 'A newer version of this report changes the ' + join(map(slice(context?.changes, 0, 3), x => lower(x.field)), ', ') +
+      (len(context?.changes) > 3 ? ' and ' + text(len(context?.changes) - 3) + ' more' : '')) +
+  (context?.canApply == true
+    ? '; apply it, acknowledge it or void the claim'
+    : '; the claim is ' + (context?.status != null ? replace(context?.status, '_', ' ') : 'past review') +
+      ', so correct it on its claim page or acknowledge it')`;
+
+const ORPHAN_SUMMARY = `'This draft claim stopped before it was ready' +
+  (${named('reason', 'null')} != null ? ' (' + reason + ')' : '') + '; restart it from its report or void it'`;
 
 const SEX = "{ F: 'Female', M: 'Male', U: 'Unknown' }";
 
@@ -185,6 +239,11 @@ const reviewPatientMatch = (): GraphDef => {
   g.wire('pick.result', 'confirm.defaults');
   g.wire('context.result', 'confirm.context');
   g.wire('subject.result', 'confirm.subject');
+  summarize(g, 'confirm', CONFIRM_PATIENT_SUMMARY, {
+    candidates: 'entry.candidates',
+    demographics: 'entry.demographics',
+    reason: 'entry.reason'
+  });
   g.wire('confirm.useSelected', 'find.exec');
   g.wire('confirm.patientId', 'find.patientId');
   g.wire('find.missing', 'confirm.exec');
@@ -279,6 +338,7 @@ const resolvePatient = (): GraphDef => {
   g.wire('entered.value', 'prefill.value');
   g.wire('match.demographics', 'prefill.fallback', 'reported.demographics');
   g.wire('prefill.result', 'complete.defaults');
+  summarize(g, 'complete', COMPLETE_PATIENT_SUMMARY, { reported: 'prefill.result' });
   for (const pin of ['gender', ...ADDRESS_PINS]) {
     g.wire(`reported.${pin}`, `corrected.${pin}`);
   }
@@ -387,6 +447,7 @@ const resolvePayers = (): GraphDef => {
   g.wire('suggestion.result', 'confirm.defaults');
   g.wire('context.result', 'confirm.context');
   g.wire('subject.result', 'confirm.subject');
+  summarize(g, 'confirm', MATCH_PAYER_SUMMARY, { item: 'each.item' });
   g.wire('confirm.link', 'link.exec');
   g.wire('reported.value', 'link.name');
   g.wire('confirm.payerId', 'link.payerId');
@@ -624,6 +685,11 @@ const reviewPcr = (): GraphDef => {
   g.wire('answers.value', 'defaults.answers');
   g.wire('defaults.result', 'review.defaults');
   g.wire('context.result', 'review.context');
+  summarize(g, 'review', REVIEW_PCR_SUMMARY, {
+    service: 'entry.service',
+    tripType: 'entry.tripType',
+    findings: 'entry.findings'
+  });
   g.wire('subject.subject', 'review.subject', 'held.subject');
   for (const pin of REVIEW_ANSWERS) g.wire(`review.${pin}`, `given.${pin}`);
 
@@ -632,6 +698,7 @@ const reviewPcr = (): GraphDef => {
   g.wire('remember.then', 'held.exec');
   g.wire('review.note', 'holdContext.note');
   g.wire('holdContext.result', 'held.context');
+  summarize(g, 'held', HELD_SUMMARY, { note: 'review.note' });
   g.wire('held.release', 'review.exec');
   g.wire('held.void', 'voidedDone.exec');
 
@@ -768,6 +835,7 @@ const reviewRevision = (): GraphDef => {
   g.wire('trip.trip', 'context.trip');
   g.wire('contextClaimId.claimId', 'context.claimId');
   g.wire('subject.subject', 'revision.subject');
+  summarize(g, 'revision', REVISION_SUMMARY, { context: 'context.result' });
   g.wire('context.result', 'revision.context', 'canApply.object');
   g.wire('revision.apply', 'applies.exec');
   g.wire('canApply.value', 'applies.condition', 'voidable.condition');
@@ -855,6 +923,7 @@ const recoverDraft = (): GraphDef => {
   g.wire('entry.reason', 'context.reason');
   g.wire('entry.report', 'rework.report');
   g.wire('context.object', 'orphan.context');
+  summarize(g, 'orphan', ORPHAN_SUMMARY, { reason: 'entry.reason' });
   g.wire('orphan.restart', 'rework.exec');
   g.wire('rework.then', 'done.exec');
   g.wire('orphan.void', 'void.exec');

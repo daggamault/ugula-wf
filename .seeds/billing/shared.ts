@@ -103,6 +103,40 @@ export const placeOf = (place: string) =>
 export const nameOf = (person: string) =>
   `join(filter([${person}.firstName, ${person}.lastName], x => x != null), ' ')`;
 
+export const dollars = (cents: string) => {
+  const whole = `floor(round(abs(${cents})) / 100)`;
+  const thousands = (by: number) => `padStart(text(floor(${whole} / ${by}) % 1000), 3, '0')`;
+  return `((${cents} < 0 ? '-$' : '$') + (${whole} >= 1000000
+    ? text(floor(${whole} / 1000000)) + ',' + ${thousands(1000)} + ',' + ${thousands(1)}
+    : ${whole} >= 1000 ? text(floor(${whole} / 1000)) + ',' + ${thousands(1)} : text(${whole})) +
+    '.' + padStart(text(round(abs(${cents})) % 100), 2, '0'))`;
+};
+
+export const named = (value: string, fallback: string) =>
+  `(${value} != null && ${value} != '' ? ${value} : ${fallback})`;
+
+export const issuesSummary = (issues: string, billed: string, otherwise: string) => {
+  const blocking = `filter(${issues} ?? [], i => i?.severity == "blocking")`;
+  return `len(${blocking}) == 0
+  ? ${otherwise}
+  : (len(${blocking}) == 1 ? 'An issue blocks' : text(len(${blocking})) + ' issues block') +
+    ' billing ' + ${billed} + ': ' + join(map(slice(${blocking}, 0, 2), i => i.message), '; ') +
+    (len(${blocking}) > 2 ? '; and ' + text(len(${blocking}) - 2) + ' more' : '')`;
+};
+
+export const summarize = (
+  g: Builder,
+  task: string,
+  expression: string,
+  from: Record<string, `${string}.${string}`>,
+  values?: Record<string, Json>
+) => {
+  const id = `${task}Summary`;
+  g.add(id, 'std.expr', { ...expr('Task Summary', expression), ...(values ? { values } : {}) });
+  for (const [pin, port] of Object.entries(from)) g.wire(port, `${id}.${pin}`);
+  g.wire(`${id}.result`, `${task}.summary`);
+};
+
 export const P = {
   pcr: (optional = false) =>
     d('pcr', PCR_TYPE, 'PCR', 'The patient care report the claim is billed from.', optional),

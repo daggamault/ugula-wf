@@ -9,12 +9,18 @@ import {
   field,
   flow,
   is,
+  named,
   P,
   rule,
   shared,
+  summarize,
   T,
   table
 } from './shared.ts';
+
+const CHASE_SUMMARY = `(kind != null ? labels[kind] ?? kind : 'A document') + ' is missing from this claim' +
+  (${named('note', 'null')} != null ? ' (' + note + ')' : '') +
+  '; get it, upload it under Documents and mark it received'`;
 
 const DOCUMENT_IN = d('document', T.document, 'Document', 'The document uploaded to the claim.');
 
@@ -202,6 +208,13 @@ const chaseDocument = (): GraphDef => {
   g.wire('received.false', 'task.exec');
   g.wire('due.result', 'task.due');
   g.wire('context.result', 'task.context');
+  summarize(
+    g,
+    'task',
+    CHASE_SUMMARY,
+    { kind: 'entry.kind', note: 'entry.note' },
+    { labels: DOCUMENT_KINDS }
+  );
   g.wire('task.received', 'read.exec');
   g.wire('task.stop', 'done.exec');
   return g.def;

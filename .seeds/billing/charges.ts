@@ -17,6 +17,7 @@ import {
   rule,
   shared,
   stage,
+  summarize,
   T,
   table
 } from './shared.ts';
@@ -256,6 +257,11 @@ const SET_CHARGE_CONTEXT = `{
   claim: context
 }`;
 
+const SET_CHARGE_SUMMARY = `len(missing ?? []) == 0
+  ? 'A code on this claim has no price; enter its unit price or void the claim'
+  : 'No fee schedule prices ' + join(map(missing, c => c + ' (' + (labels[c] ?? 'ambulance service') + ')'), ', ') +
+    (len(missing) == 1 ? '; enter its unit price' : '; enter their unit prices') + ' or void the claim'`;
+
 const PRICED_OUT = [
   d('lines', T.lines, 'Priced Lines', 'The lines with unit prices and totals.', true),
   d('totalCents', 'integer', 'Total (Cents)', 'The claim total.', true)
@@ -345,6 +351,13 @@ const priceCharges = (): GraphDef => {
   g.wire('codeChoices.result', 'setCharge.options');
   g.wire('firstCode.result', 'setCharge.defaults');
   g.wire('entry.subject', 'setCharge.subject');
+  summarize(
+    g,
+    'setCharge',
+    SET_CHARGE_SUMMARY,
+    { missing: 'price.missing' },
+    { labels: HCPCS_LABELS }
+  );
   g.wire('setCharge.price', 'setFee.exec');
   g.wire('setCharge.code', 'setFee.code');
   g.wire('setCharge.unitPrice', 'setFee.unitPrice');
