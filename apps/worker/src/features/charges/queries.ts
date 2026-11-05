@@ -5,12 +5,11 @@ import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
 
 export const createFeeStore = (db: Kysely<Database>): FeeStore => ({
-  findFees: async (runId, payerId, codes) => {
-    if (!codes.length) return {};
+  findSchedules: async (runId, payerId, codes) => {
+    if (!codes.length) return { payer: {}, default: {} };
     const rows = await db
       .selectFrom('fee_schedules')
-      .distinctOn('code')
-      .select(['code', 'amount_cents'])
+      .select(['code', 'payer_id', 'amount_cents'])
       .where('agency_id', '=', runAgency(db, runId))
       .where('code', 'in', codes)
       .where((eb) =>
@@ -19,9 +18,12 @@ export const createFeeStore = (db: Kysely<Database>): FeeStore => ({
           : eb.or([eb('payer_id', 'is', null), eb('payer_id', '=', payerId)])
       )
       .orderBy('code')
-      .orderBy('payer_id', (ob) => ob.asc().nullsLast())
       .execute();
-    return Object.fromEntries(rows.map((r) => [r.code, r.amount_cents]));
+    const schedule = (payer: boolean) =>
+      Object.fromEntries(
+        rows.filter((r) => (r.payer_id !== null) === payer).map((r) => [r.code, r.amount_cents])
+      );
+    return { payer: schedule(true), default: schedule(false) };
   },
   saveFee: async (runId, payerId, code, unitCents) => {
     const payer = payerId === null ? null : isUuid(payerId) ? payerId : undefined;

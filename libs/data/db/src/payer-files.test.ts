@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
+import type { RemittancePosting } from '@ugula/billing';
 import { build271, build277, build277Status, build835, build999 } from '@ugula/billing/mock';
 import { buildTA1 } from '@ugula/billing/mock-waystar';
 import type { RunQueueClient } from '@ugula/run-queue';
@@ -12,6 +13,7 @@ import {
   findTracedCoverage,
   insertPayerEvent,
   readPayerFile,
+  readRemittanceLines,
   saveFileItems
 } from './payer-files.ts';
 import { createRecordingDb } from './testing.ts';
@@ -46,7 +48,7 @@ const fileDb = () =>
     return [];
   });
 
-const apply = async (text: string) => {
+const apply = async (text: string, postings: RemittancePosting[] = []) => {
   const read = readPayerFile(bytes(text));
   assert.ok(read.ok);
   const { db, queries } = fileDb();
@@ -56,7 +58,8 @@ const apply = async (text: string) => {
     fileName: 'in.x12',
     document: { key: 'k' },
     file: read.value,
-    now: createdAt
+    now: createdAt,
+    postings
   });
   const events = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
   return { out, queries, events, digest: read.value.digest };
@@ -139,7 +142,11 @@ describe('applyPayerFile', () => {
           }
         ],
         { createdAt }
-      )
+      ),
+      [
+        { position: 1, route: 'reconcile', message: '', adjustedCents: 40_000 },
+        { position: 2, route: 'unmatched', message: 'No claim has number 2002', adjustedCents: 0 }
+      ]
     );
     assert.deepEqual(outcomes(out.items), [
       ['1001', 'c1', 'posted', ''],
@@ -152,6 +159,43 @@ describe('applyPayerFile', () => {
       assert.ok(events[0]?.parameters.includes(value), String(value));
     }
     assert.deepEqual(queries.at(-1)?.parameters, [2, 1, 'f1']);
+  });
+
+  it('reads each 835 claim payment with the claim and payer it matches, posting nothing', async () => {
+    const { db, queries } = fileDb();
+    const text = build835(
+      [
+        {
+          claims: [
+            { claimNumber: '1001', chargeCents: 100_000, paidCents: 60_000 },
+            { claimNumber: '2002', chargeCents: 1_000, paidCents: 500 }
+          ]
+        }
+      ],
+      { createdAt }
+    );
+    const lines = await readRemittanceLines(db, 't1', text);
+    assert.deepEqual(
+      lines.map((l) => [l.position, l.reference, l.claimId, l.coverageId, l.takeback]),
+      [
+        [1, '1001', 'c1', 'cov1', false],
+        [2, '2002', null, null, false]
+      ]
+    );
+    assert.ok(queries.every((q) => q.sql.startsWith('select')));
+  });
+
+  it('leaves a payment the rules routed to review unposted, and faults without a decision', async () => {
+    const text = build835(
+      [{ claims: [{ claimNumber: '1001', chargeCents: 100_000, paidCents: 60_000 }] }],
+      { createdAt }
+    );
+    const { out, events } = await apply(text, [
+      { position: 1, route: 'review', message: 'Reversed', adjustedCents: 0 }
+    ]);
+    assert.deepEqual(outcomes(out.items), [['1001', 'c1', 'review', 'Reversed']]);
+    assert.equal(events.length, 0);
+    await assert.rejects(() => apply(text), /No posting was decided/);
   });
 
   it('acknowledges every submitted claim in an 837P batch the clearinghouse answered', async () => {
@@ -252,7 +296,8 @@ describe('applyPayerFile', () => {
       fileName: 'a.271',
       document: {},
       file: read.value,
-      now: createdAt
+      now: createdAt,
+      postings: []
     });
     assert.equal(out.items[0]?.outcome, 'review');
     assert.match(

@@ -495,7 +495,13 @@ describe('toResponse', () => {
 describe('ClaimView', () => {
   it('shows the trip type and the claim check issues of an open claim', () => {
     const issues: ClaimIssue[] = [
-      { level: 'blocking', field: 'memberId', message: 'Member ID missing', coverageId: 'cov-b' }
+      {
+        code: 'member-id-missing',
+        severity: 'blocking',
+        field: 'memberId',
+        message: 'Member ID missing',
+        coverageId: 'cov-b'
+      }
     ];
     const html = render({}, null, 'overview', issues);
     assert.ok(html.includes('Emergency transport'));

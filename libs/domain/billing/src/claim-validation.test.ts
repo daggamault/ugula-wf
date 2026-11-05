@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { type ClaimCheck, claimIssues, isBlocking, readNewClaim } from './claim-validation.ts';
-import { readDocumentation } from './documentation.ts';
+import {
+  type ClaimCheck,
+  checkFactsOf,
+  isBlocking,
+  readIssues,
+  readNewClaim
+} from './claim-validation.ts';
 import { COMPLETE_DOCUMENTATION } from './testing.ts';
 
 const claim = {
@@ -19,8 +24,6 @@ const claim = {
 };
 
 const place = { addressLine: '9 Oak Ave', city: 'Springfield', state: 'IL', postalCode: '62702' };
-
-const blank = { name: null, addressLine: null, city: null, state: null, postalCode: null };
 
 const medicare = {
   coverageId: 'cov-1',
@@ -60,189 +63,116 @@ const check: ClaimCheck = {
   }
 };
 
-const documented = (d: Partial<typeof COMPLETE_DOCUMENTATION>, c: Partial<ClaimCheck> = {}) =>
-  fields({
-    ...check,
-    ...c,
-    details: { ...check.details, documentation: { ...COMPLETE_DOCUMENTATION, ...d } }
-  });
+const asOf = new Date('2027-09-20T12:00:00Z');
 
-const fields = (c: ClaimCheck) => claimIssues(c).map((i) => `${i.level}:${i.field}`);
-
-describe('claimIssues', () => {
-  it('passes a complete claim', () => {
-    assert.deepEqual(claimIssues(check), []);
-  });
-
-  it('names the field each blocking issue is fixed in, and the coverage it is about', () => {
-    const issues = claimIssues({
-      ...check,
-      patient: { ...place, postalCode: null },
-      details: {
-        serviceDate: null,
-        pickup: blank,
-        destination: blank,
-        diagnoses: [],
-        originDestination: null,
-        documentation: readDocumentation({})
-      },
-      loadedMiles: null,
-      payers: [
-        { ...medicare, relationship: '01' },
-        { ...medicare, coverageId: 'cov-2', name: 'Blue Plan', payerId: null, memberId: null }
-      ]
-    });
-    assert.deepEqual(
-      [...new Set(issues.map((i) => i.field))],
-      [
-        'patientAddress',
-        'serviceDate',
-        'diagnoses',
-        'pickup',
-        'transportReason',
-        'times',
-        'destination',
-        'originDestination',
-        'loadedMiles',
-        'signature',
-        'insured',
-        'payer',
-        'memberId'
-      ]
-    );
-    assert.ok(isBlocking(issues));
-    assert.deepEqual(issues.at(-2), {
-      level: 'blocking',
-      field: 'payer',
-      message: 'Blue Plan is not linked to the payer directory',
-      coverageId: 'cov-2'
-    });
-    assert.ok(issues.some((i) => i.message === 'The pickup ZIP code is missing'));
-  });
-
-  it('blocks impossible charges and warns about unlikely ones', () => {
-    assert.deepEqual(fields({ ...check, loadedMiles: 0 }), ['blocking:loadedMiles']);
-    assert.deepEqual(fields({ ...check, loadedMiles: 900 }), ['blocking:loadedMiles']);
-    assert.deepEqual(fields({ ...check, loadedMiles: 140 }), ['warning:loadedMiles']);
-    assert.deepEqual(fields({ ...check, totalCents: 5 }), ['blocking:lines']);
-    assert.deepEqual(fields({ ...check, lines: [], totalCents: 0 }), ['blocking:lines']);
-    assert.deepEqual(fields({ ...check, tripType: 'noClaim' }), ['blocking:tripType']);
-    assert.deepEqual(fields({ ...check, level: null, emergency: null }), [
-      'blocking:level',
-      'blocking:emergency'
+describe('checkFactsOf', () => {
+  it('states what the checks read about a complete claim', () => {
+    const facts = checkFactsOf(check, asOf);
+    assert.equal(facts.patientLinked, true);
+    assert.deepEqual(facts.patientAddressMissing, []);
+    assert.equal(facts.transports, true);
+    assert.equal(facts.levelValid, true);
+    assert.equal(facts.linesAddUp, true);
+    assert.equal(facts.originDestinationValid, true);
+    assert.equal(facts.timesRecorded, true);
+    assert.equal(facts.timesInOrder, true);
+    assert.equal(facts.billsMedicare, true);
+    assert.deepEqual(facts.payers, [
+      {
+        coverageId: 'cov-1',
+        name: 'Medicare',
+        linked: true,
+        memberId: '1EG4TE5MK73',
+        needsInsured: false,
+        insuredLastName: null,
+        eligibility: null,
+        eligibilityNote: null,
+        filingLimitDays: 365,
+        filingDaysLeft: 11
+      }
     ]);
-    assert.deepEqual(fields({ ...check, tripType: 'scheduled' }), ['warning:emergency']);
-    assert.ok(!isBlocking(claimIssues({ ...check, loadedMiles: 140 })));
   });
 
-  it('files trips without transport without miles, drop-off or modifiers', () => {
-    assert.deepEqual(
-      fields({
+  it('does the date math and lists the missing address parts', () => {
+    const facts = checkFactsOf(
+      {
         ...check,
+        patient: { ...place, postalCode: null, city: null },
         tripType: 'refusal',
-        details: { ...check.details, destination: blank, originDestination: null },
-        loadedMiles: 2
-      }),
-      ['warning:loadedMiles']
+        totalCents: 5,
+        details: {
+          ...check.details,
+          pickup: { name: null, ...place, state: null },
+          originDestination: 'Q',
+          documentation: {
+            ...COMPLETE_DOCUMENTATION,
+            pcsSignedOn: '2026-08-01',
+            atDestination: '2025-12-30T10:10:00Z'
+          }
+        },
+        payers: [{ ...medicare, payerId: null, relationship: '01', claimFiling: 'CI' }]
+      },
+      asOf
     );
-  });
-
-  it('warns when no payer or PCR number is on the claim, and blocks a claim without a patient', () => {
-    assert.deepEqual(fields({ ...check, payers: [], pcrNumber: null }), [
-      'warning:pcrNumber',
-      'warning:payers'
-    ]);
-    assert.deepEqual(fields({ ...check, patientId: null, patient: null }), ['blocking:patient']);
-  });
-});
-
-describe('documentation checks', () => {
-  it('blocks billing without a billing signature, and warns on a documented exception', () => {
-    assert.deepEqual(documented({ signature: 'missing' }), ['blocking:signature']);
-    assert.deepEqual(documented({ signature: 'refused' }), ['blocking:signature']);
+    assert.deepEqual(facts.patientAddressMissing, ['city', 'ZIP code']);
+    assert.deepEqual(facts.pickupMissing, ['state']);
+    assert.equal(facts.transports, false);
+    assert.equal(facts.linesAddUp, false);
+    assert.equal(facts.originDestinationValid, false);
+    assert.equal(facts.timesInOrder, false);
+    assert.equal(facts.pcsDaysBeforeTrip, 61);
+    assert.equal(facts.billsMedicare, false);
     assert.deepEqual(
-      documented({
-        signature: 'exception',
-        signatureNote: 'Not signed because the patient was unconscious'
-      }),
-      ['warning:signature']
+      facts.payers.map((p) => [p.linked, p.needsInsured, p.filingLimitDays, p.filingDaysLeft]),
+      [[false, true, null, null]]
     );
   });
 
-  it('asks for a current physician certification on scheduled non-emergency trips', () => {
-    const scheduled = { tripType: 'scheduled', emergency: false };
-    assert.deepEqual(documented({}, scheduled), ['blocking:pcs']);
-    assert.deepEqual(
-      documented({}, { ...scheduled, payers: [{ ...medicare, claimFiling: 'CI' }] }),
-      ['warning:pcs']
+  it('leaves the date facts empty without the dates they need', () => {
+    const facts = checkFactsOf(
+      { ...check, patient: null, details: { ...check.details, serviceDate: null } },
+      asOf
     );
-    assert.deepEqual(documented({ pcsOnFile: true, pcsSignedOn: '2026-09-20' }, scheduled), []);
-    assert.deepEqual(documented({ pcsOnFile: true, pcsSignedOn: '2026-06-01' }, scheduled), [
-      'warning:pcs'
-    ]);
-    assert.deepEqual(documented({ pcsOnFile: true, pcsSignedOn: '2026-10-09' }, scheduled), [
-      'warning:pcs'
-    ]);
-    assert.deepEqual(documented({ pcsOnFile: true }, scheduled), ['warning:pcs']);
-  });
-
-  it('needs a transport reason and ordered trip times on transports only', () => {
-    assert.deepEqual(documented({ transportReason: null }), ['blocking:transportReason']);
-    assert.deepEqual(documented({ leftScene: null }), ['warning:times']);
-    assert.deepEqual(documented({ atDestination: '2025-12-30T10:10:00Z' }), ['warning:times']);
-    assert.deepEqual(
-      documented(
-        { transportReason: null, leftScene: null },
-        { tripType: 'refusal', loadedMiles: null }
-      ),
-      []
-    );
+    assert.deepEqual(facts.patientAddressMissing, []);
+    assert.equal(facts.pcsDaysBeforeTrip, null);
+    assert.equal(facts.payers[0]?.filingDaysLeft, null);
   });
 });
 
-describe('eligibility', () => {
-  it('blocks billing a payer that reports the coverage inactive, and trusts active or unchecked', () => {
-    const inactive = claimIssues({
-      ...check,
-      payers: [
-        { ...medicare, eligibility: 'inactive', eligibilityNote: 'Not covered after 2026-09-30' }
-      ]
-    });
-    assert.deepEqual(
-      inactive.map((i) => [i.level, i.field, i.coverageId]),
-      [['blocking', 'payer', 'cov-1']]
-    );
-    assert.match(inactive[0]?.message ?? '', /not active \(Not covered after 2026-09-30\)/);
-    assert.deepEqual(fields({ ...check, payers: [{ ...medicare, eligibility: 'active' }] }), []);
-  });
-});
-
-describe('filing limits', () => {
-  const on = (day: string) => new Date(`${day}T12:00:00Z`);
-
-  it('warns as the filing limit nears and once it passes, from the payer or federal default', () => {
-    assert.deepEqual(claimIssues(check, on('2027-08-01')), []);
-    assert.deepEqual(
-      claimIssues(check, on('2027-09-20')).map((i) => i.message),
-      ['11 days are left to file with Medicare (365-day limit)']
-    );
-    assert.match(
-      claimIssues(check, on('2027-10-11'))[0]?.message ?? '',
-      /365-day filing limit for Medicare passed 10 days ago/
-    );
-    const commercial = { ...check, payers: [{ ...medicare, claimFiling: 'CI' }] };
-    assert.deepEqual(claimIssues(commercial, on('2030-01-01')), []);
-    assert.deepEqual(
-      fields({ ...commercial, payers: [{ ...medicare, claimFiling: 'CI', filingLimitDays: 90 }] }),
-      []
-    );
-    assert.equal(
-      claimIssues(
-        { ...commercial, payers: [{ ...medicare, claimFiling: 'CI', filingLimitDays: 90 }] },
-        on('2026-12-20')
-      )[0]?.field,
-      'filing'
-    );
+describe('readIssues', () => {
+  it('keeps the issues a graph returned, with their code, and drops malformed ones', () => {
+    const issues = readIssues([
+      {
+        code: 'member-id-missing',
+        severity: 'blocking',
+        field: 'memberId',
+        message: 'The member ID is missing',
+        coverageId: 'cov-1'
+      },
+      { severity: 'warning', field: 'times', message: 'Out of order', coverageId: null },
+      { severity: 'off', field: 'times', message: 'Ignored' },
+      { severity: 'warning', field: 'nowhere', message: 'Unknown field' },
+      'nonsense'
+    ]);
+    assert.deepEqual(issues, [
+      {
+        code: 'member-id-missing',
+        severity: 'blocking',
+        field: 'memberId',
+        message: 'The member ID is missing',
+        coverageId: 'cov-1'
+      },
+      {
+        code: 'times',
+        severity: 'warning',
+        field: 'times',
+        message: 'Out of order',
+        coverageId: null
+      }
+    ]);
+    assert.ok(isBlocking(issues));
+    assert.ok(!isBlocking(issues.slice(1)));
+    assert.deepEqual(readIssues(null), []);
   });
 });
 

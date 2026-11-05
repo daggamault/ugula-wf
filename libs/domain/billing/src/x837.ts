@@ -61,8 +61,6 @@ export type PendingSubmission = {
   pcrNumber: string | null;
   resubmission: boolean;
   totalCents: number;
-  issues: string[];
-  warnings: string[];
 };
 
 const AMBULANCE_TAXONOMY = '3416L0300X';

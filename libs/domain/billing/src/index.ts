@@ -1,6 +1,7 @@
 export {
   type ClaimLine,
   HCPCS_PATTERN,
+  MAX_LOADED_MILES,
   NO_TRANSPORT_CODE,
   type PricedLine,
   SERVICE_LEVELS,
@@ -31,13 +32,18 @@ export {
   TRIP_TYPE_FIELD
 } from './claim-fix.ts';
 export {
+  CHECK_SEVERITIES,
+  type CheckFacts,
   CLAIM_FIELDS,
-  CLAIM_ISSUE_LEVELS,
+  CLAIM_ISSUE_SEVERITIES,
   type ClaimCheck,
   type ClaimField,
   type ClaimIssue,
-  claimIssues,
-  type NewClaim
+  type ClaimIssueSeverity,
+  checkFactsOf,
+  isBlocking,
+  type NewClaim,
+  readIssues
 } from './claim-validation.ts';
 export {
   ADJUSTMENT_GROUPS,
@@ -47,17 +53,24 @@ export {
   CLAIM_EVENT_KINDS,
   CLAIM_SIGNAL,
   CLAIM_STATUSES,
+  CLAIM_STEPS,
   CLOSED_CLAIM_STATUSES,
   type ClaimEvent,
   type ClaimEventKind,
+  type ClaimLedger,
   type ClaimStatus,
   type ClaimStep,
+  type ClaimStepName,
   COVERAGE_EVENT_KINDS,
   claimProgress,
   claimSignalKey,
   isClosedStatus,
-  nextClaimStep,
-  PATIENT_EVENT_KINDS
+  type LedgerFacts,
+  ledgerFactsOf,
+  MIN_WAIT_MS,
+  PATIENT_EVENT_KINDS,
+  readClaimStep,
+  STEP_STATUSES
 } from './claims.ts';
 export {
   AFTER_DOWNLOAD,
@@ -106,10 +119,12 @@ export {
   type DraftClaim,
   type EligibilityCheck,
   type ExchangeStore,
+  type FeeSchedules,
   type FeeStore,
   type PatientStore,
   type PayerFileStore,
-  type PayerStore
+  type PayerStore,
+  type ReadPayerFile
 } from './nodes/index.ts';
 export {
   type Address,
@@ -140,7 +155,14 @@ export {
   payerKey,
   payerQuery
 } from './payers.ts';
-export { remittanceCoverage, remittancePosting } from './remittances.ts';
+export {
+  REMITTANCE_ROUTES,
+  type RemittanceLine,
+  type RemittancePosting,
+  type RemittanceRoute,
+  remittanceCoverage,
+  remittanceLine
+} from './remittances.ts';
 export { HCPCS_LABELS, money } from './statements.ts';
 export { type InterchangeAcknowledgment, readTA1 } from './ta1.ts';
 export { type InboundKind, readX12 } from './x12.ts';

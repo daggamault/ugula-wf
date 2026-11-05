@@ -32,8 +32,6 @@ export const NO_TRANSPORT_TRIPS: readonly TripType[] = ['treatNoTransport', 'ref
 
 export const MAX_LOADED_MILES = 500;
 
-export const LIKELY_LOADED_MILES = 100;
-
 export const HCPCS_PATTERN = '^[A-Z][0-9]{4}$';
 
 export const NO_TRANSPORT_CODE = 'A0998';

@@ -25,8 +25,8 @@ const lineTotalGraph: GraphDef = {
   signature: {
     execIn: [],
     execOut: [],
-    inputs: [{ name: 'lines', type: { list: LINE } }],
-    outputs: [{ name: 'total', type: 'number' }]
+    inputs: [{ name: 'lines', type: { list: LINE }, description: 'The lines to add up.' }],
+    outputs: [{ name: 'total', type: 'number', description: 'Units times charge, summed.' }]
   },
   variables: [],
   nodes: [
@@ -48,8 +48,14 @@ const processItemGraph: GraphDef = {
   signature: {
     execIn: ['exec'],
     execOut: [],
-    inputs: [{ name: 'item', type: { object: { id: 'string', lines: { list: LINE } } } }],
-    outputs: [{ name: 'total', type: 'number' }]
+    inputs: [
+      {
+        name: 'item',
+        type: { object: { id: 'string', lines: { list: LINE } } },
+        description: 'The item to process, with its lines.'
+      }
+    ],
+    outputs: [{ name: 'total', type: 'number', description: 'The total of the item.' }]
   },
   variables: [],
   nodes: [
@@ -90,8 +96,10 @@ const processBatchGraph: GraphDef = {
   signature: {
     execIn: ['exec'],
     execOut: [],
-    inputs: [{ name: 'items', type: { list: { object: {} } } }],
-    outputs: [{ name: 'total', type: 'number' }]
+    inputs: [
+      { name: 'items', type: { list: { object: {} } }, description: 'The items to process.' }
+    ],
+    outputs: [{ name: 'total', type: 'number', description: 'The total of every item.' }]
   },
   variables: [],
   nodes: [

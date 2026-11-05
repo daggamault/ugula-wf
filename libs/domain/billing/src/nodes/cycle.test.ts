@@ -92,9 +92,7 @@ const pending: PendingSubmission = {
   coverageId: 'cov-Medicare',
   pcrNumber: 'PCR-1',
   resubmission: false,
-  totalCents: 85_000,
-  issues: [],
-  warnings: []
+  totalCents: 85_000
 };
 
 const world = (options: MemoryClaimOptions = {}) => {
@@ -120,16 +118,16 @@ const world = (options: MemoryClaimOptions = {}) => {
 };
 
 describe('cycleNodes', () => {
-  it('walks a claim through its payer cycle and closes it', async () => {
+  it('walks a claim through its payer cycle, reading its ledger at every step, and closes it', async () => {
     const { claims, node } = world();
-    const [attach, step, record, close, issue] = [
+    const [attach, ledger, record, close, issue] = [
       'attach-cycle',
-      'claim-step',
+      'read-claim-ledger',
       'record-claim-event',
       'close-claim',
       'issue-statement'
     ].map(node);
-    if (!attach || !step || !record || !close || !issue) throw new Error('Missing cycle nodes');
+    if (!attach || !ledger || !record || !close || !issue) throw new Error('Missing cycle nodes');
 
     await run(attach, { claimId: 'c1', cycleRunId: 'run-9' });
     assert.deepEqual(claims.attached, ['run-9']);
@@ -138,36 +136,37 @@ describe('cycleNodes', () => {
       /No cycle run/
     );
 
-    const next = async (inputs: Values = {}) => run(step, { claimId: 'c1', ...inputs });
-    assert.equal((await next()).pin, 'review');
+    const read = async () => {
+      const { outputs } = await run(ledger, { claimId: 'c1' });
+      return outputs.ledger as Record<string, unknown>;
+    };
+    const first = await run(ledger, { claimId: 'c1' });
+    assert.deepEqual([first.outputs.signalsSeen, first.outputs.reference], [3, 'PCR-1 · Jane Doe']);
+    assert.deepEqual(await read(), {
+      balanceCents: 100_000,
+      coverageId: 'cov-Medicare',
+      payer: 'Medicare',
+      payerKind: 'unknown',
+      coverageCount: 2,
+      contacted: false,
+      sinceContactMs: null,
+      approved: false,
+      unreconciledCoverageId: null,
+      unreconciledPayer: null,
+      patientApproved: false,
+      statements: 0,
+      sinceStatementMs: null,
+      rejection: null
+    });
     await run(record, { claimId: 'c1', kind: 'approved', coverageId: 'cov-Blue' });
     assert.equal(claims.events.length, 0);
     await run(record, { claimId: 'c1', kind: 'approved', coverageId: 'cov-Medicare' });
-    const submit = await next();
-    assert.deepEqual(
-      [submit.pin, submit.outputs],
-      [
-        'submit',
-        {
-          coverageId: 'cov-Medicare',
-          payer: 'Medicare',
-          statementNumber: null,
-          statementCount: 3,
-          balanceCents: 100_000,
-          waitMs: null,
-          signalsSeen: 3,
-          reference: 'PCR-1 · Jane Doe',
-          issues: [],
-          claim: completeCheck()
-        }
-      ]
-    );
+    assert.equal((await read()).approved, true);
     await run(record, { claimId: 'c1', kind: 'submitted', coverageId: 'cov-Medicare' });
     assert.equal(claims.events.at(-1)?.kind, 'submitted');
     await run(record, { claimId: 'c1', kind: 'submitted', coverageId: 'cov-Medicare' });
     assert.equal(claims.events.filter((e) => e.kind === 'submitted').length, 1);
-    assert.equal((await next()).pin, 'await');
-    assert.equal((await next({ payerWaitDays: 2 })).outputs.waitMs, 2 * 86_400_000);
+    assert.deepEqual([(await read()).contacted, (await read()).sinceContactMs], [true, 0]);
     await run(record, {
       claimId: 'c1',
       kind: 'resubmit_queued',
@@ -181,14 +180,16 @@ describe('cycleNodes', () => {
     await run(record, { claimId: 'c1', kind: 'follow_up', coverageId: 'cov-Medicare' });
     assert.equal(claims.events.length, before);
     await run(record, { claimId: 'c1', kind: 'payer_skipped', coverageId: 'cov-Blue' });
-    assert.equal((await next()).pin, 'reviewPatient');
+    assert.deepEqual([(await read()).coverageId, (await read()).payerKind], [null, 'patient']);
     await run(record, { claimId: 'c1', kind: 'payer_skipped' });
-    assert.equal(claims.events.at(-1)?.kind, 'payer_skipped');
     assert.equal(claims.events.at(-1)?.coverageId, 'cov-Blue');
     await run(record, { claimId: 'c1', kind: 'approved' });
-    assert.equal((await next()).outputs.statementNumber, 1);
-    claims.events.push(event('statement', null, '2025-01-01T00:00:00.000Z'));
-    assert.equal((await next({ statementCount: 1 })).pin, 'collections');
+    assert.equal((await read()).patientApproved, true);
+    claims.events.push(event('statement', null, '2025-12-01T00:00:00.000Z'));
+    assert.deepEqual(
+      [(await read()).statements, (await read()).sinceStatementMs],
+      [1, 31 * 86_400_000]
+    );
     await assert.rejects(
       async () => run(record, { claimId: 'c1', kind: 'paid' }),
       /Unknown claim event/
@@ -207,119 +208,42 @@ describe('cycleNodes', () => {
     await run(close, { claimId: 'c1', status: 'written_off' });
     await run(close, { claimId: 'c1', status: 'void' });
     assert.deepEqual(claims.closed, ['written_off', 'void']);
-    assert.deepEqual(claims.statuses, [
-      'needs_review',
-      'ready',
-      'submitted',
-      'submitted',
-      'needs_review',
-      'patient_balance',
-      'balance_review'
-    ]);
     await assert.rejects(
       async () => run(close, { claimId: 'c1', status: 'gone' }),
       /Unknown claim status/
     );
-    await assert.rejects(async () => run(step, { claimId: 'c9' }), /does not exist/);
+    await assert.rejects(async () => run(ledger, { claimId: 'c9' }), /does not exist/);
   });
 
-  it('sends a claim to be fixed before review when its checks block it, ignoring skipped payers', async () => {
-    const check = completeCheck();
-    const { claims, node } = world({
-      check: { ...check, details: { ...check.details, serviceDate: null } }
-    });
-    const step = node('claim-step');
-    const fix = await run(step, { claimId: 'c1' });
-    assert.equal(fix.pin, 'fix');
-    assert.deepEqual(
-      (fix.outputs.issues as { field: string }[]).map((i) => i.field),
-      ['serviceDate']
-    );
-    const unlinked = world({
-      check: { ...check, payers: check.payers.map((p) => ({ ...p, payerId: null })) }
-    });
-    assert.equal((await run(unlinked.node('claim-step'), { claimId: 'c1' })).pin, 'fix');
-    unlinked.claims.events.push(event('payer_skipped', 'cov-Medicare', '2026-01-01T00:00:00Z'));
-    unlinked.claims.events.push(event('payer_skipped', 'cov-Blue', '2026-01-01T00:00:00Z'));
-    assert.equal((await run(unlinked.node('claim-step'), { claimId: 'c1' })).pin, 'reviewPatient');
-    assert.deepEqual(claims.statuses, ['needs_review']);
-  });
-
-  it('reviews a claim the clearinghouse or payer rejected again, flagging the rejection', async () => {
+  it('says why the last submission was rejected', async () => {
     const { claims, node } = world();
-    claims.events.push(event('approved', 'cov-Medicare', '2025-12-01T00:00:00Z'));
     claims.events.push(event('submitted', 'cov-Medicare', '2025-12-02T00:00:00Z'));
     claims.events.push(event('rejected', 'cov-Medicare', '2025-12-03T00:00:00Z'));
-    const review = await run(node('claim-step'), { claimId: 'c1' });
-    assert.deepEqual(
-      [review.pin, review.outputs.coverageId, review.outputs.issues],
-      [
-        'review',
-        'cov-Medicare',
-        [
-          {
-            level: 'warning',
-            field: 'submission',
-            message: 'The payer or clearinghouse rejected the last submission',
-            coverageId: 'cov-Medicare'
-          }
-        ]
-      ]
+    const { outputs } = await run(node('read-claim-ledger'), { claimId: 'c1' });
+    assert.equal(
+      (outputs.ledger as { rejection: string }).rejection,
+      'The payer or clearinghouse rejected the last submission'
     );
-    assert.deepEqual(claims.statuses, ['needs_review']);
   });
 
-  it("follows up once the payer's wait is over, and waits out the rest of it before", async () => {
+  it('records the status of the step, nothing for closing steps, and notices a changed claim', async () => {
     const { claims, node } = world();
-    claims.events.push(event('submitted', 'cov-Medicare', '2025-12-01T00:00:00Z'));
-    const step = node('claim-step');
-    const due = await run(step, { claimId: 'c1', payerWaitDays: 0 });
-    assert.deepEqual([due.pin, due.outputs.waitMs], ['followUp', null]);
-    const waiting = await run(step, { claimId: 'c1', payerWaitDays: 45 });
-    assert.deepEqual([waiting.pin, waiting.outputs.waitMs], ['await', 14 * 86_400_000]);
-    assert.deepEqual(claims.statuses, ['follow_up', 'submitted']);
-  });
-
-  it('reconciles an overpayment and closes a paid claim without a status of its own', async () => {
-    const overpaid = world();
-    overpaid.claims.events.push({
-      ...event('response', 'cov-Medicare', '2025-12-20T00:00:00Z'),
-      paidCents: 120_000
-    });
-    const over = await run(overpaid.node('claim-step'), { claimId: 'c1' });
-    assert.deepEqual([over.pin, over.outputs.balanceCents], ['overpaid', -20_000]);
-    assert.deepEqual(overpaid.claims.statuses, ['reconcile']);
-    const paid = world();
-    paid.claims.events.push({
-      ...event('response', 'cov-Medicare', '2025-12-20T00:00:00Z'),
-      paidCents: 80_000,
-      adjustedCents: 20_000
-    });
-    const closed = await run(paid.node('claim-step'), { claimId: 'c1' });
-    assert.deepEqual([closed.pin, closed.outputs.balanceCents], ['closed', 0]);
-    assert.deepEqual(paid.claims.statuses, []);
-  });
-
-  it('asks for payers of a claim without any before billing the patient', async () => {
-    const { claims, node } = world({ coverages: [] });
-    const confirm = await run(node('claim-step'), { claimId: 'c1' });
-    assert.deepEqual([confirm.pin, confirm.outputs.coverageId], ['confirmPayers', null]);
+    const record = node('record-claim-step');
+    const set = await run(record, { claimId: 'c1', status: 'needs_review', signalsSeen: 3 });
+    assert.equal(set.pin, 'recorded');
+    assert.equal((await run(record, { claimId: 'c1', signalsSeen: 3 })).pin, 'recorded');
     assert.deepEqual(claims.statuses, ['needs_review']);
-  });
-
-  it('waits between patient statements, sending the default count when none is set', async () => {
-    const { claims, node } = world();
-    claims.events.push(event('payer_skipped', 'cov-Medicare', '2025-12-01T00:00:00Z'));
-    claims.events.push(event('payer_skipped', 'cov-Blue', '2025-12-01T00:00:00Z'));
-    claims.events.push(event('statement', null, '2025-12-20T00:00:00Z'));
-    const waiting = await run(node('claim-step'), { claimId: 'c1', statementCount: -1 });
-    assert.deepEqual(
-      [waiting.pin, waiting.outputs.waitMs, waiting.outputs.statementCount],
-      ['awaitPatient', 18 * 86_400_000, 3]
+    await assert.rejects(
+      async () => run(record, { claimId: 'c1', status: 'lost', signalsSeen: 3 }),
+      /Unknown claim status/
     );
-    const later = await run(node('claim-step'), { claimId: 'c1', statementIntervalDays: 10 });
-    assert.deepEqual([later.pin, later.outputs.statementNumber], ['statement', 2]);
-    assert.deepEqual(claims.statuses, ['patient_balance', 'patient_balance']);
+    const raced = world({ stale: true });
+    const stale = await run(raced.node('record-claim-step'), {
+      claimId: 'c1',
+      status: 'ready',
+      signalsSeen: 3
+    });
+    assert.equal(stale.pin, 'stale');
   });
 
   it('records only the events that apply to the payer being billed', async () => {
@@ -353,11 +277,6 @@ describe('cycleNodes', () => {
     await assert.rejects(async () => run(node('follow-claim'), { claimId: ' ' }), /No claim/);
   });
 
-  it('decides again when the claim changed while it decided', async () => {
-    const { node } = world({ stale: true });
-    assert.equal((await run(node('claim-step'), { claimId: 'c1' })).pin, 'stale');
-  });
-
   it('asks for what a statement is missing instead of faulting', async () => {
     const noProfile = world({ statement: { ...statement, agency: null } });
     const issue = noProfile.node('issue-statement');
@@ -375,20 +294,9 @@ describe('cycleNodes', () => {
     assert.equal(noAddress.claims.statements.length, 0);
   });
 
-  it('lets a reconciled denial be corrected and resubmitted to the payer that denied it', async () => {
-    const { claims, node } = world();
-    claims.events.push(event('submitted', 'cov-Medicare', '2025-12-01T00:00:00Z'));
-    claims.events.push(event('response', 'cov-Medicare', '2025-12-20T00:00:00Z'));
-    const record = node('record-claim-event');
-    assert.equal((await run(node('claim-step'), { claimId: 'c1' })).pin, 'reconcile');
-    await run(record, { claimId: 'c1', kind: 'resubmit_queued', coverageId: 'cov-Medicare' });
-    const review = await run(node('claim-step'), { claimId: 'c1' });
-    assert.deepEqual([review.pin, review.outputs.coverageId], ['review', 'cov-Medicare']);
-  });
-
   it('files an approved claim as its own 837P without anyone asking for it', async () => {
     const { claims, node } = world({ submission: { submitter: sampleSubmitter, pending } });
-    const prepared = await run(node('prepare-837p'), { claimId: 'c1' });
+    const prepared = await run(node('prepare-837p'), { claimId: 'c1', coverageId: 'cov-Medicare' });
     assert.deepEqual([prepared.pin, prepared.outputs.claim], ['ready', pending.claim]);
     const filed = await run(node('file-837p'), {
       claimId: 'c1',
@@ -411,11 +319,6 @@ describe('cycleNodes', () => {
       ['blocked', 'Add a billing profile in Settings']
     );
     assert.equal(unprofiled.claims.filed.length, 0);
-    const issues = world({
-      submission: { submitter: sampleSubmitter, pending: { ...pending, issues: ['No NPI'] } }
-    });
-    const flagged = await run(issues.node('file-837p'), filing);
-    assert.deepEqual([flagged.pin, flagged.outputs.reason], ['blocked', 'No NPI']);
     const ready = world({ submission: { submitter: sampleSubmitter, pending } });
     const unmapped = await run(ready.node('file-837p'), {
       ...filing,
@@ -440,7 +343,10 @@ describe('cycleNodes', () => {
 
   it('decides again when the claim is no longer waiting to be filed for that payer', async () => {
     const gone = world({ submission: { submitter: sampleSubmitter, pending: null } });
-    assert.equal((await run(gone.node('prepare-837p'), { claimId: 'c1' })).pin, 'stale');
+    assert.equal(
+      (await run(gone.node('prepare-837p'), { claimId: 'c1', coverageId: 'cov-Medicare' })).pin,
+      'stale'
+    );
     const moved = world({ submission: { submitter: sampleSubmitter, pending } });
     const other = await run(moved.node('file-837p'), {
       claimId: 'c1',

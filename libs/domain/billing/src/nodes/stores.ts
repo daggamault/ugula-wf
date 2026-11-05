@@ -6,6 +6,7 @@ import type { Completer } from '../completions.ts';
 import type { Address, NewPatient, Patient } from '../patients.ts';
 import type { PayerFileOutcome } from '../payer-files.ts';
 import type { DirectoryPayer, PayerLookup } from '../payers.ts';
+import type { RemittanceLine, RemittancePosting } from '../remittances.ts';
 import type { StatementData } from '../statements.ts';
 import type { InboundKind } from '../x12.ts';
 import type { PendingSubmission, Submitter } from '../x837.ts';
@@ -33,12 +34,10 @@ export type PatientStore = {
   ) => Promise<Patient>;
 };
 
+export type FeeSchedules = { payer: Record<string, number>; default: Record<string, number> };
+
 export type FeeStore = {
-  findFees: (
-    runId: string,
-    payerId: string | null,
-    codes: string[]
-  ) => Promise<Record<string, number>>;
+  findSchedules: (runId: string, payerId: string | null, codes: string[]) => Promise<FeeSchedules>;
   saveFee: (
     runId: string,
     payerId: string | null,
@@ -135,7 +134,7 @@ export type ClaimStore = {
     statement: { number: number; count: number; pdf: Uint8Array }
   ) => Promise<void>;
   ledger: (runId: string, claimId: string) => Promise<TrackedLedger | null>;
-  submission: (runId: string, claimId: string) => Promise<SubmissionSource>;
+  submission: (runId: string, claimId: string, coverageId: string) => Promise<SubmissionSource>;
   saveSubmission: (
     runId: string,
     claimId: string,
@@ -181,11 +180,19 @@ export type AppliedPayerFile =
   | { status: 'duplicate'; fileId: string }
   | { status: 'unreadable'; reason: string };
 
+export type ReadPayerFile =
+  | { status: 'read'; kind: InboundKind; lines: RemittanceLine[] }
+  | { status: 'duplicate'; fileId: string }
+  | { status: 'unreadable'; reason: string };
+
+type PayerFileRef = { document: BlobRef; fileName: string };
+
 export type PayerFileStore = {
+  read: (runId: string, file: PayerFileRef) => Promise<ReadPayerFile>;
   apply: (
     runId: string,
     sourceKey: string,
-    file: { document: BlobRef; fileName: string }
+    file: PayerFileRef & { postings: RemittancePosting[] }
   ) => Promise<AppliedPayerFile>;
 };
 

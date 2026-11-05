@@ -1,14 +1,11 @@
 import {
   type BatchClaim,
   type BatchPayer,
-  type ClaimCheck,
   type ClaimDetails,
   type ClaimEvent,
-  claimIssues,
   claimProgress,
   INSURED_RELATIONSHIPS,
   MAX_CONTROL_NUMBER,
-  nextClaimStep,
   type PendingSubmission,
   type Submitter
 } from '@ugula/billing';
@@ -240,32 +237,25 @@ export const detailsOf = (row: ReadyClaimRow): ClaimDetails => ({
   documentation: documentationOf(row)
 });
 
-const messages = (issues: ReturnType<typeof claimIssues>, level: string) =>
-  issues.filter((i) => i.level === level).map((i) => i.message);
-
 export const pendingClaim = (
   row: ReadyClaimRow,
   events: ClaimEvent[],
-  check: ClaimCheck,
-  now: Date
+  coverageId: string
 ): PendingSubmission | null => {
-  const ledger = {
+  const progress = claimProgress({
     totalCents: row.total_cents,
     coverages: row.coverages.map((c) => ({ id: c.id, payer: c.payer })),
     events
-  };
-  const next = nextClaimStep(ledger, now);
-  if (next.step !== 'submit') return null;
-  const progress = claimProgress(ledger);
-  const skipped = new Set(progress.skipped);
-  const issues = claimIssues(check, now).filter(
-    (i) => i.coverageId === null || !skipped.has(i.coverageId)
-  );
+  });
+  const current = progress.coverage;
+  if (current?.id !== coverageId || progress.contacted !== null || progress.balanceCents <= 0) {
+    return null;
+  }
   const coverageOf = (id: string) => row.coverages.find((c) => c.id === id);
   const claim: BatchClaim = {
     claimId: String(row.number),
     payerClaimNumber: progress.payerClaimNumber,
-    payer: payerOf(next.coverage.payer, coverageOf(next.coverage.id)),
+    payer: payerOf(current.payer, coverageOf(current.id)),
     priorPayers: progress.priorCoverages.map((c) => ({
       ...payerOf(c.payer, coverageOf(c.id)),
       paidCents: c.paidCents,
@@ -296,11 +286,9 @@ export const pendingClaim = (
   return {
     id: row.id,
     claim,
-    coverageId: next.coverage.id,
+    coverageId: current.id,
     pcrNumber: row.pcr_number,
     resubmission: progress.submittedBefore,
-    totalCents: claim.lines.reduce((sum, l) => sum + l.totalCents, 0),
-    issues: messages(issues, 'blocking'),
-    warnings: messages(issues, 'warning')
+    totalCents: claim.lines.reduce((sum, l) => sum + l.totalCents, 0)
   };
 };

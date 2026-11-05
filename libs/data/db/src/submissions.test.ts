@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { ClaimCheck, ClaimEventKind } from '@ugula/billing';
+import type { ClaimEventKind } from '@ugula/billing';
 import {
   allocateControlNumber,
   batchKey,
@@ -144,8 +144,6 @@ const claimRow = (id: string, over: Partial<ReadyClaimRow> = {}): ReadyClaimRow 
   ...over
 });
 
-const now = new Date('2026-10-23T12:00:00Z');
-
 const event = (
   claimId: string,
   kind: ClaimEventKind,
@@ -178,47 +176,11 @@ const ledgerOf = (events: EventRow[]) =>
     at: e.created_at.toISOString()
   }));
 
-const checkOf = (row: ReadyClaimRow): ClaimCheck => ({
-  patientId: 'p1',
-  patient: {
-    addressLine: row.address_line,
-    city: row.city,
-    state: row.state,
-    postalCode: row.postal_code
-  },
-  pcrNumber: row.pcr_number,
-  tripType: 'emergency',
-  level: 'ALS1',
-  emergency: row.emergency,
-  loadedMiles: row.loaded_miles === null ? null : Number(row.loaded_miles),
-  lines: row.lines.map((l) => ({
-    code: l.code,
-    units: Number(l.units),
-    unitCents: l.unit_cents,
-    totalCents: l.total_cents
-  })),
-  totalCents: row.total_cents,
-  payers: row.coverages.map((c) => ({
-    coverageId: c.id,
-    name: c.payer,
-    payerId: c.payer_id,
-    claimFiling: c.claim_filing,
-    memberId: c.member_id,
-    relationship: c.relationship,
-    insuredFirstName: c.insured_first_name,
-    insuredLastName: c.insured_last_name,
-    filingLimitDays: null,
-    eligibility: null,
-    eligibilityNote: null
-  })),
-  details: detailsOf(row)
-});
-
-const pending = (row: ReadyClaimRow, events: EventRow[]) =>
-  pendingClaim(row, ledgerOf(events), checkOf(row), now);
+const pending = (row: ReadyClaimRow, events: EventRow[], coverageId = MEDICARE) =>
+  pendingClaim(row, ledgerOf(events), coverageId);
 
 describe('pendingClaim', () => {
-  it('describes an approved claim waiting on a submission with what blocks it', () => {
+  it('describes the claim as it goes to the payer being billed, until that payer has it', () => {
     const incomplete = claimRow(C2, {
       service_date: null,
       origin_code: null,
@@ -245,11 +207,11 @@ describe('pendingClaim', () => {
       waiting.map((p) => [p.id, p.claim.claimId, p.coverageId, p.resubmission]),
       [
         [C1, '1001', MEDICARE, false],
+        ['unreviewed', '1001', MEDICARE, false],
         [C2, '1001', MEDICARE, false],
         ['requeued', '1001', MEDICARE, true]
       ]
     );
-    assert.deepEqual(waiting[0]?.issues, []);
     assert.equal(waiting[0]?.totalCents, 92_300);
     assert.equal(waiting[0]?.pcrNumber, 'PCR-1');
     assert.deepEqual(waiting[0]?.claim.payer, {
@@ -270,28 +232,18 @@ describe('pendingClaim', () => {
       unitCents: 1_000,
       totalCents: 7_300
     });
-    for (const issue of [
-      'The member ID for Medicare is missing',
-      'Medicare is not linked to the payer directory',
-      'The origin/destination modifier is missing',
-      'The date of service is missing'
-    ]) {
-      assert.ok(waiting[1]?.issues.includes(issue), issue);
-    }
-    assert.deepEqual(waiting[1]?.warnings, []);
   });
 
-  it('blocks only on blocking issues and ignores payers already skipped', () => {
+  it('is not waiting for a payer that is not the one being billed', () => {
     const skippedBlue = { ...medicare, id: BLUE, payer: 'Blue Plan', member_id: null };
     const row = claimRow(C1, { pcr_number: null, coverages: [skippedBlue, medicare] });
-    const found = pending(row, [
+    const events = [
       event(C1, 'payer_skipped', BLUE),
       event(C1, 'approved', MEDICARE, '2026-10-03T00:00:00Z')
-    ]);
-    assert.equal(found?.coverageId, MEDICARE);
-    assert.deepEqual(found?.issues, []);
-    assert.equal(found?.warnings.length, 1);
-    assert.match(found?.warnings[0] ?? '', /no PCR number/);
+    ];
+    assert.equal(pending(row, events)?.coverageId, MEDICARE);
+    assert.equal(pending(row, events, BLUE), null);
+    assert.equal(pending(claimRow(C1, { total_cents: 0 }), []), null);
   });
 
   it('flags secondary claims, which need the primary payer adjudication', () => {

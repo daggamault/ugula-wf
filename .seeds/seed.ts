@@ -7,6 +7,7 @@ import {
   createModelNodes,
   createRegistry,
   createStdNodes,
+  documentationIssues,
   type NodeDef,
   refKey,
   stdGraphSource,
@@ -19,7 +20,7 @@ import {
 import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
 import * as v from 'valibot';
 import { upsertAgency, upsertBuiltInRoles, upsertOrganization } from './agencies.ts';
-import { billingGraphs, billingTables } from './billing-graphs.ts';
+import { billingGraphs, billingTables } from './billing/index.ts';
 import { buildUpsertDemoPayers, buildUpsertDemoProfile } from './billing-setup.ts';
 import type { SeedTable } from './builder.ts';
 import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
@@ -47,7 +48,7 @@ const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
     combineSources(stdGraphSource, (ref) => byRef.get(refKey(ref)))
   );
   const problems = graphs.flatMap((g) =>
-    validateGraph(g.definition, registry).map(
+    [...validateGraph(g.definition, registry), ...documentationIssues(g.definition)].map(
       (i) => `${g.key}${i.node ? `#${i.node}` : ''}: ${i.message}`
     )
   );

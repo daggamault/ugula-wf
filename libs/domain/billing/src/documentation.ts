@@ -183,9 +183,5 @@ export const poundsOf = (kg: number | null) =>
 
 const DAY_MS = 86_400_000;
 
-export const PCS_VALID_DAYS = 60;
-
-export const PCS_LATE_DAYS = 2;
-
 export const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to.slice(0, 10)) - Date.parse(from.slice(0, 10))) / DAY_MS);

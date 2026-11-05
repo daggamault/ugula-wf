@@ -11,6 +11,8 @@ import {
   type PayerFileOutcome,
   PROBLEM_OUTCOMES,
   type Remittance,
+  type RemittanceLine,
+  type RemittancePosting,
   read271,
   read277,
   read835,
@@ -19,7 +21,7 @@ import {
   readTA1,
   readX12,
   remittanceCoverage,
-  remittancePosting
+  remittanceLine
 } from '@ugula/billing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import { sql } from 'kysely';
@@ -230,6 +232,7 @@ type Context = {
   digest: string;
   fileName: string;
   now: Date;
+  postings: readonly RemittancePosting[];
 };
 
 const item = (
@@ -250,62 +253,101 @@ const item = (
 const noClaim = (reference: string) =>
   item(reference, null, 'unmatched', `No claim has number ${reference}`);
 
+const matchRemittance = async (
+  db: Db,
+  agencyId: string,
+  remit: Remittance,
+  claimNumber: string,
+  status: string
+) => {
+  const claim = await findClaimByNumber(db, agencyId, claimNumber);
+  const coverage = claim
+    ? remittanceCoverage(await listPostingCoverages(db, claim.id), remit.payerId, status)
+    : null;
+  return { claimId: claim?.id ?? null, coverageId: coverage?.id ?? null };
+};
+
+const eachClaimPayment = (remittances: Remittance[]) =>
+  remittances
+    .flatMap((remit) => remit.claims.map((rc) => ({ remit, rc })))
+    .map((x, i) => ({
+      ...x,
+      position: i + 1
+    }));
+
+export const readRemittanceLines = async (
+  db: Db,
+  agencyId: string,
+  text: string
+): Promise<RemittanceLine[]> => {
+  const lines: RemittanceLine[] = [];
+  for (const { remit, rc, position } of eachClaimPayment(read835(text))) {
+    const matched = await matchRemittance(db, agencyId, remit, rc.claimNumber, rc.status);
+    lines.push(remittanceLine(position, rc, { ...matched, payerName: remit.payerName }));
+  }
+  return lines;
+};
+
 const postRemittances = async (c: Context, remittances: Remittance[]) => {
   const items: FileItem[] = [];
-  let n = 0;
-  for (const remit of remittances) {
-    for (const rc of remit.claims) {
-      n += 1;
-      const claim = await findClaimByNumber(c.tx, c.agencyId, rc.claimNumber);
-      if (!claim) {
-        items.push(noClaim(rc.claimNumber));
-        continue;
-      }
-      const posting = remittancePosting(rc);
-      if (!posting.post) {
-        items.push(item(rc.claimNumber, claim.id, 'review', posting.reason));
-        continue;
-      }
-      const coverage = remittanceCoverage(
-        await listPostingCoverages(c.tx, claim.id),
-        remit.payerId,
-        rc.status
-      );
-      if (!coverage) {
-        items.push(
-          item(
-            rc.claimNumber,
-            claim.id,
-            'review',
-            `${remit.payerName ?? 'The payer'} is not a payer on this claim; post the payment by hand`
-          )
-        );
-        continue;
-      }
-      const posted = await postClaimResponse(c.tx, c.boss, c.agencyId, claim.id, c.userId, {
-        requestId: `${c.digest}:${n}`,
-        kind: 'response',
-        coverageId: coverage.id,
-        paidCents: posting.paidCents,
-        adjustedCents: posting.adjustedCents,
-        paidOn: remit.paidOn,
-        checkNumber: remit.checkNumber,
-        payerClaimNumber: posting.payerClaimNumber,
-        adjustments: posting.adjustments,
-        note: `${rc.denied ? 'Denied' : 'Remittance'} from ${remit.payerName ?? 'the payer'} in ${c.fileName}`
-      });
+  for (const { remit, rc, position } of eachClaimPayment(remittances)) {
+    const posting = c.postings.find((p) => p.position === position);
+    if (!posting)
+      throw new Error(`No posting was decided for claim payment ${position} of the file`);
+    const { claimId, coverageId } = await matchRemittance(
+      c.tx,
+      c.agencyId,
+      remit,
+      rc.claimNumber,
+      rc.status
+    );
+    if (!claimId || posting.route === 'unmatched') {
       items.push(
-        posted.ok
-          ? item(
-              rc.claimNumber,
-              claim.id,
-              posted.value.duplicate ? 'duplicate' : 'posted',
-              rc.denied ? 'Denied' : '',
-              posting
-            )
-          : item(rc.claimNumber, claim.id, 'review', posted.failure.message)
+        item(
+          rc.claimNumber,
+          claimId,
+          'unmatched',
+          posting.message || `No claim has number ${rc.claimNumber}`
+        )
       );
+      continue;
     }
+    if (posting.route === 'review' || !coverageId) {
+      items.push(
+        item(
+          rc.claimNumber,
+          claimId,
+          'review',
+          posting.message ||
+            `${remit.payerName ?? 'The payer'} is not a payer on this claim; post the payment by hand`
+        )
+      );
+      continue;
+    }
+    const line = remittanceLine(position, rc, { claimId, coverageId, payerName: remit.payerName });
+    const amounts = { paidCents: line.paidCents, adjustedCents: posting.adjustedCents };
+    const posted = await postClaimResponse(c.tx, c.boss, c.agencyId, claimId, c.userId, {
+      requestId: `${c.digest}:${position}`,
+      kind: 'response',
+      coverageId,
+      ...amounts,
+      paidOn: remit.paidOn,
+      checkNumber: remit.checkNumber,
+      payerClaimNumber: rc.payerClaimNumber,
+      adjustments: line.adjustments,
+      note: `${rc.denied ? 'Denied' : 'Remittance'} from ${remit.payerName ?? 'the payer'} in ${c.fileName}`
+    });
+    items.push(
+      posted.ok
+        ? item(
+            rc.claimNumber,
+            claimId,
+            posted.value.duplicate ? 'duplicate' : 'posted',
+            rc.denied ? 'Denied' : '',
+            amounts
+          )
+        : item(rc.claimNumber, claimId, 'review', posted.failure.message)
+    );
   }
   return items;
 };
@@ -569,6 +611,7 @@ export const applyPayerFile = async (
     document: unknown;
     file: InboundFile;
     now: Date;
+    postings: readonly RemittancePosting[];
   }
 ) => {
   const { id } = await insertPayerFile(tx, {
@@ -588,7 +631,8 @@ export const applyPayerFile = async (
       userId: f.userId,
       digest: f.file.digest,
       fileName: f.fileName,
-      now: f.now
+      now: f.now,
+      postings: f.postings
     },
     f.file.text
   );

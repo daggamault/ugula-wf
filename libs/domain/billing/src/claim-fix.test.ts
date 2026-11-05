@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CLAIM_FIX_FIELDS, changesCharges, fixForm, readClaimPatch } from './claim-fix.ts';
-import { claimIssues } from './claim-validation.ts';
+import { CLAIM_FIX_FIELDS, chargeChanges, fixForm, readClaimPatch } from './claim-fix.ts';
+import type { ClaimIssue } from './claim-validation.ts';
 import { completeCheck } from './testing.ts';
+
+const issue = (code: string, field: ClaimIssue['field'], coverageId: string | null = null) => ({
+  code,
+  severity: 'blocking' as const,
+  field,
+  message: code,
+  coverageId
+});
 
 const check = completeCheck();
 
@@ -15,7 +23,12 @@ describe('fixForm', () => {
       details: { ...check.details, serviceDate: null, originDestination: null },
       payers: [{ ...check.payers[1], memberId: null } as (typeof check.payers)[number]]
     };
-    const form = fixForm(broken, claimIssues(broken), directory, false);
+    const issues = [
+      issue('service-date-missing', 'serviceDate'),
+      issue('origin-destination-missing', 'originDestination'),
+      issue('member-id-missing', 'memberId', 'cov-Blue')
+    ];
+    const form = fixForm(broken, issues, directory, false);
     assert.deepEqual(form.visible, [
       'serviceDate',
       'originCode',
@@ -78,8 +91,14 @@ describe('readClaimPatch', () => {
       insuredLastName: null,
       remove: false
     });
-    assert.ok(changesCharges(patch));
-    assert.ok(!changesCharges({ ...patch, loadedMiles: null, coverage: null }));
+    assert.ok(Object.values(chargeChanges(patch)).some(Boolean));
+    assert.deepEqual(chargeChanges({ ...patch, loadedMiles: null, coverage: null }), {
+      tripType: false,
+      level: false,
+      emergency: false,
+      loadedMiles: false,
+      payers: false
+    });
   });
 
   it('ignores coverages that are not on the claim and invalid modifiers', () => {
@@ -104,7 +123,7 @@ describe('readClaimPatch', () => {
       insuredFirstName: null,
       insuredLastName: null
     });
-    assert.ok(changesCharges(added));
+    assert.equal(chargeChanges(added).payers, true);
     assert.equal(readClaimPatch({ payerId: 'p-Medicare' }, check).newCoverage, null);
   });
 });

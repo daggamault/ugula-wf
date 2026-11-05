@@ -52,9 +52,16 @@ describe('billing test stores', () => {
 
   it('prices only the codes the schedule knows', async () => {
     const { store } = memoryFees((_, code) => (code === 'A0427' ? 100 : null));
-    assert.deepEqual(await store.findFees('r', null, ['A0427', 'A0999']), { A0427: 100 });
+    assert.deepEqual(await store.findSchedules('r', null, ['A0427', 'A0999']), {
+      payer: {},
+      default: { A0427: 100 }
+    });
     await store.saveFee('r', null, 'A0999', 5);
-    assert.deepEqual(await store.findFees('r', 'p1', ['A0999']), { A0999: 5 });
+    await store.saveFee('r', 'p1', 'A0427', 90);
+    assert.deepEqual(await store.findSchedules('r', 'p1', ['A0427', 'A0999']), {
+      payer: { A0427: 90 },
+      default: { A0427: 100, A0999: 5 }
+    });
   });
 
   it('keeps a claim ledger from saved coverages and recorded events', async () => {
@@ -93,6 +100,6 @@ describe('billing test stores', () => {
       { ok: true }
     );
     assert.equal(asked.length, 1);
-    await assert.rejects(() => stores.fees.findFees('r', null, []), /fee store is not used/);
+    await assert.rejects(() => stores.fees.findSchedules('r', null, []), /fee store is not used/);
   });
 });

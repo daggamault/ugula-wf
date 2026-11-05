@@ -90,15 +90,17 @@ export const memoryPayers = (
 export const memoryFees = (price: (payerId: string | null, code: string) => number | null) => {
   const saved: [string | null, string, number][] = [];
   const store: FeeStore = {
-    findFees: async (_, payerId, codes) =>
-      Object.fromEntries(
-        codes.flatMap((c) => {
-          const cents =
-            saved.findLast(([p, code]) => code === c && (p === null || p === payerId))?.[2] ??
-            price(payerId, c);
-          return cents === null ? [] : [[c, cents]];
-        })
-      ),
+    findSchedules: async (_, payerId, codes) => {
+      const schedule = (payer: string | null) =>
+        Object.fromEntries(
+          codes.flatMap((c) => {
+            const cents =
+              saved.findLast(([p, code]) => code === c && p === payer)?.[2] ?? price(payer, c);
+            return cents === null ? [] : [[c, cents]];
+          })
+        );
+      return { payer: payerId === null ? {} : schedule(payerId), default: schedule(null) };
+    },
     saveFee: async (_, payerId, code, cents) => {
       saved.push([payerId, code, cents]);
     }
@@ -369,7 +371,7 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
     createPatient: unused('patient'),
     updateAddress: unused('patient')
   },
-  payerFiles: stores.payerFiles ?? { apply: unused('payer file') },
+  payerFiles: stores.payerFiles ?? { read: unused('payer file'), apply: unused('payer file') },
   exchange: stores.exchange ?? {
     checkEligibility: unused('clearinghouse'),
     checkClaimStatus: unused('clearinghouse')
@@ -381,7 +383,7 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
     cachedSuggestion: async () => undefined,
     cacheSuggestion: async () => undefined
   },
-  fees: stores.fees ?? { findFees: unused('fee'), saveFee: unused('fee') },
+  fees: stores.fees ?? { findSchedules: unused('fee'), saveFee: unused('fee') },
   claims: stores.claims ?? memoryClaims().store,
   completer: stores.completer ?? { complete: unused('completion') }
 });

@@ -3,8 +3,14 @@ import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
+import type { RuleRunner } from '../../shared/rules.ts';
 import { recordAnnouncements } from '../../shared/testing.ts';
-import { createClaimService, planPayerOrder } from './service.ts';
+import {
+  CLAIM_CHECKS_RULE,
+  createClaimService,
+  NEXT_CLAIM_STEP_RULE,
+  planPayerOrder
+} from './service.ts';
 
 const REQUEST = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 const MEDICARE = '01a16617-7704-7ba6-b9b5-000000000001';
@@ -60,11 +66,29 @@ const setup = ({
   const now = () => new Date('2026-01-01T12:00:00.000Z');
   const blobs = { getBytes: async () => new TextEncoder().encode('%PDF-1.7') };
   const { announce, events: announced } = recordAnnouncements();
+  const ruled: [string, string, unknown][] = [];
+  const rules: RuleRunner = async (agencyId, key, inputs) => {
+    ruled.push([agencyId, key, inputs]);
+    return key === NEXT_CLAIM_STEP_RULE
+      ? { step: 'await', waitMs: 2_548_800_000 }
+      : {
+          issues: [
+            {
+              code: 'lines-missing',
+              severity: 'blocking',
+              field: 'lines',
+              message: 'The claim has no charge lines',
+              coverageId: null
+            }
+          ]
+        };
+  };
   return {
-    service: createClaimService({ db, boss, now, blobs, announce }),
+    service: createClaimService({ db, boss, now, blobs, announce, rules }),
     jobs,
     queries,
-    announced
+    announced,
+    ruled
   };
 };
 
@@ -379,16 +403,35 @@ describe('claim service', () => {
         created_at: new Date('2026-01-01T00:00:00.000Z')
       }
     ];
-    const found = await setup({ events }).service.find('t', 'c1');
+    const { service, ruled } = setup({ events });
+    const found = await service.find('t', 'c1');
     assert.ok(found.ok);
     assert.deepEqual(found.value.files, events);
-    assert.ok(found.value.issues.some((i) => i.level === 'blocking' && i.field === 'lines'));
+    assert.deepEqual(found.value.issues, [
+      {
+        code: 'lines-missing',
+        severity: 'blocking',
+        field: 'lines',
+        message: 'The claim has no charge lines',
+        coverageId: null
+      }
+    ]);
     assert.deepEqual(found.value.progress, {
       step: 'await',
-      coverage: { id: MEDICARE, payer: 'Medicare' },
+      coverage: { id: MEDICARE, payer: 'Medicare', claimFiling: null },
       waitMs: 2_548_800_000,
       balanceCents: 100_000
     });
+    assert.deepEqual(
+      ruled.map(([agency, key]) => [agency, key]),
+      [
+        ['t', NEXT_CLAIM_STEP_RULE],
+        ['t', CLAIM_CHECKS_RULE]
+      ]
+    );
+    const [, , inputs] = ruled[0] ?? [];
+    const { ledger } = inputs as { ledger: Record<string, unknown> };
+    assert.deepEqual([ledger.coverageId, ledger.contacted], [MEDICARE, true]);
     const paid = await setup({ row: { ...claim, status: 'paid' } }).service.find('t', 'c1');
     assert.equal(paid.ok && paid.value.progress, null);
     const draft = await setup({ row: { ...claim, status: 'draft' } }).service.find('t', 'c1');

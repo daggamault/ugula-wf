@@ -691,15 +691,15 @@ describe('createClaimStore', () => {
           : []
     );
     const store = createClaimStore(db, blobs);
-    assert.deepEqual(await store.submission('r1', ID), {
+    assert.deepEqual(await store.submission('r1', ID, 'cov-1'), {
       submitter: sampleSubmitter,
       pending: null
     });
     const ready = queries.find((q) => q.sql.includes('inner join "patients" as "p"'));
     assert.ok(ready?.parameters.includes('t-1') && ready.parameters.includes('ready'));
-    await assert.rejects(() => store.submission('r1', 'bad'), /Claim bad does not exist/);
+    await assert.rejects(() => store.submission('r1', 'bad', 'cov-1'), /Claim bad does not exist/);
     const unknown = createClaimStore(createRecordingDb().db, blobs);
-    await assert.rejects(() => unknown.submission('r1', ID), /does not exist/);
+    await assert.rejects(() => unknown.submission('r1', ID, 'cov-1'), /does not exist/);
   });
 
   it('files a ready claim as its own numbered 837P file and marks it submitted', async () => {

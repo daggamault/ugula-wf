@@ -1,15 +1,9 @@
-import { actionNode, branchNode, type PinSpec, pin } from '@ugula/graph';
+import { actionNode, branchNode, type PinSpec, pin, pureNode } from '@ugula/graph';
 import { priceLines, readLines, readPricedLines } from '../charges.ts';
-import { CLAIM_FIX_FIELDS, changesCharges, fixForm, readClaimPatch } from '../claim-fix.ts';
-import {
-  type ClaimCheck,
-  type ClaimIssue,
-  claimIssues,
-  isBlocking,
-  readNewClaim
-} from '../claim-validation.ts';
-import { type ClaimLedger, claimProgress, RESTARTABLE_STATUSES } from '../claims.ts';
-import { BLOB, CLAIM, CLAIM_ISSUE, LINE, PATIENT, SERVICE } from '../models.ts';
+import { CLAIM_FIX_FIELDS, chargeChanges, fixForm, readClaimPatch } from '../claim-fix.ts';
+import { type ClaimCheck, checkFactsOf, readIssues, readNewClaim } from '../claim-validation.ts';
+import { claimProgress, RESTARTABLE_STATUSES } from '../claims.ts';
+import { BLOB, CHECK_FACTS, CLAIM, CLAIM_ISSUE, LINE, PATIENT, SERVICE } from '../models.ts';
 import { isCents, recordOf, requiredText, textOrNull } from '../values.ts';
 import type { NodesOf } from './stores.ts';
 
@@ -25,20 +19,9 @@ export const issuesPin = pin('issues', { list: CLAIM_ISSUE.type });
 
 const pricedLinesPin = pin('lines', { list: LINE.type });
 
-const PAYER_FIELDS: readonly ClaimIssue['field'][] = ['payers', 'payer', 'memberId', 'insured'];
+const CHARGE_LINES = { list: { object: { code: 'string', units: 'number' } } } as const;
 
-export const relevantIssues = (
-  issues: ClaimIssue[],
-  ledger: ClaimLedger | null,
-  patientOnly = false
-) => {
-  const skipped = new Set(ledger ? claimProgress(ledger).skipped : []);
-  return issues.filter((i) =>
-    patientOnly
-      ? !PAYER_FIELDS.includes(i.field)
-      : i.coverageId === null || !skipped.has(i.coverageId)
-  );
-};
+const FEES = { object: {} } as const;
 
 export const checkOf = (check: ClaimCheck | null, claimId: string) => {
   if (!check) throw new Error(`Claim ${claimId} does not exist`);
@@ -51,33 +34,44 @@ const fixPins: PinSpec[] = CLAIM_FIX_FIELDS.map((f) =>
 
 const dollarsToCents = (x: number) => Math.round(x * 100);
 
+const centsOf = (x: unknown) =>
+  Object.fromEntries(
+    Object.entries(recordOf(x)).filter((e): e is [string, number] => isCents(e[1]))
+  );
+
 export const claimNodes: NodesOf = (stores) => {
   const claims = () => stores().claims;
   return [
-    branchNode({
-      type: 'billing.price-claim',
-      title: 'Price Claim',
+    actionNode({
+      type: 'billing.find-fees',
+      title: 'Find Fees',
       category: CATEGORY,
       description:
-        "Prices HCPCS claim lines from the agency's fee schedule, using the directory payer's prices where they exist and any prices a biller set for this claim first. Continues through unpriced with the codes that have no fee.",
-      inputs: [
-        pin('lines', { list: { object: { code: 'string', units: 'number' } } }),
-        pin('payerId', 'string', { optional: true }),
-        pin('fees', { object: {} }, { optional: true, label: 'Prices set for this claim (cents)' })
+        "Reads the agency's fee schedules for the codes on the lines: the directory payer's own prices, and the default prices every payer falls back to. Which price wins is the Price Precedence rule.",
+      inputs: [pin('lines', CHARGE_LINES), pin('payerId', 'string', { optional: true })],
+      outputs: [
+        pin('payerFees', FEES, { label: 'Payer Prices (Cents)' }),
+        pin('defaultFees', FEES, { label: 'Default Prices (Cents)' })
       ],
-      outputs: [pricedLinesPin, pin('totalCents', 'integer'), pin('missing', { list: 'string' })],
-      exits: ['priced', 'unpriced'],
       compute: async (inputs, _, ctx) => {
-        const lines = readLines(inputs.lines);
-        const scheduled = await stores().fees.findFees(ctx.runId, textOrNull(inputs.payerId), [
-          ...new Set(lines.map((l) => l.code))
-        ]);
-        const set = Object.fromEntries(
-          Object.entries(recordOf(inputs.fees)).filter((e): e is [string, number] => isCents(e[1]))
+        const codes = [...new Set(readLines(inputs.lines).map((l) => l.code))];
+        const found = await stores().fees.findSchedules(
+          ctx.runId,
+          textOrNull(inputs.payerId),
+          codes
         );
-        const priced = priceLines(lines, { ...scheduled, ...set });
-        return { exit: priced.missing.length ? 'unpriced' : 'priced', outputs: priced };
+        return { payerFees: found.payer, defaultFees: found.default };
       }
+    }),
+    pureNode({
+      type: 'billing.price-lines',
+      title: 'Price Lines',
+      category: CATEGORY,
+      description:
+        'Prices HCPCS lines at the unit price chosen for each code, rounding each line to the cent, and lists the codes that have no price.',
+      inputs: [pin('lines', CHARGE_LINES), pin('fees', FEES, { label: 'Unit Prices (Cents)' })],
+      outputs: [pricedLinesPin, pin('totalCents', 'integer'), pin('missing', { list: 'string' })],
+      compute: (inputs) => priceLines(readLines(inputs.lines), centsOf(inputs.fees))
     }),
     actionNode({
       type: 'billing.set-fee',
@@ -88,11 +82,11 @@ export const claimNodes: NodesOf = (stores) => {
       effect: true,
       inputs: [
         pin('code', 'string'),
-        pin('unitPrice', 'number', { label: 'Unit price (dollars)' }),
+        pin('unitPrice', 'number', { label: 'Unit Price (Dollars)' }),
         pin('saveToSchedule', 'boolean', { optional: true }),
-        pin('fees', { object: {} }, { optional: true })
+        pin('fees', FEES, { optional: true })
       ],
-      outputs: [pin('fees', { object: {} })],
+      outputs: [pin('fees', FEES)],
       compute: async (inputs, _, ctx) => {
         const code = requiredText(inputs.code, 'No code to price');
         if (inputs.unitPrice < 0) throw new Error('A price cannot be negative');
@@ -102,45 +96,70 @@ export const claimNodes: NodesOf = (stores) => {
         return { fees: { ...recordOf(inputs.fees), [code]: cents } };
       }
     }),
-    branchNode({
-      type: 'billing.validate-claim',
-      title: 'Validate Claim',
+    actionNode({
+      type: 'billing.read-claim-checks',
+      title: 'Read Claim for Checks',
       category: CATEGORY,
       description:
-        'Checks the saved claim with the same checks as submission: patient and address, date of service, trip type, service, charges, diagnoses, pickup and destination, origin/destination modifier, miles, and each payer still to bill. Continues through invalid when anything blocks it. Also outputs the fields, current values and choices a Fix Claim Data task needs; with all, every field.',
-      inputs: [claimIdPin, pin('all', 'boolean', { optional: true })],
+        'Loads the saved claim as the check rules read it (Check Facts): patient, trip, charges, diagnoses, places, documentation and each payer, with the days a certification was signed before the trip and the days left to file worked out. Also outputs the claim for task details and the payers already skipped, whose issues no longer matter.',
+      inputs: [claimIdPin],
       outputs: [
-        issuesPin,
+        pin('facts', CHECK_FACTS.type),
+        pin('claim', { object: {} }),
+        pin('skipped', { list: 'string' }, { label: 'Skipped Payers' })
+      ],
+      compute: async (inputs, _, ctx) => {
+        const claimId = claimIdOf(inputs.claimId);
+        const [check, ledger] = await Promise.all([
+          claims()
+            .claimCheck(ctx.runId, claimId)
+            .then((c) => checkOf(c, claimId)),
+          claims().ledger(ctx.runId, claimId)
+        ]);
+        return {
+          facts: checkFactsOf(check, ctx.now),
+          claim: check,
+          skipped: ledger ? claimProgress(ledger).skipped : []
+        };
+      }
+    }),
+    actionNode({
+      type: 'billing.fix-claim-form',
+      title: 'Fix Claim Form',
+      category: CATEGORY,
+      description:
+        'Lays out a Fix Claim Data task: the fields the issues name (each issue says its field), with their current values and the payer and directory choices; with all, every field.',
+      inputs: [claimIdPin, issuesPin, pin('all', 'boolean', { optional: true })],
+      outputs: [
         pin('visible', { list: 'string' }),
         pin('defaults', { object: {} }),
         pin('options', { object: {} })
       ],
-      exits: ['valid', 'invalid'],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
-        const store = claims();
-        const [check, ledger, directory] = await Promise.all([
-          store.claimCheck(ctx.runId, claimId).then((c) => checkOf(c, claimId)),
-          store.ledger(ctx.runId, claimId),
+        const [check, directory] = await Promise.all([
+          claims()
+            .claimCheck(ctx.runId, claimId)
+            .then((c) => checkOf(c, claimId)),
           stores().payers.directory(ctx.runId)
         ]);
-        const issues = relevantIssues(claimIssues(check, ctx.now), ledger);
-        return {
-          exit: isBlocking(issues) ? 'invalid' : 'valid',
-          outputs: { issues, ...fixForm(check, issues, directory, inputs.all === true) }
-        };
+        return fixForm(check, readIssues(inputs.issues), directory, inputs.all === true);
       }
     }),
-    branchNode({
+    actionNode({
       type: 'billing.patch-claim',
       title: 'Patch Claim',
       category: CATEGORY,
       description:
-        'Applies what a biller entered in a Fix Claim Data task to the claim, once per run step, leaving empty fields as they are, and logs the edit so an approved claim is reviewed again. Continues through reprice when the trip type, service, miles or payers changed, with what the charges are mapped and priced from; lines saves repriced charges.',
+        'Applies what a biller entered in a Fix Claim Data task to the claim, once per run step, leaving empty fields as they are, and logs the edit so an approved claim is reviewed again; lines saves repriced charges. Outputs what changed (trip type, level, emergency, miles, payers), for the Reprice Triggers rule, and the trip type, service and primary payer charges are mapped and priced from.',
       effect: true,
       inputs: [claimIdPin, ...fixPins, pin('lines', { list: LINE.type }, { optional: true })],
-      outputs: [pin('tripType', 'string'), pin('service', SERVICE.type), pin('payerId', 'string')],
-      exits: ['patched', 'reprice'],
+      outputs: [
+        pin('changes', { object: {} }, { label: 'What Changed' }),
+        pin('tripType', 'string'),
+        pin('service', SERVICE.type),
+        pin('payerId', 'string')
+      ],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
         const store = claims();
@@ -150,22 +169,17 @@ export const claimNodes: NodesOf = (stores) => {
           lines: inputs.lines ? readPricedLines(inputs.lines) : null
         };
         await store.patchClaim(ctx.runId, claimId, ctx.key, patch);
-        if (!changesCharges(patch)) {
-          return { exit: 'patched', outputs: { tripType: null, service: null, payerId: null } };
-        }
         const after = checkOf(await store.claimCheck(ctx.runId, claimId), claimId);
         return {
-          exit: 'reprice',
-          outputs: {
-            tripType: after.tripType,
-            service: {
-              level: after.level,
-              emergency: after.emergency,
-              loadedMiles: after.loadedMiles,
-              basis: []
-            },
-            payerId: after.payers[0]?.payerId ?? null
-          }
+          changes: chargeChanges(patch),
+          tripType: after.tripType,
+          service: {
+            level: after.level,
+            emergency: after.emergency,
+            loadedMiles: after.loadedMiles,
+            basis: []
+          },
+          payerId: after.payers[0]?.payerId ?? null
         };
       }
     }),

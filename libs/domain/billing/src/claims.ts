@@ -97,7 +97,7 @@ export const RESTARTABLE_STATUSES = [
   'void'
 ] as const satisfies readonly ClaimStatus[];
 
-export type LedgerCoverage = { id: string; payer: string };
+export type LedgerCoverage = { id: string; payer: string; claimFiling?: string | null };
 
 export type ClaimEvent = {
   kind: ClaimEventKind;
@@ -124,13 +124,42 @@ export type ClaimLedger = {
   events: ClaimEvent[];
 };
 
-const STATEMENT_LIMIT = 3;
-
-export const PAYER_WAIT_MS = 30 * 86_400_000;
-
-export const STATEMENT_INTERVAL_MS = 30 * 86_400_000;
-
 export const MIN_WAIT_MS = 60_000;
+
+export const CLAIM_STEPS = [
+  'review',
+  'reviewPatient',
+  'confirmPayers',
+  'submit',
+  'reconcile',
+  'overpaid',
+  'await',
+  'followUp',
+  'statement',
+  'awaitPatient',
+  'collections',
+  'writeOff',
+  'closed'
+] as const;
+
+export type ClaimStepName = (typeof CLAIM_STEPS)[number];
+
+export const isClaimStep = (x: unknown): x is ClaimStepName =>
+  CLAIM_STEPS.includes(x as ClaimStepName);
+
+export const STEP_STATUSES: Readonly<Partial<Record<ClaimStepName, ClaimStatus>>> = {
+  review: 'needs_review',
+  reviewPatient: 'needs_review',
+  confirmPayers: 'needs_review',
+  submit: 'ready',
+  reconcile: 'reconcile',
+  overpaid: 'reconcile',
+  await: 'submitted',
+  followUp: 'follow_up',
+  statement: 'patient_balance',
+  awaitPatient: 'patient_balance',
+  collections: 'balance_review'
+};
 
 type CoverageStep = { coverage: LedgerCoverage; balanceCents: number };
 
@@ -140,7 +169,7 @@ export type ClaimStep =
   | { step: 'reviewPatient' | 'confirmPayers' | 'overpaid'; balanceCents: number }
   | { step: 'statement'; statement: number; balanceCents: number }
   | { step: 'awaitPatient'; waitMs: number; balanceCents: number }
-  | { step: 'collections' | 'closed'; balanceCents: number };
+  | { step: 'collections' | 'writeOff' | 'closed'; balanceCents: number };
 
 const CONTACTS: readonly ClaimEventKind[] = [
   'submitted',
@@ -226,77 +255,83 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
   };
 };
 
-const waitFor = (since: number, intervalMs: number, now: Date) => {
-  const remaining = since + intervalMs - now.getTime();
-  return remaining > 0 ? Math.max(remaining, MIN_WAIT_MS) : 0;
-};
+const UNKNOWN_KIND = 'unknown';
 
-type CyclePolicy = {
-  payerWaitMs: number;
-  statementLimit: number;
-  statementIntervalMs: number;
-};
+const PATIENT_KIND = 'patient';
 
-export const DEFAULT_POLICY: CyclePolicy = {
-  payerWaitMs: PAYER_WAIT_MS,
-  statementLimit: STATEMENT_LIMIT,
-  statementIntervalMs: STATEMENT_INTERVAL_MS
-};
+const PAYER_KINDS: readonly string[] = [UNKNOWN_KIND, PATIENT_KIND];
 
-const payerStep = (
-  p: ReturnType<typeof claimProgress>,
-  coverage: LedgerCoverage,
-  now: Date,
-  policy: CyclePolicy
-): ClaimStep => {
-  const { balanceCents, contacted, approvedAt } = p;
-  if (contacted === null) {
-    return { step: approvedAt === null ? 'review' : 'submit', coverage, balanceCents };
-  }
-  const waitMs = waitFor(contacted, policy.payerWaitMs, now);
-  return waitMs > 0
-    ? { step: 'await', coverage, waitMs, balanceCents }
-    : { step: 'followUp', coverage, balanceCents };
-};
+export type LedgerFacts = ReturnType<typeof ledgerFactsOf>;
 
-export const nextClaimStep = (
-  ledger: ClaimLedger,
-  now: Date,
-  policy: CyclePolicy = DEFAULT_POLICY
-): ClaimStep => {
+const sinceMs = (at: number | null, now: Date) => (at === null ? null : now.getTime() - at);
+
+export const ledgerFactsOf = (ledger: ClaimLedger, now: Date) => {
   const p = claimProgress(ledger);
-  const { balanceCents, coverage, unreconciled, statements, lastStatement } = p;
-  if (balanceCents < 0) return { step: 'overpaid', balanceCents };
-  if (balanceCents === 0) return { step: 'closed', balanceCents };
-  if (unreconciled !== null) return { step: 'reconcile', coverage: unreconciled, balanceCents };
-  if (coverage !== null) return payerStep(p, coverage, now, policy);
-  if (statements === 0 && !p.patientApproved) {
-    return { step: ledger.coverages.length ? 'reviewPatient' : 'confirmPayers', balanceCents };
+  return {
+    balanceCents: p.balanceCents,
+    coverageId: p.coverage?.id ?? null,
+    payer: p.coverage?.payer ?? null,
+    payerKind: p.coverage ? (p.coverage.claimFiling ?? UNKNOWN_KIND) : PATIENT_KIND,
+    coverageCount: ledger.coverages.length,
+    contacted: p.contacted !== null,
+    sinceContactMs: sinceMs(p.contacted, now),
+    approved: p.approved,
+    unreconciledCoverageId: p.unreconciled?.id ?? null,
+    unreconciledPayer: p.unreconciled?.payer ?? null,
+    patientApproved: p.patientApproved,
+    statements: p.statements,
+    sinceStatementMs: sinceMs(p.lastStatement, now),
+    rejection: p.rejection
+  };
+};
+
+const numberOr = (x: unknown, fallback: number) =>
+  typeof x === 'number' && Number.isFinite(x) ? x : fallback;
+
+export const readClaimStep = (decision: Record<string, unknown>, facts: LedgerFacts): ClaimStep => {
+  const { step } = decision;
+  if (!isClaimStep(step)) throw new Error(`Unknown claim step "${String(step)}"`);
+  const { balanceCents } = facts;
+  const coverageOf = (id: string | null, payer: string | null, claimFiling: string | null) => {
+    if (!id) throw new Error(`The ${step} step needs a payer`);
+    return { id, payer: payer ?? '', claimFiling };
+  };
+  const current = () =>
+    coverageOf(
+      facts.coverageId,
+      facts.payer,
+      PAYER_KINDS.includes(facts.payerKind) ? null : facts.payerKind
+    );
+  switch (step) {
+    case 'reconcile':
+      return {
+        step,
+        coverage: coverageOf(facts.unreconciledCoverageId, facts.unreconciledPayer, null),
+        balanceCents
+      };
+    case 'review':
+    case 'submit':
+    case 'followUp':
+      return { step, coverage: current(), balanceCents };
+    case 'await':
+      return {
+        step,
+        coverage: current(),
+        waitMs: numberOr(decision.waitMs, MIN_WAIT_MS),
+        balanceCents
+      };
+    case 'awaitPatient':
+      return { step, waitMs: numberOr(decision.waitMs, MIN_WAIT_MS), balanceCents };
+    case 'statement':
+      return {
+        step,
+        statement: numberOr(decision.statementNumber, facts.statements + 1),
+        balanceCents
+      };
+    default:
+      return { step, balanceCents };
   }
-  const waitMs =
-    lastStatement === null ? 0 : waitFor(lastStatement, policy.statementIntervalMs, now);
-  if (waitMs > 0) return { step: 'awaitPatient', waitMs, balanceCents };
-  return statements < policy.statementLimit
-    ? { step: 'statement', statement: statements + 1, balanceCents }
-    : { step: 'collections', balanceCents };
 };
-
-const STAGES: Record<ClaimStep['step'], ClaimStatus | null> = {
-  review: 'needs_review',
-  reviewPatient: 'needs_review',
-  confirmPayers: 'needs_review',
-  submit: 'ready',
-  reconcile: 'reconcile',
-  overpaid: 'reconcile',
-  await: 'submitted',
-  followUp: 'follow_up',
-  statement: 'patient_balance',
-  awaitPatient: 'patient_balance',
-  collections: 'balance_review',
-  closed: null
-};
-
-export const stageOf = (step: ClaimStep['step']) => STAGES[step];
 
 export const CLAIM_SIGNAL = 'claim';
 

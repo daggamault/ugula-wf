@@ -116,12 +116,135 @@ export const CLAIM_ISSUE = model(
   'billing.claim-issue',
   'issue',
   'Claim Issue',
-  'something a claim is missing or that looks wrong, with the field it is fixed in',
+  'something a claim is missing or that looks wrong, with the check that found it and the field it is fixed in',
   [
-    f('level', 'string', 'Level (blocking or warning)'),
+    f('code', 'string', 'Check code (the Check Severity table key)'),
+    f('severity', 'string', 'Severity (blocking or warning)'),
     f('field', 'string', 'Field to fix'),
     f('message', 'string', 'Message'),
     f('coverageId', 'string', 'Coverage it is about')
+  ]
+);
+
+const CHECKED_PAYER = model(
+  'billing.checked-payer',
+  'payer',
+  'Checked Payer',
+  'what the claim checks know about one payer on the claim',
+  [
+    f('coverageId', 'string', 'Coverage ID'),
+    f('name', 'string', 'Payer name'),
+    f('linked', 'boolean', 'Linked to the payer directory with a claim filing indicator'),
+    f('memberId', 'string', 'Member ID'),
+    f('needsInsured', 'boolean', 'The patient is not the insured'),
+    f('insuredLastName', 'string', 'Insured last name'),
+    f('eligibility', 'string', 'Eligibility answer (active or inactive)'),
+    f('eligibilityNote', 'string', 'What the eligibility answer said'),
+    f('filingLimitDays', 'integer', 'Filing limit (days)'),
+    f('filingDaysLeft', 'integer', 'Days left to file')
+  ]
+);
+
+export const CHECK_FACTS = model(
+  'billing.check-facts',
+  'facts',
+  'Check Facts',
+  'what the claim checks read: the saved claim, its documentation and payers, with the date math done',
+  [
+    f('patientLinked', 'boolean', 'A patient is on the claim'),
+    f('patientAddressMissing', { list: 'string' }, 'Missing parts of the patient address'),
+    f('pcrNumber', 'string', 'PCR number'),
+    f('serviceDate', 'string', 'Date of service'),
+    f('tripType', 'string', 'Trip type'),
+    f('transports', 'boolean', 'The patient was transported'),
+    f('level', 'string', 'Level of service'),
+    f('levelValid', 'boolean', 'The level of service is BLS, ALS1, ALS2 or SCT'),
+    f('emergency', 'boolean', 'Emergency response'),
+    f('lineCount', 'integer', 'Charge lines'),
+    f('linesAddUp', 'boolean', 'The claim total is the sum of its lines'),
+    f('diagnosisCount', 'integer', 'Diagnoses'),
+    f('pickupMissing', { list: 'string' }, 'Missing parts of the pickup address'),
+    f('destinationMissing', { list: 'string' }, 'Missing parts of the destination address'),
+    f('originDestinationValid', 'boolean', 'The origin/destination modifier is valid'),
+    f('transportReason', 'string', 'Ambulance transport reason'),
+    f('timesRecorded', 'boolean', 'Left-scene and at-destination times are recorded'),
+    f('timesInOrder', 'boolean', 'The trip times are in order'),
+    f('loadedMiles', 'number', 'Loaded miles'),
+    f('signature', 'string', 'Billing signature'),
+    f('signatureNote', 'string', 'Why the patient did not sign, or who signed'),
+    f('pcsOnFile', 'boolean', 'Physician certification statement on file'),
+    f('pcsSignedOn', 'string', 'Physician certification statement signed on'),
+    f('pcsDaysBeforeTrip', 'integer', 'Days the certification was signed before the trip'),
+    f('billsMedicare', 'boolean', 'A Medicare payer is on the claim'),
+    f('payers', { list: CHECKED_PAYER.type }, 'Payers, in billing order')
+  ]
+);
+
+export const CLAIM_LEDGER = model(
+  'billing.claim-ledger',
+  'ledger',
+  'Claim Ledger',
+  'where a claim stands from its history: balance, the payer being billed, approvals, responses and statements',
+  [
+    f('balanceCents', 'integer', 'Balance (cents)'),
+    f('coverageId', 'string', 'Payer being billed (coverage ID)'),
+    f('payer', 'string', 'Payer being billed'),
+    f('payerKind', 'string', 'Claim filing indicator of the payer being billed, or patient'),
+    f('coverageCount', 'integer', 'Payers on the claim'),
+    f('contacted', 'boolean', 'The payer being billed has the claim'),
+    f('sinceContactMs', 'integer', 'Milliseconds since the payer was last contacted'),
+    f('approved', 'boolean', 'The claim is approved for the payer being billed'),
+    f('unreconciledCoverageId', 'string', 'Payer whose response waits to be reconciled'),
+    f('unreconciledPayer', 'string', 'Name of the payer whose response waits to be reconciled'),
+    f('patientApproved', 'boolean', 'The claim is approved for billing the patient'),
+    f('statements', 'integer', 'Patient statements sent'),
+    f('sinceStatementMs', 'integer', 'Milliseconds since the last statement'),
+    f('rejection', 'string', 'Why the last submission was rejected')
+  ]
+);
+
+const ADJUSTMENT = model(
+  'billing.adjustment',
+  'adjustment',
+  'Adjustment',
+  'one 835 adjustment: its group code, reason code (CARC) and amount',
+  [
+    f('group', 'string', 'Group code (CO, PR, OA, PI, CR)'),
+    f('reason', 'string', 'Reason code (CARC)'),
+    f('cents', 'integer', 'Amount (cents)')
+  ]
+);
+
+export const REMITTANCE_LINE = model(
+  'billing.remittance-line',
+  'line',
+  'Remittance Line',
+  'one claim payment (CLP) of an 835, with the claim and payer it matched',
+  [
+    f('position', 'integer', 'Position in the file'),
+    f('reference', 'string', 'Claim number the payer sent (CLP01)'),
+    f('claimId', 'string', 'Matched claim'),
+    f('coverageId', 'string', 'Matched payer on the claim'),
+    f('payerName', 'string', 'Payer name'),
+    f('denied', 'boolean', 'The payer denied the claim'),
+    f('reversal', 'boolean', 'The payer reversed an earlier payment'),
+    f('takeback', 'boolean', 'The payment or an adjustment takes money back'),
+    f('paidCents', 'integer', 'Paid (cents)'),
+    f('adjustments', { list: ADJUSTMENT.type }, 'Adjustments, merged by group and reason')
+  ]
+);
+
+export const REMITTANCE_POSTING = model(
+  'billing.remittance-posting',
+  'posting',
+  'Remittance Posting',
+  'how one 835 claim payment is posted: its route, what lowers the balance and why',
+  [
+    f('position', 'integer', 'Position in the file'),
+    f('route', 'string', 'Route (reconcile, review or unmatched)'),
+    f('message', 'string', 'What a biller sees about the line'),
+    f('adjustedCents', 'integer', 'Adjustments that lower the balance (cents)'),
+    f('reasons', { list: 'string' }, 'Why')
   ]
 );
 
@@ -149,6 +272,81 @@ export const DOCUMENTATION = model(
     f('atScene', 'string', 'Arrived on scene'),
     f('leftScene', 'string', 'Left the scene'),
     f('atDestination', 'string', 'Arrived at the destination')
+  ]
+);
+
+export const TRIP_FACTS = model(
+  'billing.trip-facts',
+  'trip',
+  'Trip Facts',
+  'the trip as the report records it: dispositions, type of service, response, level of care and odometers',
+  [
+    f('pcrNumber', 'string', 'PCR number · eRecord.01'),
+    f('serviceDate', 'string', 'Date of service (YYYY-MM-DD)'),
+    f('calledAt', 'string', 'Call time · eTimes.01'),
+    f('serviceType', 'string', 'Type of service requested · eResponse.05'),
+    f('responseMode', 'string', 'Response mode to scene · eResponse.23'),
+    f('incidentDisposition', 'string', 'Incident/patient disposition · eDisposition.12'),
+    f('unitDisposition', 'string', 'Unit disposition · eDisposition.27'),
+    f('patientEvaluation', 'string', 'Patient evaluation/care · eDisposition.28'),
+    f('transportDisposition', 'string', 'Transport disposition · eDisposition.30'),
+    f('levelOfCare', 'string', 'Level of care provided · eDisposition.32'),
+    f('cmsServiceLevel', 'string', 'CMS service level · ePayment.50'),
+    f('alsAssessment', 'string', 'ALS assessment performed and warranted · ePayment.49'),
+    f('sceneOdometer', 'number', 'Odometer at the scene · eResponse.20'),
+    f('destinationOdometer', 'number', 'Odometer at the destination · eResponse.21')
+  ]
+);
+
+export const LOCATION_FACTS = model(
+  'billing.location-facts',
+  'locations',
+  'Location Facts',
+  'where the trip started and ended, and what kind of places they are',
+  [
+    f('pickup', LOCATION.type, 'Pickup'),
+    f('destination', LOCATION.type, 'Destination'),
+    f('pickupType', 'string', 'Incident location type · eScene.09'),
+    f('destinationType', 'string', 'Type of destination · eDisposition.21'),
+    f('destinationReason', 'string', 'Main reason for choosing the destination · eDisposition.20')
+  ]
+);
+
+export const CLINICAL_FACTS = model(
+  'billing.clinical-facts',
+  'clinical',
+  'Clinical Facts',
+  'what the crew found and did: impressions, coded medications and procedures, and the narrative',
+  [
+    f('primaryImpression', 'string', 'Primary impression · eSituation.11'),
+    f('secondaryImpressions', { list: 'string' }, 'Secondary impressions · eSituation.12'),
+    f(
+      'medications',
+      { list: { object: { medication: 'string', route: 'string' } } },
+      'Medications given (RxNorm and route) · eMedications.03, .04'
+    ),
+    f(
+      'procedures',
+      { list: { object: { procedure: 'string' } } },
+      'Procedures performed (SNOMED CT) · eProcedures.03'
+    ),
+    f('narrative', 'string', 'Narrative · eNarrative.01')
+  ]
+);
+
+export const ENCOUNTER_FACTS = model(
+  'billing.encounter-facts',
+  'facts',
+  'Encounter Facts',
+  'one normalized snapshot of a patient care report that every billing rule reads instead of NEMSIS sections',
+  [
+    f('trip', TRIP_FACTS.type, 'Trip'),
+    f('locations', LOCATION_FACTS.type, 'Locations'),
+    f('patient', DEMOGRAPHICS.type, 'Patient'),
+    f('clinical', CLINICAL_FACTS.type, 'Clinical'),
+    f('documentation', DOCUMENTATION.type, 'Documentation'),
+    f('coverages', { list: COVERAGE.type }, 'Coverages as reported'),
+    f('paymentMethod', 'string', 'Primary method of payment · ePayment.01')
   ]
 );
 
@@ -367,6 +565,15 @@ export const billingTypes = {
   service: SERVICE.type,
   findings: FINDINGS.type,
   issues: { list: CLAIM_ISSUE.type },
+  checkFacts: CHECK_FACTS.type,
+  ledger: CLAIM_LEDGER.type,
+  adjustments: { list: ADJUSTMENT.type },
+  remittanceLines: { list: REMITTANCE_LINE.type },
+  postings: { list: REMITTANCE_POSTING.type },
+  trip: TRIP_FACTS.type,
+  locations: LOCATION_FACTS.type,
+  clinical: CLINICAL_FACTS.type,
+  facts: ENCOUNTER_FACTS.type,
   lines: { list: LINE.type },
   documentation: DOCUMENTATION.type,
   claim: CLAIM.type,
@@ -382,8 +589,18 @@ export const billingModels: Model[] = [
   SERVICE,
   FINDINGS,
   CLAIM_ISSUE,
+  CHECKED_PAYER,
+  CHECK_FACTS,
+  CLAIM_LEDGER,
+  ADJUSTMENT,
+  REMITTANCE_LINE,
+  REMITTANCE_POSTING,
   LINE,
   DOCUMENTATION,
+  TRIP_FACTS,
+  LOCATION_FACTS,
+  CLINICAL_FACTS,
+  ENCOUNTER_FACTS,
   CLAIM,
   SUBMITTED_PATIENT,
   SUBMITTED_PAYER,

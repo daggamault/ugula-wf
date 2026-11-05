@@ -1,29 +1,24 @@
 import { actionNode, branchNode, pin } from '@ugula/graph';
-import { claimIssues, isBlocking } from '../claim-validation.ts';
 import {
+  CLAIM_STATUSES,
   CLOSED_CLAIM_STATUSES,
+  type ClaimStatus,
   COVERAGE_EVENT_KINDS,
   type CycleEventKind,
   claimProgress,
-  DEFAULT_POLICY,
   isClosedStatus,
   isCycleEventKind,
-  nextClaimStep,
-  PAYER_WAIT_MS,
-  STATEMENT_INTERVAL_MS,
-  stageOf
+  ledgerFactsOf
 } from '../claims.ts';
 import { billingTypes } from '../models.ts';
 import { isCompleteAddress } from '../patients.ts';
 import { localDate, renderStatement } from '../statements.ts';
 import { requiredText, textOrNull } from '../values.ts';
 import { build837, readX837Claim, submitterIssues, type X837Claim } from '../x837.ts';
-import { checkOf, claimIdOf, claimIdPin, issuesPin, relevantIssues } from './claims.ts';
+import { claimIdOf, claimIdPin } from './claims.ts';
 import type { NodesOf } from './stores.ts';
 
 const CATEGORY = 'Billing';
-
-const DAY_MS = 86_400_000;
 
 const PAYER_ACTIONS: readonly CycleEventKind[] = [
   'submitted',
@@ -33,11 +28,7 @@ const PAYER_ACTIONS: readonly CycleEventKind[] = [
   'approved'
 ];
 
-const GATED_STEPS: readonly string[] = ['review', 'reviewPatient', 'confirmPayers', 'submit'];
-
-const PATIENT_STEPS: readonly string[] = ['reviewPatient', 'confirmPayers'];
-
-const daysOr = (days: number, fallbackMs: number) => (days > 0 ? days * DAY_MS : fallbackMs);
+const isClaimStatus = (x: unknown): x is ClaimStatus => CLAIM_STATUSES.includes(x as ClaimStatus);
 
 export const cycleNodes: NodesOf = (stores) => {
   const claims = () => stores().claims;
@@ -59,110 +50,56 @@ export const cycleNodes: NodesOf = (stores) => {
         return {};
       }
     }),
-    branchNode({
-      type: 'billing.claim-step',
-      title: 'Claim Step',
+    actionNode({
+      type: 'billing.read-claim-ledger',
+      title: 'Read Claim Ledger',
       category: CATEGORY,
       description:
-        "Decides what a claim needs next from its history and records it as the claim's status: fix data the claim checks block on before review or submission, review before the next payer's claim goes out, submit it once approved, wait out the payer's response time, follow up, reconcile a payer's response or an overpayment, confirm the payers of a claim without any, review before the first patient statement, send or wait on a patient statement, balance review, or close. Continues through stale when the claim changed while it decided, so it decides again. Also outputs the claim's issues, how many claim signals the history already reflects, and the claim's PCR number and patient for people to recognize it by.",
-      effect: true,
-      inputs: [
-        claimIdPin,
-        pin('payerWaitDays', 'number', {
-          label: 'Days to wait for a payer',
-          default: PAYER_WAIT_MS / DAY_MS
-        }),
-        pin('statementCount', 'integer', {
-          label: 'Patient statements to send',
-          default: DEFAULT_POLICY.statementLimit
-        }),
-        pin('statementIntervalDays', 'number', {
-          label: 'Days between statements',
-          default: STATEMENT_INTERVAL_MS / DAY_MS
-        })
-      ],
+        "Reads where a claim stands from its history (Claim Ledger): its balance, the payer being billed and whether it has the claim or approved it, a payer response waiting to be reconciled, patient approval and statements, and why the last submission was rejected. Also outputs how many claim signals the history already reflects, and the claim's PCR number and patient for people to recognize it by. Decides nothing; Next Claim Step does.",
+      inputs: [claimIdPin],
       outputs: [
-        pin('coverageId', 'string'),
-        pin('payer', 'string'),
-        pin('statementNumber', 'integer'),
-        pin('statementCount', 'integer'),
-        pin('balanceCents', 'integer'),
-        pin('waitMs', 'integer'),
+        pin('ledger', billingTypes.ledger),
         pin('signalsSeen', 'integer'),
-        pin('reference', 'string'),
-        issuesPin,
-        pin('claim', { object: {} })
-      ],
-      exits: [
-        'fix',
-        'review',
-        'reviewPatient',
-        'confirmPayers',
-        'submit',
-        'reconcile',
-        'overpaid',
-        'await',
-        'followUp',
-        'statement',
-        'awaitPatient',
-        'collections',
-        'closed',
-        'stale'
+        pin('reference', 'string')
       ],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
         const ledger = await claims().ledger(ctx.runId, claimId);
         if (!ledger) throw new Error(`Claim ${claimId} does not exist`);
-        const policy = {
-          payerWaitMs: daysOr(inputs.payerWaitDays, DEFAULT_POLICY.payerWaitMs),
-          statementLimit:
-            inputs.statementCount >= 0 ? inputs.statementCount : DEFAULT_POLICY.statementLimit,
-          statementIntervalMs: daysOr(
-            inputs.statementIntervalDays,
-            DEFAULT_POLICY.statementIntervalMs
-          )
-        };
-        const next = nextClaimStep(ledger, ctx.now, policy);
-        const gated = GATED_STEPS.includes(next.step);
-        const claim = gated
-          ? checkOf(await claims().claimCheck(ctx.runId, claimId), claimId)
-          : null;
-        const issues = claim
-          ? relevantIssues(claimIssues(claim, ctx.now), ledger, PATIENT_STEPS.includes(next.step))
-          : [];
-        const exit = gated && isBlocking(issues) ? 'fix' : next.step;
-        const { rejection } = claimProgress(ledger);
-        const flagged =
-          rejection && next.step === 'review'
-            ? [
-                {
-                  level: 'warning' as const,
-                  field: 'submission' as const,
-                  message: rejection,
-                  coverageId: next.coverage.id
-                },
-                ...issues
-              ]
-            : issues;
-        const stage = stageOf(next.step);
-        const recorded = stage
-          ? await claims().setStatus(ctx.runId, claimId, ctx.key, stage, ledger.signalsSeen)
-          : 'set';
         return {
-          exit: recorded === 'stale' ? 'stale' : exit,
-          outputs: {
-            coverageId: 'coverage' in next ? next.coverage.id : null,
-            payer: 'coverage' in next ? next.coverage.payer : null,
-            statementNumber: 'statement' in next ? next.statement : null,
-            statementCount: policy.statementLimit,
-            balanceCents: next.balanceCents,
-            waitMs: 'waitMs' in next ? next.waitMs : null,
-            signalsSeen: ledger.signalsSeen,
-            reference: ledger.reference,
-            issues: flagged,
-            claim
-          }
+          ledger: ledgerFactsOf(ledger, ctx.now),
+          signalsSeen: ledger.signalsSeen,
+          reference: ledger.reference
         };
+      }
+    }),
+    branchNode({
+      type: 'billing.record-claim-step',
+      title: 'Record Claim Step',
+      category: CATEGORY,
+      description:
+        'Records the status of the step a claim is on, so the status a biller filters by is always the step the claim is on; a step without a status (closing) records nothing. Continues through stale when the claim changed since its ledger was read, so the next step is decided again.',
+      effect: true,
+      inputs: [
+        claimIdPin,
+        pin('status', 'string', { optional: true }),
+        pin('signalsSeen', 'integer')
+      ],
+      outputs: [],
+      exits: ['recorded', 'stale'],
+      compute: async (inputs, _, ctx) => {
+        const claimId = claimIdOf(inputs.claimId);
+        const status = textOrNull(inputs.status);
+        if (status === null) return { exit: 'recorded', outputs: {} };
+        if (!isClaimStatus(status)) throw new Error(`Unknown claim status "${status}"`);
+        const recorded = await claims().setStatus(
+          ctx.runId,
+          claimId,
+          ctx.key,
+          status,
+          inputs.signalsSeen
+        );
+        return { exit: recorded === 'stale' ? 'stale' : 'recorded', outputs: {} };
       }
     }),
     actionNode({
@@ -248,12 +185,16 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Prepare 837P Claim',
       category: CATEGORY,
       description:
-        'Loads an approved claim as it goes to its current payer, ready to map onto an 837P. Continues through stale when the claim is no longer waiting to be submitted.',
-      inputs: [claimIdPin],
+        'Loads a claim as it goes to the payer it is being submitted to, ready to map onto an 837P. Continues through stale when that payer is no longer the one being billed or already has the claim.',
+      inputs: [claimIdPin, pin('coverageId', 'string')],
       outputs: [pin('claim', billingTypes.submission)],
       exits: ['ready', 'stale'],
       compute: async (inputs, _, ctx) => {
-        const { pending } = await claims().submission(ctx.runId, claimIdOf(inputs.claimId));
+        const { pending } = await claims().submission(
+          ctx.runId,
+          claimIdOf(inputs.claimId),
+          requiredText(inputs.coverageId, 'No payer to submit the claim to')
+        );
         return pending
           ? { exit: 'ready', outputs: { claim: pending.claim } }
           : { exit: 'stale', outputs: { claim: null } };
@@ -264,7 +205,7 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'File 837P Claim',
       category: CATEGORY,
       description:
-        "Writes a mapped 837P claim into its own numbered 837P file for the clearinghouse, stores it and logs the claim as submitted (or resubmitted) to the payer, once per run step. Continues through blocked, saying why, when the billing profile is missing or incomplete, the claim's data blocks it, the 837P mapping is incomplete or control numbers are used up, and through stale when the claim changed or its payer is no longer the one being billed.",
+        'Writes a mapped 837P claim into its own numbered 837P file for the clearinghouse, stores it and logs the claim as submitted (or resubmitted) to the payer, once per run step. Continues through blocked, saying why, when the billing profile is missing or incomplete, the 837P mapping is incomplete or control numbers are used up, and through stale when the claim changed or its payer is no longer the one being billed. The claim checks run before it, in Check Claim.',
       effect: true,
       inputs: [claimIdPin, pin('coverageId', 'string'), pin('x837', billingTypes.x837)],
       outputs: [pin('controlNumber', 'integer'), pin('reason', 'string')],
@@ -277,9 +218,9 @@ export const cycleNodes: NodesOf = (stores) => {
           exit: 'blocked',
           outputs: { controlNumber: null, reason }
         });
-        const { submitter, pending } = await claims().submission(ctx.runId, claimId);
+        const { submitter, pending } = await claims().submission(ctx.runId, claimId, coverageId);
         if (pending?.coverageId !== coverageId) return stale;
-        const problems = [...submitterIssues(submitter), ...pending.issues];
+        const problems = submitterIssues(submitter);
         if (!submitter || problems.length) return blocked(problems.join('; '));
         let x837: X837Claim;
         try {

@@ -605,7 +605,7 @@ export const createClaimStore = (
         db
           .selectFrom('claim_coverages as cc')
           .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
-          .select(['cc.id', payerName.as('payer')])
+          .select(['cc.id', payerName.as('payer'), 'dp.claim_filing as claimFiling'])
           .where('cc.claim_id', '=', claim.id)
           .orderBy('cc.position')
           .execute(),
@@ -696,18 +696,17 @@ export const createClaimStore = (
       });
     },
 
-    submission: async (runId, claimId) => {
+    submission: async (runId, claimId, coverageId) => {
       const run = await runAgency(db, runId).executeTakeFirst();
       if (!run || !isUuid(claimId)) throw new Error(`Claim ${claimId} does not exist`);
-      const [profile, row, ledger, check] = await Promise.all([
+      const [profile, row, ledger] = await Promise.all([
         findProfile(db, run.agency_id),
         findReadyClaim(db, run.agency_id, claimId),
-        store.ledger(runId, claimId),
-        findClaimCheck(db, run.agency_id, claimId)
+        store.ledger(runId, claimId)
       ]);
       return {
         submitter: profile ? toSubmitter(profile) : null,
-        pending: row && ledger && check ? pendingClaim(row, ledger.events, check, new Date()) : null
+        pending: row && ledger ? pendingClaim(row, ledger.events, coverageId) : null
       };
     },
 

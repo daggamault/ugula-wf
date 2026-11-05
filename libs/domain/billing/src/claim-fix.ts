@@ -402,7 +402,10 @@ export const readClaimPatch = (values: unknown, check: ClaimCheck): ClaimPatch =
   };
 };
 
-export const changesCharges = (p: ClaimPatch) =>
-  [p.tripType, p.level, p.emergency, p.loadedMiles].some((x) => x !== null) ||
-  p.coverage !== null ||
-  p.newCoverage !== null;
+export const chargeChanges = (p: ClaimPatch) => ({
+  tripType: p.tripType !== null,
+  level: p.level !== null,
+  emergency: p.emergency !== null,
+  loadedMiles: p.loadedMiles !== null,
+  payers: p.coverage !== null || p.newCoverage !== null
+});

@@ -52,7 +52,13 @@ describe('ContextView', () => {
         label: 'Task context',
         value: {
           issues: [
-            { level: 'blocking', field: 'diagnoses', message: 'No diagnosis', coverageId: null }
+            {
+              code: 'diagnosis-missing',
+              severity: 'blocking',
+              field: 'diagnoses',
+              message: 'No diagnosis',
+              coverageId: null
+            }
           ],
           warnings: ['The narrative could not be read'],
           notes: ['Suggested by the model'],
@@ -60,7 +66,13 @@ describe('ContextView', () => {
           claim: {
             claimId: CLAIM,
             issues: [
-              { level: 'blocking', field: 'diagnoses', message: 'No diagnosis', coverageId: null }
+              {
+                code: 'diagnosis-missing',
+                severity: 'blocking',
+                field: 'diagnoses',
+                message: 'No diagnosis',
+                coverageId: null
+              }
             ],
             claim: {
               patientId: 'p1',

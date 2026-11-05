@@ -872,6 +872,8 @@ export const describeProgress = (progress: ClaimProgress): string => {
       return 'Waiting on the patient. The next statement goes out 30 days after the last one.';
     case 'collections':
       return 'Every payer and patient statement is done. A balance review task is waiting for a decision.';
+    case 'writeOff':
+      return 'The balance left is within what the agency writes off. Closing as written off.';
     case 'closed':
       return 'Paid in full. Closing.';
   }

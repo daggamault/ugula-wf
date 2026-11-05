@@ -6,34 +6,33 @@ import { createFeeStore } from './queries.ts';
 const PAYER = '0195f2a4-0000-7000-8000-00000000000b';
 
 describe('createFeeStore', () => {
-  it("prefers the directory payer's price over the default", async () => {
+  it("reads the directory payer's prices and the default prices as separate schedules", async () => {
     const { db, queries } = createRecordingDb(() => [
-      { code: 'A0425', amount_cents: 1550 },
-      { code: 'A0427', amount_cents: 50000 }
+      { code: 'A0425', payer_id: null, amount_cents: 1550 },
+      { code: 'A0427', payer_id: null, amount_cents: 60000 },
+      { code: 'A0427', payer_id: PAYER, amount_cents: 50000 }
     ]);
     const store = createFeeStore(db);
-    assert.deepEqual(await store.findFees('r1', PAYER, ['A0427', 'A0425']), {
-      A0425: 1550,
-      A0427: 50000
+    assert.deepEqual(await store.findSchedules('r1', PAYER, ['A0427', 'A0425']), {
+      payer: { A0427: 50000 },
+      default: { A0425: 1550, A0427: 60000 }
     });
     const [q] = queries;
-    assert.ok(q?.sql.startsWith('select distinct on ("code")'));
+    assert.ok(q?.sql.startsWith('select "code", "payer_id", "amount_cents" from "fee_schedules"'));
     assert.ok(q?.sql.includes('and ("payer_id" is null or "payer_id" = $4)'));
-    assert.ok(q?.sql.endsWith('order by "code", "payer_id" asc nulls last'));
+    assert.ok(q?.sql.endsWith('order by "code"'));
     assert.deepEqual(q?.parameters, ['r1', 'A0427', 'A0425', PAYER]);
   });
 
   it('uses only default prices without a valid payer and skips empty lookups', async () => {
     const { db, queries } = createRecordingDb(() => []);
     const store = createFeeStore(db);
-    await store.findFees('r1', null, ['A0427']);
+    await store.findSchedules('r1', null, ['A0427']);
     assert.ok(queries[0]?.sql.includes('and "payer_id" is null'));
-    await store.findFees('r1', 'not-a-uuid', ['A0427']);
-    assert.ok(
-      queries[1]?.sql.endsWith('and "payer_id" is null order by "code", "payer_id" asc nulls last')
-    );
+    await store.findSchedules('r1', 'not-a-uuid', ['A0427']);
+    assert.ok(queries[1]?.sql.endsWith('and "payer_id" is null order by "code"'));
     assert.ok(!queries[1]?.parameters.includes('not-a-uuid'));
-    assert.deepEqual(await store.findFees('r1', null, []), {});
+    assert.deepEqual(await store.findSchedules('r1', null, []), { payer: {}, default: {} });
     assert.equal(queries.length, 2);
   });
 

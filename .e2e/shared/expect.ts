@@ -12,8 +12,8 @@ type ExpectedClaim = {
   warnings?: readonly RegExp[];
 };
 
-const messages = (c: ClaimState, level: string) =>
-  c.issues.filter((i) => i.level === level).map((i) => i.message);
+const messages = (c: ClaimState, severity: string) =>
+  c.issues.filter((i) => i.severity === severity).map((i) => i.message);
 
 const includes = (found: string[], expected: readonly RegExp[], what: string) => {
   for (const pattern of expected) {

@@ -1,19 +1,32 @@
 import type { Adjustment } from './claims.ts';
 import type { RemittanceClaim } from './x835.ts';
 
-type RemittancePosting =
-  | {
-      post: true;
-      paidCents: number;
-      adjustedCents: number;
-      adjustments: Adjustment[];
-      payerClaimNumber: string | null;
-    }
-  | { post: false; reason: string };
+export const REMITTANCE_ROUTES = ['reconcile', 'review', 'unmatched'] as const;
 
-const PATIENT_RESPONSIBILITY = 'PR';
+export type RemittanceRoute = (typeof REMITTANCE_ROUTES)[number];
 
-const ADJUSTMENT_LIMIT = 99;
+export const isRemittanceRoute = (x: unknown): x is RemittanceRoute =>
+  REMITTANCE_ROUTES.includes(x as RemittanceRoute);
+
+export type RemittanceLine = {
+  position: number;
+  reference: string;
+  claimId: string | null;
+  coverageId: string | null;
+  payerName: string | null;
+  denied: boolean;
+  reversal: boolean;
+  takeback: boolean;
+  paidCents: number;
+  adjustments: Adjustment[];
+};
+
+export type RemittancePosting = {
+  position: number;
+  route: RemittanceRoute;
+  message: string;
+  adjustedCents: number;
+};
 
 const POSITIONS: Readonly<Record<string, number>> = {
   '1': 0,
@@ -24,7 +37,7 @@ const POSITIONS: Readonly<Record<string, number>> = {
   '21': 2
 };
 
-const merged = (adjustments: readonly Adjustment[]) => {
+export const mergedAdjustments = (adjustments: readonly Adjustment[]) => {
   const byCode = new Map<string, Adjustment>();
   for (const a of adjustments) {
     const key = `${a.group}:${a.reason}`;
@@ -34,33 +47,21 @@ const merged = (adjustments: readonly Adjustment[]) => {
   return [...byCode.values()].filter((a) => a.cents !== 0);
 };
 
-export const remittancePosting = (c: RemittanceClaim): RemittancePosting => {
-  if (c.reversal) {
-    return {
-      post: false,
-      reason: 'The payer reversed an earlier payment on this claim; post the takeback by hand'
-    };
-  }
-  const adjustments = merged(c.adjustments);
-  if (c.paidCents < 0 || adjustments.some((a) => a.cents < 0)) {
-    return {
-      post: false,
-      reason: 'The remittance takes money back on this claim; post the correction by hand'
-    };
-  }
-  if (adjustments.length > ADJUSTMENT_LIMIT) {
-    return { post: false, reason: 'The remittance has more reason codes than a payment can hold' };
-  }
+export const remittanceLine = (
+  position: number,
+  c: RemittanceClaim,
+  matched: { claimId: string | null; coverageId: string | null; payerName: string | null }
+): RemittanceLine => {
+  const adjustments = mergedAdjustments(c.adjustments);
   return {
-    post: true,
+    position,
+    reference: c.claimNumber,
+    ...matched,
+    denied: c.denied,
+    reversal: c.reversal,
+    takeback: c.paidCents < 0 || adjustments.some((a) => a.cents < 0),
     paidCents: c.paidCents,
-    adjustedCents: c.denied
-      ? 0
-      : adjustments
-          .filter((a) => a.group !== PATIENT_RESPONSIBILITY)
-          .reduce((sum, a) => sum + a.cents, 0),
-    adjustments,
-    payerClaimNumber: c.payerClaimNumber
+    adjustments
   };
 };
 
@@ -78,3 +79,22 @@ export const remittanceCoverage = (
   const position = POSITIONS[status];
   return position === undefined ? null : (coverages[position] ?? null);
 };
+
+export const readPostings = (x: unknown): RemittancePosting[] =>
+  (Array.isArray(x) ? x : []).flatMap((p) => {
+    if (typeof p !== 'object' || p === null) return [];
+    const { position, route, message, adjustedCents } = p as Record<string, unknown>;
+    return typeof position === 'number' && isRemittanceRoute(route)
+      ? [
+          {
+            position,
+            route,
+            message: typeof message === 'string' ? message : '',
+            adjustedCents:
+              typeof adjustedCents === 'number' && Number.isInteger(adjustedCents)
+                ? adjustedCents
+                : 0
+          }
+        ]
+      : [];
+  });

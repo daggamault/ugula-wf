@@ -59,6 +59,7 @@ import { createUserService } from './features/users/service.ts';
 import { type AgencyEnv, guardMethods, requireAgencyAccess } from './shared/access.ts';
 import { type AuthEnv, requireAuth } from './shared/auth.ts';
 import type { Announce } from './shared/live.ts';
+import { createRuleRunner } from './shared/rules.ts';
 import { createSignInThrottle, type ThrottleStore } from './shared/throttle.ts';
 
 type AppDeps = {
@@ -213,7 +214,16 @@ export const createApp = ({
     )
     .route(
       '/claims',
-      createClaimRoutes(createClaimService({ db, boss, blobs, announce, now: () => new Date() }))
+      createClaimRoutes(
+        createClaimService({
+          db,
+          boss,
+          blobs,
+          announce,
+          now: () => new Date(),
+          rules: createRuleRunner(db, nodes)
+        })
+      )
     )
     .use('/submissions/*', guardMethods({ ...read('claims:read'), POST: 'claims:update' }))
     .route(

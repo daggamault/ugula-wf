@@ -174,6 +174,7 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
             'cc.position',
             payerName.as('payer'),
             'cc.payer_id',
+            'dp.claim_filing',
             'cc.payer_code',
             'cc.member_id',
             'cc.group_id',

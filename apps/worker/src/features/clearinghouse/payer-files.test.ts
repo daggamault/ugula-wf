@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { build999 } from '@ugula/billing/mock';
+import { build835, build999 } from '@ugula/billing/mock';
 import { buildTA1 } from '@ugula/billing/mock-waystar';
 import { createRecordingDb, type RowsFor } from '@ugula/db/testing';
 import type { LiveEvent } from '@ugula/live';
@@ -48,9 +48,39 @@ const storeFor = (text: string, rows: RowsFor) => {
 };
 
 describe('createPayerFileStore', () => {
+  it('reads a file without applying it: the kind, and for an 835 each claim payment', async () => {
+    const remittance = build835(
+      [{ claims: [{ claimNumber: '1001', chargeCents: 1_000, paidCents: 800 }] }],
+      { createdAt: new Date('2026-11-03T12:00:00Z') }
+    );
+    const { store, queries } = storeFor(remittance, rowsFor(false));
+    const read = await store.read('r1', { document, fileName: 'a.835' });
+    assert.equal(read.status, 'read');
+    assert.deepEqual(
+      read.status === 'read' ? read.lines.map((l) => [l.position, l.reference, l.claimId]) : [],
+      [[1, '1001', null]]
+    );
+    assert.ok(queries.every((q) => q.sql.startsWith('select')));
+    const ack = await storeFor(rejected, rowsFor(false)).store.read('r1', {
+      document,
+      fileName: 'a.999'
+    });
+    assert.deepEqual(ack, { status: 'read', kind: '999', lines: [] });
+    const seen = await storeFor(rejected, rowsFor(true)).store.read('r1', {
+      document,
+      fileName: 'a.999'
+    });
+    assert.deepEqual(seen, { status: 'duplicate', fileId: 'f0' });
+    const junk = await storeFor('hello', rowsFor(false)).store.read('r1', {
+      document,
+      fileName: 'a.txt'
+    });
+    assert.equal(junk.status, 'unreadable');
+  });
+
   it("applies a file for the run's agency and announces each claim it touched once", async () => {
     const { store, queries, announced } = storeFor(rejected, rowsFor(false));
-    const applied = await store.apply('r1', 'k', { document, fileName: 'a.999' });
+    const applied = await store.apply('r1', 'k', { document, fileName: 'a.999', postings: [] });
     const message = 'The clearinghouse rejected 837P file 7';
     assert.deepEqual(applied, {
       status: 'applied',
@@ -78,7 +108,7 @@ describe('createPayerFileStore', () => {
       transactions: [{ controlNumber: '0001', accepted: true }]
     });
     const { store, announced } = storeFor(accepted, rowsFor(false));
-    assert.deepEqual(await store.apply('r1', 'k', { document, fileName: 'a.999' }), {
+    assert.deepEqual(await store.apply('r1', 'k', { document, fileName: 'a.999', postings: [] }), {
       status: 'applied',
       fileId: 'f1',
       kind: '999',
@@ -90,7 +120,7 @@ describe('createPayerFileStore', () => {
 
   it('applies the same file only once per agency', async () => {
     const { store, queries, announced } = storeFor(rejected, rowsFor(true));
-    assert.deepEqual(await store.apply('r1', 'k', { document, fileName: 'a.999' }), {
+    assert.deepEqual(await store.apply('r1', 'k', { document, fileName: 'a.999', postings: [] }), {
       status: 'duplicate',
       fileId: 'f0'
     });
@@ -105,12 +135,15 @@ describe('createPayerFileStore', () => {
 
   it('says why a file cannot be read without writing anything', async () => {
     const empty = storeFor('', rowsFor(false));
-    assert.deepEqual(await empty.store.apply('r1', 'k', { document, fileName: 'a.999' }), {
-      status: 'unreadable',
-      reason: 'The file is empty'
-    });
+    assert.deepEqual(
+      await empty.store.apply('r1', 'k', { document, fileName: 'a.999', postings: [] }),
+      {
+        status: 'unreadable',
+        reason: 'The file is empty'
+      }
+    );
     const text = storeFor('hello', rowsFor(false));
-    const unread = await text.store.apply('r1', 'k', { document, fileName: 'a.txt' });
+    const unread = await text.store.apply('r1', 'k', { document, fileName: 'a.txt', postings: [] });
     assert.equal(unread.status, 'unreadable');
     assert.equal(text.queries.length, 1);
   });
@@ -134,6 +167,8 @@ describe('createPayerFileStore', () => {
 
   it('refuses files for unknown runs', async () => {
     const { store } = storeFor(rejected, () => []);
-    await assert.rejects(() => store.apply('r9', 'k', { document, fileName: 'a.999' }));
+    await assert.rejects(() =>
+      store.apply('r9', 'k', { document, fileName: 'a.999', postings: [] })
+    );
   });
 });

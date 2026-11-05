@@ -108,7 +108,7 @@ export type ClaimState = {
     lines: { code: string; units: string | number }[];
     tasks: { id: string; title: string }[];
   };
-  issues: { level: string; field: string; message: string }[];
+  issues: { code: string; severity: string; field: string; message: string }[];
 };
 
 export const uploadEncounters = async (s: Session, pcr: string, fixture?: string) => {

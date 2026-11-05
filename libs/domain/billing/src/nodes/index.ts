@@ -18,10 +18,12 @@ export type {
   DraftClaim,
   EligibilityCheck,
   ExchangeStore,
+  FeeSchedules,
   FeeStore,
   PatientStore,
   PayerFileStore,
-  PayerStore
+  PayerStore,
+  ReadPayerFile
 } from './stores.ts';
 
 export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {

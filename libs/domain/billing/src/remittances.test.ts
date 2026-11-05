@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { remittanceCoverage, remittancePosting } from './remittances.ts';
+import {
+  mergedAdjustments,
+  readPostings,
+  remittanceCoverage,
+  remittanceLine
+} from './remittances.ts';
 import type { RemittanceClaim } from './x835.ts';
 
 const paid: RemittanceClaim = {
@@ -20,87 +25,62 @@ const paid: RemittanceClaim = {
   reversal: false
 };
 
-describe('remittancePosting', () => {
-  it('posts the payment, adjusts off all but patient responsibility, and keeps every reason code', () => {
-    assert.deepEqual(remittancePosting(paid), {
-      post: true,
+const matched = { claimId: 'c1', coverageId: 'mcr', payerName: 'Medicare' };
+
+describe('remittanceLine', () => {
+  it('states what the payer sent with the claim and payer it matched, merging reason codes', () => {
+    assert.deepEqual(remittanceLine(3, paid, matched), {
+      position: 3,
+      reference: '1001',
+      ...matched,
+      denied: false,
+      reversal: false,
+      takeback: false,
       paidCents: 60_000,
-      adjustedCents: 25_000,
       adjustments: [
         { group: 'CO', reason: '45', cents: 25_000 },
         { group: 'PR', reason: '1', cents: 10_000 },
         { group: 'PR', reason: '2', cents: 5_000 }
-      ],
-      payerClaimNumber: 'ICN-1'
-    });
-  });
-
-  it('posts a denial with its reason codes but keeps the balance for a biller to reconcile', () => {
-    assert.deepEqual(
-      remittancePosting({
-        ...paid,
-        status: '4',
-        denied: true,
-        paidCents: 0,
-        adjustments: [{ group: 'CO', reason: '16', cents: 100_000 }]
-      }),
-      {
-        post: true,
-        paidCents: 0,
-        adjustedCents: 0,
-        adjustments: [{ group: 'CO', reason: '16', cents: 100_000 }],
-        payerClaimNumber: 'ICN-1'
-      }
-    );
-  });
-
-  it('leaves reversals and takebacks to a biller', () => {
-    assert.equal(remittancePosting({ ...paid, reversal: true }).post, false);
-    assert.equal(
-      remittancePosting({ ...paid, adjustments: [{ group: 'CO', reason: '45', cents: -500 }] })
-        .post,
-      false
-    );
-    assert.deepEqual(remittancePosting({ ...paid, paidCents: -100, adjustments: [] }), {
-      post: false,
-      reason: 'The remittance takes money back on this claim; post the correction by hand'
-    });
-  });
-
-  it('nets a reason code that a later CAS cancels, and posts other adjustment groups', () => {
-    const posting = remittancePosting({
-      ...paid,
-      adjustments: [
-        { group: 'CO', reason: '45', cents: 500 },
-        { group: 'CO', reason: '45', cents: -500 },
-        { group: 'OA', reason: '23', cents: 1_000 },
-        { group: 'PI', reason: '96', cents: 200 },
-        { group: 'PR', reason: '3', cents: 2_500 }
       ]
     });
-    assert.deepEqual(posting, {
-      post: true,
-      paidCents: 60_000,
-      adjustedCents: 1_200,
-      adjustments: [
-        { group: 'OA', reason: '23', cents: 1_000 },
-        { group: 'PI', reason: '96', cents: 200 },
-        { group: 'PR', reason: '3', cents: 2_500 }
-      ],
-      payerClaimNumber: 'ICN-1'
-    });
   });
 
-  it('leaves remittances with more reason codes than a payment holds to a biller', () => {
-    const many = Array.from({ length: 100 }, (_, i) => ({
-      group: 'CO' as const,
-      reason: String(i + 1),
-      cents: 1
-    }));
-    assert.deepEqual(remittancePosting({ ...paid, adjustments: many }), {
-      post: false,
-      reason: 'The remittance has more reason codes than a payment can hold'
-    });
+  it('flags takebacks, reversals and denials as facts for the routing rules', () => {
+    assert.equal(remittanceLine(1, { ...paid, paidCents: -100 }, matched).takeback, true);
+    const negative = { ...paid, adjustments: [{ group: 'CO' as const, reason: '45', cents: -5 }] };
+    assert.equal(remittanceLine(1, negative, matched).takeback, true);
+    const reversed = remittanceLine(1, { ...paid, reversal: true, denied: true }, matched);
+    assert.deepEqual([reversed.reversal, reversed.denied], [true, true]);
+  });
+});
+
+describe('mergedAdjustments', () => {
+  it('nets a reason code that a later CAS cancels', () => {
+    assert.deepEqual(
+      mergedAdjustments([
+        { group: 'CO', reason: '45', cents: 500 },
+        { group: 'CO', reason: '45', cents: -500 },
+        { group: 'OA', reason: '23', cents: 1_000 }
+      ]),
+      [{ group: 'OA', reason: '23', cents: 1_000 }]
+    );
+  });
+});
+
+describe('readPostings', () => {
+  it('keeps the routing decisions a graph made, dropping malformed ones', () => {
+    assert.deepEqual(
+      readPostings([
+        { position: 1, route: 'reconcile', message: '', adjustedCents: 2_500, reasons: [] },
+        { position: 2, route: 'review', message: 'Reversed' },
+        { position: 3, route: 'appeal' },
+        null
+      ]),
+      [
+        { position: 1, route: 'reconcile', message: '', adjustedCents: 2_500 },
+        { position: 2, route: 'review', message: 'Reversed', adjustedCents: 0 }
+      ]
+    );
   });
 });
 

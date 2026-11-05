@@ -48,7 +48,11 @@ export const graph = (signature: Signature, variables: VariableDef[] = []) => {
       def.edges.push({ from: node, fromPin: pin, to: toNode, toPin });
     }
   };
-  const ret = (id: string, pin?: string) => add(id, RETURN_TYPE, pin ? { config: { pin } } : {});
+  const ret = (id: string, pin?: string, fixed?: Record<string, Json>) =>
+    add(id, RETURN_TYPE, {
+      ...(pin ? { config: { pin } } : {}),
+      ...(fixed ? { values: fixed } : {})
+    });
   const input = (id: string, pin: string) => add(id, INPUT_TYPE, { config: { pin } });
   return { add, wire, ret, input, def };
 };
@@ -85,6 +89,12 @@ type DecisionDefinition = {
   otherwise: Record<string, Json>;
 };
 
+type LookupDefinition = {
+  type: ValueType;
+  rows: { key: string; value: Json }[];
+  fallback?: Json;
+};
+
 export const createTables = () => {
   const tables = new Map<string, SeedTable>();
   const decision = (
@@ -96,5 +106,14 @@ export const createTables = () => {
     tables.set(key, { key, name, kind: 'decide', description, definition: definition as Json });
     return { inputs: definition.inputs, outputs: definition.outputs, table: { key } } as Json;
   };
-  return { decision, list: () => [...tables.values()] };
+  const lookup = (
+    key: string,
+    name: string,
+    description: string,
+    definition: LookupDefinition
+  ): Json => {
+    tables.set(key, { key, name, kind: 'lookup', description, definition: definition as Json });
+    return { type: definition.type, table: { key } } as Json;
+  };
+  return { decision, lookup, list: () => [...tables.values()] };
 };

@@ -1,4 +1,4 @@
-import { claimIssues, nextClaimStep } from '@ugula/billing';
+import { checkFactsOf, ledgerFactsOf, readClaimStep, readIssues } from '@ugula/billing';
 import {
   applyClaimEdit,
   type ClaimEdit,
@@ -19,6 +19,7 @@ import { listLedgerEvents } from '../../shared/ledger.ts';
 import { type Announce, announced } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
+import type { RuleRunner } from '../../shared/rules.ts';
 import {
   type ClaimFilters,
   claimExists,
@@ -41,7 +42,12 @@ type ClaimServiceDeps = {
   now: () => Date;
   blobs: Pick<BlobStore, 'getBytes'>;
   announce: Announce;
+  rules: RuleRunner;
 };
+
+export const NEXT_CLAIM_STEP_RULE = 'billing.next-claim-step';
+
+export const CLAIM_CHECKS_RULE = 'billing.claim-checks';
 
 const CYCLE_WORKFLOW = { key: 'billing.cycle-claim', version: 1 };
 
@@ -91,7 +97,7 @@ const claimEdit = (data: BillingData): ClaimEdit => ({
   note: data.note
 });
 
-export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServiceDeps) => {
+export const createClaimService = ({ db, boss, now, blobs, announce, rules }: ClaimServiceDeps) => {
   const write = <T>(agencyId: string, id: string, work: (tx: Db) => Promise<Result<T>>) =>
     announced(announce, agencyId, db.transaction().execute(work), () => [{ kind: 'claim', id }]);
   const nudge = (tx: Db, agencyId: string, claimId: string) =>
@@ -111,22 +117,31 @@ export const createClaimService = ({ db, boss, now, blobs, announce }: ClaimServ
         open ? listLedgerEvents(db, id) : [],
         findClaimCheck(db, agencyId, id)
       ]);
-      const progress = open
-        ? nextClaimStep(
+      const at = now();
+      const ledger = open
+        ? ledgerFactsOf(
             {
               totalCents: claim.total_cents,
-              coverages: claim.coverages.map((c) => ({ id: c.id, payer: c.payer })),
+              coverages: claim.coverages.map((c) => ({
+                id: c.id,
+                payer: c.payer,
+                claimFiling: c.claim_filing
+              })),
               events
             },
-            now()
+            at
           )
         : null;
+      const [step, checked] = await Promise.all([
+        ledger ? rules(agencyId, NEXT_CLAIM_STEP_RULE, { ledger }, at) : null,
+        check ? rules(agencyId, CLAIM_CHECKS_RULE, { facts: checkFactsOf(check, at) }, at) : null
+      ]);
       return ok({
         claim,
         files,
         payerFiles,
-        progress,
-        issues: check ? claimIssues(check, now()) : []
+        progress: step && ledger ? readClaimStep(step, ledger) : null,
+        issues: readIssues(checked?.issues)
       });
     },
 

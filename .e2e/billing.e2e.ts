@@ -65,7 +65,7 @@ describe('a biller takes an encounter from import to payment', { timeout: SUITE_
     });
     assert.ok(reviewed, 'a biller reviewed the PCR');
     assert.deepEqual(
-      built.issues.filter((i) => i.level === 'blocking'),
+      built.issues.filter((i) => i.severity === 'blocking'),
       [],
       'a complete report builds a claim with nothing blocking it'
     );

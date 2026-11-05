@@ -56,30 +56,40 @@ const claim = {
   report: { bucket: 'ugula', key: 'imports/t/f.xml.reports/00000.json' }
 };
 
+const lines = [
+  { code: 'A0427', units: 1 },
+  { code: 'A0425', units: 2.5 }
+];
+
 describe('claimNodes', () => {
-  it('prices claim lines with payer-specific fees and names the codes without a fee', async () => {
-    const fees = feesFor();
-    const node = nodesFor(memoryClaims().store, fees.store);
-    const price = node('price-claim');
-    const lines = [
-      { code: 'A0427', units: 1 },
-      { code: 'A0425', units: 2.5 }
-    ];
-    assert.deepEqual((await run(price, { lines, payerId: 'p-medicare' })).outputs, {
+  it('finds the payer and default fee schedules separately, for Price Precedence to choose', async () => {
+    const node = nodesFor();
+    assert.deepEqual((await run(node('find-fees'), { lines, payerId: 'p-medicare' })).outputs, {
+      payerFees: { A0427: 50000, A0425: 95000 },
+      defaultFees: { A0427: 95000, A0425: 95000 }
+    });
+    assert.deepEqual((await run(node('find-fees'), { lines })).outputs.payerFees, {});
+  });
+
+  it('prices lines at the chosen fees and names the codes without one', async () => {
+    const price = nodesFor()('price-lines');
+    assert.deepEqual((await run(price, { lines, fees: { A0427: 50000, A0425: 1000 } })).outputs, {
       lines: [
         { code: 'A0427', units: 1, unitCents: 50000, totalCents: 50000 },
-        { code: 'A0425', units: 2.5, unitCents: 95000, totalCents: 237500 }
+        { code: 'A0425', units: 2.5, unitCents: 1000, totalCents: 2500 }
       ],
-      totalCents: 287500,
+      totalCents: 52500,
       missing: []
     });
-    const unscheduled = [{ code: 'A0999', units: 1 }];
-    const missing = await run(price, { lines: unscheduled });
-    assert.deepEqual([missing.pin, missing.outputs.missing], ['unpriced', ['A0999']]);
+    const partial = await run(price, { lines, fees: { A0427: -5, A0425: 12.5 } });
+    assert.deepEqual(partial.outputs.missing, ['A0427', 'A0425']);
+  });
+
+  it('keeps prices a biller sets for the claim, and saves them to the schedule on request', async () => {
+    const fees = feesFor();
+    const node = nodesFor(memoryClaims().store, fees.store);
     const set = await run(node('set-fee'), { code: 'A0999', unitPrice: 12.345 });
     assert.deepEqual(set.outputs.fees, { A0999: 1235 });
-    const priced = await run(price, { lines: unscheduled, fees: set.outputs.fees });
-    assert.deepEqual([priced.pin, priced.outputs.totalCents], ['priced', 1235]);
     assert.deepEqual(fees.saved, []);
     await run(node('set-fee'), { code: 'A0999', unitPrice: 20, saveToSchedule: true });
     assert.deepEqual(fees.saved, [[null, 'A0999', 2000]]);
@@ -113,13 +123,10 @@ describe('claimNodes', () => {
       /No claim to work on/
     );
   });
-
-  it('saves a draft claim and validates it with the submission checks', async () => {
+  it('saves a draft claim and reads it back as check facts', async () => {
     const claims = memoryClaims();
     const node = nodesFor(claims.store);
-    const [validate, save] = ['validate-claim', 'save-claim'].map(node);
-    if (!validate || !save) throw new Error('Missing claim nodes');
-    await run(save, { claimId: 'c1', claim });
+    await run(node('save-claim'), { claimId: 'c1', claim });
     const [saved] = claims.saved;
     assert.deepEqual(
       saved?.coverages.map((c) => c.payer),
@@ -129,65 +136,23 @@ describe('claimNodes', () => {
     assert.equal(saved?.tripType, 'emergency');
     assert.equal(saved?.coverages[0]?.memberId, 'M1');
     assert.deepEqual(saved?.details.diagnoses, ['R079']);
-    const invalid = await run(validate, { claimId: 'c1' });
-    assert.equal(invalid.pin, 'invalid');
-    assert.ok(
-      (invalid.outputs.visible as string[]).includes('pickupAddressLine') &&
-        (invalid.outputs.visible as string[]).includes('coverageId')
-    );
-    assert.deepEqual(invalid.outputs.options, {
-      coverageId: [
-        { value: 'cov-Medicare', label: 'Medicare · M1' },
-        { value: 'cov-Blue', label: 'Blue' }
-      ],
-      payerId: [{ value: 'p-Medicare', label: 'Medicare (Medicare Part B)' }]
-    });
+    const read = await run(node('read-claim-checks'), { claimId: 'c1' });
+    const facts = read.outputs.facts as { diagnosisCount: number; pickupMissing: string[] };
+    assert.equal(facts.diagnosisCount, 1);
+    assert.deepEqual(facts.pickupMissing, ['street address', 'city', 'state', 'ZIP code']);
+    assert.deepEqual(read.outputs.skipped, []);
     await assert.rejects(
-      async () => run(save, { claimId: 'c1', claim: { ...claim, level: null } }),
+      async () => run(node('save-claim'), { claimId: 'c1', claim: { ...claim, level: null } }),
       /level of service/
     );
-    await assert.rejects(async () => run(validate, { claimId: 'c9' }), /does not exist/);
-  });
-
-  it('passes a complete claim, and offers every field when asked to', async () => {
-    const node = nodesFor(memoryClaims({ check: completeCheck() }).store);
-    const valid = await run(node('validate-claim'), { claimId: 'c1' });
-    assert.deepEqual(
-      [valid.pin, valid.outputs.issues, valid.outputs.visible],
-      ['valid', [], ['note']]
+    await assert.rejects(
+      async () => run(node('read-claim-checks'), { claimId: 'c9' }),
+      /does not exist/
     );
-    const all = await run(node('validate-claim'), { claimId: 'c1', all: true });
-    assert.ok((all.outputs.visible as string[]).includes('serviceDate'));
-    assert.equal((all.outputs.defaults as { serviceDate: string }).serviceDate, '2025-12-30');
   });
 
-  it('ignores prices set for the claim that are not whole, non-negative cents', async () => {
-    const node = nodesFor();
-    const priced = await run(node('price-claim'), {
-      lines: [
-        { code: 'A0427', units: 1 },
-        { code: 'A0999', units: 1 }
-      ],
-      fees: { A0427: -5, A0999: 12.5 }
-    });
-    assert.deepEqual([priced.pin, priced.outputs.missing], ['unpriced', ['A0999']]);
-    assert.equal((priced.outputs.lines as { unitCents: number }[])[0]?.unitCents, 95000);
-  });
-
-  it('leaves the issues of skipped payers out of validation', async () => {
-    const check = completeCheck();
-    const claims = memoryClaims({
-      check: {
-        ...check,
-        payers: check.payers.map((p) => (p.name === 'Blue' ? { ...p, payerId: null } : p))
-      }
-    });
-    const validate = nodesFor(claims.store)('validate-claim');
-    const blocked = await run(validate, { claimId: 'c1' });
-    assert.deepEqual(
-      [blocked.pin, (blocked.outputs.issues as { coverageId: string }[])[0]?.coverageId],
-      ['invalid', 'cov-Blue']
-    );
+  it('lists the payers already skipped, whose issues no longer matter', async () => {
+    const claims = memoryClaims({ check: completeCheck() });
     claims.events.push({
       kind: 'payer_skipped',
       coverageId: 'cov-Blue',
@@ -200,10 +165,33 @@ describe('claimNodes', () => {
       adjustments: [],
       at: '2026-01-01T00:00:00.000Z'
     });
-    assert.equal((await run(validate, { claimId: 'c1' })).pin, 'valid');
+    const read = await run(nodesFor(claims.store)('read-claim-checks'), { claimId: 'c1' });
+    assert.deepEqual(read.outputs.skipped, ['cov-Blue']);
   });
 
-  it('patches the claim from a fix task and asks for repricing when charges change', async () => {
+  it('lays out the fix form from the fields the issues name, or every field', async () => {
+    const node = nodesFor(memoryClaims({ check: completeCheck() }).store);
+    const issue = {
+      code: 'member-id-missing',
+      severity: 'blocking',
+      field: 'memberId',
+      message: 'The member ID for Blue is missing',
+      coverageId: 'cov-Blue'
+    };
+    const form = await run(node('fix-claim-form'), { claimId: 'c1', issues: [issue] });
+    assert.ok((form.outputs.visible as string[]).includes('memberId'));
+    assert.equal((form.outputs.defaults as { coverageId: string }).coverageId, 'cov-Blue');
+    assert.deepEqual((form.outputs.options as { payerId: unknown }).payerId, [
+      { value: 'p-Medicare', label: 'Medicare (Medicare Part B)' }
+    ]);
+    const none = await run(node('fix-claim-form'), { claimId: 'c1', issues: [] });
+    assert.deepEqual(none.outputs.visible, ['note']);
+    const all = await run(node('fix-claim-form'), { claimId: 'c1', issues: [], all: true });
+    assert.ok((all.outputs.visible as string[]).includes('serviceDate'));
+    assert.equal((all.outputs.defaults as { serviceDate: string }).serviceDate, '2025-12-30');
+  });
+
+  it('patches the claim from a fix task and says what changed for the reprice rule', async () => {
     const check = completeCheck();
     const claims = memoryClaims({
       check: { ...check, details: { ...check.details, serviceDate: null, diagnoses: [] } }
@@ -217,7 +205,13 @@ describe('claimNodes', () => {
       pickupPostalCode: '62704',
       note: 'From the run sheet'
     });
-    assert.equal(dated.pin, 'patched');
+    assert.deepEqual(dated.outputs.changes, {
+      tripType: false,
+      level: false,
+      emergency: false,
+      loadedMiles: false,
+      payers: false
+    });
     assert.equal(claims.current()?.details.serviceDate, '2025-12-29');
     assert.deepEqual(claims.current()?.details.diagnoses, ['R079']);
     assert.equal(claims.current()?.details.pickup.postalCode, '62704');
@@ -229,14 +223,14 @@ describe('claimNodes', () => {
       coverageId: 'cov-Medicare',
       removeCoverage: true
     });
-    assert.deepEqual(repriced.pin, 'reprice');
     assert.deepEqual(repriced.outputs, {
+      changes: { tripType: false, level: true, emergency: false, loadedMiles: false, payers: true },
       tripType: 'emergency',
       service: { level: 'BLS', emergency: true, loadedMiles: 7.3, basis: [] },
       payerId: 'p-Blue'
     });
-    const lines = [{ code: 'A0429', units: 1, unitCents: 70_000, totalCents: 70_000 }];
-    await run(patch, { claimId: 'c1', lines });
+    const repricedLines = [{ code: 'A0429', units: 1, unitCents: 70_000, totalCents: 70_000 }];
+    await run(patch, { claimId: 'c1', lines: repricedLines });
     assert.equal(claims.current()?.totalCents, 70_000);
   });
 

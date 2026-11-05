@@ -5,14 +5,26 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ClaimIssues, isIssueList } from './claim-issues.tsx';
 
 const ISSUES = [
-  { level: 'blocking', field: 'memberId', message: 'The member ID is missing', coverageId: 'c1' },
-  { level: 'warning', field: 'loadedMiles', message: 'Check the odometers', coverageId: null }
+  {
+    code: 'member-id-missing',
+    severity: 'blocking',
+    field: 'memberId',
+    message: 'The member ID is missing',
+    coverageId: 'c1'
+  },
+  {
+    code: 'loaded-miles-unlikely',
+    severity: 'warning',
+    field: 'loadedMiles',
+    message: 'Check the odometers',
+    coverageId: null
+  }
 ] as const;
 
 describe('ClaimIssues', () => {
   it('recognizes claim issues', () => {
     assert.equal(isIssueList([...ISSUES]), true);
-    assert.equal(isIssueList([{ level: 'oops', field: 'memberId', message: 'x' }]), false);
+    assert.equal(isIssueList([{ severity: 'oops', field: 'memberId', message: 'x' }]), false);
     assert.equal(isIssueList('x'), false);
   });
 

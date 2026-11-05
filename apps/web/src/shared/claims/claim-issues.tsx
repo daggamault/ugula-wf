@@ -1,4 +1,9 @@
-import { CLAIM_FIELDS, CLAIM_ISSUE_LEVELS, type ClaimField, type ClaimIssue } from '@ugula/billing';
+import {
+  CLAIM_FIELDS,
+  CLAIM_ISSUE_SEVERITIES,
+  type ClaimField,
+  type ClaimIssue
+} from '@ugula/billing';
 import { isRecord, type Json } from '@ugula/graph';
 import { AlertList } from '../ui/alert.tsx';
 
@@ -30,7 +35,7 @@ const CLAIM_FIELD_LABELS: Readonly<Record<ClaimField, string>> = {
 
 const isIssue = (x: Json): x is ClaimIssue =>
   isRecord(x) &&
-  CLAIM_ISSUE_LEVELS.some((l) => l === x.level) &&
+  CLAIM_ISSUE_SEVERITIES.some((l) => l === x.severity) &&
   CLAIM_FIELDS.some((f) => f === x.field) &&
   typeof x.message === 'string';
 
@@ -41,8 +46,8 @@ const itemsOf = (issues: readonly ClaimIssue[]) =>
   issues.map((i) => ({ label: CLAIM_FIELD_LABELS[i.field], text: i.message }));
 
 export const ClaimIssues = ({ issues }: { issues: readonly ClaimIssue[] }) => {
-  const blocking = issues.filter((i) => i.level === 'blocking');
-  const warnings = issues.filter((i) => i.level === 'warning');
+  const blocking = issues.filter((i) => i.severity === 'blocking');
+  const warnings = issues.filter((i) => i.severity === 'warning');
   return (
     <>
       {blocking.length ? (
