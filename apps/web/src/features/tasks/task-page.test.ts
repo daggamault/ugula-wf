@@ -3,7 +3,8 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
-import type { TaskDetail, TasksClient } from './client.ts';
+import type { TaskClaim, TaskDetail, TasksClient } from './client.ts';
+import { headlineOf } from './task-brief.tsx';
 import { backOfTask, fieldErrorsOf, NextUp, TaskAbout, TaskPage, TaskView } from './task-page.tsx';
 
 const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
@@ -13,6 +14,7 @@ const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
   queue: 'billing-review',
   title: 'Review PCR',
   subject: 'PCR-1 · Jane Doe',
+  summary: null,
   priority: 0,
   due_at: null,
   permission: null,
@@ -27,6 +29,24 @@ const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
   defaults: { note: 'looks fine' },
   resolution: null,
   source: { reportId: null, pcrNumber: null, claim: null },
+  ...patch
+});
+
+const claimOf = (patch: Partial<TaskClaim> = {}): TaskClaim => ({
+  id: 'c1',
+  number: '20261101-0012',
+  status: 'draft',
+  patient: null,
+  birthDate: null,
+  serviceDate: null,
+  tripType: null,
+  level: null,
+  emergency: null,
+  loadedMiles: null,
+  totalCents: null,
+  balanceCents: null,
+  payers: [],
+  lines: [],
   ...patch
 });
 
@@ -48,7 +68,8 @@ describe('TaskView', () => {
     const html = render(task(), 'SOURCE PANEL');
     assert.ok(html.includes('PCR-1 · Jane Doe</h1>'));
     assert.ok(html.includes('Billing Review') && html.includes('Review PCR'));
-    assert.ok(html.includes('What to Do') && html.includes('Check the charges.'));
+    assert.ok(html.includes('The Issue') && html.includes('What&#x27;s Needed'));
+    assert.ok(html.includes('Check the charges.'));
     assert.ok(html.includes('ALS1'));
     assert.ok(html.includes('value="looks fine"'));
     assert.ok(html.includes('>Approve<') && html.includes('>Keep Waiting<'));
@@ -59,6 +80,45 @@ describe('TaskView', () => {
     assert.ok(!html.includes('Open Claim'));
   });
 
+  it('leads with the summary, else the first blocking issue, and shows the claim it is about', () => {
+    const issues = [
+      {
+        code: 'msp',
+        field: 'msp',
+        message: 'Answer the MSP questions',
+        coverageId: null,
+        severity: 'warning'
+      },
+      {
+        code: 'pcs',
+        field: 'pcs',
+        message: 'A PCS is needed',
+        coverageId: null,
+        severity: 'blocking'
+      }
+    ];
+    assert.equal(headlineOf(task({ context: { issues } })), 'A PCS is needed');
+    assert.equal(
+      headlineOf(task({ summary: 'Medicare denied: CO-16', context: { issues } })),
+      'Medicare denied: CO-16'
+    );
+    assert.equal(headlineOf(task()), 'Review PCR');
+    const claim = claimOf({
+      patient: 'Doe, Jane',
+      serviceDate: '2026-09-14',
+      tripType: 'emergency',
+      level: 'BLS',
+      emergency: true,
+      payers: [{ payer: 'Medicare', memberId: '1EG4', eligibility: 'active' }],
+      lines: [{ code: 'A0429', units: 1, totalCents: 80000 }],
+      balanceCents: 80000
+    });
+    const html = render(task({ source: { reportId: null, pcrNumber: null, claim } }));
+    assert.ok(html.includes('Medicare') && html.includes('1EG4 · active'));
+    assert.ok(html.includes('A0429 × 1') && html.includes('BLS emergency'));
+    assert.ok(html.indexOf('The Issue') < html.indexOf('Workflow Details'));
+  });
+
   it('shows when a task is due and blocks completing it without its permission', () => {
     const html = render(task({ due_at: '2026-02-01T00:00:00Z', permission: 'claims:approve' }));
     assert.ok(html.includes('due <time dateTime="2026-02-01T00:00:00Z"'));
@@ -67,7 +127,7 @@ describe('TaskView', () => {
   });
 
   it('links the claim a task is about as a reference, and goes back to the tasks', () => {
-    const claim = { id: 'c1', number: '20261101-0012', status: 'draft', patient: null } as const;
+    const claim = claimOf();
     const onClaim = task({ source: { reportId: null, pcrNumber: 'PCR-1', claim } });
     const html = render(onClaim);
     assert.ok(html.includes('Review PCR on claim <a'));
@@ -209,12 +269,7 @@ describe('TaskPage', () => {
 
 describe('TaskAbout', () => {
   it('says what a task is and which claim it is on in one sentence', () => {
-    const claim = {
-      id: 'c1',
-      number: '20261101-0012',
-      status: 'draft',
-      patient: 'Doe, Jane'
-    } as const;
+    const claim = claimOf({ patient: 'Doe, Jane' });
     const text = (t: ReturnType<typeof task>) =>
       renderToStaticMarkup(createElement(TaskAbout, { task: t })).replace(/<[^>]+>/g, '');
     assert.equal(text(task()), 'Review PCR');

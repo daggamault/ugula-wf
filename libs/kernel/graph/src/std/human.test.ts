@@ -28,6 +28,7 @@ describe('human task node', () => {
       config: { ...config, permission: 'claims:approve' },
       inputs: {
         subject: 'Claim C1 · Jane Doe',
+        summary: 'Medicare needs a PCS',
         context: { claimId: 'C1' },
         priority: 2,
         due: '2026-12-01T00:00:00.000Z'
@@ -48,6 +49,7 @@ describe('human task node', () => {
         fields: [reasonField],
         outcomes: ['approve', 'reject'],
         subject: 'Claim C1 · Jane Doe',
+        summary: 'Medicare needs a PCS',
         context: { claimId: 'C1' },
         defaults: null,
         assignee: null,
@@ -125,6 +127,7 @@ describe('human task node', () => {
       fields,
       outcomes: ['approve', 'reject'],
       subject: null,
+      summary: null,
       context: null,
       defaults: null,
       assignee: null,

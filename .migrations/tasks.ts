@@ -17,6 +17,7 @@ const buildTasksTable = (db: Kysely<Database>) =>
     .addColumn('queue', 'text', (col) => col.notNull())
     .addColumn('title', 'text', (col) => col.notNull())
     .addColumn('subject', 'text')
+    .addColumn('summary', 'text')
     .addColumn('instructions', 'text', (col) => col.notNull().defaultTo(''))
     .addColumn('context', 'json', (col) => col.notNull())
     .addColumn('fields', 'jsonb', (col) => col.notNull())

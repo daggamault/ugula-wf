@@ -337,6 +337,7 @@ type TasksTable = {
   queue: string;
   title: string;
   subject: string | null;
+  summary: string | null;
   instructions: Generated<string>;
   context: JsonColumn;
   fields: JsonColumn;

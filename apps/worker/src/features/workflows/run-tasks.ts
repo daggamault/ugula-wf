@@ -11,6 +11,7 @@ export type TaskInsert = {
   queue: string;
   title: string;
   subject: string | null;
+  summary: string | null;
   instructions: string;
   context: Json;
   fields: Json;
@@ -52,6 +53,7 @@ export const insertTask = async (tx: Kysely<Database>, t: TaskInsert) => {
       queue: t.queue,
       title: t.title,
       subject: t.subject,
+      summary: t.summary,
       instructions: t.instructions,
       context: JSON.stringify(t.context),
       fields: JSON.stringify(t.fields),

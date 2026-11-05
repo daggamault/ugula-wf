@@ -112,6 +112,7 @@ describe('createRunTx', () => {
       queue: 'q',
       title: 'T',
       subject: 'PCR-1',
+      summary: null,
       instructions: '',
       context: null,
       fields: [],

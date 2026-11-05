@@ -11,6 +11,7 @@ const task: TaskInsert = {
   queue: 'q',
   title: 'T',
   subject: null,
+  summary: null,
   instructions: '',
   context: null,
   fields: [],

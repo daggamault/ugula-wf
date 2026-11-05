@@ -150,7 +150,9 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await toast('Assigned to you');
     await s.page.getByRole('button', { name: 'Unassign' }).click();
     await toast('Unassigned');
-    await section(s.page, 'Details').first().waitFor();
+    await section(s.page, 'The Issue').first().waitFor();
+    await section(s.page, 'Claim').first().waitFor();
+    await section(s.page, 'Workflow Details').first().waitFor();
     const decision = section(s.page, 'Your Decision').last();
     const level = listboxByLabel(decision, /^Level of Service/i);
     const chosen = await chosenValue(level);

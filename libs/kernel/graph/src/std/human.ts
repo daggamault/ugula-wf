@@ -50,13 +50,14 @@ export const createHumanTaskNode = (permissions?: readonly string[]) =>
     title: 'Human Task',
     category: 'Human',
     description:
-      'Pauses the run and queues a task for a person, continuing through the outcome they choose. Visible limits the task to some of its fields; the others output nothing. Due is when the task must be done by; Permission names the permission whoever completes it needs.',
+      'Pauses the run and queues a task for a person, continuing through the outcome they choose. Summary says in one line what this task is about and what it needs. Visible limits the task to some of its fields; the others output nothing. Due is when the task must be done by; Permission names the permission whoever completes it needs.',
     config: taskConfigOf(permissions),
     signature: ({ fields, outcomes }) => ({
       execIn: ['exec'],
       execOut: outcomes,
       inputs: [
         pin('subject', 'string', { optional: true }),
+        pin('summary', 'string', { optional: true }),
         pin('context', 'any', { optional: true }),
         pin('defaults', { object: {} }, { optional: true }),
         pin('options', { object: {} }, { optional: true }),
@@ -86,6 +87,7 @@ export const createHumanTaskNode = (permissions?: readonly string[]) =>
               fields,
               outcomes: config.outcomes,
               subject: await read('subject'),
+              summary: await read('summary'),
               context: await read('context'),
               defaults: await read('defaults'),
               assignee: await read('assignee'),

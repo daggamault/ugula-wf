@@ -107,7 +107,17 @@ export const createTaskService = ({ db, boss, announce }: TaskServiceDeps) => {
               id: source.claim_id,
               number: source.claim_number,
               status: source.claim_status,
-              patient: source.last_name ? `${source.last_name}, ${source.first_name}` : null
+              patient: source.last_name ? `${source.last_name}, ${source.first_name}` : null,
+              birthDate: source.birth_date,
+              serviceDate: source.service_date,
+              tripType: source.trip_type,
+              level: source.level,
+              emergency: source.emergency,
+              loadedMiles: source.loaded_miles,
+              totalCents: source.total_cents,
+              balanceCents: source.balance_cents,
+              payers: source.payers,
+              lines: source.lines
             }
           : null;
       return ok({

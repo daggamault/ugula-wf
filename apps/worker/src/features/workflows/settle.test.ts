@@ -237,6 +237,7 @@ describe('settleRun', () => {
       waiting('task', {
         title: 'Review',
         subject: 'PCR-1 · Jane Doe',
+        summary: 'Medicare needs a PCS',
         queue: 'billing',
         instructions: 'Check codes',
         fields: [{ name: 'note', type: 'string' }],
@@ -258,6 +259,7 @@ describe('settleRun', () => {
       queue: 'billing',
       title: 'Review',
       subject: 'PCR-1 · Jane Doe',
+      summary: 'Medicare needs a PCS',
       instructions: 'Check codes',
       context: { claim: 'C1' },
       fields: [{ name: 'note', type: 'string' }],

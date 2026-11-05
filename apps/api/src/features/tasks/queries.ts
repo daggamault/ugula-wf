@@ -2,6 +2,7 @@ import type { Permission } from '@ugula/access';
 import { dailyNumberOf } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { containsPattern } from '../../shared/search.ts';
 import type { TaskSort } from './schemas.ts';
@@ -74,6 +75,7 @@ const detail = [
   'queue',
   'title',
   'subject',
+  'summary',
   'priority',
   'due_at',
   'permission',
@@ -124,14 +126,37 @@ export const findTaskSource = (db: Db, runId: string) =>
     .leftJoin('claim_runs as cr', 'cr.run_id', 'r.id')
     .leftJoin('claims as c', 'c.id', 'cr.claim_id')
     .leftJoin('patients as p', 'p.id', 'c.patient_id')
+    .leftJoin('claim_balances as b', 'b.claim_id', 'c.id')
     .select((eb) => [
       eb.fn.coalesce('ir.id', 'c.import_report_id').as('report_id'),
       eb.fn.coalesce('ir.pcr_number', 'c.pcr_number').as('pcr_number'),
       'c.id as claim_id',
       'c.number as claim_number',
       'c.status as claim_status',
+      'c.service_date',
+      'c.trip_type',
+      'c.level',
+      'c.emergency',
+      'c.loaded_miles',
+      'c.total_cents',
+      'b.balance_cents',
       'p.first_name',
-      'p.last_name'
+      'p.last_name',
+      'p.birth_date',
+      jsonArrayFrom(
+        eb
+          .selectFrom('claim_coverages as cc')
+          .select(['cc.payer_name as payer', 'cc.member_id as memberId', 'cc.eligibility'])
+          .whereRef('cc.claim_id', '=', 'c.id')
+          .orderBy('cc.position')
+      ).as('payers'),
+      jsonArrayFrom(
+        eb
+          .selectFrom('claim_lines as l')
+          .select(['l.code', 'l.units', 'l.total_cents as totalCents'])
+          .whereRef('l.claim_id', '=', 'c.id')
+          .orderBy('l.position')
+      ).as('lines')
     ])
     .where('r.id', '=', runId)
     .executeTakeFirst();

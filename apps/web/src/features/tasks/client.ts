@@ -60,6 +60,7 @@ export const taskFilterOf = (query: URLSearchParams): TaskFilter => ({
 });
 
 export type TaskDetail = TaskSummary & {
+  summary: string | null;
   instructions: string;
   context: Json;
   fields: FieldSpec[];
@@ -69,11 +70,21 @@ export type TaskDetail = TaskSummary & {
   source: TaskSource;
 };
 
-type TaskClaim = {
+export type TaskClaim = {
   id: string;
   number: string;
   status: ClaimStatus;
   patient: string | null;
+  birthDate: string | null;
+  serviceDate: string | null;
+  tripType: string | null;
+  level: string | null;
+  emergency: boolean | null;
+  loadedMiles: number | string | null;
+  totalCents: number | null;
+  balanceCents: number | null;
+  payers: { payer: string; memberId: string | null; eligibility: string | null }[];
+  lines: { code: string; units: number | string; totalCents: number }[];
 };
 
 type TaskSource = {

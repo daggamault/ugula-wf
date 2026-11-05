@@ -42,6 +42,7 @@ import {
   outcomeLabel
 } from './outcomes.ts';
 import { SourceReportPanel } from './source-report.tsx';
+import { ClaimFacts, TaskIssue } from './task-brief.tsx';
 
 type TaskPageProps = {
   client: TasksClient;
@@ -368,23 +369,15 @@ export const TaskView = ({
       {error ? <Alert>{error}</Alert> : null}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
         <div className="flex min-w-0 flex-col gap-6">
-          {task.instructions ? (
-            <Alert intent="info">
-              <span className="flex flex-col gap-1">
-                <strong className="font-semibold">
-                  {isFault ? 'What Went Wrong' : 'What to Do'}
-                </strong>
-                <span className="whitespace-pre-line">{task.instructions}</span>
-              </span>
-            </Alert>
-          ) : null}
+          <TaskIssue task={task} />
+          {task.source.claim ? <ClaimFacts claim={task.source.claim} taskId={task.id} /> : null}
+          {source}
           <SectionPanel
-            title="Details"
+            title="Workflow Details"
             description="Everything the workflow knew when it asked for this decision."
           >
             <ContextView label="Task context" value={task.context} />
           </SectionPanel>
-          {source}
         </div>
         <div className="flex flex-col gap-6 lg:sticky lg:top-24">
           {done !== null ? (
