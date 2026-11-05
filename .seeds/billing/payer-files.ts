@@ -60,8 +60,8 @@ const LINE_CONTEXT = `{
 
 const LINE_SUMMARY = `${named('message', "'The clearinghouse sent a line that could not be applied on its own'")} +
   (claimId == null
-    ? '; ' + (${named('reference', 'null')} != null ? 'no claim has the number ' + reference : 'it names no claim') + ', so check it with the clearinghouse and post it by hand'
-    : '; post or correct it on the claim, then mark it resolved')`;
+    ? '; ' + (${named('reference', 'null')} != null ? 'no claim has the number ' + reference : 'it names no claim') + ', so check it with the clearinghouse and post it with a Post Payment task on the right claim'
+    : '; post it with a Post Payment task or fix the claim with Correct Claim Data, then mark it resolved')`;
 
 const UNREADABLE_SUMMARY = `'Nothing was applied from ' + ${named('fileName', "'this file'")} +
   (${named('reason', 'null')} != null ? ' (' + reason + ')' : ', as it is not a file the app reads') +
@@ -95,7 +95,7 @@ const reviewPayerFileLine = (): GraphDef => {
       title: 'Review payer file line',
       queue: 'billing-reconcile',
       instructions:
-        'The clearinghouse sent a line that could not be applied on its own: a claim number that matches no claim, a reversal, a pending status, or a payer that is not on the claim. Post or correct it on the claim by hand (or check the claim number with the clearinghouse), then mark it resolved.',
+        'The clearinghouse sent a line that could not be applied on its own: a claim number that matches no claim, a reversal, a pending status, or a payer that is not on the claim. Post it with a Post Payment task or correct the claim with a Correct Claim Data task, both started from Start Task on the claim (or check the claim number with the clearinghouse), then mark it resolved.',
       outcomes: ['resolved']
     }
   });

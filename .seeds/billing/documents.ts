@@ -2,6 +2,13 @@ import { DOCUMENT_KINDS } from '@ugula/billing';
 import type { GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import {
+  beginClaimTask,
+  claimSummary,
+  claimTask,
+  DOCUMENT_FIELDS,
+  receiveAddedDocument
+} from './claim-tasks.ts';
+import {
   asRule,
   asWorkflow,
   d,
@@ -18,9 +25,9 @@ import {
   table
 } from './shared.ts';
 
-const CHASE_SUMMARY = `(kind != null ? labels[kind] ?? kind : 'A document') + ' is missing from this claim' +
+const CHASE_SUMMARY = `(problem != null ? 'Not saved: ' + problem + '. ' : '') + (kind != null ? labels[kind] ?? kind : 'A document') + ' is missing from this claim' +
   (${named('note', 'null')} != null ? ' (' + note + ')' : '') +
-  '; get it, upload it under Documents and mark it received'`;
+  '; get it, upload it here and mark it received'`;
 
 const DOCUMENT_IN = d('document', T.document, 'Document', 'The document uploaded to the claim.');
 
@@ -153,14 +160,36 @@ const CHASE_DAYS = [
 ];
 
 const chaseDocument = (): GraphDef => {
-  const g = flow(
-    [
-      P.claimId(),
-      d('kind', 'string', 'Document Kind', 'facesheet, pcs, signature, abn or msp.'),
-      d('note', 'string', 'Note', 'What the biller asked for, and from whom.', true)
-    ],
-    []
+  const g = claimTask();
+  beginClaimTask(g);
+  g.add('ask', 'std.human.task', {
+    label: 'Start Document Chase',
+    config: {
+      title: 'Chase a document',
+      queue: 'billing-documents',
+      permission: 'claims:update',
+      instructions:
+        'Choose the document the claim is missing and note who to ask for it. A Chase document task then waits for it, due in the days the Document Chase Days table gives; it ends on its own once the document is on file.',
+      fields: [
+        {
+          name: 'kind',
+          type: 'string',
+          label: 'Document',
+          options: Object.entries(DOCUMENT_KINDS).map(([value, label]) => ({ value, label })),
+          required: ['chase']
+        },
+        { name: 'note', type: 'string', label: 'Who to ask, and for what' }
+      ],
+      outcomes: ['chase', 'cancel']
+    }
+  });
+  claimSummary(
+    g,
+    'ask',
+    "'Start chasing a document claim ' + reference + ' is missing, due by the days its kind allows'"
   );
+  g.wire('entry.assignee', 'ask.assignee');
+  g.wire('ledger.reference', 'ask.subject', 'task.subject');
   g.add('days', 'std.table.lookup', {
     label: 'Document Chase Days',
     config: shared.lookup(
@@ -178,7 +207,6 @@ const chaseDocument = (): GraphDef => {
     ),
     values: { labels: DOCUMENT_KINDS }
   });
-  g.add('follow', 'billing.follow-claim', { label: 'Follow the Claim' });
   g.add('read', 'billing.read-claim-checks', { label: 'Documents on File' });
   g.add('facts', 'billing.check-facts.break');
   g.add('onFile', 'std.expr', expr('Is It on File?', 'contains(documents ?? [], kind)'));
@@ -189,16 +217,23 @@ const chaseDocument = (): GraphDef => {
       title: 'Chase document',
       queue: 'billing-documents',
       instructions:
-        'The claim is missing a document. Get it from the patient, the facility or the physician and upload it on the claim page under Documents, then mark it received; the claim is checked again when it arrives. Stop chasing when it will not come.',
+        'The claim is missing a document. Get it from the patient, the facility or the physician, upload it here and mark it received; the claim is checked again when it arrives. Mark it received without a file when it was added another way. Stop chasing when it will not come.',
+      fields: DOCUMENT_FIELDS,
       outcomes: ['received', 'stop']
     }
   });
+  g.add('problem', 'std.var.get', { label: 'Why It Was Refused', config: { name: 'problem' } });
+  g.add('uploaded', 'std.expr', expr('File Uploaded?', 'file != null'));
+  g.add('withFile', 'std.flow.branch', { label: 'With a File?' });
+  g.add('add', 'billing.add-claim-document', { label: 'Add Claim Document' });
+  g.add('remember', 'std.var.set', { label: 'Remember Why', config: { name: 'problem' } });
   g.ret('done');
-  g.wire('entry.exec', 'follow.exec');
-  g.wire('follow.then', 'read.exec');
-  g.wire('entry.claimId', 'follow.claimId', 'read.claimId');
-  g.wire('entry.kind', 'days.key', 'context.kind', 'onFile.kind');
-  g.wire('entry.note', 'context.note');
+  g.wire('ledger.then', 'ask.exec');
+  g.wire('ask.chase', 'read.exec');
+  g.wire('ask.cancel', 'done.exec');
+  g.wire('entry.claimId', 'read.claimId', 'add.claimId');
+  g.wire('ask.kind', 'days.key', 'context.kind', 'onFile.kind', 'add.kind');
+  g.wire('ask.note', 'context.note');
   g.wire('days.value', 'due.days');
   g.wire('read.facts', 'facts.facts');
   g.wire('facts.documents', 'onFile.documents', 'context.documents');
@@ -212,14 +247,23 @@ const chaseDocument = (): GraphDef => {
     g,
     'task',
     CHASE_SUMMARY,
-    { kind: 'entry.kind', note: 'entry.note' },
+    { kind: 'ask.kind', note: 'ask.note', problem: 'problem.value' },
     { labels: DOCUMENT_KINDS }
   );
-  g.wire('task.received', 'read.exec');
+  g.wire('task.received', 'withFile.exec');
+  g.wire('task.file', 'uploaded.file', 'add.file');
+  g.wire('task.signedOn', 'add.signedOn');
+  g.wire('task.completedBy', 'add.addedBy');
+  g.wire('uploaded.result', 'withFile.condition');
+  g.wire('withFile.false', 'read.exec');
+  g.wire('withFile.true', 'add.exec');
+  receiveAddedDocument(g, 'add', 'read.exec');
+  g.wire('add.refused', 'remember.exec');
+  g.wire('add.reason', 'remember.value');
+  g.wire('remember.then', 'task.exec');
   g.wire('task.stop', 'done.exec');
   return g.def;
 };
-
 export const documentGraphs: SeedGraph[] = [
   asRule(
     'billing.document-facts',
@@ -236,7 +280,7 @@ export const documentGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.chase-document',
     'Chase Document',
-    'Chases a missing claim document: a Chase document task due in the days the Document Chase Days table gives, asked again until the document is on file or a biller stops.',
+    'Started from a claim: a Chase a document task names the missing document and who to ask, then a Chase document task due in the days the Document Chase Days table gives takes the upload (Add Claim Document and Receive Document), asked again until the document is on file or a biller stops.',
     chaseDocument()
   )
 ];

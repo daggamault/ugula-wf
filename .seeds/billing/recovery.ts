@@ -1244,8 +1244,7 @@ const respondRecordsRequest = (): GraphDef => {
     inputs: [
       p('claimId', 'string'),
       d('coverageId', 'string', 'Payer', 'The payer asking for records, if known.', true),
-      d('dueOn', 'string', 'Due On', 'The due date the request names (YYYY-MM-DD), if any.', true),
-      d('note', 'string', 'Note', 'What the request asks for.', true)
+      p('assignee', 'string', true)
     ],
     outputs: []
   });
@@ -1286,8 +1285,37 @@ const respondRecordsRequest = (): GraphDef => {
     }
   });
   recordEvent(g, 'sent', 'records_sent', 'Log the Records Sent');
+  g.add('log', 'std.human.task', {
+    label: 'Log Records Request',
+    config: {
+      title: 'Log records request',
+      queue: 'billing-review',
+      permission: 'claims:update',
+      instructions:
+        'Enter the request for records a payer sent about this claim (an additional documentation request): the due date it names, or none for the days the payer allows (Records Deadlines table), and what it asks for. A Send records task then waits for the records, due on that date.',
+      fields: [
+        {
+          name: 'dueOn',
+          type: 'string',
+          label: 'Due date (empty for the days the payer allows)',
+          format: 'date'
+        },
+        { name: 'note', type: 'string', label: 'Records requested' }
+      ],
+      outcomes: ['log', 'cancel']
+    }
+  });
+  summarize(
+    g,
+    'log',
+    "'Log the request for records a payer sent about claim ' + reference + ', with its due date'",
+    { reference: 'ledger.reference' }
+  );
   g.ret('done');
   g.wire('entry.exec', 'follow.exec');
+  g.wire('entry.assignee', 'log.assignee');
+  g.wire('subject.result', 'log.subject');
+  g.wire('log.cancel', 'done.exec');
   g.wire(
     'entry.claimId',
     'follow.claimId',
@@ -1298,8 +1326,8 @@ const respondRecordsRequest = (): GraphDef => {
     'sent.claimId'
   );
   g.wire('entry.coverageId', 'payer.coverageId');
-  g.wire('entry.dueOn', 'due.requestedDue');
-  g.wire('entry.note', 'requestNote.note', 'details.note');
+  g.wire('log.dueOn', 'due.requestedDue');
+  g.wire('log.note', 'requestNote.note', 'details.note');
   g.wire('follow.then', 'ledger.exec');
   g.wire('ledger.ledger', 'facts.ledger');
   g.wire('ledger.reference', 'subject.reference');
@@ -1311,7 +1339,8 @@ const respondRecordsRequest = (): GraphDef => {
   g.wire('due.reasons', 'details.reasons');
   g.wire('payer.result', 'asking.coverageId', 'requested.coverageId', 'sent.coverageId');
   g.wire('requestNote.result', 'requested.note');
-  g.wire('ledger.then', 'asking.exec');
+  g.wire('ledger.then', 'log.exec');
+  g.wire('log.log', 'asking.exec');
   g.wire('asking.then', 'requested.exec');
   g.wire('requested.then', 'gather.exec');
   g.wire('subject.result', 'gather.subject');
@@ -1319,7 +1348,7 @@ const respondRecordsRequest = (): GraphDef => {
   summarize(g, 'gather', RECORDS_SUMMARY, {
     payer: 'asking.payer',
     dueOn: 'due.dueOn',
-    note: 'entry.note'
+    note: 'log.note'
   });
   g.wire('gather.sent', 'sent.exec');
   g.wire('gather.note', 'sent.note');
@@ -1567,7 +1596,7 @@ export const recoveryGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.respond-records-request',
     'Respond to Records Request',
-    'Logs a payer request for records (an additional documentation request) on its claim, decides when they are due (Records Due) by the kind of payer asking, not the one being billed, and asks a biller to gather and send them by then. Started from Records Request on a claim.',
+    'Started from a claim: a Log records request task enters a payer request for records (an additional documentation request) with its due date, then logs it, decides when the records are due (Records Due) by the kind of payer asking, not the one being billed, and asks a biller to gather and send them by then.',
     respondRecordsRequest()
   ),
   asWorkflow(

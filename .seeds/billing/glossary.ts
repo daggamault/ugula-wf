@@ -4,6 +4,10 @@ import { graph as build } from '../builder.ts';
 type Doc = { label: string; description: string };
 
 const PINS: Record<string, Doc> = {
+  assignee: {
+    label: 'Assignee',
+    description: 'The biller who started the task, who gets its first step.'
+  },
   answers: {
     label: 'Answers',
     description: 'What the biller answered in an earlier review of this report, if any.'

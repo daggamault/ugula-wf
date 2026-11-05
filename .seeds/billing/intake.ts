@@ -82,7 +82,7 @@ const REVISION_SUMMARY = `(context?.changes == null
   (context?.canApply == true
     ? '; apply it, acknowledge it or void the claim'
     : '; the claim is ' + (context?.status != null ? replace(context?.status, '_', ' ') : 'past review') +
-      ', so correct it on its claim page or acknowledge it')`;
+      ', so correct it with a Correct Claim Data task on the claim or acknowledge it')`;
 
 const ORPHAN_SUMMARY = `'This draft claim stopped before it was ready' +
   (${named('reason', 'null')} != null ? ' (' + reason + ')' : '') + '; restart it from its report or void it'`;
@@ -798,7 +798,7 @@ const reviewRevision = (): GraphDef => {
       title: 'Review updated PCR',
       queue: 'billing-review',
       instructions:
-        'A newer version of this patient care report arrived after its claim was opened, so it was not billed again; the changes list what differs from the report the claim came from. Apply works the claim again from the new report while it is a draft, needs review or is void; a claim already on its way to payers is corrected on its claim page. Acknowledge keeps the claim as it is; Void closes it, only while it has not gone to payers.',
+        'A newer version of this patient care report arrived after its claim was opened, so it was not billed again; the changes list what differs from the report the claim came from. Apply works the claim again from the new report while it is a draft, needs review or is void; a claim already on its way to payers is corrected with a Correct Claim Data task, started from Start Task on its claim. Acknowledge keeps the claim as it is; Void closes it, only while it has not gone to payers.',
       outcomes: ['apply', 'acknowledge', 'void']
     }
   });
