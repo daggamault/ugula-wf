@@ -22,6 +22,8 @@ describe('outcomes', () => {
   it('labels outcomes, falling back to title case', () => {
     assert.equal(outcomeLabel('useSelected'), 'Use Selected Patient');
     assert.equal(outcomeLabel('writeOff'), 'Write Off');
+    assert.equal(outcomeLabel('moveToPatient'), 'Move to Patient');
+    assert.equal(outcomeLabel('refund'), 'Approve Refund');
     assert.equal(outcomeLabel('somethingNew'), 'Something New');
     assert.equal(outcomeLabel('toString'), 'To String');
     assert.equal(outcomeIcon('constructor'), CircleCheckIcon);

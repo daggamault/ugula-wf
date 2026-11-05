@@ -24,16 +24,18 @@ const QUEUES: Readonly<Record<string, QueueInfo>> = {
   },
   'billing-followup': {
     label: 'Payer Follow-Up',
-    description: 'Claims a payer has not answered in 30 days.'
+    description:
+      'Claims a payer has not answered in 30 days, overdue appeal decisions and deadlines about to lapse.'
   },
   'billing-reconcile': {
     label: 'Reconcile Payments',
     description:
-      'Payer responses that left a balance, and overpayments to refund. Check them, then continue, write off or refund.'
+      'Payer responses that left a balance, denials to correct or appeal, and overpayments to refund. Check them, then continue, correct, appeal, write off or refund.'
   },
   'billing-collections': {
     label: 'Balance Review',
-    description: 'Balances left after every payer and three patient statements.'
+    description:
+      'Balances left after every payer and three patient statements, and write-offs and collections placements waiting for approval.'
   },
   exceptions: {
     label: 'Stuck Runs',
