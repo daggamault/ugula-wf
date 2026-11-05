@@ -132,12 +132,12 @@ describe('reuseEligibility', () => {
     assert.deepEqual(r.rows, [{ id: MEDICARE }]);
     const [q] = queries;
     assert.ok(q?.sql.includes('oc.patient_id = c.patient_id'));
-    assert.ok(q?.sql.includes('lower(o.member_id) = lower(cc.member_id)'));
+    assert.ok(q?.sql.includes('lower(o.member_id) = lower(t.member_id)'));
     assert.ok(
       q?.sql.includes("date_trunc('month', oc.service_date) = date_trunc('month', c.service_date)")
     );
-    assert.ok(q?.sql.includes('cc.eligibility is null'));
-    assert.ok(q?.sql.includes('cc.eligibility_requested_at is null'));
+    assert.ok(q?.sql.includes('t.eligibility is null'));
+    assert.ok(q?.sql.includes('t.eligibility_requested_at is null'));
     assert.deepEqual(q?.parameters, ['t1', 'c1']);
   });
 });

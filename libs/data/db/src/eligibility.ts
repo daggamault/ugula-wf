@@ -81,28 +81,30 @@ export const reuseEligibility = (db: Db, agencyId: string, claimId: string) =>
       eligibility = prior.eligibility,
       eligibility_note = concat_ws('; ', 'From claim ' || prior.number, prior.eligibility_note),
       eligibility_checked_at = prior.eligibility_checked_at
-    from claims c, lateral (
-      select o.eligibility, o.eligibility_note, o.eligibility_checked_at, oc.number
-      from claim_coverages o
-      join claims oc on oc.id = o.claim_id and oc.agency_id = o.agency_id
-      where o.agency_id = c.agency_id
-        and o.claim_id <> c.id
-        and oc.patient_id = c.patient_id
-        and o.payer_id = cc.payer_id
-        and lower(o.member_id) = lower(cc.member_id)
-        and o.relationship = cc.relationship
+    from (
+      select distinct on (t.id)
+        t.id, o.eligibility, o.eligibility_note, o.eligibility_checked_at, oc.number
+      from claim_coverages t
+      join claims c on c.id = t.claim_id and c.agency_id = t.agency_id
+      join claim_coverages o
+        on o.agency_id = t.agency_id
+        and o.claim_id <> t.claim_id
+        and o.payer_id = t.payer_id
+        and lower(o.member_id) = lower(t.member_id)
+        and o.relationship = t.relationship
         and o.eligibility is not null
+      join claims oc
+        on oc.id = o.claim_id
+        and oc.agency_id = o.agency_id
+        and oc.patient_id = c.patient_id
         and date_trunc('month', oc.service_date) = date_trunc('month', c.service_date)
-      order by o.eligibility_checked_at desc
-      limit 1
+      where c.agency_id = ${agencyId}
+        and c.id = ${claimId}
+        and t.eligibility is null
+        and t.eligibility_requested_at is null
+      order by t.id, o.eligibility_checked_at desc
     ) prior
-    where cc.claim_id = c.id
-      and c.agency_id = ${agencyId}
-      and c.id = ${claimId}
-      and cc.payer_id is not null
-      and cc.member_id is not null
-      and cc.eligibility is null
-      and cc.eligibility_requested_at is null
+    where cc.id = prior.id
     returning cc.id`.execute(db);
 
 export const markEligibilityRequested = (
