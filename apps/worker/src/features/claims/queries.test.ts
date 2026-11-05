@@ -5,7 +5,7 @@ import { COMPLETE_DOCUMENTATION, sampleSubmitter } from '@ugula/billing/testing'
 import { createRecordingDb } from '@ugula/db/testing';
 import type { RunJob, RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
-import { createClaimStore as createStore, statementKey } from './queries.ts';
+import { createClaimStore as createStore, planCoverages, statementKey } from './queries.ts';
 
 const stored: { key: string; size: number; type: string }[] = [];
 
@@ -286,6 +286,67 @@ describe('createClaimStore', () => {
     assert.ok(!coverages?.parameters.includes('DUP'));
     const [diagnoses] = sqlOf(queries, 'insert into "claim_diagnoses"');
     assert.deepEqual(diagnoses?.parameters, [ID, 1, 'R079', ID, 2, 'I10']);
+  });
+
+  it('keeps payers with billing activity by name and member ID, then by name, and moves the rest last', () => {
+    const [medicare, bcbs] = claim.coverages;
+    assert.ok(medicare && bcbs);
+    const active = [
+      { id: 'a', payer_name: 'BCBS', member_id: null },
+      { id: 'b', payer_name: 'MEDICARE', member_id: 'old' },
+      { id: 'c', payer_name: 'Medicare', member_id: 'm1' },
+      { id: 'd', payer_name: 'Aetna', member_id: 'X' }
+    ];
+    assert.deepEqual(
+      planCoverages(active, [
+        medicare,
+        { ...medicare, memberId: 'M2' },
+        { ...bcbs, payer: 'Cigna' }
+      ]),
+      {
+        rows: [
+          { coverage: medicare, position: 1, id: 'c' },
+          { coverage: { ...medicare, memberId: 'M2' }, position: 2, id: 'b' },
+          { coverage: { ...bcbs, payer: 'Cigna' }, position: 3, id: null }
+        ],
+        trailing: [
+          { id: 'a', position: 4 },
+          { id: 'd', position: 5 }
+        ]
+      }
+    );
+  });
+
+  it('reworks a draft without deleting payers that have billing activity', async () => {
+    const KEPT = '0195f2a4-0000-7000-8000-0000000000e1';
+    const { db, queries } = createRecordingDb((q) =>
+      ownedClaim(q)
+        ? [owned]
+        : q.sql.startsWith('update "claims"')
+          ? [{}]
+          : q.sql.startsWith('with "lines"')
+            ? [{ id: KEPT, payer_name: 'Medicare', member_id: 'M0' }]
+            : []
+    );
+    await createClaimStore(db, blobs).saveClaim('r1', ID, 'k', claim);
+    const [cleared] = sqlOf(queries, 'with "lines" as (delete from "claim_lines"');
+    assert.ok(
+      cleared?.sql.includes(
+        '"coverages" as (delete from "claim_coverages" where "claim_id" = $2 and not exists (select "e"."id" from "claim_events" as "e" where "e"."coverage_id" = "claim_coverages"."id"))'
+      )
+    );
+    const [kept] = sqlOf(
+      queries,
+      '\n    update claim_coverages cc set\n      position = v.position'
+    );
+    assert.ok(
+      kept?.sql.includes('eligibility = case when cc.payer_id is not distinct from v.payer_id')
+    );
+    assert.deepEqual(kept?.parameters.slice(0, 3), [KEPT, 1, 'Medicare']);
+    assert.ok(kept?.parameters.includes('M1'));
+    const [added] = sqlOf(queries, 'insert into "claim_coverages"');
+    assert.ok(added?.parameters.includes('0195f2a4-0000-7000-8000-00000000000b'));
+    assert.ok(!added?.parameters.includes('MCR'));
   });
 
   it('saves only drafts, and skips optional rows it does not have', async () => {
