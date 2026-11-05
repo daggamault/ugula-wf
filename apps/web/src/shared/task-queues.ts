@@ -30,12 +30,17 @@ const QUEUES: Readonly<Record<string, QueueInfo>> = {
   'billing-reconcile': {
     label: 'Reconcile Payments',
     description:
-      'Payer responses that left a balance, denials to correct or appeal, and overpayments to refund. Check them, then continue, correct, appeal, write off or refund.'
+      'Payer responses that left a balance, and denials to correct or appeal. Check them, then continue, correct, appeal or write off.'
   },
   'billing-collections': {
     label: 'Balance Review',
     description:
-      'Balances left after every payer and three patient statements, and write-offs and collections placements waiting for approval.'
+      'Balances left after every payer and three patient statements.'
+  },
+  'billing-approvals': {
+    label: 'Approvals',
+    description:
+      'Refunds, write-offs above the Claim Policy limit and collections placements waiting for someone who may approve them.'
   },
   exceptions: {
     label: 'Stuck Runs',

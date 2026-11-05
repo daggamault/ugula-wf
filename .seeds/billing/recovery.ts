@@ -1209,7 +1209,7 @@ const refundOverpayment = (): GraphDef => {
     label: 'Approve Refund',
     config: {
       title: 'Approve refund',
-      queue: 'billing-reconcile',
+      queue: 'billing-approvals',
       permission: 'claims:approve',
       instructions:
         'More has been paid on this claim than it charges. The credit balance, who paid it and the day the refund is due are in the details (Medicare and Medicaid overpayments must be returned within 60 days of being identified). Approve the refund to record it on the claim, then send it; or keep the credit.',
@@ -1278,7 +1278,7 @@ const approveClosing = (): GraphDef => {
       label: `Approve ${title}`,
       config: {
         title: `Approve ${title.toLowerCase()}`,
-        queue: 'billing-collections',
+        queue: 'billing-approvals',
         permission: 'claims:approve',
         instructions,
         outcomes: ['approve', 'reject']
