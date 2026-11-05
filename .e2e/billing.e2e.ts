@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, describe, it } from 'node:test';
 import {
   api,
+  claimAction,
   claimState,
   claimStatusIs,
   completeTask,
@@ -98,7 +99,7 @@ describe('a biller takes an encounter from import to payment', { timeout: SUITE_
     assert.match(request, /ST\*270\*0001\*005010X279A1/);
     assert.match(request, /NM1\*IL\*1\*KLINE\*DOROTHY\*{4}MI\*2KT7XM4RW91/);
     const started = s.page.waitForResponse((r) => r.url().endsWith('/eligibility-checks'));
-    await eligibility.getByRole('button', { name: 'Check Eligibility' }).click();
+    await claimAction(s.page, 'Check Eligibility');
     const { runId } = (await (await started).json()) as { runId: string };
     await toasts(s.page).getByText('Eligibility check sent to the clearinghouse').waitFor();
     const checked = await until(

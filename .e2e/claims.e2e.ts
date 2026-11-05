@@ -9,6 +9,7 @@ import {
   config,
   decide,
   FLOW_MS,
+  finishTask,
   go,
   heading,
   importEncounter,
@@ -16,6 +17,7 @@ import {
   SUITE_MS,
   section,
   signIn,
+  startClaimTask,
   toasts,
   uniqueId,
   until
@@ -210,56 +212,85 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
       .waitFor({ timeout: FLOW_MS });
   });
 
-  it('edits documentation on the claim data tab and shows it on the overview', async () => {
-    await openClaim(claims.worked, 'data');
-    const form = s.page.getByRole('form', { name: 'Claim data' });
-    await chooseOption(listboxByLabel(form, 'Transport Reason'), 'D');
-    await form.getByRole('button', { name: 'Save Claim Data' }).click();
-    await toast('Billing details saved');
+  it('corrects documentation with a Correct Claim Data task and shows it on the overview', async () => {
+    await openClaim(claims.worked);
+    await startClaimTask(s.page, 'Correct Claim Data');
+    const decision = section(s.page, 'Your Decision').last();
+    await chooseOption(listboxByLabel(decision, /^Ambulance Transport Reason/i), 'D');
+    await finishTask(s.page, 'Save');
+    await until(
+      s.page,
+      async () => (await claimState(s, claims.worked)).claim.transport_reason,
+      (reason) => reason === 'D',
+      'the transport reason to be D'
+    );
     await openClaim(claims.worked);
     await section(s.page, 'Documentation')
       .getByText(/^D · For a specialist or equipment/)
       .waitFor();
   });
 
-  it('adds, reorders and removes a payer on the claim', async () => {
+  it('adds, reorders and removes a payer with Change Payers tasks', async () => {
     const order = async () =>
       (await claimState(s, claims.worked)).claim.coverages.map((c) => c.payer);
-    const save = async () => {
-      await section(s.page, 'Payers').getByRole('button', { name: 'Save Payers' }).click();
-      await toast('Payers saved');
+    const change = async (names: string[]) => {
+      await openClaim(claims.worked);
+      await startClaimTask(s.page, 'Change Payers');
+      await section(s.page, 'Your Decision')
+        .last()
+        .getByLabel(/^Payers/)
+        .fill(names.join('\n'));
+      await finishTask(s.page, 'Save');
     };
-    await openClaim(claims.worked);
-    const payers = section(s.page, 'Payers');
-    const [first] = await order();
-    await payers.getByLabel('Add Payer', { exact: true }).first().fill('Blue Plan');
-    await payers.getByRole('button', { name: 'Add', exact: true }).click();
-    await save();
+    const [first = ''] = await order();
+    await change([first, 'Blue Plan']);
     await until(s.page, order, (o) => o.join() === `${first},Blue Plan`, 'Blue Plan added second');
-    await openClaim(claims.worked);
-    await section(s.page, 'Payers').getByRole('button', { name: 'Move Blue Plan up' }).click();
-    await save();
+    await change(['Blue Plan', first]);
     await until(s.page, order, (o) => o[0] === 'Blue Plan', 'Blue Plan moved first');
-    await openClaim(claims.worked);
-    await section(s.page, 'Payers').getByRole('button', { name: 'Remove Blue Plan' }).click();
-    await save();
+    await change([first]);
     await until(s.page, order, (o) => o.join() === first, 'Blue Plan removed');
   });
 
-  it('files a claim once it is reviewed, posts a payment by hand and lowers the balance', async () => {
+  it('adds a document and logs a records request through their tasks', async () => {
+    await openClaim(claims.worked);
+    await startClaimTask(s.page, 'Add Document');
+    const upload = section(s.page, 'Your Decision').last();
+    await chooseOption(listboxByLabel(upload, 'Document', true), 'facesheet');
+    await upload.locator('input[type="file"]').setInputFiles({
+      name: 'facesheet.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n%%EOF\n')
+    });
+    await upload.getByText('Uploaded facesheet.pdf').waitFor();
+    await finishTask(s.page, 'Add Document');
+    await until(
+      s.page,
+      () => claimState(s, claims.worked),
+      (c) => c.documents.some((d) => d.file_name === 'facesheet.pdf'),
+      'the facesheet on the claim'
+    );
+    await openClaim(claims.worked);
+    await section(s.page, 'Documents').getByText('Facesheet: facesheet.pdf').waitFor();
+    await startClaimTask(s.page, 'Log Records Request');
+    await section(s.page, 'Your Decision')
+      .last()
+      .getByLabel(/^Records Requested/i)
+      .fill('PCS and facesheet');
+    await finishTask(s.page, 'Log Request');
+    await reach(claims.worked, 'Send records');
+  });
+
+  it('files a claim once it is reviewed, posts a payment with a Post Payment task and lowers the balance', async () => {
     await completeTask(s, claims.worked, 'Review claim', { outcome: 'Approve' });
     const { claim } = await claimStatusIs(s, claims.worked, 'submitted');
     await openClaim(claims.worked);
-    const form = s.page.getByRole('form', { name: 'Post payment' });
-    await form.getByLabel('Paid (USD)').fill('100.00');
-    await form.getByLabel('Adjusted (USD)').fill('50.00');
-    await form.getByLabel('Paid On').fill('2026-10-20');
-    await form.getByRole('button', { name: 'Add Reason Code' }).click();
-    await chooseOption(listboxByLabel(form, 'Group', true).last(), 'CO');
-    await form.getByLabel('Code', { exact: true }).last().fill('45');
-    await form.getByLabel('Amount (USD)', { exact: true }).last().fill('50.00');
-    await form.getByRole('button', { name: 'Post Payment' }).click();
-    await toast('Payment posted');
+    await startClaimTask(s.page, 'Post Payment');
+    const payment = section(s.page, 'Your Decision').last();
+    await payment.getByLabel(/^Paid or Refunded/i).fill('100.00');
+    await payment.getByLabel(/^Adjusted/i).fill('50.00');
+    await payment.getByLabel(/^Paid On$/i).fill('2026-10-20');
+    await payment.getByLabel(/^Reason Codes/i).fill('CO-45 50.00');
+    await finishTask(s.page, 'Post Payment');
     const balanceOf = async () =>
       (
         await s.page.request

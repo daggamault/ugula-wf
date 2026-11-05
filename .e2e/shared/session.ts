@@ -65,6 +65,25 @@ export const toasts = (page: Page) => page.getByRole('region', { name: 'Notifica
 export const section = (page: Page, title: string) =>
   page.locator('section').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
 
+export const claimAction = async (page: Page, name: string) => {
+  await page.getByRole('button', { name: 'Start Task' }).click();
+  await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click();
+};
+
+export const startClaimTask = async (page: Page, name: string) => {
+  await claimAction(page, name);
+  await page.waitForURL(/\/tasks\/[^/?]+/, { timeout: FLOW_MS });
+  await section(page, 'Your Decision').last().waitFor();
+};
+
+export const finishTask = async (page: Page, outcome: string) => {
+  await section(page, 'Your Decision')
+    .last()
+    .getByRole('button', { name: outcome, exact: true })
+    .click();
+  await page.getByRole('heading', { name: 'Done' }).waitFor();
+};
+
 export const api = async <T>(s: Session, path: string) =>
   (await (await s.page.request.get(apiPath(s, path))).json()) as T;
 
@@ -107,8 +126,10 @@ export type ClaimState = {
     birth_date: string | null;
     coverages: { id: string; payer: string; relationship: string }[];
     lines: { code: string; units: string | number }[];
+    transport_reason: string | null;
     tasks: { id: string; title: string }[];
   };
+  documents: { kind: string; file_name: string }[];
   issues: { code: string; severity: string; field: string; message: string }[];
 };
 
