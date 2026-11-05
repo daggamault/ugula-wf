@@ -1,4 +1,4 @@
-import { CLAIM_STATUSES, CLOSED_CLAIM_STATUSES, nameKey } from '@ugula/billing';
+import { CLAIM_STATUSES, CLOSED_CLAIM_STATUSES, dailyNumberOf, nameKey } from '@ugula/billing';
 import { type Db, DOCUMENTATION_COLUMNS, payerName } from '@ugula/db';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
@@ -57,6 +57,11 @@ const claimRows = (db: Db, agencyId: string) =>
       'c.number',
       'p.number as patient_number',
       'c.pcr_number',
+      eb
+        .selectFrom('import_reports as er')
+        .select('er.number')
+        .whereRef('er.id', '=', 'c.import_report_id')
+        .as('encounter_number'),
       'c.level',
       'c.total_cents',
       'c.service_date',
@@ -80,6 +85,10 @@ const claimOrder = (db: Db) => ({
   service: sql.ref('c.service_date'),
   patient: sql`lower(p.last_name || ' ' || p.first_name)`,
   pcr: sql.ref('c.pcr_number'),
+  encounter: db
+    .selectFrom('import_reports as er')
+    .select('er.number')
+    .where('er.id', '=', sql.ref<string>('c.import_report_id')),
   total: sql.ref('c.total_cents'),
   balance: db
     .selectFrom('claim_balances as b')
@@ -89,18 +98,11 @@ const claimOrder = (db: Db) => ({
   status: sql`array_position(array[${sql.join(CLAIM_STATUSES.map((s) => sql.lit(s)))}]::text[], c.status::text)`
 });
 
-const MAX_NUMBER = 2_147_483_647;
-
-export const numberOf = (text: string) => {
-  const digits = /^#?(\d{1,10})$/.exec(text.trim())?.[1];
-  const n = digits === undefined ? null : Number(digits);
-  return n !== null && n <= MAX_NUMBER ? n : null;
-};
-
 const claimIds = (db: Db, agencyId: string, f: ClaimFilters) => {
   let q = db
     .selectFrom('claims as c')
     .leftJoin('patients as p', 'p.id', 'c.patient_id')
+    .leftJoin('import_reports as ir', 'ir.id', 'c.import_report_id')
     .select('c.id')
     .where('c.agency_id', '=', agencyId);
   if (f.status === 'open') q = q.where('c.status', 'not in', CLOSED_CLAIM_STATUSES);
@@ -113,11 +115,13 @@ const claimIds = (db: Db, agencyId: string, f: ClaimFilters) => {
   if (f.birthDate) q = q.where('p.birth_date', '=', f.birthDate);
   if (f.number) {
     const text = f.number;
-    const n = numberOf(text);
+    const n = dailyNumberOf(text);
     q = q.where((eb) =>
       eb.or([
         eb('c.pcr_number', '=', text),
-        ...(n === null ? [] : [eb('c.number', '=', n), eb('p.number', '=', n)])
+        ...(n === null
+          ? []
+          : [eb('c.number', '=', n), eb('p.number', '=', n), eb('ir.number', '=', n)])
       ])
     );
   }

@@ -13,8 +13,8 @@ const text = build835(
   [
     {
       claims: [
-        { claimNumber: '1001', chargeCents: 1_000, paidCents: 800 },
-        { claimNumber: '1002', chargeCents: 1_000, paidCents: 900 }
+        { claimNumber: '20261105-1001', chargeCents: 1_000, paidCents: 800 },
+        { claimNumber: '20261105-1002', chargeCents: 1_000, paidCents: 900 }
       ]
     }
   ],
@@ -24,7 +24,7 @@ const text = build835(
 describe('payer file remittances', () => {
   it('numbers claim payments across the file and matches them without writing', async () => {
     const { db, queries } = createRecordingDb(({ sql, parameters }) =>
-      sql.startsWith('select "id", "status" from "claims"') && parameters.includes(1002)
+      sql.startsWith('select "id", "status" from "claims"') && parameters.includes('20261105-1002')
         ? [{ id: 'c2', status: 'submitted' }]
         : []
     );
@@ -32,8 +32,8 @@ describe('payer file remittances', () => {
     assert.deepEqual(
       lines.map((l) => [l.position, l.reference, l.claimId]),
       [
-        [1, '1001', null],
-        [2, '1002', 'c2']
+        [1, '20261105-1001', null],
+        [2, '20261105-1002', 'c2']
       ]
     );
     assert.ok(queries.every((q) => q.sql.startsWith('select')));

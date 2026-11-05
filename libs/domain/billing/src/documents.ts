@@ -208,7 +208,7 @@ export const renderAppealPacket = async (s: AppealPacketSource, issuedOn: string
 
 export type InvoicedClaim = {
   claimId: string;
-  number: number;
+  number: string;
   pcrNumber: string | null;
   patient: string;
   serviceDate: string | null;
@@ -238,7 +238,7 @@ export const renderFacilityInvoice = (s: FacilityInvoiceSource, issuedOn: string
       {
         heading: 'Transports',
         rows: s.claims.map((c) => ({
-          label: `Claim #${c.number}`,
+          label: `Claim ${c.number}`,
           value: `${[c.pcrNumber, c.patient, c.serviceDate].filter(Boolean).join(' · ')}: charges ${money(c.chargeCents)}, due ${money(c.balanceCents)}`
         }))
       },

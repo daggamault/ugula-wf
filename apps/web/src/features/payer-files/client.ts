@@ -17,7 +17,7 @@ export type PayerFileItem = {
   position: number;
   reference: string;
   claim_id: string | null;
-  claim_number: number | null;
+  claim_number: string | null;
   outcome: PayerFileOutcome;
   message: string;
   paid_cents: number | null;

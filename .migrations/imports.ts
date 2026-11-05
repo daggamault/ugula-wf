@@ -1,5 +1,6 @@
 import { type Database, IMPORT_SOURCES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { dailyNumberCheck, dailyNumberTrigger } from './numbers.ts';
 
 const buildImportsTable = (db: Kysely<Database>) =>
   db.schema
@@ -34,11 +35,13 @@ const buildImportReportsTable = (db: Kysely<Database>) =>
       col.notNull().references('imports.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('position', 'integer', (col) => col.notNull())
+    .addColumn('number', 'text', (col) => col.notNull())
     .addColumn('pcr_number', 'text')
     .addColumn('report', 'jsonb', (col) => col.notNull())
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('import_reports_import_id_position_unique', ['import_id', 'position'])
-    .addCheckConstraint('import_reports_position_check', sql`position >= 0`);
+    .addCheckConstraint('import_reports_position_check', sql`position >= 0`)
+    .addCheckConstraint('import_reports_number_check', dailyNumberCheck);
 
 const buildImportsIndexes = (db: Kysely<Database>) => [
   db.schema
@@ -46,6 +49,7 @@ const buildImportsIndexes = (db: Kysely<Database>) => [
     .on('imports')
     .columns(['agency_id', 'created_at desc']),
   db.schema.createIndex('idx_imports_uploaded_by').on('imports').column('uploaded_by'),
+  db.schema.createIndex('idx_import_reports_number').on('import_reports').column('number'),
   db.schema
     .createIndex('import_reports_report_key_unique')
     .on('import_reports')
@@ -57,4 +61,5 @@ export const createImportsTables = async (db: Kysely<Database>) => {
   await buildImportsTable(db).execute();
   await buildImportReportsTable(db).execute();
   for (const index of buildImportsIndexes(db)) await index.execute();
+  await dailyNumberTrigger('import_reports', 'encounter').execute(db);
 };

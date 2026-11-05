@@ -44,6 +44,21 @@ describe('patient queries', () => {
   });
 });
 
+describe('patient numbers', () => {
+  it('find a patient by the daily number however it is typed, and sort by number', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    const page = { page: 1, pageSize: 25, sort: 'number', dir: 'asc' } as const;
+    await listPatients(db, 't-1', { ...page, number: '#202611050003' });
+    await listPatients(db, 't-1', { ...page, number: 'nope' });
+    const [byNumber, unknown] = queries;
+    assert.ok(byNumber?.sql.includes('"p"."number" = $2'));
+    assert.ok(byNumber?.sql.includes('order by "p"."number" asc nulls last'));
+    assert.deepEqual(byNumber?.parameters, ['t-1', '20261105-0003', 25, 0]);
+    assert.deepEqual(unknown?.parameters, ['t-1', '', 25, 0]);
+    await db.destroy();
+  });
+});
+
 describe('patient city and claims sorts', () => {
   it('orders patients by city or by how many claims they have', async () => {
     const { db, queries } = createRecordingDb(() => []);

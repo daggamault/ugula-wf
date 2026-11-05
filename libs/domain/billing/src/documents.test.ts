@@ -90,7 +90,7 @@ describe('documents', () => {
         payer: 'Medicare',
         level: 'Redetermination',
         dueOn: '2027-01-30',
-        claim: [{ label: 'Claim', value: '#12' }],
+        claim: [{ label: 'Claim', value: '20261002-0012' }],
         report: [{ heading: 'Narrative', rows: [{ label: '', value: 'Pt found down.' }] }],
         attachments: [attachment, new Uint8Array([1, 2, 3])]
       },
@@ -104,7 +104,7 @@ describe('documents', () => {
     const claims = [
       {
         claimId: 'c12',
-        number: 12,
+        number: '20261002-0012',
         pcrNumber: 'PCR-1',
         patient: 'Doe, Jane',
         serviceDate: '2026-10-02',
@@ -113,7 +113,7 @@ describe('documents', () => {
       },
       {
         claimId: 'c13',
-        number: 13,
+        number: '20261002-0013',
         pcrNumber: null,
         patient: 'Roe, Rich',
         serviceDate: null,

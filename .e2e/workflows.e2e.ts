@@ -247,7 +247,7 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
       .first()
       .waitFor();
     await row.getByRole('link', { name: `Open claim for ${pcr}` }).click();
-    await heading(s.page, /^Claim #\d+$/).waitFor();
+    await heading(s.page, /^Claim \d{8}-\d{4,}$/).waitFor();
     const xml = s.page.getByRole('link', { name: new RegExp(`Encounter ${pcr} \\(NEMSIS XML\\)`) });
     const href = await xml.getAttribute('href');
     const body = await (await s.page.request.get(new URL(href ?? '', s.apiUrl).href)).text();

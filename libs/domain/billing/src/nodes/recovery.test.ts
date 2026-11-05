@@ -42,7 +42,7 @@ const setup = () => {
         phone: '2175550100'
       },
       payer: 'Medicare',
-      claim: [{ label: 'Claim', value: '#12' }],
+      claim: [{ label: 'Claim', value: '20261002-0012' }],
       report: [],
       attachments: []
     }),

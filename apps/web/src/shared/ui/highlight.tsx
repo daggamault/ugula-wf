@@ -1,3 +1,6 @@
+import { dailyNumberOf } from '@ugula/billing';
+import { formatDate } from '../format.ts';
+
 type TextPart = { text: string; isMatch: boolean };
 
 export const highlightParts = (text: string, query: string): TextPart[] => {
@@ -65,3 +68,12 @@ export const Highlight = ({ text, query, isPrefix = false, keyOf }: HighlightPro
     )}
   </>
 );
+
+export const NumberHighlight = ({ number, query }: { number: string; query: string }) => (
+  <Highlight text={number} query={dailyNumberOf(query) === number ? number : ''} />
+);
+
+export const DateHighlight = ({ day, query }: { day: string | null; query: string }) => {
+  const text = formatDate(day);
+  return <Highlight text={text} query={day && query.trim() === day ? text : ''} />;
+};

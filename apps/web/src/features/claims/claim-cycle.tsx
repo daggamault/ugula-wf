@@ -2,12 +2,11 @@ import { isClosedStatus } from '@ugula/billing';
 import { ExternalLinkIcon, ListTodoIcon, RotateCcwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { formatAgo, formatCents } from '../../shared/format.ts';
-import { queueInfo } from '../../shared/task-queues.ts';
+import { assigneeOf, queueInfo } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
 import { withBack } from '../../shared/url-state.ts';
-import { assigneeOf } from './claims-page.tsx';
 import type { ClaimDetail, ClaimProgress, ClaimTask } from './client.ts';
 
 export const describeProgress = (progress: ClaimProgress): string => {

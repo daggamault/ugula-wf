@@ -34,7 +34,7 @@ export const PayerFileItems = ({ items }: { items: readonly PayerFileItem[] }) =
       return (
         <TableRow key={i.position}>
           <TableCell isMuted>{i.position}</TableCell>
-          <TableCell>{i.claim_number === null ? i.reference : `#${i.claim_number}`}</TableCell>
+          <TableCell>{i.claim_number === null ? i.reference : i.claim_number}</TableCell>
           <TableCell>
             <Badge intent={style.intent}>{style.label}</Badge>
           </TableCell>

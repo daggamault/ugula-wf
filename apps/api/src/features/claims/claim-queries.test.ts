@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { claimExists, findClaim, listClaims, numberOf } from './claim-queries.ts';
+import { claimExists, findClaim, listClaims } from './claim-queries.ts';
 
 describe('claim queries', () => {
   it('pages claim ids by agency and filters first, then loads details for that page only', async () => {
@@ -67,7 +67,7 @@ describe('claim queries', () => {
       firstName: 'Ja%',
       lastName: "O'Neil",
       birthDate: '1980-01-02',
-      number: '#42',
+      number: '#202611050042',
       patientId: 'p-1',
       page: 1,
       pageSize: 25,
@@ -81,17 +81,25 @@ describe('claim queries', () => {
     assert.ok(search?.sql.includes('lower(p.first_name) like $'));
     assert.ok(search?.sql.includes('"p"."last_name_key" like $'));
     assert.ok(
-      search?.sql.includes('("c"."pcr_number" = $6 or "c"."number" = $7 or "p"."number" = $8)')
+      search?.sql.includes(
+        '("c"."pcr_number" = $6 or "c"."number" = $7 or "p"."number" = $8 or "ir"."number" = $9)'
+      )
     );
-    assert.deepEqual(search?.parameters.slice(0, 8), [
+    assert.ok(
+      search?.sql.includes(
+        'left join "import_reports" as "ir" on "ir"."id" = "c"."import_report_id"'
+      )
+    );
+    assert.deepEqual(search?.parameters.slice(0, 9), [
       't-1',
       'p-1',
       'ja\\%%',
       'oneil%',
       '1980-01-02',
-      '#42',
-      42,
-      42
+      '#202611050042',
+      '20261105-0042',
+      '20261105-0042',
+      '20261105-0042'
     ]);
     await listClaims(db, 't-1', {
       status: 'open',
@@ -105,6 +113,7 @@ describe('claim queries', () => {
     assert.ok(byPcr?.sql.includes('"c"."status" not in ('));
     assert.ok(byPcr?.sql.includes('"c"."pcr_number" = $'));
     assert.ok(!byPcr?.sql.includes('"c"."number" ='));
+    assert.ok(!byPcr?.sql.includes('"ir"."number" ='));
   });
 
   it('lists open claims oldest task first with the open task waiting on them', async () => {
@@ -137,17 +146,6 @@ describe('claim queries', () => {
     assert.ok(
       all?.sql.includes('order by "t"."priority" desc, "t"."created_at" limit 1) as "t" on true')
     );
-  });
-
-  it('reads claim, patient and encounter numbers people type, with or without a #', () => {
-    assert.deepEqual(['42', '#7', ' 0012 ', 'PCR-1', '99999999999', ''].map(numberOf), [
-      42,
-      7,
-      12,
-      null,
-      null,
-      null
-    ]);
   });
 
   it('finds a claim with its coverages, lines, diagnoses and cycle', async () => {
@@ -203,6 +201,32 @@ describe('claim status sort', () => {
     });
     assert.ok(
       queries[0]?.sql.includes("order by array_position(array['draft', 'needs_review', 'ready'")
+    );
+  });
+});
+
+describe('claim encounter numbers', () => {
+  it('shows each claim with the encounter number it was imported from and sorts by it', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('select "c"."id", count(*)') ? [{ id: 'c1', total: '1' }] : []
+    );
+    await listClaims(db, 't-1', {
+      status: 'all',
+      page: 1,
+      pageSize: 25,
+      sort: 'encounter',
+      dir: 'desc'
+    });
+    const [ids, details] = queries;
+    assert.ok(
+      ids?.sql.includes(
+        'order by (select "er"."number" from "import_reports" as "er" where "er"."id" = "c"."import_report_id") desc nulls last'
+      )
+    );
+    assert.ok(
+      details?.sql.includes(
+        '(select "er"."number" from "import_reports" as "er" where "er"."id" = "c"."import_report_id") as "encounter_number"'
+      )
     );
   });
 });

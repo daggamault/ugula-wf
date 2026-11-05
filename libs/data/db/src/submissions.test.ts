@@ -98,7 +98,7 @@ const medicare = {
 
 const claimRow = (id: string, over: Partial<ReadyClaimRow> = {}): ReadyClaimRow => ({
   id,
-  number: 1001,
+  number: '20261105-1001',
   pcr_number: 'PCR-1',
   emergency: true,
   loaded_miles: '7.3',
@@ -221,10 +221,10 @@ describe('pendingClaim', () => {
     assert.deepEqual(
       waiting.map((p) => [p.id, p.claim.claimId, p.coverageId, p.resubmission]),
       [
-        [C1, '1001', MEDICARE, false],
-        ['unreviewed', '1001', MEDICARE, false],
-        [C2, '1001', MEDICARE, false],
-        ['requeued', '1001', MEDICARE, true]
+        [C1, '20261105-1001', MEDICARE, false],
+        ['unreviewed', '20261105-1001', MEDICARE, false],
+        [C2, '20261105-1001', MEDICARE, false],
+        ['requeued', '20261105-1001', MEDICARE, true]
       ]
     );
     assert.equal(waiting[0]?.totalCents, 92_300);

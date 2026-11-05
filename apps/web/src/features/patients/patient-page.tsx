@@ -31,6 +31,7 @@ export const PatientDetails = ({ patient }: { patient: PatientSummary }) => (
       <Detail label="Open Balance" isEmphasized>
         {formatCents(patient.balance_cents)}
       </Detail>
+      <Detail label="Patient Number">{patient.number}</Detail>
       <Detail label="Birth Date">{formatDate(patient.birth_date)}</Detail>
       <Detail label="Sex">{(patient.gender && SEXES[patient.gender]) || emptyValue}</Detail>
       <Detail label="Address">{addressOf(patient) || emptyValue}</Detail>

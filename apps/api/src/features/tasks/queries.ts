@@ -1,6 +1,71 @@
 import type { Permission } from '@ugula/access';
+import { dailyNumberOf } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
+import { type PageRequest, paged } from '../../shared/paging.ts';
+import { containsPattern } from '../../shared/search.ts';
+import type { TaskSort } from './schemas.ts';
+
+export type TaskFilters = PageRequest<TaskSort> & {
+  q?: string | undefined;
+  queue?: string | undefined;
+  assignee: 'mine' | 'unassigned' | 'all';
+};
+
+const taskOrder = {
+  waiting: sql.ref('t.created_at'),
+  priority: sql.ref('t.priority'),
+  due: sql.ref('t.due_at'),
+  title: sql`lower(t.title)`,
+  queue: sql.ref('t.queue'),
+  claim: sql.ref('c.number'),
+  assignee: sql.ref('u.email')
+} as const;
+
+export const listTasks = (db: Db, agencyId: string, userId: string, f: TaskFilters) => {
+  let q = db
+    .selectFrom('tasks as t')
+    .leftJoin('users as u', 'u.id', 't.assignee_id')
+    .leftJoin('claim_runs as cr', 'cr.run_id', 't.run_id')
+    .leftJoin('claims as c', 'c.id', 'cr.claim_id')
+    .leftJoin('patients as p', 'p.id', 'c.patient_id')
+    .select([
+      't.id',
+      't.kind',
+      't.queue',
+      't.title',
+      't.subject',
+      't.priority',
+      't.due_at',
+      't.assignee_id',
+      'u.email as assignee_email',
+      't.created_at',
+      'c.id as claim_id',
+      'c.number as claim_number',
+      'p.first_name',
+      'p.last_name'
+    ])
+    .where('t.agency_id', '=', agencyId)
+    .where('t.status', '=', 'open');
+  if (f.queue) q = q.where('t.queue', '=', f.queue);
+  if (f.assignee === 'mine') q = q.where('t.assignee_id', '=', userId);
+  if (f.assignee === 'unassigned') q = q.where('t.assignee_id', 'is', null);
+  if (f.q) {
+    const pattern = containsPattern(f.q);
+    const number = dailyNumberOf(f.q);
+    const text = f.q.trim();
+    q = q.where((eb) =>
+      eb.or([
+        eb(sql`lower(t.title)`, 'like', pattern),
+        eb(sql`lower(t.subject)`, 'like', pattern),
+        eb(sql`lower(p.last_name || ', ' || p.first_name)`, 'like', pattern),
+        eb('c.pcr_number', '=', text),
+        ...(number === null ? [] : [eb('c.number', '=', number)])
+      ])
+    );
+  }
+  return paged(q, f, taskOrder, sql.ref('t.id'));
+};
 
 const detail = [
   'id',

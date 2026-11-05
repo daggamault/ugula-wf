@@ -168,6 +168,7 @@ export {
   type Responsibility,
   type ScheduleStore
 } from './nodes/index.ts';
+export { dailyNumberOf } from './numbers.ts';
 export {
   type Address,
   type Demographics,

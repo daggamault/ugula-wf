@@ -177,6 +177,7 @@ export const listImportReports = (
       .select([
         'ir.id',
         'ir.position',
+        'ir.number',
         'ir.pcr_number',
         'r.status as run_status',
         'c.id as claim_id',

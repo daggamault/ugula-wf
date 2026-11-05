@@ -14,6 +14,7 @@ import { createGraphsTables } from './graphs.ts';
 import { createImportsTables } from './imports.ts';
 import { createNemsisDictionaryTables } from './nemsis-dictionary.ts';
 import { createNotificationsTables } from './notifications.ts';
+import { createDailyNumbers, DAILY_NUMBER_FUNCTIONS } from './numbers.ts';
 import { createPatientsTable } from './patients.ts';
 import { createPayerFilesTables } from './payer-files.ts';
 import { createTasksTable } from './tasks.ts';
@@ -47,6 +48,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'billing_profiles',
     'patients',
     'tasks',
+    'daily_numbers',
     'signals',
     'schedule_runs',
     'clearinghouse_downloads',
@@ -80,7 +82,8 @@ const resetSchema = async (db: Kysely<Database>) => {
     'check_graph_version_base',
     'check_run_graph_key',
     'check_table_version_base',
-    'check_run_table_key'
+    'check_run_table_key',
+    ...DAILY_NUMBER_FUNCTIONS
   ]) {
     await sql`drop function if exists ${sql.id(name)}`.execute(db);
   }
@@ -92,6 +95,7 @@ const steps = [
   createGnisPlacesTable,
   createNemsisDictionaryTables,
   createAgenciesTable,
+  createDailyNumbers,
   createUsersTables,
   createGraphsTables,
   createWorkflowRunsTables,

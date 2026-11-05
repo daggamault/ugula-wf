@@ -254,7 +254,7 @@ export const pendingClaim = (
   }
   const coverageOf = (id: string) => row.coverages.find((c) => c.id === id);
   const claim: BatchClaim = {
-    claimId: String(row.number),
+    claimId: row.number,
     payerClaimNumber: progress.payerClaimNumber,
     payer: payerOf(current.payer, coverageOf(current.id)),
     priorPayers: progress.priorCoverages.map((c) => ({

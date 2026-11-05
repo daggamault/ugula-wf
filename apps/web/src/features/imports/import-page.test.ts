@@ -9,6 +9,7 @@ import { ImportPage, patientOf, ReportsTable, reportOutcome } from './import-pag
 const report = (over: Partial<ImportReport> = {}): ImportReport => ({
   id: 'r1',
   position: 0,
+  number: '20261105-0001',
   pcr_number: 'PCR-1',
   run_status: 'completed',
   claim_id: null,
@@ -71,7 +72,13 @@ describe('ReportsTable', () => {
       createElement(ReportsTable, {
         reports: [
           report({ claim_id: 'c1', total_cents: 95_000, last_name: 'Doe', first_name: 'Jane' }),
-          report({ id: 'r2', position: 1, task_id: 'k1', task_title: 'Review PCR' })
+          report({
+            id: 'r2',
+            position: 1,
+            number: '20261105-0002',
+            task_id: 'k1',
+            task_title: 'Review PCR'
+          })
         ]
       })
     );
@@ -80,6 +87,8 @@ describe('ReportsTable', () => {
     assert.ok(html.includes('href="/tasks/k1" aria-label="Work task Review PCR"'));
     assert.ok(html.includes('>Doe, Jane<') && html.includes('tabular-nums'));
     assert.ok(html.includes('$950.00') && html.includes('>Waiting<'));
+    assert.ok(html.includes('>Encounter<') && !html.includes('>#<'));
+    assert.ok(html.includes('>20261105-0001<') && html.includes('>20261105-0002<'));
   });
 });
 

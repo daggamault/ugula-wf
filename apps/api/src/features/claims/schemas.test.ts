@@ -30,6 +30,7 @@ describe('claim schemas', () => {
     assert.equal(v.parse(listClaimsQuery, { number: ' 42 ' }).number, '42');
     assert.equal(v.safeParse(listClaimsQuery, { patientId: 'x' }).success, false);
     assert.equal(v.parse(listClaimsQuery, { sort: 'waiting' }).sort, 'waiting');
+    assert.equal(v.parse(listClaimsQuery, { sort: 'encounter' }).sort, 'encounter');
   });
 
   it('accepts ordered unique payers', () => {

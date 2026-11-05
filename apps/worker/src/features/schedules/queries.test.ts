@@ -24,7 +24,7 @@ const profile = {
   phone: '2175550100'
 };
 
-const claimRow = (id: string, number: number, facility = 'f1') => ({
+const claimRow = (id: string, number: string, facility = 'f1') => ({
   facility_id: facility,
   name: facility === 'f1' ? 'Sunrise SNF' : 'Lakeside Hospital',
   address_line: '5 Elm St',
@@ -48,7 +48,7 @@ describe('createScheduleStore', () => {
         kind: 'appeal',
         claim_id: 'c1',
         coverage_id: null,
-        reference: '#12 · PCR-1 · Jane Doe',
+        reference: '20261002-0012 · PCR-1 · Jane Doe',
         due_on: '2026-11-10',
         days_left: 9,
         task_id: TASK,
@@ -61,7 +61,7 @@ describe('createScheduleStore', () => {
       kind: 'appeal',
       claimId: 'c1',
       coverageId: null,
-      reference: '#12 · PCR-1 · Jane Doe',
+      reference: '20261002-0012 · PCR-1 · Jane Doe',
       dueOn: '2026-11-10',
       daysLeft: 9,
       taskId: TASK,
@@ -92,15 +92,19 @@ describe('createScheduleStore', () => {
         : sql.includes('from "billing_profiles"')
           ? [profile]
           : sql.includes('from "claims"')
-            ? [claimRow('c1', 12), claimRow('c2', 13), claimRow('c3', 14, 'f2')]
+            ? [
+                claimRow('c1', '20261002-0012'),
+                claimRow('c2', '20261002-0013'),
+                claimRow('c3', '20261002-0014', 'f2')
+              ]
             : []
     );
     const sources = await createScheduleStore(db, blobs).facilityInvoices('r1', '2026-10-01');
     assert.deepEqual(
       sources.map((s) => [s.facilityId, s.facility[0], s.claims.map((c) => c.number)]),
       [
-        ['f1', 'Sunrise SNF', [12, 13]],
-        ['f2', 'Lakeside Hospital', [14]]
+        ['f1', 'Sunrise SNF', ['20261002-0012', '20261002-0013']],
+        ['f2', 'Lakeside Hospital', ['20261002-0014']]
       ]
     );
     assert.deepEqual(sources[0]?.claims[0]?.patient, 'Doe, Jane');
@@ -118,7 +122,7 @@ describe('createScheduleStore', () => {
       sql.startsWith('select "agency_id"')
         ? [{ agency_id: 't-1' }]
         : sql.includes('from "claims"')
-          ? [claimRow('c1', 12)]
+          ? [claimRow('c1', '20261002-0012')]
           : []
     );
     await assert.rejects(
@@ -143,7 +147,7 @@ describe('createScheduleStore', () => {
       claims: [
         {
           claimId: 'c1',
-          number: 12,
+          number: '20261002-0012',
           pcrNumber: null,
           patient: 'Doe, Jane',
           serviceDate: null,

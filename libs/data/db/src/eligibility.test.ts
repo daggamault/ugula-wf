@@ -9,7 +9,7 @@ const BLUE = '01a16617-7704-7ba6-b9b5-000000000002';
 const evening = new Date('2026-11-01T03:00:00Z');
 
 const row = {
-  number: 1001,
+  number: '20261105-1001',
   service_date: null,
   first_name: 'Jane',
   last_name: 'Doe',

@@ -32,7 +32,7 @@ export type AgingRow = PayerName & {
 };
 
 type Claim = {
-  claim_number: number;
+  claim_number: string;
   pcr_number: string | null;
   first_name: string | null;
   last_name: string | null;

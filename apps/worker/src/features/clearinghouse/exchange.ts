@@ -119,7 +119,7 @@ export const statusInquiry = (r: StatusRow, at: Date): ClaimStatusInquiry | null
   const lastName = self ? r.last_name : r.insured_last_name;
   if (!lastName) return null;
   return {
-    trace: String(r.number),
+    trace: r.number,
     payer: { name: r.payer, payerId: r.payer_id },
     subscriber: self
       ? { ...patient, memberId: r.member_id }
@@ -131,7 +131,7 @@ export const statusInquiry = (r: StatusRow, at: Date): ClaimStatusInquiry | null
           memberId: r.member_id
         },
     patient: self ? null : patient,
-    claimNumber: String(r.number),
+    claimNumber: r.number,
     payerClaimNumber: r.payer_claim_number,
     chargeCents: r.total_cents,
     serviceDate: r.service_date ?? localDate(at, r.time_zone)

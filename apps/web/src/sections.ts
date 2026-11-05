@@ -7,6 +7,7 @@ import {
   ChartColumnIcon,
   FileUpIcon,
   HospitalIcon,
+  ListChecksIcon,
   ReceiptTextIcon,
   SettingsIcon,
   ShieldCheckIcon,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import { ROLES_PATH } from './features/roles/roles-page.tsx';
 import { FACILITIES_PATH } from './features/settings/facilities-page.tsx';
+import { TASKS_PATH } from './features/tasks/tasks-page.tsx';
 import { USERS_PATH } from './features/users/users-page.tsx';
 import { TABLES_PATH } from './features/workflows/tables-page.tsx';
 
@@ -25,17 +27,23 @@ type Section = {
   label: string;
   href: string;
   icon: LucideIcon;
-  group: string;
+  group?: string;
   permission: Permission;
 };
 
 export const SECTIONS: readonly Section[] = [
   {
+    id: 'tasks',
+    label: 'Tasks',
+    href: TASKS_PATH,
+    icon: ListChecksIcon,
+    permission: 'tasks:read'
+  },
+  {
     id: 'patients',
     label: 'Patients',
     href: '/patients',
     icon: UsersIcon,
-    group: 'Work',
     permission: 'patients:read'
   },
   {
@@ -43,7 +51,6 @@ export const SECTIONS: readonly Section[] = [
     label: 'Imports',
     href: '/imports',
     icon: FileUpIcon,
-    group: 'Work',
     permission: 'imports:read'
   },
   {
@@ -51,7 +58,6 @@ export const SECTIONS: readonly Section[] = [
     label: 'Claims',
     href: '/claims',
     icon: ReceiptTextIcon,
-    group: 'Work',
     permission: 'claims:read'
   },
   {
@@ -59,7 +65,6 @@ export const SECTIONS: readonly Section[] = [
     label: 'Reports',
     href: '/reports',
     icon: ChartColumnIcon,
-    group: 'Work',
     permission: 'reports:read'
   },
   {
@@ -136,8 +141,10 @@ export const SECTIONS: readonly Section[] = [
   }
 ];
 
+export const COLLAPSIBLE_GROUPS: readonly string[] = ['Automation', 'Admin'];
+
 export const homeOf = (can: (permission: Permission) => boolean) =>
   (
-    SECTIONS.find((s) => s.id === 'claims' && can(s.permission)) ??
+    SECTIONS.find((s) => s.id === 'tasks' && can(s.permission)) ??
     SECTIONS.find((s) => can(s.permission))
   )?.href ?? null;

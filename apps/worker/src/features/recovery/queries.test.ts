@@ -160,7 +160,7 @@ describe('createRecoveryStore', () => {
         : sql.includes('inner join "claim_coverages"')
           ? [
               {
-                number: 12,
+                number: '20261002-0012',
                 pcr_number: 'PCR-1',
                 service_date: '2026-10-01',
                 level: 'ALS1',
@@ -199,7 +199,7 @@ describe('createRecoveryStore', () => {
     const source = await store.appealPacket('r1', ID, COV);
     assert.equal(source.payer, 'Medicare');
     assert.deepEqual(source.claim.slice(0, 3), [
-      { label: 'Claim', value: '#12' },
+      { label: 'Claim', value: '20261002-0012' },
       { label: 'PCR', value: 'PCR-1' },
       { label: 'Patient', value: 'Jane Doe' }
     ]);

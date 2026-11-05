@@ -32,7 +32,7 @@ export const batchAcknowledgment999 = (batchControl: number, accepted: boolean) 
     at
   );
 
-export const claimAcknowledgment277 = (claimNumber: number, rejection: string | null) =>
+export const claimAcknowledgment277 = (claimNumber: string, rejection: string | null) =>
   build277(
     {
       claims: [
@@ -47,7 +47,7 @@ export const claimAcknowledgment277 = (claimNumber: number, rejection: string | 
     at
   );
 
-export const remittance835 = (claimNumber: number, chargeCents: number, paidCents: number) =>
+export const remittance835 = (claimNumber: string, chargeCents: number, paidCents: number) =>
   build835(
     [
       {

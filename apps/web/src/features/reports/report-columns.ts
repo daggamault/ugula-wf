@@ -161,7 +161,7 @@ const payerColumn = <R extends PayerName>(group: string | null): ReportColumn<R>
       };
 
 type ClaimRow = {
-  claim_number: number;
+  claim_number: string;
   pcr_number: string | null;
   first_name: string | null;
   last_name: string | null;
@@ -172,7 +172,7 @@ const patientOf = (r: ClaimRow) =>
   r.last_name ? [r.last_name, r.first_name].filter(Boolean).join(', ') : null;
 
 const claimColumns = <R extends ClaimRow>({ hasPcr = true } = {}): ReportColumn<R>[] => [
-  text<R>('Claim', (r) => String(r.claim_number)),
+  text<R>('Claim', (r) => r.claim_number),
   ...(hasPcr ? [text<R>('PCR', (r) => r.pcr_number)] : []),
   text<R>('Patient', patientOf),
   text<R>('Date of Service', (r) => (r.service_date ? formatDate(r.service_date) : null))

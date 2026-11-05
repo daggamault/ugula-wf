@@ -34,7 +34,7 @@ let claimId = '';
 
 const openClaim = async () => {
   await go(s.page, `/claims/${claimId}`);
-  await heading(s.page, /^Claim #\d+$/).waitFor();
+  await heading(s.page, /^Claim \d{8}-\d{4,}$/).waitFor();
 };
 
 describe('a biller takes an encounter from import to payment', { timeout: SUITE_MS }, () => {
@@ -179,7 +179,7 @@ describe('a biller takes an encounter from import to payment', { timeout: SUITE_
     await s.page.getByRole('link', { name: `Open payer file ${pcr}.835` }).click();
     await s.page
       .getByRole('row')
-      .filter({ hasText: `#${claim.number}` })
+      .filter({ hasText: claim.number })
       .getByText('Posted')
       .first()
       .waitFor();

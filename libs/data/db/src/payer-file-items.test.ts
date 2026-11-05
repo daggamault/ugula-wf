@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { RunQueueClient } from '@ugula/run-queue';
 import {
   type Context,
-  claimNumberOf,
+  controlNumberOf,
   findClaimByNumber,
   item,
   noClaim,
@@ -14,19 +14,30 @@ import { createRecordingDb } from './testing.ts';
 const boss: RunQueueClient = { insert: async () => undefined };
 
 describe('payer file items', () => {
-  it('reads claim numbers billed as CLM01 and finds their claims', async () => {
-    assert.deepEqual(['not a number', '0', '-5', '1.5', ' 1001 '].map(claimNumberOf), [
+  it('reads 837P batch control numbers as positive integers', () => {
+    assert.deepEqual(['not a number', '0', '-5', '1.5', ' 1001 '].map(controlNumberOf), [
       null,
       null,
       null,
       null,
       1001
     ]);
+  });
+
+  it('finds claims by the daily number billed as CLM01', async () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.equal(await findClaimByNumber(db, 't1', 'x'), undefined);
+    assert.equal(await findClaimByNumber(db, 't1', '1001'), undefined);
     assert.equal(queries.length, 0);
-    await findClaimByNumber(db, 't1', ' 1001 ');
-    assert.deepEqual(queries[0]?.parameters, ['t1', 1001]);
+    await findClaimByNumber(db, 't1', ' 20261105-0001 ');
+    await findClaimByNumber(db, 't1', '#202611050002');
+    assert.deepEqual(
+      queries.map((q) => q.parameters),
+      [
+        ['t1', '20261105-0001'],
+        ['t1', '20261105-0002']
+      ]
+    );
   });
 
   it('builds file lines, with amounts only when posted', () => {

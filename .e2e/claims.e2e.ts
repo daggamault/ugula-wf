@@ -57,20 +57,20 @@ const openTaskPage = async (claimId: string, title: string) => {
 
 const openClaim = async (claimId: string, tab = '') => {
   await go(s.page, `/claims/${claimId}${tab ? `?tab=${tab}` : ''}`);
-  await heading(s.page, /^Claim #\d+$/).waitFor();
+  await heading(s.page, /^Claim \d{8}-\d{4,}$/).waitFor();
 };
 
 const toast = (title: string | RegExp) => toasts(s.page).getByText(title).first().waitFor();
 
 const searchClaims = async (fields: Record<string, string>) => {
-  await go(s.page, '/claims?tab=search');
+  await go(s.page, '/claims');
   const form = s.page.getByRole('search', { name: 'Search claims' });
   await form.waitFor();
   for (const [label, value] of Object.entries(fields)) {
     await form.getByLabel(label, { exact: true }).fill(value);
   }
   await form.getByRole('button', { name: 'Search' }).click();
-  await s.page.waitForURL(/\/claims\?tab=search&/);
+  await s.page.waitForURL(/\/claims\?/);
 };
 
 const claimRow = (pcr: string) => s.page.getByRole('row').filter({ hasText: pcr });
@@ -132,7 +132,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await searchClaims({ Number: pcrs.worked });
     const row = claimRow(pcrs.worked);
     await row.getByText('Review PCR').waitFor();
-    await row.getByRole('link', { name: /^Work Review PCR on claim #\d+$/ }).click();
+    await row.getByRole('link', { name: /^Work Review PCR on claim \d{8}-\d{4,}$/ }).click();
     await section(s.page, 'Your Decision').last().waitFor();
     assert.match(s.page.url(), /\/tasks\//);
   });
@@ -281,11 +281,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await s.page.getByRole('link', { name: 'Open patient Kline, Dorothy' }).first().click();
     await section(s.page, 'Details').first().waitFor();
     const { claim } = await claimState(s, claims.worked);
-    await s.page
-      .getByRole('row')
-      .filter({ hasText: `#${claim.number}` })
-      .first()
-      .waitFor();
+    await s.page.getByRole('row').filter({ hasText: claim.number }).first().waitFor();
   });
 
   it('keeps new tasks in the notification bell and clears them', async () => {

@@ -268,7 +268,7 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
         },
         payer: row.payer,
         claim: [
-          { label: 'Claim', value: `#${row.number}` },
+          { label: 'Claim', value: row.number },
           { label: 'PCR', value: row.pcr_number ?? '' },
           { label: 'Patient', value: [row.first_name, row.last_name].filter(Boolean).join(' ') },
           { label: 'Birth date', value: row.birth_date ?? '' },

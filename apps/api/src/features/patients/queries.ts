@@ -1,4 +1,4 @@
-import { CLOSED_CLAIM_STATUSES, nameKey } from '@ugula/billing';
+import { CLOSED_CLAIM_STATUSES, dailyNumberOf, nameKey } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
@@ -9,6 +9,7 @@ export type PatientFilters = PageRequest<PatientSort> & {
   lastName?: string | undefined;
   firstName?: string | undefined;
   birthDate?: string | undefined;
+  number?: string | undefined;
 };
 
 const patientRows = (db: Db, agencyId: string) =>
@@ -49,6 +50,7 @@ const patientRows = (db: Db, agencyId: string) =>
 
 const PATIENT_ORDER = {
   name: sql`lower(p.last_name || ' ' || p.first_name)`,
+  number: sql.ref('p.number'),
   born: sql.ref('p.birth_date'),
   lastService: sql.ref('claimed.last_service_date'),
   balance: sql.ref('claimed.balance_cents'),
@@ -63,6 +65,7 @@ export const listPatients = (db: Db, agencyId: string, f: PatientFilters) => {
   const first = f.firstName?.trim().toLowerCase();
   if (first) q = q.where(sql`lower(p.first_name)`, 'like', `${escapeLike(first)}%`);
   if (f.birthDate) q = q.where('p.birth_date', '=', f.birthDate);
+  if (f.number) q = q.where('p.number', '=', dailyNumberOf(f.number) ?? '');
   return paged(q, f, PATIENT_ORDER, sql.ref('p.id'));
 };
 

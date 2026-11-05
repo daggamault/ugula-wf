@@ -9,7 +9,7 @@ const clients = {
   agencies: { list: () => new Promise(() => undefined), access: async () => null },
   workflows: { list: async () => [] },
   runs: { list: async () => [] },
-  tasks: { queues: async () => [] },
+  tasks: { queues: async () => [], list: () => new Promise(() => undefined) },
   notifications: { list: () => new Promise(() => undefined) }
 } as unknown as AppClients;
 
@@ -34,6 +34,7 @@ describe('resolveRoute', () => {
       '/runs',
       '/runs/new',
       '/runs/r1',
+      '/tasks',
       '/tasks/t1',
       '/imports',
       '/imports/i1',
@@ -64,7 +65,6 @@ describe('resolveRoute', () => {
       assert.notEqual(resolveRoute(path, query('graph=g1'), ctx), null, path);
     }
     assert.equal(resolveRoute('/nope', query(), ctx), null);
-    assert.equal(resolveRoute('/tasks', query(), ctx), null);
   });
 
   it('reads page state from the URL and drops values it does not know', () => {
@@ -84,6 +84,21 @@ describe('resolveRoute', () => {
     assert.equal(props('/tables', 'show=customized').show, 'customized');
     assert.equal(props('/tasks/t1', '').back, null);
     assert.equal(props('/tasks/t1', 'back=/runs/r1').back, '/runs/r1');
+    assert.equal(props('/tasks/t1', 'back=/tasks?queue=billing').back, '/tasks?queue=billing');
+    assert.equal(props('/tasks/t1', 'back=/claims?lastName=doe').back, '/claims?lastName=doe');
+    assert.equal(props('/tasks/t1', 'back=https://evil.test').back, '/tasks');
+    assert.deepEqual(props('/tasks', 'queue=billing-review&assignee=mine').filter, {
+      queue: 'billing-review',
+      assignee: 'mine'
+    });
+    assert.deepEqual(props('/tasks', '').filter, { queue: null, assignee: 'all' });
+    assert.deepEqual(props('/claims', 'tab=search&lastName=doe').search, {
+      firstName: '',
+      lastName: 'doe',
+      birthDate: '',
+      number: ''
+    });
+    assert.equal(props('/claims', 'tab=search').tab, undefined);
     assert.equal(props('/fees/new', '').feeId, null);
     assert.equal(props('/payers/p1', '').payerId, 'p1');
     assert.equal(props('/users/u1', 'back=/users?q=a').userId, 'u1');

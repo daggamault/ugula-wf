@@ -78,13 +78,13 @@ export const describeTask = (task: Pick<TaskDetail, 'title' | 'subject' | 'sourc
   const { claim } = task.source;
   const about = task.subject ? task.title : null;
   const on = claim
-    ? `claim #${claim.number} for ${claim.patient ?? 'a patient not matched yet'}`
+    ? `claim ${claim.number} for ${claim.patient ?? 'a patient not matched yet'}`
     : null;
   return about && on ? `${about} on ${on}` : (about ?? (on ? `On ${on}` : 'Waiting on a decision'));
 };
 
 export const backOfTask = (back: string | null, task: Pick<TaskDetail, 'source'>) =>
-  back ?? (task.source.claim ? `/claims/${task.source.claim.id}` : '/claims');
+  back ?? (task.source.claim ? `/claims/${task.source.claim.id}` : '/tasks');
 
 export const NextUp = ({
   outcome,

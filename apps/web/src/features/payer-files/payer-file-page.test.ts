@@ -13,9 +13,9 @@ describe('payer file page', () => {
         items: [
           {
             position: 1,
-            reference: '1001',
+            reference: '20261105-1001',
             claim_id: 'c1',
-            claim_number: 1001,
+            claim_number: '20261105-1001',
             outcome: 'posted',
             message: '',
             paid_cents: 60_000,
@@ -34,9 +34,11 @@ describe('payer file page', () => {
         ]
       })
     );
-    assert.ok(html.includes('#1001') && html.includes('Posted') && html.includes('$600.00'));
+    assert.ok(
+      html.includes('>20261105-1001<') && html.includes('Posted') && html.includes('$600.00')
+    );
     assert.ok(html.includes('No Match') && html.includes('No claim has number 9999'));
-    assert.ok(html.includes('href="/claims/c1" aria-label="Open claim 1001"'));
+    assert.ok(html.includes('href="/claims/c1" aria-label="Open claim 20261105-1001"'));
     assert.equal(html.split('href="/claims/').length, 2);
     assert.ok(html.includes('>9999<') && html.includes('tabular-nums'));
     assert.ok(html.includes('>—<'));

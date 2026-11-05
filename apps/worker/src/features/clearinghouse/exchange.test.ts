@@ -25,7 +25,7 @@ const profile = {
 };
 
 const patient = {
-  number: 1001,
+  number: '20261105-1001',
   service_date: '2026-10-01',
   first_name: 'Jane',
   last_name: 'Doe',
@@ -180,7 +180,7 @@ describe('checkEligibility', () => {
 describe('checkClaimStatus', () => {
   it('asks in real time and logs the 277 answer for the claim', async () => {
     const answer = build277Status([
-      { trace: '1001', claimNumber: '1001', category: 'A2', code: '20' }
+      { trace: '20261105-1001', claimNumber: '20261105-1001', category: 'A2', code: '20' }
     ]);
     const s = setup({ realtime: { ok: true, text: answer } });
     assert.deepEqual(await s.store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE), {

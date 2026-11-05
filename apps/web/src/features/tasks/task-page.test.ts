@@ -74,15 +74,17 @@ describe('TaskView', () => {
   });
 
   it('names and links the claim a task is about, and goes back where the biller came from', () => {
-    const claim = { id: 'c1', number: 12, status: 'draft', patient: null } as const;
+    const claim = { id: 'c1', number: '20261101-0012', status: 'draft', patient: null } as const;
     const onClaim = task({ source: { reportId: null, pcrNumber: 'PCR-1', claim } });
     const html = render(onClaim);
-    assert.ok(html.includes('Review PCR on claim #12 for a patient not matched yet, opened'));
+    assert.ok(
+      html.includes('Review PCR on claim 20261101-0012 for a patient not matched yet, opened')
+    );
     assert.ok(html.includes('href="/claims/c1"') && html.includes('Open Claim'));
     const fromClaim = render(onClaim, null, '/claims/c1');
     assert.ok(!fromClaim.includes('Open Claim') && fromClaim.includes('Back to Claim'));
     assert.equal(backOfTask(null, onClaim), '/claims/c1');
-    assert.equal(backOfTask(null, task()), '/claims');
+    assert.equal(backOfTask(null, task()), '/tasks');
     assert.equal(backOfTask('/runs/r1', onClaim), '/runs/r1');
   });
 
@@ -214,11 +216,16 @@ describe('TaskPage', () => {
 
 describe('describeTask', () => {
   it('says what a task is and which claim it is on in one sentence', () => {
-    const claim = { id: 'c1', number: 12, status: 'draft', patient: 'Doe, Jane' } as const;
+    const claim = {
+      id: 'c1',
+      number: '20261101-0012',
+      status: 'draft',
+      patient: 'Doe, Jane'
+    } as const;
     assert.equal(describeTask(task()), 'Review PCR');
     assert.equal(
       describeTask(task({ subject: null, source: { reportId: null, pcrNumber: null, claim } })),
-      'On claim #12 for Doe, Jane'
+      'On claim 20261101-0012 for Doe, Jane'
     );
     assert.equal(describeTask(task({ subject: null })), 'Waiting on a decision');
   });

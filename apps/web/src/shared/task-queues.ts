@@ -68,3 +68,6 @@ export const queueInfo = (queue: string): QueueInfo =>
     label: titleCase(queue),
     description: ''
   };
+
+export const assigneeOf = (email: string | null, me: string) =>
+  email ? (email === me ? 'You' : email) : 'Unassigned';

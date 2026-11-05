@@ -29,6 +29,7 @@ const CLAIM_SORTS = [
   'service',
   'patient',
   'pcr',
+  'encounter',
   'total',
   'balance',
   'status',

@@ -2,7 +2,7 @@ import type { NodeDef } from '@ugula/graph';
 import { lazy, type ReactNode } from 'react';
 import type { AuthClient } from './features/auth/client.ts';
 import { CLAIM_TABS, ClaimPage } from './features/claims/claim-page.tsx';
-import { CLAIMS_TABS, ClaimsPage } from './features/claims/claims-page.tsx';
+import { ClaimsPage } from './features/claims/claims-page.tsx';
 import { type ClaimsClient, claimSearchOf } from './features/claims/client.ts';
 import { PatientClaims } from './features/claims/patient-claims.tsx';
 import type { FeesClient } from './features/fees/client.ts';
@@ -37,7 +37,9 @@ import { PayerPage } from './features/settings/payer-page.tsx';
 import { PAYERS_PATH, PayersPage } from './features/settings/payers-page.tsx';
 import { SettingsPage } from './features/settings/settings-page.tsx';
 import type { TasksClient } from './features/tasks/client.ts';
+import { taskFilterOf } from './features/tasks/client.ts';
 import { TaskPage } from './features/tasks/task-page.tsx';
+import { TASKS_PATH, TasksPage } from './features/tasks/tasks-page.tsx';
 import type { UsersClient } from './features/users/client.ts';
 import { InvitePage } from './features/users/invite-page.tsx';
 import { UserPage } from './features/users/user-page.tsx';
@@ -209,13 +211,7 @@ const routes: readonly Route[] = [
   {
     pattern: '/claims',
     render: (_, q, c) => (
-      <ClaimsPage
-        client={c.claims}
-        live={c.live}
-        me={c.email}
-        tab={CLAIMS_TABS.find((t) => t.value === q.get('tab'))?.value ?? 'queue'}
-        search={claimSearchOf(q)}
-      />
+      <ClaimsPage client={c.claims} live={c.live} me={c.email} search={claimSearchOf(q)} />
     )
   },
   {
@@ -360,6 +356,12 @@ const routes: readonly Route[] = [
     render: (_, __, c) => <SettingsPage client={c.settings} live={c.live} />
   },
   {
+    pattern: TASKS_PATH,
+    render: (_, q, c) => (
+      <TasksPage client={c.tasks} live={c.live} me={c.email} filter={taskFilterOf(q)} />
+    )
+  },
+  {
     pattern: '/tasks/:id',
     render: (p, q, c) => (
       <TaskPage
@@ -367,7 +369,7 @@ const routes: readonly Route[] = [
         client={c.tasks}
         live={c.live}
         taskId={p.id ?? ''}
-        back={q.has('back') ? backOf(q, '/claims', '/claims/', '/runs/', '/imports/') : null}
+        back={q.has('back') ? backOf(q, TASKS_PATH, '/claims', '/runs/', '/imports/') : null}
       />
     )
   }

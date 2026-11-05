@@ -347,7 +347,7 @@ type TasksTable = {
 
 export type PatientsTable = {
   id: Generated<string>;
-  number: GeneratedAlways<number>;
+  number: GeneratedAlways<string>;
   agency_id: string;
   first_name: string;
   last_name: string;
@@ -375,7 +375,7 @@ type FeeSchedulesTable = {
 
 export type ClaimsTable = {
   id: Generated<string>;
-  number: GeneratedAlways<number>;
+  number: GeneratedAlways<string>;
   agency_id: string;
   patient_id: string | null;
   import_report_id: string | null;
@@ -652,6 +652,7 @@ type ImportReportsTable = {
   id: Generated<string>;
   import_id: string;
   position: number;
+  number: GeneratedAlways<string>;
   pcr_number: string | null;
   report: JsonColumn;
   created_at: Timestamp;

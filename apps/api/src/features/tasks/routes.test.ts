@@ -17,6 +17,7 @@ const record =
   };
 
 const service = {
+  list: record({ items: [], total: 0, page: 1, pageSize: 25 }),
   queues: record({ queues: [] }),
   find: record({ task: { id: ID } }),
   next: record({ task: null }),
@@ -34,7 +35,40 @@ describe('task routes', () => {
   it('summarize queues for the session user', async () => {
     assert.equal((await request('/queues')).status, 200);
     assert.deepEqual(calls.at(-1), ['t-1', 'u-1']);
-    assert.equal((await request('/')).status, 404);
+  });
+
+  it('list open tasks for the session user with defaults', async () => {
+    const res = await request('/');
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { items: [], total: 0, page: 1, pageSize: 25 });
+    assert.deepEqual(calls.at(-1), [
+      't-1',
+      'u-1',
+      { assignee: 'all', page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }
+    ]);
+  });
+
+  it('pass queue, assignee, search and paging filters through', async () => {
+    await request('/?q=%20Doe%20&queue=billing&assignee=mine&page=2&pageSize=50&sort=due&dir=desc');
+    assert.deepEqual(calls.at(-1), [
+      't-1',
+      'u-1',
+      {
+        assignee: 'mine',
+        page: 2,
+        pageSize: 50,
+        sort: 'due',
+        dir: 'desc',
+        q: 'Doe',
+        queue: 'billing'
+      }
+    ]);
+    await request('/?q=%20%20&assignee=unassigned');
+    assert.deepEqual(calls.at(-1), [
+      't-1',
+      'u-1',
+      { assignee: 'unassigned', page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }
+    ]);
   });
 
   it('hand out work and claim tasks as the session user', async () => {
@@ -67,7 +101,12 @@ describe('task route validation', () => {
       await request('/next', { method: 'POST', body: '{"queue":""}' }),
       await request(`/${ID}/complete`, { method: 'POST', body: '{"outcome":""}' }),
       await request(`/${ID}/complete`, { method: 'POST', body: '{}' }),
-      await request('/nope/complete', { method: 'POST', body: '{"outcome":"ok"}' })
+      await request('/nope/complete', { method: 'POST', body: '{"outcome":"ok"}' }),
+      await request('/?assignee=everyone'),
+      await request('/?queue='),
+      await request('/?sort=nope'),
+      await request('/?pageSize=7'),
+      await request(`/?q=${'x'.repeat(81)}`)
     ];
     assert.deepEqual(
       bad.map((r) => r.status),

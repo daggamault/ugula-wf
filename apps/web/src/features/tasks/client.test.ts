@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createApi } from '../../shared/api.ts';
-import { createTasksClient } from './client.ts';
+import { createTasksClient, taskFilterOf } from './client.ts';
 
 describe('createTasksClient', () => {
   it('calls the task endpoints and unwraps payloads', async () => {
@@ -47,5 +47,45 @@ describe('tasks client errors', () => {
     await assert.rejects(() => client.complete('a/b', 'approve', {}), /Task is already completed/);
     await assert.rejects(() => client.find('a b'), /Task is already completed/);
     assert.deepEqual(urls, ['/api/tasks/a%2Fb/complete', '/api/tasks/a%20b']);
+  });
+});
+
+describe('tasks client list', () => {
+  it('lists tasks with the page query and only the filters that narrow it', async () => {
+    const urls: string[] = [];
+    const client = createTasksClient(
+      createApi('', async (url) => {
+        urls.push(String(url));
+        return new Response('{"items":[],"total":0,"page":1,"pageSize":25}', { status: 200 });
+      })
+    );
+    assert.deepEqual(await client.list({ queue: null, assignee: 'all' }, 'page=1'), {
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 25
+    });
+    await client.list({ queue: 'billing review', assignee: 'mine' }, 'q=doe&sort=due&dir=asc');
+    assert.deepEqual(urls, [
+      '/api/tasks?page=1',
+      '/api/tasks?q=doe&sort=due&dir=asc&queue=billing+review&assignee=mine'
+    ]);
+  });
+});
+
+describe('taskFilterOf', () => {
+  it('reads the queue and assignee, ignoring blanks and unknown assignees', () => {
+    assert.deepEqual(taskFilterOf(new URLSearchParams()), { queue: null, assignee: 'all' });
+    assert.deepEqual(
+      taskFilterOf(new URLSearchParams('queue=billing-review&assignee=unassigned')),
+      {
+        queue: 'billing-review',
+        assignee: 'unassigned'
+      }
+    );
+    assert.deepEqual(taskFilterOf(new URLSearchParams('queue=&assignee=everyone')), {
+      queue: null,
+      assignee: 'all'
+    });
   });
 });

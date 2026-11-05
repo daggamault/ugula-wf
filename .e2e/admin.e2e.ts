@@ -18,7 +18,7 @@ import { batchAcknowledgment999, remittance835 } from './shared/x12.ts';
 
 let s: Session;
 
-const UNKNOWN_CLAIM = 999_999_999;
+const UNKNOWN_CLAIM = '19990101-9999';
 
 const feeCode = `Q${String(Math.floor(Math.random() * 9000) + 1000)}`;
 const payerName = uniqueId('E2E Payer');
@@ -205,7 +205,7 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
       .getByRole('link', { name: `Open payer file ${eraName}` })
       .click();
     await heading(page, eraName).waitFor();
-    const line = page.getByRole('row').filter({ hasText: String(UNKNOWN_CLAIM) });
+    const line = page.getByRole('row').filter({ hasText: UNKNOWN_CLAIM });
     await line.getByText('No Match').waitFor();
     await line.getByText(`No claim has number ${UNKNOWN_CLAIM}`).waitFor();
     const href = await page.getByRole('link', { name: 'Download File' }).getAttribute('href');

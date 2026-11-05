@@ -27,7 +27,6 @@ import { PayersEditor } from './claim-payers.tsx';
 import { ClaimRecovery } from './claim-recovery.tsx';
 import { ResponseForm } from './claim-response.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
-import { claimNumber } from './claims-page.tsx';
 import type {
   BillingDataInput,
   ClaimDetail,
@@ -129,17 +128,16 @@ export const ClaimView = ({
   const coverageKey = JSON.stringify(claim.coverages);
   return (
     <Page
-      title={`Claim ${claimNumber(claim.number)}`}
+      title={`Claim ${claim.number}`}
       backTo={back}
       backLabel={backLabelOf(back)}
       description={
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <ClaimStatusBadge status={claim.status} />
           <span className="text-surface-fg font-medium">{patientName(claim)}</span>
-          {claim.patient_number !== null ? (
-            <span>Patient {claimNumber(claim.patient_number)}</span>
-          ) : null}
-          <span>{claim.pcr_number ? `Encounter ${claim.pcr_number}` : 'No encounter number'}</span>
+          {claim.patient_number !== null ? <span>Patient {claim.patient_number}</span> : null}
+          {claim.encounter_number ? <span>Encounter {claim.encounter_number}</span> : null}
+          <span>{claim.pcr_number ? `PCR ${claim.pcr_number}` : 'No PCR number'}</span>
         </span>
       }
       actions={
@@ -278,7 +276,7 @@ export const ClaimPage = ({
   const [error, setError] = useState('');
   const notify = useToast();
   const patient = detail.data
-    ? `Claim ${claimNumber(detail.data.claim.number)} · ${patientName(detail.data.claim)}`
+    ? `Claim ${detail.data.claim.number} · ${patientName(detail.data.claim)}`
     : '';
   const act = async (action: () => Promise<unknown>, done: string) => {
     setError('');

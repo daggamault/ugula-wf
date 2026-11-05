@@ -10,8 +10,9 @@ import type { ClaimDetail, ClaimEvent, ClaimProgress } from './client.ts';
 
 const claim: ClaimDetail = {
   id: 'c1',
-  number: 12,
-  patient_number: 3,
+  number: '20261001-0012',
+  patient_number: '20260915-0003',
+  encounter_number: '20261001-0007',
   import_report_id: 'r1',
   import_id: 'i1',
   import_file_name: 'october.xml',
@@ -215,6 +216,13 @@ describe('ClaimView', () => {
     assert.ok(!render({ status: 'paid' }, null, 'overview', issues).includes('Must Be Fixed'));
   });
 
+  it('leaves out the encounter number and says when there is no PCR number', () => {
+    const html = render({ encounter_number: null, pcr_number: null, patient_number: null });
+    assert.ok(html.includes('Claim 20261001-0012'));
+    assert.ok(!html.includes('Encounter 2') && !html.includes('Patient 2'));
+    assert.ok(html.includes('No PCR number'));
+  });
+
   it('posts payments with paid date, check number and reason codes', () => {
     const html = render({}, { step: 'await', coverage: medicare, waitMs: 1, balanceCents: 1 });
     assert.ok(html.includes('Paid On') && html.includes('Check or EFT Number'));
@@ -236,8 +244,9 @@ describe('ClaimView', () => {
     assert.ok(html.includes('Waiting on Blue Plan'));
     assert.ok(html.includes('<option value="cov-b" selected="">Blue Plan</option>'));
     assert.ok(html.includes('Doe, Jane'));
-    assert.ok(html.includes('Claim #12') && html.includes('Patient #3'));
-    assert.ok(html.includes('Encounter PCR-1001'));
+    assert.ok(html.includes('Claim 20261001-0012') && html.includes('Patient 20260915-0003'));
+    assert.ok(html.includes('Encounter 20261001-0007') && html.includes('PCR PCR-1001'));
+    assert.ok(!html.includes('Claim #'));
     assert.ok(html.includes('12.4 miles loaded'));
     assert.ok(html.includes('A0427'));
     assert.ok(html.includes('1. </span>Medicare'));

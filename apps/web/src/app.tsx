@@ -7,7 +7,7 @@ import { HealthStatus } from './features/health/health-status.tsx';
 import { ImportDrop } from './features/imports/import-drop.tsx';
 import { useWorkAlerts } from './features/tasks/work-alerts.ts';
 import { type AppClients, resolveRoute } from './routes.tsx';
-import { homeOf, SECTIONS } from './sections.ts';
+import { COLLAPSIBLE_GROUPS, homeOf, SECTIONS } from './sections.ts';
 import {
   AccessProvider,
   type Agency,
@@ -72,8 +72,9 @@ export const Workspace = ({
       navItems={SECTIONS.filter((s) => can(s.permission)).map(({ permission: _, ...s }) => ({
         ...s,
         active: path.startsWith(s.href),
-        ...(s.id === 'claims' && openTasks ? { badge: openTasks } : {})
+        ...(s.id === 'tasks' && openTasks ? { badge: openTasks } : {})
       }))}
+      collapsibleGroups={COLLAPSIBLE_GROUPS}
       userEmail={email}
       status={<HealthStatus status={liveStatus} />}
       tools={<NotificationsButton client={clients.notifications} live={live} />}

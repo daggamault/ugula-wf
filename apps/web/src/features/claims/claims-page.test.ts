@@ -3,20 +3,15 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
-import {
-  assigneeOf,
-  CLAIM_SEARCH_FIELDS,
-  ClaimsPage,
-  ClaimsTable,
-  claimNumber
-} from './claims-page.tsx';
+import { CLAIM_SEARCH_FIELDS, CLAIM_TABLE, ClaimsPage, ClaimsTable } from './claims-page.tsx';
 import type { ClaimSummary, ClaimsClient } from './client.ts';
 
 const claim: ClaimSummary = {
   id: 'c1',
-  number: 12,
-  patient_number: 3,
+  number: '20261001-0012',
+  patient_number: '20260915-0003',
   pcr_number: 'PCR-1001',
+  encounter_number: '20261001-0007',
   level: 'ALS1',
   total_cents: 114_220,
   balance_cents: 30_000,
@@ -34,23 +29,57 @@ const claim: ClaimSummary = {
   open_tasks: 0
 };
 
+const noSearch = { firstName: '', lastName: '', birthDate: '', number: '' };
+
+const marked = (text: string) => new RegExp(`<mark class="[^"]+">${text}</mark>`);
+
 describe('ClaimsTable', () => {
   it('opens each claim from an icon action and shows the patient, encounter, money and status', () => {
     const html = renderToStaticMarkup(
       createElement(ClaimsTable, { claims: [claim, { ...claim, id: 'c2', payers: [] }] })
     );
     assert.ok(html.includes('<span class="sr-only">Actions</span>'));
-    assert.ok(html.includes('href="/claims/c1" aria-label="Open claim #12"'));
+    assert.ok(html.includes('href="/claims/c1" aria-label="Open claim 20261001-0012"'));
     assert.equal(html.split('href="/claims/c1"').length, 2);
-    assert.ok(html.includes('>#12<') && html.includes('Patient #3'));
-    assert.ok(html.includes('Doe, Jane') && html.includes('PCR-1001'));
+    assert.ok(html.includes('>20261001-0012<') && html.includes('Patient 20260915-0003'));
+    assert.ok(!html.includes('#'));
+    assert.ok(html.includes('Doe, Jane'));
+    assert.ok(html.includes('>20261001-0007<') && html.includes('PCR PCR-1001'));
     assert.ok(html.includes('$1,142.20') && html.includes('$300.00'));
     assert.ok(html.includes('Medicare → Blue Plan') && html.includes('Patient only'));
     assert.ok(html.includes('>Submitted<'));
+    assert.ok(!html.includes('<mark'));
     const own = renderToStaticMarkup(
       createElement(ClaimsTable, { claims: [claim], showPatient: false })
     );
     assert.ok(!own.includes('Doe, Jane'));
+  });
+
+  it('shows a dash for a claim with neither an encounter nor a PCR number', () => {
+    const html = renderToStaticMarkup(
+      createElement(ClaimsTable, {
+        claims: [{ ...claim, encounter_number: null, pcr_number: null }]
+      })
+    );
+    assert.ok(!html.includes('PCR '));
+    assert.ok(!html.includes('20261001-0007'));
+  });
+
+  it('highlights the claim, patient or encounter number and PCR the search names', () => {
+    const render = (number: string) =>
+      renderToStaticMarkup(
+        createElement(ClaimsTable, {
+          claims: [claim],
+          search: { ...noSearch, lastName: 'do', number }
+        })
+      );
+    assert.match(render('#202610010012'), marked('20261001-0012'));
+    assert.match(render('20260915-0003'), marked('20260915-0003'));
+    assert.match(render('202610010007'), marked('20261001-0007'));
+    assert.match(render(' PCR-1001 '), marked('PCR-1001'));
+    const partial = render('PCR-10');
+    assert.ok(!partial.includes('>PCR-10<'));
+    assert.match(partial, marked('Do'));
   });
 
   it('shows the task each claim is waiting on and links straight to it', () => {
@@ -81,58 +110,44 @@ describe('ClaimsTable', () => {
     );
     assert.ok(
       html.includes(
-        'href="/tasks/t1?back=%2Fclaims%3Ftask%3Dany" aria-label="Work Confirm patient on claim #12"'
+        'href="/tasks/t1?back=%2Fclaims%3Ftask%3Dany" aria-label="Work Confirm patient on claim 20261001-0012"'
       )
     );
     assert.ok(html.includes('text-danger font-medium'));
     assert.ok(html.includes('>Draft<'));
   });
 
-  it('numbers claims and patients with a #', () => {
-    assert.equal(claimNumber(7), '#7');
-  });
-
-  it('names the assignee from the signed in user point of view', () => {
-    assert.equal(assigneeOf('me@example.com', 'me@example.com'), 'You');
-    assert.equal(assigneeOf('sam@example.com', 'me@example.com'), 'sam@example.com');
-    assert.equal(assigneeOf(null, 'me@example.com'), 'Unassigned');
+  it('sorts by the encounter number', () => {
+    assert.equal(CLAIM_TABLE.sorts.encounter, 'desc');
   });
 });
 
 describe('ClaimsPage', () => {
   const pending = () => new Promise(() => undefined);
-  const noSearch = { firstName: '', lastName: '', birthDate: '', number: '' };
-  const render = (tab: 'queue' | 'search', search = noSearch) =>
+  const render = (search = noSearch) =>
     renderToStaticMarkup(
       createElement(ClaimsPage, {
         client: { list: pending } as unknown as ClaimsClient,
         live: idleLive,
         me: 'me@example.com',
-        tab,
         search
       })
     );
-
-  it('opens on the work queue, with no search form', () => {
-    const html = render('queue');
-    assert.ok(html.includes('aria-label="Claim views"'));
-    assert.ok(html.includes('href="/claims" aria-current="page"'));
-    assert.ok(html.includes('href="/claims?tab=search"'));
-    assert.ok(!html.includes('aria-label="Search claims"'));
-  });
 
   it('searches every claim by name, birth date or number, asking for a search first', () => {
     assert.deepEqual(
       CLAIM_SEARCH_FIELDS.map((f) => f.name),
       ['firstName', 'lastName', 'birthDate', 'number']
     );
-    const empty = render('search');
-    assert.ok(empty.includes('href="/claims?tab=search" aria-current="page"'));
+    const empty = render();
+    assert.ok(!empty.includes('aria-label="Claim views"'));
+    assert.ok(!empty.includes('tab=search'));
     assert.ok(empty.includes('aria-label="Search claims"'));
     assert.ok(empty.includes('for="search-number"') && empty.includes('for="search-birthDate"'));
-    assert.ok(empty.includes('Search All Claims'));
+    assert.ok(empty.includes('Enter a name, birth date, or a claim, patient or encounter number.'));
     assert.ok(!empty.includes('<select'));
-    const searching = render('search', { ...noSearch, lastName: 'doe' });
-    assert.ok(!searching.includes('Search All Claims'));
+    const searching = render({ ...noSearch, lastName: 'doe' });
+    assert.ok(searching.includes('aria-label="Search claims"'));
+    assert.ok(!searching.includes('Enter a name, birth date'));
   });
 });

@@ -1,12 +1,13 @@
 import { SEXES, US_STATE_PATTERN, ZIP_CODE_PATTERN } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { dailyNumberCheck, dailyNumberTrigger } from './numbers.ts';
 
 const buildPatientsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('patients')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('number', 'integer', (col) => col.notNull().unique().generatedAlwaysAsIdentity())
+    .addColumn('number', 'text', (col) => col.notNull())
     .addColumn('agency_id', 'uuid', (col) =>
       col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
@@ -24,6 +25,8 @@ const buildPatientsTable = (db: Kysely<Database>) =>
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('patients_agency_id_source_key_unique', ['agency_id', 'source_key'])
     .addUniqueConstraint('patients_agency_id_id_unique', ['agency_id', 'id'])
+    .addUniqueConstraint('patients_agency_id_number_unique', ['agency_id', 'number'])
+    .addCheckConstraint('patients_number_check', dailyNumberCheck)
     .addCheckConstraint('patients_last_name_key_check', sql`last_name_key <> ''`)
     .addCheckConstraint(
       'patients_gender_check',
@@ -63,4 +66,5 @@ const buildPatientsIndexes = (db: Kysely<Database>) => [
 export const createPatientsTable = async (db: Kysely<Database>) => {
   await buildPatientsTable(db).execute();
   for (const index of buildPatientsIndexes(db)) await index.execute();
+  await dailyNumberTrigger('patients', 'patient').execute(db);
 };

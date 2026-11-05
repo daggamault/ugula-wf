@@ -7,7 +7,7 @@ import {
 } from '@ugula/billing';
 import {
   type Context,
-  claimNumberOf,
+  controlNumberOf,
   type FileItem,
   findClaimByNumber,
   item,
@@ -33,7 +33,7 @@ const lastSubmittedCoverage = async (db: Db, claimId: string) =>
   )?.coverage_id ?? null;
 
 const findBatchClaims = (db: Db, agencyId: string, controlNumber: string) => {
-  const number = claimNumberOf(controlNumber);
+  const number = controlNumberOf(controlNumber);
   return number === null
     ? Promise.resolve([])
     : db
@@ -82,9 +82,7 @@ const acknowledgeBatch = async (
       payerClaimNumber: null,
       key: `${controlNumber}:${claim.claim_id}`
     });
-    items.push(
-      item(String(claim.number), claim.claim_id, accepted ? 'accepted' : 'rejected', note)
-    );
+    items.push(item(claim.number, claim.claim_id, accepted ? 'accepted' : 'rejected', note));
   }
   return items;
 };

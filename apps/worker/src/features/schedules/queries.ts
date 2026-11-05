@@ -29,7 +29,7 @@ const REMINDER_WORKFLOW = 'billing.deadline-reminder';
 
 const OPEN_EXCLUDED = sql.join([...CLOSED_CLAIM_STATUSES, 'draft'].map((s) => sql.lit(s)));
 
-const reference = sql<string>`concat_ws(' · ', '#' || c.number, c.pcr_number, nullif(concat_ws(' ', p.first_name, p.last_name), ''))`;
+const reference = sql<string>`concat_ws(' · ', c.number, c.pcr_number, nullif(concat_ws(' ', p.first_name, p.last_name), ''))`;
 
 const taskKind = sql<string>`case g.key ${sql.join(
   Object.entries(TASK_DEADLINES).map(([key, kind]) => sql`when ${key} then ${kind}`),

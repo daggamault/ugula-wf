@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { humanize, queueInfo, titleCase } from './task-queues.ts';
+import { assigneeOf, humanize, queueInfo, titleCase } from './task-queues.ts';
 
 describe('queues', () => {
   it('names known queues for billers and humanizes the rest', () => {
@@ -17,5 +17,13 @@ describe('queues', () => {
     assert.equal(titleCase('sendToCollections'), 'Send to Collections');
     assert.equal(titleCase('keep_waiting'), 'Keep Waiting');
     assert.equal(queueInfo('custom-queue').label, 'Custom Queue');
+  });
+});
+
+describe('assigneeOf', () => {
+  it('names the assignee from the signed in user point of view', () => {
+    assert.equal(assigneeOf('me@example.com', 'me@example.com'), 'You');
+    assert.equal(assigneeOf('sam@example.com', 'me@example.com'), 'sam@example.com');
+    assert.equal(assigneeOf(null, 'me@example.com'), 'Unassigned');
   });
 });

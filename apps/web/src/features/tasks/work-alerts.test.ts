@@ -27,7 +27,7 @@ describe('workToast', () => {
       isRecorded: false,
       intent: 'info',
       title: '2 new tasks in Billing Review',
-      action: { label: 'Open Billing Review', to: '/claims?task=billing-review' }
+      action: { label: 'Open Billing Review', to: '/tasks?queue=billing-review' }
     });
     assert.equal(workToast({ queue: 'exceptions', added: 1 }).title, '1 new task in Stuck Runs');
   });

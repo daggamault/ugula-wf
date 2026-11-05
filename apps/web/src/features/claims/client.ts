@@ -61,9 +61,10 @@ type TaskKind = 'task' | 'fault';
 
 export type ClaimSummary = {
   id: string;
-  number: number;
-  patient_number: number | null;
+  number: string;
+  patient_number: string | null;
   pcr_number: string | null;
+  encounter_number: string | null;
   level: string | null;
   total_cents: number;
   balance_cents: number;

@@ -34,6 +34,7 @@ import {
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { agencyNoActionForeignKey, agencySetNullForeignKey } from './foreign-keys.ts';
+import { dailyNumberCheck, dailyNumberTrigger } from './numbers.ts';
 
 const list = (values: readonly string[]) => sql.join(values.map((v) => sql.lit(v)));
 
@@ -55,7 +56,7 @@ const buildClaimsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('claims')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('number', 'integer', (col) => col.notNull().unique().generatedAlwaysAsIdentity())
+    .addColumn('number', 'text', (col) => col.notNull())
     .addColumn('agency_id', 'uuid', (col) =>
       col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
@@ -123,6 +124,8 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     )
     .addUniqueConstraint('claims_agency_id_source_key_unique', ['agency_id', 'source_key'])
     .addUniqueConstraint('claims_agency_id_id_unique', ['agency_id', 'id'])
+    .addUniqueConstraint('claims_agency_id_number_unique', ['agency_id', 'number'])
+    .addCheckConstraint('claims_number_check', dailyNumberCheck)
     .addCheckConstraint('claims_total_check', sql`total_cents >= 0`)
     .addCheckConstraint('claims_level_check', sql`level in (${list(SERVICE_LEVELS)})`)
     .addCheckConstraint('claims_loaded_miles_check', sql`loaded_miles >= 0`)
@@ -513,6 +516,7 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
 
 export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimsTable(db).execute();
+  await dailyNumberTrigger('claims', 'claim').execute(db);
   await buildClaimsCycleRunForeignKey().execute(db);
   await buildClaimsFacilityForeignKey().execute(db);
   await buildClaimRunsTable(db).execute();

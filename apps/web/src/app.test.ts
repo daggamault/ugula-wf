@@ -55,6 +55,8 @@ describe('app', () => {
     assert.ok(html.includes('<h1'));
     assert.ok(html.includes('Runs') && html.includes('href="/claims"'));
     assert.ok(!html.includes('href="/users"') && !html.includes('href="/roles"'));
+    assert.ok(!html.includes('href="/tasks"'));
+    assert.match(html, /<button type="button" aria-expanded="true"[^>]*><span>Automation<\/span>/);
     assert.ok(html.includes('North EMS') && html.includes('Switch agency'));
   });
 

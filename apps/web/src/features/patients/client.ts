@@ -3,6 +3,7 @@ import type { Page } from '../../shared/url-state.ts';
 
 export type PatientSummary = {
   id: string;
+  number: string;
   first_name: string;
   last_name: string;
   birth_date: string;
@@ -16,14 +17,20 @@ export type PatientSummary = {
   last_service_date: string | null;
 };
 
-export type PatientSearch = { lastName: string; firstName: string; birthDate: string };
+export type PatientSearch = {
+  lastName: string;
+  firstName: string;
+  birthDate: string;
+  number: string;
+};
 
-const PATIENT_FIELDS = ['lastName', 'firstName', 'birthDate'] as const;
+const PATIENT_FIELDS = ['lastName', 'firstName', 'birthDate', 'number'] as const;
 
 export const searchOf = (query: URLSearchParams): PatientSearch => ({
   lastName: query.get('lastName') ?? '',
   firstName: query.get('firstName') ?? '',
-  birthDate: query.get('birthDate') ?? ''
+  birthDate: query.get('birthDate') ?? '',
+  number: query.get('number') ?? ''
 });
 
 const searchQuery = (search: PatientSearch) =>

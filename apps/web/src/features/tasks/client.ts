@@ -3,6 +3,7 @@ import type { ClaimStatus } from '@ugula/billing';
 import type { FieldSpec, Json } from '@ugula/graph';
 import type { ReportDictionary } from '@ugula/nemsis';
 import type { Api } from '../../shared/api.ts';
+import type { Page } from '../../shared/url-state.ts';
 
 type TaskStatus = 'open' | 'completed' | 'cancelled';
 
@@ -30,6 +31,34 @@ type TaskSummary = {
   completed_at: string | null;
 };
 
+export type TaskAssignee = 'mine' | 'unassigned' | 'all';
+
+export type TaskFilter = { queue: string | null; assignee: TaskAssignee };
+
+export type TaskRow = {
+  id: string;
+  kind: 'task' | 'fault';
+  queue: string;
+  title: string;
+  subject: string | null;
+  priority: number;
+  due_at: string | null;
+  assignee_id: string | null;
+  assignee_email: string | null;
+  created_at: string;
+  claim_id: string | null;
+  claim_number: string | null;
+  first_name: string | null;
+  last_name: string | null;
+};
+
+const TASK_ASSIGNEES: readonly TaskAssignee[] = ['mine', 'unassigned', 'all'];
+
+export const taskFilterOf = (query: URLSearchParams): TaskFilter => ({
+  queue: query.get('queue') || null,
+  assignee: TASK_ASSIGNEES.find((a) => a === query.get('assignee')) ?? 'all'
+});
+
 export type TaskDetail = TaskSummary & {
   instructions: string;
   context: Json;
@@ -42,7 +71,7 @@ export type TaskDetail = TaskSummary & {
 
 type TaskClaim = {
   id: string;
-  number: number;
+  number: string;
   status: ClaimStatus;
   patient: string | null;
 };
@@ -68,6 +97,12 @@ export type SourceReport = {
 };
 
 export const createTasksClient = (api: Api) => ({
+  list: (filter: TaskFilter, query: string, signal?: AbortSignal) => {
+    const params = new URLSearchParams(query);
+    if (filter.queue) params.set('queue', filter.queue);
+    if (filter.assignee !== 'all') params.set('assignee', filter.assignee);
+    return api.get<Page<TaskRow>>(`/api/tasks?${params}`, signal);
+  },
   queues: async () => (await api.get<{ queues: QueueSummary[] }>('/api/tasks/queues')).queues,
   find: async (id: string, signal?: AbortSignal) =>
     (await api.get<{ task: TaskDetail }>(`/api/tasks/${encodeURIComponent(id)}`, signal)).task,

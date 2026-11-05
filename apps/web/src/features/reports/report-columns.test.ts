@@ -142,7 +142,7 @@ describe('report columns', () => {
     const row: PaymentRow = {
       id: 'e1',
       posted_at: '2026-10-21T15:00:00Z',
-      claim_number: 7,
+      claim_number: '20261001-0007',
       pcr_number: null,
       first_name: 'Jane',
       last_name: 'Doe',
@@ -165,6 +165,7 @@ describe('report columns', () => {
     assert.equal(shown.Type, 'Refund');
     assert.equal(shown.Paid, '-$25.00');
     assert.equal(shown['Reason Codes'], '—');
+    assert.equal(shown.Claim, '20261001-0007');
   });
 
   it('groups denials by payer or by reason code', () => {
@@ -263,7 +264,7 @@ describe('report columns', () => {
     const closed: WriteOffRow = {
       id: 'w1',
       closed_at: '2026-10-21T15:00:00Z',
-      claim_number: 9,
+      claim_number: '20261001-0009',
       pcr_number: 'P-9',
       first_name: null,
       last_name: 'Doe',
@@ -277,6 +278,7 @@ describe('report columns', () => {
     const shown = Object.fromEntries(WRITE_OFF_COLUMNS.map((c) => [c.label, c.text(closed, {})]));
     assert.equal(shown.Outcome, 'Sent to Collections');
     assert.equal(shown.Patient, 'Doe');
+    assert.equal(shown.Claim, '20261001-0009');
     assert.equal(shown['Date of Service'], '—');
     assert.equal(shown['Amount Closed'], '$1,000.00');
     assert.equal(filingLabel('ZZ'), 'ZZ');

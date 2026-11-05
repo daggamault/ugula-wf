@@ -1,4 +1,4 @@
-import type { PayerFileOutcome, RemittancePosting } from '@ugula/billing';
+import { dailyNumberOf, type PayerFileOutcome, type RemittancePosting } from '@ugula/billing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import { nudgeClaim } from './claim-responses.ts';
 import type { Db } from './schema.ts';
@@ -43,13 +43,13 @@ export const item = (
 export const noClaim = (reference: string) =>
   item(reference, null, 'unmatched', `No claim has number ${reference}`);
 
-export const claimNumberOf = (reference: string) => {
+export const controlNumberOf = (reference: string) => {
   const n = Number(reference.trim());
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 };
 
 export const findClaimByNumber = (db: Db, agencyId: string, reference: string) => {
-  const number = claimNumberOf(reference);
+  const number = dailyNumberOf(reference);
   return number === null
     ? Promise.resolve(undefined)
     : db

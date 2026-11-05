@@ -17,6 +17,23 @@ describe('patient schemas', () => {
     assert.equal(v.safeParse(listPatientsQuery, { lastName: 'k', sort: 'balance' }).success, true);
     assert.equal(v.safeParse(listPatientsQuery, { sort: 'balance' }).success, false);
   });
+
+  it('searches by patient number alone and sorts by it', () => {
+    assert.deepEqual(v.parse(listPatientsQuery, { number: ' 20261105-0003 ', sort: 'number' }), {
+      number: '20261105-0003',
+      page: 1,
+      pageSize: 25,
+      sort: 'number',
+      dir: 'asc'
+    });
+    const empty = v.safeParse(listPatientsQuery, { number: ' ' });
+    assert.equal(empty.success, false);
+    assert.equal(
+      empty.issues?.[0]?.message,
+      'Search by last name, first name, birth date or patient number'
+    );
+    assert.equal(v.safeParse(listPatientsQuery, { number: '1'.repeat(41) }).success, false);
+  });
 });
 
 describe('patient search limits', () => {

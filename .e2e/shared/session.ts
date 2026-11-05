@@ -91,7 +91,7 @@ export const encounter = (pcr: string, fixture = 'new-patient-medicare') =>
 export type ClaimState = {
   claim: {
     id: string;
-    number: number;
+    number: string;
     status: string;
     total_cents: number;
     trip_type: string | null;
@@ -255,7 +255,7 @@ export const workTasksUntilTask = (
 
 export const latest837 = async (s: Session, claimId: string) => {
   await go(s.page, `/claims/${claimId}`);
-  await heading(s.page, /^Claim #\d+$/).waitFor();
+  await heading(s.page, /^Claim \d{8}-\d{4,}$/).waitFor();
   const links = s.page.getByRole('link', { name: /^837P file #\d+$/i });
   await links.first().waitFor();
   const names = await links.allTextContents();

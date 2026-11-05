@@ -15,9 +15,9 @@ const rejected = build999({
 });
 
 const batch = [
-  { claim_id: 'c1', coverage_id: 'cov-1', number: 1001 },
-  { claim_id: 'c1', coverage_id: 'cov-2', number: 1001 },
-  { claim_id: 'c2', coverage_id: 'cov-3', number: 1002 }
+  { claim_id: 'c1', coverage_id: 'cov-1', number: '20261105-1001' },
+  { claim_id: 'c1', coverage_id: 'cov-2', number: '20261105-1001' },
+  { claim_id: 'c2', coverage_id: 'cov-3', number: '20261105-1002' }
 ];
 
 const rowsFor =
@@ -51,7 +51,7 @@ const storeFor = (text: string, rows: RowsFor) => {
 describe('createPayerFileStore', () => {
   it('reads a file without applying it: the kind, and for an 835 each claim payment', async () => {
     const remittance = build835(
-      [{ claims: [{ claimNumber: '1001', chargeCents: 1_000, paidCents: 800 }] }],
+      [{ claims: [{ claimNumber: '20261105-1001', chargeCents: 1_000, paidCents: 800 }] }],
       { createdAt: new Date('2026-11-03T12:00:00Z') }
     );
     const { store, queries } = storeFor(remittance, rowsFor(false));
@@ -59,7 +59,7 @@ describe('createPayerFileStore', () => {
     assert.equal(read.status, 'read');
     assert.deepEqual(
       read.status === 'read' ? read.lines.map((l) => [l.position, l.reference, l.claimId]) : [],
-      [[1, '1001', null]]
+      [[1, '20261105-1001', null]]
     );
     assert.ok(queries.every((q) => q.sql.startsWith('select')));
     const ack = await storeFor(rejected, rowsFor(false)).store.read('r1', {
@@ -89,9 +89,9 @@ describe('createPayerFileStore', () => {
       kind: '999',
       envelopeRejection: null,
       reviews: [
-        { reference: '1001', claimId: 'c1', outcome: 'rejected', message },
-        { reference: '1001', claimId: 'c1', outcome: 'rejected', message },
-        { reference: '1002', claimId: 'c2', outcome: 'rejected', message }
+        { reference: '20261105-1001', claimId: 'c1', outcome: 'rejected', message },
+        { reference: '20261105-1001', claimId: 'c1', outcome: 'rejected', message },
+        { reference: '20261105-1002', claimId: 'c2', outcome: 'rejected', message }
       ]
     });
     assert.deepEqual(announced, [

@@ -44,7 +44,7 @@ describe('payer file acknowledgments', () => {
     );
     const filed = contextOf(({ sql }) =>
       sql.includes('from "claim_batches"')
-        ? [{ claim_id: 'c1', coverage_id: 'cov1', number: 7 }]
+        ? [{ claim_id: 'c1', coverage_id: 'cov1', number: '20261105-0007' }]
         : []
     );
     const acked = await postBatchAcknowledgments(filed.c, [group('000000101')]);
@@ -53,7 +53,7 @@ describe('payer file acknowledgments', () => {
     assert.ok(lookup?.parameters.includes(101));
     assert.deepEqual(
       acked.items.map((i) => [i.reference, i.outcome]),
-      [['7', 'accepted']]
+      [['20261105-0007', 'accepted']]
     );
   });
 
@@ -72,8 +72,8 @@ describe('payer file acknowledgments', () => {
     );
     const out = await postClaimStatuses(c, [
       {
-        trace: '1001',
-        claimNumber: '1001',
+        trace: '20261105-1001',
+        claimNumber: '20261105-1001',
         category: 'A2',
         code: '20',
         meaning: 'inProcess',

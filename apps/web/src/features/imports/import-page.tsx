@@ -84,7 +84,7 @@ export const ReportsTable = ({
     label="PCRs in this file"
     {...(sorting ? { sorting } : {})}
     head={[
-      { label: '#', isCompact: true, sort: 'position' },
+      { label: 'Encounter', sort: 'position' },
       { label: 'PCR', sort: 'pcr' },
       { label: 'Patient', sort: 'patient' },
       { label: 'Outcome', sort: 'status' },
@@ -96,7 +96,9 @@ export const ReportsTable = ({
       const outcome = reportOutcome(r);
       return (
         <TableRow key={r.id}>
-          <TableCell isMuted>{r.position + 1}</TableCell>
+          <TableCell>
+            <span className="font-medium tabular-nums">{r.number}</span>
+          </TableCell>
           <TableCell>{r.pcr_number ?? emptyValue}</TableCell>
           <TableCell kind="wrap">{patientOf(r) ?? emptyValue}</TableCell>
           <TableCell>

@@ -8,6 +8,7 @@ import { addressOf, PatientDetails, PatientPage } from './patient-page.tsx';
 
 const patient: PatientSummary = {
   id: 'p1',
+  number: '20260915-0003',
   first_name: 'Jane',
   last_name: 'Doe',
   birth_date: '1958-04-12',
@@ -25,6 +26,7 @@ describe('PatientDetails', () => {
   it('shows the balance, sex and full address', () => {
     const html = renderToStaticMarkup(createElement(PatientDetails, { patient }));
     assert.ok(html.includes('Female') && html.includes('$300.00'));
+    assert.ok(html.includes('Patient Number') && html.includes('20260915-0003'));
     assert.equal(addressOf(patient), '1 Main St, Erie, PA 16501');
   });
 

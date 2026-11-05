@@ -260,6 +260,22 @@ describe('task service', () => {
     assert.ok(source?.sql.includes('coalesce("ir"."id", "c"."import_report_id") as "report_id"'));
     assert.equal((await service.queues('t', 'u1')).ok, true);
   });
+
+  it('lists a page of open tasks', async () => {
+    const { service, queries } = setup(undefined);
+    assert.deepEqual(
+      await service.list('t', 'u1', {
+        assignee: 'mine',
+        page: 1,
+        pageSize: 25,
+        sort: 'waiting',
+        dir: 'asc'
+      }),
+      { ok: true, value: { items: [], total: 0, page: 1, pageSize: 25 } }
+    );
+    assert.ok(queries[0]?.sql.includes('from "tasks" as "t"'));
+    assert.ok(queries[0]?.parameters.includes('u1'));
+  });
 });
 
 describe('task service sources and hand-out', () => {

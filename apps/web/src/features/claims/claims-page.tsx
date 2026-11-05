@@ -2,27 +2,23 @@ import { nameKey } from '@ugula/billing';
 import type { ReactNode } from 'react';
 import { formatCents, formatDate } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
-import { queueInfo } from '../../shared/task-queues.ts';
+import { assigneeOf, queueInfo } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
-import { EmptyState, emptyValue } from '../../shared/ui/empty-state.tsx';
-import { Highlight } from '../../shared/ui/highlight.tsx';
+import { EmptyState, EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
+import { Highlight, NumberHighlight } from '../../shared/ui/highlight.tsx';
 import { OpenLink, RowActions, WorkLink } from '../../shared/ui/icon-button.tsx';
 import { Page, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination } from '../../shared/ui/pagination.tsx';
 import { type SearchField, SearchForm } from '../../shared/ui/search-form.tsx';
 import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/table.tsx';
-import { Tabs } from '../../shared/ui/tabs.tsx';
 import { type TableState, useTableState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
 import type { ClaimSearch, ClaimSummary, ClaimsClient } from './client.ts';
 
-export type ClaimsTab = 'queue' | 'search';
-
 type ClaimsPageProps = {
   client: ClaimsClient;
   live: Live;
-  tab: ClaimsTab;
   search: ClaimSearch;
   me: string;
 };
@@ -36,6 +32,7 @@ export const CLAIM_TABLE = {
     service: 'desc',
     patient: 'asc',
     pcr: 'asc',
+    encounter: 'desc',
     total: 'desc',
     balance: 'desc',
     status: 'asc',
@@ -44,13 +41,6 @@ export const CLAIM_TABLE = {
   sort: 'created'
 } as const;
 
-const QUEUE_TABLE = { ...CLAIM_TABLE, sort: 'waiting' } as const;
-
-export const CLAIMS_TABS: readonly { value: ClaimsTab; label: string; href: string }[] = [
-  { value: 'queue', label: 'Queue', href: PATH },
-  { value: 'search', label: 'Search', href: `${PATH}?tab=search` }
-];
-
 export const CLAIM_SEARCH_FIELDS: readonly SearchField[] = [
   { name: 'firstName', label: 'First Name' },
   { name: 'lastName', label: 'Last Name' },
@@ -58,12 +48,7 @@ export const CLAIM_SEARCH_FIELDS: readonly SearchField[] = [
   { name: 'number', label: 'Number', placeholder: 'Claim, Patient or Encounter #' }
 ];
 
-export const claimNumber = (n: number) => `#${n}`;
-
-export const assigneeOf = (email: string | null, me: string) =>
-  email ? (email === me ? 'You' : email) : 'Unassigned';
-
-const taskName = (c: ClaimSummary) => `${c.task_title ?? 'task'} on claim ${claimNumber(c.number)}`;
+const taskName = (c: ClaimSummary) => `${c.task_title ?? 'task'} on claim ${c.number}`;
 
 const WaitingOn = ({ claim, me }: { claim: ClaimSummary; me: string }) =>
   claim.task_id ? (
@@ -87,14 +72,14 @@ export const ClaimsTable = ({
   sorting,
   showPatient = true,
   back = '',
-  names,
+  search,
   me = ''
 }: {
   claims: readonly ClaimSummary[];
   sorting?: TableSorting;
   showPatient?: boolean;
   back?: string;
-  names?: { firstName: string; lastName: string };
+  search?: ClaimSearch;
   me?: string;
 }) => (
   <Table
@@ -103,7 +88,7 @@ export const ClaimsTable = ({
     head={[
       { label: 'Claim', sort: 'number' },
       ...(showPatient ? [{ label: 'Patient', sort: 'patient' }] : []),
-      { label: 'Encounter', isSecondary: true, sort: 'pcr' },
+      { label: 'Encounter', isSecondary: true, sort: 'encounter' },
       { label: 'Service Date', sort: 'service' },
       { label: 'Total', sort: 'total' },
       { label: 'Balance', sort: 'balance' },
@@ -116,7 +101,9 @@ export const ClaimsTable = ({
     {claims.map((c) => (
       <TableRow key={c.id}>
         <TableCell>
-          <span className="font-medium">{claimNumber(c.number)}</span>
+          <span className="font-medium">
+            <NumberHighlight number={c.number} query={search?.number ?? ''} />
+          </span>
         </TableCell>
         {showPatient ? (
           <TableCell>
@@ -125,14 +112,14 @@ export const ClaimsTable = ({
                 <span className="font-medium">
                   <Highlight
                     text={c.last_name}
-                    query={names?.lastName ?? ''}
+                    query={search?.lastName ?? ''}
                     isPrefix
                     keyOf={nameKey}
                   />
-                  , <Highlight text={c.first_name ?? ''} query={names?.firstName ?? ''} isPrefix />
+                  , <Highlight text={c.first_name ?? ''} query={search?.firstName ?? ''} isPrefix />
                 </span>
                 <span className="text-surface-fg-muted text-xs">
-                  Patient {claimNumber(c.patient_number)}
+                  Patient <NumberHighlight number={c.patient_number} query={search?.number ?? ''} />
                 </span>
               </span>
             ) : (
@@ -140,8 +127,29 @@ export const ClaimsTable = ({
             )}
           </TableCell>
         ) : null}
-        <TableCell isMuted isSecondary>
-          {c.pcr_number ?? emptyValue}
+        <TableCell isSecondary>
+          {c.encounter_number || c.pcr_number ? (
+            <span className="flex flex-col gap-0.5">
+              <span>
+                {c.encounter_number ? (
+                  <NumberHighlight number={c.encounter_number} query={search?.number ?? ''} />
+                ) : (
+                  emptyValue
+                )}
+              </span>
+              {c.pcr_number ? (
+                <span className="text-surface-fg-muted text-xs">
+                  PCR{' '}
+                  <Highlight
+                    text={c.pcr_number}
+                    query={search?.number.trim() === c.pcr_number ? c.pcr_number : ''}
+                  />
+                </span>
+              ) : null}
+            </span>
+          ) : (
+            <span className="text-surface-fg-muted">{emptyValue}</span>
+          )}
         </TableCell>
         <TableCell kind="date">{formatDate(c.service_date)}</TableCell>
         <TableCell kind="numeric">{formatCents(c.total_cents)}</TableCell>
@@ -162,10 +170,7 @@ export const ClaimsTable = ({
             {c.task_id ? (
               <WorkLink to={withBack(`/tasks/${c.task_id}`, back)} name={taskName(c)} />
             ) : null}
-            <OpenLink
-              to={withBack(`/claims/${c.id}`, back)}
-              name={`claim ${claimNumber(c.number)}`}
-            />
+            <OpenLink to={withBack(`/claims/${c.id}`, back)} name={`claim ${c.number}`} />
           </RowActions>
         </TableCell>
       </TableRow>
@@ -182,7 +187,7 @@ const ClaimResults = ({
   query,
   table,
   me,
-  names,
+  search,
   empty
 }: {
   client: ClaimsClient;
@@ -190,7 +195,7 @@ const ClaimResults = ({
   query: Parameters<ClaimsClient['list']>[0];
   table: TableState<keyof typeof CLAIM_TABLE.sorts>;
   me: string;
-  names?: { firstName: string; lastName: string };
+  search?: ClaimSearch;
   empty: ReactNode;
 }) => {
   const key = Object.values(query).join('|');
@@ -228,7 +233,7 @@ const ClaimResults = ({
             sorting={table}
             back={table.href}
             me={me}
-            {...(names ? { names } : {})}
+            {...(search ? { search } : {})}
           />
           <Pagination label="Claims" total={claims.data.total} state={table} />
         </>
@@ -241,28 +246,13 @@ const ClaimResults = ({
   );
 };
 
-const ClaimQueue = ({ client, live, me }: Omit<ClaimsPageProps, 'tab' | 'search'>) => {
-  const table = useTableState(PATH, QUEUE_TABLE);
-  return (
-    <ClaimResults
-      client={client}
-      live={live}
-      me={me}
-      query={{ status: 'open' }}
-      table={table}
-      empty={
-        <EmptyState reason="clear" title="No Open Claims">
-          Claims show up here as encounters are imported.
-        </EmptyState>
-      }
-    />
-  );
-};
-
-const ClaimSearchResults = ({ client, live, me, search }: Omit<ClaimsPageProps, 'tab'>) => {
+export const ClaimsPage = ({ client, live, me, search }: ClaimsPageProps) => {
   const table = useTableState(PATH, CLAIM_TABLE);
   return (
-    <>
+    <Page
+      title="Claims"
+      description="Find any claim, open or closed, by patient name, birth date or number."
+    >
       <SearchForm label="Search claims" path={PATH} fields={CLAIM_SEARCH_FIELDS} />
       {isSearching(search) ? (
         <ClaimResults
@@ -271,31 +261,19 @@ const ClaimSearchResults = ({ client, live, me, search }: Omit<ClaimsPageProps, 
           me={me}
           query={{ status: 'all', ...search }}
           table={table}
-          names={{ firstName: search.firstName, lastName: search.lastName }}
+          search={search}
           empty={
             <EmptyState reason="noMatches" title="No Matching Claims">
-              No claim matches this search.
+              Names match from the start, so “Sm” finds Smith. Try fewer letters or another number.
             </EmptyState>
           }
         />
       ) : (
-        <EmptyState reason="empty" title="Search All Claims">
-          Find any claim, open or closed, by patient name, birth date or number.
-        </EmptyState>
+        <EmptyText>
+          Enter a name, birth date, or a claim, patient or encounter number. Names match from the
+          start.
+        </EmptyText>
       )}
-    </>
+    </Page>
   );
 };
-
-export const ClaimsPage = ({ tab, ...props }: ClaimsPageProps) => (
-  <Page
-    title="Claims"
-    description="Work the open claims in the queue, or search every claim by patient or number."
-  >
-    <Tabs
-      label="Claim views"
-      tabs={CLAIMS_TABS.map((t) => ({ label: t.label, href: t.href, isSelected: t.value === tab }))}
-    />
-    {tab === 'search' ? <ClaimSearchResults {...props} /> : <ClaimQueue {...props} />}
-  </Page>
-);

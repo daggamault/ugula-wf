@@ -22,7 +22,7 @@ const source: FacilityInvoiceSource = {
   claims: [
     {
       claimId: 'c12',
-      number: 12,
+      number: '20261002-0012',
       pcrNumber: 'PCR-1',
       patient: 'Doe, Jane',
       serviceDate: '2026-10-02',

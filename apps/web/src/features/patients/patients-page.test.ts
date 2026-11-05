@@ -8,6 +8,7 @@ import { PatientsPage, PatientsTable, placeOf } from './patients-page.tsx';
 
 const patient: PatientSummary = {
   id: 'p1',
+  number: '20260915-0003',
   first_name: 'Jane',
   last_name: 'Doe',
   birth_date: '1958-04-12',
@@ -28,6 +29,8 @@ describe('PatientsTable', () => {
     assert.ok(html.includes('href="/patients/p1" aria-label="Open patient Doe, Jane"'));
     assert.equal(html.split('href="/patients/p1"').length, 2);
     assert.ok(html.includes('Erie, PA') && html.includes('$300.00'));
+    assert.ok(html.includes('>Number<') && html.includes('>20260915-0003<'));
+    assert.ok(!html.includes('<mark'));
     assert.equal(placeOf({ city: null, state: null }), null);
   });
 
@@ -36,12 +39,25 @@ describe('PatientsTable', () => {
       createElement(PatientsTable, {
         patients: [patient],
         back: '/patients?lastName=do',
-        search: { lastName: 'do', firstName: '', birthDate: '' }
+        search: { lastName: 'do', firstName: '', birthDate: '', number: '' }
       })
     );
     assert.match(html, /<mark[^>]*>Do<\/mark>e/);
     assert.ok(html.includes('href="/patients/p1?back=%2Fpatients%3FlastName%3Ddo"'));
     assert.ok(html.includes('>Open</span>'));
+  });
+});
+
+describe('PatientsTable search highlights', () => {
+  it('highlights the patient number and birth date the search names', () => {
+    const html = renderToStaticMarkup(
+      createElement(PatientsTable, {
+        patients: [patient],
+        search: { lastName: '', firstName: '', birthDate: '1958-04-12', number: '#202609150003' }
+      })
+    );
+    assert.match(html, /<mark[^>]*>20260915-0003<\/mark>/);
+    assert.match(html, /<mark[^>]*>[^<]*1958<\/mark>/);
   });
 });
 
@@ -51,7 +67,7 @@ describe('PatientsPage', () => {
       createElement(PatientsPage, {
         live: idleLive,
         client: { list: () => new Promise(() => undefined) } as unknown as PatientsClient,
-        search: { lastName: '', firstName: '', birthDate: '' }
+        search: { lastName: '', firstName: '', birthDate: '', number: '' }
       })
     );
     assert.ok(
@@ -62,6 +78,7 @@ describe('PatientsPage', () => {
     assert.ok(html.includes('Names match from the start.'));
     assert.ok(html.includes('Last Name') && html.includes('First Name'));
     assert.ok(html.includes('type="date"'));
+    assert.ok(html.includes('Patient Number') && html.includes('placeholder="20261105-0001"'));
   });
 
   it('lists no patients until something is searched for', () => {
@@ -70,7 +87,7 @@ describe('PatientsPage', () => {
       createElement(PatientsPage, {
         live: idleLive,
         client,
-        search: { lastName: ' ', firstName: '', birthDate: '' }
+        search: { lastName: ' ', firstName: '', birthDate: '', number: '' }
       })
     );
     assert.ok(!idle.includes('aria-label="Patients"') && !idle.includes('No Patients'));
@@ -79,9 +96,17 @@ describe('PatientsPage', () => {
       createElement(PatientsPage, {
         live: idleLive,
         client,
-        search: { lastName: 'kli', firstName: '', birthDate: '' }
+        search: { lastName: 'kli', firstName: '', birthDate: '', number: '' }
       })
     );
     assert.ok(searching.includes('role="status"'));
+    const byNumber = renderToStaticMarkup(
+      createElement(PatientsPage, {
+        live: idleLive,
+        client,
+        search: { lastName: '', firstName: '', birthDate: '', number: '20260915-0003' }
+      })
+    );
+    assert.ok(byNumber.includes('role="status"'));
   });
 });

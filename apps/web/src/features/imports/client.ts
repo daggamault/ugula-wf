@@ -29,6 +29,7 @@ export type ImportSummary = {
 export type ImportReport = {
   id: string;
   position: number;
+  number: string;
   pcr_number: string | null;
   run_status: RunStatus | null;
   claim_id: string | null;
