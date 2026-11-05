@@ -25,6 +25,14 @@ const service = {
   saveBillingData: record('saveBillingData', { status: 'saved' }),
   requestRecords: record('requestRecords', { runId: 'r3' }),
   setFacility: record('setFacility', { facilityId: null }),
+  uploadDocument: record('uploadDocument', { id: 'd1', runId: 'r3' }),
+  chaseDocument: record('chaseDocument', { runId: 'r4' }),
+  documentFile: async () =>
+    ok({
+      bytes: new TextEncoder().encode('%PDF-1.7'),
+      contentType: 'application/pdf',
+      name: 'p c s.pdf'
+    }),
   document: async () =>
     ok({
       bytes: new TextEncoder().encode('%PDF-1.7'),
@@ -33,7 +41,58 @@ const service = {
     })
 } as unknown as ClaimService;
 
-const request = withSession(createClaimRoutes(service));
+const request = withSession(createClaimRoutes(service, 1_000));
+
+describe('claim document routes', () => {
+  it('uploads a typed document, serves it back and starts a chase for a missing one', async () => {
+    calls.length = 0;
+    const form = new FormData();
+    form.set('file', new File(['%PDF-1.7'], 'pcs.pdf', { type: 'application/pdf' }));
+    form.set('kind', 'pcs');
+    form.set('signedOn', '2026-09-01');
+    const uploaded = await request(`/${ID}/documents`, { method: 'POST', body: form });
+    assert.equal(uploaded.status, 201);
+    const [, agency, user, claimId, document] = calls[0] as [
+      string,
+      string,
+      string,
+      string,
+      Record<string, unknown>
+    ];
+    assert.deepEqual(
+      [agency, user, claimId, document.kind, document.signedOn],
+      ['t-1', 'u-1', ID, 'pcs', '2026-09-01']
+    );
+    const undated = new FormData();
+    undated.set('file', new File(['x'], 'face.png', { type: 'image/png' }));
+    undated.set('kind', 'facesheet');
+    await request(`/${ID}/documents`, { method: 'POST', body: undated });
+    assert.equal((calls[1]?.[4] as { signedOn: unknown } | undefined)?.signedOn, null);
+    const wrong = new FormData();
+    wrong.set('file', new File(['x'], 'x.pdf'));
+    wrong.set('kind', 'xray');
+    assert.equal((await request(`/${ID}/documents`, { method: 'POST', body: wrong })).status, 400);
+    const big = new FormData();
+    big.set('file', new File(['x'.repeat(70_000)], 'big.pdf'));
+    big.set('kind', 'pcs');
+    assert.equal((await request(`/${ID}/documents`, { method: 'POST', body: big })).status, 413);
+    const file = await request(`/${ID}/documents/${ID}`);
+    assert.equal(file.headers.get('content-disposition'), 'inline; filename="p_c_s.pdf"');
+    assert.equal(await file.text(), '%PDF-1.7');
+    const chase = await request(`/${ID}/document-chases`, {
+      method: 'POST',
+      body: JSON.stringify({ kind: 'abn', note: ' Ask the nursing home ' })
+    });
+    assert.equal(chase.status, 201);
+    assert.deepEqual(calls.at(-1), [
+      'chaseDocument',
+      't-1',
+      ID,
+      { kind: 'abn', note: 'Ask the nursing home' }
+    ]);
+    calls.length = 0;
+  });
+});
 
 describe('claim routes', () => {
   it('start a records request and set the responsible facility', async () => {
@@ -204,7 +263,7 @@ describe('claim route failures', () => {
     restartCycle: async () => fail('conflict', 'This claim still has an active workflow run'),
     recordResponse: async () => fail('invalid', 'That payer is not on this claim')
   } as unknown as ClaimService;
-  const send = withSession(createClaimRoutes(failing));
+  const send = withSession(createClaimRoutes(failing, 1_000));
 
   it('maps missing claims to 404, conflicts to 409 and rule failures to 422', async () => {
     const statuses = await Promise.all(

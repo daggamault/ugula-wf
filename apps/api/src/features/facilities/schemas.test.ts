@@ -19,9 +19,23 @@ describe('facilitySchema', () => {
         city: null,
         state: 'IL',
         postalCode: '62702',
-        phone: null
+        phone: null,
+        kind: 'other',
+        contract: false,
+        contractNote: null
       }
     );
+    const contract = v.parse(facilitySchema, {
+      name: 'Oak Manor',
+      kind: 'snf',
+      contract: true,
+      contractNote: ' Pays discharges '
+    });
+    assert.deepEqual(
+      [contract.kind, contract.contract, contract.contractNote],
+      ['snf', true, 'Pays discharges']
+    );
+    assert.equal(v.safeParse(facilitySchema, { name: 'X', kind: 'spa' }).success, false);
   });
 
   it('rejects blank names, bad states and ZIP codes', () => {

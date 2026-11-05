@@ -1,5 +1,12 @@
-import { CLAIM_STATUSES, CLOSED_CLAIM_STATUSES, nameKey, payerKey } from '@ugula/billing';
+import {
+  CLAIM_STATUSES,
+  CLOSED_CLAIM_STATUSES,
+  type DocumentKind,
+  nameKey,
+  payerKey
+} from '@ugula/billing';
 import { ACTIVE_RUN_STATUSES, type Db, DOCUMENTATION_COLUMNS, payerName } from '@ugula/db';
+import type { BlobRef } from '@ugula/storage';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { type PageRequest, paged } from '../../shared/paging.ts';
@@ -159,6 +166,8 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
       'c.destination_postal_code',
       'c.import_report_id',
       ...DOCUMENTATION_COLUMNS,
+      'c.deceased',
+      'c.non_covered_miles',
       'p.birth_date',
       'c.patient_id',
       'c.cycle_run_id',
@@ -186,7 +195,10 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
             'cc.insured_last_name',
             'cc.eligibility',
             'cc.eligibility_note',
-            'cc.eligibility_checked_at'
+            'cc.eligibility_checked_at',
+            'cc.stay_kind',
+            'cc.stay_admitted_on',
+            'cc.stay_discharged_on'
           ])
           .whereRef('cc.claim_id', '=', 'c.id')
           .orderBy('cc.position')
@@ -213,6 +225,7 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
             't.kind',
             't.assignee_id',
             'u.email as assignee_email',
+            't.due_at',
             't.created_at'
           ])
           .where('cr.claim_id', '=', sql.ref<string>('c.id'))
@@ -391,6 +404,68 @@ export const listClaimPayerFiles = (db: Db, claimId: string) =>
     )
     .orderBy('f.created_at')
     .orderBy('f.id')
+    .execute();
+
+export const listClaimDocuments = (db: Db, claimId: string) =>
+  db
+    .selectFrom('claim_documents as d')
+    .leftJoin('users as u', 'u.id', 'd.uploaded_by')
+    .select([
+      'd.id',
+      'd.kind',
+      'd.file_name',
+      'd.signed_on',
+      'd.created_at',
+      'u.email as uploaded_by_email'
+    ])
+    .where('d.claim_id', '=', claimId)
+    .orderBy('d.created_at')
+    .orderBy('d.id')
+    .execute();
+
+export const findClaimDocument = async (
+  db: Db,
+  agencyId: string,
+  claimId: string,
+  documentId: string
+) =>
+  (await db
+    .selectFrom('claim_documents')
+    .select(['document', 'file_name'])
+    .where('id', '=', documentId)
+    .where('claim_id', '=', claimId)
+    .where('agency_id', '=', agencyId)
+    .executeTakeFirst()) ?? null;
+
+type NewDocument = {
+  agencyId: string;
+  claimId: string;
+  kind: DocumentKind;
+  fileName: string;
+  document: BlobRef;
+  signedOn: string | null;
+  uploadedBy: string;
+};
+
+export const insertClaimDocument = (db: Db, d: NewDocument) =>
+  db
+    .insertInto('claim_documents')
+    .values({
+      agency_id: d.agencyId,
+      claim_id: d.claimId,
+      kind: d.kind,
+      file_name: d.fileName,
+      document: JSON.stringify(d.document),
+      signed_on: d.signedOn,
+      uploaded_by: d.uploadedBy
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+
+export const insertDocumentEvent = (db: Db, claimId: string, note: string, createdBy: string) =>
+  db
+    .insertInto('claim_events')
+    .values({ claim_id: claimId, kind: 'document', note, created_by: createdBy })
     .execute();
 
 export const claimExists = async (db: Db, agencyId: string, id: string) =>

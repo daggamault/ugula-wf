@@ -1,4 +1,9 @@
-import { US_STATE_PATTERN, ZIP_CODE_PATTERN } from '@ugula/billing';
+import {
+  FACILITY_KINDS,
+  type FacilityKind,
+  US_STATE_PATTERN,
+  ZIP_CODE_PATTERN
+} from '@ugula/billing';
 import * as v from 'valibot';
 import { pageEntries } from '../../shared/paging.ts';
 import { searchText } from '../../shared/search.ts';
@@ -33,7 +38,13 @@ export const facilitySchema = v.object({
     ),
     null
   ),
-  phone: optionalText(20)
+  phone: optionalText(20),
+  kind: v.optional(
+    v.picklist(Object.keys(FACILITY_KINDS) as [FacilityKind, ...FacilityKind[]]),
+    'other'
+  ),
+  contract: v.optional(v.boolean(), false),
+  contractNote: optionalText(500)
 });
 
 export type FacilityInput = v.InferOutput<typeof facilitySchema>;

@@ -2,9 +2,15 @@ import {
   ADJUSTMENT_GROUPS,
   ADJUSTMENT_REASON_PATTERN,
   DIAGNOSIS_LIMIT,
+  DOCUMENT_KINDS,
+  type DocumentKind,
+  FACILITY_STAYS,
   ICD10_PATTERN,
   INSURED_RELATIONSHIPS,
   isOriginDestination,
+  MAX_DOCUMENTED_COUNT,
+  MSP_ACCIDENTS,
+  PCS_TYPES,
   SIGNATURE_STATUSES,
   TRANSPORT_REASONS,
   type TransportReason,
@@ -171,6 +177,24 @@ export const recordsRequestSchema = v.object({
 export type RecordsRequest = v.InferOutput<typeof recordsRequestSchema>;
 
 export const facilitySchema = v.object({ facilityId: v.nullable(uuid) });
+const isoDay = v.optional(
+  v.nullable(v.pipe(v.string(), v.isoDate('Use a date like 2026-10-01'))),
+  null
+);
+
+const flag = v.optional(v.nullable(v.boolean()), null);
+
+const count = (min: number) =>
+  v.optional(
+    v.nullable(v.pipe(v.number(), v.integer(), v.minValue(min), v.maxValue(MAX_DOCUMENTED_COUNT))),
+    null
+  );
+
+const choiceOf = <T extends Record<string, string>>(labels: T) =>
+  v.optional(
+    v.nullable(v.picklist(Object.keys(labels) as [keyof T & string, ...(keyof T & string)[]])),
+    null
+  );
 
 const addressSchema = v.object({
   addressLine: optionalText(55),
@@ -264,16 +288,27 @@ export const billingDataSchema = v.object({
       v.object({
         signature: v.optional(v.nullable(v.picklist(SIGNATURE_STATUSES)), null),
         pcsOnFile: v.optional(v.nullable(v.boolean()), null),
-        pcsSignedOn: v.optional(
-          v.nullable(v.pipe(v.string(), v.isoDate('Use a date like 2026-10-01'))),
-          null
-        ),
+        pcsSignedOn: isoDay,
         transportReason: v.optional(
           v.nullable(
             v.picklist(Object.keys(TRANSPORT_REASONS) as [TransportReason, ...TransportReason[]])
           ),
           null
-        )
+        ),
+        patientCount: count(1),
+        abnOnFile: flag,
+        abnSignedOn: isoDay,
+        denialExpected: flag,
+        mspEmployerPlan: flag,
+        mspEsrd: flag,
+        mspDisability: flag,
+        mspAccident: choiceOf(MSP_ACCIDENTS),
+        priorAuthorization: optionalText(50),
+        priorAuthorizationExpiresOn: isoDay,
+        pcsType: choiceOf(PCS_TYPES),
+        roundTrips: count(0),
+        admissionDate: isoDay,
+        facilityStay: choiceOf(FACILITY_STAYS)
       })
     ),
     null
@@ -282,5 +317,27 @@ export const billingDataSchema = v.object({
 });
 
 export type BillingData = v.InferOutput<typeof billingDataSchema>;
+
+const documentKind = v.picklist(Object.keys(DOCUMENT_KINDS) as [DocumentKind, ...DocumentKind[]]);
+
+export const documentFormSchema = v.object({
+  file: v.instance(File),
+  kind: documentKind,
+  signedOn: v.optional(
+    v.pipe(
+      v.string(),
+      v.trim(),
+      v.transform((s) => s || null),
+      v.nullable(v.pipe(v.string(), v.isoDate('Use a date like 2026-10-01')))
+    ),
+    ''
+  )
+});
+
+export const documentParam = v.object({ id: uuid, documentId: uuid });
+
+export const chaseSchema = v.object({ kind: documentKind, note: optionalText(500) });
+
+export type ChaseRequest = v.InferOutput<typeof chaseSchema>;
 
 export type ClaimResponse = v.InferOutput<typeof responseSchema>;

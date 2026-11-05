@@ -1,4 +1,13 @@
-import { checkFactsOf, ledgerFactsOf, readClaimStep, readIssues } from '@ugula/billing';
+import { randomUUID } from 'node:crypto';
+import {
+  checkFactsOf,
+  DOCUMENT_KINDS,
+  type DocumentKind,
+  isDocumentContentType,
+  ledgerFactsOf,
+  readClaimStep,
+  readIssues
+} from '@ugula/billing';
 import {
   applyClaimEdit,
   type ClaimEdit,
@@ -15,6 +24,7 @@ import {
 } from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobRef, BlobStore } from '@ugula/storage';
+import { safeName, type UploadedFile } from '../../shared/files.ts';
 import { listLedgerEvents } from '../../shared/ledger.ts';
 import { type Announce, announced } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
@@ -25,8 +35,12 @@ import {
   type ClaimFilters,
   claimExists,
   findClaim,
+  findClaimDocument,
   findEventDocument,
   hasActiveRun,
+  insertClaimDocument,
+  insertDocumentEvent,
+  listClaimDocuments,
   listClaimEvents,
   listClaimFiles,
   listClaimPayerFiles,
@@ -37,6 +51,7 @@ import {
 } from './queries.ts';
 import type {
   BillingData,
+  ChaseRequest,
   ClaimEventSort,
   ClaimResponse,
   PayerEntry,
@@ -47,10 +62,13 @@ type ClaimServiceDeps = {
   db: Db;
   boss: RunQueueClient;
   now: () => Date;
-  blobs: Pick<BlobStore, 'getBytes'>;
+  blobs: Pick<BlobStore, 'getBytes' | 'putBytes'>;
   announce: Announce;
   rules: RuleRunner;
+  maxBytes: number;
 };
+
+type NewDocument = { kind: DocumentKind; signedOn: string | null; file: UploadedFile };
 
 export const NEXT_CLAIM_STEP_RULE = 'billing.next-claim-step';
 
@@ -59,6 +77,14 @@ export const CLAIM_CHECKS_RULE = 'billing.claim-checks';
 const CYCLE_WORKFLOW = { key: 'billing.cycle-claim', version: 1 };
 
 const RECORDS_WORKFLOW = { key: 'billing.respond-records-request', version: 1 };
+const RECEIVE_DOCUMENT_WORKFLOW = { key: 'billing.receive-document', version: 1 };
+
+const CHASE_DOCUMENT_WORKFLOW = { key: 'billing.chase-document', version: 1 };
+
+export const documentKey = (agencyId: string, claimId: string, name: string) =>
+  `documents/${agencyId}/${claimId}/${randomUUID()}/${safeName(name)}`;
+
+const unpublished = (key: string) => fail('not_found', `The ${key} workflow is not published`);
 
 const notFound = fail('not_found', 'Claim not found');
 
@@ -85,6 +111,8 @@ const claimEdit = (data: BillingData): ClaimEdit => ({
   level: null,
   emergency: null,
   loadedMiles: null,
+  deceased: null,
+  nonCoveredMiles: null,
   diagnoses: data.diagnoses,
   pickup: data.pickup,
   destination: data.destination,
@@ -106,7 +134,15 @@ const claimEdit = (data: BillingData): ClaimEdit => ({
   note: data.note
 });
 
-export const createClaimService = ({ db, boss, now, blobs, announce, rules }: ClaimServiceDeps) => {
+export const createClaimService = ({
+  db,
+  boss,
+  now,
+  blobs,
+  announce,
+  rules,
+  maxBytes
+}: ClaimServiceDeps) => {
   const write = <T>(agencyId: string, id: string, work: (tx: Db) => Promise<Result<T>>) =>
     announced(announce, agencyId, db.transaction().execute(work), () => [{ kind: 'claim', id }]);
   const nudge = (tx: Db, agencyId: string, claimId: string) =>
@@ -120,9 +156,10 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
       const claim = await findClaim(db, agencyId, id);
       if (!claim) return notFound;
       const open = unchangeable(claim.status) === null;
-      const [files, payerFiles, events, check] = await Promise.all([
+      const [files, payerFiles, documents, events, check] = await Promise.all([
         listClaimFiles(db, id),
         listClaimPayerFiles(db, id),
+        listClaimDocuments(db, id),
         open ? listLedgerEvents(db, id) : [],
         findClaimCheck(db, agencyId, id)
       ]);
@@ -150,6 +187,7 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
         claim,
         files,
         payerFiles,
+        documents,
         progress: step && ledger ? readClaimStep(step, ledger) : null,
         issues: readIssues(checked?.issues)
       });
@@ -187,6 +225,72 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
         name: ref.key.split('/').at(-1) ?? 'document'
       });
     },
+
+    uploadDocument: async (agencyId: string, userId: string, id: string, d: NewDocument) => {
+      if (!d.file.bytes.byteLength) return fail('invalid', 'The file is empty');
+      if (d.file.bytes.byteLength > maxBytes) {
+        return fail('invalid', `The file is larger than ${maxBytes} bytes`);
+      }
+      if (!isDocumentContentType(d.file.type)) {
+        return fail('invalid', 'Upload the document as a PDF, PNG, JPEG or TIFF file');
+      }
+      if (!(await claimExists(db, agencyId, id))) return notFound;
+      const [version] = await findPublishedGraphs(db, agencyId, [RECEIVE_DOCUMENT_WORKFLOW]);
+      if (!version) return unpublished(RECEIVE_DOCUMENT_WORKFLOW.key);
+      const fileName = d.file.name.trim() || safeName(d.file.name);
+      const document = await blobs.putBytes(
+        documentKey(agencyId, id, fileName),
+        d.file.bytes,
+        d.file.type
+      );
+      return write(agencyId, id, async (tx) => {
+        const saved = await insertClaimDocument(tx, {
+          agencyId,
+          claimId: id,
+          kind: d.kind,
+          fileName,
+          document,
+          signedOn: d.signedOn,
+          uploadedBy: userId
+        });
+        await insertDocumentEvent(
+          tx,
+          id,
+          `${DOCUMENT_KINDS[d.kind]} uploaded: ${fileName}`,
+          userId
+        );
+        const runId = await startRun(tx, boss, {
+          agencyId,
+          versionId: version.id,
+          inputs: { claimId: id, documentId: saved.id }
+        });
+        return ok({ id: saved.id, runId });
+      });
+    },
+
+    documentFile: async (agencyId: string, id: string, documentId: string) => {
+      const found = await findClaimDocument(db, agencyId, id, documentId);
+      if (!found) return fail('not_found', 'Document not found');
+      const ref = found.document as BlobRef;
+      return ok({
+        bytes: await blobs.getBytes(ref),
+        contentType: ref.contentType,
+        name: found.file_name
+      });
+    },
+
+    chaseDocument: (agencyId: string, id: string, chase: ChaseRequest) =>
+      write(agencyId, id, async (tx) => {
+        if (!(await claimExists(tx, agencyId, id))) return notFound;
+        const [version] = await findPublishedGraphs(tx, agencyId, [CHASE_DOCUMENT_WORKFLOW]);
+        if (!version) return unpublished(CHASE_DOCUMENT_WORKFLOW.key);
+        const runId = await startRun(tx, boss, {
+          agencyId,
+          versionId: version.id,
+          inputs: { claimId: id, kind: chase.kind, note: chase.note }
+        });
+        return ok({ runId });
+      }),
 
     saveBillingData: (agencyId: string, userId: string, id: string, data: BillingData) =>
       write(agencyId, id, async (tx) => {

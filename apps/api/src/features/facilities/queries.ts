@@ -13,6 +13,9 @@ const columns = [
   'f.state',
   'f.postal_code',
   'f.phone',
+  'f.kind',
+  'f.contract',
+  'f.contract_note',
   'f.updated_at'
 ] as const;
 
@@ -52,7 +55,10 @@ const valuesOf = (f: FacilityInput) => ({
   city: f.city,
   state: f.state,
   postal_code: f.postalCode,
-  phone: f.phone
+  phone: f.phone,
+  kind: f.kind,
+  contract: f.contract,
+  contract_note: f.contractNote
 });
 
 export const insertFacility = (db: Db, agencyId: string, f: FacilityInput) =>

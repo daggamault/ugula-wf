@@ -233,8 +233,10 @@ export const createApp = ({
           blobs,
           announce,
           now: () => new Date(),
-          rules: createRuleRunner(db, nodes)
-        })
+          rules: createRuleRunner(db, nodes),
+          maxBytes: config.IMPORT_FILE_MAX_BYTES
+        }),
+        config.IMPORT_FILE_MAX_BYTES
       )
     )
     .use('/submissions/*', guardMethods({ ...read('claims:read'), POST: 'claims:update' }))

@@ -59,6 +59,10 @@ const setup = ({
     }
     if (q.sql.includes('from "claim_events" as "e"')) return events;
     if (q.sql.startsWith('insert into "claim_events"')) return [{ id: 'e1' }];
+    if (q.sql.startsWith('insert into "claim_documents"')) return [{ id: 'd1' }];
+    if (q.sql.startsWith('select "document", "file_name" from "claim_documents"')) {
+      return document ? [{ ...document, file_name: 'pcs.pdf' }] : [];
+    }
     if (q.sql.startsWith('update "tasks"')) return moot;
     if (q.sql.startsWith('update "claims" set "facility_id"'))
       return facility ? [{ id: 'c1' }] : [];
@@ -67,7 +71,14 @@ const setup = ({
   const jobs: unknown[] = [];
   const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
   const now = () => new Date('2026-01-01T12:00:00.000Z');
-  const blobs = { getBytes: async () => new TextEncoder().encode('%PDF-1.7') };
+  const stored: string[] = [];
+  const blobs = {
+    getBytes: async () => new TextEncoder().encode('%PDF-1.7'),
+    putBytes: async (key: string, body: Uint8Array, contentType: string) => {
+      stored.push(key);
+      return { bucket: 'ugula', key, size: body.byteLength, contentType };
+    }
+  };
   const { announce, events: announced } = recordAnnouncements();
   const ruled: [string, string, unknown][] = [];
   const rules: RuleRunner = async (agencyId, key, inputs) => {
@@ -87,7 +98,8 @@ const setup = ({
         };
   };
   return {
-    service: createClaimService({ db, boss, now, blobs, announce, rules }),
+    service: createClaimService({ db, boss, now, blobs, announce, rules, maxBytes: 100 }),
+    stored,
     jobs,
     queries,
     announced,
@@ -295,6 +307,80 @@ describe('claim service', () => {
     );
     assert.match(failure(await restart(claim, false)), /^not_found: The claim cycle/);
     assert.match(failure(await restart(null)), /^not_found/);
+  });
+
+  it('stores an uploaded document, logs it and starts Receive Document for it', async () => {
+    const pdf = (bytes: number, type = 'application/pdf') => ({
+      kind: 'pcs' as const,
+      signedOn: '2025-12-01',
+      file: { name: ' pcs form.pdf ', type, bytes: new Uint8Array(bytes) }
+    });
+    const { service, queries, stored, jobs, announced } = setup();
+    assert.deepEqual(await service.uploadDocument('t', 'u1', 'c1', pdf(10)), {
+      ok: true,
+      value: { id: 'd1', runId: 'cycle-2' }
+    });
+    assert.match(stored[0] ?? '', /^documents\/t\/c1\/[0-9a-f-]{36}\/pcs_form.pdf$/);
+    const saved = queries.find((q) => q.sql.startsWith('insert into "claim_documents"'));
+    assert.ok(
+      saved?.parameters.includes('pcs form.pdf') && saved.parameters.includes('2025-12-01')
+    );
+    const logged = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.ok(
+      logged?.parameters.includes('Physician certification statement uploaded: pcs form.pdf')
+    );
+    const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
+    assert.ok(run?.parameters.includes(JSON.stringify({ claimId: 'c1', documentId: 'd1' })));
+    assert.equal(jobs.length, 1);
+    assert.deepEqual(announced, [{ agencyId: 't', event: { kind: 'claim', id: 'c1' } }]);
+    assert.match(
+      failure(await service.uploadDocument('t', 'u1', 'c1', pdf(0))),
+      /^invalid: The file is empty/
+    );
+    assert.match(
+      failure(await service.uploadDocument('t', 'u1', 'c1', pdf(101))),
+      /larger than 100/
+    );
+    assert.match(
+      failure(await service.uploadDocument('t', 'u1', 'c1', pdf(5, 'text/html'))),
+      /PDF, PNG, JPEG or TIFF/
+    );
+    assert.match(
+      failure(await setup({ row: null }).service.uploadDocument('t', 'u1', 'c1', pdf(5))),
+      /^not_found/
+    );
+    assert.match(
+      failure(await setup({ published: false }).service.uploadDocument('t', 'u1', 'c1', pdf(5))),
+      /billing.receive-document workflow is not published/
+    );
+  });
+
+  it('serves a claim document and starts a chase for a missing one', async () => {
+    const ref = {
+      bucket: 'ugula',
+      key: 'documents/t/c1/x/pcs.pdf',
+      contentType: 'application/pdf'
+    };
+    const found = await setup({ document: { document: ref } }).service.documentFile(
+      't',
+      'c1',
+      'd1'
+    );
+    assert.equal(found.ok && found.value.name, 'pcs.pdf');
+    assert.match(failure(await setup().service.documentFile('t', 'c1', 'd1')), /^not_found/);
+    const { service, queries } = setup();
+    assert.deepEqual(await service.chaseDocument('t', 'c1', { kind: 'abn', note: null }), {
+      ok: true,
+      value: { runId: 'cycle-2' }
+    });
+    const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
+    assert.ok(run?.parameters.includes(JSON.stringify({ claimId: 'c1', kind: 'abn', note: null })));
+    assert.match(
+      failure(
+        await setup({ row: null }).service.chaseDocument('t', 'c1', { kind: 'abn', note: null })
+      ),
+      /^not_found/
+    );
   });
 
   it('applies only the billing data given, logs the edit and wakes the claim cycle', async () => {

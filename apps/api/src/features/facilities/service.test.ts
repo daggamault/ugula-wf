@@ -9,7 +9,10 @@ const input = {
   city: null,
   state: null,
   postalCode: null,
-  phone: null
+  phone: null,
+  kind: 'snf' as const,
+  contract: true,
+  contractNote: null
 };
 
 describe('facility service', () => {

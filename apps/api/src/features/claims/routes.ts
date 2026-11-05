@@ -1,12 +1,17 @@
 import { sValidator } from '@hono/standard-validator';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import * as v from 'valibot';
 import type { AgencyEnv } from '../../shared/access.ts';
+import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest, uuid } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
 import {
   billingDataSchema,
+  chaseSchema,
+  documentParam as claimDocumentParam,
   claimEventsQuery,
+  documentFormSchema,
   facilitySchema,
   listClaimsQuery,
   payersSchema,
@@ -17,7 +22,13 @@ import type { ClaimService } from './service.ts';
 
 const documentParam = v.object({ id: uuid, eventId: uuid });
 
-export const createClaimRoutes = (service: ClaimService) =>
+const fileOf = async (file: File) => ({
+  name: file.name,
+  type: file.type,
+  bytes: new Uint8Array(await file.arrayBuffer())
+});
+
+export const createClaimRoutes = (service: ClaimService, maxBytes: number) =>
   new Hono<AgencyEnv>()
     .get('/', sValidator('query', listClaimsQuery, invalidRequest), async (c) =>
       respond(c, await service.list(c.get('access').agencyId, c.req.valid('query')))
@@ -106,6 +117,57 @@ export const createClaimRoutes = (service: ClaimService) =>
         respond(
           c,
           await service.requestRecords(
+            c.get('access').agencyId,
+            c.req.valid('param').id,
+            c.req.valid('json')
+          ),
+          201
+        )
+    )
+    .post(
+      '/:id/documents',
+      bodyLimit({
+        maxSize: maxBytes + FORM_OVERHEAD_BYTES,
+        onError: (c) => c.json({ error: 'File too large' }, 413)
+      }),
+      sValidator('param', idParam, invalidRequest),
+      sValidator('form', documentFormSchema, invalidRequest),
+      async (c) => {
+        const { agencyId, userId } = c.get('access');
+        const { file, kind, signedOn } = c.req.valid('form');
+        return respond(
+          c,
+          await service.uploadDocument(agencyId, userId, c.req.valid('param').id, {
+            kind,
+            signedOn,
+            file: await fileOf(file)
+          }),
+          201
+        );
+      }
+    )
+    .get(
+      '/:id/documents/:documentId',
+      sValidator('param', claimDocumentParam, invalidRequest),
+      async (c) => {
+        const { id, documentId } = c.req.valid('param');
+        const res = await service.documentFile(c.get('access').agencyId, id, documentId);
+        if (!res.ok) return respond(c, res);
+        return c.body(Uint8Array.from(res.value.bytes), 200, {
+          'content-type': res.value.contentType,
+          'content-disposition': `inline; filename="${res.value.name.replace(/[^\w.-]/g, '_')}"`,
+          'cache-control': 'private, max-age=300'
+        });
+      }
+    )
+    .post(
+      '/:id/document-chases',
+      sValidator('param', idParam, invalidRequest),
+      sValidator('json', chaseSchema, invalidRequest),
+      async (c) =>
+        respond(
+          c,
+          await service.chaseDocument(
             c.get('access').agencyId,
             c.req.valid('param').id,
             c.req.valid('json')

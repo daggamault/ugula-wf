@@ -202,10 +202,44 @@ describe('claim schemas', () => {
     assert.ok(fails({ serviceDate: '10/01/2026' }));
     assert.ok(fails({ documentation: { transportReason: 'Z' } }));
     assert.ok(fails({ documentation: { signature: 'maybe' } }));
+    assert.ok(fails({ documentation: { mspAccident: 'flood' } }));
+    assert.ok(fails({ documentation: { patientCount: 0 } }));
+    assert.ok(fails({ documentation: { roundTrips: 2.5 } }));
+    assert.ok(fails({ documentation: { abnSignedOn: '09/01/2026' } }));
     assert.deepEqual(
-      v.parse(billingDataSchema, { documentation: { signature: 'signed', transportReason: 'D' } })
-        .documentation,
-      { signature: 'signed', pcsOnFile: null, pcsSignedOn: null, transportReason: 'D' }
+      v.parse(billingDataSchema, {
+        documentation: {
+          signature: 'signed',
+          transportReason: 'D',
+          patientCount: 2,
+          abnOnFile: true,
+          mspAccident: 'workersComp',
+          priorAuthorization: ' UTN-1 ',
+          pcsType: 'repetitive',
+          roundTrips: 4,
+          facilityStay: 'snf'
+        }
+      }).documentation,
+      {
+        signature: 'signed',
+        pcsOnFile: null,
+        pcsSignedOn: null,
+        transportReason: 'D',
+        patientCount: 2,
+        abnOnFile: true,
+        abnSignedOn: null,
+        denialExpected: null,
+        mspEmployerPlan: null,
+        mspEsrd: null,
+        mspDisability: null,
+        mspAccident: 'workersComp',
+        priorAuthorization: 'UTN-1',
+        priorAuthorizationExpiresOn: null,
+        pcsType: 'repetitive',
+        roundTrips: 4,
+        admissionDate: null,
+        facilityStay: 'snf'
+      }
     );
     assert.ok(!fails({}));
   });

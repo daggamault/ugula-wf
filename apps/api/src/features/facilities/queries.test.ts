@@ -15,7 +15,10 @@ const input = {
   city: 'Springfield',
   state: 'IL',
   postalCode: null,
-  phone: null
+  phone: null,
+  kind: 'snf' as const,
+  contract: true,
+  contractNote: null
 };
 
 describe('facility queries', () => {
@@ -35,6 +38,9 @@ describe('facility queries', () => {
     assert.deepEqual(await updateFacility(db, 't-1', 'f1', input), { id: 'f1' });
     assert.equal(await deleteFacility(db, 't-1', 'f1'), true);
     assert.ok(queries.every((q) => q.parameters.includes('t-1')));
+    const insert = queries.find((q) => q.sql.startsWith('insert'));
+    assert.ok(insert?.sql.includes('"kind", "contract", "contract_note"'));
+    assert.ok(insert?.parameters.includes('snf') && insert.parameters.includes(true));
     assert.ok(queries[0]?.sql.includes('sum(b.balance_cents)'));
     assert.ok(queries[0]?.parameters.includes('%sun%'));
     assert.ok(queries[2]?.sql.includes('on conflict (agency_id, lower(name)) do nothing'));
