@@ -28,6 +28,7 @@ export {
   DOCUMENT_CONTENT_TYPES,
   DOCUMENT_KINDS,
   type DocumentKind,
+  documentContentTypeOf,
   isDocumentContentType,
   isDocumentKind
 } from './claim-documents.ts';
@@ -38,6 +39,8 @@ export {
   LOADED_MILES_FIELD,
   TRIP_TYPE_FIELD
 } from './claim-fix-fields.ts';
+export { type ManualPayment, PAYMENT_KINDS } from './claim-payments.ts';
+export { CLAIM_TASK_KEYS, CLAIM_TASKS, type ClaimTaskKey } from './claim-tasks.ts';
 export {
   type CheckFacts,
   CLAIM_FIELDS,
@@ -153,6 +156,7 @@ export {
   type CalendarStore,
   type ClaimStatusCheck,
   type ClaimStore,
+  type ClaimTaskStore,
   createBillingNodes,
   type Deadline,
   type DraftClaim,

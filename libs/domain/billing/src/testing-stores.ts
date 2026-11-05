@@ -38,6 +38,11 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
   },
   fees: stores.fees ?? { findSchedules: unused('fee'), saveFee: unused('fee') },
   claims: stores.claims ?? memoryClaims().store,
+  claimTasks: stores.claimTasks ?? {
+    setPayers: unused('claim task'),
+    postPayment: unused('claim task'),
+    addDocument: unused('claim task')
+  },
   recovery: stores.recovery ?? {
     recordRefund: unused('recovery'),
     protectBalance: unused('recovery'),

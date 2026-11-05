@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { ClaimStore } from '@ugula/billing';
 import { memoryClaims } from '@ugula/billing/testing';
 import type { LiveEvent } from '@ugula/live';
-import { announceClaims } from './announce.ts';
+import { announceClaims, announceClaimTasks } from './announce.ts';
 
 describe('announceClaims', () => {
   it('announces each claim change after the store has made it', async () => {
@@ -141,5 +141,21 @@ describe('announceClaims', () => {
     await assert.rejects(() => claims.closeClaim('r1', 'c9', 'k', 'paid'), /does not exist/);
     await claims.openDraft('r1', 'k', { pcrNumber: null, reportKey: null, claimId: 'c7' });
     assert.equal(announced, 1);
+  });
+
+  it('announces each claim a claim task changed', async () => {
+    const announced: string[] = [];
+    const tasks = announceClaimTasks(
+      {
+        setPayers: async () => ({ status: 'saved' }),
+        postPayment: async () => ({ status: 'refused', reason: 'closed' }),
+        addDocument: async () => ({ status: 'added', documentId: 'd1' })
+      },
+      async (runId, e) => void announced.push(`${runId}:${e.kind}:${e.id}`)
+    );
+    assert.deepEqual(await tasks.setPayers('r1', 'c1', []), { status: 'saved' });
+    await tasks.postPayment('r1', 'c2', 'k', {} as never, null);
+    await tasks.addDocument('r1', 'c3', 'k', {} as never);
+    assert.deepEqual(announced, ['r1:claim:c1', 'r1:claim:c2', 'r1:claim:c3']);
   });
 });

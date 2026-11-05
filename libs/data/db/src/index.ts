@@ -2,6 +2,7 @@ export * from './access.ts';
 export * from './claim-checks.ts';
 export * from './claim-documentation.ts';
 export * from './claim-patches.ts';
+export * from './claim-payers.ts';
 export * from './claim-responses.ts';
 export { createDb, type SqlExecutor, sqlExecutor } from './client.ts';
 export * from './data-tables.ts';

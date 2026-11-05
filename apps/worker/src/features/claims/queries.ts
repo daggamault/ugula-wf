@@ -21,7 +21,7 @@ export const createClaimStore = (
     ...createStatementStore(db, blobs),
     ...ledger,
     ...createCycleStore(db, boss),
-    ...createFacilityStore(db),
+    ...createFacilityStore(db, boss),
     ...createSubmissionStore(db, blobs, ledger.ledger, clearinghouseFor)
   };
 };

@@ -1,6 +1,7 @@
 import type { NodeDef } from '@ugula/graph';
-import type { ClaimDocument } from '../claim-documents.ts';
+import type { ClaimDocument, DocumentKind } from '../claim-documents.ts';
 import type { ClaimPatch } from '../claim-fix.ts';
+import type { ManualPayment } from '../claim-payments.ts';
 import type { ClaimCheck, NewClaim } from '../claim-validation.ts';
 import type { ClaimLedger, ClaimStatus, ClosedStatus, CycleEventKind } from '../claims.ts';
 import type { Completer } from '../completions.ts';
@@ -247,6 +248,36 @@ export type ClaimStore = {
   ) => Promise<ClaimDocument | null>;
 };
 
+export type Refused = { status: 'refused'; reason: string };
+
+export type NewClaimDocument = {
+  kind: DocumentKind;
+  signedOn: string | null;
+  file: BlobRef;
+  addedBy: string | null;
+};
+
+export type ClaimTaskStore = {
+  setPayers: (
+    runId: string,
+    claimId: string,
+    payers: string[]
+  ) => Promise<{ status: 'saved' } | Refused>;
+  postPayment: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    payment: ManualPayment,
+    postedBy: string | null
+  ) => Promise<{ status: 'posted'; balanceCents: number } | Refused>;
+  addDocument: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    document: NewClaimDocument
+  ) => Promise<{ status: 'added'; documentId: string } | Refused>;
+};
+
 type PayerFileLine = {
   reference: string;
   claimId: string | null;
@@ -315,6 +346,7 @@ export type BillingStores = {
   payers: PayerStore;
   fees: FeeStore;
   claims: ClaimStore;
+  claimTasks: ClaimTaskStore;
   payerFiles: PayerFileStore;
   exchange: ExchangeStore;
   recovery: RecoveryStore;

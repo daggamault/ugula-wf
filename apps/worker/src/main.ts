@@ -8,7 +8,8 @@ import { Redis } from 'ioredis';
 import { PgBoss } from 'pg-boss';
 import { type Config, clearinghouseOf, parseConfig } from './config.ts';
 import { createFeeStore } from './features/charges/queries.ts';
-import { announceClaims } from './features/claims/announce.ts';
+import { announceClaims, announceClaimTasks } from './features/claims/announce.ts';
+import { createClaimTaskStore } from './features/claims/claim-tasks.ts';
 import { createClaimStore } from './features/claims/queries.ts';
 import { createExchangeStore } from './features/clearinghouse/exchange.ts';
 import { registerPollJob } from './features/clearinghouse/job.ts';
@@ -128,6 +129,9 @@ if (import.meta.main) {
           fees: scope.guard(createFeeStore(db)),
           claims: scope.guard(
             announceClaims(createClaimStore(db, blobs, boss, connections.forAgency), announce)
+          ),
+          claimTasks: scope.guard(
+            announceClaimTasks(createClaimTaskStore(db, blobs, boss), announce)
           ),
           payerFiles: scope.guard(payerFiles),
           exchange: scope.guard(
