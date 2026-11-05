@@ -1,9 +1,9 @@
 import type {
-  AdjustmentGroup,
   ClaimEventKind,
   ClaimIssue,
   ClaimStatus,
   ClaimStep,
+  ClaimTaskKey,
   DocumentKind,
   EligibilityStatus,
   FacilityStay,
@@ -200,64 +200,6 @@ export type ClaimDetail = ClaimSummary & {
   facility_name: string | null;
 };
 
-export type FacilityOption = { id: string; name: string };
-
-export type RecordsRequestInput = { dueOn: string | null; note: string };
-
-type AddressInput = {
-  addressLine: string | null;
-  city: string | null;
-  state: string | null;
-  postalCode: string | null;
-};
-
-export type LocationInput = AddressInput & { name: string | null };
-
-export type BillingDataInput = {
-  serviceDate: string | null;
-  pickup: LocationInput;
-  destination: LocationInput;
-  diagnoses: string[];
-  originDestination: string | null;
-  patient: AddressInput;
-  coverages: { id: string; memberId: string | null; groupId: string | null }[];
-  documentation: DocumentationInput | null;
-};
-
-type DocumentationValues = {
-  signature: SignatureStatus;
-  pcsOnFile: boolean | null;
-  pcsSignedOn: string | null;
-  transportReason: TransportReason | null;
-  patientCount: number | null;
-  abnOnFile: boolean | null;
-  abnSignedOn: string | null;
-  denialExpected: boolean | null;
-  mspEmployerPlan: boolean | null;
-  mspEsrd: boolean | null;
-  mspDisability: boolean | null;
-  mspAccident: MspAccident | null;
-  priorAuthorization: string | null;
-  priorAuthorizationExpiresOn: string | null;
-  pcsType: PcsType | null;
-  roundTrips: number | null;
-  admissionDate: string | null;
-  facilityStay: FacilityStay | null;
-};
-
-export type DocumentationInput = {
-  [K in keyof DocumentationValues]?: DocumentationValues[K] | undefined;
-};
-
-export type DocumentUpload = { kind: DocumentKind; signedOn: string; file: File };
-
-export type PayerInput = {
-  name: string;
-  relationship: InsuredRelationship;
-  insuredFirstName: string | null;
-  insuredLastName: string | null;
-};
-
 export type ClaimEvent = {
   id: string;
   kind: ClaimEventKind;
@@ -278,21 +220,6 @@ export type ClaimEvent = {
 
 export type ClaimProgress = ClaimStep;
 
-type AdjustmentInput = { group: AdjustmentGroup; reason: string; cents: number };
-
-export type ClaimResponseInput = {
-  requestId: string;
-  kind: 'response' | 'refunded';
-  coverageId: string | null;
-  paidCents: number;
-  adjustedCents: number;
-  paidOn: string | null;
-  checkNumber: string | null;
-  payerClaimNumber: string | null;
-  adjustments: AdjustmentInput[];
-  note: string;
-};
-
 const claimPath = (id: string) => `/api/claims/${encodeURIComponent(id)}`;
 
 export const createClaimsClient = (api: Api) => ({
@@ -309,37 +236,16 @@ export const createClaimsClient = (api: Api) => ({
     }>(claimPath(id), signal),
   events: (id: string, page: string, signal?: AbortSignal) =>
     api.get<Page<ClaimEvent>>(`${claimPath(id)}/events?${page}`, signal),
-  setPayers: (id: string, payers: readonly PayerInput[]) =>
-    api.put<{ payers: PayerInput[] }>(`${claimPath(id)}/payers`, { payers }),
   documentUrl: (claimId: string, eventId: string) =>
     api.href(`${claimPath(claimId)}/events/${encodeURIComponent(eventId)}/document`),
-  saveBillingData: (id: string, data: BillingDataInput) =>
-    api.put<{ status: string }>(`${claimPath(id)}/billing-data`, data),
   restartCycle: (id: string) => api.post<{ runId: string }>(`${claimPath(id)}/restart-cycle`),
-  facilities: async (q: string, signal?: AbortSignal) =>
-    (
-      await api.get<{ items: FacilityOption[] }>(
-        `/api/claims/facility-options${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`,
-        signal
-      )
-    ).items,
-  setFacility: (id: string, facilityId: string | null) =>
-    api.put<{ facilityId: string | null }>(`${claimPath(id)}/facility`, { facilityId }),
-  requestRecords: (id: string, request: RecordsRequestInput) =>
-    api.post<{ runId: string }>(`${claimPath(id)}/records-request`, request),
-  uploadDocument: (id: string, upload: DocumentUpload) => {
-    const form = new FormData();
-    form.set('kind', upload.kind);
-    form.set('signedOn', upload.signedOn);
-    form.set('file', upload.file);
-    return api.upload<{ id: string; runId: string }>(`${claimPath(id)}/documents`, form);
-  },
+  startTask: (id: string, workflow: ClaimTaskKey) =>
+    api.post<{ runId: string }>(`${claimPath(id)}/tasks`, { workflow }),
+  runTask: async (runId: string) =>
+    (await api.get<Page<{ id: string }>>(`/api/tasks?runId=${encodeURIComponent(runId)}`)).items[0]
+      ?.id ?? null,
   claimDocumentUrl: (claimId: string, documentId: string) =>
     api.href(`${claimPath(claimId)}/documents/${encodeURIComponent(documentId)}`),
-  chaseDocument: (id: string, kind: DocumentKind, note: string | null) =>
-    api.post<{ runId: string }>(`${claimPath(id)}/document-chases`, { kind, note }),
-  recordResponse: (id: string, response: ClaimResponseInput) =>
-    api.post<{ balanceCents: number; duplicate: boolean }>(`${claimPath(id)}/responses`, response),
   eligibilityRequest: (claimId: string) =>
     api.post<{ name: string; file: string; payers: string[] }>('/api/submissions/eligibility', {
       claimId

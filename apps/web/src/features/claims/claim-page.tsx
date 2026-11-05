@@ -1,16 +1,24 @@
-import { type ClaimIssue, isClosedStatus, TRIP_TYPE_LABELS } from '@ugula/billing';
+import {
+  type ClaimIssue,
+  type ClaimTaskKey,
+  isClosedStatus,
+  TRIP_TYPE_LABELS
+} from '@ugula/billing';
 import { UserIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
+import { useCan } from '../../shared/access.tsx';
 import { messageOf } from '../../shared/api.ts';
 import { ChargeLines } from '../../shared/claims/charge-lines.tsx';
 import { ClaimIssues } from '../../shared/claims/claim-issues.tsx';
 import { downloadText } from '../../shared/download.ts';
 import { formatCents, formatDate, formatMiles } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
+import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
+import { Menu } from '../../shared/ui/menu.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Tabs } from '../../shared/ui/tabs.tsx';
@@ -18,25 +26,22 @@ import { useToast } from '../../shared/ui/toast.tsx';
 import { backLabelOf, type Page as ListPage, withBack } from '../../shared/url-state.ts';
 import { type Resource, useResource } from '../../shared/use-resource.ts';
 import { CycleAlert, OpenTasks } from './claim-cycle.tsx';
-import { ClaimDataForm } from './claim-data-form.tsx';
+import { ClaimDataView } from './claim-data.tsx';
 import { DocumentationPanel, EligibilityPanel } from './claim-documentation.tsx';
 import { DocumentsPanel } from './claim-documents.tsx';
 import { ClaimFiles } from './claim-files.tsx';
 import { ClaimHistory, useHistoryTable } from './claim-history.tsx';
-import { PayersEditor } from './claim-payers.tsx';
-import { ClaimRecovery } from './claim-recovery.tsx';
-import { ResponseForm } from './claim-response.tsx';
+import { PayersPanel } from './claim-payers.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
+import { claimTaskGroups, START_TASK_ICON, waitForTask } from './claim-tasks.tsx';
 import type {
-  BillingDataInput,
   ClaimDetail,
+  ClaimDocument,
   ClaimEvent,
   ClaimLine,
   ClaimPayerFile,
   ClaimProgress,
-  ClaimResponseInput,
-  ClaimsClient,
-  PayerInput
+  ClaimsClient
 } from './client.ts';
 
 type ClaimPageProps = {
@@ -47,13 +52,6 @@ type ClaimPageProps = {
   tab?: ClaimTab;
   back?: string;
 };
-
-export const lockedReason = (status: ClaimDetail['status']) =>
-  isClosedStatus(status)
-    ? 'This claim is closed.'
-    : status === 'draft'
-      ? 'This claim is still a draft. Finish its PCR tasks first.'
-      : undefined;
 
 const pricedLinesOf = (lines: readonly ClaimLine[]) =>
   lines.map((l) => ({
@@ -86,16 +84,12 @@ export const ClaimView = ({
   history,
   progress,
   issues,
-  onSavePayers,
-  onRecord,
-  onRestart,
-  onSaveData,
-  onCheckEligibility,
+  documents = [],
   onDownloadEligibility,
   documentUrl,
+  claimDocumentUrl = () => '',
   submission,
-  recovery,
-  documents,
+  startTask,
   tab = 'overview',
   back = '/claims',
   error = '',
@@ -107,25 +101,18 @@ export const ClaimView = ({
   history: Resource<ListPage<ClaimEvent>>;
   progress: ClaimProgress | null;
   issues: readonly ClaimIssue[];
-  onSavePayers: (payers: PayerInput[]) => Promise<void>;
-  onRecord: (response: ClaimResponseInput) => Promise<boolean>;
-  onRestart: () => Promise<void>;
-  onSaveData: (data: BillingDataInput) => Promise<boolean>;
-  onCheckEligibility: () => Promise<void>;
+  documents?: readonly ClaimDocument[];
   onDownloadEligibility: () => Promise<void>;
   documentUrl: (eventId: string) => string;
+  claimDocumentUrl?: (documentId: string) => string;
   submission?: ClaimLinks;
-  recovery?: ReactNode;
-  documents?: ReactNode;
+  startTask?: ReactNode;
   tab?: ClaimTab;
   back?: string;
   error?: string;
   me?: string;
 }) => {
-  const locked = lockedReason(claim.status);
   const path = `/claims/${claim.id}`;
-  const current = progress && 'coverage' in progress ? progress.coverage.id : null;
-  const coverageKey = JSON.stringify(claim.coverages);
   return (
     <Page
       title={`Claim ${claim.number}`}
@@ -141,17 +128,20 @@ export const ClaimView = ({
         </span>
       }
       actions={
-        claim.patient_id ? (
-          <ButtonLink to={`/patients/${claim.patient_id}`} variant="outline">
-            <UserIcon aria-hidden="true" className="size-4" />
-            Patient
-          </ButtonLink>
-        ) : null
+        <>
+          {claim.patient_id ? (
+            <ButtonLink to={`/patients/${claim.patient_id}`} variant="outline">
+              <UserIcon aria-hidden="true" className="size-4" />
+              Patient
+            </ButtonLink>
+          ) : null}
+          {startTask}
+        </>
       }
     >
       {error ? <Alert>{error}</Alert> : null}
       <OpenTasks tasks={claim.tasks} back={withBack(path, back)} me={me} />
-      <CycleAlert claim={claim} progress={progress} onRestart={onRestart} />
+      <CycleAlert claim={claim} progress={progress} />
       <Tabs
         label="Claim sections"
         tabs={CLAIM_TABS.map((t) => ({
@@ -187,28 +177,22 @@ export const ClaimView = ({
                   <span className="tabular-nums"> · {formatMiles(claim.loaded_miles)} loaded</span>
                 ) : null}
               </Detail>
+              <Detail label="Responsible Facility">
+                {claim.facility_name ?? 'None: the payers and the patient'}
+              </Detail>
             </DetailList>
           </SectionPanel>
           <DocumentationPanel claim={claim} />
-          {documents}
+          <DocumentsPanel documents={documents} documentUrl={claimDocumentUrl} />
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             <div className="flex min-w-0 flex-col gap-6">
               <SectionPanel title="Charges" description="Priced from the fee schedule.">
                 <ChargeLines lines={pricedLinesOf(claim.lines)} />
               </SectionPanel>
-              <PayersEditor
-                key={coverageKey}
-                coverages={claim.coverages}
-                locked={locked}
-                onSave={onSavePayers}
-              />
-              <EligibilityPanel
-                coverages={claim.coverages}
-                locked={locked}
-                onCheck={onCheckEligibility}
-                onDownload={onDownloadEligibility}
-              />
-              {recovery}
+              <PayersPanel coverages={claim.coverages} />
+            </div>
+            <div className="flex min-w-0 flex-col gap-6">
+              <EligibilityPanel coverages={claim.coverages} onDownload={onDownloadEligibility} />
               {submission ? (
                 <ClaimFiles
                   claim={claim}
@@ -221,17 +205,10 @@ export const ClaimView = ({
                 />
               ) : null}
             </div>
-            <ResponseForm
-              key={`response-${coverageKey}`}
-              coverages={claim.coverages}
-              current={current}
-              locked={locked}
-              onRecord={onRecord}
-            />
           </div>
         </>
       ) : tab === 'data' ? (
-        <ClaimDataForm key={`data-${claim.id}`} claim={claim} locked={locked} onSave={onSaveData} />
+        <ClaimDataView claim={claim} />
       ) : (
         <SectionPanel title="History" description="Everything that has happened on this claim.">
           <ClaimHistory
@@ -274,87 +251,89 @@ export const ClaimPage = ({
     reload
   );
   const [error, setError] = useState('');
+  const [starting, setStarting] = useState(false);
   const notify = useToast();
+  const can = useCan();
+  const path = withBack(`/claims/${claimId}`, back);
   const patient = detail.data
     ? `Claim ${detail.data.claim.number} · ${patientName(detail.data.claim)}`
     : '';
   const act = async (action: () => Promise<unknown>, done: string) => {
     setError('');
+    setStarting(true);
     try {
       await action();
       reload();
       notify({ title: done, description: patient });
-      return true;
     } catch (err) {
       setError(messageOf(err));
-      return false;
+    } finally {
+      setStarting(false);
+    }
+  };
+  const start = async (key: ClaimTaskKey) => {
+    setError('');
+    setStarting(true);
+    try {
+      const { runId } = await client.startTask(claimId, key);
+      const taskId = await waitForTask(() => client.runTask(runId));
+      if (taskId) navigate(withBack(`/tasks/${taskId}`, path));
+      else {
+        reload();
+        notify({
+          intent: 'info',
+          title: 'The task is still opening',
+          description: 'It shows on this claim as soon as it is ready.'
+        });
+      }
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setStarting(false);
     }
   };
   if (detail.error) return <PageFailure message={detail.error.message} />;
   if (!detail.data) return <PageLoading />;
+  const { claim, progress } = detail.data;
   return (
     <ClaimView
       tab={tab}
       back={back}
       me={me}
       error={error}
-      claim={detail.data.claim}
+      claim={claim}
       files={detail.data.files}
       payerFiles={detail.data.payerFiles}
+      documents={detail.data.documents}
       history={history}
-      progress={detail.data.progress}
+      progress={progress}
       issues={detail.data.issues}
-      onSavePayers={async (payers) => {
-        await act(() => client.setPayers(claimId, payers), 'Payers saved');
-      }}
-      onRecord={(response) => act(() => client.recordResponse(claimId, response), 'Payment posted')}
-      onSaveData={(data) =>
-        act(() => client.saveBillingData(claimId, data), 'Billing details saved')
-      }
       documentUrl={(eventId) => client.documentUrl(claimId, eventId)}
-      onCheckEligibility={async () => {
-        await act(
-          () => client.checkEligibility(claimId),
-          'Eligibility check sent to the clearinghouse'
-        );
-      }}
-      onDownloadEligibility={async () => {
-        await act(async () => {
+      claimDocumentUrl={(documentId) => client.claimDocumentUrl(claimId, documentId)}
+      onDownloadEligibility={() =>
+        act(async () => {
           const request = await client.eligibilityRequest(claimId);
           downloadText(request.name, request.file, 'application/edi-x12');
-        }, 'Eligibility request (270) downloaded');
-      }}
-      onRestart={async () => {
-        await act(() => client.restartCycle(claimId), 'Payer cycle restarted');
-      }}
-      submission={{ fileUrl: client.fileUrl, encounterUrl: client.encounterUrl }}
-      documents={
-        <DocumentsPanel
-          documents={detail.data.documents}
-          locked={
-            isClosedStatus(detail.data.claim.status)
-              ? lockedReason(detail.data.claim.status)
-              : undefined
-          }
-          documentUrl={(documentId) => client.claimDocumentUrl(claimId, documentId)}
-          onUpload={(kind, signedOn, file) =>
-            act(
-              () => client.uploadDocument(claimId, { kind, signedOn, file }),
-              `${file.name} uploaded`
-            )
-          }
-          onChase={(kind, note) =>
-            act(() => client.chaseDocument(claimId, kind, note), 'Document chase started')
-          }
-        />
+        }, 'Eligibility request (270) downloaded')
       }
-      recovery={
-        <ClaimRecovery
-          client={client}
-          claim={detail.data.claim}
-          locked={lockedReason(detail.data.claim.status)}
-          onChanged={reload}
-        />
+      submission={{ fileUrl: client.fileUrl, encounterUrl: client.encounterUrl }}
+      startTask={
+        can('claims:update') ? (
+          <Menu
+            label="Start Task"
+            icon={START_TASK_ICON}
+            isPending={starting}
+            groups={claimTaskGroups(claim, progress, {
+              onStart: (key) => void start(key),
+              onCheckEligibility: () =>
+                void act(
+                  () => client.checkEligibility(claimId),
+                  'Eligibility check sent to the clearinghouse'
+                ),
+              onRestart: () => void act(() => client.restartCycle(claimId), 'Payer cycle restarted')
+            })}
+          />
+        ) : null
       }
     />
   );

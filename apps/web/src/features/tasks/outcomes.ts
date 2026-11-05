@@ -10,7 +10,9 @@ import {
   CircleHelpIcon,
   CircleSlashIcon,
   ClockIcon,
+  FileClockIcon,
   FilePenIcon,
+  FilePlusIcon,
   GavelIcon,
   HandCoinsIcon,
   LandmarkIcon,
@@ -89,7 +91,13 @@ const OUTCOMES: Readonly<Record<string, OutcomeStyle>> = {
   reject: { icon: XIcon },
   done: { icon: CheckIcon, label: 'Done' },
   retry: { icon: RotateCcwIcon },
-  cancel: { icon: XIcon }
+  cancel: { icon: XIcon },
+  post: { icon: HandCoinsIcon, label: 'Post Payment' },
+  add: { icon: FilePlusIcon, label: 'Add Document' },
+  log: { icon: FileClockIcon, label: 'Log Request' },
+  chase: { icon: SendIcon, label: 'Start Chase' },
+  billFacility: { icon: BuildingIcon, label: 'Bill Facility' },
+  billPayers: { icon: LandmarkIcon, label: 'Bill Payers' }
 };
 
 const DESTRUCTIVE = new Set(['void', 'writeOff', 'cancel']);

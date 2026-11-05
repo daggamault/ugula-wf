@@ -155,7 +155,7 @@ describe('claim documentation', () => {
     }
   });
 
-  it('lists each payer with its eligibility and offers a check', () => {
+  it('lists each payer with its eligibility and offers its 270 to download', () => {
     assert.deepEqual(eligibilityStyle(coverage), { intent: 'danger', label: 'Not Active' });
     assert.equal(eligibilityStyle({ eligibility: null }).label, 'Not Checked');
     assert.deepEqual(eligibilityStyle({ eligibility: 'active' }), {
@@ -163,32 +163,13 @@ describe('claim documentation', () => {
       label: 'Active'
     });
     const html = renderToStaticMarkup(
-      createElement(EligibilityPanel, {
-        coverages: [coverage],
-        locked: undefined,
-        onCheck: async () => undefined,
-        onDownload: async () => undefined
-      })
+      createElement(EligibilityPanel, { coverages: [coverage], onDownload: async () => undefined })
     );
-    assert.ok(html.includes('Check Eligibility') && html.includes('Not covered after 2026-09-30'));
+    assert.ok(!html.includes('Check Eligibility') && html.includes('Not covered after 2026-09-30'));
     assert.ok(html.includes('Download 270'));
     const empty = renderToStaticMarkup(
-      createElement(EligibilityPanel, {
-        coverages: [],
-        locked: undefined,
-        onCheck: async () => undefined,
-        onDownload: async () => undefined
-      })
+      createElement(EligibilityPanel, { coverages: [], onDownload: async () => undefined })
     );
     assert.ok(empty.includes('No payer is on this claim.') && empty.includes('disabled'));
-    const locked = renderToStaticMarkup(
-      createElement(EligibilityPanel, {
-        coverages: [coverage],
-        locked: 'This claim is closed.',
-        onCheck: async () => undefined,
-        onDownload: async () => undefined
-      })
-    );
-    assert.ok(locked.includes('This claim is closed.') && locked.includes('disabled'));
   });
 });

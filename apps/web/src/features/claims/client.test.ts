@@ -4,7 +4,7 @@ import { createApi } from '../../shared/api.ts';
 import { claimSearchOf, createClaimsClient } from './client.ts';
 
 describe('createClaimsClient', () => {
-  it('reads claims and sends payer orders, payments and submissions', async () => {
+  it('reads claims and starts claim tasks, cycles and eligibility checks', async () => {
     const seen: string[] = [];
     const client = createClaimsClient(
       createApi('http://api.test', async (url, init = {}) => {
@@ -22,32 +22,8 @@ describe('createClaimsClient', () => {
     );
     await client.find('c1');
     await client.events('c1', 'page=2&sort=amount');
-    await client.setPayers('c1', [
-      { name: 'Medicare', relationship: '18', insuredFirstName: null, insuredLastName: null }
-    ]);
     await client.restartCycle('c1');
-    await client.recordResponse('c1', {
-      requestId: 'q1',
-      kind: 'response',
-      coverageId: null,
-      paidCents: 500,
-      adjustedCents: 0,
-      paidOn: null,
-      checkNumber: null,
-      payerClaimNumber: null,
-      adjustments: [],
-      note: ''
-    });
-    await client.saveBillingData('c1', {
-      serviceDate: null,
-      pickup: { name: null, addressLine: null, city: null, state: null, postalCode: null },
-      destination: { name: null, addressLine: null, city: null, state: null, postalCode: null },
-      diagnoses: ['I10'],
-      originDestination: 'RH',
-      patient: { addressLine: null, city: null, state: null, postalCode: null },
-      coverages: [],
-      documentation: null
-    });
+    await client.startTask('c1', 'billing.post-payment');
     await client.eligibilityRequest('c1');
     await client.checkEligibility('c1');
     assert.equal(client.fileUrl('b1'), 'http://api.test/api/submissions/batches/b1/file');
@@ -61,31 +37,28 @@ describe('createClaimsClient', () => {
       'GET http://api.test/api/claims?status=all&lastName=doe&birthDate=1980-01-02&patientId=p1&page=1 ',
       'GET http://api.test/api/claims/c1 ',
       'GET http://api.test/api/claims/c1/events?page=2&sort=amount ',
-      'PUT http://api.test/api/claims/c1/payers {"payers":[{"name":"Medicare","relationship":"18","insuredFirstName":null,"insuredLastName":null}]}',
       'POST http://api.test/api/claims/c1/restart-cycle ',
-      'POST http://api.test/api/claims/c1/responses {"requestId":"q1","kind":"response","coverageId":null,"paidCents":500,"adjustedCents":0,"paidOn":null,"checkNumber":null,"payerClaimNumber":null,"adjustments":[],"note":""}',
-      'PUT http://api.test/api/claims/c1/billing-data {"serviceDate":null,"pickup":{"name":null,"addressLine":null,"city":null,"state":null,"postalCode":null},"destination":{"name":null,"addressLine":null,"city":null,"state":null,"postalCode":null},"diagnoses":["I10"],"originDestination":"RH","patient":{"addressLine":null,"city":null,"state":null,"postalCode":null},"coverages":[],"documentation":null}',
+      'POST http://api.test/api/claims/c1/tasks {"workflow":"billing.post-payment"}',
       'POST http://api.test/api/submissions/eligibility {"claimId":"c1"}',
       'POST http://api.test/api/submissions/eligibility-checks {"claimId":"c1"}'
     ]);
   });
 
-  it('searches facility choices under the claims endpoint', async () => {
+  it('finds the open task of a started run', async () => {
     const seen: string[] = [];
     const client = createClaimsClient(
       createApi('http://api.test', async (url) => {
         seen.push(String(url));
-        return new Response('{"items":[{"id":"f1","name":"Oak Manor"}]}', { status: 200 });
+        return new Response(
+          seen.length === 1 ? '{"items":[{"id":"t1"}],"total":1}' : '{"items":[],"total":0}',
+          { status: 200 }
+        );
       })
     );
-    assert.deepEqual(await client.facilities(' oak '), [{ id: 'f1', name: 'Oak Manor' }]);
-    await client.facilities('');
-    assert.deepEqual(seen, [
-      'http://api.test/api/claims/facility-options?q=oak',
-      'http://api.test/api/claims/facility-options'
-    ]);
+    assert.equal(await client.runTask('r 1'), 't1');
+    assert.equal(await client.runTask('r2'), null);
+    assert.equal(seen[0], 'http://api.test/api/tasks?runId=r%201');
   });
-
   it('rejects with the message the server sends back', async () => {
     const client = createClaimsClient(
       createApi('', async () => new Response('{"error":"Claim is closed"}', { status: 409 }))

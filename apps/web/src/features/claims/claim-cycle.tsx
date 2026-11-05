@@ -1,10 +1,9 @@
 import { isClosedStatus } from '@ugula/billing';
-import { ExternalLinkIcon, ListTodoIcon, RotateCcwIcon } from 'lucide-react';
-import { useState } from 'react';
+import { ExternalLinkIcon, ListTodoIcon } from 'lucide-react';
 import { formatAgo, formatCents } from '../../shared/format.ts';
 import { assigneeOf, queueInfo } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
-import { Button, ButtonLink } from '../../shared/ui/button.tsx';
+import { ButtonLink } from '../../shared/ui/button.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
 import { withBack } from '../../shared/url-state.ts';
 import type { ClaimDetail, ClaimProgress, ClaimTask } from './client.ts';
@@ -105,48 +104,30 @@ export const describeCycle = (
 
 export const CycleAlert = ({
   claim,
-  progress,
-  onRestart
+  progress
 }: {
   claim: ClaimDetail;
   progress: ClaimProgress | null;
-  onRestart: () => Promise<void>;
 }) => {
-  const [restarting, setRestarting] = useState(false);
   const status = describeCycle(claim, progress);
   if (!status) return null;
   const runLink = status.stopped && claim.cycle_run_id ? claim.cycle_run_id : null;
-  const actions = (
-    <>
-      {runLink ? (
-        <ButtonLink to={`/runs/${runLink}`} variant="outline">
-          <ExternalLinkIcon aria-hidden="true" className="size-4" />
-          Open Cycle Run
-        </ButtonLink>
-      ) : null}
-      {status.restartable ? (
-        <Button
-          variant="outline"
-          isPending={restarting}
-          onClick={async () => {
-            setRestarting(true);
-            await onRestart();
-            setRestarting(false);
-          }}
-        >
-          <RotateCcwIcon aria-hidden="true" className="size-4" />
-          Restart Payer Cycle
-        </Button>
-      ) : null}
-    </>
-  );
   return (
-    <Alert intent={status.intent} action={actions}>
-      {status.text}
+    <Alert
+      intent={status.intent}
+      action={
+        runLink ? (
+          <ButtonLink to={`/runs/${runLink}`} variant="outline">
+            <ExternalLinkIcon aria-hidden="true" className="size-4" />
+            Open Cycle Run
+          </ButtonLink>
+        ) : null
+      }
+    >
+      {status.restartable ? `${status.text} Restart it from Start Task.` : status.text}
     </Alert>
   );
 };
-
 export const OpenTasks = ({
   tasks,
   back,

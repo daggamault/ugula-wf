@@ -280,3 +280,24 @@ describe('TaskAbout', () => {
     assert.equal(text(task({ subject: null })), 'Waiting on a decision');
   });
 });
+
+describe('TaskView files', () => {
+  it('offers a file picker for a file field, uploading it for the task', () => {
+    const html = renderToStaticMarkup(
+      createElement(TaskView, {
+        task: task({
+          fields: [{ name: 'file', type: { object: { bucket: 'string', key: 'string' } } }],
+          outcomes: ['add', 'cancel']
+        }),
+        back: '/claims',
+        remaining: 0,
+        upload: async () => ({ file: null, name: '' }),
+        onComplete: async () => undefined,
+        onAssign: async () => undefined,
+        onNext: async () => undefined
+      })
+    );
+    assert.ok(html.includes('type="file"') && html.includes('Choose a file to upload.'));
+    assert.ok(html.includes('>Add Document<'));
+  });
+});

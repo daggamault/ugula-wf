@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Page } from '../../shared/url-state.ts';
 import type { Resource } from '../../shared/use-resource.ts';
-import { type ClaimTab, ClaimView, lockedReason } from './claim-page.tsx';
+import { type ClaimTab, ClaimView } from './claim-page.tsx';
 import type { ClaimDetail, ClaimEvent, ClaimProgress } from './client.ts';
 
 const claim: ClaimDetail = {
@@ -179,23 +179,10 @@ const render = (
         }
       ]),
       progress,
-      onSavePayers: async () => undefined,
-      onRecord: async () => true,
-      onRestart: async () => undefined,
-      onSaveData: async () => true,
-      onCheckEligibility: async () => undefined,
       onDownloadEligibility: async () => undefined,
       documentUrl: (eventId: string) => `/docs/${eventId}`
     })
   );
-
-describe('lockedReason', () => {
-  it('locks drafts and closed claims with a reason', () => {
-    assert.equal(lockedReason('submitted'), undefined);
-    assert.match(lockedReason('draft') ?? '', /still a draft/);
-    assert.equal(lockedReason('void'), 'This claim is closed.');
-  });
-});
 
 describe('ClaimView', () => {
   it('shows the trip type and the claim check issues of an open claim', () => {
@@ -223,15 +210,7 @@ describe('ClaimView', () => {
     assert.ok(html.includes('No PCR number'));
   });
 
-  it('posts payments with paid date, check number and reason codes', () => {
-    const html = render({}, { step: 'await', coverage: medicare, waitMs: 1, balanceCents: 1 });
-    assert.ok(html.includes('Paid On') && html.includes('Check or EFT Number'));
-    assert.ok(html.includes('Payer Claim Number') && html.includes('Add Reason Code'));
-    assert.ok(html.includes('>Refund<'));
-    assert.ok(render({}, null, 'history').includes('Check or EFT CHK-77'));
-  });
-
-  it('shows lines, ordered payers, history and the response form for open claims', () => {
+  it('shows lines, ordered payers, documents and history without a single form', () => {
     const html = render(
       {},
       {
@@ -242,54 +221,54 @@ describe('ClaimView', () => {
       }
     );
     assert.ok(html.includes('Waiting on Blue Plan'));
-    assert.match(
-      html,
-      /role="option"[^>]*aria-selected="true" data-value="cov-b"[^>]*><span[^>]*>Blue Plan<\/span>/
-    );
     assert.ok(html.includes('Doe, Jane'));
     assert.ok(html.includes('Claim 20261001-0012') && html.includes('Patient 20260915-0003'));
     assert.ok(html.includes('Encounter 20261001-0007') && html.includes('PCR PCR-1001'));
-    assert.ok(!html.includes('Claim #'));
     assert.ok(html.includes('12.4 miles loaded'));
     assert.ok(html.includes('A0427'));
-    assert.ok(html.includes('1. </span>Medicare'));
-    assert.ok(html.includes('2. </span>Blue Plan'));
-    assert.ok(html.includes('aria-label="Move Blue Plan up"'));
-    assert.ok(html.includes('aria-label="Remove Blue Plan"'));
+    assert.ok(html.includes('1. </span>Medicare') && html.includes('2. </span>Blue Plan'));
+    assert.ok(html.includes('Member ID 1EG4'));
     assert.match(html, /History<span[^>]*tabular-nums[^>]*>2<\/span>/);
-    assert.ok(html.includes('>Patient<'));
     assert.equal(html.match(/Not in Payer Directory/g)?.length, 1);
-    assert.ok(html.includes('Service Date'));
-    assert.ok(html.includes('for="response-paid"'));
+    assert.ok(
+      html.includes('Responsible Facility') && html.includes('None: the payers and the patient')
+    );
+    assert.ok(
+      html.includes('No documents are on this claim yet.') && html.includes('Download 270')
+    );
     assert.ok(
       html.includes('href="/claims/c1?tab=data"') && html.includes('href="/claims/c1?tab=history"')
     );
-    assert.ok(!html.includes('View PDF'));
-    assert.ok(html.includes('>Post Payment<'));
+    for (const tab of ['overview', 'data', 'history'] as const) {
+      const page = render({}, null, tab);
+      if (tab !== 'history') assert.ok(!/<form|<input|<select|<textarea|<fieldset/.test(page), tab);
+      assert.ok(
+        !/Post Payment|Save |Upload Document|Chase Document|Check Eligibility/.test(page),
+        tab
+      );
+    }
     const history = render({}, null, 'history');
-    assert.ok(history.includes('$50.00 paid'));
+    assert.ok(history.includes('$50.00 paid') && history.includes('Check or EFT CHK-77'));
     assert.ok(history.includes('href="/docs/e2"'));
     assert.equal(history.match(/View PDF/g)?.length, 1);
-    assert.ok(render({}, null, 'data').includes('Date of Service'));
   });
 
-  it('defaults payments to the patient once no payer is being billed', () => {
-    const html = render({}, { step: 'awaitPatient', waitMs: 1, balanceCents: 1 });
-    assert.match(
-      html,
-      /role="option"[^>]*aria-selected="true" data-value=""[^>]*><span[^>]*>Patient<\/span>/
-    );
+  it('shows the claim data read only on its tab', () => {
+    const data = render({}, null, 'data');
+    assert.ok(data.includes('Date of Service') && data.includes('R079, I10'));
+    assert.ok(data.includes('1 Main St, Springfield, IL 62704') && data.includes('St. Mary'));
+    assert.ok(data.includes('Correct Claim Data task'));
   });
 
-  it('links to the cycle run when it has stopped', () => {
+  it('links to the cycle run when it has stopped and points at Start Task to restart it', () => {
     const html = render({ cycle_status: 'failed' });
     assert.ok(html.includes('href="/runs/cycle-1"'));
-    assert.ok(html.includes('>Restart Payer Cycle<'));
-    const faulted = render({ cycle_status: 'faulted' });
-    assert.ok(!faulted.includes('Restart Payer Cycle'));
+    assert.ok(html.includes('Restart it from Start Task.'));
+    assert.ok(!html.includes('Restart Payer Cycle'));
+    assert.ok(!render({ cycle_status: 'faulted' }).includes('Restart it'));
   });
 
-  it('locks editing while a draft and shows each task it is waiting on', () => {
+  it('shows each task the claim is waiting on', () => {
     const task = {
       id: 't1',
       title: 'Confirm patient',
@@ -310,22 +289,27 @@ describe('ClaimView', () => {
       birth_date: null,
       tasks: [task, { ...task, id: 't2', kind: 'fault', title: 'Stuck at Price' }]
     });
-    assert.equal(html.match(/<fieldset disabled=""/g)?.length, 4);
     assert.ok(html.includes('Patient not matched yet'));
     assert.ok(!html.includes('href="/patients/'));
     assert.ok(html.includes('Confirm patient') && html.includes('Patient Matching · Unassigned'));
     assert.ok(html.includes('href="/tasks/t1?back=%2Fclaims%2Fc1"'));
-    assert.ok(html.includes('href="/tasks/t2?back='));
     assert.equal(html.match(/>Work Task</g)?.length, 2);
   });
 
-  it('locks editing once the claim is closed', () => {
-    const html = render({ status: 'paid', payers: [], coverages: [] });
-    assert.ok(html.includes('>Paid<'));
-    assert.ok(html.includes('The patient will be billed directly'));
-    assert.equal(html.match(/<fieldset disabled=""/g)?.length, 2);
-    const data = render({ status: 'paid', payers: [], coverages: [] }, null, 'data');
-    assert.equal(data.match(/<fieldset disabled=""/g)?.length, 1);
+  it('puts the Start Task menu it is given in the header', () => {
+    const html = renderToStaticMarkup(
+      createElement(ClaimView, {
+        claim,
+        issues: [],
+        files: [],
+        history: loaded([]),
+        progress: null,
+        onDownloadEligibility: async () => undefined,
+        documentUrl: () => '',
+        startTask: createElement('button', { type: 'button' }, 'Start Task')
+      })
+    );
+    assert.ok(html.includes('>Start Task<'));
   });
 });
 
@@ -338,11 +322,6 @@ describe('ClaimView submission', () => {
         files: [],
         history: loaded([]),
         progress: { step: 'submit', coverage: medicare, balanceCents: 1 },
-        onSavePayers: async () => undefined,
-        onRecord: async () => true,
-        onRestart: async () => undefined,
-        onSaveData: async () => true,
-        onCheckEligibility: async () => undefined,
         onDownloadEligibility: async () => undefined,
         documentUrl: () => '',
         submission: { fileUrl: (id) => `/files/${id}`, encounterUrl: (id) => `/encounters/${id}` }

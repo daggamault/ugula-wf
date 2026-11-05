@@ -13,19 +13,13 @@ const pcs = {
   uploaded_by_email: 'dev@example.com'
 };
 
-const panel = (documents: (typeof pcs)[], locked?: string) =>
+const panel = (documents: (typeof pcs)[]) =>
   renderToStaticMarkup(
-    createElement(DocumentsPanel, {
-      documents,
-      locked,
-      documentUrl: (id: string) => `/files/${id}`,
-      onUpload: async () => true,
-      onChase: async () => true
-    })
+    createElement(DocumentsPanel, { documents, documentUrl: (id: string) => `/files/${id}` })
   );
 
 describe('claim documents', () => {
-  it('lists each document with its kind, signed date and who uploaded it', () => {
+  it('lists each document with its kind, signed date and who uploaded it, to download', () => {
     assert.match(documentMeta(pcs), /^signed .+ · uploaded .+ by dev@example\.com$/);
     assert.doesNotMatch(
       documentMeta({ ...pcs, signed_on: null, uploaded_by_email: null }),
@@ -36,15 +30,10 @@ describe('claim documents', () => {
       html.includes('href="/files/d1"') &&
         html.includes('Physician certification statement: pcs.pdf')
     );
-    assert.ok(html.includes('Upload Document') && html.includes('Chase Document'));
-    assert.ok(html.includes('underline-offset-2'));
-    assert.ok(html.includes('sm:justify-end'));
-    assert.ok(html.includes('application/pdf,image/png'));
+    assert.ok(!html.includes('Upload Document') && !html.includes('<form'));
   });
 
-  it('says when there are none, and locks the forms on a locked claim', () => {
-    const html = panel([], 'This claim is closed.');
-    assert.ok(html.includes('No documents are on this claim yet.'));
-    assert.ok(html.includes('<fieldset disabled=""'));
+  it('says when there are none', () => {
+    assert.ok(panel([]).includes('No documents are on this claim yet.'));
   });
 });

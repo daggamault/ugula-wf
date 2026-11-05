@@ -11,17 +11,14 @@ export type DocumentKind = keyof typeof DOCUMENT_KINDS;
 export const isDocumentKind = (x: unknown): x is DocumentKind =>
   typeof x === 'string' && Object.hasOwn(DOCUMENT_KINDS, x);
 
-export const DOCUMENT_CONTENT_TYPES = [
+const DOCUMENT_CONTENT_TYPES = [
   'application/pdf',
   'image/png',
   'image/jpeg',
   'image/tiff'
 ] as const;
 
-export type DocumentContentType = (typeof DOCUMENT_CONTENT_TYPES)[number];
-
-export const isDocumentContentType = (x: unknown): x is DocumentContentType =>
-  DOCUMENT_CONTENT_TYPES.includes(x as DocumentContentType);
+type DocumentContentType = (typeof DOCUMENT_CONTENT_TYPES)[number];
 
 const SIGNATURES: readonly [DocumentContentType, readonly number[]][] = [
   ['application/pdf', [0x25, 0x50, 0x44, 0x46, 0x2d]],

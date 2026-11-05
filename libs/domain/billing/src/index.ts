@@ -25,11 +25,9 @@ export {
 } from './claim-details.ts';
 export {
   type ClaimDocument,
-  DOCUMENT_CONTENT_TYPES,
   DOCUMENT_KINDS,
   type DocumentKind,
   documentContentTypeOf,
-  isDocumentContentType,
   isDocumentKind
 } from './claim-documents.ts';
 export type { ClaimPatch, CoveragePatch } from './claim-fix.ts';

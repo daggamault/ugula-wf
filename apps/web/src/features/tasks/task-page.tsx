@@ -59,7 +59,10 @@ type TaskViewProps = {
   onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
   onAssign: (assign: boolean) => Promise<void>;
   onNext: () => Promise<void>;
+  upload?: Upload | undefined;
 };
+
+type Upload = (file: File) => Promise<{ file: Json; name: string }>;
 
 type FieldErrors = Readonly<Record<string, string>>;
 
@@ -165,8 +168,9 @@ const intentOf = (outcome: string, isFault: boolean): Intent =>
 const Decision = ({
   task,
   errors,
+  upload,
   onComplete
-}: Pick<TaskViewProps, 'task'> & {
+}: Pick<TaskViewProps, 'task' | 'upload'> & {
   errors: FieldErrors;
   onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
 }) => {
@@ -212,6 +216,7 @@ const Decision = ({
                   min={f.min}
                   max={f.max}
                   error={errors[f.name]}
+                  upload={upload}
                   value={values[f.name] ?? null}
                   onChange={(value) => setValues({ ...values, [f.name]: value })}
                 />
@@ -273,7 +278,8 @@ export const TaskView = ({
   source,
   onComplete,
   onAssign,
-  onNext
+  onNext,
+  upload
 }: TaskViewProps) => {
   const isFault = task.kind === 'fault';
   const info = queueInfo(task.queue);
@@ -389,7 +395,13 @@ export const TaskView = ({
               onNext={onNext}
             />
           ) : open ? (
-            <Decision key={task.id} task={task} errors={errors} onComplete={complete} />
+            <Decision
+              key={task.id}
+              task={task}
+              errors={errors}
+              upload={upload}
+              onComplete={complete}
+            />
           ) : (
             <SectionPanel title="Decision" description="How this task was settled.">
               <Alert intent={task.status === 'completed' ? 'success' : 'warning'}>
@@ -434,6 +446,7 @@ export const TaskPage = ({ client, live, taskId, back }: TaskPageProps) => {
       source={
         source.reportId ? <SourceReportPanel client={client} reportId={source.reportId} /> : null
       }
+      upload={(file) => client.uploadFile(taskId, file)}
       onAssign={async (assign) => {
         await (assign ? client.assign(taskId) : client.unassign(taskId));
         task.reload();

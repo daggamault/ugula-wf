@@ -22,6 +22,7 @@ describe('createTasksClient', () => {
     await client.unassign('x');
     await client.complete('x', 'approve', { note: 'ok' });
     await client.report('rep-1');
+    await client.uploadFile('x', new File(['%PDF'], 'pcs.pdf'));
     assert.deepEqual(calls, [
       'GET /api/tasks/queues',
       'GET /api/tasks/x',
@@ -30,7 +31,8 @@ describe('createTasksClient', () => {
       'POST /api/tasks/x/claim',
       'POST /api/tasks/x/release',
       'POST /api/tasks/x/complete {"outcome":"approve","values":{"note":"ok"}}',
-      'GET /api/imports/reports/rep-1'
+      'GET /api/imports/reports/rep-1',
+      'POST /api/tasks/x/files [object FormData]'
     ]);
   });
 });

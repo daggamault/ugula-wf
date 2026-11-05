@@ -128,6 +128,14 @@ export const createTasksClient = (api: Api) => ({
       outcome,
       values
     }),
+  uploadFile: (id: string, file: File) => {
+    const form = new FormData();
+    form.set('file', file);
+    return api.upload<{ file: Json; name: string }>(
+      `/api/tasks/${encodeURIComponent(id)}/files`,
+      form
+    );
+  },
   report: (id: string) => api.get<SourceReport>(`/api/imports/reports/${encodeURIComponent(id)}`)
 });
 
