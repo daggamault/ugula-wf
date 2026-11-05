@@ -46,7 +46,7 @@ export const REPORTS: readonly AnyReport[] = [
     id: 'aging',
     title: 'Accounts Receivable Aging',
     description:
-      'Open balances as of today by who owes them now: the next payer due to answer, or the patient once every payer has. Ages count from the date of service.',
+      'Open balances as of today by who owes them now: the facility responsible for the trip, the next payer due to answer, or the patient once every payer has. Ages count from the date of service.',
     dates: null,
     groups: PAYER_GROUPS,
     columns: agingColumns

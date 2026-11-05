@@ -27,6 +27,8 @@ import { createClaimRoutes } from './features/claims/routes.ts';
 import { createClaimService } from './features/claims/service.ts';
 import { createConnectionRoutes } from './features/clearinghouse-connection/routes.ts';
 import { createConnectionService } from './features/clearinghouse-connection/service.ts';
+import { createFacilityRoutes } from './features/facilities/routes.ts';
+import { createFacilityService } from './features/facilities/service.ts';
 import { createFeeRoutes } from './features/fees/routes.ts';
 import { createFeeService } from './features/fees/service.ts';
 import { createGraphRoutes } from './features/graphs/routes.ts';
@@ -194,6 +196,16 @@ export const createApp = ({
       guardMethods({ ...read('payers:read'), PUT: 'payers:update', DELETE: 'payers:delete' })
     )
     .route('/payers', createPayerRoutes(createPayerService({ db, announce, embedder })))
+    .use(
+      '/facilities/*',
+      guardMethods({
+        ...read('payers:read'),
+        POST: 'payers:create',
+        PUT: 'payers:update',
+        DELETE: 'payers:delete'
+      })
+    )
+    .route('/facilities', createFacilityRoutes(createFacilityService({ db })))
     .use('/patients/*', guardMethods(read('patients:read')))
     .route('/patients', createPatientRoutes(createPatientService({ db })))
     .use('/notifications/*', guardMethods({ GET: null, POST: null }))

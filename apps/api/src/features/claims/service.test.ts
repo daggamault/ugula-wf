@@ -36,7 +36,8 @@ const setup = ({
   published = true,
   activeRun = false,
   document = null as Record<string, unknown> | null,
-  paid = 0
+  paid = 0,
+  facility = true
 } = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.endsWith('for update')) return row ? [row] : [];
@@ -59,6 +60,8 @@ const setup = ({
     if (q.sql.includes('from "claim_events" as "e"')) return events;
     if (q.sql.startsWith('insert into "claim_events"')) return [{ id: 'e1' }];
     if (q.sql.startsWith('update "tasks"')) return moot;
+    if (q.sql.startsWith('update "claims" set "facility_id"'))
+      return facility ? [{ id: 'c1' }] : [];
     return [];
   });
   const jobs: unknown[] = [];
@@ -235,6 +238,38 @@ describe('claim service', () => {
     assert.match(failure(await record({ row: { ...claim, status: 'paid' } })), /^conflict/);
     assert.match(failure(await record({}, { coverageId: BLUE })), /^invalid: That payer is not/);
     assert.equal(failure(await record({}, { coverageId: null })), 'ok');
+  });
+
+  it('starts a records request on an open claim with its due date and note', async () => {
+    const open = setup();
+    assert.deepEqual(
+      await open.service.requestRecords('t', 'c1', { dueOn: '2026-12-01', note: 'PCR and PCS' }),
+      { ok: true, value: { runId: 'cycle-2' } }
+    );
+    const run = open.queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
+    assert.ok(run?.parameters.some((p) => String(p).includes('"dueOn":"2026-12-01"')));
+    const request = (row: Record<string, unknown> | null, published = true) =>
+      setup({ row, published }).service.requestRecords('t', 'c1', { dueOn: null, note: '' });
+    assert.match(failure(await request(null)), /^not_found/);
+    assert.match(failure(await request({ ...claim, status: 'paid' })), /^conflict/);
+    assert.match(failure(await request(claim, false)), /^not_found: The records request/);
+  });
+
+  it('makes a facility responsible for a claim, or no facility, and wakes its cycle', async () => {
+    const assigned = setup();
+    assert.deepEqual(await assigned.service.setFacility('t', 'c1', null), {
+      ok: true,
+      value: { facilityId: null }
+    });
+    const update = assigned.queries.find((q) =>
+      q.sql.startsWith('update "claims" set "facility_id"')
+    );
+    assert.ok(update?.parameters.includes('t'));
+    assert.ok(assigned.queries.some((q) => q.sql.startsWith('insert into "signals"')));
+    assert.match(
+      failure(await setup({ facility: false }).service.setFacility('t', 'c1', MEDICARE)),
+      /^invalid: That facility/
+    );
   });
 
   it('restarts a stopped payer cycle and links the claim to the new run', async () => {

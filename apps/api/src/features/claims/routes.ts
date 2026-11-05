@@ -7,8 +7,10 @@ import { respond } from '../../shared/result.ts';
 import {
   billingDataSchema,
   claimEventsQuery,
+  facilitySchema,
   listClaimsQuery,
   payersSchema,
+  recordsRequestSchema,
   responseSchema
 } from './schemas.ts';
 import type { ClaimService } from './service.ts';
@@ -81,6 +83,35 @@ export const createClaimRoutes = (service: ClaimService) =>
           )
         );
       }
+    )
+    .put(
+      '/:id/facility',
+      sValidator('param', idParam, invalidRequest),
+      sValidator('json', facilitySchema, invalidRequest),
+      async (c) =>
+        respond(
+          c,
+          await service.setFacility(
+            c.get('access').agencyId,
+            c.req.valid('param').id,
+            c.req.valid('json').facilityId
+          )
+        )
+    )
+    .post(
+      '/:id/records-request',
+      sValidator('param', idParam, invalidRequest),
+      sValidator('json', recordsRequestSchema, invalidRequest),
+      async (c) =>
+        respond(
+          c,
+          await service.requestRecords(
+            c.get('access').agencyId,
+            c.req.valid('param').id,
+            c.req.valid('json')
+          ),
+          201
+        )
     )
     .post('/:id/restart-cycle', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.restartCycle(c.get('access').agencyId, c.req.valid('param').id), 201)

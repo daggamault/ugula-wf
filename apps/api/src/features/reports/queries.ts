@@ -161,14 +161,17 @@ const aging = report({
             .as('responsible'),
         (join) => join.onTrue()
       )
+      .leftJoin('facilities as f', 'f.id', 'c.facility_id')
       .select([
         (ctx.group === 'class'
           ? sql<
               string | null
-            >`case when responsible.payer is null then null else coalesce(responsible.filing, '') end`
-          : sql<string | null>`responsible.payer`
+            >`case when f.id is not null then 'Facility' when responsible.payer is null then null else coalesce(responsible.filing, '') end`
+          : sql<string | null>`coalesce(f.name, responsible.payer)`
         ).as('name'),
-        sql<boolean>`bool_and(coalesce(responsible.listed, true))`.as('in_directory'),
+        sql<boolean>`bool_and(f.id is not null or coalesce(responsible.listed, true))`.as(
+          'in_directory'
+        ),
         count.as('claims'),
         cents(sql.ref('b.balance_cents')).as('balance_cents'),
         ...AGING_BUCKETS.map(([key, min, max]) =>
@@ -275,6 +278,7 @@ const payers = report({
             .as('a'),
         (join) => join.onTrue()
       )
+      .leftJoin('facilities as f', 'f.id', 'c.facility_id')
       .select([
         (ctx.group === 'class'
           ? sql<string | null>`coalesce(dp.claim_filing, '')`

@@ -416,3 +416,39 @@ export const findEventDocument = async (
     .where('c.agency_id', '=', agencyId)
     .where('e.document', 'is not', null)
     .executeTakeFirst()) ?? null;
+
+export const assignFacility = async (
+  db: Db,
+  agencyId: string,
+  claimId: string,
+  facilityId: string | null
+) =>
+  (
+    await db
+      .updateTable('claims')
+      .set({
+        facility_id:
+          facilityId === null
+            ? null
+            : db
+                .selectFrom('facilities')
+                .select('id')
+                .where('id', '=', facilityId)
+                .where('agency_id', '=', agencyId),
+        updated_at: sql`now()`
+      })
+      .where('id', '=', claimId)
+      .where('agency_id', '=', agencyId)
+      .where((eb) =>
+        facilityId === null
+          ? eb.lit(true)
+          : eb.exists(
+              eb
+                .selectFrom('facilities')
+                .select('id')
+                .where('id', '=', facilityId)
+                .where('agency_id', '=', agencyId)
+            )
+      )
+      .executeTakeFirst()
+  ).numUpdatedRows > 0n;

@@ -23,6 +23,8 @@ const service = {
   recordResponse: record('recordResponse', { balanceCents: 0 }),
   restartCycle: record('restartCycle', { runId: 'r2' }),
   saveBillingData: record('saveBillingData', { status: 'saved' }),
+  requestRecords: record('requestRecords', { runId: 'r3' }),
+  setFacility: record('setFacility', { facilityId: null }),
   document: async () =>
     ok({
       bytes: new TextEncoder().encode('%PDF-1.7'),
@@ -34,6 +36,34 @@ const service = {
 const request = withSession(createClaimRoutes(service));
 
 describe('claim routes', () => {
+  it('start a records request and set the responsible facility', async () => {
+    calls.length = 0;
+    const asked = await request(`/${ID}/records-request`, {
+      method: 'POST',
+      body: JSON.stringify({ dueOn: '2026-12-01', note: 'PCS' })
+    });
+    assert.equal(asked.status, 201);
+    assert.equal(
+      (
+        await request(`/${ID}/records-request`, {
+          method: 'POST',
+          body: JSON.stringify({ dueOn: 'soon' })
+        })
+      ).status,
+      400
+    );
+    const facility = await request(`/${ID}/facility`, {
+      method: 'PUT',
+      body: JSON.stringify({ facilityId: null })
+    });
+    assert.equal(facility.status, 200);
+    assert.deepEqual(calls, [
+      ['requestRecords', 't-1', ID, { dueOn: '2026-12-01', note: 'PCS' }],
+      ['setFacility', 't-1', ID, null]
+    ]);
+    calls.length = 0;
+  });
+
   it('list, read, reorder payers and record responses as the session user', async () => {
     assert.equal((await request('/?status=all&lastName=doe')).status, 200);
     assert.equal((await request('/?sort=waiting&dir=asc')).status, 200);

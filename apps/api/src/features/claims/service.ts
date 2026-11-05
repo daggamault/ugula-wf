@@ -21,6 +21,7 @@ import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import type { RuleRunner } from '../../shared/rules.ts';
 import {
+  assignFacility,
   type ClaimFilters,
   claimExists,
   findClaim,
@@ -34,7 +35,13 @@ import {
   reorderCoverages,
   setCycleRun
 } from './queries.ts';
-import type { BillingData, ClaimEventSort, ClaimResponse, PayerEntry } from './schemas.ts';
+import type {
+  BillingData,
+  ClaimEventSort,
+  ClaimResponse,
+  PayerEntry,
+  RecordsRequest
+} from './schemas.ts';
 
 type ClaimServiceDeps = {
   db: Db;
@@ -50,6 +57,8 @@ export const NEXT_CLAIM_STEP_RULE = 'billing.next-claim-step';
 export const CLAIM_CHECKS_RULE = 'billing.claim-checks';
 
 const CYCLE_WORKFLOW = { key: 'billing.cycle-claim', version: 1 };
+
+const RECORDS_WORKFLOW = { key: 'billing.respond-records-request', version: 1 };
 
 const notFound = fail('not_found', 'Claim not found');
 
@@ -222,6 +231,35 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
         });
         await setCycleRun(tx, id, runId);
         return ok({ runId });
+      }),
+
+    requestRecords: (agencyId: string, id: string, request: RecordsRequest) =>
+      write(agencyId, id, async (tx) => {
+        const claim = await lockClaim(tx, agencyId, id);
+        if (!claim) return notFound;
+        const blocked = unchangeable(claim.status);
+        if (blocked) return blocked;
+        const [version] = await findPublishedGraphs(tx, agencyId, [RECORDS_WORKFLOW]);
+        if (!version) return fail('not_found', 'The records request workflow is not published');
+        const runId = await startRun(tx, boss, {
+          agencyId,
+          versionId: version.id,
+          inputs: { claimId: id, dueOn: request.dueOn, note: request.note }
+        });
+        return ok({ runId });
+      }),
+
+    setFacility: (agencyId: string, id: string, facilityId: string | null) =>
+      write(agencyId, id, async (tx) => {
+        const claim = await lockClaim(tx, agencyId, id);
+        if (!claim) return notFound;
+        const blocked = unchangeable(claim.status);
+        if (blocked) return blocked;
+        if (!(await assignFacility(tx, agencyId, id, facilityId))) {
+          return fail('invalid', 'That facility is not in this agency');
+        }
+        await nudge(tx, agencyId, id);
+        return ok({ facilityId });
       }),
 
     recordResponse: (agencyId: string, userId: string, id: string, response: ClaimResponse) =>

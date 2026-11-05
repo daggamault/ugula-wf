@@ -163,6 +163,15 @@ export const responseSchema = v.pipe(
   )
 );
 
+export const recordsRequestSchema = v.object({
+  dueOn: v.optional(v.nullable(v.pipe(v.string(), v.isoDate('Use a date like 2026-12-01'))), null),
+  note: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(500)), '')
+});
+
+export type RecordsRequest = v.InferOutput<typeof recordsRequestSchema>;
+
+export const facilitySchema = v.object({ facilityId: v.nullable(uuid) });
+
 const addressSchema = v.object({
   addressLine: optionalText(55),
   city: optionalText(30),
