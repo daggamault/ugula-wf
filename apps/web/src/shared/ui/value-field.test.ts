@@ -14,7 +14,10 @@ describe('ValueField', () => {
   it('picks a control that fits the value type', () => {
     const toggle = render('boolean', true);
     assert.ok(toggle.includes('type="checkbox"') && toggle.includes('checked=""'));
-    assert.match(toggle, /<label for="f" class="[^"]*cursor-pointer[^"]*"><input id="f"/);
+    assert.match(
+      toggle,
+      /<label for="f" class="[^"]*cursor-pointer[^"]*"><input type="checkbox"[^>]*id="f"/
+    );
     assert.ok(!render('boolean', null).includes('checked=""'));
     const integer = render('integer', 3);
     assert.ok(integer.includes('step="1"') && integer.includes('inputMode="numeric"'));

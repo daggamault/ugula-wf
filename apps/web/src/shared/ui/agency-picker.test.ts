@@ -28,7 +28,8 @@ describe('AgencyPicker', () => {
     assert.ok(html.includes('aria-label="Agencies"'));
     assert.equal(html.split('aria-current="true"').length, 2);
     assert.ok(html.includes('Agency 2'));
-    assert.ok(!html.includes('Find an agency'));
+    assert.ok(!html.includes('Find an'));
+    assert.ok(html.includes('h-10') && !html.includes('h-12'));
   });
 
   it('locks the button when there is nowhere to switch to', () => {
@@ -38,7 +39,8 @@ describe('AgencyPicker', () => {
 
   it('offers a search once the list gets long', () => {
     const html = render([1, 2, 3, 4, 5, 6, 7].map(agency));
-    assert.ok(html.includes('aria-label="Find an agency"'));
+    assert.ok(html.includes('>Find an Agency</label>') && html.includes('type="search"'));
+    assert.ok(html.includes('placeholder="Find an agency"'));
     assert.ok(html.includes('Agency 7'));
   });
 });

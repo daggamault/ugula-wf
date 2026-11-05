@@ -12,12 +12,11 @@ import { interactiveClasses } from '../../shared/ui/interactive.ts';
 
 type ChooseAgencyPageProps = {
   agencies: readonly Agency[];
-  home: string;
   notice?: string | undefined;
   onSignOut: () => void;
 };
 
-export const ChooseAgencyPage = ({ agencies, home, notice, onSignOut }: ChooseAgencyPageProps) => (
+export const ChooseAgencyPage = ({ agencies, notice, onSignOut }: ChooseAgencyPageProps) => (
   <Centered>
     <Card labelledBy="agency-heading">
       <BrandHeader
@@ -32,7 +31,7 @@ export const ChooseAgencyPage = ({ agencies, home, notice, onSignOut }: ChooseAg
           {agencies.map((a) => (
             <li key={a.id} className="flex">
               <Link
-                to={agencyPath(a.id, home)}
+                to={agencyPath(a.id)}
                 className={classNamesOf(
                   interactiveClasses,
                   'border-border bg-surface hover:bg-surface-hover flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 transition duration-150 ease-out'

@@ -5,8 +5,8 @@ import {
   type PermissionAction,
   type PermissionResource
 } from '@ugula/access';
-import { classNamesOf } from '../../shared/class-names.ts';
-import { interactiveClasses } from '../../shared/ui/interactive.ts';
+import { Checkbox } from '../../shared/ui/checkbox.tsx';
+import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { Tooltip } from '../../shared/ui/tooltip.tsx';
 import type { PermissionGrant } from './client.ts';
 
@@ -55,69 +55,38 @@ export const PermissionGrid = ({ grants, selected, readOnly, onChange }: Permiss
   const actions = usedActions(grants);
   const byKey = new Map(grants.map((g) => [g.permission, g]));
   return (
-    <div className="border-border overflow-x-auto rounded-xl border">
-      <table className="w-full text-sm">
-        <caption className="sr-only">Permissions</caption>
-        <thead>
-          <tr className="border-border border-b">
-            <th
-              scope="col"
-              className="text-surface-fg-muted px-4 py-3 text-left text-xs font-semibold tracking-wide uppercase"
-            >
-              Area
-            </th>
-            {actions.map((a) => (
-              <th
-                key={a}
-                scope="col"
-                className="text-surface-fg-muted px-4 py-3 text-left text-xs font-semibold tracking-wide uppercase"
-              >
-                {ACTION_LABELS[a]}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-border divide-y">
-          {PERMISSION_RESOURCES.map((resource) => (
-            <tr key={resource}>
-              <th scope="row" className="px-4 py-3 text-left align-middle font-medium">
-                {RESOURCE_LABELS[resource]}
-              </th>
-              {actions.map((action) => {
-                const grant = byKey.get(`${resource}:${action}` as Permission);
-                if (!grant) return <td key={action} className="px-4 py-3" />;
-                const checked = selected.includes(grant.permission);
-                const disabled = readOnly || !grant.isGrantable;
-                const box = (
-                  <input
-                    type="checkbox"
-                    aria-label={`${ACTION_LABELS[action]} ${RESOURCE_LABELS[resource]}`}
-                    title={grant.description}
-                    checked={checked}
-                    disabled={disabled}
-                    onChange={() => onChange?.(toggled(selected, grant.permission))}
-                    className={classNamesOf(
-                      interactiveClasses,
-                      'accent-primary size-4 rounded enabled:cursor-pointer disabled:opacity-60'
-                    )}
-                  />
-                );
-                return (
-                  <td key={action} className="px-4 py-3 align-middle">
-                    {!readOnly && !grant.isGrantable ? (
-                      <Tooltip label="You can't grant permissions you don't hold." side="top">
-                        {box}
-                      </Tooltip>
-                    ) : (
-                      box
-                    )}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table label="Permissions" head={['Area', ...actions.map((a) => ACTION_LABELS[a])]}>
+      {PERMISSION_RESOURCES.map((resource) => (
+        <TableRow key={resource}>
+          <TableCell>
+            <span className="font-medium">{RESOURCE_LABELS[resource]}</span>
+          </TableCell>
+          {actions.map((action) => {
+            const grant = byKey.get(`${resource}:${action}` as Permission);
+            if (!grant) return <TableCell key={action} />;
+            const box = (
+              <Checkbox
+                aria-label={`${ACTION_LABELS[action]} ${RESOURCE_LABELS[resource]}`}
+                title={grant.description}
+                checked={selected.includes(grant.permission)}
+                disabled={readOnly || !grant.isGrantable}
+                onChange={() => onChange?.(toggled(selected, grant.permission))}
+              />
+            );
+            return (
+              <TableCell key={action}>
+                {!readOnly && !grant.isGrantable ? (
+                  <Tooltip label="You can't grant permissions you don't hold." side="top">
+                    {box}
+                  </Tooltip>
+                ) : (
+                  box
+                )}
+              </TableCell>
+            );
+          })}
+        </TableRow>
+      ))}
+    </Table>
   );
 };

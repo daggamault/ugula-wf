@@ -84,6 +84,6 @@ Both checks come from `libs/data/db/src/access.ts`: `findAgencyAccess` for the A
 ## In the browser
 
 - URLs carry the agency: `/agencies/:agencyId/claims`. Links inside the app stay agency-relative (`/claims`) and the router adds the prefix.
-- After sign-in the app opens the last agency used, the only agency, or asks you to choose one.
+- After sign-in the app opens the last agency used, the only agency, or asks you to choose one. An agency opens on Claims when the role may see claims, otherwise on the first section it may see; a role that sees none is told to ask for access.
 - The **agency picker** at the top of the sidebar switches agencies.
 - `useCan()` hides navigation and actions the role cannot use; the API enforces the same rules.

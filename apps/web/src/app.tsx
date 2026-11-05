@@ -135,8 +135,6 @@ const RunPage = lazy(() =>
   import('./features/runs/run-page.tsx').then((m) => ({ default: m.RunPage }))
 );
 
-const HOME = '/claims';
-
 type Section = {
   id: string;
   label: string;
@@ -252,6 +250,14 @@ const SECTIONS: readonly Section[] = [
     permission: 'settings:read'
   }
 ];
+
+const NO_SECTIONS = 'Your role in this agency opens no sections. Ask an administrator for access.';
+
+export const homeOf = (can: (permission: Permission) => boolean) =>
+  (
+    SECTIONS.find((s) => s.id === 'claims' && can(s.permission)) ??
+    SECTIONS.find((s) => can(s.permission))
+  )?.href ?? null;
 
 const statusParam = (query: URLSearchParams) =>
   RUN_STATUSES.find((s) => s === query.get('status')) ?? null;
@@ -567,12 +573,13 @@ export const Workspace = ({
   const openTasks = useWorkAlerts(clients.tasks, live, useToast(), path.startsWith('/tasks/'));
   const page = resolveRoute(path, query, { ...clients, nodes, live, email });
   const missing = page === null;
+  const home = homeOf(can);
 
   useEffect(() => () => live.close(), [live]);
 
   useEffect(() => {
-    if (missing) navigate(HOME, { replace: true });
-  }, [missing]);
+    if (missing && home) navigate(home, { replace: true });
+  }, [missing, home]);
 
   return (
     <Shell
@@ -597,7 +604,9 @@ export const Workspace = ({
       }
       onSignOut={onSignOut}
     >
-      <Suspense fallback={<PageLoading />}>{page}</Suspense>
+      <Suspense fallback={<PageLoading />}>
+        {page ?? (home ? null : <PageFailure message={NO_SECTIONS} />)}
+      </Suspense>
       {can('imports:create') ? <ImportDrop client={clients.imports} /> : null}
     </Shell>
   );
@@ -620,7 +629,7 @@ export const AgencyGate = ({ agencyId, userId, ...workspace }: AgencyGateProps) 
   const list = agencies.data;
   const pick =
     !agencyId && list ? (list.length === 1 ? (list[0] ?? null) : rememberedAgency(list)) : null;
-  const target = pick ? agencyPath(pick.id, withQuery(path === '/' ? HOME : path, query)) : null;
+  const target = pick ? agencyPath(pick.id, withQuery(path, query)) : null;
 
   useEffect(() => {
     if (target) navigate(target, { replace: true });
@@ -638,7 +647,6 @@ export const AgencyGate = ({ agencyId, userId, ...workspace }: AgencyGateProps) 
     ) : (
       <ChooseAgencyPage
         agencies={list}
-        home={HOME}
         notice={access.error ? 'You cannot open that agency. Choose another.' : undefined}
         onSignOut={onSignOut}
       />
@@ -653,7 +661,7 @@ export const AgencyGate = ({ agencyId, userId, ...workspace }: AgencyGateProps) 
 };
 
 export const App = ({ clients, nodes }: { clients: AppClients; nodes: NodeDef[] }) => {
-  const { path, query, agencyId } = useLocation(HOME);
+  const { path, query, agencyId } = useLocation();
   if (path === '/invitation') {
     return <InvitationPage auth={clients.auth} token={query.get('token') ?? ''} />;
   }

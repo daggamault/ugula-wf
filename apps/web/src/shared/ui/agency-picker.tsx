@@ -3,6 +3,7 @@ import { useId, useRef, useState } from 'react';
 import type { Agency } from '../access.tsx';
 import { classNamesOf } from '../class-names.ts';
 import { agencyPath, navigate } from '../router.tsx';
+import { Input } from './input.tsx';
 import { interactiveClasses } from './interactive.ts';
 import { hidePopover } from './popover.ts';
 
@@ -16,12 +17,13 @@ export const AgencyPicker = ({ agencies, current }: AgencyPickerProps) => {
   const panelId = `agencies-${useId().replace(/[^\w-]/g, '')}`;
   const anchorName = `--${panelId}`;
   const [q, setQ] = useState('');
+  const searchable = agencies.length > 6;
   const shown = agencies.filter((a) =>
     `${a.name} ${a.organizationName}`.toLowerCase().includes(q.trim().toLowerCase())
   );
   const choose = (agency: Agency) => {
     hidePopover(panelRef.current);
-    if (agency.id !== current.id) navigate(agencyPath(agency.id, '/claims'));
+    if (agency.id !== current.id) navigate(agencyPath(agency.id));
   };
   return (
     <div className="flex" style={{ anchorName }}>
@@ -31,7 +33,7 @@ export const AgencyPicker = ({ agencies, current }: AgencyPickerProps) => {
         disabled={agencies.length < 2}
         className={classNamesOf(
           interactiveClasses,
-          'border-border bg-surface enabled:hover:bg-surface-hover flex h-12 min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 text-left transition duration-150 ease-out enabled:cursor-pointer'
+          'border-border bg-surface enabled:hover:bg-surface-hover flex h-10 min-w-0 pointer-coarse:h-11 flex-1 items-center gap-2 rounded-lg border px-3 text-left transition duration-150 ease-out enabled:cursor-pointer'
         )}
       >
         <Building2Icon aria-hidden="true" className="text-surface-fg-muted size-4 shrink-0" />
@@ -56,20 +58,18 @@ export const AgencyPicker = ({ agencies, current }: AgencyPickerProps) => {
         style={{ positionAnchor: anchorName }}
         className="bg-surface text-surface-fg border-border inset-auto m-2 max-h-[min(28rem,70vh)] w-72 scale-95 overflow-y-auto rounded-xl border p-2 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out [position-area:bottom_span-right] open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0"
       >
-        {agencies.length > 6 ? (
-          <input
+        {searchable ? (
+          <Input
+            id={`${panelId}-search`}
+            label="Find an Agency"
+            isLabelHidden
             type="search"
-            aria-label="Find an agency"
             placeholder="Find an agency"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className={classNamesOf(
-              interactiveClasses,
-              'border-border bg-surface mb-2 h-10 w-full rounded-lg border px-3 text-sm'
-            )}
           />
         ) : null}
-        <ul className="flex flex-col gap-1">
+        <ul className={classNamesOf('flex flex-col gap-1', searchable && 'mt-2')}>
           {shown.map((a) => (
             <li key={a.id} className="flex">
               <button

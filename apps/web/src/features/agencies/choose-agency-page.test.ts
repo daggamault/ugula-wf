@@ -7,18 +7,17 @@ import { ChooseAgencyPage } from './choose-agency-page.tsx';
 const AGENCY = '0b7e6a52-3c1d-4f8e-9a2b-5d6c7e8f9a0b';
 
 describe('ChooseAgencyPage', () => {
-  it('links each agency to its home page', () => {
+  it('links each agency to its root, which opens the first section the role may see', () => {
     const html = renderToStaticMarkup(
       createElement(ChooseAgencyPage, {
         agencies: [
           { id: AGENCY, name: 'North EMS', organizationId: 'o1', organizationName: 'Acme' }
         ],
-        home: '/claims',
         onSignOut: () => undefined
       })
     );
     assert.ok(html.includes('Choose an Agency'));
-    assert.ok(html.includes(`href="/agencies/${AGENCY}/claims"`));
+    assert.ok(html.includes(`href="/agencies/${AGENCY}"`));
     assert.ok(html.includes('North EMS') && html.includes('Acme'));
     assert.ok(html.includes('Sign Out'));
     assert.ok(!html.includes('role="alert"') && !html.includes('Ask an administrator'));
@@ -28,7 +27,6 @@ describe('ChooseAgencyPage', () => {
     const html = renderToStaticMarkup(
       createElement(ChooseAgencyPage, {
         agencies: [],
-        home: '/claims',
         notice: 'You cannot open that agency. Choose another.',
         onSignOut: () => undefined
       })

@@ -1,9 +1,9 @@
 import { formatType, type Json, type ValueType } from '@ugula/graph';
 import { useState } from 'react';
 import { classNamesOf } from '../class-names.ts';
+import { Checkbox } from './checkbox.tsx';
 import { describedByOf, Field, fieldControlClasses, fieldTextClasses } from './field.tsx';
 import { Input } from './input.tsx';
-import { interactiveClasses } from './interactive.ts';
 import { Select, type SelectOption } from './select.tsx';
 import { Textarea } from './textarea.tsx';
 
@@ -162,13 +162,7 @@ export const ValueField = (props: ValueFieldProps) => {
   if (type === 'boolean') {
     return (
       <label htmlFor={id} className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-        <input
-          id={id}
-          type="checkbox"
-          checked={value === true}
-          onChange={(e) => onChange(e.target.checked)}
-          className={classNamesOf(interactiveClasses, 'accent-primary size-4')}
-        />
+        <Checkbox id={id} checked={value === true} onChange={(e) => onChange(e.target.checked)} />
         {label}
       </label>
     );

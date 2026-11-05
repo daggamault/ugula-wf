@@ -6,6 +6,7 @@ import {
   AgencyGate,
   App,
   type AppClients,
+  homeOf,
   type RouteContext,
   resolveRoute,
   Workspace
@@ -161,5 +162,17 @@ describe('app routing', () => {
 
   it('renders nothing until the session check completes', () => {
     assert.equal(renderToStaticMarkup(createElement(App, { clients, nodes: testNodes })), '');
+  });
+});
+
+describe('homeOf', () => {
+  it('opens claims when the role may see them, else its first section, else nothing', () => {
+    const holding =
+      (...held: string[]) =>
+      (permission: string) =>
+        held.includes(permission);
+    assert.equal(homeOf(holding('patients:read', 'claims:read')), '/claims');
+    assert.equal(homeOf(holding('users:read', 'fees:read')), '/fees');
+    assert.equal(homeOf(holding()), null);
   });
 });

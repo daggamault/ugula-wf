@@ -24,7 +24,8 @@ describe('PermissionGrid', () => {
     const html = renderToStaticMarkup(
       createElement(PermissionGrid, { grants, selected: ['claims:read'] })
     );
-    assert.equal(html.split('scope="row"').length, PERMISSION_RESOURCES.length + 1);
+    assert.equal(html.split('<tr').length - 1, PERMISSION_RESOURCES.length + 1);
+    assert.ok(html.includes('aria-label="Permissions"') && html.includes('md:rounded-xl'));
     assert.ok(html.includes('>View<') && html.includes('>Change<'));
     assert.ok(!html.includes('>Create<') && !html.includes('>Delete<'));
     assert.match(html, /aria-label="View Claims" title="See claims."[^>]*checked=""/);
