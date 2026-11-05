@@ -1,6 +1,7 @@
 import type { Db } from '@ugula/db';
 import { fail, ok } from '../../shared/result.ts';
-import { type DateRange, findReport } from './queries.ts';
+import { findReport } from './queries.ts';
+import type { DateRange } from './report.ts';
 import type { ReportQuery } from './schemas.ts';
 
 type ReportServiceDeps = { db: Db; now: () => Date };
