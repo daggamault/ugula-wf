@@ -59,6 +59,7 @@ export const createPayerFileStore = (
     );
     const touched = new Set(applied.items.flatMap((i) => (i.claimId ? [i.claimId] : [])));
     for (const id of touched) await announce(runId, { kind: 'claim', id });
+    await announce(runId, { kind: 'payerFile', id: applied.id });
     return {
       status: 'applied',
       fileId: applied.id,

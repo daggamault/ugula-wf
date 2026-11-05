@@ -78,7 +78,7 @@ describe('createPayerFileStore', () => {
     assert.equal(junk.status, 'unreadable');
   });
 
-  it("applies a file for the run's agency and announces each claim it touched once", async () => {
+  it("applies a file for the run's agency and announces it and each claim it touched once", async () => {
     const { store, queries, announced } = storeFor(rejected, rowsFor(false));
     const applied = await store.apply('r1', 'k', { document, fileName: 'a.999', postings: [] });
     const message = 'The clearinghouse rejected 837P file 7';
@@ -95,7 +95,8 @@ describe('createPayerFileStore', () => {
     });
     assert.deepEqual(announced, [
       ['r1', { kind: 'claim', id: 'c1' }],
-      ['r1', { kind: 'claim', id: 'c2' }]
+      ['r1', { kind: 'claim', id: 'c2' }],
+      ['r1', { kind: 'payerFile', id: 'f1' }]
     ]);
     const file = queries.find((q) => q.sql.startsWith('insert into "payer_files"'));
     assert.ok(file?.parameters.includes('t1') && file.parameters.includes('a.999'));
@@ -115,7 +116,7 @@ describe('createPayerFileStore', () => {
       envelopeRejection: null,
       reviews: []
     });
-    assert.equal(announced.length, 2);
+    assert.equal(announced.length, 3);
   });
 
   it('applies the same file only once per agency', async () => {

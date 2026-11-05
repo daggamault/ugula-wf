@@ -74,7 +74,7 @@ export const PayerFilesPage = ({ client, live }: { client: PayerFilesClient; liv
   const files = useResource(`payer-files:${search.apiQuery}`, (signal) =>
     client.list(search.apiQuery, signal)
   );
-  useLive(live, (e) => e.kind === 'claim', files.reload, LIST_RELOAD_MS);
+  useLive(live, (e) => e.kind === 'claim' || e.kind === 'payerFile', files.reload, LIST_RELOAD_MS);
   const upload = useUploadPayerFiles(client);
   const [busy, setBusy] = useState(false);
 
