@@ -39,8 +39,8 @@ import { publishTables } from './tables.ts';
 import { upsertMembership, upsertUser } from './users.ts';
 
 const DEV_AGENCIES = [
-  { name: 'Development', slug: 'dev', sftp: true },
-  { name: 'Development North', slug: 'dev-north', sftp: false }
+  { name: 'Development', slug: 'dev', sftp: true, submitterId: 'DEVEMS01' },
+  { name: 'Development North', slug: 'dev-north', sftp: false, submitterId: 'DEVEMS02' }
 ] as const;
 
 const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
@@ -142,7 +142,7 @@ const seedDev = async (db: Db, dev: DevSeedConfig) => {
         });
       }
       await buildUpsertDefaultFees(tx, agency.id, demoFees).execute();
-      await buildUpsertDemoProfile(tx, agency.id).execute();
+      await buildUpsertDemoProfile(tx, agency.id, seed.submitterId).execute();
       await buildUpsertDemoPayers(tx, agency.id).execute();
       await buildUpsertDemoFacilities(tx, agency.id).execute();
     }

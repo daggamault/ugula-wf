@@ -10,7 +10,6 @@ const demoProfile = {
   state: 'IL',
   postal_code: '627041234',
   phone: '2175550100',
-  submitter_id: 'DEVEMS01',
   receiver_id: 'WAYSTAR',
   receiver_name: 'Waystar',
   time_zone: 'America/Chicago',
@@ -57,13 +56,17 @@ const demoFacilities = [
   }
 ] as const;
 
-export const buildUpsertDemoProfile = (db: Kysely<Database>, agencyId: string) =>
-  db
+export const buildUpsertDemoProfile = (
+  db: Kysely<Database>,
+  agencyId: string,
+  submitterId: string
+) => {
+  const profile = { ...demoProfile, submitter_id: submitterId };
+  return db
     .insertInto('billing_profiles')
-    .values({ agency_id: agencyId, ...demoProfile })
-    .onConflict((oc) =>
-      oc.column('agency_id').doUpdateSet({ ...demoProfile, updated_at: sql`now()` })
-    );
+    .values({ agency_id: agencyId, ...profile })
+    .onConflict((oc) => oc.column('agency_id').doUpdateSet({ ...profile, updated_at: sql`now()` }));
+};
 
 export const buildUpsertDemoFacilities = (db: Kysely<Database>, agencyId: string) =>
   db
