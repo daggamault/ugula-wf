@@ -81,6 +81,18 @@ describe('recoveryNodes', () => {
     await assert.rejects(() => run('read-refund', { claimId: 'other' }), /does not exist/);
   });
 
+  it('reads a payer on the claim, or the patient when none is given', async () => {
+    const { run } = setup();
+    const medicare = await run('read-payer', { claimId: 'c1', coverageId: 'cov-Medicare' });
+    assert.deepEqual(medicare.outputs, { payer: 'Medicare', payerKind: 'MB' });
+    const patient = await run('read-payer', { claimId: 'c1', coverageId: null });
+    assert.deepEqual(patient.outputs, { payer: null, payerKind: 'patient' });
+    await assert.rejects(
+      () => run('read-payer', { claimId: 'c1', coverageId: 'cov-Other' }),
+      /not on the claim/
+    );
+  });
+
   it('records refunds on the agency date, protected balances and skipped payers once per step', async () => {
     const { calls, run } = setup();
     await run('record-refund', { claimId: 'c1', coverageId: 'cov-Medicare', amountCents: 2_500 });

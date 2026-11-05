@@ -5,6 +5,7 @@ import {
   appealOutcomeOf,
   denialFactsOf,
   patientBalanceFactsOf,
+  payerFactsOf,
   refundFactsOf
 } from '../recovery.ts';
 import { X837_CLAIM } from '../submission-models.ts';
@@ -47,6 +48,20 @@ export const recoveryNodes: NodesOf = (stores) => {
           coverageIdOf(inputs.coverageId)
         )
       })
+    }),
+    actionNode({
+      type: 'billing.read-payer',
+      title: 'Read Payer',
+      category: CATEGORY,
+      description:
+        'Reads the name and claim filing indicator of one payer on a claim, or patient when no payer is given. Decides nothing.',
+      inputs: [claimIdPin, pin('coverageId', 'string', { optional: true })],
+      outputs: [pin('payer', 'string'), pin('payerKind', 'string')],
+      compute: async (inputs, _, ctx) =>
+        payerFactsOf(
+          await ledgerOf(ctx.runId, claimIdOf(inputs.claimId)),
+          textOrNull(inputs.coverageId)
+        )
     }),
     actionNode({
       type: 'billing.read-appeal',

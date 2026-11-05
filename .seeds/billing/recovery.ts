@@ -824,27 +824,33 @@ const workDenial = (): GraphDef => {
   return g.def;
 };
 
+const VOID_STALE =
+  'The claim changed, or this payer is no longer the one being billed, before the void could be filed';
+
 const correctClaim = (): GraphDef => {
-  const g = graph({
-    execIn: ['exec'],
-    execOut: ['done', 'void'],
-    inputs: [
-      ...claimInputs,
-      d('correction', 'string', 'Correction', 'replace or void, as the biller asked.', true),
-      d(
-        'payerClaimNumber',
-        'string',
-        'Payer Claim Number',
-        'The payer claim number the correction replaces, when the biller entered one.',
-        true
-      )
-    ],
-    outputs: [],
-    exits: {
-      done: exit('Done', 'The correction was queued, filed or requested; the cycle goes on.'),
-      void: VOID
-    }
-  });
+  const g = graph(
+    {
+      execIn: ['exec'],
+      execOut: ['done', 'void'],
+      inputs: [
+        ...claimInputs,
+        d('correction', 'string', 'Correction', 'replace or void, as the biller asked.', true),
+        d(
+          'payerClaimNumber',
+          'string',
+          'Payer Claim Number',
+          'The payer claim number the correction replaces, when the biller entered one.',
+          true
+        )
+      ],
+      outputs: [],
+      exits: {
+        done: exit('Done', 'The correction was queued, filed or requested; the cycle goes on.'),
+        void: VOID
+      }
+    },
+    [{ name: 'whyNotFiled', type: 'string', default: null }]
+  );
   g.add('read', 'billing.read-denial', { label: 'Read Denial' });
   g.add('method', 'billing.correction-method', { label: 'Replacement or Reopening' });
   g.add('route', 'std.flow.switch', {
@@ -864,12 +870,35 @@ const correctClaim = (): GraphDef => {
   g.add('frequency', 'billing.with-frequency', { label: 'Void Frequency' });
   g.add('file', 'billing.file-837p', { label: 'File 837P Void' });
   g.add('send', 'billing.send-837p', { label: 'Send 837P to Clearinghouse' });
+  g.add('blockedWhy', 'std.var.set', {
+    label: 'Why the Void Was Blocked',
+    config: { name: 'whyNotFiled' }
+  });
+  g.add('staleWhy', 'std.var.set', {
+    label: 'Why the Void Went Stale',
+    config: { name: 'whyNotFiled' },
+    values: { value: VOID_STALE }
+  });
+  g.add('why', 'std.var.get', { label: 'Why Not Filed', config: { name: 'whyNotFiled' } });
   g.add(
     'filingContext',
     'std.expr',
     expr('Filing Context', 'merge(context ?? {}, { whyNotFiled: reason })')
   );
-  g.add('blocked', 'billing.submit-claim', { label: 'Void Could Not Be Filed' });
+  g.add('blocked', 'std.human.task', {
+    label: 'Void Could Not Be Filed',
+    config: {
+      title: 'Void could not be filed',
+      queue: 'billing-review',
+      instructions:
+        'The void (frequency 8) of this claim could not be filed for the reason in the details. Fix what it names (the billing profile is in Settings) and try again, fix the claim data and try again, skip this payer, or mark the void submitted if it went out another way. Until it is filed the payer still has the claim.',
+      outcomes: ['tryAgain', 'fixData', 'skipPayer', 'submitted']
+    }
+  });
+  g.add('fixVoid', 'billing.fix-claim', {
+    label: 'Fix Claim Data for the Void',
+    values: { all: true }
+  });
   recordEvent(g, 'voided', 'payer_skipped', 'Move On From the Voided Payer');
   g.add('reopening', 'std.human.task', {
     label: 'Request Reopening',
@@ -903,7 +932,7 @@ const correctClaim = (): GraphDef => {
     'prepare.claimId',
     'file.claimId',
     'send.claimId',
-    'blocked.claimId',
+    'fixVoid.claimId',
     'voided.claimId',
     'requested.claimId'
   );
@@ -914,12 +943,17 @@ const correctClaim = (): GraphDef => {
     'reopenVoid.coverageId',
     'prepare.coverageId',
     'file.coverageId',
-    'blocked.coverageId',
     'voided.coverageId',
     'requested.coverageId'
   );
-  g.wire('entry.subject', 'fix.subject', 'blocked.subject', 'reopening.subject');
-  g.wire('entry.context', 'fix.context', 'filingContext.context', 'reopening.context');
+  g.wire('entry.subject', 'fix.subject', 'blocked.subject', 'fixVoid.subject', 'reopening.subject');
+  g.wire(
+    'entry.context',
+    'fix.context',
+    'filingContext.context',
+    'fixVoid.context',
+    'reopening.context'
+  );
   g.wire('entry.correction', 'method.correction');
   g.wire('entry.payerClaimNumber', 'number.payerClaimNumber');
   g.wire('read.denial', 'method.denial', 'number.denial');
@@ -934,19 +968,27 @@ const correctClaim = (): GraphDef => {
   g.wire('route.void', 'reopenVoid.exec');
   g.wire('reopenVoid.then', 'prepare.exec');
   g.wire('prepare.ready', 'file.exec');
-  g.wire('prepare.stale', 'doneReturn.exec');
+  g.wire('prepare.stale', 'staleWhy.exec');
   g.wire('prepare.claim', 'map.claim');
   g.wire('map.x837', 'frequency.x837');
   g.wire('method.frequency', 'frequency.frequency');
   g.wire('frequency.x837', 'file.x837');
   g.wire('file.filed', 'send.exec');
   g.wire('file.controlNumber', 'send.controlNumber');
-  g.wire('file.stale', 'doneReturn.exec');
-  g.wire('file.blocked', 'blocked.exec');
-  g.wire('file.reason', 'filingContext.reason');
+  g.wire('file.stale', 'staleWhy.exec');
+  g.wire('file.blocked', 'blockedWhy.exec');
+  g.wire('file.reason', 'blockedWhy.value');
+  g.wire('blockedWhy.then', 'blocked.exec');
+  g.wire('staleWhy.then', 'blocked.exec');
+  g.wire('why.value', 'filingContext.reason');
   g.wire('filingContext.result', 'blocked.context');
-  g.wire('blocked.done', 'doneReturn.exec');
-  g.wire('blocked.void', 'voidReturn.exec');
+  g.wire('blocked.tryAgain', 'prepare.exec');
+  g.wire('blocked.fixData', 'fixVoid.exec');
+  g.wire('fixVoid.fixed', 'prepare.exec');
+  g.wire('fixVoid.backToReview', 'prepare.exec');
+  g.wire('fixVoid.voided', 'voidReturn.exec');
+  g.wire('blocked.skipPayer', 'voided.exec');
+  g.wire('blocked.submitted', 'voided.exec');
   g.wire('send.sent', 'voided.exec');
   g.wire('send.manual', 'voided.exec');
   g.wire('voided.then', 'doneReturn.exec');
@@ -969,7 +1011,10 @@ const appealClaim = (): GraphDef => {
       outputs: [],
       exits: { done: exit('Done', 'The appeal was decided, withdrawn or not sent.') }
     },
-    [{ name: 'waiting', type: 'boolean', default: true }]
+    [
+      { name: 'waiting', type: 'boolean', default: true },
+      { name: 'decideBy', type: 'datetime', default: null }
+    ]
   );
   g.add('follow', 'billing.follow-claim', { label: 'Show on the Claim' });
   g.add('read', 'billing.read-denial', { label: 'Read Denial' });
@@ -1003,6 +1048,23 @@ const appealClaim = (): GraphDef => {
     )
   );
   recordEvent(g, 'appealed', 'appealed', 'Log the Appeal');
+  g.add(
+    'deadline',
+    'std.expr',
+    expr('Decision Deadline', `addDays(now(), decisionWaitMs / ${DAY_MS})`)
+  );
+  g.add('setDeadline', 'std.var.set', { label: 'Decide By', config: { name: 'decideBy' } });
+  g.add('extendDeadline', 'std.var.set', {
+    label: 'Wait Another Period',
+    config: { name: 'decideBy' }
+  });
+  g.add('decideBy', 'std.var.get', { label: 'Decision Due', config: { name: 'decideBy' } });
+  g.add('clock', 'std.time.now', { label: 'Now' });
+  g.add('untilDue', 'std.time.difference', {
+    label: 'Seconds Until Due',
+    config: { unit: 'seconds' }
+  });
+  g.add('timeLeft', 'std.expr', expr('Time Left', 'max(0, seconds) * 1000'));
   g.add('waiting', 'std.var.get', { label: 'Still Waiting', config: { name: 'waiting' } });
   g.add('loop', 'std.flow.while', { label: 'Until the Appeal Is Decided' });
   g.add('outcome', 'billing.read-appeal', { label: 'Read Appeal Outcome' });
@@ -1074,7 +1136,14 @@ const appealClaim = (): GraphDef => {
   g.wire('send.sent', 'appealed.exec');
   g.wire('send.note', 'sentNote.note');
   g.wire('sentNote.result', 'appealed.note');
-  g.wire('appealed.then', 'loop.exec');
+  g.wire('appealed.then', 'setDeadline.exec');
+  g.wire('setDeadline.then', 'loop.exec');
+  g.wire('level.decisionWaitMs', 'deadline.decisionWaitMs');
+  g.wire('deadline.result', 'setDeadline.value', 'extendDeadline.value');
+  g.wire('clock.now', 'untilDue.start');
+  g.wire('decideBy.value', 'untilDue.end');
+  g.wire('untilDue.amount', 'timeLeft.seconds');
+  g.wire('overdue.keepWaiting', 'extendDeadline.exec');
   g.wire('waiting.value', 'loop.condition');
   g.wire('loop.body', 'outcome.exec');
   g.wire('loop.completed', 'doneReturn.exec');
@@ -1088,7 +1157,7 @@ const appealClaim = (): GraphDef => {
   g.wire('decided.then', 'stopDecided.exec');
   g.wire('answered.false', 'wait.exec');
   g.wire('outcome.signalsSeen', 'wait.after');
-  g.wire('level.decisionWaitMs', 'wait.timeoutMs');
+  g.wire('timeLeft.result', 'wait.timeoutMs');
   g.wire('wait.timeout', 'overdue.exec');
   g.wire('overdue.upheld', 'upheld.exec');
   g.wire('upheld.then', 'stopUpheld.exec');
@@ -1123,6 +1192,7 @@ const respondRecordsRequest = (): GraphDef => {
     'std.expr',
     expr('Payer Asking', 'coalesce(coverageId, unreconciledCoverageId, current)')
   );
+  g.add('asking', 'billing.read-payer', { label: 'Read the Payer Asking' });
   g.add('due', 'billing.records-due', { label: 'Records Due' });
   g.add(
     'requestNote',
@@ -1157,6 +1227,7 @@ const respondRecordsRequest = (): GraphDef => {
     'entry.claimId',
     'follow.claimId',
     'ledger.claimId',
+    'asking.claimId',
     'requested.claimId',
     'details.claimId',
     'sent.claimId'
@@ -1169,13 +1240,14 @@ const respondRecordsRequest = (): GraphDef => {
   g.wire('ledger.reference', 'subject.reference');
   g.wire('facts.unreconciledCoverageId', 'payer.unreconciledCoverageId');
   g.wire('facts.coverageId', 'payer.current');
-  g.wire('facts.payerKind', 'due.payerKind');
-  g.wire('facts.payer', 'requestNote.payer');
+  g.wire('asking.payerKind', 'due.payerKind');
+  g.wire('asking.payer', 'requestNote.payer');
   g.wire('due.dueOn', 'requestNote.dueOn', 'details.dueOn', 'gather.due');
   g.wire('due.reasons', 'details.reasons');
-  g.wire('payer.result', 'requested.coverageId', 'sent.coverageId');
+  g.wire('payer.result', 'asking.coverageId', 'requested.coverageId', 'sent.coverageId');
   g.wire('requestNote.result', 'requested.note');
-  g.wire('ledger.then', 'requested.exec');
+  g.wire('ledger.then', 'asking.exec');
+  g.wire('asking.then', 'requested.exec');
   g.wire('requested.then', 'gather.exec');
   g.wire('subject.result', 'gather.subject');
   g.wire('details.result', 'gather.context');
@@ -1193,7 +1265,10 @@ const refundOverpayment = (): GraphDef => {
     inputs: [p('claimId', 'string'), p('subject', 'string', true), p('context', 'any', true)],
     outputs: [],
     exits: {
-      refunded: exit('Refunded', 'The refund was approved and recorded on the claim.'),
+      refunded: exit(
+        'Refunded',
+        'The refund was approved and recorded on the claim, or the credit was gone by then.'
+      ),
       keptCredit: exit('Kept Credit', 'Someone who may approve refunds kept the credit.')
     }
   });
@@ -1222,25 +1297,37 @@ const refundOverpayment = (): GraphDef => {
     'std.expr',
     expr('Refund Note', '"Refund approved" + (note != null && note != "" ? ": " + note : "")')
   );
+  g.add('reread', 'billing.read-refund', { label: 'Read Credit Balance Again' });
+  g.add(
+    'amount',
+    'std.expr',
+    expr('Refund Amount', 'max(0, min(refund.overpaidCents, refund.paidCents))')
+  );
+  g.add('anything', 'std.expr', expr('Anything to Refund', 'amount > 0'));
+  g.add('owed', 'std.flow.branch', { label: 'Still Owed?' });
   g.add('record', 'billing.record-refund', { label: 'Record Refund' });
-  g.add('amount', 'std.object.get', { label: 'Overpaid', values: { path: 'overpaidCents' } });
   g.add('payer', 'std.object.get', { label: 'Who Paid', values: { path: 'coverageId' } });
   g.ret('refundedReturn', 'refunded');
   g.ret('keptReturn', 'keptCredit');
   g.wire('entry.exec', 'follow.exec');
-  g.wire('entry.claimId', 'follow.claimId', 'read.claimId', 'record.claimId');
+  g.wire('entry.claimId', 'follow.claimId', 'read.claimId', 'reread.claimId', 'record.claimId');
   g.wire('entry.subject', 'approve.subject');
   g.wire('entry.context', 'details.context');
   g.wire('follow.then', 'read.exec');
-  g.wire('read.refund', 'due.refund', 'details.refund', 'amount.object', 'payer.object');
+  g.wire('read.refund', 'due.refund', 'details.refund');
   g.wire('due.dueOn', 'details.dueOn', 'approve.due');
   g.wire('due.reasons', 'details.reasons');
   g.wire('details.result', 'approve.context');
   g.wire('read.then', 'approve.exec');
-  g.wire('approve.refund', 'record.exec');
+  g.wire('approve.refund', 'reread.exec');
+  g.wire('reread.refund', 'amount.refund', 'payer.object');
+  g.wire('amount.result', 'anything.amount', 'record.amountCents');
+  g.wire('reread.then', 'owed.exec');
+  g.wire('anything.result', 'owed.condition');
+  g.wire('owed.true', 'record.exec');
+  g.wire('owed.false', 'refundedReturn.exec');
   g.wire('approve.note', 'refundNote.note');
   g.wire('refundNote.result', 'record.note');
-  g.wire('amount.value', 'record.amountCents');
   g.wire('payer.value', 'record.coverageId');
   g.wire('record.then', 'refundedReturn.exec');
   g.wire('approve.keepCredit', 'keptReturn.exec');
@@ -1386,13 +1473,13 @@ export const recoveryGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.correct-claim',
     'Correct Claim',
-    'Corrects a denied claim the way Replacement or Reopening decides: queues a replacement claim (frequency 7 with the payer claim number, filed by the claim cycle once the data is fixed and reviewed), files a void (frequency 8) and moves on from the payer, or asks a biller to request a reopening and waits for the payer to reprocess it. Started by Work Denial.',
+    'Corrects a denied claim the way Replacement or Reopening decides: queues a replacement claim (frequency 7 with the payer claim number, filed by the claim cycle once the data is fixed and reviewed), files a void (frequency 8) and moves on from the payer (a void that cannot be filed asks a biller to try again, fix the data and try again, skip the payer or mark it sent, and is never filed as a replacement), or asks a biller to request a reopening and waits for the payer to reprocess it. Started by Work Denial.',
     correctClaim()
   ),
   asWorkflow(
     'billing.appeal-claim',
     'Appeal Claim',
-    'Appeals a denial: decides its level and due date (Appeal Level and Deadline), stores an appeal packet in the claim files, asks a biller to send it, then waits for the payer to decide (a new remittance, decided by Appeal Decision) and asks a biller when the decision is overdue. Started by Work Denial.',
+    'Appeals a denial: decides its level and due date (Appeal Level and Deadline), stores an appeal packet in the claim files, asks a biller to send it, then waits for the payer to decide (a new remittance, decided by Appeal Decision) and asks a biller when the decision is overdue, counted from when the appeal was sent however often the claim changes meanwhile. Started by Work Denial.',
     appealClaim()
   ),
   asWorkflow(
@@ -1404,13 +1491,13 @@ export const recoveryGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.respond-records-request',
     'Respond to Records Request',
-    'Logs a payer request for records (an additional documentation request) on its claim, decides when they are due (Records Due) and asks a biller to gather and send them by then. Started from Records Request on a claim.',
+    'Logs a payer request for records (an additional documentation request) on its claim, decides when they are due (Records Due) by the kind of payer asking, not the one being billed, and asks a biller to gather and send them by then. Started from Records Request on a claim.',
     respondRecordsRequest()
   ),
   asWorkflow(
     'billing.refund-overpayment',
     'Refund Overpayment',
-    'Works a credit balance: reads who overpaid, decides when the refund is due (Refund Due), asks someone with the claims:approve permission to approve it, and records the refund on the claim. Started by the claim cycle.',
+    'Works a credit balance: reads who overpaid, decides when the refund is due (Refund Due), asks someone with the claims:approve permission to approve it, then reads the credit again and records a refund of what is still owed, never more than the credit balance or what that payer paid. Started by the claim cycle.',
     refundOverpayment()
   )
 ];

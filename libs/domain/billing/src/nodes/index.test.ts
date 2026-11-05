@@ -46,6 +46,7 @@ describe('createBillingNodes', () => {
         'billing.latest-claim-status@1',
         'billing.read-signature@1',
         'billing.read-denial@1',
+        'billing.read-payer@1',
         'billing.read-appeal@1',
         'billing.read-refund@1',
         'billing.read-patient-balance@1',

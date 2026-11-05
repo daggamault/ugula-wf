@@ -5,6 +5,7 @@ import {
   appealOutcomeOf,
   denialFactsOf,
   patientBalanceFactsOf,
+  payerFactsOf,
   refundFactsOf
 } from './recovery.ts';
 
@@ -65,6 +66,14 @@ describe('denialFactsOf', () => {
       appealDays: null
     });
     assert.throws(() => denialFactsOf(ledger([]), 'gone'), /not on the claim/);
+  });
+});
+
+describe('payerFactsOf', () => {
+  it('names any payer on the claim, not only the one billed, or the patient', () => {
+    assert.deepEqual(payerFactsOf(ledger([]), 'blue'), { payer: 'Blue Plan', payerKind: 'BL' });
+    assert.deepEqual(payerFactsOf(ledger([]), null), { payer: null, payerKind: 'patient' });
+    assert.throws(() => payerFactsOf(ledger([]), 'gone'), /not on the claim/);
   });
 });
 

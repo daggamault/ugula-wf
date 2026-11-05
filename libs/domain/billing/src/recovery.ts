@@ -31,6 +31,13 @@ export const denialFactsOf = (ledger: ClaimLedger, coverageId: string) => {
   };
 };
 
+export const payerFactsOf = (ledger: ClaimLedger, coverageId: string | null) => {
+  if (coverageId === null) return { payer: null, payerKind: PATIENT_KIND };
+  const coverage = coverageOf(ledger, coverageId);
+  if (!coverage) throw new Error(`Payer ${coverageId} is not on the claim`);
+  return { payer: coverage.payer, payerKind: coverage.claimFiling ?? null };
+};
+
 export const appealOutcomeOf = (ledger: ClaimLedger, coverageId: string) => {
   const appealed = ledger.events.findLastIndex(
     (e) => e.coverageId === coverageId && e.kind === 'appealed'
