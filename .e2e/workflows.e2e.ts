@@ -159,9 +159,14 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
 
   it('overrides a built-in workflow, arranges, saves and publishes the copy, then removes it', async () => {
     await editGraph('Process Item');
-    await s.page.getByRole('button', { name: 'Override' }).click();
-    await toasts(s.page).getByText('Process Item copied for your agency').waitFor();
-    await s.page.getByText('Your Copy', { exact: true }).first().waitFor();
+    await s.page.getByRole('button', { name: 'Override for This Agency' }).click();
+    await toasts(s.page).getByText('Process Item copied for this agency').waitFor();
+    await s.page.getByRole('main').getByText('Agency', { exact: true }).waitFor();
+    assert.equal(
+      await s.page.getByRole('button', { name: 'Override for This Agency' }).count(),
+      0,
+      'an agency copy cannot be overridden for the agency again'
+    );
     const arrange = s.page.getByRole('button', { name: 'Arrange Nodes' });
     const redraft = s.page.getByRole('button', { name: 'Edit as New Draft' });
     await arrange.or(redraft).first().waitFor();
@@ -189,7 +194,8 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await s.page.getByRole('dialog').getByRole('button', { name: 'Remove Override' }).click();
     await toasts(s.page).getByText('Override removed').waitFor();
     await heading(s.page, 'Process Item').waitFor();
-    await s.page.getByRole('button', { name: 'Override' }).waitFor();
+    await s.page.getByRole('main').getByText('Built-in', { exact: true }).waitFor();
+    await s.page.getByRole('button', { name: 'Override for This Agency' }).waitFor();
     assert.equal(
       (await graphs('mine', 'demo.process-item')).items.filter((g) => g.overrides).length,
       0

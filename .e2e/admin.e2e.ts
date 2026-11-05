@@ -4,6 +4,7 @@ import { after, before, describe, it } from 'node:test';
 import type { Page } from 'playwright-core';
 import {
   api,
+  FLOW_MS,
   go,
   heading,
   type Session,
@@ -199,7 +200,7 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     const eraName = `${uniqueId('E2E-UNKNOWN')}.835`;
     assert.match(await uploadPayerFile(page, eraName, era), /received$/);
     await go(page, '/payer-files');
-    await fileRow(page, eraName).getByText('1 of 1 needs you').waitFor();
+    await fileRow(page, eraName).getByText('1 of 1 needs you').waitFor({ timeout: FLOW_MS });
     await fileRow(page, eraName)
       .getByRole('link', { name: `Open payer file ${eraName}` })
       .click();
@@ -221,7 +222,7 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     assert.match(await uploadPayerFile(page, notEdi, 'not an X12 file'), /could not be applied$/);
     await toasts(page)
       .getByText(
-        /This is not a remittance \(835\), acknowledgment \(999 or 277CA\) or eligibility \(271\) file/
+        /This is not a remittance \(835\), acknowledgment \(TA1, 999 or 277CA\), claim status \(277\) or eligibility \(271\) file/
       )
       .first()
       .waitFor();
@@ -234,7 +235,7 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     await go(page, '/payer-files');
     await fileRow(page, ackName)
       .getByRole('link', { name: `Open payer file ${ackName}` })
-      .click();
+      .click({ timeout: FLOW_MS });
     await heading(page, ackName).waitFor();
     await page.getByRole('row').filter({ hasText: '987654321' }).getByText('No Match').waitFor();
   });

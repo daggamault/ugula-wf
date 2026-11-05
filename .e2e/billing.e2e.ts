@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, it } from 'node:test';
 import {
+  api,
   claimState,
   claimStatusIs,
   completeTask,
@@ -88,13 +89,25 @@ describe('a biller takes an encounter from import to payment', { timeout: SUITE_
       .waitFor();
   });
 
-  it('requests eligibility as a 270 and blocks billing a payer that reports the coverage inactive', async () => {
+  it('checks eligibility through the clearinghouse, downloads the 270 and blocks billing a payer that reports the coverage inactive', async () => {
     await openClaim();
+    const eligibility = section(s.page, 'Eligibility');
     const download = s.page.waitForEvent('download');
-    await s.page.getByRole('button', { name: 'Check Eligibility' }).click();
+    await eligibility.getByRole('button', { name: 'Download 270' }).click();
     const request = readFileSync((await (await download).path()) ?? '', 'utf8');
     assert.match(request, /ST\*270\*0001\*005010X279A1/);
     assert.match(request, /NM1\*IL\*1\*KLINE\*DOROTHY\*{4}MI\*2KT7XM4RW91/);
+    const started = s.page.waitForResponse((r) => r.url().endsWith('/eligibility-checks'));
+    await eligibility.getByRole('button', { name: 'Check Eligibility' }).click();
+    const { runId } = (await (await started).json()) as { runId: string };
+    await toasts(s.page).getByText('Eligibility check sent to the clearinghouse').waitFor();
+    const checked = await until(
+      s.page,
+      () => api<{ run: { status: string } }>(s, `/api/runs/${runId}`),
+      ({ run }) => run.status !== 'running',
+      'the eligibility check to finish'
+    );
+    assert.equal(checked.run.status, 'completed');
     const [coverage] = (await claimState(s, claimId)).claim.coverages;
     assert.ok(coverage);
     assert.match(
