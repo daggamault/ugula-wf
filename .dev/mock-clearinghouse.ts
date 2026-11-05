@@ -1,6 +1,7 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createECDH, createHash, createPrivateKey, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { posix } from 'node:path';
+import { MOCK_HOST_KEY } from '@ugula/billing';
 import {
   downloadName,
   type MockClaimState,
@@ -10,6 +11,7 @@ import {
   respondToEligibility,
   WAYSTAR_EXTENSIONS
 } from '@ugula/billing/mock-waystar';
+import { hostKeyFingerprint } from '@ugula/clearinghouse';
 import ssh2, { type Attributes, type FileEntry, type SFTPWrapper } from 'ssh2';
 
 const { Server, utils } = ssh2;
@@ -327,9 +329,35 @@ const matches = (given: string, expected: string) => {
   return a.length === b.length && timingSafeEqual(a, b);
 };
 
-const hostKey = utils.generateKeyPairSync('ed25519').private;
+const HOST_KEY_SEED = 'ugula mock clearinghouse host key';
 
-new Server({ hostKeys: [hostKey] }, (client) => {
+const stableHostKey = () => {
+  const d = createHash('sha256').update(HOST_KEY_SEED).digest();
+  const ecdh = createECDH('prime256v1');
+  ecdh.setPrivateKey(d);
+  const point = ecdh.getPublicKey();
+  const pem = createPrivateKey({
+    format: 'jwk',
+    key: {
+      kty: 'EC',
+      crv: 'P-256',
+      d: d.toString('base64url'),
+      x: point.subarray(1, 33).toString('base64url'),
+      y: point.subarray(33).toString('base64url')
+    }
+  })
+    .export({ type: 'sec1', format: 'pem' })
+    .toString();
+  const parsed = utils.parseKey(pem);
+  if (parsed instanceof Error) throw parsed;
+  const fingerprint = hostKeyFingerprint(parsed.getPublicSSH());
+  if (fingerprint !== MOCK_HOST_KEY) {
+    throw new Error(`The mock host key is ${fingerprint}, not MOCK_HOST_KEY ${MOCK_HOST_KEY}`);
+  }
+  return pem;
+};
+
+new Server({ hostKeys: [stableHostKey()] }, (client) => {
   client
     .on('authentication', (ctx) => {
       if (
@@ -349,7 +377,9 @@ new Server({ hostKeys: [hostKey] }, (client) => {
     })
     .on('error', (e) => log(`client error: ${e.message}`));
 }).listen(PORT, HOST, () => {
-  log(`SFTP on ${HOST}:${PORT} as ${USERNAME}; 835s after ${REMIT_DELAY_MS / 1000}s`);
+  log(
+    `SFTP on ${HOST}:${PORT} as ${USERNAME}, host key ${MOCK_HOST_KEY}; 835s after ${REMIT_DELAY_MS / 1000}s`
+  );
 });
 
 const authorized = (header: string | undefined) => {

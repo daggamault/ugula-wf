@@ -36,7 +36,7 @@ type ExchangeDeps = {
 };
 
 const NO_CONNECTION =
-  'The agency has no clearinghouse connection; set one up in Settings or download the request from the claim';
+  'The agency has no clearinghouse connection, or it is paused; set one up in Settings or download the request from the claim';
 
 const SUBMISSIONS = ['submitted', 'resubmitted'] as const;
 

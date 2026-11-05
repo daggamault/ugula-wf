@@ -564,6 +564,7 @@ type ClearinghouseConnectionsTable = {
   enabled: Generated<boolean>;
   sftp_host: string;
   sftp_port: number;
+  sftp_host_key: string;
   sftp_username: string;
   sftp_secret: string;
   upload_path: string;

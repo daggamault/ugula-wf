@@ -1,10 +1,17 @@
-import { AFTER_DOWNLOAD, CLEARINGHOUSE_VENDORS, FILE_EXTENSION_PATTERN } from '@ugula/billing';
+import {
+  AFTER_DOWNLOAD,
+  CLEARINGHOUSE_VENDORS,
+  FILE_EXTENSION_PATTERN,
+  HOST_KEY_PATTERN
+} from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
 const list = (values: readonly string[]) => sql.join(values.map((v) => sql.lit(v)));
 
 const extension = (column: string) => sql`${sql.ref(column)} ~ ${sql.lit(FILE_EXTENSION_PATTERN)}`;
+
+const DOWNLOAD_PATH = '/[^[:cntrl:],]{0,254}';
 
 export const createClearinghouseConnectionsTable = (db: Kysely<Database>) =>
   db.schema
@@ -16,6 +23,7 @@ export const createClearinghouseConnectionsTable = (db: Kysely<Database>) =>
     .addColumn('enabled', 'boolean', (col) => col.notNull().defaultTo(true))
     .addColumn('sftp_host', 'text', (col) => col.notNull())
     .addColumn('sftp_port', 'integer', (col) => col.notNull())
+    .addColumn('sftp_host_key', 'text', (col) => col.notNull())
     .addColumn('sftp_username', 'text', (col) => col.notNull())
     .addColumn('sftp_secret', 'text', (col) => col.notNull())
     .addColumn('upload_path', 'text', (col) => col.notNull())
@@ -35,8 +43,16 @@ export const createClearinghouseConnectionsTable = (db: Kysely<Database>) =>
       sql`sftp_host <> '' and sftp_username <> '' and sftp_secret <> '' and sftp_port between 1 and 65535`
     )
     .addCheckConstraint(
+      'clearinghouse_connections_host_key_check',
+      sql`sftp_host_key ~ ${sql.lit(HOST_KEY_PATTERN)}`
+    )
+    .addCheckConstraint(
       'clearinghouse_connections_paths_check',
-      sql`upload_path ~ '^/' and cardinality(download_paths) between 1 and 10`
+      sql`upload_path ~ '^/[^[:cntrl:]]{0,254}$'
+        and cardinality(download_paths) between 1 and 10
+        and array_ndims(download_paths) = 1
+        and array_position(download_paths, null) is null
+        and array_to_string(download_paths, ',') ~ ${sql.lit(`^${DOWNLOAD_PATH}(,${DOWNLOAD_PATH})*$`)}`
     )
     .addCheckConstraint(
       'clearinghouse_connections_extensions_check',

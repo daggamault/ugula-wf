@@ -882,9 +882,7 @@ describe('createClaimStore', () => {
         submitClaimStatus: async (name) => name,
         checkEligibility: null,
         checkClaimStatus: null,
-        pollResponses: async () => [],
-        download: async () => new Uint8Array(),
-        remove: async () => undefined,
+        inbox: async () => assert.fail('no inbox'),
         afterDownload: 'keep'
       };
     };

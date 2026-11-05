@@ -1,36 +1,54 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { describe, it } from 'node:test';
-import { openSecret, parseSecretKey, sealSecret } from './secrets.ts';
+import { needsReseal, openSecret, parseKeyring, sealSecret } from './secrets.ts';
 
-const key = parseSecretKey(randomBytes(32).toString('base64'));
+const newKey = () => randomBytes(32).toString('base64');
+
+const ring = parseKeyring(newKey());
 
 describe('secrets', () => {
   it('seals a secret with a fresh IV each time and opens it with the same key and context', () => {
-    const a = sealSecret(key, 'p@ss wörd', 'agency-1');
-    const b = sealSecret(key, 'p@ss wörd', 'agency-1');
+    const a = sealSecret(ring, 'p@ss wörd', 'agency-1');
+    const b = sealSecret(ring, 'p@ss wörd', 'agency-1');
     assert.notEqual(a, b);
-    assert.ok(a.startsWith('v1.') && !a.includes('p@ss'));
-    assert.equal(openSecret(key, a, 'agency-1'), 'p@ss wörd');
-    assert.equal(openSecret(key, sealSecret(key, '', 'x'), 'x'), '');
+    assert.ok(a.startsWith(`v1.${ring.current.id}.`) && !a.includes('p@ss'));
+    assert.equal(openSecret(ring, a, 'agency-1'), 'p@ss wörd');
+    assert.equal(openSecret(ring, sealSecret(ring, '', 'x'), 'x'), '');
   });
 
   it('refuses another key, another context, tampering and text that is not sealed', () => {
-    const sealed = sealSecret(key, 'secret', 'agency-1');
-    const other = parseSecretKey(randomBytes(32).toString('base64'));
-    assert.throws(() => openSecret(other, sealed, 'agency-1'));
-    assert.throws(() => openSecret(key, sealed, 'agency-2'));
-    const [v, iv, tag, body] = sealed.split('.');
+    const sealed = sealSecret(ring, 'secret', 'agency-1');
+    const other = parseKeyring(newKey());
+    assert.throws(() => openSecret(other, sealed, 'agency-1'), /not configured/);
+    assert.throws(() => openSecret(ring, sealed, 'agency-2'));
+    const [v, id, iv, tag, body] = sealed.split('.');
     const flipped = Buffer.from(body ?? '', 'base64');
     flipped[0] = (flipped[0] ?? 0) ^ 1;
     assert.throws(() =>
-      openSecret(key, [v, iv, tag, flipped.toString('base64')].join('.'), 'agency-1')
+      openSecret(ring, [v, id, iv, tag, flipped.toString('base64')].join('.'), 'agency-1')
     );
-    assert.throws(() => openSecret(key, 'plain', 'agency-1'), /Not a sealed secret/);
+    assert.throws(() => openSecret(ring, 'plain', 'agency-1'), /Not a sealed secret/);
+    assert.throws(() => openSecret(ring, [v, iv, tag, body].join('.'), 'agency-1'));
   });
 
-  it('accepts only a 32 byte base64 key', () => {
-    assert.throws(() => parseSecretKey(randomBytes(16).toString('base64')), /32 bytes/);
-    assert.throws(() => parseSecretKey('not base64!'), /32 bytes/);
+  it('opens secrets sealed with a previous key and says which ones to seal again', () => {
+    const old = parseKeyring(newKey());
+    const sealed = sealSecret(old, 'secret', 'agency-1');
+    const rotated = parseKeyring(newKey(), [
+      newKey(),
+      Buffer.from(old.current.bytes).toString('base64')
+    ]);
+    assert.equal(openSecret(rotated, sealed, 'agency-1'), 'secret');
+    assert.equal(needsReseal(rotated, sealed), true);
+    assert.equal(needsReseal(rotated, sealSecret(rotated, 'secret', 'agency-1')), false);
+    assert.equal(needsReseal(ring, sealed), false);
+    assert.equal(needsReseal(rotated, 'plain'), false);
+  });
+
+  it('accepts only 32 byte base64 keys', () => {
+    assert.throws(() => parseKeyring(randomBytes(16).toString('base64')), /32 bytes/);
+    assert.throws(() => parseKeyring('not base64!'), /32 bytes/);
+    assert.throws(() => parseKeyring(newKey(), ['short']), /32 bytes/);
   });
 });

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { MOCK_HOST_KEY } from '@ugula/billing';
 import { ok } from '../../shared/result.ts';
 import { withSession } from '../../shared/testing.ts';
 import { createConnectionRoutes } from './routes.ts';
@@ -27,6 +28,7 @@ const body = {
   enabled: true,
   sftpHost: 'localhost',
   sftpPort: 2223,
+  sftpHostKey: MOCK_HOST_KEY,
   sftpUsername: 'ugula',
   secret: null,
   uploadPath: '/upload',

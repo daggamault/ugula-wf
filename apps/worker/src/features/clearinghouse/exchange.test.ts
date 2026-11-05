@@ -102,9 +102,7 @@ const setup = ({
     },
     checkEligibility: realtime ? answer : null,
     checkClaimStatus: realtime ? answer : null,
-    pollResponses: async () => [],
-    download: async () => new Uint8Array(),
-    remove: async () => undefined,
+    inbox: async () => assert.fail('no inbox'),
     afterDownload: 'delete'
   };
   const stored: string[] = [];

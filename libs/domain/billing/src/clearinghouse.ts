@@ -8,6 +8,10 @@ export type AfterDownload = (typeof AFTER_DOWNLOAD)[number];
 
 export const FILE_EXTENSION_PATTERN = '^\\.[A-Za-z0-9]{1,10}$';
 
+export const HOST_KEY_PATTERN = '^SHA256:[A-Za-z0-9+/]{43}$';
+
+export const MOCK_HOST_KEY = 'SHA256:VM159e2IEtdtiYxUoqIC5u7Z7D57F/k83MgfOvFrDdM';
+
 export type ClearinghouseExtensions = { claims: string; eligibility: string; claimStatus: string };
 
 export const WAYSTAR_EXTENSIONS: ClearinghouseExtensions = {
@@ -19,6 +23,7 @@ export const WAYSTAR_EXTENSIONS: ClearinghouseExtensions = {
 export type ClearinghouseSettings = {
   host: string;
   port: number;
+  hostKey: string;
   uploadPath: string;
   downloadPaths: string[];
   extensions: ClearinghouseExtensions;
@@ -26,7 +31,11 @@ export type ClearinghouseSettings = {
   realtimeUrl: string | null;
 };
 
-type VendorPreset = ClearinghouseSettings & { label: string; receiverId: string | null };
+type VendorPreset = Omit<ClearinghouseSettings, 'hostKey'> & {
+  label: string;
+  hostKey: string | null;
+  receiverId: string | null;
+};
 
 const WAYSTAR_FOLDERS = { uploadPath: '/upload', downloadPaths: ['/download'] };
 
@@ -35,6 +44,7 @@ export const VENDOR_PRESETS: Record<ClearinghouseVendor, VendorPreset> = {
     label: 'Waystar',
     host: 'sshftp.waystar.com',
     port: 22,
+    hostKey: null,
     ...WAYSTAR_FOLDERS,
     extensions: WAYSTAR_EXTENSIONS,
     afterDownload: 'delete',
@@ -45,6 +55,7 @@ export const VENDOR_PRESETS: Record<ClearinghouseVendor, VendorPreset> = {
     label: 'Mock clearinghouse (development)',
     host: 'localhost',
     port: 2223,
+    hostKey: MOCK_HOST_KEY,
     ...WAYSTAR_FOLDERS,
     extensions: WAYSTAR_EXTENSIONS,
     afterDownload: 'delete',
@@ -55,6 +66,7 @@ export const VENDOR_PRESETS: Record<ClearinghouseVendor, VendorPreset> = {
     label: 'Other SFTP clearinghouse',
     host: '',
     port: 22,
+    hostKey: null,
     uploadPath: '/',
     downloadPaths: ['/'],
     extensions: { claims: '.txt', eligibility: '.txt', claimStatus: '.txt' },
@@ -74,17 +86,19 @@ export type Clearinghouse = {
   submitClaimStatus: (baseName: string, x12: Uint8Array) => Promise<string>;
   checkEligibility: ((x12: string) => Promise<RealtimeAnswer>) | null;
   checkClaimStatus: ((x12: string) => Promise<RealtimeAnswer>) | null;
-  pollResponses: () => Promise<ClearinghouseFile[]>;
+  inbox: <T>(work: (inbox: ClearinghouseInbox) => Promise<T>) => Promise<T>;
+  afterDownload: AfterDownload;
+};
+
+export type ClearinghouseInbox = {
+  list: () => Promise<ClearinghouseFile[]>;
   download: (path: string) => Promise<Uint8Array>;
   remove: (path: string) => Promise<void>;
-  afterDownload: AfterDownload;
 };
 
 export type BatchTransport = {
   upload: (name: string, bytes: Uint8Array) => Promise<string>;
-  list: () => Promise<ClearinghouseFile[]>;
-  download: (path: string) => Promise<Uint8Array>;
-  remove: (path: string) => Promise<void>;
+  session: <T>(work: (inbox: ClearinghouseInbox) => Promise<T>) => Promise<T>;
 };
 
 export type RealtimeReply =
@@ -136,9 +150,7 @@ export const createClearinghouse = ({
     submitClaimStatus: submit(extensions.claimStatus),
     checkEligibility: realtime ? realtimeOf(realtime, CORE_PAYLOADS.eligibility) : null,
     checkClaimStatus: realtime ? realtimeOf(realtime, CORE_PAYLOADS.claimStatus) : null,
-    pollResponses: batch.list,
-    download: batch.download,
-    remove: batch.remove,
+    inbox: batch.session,
     afterDownload
   };
 };

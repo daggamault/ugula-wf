@@ -25,6 +25,7 @@ import type { ClearinghouseConnection, ConnectionInput } from './client.ts';
 type ConnectionText =
   | 'sftpHost'
   | 'sftpPort'
+  | 'sftpHostKey'
   | 'sftpUsername'
   | 'secret'
   | 'uploadPath'
@@ -46,6 +47,7 @@ const presetDraft = (vendor: ClearinghouseVendor) => {
     vendor,
     sftpHost: p.host,
     sftpPort: String(p.port),
+    sftpHostKey: p.hostKey ?? '',
     uploadPath: p.uploadPath,
     downloadPaths: p.downloadPaths.join(', '),
     claimExtension: p.extensions.claims,
@@ -63,6 +65,7 @@ export const toConnectionDraft = (c: ClearinghouseConnection | null): Connection
         enabled: c.enabled ? 'on' : 'off',
         sftpHost: c.sftp_host,
         sftpPort: String(c.sftp_port),
+        sftpHostKey: c.sftp_host_key,
         sftpUsername: c.sftp_username,
         secret: '',
         uploadPath: c.upload_path,
@@ -85,6 +88,7 @@ export const fromConnectionDraft = (d: ConnectionDraft): ConnectionInput => ({
   enabled: d.enabled === 'on',
   sftpHost: d.sftpHost.trim(),
   sftpPort: Number(d.sftpPort),
+  sftpHostKey: d.sftpHostKey.trim(),
   sftpUsername: d.sftpUsername.trim(),
   secret: d.secret === '' ? null : d.secret,
   uploadPath: d.uploadPath.trim(),
@@ -111,7 +115,14 @@ type TextField = {
 const SFTP_FIELDS: TextField[] = [
   { key: 'sftpHost', label: 'SFTP Host', span: 2, required: true },
   { key: 'sftpPort', label: 'Port', type: 'number', required: true },
-  { key: 'sftpUsername', label: 'Username', required: true }
+  { key: 'sftpUsername', label: 'Username', required: true },
+  {
+    key: 'sftpHostKey',
+    label: 'Host Key',
+    hint: 'The SHA256 fingerprint your clearinghouse gives you, like SHA256:…',
+    span: 4,
+    required: true
+  }
 ];
 
 const FOLDER_FIELDS: TextField[] = [
@@ -161,8 +172,30 @@ const AFTER_DOWNLOAD_OPTIONS = AFTER_DOWNLOAD.map((a) => ({
 const isVendor = (x: string): x is ClearinghouseVendor =>
   (CLEARINGHOUSE_VENDORS as readonly string[]).includes(x);
 
-export const secretHint = (c: ClearinghouseConnection | null) =>
-  c?.secret_set ? 'A password is set. Leave blank to keep it, or type a new one.' : undefined;
+export const endpointChanged = (c: ClearinghouseConnection, d: ConnectionDraft) =>
+  c.sftp_host !== d.sftpHost.trim() ||
+  c.sftp_port !== Number(d.sftpPort) ||
+  c.sftp_host_key !== d.sftpHostKey.trim() ||
+  c.sftp_username !== d.sftpUsername.trim() ||
+  (c.realtime_url ?? '') !== d.realtimeUrl.trim();
+
+export const needsSecret = (c: ClearinghouseConnection | null, d: ConnectionDraft) =>
+  !c?.secret_set || endpointChanged(c, d);
+
+export const secretHint = (c: ClearinghouseConnection | null, d: ConnectionDraft) => {
+  if (!c?.secret_set) return undefined;
+  return endpointChanged(c, d)
+    ? 'Enter the password again for the changed server or account.'
+    : 'A password is set. Leave blank to keep it, or type a new one.';
+};
+
+export const NO_SECRET_STORE = 'This server cannot store clearinghouse passwords yet';
+
+export const saveBlocked = (
+  c: ClearinghouseConnection | null,
+  d: ConnectionDraft,
+  canStoreSecrets: boolean
+) => !canStoreSecrets && (d.secret !== '' || needsSecret(c, d));
 
 export const receiverHint = (vendor: ClearinghouseVendor) => {
   const receiverId = VENDOR_PRESETS[vendor].receiverId;
@@ -189,7 +222,9 @@ export const ConnectionForm = ({
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
-    setError((await onSave(fromConnectionDraft(draft))) ?? '');
+    const failure = await onSave(fromConnectionDraft(draft));
+    setError(failure ?? '');
+    if (failure === null) setDraft((d) => ({ ...d, secret: '' }));
     setBusy(false);
   };
   const remove = async () => {
@@ -236,6 +271,7 @@ export const ConnectionForm = ({
                 <Select
                   id="connection-enabled"
                   label="Status"
+                  hint="While paused, nothing is sent or picked up for this agency"
                   span={2}
                   options={ENABLED_OPTIONS}
                   value={draft.enabled}
@@ -253,8 +289,8 @@ export const ConnectionForm = ({
                   label="Password"
                   type="password"
                   autoComplete="new-password"
-                  hint={secretHint(connection)}
-                  required={!connection?.secret_set}
+                  hint={secretHint(connection, draft)}
+                  required={needsSecret(connection, draft)}
                   value={draft.secret}
                   onChange={(e) => setDraft({ ...draft, secret: e.target.value })}
                 />
@@ -294,7 +330,7 @@ export const ConnectionForm = ({
         </fieldset>
         {canStoreSecrets ? null : (
           <Alert intent="warning">
-            This server cannot store clearinghouse passwords until CLEARINGHOUSE_SECRET_KEY is set.
+            {NO_SECRET_STORE}; ask your system administrator to set it up.
           </Alert>
         )}
         {error ? <Alert>{error}</Alert> : null}
@@ -311,7 +347,13 @@ export const ConnectionForm = ({
               Remove Connection
             </Button>
           ) : null}
-          <Button type="submit" isPending={busy}>
+          <Button
+            type="submit"
+            isPending={busy}
+            disabledReason={
+              saveBlocked(connection, draft, canStoreSecrets) ? NO_SECRET_STORE : undefined
+            }
+          >
             <SaveIcon aria-hidden="true" className="size-4" />
             Save Connection
           </Button>

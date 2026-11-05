@@ -1,5 +1,5 @@
 import { createNodeCatalog } from '@ugula/catalog';
-import { parseSecretKey } from '@ugula/clearinghouse';
+import { parseKeyring } from '@ugula/clearinghouse';
 import { createDb, findDefinitions, findTableDefinitions } from '@ugula/db';
 import { createCompleter, createCompletionLimiter, createEmbedder } from '@ugula/inference';
 import { publishLiveEvent } from '@ugula/live';
@@ -102,7 +102,9 @@ if (import.meta.main) {
   const report = (message: string) => process.stderr.write(`${message}\n`);
   const connections = createConnections({
     db,
-    key: config.CLEARINGHOUSE_SECRET_KEY ? parseSecretKey(config.CLEARINGHOUSE_SECRET_KEY) : null,
+    keyring: config.CLEARINGHOUSE_SECRET_KEY
+      ? parseKeyring(config.CLEARINGHOUSE_SECRET_KEY, config.CLEARINGHOUSE_PREVIOUS_SECRET_KEYS)
+      : null,
     fallback: clearinghouseOf(config),
     fetch: guardedFetch,
     realtimeTimeoutMs: config.CLEARINGHOUSE_REALTIME_TIMEOUT_SECONDS * 1000,

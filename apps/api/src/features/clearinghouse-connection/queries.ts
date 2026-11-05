@@ -7,6 +7,7 @@ const columns = [
   'enabled',
   'sftp_host',
   'sftp_port',
+  'sftp_host_key',
   'sftp_username',
   'upload_path',
   'download_paths',
@@ -32,6 +33,7 @@ const valuesOf = (c: ConnectionInput) => ({
   enabled: c.enabled,
   sftp_host: c.sftpHost,
   sftp_port: c.sftpPort,
+  sftp_host_key: c.sftpHostKey,
   sftp_username: c.sftpUsername,
   upload_path: c.uploadPath,
   download_paths: c.downloadPaths,
@@ -57,11 +59,16 @@ export const upsertConnection = (
     .executeTakeFirstOrThrow();
 };
 
-export const updateConnection = (db: Db, agencyId: string, c: ConnectionInput) =>
+export const updateKeepingSecret = (db: Db, agencyId: string, c: ConnectionInput) =>
   db
     .updateTable('clearinghouse_connections')
     .set({ ...valuesOf(c), updated_at: sql`now()` })
     .where('agency_id', '=', agencyId)
+    .where('sftp_host', '=', c.sftpHost)
+    .where('sftp_port', '=', c.sftpPort)
+    .where('sftp_host_key', '=', c.sftpHostKey)
+    .where('sftp_username', '=', c.sftpUsername)
+    .where('realtime_url', 'is not distinct from', c.realtimeUrl)
     .returning([...columns, secretSet])
     .executeTakeFirst();
 

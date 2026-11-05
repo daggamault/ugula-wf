@@ -1,3 +1,4 @@
+import { HOST_KEY_PATTERN } from '@ugula/billing';
 import {
   dbEnvEntries,
   inferenceEnvEntries,
@@ -40,6 +41,10 @@ const clearinghouseEntries = {
   CLEARINGHOUSE_SFTP_PORT: v.optional(portInt, '22'),
   CLEARINGHOUSE_SFTP_USERNAME: v.optional(v.string()),
   CLEARINGHOUSE_SFTP_PASSWORD: v.optional(v.string()),
+  CLEARINGHOUSE_SFTP_HOST_KEY: v.optional(
+    v.union([v.literal(''), v.pipe(v.string(), v.trim(), v.regex(new RegExp(HOST_KEY_PATTERN)))]),
+    ''
+  ),
   CLEARINGHOUSE_UPLOAD_PATH: v.optional(remotePath, '/'),
   CLEARINGHOUSE_DOWNLOAD_PATHS: v.optional(pathList, '/'),
   CLEARINGHOUSE_FILE_EXTENSION: v.optional(extension, '.txt'),
@@ -73,8 +78,10 @@ const configSchema = v.pipe(
   v.check(
     (c) =>
       !c.CLEARINGHOUSE_SFTP_HOST ||
-      (Boolean(c.CLEARINGHOUSE_SFTP_USERNAME) && Boolean(c.CLEARINGHOUSE_SFTP_PASSWORD)),
-    'CLEARINGHOUSE_SFTP_USERNAME and CLEARINGHOUSE_SFTP_PASSWORD are required with CLEARINGHOUSE_SFTP_HOST'
+      (Boolean(c.CLEARINGHOUSE_SFTP_USERNAME) &&
+        Boolean(c.CLEARINGHOUSE_SFTP_PASSWORD) &&
+        Boolean(c.CLEARINGHOUSE_SFTP_HOST_KEY)),
+    'CLEARINGHOUSE_SFTP_USERNAME, CLEARINGHOUSE_SFTP_PASSWORD and CLEARINGHOUSE_SFTP_HOST_KEY are required with CLEARINGHOUSE_SFTP_HOST'
   )
 );
 
@@ -90,6 +97,7 @@ export const clearinghouseOf = (c: Config): ConnectionSettings | null =>
         port: c.CLEARINGHOUSE_SFTP_PORT,
         username: c.CLEARINGHOUSE_SFTP_USERNAME ?? '',
         password: c.CLEARINGHOUSE_SFTP_PASSWORD ?? '',
+        hostKey: c.CLEARINGHOUSE_SFTP_HOST_KEY,
         uploadPath: c.CLEARINGHOUSE_UPLOAD_PATH,
         downloadPaths: c.CLEARINGHOUSE_DOWNLOAD_PATHS,
         extensions: {

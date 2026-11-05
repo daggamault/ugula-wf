@@ -6,6 +6,7 @@ import {
   createClearinghouse,
   exchangeFileName,
   FILE_EXTENSION_PATTERN,
+  HOST_KEY_PATTERN,
   type RealtimeTransport,
   VENDOR_PRESETS,
   WAYSTAR_EXTENSIONS
@@ -18,11 +19,14 @@ const fakeBatch = () => {
       uploads.push([name, new TextDecoder().decode(bytes)]);
       return `/upload/${name}`;
     },
-    list: async () => [
-      { path: '/download/a.999', name: 'a.999', size: 3, modifiedAt: new Date(0) }
-    ],
-    download: async () => new TextEncoder().encode('ack'),
-    remove: async () => undefined
+    session: (work) =>
+      work({
+        list: async () => [
+          { path: '/download/a.999', name: 'a.999', size: 3, modifiedAt: new Date(0) }
+        ],
+        download: async () => new TextEncoder().encode('ack'),
+        remove: async () => undefined
+      })
   };
   return { batch, uploads };
 };
@@ -40,6 +44,11 @@ describe('VENDOR_PRESETS', () => {
     assert.equal(VENDOR_PRESETS.waystar.receiverId, 'WAYSTAR');
     assert.equal(VENDOR_PRESETS.mock.extensions, WAYSTAR_EXTENSIONS);
     assert.ok(VENDOR_PRESETS.mock.realtimeUrl?.endsWith('/core/realtime'));
+    assert.deepEqual(
+      [VENDOR_PRESETS.waystar.hostKey, VENDOR_PRESETS['custom-sftp'].hostKey],
+      [null, null]
+    );
+    assert.match(VENDOR_PRESETS.mock.hostKey ?? '', new RegExp(HOST_KEY_PATTERN));
     const pattern = new RegExp(FILE_EXTENSION_PATTERN);
     for (const preset of Object.values(VENDOR_PRESETS)) {
       assert.ok(Object.values(preset.extensions).every((e) => pattern.test(e)));
@@ -68,7 +77,7 @@ describe('createClearinghouse', () => {
     assert.equal(ch.checkEligibility, null);
     assert.equal(ch.checkClaimStatus, null);
     assert.equal(ch.afterDownload, 'keep');
-    assert.equal((await ch.pollResponses())[0]?.name, 'a.999');
+    assert.equal((await ch.inbox((inbox) => inbox.list()))[0]?.name, 'a.999');
   });
 
   it('sends real-time requests as CORE payloads and accepts only the matching answer', async () => {

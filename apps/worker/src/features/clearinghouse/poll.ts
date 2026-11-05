@@ -1,4 +1,4 @@
-import type { Clearinghouse, ClearinghouseFile } from '@ugula/billing';
+import type { ClearinghouseFile, ClearinghouseInbox } from '@ugula/billing';
 import { type Db, resolveWorkflowVersion, startRun } from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobStore } from '@ugula/storage';
@@ -16,6 +16,8 @@ type PollDeps = {
   report: (message: string) => void;
 };
 
+type Pending = { file: ClearinghouseFile; note: string | null };
+
 export const receiverOf = (text: string) => {
   const start = text.indexOf('ISA');
   if (start < 0 || text.length < start + ISA_LENGTH) return null;
@@ -26,11 +28,11 @@ export const receiverOf = (text: string) => {
 const fileKey = (path: string, size: number, modifiedAt: Date) =>
   `${path}\u0000${size}\u0000${modifiedAt.getTime()}`;
 
-const unseen = async (db: Db, source: string, files: ClearinghouseFile[]) => {
+const pending = async (db: Db, source: string, files: ClearinghouseFile[]): Promise<Pending[]> => {
   if (!files.length) return [];
   const rows = await db
     .selectFrom('clearinghouse_downloads')
-    .select(['remote_path', 'size', 'modified_at'])
+    .select(['remote_path', 'size', 'modified_at', 'run_id', 'note'])
     .where('source', '=', source)
     .where(
       'remote_path',
@@ -38,43 +40,52 @@ const unseen = async (db: Db, source: string, files: ClearinghouseFile[]) => {
       files.map((f) => f.path)
     )
     .execute();
-  const seen = new Set(rows.map((r) => fileKey(r.remote_path, r.size, r.modified_at)));
-  return files.filter((f) => !seen.has(fileKey(f.path, f.size, f.modifiedAt)));
+  const seen = new Map(rows.map((r) => [fileKey(r.remote_path, r.size, r.modified_at), r]));
+  return files.flatMap((file) => {
+    const row = seen.get(fileKey(file.path, file.size, file.modifiedAt));
+    return row?.run_id ? [] : [{ file, note: row?.note ?? null }];
+  });
 };
 
-const agenciesReceiving = async (db: Db, receiver: string | null) =>
-  receiver
+const agenciesReceiving = async (db: Db, receiver: string | null, owners: string[] | null) =>
+  receiver && owners?.length !== 0
     ? (
         await db
           .selectFrom('billing_profiles')
           .select('agency_id')
           .where('submitter_id', '=', receiver)
+          .$if(owners !== null, (qb) => qb.where('agency_id', 'in', owners ?? []))
           .execute()
       ).map((r) => r.agency_id)
     : [];
 
+const noteOf = (
+  receiver: string | null,
+  agencies: string[],
+  owned: boolean,
+  published: boolean
+) => {
+  if (!receiver) return 'Not an X12 file';
+  if (agencies.length > 1) return `More than one agency has submitter ID ${receiver}`;
+  if (!agencies.length) {
+    return `No agency ${owned ? 'using this connection ' : ''}has submitter ID ${receiver}`;
+  }
+  return published ? '' : `The ${RECEIVE_WORKFLOW} workflow is not published`;
+};
+
 const receive = async (
   deps: PollDeps,
-  source: string,
-  clearinghouse: Clearinghouse,
-  f: ClearinghouseFile
+  { source, clearinghouse, agencyIds }: PollTarget,
+  inbox: ClearinghouseInbox,
+  { file: f, note: previous }: Pending
 ) => {
   const { db, boss, blobs } = deps;
-  const bytes = await clearinghouse.download(f.path);
+  const bytes = await inbox.download(f.path);
   const receiver = receiverOf(new TextDecoder().decode(bytes));
-  const agencies = await agenciesReceiving(db, receiver);
-  const [agencyId] = agencies;
-  const version =
-    agencies.length === 1 && agencyId
-      ? await resolveWorkflowVersion(db, agencyId, RECEIVE_WORKFLOW)
-      : undefined;
-  const note = !receiver
-    ? 'Not an X12 file'
-    : agencies.length !== 1
-      ? `${agencies.length ? 'More than one agency has' : 'No agency has'} submitter ID ${receiver}`
-      : version
-        ? ''
-        : `The ${RECEIVE_WORKFLOW} workflow is not published`;
+  const agencies = await agenciesReceiving(db, receiver, agencyIds);
+  const agencyId = agencies.length === 1 ? (agencies[0] ?? null) : null;
+  const version = agencyId ? await resolveWorkflowVersion(db, agencyId, RECEIVE_WORKFLOW) : null;
+  const note = noteOf(receiver, agencies, agencyIds !== null, Boolean(version));
   const document =
     version && agencyId
       ? await blobs.putBytes(
@@ -84,43 +95,56 @@ const receive = async (
         )
       : null;
   const runId = await db.transaction().execute(async (tx) => {
-    const id =
-      version && agencyId && document
-        ? await startRun(tx, boss, {
-            agencyId,
-            versionId: version.id,
-            inputs: { file: document, fileName: f.name }
-          })
-        : null;
-    await tx
+    const claimed = await tx
       .insertInto('clearinghouse_downloads')
       .values({
         source,
         remote_path: f.path,
         size: f.size,
         modified_at: f.modifiedAt,
-        agency_id: agencies.length === 1 ? (agencyId ?? null) : null,
-        run_id: id,
+        agency_id: agencyId,
         note
       })
+      .onConflict((oc) =>
+        oc
+          .constraint('clearinghouse_downloads_file_unique')
+          .doUpdateSet((eb) => ({
+            agency_id: eb.ref('excluded.agency_id'),
+            note: eb.ref('excluded.note')
+          }))
+          .where('clearinghouse_downloads.run_id', 'is', null)
+      )
+      .returning('id')
+      .executeTakeFirst();
+    if (!claimed || !version || !agencyId || !document) return null;
+    const id = await startRun(tx, boss, {
+      agencyId,
+      versionId: version.id,
+      inputs: { file: document, fileName: f.name }
+    });
+    await tx
+      .updateTable('clearinghouse_downloads')
+      .set({ run_id: id })
+      .where('id', '=', claimed.id)
       .execute();
     return id;
   });
-  if (runId && clearinghouse.afterDownload === 'delete') await clearinghouse.remove(f.path);
-  deps.report(
-    runId
-      ? `Clearinghouse: received ${f.path}, run ${runId}`
-      : `Clearinghouse: left ${f.path} on the server: ${note}`
-  );
-};
-
-const pollTarget = async (deps: PollDeps, { source, clearinghouse }: PollTarget) => {
-  for (const f of await unseen(deps.db, source, await clearinghouse.pollResponses())) {
-    await receive(deps, source, clearinghouse, f).catch((err: unknown) =>
-      deps.report(`Clearinghouse: could not receive ${f.path}: ${String(err)}`)
-    );
+  if (runId) {
+    if (clearinghouse.afterDownload === 'delete') await inbox.remove(f.path);
+    deps.report(`Clearinghouse: received ${f.path}, run ${runId}`);
+  } else if (note && note !== previous) {
+    deps.report(`Clearinghouse: left ${f.path} on the server: ${note}`);
   }
 };
+
+const pollTarget = (deps: PollDeps, target: PollTarget) =>
+  target.clearinghouse.inbox(async (inbox) => {
+    for (const p of await pending(deps.db, target.source, await inbox.list())) {
+      await receive(deps, target, inbox, p).catch((err: unknown) =>
+        deps.report(`Clearinghouse: could not receive ${p.file.path}: ${String(err)}`)
+      );
+    }
+  });
 
 export const createClearinghousePoll = (deps: PollDeps) => async () => {
   for (const target of await deps.targets()) {

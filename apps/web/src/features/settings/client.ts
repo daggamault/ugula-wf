@@ -45,6 +45,7 @@ export type ClearinghouseConnection = {
   enabled: boolean;
   sftp_host: string;
   sftp_port: number;
+  sftp_host_key: string;
   sftp_username: string;
   secret_set: boolean;
   upload_path: string;
@@ -61,6 +62,7 @@ export type ConnectionInput = {
   enabled: boolean;
   sftpHost: string;
   sftpPort: number;
+  sftpHostKey: string;
   sftpUsername: string;
   secret: string | null;
   uploadPath: string;

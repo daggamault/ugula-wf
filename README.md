@@ -93,11 +93,12 @@ Copy `.env.example` to `.env` first. Run `pnpm check`, `pnpm typecheck`, and `pn
 
 ### Clearinghouse connection
 
-Each agency can set its own clearinghouse connection in Settings (Clearinghouse Connection: Waystar, the mock or another SFTP clearinghouse, with SFTP account, folders, extensions and an optional CAQH CORE real-time URL). Its password is encrypted with `CLEARINGHOUSE_SECRET_KEY` (32 random bytes, base64; the api and worker both need it) and never sent back to the browser. Agencies without one use the worker's `CLEARINGHOUSE_*` connection from `.env`, the dev default; leave `CLEARINGHOUSE_SFTP_HOST` empty for no default. Pointing at a real clearinghouse is a settings change:
+Each agency can set its own clearinghouse connection in Settings (Clearinghouse Connection: Waystar, the mock or another SFTP clearinghouse, with SFTP account, pinned host key, folders, extensions and an optional CAQH CORE real-time URL). Its password is encrypted with `CLEARINGHOUSE_SECRET_KEY` (32 random bytes, base64; the api and worker both need it; rotate by moving the old key to `CLEARINGHOUSE_PREVIOUS_SECRET_KEYS`) and never sent back to the browser. A paused connection exchanges nothing. Agencies without one use the worker's `CLEARINGHOUSE_*` connection from `.env`, the dev default; leave `CLEARINGHOUSE_SFTP_HOST` empty for no default. Outside `NODE_ENV=development` the api refuses the mock, private or local hosts, and real-time URLs that are not https. Pointing at a real clearinghouse is a settings change:
 
 | Setting                                | Mock (default)                        | TriZetto                               | Waystar                       |
 | -------------------------------------- | ------------------------------------- | -------------------------------------- | ----------------------------- |
 | `CLEARINGHOUSE_SFTP_HOST` / `_PORT`    | `localhost` / `2223`                  | from your TriZetto setup               | `sshftp.waystar.com` / `22`   |
+| `CLEARINGHOUSE_SFTP_HOST_KEY`          | the mock's fixed `SHA256:VM15…`       | from TriZetto                          | from Waystar                  |
 | `CLEARINGHOUSE_UPLOAD_PATH`            | `/upload`                             | the upload folder they give you        | `/upload` (write-only)        |
 | `CLEARINGHOUSE_DOWNLOAD_PATHS`         | `/download`                           | one folder each for 999, 277CA and 835 | `/download`                   |
 | `CLEARINGHOUSE_FILE_EXTENSION` (837P)  | `.CLP`                                | `.txt`                                 | `.CLP`                        |
@@ -110,7 +111,7 @@ Response files are recognized by content (ISA/GS/ST, or a TA1 segment), not by n
 
 ### Mock clearinghouse
 
-`.dev/mock-clearinghouse.ts` is a dev-only, in-memory clearinghouse that follows Waystar's conventions, so moving to Waystar is a settings change. `pnpm dev` starts it (`pnpm dev:clearinghouse` alone): SFTP on `CLEARINGHOUSE_SFTP_HOST`:`CLEARINGHOUSE_SFTP_PORT` for `CLEARINGHOUSE_SFTP_USERNAME` / `CLEARINGHOUSE_SFTP_PASSWORD`, and CORE real-time eligibility and claim status on `CLEARINGHOUSE_REALTIME_PORT`. Files and claim states live in memory and are gone on restart; the host key is new on every start.
+`.dev/mock-clearinghouse.ts` is a dev-only, in-memory clearinghouse that follows Waystar's conventions, so moving to Waystar is a settings change. `pnpm dev` starts it (`pnpm dev:clearinghouse` alone): SFTP on `CLEARINGHOUSE_SFTP_HOST`:`CLEARINGHOUSE_SFTP_PORT` for `CLEARINGHOUSE_SFTP_USERNAME` / `CLEARINGHOUSE_SFTP_PASSWORD`, and CORE real-time eligibility and claim status on `CLEARINGHOUSE_REALTIME_PORT`. Files and claim states live in memory and are gone on restart. Its host key is derived from a fixed seed, so its fingerprint never changes: `MOCK_HOST_KEY` in `@ugula/billing`, which the mock preset and `.env.example` pin.
 
 - Upload to the write-only `/upload` folder: 837P files as `<name>.CLP`, batch 270s as `<name>.ELG`, batch 276s as `<name>.CLS`, with no other periods in the name (`.part`, `.tmp` and `.filepart` uploads wait until renamed). About 2s later the file is picked up and removed.
 - Answers arrive in `/download` as `<ISA06>_<type>_<yyyyMMddHHmmss>_<seq>.<ext>` and are recognized by content:

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { AfterDownload, Clearinghouse, ClearinghouseFile } from '@ugula/billing';
+import type {
+  AfterDownload,
+  Clearinghouse,
+  ClearinghouseFile,
+  ClearinghouseInbox
+} from '@ugula/billing';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { RunJob, RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
@@ -22,6 +27,12 @@ const fakeClearinghouse = (
   afterDownload: AfterDownload = 'delete'
 ) => {
   const removed: string[] = [];
+  const sessions = { opened: 0 };
+  const inbox: ClearinghouseInbox = {
+    list: async () => Object.keys(files).map(file),
+    download: async (path) => new TextEncoder().encode(files[path.split('/').at(-1) ?? ''] ?? ''),
+    remove: async (path) => void removed.push(path)
+  };
   const clearinghouse: Clearinghouse = {
     submitClaims: async (name) => name,
     submitEligibility: async (name) => name,
@@ -29,26 +40,53 @@ const fakeClearinghouse = (
     checkEligibility: null,
     checkClaimStatus: null,
     afterDownload,
-    pollResponses: async () => Object.keys(files).map(file),
-    download: async (path) => new TextEncoder().encode(files[path.split('/').at(-1) ?? ''] ?? ''),
-    remove: async (path) => void removed.push(path)
+    inbox: (work) => {
+      sessions.opened++;
+      return work(inbox);
+    }
   };
-  return { clearinghouse, removed };
+  return { clearinghouse, inbox, removed, sessions };
 };
 
 const SOURCE = 'sftp://u@localhost:2223/outbound/999';
 
-const target = (clearinghouse: Clearinghouse): PollTarget => ({ source: SOURCE, clearinghouse });
+const target = (clearinghouse: Clearinghouse, agencyIds: string[] | null = null): PollTarget => ({
+  source: SOURCE,
+  clearinghouse,
+  agencyIds
+});
 
-type Directory = { profiles?: Record<string, string[]>; published?: boolean };
+type Seen = { run_id: string | null; note: string };
+
+type Directory = {
+  profiles?: Record<string, string[]>;
+  published?: boolean;
+  owners?: string[] | null;
+  seen?: Record<string, Seen>;
+};
 
 const poll = async (
   clearinghouse: Clearinghouse,
-  { profiles = { DEVEMS01: ['t1'] }, published = true }: Directory = {}
+  { profiles = { DEVEMS01: ['t1'] }, published = true, owners = null, seen = {} }: Directory = {}
 ) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.includes('from "billing_profiles"')) {
-      return (profiles[String(q.parameters[0])] ?? []).map((agency_id) => ({ agency_id }));
+      const [receiver, ...allowed] = q.parameters.map(String);
+      return (profiles[receiver ?? ''] ?? [])
+        .filter((a) => !allowed.length || allowed.includes(a))
+        .map((agency_id) => ({ agency_id }));
+    }
+    if (q.sql.startsWith('select') && q.sql.includes('from "clearinghouse_downloads"')) {
+      return Object.entries(seen).map(([name, row]) => ({
+        remote_path: file(name).path,
+        size: 10,
+        modified_at: file(name).modifiedAt,
+        ...row
+      }));
+    }
+    if (q.sql.startsWith('insert into "clearinghouse_downloads"')) {
+      const name = String(q.parameters[1]).split('/').at(-1) ?? '';
+      return seen[name]?.run_id ? [] : [{ id: `d-${name}` }];
     }
     if (q.sql.includes('select v.version')) return published ? [{ version: 1 }] : [];
     if (q.sql.includes('from unnest')) return published ? [{ id: 'v1', version: 1 }] : [];
@@ -71,38 +109,85 @@ const poll = async (
     db,
     boss,
     blobs,
-    targets: async () => [target(clearinghouse)],
+    targets: async () => [target(clearinghouse, owners)],
     report: (m) => reports.push(m)
   })();
   await db.destroy();
   const downloads = queries.filter((q) =>
     q.sql.startsWith('insert into "clearinghouse_downloads"')
   );
+  const linked = queries.filter((q) => q.sql.startsWith('update "clearinghouse_downloads"'));
   const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
-  return { downloads, run, jobs, stored, reports };
+  const routing = queries.filter((q) => q.sql.includes('from "billing_profiles"'));
+  return { downloads, linked, run, jobs, stored, reports, routing };
 };
 
 describe('createClearinghousePoll', () => {
   it('starts a Receive Payer File run per new file for the agency it is addressed to', async () => {
-    const { clearinghouse, removed } = fakeClearinghouse({ 'a.999': isa('DEVEMS01') });
-    const { downloads, run, jobs, stored, reports } = await poll(clearinghouse);
+    const { clearinghouse, removed, sessions } = fakeClearinghouse({ 'a.999': isa('DEVEMS01') });
+    const { downloads, linked, run, jobs, stored, reports } = await poll(clearinghouse);
     assert.deepEqual(stored, [`clearinghouse/t1/${Date.parse('2026-11-03T12:00:00Z')}-a.999`]);
     assert.ok(run?.parameters.includes('t1') && run.parameters.includes('v1'));
     assert.ok(
       run?.parameters.some((p) => typeof p === 'string' && p.includes('"fileName":"a.999"'))
     );
     assert.deepEqual(jobs, [{ runId: 'r1', command: { type: 'advance' } }]);
-    assert.deepEqual(downloads[0]?.parameters, [
+    assert.deepEqual(downloads[0]?.parameters.slice(0, 6), [
       SOURCE,
       '/outbound/999/a.999',
       10,
       new Date('2026-11-03T12:00:00Z'),
       't1',
-      'r1',
       ''
     ]);
+    assert.ok(downloads[0]?.sql.includes('where "clearinghouse_downloads"."run_id" is null'));
+    assert.deepEqual(linked[0]?.parameters, ['r1', 'd-a.999']);
     assert.deepEqual(removed, ['/outbound/999/a.999']);
     assert.deepEqual(reports, ['Clearinghouse: received /outbound/999/a.999, run r1']);
+    assert.equal(sessions.opened, 1);
+  });
+
+  it("routes files of an agency's own connection only to the agencies using it", async () => {
+    const { clearinghouse } = fakeClearinghouse({
+      'a.999': isa('DEVEMS01'),
+      'b.999': isa('OTHER')
+    });
+    const { jobs, routing, downloads } = await poll(clearinghouse, {
+      profiles: { DEVEMS01: ['t1'], OTHER: ['t2'] },
+      owners: ['t1']
+    });
+    assert.equal(jobs.length, 1);
+    assert.deepEqual(
+      routing.map((q) => q.parameters),
+      [
+        ['DEVEMS01', 't1'],
+        ['OTHER', 't1']
+      ]
+    );
+    assert.deepEqual(downloads[1]?.parameters.slice(4, 6), [
+      null,
+      'No agency using this connection has submitter ID OTHER'
+    ]);
+  });
+
+  it('tries again files it left on the server, saying so only when the reason changes', async () => {
+    const { clearinghouse } = fakeClearinghouse({
+      'a.999': isa('DEVEMS01'),
+      'b.999': isa('SOMEONE'),
+      'c.999': isa('NOBODY')
+    });
+    const { jobs, reports } = await poll(clearinghouse, {
+      seen: {
+        'a.999': { run_id: null, note: 'No agency has submitter ID DEVEMS01' },
+        'b.999': { run_id: null, note: 'No agency has submitter ID SOMEONE' },
+        'c.999': { run_id: null, note: 'Not an X12 file' }
+      }
+    });
+    assert.equal(jobs.length, 1);
+    assert.deepEqual(reports, [
+      'Clearinghouse: received /outbound/999/a.999, run r1',
+      'Clearinghouse: left /outbound/999/c.999 on the server: No agency has submitter ID NOBODY'
+    ]);
   });
 
   it('keeps received files on the server when configured to', async () => {
@@ -124,12 +209,12 @@ describe('createClearinghousePoll', () => {
       published: false
     });
     assert.deepEqual(
-      downloads.map((q) => q.parameters.slice(4)),
+      downloads.map((q) => q.parameters.slice(4, 6)),
       [
-        [null, null, 'Not an X12 file'],
-        [null, null, 'No agency has submitter ID SOMEONE'],
-        [null, null, 'More than one agency has submitter ID SHARED'],
-        ['t1', null, 'The billing.receive-payer-file workflow is not published']
+        [null, 'Not an X12 file'],
+        [null, 'No agency has submitter ID SOMEONE'],
+        [null, 'More than one agency has submitter ID SHARED'],
+        ['t1', 'The billing.receive-payer-file workflow is not published']
       ]
     );
     assert.equal(run, undefined);
@@ -140,10 +225,18 @@ describe('createClearinghousePoll', () => {
     );
   });
 
-  it('skips files it already downloaded in one lookup', async () => {
+  it('skips files it already received in one lookup', async () => {
     const { db, queries } = createRecordingDb((q: CompiledQuery) =>
       q.sql.includes('from "clearinghouse_downloads"')
-        ? [{ remote_path: file('a.999').path, size: 10, modified_at: file('a.999').modifiedAt }]
+        ? [
+            {
+              remote_path: file('a.999').path,
+              size: 10,
+              modified_at: file('a.999').modifiedAt,
+              run_id: 'r0',
+              note: ''
+            }
+          ]
         : []
     );
     const { clearinghouse, removed } = fakeClearinghouse({ 'a.999': isa('DEVEMS01') });
@@ -163,12 +256,12 @@ describe('createClearinghousePoll', () => {
   });
 
   it('reports a file it cannot receive and goes on to the next', async () => {
-    const { clearinghouse } = fakeClearinghouse({
+    const { clearinghouse, inbox } = fakeClearinghouse({
       'a.999': isa('DEVEMS01'),
       'b.999': isa('DEVEMS01')
     });
-    const download = clearinghouse.download;
-    clearinghouse.download = async (path) =>
+    const download = inbox.download;
+    inbox.download = async (path) =>
       path.endsWith('a.999') ? Promise.reject(new Error('connection reset')) : download(path);
     const { jobs, reports } = await poll(clearinghouse);
     assert.equal(jobs.length, 1);
@@ -183,11 +276,11 @@ describe('polling every connection', () => {
   it('polls each target and reports one that fails without stopping the others', async () => {
     const { db } = createRecordingDb(() => []);
     const reports: string[] = [];
-    const broken = fakeClearinghouse({}).clearinghouse;
-    broken.pollResponses = async () => Promise.reject(new Error('refused'));
+    const broken = fakeClearinghouse({});
+    broken.inbox.list = async () => Promise.reject(new Error('refused'));
     const polled: string[] = [];
-    const working = fakeClearinghouse({}).clearinghouse;
-    working.pollResponses = async () => {
+    const working = fakeClearinghouse({});
+    working.inbox.list = async () => {
       polled.push('second');
       return [];
     };
@@ -196,8 +289,8 @@ describe('polling every connection', () => {
       boss: { insert: async () => undefined },
       blobs: { putBytes: async () => assert.fail('nothing to store') },
       targets: async () => [
-        { source: 'one', clearinghouse: broken },
-        { source: 'two', clearinghouse: working }
+        { source: 'one', clearinghouse: broken.clearinghouse, agencyIds: null },
+        { source: 'two', clearinghouse: working.clearinghouse, agencyIds: ['t1'] }
       ],
       report: (m) => reports.push(m)
     })();

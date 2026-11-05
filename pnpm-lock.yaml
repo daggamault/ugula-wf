@@ -184,6 +184,9 @@ importers:
       '@ugula/billing':
         specifier: workspace:*
         version: link:libs/domain/billing
+      '@ugula/clearinghouse':
+        specifier: workspace:*
+        version: link:libs/platform/clearinghouse
       '@ugula/config':
         specifier: workspace:*
         version: link:libs/kernel/config

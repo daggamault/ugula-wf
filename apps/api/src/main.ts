@@ -3,7 +3,7 @@ import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Permission } from '@ugula/access';
 import { createSessionStore, type RedisLike } from '@ugula/auth';
 import { createNodeCatalog } from '@ugula/catalog';
-import { parseSecretKey, sealSecret } from '@ugula/clearinghouse';
+import { parseKeyring, sealSecret } from '@ugula/clearinghouse';
 import { createDb, type Db } from '@ugula/db';
 import type { NodeDef } from '@ugula/graph';
 import { createEmbedder, type Embedder } from '@ugula/inference';
@@ -218,7 +218,13 @@ export const createApp = ({
     )
     .route(
       '/clearinghouse-connection',
-      createConnectionRoutes(createConnectionService({ db, seal: sealSecret }))
+      createConnectionRoutes(
+        createConnectionService({
+          db,
+          seal: sealSecret,
+          allowLocal: config.NODE_ENV === 'development'
+        })
+      )
     )
     .use(
       '/claims/*',
@@ -288,8 +294,8 @@ if (import.meta.main) {
   });
   const boss = new PgBoss({ ...connection, supervise: false, schedule: false });
   await boss.start();
-  const secretKey = config.CLEARINGHOUSE_SECRET_KEY
-    ? parseSecretKey(config.CLEARINGHOUSE_SECRET_KEY)
+  const keyring = config.CLEARINGHOUSE_SECRET_KEY
+    ? parseKeyring(config.CLEARINGHOUSE_SECRET_KEY, config.CLEARINGHOUSE_PREVIOUS_SECRET_KEYS)
     : null;
   const blobs = createBlobStore(
     createS3Storage({
@@ -312,7 +318,7 @@ if (import.meta.main) {
       nodes: createNodeCatalog({ fetch }),
       announce: (agencyId, event) => publishLiveEvent(redis, agencyId, event),
       clientIp: (c) => getConnInfo(c).remote.address ?? 'unknown',
-      sealSecret: secretKey ? (secret, agencyId) => sealSecret(secretKey, secret, agencyId) : null
+      sealSecret: keyring ? (secret, agencyId) => sealSecret(keyring, secret, agencyId) : null
     }).fetch,
     port: config.API_PORT
   });

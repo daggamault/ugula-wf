@@ -96,4 +96,15 @@ describe('config primitives', () => {
     assert.equal(v.parse(schema, { CLEARINGHOUSE_SECRET_KEY: '' }).CLEARINGHOUSE_SECRET_KEY, '');
     assert.throws(() => v.parse(schema, { CLEARINGHOUSE_SECRET_KEY: 'short' }), /openssl rand/);
   });
+
+  it('reads previous secret keys as a comma separated list', () => {
+    const schema = v.object(secretKeyEnvEntries);
+    const [a, b] = [Buffer.alloc(32, 1), Buffer.alloc(32, 2)].map((k) => k.toString('base64'));
+    const previous = (raw?: string) =>
+      v.parse(schema, { CLEARINGHOUSE_PREVIOUS_SECRET_KEYS: raw })
+        .CLEARINGHOUSE_PREVIOUS_SECRET_KEYS;
+    assert.deepEqual(previous(` ${a} , ${b},`), [a, b]);
+    assert.deepEqual(previous(), []);
+    assert.throws(() => previous(`${a},short`), /openssl rand/);
+  });
 });

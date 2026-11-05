@@ -3,11 +3,14 @@ import { describe, it } from 'node:test';
 import * as v from 'valibot';
 import { connectionSchema } from './schemas.ts';
 
+const HOST_KEY = 'SHA256:VM159e2IEtdtiYxUoqIC5u7Z7D57F/k83MgfOvFrDdM';
+
 const waystarInput = {
   vendor: 'waystar',
   enabled: true,
   sftpHost: ' sshftp.waystar.com ',
   sftpPort: 22,
+  sftpHostKey: HOST_KEY,
   sftpUsername: 'acme',
   secret: 'hunter2',
   uploadPath: '/upload',
@@ -35,7 +38,13 @@ describe('connectionSchema', () => {
     for (const bad of [
       { vendor: 'trizetto' },
       { uploadPath: 'upload' },
+      { uploadPath: '/up\nload' },
       { downloadPaths: [] },
+      { downloadPaths: ['/a,b'] },
+      { downloadPaths: ['/a\u0000'] },
+      { sftpHostKey: '' },
+      { sftpHostKey: 'ssh-ed25519 AAAAC3Nza' },
+      { sftpHostKey: 'SHA256:short' },
       { claimExtension: 'CLP' },
       { sftpPort: 0 },
       { sftpHost: 'bad host' },

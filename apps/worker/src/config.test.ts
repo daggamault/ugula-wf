@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { clearinghouseOf, parseConfig } from './config.ts';
 
+const HOST_KEY = `SHA256:${'b'.repeat(43)}`;
+
 const rawEnv = {
   DB_HOST: 'localhost',
   DB_PORT: '5432',
@@ -59,6 +61,7 @@ describe('worker parseConfig', () => {
         CLEARINGHOUSE_SFTP_HOST: 'sftp.example.com',
         CLEARINGHOUSE_SFTP_USERNAME: 'agency',
         CLEARINGHOUSE_SFTP_PASSWORD: 'secret',
+        CLEARINGHOUSE_SFTP_HOST_KEY: HOST_KEY,
         CLEARINGHOUSE_DOWNLOAD_PATHS: '/outbound/999, /outbound/835',
         CLEARINGHOUSE_FILE_EXTENSION: '.CLP',
         CLEARINGHOUSE_ELIGIBILITY_EXTENSION: '.ELG',
@@ -70,6 +73,7 @@ describe('worker parseConfig', () => {
       port: 22,
       username: 'agency',
       password: 'secret',
+      hostKey: HOST_KEY,
       uploadPath: '/',
       downloadPaths: ['/outbound/999', '/outbound/835'],
       extensions: { claims: '.CLP', eligibility: '.ELG', claimStatus: '.txt' },
@@ -84,6 +88,14 @@ describe('worker parseConfig', () => {
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_REALTIME_URL: 'nope' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_SECRET_KEY: 'short' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_SFTP_HOST: 'sftp.example.com' }));
+    const unpinned = {
+      ...rawEnv,
+      CLEARINGHOUSE_SFTP_HOST: 'sftp.example.com',
+      CLEARINGHOUSE_SFTP_USERNAME: 'agency',
+      CLEARINGHOUSE_SFTP_PASSWORD: 'secret'
+    };
+    assert.throws(() => parseConfig(unpinned), /CLEARINGHOUSE_SFTP_HOST_KEY/);
+    assert.throws(() => parseConfig({ ...unpinned, CLEARINGHOUSE_SFTP_HOST_KEY: 'ab:cd' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_DOWNLOAD_PATHS: 'outbound' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_FILE_EXTENSION: 'xtxt' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_POLL_MINUTES: '60' }));
