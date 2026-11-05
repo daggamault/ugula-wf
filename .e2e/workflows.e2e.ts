@@ -150,8 +150,11 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     assert.ok(ingest, 'the import is listed');
     await go(s.page, `/runs/${ingest.run_id}`);
     await s.page.getByRole('heading', { name: 'Child Runs' }).first().waitFor();
-    await s.page.getByRole('link', { name: 'Open run #1 Encounter to Claim' }).first().click();
-    await s.page.getByText('Waiting').first().waitFor();
+    await s.page
+      .getByRole('link', { name: 'Open run #1 Encounter to Claim' })
+      .first()
+      .press('Enter');
+    await s.page.getByText('Waiting').first().waitFor({ timeout: FLOW_MS });
     await node(s.page, 'Open Draft Claim').first().waitFor();
     await s.page.getByRole('link', { name: 'Back to Ingest NEMSIS File' }).waitFor();
     await s.page.getByText('Waiting on').first().waitFor({ timeout: FLOW_MS });

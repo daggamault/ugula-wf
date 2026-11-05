@@ -95,6 +95,7 @@ describe('imports split files into reports and revise claims', { timeout: SUITE_
         await s.page.getByText('Destination odometer').first().waitFor();
       }
     });
+    await claimStatusIs(s, claimId, 'draft');
     const rebuilt = await workTasksUntil(s, claimId, 'needs_review');
     assert.equal(rebuilt.claim.id, claimId, 'the revision reworks the same claim');
     expectClaim(rebuilt, {

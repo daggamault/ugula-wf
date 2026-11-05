@@ -7,6 +7,7 @@ import {
   completeTask,
   config,
   decide,
+  FLOW_MS,
   go,
   heading,
   importEncounter,
@@ -113,8 +114,8 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
   });
 
   it('queues open claims and searches claims by encounter number and patient', async () => {
-    await reach(claims.worked, 'Review PCR');
-    await go(s.page, '/claims');
+    for (const claimId of Object.values(claims)) await reach(claimId, 'Review PCR');
+    await go(s.page, '/claims?sort=created&dir=desc&pageSize=100');
     await claimRow(pcrs.worked).waitFor();
     await searchClaims({ Number: pcrs.worked });
     await claimRow(pcrs.worked).waitFor();
@@ -193,7 +194,11 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
       .getByText(/A04\d\d/)
       .first()
       .waitFor();
-    await section(s.page, 'Eligibility').getByText('Not Checked').waitFor();
+    await section(s.page, 'Eligibility')
+      .getByRole('row')
+      .filter({ hasText: 'Medicare' })
+      .getByText('Active', { exact: true })
+      .waitFor({ timeout: FLOW_MS });
   });
 
   it('edits documentation on the claim data tab and shows it on the overview', async () => {
