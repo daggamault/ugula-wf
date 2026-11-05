@@ -110,14 +110,21 @@ const replaceLines = async (tx: Db, claimId: string, lines: NonNullable<ClaimEdi
     .execute();
 };
 
+const newPayerId = (agencyId: string) =>
+  sql`coalesce((select p.id from payers p where p.id = v.payer_id and p.agency_id = ${agencyId}), cc.payer_id)`;
+
+const keepIfInsuredSame = (agencyId: string, column: string) =>
+  sql`case when ${newPayerId(agencyId)} is not distinct from cc.payer_id and lower(coalesce(v.member_id, cc.member_id, '')) = lower(coalesce(cc.member_id, '')) then ${sql.ref(`cc.${column}`)} end`;
+
 const updateCoverages = (tx: Db, agencyId: string, claimId: string, edits: CoverageEdit[]) =>
   sql`
     update claim_coverages cc set
-      payer_id = coalesce(
-        (select p.id from payers p where p.id = v.payer_id and p.agency_id = ${agencyId}),
-        cc.payer_id
-      ),
+      payer_id = ${newPayerId(agencyId)},
       member_id = coalesce(v.member_id, cc.member_id),
+      eligibility = ${keepIfInsuredSame(agencyId, 'eligibility')},
+      eligibility_note = ${keepIfInsuredSame(agencyId, 'eligibility_note')},
+      eligibility_checked_at = ${keepIfInsuredSame(agencyId, 'eligibility_checked_at')},
+      eligibility_requested_at = ${keepIfInsuredSame(agencyId, 'eligibility_requested_at')},
       group_id = coalesce(v.group_id, cc.group_id),
       relationship = coalesce(v.relationship, cc.relationship),
       insured_first_name = coalesce(v.insured_first_name, cc.insured_first_name),

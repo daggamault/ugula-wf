@@ -74,7 +74,7 @@ export const createSubmissionService = ({ db, boss, now, blobs }: SubmissionServ
       const runId = await startRun(tx, boss, {
         agencyId,
         versionId: version.id,
-        inputs: { claimId },
+        inputs: { claimId, force: true },
         interactive: true
       });
       return ok({ runId });

@@ -21,7 +21,10 @@ import {
   eligibilityRequests,
   findEligibilityClaim,
   findProfile,
+  markEligibilityRequested,
   NO_CHECKABLE_PAYER,
+  NOTHING_TO_ASK,
+  reuseEligibility,
   toSubmitter
 } from '@ugula/db';
 import type { BlobStore } from '@ugula/storage';
@@ -175,35 +178,46 @@ export const createExchangeStore = ({
     (await runAgency(db, runId).executeTakeFirstOrThrow()).agency_id;
 
   return {
-    checkEligibility: async (runId, claimId) => {
+    checkEligibility: async (runId, claimId, _sourceKey, force) => {
       const agencyId = await agencyOf(runId);
-      const row = isUuid(claimId) ? await findEligibilityClaim(db, agencyId, claimId) : undefined;
+      if (!isUuid(claimId)) return unavailable('The claim has no patient to ask about yet');
+      if (!force) await reuseEligibility(db, agencyId, claimId);
+      const row = await findEligibilityClaim(db, agencyId, claimId);
       if (!row) return unavailable('The claim has no patient to ask about yet');
-      const requests = eligibilityRequests(row, now());
-      if (!requests.length) return unavailable(NO_CHECKABLE_PAYER);
+      if (!eligibilityRequests(row, now()).length) return unavailable(NO_CHECKABLE_PAYER);
+      const requests = eligibilityRequests(row, now(), { force });
+      if (!requests.length) return unavailable(NOTHING_TO_ASK);
       const ready = await prepare(agencyId);
       if (ready.status !== 'ready') return ready;
       const { submitter, clearinghouse, controlNumber } = ready;
       const text = build270(submitter, requests, { controlNumber, createdAt: now() });
       const name = exchangeFileName('eligibility', controlNumber, claimId);
+      const asked = () =>
+        markEligibilityRequested(
+          db,
+          agencyId,
+          requests.map((r) => r.trace),
+          now()
+        );
       let reason: string | null = null;
       if (clearinghouse.checkEligibility) {
         const answer = await clearinghouse.checkEligibility(text);
         if (answer.ok) {
+          await asked();
           const { fileName, applied } = await keep(runId, agencyId, `271-${name}`, answer.text);
-          if (applied.status !== 'unreadable') {
-            return {
-              status: 'answered',
-              fileName,
-              reviews: applied.status === 'applied' ? applied.reviews : []
-            };
+          if (applied.status === 'unreadable') {
+            return unavailable(`The real-time answer could not be read: ${applied.reason}`);
           }
-          reason = applied.reason;
-        } else {
-          reason = answer.error;
+          return {
+            status: 'answered',
+            fileName,
+            reviews: applied.status === 'applied' ? applied.reviews : []
+          };
         }
+        reason = answer.error;
       }
       const sentAs = await clearinghouse.submitEligibility(name, bytesOf(text));
+      await asked();
       return { status: 'sent', sentAs, reason };
     },
 

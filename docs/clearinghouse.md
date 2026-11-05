@@ -42,7 +42,7 @@
 
 ## Eligibility and claim status requests
 
-- `billing.check-eligibility` runs `Check Eligibility with Clearinghouse` (`billing.send-270`): real time when the connection has a real-time URL, applying the 271 at once as a payer file; otherwise, or when real time fails, a batch `.ELG` upload. It starts when Encounter to Claim saves a claim's payers and from **Check Eligibility** on a claim; **Download 270** still builds the file for a biller.
+- `billing.check-eligibility` runs `Check Eligibility with Clearinghouse` (`billing.send-270`): real time when the connection has a real-time URL, applying the 271 at once as a payer file; otherwise, or when real time gets no answer, a batch `.ELG` upload (an answer that cannot be read is not re-sent in batch). Coverages already answered or with a request pending (`eligibility_requested_at`) are skipped, and an answer from another claim of the same patient, payer and member ID in the same month of service is copied instead of asking. It starts when Encounter to Claim saves a claim's payers and from **Check Eligibility** on a claim, which forces a new request; **Download 270** still builds the file for a biller.
 - `Follow Up with Payer` first runs `Check Claim Status with Clearinghouse` (`billing.send-276`): real time, or a batch `.CLS` upload followed by a wait of up to a day for the claim to change, then shows the latest status in the follow-up task.
 
 ## Waystar conventions

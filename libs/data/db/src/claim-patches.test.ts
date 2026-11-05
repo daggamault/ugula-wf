@@ -101,7 +101,15 @@ describe('applyClaimEdit', () => {
     const cleared = sqls.findIndex((s) => s.startsWith('delete from "claim_diagnoses"'));
     assert.ok(cleared >= 0 && sqls[cleared + 1]?.startsWith('insert into "claim_diagnoses"'));
     assert.ok(sqls.some((s) => s.startsWith('insert into "claim_lines"')));
-    assert.ok(sqls.some((s) => /update claim_coverages cc set\s+payer_id/.test(s)));
+    const coverages = sqls.find((s) => /update claim_coverages cc set\s+payer_id/.test(s)) ?? '';
+    for (const column of [
+      'eligibility',
+      'eligibility_note',
+      'eligibility_checked_at',
+      'eligibility_requested_at'
+    ]) {
+      assert.match(coverages, new RegExp(`${column} = case when .* then "cc"\\."${column}" end`));
+    }
     assert.ok(sqls.some((s) => s.startsWith('delete from "claim_coverages"')));
     assert.ok(sqls.some((s) => /row_number\(\) over/.test(s)));
     assert.ok(sqls.some((s) => /insert into "claim_coverages".*select/s.test(s)));

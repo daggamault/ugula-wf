@@ -84,6 +84,7 @@ const updateCoverages = (
       eligibility = ${keepIfSame('eligibility')},
       eligibility_note = ${keepIfSame('eligibility_note')},
       eligibility_checked_at = ${keepIfSame('eligibility_checked_at')},
+      eligibility_requested_at = ${keepIfSame('eligibility_requested_at')},
       stay_kind = ${keepIfSame('stay_kind')},
       stay_admitted_on = ${keepIfSame('stay_admitted_on')},
       stay_discharged_on = ${keepIfSame('stay_discharged_on')}

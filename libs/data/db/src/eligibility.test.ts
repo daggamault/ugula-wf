@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { eligibilityRequests, findEligibilityClaim } from './eligibility.ts';
+import {
+  eligibilityRequests,
+  findEligibilityClaim,
+  markEligibilityRequested,
+  reuseEligibility
+} from './eligibility.ts';
 import { createRecordingDb } from './testing.ts';
 
 const MEDICARE = '01a16617-7704-7ba6-b9b5-000000000001';
@@ -24,7 +29,8 @@ const row = {
       member_id: '1EG4TE5MK73',
       relationship: '18',
       insured_first_name: null,
-      insured_last_name: null
+      insured_last_name: null,
+      asked: false
     },
     {
       id: BLUE,
@@ -33,7 +39,8 @@ const row = {
       member_id: 'XYZ1',
       relationship: '19',
       insured_first_name: 'John',
-      insured_last_name: 'Doe'
+      insured_last_name: 'Doe',
+      asked: false
     },
     {
       id: 'c2',
@@ -42,7 +49,8 @@ const row = {
       member_id: 'Q',
       relationship: '18',
       insured_first_name: null,
-      insured_last_name: null
+      insured_last_name: null,
+      asked: false
     }
   ]
 };
@@ -97,5 +105,54 @@ describe('eligibilityRequests', () => {
       ),
       []
     );
+  });
+});
+
+describe('eligibilityRequests unless forced', () => {
+  it('skips payers already answered or waiting for an answer', () => {
+    const asked = {
+      ...row,
+      coverages: row.coverages.map((c) => ({ ...c, asked: c.id === MEDICARE }))
+    };
+    assert.deepEqual(
+      eligibilityRequests(asked, evening, { force: false }).map((r) => r.trace),
+      [BLUE]
+    );
+    assert.deepEqual(
+      eligibilityRequests(asked, evening).map((r) => r.trace),
+      [MEDICARE, BLUE]
+    );
+  });
+});
+
+describe('reuseEligibility', () => {
+  it("copies another claim's answer for the same patient, payer and member ID in the same month of service", async () => {
+    const { db, queries } = createRecordingDb(() => [{ id: MEDICARE }]);
+    const r = await reuseEligibility(db, 't1', 'c1');
+    assert.deepEqual(r.rows, [{ id: MEDICARE }]);
+    const [q] = queries;
+    assert.ok(q?.sql.includes('oc.patient_id = c.patient_id'));
+    assert.ok(q?.sql.includes('lower(o.member_id) = lower(cc.member_id)'));
+    assert.ok(
+      q?.sql.includes("date_trunc('month', oc.service_date) = date_trunc('month', c.service_date)")
+    );
+    assert.ok(q?.sql.includes('cc.eligibility is null'));
+    assert.ok(q?.sql.includes('cc.eligibility_requested_at is null'));
+    assert.deepEqual(q?.parameters, ['t1', 'c1']);
+  });
+});
+
+describe('markEligibilityRequested', () => {
+  it('stamps the coverages asked about within the agency, and nothing when none were', async () => {
+    const { db, queries } = createRecordingDb();
+    const at = new Date('2026-11-05T12:00:00Z');
+    await markEligibilityRequested(db, 't1', [MEDICARE], at);
+    await markEligibilityRequested(db, 't1', [], at);
+    assert.equal(queries.length, 1);
+    assert.match(
+      queries[0]?.sql ?? '',
+      /update "claim_coverages" set "eligibility_requested_at" = \$1/
+    );
+    assert.deepEqual(queries[0]?.parameters, [at, 't1', MEDICARE]);
   });
 });

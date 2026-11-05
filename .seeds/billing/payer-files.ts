@@ -105,7 +105,7 @@ const checkEligibility = (): GraphDef => {
   const g = graph({
     execIn: ['exec'],
     execOut: [],
-    inputs: [p('claimId', 'string')],
+    inputs: [p('claimId', 'string'), p('force', 'boolean', true)],
     outputs: [
       p('sentAs', 'string', true),
       p('reason', 'string', true),
@@ -134,6 +134,7 @@ const checkEligibility = (): GraphDef => {
   g.ret('return');
   g.wire('entry.exec', 'send.exec');
   g.wire('entry.claimId', 'send.claimId');
+  g.wire('entry.force', 'send.force');
   g.wire('send.answered', 'spawn.exec');
   g.wire('send.fileName', 'shared.fileName');
   g.wire('shared.result', 'lines.shared');
@@ -522,7 +523,7 @@ export const payerFileGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.check-eligibility',
     'Check Eligibility',
-    "Asks the clearinghouse whether each payer on a claim covers the patient: a real-time 270 when the agency's connection supports it (its 271 is applied at once, and an inactive coverage blocks billing that payer), else a batch 270 whose 271 arrives with the payer files. Asks a biller about each answer that needs one, such as a Medicare answer naming a Medicare Advantage plan. Started when Encounter to Claim saves a claim's payers, and from Check Eligibility on a claim.",
+    "Asks the clearinghouse whether each payer on a claim covers the patient: a real-time 270 when the agency's connection supports it (its 271 is applied at once, and an inactive coverage blocks billing that payer), else a batch 270 whose 271 arrives with the payer files. A payer already answered or waiting for an answer is not asked again, and an answer from another claim of the patient with the same payer and member ID in the same month of service is reused, unless the check is forced. Asks a biller about each answer that needs one, such as a Medicare answer naming a Medicare Advantage plan. Started when Encounter to Claim saves a claim's payers, and forced from Check Eligibility on a claim.",
     checkEligibility()
   )
 ];

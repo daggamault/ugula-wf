@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { AppliedPayerFile, Clearinghouse, RealtimeAnswer } from '@ugula/billing';
 import { build277Status } from '@ugula/billing/mock';
+import { NOTHING_TO_ASK } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { CompiledQuery } from 'kysely';
 import { createExchangeStore, statusInquiry } from './exchange.ts';
@@ -44,7 +45,8 @@ const eligibilityRow = {
       member_id: '1EG4TE5MK73',
       relationship: '18',
       insured_first_name: null,
-      insured_last_name: null
+      insured_last_name: null,
+      asked: false
     }
   ]
 };
@@ -68,21 +70,28 @@ type Options = {
   connected?: boolean;
   withProfile?: boolean;
   submitted?: boolean;
+  asked?: boolean;
+  readable?: boolean;
 };
 
 const setup = ({
   realtime = null,
   connected = true,
   withProfile = true,
-  submitted = true
+  submitted = true,
+  asked = false,
+  readable = true
 }: Options = {}) => {
-  const { db } = createRecordingDb((q: CompiledQuery) => {
+  const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.startsWith('select "agency_id" from "workflow_runs"')) return [{ agency_id: 't1' }];
     if (q.sql.startsWith('update "billing_profiles"')) return [{ control_number: 7 }];
     if (q.sql.includes('from "billing_profiles"')) return withProfile ? [profile] : [];
     if (q.sql.includes('inner join "claim_coverages" as "cc"'))
       return [{ ...statusRow, submitted }];
-    if (q.sql.includes('from "claims" as "c"')) return [eligibilityRow];
+    if (q.sql.includes('from "claims" as "c"'))
+      return [
+        { ...eligibilityRow, coverages: eligibilityRow.coverages.map((c) => ({ ...c, asked })) }
+      ];
     return [];
   });
   const uploads: [string, string][] = [];
@@ -118,6 +127,7 @@ const setup = ({
     },
     applyDocument: async (_runId, ref, fileName): Promise<AppliedPayerFile> => {
       applied.push(`${fileName}@${ref.key}`);
+      if (!readable) return { status: 'unreadable', reason: 'Not a 271' };
       return {
         status: 'applied',
         fileId: 'f1',
@@ -129,13 +139,18 @@ const setup = ({
     clearinghouseFor: async () => (connected ? clearinghouse : null),
     now: () => new Date('2026-11-04T15:30:00Z')
   });
-  return { store, uploads, sent, stored, applied };
+  const stamped = () =>
+    queries.filter((q) =>
+      q.sql.startsWith('update "claim_coverages" set "eligibility_requested_at"')
+    ).length;
+  const reused = () => queries.some((q) => q.sql.includes('update claim_coverages cc set'));
+  return { store, uploads, sent, stored, applied, stamped, reused };
 };
 
 describe('checkEligibility', () => {
   it('asks in real time and applies the 271 answer like a payer file', async () => {
     const s = setup({ realtime: { ok: true, text: 'ISA*271~' } });
-    const r = await s.store.checkEligibility('r1', CLAIM, 'k');
+    const r = await s.store.checkEligibility('r1', CLAIM, 'k', false);
     assert.equal(r.status, 'answered');
     assert.equal(r.status === 'answered' && r.fileName, '271-270-000000007-01a16617.x12');
     assert.equal(r.status === 'answered' && r.reviews.length, 1);
@@ -150,29 +165,71 @@ describe('checkEligibility', () => {
 
   it('falls back to a batch 270 when real time fails or is not offered', async () => {
     const failed = setup({ realtime: { ok: false, error: 'Timed out' } });
-    assert.deepEqual(await failed.store.checkEligibility('r1', CLAIM, 'k'), {
+    assert.deepEqual(await failed.store.checkEligibility('r1', CLAIM, 'k', false), {
       status: 'sent',
       sentAs: '270-000000007-01a16617.ELG',
       reason: 'Timed out'
     });
     assert.equal(failed.uploads[0]?.[0], '270-000000007-01a16617');
     const batch = setup();
-    assert.deepEqual(await batch.store.checkEligibility('r1', CLAIM, 'k'), {
+    assert.deepEqual(await batch.store.checkEligibility('r1', CLAIM, 'k', false), {
       status: 'sent',
       sentAs: '270-000000007-01a16617.ELG',
       reason: null
     });
   });
 
+  it('reuses answers and stamps the payers it asked about', async () => {
+    const s = setup();
+    await s.store.checkEligibility('r1', CLAIM, 'k', false);
+    assert.ok(s.reused());
+    assert.equal(s.stamped(), 1);
+    const forced = setup();
+    await forced.store.checkEligibility('r1', CLAIM, 'k', true);
+    assert.equal(forced.reused(), false);
+    assert.equal(forced.stamped(), 1);
+  });
+
+  it('does not ask again about payers answered or waiting, unless forced', async () => {
+    const s = setup({ asked: true });
+    assert.deepEqual(await s.store.checkEligibility('r1', CLAIM, 'k', false), {
+      status: 'unavailable',
+      reason: NOTHING_TO_ASK
+    });
+    assert.equal(s.uploads.length, 0);
+    const forced = setup({ asked: true });
+    assert.equal((await forced.store.checkEligibility('r1', CLAIM, 'k', true)).status, 'sent');
+  });
+
+  it('does not pay for a batch 270 after a real-time answer that cannot be read', async () => {
+    const s = setup({ realtime: { ok: true, text: 'nope' }, readable: false });
+    assert.deepEqual(await s.store.checkEligibility('r1', CLAIM, 'k', false), {
+      status: 'unavailable',
+      reason: 'The real-time answer could not be read: Not a 271'
+    });
+    assert.equal(s.uploads.length, 0);
+    assert.equal(s.stamped(), 1);
+  });
+
   it('says why it cannot ask', async () => {
-    const offline = await setup({ connected: false }).store.checkEligibility('r1', CLAIM, 'k');
+    const offline = await setup({ connected: false }).store.checkEligibility(
+      'r1',
+      CLAIM,
+      'k',
+      false
+    );
     assert.match(
       offline.status === 'unavailable' ? offline.reason : '',
       /no clearinghouse connection/
     );
-    const noProfile = await setup({ withProfile: false }).store.checkEligibility('r1', CLAIM, 'k');
+    const noProfile = await setup({ withProfile: false }).store.checkEligibility(
+      'r1',
+      CLAIM,
+      'k',
+      false
+    );
     assert.equal(noProfile.status, 'unavailable');
-    const bad = await setup().store.checkEligibility('r1', 'not-a-claim', 'k');
+    const bad = await setup().store.checkEligibility('r1', 'not-a-claim', 'k', false);
     assert.equal(bad.status, 'unavailable');
   });
 });

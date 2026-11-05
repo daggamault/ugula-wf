@@ -502,6 +502,7 @@ type ClaimCoveragesTable = {
   >;
   eligibility_note: ColumnType<string | null, string | null | undefined, string | null>;
   eligibility_checked_at: NullableTimestamp;
+  eligibility_requested_at: NullableTimestamp;
   stay_kind: ColumnType<StayKind | null, StayKind | null | undefined, StayKind | null>;
   stay_admitted_on: NullableDate;
   stay_discharged_on: NullableDate;

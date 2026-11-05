@@ -241,6 +241,7 @@ const buildClaimCoveragesTable = (db: Kysely<Database>) =>
     .addColumn('eligibility', 'text')
     .addColumn('eligibility_note', 'text')
     .addColumn('eligibility_checked_at', 'timestamptz')
+    .addColumn('eligibility_requested_at', 'timestamptz')
     .addColumn('stay_kind', 'text')
     .addColumn('stay_admitted_on', 'date')
     .addColumn('stay_discharged_on', 'date')

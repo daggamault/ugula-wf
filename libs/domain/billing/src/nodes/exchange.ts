@@ -13,9 +13,9 @@ export const exchangeNodes: NodesOf = (stores) => [
     title: 'Check Eligibility with Clearinghouse',
     category: CATEGORY,
     description:
-      "Asks the clearinghouse whether each payer on a claim with a directory payer and member ID covers the patient on the date of service. Sends a real-time 270 when the agency's connection supports it and applies the 271 answer at once (an inactive coverage blocks billing that payer), outputting the lines a biller has to look at, such as a Medicare answer that names a Medicare Advantage plan. Otherwise, or when the real-time request fails, uploads a batch 270 whose 271 arrives with the payer files. Continues through unavailable, saying why, without a connection, billing profile or payer to check.",
+      "Asks the clearinghouse whether each payer on a claim with a directory payer and member ID covers the patient on the date of service. Unless forced, a payer that already has an answer or a request waiting for one is not asked again, and an answer for the same patient, payer and member ID in the same month of service on another claim is reused. Sends a real-time 270 when the agency's connection supports it and applies the 271 answer at once (an inactive coverage blocks billing that payer), outputting the lines a biller has to look at, such as a Medicare answer that names a Medicare Advantage plan. Otherwise, or when the real-time request gets no answer, uploads a batch 270 whose 271 arrives with the payer files; a real-time answer that cannot be read is not asked again in batch. Continues through unavailable, saying why, without a connection, billing profile or payer to check.",
     effect: true,
-    inputs: [claimIdPin],
+    inputs: [claimIdPin, pin('force', 'boolean', { optional: true })],
     outputs: [
       pin('fileName', 'string'),
       pin('reviews', { list: PAYER_FILE_LINE }),
@@ -27,7 +27,8 @@ export const exchangeNodes: NodesOf = (stores) => [
       const r = await stores().exchange.checkEligibility(
         ctx.runId,
         claimIdOf(inputs.claimId),
-        ctx.key
+        ctx.key,
+        inputs.force === true
       );
       const none = { fileName: null, reviews: [], sentAs: null, reason: null };
       switch (r.status) {

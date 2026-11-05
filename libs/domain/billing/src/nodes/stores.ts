@@ -299,7 +299,8 @@ export type ExchangeStore = {
   checkEligibility: (
     runId: string,
     claimId: string,
-    sourceKey: string
+    sourceKey: string,
+    force: boolean
   ) => Promise<EligibilityCheck>;
   checkClaimStatus: (
     runId: string,
