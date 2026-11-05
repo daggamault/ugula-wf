@@ -20,7 +20,7 @@
     "dev:clearinghouse": "tsx --env-file=.env .dev/mock-clearinghouse.ts",
     "build": "pnpm -r --parallel run build",
     "typecheck": "tsc --noEmit && pnpm -r --parallel run typecheck",
-    "test": "node --test libs/*.test.ts && pnpm -r --parallel run test",
+    "test": "node --test libs/*.test.ts .dev/*.test.ts && pnpm -r --parallel run test",
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "db:migrate": "tsx --env-file=.env .migrations/migrate.ts",
