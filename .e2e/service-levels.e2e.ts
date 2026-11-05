@@ -107,7 +107,7 @@ describe('the level of service follows what the report documents', { timeout: SU
       ['HC:A0434:HH', 'HC:A0425:HH']
     );
     assert.match(file, /CR1\*LB\*212\*\*D\*DH\*42\.2~/);
-    assert.match(file, /CLM\*\d+\*[\d.]+\*\*\*41:B:1\*/);
+    assert.match(file, /CLM\*\d{8}-\d+\*[\d.]+\*\*\*41:B:1\*/);
   });
 
   it('never bills SCT for a 911 response, even by a critical care crew', async () => {
