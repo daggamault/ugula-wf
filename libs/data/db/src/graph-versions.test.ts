@@ -7,6 +7,7 @@ import {
   dependencyOf,
   findDefinitions,
   findPublishedGraphs,
+  findRuleBundle,
   findRunGraphs,
   pinRunGraphs,
   pinRunsGraphs
@@ -121,6 +122,19 @@ describe('shared graph queries', () => {
     assert.deepEqual(copy?.parameters, [['r-2', 'r-3'], 'r-1']);
     assert.match(copyTables?.sql ?? '', /from workflow_run_tables p/);
     assert.deepEqual(copyTables?.parameters, [['r-2', 'r-3'], 'r-1']);
+    await db.destroy();
+  });
+
+  it('resolves a rule and every graph it calls for an agency, without a run', async () => {
+    const rows = [{ id: 'v-1', key: 'billing.claim-checks', version: 2, definition: {} }];
+    const { db, queries } = createRecordingDb(() => rows);
+    assert.deepEqual(await findRuleBundle(db, 't-1', 'billing.claim-checks'), rows);
+    const [query] = queries;
+    assert.match(query?.sql ?? '', /with recursive bundle/);
+    assert.match(query?.sql ?? '', /max\(v\.version\)/);
+    assert.ok(query?.parameters.includes('billing.claim-checks'));
+    assert.ok(query?.parameters.includes('t-1'));
+    assert.ok(!(query?.sql ?? '').includes('workflow_run_graphs'));
     await db.destroy();
   });
 

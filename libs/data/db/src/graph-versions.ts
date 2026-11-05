@@ -197,3 +197,38 @@ export const buildLatestVersion = (agencyId: string, key: string) => sql<{ versi
     )
   order by g.organization_id is not null, v.version desc
   limit 1`;
+
+const newestSystemVersion = (key: RawBuilder<unknown>) => sql`(
+  select max(v.version)
+  from graphs g
+  join graph_versions v on v.graph_id = g.id
+  where g.key = ${key} and g.organization_id is null and v.published_at is not null
+)`;
+
+export const buildFindRuleBundle = (agencyId: string, key: string) => sql<PublishedGraph>`
+  with recursive bundle (id, key, version) as (
+    select r.id, req.key, req.version
+    from (select ${key}::text as key, ${newestSystemVersion(sql`${key}::text`)} as version) req
+    cross join lateral ${resolved(agencyId, sql.ref('req.key'), sql.ref('req.version'))} r
+    where r.id is not null
+    union
+    select r.id, dep.key, dep.version
+    from bundle b
+    join graph_versions gv on gv.id = b.id
+    cross join lateral (
+      select split_part(d, '@', 1) as key, split_part(d, '@', 2)::int as version
+      from unnest(gv.dependencies) as d
+    ) dep
+    cross join lateral ${resolved(agencyId, sql.ref('dep.key'), sql.ref('dep.version'))} r
+    where r.id is not null
+  )
+  select b.id, b.key, b.version, gv.definition
+  from bundle b
+  join graph_versions gv on gv.id = b.id
+  order by b.key, b.version`;
+
+export const findRuleBundle = async (
+  db: Kysely<Database>,
+  agencyId: string,
+  key: string
+): Promise<PublishedGraph[]> => (await buildFindRuleBundle(agencyId, key).execute(db)).rows;

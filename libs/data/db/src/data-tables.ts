@@ -85,3 +85,25 @@ export const findTableDefinitions = async (
         .where('v.id', 'in', [...new Set(ids)])
         .execute()
     : [];
+
+export const buildFindGraphTables = (agencyId: string, versionIds: string[]) => sql<{
+  key: string;
+  kind: TableKind;
+  definition: unknown;
+}>`
+  select k.key, t.kind, tv.definition
+  from (
+    select distinct jsonb_path_query(gv.definition, ${TABLE_KEYS_PATH}::jsonpath) #>> '{}' as key
+    from graph_versions gv
+    where gv.id = any(${versionIds}::uuid[])
+  ) k
+  cross join lateral (select ${resolvedTable(agencyId, sql.ref('k.key'))} as id) r
+  join data_table_versions tv on tv.id = r.id
+  join data_tables t on t.id = tv.table_id
+  order by k.key`;
+
+export const findGraphTables = async (
+  db: Kysely<Database>,
+  agencyId: string,
+  versionIds: string[]
+) => (versionIds.length ? (await buildFindGraphTables(agencyId, versionIds).execute(db)).rows : []);

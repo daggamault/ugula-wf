@@ -4,6 +4,7 @@ import { sql } from 'kysely';
 import {
   buildCopyRunTables,
   buildPinRunTables,
+  findGraphTables,
   findTableDefinitions,
   resolvedTable
 } from './data-tables.ts';
@@ -37,6 +38,17 @@ describe('data table queries', () => {
     assert.ok(child.includes('select p.table_version_id from workflow_run_tables p'));
     const copy = buildCopyRunTables('r-1', ['r-2']).compile(db);
     assert.deepEqual(copy.parameters, [['r-2'], 'r-1']);
+    await db.destroy();
+  });
+
+  it('resolves every table some graph versions reference for an agency, without a run', async () => {
+    const rows = [{ key: 'billing.check-severity', kind: 'lookup', definition: {} }];
+    const { db, queries } = createRecordingDb(() => rows);
+    assert.deepEqual(await findGraphTables(db, 't-1', []), []);
+    assert.equal(queries.length, 0);
+    assert.deepEqual(await findGraphTables(db, 't-1', ['v-1', 'v-2']), rows);
+    assert.match(flat(queries[0]?.sql ?? ''), /jsonb_path_query\(gv\.definition/);
+    assert.ok(queries[0]?.parameters.some((p) => Array.isArray(p) && p.includes('v-2')));
     await db.destroy();
   });
 
