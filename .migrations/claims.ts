@@ -31,7 +31,7 @@ import {
   US_STATE_PATTERN,
   ZIP_CODE_PATTERN
 } from '@ugula/billing';
-import type { Database } from '@ugula/db';
+import { CLAIM_STATUS_REQUEST_STATUSES, type Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { agencyNoActionForeignKey, agencySetNullForeignKey } from './foreign-keys.ts';
 import { dailyNumberCheck, dailyNumberTrigger } from './numbers.ts';
@@ -354,6 +354,43 @@ const buildClaimBatchesTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint('claim_batches_counts_check', sql`claim_count > 0 and total_cents >= 0`);
 
+const buildClaimStatusRequestsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('claim_status_requests')
+    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
+    .addColumn('agency_id', 'uuid', (col) => col.notNull())
+    .addColumn('claim_id', 'uuid', (col) => col.notNull())
+    .addColumn('source_key', 'text', (col) => col.notNull())
+    .addColumn('control_number', 'integer', (col) => col.notNull())
+    .addColumn('status', 'text', (col) => col.notNull().defaultTo('pending'))
+    .addColumn('note', 'text')
+    .addColumn('sent_as', 'text')
+    .addColumn('signals_seen', 'integer')
+    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addForeignKeyConstraint(
+      'claim_status_requests_claim_id_fkey',
+      ['agency_id', 'claim_id'],
+      'claims',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
+    .addUniqueConstraint('claim_status_requests_agency_id_source_key_unique', [
+      'agency_id',
+      'source_key'
+    ])
+    .addCheckConstraint(
+      'claim_status_requests_status_check',
+      sql`status in (${list(CLAIM_STATUS_REQUEST_STATUSES)})`
+    )
+    .addCheckConstraint(
+      'claim_status_requests_result_check',
+      sql`(status = 'sent') = (sent_as is not null and signals_seen is not null) and (status not in ('answered', 'unavailable') or note is not null)`
+    )
+    .addCheckConstraint(
+      'claim_status_requests_control_number_check',
+      sql`control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER)}`
+    );
+
 const buildClaimEventsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('claim_events')
@@ -512,7 +549,11 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
     .createIndex('idx_claim_batches_agency_created')
     .on('claim_batches')
     .columns(['agency_id', 'created_at desc']),
-  db.schema.createIndex('idx_claim_batches_created_by').on('claim_batches').column('created_by')
+  db.schema.createIndex('idx_claim_batches_created_by').on('claim_batches').column('created_by'),
+  db.schema
+    .createIndex('idx_claim_status_requests_claim_id')
+    .on('claim_status_requests')
+    .column('claim_id')
 ];
 
 export const createClaimsTables = async (db: Kysely<Database>) => {
@@ -527,6 +568,7 @@ export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimDiagnosesTable(db).execute();
   await buildClaimDocumentsTable(db).execute();
   await buildClaimBatchesTable(db).execute();
+  await buildClaimStatusRequestsTable(db).execute();
   await buildClaimEventsTable(db).execute();
   await buildClaimEventAdjustmentsTable(db).execute();
 

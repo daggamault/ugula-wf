@@ -72,6 +72,7 @@ type Options = {
   submitted?: boolean;
   asked?: boolean;
   readable?: boolean;
+  prior?: Record<string, unknown>;
 };
 
 const setup = ({
@@ -80,11 +81,13 @@ const setup = ({
   withProfile = true,
   submitted = true,
   asked = false,
-  readable = true
+  readable = true,
+  prior
 }: Options = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.startsWith('select "agency_id" from "workflow_runs"')) return [{ agency_id: 't1' }];
     if (q.sql.startsWith('update "billing_profiles"')) return [{ control_number: 7 }];
+    if (q.sql.startsWith('select "control_number", "status"')) return prior ? [prior] : [];
     if (q.sql.includes('from "billing_profiles"')) return withProfile ? [profile] : [];
     if (q.sql.includes('inner join "claim_coverages" as "cc"'))
       return [{ ...statusRow, submitted }];
@@ -144,7 +147,7 @@ const setup = ({
       q.sql.startsWith('update "claim_coverages" set "eligibility_requested_at"')
     ).length;
   const reused = () => queries.some((q) => q.sql.includes('update claim_coverages cc set'));
-  return { store, uploads, sent, stored, applied, stamped, reused };
+  return { store, uploads, sent, stored, applied, stamped, reused, queries };
 };
 
 describe('checkEligibility', () => {
@@ -249,17 +252,74 @@ describe('checkClaimStatus', () => {
     assert.equal(s.applied[0], `277-276-000000007-01a16617.x12@${s.stored[0]}`);
   });
 
-  it('falls back to a batch 276 and says how many claim signals were seen', async () => {
-    const other = build277Status([{ trace: '9', claimNumber: '9', category: 'A2', code: '20' }]);
-    const s = setup({ realtime: { ok: true, text: other } });
+  it('falls back to a batch 276 when real time fails, saying how many claim signals were seen', async () => {
+    const s = setup({ realtime: { ok: false, error: 'Timed out' } });
     assert.deepEqual(await s.store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE), {
       status: 'sent',
       sentAs: '276-000000007-01a16617.CLS',
-      reason: 'The answer did not name the claim',
+      reason: 'Timed out',
       signalsSeen: 3
     });
-    const garbage = setup({ realtime: { ok: true, text: 'nope' } });
-    assert.equal((await garbage.store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE)).status, 'sent');
+    const settled = s.queries.find((q) => q.sql.startsWith('update "claim_status_requests"'));
+    assert.deepEqual(settled?.parameters.slice(0, 4), [
+      'sent',
+      '276-000000007-01a16617.CLS',
+      3,
+      'Timed out'
+    ]);
+  });
+
+  it('does not pay for a batch 276 after a real-time answer that does not name the claim', async () => {
+    const other = build277Status([{ trace: '9', claimNumber: '9', category: 'A2', code: '20' }]);
+    for (const text of [other, 'nope']) {
+      const s = setup({ realtime: { ok: true, text } });
+      assert.deepEqual(await s.store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE), {
+        status: 'unavailable',
+        reason: 'The real-time claim status answer did not name the claim'
+      });
+      assert.equal(s.uploads.length, 0);
+    }
+  });
+
+  it('returns what a retried step already sent instead of asking again', async () => {
+    const sent = setup({
+      prior: {
+        control_number: 7,
+        status: 'sent',
+        note: null,
+        sent_as: '276-000000007-01a16617.CLS',
+        signals_seen: 3
+      }
+    });
+    assert.deepEqual(await sent.store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE), {
+      status: 'sent',
+      sentAs: '276-000000007-01a16617.CLS',
+      reason: null,
+      signalsSeen: 3
+    });
+    assert.equal(sent.uploads.length, 0);
+    const answered = setup({
+      prior: {
+        control_number: 7,
+        status: 'answered',
+        note: 'Paid',
+        sent_as: null,
+        signals_seen: null
+      }
+    });
+    assert.deepEqual(await answered.store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE), {
+      status: 'answered',
+      note: 'Paid'
+    });
+    const pending = setup({
+      prior: { control_number: 5, status: 'pending', note: null, sent_as: null, signals_seen: null }
+    });
+    await pending.store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE);
+    assert.equal(pending.uploads[0]?.[0], '276-000000005-01a16617');
+    assert.ok(!pending.queries.some((q) => q.sql.startsWith('update "billing_profiles"')));
+    assert.ok(
+      !pending.queries.some((q) => q.sql.startsWith('insert into "claim_status_requests"'))
+    );
   });
 
   it('asks only about claims submitted to the payer', async () => {

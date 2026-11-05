@@ -38,6 +38,7 @@ export const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
   closing_approved: 'Closing approved',
   balance_protected: 'Balance-billing protection',
   facility_invoiced: 'Facility invoice',
+  facility_follow_up: 'Followed up with facility',
   responsibility: 'Responsible party recorded',
   document: 'Document received'
 };

@@ -59,6 +59,7 @@ describe('ledgerFactsOf', () => {
       patientApproved: false,
       statements: 0,
       sinceStatementMs: null,
+      sinceFacilityContactMs: null,
       rejection: null
     });
   });
@@ -103,6 +104,15 @@ describe('ledgerFactsOf', () => {
   it('bills a facility instead of payers when one is responsible', () => {
     const ledger = { totalCents: 1, coverages: [], events: [], facilityId: 'f1' };
     assert.equal(ledgerFactsOf(ledger, day(0)).billFacility, true);
+    assert.equal(ledgerFactsOf(ledger, day(0)).sinceFacilityContactMs, null);
+    const invoiced = facts([e('facility_invoiced', null, 1)], 31, []);
+    assert.equal(invoiced.sinceFacilityContactMs, 30 * DAY);
+    const followed = facts(
+      [e('facility_invoiced', null, 1), e('facility_follow_up', null, 61)],
+      65,
+      []
+    );
+    assert.equal(followed.sinceFacilityContactMs, 4 * DAY);
   });
 
   it('says why the last submission was rejected', () => {
@@ -137,6 +147,11 @@ describe('readClaimStep', () => {
     assert.deepEqual(readClaimStep({ step: 'awaitPatient', waitMs: null }, ledger), {
       step: 'awaitPatient',
       waitMs: MIN_WAIT_MS,
+      balanceCents: 100_000
+    });
+    assert.deepEqual(readClaimStep({ step: 'facility', waitMs: 2 * DAY }, ledger), {
+      step: 'facility',
+      waitMs: 2 * DAY,
       balanceCents: 100_000
     });
     assert.deepEqual(readClaimStep({ step: 'writeOff' }, ledger), {
@@ -178,6 +193,7 @@ describe('claim statuses', () => {
         'follow_up',
         'patient_balance',
         'patient_balance',
+        'facility_billing',
         'facility_billing',
         'balance_review',
         null,

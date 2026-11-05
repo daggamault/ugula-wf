@@ -28,6 +28,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'notifications',
     'claim_event_adjustments',
     'claim_events',
+    'claim_status_requests',
     'claim_batches',
     'claim_diagnoses',
     'claim_coverages',

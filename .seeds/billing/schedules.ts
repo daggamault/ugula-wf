@@ -57,7 +57,7 @@ const deadlineAction = (): GraphDef => {
           field('kind', 'string', 'timelyFiling, appeal, records, refund, task or pcs'),
           field('daysLeft', 'integer', 'Days left (negative once passed)'),
           field('priority', 'integer', 'Priority of the open task'),
-          field('reminded', 'boolean', 'A reminder is already open')
+          field('reminded', 'boolean', 'A reminder was already opened for this deadline')
         ],
         [
           field('action', 'string', 'Action'),
@@ -67,7 +67,7 @@ const deadlineAction = (): GraphDef => {
         [
           act(
             'The filing limit has passed',
-            { kind: is('timelyFiling'), daysLeft: atMost(0), reminded: is(false) },
+            { kind: is('timelyFiling'), daysLeft: below(0), reminded: is(false) },
             'remind',
             3,
             'The filing limit for this claim passed on {dueOn}. File it now with proof of timely filing, or write it off.'

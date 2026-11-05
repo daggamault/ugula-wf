@@ -319,6 +319,15 @@ export const TASK_STATUSES = ['open', 'completed', 'cancelled'] as const;
 
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
+export const CLAIM_STATUS_REQUEST_STATUSES = [
+  'pending',
+  'answered',
+  'sent',
+  'unavailable'
+] as const;
+
+export type ClaimStatusRequestStatus = (typeof CLAIM_STATUS_REQUEST_STATUSES)[number];
+
 type TasksTable = {
   id: Generated<string>;
   agency_id: string;
@@ -576,6 +585,23 @@ type ClaimBatchesTable = {
   rejection: ColumnType<string | null, string | null | undefined, string | null>;
 };
 
+type ClaimStatusRequestsTable = {
+  id: Generated<string>;
+  agency_id: string;
+  claim_id: string;
+  source_key: string;
+  control_number: number;
+  status: ColumnType<
+    ClaimStatusRequestStatus,
+    ClaimStatusRequestStatus | undefined,
+    ClaimStatusRequestStatus
+  >;
+  note: ColumnType<string | null, string | null | undefined, string | null>;
+  sent_as: ColumnType<string | null, string | null | undefined, string | null>;
+  signals_seen: ColumnType<number | null, number | null | undefined, number | null>;
+  created_at: Timestamp;
+};
+
 type ClearinghouseConnectionsTable = {
   agency_id: string;
   vendor: ClearinghouseVendor;
@@ -760,6 +786,7 @@ export type Database = {
   claim_events: ClaimEventsTable;
   claim_event_adjustments: ClaimEventAdjustmentsTable;
   claim_batches: ClaimBatchesTable;
+  claim_status_requests: ClaimStatusRequestsTable;
   payer_files: PayerFilesTable;
   clearinghouse_connections: ClearinghouseConnectionsTable;
   clearinghouse_downloads: ClearinghouseDownloadsTable;

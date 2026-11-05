@@ -389,6 +389,11 @@ const POLICY_FIELDS = [
   field('statementCount', 'integer', 'Patient statements to send'),
   field('statementIntervalDays', 'number', 'Days between patient statements'),
   field(
+    'facilityWaitDays',
+    'number',
+    'Days to wait for a facility after its invoice before following up'
+  ),
+  field(
     'collectionsThresholdCents',
     'integer',
     'Smallest balance sent to collections review (cents)'
@@ -422,6 +427,7 @@ const STEP_INPUTS = [
   field('patientApproved', 'boolean', 'Approved for billing the patient'),
   field('coverageCount', 'integer', 'Payers on the claim'),
   field('statementWaitLeftMs', 'integer', 'Time left before the next statement (ms)'),
+  field('facilityWaitLeftMs', 'integer', 'Time left to wait for the facility (ms)'),
   field('statementsLeft', 'integer', 'Statements left to send'),
   field('underCollections', 'boolean', 'The balance is under the collections threshold')
 ];
@@ -447,6 +453,11 @@ const DERIVED: [string, string, string][] = [
     'statementWaitLeftMs',
     'Statement Wait Left',
     `statements > 0 && sinceStatementMs != null ? round(statementIntervalDays * ${DAY_MS}) - sinceStatementMs : 0`
+  ],
+  [
+    'facilityWaitLeftMs',
+    'Facility Wait Left',
+    `round(facilityWaitDays * ${DAY_MS}) - (sinceFacilityContactMs ?? 0)`
   ],
   ['statementsLeft', 'Statements Left', 'statementCount - statements'],
   ['withinWriteOff', 'Within the Write-Off Limit', 'balanceCents <= autoWriteOffCents'],
@@ -497,7 +508,7 @@ const nextClaimStep = (): GraphDef => {
     config: shared.decision(
       'billing.claim-policy',
       'Claim Policy',
-      'The waits, statements, collections threshold, write-off limit, review rule and approval thresholds (write-offs and collections above them need someone with claims:approve) of the claim cycle, by the kind of payer being billed (its claim filing indicator, or patient).',
+      'The waits (payer, statements and facility), statements, collections threshold, write-off limit, review rule and approval thresholds (write-offs and collections above them need someone with claims:approve) of the claim cycle, by the kind of payer being billed (its claim filing indicator, or patient).',
       table(
         [field('payerKind', 'string', 'Claim filing indicator of the payer billed, or patient')],
         POLICY_FIELDS,
@@ -506,6 +517,7 @@ const nextClaimStep = (): GraphDef => {
           payerWaitDays: 30,
           statementCount: 3,
           statementIntervalDays: 30,
+          facilityWaitDays: 60,
           collectionsThresholdCents: 0,
           autoWriteOffCents: 0,
           reviewRequired: true,
@@ -534,7 +546,12 @@ const nextClaimStep = (): GraphDef => {
           step('Nothing is owed', { balanceCents: atMost(0) }, 'closed'),
           step('A payer denial waits to be worked', { denialOpen: is(true) }, 'workDenial'),
           step('A payer response waits to be reconciled', { reconciling: is(true) }, 'reconcile'),
-          step('A facility is responsible for the trip', { billFacility: is(true) }, 'facility'),
+          step(
+            'Waiting on the responsible facility',
+            { billFacility: is(true), facilityWaitLeftMs: above(0) },
+            'facility'
+          ),
+          step('The facility has not paid in time', { billFacility: is(true) }, 'followUpFacility'),
           step(
             'Review before this payer',
             {
@@ -586,7 +603,7 @@ const nextClaimStep = (): GraphDef => {
     'std.expr',
     expr(
       'How Long to Wait',
-      `step == "await" ? max(payerWaitLeftMs, ${MIN_WAIT_MS}) : step == "awaitPatient" ? max(statementWaitLeftMs, ${MIN_WAIT_MS}) : null`
+      `step == "await" ? max(payerWaitLeftMs, ${MIN_WAIT_MS}) : step == "awaitPatient" ? max(statementWaitLeftMs, ${MIN_WAIT_MS}) : step == "facility" ? max(facilityWaitLeftMs, ${MIN_WAIT_MS}) : null`
     )
   );
   g.add(
@@ -613,6 +630,7 @@ const nextClaimStep = (): GraphDef => {
     denialOpen: ['denialRoute'],
     payerWaitLeftMs: ['contacted', 'sinceContactMs'],
     statementWaitLeftMs: ['statements', 'sinceStatementMs'],
+    facilityWaitLeftMs: ['sinceFacilityContactMs'],
     statementsLeft: ['statements'],
     withinWriteOff: ['balanceCents'],
     underCollections: ['balanceCents']
@@ -622,6 +640,7 @@ const nextClaimStep = (): GraphDef => {
   }
   g.wire('policy.payerWaitDays', 'payerWaitLeftMs.payerWaitDays');
   g.wire('policy.statementIntervalDays', 'statementWaitLeftMs.statementIntervalDays');
+  g.wire('policy.facilityWaitDays', 'facilityWaitLeftMs.facilityWaitDays');
   g.wire('policy.statementCount', 'statementsLeft.statementCount', 'return.statementCount');
   g.wire('policy.autoWriteOffCents', 'withinWriteOff.autoWriteOffCents');
   g.wire('policy.collectionsThresholdCents', 'underCollections.collectionsThresholdCents');
@@ -643,6 +662,7 @@ const nextClaimStep = (): GraphDef => {
   g.wire('decide.step', 'waitMs.step', 'statementNumber.step', 'coverage.step', 'return.step');
   g.wire('payerWaitLeftMs.result', 'waitMs.payerWaitLeftMs');
   g.wire('statementWaitLeftMs.result', 'waitMs.statementWaitLeftMs');
+  g.wire('facilityWaitLeftMs.result', 'waitMs.facilityWaitLeftMs');
   g.wire('ledger.statements', 'statementNumber.statements');
   for (const f of ['unreconciledCoverageId', 'unreconciledPayer', 'coverageId', 'payer']) {
     g.wire(`ledger.${f}`, `coverage.${f}`);
@@ -667,6 +687,7 @@ const ROUTES = [
   'workDenial',
   'overpaid',
   'facility',
+  'followUpFacility',
   'await',
   'awaitPatient',
   'followUp',
@@ -796,6 +817,17 @@ const cycleClaim = (): GraphDef => {
       outcomes: ['writeOff', 'sendToCollections']
     }
   });
+  g.add('facilityFollowUp', 'std.human.task', {
+    label: 'Follow Up with Facility',
+    config: {
+      title: 'Follow up with facility',
+      queue: 'billing-followup',
+      instructions:
+        'The facility responsible for this trip has not paid its invoice in time. Contact the facility, then keep waiting, write off the balance, or send it to collections.',
+      outcomes: ['keepWaiting', 'writeOff', 'sendToCollections']
+    }
+  });
+  recordEvent(g, 'facilityKeepWaiting', 'facility_follow_up', 'Keep Waiting on Facility');
   for (const [id, status, label] of CLOSINGS) {
     g.add(id, 'billing.close-claim', { label, values: { status } });
   }
@@ -903,6 +935,13 @@ const cycleClaim = (): GraphDef => {
   g.wire('next.statementNumber', 'statement.statementNumber');
   g.wire('next.statementCount', 'statement.statementCount');
   g.wire('route.collections', 'collections.exec');
+  g.wire('route.followUpFacility', 'facilityFollowUp.exec');
+  g.wire('claimSubject.result', 'facilityFollowUp.subject');
+  g.wire('claimContext.result', 'facilityFollowUp.context');
+  g.wire('facilityFollowUp.keepWaiting', 'facilityKeepWaiting.exec');
+  g.wire('entry.claimId', 'facilityKeepWaiting.claimId');
+  g.wire('facilityFollowUp.writeOff', 'approveWriteOff.exec');
+  g.wire('facilityFollowUp.sendToCollections', 'approveCollections.exec');
   g.wire('route.writeOff', 'approveWriteOff.exec');
   g.wire('route.closed', 'closePaid.exec');
   g.wire('route.default', 'unknownStep.exec');
@@ -930,7 +969,7 @@ export const cycleGraphs: SeedGraph[] = [
   asRule(
     'billing.next-claim-step',
     'Next Claim Step',
-    'Decides what a claim needs next from its ledger (Claim Steps table) under the Claim Policy table: refund an overpayment, work a payer denial, reconcile a payer response, wait on a facility that is responsible, review before a payer and submit once approved, wait out the payer and follow up, review before the patient is billed or confirm payers, send or wait on patient statements, write off a small balance, balance review, or close.',
+    'Decides what a claim needs next from its ledger (Claim Steps table) under the Claim Policy table: refund an overpayment, work a payer denial, reconcile a payer response, wait on a facility that is responsible and follow up when it has not paid in time, review before a payer and submit once approved, wait out the payer and follow up, review before the patient is billed or confirm payers, send or wait on patient statements, write off a small balance, balance review, or close.',
     nextClaimStep()
   ),
   asStage(
@@ -972,7 +1011,7 @@ export const cycleGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.cycle-claim',
     'Cycle Claim',
-    "Bills each payer in claim order, one step at a time: reads the claim ledger, decides the Next Claim Step and records it as the claim's status, runs Check Claim before a review or submission (fixing what blocks the claim), has it reviewed, files each approved claim as its own 837P (asking a biller when it cannot), follows up, works denials (Work Denial), reconciles responses (or resubmits a corrected claim), refunds credit balances (Refund Overpayment), waits on a responsible facility, confirms payers when there are none, reviews before the first patient statement, sends statements before collections review, and has write-offs and collections placements above the Claim Policy thresholds approved. Sleeps until a claim change or a deadline.",
+    "Bills each payer in claim order, one step at a time: reads the claim ledger, decides the Next Claim Step and records it as the claim's status, runs Check Claim before a review or submission (fixing what blocks the claim), has it reviewed, files each approved claim as its own 837P (asking a biller when it cannot), follows up, works denials (Work Denial), reconciles responses (or resubmits a corrected claim), refunds credit balances (Refund Overpayment), waits on a responsible facility (following up when it has not paid within the Claim Policy wait after its invoice), confirms payers when there are none, reviews before the first patient statement, sends statements before collections review, and has write-offs and collections placements above the Claim Policy thresholds approved. Sleeps until a claim change or a deadline.",
     cycleClaim()
   )
 ];

@@ -34,7 +34,9 @@ export const describeProgress = (progress: ClaimProgress): string => {
     case 'awaitPatient':
       return 'Waiting on the patient. The next statement goes out 30 days after the last one.';
     case 'facility':
-      return 'A facility is responsible for this trip. It is billed on the monthly facility invoice.';
+      return 'A facility is responsible for this trip. It is billed on the monthly facility invoice, and a follow-up task opens if it has not paid 60 days after.';
+    case 'followUpFacility':
+      return 'The responsible facility has not paid in time. A facility follow-up task is waiting.';
     case 'collections':
       return 'Every payer and patient statement is done. A balance review task is waiting for a decision.';
     case 'writeOff':

@@ -26,6 +26,7 @@ export const CLAIM_EVENT_KINDS = [
   'closing_approved',
   'balance_protected',
   'facility_invoiced',
+  'facility_follow_up',
   'responsibility',
   'document'
 ] as const;
@@ -63,7 +64,8 @@ const CYCLE_EVENT_KINDS = [
   'reopening_requested',
   'records_requested',
   'records_sent',
-  'closing_approved'
+  'closing_approved',
+  'facility_follow_up'
 ] as const satisfies readonly ClaimEventKind[];
 
 export type CycleEventKind = (typeof CYCLE_EVENT_KINDS)[number];
@@ -78,6 +80,7 @@ export const PATIENT_EVENT_KINDS: readonly ClaimEventKind[] = [
   'closing_approved',
   'balance_protected',
   'facility_invoiced',
+  'facility_follow_up',
   'responsibility',
   'document'
 ];
@@ -191,6 +194,7 @@ export const CLAIM_STEPS = [
   'statement',
   'awaitPatient',
   'facility',
+  'followUpFacility',
   'collections',
   'writeOff',
   'closed'
@@ -214,6 +218,7 @@ export const STEP_STATUSES: Readonly<Partial<Record<ClaimStepName, ClaimStatus>>
   statement: 'patient_balance',
   awaitPatient: 'patient_balance',
   facility: 'facility_billing',
+  followUpFacility: 'facility_billing',
   collections: 'balance_review'
 };
 
@@ -224,8 +229,8 @@ export type ClaimStep =
   | ({ step: 'await'; waitMs: number } & CoverageStep)
   | { step: 'reviewPatient' | 'confirmPayers' | 'overpaid'; balanceCents: number }
   | { step: 'statement'; statement: number; balanceCents: number }
-  | { step: 'awaitPatient'; waitMs: number; balanceCents: number }
-  | { step: 'facility' | 'collections' | 'writeOff' | 'closed'; balanceCents: number };
+  | { step: 'awaitPatient' | 'facility'; waitMs: number; balanceCents: number }
+  | { step: 'followUpFacility' | 'collections' | 'writeOff' | 'closed'; balanceCents: number };
 
 const CONTACTS: readonly ClaimEventKind[] = [
   'submitted',
@@ -235,6 +240,8 @@ const CONTACTS: readonly ClaimEventKind[] = [
   'rejected',
   'reopening_requested'
 ];
+
+const FACILITY_CONTACTS: readonly ClaimEventKind[] = ['facility_invoiced', 'facility_follow_up'];
 
 const REOPENED: readonly ClaimEventKind[] = ['resubmit_queued', 'reopening_requested'];
 
@@ -287,6 +294,7 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
       ? (events[denialAt] ?? null)
       : null;
   const statements = events.filter((e) => e.kind === 'statement');
+  const facilityContacts = events.filter((e) => FACILITY_CONTACTS.includes(e.kind));
   const answered = coverages.filter(
     (c) => c.id !== coverage?.id && lastOf(c.id, ['response']) >= 0
   );
@@ -319,7 +327,8 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
       ...adjudication(events.filter((e) => e.coverageId === c.id && e.kind === 'response'))
     })),
     statements: statements.length,
-    lastStatement: latest(statements)
+    lastStatement: latest(statements),
+    lastFacilityContact: latest(facilityContacts)
   };
 };
 
@@ -352,6 +361,7 @@ export const ledgerFactsOf = (ledger: ClaimLedger, now: Date) => {
     patientApproved: p.patientApproved,
     statements: p.statements,
     sinceStatementMs: sinceMs(p.lastStatement, now),
+    sinceFacilityContactMs: sinceMs(p.lastFacilityContact, now),
     rejection: p.rejection
   };
 };
@@ -393,6 +403,7 @@ export const readClaimStep = (decision: Record<string, unknown>, facts: LedgerFa
         balanceCents
       };
     case 'awaitPatient':
+    case 'facility':
       return { step, waitMs: numberOr(decision.waitMs, MIN_WAIT_MS), balanceCents };
     case 'statement':
       return {

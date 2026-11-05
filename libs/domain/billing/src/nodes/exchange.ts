@@ -49,7 +49,7 @@ export const exchangeNodes: NodesOf = (stores) => [
     title: 'Check Claim Status with Clearinghouse',
     category: CATEGORY,
     description:
-      "Asks the payer through the clearinghouse where a submitted claim stands (276). Sends it in real time when the agency's connection supports it and logs the 277 answer on the claim; otherwise, or when the real-time request fails, uploads a batch 276 whose 277 is logged when it arrives, and outputs how many claim signals were seen so a wait can start from there. Continues through unavailable, saying why, without a connection, billing profile or submission to ask about.",
+      "Asks the payer through the clearinghouse where a submitted claim stands (276). Sends it in real time when the agency's connection supports it and logs the 277 answer on the claim; otherwise, or when the real-time request gets no answer, uploads a batch 276 whose 277 is logged when it arrives, and outputs how many claim signals were seen so a wait can start from there. A real-time answer that does not name the claim is not asked again in batch, and a retried step returns what it already sent instead of asking again. Continues through unavailable, saying why, without a connection, billing profile or submission to ask about.",
     effect: true,
     inputs: [claimIdPin, pin('coverageId', 'string')],
     outputs: [

@@ -72,7 +72,7 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
         from workflow_runs r where r.id = ${runId}
       ),
       filing as (
-        select 'timelyFiling' as kind, c.id as claim_id, cc.id as coverage_id, ${reference} as reference,
+        select 'timelyFiling' as kind, c.id as claim_id, c.patient_id, cc.id as coverage_id, ${reference} as reference,
           (c.service_date + coalesce(dp.filing_limit_days, case when dp.claim_filing in ('MA', 'MB', 'CH') then 365 end))::date as due_on,
           null::uuid as task_id, 0 as priority
         from claims c
@@ -86,13 +86,17 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
         ) cc on true
         left join payers dp on dp.id = cc.payer_id
         left join patients p on p.id = c.patient_id
-        where c.status in ('needs_review', 'ready') and c.service_date is not null
+        where c.status in ('draft', 'needs_review', 'ready') and c.service_date is not null
           and not exists (
             select 1 from claim_events e where e.coverage_id = cc.id and e.kind in ('submitted', 'resubmitted')
+              and not exists (
+                select 1 from claim_events j where j.coverage_id = cc.id and j.kind = 'rejected'
+                  and j.created_at > e.created_at
+              )
           )
       ),
       due as (
-        select ${taskKind} as kind, c.id as claim_id, null::uuid as coverage_id, ${reference} as reference,
+        select ${taskKind} as kind, c.id as claim_id, c.patient_id, null::uuid as coverage_id, ${reference} as reference,
           (t.due_at at time zone a.zone)::date as due_on, t.id as task_id, t.priority
         from tasks t
         join agency a on a.agency_id = t.agency_id
@@ -105,7 +109,7 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
         where t.status = 'open' and t.due_at is not null and g.key <> ${REMINDER_WORKFLOW}
       ),
       pcs as (
-        select distinct on (c.patient_id) 'pcs' as kind, c.id as claim_id, null::uuid as coverage_id,
+        select distinct on (c.patient_id) 'pcs' as kind, c.id as claim_id, c.patient_id, null::uuid as coverage_id,
           ${reference} as reference, (c.pcs_signed_on + ${PCS_DAYS}::int)::date as due_on, null::uuid as task_id, 0 as priority
         from claims c
         join agency a on a.agency_id = c.agency_id
@@ -119,16 +123,20 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
         exists (
           select 1 from tasks t
           join claim_runs cr on cr.run_id = t.run_id
+          join claims rc on rc.id = cr.claim_id
           join workflow_runs r on r.id = t.run_id
           join graph_versions v on v.id = r.graph_version_id
           join graphs g on g.id = v.graph_id
-          where cr.claim_id = d.claim_id and t.status = 'open' and g.key = ${REMINDER_WORKFLOW}
-            and r.inputs ->> 'kind' = d.kind
+          cross join agency a
+          where g.key = ${REMINDER_WORKFLOW} and t.status in ('open', 'completed')
+            and r.inputs ->> 'kind' = d.kind and r.inputs ->> 'dueOn' = d.due_on::text
+            and case when d.kind = 'pcs' then rc.patient_id = d.patient_id else rc.id = d.claim_id end
+            and (d.kind = 'pcs' or d.due_on >= ${today}::date or (t.created_at at time zone a.zone)::date > d.due_on)
         ) as reminded
       from (
-        select kind, claim_id, coverage_id, reference, due_on, task_id, priority from filing
-        union all select kind, claim_id, coverage_id, reference, due_on, task_id, priority from due
-        union all select kind, claim_id, coverage_id, reference, due_on, task_id, priority from pcs
+        select kind, claim_id, patient_id, coverage_id, reference, due_on, task_id, priority from filing
+        union all select kind, claim_id, patient_id, coverage_id, reference, due_on, task_id, priority from due
+        union all select kind, claim_id, patient_id, coverage_id, reference, due_on, task_id, priority from pcs
       ) d
       where d.due_on is not null and d.due_on - ${today}::date <= ${WINDOW_DAYS}::int
       order by d.due_on, d.kind, d.claim_id`.execute(db);

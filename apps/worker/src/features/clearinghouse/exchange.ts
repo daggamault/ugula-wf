@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   build270,
   build276,
+  type ClaimStatusCheck,
   type ClaimStatusInquiry,
   type Clearinghouse,
   claimSignalKey,
@@ -17,6 +18,7 @@ import {
 import {
   agencyTimeZone,
   allocateControlNumber,
+  type Database,
   type Db,
   eligibilityRequests,
   findEligibilityClaim,
@@ -28,7 +30,7 @@ import {
   toSubmitter
 } from '@ugula/db';
 import type { BlobStore } from '@ugula/storage';
-import { sql } from 'kysely';
+import { sql, type Updateable } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
 import type { ApplyDocument } from './payer-files.ts';
@@ -45,6 +47,32 @@ const NO_CONNECTION =
   'The agency has no clearinghouse connection, or it is paused; set one up in Settings or download the request from the claim';
 
 const SUBMISSIONS = ['submitted', 'resubmitted'] as const;
+
+const UNNAMED_CLAIM = 'The real-time claim status answer did not name the claim';
+
+type StatusRequestPatch = Updateable<Database['claim_status_requests']>;
+
+const findStatusRequest = (db: Db, agencyId: string, sourceKey: string) =>
+  db
+    .selectFrom('claim_status_requests')
+    .select(['control_number', 'status', 'note', 'sent_as', 'signals_seen'])
+    .where('agency_id', '=', agencyId)
+    .where('source_key', '=', sourceKey)
+    .executeTakeFirst();
+
+type StatusRequest = NonNullable<Awaited<ReturnType<typeof findStatusRequest>>>;
+
+export const priorCheck = (r: StatusRequest): ClaimStatusCheck =>
+  r.status === 'answered'
+    ? { status: 'answered', note: r.note ?? '' }
+    : r.status === 'sent'
+      ? {
+          status: 'sent',
+          sentAs: r.sent_as ?? '',
+          reason: r.note,
+          signalsSeen: r.signals_seen ?? 0
+        }
+      : { status: 'unavailable', reason: r.note ?? UNNAMED_CLAIM };
 
 const unavailable = (reason: string) => ({ status: 'unavailable' as const, reason });
 
@@ -148,7 +176,7 @@ export const createExchangeStore = ({
   clearinghouseFor,
   now = () => new Date()
 }: ExchangeDeps): ExchangeStore => {
-  const prepare = async (agencyId: string) => {
+  const prepare = async (agencyId: string, reserved?: number) => {
     const profile = await findProfile(db, agencyId);
     const submitter: Submitter | null = profile ? toSubmitter(profile) : null;
     const problems = submitterIssues(submitter);
@@ -157,7 +185,7 @@ export const createExchangeStore = ({
     }
     const clearinghouse = await clearinghouseFor(agencyId);
     if (!clearinghouse) return unavailable(NO_CONNECTION);
-    const controlNumber = await allocateControlNumber(db, agencyId);
+    const controlNumber = reserved ?? (await allocateControlNumber(db, agencyId));
     if (controlNumber === null) {
       return unavailable('Batch control numbers are used up; contact support');
     }
@@ -235,28 +263,57 @@ export const createExchangeStore = ({
 
     checkClaimStatus: async (runId, claimId, sourceKey, coverageId) => {
       const agencyId = await agencyOf(runId);
+      const prior = await findStatusRequest(db, agencyId, sourceKey);
+      if (prior && prior.status !== 'pending') return priorCheck(prior);
       const row = await statusClaim(db, agencyId, claimId, coverageId);
       if (!row) return unavailable('The payer is not a directory payer on this claim');
       if (!row.submitted) return unavailable('The claim has not been submitted to this payer');
       const inquiry = statusInquiry(row, now());
       if (!inquiry) return unavailable('The payer has no member ID or insured to ask about');
-      const ready = await prepare(agencyId);
+      const ready = await prepare(agencyId, prior?.control_number);
       if (ready.status !== 'ready') return ready;
       const { submitter, clearinghouse, controlNumber } = ready;
+      if (!prior) {
+        await db
+          .insertInto('claim_status_requests')
+          .values({
+            agency_id: agencyId,
+            claim_id: claimId,
+            source_key: sourceKey,
+            control_number: controlNumber
+          })
+          .onConflict((oc) => oc.columns(['agency_id', 'source_key']).doNothing())
+          .execute();
+      }
+      const settle = (patch: StatusRequestPatch) =>
+        db
+          .updateTable('claim_status_requests')
+          .set(patch)
+          .where('agency_id', '=', agencyId)
+          .where('source_key', '=', sourceKey)
+          .execute();
       const text = build276(submitter, [inquiry], { controlNumber, createdAt: now() });
       const name = exchangeFileName('claimStatus', controlNumber, claimId);
       let reason: string | null = null;
       if (clearinghouse.checkClaimStatus) {
         const answer = await clearinghouse.checkClaimStatus(text);
-        const status = answer.ok ? statusFor(answer.text, inquiry.claimNumber) : undefined;
-        if (answer.ok && status) {
+        if (answer.ok) {
+          const status = statusFor(answer.text, inquiry.claimNumber);
+          if (!status) {
+            await settle({ status: 'unavailable', note: UNNAMED_CLAIM });
+            return unavailable(UNNAMED_CLAIM);
+          }
           await keep(runId, sourceKey, agencyId, `277-${name}`, answer.text);
-          return { status: 'answered', note: claimStatusNote(status) };
+          const note = claimStatusNote(status);
+          await settle({ status: 'answered', note });
+          return { status: 'answered', note };
         }
-        reason = answer.ok ? 'The answer did not name the claim' : answer.error;
+        reason = answer.error;
       }
       const sentAs = await clearinghouse.submitClaimStatus(name, bytesOf(text));
-      return { status: 'sent', sentAs, reason, signalsSeen: row.received ?? 0 };
+      const signalsSeen = row.received ?? 0;
+      await settle({ status: 'sent', sent_as: sentAs, signals_seen: signalsSeen, note: reason });
+      return { status: 'sent', sentAs, reason, signalsSeen };
     }
   };
 };

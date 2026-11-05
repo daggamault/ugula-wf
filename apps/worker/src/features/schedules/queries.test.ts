@@ -77,6 +77,22 @@ describe('createScheduleStore', () => {
     assert.ok(!q?.sql.includes('select *'));
   });
 
+  it('files deadlines for drafts and rejected submissions, and reminds once per deadline', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await createScheduleStore(db, blobs).deadlines('r1', '2026-11-01');
+    const sql = queries[0]?.sql ?? '';
+    assert.ok(sql.includes("c.status in ('draft', 'needs_review', 'ready')"));
+    assert.match(sql, /j\.kind = 'rejected'\s+and j\.created_at > e\.created_at/);
+    assert.ok(sql.includes("t.status in ('open', 'completed')"));
+    assert.ok(sql.includes("r.inputs ->> 'dueOn' = d.due_on::text"));
+    assert.ok(
+      sql.includes(
+        "case when d.kind = 'pcs' then rc.patient_id = d.patient_id else rc.id = d.claim_id end"
+      )
+    );
+    assert.ok(sql.includes('(t.created_at at time zone a.zone)::date > d.due_on'));
+  });
+
   it('raises open tasks only, never lowering them', async () => {
     const { db, queries } = createRecordingDb(() => []);
     const store = createScheduleStore(db, blobs);

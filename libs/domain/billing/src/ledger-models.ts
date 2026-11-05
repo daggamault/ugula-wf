@@ -26,6 +26,11 @@ export const CLAIM_LEDGER = model(
     f('patientApproved', 'boolean', 'The claim is approved for billing the patient'),
     f('statements', 'integer', 'Patient statements sent'),
     f('sinceStatementMs', 'integer', 'Milliseconds since the last statement'),
+    f(
+      'sinceFacilityContactMs',
+      'integer',
+      'Milliseconds since the facility was last invoiced or followed up'
+    ),
     f('rejection', 'string', 'Why the last submission was rejected')
   ]
 );
@@ -113,7 +118,7 @@ export const DEADLINE = model(
     f('daysLeft', 'integer', 'Days left (negative once passed)'),
     f('taskId', 'string', 'The open task the deadline belongs to, if any'),
     f('priority', 'integer', 'Priority of that task'),
-    f('reminded', 'boolean', 'A reminder for this deadline is already open')
+    f('reminded', 'boolean', 'A reminder for this deadline was already opened')
   ]
 );
 

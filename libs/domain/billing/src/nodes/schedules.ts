@@ -27,7 +27,7 @@ export const scheduleNodes: NodesOf = (stores) => {
       title: 'Find Deadlines',
       category: CATEGORY,
       description:
-        "Lists the agency's claim deadlines coming up as of today: timely filing for payers not billed yet, the due dates of open appeal, records request and refund tasks, and physician certifications about to expire for patients on scheduled trips, each with the days left and whether a reminder is already open. Decides nothing; Deadline Action does.",
+        "Lists the agency's claim deadlines coming up as of today: timely filing for payers not billed yet, the due dates of open appeal, records request and refund tasks, and physician certifications about to expire for patients on scheduled trips, each with the days left and whether a reminder was already opened for that deadline (per patient for certifications, and once more after a filing limit passes). Decides nothing; Deadline Action does.",
       inputs: [],
       outputs: [pin('deadlines', { list: DEADLINE.type })],
       compute: async (_, __, ctx) => ({

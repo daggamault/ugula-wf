@@ -160,6 +160,7 @@ describe('cycleNodes', () => {
       patientApproved: false,
       statements: 0,
       sinceStatementMs: null,
+      sinceFacilityContactMs: null,
       rejection: null
     });
     await run(record, { claimId: 'c1', kind: 'approved', coverageId: 'cov-Blue' });
