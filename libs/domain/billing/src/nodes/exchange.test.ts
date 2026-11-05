@@ -51,6 +51,9 @@ describe('exchangeNodes', () => {
       ['answered', '271-1.x12', [review]]
     );
     assert.equal(answered.calls[0]?.[2], 'c1');
+    assert.equal(answered.calls[0]?.[4], false);
+    await invokeNode(answered.node('send-270'), { inputs: { claimId: 'c1', force: true } });
+    assert.equal(answered.calls[1]?.[4], true);
     const sent = await invokeNode(
       setup(
         { status: 'sent', sentAs: '270-1.ELG', reason: 'Timed out' },

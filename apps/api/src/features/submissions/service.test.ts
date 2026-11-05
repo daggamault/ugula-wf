@@ -109,11 +109,13 @@ describe('eligibility requests', () => {
   };
 
   it('starts the check eligibility workflow for a claim with a payer to ask', async () => {
-    const { service, jobs } = setup({ rows: [{ ...claimRow(C1), ...row }] });
+    const { service, jobs, queries } = setup({ rows: [{ ...claimRow(C1), ...row }] });
     assert.deepEqual(await service.checkEligibility('t1', C1), {
       ok: true,
       value: { runId: 'check-1' }
     });
+    const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
+    assert.ok(run?.parameters.some((p) => String(p).includes('"force":true')));
     assert.deepEqual(jobs, [
       { data: { runId: 'check-1', command: { type: 'advance' } }, priority: 2 }
     ]);
