@@ -44,6 +44,9 @@ describe('expression functions', () => {
     assert.equal(f('contains', [{ a: 1 }], { a: 1 }), true);
     assert.equal(f('replace', 'a-b-c', '-', '/'), 'a/b/c');
     assert.equal(f('padStart', 7, 3, '0'), '007');
+    assert.equal(f('money', 123456789), '$1,234,567.89');
+    assert.equal(f('money', -2850), '-$28.50');
+    assert.throws(() => f('money', 'x'), /money: expected number/);
     assert.equal(f('join', [1, null, 'x'], ','), '1,,x');
     assert.equal(parseNumber(' 12.5 '), 12.5);
     assert.throws(() => parseNumber('abc'), /Cannot convert/);

@@ -23,6 +23,8 @@ type ExprCallContext = {
   now: Date | undefined;
 };
 
+const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
 export const CHARS_PER_UNIT = 32;
 
 type ExprFunction = (args: ExprValue[], cx: ExprCallContext) => ExprValue;
@@ -190,6 +192,7 @@ export const exprFunctions: Record<string, ExprFunction> = {
       ch == null ? ' ' : str('padEnd', ch)
     ),
   text: ([x]) => toText(json('text', x ?? null)),
+  money: ([cents]) => USD.format(Math.round(num('money', cents ?? null)) / 100),
   number: ([x]) => parseNumber(json('number', x ?? null)),
 
   map: ([xs, f], cx) => list('map', xs ?? null).map(mapper('map', cx, f ?? null)),
