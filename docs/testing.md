@@ -9,7 +9,7 @@
 
 ## End-to-end suites
 
-`pnpm e2e` drives the real app in a headless browser against a running stack. Each suite signs in, opens the Development agency and works through one area with synthetic NEMSIS and X12 fixtures:
+`pnpm e2e` drives the real app in a headless browser against a running stack. It opens `E2E_WEB_URL` (`http://localhost:3000` by default) in `E2E_BROWSER_CHANNEL` (`msedge` by default, or `chrome` or `chromium`); every step waits at most `E2E_STEP_MS` (15s by default) and every workflow stage at most `E2E_FLOW_MS` (5 minutes by default). Each suite signs in, opens the Development agency and works through one area with synthetic NEMSIS and X12 fixtures:
 
 | Suite                                                                | Covers                                           |
 | -------------------------------------------------------------------- | ------------------------------------------------ |
