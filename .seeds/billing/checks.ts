@@ -1,4 +1,4 @@
-import { CLAIM_FIX_FIELDS, MAX_LOADED_MILES } from '@ugula/billing';
+import { CLAIM_FIX_FIELDS, type ClaimField, MAX_LOADED_MILES } from '@ugula/billing';
 import type { GraphDef, Json } from '@ugula/graph';
 import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
@@ -255,14 +255,14 @@ const CHECKS: Check[] = [
     key: 'billing.check-signature',
     name: 'Check Billing Signature',
     description:
-      'The patient or a representative signed the release for billing, or a documented exception explains why not.',
+      'The patient or a representative signed the release for billing, or a documented exception explains why not, when the claim bills a payer.',
     codes: {
       'signature-exception': 'warning',
       'signature-refused': 'blocking',
       'signature-missing': 'blocking'
     },
-    facts: ['signature', 'signatureNote'],
-    expression: `signature == "signed" ? [] : signature == "exception"
+    facts: ['signature', 'signatureNote', 'payers'],
+    expression: `len(payers ?? []) == 0 || signature == "signed" ? [] : signature == "exception"
   ? [${issue(
     'signature-exception',
     'signature',
@@ -380,11 +380,12 @@ const CHECKS: Check[] = [
     key: 'billing.check-msp',
     name: 'Check Medicare Secondary Payer',
     description:
-      'A claim billing Medicare answers the MSP questions, and when another payer pays first (Medicare Secondary Payer rule) that payer is on the claim and billed before Medicare.',
+      'A claim billing Medicare answers the MSP questions, and when another payer pays first (Medicare Secondary Payer rule) that payer is on the claim and billed before Medicare; Medicare is billed after another payer only when the MSP rule says why (SBR05).',
     codes: {
       'msp-unanswered': 'warning',
       'msp-primary-missing': 'blocking',
-      'msp-order': 'blocking'
+      'msp-order': 'blocking',
+      'msp-type-missing': 'blocking'
     },
     facts: ['billsMedicare', 'payers', ...MSP_ANSWERS],
     uses: [
@@ -418,7 +419,15 @@ const CHECKS: Check[] = [
         'payers',
         '"Medicare pays second (" + first(why) + "); put the payer that pays first ahead of Medicare"'
       )
-    )}
+    )},
+  ${when(
+    '!secondary && len(payers ?? []) > 0 && !payers[0].medicare',
+    issue(
+      'msp-type-missing',
+      'msp',
+      '"Medicare is billed after another payer, but no Medicare Secondary Payer answer says why; answer the MSP questions or put Medicare first"'
+    )
+  )}
 )`
   },
   {
@@ -648,6 +657,21 @@ const claimChecks = (): GraphDef => {
   return g.def;
 };
 
+const PAYER_ONLY_FIELDS = [
+  'payers',
+  'payer',
+  'memberId',
+  'insured',
+  'signature',
+  'pcs',
+  'abn',
+  'msp',
+  'priorAuthorization',
+  'facility',
+  'filing',
+  'submission'
+] satisfies ClaimField[];
+
 const ISSUES_OUT = P.issues('The issues that matter for this step, with their severity.');
 
 const FORM_OUT = [
@@ -694,7 +718,7 @@ const checkClaim = (): GraphDef => {
     'std.expr',
     expr(
       'Issues That Matter Now',
-      'filter(issues, i => patientOnly == true ? !contains(["payers", "payer", "memberId", "insured"], i.field) : i.coverageId == null || !contains(skipped, i.coverageId))'
+      `filter(issues, i => patientOnly == true ? !contains(${JSON.stringify(PAYER_ONLY_FIELDS)}, i.field) : i.coverageId == null || !contains(skipped, i.coverageId))`
     )
   );
   g.add('form', 'billing.fix-claim-form', { label: 'Fix Claim Form' });
@@ -740,6 +764,13 @@ const fixClaim = (): GraphDef => {
         'Ask about every field once, even when nothing blocks the claim.',
         true
       ),
+      d(
+        'patientOnly',
+        'boolean',
+        'Patient Billing',
+        'Only issues that matter for billing the patient (payer issues are left out).',
+        true
+      ),
       P.subject(),
       P.context()
     ],
@@ -755,6 +786,17 @@ const fixClaim = (): GraphDef => {
   g.add('askAll', 'std.var.get', { label: 'Asking Every Field', config: { name: 'askAll' } });
   g.add('check', 'billing.check-claim', { label: 'Check Claim' });
   g.add('asked', 'std.flow.branch', { label: 'Asked to Fix Anyway?' });
+  g.add(
+    'facilityBlocks',
+    'std.expr',
+    expr(
+      'A Facility Is Responsible',
+      'some(issues, i => i.code == "facility-responsible" && i.severity == "blocking")'
+    )
+  );
+  g.add('toFacility', 'std.flow.branch', { label: 'Bill a Facility?' });
+  g.add('responsibility', 'billing.decide-responsibility', { label: 'Decide Responsibility' });
+  g.add('billFacility', 'billing.bill-facility', { label: 'Bill Facility' });
   g.add('fixContext', 'std.expr', expr('Fix Context', '{ issues: issues, claim: context }'));
   g.add('fix', 'std.human.task', {
     label: 'Fix Claim Data',
@@ -785,9 +827,24 @@ const fixClaim = (): GraphDef => {
   g.wire('entry.all', 'ask.value');
   g.wire('ask.then', 'check.exec');
   g.wire('entry.claimId', 'check.claimId');
+  g.wire('entry.patientOnly', 'check.patientOnly');
   g.wire('claimIdToPatch.claimId', 'patch.claimId', 'reprice.claimId');
   g.wire('askAll.value', 'check.all', 'asked.condition');
-  g.wire('check.invalid', 'fix.exec');
+  g.wire('check.invalid', 'toFacility.exec');
+  g.wire('check.issues', 'facilityBlocks.issues');
+  g.wire('facilityBlocks.result', 'toFacility.condition');
+  g.wire('toFacility.false', 'fix.exec');
+  g.wire('toFacility.true', 'responsibility.exec');
+  g.wire('claimIdToPatch.claimId', 'responsibility.claimId', 'billFacility.claimId');
+  g.wire('responsibility.payers', 'fix.exec');
+  g.wire('responsibility.facility', 'billFacility.exec');
+  g.wire('responsibility.facilityId', 'billFacility.facilityId');
+  g.wire('responsibility.reason', 'billFacility.reason');
+  g.wire('entry.subject', 'billFacility.subject');
+  g.wire('entry.context', 'billFacility.context');
+  g.wire('billFacility.billed', 'check.exec');
+  g.wire('billFacility.payers', 'check.exec');
+  g.wire('billFacility.voided', 'voidedDone.exec');
   g.wire('check.valid', 'asked.exec');
   g.wire('asked.true', 'fix.exec');
   g.wire('asked.false', 'fixedDone.exec');
@@ -855,7 +912,7 @@ export const checkGraphs: SeedGraph[] = [
   asStage(
     'billing.fix-claim',
     'Fix Claim',
-    'Checks a saved claim and, while anything blocks it (or always, with all), asks a biller to fix the fields the issues name, applies the fixes, reprices when the Reprice Triggers rule says so and checks again. Continues through fixed, voided or backToReview.',
+    'Checks a saved claim and, while anything blocks it (or always, with all), asks a biller to fix the fields the issues name, applies the fixes, reprices when the Reprice Triggers rule says so and checks again; a claim the Facility Responsibility rule bills to a facility goes to Bill Facility instead, then is checked again. With patientOnly, only issues that matter for billing the patient count. Continues through fixed, voided or backToReview.',
     fixClaim()
   )
 ];

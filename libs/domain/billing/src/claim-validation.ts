@@ -150,7 +150,8 @@ const before = (a: string | null, b: string | null) =>
   a !== null && b !== null && Date.parse(b) < Date.parse(a);
 
 const transports = (c: ClaimCheck) =>
-  c.tripType ? !NO_TRANSPORT_TRIPS.includes(c.tripType as TripType) : isTransport(c.lines);
+  !c.deceased &&
+  (c.tripType ? !NO_TRANSPORT_TRIPS.includes(c.tripType as TripType) : isTransport(c.lines));
 
 const within = (day: string | null, stay: ReportedStay) =>
   day !== null &&

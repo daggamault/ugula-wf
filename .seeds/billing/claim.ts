@@ -435,7 +435,14 @@ const lineModifiers = (): GraphDef => {
     ),
     values: { max: MAX_LINE_MODIFIERS }
   });
-  g.add('reasons', 'std.expr', expr('Why', 'concat(trip, coverage, byCode)'));
+  g.add(
+    'reasons',
+    'std.expr',
+    expr(
+      'Why',
+      'concat(trip, coverage, map(filter(map(codes, (c, n) => { code: c, modifier: byCode[n] }), l => l.modifier != null && l.modifier != ""), l => l.code + " carries " + l.modifier))'
+    )
+  );
   g.ret('return');
   g.wire('entry.deceased', 'trip.deceased');
   g.wire('entry.patientCount', 'trip.patientCount');
@@ -452,6 +459,7 @@ const lineModifiers = (): GraphDef => {
   g.wire('trip.rules', 'reasons.trip');
   g.wire('coverage.rules', 'reasons.coverage');
   g.wire('byCode.values', 'reasons.byCode');
+  g.wire('entry.codes', 'reasons.codes');
   g.wire('reasons.result', 'return.reasons');
   return g.def;
 };

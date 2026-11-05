@@ -821,7 +821,7 @@ const cycleClaim = (): GraphDef => {
   g.wire('next.check', 'checkFirst.condition');
   g.wire('checkFirst.true', 'check.exec');
   g.wire('checkFirst.false', 'route.exec');
-  g.wire('next.patientOnly', 'check.patientOnly');
+  g.wire('next.patientOnly', 'check.patientOnly', 'fix.patientOnly');
   g.wire('rejection.result', 'check.rejection');
   g.wire('next.coverageId', 'check.rejectedCoverageId');
   g.wire('check.issues', 'checks.issues');

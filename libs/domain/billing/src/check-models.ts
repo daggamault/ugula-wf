@@ -59,7 +59,11 @@ export const CHECK_FACTS = model(
     f('pcrNumber', 'string', 'PCR number'),
     f('serviceDate', 'string', 'Date of service'),
     f('tripType', 'string', 'Trip type'),
-    f('transports', 'boolean', 'The patient was transported'),
+    f(
+      'transports',
+      'boolean',
+      'The patient was transported (never when pronounced dead before loading)'
+    ),
     f('level', 'string', 'Level of service'),
     f('levelValid', 'boolean', 'The level of service is BLS, ALS1, ALS2 or SCT'),
     f('emergency', 'boolean', 'Emergency response'),

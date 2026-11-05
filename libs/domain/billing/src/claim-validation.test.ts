@@ -80,6 +80,7 @@ describe('checkFactsOf', () => {
     assert.equal(facts.patientLinked, true);
     assert.deepEqual(facts.patientAddressMissing, []);
     assert.equal(facts.transports, true);
+    assert.equal(checkFactsOf({ ...check, deceased: true }, asOf).transports, false);
     assert.equal(facts.levelValid, true);
     assert.equal(facts.linesAddUp, true);
     assert.equal(facts.originDestinationValid, true);
