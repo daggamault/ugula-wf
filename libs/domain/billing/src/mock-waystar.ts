@@ -7,7 +7,7 @@ import {
   mockPayerClaimNumber,
   respond
 } from './mock-x12.ts';
-import { centsOf, readX12, textOf } from './x12.ts';
+import { centsOf, dateOf, readX12, textOf } from './x12.ts';
 
 export { WAYSTAR_EXTENSIONS };
 
@@ -16,6 +16,18 @@ export const WAYSTAR_RECEIVERS = ['WAYSTAR', 'ZIRMED'] as const;
 export const INACTIVE_MEMBER_PREFIX = 'INACTIVE';
 
 export const ADVANTAGE_MEMBER_PREFIX = 'ADVANTAGE';
+
+const STAY_MEMBER_PREFIXES = { INPATIENT: 'inpatient', SNF: 'snf' } as const;
+
+const stayOf = (q: EligibilityInquiry) => {
+  const member = q.subscriber.memberId.toUpperCase();
+  const prefix = Object.keys(STAY_MEMBER_PREFIXES).find((p) => member.startsWith(p)) as
+    | keyof typeof STAY_MEMBER_PREFIXES
+    | undefined;
+  return prefix && q.serviceDate
+    ? { stay: { kind: STAY_MEMBER_PREFIXES[prefix], admittedOn: q.serviceDate } }
+    : {};
+};
 
 const MOCK_ADVANTAGE_PLAN = { name: 'SUNSHINE MEDICARE ADVANTAGE', id: 'H1234' };
 
@@ -104,6 +116,7 @@ export type EligibilityInquiry = {
   trace: string;
   payer: { name: string; id: string };
   subscriber: { lastName: string; firstName: string | null; memberId: string };
+  serviceDate: string | null;
 };
 
 export const read270 = (text: string) => {
@@ -126,9 +139,12 @@ export const read270 = (text: string) => {
           lastName: textOf(seg[3]) ?? '',
           firstName: textOf(seg[4]),
           memberId: textOf(seg[9]) ?? ''
-        }
+        },
+        serviceDate: null
       });
     }
+    const last = inquiries.at(-1);
+    if (id === 'DTP' && q === '291' && last) last.serviceDate = dateOf(seg[3]) ?? null;
   }
   return { interchange: readInterchange(text), inquiries };
 };
@@ -148,7 +164,8 @@ export const respondToEligibility = (text: string, now: Date) => {
         ...(isActiveMember(q.subscriber.memberId) ? {} : { message: 'COVERAGE TERMINATED' }),
         ...(q.subscriber.memberId.toUpperCase().startsWith(ADVANTAGE_MEMBER_PREFIX)
           ? { advantagePlan: MOCK_ADVANTAGE_PLAN }
-          : {})
+          : {}),
+        ...stayOf(q)
       },
       {
         sender: 'WAYSTAR',

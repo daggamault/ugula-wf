@@ -149,7 +149,7 @@ describe('build837', () => {
   it('carries prior payers as COB loops, so the next payer is billed in order', () => {
     const secondary = build({
       ...mapped,
-      payer: { name: 'Blue Plan', payerId: 'DEMOBCBS', claimFiling: 'BL' },
+      payer: { name: 'Blue Plan', payerId: 'DEMOBCBS', claimFiling: 'BL', insuranceType: null },
       otherPayers: [
         {
           name: 'Medicare',
@@ -234,6 +234,26 @@ describe('build837', () => {
       priorAuthorization: 'PA-77'
     }).filter((s) => s.startsWith('REF*G1') || s.startsWith('REF*F8'));
     assert.deepEqual(refs, ['REF*G1*PA-77', 'REF*F8*PCN123']);
+  });
+
+  it('writes the admission date, the claim note and a Medicare secondary payer type', () => {
+    const segs = build({
+      ...mapped,
+      admissionDate: '2026-09-28',
+      priorAuthorization: 'PA-77',
+      note: 'BLS NON-EMERGENCY; 2 PATIENTS TRANSPORTED*',
+      payer: { ...mapped.payer, insuranceType: '12' }
+    });
+    const claim = segs.slice(segs.findIndex((s) => s.startsWith('CLM*')));
+    assert.deepEqual(claim.slice(1, 4), [
+      'DTP*435*D8*20260928',
+      'REF*G1*PA-77',
+      'NTE*ADD*BLS NON-EMERGENCY; 2 PATIENTS TRANSPORTED'
+    ]);
+    assert.ok(segs.includes('SBR*P*18***12****MB'));
+    assert.ok(!build(mapped).some((s) => s.startsWith('NTE') || s.startsWith('DTP*435')));
+    const long = build({ ...mapped, note: 'X'.repeat(90) }).find((s) => s.startsWith('NTE'));
+    assert.equal(long, `NTE*ADD*${'X'.repeat(80)}`);
   });
 
   it('reports whole loaded miles from 100 miles up, as CMS requires', () => {

@@ -28,6 +28,7 @@ export type {
   PayerStore,
   ReadPayerFile,
   RecoveryStore,
+  Responsibility,
   ScheduleStore
 } from './stores.ts';
 

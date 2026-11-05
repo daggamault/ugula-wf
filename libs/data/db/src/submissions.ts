@@ -30,6 +30,7 @@ const readyClaim = (db: Db, agencyId: string, id: string) =>
       'c.pcr_number',
       'c.emergency',
       'c.loaded_miles',
+      'c.deceased',
       'c.total_cents',
       'c.service_date',
       'c.origin_code',
@@ -276,6 +277,7 @@ export const pendingClaim = (
     details: detailsOf(row),
     emergency: row.emergency === true,
     loadedMiles: row.loaded_miles === null ? null : Number(row.loaded_miles),
+    deceased: row.deceased,
     lines: row.lines.map((l) => ({
       code: l.code,
       units: Number(l.units),

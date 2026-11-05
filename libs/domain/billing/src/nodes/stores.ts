@@ -1,9 +1,11 @@
 import type { NodeDef } from '@ugula/graph';
+import type { ClaimDocument } from '../claim-documents.ts';
 import type { ClaimPatch } from '../claim-fix.ts';
 import type { ClaimCheck, NewClaim } from '../claim-validation.ts';
 import type { ClaimLedger, ClaimStatus, ClosedStatus, CycleEventKind } from '../claims.ts';
 import type { Completer } from '../completions.ts';
 import type { AppealPacketSource, FacilityInvoiceSource } from '../documents.ts';
+import type { CheckedFacility, ResponsibleParty } from '../facilities.ts';
 import type { Address, NewPatient, Patient } from '../patients.ts';
 import type { PayerFileOutcome } from '../payer-files.ts';
 import type { DirectoryPayer, PayerLookup } from '../payers.ts';
@@ -152,6 +154,12 @@ export type SentClaimFile = { sentAs: string } | 'manual';
 
 type Revision = { status: ClaimStatus; previous: BlobRef | null };
 
+export type Responsibility = {
+  party: ResponsibleParty;
+  facilityId: string | null;
+  note: string;
+};
+
 export type ClaimStore = {
   openDraft: (runId: string, sourceKey: string, draft: DraftClaim) => Promise<OpenedClaim>;
   assignPatient: (
@@ -221,6 +229,18 @@ export type ClaimStore = {
     sourceKey: string,
     status: ClosedStatus
   ) => Promise<void>;
+  setResponsibility: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    responsibility: Responsibility
+  ) => Promise<void>;
+  facilityDirectory: (runId: string) => Promise<CheckedFacility[]>;
+  claimDocument: (
+    runId: string,
+    claimId: string,
+    documentId: string
+  ) => Promise<ClaimDocument | null>;
 };
 
 type PayerFileLine = {

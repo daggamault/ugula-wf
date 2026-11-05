@@ -16,12 +16,21 @@ describe('claim documentation columns', () => {
       weightKg: 81.6,
       atScene: '2026-09-14T12:05:00.000Z',
       leftScene: '2026-09-14T12:25:00.000Z',
-      atDestination: null
+      atDestination: null,
+      patientCount: 2,
+      closestFacilityMiles: 4.6,
+      abnOnFile: true,
+      abnSignedOn: '2026-09-13',
+      mspAccident: 'noFault',
+      pcsType: 'repetitive',
+      roundTrips: 4,
+      facilityStay: 'snf'
     });
     const values = documentationValues(doc);
     const row = {
       ...values,
       weight_kg: String(values.weight_kg),
+      closest_facility_miles: String(values.closest_facility_miles),
       at_scene_at: new Date(values.at_scene_at ?? ''),
       left_scene_at: new Date(values.left_scene_at ?? ''),
       at_destination_at: null
@@ -34,6 +43,7 @@ describe('claim documentation columns', () => {
     const row = {
       ...documentationValues(doc),
       weight_kg: null,
+      closest_facility_miles: null,
       at_scene_at: null,
       left_scene_at: null,
       at_destination_at: null

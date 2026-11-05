@@ -25,7 +25,21 @@ const documentationValues = (d: ClaimEdit['documentation']) =>
     signature_note: d.signature ? 'Updated by a biller' : undefined,
     pcs_on_file: d.pcsOnFile ?? undefined,
     pcs_signed_on: d.pcsSignedOn ?? undefined,
-    transport_reason: d.transportReason ?? undefined
+    transport_reason: d.transportReason ?? undefined,
+    patient_count: d.patientCount ?? undefined,
+    abn_on_file: d.abnOnFile ?? undefined,
+    abn_signed_on: d.abnSignedOn ?? undefined,
+    denial_expected: d.denialExpected ?? undefined,
+    msp_employer_plan: d.mspEmployerPlan ?? undefined,
+    msp_esrd: d.mspEsrd ?? undefined,
+    msp_disability: d.mspDisability ?? undefined,
+    msp_accident: d.mspAccident ?? undefined,
+    prior_authorization: d.priorAuthorization ?? undefined,
+    prior_authorization_expires_on: d.priorAuthorizationExpiresOn ?? undefined,
+    pcs_type: d.pcsType ?? undefined,
+    round_trips: d.roundTrips ?? undefined,
+    admission_date: d.admissionDate ?? undefined,
+    facility_stay: d.facilityStay ?? undefined
   };
 
 const claimValues = (e: ClaimEdit) =>
@@ -35,6 +49,8 @@ const claimValues = (e: ClaimEdit) =>
     level: e.level ?? undefined,
     emergency: e.emergency ?? undefined,
     loaded_miles: e.loadedMiles ?? undefined,
+    deceased: e.deceased ?? undefined,
+    non_covered_miles: e.nonCoveredMiles === null ? undefined : e.nonCoveredMiles || null,
     origin_code: e.originDestination?.[0],
     destination_code: e.originDestination?.[1],
     ...addressValues('pickup', e.pickup),

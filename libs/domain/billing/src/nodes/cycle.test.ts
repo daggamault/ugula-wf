@@ -87,6 +87,7 @@ const pending: PendingSubmission = {
     details: completeCheck().details,
     emergency: true,
     loadedMiles: 7.4,
+    deceased: false,
     lines: [{ code: 'A0427', units: 1, unitCents: 85_000, totalCents: 85_000 }]
   },
   coverageId: 'cov-Medicare',

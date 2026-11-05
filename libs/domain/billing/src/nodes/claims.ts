@@ -3,7 +3,17 @@ import { priceLines, readLines, readPricedLines } from '../charges.ts';
 import { CLAIM_FIX_FIELDS, chargeChanges, fixForm, readClaimPatch } from '../claim-fix.ts';
 import { type ClaimCheck, checkFactsOf, readIssues, readNewClaim } from '../claim-validation.ts';
 import { claimProgress, RESTARTABLE_STATUSES } from '../claims.ts';
-import { BLOB, CHECK_FACTS, CLAIM, CLAIM_ISSUE, LINE, PATIENT, SERVICE } from '../models.ts';
+import { FACILITY_KINDS, isResponsibleParty } from '../facilities.ts';
+import {
+  BLOB,
+  CHECK_FACTS,
+  CLAIM,
+  CLAIM_DOCUMENT,
+  CLAIM_ISSUE,
+  LINE,
+  PATIENT,
+  SERVICE
+} from '../models.ts';
 import { isCents, recordOf, requiredText, textOrNull } from '../values.ts';
 import type { NodesOf } from './stores.ts';
 
@@ -177,7 +187,9 @@ export const claimNodes: NodesOf = (stores) => {
             level: after.level,
             emergency: after.emergency,
             loadedMiles: after.loadedMiles,
-            basis: []
+            basis: [],
+            deceased: after.deceased,
+            nonCoveredMiles: after.nonCoveredMiles
           },
           payerId: after.payers[0]?.payerId ?? null
         };
@@ -234,6 +246,73 @@ export const claimNodes: NodesOf = (stores) => {
         const claimId = claimIdOf(inputs.claimId);
         await claims().saveClaim(ctx.runId, claimId, ctx.key, readNewClaim(inputs.claim));
         return {};
+      }
+    }),
+    actionNode({
+      type: 'billing.facility-choices',
+      title: 'Facility Choices',
+      category: CATEGORY,
+      description:
+        "Lists the agency's facility directory as choices for a task field named facilityId, contract facilities marked.",
+      inputs: [],
+      outputs: [pin('options', { object: {} })],
+      compute: async (_, __, ctx) => {
+        const facilities = await claims().facilityDirectory(ctx.runId);
+        return {
+          options: facilities.length
+            ? {
+                facilityId: facilities.map((f) => ({
+                  value: f.id,
+                  label: `${f.name} · ${FACILITY_KINDS[f.kind]}${f.contract ? ' · contract' : ''}`
+                }))
+              }
+            : null
+        };
+      }
+    }),
+    actionNode({
+      type: 'billing.record-responsibility',
+      title: 'Record Responsible Party',
+      category: CATEGORY,
+      description:
+        'Records who a claim is billed to, once per run step, with why: the payers, or a facility (a Part A stay or a contract), which sets the claim to Bill facility and keeps it from going to payers on an 837P.',
+      effect: true,
+      inputs: [
+        claimIdPin,
+        pin('party', 'string'),
+        pin('facilityId', 'string', { optional: true }),
+        pin('note', 'string', { optional: true })
+      ],
+      outputs: [],
+      compute: async (inputs, _, ctx) => {
+        const claimId = claimIdOf(inputs.claimId);
+        if (!isResponsibleParty(inputs.party)) {
+          throw new Error(`Unknown responsible party "${String(inputs.party)}"`);
+        }
+        await claims().setResponsibility(ctx.runId, claimId, ctx.key, {
+          party: inputs.party,
+          facilityId: inputs.party === 'facility' ? textOrNull(inputs.facilityId) : null,
+          note:
+            textOrNull(inputs.note) ??
+            (inputs.party === 'facility' ? 'Billed to the facility' : 'Billed to the payers')
+        });
+        return {};
+      }
+    }),
+    actionNode({
+      type: 'billing.read-claim-document',
+      title: 'Read Claim Document',
+      category: CATEGORY,
+      description:
+        'Reads a document uploaded to a claim: its kind (facesheet, pcs, signature, abn or msp), the date it was signed and its file name.',
+      inputs: [claimIdPin, pin('documentId', 'string')],
+      outputs: [pin('document', CLAIM_DOCUMENT.type)],
+      compute: async (inputs, _, ctx) => {
+        const claimId = claimIdOf(inputs.claimId);
+        const documentId = requiredText(inputs.documentId, 'No document to read');
+        const document = await claims().claimDocument(ctx.runId, claimId, documentId);
+        if (!document) throw new Error(`Document ${documentId} is not on claim ${claimId}`);
+        return { document };
       }
     }),
     branchNode({

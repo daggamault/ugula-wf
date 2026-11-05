@@ -1,5 +1,11 @@
 import { dateOf, readX12, textOf, transactionsOf } from './x12.ts';
 
+export type FacilityStayHint = {
+  kind: 'inpatient' | 'snf';
+  admittedOn: string | null;
+  dischargedOn: string | null;
+};
+
 export type EligibilityResult = {
   trace: string;
   active: boolean | null;
@@ -7,6 +13,7 @@ export type EligibilityResult = {
   coverageStart: string | null;
   coverageEnd: string | null;
   advantagePlan: string | null;
+  stay: FacilityStayHint | null;
   messages: string[];
 };
 
@@ -24,6 +31,17 @@ const PLAN_ENTITIES = ['PRP', 'PR', 'P3'];
 
 const UNNAMED_PLAN = 'A Medicare Advantage plan';
 
+const STAY_SERVICES: Readonly<Record<string, FacilityStayHint['kind']>> = {
+  '48': 'inpatient',
+  AG: 'snf'
+};
+
+const stayKindOf = (eb: string[]) =>
+  (eb[3] ?? '')
+    .split('^')
+    .map((code) => STAY_SERVICES[code.trim()])
+    .find((kind) => kind !== undefined) ?? null;
+
 const REJECTS: Readonly<Record<string, string>> = {
   '15': 'Required application data missing',
   '41': 'Authorization or access restrictions',
@@ -37,7 +55,7 @@ const REJECTS: Readonly<Record<string, string>> = {
   '79': 'Invalid participant identification'
 };
 
-type Draft = EligibilityResult & { traced: boolean; otherPlan: boolean };
+type Draft = EligibilityResult & { traced: boolean; otherPlan: boolean; staying: boolean };
 
 const rejectOf = (aaa: string[]) => {
   const code = aaa[3]?.trim() ?? '';
@@ -55,8 +73,12 @@ const resultsOf = (segments: string[][]) => {
   let draft: Draft | null = null;
   const close = () => {
     if (draft?.traced) {
-      const { traced: _, otherPlan: __, ...result } = draft;
-      results.push({ ...result, messages: [...shared, ...result.messages] });
+      const { traced: _, otherPlan: __, staying: ___, ...result } = draft;
+      results.push({
+        ...result,
+        stay: result.stay?.admittedOn ? result.stay : null,
+        messages: [...shared, ...result.messages]
+      });
     }
   };
   for (const seg of segments) {
@@ -72,7 +94,9 @@ const resultsOf = (segments: string[][]) => {
               coverageStart: null,
               coverageEnd: null,
               advantagePlan: null,
+              stay: null,
               otherPlan: false,
+              staying: false,
               messages: []
             }
           : null;
@@ -88,6 +112,9 @@ const resultsOf = (segments: string[][]) => {
         const code = seg[1] ?? '';
         draft.otherPlan = code === OTHER_PAYER && MANAGED_CARE_PLANS.includes(seg[4] ?? '');
         if (draft.otherPlan) draft.advantagePlan ??= textOf(seg[5]) ?? UNNAMED_PLAN;
+        const stay = stayKindOf(seg);
+        draft.staying = stay !== null && (draft.stay === null || draft.stay.kind === stay);
+        if (stay && !draft.stay) draft.stay = { kind: stay, admittedOn: null, dischargedOn: null };
         if (draft.active === null && (ACTIVE.includes(code) || INACTIVE.includes(code))) {
           draft.active = ACTIVE.includes(code);
           draft.planName ??= textOf(seg[5]);
@@ -102,6 +129,12 @@ const resultsOf = (segments: string[][]) => {
       case 'DTP': {
         if (!draft || draft.otherPlan) break;
         const [from, to] = rangeOf(seg);
+        if (draft.staying && draft.stay) {
+          if (seg[1] === '435' || seg[1] === '472') draft.stay.admittedOn ??= from ?? null;
+          if (seg[1] === '096') draft.stay.dischargedOn ??= from ?? null;
+          if (seg[1] === '472') draft.stay.dischargedOn ??= to ?? null;
+          break;
+        }
         if (seg[1] === '346') draft.coverageStart ??= from ?? null;
         if (seg[1] === '347') draft.coverageEnd ??= from ?? null;
         if (seg[1] === '291' && seg[2] === 'RD8') {

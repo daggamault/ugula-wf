@@ -45,6 +45,8 @@ const claim: NewClaim = {
   level: 'ALS1',
   emergency: true,
   loadedMiles: 12.4,
+  deceased: false,
+  nonCoveredMiles: null,
   lines: [
     { code: 'A0427', units: 1, unitCents: 95_000, totalCents: 95_000 },
     { code: 'A0425', units: 12.4, unitCents: 1_550, totalCents: 19_220 }
@@ -228,7 +230,7 @@ describe('createClaimStore', () => {
     );
     await createClaimStore(db, blobs).saveClaim('r1', ID, 'k', claim);
     const [update] = sqlOf(queries, 'update "claims"');
-    assert.ok(update?.sql.endsWith('where "id" = $31 and "status" = $32'));
+    assert.ok(update?.sql.endsWith('where "id" = $47 and "status" = $48'));
     assert.ok(!update?.parameters.includes('needs_review'));
     assert.ok(update?.parameters.includes('emergency') && update.parameters.includes('ALS1'));
     assert.ok(update?.parameters.includes('2026-10-01'));
@@ -362,6 +364,8 @@ describe('createClaimStore', () => {
       level: null,
       emergency: null,
       loadedMiles: null,
+      deceased: null,
+      nonCoveredMiles: null,
       diagnoses: null,
       pickup: null,
       destination: null,
@@ -543,6 +547,82 @@ describe('createClaimStore', () => {
     await assert.rejects(() => store.attachCycle('r1', ID, 'k', CYCLE), /does not exist/);
     await assert.rejects(() => store.attachCycle('r1', ID, 'k', 'cycle-1'), /does not exist/);
     assert.equal(sqlOf(missing.queries, 'update').length, 0);
+  });
+
+  it('bills a claim to a facility of its own agency once per step, and back to the payers', async () => {
+    const FACILITY_ID = '0195f2a4-0000-7000-8000-0000000000f1';
+    const respond = (logged: boolean) =>
+      createRecordingDb((q) =>
+        ownedClaim(q)
+          ? [owned]
+          : q.sql.startsWith('insert into "claim_events"') && logged
+            ? [{ id: 'e1' }]
+            : []
+      );
+    const { db, queries } = respond(true);
+    await createClaimStore(db, blobs).setResponsibility('r1', ID, 'k', {
+      party: 'facility',
+      facilityId: FACILITY_ID,
+      note: 'Contract with Oak Manor'
+    });
+    const [event] = sqlOf(queries, 'insert into "claim_events"');
+    assert.ok(event?.parameters.includes('responsibility'));
+    assert.ok(event?.parameters.includes('Contract with Oak Manor'));
+    const [update] = sqlOf(queries, 'update "claims"');
+    assert.ok(update?.sql.includes('select "id" from "facilities"'));
+    assert.deepEqual(update?.parameters.slice(0, 2), [FACILITY_ID, 't-1']);
+    const back = respond(true);
+    await createClaimStore(back.db, blobs).setResponsibility('r1', ID, 'k', {
+      party: 'payer',
+      facilityId: null,
+      note: 'Billed to the payers'
+    });
+    const [reset] = sqlOf(back.queries, 'update "claims"');
+    assert.deepEqual(reset?.parameters, [null, ID]);
+    await assert.rejects(
+      () =>
+        createClaimStore(respond(true).db, blobs).setResponsibility('r1', ID, 'k', {
+          party: 'facility',
+          facilityId: null,
+          note: ''
+        }),
+      /Choose the facility/
+    );
+    const replay = respond(false);
+    await createClaimStore(replay.db, blobs).setResponsibility('r1', ID, 'k', {
+      party: 'payer',
+      facilityId: null,
+      note: ''
+    });
+    assert.equal(sqlOf(replay.queries, 'update "claims"').length, 0);
+  });
+
+  it('lists the facility directory and reads a document of the claim', async () => {
+    const DOC = '0195f2a4-0000-7000-8000-0000000000d1';
+    const { db, queries } = createRecordingDb((q) =>
+      ownedClaim(q)
+        ? [owned]
+        : q.sql.includes('from "facilities"')
+          ? [
+              { id: 'f1', name: 'Oak Manor', kind: 'snf', contract: true },
+              { id: 'f2', name: 'Odd', kind: 'spa', contract: false }
+            ]
+          : q.sql.includes('from "claim_documents"')
+            ? [{ id: DOC, kind: 'pcs', signed_on: '2026-09-01', file_name: 'pcs.pdf' }]
+            : []
+    );
+    const store = createClaimStore(db, blobs);
+    assert.deepEqual(await store.facilityDirectory('r1'), [
+      { id: 'f1', name: 'Oak Manor', kind: 'snf', contract: true }
+    ]);
+    assert.deepEqual(await store.claimDocument('r1', ID, DOC), {
+      id: DOC,
+      kind: 'pcs',
+      signedOn: '2026-09-01',
+      fileName: 'pcs.pdf'
+    });
+    assert.equal(await store.claimDocument('r1', ID, 'not-a-uuid'), null);
+    assert.ok(sqlOf(queries, 'select "id", "kind", "signed_on"')[0]?.parameters.includes(ID));
   });
 
   it('records coverage events idempotently', async () => {

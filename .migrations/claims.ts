@@ -10,15 +10,21 @@ import {
   COVERAGE_EVENT_KINDS,
   DENIAL_ROUTES,
   DIAGNOSIS_LIMIT,
+  DOCUMENT_KINDS,
   ELIGIBILITY_STATUSES,
+  FACILITY_STAYS,
   HCPCS_PATTERN,
   ICD10_PATTERN,
   INSURED_RELATIONSHIPS,
   MAX_CONTROL_NUMBER,
+  MAX_DOCUMENTED_COUNT,
+  MSP_ACCIDENTS,
   ORIGIN_DESTINATION_CODES,
   PATIENT_EVENT_KINDS,
+  PCS_TYPES,
   SERVICE_LEVELS,
   SIGNATURE_STATUSES,
+  STAY_KINDS,
   TRANSPORT_REASONS,
   TRIP_TYPES,
   UNIT_SCALE,
@@ -86,6 +92,22 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('at_scene_at', 'timestamptz')
     .addColumn('left_scene_at', 'timestamptz')
     .addColumn('at_destination_at', 'timestamptz')
+    .addColumn('deceased', 'boolean', (col) => col.notNull().defaultTo(false))
+    .addColumn('non_covered_miles', 'numeric')
+    .addColumn('patient_count', 'smallint')
+    .addColumn('closest_facility_miles', 'numeric')
+    .addColumn('abn_on_file', 'boolean')
+    .addColumn('abn_signed_on', 'date')
+    .addColumn('denial_expected', 'boolean')
+    .addColumn('msp_employer_plan', 'boolean')
+    .addColumn('msp_esrd', 'boolean')
+    .addColumn('msp_disability', 'boolean')
+    .addColumn('msp_accident', 'text')
+    .addColumn('prior_authorization_expires_on', 'date')
+    .addColumn('pcs_type', 'text')
+    .addColumn('round_trips', 'smallint')
+    .addColumn('admission_date', 'date')
+    .addColumn('facility_stay', 'text')
     .addColumn('status', 'text', (col) => col.notNull().defaultTo('draft'))
     .addColumn('cycle_run_id', 'uuid')
     .addColumn('facility_id', 'uuid')
@@ -134,6 +156,25 @@ const buildClaimsTable = (db: Kysely<Database>) =>
       sql`condition_codes <@ array[${list(Object.keys(AMBULANCE_CONDITIONS))}]::text[] and cardinality(condition_codes) <= ${sql.lit(CONDITION_LIMIT)}`
     )
     .addCheckConstraint('claims_weight_check', sql`weight_kg > 0`)
+    .addCheckConstraint('claims_non_covered_miles_check', sql`non_covered_miles > 0`)
+    .addCheckConstraint(
+      'claims_patient_count_check',
+      sql`patient_count between 1 and ${sql.lit(MAX_DOCUMENTED_COUNT)}`
+    )
+    .addCheckConstraint('claims_closest_facility_miles_check', sql`closest_facility_miles >= 0`)
+    .addCheckConstraint(
+      'claims_msp_accident_check',
+      sql`msp_accident in (${list(Object.keys(MSP_ACCIDENTS))})`
+    )
+    .addCheckConstraint('claims_pcs_type_check', sql`pcs_type in (${list(Object.keys(PCS_TYPES))})`)
+    .addCheckConstraint(
+      'claims_round_trips_check',
+      sql`round_trips between 0 and ${sql.lit(MAX_DOCUMENTED_COUNT)}`
+    )
+    .addCheckConstraint(
+      'claims_facility_stay_check',
+      sql`facility_stay in (${list(Object.keys(FACILITY_STAYS))})`
+    )
     .addCheckConstraint('claims_status_check', sql`status in (${list(CLAIM_STATUSES)})`)
     .addCheckConstraint('claims_trip_type_check', sql`trip_type in (${list(TRIP_TYPES)})`)
     .addCheckConstraint(
@@ -196,6 +237,13 @@ const buildClaimCoveragesTable = (db: Kysely<Database>) =>
     .addColumn('eligibility', 'text')
     .addColumn('eligibility_note', 'text')
     .addColumn('eligibility_checked_at', 'timestamptz')
+    .addColumn('stay_kind', 'text')
+    .addColumn('stay_admitted_on', 'date')
+    .addColumn('stay_discharged_on', 'date')
+    .addCheckConstraint(
+      'claim_coverages_stay_check',
+      sql`stay_kind in (${list(STAY_KINDS)}) or (stay_kind is null and stay_admitted_on is null and stay_discharged_on is null)`
+    )
     .addCheckConstraint(
       'claim_coverages_eligibility_check',
       sql`eligibility is null or (eligibility in (${list(ELIGIBILITY_STATUSES)}) and eligibility_checked_at is not null)`
@@ -238,6 +286,33 @@ const buildClaimDiagnosesTable = (db: Kysely<Database>) =>
       sql`position between 1 and ${sql.lit(DIAGNOSIS_LIMIT)}`
     )
     .addCheckConstraint('claim_diagnoses_code_check', sql`code ~ ${sql.lit(ICD10_PATTERN)}`);
+
+const buildClaimDocumentsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('claim_documents')
+    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
+    .addColumn('agency_id', 'uuid', (col) => col.notNull())
+    .addColumn('claim_id', 'uuid', (col) => col.notNull())
+    .addColumn('kind', 'text', (col) => col.notNull())
+    .addColumn('file_name', 'text', (col) => col.notNull())
+    .addColumn('document', 'jsonb', (col) => col.notNull())
+    .addColumn('signed_on', 'date')
+    .addColumn('uploaded_by', 'uuid', (col) =>
+      col.references('users.id').onDelete('set null').onUpdate('cascade')
+    )
+    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addForeignKeyConstraint(
+      'claim_documents_claim_id_fkey',
+      ['agency_id', 'claim_id'],
+      'claims',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
+    .addCheckConstraint(
+      'claim_documents_kind_check',
+      sql`kind in (${list(Object.keys(DOCUMENT_KINDS))})`
+    )
+    .addCheckConstraint('claim_documents_file_name_check', sql`file_name <> ''`);
 
 const buildClaimBatchesTable = (db: Kysely<Database>) =>
   db.schema
@@ -402,6 +477,14 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
   db.schema.createIndex('idx_claims_patient_id').on('claims').column('patient_id'),
   db.schema.createIndex('idx_claims_cycle_run_id').on('claims').column('cycle_run_id'),
   db.schema.createIndex('idx_claims_facility_id').on('claims').column('facility_id'),
+  db.schema
+    .createIndex('idx_claim_documents_claim_id')
+    .on('claim_documents')
+    .columns(['claim_id', 'created_at']),
+  db.schema
+    .createIndex('idx_claim_documents_uploaded_by')
+    .on('claim_documents')
+    .column('uploaded_by'),
   db.schema.createIndex('idx_claim_runs_claim_id').on('claim_runs').column('claim_id'),
   db.schema
     .createIndex('claim_coverages_claim_payer_name_unique')
@@ -436,6 +519,7 @@ export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimCoveragesTable(db).execute();
   await buildClaimCoveragesPayerForeignKey().execute(db);
   await buildClaimDiagnosesTable(db).execute();
+  await buildClaimDocumentsTable(db).execute();
   await buildClaimBatchesTable(db).execute();
   await buildClaimEventsTable(db).execute();
   await buildClaimEventAdjustmentsTable(db).execute();

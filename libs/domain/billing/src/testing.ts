@@ -1,8 +1,10 @@
+import type { ClaimDocument } from './claim-documents.ts';
 import type { ClaimPatch } from './claim-fix.ts';
 import type { ClaimCheck, NewClaim } from './claim-validation.ts';
 import type { ClaimEvent, ClaimStatus, LedgerCoverage } from './claims.ts';
 import type { CompletionRequest } from './completions.ts';
 import type { Documentation } from './documentation.ts';
+import type { CheckedFacility } from './facilities.ts';
 import type {
   BillingStores,
   BlobRef,
@@ -11,6 +13,7 @@ import type {
   FeeStore,
   PatientStore,
   PayerStore,
+  Responsibility,
   SavedSubmission,
   SentClaimFile,
   StatementSource,
@@ -122,6 +125,8 @@ export type MemoryClaimOptions = {
   submission?: SubmissionSource;
   saving?: SavedSubmission;
   sending?: SentClaimFile;
+  facilities?: CheckedFacility[];
+  documents?: ClaimDocument[];
 };
 
 type SavedStatement = { key: string; number: number; count: number; pdf: Uint8Array };
@@ -136,8 +141,15 @@ const checkOfSaved = (c: NewClaim): ClaimCheck => ({
   level: c.level,
   emergency: c.emergency,
   loadedMiles: c.loadedMiles,
+  deceased: c.deceased,
+  nonCoveredMiles: c.nonCoveredMiles,
   lines: c.lines,
   totalCents: c.totalCents,
+  pickupFacility: null,
+  destinationFacility: null,
+  responsibleParty: 'payer',
+  responsibilityRecorded: false,
+  documents: [],
   payers: c.coverages.map((cov) => ({
     coverageId: `cov-${cov.payer}`,
     name: cov.payer,
@@ -149,7 +161,8 @@ const checkOfSaved = (c: NewClaim): ClaimCheck => ({
     insuredLastName: cov.insuredLastName,
     filingLimitDays: null,
     eligibility: null,
-    eligibilityNote: null
+    eligibilityNote: null,
+    stay: null
   })),
   details: c.details
 });
@@ -160,6 +173,8 @@ const patched = (c: ClaimCheck, p: ClaimPatch): ClaimCheck => ({
   level: p.level ?? c.level,
   emergency: p.emergency ?? c.emergency,
   loadedMiles: p.loadedMiles ?? c.loadedMiles,
+  deceased: p.deceased ?? c.deceased,
+  nonCoveredMiles: p.nonCoveredMiles === null ? c.nonCoveredMiles : p.nonCoveredMiles || null,
   patient: p.patientAddress ?? c.patient,
   lines: p.lines ?? c.lines,
   totalCents: p.lines ? p.lines.reduce((sum, l) => sum + l.totalCents, 0) : c.totalCents,
@@ -174,6 +189,7 @@ const patched = (c: ClaimCheck, p: ClaimPatch): ClaimCheck => ({
             filingLimitDays: null,
             eligibility: null,
             eligibilityNote: null,
+            stay: null,
             ...p.newCoverage
           }
         ]
@@ -222,7 +238,9 @@ export const memoryClaims = ({
   stale = false,
   submission,
   saving = { controlNumber: 1 },
-  sending = 'manual'
+  sending = 'manual',
+  facilities = [],
+  documents = []
 }: MemoryClaimOptions = {}) => {
   const drafts: DraftClaim[] = [];
   const patients: string[] = [];
@@ -236,6 +254,7 @@ export const memoryClaims = ({
   const statements: SavedStatement[] = [];
   const filed: FiledClaim[] = [];
   const sent: number[] = [];
+  const responsibilities: Responsibility[] = [];
   let current: ClaimCheck | null = check ?? null;
   const ledgerCoverages = () =>
     coverages ??
@@ -331,7 +350,13 @@ export const memoryClaims = ({
     sendClaimFile: async (_, __, controlNumber) => {
       if (sending !== 'manual') sent.push(controlNumber);
       return sending;
-    }
+    },
+    setResponsibility: async (_, __, ___, r) => {
+      responsibilities.push(r);
+    },
+    facilityDirectory: async () => facilities,
+    claimDocument: async (_, id, documentId) =>
+      id === claimId ? (documents.find((d) => d.id === documentId) ?? null) : null
   };
   return {
     store,
@@ -347,6 +372,7 @@ export const memoryClaims = ({
     statements,
     filed,
     sent,
+    responsibilities,
     current: () => current
   };
 };
@@ -415,7 +441,8 @@ const checkedPayer = (name: string, payerId: string | null = `p-${name}`) => ({
   insuredLastName: null,
   filingLimitDays: null,
   eligibility: null,
-  eligibilityNote: null
+  eligibilityNote: null,
+  stay: null
 });
 
 export const COMPLETE_DOCUMENTATION: Documentation = {
@@ -429,7 +456,21 @@ export const COMPLETE_DOCUMENTATION: Documentation = {
   weightKg: null,
   atScene: '2025-12-30T10:05:00Z',
   leftScene: '2025-12-30T10:25:00Z',
-  atDestination: '2025-12-30T10:40:00Z'
+  atDestination: '2025-12-30T10:40:00Z',
+  patientCount: null,
+  closestFacilityMiles: null,
+  abnOnFile: null,
+  abnSignedOn: null,
+  denialExpected: null,
+  mspEmployerPlan: null,
+  mspEsrd: null,
+  mspDisability: null,
+  mspAccident: null,
+  priorAuthorizationExpiresOn: null,
+  pcsType: null,
+  roundTrips: null,
+  admissionDate: null,
+  facilityStay: null
 };
 
 export const completeCheck = (payers = ['Medicare', 'Blue']): ClaimCheck => ({
@@ -440,6 +481,13 @@ export const completeCheck = (payers = ['Medicare', 'Blue']): ClaimCheck => ({
   level: 'ALS1',
   emergency: true,
   loadedMiles: 7.3,
+  deceased: false,
+  nonCoveredMiles: null,
+  pickupFacility: null,
+  destinationFacility: null,
+  responsibleParty: 'payer',
+  responsibilityRecorded: false,
+  documents: [],
   lines: [
     { code: 'A0427', units: 1, unitCents: 92_700, totalCents: 92_700 },
     { code: 'A0425', units: 7.3, unitCents: 1_000, totalCents: 7_300 }
@@ -485,8 +533,10 @@ export const sampleX837: X837Claim = {
   claimId: 'c-1',
   placeOfService: '41',
   frequency: '1',
+  admissionDate: null,
   payerClaimNumber: null,
   priorAuthorization: null,
+  note: null,
   subscriber: {
     relationship: '18',
     lastName: "O'Brien~*",
@@ -501,7 +551,7 @@ export const sampleX837: X837Claim = {
     sex: 'M',
     ...place
   },
-  payer: { name: 'Medicare', payerId: 'DEMOMCR', claimFiling: 'MB' },
+  payer: { name: 'Medicare', payerId: 'DEMOMCR', claimFiling: 'MB', insuranceType: null },
   otherPayers: [],
   weightPounds: null,
   transportReason: 'A',

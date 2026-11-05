@@ -24,8 +24,18 @@ import {
 
 import type { ClaimCheck, ClaimField, ClaimIssue } from './claim-validation.ts';
 import {
+  FACILITY_STAYS,
+  type FacilityStay,
+  facilityStayOf,
   isSignatureStatus,
   isTransportReason,
+  MAX_DOCUMENTED_COUNT,
+  MSP_ACCIDENTS,
+  type MspAccident,
+  mspAccidentOf,
+  PCS_TYPES,
+  type PcsType,
+  pcsTypeOf,
   SIGNATURE_LABELS,
   SIGNATURE_STATUSES,
   type SignatureStatus,
@@ -78,6 +88,84 @@ export const LOADED_MILES_FIELD: FieldSpec = {
   max: MAX_LOADED_MILES
 };
 
+const choices = (labels: Readonly<Record<string, string>>) =>
+  Object.entries(labels).map(([value, label]) => option(value, label));
+
+const DECEASED_FIELD: FieldSpec = {
+  name: 'deceased',
+  type: 'boolean',
+  label: 'Pronounced dead before loading (bill BLS with QL, no mileage)'
+};
+
+const NON_COVERED_MILES_FIELD: FieldSpec = {
+  name: 'nonCoveredMiles',
+  type: 'number',
+  label: 'Non-covered miles beyond the nearest appropriate facility (A0888)',
+  min: 0,
+  max: MAX_LOADED_MILES
+};
+
+const DOCUMENTATION_FIX_FIELDS: FieldSpec[] = [
+  {
+    name: 'patientCount',
+    type: 'integer',
+    label: 'Patients transported on the trip',
+    min: 1,
+    max: MAX_DOCUMENTED_COUNT
+  },
+  { name: 'abnOnFile', type: 'boolean', label: 'Advance Beneficiary Notice (ABN) on file' },
+  { name: 'abnSignedOn', type: 'string', label: 'ABN signed on', format: 'date' },
+  { name: 'denialExpected', type: 'boolean', label: 'Medicare is expected to deny the transport' },
+  {
+    name: 'mspEmployerPlan',
+    type: 'boolean',
+    label: 'MSP: group health plan from the patient or spouse’s current employment'
+  },
+  {
+    name: 'mspEsrd',
+    type: 'boolean',
+    label: 'MSP: end-stage renal disease, in the 30-month coordination period'
+  },
+  {
+    name: 'mspDisability',
+    type: 'boolean',
+    label: 'MSP: under 65 and disabled, with a large group health plan'
+  },
+  {
+    name: 'mspAccident',
+    type: 'string',
+    label: 'MSP: accident or work injury',
+    options: choices(MSP_ACCIDENTS)
+  },
+  { name: 'priorAuthorization', type: 'string', label: 'Prior authorization number (UTN)' },
+  {
+    name: 'priorAuthorizationExpiresOn',
+    type: 'string',
+    label: 'Prior authorization expires on',
+    format: 'date'
+  },
+  {
+    name: 'pcsType',
+    type: 'string',
+    label: 'Physician certification type',
+    options: choices(PCS_TYPES)
+  },
+  {
+    name: 'roundTrips',
+    type: 'integer',
+    label: 'Round trips in this repetitive series, including this one',
+    min: 0,
+    max: MAX_DOCUMENTED_COUNT
+  },
+  { name: 'admissionDate', type: 'string', label: 'Admission date', format: 'date' },
+  {
+    name: 'facilityStay',
+    type: 'string',
+    label: 'Facility stay during the transport',
+    options: choices(FACILITY_STAYS)
+  }
+];
+
 export const CLAIM_FIX_FIELDS: FieldSpec[] = [
   {
     name: 'serviceDate',
@@ -90,6 +178,8 @@ export const CLAIM_FIX_FIELDS: FieldSpec[] = [
   LEVEL_FIELD,
   { name: 'emergency', type: 'boolean', label: 'Emergency response' },
   LOADED_MILES_FIELD,
+  DECEASED_FIELD,
+  NON_COVERED_MILES_FIELD,
   {
     name: 'diagnoses',
     type: { list: 'string' },
@@ -132,6 +222,7 @@ export const CLAIM_FIX_FIELDS: FieldSpec[] = [
     label: 'Physician certification statement signed on',
     format: 'date'
   },
+  ...DOCUMENTATION_FIX_FIELDS,
   ...address('patient', 'Patient'),
   { name: 'coverageId', type: 'string', label: 'Payer on the claim' },
   { name: 'payerId', type: 'string', label: 'Directory payer' },
@@ -158,7 +249,14 @@ const COVERAGE_FIELDS = [
   'removeCoverage'
 ];
 
-const CHARGE_FIELDS = ['tripType', 'level', 'emergency', 'loadedMiles'];
+const CHARGE_FIELDS = [
+  'tripType',
+  'level',
+  'emergency',
+  'loadedMiles',
+  'deceased',
+  'nonCoveredMiles'
+];
 
 const names = (prefix: string) => ADDRESS_FIELDS.map(([part]) => `${prefix}${part}`);
 
@@ -181,11 +279,23 @@ const FIELDS_OF: Record<ClaimField, string[]> = {
   memberId: COVERAGE_FIELDS,
   insured: COVERAGE_FIELDS,
   signature: ['signature'],
-  pcs: ['pcsOnFile', 'pcsSignedOn'],
+  pcs: ['pcsOnFile', 'pcsSignedOn', 'pcsType'],
   transportReason: ['transportReason'],
   times: [],
   filing: [],
-  submission: []
+  submission: [],
+  deceased: CHARGE_FIELDS,
+  nonCoveredMiles: CHARGE_FIELDS,
+  patientCount: ['patientCount'],
+  abn: ['abnOnFile', 'abnSignedOn', 'denialExpected'],
+  msp: ['mspEmployerPlan', 'mspEsrd', 'mspDisability', 'mspAccident'],
+  priorAuthorization: [
+    'priorAuthorization',
+    'priorAuthorizationExpiresOn',
+    'pcsType',
+    'roundTrips'
+  ],
+  facility: ['facilityStay', 'admissionDate']
 };
 
 type FixForm = {
@@ -227,6 +337,8 @@ export const fixForm = (
       level: check.level,
       emergency: check.emergency,
       loadedMiles: check.loadedMiles,
+      deceased: check.deceased,
+      nonCoveredMiles: check.nonCoveredMiles,
       diagnoses: check.details.diagnoses,
       ...locationDefaults('pickup', check.details.pickup),
       destinationName: check.details.destination.name,
@@ -237,6 +349,9 @@ export const fixForm = (
       signature: doc.signature,
       pcsOnFile: doc.pcsOnFile,
       pcsSignedOn: doc.pcsSignedOn,
+      ...Object.fromEntries(
+        DOCUMENTATION_FIX_FIELDS.map((f) => [f.name, doc[f.name as keyof typeof doc]])
+      ),
       ...(check.patient ? locationDefaults('patient', check.patient) : {}),
       coverageId,
       payerId: payer?.payerId ?? null,
@@ -279,11 +394,25 @@ type NewCoverage = {
   insuredLastName: string | null;
 };
 
-type DocumentationPatch = {
+export type DocumentationPatch = {
   signature: SignatureStatus | null;
   pcsOnFile: boolean | null;
   pcsSignedOn: string | null;
   transportReason: TransportReason | null;
+  patientCount: number | null;
+  abnOnFile: boolean | null;
+  abnSignedOn: string | null;
+  denialExpected: boolean | null;
+  mspEmployerPlan: boolean | null;
+  mspEsrd: boolean | null;
+  mspDisability: boolean | null;
+  mspAccident: MspAccident | null;
+  priorAuthorization: string | null;
+  priorAuthorizationExpiresOn: string | null;
+  pcsType: PcsType | null;
+  roundTrips: number | null;
+  admissionDate: string | null;
+  facilityStay: FacilityStay | null;
 };
 
 export type ClaimPatch = {
@@ -292,6 +421,8 @@ export type ClaimPatch = {
   level: ServiceLevel | null;
   emergency: boolean | null;
   loadedMiles: number | null;
+  deceased: boolean | null;
+  nonCoveredMiles: number | null;
   diagnoses: string[] | null;
   pickup: Location | null;
   destination: Location | null;
@@ -350,20 +481,45 @@ const modifier = (r: Record<string, unknown>, current: string | null) => {
   return code !== current && isOriginDestination(code) ? code : null;
 };
 
+const dateIn = (x: unknown) => readClaimDetails({ serviceDate: x }).serviceDate;
+
+const flagIn = (x: unknown) => (typeof x === 'boolean' ? x : null);
+
+const countIn = (x: unknown, min: number) =>
+  typeof x === 'number' && Number.isInteger(x) && x >= min && x <= MAX_DOCUMENTED_COUNT ? x : null;
+
+const milesIn = (x: unknown) =>
+  typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= MAX_LOADED_MILES ? x : null;
+
 const documentationPatch = (
   r: Record<string, unknown>,
   check: ClaimCheck
 ): DocumentationPatch | null => {
   const now = check.details.documentation;
-  const signedOn = readClaimDetails({ serviceDate: r.pcsSignedOn }).serviceDate;
   const reason = textOrNull(r.transportReason)?.toUpperCase();
-  const patch = {
-    signature: isSignatureStatus(r.signature) && r.signature !== now.signature ? r.signature : null,
-    pcsOnFile:
-      typeof r.pcsOnFile === 'boolean' && r.pcsOnFile !== now.pcsOnFile ? r.pcsOnFile : null,
-    pcsSignedOn: signedOn !== now.pcsSignedOn ? signedOn : null,
-    transportReason: isTransportReason(reason) && reason !== now.transportReason ? reason : null
+  const given: DocumentationPatch = {
+    signature: isSignatureStatus(r.signature) ? r.signature : null,
+    pcsOnFile: flagIn(r.pcsOnFile),
+    pcsSignedOn: dateIn(r.pcsSignedOn),
+    transportReason: isTransportReason(reason) ? reason : null,
+    patientCount: countIn(r.patientCount, 1),
+    abnOnFile: flagIn(r.abnOnFile),
+    abnSignedOn: dateIn(r.abnSignedOn),
+    denialExpected: flagIn(r.denialExpected),
+    mspEmployerPlan: flagIn(r.mspEmployerPlan),
+    mspEsrd: flagIn(r.mspEsrd),
+    mspDisability: flagIn(r.mspDisability),
+    mspAccident: mspAccidentOf(r.mspAccident),
+    priorAuthorization: textOrNull(r.priorAuthorization),
+    priorAuthorizationExpiresOn: dateIn(r.priorAuthorizationExpiresOn),
+    pcsType: pcsTypeOf(r.pcsType),
+    roundTrips: countIn(r.roundTrips, 0),
+    admissionDate: dateIn(r.admissionDate),
+    facilityStay: facilityStayOf(r.facilityStay)
   };
+  const patch = Object.fromEntries(
+    Object.entries(given).map(([k, v]) => [k, v !== now[k as keyof DocumentationPatch] ? v : null])
+  ) as DocumentationPatch;
   return Object.values(patch).some((v) => v !== null) ? patch : null;
 };
 
@@ -373,16 +529,17 @@ export const readClaimPatch = (values: unknown, check: ClaimCheck): ClaimPatch =
   const pickup = changedAddress(r, 'pickup', check.details.pickup);
   const destination = changedAddress(r, 'destination', check.details.destination);
   const destinationName = textOrNull(r.destinationName);
-  const miles = r.loadedMiles;
+  const miles = milesIn(r.loadedMiles);
+  const nonCovered = milesIn(r.nonCoveredMiles);
   return {
     serviceDate: details.serviceDate,
     tripType: isTripType(r.tripType) && r.tripType !== 'noClaim' ? r.tripType : null,
     level: isServiceLevel(r.level) ? r.level : null,
     emergency: typeof r.emergency === 'boolean' ? r.emergency : null,
-    loadedMiles:
-      typeof miles === 'number' && Number.isFinite(miles) && miles >= 0 && miles <= MAX_LOADED_MILES
-        ? miles
-        : null,
+    loadedMiles: miles,
+    deceased: typeof r.deceased === 'boolean' && r.deceased !== check.deceased ? r.deceased : null,
+    nonCoveredMiles:
+      nonCovered !== null && nonCovered !== (check.nonCoveredMiles ?? 0) ? nonCovered : null,
     diagnoses: Array.isArray(r.diagnoses) && details.diagnoses.length ? details.diagnoses : null,
     pickup: pickup && { name: check.details.pickup.name, ...pickup },
     destination:
@@ -407,5 +564,7 @@ export const chargeChanges = (p: ClaimPatch) => ({
   level: p.level !== null,
   emergency: p.emergency !== null,
   loadedMiles: p.loadedMiles !== null,
+  deceased: p.deceased !== null,
+  nonCoveredMiles: p.nonCoveredMiles !== null,
   payers: p.coverage !== null || p.newCoverage !== null
 });

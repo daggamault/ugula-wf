@@ -78,7 +78,8 @@ export const COVERAGE = model(
     f('groupId', 'string', 'Group ID'),
     f('relationship', 'string', 'Patient relationship to the insured (X12 or NEMSIS code)'),
     f('insuredFirstName', 'string', 'Insured first name'),
-    f('insuredLastName', 'string', 'Insured last name')
+    f('insuredLastName', 'string', 'Insured last name'),
+    f('claimFiling', 'string', 'Claim filing indicator of the directory payer')
   ]
 );
 
@@ -91,7 +92,9 @@ export const SERVICE = model(
     f('level', 'string', 'Level of service (BLS, ALS1, ALS2, SCT)'),
     f('emergency', 'boolean', 'Emergency response'),
     f('loadedMiles', 'number', 'Loaded miles'),
-    f('basis', { list: 'string' }, 'Reasons')
+    f('basis', { list: 'string' }, 'Reasons'),
+    f('deceased', 'boolean', 'Pronounced dead before loading (QL)'),
+    f('nonCoveredMiles', 'number', 'Miles beyond the nearest appropriate facility (A0888)')
   ]
 );
 
@@ -141,7 +144,22 @@ const CHECKED_PAYER = model(
     f('eligibility', 'string', 'Eligibility answer (active or inactive)'),
     f('eligibilityNote', 'string', 'What the eligibility answer said'),
     f('filingLimitDays', 'integer', 'Filing limit (days)'),
-    f('filingDaysLeft', 'integer', 'Days left to file')
+    f('filingDaysLeft', 'integer', 'Days left to file'),
+    f('medicare', 'boolean', 'A Medicare payer (claim filing MA or MB)'),
+    f('stayReported', 'string', 'Facility stay its 271 reports on the date of service')
+  ]
+);
+
+export const FACILITY = model(
+  'billing.facility',
+  'facility',
+  'Facility',
+  'a facility from the agency facility directory, and whether the agency bills it under contract',
+  [
+    f('id', 'string', 'Facility ID'),
+    f('name', 'string', 'Name'),
+    f('kind', 'string', 'Kind (hospital, snf, dialysis or other)'),
+    f('contract', 'boolean', 'The agency bills this facility for its transports under contract')
   ]
 );
 
@@ -176,7 +194,31 @@ export const CHECK_FACTS = model(
     f('pcsSignedOn', 'string', 'Physician certification statement signed on'),
     f('pcsDaysBeforeTrip', 'integer', 'Days the certification was signed before the trip'),
     f('billsMedicare', 'boolean', 'A Medicare payer is on the claim'),
-    f('payers', { list: CHECKED_PAYER.type }, 'Payers, in billing order')
+    f('payers', { list: CHECKED_PAYER.type }, 'Payers, in billing order'),
+    f('deceased', 'boolean', 'Pronounced dead before loading (QL)'),
+    f('nonCoveredMiles', 'number', 'Miles beyond the nearest appropriate facility (A0888)'),
+    f('patientCount', 'integer', 'Patients transported on the trip'),
+    f('abnOnFile', 'boolean', 'Advance Beneficiary Notice on file'),
+    f('abnSignedOn', 'string', 'Advance Beneficiary Notice signed on'),
+    f('denialExpected', 'boolean', 'A biller expects Medicare to deny the transport'),
+    f('mspEmployerPlan', 'boolean', 'MSP: group health plan from current employment'),
+    f('mspEsrd', 'boolean', 'MSP: end-stage renal disease coordination period'),
+    f('mspDisability', 'boolean', 'MSP: disabled with a large group health plan'),
+    f(
+      'mspAccident',
+      'string',
+      'MSP: accident or work injury (none, liability, noFault, workersComp)'
+    ),
+    f('priorAuthorization', 'string', 'Prior authorization number (UTN)'),
+    f('priorAuthorizationDaysLeft', 'integer', 'Days the prior authorization runs past the trip'),
+    f('pcsType', 'string', 'Physician certification type (repetitive or nonRepetitive)'),
+    f('roundTrips', 'integer', 'Round trips in the repetitive series, as a biller confirmed'),
+    f('facilityStay', 'string', 'Facility stay a biller confirmed (none, inpatient or snf)'),
+    f('pickupFacility', FACILITY.type, 'Pickup facility in the directory'),
+    f('destinationFacility', FACILITY.type, 'Destination facility in the directory'),
+    f('responsibleParty', 'string', 'Who the claim is billed to (payer or facility)'),
+    f('recordedParty', 'string', 'Who the claim was recorded as billed to, once decided'),
+    f('documents', { list: 'string' }, 'Kinds of documents on file')
   ]
 );
 
@@ -342,6 +384,19 @@ export const REMITTANCE_POSTING = model(
   ]
 );
 
+export const CLAIM_DOCUMENT = model(
+  'billing.claim-document',
+  'document',
+  'Claim Document',
+  'a document uploaded to a claim, such as a facesheet, certification, signature form, ABN or MSP form',
+  [
+    f('id', 'string', 'Document ID'),
+    f('kind', 'string', 'Kind (facesheet, pcs, signature, abn or msp)'),
+    f('signedOn', 'string', 'Signed on (YYYY-MM-DD)'),
+    f('fileName', 'string', 'File name')
+  ]
+);
+
 export const LINE = model('billing.line', 'line', 'Claim Line', 'one HCPCS charge line', [
   f('code', 'string', 'HCPCS code'),
   f('units', 'number', 'Units'),
@@ -365,7 +420,25 @@ export const DOCUMENTATION = model(
     f('weightKg', 'number', 'Patient weight (kg)'),
     f('atScene', 'string', 'Arrived on scene'),
     f('leftScene', 'string', 'Left the scene'),
-    f('atDestination', 'string', 'Arrived at the destination')
+    f('atDestination', 'string', 'Arrived at the destination'),
+    f('patientCount', 'integer', 'Patients transported on the trip'),
+    f('closestFacilityMiles', 'number', 'Miles to the closest hospital'),
+    f('abnOnFile', 'boolean', 'Advance Beneficiary Notice on file'),
+    f('abnSignedOn', 'string', 'Advance Beneficiary Notice signed on (YYYY-MM-DD)'),
+    f('denialExpected', 'boolean', 'Medicare is expected to deny the transport'),
+    f('mspEmployerPlan', 'boolean', 'MSP: group health plan from current employment'),
+    f('mspEsrd', 'boolean', 'MSP: end-stage renal disease coordination period'),
+    f('mspDisability', 'boolean', 'MSP: disabled with a large group health plan'),
+    f(
+      'mspAccident',
+      'string',
+      'MSP: accident or work injury (none, liability, noFault, workersComp)'
+    ),
+    f('priorAuthorizationExpiresOn', 'string', 'Prior authorization expires on (YYYY-MM-DD)'),
+    f('pcsType', 'string', 'Physician certification type (repetitive or nonRepetitive)'),
+    f('roundTrips', 'integer', 'Round trips in the repetitive series'),
+    f('admissionDate', 'string', 'Admission date (YYYY-MM-DD)'),
+    f('facilityStay', 'string', 'Facility stay during the trip (none, inpatient or snf)')
   ]
 );
 
@@ -385,6 +458,7 @@ export const TRIP_FACTS = model(
     f('patientEvaluation', 'string', 'Patient evaluation/care · eDisposition.28'),
     f('transportDisposition', 'string', 'Transport disposition · eDisposition.30'),
     f('levelOfCare', 'string', 'Level of care provided · eDisposition.32'),
+    f('arrestOutcome', 'string', 'End of the cardiac arrest event · eArrest.18'),
     f('cmsServiceLevel', 'string', 'CMS service level · ePayment.50'),
     f('alsAssessment', 'string', 'ALS assessment performed and warranted · ePayment.49'),
     f('sceneOdometer', 'number', 'Odometer at the scene · eResponse.20'),
@@ -452,6 +526,8 @@ export const CLAIM = model('billing.claim', 'claim', 'Claim', 'a claim before it
   f('level', 'string', 'Level of service'),
   f('emergency', 'boolean', 'Emergency response'),
   f('loadedMiles', 'number', 'Loaded miles'),
+  f('deceased', 'boolean', 'Pronounced dead before loading (QL)'),
+  f('nonCoveredMiles', 'number', 'Miles beyond the nearest appropriate facility (A0888)'),
   f('lines', { list: LINE.type }, 'Priced lines'),
   f('totalCents', 'integer', 'Total (cents)'),
   f('coverages', { list: COVERAGE.type }, 'Payers in billing order'),
@@ -539,6 +615,7 @@ const SUBMISSION = model(
     f('details', SUBMITTED_DETAILS.type, 'Trip'),
     f('emergency', 'boolean', 'Emergency response'),
     f('loadedMiles', 'number', 'Loaded miles'),
+    f('deceased', 'boolean', 'Pronounced dead before loading (QL)'),
     f('lines', { list: LINE.type }, 'Priced lines')
   ]
 );
@@ -581,7 +658,8 @@ const X837_PAYER = model(
   [
     f('name', 'string', 'Payer name (NM103)'),
     f('payerId', 'string', 'Payer ID (NM109)'),
-    f('claimFiling', 'string', 'Claim filing indicator (SBR09)')
+    f('claimFiling', 'string', 'Claim filing indicator (SBR09)'),
+    f('insuranceType', 'string', 'Medicare secondary payer type (SBR05)')
   ],
   X12
 );
@@ -632,8 +710,10 @@ export const X837_CLAIM = model(
     f('claimId', 'string', 'Patient control number (CLM01)'),
     f('placeOfService', 'string', 'Place of service (CLM05-1)'),
     f('frequency', 'string', 'Claim frequency (CLM05-3)'),
+    f('admissionDate', 'string', 'Admission date (DTP 435)'),
     f('payerClaimNumber', 'string', 'Payer claim control number (REF F8)'),
     f('priorAuthorization', 'string', 'Prior authorization number (REF G1)'),
+    f('note', 'string', 'Claim note, at most 80 characters (NTE ADD)'),
     f('subscriber', X837_SUBSCRIBER.type, 'Subscriber'),
     f('patient', X837_PATIENT.type, 'Patient'),
     f('payer', X837_PAYER.type, 'Payer'),
@@ -660,6 +740,8 @@ export const billingTypes = {
   findings: FINDINGS.type,
   issues: { list: CLAIM_ISSUE.type },
   checkFacts: CHECK_FACTS.type,
+  facility: FACILITY.type,
+  document: CLAIM_DOCUMENT.type,
   ledger: CLAIM_LEDGER.type,
   denial: DENIAL_FACTS.type,
   refund: REFUND_FACTS.type,
@@ -688,6 +770,7 @@ export const billingModels: Model[] = [
   FINDINGS,
   CLAIM_ISSUE,
   CHECKED_PAYER,
+  FACILITY,
   CHECK_FACTS,
   CLAIM_LEDGER,
   DENIAL_FACTS,
@@ -697,6 +780,7 @@ export const billingModels: Model[] = [
   ADJUSTMENT,
   REMITTANCE_LINE,
   REMITTANCE_POSTING,
+  CLAIM_DOCUMENT,
   LINE,
   DOCUMENTATION,
   TRIP_FACTS,

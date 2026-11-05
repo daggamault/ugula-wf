@@ -210,6 +210,8 @@ describe('claimNodes', () => {
       level: false,
       emergency: false,
       loadedMiles: false,
+      deceased: false,
+      nonCoveredMiles: false,
       payers: false
     });
     assert.equal(claims.current()?.details.serviceDate, '2025-12-29');
@@ -224,14 +226,69 @@ describe('claimNodes', () => {
       removeCoverage: true
     });
     assert.deepEqual(repriced.outputs, {
-      changes: { tripType: false, level: true, emergency: false, loadedMiles: false, payers: true },
+      changes: {
+        tripType: false,
+        level: true,
+        emergency: false,
+        loadedMiles: false,
+        deceased: false,
+        nonCoveredMiles: false,
+        payers: true
+      },
       tripType: 'emergency',
-      service: { level: 'BLS', emergency: true, loadedMiles: 7.3, basis: [] },
+      service: {
+        level: 'BLS',
+        emergency: true,
+        loadedMiles: 7.3,
+        basis: [],
+        deceased: false,
+        nonCoveredMiles: null
+      },
       payerId: 'p-Blue'
     });
     const repricedLines = [{ code: 'A0429', units: 1, unitCents: 70_000, totalCents: 70_000 }];
     await run(patch, { claimId: 'c1', lines: repricedLines });
     assert.equal(claims.current()?.totalCents, 70_000);
+  });
+
+  it('records who a claim is billed to, and lists the facility directory as choices', async () => {
+    const claims = memoryClaims({
+      facilities: [{ id: 'f1', name: 'Oak Manor', kind: 'snf', contract: true }]
+    });
+    const node = nodesFor(claims.store);
+    assert.deepEqual((await run(node('facility-choices'), {})).outputs, {
+      options: {
+        facilityId: [{ value: 'f1', label: 'Oak Manor · Skilled nursing facility · contract' }]
+      }
+    });
+    assert.deepEqual((await run(nodesFor()('facility-choices'), {})).outputs, { options: null });
+    await run(node('record-responsibility'), {
+      claimId: 'c1',
+      party: 'facility',
+      facilityId: 'f1'
+    });
+    await run(node('record-responsibility'), { claimId: 'c1', party: 'payer', facilityId: 'f1' });
+    assert.deepEqual(claims.responsibilities, [
+      { party: 'facility', facilityId: 'f1', note: 'Billed to the facility' },
+      { party: 'payer', facilityId: null, note: 'Billed to the payers' }
+    ]);
+    await assert.rejects(
+      async () => run(node('record-responsibility'), { claimId: 'c1', party: 'patient' }),
+      /Unknown responsible party/
+    );
+  });
+
+  it('reads a document uploaded to the claim', async () => {
+    const pcs = { id: 'd1', kind: 'pcs' as const, signedOn: '2026-01-02', fileName: 'pcs.pdf' };
+    const node = nodesFor(memoryClaims({ documents: [pcs] }).store);
+    assert.deepEqual(
+      (await run(node('read-claim-document'), { claimId: 'c1', documentId: 'd1' })).outputs,
+      { document: pcs }
+    );
+    await assert.rejects(
+      async () => run(node('read-claim-document'), { claimId: 'c1', documentId: 'd2' }),
+      /is not on claim c1/
+    );
   });
 
   it('notes revisions and says whether the claim can be worked again', async () => {

@@ -42,15 +42,18 @@ describe('payerNodes', () => {
     const first = await run(match, { coverages });
     assert.equal(first.pin, 'review');
     assert.deepEqual(
-      (first.outputs.coverages as { payer: string; payerId: string | null }[]).map((c) => [
-        c.payer,
-        c.payerId
-      ]),
+      (
+        first.outputs.coverages as {
+          payer: string;
+          payerId: string | null;
+          claimFiling: string | null;
+        }[]
+      ).map((c) => [c.payer, c.payerId, c.claimFiling]),
       [
-        ['Medicare', 'p-medicare'],
-        ['BCBS', null],
-        ['Blue Cross TX', null],
-        ['Self Pay', null]
+        ['Medicare', 'p-medicare', 'MB'],
+        ['BCBS', null, null],
+        ['Blue Cross TX', null, null],
+        ['Self Pay', null, null]
       ]
     );
     const unmatched = first.outputs.unmatched as Record<string, unknown>[];

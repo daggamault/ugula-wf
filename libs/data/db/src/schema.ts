@@ -7,13 +7,19 @@ import type {
   ClearinghouseVendor,
   CorrectionMethod,
   DenialRoute,
+  DocumentKind,
   EligibilityStatus,
+  FacilityKind,
+  FacilityStay,
   InboundKind,
   InsuredRelationship,
+  MspAccident,
   PayerFileOutcome,
+  PcsType,
   PlanType,
   Sex,
   SignatureStatus,
+  StayKind,
   TransportReason,
   TripType
 } from '@ugula/billing';
@@ -26,6 +32,8 @@ type NullableTimestamp = ColumnType<
   Date | string | null | undefined,
   Date | string | null
 >;
+
+type NullableDate = ColumnType<string | null, string | null | undefined, string | null>;
 
 export const USER_TYPES = ['platform', 'organization'] as const;
 
@@ -392,6 +400,22 @@ export type ClaimsTable = {
   at_scene_at: NullableTimestamp;
   left_scene_at: NullableTimestamp;
   at_destination_at: NullableTimestamp;
+  deceased: Generated<boolean>;
+  non_covered_miles: ColumnType<string | null, number | null | undefined, number | null>;
+  patient_count: number | null;
+  closest_facility_miles: ColumnType<string | null, number | null | undefined, number | null>;
+  abn_on_file: boolean | null;
+  abn_signed_on: NullableDate;
+  denial_expected: boolean | null;
+  msp_employer_plan: boolean | null;
+  msp_esrd: boolean | null;
+  msp_disability: boolean | null;
+  msp_accident: MspAccident | null;
+  prior_authorization_expires_on: NullableDate;
+  pcs_type: PcsType | null;
+  round_trips: number | null;
+  admission_date: NullableDate;
+  facility_stay: FacilityStay | null;
   status: Generated<ClaimStatus>;
   cycle_run_id: string | null;
   facility_id: ColumnType<string | null, string | null | undefined, string | null>;
@@ -409,6 +433,9 @@ type FacilitiesTable = {
   state: string | null;
   postal_code: string | null;
   phone: string | null;
+  kind: ColumnType<FacilityKind, FacilityKind | undefined, FacilityKind>;
+  contract: Generated<boolean>;
+  contract_note: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 };
@@ -458,6 +485,21 @@ type ClaimCoveragesTable = {
   >;
   eligibility_note: ColumnType<string | null, string | null | undefined, string | null>;
   eligibility_checked_at: NullableTimestamp;
+  stay_kind: ColumnType<StayKind | null, StayKind | null | undefined, StayKind | null>;
+  stay_admitted_on: NullableDate;
+  stay_discharged_on: NullableDate;
+};
+
+type ClaimDocumentsTable = {
+  id: Generated<string>;
+  agency_id: string;
+  claim_id: string;
+  kind: DocumentKind;
+  file_name: string;
+  document: JsonColumn;
+  signed_on: NullableDate;
+  uploaded_by: string | null;
+  created_at: Timestamp;
 };
 
 type ClaimDiagnosesTable = {
@@ -687,6 +729,7 @@ export type Database = {
   claim_lines: ClaimLinesTable;
   claim_coverages: ClaimCoveragesTable;
   claim_diagnoses: ClaimDiagnosesTable;
+  claim_documents: ClaimDocumentsTable;
   claim_balances: ClaimBalancesView;
   claim_events: ClaimEventsTable;
   claim_event_adjustments: ClaimEventAdjustmentsTable;

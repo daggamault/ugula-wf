@@ -310,7 +310,10 @@ type Mock271 = {
   subscriber?: { lastName: string; firstName?: string | null; memberId: string };
   message?: string;
   advantagePlan?: Party;
+  stay?: { kind: 'inpatient' | 'snf'; admittedOn: string };
 };
+
+const STAY_SERVICE = { inpatient: '48', snf: 'AG' } as const;
 
 export const build271 = (e: Mock271, o: MockOptions = {}) => {
   const { date, time } = stamp(o);
@@ -347,6 +350,12 @@ export const build271 = (e: Mock271, o: MockOptions = {}) => {
         ],
         e.active ? ['EB', '1', '', '30', '', 'MEDICARE PART B'] : ['EB', '6', '', '30'],
         ...(e.message ? [['MSG', e.message]] : []),
+        ...(e.stay
+          ? [
+              ['EB', 'X', '', STAY_SERVICE[e.stay.kind]],
+              ['DTP', '435', 'D8', e.stay.admittedOn.replaceAll('-', '')]
+            ]
+          : []),
         ...(e.advantagePlan
           ? [
               ['EB', 'R', '', '30', 'HN'],

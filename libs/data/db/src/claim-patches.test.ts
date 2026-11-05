@@ -9,6 +9,8 @@ const empty: ClaimEdit = {
   level: null,
   emergency: null,
   loadedMiles: null,
+  deceased: null,
+  nonCoveredMiles: null,
   diagnoses: null,
   pickup: null,
   destination: null,
@@ -114,7 +116,21 @@ describe('applyClaimEdit', () => {
         signature: 'signed',
         pcsOnFile: null,
         pcsSignedOn: null,
-        transportReason: null
+        transportReason: null,
+        patientCount: null,
+        abnOnFile: null,
+        abnSignedOn: null,
+        denialExpected: null,
+        mspEmployerPlan: null,
+        mspEsrd: null,
+        mspDisability: null,
+        mspAccident: null,
+        priorAuthorization: null,
+        priorAuthorizationExpiresOn: null,
+        pcsType: null,
+        roundTrips: null,
+        admissionDate: null,
+        facilityStay: null
       },
       lines: [
         { code: 'A0427', units: 1, unitCents: 90_000, totalCents: 90_000 },
@@ -128,6 +144,43 @@ describe('applyClaimEdit', () => {
       'update "claims" set "origin_code" = $1, "destination_code" = $2, "signature" = $3, "signature_note" = $4, "total_cents" = $5, "updated_at" = now() where "id" = $6'
     );
     assert.deepEqual(claim?.parameters, ['R', 'H', 'signed', 'Updated by a biller', 97_000, 'c1']);
+  });
+
+  it('writes the MSP answers, ABN, QL and A0888 miles a biller changed', async () => {
+    const { db, queries } = createRecordingDb(logged);
+    const documentation = {
+      signature: null,
+      pcsOnFile: null,
+      pcsSignedOn: null,
+      transportReason: null,
+      patientCount: 2,
+      abnOnFile: true,
+      abnSignedOn: null,
+      denialExpected: null,
+      mspEmployerPlan: false,
+      mspEsrd: null,
+      mspDisability: null,
+      mspAccident: 'workersComp' as const,
+      priorAuthorization: null,
+      priorAuthorizationExpiresOn: null,
+      pcsType: null,
+      roundTrips: null,
+      admissionDate: null,
+      facilityStay: 'snf' as const
+    };
+    await applyClaimEdit(
+      db,
+      't1',
+      'c1',
+      { ...empty, deceased: true, nonCoveredMiles: 0, documentation },
+      event
+    );
+    const claim = queries.find((q) => q.sql.startsWith('update "claims"'));
+    assert.equal(
+      claim?.sql,
+      'update "claims" set "deceased" = $1, "non_covered_miles" = $2, "patient_count" = $3, "abn_on_file" = $4, "msp_employer_plan" = $5, "msp_accident" = $6, "facility_stay" = $7, "updated_at" = now() where "id" = $8'
+    );
+    assert.deepEqual(claim?.parameters, [true, null, 2, true, false, 'workersComp', 'snf', 'c1']);
   });
 
   it('clears every line and zeroes the total when the lines are emptied', async () => {

@@ -25,7 +25,9 @@ export const CLAIM_EVENT_KINDS = [
   'records_sent',
   'closing_approved',
   'balance_protected',
-  'facility_invoiced'
+  'facility_invoiced',
+  'responsibility',
+  'document'
 ] as const;
 
 export type ClaimEventKind = (typeof CLAIM_EVENT_KINDS)[number];
@@ -75,7 +77,9 @@ export const PATIENT_EVENT_KINDS: readonly ClaimEventKind[] = [
   'closed',
   'closing_approved',
   'balance_protected',
-  'facility_invoiced'
+  'facility_invoiced',
+  'responsibility',
+  'document'
 ];
 
 export const DENIAL_ROUTES = ['denial', 'appeal', 'fix'] as const;

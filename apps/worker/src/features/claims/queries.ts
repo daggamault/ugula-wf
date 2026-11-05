@@ -10,7 +10,9 @@ import {
   type DraftClaim,
   exchangeFileName,
   isClosedStatus,
-  type NewClaim
+  isFacilityKind,
+  type NewClaim,
+  type ResponsibleParty
 } from '@ugula/billing';
 import {
   ACTIVE_RUN_STATUSES,
@@ -55,6 +57,8 @@ const DRAFT: ClaimStatus = 'draft';
 
 const REVIEWABLE: ClaimStatus = 'needs_review';
 
+const FACILITY: ResponsibleParty = 'facility';
+
 const day = (d: Date | string) => new Date(d).toISOString().slice(0, 10);
 
 export const statementKey = (
@@ -93,6 +97,8 @@ const claimValues = (c: NewClaim) => {
     level: c.level,
     emergency: c.emergency,
     loaded_miles: c.loadedMiles,
+    deceased: c.deceased,
+    non_covered_miles: c.nonCoveredMiles,
     total_cents: c.totalCents,
     service_date: serviceDate,
     origin_code: originDestination?.[0] ?? null,
@@ -675,6 +681,67 @@ export const createClaimStore = (
         })
         .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
         .execute();
+    },
+
+    setResponsibility: async (runId, claimId, sourceKey, r) => {
+      const claim = await agencyClaim(db, runId, claimId);
+      await db.transaction().execute(async (tx) => {
+        const logged = await tx
+          .insertInto('claim_events')
+          .values({
+            claim_id: claim.id,
+            kind: 'responsibility',
+            note: r.note,
+            source_key: sourceKey
+          })
+          .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
+          .returning('id')
+          .executeTakeFirst();
+        if (!logged) return;
+        const facility = r.party === FACILITY ? r.facilityId : null;
+        if (r.party === FACILITY && !(facility && isUuid(facility))) {
+          throw new Error('Choose the facility the claim is billed to');
+        }
+        await tx
+          .updateTable('claims')
+          .set({
+            facility_id: facility
+              ? tx
+                  .selectFrom('facilities')
+                  .select('id')
+                  .where('id', '=', facility)
+                  .where('agency_id', '=', claim.agency_id)
+              : null,
+            updated_at: sql`now()`
+          })
+          .where('id', '=', claim.id)
+          .execute();
+      });
+    },
+
+    facilityDirectory: async (runId) =>
+      (
+        await db
+          .selectFrom('facilities')
+          .select(['id', 'name', 'kind', 'contract'])
+          .where('agency_id', '=', runAgency(db, runId))
+          .orderBy('name')
+          .execute()
+      ).flatMap((f) => (isFacilityKind(f.kind) ? [{ ...f, kind: f.kind }] : [])),
+
+    claimDocument: async (runId, claimId, documentId) => {
+      const claim = await agencyClaim(db, runId, claimId);
+      const row = isUuid(documentId)
+        ? await db
+            .selectFrom('claim_documents')
+            .select(['id', 'kind', 'signed_on', 'file_name'])
+            .where('id', '=', documentId)
+            .where('claim_id', '=', claim.id)
+            .executeTakeFirst()
+        : undefined;
+      return row
+        ? { id: row.id, kind: row.kind, signedOn: row.signed_on, fileName: row.file_name }
+        : null;
     },
 
     closeClaim: async (runId, claimId, sourceKey, requested) => {

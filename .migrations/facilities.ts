@@ -1,6 +1,7 @@
-import { US_STATE_PATTERN, ZIP_CODE_PATTERN } from '@ugula/billing';
+import { FACILITY_KINDS, US_STATE_PATTERN, ZIP_CODE_PATTERN } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { oneOf } from './checks.ts';
 
 const buildFacilitiesTable = (db: Kysely<Database>) =>
   db.schema
@@ -15,10 +16,14 @@ const buildFacilitiesTable = (db: Kysely<Database>) =>
     .addColumn('state', 'text')
     .addColumn('postal_code', 'text')
     .addColumn('phone', 'text')
+    .addColumn('kind', 'text', (col) => col.notNull().defaultTo('other'))
+    .addColumn('contract', 'boolean', (col) => col.notNull().defaultTo(false))
+    .addColumn('contract_note', 'text')
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('facilities_agency_id_id_unique', ['agency_id', 'id'])
     .addCheckConstraint('facilities_name_check', sql`name <> ''`)
+    .addCheckConstraint('facilities_kind_check', oneOf('kind', Object.keys(FACILITY_KINDS)))
     .addCheckConstraint('facilities_state_check', sql`state ~ ${sql.lit(US_STATE_PATTERN)}`)
     .addCheckConstraint(
       'facilities_postal_code_check',
@@ -54,15 +59,20 @@ const buildFacilityInvoicesTable = (db: Kysely<Database>) =>
       sql`claim_count > 0 and total_cents >= 0`
     );
 
-const buildFacilitiesIndex = (db: Kysely<Database>) =>
+const buildFacilitiesIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('facilities_agency_name_unique')
     .on('facilities')
     .unique()
-    .expression(sql`agency_id, lower(name)`);
+    .expression(sql`agency_id, lower(name)`),
+  db.schema
+    .createIndex('idx_facilities_agency_address')
+    .on('facilities')
+    .expression(sql`agency_id, lower(address_line), left(postal_code, 5)`)
+];
 
 export const createFacilitiesTables = async (db: Kysely<Database>) => {
   await buildFacilitiesTable(db).execute();
-  await buildFacilitiesIndex(db).execute();
+  for (const index of buildFacilitiesIndexes(db)) await index.execute();
   await buildFacilityInvoicesTable(db).execute();
 };

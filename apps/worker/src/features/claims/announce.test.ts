@@ -39,7 +39,10 @@ describe('announceClaims', () => {
         return 'stale' as const;
       },
       recordEvent: async () => void log.push('event'),
-      closeClaim: async () => void log.push('close')
+      closeClaim: async () => void log.push('close'),
+      setResponsibility: async () => void log.push('responsibility'),
+      facilityDirectory: async () => [],
+      claimDocument: async () => null
     } satisfies ClaimStore;
     const announced: [string, LiveEvent][] = [];
     const claims = announceClaims(store, async (runId, event) => {
@@ -69,6 +72,13 @@ describe('announceClaims', () => {
       payerClaimNumber: null
     });
     await claims.closeClaim('r1', 'c1', 'k', 'paid');
+    await claims.setResponsibility('r1', 'c1', 'k', {
+      party: 'facility',
+      facilityId: null,
+      note: 'Contract'
+    });
+    assert.deepEqual(await claims.facilityDirectory('r1'), []);
+    assert.equal(await claims.claimDocument('r1', 'c1', 'd1'), null);
     await claims.saveStatement('r1', 'c1', 'k', { number: 1, count: 3, pdf: new Uint8Array() });
     assert.equal(
       await claims.saveSubmission('r1', 'c1', 'k', {
@@ -102,6 +112,8 @@ describe('announceClaims', () => {
       'event',
       'announce',
       'close',
+      'announce',
+      'responsibility',
       'announce',
       'statement',
       'announce',

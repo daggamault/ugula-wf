@@ -36,7 +36,8 @@ const medicare = {
   insuredLastName: null,
   filingLimitDays: null,
   eligibility: null,
-  eligibilityNote: null
+  eligibilityNote: null,
+  stay: null
 };
 
 const check: ClaimCheck = {
@@ -47,6 +48,13 @@ const check: ClaimCheck = {
   level: 'ALS1',
   emergency: true,
   loadedMiles: 7.3,
+  deceased: false,
+  nonCoveredMiles: null,
+  pickupFacility: null,
+  destinationFacility: null,
+  responsibleParty: 'payer',
+  responsibilityRecorded: false,
+  documents: ['pcs'],
   lines: [
     { code: 'A0427', units: 1, unitCents: 85_000, totalCents: 85_000 },
     { code: 'A0425', units: 7.3, unitCents: 1_000, totalCents: 7_300 }
@@ -88,9 +96,66 @@ describe('checkFactsOf', () => {
         eligibility: null,
         eligibilityNote: null,
         filingLimitDays: 365,
-        filingDaysLeft: 11
+        filingDaysLeft: 11,
+        medicare: true,
+        stayReported: null
       }
     ]);
+    assert.equal(facts.responsibleParty, 'payer');
+    assert.equal(facts.recordedParty, null);
+    assert.equal(
+      checkFactsOf({ ...check, responsibilityRecorded: true }, asOf).recordedParty,
+      'payer'
+    );
+    assert.deepEqual(facts.documents, ['pcs']);
+    assert.equal(facts.priorAuthorizationDaysLeft, null);
+  });
+
+  it('reads the documented MSP, ABN, prior authorization and stays', () => {
+    const facts = checkFactsOf(
+      {
+        ...check,
+        deceased: true,
+        details: {
+          ...check.details,
+          documentation: {
+            ...COMPLETE_DOCUMENTATION,
+            abnOnFile: true,
+            mspAccident: 'workersComp',
+            priorAuthorizationExpiresOn: '2026-10-21',
+            roundTrips: 5,
+            pcsType: 'repetitive',
+            facilityStay: 'snf'
+          }
+        },
+        payers: [
+          {
+            ...medicare,
+            stay: { kind: 'inpatient', admittedOn: '2026-09-28', dischargedOn: null }
+          },
+          {
+            ...medicare,
+            coverageId: 'cov-2',
+            claimFiling: 'CI',
+            stay: { kind: 'snf', admittedOn: '2026-09-01', dischargedOn: '2026-09-30' }
+          }
+        ]
+      },
+      asOf
+    );
+    assert.equal(facts.deceased, true);
+    assert.equal(facts.abnOnFile, true);
+    assert.equal(facts.mspAccident, 'workersComp');
+    assert.equal(facts.priorAuthorizationDaysLeft, 20);
+    assert.equal(facts.roundTrips, 5);
+    assert.equal(facts.facilityStay, 'snf');
+    assert.deepEqual(
+      facts.payers.map((p) => [p.medicare, p.stayReported]),
+      [
+        [true, 'inpatient'],
+        [false, null]
+      ]
+    );
   });
 
   it('does the date math and lists the missing address parts', () => {
@@ -186,6 +251,9 @@ describe('readNewClaim', () => {
     assert.equal(read.totalCents, 100_000);
     assert.equal(read.coverages[0]?.payer, 'Medicare');
     assert.equal(readNewClaim({ ...claim, tripType: 'transfer' }).tripType, null);
+    assert.deepEqual([read.deceased, read.nonCoveredMiles], [false, null]);
+    const dead = readNewClaim({ ...claim, deceased: true, nonCoveredMiles: 3.2 });
+    assert.deepEqual([dead.deceased, dead.nonCoveredMiles], [true, 3.2]);
   });
 
   it('faults on a claim the flow could never have built', () => {

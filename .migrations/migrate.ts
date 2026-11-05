@@ -32,6 +32,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'claim_coverages',
     'claim_lines',
     'claim_runs',
+    'claim_documents',
     'claims',
     'facility_invoices',
     'facilities',

@@ -17,7 +17,9 @@ import {
   readCoverages,
   SELF
 } from './claim-details.ts';
+import type { DocumentKind } from './claim-documents.ts';
 import { daysBetween } from './documentation.ts';
+import type { CheckedFacility, ResponsibleParty } from './facilities.ts';
 import type { Address } from './patients.ts';
 import type { EligibilityStatus } from './payer-files.ts';
 import { filingLimitOf } from './payers.ts';
@@ -30,6 +32,8 @@ export type NewClaim = {
   level: string;
   emergency: boolean;
   loadedMiles: number | null;
+  deceased: boolean;
+  nonCoveredMiles: number | null;
   lines: PricedLine[];
   totalCents: number;
   coverages: Coverage[];
@@ -66,7 +70,14 @@ export const CLAIM_FIELDS = [
   'transportReason',
   'times',
   'filing',
-  'submission'
+  'submission',
+  'deceased',
+  'nonCoveredMiles',
+  'patientCount',
+  'abn',
+  'msp',
+  'priorAuthorization',
+  'facility'
 ] as const;
 
 export type ClaimField = (typeof CLAIM_FIELDS)[number];
@@ -91,6 +102,13 @@ type CheckedPayer = {
   filingLimitDays: number | null;
   eligibility: EligibilityStatus | null;
   eligibilityNote: string | null;
+  stay: ReportedStay | null;
+};
+
+export type ReportedStay = {
+  kind: StayKind;
+  admittedOn: string | null;
+  dischargedOn: string | null;
 };
 
 export type ClaimCheck = {
@@ -101,10 +119,17 @@ export type ClaimCheck = {
   level: string | null;
   emergency: boolean | null;
   loadedMiles: number | null;
+  deceased: boolean;
+  nonCoveredMiles: number | null;
   lines: PricedLine[];
   totalCents: number;
   payers: CheckedPayer[];
   details: ClaimDetails;
+  pickupFacility: CheckedFacility | null;
+  destinationFacility: CheckedFacility | null;
+  responsibleParty: ResponsibleParty;
+  responsibilityRecorded: boolean;
+  documents: DocumentKind[];
 };
 
 const ADDRESS_PARTS = [
@@ -117,13 +142,24 @@ const ADDRESS_PARTS = [
 const missingParts = (a: Address | null) =>
   a ? ADDRESS_PARTS.flatMap(([part, name]) => (a[part] ? [] : [name])) : [];
 
-const MEDICARE_FILINGS = ['MA', 'MB'];
+const MEDICARE_FILINGS: readonly (string | null)[] = ['MA', 'MB'];
+
+export const isMedicare = (claimFiling: string | null) => MEDICARE_FILINGS.includes(claimFiling);
+
+export const STAY_KINDS = ['inpatient', 'snf'] as const;
+
+export type StayKind = (typeof STAY_KINDS)[number];
 
 const before = (a: string | null, b: string | null) =>
   a !== null && b !== null && Date.parse(b) < Date.parse(a);
 
 const transports = (c: ClaimCheck) =>
   c.tripType ? !NO_TRANSPORT_TRIPS.includes(c.tripType as TripType) : isTransport(c.lines);
+
+const within = (day: string | null, stay: ReportedStay) =>
+  day !== null &&
+  (stay.admittedOn === null || stay.admittedOn <= day) &&
+  (stay.dischargedOn === null || day <= stay.dischargedOn);
 
 const payerFacts = (serviceDate: string | null, asOf: Date) => (p: CheckedPayer) => {
   const limit = filingLimitOf(p.claimFiling, p.filingLimitDays);
@@ -138,7 +174,9 @@ const payerFacts = (serviceDate: string | null, asOf: Date) => (p: CheckedPayer)
     eligibilityNote: p.eligibilityNote,
     filingLimitDays: limit,
     filingDaysLeft:
-      limit === null || !serviceDate ? null : limit - daysBetween(serviceDate, asOf.toISOString())
+      limit === null || !serviceDate ? null : limit - daysBetween(serviceDate, asOf.toISOString()),
+    medicare: isMedicare(p.claimFiling),
+    stayReported: p.stay && within(serviceDate, p.stay) ? p.stay.kind : null
   };
 };
 
@@ -172,10 +210,31 @@ export const checkFactsOf = (c: ClaimCheck, asOf: Date) => {
     pcsSignedOn: d.pcsSignedOn,
     pcsDaysBeforeTrip:
       d.pcsSignedOn && serviceDate ? daysBetween(d.pcsSignedOn, serviceDate) : null,
-    billsMedicare: c.payers.some(
-      (p) => p.claimFiling !== null && MEDICARE_FILINGS.includes(p.claimFiling)
-    ),
-    payers: c.payers.map(payerFacts(serviceDate, asOf))
+    billsMedicare: c.payers.some((p) => isMedicare(p.claimFiling)),
+    payers: c.payers.map(payerFacts(serviceDate, asOf)),
+    deceased: c.deceased,
+    nonCoveredMiles: c.nonCoveredMiles,
+    patientCount: d.patientCount,
+    abnOnFile: d.abnOnFile,
+    abnSignedOn: d.abnSignedOn,
+    denialExpected: d.denialExpected,
+    mspEmployerPlan: d.mspEmployerPlan,
+    mspEsrd: d.mspEsrd,
+    mspDisability: d.mspDisability,
+    mspAccident: d.mspAccident,
+    priorAuthorization: d.priorAuthorization,
+    priorAuthorizationDaysLeft:
+      d.priorAuthorizationExpiresOn && serviceDate
+        ? daysBetween(serviceDate, d.priorAuthorizationExpiresOn)
+        : null,
+    pcsType: d.pcsType,
+    roundTrips: d.roundTrips,
+    facilityStay: d.facilityStay,
+    pickupFacility: c.pickupFacility,
+    destinationFacility: c.destinationFacility,
+    responsibleParty: c.responsibleParty,
+    recordedParty: c.responsibilityRecorded ? c.responsibleParty : null,
+    documents: c.documents
   };
 };
 
@@ -221,6 +280,9 @@ export const readNewClaim = (claim: unknown): NewClaim => {
     level: c.level,
     emergency: c.emergency === true,
     loadedMiles: typeof c.loadedMiles === 'number' ? c.loadedMiles : null,
+    deceased: c.deceased === true,
+    nonCoveredMiles:
+      typeof c.nonCoveredMiles === 'number' && c.nonCoveredMiles > 0 ? c.nonCoveredMiles : null,
     lines,
     totalCents: lines.reduce((sum, l) => sum + l.totalCents, 0),
     coverages: readCoverages(c.coverages),

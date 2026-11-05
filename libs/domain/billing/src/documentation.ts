@@ -43,6 +43,41 @@ const isAmbulanceCondition = (x: unknown): x is string =>
 
 export const CONDITION_LIMIT = 5;
 
+export const MSP_ACCIDENTS = {
+  none: 'No accident, injury or illness someone else pays for',
+  liability: 'Liability insurance of someone at fault',
+  noFault: 'No-fault or auto insurance',
+  workersComp: "Workers' compensation"
+} as const;
+
+export type MspAccident = keyof typeof MSP_ACCIDENTS;
+
+export const PCS_TYPES = {
+  repetitive: 'Repetitive scheduled transports (valid 60 days)',
+  nonRepetitive: 'One non-emergency transport'
+} as const;
+
+export type PcsType = keyof typeof PCS_TYPES;
+
+export const FACILITY_STAYS = {
+  none: 'Not in a facility stay',
+  inpatient: 'Hospital inpatient stay (Part A)',
+  snf: 'Skilled nursing facility stay (Part A)'
+} as const;
+
+export type FacilityStay = keyof typeof FACILITY_STAYS;
+
+const keyOf =
+  <T extends Record<string, string>>(labels: T) =>
+  (x: unknown): (keyof T & string) | null =>
+    typeof x === 'string' && Object.hasOwn(labels, x) ? x : null;
+
+export const mspAccidentOf = keyOf(MSP_ACCIDENTS);
+
+export const pcsTypeOf = keyOf(PCS_TYPES);
+
+export const facilityStayOf = keyOf(FACILITY_STAYS);
+
 export type Documentation = {
   signature: SignatureStatus;
   signatureNote: string | null;
@@ -55,6 +90,20 @@ export type Documentation = {
   atScene: string | null;
   leftScene: string | null;
   atDestination: string | null;
+  patientCount: number | null;
+  closestFacilityMiles: number | null;
+  abnOnFile: boolean | null;
+  abnSignedOn: string | null;
+  denialExpected: boolean | null;
+  mspEmployerPlan: boolean | null;
+  mspEsrd: boolean | null;
+  mspDisability: boolean | null;
+  mspAccident: MspAccident | null;
+  priorAuthorizationExpiresOn: string | null;
+  pcsType: PcsType | null;
+  roundTrips: number | null;
+  admissionDate: string | null;
+  facilityStay: FacilityStay | null;
 };
 
 const BILLING_RELEASE = '4513005';
@@ -154,6 +203,18 @@ const instantOf = (x: unknown) => {
 const weightOf = (x: unknown) =>
   typeof x === 'number' && Number.isFinite(x) && x > 0 && x < 1000 ? x : null;
 
+export const MAX_DOCUMENTED_COUNT = 99;
+
+const countOf = (min: number) => (x: unknown) =>
+  typeof x === 'number' && Number.isInteger(x) && x >= min && x <= MAX_DOCUMENTED_COUNT ? x : null;
+
+export const MAX_DOCUMENTED_MILES = 999;
+
+const milesOf = (x: unknown) =>
+  typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= MAX_DOCUMENTED_MILES ? x : null;
+
+const flagOf = (x: unknown) => (typeof x === 'boolean' ? x : null);
+
 export const readDocumentation = (x: unknown): Documentation => {
   const r = recordOf(x);
   const reason = textOrNull(r.transportReason)?.toUpperCase();
@@ -172,7 +233,21 @@ export const readDocumentation = (x: unknown): Documentation => {
     weightKg: weightOf(r.weightKg),
     atScene: instantOf(r.atScene),
     leftScene: instantOf(r.leftScene),
-    atDestination: instantOf(r.atDestination)
+    atDestination: instantOf(r.atDestination),
+    patientCount: countOf(1)(r.patientCount),
+    closestFacilityMiles: milesOf(r.closestFacilityMiles),
+    abnOnFile: flagOf(r.abnOnFile),
+    abnSignedOn: dateOf(r.abnSignedOn),
+    denialExpected: flagOf(r.denialExpected),
+    mspEmployerPlan: flagOf(r.mspEmployerPlan),
+    mspEsrd: flagOf(r.mspEsrd),
+    mspDisability: flagOf(r.mspDisability),
+    mspAccident: mspAccidentOf(r.mspAccident),
+    priorAuthorizationExpiresOn: dateOf(r.priorAuthorizationExpiresOn),
+    pcsType: pcsTypeOf(r.pcsType),
+    roundTrips: countOf(0)(r.roundTrips),
+    admissionDate: dateOf(r.admissionDate),
+    facilityStay: facilityStayOf(r.facilityStay)
   };
 };
 

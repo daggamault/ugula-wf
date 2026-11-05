@@ -47,6 +47,7 @@ describe('read271', () => {
       coverageStart: '2015-01-01',
       coverageEnd: null,
       advantagePlan: null,
+      stay: null,
       messages: []
     });
     assert.deepEqual(inactive, {
@@ -56,6 +57,7 @@ describe('read271', () => {
       coverageStart: '2024-01-01',
       coverageEnd: '2025-12-31',
       advantagePlan: null,
+      stay: null,
       messages: ['Coverage terminated']
     });
   });
@@ -70,6 +72,7 @@ describe('read271', () => {
       coverageStart: null,
       coverageEnd: null,
       advantagePlan: null,
+      stay: null,
       messages: ['Invalid or missing member ID']
     });
   });
@@ -102,6 +105,7 @@ describe('read271', () => {
         coverageStart: '2026-01-01',
         coverageEnd: '2026-12-31',
         advantagePlan: null,
+        stay: null,
         messages: []
       },
       {
@@ -111,6 +115,7 @@ describe('read271', () => {
         coverageStart: null,
         coverageEnd: null,
         advantagePlan: null,
+        stay: null,
         messages: ['Pending investigation']
       }
     ]);
@@ -134,6 +139,42 @@ describe('read271', () => {
       'The payer is unable to respond now',
       'Rejected with reason 99'
     ]);
+  });
+
+  it('reads a hospital or nursing facility stay with its admission and discharge dates', () => {
+    const [inpatient, snf, undated] = read271(
+      file(
+        'ST*271*0001*005010X279A1',
+        'HL*1**20*1',
+        'HL*2*1*21*1',
+        'HL*3*2*22*0',
+        'TRN*2*cov-10',
+        'EB*1**30**MEDICARE PART A',
+        'DTP*346*D8*20150101',
+        'EB*X**48',
+        'DTP*435*D8*20261020',
+        'HL*4*2*22*0',
+        'TRN*2*cov-11',
+        'EB*1**AG^30',
+        'DTP*472*RD8*20261001-20261015',
+        'HL*5*2*22*0',
+        'TRN*2*cov-12',
+        'EB*1**48',
+        'SE*16*0001'
+      )
+    );
+    assert.deepEqual(inpatient?.stay, {
+      kind: 'inpatient',
+      admittedOn: '2026-10-20',
+      dischargedOn: null
+    });
+    assert.equal(inpatient?.coverageStart, '2015-01-01');
+    assert.deepEqual(snf?.stay, {
+      kind: 'snf',
+      admittedOn: '2026-10-01',
+      dischargedOn: '2026-10-15'
+    });
+    assert.equal(undated?.stay, null);
   });
 
   it('names the Medicare Advantage plan a Medicare response points to', () => {

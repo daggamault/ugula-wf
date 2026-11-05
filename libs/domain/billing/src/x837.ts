@@ -51,6 +51,7 @@ export type BatchClaim = {
   details: ClaimDetails;
   emergency: boolean;
   loadedMiles: number | null;
+  deceased: boolean;
   lines: PricedLine[];
 };
 
@@ -66,6 +67,8 @@ export type PendingSubmission = {
 const AMBULANCE_TAXONOMY = '3416L0300X';
 
 const RESPONSIBILITY = 'PSTABCDEFGH';
+
+export const NOTE_LENGTH = 80;
 
 const REPLACEMENT_FREQUENCIES: readonly string[] = ['7', '8'];
 
@@ -110,8 +113,10 @@ export type X837Claim = {
   claimId: string;
   placeOfService: string;
   frequency: string;
+  admissionDate: string | null;
   payerClaimNumber: string | null;
   priorAuthorization: string | null;
+  note: string | null;
   subscriber: {
     relationship: string;
     lastName: string;
@@ -125,7 +130,7 @@ export type X837Claim = {
     birthDate: string;
     sex: string;
   };
-  payer: { name: string; payerId: string; claimFiling: string };
+  payer: { name: string; payerId: string; claimFiling: string; insuranceType: string | null };
   otherPayers: X837OtherPayer[];
   weightPounds: number | null;
   transportReason: string | null;
@@ -260,8 +265,10 @@ export const readX837Claim = (x: unknown): X837Claim => {
     claimId: need(textOrNull(r.claimId), 'a claim ID'),
     placeOfService: need(textOrNull(r.placeOfService), 'a place of service'),
     frequency,
+    admissionDate: textOrNull(r.admissionDate),
     payerClaimNumber,
     priorAuthorization: textOrNull(r.priorAuthorization),
+    note: textOrNull(r.note),
     subscriber: {
       relationship,
       ...insured(sub, relationship, patient, 'the subscriber'),
@@ -272,7 +279,8 @@ export const readX837Claim = (x: unknown): X837Claim => {
     payer: {
       name: need(textOrNull(payer.name), 'a payer name'),
       payerId: need(textOrNull(payer.payerId), 'a payer ID'),
-      claimFiling: need(textOrNull(payer.claimFiling), 'a claim filing indicator')
+      claimFiling: need(textOrNull(payer.claimFiling), 'a claim filing indicator'),
+      insuranceType: textOrNull(payer.insuranceType)
     },
     otherPayers,
     weightPounds:
@@ -370,7 +378,7 @@ const claimSegments = (c: X837Claim, hl: number): Segment[] => {
       self ? SELF : '',
       clean(s.groupId, 50),
       '',
-      '',
+      clean(c.payer.insuranceType, 3),
       '',
       '',
       '',
@@ -400,8 +408,10 @@ const claimSegments = (c: X837Claim, hl: number): Segment[] => {
       'Y',
       'Y'
     ],
+    ...(c.admissionDate ? [['DTP', '435', 'D8', yyyymmdd(c.admissionDate)]] : []),
     ...(c.priorAuthorization ? [['REF', 'G1', clean(c.priorAuthorization, 50)]] : []),
     ...(c.payerClaimNumber ? [['REF', 'F8', c.payerClaimNumber]] : []),
+    ...(c.note ? [['NTE', 'ADD', clean(c.note, NOTE_LENGTH)]] : []),
     ...(c.loadedMiles === null
       ? []
       : [

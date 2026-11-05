@@ -10,6 +10,7 @@ const result: EligibilityResult = {
   coverageStart: '2015-01-01',
   coverageEnd: null,
   advantagePlan: null,
+  stay: null,
   messages: []
 };
 

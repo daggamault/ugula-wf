@@ -88,11 +88,91 @@ describe('readDocumentation', () => {
         weightKg: 81.6,
         atScene: null,
         leftScene: '2026-09-01T10:00:00Z',
-        atDestination: null
+        atDestination: null,
+        patientCount: null,
+        closestFacilityMiles: null,
+        abnOnFile: null,
+        abnSignedOn: null,
+        denialExpected: null,
+        mspEmployerPlan: null,
+        mspEsrd: null,
+        mspDisability: null,
+        mspAccident: null,
+        priorAuthorizationExpiresOn: null,
+        pcsType: null,
+        roundTrips: null,
+        admissionDate: null,
+        facilityStay: null
       }
     );
     assert.equal(readDocumentation({ signature: 'maybe', weightKg: -3 }).signature, 'missing');
     assert.equal(readDocumentation({ weightKg: -3 }).weightKg, null);
+  });
+
+  it('keeps the MSP answers, ABN, prior authorization, counts and stays it can trust', () => {
+    const read = readDocumentation({
+      patientCount: 2,
+      closestFacilityMiles: 4.6,
+      abnOnFile: true,
+      abnSignedOn: '2026-08-30',
+      denialExpected: 'yes',
+      mspEmployerPlan: false,
+      mspAccident: 'noFault',
+      priorAuthorizationExpiresOn: '2026-12-01T00:00:00Z',
+      pcsType: 'repetitive',
+      roundTrips: 4,
+      admissionDate: '2026-08-29',
+      facilityStay: 'inpatient'
+    });
+    assert.deepEqual(
+      [
+        read.patientCount,
+        read.closestFacilityMiles,
+        read.abnOnFile,
+        read.abnSignedOn,
+        read.denialExpected,
+        read.mspEmployerPlan,
+        read.mspAccident,
+        read.priorAuthorizationExpiresOn,
+        read.pcsType,
+        read.roundTrips,
+        read.admissionDate,
+        read.facilityStay
+      ],
+      [
+        2,
+        4.6,
+        true,
+        '2026-08-30',
+        null,
+        false,
+        'noFault',
+        '2026-12-01',
+        'repetitive',
+        4,
+        '2026-08-29',
+        'inpatient'
+      ]
+    );
+    const bad = readDocumentation({
+      patientCount: 0,
+      closestFacilityMiles: -1,
+      mspAccident: 'flood',
+      pcsType: 'weekly',
+      roundTrips: 1.5,
+      facilityStay: 'hotel'
+    });
+    assert.deepEqual(
+      [
+        bad.patientCount,
+        bad.closestFacilityMiles,
+        bad.mspAccident,
+        bad.pcsType,
+        bad.roundTrips,
+        bad.facilityStay
+      ],
+      [null, null, null, null, null, null]
+    );
   });
 
   it('converts NEMSIS yes/no codes, weights and day spans', () => {

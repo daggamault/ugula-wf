@@ -24,9 +24,18 @@ export {
   SELF
 } from './claim-details.ts';
 export {
+  type ClaimDocument,
+  DOCUMENT_CONTENT_TYPES,
+  DOCUMENT_KINDS,
+  type DocumentKind,
+  isDocumentContentType,
+  isDocumentKind
+} from './claim-documents.ts';
+export {
   CLAIM_FIX_FIELDS,
   type ClaimPatch,
   type CoveragePatch,
+  type DocumentationPatch,
   LEVEL_FIELD,
   LOADED_MILES_FIELD,
   TRIP_TYPE_FIELD
@@ -43,7 +52,10 @@ export {
   checkFactsOf,
   isBlocking,
   type NewClaim,
-  readIssues
+  type ReportedStay,
+  readIssues,
+  STAY_KINDS,
+  type StayKind
 } from './claim-validation.ts';
 export {
   ADJUSTMENT_GROUPS,
@@ -97,8 +109,15 @@ export {
   AMBULANCE_CONDITIONS,
   CONDITION_LIMIT,
   type Documentation,
+  FACILITY_STAYS,
+  type FacilityStay,
   isSignatureStatus,
   isTransportReason,
+  MAX_DOCUMENTED_COUNT,
+  MSP_ACCIDENTS,
+  type MspAccident,
+  PCS_TYPES,
+  type PcsType,
   poundsOf,
   readDocumentation,
   SIGNATURE_LABELS,
@@ -116,6 +135,14 @@ export type {
 } from './documents.ts';
 export { fieldSections } from './documents.ts';
 export { ADVANTAGE_NOTE, eligibilityFinding } from './eligibility.ts';
+export {
+  type CheckedFacility,
+  FACILITY_KINDS,
+  type FacilityKind,
+  isFacilityKind,
+  RESPONSIBLE_PARTIES,
+  type ResponsibleParty
+} from './facilities.ts';
 export { US_STATE_PATTERN, usState, ZIP_CODE_PATTERN, ZIP_PLUS_4_PATTERN } from './geo.ts';
 export { billingModels, billingTypes } from './models.ts';
 export { nameKey } from './names.ts';
@@ -138,6 +165,7 @@ export {
   type PayerStore,
   type ReadPayerFile,
   type RecoveryStore,
+  type Responsibility,
   type ScheduleStore
 } from './nodes/index.ts';
 export {
@@ -186,7 +214,7 @@ export { HCPCS_LABELS, money } from './statements.ts';
 export { type InterchangeAcknowledgment, readTA1 } from './ta1.ts';
 export { type InboundKind, readX12 } from './x12.ts';
 export { build270, type EligibilityRequest } from './x270.ts';
-export { type EligibilityResult, read271 } from './x271.ts';
+export { type EligibilityResult, type FacilityStayHint, read271 } from './x271.ts';
 export { build276, type ClaimStatusInquiry } from './x276.ts';
 export { type ClaimAcknowledgment, read277 } from './x277.ts';
 export {
@@ -202,6 +230,7 @@ export {
   type BatchClaim,
   type BatchPayer,
   MAX_CONTROL_NUMBER,
+  NOTE_LENGTH,
   type PendingSubmission,
   type Submitter,
   submitterIssues

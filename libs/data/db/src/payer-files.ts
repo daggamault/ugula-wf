@@ -4,6 +4,7 @@ import {
   claimStatusNote,
   type EligibilityResult,
   eligibilityFinding,
+  type FacilityStayHint,
   type GroupAcknowledgment,
   type InboundKind,
   type InterchangeAcknowledgment,
@@ -213,14 +214,17 @@ const markBatchRejected = (
 const saveEligibility = (
   db: Db,
   coverageId: string,
-  e: { active: boolean; note: string; checkedAt: Date }
+  e: { active: boolean; note: string; checkedAt: Date; stay: FacilityStayHint | null }
 ) =>
   db
     .updateTable('claim_coverages')
     .set({
       eligibility: e.active ? 'active' : 'inactive',
       eligibility_note: e.note || null,
-      eligibility_checked_at: e.checkedAt
+      eligibility_checked_at: e.checkedAt,
+      stay_kind: e.stay?.kind ?? null,
+      stay_admitted_on: e.stay?.admittedOn ?? null,
+      stay_discharged_on: e.stay?.dischargedOn ?? null
     })
     .where('id', '=', coverageId)
     .execute();
@@ -556,7 +560,8 @@ const postEligibility = async (c: Context, results: EligibilityResult[]) => {
       await saveEligibility(c.tx, coverage.id, {
         active: found.active,
         note: found.note,
-        checkedAt: c.now
+        checkedAt: c.now,
+        stay: r.stay
       });
     }
     await recordPayerEvent(c, coverage.claim_id, coverage.id, {

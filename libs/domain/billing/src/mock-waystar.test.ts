@@ -131,6 +131,26 @@ describe('Medicare Advantage', () => {
       ['SUNSHINE MEDICARE ADVANTAGE', null]
     );
   });
+
+  it('reports a hospital or nursing facility stay on the date of service for INPATIENT and SNF members', () => {
+    const file = build270(
+      waystar,
+      [inquiry('INPATIENT1'), inquiry('SNF2'), inquiry('B3')],
+      envelope
+    );
+    assert.deepEqual(
+      read270(file).inquiries.map((q) => q.serviceDate),
+      ['2026-10-01', '2026-10-01', '2026-10-01']
+    );
+    assert.deepEqual(
+      respondToEligibility(file, now).map((a) => read271(a)[0]?.stay ?? null),
+      [
+        { kind: 'inpatient', admittedOn: '2026-10-01', dischargedOn: null },
+        { kind: 'snf', admittedOn: '2026-10-01', dischargedOn: null },
+        null
+      ]
+    );
+  });
 });
 
 describe('claim status', () => {

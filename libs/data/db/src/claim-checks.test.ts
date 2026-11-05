@@ -24,6 +24,12 @@ const claim = {
   destination_city: null,
   destination_state: null,
   destination_postal_code: null,
+  deceased: false,
+  non_covered_miles: null,
+  facility_id: null,
+  responsibility_recorded: false,
+  pickup_facility: null,
+  destination_facility: { id: 'f1', name: 'Mercy', kind: 'hospital', contract: true },
   address_line: '1 Main St',
   city: 'Springfield',
   state: 'IL',
@@ -47,10 +53,15 @@ describe('findClaimCheck', () => {
                   member_id: 'M1',
                   relationship: '18',
                   insured_first_name: null,
-                  insured_last_name: null
+                  insured_last_name: null,
+                  stay_kind: 'snf',
+                  stay_admitted_on: '2026-09-20',
+                  stay_discharged_on: null
                 }
               ]
-            : [{ code: 'R079' }]
+            : q.sql.includes('from "claim_documents"')
+              ? [{ kind: 'pcs' }, { kind: 'scan' }]
+              : [{ code: 'R079' }]
     );
     const check = await findClaimCheck(db, 't1', 'c1');
     assert.equal(check?.loadedMiles, 7.3);
@@ -60,9 +71,24 @@ describe('findClaimCheck', () => {
       { code: 'A0427', units: 1, unitCents: 100_000, totalCents: 100_000 }
     ]);
     assert.equal(check?.payers[0]?.claimFiling, 'MB');
+    assert.deepEqual(check?.payers[0]?.stay, {
+      kind: 'snf',
+      admittedOn: '2026-09-20',
+      dischargedOn: null
+    });
+    assert.deepEqual(check?.destinationFacility, {
+      id: 'f1',
+      name: 'Mercy',
+      kind: 'hospital',
+      contract: true
+    });
+    assert.equal(check?.pickupFacility, null);
+    assert.deepEqual(check?.documents, ['pcs']);
+    assert.equal(check?.responsibleParty, 'payer');
+    assert.ok(queries[0]?.sql.includes('from "facilities" as "f"'));
     assert.deepEqual(check?.details.diagnoses, ['R079']);
     assert.ok(queries[0]?.sql.includes('left join "patients" as "p"'));
-    assert.deepEqual(queries[0]?.parameters, ['c1', 't1']);
+    assert.deepEqual(queries[0]?.parameters, ['responsibility', 1, 1, 'c1', 't1']);
   });
 
   it('finds nothing for another agency, and no patient address before the patient is known', async () => {

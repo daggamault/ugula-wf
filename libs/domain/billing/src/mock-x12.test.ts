@@ -157,7 +157,7 @@ const dependent: X837Claim = {
     memberId: 'SPOUSE1',
     groupId: null
   },
-  payer: { name: 'Aetna', payerId: 'AETNA', claimFiling: 'CI' },
+  payer: { name: 'Aetna', payerId: 'AETNA', claimFiling: 'CI', insuranceType: null },
   otherPayers: [
     {
       name: 'Medicare',

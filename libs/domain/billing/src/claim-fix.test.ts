@@ -44,6 +44,22 @@ describe('fixForm', () => {
     ]);
     assert.equal(form.defaults.coverageId, 'cov-Blue');
     assert.equal(form.defaults.pickupPostalCode, '62702');
+    assert.equal(form.defaults.deceased, false);
+    assert.equal(form.defaults.mspAccident, null);
+    assert.deepEqual(
+      fixForm(check, [issue('abn-missing', 'abn'), issue('msp-unanswered', 'msp')], [], false)
+        .visible,
+      [
+        'abnOnFile',
+        'abnSignedOn',
+        'denialExpected',
+        'mspEmployerPlan',
+        'mspEsrd',
+        'mspDisability',
+        'mspAccident',
+        'note'
+      ]
+    );
     assert.deepEqual(form.options.coverageId, [{ value: 'cov-Blue', label: 'Blue' }]);
     assert.deepEqual(form.options.payerId, [
       { value: 'p-Medicare', label: 'Medicare (Medicare Part B)' }
@@ -97,8 +113,57 @@ describe('readClaimPatch', () => {
       level: false,
       emergency: false,
       loadedMiles: false,
+      deceased: false,
+      nonCoveredMiles: false,
       payers: false
     });
+  });
+
+  it('patches documentation a biller changed, and the QL and A0888 service, for repricing', () => {
+    const patch = readClaimPatch(
+      {
+        deceased: true,
+        nonCoveredMiles: 3.5,
+        patientCount: 2,
+        abnOnFile: true,
+        abnSignedOn: '2025-12-30',
+        mspAccident: 'workersComp',
+        mspEsrd: false,
+        pcsType: 'weekly',
+        roundTrips: 4,
+        signature: 'signed',
+        priorAuthorization: ' UTN-9 ',
+        facilityStay: 'snf'
+      },
+      check
+    );
+    assert.deepEqual([patch.deceased, patch.nonCoveredMiles], [true, 3.5]);
+    assert.deepEqual(chargeChanges(patch), {
+      tripType: false,
+      level: false,
+      emergency: false,
+      loadedMiles: false,
+      deceased: true,
+      nonCoveredMiles: true,
+      payers: false
+    });
+    assert.equal(patch.documentation?.signature, null);
+    assert.deepEqual(
+      [
+        patch.documentation?.patientCount,
+        patch.documentation?.abnOnFile,
+        patch.documentation?.abnSignedOn,
+        patch.documentation?.mspAccident,
+        patch.documentation?.mspEsrd,
+        patch.documentation?.pcsType,
+        patch.documentation?.roundTrips,
+        patch.documentation?.priorAuthorization,
+        patch.documentation?.facilityStay
+      ],
+      [2, true, '2025-12-30', 'workersComp', false, null, 4, 'UTN-9', 'snf']
+    );
+    assert.equal(readClaimPatch({ deceased: false, nonCoveredMiles: 0 }, check).deceased, null);
+    assert.equal(readClaimPatch({ nonCoveredMiles: 0 }, check).nonCoveredMiles, null);
   });
 
   it('ignores coverages that are not on the claim and invalid modifiers', () => {

@@ -134,7 +134,8 @@ export const payerNodes: NodesOf = (stores) => [
           coverage: {
             ...c,
             payerId: found.known?.id ?? null,
-            directoryName: found.known?.name ?? null
+            directoryName: found.known?.name ?? null,
+            claimFiling: found.known?.claimFiling ?? null
           },
           found
         };
