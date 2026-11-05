@@ -90,6 +90,15 @@ export const deleteMember = (db: Db, agencyId: string, userId: string) =>
     .returning('id')
     .executeTakeFirst();
 
+export const unassignTasks = async (db: Db, agencyId: string, userId: string) => {
+  await db
+    .updateTable('tasks')
+    .set({ assignee_id: null, updated_at: sql`now()` })
+    .where('agency_id', '=', agencyId)
+    .where('assignee_id', '=', userId)
+    .execute();
+};
+
 export const hasMemberships = async (db: Db, userId: string) =>
   (await db
     .selectFrom('memberships')

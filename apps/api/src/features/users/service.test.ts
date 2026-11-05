@@ -195,7 +195,10 @@ describe('user service members', () => {
       ok: true,
       value: { id: 'u-2' }
     });
-    assert.deepEqual(writes(gone.queries), ['delete from "memberships"']);
+    assert.deepEqual(writes(gone.queries), ['delete from "memberships"', 'update "tasks" set']);
+    const unassigned = gone.queries.find((q) => q.sql.startsWith('update "tasks"'));
+    assert.ok(unassigned?.sql.endsWith('where "agency_id" = $2 and "assignee_id" = $3'));
+    assert.deepEqual(unassigned?.parameters, [null, 't-1', 'u-2']);
     assert.deepEqual(gone.ended, ['u-2']);
     const elsewhere = setup({ member: member([]), memberships: true });
     assert.equal((await elsewhere.service.remove(testAccess(), 'u-2')).ok, true);

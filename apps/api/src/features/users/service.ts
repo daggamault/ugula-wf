@@ -22,6 +22,7 @@ import {
   searchMembers,
   setMemberRole,
   type UserFilters,
+  unassignTasks,
   upsertInvitation
 } from './queries.ts';
 import type { InviteInput } from './schemas.ts';
@@ -127,6 +128,7 @@ export const createUserService = ({ db, webUrl, now, endSessions }: UserServiceD
           return lastAdmin;
         }
         await deleteMember(tx, access.agencyId, userId);
+        await unassignTasks(tx, access.agencyId, userId);
         return ok({ id: userId, unassigned: !row.is_owner && !(await hasMemberships(tx, userId)) });
       });
       if (res.ok && res.value.unassigned) await endSessions(userId);
