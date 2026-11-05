@@ -102,6 +102,11 @@ export type RecoveryStore = {
     sourceKey: string,
     note: string
   ) => Promise<void>;
+  addPayer: (
+    runId: string,
+    claimId: string,
+    payer: { payerId: string; memberId: string | null }
+  ) => Promise<void>;
   appealPacket: (
     runId: string,
     claimId: string,

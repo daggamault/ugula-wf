@@ -389,6 +389,7 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
     recordRefund: unused('recovery'),
     protectBalance: unused('recovery'),
     skipRemainingPayers: unused('recovery'),
+    addPayer: unused('recovery'),
     appealPacket: unused('recovery'),
     saveAppealPacket: unused('recovery')
   },

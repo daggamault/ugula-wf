@@ -762,7 +762,7 @@ const workDenial = (): GraphDef => {
     label: 'Appeal Claim',
     config: { workflow: 'billing.appeal-claim', version: 1 }
   });
-  g.add('addPayer', 'billing.patch-claim', { label: 'Add the Other Payer' });
+  g.add('addPayer', 'billing.add-payer', { label: 'Add the Other Payer' });
   recordEvent(g, 'otherPayer', 'reconciled', 'Move On to the Other Payer');
   recordEvent(g, 'toPatient', 'reconciled', 'Move On to the Patient');
   g.add('skipRest', 'billing.skip-remaining-payers', { label: 'Skip Remaining Payers' });

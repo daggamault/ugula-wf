@@ -154,6 +154,23 @@ export const recoveryNodes: NodesOf = (stores) => {
       }
     }),
     actionNode({
+      type: 'billing.add-payer',
+      title: 'Add Payer',
+      category: CATEGORY,
+      description:
+        'Adds a directory payer to the end of the claim payers, with the member ID, so the claim cycle bills it after the payers before it; a payer and member already on the claim are left alone.',
+      effect: true,
+      inputs: [claimIdPin, pin('payerId', 'string'), pin('memberId', 'string', { optional: true })],
+      outputs: [],
+      compute: async (inputs, _, ctx) => {
+        await recovery().addPayer(ctx.runId, claimIdOf(inputs.claimId), {
+          payerId: requiredText(inputs.payerId, 'Choose the payer to bill'),
+          memberId: textOrNull(inputs.memberId)
+        });
+        return {};
+      }
+    }),
+    actionNode({
       type: 'billing.build-appeal-packet',
       title: 'Build Appeal Packet',
       category: CATEGORY,

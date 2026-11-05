@@ -74,6 +74,27 @@ describe('createRecoveryStore', () => {
     assert.ok(skip?.sql.includes('"e"."kind" in ($'));
   });
 
+  it('adds a directory payer after the others, once, and refuses one not in the directory', async () => {
+    const { db, queries } = recording((sql) =>
+      sql.startsWith('select "id" from "payers"') ? [{ id: COV }] : []
+    );
+    const store = createRecoveryStore(db, blobs, boss);
+    await store.addPayer('r1', ID, { payerId: COV, memberId: 'M1' });
+    const added = queries.find((q) => q.sql.startsWith('insert into "claim_coverages"'));
+    assert.ok(added?.sql.includes('coalesce(max(position), 0) + 1'));
+    assert.ok(
+      added?.sql.includes(
+        "on conflict (claim_id, lower(payer_name), lower(coalesce(member_id, ''))) do nothing"
+      )
+    );
+    assert.ok(added?.parameters.includes('M1'));
+    const none = createRecoveryStore(recording(() => []).db, blobs, boss);
+    await assert.rejects(
+      () => none.addPayer('r1', ID, { payerId: COV, memberId: null }),
+      /not in the directory/
+    );
+  });
+
   it('gathers the claim, report and PDFs for an appeal packet and stores the packet', async () => {
     const { db, queries } = recording((sql) =>
       sql.includes('from "billing_profiles"')

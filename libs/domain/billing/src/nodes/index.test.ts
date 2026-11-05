@@ -49,6 +49,7 @@ describe('createBillingNodes', () => {
         'billing.record-refund@1',
         'billing.protect-balance@1',
         'billing.skip-remaining-payers@1',
+        'billing.add-payer@1',
         'billing.build-appeal-packet@1',
         'billing.with-frequency@1',
         'billing.find-deadlines@1',

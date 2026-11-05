@@ -4,7 +4,8 @@ import {
   fieldSections,
   HCPCS_LABELS,
   money,
-  type RecoveryStore
+  type RecoveryStore,
+  SELF
 } from '@ugula/billing';
 import { type Db, findProfile, nudgeClaim, postClaimResponse } from '@ugula/db';
 import { toPcr } from '@ugula/nemsis';
@@ -116,6 +117,53 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
           .executeTakeFirst();
         if (numInsertedOrUpdatedRows) await nudgeClaim(tx, boss, claim.agency_id, claim.id);
       }),
+
+    addPayer: async (runId, claimId, { payerId, memberId }) => {
+      const claim = await claimOf(runId, claimId);
+      const payer = isUuid(payerId)
+        ? await db
+            .selectFrom('payers')
+            .select('id')
+            .where('id', '=', payerId)
+            .where('agency_id', '=', claim.agency_id)
+            .executeTakeFirst()
+        : undefined;
+      if (!payer) throw new Error(`Payer ${payerId} is not in the directory`);
+      await db
+        .insertInto('claim_coverages')
+        .columns([
+          'agency_id',
+          'claim_id',
+          'position',
+          'payer_name',
+          'payer_id',
+          'member_id',
+          'relationship'
+        ])
+        .expression(
+          db
+            .selectFrom('payers as p')
+            .select([
+              'p.agency_id',
+              sql<string>`${claim.id}::uuid`.as('claim_id'),
+              sql<number>`(select coalesce(max(position), 0) + 1 from claim_coverages where claim_id = ${claim.id})`.as(
+                'position'
+              ),
+              'p.name',
+              'p.id',
+              sql<string | null>`${memberId}::text`.as('member_id'),
+              sql<string>`${SELF}::text`.as('relationship')
+            ])
+            .where('p.id', '=', payerId)
+            .where('p.agency_id', '=', claim.agency_id)
+        )
+        .onConflict((oc) =>
+          oc
+            .expression(sql`claim_id, lower(payer_name), lower(coalesce(member_id, ''))`)
+            .doNothing()
+        )
+        .execute();
+    },
 
     appealPacket: async (runId, claimId, coverageId) => {
       const claim = await claimOf(runId, claimId);

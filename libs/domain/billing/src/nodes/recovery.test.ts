@@ -31,6 +31,7 @@ const setup = () => {
       void calls.push(['refund', { claimId, key, ...refund }]),
     protectBalance: async (_, __, key, p) => void calls.push(['protect', { key, ...p }]),
     skipRemainingPayers: async (_, __, key, note) => void calls.push(['skip', { key, note }]),
+    addPayer: async (_, __, payer) => void calls.push(['add', payer]),
     appealPacket: async () => ({
       agency: {
         name: 'Metro EMS',
@@ -86,9 +87,10 @@ describe('recoveryNodes', () => {
     await run('protect-balance', { claimId: 'c1', adjustedCents: 0, note: 'NH law' });
     await run('protect-balance', { claimId: 'c1', adjustedCents: 4_000, note: 'NH law' });
     await run('skip-remaining-payers', { claimId: 'c1' });
+    await run('add-payer', { claimId: 'c1', payerId: 'p-blue', memberId: ' M1 ' });
     assert.deepEqual(
       calls.map(([kind]) => kind),
-      ['refund', 'protect', 'skip']
+      ['refund', 'protect', 'skip', 'add']
     );
     assert.deepEqual(calls[0]?.[1], {
       claimId: 'c1',
@@ -97,6 +99,11 @@ describe('recoveryNodes', () => {
       cents: 2_500,
       note: 'Refund of a credit balance'
     });
+    assert.deepEqual(calls[3]?.[1], { payerId: 'p-blue', memberId: 'M1' });
+    await assert.rejects(
+      () => run('add-payer', { claimId: 'c1', payerId: ' ' }),
+      /Choose the payer/
+    );
     await assert.rejects(
       () => run('record-refund', { claimId: 'c1', amountCents: -1 }),
       /whole number of cents/
