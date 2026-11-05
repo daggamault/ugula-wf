@@ -119,6 +119,7 @@ const PAYMENT: Section = {
     el('cmsServiceLevel', 'ePayment.50'),
     el('conditionCodes', 'ePayment.51', 'texts'),
     el('transportationIndicators', 'ePayment.52', 'texts'),
+    el('closestFacilityMiles', 'ePayment.48', 'number'),
     el('priorAuthorization', 'ePayment.53')
   ]
 };
@@ -129,6 +130,7 @@ const SCENE: Section = {
   title: 'Scene',
   description: 'the scene section of a patient care report',
   elements: [
+    el('patientsAtScene', 'eScene.06'),
     el('locationType', 'eScene.09'),
     el('addressLine', 'eScene.15'),
     el('city', 'eScene.17'),
@@ -148,7 +150,8 @@ const SITUATION: Section = {
     el('complaint', 'eSituation.04'),
     el('primarySymptom', 'eSituation.09'),
     el('primaryImpression', 'eSituation.11'),
-    el('secondaryImpressions', 'eSituation.12', 'texts')
+    el('secondaryImpressions', 'eSituation.12', 'texts'),
+    el('workRelated', 'eSituation.14')
   ]
 };
 
@@ -203,6 +206,7 @@ const DISPOSITION: Section = {
     { ...el('cityCode', 'eDisposition.04'), label: 'GNIS code' },
     el('state', 'eDisposition.05'),
     el('postalCode', 'eDisposition.07'),
+    el('patientsTransported', 'eDisposition.11', 'integer'),
     el('incidentDisposition', 'eDisposition.12'),
     el('destinationReasons', 'eDisposition.20', 'texts'),
     el('transportMethod', 'eDisposition.16'),
@@ -222,6 +226,26 @@ const EXAM: Section = {
   title: 'Exam',
   description: 'the exam section of a patient care report',
   elements: [el('weightKg', 'eExam.01', 'number')]
+};
+
+const INJURY: Section = {
+  key: 'nemsis.injury',
+  name: 'injury',
+  title: 'Injury',
+  description: 'the injury section of a patient care report',
+  elements: [el('causes', 'eInjury.01', 'texts')]
+};
+
+const ARREST: Section = {
+  key: 'nemsis.arrest',
+  name: 'arrest',
+  title: 'Cardiac Arrest',
+  description: 'the cardiac arrest section of a patient care report',
+  elements: [
+    el('arrest', 'eArrest.01'),
+    el('discontinuedReason', 'eArrest.16'),
+    el('outcome', 'eArrest.18')
+  ]
 };
 
 const SIGNATURE: Section = {
@@ -260,6 +284,8 @@ const SECTIONS = [
   PROCEDURE,
   VITAL,
   EXAM,
+  INJURY,
+  ARREST,
   DISPOSITION,
   SIGNATURE,
   CREW
@@ -298,6 +324,8 @@ const PCR_FIELDS: ModelField[] = [
   { name: 'procedures', type: listOf(PROCEDURE), label: 'Procedures' },
   { name: 'vitals', type: listOf(VITAL), label: 'Vital signs' },
   { name: 'exam', type: sectionType(EXAM), label: 'Exam' },
+  { name: 'injury', type: sectionType(INJURY), label: 'Injury' },
+  { name: 'arrest', type: sectionType(ARREST), label: 'Cardiac arrest' },
   { name: 'disposition', type: sectionType(DISPOSITION), label: 'Disposition' },
   { name: 'narrative', type: 'string', label: 'Narrative · eNarrative.01' },
   { name: 'signatures', type: listOf(SIGNATURE), label: 'Signatures' },
@@ -418,6 +446,8 @@ export const toPcr = (report: unknown): Fields => ({
   procedures: readGiven(report, 'eProcedures.ProcedureGroup', PROCEDURE, 'eProcedures.03'),
   vitals: readAll(report, 'eVitals.VitalGroup', VITAL),
   exam: read(report, EXAM),
+  injury: read(report, INJURY),
+  arrest: read(report, ARREST),
   disposition: read(report, DISPOSITION),
   narrative: textOf(find(report, 'eNarrative.01')),
   signatures: readAll(report, 'eOther.SignatureGroup', SIGNATURE),
