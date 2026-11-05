@@ -40,7 +40,7 @@ export const claimSummary = (g: Builder, task: string, sentence: string, refusab
     problem: 'problem.value'
   });
 };
-const rememberRefusal = (g: Builder, node: string, retry: string) => {
+const rememberRefusal = (g: Builder, node: string, retry: `${string}.${string}`) => {
   g.add('remember', 'std.var.set', { label: 'Remember Why', config: { name: 'problem' } });
   g.wire(`${node}.refused`, 'remember.exec');
   g.wire(`${node}.reason`, 'remember.value');
@@ -227,7 +227,7 @@ export const DOCUMENT_FIELDS: FieldSpec[] = [
   { name: 'file', type: T.blob, label: 'File (PDF, PNG, JPEG or TIFF)' }
 ];
 
-export const receiveAddedDocument = (g: Builder, added: string, then: string) => {
+export const receiveAddedDocument = (g: Builder, added: string, then: `${string}.${string}`) => {
   g.add('receiveInputs', 'std.object.make', {
     label: 'Document to Receive',
     config: {
