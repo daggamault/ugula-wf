@@ -28,7 +28,7 @@ Nodes are defined with `pureNode`, `actionNode` or `branchNode` and `pin()` (`li
 ## Durable runs
 
 - Run state is saved in Postgres after every node with side effects and every few pure steps.
-- A run can suspend on a human task, timer, signal or child runs and resume on any worker.
+- A run can suspend on a human task, timer, signal or child runs and resume on any worker. A human task can carry a due date (its `due` input) and the permission whoever completes it needs (`permission` in its config).
 - Signals are counted, so a run that was busy when a signal arrived still sees it.
 - Workers lease runs with fencing tokens; a sweeper recovers stalled leases; transient errors retry; real faults stop the run for inspection and retry.
 

@@ -29,14 +29,18 @@ A user belongs to at most one organization. Email addresses are unique and store
 | roles       | create, read, update, delete                                                |
 | patients    | read, update                                                                |
 | imports     | create, read                                                                |
-| claims      | read, update                                                                |
+| claims      | read, update, approve (refunds, write-offs and collections above the Claim Policy thresholds) |
 | tasks       | read, update                                                                |
 | payer_files | create, read                                                                |
-| payers      | create, read, update, delete                                                |
+| payers      | create, read, update, delete (the payer directory and facilities)           |
 | fees        | create, read, update, delete                                                |
 | reports     | read                                                                        |
 | workflows   | read, update (rules, tables, agency rule slots), manage (stages, workflows) |
 | runs        | create, read, update                                                        |
+
+### Tasks that need a permission
+
+A human task can name the permission whoever completes it needs (`permission` in the task config, stored on `tasks.permission`). The API refuses to complete it without that permission (403) and the task page explains why its outcomes are disabled. **Approve Refund**, **Approve Write-Off** and **Approve Collections** need `claims:approve`, which Admin and Billing Manager hold and Biller does not. A separate `claims:approve` was chosen over reusing `claims:update` so that the billers who work claims cannot approve money leaving the agency or balances written off, and over a `refunds:approve` so one approval right covers refunds, large write-offs and collections placements alike.
 
 ### Rules that prevent escalation
 

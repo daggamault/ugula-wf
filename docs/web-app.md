@@ -32,7 +32,7 @@ React app in `apps/web`, built with Vite. Pages live in `src/features/<area>`; s
 | Imports and payer files | `/imports`, `/imports/:id`, `/payer-files`, `/payer-files/:id`                                                 |
 | Reports                 | `/reports`, `/reports/:id`, `/reports/:id/results`                                                             |
 | Workflows and runs      | `/workflows`, `/workflows/customized`, `/workflows/:id`, `/tables`, `/tables/:id`, `/runs`, `/runs/:id`        |
-| Admin                   | `/payers`, `/fees`, `/users`, `/users/invite`, `/users/:id`, `/roles`, `/roles/new`, `/roles/:id`, `/settings` |
+| Admin                   | `/payers`, `/facilities`, `/fees`, `/users`, `/users/invite`, `/users/:id`, `/roles`, `/roles/new`, `/roles/:id`, `/settings` |
 
 ## Workflow editor
 
