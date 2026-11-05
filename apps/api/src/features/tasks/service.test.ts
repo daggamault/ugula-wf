@@ -279,7 +279,7 @@ describe('task service', () => {
 });
 
 describe('task service sources and hand-out', () => {
-  it('links a task to the claim and patient its run works', async () => {
+  it('links a task to the claim its run works, with a snapshot of where the claim stands', async () => {
     const { db } = createRecordingDb((q) =>
       q.sql.includes('from "workflow_runs"')
         ? [
@@ -290,7 +290,17 @@ describe('task service sources and hand-out', () => {
               claim_number: 12,
               claim_status: 'ready',
               first_name: 'Jane',
-              last_name: 'Doe'
+              last_name: 'Doe',
+              birth_date: '1950-02-03',
+              service_date: '2026-09-14',
+              trip_type: 'emergency',
+              level: 'BLS',
+              emergency: true,
+              loaded_miles: '8.3',
+              total_cents: 92865,
+              balance_cents: 12865,
+              payers: [{ payer: 'Medicare', memberId: '1EG4', eligibility: 'active' }],
+              lines: [{ code: 'A0429', units: 1, totalCents: 80000 }]
             }
           ]
         : [task()]
@@ -301,7 +311,22 @@ describe('task service sources and hand-out', () => {
     assert.deepEqual(found.ok && found.value.task.source, {
       reportId: 'rep-1',
       pcrNumber: 'PCR-1',
-      claim: { id: 'c1', number: 12, status: 'ready', patient: 'Doe, Jane' }
+      claim: {
+        id: 'c1',
+        number: 12,
+        status: 'ready',
+        patient: 'Doe, Jane',
+        birthDate: '1950-02-03',
+        serviceDate: '2026-09-14',
+        tripType: 'emergency',
+        level: 'BLS',
+        emergency: true,
+        loadedMiles: '8.3',
+        totalCents: 92865,
+        balanceCents: 12865,
+        payers: [{ payer: 'Medicare', memberId: '1EG4', eligibility: 'active' }],
+        lines: [{ code: 'A0429', units: 1, totalCents: 80000 }]
+      }
     });
   });
 
