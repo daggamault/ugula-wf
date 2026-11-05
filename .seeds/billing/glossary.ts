@@ -28,6 +28,10 @@ const PINS: Record<string, Doc> = {
   },
   file: { label: 'File', description: 'The stored file.' },
   fileId: { label: 'Payer File', description: 'The payer file record.' },
+  force: {
+    label: 'Ask Again',
+    description: 'Ask every payer, even one already answered or waiting for an answer.'
+  },
   fileName: { label: 'File Name', description: 'The name the file arrived with.' },
   findings: {
     label: 'Narrative Findings',
