@@ -16,7 +16,7 @@ const PREFIX = 'live:';
 
 export const LIVE_PATTERN = `${PREFIX}*`;
 
-export const channelOf = (agencyId: string) => `${PREFIX}${agencyId}`;
+const channelOf = (agencyId: string) => `${PREFIX}${agencyId}`;
 
 export const agencyOf = (channel: string) =>
   channel.startsWith(PREFIX) ? channel.slice(PREFIX.length) : null;

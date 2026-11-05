@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { agencyOf, channelOf, LIVE_PATTERN, parseLiveEvent, publishLiveEvent } from './index.ts';
+import { agencyOf, LIVE_PATTERN, parseLiveEvent, publishLiveEvent } from './index.ts';
 
 describe('live events', () => {
   it('scopes channels per agency', () => {
-    assert.equal(channelOf('t-1'), 'live:t-1');
     assert.equal(agencyOf('live:t-1'), 't-1');
     assert.equal(agencyOf('other:t-1'), null);
     assert.equal(LIVE_PATTERN, 'live:*');

@@ -11,8 +11,7 @@ import {
   retry,
   skip,
   start,
-  timeout,
-  timeoutJobId
+  timeout
 } from './index.ts';
 
 describe('run jobs', () => {
@@ -70,7 +69,7 @@ describe('run jobs', () => {
               runId: 'e',
               command: { type: 'resume', suspensionId: '2', payload: { timedOut: true } }
             },
-            id: timeoutJobId('e', '2'),
+            id: timeout('e', '2', '2026-01-02').id,
             startAfter: '2026-01-02',
             retryLimit: 1_000_000,
             priority: 1
@@ -83,10 +82,11 @@ describe('run jobs', () => {
   });
 
   it('gives each signal timeout a stable job id so a wake can delete it', async () => {
-    const id = timeoutJobId('r', '7');
+    const { id } = timeout('r', '7', '2026-01-01');
+    assert.ok(id);
     assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/);
-    assert.equal(timeoutJobId('r', '7'), id);
-    assert.notEqual(timeoutJobId('r', '8'), id);
+    assert.equal(timeout('r', '7', '2026-02-01').id, id);
+    assert.notEqual(timeout('r', '8', '2026-01-01').id, id);
     assert.deepEqual(timeout('r', '7', '2026-01-01'), {
       ...resume('r', '7', { timedOut: true }, '2026-01-01'),
       id

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Json, RunState, Values } from '@ugula/graph';
-import { type RunJob, timeoutJobId } from '@ugula/run-queue';
+import { type RunJob, timeout } from '@ugula/run-queue';
 import type { ChildRun, ClaimedRun, ParentWait, RunPatch, RunTx, TaskInsert } from './queries.ts';
 import {
   cancelRun,
@@ -222,7 +222,7 @@ describe('settleRun', () => {
         runId: 'run-1',
         command: { type: 'resume', suspensionId: '7', payload: { timedOut: true } },
         startAfter: '2026-02-01',
-        id: timeoutJobId('run-1', '7')
+        id: timeout('run-1', '7', '2026-02-01').id
       }
     ]);
   });

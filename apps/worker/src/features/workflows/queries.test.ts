@@ -8,7 +8,7 @@ import {
   type RunQueueClient,
   resume,
   type TimeoutClient,
-  timeoutJobId
+  timeout
 } from '@ugula/run-queue';
 import { buildClaim, type ClaimedRun, createRunStore, taskNotification } from './queries.ts';
 
@@ -192,7 +192,7 @@ describe('createRunStore', () => {
         ]
       }
     ]);
-    assert.deepEqual(deleted, [`${RUN_QUEUE}:${timeoutJobId('r1', '6')}`]);
+    assert.deepEqual(deleted, [`${RUN_QUEUE}:${timeout('r1', '6', '2026-01-01').id}`]);
     await db.destroy();
   });
 
