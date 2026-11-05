@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { build277Status } from './mock-x12.ts';
+import { build277Status } from './mock-x277-status.ts';
 import { claimStatusNote, readClaimStatus } from './x277-status.ts';
 
 const ISA = `ISA*00*${' '.repeat(10)}*00*${' '.repeat(10)}*ZZ*${'WAYSTAR'.padEnd(15)}*ZZ*${'METROEMS'.padEnd(15)}*261104*1530*^*00501*000000555*0*P*:~`;

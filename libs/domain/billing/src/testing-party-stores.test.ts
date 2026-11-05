@@ -1,17 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import {
-  billingStores,
-  memoryClaims,
-  memoryFees,
-  memoryPatients,
-  memoryPayers,
-  scriptedCompleter
-} from './testing.ts';
+import { memoryFees, memoryPatients, memoryPayers } from './testing-party-stores.ts';
 
 const medicare = { id: 'p-medicare', name: 'Medicare', claimFiling: 'MB' };
 
-describe('billing test stores', () => {
+describe('party test stores', () => {
   it('records patient calls and creates patients from what they are given', async () => {
     const { store, calls } = memoryPatients([]);
     const created = await store.createPatient(
@@ -62,44 +55,5 @@ describe('billing test stores', () => {
       payer: { A0427: 90 },
       default: { A0427: 100, A0999: 5 }
     });
-  });
-
-  it('keeps a claim ledger from saved coverages and recorded events', async () => {
-    const claims = memoryClaims({ totalCents: 500 });
-    assert.deepEqual(
-      await claims.store.openDraft('r', 'k', { pcrNumber: null, reportKey: null, claimId: null }),
-      { id: 'c1', duplicate: false }
-    );
-    await claims.store.assignPatient('r', 'c1', 'k', 'p1');
-
-    assert.deepEqual(claims.patients, ['p1']);
-    await claims.store.recordEvent('r', 'c1', 'k', {
-      kind: 'approved',
-      coverageId: null,
-      note: '',
-      payerClaimNumber: null
-    });
-    const ledger = await claims.store.ledger('r', 'c1');
-    assert.equal(ledger?.totalCents, 500);
-    assert.equal(ledger?.events[0]?.kind, 'approved');
-    assert.equal(await claims.store.ledger('r', 'c9'), null);
-    await assert.rejects(() => claims.store.statementData('r', 'c1'), /not used here/);
-    await claims.store.saveStatement('r', 'c1', 'k', {
-      number: 1,
-      count: 3,
-      pdf: new Uint8Array()
-    });
-    assert.deepEqual(claims.statements, [{ key: 'k', number: 1, count: 3, pdf: new Uint8Array() }]);
-  });
-
-  it('answers completions from a script and fills unused stores with faults', async () => {
-    const { completer, asked } = scriptedCompleter(() => ({ ok: true }));
-    const stores = billingStores({ completer });
-    assert.deepEqual(
-      await stores.completer.complete({ system: 's', user: 'u', schema: {}, maxTokens: 1 }),
-      { ok: true }
-    );
-    assert.equal(asked.length, 1);
-    await assert.rejects(() => stores.fees.findSchedules('r', null, []), /fee store is not used/);
   });
 });

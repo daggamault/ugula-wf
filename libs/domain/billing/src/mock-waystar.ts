@@ -1,12 +1,12 @@
 import { WAYSTAR_EXTENSIONS } from './clearinghouse.ts';
 import {
-  build271,
-  build277Status,
   MOCK_PAID_SHARE,
   type MockResponse,
   mockPayerClaimNumber,
   respond
-} from './mock-x12.ts';
+} from './mock-respond.ts';
+import { build271 } from './mock-x271.ts';
+import { build277Status } from './mock-x277-status.ts';
 import { centsOf, dateOf, readX12, textOf } from './x12.ts';
 
 export { WAYSTAR_EXTENSIONS };
