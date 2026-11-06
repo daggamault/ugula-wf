@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { type CodeSet, isCodeSet } from '@ugula/billing';
 import type { Database } from '@ugula/db';
@@ -34,3 +35,10 @@ export const upsertCodeSets = async (db: Kysely<Database>, codes: readonly Code[
     await buildUpsertCodes(db, codes.slice(i, i + CODE_BATCH)).execute();
   }
 };
+
+export const hcpcsDescriptions = (): Record<string, string> =>
+  Object.fromEntries(
+    readCodeSets(readFileSync(CODE_SETS_FILE))
+      .filter((c) => c.set === 'hcpcs')
+      .map((c) => [c.code, c.description])
+  );

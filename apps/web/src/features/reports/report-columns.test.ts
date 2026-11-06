@@ -121,21 +121,19 @@ describe('report columns', () => {
   });
 
   it('shares each code of the total and leaves columns that do not add up blank', () => {
-    const row: HcpcsRow = { code: 'A0427', claims: 2, units: 2, charges_cents: 190_000 };
+    const row: HcpcsRow = {
+      code: 'A0427',
+      description: 'ALS1, emergency transport',
+      claims: 2,
+      units: 2,
+      charges_cents: 190_000
+    };
     const totals = { charges_cents: 380_000 };
     assert.deepEqual(
       HCPCS_COLUMNS.map((c) => c.text(row, totals)),
-      ['A0427', 'ALS1, emergency transport', '2', '2', '$950.00', '$1,900.00', '50%']
+      ['ALS1, emergency transport (A0427)', '2', '2', '$950.00', '$1,900.00', '50%']
     );
-    assert.deepEqual(totalsOf(HCPCS_COLUMNS, totals), [
-      'Total',
-      '',
-      '',
-      '',
-      '',
-      '$3,800.00',
-      '100%'
-    ]);
+    assert.deepEqual(totalsOf(HCPCS_COLUMNS, totals), ['Total', '', '', '', '$3,800.00', '100%']);
   });
 
   it('lists payments with their paid date, check number and reason codes', () => {
@@ -164,7 +162,7 @@ describe('report columns', () => {
     assert.equal(shown['Check or EFT'], 'EFT-9');
     assert.equal(shown.Type, 'Refund');
     assert.equal(shown.Paid, '-$25.00');
-    assert.equal(shown['Reason Codes'], '—');
+    assert.equal(shown['Adjustment Reasons'], '—');
     assert.equal(shown.Claim, '20261001-0007');
   });
 
@@ -172,6 +170,7 @@ describe('report columns', () => {
     const row: DenialRow = {
       payer: null,
       code: 'CO-45',
+      description: 'Charge exceeds fee schedule.',
       adjustments: 3,
       denials: 1,
       claims: 2,
@@ -179,9 +178,17 @@ describe('report columns', () => {
     };
     assert.deepEqual(
       denialColumns('payer').map((c) => c.text(row, {})),
-      ['Patient', 'CO-45', 'Contractual obligation', '3', '1', '2', '$120.00']
+      [
+        'Patient',
+        'Charge exceeds fee schedule. (CO-45)',
+        'Contractual obligation',
+        '3',
+        '1',
+        '2',
+        '$120.00'
+      ]
     );
-    assert.equal(denialColumns('reason')[0]?.label, 'Reason Code');
+    assert.equal(denialColumns('reason')[0]?.label, 'Reason');
     assert.equal(adjustmentGroupLabel('XX-1'), null);
   });
 

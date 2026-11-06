@@ -52,10 +52,13 @@ export const createStatementStore = (
     if (!row) throw new Error(`Claim ${claimId} does not exist`);
     const [lines, payments] = await Promise.all([
       db
-        .selectFrom('claim_lines')
-        .select(['code', 'units', 'unit_cents', 'total_cents'])
-        .where('claim_id', '=', row.id)
-        .orderBy('position')
+        .selectFrom('claim_lines as l')
+        .leftJoin('codes as d', (j) =>
+          j.on('d.code_set', '=', 'hcpcs').onRef('d.code', '=', 'l.code')
+        )
+        .select(['l.code', 'l.units', 'l.unit_cents', 'l.total_cents', 'd.description'])
+        .where('l.claim_id', '=', row.id)
+        .orderBy('l.position')
         .execute(),
       db
         .selectFrom('claim_events as e')
@@ -107,7 +110,8 @@ export const createStatementStore = (
         code: l.code,
         units: Number(l.units),
         unitCents: l.unit_cents,
-        totalCents: l.total_cents
+        totalCents: l.total_cents,
+        description: l.description
       })),
       totalCents: row.total_cents,
       payments: paid,

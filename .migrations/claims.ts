@@ -23,6 +23,7 @@ import {
   ORIGIN_DESTINATION_CODES,
   PATIENT_EVENT_KINDS,
   PCS_TYPES,
+  REMARK_CODE_PATTERN,
   SERVICE_LEVELS,
   SIGNATURE_STATUSES,
   STAY_KINDS,
@@ -475,6 +476,21 @@ const buildClaimEventAdjustmentsTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint('claim_event_adjustments_amount_check', sql`amount_cents <> 0`);
 
+const buildClaimEventRemarksTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('claim_event_remarks')
+    .addColumn('event_id', 'uuid', (col) =>
+      col.notNull().references('claim_events.id').onDelete('cascade').onUpdate('cascade')
+    )
+    .addColumn('position', 'smallint', (col) => col.notNull())
+    .addColumn('code', 'text', (col) => col.notNull())
+    .addPrimaryKeyConstraint('claim_event_remarks_pkey', ['event_id', 'position'])
+    .addCheckConstraint('claim_event_remarks_position_check', sql`position >= 1`)
+    .addCheckConstraint(
+      'claim_event_remarks_code_check',
+      sql`code ~ ${sql.lit(REMARK_CODE_PATTERN)}`
+    );
+
 const buildClaimBalancesView = (db: Kysely<Database>) =>
   db.schema.createView('claim_balances').as(
     db
@@ -574,6 +590,7 @@ export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimStatusRequestsTable(db).execute();
   await buildClaimEventsTable(db).execute();
   await buildClaimEventAdjustmentsTable(db).execute();
+  await buildClaimEventRemarksTable(db).execute();
 
   await buildClaimBalancesView(db).execute();
   for (const index of buildClaimsIndexes(db)) await index.execute();

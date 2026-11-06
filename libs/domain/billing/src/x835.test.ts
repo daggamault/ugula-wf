@@ -20,17 +20,21 @@ const REMITTANCE = file(
   'REF*TJ*123456789',
   'LX*1',
   'CLP*1001*1*942.5*612.35*153.09*MB*ICN111*41',
+  'MOA***MA01*N130',
   'NM1*QC*1*DOE*JANE****MI*1EG4TE5MK73',
   'DTM*232*20261001',
   'SVC*HC:A0427:RH*850*552.2**1',
   'DTM*472*20261001',
   'CAS*CO*45*159.95',
+  'LQ*HE*N130',
+  'LQ*RX*99',
   'CAS*PR*1*100*1*2*37.85',
   'SVC*HC:A0425:RH*92.5*60.15**7.4',
   'CAS*PR*2*15.24',
   'CAS*CO*45*17.11**253*0.0',
   'CLP*1002*4*500*0*0*MB*ICN222',
   'CAS*CO*50*500',
+  'MIA*0***0*m25',
   'CLP*1001*22*-942.5*-612.35*-153.09*MB*ICN111',
   'CAS*CO*45*-177.06',
   'CAS*PR*1*-100**2*-53.09',
@@ -78,6 +82,7 @@ describe('read835', () => {
         { group: 'CO', reason: '45', cents: 1711 },
         { group: 'CO', reason: '253', cents: 0 }
       ],
+      remarks: ['MA01', 'N130'],
       denied: false,
       reversal: false
     });
@@ -89,6 +94,7 @@ describe('read835', () => {
       [denied?.denied, denied?.paidCents, denied?.adjustments],
       [true, 0, [{ group: 'CO', reason: '50', cents: 50_000 }]]
     );
+    assert.deepEqual([denied?.remarks, reversed?.remarks], [['M25'], []]);
     assert.deepEqual(
       [
         reversed?.claimNumber,
@@ -167,6 +173,7 @@ describe('read835', () => {
         patientCents: 0,
         payerClaimNumber: null,
         adjustments: [],
+        remarks: [],
         denied: false,
         reversal: false
       }

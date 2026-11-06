@@ -1,4 +1,6 @@
+import { ADJUSTMENT_GROUPS } from '@ugula/billing';
 import { DownloadIcon, FileTextIcon } from 'lucide-react';
+import { described } from '../../shared/claims/code-text.tsx';
 import { formatCents, formatDate, formatDateTime } from '../../shared/format.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -20,6 +22,14 @@ export const paymentDetailsOf = (
   ]
     .filter(Boolean)
     .join(' · ');
+
+export const reasonsOf = (e: Pick<ClaimEvent, 'adjustments' | 'remarks'>) => [
+  ...(e.adjustments ?? []).map(
+    (a) =>
+      `${ADJUSTMENT_GROUPS[a.group]}: ${described(a.description, `${a.group}-${a.reason}`)} · ${formatCents(a.cents)}`
+  ),
+  ...(e.remarks ?? []).map((r) => described(r.description, r.code))
+];
 
 export const amountOf = (e: Pick<ClaimEvent, 'kind' | 'paid_cents' | 'adjusted_cents'>) =>
   e.kind === 'refunded'
@@ -107,6 +117,13 @@ export const EventsTable = ({
           <span className="flex flex-col gap-0.5">
             {paymentDetailsOf(e) ? (
               <span className="text-surface-fg-muted text-xs">{paymentDetailsOf(e)}</span>
+            ) : null}
+            {reasonsOf(e).length ? (
+              <ul className="text-surface-fg-muted flex flex-col gap-0.5 text-xs">
+                {reasonsOf(e).map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
             ) : null}
             <span className="flex items-center gap-3">
               {e.note}

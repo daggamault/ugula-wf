@@ -1,6 +1,7 @@
-import { HCPCS_LABELS, NO_TRANSPORT_CODE } from '@ugula/billing';
+import { NO_TRANSPORT_CODE } from '@ugula/billing';
 import type { GraphDef } from '@ugula/graph';
 import { slot } from '../builder.ts';
+import { hcpcsDescriptions } from '../codes.ts';
 import type { SeedGraph } from '../graphs.ts';
 import {
   asRule,
@@ -255,14 +256,14 @@ const pricePrecedence = (): GraphDef => {
 };
 
 const SET_CHARGE_CONTEXT = `{
-  codes: map(missing, c => c + ' · ' + (labels[c] ?? 'Ambulance service')),
+  codes: map(missing, c => labels[c] == null ? c : labels[c] + ' (' + c + ')'),
   primaryPayer: payerId == null ? 'No directory payer, so the default fee schedule' : payerId,
   claim: context
 }`;
 
 const SET_CHARGE_SUMMARY = `len(missing ?? []) == 0
   ? 'A code on this claim has no price; enter its unit price or void the claim'
-  : 'No fee schedule prices ' + join(map(missing, c => c + ' (' + (labels[c] ?? 'ambulance service') + ')'), ', ') +
+  : 'No fee schedule prices ' + join(map(missing, c => labels[c] == null ? c : labels[c] + ' (' + c + ')'), '; ') +
     (len(missing) == 1 ? '; enter its unit price' : '; enter their unit prices') + ' or void the claim'`;
 
 const PRICED_OUT = [
@@ -304,7 +305,7 @@ const priceCharges = (): GraphDef => {
   g.add('check', 'std.flow.branch', { label: 'Every Code Priced?' });
   g.add('setContext', 'std.expr', {
     ...expr('Missing Fees', SET_CHARGE_CONTEXT),
-    values: { labels: HCPCS_LABELS }
+    values: { labels: hcpcsDescriptions() }
   });
   g.add('codeChoices', 'std.expr', expr('Codes Without a Fee', '{ code: missing }'));
   g.add('firstCode', 'std.expr', expr('First Code', '{ code: missing[0] }'));
@@ -365,7 +366,7 @@ const priceCharges = (): GraphDef => {
     'setCharge',
     SET_CHARGE_SUMMARY,
     { missing: 'price.missing' },
-    { labels: HCPCS_LABELS }
+    { labels: hcpcsDescriptions() }
   );
   g.wire('setCharge.price', 'setFee.exec');
   g.wire('setCharge.code', 'setFee.code');

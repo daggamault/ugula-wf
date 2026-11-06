@@ -9,6 +9,7 @@ export type RemittanceClaim = {
   patientCents: number;
   payerClaimNumber: string | null;
   adjustments: Adjustment[];
+  remarks: string[];
   denied: boolean;
   reversal: boolean;
 };
@@ -29,6 +30,12 @@ const REVERSAL = '22';
 
 const CAS_TRIPLETS = 6;
 
+const MOA_REMARKS = [3, 4, 5, 6, 7];
+
+const MIA_REMARKS = [5, 20, 21, 22, 23];
+
+const REMARK_QUALIFIER = 'HE';
+
 const PLB_AMOUNTS = [4, 6, 8, 10, 12, 14];
 
 const adjustmentsOf = (cas: string[]): Adjustment[] => {
@@ -40,6 +47,11 @@ const adjustmentsOf = (cas: string[]): Adjustment[] => {
   }).flat();
 };
 
+const addRemark = (claim: RemittanceClaim | null, value: string | undefined) => {
+  const code = textOf(value)?.toUpperCase();
+  if (claim && code && !claim.remarks.includes(code)) claim.remarks.push(code);
+};
+
 const claimOf = (clp: string[]): RemittanceClaim => ({
   claimNumber: clp[1]?.trim() ?? '',
   status: clp[2]?.trim() ?? '',
@@ -48,6 +60,7 @@ const claimOf = (clp: string[]): RemittanceClaim => ({
   patientCents: centsOf(clp[5]),
   payerClaimNumber: textOf(clp[7]),
   adjustments: [],
+  remarks: [],
   denied: clp[2] === DENIED,
   reversal: clp[2] === REVERSAL
 });
@@ -89,6 +102,13 @@ const remittanceOf = (segments: string[][]): Remittance => {
         break;
       case 'CAS':
         claim?.adjustments.push(...adjustmentsOf(seg));
+        break;
+      case 'MOA':
+      case 'MIA':
+        for (const i of seg[0] === 'MOA' ? MOA_REMARKS : MIA_REMARKS) addRemark(claim, seg[i]);
+        break;
+      case 'LQ':
+        if (seg[1] === REMARK_QUALIFIER) addRemark(claim, seg[2]);
         break;
       case 'PLB':
         r.providerAdjustmentCents += PLB_AMOUNTS.reduce((sum, i) => sum + centsOf(seg[i]), 0);

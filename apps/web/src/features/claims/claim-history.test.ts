@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { amountOf, EventsTable, paymentDetailsOf } from './claim-history.tsx';
+import { amountOf, EventsTable, paymentDetailsOf, reasonsOf } from './claim-history.tsx';
 
 describe('paymentDetailsOf', () => {
   it('lists the paid date, check number and payer claim number a payment came with', () => {
@@ -62,5 +62,29 @@ describe('EventsTable', () => {
       })
     );
     assert.ok(html.includes('href="/files/b4"') && /837P File #(<!-- -->)?4/.test(html));
+  });
+});
+
+describe('reasonsOf', () => {
+  it('describes each adjustment with its group and amount, then each remark', () => {
+    assert.deepEqual(
+      reasonsOf({
+        adjustments: [
+          { group: 'CO', reason: '45', cents: 15_995, description: 'Charge exceeds fee schedule.' },
+          { group: 'PR', reason: '999', cents: 100, description: null }
+        ],
+        remarks: [
+          { code: 'N130', description: 'Consult plan benefit documents.' },
+          { code: 'MA01', description: null }
+        ]
+      }),
+      [
+        'Contractual obligation: Charge exceeds fee schedule. (CO-45) · $159.95',
+        'Patient responsibility: PR-999 · $1.00',
+        'Consult plan benefit documents. (N130)',
+        'MA01'
+      ]
+    );
+    assert.deepEqual(reasonsOf({}), []);
   });
 });

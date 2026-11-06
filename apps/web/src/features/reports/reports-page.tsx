@@ -94,10 +94,7 @@ export const fileNameOf = (
     .concat('.csv');
 
 export const ReportsPage = () => (
-  <Page
-    title="Reports"
-    description="Receivables, collections, payer performance and billing work, straight from your claims."
-  >
+  <Page title="Reports">
     <Table
       label="Reports"
       head={['Report', 'Description', { label: 'Actions', isLabelHidden: true, isCompact: true }]}
@@ -140,7 +137,7 @@ const optionsHelp = (r: AnyReport) =>
   r.dates
     ? `Choose the ${DATES[r.dates].noun} to report on.`
     : r.groups
-      ? 'Choose how to group the report. It shows where things stand right now.'
+      ? 'It shows where things stand right now.'
       : 'This report has no options. It shows where things stand right now.';
 
 const ReportOptionsForm = ({ report, initial }: { report: AnyReport; initial: ReportOptions }) => {

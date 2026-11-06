@@ -24,21 +24,10 @@ export type StatementData = {
   patient: MailingAddress;
   reference: string;
   serviceDate: string | null;
-  lines: PricedLine[];
+  lines: (PricedLine & { description: string | null })[];
   totalCents: number;
   payments: StatementPayment[];
   balanceCents: number;
-};
-
-export const HCPCS_LABELS: Record<string, string> = {
-  A0425: 'Ground mileage, per statute mile',
-  A0426: 'ALS1, non-emergency transport',
-  A0427: 'ALS1, emergency transport',
-  A0428: 'BLS, non-emergency transport',
-  A0429: 'BLS, emergency transport',
-  A0433: 'ALS2 transport',
-  A0434: 'Specialty care transport',
-  A0998: 'Ambulance response and treatment, no transport'
 };
 
 const printable = (text: string) =>
@@ -137,7 +126,7 @@ export const renderStatement = async (s: StatementData): Promise<Uint8Array> => 
   rule();
   y -= 12;
   for (const l of s.lines) {
-    text(`${l.code}  ${HCPCS_LABELS[l.code] ?? 'Ambulance service'}`, 50);
+    text(l.description ? `${l.description} (${l.code})` : l.code, 50);
     right(String(l.units), 400);
     right(money(l.totalCents), 562);
     y -= 15;

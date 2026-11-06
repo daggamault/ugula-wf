@@ -90,6 +90,7 @@ export type PaymentRow = Claim & {
 export type DenialRow = {
   payer: string | null;
   code: string;
+  description: string | null;
   adjustments: number;
   denials: number;
   claims: number;
@@ -117,7 +118,13 @@ export type PayerRow = PayerName & {
   pay_days: number;
 };
 
-export type HcpcsRow = { code: string; claims: number; units: number; charges_cents: number };
+export type HcpcsRow = {
+  code: string;
+  description: string | null;
+  claims: number;
+  units: number;
+  charges_cents: number;
+};
 
 export type LevelRow = {
   level: string;

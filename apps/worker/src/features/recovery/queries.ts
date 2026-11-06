@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import {
   type ClaimEventKind,
   fieldSections,
-  HCPCS_LABELS,
   money,
   type RecoveryStore,
   SELF
@@ -222,10 +221,13 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
           .where('c.id', '=', claim.id)
           .executeTakeFirst(),
         db
-          .selectFrom('claim_lines')
-          .select(['code', 'units', 'total_cents'])
-          .where('claim_id', '=', claim.id)
-          .orderBy('position')
+          .selectFrom('claim_lines as l')
+          .leftJoin('codes as d', (j) =>
+            j.on('d.code_set', '=', 'hcpcs').onRef('d.code', '=', 'l.code')
+          )
+          .select(['l.code', 'l.units', 'l.total_cents', 'd.description'])
+          .where('l.claim_id', '=', claim.id)
+          .orderBy('l.position')
           .execute(),
         db
           .selectFrom('claim_diagnoses')
@@ -285,7 +287,7 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
           { label: 'Diagnoses', value: diagnoses.map((d) => d.code).join(', ') },
           ...lines.map((l) => ({
             label: l.code,
-            value: `${HCPCS_LABELS[l.code] ?? 'Ambulance service'}, ${Number(l.units)} units, ${money(l.total_cents)}`
+            value: `${l.description ?? 'Ambulance service'}, ${Number(l.units)} units, ${money(l.total_cents)}`
           })),
           { label: 'Total charges', value: money(row.total_cents) }
         ].filter((r) => r.value !== ''),

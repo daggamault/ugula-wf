@@ -580,6 +580,12 @@ type ClaimEventAdjustmentsTable = {
   amount_cents: number;
 };
 
+type ClaimEventRemarksTable = {
+  event_id: string;
+  position: number;
+  code: string;
+};
+
 type ClaimBatchesTable = {
   id: Generated<string>;
   agency_id: string;
@@ -797,6 +803,7 @@ export type Database = {
   claim_balances: ClaimBalancesView;
   claim_events: ClaimEventsTable;
   claim_event_adjustments: ClaimEventAdjustmentsTable;
+  claim_event_remarks: ClaimEventRemarksTable;
   claim_batches: ClaimBatchesTable;
   claim_status_requests: ClaimStatusRequestsTable;
   payer_files: PayerFilesTable;

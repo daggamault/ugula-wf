@@ -9,7 +9,7 @@ import {
 } from './event-queries.ts';
 
 describe('claim event queries', () => {
-  it('reads events with payer names, amounts and reason codes', async () => {
+  it('reads events with payer names, amounts, and described reason and remark codes', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await listClaimEvents(db, 'c1', { page: 1, pageSize: 25, sort: 'amount', dir: 'asc' });
     const [events] = queries;
@@ -20,9 +20,15 @@ describe('claim event queries', () => {
     assert.ok(events?.sql.includes('count(*) over ()'));
     assert.ok(
       events?.sql.includes(
-        'select "a"."group_code" as "group", "a"."reason_code" as "reason", "a"."amount_cents" as "cents" from "claim_event_adjustments" as "a"'
+        'select "a"."group_code" as "group", "a"."reason_code" as "reason", "a"."amount_cents" as "cents", "d"."description" from "claim_event_adjustments" as "a" left join "codes" as "d"'
       )
     );
+    assert.ok(
+      events?.sql.includes(
+        'select "r"."code", "d"."description" from "claim_event_remarks" as "r" left join "codes" as "d"'
+      )
+    );
+    assert.ok(events?.parameters.includes('carc') && events?.parameters.includes('rarc'));
   });
 
   it('lists the payer files that touched a claim with only the lines for that claim', async () => {
@@ -41,7 +47,7 @@ describe('claim event queries', () => {
     const [files] = queries;
     assert.ok(files?.sql.includes('("e"."batch_id" is not null or "e"."document" is not null)'));
     assert.ok(files?.sql.endsWith('order by "e"."created_at", "e"."id"'));
-    assert.deepEqual(files?.parameters, ['c1']);
+    assert.deepEqual(files?.parameters, ['carc', 'rarc', 'c1']);
     await db.destroy();
   });
 

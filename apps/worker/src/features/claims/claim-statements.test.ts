@@ -63,7 +63,15 @@ describe('createStatementStore', () => {
       q.sql.includes('from "claims" as "c"')
         ? [claimRow]
         : q.sql.includes('from "claim_lines"')
-          ? [{ code: 'A0427', units: '1.00', unit_cents: 95_000, total_cents: 95_000 }]
+          ? [
+              {
+                code: 'A0427',
+                units: '1.00',
+                unit_cents: 95_000,
+                total_cents: 95_000,
+                description: 'ALS1, emergency transport'
+              }
+            ]
           : responses
     );
     const data = await createStatementStore(db, blobs).statementData('r1', ID);
@@ -72,7 +80,13 @@ describe('createStatementStore', () => {
     assert.equal(data.patient.name, 'Jane Doe');
     assert.equal(data.serviceDate, '2026-10-01');
     assert.deepEqual(data.lines, [
-      { code: 'A0427', units: 1, unitCents: 95_000, totalCents: 95_000 }
+      {
+        code: 'A0427',
+        units: 1,
+        unitCents: 95_000,
+        totalCents: 95_000,
+        description: 'ALS1, emergency transport'
+      }
     ]);
     assert.deepEqual(data.payments, [
       { date: '2026-10-18', from: 'Medicare', paidCents: 40_000, adjustedCents: 10_000 },

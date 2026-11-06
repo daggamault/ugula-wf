@@ -1,4 +1,5 @@
-import { ADJUSTMENT_GROUPS, CLAIM_FILING_CODES, HCPCS_LABELS } from '@ugula/billing';
+import { ADJUSTMENT_GROUPS, CLAIM_FILING_CODES } from '@ugula/billing';
+import { described } from '../../shared/claims/code-text.tsx';
 import { formatCents, formatDate, formatDateTime } from '../../shared/format.ts';
 import { queueInfo, titleCase } from '../../shared/task-queues.ts';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -253,14 +254,14 @@ export const PAYMENT_COLUMNS: readonly ReportColumn<PaymentRow>[] = [
   text('Payer Claim Number', (r) => r.payer_claim_number),
   money('Paid', 'paid_cents'),
   money('Adjusted', 'adjusted_cents'),
-  text('Reason Codes', (r) => r.reason_codes || null),
+  text('Adjustment Reasons', (r) => r.reason_codes || null),
   text('Posted By', (r) => r.posted_by),
   text('Note', (r) => r.note || null)
 ];
 
 export const denialColumns = (group: string | null): ReportColumn<DenialRow>[] => [
   ...(group === 'reason' ? [] : [text<DenialRow>('Payer', (r) => r.payer ?? PATIENT)]),
-  text('Reason Code', (r) => r.code),
+  text('Reason', (r) => described(r.description, r.code)),
   text('Group', (r) => adjustmentGroupLabel(r.code)),
   count('Adjustments', 'adjustments'),
   count('Denials', 'denials'),
@@ -305,8 +306,7 @@ export const payerColumns = (group: string | null): ReportColumn<PayerRow>[] => 
 ];
 
 export const HCPCS_COLUMNS: readonly ReportColumn<HcpcsRow>[] = [
-  text('HCPCS', (r) => r.code),
-  text('Service', (r) => HCPCS_LABELS[r.code] ?? null),
+  text('Service', (r) => described(r.description, r.code)),
   count('Claims', 'claims', false),
   derived('Units', (read) => read('units'), AS_DECIMAL, false),
   average('Average Price', 'charges_cents', 'units', AS_MONEY_AVERAGE, false),

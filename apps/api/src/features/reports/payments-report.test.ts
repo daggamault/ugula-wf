@@ -8,10 +8,11 @@ describe('paymentsReport', () => {
     const { rows } = await compileReport(paymentsReport);
     assert.ok(
       rows.sql.includes(
-        '"e"."created_at" >= ($4::date)::timestamp at time zone $5 and "e"."created_at" < ($6::date + 1)::timestamp at time zone $7'
+        '"e"."created_at" >= ($5::date)::timestamp at time zone $6 and "e"."created_at" < ($7::date + 1)::timestamp at time zone $8'
       )
     );
-    assert.deepEqual(rows.parameters.slice(0, 7), [
+    assert.deepEqual(rows.parameters.slice(0, 8), [
+      'carc',
       't-1',
       'response',
       'refunded',
@@ -24,5 +25,6 @@ describe('paymentsReport', () => {
       assert.ok(rows.sql.includes(column), column);
     }
     assert.ok(rows.sql.includes("a.group_code || '-' || a.reason_code"));
+    assert.ok(rows.sql.includes('left join "codes" as "d"'));
   });
 });

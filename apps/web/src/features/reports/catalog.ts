@@ -95,7 +95,7 @@ export const REPORTS: readonly AnyReport[] = [
     dates: 'posted',
     groups: [
       { value: 'payer', label: 'Payer' },
-      { value: 'reason', label: 'Reason Code' }
+      { value: 'reason', label: 'Reason' }
     ],
     columns: denialColumns
   }),

@@ -102,6 +102,7 @@ export const postRemittances = async (c: Context, remittances: Remittance[]) => 
       checkNumber: remit.checkNumber,
       payerClaimNumber: rc.payerClaimNumber,
       adjustments: line.adjustments,
+      remarks: rc.remarks,
       note: `${rc.denied ? 'Denied' : 'Remittance'} from ${remit.payerName ?? 'the payer'} in ${c.fileName}`
     });
     if (posted.ok && !posted.value.duplicate && isDenialRoute(posting.route)) {

@@ -82,6 +82,7 @@ export {
   ledgerFactsOf,
   MIN_WAIT_MS,
   PATIENT_EVENT_KINDS,
+  REMARK_CODE_PATTERN,
   readClaimStep,
   STEP_STATUSES
 } from './claims.ts';
@@ -223,7 +224,7 @@ export {
   remittanceCoverage,
   remittanceLine
 } from './remittances.ts';
-export { HCPCS_LABELS, localDate, money } from './statements.ts';
+export { localDate, money } from './statements.ts';
 export { type InterchangeAcknowledgment, readTA1 } from './ta1.ts';
 export { type InboundKind, readX12 } from './x12.ts';
 export { build270, type EligibilityRequest } from './x270.ts';

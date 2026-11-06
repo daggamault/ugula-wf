@@ -42,10 +42,28 @@ const eventRows = (db: Db, claimId: string) =>
       jsonArrayFrom(
         eb
           .selectFrom('claim_event_adjustments as a')
-          .select(['a.group_code as group', 'a.reason_code as reason', 'a.amount_cents as cents'])
+          .leftJoin('codes as d', (j) =>
+            j.on('d.code_set', '=', 'carc').onRef('d.code', '=', 'a.reason_code')
+          )
+          .select([
+            'a.group_code as group',
+            'a.reason_code as reason',
+            'a.amount_cents as cents',
+            'd.description'
+          ])
           .whereRef('a.event_id', '=', 'e.id')
           .orderBy('a.position')
-      ).as('adjustments')
+      ).as('adjustments'),
+      jsonArrayFrom(
+        eb
+          .selectFrom('claim_event_remarks as r')
+          .leftJoin('codes as d', (j) =>
+            j.on('d.code_set', '=', 'rarc').onRef('d.code', '=', 'r.code')
+          )
+          .select(['r.code', 'd.description'])
+          .whereRef('r.event_id', '=', 'e.id')
+          .orderBy('r.position')
+      ).as('remarks')
     ]);
 
 export const listClaimEvents = (db: Db, claimId: string, page: PageRequest<ClaimEventSort>) =>

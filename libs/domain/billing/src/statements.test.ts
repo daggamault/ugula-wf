@@ -25,8 +25,14 @@ const statement: StatementData = {
   reference: 'PCR-1001',
   serviceDate: '2026-10-01',
   lines: [
-    { code: 'A0427', units: 1, unitCents: 95_000, totalCents: 95_000 },
-    { code: 'A0425', units: 12.4, unitCents: 1_550, totalCents: 19_220 }
+    {
+      code: 'A0427',
+      units: 1,
+      unitCents: 95_000,
+      totalCents: 95_000,
+      description: 'ALS1, emergency transport'
+    },
+    { code: 'A0425', units: 12.4, unitCents: 1_550, totalCents: 19_220, description: null }
   ],
   totalCents: 114_220,
   payments: [{ date: '2026-10-20', from: 'Medicare', paidCents: 40_000, adjustedCents: 10_000 }],

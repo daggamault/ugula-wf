@@ -107,6 +107,8 @@ export const isAdjustmentGroup = (x: unknown): x is AdjustmentGroup =>
 
 export const ADJUSTMENT_REASON_PATTERN = '^[A-Z0-9]{1,5}$';
 
+export const REMARK_CODE_PATTERN = '^[A-Z]{1,2}[0-9]{1,3}$';
+
 export type Adjustment = { group: AdjustmentGroup; reason: string; cents: number };
 
 export const CLAIM_STATUSES = [

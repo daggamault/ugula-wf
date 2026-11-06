@@ -33,9 +33,16 @@ export const paymentsReport = report({
         'e.adjusted_cents',
         sql<string>`array_to_string(array(${db
           .selectFrom('claim_event_adjustments as a')
-          .select(reasonCode.as('code'))
+          .leftJoin('codes as d', (j) =>
+            j.on('d.code_set', '=', 'carc').onRef('d.code', '=', 'a.reason_code')
+          )
+          .select(
+            sql<string>`case when d.description is null then ${reasonCode} else d.description || ' (' || ${reasonCode} || ')' end`.as(
+              'code'
+            )
+          )
           .where('a.event_id', '=', sql.ref<string>('e.id'))
-          .orderBy('a.position')}), ', ')`.as('reason_codes'),
+          .orderBy('a.position')}), '; ')`.as('reason_codes'),
         'u.email as posted_by',
         'e.note'
       ])

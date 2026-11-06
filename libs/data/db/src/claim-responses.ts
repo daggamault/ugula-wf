@@ -38,6 +38,7 @@ export type ClaimResponse = {
   checkNumber: string | null;
   payerClaimNumber: string | null;
   adjustments: Adjustment[];
+  remarks?: readonly string[];
   note: string;
 };
 
@@ -140,6 +141,12 @@ export const insertResponse = async (
           amount_cents: a.cents
         }))
       )
+      .execute();
+  }
+  if (event && r.remarks?.length) {
+    await db
+      .insertInto('claim_event_remarks')
+      .values(r.remarks.map((code, i) => ({ event_id: event.id, position: i + 1, code })))
       .execute();
   }
   return event !== undefined;

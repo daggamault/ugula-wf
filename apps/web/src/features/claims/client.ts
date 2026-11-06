@@ -1,4 +1,5 @@
 import type {
+  AdjustmentGroup,
   ClaimEventKind,
   ClaimIssue,
   ClaimStatus,
@@ -50,6 +51,15 @@ const listQuery = (query: ClaimQuery, page: string) => {
   return `${filters}&${page}`;
 };
 
+type EventAdjustment = {
+  group: AdjustmentGroup;
+  reason: string;
+  cents: number;
+  description: string | null;
+};
+
+type EventRemark = { code: string; description: string | null };
+
 export type ClaimEvent = {
   id: string;
   kind: ClaimEventKind;
@@ -66,6 +76,8 @@ export type ClaimEvent = {
   batch_id?: string | null;
   batch_number?: number | null;
   batch_sent_at?: string | null;
+  adjustments?: EventAdjustment[];
+  remarks?: EventRemark[];
 };
 
 export type ClaimProgress = ClaimStep;

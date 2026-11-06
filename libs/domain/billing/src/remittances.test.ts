@@ -22,7 +22,8 @@ const paid: RemittanceClaim = {
     { group: 'CO', reason: '45', cents: 5_000 }
   ],
   denied: false,
-  reversal: false
+  reversal: false,
+  remarks: []
 };
 
 const matched = { claimId: 'c1', coverageId: 'mcr', payerName: 'Medicare' };
