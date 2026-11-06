@@ -24,7 +24,7 @@ describe('claim data', () => {
   });
 
   it('names origin and destination modifiers', () => {
-    assert.match(modifierText('R') ?? '', /^R · /);
+    assert.match(modifierText('R') ?? '', /^Residence \(R\)$/);
     assert.equal(modifierText('Q'), 'Q');
     assert.equal(modifierText(null), null);
   });

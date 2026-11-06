@@ -1,10 +1,10 @@
 import type { Permission } from '@ugula/access';
-import type { ClaimStatus } from '@ugula/billing';
+import type { ClaimIssue, ClaimStatus, CodeDescriptions } from '@ugula/billing';
 import type { FieldSpec, Json } from '@ugula/graph';
 import type { ReportDictionary } from '@ugula/nemsis';
 import type { Api } from '../../shared/api.ts';
+import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import type { Page } from '../../shared/url-state.ts';
-import type { TaskClaimRecord } from './task-claim.tsx';
 
 type TaskStatus = 'open' | 'completed' | 'cancelled';
 
@@ -108,6 +108,12 @@ type TaskSource = {
   pcrNumber: string | null;
   claim: TaskClaim | null;
   patient: TaskPatient | null;
+};
+
+export type TaskClaimRecord = {
+  claim: ClaimDetail;
+  codes: CodeDescriptions;
+  issues: ClaimIssue[];
 };
 
 export type SourceReport = {

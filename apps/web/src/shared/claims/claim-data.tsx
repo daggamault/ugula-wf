@@ -23,8 +23,8 @@ export const addressText = (p: Place) =>
 
 export const modifierText = (code: string | null) =>
   code && Object.hasOwn(ORIGIN_DESTINATION_CODES, code)
-    ? `${code} · ${ORIGIN_DESTINATION_CODES[code as keyof typeof ORIGIN_DESTINATION_CODES]}`
-    : (code ?? null);
+    ? `${ORIGIN_DESTINATION_CODES[code as keyof typeof ORIGIN_DESTINATION_CODES]} (${code})`
+    : code;
 
 export const ClaimDataView = ({
   claim: c,
@@ -41,7 +41,7 @@ export const ClaimDataView = ({
       <Detail label="Date of Service">{formatDate(c.service_date)}</Detail>
       <Detail label="Diagnosis Codes">
         {c.diagnoses.length ? (
-          <ol className="flex flex-col gap-2">
+          <ol className="flex flex-col gap-1">
             {c.diagnoses.map((d) => (
               <li key={d}>
                 <CodeText codes={codes} set="icd10cm" code={d} />

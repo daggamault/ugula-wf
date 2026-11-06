@@ -1,21 +1,15 @@
-import { type ClaimIssue, type CodeDescriptions, isClosedStatus } from '@ugula/billing';
+import { isClosedStatus } from '@ugula/billing';
 import { ChargeLines } from '../../shared/claims/charge-lines.tsx';
 import { ClaimDataView } from '../../shared/claims/claim-data.tsx';
-import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { DocumentationPanel } from '../../shared/claims/claim-documentation.tsx';
 import { ClaimIssues } from '../../shared/claims/claim-issues.tsx';
 import { PayersPanel } from '../../shared/claims/claim-payers.tsx';
 import { ClaimSummaryPanel, pricedLinesOf } from '../../shared/claims/claim-summary.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
+import type { TaskClaimRecord } from './client.ts';
 import type { Mismatch } from './encounter-check.ts';
 import { MismatchAlert } from './task-brief.tsx';
-
-export type TaskClaimRecord = {
-  claim: ClaimDetail;
-  codes: CodeDescriptions;
-  issues: ClaimIssue[];
-};
 
 export const TaskClaimView = ({
   record: { claim, codes, issues },
