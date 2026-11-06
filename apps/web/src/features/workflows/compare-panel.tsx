@@ -92,16 +92,13 @@ export const ComparePanel = ({
             empty="The base has not changed since you copied it."
           />
         </SectionPanel>
-        <SectionPanel
-          title="Yours"
-          description="What this copy changed from the base it started from."
-        >
+        <SectionPanel title="Yours">
           <Differences items={yours} empty="Nothing yet: this copy matches its base." />
         </SectionPanel>
         {canEdit && latest ? (
           <SectionPanel
             title="Bring It Up to Date"
-            description="Keep your changes on the newest base, or start again from the newest base."
+            description="Keep your changes on the newest base, or start again from it."
           >
             <div className="flex flex-wrap items-center gap-2">
               <Button isPending={busy} onClick={onKeep}>

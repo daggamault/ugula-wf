@@ -51,11 +51,7 @@ export const InvitePage = ({ client, back }: { client: UsersClient; back: string
     });
   };
   return (
-    <Page
-      title="Invite User"
-      description="Give someone access to this agency with a role."
-      backTo={back}
-    >
+    <Page title="Invite User" backTo={back}>
       {link ? (
         <LinkPanel
           title={`Invitation for ${draft.firstName} ${draft.lastName}`}
@@ -64,7 +60,7 @@ export const InvitePage = ({ client, back }: { client: UsersClient; back: string
         />
       ) : (
         <form onSubmit={submit} aria-label="Invite user" className="flex flex-col gap-6">
-          <SectionPanel title="Person" description="Who you are inviting and what they can do.">
+          <SectionPanel title="Person">
             <fieldset disabled={busy}>
               <FieldGrid>
                 <Input id="invite-first" label="First Name" span={2} {...field('firstName')} />

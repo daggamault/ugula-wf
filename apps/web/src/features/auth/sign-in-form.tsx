@@ -44,12 +44,7 @@ export const SignInForm = ({ auth, onSuccess }: SignInFormProps) => {
 
   return (
     <Card labelledBy="sign-in-heading">
-      <BrandHeader
-        id="sign-in-heading"
-        description="Use the email and password of your Ugula account."
-      >
-        Sign In to Your Account
-      </BrandHeader>
+      <BrandHeader id="sign-in-heading">Sign In to Your Account</BrandHeader>
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <fieldset disabled={submitting} className="flex flex-col gap-5">
           <Input

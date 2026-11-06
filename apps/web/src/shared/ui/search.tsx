@@ -15,7 +15,7 @@ type SearchProps<T> = {
   results: Resource<Page<T>>;
   isFiltered?: boolean;
   filters?: ReactNode;
-  empty: { title: string; children: ReactNode; action?: ReactNode };
+  empty: { title: string; children?: ReactNode; action?: ReactNode };
   children: (items: readonly T[]) => ReactNode;
 };
 

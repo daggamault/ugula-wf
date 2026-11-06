@@ -42,7 +42,7 @@ export const RoleForm = ({ role, grants, readOnly, back, onSave }: RoleFormProps
   };
   return (
     <form onSubmit={submit} aria-label="Save role" className="flex flex-col gap-6">
-      <SectionPanel title="Role" description="A name users will recognize, such as Biller.">
+      <SectionPanel title="Role">
         <fieldset disabled={busy || readOnly}>
           <FieldGrid>
             <Input
@@ -56,10 +56,7 @@ export const RoleForm = ({ role, grants, readOnly, back, onSave }: RoleFormProps
           </FieldGrid>
         </fieldset>
       </SectionPanel>
-      <SectionPanel
-        title="Permissions"
-        description="Check what users with this role can do. You can only grant permissions you hold."
-      >
+      <SectionPanel title="Permissions" description="You can only grant permissions you hold.">
         <fieldset disabled={busy}>
           <PermissionGrid
             grants={grants}
@@ -120,7 +117,7 @@ export const RolePage = ({ client, roleId, back }: RolePageProps) => {
       description={
         role
           ? `${role.users} ${role.users === 1 ? 'user has' : 'users have'} this role.`
-          : 'Create a role, then give it to users when you invite them.'
+          : undefined
       }
       backTo={back}
     >

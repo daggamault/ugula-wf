@@ -93,7 +93,7 @@ export const FacilitiesPage = ({ client, live }: { client: SettingsClient; live:
   return (
     <Page
       title="Facilities"
-      description="Hospitals and nursing facilities that pay for trips they are responsible for, invoiced every month."
+      description="Hospitals and nursing facilities that pay for their trips, invoiced every month."
       actions={
         <ButtonLink to={add}>
           <PlusIcon aria-hidden="true" className="size-4" />

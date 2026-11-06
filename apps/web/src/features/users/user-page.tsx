@@ -57,7 +57,6 @@ export const UserPage = ({ client, userId, back }: UserPageProps) => {
   return (
     <Page
       title={fullName(user)}
-      description={user.email}
       backTo={back}
       actions={
         <>
@@ -85,7 +84,7 @@ export const UserPage = ({ client, userId, back }: UserPageProps) => {
       ) : null}
       {blocked ? <Alert intent="info">{blocked}</Alert> : null}
       <form onSubmit={save} aria-label="Save user" className="flex flex-col gap-6">
-        <SectionPanel title="Access" description="The role decides what they can do here.">
+        <SectionPanel title="Access">
           <DetailList>
             <Detail label="Email">{user.email}</Detail>
             {user.isOwner ? (

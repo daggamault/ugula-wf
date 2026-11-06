@@ -69,10 +69,7 @@ export const ClaimFiles = ({
   const batches = files.filter((e) => e.batch_id);
   const documents = files.filter((e) => e.has_document);
   return (
-    <SectionPanel
-      title="Files"
-      description="The encounter and import this claim came from, every 837P file and document sent for it, and every clearinghouse file that answered it."
-    >
+    <SectionPanel title="Files">
       <ul className="flex flex-col gap-2 text-sm">
         <li className="flex flex-wrap items-center gap-2">
           {claim.import_report_id ? (

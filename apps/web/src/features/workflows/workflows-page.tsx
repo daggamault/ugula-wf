@@ -128,7 +128,6 @@ export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
   return (
     <Page
       title="Workflows"
-      description="Workflows that run on their own, and the subworkflows they are made of."
       actions={
         <>
           <ButtonLink to={CUSTOMIZED_PATH} variant="outline">

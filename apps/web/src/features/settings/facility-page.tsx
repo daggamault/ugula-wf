@@ -64,10 +64,7 @@ export const FacilityForm = ({
   };
   return (
     <form onSubmit={submit} aria-label="Save facility">
-      <SectionPanel
-        title="Facility"
-        description="The name and mailing address its monthly invoice goes to, its kind, and whether it pays for its transports under contract."
-      >
+      <SectionPanel title="Facility">
         <fieldset disabled={busy}>
           <FieldGrid>
             <Input
@@ -160,7 +157,6 @@ export const FacilityPage = ({ client, live, facilityId, back }: FacilityPagePro
   return (
     <Page
       title={facilityId ? (current?.name ?? 'Facility') : 'Add Facility'}
-      description="A facility pays for the trips it is responsible for, on one invoice a month."
       backTo={back}
       backLabel="Back to Facilities"
     >

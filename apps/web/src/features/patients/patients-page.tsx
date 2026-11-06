@@ -141,10 +141,7 @@ const PatientResults = ({ client, live, search }: PatientsPageProps) => {
 };
 
 export const PatientsPage = ({ client, live, search }: PatientsPageProps) => (
-  <Page
-    title="Patients"
-    description="Find a patient by name, birth date or number to see their claims and what they owe."
-  >
+  <Page title="Patients">
     <SearchForm label="Search patients" path={PATH} fields={SEARCH_FIELDS} />
     {isSearching(search) ? (
       <PatientResults client={client} live={live} search={search} />

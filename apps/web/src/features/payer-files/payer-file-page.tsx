@@ -105,7 +105,7 @@ export const PayerFilePage = ({
         </a>
       }
     >
-      <SectionPanel title="Summary" description="What this file did to your claims.">
+      <SectionPanel title="Summary">
         <DetailList>
           <Detail label="Lines" isEmphasized>
             {file.item_count}
@@ -116,10 +116,7 @@ export const PayerFilePage = ({
           <Detail label="Control Number">{file.control_number ?? emptyValue}</Detail>
         </DetailList>
       </SectionPanel>
-      <SectionPanel
-        title="Lines"
-        description="Each claim, file or member the payer answered about, and what was done with it."
-      >
+      <SectionPanel title="Lines">
         {items.length ? (
           <PayerFileItems items={items} />
         ) : (

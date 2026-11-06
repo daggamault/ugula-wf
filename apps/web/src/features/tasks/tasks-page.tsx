@@ -167,10 +167,7 @@ export const TasksPage = ({ client, live, me, filter }: TasksPageProps) => {
     LIST_RELOAD_MS
   );
   return (
-    <Page
-      title="Tasks"
-      description="Every open task across the billing queues. Open one to work it."
-    >
+    <Page title="Tasks">
       <Search
         label="Tasks"
         path={TASKS_PATH}

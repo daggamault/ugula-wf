@@ -65,7 +65,7 @@ describe('NodeExecutions', () => {
 
   it('says when a node has not run', () => {
     const html = renderToStaticMarkup(createElement(NodeExecutions, { title: 'X', steps: [] }));
-    assert.ok(html.includes('It has not run on this path yet.'));
+    assert.ok(html.includes('This node has not run on this path.'));
     assert.ok(!html.includes('Open Subworkflow'));
     const composite = renderToStaticMarkup(
       createElement(NodeExecutions, { title: 'X', steps: [], onOpen: () => undefined })

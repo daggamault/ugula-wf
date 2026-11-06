@@ -21,7 +21,7 @@ type NodeExecutionsProps = {
 const executionsOf = (count: number) =>
   count
     ? `It ran ${count} ${count === 1 ? 'time' : 'times'} on this path, newest first.`
-    : 'It has not run on this path yet.';
+    : undefined;
 
 export const NodeExecutions = ({ title, steps, onOpen, runs = [] }: NodeExecutionsProps) => (
   <div className="flex flex-col gap-6 p-4">
@@ -64,7 +64,7 @@ export const NodeExecutions = ({ title, steps, onOpen, runs = [] }: NodeExecutio
       )}
     </Section>
     {runs.length ? (
-      <Section title="Started Runs" description="The runs this node launched.">
+      <Section title="Started Runs">
         <ul className="divide-border border-border flex flex-col divide-y rounded-xl border text-sm">
           {runs.map((r, i) => {
             const name = `#${(r.parent_index ?? i) + 1}${r.name ? ` ${r.name}` : ''}`;

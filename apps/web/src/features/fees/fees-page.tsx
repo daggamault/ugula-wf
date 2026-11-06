@@ -103,7 +103,7 @@ export const FeesPage = ({ client, live }: { client: FeesClient; live: Live }) =
   return (
     <Page
       title="Fees"
-      description="Prices for ambulance HCPCS codes. A claim uses its primary payer's price when there is one, otherwise the default."
+      description="A claim uses its primary payer's price when there is one, otherwise the default."
       actions={
         <ButtonLink to={add}>
           <PlusIcon aria-hidden="true" className="size-4" />

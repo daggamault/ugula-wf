@@ -26,10 +26,7 @@ export const DocumentsPanel = ({
   documents: readonly ClaimDocument[];
   documentUrl: (documentId: string) => string;
 }) => (
-  <SectionPanel
-    title="Documents"
-    description="Facesheets, certifications, signature forms, ABNs and MSP forms kept with the claim; each one is read into the claim when it arrives."
-  >
+  <SectionPanel title="Documents" description="Each one is read into the claim when it arrives.">
     {documents.length ? (
       <ul className="flex flex-col gap-2 text-sm">
         {documents.map((d) => (

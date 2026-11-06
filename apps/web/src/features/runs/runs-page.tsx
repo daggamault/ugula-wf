@@ -111,10 +111,7 @@ export const RunsPage = ({ client, live, status }: RunsPageProps) => {
     LIST_RELOAD_MS
   );
   return (
-    <Page
-      title="Runs"
-      description="Every workflow run, including the ones waiting on people or stuck on errors."
-    >
+    <Page title="Runs">
       <Search
         label="Runs"
         path={PATH}

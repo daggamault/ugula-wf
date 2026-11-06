@@ -121,10 +121,7 @@ const ExitsEditor = ({
 }) => {
   const exits = signature.exits ?? {};
   return signature.execOut.length ? (
-    <SectionPanel
-      title="Exits"
-      description="What each way out means, shown on the node and in the inspector."
-    >
+    <SectionPanel title="Exits" description="Shown on the node and in the inspector.">
       {signature.execOut.map((name) => (
         <div key={name} className="border-border flex flex-col gap-4 rounded-xl border p-4">
           <code className="font-mono text-sm">{name}</code>
@@ -161,7 +158,7 @@ const PinsEditor = ({
 }: {
   id: string;
   title: string;
-  description: string;
+  description?: string;
   noun: string;
   editable: boolean;
   pins: readonly PinSpec[];
@@ -309,7 +306,7 @@ export const GraphSettings = ({ kind, def, editable, onChange, onClose }: GraphS
         disabled={!editable}
         className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4"
       >
-        <SectionPanel title="Paths" description="Named ways in and out, and most have one of each.">
+        <SectionPanel title="Paths">
           <FieldGrid>
             <Input
               id="exec-in"
@@ -333,7 +330,7 @@ export const GraphSettings = ({ kind, def, editable, onChange, onClose }: GraphS
         <PinsEditor
           id="in"
           title="Inputs"
-          description="Values passed in when it starts, typed like string, number, list<string> or object{id: string}."
+          description="Typed like string, number, list<string> or object{id: string}."
           noun="input"
           editable={editable}
           pins={signature.inputs}
@@ -342,7 +339,6 @@ export const GraphSettings = ({ kind, def, editable, onChange, onClose }: GraphS
         <PinsEditor
           id="out"
           title="Outputs"
-          description="Values it hands back when it finishes."
           noun="output"
           editable={editable}
           pins={signature.outputs}

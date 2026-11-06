@@ -71,13 +71,7 @@ export const NodePicker = ({ open, entries, onAdd, onClose }: NodePickerProps) =
   const [query, setQuery] = useState('');
   const searchId = useId();
   return (
-    <Dialog
-      open={open}
-      isWide
-      title="Add Node"
-      description="Pick what the next step should do. It lands on the canvas, ready to wire up."
-      onClose={onClose}
-    >
+    <Dialog open={open} isWide title="Add Node" onClose={onClose}>
       <Input
         id={searchId}
         label="Search"

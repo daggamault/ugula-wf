@@ -54,7 +54,7 @@ export const ImportsPage = ({ client, live }: ImportsPageProps) => {
   return (
     <Page
       title="Imports"
-      description="NEMSIS XML from your ePCR system, dropped anywhere in the app or sent to your SFTP folder."
+      description="Drop NEMSIS XML anywhere in the app, or send it to your SFTP folder."
       actions={
         <FileButton
           label="Import Files"

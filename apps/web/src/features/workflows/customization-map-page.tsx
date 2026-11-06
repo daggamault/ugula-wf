@@ -113,7 +113,6 @@ export const CustomizationMapView = ({
   return (
     <Page
       title="Customization Map"
-      description="Every workflow and what it calls, with the parts your organization or agency changed highlighted."
       backTo="/workflows"
       backLabel="Back to Workflows"
       actions={
@@ -137,7 +136,7 @@ export const CustomizationMapView = ({
             title={root.name}
             description={
               hasCustomized(root)
-                ? 'Customized below: highlighted branches lead to a copy or table your organization or agency changed.'
+                ? 'Highlighted branches lead to a copy or table your organization or agency changed.'
                 : 'Runs as built.'
             }
             {...(hasCustomized(root) ? { accent: 'custom' as const } : {})}

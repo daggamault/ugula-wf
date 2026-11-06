@@ -245,10 +245,7 @@ const ClaimResults = ({
 export const ClaimsPage = ({ client, live, me, search }: ClaimsPageProps) => {
   const table = useTableState(PATH, CLAIM_TABLE);
   return (
-    <Page
-      title="Claims"
-      description="Find any claim, open or closed, by patient name, birth date or number."
-    >
+    <Page title="Claims">
       <SearchForm label="Search claims" path={PATH} fields={CLAIM_SEARCH_FIELDS} />
       {isSearching(search) ? (
         <ClaimResults

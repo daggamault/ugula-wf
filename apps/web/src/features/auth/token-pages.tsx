@@ -126,12 +126,7 @@ export const PasswordPage = ({ auth, token }: { auth: AuthClient; token: string 
   return (
     <Centered>
       <Card labelledBy="password-heading">
-        <BrandHeader
-          id="password-heading"
-          description="Choose the password you will sign in with from now on."
-        >
-          Set Your Password
-        </BrandHeader>
+        <BrandHeader id="password-heading">Set Your Password</BrandHeader>
         {done ? (
           <div className="flex flex-col gap-5">
             <Alert intent="success">Your password is set. Sign in with it now.</Alert>

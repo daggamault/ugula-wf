@@ -216,7 +216,7 @@ const InvitationList = ({ client, live }: ListProps) => {
       {link ? (
         <LinkPanel
           title={`Invitation for ${link.name}`}
-          description="Send this link to the person you invited. It works once and expires in 7 days."
+          description="Send this link to them. It works once and expires in 7 days."
           link={link.link}
         />
       ) : null}
@@ -225,7 +225,7 @@ const InvitationList = ({ client, live }: ListProps) => {
         path={INVITATIONS_PATH}
         search={search}
         results={invitations}
-        empty={{ title: 'No Invitations', children: 'No one is waiting to join.' }}
+        empty={{ title: 'No Invitations' }}
       >
         {(items) => (
           <InvitationsTable
@@ -273,7 +273,6 @@ export const UsersPage = ({ client, live, tab }: ListProps & { tab: UsersTab }) 
   return (
     <Page
       title="Users"
-      description="Who can work in this agency, the role each one has, and who is invited to join."
       actions={
         can('users:create') ? (
           <ButtonLink to={`${USERS_PATH}/invite`}>

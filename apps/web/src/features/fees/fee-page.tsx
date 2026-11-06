@@ -125,11 +125,7 @@ export const FeeForm = ({
     <form onSubmit={submit} aria-label="Save fee">
       <SectionPanel
         title="Fee"
-        description={
-          fee
-            ? 'A fee is one price for one code and schedule; to price another code or payer, add a fee.'
-            : 'Set a default price for a code, or a price for one payer.'
-        }
+        description={fee ? 'To price another code or payer, add a fee.' : undefined}
       >
         <fieldset disabled={busy}>
           <FieldGrid>
@@ -227,11 +223,6 @@ export const FeePage = ({ client, live, feeId, back }: FeePageProps) => {
   return (
     <Page
       title={feeId ? (current ? feeName(current) : 'Fee') : 'Add Fee'}
-      description={
-        current
-          ? `The price claims use for ${current.code} on ${current.payer ? `${current.payer} claims` : 'the default schedule'}.`
-          : 'A price for an ambulance HCPCS code, for every payer or just one.'
-      }
       backTo={back}
       backLabel="Back to Fees"
       actions={

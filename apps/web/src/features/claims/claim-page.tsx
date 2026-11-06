@@ -172,7 +172,7 @@ export const ClaimView = ({
       ) : tab === 'data' ? (
         <ClaimDataView claim={claim} codes={codes} />
       ) : (
-        <SectionPanel title="History" description="Everything that has happened on this claim.">
+        <SectionPanel title="History">
           <ClaimHistory
             claimId={claim.id}
             history={history}

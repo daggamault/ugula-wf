@@ -190,14 +190,7 @@ const ColumnsEditor = ({
   const columns = table[side];
   const noun = side === 'inputs' ? 'input' : 'output';
   return (
-    <Section
-      title={side === 'inputs' ? 'What the Rules Check' : 'What the Rules Decide'}
-      description={
-        side === 'inputs'
-          ? 'The values each rule compares before it holds.'
-          : 'The values a rule hands back when it holds.'
-      }
-    >
+    <Section title={side === 'inputs' ? 'What the Rules Check' : 'What the Rules Decide'}>
       <ul className="flex flex-col gap-2">
         {columns.map((c, i) => (
           <li
@@ -430,10 +423,7 @@ export const DecisionTableEditor = ({ nodeId, config, editable, onConfig }: Tabl
           </div>
         ) : null}
       </Section>
-      <Section
-        title="When No Rule Holds"
-        description="The values handed back when nothing matches."
-      >
+      <Section title="When No Rule Holds">
         {table.outputs.map((c, i) => (
           <CellInput
             key={`${i}-${c.name}`}

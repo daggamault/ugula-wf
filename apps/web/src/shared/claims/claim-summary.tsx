@@ -14,10 +14,7 @@ export const pricedLinesOf = (lines: readonly ClaimLine[]) =>
   }));
 
 export const ClaimSummaryPanel = ({ claim }: { claim: ClaimDetail }) => (
-  <SectionPanel
-    title="Summary"
-    description="What was billed, what is still owed, and the transport it covers."
-  >
+  <SectionPanel title="Summary">
     <DetailList>
       <Detail label="Total" isEmphasized>
         {formatCents(claim.total_cents)}

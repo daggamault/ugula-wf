@@ -159,7 +159,7 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     const tabs = s.page.getByRole('navigation', { name: 'Task data' });
     await tabs.getByRole('link', { name: 'Encounter' }).click();
     await section(s.page, 'Patient Care Report')
-      .getByText(/What the crew documented/)
+      .getByText(/received/)
       .waitFor();
     await tabs.getByRole('link', { name: 'Patient' }).click();
     await section(s.page, 'Patient Record').first().waitFor();

@@ -19,12 +19,7 @@ type ChooseAgencyPageProps = {
 export const ChooseAgencyPage = ({ agencies, notice, onSignOut }: ChooseAgencyPageProps) => (
   <Centered>
     <Card labelledBy="agency-heading">
-      <BrandHeader
-        id="agency-heading"
-        description="Pick the agency whose billing you want to work."
-      >
-        Choose an Agency
-      </BrandHeader>
+      <BrandHeader id="agency-heading">Choose an Agency</BrandHeader>
       {notice ? <Alert intent="warning">{notice}</Alert> : null}
       {agencies.length ? (
         <ul className="flex flex-col gap-2">

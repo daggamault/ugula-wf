@@ -251,7 +251,7 @@ export const ConnectionForm = ({
     <form onSubmit={submit} aria-label="Clearinghouse connection">
       <SectionPanel
         title="Clearinghouse Connection"
-        description="Where this agency sends claims, eligibility and claim status requests and picks up the answers. Without one, the server default is used."
+        description="Without one, the server default is used."
       >
         <fieldset disabled={busy}>
           <FieldGroups>

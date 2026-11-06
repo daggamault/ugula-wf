@@ -18,7 +18,7 @@ describe('PatientClaims', () => {
     const html = renderToStaticMarkup(
       createElement(PatientClaims, { client, live: idleLive, patientId: 'p1' })
     );
-    assert.ok(html.includes('>Claims</h2>') && html.includes('Every claim for this patient'));
+    assert.ok(html.includes('>Claims</h2>'));
     assert.ok(html.includes('aria-label="Loading"'));
     assert.deepEqual(asked, []);
   });

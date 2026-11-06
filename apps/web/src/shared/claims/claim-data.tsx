@@ -33,10 +33,7 @@ export const ClaimDataView = ({
   claim: ClaimDetail;
   codes: CodeDescriptions;
 }) => (
-  <SectionPanel
-    title="Claim Data"
-    description="What goes on the 837P besides the payers and documentation. Change it with the Correct Claim Data task."
-  >
+  <SectionPanel title="Claim Data" description="Change it with the Correct Claim Data task.">
     <DetailList>
       <Detail label="Date of Service">{formatDate(c.service_date)}</Detail>
       <Detail label="Diagnosis Codes">

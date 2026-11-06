@@ -56,10 +56,7 @@ export const NewWorkflowForm = ({
   };
   return (
     <form onSubmit={submit} aria-label={`Create ${kindLabel(form.kind)}`}>
-      <SectionPanel
-        title={kindLabel(form.kind)}
-        description="Start a workflow, or a subworkflow other workflows can use."
-      >
+      <SectionPanel title={kindLabel(form.kind)}>
         <fieldset disabled={busy}>
           <FieldGrid>
             <Input
@@ -119,7 +116,6 @@ export const NewWorkflowPage = ({ client, kind, back }: NewWorkflowPageProps) =>
   return (
     <Page
       title={kind === 'node' ? 'New Subworkflow' : 'New Workflow'}
-      description="Give it a name and key, then build it in the editor."
       backTo={back}
       backLabel="Back to Workflows"
     >

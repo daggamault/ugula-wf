@@ -202,7 +202,7 @@ export const ImportPage = ({ client, live, importId, back = '/imports' }: Import
       {file.run_status === 'failed' ? (
         <Alert>The file could not be read. Open its run to see why.</Alert>
       ) : null}
-      <SectionPanel title="Summary" description="What this file has become so far.">
+      <SectionPanel title="Summary">
         <DetailList>
           <Detail label="PCRs" isEmphasized>
             {file.report_count ?? emptyValue}
@@ -214,10 +214,7 @@ export const ImportPage = ({ client, live, importId, back = '/imports' }: Import
           <Detail label="Waiting">{file.waiting}</Detail>
         </DetailList>
       </SectionPanel>
-      <SectionPanel
-        title="PCRs"
-        description="Each patient care report (PCR) in the file and what it became."
-      >
+      <SectionPanel title="PCRs">
         <ImportReports client={client} live={live} importId={importId} runId={file.run_id} />
       </SectionPanel>
     </Page>

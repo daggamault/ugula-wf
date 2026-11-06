@@ -407,7 +407,7 @@ const Decision = ({
 };
 
 const WorkflowDetails = ({ context }: { context: Json }) => (
-  <SectionPanel title="Workflow Details" description="What the workflow passed to this task.">
+  <SectionPanel title="Workflow Details">
     <ContextView label="Task context" value={context} hideNotices />
   </SectionPanel>
 );

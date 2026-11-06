@@ -114,7 +114,6 @@ export const PayersPage = ({ client, live }: { client: SettingsClient; live: Liv
   return (
     <Page
       title="Payers"
-      description="Clearinghouse payer IDs and filing codes for 837P claims, matched to the payer names on PCRs."
       actions={
         <ButtonLink to={add}>
           <PlusIcon aria-hidden="true" className="size-4" />

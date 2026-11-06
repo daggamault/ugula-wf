@@ -147,7 +147,7 @@ export const ProfileForm = ({
     <form onSubmit={submit} aria-label="Billing profile">
       <SectionPanel
         title="Billing Profile"
-        description="Your agency as it appears on 837P claims and patient statements."
+        description="As it appears on claims and patient statements."
       >
         <fieldset disabled={busy}>
           <FieldGroups>
@@ -216,10 +216,7 @@ export const SettingsPage = ({ client, live }: SettingsPageProps) => {
     }
   };
   return (
-    <Page
-      title="Settings"
-      description="Your agency's billing identity and clearinghouse, used on every claim and statement."
-    >
+    <Page title="Settings">
       {profile.data === undefined || connection.data === undefined ? (
         <PageLoading />
       ) : (

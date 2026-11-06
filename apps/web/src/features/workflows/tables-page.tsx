@@ -103,7 +103,7 @@ export const TablesPage = ({
   return (
     <Page
       title="Tables"
-      description="Decision and lookup tables workflows share, which your organization or agency can change without copying a workflow."
+      description="Your organization or agency can change them without copying a workflow."
     >
       <Search
         label="Tables"
@@ -128,7 +128,7 @@ export const TablesPage = ({
                 title: 'Nothing Customized Yet',
                 children: 'Every table is as built. Override one to change its rules.'
               }
-            : { title: 'No Tables Yet', children: 'Nothing matches this search.' }
+            : { title: 'No Tables Yet' }
         }
       >
         {(items) => <TablesTable tables={items} search={search} />}

@@ -179,10 +179,10 @@ export const RunView = ({ detail, nodes, graphs, steps, stack, onCancel }: RunVi
                 title="Run Data"
                 description="Select a node to see what went in and out of it, or double-click one to open what it runs."
               />
-              <Section title="Inputs" description="The values this run started with.">
+              <Section title="Inputs">
                 <JsonView label="Run inputs" value={run.inputs} />
               </Section>
-              <Section title="Result" description="What the run handed back when it finished.">
+              <Section title="Result">
                 <JsonView label="Run result" value={run.result ?? undefined} />
               </Section>
               {children.length ? (
@@ -191,7 +191,7 @@ export const RunView = ({ detail, nodes, graphs, steps, stack, onCancel }: RunVi
                   description={
                     childCount > children.length
                       ? `The first ${children.length} of ${childCount} runs this run started.`
-                      : 'The runs this run started.'
+                      : undefined
                   }
                 >
                   <ul className="divide-border border-border flex flex-col divide-y rounded-xl border text-sm">

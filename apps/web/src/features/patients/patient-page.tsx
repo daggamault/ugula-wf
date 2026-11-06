@@ -52,12 +52,7 @@ export const PatientPage = ({
   if (!patient.data) return <PageLoading />;
   const p = patient.data;
   return (
-    <Page
-      title={`${p.last_name}, ${p.first_name}`}
-      description={`Details, claims and open balance for the patient born ${formatDate(p.birth_date)}.`}
-      backTo={back}
-      backLabel="Back to Patients"
-    >
+    <Page title={`${p.last_name}, ${p.first_name}`} backTo={back} backLabel="Back to Patients">
       <PatientDetails patient={p} />
       {claims}
     </Page>

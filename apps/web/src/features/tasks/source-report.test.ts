@@ -29,7 +29,7 @@ const source = {
 describe('SourceReportView', () => {
   it('shows where the report came from and its elements with NEMSIS labels and code meanings', () => {
     const html = renderToStaticMarkup(createElement(SourceReportView, { source }));
-    assert.ok(html.includes('patient care report PCR-1 from october.xml'));
+    assert.ok(html.includes('PCR-1 from october.xml'));
     assert.ok(html.includes('Date of birth'));
     assert.ok(html.includes('File Attachment Name'));
     assert.ok(html.includes('Female'));
@@ -62,7 +62,7 @@ describe('SourceReportView', () => {
         source: { ...source, report: { ...source.report, pcr_number: null, position: 2 } }
       })
     );
-    assert.ok(html.includes('patient care report #3 from october.xml'));
+    assert.ok(html.includes('Report #3 from october.xml'));
   });
 });
 

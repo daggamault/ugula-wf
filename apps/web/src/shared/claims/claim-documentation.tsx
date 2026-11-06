@@ -143,10 +143,7 @@ export const conditionsText = (codes: readonly string[]) =>
     .join('; ');
 
 export const DocumentationPanel = ({ claim }: { claim: Documented }) => (
-  <SectionPanel
-    title="Documentation"
-    description="What the report and billers document for billing: signature, certification, transport reason, MSP answers, ABN, authorization, facility stay and trip times."
-  >
+  <SectionPanel title="Documentation">
     <DetailList>
       <Detail label="Billing Signature">
         <span className="flex flex-col gap-0.5">
@@ -204,7 +201,7 @@ export const EligibilityPanel = ({
   return (
     <SectionPanel
       title="Eligibility"
-      description="Whether each payer says the coverage is active, from the 271 answers of the clearinghouse or uploaded to Payer Files."
+      description="From each payer's 271 eligibility answer."
       actions={
         <Button
           variant="outline"

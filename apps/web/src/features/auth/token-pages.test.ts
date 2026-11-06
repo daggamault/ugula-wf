@@ -44,7 +44,6 @@ describe('token pages', () => {
   it('asks for a new password twice', () => {
     const html = renderToStaticMarkup(createElement(PasswordPage, { auth, token: 't1' }));
     assert.ok(html.includes('Set Your Password'));
-    assert.ok(html.includes('Choose the password you will sign in with from now on.'));
     assert.ok(html.includes('for="new-password"') && html.includes('for="confirm-password"'));
     assert.ok(html.includes('autoComplete="new-password"'));
     assert.ok(html.includes('Set Password</span></button>'));

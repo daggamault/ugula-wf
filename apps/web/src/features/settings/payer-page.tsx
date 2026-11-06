@@ -84,7 +84,7 @@ export const PayerForm = ({
     <form onSubmit={submit} aria-label="Save payer">
       <SectionPanel
         title="Payer"
-        description="The clearinghouse payer ID and claim filing code come from your clearinghouse's payer list; each clearinghouse assigns its own IDs."
+        description="The payer ID and claim filing code come from your clearinghouse's payer list."
       >
         <fieldset disabled={busy}>
           <FieldGrid>
@@ -254,11 +254,6 @@ export const PayerPage = ({ client, live, payerId, back }: PayerPageProps) => {
   return (
     <Page
       title={payerId ? (current?.name ?? 'Payer') : 'Add Payer'}
-      description={
-        payerId
-          ? 'Change the clearinghouse payer ID or claim filing code used on 837P claims.'
-          : 'Add a payer so claims billed to it can go in an 837P file.'
-      }
       backTo={back}
       backLabel="Back to Payers"
       actions={

@@ -30,7 +30,7 @@ export const PatientClaims = ({
     LIST_RELOAD_MS
   );
   return (
-    <SectionPanel title="Claims" description="Every claim for this patient, open or closed.">
+    <SectionPanel title="Claims">
       {list.error ? <Alert>{list.error.message}</Alert> : null}
       {list.data?.items.length ? (
         <>

@@ -113,10 +113,7 @@ export const NodeInspector = ({
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
         {base && changes.length ? (
-          <SectionPanel
-            title="Changed From Base"
-            description="What this copy changed on this node, with what the base has."
-          >
+          <SectionPanel title="Changed From Base">
             <ul className="flex flex-col gap-3">
               {changes.map((c) => (
                 <li key={c.property} className="flex flex-wrap items-center justify-between gap-2">
@@ -149,11 +146,7 @@ export const NodeInspector = ({
         {inputs.length ? (
           <SectionPanel
             title="Inputs"
-            description={
-              editable
-                ? 'What this node needs. Connect a pin on the canvas, or set a value here.'
-                : 'What this node needs, and where each value comes from.'
-            }
+            description={editable ? 'Connect a pin on the canvas, or set a value here.' : undefined}
           >
             <ul className="flex flex-col gap-3">
               {inputs.map((spec) => {
@@ -182,10 +175,7 @@ export const NodeInspector = ({
           </SectionPanel>
         ) : null}
         {outputs.length ? (
-          <SectionPanel
-            title="Outputs"
-            description="What this node produces for the nodes after it."
-          >
+          <SectionPanel title="Outputs">
             <ul className="flex flex-col gap-2">
               {outputs.map((spec) => (
                 <li key={spec.name} className="flex flex-col gap-0.5">
@@ -197,10 +187,7 @@ export const NodeInspector = ({
           </SectionPanel>
         ) : null}
         {exits.length ? (
-          <SectionPanel
-            title="Then"
-            description="Where the run goes next, each path a separate connection on the canvas."
-          >
+          <SectionPanel title="Then">
             <ul className="flex flex-col gap-2">
               {exits.map((pin) => {
                 const doc = signature?.exits?.[pin];
@@ -222,7 +209,7 @@ export const NodeInspector = ({
           </SectionPanel>
         ) : null}
         {!boundary && catalog.hasConfig(node) ? (
-          <SectionPanel title="Settings" description="How this node is set up, beyond its inputs.">
+          <SectionPanel title="Settings">
             {tableRef ? (
               <TableReference tableKey={tableRef.key} table={table} />
             ) : Object.hasOwn(TABLE_EDITORS, node.type) ? (
@@ -248,10 +235,7 @@ export const NodeInspector = ({
           </SectionPanel>
         ) : null}
         {editable ? (
-          <SectionPanel
-            title="Name and Note"
-            description="Shown on the canvas: a name instead of the node's usual one, and a note for whoever reads this next."
-          >
+          <SectionPanel title="Name and Note" description="Both show on the canvas.">
             <Input
               id={`${node.id}-label`}
               label="Label"
@@ -268,15 +252,12 @@ export const NodeInspector = ({
             />
           </SectionPanel>
         ) : node.note ? (
-          <SectionPanel title="Note" description="Left by whoever set this node up.">
+          <SectionPanel title="Note">
             <p className="text-sm whitespace-pre-line">{node.note}</p>
           </SectionPanel>
         ) : null}
         {signature && !isPure(signature) && !boundary ? (
-          <SectionPanel
-            title="Retry on Failure"
-            description="Try this node again before stopping the run, waiting longer each time."
-          >
+          <SectionPanel title="Retry on Failure" description="Each wait is longer than the last.">
             <fieldset disabled={!editable} className="grid grid-cols-2 gap-x-4 gap-y-5">
               <Input
                 id={`${node.id}-retry-max`}

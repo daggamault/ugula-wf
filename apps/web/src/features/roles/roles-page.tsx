@@ -100,11 +100,7 @@ export const RolesPage = ({ client, live }: { client: RolesClient; live: Live })
       </ButtonLink>
     ) : undefined;
   return (
-    <Page
-      title="Roles"
-      description="What each kind of user can see and change in this agency."
-      actions={addButton()}
-    >
+    <Page title="Roles" actions={addButton()}>
       <Search
         label="Roles"
         path={ROLES_PATH}

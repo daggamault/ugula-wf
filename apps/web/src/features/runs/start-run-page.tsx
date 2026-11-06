@@ -56,10 +56,7 @@ export const StartRunForm = ({ client, target }: { client: RunsClient; target: S
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-6">
-      <SectionPanel
-        title="Inputs"
-        description="Values this run starts with. Leave optional inputs empty to use their defaults."
-      >
+      <SectionPanel title="Inputs" description="Leave optional inputs empty to use their defaults.">
         <fieldset disabled={busy}>
           {target.signature.inputs.length ? (
             <FieldGrid>
