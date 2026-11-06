@@ -185,6 +185,33 @@ describe('findDictionary', () => {
     );
     await db.destroy();
   });
+
+  it('describes coded impressions from ICD-10-CM, with or without the dot', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.includes('from "codes"')
+        ? [{ code_set: 'icd10cm', code: 'I214', description: 'NSTEMI' }]
+        : []
+    );
+    const dictionary = await findDictionary(db, {
+      elements: [],
+      codes: [
+        { list: 'eSituation.11', code: 'I21.4' },
+        { list: 'eSituation.12', code: 'I214' },
+        { list: 'eSituation.12', code: 'Z99.9' }
+      ]
+    });
+    assert.deepEqual(dictionary.codes, {
+      'eSituation.11': { 'I21.4': 'NSTEMI' },
+      'eSituation.12': { I214: 'NSTEMI' }
+    });
+    assert.deepEqual(queries.find((q) => q.sql.includes('from "codes"'))?.parameters, [
+      'icd10cm',
+      'I214',
+      'icd10cm',
+      'Z999'
+    ]);
+    await db.destroy();
+  });
 });
 
 describe('import status and attention sorts', () => {

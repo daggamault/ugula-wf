@@ -15,7 +15,9 @@ const claim = {
   patient_id: 'p1',
   total_cents: 100_000,
   balance_cents: 100_000,
-  coverages: [{ id: MEDICARE, payer: 'Medicare' }]
+  coverages: [{ id: MEDICARE, payer: 'Medicare' }],
+  lines: [{ code: 'A0427' }],
+  diagnoses: ['I214']
 };
 
 const setup = ({
@@ -37,6 +39,9 @@ const setup = ({
       return published ? [{ id: 'v-cycle', key: 'billing.cycle-claim', version: 1 }] : [];
     if (q.sql.startsWith('insert into "workflow_runs"')) return [{ id: 'cycle-2' }];
     if (q.sql.includes('from "claim_events" as "e"')) return events;
+    if (q.sql.includes('from "codes"')) {
+      return [{ code_set: 'hcpcs', code: 'A0427', description: 'ALS1 emergency' }];
+    }
     if (q.sql.startsWith('select "document", "file_name" from "claim_documents"')) {
       return document ? [{ ...document, file_name: 'pcs.pdf' }] : [];
     }
@@ -189,6 +194,7 @@ describe('claim service', () => {
     const found = await service.find('t', 'c1');
     assert.ok(found.ok);
     assert.deepEqual(found.value.files, events);
+    assert.deepEqual(found.value.codes, { hcpcs: { A0427: 'ALS1 emergency' } });
     assert.deepEqual(found.value.issues, [
       {
         code: 'lines-missing',

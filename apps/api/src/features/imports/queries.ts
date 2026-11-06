@@ -1,5 +1,5 @@
 import { usState } from '@ugula/billing';
-import type { Db, ImportSource, RunStatus } from '@ugula/db';
+import { type Db, describeCodes, type ImportSource, type RunStatus } from '@ugula/db';
 import { codeSystemOf, type ReportDictionary, type ReportTerms } from '@ugula/nemsis';
 import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
@@ -198,7 +198,9 @@ export const listImportReports = (
     sql.ref('ir.id')
   );
 
-const describePlaces = async (db: Db, codes: ReportTerms['codes']) => {
+const icd10Of = (code: string) => code.replace('.', '').toUpperCase();
+
+const describeOutside = async (db: Db, codes: ReportTerms['codes']) => {
   const places = codes.filter((c) => codeSystemOf(c.list) === 'gnis' && /^\d{1,9}$/.test(c.code));
   const ids = [...new Set(places.map((c) => Number(c.code)))].filter((id) => id > 0);
   const rows = ids.length
@@ -206,6 +208,14 @@ const describePlaces = async (db: Db, codes: ReportTerms['codes']) => {
     : [];
   const names = new Map(rows.map((p) => [p.id, p.name]));
   const states = codes.filter((c) => codeSystemOf(c.list) === 'state');
+  const diagnoses = codes.filter((c) => codeSystemOf(c.list) === 'icd10');
+  const icd10 =
+    (
+      await describeCodes(
+        db,
+        diagnoses.map((c) => ({ set: 'icd10cm', code: icd10Of(c.code) }))
+      )
+    ).icd10cm ?? {};
   return [
     ...places.flatMap((c) => {
       const description = names.get(Number(c.code));
@@ -213,6 +223,10 @@ const describePlaces = async (db: Db, codes: ReportTerms['codes']) => {
     }),
     ...states.flatMap((c) => {
       const description = usState(c.code);
+      return description ? [{ ...c, description }] : [];
+    }),
+    ...diagnoses.flatMap((c) => {
+      const description = icd10[icd10Of(c.code)];
       return description ? [{ ...c, description }] : [];
     })
   ];
@@ -243,7 +257,7 @@ export const findDictionary = async (
           )
           .execute()
       : [],
-    describePlaces(db, codes)
+    describeOutside(db, codes)
   ]);
   const dictionary: ReportDictionary = {
     elements: Object.fromEntries(named.map((e) => [e.element, e.name])),

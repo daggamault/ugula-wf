@@ -2,12 +2,14 @@ import {
   CLAIM_TASKS,
   type ClaimTaskKey,
   checkFactsOf,
+  claimCodeRefs,
   ledgerFactsOf,
   readClaimStep,
   readIssues
 } from '@ugula/billing';
 import {
   type Db,
+  describeCodes,
   findClaimCheck,
   findPublishedGraphs,
   lockClaim,
@@ -62,12 +64,13 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
       const claim = await findClaim(db, agencyId, id);
       if (!claim) return notFound;
       const open = unchangeable(claim.status) === null;
-      const [files, payerFiles, documents, events, check] = await Promise.all([
+      const [files, payerFiles, documents, events, check, codes] = await Promise.all([
         listClaimFiles(db, id),
         listClaimPayerFiles(db, id),
         listClaimDocuments(db, id),
         open ? listLedgerEvents(db, id) : [],
-        findClaimCheck(db, agencyId, id)
+        findClaimCheck(db, agencyId, id),
+        describeCodes(db, claimCodeRefs(claim))
       ]);
       const at = now();
       const ledger = open
@@ -94,6 +97,7 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
         files,
         payerFiles,
         documents,
+        codes,
         progress: step && ledger ? readClaimStep(step, ledger) : null,
         issues: readIssues(checked?.issues)
       });

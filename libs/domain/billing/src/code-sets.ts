@@ -23,3 +23,11 @@ const originDestinationText = (code: string) => {
 
 export const describeCode = (descriptions: CodeDescriptions, set: CodeSet, code: string) =>
   descriptions[set]?.[code] ?? (set === 'modifier' ? originDestinationText(code) : null);
+
+export const claimCodeRefs = (claim: {
+  lines: readonly { code: string }[];
+  diagnoses: readonly string[];
+}): CodeRef[] => [
+  ...claim.lines.map((l): CodeRef => ({ set: 'hcpcs', code: l.code })),
+  ...claim.diagnoses.map((d): CodeRef => ({ set: 'icd10cm', code: d }))
+];

@@ -111,6 +111,7 @@ export {
   type CodeDescriptions,
   type CodeRef,
   type CodeSet,
+  claimCodeRefs,
   describeCode,
   formatIcd10,
   isCodeSet

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { describeCode, formatIcd10, isCodeSet } from './code-sets.ts';
+import { claimCodeRefs, describeCode, formatIcd10, isCodeSet } from './code-sets.ts';
 
 describe('code sets', () => {
   it('knows its code sets', () => {
@@ -21,5 +21,12 @@ describe('code sets', () => {
     assert.equal(describeCode(d, 'modifier', 'RH'), 'Residence to hospital');
     assert.equal(describeCode(d, 'modifier', 'ZZ'), null);
     assert.equal(describeCode(d, 'icd10cm', 'I214'), null);
+  });
+
+  it('lists the codes a claim bills', () => {
+    assert.deepEqual(claimCodeRefs({ lines: [{ code: 'A0427' }], diagnoses: ['I214'] }), [
+      { set: 'hcpcs', code: 'A0427' },
+      { set: 'icd10cm', code: 'I214' }
+    ]);
   });
 });
