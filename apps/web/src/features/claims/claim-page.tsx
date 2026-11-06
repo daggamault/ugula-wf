@@ -1,4 +1,5 @@
 import {
+  type ClaimBilling,
   type ClaimIssue,
   type ClaimTaskKey,
   type CodeDescriptions,
@@ -18,7 +19,11 @@ import type {
 import { DocumentationPanel, EligibilityPanel } from '../../shared/claims/claim-documentation.tsx';
 import { ClaimIssues } from '../../shared/claims/claim-issues.tsx';
 import { PayersPanel } from '../../shared/claims/claim-payers.tsx';
-import { ClaimSummaryPanel, pricedLinesOf } from '../../shared/claims/claim-summary.tsx';
+import {
+  ClaimSummaryPanel,
+  chargesNote,
+  pricedLinesOf
+} from '../../shared/claims/claim-summary.tsx';
 import { downloadText } from '../../shared/download.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
@@ -72,6 +77,7 @@ export const ClaimView = ({
   progress,
   issues,
   codes,
+  billing = null,
   documents = [],
   onDownloadEligibility,
   documentUrl,
@@ -90,6 +96,7 @@ export const ClaimView = ({
   progress: ClaimProgress | null;
   issues: readonly ClaimIssue[];
   codes: CodeDescriptions;
+  billing?: ClaimBilling | null;
   documents?: readonly ClaimDocument[];
   onDownloadEligibility: () => Promise<void>;
   documentUrl: (eventId: string) => string;
@@ -148,8 +155,12 @@ export const ClaimView = ({
           <DocumentsPanel documents={documents} documentUrl={claimDocumentUrl} />
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             <div className="flex min-w-0 flex-col gap-6">
-              <SectionPanel title="Charges" description="Priced from the fee schedule.">
-                <ChargeLines lines={pricedLinesOf(claim.lines)} codes={codes} />
+              <SectionPanel title="Charges" description={chargesNote(billing)}>
+                <ChargeLines
+                  lines={pricedLinesOf(claim.lines)}
+                  codes={codes}
+                  modifiers={billing?.modifiers}
+                />
               </SectionPanel>
               <PayersPanel coverages={claim.coverages} />
             </div>
@@ -170,7 +181,7 @@ export const ClaimView = ({
           </div>
         </>
       ) : tab === 'data' ? (
-        <ClaimDataView claim={claim} codes={codes} />
+        <ClaimDataView claim={claim} codes={codes} placeOfService={billing?.placeOfService} />
       ) : (
         <SectionPanel title="History">
           <ClaimHistory
@@ -271,6 +282,7 @@ export const ClaimPage = ({
       progress={progress}
       issues={detail.data.issues}
       codes={detail.data.codes}
+      billing={detail.data.billing}
       documentUrl={(eventId) => client.documentUrl(claimId, eventId)}
       claimDocumentUrl={(documentId) => client.claimDocumentUrl(claimId, documentId)}
       onDownloadEligibility={() =>

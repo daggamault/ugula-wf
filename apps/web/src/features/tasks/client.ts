@@ -1,5 +1,5 @@
 import type { Permission } from '@ugula/access';
-import type { ClaimIssue, CodeDescriptions } from '@ugula/billing';
+import type { ClaimBilling, ClaimIssue, CodeDescriptions } from '@ugula/billing';
 import type { FieldSpec, Json } from '@ugula/graph';
 import type { ReportDictionary } from '@ugula/nemsis';
 import type { Api } from '../../shared/api.ts';
@@ -82,6 +82,7 @@ type TaskSource = {
 export type TaskClaimRecord = {
   claim: ClaimDetail;
   codes: CodeDescriptions;
+  billing: ClaimBilling | null;
   issues: ClaimIssue[];
 };
 

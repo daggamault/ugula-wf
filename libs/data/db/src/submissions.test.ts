@@ -11,6 +11,7 @@ import {
   insertSubmissionEvent,
   lockReadyClaim,
   markSubmitted,
+  nextBatchClaim,
   pendingClaim,
   type ReadyClaimRow,
   toSubmitter
@@ -358,5 +359,18 @@ describe('detailsOf', () => {
     assert.deepEqual(details.diagnoses, ['R079']);
     const partial = claimRow(C1, { destination_code: null });
     assert.equal(detailsOf(partial).originDestination, null);
+  });
+});
+
+describe('nextBatchClaim', () => {
+  it('builds the claim for the payer billed next, even after it was sent', () => {
+    const sent = [event(C1, 'approved', MEDICARE), event(C1, 'submitted', MEDICARE)];
+    const next = nextBatchClaim(claimRow(C1), ledgerOf(sent));
+    assert.equal(next?.payer, 'Medicare');
+    assert.equal(
+      next?.claim.payer.name,
+      pending(claimRow(C1), [event(C1, 'approved', MEDICARE)])?.claim.payer.name
+    );
+    assert.equal(nextBatchClaim(claimRow(C1, { coverages: [] }), []), null);
   });
 });

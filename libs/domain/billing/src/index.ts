@@ -11,6 +11,12 @@ export {
   UNIT_SCALE
 } from './charges.ts';
 export {
+  billingCodeRefs,
+  type ClaimBilling,
+  claimBillingOf,
+  MAP_837P_RULE
+} from './claim-billing.ts';
+export {
   type ClaimDetails,
   type Coverage,
   DIAGNOSIS_LIMIT,

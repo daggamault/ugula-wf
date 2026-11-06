@@ -1,4 +1,4 @@
-import { CLASSIFICATION_LABELS } from '@ugula/billing';
+import { CLASSIFICATION_LABELS, type ClaimBilling } from '@ugula/billing';
 import { formatCents, formatDate, formatMiles } from '../format.ts';
 import { Detail, DetailList } from '../ui/detail-list.tsx';
 import { emptyValue } from '../ui/empty-state.tsx';
@@ -12,6 +12,9 @@ export const pricedLinesOf = (lines: readonly ClaimLine[]) =>
     unitCents: l.unit_cents,
     totalCents: l.total_cents
   }));
+
+export const chargesNote = (billing: ClaimBilling | null) =>
+  billing ? `Modifiers as billed to ${billing.payer}.` : undefined;
 
 export const ClaimSummaryPanel = ({ claim }: { claim: ClaimDetail }) => (
   <SectionPanel title="Summary">

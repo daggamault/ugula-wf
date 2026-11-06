@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { MAP_837P_RULE } from '@ugula/billing';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
@@ -55,6 +56,9 @@ const setup = ({
   const ruled: [string, string, unknown][] = [];
   const rules: RuleRunner = async (agencyId, key, inputs) => {
     ruled.push([agencyId, key, inputs]);
+    if (key === MAP_837P_RULE) {
+      return { x837: { placeOfService: '41', lines: [{ code: 'A0427', modifiers: ['RH'] }] } };
+    }
     return key === NEXT_CLAIM_STEP_RULE
       ? { step: 'await', waitMs: 2_548_800_000 }
       : {
@@ -213,11 +217,17 @@ describe('claim service', () => {
     assert.deepEqual(
       ruled.map(([agency, key]) => [agency, key]),
       [
+        ['t', MAP_837P_RULE],
         ['t', NEXT_CLAIM_STEP_RULE],
         ['t', CLAIM_CHECKS_RULE]
       ]
     );
-    const [, , inputs] = ruled[0] ?? [];
+    assert.deepEqual(found.value.billing, {
+      payer: 'Medicare',
+      placeOfService: '41',
+      modifiers: [['RH']]
+    });
+    const [, , inputs] = ruled[1] ?? [];
     const { ledger } = inputs as { ledger: Record<string, unknown> };
     assert.deepEqual([ledger.coverageId, ledger.contacted], [MEDICARE, true]);
     const paid = await setup({ row: { ...claim, status: 'paid' } }).service.find('t', 'c1');

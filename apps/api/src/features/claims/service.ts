@@ -1,9 +1,13 @@
 import {
+  billingCodeRefs,
   CLAIM_TASKS,
+  type ClaimBilling,
   type ClaimTaskKey,
   checkFactsOf,
+  claimBillingOf,
   claimCodeRefs,
   ledgerFactsOf,
+  MAP_837P_RULE,
   readClaimStep,
   readIssues
 } from '@ugula/billing';
@@ -11,8 +15,10 @@ import {
   type Db,
   describeCodes,
   findClaimCheck,
+  findClaimToBill,
   findPublishedGraphs,
   lockClaim,
+  nextBatchClaim,
   startRun,
   unchangeable
 } from '@ugula/db';
@@ -56,6 +62,23 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
   const write = <T>(agencyId: string, id: string, work: (tx: Db) => Promise<Result<T>>) =>
     announced(announce, agencyId, db.transaction().execute(work), () => [{ kind: 'claim', id }]);
 
+  const billingOf = async (
+    agencyId: string,
+    id: string,
+    events: Parameters<typeof nextBatchClaim>[1],
+    at: Date
+  ): Promise<ClaimBilling | null> => {
+    const row = await findClaimToBill(db, agencyId, id);
+    const next = row ? nextBatchClaim(row, events) : null;
+    if (!next) return null;
+    try {
+      const { x837 } = await rules(agencyId, MAP_837P_RULE, { claim: next.claim }, at);
+      return claimBillingOf(next.payer, x837);
+    } catch {
+      return null;
+    }
+  };
+
   return {
     list: async (agencyId: string, filters: ClaimFilters) =>
       ok(await listClaims(db, agencyId, filters)),
@@ -64,15 +87,16 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
       const claim = await findClaim(db, agencyId, id);
       if (!claim) return notFound;
       const open = unchangeable(claim.status) === null;
-      const [files, payerFiles, documents, events, check, codes] = await Promise.all([
+      const [files, payerFiles, documents, events, check] = await Promise.all([
         listClaimFiles(db, id),
         listClaimPayerFiles(db, id),
         listClaimDocuments(db, id),
         open ? listLedgerEvents(db, id) : [],
-        findClaimCheck(db, agencyId, id),
-        describeCodes(db, claimCodeRefs(claim))
+        findClaimCheck(db, agencyId, id)
       ]);
       const at = now();
+      const billing = open ? await billingOf(agencyId, id, events, at) : null;
+      const codes = await describeCodes(db, [...claimCodeRefs(claim), ...billingCodeRefs(billing)]);
       const ledger = open
         ? ledgerFactsOf(
             {
@@ -98,6 +122,7 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
         payerFiles,
         documents,
         codes,
+        billing,
         progress: step && ledger ? readClaimStep(step, ledger) : null,
         issues: readIssues(checked?.issues)
       });

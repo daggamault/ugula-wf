@@ -1,5 +1,6 @@
 import type {
   AdjustmentGroup,
+  ClaimBilling,
   ClaimEventKind,
   ClaimIssue,
   ClaimStatus,
@@ -96,6 +97,7 @@ export const createClaimsClient = (api: Api) => ({
       progress: ClaimProgress | null;
       issues: ClaimIssue[];
       codes: CodeDescriptions;
+      billing: ClaimBilling | null;
     }>(claimPath(id), signal),
   events: (id: string, page: string, signal?: AbortSignal) =>
     api.get<Page<ClaimEvent>>(`${claimPath(id)}/events?${page}`, signal),

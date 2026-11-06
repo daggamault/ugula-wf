@@ -4,7 +4,7 @@ import { Detail, DetailList } from '../ui/detail-list.tsx';
 import { emptyValue } from '../ui/empty-state.tsx';
 import { SectionPanel } from '../ui/section-panel.tsx';
 import type { ClaimDetail } from './claim-detail.ts';
-import { CodeText } from './code-text.tsx';
+import { CodeText, codeText } from './code-text.tsx';
 
 type Place = {
   addressLine: string | null;
@@ -28,14 +28,19 @@ export const modifierText = (code: string | null) =>
 
 export const ClaimDataView = ({
   claim: c,
-  codes
+  codes,
+  placeOfService = null
 }: {
   claim: ClaimDetail;
   codes: CodeDescriptions;
+  placeOfService?: string | null | undefined;
 }) => (
   <SectionPanel title="Claim Data" description="Change it with the Correct Claim Data task.">
     <DetailList>
       <Detail label="Date of Service">{formatDate(c.service_date)}</Detail>
+      {placeOfService ? (
+        <Detail label="Place of Service">{codeText(codes, 'pos', placeOfService)}</Detail>
+      ) : null}
       <Detail label="Diagnosis Codes">
         {c.diagnoses.length ? (
           <ol className="flex flex-col gap-1">

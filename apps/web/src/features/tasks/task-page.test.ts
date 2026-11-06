@@ -48,6 +48,7 @@ const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
 const record = (patch: Partial<TaskClaimRecord['claim']> = {}): TaskClaimRecord => ({
   claim: { ...claimDetail, ...patch },
   codes: { hcpcs: { A0427: 'ALS1 emergency' } },
+  billing: null,
   issues: []
 });
 

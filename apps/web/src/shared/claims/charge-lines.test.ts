@@ -24,4 +24,16 @@ describe('ChargeLines', () => {
     );
     assert.ok(html.includes('ALS1 emergency'));
   });
+
+  it('shows the modifiers of each line only when there are some', () => {
+    const lines = [
+      { code: 'A0427', units: 1, unitCents: 80_000, totalCents: 80_000 },
+      { code: 'A0425', units: 5, unitCents: 1_000, totalCents: 5_000 }
+    ];
+    const html = renderToStaticMarkup(
+      createElement(ChargeLines, { lines, codes: {}, modifiers: [['RH'], []] })
+    );
+    assert.ok(html.includes('Modifiers') && html.includes('Residence to hospital (RH)'));
+    assert.ok(!renderToStaticMarkup(createElement(ChargeLines, { lines })).includes('Modifiers'));
+  });
 });

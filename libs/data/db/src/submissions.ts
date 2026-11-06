@@ -20,7 +20,7 @@ type SubmissionEvent = {
   coverageId: string;
 };
 
-const readyClaim = (db: Db, agencyId: string, id: string) =>
+const claimToBill = (db: Db, agencyId: string, id: string) =>
   db
     .selectFrom('claims as c')
     .innerJoin('patients as p', 'p.id', 'c.patient_id')
@@ -86,8 +86,13 @@ const readyClaim = (db: Db, agencyId: string, id: string) =>
         .orderBy('d.position')})`.as('diagnoses')
     ])
     .where('c.agency_id', '=', agencyId)
-    .where('c.id', '=', id)
-    .where('c.status', '=', 'ready');
+    .where('c.id', '=', id);
+
+const readyClaim = (db: Db, agencyId: string, id: string) =>
+  claimToBill(db, agencyId, id).where('c.status', '=', 'ready');
+
+export const findClaimToBill = (db: Db, agencyId: string, id: string) =>
+  claimToBill(db, agencyId, id).executeTakeFirst();
 
 export const findReadyClaim = (db: Db, agencyId: string, id: string) =>
   readyClaim(db, agencyId, id).executeTakeFirst();
@@ -238,22 +243,22 @@ export const detailsOf = (row: ReadyClaimRow): ClaimDetails => ({
   documentation: documentationOf(row)
 });
 
-export const pendingClaim = (
-  row: ReadyClaimRow,
-  events: ClaimEvent[],
-  coverageId: string
-): PendingSubmission | null => {
-  const progress = claimProgress({
+type Progress = ReturnType<typeof claimProgress>;
+
+const progressOf = (row: ReadyClaimRow, events: ClaimEvent[]) =>
+  claimProgress({
     totalCents: row.total_cents,
     coverages: row.coverages.map((c) => ({ id: c.id, payer: c.payer })),
     events
   });
-  const current = progress.coverage;
-  if (current?.id !== coverageId || progress.contacted !== null || progress.balanceCents <= 0) {
-    return null;
-  }
+
+const batchClaimOf = (
+  row: ReadyClaimRow,
+  progress: Progress,
+  current: NonNullable<Progress['coverage']>
+): BatchClaim => {
   const coverageOf = (id: string) => row.coverages.find((c) => c.id === id);
-  const claim: BatchClaim = {
+  return {
     claimId: row.number,
     payerClaimNumber: progress.payerClaimNumber,
     payer: payerOf(current.payer, coverageOf(current.id)),
@@ -285,6 +290,25 @@ export const pendingClaim = (
       totalCents: l.total_cents
     }))
   };
+};
+
+export const nextBatchClaim = (row: ReadyClaimRow, events: ClaimEvent[]) => {
+  const progress = progressOf(row, events);
+  const current = progress.coverage;
+  return current ? { payer: current.payer, claim: batchClaimOf(row, progress, current) } : null;
+};
+
+export const pendingClaim = (
+  row: ReadyClaimRow,
+  events: ClaimEvent[],
+  coverageId: string
+): PendingSubmission | null => {
+  const progress = progressOf(row, events);
+  const current = progress.coverage;
+  if (current?.id !== coverageId || progress.contacted !== null || progress.balanceCents <= 0) {
+    return null;
+  }
+  const claim = batchClaimOf(row, progress, current);
   return {
     id: row.id,
     claim,
