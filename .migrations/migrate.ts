@@ -4,6 +4,7 @@ import { createAgenciesTable } from './agencies.ts';
 import { createBillingProfilesTables } from './billing-profiles.ts';
 import { createClaimsTables } from './claims.ts';
 import { createClearinghouseConnectionsTable } from './clearinghouse-connections.ts';
+import { createCodesTable } from './codes.ts';
 import { parseConfig } from './config.ts';
 import { createDataTablesTables } from './data-tables.ts';
 import { createExtensions } from './extensions.ts';
@@ -71,6 +72,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'users',
     'agencies',
     'organizations',
+    'codes',
     'gnis_places',
     'nemsis_codes',
     'nemsis_elements'
@@ -94,6 +96,7 @@ const steps = [
   resetSchema,
   createExtensions,
   createGnisPlacesTable,
+  createCodesTable,
   createNemsisDictionaryTables,
   createAgenciesTable,
   createDailyNumbers,

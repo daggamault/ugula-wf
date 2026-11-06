@@ -56,7 +56,7 @@ Triggers keep versions honest: a `base_version_id` points at a version of anothe
 
 ## Reference data
 
-`gnis_places` (USGS place names for NEMSIS city codes), `nemsis_elements` and `nemsis_codes` (element names and code descriptions from the NEMSIS 3.5 schema).
+`gnis_places` (USGS place names for NEMSIS city codes), `nemsis_elements` and `nemsis_codes` (element names and code descriptions from the NEMSIS 3.5 schema). `codes` holds the billing code sets by `code_set`: ICD-10-CM from CMS, ambulance HCPCS (A0021-A0999) and HCPCS modifiers from the CMS quarterly file, CARC and RARC from X12, and place of service from CMS.
 
 ## Development workflow
 

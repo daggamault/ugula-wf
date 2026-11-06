@@ -6,6 +6,7 @@ import type {
   ClaimStatus,
   Classification,
   ClearinghouseVendor,
+  CodeSet,
   CorrectionMethod,
   DenialRoute,
   DocumentKind,
@@ -272,6 +273,12 @@ type NemsisElementsTable = {
   name: string;
   definition: string;
   usage: string;
+};
+
+type CodesTable = {
+  code_set: CodeSet;
+  code: string;
+  description: string;
 };
 
 type NemsisCodesTable = {
@@ -773,6 +780,7 @@ export type Database = {
   gnis_places: GnisPlacesTable;
   nemsis_elements: NemsisElementsTable;
   nemsis_codes: NemsisCodesTable;
+  codes: CodesTable;
   signals: SignalsTable;
   schedule_runs: ScheduleRunsTable;
   tasks: TasksTable;

@@ -107,6 +107,15 @@ export {
   WAYSTAR_EXTENSIONS
 } from './clearinghouse.ts';
 export {
+  CODE_SETS,
+  type CodeDescriptions,
+  type CodeRef,
+  type CodeSet,
+  describeCode,
+  formatIcd10,
+  isCodeSet
+} from './code-sets.ts';
+export {
   AMBULANCE_CONDITIONS,
   CONDITION_LIMIT,
   type Documentation,

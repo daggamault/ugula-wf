@@ -28,6 +28,8 @@ import {
   buildUpsertDemoProfile
 } from './billing-setup.ts';
 import type { SeedTable } from './builder.ts';
+import { readCodeSets, upsertCodeSets } from './codes.ts';
+import { CODE_SETS_FILE } from './codes-build.ts';
 import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
 import { demoGraphs } from './demo-graphs.ts';
 import { buildUpsertDefaultFees, demoFees } from './fees.ts';
@@ -94,6 +96,7 @@ const seedBase = async (db: Db) => {
   assertValidGraphs(billingGraphs, nodes);
   assertValidTables(billingTables, billingGraphs);
   const places = readPlaces(await readFile(PLACES_FILE));
+  const codeSets = readCodeSets(await readFile(CODE_SETS_FILE));
   const dictionary = {
     elements: readElements(await readFile(ELEMENTS_FILE)),
     codes: readCodes(await readFile(CODES_FILE))
@@ -101,6 +104,7 @@ const seedBase = async (db: Db) => {
   await db.transaction().execute(async (tx) => {
     await upsertPlaces(tx, places);
     await upsertDictionary(tx, dictionary);
+    await upsertCodeSets(tx, codeSets);
     await publishTables(tx, billingTables);
     await publishGraphs(tx, billingGraphs, new Set(nodes.map(refKey)));
   });
