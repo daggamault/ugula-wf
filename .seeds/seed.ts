@@ -28,8 +28,7 @@ import {
   buildUpsertDemoProfile
 } from './billing-setup.ts';
 import type { SeedTable } from './builder.ts';
-import { readCodeSets, upsertCodeSets } from './codes.ts';
-import { CODE_SETS_FILE } from './codes-build.ts';
+import { CODE_SETS_FILE, readCodeSets, upsertCodeSets } from './codes.ts';
 import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
 import { demoGraphs } from './demo-graphs.ts';
 import { buildUpsertDefaultFees, demoFees } from './fees.ts';

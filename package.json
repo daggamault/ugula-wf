@@ -26,7 +26,6 @@
     "db:migrate": "tsx --env-file=.env .migrations/migrate.ts",
     "db:seed": "tsx --env-file=.env .seeds/seed.ts",
     "db:seed:dev": "tsx --env-file=.env .seeds/seed.ts --dev",
-    "db:codes": "tsx .seeds/codes-build.ts",
     "db:gnis": "tsx .seeds/gnis-build.ts",
     "db:nemsis": "tsx .seeds/nemsis-build.ts",
     "e2e": "node --env-file=.env --test .e2e/*.e2e.ts"

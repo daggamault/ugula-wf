@@ -7,7 +7,6 @@ pnpm db:migrate            # resets and creates the schema
 pnpm db:seed:dev           # GNIS places, NEMSIS definitions, billing code sets, dev user, demo graphs, fees, payers
 pnpm db:gnis               # optional: rebuild .seeds/data/gnis-places.tsv.gz from USGS (updated bimonthly)
 pnpm db:nemsis             # optional: rebuild .seeds/data/nemsis-*.tsv.gz from the NEMSIS 3.5 schema
-pnpm db:codes              # optional: rebuild .seeds/data/codes.tsv.gz (ICD-10-CM, ambulance HCPCS, modifiers, CARC, RARC, place of service)
 pnpm dev                   # api, worker, sse, web and the mock clearinghouse
 pnpm e2e                   # with the stack running: every area in the browser, suites in parallel (about 30s)
 ```
