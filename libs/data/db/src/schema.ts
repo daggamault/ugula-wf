@@ -265,14 +265,11 @@ type WorkflowRunTablesTable = {
 type GnisPlacesTable = {
   id: number;
   name: string;
-  state: string;
 };
 
 type NemsisElementsTable = {
   element: string;
   name: string;
-  definition: string;
-  usage: string;
 };
 
 type CodesTable = {

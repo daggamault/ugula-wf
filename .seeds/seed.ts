@@ -32,11 +32,15 @@ import { CODE_SETS_FILE, readCodeSets, upsertCodeSets } from './codes.ts';
 import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
 import { demoGraphs } from './demo-graphs.ts';
 import { buildUpsertDefaultFees, demoFees } from './fees.ts';
-import { readPlaces, upsertPlaces } from './gnis.ts';
-import { PLACES_FILE } from './gnis-build.ts';
+import { PLACES_FILE, readPlaces, upsertPlaces } from './gnis.ts';
 import { publishGraphs, type SeedGraph } from './graphs.ts';
-import { CODES_FILE, ELEMENTS_FILE } from './nemsis-build.ts';
-import { readCodes, readElements, upsertDictionary } from './nemsis-dictionary.ts';
+import {
+  CODES_FILE,
+  ELEMENTS_FILE,
+  readCodes,
+  readElements,
+  upsertDictionary
+} from './nemsis-dictionary.ts';
 import { publishTables } from './tables.ts';
 import { upsertMembership, upsertUser } from './users.ts';
 

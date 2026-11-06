@@ -56,7 +56,7 @@ Triggers keep versions honest: a `base_version_id` points at a version of anothe
 
 ## Reference data
 
-`gnis_places` (USGS place names for NEMSIS city codes), `nemsis_elements` and `nemsis_codes` (element names and code descriptions from the NEMSIS 3.5 schema). `codes` holds the billing code sets by `code_set`, seeded from `.seeds/data/codes.tsv.gz` (code set, code, description), cleaned once from their sources: ICD-10-CM 2027 from CMS, ambulance HCPCS (A0021-A0999, active only) and HCPCS modifiers from the CMS October 2026 file, CARC and RARC from X12, and place of service from CMS.
+Reference data is cleaned once from its source into a gzipped TSV in `.seeds/data` and loaded by the base seed; nothing downloads it again. `gnis_places` (`gnis-places.tsv.gz`: USGS feature ID and name of every populated place, census place and town, for NEMSIS city codes), `nemsis_elements` and `nemsis_codes` (`nemsis-elements.tsv.gz`, `nemsis-codes.tsv.gz`: element names and code descriptions from the NEMSIS 3.4, 3.5.0 and 3.5.1 schemas). `codes` (`codes.tsv.gz`: code set, code, description) holds the billing code sets by `code_set`: ICD-10-CM 2027 from CMS, ambulance HCPCS (A0021-A0999, active only) and HCPCS modifiers from the CMS October 2026 file, CARC and RARC from X12, and place of service from CMS.
 
 ## Development workflow
 
