@@ -1,5 +1,6 @@
 import { PAYER_FILE_LABELS } from '@ugula/billing';
 import { DownloadIcon, FileInputIcon, FileTextIcon } from 'lucide-react';
+import type { ClaimDetail, ClaimPayerFile } from '../../shared/claims/claim-detail.ts';
 import { classNamesOf } from '../../shared/class-names.ts';
 import { formatDateTime } from '../../shared/format.ts';
 import { OUTCOME_STYLES } from '../../shared/payer-file-outcomes.ts';
@@ -8,7 +9,7 @@ import { Badge } from '../../shared/ui/badge.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { textLinkClasses } from '../../shared/ui/text-link.tsx';
 import { withBack } from '../../shared/url-state.ts';
-import type { ClaimDetail, ClaimEvent, ClaimPayerFile } from './client.ts';
+import type { ClaimEvent } from './client.ts';
 
 export const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
   approved: 'Approved for submission',

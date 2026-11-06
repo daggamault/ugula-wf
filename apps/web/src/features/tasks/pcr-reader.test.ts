@@ -7,20 +7,20 @@ const factOf = (facts: { label: string; value: string | null }[], label: string)
   facts.find((f) => f.label === label)?.value;
 
 describe('readPcr', () => {
-  it('reads a NEMSIS 3.5 report with plain labels and decoded meanings', () => {
+  it('reads a NEMSIS 3.5 report with plain labels and each code with its meaning', () => {
     const pcr = readPcr(fixtureReport('als2-iv-medications.xml'), fixtureDictionary);
     assert.equal(factOf(pcr.patient, 'Name'), 'Rosalind Quintero');
     assert.equal(factOf(pcr.patient, 'Date of Birth'), '1961-02-19');
-    assert.equal(factOf(pcr.patient, 'Sex'), 'Female');
-    assert.equal(factOf(pcr.patient, 'Address'), '330 Market St, Harrisburg, PA 17101');
-    assert.equal(pcr.paymentMethod, 'Insurance');
+    assert.equal(factOf(pcr.patient, 'Sex'), 'Female (9919001)');
+    assert.equal(factOf(pcr.patient, 'Address'), '330 Market St, Harrisburg (1215162), PA 17101');
+    assert.equal(pcr.paymentMethod, 'Insurance (2601001)');
     assert.deepEqual(pcr.insurances, [
       {
         payer: 'Blue Plan',
-        priority: 'Primary',
+        priority: 'Primary (2611003)',
         memberId: 'XGB110093422',
         groupId: 'GRP-10233',
-        relationship: 'Self'
+        relationship: 'Self (2622001)'
       }
     ]);
     assert.deepEqual(
@@ -36,18 +36,27 @@ describe('readPcr', () => {
       ]
     );
     assert.equal(pcr.times[0]?.at, '2026-09-06T10:05:00-04:00');
-    assert.equal(factOf(pcr.scene, 'Address'), '2645 N 3rd St, Harrisburg, PA 17110');
+    assert.equal(factOf(pcr.scene, 'Address'), '2645 N 3rd St, Harrisburg (1215162), PA 17110');
     assert.equal(factOf(pcr.destination, 'Name'), 'UPMC Harrisburg');
-    assert.equal(factOf(pcr.destination, 'Destination Type'), 'Hospital-Emergency Department');
-    assert.equal(factOf(pcr.destination, 'Reason for Choosing'), 'Closest Facility');
+    assert.equal(
+      factOf(pcr.destination, 'Destination Type'),
+      'Hospital-Emergency Department (4221003)'
+    );
+    assert.equal(factOf(pcr.destination, 'Reason for Choosing'), 'Closest Facility (4220001)');
     assert.deepEqual(pcr.response, [
-      { label: 'Type of Service', value: 'Emergency Response (Primary Response Area)' },
-      { label: 'Response Mode', value: 'Emergent (Immediate Response)' },
-      { label: 'Level of Care', value: 'ALS - Paramedic' },
-      { label: 'Unit Disposition', value: 'Patient Contact Made' },
-      { label: 'Patient Evaluation and Care', value: 'Patient Evaluated and Care Provided' },
-      { label: 'Transport Disposition', value: 'Transport by This EMS Unit (This Crew Only)' },
-      { label: 'CMS Service Level', value: 'ALS, Level 1 Emergency' }
+      { label: 'Type of Service', value: 'Emergency Response (Primary Response Area) (2205001)' },
+      { label: 'Response Mode', value: 'Emergent (Immediate Response) (2223001)' },
+      { label: 'Level of Care', value: 'ALS - Paramedic (4232005)' },
+      { label: 'Unit Disposition', value: 'Patient Contact Made (4227001)' },
+      {
+        label: 'Patient Evaluation and Care',
+        value: 'Patient Evaluated and Care Provided (4228001)'
+      },
+      {
+        label: 'Transport Disposition',
+        value: 'Transport by This EMS Unit (This Crew Only) (4230001)'
+      },
+      { label: 'CMS Service Level', value: 'ALS, Level 1 Emergency (2650003)' }
     ]);
     assert.equal(factOf(pcr.situation, 'Complaint'), 'Palpitations');
     assert.equal(
@@ -69,7 +78,7 @@ describe('readPcr', () => {
     assert.deepEqual(pcr.medications[0], {
       givenAt: '2026-09-06T10:20:00-04:00',
       medication: 'Adenosine (296)',
-      route: 'Intravenous (IV)',
+      route: 'Intravenous (IV) (9927023)',
       dose: '6 Milligrams (mg)'
     });
     assert.equal(pcr.medications[3]?.medication, 'RxNorm 703');
@@ -79,8 +88,8 @@ describe('readPcr', () => {
 
   it('reads a NEMSIS 3.4 report, with gender for sex and its single incident disposition', () => {
     const pcr = readPcr(fixtureReport('nemsis-34-emergency.xml'), fixtureDictionary);
-    assert.equal(factOf(pcr.patient, 'Sex'), 'Female');
-    assert.equal(pcr.paymentMethod, 'Medicare');
+    assert.equal(factOf(pcr.patient, 'Sex'), 'Female (9906001)');
+    assert.equal(pcr.paymentMethod, 'Medicare (2601005)');
     assert.equal(
       factOf(pcr.scene, 'Location Type'),
       'Unspecified place in private residence (Y92.009)'
@@ -97,10 +106,10 @@ describe('readPcr', () => {
     );
     assert.equal(
       factOf(pcr.response, 'Incident Disposition'),
-      'Patient Treated, Transported by this EMS Unit'
+      'Patient Treated, Transported by this EMS Unit (4212033)'
     );
     assert.equal(factOf(pcr.response, 'Level of Care'), null);
-    assert.equal(pcr.medications[0]?.route, 'Nebulizer');
+    assert.equal(pcr.medications[0]?.route, 'Nebulizer (9927071)');
     assert.equal(pcr.loadedMiles, 6.83);
   });
 

@@ -153,21 +153,24 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await s.page.getByRole('button', { name: 'Unassign' }).click();
     await toast('Unassigned');
     await section(s.page, 'The Issue').first().waitFor();
-    await section(s.page, 'Claim').first().waitFor();
-    await section(s.page, 'Workflow Details').first().waitFor();
+    for (const title of ['Summary', 'Charges', 'Claim Data', 'Documentation', 'Payers']) {
+      await section(s.page, title).first().waitFor();
+    }
     const tabs = s.page.getByRole('navigation', { name: 'Task data' });
     await tabs.getByRole('link', { name: 'Encounter' }).click();
-    await section(s.page, 'Encounter')
+    await section(s.page, 'Patient Care Report')
       .getByText(/What the crew documented/)
       .waitFor();
     await tabs.getByRole('link', { name: 'Patient' }).click();
-    await section(s.page, 'Patient').first().waitFor();
+    await section(s.page, 'Patient Record').first().waitFor();
     assert.match(s.page.url(), /[?&]tab=patient/);
+    await tabs.getByRole('link', { name: 'Workflow' }).click();
+    await section(s.page, 'Workflow Details').first().waitFor();
     await tabs.getByRole('link', { name: 'Claim' }).click();
     const decision = section(s.page, 'Your Decision').last();
     for (const option of await decision
       .getByRole('list', { name: 'Options' })
-      .getByRole('button')
+      .locator('button[name="outcome"]')
       .all()) {
       const ids = ((await option.getAttribute('aria-describedby')) ?? '').split(' ');
       const hint = ids.find((id) => id.startsWith('outcome-'));

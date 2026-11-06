@@ -1,9 +1,10 @@
-import { ORIGIN_DESTINATION_CODES } from '@ugula/billing';
-import { formatDate } from '../../shared/format.ts';
-import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
-import { emptyValue } from '../../shared/ui/empty-state.tsx';
-import { SectionPanel } from '../../shared/ui/section-panel.tsx';
-import type { ClaimDetail } from './client.ts';
+import { type CodeDescriptions, ORIGIN_DESTINATION_CODES } from '@ugula/billing';
+import { formatDate } from '../format.ts';
+import { Detail, DetailList } from '../ui/detail-list.tsx';
+import { emptyValue } from '../ui/empty-state.tsx';
+import { SectionPanel } from '../ui/section-panel.tsx';
+import type { ClaimDetail } from './claim-detail.ts';
+import { CodeText } from './code-text.tsx';
 
 type Place = {
   addressLine: string | null;
@@ -25,7 +26,13 @@ export const modifierText = (code: string | null) =>
     ? `${code} · ${ORIGIN_DESTINATION_CODES[code as keyof typeof ORIGIN_DESTINATION_CODES]}`
     : (code ?? null);
 
-export const ClaimDataView = ({ claim: c }: { claim: ClaimDetail }) => (
+export const ClaimDataView = ({
+  claim: c,
+  codes
+}: {
+  claim: ClaimDetail;
+  codes: CodeDescriptions;
+}) => (
   <SectionPanel
     title="Claim Data"
     description="What goes on the 837P besides the payers and documentation. Change it with the Correct Claim Data task."
@@ -34,7 +41,13 @@ export const ClaimDataView = ({ claim: c }: { claim: ClaimDetail }) => (
       <Detail label="Date of Service">{formatDate(c.service_date)}</Detail>
       <Detail label="Diagnosis Codes">
         {c.diagnoses.length ? (
-          <span className="font-mono">{c.diagnoses.join(', ')}</span>
+          <ol className="flex flex-col gap-2">
+            {c.diagnoses.map((d) => (
+              <li key={d}>
+                <CodeText codes={codes} set="icd10cm" code={d} />
+              </li>
+            ))}
+          </ol>
         ) : (
           emptyValue
         )}

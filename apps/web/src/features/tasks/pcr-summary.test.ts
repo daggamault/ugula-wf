@@ -10,7 +10,7 @@ const render = (data: Parameters<typeof readPcr>[0]) =>
   renderToStaticMarkup(createElement(PcrSummaryView, { pcr: readPcr(data, fixtureDictionary) }));
 
 describe('PcrSummaryView', () => {
-  it('summarizes a report in the sections a biller reads, with meanings instead of codes', () => {
+  it('summarizes a report in the sections a biller reads, with each code and its meaning', () => {
     const html = render(fixtureReport('als2-iv-medications.xml'));
     for (const title of [
       'Patient',
@@ -28,20 +28,20 @@ describe('PcrSummaryView', () => {
       assert.ok(html.includes(`>${title}</h3>`), title);
     }
     assert.ok(html.includes('Rosalind Quintero'));
-    assert.ok(html.includes('330 Market St, Harrisburg, PA 17101'));
+    assert.ok(html.includes('330 Market St, Harrisburg (1215162), PA 17101'));
     assert.ok(
       html.includes('Blue Plan') && html.includes('XGB110093422') && html.includes('GRP-10233')
     );
     assert.ok(html.includes('Supraventricular tachycardia (I47.1)'));
     assert.ok(html.includes('Transport by This EMS Unit (This Crew Only)'));
-    assert.ok(html.includes('ALS, Level 1 Emergency'));
+    assert.ok(html.includes('ALS, Level 1 Emergency (2650003)'));
     assert.ok(html.includes('dateTime="2026-09-06T10:05:00-04:00"'));
     assert.ok(html.includes('98/64'));
     assert.ok(html.includes('Adenosine') && html.includes('6 Milligrams (mg)'));
     assert.ok(html.includes('No procedures on the report.'));
     assert.ok(html.includes('Vagal maneuvers failed.'));
     assert.ok(html.includes('6.86 miles'));
-    assert.ok(!html.includes('>2205001<') && !html.includes('>4230001<'));
+    assert.ok(html.includes('Emergency Response (Primary Response Area) (2205001)'));
   });
 
   it('shows dashes and empty notes for a report with nothing recorded', () => {

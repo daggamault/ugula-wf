@@ -4,6 +4,7 @@ import type { FieldSpec, Json } from '@ugula/graph';
 import type { ReportDictionary } from '@ugula/nemsis';
 import type { Api } from '../../shared/api.ts';
 import type { Page } from '../../shared/url-state.ts';
+import type { TaskClaimRecord } from './task-claim.tsx';
 
 type TaskStatus = 'open' | 'completed' | 'cancelled';
 
@@ -158,6 +159,8 @@ export const createTasksClient = (api: Api) => ({
       form
     );
   },
+  claim: (id: string, signal?: AbortSignal) =>
+    api.get<TaskClaimRecord>(`/api/claims/${encodeURIComponent(id)}`, signal),
   report: (id: string) => api.get<SourceReport>(`/api/imports/reports/${encodeURIComponent(id)}`)
 });
 

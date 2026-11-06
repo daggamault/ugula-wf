@@ -12,9 +12,10 @@ import {
   ShieldCheckIcon,
   UsersIcon
 } from 'lucide-react';
+import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import type { MenuGroup } from '../../shared/ui/menu.tsx';
 import { describeCycle } from './claim-cycle.tsx';
-import type { ClaimDetail, ClaimProgress } from './client.ts';
+import type { ClaimProgress } from './client.ts';
 
 const ICONS: Readonly<Record<ClaimTaskKey, LucideIcon>> = {
   'billing.correct-claim-data': FilePenIcon,

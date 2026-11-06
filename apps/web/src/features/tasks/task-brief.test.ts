@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { TaskClaim } from './client.ts';
-import { ClaimFacts, headlineOf, TaskIssue } from './task-brief.tsx';
+import { headlineOf, PatientFacts, TaskIssue } from './task-brief.tsx';
 
 const issue = (severity: 'blocking' | 'warning', message: string) => ({
   code: message,
@@ -59,7 +59,7 @@ describe('TaskIssue', () => {
         }
       })
     );
-    assert.ok(html.includes('The Issue') && html.includes('>Review PCR<'));
+    assert.ok(html.includes('The Issue') && html.includes('>Review PCR</p>'));
     assert.ok(html.includes('<li>Responded emergent</li>') && !html.includes('<li></li>'));
     assert.ok(html.includes('Confirm the service.'));
     const fault = renderToStaticMarkup(
@@ -77,26 +77,35 @@ describe('TaskIssue', () => {
   });
 });
 
-describe('ClaimFacts', () => {
-  it('shows the claim snapshot and links the claim back to the task', () => {
-    const html = renderToStaticMarkup(createElement(ClaimFacts, { claim, taskId: 't1' }));
-    assert.ok(html.includes('href="/claims/c1?back=%2Ftasks%2Ft1"'));
-    assert.ok(html.includes('Scheduled') && html.includes('BLS non-emergency'));
-    assert.ok(html.includes('1EG4 · not active') && html.includes('Medicaid'));
-    assert.ok(html.includes('A0428 × 1') && html.includes('8.3'));
-    const bare = renderToStaticMarkup(
-      createElement(ClaimFacts, {
-        claim: {
-          ...claim,
-          patient: null,
-          payers: [],
-          lines: [],
-          classification: 'unknown',
-          level: null
+describe('PatientFacts', () => {
+  it('shows the patient record and the insurance billed on the claim', () => {
+    const html = renderToStaticMarkup(
+      createElement(PatientFacts, {
+        patient: {
+          id: 'p1',
+          number: 'P-7',
+          firstName: 'Jane',
+          lastName: 'Doe',
+          birthDate: '1950-02-03',
+          sex: 'F',
+          addressLine: '1 Main St',
+          city: 'Harrisburg',
+          state: 'PA',
+          postalCode: '17101'
         },
+        payers: claim.payers,
         taskId: 't1'
       })
     );
-    assert.ok(bare.includes('Not matched yet') && bare.includes('Patient only'));
+    assert.ok(
+      html.includes('Patient Record') && html.includes('href="/patients/p1?back=%2Ftasks%2Ft1"')
+    );
+    assert.ok(html.includes('Doe, Jane') && html.includes('Female'));
+    assert.ok(html.includes('1 Main St, Harrisburg, PA 17101'));
+    assert.ok(html.includes('1EG4 · not active') && html.includes('Medicaid'));
+    const none = renderToStaticMarkup(
+      createElement(PatientFacts, { patient: null, payers: null, taskId: 't1' })
+    );
+    assert.ok(none.includes('No patient is matched to this claim yet.'));
   });
 });

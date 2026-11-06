@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import type { ClaimSummary } from '../../shared/claims/claim-detail.ts';
 import { idleLive } from '../../shared/testing.ts';
 import { CLAIM_SEARCH_FIELDS, CLAIM_TABLE, ClaimsPage, ClaimsTable } from './claims-page.tsx';
-import type { ClaimSummary, ClaimsClient } from './client.ts';
+import type { ClaimsClient } from './client.ts';
 
 const claim: ClaimSummary = {
   id: 'c1',

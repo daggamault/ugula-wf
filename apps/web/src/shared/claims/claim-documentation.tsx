@@ -9,14 +9,14 @@ import {
 } from '@ugula/billing';
 import { DownloadIcon } from 'lucide-react';
 import { useState } from 'react';
-import { formatDate, formatDateTime } from '../../shared/format.ts';
-import { Badge, type StatusBadgeStyle } from '../../shared/ui/badge.tsx';
-import { Button } from '../../shared/ui/button.tsx';
-import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
-import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
-import { SectionPanel } from '../../shared/ui/section-panel.tsx';
-import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
-import type { ClaimCoverage, ClaimDetail } from './client.ts';
+import { formatDate, formatDateTime } from '../format.ts';
+import { Badge, type StatusBadgeStyle } from '../ui/badge.tsx';
+import { Button } from '../ui/button.tsx';
+import { Detail, DetailList } from '../ui/detail-list.tsx';
+import { EmptyText, emptyValue } from '../ui/empty-state.tsx';
+import { SectionPanel } from '../ui/section-panel.tsx';
+import { Table, TableCell, TableRow } from '../ui/table.tsx';
+import type { ClaimCoverage, ClaimDetail } from './claim-detail.ts';
 
 type Documented = Pick<
   ClaimDetail,

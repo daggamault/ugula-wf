@@ -1,11 +1,11 @@
 import { DOCUMENT_KINDS } from '@ugula/billing';
 import { DownloadIcon } from 'lucide-react';
+import type { ClaimDocument } from '../../shared/claims/claim-detail.ts';
 import { classNamesOf } from '../../shared/class-names.ts';
 import { formatDate, formatDateTime } from '../../shared/format.ts';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { textLinkClasses } from '../../shared/ui/text-link.tsx';
-import type { ClaimDocument } from './client.ts';
 
 const linkClasses = classNamesOf(textLinkClasses, 'inline-flex items-center gap-2');
 

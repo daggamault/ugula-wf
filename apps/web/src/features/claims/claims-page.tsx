@@ -1,5 +1,6 @@
 import { nameKey } from '@ugula/billing';
 import type { ReactNode } from 'react';
+import type { ClaimSummary } from '../../shared/claims/claim-detail.ts';
 import { formatCents, formatDate } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { assigneeOf, queueInfo } from '../../shared/task-queues.ts';
@@ -14,7 +15,7 @@ import { Table, TableCell, TableRow, type TableSorting } from '../../shared/ui/t
 import { type TableState, useTableState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
-import type { ClaimSearch, ClaimSummary, ClaimsClient } from './client.ts';
+import type { ClaimSearch, ClaimsClient } from './client.ts';
 
 type ClaimsPageProps = {
   client: ClaimsClient;

@@ -43,7 +43,7 @@ describe('ContextView', () => {
     assert.match(text, /Coverage\s+\(2\)/);
     assert.ok(html.includes('Blue Plan'));
     assert.ok(html.replace(/<[^>]+>/g, '').includes('I10, Z74.09'));
-    assert.ok(html.includes('Show Raw Data'));
+    assert.ok(!html.includes('Show Raw Data'));
   });
 
   it('shows claim issues, warnings, notes, report changes and the full claim check', () => {
@@ -120,7 +120,7 @@ describe('ContextView', () => {
         }
       })
     );
-    assert.equal(html.split('Show Raw Data')[0]?.split('No diagnosis').length, 2);
+    assert.equal(html.split('No diagnosis').length, 2);
     assert.ok(html.includes('Diagnoses: </span>No diagnosis'));
     assert.ok(html.includes('Warnings') && html.includes('The narrative could not be read'));
     assert.ok(html.includes('bg-info/10') && html.includes('Suggested by the model'));
@@ -136,14 +136,14 @@ describe('ContextView', () => {
     const blank = renderToStaticMarkup(
       createElement(ContextView, { label: 'x', value: { a: '', b: [] } })
     );
-    assert.ok(!blank.includes('<dl') && blank.includes('Show Raw Data'));
+    assert.ok(!blank.includes('<dl'));
   });
 
-  it('shows a plain value as text with the raw data behind it', () => {
+  it('shows a plain value as text', () => {
     const html = renderToStaticMarkup(
       createElement(ContextView, { label: 'Resolution', value: false })
     );
-    assert.ok(html.includes('<p class="text-sm">No</p>') && html.includes('Show Raw Data'));
+    assert.equal(html, '<p class="text-sm">No</p>');
   });
 
   it('links runs and tasks, formats numbers and says when nothing changed', () => {

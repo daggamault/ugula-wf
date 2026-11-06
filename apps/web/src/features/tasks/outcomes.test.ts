@@ -5,6 +5,7 @@ import { BanIcon, CircleCheckIcon } from 'lucide-react';
 import {
   consequenceOf,
   fieldLabel,
+  fieldsByOutcome,
   isDestructive,
   missingFor,
   missingReason,
@@ -88,5 +89,26 @@ describe('consequenceOf', () => {
       consequenceOf({}, 'toString'),
       'The workflow continues from this choice. This cannot be undone.'
     );
+  });
+});
+
+describe('fieldsByOutcome', () => {
+  it('puts a field only one outcome needs with that outcome', () => {
+    const classification: FieldSpec = {
+      name: 'classification',
+      type: 'string',
+      required: ['claim']
+    };
+    const note: FieldSpec = { name: 'note', type: 'string' };
+    const reason: FieldSpec = { name: 'reason', type: 'string', required: ['hold', 'void'] };
+    const { shared, own } = fieldsByOutcome([classification, note, reason], ['claim', 'skip']);
+    assert.deepEqual(shared, [note, reason]);
+    assert.deepEqual(own('claim'), [classification]);
+    assert.deepEqual(own('skip'), []);
+  });
+
+  it('keeps every field shared when there is one outcome', () => {
+    const amount: FieldSpec = { name: 'amount', type: 'number', required: ['save'] };
+    assert.deepEqual(fieldsByOutcome([amount], ['save']).shared, [amount]);
   });
 });

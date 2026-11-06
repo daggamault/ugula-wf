@@ -158,3 +158,16 @@ export const consequenceOf = (
   outcome: string
 ) =>
   `${outcomeHint(task, outcome) ?? 'The workflow continues from this choice.'} This cannot be undone.`;
+
+const ownerOf = (f: Pick<FieldSpec, 'required'>, outcomes: readonly string[]) =>
+  outcomes.length > 1 && f.required?.length === 1 && outcomes.includes(f.required[0] ?? '')
+    ? (f.required[0] ?? null)
+    : null;
+
+export const fieldsByOutcome = <F extends Pick<FieldSpec, 'required'>>(
+  fields: readonly F[],
+  outcomes: readonly string[]
+) => ({
+  shared: fields.filter((f) => ownerOf(f, outcomes) === null),
+  own: (outcome: string) => fields.filter((f) => ownerOf(f, outcomes) === outcome)
+});

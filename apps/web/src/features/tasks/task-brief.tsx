@@ -1,8 +1,8 @@
-import { CLASSIFICATION_LABELS, type Classification } from '@ugula/billing';
 import { isRecord, type Json } from '@ugula/graph';
 import { TriangleAlertIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { ClaimIssues, isIssueList } from '../../shared/claims/claim-issues.tsx';
-import { formatCents, formatDate } from '../../shared/format.ts';
+import { formatDate } from '../../shared/format.ts';
 import { Alert, AlertList } from '../../shared/ui/alert.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -32,9 +32,11 @@ export const headlineOf = (task: Pick<TaskDetail, 'summary' | 'context' | 'title
 };
 
 export const TaskIssue = ({
-  task
+  task,
+  children
 }: {
   task: Pick<TaskDetail, 'summary' | 'context' | 'title' | 'instructions' | 'kind'>;
+  children?: ReactNode;
 }) => {
   const issues = issuesOf(task.context);
   const reasons = reasonsOf(task.context);
@@ -43,10 +45,9 @@ export const TaskIssue = ({
   return (
     <SectionPanel
       title={task.kind === 'fault' ? 'What Went Wrong' : 'The Issue'}
-      description="What this task is about, why it was raised and what it needs from you."
+      description={headlineOf(task)}
       accent="primary"
     >
-      <p className="text-base font-semibold">{headlineOf(task)}</p>
       {issues.length ? <ClaimIssues issues={issues} /> : null}
       {reasons.length ? (
         <ul className="text-surface-fg-muted flex list-disc flex-col gap-1 pl-5 text-sm">
@@ -67,19 +68,9 @@ export const TaskIssue = ({
           <p className="text-surface-fg-muted text-sm whitespace-pre-line">{task.instructions}</p>
         </div>
       ) : null}
+      {children ? <div className="border-border border-t pt-5">{children}</div> : null}
     </SectionPanel>
   );
-};
-
-const tripText = (c: TaskClaim) => {
-  const trip =
-    c.classification && Object.hasOwn(CLASSIFICATION_LABELS, c.classification)
-      ? CLASSIFICATION_LABELS[c.classification as Classification]
-      : null;
-  const service = c.level
-    ? `${c.level}${c.emergency === null ? '' : c.emergency ? ' emergency' : ' non-emergency'}`
-    : null;
-  return [trip, service].filter(Boolean).join(' · ') || emptyValue;
 };
 
 const ELIGIBILITY_TEXT: Record<string, string> = { active: 'active', inactive: 'not active' };
@@ -103,7 +94,7 @@ const EncounterSays = ({
   );
 };
 
-const MismatchAlert = ({
+export const MismatchAlert = ({
   mismatches,
   encounterHref
 }: {
@@ -143,67 +134,6 @@ type FactsProps = {
   encounterHref?: string | undefined;
 };
 
-export const ClaimFacts = ({
-  claim,
-  taskId,
-  mismatches = [],
-  encounterHref
-}: FactsProps & { claim: TaskClaim }) => (
-  <SectionPanel
-    title="Claim"
-    description="What is billed: the claim as it stands now."
-    actions={
-      <TextLink to={withBack(`/claims/${claim.id}`, `/tasks/${taskId}`)}>
-        Claim {claim.number}
-      </TextLink>
-    }
-  >
-    <MismatchAlert mismatches={mismatches} encounterHref={encounterHref} />
-    <DetailList>
-      <Detail label="Patient">
-        {claim.patient ?? 'Not matched yet'}
-        {claim.birthDate ? (
-          <span className="text-surface-fg-muted"> · born {formatDate(claim.birthDate)}</span>
-        ) : null}
-        <EncounterSays mismatches={mismatches} field="patient" />
-        <EncounterSays mismatches={mismatches} field="birthDate" />
-      </Detail>
-      <Detail label="Date of Service">
-        {claim.serviceDate ? formatDate(claim.serviceDate) : emptyValue}
-        <EncounterSays mismatches={mismatches} field="serviceDate" />
-      </Detail>
-      <Detail label="Trip">{tripText(claim)}</Detail>
-      <Detail label="Loaded Miles">
-        {claim.loadedMiles === null ? emptyValue : String(claim.loadedMiles)}
-        <EncounterSays mismatches={mismatches} field="loadedMiles" />
-      </Detail>
-      <Detail label="Payers">
-        <PayerList payers={claim.payers} />
-        <EncounterSays mismatches={mismatches} field="memberId" />
-      </Detail>
-      <Detail label="Charges">
-        {claim.lines.length ? (
-          <ul className="flex flex-col gap-0.5 tabular-nums">
-            {claim.lines.map((l, i) => (
-              <li key={`${i}-${l.code}`}>
-                {l.code} × {l.units} · {formatCents(l.totalCents)}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          emptyValue
-        )}
-      </Detail>
-      <Detail label="Total">
-        {claim.totalCents === null ? emptyValue : formatCents(claim.totalCents)}
-      </Detail>
-      <Detail label="Balance" isEmphasized>
-        {claim.balanceCents === null ? emptyValue : formatCents(claim.balanceCents)}
-      </Detail>
-    </DetailList>
-  </SectionPanel>
-);
-
 const SEXES: Readonly<Record<string, string>> = { F: 'Female', M: 'Male', U: 'Unknown' };
 
 const patientAddress = (p: TaskPatient) => {
@@ -223,8 +153,8 @@ export const PatientFacts = ({
   const own = mismatches.filter((m) => m.field === 'patient' || m.field === 'birthDate');
   return (
     <SectionPanel
-      title="Patient"
-      description="The patient record the claim bills for, as last reported."
+      title="Patient Record"
+      description="Who the claim bills for, as last reported on a patient care report or claim."
       actions={
         patient ? (
           <TextLink to={withBack(`/patients/${patient.id}`, `/tasks/${taskId}`)}>

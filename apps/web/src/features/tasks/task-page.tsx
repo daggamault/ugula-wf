@@ -1,10 +1,9 @@
 import { PERMISSION_DESCRIPTIONS } from '@ugula/access';
-import type { Json } from '@ugula/graph';
+import type { FieldSpec, Json } from '@ugula/graph';
 import {
   ActivityIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
-  ChevronDownIcon,
   CircleCheckBigIcon,
   HandIcon,
   UndoIcon
@@ -12,7 +11,6 @@ import {
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useCan } from '../../shared/access.tsx';
 import { isApiError, messageOf } from '../../shared/api.ts';
-import { classNamesOf } from '../../shared/class-names.ts';
 import { formatAgo, formatDateTime, formatDay } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
@@ -20,7 +18,6 @@ import { queueInfo } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
-import { Collapse } from '../../shared/ui/collapse.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
@@ -41,6 +38,7 @@ import { encounterFactsOf, type Mismatch, mismatchesOf } from './encounter-check
 import {
   consequenceOf,
   fieldLabel,
+  fieldsByOutcome,
   isDestructive,
   missingFor,
   missingReason,
@@ -49,10 +47,11 @@ import {
   outcomeLabel
 } from './outcomes.ts';
 import { SourceReportView } from './source-report.tsx';
-import { ClaimFacts, PatientFacts, TaskIssue } from './task-brief.tsx';
+import { PatientFacts, TaskIssue } from './task-brief.tsx';
 import { ChangeList, changesOf, FieldWas } from './task-changes.tsx';
+import { TaskClaimView } from './task-claim.tsx';
 
-export const TASK_TABS = ['claim', 'encounter', 'patient'] as const;
+export const TASK_TABS = ['claim', 'encounter', 'patient', 'workflow'] as const;
 
 export type TaskTab = (typeof TASK_TABS)[number];
 
@@ -62,10 +61,23 @@ export const taskTabOf = (value: string | null): TaskTab =>
 const TAB_LABELS: Readonly<Record<TaskTab, string>> = {
   claim: 'Claim',
   encounter: 'Encounter',
-  patient: 'Patient'
+  patient: 'Patient',
+  workflow: 'Workflow'
 };
 
 export type FollowUp = { title: string; href: string };
+
+const DecisionSection = ({ title, children }: { title: string; children: ReactNode }) => {
+  const id = useId();
+  return (
+    <section aria-labelledby={id} className="flex flex-col gap-4">
+      <h3 id={id} className="text-base font-bold">
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+};
 
 const FOLLOW_UP_TRIES = 40;
 const FOLLOW_UP_WAIT_MS = 500;
@@ -87,6 +99,7 @@ type TaskViewProps = {
   findFollowUp?: (() => Promise<FollowUp | null>) | undefined;
   mismatches?: readonly Mismatch[];
   source?: ReactNode;
+  claimView?: ReactNode;
   onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
   onAssign: (assign: boolean) => Promise<void>;
   onNext: () => Promise<void>;
@@ -181,11 +194,7 @@ export const NextUp = ({
   };
   useEffect(() => nextRef.current?.focus(), []);
   return (
-    <SectionPanel
-      title="Done"
-      description="Your decision is saved, so pick up the next task or go back."
-      accent="primary"
-    >
+    <DecisionSection title="Done">
       <p className="flex items-center gap-2 text-sm">
         <CircleCheckBigIcon aria-hidden="true" className="text-success size-4 shrink-0" />“
         {outcomeLabel(outcome)}” is recorded and the workflow continues.
@@ -226,7 +235,7 @@ export const NextUp = ({
           {backLabelOf(back)}
         </ButtonLink>
       </div>
-    </SectionPanel>
+    </DecisionSection>
   );
 };
 
@@ -244,9 +253,7 @@ const decisionHelp = (task: TaskDetail, showChanges: boolean) =>
       ? 'Fields start with the current values. Change what is wrong, check your changes, then choose an option.'
       : task.fields.length && task.prefill === 'suggested'
         ? 'Fields start with what the workflow suggests. Confirm or change them, then choose an option.'
-        : task.fields.length
-          ? 'Fill in what is needed, then choose an option.'
-          : 'Choose an option. Each one says what happens next.';
+        : null;
 
 const Decision = ({
   task,
@@ -279,84 +286,101 @@ const Decision = ({
   const ConfirmIcon = outcomeIcon(confirming ?? '');
   const showChanges = task.fields.length > 0 && task.prefill === 'current';
   const changes = showChanges ? changesOf(task.fields, task.defaults, values) : [];
+  const { shared, own } = fieldsByOutcome(task.fields, task.outcomes);
+  const help = decisionHelp(task, showChanges);
+  const fieldGrid = (fields: readonly FieldSpec[]) =>
+    fields.length ? (
+      <fieldset disabled={busy !== null}>
+        <FieldGrid>
+          {fields.map((f) => {
+            const change = changes.find((c) => c.field.name === f.name);
+            return (
+              <div key={f.name} className="flex min-w-0 flex-col gap-1.5">
+                <ValueField
+                  id={`field-${f.name}`}
+                  label={fieldLabel(f)}
+                  type={f.type}
+                  options={f.options}
+                  isRequired={Boolean(f.required?.length)}
+                  format={f.format}
+                  min={f.min}
+                  max={f.max}
+                  error={errors[f.name]}
+                  upload={upload}
+                  value={values[f.name] ?? null}
+                  onChange={(value) => setValues({ ...values, [f.name]: value })}
+                />
+                {change ? (
+                  <FieldWas
+                    field={f}
+                    was={change.was}
+                    onReset={() => setValues({ ...values, [f.name]: change.was })}
+                  />
+                ) : null}
+              </div>
+            );
+          })}
+        </FieldGrid>
+      </fieldset>
+    ) : null;
   return (
-    <SectionPanel
-      title="Your Decision"
-      accent="primary"
-      description={decisionHelp(task, showChanges)}
-    >
+    <DecisionSection title="Your Decision">
+      {help ? <p className="text-surface-fg-muted text-sm">{help}</p> : null}
       <form className="flex flex-col gap-5" onSubmit={(e) => e.preventDefault()}>
-        {task.fields.length ? (
-          <fieldset disabled={busy !== null}>
-            <FieldGrid>
-              {task.fields.map((f) => {
-                const change = changes.find((c) => c.field.name === f.name);
-                return (
-                  <div key={f.name} className="flex min-w-0 flex-col gap-1.5">
-                    <ValueField
-                      id={`field-${f.name}`}
-                      label={fieldLabel(f)}
-                      type={f.type}
-                      options={f.options}
-                      isRequired={Boolean(f.required?.length)}
-                      format={f.format}
-                      min={f.min}
-                      max={f.max}
-                      error={errors[f.name]}
-                      upload={upload}
-                      value={values[f.name] ?? null}
-                      onChange={(value) => setValues({ ...values, [f.name]: value })}
-                    />
-                    {change ? (
-                      <FieldWas
-                        field={f}
-                        was={change.was}
-                        onReset={() => setValues({ ...values, [f.name]: change.was })}
-                      />
-                    ) : null}
-                  </div>
-                );
-              })}
-            </FieldGrid>
-          </fieldset>
-        ) : null}
+        {fieldGrid(shared)}
         {showChanges ? <ChangeList changes={changes} /> : null}
-        <ul aria-label="Options" className="flex flex-col gap-3">
+        <ol aria-label="Options" className="flex flex-col gap-4">
           {task.outcomes.map((outcome, i) => {
             const Icon = outcomeIcon(outcome);
             const intent = intentOf(outcome, isFault);
             const hint = outcomeHint(task, outcome);
             const hintId = `outcome-${task.id}-${outcome}`;
             return (
-              <li key={outcome} className="flex flex-col gap-1">
-                <Button
-                  isBlock
-                  intent={intent}
-                  variant={isFault || (i === 0 && intent === 'primary') ? 'solid' : 'outline'}
-                  isPending={busy === outcome}
-                  aria-describedby={hint ? hintId : undefined}
-                  disabledReason={
-                    unpermitted ??
-                    (busy && busy !== outcome
-                      ? pendingActionMessage
-                      : missingReason(missingFor(task.fields, values, outcome)))
-                  }
-                  onClick={() =>
-                    isDestructive(outcome, task.kind) ? setConfirming(outcome) : void act(outcome)
-                  }
-                >
-                  <Icon aria-hidden="true" className="size-4" />
-                  {outcomeLabel(outcome)}
-                </Button>
-                {hint ? (
-                  <p id={hintId} className="text-surface-fg-muted px-1 text-xs">
-                    {hint}
+              <li key={outcome} className="flex flex-col gap-4">
+                {i ? (
+                  <p
+                    aria-hidden="true"
+                    className="text-surface-fg-muted before:bg-border after:bg-border flex items-center gap-3 text-xs font-semibold tracking-wide uppercase before:h-px before:flex-1 after:h-px after:flex-1"
+                  >
+                    or
                   </p>
                 ) : null}
+                <div className="flex flex-col gap-3">
+                  {hint ? (
+                    <p id={hintId} className="text-sm">
+                      {hint}
+                    </p>
+                  ) : null}
+                  {fieldGrid(own(outcome))}
+                  <div className="flex">
+                    <Button
+                      name="outcome"
+                      value={outcome}
+                      intent={intent}
+                      variant={isFault || (i === 0 && intent === 'primary') ? 'solid' : 'outline'}
+                      isPending={busy === outcome}
+                      aria-describedby={hint ? hintId : undefined}
+                      disabledReason={
+                        unpermitted ??
+                        (busy && busy !== outcome
+                          ? pendingActionMessage
+                          : missingReason(missingFor(task.fields, values, outcome)))
+                      }
+                      onClick={() =>
+                        isDestructive(outcome, task.kind)
+                          ? setConfirming(outcome)
+                          : void act(outcome)
+                      }
+                    >
+                      <Icon aria-hidden="true" className="size-4" />
+                      {outcomeLabel(outcome)}
+                    </Button>
+                  </div>
+                </div>
               </li>
             );
           })}
-        </ul>
+        </ol>
       </form>
       <ConfirmDialog
         open={confirming !== null}
@@ -374,40 +398,15 @@ const Decision = ({
       >
         {consequenceOf(task, confirming ?? '')}
       </ConfirmDialog>
-    </SectionPanel>
+    </DecisionSection>
   );
 };
 
-// Open by default: reviews keep what supports a suggestion here.
-const WorkflowDetails = ({ context }: { context: Json }) => {
-  const [isOpen, setOpen] = useState(true);
-  const id = useId();
-  return (
-    <SectionPanel
-      title="Workflow Details"
-      description="What the workflow passed to this task, for reference."
-      actions={
-        <Button
-          variant="outline"
-          size="sm"
-          aria-expanded={isOpen}
-          aria-controls={id}
-          onClick={() => setOpen(!isOpen)}
-        >
-          <ChevronDownIcon
-            aria-hidden="true"
-            className={classNamesOf('size-4 transition-transform', isOpen && 'rotate-180')}
-          />
-          {isOpen ? 'Hide' : 'Show'}
-        </Button>
-      }
-    >
-      <Collapse id={id} isOpen={isOpen}>
-        <ContextView label="Task context" value={context} hideNotices />
-      </Collapse>
-    </SectionPanel>
-  );
-};
+const WorkflowDetails = ({ context }: { context: Json }) => (
+  <SectionPanel title="Workflow Details" description="What the workflow passed to this task.">
+    <ContextView label="Task context" value={context} hideNotices />
+  </SectionPanel>
+);
 
 export const TaskView = ({
   task,
@@ -418,6 +417,7 @@ export const TaskView = ({
   findFollowUp,
   mismatches = [],
   source,
+  claimView,
   onComplete,
   onAssign,
   onNext,
@@ -518,90 +518,74 @@ export const TaskView = ({
       }
     >
       {error ? <Alert>{error}</Alert> : null}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-[auto_1fr] lg:items-start">
-        <div className="order-1 min-w-0 lg:col-start-1 lg:row-start-1">
-          <TaskIssue task={task} />
-        </div>
-        <div className="order-3 flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-start-2">
-          {hasTabs ? (
-            <>
-              <Tabs
-                label="Task data"
-                tabs={TASK_TABS.map((t) => ({
-                  label: TAB_LABELS[t],
-                  href: tabHref?.(t) ?? `?tab=${t}`,
-                  isSelected: t === tab
-                }))}
-              />
-              {tab === 'encounter' ? (
-                (source ?? (
-                  <SectionPanel title="Encounter" description="What the crew documented.">
-                    <EmptyText>No patient care report is linked to this task.</EmptyText>
-                  </SectionPanel>
-                ))
-              ) : tab === 'patient' ? (
-                <PatientFacts
-                  patient={task.source.patient}
-                  payers={claim?.payers ?? null}
-                  taskId={task.id}
-                  mismatches={mismatches}
-                  encounterHref={encounterHref}
-                />
-              ) : claim ? (
-                <ClaimFacts
-                  claim={claim}
-                  taskId={task.id}
-                  mismatches={mismatches}
-                  encounterHref={encounterHref}
-                />
-              ) : (
-                <SectionPanel title="Claim" description="What is billed.">
-                  <EmptyText>This task is not about a claim yet.</EmptyText>
-                </SectionPanel>
-              )}
-              <WorkflowDetails context={task.context} />
-            </>
-          ) : (
+      <TaskIssue task={task}>
+        {done !== null ? (
+          <NextUp
+            outcome={done}
+            queue={task.queue}
+            remaining={remaining}
+            back={back}
+            onNext={onNext}
+            findFollowUp={findFollowUp}
+          />
+        ) : open ? (
+          <Decision
+            key={task.id}
+            task={task}
+            errors={errors}
+            upload={upload}
+            onComplete={complete}
+          />
+        ) : (
+          <DecisionSection title="Decision">
+            <Alert intent={task.status === 'completed' ? 'success' : 'warning'}>
+              {task.status === 'completed'
+                ? `Completed ${formatDateTime(task.completed_at)} as “${outcomeLabel(task.resolution?.outcome ?? '')}”.`
+                : 'This task was cancelled.'}
+            </Alert>
+            {task.resolution ? (
+              <ContextView label="Resolution" value={task.resolution.values} />
+            ) : null}
+          </DecisionSection>
+        )}
+      </TaskIssue>
+      {hasTabs ? (
+        <>
+          <Tabs
+            label="Task data"
+            tabs={TASK_TABS.map((t) => ({
+              label: TAB_LABELS[t],
+              href: tabHref?.(t) ?? `?tab=${t}`,
+              isSelected: t === tab
+            }))}
+          />
+          {tab === 'encounter' ? (
+            (source ?? (
+              <SectionPanel title="Patient Care Report" description="What the crew documented.">
+                <EmptyText>No patient care report is linked to this task.</EmptyText>
+              </SectionPanel>
+            ))
+          ) : tab === 'workflow' ? (
             <WorkflowDetails context={task.context} />
-          )}
-        </div>
-        <div
-          className={classNamesOf(
-            'flex flex-col gap-6 lg:sticky lg:top-24 lg:col-start-2 lg:row-span-2 lg:row-start-1',
-            task.fields.length && open ? 'order-2' : 'order-4'
-          )}
-        >
-          {done !== null ? (
-            <NextUp
-              outcome={done}
-              queue={task.queue}
-              remaining={remaining}
-              back={back}
-              onNext={onNext}
-              findFollowUp={findFollowUp}
-            />
-          ) : open ? (
-            <Decision
-              key={task.id}
-              task={task}
-              errors={errors}
-              upload={upload}
-              onComplete={complete}
+          ) : tab === 'patient' ? (
+            <PatientFacts
+              patient={task.source.patient}
+              payers={claim?.payers ?? null}
+              taskId={task.id}
+              mismatches={mismatches}
+              encounterHref={encounterHref}
             />
           ) : (
-            <SectionPanel title="Decision" description="How this task was settled.">
-              <Alert intent={task.status === 'completed' ? 'success' : 'warning'}>
-                {task.status === 'completed'
-                  ? `Completed ${formatDateTime(task.completed_at)} as “${outcomeLabel(task.resolution?.outcome ?? '')}”.`
-                  : 'This task was cancelled.'}
-              </Alert>
-              {task.resolution ? (
-                <ContextView label="Resolution" value={task.resolution.values} />
-              ) : null}
-            </SectionPanel>
+            (claimView ?? (
+              <SectionPanel title="Summary" description="What is billed.">
+                <EmptyText>This task is not about a claim yet.</EmptyText>
+              </SectionPanel>
+            ))
           )}
-        </div>
-      </div>
+        </>
+      ) : (
+        <WorkflowDetails context={task.context} />
+      )}
     </Page>
   );
 };
@@ -614,6 +598,10 @@ export const TaskPage = ({ client, live, taskId, back, tab = 'claim' }: TaskPage
   const reportId = task.data?.source.reportId ?? null;
   const report = useResource(`source-report:${reportId ?? 'none'}`, () =>
     reportId ? client.report(reportId) : Promise.resolve(null)
+  );
+  const claimId = task.data?.source.claim?.id ?? null;
+  const claimRecord = useResource(`task-claim:${claimId ?? 'none'}`, (signal) =>
+    claimId ? client.claim(claimId, signal) : Promise.resolve(null)
   );
   const findFollowUp = useCallback(async (): Promise<FollowUp | null> => {
     if (!runId) return null;
@@ -628,11 +616,21 @@ export const TaskPage = ({ client, live, taskId, back, tab = 'claim' }: TaskPage
       queues.reload();
     }
   );
+  useLive(
+    live,
+    (e) => e.kind === 'claim' && claimId !== null && e.id === claimId,
+    claimRecord.reload
+  );
   if (task.error) return <PageFailure message={task.error.message} />;
   if (!task.data) return <PageLoading />;
   const { queue, source } = task.data;
   const encounter = report.data ? encounterFactsOf(report.data.data) : null;
   const waiting = queues.data?.find((q) => q.queue === queue)?.unassigned;
+  const mismatches = encounter && source.claim ? mismatchesOf(source.claim, encounter) : [];
+  const tabTo = (t: TaskTab) => {
+    const to = `/tasks/${taskId}?tab=${t}`;
+    return back === null ? to : withBack(to, back);
+  };
   return (
     <TaskView
       key={taskId}
@@ -640,12 +638,22 @@ export const TaskPage = ({ client, live, taskId, back, tab = 'claim' }: TaskPage
       back={backTo}
       remaining={queues.data ? (waiting ?? 0) : null}
       tab={tab}
-      tabHref={(t) => {
-        const to = `/tasks/${taskId}?tab=${t}`;
-        return back === null ? to : withBack(to, back);
-      }}
+      tabHref={tabTo}
       findFollowUp={findFollowUp}
-      mismatches={encounter && source.claim ? mismatchesOf(source.claim, encounter) : []}
+      mismatches={mismatches}
+      claimView={
+        source.claim === null ? null : claimRecord.error ? (
+          <Alert>{claimRecord.error.message}</Alert>
+        ) : claimRecord.data ? (
+          <TaskClaimView
+            record={claimRecord.data}
+            mismatches={mismatches}
+            encounterHref={source.reportId === null ? undefined : tabTo('encounter')}
+          />
+        ) : (
+          <PageLoading />
+        )
+      }
       source={
         source.reportId === null ? null : report.error ? (
           <Alert>{report.error.message}</Alert>

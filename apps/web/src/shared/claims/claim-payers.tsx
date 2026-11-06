@@ -1,11 +1,11 @@
 import { RELATIONSHIP_LABELS, SELF } from '@ugula/billing';
-import { classNamesOf } from '../../shared/class-names.ts';
-import { Link } from '../../shared/router.tsx';
-import { Badge } from '../../shared/ui/badge.tsx';
-import { EmptyText } from '../../shared/ui/empty-state.tsx';
-import { interactiveClasses } from '../../shared/ui/interactive.ts';
-import { SectionPanel } from '../../shared/ui/section-panel.tsx';
-import type { ClaimCoverage } from './client.ts';
+import { classNamesOf } from '../class-names.ts';
+import { Link } from '../router.tsx';
+import { Badge } from '../ui/badge.tsx';
+import { EmptyText } from '../ui/empty-state.tsx';
+import { interactiveClasses } from '../ui/interactive.ts';
+import { SectionPanel } from '../ui/section-panel.tsx';
+import type { ClaimCoverage } from './claim-detail.ts';
 
 export const insuredText = (
   c: Pick<ClaimCoverage, 'relationship' | 'insured_first_name' | 'insured_last_name'>

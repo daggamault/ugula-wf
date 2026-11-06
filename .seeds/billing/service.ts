@@ -241,8 +241,7 @@ const decideClaim = (): GraphDef => {
     config: {
       title: 'Confirm Not Billable',
       queue: 'billing-review',
-      instructions:
-        'This report looks like a cancelled call or a trip without patient contact, so it was classified as not billable.',
+      instructions: 'Check the Encounter tab for patient contact and care given before you decide.',
       fields: [{ ...CLASSIFICATION_FIELD, required: ['claim'] }],
       outcomes: ['claim', 'skipClaim'],
       hints: {

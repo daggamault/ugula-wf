@@ -1,13 +1,10 @@
 import { isRecord, type Json } from '@ugula/graph';
 import type { ReactNode } from 'react';
 import { ClaimIssues, isIssueList } from '../../shared/claims/claim-issues.tsx';
-import { classNamesOf } from '../../shared/class-names.ts';
 import { formatCents, formatDate, formatDateTime, titleCaseWords } from '../../shared/format.ts';
 import { AlertList } from '../../shared/ui/alert.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
-import { interactiveClasses } from '../../shared/ui/interactive.ts';
-import { JsonView } from '../../shared/ui/json-view.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
 import { ClaimCheckView, isClaimCheck } from './claim-check.tsx';
@@ -222,33 +219,12 @@ const ContextBody = ({
 };
 
 export const ContextView = ({ value, label, hideNotices = false }: ContextViewProps) => {
-  const raw = (
-    <details className="group text-sm">
-      <summary
-        className={classNamesOf(
-          interactiveClasses,
-          'text-surface-fg-muted hover:text-surface-fg w-fit rounded-lg select-none'
-        )}
-      >
-        Show Raw Data
-      </summary>
-      <div className="pt-2">
-        <JsonView label={label} value={value} />
-      </div>
-    </details>
-  );
   if (!isRecord(value)) {
-    return isEmpty(value) ? null : (
-      <div className="flex flex-col gap-3">
-        <p className="text-sm">{scalarText('', value as Json)}</p>
-        {raw}
-      </div>
-    );
+    return isEmpty(value) ? null : <p className="text-sm">{scalarText('', value as Json)}</p>;
   }
   return (
     <figure aria-label={label} className="flex min-w-0 flex-col gap-5">
       <ContextBody value={value} hasIssues={hideNotices} hideNotices={hideNotices} />
-      {raw}
     </figure>
   );
 };

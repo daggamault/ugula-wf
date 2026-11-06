@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { ClaimCoverage } from '../../shared/claims/claim-detail.ts';
 import { claimTaskGroups, waitForTask } from './claim-tasks.tsx';
-import type { ClaimCoverage } from './client.ts';
 
 const act = () => {
   const done: string[] = [];

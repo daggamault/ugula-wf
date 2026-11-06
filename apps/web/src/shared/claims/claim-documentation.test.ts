@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import type { ClaimCoverage } from './claim-detail.ts';
 import {
   abnText,
   authorizationText,
@@ -15,7 +16,6 @@ import {
   stayText,
   weightText
 } from './claim-documentation.tsx';
-import type { ClaimCoverage } from './client.ts';
 
 const documented = {
   signature: 'exception' as const,

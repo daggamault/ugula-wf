@@ -70,20 +70,26 @@ const SYSTEM_NAMES: Readonly<Record<string, string>> = {
 };
 
 const createDecoder = (dictionary: ReportDictionary) => {
+  const meaningOf = (list: string, value: string) =>
+    describeCode(dictionary, list, value)?.replace(DEPRECATED, '') ?? null;
+  const name = (list: string, code: Json | undefined) => {
+    const value = textOf(code);
+    return value === null ? null : (meaningOf(list, value) ?? value);
+  };
   const decode = (list: string, code: Json | undefined) => {
     const value = textOf(code);
     if (value === null) return null;
-    const meaning = describeCode(dictionary, list, value)?.replace(DEPRECATED, '') ?? null;
+    const meaning = meaningOf(list, value);
     const system = SYSTEM_NAMES[codeSystemOf(list) ?? ''];
     if (meaning === null) return system ? `${system} ${value}` : value;
-    return system ? `${meaning} (${value})` : meaning;
+    return `${meaning} (${value})`;
   };
   const decodeAll = (list: string, codes: Json | undefined) =>
     joined(
       textsOf(codes).map((c) => decode(list, c)),
       '; '
     );
-  return { decode, decodeAll };
+  return { name, decode, decodeAll };
 };
 
 const fact = (label: string, value: string | null): Fact => ({ label, value });
@@ -91,7 +97,7 @@ const fact = (label: string, value: string | null): Fact => ({ label, value });
 const roundMiles = (miles: number) => Math.round(miles * 100) / 100;
 
 export const readPcr = (data: Json, dictionary: ReportDictionary): PcrSummary => {
-  const { decode, decodeAll } = createDecoder(dictionary);
+  const { name, decode, decodeAll } = createDecoder(dictionary);
   const pcr = toPcr(data);
   const response = sectionOf(pcr.response);
   const times = sectionOf(pcr.times);
@@ -104,7 +110,7 @@ export const readPcr = (data: Json, dictionary: ReportDictionary): PcrSummary =>
     joined([
       textOf(s.addressLine),
       decode(lists.city, s.city),
-      joined([decode(lists.state, s.state), textOf(s.postalCode)], ' ')
+      joined([name(lists.state, s.state), textOf(s.postalCode)], ' ')
     ]);
   const sceneOdometer = numberOf(response.sceneOdometer);
   const destinationOdometer = numberOf(response.destinationOdometer);
@@ -200,7 +206,7 @@ export const readPcr = (data: Json, dictionary: ReportDictionary): PcrSummary =>
         dose:
           dosage === null
             ? null
-            : joined([String(dosage), decode('eMedications.06', m.dosageUnits)], ' ')
+            : joined([String(dosage), name('eMedications.06', m.dosageUnits)], ' ')
       };
     }),
     procedures: recordsOf(pcr.procedures).map((p) => ({

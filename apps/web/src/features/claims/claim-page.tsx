@@ -1,7 +1,7 @@
 import {
-  CLASSIFICATION_LABELS,
   type ClaimIssue,
   type ClaimTaskKey,
+  type CodeDescriptions,
   isClosedStatus
 } from '@ugula/billing';
 import { UserIcon } from 'lucide-react';
@@ -9,15 +9,21 @@ import { type ReactNode, useState } from 'react';
 import { useCan } from '../../shared/access.tsx';
 import { messageOf } from '../../shared/api.ts';
 import { ChargeLines } from '../../shared/claims/charge-lines.tsx';
+import { ClaimDataView } from '../../shared/claims/claim-data.tsx';
+import type {
+  ClaimDetail,
+  ClaimDocument,
+  ClaimPayerFile
+} from '../../shared/claims/claim-detail.ts';
+import { DocumentationPanel, EligibilityPanel } from '../../shared/claims/claim-documentation.tsx';
 import { ClaimIssues } from '../../shared/claims/claim-issues.tsx';
+import { PayersPanel } from '../../shared/claims/claim-payers.tsx';
+import { ClaimSummaryPanel, pricedLinesOf } from '../../shared/claims/claim-summary.tsx';
 import { downloadText } from '../../shared/download.ts';
-import { formatCents, formatDate, formatMiles } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
-import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
-import { emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Menu } from '../../shared/ui/menu.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
@@ -26,23 +32,12 @@ import { useToast } from '../../shared/ui/toast.tsx';
 import { backLabelOf, type Page as ListPage, withBack } from '../../shared/url-state.ts';
 import { type Resource, useResource } from '../../shared/use-resource.ts';
 import { CycleAlert, OpenTasks } from './claim-cycle.tsx';
-import { ClaimDataView } from './claim-data.tsx';
-import { DocumentationPanel, EligibilityPanel } from './claim-documentation.tsx';
 import { DocumentsPanel } from './claim-documents.tsx';
 import { ClaimFiles } from './claim-files.tsx';
 import { ClaimHistory, useHistoryTable } from './claim-history.tsx';
-import { PayersPanel } from './claim-payers.tsx';
 import { ClaimStatusBadge } from './claim-status-badge.tsx';
 import { claimTaskGroups, START_TASK_ICON, waitForTask } from './claim-tasks.tsx';
-import type {
-  ClaimDetail,
-  ClaimDocument,
-  ClaimEvent,
-  ClaimLine,
-  ClaimPayerFile,
-  ClaimProgress,
-  ClaimsClient
-} from './client.ts';
+import type { ClaimEvent, ClaimProgress, ClaimsClient } from './client.ts';
 
 type ClaimPageProps = {
   client: ClaimsClient;
@@ -52,14 +47,6 @@ type ClaimPageProps = {
   tab?: ClaimTab;
   back?: string;
 };
-
-const pricedLinesOf = (lines: readonly ClaimLine[]) =>
-  lines.map((l) => ({
-    code: l.code,
-    units: Number(l.units),
-    unitCents: l.unit_cents,
-    totalCents: l.total_cents
-  }));
 
 type ClaimLinks = {
   fileUrl: (batchId: string) => string;
@@ -84,6 +71,7 @@ export const ClaimView = ({
   history,
   progress,
   issues,
+  codes,
   documents = [],
   onDownloadEligibility,
   documentUrl,
@@ -101,6 +89,7 @@ export const ClaimView = ({
   history: Resource<ListPage<ClaimEvent>>;
   progress: ClaimProgress | null;
   issues: readonly ClaimIssue[];
+  codes: CodeDescriptions;
   documents?: readonly ClaimDocument[];
   onDownloadEligibility: () => Promise<void>;
   documentUrl: (eventId: string) => string;
@@ -154,40 +143,13 @@ export const ClaimView = ({
       {tab === 'overview' ? (
         <>
           {isClosedStatus(claim.status) ? null : <ClaimIssues issues={issues} />}
-          <SectionPanel
-            title="Summary"
-            description="What was billed, what is still owed, and the transport it covers."
-          >
-            <DetailList>
-              <Detail label="Total" isEmphasized>
-                {formatCents(claim.total_cents)}
-              </Detail>
-              <Detail label="Balance" isEmphasized>
-                {formatCents(claim.balance_cents)}
-              </Detail>
-              <Detail label="Service Date">{formatDate(claim.service_date)}</Detail>
-              <Detail label="Born">{formatDate(claim.birth_date)}</Detail>
-              <Detail label="Classification">
-                {claim.classification ? CLASSIFICATION_LABELS[claim.classification] : emptyValue}
-              </Detail>
-              <Detail label="Transport">
-                {claim.level ?? emptyValue}
-                {claim.emergency ? ' emergency' : ''}
-                {claim.loaded_miles ? (
-                  <span className="tabular-nums"> · {formatMiles(claim.loaded_miles)} loaded</span>
-                ) : null}
-              </Detail>
-              <Detail label="Responsible Facility">
-                {claim.facility_name ?? 'None: the payers and the patient'}
-              </Detail>
-            </DetailList>
-          </SectionPanel>
+          <ClaimSummaryPanel claim={claim} />
           <DocumentationPanel claim={claim} />
           <DocumentsPanel documents={documents} documentUrl={claimDocumentUrl} />
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             <div className="flex min-w-0 flex-col gap-6">
               <SectionPanel title="Charges" description="Priced from the fee schedule.">
-                <ChargeLines lines={pricedLinesOf(claim.lines)} />
+                <ChargeLines lines={pricedLinesOf(claim.lines)} codes={codes} />
               </SectionPanel>
               <PayersPanel coverages={claim.coverages} />
             </div>
@@ -208,7 +170,7 @@ export const ClaimView = ({
           </div>
         </>
       ) : tab === 'data' ? (
-        <ClaimDataView claim={claim} />
+        <ClaimDataView claim={claim} codes={codes} />
       ) : (
         <SectionPanel title="History" description="Everything that has happened on this claim.">
           <ClaimHistory
@@ -308,6 +270,7 @@ export const ClaimPage = ({
       history={history}
       progress={progress}
       issues={detail.data.issues}
+      codes={detail.data.codes}
       documentUrl={(eventId) => client.documentUrl(claimId, eventId)}
       claimDocumentUrl={(documentId) => client.claimDocumentUrl(claimId, documentId)}
       onDownloadEligibility={() =>
