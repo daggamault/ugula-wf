@@ -11,9 +11,9 @@ import {
   type FileItem,
   findClaimByNumber,
   item,
-  notBillable,
   type Posted,
-  recordPayerEvent
+  recordPayerEvent,
+  unmatchedClaim
 } from './payer-file-items.ts';
 import type { Db } from './schema.ts';
 
@@ -159,7 +159,7 @@ export const postClaimAcknowledgments = async (
     n += 1;
     const claim = await findClaimByNumber(c.tx, c.agencyId, ack.claimNumber);
     if (!claim) {
-      items.push(notBillable(ack.claimNumber));
+      items.push(unmatchedClaim(ack.claimNumber));
       continue;
     }
     const coverageId = await lastSubmittedCoverage(c.tx, claim.id);
@@ -199,7 +199,7 @@ export const postClaimStatuses = async (
     n += 1;
     const claim = await findClaimByNumber(c.tx, c.agencyId, s.claimNumber);
     if (!claim) {
-      items.push(notBillable(s.claimNumber));
+      items.push(unmatchedClaim(s.claimNumber));
       continue;
     }
     const coverageId = await lastSubmittedCoverage(c.tx, claim.id);

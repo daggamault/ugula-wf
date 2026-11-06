@@ -62,7 +62,7 @@ const MATCH_PAYER_SUMMARY = `'Link the reported payer "' + text(item?.payer) + '
   ', mark it unlisted, or remove it if it is not insurance'`;
 
 const SERVICE_PARTS = `filter([
-  { scheduled: 'scheduled trip', treatNoTransport: 'treat-no-transport', refusal: 'refusal', notBillable: 'no-claim trip' }[classification ?? ''],
+  { scheduled: 'scheduled trip', treatNoTransport: 'treat-no-transport', refusal: 'refusal', notBillable: 'not billable' }[classification ?? ''],
   service?.level,
   service?.emergency == true ? 'emergency' : service?.emergency == false ? 'non-emergency' : null,
   service?.loadedMiles != null ? text(round(service?.loadedMiles, 1)) + ' loaded miles' : null,

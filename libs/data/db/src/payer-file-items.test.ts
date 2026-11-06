@@ -6,8 +6,8 @@ import {
   controlNumberOf,
   findClaimByNumber,
   item,
-  notBillable,
-  recordPayerEvent
+  recordPayerEvent,
+  unmatchedClaim
 } from './payer-file-items.ts';
 import { createRecordingDb } from './testing.ts';
 
@@ -49,7 +49,7 @@ describe('payer file items', () => {
       paidCents: 5,
       adjustedCents: 1
     });
-    assert.deepEqual(notBillable('2002'), {
+    assert.deepEqual(unmatchedClaim('2002'), {
       reference: '2002',
       claimId: null,
       outcome: 'unmatched',
