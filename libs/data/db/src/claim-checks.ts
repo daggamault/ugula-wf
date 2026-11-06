@@ -52,7 +52,7 @@ export const findClaimCheck = async (
       'c.id',
       'c.patient_id',
       'c.pcr_number',
-      'c.trip_type',
+      'c.classification',
       'c.level',
       'c.emergency',
       'c.loaded_miles',
@@ -153,7 +153,7 @@ export const findClaimCheck = async (
         }
       : null,
     pcrNumber: claim.pcr_number,
-    tripType: claim.trip_type,
+    classification: claim.classification,
     level: claim.level,
     emergency: claim.emergency,
     loadedMiles: claim.loaded_miles === null ? null : Number(claim.loaded_miles),

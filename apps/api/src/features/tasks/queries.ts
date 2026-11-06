@@ -138,7 +138,7 @@ export const findTaskSource = (db: Db, runId: string) =>
       'c.number as claim_number',
       'c.status as claim_status',
       'c.service_date',
-      'c.trip_type',
+      'c.classification',
       'c.level',
       'c.emergency',
       'c.loaded_miles',

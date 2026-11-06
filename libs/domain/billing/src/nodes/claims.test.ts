@@ -40,7 +40,7 @@ const jane = { id: 'p1', firstName: 'Jane', lastName: 'Doe' };
 const claim = {
   pcrNumber: ' PCR-1 ',
   patientId: jane.id,
-  tripType: 'emergency',
+  classification: 'emergency',
   serviceDate: '2026-10-01T08:15:00Z',
   level: 'ALS1',
   emergency: true,
@@ -133,7 +133,7 @@ describe('claimNodes', () => {
       ['Medicare', 'Blue']
     );
     assert.equal(saved?.reportKey, 'imports/t/f.xml.reports/00000.json');
-    assert.equal(saved?.tripType, 'emergency');
+    assert.equal(saved?.classification, 'emergency');
     assert.equal(saved?.coverages[0]?.memberId, 'M1');
     assert.deepEqual(saved?.details.diagnoses, ['R079']);
     const read = await run(node('read-claim-checks'), { claimId: 'c1' });
@@ -206,7 +206,7 @@ describe('claimNodes', () => {
       note: 'From the run sheet'
     });
     assert.deepEqual(dated.outputs.changes, {
-      tripType: false,
+      classification: false,
       level: false,
       emergency: false,
       loadedMiles: false,
@@ -227,7 +227,7 @@ describe('claimNodes', () => {
     });
     assert.deepEqual(repriced.outputs, {
       changes: {
-        tripType: false,
+        classification: false,
         level: true,
         emergency: false,
         loadedMiles: false,
@@ -235,7 +235,7 @@ describe('claimNodes', () => {
         nonCoveredMiles: false,
         payers: true
       },
-      tripType: 'emergency',
+      classification: 'emergency',
       service: {
         level: 'BLS',
         emergency: true,

@@ -1,4 +1,4 @@
-import { TRIP_TYPE_LABELS, type TripType } from '@ugula/billing';
+import { CLASSIFICATION_LABELS, type Classification } from '@ugula/billing';
 import { isRecord, type Json } from '@ugula/graph';
 import { TriangleAlertIcon } from 'lucide-react';
 import { ClaimIssues, isIssueList } from '../../shared/claims/claim-issues.tsx';
@@ -73,8 +73,8 @@ export const TaskIssue = ({
 
 const tripText = (c: TaskClaim) => {
   const trip =
-    c.tripType && Object.hasOwn(TRIP_TYPE_LABELS, c.tripType)
-      ? TRIP_TYPE_LABELS[c.tripType as TripType]
+    c.classification && Object.hasOwn(CLASSIFICATION_LABELS, c.classification)
+      ? CLASSIFICATION_LABELS[c.classification as Classification]
       : null;
   const service = c.level
     ? `${c.level}${c.emergency === null ? '' : c.emergency ? ' emergency' : ' non-emergency'}`

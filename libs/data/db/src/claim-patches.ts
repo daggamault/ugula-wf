@@ -45,7 +45,7 @@ const documentationValues = (d: ClaimEdit['documentation']) =>
 const claimValues = (e: ClaimEdit) =>
   defined({
     service_date: e.serviceDate ?? undefined,
-    trip_type: e.tripType ?? undefined,
+    classification: e.classification ?? undefined,
     level: e.level ?? undefined,
     emergency: e.emergency ?? undefined,
     loaded_miles: e.loadedMiles ?? undefined,

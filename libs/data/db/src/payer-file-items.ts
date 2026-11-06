@@ -40,7 +40,7 @@ export const item = (
   adjustedCents: amounts?.adjustedCents ?? null
 });
 
-export const noClaim = (reference: string) =>
+export const notBillable = (reference: string) =>
   item(reference, null, 'unmatched', `No claim has number ${reference}`);
 
 export const controlNumberOf = (reference: string) => {

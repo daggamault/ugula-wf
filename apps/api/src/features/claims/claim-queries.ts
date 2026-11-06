@@ -147,7 +147,7 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
       'c.facility_id',
       'f.name as facility_name',
       'i.file_name as import_file_name',
-      'c.trip_type',
+      'c.classification',
       'c.emergency',
       'c.loaded_miles',
       'c.origin_code',

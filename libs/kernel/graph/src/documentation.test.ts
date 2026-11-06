@@ -14,7 +14,7 @@ const graph = (over: Partial<GraphDef['signature']>, label?: string): GraphDef =
 describe('isTitleCase', () => {
   it('accepts Title Case with minor words, codes and symbols', () => {
     for (const label of [
-      'Trip Type',
+      'Classification',
       'Level of Service',
       'Base Rate · ePayment.50',
       'IV/IO Medications',
@@ -27,7 +27,12 @@ describe('isTitleCase', () => {
   });
 
   it('rejects lowercase words that are not minor words', () => {
-    for (const label of ['Trip type', 'level of Service', 'Destination minus Scene', 'of Course']) {
+    for (const label of [
+      'Loaded miles',
+      'level of Service',
+      'Destination minus Scene',
+      'of Course'
+    ]) {
       assert.equal(isTitleCase(label), false, label);
     }
   });

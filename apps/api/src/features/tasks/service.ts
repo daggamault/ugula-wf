@@ -117,7 +117,7 @@ export const createTaskService = ({ db, boss, announce, blobs, maxBytes }: TaskS
               patient: source.last_name ? `${source.last_name}, ${source.first_name}` : null,
               birthDate: source.birth_date,
               serviceDate: source.service_date,
-              tripType: source.trip_type,
+              classification: source.classification,
               level: source.level,
               emergency: source.emergency,
               loadedMiles: source.loaded_miles,

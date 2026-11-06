@@ -54,10 +54,10 @@ describe('imports split files into reports and revise claims', { timeout: SUITE_
     }
   });
 
-  it('works each report in the file by its own trip type', async () => {
+  it('works each report in the file by its own classification', async () => {
     const transported = await workTasksUntil(s, await draftClaim(s, `${batch}-1`), 'needs_review');
     expectClaim(transported, {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'BLS',
       emergency: true,
       lines: [
@@ -67,11 +67,11 @@ describe('imports split files into reports and revise claims', { timeout: SUITE_
       originDestination: 'SH'
     });
     const cancelled = await draftClaim(s, `${batch}-2`);
-    await completeTask(s, cancelled, 'Confirm no claim', { outcome: 'Skip' });
+    await completeTask(s, cancelled, 'Confirm Not Billable', { outcome: 'Skip Claim' });
     await claimStatusIs(s, cancelled, 'void');
     const treated = await workTasksUntil(s, await draftClaim(s, `${batch}-3`), 'needs_review');
     expectClaim(treated, {
-      tripType: 'treatNoTransport',
+      classification: 'treatNoTransport',
       level: 'ALS1',
       emergency: true,
       lines: [['A0998', 1]]
@@ -99,7 +99,7 @@ describe('imports split files into reports and revise claims', { timeout: SUITE_
     const rebuilt = await workTasksUntil(s, claimId, 'needs_review');
     assert.equal(rebuilt.claim.id, claimId, 'the revision reworks the same claim');
     expectClaim(rebuilt, {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'BLS',
       emergency: true,
       lines: [

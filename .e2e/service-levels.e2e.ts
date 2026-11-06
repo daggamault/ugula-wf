@@ -46,7 +46,7 @@ describe('the level of service follows what the report documents', { timeout: SU
   it('bills a resuscitation with defibrillation, an IO line and intubation as ALS2', async () => {
     const built = await reviewed('als2-cardiac-arrest');
     expectClaim(built, {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'ALS2',
       emergency: true,
       lines: [
@@ -62,7 +62,7 @@ describe('the level of service follows what the report documents', { timeout: SU
 
   it('does not count saline or dextrose toward ALS2', async () => {
     expectClaim(await reviewed('als1-iv-solutions'), {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'ALS1',
       emergency: true,
       lines: [
@@ -76,7 +76,7 @@ describe('the level of service follows what the report documents', { timeout: SU
 
   it('bills three IV medication administrations, by push or pump, as ALS2', async () => {
     expectClaim(await reviewed('als2-iv-medications'), {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'ALS2',
       emergency: true,
       lines: [
@@ -91,7 +91,7 @@ describe('the level of service follows what the report documents', { timeout: SU
   it('files a critical care interfacility transfer as SCT between hospitals', async () => {
     const built = await reviewed('sct-interfacility');
     expectClaim(built, {
-      tripType: 'scheduled',
+      classification: 'scheduled',
       level: 'SCT',
       emergency: false,
       lines: [
@@ -112,7 +112,7 @@ describe('the level of service follows what the report documents', { timeout: SU
 
   it('never bills SCT for a 911 response, even by a critical care crew', async () => {
     expectClaim(await reviewed('critical-care-scene'), {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'ALS1',
       emergency: true,
       lines: [
@@ -126,7 +126,7 @@ describe('the level of service follows what the report documents', { timeout: SU
   it('rounds 100 miles and over up to whole miles and flags an old certification', async () => {
     const built = await reviewed('long-distance-stale-pcs');
     expectClaim(built, {
-      tripType: 'scheduled',
+      classification: 'scheduled',
       level: 'BLS',
       emergency: false,
       lines: [
@@ -145,7 +145,7 @@ describe('the level of service follows what the report documents', { timeout: SU
   it('bills a downgraded 911 response under a mile as BLS emergency with tenths of a mile', async () => {
     const built = await reviewed('short-trip-self-pay');
     expectClaim(built, {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'BLS',
       emergency: true,
       lines: [

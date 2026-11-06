@@ -1,8 +1,8 @@
 import {
+  CLASSIFICATION_LABELS,
   type ClaimIssue,
   type ClaimTaskKey,
-  isClosedStatus,
-  TRIP_TYPE_LABELS
+  isClosedStatus
 } from '@ugula/billing';
 import { UserIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -167,8 +167,8 @@ export const ClaimView = ({
               </Detail>
               <Detail label="Service Date">{formatDate(claim.service_date)}</Detail>
               <Detail label="Born">{formatDate(claim.birth_date)}</Detail>
-              <Detail label="Trip Type">
-                {claim.trip_type ? TRIP_TYPE_LABELS[claim.trip_type] : emptyValue}
+              <Detail label="Classification">
+                {claim.classification ? CLASSIFICATION_LABELS[claim.classification] : emptyValue}
               </Detail>
               <Detail label="Transport">
                 {claim.level ?? emptyValue}

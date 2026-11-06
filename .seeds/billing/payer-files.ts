@@ -84,7 +84,7 @@ const reviewPayerFileLine = (): GraphDef => {
     ],
     outputs: []
   });
-  g.add('noClaim', 'std.logic.is-null', { label: 'No Claim Matched' });
+  g.add('unmatched', 'std.logic.is-null', { label: 'No Claim Matched' });
   g.add('matched', 'std.flow.branch', { label: 'Matched a Claim?' });
   g.add('follow', 'billing.follow-claim', { label: 'Show on the Claim' });
   g.add('subject', 'std.expr', subject('fileName', 'reference'));
@@ -105,8 +105,8 @@ const reviewPayerFileLine = (): GraphDef => {
   });
   g.ret('done');
   g.wire('entry.exec', 'matched.exec');
-  g.wire('entry.claimId', 'noClaim.value', 'follow.claimId');
-  g.wire('noClaim.result', 'matched.condition');
+  g.wire('entry.claimId', 'unmatched.value', 'follow.claimId');
+  g.wire('unmatched.result', 'matched.condition');
   g.wire('matched.false', 'follow.exec');
   g.wire('matched.true', 'review.exec');
   g.wire('follow.then', 'review.exec');

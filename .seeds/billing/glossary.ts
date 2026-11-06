@@ -79,9 +79,9 @@ const PINS: Record<string, Doc> = {
   statementNumber: { label: 'Statement', description: 'Which patient statement this is.' },
   subject: { label: 'Task Subject', description: 'How tasks name the claim in task lists.' },
   trip: { label: 'Trip Summary', description: 'The trip as billers read it.' },
-  tripType: {
-    label: 'Trip Type',
-    description: 'emergency, scheduled, treatNoTransport, refusal or noClaim.'
+  classification: {
+    label: 'Classification',
+    description: 'emergency, scheduled, treatNoTransport, refusal or notBillable.'
   }
 };
 

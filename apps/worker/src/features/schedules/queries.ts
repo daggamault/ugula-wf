@@ -114,7 +114,7 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
         from claims c
         join agency a on a.agency_id = c.agency_id
         left join patients p on p.id = c.patient_id
-        where c.trip_type = 'scheduled' and c.pcs_signed_on is not null and c.patient_id is not null
+        where c.classification = 'scheduled' and c.pcs_signed_on is not null and c.patient_id is not null
           and c.service_date >= ${today}::date - ${PCS_DAYS}::int
         order by c.patient_id, c.service_date desc, c.number desc
       )

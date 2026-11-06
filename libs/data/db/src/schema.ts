@@ -4,6 +4,7 @@ import type {
   AfterDownload,
   ClaimEventKind,
   ClaimStatus,
+  Classification,
   ClearinghouseVendor,
   CorrectionMethod,
   DenialRoute,
@@ -20,8 +21,7 @@ import type {
   Sex,
   SignatureStatus,
   StayKind,
-  TransportReason,
-  TripType
+  TransportReason
 } from '@ugula/billing';
 import type { ColumnType, Generated, GeneratedAlways, Kysely } from 'kysely';
 
@@ -396,7 +396,7 @@ export type ClaimsTable = {
   patient_id: string | null;
   import_report_id: string | null;
   pcr_number: string | null;
-  trip_type: TripType | null;
+  classification: Classification | null;
   level: string | null;
   emergency: boolean | null;
   loaded_miles: ColumnType<string | null, number | null, number | null>;

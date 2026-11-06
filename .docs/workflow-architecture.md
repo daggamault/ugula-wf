@@ -53,14 +53,14 @@ Every rule reads one normalized, typed snapshot instead of reaching into the NEM
 
 `Encounter Facts` (built once by _Map Encounter Facts_, rebuilt on revision):
 
-| Section         | Contents                                                                                            |
-| --------------- | --------------------------------------------------------------------------------------------------- |
-| Trip            | trip type, response mode (initial and final), service type, disposition, dates/times, unit, crew    |
-| Locations       | pickup and drop-off address, ZIP, facility type, origin/destination modifier letters, rural class   |
-| Patient         | demographics, weight, deceased timing (before/after loading), multiple-patient count                |
-| Clinical        | impressions, symptoms, coded procedures and medications, vitals, narrative findings with quotes     |
-| Documentation   | signature/exception, PCS (type, date, signer), ABN, prior authorization UTN, MSP answers, facesheet |
-| Coverage claims | payers as reported on the PCR (raw), payment method                                                 |
+| Section         | Contents                                                                                              |
+| --------------- | ----------------------------------------------------------------------------------------------------- |
+| Trip            | classification, response mode (initial and final), service type, disposition, dates/times, unit, crew |
+| Locations       | pickup and drop-off address, ZIP, facility type, origin/destination modifier letters, rural class     |
+| Patient         | demographics, weight, deceased timing (before/after loading), multiple-patient count                  |
+| Clinical        | impressions, symptoms, coded procedures and medications, vitals, narrative findings with quotes       |
+| Documentation   | signature/exception, PCS (type, date, signer), ABN, prior authorization UTN, MSP answers, facesheet   |
+| Coverage claims | payers as reported on the PCR (raw), payment method                                                   |
 
 Each later stage adds its own section to a **Claim Draft** (`Service`, `Diagnoses`, `Charges`, `Coverages`, `ClaimProperties`, `Issues`), so the 837P mapper reads one model.
 
@@ -81,7 +81,7 @@ Each row is a top-level workflow (W) started by an event. Stages (S) are overrid
 | S Import Report           | A Read NEMSIS Report · A Open Draft Claim · R Detect Revision                                                                                                            | yes |
 | S Map Encounter Facts     | R Trip Facts · R Location Facts · R Clinical Facts · R Documentation Facts · `+slot` Agency Facts                                                                        | yes |
 | S Read Documents          | A Store Attachments · A Embed Narrative · A Read Narrative (findings with quotes)                                                                                        | yes |
-| S Classify Trip           | R Trip Type (table) · R Is Billable · `+slot`                                                                                                                            | yes |
+| S Classify Trip           | R Classification (table) · R Is Billable · `+slot`                                                                                                                       | yes |
 | S Resolve Patient         | A Match Patient · task Confirm Patient · A Assign Patient                                                                                                                | yes |
 | S Determine Service       | R Level of Service (table) · R Emergency Status · R Deceased Handling (QL) · R Multiple Patients (GM) · R Loaded Miles · R Non-covered Miles (A0888) · `+slot`           | yes |
 | S Assign Diagnoses        | R Diagnoses From Coded Impressions · R Diagnoses From Narrative (model + vectors, with quotes) · R Order Diagnoses · `+slot`                                             | yes |

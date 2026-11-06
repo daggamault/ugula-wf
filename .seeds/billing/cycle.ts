@@ -241,7 +241,7 @@ const confirmPayers = (): GraphDef => {
   g.wire('addPayer.changes', 'triggers.changes');
   g.wire('triggers.reprice', 'repriceNeeded.condition');
   g.wire('repriceNeeded.true', 'reprice.exec');
-  g.wire('addPayer.tripType', 'reprice.tripType');
+  g.wire('addPayer.classification', 'reprice.classification');
   g.wire('addPayer.service', 'reprice.service');
   g.wire('addPayer.payerId', 'reprice.payerId');
   for (const done of ['repriceNeeded.false', 'reprice.repriced', 'selfPay.then'] as const) {

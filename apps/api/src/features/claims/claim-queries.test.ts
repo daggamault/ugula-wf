@@ -158,7 +158,7 @@ describe('claim queries', () => {
     assert.ok(find?.sql.includes('from "claim_coverages" as "cc"'));
     assert.ok(find?.sql.includes('order by "l"."position"'));
     assert.ok(find?.sql.includes('from "claim_diagnoses" as "d"'));
-    assert.ok(find?.sql.includes('"c"."trip_type"'));
+    assert.ok(find?.sql.includes('"c"."classification"'));
     assert.ok(
       find?.sql.includes('"cc"."relationship", "cc"."insured_first_name", "cc"."insured_last_name"')
     );

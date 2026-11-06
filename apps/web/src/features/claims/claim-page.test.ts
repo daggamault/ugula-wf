@@ -26,7 +26,7 @@ const claim: ClaimDetail = {
   created_at: '2026-10-01T00:00:00Z',
   first_name: 'Jane',
   last_name: 'Doe',
-  trip_type: 'emergency',
+  classification: 'emergency',
   emergency: true,
   loaded_miles: '12.4',
   lines: [{ position: 1, code: 'A0427', units: 1, unit_cents: 95_000, total_cents: 95_000 }],
@@ -185,7 +185,7 @@ const render = (
   );
 
 describe('ClaimView', () => {
-  it('shows the trip type and the claim check issues of an open claim', () => {
+  it('shows the classification and the claim check issues of an open claim', () => {
     const issues: ClaimIssue[] = [
       {
         code: 'member-id-missing',
@@ -196,7 +196,7 @@ describe('ClaimView', () => {
       }
     ];
     const html = render({}, null, 'overview', issues);
-    assert.ok(html.includes('Emergency transport'));
+    assert.ok(html.includes('Emergency Transport'));
     assert.ok(
       html.includes('Must Be Fixed') && html.includes('Member ID: </span>Member ID missing')
     );

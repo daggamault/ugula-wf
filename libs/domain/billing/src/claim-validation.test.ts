@@ -12,7 +12,7 @@ import { COMPLETE_DOCUMENTATION } from './testing.ts';
 const claim = {
   pcrNumber: ' PCR-1 ',
   patientId: 'p1',
-  tripType: 'emergency',
+  classification: 'emergency',
   serviceDate: '2026-10-01T08:15:00Z',
   level: 'ALS1',
   emergency: true,
@@ -44,7 +44,7 @@ const check: ClaimCheck = {
   patientId: 'p1',
   patient: place,
   pcrNumber: 'PCR-1',
-  tripType: 'emergency',
+  classification: 'emergency',
   level: 'ALS1',
   emergency: true,
   loadedMiles: 7.3,
@@ -165,7 +165,7 @@ describe('checkFactsOf', () => {
       {
         ...check,
         patient: { ...place, postalCode: null, city: null },
-        tripType: 'refusal',
+        classification: 'refusal',
         totalCents: 5,
         details: {
           ...check.details,
@@ -256,12 +256,12 @@ describe('readNewClaim', () => {
   it('normalizes a draft claim, leaving what a biller fixes later to the checks', () => {
     const read = readNewClaim({ ...claim, serviceDate: null, totalCents: 5 });
     assert.equal(read.pcrNumber, 'PCR-1');
-    assert.equal(read.tripType, 'emergency');
+    assert.equal(read.classification, 'emergency');
     assert.equal(read.reportKey, 'imports/t/f.xml.reports/00000.json');
     assert.equal(read.details.serviceDate, null);
     assert.equal(read.totalCents, 100_000);
     assert.equal(read.coverages[0]?.payer, 'Medicare');
-    assert.equal(readNewClaim({ ...claim, tripType: 'transfer' }).tripType, null);
+    assert.equal(readNewClaim({ ...claim, classification: 'transfer' }).classification, null);
     assert.deepEqual([read.deceased, read.nonCoveredMiles], [false, null]);
     const dead = readNewClaim({ ...claim, deceased: true, nonCoveredMiles: 3.2 });
     assert.deepEqual([dead.deceased, dead.nonCoveredMiles], [true, 3.2]);

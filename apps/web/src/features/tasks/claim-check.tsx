@@ -1,9 +1,9 @@
 import {
+  CLASSIFICATION_LABELS,
   type ClaimCheck,
+  type Classification,
   type InsuredRelationship,
-  RELATIONSHIP_LABELS,
-  TRIP_TYPE_LABELS,
-  type TripType
+  RELATIONSHIP_LABELS
 } from '@ugula/billing';
 import { isRecord, type Json } from '@ugula/graph';
 import { ChargeLines } from '../../shared/claims/charge-lines.tsx';
@@ -25,8 +25,10 @@ export const placeText = (p: Place | null) =>
     .filter(Boolean)
     .join(', ') || emptyValue;
 
-const tripTypeText = (t: string | null) =>
-  t && Object.hasOwn(TRIP_TYPE_LABELS, t) ? TRIP_TYPE_LABELS[t as TripType] : (t ?? emptyValue);
+const classificationText = (t: string | null) =>
+  t && Object.hasOwn(CLASSIFICATION_LABELS, t)
+    ? CLASSIFICATION_LABELS[t as Classification]
+    : (t ?? emptyValue);
 
 const relationshipText = (r: string) =>
   Object.hasOwn(RELATIONSHIP_LABELS, r) ? RELATIONSHIP_LABELS[r as InsuredRelationship] : r;
@@ -43,7 +45,7 @@ export const ClaimCheckView = ({ claim }: { claim: ClaimCheck }) => (
         {formatCents(claim.totalCents)}
       </Detail>
       <Detail label="Date of Service">{formatDate(claim.details.serviceDate)}</Detail>
-      <Detail label="Trip Type">{tripTypeText(claim.tripType)}</Detail>
+      <Detail label="Classification">{classificationText(claim.classification)}</Detail>
       <Detail label="Level of Service">
         {claim.level ?? emptyValue}
         {claim.emergency === null ? '' : claim.emergency ? ', emergency' : ', non-emergency'}

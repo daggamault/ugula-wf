@@ -38,7 +38,7 @@ describe('ClaimCheckView', () => {
     );
     assert.ok(html.includes('>Date of Service<') && html.includes('>Loaded Miles<'));
     assert.ok(html.includes('$1,000.00') && html.includes('7.3 miles'));
-    assert.ok(html.includes('Emergency transport') && html.includes('ALS1, emergency'));
+    assert.ok(html.includes('Emergency Transport') && html.includes('ALS1, emergency'));
     assert.ok(html.includes('aria-label="Payers on the claim"'));
     assert.ok(
       html.includes('M-Medicare') && html.includes('>Self<') && html.includes('The patient')
@@ -52,7 +52,7 @@ describe('ClaimCheckView', () => {
         claim: {
           ...completeCheck([]),
           lines: [],
-          tripType: 'custom',
+          classification: 'custom',
           emergency: false,
           loadedMiles: null,
           level: null

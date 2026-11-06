@@ -11,7 +11,7 @@ import {
   type FileItem,
   findClaimByNumber,
   item,
-  noClaim,
+  notBillable,
   type Posted,
   recordPayerEvent
 } from './payer-file-items.ts';
@@ -159,7 +159,7 @@ export const postClaimAcknowledgments = async (
     n += 1;
     const claim = await findClaimByNumber(c.tx, c.agencyId, ack.claimNumber);
     if (!claim) {
-      items.push(noClaim(ack.claimNumber));
+      items.push(notBillable(ack.claimNumber));
       continue;
     }
     const coverageId = await lastSubmittedCoverage(c.tx, claim.id);
@@ -199,7 +199,7 @@ export const postClaimStatuses = async (
     n += 1;
     const claim = await findClaimByNumber(c.tx, c.agencyId, s.claimNumber);
     if (!claim) {
-      items.push(noClaim(s.claimNumber));
+      items.push(notBillable(s.claimNumber));
       continue;
     }
     const coverageId = await lastSubmittedCoverage(c.tx, claim.id);

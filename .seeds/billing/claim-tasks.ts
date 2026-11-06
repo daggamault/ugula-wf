@@ -64,7 +64,7 @@ const correctClaimData = (): GraphDef => {
       queue: 'billing-review',
       permission: EDIT_PERMISSION,
       instructions:
-        'Every field starts with what the claim says now, with its issues in the details. Change what is wrong and save; empty fields are left as they are. Charges are mapped and priced again when the trip type, service, miles or payers change, the change is logged so an approved claim is reviewed again, and the claim is checked again. Cancel to change nothing.',
+        'Every field starts with what the claim says now, with its issues in the details. Change what is wrong and save; empty fields are left as they are. Charges are mapped and priced again when the classification, service, miles or payers change, the change is logged so an approved claim is reviewed again, and the claim is checked again. Cancel to change nothing.',
       fields: CLAIM_FIX_FIELDS,
       outcomes: ['save', 'cancel'],
       hints: {
@@ -105,7 +105,8 @@ const correctClaimData = (): GraphDef => {
   g.wire('triggers.reprice', 'repriceNeeded.condition');
   g.wire('repriceNeeded.true', 'reprice.exec');
   g.wire('repriceNeeded.false', 'recheck.exec');
-  for (const pin of ['tripType', 'service', 'payerId']) g.wire(`patch.${pin}`, `reprice.${pin}`);
+  for (const pin of ['classification', 'service', 'payerId'])
+    g.wire(`patch.${pin}`, `reprice.${pin}`);
   g.wire('reprice.repriced', 'recheck.exec');
   g.wire('reprice.voided', 'void.exec');
   g.wire('void.then', 'done.exec');

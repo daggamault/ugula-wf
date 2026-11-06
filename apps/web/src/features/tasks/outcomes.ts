@@ -51,6 +51,7 @@ const OUTCOMES: Readonly<Record<string, OutcomeStyle>> = {
   void: { icon: BanIcon },
   skip: { icon: SkipForwardIcon },
   claim: { icon: ReceiptTextIcon, label: 'Make Claim' },
+  skipClaim: { icon: SkipForwardIcon, label: 'Skip Claim' },
   useSelected: { icon: UserCheckIcon, label: 'Use Selected Patient' },
   createNew: { icon: UserPlusIcon, label: 'Create New Patient' },
   savePatient: { icon: SaveIcon, label: 'Save Patient' },

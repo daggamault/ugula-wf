@@ -20,7 +20,7 @@ const claim: TaskClaim = {
   patient: 'Doe, Jane',
   birthDate: '1950-02-03',
   serviceDate: '2026-09-14',
-  tripType: 'scheduled',
+  classification: 'scheduled',
   level: 'BLS',
   emergency: false,
   loadedMiles: '8.3',
@@ -86,7 +86,14 @@ describe('ClaimFacts', () => {
     assert.ok(html.includes('A0428 × 1') && html.includes('8.3'));
     const bare = renderToStaticMarkup(
       createElement(ClaimFacts, {
-        claim: { ...claim, patient: null, payers: [], lines: [], tripType: 'unknown', level: null },
+        claim: {
+          ...claim,
+          patient: null,
+          payers: [],
+          lines: [],
+          classification: 'unknown',
+          level: null
+        },
         taskId: 't1'
       })
     );

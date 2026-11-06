@@ -20,7 +20,7 @@ const claimValues = (c: NewClaim) => {
   return {
     patient_id: c.patientId,
     pcr_number: c.pcrNumber,
-    trip_type: c.tripType,
+    classification: c.classification,
     level: c.level,
     emergency: c.emergency,
     loaded_miles: c.loadedMiles,

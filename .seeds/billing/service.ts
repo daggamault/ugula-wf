@@ -1,4 +1,4 @@
-import { TRIP_TYPE_FIELD } from '@ugula/billing';
+import { CLASSIFICATION_FIELD } from '@ugula/billing';
 import type { GraphDef, Json } from '@ugula/graph';
 import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
@@ -43,20 +43,25 @@ const TRANSPORTED = ['4230001', '4230003'];
 
 const TRANSPORTED_INCIDENTS = ['4212013', '4212017', '4212023', '4212033'];
 
-const TRIP_TYPE_OUT = d('tripType', 'string', 'Trip Type', 'The trip type to bill the report as.');
+const CLASSIFICATION_OUT = d(
+  'classification',
+  'string',
+  'Classification',
+  'The classification to bill the report as.'
+);
 
-const tripType = (): GraphDef => {
+const classification = (): GraphDef => {
   const g = rule(
     [d('trip', T.trip, 'Trip Facts', 'The dispositions and type of service of the trip.')],
-    [TRIP_TYPE_OUT, P.reason(), P.reasons('the trip type was chosen')]
+    [CLASSIFICATION_OUT, P.reason(), P.reasons('the classification was chosen')]
   );
   g.add('trip', 'billing.trip-facts.break');
   g.add('decide', 'std.table.decide', {
-    label: 'Trip Type',
+    label: 'Classification',
     config: shared.decision(
-      'billing.trip-type',
-      'Trip Type',
-      'Decides the trip type from the report dispositions and the type of service.',
+      'billing.classification',
+      'Classification',
+      'Decides the classification from the report dispositions and the type of service.',
       table(
         [
           field('incidentDisposition', 'string', 'Incident/patient disposition · eDisposition.12'),
@@ -65,12 +70,12 @@ const tripType = (): GraphDef => {
           field('transportDisposition', 'string', 'Transport disposition · eDisposition.30'),
           field('serviceType', 'string', 'Type of service requested · eResponse.05')
         ],
-        [field('tripType', 'string', 'Trip type')],
+        [field('classification', 'string', 'Classification')],
         [
           {
             label: 'Cancelled, or no patient contact',
             when: { incidentDisposition: oneOf('4212007', '4212009', '4212011') },
-            set: { tripType: 'noClaim' }
+            set: { classification: 'notBillable' }
           },
           {
             label: 'Assist, standby or non-patient transport',
@@ -84,17 +89,17 @@ const tripType = (): GraphDef => {
                 '4212043'
               )
             },
-            set: { tripType: 'noClaim' }
+            set: { classification: 'notBillable' }
           },
           {
             label: 'Unit cancelled, made no patient contact, or had no patient',
             when: { unitDisposition: oneOf('4227003', '4227005', '4227007', '4227009', '4227011') },
-            set: { tripType: 'noClaim' }
+            set: { classification: 'notBillable' }
           },
           {
             label: 'Non-patient transport',
             when: { transportDisposition: oneOf('4230011') },
-            set: { tripType: 'noClaim' }
+            set: { classification: 'notBillable' }
           },
           {
             label: 'Non-patient service requested and nobody transported',
@@ -103,12 +108,12 @@ const tripType = (): GraphDef => {
               incidentDisposition: notOneOf(...TRANSPORTED_INCIDENTS),
               transportDisposition: notOneOf(...TRANSPORTED)
             },
-            set: { tripType: 'noClaim' }
+            set: { classification: 'notBillable' }
           },
           {
             label: 'Patient refused care',
             when: { incidentDisposition: oneOf('4212025') },
-            set: { tripType: 'refusal' }
+            set: { classification: 'refusal' }
           },
           {
             label: 'Patient refused care and transport',
@@ -116,7 +121,7 @@ const tripType = (): GraphDef => {
               patientEvaluation: oneOf('4228003', '4228007'),
               transportDisposition: oneOf('4230009', '4230013')
             },
-            set: { tripType: 'refusal' }
+            set: { classification: 'refusal' }
           },
           {
             label: 'Patient treated and not transported',
@@ -132,35 +137,35 @@ const tripType = (): GraphDef => {
                 '4212037'
               )
             },
-            set: { tripType: 'treatNoTransport' }
+            set: { classification: 'treatNoTransport' }
           },
           {
             label: 'Patient not transported by this unit',
             when: { transportDisposition: oneOf('4230005', '4230007', '4230009', '4230013') },
-            set: { tripType: 'treatNoTransport' }
+            set: { classification: 'treatNoTransport' }
           },
           {
             label: 'Scheduled or interfacility transport',
             when: { serviceType: oneOf(...INTERFACILITY, '2205007') },
-            set: { tripType: 'scheduled' }
+            set: { classification: 'scheduled' }
           },
           {
             label: 'Emergency response',
             when: { serviceType: oneOf('2205001', '2205003', '2205009') },
-            set: { tripType: 'emergency' }
+            set: { classification: 'emergency' }
           },
           {
             label: 'Patient treated and transported by this unit',
             when: { incidentDisposition: oneOf(...TRANSPORTED_INCIDENTS) },
-            set: { tripType: 'emergency' }
+            set: { classification: 'emergency' }
           },
           {
             label: 'Patient transported by this unit',
             when: { transportDisposition: oneOf(...TRANSPORTED) },
-            set: { tripType: 'emergency' }
+            set: { classification: 'emergency' }
           }
         ],
-        { tripType: 'emergency' }
+        { classification: 'emergency' }
       )
     )
   });
@@ -175,31 +180,34 @@ const tripType = (): GraphDef => {
   ]) {
     g.wire(`trip.${pin}`, `decide.${pin}`);
   }
-  g.wire('decide.tripType', 'return.tripType');
+  g.wire('decide.classification', 'return.classification');
   g.wire('decide.rule', 'return.reason');
   g.wire('decide.rules', 'return.reasons');
   return g.def;
 };
 
 const classifyTrip = (): GraphDef => {
-  const g = rule([P.facts()], [TRIP_TYPE_OUT, P.reason(), P.reasons('the trip type was chosen')]);
+  const g = rule(
+    [P.facts()],
+    [CLASSIFICATION_OUT, P.reason(), P.reasons('the classification was chosen')]
+  );
   g.add('facts', 'billing.encounter-facts.break');
-  g.add('base', 'billing.trip-type', { label: 'Trip Type' });
-  g.add('agency', 'billing.agency-trip-type', { label: 'Agency Trip Type' });
+  g.add('base', 'billing.classification', { label: 'Classification' });
+  g.add('agency', 'billing.agency-classification', { label: 'Agency Classification' });
   g.add(
     'reasons',
     'std.expr',
     expr(
-      'Reasons for the Trip Type Billed',
-      "tripType == baseType ? reasons : [reason ?? 'Changed by an agency rule']"
+      'Reasons for the Classification Billed',
+      "classification == baseType ? reasons : [reason ?? 'Changed by an agency rule']"
     )
   );
   g.ret('return');
   g.wire('entry.facts', 'facts.facts', 'agency.facts');
   g.wire('facts.trip', 'base.trip');
-  g.wire('base.tripType', 'agency.tripType', 'reasons.baseType');
+  g.wire('base.classification', 'agency.classification', 'reasons.baseType');
   g.wire('base.reason', 'agency.reason');
-  g.wire('agency.tripType', 'return.tripType', 'reasons.tripType');
+  g.wire('agency.classification', 'return.classification', 'reasons.classification');
   g.wire('agency.reason', 'return.reason', 'reasons.reason');
   g.wire('base.reasons', 'reasons.reasons');
   g.wire('reasons.result', 'return.reasons');
@@ -208,38 +216,38 @@ const classifyTrip = (): GraphDef => {
 
 const tripContext = `{ trip: trip }`;
 
-const NO_CLAIM_SUMMARY = `'No claim looks needed for this report' +
+const NOT_BILLABLE_SUMMARY = `'This trip was classified as not billable' +
   (${named('reason', 'null')} != null ? ' (' + reason + ')' : '') +
-  '; skip it, or choose the trip type and make a claim if care was given'`;
+  '; confirm it and skip the claim, or classify it and make a claim if care was given'`;
 
 const decideClaim = (): GraphDef => {
-  const g = stage([P.pcr(), P.facts()], [TRIP_TYPE_OUT, P.reason()], {
+  const g = stage([P.pcr(), P.facts()], [CLASSIFICATION_OUT, P.reason()], {
     claim: exit(
       'Claim',
-      'The report is billed, as the trip type it was classified or confirmed as.'
+      'The report is billed under the classification it was given or confirmed as.'
     ),
-    skip: exit('Skip', 'A biller confirmed no claim is needed.')
+    skip: exit('Skip', 'A biller confirmed the trip is not billable.')
   });
   g.add('classify', 'billing.classify-trip', { label: 'Classify Trip' });
   g.add('needed', 'std.flow.switch', {
     label: 'Claim Needed?',
-    config: { cases: ['noClaim'] }
+    config: { cases: ['notBillable'] }
   });
   g.add('trip', 'billing.trip-summary', { label: 'Trip Summary' });
   g.add('context', 'std.expr', expr('Trip Context', tripContext));
   g.add('subject', 'billing.pcr-subject', { label: 'Task Subject' });
-  g.add('noClaim', 'std.human.task', {
-    label: 'Confirm No Claim',
+  g.add('notBillable', 'std.human.task', {
+    label: 'Confirm Not Billable',
     config: {
-      title: 'Confirm no claim',
+      title: 'Confirm Not Billable',
       queue: 'billing-review',
       instructions:
-        'This report looks like a cancelled call or a trip without patient contact, so no claim would be made. Skip it, or choose the trip type that was billed and make a claim if care was given.',
-      fields: [{ ...TRIP_TYPE_FIELD, required: ['claim'] }],
-      outcomes: ['skip', 'claim'],
+        'This report looks like a cancelled call or a trip without patient contact, so it was classified as not billable.',
+      fields: [{ ...CLASSIFICATION_FIELD, required: ['claim'] }],
+      outcomes: ['claim', 'skipClaim'],
       hints: {
-        skip: 'Makes no claim for this report.',
-        claim: 'Makes a claim for this report as the chosen trip type.'
+        claim: 'Classify this trip and continue to a claim.',
+        skipClaim: 'Confirm this trip is not billable and skip the claim.'
       }
     }
   });
@@ -249,19 +257,19 @@ const decideClaim = (): GraphDef => {
   g.wire('entry.exec', 'needed.exec');
   g.wire('entry.facts', 'classify.facts');
   g.wire('entry.pcr', 'trip.pcr', 'subject.pcr');
-  g.wire('classify.tripType', 'needed.value', 'trip.tripType');
-  g.wire('classify.tripType', 'classified.tripType', 'skipped.tripType');
+  g.wire('classify.classification', 'needed.value', 'trip.classification');
+  g.wire('classify.classification', 'classified.classification', 'skipped.classification');
   g.wire('classify.reason', 'trip.reason', 'classified.reason');
   g.wire('classify.reason', 'confirmed.reason', 'skipped.reason');
   g.wire('trip.trip', 'context.trip');
   g.wire('needed.default', 'classified.exec');
-  g.wire('needed.noClaim', 'noClaim.exec');
-  g.wire('context.result', 'noClaim.context');
-  g.wire('subject.subject', 'noClaim.subject');
-  summarize(g, 'noClaim', NO_CLAIM_SUMMARY, { reason: 'classify.reason' });
-  g.wire('noClaim.claim', 'confirmed.exec');
-  g.wire('noClaim.tripType', 'confirmed.tripType');
-  g.wire('noClaim.skip', 'skipped.exec');
+  g.wire('needed.notBillable', 'notBillable.exec');
+  g.wire('context.result', 'notBillable.context');
+  g.wire('subject.subject', 'notBillable.subject');
+  summarize(g, 'notBillable', NOT_BILLABLE_SUMMARY, { reason: 'classify.reason' });
+  g.wire('notBillable.claim', 'confirmed.exec');
+  g.wire('notBillable.classification', 'confirmed.classification');
+  g.wire('notBillable.skipClaim', 'skipped.exec');
   return g.def;
 };
 
@@ -651,7 +659,7 @@ const ARREST_AFTER_LOADING = ['3018001', '3018005', '3018009'];
 const deceasedHandling = (): GraphDef => {
   const g = rule(
     [
-      d('service', T.service, 'Service', 'The service suggested for the trip type.'),
+      d('service', T.service, 'Service', 'The service suggested for the classification.'),
       d('trip', T.trip, 'Trip Facts', 'The dispositions and cardiac arrest outcome of the trip.')
     ],
     [SERVICE_OUT]
@@ -768,7 +776,7 @@ const TRIP_SERVICES = [
 ] as const;
 
 const determineService = (): GraphDef => {
-  const g = rule([P.tripType(), P.facts(), P.findings(true)], [SERVICE_OUT]);
+  const g = rule([P.classification(), P.facts(), P.findings(true)], [SERVICE_OUT]);
   for (const [id, type] of TRIP_SERVICES) {
     g.add(id, type);
     g.wire('entry.facts', `${id}.facts`);
@@ -778,15 +786,15 @@ const determineService = (): GraphDef => {
     'byTrip',
     'std.expr',
     expr(
-      'Service for the Trip Type',
-      '{ scheduled: scheduled, treatNoTransport: treatNoTransport, refusal: refusal }[tripType] ?? emergency'
+      'Service for the Classification',
+      '{ scheduled: scheduled, treatNoTransport: treatNoTransport, refusal: refusal }[classification] ?? emergency'
     )
   );
   g.add('facts', 'billing.encounter-facts.break');
   g.add('deceased', 'billing.deceased-handling', { label: 'Deceased Handling (QL)' });
   g.add('agency', 'billing.agency-service', { label: 'Agency Service' });
   g.ret('return');
-  g.wire('entry.tripType', 'byTrip.tripType', 'agency.tripType');
+  g.wire('entry.classification', 'byTrip.classification', 'agency.classification');
   for (const [id] of TRIP_SERVICES) g.wire(`${id}.service`, `byTrip.${id}`);
   g.wire('entry.facts', 'facts.facts', 'agency.facts');
   g.wire('facts.trip', 'deceased.trip');
@@ -846,17 +854,17 @@ const FACTS_CONTEXT = P.facts(true);
 
 export const serviceGraphs: SeedGraph[] = [
   slot(
-    'billing.agency-trip-type',
-    'Agency Trip Type',
-    'An agency rule after the trip type is decided: bill a kind of trip differently (a contract that bills standbys, say). Passes the trip type through unchanged until an agency overrides it.',
+    'billing.agency-classification',
+    'Agency Classification',
+    'An agency rule after the classification is decided: bill a kind of trip differently (a contract that bills standbys, say). Passes the classification through unchanged until an agency overrides it.',
     pureSlot(
       [
-        d('tripType', 'string', 'Trip Type', 'The trip type the base rules chose.'),
+        d('classification', 'string', 'Classification', 'The classification the base rules chose.'),
         d('reason', 'string', 'Classified By', 'The rule that chose it.', true),
         FACTS_CONTEXT
       ],
       [
-        d('tripType', 'string', 'Trip Type', 'The trip type to bill.'),
+        d('classification', 'string', 'Classification', 'The classification to bill.'),
         d('reason', 'string', 'Classified By', 'Why, for the biller.', true)
       ]
     )
@@ -864,11 +872,11 @@ export const serviceGraphs: SeedGraph[] = [
   slot(
     'billing.agency-service',
     'Agency Service',
-    'An agency rule after the service is suggested for the trip type: change the level, emergency status or miles a biller is asked to confirm. Passes the service through unchanged until an agency overrides it.',
+    'An agency rule after the service is suggested for the classification: change the level, emergency status or miles a biller is asked to confirm. Passes the service through unchanged until an agency overrides it.',
     pureSlot(
       [
         d('service', T.service, 'Service', 'The service the base rules suggested.'),
-        d('tripType', 'string', 'Trip Type', 'The trip type being billed.', true),
+        d('classification', 'string', 'Classification', 'The classification being billed.', true),
         FACTS_CONTEXT
       ],
       [d('service', T.service, 'Service', 'The service to suggest to the biller.')]
@@ -887,15 +895,15 @@ export const serviceGraphs: SeedGraph[] = [
     )
   ),
   asRule(
-    'billing.trip-type',
-    'Trip Type',
-    'Decides the trip type (emergency, scheduled, treatNoTransport, refusal or noClaim) from the dispositions and type of service with the Trip Type table, with the rule that matched.',
-    tripType()
+    'billing.classification',
+    'Classification',
+    'Decides the classification (emergency, scheduled, treatNoTransport, refusal or notBillable) from the dispositions and type of service with the Classification table, with the rule that matched.',
+    classification()
   ),
   asRule(
     'billing.classify-trip',
     'Classify Trip',
-    'Classifies the trip from the encounter facts: the Trip Type rule, then the Agency Trip Type rule.',
+    'Classifies the trip from the encounter facts: the Classification rule, then the Agency Classification rule.',
     classifyTrip()
   ),
   asRule(
@@ -931,7 +939,7 @@ export const serviceGraphs: SeedGraph[] = [
   asRule(
     'billing.base-service',
     'Base Service',
-    'The service every trip type starts from: Level of Service, Emergency Status, Loaded Miles and Non-Covered Miles.',
+    'The service every classification starts from: Level of Service, Emergency Status, Loaded Miles and Non-Covered Miles.',
     baseService()
   ),
   asRule(
@@ -961,7 +969,7 @@ export const serviceGraphs: SeedGraph[] = [
   asRule(
     'billing.determine-service',
     'Determine Service',
-    'Suggests the service for the trip type (Emergency Trip, Scheduled Trip, Treat, No Transport or Refusal), bills a patient pronounced dead before loading as BLS without miles (Deceased Handling), then the Agency Service rule.',
+    'Suggests the service for the classification (Emergency Trip, Scheduled Trip, Treat, No Transport or Refusal), bills a patient pronounced dead before loading as BLS without miles (Deceased Handling), then the Agency Service rule.',
     determineService()
   ),
   asRule(
@@ -979,7 +987,7 @@ export const serviceGraphs: SeedGraph[] = [
   asStage(
     'billing.decide-claim',
     'Decide Whether to Claim',
-    'Classifies the trip and, when it looks like no claim is needed, asks a biller to skip the report or name the trip type to claim it as.',
+    'Classifies the trip and, when it looks like no claim is needed, asks a biller to skip the report or name the classification to claim it as.',
     decideClaim()
   )
 ];

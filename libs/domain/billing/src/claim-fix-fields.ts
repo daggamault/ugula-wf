@@ -1,5 +1,10 @@
 import type { FieldSpec } from '@ugula/graph';
-import { MAX_LOADED_MILES, SERVICE_LEVELS, TRIP_TYPE_LABELS, TRIP_TYPES } from './charges.ts';
+import {
+  CLASSIFICATION_LABELS,
+  CLASSIFICATIONS,
+  MAX_LOADED_MILES,
+  SERVICE_LEVELS
+} from './charges.ts';
 import {
   INSURED_RELATIONSHIPS,
   ORIGIN_DESTINATION_CODES,
@@ -37,11 +42,13 @@ const MODIFIER_OPTIONS = Object.entries(ORIGIN_DESTINATION_CODES).map(([code, la
   option(code, `${code} · ${label}`)
 );
 
-export const TRIP_TYPE_FIELD: FieldSpec = {
-  name: 'tripType',
+export const CLASSIFICATION_FIELD: FieldSpec = {
+  name: 'classification',
   type: 'string',
-  label: 'Trip type',
-  options: TRIP_TYPES.filter((t) => t !== 'noClaim').map((t) => option(t, TRIP_TYPE_LABELS[t]))
+  label: 'Classification',
+  options: CLASSIFICATIONS.filter((t) => t !== 'notBillable').map((t) =>
+    option(t, CLASSIFICATION_LABELS[t])
+  )
 };
 
 export const LEVEL_FIELD: FieldSpec = {
@@ -145,7 +152,7 @@ export const CLAIM_FIX_FIELDS: FieldSpec[] = [
     format: 'date',
     required: ['save']
   },
-  TRIP_TYPE_FIELD,
+  CLASSIFICATION_FIELD,
   LEVEL_FIELD,
   { name: 'emergency', type: 'boolean', label: 'Emergency response' },
   LOADED_MILES_FIELD,
@@ -221,7 +228,7 @@ export const COVERAGE_FIELDS = [
 ];
 
 const CHARGE_FIELDS = [
-  'tripType',
+  'classification',
   'level',
   'emergency',
   'loadedMiles',
@@ -236,7 +243,7 @@ export const FIELDS_OF: Record<ClaimField, string[]> = {
   pcrNumber: [],
   patientAddress: names('patient'),
   serviceDate: ['serviceDate'],
-  tripType: CHARGE_FIELDS,
+  classification: CHARGE_FIELDS,
   level: CHARGE_FIELDS,
   emergency: CHARGE_FIELDS,
   loadedMiles: CHARGE_FIELDS,

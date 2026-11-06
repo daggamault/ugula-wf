@@ -157,12 +157,12 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Patch Claim',
       category: CATEGORY,
       description:
-        'Applies what a biller entered in a Fix Claim Data task to the claim, once per run step, leaving empty fields as they are, and logs the edit so an approved claim is reviewed again; lines saves repriced charges. Outputs what changed (trip type, level, emergency, miles, payers), for the Reprice Triggers rule, and the trip type, service and primary payer charges are mapped and priced from.',
+        'Applies what a biller entered in a Fix Claim Data task to the claim, once per run step, leaving empty fields as they are, and logs the edit so an approved claim is reviewed again; lines saves repriced charges. Outputs what changed (classification, level, emergency, miles, payers), for the Reprice Triggers rule, and the classification, service and primary payer charges are mapped and priced from.',
       effect: true,
       inputs: [claimIdPin, ...fixPins, pin('lines', { list: LINE.type }, { optional: true })],
       outputs: [
         pin('changes', { object: {} }, { label: 'What Changed' }),
-        pin('tripType', 'string'),
+        pin('classification', 'string'),
         pin('service', SERVICE.type),
         pin('payerId', 'string')
       ],
@@ -178,7 +178,7 @@ export const claimNodes: NodesOf = (stores) => {
         const after = checkOf(await store.claimCheck(ctx.runId, claimId), claimId);
         return {
           changes: chargeChanges(patch),
-          tripType: after.tripType,
+          classification: after.classification,
           service: {
             level: after.level,
             emergency: after.emergency,
@@ -234,7 +234,7 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Save Claim',
       category: CATEGORY,
       description:
-        'Fills the draft claim with its trip type, charge lines, payers in billing order, trip details and diagnoses. It stays a draft until it is valid and its payer cycle starts.',
+        'Fills the draft claim with its classification, charge lines, payers in billing order, trip details and diagnoses. It stays a draft until it is valid and its payer cycle starts.',
       effect: true,
       inputs: [claimIdPin, claimPin],
       outputs: [],

@@ -22,8 +22,8 @@ describe('TableReference', () => {
   it('links a shared table and says when it is customized or unavailable', () => {
     const custom = renderToStaticMarkup(
       createElement(TableReference, {
-        tableKey: 'billing.trip-type',
-        table: { id: 't1', key: 'billing.trip-type', name: 'Trip Type', scope: 'agency' }
+        tableKey: 'billing.classification',
+        table: { id: 't1', key: 'billing.classification', name: 'Classification', scope: 'agency' }
       })
     );
     assert.ok(

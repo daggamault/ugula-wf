@@ -1,13 +1,13 @@
 export {
+  CLASSIFICATION_LABELS,
+  CLASSIFICATIONS,
   type ClaimLine,
+  type Classification,
   HCPCS_PATTERN,
   MAX_LOADED_MILES,
   NO_TRANSPORT_CODE,
   type PricedLine,
   SERVICE_LEVELS,
-  TRIP_TYPE_LABELS,
-  TRIP_TYPES,
-  type TripType,
   UNIT_SCALE
 } from './charges.ts';
 export {
@@ -33,9 +33,9 @@ export {
 export type { ClaimPatch, CoveragePatch } from './claim-fix.ts';
 export {
   CLAIM_FIX_FIELDS,
+  CLASSIFICATION_FIELD,
   LEVEL_FIELD,
-  LOADED_MILES_FIELD,
-  TRIP_TYPE_FIELD
+  LOADED_MILES_FIELD
 } from './claim-fix-fields.ts';
 export { type ManualPayment, PAYMENT_KINDS } from './claim-payments.ts';
 export { CLAIM_TASK_KEYS, CLAIM_TASKS, type ClaimTaskKey } from './claim-tasks.ts';

@@ -7,7 +7,7 @@ const claim = {
   id: 'c1',
   patient_id: 'p1',
   pcr_number: 'PCR-1',
-  trip_type: 'emergency',
+  classification: 'emergency',
   level: 'ALS1',
   emergency: true,
   loaded_miles: '7.3',

@@ -39,7 +39,7 @@ const claimOf = (fixture: Fixture) => draftClaim(s, pcrs[fixture]);
 const reviewed = async (fixture: Fixture) =>
   workTasksUntil(s, await claimOf(fixture), 'needs_review');
 
-describe('trip types decide what a report is billed as', { timeout: SUITE_MS }, () => {
+describe('classifications decide what a report is billed as', { timeout: SUITE_MS }, () => {
   before(async () => {
     s = await signIn();
     for (const fixture of FIXTURES) await uploadEncounters(s, pcrs[fixture], fixture);
@@ -51,7 +51,7 @@ describe('trip types decide what a report is billed as', { timeout: SUITE_MS }, 
 
   it('bills a 911 BLS response from a crash scene as BLS emergency from the scene', async () => {
     expectClaim(await reviewed('bls-emergency-commercial'), {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'BLS',
       emergency: true,
       lines: [
@@ -65,7 +65,7 @@ describe('trip types decide what a report is billed as', { timeout: SUITE_MS }, 
 
   it('bills an emergent interfacility transfer as an emergency and asks the biller to confirm it', async () => {
     expectClaim(await reviewed('emergent-interfacility'), {
-      tripType: 'scheduled',
+      classification: 'scheduled',
       level: 'ALS1',
       emergency: true,
       lines: [
@@ -81,7 +81,7 @@ describe('trip types decide what a report is billed as', { timeout: SUITE_MS }, 
   it('files a scheduled dialysis trip with its certification as BLS with RJ on every line', async () => {
     const built = await reviewed('scheduled-dialysis-pcs');
     expectClaim(built, {
-      tripType: 'scheduled',
+      classification: 'scheduled',
       level: 'BLS',
       emergency: false,
       lines: [
@@ -104,7 +104,7 @@ describe('trip types decide what a report is billed as', { timeout: SUITE_MS }, 
   it('bills Medicare treatment without transport as A0998 with GY and no mileage', async () => {
     const built = await reviewed('treat-no-transport-medicare');
     expectClaim(built, {
-      tripType: 'treatNoTransport',
+      classification: 'treatNoTransport',
       level: 'ALS1',
       emergency: true,
       lines: [['A0998', 1]],
@@ -128,7 +128,7 @@ describe('trip types decide what a report is billed as', { timeout: SUITE_MS }, 
     const stuck = await workTasksUntilTask(s, await claimOf('refusal-unsigned'), 'Fix claim data');
     assert.equal(stuck.claim.status, 'draft');
     expectClaim(stuck, {
-      tripType: 'refusal',
+      classification: 'refusal',
       level: 'BLS',
       emergency: true,
       lines: [['A0998', 1]],
@@ -139,13 +139,13 @@ describe('trip types decide what a report is billed as', { timeout: SUITE_MS }, 
 
   it('asks before voiding a call cancelled before arrival', async () => {
     const claimId = await claimOf('cancelled-prior-to-arrival');
-    await completeTask(s, claimId, 'Confirm no claim', { outcome: 'Skip' });
+    await completeTask(s, claimId, 'Confirm Not Billable', { outcome: 'Skip Claim' });
     await claimStatusIs(s, claimId, 'void');
   });
 
   it('treats a rescue with no patient care as no claim, not a treat-no-transport', async () => {
     const claimId = await claimOf('rescue-no-patient-care');
-    await completeTask(s, claimId, 'Confirm no claim', { outcome: 'Skip' });
+    await completeTask(s, claimId, 'Confirm Not Billable', { outcome: 'Skip Claim' });
     const { claim } = await claimStatusIs(s, claimId, 'void');
     assert.equal(claim.lines.length, 0);
   });
@@ -153,7 +153,7 @@ describe('trip types decide what a report is billed as', { timeout: SUITE_MS }, 
   it('reads a NEMSIS 3.4 report by its incident disposition', async () => {
     const built = await reviewed('nemsis-34-emergency');
     expectClaim(built, {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'ALS1',
       emergency: true,
       lines: [

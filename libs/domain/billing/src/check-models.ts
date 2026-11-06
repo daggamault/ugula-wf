@@ -58,7 +58,7 @@ export const CHECK_FACTS = model(
     f('patientAddressMissing', { list: 'string' }, 'Missing parts of the patient address'),
     f('pcrNumber', 'string', 'PCR number'),
     f('serviceDate', 'string', 'Date of service'),
-    f('tripType', 'string', 'Trip type'),
+    f('classification', 'string', 'Classification'),
     f(
       'transports',
       'boolean',

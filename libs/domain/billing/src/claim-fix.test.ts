@@ -15,7 +15,7 @@ describe('readClaimPatch', () => {
         destinationPostalCode: '62704',
         originCode: 'S',
         loadedMiles: 9.2,
-        tripType: 'noClaim',
+        classification: 'notBillable',
         coverageId: 'cov-Blue',
         memberId: ' B2 ',
         relationship: '19'
@@ -27,7 +27,7 @@ describe('readClaimPatch', () => {
     assert.deepEqual(patch.destination, { ...check.details.destination, postalCode: '62704' });
     assert.equal(patch.pickup, null);
     assert.equal(patch.originDestination, 'SH');
-    assert.equal(patch.tripType, null);
+    assert.equal(patch.classification, null);
     assert.deepEqual(patch.coverage, {
       coverageId: 'cov-Blue',
       payerId: null,
@@ -39,7 +39,7 @@ describe('readClaimPatch', () => {
     });
     assert.ok(Object.values(chargeChanges(patch)).some(Boolean));
     assert.deepEqual(chargeChanges({ ...patch, loadedMiles: null, coverage: null }), {
-      tripType: false,
+      classification: false,
       level: false,
       emergency: false,
       loadedMiles: false,
@@ -69,7 +69,7 @@ describe('readClaimPatch', () => {
     );
     assert.deepEqual([patch.deceased, patch.nonCoveredMiles], [true, 3.5]);
     assert.deepEqual(chargeChanges(patch), {
-      tripType: false,
+      classification: false,
       level: false,
       emergency: false,
       loadedMiles: false,

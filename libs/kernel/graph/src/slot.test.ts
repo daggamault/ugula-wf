@@ -15,7 +15,7 @@ const lines = { list: { object: { code: 'string' } } } as const;
 const pure = {
   execIn: [],
   execOut: [],
-  inputs: [pin('lines', lines), pin('tripType', 'string', { optional: true })],
+  inputs: [pin('lines', lines), pin('classification', 'string', { optional: true })],
   outputs: [pin('lines', lines)]
 };
 
@@ -36,7 +36,7 @@ describe('slotGraph', () => {
           id: 'slot',
           type: 'acme.slot',
           version: 1,
-          inputs: { lines: { value: [{ code: 'A0428' }] }, tripType: { value: 'emergency' } }
+          inputs: { lines: { value: [{ code: 'A0428' }] }, classification: { value: 'emergency' } }
         },
         { id: 'return', type: RETURN_TYPE, version: 1 }
       ],

@@ -4,6 +4,7 @@ import {
   AMBULANCE_CONDITIONS,
   CLAIM_EVENT_KINDS,
   CLAIM_STATUSES,
+  CLASSIFICATIONS,
   type ClaimEventKind,
   type ClaimStatus,
   CONDITION_LIMIT,
@@ -26,7 +27,6 @@ import {
   SIGNATURE_STATUSES,
   STAY_KINDS,
   TRANSPORT_REASONS,
-  TRIP_TYPES,
   UNIT_SCALE,
   US_STATE_PATTERN,
   ZIP_CODE_PATTERN
@@ -65,7 +65,7 @@ const buildClaimsTable = (db: Kysely<Database>) =>
       col.unique().references('import_reports.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('pcr_number', 'text')
-    .addColumn('trip_type', 'text')
+    .addColumn('classification', 'text')
     .addColumn('level', 'text')
     .addColumn('emergency', 'boolean')
     .addColumn('loaded_miles', 'numeric')
@@ -179,7 +179,10 @@ const buildClaimsTable = (db: Kysely<Database>) =>
       sql`facility_stay in (${list(Object.keys(FACILITY_STAYS))})`
     )
     .addCheckConstraint('claims_status_check', sql`status in (${list(CLAIM_STATUSES)})`)
-    .addCheckConstraint('claims_trip_type_check', sql`trip_type in (${list(TRIP_TYPES)})`)
+    .addCheckConstraint(
+      'claims_classification_check',
+      sql`classification in (${list(CLASSIFICATIONS)})`
+    )
     .addCheckConstraint(
       'claims_patient_check',
       sql`status in (${UNSENT}) or patient_id is not null`

@@ -12,7 +12,7 @@ const CLAIM_FIELD_LABELS: Readonly<Record<ClaimField, string>> = {
   patientAddress: 'Patient Address',
   pcrNumber: 'PCR Number',
   serviceDate: 'Date of Service',
-  tripType: 'Trip Type',
+  classification: 'Classification',
   level: 'Level of Service',
   emergency: 'Emergency',
   signature: 'Billing Signature',

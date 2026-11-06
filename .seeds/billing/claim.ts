@@ -191,7 +191,7 @@ const mapClaim = (): GraphDef => {
   const g = rule(
     [
       P.facts(),
-      P.tripType(),
+      P.classification(),
       P.patient(),
       P.coverages(),
       P.service(),
@@ -233,7 +233,7 @@ const mapClaim = (): GraphDef => {
   for (const pin of ['level', 'emergency', 'loadedMiles', 'deceased', 'nonCoveredMiles']) {
     g.wire(`service.${pin}`, `claim.${pin}`);
   }
-  for (const pin of ['tripType', 'coverages', 'lines', 'totalCents', 'report']) {
+  for (const pin of ['classification', 'coverages', 'lines', 'totalCents', 'report']) {
     g.wire(`entry.${pin}`, `claim.${pin}`);
   }
   g.wire('claim.claim', 'return.claim');

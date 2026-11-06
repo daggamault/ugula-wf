@@ -51,7 +51,7 @@ const claimOf = (patch: Partial<TaskClaim> = {}): TaskClaim => ({
   patient: null,
   birthDate: null,
   serviceDate: null,
-  tripType: null,
+  classification: null,
   level: null,
   emergency: null,
   loadedMiles: null,
@@ -215,7 +215,7 @@ describe('TaskView', () => {
     const claim = claimOf({
       patient: 'Doe, Jane',
       serviceDate: '2026-09-14',
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'BLS',
       emergency: true,
       payers: [{ payer: 'Medicare', memberId: '1EG4', eligibility: 'active' }],

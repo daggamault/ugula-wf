@@ -13,7 +13,7 @@ const place = { addressLine: null, city: null, state: null, postalCode: null };
 const claim: NewClaim = {
   patientId: 'p1',
   pcrNumber: 'PCR-1',
-  tripType: 'emergency',
+  classification: 'emergency',
   level: 'ALS1',
   emergency: true,
   loadedMiles: 12.4,

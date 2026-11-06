@@ -150,12 +150,12 @@ export const P = {
       'The stored patient care report (JSON) the claim came from.',
       optional
     ),
-  tripType: (optional = false) =>
+  classification: (optional = false) =>
     d(
-      'tripType',
+      'classification',
       'string',
-      'Trip Type',
-      'emergency, scheduled, treatNoTransport, refusal or noClaim.',
+      'Classification',
+      'emergency, scheduled, treatNoTransport, refusal or notBillable.',
       optional
     ),
   reason: () =>
@@ -163,7 +163,7 @@ export const P = {
       'reason',
       'string',
       'Classified By',
-      'The Trip Type rule that matched, or nothing when none did.',
+      'The Classification rule that matched, or nothing when none did.',
       true
     ),
   service: (optional = false) =>

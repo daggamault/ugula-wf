@@ -133,19 +133,19 @@ const CHECKS: Check[] = [
     description:
       'The trip is billable, has a level of service and says whether it was an emergency; a scheduled trip billed as an emergency is worth checking.',
     codes: {
-      'no-claim-trip': 'blocking',
+      'not-billable': 'blocking',
       'level-missing': 'blocking',
       'emergency-missing': 'blocking',
       'scheduled-emergency': 'warning'
     },
-    facts: ['tripType', 'levelValid', 'emergency'],
+    facts: ['classification', 'levelValid', 'emergency'],
     expression: `concat(
   ${when(
-    'tripType == "noClaim"',
+    'classification == "notBillable"',
     issue(
-      'no-claim-trip',
-      'tripType',
-      '"The trip is classified as needing no claim; choose the trip type billed"'
+      'not-billable',
+      'classification',
+      '"The trip is classified as not billable; choose the classification to bill"'
     )
   )},
   ${when('!levelValid', issue('level-missing', 'level', '"Choose a level of service: BLS, ALS1, ALS2, SCT"'))},
@@ -154,7 +154,7 @@ const CHECKS: Check[] = [
     issue('emergency-missing', 'emergency', '"Say whether the response was an emergency"')
   )},
   ${when(
-    'tripType == "scheduled" && emergency == true',
+    'classification == "scheduled" && emergency == true',
     issue(
       'scheduled-emergency',
       'emergency',
@@ -314,9 +314,16 @@ const CHECKS: Check[] = [
       'pcs-expired': 'warning',
       'pcs-late': 'warning'
     },
-    facts: ['tripType', 'emergency', 'pcsOnFile', 'pcsDaysBeforeTrip', 'billsMedicare', 'pcsType'],
+    facts: [
+      'classification',
+      'emergency',
+      'pcsOnFile',
+      'pcsDaysBeforeTrip',
+      'billsMedicare',
+      'pcsType'
+    ],
     values: { validDays: PCS_VALID_DAYS, lateDays: PCS_LATE_DAYS },
-    expression: `tripType != "scheduled" || emergency == true ? [] : pcsOnFile != true
+    expression: `classification != "scheduled" || emergency == true ? [] : pcsOnFile != true
   ? [${issue(
     'pcs-missing',
     'pcs',
@@ -349,7 +356,7 @@ const CHECKS: Check[] = [
       'prior-authorization-expired': 'warning'
     },
     facts: [
-      'tripType',
+      'classification',
       'emergency',
       'billsMedicare',
       'roundTrips',
@@ -357,7 +364,7 @@ const CHECKS: Check[] = [
       'priorAuthorizationDaysLeft'
     ],
     values: { freeTrips: ROUND_TRIPS_WITHOUT_AUTHORIZATION },
-    expression: `tripType != "scheduled" || emergency == true || !billsMedicare ? [] : (priorAuthorization == null || priorAuthorization == "")
+    expression: `classification != "scheduled" || emergency == true || !billsMedicare ? [] : (priorAuthorization == null || priorAuthorization == "")
   ? ${when(
     'roundTrips != null && roundTrips > freeTrips',
     issue(
@@ -826,7 +833,7 @@ const fixClaim = (): GraphDef => {
       title: 'Fix claim data',
       queue: 'billing-review',
       instructions:
-        'The claim is missing something or has something wrong, listed with the field it is fixed in. Correct the fields below and save, and the claim is checked again; empty fields are left as they are. Charges are mapped and priced again when the trip type, service, miles or payers change. Void the claim if it should never be billed.',
+        'The claim is missing something or has something wrong, listed with the field it is fixed in. Correct the fields below and save, and the claim is checked again; empty fields are left as they are. Charges are mapped and priced again when the classification, service, miles or payers change. Void the claim if it should never be billed.',
       fields: CLAIM_FIX_FIELDS,
       outcomes: ['save', 'void', 'backToReview'],
       hints: {
@@ -897,7 +904,7 @@ const fixClaim = (): GraphDef => {
   g.wire('triggers.reprice', 'repriceNeeded.condition');
   g.wire('repriceNeeded.false', 'check.exec');
   g.wire('repriceNeeded.true', 'reprice.exec');
-  g.wire('patch.tripType', 'reprice.tripType');
+  g.wire('patch.classification', 'reprice.classification');
   g.wire('patch.service', 'reprice.service');
   g.wire('patch.payerId', 'reprice.payerId');
   g.wire('fixContext.result', 'reprice.context');

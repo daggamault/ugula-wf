@@ -1,10 +1,10 @@
 import {
+  type Classification,
+  isClassification,
   isServiceLevel,
-  isTripType,
   MAX_LOADED_MILES,
   type PricedLine,
-  type ServiceLevel,
-  type TripType
+  type ServiceLevel
 } from './charges.ts';
 import {
   type InsuredRelationship,
@@ -77,7 +77,7 @@ export type DocumentationPatch = {
 
 export type ClaimPatch = {
   serviceDate: string | null;
-  tripType: TripType | null;
+  classification: Classification | null;
   level: ServiceLevel | null;
   emergency: boolean | null;
   loadedMiles: number | null;
@@ -193,7 +193,10 @@ export const readClaimPatch = (values: unknown, check: ClaimCheck): ClaimPatch =
   const nonCovered = milesIn(r.nonCoveredMiles);
   return {
     serviceDate: details.serviceDate,
-    tripType: isTripType(r.tripType) && r.tripType !== 'noClaim' ? r.tripType : null,
+    classification:
+      isClassification(r.classification) && r.classification !== 'notBillable'
+        ? r.classification
+        : null,
     level: isServiceLevel(r.level) ? r.level : null,
     emergency: typeof r.emergency === 'boolean' ? r.emergency : null,
     loadedMiles: miles,
@@ -220,7 +223,7 @@ export const readClaimPatch = (values: unknown, check: ClaimCheck): ClaimPatch =
 };
 
 export const chargeChanges = (p: ClaimPatch) => ({
-  tripType: p.tripType !== null,
+  classification: p.classification !== null,
   level: p.level !== null,
   emergency: p.emergency !== null,
   loadedMiles: p.loadedMiles !== null,

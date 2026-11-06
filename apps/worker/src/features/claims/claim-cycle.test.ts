@@ -82,7 +82,7 @@ describe('createCycleStore', () => {
     const patch: ClaimPatch = {
       serviceDate: '2026-10-02',
       documentation: null,
-      tripType: null,
+      classification: null,
       level: null,
       emergency: null,
       loadedMiles: null,

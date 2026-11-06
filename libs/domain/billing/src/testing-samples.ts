@@ -51,7 +51,7 @@ export const completeCheck = (payers = ['Medicare', 'Blue']): ClaimCheck => ({
   patientId: 'p1',
   patient: PLACE,
   pcrNumber: 'PCR-1',
-  tripType: 'emergency',
+  classification: 'emergency',
   level: 'ALS1',
   emergency: true,
   loadedMiles: 7.3,

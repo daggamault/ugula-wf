@@ -51,7 +51,7 @@ describe('MSP, facility responsibility and line modifiers follow the report', {
   it('bills a patient pronounced dead before loading as BLS with QL and no mileage', async () => {
     const built = await workTasksUntil(s, await claimOf('dead-at-scene-ql'), 'needs_review');
     expectClaim(built, {
-      tripType: 'treatNoTransport',
+      classification: 'treatNoTransport',
       level: 'BLS',
       emergency: true,
       lines: [['A0429', 1]]
@@ -72,7 +72,7 @@ describe('MSP, facility responsibility and line modifiers follow the report', {
   it('bills miles past the closest hospital on their own A0888 line with GY', async () => {
     const built = await workTasksUntil(s, await claimOf('farther-facility-a0888'), 'needs_review');
     expectClaim(built, {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'ALS1',
       emergency: true,
       lines: [

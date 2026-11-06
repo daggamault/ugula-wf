@@ -1,13 +1,13 @@
 import { isRecord } from '@ugula/graph';
 import {
+  type Classification,
+  isClassification,
   isServiceLevel,
   isTransport,
-  isTripType,
   NO_TRANSPORT_TRIPS,
   type PricedLine,
   readPricedLines,
-  SERVICE_LEVELS,
-  type TripType
+  SERVICE_LEVELS
 } from './charges.ts';
 import {
   type ClaimDetails,
@@ -29,7 +29,7 @@ import { recordOf, textOrNull } from './values.ts';
 export type NewClaim = {
   patientId: string;
   pcrNumber: string | null;
-  tripType: TripType | null;
+  classification: Classification | null;
   level: string;
   emergency: boolean;
   loadedMiles: number | null;
@@ -51,7 +51,7 @@ export const CLAIM_FIELDS = [
   'patientAddress',
   'pcrNumber',
   'serviceDate',
-  'tripType',
+  'classification',
   'level',
   'emergency',
   'loadedMiles',
@@ -114,7 +114,7 @@ export type ClaimCheck = {
   patientId: string | null;
   patient: Address | null;
   pcrNumber: string | null;
-  tripType: string | null;
+  classification: string | null;
   level: string | null;
   emergency: boolean | null;
   loadedMiles: number | null;
@@ -151,7 +151,9 @@ const before = (a: string | null, b: string | null) =>
 
 const transports = (c: ClaimCheck) =>
   !c.deceased &&
-  (c.tripType ? !NO_TRANSPORT_TRIPS.includes(c.tripType as TripType) : isTransport(c.lines));
+  (c.classification
+    ? !NO_TRANSPORT_TRIPS.includes(c.classification as Classification)
+    : isTransport(c.lines));
 
 const within = (day: string | null, stay: ReportedStay) =>
   day !== null &&
@@ -185,7 +187,7 @@ export const checkFactsOf = (c: ClaimCheck, asOf: Date) => {
     patientAddressMissing: missingParts(c.patient),
     pcrNumber: c.pcrNumber,
     serviceDate,
-    tripType: c.tripType,
+    classification: c.classification,
     transports: transports(c),
     level: c.level,
     levelValid: isServiceLevel(c.level),
@@ -268,11 +270,11 @@ export const readNewClaim = (claim: unknown): NewClaim => {
   }
   const lines = readPricedLines(c.lines);
   const report = isRecord(c.report) ? c.report : {};
-  const tripType = textOrNull(c.tripType);
+  const classification = textOrNull(c.classification);
   return {
     patientId,
     pcrNumber: textOrNull(c.pcrNumber),
-    tripType: isTripType(tripType) ? tripType : null,
+    classification: isClassification(classification) ? classification : null,
     level: c.level,
     emergency: c.emergency === true,
     loadedMiles: typeof c.loadedMiles === 'number' ? c.loadedMiles : null,

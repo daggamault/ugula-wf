@@ -8,27 +8,28 @@ export type ServiceLevel = (typeof SERVICE_LEVELS)[number];
 export const isServiceLevel = (x: unknown): x is ServiceLevel =>
   SERVICE_LEVELS.includes(x as ServiceLevel);
 
-export const TRIP_TYPES = [
+export const CLASSIFICATIONS = [
   'emergency',
   'scheduled',
   'treatNoTransport',
   'refusal',
-  'noClaim'
+  'notBillable'
 ] as const;
 
-export type TripType = (typeof TRIP_TYPES)[number];
+export type Classification = (typeof CLASSIFICATIONS)[number];
 
-export const isTripType = (x: unknown): x is TripType => TRIP_TYPES.includes(x as TripType);
+export const isClassification = (x: unknown): x is Classification =>
+  CLASSIFICATIONS.includes(x as Classification);
 
-export const TRIP_TYPE_LABELS: Record<TripType, string> = {
-  emergency: 'Emergency transport',
-  scheduled: 'Scheduled or interfacility transport',
-  treatNoTransport: 'Treated, not transported',
-  refusal: 'Refused care or transport',
-  noClaim: 'No claim (cancelled or no patient contact)'
+export const CLASSIFICATION_LABELS: Record<Classification, string> = {
+  emergency: 'Emergency Transport',
+  scheduled: 'Scheduled Transport',
+  treatNoTransport: 'Treated, Not Transported',
+  refusal: 'Refused Care',
+  notBillable: 'Not Billable'
 };
 
-export const NO_TRANSPORT_TRIPS: readonly TripType[] = ['treatNoTransport', 'refusal'];
+export const NO_TRANSPORT_TRIPS: readonly Classification[] = ['treatNoTransport', 'refusal'];
 
 export const MAX_LOADED_MILES = 500;
 

@@ -29,17 +29,20 @@ const LINES_OUT = d('lines', CHARGE_LINES, 'Charge Lines', 'HCPCS codes and unit
 const CODE_OUT = d('code', 'string', 'HCPCS Code', 'The HCPCS code to bill.');
 
 const baseRateCode = (): GraphDef => {
-  const g = rule([P.tripType(), P.service()], [CODE_OUT, P.reasons('this base rate was billed')]);
+  const g = rule(
+    [P.classification(), P.service()],
+    [CODE_OUT, P.reasons('this base rate was billed')]
+  );
   g.add('service', 'billing.service.break');
   g.add('base', 'std.table.decide', {
     label: 'Base Rate',
     config: shared.decision(
       'billing.base-rate',
       'Base Rate',
-      'Picks the HCPCS base rate code from the trip type, level of service and emergency status; a patient pronounced dead before loading is billed at the BLS rate.',
+      'Picks the HCPCS base rate code from the classification, level of service and emergency status; a patient pronounced dead before loading is billed at the BLS rate.',
       table(
         [
-          field('tripType', 'string', 'Trip type'),
+          field('classification', 'string', 'Classification'),
           field('level', 'string', 'Level of service'),
           field('emergency', 'boolean', 'Emergency'),
           field('deceased', 'boolean', 'Pronounced dead before loading')
@@ -58,7 +61,7 @@ const baseRateCode = (): GraphDef => {
           },
           {
             label: 'Treated without transport',
-            when: { tripType: oneOf(...NO_TRANSPORT) },
+            when: { classification: oneOf(...NO_TRANSPORT) },
             set: { code: NO_TRANSPORT_CODE }
           },
           { label: 'Specialty care transport', when: { level: is('SCT') }, set: { code: 'A0434' } },
@@ -77,7 +80,7 @@ const baseRateCode = (): GraphDef => {
   });
   g.ret('return');
   g.wire('entry.service', 'service.service');
-  g.wire('entry.tripType', 'base.tripType');
+  g.wire('entry.classification', 'base.classification');
   g.wire('service.level', 'base.level');
   g.wire('service.emergency', 'base.emergency');
   g.wire('service.deceased', 'base.deceased');
@@ -88,7 +91,7 @@ const baseRateCode = (): GraphDef => {
 
 const mileageLines = (): GraphDef => {
   const g = rule(
-    [P.tripType(), P.service()],
+    [P.classification(), P.service()],
     [
       d(
         'lines',
@@ -108,7 +111,7 @@ const mileageLines = (): GraphDef => {
       'Picks the HCPCS mileage code for trips that transported the patient, for the loaded miles that are covered.',
       table(
         [
-          field('tripType', 'string', 'Trip type'),
+          field('classification', 'string', 'Classification'),
           field('loadedMiles', 'number', 'Covered loaded miles')
         ],
         [field('code', 'string', 'HCPCS code')],
@@ -116,7 +119,7 @@ const mileageLines = (): GraphDef => {
           {
             label: 'Loaded miles transported',
             when: {
-              tripType: { op: 'notOneOf', value: NO_TRANSPORT },
+              classification: { op: 'notOneOf', value: NO_TRANSPORT },
               loadedMiles: { op: 'gt', value: 0 }
             },
             set: { code: 'A0425' }
@@ -144,7 +147,7 @@ const mileageLines = (): GraphDef => {
       'Picks the HCPCS code for miles beyond the nearest appropriate facility, billed on their own line.',
       table(
         [
-          field('tripType', 'string', 'Trip type'),
+          field('classification', 'string', 'Classification'),
           field('nonCoveredMiles', 'number', 'Non-covered miles')
         ],
         [field('code', 'string', 'HCPCS code')],
@@ -152,7 +155,7 @@ const mileageLines = (): GraphDef => {
           {
             label: 'Miles beyond the nearest appropriate facility',
             when: {
-              tripType: { op: 'notOneOf', value: NO_TRANSPORT },
+              classification: { op: 'notOneOf', value: NO_TRANSPORT },
               nonCoveredMiles: { op: 'gt', value: 0 }
             },
             set: { code: 'A0888' }
@@ -167,7 +170,7 @@ const mileageLines = (): GraphDef => {
   g.add('reasons', 'std.list.concat', { label: 'Both Tables' });
   g.ret('return');
   g.wire('entry.service', 'service.service');
-  g.wire('entry.tripType', 'mileage.tripType', 'nonCovered.tripType');
+  g.wire('entry.classification', 'mileage.classification', 'nonCovered.classification');
   g.wire('service.loadedMiles', 'covered.loadedMiles');
   g.wire('service.nonCoveredMiles', 'covered.nonCoveredMiles', 'nonCovered.nonCoveredMiles');
   g.wire('service.nonCoveredMiles', 'excess.units');
@@ -189,14 +192,14 @@ const mileageLines = (): GraphDef => {
 };
 
 const mapCharges = (): GraphDef => {
-  const g = rule([P.tripType(), P.service()], [LINES_OUT]);
+  const g = rule([P.classification(), P.service()], [LINES_OUT]);
   g.add('base', 'billing.base-rate-code', { label: 'Base Rate Code' });
   g.add('baseLine', 'billing.line.make', { label: 'Base Rate Line', values: { units: 1 } });
   g.add('baseLines', 'std.list.make', { label: 'Base Rate First', config: { count: 1 } });
   g.add('mileage', 'billing.mileage-lines', { label: 'Mileage Lines' });
   g.add('lines', 'std.list.concat', { label: 'Then Mileage' });
   g.ret('return');
-  g.wire('entry.tripType', 'base.tripType', 'mileage.tripType');
+  g.wire('entry.classification', 'base.classification', 'mileage.classification');
   g.wire('entry.service', 'base.service', 'mileage.service');
   g.wire('base.code', 'baseLine.code');
   g.wire('baseLine.line', 'baseLines.item1');
@@ -377,7 +380,7 @@ const priceCharges = (): GraphDef => {
 
 const assignCharges = (): GraphDef => {
   const g = stage(
-    [P.tripType(), P.service(), PAYER_IN, P.subject(), P.context()],
+    [P.classification(), P.service(), PAYER_IN, P.subject(), P.context()],
     PRICED_OUT,
     PRICE_EXITS
   );
@@ -387,7 +390,7 @@ const assignCharges = (): GraphDef => {
   g.ret('pricedDone', 'priced');
   g.ret('voidedDone', 'voided');
   g.wire('entry.exec', 'price.exec');
-  g.wire('entry.tripType', 'charges.tripType', 'agency.tripType');
+  g.wire('entry.classification', 'charges.classification', 'agency.classification');
   g.wire('entry.service', 'charges.service', 'agency.service');
   g.wire('charges.lines', 'agency.lines');
   g.wire('agency.lines', 'price.lines');
@@ -402,7 +405,7 @@ const assignCharges = (): GraphDef => {
 };
 
 const CHANGES = [
-  'tripType',
+  'classification',
   'level',
   'emergency',
   'loadedMiles',
@@ -412,7 +415,7 @@ const CHANGES = [
 ] as const;
 
 const CHANGE_LABELS: Record<(typeof CHANGES)[number], string> = {
-  tripType: 'Trip type',
+  classification: 'Classification',
   level: 'Level of service',
   emergency: 'Emergency status',
   loadedMiles: 'Loaded miles',
@@ -428,7 +431,7 @@ const repriceTriggers = (): GraphDef => {
         'changes',
         { object: {} },
         'What Changed',
-        'Which claim fields an edit changed: tripType, level, emergency, loadedMiles, deceased, nonCoveredMiles and payers.'
+        'Which claim fields an edit changed: classification, level, emergency, loadedMiles, deceased, nonCoveredMiles and payers.'
       )
     ],
     [
@@ -468,7 +471,7 @@ const repriceTriggers = (): GraphDef => {
 
 const repriceClaim = (): GraphDef => {
   const g = stage(
-    [P.claimId(), P.tripType(), P.service(), PAYER_IN, P.subject(), P.context()],
+    [P.claimId(), P.classification(), P.service(), PAYER_IN, P.subject(), P.context()],
     [],
     {
       repriced: exit('Repriced', 'The new charge lines are saved on the claim.'),
@@ -480,7 +483,7 @@ const repriceClaim = (): GraphDef => {
   g.ret('repricedDone', 'repriced');
   g.ret('voidedDone', 'voided');
   g.wire('entry.exec', 'charges.exec');
-  for (const pin of ['tripType', 'service', 'payerId', 'subject', 'context']) {
+  for (const pin of ['classification', 'service', 'payerId', 'subject', 'context']) {
     g.wire(`entry.${pin}`, `charges.${pin}`);
   }
   g.wire('charges.priced', 'save.exec');
@@ -501,7 +504,7 @@ export const chargeGraphs: SeedGraph[] = [
       execOut: [],
       inputs: [
         d('lines', CHARGE_LINES, 'Charge Lines', 'The HCPCS lines the base rules charged.'),
-        d('tripType', 'string', 'Trip Type', 'The confirmed trip type.', true),
+        d('classification', 'string', 'Classification', 'The confirmed classification.', true),
         d(
           'service',
           T.service,
@@ -516,7 +519,7 @@ export const chargeGraphs: SeedGraph[] = [
   asRule(
     'billing.base-rate-code',
     'Base Rate Code',
-    'Picks the HCPCS base rate by trip type, level and emergency (Base Rate table): A0429/A0428 when pronounced dead before loading, A0998 without transport, A0434 SCT, A0433 ALS2, A0427/A0426 ALS1, A0429/A0428 BLS.',
+    'Picks the HCPCS base rate by classification, level and emergency (Base Rate table): A0429/A0428 when pronounced dead before loading, A0998 without transport, A0434 SCT, A0433 ALS2, A0427/A0426 ALS1, A0429/A0428 BLS.',
     baseRateCode()
   ),
   asRule(
@@ -546,19 +549,19 @@ export const chargeGraphs: SeedGraph[] = [
   asStage(
     'billing.assign-charges',
     'Assign Charges',
-    'Maps the trip type and service to charge lines (Map Charges, then the Agency Charges rule) and prices them for the primary payer, or voids.',
+    'Maps the classification and service to charge lines (Map Charges, then the Agency Charges rule) and prices them for the primary payer, or voids.',
     assignCharges()
   ),
   asRule(
     'billing.reprice-triggers',
     'Reprice Triggers',
-    'Decides whether a claim edit maps and prices the charges again (Reprice Triggers table): a changed trip type, level, emergency status, loaded or non-covered miles, pronounced-dead status or payers does.',
+    'Decides whether a claim edit maps and prices the charges again (Reprice Triggers table): a changed classification, level, emergency status, loaded or non-covered miles, pronounced-dead status or payers does.',
     repriceTriggers()
   ),
   asStage(
     'billing.reprice-claim',
     'Reprice Claim',
-    'Assigns the charges again for the trip type and service, priced for the payer (asking for any missing fee), and saves the new lines on the claim, or voids.',
+    'Assigns the charges again for the classification and service, priced for the payer (asking for any missing fee), and saves the new lines on the claim, or voids.',
     repriceClaim()
   )
 ];

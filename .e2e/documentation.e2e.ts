@@ -52,7 +52,7 @@ describe('documentation and coverage decide whether a claim can be billed', {
     );
     assert.equal(stuck.claim.status, 'draft');
     expectClaim(stuck, {
-      tripType: 'scheduled',
+      classification: 'scheduled',
       level: 'BLS',
       emergency: false,
       lines: [
@@ -72,7 +72,7 @@ describe('documentation and coverage decide whether a claim can be billed', {
       'Fix claim data'
     );
     expectClaim(stuck, {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'BLS',
       emergency: true,
       lines: [
@@ -96,7 +96,7 @@ describe('documentation and coverage decide whether a claim can be billed', {
       'needs_review'
     );
     expectClaim(built, {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'BLS',
       emergency: true,
       lines: [
@@ -132,7 +132,7 @@ describe('documentation and coverage decide whether a claim can be billed', {
     assert.equal(built.claim.first_name, 'Rafael');
     assert.equal(built.claim.last_name, 'Sandoval');
     expectClaim(built, {
-      tripType: 'emergency',
+      classification: 'emergency',
       level: 'BLS',
       emergency: true,
       lines: [

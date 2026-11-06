@@ -48,7 +48,7 @@ export const encounterFactsOf = (data: Json): EncounterFacts => {
 
 const normalized = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-// Only facts the claim copies from the report: trip type and level are decided by
+// Only facts the claim copies from the report: classification and level are decided by
 // billing rules, so they may differ on purpose.
 export const mismatchesOf = (claim: TaskClaim, e: EncounterFacts): Mismatch[] => {
   const out: Mismatch[] = [];

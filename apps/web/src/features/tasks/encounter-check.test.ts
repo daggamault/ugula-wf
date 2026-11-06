@@ -11,7 +11,7 @@ const claimOf = (patch: Partial<TaskClaim> = {}): TaskClaim => ({
   patient: 'Quintero, Rosalind',
   birthDate: '1961-02-19',
   serviceDate: null,
-  tripType: null,
+  classification: null,
   level: null,
   emergency: null,
   loadedMiles: null,

@@ -4,6 +4,7 @@ import type {
   ClaimStatus,
   ClaimStep,
   ClaimTaskKey,
+  Classification,
   DocumentKind,
   EligibilityStatus,
   FacilityStay,
@@ -14,8 +15,7 @@ import type {
   PcsType,
   SignatureStatus,
   StayKind,
-  TransportReason,
-  TripType
+  TransportReason
 } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
 import type { Page } from '../../shared/url-state.ts';
@@ -139,7 +139,7 @@ export type ClaimPayerFile = {
 };
 
 export type ClaimDetail = ClaimSummary & {
-  trip_type: TripType | null;
+  classification: Classification | null;
   emergency: boolean | null;
   import_report_id: string | null;
   import_id: string | null;

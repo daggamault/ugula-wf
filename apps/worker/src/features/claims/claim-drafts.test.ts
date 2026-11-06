@@ -26,7 +26,7 @@ const place = { addressLine: null, city: null, state: null, postalCode: null };
 const claim: NewClaim = {
   patientId: 'p1',
   pcrNumber: 'PCR-1',
-  tripType: 'emergency',
+  classification: 'emergency',
   level: 'ALS1',
   emergency: true,
   loadedMiles: 12.4,
@@ -191,7 +191,7 @@ describe('createDraftStore', () => {
     assert.equal(sqlOf(other.queries, 'insert into "claim_runs"').length, 1);
   });
 
-  it('fills a draft with its trip type, lines, coverages and diagnoses and keeps it a draft', async () => {
+  it('fills a draft with its classification, lines, coverages and diagnoses and keeps it a draft', async () => {
     const { db, queries } = createRecordingDb((q) =>
       ownedClaim(q) ? [owned] : q.sql.startsWith('update "claims"') ? [{}] : []
     );

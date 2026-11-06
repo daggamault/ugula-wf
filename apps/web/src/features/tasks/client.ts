@@ -79,7 +79,7 @@ export type TaskClaim = {
   patient: string | null;
   birthDate: string | null;
   serviceDate: string | null;
-  tripType: string | null;
+  classification: string | null;
   level: string | null;
   emergency: boolean | null;
   loadedMiles: number | string | null;

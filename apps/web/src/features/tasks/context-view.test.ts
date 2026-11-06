@@ -78,7 +78,7 @@ describe('ContextView', () => {
               patientId: 'p1',
               patient: { addressLine: '1 Main St', city: 'Town', state: 'VT', postalCode: '05401' },
               pcrNumber: 'PCR-1',
-              tripType: 'emergency',
+              classification: 'emergency',
               level: 'ALS1',
               emergency: true,
               loadedMiles: 6.8,
@@ -125,7 +125,7 @@ describe('ContextView', () => {
     assert.ok(html.includes('Warnings') && html.includes('The narrative could not be read'));
     assert.ok(html.includes('bg-info/10') && html.includes('Suggested by the model'));
     assert.ok(html.includes('Birth date') && html.includes('Apr 21, 1958'));
-    assert.ok(html.includes('Emergency transport') && html.includes('A0427'));
+    assert.ok(html.includes('Emergency Transport') && html.includes('A0427'));
     assert.ok(html.includes('$900.00') && html.includes('Spouse') && html.includes('John Doe'));
     assert.ok(html.includes('1 Main St, Town, VT 05401'));
     assert.ok(html.includes(`href="/claims/${CLAIM}"`));

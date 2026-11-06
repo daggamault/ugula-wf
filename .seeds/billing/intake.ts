@@ -1,4 +1,9 @@
-import { LEVEL_FIELD, LOADED_MILES_FIELD, TRIP_TYPE_FIELD, UNREAD_FINDINGS } from '@ugula/billing';
+import {
+  CLASSIFICATION_FIELD,
+  LEVEL_FIELD,
+  LOADED_MILES_FIELD,
+  UNREAD_FINDINGS
+} from '@ugula/billing';
 import type { GraphDef } from '@ugula/graph';
 import { PCR_TYPE } from '@ugula/nemsis';
 import { slot } from '../builder.ts';
@@ -57,7 +62,7 @@ const MATCH_PAYER_SUMMARY = `'Link the reported payer "' + text(item?.payer) + '
   ', mark it unlisted, or remove it if it is not insurance'`;
 
 const SERVICE_PARTS = `filter([
-  { scheduled: 'scheduled trip', treatNoTransport: 'treat-no-transport', refusal: 'refusal', noClaim: 'no-claim trip' }[tripType ?? ''],
+  { scheduled: 'scheduled trip', treatNoTransport: 'treat-no-transport', refusal: 'refusal', notBillable: 'no-claim trip' }[classification ?? ''],
   service?.level,
   service?.emergency == true ? 'emergency' : service?.emergency == false ? 'non-emergency' : null,
   service?.loadedMiles != null ? text(round(service?.loadedMiles, 1)) + ' loaded miles' : null,
@@ -65,7 +70,7 @@ const SERVICE_PARTS = `filter([
 ], x => x != null && x != '')`;
 
 const REVIEW_PCR_SUMMARY = `len(${SERVICE_PARTS}) == 0
-  ? 'Confirm the trip type, level of service and loaded miles before this claim is priced'
+  ? 'Confirm the classification, level of service and loaded miles before this claim is priced'
   : 'Confirm the service: ' + join(${SERVICE_PARTS}, ', ') +
     (len(findings?.medications ?? []) + len(findings?.procedures ?? []) > 0 ? ', suggested from the narrative' : '') +
     ', before this claim is priced'`;
@@ -91,7 +96,7 @@ const SEX = "{ F: 'Female', M: 'Male', U: 'Unknown' }";
 
 const TRIP = `{
   pcrNumber: pcr.pcrNumber,
-  tripType: tripType,
+  classification: classification,
   classifiedBy: reason,
   calledAt: pcr.times.psapCall,
   response: {
@@ -158,7 +163,7 @@ const REVIEW_CONTEXT = `{
   warnings: concat(
     reason == null ? ['No disposition or type of service is recorded, so the trip was classified as an emergency transport'] : [],
     documentation.signature == 'signed' ? [] : [documentation.signatureNote ?? 'No billing signature'],
-    tripType == 'scheduled' && documentation.pcsOnFile != true ? ['This scheduled trip has no physician certification statement'] : [],
+    classification == 'scheduled' && documentation.pcsOnFile != true ? ['This scheduled trip has no physician certification statement'] : [],
     len(pcr.vitals ?? []) == 0 ? ['No vital signs are recorded to support medical necessity'] : [],
     service.deceased == true ? ['The patient was pronounced dead before loading, so the trip is billed as BLS with QL and no mileage'] : [],
     (service.nonCoveredMiles ?? 0) > 0 ? [text(service.nonCoveredMiles) + ' miles past the closest hospital are billed as non-covered (A0888)'] : [],
@@ -482,7 +487,7 @@ const resolvePayers = (): GraphDef => {
 };
 
 const REVIEW_FIELDS = [
-  { ...TRIP_TYPE_FIELD, required: ['approve'] },
+  { ...CLASSIFICATION_FIELD, required: ['approve'] },
   { ...LEVEL_FIELD, required: ['approve'] },
   { name: 'emergency', type: 'boolean', label: 'Emergency response' },
   LOADED_MILES_FIELD,
@@ -524,13 +529,13 @@ const pcrSubject = (): GraphDef => {
 
 const tripSummary = (): GraphDef => {
   const g = rule(
-    [p('pcr', PCR_TYPE), p('tripType', 'string', true), p('reason', 'string', true)],
+    [p('pcr', PCR_TYPE), p('classification', 'string', true), p('reason', 'string', true)],
     [p('trip', { object: {} })]
   );
   g.add('trip', 'std.expr', expr('Trip Summary', TRIP));
   g.ret('return');
   g.wire('entry.pcr', 'trip.pcr');
-  g.wire('entry.tripType', 'trip.tripType');
+  g.wire('entry.classification', 'trip.classification');
   g.wire('entry.reason', 'trip.reason');
   g.wire('trip.result', 'return.trip');
   return g.def;
@@ -583,7 +588,7 @@ const claimPatient = (): GraphDef => {
   return g.def;
 };
 
-const REVIEW_ANSWERS = ['tripType', 'level', 'emergency', 'loadedMiles', 'note'];
+const REVIEW_ANSWERS = ['classification', 'level', 'emergency', 'loadedMiles', 'note'];
 
 const reviewPcr = (): GraphDef => {
   const g = graph(
@@ -593,7 +598,7 @@ const reviewPcr = (): GraphDef => {
       inputs: [
         p('pcr', PCR_TYPE),
         p('facts', FACTS),
-        p('tripType', 'string'),
+        p('classification', 'string'),
         p('reason', 'string', true),
         p('patient', PATIENT),
         p('coverages', COVERAGES),
@@ -603,7 +608,7 @@ const reviewPcr = (): GraphDef => {
         p('answers', { object: {} }, true)
       ],
       outputs: [
-        p('tripType', 'string', true),
+        p('classification', 'string', true),
         p('service', SERVICE, true),
         p('answers', { object: {} }, true)
       ]
@@ -626,7 +631,7 @@ const reviewPcr = (): GraphDef => {
     'std.expr',
     expr(
       'Answers Before, Else the Suggestion',
-      'merge(service, { tripType: tripType }, fromEntries(filter(entries(answers ?? {}), e => e.value != null)))'
+      'merge(service, { classification: classification }, fromEntries(filter(entries(answers ?? {}), e => e.value != null)))'
     )
   );
   g.add('review', 'std.human.task', {
@@ -635,12 +640,12 @@ const reviewPcr = (): GraphDef => {
       title: 'Review PCR',
       queue: 'billing-review',
       instructions:
-        'Check the patient, payers and impression codes, and confirm the trip type, level of service and loaded miles before this claim is priced. The suggestion lists what supports it, including what the narrative documents; warnings say what could not be read or decided.',
+        'Check the patient, payers and impression codes, and confirm the classification, level of service and loaded miles before this claim is priced. The suggestion lists what supports it, including what the narrative documents; warnings say what could not be read or decided.',
       fields: REVIEW_FIELDS,
       outcomes: ['approve', 'hold'],
       hints: {
         approve:
-          'Confirms the trip type, level of service and loaded miles; the claim is priced next.',
+          'Confirms the classification, level of service and loaded miles; the claim is priced next.',
         hold: 'Holds the PCR in a Held PCR task until it is released back to review or voided.'
       },
       prefill: 'suggested'
@@ -650,7 +655,7 @@ const reviewPcr = (): GraphDef => {
     label: 'Answers',
     config: {
       fields: [
-        { name: 'tripType', type: 'string' },
+        { name: 'classification', type: 'string' },
         { name: 'level', type: 'string' },
         { name: 'emergency', type: 'boolean' },
         { name: 'loadedMiles', type: 'number' },
@@ -701,7 +706,12 @@ const reviewPcr = (): GraphDef => {
   g.wire('facts.locations', 'reasonForTransport.locations');
   g.wire('reasonForTransport.transportReason', 'documentation.value');
   g.wire('documentation.object', 'context.documentation');
-  g.wire('entry.tripType', 'trip.tripType', 'defaults.tripType', 'context.tripType');
+  g.wire(
+    'entry.classification',
+    'trip.classification',
+    'defaults.classification',
+    'context.classification'
+  );
   g.wire('entry.reason', 'trip.reason', 'context.reason');
   g.wire('trip.trip', 'context.trip', 'holdContext.trip');
   g.wire('entry.patient', 'context.patient', 'holdContext.patient');
@@ -714,7 +724,7 @@ const reviewPcr = (): GraphDef => {
   g.wire('context.result', 'review.context');
   summarize(g, 'review', REVIEW_PCR_SUMMARY, {
     service: 'entry.service',
-    tripType: 'entry.tripType',
+    classification: 'entry.classification',
     findings: 'entry.findings'
   });
   g.wire('subject.subject', 'review.subject', 'held.subject');
@@ -730,7 +740,7 @@ const reviewPcr = (): GraphDef => {
   g.wire('held.void', 'voidedDone.exec');
 
   g.wire('review.approve', 'approvedDone.exec');
-  g.wire('review.tripType', 'approvedDone.tripType');
+  g.wire('review.classification', 'approvedDone.classification');
   g.wire('review.level', 'level.value');
   g.wire('suggested.level', 'level.fallback');
   g.wire('review.emergency', 'emergency.value');
@@ -863,7 +873,7 @@ const reviewRevision = (): GraphDef => {
   g.wire('keep.then', 'revision.exec');
   g.wire('previous.value', 'context.previous');
   g.wire('pcr.pcr', 'trip.pcr', 'subject.pcr', 'context.pcr');
-  g.wire('classify.tripType', 'trip.tripType');
+  g.wire('classify.classification', 'trip.classification');
   g.wire('classify.reason', 'trip.reason');
   g.wire('trip.trip', 'context.trip');
   g.wire('contextClaimId.claimId', 'context.claimId');
@@ -891,7 +901,7 @@ const encounterToClaim = (): GraphDef => {
     execOut: [],
     inputs: [p('report', BLOB), p('claimId', 'string', true)],
     outputs: [
-      p('tripType', 'string', true),
+      p('classification', 'string', true),
       p('patient', PATIENT, true),
       p('claimId', 'string', true)
     ]
@@ -913,7 +923,7 @@ const encounterToClaim = (): GraphDef => {
   g.wire('open.duplicate', 'revision.exec');
   g.wire('open.claimId', 'work.claimId', 'revision.claimId', 'done.claimId', 'revised.claimId');
   for (const exit of ['claimed', 'skipped', 'voided']) g.wire(`work.${exit}`, 'done.exec');
-  g.wire('work.tripType', 'done.tripType');
+  g.wire('work.classification', 'done.classification');
   g.wire('work.patient', 'done.patient');
   g.wire('revision.then', 'revised.exec');
   return g.def;
@@ -1196,7 +1206,7 @@ const buildClaim = (): GraphDef => {
       p('report', BLOB, true),
       p('pcr', PCR_TYPE),
       p('facts', FACTS),
-      p('tripType', 'string'),
+      p('classification', 'string'),
       p('patient', PATIENT),
       p('coverages', COVERAGES),
       p('service', SERVICE),
@@ -1222,7 +1232,7 @@ const buildClaim = (): GraphDef => {
   g.ret('savedDone', 'saved');
   g.ret('voidedDone', 'voided');
   g.wire('entry.exec', 'charges.exec');
-  g.wire('entry.tripType', 'charges.tripType', 'claim.tripType');
+  g.wire('entry.classification', 'charges.classification', 'claim.classification');
   g.wire('entry.service', 'charges.service', 'claim.service');
   g.wire('entry.coverages', 'primary.list', 'claim.coverages');
   g.wire('primary.item', 'primaryPayer.coverage');
@@ -1256,22 +1266,28 @@ const billClaim = (): GraphDef => {
         p('report', BLOB, true),
         p('pcr', PCR_TYPE),
         p('facts', FACTS),
-        p('tripType', 'string'),
+        p('classification', 'string'),
         p('reason', 'string', true),
         p('patient', PATIENT),
         p('coverages', COVERAGES),
         p('payerNotes', { list: 'string' }),
         p('findings', FINDINGS)
       ],
-      outputs: [p('tripType', 'string', true)]
+      outputs: [p('classification', 'string', true)]
     },
     [
-      { name: 'tripType', type: 'string', default: null },
+      { name: 'classification', type: 'string', default: null },
       { name: 'answers', type: { object: {} }, default: null }
     ]
   );
-  g.add('classified', 'std.var.set', { label: 'Trip Type to Bill', config: { name: 'tripType' } });
-  g.add('tripType', 'std.var.get', { label: 'Trip Type', config: { name: 'tripType' } });
+  g.add('classified', 'std.var.set', {
+    label: 'Classification to Bill',
+    config: { name: 'classification' }
+  });
+  g.add('classification', 'std.var.get', {
+    label: 'Classification',
+    config: { name: 'classification' }
+  });
   g.add('suggest', 'billing.determine-service', { label: 'Determine Service' });
   g.add('answers', 'std.var.get', { label: 'Answers Given Before', config: { name: 'answers' } });
   g.add('review', 'billing.review-pcr', { label: 'Review PCR' });
@@ -1279,8 +1295,14 @@ const billClaim = (): GraphDef => {
     label: 'Remember the Approved Answers',
     config: { name: 'answers' }
   });
-  g.add('reviewed', 'std.var.set', { label: 'Reviewed Trip Type', config: { name: 'tripType' } });
-  g.add('billedTrip', 'std.var.get', { label: 'Trip Type Billed', config: { name: 'tripType' } });
+  g.add('reviewed', 'std.var.set', {
+    label: 'Reviewed Classification',
+    config: { name: 'classification' }
+  });
+  g.add('billedTrip', 'std.var.get', {
+    label: 'Classification Billed',
+    config: { name: 'classification' }
+  });
   g.add('trip', 'billing.trip-summary', { label: 'Trip Summary' });
   tripContext(g, 'claimContext');
   g.add('subject', 'billing.pcr-subject', { label: 'Task Subject' });
@@ -1289,18 +1311,21 @@ const billClaim = (): GraphDef => {
   g.add('facility', 'billing.bill-facility', { label: 'Bill Facility' });
   g.add('fix', 'billing.fix-claim', { label: 'Check and Fix Claim', values: { all: false } });
   g.add('cycle', 'billing.start-cycle', { label: 'Start Payer Cycle' });
-  g.add('finalTrip', 'std.var.get', { label: 'Final Trip Type', config: { name: 'tripType' } });
+  g.add('finalTrip', 'std.var.get', {
+    label: 'Final Classification',
+    config: { name: 'classification' }
+  });
   g.add('void', 'billing.close-claim', { label: 'Void Draft Claim', values: { status: 'void' } });
   g.ret('claimed', 'claimed');
   g.ret('voided', 'voided');
 
   g.wire('entry.exec', 'classified.exec');
-  g.wire('entry.tripType', 'classified.value');
+  g.wire('entry.classification', 'classified.value');
   g.wire('classified.then', 'review.exec');
   g.wire('entry.facts', 'suggest.facts', 'review.facts', 'build.facts');
   g.wire('entry.findings', 'suggest.findings', 'review.findings');
   g.wire('entry.pcr', 'review.pcr', 'trip.pcr', 'subject.pcr', 'build.pcr');
-  g.wire('tripType.value', 'suggest.tripType', 'review.tripType');
+  g.wire('classification.value', 'suggest.classification', 'review.classification');
   g.wire('suggest.service', 'review.service');
   for (const pin of ['reason', 'patient', 'coverages', 'payerNotes']) {
     g.wire(`entry.${pin}`, `review.${pin}`);
@@ -1309,12 +1334,12 @@ const billClaim = (): GraphDef => {
   g.wire('review.approved', 'remember.exec');
   g.wire('review.answers', 'remember.value');
   g.wire('remember.then', 'reviewed.exec');
-  g.wire('review.tripType', 'reviewed.value');
+  g.wire('review.classification', 'reviewed.value');
   g.wire('review.voided', 'void.exec');
 
   g.wire('reviewed.then', 'build.exec');
   g.wire('entry.reason', 'trip.reason');
-  g.wire('billedTrip.value', 'trip.tripType', 'build.tripType');
+  g.wire('billedTrip.value', 'trip.classification', 'build.classification');
   g.wire('trip.trip', 'claimContext.trip');
   for (const pin of ['claimId', 'report', 'patient', 'coverages']) {
     g.wire(`entry.${pin}`, `build.${pin}`);
@@ -1337,7 +1362,7 @@ const billClaim = (): GraphDef => {
   g.wire('fix.backToReview', 'review.exec');
   g.wire('fix.voided', 'void.exec');
   g.wire('cycle.then', 'claimed.exec');
-  g.wire('finalTrip.value', 'claimed.tripType');
+  g.wire('finalTrip.value', 'claimed.classification');
   g.wire('void.then', 'voided.exec');
   return g.def;
 };
@@ -1347,7 +1372,7 @@ const workDraftClaim = (): GraphDef => {
     execIn: ['exec'],
     execOut: ['claimed', 'skipped', 'voided'],
     inputs: [p('report', BLOB, true), p('pcr', PCR_TYPE), p('claimId', 'string')],
-    outputs: [p('tripType', 'string', true), p('patient', PATIENT, true)]
+    outputs: [p('classification', 'string', true), p('patient', PATIENT, true)]
   });
   g.add('facts', 'billing.map-encounter-facts', { label: 'Map Encounter Facts' });
   g.add('parts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
@@ -1379,7 +1404,7 @@ const workDraftClaim = (): GraphDef => {
   g.wire('decide.skip', 'skip.exec');
   g.wire('entry.claimId', 'skip.claimId', 'patient.claimId', 'bill.claimId');
   g.wire('skip.then', 'skipped.exec');
-  g.wire('decide.tripType', 'skipped.tripType', 'bill.tripType');
+  g.wire('decide.classification', 'skipped.classification', 'bill.classification');
   g.wire('decide.reason', 'bill.reason');
   g.wire('decide.claim', 'findings.exec');
   g.wire('clinical.narrative', 'findings.narrative');
@@ -1397,7 +1422,7 @@ const workDraftClaim = (): GraphDef => {
   g.wire('payers.notes', 'bill.payerNotes');
   g.wire('findings.findings', 'bill.findings');
   g.wire('bill.claimed', 'claimed.exec');
-  g.wire('bill.tripType', 'claimed.tripType');
+  g.wire('bill.classification', 'claimed.classification');
   g.wire('bill.voided', 'voided.exec');
   return g.def;
 };
@@ -1467,7 +1492,7 @@ export const intakeGraphs: SeedGraph[] = [
   asRule(
     'billing.trip-summary',
     'Trip Summary',
-    'Describes a trip for billers: PCR number, trip type and why, call time, response, care, impressions, pickup and destination.',
+    'Describes a trip for billers: PCR number, classification and why, call time, response, care, impressions, pickup and destination.',
     tripSummary()
   ),
   asStage(
@@ -1485,7 +1510,7 @@ export const intakeGraphs: SeedGraph[] = [
   asStage(
     'billing.review-pcr',
     'Review PCR',
-    'Coding review: asks a biller to confirm the trip type, level of service and loaded miles, prefilled with earlier answers or the suggestion and showing every reason. Held reports wait for release or void.',
+    'Coding review: asks a biller to confirm the classification, level of service and loaded miles, prefilled with earlier answers or the suggestion and showing every reason. Held reports wait for release or void.',
     reviewPcr()
   ),
   asStage(
@@ -1515,7 +1540,7 @@ export const intakeGraphs: SeedGraph[] = [
   asStage(
     'billing.bill-claim',
     'Bill the Claim',
-    'Determines the service for the trip type, has a biller review it, builds the claim, has a biller bill a facility instead when the Facility Responsibility rule says so (Bill Facility, then the payer cycle waits on the facility invoice), else checks the claim, and starts its payer cycle. A claim sent back to review is reviewed again with the answers given before.',
+    'Determines the service for the classification, has a biller review it, builds the claim, has a biller bill a facility instead when the Facility Responsibility rule says so (Bill Facility, then the payer cycle waits on the facility invoice), else checks the claim, and starts its payer cycle. A claim sent back to review is reviewed again with the answers given before.',
     billClaim()
   ),
   asStage(

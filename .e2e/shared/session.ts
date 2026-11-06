@@ -114,7 +114,7 @@ export type ClaimState = {
     number: string;
     status: string;
     total_cents: number;
-    trip_type: string | null;
+    classification: string | null;
     level: string | null;
     emergency: boolean | null;
     loaded_miles: string | number | null;

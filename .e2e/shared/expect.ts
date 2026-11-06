@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import type { ClaimState } from './session.ts';
 
 type ExpectedClaim = {
-  tripType: string;
+  classification: string;
   level: string;
   emergency: boolean;
   lines: readonly (readonly [string, number])[];
@@ -25,7 +25,7 @@ const includes = (found: string[], expected: readonly RegExp[], what: string) =>
 };
 
 export const expectClaim = (c: ClaimState, e: ExpectedClaim) => {
-  assert.equal(c.claim.trip_type, e.tripType, 'trip type');
+  assert.equal(c.claim.classification, e.classification, 'classification');
   assert.equal(c.claim.level, e.level, 'level of service');
   assert.equal(c.claim.emergency, e.emergency, 'emergency response');
   assert.deepEqual(

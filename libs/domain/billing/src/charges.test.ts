@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  isClassification,
   isServiceLevel,
   isTransport,
-  isTripType,
   NO_TRANSPORT_TRIPS,
   priceLines,
   readLines,
@@ -93,9 +93,9 @@ describe('priceLines', () => {
     );
   });
 
-  it('knows the trip types and which of them transport', () => {
-    assert.ok(isTripType('refusal'));
-    assert.ok(!isTripType('transfer'));
+  it('knows the classifications and which of them transport', () => {
+    assert.ok(isClassification('refusal'));
+    assert.ok(!isClassification('transfer'));
     assert.deepEqual(NO_TRANSPORT_TRIPS, ['treatNoTransport', 'refusal']);
   });
 });

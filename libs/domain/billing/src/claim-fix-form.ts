@@ -44,7 +44,7 @@ export const fixForm = (
     visible: CLAIM_FIX_FIELDS.map((f) => f.name).filter((n) => asked.has(n)),
     defaults: {
       serviceDate: check.details.serviceDate,
-      tripType: check.tripType === 'noClaim' ? null : check.tripType,
+      classification: check.classification === 'notBillable' ? null : check.classification,
       level: check.level,
       emergency: check.emergency,
       loadedMiles: check.loadedMiles,

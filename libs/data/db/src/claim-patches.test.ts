@@ -5,7 +5,7 @@ import { createRecordingDb } from './testing.ts';
 
 const empty: ClaimEdit = {
   serviceDate: null,
-  tripType: null,
+  classification: null,
   level: null,
   emergency: null,
   loadedMiles: null,

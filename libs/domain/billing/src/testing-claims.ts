@@ -43,7 +43,7 @@ const checkOfSaved = (c: NewClaim): ClaimCheck => ({
   patientId: c.patientId,
   patient: null,
   pcrNumber: c.pcrNumber,
-  tripType: c.tripType,
+  classification: c.classification,
   level: c.level,
   emergency: c.emergency,
   loadedMiles: c.loadedMiles,
@@ -76,7 +76,7 @@ const checkOfSaved = (c: NewClaim): ClaimCheck => ({
 
 const patched = (c: ClaimCheck, p: ClaimPatch): ClaimCheck => ({
   ...c,
-  tripType: p.tripType ?? c.tripType,
+  classification: p.classification ?? c.classification,
   level: p.level ?? c.level,
   emergency: p.emergency ?? c.emergency,
   loadedMiles: p.loadedMiles ?? c.loadedMiles,

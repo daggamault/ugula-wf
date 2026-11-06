@@ -157,7 +157,7 @@ export const ENCOUNTER_FACTS = model(
 export const CLAIM = model('billing.claim', 'claim', 'Claim', 'a claim before it is saved', [
   f('pcrNumber', 'string', 'PCR number'),
   f('patientId', 'string', 'Patient ID'),
-  f('tripType', 'string', 'Trip type'),
+  f('classification', 'string', 'Classification'),
   f('serviceDate', 'string', 'Date of service (YYYY-MM-DD)'),
   f('level', 'string', 'Level of service'),
   f('emergency', 'boolean', 'Emergency response'),
