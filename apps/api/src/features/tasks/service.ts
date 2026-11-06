@@ -108,48 +108,13 @@ export const createTaskService = ({ db, boss, announce, blobs, maxBytes }: TaskS
       const task = await findTask(db, agencyId, id);
       if (!task) return notFound;
       const source = await findTaskSource(db, task.run_id);
-      const claim =
-        source?.claim_id && source.claim_number !== null && source.claim_status
-          ? {
-              id: source.claim_id,
-              number: source.claim_number,
-              status: source.claim_status,
-              patient: source.last_name ? `${source.last_name}, ${source.first_name}` : null,
-              birthDate: source.birth_date,
-              serviceDate: source.service_date,
-              classification: source.classification,
-              level: source.level,
-              emergency: source.emergency,
-              loadedMiles: source.loaded_miles,
-              totalCents: source.total_cents,
-              balanceCents: source.balance_cents,
-              payers: source.payers,
-              lines: source.lines
-            }
-          : null;
-      const patient =
-        source?.patient_id && source.patient_number !== null
-          ? {
-              id: source.patient_id,
-              number: source.patient_number,
-              firstName: source.first_name,
-              lastName: source.last_name,
-              birthDate: source.birth_date,
-              sex: source.gender,
-              addressLine: source.address_line,
-              city: source.city,
-              state: source.state,
-              postalCode: source.postal_code
-            }
-          : null;
       return ok({
         task: {
           ...task,
           source: {
             reportId: source?.report_id ?? null,
             pcrNumber: source?.pcr_number ?? null,
-            claim,
-            patient
+            claimId: source?.claim_id ?? null
           }
         }
       });

@@ -1,6 +1,8 @@
 import { isRecord, type Json } from '@ugula/graph';
 import { TriangleAlertIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { addressText } from '../../shared/claims/claim-data.tsx';
+import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { ClaimIssues, isIssueList } from '../../shared/claims/claim-issues.tsx';
 import { formatDate } from '../../shared/format.ts';
 import { Alert, AlertList } from '../../shared/ui/alert.tsx';
@@ -9,7 +11,7 @@ import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
 import { withBack } from '../../shared/url-state.ts';
-import type { TaskClaim, TaskDetail, TaskPatient } from './client.ts';
+import type { TaskDetail } from './client.ts';
 import type { Mismatch, MismatchField } from './encounter-check.ts';
 
 const issuesOf = (context: Json) =>
@@ -73,8 +75,6 @@ export const TaskIssue = ({
   );
 };
 
-const ELIGIBILITY_TEXT: Record<string, string> = { active: 'active', inactive: 'not active' };
-
 const EncounterSays = ({
   mismatches,
   field
@@ -111,77 +111,66 @@ export const MismatchAlert = ({
     </Alert>
   ) : null;
 
-const PayerList = ({ payers }: { payers: TaskClaim['payers'] }) =>
-  payers.length ? (
-    <ol className="flex flex-col gap-0.5">
-      {payers.map((p, i) => (
-        <li key={`${i}-${p.payer}`}>
-          {p.payer}
-          <span className="text-surface-fg-muted">
-            {p.memberId ? ` · ${p.memberId}` : ''}
-            {p.eligibility ? ` · ${ELIGIBILITY_TEXT[p.eligibility] ?? p.eligibility}` : ''}
-          </span>
-        </li>
-      ))}
-    </ol>
-  ) : (
-    'Patient only'
-  );
-
-type FactsProps = {
-  taskId: string;
-  mismatches?: readonly Mismatch[] | undefined;
-  encounterHref?: string | undefined;
-};
-
 const SEXES: Readonly<Record<string, string>> = { F: 'Female', M: 'Male', U: 'Unknown' };
 
-const patientAddress = (p: TaskPatient) => {
-  const place = [p.city, p.state].filter(Boolean).join(', ');
-  return [p.addressLine, [place, p.postalCode].filter(Boolean).join(' ')]
-    .filter(Boolean)
-    .join(', ');
-};
+type PatientClaim = Pick<
+  ClaimDetail,
+  | 'patient_id'
+  | 'patient_number'
+  | 'first_name'
+  | 'last_name'
+  | 'birth_date'
+  | 'gender'
+  | 'address_line'
+  | 'city'
+  | 'state'
+  | 'postal_code'
+>;
 
 export const PatientFacts = ({
-  patient,
-  payers,
+  claim: c,
   taskId,
   mismatches = [],
   encounterHref
-}: FactsProps & { patient: TaskPatient | null; payers: TaskClaim['payers'] | null }) => {
+}: {
+  claim: PatientClaim;
+  taskId: string;
+  mismatches?: readonly Mismatch[] | undefined;
+  encounterHref?: string | undefined;
+}) => {
   const own = mismatches.filter((m) => m.field === 'patient' || m.field === 'birthDate');
   return (
     <SectionPanel
       title="Patient Record"
-      description="Who the claim bills for, as last reported on a patient care report or claim."
       actions={
-        patient ? (
-          <TextLink to={withBack(`/patients/${patient.id}`, `/tasks/${taskId}`)}>
-            Patient {patient.number}
+        c.patient_id ? (
+          <TextLink to={withBack(`/patients/${c.patient_id}`, `/tasks/${taskId}`)}>
+            Patient {c.patient_number}
           </TextLink>
         ) : null
       }
     >
-      {patient ? (
+      {c.patient_id ? (
         <>
           <MismatchAlert mismatches={own} encounterHref={encounterHref} />
           <DetailList>
             <Detail label="Name">
-              {[patient.lastName, patient.firstName].filter(Boolean).join(', ') || emptyValue}
+              {[c.last_name, c.first_name].filter(Boolean).join(', ') || emptyValue}
               <EncounterSays mismatches={own} field="patient" />
             </Detail>
             <Detail label="Birth Date">
-              {patient.birthDate ? formatDate(patient.birthDate) : emptyValue}
+              {c.birth_date ? formatDate(c.birth_date) : emptyValue}
               <EncounterSays mismatches={own} field="birthDate" />
             </Detail>
-            <Detail label="Sex">{(patient.sex && SEXES[patient.sex]) || emptyValue}</Detail>
-            <Detail label="Address">{patientAddress(patient) || emptyValue}</Detail>
-            {payers ? (
-              <Detail label="Insurance on This Claim">
-                <PayerList payers={payers} />
-              </Detail>
-            ) : null}
+            <Detail label="Sex">{(c.gender && SEXES[c.gender]) || emptyValue}</Detail>
+            <Detail label="Address">
+              {addressText({
+                addressLine: c.address_line,
+                city: c.city,
+                state: c.state,
+                postalCode: c.postal_code
+              }) ?? emptyValue}
+            </Detail>
           </DetailList>
         </>
       ) : (

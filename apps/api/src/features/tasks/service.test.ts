@@ -262,8 +262,7 @@ describe('task service', () => {
     assert.deepEqual(found.ok && found.value.task.source, {
       reportId: null,
       pcrNumber: null,
-      claim: null,
-      patient: null
+      claimId: null
     });
     const source = queries.find((q) => q.sql.includes('left join "import_reports"'));
     assert.ok(
@@ -293,35 +292,14 @@ describe('task service', () => {
 });
 
 describe('task service sources and hand-out', () => {
-  it('links a task to the claim its run works, with a snapshot of where the claim stands', async () => {
+  it('links a task to the report and the claim its run works', async () => {
     const { db } = createRecordingDb((q) =>
       q.sql.includes('from "workflow_runs"')
         ? [
             {
               report_id: 'rep-1',
               pcr_number: 'PCR-1',
-              claim_id: 'c1',
-              claim_number: 12,
-              claim_status: 'ready',
-              first_name: 'Jane',
-              last_name: 'Doe',
-              birth_date: '1950-02-03',
-              patient_id: 'p1',
-              patient_number: 'P-7',
-              gender: 'F',
-              address_line: '1 Main St',
-              city: 'Harrisburg',
-              state: 'PA',
-              postal_code: '17101',
-              service_date: '2026-09-14',
-              classification: 'emergency',
-              level: 'BLS',
-              emergency: true,
-              loaded_miles: '8.3',
-              total_cents: 92865,
-              balance_cents: 12865,
-              payers: [{ payer: 'Medicare', memberId: '1EG4', eligibility: 'active' }],
-              lines: [{ code: 'A0429', units: 1, totalCents: 80000 }]
+              claim_id: 'c1'
             }
           ]
         : [task()]
@@ -338,34 +316,7 @@ describe('task service sources and hand-out', () => {
     assert.deepEqual(found.ok && found.value.task.source, {
       reportId: 'rep-1',
       pcrNumber: 'PCR-1',
-      claim: {
-        id: 'c1',
-        number: 12,
-        status: 'ready',
-        patient: 'Doe, Jane',
-        birthDate: '1950-02-03',
-        serviceDate: '2026-09-14',
-        classification: 'emergency',
-        level: 'BLS',
-        emergency: true,
-        loadedMiles: '8.3',
-        totalCents: 92865,
-        balanceCents: 12865,
-        payers: [{ payer: 'Medicare', memberId: '1EG4', eligibility: 'active' }],
-        lines: [{ code: 'A0429', units: 1, totalCents: 80000 }]
-      },
-      patient: {
-        id: 'p1',
-        number: 'P-7',
-        firstName: 'Jane',
-        lastName: 'Doe',
-        birthDate: '1950-02-03',
-        sex: 'F',
-        addressLine: '1 Main St',
-        city: 'Harrisburg',
-        state: 'PA',
-        postalCode: '17101'
-      }
+      claimId: 'c1'
     });
   });
 

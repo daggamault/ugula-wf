@@ -11,6 +11,7 @@ import {
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useCan } from '../../shared/access.tsx';
 import { isApiError, messageOf } from '../../shared/api.ts';
+import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { formatAgo, formatDateTime, formatDay } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
@@ -20,7 +21,6 @@ import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
-import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { FieldGrid } from '../../shared/ui/field.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
@@ -32,7 +32,7 @@ import { Tooltip } from '../../shared/ui/tooltip.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
 import { backLabelOf, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
-import type { TaskDetail, TasksClient } from './client.ts';
+import type { TaskClaimRecord, TaskDetail, TasksClient } from './client.ts';
 import { ContextView } from './context-view.tsx';
 import { encounterFactsOf, type Mismatch, mismatchesOf } from './encounter-check.ts';
 import {
@@ -99,7 +99,7 @@ type TaskViewProps = {
   findFollowUp?: (() => Promise<FollowUp | null>) | undefined;
   mismatches?: readonly Mismatch[];
   source?: ReactNode;
-  claimView?: ReactNode;
+  claim?: TaskClaimRecord | null;
   onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
   onAssign: (assign: boolean) => Promise<void>;
   onNext: () => Promise<void>;
@@ -123,21 +123,25 @@ const FAULT_HELP =
   'Retry the failed step, skip it with the outputs below (and the exec pin to continue from), or cancel the run.';
 
 export const TaskAbout = ({
-  task
+  task,
+  claim
 }: {
-  task: Pick<TaskDetail, 'id' | 'title' | 'subject' | 'source'>;
+  task: Pick<TaskDetail, 'id' | 'title' | 'subject'>;
+  claim: Pick<ClaimDetail, 'id' | 'number' | 'first_name' | 'last_name'> | null;
 }) => {
-  const { claim } = task.source;
   const about = task.subject ? task.title : null;
   if (!claim) return about ?? 'Waiting on a decision';
   return (
     <>
       {about ? `${about} on claim ` : 'On claim '}
       <TextLink to={withBack(`/claims/${claim.id}`, `/tasks/${task.id}`)}>{claim.number}</TextLink>
-      {` for ${claim.patient ?? 'a patient not matched yet'}`}
+      {` for ${claim.last_name ? `${claim.last_name}, ${claim.first_name ?? ''}` : 'a patient not matched yet'}`}
     </>
   );
 };
+
+export const tabsOf = (hasClaim: boolean, hasReport: boolean): readonly TaskTab[] =>
+  TASK_TABS.filter((t) => t === 'workflow' || (t === 'encounter' ? hasReport : hasClaim));
 
 export const backOfTask = (back: string | null) => back ?? '/tasks';
 
@@ -417,7 +421,7 @@ export const TaskView = ({
   findFollowUp,
   mismatches = [],
   source,
-  claimView,
+  claim = null,
   onComplete,
   onAssign,
   onNext,
@@ -432,8 +436,8 @@ export const TaskView = ({
   const notify = useToast();
   const isUnassigned = task.assignee_id === null;
   const open = task.status === 'open' && done === null;
-  const { claim } = task.source;
-  const hasTabs = claim !== null || source != null || task.source.patient !== null;
+  const tabs = tabsOf(claim !== null, source != null);
+  const shown = tabs.includes(tab) ? tab : (tabs[0] ?? 'workflow');
   const encounterHref = source != null ? (tabHref?.('encounter') ?? '?tab=encounter') : undefined;
 
   const complete = async (outcome: string, values: Record<string, Json>) => {
@@ -480,7 +484,7 @@ export const TaskView = ({
         <span className="flex flex-wrap items-center gap-2">
           <Badge intent={isFault ? 'danger' : 'info'}>{info.label}</Badge>
           <span>
-            <TaskAbout task={task} />, opened{' '}
+            <TaskAbout task={task} claim={claim?.claim ?? null} />, opened{' '}
             <Tooltip label={formatDateTime(task.created_at)} side="bottom">
               <time dateTime={task.created_at}>
                 {formatAgo(task.created_at)}
@@ -549,38 +553,29 @@ export const TaskView = ({
           </DecisionSection>
         )}
       </TaskIssue>
-      {hasTabs ? (
+      {tabs.length > 1 ? (
         <>
           <Tabs
             label="Task data"
-            tabs={TASK_TABS.map((t) => ({
+            tabs={tabs.map((t) => ({
               label: TAB_LABELS[t],
               href: tabHref?.(t) ?? `?tab=${t}`,
-              isSelected: t === tab
+              isSelected: t === shown
             }))}
           />
-          {tab === 'encounter' ? (
-            (source ?? (
-              <SectionPanel title="Patient Care Report" description="What the crew documented.">
-                <EmptyText>No patient care report is linked to this task.</EmptyText>
-              </SectionPanel>
-            ))
-          ) : tab === 'workflow' ? (
+          {shown === 'encounter' ? (
+            source
+          ) : shown === 'workflow' ? (
             <WorkflowDetails context={task.context} />
-          ) : tab === 'patient' ? (
+          ) : claim === null ? null : shown === 'patient' ? (
             <PatientFacts
-              patient={task.source.patient}
-              payers={claim?.payers ?? null}
+              claim={claim.claim}
               taskId={task.id}
               mismatches={mismatches}
               encounterHref={encounterHref}
             />
           ) : (
-            (claimView ?? (
-              <SectionPanel title="Summary" description="What is billed.">
-                <EmptyText>This task is not about a claim yet.</EmptyText>
-              </SectionPanel>
-            ))
+            <TaskClaimView record={claim} mismatches={mismatches} encounterHref={encounterHref} />
           )}
         </>
       ) : (
@@ -599,7 +594,7 @@ export const TaskPage = ({ client, live, taskId, back, tab = 'claim' }: TaskPage
   const report = useResource(`source-report:${reportId ?? 'none'}`, () =>
     reportId ? client.report(reportId) : Promise.resolve(null)
   );
-  const claimId = task.data?.source.claim?.id ?? null;
+  const claimId = task.data?.source.claimId ?? null;
   const claimRecord = useResource(`task-claim:${claimId ?? 'none'}`, (signal) =>
     claimId ? client.claim(claimId, signal) : Promise.resolve(null)
   );
@@ -621,12 +616,14 @@ export const TaskPage = ({ client, live, taskId, back, tab = 'claim' }: TaskPage
     (e) => e.kind === 'claim' && claimId !== null && e.id === claimId,
     claimRecord.reload
   );
-  if (task.error) return <PageFailure message={task.error.message} />;
-  if (!task.data) return <PageLoading />;
+  const failed = task.error ?? claimRecord.error;
+  if (failed) return <PageFailure message={failed.message} />;
+  if (!task.data || (claimId !== null && !claimRecord.data)) return <PageLoading />;
   const { queue, source } = task.data;
   const encounter = report.data ? encounterFactsOf(report.data.data) : null;
   const waiting = queues.data?.find((q) => q.queue === queue)?.unassigned;
-  const mismatches = encounter && source.claim ? mismatchesOf(source.claim, encounter) : [];
+  const claim = claimRecord.data ?? null;
+  const mismatches = encounter && claim ? mismatchesOf(claim.claim, encounter) : [];
   const tabTo = (t: TaskTab) => {
     const to = `/tasks/${taskId}?tab=${t}`;
     return back === null ? to : withBack(to, back);
@@ -641,19 +638,7 @@ export const TaskPage = ({ client, live, taskId, back, tab = 'claim' }: TaskPage
       tabHref={tabTo}
       findFollowUp={findFollowUp}
       mismatches={mismatches}
-      claimView={
-        source.claim === null ? null : claimRecord.error ? (
-          <Alert>{claimRecord.error.message}</Alert>
-        ) : claimRecord.data ? (
-          <TaskClaimView
-            record={claimRecord.data}
-            mismatches={mismatches}
-            encounterHref={source.reportId === null ? undefined : tabTo('encounter')}
-          />
-        ) : (
-          <PageLoading />
-        )
-      }
+      claim={claim}
       source={
         source.reportId === null ? null : report.error ? (
           <Alert>{report.error.message}</Alert>

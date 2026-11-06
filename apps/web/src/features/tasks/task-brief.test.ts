@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { TaskClaim } from './client.ts';
+import { claimDetail } from '../../shared/claims/testing.ts';
 import { headlineOf, PatientFacts, TaskIssue } from './task-brief.tsx';
 
 const issue = (severity: 'blocking' | 'warning', message: string) => ({
@@ -12,26 +12,6 @@ const issue = (severity: 'blocking' | 'warning', message: string) => ({
   coverageId: null,
   severity
 });
-
-const claim: TaskClaim = {
-  id: 'c1',
-  number: '20261101-0012',
-  status: 'draft',
-  patient: 'Doe, Jane',
-  birthDate: '1950-02-03',
-  serviceDate: '2026-09-14',
-  classification: 'scheduled',
-  level: 'BLS',
-  emergency: false,
-  loadedMiles: '8.3',
-  totalCents: 92865,
-  balanceCents: 92865,
-  payers: [
-    { payer: 'Medicare', memberId: '1EG4', eligibility: 'inactive' },
-    { payer: 'Medicaid', memberId: null, eligibility: null }
-  ],
-  lines: [{ code: 'A0428', units: 1, totalCents: 80000 }]
-};
 
 describe('headlineOf', () => {
   it('uses the summary, else the first blocking issue, else the title', () => {
@@ -78,33 +58,18 @@ describe('TaskIssue', () => {
 });
 
 describe('PatientFacts', () => {
-  it('shows the patient record and the insurance billed on the claim', () => {
+  it('shows the patient the claim bills for, linked to their record', () => {
     const html = renderToStaticMarkup(
-      createElement(PatientFacts, {
-        patient: {
-          id: 'p1',
-          number: 'P-7',
-          firstName: 'Jane',
-          lastName: 'Doe',
-          birthDate: '1950-02-03',
-          sex: 'F',
-          addressLine: '1 Main St',
-          city: 'Harrisburg',
-          state: 'PA',
-          postalCode: '17101'
-        },
-        payers: claim.payers,
-        taskId: 't1'
-      })
+      createElement(PatientFacts, { claim: { ...claimDetail, gender: 'F' }, taskId: 't1' })
     );
     assert.ok(
-      html.includes('Patient Record') && html.includes('href="/patients/p1?back=%2Ftasks%2Ft1"')
+      html.includes('Patient Record') &&
+        html.includes(`href="/patients/${claimDetail.patient_id}?back=%2Ftasks%2Ft1"`)
     );
     assert.ok(html.includes('Doe, Jane') && html.includes('Female'));
-    assert.ok(html.includes('1 Main St, Harrisburg, PA 17101'));
-    assert.ok(html.includes('1EG4 · not active') && html.includes('Medicaid'));
+    assert.ok(html.includes('1 Main St, Springfield, IL 62704'));
     const none = renderToStaticMarkup(
-      createElement(PatientFacts, { patient: null, payers: null, taskId: 't1' })
+      createElement(PatientFacts, { claim: { ...claimDetail, patient_id: null }, taskId: 't1' })
     );
     assert.ok(none.includes('No patient is matched to this claim yet.'));
   });

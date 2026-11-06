@@ -1,24 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { TaskClaim } from './client.ts';
 import { type EncounterFacts, encounterFactsOf, mismatchesOf } from './encounter-check.ts';
 import { fixtureReport } from './testing.ts';
 
-const claimOf = (patch: Partial<TaskClaim> = {}): TaskClaim => ({
-  id: 'c1',
-  number: '20261101-0012',
-  status: 'draft',
-  patient: 'Quintero, Rosalind',
-  birthDate: '1961-02-19',
-  serviceDate: null,
-  classification: null,
-  level: null,
-  emergency: null,
-  loadedMiles: null,
-  totalCents: null,
-  balanceCents: null,
-  payers: [],
-  lines: [],
+type ClaimFacts = Parameters<typeof mismatchesOf>[0];
+
+const claimOf = (patch: Partial<ClaimFacts> = {}): ClaimFacts => ({
+  first_name: 'Rosalind',
+  last_name: 'Quintero',
+  birth_date: '1961-02-19',
+  service_date: null,
+  loaded_miles: null,
+  coverages: [],
   ...patch
 });
 
@@ -56,21 +49,22 @@ describe('encounterFactsOf', () => {
 describe('mismatchesOf', () => {
   it('finds nothing when the claim agrees with the encounter', () => {
     const claim = claimOf({
-      patient: 'QUINTERO, ROSALIND',
-      serviceDate: '2026-09-14',
-      loadedMiles: '6.9',
-      payers: [{ payer: 'Medicare', memberId: '1eg4te5mk72', eligibility: null }]
+      first_name: 'ROSALIND',
+      last_name: 'QUINTERO',
+      service_date: '2026-09-14',
+      loaded_miles: '6.9',
+      coverages: [{ member_id: '1eg4te5mk72' }]
     });
     assert.deepEqual(mismatchesOf(claim, facts()), []);
   });
 
   it('names each value the claim changed from the encounter', () => {
     const claim = claimOf({
-      patient: 'Quintero, Rosa',
-      birthDate: '1961-02-20',
-      serviceDate: '2026-09-15',
-      loadedMiles: 12,
-      payers: [{ payer: 'Medicare', memberId: '9ZZ9', eligibility: null }]
+      first_name: 'Rosa',
+      birth_date: '1961-02-20',
+      service_date: '2026-09-15',
+      loaded_miles: '12',
+      coverages: [{ member_id: '9ZZ9' }]
     });
     assert.deepEqual(
       mismatchesOf(claim, facts()).map((m) => [m.field, m.encounter]),
@@ -92,8 +86,8 @@ describe('mismatchesOf', () => {
       loadedMiles: null,
       memberIds: []
     });
-    const claim = claimOf({ payers: [{ payer: 'Medicare', memberId: 'X', eligibility: null }] });
+    const claim = claimOf({ coverages: [{ member_id: 'X' }] });
     assert.deepEqual(mismatchesOf(claim, empty), []);
-    assert.deepEqual(mismatchesOf(claimOf({ patient: null, birthDate: null }), facts()), []);
+    assert.deepEqual(mismatchesOf(claimOf({ last_name: null, birth_date: null }), facts()), []);
   });
 });

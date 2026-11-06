@@ -1,5 +1,5 @@
 import type { Permission } from '@ugula/access';
-import type { ClaimIssue, ClaimStatus, CodeDescriptions } from '@ugula/billing';
+import type { ClaimIssue, CodeDescriptions } from '@ugula/billing';
 import type { FieldSpec, Json } from '@ugula/graph';
 import type { ReportDictionary } from '@ugula/nemsis';
 import type { Api } from '../../shared/api.ts';
@@ -73,41 +73,10 @@ export type TaskDetail = TaskSummary & {
   source: TaskSource;
 };
 
-export type TaskClaim = {
-  id: string;
-  number: string;
-  status: ClaimStatus;
-  patient: string | null;
-  birthDate: string | null;
-  serviceDate: string | null;
-  classification: string | null;
-  level: string | null;
-  emergency: boolean | null;
-  loadedMiles: number | string | null;
-  totalCents: number | null;
-  balanceCents: number | null;
-  payers: { payer: string; memberId: string | null; eligibility: string | null }[];
-  lines: { code: string; units: number | string; totalCents: number }[];
-};
-
-export type TaskPatient = {
-  id: string;
-  number: string;
-  firstName: string | null;
-  lastName: string | null;
-  birthDate: string | null;
-  sex: string | null;
-  addressLine: string | null;
-  city: string | null;
-  state: string | null;
-  postalCode: string | null;
-};
-
 type TaskSource = {
   reportId: string | null;
   pcrNumber: string | null;
-  claim: TaskClaim | null;
-  patient: TaskPatient | null;
+  claimId: string | null;
 };
 
 export type TaskClaimRecord = {

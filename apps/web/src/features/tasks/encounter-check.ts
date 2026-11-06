@@ -1,6 +1,6 @@
 import { isRecord, type Json } from '@ugula/graph';
 import { toPcr } from '@ugula/nemsis';
-import type { TaskClaim } from './client.ts';
+import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 
 export type EncounterFacts = {
   firstName: string | null;
@@ -50,24 +50,34 @@ const normalized = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Only facts the claim copies from the report: classification and level are decided by
 // billing rules, so they may differ on purpose.
-export const mismatchesOf = (claim: TaskClaim, e: EncounterFacts): Mismatch[] => {
+type ClaimFacts = Pick<
+  ClaimDetail,
+  'first_name' | 'last_name' | 'birth_date' | 'service_date' | 'loaded_miles'
+> & { coverages: readonly Pick<ClaimDetail['coverages'][number], 'member_id'>[] };
+
+export const mismatchesOf = (claim: ClaimFacts, e: EncounterFacts): Mismatch[] => {
   const out: Mismatch[] = [];
   const name = e.lastName ? [e.lastName, e.firstName].filter(Boolean).join(', ') : null;
-  if (name && claim.patient && normalized(name) !== normalized(claim.patient)) {
+  const patient = claim.last_name
+    ? [claim.last_name, claim.first_name].filter(Boolean).join(', ')
+    : null;
+  if (name && patient && normalized(name) !== normalized(patient)) {
     out.push({ field: 'patient', label: 'Patient', encounter: name });
   }
-  if (e.birthDate && claim.birthDate && e.birthDate !== claim.birthDate) {
+  if (e.birthDate && claim.birth_date && e.birthDate !== claim.birth_date) {
     out.push({ field: 'birthDate', label: 'Birth Date', encounter: e.birthDate });
   }
-  if (e.serviceDate && claim.serviceDate && e.serviceDate !== claim.serviceDate) {
+  if (e.serviceDate && claim.service_date && e.serviceDate !== claim.service_date) {
     out.push({ field: 'serviceDate', label: 'Date of Service', encounter: e.serviceDate });
   }
-  const miles = claim.loadedMiles === null ? null : Number(claim.loadedMiles);
+  const miles = claim.loaded_miles === null ? null : Number(claim.loaded_miles);
   if (e.loadedMiles !== null && miles !== null && Math.abs(miles - e.loadedMiles) >= 0.1) {
     out.push({ field: 'loadedMiles', label: 'Loaded Miles', encounter: String(e.loadedMiles) });
   }
   const known = new Set(e.memberIds.map(normalized));
-  const unmatched = claim.payers.filter((p) => p.memberId && !known.has(normalized(p.memberId)));
+  const unmatched = claim.coverages.filter(
+    (c) => c.member_id && !known.has(normalized(c.member_id))
+  );
   if (e.memberIds.length && unmatched.length) {
     out.push({ field: 'memberId', label: 'Member ID', encounter: e.memberIds.join(', ') });
   }
