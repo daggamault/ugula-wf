@@ -26,7 +26,7 @@ export type Invitation = {
   createdAt: string;
 };
 
-export type RoleOption = { id: string; name: string; isGrantable: boolean };
+type RoleOption = { id: string; name: string; isGrantable: boolean };
 
 export type InviteInput = { email: string; firstName: string; lastName: string; roleId: string };
 

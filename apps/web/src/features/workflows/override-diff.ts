@@ -1,11 +1,11 @@
 import { deepEqual, type GraphDef, type Json, type NodeInstance } from '@ugula/graph';
 import { edgeId, type NodeChange } from '../../shared/graph/flow.ts';
 
-export type Property = 'type' | 'label' | 'note' | 'config' | `input:${string}`;
+type Property = 'type' | 'label' | 'note' | 'config' | `input:${string}`;
 
-export type PropertyChange = { property: Property; base: Json | undefined };
+type PropertyChange = { property: Property; base: Json | undefined };
 
-export type GraphDiff = {
+type GraphDiff = {
   changes: Record<string, NodeChange>;
   properties: Record<string, PropertyChange[]>;
   removed: NodeInstance[];

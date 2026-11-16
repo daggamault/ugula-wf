@@ -54,7 +54,7 @@ import { PatientFacts, TaskIssue } from './task-brief.tsx';
 import { ChangeList, changesOf, FieldWas } from './task-changes.tsx';
 import { TaskClaimView } from './task-claim.tsx';
 
-export const TASK_TABS = ['claim', 'encounter', 'patient', 'workflow'] as const;
+const TASK_TABS = ['claim', 'encounter', 'patient', 'workflow'] as const;
 
 export type TaskTab = (typeof TASK_TABS)[number];
 
@@ -68,7 +68,7 @@ const TAB_LABELS: Readonly<Record<TaskTab, string>> = {
   workflow: 'Workflow'
 };
 
-export type FollowUp = { title: string; href: string };
+type FollowUp = { title: string; href: string };
 
 const DecisionSection = ({ title, children }: { title: string; children: ReactNode }) => {
   const id = useId();
@@ -151,7 +151,7 @@ export const TaskAbout = ({
   );
 };
 
-export const tabsOf = (hasClaim: boolean, hasReport: boolean): readonly TaskTab[] =>
+const tabsOf = (hasClaim: boolean, hasReport: boolean): readonly TaskTab[] =>
   TASK_TABS.filter((t) => t === 'workflow' || (t === 'encounter' ? hasReport : hasClaim));
 
 export const backOfTask = (back: string | null) => back ?? '/tasks';

@@ -31,7 +31,7 @@ export type AuthClient = {
   setPassword: (token: string, password: string) => Promise<void>;
 };
 
-export type InvitationPreview = {
+type InvitationPreview = {
   email: string;
   firstName: string;
   lastName: string;

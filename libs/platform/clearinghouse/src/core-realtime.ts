@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-export type CoreConfig = {
+type CoreConfig = {
   url: string;
   username: string;
   password: string;
@@ -12,9 +12,7 @@ export type CoreConfig = {
   newId?: () => string;
 };
 
-export type CoreReply =
-  | { ok: true; payloadType: string; payload: string }
-  | { ok: false; error: string };
+type CoreReply = { ok: true; payloadType: string; payload: string } | { ok: false; error: string };
 
 const CORE_RULE_VERSION = '2.2.0';
 

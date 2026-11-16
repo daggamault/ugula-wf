@@ -14,7 +14,7 @@ export type AgencyEnv = {
   };
 };
 
-export type FindAccess = (userId: string, agencyId: string) => Promise<AgencyAccess | null>;
+type FindAccess = (userId: string, agencyId: string) => Promise<AgencyAccess | null>;
 
 const agencyParam = v.object({ agencyId: uuid });
 

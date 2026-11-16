@@ -3,15 +3,12 @@ import { CopyIcon } from 'lucide-react';
 import { messageOf } from '../../shared/api.ts';
 import { classNamesOf } from '../../shared/class-names.ts';
 import { formatDateTime } from '../../shared/format.ts';
-import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { interactiveClasses } from '../../shared/ui/interactive.ts';
-import { PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { XmlTree } from '../../shared/ui/xml-tree.tsx';
-import { useResource } from '../../shared/use-resource.ts';
-import type { SourceReport, TasksClient } from './client.ts';
+import type { SourceReport } from './client.ts';
 import { readPcr } from './pcr-reader.ts';
 import { PcrSummaryView } from './pcr-summary.tsx';
 
@@ -58,16 +55,4 @@ export const SourceReportView = ({ source }: { source: SourceReport }) => {
       </details>
     </SectionPanel>
   );
-};
-
-export const SourceReportPanel = ({
-  client,
-  reportId
-}: {
-  client: TasksClient;
-  reportId: string;
-}) => {
-  const report = useResource(`source-report:${reportId}`, () => client.report(reportId));
-  if (report.error) return <Alert>{report.error.message}</Alert>;
-  return report.data ? <SourceReportView source={report.data} /> : <PageLoading />;
 };

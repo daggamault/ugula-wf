@@ -342,7 +342,7 @@ type EffectiveGraph = {
   definition: GraphDef;
 };
 
-export const buildEffectiveGraphs = (s: ScopeIds) => sql<EffectiveGraph>`
+const buildEffectiveGraphs = (s: ScopeIds) => sql<EffectiveGraph>`
   select g.id, g.key, g.name, g.kind, g.role, ${scopeOf('g')} as scope, v.definition
   from (select distinct k.key from graphs k where ${visible('k', s)}) keys
   cross join lateral (select ${resolvedGraph(s.agencyId, sql.ref('keys.key'))} as id) r

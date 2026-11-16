@@ -5,7 +5,7 @@ import { emptyValue } from '../../shared/ui/empty-state.tsx';
 import { interactiveClasses } from '../../shared/ui/interactive.ts';
 import { fieldLabel } from './outcomes.ts';
 
-export type FieldChange = { field: FieldSpec; was: Json; now: Json };
+type FieldChange = { field: FieldSpec; was: Json; now: Json };
 
 const isBlank = (value: Json | undefined) =>
   value === undefined ||

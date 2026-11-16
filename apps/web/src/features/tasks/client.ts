@@ -32,7 +32,7 @@ type TaskSummary = {
   completed_at: string | null;
 };
 
-export type TaskAssignee = 'mine' | 'unassigned' | 'all';
+type TaskAssignee = 'mine' | 'unassigned' | 'all';
 
 export type TaskFilter = { queue: string | null; assignee: TaskAssignee };
 

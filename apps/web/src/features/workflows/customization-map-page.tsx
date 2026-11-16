@@ -17,7 +17,7 @@ import type {
 import { RoleBadge, ScopeBadge } from './scope-badges.tsx';
 import { CUSTOMIZED_PATH } from './workflows-page.tsx';
 
-export type MapNode = {
+type MapNode = {
   key: string;
   id: string;
   name: string;

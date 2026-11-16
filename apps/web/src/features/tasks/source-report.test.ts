@@ -2,8 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { TasksClient } from './client.ts';
-import { SourceReportPanel, SourceReportView } from './source-report.tsx';
+import { SourceReportView } from './source-report.tsx';
 import { fixtureDictionary, fixtureReport, fixtureXml } from './testing.ts';
 
 const source = {
@@ -63,17 +62,5 @@ describe('SourceReportView', () => {
       })
     );
     assert.ok(html.includes('Report #3 from october.xml'));
-  });
-});
-
-describe('SourceReportPanel', () => {
-  it('shows a spinner while the report loads', () => {
-    const html = renderToStaticMarkup(
-      createElement(SourceReportPanel, {
-        client: { report: async () => source } as unknown as TasksClient,
-        reportId: 'rep-1'
-      })
-    );
-    assert.ok(html.includes('aria-label="Loading"') && !html.includes('Source Report'));
   });
 });

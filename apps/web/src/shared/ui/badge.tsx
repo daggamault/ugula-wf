@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import type { Intent } from './intent.ts';
 
-export type BadgeIntent = Intent | 'custom';
+type BadgeIntent = Intent | 'custom';
 
 const intentClasses: Readonly<Record<BadgeIntent, string>> = {
   primary: 'border-primary/30 bg-primary/10 text-primary',

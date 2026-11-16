@@ -55,7 +55,7 @@ export const go = (page: Page, path: string) => {
   return page.goto(new URL(scoped, config.E2E_WEB_URL).href);
 };
 
-export const apiPath = (s: Session, path: string) =>
+const apiPath = (s: Session, path: string) =>
   `${s.apiUrl}${path.replace(/^\/api\//, `/api/agencies/${s.agencyId}/`)}`;
 
 export const heading = (page: Page, name: string | RegExp) =>

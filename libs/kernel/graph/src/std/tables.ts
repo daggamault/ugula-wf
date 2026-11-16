@@ -29,7 +29,7 @@ const conditionSchema = v.strictObject({
 
 type Condition = v.InferOutput<typeof conditionSchema>;
 
-export const TABLE_KEY_PATTERN = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
+const TABLE_KEY_PATTERN = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
 
 const tableRefSchema = v.strictObject({
   key: v.pipe(v.string(), v.regex(TABLE_KEY_PATTERN, 'Use a dotted lowercase table key'))

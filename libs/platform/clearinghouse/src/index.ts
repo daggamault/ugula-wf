@@ -1,4 +1,4 @@
-export { type CoreConfig, type CoreReply, createCoreRealtime } from './core-realtime.ts';
+export { createCoreRealtime } from './core-realtime.ts';
 export {
   needsReseal,
   openSecret,
@@ -6,10 +6,4 @@ export {
   type SecretKeyring,
   sealSecret
 } from './secrets.ts';
-export {
-  createSftpBatch,
-  hostKeyFingerprint,
-  type RemoteFile,
-  type SftpBatch,
-  type SftpConfig
-} from './sftp-batch.ts';
+export { createSftpBatch, hostKeyFingerprint } from './sftp-batch.ts';

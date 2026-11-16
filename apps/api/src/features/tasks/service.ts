@@ -83,7 +83,7 @@ export const jobFor = (
   return cancel(task.run_id);
 };
 
-export const takesFiles = (fields: unknown) =>
+const takesFiles = (fields: unknown) =>
   Array.isArray(fields) && (fields as FieldSpec[]).some((f) => isFileType(f.type));
 
 export const createTaskService = ({ db, boss, announce, blobs, maxBytes }: TaskServiceDeps) => {

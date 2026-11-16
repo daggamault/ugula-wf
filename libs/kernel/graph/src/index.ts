@@ -6,12 +6,11 @@ export {
   RETURN_TYPE,
   refKey,
   retargetRefs,
-  WORKFLOW_CALL_TYPES,
   workflowRefs
 } from './compile.ts';
 export { inputNode } from './core.ts';
 export { actionNode, branchNode, pin, pureNode } from './define.ts';
-export { documentationIssues, isTitleCase } from './documentation.ts';
+export { documentationIssues } from './documentation.ts';
 export { createEngine, type Engine } from './engine.ts';
 export { messageOf } from './errors.ts';
 export { checkField } from './fields.ts';
@@ -28,7 +27,6 @@ export type { ConditionOp } from './std/tables.ts';
 export {
   inlineTables,
   type ResolvedTable,
-  TABLE_KEY_PATTERN,
   TABLE_NODE_KINDS,
   tableContract,
   tableRefOf,

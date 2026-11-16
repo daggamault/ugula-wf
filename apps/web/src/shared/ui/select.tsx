@@ -55,7 +55,7 @@ type MultipleProps = ControlProps & {
   onChange: (value: string[]) => void;
 };
 
-export type SelectControlProps = SingleProps | MultipleProps;
+type SelectControlProps = SingleProps | MultipleProps;
 
 const triggerClasses = classNamesOf(
   fieldControlClasses,
@@ -74,7 +74,7 @@ const TYPEAHEAD_MS = 600;
 const valuesOf = (props: SelectControlProps): readonly string[] =>
   props.isMultiple ? props.value : [props.value];
 
-export const resultCount = (count: number) => (count === 1 ? '1 result' : `${count} results`);
+const resultCount = (count: number) => (count === 1 ? '1 result' : `${count} results`);
 
 export const summaryOf = (options: readonly SelectOption[], values: readonly string[]) => {
   const labels = values.flatMap((v) => options.find((o) => o.value === v)?.label ?? []);

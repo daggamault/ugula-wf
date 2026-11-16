@@ -40,7 +40,7 @@ export const visible = (alias: string, s: Owner) => {
 const resolvedIn = (table: ScopedTable, agencyId: string, key: RawBuilder<unknown>) =>
   table === 'graphs' ? resolvedGraph(agencyId, key) : resolvedTable(agencyId, key);
 
-export const effectiveIdOf = (
+const effectiveIdOf = (
   table: ScopedTable,
   key: RawBuilder<unknown>,
   s: ScopeIds
@@ -116,7 +116,7 @@ export const ownerOf = (access: AgencyAccess, scope: EditScope): Owner => ({
   agencyId: scope === 'agency' ? access.agencyId : null
 });
 
-export type Effective = { id: string; key: string; name: string; scope: Scope };
+type Effective = { id: string; key: string; name: string; scope: Scope };
 
 export const buildEffective = (table: ScopedTable, s: ScopeIds) => sql<Effective>`
   select e.id, e.key, e.name, ${scopeOf('e')} as scope

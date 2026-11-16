@@ -6,7 +6,7 @@ import { interactiveClasses } from './interactive.ts';
 import { hidePopover } from './popover.ts';
 import { PendingOverlay } from './spinner.tsx';
 
-export type MenuItem = {
+type MenuItem = {
   label: string;
   description: string;
   icon: LucideIcon;

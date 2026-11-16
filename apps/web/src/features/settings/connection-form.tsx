@@ -35,7 +35,7 @@ type ConnectionText =
   | 'claimStatusExtension'
   | 'realtimeUrl';
 
-export type ConnectionDraft = Record<ConnectionText, string> & {
+type ConnectionDraft = Record<ConnectionText, string> & {
   vendor: ClearinghouseVendor;
   enabled: 'on' | 'off';
   afterDownload: AfterDownload;
@@ -189,7 +189,7 @@ export const secretHint = (c: ClearinghouseConnection | null, d: ConnectionDraft
     : 'A password is set. Leave blank to keep it, or type a new one.';
 };
 
-export const NO_SECRET_STORE = 'This server cannot store clearinghouse passwords yet';
+const NO_SECRET_STORE = 'This server cannot store clearinghouse passwords yet';
 
 export const saveBlocked = (
   c: ClearinghouseConnection | null,

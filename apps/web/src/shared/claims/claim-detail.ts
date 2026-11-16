@@ -14,13 +14,7 @@ import type {
   TransportReason
 } from '@ugula/billing';
 
-export type CycleStatus =
-  | 'running'
-  | 'suspended'
-  | 'completed'
-  | 'faulted'
-  | 'failed'
-  | 'cancelled';
+type CycleStatus = 'running' | 'suspended' | 'completed' | 'faulted' | 'failed' | 'cancelled';
 
 type TaskKind = 'task' | 'fault';
 

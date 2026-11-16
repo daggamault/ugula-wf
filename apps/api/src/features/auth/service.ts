@@ -30,7 +30,7 @@ type AuthServiceDeps = {
   now?: () => Date;
 };
 
-export type CurrentUser = {
+type CurrentUser = {
   id: string;
   email: string;
   firstName: string;

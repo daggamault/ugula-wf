@@ -40,7 +40,7 @@ export type Decorations = {
   removed?: readonly NodeInstance[];
 };
 
-export const GHOST_PREFIX = 'removed:';
+const GHOST_PREFIX = 'removed:';
 
 const CUSTOM_EDGE = '[&_.react-flow__edge-path]:stroke-custom';
 

@@ -13,16 +13,16 @@ export type SftpConfig = {
   operationTimeoutMs?: number;
 };
 
-export type RemoteFile = { path: string; name: string; size: number; modifiedAt: Date };
+type RemoteFile = { path: string; name: string; size: number; modifiedAt: Date };
 
-export type SftpSession = {
+type SftpSession = {
   upload: (name: string, bytes: Uint8Array) => Promise<string>;
   list: () => Promise<RemoteFile[]>;
   download: (path: string) => Promise<Uint8Array>;
   remove: (path: string) => Promise<void>;
 };
 
-export type SftpBatch = {
+type SftpBatch = {
   upload: SftpSession['upload'];
   session: <T>(work: (s: SftpSession) => Promise<T>) => Promise<T>;
 };
