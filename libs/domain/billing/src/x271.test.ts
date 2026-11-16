@@ -144,6 +144,34 @@ describe('read271', () => {
     ]);
   });
 
+  it("keeps one payer's rejections off the next payer's members", () => {
+    const results = read271(
+      file(
+        'ST*271*0001*005010X279A1',
+        'HL*1**20*1',
+        'NM1*PR*2*MEDICARE*****PI*DEMOMCR',
+        'AAA*Y**42*R',
+        'HL*2*1*21*1',
+        'HL*3*2*22*0',
+        'TRN*2*cov-1',
+        'HL*4**20*1',
+        'NM1*PR*2*BLUE*****PI*BLUE',
+        'HL*5*4*21*1',
+        'HL*6*5*22*0',
+        'TRN*2*cov-2',
+        'EB*1**30**BLUE PPO',
+        'SE*13*0001'
+      )
+    );
+    assert.deepEqual(
+      results.map((r) => [r.trace, r.messages]),
+      [
+        ['cov-1', ['The payer is unable to respond now']],
+        ['cov-2', []]
+      ]
+    );
+  });
+
   it('reads a hospital or nursing facility stay with its admission and discharge dates', () => {
     const [inpatient, snf, undated] = read271(
       file(

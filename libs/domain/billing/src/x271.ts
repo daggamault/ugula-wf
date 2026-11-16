@@ -84,6 +84,7 @@ const resultsOf = (segments: string[][], file: X12File) => {
     switch (seg[0]) {
       case 'HL':
         close();
+        if (seg[3] === '20') shared.length = 0;
         draft = MEMBER_LEVELS.includes(seg[3] ?? '')
           ? {
               trace: '',
