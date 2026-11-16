@@ -29,15 +29,20 @@ import { type Announce, announced } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import type { RuleRunner } from '../../shared/rules.ts';
-import { type ClaimFilters, claimExists, findClaim, searchClaims } from './claim-queries.ts';
-import { hasActiveRun, setCycleRun } from './cycle-queries.ts';
-import { findClaimDocument, listClaimDocuments } from './document-queries.ts';
 import {
+  type ClaimFilters,
+  claimExists,
+  findClaim,
+  findClaimDocument,
   findEventDocument,
+  hasActiveRun,
+  listClaimDocuments,
   listClaimEvents,
   listClaimFiles,
-  listClaimPayerFiles
-} from './event-queries.ts';
+  listClaimPayerFiles,
+  searchClaims,
+  setCycleRun
+} from './queries.ts';
 import type { ClaimEventSort } from './schemas.ts';
 
 type ClaimServiceDeps = {
