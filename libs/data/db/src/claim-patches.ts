@@ -208,7 +208,7 @@ const logEdit = async (
       claim_id: claimId,
       kind: 'edited',
       note: note ?? 'Claim data edited',
-      created_by: event.createdBy,
+      created_by_id: event.createdBy,
       source_key: event.sourceKey
     })
     .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())

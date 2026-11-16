@@ -9,7 +9,7 @@ describe('claim document queries', () => {
     assert.deepEqual(await listClaimDocuments(db, 'c1'), []);
     assert.equal(await findClaimDocument(db, 't-1', 'c1', 'd1'), null);
     const [list, find] = queries;
-    assert.ok(list?.sql.includes('left join "users" as "u" on "u"."id" = "d"."uploaded_by"'));
+    assert.ok(list?.sql.includes('left join "users" as "u" on "u"."id" = "d"."uploaded_by_id"'));
     assert.deepEqual(find?.parameters, ['d1', 'c1', 't-1']);
   });
 });

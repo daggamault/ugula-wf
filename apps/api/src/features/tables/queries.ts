@@ -191,7 +191,7 @@ export const insertTableDraft = (
       definition: JSON.stringify(input.definition),
       contract: tableContract(input.definition),
       base_version_id: input.baseVersionId,
-      created_by: input.userId
+      created_by_id: input.userId
     })
     .returning(['id', 'version'])
     .executeTakeFirstOrThrow();

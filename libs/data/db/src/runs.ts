@@ -20,7 +20,7 @@ const buildInsertRun = (db: Kysely<Database>, run: NewRun) =>
       graph_version_id: run.versionId,
       status: 'running',
       inputs: JSON.stringify(run.inputs),
-      started_by: run.startedBy ?? null
+      started_by_id: run.startedBy ?? null
     })
     .returning('id');
 

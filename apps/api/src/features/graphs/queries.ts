@@ -222,7 +222,7 @@ export const insertDraft = (
       definition: JSON.stringify(input.definition),
       contract: contractOf(input.definition.signature),
       base_version_id: input.baseVersionId,
-      created_by: input.userId
+      created_by_id: input.userId
     })
     .returning(['id', 'version'])
     .executeTakeFirstOrThrow();

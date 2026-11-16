@@ -55,7 +55,7 @@ const buildDataTableVersionsTable = (db: Kysely<Database>) =>
     )
     .addColumn('contract', 'text', (col) => col.notNull())
     .addColumn('published_at', 'timestamptz')
-    .addColumn('created_by', 'uuid', (col) =>
+    .addColumn('created_by_id', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -74,9 +74,9 @@ const buildDataTableIndexes = (db: Kysely<Database>) => [
     .on('data_table_versions')
     .column('base_version_id'),
   db.schema
-    .createIndex('idx_data_table_versions_created_by')
+    .createIndex('idx_data_table_versions_created_by_id')
     .on('data_table_versions')
-    .column('created_by'),
+    .column('created_by_id'),
   db.schema.createIndex('idx_data_tables_agency_id').on('data_tables').column('agency_id')
 ];
 

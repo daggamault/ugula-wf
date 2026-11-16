@@ -219,7 +219,7 @@ export const upsertInvitation = (
       first_name: input.firstName,
       last_name: input.lastName,
       token_hash: input.hash,
-      invited_by: input.invitedBy,
+      invited_by_id: input.invitedBy,
       expires_at: input.expiresAt
     })
     .onConflict((oc) =>
@@ -228,7 +228,7 @@ export const upsertInvitation = (
         first_name: input.firstName,
         last_name: input.lastName,
         token_hash: input.hash,
-        invited_by: input.invitedBy,
+        invited_by_id: input.invitedBy,
         expires_at: input.expiresAt,
         updated_at: sql`now()`
       })

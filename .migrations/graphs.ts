@@ -57,7 +57,7 @@ const buildGraphVersionsTable = (db: Kysely<Database>) =>
     .addColumn('contract', 'text', (col) => col.notNull())
     .addColumn('dependencies', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
     .addColumn('published_at', 'timestamptz')
-    .addColumn('created_by', 'uuid', (col) =>
+    .addColumn('created_by_id', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -73,7 +73,10 @@ const buildGraphVersionsDraftIndex = (db: Kysely<Database>) =>
     .where(sql.ref('published_at'), 'is', null);
 
 const buildGraphVersionsCreatedByIndex = (db: Kysely<Database>) =>
-  db.schema.createIndex('idx_graph_versions_created_by').on('graph_versions').column('created_by');
+  db.schema
+    .createIndex('idx_graph_versions_created_by_id')
+    .on('graph_versions')
+    .column('created_by_id');
 
 const buildGraphScopeIndexes = (db: Kysely<Database>) => [
   db.schema

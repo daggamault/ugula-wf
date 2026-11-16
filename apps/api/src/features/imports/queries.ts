@@ -34,7 +34,7 @@ export const insertImport = (db: Db, i: NewImport) =>
       source: i.source,
       file_name: i.fileName,
       file: JSON.stringify(i.file),
-      uploaded_by: i.uploadedBy
+      uploaded_by_id: i.uploadedBy
     })
     .returning('id')
     .executeTakeFirstOrThrow();
@@ -73,7 +73,7 @@ const importRows = (db: Db, agencyId: string) =>
   db
     .selectFrom('imports as i')
     .innerJoin('workflow_runs as r', 'r.id', 'i.run_id')
-    .leftJoin('users as u', 'u.id', 'i.uploaded_by')
+    .leftJoin('users as u', 'u.id', 'i.uploaded_by_id')
     .leftJoinLateral(
       (eb) =>
         eb

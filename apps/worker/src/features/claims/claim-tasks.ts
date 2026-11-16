@@ -87,7 +87,7 @@ export const createClaimTaskStore = (
             file_name: fileName,
             document: JSON.stringify(document),
             signed_on: d.signedOn,
-            uploaded_by: addedBy
+            uploaded_by_id: addedBy
           })
           .returning('id')
           .executeTakeFirstOrThrow());
@@ -98,7 +98,7 @@ export const createClaimTaskStore = (
           claim_id: claim.id,
           kind: 'document',
           note: `${DOCUMENT_KINDS[d.kind]} uploaded: ${fileName}`,
-          created_by: addedBy,
+          created_by_id: addedBy,
           source_key: sourceKey
         })
         .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())

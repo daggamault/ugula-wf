@@ -37,7 +37,7 @@ export const createPayerFileStore = (
   const load = async (runId: string, document: BlobRef) => {
     const run = await db
       .selectFrom('workflow_runs')
-      .select(['agency_id', 'started_by'])
+      .select(['agency_id', 'started_by_id'])
       .where('id', '=', runId)
       .executeTakeFirstOrThrow();
     const owned = [importsPrefix(run.agency_id), clearinghousePrefix(run.agency_id)].some((p) =>
@@ -47,7 +47,7 @@ export const createPayerFileStore = (
       throw new Error(`Blob ${document.key} is not one of this agency's files`);
     }
     const read = readPayerFile(await blobs.getBytes(document));
-    const userId = run.started_by;
+    const userId = run.started_by_id;
     if (!read.ok) return { agencyId: run.agency_id, userId, read } as const;
     const imported = await findImported(db, run.agency_id, read.value.digest);
     return { agencyId: run.agency_id, userId, read, imported } as const;

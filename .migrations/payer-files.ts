@@ -19,7 +19,7 @@ const buildPayerFilesTable = (db: Kysely<Database>) =>
     .addColumn('control_number', 'text')
     .addColumn('item_count', 'integer', (col) => col.notNull().defaultTo(0))
     .addColumn('problem_count', 'integer', (col) => col.notNull().defaultTo(0))
-    .addColumn('uploaded_by', 'uuid', (col) =>
+    .addColumn('uploaded_by_id', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('run_id', 'uuid')
@@ -97,7 +97,10 @@ const buildPayerFilesIndexes = (db: Kysely<Database>) => [
     .createIndex('idx_payer_files_agency_created')
     .on('payer_files')
     .columns(['agency_id', 'created_at desc']),
-  db.schema.createIndex('idx_payer_files_uploaded_by').on('payer_files').column('uploaded_by'),
+  db.schema
+    .createIndex('idx_payer_files_uploaded_by_id')
+    .on('payer_files')
+    .column('uploaded_by_id'),
   db.schema.createIndex('idx_payer_files_run').on('payer_files').column('run_id'),
   db.schema
     .createIndex('idx_clearinghouse_downloads_agency_run')

@@ -37,8 +37,8 @@ const earlier: {
 const rowsFor =
   (imported: boolean | Partial<typeof earlier>): RowsFor =>
   (q) => {
-    if (q.sql.startsWith('select "agency_id", "started_by" from "workflow_runs"'))
-      return [{ agency_id: 't1', started_by: 'u1' }];
+    if (q.sql.startsWith('select "agency_id", "started_by_id" from "workflow_runs"'))
+      return [{ agency_id: 't1', started_by_id: 'u1' }];
     if (q.sql.includes('from "payer_files" where')) {
       return imported
         ? [{ ...earlier, ...(imported === true ? {} : imported), created_at: new Date() }]

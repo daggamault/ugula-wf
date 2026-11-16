@@ -3,7 +3,7 @@ import type { Db } from '@ugula/db';
 export const listClaimDocuments = (db: Db, claimId: string) =>
   db
     .selectFrom('claim_documents as d')
-    .leftJoin('users as u', 'u.id', 'd.uploaded_by')
+    .leftJoin('users as u', 'u.id', 'd.uploaded_by_id')
     .select([
       'd.id',
       'd.kind',

@@ -23,7 +23,7 @@ const FILE_ORDER = {
 const fileRows = (db: Db, agencyId: string) =>
   db
     .selectFrom('payer_files as f')
-    .leftJoin('users as u', 'u.id', 'f.uploaded_by')
+    .leftJoin('users as u', 'u.id', 'f.uploaded_by_id')
     .select([...FILE_COLUMNS, 'u.email as uploaded_by'])
     .where('f.agency_id', '=', agencyId);
 

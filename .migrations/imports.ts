@@ -14,7 +14,7 @@ const buildImportsTable = (db: Kysely<Database>) =>
     .addColumn('file_name', 'text', (col) => col.notNull())
     .addColumn('file', 'jsonb', (col) => col.notNull())
     .addColumn('report_count', 'integer')
-    .addColumn('uploaded_by', 'uuid', (col) =>
+    .addColumn('uploaded_by_id', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -64,7 +64,7 @@ const buildImportsIndexes = (db: Kysely<Database>) => [
     .createIndex('idx_imports_agency_created')
     .on('imports')
     .columns(['agency_id', 'created_at desc']),
-  db.schema.createIndex('idx_imports_uploaded_by').on('imports').column('uploaded_by')
+  db.schema.createIndex('idx_imports_uploaded_by_id').on('imports').column('uploaded_by_id')
 ];
 
 export const createImportsTables = async (db: Kysely<Database>) => {

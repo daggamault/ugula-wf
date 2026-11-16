@@ -97,7 +97,7 @@ export const recordPayerEvents = async (c: Context, events: readonly PayerEvent[
         coverage_id: e.coverageId,
         note: e.note,
         payer_claim_number: e.payerClaimNumber,
-        created_by: c.userId,
+        created_by_id: c.userId,
         source_key: `${c.digest}:${e.key}`
       }))
     )

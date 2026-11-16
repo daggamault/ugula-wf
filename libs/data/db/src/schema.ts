@@ -112,7 +112,7 @@ type InvitationsTable = {
   first_name: string;
   last_name: string;
   token_hash: string;
-  invited_by: string | null;
+  invited_by_id: string | null;
   expires_at: Timestamp;
   created_at: Timestamp;
   updated_at: Timestamp;
@@ -188,7 +188,7 @@ type GraphVersionsTable = {
   contract: string;
   dependencies: ColumnType<string[], string[] | undefined, string[]>;
   published_at: NullableTimestamp;
-  created_by: string | null;
+  created_by_id: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 };
@@ -222,7 +222,7 @@ type WorkflowRunsTable = {
   created_at: Timestamp;
   updated_at: Timestamp;
   completed_at: NullableTimestamp;
-  started_by: string | null;
+  started_by_id: string | null;
 };
 
 type WorkflowRunGraphsTable = {
@@ -257,7 +257,7 @@ type DataTableVersionsTable = {
   base_version_id: string | null;
   contract: string;
   published_at: NullableTimestamp;
-  created_by: string | null;
+  created_by_id: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 };
@@ -429,7 +429,7 @@ type TasksTable = {
   status: Generated<TaskStatus>;
   assignee_id: string | null;
   resolution: NullableJsonColumn;
-  completed_by: string | null;
+  completed_by_id: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
   completed_at: NullableTimestamp;
@@ -607,7 +607,7 @@ type ClaimDocumentsTable = {
   file_name: string;
   document: JsonColumn;
   signed_on: NullableDate;
-  uploaded_by: string | null;
+  uploaded_by_id: string | null;
   created_at: Timestamp;
 };
 
@@ -638,7 +638,7 @@ type ClaimEventsTable = {
   note: Generated<string>;
   route: ColumnType<DenialRoute | null, DenialRoute | null | undefined, DenialRoute | null>;
   document: NullableJsonColumn;
-  created_by: string | null;
+  created_by_id: string | null;
   source_key: string | null;
   batch_id: string | null;
   created_at: Timestamp;
@@ -666,7 +666,7 @@ type ClaimBatchesTable = {
   total_cents: number;
   is_production: boolean;
   document: JsonColumn;
-  created_by: string | null;
+  created_by_id: string | null;
   created_at: Timestamp;
   sent_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
   sent_as: ColumnType<string | null, string | null | undefined, string | null>;
@@ -731,7 +731,7 @@ export type PayerFilesTable = {
   control_number: string | null;
   item_count: ColumnType<number, number | undefined, number>;
   problem_count: ColumnType<number, number | undefined, number>;
-  uploaded_by: string | null;
+  uploaded_by_id: string | null;
   run_id: string | null;
   source_key: string | null;
   envelope_rejection: string | null;
@@ -763,7 +763,7 @@ type ImportsTable = {
   file_name: string;
   file: JsonColumn;
   report_count: number | null;
-  uploaded_by: string | null;
+  uploaded_by_id: string | null;
   created_at: Timestamp;
 };
 

@@ -100,7 +100,7 @@ const buildInvitationsTable = (db: Kysely<Database>) =>
     .addColumn('first_name', 'text', (col) => col.notNull())
     .addColumn('last_name', 'text', (col) => col.notNull())
     .addColumn('token_hash', 'text', (col) => col.notNull().unique())
-    .addColumn('invited_by', 'uuid', (col) =>
+    .addColumn('invited_by_id', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('expires_at', 'timestamptz', (col) => col.notNull())
@@ -134,7 +134,7 @@ const buildIndexes = (db: Kysely<Database>) => [
   db.schema.createIndex('idx_memberships_user_id').on('memberships').column('user_id'),
   db.schema.createIndex('idx_memberships_role_id').on('memberships').column('role_id'),
   db.schema.createIndex('idx_invitations_role_id').on('invitations').column('role_id'),
-  db.schema.createIndex('idx_invitations_invited_by').on('invitations').column('invited_by'),
+  db.schema.createIndex('idx_invitations_invited_by_id').on('invitations').column('invited_by_id'),
   db.schema.createIndex('idx_password_tokens_user_id').on('password_tokens').column('user_id')
 ];
 

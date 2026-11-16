@@ -93,7 +93,7 @@ const detail = [
   'hints',
   'prefill',
   'resolution',
-  'completed_by'
+  'completed_by_id'
 ] as const;
 
 export const listQueues = (db: Db, agencyId: string, userId: string) =>
@@ -194,7 +194,7 @@ export const completeTask = (
     .updateTable('tasks')
     .set({
       status: 'completed',
-      completed_by: input.userId,
+      completed_by_id: input.userId,
       completed_at: sql`now()`,
       resolution: JSON.stringify(input.resolution),
       updated_at: sql`now()`

@@ -14,7 +14,7 @@ export const paymentsReport = report({
       .leftJoin('patients as p', 'p.id', 'c.patient_id')
       .leftJoin('claim_coverages as cc', 'cc.id', 'e.coverage_id')
       .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
-      .leftJoin('users as u', 'u.id', 'e.created_by')
+      .leftJoin('users as u', 'u.id', 'e.created_by_id')
       .select([
         'e.id',
         'e.created_at as posted_at',

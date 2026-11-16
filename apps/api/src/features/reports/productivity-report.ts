@@ -8,7 +8,7 @@ export const productivityReport = report({
     const tasks = db
       .selectFrom('tasks as t')
       .select([
-        sql<string>`t.completed_by`.as('user_id'),
+        sql<string>`t.completed_by_id`.as('user_id'),
         sql<number>`1`.as('tasks'),
         sql<number>`extract(epoch from t.completed_at - t.created_at) / 3600`.as('task_hours'),
         zero.as('submitted'),
@@ -16,13 +16,13 @@ export const productivityReport = report({
       ])
       .where('t.agency_id', '=', ctx.agencyId)
       .where('t.status', '=', 'completed')
-      .where('t.completed_by', 'is not', null)
+      .where('t.completed_by_id', 'is not', null)
       .where(within(sql.ref('t.completed_at'), ctx));
     const events = db
       .selectFrom('claim_events as e')
       .innerJoin('claims as c', 'c.id', 'e.claim_id')
       .select([
-        sql<string>`e.created_by`.as('user_id'),
+        sql<string>`e.created_by_id`.as('user_id'),
         zero.as('tasks'),
         zero.as('task_hours'),
         sql<number>`(e.kind <> 'response')::int`.as('submitted'),
@@ -30,7 +30,7 @@ export const productivityReport = report({
       ])
       .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', 'in', [...SUBMISSIONS, 'response'])
-      .where('e.created_by', 'is not', null)
+      .where('e.created_by_id', 'is not', null)
       .where(within(sql.ref('e.created_at'), ctx));
     return db
       .selectFrom(tasks.unionAll(events).as('f'))

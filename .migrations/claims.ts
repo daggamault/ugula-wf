@@ -322,7 +322,7 @@ const buildClaimDocumentsTable = (db: Kysely<Database>) =>
     .addColumn('file_name', 'text', (col) => col.notNull())
     .addColumn('document', 'jsonb', (col) => col.notNull())
     .addColumn('signed_on', 'date')
-    .addColumn('uploaded_by', 'uuid', (col) =>
+    .addColumn('uploaded_by_id', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -351,7 +351,7 @@ const buildClaimBatchesTable = (db: Kysely<Database>) =>
     .addColumn('total_cents', 'integer', (col) => col.notNull())
     .addColumn('is_production', 'boolean', (col) => col.notNull())
     .addColumn('document', 'jsonb', (col) => col.notNull())
-    .addColumn('created_by', 'uuid', (col) =>
+    .addColumn('created_by_id', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -422,7 +422,7 @@ const buildClaimEventsTable = (db: Kysely<Database>) =>
     .addColumn('note', 'text', (col) => col.notNull().defaultTo(''))
     .addColumn('route', 'text')
     .addColumn('document', 'jsonb')
-    .addColumn('created_by', 'uuid', (col) =>
+    .addColumn('created_by_id', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('source_key', 'text')
@@ -560,9 +560,9 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
     .on('claim_documents')
     .columns(['claim_id', 'created_at']),
   db.schema
-    .createIndex('idx_claim_documents_uploaded_by')
+    .createIndex('idx_claim_documents_uploaded_by_id')
     .on('claim_documents')
-    .column('uploaded_by'),
+    .column('uploaded_by_id'),
   db.schema.createIndex('idx_claim_runs_claim_id').on('claim_runs').column('claim_id'),
   db.schema
     .createIndex('claim_coverages_claim_payer_name_unique')
@@ -575,7 +575,10 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
     .on('claim_events')
     .columns(['claim_id', 'created_at']),
   db.schema.createIndex('idx_claim_events_coverage_id').on('claim_events').column('coverage_id'),
-  db.schema.createIndex('idx_claim_events_created_by').on('claim_events').column('created_by'),
+  db.schema
+    .createIndex('idx_claim_events_created_by_id')
+    .on('claim_events')
+    .column('created_by_id'),
   db.schema.createIndex('idx_claim_events_batch_id').on('claim_events').column('batch_id'),
   db.schema
     .createIndex('idx_claim_events_agency_kind_created')
@@ -585,7 +588,10 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
     .createIndex('idx_claim_batches_agency_created')
     .on('claim_batches')
     .columns(['agency_id', 'created_at desc']),
-  db.schema.createIndex('idx_claim_batches_created_by').on('claim_batches').column('created_by'),
+  db.schema
+    .createIndex('idx_claim_batches_created_by_id')
+    .on('claim_batches')
+    .column('created_by_id'),
   db.schema
     .createIndex('idx_claim_status_requests_claim_id')
     .on('claim_status_requests')

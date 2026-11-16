@@ -27,7 +27,7 @@ const buildWorkflowRunsTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('completed_at', 'timestamptz')
-    .addColumn('started_by', 'uuid', (col) =>
+    .addColumn('started_by_id', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addUniqueConstraint('workflow_runs_agency_id_id_unique', ['agency_id', 'id'])
@@ -75,10 +75,10 @@ const buildWorkflowRunsIndexes = (db: Kysely<Database>) => [
     .column('lease_expires_at')
     .where(sql.ref('status'), '=', 'running'),
   db.schema
-    .createIndex('idx_workflow_runs_started_by')
+    .createIndex('idx_workflow_runs_started_by_id')
     .on('workflow_runs')
-    .column('started_by')
-    .where('started_by', 'is not', null)
+    .column('started_by_id')
+    .where('started_by_id', 'is not', null)
 ];
 
 const buildWorkflowRunStepsTable = (db: Kysely<Database>) =>

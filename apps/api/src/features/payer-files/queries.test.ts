@@ -14,7 +14,7 @@ describe('payer file queries', () => {
     });
     assert.deepEqual(page, { items: [{ id: 'f1' }], total: 3, page: 2, pageSize: 10 });
     const [list] = queries;
-    assert.ok(list?.sql.includes('left join "users" as "u" on "u"."id" = "f"."uploaded_by"'));
+    assert.ok(list?.sql.includes('left join "users" as "u" on "u"."id" = "f"."uploaded_by_id"'));
     assert.ok(list?.sql.includes('"u"."email" as "uploaded_by"'));
     assert.ok(!list?.sql.includes('"f"."document"'));
     assert.ok(list?.sql.includes('where "f"."agency_id" = $1'));

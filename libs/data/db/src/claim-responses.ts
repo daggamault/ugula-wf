@@ -127,7 +127,7 @@ export const insertResponse = async (
       paid_on: r.paidOn,
       check_number: r.checkNumber,
       note: r.note,
-      created_by: userId,
+      created_by_id: userId,
       source_key: r.requestId
     })
     .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())

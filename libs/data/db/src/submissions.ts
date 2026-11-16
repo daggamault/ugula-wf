@@ -176,7 +176,7 @@ export const insertBatch = (
       total_cents: batch.totalCents,
       is_production: batch.production,
       document: JSON.stringify(batch.document),
-      created_by: batch.createdBy
+      created_by_id: batch.createdBy
     })
     .returning([
       'id',
@@ -202,7 +202,7 @@ export const insertSubmissionEvent = (
       coverage_id: e.coverageId,
       note: origin.note,
       batch_id: origin.batchId,
-      created_by: origin.createdBy,
+      created_by_id: origin.createdBy,
       source_key: origin.sourceKey ?? null
     })
     .execute();

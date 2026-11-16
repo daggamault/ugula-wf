@@ -184,7 +184,7 @@ const postPayment = async (
         coverage_id: coverageId,
         route: posting.route,
         note: posting.message || `Denied by ${remit.payerName ?? 'the payer'}`,
-        created_by: c.userId,
+        created_by_id: c.userId,
         source_key: `${c.digest}:${position}:denied`
       })
       .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
@@ -199,7 +199,7 @@ const postPayment = async (
         kind: 'crossed_over',
         coverage_id: nextCoverageId,
         note: `${remit.payerName ?? 'The payer'} forwarded the claim${rc.crossoverPayer ? ` to ${rc.crossoverPayer}` : ''}; wait for its payment before billing it`,
-        created_by: c.userId,
+        created_by_id: c.userId,
         source_key: `${c.digest}:${position}:crossed_over`
       })
       .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())

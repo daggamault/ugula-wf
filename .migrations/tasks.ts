@@ -30,7 +30,7 @@ const buildTasksTable = (db: Kysely<Database>) =>
     .addColumn('status', 'text', (col) => col.notNull().defaultTo('open'))
     .addColumn('assignee_id', 'uuid')
     .addColumn('resolution', 'jsonb')
-    .addColumn('completed_by', 'uuid')
+    .addColumn('completed_by_id', 'uuid')
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('completed_at', 'timestamptz')
@@ -76,7 +76,7 @@ const buildTasksIndexes = (db: Kysely<Database>) => [
     .expression(sql`agency_id, (assignee_id is null), priority desc, created_at`)
     .where(sql.ref('status'), '=', 'open'),
   db.schema.createIndex('idx_tasks_assignee_id').on('tasks').column('assignee_id'),
-  db.schema.createIndex('idx_tasks_completed_by').on('tasks').column('completed_by'),
+  db.schema.createIndex('idx_tasks_completed_by_id').on('tasks').column('completed_by_id'),
   db.schema
     .createIndex('idx_tasks_completed')
     .on('tasks')
@@ -87,8 +87,8 @@ const buildTasksIndexes = (db: Kysely<Database>) => [
 const buildTasksForeignKeys = () => [
   sql`alter table tasks add constraint tasks_assignee_id_fkey
   foreign key (assignee_id) references users (id) on delete set null on update cascade`,
-  sql`alter table tasks add constraint tasks_completed_by_fkey
-  foreign key (completed_by) references users (id) on delete set null on update cascade`
+  sql`alter table tasks add constraint tasks_completed_by_id_fkey
+  foreign key (completed_by_id) references users (id) on delete set null on update cascade`
 ];
 
 export const createTasksTable = async (db: Kysely<Database>) => {

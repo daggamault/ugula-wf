@@ -67,7 +67,7 @@ const insertPayerFile = (
       digest: f.digest,
       document: JSON.stringify(f.document),
       control_number: f.controlNumber,
-      uploaded_by: f.uploadedBy,
+      uploaded_by_id: f.uploadedBy,
       run_id: f.runId,
       source_key: f.sourceKey
     })
