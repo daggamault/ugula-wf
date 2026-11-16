@@ -156,4 +156,26 @@ describe('claimTaskNodes', () => {
     });
     assert.deepEqual([refused.pin, refused.outputs.documentId], ['refused', null]);
   });
+
+  it('refuses a payment whose posting has a route it does not know', async () => {
+    const { calls, run } = setup();
+    const unknown = await run('post-claim-payment', {
+      claimId: 'c1',
+      coverageId: 'cov-1',
+      paid: 80,
+      posting: {
+        position: 0,
+        route: 'shred',
+        message: '',
+        adjustedCents: 0,
+        crossover: false,
+        reasons: []
+      }
+    });
+    assert.deepEqual(
+      [unknown.pin, unknown.outputs.reason],
+      ['refused', 'Route Remittance did not route this payment; route it again']
+    );
+    assert.equal(calls.length, 0);
+  });
 });

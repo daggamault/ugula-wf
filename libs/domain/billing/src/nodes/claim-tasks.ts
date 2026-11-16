@@ -87,10 +87,12 @@ export const claimTaskNodes: NodesOf = (stores) => {
       exits: ['posted', 'refused'],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
-        const payment = readPayment(
-          inputs,
-          inputs.posting === null ? null : (readPostings([inputs.posting])[0] ?? null)
-        );
+        const posting =
+          inputs.posting === null ? null : (readPostings([inputs.posting])[0] ?? null);
+        const payment =
+          inputs.posting !== null && posting === null
+            ? 'Route Remittance did not route this payment; route it again'
+            : readPayment(inputs, posting);
         const posted =
           typeof payment === 'string'
             ? refused(payment)
