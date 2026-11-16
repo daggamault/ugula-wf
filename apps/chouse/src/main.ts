@@ -4,7 +4,7 @@ import {
   respondToClaimStatus,
   respondToClaims,
   respondToEligibility
-} from '@ugula/billing/mock-waystar';
+} from '@ugula/billing/testing';
 import ssh2 from 'ssh2';
 import { credentialsMatch } from './auth.ts';
 import { parseMockConfig } from './config.ts';

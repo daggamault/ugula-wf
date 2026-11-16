@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { build835, build999 } from '@ugula/billing/mock';
-import { buildTA1 } from '@ugula/billing/mock-waystar';
+import { build835, build999, buildTA1 } from '@ugula/billing/testing';
 import { createRecordingDb, type RowsFor } from '@ugula/db/testing';
 import type { LiveEvent } from '@ugula/live';
 import type { RunQueueClient } from '@ugula/run-queue';

@@ -1,4 +1,4 @@
-import type { MockClaimState } from '@ugula/billing/mock-waystar';
+import type { MockClaimState } from '@ugula/billing/testing';
 import { type Credentials, isBasicAuthorized } from './auth.ts';
 import type { Responders } from './responder.ts';
 

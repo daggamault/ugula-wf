@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { AppliedPayerFile, Clearinghouse, RealtimeAnswer } from '@ugula/billing';
-import { build277Status } from '@ugula/billing/mock';
+import { build277Status } from '@ugula/billing/testing';
 import { NO_CHECKABLE_PAYER, NOTHING_TO_ASK } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { CompiledQuery } from 'kysely';

@@ -1,4 +1,3 @@
-import { WAYSTAR_EXTENSIONS } from './clearinghouse.ts';
 import {
   MOCK_PAID_SHARE,
   type MockResponse,
@@ -9,13 +8,11 @@ import { build271 } from './mock-x271.ts';
 import { build277Status } from './mock-x277-status.ts';
 import { centsOf, dateOf, readX12, textOf } from './x12.ts';
 
-export { WAYSTAR_EXTENSIONS };
-
 const WAYSTAR_RECEIVERS = ['WAYSTAR', 'ZIRMED'] as const;
 
-export const INACTIVE_MEMBER_PREFIX = 'INACTIVE';
+const INACTIVE_MEMBER_PREFIX = 'INACTIVE';
 
-export const ADVANTAGE_MEMBER_PREFIX = 'ADVANTAGE';
+const ADVANTAGE_MEMBER_PREFIX = 'ADVANTAGE';
 
 const STAY_MEMBER_PREFIXES = { INPATIENT: 'inpatient', SNF: 'snf' } as const;
 

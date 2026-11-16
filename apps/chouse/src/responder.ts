@@ -6,7 +6,7 @@ import {
   type respondToClaimStatus,
   type respondToClaims,
   type respondToEligibility
-} from '@ugula/billing/mock-waystar';
+} from '@ugula/billing/testing';
 import type { MockFiles } from './files.ts';
 import { DOWNLOAD, isInboundUpload, routeUpload } from './uploads.ts';
 

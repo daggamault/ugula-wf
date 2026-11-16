@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { read835 } from '@ugula/billing';
-import { build835 } from '@ugula/billing/mock';
+import { build835 } from '@ugula/billing/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { Context } from './payer-file-items.ts';
 import { postRemittances, readRemittanceLines } from './payer-file-remittances.ts';

@@ -1,5 +1,11 @@
-import { build271, build277, build277Status, build835, build999 } from '@ugula/billing/mock';
-import { buildTA1 } from '@ugula/billing/mock-waystar';
+import {
+  build271,
+  build277,
+  build277Status,
+  build835,
+  build999,
+  buildTA1
+} from '@ugula/billing/testing';
 
 type Adjustment = { group: 'CO' | 'PR' | 'OA' | 'PI' | 'CR'; reason: string; cents: number };
 

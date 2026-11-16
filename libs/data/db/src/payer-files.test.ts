@@ -2,8 +2,14 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 import type { RemittancePosting } from '@ugula/billing';
-import { build271, build277, build277Status, build835, build999 } from '@ugula/billing/mock';
-import { buildTA1 } from '@ugula/billing/mock-waystar';
+import {
+  build271,
+  build277,
+  build277Status,
+  build835,
+  build999,
+  buildTA1
+} from '@ugula/billing/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { FileItem } from './payer-file-items.ts';
 import { applyPayerFile, readPayerFile, readRemittanceLines } from './payer-files.ts';

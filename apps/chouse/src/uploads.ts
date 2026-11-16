@@ -1,5 +1,5 @@
 import { posix } from 'node:path';
-import { WAYSTAR_EXTENSIONS } from '@ugula/billing/mock-waystar';
+import { WAYSTAR_EXTENSIONS } from '@ugula/billing';
 
 export const UPLOAD = '/upload';
 export const DOWNLOAD = '/download';
