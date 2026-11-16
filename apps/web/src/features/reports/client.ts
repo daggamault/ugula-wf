@@ -1,4 +1,5 @@
 import type { Api } from '../../shared/api.ts';
+import { browserTimeZone } from '../../shared/format.ts';
 
 export type DateRange = { from: string; to: string };
 
@@ -167,8 +168,6 @@ export type ImportRow = {
   failed: number;
   charges_cents: number;
 };
-
-const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export const reportSearch = (
   { range, group }: ReportOptions,

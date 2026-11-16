@@ -1,6 +1,6 @@
 import { ADJUSTMENT_GROUPS, CLAIM_FILING_CODES } from '@ugula/billing';
 import { described } from '../../shared/claims/code-text.tsx';
-import { formatCents, formatDate, formatDateTime } from '../../shared/format.ts';
+import { formatCents, formatDate, formatDateTime, patientName } from '../../shared/format.ts';
 import { queueInfo, titleCase } from '../../shared/task-queues.ts';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
 import type {
@@ -169,13 +169,10 @@ type ClaimRow = {
   service_date: string | null;
 };
 
-const patientOf = (r: ClaimRow) =>
-  r.last_name ? [r.last_name, r.first_name].filter(Boolean).join(', ') : null;
-
 const claimColumns = <R extends ClaimRow>({ hasPcr = true } = {}): ReportColumn<R>[] => [
   text<R>('Claim', (r) => r.claim_number),
   ...(hasPcr ? [text<R>('PCR', (r) => r.pcr_number)] : []),
-  text<R>('Patient', patientOf),
+  text<R>('Patient', (r) => patientName(r.last_name, r.first_name)),
   text<R>('Date of Service', (r) => (r.service_date ? formatDate(r.service_date) : null))
 ];
 

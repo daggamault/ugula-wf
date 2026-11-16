@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { formatCents, formatDate } from '../../shared/format.ts';
+import { addressText } from '../../shared/claims/claim-data.tsx';
+import { formatCents, formatDate, patientName, sexLabel } from '../../shared/format.ts';
 import { LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -16,15 +17,6 @@ type PatientPageProps = {
   back?: string;
 };
 
-const SEXES: Readonly<Record<string, string>> = { F: 'Female', M: 'Male', U: 'Unknown' };
-
-export const addressOf = (p: PatientSummary) => {
-  const place = [p.city, p.state].filter(Boolean).join(', ');
-  return [p.address_line, [place, p.postal_code].filter(Boolean).join(' ')]
-    .filter(Boolean)
-    .join(', ');
-};
-
 export const PatientDetails = ({ patient }: { patient: PatientSummary }) => (
   <SectionPanel title="Details" description="As last reported on a patient care report or claim.">
     <DetailList>
@@ -33,8 +25,15 @@ export const PatientDetails = ({ patient }: { patient: PatientSummary }) => (
       </Detail>
       <Detail label="Patient Number">{patient.number}</Detail>
       <Detail label="Birth Date">{formatDate(patient.birth_date)}</Detail>
-      <Detail label="Sex">{(patient.gender && SEXES[patient.gender]) || emptyValue}</Detail>
-      <Detail label="Address">{addressOf(patient) || emptyValue}</Detail>
+      <Detail label="Sex">{sexLabel(patient.gender) ?? emptyValue}</Detail>
+      <Detail label="Address">
+        {addressText({
+          addressLine: patient.address_line,
+          city: patient.city,
+          state: patient.state,
+          postalCode: patient.postal_code
+        }) ?? emptyValue}
+      </Detail>
     </DetailList>
   </SectionPanel>
 );
@@ -52,7 +51,11 @@ export const PatientPage = ({
   if (!patient.data) return <PageLoading />;
   const p = patient.data;
   return (
-    <Page title={`${p.last_name}, ${p.first_name}`} backTo={back} backLabel="Back to Patients">
+    <Page
+      title={patientName(p.last_name, p.first_name) ?? ''}
+      backTo={back}
+      backLabel="Back to Patients"
+    >
       <PatientDetails patient={p} />
       {claims}
     </Page>

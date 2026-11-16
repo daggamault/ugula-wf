@@ -25,6 +25,7 @@ import {
   pricedLinesOf
 } from '../../shared/claims/claim-summary.tsx';
 import { downloadText } from '../../shared/download.ts';
+import { patientName } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
@@ -65,8 +66,8 @@ type ClaimLinks = {
 
 export type ClaimTab = 'overview' | 'data' | 'history';
 
-const patientName = (c: Pick<ClaimDetail, 'first_name' | 'last_name'>) =>
-  c.last_name ? `${c.last_name}, ${c.first_name ?? ''}` : 'Patient not matched yet';
+const patientOf = (c: Pick<ClaimDetail, 'first_name' | 'last_name'>) =>
+  patientName(c.last_name, c.first_name) ?? 'Patient not matched yet';
 
 export const CLAIM_TABS: readonly { value: ClaimTab; label: string }[] = [
   { value: 'overview', label: 'Overview' },
@@ -122,7 +123,7 @@ export const ClaimView = ({
       description={
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <ClaimStatusBadge status={claim.status} />
-          <span className="text-surface-fg font-medium">{patientName(claim)}</span>
+          <span className="text-surface-fg font-medium">{patientOf(claim)}</span>
           {claim.patient_number !== null ? <span>Patient {claim.patient_number}</span> : null}
           {claim.encounter_number ? <span>Encounter {claim.encounter_number}</span> : null}
           <span>{claim.pcr_number ? `PCR ${claim.pcr_number}` : 'No PCR number'}</span>
@@ -234,7 +235,7 @@ export const ClaimPage = ({
   const can = useCan();
   const path = withBack(`/claims/${claimId}`, back);
   const patient = detail.data
-    ? `Claim ${detail.data.claim.number} · ${patientName(detail.data.claim)}`
+    ? `Claim ${detail.data.claim.number} · ${patientOf(detail.data.claim)}`
     : '';
   const act = async (action: () => Promise<unknown>, done: string) => {
     setError('');

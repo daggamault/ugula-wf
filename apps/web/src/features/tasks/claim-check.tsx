@@ -7,23 +7,14 @@ import {
 } from '@ugula/billing';
 import { isRecord, type Json } from '@ugula/graph';
 import { ChargeLines } from '../../shared/claims/charge-lines.tsx';
+import { addressText } from '../../shared/claims/claim-data.tsx';
 import { formatCents, formatDate, formatMiles } from '../../shared/format.ts';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 
-type Place = { name?: string | null } & Record<
-  'addressLine' | 'city' | 'state' | 'postalCode',
-  string | null
->;
-
 export const isClaimCheck = (x: Json | undefined): x is ClaimCheck & Json =>
   isRecord(x) && Array.isArray(x.lines) && Array.isArray(x.payers) && isRecord(x.details);
-
-export const placeText = (p: Place | null) =>
-  [p?.name, p?.addressLine, p?.city, [p?.state, p?.postalCode].filter(Boolean).join(' ')]
-    .filter(Boolean)
-    .join(', ') || emptyValue;
 
 const classificationText = (t: string | null) =>
   t && Object.hasOwn(CLASSIFICATION_LABELS, t)
@@ -56,9 +47,9 @@ export const ClaimCheckView = ({ claim }: { claim: ClaimCheck }) => (
       <Detail label="Diagnoses">{claim.details.diagnoses.join(', ') || emptyValue}</Detail>
       <Detail label="PCR Number">{claim.pcrNumber ?? emptyValue}</Detail>
       <Detail label="Origin/Destination">{claim.details.originDestination ?? emptyValue}</Detail>
-      <Detail label="Patient Address">{placeText(claim.patient)}</Detail>
-      <Detail label="Pickup">{placeText(claim.details.pickup)}</Detail>
-      <Detail label="Destination">{placeText(claim.details.destination)}</Detail>
+      <Detail label="Patient Address">{addressText(claim.patient) ?? emptyValue}</Detail>
+      <Detail label="Pickup">{addressText(claim.details.pickup) ?? emptyValue}</Detail>
+      <Detail label="Destination">{addressText(claim.details.destination) ?? emptyValue}</Detail>
     </DetailList>
     <section className="flex flex-col gap-3">
       <h3 className={subheading}>Charges</h3>

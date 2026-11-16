@@ -10,6 +10,8 @@ import {
   formatMiles,
   labelFromName,
   parseDollars,
+  patientName,
+  sexLabel,
   titleCaseLabel,
   titleCaseWords
 } from './format.ts';
@@ -126,5 +128,22 @@ describe('labelFromName', () => {
     assert.equal(labelFromName('whenTrue'), 'When True');
     assert.equal(labelFromName('by'), 'By');
     assert.equal(labelFromName('statementsToSend'), 'Statements to Send');
+  });
+});
+
+describe('patientName', () => {
+  it('joins last and first names without a stray separator', () => {
+    assert.equal(patientName('Doe', 'Jane'), 'Doe, Jane');
+    assert.equal(patientName('Doe', null), 'Doe');
+    assert.equal(patientName('Doe', ''), 'Doe');
+    assert.equal(patientName(null, 'Jane'), null);
+  });
+});
+
+describe('sexLabel', () => {
+  it('names a known sex code only', () => {
+    assert.equal(sexLabel('F'), 'Female');
+    assert.equal(sexLabel('X'), null);
+    assert.equal(sexLabel(null), null);
   });
 });

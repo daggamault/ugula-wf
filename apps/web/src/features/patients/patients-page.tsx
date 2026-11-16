@@ -1,5 +1,5 @@
 import { nameKey } from '@ugula/billing';
-import { formatCents, formatDate } from '../../shared/format.ts';
+import { formatCents, formatDate, patientName } from '../../shared/format.ts';
 import { LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { EmptyState, EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -100,7 +100,7 @@ export const PatientsTable = ({
         <TableCell kind="actions">
           <OpenLink
             to={withBack(`/patients/${p.id}`, back)}
-            name={`patient ${p.last_name}, ${p.first_name}`}
+            name={`patient ${patientName(p.last_name, p.first_name)}`}
           />
         </TableCell>
       </TableRow>

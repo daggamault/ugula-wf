@@ -1,5 +1,5 @@
 import { ActivityIcon } from 'lucide-react';
-import { formatCents, formatDateTime } from '../../shared/format.ts';
+import { formatCents, formatDateTime, patientName } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge, type StatusBadgeStyle } from '../../shared/ui/badge.tsx';
@@ -65,7 +65,7 @@ export const reportOutcome = (r: ImportReport): ReportOutcome => {
 };
 
 export const patientOf = (r: ImportReport) =>
-  r.last_name ? [r.last_name, r.first_name].filter(Boolean).join(', ') : (r.task_subject ?? null);
+  patientName(r.last_name, r.first_name) ?? r.task_subject ?? null;
 
 const REPORT_TABLE = {
   prefix: 'pcr',

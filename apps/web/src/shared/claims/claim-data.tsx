@@ -6,17 +6,16 @@ import { SectionPanel } from '../ui/section-panel.tsx';
 import type { ClaimDetail } from './claim-detail.ts';
 import { CodeText, codeText } from './code-text.tsx';
 
-type Place = {
-  addressLine: string | null;
-  city: string | null;
-  state: string | null;
-  postalCode: string | null;
-};
+type Place = { name?: string | null } & Record<
+  'addressLine' | 'city' | 'state' | 'postalCode',
+  string | null
+>;
 
-export const addressText = (p: Place) =>
+export const addressText = (p: Place | null) =>
   [
-    p.addressLine,
-    [p.city, [p.state, p.postalCode].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+    p?.name,
+    p?.addressLine,
+    [p?.city, [p?.state, p?.postalCode].filter(Boolean).join(' ')].filter(Boolean).join(', ')
   ]
     .filter(Boolean)
     .join(', ') || null;
@@ -73,17 +72,13 @@ export const ClaimDataView = ({
         }) ?? emptyValue}
       </Detail>
       <Detail label="Destination">
-        {[
-          c.destination_name,
-          addressText({
-            addressLine: c.destination_address_line,
-            city: c.destination_city,
-            state: c.destination_state,
-            postalCode: c.destination_postal_code
-          })
-        ]
-          .filter(Boolean)
-          .join(', ') || emptyValue}
+        {addressText({
+          name: c.destination_name,
+          addressLine: c.destination_address_line,
+          city: c.destination_city,
+          state: c.destination_state,
+          postalCode: c.destination_postal_code
+        }) ?? emptyValue}
       </Detail>
     </DetailList>
   </SectionPanel>

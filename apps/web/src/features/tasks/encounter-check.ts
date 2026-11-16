@@ -1,6 +1,7 @@
 import { isRecord, type Json } from '@ugula/graph';
 import { toPcr } from '@ugula/nemsis';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
+import { patientName } from '../../shared/format.ts';
 
 export type EncounterFacts = {
   firstName: string | null;
@@ -57,10 +58,8 @@ type ClaimFacts = Pick<
 
 export const mismatchesOf = (claim: ClaimFacts, e: EncounterFacts): Mismatch[] => {
   const out: Mismatch[] = [];
-  const name = e.lastName ? [e.lastName, e.firstName].filter(Boolean).join(', ') : null;
-  const patient = claim.last_name
-    ? [claim.last_name, claim.first_name].filter(Boolean).join(', ')
-    : null;
+  const name = patientName(e.lastName, e.firstName);
+  const patient = patientName(claim.last_name, claim.first_name);
   if (name && patient && normalized(name) !== normalized(patient)) {
     out.push({ field: 'patient', label: 'Patient', encounter: name });
   }

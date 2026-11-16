@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { addressText } from '../../shared/claims/claim-data.tsx';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { ClaimIssues, isIssueList } from '../../shared/claims/claim-issues.tsx';
-import { formatDate } from '../../shared/format.ts';
+import { formatDate, patientName, sexLabel } from '../../shared/format.ts';
 import { Alert, AlertList } from '../../shared/ui/alert.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -111,8 +111,6 @@ export const MismatchAlert = ({
     </Alert>
   ) : null;
 
-const SEXES: Readonly<Record<string, string>> = { F: 'Female', M: 'Male', U: 'Unknown' };
-
 type PatientClaim = Pick<
   ClaimDetail,
   | 'patient_id'
@@ -155,14 +153,14 @@ export const PatientFacts = ({
           <MismatchAlert mismatches={own} encounterHref={encounterHref} />
           <DetailList>
             <Detail label="Name">
-              {[c.last_name, c.first_name].filter(Boolean).join(', ') || emptyValue}
+              {patientName(c.last_name, c.first_name) ?? emptyValue}
               <EncounterSays mismatches={own} field="patient" />
             </Detail>
             <Detail label="Birth Date">
               {c.birth_date ? formatDate(c.birth_date) : emptyValue}
               <EncounterSays mismatches={own} field="birthDate" />
             </Detail>
-            <Detail label="Sex">{(c.gender && SEXES[c.gender]) || emptyValue}</Detail>
+            <Detail label="Sex">{sexLabel(c.gender) ?? emptyValue}</Detail>
             <Detail label="Address">
               {addressText({
                 addressLine: c.address_line,

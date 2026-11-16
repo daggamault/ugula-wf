@@ -1,4 +1,4 @@
-import { formatAgo, formatDay } from '../../shared/format.ts';
+import { formatAgo, formatDay, patientName } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { assigneeOf, queueInfo } from '../../shared/task-queues.ts';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
@@ -66,8 +66,6 @@ export const assigneeOptions = (href: FilterHref) => [
 const isOverdue = (due: string | null, now = Date.now()) =>
   due !== null && new Date(due).getTime() < now;
 
-const patientOf = (t: TaskRow) => (t.last_name ? `${t.last_name}, ${t.first_name ?? ''}` : null);
-
 export const TasksTable = ({
   tasks,
   search,
@@ -94,7 +92,7 @@ export const TasksTable = ({
       ]}
     >
       {tasks.map((t) => {
-        const patient = patientOf(t);
+        const patient = patientName(t.last_name, t.first_name);
         return (
           <TableRow key={t.id}>
             <TableCell kind="wrap">

@@ -15,7 +15,7 @@ import { isApiError, messageOf } from '../../shared/api.ts';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { CodeField } from '../../shared/claims/code-field.tsx';
 import type { CodesClient } from '../../shared/codes.ts';
-import { formatAgo, formatDateTime, formatDay } from '../../shared/format.ts';
+import { formatAgo, formatDateTime, formatDay, patientName } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { queueInfo } from '../../shared/task-queues.ts';
@@ -146,7 +146,7 @@ export const TaskAbout = ({
     <>
       {about ? `${about} on claim ` : 'On claim '}
       <TextLink to={withBack(`/claims/${claim.id}`, `/tasks/${task.id}`)}>{claim.number}</TextLink>
-      {` for ${claim.last_name ? `${claim.last_name}, ${claim.first_name ?? ''}` : 'a patient not matched yet'}`}
+      {` for ${patientName(claim.last_name, claim.first_name) ?? 'a patient not matched yet'}`}
     </>
   );
 };

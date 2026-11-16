@@ -21,6 +21,17 @@ describe('claim data', () => {
       addressText({ addressLine: null, city: null, state: null, postalCode: null }),
       null
     );
+    assert.equal(
+      addressText({
+        name: 'General',
+        addressLine: '2 Elm',
+        city: 'Town',
+        state: 'VT',
+        postalCode: '05401'
+      }),
+      'General, 2 Elm, Town, VT 05401'
+    );
+    assert.equal(addressText(null), null);
   });
 
   it('names origin and destination modifiers', () => {

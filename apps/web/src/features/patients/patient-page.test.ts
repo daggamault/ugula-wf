@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import type { PatientSummary, PatientsClient } from './client.ts';
-import { addressOf, PatientDetails, PatientPage } from './patient-page.tsx';
+import { PatientDetails, PatientPage } from './patient-page.tsx';
 
 const patient: PatientSummary = {
   id: 'p1',
@@ -27,15 +27,11 @@ describe('PatientDetails', () => {
     const html = renderToStaticMarkup(createElement(PatientDetails, { patient }));
     assert.ok(html.includes('Female') && html.includes('$300.00'));
     assert.ok(html.includes('Patient Number') && html.includes('20260915-0003'));
-    assert.equal(addressOf(patient), '1 Main St, Erie, PA 16501');
+    assert.ok(html.includes('1 Main St, Erie, PA 16501'));
   });
 
-  it('joins only the address parts on file', () => {
+  it('shows an empty address when none is on file', () => {
     const none = { address_line: null, city: null, state: null, postal_code: null };
-    assert.equal(addressOf({ ...patient, ...none }), '');
-    assert.equal(addressOf({ ...patient, ...none, state: 'PA', postal_code: '16501' }), 'PA 16501');
-    assert.equal(addressOf({ ...patient, city: null }), '1 Main St, PA 16501');
-    assert.equal(addressOf({ ...patient, address_line: null, postal_code: null }), 'Erie, PA');
     const html = renderToStaticMarkup(
       createElement(PatientDetails, { patient: { ...patient, ...none } })
     );

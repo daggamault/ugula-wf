@@ -2,6 +2,7 @@ import { CLAIM_FILING_CODES } from '@ugula/billing';
 import { SaveIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
+import { browserTimeZone } from '../../shared/format.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
@@ -35,8 +36,6 @@ type ProfileText = Exclude<keyof BillingProfileInput, 'isProduction'>;
 
 type ProfileDraft = Record<ProfileText, string> & { usage: 'T' | 'P' };
 
-const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
-
 export const timeZoneOptions = (current: string) => {
   const zones = Intl.supportedValuesOf('timeZone');
   return (zones.includes(current) ? zones : [current, ...zones]).map((z) => ({
@@ -47,7 +46,7 @@ export const timeZoneOptions = (current: string) => {
 
 export const toProfileDraft = (
   p: BillingProfile | null,
-  defaultZone: string = browserZone()
+  defaultZone: string = browserTimeZone()
 ): ProfileDraft => ({
   organizationName: p?.organization_name ?? '',
   npi: p?.npi ?? '',

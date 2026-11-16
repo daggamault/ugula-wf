@@ -11,6 +11,16 @@ const calendarDay = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', ti
 export const formatDate = (day: string | null) =>
   day ? calendarDay.format(new Date(`${day.slice(0, 10)}T00:00:00Z`)) : '—';
 
+export const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+export const patientName = (last: string | null, first: string | null) =>
+  last ? [last, first].filter(Boolean).join(', ') : null;
+
+const SEX_LABELS: Readonly<Record<string, string>> = { F: 'Female', M: 'Male', U: 'Unknown' };
+
+export const sexLabel = (code: string | null) =>
+  code && Object.hasOwn(SEX_LABELS, code) ? SEX_LABELS[code] : null;
+
 export const formatDuration = (ms: number) =>
   ms < 1 ? '<1 ms' : ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
 
