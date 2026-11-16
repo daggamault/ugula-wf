@@ -168,7 +168,8 @@ export const X837_LINE = model(
     f('modifiers', { list: 'string' }, 'Modifiers (SV101-3 to 6)'),
     f('chargeCents', 'integer', 'Charge in cents (SV102)'),
     f('units', 'number', 'Units (SV104)'),
-    f('serviceDate', 'string', 'Date of service (DTP03)')
+    f('serviceDate', 'string', 'Date of service (DTP03)'),
+    f('patientCount', 'integer', 'Ambulance patient count (QTY PT), sent with more than one')
   ],
   X12
 );
@@ -182,6 +183,11 @@ export const X837_CLAIM = model(
     f('claimId', 'string', 'Patient control number (CLM01)'),
     f('placeOfService', 'string', 'Place of service (CLM05-1)'),
     f('frequency', 'string', 'Claim frequency (CLM05-3)'),
+    f(
+      'benefitsAssignment',
+      'string',
+      'Benefits assignment certification (CLM08): Y, N, or W when the patient refuses'
+    ),
     f('admissionDate', 'string', 'Admission date (DTP 435)'),
     f('payerClaimNumber', 'string', 'Payer claim control number (REF F8)'),
     f('priorAuthorization', 'string', 'Prior authorization number (REF G1)'),

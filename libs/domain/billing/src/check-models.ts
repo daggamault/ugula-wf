@@ -99,6 +99,7 @@ export const CHECK_FACTS = model(
     f('destinationMissing', { list: 'string' }, 'Missing parts of the destination address'),
     f('originDestinationValid', 'boolean', 'The origin/destination modifier is valid'),
     f('transportReason', 'string', 'Ambulance transport reason'),
+    f('conditionsDocumented', 'boolean', 'The report documents ambulance conditions (CRC)'),
     f('timesRecorded', 'boolean', 'Left-scene and at-destination times are recorded'),
     f('timesInOrder', 'boolean', 'The trip times are in order'),
     f('loadedMiles', 'number', 'Loaded miles'),

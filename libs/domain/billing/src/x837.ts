@@ -97,6 +97,7 @@ type X837Line = {
   chargeCents: number;
   units: number;
   serviceDate: string;
+  patientCount: number | null;
 };
 
 type X837OtherPayer = Adjudication & {
@@ -114,6 +115,7 @@ export type X837Claim = {
   claimId: string;
   placeOfService: string;
   frequency: string;
+  benefitsAssignment: string;
   admissionDate: string | null;
   payerClaimNumber: string | null;
   priorAuthorization: string | null;
@@ -189,7 +191,11 @@ const readX837Line = (x: unknown, i: number): X837Line => {
     modifiers: strs(r.modifiers).slice(0, 4),
     chargeCents,
     units: roundUnits(positive(r.units, `units on service line ${i + 1}`)),
-    serviceDate: need(textOrNull(r.serviceDate), `a date on service line ${i + 1}`)
+    serviceDate: need(textOrNull(r.serviceDate), `a date on service line ${i + 1}`),
+    patientCount:
+      typeof r.patientCount === 'number' && Number.isInteger(r.patientCount) && r.patientCount > 0
+        ? r.patientCount
+        : null
   };
 };
 
@@ -266,6 +272,10 @@ export const readX837Claim = (x: unknown): X837Claim => {
     claimId: need(textOrNull(r.claimId), 'a claim ID'),
     placeOfService: need(textOrNull(r.placeOfService), 'a place of service'),
     frequency,
+    benefitsAssignment: need(
+      textOrNull(r.benefitsAssignment),
+      'a benefits assignment certification (CLM08)'
+    ),
     admissionDate: textOrNull(r.admissionDate),
     payerClaimNumber,
     priorAuthorization: textOrNull(r.priorAuthorization),
@@ -406,7 +416,7 @@ const claimSegments = (c: X837Claim, hl: number): Segment[] => {
       [c.placeOfService, 'B', c.frequency],
       'Y',
       'A',
-      'Y',
+      c.benefitsAssignment,
       'Y'
     ],
     ...(c.admissionDate ? [['DTP', '435', 'D8', yyyymmdd(c.admissionDate)]] : []),
@@ -446,7 +456,10 @@ const claimSegments = (c: X837Claim, hl: number): Segment[] => {
         '',
         '1'
       ],
-      ['DTP', '472', 'D8', yyyymmdd(l.serviceDate)]
+      ['DTP', '472', 'D8', yyyymmdd(l.serviceDate)],
+      ...(l.patientCount !== null && l.patientCount > 1
+        ? [['QTY', 'PT', String(l.patientCount)]]
+        : [])
     ])
   ];
 };

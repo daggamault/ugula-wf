@@ -262,6 +262,22 @@ const CHECKS: Check[] = [
     )
   },
   {
+    key: 'billing.check-conditions',
+    name: 'Check Ambulance Conditions',
+    description:
+      'A non-emergency Medicare transport documents the ambulance conditions (CRC) that made an ambulance necessary, such as bed-confined or moved by stretcher.',
+    codes: { 'conditions-missing': 'warning' },
+    facts: ['transports', 'emergency', 'billsMedicare', 'conditionsDocumented'],
+    expression: when(
+      'transports && emergency == false && billsMedicare && !conditionsDocumented',
+      issue(
+        'conditions-missing',
+        'pcs',
+        '"The report documents no ambulance condition (such as bed-confined or moved by stretcher) for this non-emergency Medicare transport, so none is billed; document it on the report or the physician certification"'
+      )
+    )
+  },
+  {
     key: 'billing.check-trip-times',
     name: 'Check Trip Times',
     description:

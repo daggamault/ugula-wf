@@ -102,13 +102,15 @@ export const sampleLine = {
   modifiers: ['RH'],
   chargeCents: 85_000,
   units: 1,
-  serviceDate: '2026-10-01'
+  serviceDate: '2026-10-01',
+  patientCount: null
 };
 
 export const sampleX837: X837Claim = {
   claimId: 'c-1',
   placeOfService: '41',
   frequency: '1',
+  benefitsAssignment: 'Y',
   admissionDate: null,
   payerClaimNumber: null,
   priorAuthorization: null,
@@ -138,7 +140,14 @@ export const sampleX837: X837Claim = {
   dropoff: { name: 'Mercy Hospital', ...PLACE, addressLine: '100 Health Way' },
   lines: [
     sampleLine,
-    { code: 'A0425', modifiers: ['RH'], chargeCents: 9_250, units: 7.4, serviceDate: '2026-10-01' }
+    {
+      code: 'A0425',
+      modifiers: ['RH'],
+      chargeCents: 9_250,
+      units: 7.4,
+      serviceDate: '2026-10-01',
+      patientCount: null
+    }
   ]
 };
 

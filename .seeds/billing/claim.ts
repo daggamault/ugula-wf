@@ -283,12 +283,18 @@ const ambulanceConditions = (): GraphDef => {
     config: shared.decision(
       'billing.ambulance-conditions',
       'Ambulance Conditions',
-      'The CRC ambulance condition codes billed when the report documents none.',
+      'The CRC ambulance condition codes the trip itself shows when the report documents none: 06 (transported in an emergency situation) for an emergency transport. Nothing the record does not show is attested, such as 09 (medically necessary); a non-emergency trip without documented conditions bills none.',
       table(
         [field('emergency', 'boolean', 'Emergency')],
         [field('codes', { list: 'string' }, 'CRC condition codes')],
-        [{ label: 'Emergency', when: { emergency: is(true) }, set: { codes: ['09', '06'] } }],
-        { codes: ['09'] }
+        [
+          {
+            label: 'Transported in an emergency situation',
+            when: { emergency: is(true) },
+            set: { codes: ['06'] }
+          }
+        ],
+        { codes: [] }
       )
     )
   });
@@ -440,8 +446,11 @@ const lineModifiers = (): GraphDef => {
     config: shared.lookup(
       'billing.code-modifier',
       'Line Code Modifier',
-      'A modifier a single line carries because of its HCPCS code, such as GY on A0888 non-covered miles.',
-      { type: 'string', rows: [{ key: 'A0888', value: 'GY' }] }
+      'A modifier a single line carries because of its HCPCS code for a kind of payer, keyed by the claim filing indicator and the code: GY on A0888 non-covered miles for Medicare.',
+      {
+        type: 'string',
+        rows: MEDICARE.map((filing) => ({ key: `${filing} A0888`, value: 'GY' }))
+      }
     )
   });
   g.add('modifiers', 'std.expr', {
@@ -465,7 +474,14 @@ const lineModifiers = (): GraphDef => {
   for (const pin of ['claimFiling', 'codes', 'emergency', 'abnOnFile', 'denialExpected']) {
     g.wire(`entry.${pin}`, `coverage.${pin}`);
   }
-  g.wire('entry.codes', 'byCode.keys', 'modifiers.codes');
+  g.add(
+    'codeKeys',
+    'std.expr',
+    expr('Claim Filing and Code', 'map(codes, c => (claimFiling ?? "") + " " + c)')
+  );
+  g.wire('entry.codes', 'codeKeys.codes', 'modifiers.codes');
+  g.wire('entry.claimFiling', 'codeKeys.claimFiling');
+  g.wire('codeKeys.result', 'byCode.keys');
   g.wire('entry.originDestination', 'modifiers.originDestination');
   g.wire('trip.leading', 'modifiers.leading');
   g.wire('trip.added', 'modifiers.added');
@@ -766,6 +782,23 @@ const map837p = (): GraphDef => {
     }
   });
   g.add('frequency', 'billing.claim-frequency', { label: 'Claim Frequency' });
+  g.add('assignment', 'std.table.lookup', {
+    label: 'Benefits Assignment',
+    config: shared.lookup(
+      'billing.benefits-assignment',
+      'Benefits Assignment',
+      'The benefits assignment certification (CLM08) by the billing signature: Y when the patient or a representative signed or a signature exception applies, W when the patient refused to assign benefits, N without a signature.',
+      {
+        type: 'string',
+        rows: [
+          { key: 'signed', value: 'Y' },
+          { key: 'exception', value: 'Y' },
+          { key: 'refused', value: 'W' }
+        ],
+        fallback: 'N'
+      }
+    )
+  });
   g.add('place', 'billing.place-of-service', { label: 'Place of Service' });
   g.add('codes', 'std.list.pluck', { label: 'Line Codes', values: { field: 'code' } });
   g.add('modifiers', 'billing.line-modifiers', { label: 'Line Modifiers' });
@@ -774,7 +807,7 @@ const map837p = (): GraphDef => {
     'std.expr',
     expr(
       'Service Lines',
-      'map(lines, (l, n) => { code: l.code, modifiers: modifiers[n] ?? [], chargeCents: l.totalCents, units: l.units, serviceDate: serviceDate })'
+      'map(lines, (l, n) => { code: l.code, modifiers: modifiers[n] ?? [], chargeCents: l.totalCents, units: l.units, serviceDate: serviceDate, patientCount: patientCount })'
     )
   );
   g.add('note', 'billing.narrative-note', { label: 'Narrative Note' });
@@ -828,6 +861,9 @@ const map837p = (): GraphDef => {
   g.wire('claim.correctionMethod', 'frequency.correctionMethod');
   g.wire('payer.claimFiling', 'frequency.payerKind');
   g.wire('frequency.frequency', 'x837.frequency');
+  g.wire('documentation.signature', 'assignment.key');
+  g.wire('assignment.value', 'x837.benefitsAssignment');
+  g.wire('documentation.patientCount', 'lines.patientCount');
   g.wire('frequency.replaces', 'x837.payerClaimNumber');
   g.wire('place.placeOfService', 'x837.placeOfService');
   g.wire('details.originDestination', 'modifiers.originDestination');

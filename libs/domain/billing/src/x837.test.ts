@@ -226,6 +226,29 @@ describe('build837', () => {
     assert.ok(voided.includes('REF*F8*PCN9'));
   });
 
+  it('certifies the benefits assignment as mapped and counts patients on a shared trip', () => {
+    const refused = build({ ...mapped, benefitsAssignment: 'W' });
+    assert.ok(refused.some((s) => s.startsWith('CLM*c-1*942.5***41:B:1*Y*A*W*Y')));
+    const shared = build({
+      ...mapped,
+      lines: mapped.lines.map((l) => ({ ...l, patientCount: 2 }))
+    });
+    assert.deepEqual(
+      shared.filter((s) => s.startsWith('DTP*472') || s.startsWith('QTY')),
+      ['DTP*472*D8*20261001', 'QTY*PT*2', 'DTP*472*D8*20261001', 'QTY*PT*2']
+    );
+    const single = build({ ...mapped, lines: [{ ...base, patientCount: 1 }] });
+    assert.ok(!single.some((s) => s.startsWith('QTY')));
+    assert.throws(
+      () => readX837Claim({ ...mapped, benefitsAssignment: '' }),
+      /benefits assignment certification \(CLM08\)/
+    );
+    assert.deepEqual(
+      readX837Claim({ ...mapped, lines: [{ ...base, patientCount: 3 }] }).lines[0]?.patientCount,
+      3
+    );
+  });
+
   it('writes 2300 references in implementation guide order, prior authorization first', () => {
     const refs = build({
       ...mapped,

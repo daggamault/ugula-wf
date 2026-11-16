@@ -232,6 +232,7 @@ export const checkFactsOf = (c: ClaimCheck, asOf: Date) => {
     destinationMissing: missingParts(c.details.destination),
     originDestinationValid: isOriginDestination(c.details.originDestination),
     transportReason: d.transportReason,
+    conditionsDocumented: d.conditionCodes.length > 0,
     timesRecorded: Boolean(d.leftScene && d.atDestination),
     timesInOrder: !before(d.atScene, d.leftScene) && !before(d.leftScene, d.atDestination),
     loadedMiles: c.loadedMiles,

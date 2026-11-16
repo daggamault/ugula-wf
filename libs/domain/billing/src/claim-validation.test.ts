@@ -84,6 +84,12 @@ describe('checkFactsOf', () => {
     assert.deepEqual(facts.patientAddressMissing, []);
     assert.equal(facts.transports, true);
     assert.equal(checkFactsOf({ ...check, deceased: true }, asOf).transports, false);
+    assert.equal(facts.conditionsDocumented, false);
+    const documented = {
+      ...check.details,
+      documentation: { ...check.details.documentation, conditionCodes: ['12'] }
+    };
+    assert.equal(checkFactsOf({ ...check, details: documented }, asOf).conditionsDocumented, true);
     assert.equal(facts.levelValid, true);
     assert.equal(facts.linesAddUp, true);
     assert.equal(facts.originDestinationValid, true);
