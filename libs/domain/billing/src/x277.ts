@@ -35,6 +35,20 @@ type Draft = {
   texts: string[];
 };
 
+type Level = { parent: string | null; categories: string[]; texts: string[] };
+
+const inherited = (levels: Map<string, Level>, parent: string | null) => {
+  const categories: string[] = [];
+  const texts: string[] = [];
+  for (let id = parent; id !== null; id = levels.get(id)?.parent ?? null) {
+    const level = levels.get(id);
+    if (!level?.categories.some((c) => REJECTED.includes(c))) continue;
+    categories.push(...level.categories.filter((c) => REJECTED.includes(c)));
+    texts.push(...level.texts);
+  }
+  return { categories, texts };
+};
+
 const statusOf = (categories: string[]): ClaimAcknowledgment['status'] =>
   categories.some((c) => REJECTED.includes(c))
     ? 'rejected'
@@ -59,27 +73,35 @@ const finish = (d: Draft): ClaimAcknowledgment[] =>
 
 const claimsOf = (segments: string[][], file: X12File) => {
   const claims: ClaimAcknowledgment[] = [];
+  const levels = new Map<string, Level>();
+  let level: Level | null = null;
   let draft: Draft | null = null;
   for (const seg of segments) {
     if (seg[0] === 'HL') {
       if (draft) claims.push(...finish(draft));
-      draft =
-        seg[3] === PATIENT_LEVEL
-          ? { claimNumber: null, categories: [], payerClaimNumber: null, texts: [] }
-          : null;
+      const parent = textOf(seg[2]);
+      if (seg[3] === PATIENT_LEVEL) {
+        level = null;
+        draft = { claimNumber: null, payerClaimNumber: null, ...inherited(levels, parent) };
+      } else {
+        draft = null;
+        level = { parent, categories: [], texts: [] };
+        levels.set(textOf(seg[1]) ?? '', level);
+      }
       continue;
+    }
+    if (seg[0] === 'STC' && (draft || level)) {
+      const target = draft ?? level;
+      for (const i of STATUS_ELEMENTS) {
+        const [category] = componentsOf(seg[i], file);
+        if (category?.trim()) target?.categories.push(category.trim());
+      }
+      const text = textOf(seg[12]);
+      if (text) target?.texts.push(text);
     }
     if (!draft) continue;
     if (seg[0] === 'TRN' && seg[1] === '2') draft.claimNumber ??= textOf(seg[2]);
     if (seg[0] === 'REF' && seg[1] === '1K') draft.payerClaimNumber ??= textOf(seg[2]);
-    if (seg[0] === 'STC') {
-      for (const i of STATUS_ELEMENTS) {
-        const [category] = componentsOf(seg[i], file);
-        if (category?.trim()) draft.categories.push(category.trim());
-      }
-      const text = textOf(seg[12]);
-      if (text) draft.texts.push(text);
-    }
   }
   if (draft) claims.push(...finish(draft));
   return claims;

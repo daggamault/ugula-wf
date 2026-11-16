@@ -23,6 +23,7 @@ type Mock277 = {
   clearinghouse?: Party;
   submitter?: Party;
   provider?: Party;
+  providerRejection?: string;
   claims: Mock277Claim[];
 };
 
@@ -49,6 +50,25 @@ export const build277 = (ack: Mock277, o: MockOptions = {}) => {
         ['NM1', '41', '2', clean(submitter.name), '', '', '', '', '46', submitter.id],
         ['HL', '3', '2', '19', '1'],
         ['NM1', '85', '2', clean(provider.name), '', '', '', '', 'XX', provider.id],
+        ...(ack.providerRejection
+          ? [
+              [
+                'STC',
+                ['A3', '85'],
+                date,
+                'U',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                ack.providerRejection
+              ]
+            ]
+          : []),
         ...ack.claims.flatMap((c, i): Segment[] => {
           const charge = mockDollars(c.chargeCents ?? 0);
           return [

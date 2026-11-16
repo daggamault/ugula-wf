@@ -33,4 +33,24 @@ describe('build277', () => {
       }
     ]);
   });
+
+  it('rejects every claim under a billing provider the payer rejects', () => {
+    const text = build277(
+      {
+        providerRejection: 'Billing provider not enrolled',
+        claims: [
+          { claimNumber: '101', rejection: null, payerClaimNumber: 'P-1' },
+          { claimNumber: '102', rejection: 'Invalid member ID' }
+        ]
+      },
+      at
+    );
+    assert.deepEqual(
+      read277(text).map((a) => [a.claimNumber, a.status, a.categories, a.message]),
+      [
+        ['101', 'rejected', ['A3', 'A2'], 'Billing provider not enrolled'],
+        ['102', 'rejected', ['A3', 'A7'], 'Billing provider not enrolled; Invalid member ID']
+      ]
+    );
+  });
 });

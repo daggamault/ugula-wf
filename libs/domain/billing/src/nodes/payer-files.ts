@@ -57,7 +57,7 @@ export const payerFileNodes: NodesOf = (stores) => [
     title: 'Apply Payer File',
     category: CATEGORY,
     description:
-      'Applies a clearinghouse file to its claims, once: an 835 posts each claim payment the way the remittance rules routed it (postings), a 999 accepts or rejects every claim in its 837P file, a 277CA accepts or rejects single claims, a 271 records whether coverage is active, a TA1 rejection marks its 837P file rejected at the envelope and sends its claims back to review (outputting why, for whoever sets up the clearinghouse) and a 277 claim status is logged on each claim. Outputs the lines a biller has to look at. Continues through duplicate when the same file was applied meanwhile.',
+      'Applies a clearinghouse file to its claims, once: an 835 posts each claim payment the way the remittance rules routed it (postings), a 999 accepts or rejects every claim in its 837P file, a 277CA accepts or rejects single claims (a rejection of the billing provider or receiver rejects every claim under it, keeping the REF*1K of a rejected claim off it), a 271 records whether coverage is active, a TA1 rejection marks its 837P file rejected at the envelope and sends its claims back to review (outputting why, for whoever sets up the clearinghouse) and a 277 claim status is logged on each claim. Outputs the lines a biller has to look at. Continues through duplicate when the same file was applied meanwhile.',
     effect: true,
     inputs: [
       pin('file', BLOB),
