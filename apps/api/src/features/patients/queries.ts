@@ -24,7 +24,7 @@ const patientRows = (db: Db, agencyId: string) =>
             sql<number>`count(*)::int`.as('claim_count'),
             sql<number>`(coalesce(sum(b.balance_cents) filter (where c.status not in (${sql.join(
               CLOSED_CLAIM_STATUSES.map((s) => sql.lit(s))
-            )})), 0))::int`.as('balance_cents'),
+            )})), 0))::float8`.as('balance_cents'),
             sql<string | null>`max(c.service_date)::text`.as('last_service_date')
           ])
           .whereRef('c.patient_id', '=', 'p.id')

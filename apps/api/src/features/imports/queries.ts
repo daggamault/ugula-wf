@@ -96,7 +96,7 @@ const importRows = (db: Db, agencyId: string) =>
           .innerJoin('import_reports as ir', 'ir.id', 'c.import_report_id')
           .select([
             sql<number>`count(*)::int`.as('claims'),
-            sql<number>`coalesce(sum(c.total_cents), 0)::int`.as('charges_cents')
+            sql<number>`coalesce(sum(c.total_cents), 0)::float8`.as('charges_cents')
           ])
           .whereRef('ir.import_id', '=', 'i.id')
           .where('c.status', '<>', 'void')

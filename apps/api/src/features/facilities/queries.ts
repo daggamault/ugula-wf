@@ -32,7 +32,7 @@ const facilityRows = (db: Db, agencyId: string) =>
         eb
           .selectFrom('claims as c')
           .innerJoin('claim_balances as b', 'b.claim_id', 'c.id')
-          .select(sql<number>`coalesce(sum(b.balance_cents), 0)::int`.as('due'))
+          .select(sql<number>`coalesce(sum(b.balance_cents), 0)::float8`.as('due'))
           .whereRef('c.facility_id', '=', 'f.id')
           .where('c.status', 'not in', CLOSED_CLAIM_STATUSES)
           .as('balance_cents')
