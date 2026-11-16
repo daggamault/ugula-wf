@@ -19,15 +19,24 @@ import {
 import { createRecordingDb } from './testing.ts';
 
 describe('submission queries', () => {
-  it('read one ready claim of the agency, locking it when submitting', async () => {
+  it('read one claim of the agency a payer can be filed from, locking it when submitting', async () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.equal(await findReadyClaim(db, 't1', 'c1'), undefined);
     await lockReadyClaim(db, 't1', 'c1');
     const [find, lock] = queries;
     assert.ok(
-      find?.sql.includes('where "c"."agency_id" = $1 and "c"."id" = $2 and "c"."status" = $3')
+      find?.sql.includes(
+        'where "c"."agency_id" = $1 and "c"."id" = $2 and "c"."status" in ($3, $4, $5, $6)'
+      )
     );
-    assert.deepEqual(find?.parameters.slice(-3), ['t1', 'c1', 'ready']);
+    assert.deepEqual(find?.parameters.slice(-6), [
+      't1',
+      'c1',
+      'ready',
+      'denied',
+      'reconcile',
+      'follow_up'
+    ]);
     assert.ok(find?.sql.includes('coalesce(dp.name, cc.payer_name)'));
     assert.ok(lock?.sql.endsWith('for update of "c"'));
     await db.destroy();

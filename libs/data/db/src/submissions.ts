@@ -90,8 +90,10 @@ const claimToBill = (db: Db, agencyId: string, id: string) =>
     .where('c.agency_id', '=', agencyId)
     .where('c.id', '=', id);
 
+const FILING_STATUSES = ['ready', 'denied', 'reconcile', 'follow_up'] as const;
+
 const readyClaim = (db: Db, agencyId: string, id: string) =>
-  claimToBill(db, agencyId, id).where('c.status', '=', 'ready');
+  claimToBill(db, agencyId, id).where('c.status', 'in', FILING_STATUSES);
 
 export const findClaimToBill = (db: Db, agencyId: string, id: string) =>
   claimToBill(db, agencyId, id).executeTakeFirst();
