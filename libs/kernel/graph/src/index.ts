@@ -4,7 +4,6 @@ export {
   graphRefs,
   INPUT_TYPE,
   RETURN_TYPE,
-  RULE_CALL_TYPES,
   refKey,
   retargetRefs,
   ruleRefOf,

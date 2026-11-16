@@ -13,6 +13,7 @@ import {
   type NodeRef,
   RETURN_TYPE,
   refKey,
+  ruleRefOf,
   type Signature,
   stdGraphInfo,
   stdGraphSource,
@@ -32,6 +33,14 @@ export type PublishedNode = {
   version: number;
   signature: Signature;
   overridden: boolean;
+};
+
+export type Opens = 'graph' | 'workflow' | 'rule';
+
+export const OPENS_LABELS: Readonly<Record<Opens, string>> = {
+  graph: 'Subworkflow',
+  workflow: 'Workflow',
+  rule: 'Rule'
 };
 
 export type NodeKind = 'entry' | 'action' | 'pure' | 'flow' | 'human' | 'table' | 'call' | 'slot';
@@ -60,7 +69,7 @@ export type Catalog = {
   summaryOf: (inst: NodeInstance) => string | null;
   exitsOf: (inst: NodeInstance, owner: GraphDef) => Readonly<Record<string, ExitDoc>>;
   graphOf: (ref: NodeRef) => GraphDef | undefined;
-  opensAs: (inst: NodeInstance) => 'graph' | 'workflow' | null;
+  opensAs: (inst: NodeInstance) => Opens | null;
   publishedOf: (inst: NodeInstance) => PublishedNode | undefined;
   kindOf: (inst: NodeInstance, signature: Signature | null) => NodeKind;
 };
@@ -126,10 +135,12 @@ export const createCatalog = (
   const graphOf = (ref: NodeRef) => full.get(refKey(ref)) ?? stdGraphs[refKey(ref)];
   const opensAs = (inst: NodeInstance) => {
     if (workflowRefOf(inst)) return 'workflow' as const;
+    if (ruleRefOf(inst)) return 'rule' as const;
     const composite = graphOf(inst) !== undefined || stubs.has(refKey(inst));
     return composite && !inst.type.startsWith('std.graph.') ? ('graph' as const) : null;
   };
-  const publishedOf = (inst: NodeInstance) => stubs.get(refKey(workflowRefOf(inst) ?? inst));
+  const publishedOf = (inst: NodeInstance) =>
+    stubs.get(refKey(workflowRefOf(inst) ?? ruleRefOf(inst) ?? inst));
   const latest = [...new Map([...published].reverse().map((p) => [p.key, p])).values()];
 
   const entryOf = (d: NodeDef): PaletteEntry => ({

@@ -204,6 +204,14 @@ describe('createCatalog', () => {
     assert.equal(catalog.opensAs({ id: 'b', type: 'std.flow.start-workflow', version: 1 }), null);
     assert.equal(catalog.publishedOf(score)?.graph_id, 'g-s');
     assert.equal(catalog.publishedOf(start)?.graph_id, 'g-c');
+    const each = {
+      id: 'e',
+      type: 'std.list.map-rule',
+      version: 1,
+      config: { rule: 'acme.score', version: 1, item: 'x' }
+    };
+    assert.equal(catalog.opensAs(each), 'rule');
+    assert.equal(catalog.publishedOf(each)?.graph_id, 'g-s');
   });
 
   it('sorts nodes into kinds for their header colour', () => {

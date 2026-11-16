@@ -31,8 +31,9 @@ type TestConfig = v.InferOutput<typeof testConfig>;
 type Plan = { sig: Signature; item: PinSpec; shared: PinSpec[] };
 
 const planOf = ({ rule, version, item }: MapConfig, ctx: SignatureContext): Plan | null => {
-  const sig = ctx.signatureOf?.({ type: rule, version });
-  if (!sig) return null;
+  if (!ctx.signatureOf) return null;
+  const sig = ctx.signatureOf({ type: rule, version });
+  if (!sig) throw new Error(`Unknown rule ${rule}@${version}`);
   if (sig.execIn.length || sig.execOut.length) throw new Error(`${rule} is not a rule`);
   const each = sig.inputs.find((p) => p.name === item);
   if (!each) throw new Error(`${rule} has no input "${item}"`);
@@ -61,13 +62,14 @@ const runEach = async (
   inputs: Values,
   { rule, version, item }: MapConfig,
   ctx: NodeContext,
-  visit: (outputs: Values, value: Json, index: number) => boolean
+  visit: (outputs: Values, value: Json) => boolean
 ) => {
   const { list, ...shared } = inputs;
   for (const [i, value] of (list as Json[]).entries()) {
     const outputs = await ctx.evaluate({ type: rule, version }, { ...shared, [item]: value });
-    if (visit(outputs, value, i)) return;
+    if (visit(outputs, value)) return i;
   }
+  return -1;
 };
 
 const KEYWORDS = ['each', 'every', 'item', 'rule', 'list'];
@@ -163,16 +165,10 @@ export const eachNodes: NodeDef[] = [
       })
     ],
     compute: async (inputs, c, ctx) => {
-      let found: { item: Json; index: number } | null = null;
-      await runEach(inputs, c, ctx, (outputs, item, index) => {
-        if (outputs[c.test] !== true) return false;
-        found = { item, index };
-        return true;
-      });
-      const hit = found as { item: Json; index: number } | null;
-      return hit
-        ? { item: hit.item, found: true, index: hit.index }
-        : { item: null, found: false, index: null };
+      const index = await runEach(inputs, c, ctx, (outputs) => outputs[c.test] === true);
+      return index < 0
+        ? { item: null, found: false, index: null }
+        : { item: (inputs.list as Json[])[index] ?? null, found: true, index };
     }
   })
 ];

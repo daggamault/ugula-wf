@@ -11,7 +11,7 @@ import {
   type ValueType
 } from '@ugula/graph';
 import type { Connection, Edge, Node } from '@xyflow/react';
-import type { Catalog, NodeKind, PaletteEntry } from './catalog.ts';
+import type { Catalog, NodeKind, Opens, PaletteEntry } from './catalog.ts';
 import { layout, NODE_WIDTH, shapeOf } from './layout.ts';
 import { toneOf } from './pins.ts';
 
@@ -39,7 +39,7 @@ export type GraphNodeData = {
   connected: string[];
   status: NodeStatus;
   issues: string[];
-  opens: 'graph' | 'workflow' | null;
+  opens: Opens | null;
   change: NodeChange | null;
   ghost: boolean;
 };

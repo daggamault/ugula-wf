@@ -63,7 +63,7 @@ export const WORKFLOW_CALL_TYPES: ReadonlySet<string> = new Set([
   'std.flow.spawn-workflows'
 ]);
 
-export const RULE_CALL_TYPES: ReadonlySet<string> = new Set([
+const RULE_CALL_TYPES: ReadonlySet<string> = new Set([
   'std.list.map-rule',
   'std.list.filter-rule',
   'std.list.find-rule'

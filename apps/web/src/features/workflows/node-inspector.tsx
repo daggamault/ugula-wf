@@ -12,7 +12,7 @@ import {
 import { ExternalLinkIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { useId, useRef } from 'react';
 import { labelFromName } from '../../shared/format.ts';
-import type { Catalog } from '../../shared/graph/catalog.ts';
+import { type Catalog, OPENS_LABELS } from '../../shared/graph/catalog.ts';
 import { updateNode } from '../../shared/graph/flow.ts';
 import { pinLabel } from '../../shared/graph/pins.ts';
 import { Button } from '../../shared/ui/button.tsx';
@@ -125,7 +125,7 @@ export const NodeInspector = ({
             <div className="pt-2">
               <Button variant="outline" onClick={onOpen}>
                 <ExternalLinkIcon aria-hidden="true" className="size-4" />
-                Open {catalog.opensAs(node) === 'graph' ? 'Subworkflow' : 'Workflow'}
+                Open {OPENS_LABELS[catalog.opensAs(node) ?? 'workflow']}
               </Button>
             </div>
           ) : null}

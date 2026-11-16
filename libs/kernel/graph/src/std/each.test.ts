@@ -129,5 +129,8 @@ describe('rule per item nodes', () => {
     assert.deepEqual(check('std.list.filter-rule', { ...ref, test: 'scaled' }), [
       'Invalid config: "scaled" of test.scale is not true or false'
     ]);
+    assert.deepEqual(check('std.list.find-rule', { ...ref, rule: 'test.gone', test: 'long' }), [
+      'Invalid config: Unknown rule test.gone@1'
+    ]);
   });
 });

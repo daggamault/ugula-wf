@@ -6,7 +6,7 @@ import { classNamesOf } from '../class-names.ts';
 import { labelFromName } from '../format.ts';
 import { Badge } from '../ui/badge.tsx';
 import { interactiveClasses } from '../ui/interactive.ts';
-import type { NodeKind } from './catalog.ts';
+import { type NodeKind, OPENS_LABELS } from './catalog.ts';
 import { type GraphFlowNode, type NodeStatus, REROUTE } from './flow.ts';
 import { describeType, pinLabel, toneOf, ValueKindsContext } from './pins.ts';
 
@@ -266,7 +266,7 @@ export const GraphNode = (props: NodeProps<GraphFlowNode>) => {
             ) : null}
             {opens ? (
               <span className="text-primary text-xs font-semibold tracking-wide uppercase">
-                {opens === 'graph' ? 'Subworkflow' : 'Workflow'}
+                {OPENS_LABELS[opens]}
               </span>
             ) : null}
           </span>
