@@ -16,6 +16,22 @@ const serve = async (handler: ReturnType<typeof createEventsHandler>) => {
   return { server, at: (agency: string) => `${base}?agency=${agency}` };
 };
 
+type Reader = ReadableStreamDefaultReader<Uint8Array> | undefined;
+
+const decoder = new TextDecoder();
+
+const PING = ': ping\n\n';
+
+const nextEvent = async (reader: Reader): Promise<string> => {
+  const frame = decoder.decode((await reader?.read())?.value);
+  return frame === PING ? nextEvent(reader) : frame;
+};
+
+const drain = async (reader: Reader, frames: string[] = []): Promise<string[]> => {
+  const chunk = await reader?.read();
+  return !chunk || chunk.done ? frames : drain(reader, [...frames, decoder.decode(chunk.value)]);
+};
+
 describe('events handler', () => {
   it('streams agency events to signed-in members and rejects others', async () => {
     const hub = createHub();
@@ -41,7 +57,6 @@ describe('events handler', () => {
     });
     const { server, at } = await serve(handler);
     const url = at(A1);
-    const decoder = new TextDecoder();
     try {
       const denied = await fetch(url, { headers: { cookie: 'ugula_session=bad' } });
       assert.equal(denied.status, 401);
@@ -63,7 +78,7 @@ describe('events handler', () => {
       const reader = res.body?.getReader();
       assert.equal(decoder.decode((await reader?.read())?.value), ': connected\n\n');
       hub.broadcast(A1, '{"kind":"run"}');
-      assert.equal(decoder.decode((await reader?.read())?.value), 'data: {"kind":"run"}\n\n');
+      assert.equal(await nextEvent(reader), 'data: {"kind":"run"}\n\n');
       ctrl.abort();
 
       for (const [token, revoke] of [
@@ -75,8 +90,8 @@ describe('events handler', () => {
         ).body?.getReader();
         assert.equal(decoder.decode((await stream?.read())?.value), ': connected\n\n');
         revoke();
-        assert.equal(decoder.decode((await stream?.read())?.value), ': ping\n\n');
-        assert.equal((await stream?.read())?.done, true);
+        const rest = await drain(stream);
+        assert.ok(rest.length > 0 && rest.every((frame) => frame === PING));
       }
 
       const inactive = await fetch(url, { headers: { cookie: 'ugula_session=deactivated' } });

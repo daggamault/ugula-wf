@@ -88,7 +88,7 @@ describe('import routes', () => {
   });
 
   it('starts workflows other than the NEMSIS ingest only for users who may create runs', async () => {
-    const biller = withSession(createImportRoutes(service, 16), testAccess(['imports:create']));
+    const biller = withSession(createImportRoutes(service), testAccess(['imports:create']));
     const before = calls.length;
     const other = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.watch-deadlines' });
     assert.equal((await biller('/', other)).status, 403);
