@@ -301,6 +301,112 @@ describe('build837', () => {
     assert.deepEqual(unbalanced.otherPayers[0]?.lines, []);
   });
 
+  it('reports claim-level reason codes the lines do not account for in 2320', () => {
+    const medicare = {
+      name: 'Medicare',
+      payerId: 'DEMOMCR',
+      claimFiling: 'MB',
+      memberId: '1EG4TE5MK73',
+      relationship: '18',
+      paidCents: 60_735,
+      adjustedCents: 18_206,
+      paidOn: '2026-10-20',
+      adjustments: [
+        { group: 'CO', reason: '45', cents: 17_706 },
+        { group: 'CO', reason: '253', cents: 500 },
+        { group: 'PR', reason: '1', cents: 10_000 },
+        { group: 'PR', reason: '2', cents: 5309 }
+      ],
+      lines: [
+        {
+          line: 1,
+          code: 'A0427',
+          modifiers: ['RH'],
+          paidCents: 55_220,
+          units: 1,
+          adjustments: [
+            { group: 'CO', reason: '45', cents: 15_995 },
+            { group: 'PR', reason: '1', cents: 10_000 },
+            { group: 'PR', reason: '2', cents: 3785 }
+          ]
+        },
+        {
+          line: 2,
+          code: 'A0425',
+          modifiers: ['RH'],
+          paidCents: 6015,
+          units: 7.4,
+          adjustments: [
+            { group: 'PR', reason: '2', cents: 1524 },
+            { group: 'CO', reason: '45', cents: 1711 }
+          ]
+        },
+        { line: 3, code: '', paidCents: 0, units: 1, adjustments: [] },
+        { line: 1.5, code: 'A0427', paidCents: 0, units: 1, adjustments: [] },
+        { line: 1, code: 'A0427', paidCents: 0, units: -1, adjustments: [] }
+      ]
+    };
+    const read = readX837Claim({ ...mapped, otherPayers: [medicare] });
+    assert.deepEqual(read.otherPayers[0]?.adjustments, [
+      { group: 'CO', reason: '253', cents: 500 }
+    ]);
+    assert.deepEqual(
+      read.otherPayers[0]?.lines.map((l) => l.line),
+      [1, 2]
+    );
+    const segs = build(read);
+    const cob = segs.slice(segs.findIndex((s) => s.startsWith('SBR*P')));
+    assert.deepEqual(cob.slice(0, 3), ['SBR*P*18*******MB', 'CAS*CO*253*5', 'AMT*D*607.35']);
+    assert.equal(segs.filter((s) => s.startsWith('SVD*')).length, 2);
+    const twice = readX837Claim({
+      ...mapped,
+      otherPayers: [{ ...medicare, lines: [...medicare.lines.slice(0, 2), medicare.lines[0]] }]
+    });
+    assert.deepEqual(twice.otherPayers[0]?.lines, []);
+    assert.equal(twice.otherPayers[0]?.adjustments.length, 4);
+  });
+
+  it('leaves the state and ZIP code empty on N4 when an address has none', () => {
+    const segs = build({
+      ...mapped,
+      pickup: { ...mapped.pickup, state: null, postalCode: null },
+      dropoff: { ...mapped.dropoff, name: null, postalCode: null }
+    });
+    const at = segs.indexOf('NM1*PW*2');
+    assert.deepEqual(segs.slice(at, at + 6), [
+      'NM1*PW*2',
+      'N3*9 OAK AVE',
+      'N4*SPRINGFIELD',
+      'NM1*45*2',
+      'N3*100 HEALTH WAY',
+      'N4*SPRINGFIELD*IL'
+    ]);
+  });
+
+  it('names the receiver by its ID when the billing profile has no receiver name', () => {
+    for (const receiverName of [null, '', ' ~ ']) {
+      assert.ok(
+        segments(build837({ ...submitter, receiverName }, [mapped], envelope)).includes(
+          'NM1*40*2*RCV01*****46*RCV01'
+        )
+      );
+    }
+  });
+
+  it('writes no REF*F8 on an original claim without a payer claim number', () => {
+    const original = build({ ...mapped, frequency: '1', payerClaimNumber: null });
+    assert.ok(original.some((s) => s.startsWith('CLM*c-1*942.5***41:B:1*Y*A*Y*Y')));
+    assert.ok(!original.some((s) => s.startsWith('REF*F8')));
+    assert.throws(
+      () => readX837Claim({ ...mapped, frequency: '8', payerClaimNumber: ' ' }),
+      /^Error: The 837P claim needs the payer claim number frequency 8 replaces$/
+    );
+    assert.equal(
+      readX837Claim({ ...mapped, frequency: '7', payerClaimNumber: ' PCN123 ' }).payerClaimNumber,
+      'PCN123'
+    );
+  });
+
   it('replaces an accepted claim with frequency 7 and the payer claim number', () => {
     const replaced = build({ ...mapped, frequency: '7', payerClaimNumber: 'PCN123' });
     assert.ok(replaced.some((s) => s.startsWith('CLM*c-1*942.5***41:B:7*')));
@@ -479,6 +585,20 @@ describe('readX837Claim', () => {
     assert.equal(read.weightPounds, null);
   });
 
+  it('keeps only a whole, positive patient weight', () => {
+    const weight = (weightPounds: unknown) =>
+      readX837Claim({ ...mapped, weightPounds }).weightPounds;
+    assert.deepEqual([0, -5, '180', Number.NaN, null].map(weight), [null, null, null, null, null]);
+    assert.equal(weight(1), 1);
+    assert.ok(build({ ...mapped, weightPounds: null }).includes('CR1****A*DH*7.4'));
+  });
+
+  it('counts patients only from a whole number above zero', () => {
+    const count = (patientCount: unknown) =>
+      readX837Claim({ ...mapped, lines: [{ ...base, patientCount }] }).lines[0]?.patientCount;
+    assert.deepEqual([0, -1, 2.5, '2'].map(count), [null, null, null, null]);
+  });
+
   it('needs complete prior payers and at most ten of them', () => {
     const prior = {
       name: 'Medicare',
@@ -552,5 +672,23 @@ describe('submitterIssues', () => {
     assert.deepEqual(submitterIssues({ ...submitter, postalCode: '62701' }), [
       'The billing ZIP code needs all 9 digits (ZIP+4) in Settings'
     ]);
+    assert.deepEqual(submitterIssues({ ...submitter, receiverId: null }), [
+      'Add the clearinghouse receiver ID in Settings'
+    ]);
+    assert.deepEqual(
+      submitterIssues({
+        ...submitter,
+        npi: '1234567890',
+        postalCode: '627011',
+        submitterId: '',
+        receiverId: ''
+      }),
+      [
+        'The billing NPI is invalid',
+        'The billing ZIP code needs all 9 digits (ZIP+4) in Settings',
+        'Add the clearinghouse submitter ID in Settings',
+        'Add the clearinghouse receiver ID in Settings'
+      ]
+    );
   });
 });
