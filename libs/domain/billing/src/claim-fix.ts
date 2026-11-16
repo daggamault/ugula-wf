@@ -211,8 +211,8 @@ export const readClaimPatch = (values: unknown, check: ClaimCheck): ClaimPatch =
     destination:
       destination || destinationName
         ? {
-            name: destinationName ?? check.details.destination.name,
-            ...(destination ?? check.details.destination)
+            ...(destination ?? check.details.destination),
+            name: destinationName ?? check.details.destination.name
           }
         : null,
     originDestination: modifier(r, check.details.originDestination),

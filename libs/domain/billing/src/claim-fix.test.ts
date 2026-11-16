@@ -193,6 +193,11 @@ describe('readClaimPatch', () => {
     assert.equal(chargeChanges(added).payers, true);
     assert.equal(readClaimPatch({ payerId: 'p-Medicare' }, check).newCoverage, null);
   });
+
+  it('renames the destination without losing the new name to the old one', () => {
+    const { destination } = readClaimPatch({ destinationName: 'St. Luke' }, check);
+    assert.deepEqual(destination, { ...check.details.destination, name: 'St. Luke' });
+  });
 });
 
 describe('editedValues', () => {
