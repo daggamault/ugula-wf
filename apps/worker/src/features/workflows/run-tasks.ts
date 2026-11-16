@@ -2,6 +2,7 @@ import type { Permission } from '@ugula/access';
 import { agencyTimeZone, type Database, type TaskKind, type TaskPrefill } from '@ugula/db';
 import type { Json } from '@ugula/graph';
 import { type Kysely, sql } from 'kysely';
+import { isUuid } from '../../shared/ids.ts';
 
 export type TaskInsert = {
   agencyId: string;
@@ -67,13 +68,13 @@ export const insertTask = async (tx: Kysely<Database>, t: TaskInsert) => {
       due_at: t.dueAt === null ? null : dueAtOf(t.agencyId, t.dueAt),
       permission: t.permission,
       assignee_id:
-        t.assigneeId === null
-          ? null
-          : tx
+        t.assigneeId !== null && isUuid(t.assigneeId)
+          ? tx
               .selectFrom('memberships')
               .select('user_id')
-              .where(sql<string>`user_id::text`, '=', t.assigneeId)
               .where('agency_id', '=', t.agencyId)
+              .where('user_id', '=', t.assigneeId)
+          : null
     })
     .onConflict((oc) => oc.columns(['run_id', 'wait_id']).doNothing())
     .returning('id')

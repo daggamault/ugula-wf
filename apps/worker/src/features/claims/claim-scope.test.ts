@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { type RunJob, type RunQueueClient, resume } from '@ugula/run-queue';
-import { agencyClaim, linkClaimRun, signalClaim } from './claim-scope.ts';
+import { agencyClaim, linkClaimRun } from './claim-scope.ts';
 
 const ID = '0195f2a4-0000-7000-8000-000000000001';
-
-const CYCLE = '0195f2a4-0000-7000-8000-0000000000c1';
 
 describe('claim scope', () => {
   it('finds a claim only in the run agency and refuses unknown or malformed ids', async () => {
@@ -29,25 +26,5 @@ describe('claim scope', () => {
     );
     assert.ok(link?.sql.endsWith('on conflict ("run_id") do nothing'));
     assert.deepEqual(link?.parameters, [ID, 'r1', ID]);
-  });
-
-  it('counts a claim signal and resumes the runs waiting on it', async () => {
-    const jobs: RunJob[] = [];
-    const boss: RunQueueClient = {
-      insert: async (_, inserted) => {
-        jobs.push(...inserted.map((j) => j.data as RunJob));
-      }
-    };
-    const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select "id", state') ? [{ id: CYCLE, wait_id: 'w1' }] : []
-    );
-    await signalClaim(db, boss, 't-1', ID);
-    const [signal] = queries;
-    assert.ok(signal?.sql.startsWith('insert into "signals"'));
-    assert.ok(signal?.sql.includes('"received" = signals.received + 1'));
-    assert.deepEqual(signal?.parameters.slice(0, 2), ['t-1', `claim:${ID}`]);
-    const waiting = queries[1];
-    assert.deepEqual(waiting?.parameters, ['t-1', `claim:${ID}`, 'suspended']);
-    assert.deepEqual(jobs, [resume(CYCLE, 'w1', { payload: null })]);
   });
 });

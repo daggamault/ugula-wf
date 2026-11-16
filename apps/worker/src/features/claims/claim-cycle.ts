@@ -11,6 +11,7 @@ import {
   type Db,
   findClaimCheck,
   lockClaim,
+  nudgeClaim,
   sqlExecutor,
   TERMINAL_RUN_STATUSES
 } from '@ugula/db';
@@ -18,7 +19,7 @@ import { cancel, enqueueRuns, type RunQueueClient } from '@ugula/run-queue';
 import { sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
-import { agencyClaim, linkClaimRun, signalClaim } from './claim-scope.ts';
+import { agencyClaim, linkClaimRun } from './claim-scope.ts';
 
 const DRAFT: ClaimStatus = 'draft';
 
@@ -62,7 +63,7 @@ export const createCycleStore = (
         { ...patch, coverages: coverage ? [{ ...coverage, groupId: null }] : [] },
         { sourceKey, createdBy: null }
       );
-      if (edited) await signalClaim(tx, boss, claim.agency_id, claim.id);
+      if (edited) await nudgeClaim(tx, boss, claim.agency_id, claim.id);
     }),
 
   setStatus: (runId, claimId, _sourceKey, status, signalsSeen) =>
@@ -123,7 +124,7 @@ export const createCycleStore = (
         .executeTakeFirst();
       if (!numUpdatedRows) throw new Error(`Claim ${claimId} already has an active payer cycle`);
       await linkClaimRun(tx, cycle.id, claim.id);
-      await signalClaim(tx, boss, claim.agency_id, claim.id);
+      await nudgeClaim(tx, boss, claim.agency_id, claim.id);
     });
   },
 

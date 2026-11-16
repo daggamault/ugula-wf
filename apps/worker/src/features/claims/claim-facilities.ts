@@ -4,12 +4,12 @@ import {
   isFacilityKind,
   type ResponsibleParty
 } from '@ugula/billing';
-import { type Db, lockClaim } from '@ugula/db';
+import { type Db, lockClaim, nudgeClaim } from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
 import { sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
-import { agencyClaim, signalClaim } from './claim-scope.ts';
+import { agencyClaim } from './claim-scope.ts';
 
 const FACILITY: ResponsibleParty = 'facility';
 
@@ -60,7 +60,7 @@ export const createFacilityStore = (
         .set({ facility_id: facility, updated_at: sql`now()` })
         .where('id', '=', claim.id)
         .execute();
-      await signalClaim(tx, boss, claim.agency_id, claim.id);
+      await nudgeClaim(tx, boss, claim.agency_id, claim.id);
     });
   },
 

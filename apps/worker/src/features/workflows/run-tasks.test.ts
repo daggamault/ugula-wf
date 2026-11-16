@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
 import { cancelTasks, insertTask, type TaskInsert, taskNotification } from './run-tasks.ts';
 
+const USER = '0195f2a4-0000-7000-8000-0000000000a1';
+
 const task: TaskInsert = {
   agencyId: 't',
   runId: 'r',
@@ -56,17 +58,21 @@ describe('insertTask', () => {
 
   it('assigns tasks only to agency members and links the notification to the task', async () => {
     const { db, queries } = insertedDb();
+    await insertTask(db, { ...task, assigneeId: 'u1' });
+    assert.ok(!queries[0]?.sql.includes('"memberships"'));
+    queries.length = 0;
     await insertTask(db, {
       ...task,
-      assigneeId: 'u1',
+      assigneeId: USER,
       dueAt: '2026-12-01T00:00:00.000Z',
       permission: 'claims:approve'
     });
     const inserted = queries.find((q) => q.sql.startsWith('insert into "tasks"'));
-    assert.ok(
-      inserted?.sql.includes('(select "user_id" from "memberships" where user_id::text = $')
+    assert.match(
+      inserted?.sql ?? '',
+      /\(select "user_id" from "memberships" where "agency_id" = \$\d+ and "user_id" = \$\d+\)/
     );
-    assert.ok(inserted?.parameters.includes('u1'));
+    assert.ok(inserted?.parameters.includes(USER));
     assert.ok(inserted?.parameters.includes('2026-12-01T00:00:00.000Z'));
     const note = queries.find((q) => q.sql.startsWith('insert into "notifications"'));
     assert.ok(note?.parameters.includes('/tasks/new-1'));

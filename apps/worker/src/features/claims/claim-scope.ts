@@ -1,6 +1,4 @@
-import { claimSignalKey } from '@ugula/billing';
-import { type Db, sqlExecutor } from '@ugula/db';
-import { enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
+import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
@@ -32,35 +30,5 @@ export const linkClaimRun = (db: Db, runId: string, claimId: string) =>
     )
     .onConflict((oc) => oc.column('run_id').doNothing())
     .execute();
-
-export const signalClaim = async (
-  tx: Db,
-  boss: RunQueueClient,
-  agencyId: string,
-  claimId: string
-) => {
-  const key = claimSignalKey(claimId);
-  await tx
-    .insertInto('signals')
-    .values({ agency_id: agencyId, key, received: 1 })
-    .onConflict((oc) =>
-      oc
-        .columns(['agency_id', 'key'])
-        .doUpdateSet({ received: sql`signals.received + 1`, updated_at: sql`now()` })
-    )
-    .execute();
-  const waiting = await tx
-    .selectFrom('workflow_runs')
-    .select(['id', sql<string>`state -> 'suspension' ->> 'id'`.as('wait_id')])
-    .where('agency_id', '=', agencyId)
-    .where('wait_key', '=', key)
-    .where('status', '=', 'suspended')
-    .execute();
-  await enqueueRuns(
-    boss,
-    sqlExecutor(tx),
-    waiting.map((r) => resume(r.id, r.wait_id, { payload: null }))
-  );
-};
 
 export const payerName = sql<string>`coalesce(dp.name, cc.payer_name)`;
