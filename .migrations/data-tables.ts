@@ -1,4 +1,9 @@
-import { type Database, TABLE_KINDS, TABLE_PUBLISHED_IMMUTABLE_TRIGGER } from '@ugula/db';
+import {
+  AGENCY_TABLE_PREFIX,
+  type Database,
+  TABLE_KINDS,
+  TABLE_PUBLISHED_IMMUTABLE_TRIGGER
+} from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
 const buildDataTablesTable = (db: Kysely<Database>) =>
@@ -25,6 +30,10 @@ const buildDataTablesTable = (db: Kysely<Database>) =>
     .addCheckConstraint(
       'data_tables_key_check',
       sql`key ~ '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$' and key not like 'std.%'`
+    )
+    .addCheckConstraint(
+      'data_tables_agency_key_check',
+      sql`key not like ${sql.lit(`${AGENCY_TABLE_PREFIX}%`)} or agency_id is not null`
     );
 
 const buildDataTableVersionsTable = (db: Kysely<Database>) =>

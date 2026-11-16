@@ -3,6 +3,8 @@ import type { Database, TableKind } from './schema.ts';
 
 export const TABLE_PUBLISHED_IMMUTABLE_TRIGGER = 'data_table_versions_published_immutable';
 
+export const AGENCY_TABLE_PREFIX = 'agency.';
+
 export type RunTableRef = { key: string; id: string };
 
 export const resolvedTable = (agencyId: string, key: RawBuilder<unknown>) =>

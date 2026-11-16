@@ -1,4 +1,4 @@
-import type { Db, TableKind } from '@ugula/db';
+import { type Db, resolvedTable, type TableKind } from '@ugula/db';
 import { type Json, tableContract } from '@ugula/graph';
 import { sql } from 'kysely';
 import { type Page, type PageRequest, paged } from '../../shared/paging.ts';
@@ -214,3 +214,31 @@ export const publishTableVersion = async (db: Db, id: string) => {
     .where('published_at', 'is', null)
     .execute();
 };
+
+type EffectiveRow = {
+  id: string;
+  key: string;
+  name: string;
+  scope: Scope;
+  kind: TableKind;
+  inputs: Json | null;
+  outputs: Json | null;
+  type: Json | null;
+};
+
+const buildEffectiveTables = (s: ScopeIds) => sql<EffectiveRow>`
+  select t.id, t.key, t.name, ${scopeOf('t')} as scope, t.kind,
+    v.definition -> 'inputs' as inputs, v.definition -> 'outputs' as outputs,
+    v.definition -> 'type' as type
+  from (select distinct k.key from data_tables k where ${visible('k', s)}) keys
+  join data_table_versions v on v.id = ${resolvedTable(s.agencyId, sql.ref('keys.key'))}
+  join data_tables t on t.id = v.table_id
+  order by t.key`;
+
+const toEffective = ({ inputs, outputs, type, ...r }: EffectiveRow) =>
+  r.kind === 'decide'
+    ? { ...r, kind: 'decide' as const, inputs: inputs ?? [], outputs: outputs ?? [] }
+    : { ...r, kind: 'lookup' as const, type: type ?? 'string' };
+
+export const listEffectiveTables = async (db: Db, s: ScopeIds) =>
+  (await buildEffectiveTables(s).execute(db)).rows.map(toEffective);

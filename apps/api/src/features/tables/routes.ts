@@ -3,13 +3,21 @@ import { Hono } from 'hono';
 import type { AgencyEnv } from '../../shared/access.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { searchTablesQuery, tableDefinitionSchema, tableVersionParam } from './schemas.ts';
+import {
+  createTableSchema,
+  searchTablesQuery,
+  tableDefinitionSchema,
+  tableVersionParam
+} from './schemas.ts';
 import type { TableService } from './service.ts';
 
 export const createTableRoutes = (service: TableService) =>
   new Hono<AgencyEnv>()
     .get('/', sValidator('query', searchTablesQuery, invalidRequest), async (c) =>
       respond(c, await service.search(c.get('access'), c.req.valid('query')))
+    )
+    .post('/', sValidator('json', createTableSchema, invalidRequest), async (c) =>
+      respond(c, await service.create(c.get('access'), c.req.valid('json')), 201)
     )
     .get('/effective', async (c) => respond(c, await service.effective(c.get('access'))))
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>

@@ -1,17 +1,18 @@
-import type { Db } from '@ugula/db';
+import { AGENCY_TABLE_PREFIX, type Db } from '@ugula/db';
 import { type Json, tableContract, tableSchemas } from '@ugula/graph';
 import * as v from 'valibot';
 import type { AgencyAccess } from '../../shared/access.ts';
 import { compareCopy, findBaseVersion, overrideCopy } from '../../shared/copies.ts';
+import { isUniqueViolation } from '../../shared/http.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
   canEditScope,
   findDraftOf,
   findEffectiveIn,
   findVersionOf,
-  listEffective,
   lockOwner,
   nextVersionOf,
+  type Scope,
   scopeIds,
   setActive,
   touch
@@ -20,12 +21,14 @@ import {
   findTable,
   insertTable,
   insertTableDraft,
+  listEffectiveTables,
   listTableVersions,
   publishTableVersion,
   searchTables,
   type TableFilters,
   updateTableDraft
 } from './queries.ts';
+import { agencyTableKey, type NewTable } from './schemas.ts';
 
 const notFound = fail('not_found', 'Table not found');
 
@@ -35,6 +38,9 @@ export const tableIssues = (kind: keyof typeof tableSchemas, definition: unknown
   const parsed = v.safeParse(tableSchemas[kind], definition);
   return parsed.success ? [] : parsed.issues.map((i) => i.message);
 };
+
+export const isAgencyDefined = (table: { key: string; scope: Scope }) =>
+  table.scope === 'agency' && table.key.startsWith(AGENCY_TABLE_PREFIX);
 
 export const createTableService = ({ db }: { db: Db }) => {
   const editable = async (tx: Db, access: AgencyAccess, tableId: string) => {
@@ -49,7 +55,7 @@ export const createTableService = ({ db }: { db: Db }) => {
     search: async (access: AgencyAccess, filters: TableFilters) =>
       ok(await searchTables(db, scopeIds(access), filters)),
     effective: async (access: AgencyAccess) =>
-      ok({ tables: await listEffective(db, 'data_tables', scopeIds(access)) }),
+      ok({ tables: await listEffectiveTables(db, scopeIds(access)) }),
     find: async (access: AgencyAccess, id: string) => {
       const table = await findTable(db, scopeIds(access), id);
       if (!table) return notFound;
@@ -59,6 +65,7 @@ export const createTableService = ({ db }: { db: Db }) => {
           ...table,
           canEdit: canEditScope(access, table.scope, 'table'),
           canOverride: table.scope === 'system' && canEditScope(access, 'agency', 'table'),
+          isAgencyDefined: isAgencyDefined(table),
           effectiveId: effective?.id ?? table.id,
           effectiveScope: effective?.scope ?? table.scope
         },
@@ -84,6 +91,38 @@ export const createTableService = ({ db }: { db: Db }) => {
           definition: copiedFrom.definition
         }
       });
+    },
+    create: async (access: AgencyAccess, input: NewTable) => {
+      if (!canEditScope(access, 'agency', 'table')) return forbidden();
+      const issues = tableIssues(input.kind, input.definition);
+      if (issues.length) return fail('invalid', issues.join('. '));
+      const key = agencyTableKey(input.name);
+      try {
+        return ok(
+          await db.transaction().execute(async (tx) => {
+            const { id } = await insertTable(tx, {
+              agencyId: access.agencyId,
+              key,
+              name: input.name,
+              kind: input.kind,
+              description: input.description
+            });
+            await insertTableDraft(tx, {
+              tableId: id,
+              version: 1,
+              definition: input.definition as Json,
+              baseVersionId: null,
+              userId: access.userId
+            });
+            return { id, key };
+          })
+        );
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          return fail('conflict', 'Your agency already has or had a table with that name');
+        }
+        throw err;
+      }
     },
     override: (access: AgencyAccess, tableId: string) =>
       db.transaction().execute(async (tx) => {

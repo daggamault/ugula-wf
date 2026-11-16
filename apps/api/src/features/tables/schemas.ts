@@ -1,3 +1,4 @@
+import { AGENCY_TABLE_PREFIX, TABLE_KINDS } from '@ugula/db';
 import * as v from 'valibot';
 import { uuid } from '../../shared/http.ts';
 import { pageEntries } from '../../shared/paging.ts';
@@ -13,21 +14,45 @@ export type TableShow = (typeof TABLE_SHOWS)[number];
 
 const DEFINITION_MAX_CHARS = 500_000;
 
+const slugOf = (name: string) =>
+  name
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^[^a-z]+|-+$/g, '');
+
+export const agencyTableKey = (name: string) => `${AGENCY_TABLE_PREFIX}${slugOf(name)}`;
+
 export const searchTablesQuery = v.object({
   q: searchText,
   show: v.optional(v.picklist(TABLE_SHOWS), 'all'),
   ...pageEntries(TABLE_SORTS, 'name', 'asc')
 });
 
-export const tableDefinitionSchema = v.object({
-  definition: v.pipe(
-    v.unknown(),
-    v.check(
-      (def) => JSON.stringify(def ?? null).length <= DEFINITION_MAX_CHARS,
-      'The table is too large to save'
-    )
+const definition = v.pipe(
+  v.unknown(),
+  v.check(
+    (def) => JSON.stringify(def ?? null).length <= DEFINITION_MAX_CHARS,
+    'The table is too large to save'
   )
+);
+
+export const tableDefinitionSchema = v.object({ definition });
+
+export const createTableSchema = v.object({
+  name: v.pipe(
+    v.string(),
+    v.trim(),
+    v.nonEmpty(),
+    v.maxLength(120),
+    v.check((name) => slugOf(name) !== '', 'Use a name with at least one letter')
+  ),
+  kind: v.picklist(TABLE_KINDS),
+  description: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(2000)), ''),
+  definition
 });
+
+export type NewTable = v.InferOutput<typeof createTableSchema>;
 
 export const tableVersionParam = v.object({
   id: uuid,

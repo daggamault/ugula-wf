@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { sql } from 'kysely';
 import {
+  AGENCY_TABLE_PREFIX,
   buildCopyRunTables,
   buildPinRunTables,
   findGraphTables,
@@ -23,6 +24,19 @@ describe('data table queries', () => {
     assert.ok(text.includes('(base.contract is null or v.contract = base.contract)'));
     assert.ok(text.includes('t.is_active and v.published_at is not null'));
     assert.deepEqual(compiled.parameters, ['t-1']);
+    await db.destroy();
+  });
+
+  it('resolves an agency-defined table only for the agency that owns it', async () => {
+    const db = createDummyDb();
+    const key = `${AGENCY_TABLE_PREFIX}region-reasons`;
+    const compiled = sql`select ${resolvedTable('t-1', sql`${key}`)}`.compile(db);
+    const text = flat(compiled.sql);
+    assert.ok(text.includes('t.agency_id is null or ( t.agency_id = $2::uuid'));
+    assert.ok(text.includes('st.key = t.key and st.agency_id is null'));
+    assert.deepEqual(compiled.parameters, [key, 't-1']);
+    const pin = buildPinRunTables('r-1', 't-2', null).compile(db);
+    assert.ok(pin.parameters.includes('t-2') && !pin.parameters.includes('t-1'));
     await db.destroy();
   });
 
