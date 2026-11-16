@@ -146,6 +146,9 @@ export const REMITTANCE_LINE = model(
     f('claimId', 'string', 'Matched claim'),
     f('coverageId', 'string', 'Matched payer on the claim'),
     f('payerName', 'string', 'Payer name'),
+    f('status', 'string', 'Claim status code the payer sent (CLP02)'),
+    f('remarks', { list: 'string' }, 'Remark codes (RARC) of the claim payment'),
+    f('crossoverPayer', 'string', 'Payer the claim was crossed over to (NM1*TT), if named'),
     f('denied', 'boolean', 'The payer denied the claim'),
     f('reversal', 'boolean', 'The payer reversed an earlier payment'),
     f(
@@ -169,6 +172,7 @@ export const REMITTANCE_POSTING = model(
     f('route', 'string', 'Route (reconcile, denial, appeal, fix, reversal, review or unmatched)'),
     f('message', 'string', 'What a biller sees about the line'),
     f('adjustedCents', 'integer', 'Adjustments that lower the balance (cents)'),
+    f('crossover', 'boolean', 'The payer forwarded the claim to the next payer itself'),
     f('reasons', { list: 'string' }, 'Why')
   ]
 );

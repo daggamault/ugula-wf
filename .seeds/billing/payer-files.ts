@@ -336,6 +336,84 @@ const classifyAdjustments = (): GraphDef => {
   return g.def;
 };
 
+const crossoverExpected = (): GraphDef => {
+  const g = rule(
+    [
+      d('status', 'string', 'Claim Status', 'The claim status code the payer sent (CLP02).', true),
+      d(
+        'remarks',
+        { list: 'string' },
+        'Remark Codes',
+        'The remark codes (RARC) of the claim payment.',
+        true
+      ),
+      d(
+        'crossoverPayer',
+        'string',
+        'Crossover Payer',
+        'The payer the claim was crossed over to (NM1*TT), if named.',
+        true
+      )
+    ],
+    [
+      d(
+        'crossover',
+        'boolean',
+        'Crossed Over',
+        'Whether the payer forwarded the claim to the next payer itself, so the next payer is awaited instead of billed.'
+      ),
+      P.reasons('the claim was or was not crossed over')
+    ]
+  );
+  g.add(
+    'named',
+    'std.expr',
+    expr('Crossover Payer Named', 'crossoverPayer != null && crossoverPayer != ""')
+  );
+  g.add('decide', 'std.table.decide', {
+    label: 'Crossover Signals',
+    config: shared.decision(
+      'billing.crossover-signals',
+      'Crossover Signals',
+      'Decides that a payer forwarded the claim to the next payer itself (a Medicare crossover through COBA): a processed-and-forwarded status (CLP02 19, 20 or 21), a remark that the claim went to the supplemental insurer (MA18) or to more than one payer (N89), or a named crossover carrier (NM1*TT).',
+      table(
+        [
+          field('status', 'string', 'Claim status (CLP02)'),
+          field('remarks', { list: 'string' }, 'Remark codes (RARC)'),
+          field('named', 'boolean', 'Crossover payer named (NM1*TT)')
+        ],
+        [field('crossover', 'boolean', 'Crossed over')],
+        [
+          {
+            label: 'Processed and forwarded to another payer (CLP02 19, 20, 21)',
+            when: { status: oneOf('19', '20', '21') },
+            set: { crossover: true }
+          },
+          {
+            label: 'Forwarded to the supplemental insurer (MA18) or several payers (N89)',
+            when: { remarks: oneOf('MA18', 'N89') },
+            set: { crossover: true }
+          },
+          {
+            label: 'A crossover payer is named (NM1*TT)',
+            when: { named: is(true) },
+            set: { crossover: true }
+          }
+        ],
+        { crossover: false }
+      )
+    )
+  });
+  g.ret('return');
+  g.wire('entry.status', 'decide.status');
+  g.wire('entry.remarks', 'decide.remarks');
+  g.wire('entry.crossoverPayer', 'named.crossoverPayer');
+  g.wire('named.result', 'decide.named');
+  g.wire('decide.crossover', 'return.crossover');
+  g.wire('decide.rules', 'return.reasons');
+  return g.def;
+};
+
 const ADJUSTMENT_LIMIT = 99;
 
 const routeRemittance = (): GraphDef => {
@@ -455,7 +533,8 @@ const routeRemittance = (): GraphDef => {
       'replace(replace(message ?? "", "{payer}", payerName ?? "The payer"), "{reference}", reference)'
     )
   );
-  g.add('reasons', 'std.expr', expr('Why', 'concat(rules, classified)'));
+  g.add('crossover', 'billing.crossover-expected', { label: 'Crossover Expected' });
+  g.add('reasons', 'std.expr', expr('Why', 'concat(rules, classified, crossedOver)'));
   g.add('posting', 'billing.remittance-posting.make');
   g.ret('return');
   g.wire('entry.line', 'line.line');
@@ -478,6 +557,11 @@ const routeRemittance = (): GraphDef => {
   g.wire('line.reference', 'message.reference');
   g.wire('route.rules', 'reasons.rules');
   g.wire('classify.reasons', 'reasons.classified');
+  g.wire('line.status', 'crossover.status');
+  g.wire('line.remarks', 'crossover.remarks');
+  g.wire('line.crossoverPayer', 'crossover.crossoverPayer');
+  g.wire('crossover.reasons', 'reasons.crossedOver');
+  g.wire('crossover.crossover', 'posting.crossover');
   g.wire('line.position', 'posting.position');
   g.wire('route.route', 'posting.route');
   g.wire('message.result', 'posting.message');
@@ -631,6 +715,12 @@ export const payerFileGraphs: SeedGraph[] = [
     'Classify Adjustments',
     'Classifies each 835 adjustment by its group and reason code (Adjustment Reasons table), else its group code (Adjustment Classes table), as contractual, patient responsibility, denial, prior payer, other or unknown; says whether the claim is denied (CLP02 4, or nothing paid with a denial reason) and adds up what lowers the balance.',
     classifyAdjustments()
+  ),
+  asRule(
+    'billing.crossover-expected',
+    'Crossover Expected',
+    'Says whether a payer forwarded the claim to the next payer itself, such as Medicare crossing it over to a Medigap or Medicaid plan (Crossover Signals table), so the next payer is awaited and followed up instead of billed again.',
+    crossoverExpected()
   ),
   asRule(
     'billing.route-remittance',

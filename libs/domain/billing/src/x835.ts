@@ -18,6 +18,7 @@ export type RemittanceClaim = {
   payerClaimNumber: string | null;
   adjustments: Adjustment[];
   remarks: string[];
+  crossoverPayer: string | null;
   denied: boolean;
   reversal: boolean;
 };
@@ -37,6 +38,8 @@ export type Remittance = {
 const DENIED = '4';
 
 const REVERSAL = '22';
+
+const CROSSOVER_CARRIER = 'TT';
 
 const CAS_TRIPLETS = 6;
 
@@ -80,6 +83,7 @@ const claimOf = (clp: string[]): RemittanceClaim => ({
   payerClaimNumber: textOf(clp[7]),
   adjustments: [],
   remarks: [],
+  crossoverPayer: null,
   denied: clp[2] === DENIED,
   reversal: clp[2] === REVERSAL
 });
@@ -114,6 +118,9 @@ const remittanceOf = (segments: string[][], file: X12File): Remittance => {
         break;
       case 'REF':
         if (party === 'PR' && !claim && seg[1] === '2U') r.payerId ??= textOf(seg[2]);
+        break;
+      case 'NM1':
+        if (claim && seg[1] === CROSSOVER_CARRIER) claim.crossoverPayer = textOf(seg[3]);
         break;
       case 'CLP':
         claim = claimOf(seg);

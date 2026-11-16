@@ -18,7 +18,8 @@ const paid: RemittanceClaim = {
   ],
   denied: false,
   reversal: false,
-  remarks: []
+  remarks: ['MA18'],
+  crossoverPayer: 'MEDIGAP'
 };
 
 const matched = { claimId: 'c1', coverageId: 'mcr', payerName: 'Medicare', reversesPosted: false };
@@ -32,6 +33,9 @@ describe('remittanceLine', () => {
       denied: false,
       reversal: false,
       reversesPosted: false,
+      status: '1',
+      remarks: ['MA18'],
+      crossoverPayer: 'MEDIGAP',
       takeback: false,
       paidCents: 60_000,
       adjustments: [
@@ -62,16 +66,23 @@ describe('readPostings', () => {
   it('keeps the routing decisions a graph made, dropping malformed ones', () => {
     assert.deepEqual(
       readPostings([
-        { position: 1, route: 'reconcile', message: '', adjustedCents: 2_500, reasons: [] },
+        {
+          position: 1,
+          route: 'reconcile',
+          message: '',
+          adjustedCents: 2_500,
+          crossover: true,
+          reasons: []
+        },
         { position: 2, route: 'review', message: 'Reversed' },
         { position: 3, route: 'appeal' },
         { position: 4, route: 'escalate' },
         null
       ]),
       [
-        { position: 1, route: 'reconcile', message: '', adjustedCents: 2_500 },
-        { position: 2, route: 'review', message: 'Reversed', adjustedCents: 0 },
-        { position: 3, route: 'appeal', message: '', adjustedCents: 0 }
+        { position: 1, route: 'reconcile', message: '', adjustedCents: 2_500, crossover: true },
+        { position: 2, route: 'review', message: 'Reversed', adjustedCents: 0, crossover: false },
+        { position: 3, route: 'appeal', message: '', adjustedCents: 0, crossover: false }
       ]
     );
   });
@@ -94,7 +105,7 @@ describe('readPostings', () => {
       /-500 cents .*post it by hand/
     );
     assert.deepEqual(readPostings([{ position: 1, route: 'reversal', adjustedCents: -500 }]), [
-      { position: 1, route: 'reversal', message: '', adjustedCents: -500 }
+      { position: 1, route: 'reversal', message: '', adjustedCents: -500, crossover: false }
     ]);
     assert.equal(
       readPostings([{ position: 1, route: 'reversal', adjustedCents: 500 }])[0]?.route,

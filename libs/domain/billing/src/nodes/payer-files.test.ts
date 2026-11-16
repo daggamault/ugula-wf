@@ -16,6 +16,9 @@ const line = {
   denied: false,
   reversal: false,
   reversesPosted: false,
+  status: '1',
+  remarks: [],
+  crossoverPayer: null,
   takeback: false,
   paidCents: 800,
   adjustments: [{ group: 'CO' as const, reason: '45', cents: 200 }]
@@ -88,6 +91,7 @@ describe('payerFileNodes', () => {
       route: 'reconcile',
       message: '',
       adjustedCents: 200,
+      crossover: true,
       reasons: []
     };
     const out = await invokeNode(node('apply-payer-file'), {
@@ -101,7 +105,9 @@ describe('payerFileNodes', () => {
     assert.deepEqual((calls[0] as unknown[])[3], {
       document: file,
       fileName: 'a.835',
-      postings: [{ position: 1, route: 'reconcile', message: '', adjustedCents: 200 }]
+      postings: [
+        { position: 1, route: 'reconcile', message: '', adjustedCents: 200, crossover: true }
+      ]
     });
     const raced = nodesWith(
       { status: 'read', kind: '835', lines: [] },

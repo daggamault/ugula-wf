@@ -39,12 +39,12 @@ const matchRemittance = async (
   rc: RemittanceClaim
 ) => {
   const claim = await findClaimByNumber(db, agencyId, rc.claimNumber);
-  const coverage = claim
-    ? remittanceCoverage(await listPostingCoverages(db, claim.id), remit.payerId, rc.status)
-    : null;
+  const coverages = claim ? await listPostingCoverages(db, claim.id) : [];
+  const coverage = claim ? remittanceCoverage(coverages, remit.payerId, rc.status) : null;
   return {
     claimId: claim?.id ?? null,
     coverageId: coverage?.id ?? null,
+    nextCoverageId: coverage ? (coverages[coverages.indexOf(coverage) + 1]?.id ?? null) : null,
     reversesPosted:
       rc.reversal &&
       coverage !== null &&
@@ -67,8 +67,15 @@ export const readRemittanceLines = async (
 ): Promise<RemittanceLine[]> => {
   const lines: RemittanceLine[] = [];
   for (const { remit, rc, position } of eachClaimPayment(read835(text))) {
-    const matched = await matchRemittance(db, agencyId, remit, rc);
-    lines.push(remittanceLine(position, rc, { ...matched, payerName: remit.payerName }));
+    const { claimId, coverageId, reversesPosted } = await matchRemittance(db, agencyId, remit, rc);
+    lines.push(
+      remittanceLine(position, rc, {
+        claimId,
+        coverageId,
+        reversesPosted,
+        payerName: remit.payerName
+      })
+    );
   }
   return lines;
 };
@@ -100,7 +107,7 @@ const postPayment = async (
 ): Promise<FileItem> => {
   const posting = c.postings.find((p) => p.position === position);
   if (!posting) throw new Error(`No posting was decided for claim payment ${position} of the file`);
-  const { claimId, coverageId, reversesPosted } = await matchRemittance(
+  const { claimId, coverageId, nextCoverageId, reversesPosted } = await matchRemittance(
     c.tx,
     c.agencyId,
     remit,
@@ -156,6 +163,20 @@ const postPayment = async (
         note: posting.message || `Denied by ${remit.payerName ?? 'the payer'}`,
         created_by: c.userId,
         source_key: `${c.digest}:${position}:denied`
+      })
+      .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
+      .execute();
+  }
+  if (posted.ok && !posted.value.duplicate && posting.crossover && nextCoverageId) {
+    await c.tx
+      .insertInto('claim_events')
+      .values({
+        claim_id: claimId,
+        kind: 'crossed_over',
+        coverage_id: nextCoverageId,
+        note: `${remit.payerName ?? 'The payer'} forwarded the claim${rc.crossoverPayer ? ` to ${rc.crossoverPayer}` : ''}; wait for its payment before billing it`,
+        created_by: c.userId,
+        source_key: `${c.digest}:${position}:crossed_over`
       })
       .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
       .execute();

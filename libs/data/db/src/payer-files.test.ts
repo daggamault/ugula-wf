@@ -24,7 +24,10 @@ const fileDb = () =>
       return parameters[1] === '20261105-1001' ? [{ id: 'c1', status: 'submitted' }] : [];
     if (sql.includes('for update')) return [{ id: 'c1', status: 'submitted', patient_id: 'p1' }];
     if (sql.includes('from "claim_coverages" as "cc"'))
-      return [{ id: 'cov1', payerId: 'DEMOMCR', payer: 'Medicare', has_events: true }];
+      return [
+        { id: 'cov1', payerId: 'DEMOMCR', payer: 'Medicare', has_events: true },
+        { id: 'cov2', payerId: 'GAP01', payer: 'Medigap', has_events: false }
+      ];
     if (sql.includes('claim_balances')) return [{ balance_cents: 100_000 }];
     if (sql.startsWith('insert into "claim_events"')) return [{ id: 'e1' }];
     if (sql.includes('"payer_claim_number" = $'))
@@ -108,12 +111,13 @@ describe('applyPayerFile', () => {
         { createdAt }
       ),
       [
-        { position: 1, route: 'reconcile', message: '', adjustedCents: 40_000 },
+        { position: 1, route: 'reconcile', message: '', adjustedCents: 40_000, crossover: false },
         {
           position: 2,
           route: 'unmatched',
           message: 'No claim has number 20261105-2002',
-          adjustedCents: 0
+          adjustedCents: 0,
+          crossover: false
         }
       ]
     );
@@ -147,7 +151,7 @@ describe('applyPayerFile', () => {
       { createdAt }
     );
     const { out } = await apply(text, [
-      { position: 1, route: 'unmatched', message: '', adjustedCents: 0 }
+      { position: 1, route: 'unmatched', message: '', adjustedCents: 0, crossover: false }
     ]);
     assert.deepEqual(
       out.items.slice(1).map((i) => [i.reference, i.claimId, i.outcome]),
@@ -194,8 +198,8 @@ describe('applyPayerFile', () => {
       ]
     );
     const { out, events } = await apply(text, [
-      { position: 1, route: 'reconcile', message: '', adjustedCents: 30_000 },
-      { position: 2, route: 'reversal', message: '', adjustedCents: -40_000 }
+      { position: 1, route: 'reconcile', message: '', adjustedCents: 30_000, crossover: false },
+      { position: 2, route: 'reversal', message: '', adjustedCents: -40_000, crossover: false }
     ]);
     assert.deepEqual(outcomes(out.items), [
       ['20261105-1001', 'c1', 'posted', ''],
@@ -208,6 +212,46 @@ describe('applyPayerFile', () => {
         [70_000, 30_000]
       ]
     );
+  });
+
+  it('marks the next payer contacted when the rules say the payer crossed the claim over', async () => {
+    const text = build835(
+      [
+        {
+          claims: [
+            {
+              claimNumber: '20261105-1001',
+              status: '19',
+              chargeCents: 100_000,
+              paidCents: 60_000,
+              remarks: ['MA18'],
+              crossover: { name: 'Medigap Plan', id: 'GAP01' }
+            }
+          ]
+        }
+      ],
+      { createdAt }
+    );
+    const [line] = await readRemittanceLines(fileDb().db, 't1', text);
+    assert.deepEqual(
+      [line?.status, line?.remarks, line?.crossoverPayer, line?.coverageId],
+      ['19', ['MA18'], 'MEDIGAP PLAN', 'cov1']
+    );
+    const { events, digest } = await apply(text, [
+      { position: 1, route: 'reconcile', message: '', adjustedCents: 40_000, crossover: true }
+    ]);
+    assert.equal(events.length, 2);
+    for (const value of ['crossed_over', 'cov2', `${digest}:1:crossed_over`]) {
+      assert.ok(events[1]?.parameters.includes(value), value);
+    }
+    assert.match(
+      String(events[1]?.parameters.find((p) => String(p).includes('forwarded'))),
+      /to MEDIGAP PLAN/
+    );
+    const plain = await apply(text, [
+      { position: 1, route: 'reconcile', message: '', adjustedCents: 40_000, crossover: false }
+    ]);
+    assert.equal(plain.events.length, 1);
   });
 
   it('leaves a reversal of a payment no response has to a biller', async () => {
@@ -265,7 +309,8 @@ describe('applyPayerFile', () => {
         position: 1,
         route: 'appeal',
         message: 'Medicare denied medical necessity',
-        adjustedCents: 0
+        adjustedCents: 0,
+        crossover: false
       }
     ]);
     assert.deepEqual(outcomes(out.items), [['20261105-1001', 'c1', 'posted', 'Denied']]);
@@ -286,7 +331,7 @@ describe('applyPayerFile', () => {
       { createdAt }
     );
     const { out, events } = await apply(text, [
-      { position: 1, route: 'review', message: 'Reversed', adjustedCents: 0 }
+      { position: 1, route: 'review', message: 'Reversed', adjustedCents: 0, crossover: false }
     ]);
     assert.deepEqual(outcomes(out.items), [['20261105-1001', 'c1', 'review', 'Reversed']]);
     assert.equal(events.length, 0);
@@ -306,8 +351,8 @@ describe('applyPayerFile', () => {
       { createdAt }
     );
     const { out, events } = await apply(text, [
-      { position: 1, route: 'reconcile', message: '', adjustedCents: 0 },
-      { position: 2, route: 'unmatched', message: '', adjustedCents: 0 }
+      { position: 1, route: 'reconcile', message: '', adjustedCents: 0, crossover: false },
+      { position: 2, route: 'unmatched', message: '', adjustedCents: 0, crossover: false }
     ]);
     assert.deepEqual(outcomes(out.items)[0], [
       '20261105-1001',
@@ -324,7 +369,7 @@ describe('applyPayerFile', () => {
       { createdAt }
     );
     const { out, events } = await apply(text, [
-      { position: 1, route: 'reconcile', message: '', adjustedCents: 40_000 }
+      { position: 1, route: 'reconcile', message: '', adjustedCents: 40_000, crossover: false }
     ]);
     assert.deepEqual(outcomes(out.items), [
       [

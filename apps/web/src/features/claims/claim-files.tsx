@@ -34,6 +34,7 @@ export const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
   appealed: 'Appeal sent',
   appeal_decided: 'Appeal decided',
   reopening_requested: 'Reopening requested',
+  crossed_over: 'Crossed over by the prior payer',
   records_requested: 'Records requested',
   records_sent: 'Records sent',
   closing_approved: 'Closing approved',

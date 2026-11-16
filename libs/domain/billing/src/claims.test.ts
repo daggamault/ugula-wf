@@ -82,6 +82,19 @@ describe('ledgerFactsOf', () => {
       [answered.coverageId, answered.unreconciledCoverageId, answered.unreconciledPayer],
       ['cov-Blue Plan', 'cov-Medicare', 'Medicare']
     );
+    const crossed = facts(
+      [
+        e('submitted', 'Medicare', 1),
+        e('response', 'Medicare', 5, 20_000),
+        e('crossed_over', 'Blue Plan', 5),
+        e('reconciled', 'Medicare', 6)
+      ],
+      8
+    );
+    assert.deepEqual(
+      [crossed.coverageId, crossed.contacted, crossed.sinceContactMs, crossed.approved],
+      ['cov-Blue Plan', true, 3 * DAY, false]
+    );
     const patient = facts([e('statement', null, 2)], 32, []);
     assert.deepEqual(
       [patient.payerKind, patient.coverageId, patient.statements, patient.sinceStatementMs],

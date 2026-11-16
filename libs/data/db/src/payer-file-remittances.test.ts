@@ -49,7 +49,9 @@ describe('payer file remittances', () => {
       digest: 'd',
       fileName: 'a.835',
       now: new Date(),
-      postings: [{ position: 1, route: 'unmatched', message: '', adjustedCents: 0 }]
+      postings: [
+        { position: 1, route: 'unmatched', message: '', adjustedCents: 0, crossover: false }
+      ]
     };
     await assert.rejects(
       () => postRemittances(c, read835(text)),

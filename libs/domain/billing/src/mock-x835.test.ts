@@ -111,7 +111,10 @@ describe('build835', () => {
         ['202', '1', 7_000, false, false]
       ]
     );
-    assert.deepEqual(r?.claims[3]?.remarks, ['MA18']);
+    assert.deepEqual(
+      [r?.claims[3]?.remarks, r?.claims[3]?.crossoverPayer],
+      [['MA18'], 'MEDIGAP PLAN']
+    );
     assert.deepEqual(r?.claims[4]?.adjustments, [{ group: 'CO', reason: '45', cents: -4_000 }]);
   });
 });

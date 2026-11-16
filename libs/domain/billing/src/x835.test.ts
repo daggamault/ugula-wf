@@ -86,6 +86,7 @@ describe('read835', () => {
         { group: 'CO', reason: '253', cents: 0 }
       ],
       remarks: ['MA01', 'N130'],
+      crossoverPayer: null,
       denied: false,
       reversal: false
     });
@@ -185,6 +186,7 @@ describe('read835', () => {
         payerClaimNumber: null,
         adjustments: [],
         remarks: [],
+        crossoverPayer: null,
         denied: false,
         reversal: false
       }

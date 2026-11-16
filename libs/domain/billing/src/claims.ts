@@ -21,6 +21,7 @@ export const CLAIM_EVENT_KINDS = [
   'appealed',
   'appeal_decided',
   'reopening_requested',
+  'crossed_over',
   'records_requested',
   'records_sent',
   'closing_approved',
@@ -48,7 +49,8 @@ export const COVERAGE_EVENT_KINDS: readonly ClaimEventKind[] = [
   'appeal_packet',
   'appealed',
   'appeal_decided',
-  'reopening_requested'
+  'reopening_requested',
+  'crossed_over'
 ];
 
 const CYCLE_EVENT_KINDS = [
@@ -253,7 +255,8 @@ const CONTACTS: readonly ClaimEventKind[] = [
   'resubmit_queued',
   'follow_up',
   'rejected',
-  'reopening_requested'
+  'reopening_requested',
+  'crossed_over'
 ];
 
 const FACILITY_CONTACTS: readonly ClaimEventKind[] = ['facility_invoiced', 'facility_follow_up'];
