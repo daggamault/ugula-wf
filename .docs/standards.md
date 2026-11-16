@@ -77,7 +77,7 @@ This repository enforces strict, consistent standards across all applications, l
 - **Naming Conventions:**
   - Use clear, descriptive, `snake_case` **plural** names for tables (e.g., `user_accounts`, `import_jobs`).
   - Use concise, unambiguous `snake_case` column names (`id`, `created_at`, `organization_id`, `is_active`) without redundant table-name prefixes.
-  - Foreign keys end in `_id` (`created_by_id`), booleans start with `is_` or `has_`, timestamps end in `_at` and calendar dates in `_on`; `service_date` and `birth_date` keep their domain names. Indexes are named `idx_<table>_<columns>`.
+  - Foreign keys end in `_id` (`created_by_id`), booleans start with `is_` or `has_`, timestamps end in `_at` and calendar dates in `_on`; `service_date` and `birth_date` keep their domain names. Indexes are named `idx_<table>_<columns>` and unique ones `<table>_<columns>_unique`.
 - **Constraints & Indexing:**
   - Enforce data integrity at the database level using primary keys, foreign keys (with explicit `ON DELETE` / `ON UPDATE` behavior), `NOT NULL`, `UNIQUE`, and `CHECK` constraints.
   - Add indexes strictly for real query access patterns, foreign key lookups, and uniqueness constraints—never add speculative or redundant indexes.
