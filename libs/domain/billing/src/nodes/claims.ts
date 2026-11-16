@@ -1,7 +1,7 @@
 import { actionNode, branchNode, type PinSpec, pin, pureNode } from '@ugula/graph';
 import { priceLines, readLines, readPricedLines } from '../charges.ts';
 import { CHECK_FACTS, CLAIM_DOCUMENT, CLAIM_ISSUE } from '../check-models.ts';
-import { chargeChanges, readClaimPatch } from '../claim-fix.ts';
+import { chargeChanges, editedValues, readClaimPatch } from '../claim-fix.ts';
 import { CLAIM_FIX_FIELDS } from '../claim-fix-fields.ts';
 import { fixForm } from '../claim-fix-form.ts';
 import { CLAIM, LINE, SERVICE } from '../claim-models.ts';
@@ -157,9 +157,14 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Patch Claim',
       category: CATEGORY,
       description:
-        'Applies what a biller entered in a Fix Claim Data task to the claim, once per run step, leaving empty fields as they are, and logs the edit so an approved claim is reviewed again; lines saves repriced charges. Outputs what changed (classification, level, emergency, miles, payers), for the Reprice Triggers rule, and the classification, service and primary payer charges are mapped and priced from.',
+        'Applies what a biller entered in a Fix Claim Data task to the claim, once per run step, leaving empty fields and fields kept as the task showed them as they are (so a document or answer recorded meanwhile stands), and logs the edit so an approved claim is reviewed again; lines saves repriced charges. Outputs what changed (classification, level, emergency, miles, payers), for the Reprice Triggers rule, and the classification, service and primary payer charges are mapped and priced from.',
       effect: true,
-      inputs: [claimIdPin, ...fixPins, pin('lines', { list: LINE.type }, { optional: true })],
+      inputs: [
+        claimIdPin,
+        ...fixPins,
+        pin('lines', { list: LINE.type }, { optional: true }),
+        pin('shown', { object: {} }, { optional: true, label: 'What the Task Showed' })
+      ],
       outputs: [
         pin('changes', { object: {} }, { label: 'What Changed' }),
         pin('classification', 'string'),
@@ -171,7 +176,7 @@ export const claimNodes: NodesOf = (stores) => {
         const store = claims();
         const before = checkOf(await store.claimCheck(ctx.runId, claimId), claimId);
         const patch = {
-          ...readClaimPatch(inputs, before),
+          ...readClaimPatch(editedValues(inputs, inputs.shown), before),
           lines: inputs.lines ? readPricedLines(inputs.lines) : null
         };
         await store.patchClaim(ctx.runId, claimId, ctx.key, patch);

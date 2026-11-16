@@ -204,6 +204,18 @@ describe('claimNodes', () => {
     assert.equal((all.outputs.defaults as { serviceDate: string }).serviceDate, '2025-12-30');
   });
 
+  it('keeps what changed on the claim meanwhile when a fix task saves a field as it showed it', async () => {
+    const claims = memoryClaims({ check: completeCheck() });
+    const patch = nodesFor(claims.store)('patch-claim');
+    await run(patch, {
+      claimId: 'c1',
+      serviceDate: '2025-12-01',
+      note: 'Kept',
+      shown: { serviceDate: '2025-12-01', note: null }
+    });
+    assert.equal(claims.current()?.details.serviceDate, '2025-12-30');
+  });
+
   it('patches the claim from a fix task and says what changed for the reprice rule', async () => {
     const check = completeCheck();
     const claims = memoryClaims({

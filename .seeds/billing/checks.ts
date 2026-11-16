@@ -950,7 +950,7 @@ const fixClaim = (): GraphDef => {
   g.wire('entry.context', 'fixContext.context');
   g.wire('fixContext.result', 'fix.context');
   g.wire('check.visible', 'fix.visible');
-  g.wire('check.defaults', 'fix.defaults');
+  g.wire('check.defaults', 'fix.defaults', 'patch.shown');
   g.wire('check.options', 'fix.options');
   g.wire('entry.subject', 'fix.subject');
   summarize(g, 'fix', FIX_SUMMARY, {

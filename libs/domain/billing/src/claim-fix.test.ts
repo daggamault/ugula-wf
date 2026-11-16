@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { chargeChanges, readClaimPatch } from './claim-fix.ts';
+import { chargeChanges, editedValues, readClaimPatch } from './claim-fix.ts';
 import { completeCheck } from './testing.ts';
 
 const check = completeCheck();
@@ -192,5 +192,21 @@ describe('readClaimPatch', () => {
     });
     assert.equal(chargeChanges(added).payers, true);
     assert.equal(readClaimPatch({ payerId: 'p-Medicare' }, check).newCoverage, null);
+  });
+});
+
+describe('editedValues', () => {
+  it('leaves out what a biller kept as the task showed it, so a change made meanwhile stands', () => {
+    assert.deepEqual(
+      editedValues(
+        { pcsOnFile: false, transportReason: 'D', diagnoses: ['R07.9'], signature: null },
+        { pcsOnFile: false, transportReason: 'A', diagnoses: ['R07.9'] }
+      ),
+      { pcsOnFile: null, transportReason: 'D', diagnoses: null, signature: null }
+    );
+  });
+
+  it('keeps every value when the task showed nothing', () => {
+    assert.deepEqual(editedValues({ level: 'BLS' }, null), { level: 'BLS' });
   });
 });

@@ -95,6 +95,7 @@ const correctClaimData = (): GraphDef => {
   g.wire('check.issues', 'context.issues');
   g.wire('check.claim', 'context.claim');
   for (const pin of ['visible', 'defaults', 'options']) g.wire(`check.${pin}`, `task.${pin}`);
+  g.wire('check.defaults', 'patch.shown');
   g.wire('context.result', 'task.context', 'reprice.context');
   assigned(g, 'task');
   g.wire('ledger.reference', 'reprice.subject');
