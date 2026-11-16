@@ -52,14 +52,39 @@ describe('claimTaskNodes', () => {
     assert.deepEqual(busy.outputs.reason, 'Medicare already has billing activity');
   });
 
-  it('posts a payment in cents once per step, by the biller who entered it', async () => {
+  it('reads a hand-entered payment as a remittance line for Route Remittance', async () => {
+    const { calls, run } = setup();
+    const read = await run('payment-line', {
+      claimId: 'c1',
+      coverageId: 'cov-1',
+      paid: 80,
+      reasonCodes: ['CO-45 20']
+    });
+    assert.equal(read.pin, 'read');
+    assert.deepEqual(
+      [(read.outputs.line as { claimId: string }).claimId, read.outputs.reason],
+      ['c1', null]
+    );
+    const bad = await run('payment-line', { claimId: 'c1', paid: 1, reasonCodes: ['45'] });
+    assert.equal(bad.pin, 'refused');
+    assert.equal(calls.length, 0);
+  });
+
+  it('posts a payment in cents the way it was routed, once per step, by the biller who entered it', async () => {
     const { calls, run } = setup();
     const posted = await run('post-claim-payment', {
       claimId: 'c1',
       coverageId: 'cov-1',
       paid: 80,
-      adjusted: 20,
       reasonCodes: ['CO-45 20'],
+      posting: {
+        position: 0,
+        route: 'reconcile',
+        message: '',
+        adjustedCents: 2_000,
+        crossover: false,
+        reasons: []
+      },
       postedBy: 'u1'
     });
     assert.deepEqual([posted.pin, posted.outputs.balanceCents], ['posted', 1_200]);
@@ -73,6 +98,7 @@ describe('claimTaskNodes', () => {
         coverageId: 'cov-1',
         paidCents: 8_000,
         adjustedCents: 2_000,
+        route: 'reconcile',
         paidOn: null,
         checkNumber: null,
         payerClaimNumber: null,

@@ -51,6 +51,7 @@ const payment: ManualPayment = {
   coverageId: null,
   paidCents: 2_500,
   adjustedCents: 0,
+  route: null,
   paidOn: null,
   checkNumber: null,
   payerClaimNumber: null,
@@ -81,6 +82,21 @@ describe('createClaimTaskStore', () => {
     assert.ok(event?.parameters.includes('run:step') && event.parameters.includes(USER));
     const closed = await setup({ status: 'paid' }).store.postPayment('r1', ID, 'k', payment, 'x');
     assert.deepEqual(closed, { status: 'refused', reason: 'Claim is already closed' });
+  });
+
+  it('logs a denial to work when Remittance Routing routed the payment to one', async () => {
+    const { queries, store } = setup({ coverages: [{ id: 'm', payer: 'Medicare' }] });
+    const denied = { ...payment, coverageId: 'm', paidCents: 0, route: 'appeal' as const };
+    assert.equal((await store.postPayment('r1', ID, 'run:step', denied, USER)).status, 'posted');
+    const events = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.ok(
+      events.some(
+        (q) => q.parameters.includes('appeal') && q.parameters.includes('run:step:denied')
+      )
+    );
+    const plain = setup({ coverages: [{ id: 'm', payer: 'Medicare' }] });
+    await plain.store.postPayment('r1', ID, 'k', { ...denied, route: 'reconcile' }, USER);
+    assert.ok(!plain.queries.some((q) => q.parameters.includes('k:denied')));
   });
 
   it('keeps an upload as a claim document, typed by its content, once per step', async () => {

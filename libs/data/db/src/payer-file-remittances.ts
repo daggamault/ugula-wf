@@ -9,7 +9,7 @@ import {
   remittanceCoverage,
   remittanceLine
 } from '@ugula/billing';
-import { postClaimResponse } from './claim-responses.ts';
+import { logDenial, postClaimResponse } from './claim-responses.ts';
 import { type Context, type FileItem, findClaimsByNumber, item } from './payer-file-items.ts';
 import type { Db } from './schema.ts';
 
@@ -175,20 +175,12 @@ const postPayment = async (
     note: `${reversal ? 'Reversal' : isDenialRoute(posting.route) ? 'Denied' : 'Remittance'} from ${remit.payerName ?? 'the payer'} in ${c.fileName}`
   });
   if (posted.ok && !posted.value.duplicate && isDenialRoute(posting.route)) {
-    await c.tx
-      .insertInto('claim_events')
-      .values({
-        agency_id: c.agencyId,
-        claim_id: claimId,
-        kind: 'denied',
-        coverage_id: coverageId,
-        route: posting.route,
-        note: posting.message || `Denied by ${remit.payerName ?? 'the payer'}`,
-        created_by_id: c.userId,
-        source_key: `${c.digest}:${position}:denied`
-      })
-      .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
-      .execute();
+    await logDenial(c.tx, c.agencyId, claimId, c.userId, {
+      coverageId,
+      route: posting.route,
+      note: posting.message || `Denied by ${remit.payerName ?? 'the payer'}`,
+      sourceKey: `${c.digest}:${position}:denied`
+    });
   }
   if (posted.ok && !posted.value.duplicate && posting.crossover && nextCoverageId) {
     await c.tx

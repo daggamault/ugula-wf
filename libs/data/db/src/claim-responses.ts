@@ -1,4 +1,4 @@
-import { type Adjustment, CLAIM_SIGNAL, isClosedStatus } from '@ugula/billing';
+import { type Adjustment, CLAIM_SIGNAL, type DenialRoute, isClosedStatus } from '@ugula/billing';
 import { enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
 import { sqlExecutor } from './client.ts';
@@ -307,3 +307,27 @@ export const postClaimResponse = async (
   await nudgeClaim(tx, boss, agencyId, claimId);
   return ok({ balanceCents: remaining, adjustedCents, duplicate: false });
 };
+
+export type Denial = { coverageId: string; route: DenialRoute; note: string; sourceKey: string };
+
+export const logDenial = (
+  tx: Db,
+  agencyId: string,
+  claimId: string,
+  userId: string | null,
+  d: Denial
+) =>
+  tx
+    .insertInto('claim_events')
+    .values({
+      agency_id: agencyId,
+      claim_id: claimId,
+      kind: 'denied',
+      coverage_id: d.coverageId,
+      route: d.route,
+      note: d.note,
+      created_by_id: userId,
+      source_key: d.sourceKey
+    })
+    .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
+    .execute();

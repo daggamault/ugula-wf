@@ -1,8 +1,10 @@
 import { branchNode, pin } from '@ugula/graph';
 import { isDocumentKind } from '../claim-documents.ts';
-import { readPayment } from '../claim-payments.ts';
+import { paymentLine, readPayment } from '../claim-payments.ts';
 import { readPayerNames } from '../claim-tasks.ts';
+import { REMITTANCE_LINE, REMITTANCE_POSTING } from '../ledger-models.ts';
 import { BLOB } from '../model-kit.ts';
+import { readPostings } from '../remittances.ts';
 import { requiredText, textOrNull } from '../values.ts';
 import { claimIdOf, claimIdPin } from './claims.ts';
 import type { NodesOf, Refused } from './stores.ts';
@@ -13,9 +15,39 @@ const reasonPin = pin('reason', 'string', { label: 'Why Not' });
 
 const refused = (reason: string): Refused => ({ status: 'refused', reason });
 
+const PAYMENT_PINS = [
+  pin('kind', 'string', { optional: true, label: 'Payment or Refund' }),
+  pin('coverageId', 'string', { optional: true, label: 'Payer' }),
+  pin('paid', 'number', { optional: true, label: 'Paid (Dollars)' }),
+  pin('paidOn', 'string', { optional: true }),
+  pin('checkNumber', 'string', { optional: true }),
+  pin('payerClaimNumber', 'string', { optional: true }),
+  pin('reasonCodes', { list: 'string' }, { optional: true }),
+  pin('note', 'string', { optional: true })
+];
+
 export const claimTaskNodes: NodesOf = (stores) => {
   const tasks = () => stores().claimTasks;
   return [
+    branchNode({
+      type: 'billing.payment-line',
+      title: 'Payment Line',
+      category: CATEGORY,
+      description:
+        'Reads a payment a biller entered by hand as one remittance line, with its reason codes (like CO-45 12.50, one per line) as adjustments, so Route Remittance classifies and routes it like an 835 claim payment. Amounts are in dollars. Decides nothing. Continues through refused, saying why, when the amounts or reason codes cannot be read.',
+      inputs: [claimIdPin, ...PAYMENT_PINS],
+      outputs: [pin('line', REMITTANCE_LINE.type, { label: 'Remittance Line' }), reasonPin],
+      exits: ['read', 'refused'],
+      compute: (inputs) => {
+        const payment = readPayment(inputs);
+        return typeof payment === 'string'
+          ? { exit: 'refused', outputs: { line: null, reason: payment } }
+          : {
+              exit: 'read',
+              outputs: { line: paymentLine(claimIdOf(inputs.claimId), payment), reason: null }
+            };
+      }
+    }),
     branchNode({
       type: 'billing.set-claim-payers',
       title: 'Set Claim Payers',
@@ -43,26 +75,22 @@ export const claimTaskNodes: NodesOf = (stores) => {
       title: 'Post Claim Payment',
       category: CATEGORY,
       description:
-        "Posts a payment a biller entered by hand, once per run step: a payer's or the patient's payment with its adjustment and reason codes (like CO-45 12.50, one per line), or a refund paid back. Amounts are in dollars. It settles tasks the payment makes moot and signals the claim, like a remittance. Continues through refused, saying why, when the claim is a draft or closed, the payer is not on the claim or the amounts do not add up.",
+        "Posts a payment a biller entered by hand, once per run step, the way Route Remittance routed it (posting): a payer's payment with what its reason codes take off the balance, logging a denial to work for a denial route, a patient's payment, or a refund paid back. Amounts are in dollars. It settles tasks the payment makes moot and signals the claim, like a remittance. Continues through refused, saying why, when the claim is a draft or closed, the payer is not on the claim, the routing leaves it to be posted another way or the amounts do not add up.",
       effect: true,
       inputs: [
         claimIdPin,
-        pin('kind', 'string', { optional: true, label: 'Payment or Refund' }),
-        pin('coverageId', 'string', { optional: true, label: 'Payer' }),
-        pin('paid', 'number', { optional: true, label: 'Paid (Dollars)' }),
-        pin('adjusted', 'number', { optional: true, label: 'Adjusted (Dollars)' }),
-        pin('paidOn', 'string', { optional: true }),
-        pin('checkNumber', 'string', { optional: true }),
-        pin('payerClaimNumber', 'string', { optional: true }),
-        pin('reasonCodes', { list: 'string' }, { optional: true }),
-        pin('note', 'string', { optional: true }),
+        ...PAYMENT_PINS,
+        pin('posting', REMITTANCE_POSTING.type, { optional: true, label: 'Posting' }),
         pin('postedBy', 'string', { optional: true })
       ],
       outputs: [pin('balanceCents', 'integer'), reasonPin],
       exits: ['posted', 'refused'],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
-        const payment = readPayment(inputs);
+        const payment = readPayment(
+          inputs,
+          inputs.posting === null ? null : (readPostings([inputs.posting])[0] ?? null)
+        );
         const posted =
           typeof payment === 'string'
             ? refused(payment)

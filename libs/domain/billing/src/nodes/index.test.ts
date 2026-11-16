@@ -31,6 +31,7 @@ describe('createBillingNodes', () => {
         'billing.medicare-allowed@1',
         'billing.find-zip-place@1',
         'billing.find-hospital@1',
+        'billing.payment-line@1',
         'billing.set-claim-payers@1',
         'billing.post-claim-payment@1',
         'billing.add-claim-document@1',

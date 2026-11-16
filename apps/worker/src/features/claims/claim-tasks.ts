@@ -3,9 +3,17 @@ import {
   type ClaimTaskStore,
   DOCUMENT_KINDS,
   documentContentTypeOf,
-  isClosedStatus
+  isClosedStatus,
+  isDenialRoute
 } from '@ugula/billing';
-import { type Db, type Failure, lockClaim, postClaimResponse, setClaimPayers } from '@ugula/db';
+import {
+  type Db,
+  type Failure,
+  lockClaim,
+  logDenial,
+  postClaimResponse,
+  setClaimPayers
+} from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
 import { type BlobStore, importsPrefix } from '@ugula/storage';
 import { sql } from 'kysely';
@@ -40,12 +48,24 @@ export const createClaimTaskStore = (
 
   postPayment: async (runId, claimId, sourceKey, payment, postedBy) => {
     const claim = await agencyClaim(db, runId, claimId);
-    const posted = await db.transaction().execute((tx) =>
-      postClaimResponse(tx, boss, claim.agency_id, claim.id, userOf(postedBy), {
-        ...payment,
-        requestId: sourceKey
-      })
-    );
+    const userId = userOf(postedBy);
+    const { route, ...response } = payment;
+    const posted = await db.transaction().execute(async (tx) => {
+      const result = await postClaimResponse(tx, boss, claim.agency_id, claim.id, userId, {
+        ...response,
+        requestId: sourceKey,
+        exactAdjustment: route !== null
+      });
+      if (result.ok && !result.value.duplicate && response.coverageId && isDenialRoute(route)) {
+        await logDenial(tx, claim.agency_id, claim.id, userId, {
+          coverageId: response.coverageId,
+          route,
+          note: response.note || 'Denied, as posted by hand',
+          sourceKey: `${sourceKey}:denied`
+        });
+      }
+      return result;
+    });
     return posted.ok
       ? { status: 'posted', balanceCents: posted.value.balanceCents }
       : refusedBy(posted.failure);

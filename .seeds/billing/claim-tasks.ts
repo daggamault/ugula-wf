@@ -237,7 +237,6 @@ const PAYMENT_FIELDS: FieldSpec[] = [
     required: ['post']
   },
   { name: 'paid', type: 'number', label: 'Paid or refunded (USD)', min: 0 },
-  { name: 'adjusted', type: 'number', label: 'Adjusted (USD)', min: 0 },
   { name: 'paidOn', type: 'string', label: 'Paid on', format: 'date' },
   { name: 'checkNumber', type: 'string', label: 'Check or EFT number' },
   { name: 'payerClaimNumber', type: 'string', label: 'Payer claim number' },
@@ -279,33 +278,57 @@ const postPayment = (): GraphDef => {
       queue: 'billing-reconcile',
       permission: EDIT_PERMISSION,
       instructions:
-        "Enter a payer's or the patient's payment that came by mail, phone or card, or a refund paid back, in dollars, with each reason code on its own line (group, code and amount, like CO-45 12.50). Leave the payer empty for a patient payment. A payer payment that leaves a balance opens a reconcile task, and one that settles the claim closes it as paid.",
+        "Enter a payer's or the patient's payment that came by mail, phone or card, or a refund paid back, in dollars, with each reason code on its own line (group, code and amount, like CO-45 12.50). Leave the payer empty for a patient payment. A payer payment is classified and routed like an 835 claim payment (Route Remittance): its reason codes decide what is adjusted off the balance, a denial is worked, one that leaves a balance opens a reconcile task, and one that settles the claim closes it as paid.",
       fields: PAYMENT_FIELDS,
       outcomes: ['post', 'cancel'],
       hints: {
-        post: 'Posts it like a remittance; a balance left opens a reconcile task, and a settled claim closes as paid.',
+        post: 'Routes and posts it like a remittance; a denial is worked, a balance left opens a reconcile task, and a settled claim closes as paid.',
         cancel: 'Closes the task without posting anything.'
       },
       prefill: 'suggested'
     }
   });
+  g.add('routed', 'std.expr', expr('From a Payer?', 'kind != "refunded" && coverageId != null'));
+  g.add('fromPayer', 'std.flow.branch', { label: 'Route It?' });
+  g.add('line', 'billing.payment-line', { label: 'Payment Line' });
+  g.add('route', 'billing.route-remittance', { label: 'Route Remittance' });
   g.add('post', 'billing.post-claim-payment', { label: 'Post the Payment' });
+  g.add('postRouted', 'billing.post-claim-payment', { label: 'Post the Routed Payment' });
   rememberRefusal(g, 'post', 'choices.exec');
+  g.add('routedRefused', 'std.var.set', { label: 'Remember Why', config: { name: 'problem' } });
+  g.add('lineRefused', 'std.var.set', { label: 'Remember Why', config: { name: 'problem' } });
   g.ret('done');
   g.wire('ledger.ledger', 'facts.ledger');
   g.wire('facts.coverageId', 'defaults.coverageId');
   g.wire('ledger.then', 'choices.exec');
-  g.wire('entry.claimId', 'choices.claimId', 'post.claimId');
+  g.wire('entry.claimId', 'choices.claimId', 'post.claimId', 'postRouted.claimId', 'line.claimId');
   g.wire('choices.options', 'payers.object');
   g.wire('payers.object', 'task.options', 'visible.payers');
   g.wire('choices.then', 'task.exec');
   g.wire('visible.result', 'task.visible');
   g.wire('defaults.result', 'task.defaults');
   assigned(g, 'task');
-  g.wire('task.post', 'post.exec');
-  for (const { name } of PAYMENT_FIELDS) g.wire(`task.${name}`, `post.${name}`);
-  g.wire('task.completedBy', 'post.postedBy');
+  g.wire('task.post', 'fromPayer.exec');
+  g.wire('task.kind', 'routed.kind');
+  g.wire('task.coverageId', 'routed.coverageId');
+  g.wire('routed.result', 'fromPayer.condition');
+  g.wire('fromPayer.true', 'line.exec');
+  g.wire('fromPayer.false', 'post.exec');
+  for (const { name } of PAYMENT_FIELDS) {
+    g.wire(`task.${name}`, `post.${name}`, `postRouted.${name}`, `line.${name}`);
+  }
+  g.wire('line.read', 'postRouted.exec');
+  g.wire('line.line', 'route.line');
+  g.wire('route.posting', 'postRouted.posting');
+  g.wire('postRouted.refused', 'routedRefused.exec');
+  g.wire('postRouted.reason', 'routedRefused.value');
+  g.wire('routedRefused.then', 'choices.exec');
+  g.wire('line.refused', 'lineRefused.exec');
+  g.wire('line.reason', 'lineRefused.value');
+  g.wire('lineRefused.then', 'choices.exec');
+  g.wire('task.completedBy', 'post.postedBy', 'postRouted.postedBy');
   g.wire('post.posted', 'done.exec');
+  g.wire('postRouted.posted', 'done.exec');
   g.wire('task.cancel', 'done.exec');
   return g.def;
 };

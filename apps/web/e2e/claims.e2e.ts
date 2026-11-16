@@ -341,7 +341,6 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await startClaimTask(s.page, 'Post Payment');
     const payment = section(s.page, 'Your Decision').last();
     await payment.getByLabel(/^Paid or Refunded/i).fill('100.00');
-    await payment.getByLabel(/^Adjusted/i).fill('50.00');
     await payment.getByLabel(/^Paid On$/i).fill('2026-10-20');
     await payment.getByLabel(/^Reason Codes/i).fill('CO-45 50.00');
     await finishTask(s.page, 'Post Payment');
