@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { setTimeout } from 'node:timers/promises';
 import type { RunStatus } from '@ugula/db';
 import {
   actionNode,
@@ -309,7 +308,12 @@ describe('runner', () => {
     assert.equal(stolen.log.saves.length, 0);
   });
 
-  it('extends its lease while a slow node runs and stops once the lease is lost', async () => {
+  it('extends its lease while a slow node runs and stops once the lease is lost', async (t) => {
+    t.mock.timers.enable({ apis: ['setInterval'] });
+    const gates: (() => void)[] = [];
+    const waitFor = async (ready: () => boolean) => {
+      while (!ready()) await new Promise((resolve) => setImmediate(resolve));
+    };
     const slowFlow: GraphDef = {
       signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
       variables: [],
@@ -330,37 +334,59 @@ describe('runner', () => {
       description: 'Takes a while.',
       inputs: [],
       outputs: [],
-      compute: async () => {
-        await setTimeout(30);
-        return {};
-      }
+      compute: () => new Promise((resolve) => gates.push(() => resolve({})))
     });
     const slowEngines: EngineSource = async () => ({
       engine: createEngine({ nodes: [...createStdNodes({ fetch }), slow], graphs: () => slowFlow }),
       root
     });
     const held = fakeStore({});
-    await createRunner({
+    const running = createRunner({
       store: held.store,
       engines: slowEngines,
       now: () => now,
       publish,
       heartbeatMs: 5
     }).process(job({ type: 'advance' }));
+    await waitFor(() => gates.length === 1);
+    t.mock.timers.tick(4);
+    assert.equal(held.log.extended, 0);
+    t.mock.timers.tick(1);
+    assert.equal(held.log.extended, 1);
+    t.mock.timers.tick(10);
+    assert.equal(held.log.extended, 3);
+    gates[0]?.();
+    await waitFor(() => gates.length === 2);
+    t.mock.timers.tick(5);
+    gates[1]?.();
+    await running;
     assert.equal(held.row.status, 'completed');
-    assert.ok(held.log.extended > 0);
+    assert.equal(held.log.extended, 4);
+    t.mock.timers.tick(50);
+    assert.equal(held.log.extended, 4);
 
+    gates.length = 0;
     const lost = fakeStore({});
+    let attempts = 0;
     lost.store.extend = async () => {
+      attempts++;
       throw Object.assign(new Error('lease lost'), { code: 'LEASE_LOST' });
     };
-    await createRunner({
+    const stopped = createRunner({
       store: lost.store,
       engines: slowEngines,
       now: () => now,
       publish,
       heartbeatMs: 5
     }).process(job({ type: 'advance' }));
+    await waitFor(() => gates.length === 1);
+    t.mock.timers.tick(5);
+    await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(20);
+    assert.equal(attempts, 1);
+    gates[0]?.();
+    await stopped;
+    assert.equal(gates.length, 1);
     assert.equal(lost.log.saves.length, 0);
     assert.deepEqual(lost.log.released, []);
   });
