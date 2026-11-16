@@ -29,6 +29,22 @@ describe('createApi', () => {
     assert.deepEqual(calls[3]?.[1], { method: 'DELETE', credentials: 'include' });
   });
 
+  it('uploads to the agency it is given rather than the one on screen now', async () => {
+    const urls: string[] = [];
+    const api = createApi(
+      '',
+      async (url) => {
+        urls.push(String(url));
+        return new Response('{}');
+      },
+      () => undefined,
+      () => 'b-2'
+    );
+    await api.upload('/api/imports', new FormData(), 'a-1');
+    await api.upload('/api/imports', new FormData());
+    assert.deepEqual(urls, ['/api/agencies/a-1/imports', '/api/agencies/b-2/imports']);
+  });
+
   it('raises typed errors carrying the status and body', async () => {
     const api = createApi(
       '',

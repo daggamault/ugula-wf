@@ -10,7 +10,7 @@ export type Api = {
   post: <T>(path: string, body?: unknown) => Promise<T>;
   put: <T>(path: string, body: unknown) => Promise<T>;
   remove: <T>(path: string) => Promise<T>;
-  upload: <T>(path: string, form: FormData) => Promise<T>;
+  upload: <T>(path: string, form: FormData, agencyId?: string | null) => Promise<T>;
   href: (path: string) => string;
 };
 
@@ -41,14 +41,15 @@ export const createApi = (
   onUnauthorized: () => void = () => undefined,
   agencyOf: () => string | null = currentAgency
 ): Api => {
-  const url = (path: string) => `${baseUrl}${scopedPath(path, agencyOf())}`;
+  const url = (path: string, agencyId = agencyOf()) => `${baseUrl}${scopedPath(path, agencyId)}`;
   const request = async <T>(
     method: string,
     path: string,
     body?: unknown,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    agencyId = agencyOf()
   ): Promise<T> => {
-    const res = await fetchFn(url(path), {
+    const res = await fetchFn(url(path, agencyId), {
       method,
       credentials: 'include',
       ...(signal ? { signal } : {}),
@@ -68,7 +69,7 @@ export const createApi = (
     post: (path, body) => request('POST', path, body),
     put: (path, body) => request('PUT', path, body),
     remove: (path) => request('DELETE', path),
-    upload: (path, form) => request('POST', path, form),
-    href: url
+    upload: (path, form, agencyId = agencyOf()) => request('POST', path, form, undefined, agencyId),
+    href: (path) => url(path)
   };
 };

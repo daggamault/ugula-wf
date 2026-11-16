@@ -51,10 +51,10 @@ export const createImportsClient = (api: Api) => ({
     api.get<Page<ImportReport>>(`/api/imports/${encodeURIComponent(id)}/reports?${page}`, signal),
   list: (query: string, signal?: AbortSignal) =>
     api.get<Page<ImportSummary>>(`/api/imports?${query}`, signal),
-  upload: (file: File) => {
+  upload: (file: File, agencyId: string | null) => {
     const form = new FormData();
     form.append('file', file);
-    return api.upload<ImportResult>('/api/imports', form);
+    return api.upload<ImportResult>('/api/imports', form, agencyId);
   }
 });
 

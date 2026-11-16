@@ -4,6 +4,8 @@ import type { ToastInput } from '../../shared/ui/toast.tsx';
 import type { PayerFilesClient } from './client.ts';
 import { fileStatus, kindOf, uploadPayerFiles } from './payer-files.ts';
 
+const scope = { agencyId: 'a-1', signal: new AbortController().signal };
+
 describe('payer files', () => {
   it('names the kind and says how many lines need a biller', () => {
     assert.equal(kindOf({ kind: '277' }), 'Claim acknowledgment (277CA)');
@@ -18,15 +20,18 @@ describe('payer files', () => {
   it('starts a run for each file, or says why it was refused', async () => {
     const toasts: ToastInput[] = [];
     const client = {
-      upload: async (file: File) => {
+      upload: async (file: File, agencyId: string | null) => {
+        assert.equal(agencyId, 'a-1');
         if (file.name === 'bad.txt') throw new Error('Not an X12 file');
         return { runId: 'r1', kind: '835' };
       }
     } as unknown as Pick<PayerFilesClient, 'upload'>;
-    const received = await uploadPayerFiles(client, (t) => void toasts.push(t), [
-      new File(['ISA'], 'era.835'),
-      new File(['x'], 'bad.txt')
-    ]);
+    const received = await uploadPayerFiles(
+      client,
+      (t) => void toasts.push(t),
+      [new File(['ISA'], 'era.835'), new File(['x'], 'bad.txt')],
+      scope
+    );
     assert.equal(received, 1);
     assert.deepEqual(
       toasts.map((t) => [t.intent, t.title, t.description]),
@@ -50,7 +55,12 @@ describe('uploadPayerFiles', () => {
       upload: async () => ({ runId: 'r2', kind: '999' })
     } as unknown as Pick<PayerFilesClient, 'upload'>;
     assert.equal(
-      await uploadPayerFiles(client, (t) => void toasts.push(t), [new File(['ISA'], 'ack.999')]),
+      await uploadPayerFiles(
+        client,
+        (t) => void toasts.push(t),
+        [new File(['ISA'], 'ack.999')],
+        scope
+      ),
       1
     );
     assert.deepEqual(

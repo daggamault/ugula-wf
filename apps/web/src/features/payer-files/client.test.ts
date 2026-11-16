@@ -11,8 +11,8 @@ describe('payer files client', () => {
         calls.push(['get', path]);
         return { items: [] };
       },
-      upload: async (path: string, form: FormData) => {
-        calls.push(['upload', path, (form.get('file') as File).name]);
+      upload: async (path: string, form: FormData, agencyId: string | null) => {
+        calls.push(['upload', path, (form.get('file') as File).name, agencyId]);
         return { id: 'f1' };
       },
       href: (path: string) => `https://app${path}`
@@ -20,11 +20,11 @@ describe('payer files client', () => {
     const client = createPayerFilesClient(api);
     await client.list('page=2');
     await client.find('a/b');
-    await client.upload(new File(['ISA'], 'era.835'));
+    await client.upload(new File(['ISA'], 'era.835'), 'a-1');
     assert.deepEqual(calls, [
       ['get', '/api/payer-files?page=2'],
       ['get', '/api/payer-files/a%2Fb'],
-      ['upload', '/api/payer-files', 'era.835']
+      ['upload', '/api/payer-files', 'era.835', 'a-1']
     ]);
     assert.equal(client.fileHref('f1'), 'https://app/api/payer-files/f1/file');
   });
@@ -35,7 +35,7 @@ describe('payer files client errors', () => {
     const client = createPayerFilesClient(
       createApi('', async () => Response.json({ error: 'Not an X12 file' }, { status: 400 }))
     );
-    await assert.rejects(client.upload(new File(['x'], 'a.txt')), {
+    await assert.rejects(client.upload(new File(['x'], 'a.txt'), null), {
       message: 'Not an X12 file',
       status: 400
     });

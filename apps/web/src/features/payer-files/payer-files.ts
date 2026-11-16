@@ -2,6 +2,7 @@ import { PAYER_FILE_LABELS } from '@ugula/billing';
 import { useCallback } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { type Notify, useToast } from '../../shared/ui/toast.tsx';
+import { type UploadScope, useUploadScope } from '../../shared/use-upload-scope.ts';
 import type { PayerFileSummary, PayerFilesClient } from './client.ts';
 
 export const kindOf = (f: Pick<PayerFileSummary, 'kind'>) => PAYER_FILE_LABELS[f.kind];
@@ -17,12 +18,14 @@ export const fileStatus = (f: Pick<PayerFileSummary, 'item_count' | 'problem_cou
 export const uploadPayerFiles = async (
   client: Pick<PayerFilesClient, 'upload'>,
   notify: Notify,
-  files: readonly File[]
+  files: readonly File[],
+  { agencyId, signal }: UploadScope
 ) => {
   let received = 0;
   for (const file of files) {
+    if (signal.aborted) break;
     try {
-      const done = await client.upload(file);
+      const done = await client.upload(file, agencyId);
       received += 1;
       notify({
         key: `payer-file:${file.name}`,
@@ -45,8 +48,9 @@ export const uploadPayerFiles = async (
 
 export const useUploadPayerFiles = (client: Pick<PayerFilesClient, 'upload'>) => {
   const notify = useToast();
+  const scope = useUploadScope();
   return useCallback(
-    (files: readonly File[]) => uploadPayerFiles(client, notify, files),
-    [client, notify]
+    (files: readonly File[]) => uploadPayerFiles(client, notify, files, scope()),
+    [client, notify, scope]
   );
 };

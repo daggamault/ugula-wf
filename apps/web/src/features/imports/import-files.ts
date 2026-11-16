@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { type Notify, useToast } from '../../shared/ui/toast.tsx';
+import { type UploadScope, useUploadScope } from '../../shared/use-upload-scope.ts';
 import type { ImportsClient } from './client.ts';
 
 export const isXmlFile = (file: Pick<File, 'name' | 'type'>) =>
@@ -9,10 +10,12 @@ export const isXmlFile = (file: Pick<File, 'name' | 'type'>) =>
 export const importFiles = async (
   client: Pick<ImportsClient, 'upload'>,
   notify: Notify,
-  files: readonly File[]
+  files: readonly File[],
+  { agencyId, signal }: UploadScope
 ) => {
   let received = 0;
   for (const file of files) {
+    if (signal.aborted) break;
     if (!isXmlFile(file)) {
       notify({
         intent: 'warning',
@@ -22,7 +25,7 @@ export const importFiles = async (
       continue;
     }
     try {
-      await client.upload(file);
+      await client.upload(file, agencyId);
       received += 1;
       notify({
         key: `import:${file.name}`,
@@ -45,8 +48,9 @@ export const importFiles = async (
 
 export const useImportFiles = (client: Pick<ImportsClient, 'upload'>) => {
   const notify = useToast();
+  const scope = useUploadScope();
   return useCallback(
-    (files: readonly File[]) => importFiles(client, notify, files),
-    [client, notify]
+    (files: readonly File[]) => importFiles(client, notify, files, scope()),
+    [client, notify, scope]
   );
 };

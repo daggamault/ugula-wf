@@ -35,10 +35,10 @@ export const createPayerFilesClient = (api: Api) => ({
       signal
     ),
   fileHref: (id: string) => api.href(`/api/payer-files/${encodeURIComponent(id)}/file`),
-  upload: (file: File) => {
+  upload: (file: File, agencyId: string | null) => {
     const form = new FormData();
     form.append('file', file);
-    return api.upload<UploadedPayerFile>('/api/payer-files', form);
+    return api.upload<UploadedPayerFile>('/api/payer-files', form, agencyId);
   }
 });
 

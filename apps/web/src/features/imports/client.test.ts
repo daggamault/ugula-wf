@@ -13,8 +13,8 @@ describe('createImportsClient', () => {
       })
     );
     const file = new File(['<x/>'], 'pcrs.xml');
-    assert.deepEqual(await client.upload(file), { runId: 'r1' });
-    assert.equal(seen[0]?.url, 'http://api.test/api/imports');
+    assert.deepEqual(await client.upload(file, 'a-1'), { runId: 'r1' });
+    assert.equal(seen[0]?.url, 'http://api.test/api/agencies/a-1/imports');
     assert.ok(seen[0]?.file instanceof File && seen[0].file.name === 'pcrs.xml');
   });
 
@@ -42,7 +42,7 @@ describe('createImportsClient errors', () => {
     const client = createImportsClient(
       createApi('', async () => Response.json({ error: 'Not a NEMSIS file' }, { status: 422 }))
     );
-    await assert.rejects(client.upload(new File(['x'], 'a.xml')), {
+    await assert.rejects(client.upload(new File(['x'], 'a.xml'), null), {
       message: 'Not a NEMSIS file',
       status: 422
     });
