@@ -87,7 +87,7 @@ const findEligibilityRequest = (db: Db, agencyId: string, sourceKey: string) =>
 
 type EligibilityRequest = NonNullable<Awaited<ReturnType<typeof findEligibilityRequest>>>;
 
-const priorEligibility = (r: EligibilityRequest): EligibilityCheck =>
+export const priorEligibility = (r: EligibilityRequest): EligibilityCheck =>
   r.status === 'answered'
     ? { status: 'answered', fileName: r.file_name ?? '', reviews: r.reviews ?? [] }
     : r.status === 'sent'

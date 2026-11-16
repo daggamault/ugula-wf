@@ -9,8 +9,8 @@ import { PgBoss } from 'pg-boss';
 import { type Config, clearinghouseOf, parseConfig } from './config.ts';
 import { createFeeStore } from './features/charges/queries.ts';
 import { announceClaims, announceClaimTasks } from './features/claims/announce.ts';
-import { createClaimTaskStore } from './features/claims/claim-tasks.ts';
-import { createClaimStore } from './features/claims/queries.ts';
+
+import { createClaimStore, createClaimTaskStore } from './features/claims/queries.ts';
 import { createExchangeStore } from './features/clearinghouse/exchange.ts';
 import { registerPollJob } from './features/clearinghouse/job.ts';
 import { createPayerFileStore } from './features/clearinghouse/payer-files.ts';
