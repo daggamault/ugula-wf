@@ -32,6 +32,13 @@ describe('toCsv', () => {
     assert.equal(toCsv([]), '');
   });
 
+  it('keeps spreadsheets from running cells as formulas, but not negative amounts', () => {
+    assert.equal(
+      toCsv([['=HYPERLINK("x")', '+1+1', '-2+3', '@SUM(A1)', '-25.00', -3]]),
+      '"\'=HYPERLINK(""x"")",\'+1+1,\'-2+3,\'@SUM(A1),-25.00,-3'
+    );
+  });
+
   it('writes cents as plain dollar amounts', () => {
     assert.equal(dollars(114_220), '1142.20');
     assert.equal(dollars(5), '0.05');

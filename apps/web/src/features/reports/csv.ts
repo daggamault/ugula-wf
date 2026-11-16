@@ -2,8 +2,13 @@ import { downloadText } from '../../shared/download.ts';
 
 export type CsvCell = string | number | null;
 
+const FORMULA = /^[=+\-@\t\r]/;
+
+const NUMBER = /^[+-]?\d+(\.\d+)?$/;
+
 const cell = (value: CsvCell) => {
-  const text = value === null ? '' : String(value);
+  const raw = value === null ? '' : String(value);
+  const text = FORMULA.test(raw) && !NUMBER.test(raw) ? `'${raw}` : raw;
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 };
 
