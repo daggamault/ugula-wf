@@ -47,6 +47,20 @@ describe('report service', () => {
     assert.ok(queries.every((q) => q.parameters.includes('t-1')));
   });
 
+  it("counts days in the agency's time zone, whatever zone the browser is in", async () => {
+    const { db } = createRecordingDb((q) =>
+      q.sql.includes('from "billing_profiles"')
+        ? [{ time_zone: 'America/Chicago' }]
+        : [{ total: '1', balance_cents: 5 }]
+    );
+    const aging = await createReportService({ db, now: () => now }).run('t-1', 'aging', {
+      tz: 'UTC',
+      page: 1
+    });
+    assert.ok(aging.ok);
+    assert.equal(aging.value.asOf, '2026-10-31');
+  });
+
   it('rejects unknown reports and groups a report does not offer', async () => {
     const { service: s } = service();
     const missing = await s.run('t-1', 'nope', { tz: 'UTC', page: 1 });

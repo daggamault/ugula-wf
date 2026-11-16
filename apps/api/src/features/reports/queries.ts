@@ -1,3 +1,4 @@
+import type { Db } from '@ugula/db';
 import { activityReport } from './activity-report.ts';
 import { agingReport } from './aging-report.ts';
 import { denialsReport } from './denials-report.ts';
@@ -33,3 +34,12 @@ type ReportId = keyof typeof REPORTS;
 
 export const findReport = (id: string): Report | undefined =>
   Object.hasOwn(REPORTS, id) ? REPORTS[id as ReportId] : undefined;
+
+export const findAgencyTimeZone = async (db: Db, agencyId: string) =>
+  (
+    await db
+      .selectFrom('billing_profiles')
+      .select('time_zone')
+      .where('agency_id', '=', agencyId)
+      .executeTakeFirst()
+  )?.time_zone ?? null;

@@ -1,6 +1,6 @@
 import type { Db } from '@ugula/db';
 import { fail, ok } from '../../shared/result.ts';
-import { findReport } from './queries.ts';
+import { findAgencyTimeZone, findReport } from './queries.ts';
 import type { DateRange } from './report.ts';
 import type { ReportQuery } from './schemas.ts';
 
@@ -31,12 +31,13 @@ export const createReportService = ({ db, now }: ReportServiceDeps) => ({
     if (group !== null && !report.groups?.includes(group)) {
       return fail('invalid', `This report can't be grouped by “${group}”.`);
     }
+    const tz = (await findAgencyTimeZone(db, agencyId)) ?? query.tz;
     const at = now();
-    const today = dayIn(at, query.tz);
+    const today = dayIn(at, tz);
     const range = rangeOf(query, today);
     const result = await report.run(
       db,
-      { agencyId, tz: query.tz, now: at.toISOString(), today, range, group: group ?? '' },
+      { agencyId, tz, now: at.toISOString(), today, range, group: group ?? '' },
       query.page
     );
     return ok({ asOf: today, range: report.dates ? range : null, group, ...result });
