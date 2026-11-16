@@ -30,10 +30,11 @@ const service = {
   uploadFile: async (...args: unknown[]) => {
     calls.push(args);
     return ok({ file: { bucket: 'b', key: 'k' }, name: 'pcs.pdf' });
-  }
+  },
+  maxBytes: 1_000
 } as unknown as TaskService;
 
-const request = withSession(createTaskRoutes(service, 1_000));
+const request = withSession(createTaskRoutes(service));
 
 describe('task routes', () => {
   it('summarize queues for the session user', async () => {

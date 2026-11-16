@@ -8,7 +8,7 @@ import { respond } from '../../shared/result.ts';
 import { payerFileFormSchema, searchPayerFilesQuery } from './schemas.ts';
 import type { PayerFileService } from './service.ts';
 
-export const createPayerFileRoutes = (service: PayerFileService, maxBytes: number) =>
+export const createPayerFileRoutes = (service: PayerFileService) =>
   new Hono<AgencyEnv>()
     .get('/', sValidator('query', searchPayerFilesQuery, invalidRequest), async (c) =>
       respond(c, await service.search(c.get('access').agencyId, c.req.valid('query')))
@@ -28,7 +28,7 @@ export const createPayerFileRoutes = (service: PayerFileService, maxBytes: numbe
     .post(
       '/',
       bodyLimit({
-        maxSize: maxBytes + FORM_OVERHEAD_BYTES,
+        maxSize: service.maxBytes + FORM_OVERHEAD_BYTES,
         onError: (c) => c.json({ error: 'File too large' }, 413)
       }),
       sValidator('form', payerFileFormSchema, invalidRequest),

@@ -186,17 +186,13 @@ export const createApp = ({
     .use('/runs/*', guardMethods({ ...read('runs:read'), POST: ['runs:create', 'runs:update'] }))
     .route(
       '/runs',
-      createRunRoutes(
-        createRunService({ db, boss, blobs, maxBytes: config.API_MAX_IMPORT_BYTES }),
-        config.API_MAX_IMPORT_BYTES
-      )
+      createRunRoutes(createRunService({ db, boss, blobs, maxBytes: config.API_MAX_IMPORT_BYTES }))
     )
     .use('/tasks/*', guardMethods({ ...read('tasks:read'), POST: 'tasks:update' }))
     .route(
       '/tasks',
       createTaskRoutes(
-        createTaskService({ db, boss, announce, blobs, maxBytes: config.API_MAX_IMPORT_BYTES }),
-        config.API_MAX_IMPORT_BYTES
+        createTaskService({ db, boss, announce, blobs, maxBytes: config.API_MAX_IMPORT_BYTES })
       )
     )
     .use(
@@ -274,7 +270,7 @@ export const createApp = ({
     .use('/reports/*', guardMethods(read('reports:read')))
     .route('/reports', createReportRoutes(createReportService({ db, now: () => new Date() })))
     .use('/imports/*', guardMethods({ ...read('imports:read'), POST: 'imports:create' }))
-    .route('/imports', createImportRoutes(imports, config.API_MAX_IMPORT_BYTES))
+    .route('/imports', createImportRoutes(imports))
     .use(
       '/payer-files/*',
       guardMethods({ ...read('payer_files:read'), POST: 'payer_files:create' })
@@ -287,8 +283,7 @@ export const createApp = ({
           boss,
           blobs,
           maxBytes: config.API_MAX_IMPORT_BYTES
-        }),
-        config.API_MAX_IMPORT_BYTES
+        })
       )
     );
   app.route('/api/imports/sftp', createSftpRoutes(imports, config.SFTP_HOOK_SECRET));

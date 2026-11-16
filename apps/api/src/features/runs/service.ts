@@ -35,6 +35,7 @@ type RunServiceDeps = {
 const notFound = fail('not_found', 'Run not found');
 
 export const createRunService = ({ db, boss, blobs, maxBytes }: RunServiceDeps) => ({
+  maxBytes,
   uploadFile: async (agencyId: string, file: UploadedFile) => {
     if (!file.bytes.byteLength) return fail('invalid', 'The file is empty');
     if (file.bytes.byteLength > maxBytes) {

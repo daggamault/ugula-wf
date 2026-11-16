@@ -8,7 +8,7 @@ import { respond } from '../../shared/result.ts';
 import { completeTaskSchema, nextTaskSchema, searchTasksQuery, taskFileSchema } from './schemas.ts';
 import type { TaskService } from './service.ts';
 
-export const createTaskRoutes = (service: TaskService, maxBytes: number) =>
+export const createTaskRoutes = (service: TaskService) =>
   new Hono<AgencyEnv>()
     .get('/', sValidator('query', searchTasksQuery, invalidRequest), async (c) => {
       const { agencyId, userId } = c.get('access');
@@ -50,7 +50,7 @@ export const createTaskRoutes = (service: TaskService, maxBytes: number) =>
     .post(
       '/:id/files',
       bodyLimit({
-        maxSize: maxBytes + FORM_OVERHEAD_BYTES,
+        maxSize: service.maxBytes + FORM_OVERHEAD_BYTES,
         onError: (c) => c.json({ error: 'File too large' }, 413)
       }),
       sValidator('param', idParam, invalidRequest),

@@ -101,6 +101,7 @@ export const createImportService = ({
   };
 
   return {
+    maxBytes,
     search: async (agencyId: string, filters: ImportFilters) =>
       ok(await searchImports(db, agencyId, filters)),
 

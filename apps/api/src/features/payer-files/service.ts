@@ -17,6 +17,7 @@ type PayerFileServiceDeps = {
 };
 
 export const createPayerFileService = ({ db, boss, blobs, maxBytes }: PayerFileServiceDeps) => ({
+  maxBytes,
   search: async (agencyId: string, page: PageRequest<PayerFileSort>) =>
     ok(await searchPayerFiles(db, agencyId, page)),
 

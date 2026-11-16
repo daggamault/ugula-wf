@@ -9,13 +9,13 @@ import { scopeIds } from '../../shared/scopes.ts';
 import { fileFormSchema, listStepsQuery, searchRunsQuery, startRunSchema } from './schemas.ts';
 import type { RunService } from './service.ts';
 
-export const createRunRoutes = (service: RunService, maxBytes: number) =>
+export const createRunRoutes = (service: RunService) =>
   new Hono<AgencyEnv>()
     .post(
       '/files',
       requirePermission('runs:create'),
       bodyLimit({
-        maxSize: maxBytes + FORM_OVERHEAD_BYTES,
+        maxSize: service.maxBytes + FORM_OVERHEAD_BYTES,
         onError: (c) => c.json({ error: 'File too large' }, 413)
       }),
       sValidator('form', fileFormSchema, invalidRequest),

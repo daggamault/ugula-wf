@@ -98,6 +98,7 @@ export const createTaskService = ({ db, boss, announce, blobs, maxBytes }: TaskS
     announced(announce, agencyId, reassign(agencyId, id, userId, assignee), () => changed(id));
 
   return {
+    maxBytes,
     queues: async (agencyId: string, userId: string) =>
       ok({ queues: await listQueues(db, agencyId, userId) }),
 

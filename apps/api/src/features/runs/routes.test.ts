@@ -23,10 +23,11 @@ const service = {
   steps: record({ steps: [] }),
   start: record({ id: 'r1', version: 1 }),
   cancel: async () => fail('conflict', 'Run already finished'),
-  uploadFile: record({ file: { bucket: 'b', key: 'k' }, name: 'a.xml' })
+  uploadFile: record({ file: { bucket: 'b', key: 'k' }, name: 'a.xml' }),
+  maxBytes: 1_000
 } as unknown as RunService;
 
-const request = withSession(createRunRoutes(service, 1_000));
+const request = withSession(createRunRoutes(service));
 
 describe('run routes', () => {
   it('translate query filters', async () => {
@@ -137,7 +138,7 @@ describe('run route validation', () => {
 
   it('start runs and upload their files with runs:create, and cancel with runs:update', async () => {
     const as = (permissions: Permission[]) =>
-      withSession(createRunRoutes(service, 1_000), testAccess(permissions));
+      withSession(createRunRoutes(service), testAccess(permissions));
     const start = { method: 'POST', body: JSON.stringify({ graphId: ID }) };
     const upload = () => {
       const form = new FormData();

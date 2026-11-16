@@ -26,10 +26,11 @@ const service = {
   upload: async (agencyId: string, userId: string, file: { name: string; bytes: Uint8Array }) => {
     calls.push(['upload', agencyId, userId, file.name, file.bytes.byteLength]);
     return ok({ id: ID, kind: '835', items: 1, problems: 0 });
-  }
+  },
+  maxBytes: 64
 } as unknown as PayerFileService;
 
-const request = withSession(createPayerFileRoutes(service, 64));
+const request = withSession(createPayerFileRoutes(service));
 
 describe('payer file routes', () => {
   it('lists, finds and downloads payer files for the session agency', async () => {
@@ -65,14 +66,12 @@ describe('payer file routes', () => {
 
   it('maps missing files and refused uploads to their statuses', async () => {
     const failing = withSession(
-      createPayerFileRoutes(
-        {
-          find: async () => fail('not_found', 'Payer file not found'),
-          download: async () => fail('not_found', 'Payer file not found'),
-          upload: async () => fail('conflict', 'This file was already imported on 2026-10-01')
-        } as unknown as PayerFileService,
-        64
-      )
+      createPayerFileRoutes({
+        find: async () => fail('not_found', 'Payer file not found'),
+        download: async () => fail('not_found', 'Payer file not found'),
+        upload: async () => fail('conflict', 'This file was already imported on 2026-10-01'),
+        maxBytes: 64
+      } as unknown as PayerFileService)
     );
     assert.equal((await failing(`/${ID}`)).status, 404);
     const download = await failing(`/${ID}/file`);

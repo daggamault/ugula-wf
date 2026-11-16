@@ -39,10 +39,11 @@ const service = {
   report: async (agencyId: string, id: string) => {
     calls.push(['report', agencyId, id]);
     return ok({ report: { id }, data: {}, xml: '' });
-  }
+  },
+  maxBytes: 16
 } as unknown as ImportService;
 
-const request = withSession(createImportRoutes(service, 16));
+const request = withSession(createImportRoutes(service));
 
 const form = (fields: Record<string, string | File>) => {
   const body = new FormData();
@@ -141,18 +142,15 @@ describe('SFTP hook routes', () => {
 describe('import report XML downloads', () => {
   const id = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
   const download = withSession(
-    createImportRoutes(
-      {
-        ...service,
-        report: async (agencyId: string, reportId: string) => {
-          calls.push(['report', agencyId, reportId]);
-          return reportId === id
-            ? ok({ report: { id, pcr_number: 'PCR 1/2"' }, data: {}, xml: '<x/>' })
-            : fail('not_found', 'Report not found');
-        }
-      } as unknown as ImportService,
-      16
-    )
+    createImportRoutes({
+      ...service,
+      report: async (agencyId: string, reportId: string) => {
+        calls.push(['report', agencyId, reportId]);
+        return reportId === id
+          ? ok({ report: { id, pcr_number: 'PCR 1/2"' }, data: {}, xml: '<x/>' })
+          : fail('not_found', 'Report not found');
+      }
+    } as unknown as ImportService)
   );
 
   it('serves the report XML as a private attachment named by a safe PCR number', async () => {
