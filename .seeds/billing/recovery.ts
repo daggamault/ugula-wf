@@ -650,6 +650,7 @@ const PROTECTION_INPUTS = [
   field('state', 'string', 'State of the pickup'),
   field('planType', 'string', 'Plan type: fully_insured, self_funded or government'),
   field('payerKind', 'string', 'Claim filing indicator of the last payer, or patient'),
+  field('dualEligible', 'boolean', 'Medicare and Medicaid are both on the claim'),
   field('serviceDate', 'string', 'Date of service (YYYY-MM-DD)')
 ];
 
@@ -696,15 +697,22 @@ const patientResponsibility = (): GraphDef => {
     config: shared.decision(
       'billing.balance-billing-protection',
       'Balance-Billing Protection',
-      'Whether the law keeps part of the balance off the patient: by state, plan type (fully insured, self-funded ERISA or government), kind of payer and date of service. cap bills only the in-network cost share the payer stated; block bills the patient nothing. The state rows are examples to verify before relying on them.',
+      'Whether the law keeps part of the balance off the patient: by state, plan type (fully insured, self-funded ERISA or government), kind of payer, Medicare and Medicaid both on the claim, and date of service. cap bills only the in-network cost share the payer stated; block bills the patient nothing. The state rows are examples to verify before relying on them.',
       table(
         PROTECTION_INPUTS,
         [field('protection', 'string', 'Protection')],
         [
           {
-            label: 'Medicaid patients are never balance billed (42 CFR 447.15)',
-            when: { payerKind: is('MC') },
+            label:
+              'Medicare and Medicaid are both on the claim: a QMB or Medicaid enrollee owes no Medicare cost sharing (SSA 1902(n)(3)(B))',
+            when: { dualEligible: is(true) },
             set: { protection: 'block' }
+          },
+          {
+            label:
+              'Medicaid payment is payment in full: the patient owes only the cost share Medicaid stated (42 CFR 447.15)',
+            when: { payerKind: is('MC') },
+            set: { protection: 'cap' }
           },
           {
             label:

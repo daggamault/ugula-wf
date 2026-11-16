@@ -99,6 +99,11 @@ export const PATIENT_BALANCE_FACTS = model(
     ),
     f('payerKind', 'string', 'Claim filing indicator of the last payer, or patient'),
     f(
+      'dualEligible',
+      'boolean',
+      'Medicare and Medicaid are both on the claim, so the patient may be a QMB'
+    ),
+    f(
       'protectedCents',
       'integer',
       'Already taken off the balance by balance-billing protection (cents)'

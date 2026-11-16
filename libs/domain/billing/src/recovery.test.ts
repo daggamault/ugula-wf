@@ -100,7 +100,7 @@ describe('appealOutcomeOf', () => {
 });
 
 describe('refundFactsOf', () => {
-  it('names the overpaid amount and who paid last, or the patient', () => {
+  it('names the overpaid amount and the payer whose payment made the credit, or the patient', () => {
     const paid = ledger([
       event({ kind: 'response', paidCents: 80_000 }),
       event({ kind: 'response', coverageId: 'blue', paidCents: 30_000, paidOn: '2026-04-01' })
@@ -117,6 +117,33 @@ describe('refundFactsOf', () => {
       ledger([event({ kind: 'response', coverageId: null, paidCents: 120_000 })])
     );
     assert.deepEqual([patient.payerKind, patient.overpaidCents], ['patient', 20_000]);
+    const later = refundFactsOf(
+      ledger([
+        event({ kind: 'response', paidCents: 80_000, paidOn: '2026-03-02' }),
+        event({ kind: 'response', coverageId: 'blue', paidCents: 30_000, paidOn: '2026-04-01' }),
+        event({ kind: 'response', paidCents: 0, adjustedCents: 0, paidOn: '2026-05-01' }),
+        event({ kind: 'statement', coverageId: null, at: '2026-05-02T10:00:00.000Z' })
+      ])
+    );
+    assert.deepEqual(
+      [later.coverageId, later.paidCents, later.identifiedOn],
+      ['blue', 30_000, '2026-04-01']
+    );
+    const settledThenOver = refundFactsOf(
+      ledger([
+        event({ kind: 'response', coverageId: 'blue', paidCents: 110_000, paidOn: '2026-03-02' }),
+        event({ kind: 'refunded', coverageId: 'blue', paidCents: -10_000, paidOn: '2026-03-20' }),
+        event({ kind: 'response', paidCents: 5_000, paidOn: '2026-04-10' })
+      ])
+    );
+    assert.deepEqual(
+      [settledThenOver.coverageId, settledThenOver.overpaidCents, settledThenOver.identifiedOn],
+      ['mcr', 5_000, '2026-04-10']
+    );
+    assert.deepEqual(
+      [refundFactsOf(ledger([])).coverageId, refundFactsOf(ledger([])).identifiedOn],
+      [null, null]
+    );
   });
 });
 
@@ -144,9 +171,17 @@ describe('patientBalanceFactsOf', () => {
       serviceDate: '2026-02-01',
       planType: 'fully_insured',
       payerKind: 'BL',
+      dualEligible: false,
       protectedCents: 45_000
     });
     assert.equal(patientBalanceFactsOf(ledger([])).payerKind, 'patient');
+    const dual = ledger([], {
+      coverages: [
+        { id: 'mcr', payer: 'Medicare', claimFiling: 'MB' },
+        { id: 'mcd', payer: 'State Medicaid', claimFiling: 'MC' }
+      ]
+    });
+    assert.equal(patientBalanceFactsOf(dual).dualEligible, true);
   });
 });
 

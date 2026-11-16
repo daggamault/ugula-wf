@@ -2,6 +2,10 @@ import { type ClaimEvent, type ClaimLedger, claimProgress, PATIENT_KIND } from '
 
 const dayOf = (e: ClaimEvent) => e.paidOn ?? e.at.slice(0, 10);
 
+const MEDICAID = 'MC';
+
+const MEDICARE: readonly string[] = ['MA', 'MB'];
+
 const codesOf = (e: ClaimEvent | undefined) =>
   (e?.adjustments ?? []).map((a) => `${a.group}-${a.reason}`);
 
@@ -57,9 +61,23 @@ export const appealOutcomeOf = (ledger: ClaimLedger, coverageId: string) => {
   };
 };
 
+const creditStart = ({ totalCents, events }: ClaimLedger) => {
+  let balance = totalCents;
+  let start = -1;
+  events.forEach((e, i) => {
+    const before = balance;
+    balance -= e.paidCents + e.adjustedCents;
+    if (balance >= 0) start = -1;
+    else if (before >= 0) start = i;
+  });
+  return start;
+};
+
 export const refundFactsOf = (ledger: ClaimLedger) => {
   const { balanceCents } = claimProgress(ledger);
-  const last = ledger.events.findLast((e) => e.kind === 'response' && e.paidCents > 0);
+  const start = creditStart(ledger);
+  const identified = ledger.events[start];
+  const last = ledger.events.slice(0, start + 1).findLast((e) => e.paidCents > 0);
   const coverageId = last?.coverageId ?? null;
   const coverage = coverageOf(ledger, coverageId);
   return {
@@ -70,7 +88,7 @@ export const refundFactsOf = (ledger: ClaimLedger) => {
     paidCents: ledger.events
       .filter((e) => e.coverageId === coverageId)
       .reduce((sum, e) => sum + e.paidCents, 0),
-    identifiedOn: last ? dayOf(last) : null
+    identifiedOn: identified ? dayOf(identified) : null
   };
 };
 
@@ -89,6 +107,9 @@ export const patientBalanceFactsOf = (ledger: ClaimLedger) => {
     serviceDate: ledger.serviceDate ?? null,
     planType: lastPayer?.planType ?? null,
     payerKind: lastPayer ? (lastPayer.claimFiling ?? null) : PATIENT_KIND,
+    dualEligible:
+      ledger.coverages.some((c) => c.claimFiling === MEDICAID) &&
+      ledger.coverages.some((c) => MEDICARE.includes(c.claimFiling ?? '')),
     protectedCents: ledger.events
       .filter((e) => e.kind === 'balance_protected')
       .reduce((sum, e) => sum + e.adjustedCents, 0)
