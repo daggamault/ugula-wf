@@ -103,7 +103,8 @@ export const postRemittances = async (c: Context, remittances: Remittance[]) => 
       payerClaimNumber: rc.payerClaimNumber,
       adjustments: line.adjustments,
       remarks: rc.remarks,
-      note: `${rc.denied ? 'Denied' : 'Remittance'} from ${remit.payerName ?? 'the payer'} in ${c.fileName}`
+      exactAdjustment: true,
+      note: `${isDenialRoute(posting.route) ? 'Denied' : 'Remittance'} from ${remit.payerName ?? 'the payer'} in ${c.fileName}`
     });
     if (posted.ok && !posted.value.duplicate && isDenialRoute(posting.route)) {
       await c.tx
@@ -126,7 +127,7 @@ export const postRemittances = async (c: Context, remittances: Remittance[]) => 
             rc.claimNumber,
             claimId,
             posted.value.duplicate ? 'duplicate' : 'posted',
-            rc.denied ? 'Denied' : '',
+            isDenialRoute(posting.route) ? 'Denied' : '',
             { ...amounts, adjustedCents: posted.value.adjustedCents }
           )
         : item(rc.claimNumber, claimId, 'review', posted.failure.message)

@@ -180,15 +180,56 @@ const ADJUSTMENTS_IN = d(
   'The 835 adjustments of one claim payment: group code, reason code and amount.'
 );
 
+const DENIAL_REASONS = [
+  '4',
+  '5',
+  '11',
+  '16',
+  '18',
+  '22',
+  '26',
+  '27',
+  '29',
+  '31',
+  '50',
+  '56',
+  '96',
+  '109',
+  '146',
+  '150',
+  '151',
+  '181',
+  '182',
+  '197',
+  '204'
+];
+
+const PRIOR_PAYER_REASONS = ['23'];
+
+const PAYER_GROUPS = ['CO', 'PI', 'OA'];
+
+const reasonRows = (reasons: string[], value: string) =>
+  reasons.flatMap((reason) => PAYER_GROUPS.map((group) => ({ key: `${group}-${reason}`, value })));
+
 const classifyAdjustments = (): GraphDef => {
   const g = rule(
-    [ADJUSTMENTS_IN, d('denied', 'boolean', 'Denied', 'Whether the payer denied the claim.', true)],
+    [
+      ADJUSTMENTS_IN,
+      d(
+        'denied',
+        'boolean',
+        'Denied',
+        'Whether the payer reported the claim denied (CLP02 4).',
+        true
+      ),
+      d('paidCents', 'integer', 'Paid (Cents)', 'What the payer paid on the claim.', true)
+    ],
     [
       d(
         'classes',
         { list: 'string' },
         'Classes',
-        'The class of each adjustment: contractual, patientResponsibility, denial or other.'
+        'The class of each adjustment: contractual, patientResponsibility, denial, priorPayer, other or unknown.'
       ),
       d(
         'adjustedCents',
@@ -196,33 +237,69 @@ const classifyAdjustments = (): GraphDef => {
         'Adjusted (Cents)',
         'What the contractual and other adjustments take off the balance.'
       ),
+      d(
+        'deniedClaim',
+        'boolean',
+        'Denied Claim',
+        'Whether the claim is denied: reported denied, or nothing paid with a denial reason.'
+      ),
       P.reasons('each adjustment lowers the balance or not')
     ]
   );
   g.add('groups', 'std.list.pluck', { label: 'Group Codes', values: { field: 'group' } });
+  g.add(
+    'codes',
+    'std.expr',
+    expr('Group and Reason Codes', 'map(adjustments, a => a.group + "-" + a.reason)')
+  );
+  g.add('byCode', 'std.table.lookup', {
+    label: 'Adjustment Reasons',
+    config: shared.lookup(
+      'billing.adjustment-reasons',
+      'Adjustment Reasons',
+      'The class of an 835 adjustment by its group and reason code (CO-50), ahead of its group: a denial reason keeps the amount on the balance for a biller to work, and the prior payer (OA-23) restates what an earlier payer already paid and adjusted, so it lowers nothing again.',
+      {
+        type: 'string',
+        rows: [
+          ...reasonRows(DENIAL_REASONS, 'denial'),
+          ...reasonRows(PRIOR_PAYER_REASONS, 'priorPayer')
+        ],
+        fallback: ''
+      }
+    )
+  });
   g.add('byGroup', 'std.table.lookup', {
     label: 'Adjustment Classes',
     config: shared.lookup(
       'billing.adjustment-classes',
       'Adjustment Classes',
-      'The class of an 835 adjustment by its group code: contractual and other adjustments lower the balance, patient responsibility stays on it for the patient. A denied claim lowers nothing.',
+      'The class of an 835 adjustment by its group code, when Adjustment Reasons does not list its reason: contractual and other adjustments lower the balance, patient responsibility stays on it for the patient. A group 5010 does not use (CR) is unknown and goes to a biller.',
       {
         type: 'string',
         rows: [
           { key: 'CO', value: 'contractual' },
           { key: 'PI', value: 'contractual' },
           { key: 'OA', value: 'other' },
-          { key: 'CR', value: 'other' },
           { key: 'PR', value: 'patientResponsibility' }
         ],
-        fallback: 'other'
+        fallback: 'unknown'
       }
     )
   });
   g.add(
+    'byReason',
+    'std.expr',
+    expr('By Reason, Else by Group', 'map(byGroup, (x, n) => byCode[n] != "" ? byCode[n] : x)')
+  );
+  g.add(
+    'denied',
+    'std.expr',
+    expr('Denied Claim', 'denied == true || ((paidCents ?? 0) == 0 && contains(classes, "denial"))')
+  );
+  g.add(
     'classes',
     'std.expr',
-    expr('Denied, Else by Group', 'denied == true ? map(groups, x => "denial") : classes')
+    expr('Denied, Else by Reason', 'denied ? map(classes, x => "denial") : classes')
   );
   g.add(
     'adjusted',
@@ -238,10 +315,21 @@ const classifyAdjustments = (): GraphDef => {
     expr('Why', 'map(adjustments, (a, n) => a.group + "-" + a.reason + ": " + classes[n])')
   );
   g.ret('return');
-  g.wire('entry.adjustments', 'groups.list', 'adjusted.adjustments', 'reasons.adjustments');
-  g.wire('groups.list', 'byGroup.keys', 'classes.groups');
-  g.wire('byGroup.values', 'classes.classes');
-  g.wire('entry.denied', 'classes.denied');
+  g.wire(
+    'entry.adjustments',
+    'groups.list',
+    'codes.adjustments',
+    'adjusted.adjustments',
+    'reasons.adjustments'
+  );
+  g.wire('groups.list', 'byGroup.keys');
+  g.wire('codes.result', 'byCode.keys');
+  g.wire('byCode.values', 'byReason.byCode');
+  g.wire('byGroup.values', 'byReason.byGroup');
+  g.wire('byReason.result', 'denied.classes', 'classes.classes');
+  g.wire('entry.denied', 'denied.denied');
+  g.wire('entry.paidCents', 'denied.paidCents');
+  g.wire('denied.result', 'classes.denied', 'return.deniedClaim');
   g.wire('classes.result', 'adjusted.classes', 'reasons.classes', 'return.classes');
   g.wire('adjusted.result', 'return.adjustedCents');
   g.wire('reasons.result', 'return.reasons');
@@ -315,6 +403,15 @@ const routeRemittance = (): GraphDef => {
             }
           },
           {
+            label: 'An adjustment group 5010 does not use',
+            when: { classes: oneOf('unknown') },
+            set: {
+              route: 'review',
+              message:
+                'The remittance has an adjustment group code 5010 does not use; post it by hand'
+            }
+          },
+          {
             label: 'The payer is not on the claim',
             when: { payerOnClaim: is(false) },
             set: {
@@ -357,7 +454,9 @@ const routeRemittance = (): GraphDef => {
   g.ret('return');
   g.wire('entry.line', 'line.line');
   g.wire('line.adjustments', 'classify.adjustments', 'reasonCount.list', 'codes.adjustments');
-  g.wire('line.denied', 'classify.denied', 'route.denied');
+  g.wire('line.denied', 'classify.denied');
+  g.wire('line.paidCents', 'classify.paidCents');
+  g.wire('classify.deniedClaim', 'route.denied');
   g.wire('line.claimId', 'matched.claimId');
   g.wire('line.coverageId', 'payerOnClaim.coverageId');
   g.wire('matched.result', 'route.matched');
@@ -523,13 +622,13 @@ export const payerFileGraphs: SeedGraph[] = [
   asRule(
     'billing.classify-adjustments',
     'Classify Adjustments',
-    'Classifies each 835 adjustment by its group code (Adjustment Classes table) as contractual, patient responsibility, denial or other, and adds up what lowers the balance.',
+    'Classifies each 835 adjustment by its group and reason code (Adjustment Reasons table), else its group code (Adjustment Classes table), as contractual, patient responsibility, denial, prior payer, other or unknown; says whether the claim is denied (CLP02 4, or nothing paid with a denial reason) and adds up what lowers the balance.',
     classifyAdjustments()
   ),
   asRule(
     'billing.route-remittance',
     'Route Remittance',
-    'Routes one 835 claim payment (Remittance Routing table): post it for a biller to reconcile, post it as a denial to work (denied, medical necessity or authorization to appeal, claim data to fix), leave it to a biller (reversals, takebacks, too many reason codes, a payer not on the claim) or report that no claim has its number; with Classify Adjustments for what lowers the balance.',
+    'Routes one 835 claim payment (Remittance Routing table): post it for a biller to reconcile, post it as a denial to work (denied, medical necessity or authorization to appeal, claim data to fix), leave it to a biller (reversals, takebacks, too many reason codes, an adjustment group 5010 does not use, a payer not on the claim) or report that no claim has its number; with Classify Adjustments for what lowers the balance.',
     routeRemittance()
   ),
   asStage(

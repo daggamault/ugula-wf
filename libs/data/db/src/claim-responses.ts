@@ -40,6 +40,7 @@ export type ClaimResponse = {
   adjustments: Adjustment[];
   remarks?: readonly string[];
   note: string;
+  exactAdjustment?: boolean;
 };
 
 export const lockClaim = (db: Db, agencyId: string, id: string) =>
@@ -234,7 +235,14 @@ export const postClaimResponse = async (
     await nudgeClaim(tx, boss, agencyId, claimId);
     return ok({ balanceCents: balance + response.paidCents, adjustedCents: 0, duplicate: false });
   }
-  const adjustedCents = Math.min(response.adjustedCents, Math.max(balance - response.paidCents, 0));
+  const open = Math.max(balance - response.paidCents, 0);
+  if (response.exactAdjustment && response.adjustedCents > open) {
+    return fail(
+      'invalid',
+      `The adjustments of ${dollars(response.adjustedCents)} take off more than the ${dollars(open)} left open after the payment; post it by hand`
+    );
+  }
+  const adjustedCents = Math.min(response.adjustedCents, open);
   await insertResponse(tx, claimId, userId, { ...response, adjustedCents });
   const remaining = balance - response.paidCents - adjustedCents;
   const moot = await resolveMootTasks(tx, agencyId, claimId, {

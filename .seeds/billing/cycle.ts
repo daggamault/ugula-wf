@@ -979,8 +979,8 @@ const nextClaimStep = (): GraphDef => {
         ],
         [
           step('More was paid than charged', { balanceCents: below(0) }, 'overpaid'),
-          step('Nothing is owed', { balanceCents: atMost(0) }, 'closed'),
           step('A payer denial waits to be worked', { denialOpen: is(true) }, 'workDenial'),
+          step('Nothing is owed', { balanceCents: atMost(0) }, 'closed'),
           step('A payer response waits to be reconciled', { reconciling: is(true) }, 'reconcile'),
           step(
             'Waiting on the responsible facility',

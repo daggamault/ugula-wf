@@ -141,6 +141,31 @@ describe('claim responses', () => {
     );
   });
 
+  it('refuses 835 adjustments that take off more than the payment leaves open', async () => {
+    const { db, queries } = claimDb({ balance: 100 });
+    const out = await postClaimResponse(db, boss, 't', 'c1', null, {
+      ...response,
+      paidCents: 70,
+      adjustedCents: 45,
+      exactAdjustment: true
+    });
+    assert.equal(
+      out.ok ? '' : out.failure.message,
+      'The adjustments of $0.45 take off more than the $0.30 left open after the payment; post it by hand'
+    );
+    assert.ok(!queries.some((q) => q.sql.startsWith('insert')));
+    const exact = await postClaimResponse(claimDb({ balance: 100 }).db, boss, 't', 'c1', null, {
+      ...response,
+      paidCents: 70,
+      adjustedCents: 30,
+      exactAdjustment: true
+    });
+    assert.deepEqual(exact, {
+      ok: true,
+      value: { balanceCents: 0, adjustedCents: 30, duplicate: false }
+    });
+  });
+
   it('refuses negative amounts so takebacks and reversals reach a biller', async () => {
     for (const amounts of [{ paidCents: -10 }, { adjustedCents: -1 }]) {
       const { db, queries } = claimDb({ balance: 100 });

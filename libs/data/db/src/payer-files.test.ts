@@ -233,15 +233,23 @@ describe('applyPayerFile', () => {
     assert.equal(events.length, 0);
   });
 
-  it('records the adjustment actually posted when a payment overpays the claim', async () => {
+  it('sends adjustments that take off more than the payment leaves open to a biller', async () => {
     const text = build835(
       [{ claims: [{ claimNumber: '20261105-1001', chargeCents: 100_000, paidCents: 90_000 }] }],
       { createdAt }
     );
-    const { out } = await apply(text, [
+    const { out, events } = await apply(text, [
       { position: 1, route: 'reconcile', message: '', adjustedCents: 40_000 }
     ]);
-    assert.deepEqual([out.items[0]?.paidCents, out.items[0]?.adjustedCents], [90_000, 10_000]);
+    assert.deepEqual(outcomes(out.items), [
+      [
+        '20261105-1001',
+        'c1',
+        'review',
+        'The adjustments of $400.00 take off more than the $100.00 left open after the payment; post it by hand'
+      ]
+    ]);
+    assert.equal(events.length, 0);
   });
 
   it('acknowledges every submitted claim in an 837P batch the clearinghouse answered', async () => {
