@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { paymentsReport } from './payments-report.ts';
-import { compileReport } from './report-testing.ts';
+import { compileReport } from './testing.ts';
 
 describe('paymentsReport', () => {
   it('posts payments and refunds by posting date in the time zone with their check and reason codes', async () => {

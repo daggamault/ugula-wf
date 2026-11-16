@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { importsReport } from './imports-report.ts';
-import { compileReport } from './report-testing.ts';
+import { compileReport } from './testing.ts';
 
 describe('importsReport', () => {
   it('counts revisions apart from PCRs that never got a claim', async () => {

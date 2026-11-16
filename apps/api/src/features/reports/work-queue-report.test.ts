@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { compileReport } from './report-testing.ts';
+import { compileReport } from './testing.ts';
 import { workQueueReport } from './work-queue-report.ts';
 
 describe('workQueueReport', () => {

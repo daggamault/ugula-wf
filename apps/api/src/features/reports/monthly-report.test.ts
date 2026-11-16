@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { monthlyReport } from './monthly-report.ts';
-import { compileReport } from './report-testing.ts';
+import { compileReport } from './testing.ts';
 
 describe('monthlyReport', () => {
   it('filters service dates on the indexed column and splits unrecovered balances', async () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { denialsReport } from './denials-report.ts';
-import { compileReport } from './report-testing.ts';
+import { compileReport } from './testing.ts';
 
 describe('denialsReport', () => {
   it('sums reason codes by payer and code, or by code alone', async () => {

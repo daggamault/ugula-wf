@@ -15,7 +15,7 @@ import {
   within,
   zero
 } from './report-sql.ts';
-import { reportContext } from './report-testing.ts';
+import { reportContext } from './testing.ts';
 
 const compile = (expr: Expression<unknown>) =>
   createDummyDb().selectNoFrom(sql`${expr}`.as('v')).compile();

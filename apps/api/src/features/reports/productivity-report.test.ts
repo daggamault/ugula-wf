@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { productivityReport } from './productivity-report.ts';
-import { compileReport } from './report-testing.ts';
+import { compileReport } from './testing.ts';
 
 describe('productivityReport', () => {
   it('credits completed tasks, submissions and postings to the user who did them', async () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { hcpcsReport } from './hcpcs-report.ts';
-import { compileReport } from './report-testing.ts';
+import { compileReport } from './testing.ts';
 
 describe('hcpcsReport', () => {
   it('sums charges by code over distinct claims, leaving drafts and voids out', async () => {

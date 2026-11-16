@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { payersReport } from './payers-report.ts';
-import { compileReport } from './report-testing.ts';
+import { compileReport } from './testing.ts';
 
 describe('payersReport', () => {
   it('adds the patient to payer performance and counts only billed coverages', async () => {

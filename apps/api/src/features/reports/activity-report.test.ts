@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { activityReport } from './activity-report.ts';
-import { compileReport } from './report-testing.ts';
+import { compileReport } from './testing.ts';
 
 describe('activityReport', () => {
   it('books monthly activity from first submissions, payments and closings', async () => {

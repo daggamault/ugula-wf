@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { compileReport, reportContext } from './report-testing.ts';
+import { compileReport, reportContext } from './testing.ts';
 
 describe('compileReport', () => {
   it('runs a report for the test agency and returns its rows and totals queries', async () => {

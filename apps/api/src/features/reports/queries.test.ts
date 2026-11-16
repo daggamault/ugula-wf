@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { findReport, REPORTS } from './queries.ts';
-import { compileReport } from './report-testing.ts';
+import { compileReport } from './testing.ts';
 
 describe('report queries', () => {
   it('runs every report and every part of a combined report for the agency only', async () => {
