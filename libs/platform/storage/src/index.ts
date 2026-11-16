@@ -18,6 +18,8 @@ export type BlobLocation = Pick<BlobRef, 'bucket' | 'key'>;
 
 export const importsPrefix = (agencyId: string) => `imports/${agencyId}/`;
 
+export const clearinghousePrefix = (agencyId: string) => `clearinghouse/${agencyId}/`;
+
 export type ObjectStorage = {
   bucket: string;
   get: (key: string) => Promise<Uint8Array>;

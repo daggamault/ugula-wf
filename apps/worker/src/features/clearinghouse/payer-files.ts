@@ -14,7 +14,7 @@ import {
   readRemittanceLines
 } from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
-import type { BlobStore } from '@ugula/storage';
+import { type BlobStore, clearinghousePrefix, importsPrefix } from '@ugula/storage';
 import type { Announce } from '../../shared/live.ts';
 
 type Blobs = Pick<BlobStore, 'getBytes'>;
@@ -40,6 +40,12 @@ export const createPayerFileStore = (
       .select(['agency_id', 'started_by'])
       .where('id', '=', runId)
       .executeTakeFirstOrThrow();
+    const owned = [importsPrefix(run.agency_id), clearinghousePrefix(run.agency_id)].some((p) =>
+      document.key.startsWith(p)
+    );
+    if (!owned || document.key.split('/').includes('..')) {
+      throw new Error(`Blob ${document.key} is not one of this agency's files`);
+    }
     const read = readPayerFile(await blobs.getBytes(document));
     const userId = run.started_by;
     if (!read.ok) return { agencyId: run.agency_id, userId, read } as const;

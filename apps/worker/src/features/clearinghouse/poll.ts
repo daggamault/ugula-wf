@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { ClearinghouseFile, ClearinghouseInbox } from '@ugula/billing';
 import { type Db, resolveWorkflowVersion, startRun } from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
-import type { BlobStore } from '@ugula/storage';
+import { type BlobStore, clearinghousePrefix } from '@ugula/storage';
 import type { PollTarget } from '../../shared/clearinghouse.ts';
 
 const RECEIVE_WORKFLOW = 'billing.receive-payer-file';
@@ -59,7 +59,7 @@ const pending = async (
 };
 
 const storageKey = (agencyId: string, f: ClearinghouseFile) =>
-  `clearinghouse/${agencyId}/${f.modifiedAt.getTime()}-${createHash('sha256').update(f.path).digest('hex').slice(0, 8)}-${f.name}`;
+  `${clearinghousePrefix(agencyId)}${f.modifiedAt.getTime()}-${createHash('sha256').update(f.path).digest('hex').slice(0, 8)}-${f.name}`;
 
 const agenciesReceiving = async (db: Db, receiver: string | null, owners: string[] | null) =>
   receiver && owners?.length !== 0

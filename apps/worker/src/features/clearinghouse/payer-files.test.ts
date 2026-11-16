@@ -212,6 +212,21 @@ describe('createPayerFileStore', () => {
     assert.ok(queries.some((q) => q.sql.startsWith('update "claim_batches" set "rejected_at"')));
   });
 
+  it("refuses another agency's files and keys that climb out of the agency folder", async () => {
+    for (const key of [
+      'clearinghouse/t2/1-a.835',
+      'imports/t2/x/a.835',
+      'imports/t1/../t2/a.835'
+    ]) {
+      const { store, queries } = storeFor(rejected, rowsFor(false));
+      await assert.rejects(
+        () => store.applyDocument('r1', 'k', { ...document, key }, 'a.835'),
+        /not one of this agency's files/
+      );
+      assert.equal(queries.length, 1);
+    }
+  });
+
   it('refuses files for unknown runs', async () => {
     const { store } = storeFor(rejected, () => []);
     await assert.rejects(() =>
