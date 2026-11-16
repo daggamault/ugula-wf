@@ -107,6 +107,77 @@ describe('readClaimPatch', () => {
     );
   });
 
+  it('patches no coverage when only the coverage is named', () => {
+    assert.equal(readClaimPatch({ coverageId: 'cov-Blue', memberId: ' ' }, check).coverage, null);
+  });
+
+  it('builds the origin and destination modifier from either half', () => {
+    const none = { ...check, details: { ...check.details, originDestination: null } };
+    assert.equal(
+      readClaimPatch({ originCode: 'S', destinationCode: 'H' }, none).originDestination,
+      'SH'
+    );
+    assert.equal(readClaimPatch({ originCode: 'S' }, none).originDestination, null);
+    assert.equal(readClaimPatch({ destinationCode: 'N' }, check).originDestination, 'RN');
+    assert.equal(
+      readClaimPatch({ originCode: 'R', destinationCode: 'H' }, check).originDestination,
+      null
+    );
+  });
+
+  it('reads a transport reason in any case and only when it changes', () => {
+    assert.deepEqual(readClaimPatch({ transportReason: ' d ' }, check).documentation, {
+      transportReason: 'D'
+    });
+    assert.equal(readClaimPatch({ transportReason: 'a' }, check).documentation, null);
+    assert.equal(readClaimPatch({ transportReason: 'Z' }, check).documentation, null);
+  });
+
+  it('ignores values of the wrong type', () => {
+    const patch = readClaimPatch(
+      {
+        emergency: 'yes',
+        deceased: 'true',
+        level: 'als1',
+        classification: 'transfer',
+        loadedMiles: 501,
+        nonCoveredMiles: -1,
+        pcsOnFile: 'true',
+        patientCount: 1.5,
+        roundTrips: -1,
+        pcsSignedOn: '12/30/2025'
+      },
+      check
+    );
+    assert.deepEqual(
+      [
+        patch.emergency,
+        patch.deceased,
+        patch.level,
+        patch.classification,
+        patch.loadedMiles,
+        patch.nonCoveredMiles,
+        patch.documentation
+      ],
+      [null, null, null, null, null, null, null]
+    );
+    assert.equal(readClaimPatch({ emergency: false, loadedMiles: 500 }, check).emergency, false);
+    assert.equal(readClaimPatch({ loadedMiles: 500 }, check).loadedMiles, 500);
+  });
+
+  it("changes the patient's address only when the claim has a patient", () => {
+    assert.deepEqual(readClaimPatch({ patientCity: 'Chicago' }, check).patientAddress, {
+      addressLine: '9 Oak Ave',
+      city: 'Chicago',
+      state: 'IL',
+      postalCode: '62702'
+    });
+    assert.equal(
+      readClaimPatch({ patientCity: 'Chicago' }, { ...check, patient: null }).patientAddress,
+      null
+    );
+  });
+
   it('adds the payer a biller confirms for a claim without any', () => {
     const added = readClaimPatch(
       { payerId: 'p-Medicare', memberId: 'M9' },

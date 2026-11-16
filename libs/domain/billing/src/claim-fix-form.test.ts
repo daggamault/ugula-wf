@@ -74,4 +74,39 @@ describe('fixForm', () => {
     assert.deepEqual(form.options, {});
     assert.equal(CLAIM_FIX_FIELDS.find((f) => f.name === 'serviceDate')?.format, 'date');
   });
+
+  it('prefills no classification for a trip not billable, and no patient address without a patient', () => {
+    const form = fixForm(
+      { ...check, classification: 'notBillable', patient: null },
+      [issue('classification-missing', 'classification')],
+      [],
+      false
+    );
+    assert.equal(form.defaults.classification, null);
+    assert.ok(!Object.hasOwn(form.defaults, 'patientCity'));
+    assert.equal(fixForm(check, [], [], true).defaults.patientCity, 'Springfield');
+  });
+
+  it("labels each payer with its member ID and the first payer's details by default", () => {
+    const form = fixForm(
+      {
+        ...check,
+        payers: [
+          ...check.payers,
+          { ...(check.payers[0] as (typeof check.payers)[number]), coverageId: null }
+        ]
+      },
+      [],
+      [],
+      true
+    );
+    assert.deepEqual(form.options.coverageId, [
+      { value: 'cov-Medicare', label: 'Medicare · M-Medicare' },
+      { value: 'cov-Blue', label: 'Blue · M-Blue' }
+    ]);
+    assert.deepEqual(
+      [form.defaults.coverageId, form.defaults.payerId, form.defaults.memberId],
+      ['cov-Medicare', 'p-Medicare', 'M-Medicare']
+    );
+  });
 });

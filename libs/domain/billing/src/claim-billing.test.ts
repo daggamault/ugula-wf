@@ -17,6 +17,16 @@ describe('claimBillingOf', () => {
     assert.equal(claimBillingOf('Medicare', { lines: 'none' }), null);
   });
 
+  it('keeps no place of service that is not text and drops blank or odd modifiers', () => {
+    assert.deepEqual(
+      claimBillingOf('Medicaid', {
+        placeOfService: 41,
+        lines: [{ modifiers: ['RH', '', 7, null] }, { modifiers: 'RH' }]
+      }),
+      { payer: 'Medicaid', placeOfService: null, modifiers: [['RH'], []] }
+    );
+  });
+
   it('lists the modifier and place of service codes to describe', () => {
     assert.deepEqual(
       billingCodeRefs({
@@ -32,5 +42,9 @@ describe('claimBillingOf', () => {
       ]
     );
     assert.deepEqual(billingCodeRefs(null), []);
+    assert.deepEqual(
+      billingCodeRefs({ payer: 'Medicare', placeOfService: null, modifiers: [['GY']] }),
+      [{ set: 'modifier', code: 'GY' }]
+    );
   });
 });

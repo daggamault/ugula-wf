@@ -114,6 +114,30 @@ describe('createClearinghouse', () => {
       'X12_276_Request_005010X212'
     ]);
   });
+
+  it('refuses a real-time answer with no payload type or a blank payload', async () => {
+    const replies: Record<string, { payloadType: string; payload: string }> = {
+      none: { payloadType: '', payload: 'ISA*' },
+      blank: { payloadType: 'X12_271_Response_005010X279A1', payload: ' \n' }
+    };
+    const ch = createClearinghouse({
+      batch: fakeBatch().batch,
+      realtime: async (_, payload) => ({
+        ok: true,
+        ...(replies[payload] ?? { payloadType: 'unexpected', payload: '' })
+      }),
+      extensions: WAYSTAR_EXTENSIONS,
+      afterDownload: 'delete'
+    });
+    assert.deepEqual(await ch.checkEligibility?.('none'), {
+      ok: false,
+      error: 'The clearinghouse answered nothing'
+    });
+    assert.deepEqual(await ch.checkEligibility?.('blank'), {
+      ok: false,
+      error: 'The clearinghouse answered X12_271_Response_005010X279A1'
+    });
+  });
 });
 
 describe('exchangeFileName', () => {

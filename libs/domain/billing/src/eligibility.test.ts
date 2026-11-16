@@ -30,6 +30,37 @@ describe('eligibilityFinding', () => {
     );
   });
 
+  it('notes an end date with no start and every payer message in order', () => {
+    assert.deepEqual(
+      eligibilityFinding(
+        {
+          ...result,
+          active: false,
+          planName: '',
+          coverageStart: null,
+          coverageEnd: '2026-06-30',
+          messages: ['Terminated', 'Call payer']
+        },
+        'MB'
+      ),
+      {
+        active: false,
+        outcome: 'ineligible',
+        note: 'Covered ? to 2026-06-30; Terminated; Call payer'
+      }
+    );
+  });
+
+  it('keeps the advantage note alone when the payer said nothing else', () => {
+    assert.deepEqual(
+      eligibilityFinding(
+        { ...result, planName: null, coverageStart: null, advantagePlan: 'SUN MA' },
+        'MA'
+      ),
+      { active: true, outcome: 'review', note: 'Bill the Medicare Advantage plan instead: SUN MA' }
+    );
+  });
+
   it('asks a biller when the payer did not say', () => {
     assert.deepEqual(
       eligibilityFinding({ ...result, active: null, planName: null, coverageStart: null }, 'MB'),

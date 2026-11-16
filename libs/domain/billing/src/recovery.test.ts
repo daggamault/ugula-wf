@@ -71,6 +71,37 @@ describe('denialFactsOf', () => {
     });
     assert.throws(() => denialFactsOf(ledger([]), 'gone'), /not on the claim/);
   });
+
+  it('defaults to a plain denial with no codes or date before the payer answers', () => {
+    const bare = ledger([event({ kind: 'submitted', coverageId: 'self' })], {
+      coverages: [{ id: 'self', payer: 'Self Plan' }]
+    });
+    assert.deepEqual(denialFactsOf(bare, 'self'), {
+      coverageId: 'self',
+      payer: 'Self Plan',
+      payerKind: null,
+      route: 'denial',
+      note: '',
+      codes: [],
+      remarks: [],
+      paidCents: 0,
+      balanceCents: 100_000,
+      deniedOn: null,
+      appeals: 0,
+      payerClaimNumber: null,
+      correctionMethod: null,
+      appealDays: null
+    });
+    assert.deepEqual(payerFactsOf(bare, 'self'), { payer: 'Self Plan', payerKind: null });
+  });
+
+  it('dates the denial from when the response arrived when it carries no paid date', () => {
+    const facts = denialFactsOf(
+      ledger([event({ kind: 'response', at: '2026-03-04T23:00:00.000Z' })]),
+      'mcr'
+    );
+    assert.deepEqual([facts.deniedOn, facts.route, facts.remarks], ['2026-03-04', 'denial', []]);
+  });
 });
 
 describe('payerFactsOf', () => {
@@ -182,6 +213,33 @@ describe('patientBalanceFactsOf', () => {
       ]
     });
     assert.equal(patientBalanceFactsOf(dual).dualEligible, true);
+  });
+
+  it('knows no plan type or filing kind for a payer that has none, and no dual eligibility without Medicare', () => {
+    const facts = patientBalanceFactsOf(
+      ledger(
+        [
+          event({ kind: 'response', coverageId: 'self', paidCents: 60_000 }),
+          event({ kind: 'response', coverageId: null, paidCents: 10_000 })
+        ],
+        {
+          coverages: [
+            { id: 'self', payer: 'Self Plan' },
+            { id: 'mcd', payer: 'State Medicaid', claimFiling: 'MC' }
+          ]
+        }
+      )
+    );
+    assert.deepEqual(facts, {
+      balanceCents: 30_000,
+      costShareCents: 0,
+      state: null,
+      serviceDate: null,
+      planType: null,
+      payerKind: null,
+      dualEligible: false,
+      protectedCents: 0
+    });
   });
 });
 
