@@ -67,7 +67,40 @@ export type RunTx = {
 
 export type QueueClient = RunQueueClient & TimeoutClient;
 
-const STEP_CHUNK = 500;
+const STEP_CHUNK = 5_000;
+
+const STEP_COLUMNS = [
+  'run_id',
+  'seq',
+  'scope',
+  'path',
+  'node',
+  'node_type',
+  'node_version',
+  'event',
+  'inputs',
+  'outputs',
+  'pin',
+  'error',
+  'started_at',
+  'duration_ms'
+] as const;
+
+const stepRow = (s: TraceEntry) => ({
+  seq: s.seq,
+  scope: s.scope,
+  path: s.path,
+  node: s.node,
+  node_type: s.type,
+  node_version: s.version,
+  event: s.event,
+  inputs: s.inputs,
+  outputs: s.outputs,
+  pin: s.pin,
+  error: s.error ?? null,
+  started_at: s.startedAt,
+  duration_ms: s.durationMs
+});
 
 const CHILD_CHUNK = 1_000;
 
@@ -97,23 +130,12 @@ export const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => (
     for (let i = 0; i < steps.length; i += STEP_CHUNK) {
       await tx
         .insertInto('workflow_run_steps')
-        .values(
-          steps.slice(i, i + STEP_CHUNK).map((s) => ({
-            run_id: runId,
-            seq: s.seq,
-            scope: s.scope,
-            path: s.path,
-            node: s.node,
-            node_type: s.type,
-            node_version: s.version,
-            event: s.event,
-            inputs: JSON.stringify(s.inputs),
-            outputs: JSON.stringify(s.outputs),
-            pin: s.pin,
-            error: s.error ? JSON.stringify(s.error) : null,
-            started_at: s.startedAt,
-            duration_ms: s.durationMs
-          }))
+        .columns(STEP_COLUMNS)
+        .expression(
+          sql<never>`select ${runId}::uuid, ${sql.join(STEP_COLUMNS.slice(1).map((c) => sql.ref(`s.${c}`)))}
+            from jsonb_to_recordset(${JSON.stringify(steps.slice(i, i + STEP_CHUNK).map(stepRow))}::jsonb)
+              as s(seq int, scope text, path text, node text, node_type text, node_version int, event text,
+                inputs jsonb, outputs jsonb, pin text, error jsonb, started_at timestamptz, duration_ms float8)`
         )
         .execute();
     }

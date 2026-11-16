@@ -124,19 +124,23 @@ describe('createRunStore', () => {
     assert.ok(steps?.sql.startsWith('insert into "workflow_run_steps"'));
     assert.deepEqual(steps?.parameters, [
       'r1',
-      3,
-      'main',
-      'n1',
-      'n1',
-      'std.math.add',
-      1,
-      'eval',
-      '{"a":1}',
-      '{"sum":2}',
-      null,
-      '{"message":"boom","path":"n1","node":"n1"}',
-      '2026-11-16T00:00:00.000Z',
-      4
+      JSON.stringify([
+        {
+          seq: 3,
+          scope: 'main',
+          path: 'n1',
+          node: 'n1',
+          node_type: 'std.math.add',
+          node_version: 1,
+          event: 'eval',
+          inputs: { a: 1 },
+          outputs: { sum: 2 },
+          pin: null,
+          error: { message: 'boom', path: 'n1', node: 'n1' },
+          started_at: '2026-11-16T00:00:00.000Z',
+          duration_ms: 4
+        }
+      ])
     ]);
     assert.ok(emptySave?.sql.startsWith('update "workflow_runs" set "state"'));
     assert.deepEqual(extend?.parameters, [2500, 'r1', 'l1']);

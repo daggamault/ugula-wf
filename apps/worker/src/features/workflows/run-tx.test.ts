@@ -64,6 +64,35 @@ describe('createRunTx', () => {
     await db.destroy();
   });
 
+  it('writes a chunk of steps as one JSON parameter, keeping values as JSON', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await createRunTx(db, recordingBoss().boss).insertSteps('r1', [
+      step(1),
+      { ...step(2), error: { message: 'x', path: '', node: 'n' } }
+    ]);
+    const [insert] = queries;
+    assert.ok(insert?.sql.includes('from jsonb_to_recordset($2::jsonb)'));
+    assert.equal(insert?.parameters[0], 'r1');
+    const rows = JSON.parse(String(insert?.parameters[1]));
+    assert.deepEqual(rows[0], {
+      seq: 1,
+      scope: 's1',
+      path: '',
+      node: 'n',
+      node_type: 'std.math.add',
+      node_version: 1,
+      event: 'eval',
+      inputs: { a: 1 },
+      outputs: { result: 2 },
+      pin: null,
+      error: null,
+      started_at: '2026-01-01T00:00:00.000Z',
+      duration_ms: 0.1
+    });
+    assert.deepEqual(rows[1].error, { message: 'x', path: '', node: 'n' });
+    await db.destroy();
+  });
+
   it('writes steps in chunks and enqueues jobs inside the same transaction', async () => {
     const { db, queries } = createRecordingDb((q) => (q.sql.startsWith('update') ? [{}] : []));
     const { boss, inserts, deleted } = recordingBoss();
@@ -71,7 +100,7 @@ describe('createRunTx', () => {
     await tx.dropTimeout('r1', '6');
     await tx.insertSteps(
       'r1',
-      Array.from({ length: 501 }, (_, i) => step(i))
+      Array.from({ length: 5_001 }, (_, i) => step(i))
     );
     await tx.saveRun(
       { id: 'r1', lease: 'l1' },
