@@ -237,13 +237,15 @@ export const chargeChanges = (p: ClaimPatch) => ({
 
 const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
+const SELECTORS = new Set(['coverageId']);
+
 export const editedValues = (values: unknown, shown: unknown) => {
   const r = recordOf(values);
   const before = recordOf(shown);
   return Object.fromEntries(
     Object.entries(r).map(([k, v]) => [
       k,
-      Object.hasOwn(before, k) && sameJson(v, before[k]) ? null : v
+      !SELECTORS.has(k) && Object.hasOwn(before, k) && sameJson(v, before[k]) ? null : v
     ])
   );
 };

@@ -206,6 +206,16 @@ describe('editedValues', () => {
     );
   });
 
+  it('always keeps the payer a member ID is entered for', () => {
+    assert.deepEqual(
+      editedValues({ coverageId: 'c1', memberId: 'M1' }, { coverageId: 'c1', memberId: null }),
+      {
+        coverageId: 'c1',
+        memberId: 'M1'
+      }
+    );
+  });
+
   it('keeps every value when the task showed nothing', () => {
     assert.deepEqual(editedValues({ level: 'BLS' }, null), { level: 'BLS' });
   });
