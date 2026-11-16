@@ -163,4 +163,169 @@ describe('expression functions', () => {
     assert.throws(() => exprFunctions.now?.([], clockless), /now: no clock available/);
     assert.throws(() => exprFunctions.age?.(['1990-01-01'], clockless), /age: no clock available/);
   });
+
+  it('rejects a missing argument with the function name and the type it expected', () => {
+    const missing = (type: string, names: string[]): [string, RegExp][] =>
+      names.map((name) => [name, new RegExp(`${name}: expected ${type}, got null$`)]);
+    const expected: [string, RegExp][] = [
+      ...missing('number', [
+        'abs',
+        'ceil',
+        'floor',
+        'trunc',
+        'round',
+        'sqrt',
+        'pow',
+        'clamp',
+        'money',
+        'range',
+        'padStart',
+        'padEnd'
+      ]),
+      ...missing('string', [
+        'upper',
+        'lower',
+        'trim',
+        'startsWith',
+        'endsWith',
+        'replace',
+        'split',
+        'substr',
+        'findKey',
+        'get',
+        'parseJson',
+        'date',
+        'datetime',
+        'addDays',
+        'daysBetween',
+        'year',
+        'month',
+        'day',
+        'age'
+      ]),
+      ...missing('list', [
+        'contains',
+        'join',
+        'map',
+        'filter',
+        'find',
+        'some',
+        'every',
+        'count',
+        'reduce',
+        'sort',
+        'groupBy',
+        'unique',
+        'flatten',
+        'first',
+        'last',
+        'at',
+        'slice',
+        'reverse',
+        'indexOf',
+        'fromEntries',
+        'omit'
+      ]),
+      ...missing('object', ['keys', 'values', 'entries', 'has', 'pick']),
+      ['len', /len: expected string, list or object, got null$/],
+      ['number', /Cannot convert "" to a number$/]
+    ];
+    for (const [name, error] of expected) assert.throws(() => f(name), error, name);
+  });
+
+  it('gives a neutral result when an optional or variadic argument is missing', () => {
+    assert.deepEqual(
+      [f('min'), f('max'), f('sum'), f('avg'), f('concat'), f('merge'), f('coalesce')],
+      [null, null, 0, null, [], {}, null]
+    );
+    assert.deepEqual([f('text'), f('isNull'), f('type'), f('toJson')], ['', true, 'null', 'null']);
+    assert.equal(f('max', []), null);
+    assert.equal(f('join', ['a', 'b']), 'ab');
+    assert.equal(f('padStart', 'a', 3), '  a');
+    assert.equal(f('padEnd', 'a', 3, '.'), 'a..');
+    assert.deepEqual(f('slice', [1, 2, 3], 0, 2), [1, 2]);
+    assert.equal(f('round', 2.4), 2);
+  });
+
+  it('rejects a later argument of the wrong type', () => {
+    assert.throws(() => f('contains', 'abc'), /contains: expected string, got null$/);
+    assert.throws(() => f('contains', [1], () => null), /contains: a function cannot be used/);
+    assert.throws(() => f('indexOf', 'abc', 1), /indexOf: expected string, got number$/);
+    assert.throws(() => f('replace', 'abc', 'a'), /replace: expected string, got null$/);
+    assert.throws(() => f('split', 'a,b'), /split: expected string, got null$/);
+    assert.throws(() => f('join', ['a'], 1), /join: expected string, got number$/);
+    assert.throws(() => f('substr', 'abc', 'x'), /substr: expected number, got string$/);
+    assert.throws(() => f('substr', 'abc', 0, 'x'), /substr: expected number, got string$/);
+    assert.throws(() => f('slice', [1], 0, 'x'), /slice: expected number, got string$/);
+    assert.throws(() => f('at', [1]), /at: expected number, got null$/);
+    assert.throws(() => f('padStart', 'a', 3, 1), /padStart: expected string, got number$/);
+    assert.throws(() => f('padEnd', () => null, 3), /padEnd: a function cannot be used/);
+    assert.throws(() => f('round', 1, 'x'), /round: expected number, got string$/);
+    assert.throws(() => f('range', 1, 'x'), /range: expected number, got string$/);
+    assert.throws(() => f('pick', {}, null), /pick: expected list, got null$/);
+    assert.throws(() => f('pick', {}, [1]), /pick: expected string, got number$/);
+    assert.throws(() => f('omit', {}, [1]), /omit: expected string, got number$/);
+    assert.throws(() => f('omit', [], []), /omit: expected object, got list$/);
+    assert.throws(() => f('has', {}), /has: expected string, got null$/);
+    assert.throws(() => f('get', () => null, 'a'), /get: a function cannot be used/);
+    assert.throws(() => f('findKey', () => null, 'a'), /findKey: a function cannot be used/);
+    assert.throws(() => f('fromEntries', [1]), /fromEntries: expected object, got number$/);
+    assert.throws(() => f('merge', {}, 1), /merge: expected object, got number$/);
+    assert.throws(() => f('number', () => null), /number: a function cannot be used/);
+    assert.throws(() => f('toJson', () => null), /toJson: a function cannot be used/);
+    assert.throws(() => f('addDays', '2026-01-01'), /addDays: expected number, got null$/);
+    assert.throws(() => f('daysBetween', '2026-01-01'), /daysBetween: expected string/);
+    assert.throws(() => f('age', '1990-01-01', 1), /age: expected string, got number$/);
+    assert.throws(() => f('datetime', 'nope'), /datetime: invalid date "nope"$/);
+  });
+
+  it('treats a missing lambda as one that always answers null', () => {
+    assert.deepEqual(f('map', [1, 2]), [null, null]);
+    assert.deepEqual(f('filter', [1, 2]), []);
+    assert.equal(f('find', [1, 2]), null);
+    assert.equal(f('some', [1]), false);
+    assert.equal(f('every', [1]), false);
+    assert.equal(f('reduce', [1, 2]), null);
+    assert.deepEqual(f('groupBy', [1, 2]), { '': [1, 2] });
+    assert.equal(
+      f('reduce', [], () => 1),
+      null
+    );
+    assert.throws(() => f('reduce', [1], () => () => null), /reduce: a function cannot be used/);
+    assert.throws(() => f('reduce', [], null, () => null), /reduce: a function cannot be used/);
+    assert.throws(() => f('groupBy', [1], () => () => null), /groupBy: a function cannot be used/);
+  });
+
+  it('sorts text and keeps items with equal keys in their original order', () => {
+    const byA: ExprValue = (args) => (args[0] as { a: number }).a;
+    assert.deepEqual(f('sort', ['b', 'a', 'c']), ['a', 'b', 'c']);
+    assert.deepEqual(f('sort', [{ a: 2, n: 1 }, { a: 1 }, { a: 2, n: 2 }], byA), [
+      { a: 1 },
+      { a: 2, n: 1 },
+      { a: 2, n: 2 }
+    ]);
+  });
+
+  it('compares lists and objects by value whatever their key order', () => {
+    assert.deepEqual(
+      f('unique', [[1, { b: 2, a: 1 }], [1, { a: 1, b: 2 }], [1], { a: [1] }, { a: [1] }]),
+      [[1, { b: 2, a: 1 }], [1], { a: [1] }]
+    );
+    assert.equal(f('contains', [[1, 2]], [1, 2]), true);
+    assert.equal(f('indexOf', [1, 2], 3), -1);
+  });
+
+  it('builds ranges from fractional bounds and object keys from non-text entries', () => {
+    assert.deepEqual(f('range', 0.5, 2), [0.5, 1.5]);
+    assert.deepEqual(f('fromEntries', [{ key: 1, value: 'a' }, { key: 'b' }]), { 1: 'a', b: null });
+    assert.deepEqual(f('pick', { a: null }, ['a']), { a: null });
+    assert.deepEqual(f('entries', {}), []);
+  });
+
+  it('keeps a full timestamp when adding days to a date with a time', () => {
+    assert.equal(f('addDays', '2026-03-01T00:00:00Z', 1), '2026-03-02T00:00:00.000Z');
+    assert.equal(f('daysBetween', '2026-03-02', '2026-03-01'), -1);
+    assert.equal(ageAt(new Date('2000-05-10'), new Date('2026-05-09')), 25);
+    assert.equal(ageAt(new Date('2000-05-10'), new Date('2026-05-10')), 26);
+  });
 });

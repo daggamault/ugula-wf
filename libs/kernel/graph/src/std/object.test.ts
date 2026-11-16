@@ -29,6 +29,52 @@ describe('object nodes', () => {
     await assert.rejects(() => run('std.object.make', {}, { fields: [...fields, ...fields] }));
   });
 
+  it('labels field pins and leaves every made field optional', async () => {
+    const fields = [
+      { name: 'zip', type: 'string', label: 'ZIP Code' },
+      { name: 'n', type: 'number' }
+    ];
+    const make = await run('std.object.make', {}, { fields });
+    assert.deepEqual(
+      make.signature.inputs.map((p) => [p.name, p.label ?? null, p.optional ?? false]),
+      [
+        ['zip', 'ZIP Code', true],
+        ['n', null, true]
+      ]
+    );
+    assert.deepEqual(make.outputs, { object: { zip: null, n: null } });
+    const broken = await run('std.object.break', { object: { zip: '12345' } }, { fields });
+    assert.deepEqual(broken.outputs, { zip: '12345', n: null });
+    assert.equal(broken.signature.outputs[0]?.label, 'ZIP Code');
+  });
+
+  it('requires the object and key inputs it reads', async () => {
+    await assert.rejects(
+      () => run('std.object.get', { path: 'a' }),
+      /Input "object" of "Get Path" is required/
+    );
+    await assert.rejects(() => run('std.object.keys', {}), /Input "object" of "Keys" is required/);
+    await assert.rejects(
+      () => run('std.object.pick', { object: { a: 1 } }),
+      /Input "keys" of "Pick" is required/
+    );
+    await assert.rejects(
+      () => run('std.object.merge', { a: { x: 1 } }),
+      /Input "b" of "Merge" is required/
+    );
+    assert.deepEqual(await out('std.object.has', { key: 'a' }), { result: false });
+  });
+
+  it('keeps picked fields whose value is null and ignores omitted keys that are absent', async () => {
+    assert.deepEqual(await out('std.object.pick', { object: { a: null, b: 1 }, keys: ['a'] }), {
+      object: { a: null }
+    });
+    assert.deepEqual(await out('std.object.omit', { object: { a: 1 }, keys: ['z'] }), {
+      object: { a: 1 }
+    });
+    assert.deepEqual(await out('std.object.values', { object: {} }), { values: [] });
+  });
+
   it('reads, writes and reshapes fields', async () => {
     assert.deepEqual(await out('std.object.get', { object: { a: { b: 1 } }, path: 'a.b' }), {
       value: 1,
