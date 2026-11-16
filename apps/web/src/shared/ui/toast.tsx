@@ -51,7 +51,7 @@ export const accentClasses: Readonly<Record<Intent, string>> = {
   primary: 'text-primary',
   success: 'text-success',
   info: 'text-info',
-  warning: 'text-warning-fg',
+  warning: 'text-warning-text',
   danger: 'text-danger'
 };
 

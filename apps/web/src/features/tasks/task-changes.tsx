@@ -90,7 +90,7 @@ export const FieldWas = ({
   was: Json;
   onReset: () => void;
 }) => (
-  <p className="text-warning-fg flex flex-wrap items-center gap-x-2 text-xs">
+  <p className="text-warning-text flex flex-wrap items-center gap-x-2 text-xs">
     <span>
       Changed from <span className="font-medium">{changeValueText(field, was)}</span>
     </span>

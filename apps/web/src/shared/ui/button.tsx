@@ -15,7 +15,7 @@ const solidClasses: Readonly<Record<Intent, string>> = {
   primary: 'bg-primary text-primary-fg not-aria-disabled:hover:brightness-110',
   success: 'bg-success text-canvas not-aria-disabled:hover:brightness-110',
   info: 'bg-info text-canvas not-aria-disabled:hover:brightness-110',
-  warning: 'bg-warning text-on-warning not-aria-disabled:hover:brightness-105',
+  warning: 'bg-warning text-warning-fg not-aria-disabled:hover:brightness-105',
   danger: 'bg-danger text-canvas not-aria-disabled:hover:brightness-110'
 };
 
@@ -23,7 +23,7 @@ const outlineClasses: Readonly<Record<Intent, string>> = {
   primary: 'border-border text-surface-fg not-aria-disabled:hover:border-surface-fg/25',
   success: 'border-success/40 text-success not-aria-disabled:hover:border-success/70',
   info: 'border-info/40 text-info not-aria-disabled:hover:border-info/70',
-  warning: 'border-warning/60 text-warning-fg not-aria-disabled:hover:border-warning',
+  warning: 'border-warning/60 text-warning-text not-aria-disabled:hover:border-warning',
   danger: 'border-danger/40 text-danger not-aria-disabled:hover:border-danger/70'
 };
 

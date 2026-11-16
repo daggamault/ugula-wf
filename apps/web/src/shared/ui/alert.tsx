@@ -13,7 +13,7 @@ const intentClasses: Readonly<Record<Intent, string>> = {
   primary: 'border-primary/30 bg-primary/10',
   success: 'border-success/30 bg-success/10',
   info: 'border-info/30 bg-info/10',
-  warning: 'border-warning/30 bg-warning/10 text-warning-fg',
+  warning: 'border-warning/30 bg-warning/10 text-warning-text',
   danger: 'border-danger/30 bg-danger/10 text-danger'
 };
 

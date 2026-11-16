@@ -8,7 +8,7 @@ const intentClasses: Readonly<Record<BadgeIntent, string>> = {
   primary: 'border-primary/30 bg-primary/10 text-primary',
   success: 'border-success/30 bg-success/10 text-success',
   info: 'border-info/30 bg-info/10 text-info',
-  warning: 'border-warning/30 bg-warning/10 text-warning-fg',
+  warning: 'border-warning/30 bg-warning/10 text-warning-text',
   danger: 'border-danger/30 bg-danger/10 text-danger',
   custom: 'border-custom/30 bg-custom/10 text-custom'
 };

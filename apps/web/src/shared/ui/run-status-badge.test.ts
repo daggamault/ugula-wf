@@ -12,7 +12,7 @@ describe('RunStatusBadge', () => {
     assert.ok(html('faulted').includes('>Stuck</span>'));
     assert.ok(html('faulted').includes('text-danger'));
     assert.ok(html('suspended').includes('>Waiting</span>'));
-    assert.ok(html('suspended').includes('text-warning-fg'));
+    assert.ok(html('suspended').includes('text-warning-text'));
     assert.ok(html('cancelled').includes('text-surface-fg-muted'));
   });
 

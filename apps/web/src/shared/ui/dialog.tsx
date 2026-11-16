@@ -19,7 +19,7 @@ type DialogIntent = Extract<Intent, 'danger' | 'warning'>;
 
 const intentClasses: Readonly<Record<DialogIntent, { dialog: string; icon: string }>> = {
   danger: { dialog: 'border-danger/30', icon: 'bg-danger/10 text-danger' },
-  warning: { dialog: 'border-warning/30', icon: 'bg-warning/10 text-warning-fg' }
+  warning: { dialog: 'border-warning/30', icon: 'bg-warning/10 text-warning-text' }
 };
 
 export const Dialog = ({
