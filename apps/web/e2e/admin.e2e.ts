@@ -331,13 +331,16 @@ describe('an administrator keeps fees, payers, facilities, settings, tables, rep
     const page = s.page;
     await go(page, '/reports');
     await heading(page, 'Reports').waitFor();
-    await page.getByRole('link', { name: /^Run / }).first().waitFor();
+    await page
+      .getByRole('link', { name: /^Open / })
+      .first()
+      .waitFor();
     const titles = await page
-      .getByRole('link', { name: /^Run / })
+      .getByRole('link', { name: /^Open / })
       .evaluateAll((links) => links.map((l) => l.getAttribute('aria-label') ?? ''));
     assert.ok(titles.length >= 10, 'every report is listed');
     for (const label of titles) {
-      const title = label.replace(/^Run /, '');
+      const title = label.replace(/^Open /, '');
       await go(page, '/reports');
       await page.getByRole('link', { name: label, exact: true }).click();
       await heading(page, title).waitFor();

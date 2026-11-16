@@ -8,7 +8,7 @@ import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
 import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
-import { RowActions, RunLink } from '../../shared/ui/icon-button.tsx';
+import { OpenLink, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { Pagination, pageCount, rangeText } from '../../shared/ui/pagination.tsx';
@@ -109,7 +109,7 @@ export const ReportsPage = () => (
           </TableCell>
           <TableCell kind="actions">
             <RowActions>
-              <RunLink to={`/reports/${r.id}`} name={r.title} />
+              <OpenLink to={`/reports/${r.id}`} name={r.title} />
             </RowActions>
           </TableCell>
         </TableRow>

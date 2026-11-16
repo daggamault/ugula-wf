@@ -83,7 +83,7 @@ describe('ReportsPage', () => {
     for (const r of REPORTS) {
       assert.ok(html.includes(`href="/reports/${r.id}"`), r.id);
       assert.ok(html.includes(r.title) && html.includes(r.description), r.title);
-      assert.ok(html.includes(`aria-label="Run ${r.title}"`), r.id);
+      assert.ok(html.includes(`aria-label="Open ${r.title}"`), r.id);
     }
     assert.ok(html.includes('<span class="sr-only">Actions</span>'));
   });
