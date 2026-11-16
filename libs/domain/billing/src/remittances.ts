@@ -1,7 +1,13 @@
-import { type Adjustment, DENIAL_ROUTES } from './claims.ts';
+import { type Adjustment, DENIAL_ROUTES, mergedAdjustments } from './claims.ts';
 import type { RemittanceClaim } from './x835.ts';
 
-const REMITTANCE_ROUTES = ['reconcile', ...DENIAL_ROUTES, 'review', 'unmatched'] as const;
+const REMITTANCE_ROUTES = [
+  'reconcile',
+  ...DENIAL_ROUTES,
+  'reversal',
+  'review',
+  'unmatched'
+] as const;
 
 export type RemittanceRoute = (typeof REMITTANCE_ROUTES)[number];
 
@@ -16,6 +22,7 @@ export type RemittanceLine = {
   payerName: string | null;
   denied: boolean;
   reversal: boolean;
+  reversesPosted: boolean;
   takeback: boolean;
   paidCents: number;
   adjustments: Adjustment[];
@@ -37,20 +44,15 @@ const POSITIONS: Readonly<Record<string, number>> = {
   '21': 2
 };
 
-export const mergedAdjustments = (adjustments: readonly Adjustment[]) => {
-  const byCode = new Map<string, Adjustment>();
-  for (const a of adjustments) {
-    const key = `${a.group}:${a.reason}`;
-    const seen = byCode.get(key);
-    byCode.set(key, seen ? { ...seen, cents: seen.cents + a.cents } : { ...a });
-  }
-  return [...byCode.values()].filter((a) => a.cents !== 0);
-};
-
 export const remittanceLine = (
   position: number,
   c: RemittanceClaim,
-  matched: { claimId: string | null; coverageId: string | null; payerName: string | null }
+  matched: {
+    claimId: string | null;
+    coverageId: string | null;
+    payerName: string | null;
+    reversesPosted: boolean;
+  }
 ): RemittanceLine => {
   const adjustments = mergedAdjustments(c.adjustments);
   return {
@@ -90,13 +92,13 @@ export const readPostings = (x: unknown): RemittancePosting[] =>
     if (adjustedCents == null) return [{ position, route, message: text, adjustedCents: 0 }];
     return typeof adjustedCents === 'number' &&
       Number.isInteger(adjustedCents) &&
-      adjustedCents >= 0
+      (route === 'reversal' ? adjustedCents <= 0 : adjustedCents >= 0)
       ? [{ position, route, message: text, adjustedCents }]
       : [
           {
             position,
             route: 'review' as const,
-            message: `The adjustment of ${String(adjustedCents)} cents is not a whole, non-negative amount; post it by hand`,
+            message: `The adjustment of ${String(adjustedCents)} cents is not a whole amount of the right sign; post it by hand`,
             adjustedCents: 0
           }
         ];

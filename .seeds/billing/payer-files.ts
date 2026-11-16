@@ -358,11 +358,12 @@ const routeRemittance = (): GraphDef => {
     config: shared.decision(
       'billing.remittance-routing',
       'Remittance Routing',
-      'Routes each 835 claim payment by what the payer sent and its reason codes (CARC): reconcile posts it and the claim cycle has a biller reconcile the balance; denial, appeal and fix post it and the claim cycle works the denial (Work Denial); review leaves it to a biller without posting; unmatched names no claim. {payer} and {reference} in a message are the payer name and claim number.',
+      'Routes each 835 claim payment by what the payer sent and its reason codes (CARC): reconcile posts it and the claim cycle has a biller reconcile the balance; denial, appeal and fix post it and the claim cycle works the denial (Work Denial); reversal posts the takeback of a payment posted on the claim (negative amounts); review leaves it to a biller without posting; unmatched names no claim. {payer} and {reference} in a message are the payer name and claim number.',
       table(
         [
           field('matched', 'boolean', 'A claim has this number'),
           field('reversal', 'boolean', 'The payer reversed an earlier payment'),
+          field('reversesPosted', 'boolean', 'The reversed payment is posted on the claim'),
           field('takeback', 'boolean', 'Money is taken back'),
           field('reasonCount', 'integer', 'Reason codes'),
           field('payerOnClaim', 'boolean', 'The payer is on the claim'),
@@ -378,12 +379,17 @@ const routeRemittance = (): GraphDef => {
             set: { route: 'unmatched', message: 'No claim has number {reference}' }
           },
           {
-            label: 'The payer reversed an earlier payment',
+            label: 'The payer reversed a payment posted on the claim',
+            when: { reversal: is(true), reversesPosted: is(true) },
+            set: { route: 'reversal', message: '{payer} reversed its earlier payment' }
+          },
+          {
+            label: 'The payer reversed a payment that is not on the claim',
             when: { reversal: is(true) },
             set: {
               route: 'review',
               message:
-                'The payer reversed an earlier payment on this claim; post the takeback by hand'
+                'The payer reversed a payment no response on this claim has its claim number; post the takeback by hand'
             }
           },
           {
@@ -462,6 +468,7 @@ const routeRemittance = (): GraphDef => {
   g.wire('matched.result', 'route.matched');
   g.wire('payerOnClaim.result', 'route.payerOnClaim');
   g.wire('line.reversal', 'route.reversal');
+  g.wire('line.reversesPosted', 'route.reversesPosted');
   g.wire('line.takeback', 'route.takeback');
   g.wire('reasonCount.length', 'route.reasonCount');
   g.wire('codes.result', 'route.codes');
@@ -628,7 +635,7 @@ export const payerFileGraphs: SeedGraph[] = [
   asRule(
     'billing.route-remittance',
     'Route Remittance',
-    'Routes one 835 claim payment (Remittance Routing table): post it for a biller to reconcile, post it as a denial to work (denied, medical necessity or authorization to appeal, claim data to fix), leave it to a biller (reversals, takebacks, too many reason codes, an adjustment group 5010 does not use, a payer not on the claim) or report that no claim has its number; with Classify Adjustments for what lowers the balance.',
+    'Routes one 835 claim payment (Remittance Routing table): post it for a biller to reconcile, post it as a denial to work (denied, medical necessity or authorization to appeal, claim data to fix), post the reversal of a payment on the claim, leave it to a biller (reversals of payments not on the claim, takebacks, too many reason codes, an adjustment group 5010 does not use, a payer not on the claim) or report that no claim has its number; with Classify Adjustments for what lowers the balance.',
     routeRemittance()
   ),
   asStage(

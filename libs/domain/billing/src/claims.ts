@@ -111,6 +111,16 @@ export const REMARK_CODE_PATTERN = '^[A-Z]{1,2}[0-9]{1,3}$';
 
 export type Adjustment = { group: AdjustmentGroup; reason: string; cents: number };
 
+export const mergedAdjustments = (adjustments: readonly Adjustment[]) => {
+  const byCode = new Map<string, Adjustment>();
+  for (const a of adjustments) {
+    const key = `${a.group}:${a.reason}`;
+    const seen = byCode.get(key);
+    byCode.set(key, seen ? { ...seen, cents: seen.cents + a.cents } : { ...a });
+  }
+  return [...byCode.values()].filter((a) => a.cents !== 0);
+};
+
 export const CLAIM_STATUSES = [
   'draft',
   'needs_review',
@@ -179,6 +189,7 @@ export type ClaimLedger = {
   facilityId?: string | null;
   serviceDate?: string | null;
   pickupState?: string | null;
+  pendingReview?: boolean;
 };
 
 export const MIN_WAIT_MS = 60_000;
@@ -195,6 +206,7 @@ export const CLAIM_STEPS = [
   'followUp',
   'statement',
   'awaitPatient',
+  'awaitReview',
   'facility',
   'followUpFacility',
   'collections',
@@ -219,6 +231,7 @@ export const STEP_STATUSES: Readonly<Partial<Record<ClaimStepName, ClaimStatus>>
   followUp: 'follow_up',
   statement: 'patient_balance',
   awaitPatient: 'patient_balance',
+  awaitReview: 'reconcile',
   facility: 'facility_billing',
   followUpFacility: 'facility_billing',
   collections: 'balance_review'
@@ -231,7 +244,7 @@ export type ClaimStep =
   | ({ step: 'await'; waitMs: number } & CoverageStep)
   | { step: 'reviewPatient' | 'confirmPayers' | 'overpaid'; balanceCents: number }
   | { step: 'statement'; statement: number; balanceCents: number }
-  | { step: 'awaitPatient' | 'facility'; waitMs: number; balanceCents: number }
+  | { step: 'awaitPatient' | 'awaitReview' | 'facility'; waitMs: number; balanceCents: number }
   | { step: 'followUpFacility' | 'collections' | 'writeOff' | 'closed'; balanceCents: number };
 
 const CONTACTS: readonly ClaimEventKind[] = [
@@ -265,7 +278,7 @@ const adjudication = (responses: ClaimEvent[]): Adjudication => ({
       .map((e) => e.paidOn ?? e.at.slice(0, 10))
       .toSorted()
       .at(-1) ?? '',
-  adjustments: responses.flatMap((e) => e.adjustments)
+  adjustments: mergedAdjustments(responses.flatMap((e) => e.adjustments))
 });
 
 export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) => {
@@ -364,7 +377,8 @@ export const ledgerFactsOf = (ledger: ClaimLedger, now: Date) => {
     statements: p.statements,
     sinceStatementMs: sinceMs(p.lastStatement, now),
     sinceFacilityContactMs: sinceMs(p.lastFacilityContact, now),
-    rejection: p.rejection
+    rejection: p.rejection,
+    pendingReview: ledger.pendingReview ?? false
   };
 };
 
@@ -405,6 +419,7 @@ export const readClaimStep = (decision: Record<string, unknown>, facts: LedgerFa
         balanceCents
       };
     case 'awaitPatient':
+    case 'awaitReview':
     case 'facility':
       return { step, waitMs: numberOr(decision.waitMs, MIN_WAIT_MS), balanceCents };
     case 'statement':

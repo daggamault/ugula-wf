@@ -15,6 +15,7 @@ const line = {
   payerName: 'Medicare',
   denied: false,
   reversal: false,
+  reversesPosted: false,
   takeback: false,
   paidCents: 800,
   adjustments: [{ group: 'CO' as const, reason: '45', cents: 200 }]

@@ -96,7 +96,10 @@ describe('build835', () => {
     assert.ok(text.includes('PLB*1234567893*20261231*WO:ICN-9*15.00*L6*-0.25~'));
     const [r] = read835(text);
     assert.equal(r?.totalCents, 5_525);
-    assert.equal(r?.providerAdjustmentCents, 1_475);
+    assert.deepEqual(r?.providerAdjustments, [
+      { reason: 'WO', reference: 'ICN-9', cents: 1_500 },
+      { reason: 'L6', reference: null, cents: -25 }
+    ]);
     assert.deepEqual(
       r?.claims.map((c) => [c.claimNumber, c.status, c.paidCents, c.denied, c.reversal]),
       [

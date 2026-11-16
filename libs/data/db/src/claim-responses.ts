@@ -41,6 +41,7 @@ export type ClaimResponse = {
   remarks?: readonly string[];
   note: string;
   exactAdjustment?: boolean;
+  reversal?: boolean;
 };
 
 export const lockClaim = (db: Db, agencyId: string, id: string) =>
@@ -189,6 +190,45 @@ export type PostedResponse = { balanceCents: number; adjustedCents: number; dupl
 export const nudgeClaim = (tx: Db, boss: RunQueueClient, agencyId: string, claimId: string) =>
   signalRuns(tx, boss, { agencyId, name: CLAIM_SIGNAL, key: claimId, payload: null });
 
+const postedBy = async (db: Db, claimId: string, coverageId: string) =>
+  db
+    .selectFrom('claim_events')
+    .select([
+      sql<number>`coalesce(sum(paid_cents), 0)::int`.as('paid'),
+      sql<number>`coalesce(sum(adjusted_cents), 0)::int`.as('adjusted')
+    ])
+    .where('claim_id', '=', claimId)
+    .where('coverage_id', '=', coverageId)
+    .executeTakeFirstOrThrow();
+
+const postReversal = async (
+  tx: Db,
+  boss: RunQueueClient,
+  agencyId: string,
+  claimId: string,
+  userId: string | null,
+  response: ClaimResponse
+): Promise<Result<PostedResponse>> => {
+  if (response.coverageId === null || response.paidCents > 0 || response.adjustedCents > 0) {
+    return fail('invalid', 'A reversal takes back what one payer posted; post it by hand');
+  }
+  const posted = await postedBy(tx, claimId, response.coverageId);
+  if (-response.paidCents > posted.paid || -response.adjustedCents > posted.adjusted) {
+    return fail(
+      'invalid',
+      `The reversal takes back more than the ${dollars(posted.paid)} paid and ${dollars(posted.adjusted)} adjusted posted for this payer; post it by hand`
+    );
+  }
+  const balance = await claimBalance(tx, claimId);
+  await insertResponse(tx, claimId, userId, response);
+  await nudgeClaim(tx, boss, agencyId, claimId);
+  return ok({
+    balanceCents: balance - response.paidCents - response.adjustedCents,
+    adjustedCents: response.adjustedCents,
+    duplicate: false
+  });
+};
+
 export const postClaimResponse = async (
   tx: Db,
   boss: RunQueueClient,
@@ -208,6 +248,7 @@ export const postClaimResponse = async (
   }
   const blocked = unchangeable(claim.status);
   if (blocked) return blocked;
+  if (response.reversal) return postReversal(tx, boss, agencyId, claimId, userId, response);
   if (response.paidCents < 0 || response.adjustedCents < 0) return negative;
   if (
     response.coverageId !== null &&

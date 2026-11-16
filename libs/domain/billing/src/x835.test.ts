@@ -59,7 +59,10 @@ describe('read835', () => {
       ['MEDICARE PART B', 'DEMOMCR', 'EFT0042', '2026-10-30']
     );
     assert.equal(medicare?.totalCents, 61_235);
-    assert.equal(medicare?.providerAdjustmentCents, 2425);
+    assert.deepEqual(medicare?.providerAdjustments, [
+      { reason: 'WO', reference: 'ICN999', cents: 2550 },
+      { reason: 'L6', reference: 'INTEREST', cents: -125 }
+    ]);
     assert.deepEqual(
       [blue?.payerName, blue?.payerId, blue?.checkNumber, blue?.totalCents, blue?.claims],
       ['BLUE PLAN', 'BCBS1', 'NOPAY77', 0, []]
@@ -128,7 +131,7 @@ describe('read835', () => {
     }
   });
 
-  it('nets every provider-level adjustment pair, interest included', () => {
+  it('reads every provider-level adjustment pair with its reference, interest included', () => {
     const [plb] = read835(
       file(
         'ST*835*0001',
@@ -140,7 +143,15 @@ describe('read835', () => {
         'SE*7*0001'
       )
     );
-    assert.equal(plb?.providerAdjustmentCents, 2775);
+    assert.deepEqual(plb?.providerAdjustments, [
+      { reason: 'WO', reference: 'ICN1', cents: 1000 },
+      { reason: 'WO', reference: 'ICN2', cents: 2000 },
+      { reason: 'FB', reference: '1', cents: -500 },
+      { reason: 'L6', reference: null, cents: -50 },
+      { reason: '72', reference: 'A', cents: 100 },
+      { reason: '90', reference: 'B', cents: 200 },
+      { reason: 'J1', reference: null, cents: 25 }
+    ]);
     assert.deepEqual(plb?.claims, []);
   });
 

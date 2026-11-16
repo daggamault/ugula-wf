@@ -1,5 +1,13 @@
 import { type Adjustment, isAdjustmentGroup } from './claims.ts';
-import { centsOf, dateOf, readX12, textOf, transactionsOf } from './x12.ts';
+import {
+  centsOf,
+  componentsOf,
+  dateOf,
+  readX12,
+  textOf,
+  transactionsOf,
+  type X12File
+} from './x12.ts';
 
 export type RemittanceClaim = {
   claimNumber: string;
@@ -14,13 +22,15 @@ export type RemittanceClaim = {
   reversal: boolean;
 };
 
+export type ProviderAdjustment = { reason: string; reference: string | null; cents: number };
+
 export type Remittance = {
   payerName: string | null;
   payerId: string | null;
   checkNumber: string | null;
   paidOn: string | null;
   totalCents: number;
-  providerAdjustmentCents: number;
+  providerAdjustments: ProviderAdjustment[];
   claims: RemittanceClaim[];
 };
 
@@ -36,7 +46,16 @@ const MIA_REMARKS = [5, 20, 21, 22, 23];
 
 const REMARK_QUALIFIER = 'HE';
 
-const PLB_AMOUNTS = [4, 6, 8, 10, 12, 14];
+const PLB_PAIRS = 6;
+
+const providerAdjustmentsOf = (plb: string[], file: X12File): ProviderAdjustment[] =>
+  Array.from({ length: PLB_PAIRS }, (_, i) => {
+    const [reason, reference] = componentsOf(plb[3 + i * 2], file);
+    const code = textOf(reason);
+    return code
+      ? [{ reason: code, reference: textOf(reference), cents: centsOf(plb[4 + i * 2]) }]
+      : [];
+  }).flat();
 
 const adjustmentsOf = (cas: string[]): Adjustment[] => {
   const group = cas[1];
@@ -65,14 +84,14 @@ const claimOf = (clp: string[]): RemittanceClaim => ({
   reversal: clp[2] === REVERSAL
 });
 
-const remittanceOf = (segments: string[][]): Remittance => {
+const remittanceOf = (segments: string[][], file: X12File): Remittance => {
   const r: Remittance = {
     payerName: null,
     payerId: null,
     checkNumber: null,
     paidOn: null,
     totalCents: 0,
-    providerAdjustmentCents: 0,
+    providerAdjustments: [],
     claims: []
   };
   let party: string | null = null;
@@ -111,12 +130,14 @@ const remittanceOf = (segments: string[][]): Remittance => {
         if (seg[1] === REMARK_QUALIFIER) addRemark(claim, seg[2]);
         break;
       case 'PLB':
-        r.providerAdjustmentCents += PLB_AMOUNTS.reduce((sum, i) => sum + centsOf(seg[i]), 0);
+        r.providerAdjustments.push(...providerAdjustmentsOf(seg, file));
         break;
     }
   }
   return r;
 };
 
-export const read835 = (text: string): Remittance[] =>
-  transactionsOf(readX12(text), '835').map(remittanceOf);
+export const read835 = (text: string): Remittance[] => {
+  const file = readX12(text);
+  return transactionsOf(file, '835').map((t) => remittanceOf(t, file));
+};

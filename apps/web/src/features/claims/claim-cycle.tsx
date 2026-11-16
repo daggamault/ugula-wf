@@ -33,6 +33,8 @@ export const describeProgress = (progress: ClaimProgress): string => {
       return `Sending patient statement ${progress.statement} of 3.`;
     case 'awaitPatient':
       return 'Waiting on the patient. The next statement goes out 30 days after the last one.';
+    case 'awaitReview':
+      return 'A payer file line on this claim waits for a biller, so the credit balance is not refunded yet.';
     case 'facility':
       return 'A facility is responsible for this trip. It is billed on the monthly facility invoice, and a follow-up task opens if it has not paid 60 days after.';
     case 'followUpFacility':

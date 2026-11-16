@@ -161,7 +161,8 @@ describe('cycleNodes', () => {
       statements: 0,
       sinceStatementMs: null,
       sinceFacilityContactMs: null,
-      rejection: null
+      rejection: null,
+      pendingReview: false
     });
     await run(record, { claimId: 'c1', kind: 'approved', coverageId: 'cov-Blue' });
     assert.equal(claims.events.length, 0);

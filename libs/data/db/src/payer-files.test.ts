@@ -27,6 +27,11 @@ const fileDb = () =>
       return [{ id: 'cov1', payerId: 'DEMOMCR', payer: 'Medicare', has_events: true }];
     if (sql.includes('claim_balances')) return [{ balance_cents: 100_000 }];
     if (sql.startsWith('insert into "claim_events"')) return [{ id: 'e1' }];
+    if (sql.includes('"payer_claim_number" = $'))
+      return parameters.includes('ICN-1') || parameters.includes('ICN-7')
+        ? [{ id: 'e0', claim_id: 'c1' }]
+        : [];
+    if (sql.includes('sum(adjusted_cents)')) return [{ paid: 60_000, adjusted: 40_000 }];
     if (sql.startsWith('select "coverage_id" from "claim_events"'))
       return [{ coverage_id: 'cov1' }];
     if (sql.includes('from "claim_batches"'))
@@ -127,23 +132,103 @@ describe('applyPayerFile', () => {
     assert.ok(file?.parameters.includes('r1') && file.parameters.includes('r1:apply'));
   });
 
-  it('asks a biller about provider-level adjustments (PLB) instead of dropping them', async () => {
+  it('asks a biller about each provider-level adjustment (PLB), on the claim it references', async () => {
     const text = build835(
       [
         {
           checkNumber: 'CHK-9',
-          claims: [{ claimNumber: '20261105-2002', chargeCents: 1_000, paidCents: 0 }]
+          claims: [{ claimNumber: '20261105-2002', chargeCents: 1_000, paidCents: 0 }],
+          providerAdjustments: [
+            { reason: 'WO', reference: 'ICN-7', cents: 12_550 },
+            { reason: 'L6', cents: -100 }
+          ]
         }
       ],
       { createdAt }
-    ).replace('\nSE*', '\nPLB*1234567893*20261231*WO:ICN-7*125.50~\nSE*');
+    );
     const { out } = await apply(text, [
       { position: 1, route: 'unmatched', message: '', adjustedCents: 0 }
     ]);
-    const plb = out.items.at(-1);
-    assert.equal(plb?.reference, 'PLB CHK-9');
-    assert.equal(plb?.outcome, 'review');
-    assert.match(plb?.message ?? '', /provider-level adjustments \(PLB\) of \$125\.50/);
+    assert.deepEqual(
+      out.items.slice(1).map((i) => [i.reference, i.claimId, i.outcome]),
+      [
+        ['PLB WO ICN-7', 'c1', 'review'],
+        ['PLB L6 CHK-9', null, 'review']
+      ]
+    );
+    assert.match(out.items[1]?.message ?? '', /provider-level adjustment \(PLB WO\) of \$125\.50/);
+  });
+
+  it('posts a reversal of a posted payment before its corrected claim, as a pair', async () => {
+    const text = build835(
+      [
+        {
+          claims: [
+            {
+              claimNumber: '20261105-1001',
+              chargeCents: 100_000,
+              paidCents: 70_000,
+              payerClaimNumber: 'ICN-2'
+            },
+            {
+              claimNumber: '20261105-1001',
+              status: '22',
+              chargeCents: -100_000,
+              paidCents: -60_000,
+              payerClaimNumber: 'ICN-1',
+              adjustments: [{ group: 'CO', reason: '45', cents: -40_000 }]
+            }
+          ]
+        }
+      ],
+      { createdAt }
+    );
+    const read = readPayerFile(bytes(text));
+    assert.ok(read.ok);
+    const lines = await readRemittanceLines(fileDb().db, 't1', text);
+    assert.deepEqual(
+      lines.map((l) => [l.reversal, l.reversesPosted, l.takeback]),
+      [
+        [false, false, false],
+        [true, true, true]
+      ]
+    );
+    const { out, events } = await apply(text, [
+      { position: 1, route: 'reconcile', message: '', adjustedCents: 30_000 },
+      { position: 2, route: 'reversal', message: '', adjustedCents: -40_000 }
+    ]);
+    assert.deepEqual(outcomes(out.items), [
+      ['20261105-1001', 'c1', 'posted', ''],
+      ['20261105-1001', 'c1', 'posted', 'Reversed']
+    ]);
+    assert.deepEqual(
+      events.map((e) => e.parameters.slice(3, 5)),
+      [
+        [-60_000, -40_000],
+        [70_000, 30_000]
+      ]
+    );
+  });
+
+  it('leaves a reversal of a payment no response has to a biller', async () => {
+    const text = build835(
+      [
+        {
+          claims: [
+            {
+              claimNumber: '20261105-1001',
+              status: '22',
+              chargeCents: -100_000,
+              paidCents: -60_000,
+              payerClaimNumber: 'ICN-UNKNOWN'
+            }
+          ]
+        }
+      ],
+      { createdAt }
+    );
+    const [line] = await readRemittanceLines(fileDb().db, 't1', text);
+    assert.deepEqual([line?.reversal, line?.reversesPosted], [true, false]);
   });
 
   it('reads each 835 claim payment with the claim and payer it matches, posting nothing', async () => {

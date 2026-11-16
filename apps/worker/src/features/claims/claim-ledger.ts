@@ -11,6 +11,8 @@ const adjustmentsOf = sql<Adjustment[]>`coalesce((
   from claim_event_adjustments a where a.event_id = e.id
 ), '[]'::json)`;
 
+const REVIEW_LINE_WORKFLOW = 'billing.review-payer-file-line';
+
 export const createLedgerStore = (
   db: Db
 ): Pick<ClaimStore, 'ledger' | 'recordEvent' | 'noteRevision' | 'claimDocument'> => ({
@@ -68,7 +70,21 @@ export const createLedgerStore = (
               .select('s.received')
               .whereRef('s.agency_id', '=', 'c.agency_id')
               .where('s.key', '=', claimSignalKey(claimId))
-              .as('received')
+              .as('received'),
+            eb
+              .exists(
+                eb
+                  .selectFrom('tasks as t')
+                  .innerJoin('claim_runs as cr', 'cr.run_id', 't.run_id')
+                  .innerJoin('workflow_runs as r', 'r.id', 't.run_id')
+                  .innerJoin('graph_versions as v', 'v.id', 'r.graph_version_id')
+                  .innerJoin('graphs as g', 'g.id', 'v.graph_id')
+                  .select('t.id')
+                  .whereRef('cr.claim_id', '=', 'c.id')
+                  .where('t.status', '=', 'open')
+                  .where('g.key', '=', REVIEW_LINE_WORKFLOW)
+              )
+              .as('pending_review')
           ])
           .where('c.id', '=', claimId)
           .where('c.agency_id', '=', runAgency(db, runId))
@@ -115,6 +131,7 @@ export const createLedgerStore = (
       facilityId: claim.facility_id,
       serviceDate: claim.service_date,
       pickupState: claim.pickup_state,
+      pendingReview: claim.pending_review === true,
       signalsSeen: claim.received ?? 0,
       reference: [claim.pcr_number, patient].filter(Boolean).join(' · '),
       coverages,

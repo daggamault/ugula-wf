@@ -1,11 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import {
-  mergedAdjustments,
-  readPostings,
-  remittanceCoverage,
-  remittanceLine
-} from './remittances.ts';
+import { readPostings, remittanceCoverage, remittanceLine } from './remittances.ts';
 import type { RemittanceClaim } from './x835.ts';
 
 const paid: RemittanceClaim = {
@@ -26,7 +21,7 @@ const paid: RemittanceClaim = {
   remarks: []
 };
 
-const matched = { claimId: 'c1', coverageId: 'mcr', payerName: 'Medicare' };
+const matched = { claimId: 'c1', coverageId: 'mcr', payerName: 'Medicare', reversesPosted: false };
 
 describe('remittanceLine', () => {
   it('states what the payer sent with the claim and payer it matched, merging reason codes', () => {
@@ -36,6 +31,7 @@ describe('remittanceLine', () => {
       ...matched,
       denied: false,
       reversal: false,
+      reversesPosted: false,
       takeback: false,
       paidCents: 60_000,
       adjustments: [
@@ -50,20 +46,14 @@ describe('remittanceLine', () => {
     assert.equal(remittanceLine(1, { ...paid, paidCents: -100 }, matched).takeback, true);
     const negative = { ...paid, adjustments: [{ group: 'CO' as const, reason: '45', cents: -5 }] };
     assert.equal(remittanceLine(1, negative, matched).takeback, true);
-    const reversed = remittanceLine(1, { ...paid, reversal: true, denied: true }, matched);
-    assert.deepEqual([reversed.reversal, reversed.denied], [true, true]);
-  });
-});
-
-describe('mergedAdjustments', () => {
-  it('nets a reason code that a later CAS cancels', () => {
+    const reversed = remittanceLine(
+      1,
+      { ...paid, status: '22', reversal: true, denied: true },
+      { ...matched, reversesPosted: true }
+    );
     assert.deepEqual(
-      mergedAdjustments([
-        { group: 'CO', reason: '45', cents: 500 },
-        { group: 'CO', reason: '45', cents: -500 },
-        { group: 'OA', reason: '23', cents: 1_000 }
-      ]),
-      [{ group: 'OA', reason: '23', cents: 1_000 }]
+      [reversed.reversal, reversed.reversesPosted, reversed.denied],
+      [true, true, true]
     );
   });
 });
@@ -102,6 +92,13 @@ describe('readPostings', () => {
     assert.match(
       readPostings([{ position: 1, route: 'appeal', adjustedCents: -500 }])[0]?.message ?? '',
       /-500 cents .*post it by hand/
+    );
+    assert.deepEqual(readPostings([{ position: 1, route: 'reversal', adjustedCents: -500 }]), [
+      { position: 1, route: 'reversal', message: '', adjustedCents: -500 }
+    ]);
+    assert.equal(
+      readPostings([{ position: 1, route: 'reversal', adjustedCents: 500 }])[0]?.route,
+      'review'
     );
   });
 });

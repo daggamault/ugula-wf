@@ -9,6 +9,7 @@ import {
   isClosedStatus,
   ledgerFactsOf,
   MIN_WAIT_MS,
+  mergedAdjustments,
   readClaimStep,
   STEP_STATUSES
 } from './claims.ts';
@@ -60,8 +61,14 @@ describe('ledgerFactsOf', () => {
       statements: 0,
       sinceStatementMs: null,
       sinceFacilityContactMs: null,
-      rejection: null
+      rejection: null,
+      pendingReview: false
     });
+    const pending = ledgerFactsOf(
+      { totalCents: 100, coverages: [], events: [], pendingReview: true },
+      day(0)
+    );
+    assert.equal(pending.pendingReview, true);
   });
 
   it('measures the time since the payer was contacted and the last statement', () => {
@@ -149,6 +156,11 @@ describe('readClaimStep', () => {
       waitMs: MIN_WAIT_MS,
       balanceCents: 100_000
     });
+    assert.deepEqual(readClaimStep({ step: 'awaitReview', waitMs: DAY }, ledger), {
+      step: 'awaitReview',
+      waitMs: DAY,
+      balanceCents: 100_000
+    });
     assert.deepEqual(readClaimStep({ step: 'facility', waitMs: 2 * DAY }, ledger), {
       step: 'facility',
       waitMs: 2 * DAY,
@@ -193,6 +205,7 @@ describe('claim statuses', () => {
         'follow_up',
         'patient_balance',
         'patient_balance',
+        'reconcile',
         'facility_billing',
         'facility_billing',
         'balance_review',
@@ -217,6 +230,26 @@ describe('claimProgress', () => {
     assert.deepEqual(claimProgress(ledger).priorCoverages, [
       { ...renamed, paidCents: 40_000, adjustedCents: 0, paidOn: '2026-01-02', adjustments: [] }
     ]);
+  });
+
+  it('nets a reversal against the payment it takes back and the corrected payment', () => {
+    const adjusted = (cents: number) => [{ group: 'CO' as const, reason: '45', cents }];
+    const ledger = {
+      totalCents: 100_000,
+      coverages: [cov('Medicare'), cov('Blue Plan')],
+      events: [
+        { ...e('response', 'Medicare', 1, 60_000, 40_000), adjustments: adjusted(40_000) },
+        { ...e('response', 'Medicare', 5, -60_000, -40_000), adjustments: adjusted(-40_000) },
+        { ...e('response', 'Medicare', 5, 70_000, 30_000), adjustments: adjusted(30_000) }
+      ]
+    };
+    const progress = claimProgress(ledger);
+    assert.equal(progress.balanceCents, 0);
+    assert.deepEqual(progress.priorCoverages[0]?.adjustments, adjusted(30_000));
+    assert.deepEqual(
+      [progress.priorCoverages[0]?.paidCents, progress.priorCoverages[0]?.adjustedCents],
+      [70_000, 30_000]
+    );
   });
 
   it('totals every response of a prior payer and dates it by the last one', () => {
@@ -258,5 +291,18 @@ describe('claimProgress', () => {
 describe('claim signals', () => {
   it('names the signal every claim change sends to its cycle', () => {
     assert.equal(claimSignalKey('c1'), 'claim:c1');
+  });
+});
+
+describe('mergedAdjustments', () => {
+  it('nets a reason code that a later CAS cancels', () => {
+    assert.deepEqual(
+      mergedAdjustments([
+        { group: 'CO', reason: '45', cents: 500 },
+        { group: 'CO', reason: '45', cents: -500 },
+        { group: 'OA', reason: '23', cents: 1_000 }
+      ]),
+      [{ group: 'OA', reason: '23', cents: 1_000 }]
+    );
   });
 });

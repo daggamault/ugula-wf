@@ -266,7 +266,12 @@ export {
   type PayerClaimStatus,
   readClaimStatus
 } from './x277-status.ts';
-export { type Remittance, read835 } from './x835.ts';
+export {
+  type ProviderAdjustment,
+  type Remittance,
+  type RemittanceClaim,
+  read835
+} from './x835.ts';
 export {
   type BatchClaim,
   type BatchPayer,

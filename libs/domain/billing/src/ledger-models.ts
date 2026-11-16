@@ -31,7 +31,8 @@ export const CLAIM_LEDGER = model(
       'integer',
       'Milliseconds since the facility was last invoiced or followed up'
     ),
-    f('rejection', 'string', 'Why the last submission was rejected')
+    f('rejection', 'string', 'Why the last submission was rejected'),
+    f('pendingReview', 'boolean', 'A payer file line on the claim waits for a biller')
   ]
 );
 
@@ -147,6 +148,11 @@ export const REMITTANCE_LINE = model(
     f('payerName', 'string', 'Payer name'),
     f('denied', 'boolean', 'The payer denied the claim'),
     f('reversal', 'boolean', 'The payer reversed an earlier payment'),
+    f(
+      'reversesPosted',
+      'boolean',
+      'The payment the reversal takes back is posted on the claim (same payer and claim number)'
+    ),
     f('takeback', 'boolean', 'The payment or an adjustment takes money back'),
     f('paidCents', 'integer', 'Paid (cents)'),
     f('adjustments', { list: ADJUSTMENT.type }, 'Adjustments, merged by group and reason')
@@ -160,7 +166,7 @@ export const REMITTANCE_POSTING = model(
   'how one 835 claim payment is posted: its route, what lowers the balance and why',
   [
     f('position', 'integer', 'Position in the file'),
-    f('route', 'string', 'Route (reconcile, review or unmatched)'),
+    f('route', 'string', 'Route (reconcile, denial, appeal, fix, reversal, review or unmatched)'),
     f('message', 'string', 'What a biller sees about the line'),
     f('adjustedCents', 'integer', 'Adjustments that lower the balance (cents)'),
     f('reasons', { list: 'string' }, 'Why')

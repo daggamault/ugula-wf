@@ -54,7 +54,8 @@ describe('createLedgerStore', () => {
               facility_id: null,
               service_date: '2026-01-01',
               pickup_state: 'IL',
-              received: 4
+              received: 4,
+              pending_review: true
             }
           ]
         : q.sql.includes('from "claim_coverages"')
@@ -80,6 +81,7 @@ describe('createLedgerStore', () => {
       facilityId: null,
       serviceDate: '2026-01-01',
       pickupState: 'IL',
+      pendingReview: true,
       signalsSeen: 4,
       reference: 'PCR-1 · Jane Doe',
       coverages: [{ id: 'cov-1', payer: 'Medicare' }],
@@ -100,7 +102,13 @@ describe('createLedgerStore', () => {
     });
     const [head] = queries;
     assert.ok(head?.sql.includes('(select "s"."received" from "signals" as "s"'));
-    assert.deepEqual(head?.parameters.slice(0, 2), [`claim:${ID}`, ID]);
+    assert.deepEqual(head?.parameters.slice(0, 4), [
+      `claim:${ID}`,
+      'open',
+      'billing.review-payer-file-line',
+      ID
+    ]);
+    assert.ok(head?.sql.includes('exists (select "t"."id" from "tasks" as "t"'));
     assert.equal(queries.length, 3);
     const coverages = queries.find((q) => q.sql.includes('from "claim_coverages"'));
     assert.ok(coverages?.sql.includes('coalesce(dp.name, cc.payer_name) as "payer"'));

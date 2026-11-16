@@ -850,6 +850,7 @@ const POLICY_FIELDS = [
 
 const STEP_INPUTS = [
   field('balanceCents', 'integer', 'Balance (cents)'),
+  field('pendingReview', 'boolean', 'A payer file line on the claim waits for a biller'),
   field('reconciling', 'boolean', 'A payer response waits to be reconciled'),
   field('denialOpen', 'boolean', 'A payer denial waits to be worked'),
   field('billFacility', 'boolean', 'A facility is responsible for the trip'),
@@ -978,6 +979,11 @@ const nextClaimStep = (): GraphDef => {
           field('patientOnly', 'boolean', 'Only patient issues count')
         ],
         [
+          step(
+            'A credit balance while a payer file line on the claim waits for a biller',
+            { pendingReview: is(true), balanceCents: below(0) },
+            'awaitReview'
+          ),
           step('More was paid than charged', { balanceCents: below(0) }, 'overpaid'),
           step('A payer denial waits to be worked', { denialOpen: is(true) }, 'workDenial'),
           step('Nothing is owed', { balanceCents: atMost(0) }, 'closed'),
@@ -1039,7 +1045,7 @@ const nextClaimStep = (): GraphDef => {
     'std.expr',
     expr(
       'How Long to Wait',
-      `step == "await" ? max(payerWaitLeftMs, ${MIN_WAIT_MS}) : step == "awaitPatient" ? max(statementWaitLeftMs, ${MIN_WAIT_MS}) : step == "facility" ? max(facilityWaitLeftMs, ${MIN_WAIT_MS}) : null`
+      `step == "await" ? max(payerWaitLeftMs, ${MIN_WAIT_MS}) : step == "awaitPatient" ? max(statementWaitLeftMs, ${MIN_WAIT_MS}) : step == "facility" ? max(facilityWaitLeftMs, ${MIN_WAIT_MS}) : step == "awaitReview" ? ${DAY_MS} : null`
     )
   );
   g.add(
@@ -1086,6 +1092,7 @@ const nextClaimStep = (): GraphDef => {
   for (const [id] of DERIVED) g.wire(`${id}.result`, `decide.${id}`);
   for (const f of [
     'balanceCents',
+    'pendingReview',
     'contacted',
     'approved',
     'statements',
@@ -1126,6 +1133,7 @@ const ROUTES = [
   'followUpFacility',
   'await',
   'awaitPatient',
+  'awaitReview',
   'followUp',
   'statement',
   'collections',
@@ -1325,6 +1333,7 @@ const cycleClaim = (): GraphDef => {
 
   g.wire('route.await', 'wait.exec');
   g.wire('route.awaitPatient', 'wait.exec');
+  g.wire('route.awaitReview', 'wait.exec');
   g.wire('next.waitMs', 'wait.timeoutMs');
 
   const steps = [

@@ -166,6 +166,48 @@ describe('claim responses', () => {
     });
   });
 
+  it('posts a reversal of what one payer posted, raising the balance without settling tasks', async () => {
+    const reversal = {
+      ...response,
+      coverageId: 'cov1',
+      paidCents: -60,
+      adjustedCents: -40,
+      reversal: true
+    };
+    const open = (paid: number, adjusted: number, status = 'reconcile') =>
+      createRecordingDb(({ sql }) => {
+        if (sql.includes('for update')) return [{ id: 'c1', status, patient_id: 'p1' }];
+        if (sql.includes('claim_balances')) return [{ balance_cents: 0 }];
+        if (sql.includes('sum(adjusted_cents)')) return [{ paid, adjusted }];
+        if (sql.startsWith('insert into "claim_events"')) return [{ id: 'e1' }];
+        return [];
+      });
+    const closed = await postClaimResponse(
+      open(60, 40, 'paid').db,
+      boss,
+      't',
+      'c1',
+      null,
+      reversal
+    );
+    assert.match(closed.ok ? '' : closed.failure.message, /already closed/);
+    const { db, queries } = open(60, 40);
+    assert.deepEqual(await postClaimResponse(db, boss, 't', 'c1', null, reversal), {
+      ok: true,
+      value: { balanceCents: 100, adjustedCents: -40, duplicate: false }
+    });
+    const insert = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.deepEqual(insert?.parameters.slice(3, 5), [-60, -40]);
+    assert.ok(!queries.some((q) => q.sql.startsWith('update "tasks"')));
+    const beyond = await postClaimResponse(open(50, 40).db, boss, 't', 'c1', null, reversal);
+    assert.match(beyond.ok ? '' : beyond.failure.message, /more than the \$0\.50 paid/);
+    const positive = await postClaimResponse(open(60, 40).db, boss, 't', 'c1', null, {
+      ...reversal,
+      paidCents: 10
+    });
+    assert.match(positive.ok ? '' : positive.failure.message, /takes back what one payer posted/);
+  });
+
   it('refuses negative amounts so takebacks and reversals reach a biller', async () => {
     for (const amounts of [{ paidCents: -10 }, { adjustedCents: -1 }]) {
       const { db, queries } = claimDb({ balance: 100 });
