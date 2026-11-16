@@ -433,4 +433,17 @@ describe('cycleNodes', () => {
     assert.deepEqual([manual.pin, manual.outputs.sentAs], ['manual', null]);
     assert.deepEqual(offline.claims.sent, []);
   });
+
+  it('records a submission for a claim it has no ledger for', async () => {
+    const { claims, node } = world();
+    await run(node('record-claim-event'), {
+      claimId: 'c2',
+      kind: 'submitted',
+      coverageId: 'cov-Medicare'
+    });
+    assert.deepEqual(
+      claims.events.map((e) => e.kind),
+      ['submitted']
+    );
+  });
 });

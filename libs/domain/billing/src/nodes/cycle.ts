@@ -129,7 +129,7 @@ export const cycleNodes: NodesOf = (stores) => {
           const current = p?.coverage?.id === coverageId;
           const correcting = kind === 'resubmit_queued' && p?.unreconciled?.id === coverageId;
           if (p && !current && !correcting) return {};
-          if (kind === 'submitted' && p?.contacted !== null) return {};
+          if (kind === 'submitted' && p && p.contacted !== null) return {};
         }
 
         await claims().recordEvent(ctx.runId, claimId, ctx.key, {
