@@ -1,4 +1,3 @@
-import { CLAIM_FILING_CODES } from '@ugula/billing';
 import { SaveIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
@@ -26,11 +25,6 @@ type SettingsPageProps = {
   client: SettingsClient;
   live: Live;
 };
-
-export const FILING_OPTIONS = Object.entries(CLAIM_FILING_CODES).map(([value, label]) => ({
-  value,
-  label: `${value} · ${label}`
-}));
 
 type ProfileText = Exclude<keyof BillingProfileInput, 'isProduction'>;
 

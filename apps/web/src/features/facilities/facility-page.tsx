@@ -14,7 +14,7 @@ import { Select } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import { useSearch } from '../../shared/use-search.ts';
-import type { CmsHospital, Facility, FacilityInput, SettingsClient } from './client.ts';
+import type { CmsHospital, FacilitiesClient, Facility, FacilityInput } from './client.ts';
 
 export const toFacilityDraft = (f: Facility | null): FacilityInput => ({
   name: f?.name ?? '',
@@ -185,7 +185,7 @@ export const FacilityForm = ({
 };
 
 type FacilityPageProps = {
-  client: SettingsClient;
+  client: FacilitiesClient;
   live: Live;
   facilityId: string | null;
   back: string;
@@ -201,7 +201,7 @@ export const FacilityPage = ({ client, live, facilityId, back }: FacilityPagePro
   const current = facility.data ?? null;
   const save = async (input: FacilityInput) => {
     try {
-      await client.saveFacility(facilityId, input);
+      await client.save(facilityId, input);
       notify({ title: `${input.name} saved` });
       navigate(back);
       return null;

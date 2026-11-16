@@ -24,9 +24,8 @@ import { Select } from '../../shared/ui/select.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
-import type { Payer, PayerAlias, PayerInput, SettingsClient } from './client.ts';
-import { payerDeleteNote } from './payers-page.tsx';
-import { FILING_OPTIONS } from './settings-page.tsx';
+import type { Payer, PayerAlias, PayerInput, PayersClient } from './client.ts';
+import { FILING_OPTIONS, payerDeleteNote } from './payers-page.tsx';
 
 export const payerSavedNotice = (name: string, linkedClaims: number) =>
   linkedClaims
@@ -207,7 +206,7 @@ export const LearnedNamesPanel = ({
 );
 
 type PayerPageProps = {
-  client: SettingsClient;
+  client: PayersClient;
   live: Live;
   payerId: string | null;
   back: string;
@@ -225,7 +224,7 @@ export const PayerPage = ({ client, live, payerId, back }: PayerPageProps) => {
   const current = payer.data ?? null;
   const save = async (input: PayerInput) => {
     try {
-      const saved = await client.savePayer(input);
+      const saved = await client.save(input);
       notify({ title: payerSavedNotice(saved.payer.name, saved.linkedClaims) });
       navigate(back);
       return null;
@@ -235,7 +234,7 @@ export const PayerPage = ({ client, live, payerId, back }: PayerPageProps) => {
   };
   const remove = async (p: Payer) => {
     try {
-      await client.removePayer(p.id);
+      await client.remove(p.id);
       notify({ title: `${p.name} deleted` });
       navigate(back);
     } catch (err) {

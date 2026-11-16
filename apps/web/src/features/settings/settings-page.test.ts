@@ -5,7 +5,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import type { SettingsClient } from './client.ts';
 import {
-  FILING_OPTIONS,
   fromProfileDraft,
   ProfileForm,
   SettingsPage,
@@ -42,7 +41,6 @@ describe('settings', () => {
     assert.equal(input.receiverName, null);
     assert.equal(input.isProduction, true);
     assert.ok(!('usage' in input));
-    assert.ok(FILING_OPTIONS.some((o) => o.value === 'MB' && o.label === 'MB · Medicare Part B'));
   });
 
   it('renders a labelled profile form', () => {

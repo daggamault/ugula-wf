@@ -1,3 +1,4 @@
+import { CLAIM_FILING_CODES } from '@ugula/billing';
 import { PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
@@ -13,8 +14,12 @@ import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { type SearchView, useSearchState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
-import type { Payer, SettingsClient } from './client.ts';
-import { FILING_OPTIONS } from './settings-page.tsx';
+import type { Payer, PayersClient } from './client.ts';
+
+export const FILING_OPTIONS = Object.entries(CLAIM_FILING_CODES).map(([value, label]) => ({
+  value,
+  label: `${value} · ${label}`
+}));
 
 export const PAYERS_PATH = '/payers';
 
@@ -93,17 +98,17 @@ export const PayersTable = ({
   </Table>
 );
 
-export const PayersPage = ({ client, live }: { client: SettingsClient; live: Live }) => {
+export const PayersPage = ({ client, live }: { client: PayersClient; live: Live }) => {
   const search = useSearchState(PAYERS_PATH, PAYER_TABLE);
   const payers = useResource(`payers:${search.apiQuery}`, (signal) =>
-    client.searchPayers(search.apiQuery, signal)
+    client.search(search.apiQuery, signal)
   );
   useReconnect(live, payers.reload);
   const [deleting, setDeleting] = useState<Payer | null>(null);
   const notify = useToast();
   const remove = async (p: Payer) => {
     try {
-      await client.removePayer(p.id);
+      await client.remove(p.id);
       notify({ title: `${p.name} deleted` });
       payers.reload();
     } catch (err) {

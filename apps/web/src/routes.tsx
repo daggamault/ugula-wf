@@ -5,6 +5,9 @@ import { CLAIM_TABS, ClaimPage } from './features/claims/claim-page.tsx';
 import { ClaimsPage } from './features/claims/claims-page.tsx';
 import { type ClaimsClient, claimSearchOf } from './features/claims/client.ts';
 import { PatientClaims } from './features/claims/patient-claims.tsx';
+import type { FacilitiesClient } from './features/facilities/client.ts';
+import { FACILITIES_PATH, FacilitiesPage } from './features/facilities/facilities-page.tsx';
+import { FacilityPage } from './features/facilities/facility-page.tsx';
 import type { FeesClient } from './features/fees/client.ts';
 import { FeePage } from './features/fees/fee-page.tsx';
 import { FEES_PATH, FeesPage } from './features/fees/fees-page.tsx';
@@ -17,6 +20,9 @@ import { PatientsPage } from './features/patients/patients-page.tsx';
 import type { PayerFilesClient } from './features/payer-files/client.ts';
 import { PayerFilePage } from './features/payer-files/payer-file-page.tsx';
 import { PayerFilesPage } from './features/payer-files/payer-files-page.tsx';
+import type { PayersClient } from './features/payers/client.ts';
+import { PayerPage } from './features/payers/payer-page.tsx';
+import { PAYERS_PATH, PayersPage } from './features/payers/payers-page.tsx';
 import type { ReportsClient } from './features/reports/client.ts';
 import {
   ReportOptionsPage,
@@ -31,10 +37,6 @@ import { parseAt } from './features/runs/inspect.ts';
 import { RunsPage } from './features/runs/runs-page.tsx';
 import { StartRunPage } from './features/runs/start-run-page.tsx';
 import type { SettingsClient } from './features/settings/client.ts';
-import { FACILITIES_PATH, FacilitiesPage } from './features/settings/facilities-page.tsx';
-import { FacilityPage } from './features/settings/facility-page.tsx';
-import { PayerPage } from './features/settings/payer-page.tsx';
-import { PAYERS_PATH, PayersPage } from './features/settings/payers-page.tsx';
 import { SettingsPage } from './features/settings/settings-page.tsx';
 import type { TasksClient } from './features/tasks/client.ts';
 import { taskFilterOf } from './features/tasks/client.ts';
@@ -77,6 +79,8 @@ export type AppClients = {
   fees: FeesClient;
   claims: ClaimsClient;
   patients: PatientsClient;
+  payers: PayersClient;
+  facilities: FacilitiesClient;
   settings: SettingsClient;
   reports: ReportsClient;
   notifications: NotificationsClient;
@@ -277,12 +281,12 @@ const routes: readonly Route[] = [
   },
   {
     pattern: PAYERS_PATH,
-    render: (_, __, c) => <PayersPage client={c.settings} live={c.live} />
+    render: (_, __, c) => <PayersPage client={c.payers} live={c.live} />
   },
   {
     pattern: `${PAYERS_PATH}/new`,
     render: (_, q, c) => (
-      <PayerPage client={c.settings} live={c.live} payerId={null} back={backOf(q, PAYERS_PATH)} />
+      <PayerPage client={c.payers} live={c.live} payerId={null} back={backOf(q, PAYERS_PATH)} />
     )
   },
   {
@@ -290,7 +294,7 @@ const routes: readonly Route[] = [
     render: (p, q, c) => (
       <PayerPage
         key={p.id}
-        client={c.settings}
+        client={c.payers}
         live={c.live}
         payerId={p.id ?? ''}
         back={backOf(q, PAYERS_PATH)}
@@ -299,13 +303,13 @@ const routes: readonly Route[] = [
   },
   {
     pattern: FACILITIES_PATH,
-    render: (_, __, c) => <FacilitiesPage client={c.settings} live={c.live} />
+    render: (_, __, c) => <FacilitiesPage client={c.facilities} live={c.live} />
   },
   {
     pattern: `${FACILITIES_PATH}/new`,
     render: (_, q, c) => (
       <FacilityPage
-        client={c.settings}
+        client={c.facilities}
         live={c.live}
         facilityId={null}
         back={backOf(q, FACILITIES_PATH)}
@@ -317,7 +321,7 @@ const routes: readonly Route[] = [
     render: (p, q, c) => (
       <FacilityPage
         key={p.id}
-        client={c.settings}
+        client={c.facilities}
         live={c.live}
         facilityId={p.id ?? ''}
         back={backOf(q, FACILITIES_PATH)}

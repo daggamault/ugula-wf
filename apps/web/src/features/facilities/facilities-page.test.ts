@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import { searchStateOf } from '../../shared/url-state.ts';
-import type { Facility, SettingsClient } from './client.ts';
+import type { FacilitiesClient, Facility } from './client.ts';
 import {
   FACILITY_TABLE,
   FacilitiesPage,
@@ -34,7 +34,7 @@ describe('FacilitiesPage', () => {
     const html = renderToStaticMarkup(
       createElement(FacilitiesPage, {
         live: idleLive,
-        client: { searchFacilities: pending } as unknown as SettingsClient
+        client: { search: pending } as unknown as FacilitiesClient
       })
     );
     assert.ok(html.includes('aria-label="Search Facilities"'));

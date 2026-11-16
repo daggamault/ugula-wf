@@ -4,28 +4,15 @@ import { createApi } from '../../shared/api.ts';
 import { createSettingsClient } from './client.ts';
 
 describe('createSettingsClient', () => {
-  it('reads and saves the billing profile and payer directory', async () => {
+  it('reads and saves the billing profile and clearinghouse connection', async () => {
     const seen: string[] = [];
     const client = createSettingsClient(
       createApi('http://api.test', async (url, init = {}) => {
         seen.push(`${init.method} ${String(url)}`);
-        return new Response('{"profile":null,"items":[],"payer":{"id":"p1"}}', { status: 200 });
+        return new Response('{"profile":null}', { status: 200 });
       })
     );
     assert.equal(await client.profile(), null);
-    assert.deepEqual((await client.searchPayers('q=blue&page=1')).items, []);
-    assert.deepEqual(await client.payer('p1'), { id: 'p1' });
-    await client.savePayer({
-      name: 'Medicare',
-      payerCode: '00952',
-      claimFiling: 'MB',
-      filingLimitDays: null,
-      correctionMethod: null,
-      appealDays: null,
-      planType: null
-    });
-    await client.removePayer('p1');
-    await client.forgetAlias('p1', 'a1');
     await client.saveProfile({
       organizationName: 'Acme',
       npi: '1234567893',
@@ -45,46 +32,9 @@ describe('createSettingsClient', () => {
     await client.removeConnection();
     assert.deepEqual(seen, [
       'GET http://api.test/api/billing-profile',
-      'GET http://api.test/api/payers?q=blue&page=1',
-      'GET http://api.test/api/payers/p1',
-      'PUT http://api.test/api/payers',
-      'DELETE http://api.test/api/payers/p1',
-      'DELETE http://api.test/api/payers/p1/aliases/a1',
       'PUT http://api.test/api/billing-profile',
       'GET http://api.test/api/clearinghouse-connection',
       'DELETE http://api.test/api/clearinghouse-connection'
     ]);
-  });
-});
-
-describe('settings client errors', () => {
-  it('encodes ids into paths and surfaces API errors', async () => {
-    const seen: string[] = [];
-    const client = createSettingsClient(
-      createApi('http://api.test', async (url) => {
-        seen.push(String(url));
-        return new Response('{"error":"Payer is billed on open claims"}', { status: 409 });
-      })
-    );
-    await assert.rejects(() => client.removePayer('a/b'), /Payer is billed on open claims/);
-    await assert.rejects(() => client.payer('a b'), /Payer is billed on open claims/);
-    assert.deepEqual(seen, [
-      'http://api.test/api/payers/a%2Fb',
-      'http://api.test/api/payers/a%20b'
-    ]);
-  });
-});
-
-describe('settings client hospitals', () => {
-  it('searches the CMS hospital list by name', async () => {
-    const seen: string[] = [];
-    const client = createSettingsClient(
-      createApi('http://api.test', async (url) => {
-        seen.push(String(url));
-        return new Response('{"hospitals":[{"ccn":"010001"}]}', { status: 200 });
-      })
-    );
-    assert.deepEqual(await client.hospitals('southeast health'), [{ ccn: '010001' }]);
-    assert.deepEqual(seen, ['http://api.test/api/facilities/hospitals?q=southeast+health']);
   });
 });

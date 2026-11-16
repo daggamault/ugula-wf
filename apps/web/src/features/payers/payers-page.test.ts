@@ -4,8 +4,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import { searchStateOf } from '../../shared/url-state.ts';
-import type { Payer, SettingsClient } from './client.ts';
+import type { Payer, PayersClient } from './client.ts';
 import {
+  FILING_OPTIONS,
   filingLabel,
   LearnedNames,
   PAYER_TABLE,
@@ -33,7 +34,7 @@ describe('PayersPage', () => {
     const html = renderToStaticMarkup(
       createElement(PayersPage, {
         live: idleLive,
-        client: { searchPayers: pending } as unknown as SettingsClient
+        client: { search: pending } as unknown as PayersClient
       })
     );
     assert.ok(html.includes('aria-label="Search Payers"'));
@@ -72,6 +73,7 @@ describe('filingLabel', () => {
   it('names known claim filing codes and keeps unknown ones as they are', () => {
     assert.equal(filingLabel('MB'), 'MB · Medicare Part B');
     assert.equal(filingLabel('ZZ'), 'ZZ');
+    assert.ok(FILING_OPTIONS.some((o) => o.value === 'MB' && o.label === 'MB · Medicare Part B'));
   });
 });
 

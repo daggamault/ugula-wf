@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
-import type { Payer, SettingsClient } from './client.ts';
+import type { Payer, PayersClient } from './client.ts';
 import {
   LearnedNamesPanel,
   PayerForm,
@@ -82,7 +82,7 @@ describe('PayerPage', () => {
     const added = renderToStaticMarkup(
       createElement(PayerPage, {
         live: idleLive,
-        client: { payer: pending } as unknown as SettingsClient,
+        client: { payer: pending } as unknown as PayersClient,
         payerId: null,
         back: '/payers'
       })

@@ -5,10 +5,12 @@ import { App } from './app.tsx';
 import { type Config, parseConfig } from './config.ts';
 import { createAuthClient } from './features/auth/client.ts';
 import { createClaimsClient } from './features/claims/client.ts';
+import { createFacilitiesClient } from './features/facilities/client.ts';
 import { createFeesClient } from './features/fees/client.ts';
 import { createImportsClient } from './features/imports/client.ts';
 import { createPatientsClient } from './features/patients/client.ts';
 import { createPayerFilesClient } from './features/payer-files/client.ts';
+import { createPayersClient } from './features/payers/client.ts';
 import { createReportsClient } from './features/reports/client.ts';
 import { createRolesClient } from './features/roles/client.ts';
 import { createRunsClient } from './features/runs/client.ts';
@@ -39,6 +41,8 @@ export const createClients = (config: Config, fetchFn: typeof fetch = fetch): Ap
     fees: createFeesClient(api),
     claims: createClaimsClient(api),
     patients: createPatientsClient(api),
+    payers: createPayersClient(api),
+    facilities: createFacilitiesClient(api),
     settings: createSettingsClient(api),
     reports: createReportsClient(api),
     notifications: createNotificationsClient(api),

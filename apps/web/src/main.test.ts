@@ -22,6 +22,8 @@ describe('web composition root', () => {
       'fees',
       'claims',
       'patients',
+      'payers',
+      'facilities',
       'settings',
       'reports',
       'notifications',

@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
-import type { SettingsClient } from './client.ts';
+import type { FacilitiesClient } from './client.ts';
 import {
   FacilityForm,
   FacilityPage,
@@ -50,7 +50,7 @@ describe('FacilityPage', () => {
     });
     const page = renderToStaticMarkup(
       createElement(FacilityPage, {
-        client: {} as SettingsClient,
+        client: {} as FacilitiesClient,
         live: idleLive,
         facilityId: null,
         back: '/facilities'

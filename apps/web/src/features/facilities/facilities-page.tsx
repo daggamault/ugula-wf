@@ -14,7 +14,7 @@ import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { type SearchView, useSearchState, withBack } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
-import type { Facility, SettingsClient } from './client.ts';
+import type { FacilitiesClient, Facility } from './client.ts';
 
 export const FACILITIES_PATH = '/facilities';
 
@@ -72,17 +72,17 @@ export const FacilitiesTable = ({
   </Table>
 );
 
-export const FacilitiesPage = ({ client, live }: { client: SettingsClient; live: Live }) => {
+export const FacilitiesPage = ({ client, live }: { client: FacilitiesClient; live: Live }) => {
   const search = useSearchState(FACILITIES_PATH, FACILITY_TABLE);
   const facilities = useResource(`facilities:${search.apiQuery}`, (signal) =>
-    client.searchFacilities(search.apiQuery, signal)
+    client.search(search.apiQuery, signal)
   );
   useReconnect(live, facilities.reload);
   const [deleting, setDeleting] = useState<Facility | null>(null);
   const notify = useToast();
   const remove = async (f: Facility) => {
     try {
-      await client.removeFacility(f.id);
+      await client.remove(f.id);
       notify({ title: `${f.name} deleted` });
       facilities.reload();
     } catch (err) {

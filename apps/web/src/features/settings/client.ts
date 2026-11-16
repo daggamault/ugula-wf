@@ -1,12 +1,5 @@
-import type {
-  AfterDownload,
-  ClearinghouseVendor,
-  CorrectionMethod,
-  FacilityKind,
-  PlanType
-} from '@ugula/billing';
+import type { AfterDownload, ClearinghouseVendor } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
-import type { Page } from '../../shared/url-state.ts';
 
 export type BillingProfile = {
   organization_name: string;
@@ -74,67 +67,6 @@ export type ConnectionInput = {
   realtimeUrl: string | null;
 };
 
-export type PayerAlias = { id: string; alias: string };
-
-export type Payer = {
-  id: string;
-  name: string;
-  payer_code: string;
-  claim_filing: string;
-  filing_limit_days: number | null;
-  correction_method: CorrectionMethod | null;
-  appeal_days: number | null;
-  plan_type: PlanType | null;
-  aliases: PayerAlias[];
-};
-
-export type Facility = {
-  id: string;
-  name: string;
-  address_line: string | null;
-  city: string | null;
-  state: string | null;
-  postal_code: string | null;
-  phone: string | null;
-  kind: FacilityKind;
-  has_contract: boolean;
-  contract_note: string | null;
-  balance_cents: number;
-};
-
-export type CmsHospital = {
-  ccn: string;
-  name: string;
-  address_line: string;
-  city: string;
-  state: string;
-  postal_code: string;
-  phone: string | null;
-  hospital_type: string;
-};
-
-export type FacilityInput = {
-  name: string;
-  addressLine: string | null;
-  city: string | null;
-  state: string | null;
-  postalCode: string | null;
-  phone: string | null;
-  kind: FacilityKind;
-  hasContract: boolean;
-  contractNote: string | null;
-};
-
-export type PayerInput = {
-  name: string;
-  payerCode: string;
-  claimFiling: string;
-  filingLimitDays: number | null;
-  correctionMethod: CorrectionMethod | null;
-  appealDays: number | null;
-  planType: PlanType | null;
-};
-
 export const createSettingsClient = (api: Api) => ({
   profile: async () =>
     (await api.get<{ profile: BillingProfile | null }>('/api/billing-profile')).profile,
@@ -145,33 +77,7 @@ export const createSettingsClient = (api: Api) => ({
     ),
   saveConnection: (connection: ConnectionInput) =>
     api.put('/api/clearinghouse-connection', connection),
-  removeConnection: () => api.remove('/api/clearinghouse-connection'),
-  searchPayers: (query: string, signal?: AbortSignal) =>
-    api.get<Page<Payer>>(`/api/payers?${query}`, signal),
-  payer: async (id: string, signal?: AbortSignal) =>
-    (await api.get<{ payer: Payer }>(`/api/payers/${encodeURIComponent(id)}`, signal)).payer,
-  savePayer: (payer: PayerInput) =>
-    api.put<{ payer: Payer; linkedClaims: number }>('/api/payers', payer),
-  removePayer: (id: string) => api.remove(`/api/payers/${encodeURIComponent(id)}`),
-  searchFacilities: (query: string, signal?: AbortSignal) =>
-    api.get<Page<Facility>>(`/api/facilities?${query}`, signal),
-  facility: async (id: string, signal?: AbortSignal) =>
-    (await api.get<{ facility: Facility }>(`/api/facilities/${encodeURIComponent(id)}`, signal))
-      .facility,
-  saveFacility: (id: string | null, facility: FacilityInput) =>
-    id
-      ? api.put<{ id: string }>(`/api/facilities/${encodeURIComponent(id)}`, facility)
-      : api.post<{ id: string }>('/api/facilities', facility),
-  hospitals: async (q: string, signal?: AbortSignal) =>
-    (
-      await api.get<{ hospitals: CmsHospital[] }>(
-        `/api/facilities/hospitals?${new URLSearchParams({ q })}`,
-        signal
-      )
-    ).hospitals,
-  removeFacility: (id: string) => api.remove(`/api/facilities/${encodeURIComponent(id)}`),
-  forgetAlias: (payerId: string, aliasId: string) =>
-    api.remove(`/api/payers/${encodeURIComponent(payerId)}/aliases/${encodeURIComponent(aliasId)}`)
+  removeConnection: () => api.remove('/api/clearinghouse-connection')
 });
 
 export type SettingsClient = ReturnType<typeof createSettingsClient>;

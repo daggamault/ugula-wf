@@ -16,8 +16,8 @@ import {
   UsersIcon,
   WorkflowIcon
 } from 'lucide-react';
+import { FACILITIES_PATH } from './features/facilities/facilities-page.tsx';
 import { ROLES_PATH } from './features/roles/roles-page.tsx';
-import { FACILITIES_PATH } from './features/settings/facilities-page.tsx';
 import { TASKS_PATH } from './features/tasks/tasks-page.tsx';
 import { USERS_PATH } from './features/users/users-page.tsx';
 import { TABLES_PATH } from './features/workflows/tables-page.tsx';
