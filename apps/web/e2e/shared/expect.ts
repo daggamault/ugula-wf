@@ -27,7 +27,7 @@ const includes = (found: string[], expected: readonly RegExp[], what: string) =>
 export const expectClaim = (c: ClaimState, e: ExpectedClaim) => {
   assert.equal(c.claim.classification, e.classification, 'classification');
   assert.equal(c.claim.level, e.level, 'level of service');
-  assert.equal(c.claim.emergency, e.emergency, 'emergency response');
+  assert.equal(c.claim.is_emergency, e.emergency, 'emergency response');
   assert.deepEqual(
     c.claim.lines.map((l) => [l.code, Number(l.units)]),
     e.lines.map(([code, units]) => [code, units]),

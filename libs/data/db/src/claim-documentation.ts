@@ -3,7 +3,7 @@ import { type Documentation, readDocumentation } from '@ugula/billing';
 export const DOCUMENTATION_COLUMNS = [
   'c.signature',
   'c.signature_note',
-  'c.pcs_on_file',
+  'c.has_pcs',
   'c.pcs_signed_on',
   'c.transport_reason',
   'c.condition_codes',
@@ -14,24 +14,24 @@ export const DOCUMENTATION_COLUMNS = [
   'c.at_destination_at',
   'c.patient_count',
   'c.closest_facility_miles',
-  'c.abn_on_file',
+  'c.has_abn',
   'c.abn_signed_on',
-  'c.denial_expected',
-  'c.msp_employer_plan',
-  'c.msp_esrd',
-  'c.msp_disability',
+  'c.is_denial_expected',
+  'c.has_msp_employer_plan',
+  'c.has_msp_esrd',
+  'c.has_msp_disability',
   'c.msp_accident',
   'c.prior_authorization_expires_on',
   'c.pcs_type',
   'c.round_trips',
-  'c.admission_date',
+  'c.admitted_on',
   'c.facility_stay'
 ] as const;
 
 type DocumentationRow = {
   signature: string;
   signature_note: string | null;
-  pcs_on_file: boolean | null;
+  has_pcs: boolean | null;
   pcs_signed_on: string | null;
   transport_reason: string | null;
   condition_codes: string[];
@@ -42,17 +42,17 @@ type DocumentationRow = {
   at_destination_at: Date | null;
   patient_count: number | null;
   closest_facility_miles: string | null;
-  abn_on_file: boolean | null;
+  has_abn: boolean | null;
   abn_signed_on: string | null;
-  denial_expected: boolean | null;
-  msp_employer_plan: boolean | null;
-  msp_esrd: boolean | null;
-  msp_disability: boolean | null;
+  is_denial_expected: boolean | null;
+  has_msp_employer_plan: boolean | null;
+  has_msp_esrd: boolean | null;
+  has_msp_disability: boolean | null;
   msp_accident: string | null;
   prior_authorization_expires_on: string | null;
   pcs_type: string | null;
   round_trips: number | null;
-  admission_date: string | null;
+  admitted_on: string | null;
   facility_stay: string | null;
 };
 
@@ -62,7 +62,7 @@ export const documentationOf = (row: DocumentationRow): Documentation =>
   readDocumentation({
     signature: row.signature,
     signatureNote: row.signature_note,
-    pcsOnFile: row.pcs_on_file,
+    pcsOnFile: row.has_pcs,
     pcsSignedOn: row.pcs_signed_on,
     transportReason: row.transport_reason,
     conditionCodes: row.condition_codes,
@@ -73,24 +73,24 @@ export const documentationOf = (row: DocumentationRow): Documentation =>
     atDestination: row.at_destination_at?.toISOString() ?? null,
     patientCount: row.patient_count,
     closestFacilityMiles: numberOrNull(row.closest_facility_miles),
-    abnOnFile: row.abn_on_file,
+    abnOnFile: row.has_abn,
     abnSignedOn: row.abn_signed_on,
-    denialExpected: row.denial_expected,
-    mspEmployerPlan: row.msp_employer_plan,
-    mspEsrd: row.msp_esrd,
-    mspDisability: row.msp_disability,
+    denialExpected: row.is_denial_expected,
+    mspEmployerPlan: row.has_msp_employer_plan,
+    mspEsrd: row.has_msp_esrd,
+    mspDisability: row.has_msp_disability,
     mspAccident: row.msp_accident,
     priorAuthorizationExpiresOn: row.prior_authorization_expires_on,
     pcsType: row.pcs_type,
     roundTrips: row.round_trips,
-    admissionDate: row.admission_date,
+    admissionDate: row.admitted_on,
     facilityStay: row.facility_stay
   });
 
 export const documentationValues = (d: Documentation) => ({
   signature: d.signature,
   signature_note: d.signatureNote,
-  pcs_on_file: d.pcsOnFile,
+  has_pcs: d.pcsOnFile,
   pcs_signed_on: d.pcsSignedOn,
   transport_reason: d.transportReason,
   condition_codes: d.conditionCodes,
@@ -101,16 +101,16 @@ export const documentationValues = (d: Documentation) => ({
   at_destination_at: d.atDestination,
   patient_count: d.patientCount,
   closest_facility_miles: d.closestFacilityMiles,
-  abn_on_file: d.abnOnFile,
+  has_abn: d.abnOnFile,
   abn_signed_on: d.abnSignedOn,
-  denial_expected: d.denialExpected,
-  msp_employer_plan: d.mspEmployerPlan,
-  msp_esrd: d.mspEsrd,
-  msp_disability: d.mspDisability,
+  is_denial_expected: d.denialExpected,
+  has_msp_employer_plan: d.mspEmployerPlan,
+  has_msp_esrd: d.mspEsrd,
+  has_msp_disability: d.mspDisability,
   msp_accident: d.mspAccident,
   prior_authorization_expires_on: d.priorAuthorizationExpiresOn,
   pcs_type: d.pcsType,
   round_trips: d.roundTrips,
-  admission_date: d.admissionDate,
+  admitted_on: d.admissionDate,
   facility_stay: d.facilityStay
 });

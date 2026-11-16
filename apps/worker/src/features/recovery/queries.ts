@@ -206,7 +206,7 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
             'c.pcr_number',
             'c.service_date',
             'c.level',
-            'c.emergency',
+            'c.is_emergency',
             'c.loaded_miles',
             'c.total_cents',
             'c.transport_reason',
@@ -280,7 +280,7 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
           { label: 'Date of service', value: row.service_date ?? '' },
           {
             label: 'Service',
-            value: `${row.level ?? ''}${row.emergency ? ' emergency' : ''}`
+            value: `${row.level ?? ''}${row.is_emergency ? ' emergency' : ''}`
           },
           { label: 'Loaded miles', value: row.loaded_miles ?? '' },
           { label: 'Transport reason', value: row.transport_reason ?? '' },

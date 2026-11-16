@@ -20,7 +20,7 @@ import {
 const documented = {
   signature: 'exception' as const,
   signature_note: 'Not signed because the patient was unconscious',
-  pcs_on_file: true,
+  has_pcs: true,
   pcs_signed_on: '2026-09-20',
   transport_reason: 'A' as const,
   condition_codes: ['06', '09'],
@@ -31,19 +31,19 @@ const documented = {
   at_destination_at: null,
   patient_count: 2,
   closest_facility_miles: '4.6',
-  abn_on_file: true,
+  has_abn: true,
   abn_signed_on: '2026-09-30',
-  denial_expected: true,
-  msp_employer_plan: false,
-  msp_esrd: false,
-  msp_disability: false,
+  is_denial_expected: true,
+  has_msp_employer_plan: false,
+  has_msp_esrd: false,
+  has_msp_disability: false,
   msp_accident: 'none' as const,
   prior_authorization_expires_on: '2026-12-01',
   pcs_type: 'repetitive' as const,
   round_trips: 4,
-  admission_date: null,
+  admitted_on: null,
   facility_stay: null,
-  deceased: false,
+  is_deceased: false,
   non_covered_miles: '2.4'
 };
 
@@ -69,8 +69,8 @@ const coverage: ClaimCoverage = {
 describe('claim documentation', () => {
   it('describes certification, weight and conditions in words', () => {
     assert.match(pcsText(documented), /^On file, signed /);
-    assert.equal(pcsText({ pcs_on_file: false, pcs_signed_on: null }), 'Not on file');
-    assert.equal(pcsText({ pcs_on_file: null, pcs_signed_on: null }), 'Not recorded');
+    assert.equal(pcsText({ has_pcs: false, pcs_signed_on: null }), 'Not on file');
+    assert.equal(pcsText({ has_pcs: null, pcs_signed_on: null }), 'Not recorded');
     assert.equal(weightText('81.6'), '81.6 kg (180 lb)');
     assert.equal(weightText(null), null);
     assert.equal(
@@ -82,17 +82,17 @@ describe('claim documentation', () => {
   it('describes the MSP answers, ABN, authorization, stay and miles', () => {
     assert.equal(mspText(documented), 'Medicare pays first');
     assert.equal(
-      mspText({ ...documented, msp_accident: 'workersComp', msp_esrd: true }),
+      mspText({ ...documented, msp_accident: 'workersComp', has_msp_esrd: true }),
       "Medicare pays second: Workers' compensation; End-stage renal disease"
     );
-    assert.equal(mspText({ ...documented, msp_esrd: null }), 'Not answered');
+    assert.equal(mspText({ ...documented, has_msp_esrd: null }), 'Not answered');
     assert.match(abnText(documented), /^On file, signed .+ \(GA\)$/);
     assert.equal(
-      abnText({ ...documented, abn_on_file: null }),
+      abnText({ ...documented, has_abn: null }),
       'Not recorded, and Medicare is expected to deny (GZ)'
     );
     assert.equal(
-      abnText({ ...documented, abn_on_file: false, denial_expected: false }),
+      abnText({ ...documented, has_abn: false, is_denial_expected: false }),
       'Not on file'
     );
     assert.match(authorizationText(documented) ?? '', /^PA-1, expires .+ · round trip 4$/);
@@ -101,7 +101,7 @@ describe('claim documentation', () => {
       null
     );
     assert.match(
-      stayText({ facility_stay: 'snf', admission_date: '2026-09-29' }) ?? '',
+      stayText({ facility_stay: 'snf', admitted_on: '2026-09-29' }) ?? '',
       /^Skilled nursing facility stay \(Part A\), admitted /
     );
     assert.equal(stayText(documented), null);
@@ -109,7 +109,7 @@ describe('claim documentation', () => {
       milesText(documented),
       '4.6 mi to the closest hospital, 2.4 mi non-covered (A0888)'
     );
-    assert.match(milesText({ ...documented, deceased: true }) ?? '', /QL, no mileage/);
+    assert.match(milesText({ ...documented, is_deceased: true }) ?? '', /QL, no mileage/);
   });
 
   it('shows the signature with why, and every documented field', () => {
@@ -128,7 +128,7 @@ describe('claim documentation', () => {
           ...documented,
           signature: 'missing',
           signature_note: null,
-          pcs_on_file: null,
+          has_pcs: null,
           transport_reason: null,
           condition_codes: [],
           prior_authorization: null,

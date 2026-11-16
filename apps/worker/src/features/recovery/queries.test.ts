@@ -164,7 +164,7 @@ describe('createRecoveryStore', () => {
                 pcr_number: 'PCR-1',
                 service_date: '2026-10-01',
                 level: 'ALS1',
-                emergency: true,
+                is_emergency: true,
                 loaded_miles: '4.2',
                 total_cents: 90_000,
                 transport_reason: 'A',

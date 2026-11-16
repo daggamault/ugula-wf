@@ -155,7 +155,7 @@ describe('applyClaimEdit', () => {
     const claim = queries.find((q) => q.sql.startsWith('update "claims"'));
     assert.equal(
       claim?.sql,
-      'update "claims" set "deceased" = $1, "non_covered_miles" = $2, "patient_count" = $3, "abn_on_file" = $4, "msp_employer_plan" = $5, "msp_accident" = $6, "facility_stay" = $7, "updated_at" = now() where "id" = $8'
+      'update "claims" set "is_deceased" = $1, "non_covered_miles" = $2, "patient_count" = $3, "has_abn" = $4, "has_msp_employer_plan" = $5, "msp_accident" = $6, "facility_stay" = $7, "updated_at" = now() where "id" = $8'
     );
     assert.deepEqual(claim?.parameters, [true, null, 2, true, false, 'workersComp', 'snf', 'c1']);
   });

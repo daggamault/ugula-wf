@@ -22,7 +22,7 @@ type Documented = Pick<
   ClaimDetail,
   | 'signature'
   | 'signature_note'
-  | 'pcs_on_file'
+  | 'has_pcs'
   | 'pcs_signed_on'
   | 'transport_reason'
   | 'condition_codes'
@@ -33,19 +33,19 @@ type Documented = Pick<
   | 'at_destination_at'
   | 'patient_count'
   | 'closest_facility_miles'
-  | 'abn_on_file'
+  | 'has_abn'
   | 'abn_signed_on'
-  | 'denial_expected'
-  | 'msp_employer_plan'
-  | 'msp_esrd'
-  | 'msp_disability'
+  | 'is_denial_expected'
+  | 'has_msp_employer_plan'
+  | 'has_msp_esrd'
+  | 'has_msp_disability'
   | 'msp_accident'
   | 'prior_authorization_expires_on'
   | 'pcs_type'
   | 'round_trips'
-  | 'admission_date'
+  | 'admitted_on'
   | 'facility_stay'
-  | 'deceased'
+  | 'is_deceased'
   | 'non_covered_miles'
 >;
 
@@ -56,34 +56,35 @@ const SIGNATURE_INTENTS: Record<ClaimDetail['signature'], StatusBadgeStyle['inte
   missing: 'danger'
 };
 
-export const pcsText = (c: Pick<Documented, 'pcs_on_file' | 'pcs_signed_on'>) =>
-  c.pcs_on_file === null
+export const pcsText = (c: Pick<Documented, 'has_pcs' | 'pcs_signed_on'>) =>
+  c.has_pcs === null
     ? 'Not recorded'
-    : c.pcs_on_file
+    : c.has_pcs
       ? `On file${c.pcs_signed_on ? `, signed ${formatDate(c.pcs_signed_on)}` : ''}`
       : 'Not on file';
 
-export const abnText = (
-  c: Pick<Documented, 'abn_on_file' | 'abn_signed_on' | 'denial_expected'>
-) =>
-  c.abn_on_file === null
-    ? c.denial_expected
+export const abnText = (c: Pick<Documented, 'has_abn' | 'abn_signed_on' | 'is_denial_expected'>) =>
+  c.has_abn === null
+    ? c.is_denial_expected
       ? 'Not recorded, and Medicare is expected to deny (GZ)'
       : 'Not recorded'
-    : c.abn_on_file
+    : c.has_abn
       ? `On file${c.abn_signed_on ? `, signed ${formatDate(c.abn_signed_on)}` : ''} (GA)`
-      : c.denial_expected
+      : c.is_denial_expected
         ? 'Not on file, and Medicare is expected to deny (GZ)'
         : 'Not on file';
 
 const MSP_REASONS = [
-  ['msp_employer_plan', 'Employer group health plan'],
-  ['msp_esrd', 'End-stage renal disease'],
-  ['msp_disability', 'Disability with a large group plan']
+  ['has_msp_employer_plan', 'Employer group health plan'],
+  ['has_msp_esrd', 'End-stage renal disease'],
+  ['has_msp_disability', 'Disability with a large group plan']
 ] as const;
 
 export const mspText = (
-  c: Pick<Documented, 'msp_employer_plan' | 'msp_esrd' | 'msp_disability' | 'msp_accident'>
+  c: Pick<
+    Documented,
+    'has_msp_employer_plan' | 'has_msp_esrd' | 'has_msp_disability' | 'msp_accident'
+  >
 ) => {
   const first = [
     ...(c.msp_accident && c.msp_accident !== 'none' ? [MSP_ACCIDENTS[c.msp_accident]] : []),
@@ -106,18 +107,18 @@ export const authorizationText = (
     .filter(Boolean)
     .join(' · ') || null;
 
-export const stayText = (c: Pick<Documented, 'facility_stay' | 'admission_date'>) =>
+export const stayText = (c: Pick<Documented, 'facility_stay' | 'admitted_on'>) =>
   [
     c.facility_stay ? FACILITY_STAYS[c.facility_stay] : null,
-    c.admission_date ? `admitted ${formatDate(c.admission_date)}` : null
+    c.admitted_on ? `admitted ${formatDate(c.admitted_on)}` : null
   ]
     .filter(Boolean)
     .join(', ') || null;
 
 export const milesText = (
-  c: Pick<Documented, 'closest_facility_miles' | 'non_covered_miles' | 'deceased'>
+  c: Pick<Documented, 'closest_facility_miles' | 'non_covered_miles' | 'is_deceased'>
 ) =>
-  c.deceased
+  c.is_deceased
     ? 'Pronounced dead before loading: BLS with QL, no mileage'
     : [
         c.closest_facility_miles === null

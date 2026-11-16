@@ -9,7 +9,7 @@ export const levelsReport = report({
       .selectFrom('claims as c')
       .select([
         'c.level',
-        'c.emergency',
+        'c.is_emergency as emergency',
         count.as('trips'),
         sql<number>`coalesce(sum(c.loaded_miles), 0)::float8`.as('miles'),
         cents(sql.ref('c.total_cents')).as('charges_cents')
@@ -17,7 +17,7 @@ export const levelsReport = report({
       .where('c.agency_id', '=', ctx.agencyId)
       .where('c.status', 'not in', UNBILLED)
       .where(servedIn(ctx))
-      .groupBy(['c.level', 'c.emergency'])
+      .groupBy(['c.level', 'c.is_emergency'])
       .as('r'),
   columns: ['level', 'emergency', 'trips', 'miles', 'charges_cents'],
   order: 'charges_cents',

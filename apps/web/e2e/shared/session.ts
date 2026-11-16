@@ -117,7 +117,7 @@ export type ClaimState = {
     total_cents: number;
     classification: string | null;
     level: string | null;
-    emergency: boolean | null;
+    is_emergency: boolean | null;
     loaded_miles: string | number | null;
     origin_code: string | null;
     destination_code: string | null;

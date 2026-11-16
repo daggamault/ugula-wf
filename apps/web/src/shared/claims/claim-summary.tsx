@@ -32,7 +32,7 @@ export const ClaimSummaryPanel = ({ claim }: { claim: ClaimDetail }) => (
       </Detail>
       <Detail label="Transport">
         {claim.level ?? emptyValue}
-        {claim.emergency ? ' emergency' : ''}
+        {claim.is_emergency ? ' emergency' : ''}
         {claim.loaded_miles ? (
           <span className="tabular-nums"> · {formatMiles(claim.loaded_miles)} loaded</span>
         ) : null}

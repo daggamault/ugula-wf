@@ -105,7 +105,7 @@ export type ClaimPayerFile = {
 
 export type ClaimDetail = ClaimSummary & {
   classification: Classification | null;
-  emergency: boolean | null;
+  is_emergency: boolean | null;
   import_report_id: string | null;
   import_id: string | null;
   import_file_name: string | null;
@@ -132,7 +132,7 @@ export type ClaimDetail = ClaimSummary & {
   postal_code: string | null;
   signature: SignatureStatus;
   signature_note: string | null;
-  pcs_on_file: boolean | null;
+  has_pcs: boolean | null;
   pcs_signed_on: string | null;
   transport_reason: TransportReason | null;
   condition_codes: string[];
@@ -143,19 +143,19 @@ export type ClaimDetail = ClaimSummary & {
   at_destination_at: string | null;
   patient_count: number | null;
   closest_facility_miles: string | null;
-  abn_on_file: boolean | null;
+  has_abn: boolean | null;
   abn_signed_on: string | null;
-  denial_expected: boolean | null;
-  msp_employer_plan: boolean | null;
-  msp_esrd: boolean | null;
-  msp_disability: boolean | null;
+  is_denial_expected: boolean | null;
+  has_msp_employer_plan: boolean | null;
+  has_msp_esrd: boolean | null;
+  has_msp_disability: boolean | null;
   msp_accident: MspAccident | null;
   prior_authorization_expires_on: string | null;
   pcs_type: PcsType | null;
   round_trips: number | null;
-  admission_date: string | null;
+  admitted_on: string | null;
   facility_stay: FacilityStay | null;
-  deceased: boolean;
+  is_deceased: boolean;
   non_covered_miles: string | null;
   coverages: ClaimCoverage[];
   lines: ClaimLine[];

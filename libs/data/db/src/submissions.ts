@@ -29,9 +29,9 @@ const claimToBill = (db: Db, agencyId: string, id: string) =>
       'c.id',
       'c.number',
       'c.pcr_number',
-      'c.emergency',
+      'c.is_emergency',
       'c.loaded_miles',
-      'c.deceased',
+      'c.is_deceased',
       'c.total_cents',
       'c.service_date',
       'c.origin_code',
@@ -291,9 +291,9 @@ const batchClaimOf = (
       postalCode: row.postal_code
     },
     details: detailsOf(row),
-    emergency: row.emergency === true,
+    emergency: row.is_emergency === true,
     loadedMiles: row.loaded_miles === null ? null : Number(row.loaded_miles),
-    deceased: row.deceased,
+    deceased: row.is_deceased,
     lines: row.lines.map((l) => ({
       code: l.code,
       units: Number(l.units),

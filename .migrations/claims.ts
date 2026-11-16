@@ -66,7 +66,7 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('pcr_number', 'text')
     .addColumn('classification', 'text')
     .addColumn('level', 'text')
-    .addColumn('emergency', 'boolean')
+    .addColumn('is_emergency', 'boolean')
     .addColumn('loaded_miles', 'numeric')
     .addColumn('total_cents', 'integer', (col) => col.notNull().defaultTo(0))
     .addColumn('service_date', 'date')
@@ -83,7 +83,7 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('destination_postal_code', 'text')
     .addColumn('signature', 'text', (col) => col.notNull().defaultTo('missing'))
     .addColumn('signature_note', 'text')
-    .addColumn('pcs_on_file', 'boolean')
+    .addColumn('has_pcs', 'boolean')
     .addColumn('pcs_signed_on', 'date')
     .addColumn('transport_reason', 'text')
     .addColumn('condition_codes', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
@@ -92,21 +92,21 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('at_scene_at', 'timestamptz')
     .addColumn('left_scene_at', 'timestamptz')
     .addColumn('at_destination_at', 'timestamptz')
-    .addColumn('deceased', 'boolean', (col) => col.notNull().defaultTo(false))
+    .addColumn('is_deceased', 'boolean', (col) => col.notNull().defaultTo(false))
     .addColumn('non_covered_miles', 'numeric')
     .addColumn('patient_count', 'smallint')
     .addColumn('closest_facility_miles', 'numeric')
-    .addColumn('abn_on_file', 'boolean')
+    .addColumn('has_abn', 'boolean')
     .addColumn('abn_signed_on', 'date')
-    .addColumn('denial_expected', 'boolean')
-    .addColumn('msp_employer_plan', 'boolean')
-    .addColumn('msp_esrd', 'boolean')
-    .addColumn('msp_disability', 'boolean')
+    .addColumn('is_denial_expected', 'boolean')
+    .addColumn('has_msp_employer_plan', 'boolean')
+    .addColumn('has_msp_esrd', 'boolean')
+    .addColumn('has_msp_disability', 'boolean')
     .addColumn('msp_accident', 'text')
     .addColumn('prior_authorization_expires_on', 'date')
     .addColumn('pcs_type', 'text')
     .addColumn('round_trips', 'smallint')
-    .addColumn('admission_date', 'date')
+    .addColumn('admitted_on', 'date')
     .addColumn('facility_stay', 'text')
     .addColumn('status', 'text', (col) => col.notNull().defaultTo('draft'))
     .addColumn('cycle_run_id', 'uuid')
@@ -188,9 +188,9 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint(
       'claims_service_check',
-      sql`status in (${UNSENT}) or (level is not null and emergency is not null and service_date is not null)`
+      sql`status in (${UNSENT}) or (level is not null and is_emergency is not null and service_date is not null)`
     )
-    .addCheckConstraint('claims_abn_signed_on_check', sql`abn_signed_on is null or abn_on_file`);
+    .addCheckConstraint('claims_abn_signed_on_check', sql`abn_signed_on is null or has_abn`);
 
 const buildClaimsCycleRunForeignKey = () =>
   agencySetNullForeignKey({ table: 'claims', column: 'cycle_run_id', references: 'workflow_runs' });
