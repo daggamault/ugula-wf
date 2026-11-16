@@ -7,8 +7,8 @@ const rawEnv = {
   API_PORT: '3001',
   SSE_URL: 'http://localhost:3002',
   WEB_URL: 'http://localhost:3000',
-  HTTP_CORS_ORIGINS: 'http://localhost:3000',
-  HTTP_MAX_BODY_BYTES: '1000000',
+  API_CORS_ORIGINS: 'http://localhost:3000',
+  API_MAX_BODY_BYTES: '1000000',
   DB_HOST: 'localhost',
   DB_PORT: '5432',
   DB_USER: 'ugula',
@@ -21,9 +21,9 @@ const rawEnv = {
   S3_ENDPOINT: 'http://localhost:9000',
   S3_REGION: 'us-east-1',
   S3_BUCKET: 'ugula',
-  S3_ACCESS_KEY_ID: 'key',
-  S3_SECRET_ACCESS_KEY: 'secret',
-  IMPORT_FILE_MAX_BYTES: '1000',
+  S3_ACCESS_KEY: 'key',
+  S3_SECRET_KEY: 'secret',
+  API_MAX_IMPORT_BYTES: '1000',
   SFTP_HOOK_SECRET: 'x'.repeat(32),
   SFTP_S3_ENDPOINT: 'http://rustfs:9000',
   SFTP_HOME_ROOT: '/srv/sftpgo/data',
@@ -34,7 +34,7 @@ describe('api parseConfig', () => {
   it('parses valid env and rejects missing vars', () => {
     const config = parseConfig(rawEnv);
     assert.equal(config.API_PORT, 3001);
-    assert.equal(config.HTTP_MAX_BODY_BYTES, 1_000_000);
+    assert.equal(config.API_MAX_BODY_BYTES, 1_000_000);
     assert.equal(config.DB_PORT, 5432);
     assert.equal(config.REDIS_PORT, 6379);
     assert.equal(config.WEB_URL, 'http://localhost:3000');

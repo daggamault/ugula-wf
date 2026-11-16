@@ -68,8 +68,8 @@ describe('config primitives', () => {
       S3_ENDPOINT: 'http://localhost:9000',
       S3_REGION: 'us-east-1',
       S3_BUCKET: 'ugula',
-      S3_ACCESS_KEY_ID: 'key',
-      S3_SECRET_ACCESS_KEY: 'secret'
+      S3_ACCESS_KEY: 'key',
+      S3_SECRET_KEY: 'secret'
     });
     assert.equal(s3.S3_BUCKET, 'ugula');
     assert.throws(() => v.parse(v.object(s3EnvEntries), { ...s3, S3_ENDPOINT: 'nope' }));

@@ -47,9 +47,9 @@ const clearinghouseEntries = {
   ),
   CLEARINGHOUSE_UPLOAD_PATH: v.optional(remotePath, '/'),
   CLEARINGHOUSE_DOWNLOAD_PATHS: v.optional(pathList, '/'),
-  CLEARINGHOUSE_FILE_EXTENSION: v.optional(extension, '.txt'),
+  CLEARINGHOUSE_CLAIM_EXTENSION: v.optional(extension, '.txt'),
   CLEARINGHOUSE_ELIGIBILITY_EXTENSION: v.optional(extension, '.txt'),
-  CLEARINGHOUSE_CLAIM_STATUS_EXTENSION: v.optional(extension, '.txt'),
+  CLEARINGHOUSE_STATUS_EXTENSION: v.optional(extension, '.txt'),
   CLEARINGHOUSE_AFTER_DOWNLOAD: v.optional(v.picklist(['delete', 'keep']), 'delete'),
   CLEARINGHOUSE_REALTIME_URL: v.optional(
     v.union([v.literal(''), v.pipe(v.string(), v.trim(), v.url())]),
@@ -65,8 +65,8 @@ const baseSchema = v.object({
   ...s3EnvEntries,
   ...inferenceEnvEntries,
   ...secretKeyEnvEntries,
-  WORKFLOW_CONCURRENCY: v.optional(posInt, '8'),
-  COMPLETIONS_CONCURRENCY: v.optional(posInt, '2'),
+  WORKER_RUN_CONCURRENCY: v.optional(posInt, '8'),
+  WORKER_COMPLETIONS_CONCURRENCY: v.optional(posInt, '2'),
   WORKER_MAX_EVENT_LOOP_UTILIZATION: v.optional(utilization, '0.9'),
   WORKER_MAX_HEAP_MB: v.optional(posInt),
   WORKER_MAX_RSS_MB: v.optional(posInt),
@@ -101,9 +101,9 @@ export const clearinghouseOf = (c: Config): ConnectionSettings | null =>
         uploadPath: c.CLEARINGHOUSE_UPLOAD_PATH,
         downloadPaths: c.CLEARINGHOUSE_DOWNLOAD_PATHS,
         extensions: {
-          claims: c.CLEARINGHOUSE_FILE_EXTENSION,
+          claims: c.CLEARINGHOUSE_CLAIM_EXTENSION,
           eligibility: c.CLEARINGHOUSE_ELIGIBILITY_EXTENSION,
-          claimStatus: c.CLEARINGHOUSE_CLAIM_STATUS_EXTENSION
+          claimStatus: c.CLEARINGHOUSE_STATUS_EXTENSION
         },
         afterDownload: c.CLEARINGHOUSE_AFTER_DOWNLOAD,
         realtimeUrl: c.CLEARINGHOUSE_REALTIME_URL || null

@@ -23,8 +23,8 @@ describe('parseMockConfig', () => {
   it('reads the payers without ERA enrollment as trimmed upper-case IDs', () => {
     const c = parseMockConfig({
       ...required,
-      CLEARINGHOUSE_REMIT_DELAY_SECONDS: '0',
-      CLEARINGHOUSE_ERA_UNENROLLED: ' mcr, ,bcbs '
+      CHOUSE_REMIT_DELAY_SECONDS: '0',
+      CHOUSE_ERA_UNENROLLED: ' mcr, ,bcbs '
     });
     assert.equal(c.remitDelayMs, 0);
     assert.deepEqual(c.eraUnenrolled, new Set(['MCR', 'BCBS']));

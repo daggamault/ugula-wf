@@ -21,8 +21,8 @@ const ID = '01a16617-7704-7ba6-b9b5-9c79fa44f966';
 const deps: Parameters<typeof createApp>[0] = {
   config: {
     NODE_ENV: 'test',
-    HTTP_CORS_ORIGINS: ORIGIN,
-    HTTP_MAX_BODY_BYTES: 1024,
+    API_CORS_ORIGINS: ORIGIN,
+    API_MAX_BODY_BYTES: 1024,
     SSE_URL: 'http://localhost:3002',
     WEB_URL: ORIGIN,
     SFTP_HOOK_SECRET: 'x'.repeat(32)

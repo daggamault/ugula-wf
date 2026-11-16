@@ -16,8 +16,8 @@ const rawEnv = {
   S3_ENDPOINT: 'http://localhost:9000',
   S3_REGION: 'us-east-1',
   S3_BUCKET: 'ugula',
-  S3_ACCESS_KEY_ID: 'key',
-  S3_SECRET_ACCESS_KEY: 'secret',
+  S3_ACCESS_KEY: 'key',
+  S3_SECRET_KEY: 'secret',
   EMBEDDINGS_URL: 'http://localhost:8080',
   COMPLETIONS_URL: 'http://localhost:8081',
   COMPLETIONS_MODEL: 'qwen'
@@ -27,10 +27,10 @@ describe('worker parseConfig', () => {
   it('parses valid env, defaults workflow concurrency, and rejects missing vars', () => {
     const config = parseConfig(rawEnv);
     assert.equal(config.DB_PORT, 5432);
-    assert.equal(config.WORKFLOW_CONCURRENCY, 8);
-    assert.equal(parseConfig({ ...rawEnv, WORKFLOW_CONCURRENCY: '2' }).WORKFLOW_CONCURRENCY, 2);
+    assert.equal(config.WORKER_RUN_CONCURRENCY, 8);
+    assert.equal(parseConfig({ ...rawEnv, WORKER_RUN_CONCURRENCY: '2' }).WORKER_RUN_CONCURRENCY, 2);
     assert.throws(() => parseConfig({}));
-    assert.throws(() => parseConfig({ ...rawEnv, WORKFLOW_CONCURRENCY: '0' }));
+    assert.throws(() => parseConfig({ ...rawEnv, WORKER_RUN_CONCURRENCY: '0' }));
     assert.throws(() => parseConfig({ ...rawEnv, COMPLETIONS_URL: undefined }));
   });
 
@@ -63,7 +63,7 @@ describe('worker parseConfig', () => {
         CLEARINGHOUSE_SFTP_PASSWORD: 'secret',
         CLEARINGHOUSE_SFTP_HOST_KEY: HOST_KEY,
         CLEARINGHOUSE_DOWNLOAD_PATHS: '/outbound/999, /outbound/835',
-        CLEARINGHOUSE_FILE_EXTENSION: '.CLP',
+        CLEARINGHOUSE_CLAIM_EXTENSION: '.CLP',
         CLEARINGHOUSE_ELIGIBILITY_EXTENSION: '.ELG',
         CLEARINGHOUSE_REALTIME_URL: 'http://localhost:2224/core/realtime'
       })
@@ -97,7 +97,7 @@ describe('worker parseConfig', () => {
     assert.throws(() => parseConfig(unpinned), /CLEARINGHOUSE_SFTP_HOST_KEY/);
     assert.throws(() => parseConfig({ ...unpinned, CLEARINGHOUSE_SFTP_HOST_KEY: 'ab:cd' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_DOWNLOAD_PATHS: 'outbound' }));
-    assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_FILE_EXTENSION: 'xtxt' }));
+    assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_CLAIM_EXTENSION: 'xtxt' }));
     assert.throws(() => parseConfig({ ...rawEnv, CLEARINGHOUSE_POLL_MINUTES: '60' }));
   });
 });

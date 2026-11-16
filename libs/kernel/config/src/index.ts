@@ -37,8 +37,8 @@ export const s3EnvEntries = {
   S3_ENDPOINT: urlString,
   S3_REGION: nonEmpty,
   S3_BUCKET: nonEmpty,
-  S3_ACCESS_KEY_ID: nonEmpty,
-  S3_SECRET_ACCESS_KEY: nonEmpty
+  S3_ACCESS_KEY: nonEmpty,
+  S3_SECRET_KEY: nonEmpty
 } as const;
 
 export const inferenceEnvEntries = {

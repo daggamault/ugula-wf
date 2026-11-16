@@ -75,7 +75,7 @@ export const stopWorker = async ({ jobs, live, boss, db, redis }: Running, timeo
 
 if (import.meta.main) {
   const config = parseConfig(process.env);
-  const db = createDb({ ...connection(config), max: poolSize(config.WORKFLOW_CONCURRENCY) });
+  const db = createDb({ ...connection(config), max: poolSize(config.WORKER_RUN_CONCURRENCY) });
   const boss = createWorker(config);
   await boss.start();
   const redis = new Redis({
@@ -88,8 +88,8 @@ if (import.meta.main) {
       endpoint: config.S3_ENDPOINT,
       region: config.S3_REGION,
       bucket: config.S3_BUCKET,
-      accessKeyId: config.S3_ACCESS_KEY_ID,
-      secretAccessKey: config.S3_SECRET_ACCESS_KEY
+      accessKeyId: config.S3_ACCESS_KEY,
+      secretAccessKey: config.S3_SECRET_KEY
     })
   );
   await blobs.ensureBucket();
@@ -148,7 +148,7 @@ if (import.meta.main) {
           completer: createCompleter({
             url: config.COMPLETIONS_URL,
             model: config.COMPLETIONS_MODEL,
-            limit: createCompletionLimiter(redis, config.COMPLETIONS_CONCURRENCY),
+            limit: createCompletionLimiter(redis, config.WORKER_COMPLETIONS_CONCURRENCY),
             fetch: guardedFetch
           })
         }
@@ -165,7 +165,7 @@ if (import.meta.main) {
     boss,
     runner,
     store,
-    concurrency: config.WORKFLOW_CONCURRENCY,
+    concurrency: config.WORKER_RUN_CONCURRENCY,
     gate: createLoadGate(createProcessSampler(), {
       eventLoop: config.WORKER_MAX_EVENT_LOOP_UTILIZATION,
       heapBytes: config.WORKER_MAX_HEAP_MB

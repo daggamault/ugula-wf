@@ -84,9 +84,9 @@ Each agency can set its own clearinghouse connection in Settings (Clearinghouse 
 | `CLEARINGHOUSE_SFTP_HOST_KEY`          | the mock's fixed `SHA256:VM15…`       | from TriZetto                          | from Waystar                  |
 | `CLEARINGHOUSE_UPLOAD_PATH`            | `/upload`                             | the upload folder they give you        | `/upload` (write-only)        |
 | `CLEARINGHOUSE_DOWNLOAD_PATHS`         | `/download`                           | one folder each for 999, 277CA and 835 | `/download`                   |
-| `CLEARINGHOUSE_FILE_EXTENSION` (837P)  | `.CLP`                                | `.txt`                                 | `.CLP`                        |
+| `CLEARINGHOUSE_CLAIM_EXTENSION` (837P) | `.CLP`                                | `.txt`                                 | `.CLP`                        |
 | `CLEARINGHOUSE_ELIGIBILITY_EXTENSION`  | `.ELG`                                | `.txt`                                 | `.ELG`                        |
-| `CLEARINGHOUSE_CLAIM_STATUS_EXTENSION` | `.CLS`                                | `.txt`                                 | `.CLS` (assumed; confirm)     |
+| `CLEARINGHOUSE_STATUS_EXTENSION`       | `.CLS`                                | `.txt`                                 | `.CLS` (assumed; confirm)     |
 | `CLEARINGHOUSE_AFTER_DOWNLOAD`         | `delete`                              | `delete`                               | `delete` or `keep`            |
 | `CLEARINGHOUSE_REALTIME_URL`           | `http://localhost:2224/core/realtime` | empty (batch only)                     | from Waystar (not public yet) |
 
@@ -94,14 +94,14 @@ Response files are recognized by content (ISA/GS/ST, or a TA1 segment), not by n
 
 ## Mock clearinghouse
 
-`apps/chouse` is a dev-only, in-memory clearinghouse that follows Waystar's conventions, so moving to Waystar is a settings change. `pnpm dev` starts it (`pnpm --filter @ugula/chouse dev` alone): SFTP on `CLEARINGHOUSE_SFTP_HOST`:`CLEARINGHOUSE_SFTP_PORT` for `CLEARINGHOUSE_SFTP_USERNAME` / `CLEARINGHOUSE_SFTP_PASSWORD`, and CORE real-time eligibility and claim status on `CLEARINGHOUSE_REALTIME_PORT`. Files and claim states live in memory and are gone on restart. Its host key is derived from a fixed seed, so its fingerprint never changes: `MOCK_HOST_KEY` in `@ugula/billing`, which the mock preset and `.env.example` pin.
+`apps/chouse` is a dev-only, in-memory clearinghouse that follows Waystar's conventions, so moving to Waystar is a settings change. `pnpm dev` starts it (`pnpm --filter @ugula/chouse dev` alone): SFTP on `CLEARINGHOUSE_SFTP_HOST`:`CLEARINGHOUSE_SFTP_PORT` for `CLEARINGHOUSE_SFTP_USERNAME` / `CLEARINGHOUSE_SFTP_PASSWORD`, and CORE real-time eligibility and claim status on `CHOUSE_REALTIME_PORT`. Files and claim states live in memory and are gone on restart. Its host key is derived from a fixed seed, so its fingerprint never changes: `MOCK_HOST_KEY` in `@ugula/billing`, which the mock preset and `.env.example` pin.
 
 - Upload to the write-only `/upload` folder: 837P files as `<name>.CLP`, batch 270s as `<name>.ELG`, batch 276s as `<name>.CLS`, with no other periods in the name (`.part`, `.tmp` and `.filepart` uploads wait until renamed). About 2s later the file is picked up and removed.
 - Answers arrive in `/download` as `<ISA06>_<type>_<yyyyMMddHHmmss>_<seq>.<ext>` and are recognized by content:
   - an interchange not addressed to `WAYSTAR` or `ZIRMED` (ISA08) gets a rejected `.TA1` and nothing else;
   - `.999` acknowledges the group (AK1 = the 837 GS06); an unreadable 837P gets a rejected 999 (`AK9*R`);
   - `.277` (277CA) has one status per claim (TRN = CLM01): accepted, or rejected with "Invalid member ID" when the subscriber member ID starts with `REJECT`;
-  - `.835` follows after `CLEARINGHOUSE_REMIT_DELAY_SECONDS` (default 20) for accepted claims, one transaction per payer, 80% paid and the rest a CO-45, except payers listed in `CLEARINGHOUSE_ERA_UNENROLLED` (no ERA enrollment, so no 835);
+  - `.835` follows after `CHOUSE_REMIT_DELAY_SECONDS` (default 20) for accepted claims, one transaction per payer, 80% paid and the rest a CO-45, except payers listed in `CHOUSE_ERA_UNENROLLED` (no ERA enrollment, so no 835);
   - `.271` answers each 270 inquiry: active coverage, inactive when the member ID starts with `INACTIVE`, naming a Medicare Advantage plan when it starts with `ADVANTAGE`, and reporting a hospital inpatient or SNF stay admitted on the date of service when it starts with `INPATIENT` or `SNF`;
   - `.277` (claim status, 005010X212) answers each 276: in process (A2) for an accepted claim, paid (F1) once its 835 went out, rejected (A3), or not found (A4) for a claim it never saw.
 - `POST /core/realtime` takes a CAQH CORE multipart envelope (Basic auth, `PayloadType` `X12_270_Request_005010X279A1` or `X12_276_Request_005010X212`) and returns the 271 or 277 in the same envelope.

@@ -100,7 +100,7 @@ export const createApp = ({
   sealSecret
 }: AppDeps) => {
   const app = new Hono();
-  const origins = config.HTTP_CORS_ORIGINS.split(',').map((o) => o.trim());
+  const origins = config.API_CORS_ORIGINS.split(',').map((o) => o.trim());
   const sessions = createSessionStore(redis);
   const auth = createAuthService({ db, sessions, throttle: createSignInThrottle(redis) });
   const authenticate = async (token: string | undefined) => {
@@ -110,7 +110,7 @@ export const createApp = ({
   const protect = <E extends AuthEnv>(routes: Hono<E>) =>
     new Hono<E>().use(requireAuth(authenticate)).route('/', routes);
   const limitBody = bodyLimit({
-    maxSize: config.HTTP_MAX_BODY_BYTES,
+    maxSize: config.API_MAX_BODY_BYTES,
     onError: (c) => c.json({ error: 'Request body too large' }, 413)
   });
 
@@ -139,7 +139,7 @@ export const createApp = ({
     boss,
     blobs,
     announce,
-    maxBytes: config.IMPORT_FILE_MAX_BYTES,
+    maxBytes: config.API_MAX_IMPORT_BYTES,
     sftp: sftpStorage(config)
   });
   const agencies = createAgencyService({ db });
@@ -180,16 +180,16 @@ export const createApp = ({
     .route(
       '/runs',
       createRunRoutes(
-        createRunService({ db, boss, blobs, maxBytes: config.IMPORT_FILE_MAX_BYTES }),
-        config.IMPORT_FILE_MAX_BYTES
+        createRunService({ db, boss, blobs, maxBytes: config.API_MAX_IMPORT_BYTES }),
+        config.API_MAX_IMPORT_BYTES
       )
     )
     .use('/tasks/*', guardMethods({ ...read('tasks:read'), POST: 'tasks:update' }))
     .route(
       '/tasks',
       createTaskRoutes(
-        createTaskService({ db, boss, announce, blobs, maxBytes: config.IMPORT_FILE_MAX_BYTES }),
-        config.IMPORT_FILE_MAX_BYTES
+        createTaskService({ db, boss, announce, blobs, maxBytes: config.API_MAX_IMPORT_BYTES }),
+        config.API_MAX_IMPORT_BYTES
       )
     )
     .use(
@@ -265,7 +265,7 @@ export const createApp = ({
     .use('/reports/*', guardMethods(read('reports:read')))
     .route('/reports', createReportRoutes(createReportService({ db, now: () => new Date() })))
     .use('/imports/*', guardMethods({ ...read('imports:read'), POST: 'imports:create' }))
-    .route('/imports', createImportRoutes(imports, config.IMPORT_FILE_MAX_BYTES))
+    .route('/imports', createImportRoutes(imports, config.API_MAX_IMPORT_BYTES))
     .use(
       '/payer-files/*',
       guardMethods({ ...read('payer_files:read'), POST: 'payer_files:create' })
@@ -277,9 +277,9 @@ export const createApp = ({
           db,
           boss,
           blobs,
-          maxBytes: config.IMPORT_FILE_MAX_BYTES
+          maxBytes: config.API_MAX_IMPORT_BYTES
         }),
-        config.IMPORT_FILE_MAX_BYTES
+        config.API_MAX_IMPORT_BYTES
       )
     );
   app.route('/api/imports/sftp', createSftpRoutes(imports, config.SFTP_HOOK_SECRET));
@@ -314,8 +314,8 @@ if (import.meta.main) {
       endpoint: config.S3_ENDPOINT,
       region: config.S3_REGION,
       bucket: config.S3_BUCKET,
-      accessKeyId: config.S3_ACCESS_KEY_ID,
-      secretAccessKey: config.S3_SECRET_ACCESS_KEY
+      accessKeyId: config.S3_ACCESS_KEY,
+      secretAccessKey: config.S3_SECRET_KEY
     })
   );
 

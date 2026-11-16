@@ -4,7 +4,7 @@ import { parseConfig } from './config.ts';
 
 const env = {
   SSE_PORT: '3002',
-  HTTP_CORS_ORIGINS: 'http://localhost:3000',
+  SSE_CORS_ORIGINS: 'http://localhost:3000',
   DB_HOST: 'localhost',
   DB_PORT: '5432',
   DB_USER: 'ugula',
@@ -23,6 +23,6 @@ describe('sse parseConfig', () => {
     assert.equal(config.REDIS_PORT, 6379);
     assert.throws(() => parseConfig({ SSE_PORT: '3002' }));
     assert.throws(() => parseConfig({ ...env, SSE_PORT: 'http' }));
-    assert.throws(() => parseConfig({ ...env, HTTP_CORS_ORIGINS: '' }));
+    assert.throws(() => parseConfig({ ...env, SSE_CORS_ORIGINS: '' }));
   });
 });

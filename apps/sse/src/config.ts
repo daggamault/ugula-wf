@@ -3,7 +3,7 @@ import * as v from 'valibot';
 
 const configSchema = v.object({
   SSE_PORT: portInt,
-  HTTP_CORS_ORIGINS: nonEmpty,
+  SSE_CORS_ORIGINS: nonEmpty,
   ...dbEnvEntries,
   ...redisEnvEntries
 });

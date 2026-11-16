@@ -61,7 +61,7 @@ if (import.meta.main) {
       hub,
       sessions: createSessionStore(new Redis(redis)),
       canOpenAgency: (userId, agencyId) => canOpenAgency(db, userId, agencyId),
-      origins: config.HTTP_CORS_ORIGINS.split(',').map((o) => o.trim())
+      origins: config.SSE_CORS_ORIGINS.split(',').map((o) => o.trim())
     })
   }).listen(config.SSE_PORT);
 }
