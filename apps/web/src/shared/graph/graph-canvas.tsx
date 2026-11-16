@@ -14,13 +14,14 @@ import {
   connect,
   connectionKind,
   type Decorations,
+  disconnectPin,
   type GraphFlowNode,
   moveNodes,
   removeEdges,
   removeNodes,
   toFlow
 } from './flow.ts';
-import { GraphNode } from './graph-node.tsx';
+import { GraphNode, PinBreak } from './graph-node.tsx';
 
 type GraphCanvasProps = Decorations & {
   def: GraphDef;
@@ -110,6 +111,7 @@ export const GraphCanvas = ({
   );
   useEffect(() => clicks.cancel, [clicks]);
   selectedRef.current = selected;
+  const reconnected = useRef(true);
 
   useEffect(() => {
     setNodes((prev) => {
@@ -132,60 +134,76 @@ export const GraphCanvas = ({
 
   return (
     <div className="h-full min-h-96 w-full">
-      <ReactFlow<GraphFlowNode, Edge>
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        colorMode={theme}
-        className="[--xy-background-color:var(--color-canvas)] [--xy-background-pattern-color:var(--color-border)] [--xy-edge-stroke-width:2]"
-        fitView
-        fitViewOptions={{ maxZoom: 1, padding: 0.15, nodes: opening }}
-        minZoom={0.15}
-        zoomOnDoubleClick={false}
-        nodesDraggable={editable}
-        nodesConnectable={editable}
-        deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
-        onNodesChange={(changes) => setNodes((ns) => applyNodeChanges(changes, ns))}
-        onEdgesChange={(changes) => setEdges((es) => applyEdgeChanges(changes, es))}
-        onNodeClick={(_, node) =>
-          node.data.ghost
-            ? undefined
-            : clicks.click(node.id, node.data.opens !== null && onOpen !== undefined)
-        }
-        onPaneClick={() => onSelect(null)}
-        onNodeDoubleClick={(_, node) => clicks.doubleClick(node.id, node.data.opens !== null)}
-        onNodeDragStop={(_, __, dragged) =>
-          onChange?.(moveNodes(def, Object.fromEntries(dragged.map((n) => [n.id, n.position]))))
-        }
-        onNodesDelete={(deleted) =>
-          onChange?.(
-            removeNodes(
-              def,
-              deleted.map((n) => n.id)
-            )
-          )
-        }
-        onEdgesDelete={(deleted) =>
-          onChange?.(
-            removeEdges(
-              def,
-              deleted.map((e) => e.id)
-            )
-          )
-        }
-        onConnect={(c) => onChange?.(connect(def, catalog, c))}
-        isValidConnection={(c) =>
-          connectionKind(def, catalog, {
-            source: c.source,
-            target: c.target,
-            sourceHandle: c.sourceHandle ?? null,
-            targetHandle: c.targetHandle ?? null
-          }) !== null
-        }
+      <PinBreak
+        value={onChange ? (node, pin, side) => onChange(disconnectPin(def, node, pin, side)) : null}
       >
-        <Background gap={24} />
-        <Controls showInteractive={false} />
-      </ReactFlow>
+        <ReactFlow<GraphFlowNode, Edge>
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          colorMode={theme}
+          className="[--xy-background-color:var(--color-canvas)] [--xy-background-pattern-color:var(--color-border)] [--xy-edge-stroke-width:2]"
+          fitView
+          fitViewOptions={{ maxZoom: 1, padding: 0.15, nodes: opening }}
+          minZoom={0.15}
+          zoomOnDoubleClick={false}
+          nodesDraggable={editable}
+          nodesConnectable={editable}
+          deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
+          onNodesChange={(changes) => setNodes((ns) => applyNodeChanges(changes, ns))}
+          onEdgesChange={(changes) => setEdges((es) => applyEdgeChanges(changes, es))}
+          onNodeClick={(_, node) =>
+            node.data.ghost
+              ? undefined
+              : clicks.click(node.id, node.data.opens !== null && onOpen !== undefined)
+          }
+          onPaneClick={() => onSelect(null)}
+          onNodeDoubleClick={(_, node) => clicks.doubleClick(node.id, node.data.opens !== null)}
+          onNodeDragStop={(_, __, dragged) =>
+            onChange?.(moveNodes(def, Object.fromEntries(dragged.map((n) => [n.id, n.position]))))
+          }
+          onNodesDelete={(deleted) =>
+            onChange?.(
+              removeNodes(
+                def,
+                deleted.map((n) => n.id)
+              )
+            )
+          }
+          onEdgesDelete={(deleted) =>
+            onChange?.(
+              removeEdges(
+                def,
+                deleted.map((e) => e.id)
+              )
+            )
+          }
+          onConnect={(c) => onChange?.(connect(def, catalog, c))}
+          edgesReconnectable={editable}
+          onReconnectStart={() => {
+            reconnected.current = false;
+          }}
+          onReconnect={(old, c) => {
+            reconnected.current = true;
+            onChange?.(connect(removeEdges(def, [old.id]), catalog, c));
+          }}
+          onReconnectEnd={(_, old) => {
+            if (!reconnected.current) onChange?.(removeEdges(def, [old.id]));
+            reconnected.current = true;
+          }}
+          isValidConnection={(c) =>
+            connectionKind(def, catalog, {
+              source: c.source,
+              target: c.target,
+              sourceHandle: c.sourceHandle ?? null,
+              targetHandle: c.targetHandle ?? null
+            }) !== null
+          }
+        >
+          <Background gap={24} />
+          <Controls showInteractive={false} />
+        </ReactFlow>
+      </PinBreak>
     </div>
   );
 };

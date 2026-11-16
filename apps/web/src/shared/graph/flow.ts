@@ -200,6 +200,18 @@ export const removeEdges = (def: GraphDef, ids: readonly string[]): GraphDef => 
   edges: def.edges.filter((e) => !ids.includes(edgeId(e)))
 });
 
+export const disconnectPin = (
+  def: GraphDef,
+  node: string,
+  pin: string,
+  side: 'in' | 'out'
+): GraphDef => ({
+  ...def,
+  edges: def.edges.filter((e) =>
+    side === 'in' ? !(e.to === node && e.toPin === pin) : !(e.from === node && e.fromPin === pin)
+  )
+});
+
 export const moveNodes = (
   def: GraphDef,
   positions: Readonly<Record<string, { x: number; y: number }>>

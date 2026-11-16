@@ -8,6 +8,7 @@ import {
   arranged,
   connect,
   connectionKind,
+  disconnectPin,
   edgeId,
   moveNodes,
   placed,
@@ -139,6 +140,12 @@ describe('editing', () => {
     assert.ok(removed.nodes.some((n) => n.id === 'entry'));
     assert.equal(removed.edges.length, 0);
     assert.equal(removeEdges(def, ['entry:exec->return1:exec']).edges.length, 0);
+  });
+
+  it('disconnects every wire on one side of a pin and nothing else', () => {
+    assert.equal(disconnectPin(def, 'entry', 'exec', 'out').edges.length, 0);
+    assert.equal(disconnectPin(def, 'return1', 'exec', 'in').edges.length, 0);
+    assert.equal(disconnectPin(def, 'entry', 'exec', 'in').edges.length, def.edges.length);
   });
 
   it('moves, updates and refreshes nodes immutably', () => {
