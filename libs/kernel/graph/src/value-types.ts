@@ -177,3 +177,26 @@ export const unknownKinds = (type: ValueType, kinds: ValueKinds): string[] => {
   if ('list' in type) return unknownKinds(type.list, kinds);
   return Object.values(type.object).flatMap((t) => unknownKinds(t, kinds));
 };
+
+export const fieldType = (type: ValueType, path: string): ValueType | null => {
+  const keys = path.split('.');
+  if (keys.some((k) => !k)) return null;
+  let cur: ValueType = type;
+  for (const key of keys) {
+    if (cur === 'any') return 'any';
+    if (typeof cur !== 'object' || !('object' in cur) || !Object.hasOwn(cur.object, key))
+      return null;
+    cur = cur.object[key] as ValueType;
+  }
+  return cur;
+};
+
+export type FieldPath = { path: string; type: ValueType };
+
+export const fieldPaths = (type: ValueType, prefix = ''): FieldPath[] =>
+  typeof type === 'object' && 'object' in type
+    ? Object.entries(type.object).flatMap(([k, t]) => {
+        const path = prefix ? `${prefix}.${k}` : k;
+        return [{ path, type: t }, ...fieldPaths(t, path)];
+      })
+    : [];

@@ -3,7 +3,7 @@ import { pin, pureNode } from '../define.ts';
 import { evaluateExpr, exprProblem, freeIdentifiers } from '../expr.ts';
 import type { NodeDef, PinSpec } from '../types.ts';
 
-export const validExpressions = <T>(sourcesOf: (input: T) => string[]) =>
+const validExpressions = <T>(sourcesOf: (input: T) => string[]) =>
   v.check<T, (issue: v.CheckIssue<T>) => string>(
     (input) => sourcesOf(input).every((src) => exprProblem(src) === null),
     (issue) =>

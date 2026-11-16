@@ -22,7 +22,7 @@ export const CONDITION_OPS = [
 
 export type ConditionOp = (typeof CONDITION_OPS)[number];
 
-const conditionSchema = v.strictObject({
+export const conditionSchema = v.strictObject({
   op: v.picklist(CONDITION_OPS),
   value: v.exactOptional(jsonSchema)
 });
@@ -176,7 +176,7 @@ const numberOf = (x: Json) => {
   return Number.isFinite(n) ? n : null;
 };
 
-const isEmpty = (x: Json) => x === null || x === '' || (Array.isArray(x) && x.length === 0);
+export const isEmpty = (x: Json) => x === null || x === '' || (Array.isArray(x) && x.length === 0);
 
 const anyOf = (x: Json, test: (item: Json) => boolean) =>
   Array.isArray(x) ? x.some(test) : test(x);

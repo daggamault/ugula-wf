@@ -1405,7 +1405,7 @@ const workDraftClaim = (): GraphDef => {
   g.add('patient', 'billing.claim-patient', { label: 'Claim Patient' });
   g.add('patientName', 'std.text.template', {
     label: 'Patient Name',
-    config: { template: '{{ demographics.firstName }} {{ demographics.lastName }}' }
+    config: { template: '{demographics.firstName} {demographics.lastName}' }
   });
   g.add('payers', 'billing.determine-payers', { label: 'Determine Payers' });
   g.add('bill', 'billing.bill-claim', { label: 'Bill the Claim' });

@@ -113,3 +113,14 @@ export const nodeDocumentationIssues = (def: NodeDef): Issue[] => {
     : exitIssues(Object.keys(def.exits ?? {}), def.exits);
   return issues.map((i) => ({ ...i, node: def.type }));
 };
+
+export const nameLabel = (name: string) =>
+  name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+
+export const pathLabel = (path: string) => path.split('.').map(nameLabel).join(' › ');

@@ -1,21 +1,27 @@
 import * as v from 'valibot';
 import { pin, pureNode } from '../define.ts';
 import { fail } from '../errors.ts';
-import { createEvaluator } from '../expr.ts';
 import { MAX_RANGE } from '../expr-functions.ts';
-import { toText } from '../json.ts';
+import { getPath, toText } from '../json.ts';
 import type { Json, NodeDef } from '../types.ts';
-import { identifierPins, oneLine, validExpressions } from './expression.ts';
+import { oneLine } from './expression.ts';
 
 const CATEGORY = 'Text';
 
-const PLACEHOLDER = /\{\{([\s\S]+?)\}\}/g;
+const PLACEHOLDER = /\{\s*([A-Za-z_$][\w$]*)((?:\.[\w$]+)*)\s*\}/g;
 
-export const templateExpressions = (template: string) =>
-  [...template.matchAll(PLACEHOLDER)].map((m) => (m[1] ?? '').trim());
+const placeholderNames = (template: string) => [
+  ...new Set([...template.matchAll(PLACEHOLDER)].map((m) => m[1] ?? ''))
+];
 
 const templateConfig = v.object({
-  template: v.pipe(v.string(), validExpressions(templateExpressions))
+  template: v.pipe(
+    v.optional(v.string(), ''),
+    v.check(
+      (t) => placeholderNames(t).every((n) => !(n in Object.prototype)),
+      'A placeholder uses a reserved name'
+    )
+  )
 });
 
 const TEXT = { description: 'The text to work on.' };
@@ -52,22 +58,27 @@ const testNode = (key: string, title: string, fn: (s: string, part: string) => b
 export const textNodes: NodeDef[] = [
   pureNode<v.InferOutput<typeof templateConfig>>({
     type: 'std.text.template',
-    title: 'Template',
+    title: 'Text Template',
     category: CATEGORY,
     description:
-      'Builds text from a pattern such as "Claim {{ claim.number }} for {{ name }}", filling in each name between double braces.',
-    level: 'advanced',
-    keywords: ['text', 'format', 'message', 'merge'],
+      'Builds text from a pattern such as "Claim {number} for {name}"; each name in braces is a value to connect, and {patient.name} reads a field of one. Empty values leave nothing behind.',
+    level: 'basic',
+    keywords: ['text', 'template', 'format', 'message', 'merge', 'subject', 'summary'],
     summary: ({ template }) => oneLine(template),
     config: templateConfig,
-    inputs: ({ template }) => identifierPins(templateExpressions(template)),
+    inputs: ({ template }) =>
+      placeholderNames(template).map((name) =>
+        pin(name, 'any', { optional: true, description: 'A value the text fills in.' })
+      ),
     outputs: [pin('text', 'string', { description: 'The finished text.' })],
-    compute: (inputs, { template }, ctx) => {
-      const run = createEvaluator({ now: ctx.now });
-      return {
-        text: template.replace(PLACEHOLDER, (_, src: string) => toText(run(src.trim(), inputs)))
-      };
-    }
+    compute: (inputs, { template }) => ({
+      text: template
+        .replace(PLACEHOLDER, (_, name: string, path: string) =>
+          toText(getPath(inputs[name] ?? null, path))
+        )
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim()
+    })
   }),
   pureNode({
     type: 'std.text.length',

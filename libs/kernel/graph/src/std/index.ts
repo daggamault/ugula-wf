@@ -1,6 +1,9 @@
 import type { NodeDef } from '../types.ts';
+import { chooseNodes } from './choose.ts';
+import { conditionNodes } from './conditions.ts';
 import { convertNodes } from './convert.ts';
 import { expressionNodes } from './expression.ts';
+import { fieldNodes } from './fields.ts';
 import { flowNodes } from './flow.ts';
 import { createHttpNodes, type HttpDeps } from './http.ts';
 import { createHumanTaskNode } from './human.ts';
@@ -21,9 +24,12 @@ export const createStdNodes = (deps: StdDeps): NodeDef[] => [
   ...mathNodes,
   ...expressionNodes,
   ...logicNodes,
+  ...conditionNodes,
+  ...chooseNodes,
   ...textNodes,
   ...listNodes,
   ...objectNodes,
+  ...fieldNodes,
   ...tableNodes,
   ...convertNodes,
   ...timeNodes,

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { invokeNode } from '../testing.ts';
 import type { Json, Values } from '../types.ts';
-import { templateExpressions, textNodes } from './text.ts';
+import { textNodes } from './text.ts';
 
 const run = async (type: string, inputs: Values, config: Json = {}) => {
   const def = textNodes.find((d) => d.type === type);
@@ -12,27 +12,26 @@ const run = async (type: string, inputs: Values, config: Json = {}) => {
 
 describe('text nodes', () => {
   it('fills templates whose placeholders become inputs', async () => {
-    assert.deepEqual(templateExpressions('{{ a }} and {{b.c}}'), ['a', 'b.c']);
     const tpl = await run(
       'std.text.template',
       { claim: { id: 'C1' }, n: 2 },
-      { template: 'Claim {{ claim.id }} has {{n}} lines' }
+      { template: 'Claim {claim.id} has { n } lines for {claim.payer} {missing}  today' }
     );
     assert.deepEqual(
       tpl.signature.inputs.map((p) => p.name),
-      ['claim', 'n']
+      ['claim', 'n', 'missing']
     );
-    assert.deepEqual(tpl.outputs, { text: 'Claim C1 has 2 lines' });
-    assert.deepEqual((await run('std.text.template', {}, { template: '[{{ x }}]' })).outputs, {
+    assert.deepEqual(tpl.outputs, { text: 'Claim C1 has 2 lines for today' });
+    assert.deepEqual((await run('std.text.template', {}, { template: ' [{x}] ' })).outputs, {
       text: '[]'
     });
     assert.deepEqual(
-      (await run('std.text.template', {}, { template: 'plain' })).signature.inputs,
+      (await run('std.text.template', {}, { template: 'plain {} {1a}' })).signature.inputs,
       []
     );
     await assert.rejects(
-      () => run('std.text.template', {}, { template: 'Hi {{ name. }}' }),
-      /Expected name/
+      () => run('std.text.template', {}, { template: 'Hi {constructor}' }),
+      /reserved name/
     );
   });
 
@@ -88,8 +87,8 @@ describe('template summary', () => {
   it('shows the pattern on one line', () => {
     const template = textNodes.find((n) => n.type === 'std.text.template');
     assert.equal(
-      template?.summary?.({ template: 'Claim {{ id }}\nfor {{ name }}' }),
-      'Claim {{ id }} for {{ name }}'
+      template?.summary?.({ template: 'Claim {id}\nfor {name}' }),
+      'Claim {id} for {name}'
     );
     assert.equal(template?.summary?.({ template: '' }), null);
   });
