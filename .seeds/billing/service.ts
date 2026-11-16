@@ -424,7 +424,7 @@ const levelOfService = (): GraphDef => {
     config: shared.decision(
       'billing.service-level',
       'Level of Service',
-      'Decides BLS, ALS1, ALS2 or SCT from the level of care, CMS service level, IV/IO medications, ALS2 procedures and the ALS assessment.',
+      'Decides BLS, ALS1, ALS2 or SCT from the level of care, CMS service level, IV/IO medications, ALS2 procedures and the ALS assessment. ALS crew staffing alone is not ALS1: CMS needs an ALS assessment or an ALS intervention (42 CFR 414.605).',
       table(
         [
           field('levelOfCare', 'string', 'Level of care provided · eDisposition.32'),
@@ -472,11 +472,6 @@ const levelOfService = (): GraphDef => {
             label: 'Crew reported ALS2',
             when: { cmsServiceLevel: is('2650005') },
             set: { level: 'ALS2' }
-          },
-          {
-            label: 'ALS care documented',
-            when: { levelOfCare: oneOf('4232003', '4232005') },
-            set: { level: 'ALS1' }
           },
           {
             label: 'ALS assessment performed and warranted',
@@ -614,14 +609,27 @@ const nonCoveredMiles = (): GraphDef => {
     config: shared.decision(
       'billing.non-covered-miles',
       'Non-Covered Miles',
-      'Decides when the miles past the closest hospital (ePayment.48) are billed as non-covered (A0888 with GY): when the patient chose a farther facility.',
+      'Decides when the miles past the closest hospital (ePayment.48) are billed as non-covered (A0888 with GY): when the patient, the family or the physician chose a farther facility, by the transport reason or the reason for choosing the destination (eDisposition.20).',
       table(
         [
           field('transportReason', 'string', 'Transport reason (CR104)'),
+          field(
+            'destinationReason',
+            'string',
+            'Reason for choosing the destination · eDisposition.20'
+          ),
           field('excessMiles', 'number', 'Miles past the closest hospital')
         ],
         [field('nonCovered', 'boolean', 'Bill the excess as non-covered')],
         [
+          {
+            label: "The patient's, family's or physician's choice of a farther facility",
+            when: {
+              destinationReason: oneOf('4220015', '4220005', '4220017'),
+              excessMiles: above(0)
+            },
+            set: { nonCovered: true }
+          },
           {
             label: 'The patient chose a farther facility',
             when: { transportReason: oneOf('B', 'C'), excessMiles: above(0) },
@@ -640,6 +648,9 @@ const nonCoveredMiles = (): GraphDef => {
   g.wire('entry.loadedMiles', 'excess.loadedMiles');
   g.wire('documentation.closestFacilityMiles', 'excess.closest');
   g.wire('reason.transportReason', 'decide.transportReason');
+  g.add('locations', 'billing.location-facts.break');
+  g.wire('facts.locations', 'locations.locations');
+  g.wire('locations.destinationReason', 'decide.destinationReason');
   g.wire('excess.result', 'decide.excessMiles', 'miles.whenTrue');
   g.wire('decide.nonCovered', 'miles.condition');
   g.wire('miles.result', 'return.nonCoveredMiles');
