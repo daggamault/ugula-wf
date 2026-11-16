@@ -166,11 +166,14 @@ export const createTableService = ({ db }: { db: Db }) => {
         await touch(tx, 'data_tables', tableId);
         return ok({ version: draft.version });
       }),
-    remove: async (access: AgencyAccess, tableId: string) => {
-      const table = await editable(db, access, tableId);
-      if (!table.ok) return table;
-      return (await setActive(db, 'data_tables', tableId, false)) ? ok({ id: tableId }) : notFound;
-    }
+    remove: (access: AgencyAccess, tableId: string) =>
+      db.transaction().execute(async (tx) => {
+        const table = await editable(tx, access, tableId);
+        if (!table.ok) return table;
+        return (await setActive(tx, 'data_tables', tableId, false))
+          ? ok({ id: tableId })
+          : notFound;
+      })
   };
 };
 
