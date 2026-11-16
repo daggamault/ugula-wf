@@ -75,7 +75,8 @@ const whereConfig = v.object({
 });
 
 const makeConfig = v.object({
-  count: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(32)), 2)
+  count: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(32)), 2),
+  type: v.optional(valueTypeSchema, 'any')
 });
 
 const isBlank = (x: Json) => x === null || x === '';
@@ -323,14 +324,34 @@ export const listNodes: NodeDef[] = [
     level: 'basic',
     keywords: ['list', 'build', 'create', 'array'],
     config: makeConfig,
-    inputs: ({ count }) =>
+    inputs: ({ count, type }) =>
       Array.from({ length: count }, (_, i) =>
-        pin(`item${i + 1}`, 'any', { optional: true, description: 'An item of the list.' })
+        pin(`item${i + 1}`, type, { optional: true, description: 'An item of the list.' })
       ),
-    outputs: [pin('list', ANY_LIST, { description: 'The list.' })],
+    outputs: ({ type }) => [pin('list', { list: type }, { description: 'The list.' })],
     compute: (inputs, { count }) => ({
       list: Array.from({ length: count }, (_, i) => inputs[`item${i + 1}`] ?? null).filter(
         (x) => !isBlank(x)
+      )
+    })
+  }),
+  pureNode<v.InferOutput<typeof makeConfig>>({
+    type: 'std.list.join',
+    title: 'Join Lists',
+    category: CATEGORY,
+    description:
+      'Joins the lists connected to it into one, in order, such as the issues every check found.',
+    level: 'basic',
+    keywords: ['list', 'join', 'concat', 'combine', 'merge', 'append'],
+    config: makeConfig,
+    inputs: ({ count, type }) =>
+      Array.from({ length: count }, (_, i) =>
+        pin(`list${i + 1}`, { list: type }, { optional: true, description: 'A list to add.' })
+      ),
+    outputs: ({ type }) => [pin('list', { list: type }, { description: 'Every item, in order.' })],
+    compute: (inputs, { count }) => ({
+      list: Array.from({ length: count }, (_, i) => inputs[`list${i + 1}`] ?? []).flatMap((x) =>
+        Array.isArray(x) ? x : []
       )
     })
   }),

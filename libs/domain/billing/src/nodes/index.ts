@@ -4,6 +4,7 @@ import { claimNodes } from './claims.ts';
 import { cycleNodes } from './cycle.ts';
 import { documentationNodes } from './documentation.ts';
 import { exchangeNodes } from './exchange.ts';
+import { issueNodes } from './issues.ts';
 import { narrativeNodes } from './narrative.ts';
 import { patientNodes } from './patients.ts';
 import { payerFileNodes } from './payer-files.ts';
@@ -54,6 +55,7 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
     payerFileNodes,
     exchangeNodes,
     documentationNodes,
+    issueNodes,
     recoveryNodes,
     scheduleNodes
   ].flatMap((nodes) => nodes(storesOf));

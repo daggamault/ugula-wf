@@ -210,6 +210,14 @@ describe('field list nodes', () => {
     );
     assert.deepEqual(pair.outputs, { list: [0, false] });
     await assert.rejects(() => invokeNode(node('std.list.make'), { config: { count: 33 } }));
+    const typed = await invokeNode(node('std.list.make'), { config: { type: 'integer' } });
+    assert.deepEqual(typed.signature.outputs[0]?.type, { list: 'integer' });
+    const joined = await invokeNode(node('std.list.join'), {
+      config: { count: 3, type: 'string' },
+      inputs: { list1: ['a'], list3: ['b', 'c'] }
+    });
+    assert.deepEqual(joined.outputs, { list: ['a', 'b', 'c'] });
+    assert.deepEqual(joined.signature.inputs[0]?.type, { list: 'string' });
     assert.deepEqual(
       (await invokeNode(node('std.list.compact'), { inputs: { list: ['a', null, ''] } })).outputs,
       { list: ['a'] }
