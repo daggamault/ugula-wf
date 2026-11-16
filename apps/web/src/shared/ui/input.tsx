@@ -19,7 +19,7 @@ export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'className'
 };
 
 const inputClasses = classNamesOf(
-  'read-only:bg-canvas read-only:text-surface-fg-muted h-10 pointer-coarse:h-11 [&::-webkit-calendar-picker-indicator]:cursor-pointer',
+  'read-only:bg-canvas read-only:text-surface-fg-muted h-10 pointer-coarse:h-11 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&:is([type=date],[type=datetime-local])]:uppercase',
   fieldControlClasses
 );
 

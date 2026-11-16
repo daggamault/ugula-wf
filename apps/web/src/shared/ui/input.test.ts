@@ -32,4 +32,11 @@ describe('Input', () => {
     assert.ok(html.includes('focus-visible:outline-primary') && html.includes('required=""'));
     assert.ok(html.includes('aria-hidden="true" class="text-danger ml-0.5">*</span>'));
   });
+
+  it('shows the date placeholder in capitals, as MM/DD/YYYY', () => {
+    const html = renderToStaticMarkup(
+      createElement(Input, { id: 'd', label: 'Date', type: 'date' })
+    );
+    assert.ok(html.includes('[&amp;:is([type=date],[type=datetime-local])]:uppercase'));
+  });
 });
