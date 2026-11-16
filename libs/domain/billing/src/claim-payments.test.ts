@@ -72,6 +72,29 @@ describe('readPayment', () => {
     );
   });
 
+  it('rounds dollars to the nearest cent and caps a payment at one million dollars', () => {
+    const cents = (paid: unknown) => {
+      const payment = readPayment({ coverageId: 'cov-1', paid });
+      return typeof payment === 'object' ? payment.paidCents : payment;
+    };
+    assert.equal(cents(0.1 + 0.2), 30);
+    assert.equal(cents(12.345), 1235);
+    assert.equal(cents(0), 0);
+    assert.equal(cents(null), 0);
+    assert.equal(cents(1_000_000), 100_000_000);
+    assert.equal(cents(1_000_000.01), 'Enter amounts of zero or more');
+    for (const paid of ['12.50', Number.NaN, Number.POSITIVE_INFINITY, -0.01]) {
+      assert.equal(cents(paid), 'Enter amounts of zero or more');
+    }
+  });
+
+  it('falls back to a routing message when the route gives none', () => {
+    assert.equal(
+      readPayment(entry, { ...posting('review'), message: '' }),
+      'Remittance Routing leaves this payment to be posted another way'
+    );
+  });
+
   it('says what is wrong with an entry it cannot post', () => {
     assert.equal(readPayment({}), 'A patient payment needs an amount');
     assert.equal(

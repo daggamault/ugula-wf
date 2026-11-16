@@ -2,22 +2,23 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { feeYearOf, isRurality, type MedicareFee, medicareAllowed } from './medicare-fees.ts';
 
-const fees: MedicareFee[] = [
-  {
-    code: 'A0425',
-    urbanCents: 933,
-    ruralCents: 942,
-    superRuralCents: null,
-    ruralShortTripCents: 1413
-  },
-  {
-    code: 'A0427',
-    urbanCents: 70_975,
-    ruralCents: 71_671,
-    superRuralCents: 87_869,
-    ruralShortTripCents: null
-  }
-];
+const mileage: MedicareFee = {
+  code: 'A0425',
+  urbanCents: 933,
+  ruralCents: 942,
+  superRuralCents: null,
+  ruralShortTripCents: 1413
+};
+
+const als: MedicareFee = {
+  code: 'A0427',
+  urbanCents: 70_975,
+  ruralCents: 71_671,
+  superRuralCents: 87_869,
+  ruralShortTripCents: null
+};
+
+const fees = [mileage, als];
 
 const lines = [
   { code: 'A0427', units: 1, chargeCents: null },
@@ -66,6 +67,81 @@ describe('medicareAllowed', () => {
     assert.deepEqual(
       medicareAllowed(charged, fees, 'urban').lines.map((l) => l.allowedCents),
       [70_975, 8_000]
+    );
+  });
+
+  // 42 CFR 414.610(c)(5)(i): rural ground miles 1-17 are paid at 150% of the rural
+  // mileage rate (1.5 x 942 = 1413 cents) and miles 18 and up at the rural rate. The
+  // super-rural bonus (414.610(c)(5)(ii)) raises only the base rate.
+  it('pays exactly 17 rural miles at the short trip rate and the 18th at the rural rate', () => {
+    const at = (units: number) =>
+      medicareAllowed([{ code: 'A0425', units, chargeCents: null }], fees, 'rural').totalCents;
+    assert.equal(at(17), 24_021);
+    assert.equal(at(17.1), 24_115);
+    assert.equal(at(18), 24_963);
+    assert.equal(at(20.5), 27_318);
+  });
+
+  it('pays super-rural miles like rural miles and its base at the super-rural rate', () => {
+    assert.deepEqual(
+      medicareAllowed(
+        [
+          { code: 'A0427', units: 1, chargeCents: null },
+          { code: 'A0425', units: 18, chargeCents: null }
+        ],
+        fees,
+        'superRural'
+      ),
+      {
+        lines: [
+          { code: 'A0427', units: 1, allowedCents: 87_869 },
+          { code: 'A0425', units: 18, allowedCents: 24_963 }
+        ],
+        totalCents: 112_832,
+        missing: []
+      }
+    );
+  });
+
+  it('falls back to the rural base rate when a code has no super-rural rate', () => {
+    const noBonus: MedicareFee[] = [{ ...als, superRuralCents: null }];
+    assert.equal(
+      medicareAllowed([{ code: 'A0427', units: 1, chargeCents: null }], noBonus, 'superRural')
+        .totalCents,
+      71_671
+    );
+  });
+
+  it('pays every rural mile at the rural rate when there is no short trip rate', () => {
+    const flat: MedicareFee[] = [{ ...mileage, ruralShortTripCents: null }];
+    assert.equal(
+      medicareAllowed([{ code: 'A0425', units: 10, chargeCents: null }], flat, 'rural').totalCents,
+      9_420
+    );
+  });
+
+  it('rounds half cents up', () => {
+    const half = [{ code: 'A0425', units: 0.5, chargeCents: null }];
+    assert.equal(medicareAllowed(half, fees, 'urban').totalCents, 467);
+    assert.equal(medicareAllowed(half, fees, 'rural').totalCents, 707);
+  });
+
+  it('allows a rural charge below the fee schedule', () => {
+    assert.deepEqual(
+      medicareAllowed([{ code: 'A0425', units: 18, chargeCents: 20_000 }], fees, 'rural').lines,
+      [{ code: 'A0425', units: 18, allowedCents: 20_000 }]
+    );
+  });
+
+  it('allows nothing when no line has a Medicare fee', () => {
+    assert.deepEqual(medicareAllowed([], fees, 'rural'), { lines: [], totalCents: 0, missing: [] });
+    assert.deepEqual(
+      medicareAllowed([{ code: 'A0427', units: 1, chargeCents: null }], [], 'urban'),
+      {
+        lines: [],
+        totalCents: 0,
+        missing: ['A0427']
+      }
     );
   });
 

@@ -49,6 +49,21 @@ describe('readLines', () => {
     assert.throws(() => readLines([{ code: 'a427', units: 1 }]), /Line 1 has no valid HCPCS/);
     assert.throws(() => readLines([{ code: 'A0427', units: 0 }]), /positive number of units/);
   });
+
+  it('rejects lines that are not objects and units that are not finite positive numbers', () => {
+    assert.throws(() => readLines([null]), /^Error: Line 1 has no valid HCPCS code$/);
+    assert.throws(() => readLines(['A0427']), /^Error: Line 1 has no valid HCPCS code$/);
+    for (const units of [Number.NaN, Number.POSITIVE_INFINITY, -1, '2', null]) {
+      assert.throws(
+        () =>
+          readLines([
+            { code: 'A0427', units: 1 },
+            { code: 'A0425', units }
+          ]),
+        /^Error: Line 2 \(A0425\) needs a positive number of units$/
+      );
+    }
+  });
 });
 
 describe('priceLines', () => {
@@ -105,6 +120,28 @@ describe('priceLines rounding', () => {
     const { lines } = priceLines(readLines([{ code: 'A0425', units: 12.31 }]), { A0425: 1000 });
     assert.deepEqual(lines, [{ code: 'A0425', units: 12.4, unitCents: 1000, totalCents: 12400 }]);
   });
+
+  it('rounds half cents up', () => {
+    assert.deepEqual(
+      priceLines(
+        [
+          { code: 'A0425', units: 0.5 },
+          { code: 'A0425', units: 0.1 }
+        ],
+        { A0425: 1005 }
+      ).lines.map((l) => l.totalCents),
+      [503, 101]
+    );
+    assert.equal(priceLines([{ code: 'A0425', units: 0.1 }], { A0425: 15 }).totalCents, 2);
+  });
+
+  it('prices nothing from an empty schedule', () => {
+    assert.deepEqual(priceLines([{ code: 'A0427', units: 1 }], {}), {
+      lines: [],
+      totalCents: 0,
+      missing: ['A0427']
+    });
+  });
 });
 
 describe('isTransport', () => {
@@ -122,6 +159,20 @@ describe('readPricedLines', () => {
       () => readPricedLines([{ code: 'A0427', units: 1 }]),
       /Line 1 [(]A0427[)] has not been priced/
     );
+  });
+
+  it('needs both whole, non-negative cents on every line', () => {
+    for (const cents of [
+      { unitCents: 95000 },
+      { totalCents: 95000 },
+      { unitCents: 950.5, totalCents: 950.5 },
+      { unitCents: -1, totalCents: -1 }
+    ]) {
+      assert.throws(
+        () => readPricedLines([{ code: 'A0427', units: 1, ...cents }]),
+        /^Error: Line 1 \(A0427\) has not been priced$/
+      );
+    }
   });
 });
 
