@@ -60,17 +60,24 @@ const setup = (rows: ReturnType<typeof row>[], withFallback = true, withKey = tr
     return [];
   });
   const reports: string[] = [];
-  const sent: { sender: string; receiver: string }[] = [];
-  const fetchCore: typeof fetch = async (_, init) => {
-    const form = init?.body as FormData;
-    sent.push({ sender: String(form.get('SenderID')), receiver: String(form.get('ReceiverID')) });
-    return new Response('down', { status: 503 });
-  };
+  const sent: { via: string; sender: string; receiver: string }[] = [];
+  const fetchVia =
+    (via: string): typeof fetch =>
+    async (_, init) => {
+      const form = init?.body as FormData;
+      sent.push({
+        via,
+        sender: String(form.get('SenderID')),
+        receiver: String(form.get('ReceiverID'))
+      });
+      return new Response('down', { status: 503 });
+    };
   const connections = createConnections({
     db,
     keyring: withKey ? keyring : null,
     fallback: withFallback ? fallback : null,
-    fetch: fetchCore,
+    fetch: fetchVia('server'),
+    agencyFetch: fetchVia('public'),
     realtimeTimeoutMs: 1000,
     report: (m) => reports.push(m)
   });
@@ -111,13 +118,13 @@ describe('createConnections', () => {
     );
   });
 
-  it('sends real-time requests from the uppercased submitter ID to the profile receiver ID', async () => {
+  it('sends real-time requests from the uppercased submitter ID, to agency URLs only over public addresses', async () => {
     const { connections, sent } = setup([row('t1', 'acme')]);
     await (await connections.forAgency('t1'))?.checkEligibility?.('ISA~');
     await (await connections.forAgency('t2'))?.checkEligibility?.('ISA~');
     assert.deepEqual(sent, [
-      { sender: 'SUB01', receiver: 'WAYSTAR' },
-      { sender: 'SUB09', receiver: 'ZIRMED' }
+      { via: 'public', sender: 'SUB01', receiver: 'WAYSTAR' },
+      { via: 'server', sender: 'SUB09', receiver: 'ZIRMED' }
     ]);
   });
 

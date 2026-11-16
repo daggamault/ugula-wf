@@ -2,6 +2,7 @@ import { HOST_KEY_PATTERN } from '@ugula/billing';
 import {
   dbEnvEntries,
   inferenceEnvEntries,
+  nodeEnvSchema,
   nonEmpty,
   portInt,
   posInt,
@@ -60,6 +61,7 @@ const clearinghouseEntries = {
 };
 
 const baseSchema = v.object({
+  NODE_ENV: v.optional(nodeEnvSchema, 'production'),
   ...dbEnvEntries,
   ...redisEnvEntries,
   ...s3EnvEntries,

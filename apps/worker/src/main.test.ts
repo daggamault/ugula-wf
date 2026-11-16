@@ -6,6 +6,7 @@ import { createWorker, poolSize, stopWorker } from './main.ts';
 describe('worker createWorker', () => {
   it('creates a PgBoss instance from parsed config', () => {
     const boss = createWorker({
+      NODE_ENV: 'test',
       DB_HOST: 'localhost',
       DB_PORT: 5432,
       DB_USER: 'ugula',

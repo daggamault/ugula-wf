@@ -70,6 +70,7 @@ export const createCoreRealtime =
     try {
       const res = await c.fetch(c.url, {
         method: 'POST',
+        redirect: 'manual',
         headers: {
           authorization: `Basic ${Buffer.from(`${c.username}:${c.password}`).toString('base64')}`
         },

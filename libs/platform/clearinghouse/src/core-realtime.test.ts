@@ -21,13 +21,19 @@ const config = (fetch: typeof globalThis.fetch, timeoutMs = 1000) => ({
 });
 
 describe('createCoreRealtime', () => {
-  it('posts a CORE 2.2.0 envelope with Basic auth and returns the payload', async () => {
-    const seen: { url: string; auth: string | null; fields: Record<string, string> }[] = [];
+  it('posts a CORE 2.2.0 envelope with Basic auth, never following redirects, and returns the payload', async () => {
+    const seen: {
+      url: string;
+      redirect: RequestInit['redirect'];
+      auth: string | null;
+      fields: Record<string, string>;
+    }[] = [];
     const send = createCoreRealtime(
       config(async (url, init) => {
         const form = init?.body as FormData;
         seen.push({
           url: String(url),
+          redirect: init?.redirect,
           auth: new Headers(init?.headers).get('authorization'),
           fields: Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]))
         });
@@ -48,6 +54,7 @@ describe('createCoreRealtime', () => {
     assert.deepEqual(seen, [
       {
         url: 'http://ch.test/core/realtime',
+        redirect: 'manual',
         auth: `Basic ${Buffer.from('agency:s3cret').toString('base64')}`,
         fields: {
           PayloadType: 'X12_270_Request_005010X279A1',

@@ -27,6 +27,7 @@ type ConnectionDeps = {
   keyring: SecretKeyring | null;
   fallback: ConnectionSettings | null;
   fetch: typeof fetch;
+  agencyFetch: typeof fetch;
   realtimeTimeoutMs: number;
   report: (message: string) => void;
 };
@@ -142,9 +143,9 @@ export const createConnections = (deps: ConnectionDeps) => {
       deps.report(`Clearinghouse: the password of agency ${r.agency_id} cannot be opened`);
     }
   };
-  const realtime = (parties: Parties): Realtime => ({
+  const realtime = (parties: Parties, fetch = deps.fetch): Realtime => ({
     ...parties,
-    fetch: deps.fetch,
+    fetch,
     timeoutMs: deps.realtimeTimeoutMs
   });
   const partiesOf = async (agencyId: string): Promise<Parties> => {
@@ -163,7 +164,13 @@ export const createConnections = (deps: ConnectionDeps) => {
       if (row) {
         const settings = row.enabled ? settingsOf(row) : null;
         return settings
-          ? connect(settings, realtime({ senderId: row.submitter_id, receiverId: row.receiver_id }))
+          ? connect(
+              settings,
+              realtime(
+                { senderId: row.submitter_id, receiverId: row.receiver_id },
+                deps.agencyFetch
+              )
+            )
           : null;
       }
       return deps.fallback ? connect(deps.fallback, realtime(await partiesOf(agencyId))) : null;

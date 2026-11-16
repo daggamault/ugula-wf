@@ -102,6 +102,7 @@ if (import.meta.main) {
   const agencyOf = createAgencyOf(db, scope.agencyOf);
   const announce = createAnnouncer(agencyOf, publish);
   const guardedFetch = scope.fetch(fetch);
+  const publicFetch = scope.fetch(createPublicFetch(fetch));
   const report = (message: string) => process.stderr.write(`${message}\n`);
   const connections = createConnections({
     db,
@@ -110,6 +111,7 @@ if (import.meta.main) {
       : null,
     fallback: clearinghouseOf(config),
     fetch: guardedFetch,
+    agencyFetch: config.NODE_ENV === 'development' ? guardedFetch : publicFetch,
     realtimeTimeoutMs: config.CLEARINGHOUSE_REALTIME_TIMEOUT_SECONDS * 1000,
     report
   });
@@ -118,7 +120,7 @@ if (import.meta.main) {
     store,
     engines: createEngineCache({
       nodes: createNodeCatalog({
-        fetch: scope.fetch(createPublicFetch(fetch)),
+        fetch: publicFetch,
         reports: scope.guard(announceImports(createReportStore(db, blobs, agencyOf), announce)),
         billing: {
           patients: scope.guard(createPatientStore(db)),
