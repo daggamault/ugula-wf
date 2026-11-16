@@ -28,6 +28,17 @@ const contextOf = (rows: RowsFor = () => []) => {
   return { c, queries };
 };
 
+const EVENT_COLUMNS = 8;
+
+const eventRows = (queries: { sql: string; parameters: readonly unknown[] }[]) =>
+  queries
+    .filter((q) => q.sql.startsWith('insert into "claim_events"'))
+    .flatMap((q) =>
+      Array.from({ length: q.parameters.length / EVENT_COLUMNS }, (_, i) =>
+        q.parameters.slice(i * EVENT_COLUMNS, (i + 1) * EVENT_COLUMNS)
+      )
+    );
+
 const group = (groupControlNumber: string) => ({
   groupControlNumber,
   accepted: true,
@@ -71,7 +82,7 @@ describe('payer file acknowledgments', () => {
     assert.match(out.envelopeRejection ?? '', /rejected the file envelope: interchange 55/);
   });
 
-  it('records the batch rejection with the agency, control number, reason and time', async () => {
+  it('records a TA1 rejection on each claim of the batch and on the file, not on the batch', async () => {
     const { c, queries } = contextOf(({ sql }) =>
       sql.includes('from "claim_batches" as "b"')
         ? [{ claim_id: 'c1', coverage_id: 'cov1', number: '20261105-0007' }]
@@ -80,23 +91,13 @@ describe('payer file acknowledgments', () => {
     const out = await postInterchangeAcknowledgments(c, [
       { controlNumber: '000000055', status: 'rejected', noteCode: '', message: 'Bad ID' }
     ]);
-    const update = queries.find((q) => q.sql.startsWith('update "claim_batches"'));
-    assert.equal(
-      update?.sql,
-      'update "claim_batches" set "rejected_at" = $1, "rejection" = $2 where "agency_id" = $3 and "control_number" = $4'
-    );
-    assert.deepEqual(update?.parameters, [c.now, 'Bad ID (TA1 note not given)', 't1', 55]);
+    assert.ok(!queries.some((q) => q.sql.startsWith('update')));
+    const lookup = queries.find((q) => q.sql.includes('from "claim_batches" as "b"'));
+    assert.deepEqual(lookup?.parameters, ['t1', 55, 'submitted', 'resubmitted']);
     const note =
       'The clearinghouse rejected the file envelope of 837P file 55: Bad ID (TA1 note not given)';
-    const event = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
-    assert.deepEqual(event?.parameters, [
-      'c1',
-      'rejected',
-      'cov1',
-      note,
-      null,
-      null,
-      'd:000000055:c1'
+    assert.deepEqual(eventRows(queries), [
+      ['t1', 'c1', 'rejected', 'cov1', note, null, null, 'd:000000055:c1']
     ]);
     assert.deepEqual(out, {
       items: [
@@ -204,22 +205,27 @@ describe('payer file acknowledgments', () => {
         ['c1', 'rejected', 'The clearinghouse rejected 837P file 8']
       ]
     );
-    const events = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.equal(queries.filter((q) => q.sql.startsWith('insert into "claim_events"')).length, 1);
     assert.deepEqual(
-      events.map((q) => q.parameters[6]),
-      ['d:7:c1', 'd:8:c1']
+      eventRows(queries).map((p) => [p[1], p[3], p[7]]),
+      [
+        ['c1', 'cov1', 'd:7:c1'],
+        ['c1', 'cov1', 'd:8:c1']
+      ]
     );
   });
 
   it('posts 277CA acknowledgments against the coverage last submitted', async () => {
     const claims: Record<string, string> = { '20261105-1001': 'c1', '20261105-1002': 'c2' };
     const { c, queries } = contextOf(({ sql, parameters }) => {
-      if (sql.startsWith('select "id", "status" from "claims"')) {
-        const id = claims[String(parameters[1])];
-        return id ? [{ id, status: 'submitted' }] : [];
+      if (sql.startsWith('select "id", "number", "status" from "claims"')) {
+        return parameters.flatMap((n) => {
+          const id = claims[String(n)];
+          return id ? [{ id, number: n, status: 'submitted' }] : [];
+        });
       }
-      if (sql.startsWith('select "coverage_id" from "claim_events"')) {
-        return parameters[0] === 'c1' ? [{ coverage_id: 'cov1' }] : [];
+      if (sql.includes('"claim_id", "coverage_id" from "claim_events"')) {
+        return parameters.includes('c1') ? [{ claim_id: 'c1', coverage_id: 'cov1' }] : [];
       }
       return [];
     });
@@ -256,17 +262,19 @@ describe('payer file acknowledgments', () => {
       ]
     );
     assert.equal(out.envelopeRejection, null);
-    const coverage = queries.find((q) => q.sql.startsWith('select "coverage_id"'));
-    assert.deepEqual(coverage?.parameters, ['c1', 'submitted', 'resubmitted', 1]);
     assert.deepEqual(
-      queries
-        .filter((q) => q.sql.startsWith('insert into "claim_events"'))
-        .map((q) => q.parameters),
-      [
-        ['c1', 'accepted', 'cov1', 'Accepted (A1)', 'PCN-1', null, 'd:1'],
-        ['c1', 'rejected', 'cov1', 'Rejected (A7, A8): Missing NPI', null, null, 'd:2']
-      ]
+      queries.filter((q) => q.sql.includes('from "claims"')).map((q) => q.parameters),
+      [['t1', '20261105-1001', '20261105-1002', '20261105-9999']]
     );
+    assert.deepEqual(
+      queries.filter((q) => q.sql.includes('from "claim_events"')).map((q) => q.parameters),
+      [['c1', 'c2', 'submitted', 'resubmitted']]
+    );
+    assert.equal(queries.filter((q) => q.sql.startsWith('insert into "claim_events"')).length, 1);
+    assert.deepEqual(eventRows(queries), [
+      ['t1', 'c1', 'accepted', 'cov1', 'Accepted (A1)', 'PCN-1', null, 'd:1'],
+      ['t1', 'c1', 'rejected', 'cov1', 'Rejected (A7, A8): Missing NPI', null, null, 'd:2']
+    ]);
   });
 
   it('sends a claim status for a claim never submitted from here to a biller', async () => {

@@ -110,17 +110,22 @@ describe('payer file items', () => {
       now: new Date(),
       postings: []
     };
-    await recordPayerEvent(c, 'c1', 'cov1', {
-      kind: 'accepted',
-      note: 'Accepted (A1)',
-      payerClaimNumber: 'PCN-9',
-      key: '3'
-    });
+    await recordPayerEvents(c, [
+      {
+        claimId: 'c1',
+        coverageId: 'cov1',
+        kind: 'accepted',
+        note: 'Accepted (A1)',
+        payerClaimNumber: 'PCN-9',
+        key: '3'
+      }
+    ]);
     assert.deepEqual(
       queries.map((q) => q.sql.split(' ').slice(0, 3).join(' ')),
       ['insert into "claim_events"', 'insert into "signals"', 'select "id", state']
     );
     assert.deepEqual(queries[0]?.parameters, [
+      't1',
       'c1',
       'accepted',
       'cov1',
@@ -129,7 +134,7 @@ describe('payer file items', () => {
       null,
       'abc:3'
     ]);
-    assert.ok(queries[0]?.sql.endsWith('returning "id"'));
+    assert.ok(queries[0]?.sql.endsWith('on conflict ("claim_id", "source_key") do nothing'));
     assert.deepEqual(queries[1]?.parameters, ['t1', 'claim:c1', 1]);
     assert.deepEqual(queries[2]?.parameters, ['t1', 'claim:c1', 'suspended']);
   });

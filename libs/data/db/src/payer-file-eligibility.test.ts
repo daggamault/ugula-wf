@@ -76,7 +76,13 @@ describe('payer file eligibility', () => {
     queries.filter((q) => q.sql.startsWith('update "claim_coverages"')).map((q) => q.parameters);
 
   const events = (queries: { sql: string; parameters: readonly unknown[] }[]) =>
-    queries.filter((q) => q.sql.startsWith('insert into "claim_events"')).map((q) => q.parameters);
+    queries
+      .filter((q) => q.sql.startsWith('insert into "claim_events"'))
+      .flatMap((q) =>
+        Array.from({ length: q.parameters.length / 8 }, (_, i) =>
+          q.parameters.slice(i * 8, i * 8 + 8)
+        )
+      );
 
   it('saves an active result with its stay and records the label with the note', async () => {
     const { c, queries } = traced();
@@ -95,6 +101,7 @@ describe('payer file eligibility', () => {
     ]);
     assert.deepEqual(events(queries), [
       [
+        't1',
         'c1',
         'eligibility',
         COVERAGE,
@@ -121,7 +128,7 @@ describe('payer file eligibility', () => {
     const out = await postEligibility(c, [{ ...result(COVERAGE), active: false }]);
     assert.deepEqual(saves(queries), [['inactive', null, c.now, null, null, null, COVERAGE]]);
     assert.deepEqual(
-      events(queries).map((p) => p[3]),
+      events(queries).map((p) => p[4]),
       ['Coverage not active']
     );
     assert.deepEqual(
@@ -138,7 +145,7 @@ describe('payer file eligibility', () => {
     ]);
     assert.deepEqual(saves(queries), []);
     assert.deepEqual(
-      events(queries).map((p) => [p[3], p[6]]),
+      events(queries).map((p) => [p[4], p[7]]),
       [
         ['The payer did not say', 'd:1'],
         ['Call the payer', 'd:2']

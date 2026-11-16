@@ -152,7 +152,7 @@ describe('createRunStore', () => {
     );
     assert.equal(
       queries[0]?.sql,
-      'update "workflow_runs" set "status" = $1, "lease_until" = $2, "lease_token" = $3, "updated_at" = now() where "id" = $4 and "lease_token" = $5'
+      'update "workflow_runs" set "status" = $1, "lease_expires_at" = $2, "lease_token" = $3, "updated_at" = now() where "id" = $4 and "lease_token" = $5'
     );
     assert.deepEqual(queries[0]?.parameters, ['completed', null, null, 'r1', 'l1']);
     await db.destroy();
