@@ -19,8 +19,8 @@ Every billing decision should be readable on the canvas, built from small primit
 
 ### 1. Primitives (`libs/kernel/graph`)
 
-- [x] **Rule per item:** Map With Rule, Filter With Rule, Find With Rule call a pure `node` graph once per item, keep types, and are pinned with the graph like any subworkflow.
-- [ ] Decision tables give the matched rule's label or the `otherwise` label as the reason, so rules stop rebuilding reasons.
+- [x] **Rule per item:** Run Rule for Each, Keep Items Where and Find Item Where call a pure `node` graph once per item, keep types, and are pinned with the graph like any subworkflow.
+- [x] Decision tables give the matched rule's label or the `otherwise` label as the reason, so rules stop rebuilding reasons.
 - [ ] Missing primitives the rewrites need: money text, start of period, round to a step and direction, drop empty fields, sum and count by field.
 - [ ] Comparison, logic, math, text, list and time primitives become `basic`.
 

@@ -50,7 +50,7 @@ A slot is a subworkflow whose system version hands its inputs straight back (`sl
 
 ## Shared tables
 
-Decision and lookup table nodes either carry their rules inline or reference a shared table: `config: { inputs, outputs, table: { key } }` (decision) or `{ type, table: { key } }` (lookup). The node keeps the fields, so its pins never depend on the table; the table holds the rules.
+Decision and lookup table nodes either carry their rules inline or reference a shared table: `config: { inputs, outputs, table: { key } }` (decision) or `{ type, table: { key } }` (lookup). The node keeps the fields, so its pins never depend on the table; the table holds the rules. A decision table can also name the reason for when no rule holds (`otherwiseLabel`), and its **Why** output (`reasons`) gives the matching rule's label or that reason, so a rule wires its reasons straight from the table.
 
 - Tables live in `data_tables` / `data_table_versions` with the same scopes, `base_version_id`, one draft and immutable published versions as graphs. Their **contract** is their fields: input and output names and types (decision) or the value type (lookup) (`tableContract`).
 - When a run starts, `pinRunGraphs` also pins every table its graphs reference into `workflow_run_tables`, agency first, then system; an agency copy applies only while its contract matches the newest system version. Child runs reuse their parent's pins.

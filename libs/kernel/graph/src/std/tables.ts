@@ -48,10 +48,12 @@ const lookupConfig = v.object({
 });
 
 const hasFields = ({ inputs, outputs }: { inputs: unknown[]; outputs: { name: string }[] }) =>
-  !outputs.some((o) => o.name === 'rule' || o.name === 'rules' || o.name === 'matched') &&
-  inputs.length > 0;
+  !outputs.some((o) => RESERVED_OUTPUTS.includes(o.name)) && inputs.length > 0;
 
-const FIELDS_MESSAGE = 'Add at least one input, and do not name outputs rule, rules or matched';
+const RESERVED_OUTPUTS = ['rule', 'rules', 'matched', 'reasons'];
+
+const FIELDS_MESSAGE =
+  'Add at least one input, and do not name outputs rule, rules, matched or reasons';
 
 const decideConfig = v.pipe(
   v.object({
@@ -64,7 +66,8 @@ const decideConfig = v.pipe(
         set: v.optional(valuesSchema)
       })
     ),
-    otherwise: v.optional(valuesSchema)
+    otherwise: v.optional(valuesSchema),
+    otherwiseLabel: v.optional(v.pipe(v.string(), v.trim()))
   }),
   v.check((c) => hasFields(c), FIELDS_MESSAGE),
   v.check(
@@ -140,7 +143,8 @@ const inlined = (config: Record<string, Json>, table: Record<string, Json>): Jso
     ? {
         ...own,
         rules: table.rules ?? [],
-        ...(table.otherwise ? { otherwise: table.otherwise } : {})
+        ...(table.otherwise ? { otherwise: table.otherwise } : {}),
+        ...(table.otherwiseLabel ? { otherwiseLabel: table.otherwiseLabel } : {})
       }
     : {
         ...own,
@@ -229,7 +233,8 @@ export const decide = (config: DecideConfig, inputs: Values): Values => {
     ...Object.fromEntries(config.outputs.map((o) => [o.name, values[o.name] ?? null])),
     rule: first?.label ?? null,
     rules: hits.map((r) => r.label),
-    matched: first !== undefined
+    matched: first !== undefined,
+    reasons: first ? [first.label] : config.otherwiseLabel ? [config.otherwiseLabel] : []
   };
 };
 
@@ -294,7 +299,7 @@ export const tableNodes: NodeDef[] = [
     title: 'Decision Table',
     category: CATEGORY,
     description:
-      'Checks rules from top to bottom, its own or a shared table, and outputs the values of the first rule whose conditions all hold, or the otherwise values. Also outputs the matching rule and every rule that held, as reasons.',
+      'Checks rules from top to bottom, its own or a shared table, and outputs the values of the first rule whose conditions all hold, or the otherwise values. Also says why: the matching rule, or the reason given for when no rule holds.',
     level: 'basic',
     keywords: ['table', 'decision', 'rule', 'rules', 'condition', 'if'],
     summary: (config) =>
@@ -327,7 +332,16 @@ export const tableNodes: NodeDef[] = [
           description: 'Every rule whose conditions all held, as reasons.'
         }
       ),
-      pin('matched', 'boolean', { description: 'Whether any rule held.' })
+      pin('matched', 'boolean', { description: 'Whether any rule held.' }),
+      pin(
+        'reasons',
+        { list: 'string' },
+        {
+          label: 'Why',
+          description:
+            'The label of the matching rule, or the reason given for when no rule holds, as a list to show the biller.'
+        }
+      )
     ],
     compute: (inputs, config) => {
       if ('table' in config) throw unresolved(config.table.key);

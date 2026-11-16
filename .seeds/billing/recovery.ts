@@ -169,24 +169,16 @@ const denialCategory = (): GraphDef => {
             set: { suggestion: 'appeal' }
           }
         ],
-        { suggestion: 'appeal' }
+        { suggestion: 'appeal' },
+        'No reason code points elsewhere, so an appeal is suggested'
       )
     )
   });
-  g.add(
-    'reasons',
-    'std.expr',
-    expr(
-      'Why',
-      'rule != null ? [rule] : ["No reason code points elsewhere, so an appeal is suggested"]'
-    )
-  );
   g.ret('return');
   g.wire('entry.denial', 'denial.denial');
   for (const f of ['route', 'codes', 'payerKind']) g.wire(`denial.${f}`, `decide.${f}`);
   g.wire('decide.suggestion', 'return.suggestion');
-  g.wire('decide.rule', 'reasons.rule');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('decide.reasons', 'return.reasons');
   return g.def;
 };
 
@@ -286,15 +278,11 @@ const correctionMethod = (): GraphDef => {
             set: { method: 'void', frequency: '8' }
           }
         ],
-        { method: 'replacement', frequency: '7' }
+        { method: 'replacement', frequency: '7' },
+        'Replace the claim the payer has on file (frequency 7)'
       )
     )
   });
-  g.add(
-    'reasons',
-    'std.expr',
-    expr('Why', 'rule != null ? [rule] : ["Replace the claim the payer has on file (frequency 7)"]')
-  );
   g.ret('return');
   g.wire('entry.denial', 'denial.denial');
   g.wire('entry.payerClaimNumber', 'adjudicated.payerClaimNumber');
@@ -308,8 +296,7 @@ const correctionMethod = (): GraphDef => {
   g.wire('entry.correction', 'decide.correction');
   g.wire('decide.method', 'return.method');
   g.wire('decide.frequency', 'return.frequency');
-  g.wire('decide.rule', 'reasons.rule');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('decide.reasons', 'return.reasons');
   return g.def;
 };
 
@@ -461,23 +448,18 @@ const appealDecision = (): GraphDef => {
             set: { decision: 'partial' }
           }
         ],
-        { decision: 'upheld' }
+        { decision: 'upheld' },
+        'The payer paid nothing after the appeal'
       )
     )
   });
-  g.add(
-    'reasons',
-    'std.expr',
-    expr('Why', 'rule != null ? [rule] : ["The payer paid nothing after the appeal"]')
-  );
   g.ret('return');
   g.wire('entry.paidCents', 'paid.paidCents');
   g.wire('entry.balanceCents', 'settled.balanceCents');
   g.wire('paid.result', 'decide.paid');
   g.wire('settled.result', 'decide.settled');
   g.wire('decide.decision', 'return.decision');
-  g.wire('decide.rule', 'reasons.rule');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('decide.reasons', 'return.reasons');
   return g.def;
 };
 
@@ -509,24 +491,19 @@ const dueRule = (
         [field('payerKind', 'string', 'Claim filing indicator of the payer, or patient')],
         [field('days', 'integer', 'Days allowed')],
         rows.map((r) => ({ label: r.label, when: r.when, set: { days: r.days } })),
-        { days: otherwise }
+        { days: otherwise },
+        `Due ${otherwise} days after it was found`
       )
     )
   });
   g.add('dueOn', 'std.expr', expr('Due On', `addDays(coalesce(${dateField}, date(now())), days)`));
-  g.add(
-    'reasons',
-    'std.expr',
-    expr('Why', `rule != null ? [rule] : ["Due ${otherwise} days after it was found"]`)
-  );
   g.ret('return');
   g.wire(`entry.${factsIn.name}`, `facts.${factsIn.name}`);
   g.wire('facts.payerKind', 'decide.payerKind');
   g.wire(`facts.${dateField}`, `dueOn.${dateField}`);
   g.wire('decide.days', 'dueOn.days');
   g.wire('dueOn.result', 'return.dueOn');
-  g.wire('decide.rule', 'reasons.rule');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('decide.reasons', 'return.reasons');
   return g.def;
 };
 
@@ -747,7 +724,8 @@ const patientResponsibility = (): GraphDef => {
           stateLaw('OR', 'Oregon', '2026-01-01'),
           stateLaw('AL', 'Alabama', '2026-10-01')
         ],
-        { protection: 'none' }
+        { protection: 'none' },
+        'No balance-billing protection applies'
       )
     )
   });
@@ -760,11 +738,6 @@ const patientResponsibility = (): GraphDef => {
     )
   );
   g.add('owed', 'std.expr', expr('Patient Responsibility', 'max(balanceCents - excess, 0)'));
-  g.add(
-    'reasons',
-    'std.expr',
-    expr('Why', 'rule != null ? [rule] : ["No balance-billing protection applies"]')
-  );
   g.ret('return');
   g.wire('entry.patientBalance', 'facts.patientBalance');
   for (const { name } of PROTECTION_INPUTS) g.wire(`facts.${name}`, `decide.${name}`);
@@ -773,8 +746,7 @@ const patientResponsibility = (): GraphDef => {
   g.wire('facts.costShareCents', 'excess.costShareCents');
   g.wire('excess.result', 'owed.excess', 'return.excessCents');
   g.wire('owed.result', 'return.responsibilityCents');
-  g.wire('decide.rule', 'reasons.rule');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('decide.reasons', 'return.reasons');
   return g.def;
 };
 

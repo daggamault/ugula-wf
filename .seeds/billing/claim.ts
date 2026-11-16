@@ -722,7 +722,8 @@ const claimFrequency = (): GraphDef => {
             set: { frequency: '1' }
           }
         ],
-        { frequency: '7' }
+        { frequency: '7' },
+        'Replaces the claim the payer adjudicated (frequency 7)'
       )
     )
   });
@@ -731,14 +732,6 @@ const claimFrequency = (): GraphDef => {
     'std.expr',
     expr('Claim Number It Replaces', 'frequency == "1" ? null : payerClaimNumber')
   );
-  g.add(
-    'reasons',
-    'std.expr',
-    expr(
-      'Why',
-      'rule != null ? [rule] : ["Replaces the claim the payer adjudicated (frequency 7)"]'
-    )
-  );
   g.ret('return');
   g.wire('entry.payerClaimNumber', 'adjudicated.payerClaimNumber', 'replaces.payerClaimNumber');
   g.wire('adjudicated.result', 'decide.adjudicated');
@@ -746,8 +739,7 @@ const claimFrequency = (): GraphDef => {
   g.wire('entry.payerKind', 'decide.payerKind');
   g.wire('decide.frequency', 'replaces.frequency', 'return.frequency');
   g.wire('replaces.result', 'return.replaces');
-  g.wire('decide.rule', 'reasons.rule');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('decide.reasons', 'return.reasons');
   return g.def;
 };
 

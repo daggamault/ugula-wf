@@ -110,7 +110,8 @@ const deadlineAction = (): GraphDef => {
             "The physician certification for this patient's scheduled trips expires on {dueOn}. Get a new one before the next trip."
           )
         ],
-        { action: 'none', priority: 0, message: '' }
+        { action: 'none', priority: 0, message: '' },
+        'Nothing is due soon'
       )
     )
   });
@@ -128,9 +129,7 @@ const deadlineAction = (): GraphDef => {
   g.wire('decide.action', 'return.action');
   g.wire('decide.priority', 'return.priority');
   g.wire('message.result', 'return.message');
-  g.add('reasons', 'std.expr', expr('Why', 'rule != null ? [rule] : ["Nothing is due soon"]'));
-  g.wire('decide.rule', 'reasons.rule');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('decide.reasons', 'return.reasons');
   return g.def;
 };
 

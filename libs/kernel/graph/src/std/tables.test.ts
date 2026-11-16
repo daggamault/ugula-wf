@@ -89,7 +89,8 @@ describe('table nodes', () => {
       level: 'ALS2',
       rule: 'Three IV doses',
       rules: ['Three IV doses', 'ALS care'],
-      matched: true
+      matched: true,
+      reasons: ['Three IV doses']
     });
     assert.deepEqual(
       hit.signature.inputs.map((p) => p.name),
@@ -97,14 +98,25 @@ describe('table nodes', () => {
     );
     assert.deepEqual(
       (await run('std.table.decide', { care: '4232001', ivDoses: null }, LEVELS)).outputs,
-      { level: 'BLS', rule: null, rules: [], matched: false }
+      { level: 'BLS', rule: null, rules: [], matched: false, reasons: [] }
+    );
+    assert.deepEqual(
+      (
+        await run(
+          'std.table.decide',
+          { care: '4232001' },
+          { ...LEVELS, otherwiseLabel: 'Basic care by default' }
+        )
+      ).outputs.reasons,
+      ['Basic care by default']
     );
     const { otherwise: _, ...always } = { ...LEVELS, rules: [{ label: 'Any', when: {} }] };
     assert.deepEqual((await run('std.table.decide', {}, always)).outputs, {
       level: null,
       rule: 'Any',
       rules: ['Any'],
-      matched: true
+      matched: true,
+      reasons: ['Any']
     });
   });
 
@@ -197,14 +209,17 @@ describe('shared tables', () => {
       definition: { type: 'string', rows: [{ key: 'a', value: 'A' }], fallback: '?' }
     };
     const inlined = inlineTables(graph, (key) =>
-      key === 'billing.level' ? { kind: 'decide', definition: LEVELS } : codes
+      key === 'billing.level'
+        ? { kind: 'decide', definition: { ...LEVELS, otherwiseLabel: 'Basic care' } }
+        : codes
     );
     const [level, lookup, own] = inlined.nodes;
     assert.deepEqual(level?.config, {
       inputs: LEVELS.inputs,
       outputs: LEVELS.outputs,
       rules: LEVELS.rules,
-      otherwise: LEVELS.otherwise
+      otherwise: LEVELS.otherwise,
+      otherwiseLabel: 'Basic care'
     });
     assert.deepEqual(lookup?.config, {
       type: 'string',

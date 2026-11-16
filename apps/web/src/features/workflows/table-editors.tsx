@@ -411,6 +411,13 @@ export const DecisionTableEditor = ({ nodeId, config, editable, onConfig }: Tabl
         ) : null}
       </Section>
       <Section title="When No Rule Holds">
+        <Input
+          id={`${nodeId}-otherwise-label`}
+          label="Reason"
+          hint="Shown to the biller as why, like a rule's label."
+          value={table.otherwiseLabel}
+          onChange={(e) => change({ ...table, otherwiseLabel: e.currentTarget.value })}
+        />
         {table.outputs.map((c, i) => (
           <CellInput
             key={`${i}-${c.name}`}

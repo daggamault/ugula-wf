@@ -87,6 +87,7 @@ type DecisionDefinition = {
   outputs: Field[];
   rules: Json[];
   otherwise: Record<string, Json>;
+  otherwiseLabel?: string;
 };
 
 type LookupDefinition = {

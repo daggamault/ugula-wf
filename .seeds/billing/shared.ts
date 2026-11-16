@@ -73,12 +73,14 @@ export const table = (
   inputs: Field[],
   outputs: Field[],
   rules: Rule[],
-  otherwise: Record<string, Json> = {}
+  otherwise: Record<string, Json> = {},
+  otherwiseLabel?: string
 ) => ({
   inputs,
   outputs,
   rules: rules.map((r) => ({ label: r.label, when: r.when ?? {}, set: r.set ?? {} })),
-  otherwise
+  otherwise,
+  ...(otherwiseLabel ? { otherwiseLabel } : {})
 });
 
 export const is = (value: Json) => ({ op: 'is', value });

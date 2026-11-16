@@ -11,6 +11,7 @@ export type DecisionConfig = {
   outputs: Column[];
   rules: Rule[];
   otherwise: Record<string, Json>;
+  otherwiseLabel: string;
 };
 
 export type LookupConfig = {
@@ -112,7 +113,8 @@ export const readDecision = (config: Json | undefined): DecisionConfig => {
       when: recordOf<Condition>(r.when),
       set: recordOf<Json>(r.set)
     })),
-    otherwise: recordOf<Json>(c.otherwise)
+    otherwise: recordOf<Json>(c.otherwise),
+    otherwiseLabel: typeof c.otherwiseLabel === 'string' ? c.otherwiseLabel : ''
   };
 };
 

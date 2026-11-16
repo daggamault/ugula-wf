@@ -31,7 +31,13 @@ describe('table config', () => {
   it('reads decision and lookup tables, ignoring malformed parts', () => {
     assert.equal(table.rules.length, 2);
     assert.equal(table.inputs[0]?.label, 'Level of care');
-    assert.deepEqual(readDecision(null), { inputs: [], outputs: [], rules: [], otherwise: {} });
+    assert.deepEqual(readDecision(null), {
+      inputs: [],
+      outputs: [],
+      rules: [],
+      otherwise: {},
+      otherwiseLabel: ''
+    });
     assert.deepEqual(readLookup({ rows: [{ key: 1, value: 'x' }, null] }), {
       type: 'string',
       rows: [{ key: '1', value: 'x' }],
