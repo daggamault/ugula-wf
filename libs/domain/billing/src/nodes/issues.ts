@@ -68,6 +68,10 @@ export const issueNodes: NodesOf = () => [
     summary: ({ code, message }) => (message ? `${code}: ${message}` : code),
     config: issueConfig,
     inputs: [
+      pin('when', 'boolean', {
+        default: true,
+        description: 'Raise the issues only when this is true; always when not wired.'
+      }),
       pin(
         'items',
         { list: 'string' },
@@ -80,8 +84,8 @@ export const issueNodes: NodesOf = () => [
     outputs: [
       pin('issues', { list: CLAIM_ISSUE.type }, { description: 'One issue for each item.' })
     ],
-    compute: ({ items }, config) => ({
-      issues: ((items ?? []) as (string | null)[]).map((item) =>
+    compute: ({ when, items }, config) => ({
+      issues: (when ? ((items ?? []) as (string | null)[]) : []).map((item) =>
         issueOf(config, config.message.replace(ITEM, item ?? ''), null)
       )
     })

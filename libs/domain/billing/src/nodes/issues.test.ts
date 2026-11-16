@@ -43,6 +43,11 @@ describe('issue nodes', () => {
     );
     const none = await invokeNode(issueForEach, { config: { code: 'x' } });
     assert.deepEqual(none.outputs.issues, []);
+    const off = await invokeNode(issueForEach, {
+      inputs: { when: false, items: ['city'] },
+      config: { code: 'x' }
+    });
+    assert.deepEqual(off.outputs.issues, []);
   });
 
   it('takes a message and payer from the claim', async () => {

@@ -26,7 +26,7 @@ Every billing decision should be readable on the canvas, built from small primit
 
 ### 2. Rules as primitives (`.seeds/billing`)
 
-- [ ] Checks: each check is conditions building issues, per-payer checks run Check One Payer per payer.
+- [x] Checks: each check is conditions building issues, per-payer checks run Check One Payer per payer.
 - [ ] Next Claim Step, Classify Adjustments, Line Modifiers, Coordination Order, Facility Responsibility, Deceased Handling, Patient Responsibility, Price Precedence, Determine Service.
 - [ ] Display: Person Name, Place Text and code-label lookups replace the formula builders; Review Revision's `canApply` becomes its own rule.
 - [ ] A seed gate fails any rule graph that decides with Expression.
