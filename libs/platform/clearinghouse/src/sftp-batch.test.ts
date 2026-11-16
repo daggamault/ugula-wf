@@ -93,7 +93,9 @@ const serve = (sftp: SFTPWrapper) => {
     })
     .on('RENAME', (id, from, to) => {
       const data = files.get(from);
-      if (!data || to.endsWith('.REFUSED')) return sftp.status(id, STATUS_CODE.FAILURE);
+      if (!data || files.has(to) || to.endsWith('.REFUSED')) {
+        return sftp.status(id, STATUS_CODE.FAILURE);
+      }
       renames.push([from, to]);
       files.delete(from);
       files.set(to, data);
@@ -151,6 +153,17 @@ describe('createSftpBatch', () => {
     assert.equal(files.get(path)?.toString(), 'ISA*00~');
     assert.deepEqual(renames, [['/inbound/837P-1.CLP.part', '/inbound/837P-1.CLP']]);
     assert.equal(sessions.opened, opened + 1);
+    assert.ok(await settled());
+  });
+
+  it('treats a retried upload whose file is already in place as sent, but not a different file', async () => {
+    const clearinghouse = createSftpBatch(config());
+    const bytes = new TextEncoder().encode('ISA*00~');
+    await clearinghouse.upload('837P-2.CLP', bytes);
+    assert.equal(await clearinghouse.upload('837P-2.CLP', bytes), '/inbound/837P-2.CLP');
+    await assert.rejects(() => clearinghouse.upload('837P-2.CLP', new TextEncoder().encode('X')));
+    assert.deepEqual([...files.keys()], ['/inbound/837P-2.CLP']);
+    assert.equal(files.get('/inbound/837P-2.CLP')?.toString(), 'ISA*00~');
     assert.ok(await settled());
   });
 

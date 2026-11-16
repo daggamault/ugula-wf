@@ -64,7 +64,8 @@ const sessionOf = (
       await timed(() => sftp.rename(partial, path));
     } catch (err) {
       await timed(() => sftp.delete(partial)).catch(() => undefined);
-      throw err;
+      const placed = await timed(() => sftp.get(path)).catch(() => null);
+      if (!Buffer.isBuffer(placed) || !placed.equals(bytes)) throw err;
     }
     return path;
   },
