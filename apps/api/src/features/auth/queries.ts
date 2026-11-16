@@ -1,4 +1,5 @@
 import type { Db } from '@ugula/db';
+import { sql } from 'kysely';
 
 type AuthUserRecord = {
   id: string;
@@ -124,7 +125,7 @@ export const consumePasswordToken = (db: Db, hash: string, now: Date) =>
 export const setUserPassword = async (db: Db, userId: string, passwordHash: string) => {
   await db
     .updateTable('users')
-    .set({ password_hash: passwordHash, updated_at: new Date() })
+    .set({ password_hash: passwordHash, updated_at: sql`now()` })
     .where('id', '=', userId)
     .execute();
   await db.deleteFrom('password_tokens').where('user_id', '=', userId).execute();

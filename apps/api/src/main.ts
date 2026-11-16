@@ -104,7 +104,12 @@ export const createApp = ({
   const app = new Hono();
   const origins = config.API_CORS_ORIGINS.split(',').map((o) => o.trim());
   const sessions = createSessionStore(redis);
-  const auth = createAuthService({ db, sessions, throttle: createSignInThrottle(redis) });
+  const auth = createAuthService({
+    db,
+    sessions,
+    throttle: createSignInThrottle(redis),
+    now: () => new Date()
+  });
   const authenticate = async (token: string | undefined) => {
     const res = await auth.session(token);
     return res.ok ? res.value : null;

@@ -27,7 +27,7 @@ type AuthServiceDeps = {
   db: Db;
   sessions: SessionStore;
   throttle: SignInThrottle;
-  now?: () => Date;
+  now: () => Date;
 };
 
 type CurrentUser = {
@@ -63,12 +63,7 @@ const isUsableInvitation = (i: Invitation, at: Date) =>
   i.expires_at.getTime() > at.getTime() &&
   (i.user_id === null || (i.user_organization_id === i.organization_id && i.user_active === true));
 
-export const createAuthService = ({
-  db,
-  sessions,
-  throttle,
-  now = () => new Date()
-}: AuthServiceDeps) => {
+export const createAuthService = ({ db, sessions, throttle, now }: AuthServiceDeps) => {
   let dummy: Promise<string> | null = null;
   const dummyHash = () => {
     dummy ??= hashPassword(randomBytes(16).toString('hex'));

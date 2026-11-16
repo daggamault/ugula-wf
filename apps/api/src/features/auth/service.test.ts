@@ -55,7 +55,12 @@ describe('auth service', () => {
     const { db } = createRecordingDb((q) =>
       q.sql.includes('"users"."password_hash"') ? [user] : [profile]
     );
-    const service = createAuthService({ db, sessions: memorySessions(), throttle: throttle() });
+    const service = createAuthService({
+      db,
+      sessions: memorySessions(),
+      throttle: throttle(),
+      now: () => new Date()
+    });
     assert.deepEqual(await service.signIn({ email: 'dev@example.com', password: 'wrong' }, IP), {
       ok: false,
       failure: { code: 'unauthorized', message: 'Invalid email or password' }
@@ -76,7 +81,12 @@ describe('auth service', () => {
   it('locks out repeated failures from one address without checking the password', async () => {
     const user = await credentials();
     const { db, queries } = createRecordingDb(() => [user]);
-    const service = createAuthService({ db, sessions: memorySessions(), throttle: throttle() });
+    const service = createAuthService({
+      db,
+      sessions: memorySessions(),
+      throttle: throttle(),
+      now: () => new Date()
+    });
     for (let i = 0; i < 5; i++) {
       await service.signIn({ email: 'dev@example.com', password: 'wrong' }, IP);
     }
@@ -105,7 +115,12 @@ describe('auth service', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.includes('"users"."password_hash"') ? [user] : active ? [profile] : []
     );
-    const service = createAuthService({ db, sessions: memorySessions(), throttle: throttle() });
+    const service = createAuthService({
+      db,
+      sessions: memorySessions(),
+      throttle: throttle(),
+      now: () => new Date()
+    });
     const signed = await service.signIn({ email: 'dev@example.com', password: 'P@ssw0rd123' }, IP);
     const other = await service.signIn({ email: 'dev@example.com', password: 'P@ssw0rd123' }, IP);
     assert.ok(signed.ok && other.ok);
@@ -124,7 +139,12 @@ describe('auth service', () => {
     const { db } = createRecordingDb((q) =>
       q.parameters.includes('dev@example.com') ? [user] : []
     );
-    const service = createAuthService({ db, sessions: memorySessions(), throttle: throttle() });
+    const service = createAuthService({
+      db,
+      sessions: memorySessions(),
+      throttle: throttle(),
+      now: () => new Date()
+    });
     await service.signIn({ email: 'nobody@example.com', password: 'warm-up' }, IP);
     const timed = async (email: string) => {
       const start = performance.now();
@@ -144,7 +164,12 @@ describe('auth service', () => {
   it('describes the current user, or refuses an inactive one', async () => {
     let rows: unknown[] = [profile];
     const { db } = createRecordingDb(() => rows);
-    const service = createAuthService({ db, sessions: memorySessions(), throttle: throttle() });
+    const service = createAuthService({
+      db,
+      sessions: memorySessions(),
+      throttle: throttle(),
+      now: () => new Date()
+    });
     assert.deepEqual(await service.me('u-1'), {
       ok: true,
       value: {
@@ -374,7 +399,12 @@ describe('auth service set password', () => {
 
   it('refuses spent or expired tokens without touching the user', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    const service = createAuthService({ db, sessions: memorySessions(), throttle: throttle() });
+    const service = createAuthService({
+      db,
+      sessions: memorySessions(),
+      throttle: throttle(),
+      now: () => new Date()
+    });
     assert.deepEqual(
       await service.setPassword({ token: 'tok', password: 'New-password1' }),
       invalid
