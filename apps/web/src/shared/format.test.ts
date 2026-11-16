@@ -6,6 +6,7 @@ import {
   formatDate,
   formatDateTime,
   formatDay,
+  formatDollars,
   formatDuration,
   formatMiles,
   labelFromName,
@@ -145,5 +146,14 @@ describe('sexLabel', () => {
     assert.equal(sexLabel('F'), 'Female');
     assert.equal(sexLabel('X'), null);
     assert.equal(sexLabel(null), null);
+  });
+});
+
+describe('formatDollars', () => {
+  it('writes cents as plain dollar amounts', () => {
+    assert.equal(formatDollars(114_220), '1142.20');
+    assert.equal(formatDollars(5), '0.05');
+    assert.equal(formatDollars(0), '0.00');
+    assert.equal(formatDollars(-2_500), '-25.00');
   });
 });

@@ -1,6 +1,12 @@
 import { ADJUSTMENT_GROUPS, CLAIM_FILING_CODES } from '@ugula/billing';
 import { described } from '../../shared/claims/code-text.tsx';
-import { formatCents, formatDate, formatDateTime, patientName } from '../../shared/format.ts';
+import {
+  formatCents,
+  formatDate,
+  formatDateTime,
+  formatDollars,
+  patientName
+} from '../../shared/format.ts';
 import { queueInfo, titleCase } from '../../shared/task-queues.ts';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
 import type {
@@ -19,7 +25,7 @@ import type {
   WorkQueueRow,
   WriteOffRow
 } from './client.ts';
-import { type CsvCell, dollars } from './csv.ts';
+import type { CsvCell } from './csv.ts';
 
 export type ReportColumn<R> = {
   label: string;
@@ -39,7 +45,7 @@ const PATIENT = 'Patient';
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-const AS_MONEY: Format = { text: formatCents, csv: dollars };
+const AS_MONEY: Format = { text: formatCents, csv: formatDollars };
 
 const AS_COUNT: Format = { text: (n) => n.toLocaleString(), csv: (n) => n };
 
@@ -52,7 +58,7 @@ const AS_PERCENT: Format = { text: (n) => `${Math.round(n)}%`, csv: round1 };
 
 const AS_MONEY_AVERAGE: Format = {
   text: (n) => formatCents(Math.round(n)),
-  csv: (n) => dollars(Math.round(n))
+  csv: (n) => formatDollars(Math.round(n))
 };
 
 const shown = (n: number | null, f: (n: number) => string) =>

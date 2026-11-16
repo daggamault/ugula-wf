@@ -4,7 +4,7 @@ import { Detail, DetailList } from '../ui/detail-list.tsx';
 import { emptyValue } from '../ui/empty-state.tsx';
 import { SectionPanel } from '../ui/section-panel.tsx';
 import type { ClaimDetail } from './claim-detail.ts';
-import { CodeText, codeText } from './code-text.tsx';
+import { CodeText, codeText, described } from './code-text.tsx';
 
 type Place = { name?: string | null } & Record<
   'addressLine' | 'city' | 'state' | 'postalCode',
@@ -21,9 +21,13 @@ export const addressText = (p: Place | null) =>
     .join(', ') || null;
 
 export const modifierText = (code: string | null) =>
-  code && Object.hasOwn(ORIGIN_DESTINATION_CODES, code)
-    ? `${ORIGIN_DESTINATION_CODES[code as keyof typeof ORIGIN_DESTINATION_CODES]} (${code})`
-    : code;
+  code &&
+  described(
+    Object.hasOwn(ORIGIN_DESTINATION_CODES, code)
+      ? (ORIGIN_DESTINATION_CODES[code as keyof typeof ORIGIN_DESTINATION_CODES] ?? null)
+      : null,
+    code
+  );
 
 export const ClaimDataView = ({
   claim: c,

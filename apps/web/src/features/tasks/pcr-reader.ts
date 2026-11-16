@@ -1,5 +1,6 @@
 import { isRecord, type Json } from '@ugula/graph';
 import { codeSystemOf, describeCode, type ReportDictionary, toPcr } from '@ugula/nemsis';
+import { described } from '../../shared/claims/code-text.tsx';
 
 type Fact = { label: string; value: string | null; isDay?: boolean };
 
@@ -82,7 +83,7 @@ const createDecoder = (dictionary: ReportDictionary) => {
     const meaning = meaningOf(list, value);
     const system = SYSTEM_NAMES[codeSystemOf(list) ?? ''];
     if (meaning === null) return system ? `${system} ${value}` : value;
-    return `${meaning} (${value})`;
+    return described(meaning, value);
   };
   const decodeAll = (list: string, codes: Json | undefined) =>
     joined(
@@ -94,7 +95,7 @@ const createDecoder = (dictionary: ReportDictionary) => {
 
 const fact = (label: string, value: string | null): Fact => ({ label, value });
 
-const roundMiles = (miles: number) => Math.round(miles * 100) / 100;
+export const roundMiles = (miles: number) => Math.round(miles * 100) / 100;
 
 export const readPcr = (data: Json, dictionary: ReportDictionary): PcrSummary => {
   const { name, decode, decodeAll } = createDecoder(dictionary);

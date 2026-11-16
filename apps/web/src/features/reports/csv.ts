@@ -15,7 +15,5 @@ const cell = (value: CsvCell) => {
 export const toCsv = (rows: readonly (readonly CsvCell[])[]) =>
   rows.map((row) => row.map(cell).join(',')).join('\r\n');
 
-export const dollars = (cents: number) => (cents / 100).toFixed(2);
-
 export const downloadCsv = (fileName: string, rows: readonly (readonly CsvCell[])[]) =>
   downloadText(fileName, toCsv(rows), 'text/csv;charset=utf-8');

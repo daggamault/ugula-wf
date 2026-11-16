@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
-import { dollars, downloadCsv, toCsv } from './csv.ts';
+import { downloadCsv, toCsv } from './csv.ts';
 
 const original = {
   document: globalThis.document,
@@ -37,13 +37,6 @@ describe('toCsv', () => {
       toCsv([['=HYPERLINK("x")', '+1+1', '-2+3', '@SUM(A1)', '-25.00', -3]]),
       '"\'=HYPERLINK(""x"")",\'+1+1,\'-2+3,\'@SUM(A1),-25.00,-3'
     );
-  });
-
-  it('writes cents as plain dollar amounts', () => {
-    assert.equal(dollars(114_220), '1142.20');
-    assert.equal(dollars(5), '0.05');
-    assert.equal(dollars(0), '0.00');
-    assert.equal(dollars(-2_500), '-25.00');
   });
 });
 

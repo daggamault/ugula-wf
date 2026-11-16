@@ -2,6 +2,7 @@ import { isRecord, type Json } from '@ugula/graph';
 import { toPcr } from '@ugula/nemsis';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { patientName } from '../../shared/format.ts';
+import { roundMiles } from './pcr-reader.ts';
 
 export type EncounterFacts = {
   firstName: string | null;
@@ -39,8 +40,7 @@ export const encounterFactsOf = (data: Json): EncounterFacts => {
       dayOf(textOf(times.psapCall)) ??
       dayOf(textOf(times.arrivedOnScene)) ??
       dayOf(textOf(times.leftScene)),
-    loadedMiles:
-      scene === null || destination === null ? null : Math.round((destination - scene) * 100) / 100,
+    loadedMiles: scene === null || destination === null ? null : roundMiles(destination - scene),
     memberIds: (Array.isArray(pcr.insurances) ? pcr.insurances : [])
       .filter(isRecord)
       .flatMap((i) => textOf(i.policyId) ?? [])

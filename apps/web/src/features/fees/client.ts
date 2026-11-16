@@ -30,7 +30,7 @@ export const createFeesClient = (api: Api) => ({
       )
     ).payers,
   save: async (fee: FeeInput) => (await api.put<{ fee: Fee }>('/api/fees', fee)).fee,
-  remove: (id: string) => api.remove<{ status: string }>(`/api/fees/${encodeURIComponent(id)}`)
+  remove: (id: string) => api.remove<{ id: string }>(`/api/fees/${encodeURIComponent(id)}`)
 });
 
 export type FeesClient = ReturnType<typeof createFeesClient>;

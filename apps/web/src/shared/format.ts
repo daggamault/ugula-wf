@@ -28,6 +28,8 @@ const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD
 
 export const formatCents = (cents: number) => money.format(cents / 100);
 
+export const formatDollars = (cents: number) => (cents / 100).toFixed(2);
+
 export const parseDollars = (text: string) => {
   const amount = Number(text);
   return text.trim() !== '' && Number.isFinite(amount) && amount >= 0

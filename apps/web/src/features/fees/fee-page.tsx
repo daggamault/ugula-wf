@@ -1,7 +1,7 @@
 import { SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
-import { parseDollars } from '../../shared/format.ts';
+import { formatDollars, parseDollars } from '../../shared/format.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
@@ -67,7 +67,7 @@ const PayerPicker = ({
 export const toFeeDraft = (f: Fee | null): FeeDraft => ({
   payerId: f?.payer_id ?? '',
   code: f?.code ?? '',
-  amount: f ? (f.amount_cents / 100).toFixed(2) : ''
+  amount: f ? formatDollars(f.amount_cents) : ''
 });
 
 export const toFeeInput = (draft: FeeDraft): FeeInput | string => {
