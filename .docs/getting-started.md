@@ -8,7 +8,7 @@ pnpm dev                   # api, worker, sse, web and the mock clearinghouse
 pnpm e2e                   # its own stack and ugula_e2e database: every area in the browser, suites in parallel
 ```
 
-Copy `.env.example` to `.env` first, and have Docker running. The clearinghouse connection and the mock clearinghouse `pnpm dev` starts are in [Clearinghouse](clearinghouse.md). Run `pnpm check`, `pnpm typecheck`, and `pnpm test` before committing.
+Copy `.env.example` to `.env` first, and have Docker running. The clearinghouse connection and the mock clearinghouse `pnpm dev` starts are in [Clearinghouse](clearinghouse.md). Run `pnpm check`, `pnpm typecheck`, and `pnpm test` before committing, and `pnpm seed:check` after changing a seed graph or table: it validates every billing and dev graph and table without a database, as `db:seed` does before publishing.
 
 ## Layout
 

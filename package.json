@@ -23,6 +23,7 @@
     "check:fix": "biome check --write .",
     "db:migrate": "tsx --env-file=.env .migrations/migrate.ts",
     "db:seed": "tsx --env-file=.env .seeds/seed.ts",
+    "seed:check": "tsx .seeds/check.ts",
     "db:reset": "tsx --env-file=.env .seeds/reset.ts",
     "e2e": "pnpm --filter @ugula/web e2e"
   },

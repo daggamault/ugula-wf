@@ -1,31 +1,10 @@
 import { readFile } from 'node:fs/promises';
-import { PERMISSIONS } from '@ugula/access';
 import { hashPassword } from '@ugula/auth';
-import { billingKinds, billingModels, createBillingNodes } from '@ugula/billing';
 import { createDb, type Db, saveBuiltInRoles } from '@ugula/db';
-import {
-  combineSources,
-  createModelNodes,
-  createRegistry,
-  createStdNodes,
-  documentationIssues,
-  mergeKinds,
-  type NodeDef,
-  refKey,
-  STD_KINDS,
-  stdGraphSource,
-  TABLE_NODE_KINDS,
-  tableContract,
-  tableRefOf,
-  tableSchemas,
-  validateGraph
-} from '@ugula/graph';
-import { createNemsisNodes, nemsisKinds, nemsisModels } from '@ugula/nemsis';
+import { refKey } from '@ugula/graph';
 import { sql } from 'kysely';
-import * as v from 'valibot';
 import { upsertAgency, upsertOrganization } from './agencies.ts';
 import { billingGraphs, billingTables } from './billing/index.ts';
-import type { SeedTable } from './builder.ts';
 import { CMS_FILES, readCmsData, replaceCmsData } from './cms.ts';
 import { CODE_SETS_FILE, readCodeSets, replaceCodeSets } from './codes.ts';
 import { type DevSeedConfig, parseDbConfig } from './config.ts';
@@ -43,7 +22,7 @@ import {
   replaceGeonamesPostalCodes
 } from './geonames-postal-codes.ts';
 import { PLACES_FILE, readPlaces, replacePlaces } from './gnis.ts';
-import { publishGraphs, type SeedGraph } from './graphs.ts';
+import { publishGraphs } from './graphs.ts';
 import {
   CODES_FILE,
   ELEMENTS_FILE,
@@ -55,6 +34,7 @@ import {
 } from './nemsis-dictionary.ts';
 import { publishTables } from './tables.ts';
 import { upsertMembership, upsertUser } from './users.ts';
+import { graphNodes, graphProblems, seedProblems } from './validate.ts';
 
 const DEV_AGENCIES = [
   { name: 'Development', slug: 'dev', sftp: true, submitterId: 'DEVEMS01' },
@@ -73,52 +53,6 @@ const REFERENCE_TABLES = [
   'cms_ambulance_fees',
   'cms_hospitals'
 ] as const;
-
-const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
-  const byRef = new Map(
-    graphs.map((g) => [refKey({ type: g.key, version: g.version }), g.definition])
-  );
-  const registry = createRegistry(
-    nodes,
-    combineSources(stdGraphSource, (ref) => byRef.get(refKey(ref))),
-    mergeKinds(STD_KINDS, nemsisKinds, billingKinds)
-  );
-  const problems = graphs.flatMap((g) =>
-    [...validateGraph(g.definition, registry), ...documentationIssues(g.definition)].map(
-      (i) => `${g.key}${i.node ? `#${i.node}` : ''}: ${i.message}`
-    )
-  );
-  if (problems.length) throw new Error(`Invalid seed graphs:\n${problems.join('\n')}`);
-};
-
-const assertValidTables = (tables: SeedTable[], graphs: SeedGraph[]) => {
-  const byKey = new Map(tables.map((t) => [t.key, t]));
-  const problems = [
-    ...tables.flatMap((t) =>
-      v.safeParse(tableSchemas[t.kind], t.definition).success ? [] : [`${t.key}: invalid table`]
-    ),
-    ...graphs.flatMap((g) =>
-      g.definition.nodes.flatMap((n) => {
-        const ref = tableRefOf(n);
-        const table = ref && byKey.get(ref.key);
-        if (!ref) return [];
-        return table &&
-          TABLE_NODE_KINDS[n.type as keyof typeof TABLE_NODE_KINDS] === table.kind &&
-          tableContract(table.definition) === tableContract(n.config ?? null)
-          ? []
-          : [`${g.key}#${n.id}: table ${ref.key} is missing or has other fields`];
-      })
-    )
-  ];
-  if (problems.length) throw new Error(`Invalid seed tables:\n${problems.join('\n')}`);
-};
-
-const graphNodes = () => [
-  ...createStdNodes({ fetch, permissions: PERMISSIONS }),
-  ...createNemsisNodes(null),
-  ...createBillingNodes(null),
-  ...createModelNodes([...nemsisModels, ...billingModels])
-];
 
 export const REFERENCE_SOURCES = [
   PLACES_FILE,
@@ -160,8 +94,8 @@ export const seedReference = async (db: Db) => {
 
 export const seedBilling = async (db: Db) => {
   const nodes = graphNodes();
-  assertValidGraphs(billingGraphs, nodes);
-  assertValidTables(billingTables, billingGraphs);
+  const problems = seedProblems(billingGraphs, billingTables, nodes);
+  if (problems.length) throw new Error(`Invalid seeds:\n${problems.join('\n')}`);
   await db.transaction().execute(async (tx) => {
     await publishTables(tx, billingTables);
     await publishGraphs(tx, billingGraphs, new Set(nodes.map(refKey)));
@@ -174,7 +108,8 @@ export const seedDev = async (db: Db, dev: DevSeedConfig) => {
     hashPassword(dev.DEV_SFTP_PASSWORD)
   ]);
   const nodes = graphNodes();
-  assertValidGraphs(devGraphs, nodes);
+  const problems = graphProblems(devGraphs, nodes);
+  if (problems.length) throw new Error(`Invalid dev graphs:\n${problems.join('\n')}`);
 
   await db.transaction().execute(async (tx) => {
     const organization = await upsertOrganization(tx, 'Development EMS');
