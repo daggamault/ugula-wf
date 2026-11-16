@@ -1,5 +1,13 @@
 import type { Party } from './mock-envelope.ts';
-import { centsOf, dateOf, readX12, textOf } from './x12.ts';
+import { centsOf, componentsOf, dateOf, readX12, textOf } from './x12.ts';
+
+export type Mock837Line = {
+  code: string;
+  modifiers: string[];
+  chargeCents: number;
+  units: number;
+  lineNumber: string | null;
+};
 
 export type Mock837Claim = {
   claimNumber: string;
@@ -9,6 +17,7 @@ export type Mock837Claim = {
   patient: { lastName: string; firstName: string | null };
   payer: Party | null;
   claimFiling: string | null;
+  lines: Mock837Line[];
 };
 
 export type Mock837 = {
@@ -86,13 +95,26 @@ export const read837 = (text: string): Mock837 => {
         serviceDate: null,
         patient: sub.patient,
         payer: sub.payer,
-        claimFiling: sub.claimFiling
+        claimFiling: sub.claimFiling,
+        lines: []
       };
       out.claims.push(claim);
       continue;
     }
     if (claim) {
       if (id === 'DTP' && q === '472') claim.serviceDate ??= dateOf(seg[3]?.slice(0, 8));
+      if (id === 'SV1') {
+        const [, code, ...modifiers] = componentsOf(q, file);
+        claim.lines.push({
+          code: textOf(code) ?? '',
+          modifiers: modifiers.flatMap((m) => textOf(m) ?? []),
+          chargeCents: centsOf(seg[2]),
+          units: Number(seg[4]) || 1,
+          lineNumber: null
+        });
+      }
+      const line = claim.lines.at(-1);
+      if (id === 'REF' && q === '6R' && line) line.lineNumber = textOf(seg[2]);
       continue;
     }
     if (id === 'NM1' && q === '41') out.submitter = partyOf(seg);

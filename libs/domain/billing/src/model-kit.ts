@@ -39,3 +39,14 @@ export const BLOB = { object: { bucket: 'string', key: 'string' } } as const sat
 export const ADJUSTMENT_TYPE = {
   object: { group: 'string', reason: 'string', cents: 'integer' }
 } as const satisfies ValueType;
+
+export const LINE_ADJUDICATION_TYPE = {
+  object: {
+    line: 'integer',
+    code: 'string',
+    modifiers: { list: 'string' },
+    paidCents: 'integer',
+    units: 'number',
+    adjustments: { list: ADJUSTMENT_TYPE }
+  }
+} as const satisfies ValueType;

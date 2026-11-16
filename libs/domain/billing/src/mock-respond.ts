@@ -66,6 +66,23 @@ const rejectFile = (text: string, now: Date, error: string): MockResponse => {
   };
 };
 
+const paidOf = (cents: number) => Math.round(cents * MOCK_PAID_SHARE);
+
+const remitted = (c: Mock837Claim) => {
+  const lines = c.lines.map((l) => ({
+    code: l.code,
+    modifiers: l.modifiers,
+    chargeCents: l.chargeCents,
+    paidCents: paidOf(l.chargeCents),
+    units: l.units,
+    ...(l.lineNumber ? { lineNumber: l.lineNumber } : {})
+  }));
+  const balanced = lines.reduce((sum, l) => sum + l.chargeCents, 0) === c.chargeCents;
+  return balanced && lines.length
+    ? { paidCents: lines.reduce((sum, l) => sum + l.paidCents, 0), lines }
+    : { paidCents: paidOf(c.chargeCents) };
+};
+
 export const mockPayerClaimNumber = (claimNumber: string) => `MOCK-${claimNumber}`;
 
 const isRejected = (c: Mock837Claim) =>
@@ -123,7 +140,7 @@ export const respond = (
           claims: claims.map((c) => ({
             claimNumber: c.claimNumber,
             chargeCents: c.chargeCents,
-            paidCents: Math.round(c.chargeCents * MOCK_PAID_SHARE),
+            ...remitted(c),
             payerClaimNumber: mockPayerClaimNumber(c.claimNumber),
             ...(c.claimFiling ? { claimFiling: c.claimFiling } : {})
           }))

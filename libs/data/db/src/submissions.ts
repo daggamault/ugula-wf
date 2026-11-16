@@ -278,7 +278,8 @@ const batchClaimOf = (
       paidCents: c.paidCents,
       adjustedCents: c.adjustedCents,
       paidOn: c.paidOn,
-      adjustments: c.adjustments
+      adjustments: c.adjustments,
+      lines: c.lines
     })),
     patient: {
       firstName: row.first_name,

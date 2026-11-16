@@ -20,6 +20,7 @@ import {
   MAX_CONTROL_NUMBER,
   MAX_DOCUMENTED_COUNT,
   MAX_EMPLOYER_SIZE,
+  MAX_LINE_MODIFIERS,
   MSP_ACCIDENTS,
   ORIGIN_DESTINATION_CODES,
   PATIENT_EVENT_KINDS,
@@ -557,6 +558,54 @@ const buildClaimEventRemarksTable = (db: Kysely<Database>) =>
       sql`code ~ ${sql.lit(REMARK_CODE_PATTERN)}`
     );
 
+const buildClaimEventLinesTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('claim_event_lines')
+    .addColumn('event_id', 'uuid', (col) =>
+      col.notNull().references('claim_events.id').onDelete('cascade').onUpdate('cascade')
+    )
+    .addColumn('line', 'smallint', (col) => col.notNull())
+    .addColumn('code', 'text', (col) => col.notNull())
+    .addColumn('modifiers', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
+    .addColumn('paid_cents', 'integer', (col) => col.notNull())
+    .addColumn('units', sql`numeric(8, ${sql.lit(UNIT_SCALE)})`, (col) => col.notNull())
+    .addPrimaryKeyConstraint('claim_event_lines_pkey', ['event_id', 'line'])
+    .addCheckConstraint('claim_event_lines_line_check', sql`line >= 1`)
+    .addCheckConstraint('claim_event_lines_code_check', sql`code ~ ${sql.lit(HCPCS_PATTERN)}`)
+    .addCheckConstraint(
+      'claim_event_lines_modifiers_check',
+      sql`cardinality(modifiers) <= ${sql.lit(MAX_LINE_MODIFIERS)}`
+    )
+    .addCheckConstraint('claim_event_lines_units_check', sql`units >= 0`);
+
+const buildClaimEventLineAdjustmentsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('claim_event_line_adjustments')
+    .addColumn('event_id', 'uuid', (col) => col.notNull())
+    .addColumn('line', 'smallint', (col) => col.notNull())
+    .addColumn('position', 'smallint', (col) => col.notNull())
+    .addColumn('group_code', 'text', (col) => col.notNull())
+    .addColumn('reason_code', 'text', (col) => col.notNull())
+    .addColumn('amount_cents', 'integer', (col) => col.notNull())
+    .addPrimaryKeyConstraint('claim_event_line_adjustments_pkey', ['event_id', 'line', 'position'])
+    .addForeignKeyConstraint(
+      'claim_event_line_adjustments_event_id_line_fkey',
+      ['event_id', 'line'],
+      'claim_event_lines',
+      ['event_id', 'line'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
+    .addCheckConstraint('claim_event_line_adjustments_position_check', sql`position >= 1`)
+    .addCheckConstraint(
+      'claim_event_line_adjustments_group_check',
+      sql`group_code in (${list(Object.keys(ADJUSTMENT_GROUPS))})`
+    )
+    .addCheckConstraint(
+      'claim_event_line_adjustments_reason_check',
+      sql`reason_code ~ ${sql.lit(ADJUSTMENT_REASON_PATTERN)}`
+    )
+    .addCheckConstraint('claim_event_line_adjustments_amount_check', sql`amount_cents <> 0`);
+
 const buildClaimBalancesView = (db: Kysely<Database>) =>
   db.schema.createView('claim_balances').as(
     db
@@ -665,6 +714,8 @@ export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimEventsBatchForeignKey().execute(db);
   await buildClaimEventAdjustmentsTable(db).execute();
   await buildClaimEventRemarksTable(db).execute();
+  await buildClaimEventLinesTable(db).execute();
+  await buildClaimEventLineAdjustmentsTable(db).execute();
 
   await buildClaimBalancesView(db).execute();
   for (const index of buildClaimsIndexes(db)) await index.execute();

@@ -86,7 +86,9 @@ export {
   isClosedStatus,
   isDenialRoute,
   type LedgerFacts,
+  type LineAdjudication,
   ledgerFactsOf,
+  MAX_LINE_MODIFIERS,
   MIN_WAIT_MS,
   PATIENT_EVENT_KINDS,
   REMARK_CODE_PATTERN,
@@ -176,6 +178,7 @@ export {
   ZIP_PLUS_4_PATTERN,
   type ZipPlace
 } from './geo.ts';
+export { type BilledLine, matchServiceLines } from './line-adjudications.ts';
 export {
   CARRIER_PATTERN,
   isRurality,

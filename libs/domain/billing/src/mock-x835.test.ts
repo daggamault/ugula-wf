@@ -41,6 +41,53 @@ describe('build835', () => {
     assert.equal(aet?.claims[0]?.denied, true);
   });
 
+  it('reports each service line with its line control number and line adjustments', () => {
+    const [remit] = read835(
+      build835(
+        [
+          {
+            claims: [
+              {
+                claimNumber: '301',
+                chargeCents: 10_000,
+                paidCents: 7_500,
+                lines: [
+                  {
+                    code: 'A0427',
+                    modifiers: ['RH'],
+                    chargeCents: 9_000,
+                    paidCents: 7_000,
+                    lineNumber: '1'
+                  },
+                  {
+                    code: 'A0425',
+                    chargeCents: 1_000,
+                    paidCents: 500,
+                    units: 5,
+                    adjustments: [{ group: 'PR', reason: '2', cents: 500 }]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        at
+      )
+    );
+    const [claim] = remit?.claims ?? [];
+    assert.deepEqual(claim?.adjustments, [
+      { group: 'CO', reason: '45', cents: 2_000 },
+      { group: 'PR', reason: '2', cents: 500 }
+    ]);
+    assert.deepEqual(
+      claim?.services.map((s) => [s.code, s.modifiers, s.paidCents, s.units, s.lineNumber]),
+      [
+        ['A0427', ['RH'], 7_000, 1, '1'],
+        ['A0425', [], 500, 5, null]
+      ]
+    );
+  });
+
   it('reports zero-pay denials as processed, crossovers, reversals and provider adjustments', () => {
     const denial = (status: string, reason: string) => ({
       claimNumber: `D${status}`,

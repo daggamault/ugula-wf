@@ -649,6 +649,24 @@ type ClaimEventAdjustmentsTable = {
   amount_cents: number;
 };
 
+type ClaimEventLinesTable = {
+  event_id: string;
+  line: number;
+  code: string;
+  modifiers: ColumnType<string[], string[] | undefined, string[]>;
+  paid_cents: number;
+  units: ColumnType<string, number, number>;
+};
+
+type ClaimEventLineAdjustmentsTable = {
+  event_id: string;
+  line: number;
+  position: number;
+  group_code: AdjustmentGroup;
+  reason_code: string;
+  amount_cents: number;
+};
+
 type ClaimEventRemarksTable = {
   event_id: string;
   position: number;
@@ -899,6 +917,8 @@ export type Database = {
   claim_events: ClaimEventsTable;
   claim_event_adjustments: ClaimEventAdjustmentsTable;
   claim_event_remarks: ClaimEventRemarksTable;
+  claim_event_lines: ClaimEventLinesTable;
+  claim_event_line_adjustments: ClaimEventLineAdjustmentsTable;
   claim_batches: ClaimBatchesTable;
   claim_status_requests: ClaimStatusRequestsTable;
   eligibility_requests: EligibilityRequestsTable;

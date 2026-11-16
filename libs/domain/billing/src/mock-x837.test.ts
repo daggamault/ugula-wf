@@ -38,6 +38,10 @@ describe('read837', () => {
     );
     assert.equal(r.claims[2]?.claimFiling, 'CI');
     assert.equal(r.claims[2]?.patient.lastName, "O'BRIEN");
+    assert.deepEqual(r.claims[0]?.lines, [
+      { code: 'A0427', modifiers: ['RH'], chargeCents: 85_000, units: 1, lineNumber: '1' },
+      { code: 'A0425', modifiers: ['RH'], chargeCents: 9_250, units: 7.4, lineNumber: '2' }
+    ]);
   });
 
   it('refuses what is not an 837P', () => {

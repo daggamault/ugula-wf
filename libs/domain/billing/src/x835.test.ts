@@ -25,11 +25,12 @@ const REMITTANCE = file(
   'DTM*232*20261001',
   'SVC*HC:A0427:RH*850*552.2**1',
   'DTM*472*20261001',
+  'REF*6R*1',
   'CAS*CO*45*159.95',
   'LQ*HE*N130',
   'LQ*RX*99',
   'CAS*PR*1*100*1*2*37.85',
-  'SVC*HC:A0425:RH*92.5*60.15**7.4',
+  'SVC*HC:A0425:RH*92.5*60.15**7.4*HC:A0425',
   'CAS*PR*2*15.24',
   'CAS*CO*45*17.11**253*0.0',
   'CLP*1002*4*500*0*0*MB*ICN222',
@@ -40,7 +41,7 @@ const REMITTANCE = file(
   'CAS*PR*1*-100**2*-53.09',
   'CAS*XX*1*5',
   'PLB*1234567893*20261231*WO:ICN999*25.5*L6:INTEREST*-1.25',
-  'SE*29*0001',
+  'SE*30*0001',
   'ST*835*0002',
   'BPR*H*0*C*NON************20261030',
   'TRN*1*NOPAY77*1512345678',
@@ -88,7 +89,37 @@ describe('read835', () => {
       remarks: ['MA01', 'N130'],
       crossoverPayer: null,
       denied: false,
-      reversal: false
+      reversal: false,
+      services: [
+        {
+          code: 'A0427',
+          modifiers: ['RH'],
+          chargeCents: 85_000,
+          paidCents: 55_220,
+          units: 1,
+          originalCode: null,
+          lineNumber: '1',
+          adjustments: [
+            { group: 'CO', reason: '45', cents: 15_995 },
+            { group: 'PR', reason: '1', cents: 10_000 },
+            { group: 'PR', reason: '2', cents: 3785 }
+          ]
+        },
+        {
+          code: 'A0425',
+          modifiers: ['RH'],
+          chargeCents: 9250,
+          paidCents: 6015,
+          units: 7.4,
+          originalCode: 'A0425',
+          lineNumber: null,
+          adjustments: [
+            { group: 'PR', reason: '2', cents: 1524 },
+            { group: 'CO', reason: '45', cents: 1711 },
+            { group: 'CO', reason: '253', cents: 0 }
+          ]
+        }
+      ]
     });
   });
 
@@ -188,7 +219,8 @@ describe('read835', () => {
         remarks: [],
         crossoverPayer: null,
         denied: false,
-        reversal: false
+        reversal: false,
+        services: []
       }
     ]);
   });

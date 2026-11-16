@@ -30,6 +30,11 @@ const fileDb = () =>
         { claim_id: 'c1', id: 'cov1', payerId: 'DEMOMCR', payer: 'Medicare', has_events: true },
         { claim_id: 'c1', id: 'cov2', payerId: 'GAP01', payer: 'Medigap', has_events: false }
       ];
+    if (sql.includes('from "claim_lines"'))
+      return [
+        { claim_id: 'c1', position: 1, code: 'A0427', chargeCents: 90_000 },
+        { claim_id: 'c1', position: 2, code: 'A0425', chargeCents: 10_000 }
+      ];
     if (sql.includes('claim_balances')) return [{ balance_cents: 100_000 }];
     if (sql.startsWith('insert into "claim_events"')) return [{ id: 'e1' }];
     if (sql.includes('"payer_claim_number" = $'))
@@ -141,6 +146,37 @@ describe('applyPayerFile', () => {
     assert.deepEqual(queries.at(-1)?.parameters, [2, 1, null, 'f1']);
     const file = queries.find((q) => q.sql.startsWith('insert into "payer_files"'));
     assert.ok(file?.parameters.includes('r1') && file.parameters.includes('r1:apply'));
+  });
+
+  it('stores how the payer adjudicated each claim line, matched by its line number', async () => {
+    const { queries } = await apply(
+      build835(
+        [
+          {
+            claims: [
+              {
+                claimNumber: '20261105-1001',
+                chargeCents: 100_000,
+                paidCents: 60_000,
+                lines: [
+                  { code: 'A0425', chargeCents: 10_000, paidCents: 5_000, lineNumber: '2' },
+                  { code: 'A0427', chargeCents: 90_000, paidCents: 55_000 }
+                ]
+              }
+            ]
+          }
+        ],
+        { createdAt }
+      ),
+      [{ position: 1, route: 'reconcile', message: '', adjustedCents: 40_000, crossover: false }]
+    );
+    const billed = queries.find((q) => q.sql.includes('from "claim_lines"'));
+    assert.deepEqual(billed?.parameters, ['c1']);
+    const lines = queries.find((q) => q.sql.startsWith('insert into "claim_event_lines"'));
+    assert.deepEqual(
+      [lines?.parameters[1], lines?.parameters[2], lines?.parameters[7], lines?.parameters[8]],
+      [2, 'A0425', 1, 'A0427']
+    );
   });
 
   it('asks a biller about each provider-level adjustment (PLB), on the claim it references', async () => {

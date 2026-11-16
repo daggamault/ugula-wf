@@ -19,7 +19,8 @@ const paid: RemittanceClaim = {
   denied: false,
   reversal: false,
   remarks: ['MA18'],
-  crossoverPayer: 'MEDIGAP'
+  crossoverPayer: 'MEDIGAP',
+  services: []
 };
 
 const matched = { claimId: 'c1', coverageId: 'mcr', payerName: 'Medicare', reversesPosted: false };

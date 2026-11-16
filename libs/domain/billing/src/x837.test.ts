@@ -166,7 +166,8 @@ describe('build837', () => {
           adjustments: [
             { group: 'CO', reason: '45', cents: 20_000 },
             { group: 'PR', reason: '2', cents: 14_250 }
-          ]
+          ],
+          lines: []
         }
       ]
     });
@@ -207,7 +208,8 @@ describe('build837', () => {
           paidCents: 0,
           adjustedCents: 700,
           paidOn: '2026-10-20',
-          adjustments: [...reasons, { group: 'PR', reason: '1', cents: 25_000 }]
+          adjustments: [...reasons, { group: 'PR', reason: '1', cents: 25_000 }],
+          lines: []
         }
       ]
     });
@@ -215,6 +217,88 @@ describe('build837', () => {
       secondary.filter((s) => s.startsWith('CAS')),
       ['CAS*CO*1*1**2*1**3*1**4*1**5*1**6*1', 'CAS*CO*7*1', 'CAS*PR*1*250']
     );
+  });
+
+  it('reports how the prior payer adjudicated each line in 2430 and the rest in 2320', () => {
+    const medicare = {
+      name: 'Medicare',
+      payerId: 'DEMOMCR',
+      claimFiling: 'MB',
+      memberId: '1EG4TE5MK73',
+      relationship: '18',
+      lastName: 'Doe',
+      paidCents: 61_235,
+      adjustedCents: 17_706,
+      paidOn: '2026-10-20',
+      adjustments: [
+        { group: 'CO', reason: '45', cents: 17_706 },
+        { group: 'PR', reason: '1', cents: 10_000 },
+        { group: 'PR', reason: '2', cents: 5309 }
+      ],
+      lines: [
+        {
+          line: 1,
+          code: 'A0427',
+          modifiers: ['RH'],
+          paidCents: 55_220,
+          units: 1,
+          adjustments: [
+            { group: 'CO', reason: '45', cents: 15_995 },
+            { group: 'PR', reason: '1', cents: 10_000 },
+            { group: 'PR', reason: '2', cents: 3785 }
+          ]
+        },
+        {
+          line: 2,
+          code: 'A0425',
+          modifiers: ['RH'],
+          paidCents: 6015,
+          units: 7.4,
+          adjustments: [
+            { group: 'PR', reason: '2', cents: 1524 },
+            { group: 'CO', reason: '45', cents: 1711 }
+          ]
+        }
+      ]
+    };
+    const segs = build(readX837Claim({ ...mapped, otherPayers: [medicare] }));
+    const cob = segs.slice(segs.findIndex((s) => s.startsWith('SBR*P')));
+    assert.deepEqual(cob.slice(0, 2), ['SBR*P*18*******MB', 'AMT*D*612.35']);
+    const lines = segs.slice(segs.findIndex((s) => s.startsWith('LX*1')));
+    assert.deepEqual(lines, [
+      'LX*1',
+      'SV1*HC:A0427:RH*850*UN*1***1',
+      'DTP*472*D8*20261001',
+      'REF*6R*1',
+      'SVD*DEMOMCR*552.2*HC:A0427:RH**1',
+      'CAS*CO*45*159.95',
+      'CAS*PR*1*100**2*37.85',
+      'DTP*573*D8*20261020',
+      'LX*2',
+      'SV1*HC:A0425:RH*92.5*UN*7.4***1',
+      'DTP*472*D8*20261001',
+      'REF*6R*2',
+      'SVD*DEMOMCR*60.15*HC:A0425:RH**7.4',
+      'CAS*PR*2*15.24',
+      'CAS*CO*45*17.11',
+      'DTP*573*D8*20261020',
+      ...lines.slice(16)
+    ]);
+    assert.ok(lines[16]?.startsWith('SE*'));
+    const partial = readX837Claim({
+      ...mapped,
+      otherPayers: [{ ...medicare, lines: medicare.lines.slice(0, 1) }]
+    });
+    assert.deepEqual(partial.otherPayers[0]?.lines, []);
+    assert.equal(partial.otherPayers[0]?.adjustments.length, 3);
+    assert.ok(!build(partial).some((s) => s.startsWith('SVD')));
+    const unbalanced = readX837Claim({
+      ...mapped,
+      otherPayers: [
+        { ...medicare, lines: medicare.lines.map((l) => ({ ...l, paidCents: l.paidCents + 1 })) }
+      ]
+    });
+    assert.deepEqual(unbalanced.otherPayers[0]?.lines, []);
   });
 
   it('replaces an accepted claim with frequency 7 and the payer claim number', () => {

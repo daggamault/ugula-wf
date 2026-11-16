@@ -5,8 +5,15 @@ import {
   type InsuredRelationship,
   SELF
 } from './claim-details.ts';
-import { type Adjudication, type Adjustment, isAdjustmentGroup } from './claims.ts';
+import {
+  type Adjudication,
+  type Adjustment,
+  isAdjustmentGroup,
+  type LineAdjudication,
+  MAX_LINE_MODIFIERS
+} from './claims.ts';
 import { ZIP_PLUS_4_PATTERN } from './geo.ts';
+import { claimLevelAdjustments } from './line-adjudications.ts';
 import { money } from './numbers.ts';
 import type { Address, Sex } from './patients.ts';
 import { isValidNpi } from './payers.ts';
@@ -189,7 +196,7 @@ const readX837Line = (x: unknown, i: number): X837Line => {
   }
   return {
     code: need(textOrNull(r.code), `a code on service line ${i + 1}`),
-    modifiers: strs(r.modifiers).slice(0, 4),
+    modifiers: strs(r.modifiers).slice(0, MAX_LINE_MODIFIERS),
     chargeCents,
     units: roundUnits(positive(r.units, `units on service line ${i + 1}`)),
     serviceDate: need(textOrNull(r.serviceDate), `a date on service line ${i + 1}`),
@@ -221,6 +228,41 @@ const readAdjustment = (x: unknown): Adjustment[] => {
     : [];
 };
 
+const readLineAdjudication = (x: unknown): LineAdjudication[] => {
+  const r = recordOf(x);
+  const code = textOrNull(r.code);
+  return code &&
+    Number.isInteger(r.line) &&
+    Number.isInteger(r.paidCents) &&
+    typeof r.units === 'number' &&
+    r.units >= 0
+    ? [
+        {
+          line: r.line as number,
+          code,
+          modifiers: strs(r.modifiers).slice(0, MAX_LINE_MODIFIERS),
+          paidCents: r.paidCents as number,
+          units: roundUnits(r.units),
+          adjustments: list(r.adjustments).flatMap(readAdjustment)
+        }
+      ]
+    : [];
+};
+
+const sum = (adjustments: readonly Adjustment[]) =>
+  adjustments.reduce((total, a) => total + a.cents, 0);
+
+const byLine = (o: X837OtherPayer, lines: readonly X837Line[]): X837OtherPayer => {
+  const adjudicated = lines.map((l, i) => {
+    const found = o.lines.filter((a) => a.line === i + 1);
+    const [a] = found;
+    return found.length === 1 && a && a.paidCents + sum(a.adjustments) === l.chargeCents ? a : null;
+  });
+  return adjudicated.every((a) => a !== null) && adjudicated.length === o.lines.length
+    ? { ...o, adjustments: claimLevelAdjustments(o.adjustments, adjudicated), lines: adjudicated }
+    : { ...o, lines: [] };
+};
+
 const readOtherPayer =
   (patient: Person) =>
   (x: unknown, i: number): X837OtherPayer => {
@@ -238,6 +280,7 @@ const readOtherPayer =
       paidCents: cents(r.paidCents, `the amount ${of} paid`),
       adjustedCents: cents(r.adjustedCents, `the amount ${of} adjusted`),
       adjustments: list(r.adjustments).flatMap(readAdjustment),
+      lines: list(r.lines).flatMap(readLineAdjudication),
       paidOn: need(textOrNull(r.paidOn), `the date ${of} adjudicated it`)
     };
   };
@@ -258,21 +301,24 @@ export const readX837Claim = (x: unknown): X837Claim => {
     birthDate: need(textOrNull(pat.birthDate), 'a patient birth date'),
     sex: textOrNull(pat.sex) ?? 'U'
   };
-  const otherPayers = list(r.otherPayers).map(readOtherPayer(patient));
+  const otherPayers = list(r.otherPayers)
+    .map(readOtherPayer(patient))
+    .map((o) => byLine(o, lines));
   if (otherPayers.length >= RESPONSIBILITY.length) {
     throw new Error(`The 837P claim carries at most ${RESPONSIBILITY.length} payers`);
   }
   const totalCents = lines.reduce((sum, l) => sum + l.chargeCents, 0);
   otherPayers.forEach((o, i) => {
-    if (!o.adjustments.length) {
+    const lineAdjustments = o.lines.flatMap((l) => l.adjustments);
+    if (!o.adjustments.length && !lineAdjustments.length) {
       throw new Error(
         `the reason codes (CAS) of other payer ${i + 1} (${o.name}); post its remittance with them`
       );
     }
-    const balanced = o.paidCents + o.adjustments.reduce((sum, a) => sum + a.cents, 0);
+    const balanced = o.paidCents + sum(o.adjustments) + sum(lineAdjustments);
     if (balanced !== totalCents) {
       throw new Error(
-        `other payer ${i + 1} (${o.name}) to balance: its payment and reason codes add up to ${money(balanced)}, not the ${money(totalCents)} charged (CLM02 = AMT*D + CAS), so the charges changed after it adjudicated the claim or its remittance was posted in part`
+        `other payer ${i + 1} (${o.name}) to balance: its payment and reason codes add up to ${money(balanced)}, not the ${money(totalCents)} charged (CLM02 = AMT*D + 2320 CAS + 2430 CAS), so the charges changed after it adjudicated the claim or its remittance was posted in part`
       );
     }
   });
@@ -384,6 +430,24 @@ const otherPayerSegments = (o: X837OtherPayer, i: number): Segment[] => [
   ['DTP', '573', 'D8', yyyymmdd(o.paidOn)]
 ];
 
+const lineAdjudicationSegments = (o: X837OtherPayer, line: number): Segment[] => {
+  const a = o.lines.find((l) => l.line === line);
+  return a
+    ? [
+        [
+          'SVD',
+          clean(o.payerId, 80),
+          dollars(a.paidCents),
+          ['HC', a.code, ...a.modifiers],
+          '',
+          String(a.units)
+        ],
+        ...casSegments(a.adjustments),
+        ['DTP', '573', 'D8', yyyymmdd(o.paidOn)]
+      ]
+    : [];
+};
+
 const claimSegments = (c: X837Claim, hl: number): Segment[] => {
   const { subscriber: s, patient: p } = c;
   const self = s.relationship === SELF;
@@ -466,7 +530,9 @@ const claimSegments = (c: X837Claim, hl: number): Segment[] => {
       ['DTP', '472', 'D8', yyyymmdd(l.serviceDate)],
       ...(l.patientCount !== null && l.patientCount > 1
         ? [['QTY', 'PT', String(l.patientCount)]]
-        : [])
+        : []),
+      ['REF', '6R', String(i + 1)],
+      ...c.otherPayers.flatMap((o) => lineAdjudicationSegments(o, i + 1))
     ])
   ];
 };

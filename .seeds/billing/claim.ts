@@ -777,6 +777,24 @@ const map837p = (): GraphDef => {
           name: 'adjustments',
           type: { list: { object: { group: 'string', reason: 'string', cents: 'integer' } } },
           from: 'adjustments'
+        },
+        {
+          name: 'lines',
+          type: {
+            list: {
+              object: {
+                line: 'integer',
+                code: 'string',
+                modifiers: { list: 'string' },
+                paidCents: 'integer',
+                units: 'number',
+                adjustments: {
+                  list: { object: { group: 'string', reason: 'string', cents: 'integer' } }
+                }
+              }
+            }
+          },
+          from: 'lines'
         }
       ]
     }

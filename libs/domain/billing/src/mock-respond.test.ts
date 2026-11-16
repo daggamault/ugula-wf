@@ -53,7 +53,7 @@ describe('respond', () => {
     assert.deepEqual(r.rejected, ['c-2']);
   });
 
-  it('pays 80% of each accepted claim per payer and adjusts the rest as CO-45', () => {
+  it('pays 80% of each accepted line per payer and adjusts the rest as CO-45', () => {
     const remits = read835(r.remit835 ?? '');
     assert.deepEqual(
       remits.map((m) => [
@@ -67,8 +67,16 @@ describe('respond', () => {
       ]
     );
     assert.deepEqual(remits[0]?.claims[0]?.adjustments, [
-      { group: 'CO', reason: '45', cents: 18_850 }
+      { group: 'CO', reason: '45', cents: 17_000 },
+      { group: 'CO', reason: '45', cents: 1_850 }
     ]);
+    assert.deepEqual(
+      remits[0]?.claims[0]?.services.map((s) => [s.code, s.paidCents, s.units, s.lineNumber]),
+      [
+        ['A0427', 68_000, 1, '1'],
+        ['A0425', 7_400, 7.4, '2']
+      ]
+    );
     assert.equal(remits[0]?.paidOn, '2026-11-03');
   });
 

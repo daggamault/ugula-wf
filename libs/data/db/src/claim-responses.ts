@@ -1,4 +1,10 @@
-import { type Adjustment, CLAIM_SIGNAL, type DenialRoute, isClosedStatus } from '@ugula/billing';
+import {
+  type Adjustment,
+  CLAIM_SIGNAL,
+  type DenialRoute,
+  isClosedStatus,
+  type LineAdjudication
+} from '@ugula/billing';
 import { enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
 import { sqlExecutor } from './client.ts';
@@ -39,6 +45,7 @@ export type ClaimResponse = {
   payerClaimNumber: string | null;
   adjustments: Adjustment[];
   remarks?: readonly string[];
+  lines?: readonly LineAdjudication[];
   note: string;
   exactAdjustment?: boolean;
   reversal?: boolean;
@@ -152,6 +159,34 @@ export const insertResponse = async (
       .insertInto('claim_event_remarks')
       .values(r.remarks.map((code, i) => ({ event_id: event.id, position: i + 1, code })))
       .execute();
+  }
+  if (event && r.lines?.length) {
+    await db
+      .insertInto('claim_event_lines')
+      .values(
+        r.lines.map((l) => ({
+          event_id: event.id,
+          line: l.line,
+          code: l.code,
+          modifiers: l.modifiers,
+          paid_cents: l.paidCents,
+          units: l.units
+        }))
+      )
+      .execute();
+    const adjustments = r.lines.flatMap((l) =>
+      l.adjustments.map((a, i) => ({
+        event_id: event.id,
+        line: l.line,
+        position: i + 1,
+        group_code: a.group,
+        reason_code: a.reason,
+        amount_cents: a.cents
+      }))
+    );
+    if (adjustments.length) {
+      await db.insertInto('claim_event_line_adjustments').values(adjustments).execute();
+    }
   }
   return event !== undefined;
 };

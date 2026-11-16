@@ -241,7 +241,14 @@ describe('claimProgress', () => {
     };
     assert.deepEqual(claimProgress(ledger).coverage, cov('Blue Plan'));
     assert.deepEqual(claimProgress(ledger).priorCoverages, [
-      { ...renamed, paidCents: 40_000, adjustedCents: 0, paidOn: '2026-01-02', adjustments: [] }
+      {
+        ...renamed,
+        paidCents: 40_000,
+        adjustedCents: 0,
+        paidOn: '2026-01-02',
+        adjustments: [],
+        lines: []
+      }
     ]);
   });
 
@@ -265,6 +272,35 @@ describe('claimProgress', () => {
     );
   });
 
+  it('adds up line adjudications per line, unless a response came without them', () => {
+    const line = (paidCents: number, cents: number) => ({
+      line: 1,
+      code: 'A0427',
+      modifiers: ['RH'],
+      paidCents,
+      units: 1,
+      adjustments: [{ group: 'CO' as const, reason: '45', cents }]
+    });
+    const ledger = (...lines: (ReturnType<typeof line>[] | undefined)[]) => ({
+      totalCents: 100_000,
+      coverages: [cov('Medicare'), cov('Blue Plan')],
+      events: lines.map((l, i) => ({
+        ...e('response', 'Medicare', i + 1, 1),
+        ...(l ? { lines: l } : {})
+      }))
+    });
+    assert.deepEqual(
+      claimProgress(
+        ledger([line(60_000, 40_000)], [line(-60_000, -40_000)], [line(70_000, 30_000)])
+      ).priorCoverages[0]?.lines,
+      [line(70_000, 30_000)]
+    );
+    assert.deepEqual(
+      claimProgress(ledger([line(60_000, 40_000)], undefined)).priorCoverages[0]?.lines,
+      []
+    );
+  });
+
   it('totals every response of a prior payer and dates it by the last one', () => {
     const ledger = {
       totalCents: 100_000,
@@ -277,7 +313,8 @@ describe('claimProgress', () => {
         paidCents: 41_000,
         adjustedCents: 5_000,
         paidOn: '2026-01-04',
-        adjustments: []
+        adjustments: [],
+        lines: []
       }
     ]);
   });

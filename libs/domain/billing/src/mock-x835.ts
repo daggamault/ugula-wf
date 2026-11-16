@@ -12,6 +12,16 @@ import {
 } from './mock-envelope.ts';
 import { clean, type Segment } from './x12.ts';
 
+type Mock835Line = {
+  code: string;
+  modifiers?: string[];
+  chargeCents: number;
+  paidCents: number;
+  units?: number;
+  lineNumber?: string;
+  adjustments?: Adjustment[];
+};
+
 type Mock835Claim = {
   claimNumber: string;
   chargeCents: number;
@@ -23,6 +33,7 @@ type Mock835Claim = {
   adjustments?: Adjustment[];
   remarks?: string[];
   crossover?: Party;
+  lines?: Mock835Line[];
 };
 
 type Mock835ProviderAdjustment = { reason: string; reference?: string; cents: number };
@@ -43,6 +54,7 @@ const PLB_PAIRS = 6;
 
 const adjustmentsOf = (c: Mock835Claim): Adjustment[] => {
   if (c.adjustments) return c.adjustments;
+  if (c.lines) return [];
   const patient = c.patientCents ?? 0;
   const rest = c.chargeCents - c.paidCents - patient;
   return [
@@ -57,6 +69,25 @@ const casOf = (adjustments: Adjustment[]): Segment[] =>
     group,
     ...items.slice(0, CAS_TRIPLETS).flatMap((a) => [a.reason, mockDollars(a.cents), ''])
   ]);
+
+const lineAdjustmentsOf = (l: Mock835Line): Adjustment[] => {
+  if (l.adjustments) return l.adjustments;
+  const rest = l.chargeCents - l.paidCents;
+  return rest ? [{ group: 'CO', reason: '45', cents: rest }] : [];
+};
+
+const lineSegments = (l: Mock835Line): Segment[] => [
+  [
+    'SVC',
+    ['HC', l.code, ...(l.modifiers ?? [])],
+    mockDollars(l.chargeCents),
+    mockDollars(l.paidCents),
+    '',
+    String(l.units ?? 1)
+  ],
+  ...(l.lineNumber ? [['REF', '6R', l.lineNumber]] : []),
+  ...casOf(lineAdjustmentsOf(l))
+];
 
 const claimSegments = (c: Mock835Claim): Segment[] => [
   [
@@ -73,7 +104,8 @@ const claimSegments = (c: Mock835Claim): Segment[] => [
   ...(c.crossover
     ? [['NM1', 'TT', '2', clean(c.crossover.name), '', '', '', '', 'PI', c.crossover.id]]
     : []),
-  ...(c.remarks?.length ? [['MOA', '', '', ...c.remarks.slice(0, MOA_REMARKS)]] : [])
+  ...(c.remarks?.length ? [['MOA', '', '', ...c.remarks.slice(0, MOA_REMARKS)]] : []),
+  ...(c.lines ?? []).flatMap(lineSegments)
 ];
 
 const plbOf = (provider: string, date: string, items: Mock835ProviderAdjustment[]): Segment[] =>

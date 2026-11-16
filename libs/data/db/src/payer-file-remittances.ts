@@ -1,5 +1,7 @@
 import {
+  type BilledLine,
   isDenialRoute,
+  matchServiceLines,
   money,
   type ProviderAdjustment,
   type Remittance,
@@ -26,6 +28,20 @@ const listPostingCoverages = async (db: Db, claimIds: readonly string[]) =>
           .execute()
       : [],
     (cc) => cc.claim_id
+  );
+
+const listBilledLines = async (db: Db, claimIds: readonly string[]) =>
+  Map.groupBy(
+    claimIds.length
+      ? await db
+          .selectFrom('claim_lines')
+          .select(['claim_id', 'position', 'code', 'total_cents as chargeCents'])
+          .where('claim_id', 'in', claimIds)
+          .orderBy('claim_id')
+          .orderBy('position')
+          .execute()
+      : [],
+    (l) => l.claim_id
   );
 
 const listPostedPayments = async (db: Db, coverageIds: readonly string[]) =>
@@ -131,7 +147,8 @@ const providerItem = async (c: Context, remit: Remittance, a: ProviderAdjustment
 const postPayment = async (
   c: Context,
   { remit, rc, position }: ClaimPayment,
-  { claimId, coverageId, nextCoverageId, reversesPosted }: PaymentMatch
+  { claimId, coverageId, nextCoverageId, reversesPosted }: PaymentMatch,
+  billed: readonly BilledLine[]
 ): Promise<FileItem> => {
   const posting = c.postings.find((p) => p.position === position);
   if (!posting) throw new Error(`No posting was decided for claim payment ${position} of the file`);
@@ -170,6 +187,7 @@ const postPayment = async (
     payerClaimNumber: rc.payerClaimNumber,
     adjustments: line.adjustments,
     remarks: rc.remarks,
+    lines: matchServiceLines(rc.services, billed),
     exactAdjustment: true,
     reversal,
     note: `${reversal ? 'Reversal' : isDenialRoute(posting.route) ? 'Denied' : 'Remittance'} from ${remit.payerName ?? 'the payer'} in ${c.fileName}`
@@ -211,12 +229,20 @@ const postPayment = async (
 export const postRemittances = async (c: Context, remittances: Remittance[]) => {
   const payments = eachClaimPayment(remittances);
   const match = await matchRemittances(c.tx, c.agencyId, payments);
+  const matches = new Map(payments.map((p) => [p.position, match(p)]));
+  const billed = await listBilledLines(c.tx, [
+    ...new Set([...matches.values()].flatMap((m) => m.claimId ?? []))
+  ]);
   const posted = new Map<number, FileItem>();
   for (const payment of [
     ...payments.filter((p) => p.rc.reversal),
     ...payments.filter((p) => !p.rc.reversal)
   ]) {
-    posted.set(payment.position, await postPayment(c, payment, match(payment)));
+    const m = matches.get(payment.position) ?? match(payment);
+    posted.set(
+      payment.position,
+      await postPayment(c, payment, m, m.claimId ? (billed.get(m.claimId) ?? []) : [])
+    );
   }
   const items = payments.flatMap((p) => posted.get(p.position) ?? []);
   for (const remit of remittances) {

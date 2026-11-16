@@ -1,4 +1,9 @@
-import { type Adjustment, type ClaimStore, claimSignalKey } from '@ugula/billing';
+import {
+  type Adjustment,
+  type ClaimStore,
+  claimSignalKey,
+  type LineAdjudication
+} from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { importsPrefix } from '@ugula/storage';
 import { sql } from 'kysely';
@@ -9,6 +14,17 @@ import { agencyClaim, payerName } from './claim-scope.ts';
 const adjustmentsOf = sql<Adjustment[]>`coalesce((
   select json_agg(json_build_object('group', a.group_code, 'reason', a.reason_code, 'cents', a.amount_cents) order by a.position)
   from claim_event_adjustments a where a.event_id = e.id
+), '[]'::json)`;
+
+const linesOf = sql<LineAdjudication[]>`coalesce((
+  select json_agg(json_build_object(
+    'line', l.line, 'code', l.code, 'modifiers', l.modifiers, 'paidCents', l.paid_cents, 'units', l.units::float8,
+    'adjustments', coalesce((
+      select json_agg(json_build_object('group', a.group_code, 'reason', a.reason_code, 'cents', a.amount_cents) order by a.position)
+      from claim_event_line_adjustments a where a.event_id = l.event_id and a.line = l.line
+    ), '[]'::json)
+  ) order by l.line)
+  from claim_event_lines l where l.event_id = e.id
 ), '[]'::json)`;
 
 const REVIEW_LINE_WORKFLOW = 'billing.review-payer-file-line';
@@ -125,6 +141,7 @@ export const createLedgerStore = (
           'e.route',
           adjustmentsOf.as('adjustments'),
           remarksOf.as('remarks'),
+          linesOf.as('lines'),
           'e.created_at'
         ])
         .where('e.claim_id', '=', claim.id)
@@ -150,6 +167,7 @@ export const createLedgerStore = (
         paidOn: e.paid_on,
         adjustments: e.adjustments,
         remarks: e.remarks,
+        lines: e.lines,
         note: e.note,
         route: e.route,
         at: new Date(e.created_at).toISOString()

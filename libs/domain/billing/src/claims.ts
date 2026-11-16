@@ -113,6 +113,17 @@ export const REMARK_CODE_PATTERN = '^[A-Z]{1,2}[0-9]{1,3}$';
 
 export type Adjustment = { group: AdjustmentGroup; reason: string; cents: number };
 
+export const MAX_LINE_MODIFIERS = 4;
+
+export type LineAdjudication = {
+  line: number;
+  code: string;
+  modifiers: string[];
+  paidCents: number;
+  units: number;
+  adjustments: Adjustment[];
+};
+
 export const mergedAdjustments = (adjustments: readonly Adjustment[]) => {
   const byCode = new Map<string, Adjustment>();
   for (const a of adjustments) {
@@ -173,6 +184,7 @@ export type ClaimEvent = {
   paidOn: string | null;
   adjustments: Adjustment[];
   remarks?: string[];
+  lines?: LineAdjudication[];
   note: string;
   route?: DenialRoute | null;
   at: string;
@@ -183,6 +195,7 @@ export type Adjudication = {
   adjustedCents: number;
   paidOn: string;
   adjustments: Adjustment[];
+  lines: LineAdjudication[];
 };
 
 export type ClaimLedger = {
@@ -276,6 +289,23 @@ const latest = (events: ClaimEvent[]) =>
     return max === null || t > max ? t : max;
   }, null);
 
+const combinedLines = (lines: readonly LineAdjudication[]): LineAdjudication[] =>
+  [...Map.groupBy(lines, (l) => l.line)]
+    .toSorted(([a], [b]) => a - b)
+    .flatMap(([line, all]) => {
+      const last = all.at(-1);
+      return last
+        ? [
+            {
+              ...last,
+              line,
+              paidCents: all.reduce((sum, l) => sum + l.paidCents, 0),
+              adjustments: mergedAdjustments(all.flatMap((l) => l.adjustments))
+            }
+          ]
+        : [];
+    });
+
 const adjudication = (responses: ClaimEvent[]): Adjudication => ({
   paidCents: responses.reduce((sum, e) => sum + e.paidCents, 0),
   adjustedCents: responses.reduce((sum, e) => sum + e.adjustedCents, 0),
@@ -284,7 +314,10 @@ const adjudication = (responses: ClaimEvent[]): Adjudication => ({
       .map((e) => e.paidOn ?? e.at.slice(0, 10))
       .toSorted()
       .at(-1) ?? '',
-  adjustments: mergedAdjustments(responses.flatMap((e) => e.adjustments))
+  adjustments: mergedAdjustments(responses.flatMap((e) => e.adjustments)),
+  lines: responses.every((e) => e.lines?.length)
+    ? combinedLines(responses.flatMap((e) => e.lines ?? []))
+    : []
 });
 
 export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) => {

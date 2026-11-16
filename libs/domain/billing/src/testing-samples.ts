@@ -184,6 +184,7 @@ export const sampleDependentX837: X837Claim = {
       paidCents: 10_000,
       adjustedCents: 0,
       adjustments: [],
+      lines: [],
       paidOn: '2026-10-10'
     }
   ],

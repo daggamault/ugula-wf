@@ -1,4 +1,4 @@
-import { type Adjustment, isAdjustmentGroup } from './claims.ts';
+import { type Adjustment, isAdjustmentGroup, MAX_LINE_MODIFIERS } from './claims.ts';
 import {
   centsOf,
   componentsOf,
@@ -8,6 +8,17 @@ import {
   transactionsOf,
   type X12File
 } from './x12.ts';
+
+export type RemittanceService = {
+  code: string;
+  modifiers: string[];
+  chargeCents: number;
+  paidCents: number;
+  units: number;
+  originalCode: string | null;
+  lineNumber: string | null;
+  adjustments: Adjustment[];
+};
 
 export type RemittanceClaim = {
   claimNumber: string;
@@ -21,6 +32,7 @@ export type RemittanceClaim = {
   crossoverPayer: string | null;
   denied: boolean;
   reversal: boolean;
+  services: RemittanceService[];
 };
 
 export type ProviderAdjustment = { reason: string; reference: string | null; cents: number };
@@ -51,6 +63,8 @@ const REMARK_QUALIFIER = 'HE';
 
 const PLB_PAIRS = 6;
 
+const LINE_CONTROL = '6R';
+
 const providerAdjustmentsOf = (plb: string[], file: X12File): ProviderAdjustment[] =>
   Array.from({ length: PLB_PAIRS }, (_, i) => {
     const [reason, reference] = componentsOf(plb[3 + i * 2], file);
@@ -69,6 +83,26 @@ const adjustmentsOf = (cas: string[]): Adjustment[] => {
   }).flat();
 };
 
+const unitsOf = (x: string | undefined) => {
+  const n = Number(textOf(x) ?? '1');
+  return Number.isFinite(n) ? n : 1;
+};
+
+const serviceOf = (svc: string[], file: X12File): RemittanceService => {
+  const [, code, ...modifiers] = componentsOf(svc[1], file);
+  const [, original] = componentsOf(svc[6], file);
+  return {
+    code: textOf(code) ?? '',
+    modifiers: modifiers.flatMap((m) => textOf(m) ?? []).slice(0, MAX_LINE_MODIFIERS),
+    chargeCents: centsOf(svc[2]),
+    paidCents: centsOf(svc[3]),
+    units: unitsOf(svc[5]),
+    originalCode: textOf(original),
+    lineNumber: null,
+    adjustments: []
+  };
+};
+
 const addRemark = (claim: RemittanceClaim | null, value: string | undefined) => {
   const code = textOf(value)?.toUpperCase();
   if (claim && code && !claim.remarks.includes(code)) claim.remarks.push(code);
@@ -85,7 +119,8 @@ const claimOf = (clp: string[]): RemittanceClaim => ({
   remarks: [],
   crossoverPayer: null,
   denied: clp[2] === DENIED,
-  reversal: clp[2] === REVERSAL
+  reversal: clp[2] === REVERSAL,
+  services: []
 });
 
 const remittanceOf = (segments: string[][], file: X12File): Remittance => {
@@ -100,6 +135,7 @@ const remittanceOf = (segments: string[][], file: X12File): Remittance => {
   };
   let party: string | null = null;
   let claim: RemittanceClaim | null = null;
+  let service: RemittanceService | null = null;
   for (const seg of segments) {
     switch (seg[0]) {
       case 'BPR':
@@ -118,17 +154,26 @@ const remittanceOf = (segments: string[][], file: X12File): Remittance => {
         break;
       case 'REF':
         if (party === 'PR' && !claim && seg[1] === '2U') r.payerId ??= textOf(seg[2]);
+        if (service && seg[1] === LINE_CONTROL) service.lineNumber = textOf(seg[2]);
         break;
       case 'NM1':
         if (claim && seg[1] === CROSSOVER_CARRIER) claim.crossoverPayer = textOf(seg[3]);
         break;
       case 'CLP':
         claim = claimOf(seg);
+        service = null;
         r.claims.push(claim);
         break;
-      case 'CAS':
-        claim?.adjustments.push(...adjustmentsOf(seg));
+      case 'SVC':
+        service = claim ? serviceOf(seg, file) : null;
+        if (claim && service) claim.services.push(service);
         break;
+      case 'CAS': {
+        const adjustments = adjustmentsOf(seg);
+        claim?.adjustments.push(...adjustments);
+        service?.adjustments.push(...adjustments);
+        break;
+      }
       case 'MOA':
       case 'MIA':
         for (const i of seg[0] === 'MOA' ? MOA_REMARKS : MIA_REMARKS) addRemark(claim, seg[i]);

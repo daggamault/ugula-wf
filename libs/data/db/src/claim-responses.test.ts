@@ -76,6 +76,39 @@ describe('claim responses', () => {
     assert.ok(!insert?.parameters.includes('ignored without a payer'));
   });
 
+  it('stores how the payer adjudicated each line with its reason codes', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('insert into "claim_events"') ? [{ id: 'e1' }] : []
+    );
+    const line = { line: 2, code: 'A0425', modifiers: ['RH'], paidCents: 600, units: 7.4 };
+    await insertResponse(db, 't1', 'c1', 'u1', {
+      ...response,
+      lines: [
+        { ...line, adjustments: [{ group: 'CO', reason: '45', cents: 300 }] },
+        { ...line, line: 3, adjustments: [] }
+      ]
+    });
+    const lines = queries.find((q) => q.sql.startsWith('insert into "claim_event_lines"'));
+    const reasons = queries.find((q) =>
+      q.sql.startsWith('insert into "claim_event_line_adjustments"')
+    );
+    assert.deepEqual(lines?.parameters, [
+      'e1',
+      2,
+      'A0425',
+      ['RH'],
+      600,
+      7.4,
+      'e1',
+      3,
+      'A0425',
+      ['RH'],
+      600,
+      7.4
+    ]);
+    assert.deepEqual(reasons?.parameters, ['e1', 2, 1, 'CO', '45', 300]);
+  });
+
   it('flags coverages that already have billing activity', async () => {
     const { db, queries } = createRecordingDb(() => []);
     await listCoverages(db, 'c1');

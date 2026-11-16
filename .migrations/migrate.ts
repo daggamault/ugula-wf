@@ -29,6 +29,8 @@ const resetSchema = async (db: Kysely<Database>) => {
   for (const table of [
     'notification_states',
     'notifications',
+    'claim_event_line_adjustments',
+    'claim_event_lines',
     'claim_event_remarks',
     'claim_event_adjustments',
     'claim_events',

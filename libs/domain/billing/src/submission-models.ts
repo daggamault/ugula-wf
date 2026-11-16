@@ -1,5 +1,5 @@
 import { DOCUMENTATION, LINE } from './claim-models.ts';
-import { ADDRESS, ADJUSTMENT_TYPE, f, model, X12 } from './model-kit.ts';
+import { ADDRESS, ADJUSTMENT_TYPE, f, LINE_ADJUDICATION_TYPE, model, X12 } from './model-kit.ts';
 import { LOCATION } from './party-models.ts';
 
 export const SUBMITTED_PATIENT = model(
@@ -45,7 +45,12 @@ export const PRIOR_PAYER = model(
     f('paidCents', 'integer', 'Paid (cents)'),
     f('adjustedCents', 'integer', 'Adjusted (cents)'),
     f('paidOn', 'string', 'Adjudication date (YYYY-MM-DD)'),
-    f('adjustments', { list: ADJUSTMENT_TYPE }, 'Adjustment reason codes')
+    f('adjustments', { list: ADJUSTMENT_TYPE }, 'Adjustment reason codes'),
+    f(
+      'lines',
+      { list: LINE_ADJUDICATION_TYPE },
+      'How it adjudicated each service line (835 SVC), by line number; empty when posted without them'
+    )
   ]
 );
 
@@ -153,7 +158,16 @@ export const X837_OTHER_PAYER = model(
     f('paidCents', 'integer', 'Paid in cents (AMT02)'),
     f('adjustedCents', 'integer', 'Adjusted in cents, without reason codes (CAS)'),
     f('paidOn', 'string', 'Adjudication date (DTP03)'),
-    f('adjustments', { list: ADJUSTMENT_TYPE }, 'Adjustment reason codes (CAS)')
+    f(
+      'adjustments',
+      { list: ADJUSTMENT_TYPE },
+      'Every adjustment reason code, claim and line (CAS)'
+    ),
+    f(
+      'lines',
+      { list: LINE_ADJUDICATION_TYPE },
+      'Line adjudication by service line number (2430 SVD, CAS); empty for claim level only'
+    )
   ],
   X12
 );
