@@ -17,7 +17,7 @@ const record =
   };
 
 const service = {
-  list: record({ runs: [] }),
+  search: record({ runs: [] }),
   find: record({ run: { id: ID } }),
   graphs: record({ graphs: [] }),
   steps: record({ steps: [] }),

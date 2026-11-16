@@ -10,8 +10,8 @@ const ID = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 const calls: unknown[][] = [];
 
 const service = {
-  list: async (...args: unknown[]) => {
-    calls.push(['list', ...args]);
+  search: async (...args: unknown[]) => {
+    calls.push(['search', ...args]);
     return ok({ items: [], total: 0, page: 1, pageSize: 25 });
   },
   find: async (...args: unknown[]) => {
@@ -32,7 +32,7 @@ describe('patient routes', () => {
     assert.equal((await request('/nope')).status, 400);
     assert.deepEqual(calls, [
       [
-        'list',
+        'search',
         't-1',
         {
           lastName: 'doe',

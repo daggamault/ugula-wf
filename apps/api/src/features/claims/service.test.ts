@@ -241,7 +241,7 @@ describe('claim service', () => {
     assert.match(failure(await setup({ row: null }).service.events('t', 'c1', page)), /^not_found/);
     assert.equal(
       (
-        await setup().service.list('t', {
+        await setup().service.search('t', {
           status: 'open',
           page: 1,
           pageSize: 25,

@@ -18,7 +18,7 @@ const record =
 
 const service = Object.fromEntries(
   [
-    'list',
+    'search',
     'find',
     'update',
     'remove',
@@ -44,7 +44,7 @@ describe('user routes', () => {
     assert.equal((await request(`/${ID}`, { method: 'DELETE' })).status, 200);
     assert.equal((await request(`/${ID}/password-link`, { method: 'POST' })).status, 201);
     assert.deepEqual(calls, [
-      ['list', { q: 'ada', page: 1, pageSize: 25, sort: 'email', dir: 'asc' }],
+      ['search', { q: 'ada', page: 1, pageSize: 25, sort: 'email', dir: 'asc' }],
       ['find', ID],
       ['update', ID, { roleId: ID, version: 2 }],
       ['remove', ID],

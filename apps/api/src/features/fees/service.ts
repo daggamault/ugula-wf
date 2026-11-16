@@ -6,8 +6,8 @@ import {
   type FeeFilters,
   findFee,
   payerExists,
-  saveFee,
-  searchFees
+  searchFees,
+  upsertFee
 } from './queries.ts';
 import type { FeeInput } from './schemas.ts';
 
@@ -23,7 +23,7 @@ export const createFeeService = ({ db }: { db: Db }) => ({
     if (input.payerId !== null && !(await payerExists(db, agencyId, input.payerId))) {
       return fail('invalid', 'Choose a payer from the payer directory');
     }
-    const fee = await saveFee(db, agencyId, input, writes);
+    const fee = await upsertFee(db, agencyId, input, writes);
     return fee
       ? ok({ fee })
       : fail('forbidden', writes.create ? "You can't change fees" : "You can't add fees");

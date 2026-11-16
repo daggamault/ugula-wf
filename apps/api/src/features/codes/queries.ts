@@ -10,7 +10,7 @@ const codeRows = (db: Db, set: CodesQuery['set']) =>
     .select(['c.code', 'c.description', 'c.is_billable'])
     .where('c.code_set', '=', set);
 
-export const findCodes = async (db: Db, { set, q, list, codes }: CodesQuery) => {
+export const searchCodes = async (db: Db, { set, q, list, codes }: CodesQuery) => {
   if (codes) {
     return codes.length
       ? codeRows(db, set)

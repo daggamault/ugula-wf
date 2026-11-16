@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { type AgencyEnv, requirePermission } from '../../shared/access.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { createRoleSchema, listRolesQuery, updateRoleSchema } from './schemas.ts';
+import { roleSchema, searchRolesQuery, updateRoleSchema } from './schemas.ts';
 import type { RoleService } from './service.ts';
 
 export const createRoleRoutes = (service: RoleService) =>
@@ -11,8 +11,8 @@ export const createRoleRoutes = (service: RoleService) =>
     .get(
       '/',
       requirePermission('roles:read'),
-      sValidator('query', listRolesQuery, invalidRequest),
-      async (c) => respond(c, await service.list(c.get('access'), c.req.valid('query')))
+      sValidator('query', searchRolesQuery, invalidRequest),
+      async (c) => respond(c, await service.search(c.get('access'), c.req.valid('query')))
     )
     .get('/permissions', requirePermission('roles:read'), (c) =>
       respond(c, service.permissions(c.get('access')))
@@ -26,7 +26,7 @@ export const createRoleRoutes = (service: RoleService) =>
     .post(
       '/',
       requirePermission('roles:create'),
-      sValidator('json', createRoleSchema, invalidRequest),
+      sValidator('json', roleSchema, invalidRequest),
       async (c) => respond(c, await service.create(c.get('access'), c.req.valid('json')), 201)
     )
     .put(

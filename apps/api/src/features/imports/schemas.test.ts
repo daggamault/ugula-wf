@@ -3,8 +3,8 @@ import { describe, it } from 'node:test';
 import * as v from 'valibot';
 import {
   importFormSchema,
-  listImportsQuery,
-  listReportsQuery,
+  listImportReportsQuery,
+  searchImportsQuery,
   sftpAuthSchema,
   sftpEventSchema
 } from './schemas.ts';
@@ -20,21 +20,21 @@ describe('importFormSchema', () => {
 
 describe('import list queries', () => {
   it('default the sort and bound the search text', () => {
-    assert.deepEqual(v.parse(listImportsQuery, { q: ' acme ' }), {
+    assert.deepEqual(v.parse(searchImportsQuery, { q: ' acme ' }), {
       q: 'acme',
       page: 1,
       pageSize: 25,
       sort: 'received',
       dir: 'desc'
     });
-    assert.equal(v.safeParse(listImportsQuery, { q: 'x'.repeat(81) }).success, false);
-    assert.deepEqual(v.parse(listReportsQuery, {}), {
+    assert.equal(v.safeParse(searchImportsQuery, { q: 'x'.repeat(81) }).success, false);
+    assert.deepEqual(v.parse(listImportReportsQuery, {}), {
       page: 1,
       pageSize: 25,
       sort: 'position',
       dir: 'asc'
     });
-    assert.equal(v.safeParse(listReportsQuery, { sort: 'file' }).success, false);
+    assert.equal(v.safeParse(listImportReportsQuery, { sort: 'file' }).success, false);
   });
 });
 

@@ -11,8 +11,8 @@ const ID = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 const calls: unknown[][] = [];
 
 const service = {
-  list: async (...args: unknown[]) => {
-    calls.push(['list', ...args]);
+  search: async (...args: unknown[]) => {
+    calls.push(['search', ...args]);
     return ok({ items: [], total: 0, page: 1, pageSize: 25 });
   },
   find: async (...args: unknown[]) => {
@@ -35,7 +35,7 @@ describe('payer file routes', () => {
   it('lists, finds and downloads payer files for the session agency', async () => {
     assert.equal((await request('/?sort=problems&dir=asc')).status, 200);
     assert.deepEqual(calls.at(-1), [
-      'list',
+      'search',
       't-1',
       { page: 1, pageSize: 25, sort: 'problems', dir: 'asc' }
     ]);

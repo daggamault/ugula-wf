@@ -8,7 +8,7 @@ import {
   findTask,
   findTaskSource,
   listQueues,
-  listTasks
+  searchTasks
 } from './queries.ts';
 
 describe('task queries', () => {
@@ -46,7 +46,7 @@ describe('task list', () => {
 
   it('lists open tasks of the agency with their claim and patient, oldest first', async () => {
     const { db, queries } = createRecordingDb();
-    await listTasks(db, 't-1', 'u1', { ...page, assignee: 'all' });
+    await searchTasks(db, 't-1', 'u1', { ...page, assignee: 'all' });
     const [list] = queries;
     assert.ok(list?.sql.includes('left join "users" as "u" on "u"."id" = "t"."assignee_id"'));
     assert.ok(list?.sql.includes('left join "claims" as "c" on "c"."id" = "cr"."claim_id"'));
@@ -61,8 +61,8 @@ describe('task list', () => {
 
   it('filters by queue and assignee', async () => {
     const { db, queries } = createRecordingDb();
-    await listTasks(db, 't-1', 'u1', { ...page, queue: 'billing', assignee: 'mine' });
-    await listTasks(db, 't-1', 'u1', { ...page, assignee: 'unassigned', sort: 'assignee' });
+    await searchTasks(db, 't-1', 'u1', { ...page, queue: 'billing', assignee: 'mine' });
+    await searchTasks(db, 't-1', 'u1', { ...page, assignee: 'unassigned', sort: 'assignee' });
     const [mine, unassigned] = queries;
     assert.ok(mine?.sql.includes('"t"."queue" = $3 and "t"."assignee_id" = $4'));
     assert.deepEqual(mine?.parameters.slice(0, 4), ['t-1', 'open', 'billing', 'u1']);
@@ -74,8 +74,8 @@ describe('task list', () => {
 
   it('searches titles, subjects, patients, PCRs and claim numbers', async () => {
     const { db, queries } = createRecordingDb();
-    await listTasks(db, 't-1', 'u1', { ...page, assignee: 'all', q: ' #202611050007 ' });
-    await listTasks(db, 't-1', 'u1', { ...page, assignee: 'all', q: '50%' });
+    await searchTasks(db, 't-1', 'u1', { ...page, assignee: 'all', q: ' #202611050007 ' });
+    await searchTasks(db, 't-1', 'u1', { ...page, assignee: 'all', q: '50%' });
     const [byNumber, byText] = queries;
     assert.ok(
       byNumber?.sql.includes(

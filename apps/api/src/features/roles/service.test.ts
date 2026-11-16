@@ -76,7 +76,7 @@ describe('role service', () => {
     const { db } = roleDb({ role: { ...roleRow(['fees:read']), total: '1' } });
     const service = createRoleService({ db });
     const access = testAccess(['roles:read', 'fees:read']);
-    const page = await service.list(access, { page: 1, pageSize: 25, sort: 'name', dir: 'asc' });
+    const page = await service.search(access, { page: 1, pageSize: 25, sort: 'name', dir: 'asc' });
     assert.ok(page.ok);
     assert.equal(page.value.total, 1);
     assert.equal(page.value.items[0]?.isGrantable, true);

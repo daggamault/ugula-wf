@@ -17,7 +17,7 @@ const TASK_SORTS = ['waiting', 'priority', 'due', 'title', 'queue', 'claim', 'as
 
 export type TaskSort = (typeof TASK_SORTS)[number];
 
-export const listTasksQuery = v.object({
+export const searchTasksQuery = v.object({
   q: searchText,
   queue: v.optional(v.pipe(v.string(), v.nonEmpty(), v.maxLength(60))),
   assignee: v.optional(v.picklist(['mine', 'unassigned', 'all']), 'all'),

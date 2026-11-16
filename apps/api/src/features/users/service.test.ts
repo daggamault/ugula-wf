@@ -97,7 +97,12 @@ const ROLE = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 describe('user service members', () => {
   it('lists and finds members with why the caller cannot act on them', async () => {
     const { db, service } = setup({ member: { ...member(['fees:update']), total: '1' } });
-    const page = await service.list(limited(), { page: 1, pageSize: 25, sort: 'name', dir: 'asc' });
+    const page = await service.search(limited(), {
+      page: 1,
+      pageSize: 25,
+      sort: 'name',
+      dir: 'asc'
+    });
     assert.ok(page.ok);
     assert.deepEqual(page.value.items[0], {
       id: 'u-2',

@@ -6,7 +6,7 @@ import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
 import { scopeIds } from '../../shared/scopes.ts';
-import { fileFormSchema, listRunsQuery, startRunSchema, stepsQuery } from './schemas.ts';
+import { fileFormSchema, listStepsQuery, searchRunsQuery, startRunSchema } from './schemas.ts';
 import type { RunService } from './service.ts';
 
 export const createRunRoutes = (service: RunService, maxBytes: number) =>
@@ -32,11 +32,11 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
         );
       }
     )
-    .get('/', sValidator('query', listRunsQuery, invalidRequest), async (c) => {
+    .get('/', sValidator('query', searchRunsQuery, invalidRequest), async (c) => {
       const { q, status, graphId, root, ...page } = c.req.valid('query');
       return respond(
         c,
-        await service.list(c.get('access').agencyId, {
+        await service.search(c.get('access').agencyId, {
           ...(q ? { q } : {}),
           ...(status ? { status } : {}),
           ...(graphId ? { graphId } : {}),
@@ -73,7 +73,7 @@ export const createRunRoutes = (service: RunService, maxBytes: number) =>
     .get(
       '/:id/steps',
       sValidator('param', idParam, invalidRequest),
-      sValidator('query', stepsQuery, invalidRequest),
+      sValidator('query', listStepsQuery, invalidRequest),
       async (c) => {
         const { path, node, after, limit } = c.req.valid('query');
         return respond(

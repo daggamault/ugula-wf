@@ -18,11 +18,11 @@ import {
   findRunStatus,
   listAncestors,
   listChildren,
-  listRuns,
   listRunTasks,
   listSteps,
   type RunFilters,
-  type StepFilters
+  type StepFilters,
+  searchRuns
 } from './queries.ts';
 
 type RunServiceDeps = {
@@ -48,7 +48,8 @@ export const createRunService = ({ db, boss, blobs, maxBytes }: RunServiceDeps) 
     return ok({ file: { bucket: ref.bucket, key: ref.key }, name: file.name });
   },
 
-  list: async (agencyId: string, filters: RunFilters) => ok(await listRuns(db, agencyId, filters)),
+  search: async (agencyId: string, filters: RunFilters) =>
+    ok(await searchRuns(db, agencyId, filters)),
 
   find: async (agencyId: string, id: string) => {
     const run = await findRun(db, agencyId, id);

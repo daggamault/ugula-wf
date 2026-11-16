@@ -17,7 +17,7 @@ const record =
   };
 
 const service = {
-  list: record('list', { items: [] }),
+  search: record('search', { items: [] }),
   permissions: record('permissions', { items: [] }),
   find: record('find'),
   create: record('create', { id: ID }),
@@ -47,7 +47,7 @@ describe('role routes', () => {
     );
     assert.equal((await request(`/${ID}`, { method: 'DELETE' })).status, 200);
     assert.deepEqual(calls, [
-      ['list', { q: 'bill', page: 1, pageSize: 25, sort: 'name', dir: 'asc' }],
+      ['search', { q: 'bill', page: 1, pageSize: 25, sort: 'name', dir: 'asc' }],
       ['permissions'],
       ['find', ID],
       ['create', { name: 'Biller', permissions: ['fees:read'] }],

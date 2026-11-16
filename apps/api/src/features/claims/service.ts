@@ -29,7 +29,7 @@ import { type Announce, announced } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import type { RuleRunner } from '../../shared/rules.ts';
-import { type ClaimFilters, claimExists, findClaim, listClaims } from './claim-queries.ts';
+import { type ClaimFilters, claimExists, findClaim, searchClaims } from './claim-queries.ts';
 import { hasActiveRun, setCycleRun } from './cycle-queries.ts';
 import { findClaimDocument, listClaimDocuments } from './document-queries.ts';
 import {
@@ -80,8 +80,8 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
   };
 
   return {
-    list: async (agencyId: string, filters: ClaimFilters) =>
-      ok(await listClaims(db, agencyId, filters)),
+    search: async (agencyId: string, filters: ClaimFilters) =>
+      ok(await searchClaims(db, agencyId, filters)),
 
     find: async (agencyId: string, id: string) => {
       const claim = await findClaim(db, agencyId, id);

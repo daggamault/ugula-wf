@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { findCodes } from './queries.ts';
+import { searchCodes } from './queries.ts';
 
-describe('findCodes', () => {
+describe('searchCodes', () => {
   it('searches billable codes by code prefix or every word of the description, best first', async () => {
     const { db, queries } = createRecordingDb(() => [
       { code: 'R079', description: 'Chest pain, unspecified', is_billable: true }
     ]);
-    assert.deepEqual(await findCodes(db, { set: 'icd10cm', q: 'r07.9' }), [
+    assert.deepEqual(await searchCodes(db, { set: 'icd10cm', q: 'r07.9' }), [
       { code: 'R079', description: 'Chest pain, unspecified', is_billable: true }
     ]);
-    await findCodes(db, { set: 'icd10cm', q: 'chest 50%' });
+    await searchCodes(db, { set: 'icd10cm', q: 'chest 50%' });
     const [byCode, byWords] = queries;
     assert.equal(
       byCode?.sql,
@@ -33,7 +33,7 @@ describe('findCodes', () => {
 
   it('limits a search to a NEMSIS pick list', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await findCodes(db, { set: 'snomed', list: 'procedure' });
+    await searchCodes(db, { set: 'snomed', list: 'procedure' });
     assert.ok(
       queries[0]?.sql.includes(
         'exists (select "p"."code" from "nemsis_pick_lists" as "p" where "p"."list" = $3 and "p"."code_set" = "c"."code_set" and "p"."code" = "c"."code")'
@@ -44,14 +44,14 @@ describe('findCodes', () => {
 
   it('describes given codes, billable or not, without a query for none', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await findCodes(db, { set: 'icd10cm', codes: ['r07.9', 'R07'] });
+    await searchCodes(db, { set: 'icd10cm', codes: ['r07.9', 'R07'] });
     assert.ok(
       queries[0]?.sql.endsWith(
         'where "c"."code_set" = $1 and "c"."code" in ($2, $3) order by "c"."code"'
       )
     );
     assert.deepEqual(queries[0]?.parameters, ['icd10cm', 'R079', 'R07']);
-    assert.deepEqual(await findCodes(db, { set: 'icd10cm', codes: [] }), []);
+    assert.deepEqual(await searchCodes(db, { set: 'icd10cm', codes: [] }), []);
     assert.equal(queries.length, 1);
   });
 });

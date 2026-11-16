@@ -38,7 +38,7 @@ const IMPORT_SORTS = [
 
 export type ImportSort = (typeof IMPORT_SORTS)[number];
 
-export const listImportsQuery = v.object({
+export const searchImportsQuery = v.object({
   q: searchText,
   ...pageEntries(IMPORT_SORTS, 'received', 'desc')
 });
@@ -47,4 +47,4 @@ const REPORT_SORTS = ['position', 'pcr', 'patient', 'status', 'claim', 'total'] 
 
 export type ReportSort = (typeof REPORT_SORTS)[number];
 
-export const listReportsQuery = v.object(pageEntries(REPORT_SORTS, 'position', 'asc'));
+export const listImportReportsQuery = v.object(pageEntries(REPORT_SORTS, 'position', 'asc'));

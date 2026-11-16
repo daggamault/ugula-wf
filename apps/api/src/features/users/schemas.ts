@@ -8,7 +8,7 @@ const USER_SORTS = ['name', 'email', 'role'] as const;
 
 export type UserSort = (typeof USER_SORTS)[number];
 
-export const listUsersQuery = v.object({
+export const searchMembersQuery = v.object({
   q: searchText,
   ...pageEntries(USER_SORTS, 'name', 'asc')
 });
@@ -17,7 +17,7 @@ const INVITATION_SORTS = ['name', 'email', 'role', 'expires'] as const;
 
 export type InvitationSort = (typeof INVITATION_SORTS)[number];
 
-export const listInvitationsQuery = v.object({
+export const searchInvitationsQuery = v.object({
   q: searchText,
   ...pageEntries(INVITATION_SORTS, 'expires', 'asc')
 });

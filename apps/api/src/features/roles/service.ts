@@ -42,7 +42,7 @@ export const toRole = (row: RoleRow, held: readonly Permission[]) => {
 };
 
 export const createRoleService = ({ db }: { db: Db }) => ({
-  list: async (access: AgencyAccess, filters: RoleFilters) => {
+  search: async (access: AgencyAccess, filters: RoleFilters) => {
     const page = await searchRoles(db, access.agencyId, filters);
     return ok({ ...page, items: page.items.map((r) => toRole(r, access.permissions)) });
   },

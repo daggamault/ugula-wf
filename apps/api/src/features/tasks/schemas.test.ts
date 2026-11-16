@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as v from 'valibot';
-import { completeTaskSchema, listTasksQuery, nextTaskSchema } from './schemas.ts';
+import { completeTaskSchema, nextTaskSchema, searchTasksQuery } from './schemas.ts';
 
 describe('task schemas', () => {
   it('apply defaults and require queues and outcomes', () => {
@@ -14,14 +14,14 @@ describe('task schemas', () => {
   });
 
   it('list tasks for everyone, oldest first, unless told otherwise', () => {
-    assert.deepEqual(v.parse(listTasksQuery, {}), {
+    assert.deepEqual(v.parse(searchTasksQuery, {}), {
       assignee: 'all',
       page: 1,
       pageSize: 25,
       sort: 'waiting',
       dir: 'asc'
     });
-    assert.deepEqual(v.parse(listTasksQuery, { q: ' Doe ', sort: 'assignee' }), {
+    assert.deepEqual(v.parse(searchTasksQuery, { q: ' Doe ', sort: 'assignee' }), {
       q: 'Doe',
       assignee: 'all',
       page: 1,
@@ -35,7 +35,7 @@ describe('task schemas', () => {
       { sort: 'x' },
       { queue: 'q'.repeat(61) }
     ]) {
-      assert.equal(v.safeParse(listTasksQuery, bad).success, false, JSON.stringify(bad));
+      assert.equal(v.safeParse(searchTasksQuery, bad).success, false, JSON.stringify(bad));
     }
   });
 });

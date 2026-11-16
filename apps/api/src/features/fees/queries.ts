@@ -74,7 +74,7 @@ const updateFee = (db: QueryCreator<Database>, agencyId: string, fee: FeeInput) 
     .where('code', '=', fee.code)
     .returning(SAVED);
 
-export const saveFee = (db: Db, agencyId: string, fee: FeeInput, writes: Writes) =>
+export const upsertFee = (db: Db, agencyId: string, fee: FeeInput, writes: Writes) =>
   db
     .with('saved', (w) =>
       writes.create ? insertFee(w, agencyId, fee, writes.update) : updateFee(w, agencyId, fee)

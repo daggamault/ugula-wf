@@ -5,13 +5,13 @@ import type { AgencyEnv } from '../../shared/access.ts';
 import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { listPayerFilesQuery, payerFileFormSchema } from './schemas.ts';
+import { payerFileFormSchema, searchPayerFilesQuery } from './schemas.ts';
 import type { PayerFileService } from './service.ts';
 
 export const createPayerFileRoutes = (service: PayerFileService, maxBytes: number) =>
   new Hono<AgencyEnv>()
-    .get('/', sValidator('query', listPayerFilesQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('access').agencyId, c.req.valid('query')))
+    .get('/', sValidator('query', searchPayerFilesQuery, invalidRequest), async (c) =>
+      respond(c, await service.search(c.get('access').agencyId, c.req.valid('query')))
     )
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.find(c.get('access').agencyId, c.req.valid('param').id))

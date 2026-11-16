@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { claimExists, findClaim, listClaims } from './claim-queries.ts';
+import { claimExists, findClaim, searchClaims } from './claim-queries.ts';
 
 describe('claim queries', () => {
   it('pages claim ids by agency and filters first, then loads details for that page only', async () => {
@@ -16,7 +16,7 @@ describe('claim queries', () => {
             { id: 'c2', balance_cents: 9 }
           ]
     );
-    const page = await listClaims(db, 't-1', {
+    const page = await searchClaims(db, 't-1', {
       status: 'open',
       page: 2,
       pageSize: 25,
@@ -62,7 +62,7 @@ describe('claim queries', () => {
 
   it('skips the detail query when the page is empty and searches patients and numbers', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await listClaims(db, 't-1', {
+    await searchClaims(db, 't-1', {
       status: 'all',
       firstName: 'Ja%',
       lastName: "O'Neil",
@@ -101,7 +101,7 @@ describe('claim queries', () => {
       '20261105-0042',
       '20261105-0042'
     ]);
-    await listClaims(db, 't-1', {
+    await searchClaims(db, 't-1', {
       status: 'open',
       number: 'PCR-7',
       page: 1,
@@ -120,7 +120,7 @@ describe('claim queries', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('select "c"."id", count(*)') ? [{ id: 'c1', total: '1' }] : []
     );
-    await listClaims(db, 't-1', {
+    await searchClaims(db, 't-1', {
       status: 'open',
       page: 1,
       pageSize: 25,
@@ -192,7 +192,7 @@ describe('claim queries', () => {
 describe('claim status sort', () => {
   it('orders statuses the way a claim moves through them', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await listClaims(db, 't-1', {
+    await searchClaims(db, 't-1', {
       status: 'all',
       page: 1,
       pageSize: 25,
@@ -210,7 +210,7 @@ describe('claim encounter numbers', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('select "c"."id", count(*)') ? [{ id: 'c1', total: '1' }] : []
     );
-    await listClaims(db, 't-1', {
+    await searchClaims(db, 't-1', {
       status: 'all',
       page: 1,
       pageSize: 25,

@@ -17,7 +17,7 @@ const record =
   };
 
 const service = {
-  list: record({ items: [], total: 0, page: 1, pageSize: 25 }),
+  search: record({ items: [], total: 0, page: 1, pageSize: 25 }),
   queues: record({ queues: [] }),
   find: record({ task: { id: ID } }),
   next: record({ task: null }),

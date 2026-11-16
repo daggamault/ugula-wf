@@ -63,4 +63,4 @@ export const searchPayersQuery = v.object({
   ...pageEntries(PAYER_SORTS, 'name', 'asc')
 });
 
-export const payerNamesQuery = v.object({ q: searchText });
+export const listPayerNamesQuery = v.object({ q: searchText });

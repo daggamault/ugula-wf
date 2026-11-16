@@ -11,9 +11,9 @@ import {
   linkCoverages,
   listPayerNames,
   type PayerFilters,
-  saveEmbedding,
-  savePayer,
-  searchPayers
+  searchPayers,
+  setEmbedding,
+  upsertPayer
 } from './queries.ts';
 import type { PayerInput } from './schemas.ts';
 
@@ -22,7 +22,7 @@ type PayerServiceDeps = { db: Db; announce: Announce; embedder: Embedder };
 export const createPayerService = ({ db, announce, embedder }: PayerServiceDeps) => {
   const embed = async (agencyId: string, id: string, input: PayerInput) => {
     const [vector] = await embedder.embed([payerDocument(input)]);
-    if (vector) await saveEmbedding(db, agencyId, id, vector);
+    if (vector) await setEmbedding(db, agencyId, id, vector);
     return vector !== undefined;
   };
   return {
@@ -40,7 +40,7 @@ export const createPayerService = ({ db, announce, embedder }: PayerServiceDeps)
         announce,
         agencyId,
         db.transaction().execute(async (tx) => {
-          const row = await savePayer(tx, agencyId, input, writes);
+          const row = await upsertPayer(tx, agencyId, input, writes);
           if (!row) {
             return fail(
               'forbidden',

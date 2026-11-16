@@ -27,7 +27,7 @@ const fileRows = (db: Db, agencyId: string) =>
     .select([...FILE_COLUMNS, 'u.email as uploaded_by'])
     .where('f.agency_id', '=', agencyId);
 
-export const listPayerFiles = (db: Db, agencyId: string, page: PageRequest<PayerFileSort>) =>
+export const searchPayerFiles = (db: Db, agencyId: string, page: PageRequest<PayerFileSort>) =>
   paged(fileRows(db, agencyId), page, FILE_ORDER, sql.ref('f.id'));
 
 export const findPayerFile = (db: Db, agencyId: string, id: string) =>

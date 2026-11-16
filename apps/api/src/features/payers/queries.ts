@@ -126,10 +126,10 @@ const updatePayer = (db: Db, agencyId: string, p: PayerInput) =>
     .returning(saved)
     .executeTakeFirst();
 
-export const savePayer = (db: Db, agencyId: string, p: PayerInput, writes: Writes) =>
+export const upsertPayer = (db: Db, agencyId: string, p: PayerInput, writes: Writes) =>
   writes.create ? insertPayer(db, agencyId, p, writes.update) : updatePayer(db, agencyId, p);
 
-export const saveEmbedding = (db: Db, agencyId: string, id: string, embedding: number[]) =>
+export const setEmbedding = (db: Db, agencyId: string, id: string, embedding: number[]) =>
   db
     .updateTable('payers')
     .set({ embedding: sql`${`[${embedding.join(',')}]`}::vector` })

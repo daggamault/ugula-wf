@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { MAX_FILING_LIMIT_DAYS } from '@ugula/billing';
 import * as v from 'valibot';
-import { aliasParams, payerNamesQuery, payerSchema, searchPayersQuery } from './schemas.ts';
+import { aliasParams, listPayerNamesQuery, payerSchema, searchPayersQuery } from './schemas.ts';
 
 const ID = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 
@@ -86,8 +86,8 @@ describe('searchPayersQuery', () => {
     for (const bad of [{ sort: 'updated' }, { q: 'x'.repeat(81) }, { pageSize: '1000' }]) {
       assert.equal(v.safeParse(searchPayersQuery, bad).success, false, JSON.stringify(bad));
     }
-    assert.equal(v.safeParse(payerNamesQuery, { q: 'x'.repeat(81) }).success, false);
-    assert.deepEqual(v.parse(payerNamesQuery, {}), {});
+    assert.equal(v.safeParse(listPayerNamesQuery, { q: 'x'.repeat(81) }).success, false);
+    assert.deepEqual(v.parse(listPayerNamesQuery, {}), {});
   });
 });
 

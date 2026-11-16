@@ -7,9 +7,9 @@ import {
   findPayer,
   linkCoverages,
   listPayerNames,
-  saveEmbedding,
-  savePayer,
-  searchPayers
+  searchPayers,
+  setEmbedding,
+  upsertPayer
 } from './queries.ts';
 
 const PAGE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
@@ -67,7 +67,7 @@ describe('payer queries', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('delete') ? [] : [{ id: 'p1' }]
     );
-    await savePayer(db, 't-1', MEDICARE, { create: true, update: true });
+    await upsertPayer(db, 't-1', MEDICARE, { create: true, update: true });
     assert.equal(await deletePayer(db, 't-1', 'p1'), false);
     const [upsert, remove] = queries;
     assert.equal(upsert?.parameters[0], 't-1');
@@ -83,9 +83,12 @@ describe('payer queries', () => {
 
   it('only inserts without update and only updates the same name without create', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    assert.equal(await savePayer(db, 't-1', MEDICARE, { create: true, update: false }), undefined);
+    assert.equal(
+      await upsertPayer(db, 't-1', MEDICARE, { create: true, update: false }),
+      undefined
+    );
     assert.ok(queries[0]?.sql.includes('on conflict (agency_id, lower(name)) do nothing'));
-    await savePayer(db, 't-1', MEDICARE, { create: false, update: true });
+    await upsertPayer(db, 't-1', MEDICARE, { create: false, update: true });
     const update = queries[1];
     assert.ok(update?.sql.startsWith('update "payers" set'));
     assert.ok(update?.sql.includes('"embedding" = case when claim_filing = $'));
@@ -117,7 +120,7 @@ describe('payer queries', () => {
 
   it('saves an embedding only for an unembedded payer of the agency', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await saveEmbedding(db, 't-1', 'p1', [0.5, -1]);
+    await setEmbedding(db, 't-1', 'p1', [0.5, -1]);
     const [save] = queries;
     assert.ok(save?.sql.startsWith('update "payers" set "embedding" = $1::vector'));
     assert.ok(save?.sql.endsWith('where "id" = $2 and "agency_id" = $3 and "embedding" is null'));

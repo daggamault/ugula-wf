@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { type AgencyEnv, writesOn } from '../../shared/access.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { aliasParams, payerNamesQuery, payerSchema, searchPayersQuery } from './schemas.ts';
+import { aliasParams, listPayerNamesQuery, payerSchema, searchPayersQuery } from './schemas.ts';
 import type { PayerService } from './service.ts';
 
 export const createPayerRoutes = (service: PayerService) =>
@@ -11,7 +11,7 @@ export const createPayerRoutes = (service: PayerService) =>
     .get('/', sValidator('query', searchPayersQuery, invalidRequest), async (c) =>
       respond(c, await service.search(c.get('access').agencyId, c.req.valid('query')))
     )
-    .get('/names', sValidator('query', payerNamesQuery, invalidRequest), async (c) =>
+    .get('/names', sValidator('query', listPayerNamesQuery, invalidRequest), async (c) =>
       respond(c, await service.names(c.get('access').agencyId, c.req.valid('query').q))
     )
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>

@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { findPayerFile, listFileItems, listPayerFiles } from './queries.ts';
+import { findPayerFile, listFileItems, searchPayerFiles } from './queries.ts';
 
 describe('payer file queries', () => {
   it('pages the agency files with who uploaded them, newest first by default', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'f1', total: '3' }]);
-    const page = await listPayerFiles(db, 't-1', {
+    const page = await searchPayerFiles(db, 't-1', {
       page: 2,
       pageSize: 10,
       sort: 'received',
@@ -26,9 +26,9 @@ describe('payer file queries', () => {
   it('sorts by file name ignoring case, kind or problem count', async () => {
     const { db, queries } = createRecordingDb(() => []);
     const page = { page: 1, pageSize: 25, dir: 'asc' } as const;
-    await listPayerFiles(db, 't-1', { ...page, sort: 'name' });
-    await listPayerFiles(db, 't-1', { ...page, sort: 'kind' });
-    await listPayerFiles(db, 't-1', { ...page, sort: 'problems' });
+    await searchPayerFiles(db, 't-1', { ...page, sort: 'name' });
+    await searchPayerFiles(db, 't-1', { ...page, sort: 'kind' });
+    await searchPayerFiles(db, 't-1', { ...page, sort: 'problems' });
     assert.ok(queries[0]?.sql.includes('order by lower(f.file_name) asc'));
     assert.ok(queries[1]?.sql.includes('order by "f"."kind" asc'));
     assert.ok(queries[2]?.sql.includes('order by "f"."problem_count" asc'));

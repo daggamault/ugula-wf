@@ -7,7 +7,7 @@ describe('patient service', () => {
   it('pages search results and reports missing patients', async () => {
     const { db } = createRecordingDb(() => []);
     const service = createPatientService({ db });
-    const list = await service.list('t-1', { page: 1, pageSize: 25, sort: 'name', dir: 'asc' });
+    const list = await service.search('t-1', { page: 1, pageSize: 25, sort: 'name', dir: 'asc' });
     assert.deepEqual(list, { ok: true, value: { items: [], total: 0, page: 1, pageSize: 25 } });
     const missing = await service.find('t-1', 'p-1');
     assert.equal(!missing.ok && missing.failure.code, 'not_found');

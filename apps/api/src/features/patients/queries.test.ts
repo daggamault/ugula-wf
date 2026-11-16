@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { findPatient, listPatients } from './queries.ts';
+import { findPatient, searchPatients } from './queries.ts';
 
 describe('patient queries', () => {
   it('search by last name key prefix, first name prefix and exact birth date', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await listPatients(db, 't-1', {
+    await searchPatients(db, 't-1', {
       lastName: "O'Brien",
       firstName: 'Ja_',
       birthDate: '1980-01-02',
@@ -25,7 +25,7 @@ describe('patient queries', () => {
 
   it('list every patient when no field is given and find one in the agency', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await listPatients(db, 't-1', {
+    await searchPatients(db, 't-1', {
       lastName: ' ',
       page: 1,
       pageSize: 10,
@@ -48,8 +48,8 @@ describe('patient numbers', () => {
   it('find a patient by the daily number however it is typed, and sort by number', async () => {
     const { db, queries } = createRecordingDb(() => []);
     const page = { page: 1, pageSize: 25, sort: 'number', dir: 'asc' } as const;
-    await listPatients(db, 't-1', { ...page, number: '#202611050003' });
-    await listPatients(db, 't-1', { ...page, number: 'nope' });
+    await searchPatients(db, 't-1', { ...page, number: '#202611050003' });
+    await searchPatients(db, 't-1', { ...page, number: 'nope' });
     const [byNumber, unknown] = queries;
     assert.ok(byNumber?.sql.includes('"p"."number" = $2'));
     assert.ok(byNumber?.sql.includes('order by "p"."number" asc nulls last'));
@@ -62,8 +62,8 @@ describe('patient numbers', () => {
 describe('patient city and claims sorts', () => {
   it('orders patients by city or by how many claims they have', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await listPatients(db, 't-1', { page: 1, pageSize: 25, sort: 'city', dir: 'asc' });
-    await listPatients(db, 't-1', { page: 1, pageSize: 25, sort: 'claims', dir: 'desc' });
+    await searchPatients(db, 't-1', { page: 1, pageSize: 25, sort: 'city', dir: 'asc' });
+    await searchPatients(db, 't-1', { page: 1, pageSize: 25, sort: 'claims', dir: 'desc' });
     assert.ok(
       queries[0]?.sql.includes("order by lower(p.city || ' ' || coalesce(p.state, '')) asc")
     );
@@ -75,7 +75,7 @@ describe('patient city and claims sorts', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.includes('count(*) as "total"') ? [{ total: '3' }] : []
     );
-    const page = await listPatients(db, 't-1', {
+    const page = await searchPatients(db, 't-1', {
       birthDate: '1980-01-02',
       page: 4,
       pageSize: 10,

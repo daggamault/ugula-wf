@@ -4,7 +4,7 @@ import type { BlobRef, BlobStore } from '@ugula/storage';
 import { safeName, type UploadedFile, uploadKey } from '../../shared/files.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok } from '../../shared/result.ts';
-import { findPayerFile, listFileItems, listPayerFiles } from './queries.ts';
+import { findPayerFile, listFileItems, searchPayerFiles } from './queries.ts';
 import type { PayerFileSort } from './schemas.ts';
 
 export const RECEIVE_WORKFLOW = 'billing.receive-payer-file';
@@ -17,8 +17,8 @@ type PayerFileServiceDeps = {
 };
 
 export const createPayerFileService = ({ db, boss, blobs, maxBytes }: PayerFileServiceDeps) => ({
-  list: async (agencyId: string, page: PageRequest<PayerFileSort>) =>
-    ok(await listPayerFiles(db, agencyId, page)),
+  search: async (agencyId: string, page: PageRequest<PayerFileSort>) =>
+    ok(await searchPayerFiles(db, agencyId, page)),
 
   find: async (agencyId: string, id: string) => {
     const file = await findPayerFile(db, agencyId, id);

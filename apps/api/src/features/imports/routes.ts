@@ -9,8 +9,8 @@ import { respond } from '../../shared/result.ts';
 import {
   INGEST_WORKFLOW,
   importFormSchema,
-  listImportsQuery,
-  listReportsQuery,
+  listImportReportsQuery,
+  searchImportsQuery,
   sftpAuthSchema,
   sftpEventSchema
 } from './schemas.ts';
@@ -18,8 +18,8 @@ import type { ImportService } from './service.ts';
 
 export const createImportRoutes = (service: ImportService, maxBytes: number) =>
   new Hono<AgencyEnv>()
-    .get('/', sValidator('query', listImportsQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('access').agencyId, c.req.valid('query')))
+    .get('/', sValidator('query', searchImportsQuery, invalidRequest), async (c) =>
+      respond(c, await service.search(c.get('access').agencyId, c.req.valid('query')))
     )
     .get('/reports/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.report(c.get('access').agencyId, c.req.valid('param').id))
@@ -40,7 +40,7 @@ export const createImportRoutes = (service: ImportService, maxBytes: number) =>
     .get(
       '/:id/reports',
       sValidator('param', idParam, invalidRequest),
-      sValidator('query', listReportsQuery, invalidRequest),
+      sValidator('query', listImportReportsQuery, invalidRequest),
       async (c) =>
         respond(
           c,

@@ -8,8 +8,8 @@ import type { ImportService } from './service.ts';
 const calls: unknown[][] = [];
 
 const service = {
-  list: async (agencyId: string, page: unknown) => {
-    calls.push(['list', agencyId, page]);
+  search: async (agencyId: string, page: unknown) => {
+    calls.push(['search', agencyId, page]);
     return ok({ imports: [] });
   },
   upload: async (
@@ -54,7 +54,7 @@ describe('import routes', () => {
   it('lists recent imports for the session agency', async () => {
     assert.equal((await request('/?q=pcrs&page=2&pageSize=10&sort=claims&dir=asc')).status, 200);
     assert.deepEqual(calls.at(-1), [
-      'list',
+      'search',
       't-1',
       { q: 'pcrs', page: 2, pageSize: 10, sort: 'claims', dir: 'asc' }
     ]);

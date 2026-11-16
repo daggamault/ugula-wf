@@ -7,7 +7,7 @@ const ROLE_SORTS = ['name', 'users', 'updated'] as const;
 
 export type RoleSort = (typeof ROLE_SORTS)[number];
 
-export const listRolesQuery = v.object({
+export const searchRolesQuery = v.object({
   q: searchText,
   ...pageEntries(ROLE_SORTS, 'name', 'asc')
 });
@@ -20,11 +20,11 @@ const roleFields = {
   )
 };
 
-export const createRoleSchema = v.object(roleFields);
+export const roleSchema = v.object(roleFields);
 
 export const updateRoleSchema = v.object({
   ...roleFields,
   version: v.pipe(v.number(), v.integer(), v.minValue(1))
 });
 
-export type RoleInput = v.InferOutput<typeof createRoleSchema>;
+export type RoleInput = v.InferOutput<typeof roleSchema>;

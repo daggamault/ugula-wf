@@ -16,7 +16,7 @@ const record =
   };
 
 const service = {
-  list: record('list', { claims: [] }),
+  search: record('search', { claims: [] }),
   find: record('find', { claim: { id: ID }, files: [] }),
   events: record('events', { items: [], total: 0, page: 1, pageSize: 25 }),
   restartCycle: record('restartCycle', { runId: 'r2' }),
@@ -45,11 +45,11 @@ describe('claim routes', () => {
     assert.equal((await request('/nope')).status, 400);
     assert.deepEqual(calls, [
       [
-        'list',
+        'search',
         't-1',
         { status: 'all', lastName: 'doe', page: 1, pageSize: 25, sort: 'created', dir: 'desc' }
       ],
-      ['list', 't-1', { status: 'open', page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }],
+      ['search', 't-1', { status: 'open', page: 1, pageSize: 25, sort: 'waiting', dir: 'asc' }],
       ['find', 't-1', ID]
     ]);
   });

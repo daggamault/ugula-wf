@@ -8,15 +8,15 @@ import {
   findRunStatus,
   listAncestors,
   listChildren,
-  listRuns,
   listRunTasks,
-  listSteps
+  listSteps,
+  searchRuns
 } from './queries.ts';
 
 describe('run queries', () => {
   it('filter run lists and scope everything by agency', async () => {
     const { db, queries } = createRecordingDb();
-    await listRuns(db, 't-1', {
+    await searchRuns(db, 't-1', {
       status: 'faulted',
       graphId: 'g1',
       rootOnly: true,
@@ -26,7 +26,7 @@ describe('run queries', () => {
       dir: 'asc'
     });
     await findRun(db, 't-1', 'r1');
-    await listRuns(db, 't-1', {
+    await searchRuns(db, 't-1', {
       q: ' Ingest%',
       rootOnly: false,
       page: 1,

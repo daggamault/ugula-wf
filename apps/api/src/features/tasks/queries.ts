@@ -23,7 +23,7 @@ const taskOrder = {
   assignee: sql.ref('u.email')
 } as const;
 
-export const listTasks = (db: Db, agencyId: string, userId: string, f: TaskFilters) => {
+export const searchTasks = (db: Db, agencyId: string, userId: string, f: TaskFilters) => {
   let q = db
     .selectFrom('tasks as t')
     .leftJoin('users as u', 'u.id', 't.assignee_id')

@@ -22,7 +22,7 @@ import {
   findTask,
   findTaskSource,
   listQueues,
-  listTasks,
+  searchTasks,
   type TaskFilters
 } from './queries.ts';
 
@@ -101,8 +101,8 @@ export const createTaskService = ({ db, boss, announce, blobs, maxBytes }: TaskS
     queues: async (agencyId: string, userId: string) =>
       ok({ queues: await listQueues(db, agencyId, userId) }),
 
-    list: async (agencyId: string, userId: string, filters: TaskFilters) =>
-      ok(await listTasks(db, agencyId, userId, filters)),
+    search: async (agencyId: string, userId: string, filters: TaskFilters) =>
+      ok(await searchTasks(db, agencyId, userId, filters)),
 
     find: async (agencyId: string, id: string) => {
       const task = await findTask(db, agencyId, id);

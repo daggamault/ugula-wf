@@ -122,7 +122,7 @@ const importRows = (db: Db, agencyId: string) =>
     ])
     .where('i.agency_id', '=', agencyId);
 
-export const listImports = (db: Db, agencyId: string, f: ImportFilters) => {
+export const searchImports = (db: Db, agencyId: string, f: ImportFilters) => {
   let q = importRows(db, agencyId);
   if (f.q) {
     const like = containsPattern(f.q);

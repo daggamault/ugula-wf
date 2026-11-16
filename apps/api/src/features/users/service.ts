@@ -82,7 +82,7 @@ export const createUserService = ({ db, webUrl, now, endSessions }: UserServiceD
     return canGrant(access.permissions, permissions) ? ok({ ...role, permissions }) : ungrantable;
   };
   return {
-    list: async (access: AgencyAccess, filters: UserFilters) => {
+    search: async (access: AgencyAccess, filters: UserFilters) => {
       const page = await searchMembers(db, access.agencyId, filters);
       return ok({ ...page, items: page.items.map((r) => toUser(access, r)) });
     },

@@ -128,7 +128,7 @@ const claimIds = (db: Db, agencyId: string, f: ClaimFilters) => {
   return q;
 };
 
-export const listClaims = async (db: Db, agencyId: string, f: ClaimFilters) => {
+export const searchClaims = async (db: Db, agencyId: string, f: ClaimFilters) => {
   const page = await paged(claimIds(db, agencyId, f), f, claimOrder(db), sql.ref('c.id'));
   const ids = page.items.map((r) => r.id);
   const rows = ids.length ? await claimRows(db, agencyId).where('c.id', 'in', ids).execute() : [];

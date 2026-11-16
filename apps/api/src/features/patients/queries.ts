@@ -58,7 +58,7 @@ const PATIENT_ORDER = {
   claims: sql.ref('claimed.claim_count')
 };
 
-export const listPatients = (db: Db, agencyId: string, f: PatientFilters) => {
+export const searchPatients = (db: Db, agencyId: string, f: PatientFilters) => {
   let q = patientRows(db, agencyId);
   const last = f.lastName ? nameKey(f.lastName) : '';
   if (last) q = q.where('p.last_name_key', 'like', `${escapeLike(last)}%`);

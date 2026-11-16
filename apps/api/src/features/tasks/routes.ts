@@ -5,17 +5,17 @@ import type { AgencyEnv } from '../../shared/access.ts';
 import { FORM_OVERHEAD_BYTES } from '../../shared/files.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { completeTaskSchema, listTasksQuery, nextTaskSchema, taskFileSchema } from './schemas.ts';
+import { completeTaskSchema, nextTaskSchema, searchTasksQuery, taskFileSchema } from './schemas.ts';
 import type { TaskService } from './service.ts';
 
 export const createTaskRoutes = (service: TaskService, maxBytes: number) =>
   new Hono<AgencyEnv>()
-    .get('/', sValidator('query', listTasksQuery, invalidRequest), async (c) => {
+    .get('/', sValidator('query', searchTasksQuery, invalidRequest), async (c) => {
       const { agencyId, userId } = c.get('access');
       const { q, queue, ...filters } = c.req.valid('query');
       return respond(
         c,
-        await service.list(agencyId, userId, {
+        await service.search(agencyId, userId, {
           ...filters,
           ...(q ? { q } : {}),
           ...(queue ? { queue } : {})

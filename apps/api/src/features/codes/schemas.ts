@@ -18,11 +18,11 @@ const codeList = v.pipe(
   v.maxLength(CODE_LIMIT)
 );
 
-export const findCodesQuery = v.object({
+export const searchCodesQuery = v.object({
   set: v.picklist(CODE_SETS),
   q: searchText,
   list: v.optional(v.picklist(PICK_LISTS)),
   codes: v.optional(codeList)
 });
 
-export type CodesQuery = v.InferOutput<typeof findCodesQuery>;
+export type CodesQuery = v.InferOutput<typeof searchCodesQuery>;

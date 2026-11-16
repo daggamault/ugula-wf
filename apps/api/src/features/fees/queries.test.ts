@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { deleteFee, findFee, payerExists, saveFee, searchFees } from './queries.ts';
+import { deleteFee, findFee, payerExists, searchFees, upsertFee } from './queries.ts';
 
 const PAYER = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 
@@ -33,7 +33,7 @@ describe('fee queries', () => {
   it('upserts one price per agency, payer and code and returns it with its payer name', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'f1' }]);
     const fee = { payerId: PAYER, code: 'A0427', amountCents: 95000 };
-    await saveFee(db, 't-1', fee, { create: true, update: true });
+    await upsertFee(db, 't-1', fee, { create: true, update: true });
     assert.equal(queries.length, 1);
     const [upsert] = queries;
     assert.ok(upsert?.sql.startsWith('with "saved" as (insert into "fee_schedules"'));
@@ -49,9 +49,9 @@ describe('fee queries', () => {
   it('only inserts without update and only updates the same key without create', async () => {
     const { db, queries } = createRecordingDb(() => []);
     const fee = { payerId: null, code: 'A0427', amountCents: 1 };
-    assert.equal(await saveFee(db, 't-1', fee, { create: true, update: false }), undefined);
+    assert.equal(await upsertFee(db, 't-1', fee, { create: true, update: false }), undefined);
     assert.ok(queries[0]?.sql.includes('on conflict ("agency_id", "payer_id", "code") do nothing'));
-    await saveFee(db, 't-1', fee, { create: false, update: true });
+    await upsertFee(db, 't-1', fee, { create: false, update: true });
     assert.ok(queries[1]?.sql.startsWith('with "saved" as (update "fee_schedules" set'));
     assert.ok(
       queries[1]?.sql.includes(

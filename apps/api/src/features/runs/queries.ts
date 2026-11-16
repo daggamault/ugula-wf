@@ -71,7 +71,7 @@ const RUN_ORDER = {
   finished: sql.ref('r.completed_at')
 };
 
-export const listRuns = (db: Db, agencyId: string, f: RunFilters) => {
+export const searchRuns = (db: Db, agencyId: string, f: RunFilters) => {
   let q = runColumns(db).where('r.agency_id', '=', agencyId);
   if (f.status) q = q.where('r.status', '=', f.status);
   if (f.graphId) q = q.where('g.id', '=', f.graphId);

@@ -16,8 +16,8 @@ import {
   type ImportFilters,
   insertImport,
   listImportReports,
-  listImports,
-  type NewImport
+  type NewImport,
+  searchImports
 } from './queries.ts';
 import { INGEST_WORKFLOW, type ReportSort, type SftpEvent } from './schemas.ts';
 
@@ -101,8 +101,8 @@ export const createImportService = ({
   };
 
   return {
-    list: async (agencyId: string, filters: ImportFilters) =>
-      ok(await listImports(db, agencyId, filters)),
+    search: async (agencyId: string, filters: ImportFilters) =>
+      ok(await searchImports(db, agencyId, filters)),
 
     find: async (agencyId: string, id: string) => {
       const found = await findImport(db, agencyId, id);

@@ -9,7 +9,7 @@ import {
   findSftpAgency,
   insertImport,
   listImportReports,
-  listImports
+  searchImports
 } from './queries.ts';
 
 describe('resolveWorkflowVersion', () => {
@@ -76,7 +76,7 @@ describe('import records', () => {
 
   it('lists imports with per-report outcomes and the claims they opened', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await listImports(db, 't-1', { page: 1, pageSize: 10, sort: 'file', dir: 'asc' });
+    await searchImports(db, 't-1', { page: 1, pageSize: 10, sort: 'file', dir: 'asc' });
     const [q] = queries;
     assert.ok(q?.sql.includes('"ch"."parent_id" = "i"."run_id"'));
     assert.ok(q?.sql.includes('(count(*) filter (where ch.status = $1))::int as "completed"'));
@@ -101,7 +101,7 @@ describe('import records', () => {
 
   it('searches imports by file name or uploader', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await listImports(db, 't-1', {
+    await searchImports(db, 't-1', {
       q: 'PCRS_',
       page: 1,
       pageSize: 10,
@@ -246,8 +246,8 @@ describe('findDictionary', () => {
 describe('import status and attention sorts', () => {
   it('orders imports by status or by how many PCRs still need attention', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await listImports(db, 't-1', { page: 1, pageSize: 10, sort: 'status', dir: 'asc' });
-    await listImports(db, 't-1', { page: 1, pageSize: 10, sort: 'attention', dir: 'desc' });
+    await searchImports(db, 't-1', { page: 1, pageSize: 10, sort: 'status', dir: 'asc' });
+    await searchImports(db, 't-1', { page: 1, pageSize: 10, sort: 'attention', dir: 'desc' });
     assert.ok(queries[0]?.sql.includes('order by (r.status, reports.waiting'));
     assert.ok(queries[1]?.sql.includes('order by reports.waiting + reports.failed'));
   });

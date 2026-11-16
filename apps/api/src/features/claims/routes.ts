@@ -7,8 +7,8 @@ import { idParam, invalidRequest, uuid } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
 import {
   documentParam as claimDocumentParam,
-  claimEventsQuery,
-  listClaimsQuery,
+  listClaimEventsQuery,
+  searchClaimsQuery,
   startTaskSchema
 } from './schemas.ts';
 import type { ClaimService } from './service.ts';
@@ -27,8 +27,8 @@ const serveFile = (c: Context<AgencyEnv>, file: { bytes: Uint8Array; name: strin
 
 export const createClaimRoutes = (service: ClaimService) =>
   new Hono<AgencyEnv>()
-    .get('/', sValidator('query', listClaimsQuery, invalidRequest), async (c) =>
-      respond(c, await service.list(c.get('access').agencyId, c.req.valid('query')))
+    .get('/', sValidator('query', searchClaimsQuery, invalidRequest), async (c) =>
+      respond(c, await service.search(c.get('access').agencyId, c.req.valid('query')))
     )
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.find(c.get('access').agencyId, c.req.valid('param').id))
@@ -36,7 +36,7 @@ export const createClaimRoutes = (service: ClaimService) =>
     .get(
       '/:id/events',
       sValidator('param', idParam, invalidRequest),
-      sValidator('query', claimEventsQuery, invalidRequest),
+      sValidator('query', listClaimEventsQuery, invalidRequest),
       async (c) =>
         respond(
           c,

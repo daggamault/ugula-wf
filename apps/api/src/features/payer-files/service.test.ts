@@ -155,7 +155,7 @@ describe('payer file service', () => {
 
   it('lists, finds and downloads files of the agency only', async () => {
     const { service, queries } = setup();
-    await service.list('t1', { page: 1, pageSize: 25, sort: 'received', dir: 'desc' });
+    await service.search('t1', { page: 1, pageSize: 25, sort: 'received', dir: 'desc' });
     assert.ok(queries[0]?.sql.includes('"f"."agency_id" = $1'));
     const missing = await service.find('t1', 'f9');
     assert.equal(missing.ok ? null : missing.failure.code, 'not_found');

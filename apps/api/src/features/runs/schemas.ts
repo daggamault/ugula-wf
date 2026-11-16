@@ -15,7 +15,7 @@ const RUN_SORTS = ['started', 'workflow', 'status', 'finished'] as const;
 
 export type RunSort = (typeof RUN_SORTS)[number];
 
-export const listRunsQuery = v.object({
+export const searchRunsQuery = v.object({
   q: searchText,
   status: v.optional(v.picklist(RUN_STATUSES)),
   graphId: v.optional(uuid),
@@ -25,7 +25,7 @@ export const listRunsQuery = v.object({
 
 const stepFilter = v.optional(v.pipe(v.string(), v.maxLength(200)));
 
-export const stepsQuery = v.object({
+export const listStepsQuery = v.object({
   path: stepFilter,
   node: stepFilter,
   after: v.optional(

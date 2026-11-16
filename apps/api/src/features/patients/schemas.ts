@@ -15,7 +15,7 @@ const PATIENT_SORTS = [
 
 export type PatientSort = (typeof PATIENT_SORTS)[number];
 
-export const listPatientsQuery = v.pipe(
+export const searchPatientsQuery = v.pipe(
   v.object({
     lastName: name,
     firstName: name,

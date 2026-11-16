@@ -162,7 +162,7 @@ describe('run service', () => {
     }
     assert.equal(
       codeOf(
-        await hidden.list('t', {
+        await hidden.search('t', {
           rootOnly: true,
           page: 1,
           pageSize: 25,

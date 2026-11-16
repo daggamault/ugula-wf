@@ -277,7 +277,7 @@ describe('task service', () => {
   it('lists a page of open tasks', async () => {
     const { service, queries } = setup(undefined);
     assert.deepEqual(
-      await service.list('t', 'u1', {
+      await service.search('t', 'u1', {
         assignee: 'mine',
         page: 1,
         pageSize: 25,

@@ -20,7 +20,7 @@ export type ClaimSort = (typeof CLAIM_SORTS)[number];
 
 const name = v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)));
 
-export const listClaimsQuery = v.object({
+export const searchClaimsQuery = v.object({
   status: v.optional(v.picklist(['open', 'all']), 'open'),
   firstName: name,
   lastName: name,
@@ -34,7 +34,7 @@ const CLAIM_EVENT_SORTS = ['when', 'event', 'payer', 'amount'] as const;
 
 export type ClaimEventSort = (typeof CLAIM_EVENT_SORTS)[number];
 
-export const claimEventsQuery = v.object(pageEntries(CLAIM_EVENT_SORTS, 'when', 'desc'));
+export const listClaimEventsQuery = v.object(pageEntries(CLAIM_EVENT_SORTS, 'when', 'desc'));
 
 export const startTaskSchema = v.object({ workflow: v.picklist(CLAIM_TASK_KEYS) });
 
