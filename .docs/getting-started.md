@@ -3,10 +3,9 @@
 ```sh
 docker compose up -d       # Postgres, Redis, RustFS, SFTPGo, embeddings and completions (GPU)
 pnpm install
-pnpm db:migrate            # resets and creates the schema
-pnpm db:seed:dev           # reference data (code sets, NEMSIS, GNIS, GeoNames, CMS), dev user, demo graphs, fees, payers
+pnpm db:reset              # schema and reference data from a cached template, billing graphs, dev user, agencies, fees, payers
 pnpm dev                   # api, worker, sse, web and the mock clearinghouse
-pnpm e2e                   # with the stack running: every area in the browser, suites in parallel (about 30s)
+pnpm e2e                   # its own stack and ugula_e2e database: every area in the browser, suites in parallel
 ```
 
 Copy `.env.example` to `.env` first, and have Docker running. The clearinghouse connection and the mock clearinghouse `pnpm dev` starts are in [Clearinghouse](clearinghouse.md). Run `pnpm check`, `pnpm typecheck`, and `pnpm test` before committing.
@@ -25,7 +24,7 @@ Copy `.env.example` to `.env` first, and have Docker running. The clearinghouse 
 | `libs/domain`           | `access` (permissions, built-in roles, grant rules), `billing` (matching, narrative reading, pricing, documentation, claim cycle, clearinghouse port, X12 837P/835/TA1/999/277CA/270/271/276/277), `nemsis` (XML, codes) |
 | `libs/data`             | `db`: Postgres/Kysely client and schema                                                                                                                                                                                  |
 | `libs/composition`      | `catalog`: the one node catalog of standard, NEMSIS, billing and model nodes                                                                                                                                             |
-| `.migrations`, `.seeds` | Schema and seed data (billing graphs, GNIS place names, NEMSIS definitions, demo fees and payers)                                                                                                                        |
+| `.migrations`, `.seeds` | Schema and seed data (billing graphs, GNIS place names, NEMSIS definitions, dev agencies' fees and payers)                                                                                                               |
 | `.docs`                 | Overviews of every area: architecture, access, engine, overrides, billing, clearinghouse, data model, web, testing                                                                                                       |
 
 **Stack:** Node, TypeScript, pnpm workspaces, Postgres (Kysely, pgvector, pg_trgm), pg-boss, Redis, S3-compatible storage (RustFS), local models (text-embeddings-inference with Qwen3-Embedding, llama.cpp with Qwen3.5), Hono, valibot, React, Tailwind, React Flow, Biome.

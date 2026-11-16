@@ -61,7 +61,7 @@ const processItemGraph: GraphDef = {
   nodes: [
     node('entry', ENTRY_TYPE),
     node('lines', 'std.object.get', { inputs: { path: { value: 'lines' } } }),
-    node('total', 'demo.line-total'),
+    node('total', 'dev.line-total'),
     node('settle', 'std.flow.delay', { inputs: { ms: { value: 250 } } }),
     node('large', 'std.logic.greater', { inputs: { b: { value: 1000 } } }),
     node('branch', 'std.flow.branch'),
@@ -116,7 +116,7 @@ const processBatchGraph: GraphDef = {
     node('entry', ENTRY_TYPE),
     node('wrap', 'std.list.map', { config: { expression: '{ item }' } }),
     node('each', 'std.flow.map-workflow', {
-      config: { workflow: 'demo.process-item', version: 1 }
+      config: { workflow: 'dev.process-item', version: 1 }
     }),
     node('grand', 'std.expr', { config: { expression: 'sum(map(results, r => r.total))' } }),
     node('return', RETURN_TYPE)
@@ -131,9 +131,9 @@ const processBatchGraph: GraphDef = {
   ]
 };
 
-export const demoGraphs: SeedGraph[] = [
+export const devGraphs: SeedGraph[] = [
   {
-    key: 'demo.line-total',
+    key: 'dev.line-total',
     name: 'Line Total',
     kind: 'node',
     role: 'rule',
@@ -142,7 +142,7 @@ export const demoGraphs: SeedGraph[] = [
     definition: lineTotalGraph
   },
   {
-    key: 'demo.process-item',
+    key: 'dev.process-item',
     name: 'Process Item',
     kind: 'workflow',
     role: 'workflow',
@@ -151,7 +151,7 @@ export const demoGraphs: SeedGraph[] = [
     definition: processItemGraph
   },
   {
-    key: 'demo.process-batch',
+    key: 'dev.process-batch',
     name: 'Process Batch',
     kind: 'workflow',
     role: 'workflow',

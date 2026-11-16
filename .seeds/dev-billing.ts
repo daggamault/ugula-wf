@@ -2,7 +2,7 @@ import { payerKey } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-const demoProfile = {
+const devProfile = {
   organization_name: 'Development EMS',
   npi: '1234567893',
   tax_id: '123456789',
@@ -17,7 +17,7 @@ const demoProfile = {
   is_production: false
 };
 
-const demoPayers = [
+const devPayers = [
   { name: 'Medicare', payer_code: 'DEMOMCR', claim_filing: 'MB' },
   { name: 'Medicaid', payer_code: 'DEMOMCD', claim_filing: 'MC' },
   { name: 'Blue Plan', payer_code: 'DEMOBCBS', claim_filing: 'BL' },
@@ -25,9 +25,9 @@ const demoPayers = [
   { name: 'Keystone Auto', payer_code: 'DEMOAUTO', claim_filing: 'CI' }
 ] as const;
 
-const demoPayerAliases = [{ payer: 'Medicare', alias: 'Simulated Medicare Part B' }] as const;
+const devPayerAliases = [{ payer: 'Medicare', alias: 'Simulated Medicare Part B' }] as const;
 
-const demoFacilities = [
+const devFacilities = [
   {
     name: 'UPMC Harrisburg',
     kind: 'hospital',
@@ -60,22 +60,22 @@ const demoFacilities = [
   }
 ] as const;
 
-export const buildUpsertDemoProfile = (
+export const buildUpsertDevProfile = (
   db: Kysely<Database>,
   agencyId: string,
   submitterId: string
 ) => {
-  const profile = { ...demoProfile, submitter_id: submitterId };
+  const profile = { ...devProfile, submitter_id: submitterId };
   return db
     .insertInto('billing_profiles')
     .values({ agency_id: agencyId, ...profile })
     .onConflict((oc) => oc.column('agency_id').doUpdateSet({ ...profile, updated_at: sql`now()` }));
 };
 
-export const buildUpsertDemoFacilities = (db: Kysely<Database>, agencyId: string) =>
+export const buildUpsertDevFacilities = (db: Kysely<Database>, agencyId: string) =>
   db
     .insertInto('facilities')
-    .values(demoFacilities.map((f) => ({ agency_id: agencyId, ...f })))
+    .values(devFacilities.map((f) => ({ agency_id: agencyId, ...f })))
     .onConflict((oc) =>
       oc.expression(sql`agency_id, lower(name)`).doUpdateSet({
         kind: (eb) => eb.ref('excluded.kind'),
@@ -89,10 +89,10 @@ export const buildUpsertDemoFacilities = (db: Kysely<Database>, agencyId: string
       })
     );
 
-export const buildUpsertDemoPayers = (db: Kysely<Database>, agencyId: string) =>
+export const buildUpsertDevPayers = (db: Kysely<Database>, agencyId: string) =>
   db
     .insertInto('payers')
-    .values(demoPayers.map((p) => ({ agency_id: agencyId, ...p })))
+    .values(devPayers.map((p) => ({ agency_id: agencyId, ...p })))
     .onConflict((oc) =>
       oc.expression(sql`agency_id, lower(name)`).doUpdateSet({
         payer_code: (eb) => eb.ref('excluded.payer_code'),
@@ -101,8 +101,8 @@ export const buildUpsertDemoPayers = (db: Kysely<Database>, agencyId: string) =>
       })
     );
 
-export const upsertDemoPayerAliases = async (db: Kysely<Database>, agencyId: string) => {
-  for (const { payer, alias } of demoPayerAliases) {
+export const upsertDevPayerAliases = async (db: Kysely<Database>, agencyId: string) => {
+  for (const { payer, alias } of devPayerAliases) {
     await db
       .insertInto('payer_aliases')
       .columns(['agency_id', 'payer_id', 'alias', 'alias_key'])

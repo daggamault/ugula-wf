@@ -131,7 +131,7 @@ const steps = [
   createNotificationsTables
 ] as const;
 
-const migrate = async (db: Db) => {
+export const migrate = async (db: Db) => {
   await db.transaction().execute(async (tx) => {
     for (const step of steps) {
       await step(tx);

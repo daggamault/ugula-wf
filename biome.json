@@ -52,6 +52,8 @@
         "apps/*/src/main.ts",
         ".migrations/migrate.ts",
         ".seeds/seed.ts",
+        ".seeds/reset.ts",
+        "apps/web/e2e/run.ts",
         "apps/web/e2e/shared/config.ts"
       ],
       "linter": {

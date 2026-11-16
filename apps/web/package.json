@@ -7,7 +7,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test",
-    "e2e": "node --env-file=../../.env --test e2e/*.e2e.ts"
+    "e2e": "node --env-file=../../.env e2e/run.ts"
   },
   "dependencies": {
     "@ugula/access": "workspace:*",

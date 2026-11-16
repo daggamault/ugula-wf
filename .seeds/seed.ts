@@ -23,18 +23,18 @@ import { sql } from 'kysely';
 import * as v from 'valibot';
 import { upsertAgency, upsertOrganization } from './agencies.ts';
 import { billingGraphs, billingTables } from './billing/index.ts';
-import {
-  buildUpsertDemoFacilities,
-  buildUpsertDemoPayers,
-  buildUpsertDemoProfile,
-  upsertDemoPayerAliases
-} from './billing-setup.ts';
 import type { SeedTable } from './builder.ts';
 import { CMS_FILES, readCmsData, replaceCmsData } from './cms.ts';
 import { CODE_SETS_FILE, readCodeSets, replaceCodeSets } from './codes.ts';
-import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
-import { demoGraphs } from './demo-graphs.ts';
-import { buildUpsertDefaultFees, demoFees } from './fees.ts';
+import { type DevSeedConfig, parseDbConfig } from './config.ts';
+import {
+  buildUpsertDevFacilities,
+  buildUpsertDevPayers,
+  buildUpsertDevProfile,
+  upsertDevPayerAliases
+} from './dev-billing.ts';
+import { devGraphs } from './dev-graphs.ts';
+import { buildUpsertDefaultFees, devFees } from './fees.ts';
 import {
   GEONAMES_POSTAL_CODES_FILE,
   readGeonamesPostalCodes,
@@ -117,10 +117,20 @@ const graphNodes = () => [
   ...createModelNodes([...nemsisModels, ...billingModels])
 ];
 
-const seedBase = async (db: Db) => {
-  const nodes = graphNodes();
-  assertValidGraphs(billingGraphs, nodes);
-  assertValidTables(billingTables, billingGraphs);
+export const REFERENCE_SOURCES = [
+  PLACES_FILE,
+  CODE_SETS_FILE,
+  ELEMENTS_FILE,
+  CODES_FILE,
+  PICK_LISTS_FILE,
+  GEONAMES_POSTAL_CODES_FILE,
+  ...Object.values(CMS_FILES),
+  ...['gnis', 'codes', 'nemsis-dictionary', 'geonames-postal-codes', 'cms', 'tsv'].map(
+    (name) => new URL(`./${name}.ts`, import.meta.url)
+  )
+];
+
+export const seedReference = async (db: Db) => {
   const places = readPlaces(await readFile(PLACES_FILE));
   const codeSets = readCodeSets(await readFile(CODE_SETS_FILE));
   const dictionary = {
@@ -141,19 +151,27 @@ const seedBase = async (db: Db) => {
     await replaceDictionary(tx, dictionary);
     await replaceGeonamesPostalCodes(tx, postalCodes);
     await replaceCmsData(tx, cms);
-    await publishTables(tx, billingTables);
-    await publishGraphs(tx, billingGraphs, new Set(nodes.map(refKey)));
   });
   await sql`analyze ${sql.join(REFERENCE_TABLES.map((name) => sql.table(name)))}`.execute(db);
 };
 
-const seedDev = async (db: Db, dev: DevSeedConfig) => {
+export const seedBilling = async (db: Db) => {
+  const nodes = graphNodes();
+  assertValidGraphs(billingGraphs, nodes);
+  assertValidTables(billingTables, billingGraphs);
+  await db.transaction().execute(async (tx) => {
+    await publishTables(tx, billingTables);
+    await publishGraphs(tx, billingGraphs, new Set(nodes.map(refKey)));
+  });
+};
+
+export const seedDev = async (db: Db, dev: DevSeedConfig) => {
   const [userPasswordHash, sftpPasswordHash] = await Promise.all([
     hashPassword(dev.DEV_USER_PASSWORD),
     hashPassword(dev.DEV_SFTP_PASSWORD)
   ]);
   const nodes = graphNodes();
-  assertValidGraphs(demoGraphs, nodes);
+  assertValidGraphs(devGraphs, nodes);
 
   await db.transaction().execute(async (tx) => {
     const organization = await upsertOrganization(tx, 'Development EMS');
@@ -183,20 +201,19 @@ const seedDev = async (db: Db, dev: DevSeedConfig) => {
           roleId: admin
         });
       }
-      await buildUpsertDefaultFees(tx, agency.id, demoFees).execute();
-      await buildUpsertDemoProfile(tx, agency.id, seed.submitterId).execute();
-      await buildUpsertDemoPayers(tx, agency.id).execute();
-      await upsertDemoPayerAliases(tx, agency.id);
-      await buildUpsertDemoFacilities(tx, agency.id).execute();
+      await buildUpsertDefaultFees(tx, agency.id, devFees).execute();
+      await buildUpsertDevProfile(tx, agency.id, seed.submitterId).execute();
+      await buildUpsertDevPayers(tx, agency.id).execute();
+      await upsertDevPayerAliases(tx, agency.id);
+      await buildUpsertDevFacilities(tx, agency.id).execute();
     }
 
-    await publishGraphs(tx, demoGraphs, new Set(nodes.map(refKey)));
+    await publishGraphs(tx, devGraphs, new Set(nodes.map(refKey)));
   });
 };
 
 if (import.meta.main) {
   const dbConfig = parseDbConfig(process.env);
-  const isDev = process.argv.includes('--dev');
   const db = createDb({
     host: dbConfig.DB_HOST,
     port: dbConfig.DB_PORT,
@@ -206,10 +223,8 @@ if (import.meta.main) {
   });
 
   try {
-    await seedBase(db);
-    if (isDev) {
-      await seedDev(db, parseDevSeedConfig(process.env));
-    }
+    await seedReference(db);
+    await seedBilling(db);
   } finally {
     await db.destroy();
   }

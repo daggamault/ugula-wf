@@ -5,7 +5,7 @@ import * as v from 'valibot';
 const e2eConfigSchema = v.object({
   DEV_USER_EMAIL: emailString,
   DEV_USER_PASSWORD: nonEmpty,
-  E2E_WEB_URL: v.optional(v.pipe(v.string(), v.url()), 'http://localhost:3000'),
+  E2E_WEB_URL: v.pipe(v.string(), v.url()),
   E2E_BROWSER_CHANNEL: v.optional(v.picklist(['msedge', 'chrome', 'chromium']), 'msedge'),
   E2E_STEP_MS: v.optional(
     v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1_000)),

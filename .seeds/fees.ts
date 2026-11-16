@@ -1,7 +1,7 @@
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
-export const demoFees: Record<string, number> = {
+export const devFees: Record<string, number> = {
   A0425: 1_550,
   A0426: 70_000,
   A0427: 95_000,

@@ -35,7 +35,7 @@ const removeGraphs = async (key: string, copiesOnly: boolean) => {
   for (const g of mine) await send(s, 'DELETE', `/api/graphs/${g.id}`);
 };
 
-const removeDemoOverride = () => removeGraphs('demo.process-item', true);
+const removeDevOverride = () => removeGraphs('dev.process-item', true);
 
 const canvas = (page: Page) => page.getByRole('application').first();
 
@@ -73,9 +73,9 @@ const dataRows = (label: string) =>
 
 const startProcessItem = async (charge: number) => {
   const [target] = (await graphs('workflows', 'Process Item')).items.filter(
-    (g) => g.key === 'demo.process-item' && !g.overrides
+    (g) => g.key === 'dev.process-item' && !g.overrides
   );
-  assert.ok(target, 'the demo workflow is seeded');
+  assert.ok(target, 'the dev workflow is seeded');
   await go(s.page, `/runs/new?graph=${target.id}`);
   await heading(s.page, 'Run Process Item').waitFor();
   await s.page
@@ -88,12 +88,12 @@ const startProcessItem = async (charge: number) => {
 describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
   before(async () => {
     s = await signIn();
-    await removeDemoOverride();
+    await removeDevOverride();
   });
 
   after(async () => {
     if (s) {
-      await removeDemoOverride();
+      await removeDevOverride();
       await removeGraphs(workflowKey, false);
     }
     await s?.browser.close();
@@ -261,13 +261,13 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await s.page.getByRole('button', { name: 'Publish' }).click();
     await toast(s.page, /^Process Item v\d+ published$/);
     assert.equal(
-      (await graphs('mine', 'demo.process-item')).items.filter((g) => g.overrides).length,
+      (await graphs('mine', 'dev.process-item')).items.filter((g) => g.overrides).length,
       1
     );
     await go(s.page, '/workflows/customized');
     await heading(s.page, 'Customization Map').waitFor();
     const map = s.page.getByRole('region', { name: 'Process Item', exact: true });
-    await map.getByText('demo.process-item', { exact: true }).first().waitFor();
+    await map.getByText('dev.process-item', { exact: true }).first().waitFor();
     await map.getByRole('link', { name: 'Process Item', exact: true }).first().click();
     await heading(s.page, 'Process Item').waitFor();
     await s.page.getByRole('button', { name: 'Remove Override' }).click();
@@ -277,7 +277,7 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await s.page.getByRole('main').getByText('Built-in', { exact: true }).waitFor();
     await s.page.getByRole('button', { name: 'Override for This Agency' }).waitFor();
     assert.equal(
-      (await graphs('mine', 'demo.process-item')).items.filter((g) => g.overrides).length,
+      (await graphs('mine', 'dev.process-item')).items.filter((g) => g.overrides).length,
       0
     );
     await go(s.page, '/workflows/customized');
