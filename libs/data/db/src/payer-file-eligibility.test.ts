@@ -123,6 +123,34 @@ describe('payer file eligibility', () => {
     ]);
   });
 
+  it('posts the same file twice under the same keys so the second post adds no event', async () => {
+    const { c, queries } = traced();
+    await postEligibility(c, [result(COVERAGE)]);
+    await postEligibility(c, [result(COVERAGE)]);
+    const inserts = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.equal(inserts.length, 2);
+    for (const q of inserts) {
+      assert.ok(q.sql.endsWith('on conflict ("claim_id", "source_key") do nothing'));
+    }
+    assert.deepEqual(
+      events(queries).map((p) => p[7]),
+      ['d:1', 'd:1']
+    );
+  });
+
+  it('looks nothing up and records nothing when no trace is a coverage id', async () => {
+    const { c, queries } = traced();
+    const out = await postEligibility(c, [result('PCR-1'), result('')]);
+    assert.deepEqual(queries, []);
+    assert.deepEqual(
+      out.items.map((i) => [i.reference, i.claimId, i.outcome, i.message]),
+      [
+        ['PCR-1', null, 'unmatched', 'No payer on a claim matches this response'],
+        ['', null, 'unmatched', 'No payer on a claim matches this response']
+      ]
+    );
+  });
+
   it('saves an inactive result with no note or stay as nulls', async () => {
     const { c, queries } = traced();
     const out = await postEligibility(c, [{ ...result(COVERAGE), active: false }]);

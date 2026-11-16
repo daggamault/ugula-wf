@@ -76,4 +76,13 @@ describe('claim payers', () => {
     );
     assert.ok(!queries.some((q) => q.sql.startsWith('delete')));
   });
+
+  it('reports a claim it cannot find without touching anything', async () => {
+    const { db, queries } = createRecordingDb();
+    assert.deepEqual(await setClaimPayers(db, boss, 't-1', 'c1', ['Aetna']), {
+      ok: false,
+      failure: { code: 'not_found', message: 'Claim not found' }
+    });
+    assert.equal(queries.length, 1);
+  });
 });

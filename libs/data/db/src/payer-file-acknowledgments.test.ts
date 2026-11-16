@@ -277,6 +277,27 @@ describe('payer file acknowledgments', () => {
     ]);
   });
 
+  it('skips the submission lookup and records nothing when no claim number matches', async () => {
+    const { c, queries } = contextOf();
+    const out = await postClaimAcknowledgments(c, [
+      {
+        claimNumber: '20261105-9999',
+        status: 'accepted',
+        categories: ['A1'],
+        payerClaimNumber: 'PCN-1',
+        message: ''
+      }
+    ]);
+    assert.deepEqual(
+      out.items.map((i) => [i.reference, i.claimId, i.outcome, i.message]),
+      [['20261105-9999', null, 'unmatched', 'No claim has number 20261105-9999']]
+    );
+    assert.deepEqual(
+      queries.map((q) => q.parameters),
+      [['t1', '20261105-9999']]
+    );
+  });
+
   it('sends a claim status for a claim never submitted from here to a biller', async () => {
     const { c } = contextOf(({ sql }) =>
       sql.startsWith('select "id", "number", "status" from "claims"')

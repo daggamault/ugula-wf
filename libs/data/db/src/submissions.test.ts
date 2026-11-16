@@ -304,6 +304,41 @@ describe('pendingClaim', () => {
   });
 });
 
+describe('pendingClaim lines', () => {
+  it('sends no loaded miles when the trip has none, and the coverage correction method', () => {
+    const none = pending(claimRow(C1, { loaded_miles: null }), [
+      event(C1, 'approved', MEDICARE)
+    ])?.claim;
+    assert.deepEqual(
+      [none?.loadedMiles, none?.correctionMethod, none?.lines.map((l) => l.units)],
+      [null, 'reopening', [1, 7.3]]
+    );
+    const some = pending(claimRow(C1), [event(C1, 'approved', MEDICARE)])?.claim;
+    assert.equal(some?.loadedMiles, 7.3);
+  });
+});
+
+describe('manual submission events', () => {
+  it('records no source key when none is given', async () => {
+    const { db, queries } = createRecordingDb();
+    await insertSubmissionEvent(
+      db,
+      { batchId: null, note: 'Sent by hand', createdBy: 'u1' },
+      { agencyId: 't1', claimId: 'c1', kind: 'submitted', coverageId: 'cc1' }
+    );
+    assert.deepEqual(queries[0]?.parameters, [
+      't1',
+      'c1',
+      'submitted',
+      'cc1',
+      'Sent by hand',
+      null,
+      'u1',
+      null
+    ]);
+  });
+});
+
 describe('pendingClaim payers', () => {
   it('bills an unknown insured relationship as self', () => {
     const relation = (relationship: string) =>

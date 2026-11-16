@@ -117,6 +117,57 @@ describe('findClaimCheck', () => {
     assert.deepEqual(queries[0]?.parameters, ['responsibility', 1, 1, 'c1', 't1']);
   });
 
+  it('bills the facility on contract, reads non-covered miles and drops unknown facility kinds', async () => {
+    const { db } = createRecordingDb((q) =>
+      q.sql.includes('from "claims"')
+        ? [
+            {
+              ...claim,
+              non_covered_miles: '2.5',
+              facility_id: 'f1',
+              responsibility_recorded: null,
+              pickup_facility: { id: 'f2', name: 'Lot', kind: 'parking', contract: false },
+              destination_facility: undefined,
+              pickup_zip_split: null
+            }
+          ]
+        : q.sql.includes('from "claim_coverages"')
+          ? [
+              {
+                id: 'cov-1',
+                payer_name: 'Aetna',
+                stay_kind: null,
+                stay_admitted_on: '2026-09-20',
+                stay_discharged_on: null
+              }
+            ]
+          : []
+    );
+    const check = await findClaimCheck(db, 't1', 'c1');
+    assert.deepEqual(
+      [
+        check?.nonCoveredMiles,
+        check?.responsibleParty,
+        check?.responsibilityRecorded,
+        check?.pickupFacility,
+        check?.destinationFacility,
+        check?.pickupLocality,
+        check?.payers[0]?.stay
+      ],
+      [2.5, 'facility', true, null, null, null, null]
+    );
+  });
+
+  it('records responsibility only when a payer was chosen on purpose', async () => {
+    const read = async (recorded: boolean | null) => {
+      const { db } = createRecordingDb((q) =>
+        q.sql.includes('from "claims"') ? [{ ...claim, responsibility_recorded: recorded }] : []
+      );
+      return (await findClaimCheck(db, 't1', 'c1'))?.responsibilityRecorded;
+    };
+    assert.deepEqual([await read(true), await read(false), await read(null)], [true, false, false]);
+  });
+
   it('finds nothing for another agency, and no patient address before the patient is known', async () => {
     const missing = createRecordingDb();
     assert.equal(await findClaimCheck(missing.db, 't1', 'c1'), null);
