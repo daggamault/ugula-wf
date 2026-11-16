@@ -13,11 +13,11 @@ export const createReferenceStore = (db: Kysely<Database>): ReferenceStore => ({
   findCode: async (set, code) => {
     const row = await db
       .selectFrom('codes')
-      .select(['description', 'billable'])
+      .select(['description', 'is_billable'])
       .where('code_set', '=', set)
       .where('code', '=', code)
       .executeTakeFirst();
-    return row ? { description: row.description, billable: row.billable } : null;
+    return row ? { description: row.description, billable: row.is_billable } : null;
   },
   medicareLocality: async (postalCode) => {
     const plusFour = postalCode.slice(5) || null;
@@ -96,7 +96,7 @@ export const createReferenceStore = (db: Kysely<Database>): ReferenceStore => ({
         'postal_code',
         'phone',
         'hospital_type',
-        'emergency_services',
+        'has_emergency_services',
         sql<number>`similarity(${name}, name)`.as('similarity')
       ])
       .where('state', '=', state)
@@ -116,7 +116,7 @@ export const createReferenceStore = (db: Kysely<Database>): ReferenceStore => ({
         postalCode: r.postal_code,
         phone: r.phone,
         hospitalType: r.hospital_type,
-        emergencyServices: r.emergency_services,
+        emergencyServices: r.has_emergency_services,
         similarity: r.similarity
       })),
       postalCode

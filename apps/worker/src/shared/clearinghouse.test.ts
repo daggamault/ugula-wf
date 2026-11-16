@@ -28,10 +28,10 @@ const fallback: ConnectionSettings = {
 const row = (
   agencyId: string,
   username: string,
-  { secret = sealSecret(keyring, 'pw', agencyId), enabled = true } = {}
+  { secret = sealSecret(keyring, 'pw', agencyId), isActive = true } = {}
 ) => ({
   agency_id: agencyId,
-  enabled,
+  is_active: isActive,
   sftp_host: 'sshftp.waystar.com',
   sftp_port: 22,
   sftp_host_key: `SHA256:${'w'.repeat(43)}`,
@@ -110,7 +110,7 @@ describe('createConnections', () => {
   });
 
   it('treats a paused connection as paused instead of falling back to the default', async () => {
-    const { connections } = setup([row('t1', 'acme', { enabled: false })]);
+    const { connections } = setup([row('t1', 'acme', { isActive: false })]);
     assert.equal(await connections.forAgency('t1'), null);
     assert.deepEqual(
       (await connections.pollTargets()).map((t) => t.source),
@@ -159,7 +159,7 @@ describe('createConnections', () => {
     const old = parseKeyring(oldKey);
     const stale = sealSecret(old, 'pw', 't1');
     const { connections, queries, reports } = setup(
-      [row('t1', 'acme', { secret: stale, enabled: false }), row('t2', 'metro')],
+      [row('t1', 'acme', { secret: stale, isActive: false }), row('t2', 'metro')],
       false
     );
     await connections.pollTargets();

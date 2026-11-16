@@ -163,7 +163,7 @@ export const replaceCmsData = async (db: Kysely<Database>, data: CmsData) => {
           postal_code: r.postalCode,
           phone: r.phone,
           hospital_type: r.hospitalType,
-          emergency_services: r.emergencyServices
+          has_emergency_services: r.emergencyServices
         }))
       )
       .execute()

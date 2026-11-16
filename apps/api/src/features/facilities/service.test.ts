@@ -11,7 +11,7 @@ const input = {
   postalCode: null,
   phone: null,
   kind: 'snf' as const,
-  contract: true,
+  hasContract: true,
   contractNote: null
 };
 

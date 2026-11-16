@@ -35,16 +35,6 @@ export const claimSearchOf = (query: URLSearchParams): ClaimSearch => ({
   number: query.get('number') ?? ''
 });
 
-export type Batch = {
-  id: string;
-  control_number: number;
-  claim_count: number;
-  total_cents: number;
-  production: boolean;
-  created_at: string;
-  created_by_email: string | null;
-};
-
 const listQuery = (query: ClaimQuery, page: string) => {
   const filters = new URLSearchParams(
     Object.entries(query).flatMap(([k, v]) => (v?.trim() ? [[k, v.trim()]] : []))

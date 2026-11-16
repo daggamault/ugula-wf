@@ -282,7 +282,7 @@ type CodesTable = {
   code_set: CodeSet;
   code: string;
   description: string;
-  billable: boolean;
+  is_billable: boolean;
 };
 
 type NemsisPickListsTable = {
@@ -328,7 +328,7 @@ type CmsHospitalsTable = {
   postal_code: string;
   phone: string | null;
   hospital_type: string;
-  emergency_services: boolean;
+  has_emergency_services: boolean;
 };
 
 type GeonamesPostalCodesTable = {
@@ -532,7 +532,7 @@ type FacilitiesTable = {
   postal_code: string | null;
   phone: string | null;
   kind: ColumnType<FacilityKind, FacilityKind | undefined, FacilityKind>;
-  contract: Generated<boolean>;
+  has_contract: Generated<boolean>;
   contract_note: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
@@ -664,7 +664,7 @@ type ClaimBatchesTable = {
   control_number: number;
   claim_count: number;
   total_cents: number;
-  production: boolean;
+  is_production: boolean;
   document: JsonColumn;
   created_by: string | null;
   created_at: Timestamp;
@@ -692,7 +692,7 @@ type ClaimStatusRequestsTable = {
 type ClearinghouseConnectionsTable = {
   agency_id: string;
   vendor: ClearinghouseVendor;
-  enabled: Generated<boolean>;
+  is_active: Generated<boolean>;
   sftp_host: string;
   sftp_port: number;
   sftp_host_key: string;
@@ -793,7 +793,7 @@ type BillingProfilesTable = {
   receiver_id: string | null;
   receiver_name: string | null;
   time_zone: string;
-  production: Generated<boolean>;
+  is_production: Generated<boolean>;
   next_control_number: Generated<number>;
   updated_at: Timestamp;
 };

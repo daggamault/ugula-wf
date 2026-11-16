@@ -6,7 +6,7 @@ import { createConnectionService, NO_SECRET_KEY, SECRET_FOR_ENDPOINT } from './s
 
 const input: ConnectionInput = {
   vendor: 'waystar',
-  enabled: true,
+  isActive: true,
   sftpHost: 'sshftp.waystar.com',
   sftpPort: 22,
   sftpHostKey: `SHA256:${'w'.repeat(43)}`,

@@ -328,7 +328,7 @@ describe('billing profile', () => {
       submitter_id: 'S1',
       receiver_id: null,
       receiver_name: null,
-      production: true
+      is_production: true
     };
     const { db, queries } = createRecordingDb(() => [profile]);
     const found = await findProfile(db, 't1');

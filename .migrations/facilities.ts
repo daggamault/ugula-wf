@@ -17,7 +17,7 @@ const buildFacilitiesTable = (db: Kysely<Database>) =>
     .addColumn('postal_code', 'text')
     .addColumn('phone', 'text')
     .addColumn('kind', 'text', (col) => col.notNull().defaultTo('other'))
-    .addColumn('contract', 'boolean', (col) => col.notNull().defaultTo(false))
+    .addColumn('has_contract', 'boolean', (col) => col.notNull().defaultTo(false))
     .addColumn('contract_note', 'text')
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))

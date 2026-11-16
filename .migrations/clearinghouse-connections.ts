@@ -21,7 +21,7 @@ export const createClearinghouseConnectionsTable = (db: Kysely<Database>) =>
       col.primaryKey().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('vendor', 'text', (col) => col.notNull())
-    .addColumn('enabled', 'boolean', (col) => col.notNull().defaultTo(true))
+    .addColumn('is_active', 'boolean', (col) => col.notNull().defaultTo(true))
     .addColumn('sftp_host', 'text', (col) => col.notNull())
     .addColumn('sftp_port', 'integer', (col) => col.notNull())
     .addColumn('sftp_host_key', 'text', (col) => col.notNull())

@@ -58,7 +58,7 @@ export const FacilitiesTable = ({
         </TableCell>
         <TableCell>
           {FACILITY_KINDS[f.kind]}
-          {f.contract ? ' · contract' : ''}
+          {f.has_contract ? ' · contract' : ''}
         </TableCell>
         <TableCell kind="numeric">{formatCents(f.balance_cents)}</TableCell>
         <TableCell kind="actions">

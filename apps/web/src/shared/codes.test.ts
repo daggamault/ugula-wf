@@ -10,7 +10,7 @@ describe('createCodesClient', () => {
       createApi('', async (url) => {
         seen.push(String(url));
         return new Response(
-          '{"codes":[{"code":"R079","description":"Chest pain, unspecified","billable":true}]}',
+          '{"codes":[{"code":"R079","description":"Chest pain, unspecified","is_billable":true}]}',
           { status: 200 }
         );
       })

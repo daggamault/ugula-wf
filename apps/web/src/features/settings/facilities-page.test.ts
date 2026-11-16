@@ -22,7 +22,7 @@ const sunrise: Facility = {
   postal_code: '62702',
   phone: null,
   kind: 'snf',
-  contract: true,
+  has_contract: true,
   contract_note: null,
   balance_cents: 125_000
 };

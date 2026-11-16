@@ -30,7 +30,7 @@ const buildBillingProfilesTable = (db: Kysely<Database>) =>
     .addColumn('receiver_id', 'text')
     .addColumn('receiver_name', 'text')
     .addColumn('time_zone', 'text', (col) => col.notNull())
-    .addColumn('production', 'boolean', (col) => col.notNull().defaultTo(false))
+    .addColumn('is_production', 'boolean', (col) => col.notNull().defaultTo(false))
     .addColumn('next_control_number', 'integer', (col) => col.notNull().defaultTo(1))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addCheckConstraint('billing_profiles_npi_check', sql`npi ~ '^[0-9]{10}$'`)

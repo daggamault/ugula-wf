@@ -13,7 +13,7 @@ const demoProfile = {
   receiver_id: 'WAYSTAR',
   receiver_name: 'Waystar',
   time_zone: 'America/Chicago',
-  production: false
+  is_production: false
 };
 
 const demoPayers = [
@@ -31,7 +31,7 @@ const demoFacilities = [
     city: 'Harrisburg',
     state: 'PA',
     postal_code: '17101',
-    contract: false,
+    has_contract: false,
     contract_note: null
   },
   {
@@ -41,7 +41,7 @@ const demoFacilities = [
     city: 'Harrisburg',
     state: 'PA',
     postal_code: null,
-    contract: false,
+    has_contract: false,
     contract_note: null
   },
   {
@@ -51,7 +51,7 @@ const demoFacilities = [
     city: 'Harrisburg',
     state: 'PA',
     postal_code: '17110',
-    contract: true,
+    has_contract: true,
     contract_note: 'Pays every scheduled transport of its residents under contract'
   }
 ] as const;
@@ -79,7 +79,7 @@ export const buildUpsertDemoFacilities = (db: Kysely<Database>, agencyId: string
         city: (eb) => eb.ref('excluded.city'),
         state: (eb) => eb.ref('excluded.state'),
         postal_code: (eb) => eb.ref('excluded.postal_code'),
-        contract: (eb) => eb.ref('excluded.contract'),
+        has_contract: (eb) => eb.ref('excluded.has_contract'),
         contract_note: (eb) => eb.ref('excluded.contract_note'),
         updated_at: sql`now()`
       })

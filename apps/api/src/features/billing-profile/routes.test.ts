@@ -36,7 +36,7 @@ describe('billing profile routes', () => {
       submitterId: 'SUB01',
       receiverId: 'RCV01',
       receiverName: 'Demo Clearinghouse',
-      production: false
+      isProduction: false
     };
     assert.equal((await request('/', { method: 'PUT', body: JSON.stringify(body) })).status, 200);
     const bad = await request('/', { method: 'PUT', body: JSON.stringify({ ...body, npi: '1' }) });

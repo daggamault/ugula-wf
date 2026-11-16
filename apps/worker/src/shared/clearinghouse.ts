@@ -78,7 +78,7 @@ const connectionRows = (db: Db) =>
     .leftJoin('billing_profiles as b', 'b.agency_id', 'cc.agency_id')
     .select([
       'cc.agency_id',
-      'cc.enabled',
+      'cc.is_active',
       'cc.sftp_host',
       'cc.sftp_port',
       'cc.sftp_host_key',
@@ -162,7 +162,7 @@ export const createConnections = (deps: ConnectionDeps) => {
         .where('cc.agency_id', '=', agencyId)
         .executeTakeFirst();
       if (row) {
-        const settings = row.enabled ? settingsOf(row) : null;
+        const settings = row.is_active ? settingsOf(row) : null;
         return settings
           ? connect(
               settings,
@@ -189,7 +189,7 @@ export const createConnections = (deps: ConnectionDeps) => {
         targets.set(accountOf(deps.fallback), { settings: deps.fallback, agencyIds: null });
       }
       for (const r of rows) {
-        const settings = r.enabled ? settingsOf(r) : null;
+        const settings = r.is_active ? settingsOf(r) : null;
         if (!settings) continue;
         const account = accountOf(settings);
         const known = targets.get(account);

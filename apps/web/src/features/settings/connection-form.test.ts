@@ -18,7 +18,7 @@ import {
 
 const saved: ClearinghouseConnection = {
   vendor: 'custom-sftp',
-  enabled: false,
+  is_active: false,
   sftp_host: 'sftp.example.com',
   sftp_port: 2222,
   sftp_host_key: `SHA256:${'k'.repeat(43)}`,
@@ -65,7 +65,7 @@ describe('connection form', () => {
     assert.equal(input.secret, null);
     assert.equal(input.sftpHostKey, saved.sftp_host_key);
     assert.deepEqual(input.downloadPaths, ['/out/999', '/out/835']);
-    assert.deepEqual([input.enabled, input.sftpPort, input.realtimeUrl], [false, 2222, null]);
+    assert.deepEqual([input.isActive, input.sftpPort, input.realtimeUrl], [false, 2222, null]);
     assert.equal(fromConnectionDraft({ ...draft, secret: 'new' }).secret, 'new');
     assert.match(secretHint(saved, draft) ?? '', /A password is set/);
     assert.equal(secretHint(null, draft), undefined);

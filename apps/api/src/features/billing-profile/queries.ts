@@ -15,7 +15,7 @@ const columns = [
   'submitter_id',
   'receiver_id',
   'receiver_name',
-  'production',
+  'is_production',
   'updated_at'
 ] as const;
 
@@ -40,7 +40,7 @@ export const upsertBillingProfile = (db: Db, agencyId: string, p: BillingProfile
     submitter_id: p.submitterId,
     receiver_id: p.receiverId,
     receiver_name: p.receiverName || null,
-    production: p.production
+    is_production: p.isProduction
   };
   return db
     .insertInto('billing_profiles')

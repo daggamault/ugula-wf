@@ -40,7 +40,7 @@ describe('code field', () => {
 
   it('shows each code with its meaning, or the code alone before it is known', () => {
     const labels = labelsOf([
-      { code: 'R079', description: 'Chest pain, unspecified', billable: true }
+      { code: 'R079', description: 'Chest pain, unspecified', is_billable: true }
     ]);
     assert.equal(codeLabel('icd10cm', labels, 'R079'), 'Chest pain, unspecified (R07.9)');
     assert.equal(codeLabel('icd10cm', labels, 'Z999'), 'Z99.9');

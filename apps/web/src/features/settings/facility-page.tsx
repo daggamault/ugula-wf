@@ -24,7 +24,7 @@ export const toFacilityDraft = (f: Facility | null): FacilityInput => ({
   postalCode: f?.postal_code ?? null,
   phone: f?.phone ?? null,
   kind: f?.kind ?? 'other',
-  contract: f?.contract ?? false,
+  hasContract: f?.has_contract ?? false,
   contractNote: f?.contract_note ?? null
 });
 
@@ -156,8 +156,8 @@ export const FacilityForm = ({
               hint="Transports to or from a contract facility are billed to it"
               span={1}
               options={CONTRACT_OPTIONS}
-              value={draft.contract ? 'yes' : 'no'}
-              onChange={(v) => setDraft({ ...draft, contract: v === 'yes' })}
+              value={draft.hasContract ? 'yes' : 'no'}
+              onChange={(v) => setDraft({ ...draft, hasContract: v === 'yes' })}
             />
             <Input
               id="facility-contract-note"

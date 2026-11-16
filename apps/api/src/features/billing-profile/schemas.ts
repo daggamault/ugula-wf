@@ -46,7 +46,7 @@ export const billingProfileSchema = v.object({
   submitterId: clearinghouseId,
   receiverId: clearinghouseId,
   receiverName: v.nullable(v.pipe(v.string(), v.trim(), v.maxLength(60))),
-  production: v.boolean()
+  isProduction: v.boolean()
 });
 
 export type BillingProfileInput = v.InferOutput<typeof billingProfileSchema>;

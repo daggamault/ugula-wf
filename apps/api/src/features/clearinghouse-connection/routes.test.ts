@@ -25,7 +25,7 @@ const request = withSession(
 
 const body = {
   vendor: 'mock',
-  enabled: true,
+  isActive: true,
   sftpHost: 'localhost',
   sftpPort: 2223,
   sftpHostKey: MOCK_HOST_KEY,

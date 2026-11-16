@@ -68,7 +68,7 @@ export const createFacilityStore = (
     (
       await db
         .selectFrom('facilities')
-        .select(['id', 'name', 'kind', 'contract'])
+        .select(['id', 'name', 'kind', 'has_contract as contract'])
         .where('agency_id', '=', runAgency(db, runId))
         .orderBy('name')
         .execute()

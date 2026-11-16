@@ -9,12 +9,12 @@ const buildCodesTable = (db: Kysely<Database>) =>
     .addColumn('code_set', 'text', (col) => col.notNull())
     .addColumn('code', 'text', (col) => col.notNull().modifyFront(sql`collate "C"`))
     .addColumn('description', 'text', (col) => col.notNull())
-    .addColumn('billable', 'boolean', (col) => col.notNull())
+    .addColumn('is_billable', 'boolean', (col) => col.notNull())
     .addPrimaryKeyConstraint('codes_pkey', ['code_set', 'code'])
     .addCheckConstraint('codes_code_set_check', oneOf('code_set', CODE_SETS))
     .addCheckConstraint('codes_code_check', sql`code ~ ${sql.lit(CODE_PATTERN)}`)
     .addCheckConstraint('codes_description_check', trimmed('description'))
-    .addCheckConstraint('codes_billable_check', sql`billable or code_set = 'icd10cm'`);
+    .addCheckConstraint('codes_is_billable_check', sql`is_billable or code_set = 'icd10cm'`);
 
 const buildCodesDescriptionIndex = (db: Kysely<Database>) =>
   db.schema

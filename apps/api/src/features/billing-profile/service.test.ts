@@ -16,7 +16,7 @@ const profile = {
   submitterId: 'SUB01',
   receiverId: 'RCV01',
   receiverName: '',
-  production: false
+  isProduction: false
 };
 
 describe('billing profile service', () => {

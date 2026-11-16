@@ -21,18 +21,18 @@ describe('facilitySchema', () => {
         postalCode: '62702',
         phone: null,
         kind: 'other',
-        contract: false,
+        hasContract: false,
         contractNote: null
       }
     );
     const contract = v.parse(facilitySchema, {
       name: 'Oak Manor',
       kind: 'snf',
-      contract: true,
+      hasContract: true,
       contractNote: ' Pays discharges '
     });
     assert.deepEqual(
-      [contract.kind, contract.contract, contract.contractNote],
+      [contract.kind, contract.hasContract, contract.contractNote],
       ['snf', true, 'Pays discharges']
     );
     assert.equal(v.safeParse(facilitySchema, { name: 'X', kind: 'spa' }).success, false);

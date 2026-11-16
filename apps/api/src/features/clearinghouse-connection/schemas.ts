@@ -17,7 +17,7 @@ const extension = v.pipe(
 
 export const connectionSchema = v.object({
   vendor: v.picklist(CLEARINGHOUSE_VENDORS),
-  enabled: v.boolean(),
+  isActive: v.boolean(),
   sftpHost: v.pipe(
     v.string(),
     v.trim(),

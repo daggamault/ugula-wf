@@ -349,7 +349,7 @@ const buildClaimBatchesTable = (db: Kysely<Database>) =>
     .addColumn('control_number', 'integer', (col) => col.notNull())
     .addColumn('claim_count', 'integer', (col) => col.notNull())
     .addColumn('total_cents', 'integer', (col) => col.notNull())
-    .addColumn('production', 'boolean', (col) => col.notNull())
+    .addColumn('is_production', 'boolean', (col) => col.notNull())
     .addColumn('document', 'jsonb', (col) => col.notNull())
     .addColumn('created_by', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')

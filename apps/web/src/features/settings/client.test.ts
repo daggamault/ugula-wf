@@ -39,7 +39,7 @@ describe('createSettingsClient', () => {
       receiverId: null,
       receiverName: null,
       timeZone: 'America/Chicago',
-      production: false
+      isProduction: false
     });
     await client.connection();
     await client.removeConnection();

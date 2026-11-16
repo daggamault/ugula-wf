@@ -6,16 +6,16 @@ import { findCodes } from './queries.ts';
 describe('findCodes', () => {
   it('searches billable codes by code prefix or every word of the description, best first', async () => {
     const { db, queries } = createRecordingDb(() => [
-      { code: 'R079', description: 'Chest pain, unspecified', billable: true }
+      { code: 'R079', description: 'Chest pain, unspecified', is_billable: true }
     ]);
     assert.deepEqual(await findCodes(db, { set: 'icd10cm', q: 'r07.9' }), [
-      { code: 'R079', description: 'Chest pain, unspecified', billable: true }
+      { code: 'R079', description: 'Chest pain, unspecified', is_billable: true }
     ]);
     await findCodes(db, { set: 'icd10cm', q: 'chest 50%' });
     const [byCode, byWords] = queries;
     assert.equal(
       byCode?.sql,
-      'select "c"."code", "c"."description", "c"."billable" from "codes" as "c" where "c"."code_set" = $1 and "c"."billable" = $2 and ("c"."code" like $3 or "c"."description" ilike $4) order by case when c.code like $5 then length(c.code) end, case when c.code like $6 then c.code end, word_similarity($7, c.description) desc, length(c.description), "c"."code" limit $8'
+      'select "c"."code", "c"."description", "c"."is_billable" from "codes" as "c" where "c"."code_set" = $1 and "c"."is_billable" = $2 and ("c"."code" like $3 or "c"."description" ilike $4) order by case when c.code like $5 then length(c.code) end, case when c.code like $6 then c.code end, word_similarity($7, c.description) desc, length(c.description), "c"."code" limit $8'
     );
     assert.deepEqual(byCode?.parameters, [
       'icd10cm',

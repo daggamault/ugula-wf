@@ -116,7 +116,7 @@ const profileColumns = [
   'submitter_id',
   'receiver_id',
   'receiver_name',
-  'production'
+  'is_production'
 ] as const;
 
 export const findProfile = (db: Db, agencyId: string) =>
@@ -140,7 +140,7 @@ export const toSubmitter = (p: ProfileRow): Submitter => ({
   submitterId: p.submitter_id,
   receiverId: p.receiver_id,
   receiverName: p.receiver_name,
-  production: p.production
+  production: p.is_production
 });
 
 export const allocateControlNumber = async (db: Db, agencyId: string) =>
@@ -174,11 +174,18 @@ export const insertBatch = (
       control_number: batch.controlNumber,
       claim_count: 1,
       total_cents: batch.totalCents,
-      production: batch.production,
+      is_production: batch.production,
       document: JSON.stringify(batch.document),
       created_by: batch.createdBy
     })
-    .returning(['id', 'control_number', 'claim_count', 'total_cents', 'production', 'created_at'])
+    .returning([
+      'id',
+      'control_number',
+      'claim_count',
+      'total_cents',
+      'is_production',
+      'created_at'
+    ])
     .executeTakeFirstOrThrow();
 
 export const insertSubmissionEvent = (

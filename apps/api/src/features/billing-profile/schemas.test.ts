@@ -16,7 +16,7 @@ const valid = {
   submitterId: ' sub01 ',
   receiverId: 'RCV01',
   receiverName: null,
-  production: false
+  isProduction: false
 };
 
 describe('billingProfileSchema', () => {
@@ -34,7 +34,7 @@ describe('billingProfileSchema', () => {
       submitterId: 'SUB01',
       receiverId: 'RCV01',
       receiverName: null,
-      production: false
+      isProduction: false
     });
   });
 
@@ -50,7 +50,7 @@ describe('billingProfileSchema', () => {
     assert.ok(fails({ timeZone: 'Mars/Olympus' }));
     assert.ok(fails({ organizationName: ' ' }));
     assert.ok(fails({ submitterId: 'has space' }));
-    assert.ok(fails({ production: 'yes' }));
+    assert.ok(fails({ isProduction: 'yes' }));
     assert.ok(!fails({ submitterId: null, receiverId: null }));
   });
 });

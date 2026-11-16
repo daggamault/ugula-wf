@@ -7,7 +7,7 @@ describe('createReferenceStore', () => {
   it('finds one code of a set', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.parameters.includes('R07')
-        ? [{ description: 'Pain in throat and chest', billable: false }]
+        ? [{ description: 'Pain in throat and chest', is_billable: false }]
         : []
     );
     const store = createReferenceStore(db);
@@ -18,7 +18,7 @@ describe('createReferenceStore', () => {
     assert.equal(await store.findCode('icd10cm', 'Z99'), null);
     assert.equal(
       queries[0]?.sql,
-      'select "description", "billable" from "codes" where "code_set" = $1 and "code" = $2'
+      'select "description", "is_billable" from "codes" where "code_set" = $1 and "code" = $2'
     );
   });
 
@@ -107,7 +107,7 @@ describe('createReferenceStore', () => {
       postal_code: postalCode,
       phone: null,
       hospital_type: 'Acute Care Hospitals',
-      emergency_services: true,
+      has_emergency_services: true,
       similarity
     });
     const { db, queries } = createRecordingDb((q) =>

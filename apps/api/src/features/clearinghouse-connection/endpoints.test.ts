@@ -5,7 +5,7 @@ import type { ConnectionInput } from './schemas.ts';
 
 const input: ConnectionInput = {
   vendor: 'custom-sftp',
-  enabled: true,
+  isActive: true,
   sftpHost: 'sftp.example.com',
   sftpPort: 22,
   sftpHostKey: `SHA256:${'k'.repeat(43)}`,

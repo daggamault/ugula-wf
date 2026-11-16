@@ -31,7 +31,7 @@ export const FILING_OPTIONS = Object.entries(CLAIM_FILING_CODES).map(([value, la
   label: `${value} · ${label}`
 }));
 
-type ProfileText = Exclude<keyof BillingProfileInput, 'production'>;
+type ProfileText = Exclude<keyof BillingProfileInput, 'isProduction'>;
 
 type ProfileDraft = Record<ProfileText, string> & { usage: 'T' | 'P' };
 
@@ -61,7 +61,7 @@ export const toProfileDraft = (
   receiverId: p?.receiver_id ?? '',
   receiverName: p?.receiver_name ?? '',
   timeZone: p?.time_zone ?? defaultZone,
-  usage: p?.production ? 'P' : 'T'
+  usage: p?.is_production ? 'P' : 'T'
 });
 
 const blankToNull = (s: string) => s.trim() || null;
@@ -71,7 +71,7 @@ export const fromProfileDraft = ({ usage, ...d }: ProfileDraft): BillingProfileI
   submitterId: blankToNull(d.submitterId),
   receiverId: blankToNull(d.receiverId),
   receiverName: blankToNull(d.receiverName),
-  production: usage === 'P'
+  isProduction: usage === 'P'
 });
 
 type ProfileField = {

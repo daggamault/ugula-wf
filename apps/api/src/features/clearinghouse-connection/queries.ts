@@ -4,7 +4,7 @@ import type { ConnectionInput } from './schemas.ts';
 
 const columns = [
   'vendor',
-  'enabled',
+  'is_active',
   'sftp_host',
   'sftp_port',
   'sftp_host_key',
@@ -30,7 +30,7 @@ export const findConnection = (db: Db, agencyId: string) =>
 
 const valuesOf = (c: ConnectionInput) => ({
   vendor: c.vendor,
-  enabled: c.enabled,
+  is_active: c.isActive,
   sftp_host: c.sftpHost,
   sftp_port: c.sftpPort,
   sftp_host_key: c.sftpHostKey,

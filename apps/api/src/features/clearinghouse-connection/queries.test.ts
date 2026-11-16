@@ -11,7 +11,7 @@ describe('clearinghouse connection queries', () => {
     assert.equal(
       await updateKeepingSecret(db, 't1', {
         vendor: 'custom-sftp',
-        enabled: false,
+        isActive: false,
         sftpHost: 'h',
         sftpPort: 22,
         sftpHostKey: 'SHA256:k',

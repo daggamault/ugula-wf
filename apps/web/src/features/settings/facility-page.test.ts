@@ -45,7 +45,7 @@ describe('FacilityPage', () => {
       postalCode: null,
       phone: null,
       kind: 'other',
-      contract: false,
+      hasContract: false,
       contractNote: null
     });
     const page = renderToStaticMarkup(
@@ -71,7 +71,7 @@ describe('FacilityPage', () => {
       hospital_type: 'Acute Care Hospitals'
     };
     assert.equal(hospitalLabel(hospital), 'SOUTHEAST HEALTH MEDICAL CENTER, DOTHAN AL (010001)');
-    const draft = { ...toFacilityDraft(null), contract: true, contractNote: 'Pays all 911' };
+    const draft = { ...toFacilityDraft(null), hasContract: true, contractNote: 'Pays all 911' };
     assert.equal(
       fromHospital({ ...draft, phone: '2175550100' }, { ...hospital, phone: null }).phone,
       '2175550100'
@@ -84,7 +84,7 @@ describe('FacilityPage', () => {
       postalCode: '36301',
       phone: '3347938701',
       kind: 'hospital',
-      contract: true,
+      hasContract: true,
       contractNote: 'Pays all 911'
     });
   });

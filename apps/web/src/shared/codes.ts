@@ -1,7 +1,7 @@
 import type { CodeSet } from '@ugula/billing';
 import type { Api } from './api.ts';
 
-export type Code = { code: string; description: string; billable: boolean };
+export type Code = { code: string; description: string; is_billable: boolean };
 
 export const createCodesClient = (api: Api) => {
   const find = async (set: CodeSet, params: Record<string, string>, signal?: AbortSignal) =>

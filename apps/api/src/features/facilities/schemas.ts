@@ -43,7 +43,7 @@ export const facilitySchema = v.object({
     v.picklist(Object.keys(FACILITY_KINDS) as [FacilityKind, ...FacilityKind[]]),
     'other'
   ),
-  contract: v.optional(v.boolean(), false),
+  hasContract: v.optional(v.boolean(), false),
   contractNote: optionalText(500)
 });
 

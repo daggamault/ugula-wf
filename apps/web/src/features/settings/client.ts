@@ -21,7 +21,7 @@ export type BillingProfile = {
   receiver_id: string | null;
   receiver_name: string | null;
   time_zone: string | null;
-  production: boolean;
+  is_production: boolean;
 };
 
 export type BillingProfileInput = {
@@ -37,12 +37,12 @@ export type BillingProfileInput = {
   receiverId: string | null;
   receiverName: string | null;
   timeZone: string;
-  production: boolean;
+  isProduction: boolean;
 };
 
 export type ClearinghouseConnection = {
   vendor: ClearinghouseVendor;
-  enabled: boolean;
+  is_active: boolean;
   sftp_host: string;
   sftp_port: number;
   sftp_host_key: string;
@@ -59,7 +59,7 @@ export type ClearinghouseConnection = {
 
 export type ConnectionInput = {
   vendor: ClearinghouseVendor;
-  enabled: boolean;
+  isActive: boolean;
   sftpHost: string;
   sftpPort: number;
   sftpHostKey: string;
@@ -97,7 +97,7 @@ export type Facility = {
   postal_code: string | null;
   phone: string | null;
   kind: FacilityKind;
-  contract: boolean;
+  has_contract: boolean;
   contract_note: string | null;
   balance_cents: number;
 };
@@ -121,7 +121,7 @@ export type FacilityInput = {
   postalCode: string | null;
   phone: string | null;
   kind: FacilityKind;
-  contract: boolean;
+  hasContract: boolean;
   contractNote: string | null;
 };
 

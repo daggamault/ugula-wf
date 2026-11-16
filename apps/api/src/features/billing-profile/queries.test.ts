@@ -27,7 +27,7 @@ describe('billing profile queries', () => {
       submitterId: null,
       receiverId: null,
       receiverName: '',
-      production: true
+      isProduction: true
     });
     const [upsert] = queries;
     assert.ok(upsert?.sql.startsWith('insert into "billing_profiles" ("agency_id", '));

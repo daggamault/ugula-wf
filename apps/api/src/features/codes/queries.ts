@@ -7,7 +7,7 @@ import { CODE_LIMIT, type CodesQuery } from './schemas.ts';
 const codeRows = (db: Db, set: CodesQuery['set']) =>
   db
     .selectFrom('codes as c')
-    .select(['c.code', 'c.description', 'c.billable'])
+    .select(['c.code', 'c.description', 'c.is_billable'])
     .where('c.code_set', '=', set);
 
 export const findCodes = async (db: Db, { set, q, list, codes }: CodesQuery) => {
@@ -23,7 +23,7 @@ export const findCodes = async (db: Db, { set, q, list, codes }: CodesQuery) => 
           .execute()
       : [];
   }
-  let query = codeRows(db, set).where('c.billable', '=', true);
+  let query = codeRows(db, set).where('c.is_billable', '=', true);
   if (list) {
     query = query.where((eb) =>
       eb.exists(

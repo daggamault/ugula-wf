@@ -24,7 +24,7 @@ export const replaceCodeSets = async (db: Kysely<Database>, codes: readonly Code
           code_set: c.set,
           code: c.code,
           description: c.description,
-          billable: c.billable
+          is_billable: c.billable
         }))
       )
       .execute()

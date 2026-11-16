@@ -66,8 +66,8 @@ describe('findClaimCheck', () => {
             : q.sql.includes('from "claim_documents"')
               ? [{ kind: 'pcs' }, { kind: 'scan' }]
               : [
-                  { code: 'R079', description: 'Chest pain, unspecified', billable: true },
-                  { code: 'R07', description: 'Pain in throat and chest', billable: false }
+                  { code: 'R079', description: 'Chest pain, unspecified', is_billable: true },
+                  { code: 'R07', description: 'Pain in throat and chest', is_billable: false }
                 ]
     );
     const check = await findClaimCheck(db, 't1', 'c1');

@@ -62,7 +62,7 @@ export const toConnectionDraft = (c: ClearinghouseConnection | null): Connection
   c
     ? {
         vendor: c.vendor,
-        enabled: c.enabled ? 'on' : 'off',
+        enabled: c.is_active ? 'on' : 'off',
         sftpHost: c.sftp_host,
         sftpPort: String(c.sftp_port),
         sftpHostKey: c.sftp_host_key,
@@ -85,7 +85,7 @@ export const withVendor = (d: ConnectionDraft, vendor: ClearinghouseVendor): Con
 
 export const fromConnectionDraft = (d: ConnectionDraft): ConnectionInput => ({
   vendor: d.vendor,
-  enabled: d.enabled === 'on',
+  isActive: d.enabled === 'on',
   sftpHost: d.sftpHost.trim(),
   sftpPort: Number(d.sftpPort),
   sftpHostKey: d.sftpHostKey.trim(),

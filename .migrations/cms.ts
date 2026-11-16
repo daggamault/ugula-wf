@@ -79,7 +79,7 @@ const buildHospitalsTable = (db: Kysely<Database>) =>
     .addColumn('postal_code', 'text', (col) => col.notNull())
     .addColumn('phone', 'text')
     .addColumn('hospital_type', 'text', (col) => col.notNull())
-    .addColumn('emergency_services', 'boolean', (col) => col.notNull())
+    .addColumn('has_emergency_services', 'boolean', (col) => col.notNull())
     .addCheckConstraint('cms_hospitals_ccn_check', matches('ccn', CCN_PATTERN))
     .addCheckConstraint('cms_hospitals_name_check', trimmed('name'))
     .addCheckConstraint('cms_hospitals_address_line_check', trimmed('address_line'))

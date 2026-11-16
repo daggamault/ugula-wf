@@ -14,7 +14,7 @@ const columns = [
   'f.postal_code',
   'f.phone',
   'f.kind',
-  'f.contract',
+  'f.has_contract',
   'f.contract_note',
   'f.updated_at'
 ] as const;
@@ -57,7 +57,7 @@ const valuesOf = (f: FacilityInput) => ({
   postal_code: f.postalCode,
   phone: f.phone,
   kind: f.kind,
-  contract: f.contract,
+  has_contract: f.hasContract,
   contract_note: f.contractNote
 });
 

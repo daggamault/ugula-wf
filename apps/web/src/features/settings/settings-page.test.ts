@@ -31,7 +31,7 @@ describe('settings', () => {
       receiver_id: null,
       receiver_name: null,
       time_zone: 'America/Chicago',
-      production: true
+      is_production: true
     });
     assert.equal(draft.timeZone, 'America/Chicago');
     assert.equal(draft.taxId, '123456789');
@@ -40,7 +40,7 @@ describe('settings', () => {
     assert.equal(input.submitterId, 'SUB01');
     assert.equal(input.receiverId, null);
     assert.equal(input.receiverName, null);
-    assert.equal(input.production, true);
+    assert.equal(input.isProduction, true);
     assert.ok(!('usage' in input));
     assert.ok(FILING_OPTIONS.some((o) => o.value === 'MB' && o.label === 'MB · Medicare Part B'));
   });
@@ -76,7 +76,7 @@ describe('settings', () => {
           receiver_id: null,
           receiver_name: null,
           time_zone: 'America/Chicago',
-          production: true
+          is_production: true
         },
         onSave: async () => null
       })

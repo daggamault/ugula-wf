@@ -40,7 +40,7 @@ const profile = {
   submitter_id: sampleSubmitter.submitterId,
   receiver_id: sampleSubmitter.receiverId,
   receiver_name: sampleSubmitter.receiverName,
-  production: sampleSubmitter.production
+  is_production: sampleSubmitter.production
 };
 
 const ownedClaim = (q: CompiledQuery) => q.sql.startsWith('select "id", "agency_id" from "claims"');

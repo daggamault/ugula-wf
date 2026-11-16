@@ -7,7 +7,7 @@ const HOST_KEY = 'SHA256:VM159e2IEtdtiYxUoqIC5u7Z7D57F/k83MgfOvFrDdM';
 
 const waystarInput = {
   vendor: 'waystar',
-  enabled: true,
+  isActive: true,
   sftpHost: ' sshftp.waystar.com ',
   sftpPort: 22,
   sftpHostKey: HOST_KEY,

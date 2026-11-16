@@ -20,10 +20,10 @@ const facilityAt = (eb: ClaimRow, where: ReturnType<typeof sql<boolean>>) =>
   jsonObjectFrom(
     eb
       .selectFrom('facilities as f')
-      .select(['f.id', 'f.name', 'f.kind', 'f.contract'])
+      .select(['f.id', 'f.name', 'f.kind', 'f.has_contract as contract'])
       .whereRef('f.agency_id', '=', 'c.agency_id')
       .where(where)
-      .orderBy('f.contract', 'desc')
+      .orderBy('f.has_contract', 'desc')
       .orderBy('f.name')
       .limit(1)
   );
@@ -150,7 +150,7 @@ export const findClaimCheck = async (
       .leftJoin('codes as cd', (j) =>
         j.on('cd.code_set', '=', 'icd10cm').onRef('cd.code', '=', 'd.code')
       )
-      .select(['d.code', 'cd.description', 'cd.billable'])
+      .select(['d.code', 'cd.description', 'cd.is_billable'])
       .where('d.claim_id', '=', claim.id)
       .orderBy('d.position')
       .execute(),
@@ -214,7 +214,7 @@ export const findClaimCheck = async (
     diagnosisCodes: diagnoses.map((d) => ({
       code: d.code,
       description: d.description,
-      billable: d.billable === true
+      billable: d.is_billable === true
     })),
     documents: documents.map((d) => d.kind).filter(isDocumentKind),
     timeZone: claim.time_zone,
