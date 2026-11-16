@@ -9,10 +9,11 @@ import {
   RETURN_TYPE,
   refKey,
   retargetRefs,
+  ruleRefOf,
   WORKFLOW_CALL_TYPES,
   workflowRefs
 } from './compile.ts';
-import type { GraphDef, Signature } from './types.ts';
+import type { GraphDef, NodeInstance, Signature } from './types.ts';
 
 const def: GraphDef = {
   signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
@@ -150,5 +151,33 @@ describe('contractOf', () => {
       { ...signature, execOut: ['failed', 'done'] }
     ];
     for (const v of variants) assert.notEqual(contractOf(v), contractOf(signature));
+  });
+});
+
+describe('rule references', () => {
+  const each: GraphDef = {
+    signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
+    variables: [],
+    nodes: [
+      {
+        id: 'each',
+        type: 'std.list.map-rule',
+        version: 1,
+        config: { rule: 'r.line', version: 2, item: 'line' }
+      },
+      { id: 'blank', type: 'std.list.filter-rule', version: 1, config: { rule: '' } }
+    ],
+    edges: []
+  };
+
+  it('counts a rule run per item as a subgraph and moves its version', () => {
+    assert.deepEqual(graphRefs(each).map(refKey), [
+      'std.list.map-rule@1',
+      'r.line@2',
+      'std.list.filter-rule@1'
+    ]);
+    assert.equal(ruleRefOf(each.nodes[1] as NodeInstance), null);
+    const moved = retargetRefs(each, (key) => (key === 'r.line' ? 4 : undefined));
+    assert.deepEqual(moved.nodes[0]?.config, { rule: 'r.line', version: 4, item: 'line' });
   });
 });

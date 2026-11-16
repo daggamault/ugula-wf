@@ -4,8 +4,10 @@ export {
   graphRefs,
   INPUT_TYPE,
   RETURN_TYPE,
+  RULE_CALL_TYPES,
   refKey,
   retargetRefs,
+  ruleRefOf,
   WORKFLOW_CALL_TYPES,
   workflowRefs
 } from './compile.ts';

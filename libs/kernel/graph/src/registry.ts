@@ -63,13 +63,15 @@ export const createRegistry = (
     return parsed;
   };
 
+  const signatureOf = (ref: NodeRef) => graph(ref)?.def.signature;
+
   const signature = (inst: NodeInstance, owner: GraphDef) => {
     const hit = signatures.get(inst);
     if (hit) return hit;
     const def = node(inst);
     const sig = def
       ? typeof def.signature === 'function'
-        ? def.signature(config(inst), { graph: owner })
+        ? def.signature(config(inst), { graph: owner, signatureOf })
         : def.signature
       : graph(inst)?.def.signature;
     if (!sig) throw new Error(`Unknown node type ${refKey(inst)}`);

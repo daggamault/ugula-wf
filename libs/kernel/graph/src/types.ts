@@ -147,6 +147,7 @@ export type NodeContext = {
   key: string;
   now: Date;
   signal?: AbortSignal;
+  evaluate: (rule: NodeRef, inputs: Values) => Promise<Values>;
 };
 
 export type VarAccess = {
@@ -166,6 +167,7 @@ export type Invocation<C = unknown> = {
 
 export type SignatureContext = {
   graph: GraphDef;
+  signatureOf?: (ref: NodeRef) => Signature | undefined;
 };
 
 export type NodeLevel = 'basic' | 'advanced';

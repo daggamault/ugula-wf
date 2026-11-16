@@ -1,7 +1,7 @@
 import * as v from 'valibot';
 import { checkExit, checkInput, checkOutputs } from './checks.ts';
 import { isPure } from './registry.ts';
-import type { GraphDef, Json, NodeDef, NodeEvent, Values } from './types.ts';
+import type { GraphDef, Json, NodeContext, NodeDef, NodeEvent, Values } from './types.ts';
 
 export type InvokeOptions = {
   config?: Json;
@@ -11,6 +11,11 @@ export type InvokeOptions = {
   graph?: GraphDef;
   vars?: Record<string, Json>;
   now?: Date;
+  evaluate?: NodeContext['evaluate'];
+};
+
+const noRules: NodeContext['evaluate'] = async (rule) => {
+  throw new Error(`Rule ${rule.type}@${rule.version} is not available`);
 };
 
 const emptyGraph: GraphDef = {
@@ -42,7 +47,12 @@ export const invokeNode = async (def: NodeDef, opts: InvokeOptions = {}) => {
         vars[name] = value;
       }
     },
-    ctx: { runId: 'run', key: 'key', now: opts.now ?? new Date('2026-03-15T10:30:00.000Z') }
+    ctx: {
+      runId: 'run',
+      key: 'key',
+      now: opts.now ?? new Date('2026-03-15T10:30:00.000Z'),
+      evaluate: opts.evaluate ?? noRules
+    }
   });
   checkOutputs(def.title, signature, result.outputs);
   checkExit(def.title, signature, result);

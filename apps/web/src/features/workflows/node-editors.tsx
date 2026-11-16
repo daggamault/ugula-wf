@@ -74,6 +74,101 @@ export const WorkflowEditor = ({
   );
 };
 
+export const ruleOptions = (published: readonly PublishedNode[], current: string) =>
+  withCurrent(
+    [
+      ...new Map(
+        published
+          .filter(
+            (p) => p.kind === 'node' && !p.signature.execIn.length && !p.signature.execOut.length
+          )
+          .map((p) => [p.key, p.name] as const)
+      )
+    ]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    current
+  );
+
+const ruleEditor =
+  (withTest: boolean) =>
+  ({ nodeId, config, editable, onConfig, catalog }: SettingsEditorProps) => {
+    const record = recordOf(config);
+    const rule = textOf(record.rule);
+    const version = typeof record.version === 'number' ? record.version : null;
+    const signatureOf = (key: string, n: number | null) =>
+      catalog.published.find((p) => p.key === key && p.version === n)?.signature;
+    const sig = signatureOf(rule, version);
+    const tests = sig?.outputs.filter((p) => p.type === 'boolean') ?? [];
+    const pick = (key: string, n: number | undefined) => {
+      const next = n === undefined ? undefined : signatureOf(key, n);
+      onConfig({
+        ...record,
+        rule: key,
+        ...(n === undefined ? {} : { version: n }),
+        ...(next?.inputs[0] ? { item: next.inputs[0].name } : {}),
+        ...(withTest && next
+          ? { test: next.outputs.find((p) => p.type === 'boolean')?.name ?? '' }
+          : {})
+      });
+    };
+    const pinOptions = (pins: readonly { name: string; label?: string }[], current: string) =>
+      withCurrent(
+        pins.map((p) => ({ value: p.name, label: pinLabel(p) })),
+        current
+      );
+    return (
+      <fieldset disabled={!editable} className="flex min-w-0 flex-col gap-5">
+        <Select
+          id={`${nodeId}-rule`}
+          label="Rule"
+          placeholder="Choose a rule"
+          options={ruleOptions(catalog.published, rule)}
+          value={rule}
+          onChange={(key) => pick(key, versionsOf(catalog.published, key)[0])}
+        />
+        {rule ? (
+          <Select
+            id={`${nodeId}-version`}
+            label="Version"
+            options={withCurrent(
+              versionsOf(catalog.published, rule).map((n) => ({
+                value: String(n),
+                label: `Version ${n}`
+              })),
+              version === null ? '' : String(version)
+            )}
+            value={version === null ? '' : String(version)}
+            onChange={(n) => pick(rule, Number(n))}
+          />
+        ) : null}
+        {sig ? (
+          <Select
+            id={`${nodeId}-item`}
+            label="Each Item Goes To"
+            options={pinOptions(sig.inputs, textOf(record.item))}
+            value={textOf(record.item)}
+            onChange={(item) => onConfig({ ...record, item })}
+          />
+        ) : null}
+        {sig && withTest ? (
+          <Select
+            id={`${nodeId}-test`}
+            label="Keep When"
+            placeholder="Choose a true or false output"
+            options={pinOptions(tests, textOf(record.test))}
+            value={textOf(record.test)}
+            onChange={(test) => onConfig({ ...record, test })}
+          />
+        ) : null}
+      </fieldset>
+    );
+  };
+
+export const RuleEditor = ruleEditor(false);
+
+export const RuleTestEditor = ruleEditor(true);
+
 export const ConstantEditor = ({ nodeId, config, editable, onConfig }: SettingsEditorProps) => {
   const record = recordOf(config);
   const type = asValueType(record.type);

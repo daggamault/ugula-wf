@@ -11,6 +11,8 @@ import {
   CodeSetEditor,
   ConstantEditor,
   GraphInputEditor,
+  RuleEditor,
+  RuleTestEditor,
   VariableEditor,
   WorkflowEditor
 } from './node-editors.tsx';
@@ -29,6 +31,9 @@ export const SETTINGS_EDITORS: Readonly<Record<string, ComponentType<SettingsEdi
   ...TABLE_EDITORS,
   'std.expr': ExpressionEditor,
   ...Object.fromEntries(LIST_FORMULAS.map((key) => [`std.list.${key}`, ListFormulaEditor])),
+  'std.list.map-rule': RuleEditor,
+  'std.list.filter-rule': RuleTestEditor,
+  'std.list.find-rule': RuleTestEditor,
   'std.human.task': TaskEditor,
   'std.object.make': RecordFieldsEditor,
   'std.object.break': RecordFieldsEditor,

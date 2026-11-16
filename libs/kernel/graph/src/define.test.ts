@@ -17,7 +17,7 @@ const invocation = (signature: Signature, values: Values): Invocation => ({
   signature,
   read: async (name) => values[name] ?? null,
   vars: { get: () => null, set: () => undefined },
-  ctx: { runId: 'r', key: 'k', now: new Date(0) }
+  ctx: { runId: 'r', key: 'k', now: new Date(0), evaluate: async () => ({}) }
 });
 
 describe('define helpers', () => {

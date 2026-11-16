@@ -2,6 +2,7 @@ import type { NodeDef } from '../types.ts';
 import { chooseNodes } from './choose.ts';
 import { conditionNodes } from './conditions.ts';
 import { convertNodes } from './convert.ts';
+import { eachNodes } from './each.ts';
 import { expressionNodes } from './expression.ts';
 import { fieldNodes } from './fields.ts';
 import { flowNodes } from './flow.ts';
@@ -28,6 +29,7 @@ export const createStdNodes = (deps: StdDeps): NodeDef[] => [
   ...chooseNodes,
   ...textNodes,
   ...listNodes,
+  ...eachNodes,
   ...objectNodes,
   ...fieldNodes,
   ...tableNodes,

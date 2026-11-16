@@ -320,6 +320,38 @@ export const createEngine = ({
     return found.outputs[pin] ?? null;
   };
 
+  const evalGraph = async (
+    s: Session,
+    scope: Scope,
+    node: string,
+    ref: NodeRef,
+    sub: CompiledGraph,
+    inputs: Values,
+    memo: Memo,
+    deps: Deps
+  ): Promise<Values> => {
+    const ret = sub.returns[0] ?? fail(`Graph ${refKey(ref)} has no Return node`);
+    if (depthOf(scope) >= maxDepth) fail(`Maximum call depth of ${maxDepth} exceeded`);
+    const child = openScope(s, ref, sub, scope, node, inputs);
+    const retSig = registry.signature(ret, sub.def);
+    return { ...(await readAll(reader(s, child, sub, ret, retSig, memo, deps), retSig)) };
+  };
+
+  const evaluator =
+    (s: Session, scope: Scope, inst: NodeInstance, memo: Memo, deps: Deps) =>
+    async (ref: NodeRef, inputs: Values) => {
+      const sub = registry.graph(ref) ?? fail(`Rule ${refKey(ref)} is not available`);
+      if (!isPure(sub.def.signature)) fail(`${refKey(ref)} is not a rule`);
+      const label = `${labelOf(inst)} › ${refKey(ref)}`;
+      const checked = Object.fromEntries(
+        sub.def.signature.inputs.map((p) => [
+          p.name,
+          checkInput(label, p, inputs[p.name] ?? p.default ?? null)
+        ])
+      );
+      return evalGraph(s, scope, inst.id, ref, sub, checked, memo, deps);
+    };
+
   const evalPure = async (
     s: Session,
     scope: Scope,
@@ -335,13 +367,7 @@ export const createEngine = ({
       const sub = registry.graph(inst);
       let outputs: Values;
       if (sub) {
-        const ret = sub.returns[0] ?? fail(`Graph ${refKey(inst)} has no Return node`);
-        if (depthOf(scope) >= maxDepth) {
-          fail(`Maximum call depth of ${maxDepth} exceeded`);
-        }
-        const child = openScope(s, inst, sub, scope, inst.id, await readAll(r, sig));
-        const retSig = registry.signature(ret, sub.def);
-        outputs = { ...(await readAll(reader(s, child, sub, ret, retSig, memo, deps), retSig)) };
+        outputs = await evalGraph(s, scope, inst.id, inst, sub, await readAll(r, sig), memo, deps);
       } else {
         const def = registry.node(inst) ?? fail(`Unknown node type ${refKey(inst)}`);
         const res = await def.run({
@@ -358,6 +384,7 @@ export const createEngine = ({
               deps.now = true;
               return s.now;
             },
+            evaluate: evaluator(s, scope, inst, memo, deps),
             ...signalOf(s)
           }
         });
@@ -529,6 +556,7 @@ export const createEngine = ({
           runId: s.runId,
           key: `${s.runId}:${scope.id}:${inst.id}:${scope.counts[inst.id] ?? 0}`,
           now: s.now,
+          evaluate: evaluator(s, scope, inst, newMemo(), newDeps()),
           ...signalOf(s)
         }
       });

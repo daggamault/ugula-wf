@@ -11,6 +11,9 @@ import {
   CodeSetEditor,
   ConstantEditor,
   GraphInputEditor,
+  RuleEditor,
+  RuleTestEditor,
+  ruleOptions,
   VariableEditor,
   versionsOf,
   WorkflowEditor,
@@ -31,11 +34,27 @@ const published = (key: string, name: string, version: number, kind: 'workflow' 
     signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] }
   }) satisfies PublishedNode;
 
-const nodes = [
+const nodes: PublishedNode[] = [
   published('billing.claim', 'Claim Cycle', 1, 'workflow'),
   published('billing.claim', 'Claim Cycle', 2, 'workflow'),
   published('billing.intake', 'Intake', 1, 'workflow'),
-  published('acme.rule', 'Rule', 1, 'node')
+  published('acme.rule', 'Rule', 1, 'node'),
+  {
+    ...published('acme.line', 'Line Modifiers', 2, 'node'),
+    role: 'rule',
+    signature: {
+      execIn: [],
+      execOut: [],
+      inputs: [
+        { name: 'line', type: 'string', label: 'Service Line' },
+        { name: 'facts', type: 'any' }
+      ],
+      outputs: [
+        { name: 'modifiers', type: { list: 'string' } },
+        { name: 'billable', type: 'boolean' }
+      ]
+    }
+  }
 ];
 
 const def: GraphDef = {
@@ -78,6 +97,23 @@ describe('WorkflowEditor', () => {
     assert.ok(html.includes('>Claim Cycle</span>') && html.includes('>Version 1</span>'));
     assert.ok(html.includes('>Version 2</span>'));
     assert.ok(!render(WorkflowEditor, {}).includes('>Version</label>'));
+  });
+});
+
+describe('RuleEditor', () => {
+  it('picks a rule, the input each item goes to and the output that keeps it', () => {
+    assert.deepEqual(ruleOptions(nodes, ''), [{ value: 'acme.line', label: 'Line Modifiers' }]);
+    const map = render(RuleEditor, { rule: 'acme.line', version: 2, item: 'line' });
+    assert.ok(map.includes('>Each Item Goes To</label>') && map.includes('>Service Line</span>'));
+    assert.ok(!map.includes('>Keep When</label>'));
+    const filter = render(RuleTestEditor, {
+      rule: 'acme.line',
+      version: 2,
+      item: 'line',
+      test: 'billable'
+    });
+    assert.match(filter, /aria-selected="true" data-value="billable"/);
+    assert.ok(!render(RuleEditor, {}).includes('>Each Item Goes To</label>'));
   });
 });
 

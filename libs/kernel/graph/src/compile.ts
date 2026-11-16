@@ -56,12 +56,6 @@ export const compileGraph = (def: GraphDef): CompiledGraph => {
   return graph;
 };
 
-export const graphRefs = (def: GraphDef): NodeRef[] => {
-  const seen = new Map<string, NodeRef>();
-  for (const n of def.nodes) seen.set(refKey(n), { type: n.type, version: n.version });
-  return [...seen.values()];
-};
-
 export const WORKFLOW_CALL_TYPES: ReadonlySet<string> = new Set([
   'std.flow.run-workflow',
   'std.flow.start-workflow',
@@ -69,14 +63,35 @@ export const WORKFLOW_CALL_TYPES: ReadonlySet<string> = new Set([
   'std.flow.spawn-workflows'
 ]);
 
-const workflowOf = (n: NodeInstance): NodeRef | null => {
-  if (!WORKFLOW_CALL_TYPES.has(n.type)) return null;
+export const RULE_CALL_TYPES: ReadonlySet<string> = new Set([
+  'std.list.map-rule',
+  'std.list.filter-rule',
+  'std.list.find-rule'
+]);
+
+const refIn = (n: NodeInstance, types: ReadonlySet<string>, field: string): NodeRef | null => {
+  if (!types.has(n.type)) return null;
   const c = n.config;
   if (typeof c !== 'object' || c === null || Array.isArray(c)) return null;
-  const { workflow, version } = c;
-  return typeof workflow === 'string' && typeof version === 'number'
-    ? { type: workflow, version }
+  const key = c[field];
+  const { version } = c;
+  return typeof key === 'string' && key && typeof version === 'number'
+    ? { type: key, version }
     : null;
+};
+
+const workflowOf = (n: NodeInstance) => refIn(n, WORKFLOW_CALL_TYPES, 'workflow');
+
+export const ruleRefOf = (n: NodeInstance) => refIn(n, RULE_CALL_TYPES, 'rule');
+
+export const graphRefs = (def: GraphDef): NodeRef[] => {
+  const seen = new Map<string, NodeRef>();
+  for (const n of def.nodes) {
+    seen.set(refKey(n), { type: n.type, version: n.version });
+    const rule = ruleRefOf(n);
+    if (rule) seen.set(refKey(rule), rule);
+  }
+  return [...seen.values()];
 };
 
 export const workflowRefs = (def: GraphDef): NodeRef[] => {
@@ -92,7 +107,7 @@ export const retargetRefs = (def: GraphDef, versionOf: (key: string) => number |
   ...def,
   nodes: def.nodes.map((n) => {
     const node = { ...n, version: versionOf(n.type) ?? n.version };
-    const call = workflowOf(n);
+    const call = workflowOf(n) ?? ruleRefOf(n);
     const version = call && versionOf(call.type);
     return call && version ? { ...node, config: { ...(n.config as object), version } } : node;
   })
