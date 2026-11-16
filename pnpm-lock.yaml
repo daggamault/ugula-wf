@@ -443,6 +443,9 @@ importers:
       '@ugula/billing':
         specifier: workspace:*
         version: link:../../domain/billing
+      '@ugula/graph':
+        specifier: workspace:*
+        version: link:../../kernel/graph
       '@ugula/nemsis':
         specifier: workspace:*
         version: link:../../domain/nemsis

@@ -36,5 +36,6 @@ export {
   tableSchemas
 } from './std/tables.ts';
 export type * from './types.ts';
+export { STEP_EVENTS } from './types.ts';
 export { type Issue, validateGraph } from './validate.ts';
 export { checkValue, formatType, isAssignable, isFileType, parseType } from './value-types.ts';

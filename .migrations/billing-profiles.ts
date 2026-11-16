@@ -10,6 +10,7 @@ import {
 } from '@ugula/billing';
 import { type Database, EMBEDDING_DIMENSIONS } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { trimmed } from './checks.ts';
 
 const buildBillingProfilesTable = (db: Kysely<Database>) =>
   db.schema
@@ -78,7 +79,7 @@ const buildPayersTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('payers_agency_id_id_unique', ['agency_id', 'id'])
-    .addCheckConstraint('payers_name_check', sql`name <> ''`)
+    .addCheckConstraint('payers_name_check', trimmed('name'))
     .addCheckConstraint(
       'payers_filing_limit_days_check',
       sql`filing_limit_days between 1 and ${sql.lit(MAX_FILING_LIMIT_DAYS)}`

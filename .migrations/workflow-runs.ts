@@ -1,5 +1,7 @@
-import { type Database, RUN_STATUSES } from '@ugula/db';
+import { type Database, RUN_STATUSES, TERMINAL_RUN_STATUSES } from '@ugula/db';
+import { STEP_EVENTS } from '@ugula/graph';
 import { type Kysely, sql } from 'kysely';
+import { oneOf } from './checks.ts';
 
 const buildWorkflowRunsTable = (db: Kysely<Database>) =>
   db.schema
@@ -39,6 +41,10 @@ const buildWorkflowRunsTable = (db: Kysely<Database>) =>
     .addCheckConstraint(
       'workflow_runs_status_check',
       sql`status in (${sql.join(RUN_STATUSES.map((v) => sql.lit(v)))})`
+    )
+    .addCheckConstraint(
+      'workflow_runs_completed_check',
+      sql`(${oneOf('status', TERMINAL_RUN_STATUSES)}) = (completed_at is not null)`
     )
     .addCheckConstraint(
       'workflow_runs_parent_check',
@@ -94,7 +100,8 @@ const buildWorkflowRunStepsTable = (db: Kysely<Database>) =>
     .addColumn('error', 'jsonb')
     .addColumn('started_at', 'timestamptz', (col) => col.notNull())
     .addColumn('duration_ms', 'double precision', (col) => col.notNull())
-    .addPrimaryKeyConstraint('workflow_run_steps_pkey', ['run_id', 'seq']);
+    .addPrimaryKeyConstraint('workflow_run_steps_pkey', ['run_id', 'seq'])
+    .addCheckConstraint('workflow_run_steps_event_check', oneOf('event', STEP_EVENTS));
 
 const buildWorkflowRunStepsNodeIndex = (db: Kysely<Database>) =>
   db.schema

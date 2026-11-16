@@ -86,6 +86,10 @@ const buildClearinghouseDownloadsTable = (db: Kysely<Database>) =>
     .addCheckConstraint(
       'clearinghouse_downloads_run_check',
       sql`run_id is null or agency_id is not null`
+    )
+    .addCheckConstraint(
+      'clearinghouse_downloads_file_check',
+      sql`size >= 0 and source <> '' and remote_path <> ''`
     );
 
 const buildPayerFilesIndexes = (db: Kysely<Database>) => [

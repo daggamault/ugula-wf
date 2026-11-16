@@ -90,7 +90,7 @@ const medicare = {
   id: MEDICARE,
   payer: 'Medicare',
   payer_id: 'DEMOMCR',
-  claim_filing: 'MB',
+  claim_filing: 'MB' as const,
   correction_method: 'reopening' as const,
   member_id: '1EG4TE5MK73',
   group_id: null,

@@ -3,6 +3,7 @@ import type {
   AdjustmentGroup,
   AfterDownload,
   ClaimEventKind,
+  ClaimFilingCode,
   ClaimStatus,
   Classification,
   ClearinghouseVendor,
@@ -20,11 +21,13 @@ import type {
   PcsType,
   PlanType,
   Rurality,
+  ServiceLevel,
   Sex,
   SignatureStatus,
   StayKind,
   TransportReason
 } from '@ugula/billing';
+import type { StepEvent } from '@ugula/graph';
 import type { PickList } from '@ugula/nemsis';
 import type { ColumnType, Generated, GeneratedAlways, Kysely } from 'kysely';
 
@@ -344,6 +347,13 @@ type NemsisCodesTable = {
   description: string;
 };
 
+type DailyNumbersTable = {
+  agency_id: string;
+  kind: string;
+  day: string;
+  last: number;
+};
+
 type SignalsTable = {
   agency_id: string;
   key: string;
@@ -366,7 +376,7 @@ type WorkflowRunStepsTable = {
   node: string;
   node_type: string;
   node_version: number;
-  event: string;
+  event: StepEvent;
   inputs: JsonColumn;
   outputs: JsonColumn;
   pin: string | null;
@@ -461,7 +471,7 @@ export type ClaimsTable = {
   import_report_id: string | null;
   pcr_number: string | null;
   classification: Classification | null;
-  level: string | null;
+  level: ServiceLevel | null;
   emergency: boolean | null;
   loaded_miles: ColumnType<string | null, number | null, number | null>;
   total_cents: Generated<number>;
@@ -794,7 +804,7 @@ export type PayersTable = {
   agency_id: string;
   name: string;
   payer_id: string;
-  claim_filing: string;
+  claim_filing: ClaimFilingCode;
   filing_limit_days: ColumnType<number | null, number | null | undefined, number | null>;
   correction_method: ColumnType<
     CorrectionMethod | null,
@@ -854,6 +864,7 @@ export type Database = {
   cms_ambulance_fees: CmsAmbulanceFeesTable;
   cms_hospitals: CmsHospitalsTable;
   geonames_postal_codes: GeonamesPostalCodesTable;
+  daily_numbers: DailyNumbersTable;
   signals: SignalsTable;
   schedule_runs: ScheduleRunsTable;
   tasks: TasksTable;

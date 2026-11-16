@@ -17,6 +17,7 @@ const buildTasksTable = (db: Kysely<Database>) =>
     .addColumn('subject', 'text')
     .addColumn('summary', 'text')
     .addColumn('instructions', 'text', (col) => col.notNull().defaultTo(''))
+    // json, not jsonb: it keeps keys in the order the workflow wrote them, the order reviewers read them in
     .addColumn('context', 'json', (col) => col.notNull())
     .addColumn('fields', 'jsonb', (col) => col.notNull())
     .addColumn('outcomes', sql`text[]`, (col) => col.notNull())
@@ -50,6 +51,10 @@ const buildTasksTable = (db: Kysely<Database>) =>
       sql`status in (${sql.join(TASK_STATUSES.map((v) => sql.lit(v)))})`
     )
     .addCheckConstraint('tasks_outcomes_check', sql`cardinality(outcomes) > 0`)
+    .addCheckConstraint(
+      'tasks_completed_check',
+      sql`(status = 'completed') = (completed_at is not null) and (status <> 'completed' or resolution is not null)`
+    )
     .addCheckConstraint(
       'tasks_prefill_check',
       sql`prefill in (${sql.join(TASK_PREFILLS.map((v) => sql.lit(v)))})`

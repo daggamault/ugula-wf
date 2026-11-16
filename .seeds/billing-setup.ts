@@ -21,7 +21,7 @@ const demoPayers = [
   { name: 'Medicaid', payer_id: 'DEMOMCD', claim_filing: 'MC' },
   { name: 'Blue Plan', payer_id: 'DEMOBCBS', claim_filing: 'BL' },
   { name: 'Keystone Comp', payer_id: 'DEMOWC', claim_filing: 'WC' }
-];
+] as const;
 
 const demoFacilities = [
   {

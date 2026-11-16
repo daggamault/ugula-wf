@@ -13,6 +13,7 @@
   "dependencies": {
     "@ugula/access": "workspace:*",
     "@ugula/billing": "workspace:*",
+    "@ugula/graph": "workspace:*",
     "@ugula/nemsis": "workspace:*",
     "@ugula/run-queue": "workspace:*"
   }

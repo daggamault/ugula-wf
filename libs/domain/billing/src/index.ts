@@ -8,6 +8,7 @@ export {
   NO_TRANSPORT_CODE,
   type PricedLine,
   SERVICE_LEVELS,
+  type ServiceLevel,
   UNIT_SCALE
 } from './charges.ts';
 export {

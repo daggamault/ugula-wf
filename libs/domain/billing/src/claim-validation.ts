@@ -7,7 +7,8 @@ import {
   NO_TRANSPORT_TRIPS,
   type PricedLine,
   readPricedLines,
-  SERVICE_LEVELS
+  SERVICE_LEVELS,
+  type ServiceLevel
 } from './charges.ts';
 import {
   type ClaimDetails,
@@ -31,7 +32,7 @@ export type NewClaim = {
   patientId: string;
   pcrNumber: string | null;
   classification: Classification | null;
-  level: string;
+  level: ServiceLevel;
   emergency: boolean;
   loadedMiles: number | null;
   deceased: boolean;

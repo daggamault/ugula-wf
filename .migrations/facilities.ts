@@ -1,7 +1,7 @@
 import { FACILITY_KINDS, US_STATE_PATTERN, ZIP_CODE_PATTERN } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
-import { oneOf } from './checks.ts';
+import { oneOf, trimmed } from './checks.ts';
 
 const buildFacilitiesTable = (db: Kysely<Database>) =>
   db.schema
@@ -22,7 +22,7 @@ const buildFacilitiesTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('facilities_agency_id_id_unique', ['agency_id', 'id'])
-    .addCheckConstraint('facilities_name_check', sql`name <> ''`)
+    .addCheckConstraint('facilities_name_check', trimmed('name'))
     .addCheckConstraint('facilities_kind_check', oneOf('kind', Object.keys(FACILITY_KINDS)))
     .addCheckConstraint('facilities_state_check', sql`state ~ ${sql.lit(US_STATE_PATTERN)}`)
     .addCheckConstraint(

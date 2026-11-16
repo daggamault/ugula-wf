@@ -28,7 +28,11 @@ const buildAgenciesTable = (db: Kysely<Database>) =>
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('agencies_organization_id_name_unique', ['organization_id', 'name'])
     .addUniqueConstraint('agencies_id_organization_id_unique', ['id', 'organization_id'])
-    .addCheckConstraint('agencies_name_check', trimmed('name'));
+    .addCheckConstraint('agencies_name_check', trimmed('name'))
+    .addCheckConstraint(
+      'agencies_sftp_check',
+      sql`(sftp_username is null) = (sftp_password_hash is null)`
+    );
 
 export const createAgenciesTable = async (db: Kysely<Database>) => {
   await buildOrganizationsTable(db).execute();

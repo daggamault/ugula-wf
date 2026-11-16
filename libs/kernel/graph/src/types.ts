@@ -94,6 +94,16 @@ export type NodeEvent =
   | { type: 'resume'; payload: Json }
   | { type: 'error'; error: ErrorInfo };
 
+export const STEP_EVENTS = [
+  'exec',
+  'eval',
+  'return',
+  'resume',
+  'error'
+] as const satisfies readonly NodeEvent['type'][];
+
+export type StepEvent = (typeof STEP_EVENTS)[number];
+
 export type Suspension = {
   kind: string;
   data: Json;
@@ -196,7 +206,7 @@ export type TraceEntry = {
   node: string;
   type: string;
   version: number;
-  event: NodeEvent['type'];
+  event: StepEvent;
   inputs: Values;
   outputs: Values;
   pin: string | null;
