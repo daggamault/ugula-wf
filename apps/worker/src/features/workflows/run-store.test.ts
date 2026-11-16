@@ -69,6 +69,95 @@ describe('createRunStore', () => {
     await db.destroy();
   });
 
+  it('maps a claimed row with no lease token, version lists or blank state to defaults', async () => {
+    const state = { status: 'running', frames: [] };
+    const { db } = recordingDb([
+      {
+        id: 'r1',
+        lease_token: null,
+        agency_id: 't1',
+        graph_version_id: 'v1',
+        parent_id: 'p1',
+        parent_wait: 'w1',
+        inputs: {},
+        state,
+        graphs: null,
+        tables: null
+      }
+    ]);
+    const claimed = await createRunStore({ db, boss: recordingBoss().boss }).claim(
+      advance('r1'),
+      1000
+    );
+    assert.deepEqual(
+      [claimed?.lease, claimed?.state, claimed?.graphs, claimed?.tables, claimed?.parentWait],
+      ['', state, [], [], 'w1']
+    );
+    await db.destroy();
+  });
+
+  it('checkpoints the state and its steps, and extends the lease, while it holds the lease', async () => {
+    const { db, queries } = createRecordingDb(({ sql }) => (sql.startsWith('update') ? [{}] : []));
+    const store = createRunStore({ db, boss: recordingBoss().boss });
+    const run = { id: 'r1', lease: 'l1' };
+    const step = {
+      seq: 3,
+      scope: 'main',
+      path: 'n1',
+      node: 'n1',
+      type: 'std.math.add',
+      version: 1,
+      event: 'eval' as const,
+      inputs: { a: 1 },
+      outputs: { sum: 2 },
+      pin: null,
+      error: { message: 'boom', path: 'n1', node: 'n1' },
+      startedAt: '2026-11-16T00:00:00.000Z',
+      durationMs: 4
+    };
+    await store.checkpoint(run, { status: 'running' } as never, [step], 5000);
+    await store.checkpoint(run, { status: 'running' } as never, [], 5000);
+    await store.extend(run, 2500);
+    const [save, steps, emptySave, extend] = queries;
+    assert.ok(save?.sql.startsWith('update "workflow_runs" set "state" = $1'));
+    assert.deepEqual(save?.parameters, ['{"status":"running"}', 5000, 'r1', 'l1']);
+    assert.ok(steps?.sql.startsWith('insert into "workflow_run_steps"'));
+    assert.deepEqual(steps?.parameters, [
+      'r1',
+      3,
+      'main',
+      'n1',
+      'n1',
+      'std.math.add',
+      1,
+      'eval',
+      '{"a":1}',
+      '{"sum":2}',
+      null,
+      '{"message":"boom","path":"n1","node":"n1"}',
+      '2026-11-16T00:00:00.000Z',
+      4
+    ]);
+    assert.ok(emptySave?.sql.startsWith('update "workflow_runs" set "state"'));
+    assert.deepEqual(extend?.parameters, [2500, 'r1', 'l1']);
+    assert.equal(queries.length, 4);
+    await db.destroy();
+  });
+
+  it('clears the lease time when releasing a run that is not running', async () => {
+    const { db, queries } = recordingDb();
+    await createRunStore({ db, boss: recordingBoss().boss }).release(
+      { id: 'r1', lease: 'l1' },
+      'completed'
+    );
+    assert.equal(
+      queries[0]?.sql,
+      'update "workflow_runs" set "status" = $1, "lease_until" = $2, "lease_token" = $3, "updated_at" = now() where "id" = $4 and "lease_token" = $5'
+    );
+    assert.deepEqual(queries[0]?.parameters, ['completed', null, null, 'r1', 'l1']);
+    await db.destroy();
+  });
+
   it('claims nothing when no run matches the command', async () => {
     const { db } = recordingDb();
     assert.equal(

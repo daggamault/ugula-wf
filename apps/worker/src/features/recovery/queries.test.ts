@@ -222,6 +222,120 @@ describe('createRecoveryStore', () => {
     assert.ok(saved?.parameters.includes(COV));
   });
 
+  it('refuses to protect a balance when the claim is gone by the time it is locked', async () => {
+    const { db, queries } = recording(() => []);
+    await assert.rejects(
+      () =>
+        createRecoveryStore(db, blobs, boss).protectBalance('r1', ID, 'k', {
+          adjustedCents: 100,
+          note: ''
+        }),
+      new RegExp(`Claim ${ID} does not exist`)
+    );
+    assert.equal(protections(queries).length, 0);
+  });
+
+  it('nudges the claim only when skipping payers recorded something', async () => {
+    const skipped = recording((sql) =>
+      sql.startsWith('insert into "claim_events"') ? [{}, {}] : []
+    );
+    await createRecoveryStore(skipped.db, blobs, boss).skipRemainingPayers(
+      'r1',
+      ID,
+      'step-2',
+      'Moved to the patient'
+    );
+    const skip = protections(skipped.queries)[0];
+    assert.deepEqual(skip?.parameters.slice(0, 3), ['Moved to the patient', 'step-2', ID]);
+    const signal = skipped.queries.find((q) => q.sql.startsWith('insert into "signals"'));
+    assert.deepEqual(signal?.parameters, ['t-1', `claim:${ID}`, 1]);
+    const none = recording(() => []);
+    await createRecoveryStore(none.db, blobs, boss).skipRemainingPayers('r1', ID, 'k', 'x');
+    assert.ok(!none.queries.some((q) => q.sql.startsWith('insert into "signals"')));
+  });
+
+  it('refuses a payer id that is not a UUID without looking it up', async () => {
+    const { db, queries } = recording(() => [{ id: COV }]);
+    await assert.rejects(
+      () =>
+        createRecoveryStore(db, blobs, boss).addPayer('r1', ID, { payerId: 'MCR', memberId: null }),
+      /Payer MCR is not in the directory/
+    );
+    assert.ok(!queries.some((q) => q.sql.includes('from "payers"')));
+  });
+
+  it('leaves blank claim fields, the report and unknown line descriptions out of an appeal packet', async () => {
+    const { db } = recording((sql) =>
+      sql.includes('from "billing_profiles"')
+        ? [profile]
+        : sql.includes('inner join "claim_coverages"')
+          ? [
+              {
+                number: '20261002-0012',
+                pcr_number: null,
+                service_date: null,
+                level: 'BLS',
+                emergency: false,
+                loaded_miles: null,
+                total_cents: 50_000,
+                transport_reason: null,
+                signature: 'signed',
+                pcs_signed_on: '2026-09-30',
+                first_name: null,
+                last_name: 'Doe',
+                birth_date: null,
+                member_id: null,
+                payer: 'Acme Health',
+                bucket: 'ugula',
+                key: null
+              }
+            ]
+          : sql.includes('from "claim_lines"')
+            ? [
+                { code: 'A0428', units: '1', total_cents: 40_000, description: 'BLS transport' },
+                { code: 'A0425', units: '2.5', total_cents: 10_000, description: null }
+              ]
+            : sql.includes('from "claim_diagnoses"')
+              ? [{ code: 'R07.9' }, { code: 'I10' }]
+              : []
+    );
+    const source = await createRecoveryStore(db, blobs, boss).appealPacket('r1', ID, COV);
+    assert.deepEqual(source.claim, [
+      { label: 'Claim', value: '20261002-0012' },
+      { label: 'Patient', value: 'Doe' },
+      { label: 'Service', value: 'BLS' },
+      { label: 'Billing signature', value: 'signed' },
+      { label: 'Certification signed', value: '2026-09-30' },
+      { label: 'Diagnoses', value: 'R07.9, I10' },
+      { label: 'A0428', value: 'BLS transport, 1 units, $400.00' },
+      { label: 'A0425', value: 'Ambulance service, 2.5 units, $100.00' },
+      { label: 'Total charges', value: '$500.00' }
+    ]);
+    assert.deepEqual(source.report, []);
+    assert.deepEqual(source.attachments, []);
+    assert.deepEqual(source.agency, {
+      name: 'Metro EMS',
+      addressLine: '1 Main St',
+      city: 'Springfield',
+      state: 'IL',
+      postalCode: '62701',
+      phone: '2175550100'
+    });
+  });
+
+  it('reports a coverage that is not on the claim, matching nothing for an id that is not a UUID', async () => {
+    const { db, queries } = recording((sql) =>
+      sql.includes('from "billing_profiles"') ? [profile] : []
+    );
+    await assert.rejects(
+      () => createRecoveryStore(db, blobs, boss).appealPacket('r1', ID, 'cov-1'),
+      new RegExp(`Payer cov-1 is not on claim ${ID}`)
+    );
+    const row = queries.find((q) => q.sql.includes('inner join "claim_coverages"'));
+    assert.ok(row?.sql.includes('"cc"."id" = $1'));
+    assert.equal(row?.parameters[0], null);
+  });
+
   it('needs the billing profile for an appeal packet', async () => {
     const { db } = recording((sql) =>
       sql.includes('inner join "claim_coverages"') ? [{ payer: 'Medicare', bucket: null }] : []

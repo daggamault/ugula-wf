@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { AppliedPayerFile, Clearinghouse, RealtimeAnswer } from '@ugula/billing';
 import { build277Status } from '@ugula/billing/mock';
-import { NOTHING_TO_ASK } from '@ugula/db';
+import { NO_CHECKABLE_PAYER, NOTHING_TO_ASK } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { CompiledQuery } from 'kysely';
-import { createExchangeStore, statusInquiry } from './exchange.ts';
+import { createExchangeStore, priorCheck, statusInquiry } from './exchange.ts';
 
 const CLAIM = '01a16617-7704-7ba6-b9b5-9c79fa44f961';
 const COVERAGE = '01a16617-7704-7ba6-b9b5-000000000001';
@@ -73,6 +73,11 @@ type Options = {
   asked?: boolean;
   readable?: boolean;
   prior?: Record<string, unknown>;
+  numbers?: boolean;
+  duplicate?: boolean;
+  profileOf?: Partial<typeof profile>;
+  statusOf?: Partial<typeof statusRow> | null;
+  eligibilityOf?: Partial<typeof eligibilityRow> | null;
 };
 
 const setup = ({
@@ -82,19 +87,32 @@ const setup = ({
   submitted = true,
   asked = false,
   readable = true,
-  prior
+  prior,
+  numbers = true,
+  duplicate = false,
+  profileOf = {},
+  statusOf = {},
+  eligibilityOf = {}
 }: Options = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.startsWith('select "agency_id" from "workflow_runs"')) return [{ agency_id: 't1' }];
-    if (q.sql.startsWith('update "billing_profiles"')) return [{ control_number: 7 }];
+    if (q.sql.startsWith('update "billing_profiles"'))
+      return numbers ? [{ control_number: 7 }] : [];
     if (q.sql.startsWith('select "control_number", "status"')) return prior ? [prior] : [];
-    if (q.sql.includes('from "billing_profiles"')) return withProfile ? [profile] : [];
+    if (q.sql.includes('from "billing_profiles"'))
+      return withProfile ? [{ ...profile, ...profileOf }] : [];
     if (q.sql.includes('inner join "claim_coverages" as "cc"'))
-      return [{ ...statusRow, submitted }];
+      return statusOf ? [{ ...statusRow, submitted, ...statusOf }] : [];
     if (q.sql.includes('from "claims" as "c"'))
-      return [
-        { ...eligibilityRow, coverages: eligibilityRow.coverages.map((c) => ({ ...c, asked })) }
-      ];
+      return eligibilityOf
+        ? [
+            {
+              ...eligibilityRow,
+              coverages: eligibilityRow.coverages.map((c) => ({ ...c, asked })),
+              ...eligibilityOf
+            }
+          ]
+        : [];
     return [];
   });
   const uploads: [string, string][] = [];
@@ -131,6 +149,7 @@ const setup = ({
     applyDocument: async (_runId, _key, ref, fileName): Promise<AppliedPayerFile> => {
       applied.push(`${fileName}@${ref.key}`);
       if (!readable) return { status: 'unreadable', reason: 'Not a 271' };
+      if (duplicate) return { status: 'duplicate', fileId: 'f1' };
       return {
         status: 'applied',
         fileId: 'f1',
@@ -235,6 +254,37 @@ describe('checkEligibility', () => {
     const bad = await setup().store.checkEligibility('r1', 'not-a-claim', 'k', false);
     assert.equal(bad.status, 'unavailable');
   });
+
+  it('names each reason it cannot ask about eligibility', async () => {
+    const reasonOf = async (options: Options) => {
+      const r = await setup(options).store.checkEligibility('r1', CLAIM, 'k', false);
+      return r.status === 'unavailable' ? r.reason : r.status;
+    };
+    assert.equal(
+      await reasonOf({ eligibilityOf: null }),
+      'The claim has no patient to ask about yet'
+    );
+    assert.equal(await reasonOf({ eligibilityOf: { coverages: [] } }), NO_CHECKABLE_PAYER);
+    assert.equal(
+      await reasonOf({ numbers: false }),
+      'Batch control numbers are used up; contact support'
+    );
+    assert.equal(
+      await reasonOf({ profileOf: { npi: '1234567890' } }),
+      'The billing NPI is invalid'
+    );
+    assert.equal(await reasonOf({ withProfile: false }), 'Add a billing profile in Settings');
+  });
+
+  it('answers with no reviews when the real-time 271 was already applied', async () => {
+    const s = setup({ realtime: { ok: true, text: 'ISA*271~' }, duplicate: true });
+    assert.deepEqual(await s.store.checkEligibility('r1', CLAIM, 'k', false), {
+      status: 'answered',
+      fileName: '271-270-000000007-01a16617.x12',
+      reviews: []
+    });
+    assert.equal(s.stamped(), 1);
+  });
 });
 
 describe('checkClaimStatus', () => {
@@ -322,13 +372,104 @@ describe('checkClaimStatus', () => {
     );
   });
 
+  it('says why it cannot ask about a claim status', async () => {
+    const reasonOf = async (options: Options, coverageId = COVERAGE) => {
+      const r = await setup(options).store.checkClaimStatus('r1', CLAIM, 'k', coverageId);
+      return r.status === 'unavailable' ? r.reason : r.status;
+    };
+    assert.equal(
+      await reasonOf({ statusOf: null }),
+      'The payer is not a directory payer on this claim'
+    );
+    assert.equal(
+      await reasonOf({ statusOf: { member_id: null } }),
+      'The payer has no member ID or insured to ask about'
+    );
+    assert.equal(
+      await reasonOf({ numbers: false }),
+      'Batch control numbers are used up; contact support'
+    );
+    assert.equal(
+      await reasonOf({ profileOf: { submitter_id: '' } }),
+      'Add the clearinghouse submitter ID in Settings'
+    );
+    assert.equal(await reasonOf({ withProfile: false }), 'Add a billing profile in Settings');
+    assert.match(await reasonOf({ connected: false }), /no clearinghouse connection/);
+  });
+
+  it('looks up only ids that are UUIDs and records the request before asking', async () => {
+    const s = setup();
+    await s.store.checkClaimStatus('r1', 'claim-1', 'k', 'cov-1');
+    const lookup = s.queries.find((q) => q.sql.includes('inner join "claim_coverages" as "cc"'));
+    assert.deepEqual(lookup?.parameters.slice(-3), ['t1', null, null]);
+    const asked = setup();
+    await asked.store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE);
+    const request = asked.queries.find((q) =>
+      q.sql.startsWith('insert into "claim_status_requests"')
+    );
+    assert.deepEqual(request?.parameters, ['t1', CLAIM, 'k', 7]);
+    assert.ok(request?.sql.endsWith('on conflict ("agency_id", "source_key") do nothing'));
+  });
+
+  it('counts no claim signals seen when none were ever received', async () => {
+    const s = setup({ statusOf: { received: null } });
+    const r = await s.store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE);
+    assert.equal(r.status === 'sent' && r.signalsSeen, 0);
+  });
+
   it('asks only about claims submitted to the payer', async () => {
     const r = await setup({ submitted: false }).store.checkClaimStatus('r1', CLAIM, 'k', COVERAGE);
     assert.match(r.status === 'unavailable' ? r.reason : '', /not been submitted/);
   });
 });
 
+describe('priorCheck', () => {
+  const request = (status: string, rest: Record<string, unknown> = {}) => ({
+    control_number: 7,
+    status,
+    note: null,
+    sent_as: null,
+    signals_seen: null,
+    ...rest
+  });
+
+  it('replays a sent request with blanks for what it did not save', () => {
+    assert.deepEqual(priorCheck(request('sent') as never), {
+      status: 'sent',
+      sentAs: '',
+      reason: null,
+      signalsSeen: 0
+    });
+    assert.deepEqual(priorCheck(request('answered') as never), { status: 'answered', note: '' });
+  });
+
+  it('replays an unavailable request with its reason, or that the answer did not name the claim', () => {
+    assert.deepEqual(priorCheck(request('unavailable', { note: 'Payer down' }) as never), {
+      status: 'unavailable',
+      reason: 'Payer down'
+    });
+    assert.deepEqual(priorCheck(request('unavailable') as never), {
+      status: 'unavailable',
+      reason: 'The real-time claim status answer did not name the claim'
+    });
+  });
+});
+
 describe('statusInquiry', () => {
+  it('cannot ask about a dependent without the insured last name', () => {
+    assert.equal(
+      statusInquiry(
+        { ...statusRow, relationship: '19', insured_first_name: 'John', insured_last_name: null },
+        new Date('2026-11-04T12:00:00Z')
+      ),
+      null
+    );
+    assert.equal(
+      statusInquiry({ ...statusRow, last_name: '' }, new Date('2026-11-04T12:00:00Z')),
+      null
+    );
+  });
+
   it('asks about the insured when the patient is a dependent, dated by the agency calendar', () => {
     const dependent = statusInquiry(
       { ...statusRow, relationship: '19', insured_first_name: 'John', insured_last_name: 'Doe' },
