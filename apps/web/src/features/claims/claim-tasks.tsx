@@ -1,6 +1,5 @@
 import { CLAIM_TASKS, type ClaimTaskKey, isClosedStatus } from '@ugula/billing';
 import {
-  BuildingIcon,
   FileClockIcon,
   FilePenIcon,
   FilePlusIcon,
@@ -19,9 +18,8 @@ import type { ClaimProgress } from './client.ts';
 
 const ICONS: Readonly<Record<ClaimTaskKey, LucideIcon>> = {
   'billing.correct-claim-data': FilePenIcon,
-  'billing.change-payers': UsersIcon,
-  'billing.set-facility': BuildingIcon,
-  'billing.add-document': FilePlusIcon,
+  'billing.change-responsible-party': UsersIcon,
+  'billing.receive-document': FilePlusIcon,
   'billing.chase-document': SendIcon,
   'billing.log-records-request': FileClockIcon,
   'billing.post-payment': HandCoinsIcon

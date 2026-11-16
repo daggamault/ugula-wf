@@ -6,20 +6,22 @@ import {
   claimSummary,
   claimTask,
   DOCUMENT_FIELDS,
-  receiveAddedDocument
+  recordAddedDocument
 } from './claim-tasks.ts';
 import {
   asRule,
+  asStage,
   asWorkflow,
   d,
+  exit,
   expr,
   field,
-  flow,
   is,
   named,
   P,
   rule,
   shared,
+  stage,
   summarize,
   T,
   table
@@ -118,12 +120,12 @@ const documentFacts = (): GraphDef => {
   return g.def;
 };
 
-const receiveDocument = (): GraphDef => {
-  const g = flow(
-    [P.claimId(), d('documentId', 'string', 'Document', 'The document uploaded to the claim.')],
-    []
+const recordDocument = (): GraphDef => {
+  const g = stage(
+    [P.claimId(), d('documentId', 'string', 'Document', 'The document added to the claim.')],
+    [],
+    { done: exit('Done', 'What the document records is on the claim and it was checked again.') }
   );
-  g.add('follow', 'billing.follow-claim', { label: 'Follow the Claim' });
   g.add('read', 'billing.read-claim-document', { label: 'Read Claim Document' });
   g.add('facts', 'billing.document-facts', { label: 'Document Facts' });
   g.add('records', 'std.flow.branch', { label: 'Records Anything?' });
@@ -133,10 +135,9 @@ const receiveDocument = (): GraphDef => {
   });
   g.add('patch', 'billing.patch-claim', { label: 'Record the Document' });
   g.add('check', 'billing.check-claim', { label: 'Check Claim Again' });
-  g.ret('done');
-  g.wire('entry.exec', 'follow.exec');
-  g.wire('follow.then', 'read.exec');
-  g.wire('entry.claimId', 'follow.claimId', 'read.claimId', 'patch.claimId', 'check.claimId');
+  g.ret('done', 'done');
+  g.wire('entry.exec', 'read.exec');
+  g.wire('entry.claimId', 'read.claimId', 'patch.claimId', 'check.claimId');
   g.wire('entry.documentId', 'read.documentId');
   g.wire('read.document', 'facts.document', 'labels.document');
   g.wire('read.then', 'records.exec');
@@ -148,6 +149,58 @@ const receiveDocument = (): GraphDef => {
   g.wire('patch.then', 'check.exec');
   g.wire('check.valid', 'done.exec');
   g.wire('check.invalid', 'done.exec');
+  return g.def;
+};
+
+const receiveDocument = (): GraphDef => {
+  const g = claimTask();
+  beginClaimTask(g);
+  claimSummary(
+    g,
+    'task',
+    '"Upload a document for claim " + reference + "; what it records is put on the claim and the claim is checked again."',
+    true
+  );
+  g.add('task', 'std.human.task', {
+    label: 'Add Document',
+    config: {
+      title: 'Add document',
+      queue: 'billing-documents',
+      permission: 'claims:update',
+      instructions:
+        'Choose what the document is and upload it as a PDF, PNG, JPEG or TIFF, with the date it was signed for a certification or ABN. It is kept with the claim, what it records (a certification or ABN on file, a signed release for billing) is put on the claim, and the claim is checked again.',
+      fields: [
+        {
+          name: 'kind',
+          type: 'string',
+          label: 'Document',
+          options: Object.entries(DOCUMENT_KINDS).map(([value, label]) => ({ value, label })),
+          required: ['add']
+        },
+        ...DOCUMENT_FIELDS.map((f) => (f.name === 'file' ? { ...f, required: ['add'] } : f))
+      ],
+      outcomes: ['add', 'cancel'],
+      hints: {
+        add: 'Keeps the document with the claim, puts what it records on the claim and checks it again.',
+        cancel: 'Closes the task without adding a document.'
+      }
+    }
+  });
+  g.add('add', 'billing.add-claim-document', { label: 'Add Claim Document' });
+  g.add('remember', 'std.var.set', { label: 'Remember Why', config: { name: 'problem' } });
+  g.ret('done');
+  g.wire('ledger.then', 'task.exec');
+  g.wire('entry.assignee', 'task.assignee');
+  g.wire('ledger.reference', 'task.subject');
+  g.wire('entry.claimId', 'add.claimId');
+  g.wire('task.add', 'add.exec');
+  for (const pin of ['kind', 'signedOn', 'file']) g.wire(`task.${pin}`, `add.${pin}`);
+  g.wire('task.completedBy', 'add.addedBy');
+  g.wire('add.refused', 'remember.exec');
+  g.wire('add.reason', 'remember.value');
+  g.wire('remember.then', 'task.exec');
+  recordAddedDocument(g, 'add', 'done.exec');
+  g.wire('task.cancel', 'done.exec');
   return g.def;
 };
 
@@ -267,7 +320,7 @@ const chaseDocument = (): GraphDef => {
   g.wire('uploaded.result', 'withFile.condition');
   g.wire('withFile.false', 'read.exec');
   g.wire('withFile.true', 'add.exec');
-  receiveAddedDocument(g, 'add', 'read.exec');
+  recordAddedDocument(g, 'add', 'read.exec');
   g.wire('add.refused', 'remember.exec');
   g.wire('add.reason', 'remember.value');
   g.wire('remember.then', 'task.exec');
@@ -281,16 +334,22 @@ export const documentGraphs: SeedGraph[] = [
     'What a claim document records on the claim (Document Kinds table): a certification or ABN on file with its signed date, or a signed release for billing.',
     documentFacts()
   ),
+  asStage(
+    'billing.record-document',
+    'Record Document',
+    'Reads a document added to a claim, records what it documents (Document Facts) on the claim, which signals the claim so its cycle looks again, and checks the claim again. Used by Receive Document and Chase Document.',
+    recordDocument()
+  ),
   asWorkflow(
     'billing.receive-document',
     'Receive Document',
-    'Runs when a document is uploaded to a claim: follows the claim, reads the document, records what it documents (Document Facts) on the claim, which signals the claim so its cycle looks again, and checks the claim again.',
+    'Started from a claim (Add Document): an Add document task uploads a facesheet, certification, signature form, ABN or MSP form, keeps it with the claim (Add Claim Document, asked again with the reason when refused) and records what it documents (Record Document).',
     receiveDocument()
   ),
   asWorkflow(
     'billing.chase-document',
     'Chase Document',
-    'Started from a claim: a Chase a document task names the missing document and who to ask, then a Chase document task due in the days the Document Chase Days table gives takes the upload (Add Claim Document and Receive Document), asked again until the document is on file or a biller stops.',
+    'Started from a claim: a Chase a document task names the missing document and who to ask, then a Chase document task due in the days the Document Chase Days table gives takes the upload (Add Claim Document and Record Document), asked again until the document is on file or a biller stops.',
     chaseDocument()
   )
 ];

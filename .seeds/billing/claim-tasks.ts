@@ -1,4 +1,4 @@
-import { CLAIM_FIX_FIELDS, DOCUMENT_KINDS, PAYMENT_KINDS } from '@ugula/billing';
+import { CLAIM_FIX_FIELDS, PAYMENT_KINDS } from '@ugula/billing';
 import type { FieldSpec, GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import { p } from './glossary.ts';
@@ -116,10 +116,11 @@ const correctClaimData = (): GraphDef => {
   return g.def;
 };
 
-const changePayers = (): GraphDef => {
+const changeResponsibleParty = (): GraphDef => {
   const g = claimTask();
   beginClaimTask(g);
   g.add('read', 'billing.read-claim-checks', { label: 'Read the Payers' });
+  g.add('choices', 'billing.facility-choices', { label: 'Facility Choices' });
   g.add(
     'defaults',
     'std.expr',
@@ -128,34 +129,49 @@ const changePayers = (): GraphDef => {
   claimSummary(
     g,
     'task',
-    '"Set the payers claim " + reference + " is billed to, in billing order; the patient is billed after the last one."',
+    '"Say who pays for the trip on claim " + reference + ": its payers, in billing order (the patient is billed after the last one), or a facility that is responsible instead."',
     true
   );
   g.add('task', 'std.human.task', {
-    label: 'Change Payers',
+    label: 'Change Responsible Party',
     config: {
-      title: 'Change payers',
+      title: 'Change responsible party',
       queue: 'billing-review',
       permission: EDIT_PERMISSION,
       instructions:
-        'List the payers to bill, one per line, first payer first. Payers still listed keep their member IDs and history; new names are linked to the payer directory by name; payers left out are removed, unless they already have billing activity. Leave the list empty to bill only the patient. Eligibility is checked for the new payers. Enter member IDs with Correct Claim Data.',
+        'List the payers to bill, one per line, first payer first, and save. Payers still listed keep their member IDs and history; new names are linked to the payer directory by name; payers left out are removed, unless they already have billing activity. Leave the list empty to bill only the patient. Eligibility is checked for the new payers; enter member IDs with Correct Claim Data. Bill a facility instead when it is responsible for the trip (a contract, a Part A stay): the claim then waits for its monthly facility invoice rather than going to payers on an 837P. Facilities are listed under Admin, Facilities.',
       fields: [
+        { name: 'payers', type: { list: 'string' }, label: 'Payers, in billing order' },
         {
-          name: 'payers',
-          type: { list: 'string' },
-          label: 'Payers, in billing order'
-        }
+          name: 'facilityId',
+          type: 'string',
+          label: 'Responsible facility',
+          required: ['billFacility']
+        },
+        { name: 'note', type: 'string', label: 'Note' }
       ],
-      outcomes: ['save', 'cancel'],
+      outcomes: ['save', 'billFacility', 'cancel'],
       hints: {
-        save: 'Sets the claim to these payers and checks their eligibility; if refused, this task comes back with why.',
-        cancel: 'Closes the task and keeps the payers as they are.'
+        save: 'Bills these payers (no facility is responsible) and checks their eligibility; if refused, this task comes back with why.',
+        billFacility:
+          'Records the facility as responsible; the claim waits for its monthly invoice instead of an 837P.',
+        cancel: 'Closes the task and changes nothing.'
       },
       prefill: 'current'
     }
   });
   g.add('set', 'billing.set-claim-payers', { label: 'Set the Payers' });
   rememberRefusal(g, 'set', 'read.exec');
+  g.add('facts', 'billing.claim-ledger.break');
+  g.add('wasFacility', 'std.flow.branch', { label: 'Was a Facility Responsible?' });
+  g.add('toPayers', 'billing.record-responsibility', {
+    label: 'Bill the Payers',
+    values: { party: 'payer' }
+  });
+  g.add('toFacility', 'billing.record-responsibility', {
+    label: 'Bill the Facility',
+    values: { party: 'facility' }
+  });
   g.add('eligibilityInputs', 'std.object.make', {
     label: 'Eligibility Inputs',
     config: { fields: [{ name: 'claimId', type: 'string' }] }
@@ -166,75 +182,34 @@ const changePayers = (): GraphDef => {
   });
   g.ret('done');
   g.wire('ledger.then', 'read.exec');
-  g.wire('entry.claimId', 'read.claimId', 'set.claimId', 'eligibilityInputs.claimId');
+  g.wire('read.then', 'choices.exec');
+  g.wire('choices.then', 'task.exec');
+  g.wire('choices.options', 'task.options');
+  g.wire(
+    'entry.claimId',
+    'read.claimId',
+    'set.claimId',
+    'toPayers.claimId',
+    'toFacility.claimId',
+    'eligibilityInputs.claimId'
+  );
   g.wire('read.claim', 'defaults.claim');
-  g.wire('read.then', 'task.exec');
   g.wire('defaults.result', 'task.defaults');
   assigned(g, 'task');
   g.wire('task.save', 'set.exec');
   g.wire('task.payers', 'set.payers');
-  g.wire('set.saved', 'eligibility.exec');
+  g.wire('ledger.ledger', 'facts.ledger');
+  g.wire('set.saved', 'wasFacility.exec');
+  g.wire('facts.billFacility', 'wasFacility.condition');
+  g.wire('wasFacility.true', 'toPayers.exec');
+  g.wire('wasFacility.false', 'eligibility.exec');
+  g.wire('toPayers.then', 'eligibility.exec');
+  g.wire('task.note', 'toPayers.note', 'toFacility.note');
   g.wire('eligibilityInputs.object', 'eligibility.inputs');
   g.wire('eligibility.then', 'done.exec');
-  g.wire('task.cancel', 'done.exec');
-  return g.def;
-};
-
-const setFacility = (): GraphDef => {
-  const g = claimTask();
-  beginClaimTask(g);
-  g.add('choices', 'billing.facility-choices', { label: 'Facility Choices' });
-  claimSummary(
-    g,
-    'task',
-    '"Say whether a facility pays for the trip on claim " + reference + " instead of its payers."'
-  );
-  g.add('task', 'std.human.task', {
-    label: 'Set Responsible Facility',
-    config: {
-      title: 'Set responsible facility',
-      queue: 'billing-review',
-      permission: EDIT_PERMISSION,
-      instructions:
-        'Bill a facility when it is responsible for this trip (a contract, a Part A stay): the claim then waits for the monthly facility invoice instead of going to payers on an 837P. Bill the payers when no facility is responsible. Facilities are listed under Admin, Facilities.',
-      fields: [
-        {
-          name: 'facilityId',
-          type: 'string',
-          label: 'Responsible facility',
-          required: ['billFacility']
-        },
-        { name: 'note', type: 'string', label: 'Note' }
-      ],
-      outcomes: ['billFacility', 'billPayers', 'cancel'],
-      hints: {
-        billFacility:
-          'Records the facility as responsible; the claim waits for its monthly invoice instead of an 837P.',
-        billPayers: 'Records that no facility is responsible; the claim is billed to its payers.',
-        cancel: 'Closes the task and records nothing.'
-      }
-    }
-  });
-  g.add('toFacility', 'billing.record-responsibility', {
-    label: 'Bill the Facility',
-    values: { party: 'facility' }
-  });
-  g.add('toPayers', 'billing.record-responsibility', {
-    label: 'Bill the Payers',
-    values: { party: 'payer' }
-  });
-  g.ret('done');
-  g.wire('ledger.then', 'choices.exec');
-  g.wire('choices.then', 'task.exec');
-  g.wire('choices.options', 'task.options');
-  assigned(g, 'task');
-  g.wire('entry.claimId', 'toFacility.claimId', 'toPayers.claimId');
   g.wire('task.billFacility', 'toFacility.exec');
   g.wire('task.facilityId', 'toFacility.facilityId');
-  g.wire('task.note', 'toFacility.note', 'toPayers.note');
-  g.wire('task.billPayers', 'toPayers.exec');
   g.wire('toFacility.then', 'done.exec');
-  g.wire('toPayers.then', 'done.exec');
   g.wire('task.cancel', 'done.exec');
   return g.def;
 };
@@ -244,73 +219,12 @@ export const DOCUMENT_FIELDS: FieldSpec[] = [
   { name: 'file', type: T.blob, label: 'File (PDF, PNG, JPEG or TIFF)' }
 ];
 
-export const receiveAddedDocument = (g: Builder, added: string, then: `${string}.${string}`) => {
-  g.add('receiveInputs', 'std.object.make', {
-    label: 'Document to Receive',
-    config: {
-      fields: [
-        { name: 'claimId', type: 'string' },
-        { name: 'documentId', type: 'string' }
-      ]
-    }
-  });
-  g.add('receive', 'std.flow.run-workflow', {
-    label: 'Receive Document',
-    config: { workflow: 'billing.receive-document', version: 1 }
-  });
-  g.wire('entry.claimId', 'receiveInputs.claimId');
-  g.wire(`${added}.documentId`, 'receiveInputs.documentId');
-  g.wire(`${added}.added`, 'receive.exec');
-  g.wire('receiveInputs.object', 'receive.inputs');
-  g.wire('receive.then', then);
-};
-
-const addDocument = (): GraphDef => {
-  const g = claimTask();
-  beginClaimTask(g);
-  claimSummary(
-    g,
-    'task',
-    '"Upload a document for claim " + reference + "; what it records is put on the claim and the claim is checked again."',
-    true
-  );
-  g.add('task', 'std.human.task', {
-    label: 'Add Document',
-    config: {
-      title: 'Add document',
-      queue: 'billing-documents',
-      permission: EDIT_PERMISSION,
-      instructions:
-        'Choose what the document is and upload it as a PDF, PNG, JPEG or TIFF, with the date it was signed for a certification or ABN. It is kept with the claim, what it records (a certification or ABN on file, a signed release for billing) is put on the claim, and the claim is checked again.',
-      fields: [
-        {
-          name: 'kind',
-          type: 'string',
-          label: 'Document',
-          options: choicesOf(DOCUMENT_KINDS),
-          required: ['add']
-        },
-        ...DOCUMENT_FIELDS.map((f) => (f.name === 'file' ? { ...f, required: ['add'] } : f))
-      ],
-      outcomes: ['add', 'cancel'],
-      hints: {
-        add: 'Keeps the document with the claim, puts what it records on the claim and checks it again.',
-        cancel: 'Closes the task without adding a document.'
-      }
-    }
-  });
-  g.add('add', 'billing.add-claim-document', { label: 'Add Claim Document' });
-  rememberRefusal(g, 'add', 'task.exec');
-  g.ret('done');
-  g.wire('ledger.then', 'task.exec');
-  assigned(g, 'task');
-  g.wire('entry.claimId', 'add.claimId');
-  g.wire('task.add', 'add.exec');
-  for (const pin of ['kind', 'signedOn', 'file']) g.wire(`task.${pin}`, `add.${pin}`);
-  g.wire('task.completedBy', 'add.addedBy');
-  receiveAddedDocument(g, 'add', 'done.exec');
-  g.wire('task.cancel', 'done.exec');
-  return g.def;
+export const recordAddedDocument = (g: Builder, added: string, then: `${string}.${string}`) => {
+  g.add('record', 'billing.record-document', { label: 'Record Document' });
+  g.wire('entry.claimId', 'record.claimId');
+  g.wire(`${added}.documentId`, 'record.documentId');
+  g.wire(`${added}.added`, 'record.exec');
+  g.wire('record.done', then);
 };
 
 const PAYMENT_FIELDS: FieldSpec[] = [
@@ -404,22 +318,10 @@ export const claimTaskGraphs: SeedGraph[] = [
     correctClaimData()
   ),
   asWorkflow(
-    'billing.change-payers',
-    'Change Payers',
-    'Started from a claim: a Change payers task lists the payers in billing order to add, reorder or remove, then sets them (Set Claim Payers, asked again with the reason when refused) and checks eligibility.',
-    changePayers()
-  ),
-  asWorkflow(
-    'billing.set-facility',
-    'Set Responsible Facility',
-    'Started from a claim: a Set responsible facility task bills a facility from the directory for the trip, or the payers, and records it with the note, which signals the claim cycle.',
-    setFacility()
-  ),
-  asWorkflow(
-    'billing.add-document',
-    'Add Document',
-    'Started from a claim: an Add document task uploads a facesheet, certification, signature form, ABN or MSP form, keeps it with the claim (Add Claim Document, asked again with the reason when refused) and runs Receive Document on it.',
-    addDocument()
+    'billing.change-responsible-party',
+    'Change Responsible Party',
+    'Started from a claim: a Change responsible party task sets who pays for the trip: the payers in billing order (Set Claim Payers, asked again with the reason when refused, then a facility that was responsible is cleared and eligibility is checked), or a facility from the directory that is responsible instead, recorded with the note, which signals the claim cycle.',
+    changeResponsibleParty()
   ),
   asWorkflow(
     'billing.post-payment',

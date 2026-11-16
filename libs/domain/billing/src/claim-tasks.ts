@@ -6,17 +6,12 @@ export const CLAIM_TASKS = {
     description: 'Change what goes on the 837P; charges are priced again when needed.',
     onDrafts: false
   },
-  'billing.change-payers': {
-    label: 'Change Payers',
-    description: 'Add, reorder or remove the payers the claim is billed to.',
+  'billing.change-responsible-party': {
+    label: 'Change Responsible Party',
+    description: 'Add, reorder or remove the payers, or bill a facility for the trip instead.',
     onDrafts: false
   },
-  'billing.set-facility': {
-    label: 'Set Responsible Facility',
-    description: 'Bill a facility for the trip instead of the payers, or stop.',
-    onDrafts: false
-  },
-  'billing.add-document': {
+  'billing.receive-document': {
     label: 'Add Document',
     description: 'Upload a facesheet, certification, signature form, ABN or MSP form.',
     onDrafts: true

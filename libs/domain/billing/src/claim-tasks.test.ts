@@ -4,11 +4,11 @@ import { CLAIM_TASK_KEYS, CLAIM_TASKS, readPayerNames } from './claim-tasks.ts';
 
 describe('CLAIM_TASKS', () => {
   it('names each claim task workflow a biller can start, and which work on drafts', () => {
-    assert.equal(CLAIM_TASK_KEYS.length, 7);
+    assert.equal(CLAIM_TASK_KEYS.length, 6);
     assert.equal(CLAIM_TASKS['billing.post-payment'].label, 'Post Payment');
     assert.deepEqual(
       CLAIM_TASK_KEYS.filter((k) => CLAIM_TASKS[k].onDrafts),
-      ['billing.add-document']
+      ['billing.receive-document']
     );
   });
 });

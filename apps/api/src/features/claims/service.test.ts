@@ -101,26 +101,38 @@ describe('claim service', () => {
   });
 
   it('starts claim tasks on open claims, and on drafts only those that work on drafts', async () => {
-    const start = (status: string, key: 'billing.add-document' | 'billing.change-payers') =>
-      setup({ row: { ...claim, status } }).service.startTask('t', 'u1', 'c1', key);
-    assert.equal(failure(await start('draft', 'billing.add-document')), 'ok');
+    const start = (
+      status: string,
+      key: 'billing.receive-document' | 'billing.change-responsible-party'
+    ) => setup({ row: { ...claim, status } }).service.startTask('t', 'u1', 'c1', key);
+    assert.equal(failure(await start('draft', 'billing.receive-document')), 'ok');
     assert.match(
-      failure(await start('draft', 'billing.change-payers')),
+      failure(await start('draft', 'billing.change-responsible-party')),
       /^conflict: This claim is still a draft/
     );
     assert.match(
-      failure(await start('paid', 'billing.add-document')),
+      failure(await start('paid', 'billing.receive-document')),
       /^conflict: Claim is already closed/
     );
     assert.match(
       failure(
-        await setup({ published: false }).service.startTask('t', 'u1', 'c1', 'billing.set-facility')
+        await setup({ published: false }).service.startTask(
+          't',
+          'u1',
+          'c1',
+          'billing.change-responsible-party'
+        )
       ),
-      /^not_found: The billing.set-facility workflow is not published/
+      /^not_found: The billing.change-responsible-party workflow is not published/
     );
     assert.match(
       failure(
-        await setup({ row: null }).service.startTask('t', 'u1', 'c1', 'billing.set-facility')
+        await setup({ row: null }).service.startTask(
+          't',
+          'u1',
+          'c1',
+          'billing.change-responsible-party'
+        )
       ),
       /^not_found/
     );

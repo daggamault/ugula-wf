@@ -58,11 +58,11 @@ describe('claim routes', () => {
     calls.length = 0;
     const started = await request(`/${ID}/tasks`, {
       method: 'POST',
-      body: JSON.stringify({ workflow: 'billing.change-payers' })
+      body: JSON.stringify({ workflow: 'billing.change-responsible-party' })
     });
     assert.equal(started.status, 201);
     assert.deepEqual(await started.json(), { runId: 'r5' });
-    assert.deepEqual(calls, [['startTask', 't-1', 'u-1', ID, 'billing.change-payers']]);
+    assert.deepEqual(calls, [['startTask', 't-1', 'u-1', ID, 'billing.change-responsible-party']]);
     const other = await request(`/${ID}/tasks`, {
       method: 'POST',
       body: JSON.stringify({ workflow: 'billing.cycle-claim' })

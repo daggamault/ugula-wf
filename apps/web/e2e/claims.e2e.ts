@@ -284,12 +284,12 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
       .waitFor();
   });
 
-  it('adds, reorders and removes a payer with Change Payers tasks', async () => {
+  it('adds, reorders and removes a payer with Change Responsible Party tasks', async () => {
     const order = async () =>
       (await claimState(s, claims.worked)).claim.coverages.map((c) => c.payer);
     const change = async (names: string[]) => {
       await openClaim(claims.worked);
-      await startClaimTask(s.page, 'Change Payers');
+      await startClaimTask(s.page, 'Change Responsible Party');
       await section(s.page, 'Your Decision')
         .last()
         .getByLabel(/^Payers/)

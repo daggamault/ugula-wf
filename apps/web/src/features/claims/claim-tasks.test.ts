@@ -29,8 +29,7 @@ describe('claimTaskGroups', () => {
       tasks?.items.map((i) => [i.label, i.disabledReason]),
       [
         ['Correct Claim Data', undefined],
-        ['Change Payers', undefined],
-        ['Set Responsible Facility', undefined],
+        ['Change Responsible Party', undefined],
         ['Add Document', undefined],
         ['Chase Document', undefined],
         ['Log Records Request', undefined],
