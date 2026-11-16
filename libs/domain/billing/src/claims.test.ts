@@ -282,9 +282,9 @@ describe('claimProgress', () => {
     ]);
   });
 
-  it('keeps the payer claim number the current payer last gave', () => {
-    const numbered = (n: string | null, onDay: number) => ({
-      ...e('follow_up', 'Medicare', onDay),
+  it('keeps the claim number the current payer last adjudicated the claim under', () => {
+    const numbered = (kind: ClaimEvent['kind'], n: string | null, onDay: number) => ({
+      ...e(kind, 'Medicare', onDay),
       payerClaimNumber: n
     });
     const ledger = (events: ClaimEvent[]) => ({
@@ -292,11 +292,27 @@ describe('claimProgress', () => {
       coverages: [cov('Medicare')],
       events
     });
-    assert.equal(claimProgress(ledger([])).payerClaimNumber, null);
+    assert.equal(claimProgress(ledger([])).adjudicatedClaimNumber, null);
     assert.equal(
-      claimProgress(ledger([numbered('A1', 1), numbered('B2', 2), numbered(null, 3)]))
-        .payerClaimNumber,
+      claimProgress(
+        ledger([
+          numbered('response', 'A1', 1),
+          numbered('resubmit_queued', 'B2', 2),
+          numbered('resubmit_queued', null, 3)
+        ])
+      ).adjudicatedClaimNumber,
       'B2'
+    );
+    assert.equal(
+      claimProgress(
+        ledger([
+          numbered('accepted', 'ICN-1', 1),
+          numbered('rejected', 'ICN-2', 2),
+          numbered('claim_status', 'ICN-3', 3),
+          numbered('follow_up', 'ICN-4', 4)
+        ])
+      ).adjudicatedClaimNumber,
+      null
     );
   });
 });

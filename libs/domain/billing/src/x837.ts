@@ -45,6 +45,7 @@ type PriorPayer = BatchPayer & Adjudication;
 export type BatchClaim = {
   claimId: string;
   payerClaimNumber: string | null;
+  correctionMethod: string | null;
   payer: BatchPayer;
   priorPayers: PriorPayer[];
   patient: Address & { firstName: string; lastName: string; birthDate: string; sex: Sex | null };

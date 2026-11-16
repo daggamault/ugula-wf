@@ -40,10 +40,12 @@ const ledger = (events: ClaimEvent[], patch: Partial<ClaimLedger> = {}): ClaimLe
 });
 
 const denial = [
-  event({ kind: 'submitted', payerClaimNumber: 'ICN-1' }),
+  event({ kind: 'submitted', payerClaimNumber: 'ICN-0' }),
   event({
     kind: 'response',
     paidOn: '2026-03-02',
+    payerClaimNumber: 'ICN-1',
+    remarks: ['N115'],
     adjustments: [{ group: 'CO', reason: '50', cents: 100_000 }]
   }),
   event({ kind: 'denied', route: 'appeal', note: 'Not medically necessary' })
@@ -58,6 +60,7 @@ describe('denialFactsOf', () => {
       route: 'appeal',
       note: 'Not medically necessary',
       codes: ['CO-50'],
+      remarks: ['N115'],
       paidCents: 0,
       balanceCents: 100_000,
       deniedOn: '2026-03-02',

@@ -63,6 +63,7 @@ const claimToBill = (db: Db, agencyId: string, id: string) =>
             sql<string>`coalesce(dp.name, cc.payer_name)`.as('payer'),
             'dp.payer_id',
             'dp.claim_filing',
+            'dp.correction_method',
             'cc.member_id',
             'cc.group_id',
             sql<string>`cc.relationship`.as('relationship'),
@@ -260,7 +261,8 @@ const batchClaimOf = (
   const coverageOf = (id: string) => row.coverages.find((c) => c.id === id);
   return {
     claimId: row.number,
-    payerClaimNumber: progress.payerClaimNumber,
+    payerClaimNumber: progress.adjudicatedClaimNumber,
+    correctionMethod: coverageOf(current.id)?.correction_method ?? null,
     payer: payerOf(current.payer, coverageOf(current.id)),
     priorPayers: progress.priorCoverages.map((c) => ({
       ...payerOf(c.payer, coverageOf(c.id)),

@@ -181,7 +181,7 @@ export const postClaimAcknowledgments = async (
     await recordPayerEvent(c, claim.id, coverageId, {
       kind: accepted ? 'accepted' : 'rejected',
       note,
-      payerClaimNumber: ack.payerClaimNumber,
+      payerClaimNumber: accepted ? ack.payerClaimNumber : null,
       key: String(n)
     });
     items.push(item(ack.claimNumber, claim.id, accepted ? 'accepted' : 'rejected', note));

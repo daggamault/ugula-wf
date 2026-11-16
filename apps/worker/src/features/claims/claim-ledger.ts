@@ -13,6 +13,10 @@ const adjustmentsOf = sql<Adjustment[]>`coalesce((
 
 const REVIEW_LINE_WORKFLOW = 'billing.review-payer-file-line';
 
+const remarksOf = sql<string[]>`coalesce((
+  select json_agg(r.code order by r.position) from claim_event_remarks r where r.event_id = e.id
+), '[]'::json)`;
+
 export const createLedgerStore = (
   db: Db
 ): Pick<ClaimStore, 'ledger' | 'recordEvent' | 'noteRevision' | 'claimDocument'> => ({
@@ -119,6 +123,7 @@ export const createLedgerStore = (
           'e.note',
           'e.route',
           adjustmentsOf.as('adjustments'),
+          remarksOf.as('remarks'),
           'e.created_at'
         ])
         .where('e.claim_id', '=', claim.id)
@@ -143,6 +148,7 @@ export const createLedgerStore = (
         payerClaimNumber: e.payer_claim_number,
         paidOn: e.paid_on,
         adjustments: e.adjustments,
+        remarks: e.remarks,
         note: e.note,
         route: e.route,
         at: new Date(e.created_at).toISOString()

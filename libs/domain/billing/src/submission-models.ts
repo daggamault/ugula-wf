@@ -71,7 +71,16 @@ export const SUBMISSION = model(
   'a saved claim on its way to a payer',
   [
     f('claimId', 'string', 'Claim ID'),
-    f('payerClaimNumber', 'string', 'Payer claim number of the claim it replaces'),
+    f(
+      'payerClaimNumber',
+      'string',
+      'Payer claim number of the claim the payer adjudicated (835), if any'
+    ),
+    f(
+      'correctionMethod',
+      'string',
+      'How the payer billed takes corrections: replacement or reopening, if set'
+    ),
     f('payer', SUBMITTED_PAYER.type, 'Payer'),
     f('priorPayers', { list: PRIOR_PAYER.type }, 'Payers that already adjudicated it, in order'),
     f('patient', SUBMITTED_PATIENT.type, 'Patient'),

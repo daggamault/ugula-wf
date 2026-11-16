@@ -425,6 +425,25 @@ describe('applyPayerFile', () => {
     }
   });
 
+  it('keeps no payer claim number from a 277CA rejection, so a resubmission is a new claim', async () => {
+    const { events } = await apply(
+      build277(
+        {
+          claims: [
+            {
+              claimNumber: '20261105-1001',
+              rejection: 'Invalid member ID',
+              payerClaimNumber: 'PCN-9'
+            }
+          ]
+        },
+        { createdAt }
+      )
+    );
+    assert.ok(events[0]?.parameters.includes('rejected'));
+    assert.ok(!events[0]?.parameters.includes('PCN-9'));
+  });
+
   it('saves eligibility for traced coverages and nudges their claims', async () => {
     const active = await apply(
       build271({ trace: TRACE.toUpperCase(), active: true }, { createdAt })

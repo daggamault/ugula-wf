@@ -48,6 +48,7 @@ export const DENIAL_FACTS = model(
     f('route', 'string', 'How Remittance Routing routed it: denial, appeal or fix'),
     f('note', 'string', 'What the routing said'),
     f('codes', { list: 'string' }, 'Group and reason codes of the denial (CO-50)'),
+    f('remarks', { list: 'string' }, 'Remark codes (RARC) of the denial (MA130)'),
     f('paidCents', 'integer', 'Paid by the payer (cents)'),
     f('balanceCents', 'integer', 'Balance (cents)'),
     f('deniedOn', 'string', 'Date of the remittance that denied it (YYYY-MM-DD)'),

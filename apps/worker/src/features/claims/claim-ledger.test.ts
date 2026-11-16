@@ -69,6 +69,7 @@ describe('createLedgerStore', () => {
                 payer_claim_number: null,
                 paid_on: null,
                 adjustments: [],
+                remarks: ['MA18'],
                 note: 'ICN 1',
                 route: null,
                 created_at: new Date('2026-01-01T00:00:00.000Z')
@@ -94,6 +95,7 @@ describe('createLedgerStore', () => {
           payerClaimNumber: null,
           paidOn: null,
           adjustments: [],
+          remarks: ['MA18'],
           note: 'ICN 1',
           route: null,
           at: '2026-01-01T00:00:00.000Z'
@@ -116,6 +118,7 @@ describe('createLedgerStore', () => {
     const events = queries.find((q) => q.sql.includes('from "claim_events" as "e"'));
     assert.ok(events?.sql.endsWith('order by "e"."created_at", "e"."id"'));
     assert.ok(events?.sql.includes('from claim_event_adjustments a where a.event_id = e.id'));
+    assert.ok(events?.sql.includes('from claim_event_remarks r where r.event_id = e.id'));
     assert.ok(events?.sql.includes('"e"."paid_on"'));
     assert.equal(await store.ledger('r1', 'nope'), null);
     const empty = createLedgerStore(createRecordingDb(() => []).db);

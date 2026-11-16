@@ -636,29 +636,91 @@ const claimFrequency = (): GraphDef => {
         'payerClaimNumber',
         'string',
         'Payer Claim Number',
-        'The payer claim number of the claim this one replaces, if any.',
+        'The claim number the payer adjudicated the claim under (835), if it did.',
         true
-      )
+      ),
+      d(
+        'correctionMethod',
+        'string',
+        'Correction Method',
+        "The payer directory's correction setting: replacement or reopening, if set.",
+        true
+      ),
+      d('payerKind', 'string', 'Payer Kind', 'The claim filing indicator of the payer.', true)
     ],
     [
       d('frequency', 'string', 'Frequency', 'The claim frequency code: 1 original, 7 replacement.'),
+      d(
+        'replaces',
+        'string',
+        'Replaces',
+        'The payer claim number a replacement names (REF*F8), or nothing for an original claim.',
+        true
+      ),
       P.reasons('this frequency was billed')
     ]
   );
-  g.add('original', 'std.logic.is-null', { label: 'No Claim to Replace' });
-  g.add('frequency', 'std.logic.select', {
-    label: 'Original or Replacement',
-    values: { whenTrue: '1', whenFalse: '7' }
+  g.add('adjudicated', 'std.expr', expr('Adjudicated by the Payer', 'payerClaimNumber != null'));
+  g.add('decide', 'std.table.decide', {
+    label: 'Claim Frequencies',
+    config: shared.decision(
+      'billing.claim-frequencies',
+      'Claim Frequencies',
+      'Decides whether a claim goes to the payer as an original (1) or a replacement (7) of the claim it adjudicated: only a payer that adjudicated the claim and takes replacements gets a 7. A claim rejected before adjudication (999 or 277CA) or returned as unprocessable is a new claim, and Medicare Part B takes only originals (CLM05-3 1), correcting processed claims through reopenings.',
+      table(
+        [
+          field('adjudicated', 'boolean', 'The payer adjudicated the claim (835)'),
+          field('correctionMethod', 'string', 'Payer setting: replacement or reopening'),
+          field('payerKind', 'string', 'Claim filing indicator of the payer')
+        ],
+        [field('frequency', 'string', 'Claim frequency')],
+        [
+          {
+            label: 'The payer never adjudicated the claim: a new claim',
+            when: { adjudicated: is(false) },
+            set: { frequency: '1' }
+          },
+          {
+            label: 'The payer takes replacement claims (frequency 7)',
+            when: { correctionMethod: is('replacement') },
+            set: { frequency: '7' }
+          },
+          {
+            label: 'The payer takes no corrected claims, only reopenings',
+            when: { correctionMethod: is('reopening') },
+            set: { frequency: '1' }
+          },
+          {
+            label: 'Medicare Part B takes only original claims (CLM05-3 1)',
+            when: { payerKind: oneOf(...MEDICARE) },
+            set: { frequency: '1' }
+          }
+        ],
+        { frequency: '7' }
+      )
+    )
   });
+  g.add(
+    'replaces',
+    'std.expr',
+    expr('Claim Number It Replaces', 'frequency == "1" ? null : payerClaimNumber')
+  );
   g.add(
     'reasons',
     'std.expr',
-    expr('Why', "original ? ['No earlier claim to replace'] : ['Replaces the payer claim on file']")
+    expr(
+      'Why',
+      'rule != null ? [rule] : ["Replaces the claim the payer adjudicated (frequency 7)"]'
+    )
   );
   g.ret('return');
-  g.wire('entry.payerClaimNumber', 'original.value');
-  g.wire('original.result', 'frequency.condition', 'reasons.original');
-  g.wire('frequency.result', 'return.frequency');
+  g.wire('entry.payerClaimNumber', 'adjudicated.payerClaimNumber', 'replaces.payerClaimNumber');
+  g.wire('adjudicated.result', 'decide.adjudicated');
+  g.wire('entry.correctionMethod', 'decide.correctionMethod');
+  g.wire('entry.payerKind', 'decide.payerKind');
+  g.wire('decide.frequency', 'replaces.frequency', 'return.frequency');
+  g.wire('replaces.result', 'return.replaces');
+  g.wire('decide.rule', 'reasons.rule');
   g.wire('reasons.result', 'return.reasons');
   return g.def;
 };
@@ -762,8 +824,11 @@ const map837p = (): GraphDef => {
   g.wire('details.documentation', 'admitted.documentation');
   g.wire('admitted.admissionDate', 'x837.admissionDate');
   g.wire('claim.priorPayers', 'otherPayers.list');
-  g.wire('claim.payerClaimNumber', 'frequency.payerClaimNumber', 'x837.payerClaimNumber');
+  g.wire('claim.payerClaimNumber', 'frequency.payerClaimNumber');
+  g.wire('claim.correctionMethod', 'frequency.correctionMethod');
+  g.wire('payer.claimFiling', 'frequency.payerKind');
   g.wire('frequency.frequency', 'x837.frequency');
+  g.wire('frequency.replaces', 'x837.payerClaimNumber');
   g.wire('place.placeOfService', 'x837.placeOfService');
   g.wire('details.originDestination', 'modifiers.originDestination');
   g.wire('claim.lines', 'codes.list');
@@ -873,7 +938,7 @@ export const claimGraphs: SeedGraph[] = [
   asRule(
     'billing.claim-frequency',
     'Claim Frequency',
-    'The claim frequency code: 1 for an original claim, 7 when it replaces a claim the payer has on file.',
+    'The claim frequency code (Claim Frequencies table): 7 with the claim number it replaces only when the payer adjudicated the claim and takes replacements, else 1 for an original claim.',
     claimFrequency()
   ),
   asRule(

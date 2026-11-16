@@ -90,6 +90,7 @@ const medicare = {
   payer: 'Medicare',
   payer_id: 'DEMOMCR',
   claim_filing: 'MB',
+  correction_method: 'reopening' as const,
   member_id: '1EG4TE5MK73',
   group_id: null,
   relationship: '18',
@@ -240,7 +241,10 @@ describe('pendingClaim', () => {
       insuredFirstName: null,
       insuredLastName: null
     });
-    assert.equal(waiting[0]?.claim.payerClaimNumber, null);
+    assert.deepEqual(
+      [waiting[0]?.claim.payerClaimNumber, waiting[0]?.claim.correctionMethod],
+      [null, 'reopening']
+    );
     assert.equal(waiting[0]?.claim.loadedMiles, 7.3);
     assert.deepEqual(waiting[0]?.claim.lines[1], {
       code: 'A0425',

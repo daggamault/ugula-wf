@@ -63,6 +63,7 @@ const pending: PendingSubmission = {
   claim: {
     claimId: '1001',
     payerClaimNumber: null,
+    correctionMethod: null,
     payer: {
       name: 'Medicare',
       payerId: 'DEMOMCR',

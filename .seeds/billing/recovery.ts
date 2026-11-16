@@ -206,12 +206,12 @@ const correctionMethod = (): GraphDef => {
       )
     ],
     [
-      d('method', 'string', 'Method', 'replacement, void or reopening.'),
+      d('method', 'string', 'Method', 'newClaim, replacement, void or reopening.'),
       d(
         'frequency',
         'string',
         'Frequency',
-        'The claim frequency the correction is filed with: 7 replacement, 8 void.',
+        'The claim frequency the correction is filed with: 1 new claim, 7 replacement, 8 void.',
         true
       ),
       P.reasons('the claim is corrected this way')
@@ -223,15 +223,28 @@ const correctionMethod = (): GraphDef => {
     config: shared.decision(
       'billing.correction-methods',
       'Correction Methods',
-      "How a denied claim is corrected, by the payer's correction setting in the payer directory, its kind and what the biller asked for: a replacement (frequency 7), a void (frequency 8) or, where the payer takes no corrected claims, a reopening request.",
+      "How a denied claim is corrected, by the payer's correction setting in the payer directory, its kind, the denial's reason and remark codes and what the biller asked for: a new claim (frequency 1) for a claim returned as unprocessable, which has no determination to reopen or appeal, a replacement (frequency 7), a void (frequency 8) or, where the payer takes no corrected claims, a reopening request.",
       table(
         [
           field('correctionMethod', 'string', 'Payer setting: replacement or reopening'),
           field('payerKind', 'string', 'Claim filing indicator of the payer'),
-          field('correction', 'string', 'What the biller asked for: replace or void')
+          field('correction', 'string', 'What the biller asked for: replace or void'),
+          field('route', 'string', 'How Remittance Routing routed the denial'),
+          field('codes', { list: 'string' }, 'Group and reason codes (CO-16)'),
+          field('remarks', { list: 'string' }, 'Remark codes (MA130)')
         ],
         [field('method', 'string', 'Method'), field('frequency', 'string', 'Claim frequency')],
         [
+          {
+            label: 'Returned as unprocessable (MA130): submit a new claim',
+            when: { route: is('fix'), remarks: oneOf('MA130') },
+            set: { method: 'newClaim', frequency: '1' }
+          },
+          {
+            label: 'Medicare could not process the claim (CO-16): submit a new claim',
+            when: { route: is('fix'), codes: oneOf('CO-16'), payerKind: oneOf(...MEDICARE) },
+            set: { method: 'newClaim', frequency: '1' }
+          },
           {
             label: 'The payer takes reopening requests, not corrected claims',
             when: { correctionMethod: is('reopening') },
@@ -271,6 +284,9 @@ const correctionMethod = (): GraphDef => {
   g.wire('entry.denial', 'denial.denial');
   g.wire('denial.correctionMethod', 'decide.correctionMethod');
   g.wire('denial.payerKind', 'decide.payerKind');
+  g.wire('denial.route', 'decide.route');
+  g.wire('denial.codes', 'decide.codes');
+  g.wire('denial.remarks', 'decide.remarks');
   g.wire('entry.correction', 'decide.correction');
   g.wire('decide.method', 'return.method');
   g.wire('decide.frequency', 'return.frequency');
@@ -920,7 +936,7 @@ const correctClaim = (): GraphDef => {
   g.add('method', 'billing.correction-method', { label: 'Replacement or Reopening' });
   g.add('route', 'std.flow.switch', {
     label: 'By Method',
-    config: { cases: ['replacement', 'void', 'reopening'] }
+    config: { cases: ['newClaim', 'replacement', 'void', 'reopening'] }
   });
   g.add(
     'number',
@@ -928,6 +944,7 @@ const correctClaim = (): GraphDef => {
     expr('Claim Number to Replace', 'coalesce(payerClaimNumber, denial.payerClaimNumber)')
   );
   recordEvent(g, 'replace', 'resubmit_queued', 'Queue the Replacement Claim');
+  recordEvent(g, 'newClaim', 'resubmit_queued', 'Queue a New Claim');
   g.add('fix', 'billing.fix-claim', { label: 'Correct the Claim Data', values: { all: true } });
   recordEvent(g, 'reopenVoid', 'resubmit_queued', 'Reopen for the Void');
   g.add('prepare', 'billing.prepare-837p', { label: 'Prepare 837P Claim' });
@@ -1007,6 +1024,7 @@ const correctClaim = (): GraphDef => {
     'entry.claimId',
     'read.claimId',
     'replace.claimId',
+    'newClaim.claimId',
     'fix.claimId',
     'reopenVoid.claimId',
     'prepare.claimId',
@@ -1020,6 +1038,7 @@ const correctClaim = (): GraphDef => {
     'entry.coverageId',
     'read.coverageId',
     'replace.coverageId',
+    'newClaim.coverageId',
     'reopenVoid.coverageId',
     'prepare.coverageId',
     'file.coverageId',
@@ -1042,6 +1061,8 @@ const correctClaim = (): GraphDef => {
   g.wire('number.result', 'replace.payerClaimNumber', 'reopenVoid.payerClaimNumber');
   g.wire('route.replacement', 'replace.exec');
   g.wire('replace.then', 'fix.exec');
+  g.wire('route.newClaim', 'newClaim.exec');
+  g.wire('newClaim.then', 'fix.exec');
   g.wire('fix.fixed', 'doneReturn.exec');
   g.wire('fix.backToReview', 'doneReturn.exec');
   g.wire('fix.voided', 'voidReturn.exec');
@@ -1589,7 +1610,7 @@ export const recoveryGraphs: SeedGraph[] = [
   asRule(
     'billing.correction-method',
     'Replacement or Reopening',
-    "Decides how a denied claim is corrected (Correction Methods table): a replacement claim (frequency 7) or void (frequency 8) with the payer claim number, or a reopening request where the payer takes no corrected claims (Medicare), by the payer directory's correction setting.",
+    "Decides how a denied claim is corrected (Correction Methods table): a new claim (frequency 1) when it was returned as unprocessable (MA130, or CO-16 from Medicare), a replacement claim (frequency 7) or void (frequency 8) with the payer claim number, or a reopening request where the payer takes no corrected claims (Medicare), by the payer directory's correction setting.",
     correctionMethod()
   ),
   asRule(

@@ -21,11 +21,14 @@ export const denialFactsOf = (ledger: ClaimLedger, coverageId: string) => {
     route: denied?.route ?? 'denial',
     note: denied?.note ?? '',
     codes: codesOf(response),
+    remarks: response?.remarks ?? [],
     paidCents: own.reduce((sum, e) => sum + e.paidCents, 0),
     balanceCents: claimProgress(ledger).balanceCents,
     deniedOn: response ? dayOf(response) : null,
     appeals: own.filter((e) => e.kind === 'appealed').length,
-    payerClaimNumber: own.findLast((e) => e.payerClaimNumber !== null)?.payerClaimNumber ?? null,
+    payerClaimNumber:
+      own.findLast((e) => e.kind === 'response' && e.payerClaimNumber !== null)?.payerClaimNumber ??
+      null,
     correctionMethod: coverage.correctionMethod ?? null,
     appealDays: coverage.appealDays ?? null
   };

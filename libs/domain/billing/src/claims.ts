@@ -172,6 +172,7 @@ export type ClaimEvent = {
   payerClaimNumber: string | null;
   paidOn: string | null;
   adjustments: Adjustment[];
+  remarks?: string[];
   note: string;
   route?: DenialRoute | null;
   at: string;
@@ -265,6 +266,8 @@ const REOPENED: readonly ClaimEventKind[] = ['resubmit_queued', 'reopening_reque
 
 const REOPENING: readonly ClaimEventKind[] = ['resubmit_queued', 'rejected'];
 
+const ADJUDICATED: readonly ClaimEventKind[] = ['response', 'resubmit_queued'];
+
 const REJECTION_NOTE = 'The payer or clearinghouse rejected the last submission';
 
 const latest = (events: ClaimEvent[]) =>
@@ -337,9 +340,13 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
       coverage === null || lastOf(coverage.id, ['claim_status']) < lastOf(coverage.id, CONTACTS)
         ? null
         : (events[lastOf(coverage.id, ['claim_status'])]?.note ?? null),
-    payerClaimNumber:
-      events.findLast((e) => e.coverageId === coverage?.id && e.payerClaimNumber !== null)
-        ?.payerClaimNumber ?? null,
+    adjudicatedClaimNumber:
+      events.findLast(
+        (e) =>
+          e.coverageId === coverage?.id &&
+          ADJUDICATED.includes(e.kind) &&
+          e.payerClaimNumber !== null
+      )?.payerClaimNumber ?? null,
     priorCoverages: answered.map((c) => ({
       ...c,
       ...adjudication(events.filter((e) => e.coverageId === c.id && e.kind === 'response'))
