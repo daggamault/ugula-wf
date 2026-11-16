@@ -22,7 +22,7 @@ const buildWorkflowRunsTable = (db: Kysely<Database>) =>
     .addColumn('result', 'jsonb')
     .addColumn('error', 'jsonb')
     .addColumn('wait_key', 'text')
-    .addColumn('lease_until', 'timestamptz')
+    .addColumn('lease_expires_at', 'timestamptz')
     .addColumn('lease_token', 'uuid')
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -72,7 +72,7 @@ const buildWorkflowRunsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_workflow_runs_lease')
     .on('workflow_runs')
-    .column('lease_until')
+    .column('lease_expires_at')
     .where(sql.ref('status'), '=', 'running'),
   db.schema
     .createIndex('idx_workflow_runs_started_by')

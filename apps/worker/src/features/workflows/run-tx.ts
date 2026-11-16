@@ -83,7 +83,7 @@ export const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => (
         result: json(patch.result),
         error: json(patch.error),
         wait_key: patch.waitKey ?? null,
-        lease_until: null,
+        lease_expires_at: null,
         lease_token: null,
         updated_at: sql`now()`,
         completed_at: TERMINAL_RUN_STATUSES.includes(patch.status) ? sql`now()` : null

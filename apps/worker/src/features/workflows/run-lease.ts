@@ -39,13 +39,13 @@ export const buildClaim = (db: Kysely<Database>, { runId, command }: RunJob, lea
     .updateTable('workflow_runs')
     .set({
       status: 'running',
-      lease_until: leaseUntil(leaseMs),
+      lease_expires_at: leaseUntil(leaseMs),
       lease_token: sql<string>`gen_random_uuid()`,
       updated_at: sql`now()`
     })
     .where('id', '=', runId);
   const idle = base.where((eb) =>
-    eb.or([eb('lease_until', 'is', null), eb('lease_until', '<', sql<Date>`now()`)])
+    eb.or([eb('lease_expires_at', 'is', null), eb('lease_expires_at', '<', sql<Date>`now()`)])
   );
   const scoped =
     command.type === 'advance'

@@ -217,7 +217,7 @@ type WorkflowRunsTable = {
   result: NullableJsonColumn;
   error: NullableJsonColumn;
   wait_key: string | null;
-  lease_until: NullableTimestamp;
+  lease_expires_at: NullableTimestamp;
   lease_token: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;

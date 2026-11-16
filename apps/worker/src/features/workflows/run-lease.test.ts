@@ -9,7 +9,9 @@ describe('buildClaim', () => {
     const sqlFor = (command: Parameters<typeof buildClaim>[1]['command']) =>
       buildClaim(db, { runId: 'r', command }, 1000).compile().sql;
     assert.ok(
-      sqlFor({ type: 'advance' }).includes('"lease_until" is null or "lease_until" < now()')
+      sqlFor({ type: 'advance' }).includes(
+        '"lease_expires_at" is null or "lease_expires_at" < now()'
+      )
     );
     assert.ok(sqlFor({ type: 'advance' }).includes('"status" = $'));
     assert.ok(
@@ -18,7 +20,7 @@ describe('buildClaim', () => {
       )
     );
     assert.ok(sqlFor({ type: 'cancel' }).includes('"status" in ($'));
-    assert.ok(!sqlFor({ type: 'cancel' }).includes('"lease_until" is null'));
+    assert.ok(!sqlFor({ type: 'cancel' }).includes('"lease_expires_at" is null'));
     assert.ok(sqlFor({ type: 'advance' }).includes('"lease_token" = gen_random_uuid()'));
     const compiled = buildClaim(db, { runId: 'r', command: { type: 'retry' } }, 1000).compile();
     assert.ok(compiled.parameters.includes('faulted'));

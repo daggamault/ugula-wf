@@ -34,7 +34,7 @@ describe('createRunStore', () => {
       assert.ok(q.sql.includes('"lease_token" = $'));
       assert.ok(q.parameters.includes('l1'));
     }
-    assert.ok(fenced[3]?.sql.includes('"lease_until" = now()'));
+    assert.ok(fenced[3]?.sql.includes('"lease_expires_at" = now()'));
     await db.destroy();
   });
 
@@ -98,8 +98,8 @@ describe('createRunStore', () => {
     const { boss, inserts } = recordingBoss();
     assert.equal(await createRunStore({ db, boss }).sweep(), 2);
     const sweep = queries.find((q) => q.sql.startsWith('update "workflow_runs"'))?.sql ?? '';
-    assert.ok(sweep.includes('"lease_until" < now()'));
-    assert.ok(sweep.includes('"lease_until" is null and "updated_at" < now() - interval'));
+    assert.ok(sweep.includes('"lease_expires_at" < now()'));
+    assert.ok(sweep.includes('"lease_expires_at" is null and "updated_at" < now() - interval'));
     assert.deepEqual(inserts[0], [
       { data: { runId: 'r1', command: { type: 'advance' } } },
       { data: { runId: 'r2', command: { type: 'advance' } }, group: { id: 'p' } }

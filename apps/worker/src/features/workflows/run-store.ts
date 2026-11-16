@@ -57,7 +57,7 @@ export const createRunStore = ({ db, boss }: { db: Db; boss: QueueClient }): Run
         .updateTable('workflow_runs')
         .set({
           state: JSON.stringify(state),
-          lease_until: leaseUntil(leaseMs),
+          lease_expires_at: leaseUntil(leaseMs),
           updated_at: sql`now()`
         })
         .where('id', '=', run.id)
@@ -70,7 +70,7 @@ export const createRunStore = ({ db, boss }: { db: Db; boss: QueueClient }): Run
   extend: async (run, leaseMs) => {
     const extended = await db
       .updateTable('workflow_runs')
-      .set({ lease_until: leaseUntil(leaseMs) })
+      .set({ lease_expires_at: leaseUntil(leaseMs) })
       .where('id', '=', run.id)
       .where('lease_token', '=', run.lease)
       .executeTakeFirst();
@@ -82,7 +82,7 @@ export const createRunStore = ({ db, boss }: { db: Db; boss: QueueClient }): Run
       .updateTable('workflow_runs')
       .set({
         status,
-        lease_until: status === 'running' ? sql<Date>`now()` : null,
+        lease_expires_at: status === 'running' ? sql<Date>`now()` : null,
         lease_token: null,
         updated_at: sql`now()`
       })
@@ -95,12 +95,12 @@ export const createRunStore = ({ db, boss }: { db: Db; boss: QueueClient }): Run
     db.transaction().execute(async (tx) => {
       const rows = await tx
         .updateTable('workflow_runs')
-        .set({ lease_until: null, lease_token: null, updated_at: sql`now()` })
+        .set({ lease_expires_at: null, lease_token: null, updated_at: sql`now()` })
         .where('status', '=', 'running')
         .where((eb) =>
           eb.or([
-            eb('lease_until', '<', sql<Date>`now()`),
-            eb.and([eb('lease_until', 'is', null), eb('updated_at', '<', STRANDED_AFTER)])
+            eb('lease_expires_at', '<', sql<Date>`now()`),
+            eb.and([eb('lease_expires_at', 'is', null), eb('updated_at', '<', STRANDED_AFTER)])
           ])
         )
         .returning(['id', 'parent_id'])
