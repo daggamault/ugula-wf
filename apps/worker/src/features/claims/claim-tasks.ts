@@ -94,6 +94,7 @@ export const createClaimTaskStore = (
       await tx
         .insertInto('claim_events')
         .values({
+          agency_id: claim.agency_id,
           claim_id: claim.id,
           kind: 'document',
           note: `${DOCUMENT_KINDS[d.kind]} uploaded: ${fileName}`,

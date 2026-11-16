@@ -28,7 +28,7 @@ export const denialsReport = report({
         sql<number>`count(distinct e.claim_id)::int`.as('claims'),
         cents(sql.ref('a.amount_cents')).as('amount_cents')
       ])
-      .where('c.agency_id', '=', ctx.agencyId)
+      .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', '=', 'response')
       .where(within(sql.ref('e.created_at'), ctx))
       .groupBy([sql`1`, sql`2`, sql`3`])

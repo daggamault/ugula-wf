@@ -135,6 +135,7 @@ export const createStatementStore = (
     await db
       .insertInto('claim_events')
       .values({
+        agency_id: claim.agency_id,
         claim_id: claim.id,
         kind: 'statement',
         note: `Patient statement ${number} of ${count}`,

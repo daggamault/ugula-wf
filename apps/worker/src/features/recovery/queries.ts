@@ -94,6 +94,7 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
         await tx
           .insertInto('claim_events')
           .values({
+            agency_id: claim.agency_id,
             claim_id: claim.id,
             kind: 'balance_protected',
             adjusted_cents: cents,
@@ -110,11 +111,12 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
         const claim = await claimOf(runId, claimId);
         const { numInsertedOrUpdatedRows } = await tx
           .insertInto('claim_events')
-          .columns(['claim_id', 'kind', 'coverage_id', 'note', 'source_key'])
+          .columns(['agency_id', 'claim_id', 'kind', 'coverage_id', 'note', 'source_key'])
           .expression(
             tx
               .selectFrom('claim_coverages as cc')
               .select([
+                'cc.agency_id',
                 'cc.claim_id',
                 sql<ClaimEventKind>`'payer_skipped'`.as('kind'),
                 'cc.id',
@@ -306,6 +308,7 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
       await db
         .insertInto('claim_events')
         .values({
+          agency_id: claim.agency_id,
           claim_id: claim.id,
           kind: 'appeal_packet',
           coverage_id: coverageId,

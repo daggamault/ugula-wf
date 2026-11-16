@@ -68,7 +68,7 @@ describe('claim responses', () => {
       q.sql.includes('claim_balances') ? [{ balance_cents: 7 }] : []
     );
     assert.equal(await claimBalance(db, 'c1'), 7);
-    assert.equal(await insertResponse(db, 'c1', 'u1', response), false);
+    assert.equal(await insertResponse(db, 't1', 'c1', 'u1', response), false);
     const insert = queries[1];
     assert.equal(queries.length, 2);
     assert.ok(insert?.parameters.includes('response'));
@@ -123,7 +123,7 @@ describe('claim responses', () => {
       { ok: true, value: { balanceCents: -2, adjustedCents: 0, duplicate: false } }
     );
     const insert = over.queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
-    assert.deepEqual(insert?.parameters.slice(2, 5), [null, 5, 0]);
+    assert.deepEqual(insert?.parameters.slice(3, 6), [null, 5, 0]);
     const capped = claimDb({ balance: 100 });
     assert.deepEqual(
       await postClaimResponse(capped.db, boss, 't', 'c1', null, {
@@ -136,7 +136,7 @@ describe('claim responses', () => {
     assert.ok(
       capped.queries
         .find((q) => q.sql.startsWith('insert into "claim_events"'))
-        ?.parameters.slice(2, 5)
+        ?.parameters.slice(3, 6)
         .includes(30)
     );
   });

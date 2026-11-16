@@ -62,9 +62,7 @@ const buildClaimsTable = (db: Kysely<Database>) =>
       col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('patient_id', 'uuid')
-    .addColumn('import_report_id', 'uuid', (col) =>
-      col.unique().references('import_reports.id').onDelete('set null').onUpdate('cascade')
-    )
+    .addColumn('import_report_id', 'uuid', (col) => col.unique())
     .addColumn('pcr_number', 'text')
     .addColumn('classification', 'text')
     .addColumn('level', 'text')
@@ -200,14 +198,32 @@ const buildClaimsCycleRunForeignKey = () =>
 const buildClaimsFacilityForeignKey = () =>
   agencyNoActionForeignKey({ table: 'claims', column: 'facility_id', references: 'facilities' });
 
+const buildClaimsImportReportForeignKey = () =>
+  agencySetNullForeignKey({
+    table: 'claims',
+    column: 'import_report_id',
+    references: 'import_reports'
+  });
+
 const buildClaimRunsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('claim_runs')
-    .addColumn('run_id', 'uuid', (col) =>
-      col.primaryKey().references('workflow_runs.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) => col.notNull())
+    .addColumn('run_id', 'uuid', (col) => col.primaryKey())
+    .addColumn('claim_id', 'uuid', (col) => col.notNull())
+    .addForeignKeyConstraint(
+      'claim_runs_run_id_fkey',
+      ['agency_id', 'run_id'],
+      'workflow_runs',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
     )
-    .addColumn('claim_id', 'uuid', (col) =>
-      col.notNull().references('claims.id').onDelete('cascade').onUpdate('cascade')
+    .addForeignKeyConstraint(
+      'claim_runs_claim_id_fkey',
+      ['agency_id', 'claim_id'],
+      'claims',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
     );
 
 const buildClaimLinesTable = (db: Kysely<Database>) =>
@@ -343,6 +359,7 @@ const buildClaimBatchesTable = (db: Kysely<Database>) =>
     .addColumn('sent_as', 'text')
     .addColumn('rejected_at', 'timestamptz')
     .addColumn('rejection', 'text')
+    .addUniqueConstraint('claim_batches_agency_id_id_unique', ['agency_id', 'id'])
     .addCheckConstraint('claim_batches_sent_check', sql`(sent_at is null) = (sent_as is null)`)
     .addCheckConstraint(
       'claim_batches_rejected_check',
@@ -399,9 +416,8 @@ const buildClaimEventsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('claim_events')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('claim_id', 'uuid', (col) =>
-      col.notNull().references('claims.id').onDelete('cascade').onUpdate('cascade')
-    )
+    .addColumn('agency_id', 'uuid', (col) => col.notNull())
+    .addColumn('claim_id', 'uuid', (col) => col.notNull())
     .addColumn('kind', 'text', (col) => col.notNull())
     .addColumn('coverage_id', 'uuid')
     .addColumn('paid_cents', 'integer', (col) => col.notNull().defaultTo(0))
@@ -416,10 +432,15 @@ const buildClaimEventsTable = (db: Kysely<Database>) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('source_key', 'text')
-    .addColumn('batch_id', 'uuid', (col) =>
-      col.references('claim_batches.id').onDelete('no action').onUpdate('cascade')
-    )
+    .addColumn('batch_id', 'uuid')
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addForeignKeyConstraint(
+      'claim_events_claim_id_fkey',
+      ['agency_id', 'claim_id'],
+      'claims',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
     .addForeignKeyConstraint(
       'claim_events_coverage_fkey',
       ['claim_id', 'coverage_id'],
@@ -453,6 +474,13 @@ const buildClaimEventsTable = (db: Kysely<Database>) =>
       'claim_events_payer_claim_number_check',
       sql`payer_claim_number is null or (payer_claim_number <> '' and coverage_id is not null)`
     );
+
+const buildClaimEventsBatchForeignKey = () =>
+  agencyNoActionForeignKey({
+    table: 'claim_events',
+    column: 'batch_id',
+    references: 'claim_batches'
+  });
 
 const buildClaimEventAdjustmentsTable = (db: Kysely<Database>) =>
   db.schema
@@ -561,9 +589,9 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
   db.schema.createIndex('idx_claim_events_created_by').on('claim_events').column('created_by'),
   db.schema.createIndex('idx_claim_events_batch_id').on('claim_events').column('batch_id'),
   db.schema
-    .createIndex('idx_claim_events_kind_created')
+    .createIndex('idx_claim_events_agency_kind_created')
     .on('claim_events')
-    .columns(['kind', 'created_at']),
+    .columns(['agency_id', 'kind', 'created_at']),
   db.schema
     .createIndex('idx_claim_batches_agency_created')
     .on('claim_batches')
@@ -580,6 +608,7 @@ export const createClaimsTables = async (db: Kysely<Database>) => {
   await dailyNumberTrigger('claims', 'claim').execute(db);
   await buildClaimsCycleRunForeignKey().execute(db);
   await buildClaimsFacilityForeignKey().execute(db);
+  await buildClaimsImportReportForeignKey().execute(db);
   await buildClaimRunsTable(db).execute();
   await buildClaimLinesTable(db).execute();
   await buildClaimCoveragesTable(db).execute();
@@ -589,6 +618,7 @@ export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimBatchesTable(db).execute();
   await buildClaimStatusRequestsTable(db).execute();
   await buildClaimEventsTable(db).execute();
+  await buildClaimEventsBatchForeignKey().execute(db);
   await buildClaimEventAdjustmentsTable(db).execute();
   await buildClaimEventRemarksTable(db).execute();
 

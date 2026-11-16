@@ -76,6 +76,7 @@ const insertPayerFile = (
 
 const saveFileItems = async (
   db: Db,
+  agencyId: string,
   fileId: string,
   items: readonly FileItem[],
   problems: number,
@@ -86,6 +87,7 @@ const saveFileItems = async (
       .insertInto('payer_file_items')
       .values(
         items.map((item, i) => ({
+          agency_id: agencyId,
           file_id: fileId,
           position: i + 1,
           reference: item.reference,
@@ -194,6 +196,6 @@ export const applyPayerFile = async (
     f.file.text
   );
   const problems = items.filter((i) => PROBLEM_OUTCOMES.includes(i.outcome)).length;
-  await saveFileItems(tx, id, items, problems, envelopeRejection);
+  await saveFileItems(tx, f.agencyId, id, items, problems, envelopeRejection);
   return { id, kind: f.file.kind, items, problems, envelopeRejection };
 };

@@ -109,6 +109,7 @@ const resolveMootTasks = (
 
 export const insertResponse = async (
   db: Db,
+  agencyId: string,
   claimId: string,
   userId: string | null,
   r: ClaimResponse
@@ -116,6 +117,7 @@ export const insertResponse = async (
   const event = await db
     .insertInto('claim_events')
     .values({
+      agency_id: agencyId,
       claim_id: claimId,
       kind: r.kind,
       coverage_id: r.coverageId,
@@ -220,7 +222,7 @@ const postReversal = async (
     );
   }
   const balance = await claimBalance(tx, claimId);
-  await insertResponse(tx, claimId, userId, response);
+  await insertResponse(tx, agencyId, claimId, userId, response);
   await nudgeClaim(tx, boss, agencyId, claimId);
   return ok({
     balanceCents: balance - response.paidCents - response.adjustedCents,
@@ -272,7 +274,7 @@ export const postClaimResponse = async (
         `${dollars(response.paidCents)} is more than the ${dollars(credit)} credit balance that can be refunded`
       );
     }
-    await insertResponse(tx, claimId, userId, response);
+    await insertResponse(tx, agencyId, claimId, userId, response);
     await nudgeClaim(tx, boss, agencyId, claimId);
     return ok({ balanceCents: balance + response.paidCents, adjustedCents: 0, duplicate: false });
   }
@@ -284,7 +286,7 @@ export const postClaimResponse = async (
     );
   }
   const adjustedCents = Math.min(response.adjustedCents, open);
-  await insertResponse(tx, claimId, userId, { ...response, adjustedCents });
+  await insertResponse(tx, agencyId, claimId, userId, { ...response, adjustedCents });
   const remaining = balance - response.paidCents - adjustedCents;
   const moot = await resolveMootTasks(tx, agencyId, claimId, {
     coverageId: response.coverageId,

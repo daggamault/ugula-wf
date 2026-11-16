@@ -194,10 +194,17 @@ const insertCoverage = (
     )
     .execute();
 
-const logEdit = async (tx: Db, claimId: string, note: string | null, event: EditEvent) =>
+const logEdit = async (
+  tx: Db,
+  agencyId: string,
+  claimId: string,
+  note: string | null,
+  event: EditEvent
+) =>
   (await tx
     .insertInto('claim_events')
     .values({
+      agency_id: agencyId,
       claim_id: claimId,
       kind: 'edited',
       note: note ?? 'Claim data edited',
@@ -215,7 +222,7 @@ export const applyClaimEdit = async (
   edit: ClaimEdit,
   event: EditEvent
 ) => {
-  if (!(await logEdit(tx, claimId, edit.note, event))) return false;
+  if (!(await logEdit(tx, agencyId, claimId, edit.note, event))) return false;
   await updateClaim(tx, claimId, edit);
   if (edit.patientAddress) await updatePatientAddress(tx, agencyId, claimId, edit.patientAddress);
   if (edit.diagnoses?.length) await replaceDiagnoses(tx, claimId, edit.diagnoses);

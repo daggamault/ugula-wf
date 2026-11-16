@@ -24,7 +24,7 @@ export const writeOffsReport = report({
         'b.adjusted_cents',
         'b.balance_cents'
       ])
-      .where('c.agency_id', '=', ctx.agencyId)
+      .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', '=', 'closed')
       .where('e.note', 'in', UNRECOVERED)
       .where(within(sql.ref('e.created_at'), ctx))

@@ -75,6 +75,7 @@ export const createSubmissionStore = (
         tx,
         { batchId: id, note: `837P file #${controlNumber}`, createdBy: null, sourceKey },
         {
+          agencyId: claim.agency_id,
           claimId: claim.id,
           kind: file.resubmission ? 'resubmitted' : 'submitted',
           coverageId: file.coverageId

@@ -9,9 +9,7 @@ const buildTasksTable = (db: Kysely<Database>) =>
     .addColumn('agency_id', 'uuid', (col) =>
       col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
-    .addColumn('run_id', 'uuid', (col) =>
-      col.notNull().references('workflow_runs.id').onDelete('cascade').onUpdate('cascade')
-    )
+    .addColumn('run_id', 'uuid', (col) => col.notNull())
     .addColumn('wait_id', 'text', (col) => col.notNull())
     .addColumn('kind', 'text', (col) => col.notNull())
     .addColumn('queue', 'text', (col) => col.notNull())
@@ -35,6 +33,13 @@ const buildTasksTable = (db: Kysely<Database>) =>
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('completed_at', 'timestamptz')
+    .addForeignKeyConstraint(
+      'tasks_run_id_fkey',
+      ['agency_id', 'run_id'],
+      'workflow_runs',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
     .addUniqueConstraint('tasks_run_id_wait_id_unique', ['run_id', 'wait_id'])
     .addCheckConstraint(
       'tasks_kind_check',

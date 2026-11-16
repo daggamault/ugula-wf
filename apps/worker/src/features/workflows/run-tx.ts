@@ -253,7 +253,8 @@ export const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => (
         from orphans o
         returning id, (inputs ->> 'claimId')::uuid as claim_id
       ), linked as (
-        insert into claim_runs (run_id, claim_id) select id, claim_id from started
+        insert into claim_runs (agency_id, run_id, claim_id)
+        select ${run.agencyId}, id, claim_id from started
       )
       select id from started`.execute(tx);
     const ids = rows.map((r) => r.id);

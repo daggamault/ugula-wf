@@ -28,7 +28,7 @@ export const productivityReport = report({
         sql<number>`(e.kind <> 'response')::int`.as('submitted'),
         sql<number>`(e.kind = 'response')::int`.as('posted')
       ])
-      .where('c.agency_id', '=', ctx.agencyId)
+      .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', 'in', [...SUBMISSIONS, 'response'])
       .where('e.created_by', 'is not', null)
       .where(within(sql.ref('e.created_at'), ctx));

@@ -46,7 +46,7 @@ export const paymentsReport = report({
         'u.email as posted_by',
         'e.note'
       ])
-      .where('c.agency_id', '=', ctx.agencyId)
+      .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', 'in', PAYMENTS)
       .where(within(sql.ref('e.created_at'), ctx))
       .as('r'),

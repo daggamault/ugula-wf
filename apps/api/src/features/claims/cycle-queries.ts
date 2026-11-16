@@ -11,8 +11,11 @@ export const hasActiveRun = async (db: Db, claimId: string) =>
     .limit(1)
     .executeTakeFirst()) !== undefined;
 
-export const setCycleRun = async (db: Db, id: string, runId: string) => {
-  await db.insertInto('claim_runs').values({ run_id: runId, claim_id: id }).execute();
+export const setCycleRun = async (db: Db, agencyId: string, id: string, runId: string) => {
+  await db
+    .insertInto('claim_runs')
+    .values({ agency_id: agencyId, run_id: runId, claim_id: id })
+    .execute();
   await db
     .updateTable('claims')
     .set({ cycle_run_id: runId, updated_at: sql`now()` })

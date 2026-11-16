@@ -22,7 +22,7 @@ export const activityReport = report({
         zero.as('written_off'),
         zero.as('collections')
       ])
-      .where('c.agency_id', '=', ctx.agencyId)
+      .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', 'in', SUBMISSIONS)
       .where(within(sql.ref('e.created_at'), ctx))
       .where(({ not, exists, selectFrom }) =>
@@ -51,7 +51,7 @@ export const activityReport = report({
         zero.as('written_off'),
         zero.as('collections')
       ])
-      .where('c.agency_id', '=', ctx.agencyId)
+      .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', '=', 'response')
       .where(within(sql.ref('e.created_at'), ctx));
     const closed = db
@@ -72,7 +72,7 @@ export const activityReport = report({
           'collections'
         )
       ])
-      .where('c.agency_id', '=', ctx.agencyId)
+      .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', '=', 'closed')
       .where('e.note', 'in', UNRECOVERED)
       .where(within(sql.ref('e.created_at'), ctx));

@@ -156,6 +156,7 @@ const postPayment = async (
     await c.tx
       .insertInto('claim_events')
       .values({
+        agency_id: c.agencyId,
         claim_id: claimId,
         kind: 'denied',
         coverage_id: coverageId,
@@ -171,6 +172,7 @@ const postPayment = async (
     await c.tx
       .insertInto('claim_events')
       .values({
+        agency_id: c.agencyId,
         claim_id: claimId,
         kind: 'crossed_over',
         coverage_id: nextCoverageId,

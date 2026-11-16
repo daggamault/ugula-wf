@@ -15,6 +15,7 @@ import { DOCUMENTATION_COLUMNS, documentationOf } from './claim-documentation.ts
 import type { Db } from './schema.ts';
 
 type SubmissionEvent = {
+  agencyId: string;
   claimId: string;
   kind: 'submitted' | 'resubmitted';
   coverageId: string;
@@ -188,6 +189,7 @@ export const insertSubmissionEvent = (
   db
     .insertInto('claim_events')
     .values({
+      agency_id: e.agencyId,
       claim_id: e.claimId,
       kind: e.kind,
       coverage_id: e.coverageId,

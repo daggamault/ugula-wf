@@ -104,7 +104,7 @@ describe('createRecoveryStore', () => {
     assert.ok(protect?.parameters.includes('balance_protected'));
     assert.ok(protect?.parameters.includes(2_500) && !protect.parameters.includes(4_000));
     assert.ok(queries.some((q) => q.sql.startsWith('insert into "signals"')));
-    assert.ok(skip?.sql.includes('select "cc"."claim_id"'));
+    assert.ok(skip?.sql.includes('select "cc"."agency_id", "cc"."claim_id"'));
     assert.ok(skip?.sql.includes('"e"."kind" in ($'));
   });
 

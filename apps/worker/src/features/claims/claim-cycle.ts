@@ -150,7 +150,13 @@ export const createCycleStore = (
         .execute();
       await tx
         .insertInto('claim_events')
-        .values({ claim_id: claim.id, kind: 'closed', note: status, source_key: sourceKey })
+        .values({
+          agency_id: claim.agency_id,
+          claim_id: claim.id,
+          kind: 'closed',
+          note: status,
+          source_key: sourceKey
+        })
         .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
         .execute();
       await tx

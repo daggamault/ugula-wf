@@ -34,7 +34,7 @@ describe('applyClaimEdit', () => {
     assert.equal(await applyClaimEdit(db, 't1', 'c1', empty, event), true);
     assert.equal(queries.length, 1);
     assert.match(queries[0]?.sql ?? '', /on conflict \("claim_id", "source_key"\) do nothing/);
-    assert.deepEqual(queries[0]?.parameters.slice(0, 2), ['c1', 'edited']);
+    assert.deepEqual(queries[0]?.parameters.slice(0, 3), ['t1', 'c1', 'edited']);
   });
 
   it('skips an edit already applied for its source key', async () => {

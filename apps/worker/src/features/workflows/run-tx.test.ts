@@ -153,7 +153,7 @@ describe('createRunTx', () => {
     assert.ok(
       recover?.sql.includes("jsonb_build_object('claimId', o.id, 'report', o.report, 'reason'")
     );
-    assert.ok(recover?.sql.includes('insert into claim_runs (run_id, claim_id)'));
+    assert.ok(recover?.sql.includes('insert into claim_runs (agency_id, run_id, claim_id)'));
     assert.deepEqual(recover?.parameters.slice(0, 2), ['r1', 'r1']);
     assert.ok(recover?.parameters.includes('The run was cancelled'));
     assert.ok(queries.some((q) => /insert into "?workflow_run_graphs/.test(q.sql)));

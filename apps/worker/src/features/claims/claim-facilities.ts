@@ -48,6 +48,7 @@ export const createFacilityStore = (
       await tx
         .insertInto('claim_events')
         .values({
+          agency_id: claim.agency_id,
           claim_id: claim.id,
           kind: 'responsibility',
           note: r.note,

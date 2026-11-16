@@ -168,7 +168,7 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
           inputs: { claimId: id },
           interactive: true
         });
-        await setCycleRun(tx, id, runId);
+        await setCycleRun(tx, agencyId, id, runId);
         return ok({ runId });
       }),
 

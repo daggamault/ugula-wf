@@ -11,9 +11,7 @@ const buildWorkflowRunsTable = (db: Kysely<Database>) =>
     .addColumn('graph_version_id', 'uuid', (col) =>
       col.notNull().references('graph_versions.id').onDelete('no action').onUpdate('cascade')
     )
-    .addColumn('parent_id', 'uuid', (col) =>
-      col.references('workflow_runs.id').onDelete('cascade').onUpdate('cascade')
-    )
+    .addColumn('parent_id', 'uuid')
     .addColumn('parent_wait', 'text')
     .addColumn('parent_index', 'integer')
     .addColumn('status', 'text', (col) => col.notNull())
@@ -31,6 +29,13 @@ const buildWorkflowRunsTable = (db: Kysely<Database>) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addUniqueConstraint('workflow_runs_agency_id_id_unique', ['agency_id', 'id'])
+    .addForeignKeyConstraint(
+      'workflow_runs_parent_id_fkey',
+      ['agency_id', 'parent_id'],
+      'workflow_runs',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
     .addCheckConstraint(
       'workflow_runs_status_check',
       sql`status in (${sql.join(RUN_STATUSES.map((v) => sql.lit(v)))})`

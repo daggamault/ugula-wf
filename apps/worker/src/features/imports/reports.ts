@@ -45,7 +45,7 @@ export const createReportStore = (
     recordReports: async (runId, file, reports) => {
       await authorize(runId, file.key);
       await db.transaction().execute(async (tx) => {
-        const { id } = await tx
+        const { id, agency_id } = await tx
           .insertInto('imports')
           .values({
             agency_id: runAgency(tx, runId),
@@ -56,13 +56,14 @@ export const createReportStore = (
             report_count: reports.length
           })
           .onConflict((oc) => oc.column('run_id').doUpdateSet({ report_count: reports.length }))
-          .returning('id')
+          .returning(['id', 'agency_id'])
           .executeTakeFirstOrThrow();
         if (!reports.length) return;
         await tx
           .insertInto('import_reports')
           .values(
             reports.map((r) => ({
+              agency_id,
               import_id: id,
               position: r.position,
               pcr_number: r.pcrNumber,

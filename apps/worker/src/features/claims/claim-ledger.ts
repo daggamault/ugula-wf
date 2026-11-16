@@ -31,6 +31,7 @@ export const createLedgerStore = (
     await db
       .insertInto('claim_events')
       .values({
+        agency_id: claim.agency_id,
         claim_id: claim.id,
         kind: 'revised',
         note: 'An updated patient care report arrived',
@@ -161,6 +162,7 @@ export const createLedgerStore = (
     await db
       .insertInto('claim_events')
       .values({
+        agency_id: claim.agency_id,
         claim_id: claim.id,
         kind: e.kind,
         coverage_id: e.coverageId,

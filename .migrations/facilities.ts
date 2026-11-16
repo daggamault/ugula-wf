@@ -50,7 +50,11 @@ const buildFacilityInvoicesTable = (db: Kysely<Database>) =>
       ['agency_id', 'id'],
       (fk) => fk.onDelete('no action').onUpdate('cascade')
     )
-    .addUniqueConstraint('facility_invoices_agency_id_id_unique', ['agency_id', 'id'])
+    .addUniqueConstraint('facility_invoices_agency_facility_id_unique', [
+      'agency_id',
+      'facility_id',
+      'id'
+    ])
     .addUniqueConstraint('facility_invoices_facility_period_unique', [
       'agency_id',
       'facility_id',
@@ -76,9 +80,9 @@ const buildFacilityInvoiceClaimsTable = (db: Kysely<Database>) =>
     .addPrimaryKeyConstraint('facility_invoice_claims_pkey', ['invoice_id', 'claim_id'])
     .addForeignKeyConstraint(
       'facility_invoice_claims_invoice_id_fkey',
-      ['agency_id', 'invoice_id'],
+      ['agency_id', 'facility_id', 'invoice_id'],
       'facility_invoices',
-      ['agency_id', 'id'],
+      ['agency_id', 'facility_id', 'id'],
       (fk) => fk.onDelete('cascade').onUpdate('cascade')
     )
     .addForeignKeyConstraint(

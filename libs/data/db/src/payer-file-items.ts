@@ -63,6 +63,7 @@ export const findClaimByNumber = (db: Db, agencyId: string, reference: string) =
 const insertPayerEvent = async (
   db: Db,
   a: {
+    agencyId: string;
     claimId: string;
     coverageId: string;
     kind: 'accepted' | 'rejected' | 'eligibility' | 'claim_status';
@@ -75,6 +76,7 @@ const insertPayerEvent = async (
   (await db
     .insertInto('claim_events')
     .values({
+      agency_id: a.agencyId,
       claim_id: a.claimId,
       kind: a.kind,
       coverage_id: a.coverageId,
@@ -99,6 +101,7 @@ export const recordPayerEvent = async (
   }
 ) => {
   await insertPayerEvent(c.tx, {
+    agencyId: c.agencyId,
     claimId,
     coverageId,
     kind: e.kind,

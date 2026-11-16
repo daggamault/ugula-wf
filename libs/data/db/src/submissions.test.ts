@@ -60,12 +60,13 @@ describe('submission queries', () => {
     await insertSubmissionEvent(
       db,
       { batchId: 'b1', note: '837P file #7', createdBy: null, sourceKey: 'run:step' },
-      { claimId: 'c1', kind: 'submitted', coverageId: 'cc1' }
+      { agencyId: 't1', claimId: 'c1', kind: 'submitted', coverageId: 'cc1' }
     );
     await markSubmitted(db, 'c1');
     const [batch, event, status] = queries;
     assert.deepEqual(batch?.parameters.slice(0, 4), ['b1', 't1', 7, 1]);
     assert.deepEqual(event?.parameters, [
+      't1',
       'c1',
       'submitted',
       'cc1',

@@ -23,8 +23,10 @@ describe('claim scope', () => {
     const { db, queries } = createRecordingDb();
     await linkClaimRun(db, 'r1', ID);
     const [link] = queries;
-    assert.ok(link?.sql.startsWith('insert into "claim_runs" ("run_id", "claim_id")'));
-    assert.ok(link?.sql.includes('select "id", $1::uuid as "claim_id" from "workflow_runs"'));
+    assert.ok(link?.sql.startsWith('insert into "claim_runs" ("agency_id", "run_id", "claim_id")'));
+    assert.ok(
+      link?.sql.includes('select "agency_id", "id", $1::uuid as "claim_id" from "workflow_runs"')
+    );
     assert.ok(link?.sql.endsWith('on conflict ("run_id") do nothing'));
     assert.deepEqual(link?.parameters, [ID, 'r1', ID]);
   });

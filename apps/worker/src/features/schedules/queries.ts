@@ -305,6 +305,7 @@ export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
         .insertInto('claim_events')
         .values(
           source.claims.map((c) => ({
+            agency_id: agency.agency_id,
             claim_id: c.claimId,
             kind: 'facility_invoiced' as const,
             note: `Facility invoice for ${source.period.slice(0, 7)}: ${money(c.balanceCents)} due`,

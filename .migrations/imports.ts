@@ -9,9 +9,7 @@ const buildImportsTable = (db: Kysely<Database>) =>
     .addColumn('agency_id', 'uuid', (col) =>
       col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
-    .addColumn('run_id', 'uuid', (col) =>
-      col.notNull().unique().references('workflow_runs.id').onDelete('cascade').onUpdate('cascade')
-    )
+    .addColumn('run_id', 'uuid', (col) => col.notNull().unique())
     .addColumn('source', 'text', (col) => col.notNull())
     .addColumn('file_name', 'text', (col) => col.notNull())
     .addColumn('file', 'jsonb', (col) => col.notNull())
@@ -20,6 +18,14 @@ const buildImportsTable = (db: Kysely<Database>) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addForeignKeyConstraint(
+      'imports_run_id_fkey',
+      ['agency_id', 'run_id'],
+      'workflow_runs',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
+    .addUniqueConstraint('imports_agency_id_id_unique', ['agency_id', 'id'])
     .addCheckConstraint(
       'imports_source_check',
       sql`source in (${sql.join(IMPORT_SOURCES.map((s) => sql.lit(s)))})`
@@ -31,14 +37,21 @@ const buildImportReportsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('import_reports')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('import_id', 'uuid', (col) =>
-      col.notNull().references('imports.id').onDelete('cascade').onUpdate('cascade')
-    )
+    .addColumn('agency_id', 'uuid', (col) => col.notNull())
+    .addColumn('import_id', 'uuid', (col) => col.notNull())
     .addColumn('position', 'integer', (col) => col.notNull())
     .addColumn('number', 'text', (col) => col.notNull())
     .addColumn('pcr_number', 'text')
     .addColumn('report', 'jsonb', (col) => col.notNull())
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addForeignKeyConstraint(
+      'import_reports_import_id_fkey',
+      ['agency_id', 'import_id'],
+      'imports',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
+    .addUniqueConstraint('import_reports_agency_id_id_unique', ['agency_id', 'id'])
     .addUniqueConstraint('import_reports_import_id_position_unique', ['import_id', 'position'])
     .addCheckConstraint('import_reports_position_check', sql`position >= 0`)
     .addCheckConstraint('import_reports_number_check', dailyNumberCheck);

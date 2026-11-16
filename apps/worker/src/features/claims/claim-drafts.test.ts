@@ -101,7 +101,7 @@ describe('createDraftStore', () => {
     assert.ok(insert?.parameters.includes('PCR-1'));
     assert.ok(!insert?.sql.includes('"level"') && !insert?.sql.includes('"patient_id"'));
     const [link] = sqlOf(queries, 'insert into "claim_runs"');
-    assert.ok(link?.sql.includes('select "id", $1::uuid as "claim_id" from "workflow_runs"'));
+    assert.ok(link?.sql.includes('select "agency_id", "id", $1::uuid as "claim_id" from "workflow_runs"'));
     assert.ok(link?.sql.endsWith('on conflict ("run_id") do nothing'));
     assert.deepEqual(link?.parameters.slice(0, 2), [ID, 'r1']);
   });

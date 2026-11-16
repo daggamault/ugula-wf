@@ -549,6 +549,7 @@ type FacilityInvoiceClaimsTable = {
 };
 
 type ClaimRunsTable = {
+  agency_id: string;
   run_id: string;
   claim_id: string;
 };
@@ -615,6 +616,7 @@ type ClaimBalancesView = {
 
 type ClaimEventsTable = {
   id: Generated<string>;
+  agency_id: string;
   claim_id: string;
   kind: ClaimEventKind;
   coverage_id: string | null;
@@ -730,6 +732,7 @@ export type PayerFilesTable = {
 
 type PayerFileItemsTable = {
   id: Generated<string>;
+  agency_id: string;
   file_id: string;
   position: number;
   reference: string;
@@ -758,6 +761,7 @@ type ImportsTable = {
 
 type ImportReportsTable = {
   id: Generated<string>;
+  agency_id: string;
   import_id: string;
   position: number;
   number: GeneratedAlways<string>;

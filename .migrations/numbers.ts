@@ -36,13 +36,7 @@ const nextDailyNumberFunction = sql`
 const assignDailyNumberFunction = sql`
   create function assign_daily_number() returns trigger language plpgsql as $$
   begin
-    if tg_table_name = 'import_reports' then
-      new.number := next_daily_number(
-        (select i.agency_id from imports i where i.id = new.import_id), tg_argv[0]
-      );
-    else
-      new.number := next_daily_number(new.agency_id, tg_argv[0]);
-    end if;
+    new.number := next_daily_number(new.agency_id, tg_argv[0]);
     return new;
   end;
   $$`;

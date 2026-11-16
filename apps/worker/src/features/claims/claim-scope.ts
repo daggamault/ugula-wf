@@ -18,11 +18,11 @@ export const agencyClaim = async (db: Db, runId: string, claimId: string) =>
 export const linkClaimRun = (db: Db, runId: string, claimId: string) =>
   db
     .insertInto('claim_runs')
-    .columns(['run_id', 'claim_id'])
+    .columns(['agency_id', 'run_id', 'claim_id'])
     .expression(
       db
         .selectFrom('workflow_runs')
-        .select(['id', sql<string>`${claimId}::uuid`.as('claim_id')])
+        .select(['agency_id', 'id', sql<string>`${claimId}::uuid`.as('claim_id')])
         .where('id', '=', runId)
         .where(
           'agency_id',
