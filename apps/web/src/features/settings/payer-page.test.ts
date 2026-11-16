@@ -15,7 +15,7 @@ import {
 const medicare: Payer = {
   id: 'p1',
   name: 'Medicare',
-  payer_id: '00952',
+  payer_code: '00952',
   claim_filing: 'MB',
   filing_limit_days: null,
   correction_method: null,
@@ -45,7 +45,7 @@ describe('PayerPage', () => {
     assert.ok(html.includes('To rename a payer, add it again under the new name.'));
     assert.deepEqual(toPayerDraft(null), {
       name: '',
-      payerId: '',
+      payerCode: '',
       claimFiling: 'CI',
       filingLimitDays: null,
       correctionMethod: null,
@@ -62,7 +62,7 @@ describe('PayerPage', () => {
       }),
       {
         name: 'Medicare',
-        payerId: '00952',
+        payerCode: '00952',
         claimFiling: 'MB',
         filingLimitDays: 365,
         correctionMethod: 'reopening',

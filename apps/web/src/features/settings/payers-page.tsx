@@ -19,7 +19,7 @@ import { FILING_OPTIONS } from './settings-page.tsx';
 export const PAYERS_PATH = '/payers';
 
 export const PAYER_TABLE = {
-  sorts: { name: 'asc', payerId: 'asc', filing: 'asc' },
+  sorts: { name: 'asc', payerCode: 'asc', filing: 'asc' },
   sort: 'name'
 } as const;
 
@@ -56,7 +56,7 @@ export const PayersTable = ({
     sorting={search}
     head={[
       { label: 'Payer', sort: 'name' },
-      { label: 'Clearinghouse Payer ID', sort: 'payerId' },
+      { label: 'Clearinghouse Payer ID', sort: 'payerCode' },
       { label: 'Claim Filing', isSecondary: true, sort: 'filing' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
@@ -75,7 +75,7 @@ export const PayersTable = ({
           </TableCell>
           <TableCell>
             <span className="font-mono">
-              <Highlight text={p.payer_id} query={search.q} />
+              <Highlight text={p.payer_code} query={search.q} />
             </span>
           </TableCell>
           <TableCell isMuted isSecondary>

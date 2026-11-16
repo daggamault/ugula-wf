@@ -19,7 +19,7 @@ const listPostingCoverages = async (db: Db, claimIds: readonly string[]) =>
       ? await db
           .selectFrom('claim_coverages as cc')
           .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
-          .select(['cc.claim_id', 'cc.id', 'dp.payer_id as payerId'])
+          .select(['cc.claim_id', 'cc.id', 'dp.payer_code as payerId'])
           .where('cc.claim_id', 'in', claimIds)
           .orderBy('cc.claim_id')
           .orderBy('cc.position')

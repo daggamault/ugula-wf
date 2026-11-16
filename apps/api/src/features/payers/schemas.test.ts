@@ -9,10 +9,10 @@ const ID = '01a16617-7704-7ba6-b9b5-9c79fa44f965';
 describe('payerSchema', () => {
   it('accepts a named payer with an 837 payer ID and claim filing code', () => {
     assert.deepEqual(
-      v.parse(payerSchema, { name: ' Medicare ', payerId: ' 00952 ', claimFiling: 'MB' }),
+      v.parse(payerSchema, { name: ' Medicare ', payerCode: ' 00952 ', claimFiling: 'MB' }),
       {
         name: 'Medicare',
-        payerId: '00952',
+        payerCode: '00952',
         claimFiling: 'MB',
         filingLimitDays: null,
         correctionMethod: null,
@@ -23,7 +23,7 @@ describe('payerSchema', () => {
     assert.equal(
       v.parse(payerSchema, {
         name: 'Blue',
-        payerId: 'BCBS1',
+        payerCode: 'BCBS1',
         claimFiling: 'BL',
         filingLimitDays: MAX_FILING_LIMIT_DAYS
       }).filingLimitDays,
@@ -35,10 +35,15 @@ describe('payerSchema', () => {
       planType: 'government'
     } as const;
     assert.deepEqual(
-      v.parse(payerSchema, { name: 'Medicare', payerId: '00952', claimFiling: 'MB', ...settings }),
+      v.parse(payerSchema, {
+        name: 'Medicare',
+        payerCode: '00952',
+        claimFiling: 'MB',
+        ...settings
+      }),
       {
         name: 'Medicare',
-        payerId: '00952',
+        payerCode: '00952',
         claimFiling: 'MB',
         filingLimitDays: null,
         ...settings
@@ -47,13 +52,13 @@ describe('payerSchema', () => {
   });
 
   it('rejects blank or long names, malformed payer IDs, unknown codes and odd filing limits', () => {
-    const base = { name: 'X', payerId: '00952', claimFiling: 'MB' };
+    const base = { name: 'X', payerCode: '00952', claimFiling: 'MB' };
     for (const bad of [
       { ...base, name: '  ' },
       { ...base, name: 'x'.repeat(61) },
-      { ...base, payerId: '0' },
-      { ...base, payerId: '00-952' },
-      { ...base, payerId: 'x'.repeat(81) },
+      { ...base, payerCode: '0' },
+      { ...base, payerCode: '00-952' },
+      { ...base, payerCode: 'x'.repeat(81) },
       { ...base, claimFiling: 'ZZ' },
       { ...base, filingLimitDays: 0 },
       { ...base, filingLimitDays: 1.5 },
@@ -62,7 +67,7 @@ describe('payerSchema', () => {
       { ...base, correctionMethod: 'resubmit' },
       { ...base, appealDays: 0 },
       { ...base, planType: 'hmo' },
-      { name: 'X', payerId: '00952' }
+      { name: 'X', payerCode: '00952' }
     ]) {
       assert.equal(v.safeParse(payerSchema, bad).success, false, JSON.stringify(bad));
     }

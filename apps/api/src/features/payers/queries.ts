@@ -9,7 +9,7 @@ import type { PayerInput, PayerSort } from './schemas.ts';
 const columns = [
   'id',
   'name',
-  'payer_id',
+  'payer_code',
   'claim_filing',
   'filing_limit_days',
   'correction_method',
@@ -37,7 +37,7 @@ const payerRows = (db: Db, agencyId: string) =>
 
 const PAYER_ORDER = {
   name: sql`lower(p.name)`,
-  payerId: sql`lower(p.payer_id)`,
+  payerCode: sql`lower(p.payer_code)`,
   filing: sql.ref('p.claim_filing')
 };
 
@@ -48,7 +48,7 @@ export const searchPayers = (db: Db, agencyId: string, f: PayerFilters) => {
     q = q.where((eb) =>
       eb.or([
         eb(sql`lower(p.name)`, 'like', like),
-        eb(sql`lower(p.payer_id)`, 'like', like),
+        eb(sql`lower(p.payer_code)`, 'like', like),
         eb.exists(
           eb
             .selectFrom('payer_aliases as m')
@@ -78,7 +78,7 @@ export const listPayerNames = (db: Db, agencyId: string, text?: string) => {
 };
 
 const changes = (p: PayerInput) => ({
-  payer_id: p.payerId,
+  payer_code: p.payerCode,
   claim_filing: p.claimFiling,
   filing_limit_days: p.filingLimitDays,
   correction_method: p.correctionMethod,
@@ -95,7 +95,7 @@ const insertPayer = (db: Db, agencyId: string, p: PayerInput, update: boolean) =
     .values({
       agency_id: agencyId,
       name: p.name,
-      payer_id: p.payerId,
+      payer_code: p.payerCode,
       claim_filing: p.claimFiling,
       filing_limit_days: p.filingLimitDays,
       correction_method: p.correctionMethod,

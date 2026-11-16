@@ -17,10 +17,10 @@ const demoProfile = {
 };
 
 const demoPayers = [
-  { name: 'Medicare', payer_id: 'DEMOMCR', claim_filing: 'MB' },
-  { name: 'Medicaid', payer_id: 'DEMOMCD', claim_filing: 'MC' },
-  { name: 'Blue Plan', payer_id: 'DEMOBCBS', claim_filing: 'BL' },
-  { name: 'Keystone Comp', payer_id: 'DEMOWC', claim_filing: 'WC' }
+  { name: 'Medicare', payer_code: 'DEMOMCR', claim_filing: 'MB' },
+  { name: 'Medicaid', payer_code: 'DEMOMCD', claim_filing: 'MC' },
+  { name: 'Blue Plan', payer_code: 'DEMOBCBS', claim_filing: 'BL' },
+  { name: 'Keystone Comp', payer_code: 'DEMOWC', claim_filing: 'WC' }
 ] as const;
 
 const demoFacilities = [
@@ -91,7 +91,7 @@ export const buildUpsertDemoPayers = (db: Kysely<Database>, agencyId: string) =>
     .values(demoPayers.map((p) => ({ agency_id: agencyId, ...p })))
     .onConflict((oc) =>
       oc.expression(sql`agency_id, lower(name)`).doUpdateSet({
-        payer_id: (eb) => eb.ref('excluded.payer_id'),
+        payer_code: (eb) => eb.ref('excluded.payer_code'),
         claim_filing: (eb) => eb.ref('excluded.claim_filing'),
         updated_at: sql`now()`
       })

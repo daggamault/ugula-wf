@@ -22,7 +22,7 @@ const embedder = (vectors: number[][] | Error) => {
 
 describe('payer service', () => {
   it('searches, finds and saves payers and reports unknown deletes', async () => {
-    const row = { id: 'p1', name: 'Medicare', payer_id: '00952', claim_filing: 'MB' };
+    const row = { id: 'p1', name: 'Medicare', payer_code: '00952', claim_filing: 'MB' };
     const { db } = createRecordingDb((q) =>
       q.sql.startsWith('delete') ? [] : [{ ...row, total: '1' }]
     );
@@ -38,7 +38,7 @@ describe('payer service', () => {
       't-1',
       {
         name: 'Medicare',
-        payerId: '00952',
+        payerCode: '00952',
         claimFiling: 'MB',
         filingLimitDays: null,
         correctionMethod: null,
@@ -58,7 +58,7 @@ describe('payer service', () => {
   it('embeds a new or changed payer right away and leaves it to the worker when that fails', async () => {
     const input = {
       name: 'Medicare',
-      payerId: '00952',
+      payerCode: '00952',
       claimFiling: 'MB',
       filingLimitDays: null,
       correctionMethod: null,
@@ -102,7 +102,7 @@ describe('payer service', () => {
     const service = createPayerService({ db, announce, embedder: embedder([]) });
     const input = {
       name: 'Medicare',
-      payerId: '00952',
+      payerCode: '00952',
       claimFiling: 'MB',
       filingLimitDays: null,
       correctionMethod: null,

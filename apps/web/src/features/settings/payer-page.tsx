@@ -52,7 +52,7 @@ const daysOf = (text: string) => (text === '' ? null : Number(text));
 
 export const toPayerDraft = (p: Payer | null): PayerInput => ({
   name: p?.name ?? '',
-  payerId: p?.payer_id ?? '',
+  payerCode: p?.payer_code ?? '',
   claimFiling: p?.claim_filing ?? 'CI',
   filingLimitDays: p?.filing_limit_days ?? null,
   correctionMethod: p?.correction_method ?? null,
@@ -104,8 +104,8 @@ export const PayerForm = ({
               required
               isMonospace
               hint="2 to 80 letters or digits"
-              value={draft.payerId}
-              onChange={(e) => setDraft({ ...draft, payerId: e.target.value })}
+              value={draft.payerCode}
+              onChange={(e) => setDraft({ ...draft, payerCode: e.target.value })}
             />
             <Select
               id="payer-filing"

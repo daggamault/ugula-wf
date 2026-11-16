@@ -15,7 +15,7 @@ import { searchText } from '../../shared/search.ts';
 
 export const payerSchema = v.object({
   name: v.pipe(v.string(), v.trim(), v.nonEmpty(), v.maxLength(60)),
-  payerId: v.pipe(
+  payerCode: v.pipe(
     v.string(),
     v.trim(),
     v.regex(/^[A-Za-z0-9]{2,80}$/, 'A clearinghouse payer ID is 2 to 80 letters or digits')
@@ -54,7 +54,7 @@ export type PayerInput = v.InferOutput<typeof payerSchema>;
 
 export const aliasParams = v.object({ id: uuid, aliasId: uuid });
 
-const PAYER_SORTS = ['name', 'payerId', 'filing'] as const;
+const PAYER_SORTS = ['name', 'payerCode', 'filing'] as const;
 
 export type PayerSort = (typeof PAYER_SORTS)[number];
 

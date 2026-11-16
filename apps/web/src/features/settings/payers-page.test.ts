@@ -17,7 +17,7 @@ import {
 const medicare: Payer = {
   id: 'p1',
   name: 'Medicare',
-  payer_id: '00952',
+  payer_code: '00952',
   claim_filing: 'MB',
   filing_limit_days: null,
   correction_method: null,

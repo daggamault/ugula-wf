@@ -69,7 +69,7 @@ const buildPayersTable = (db: Kysely<Database>) =>
       col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('name', 'text', (col) => col.notNull())
-    .addColumn('payer_id', 'text', (col) => col.notNull())
+    .addColumn('payer_code', 'text', (col) => col.notNull())
     .addColumn('claim_filing', 'text', (col) => col.notNull())
     .addColumn('filing_limit_days', 'integer')
     .addColumn('correction_method', 'text')
@@ -96,7 +96,7 @@ const buildPayersTable = (db: Kysely<Database>) =>
       'payers_plan_type_check',
       sql`plan_type in (${sql.join(Object.keys(PLAN_TYPES).map((c) => sql.lit(c)))})`
     )
-    .addCheckConstraint('payers_payer_id_check', sql`payer_id ~ '^[A-Za-z0-9]{2,80}$'`)
+    .addCheckConstraint('payers_payer_code_check', sql`payer_code ~ '^[A-Za-z0-9]{2,80}$'`)
     .addCheckConstraint(
       'payers_claim_filing_check',
       sql`claim_filing in (${sql.join(Object.keys(CLAIM_FILING_CODES).map((c) => sql.lit(c)))})`

@@ -30,7 +30,7 @@ export const findEligibilityClaim = (db: Db, agencyId: string, id: string) =>
           .select([
             'cc.id',
             payerName.as('payer'),
-            'dp.payer_id',
+            'dp.payer_code',
             'cc.member_id',
             sql<string>`cc.relationship`.as('relationship'),
             'cc.insured_first_name',
@@ -55,14 +55,14 @@ export const eligibilityRequests = (
   { force = true }: { force?: boolean } = {}
 ): EligibilityRequest[] =>
   row.coverages.flatMap((c) => {
-    if (!c.payer_id || !c.member_id || (!force && c.asked)) return [];
+    if (!c.payer_code || !c.member_id || (!force && c.asked)) return [];
     const self = c.relationship === SELF;
     const lastName = self ? row.last_name : c.insured_last_name;
     if (!lastName) return [];
     return [
       {
         trace: c.id,
-        payer: { name: c.payer, payerId: c.payer_id },
+        payer: { name: c.payer, payerId: c.payer_code },
         subscriber: {
           lastName,
           firstName: self ? row.first_name : c.insured_first_name,

@@ -97,7 +97,7 @@ const statusClaim = (db: Db, agencyId: string, claimId: string, coverageId: stri
       'cc.insured_first_name',
       'cc.insured_last_name',
       'dp.name as payer',
-      'dp.payer_id',
+      'dp.payer_code',
       agencyTimeZone(sql.ref('c.agency_id')).as('time_zone'),
       eb
         .selectFrom('claim_events as e')
@@ -151,7 +151,7 @@ export const statusInquiry = (r: StatusRow, at: Date): ClaimStatusInquiry | null
   if (!lastName) return null;
   return {
     trace: r.number,
-    payer: { name: r.payer, payerId: r.payer_id },
+    payer: { name: r.payer, payerId: r.payer_code },
     subscriber: self
       ? { ...patient, memberId: r.member_id }
       : {

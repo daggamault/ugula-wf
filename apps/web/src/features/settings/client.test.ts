@@ -17,7 +17,7 @@ describe('createSettingsClient', () => {
     assert.deepEqual(await client.payer('p1'), { id: 'p1' });
     await client.savePayer({
       name: 'Medicare',
-      payerId: '00952',
+      payerCode: '00952',
       claimFiling: 'MB',
       filingLimitDays: null,
       correctionMethod: null,

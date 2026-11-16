@@ -16,7 +16,7 @@ const PAGE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
 
 const MEDICARE = {
   name: 'Medicare',
-  payerId: '00952',
+  payerCode: '00952',
   claimFiling: 'MB',
   filingLimitDays: null,
   correctionMethod: null,
@@ -42,12 +42,12 @@ describe('payer queries', () => {
 
   it('searches names, clearinghouse payer IDs and learned names for the text', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    await searchPayers(db, 't-1', { ...PAGE, sort: 'payerId', dir: 'desc', q: ' Blue%' });
+    await searchPayers(db, 't-1', { ...PAGE, sort: 'payerCode', dir: 'desc', q: ' Blue%' });
     const [list] = queries;
     assert.ok(list?.sql.includes('lower(p.name) like $2'));
-    assert.ok(list?.sql.includes('lower(p.payer_id) like $3'));
+    assert.ok(list?.sql.includes('lower(p.payer_code) like $3'));
     assert.ok(list?.sql.includes('exists (select "m"."id" from "payer_aliases" as "m"'));
-    assert.ok(list?.sql.includes('order by lower(p.payer_id) desc nulls last'));
+    assert.ok(list?.sql.includes('order by lower(p.payer_code) desc nulls last'));
     assert.deepEqual(list?.parameters.slice(1, 4), ['%blue\\%%', '%blue\\%%', '%blue\\%%']);
   });
 

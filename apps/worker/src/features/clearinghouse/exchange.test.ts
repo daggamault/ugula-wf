@@ -41,7 +41,7 @@ const eligibilityRow = {
     {
       id: COVERAGE,
       payer: 'Medicare',
-      payer_id: 'DEMOMCR',
+      payer_code: 'DEMOMCR',
       member_id: '1EG4TE5MK73',
       relationship: '18',
       insured_first_name: null,
@@ -59,7 +59,7 @@ const statusRow: Parameters<typeof statusInquiry>[0] = {
   insured_first_name: null,
   insured_last_name: null,
   payer: 'Medicare',
-  payer_id: 'DEMOMCR',
+  payer_code: 'DEMOMCR',
   payer_claim_number: 'PCN-1',
   submitted: true,
   received: 3

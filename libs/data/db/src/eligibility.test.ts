@@ -25,7 +25,7 @@ const row = {
     {
       id: MEDICARE,
       payer: 'Medicare',
-      payer_id: 'DEMOMCR',
+      payer_code: 'DEMOMCR',
       member_id: '1EG4TE5MK73',
       relationship: '18',
       insured_first_name: null,
@@ -35,7 +35,7 @@ const row = {
     {
       id: BLUE,
       payer: 'Blue Plan',
-      payer_id: 'BCBS1',
+      payer_code: 'BCBS1',
       member_id: 'XYZ1',
       relationship: '19',
       insured_first_name: 'John',
@@ -45,7 +45,7 @@ const row = {
     {
       id: 'c2',
       payer: 'Unlisted',
-      payer_id: null,
+      payer_code: null,
       member_id: 'Q',
       relationship: '18',
       insured_first_name: null,

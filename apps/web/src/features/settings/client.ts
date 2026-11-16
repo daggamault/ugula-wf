@@ -79,7 +79,7 @@ export type PayerAlias = { id: string; alias: string };
 export type Payer = {
   id: string;
   name: string;
-  payer_id: string;
+  payer_code: string;
   claim_filing: string;
   filing_limit_days: number | null;
   correction_method: CorrectionMethod | null;
@@ -127,7 +127,7 @@ export type FacilityInput = {
 
 export type PayerInput = {
   name: string;
-  payerId: string;
+  payerCode: string;
   claimFiling: string;
   filingLimitDays: number | null;
   correctionMethod: CorrectionMethod | null;

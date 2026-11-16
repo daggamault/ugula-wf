@@ -62,7 +62,7 @@ const claimToBill = (db: Db, agencyId: string, id: string) =>
           .select([
             'cc.id',
             sql<string>`coalesce(dp.name, cc.payer_name)`.as('payer'),
-            'dp.payer_id',
+            'dp.payer_code',
             'dp.claim_filing',
             'dp.correction_method',
             'cc.member_id',
@@ -215,7 +215,7 @@ type CoverageRow = ReadyClaimRow['coverages'][number];
 
 const payerOf = (name: string, c: CoverageRow | undefined): BatchPayer => ({
   name,
-  payerId: c?.payer_id ?? null,
+  payerId: c?.payer_code ?? null,
   claimFiling: c?.claim_filing ?? null,
   memberId: c?.member_id ?? null,
   groupId: c?.group_id ?? null,

@@ -89,7 +89,7 @@ const BLUE = '01a16617-7704-7ba6-b9b5-000000000002';
 const medicare = {
   id: MEDICARE,
   payer: 'Medicare',
-  payer_id: 'DEMOMCR',
+  payer_code: 'DEMOMCR',
   claim_filing: 'MB' as const,
   correction_method: 'reopening' as const,
   member_id: '1EG4TE5MK73',
@@ -203,7 +203,7 @@ describe('pendingClaim', () => {
       service_date: null,
       origin_code: null,
       destination_code: null,
-      coverages: [{ ...medicare, member_id: null, payer_id: null, claim_filing: null }],
+      coverages: [{ ...medicare, member_id: null, payer_code: null, claim_filing: null }],
       diagnoses: []
     });
     const waiting = [

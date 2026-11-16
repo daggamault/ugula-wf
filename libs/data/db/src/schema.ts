@@ -802,7 +802,7 @@ export type PayersTable = {
   id: Generated<string>;
   agency_id: string;
   name: string;
-  payer_id: string;
+  payer_code: string;
   claim_filing: ClaimFilingCode;
   filing_limit_days: ColumnType<number | null, number | null | undefined, number | null>;
   correction_method: ColumnType<
