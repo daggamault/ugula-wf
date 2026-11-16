@@ -22,3 +22,4 @@ Project documentation lives in [`.docs`](.docs). Read **Standards** before contr
 | [Web App](.docs/web-app.md)                                    | Routing, agency paths, API scoping, live updates, pages                                        |
 | [Testing](.docs/testing.md)                                    | Unit tests, test kits, end-to-end suites                                                       |
 | [Workflow Architecture Review](.docs/workflow-architecture.md) | The critical review and target design that drives the roadmap                                  |
+| [Readable Workflows](.docs/readable-workflows.md)              | Moving every decision out of code and formulas into primitives on the canvas                   |
