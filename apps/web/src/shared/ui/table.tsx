@@ -46,7 +46,7 @@ const Columns = createContext<readonly Column[]>([]);
 
 const Position = createContext(0);
 
-const secondaryClasses = 'md:hidden lg:table-cell';
+const secondaryClasses = '@4xl:hidden @6xl:table-cell';
 
 const DIRECTION_LABELS: Readonly<Record<SortDir, string>> = {
   asc: 'Ascending',
@@ -126,7 +126,7 @@ const MobileSort = ({
     ? byColumn
     : [{ value: current, label: 'Default Order' }, ...byColumn];
   return byColumn.length ? (
-    <div className="flex items-center gap-2 md:hidden">
+    <div className="flex items-center gap-2 @4xl:hidden">
       <label htmlFor={id} className="text-surface-fg-muted shrink-0 text-sm font-medium">
         Sort By
       </label>
@@ -146,18 +146,18 @@ const MobileSort = ({
 export const Table = ({ label, head, sorting, children }: TableProps) => {
   const columns = head.map(columnOf);
   return (
-    <div className="flex flex-col gap-3">
+    <div className="@container flex flex-col gap-3">
       {sorting ? <MobileSort columns={columns} sorting={sorting} /> : null}
-      <div className="md:border-border md:bg-surface md:overflow-x-auto md:rounded-xl md:border">
-        <table aria-label={label} className="block w-full text-left text-sm md:table">
-          <thead className="sr-only md:not-sr-only md:table-header-group">
+      <div className="@4xl:border-border @4xl:bg-surface @4xl:overflow-x-auto @4xl:rounded-xl @4xl:border">
+        <table aria-label={label} className="block w-full text-left text-sm @4xl:table">
+          <thead className="sr-only @4xl:not-sr-only @4xl:table-header-group">
             <tr>
               {columns.map((c) => (
                 <HeaderCell key={c.label} column={c} sorting={sorting} />
               ))}
             </tr>
           </thead>
-          <tbody className="flex flex-col gap-3 md:table-row-group">
+          <tbody className="flex flex-col gap-3 @4xl:table-row-group">
             <Columns value={columns}>{children}</Columns>
           </tbody>
         </table>
@@ -174,20 +174,20 @@ const positioned = (children: ReactNode) =>
   ));
 
 const rowClasses =
-  'border-border bg-surface flex flex-col gap-2 rounded-xl border p-4 md:table-row md:rounded-none md:border-0 md:border-b md:bg-transparent md:p-0';
+  'border-border bg-surface flex flex-col gap-2 rounded-xl border p-4 @4xl:table-row @4xl:rounded-none @4xl:border-0 @4xl:border-b @4xl:bg-transparent @4xl:p-0';
 
 export const TableRow = ({ children }: { children: ReactNode }) => (
-  <tr className={classNamesOf(rowClasses, 'md:last:border-b-0')}>{positioned(children)}</tr>
+  <tr className={classNamesOf(rowClasses, '@4xl:last:border-b-0')}>{positioned(children)}</tr>
 );
 
 type TableCellKind = 'text' | 'wrap' | 'numeric' | 'date' | 'actions';
 
 const cellKindClasses: Readonly<Record<TableCellKind, string>> = {
-  text: 'md:whitespace-nowrap',
-  wrap: 'md:min-w-48 md:whitespace-normal',
-  numeric: 'tabular-nums md:whitespace-nowrap',
-  date: 'tabular-nums md:whitespace-nowrap',
-  actions: 'justify-end md:w-px md:whitespace-nowrap'
+  text: '@4xl:whitespace-nowrap',
+  wrap: '@4xl:min-w-48 @4xl:whitespace-normal',
+  numeric: 'tabular-nums @4xl:whitespace-nowrap',
+  date: 'tabular-nums @4xl:whitespace-nowrap',
+  actions: 'justify-end @4xl:w-px @4xl:whitespace-nowrap'
 };
 
 type TableCellProps = Omit<ComponentProps<'td'>, 'className'> & {
@@ -210,8 +210,8 @@ export const TableCell = ({
   return (
     <td
       className={classNamesOf(
-        'flex min-w-0 items-center gap-4 md:table-cell md:px-4 md:py-3 md:align-middle',
-        isTitle ? 'text-base font-semibold md:text-sm md:font-normal' : 'justify-between',
+        'flex min-w-0 items-center gap-4 @4xl:table-cell @4xl:px-4 @4xl:py-3 @4xl:align-middle',
+        isTitle ? 'text-base font-semibold @4xl:text-sm @4xl:font-normal' : 'justify-between',
         isMuted && 'text-surface-fg-muted',
         isSecondary && secondaryClasses,
         cellKindClasses[kind]
@@ -219,11 +219,11 @@ export const TableCell = ({
       {...props}
     >
       {label ? (
-        <span className="text-surface-fg-muted shrink-0 text-xs/5 font-semibold tracking-wide uppercase md:hidden">
+        <span className="text-surface-fg-muted shrink-0 text-xs/5 font-semibold tracking-wide uppercase @4xl:hidden">
           {label}
         </span>
       ) : null}
-      <span className={classNamesOf('min-w-0 md:contents', label && 'max-md:text-right')}>
+      <span className={classNamesOf('min-w-0 @4xl:contents', label && '@max-4xl:text-right')}>
         {children}
       </span>
     </td>

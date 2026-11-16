@@ -32,14 +32,14 @@ describe('Table', () => {
     const html = render();
     assert.ok(html.includes('aria-label="Runs"'));
     assert.ok(html.includes('<th scope="col"'));
-    assert.ok(html.includes('sr-only md:not-sr-only'));
-    assert.ok(html.includes('md:table-row'));
-    assert.ok(!html.includes('md:hidden">Name<'));
-    assert.ok(html.includes('md:hidden">Total</span>'));
-    assert.ok(html.includes('md:hidden">Started</span>'));
-    assert.ok(!html.includes('md:hidden">Actions<'));
+    assert.ok(html.includes('sr-only @4xl:not-sr-only'));
+    assert.ok(html.includes('@4xl:table-row'));
+    assert.ok(!html.includes('@4xl:hidden">Name<'));
+    assert.ok(html.includes('@4xl:hidden">Total</span>'));
+    assert.ok(html.includes('@4xl:hidden">Started</span>'));
+    assert.ok(!html.includes('@4xl:hidden">Actions<'));
     assert.ok(html.includes('<span class="sr-only">Actions</span>'));
-    assert.ok(html.includes('md:hidden lg:table-cell'));
+    assert.ok(html.includes('@4xl:hidden @6xl:table-cell'));
     assert.ok(!html.includes('href='));
   });
 
@@ -109,8 +109,8 @@ describe('Table cells', () => {
     );
     assert.ok(html.includes('w-px'));
     assert.ok(html.includes('justify-between text-surface-fg-muted tabular-nums'));
-    assert.ok(html.includes('max-md:text-right'));
-    assert.ok(html.includes('md:px-4 md:py-3 md:align-middle'));
+    assert.ok(html.includes('@max-4xl:text-right'));
+    assert.ok(html.includes('@4xl:px-4 @4xl:py-3 @4xl:align-middle'));
     assert.ok(html.includes('rounded-xl') && !html.includes('shadow'));
   });
 });
@@ -123,7 +123,7 @@ describe('Table alignment', () => {
       sortHref: (k) => `/runs?sort=${k}`,
       sortTo: (k, d) => `/runs?sort=${k}&dir=${d}`
     });
-    assert.doesNotMatch(html, /(?<![\w:-])(md:)?text-right/);
+    assert.doesNotMatch(html, /(?<![\w:-])(@4xl:)?text-right/);
     assert.ok(!html.includes('flex-row-reverse'));
     assert.ok(html.includes('tabular-nums'));
   });
