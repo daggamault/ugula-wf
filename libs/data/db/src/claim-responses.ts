@@ -3,7 +3,8 @@ import {
   CLAIM_SIGNAL,
   type DenialRoute,
   isClosedStatus,
-  type LineAdjudication
+  type LineAdjudication,
+  money
 } from '@ugula/billing';
 import { enqueueRuns, type RunQueueClient, resume } from '@ugula/run-queue';
 import { type Kysely, sql } from 'kysely';
@@ -220,9 +221,7 @@ const negative = fail(
   'Negative amounts (reversals and takebacks) need a biller to post them'
 );
 
-const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-
-export type PostedResponse = { balanceCents: number; adjustedCents: number; duplicate: boolean };
+type PostedResponse = { balanceCents: number; adjustedCents: number; duplicate: boolean };
 
 export const nudgeClaims = (
   tx: Db,
@@ -260,7 +259,7 @@ const postReversal = async (
   if (-response.paidCents > posted.paid || -response.adjustedCents > posted.adjusted) {
     return fail(
       'invalid',
-      `The reversal takes back more than the ${dollars(posted.paid)} paid and ${dollars(posted.adjusted)} adjusted posted for this payer; post it by hand`
+      `The reversal takes back more than the ${money(posted.paid)} paid and ${money(posted.adjusted)} adjusted posted for this payer; post it by hand`
     );
   }
   const balance = await claimBalance(tx, claimId);
@@ -306,14 +305,14 @@ export const postClaimResponse = async (
     if (response.paidCents > paid) {
       return fail(
         'invalid',
-        `${dollars(response.paidCents)} is more than the ${dollars(paid)} paid that can be refunded`
+        `${money(response.paidCents)} is more than the ${money(paid)} paid that can be refunded`
       );
     }
     const credit = Math.max(0, -balance);
     if (response.paidCents > credit) {
       return fail(
         'invalid',
-        `${dollars(response.paidCents)} is more than the ${dollars(credit)} credit balance that can be refunded`
+        `${money(response.paidCents)} is more than the ${money(credit)} credit balance that can be refunded`
       );
     }
     await insertResponse(tx, agencyId, claimId, userId, response);
@@ -324,7 +323,7 @@ export const postClaimResponse = async (
   if (response.exactAdjustment && response.adjustedCents > open) {
     return fail(
       'invalid',
-      `The adjustments of ${dollars(response.adjustedCents)} take off more than the ${dollars(open)} left open after the payment; post it by hand`
+      `The adjustments of ${money(response.adjustedCents)} take off more than the ${money(open)} left open after the payment; post it by hand`
     );
   }
   const adjustedCents = Math.min(response.adjustedCents, open);
