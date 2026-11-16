@@ -19,6 +19,7 @@ import {
   INSURED_RELATIONSHIPS,
   MAX_CONTROL_NUMBER,
   MAX_DOCUMENTED_COUNT,
+  MAX_EMPLOYER_SIZE,
   MSP_ACCIDENTS,
   ORIGIN_DESTINATION_CODES,
   PATIENT_EVENT_KINDS,
@@ -102,6 +103,7 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('has_msp_employer_plan', 'boolean')
     .addColumn('has_msp_esrd', 'boolean')
     .addColumn('has_msp_disability', 'boolean')
+    .addColumn('msp_employer_size', 'integer')
     .addColumn('msp_accident', 'text')
     .addColumn('prior_authorization_expires_on', 'date')
     .addColumn('pcs_type', 'text')
@@ -167,6 +169,10 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addCheckConstraint(
       'claims_msp_accident_check',
       sql`msp_accident in (${list(Object.keys(MSP_ACCIDENTS))})`
+    )
+    .addCheckConstraint(
+      'claims_msp_employer_size_check',
+      sql`msp_employer_size between 1 and ${sql.lit(MAX_EMPLOYER_SIZE)}`
     )
     .addCheckConstraint('claims_pcs_type_check', sql`pcs_type in (${list(Object.keys(PCS_TYPES))})`)
     .addCheckConstraint(

@@ -62,16 +62,13 @@ export const DOCUMENTATION = model(
     f('abnOnFile', 'boolean', 'Advance Beneficiary Notice on file'),
     f('abnSignedOn', 'string', 'Advance Beneficiary Notice signed on (YYYY-MM-DD)'),
     f('denialExpected', 'boolean', 'Medicare is expected to deny the transport'),
-    f(
-      'mspEmployerPlan',
-      'boolean',
-      'MSP: group health plan from current employment, employer of 20 or more'
-    ),
+    f('mspEmployerPlan', 'boolean', 'MSP: group health plan from current employment'),
     f('mspEsrd', 'boolean', 'MSP: end-stage renal disease coordination period'),
+    f('mspDisability', 'boolean', 'MSP: disabled with a group health plan through employment'),
     f(
-      'mspDisability',
-      'boolean',
-      'MSP: disabled with a large group health plan (employer of 100 or more)'
+      'mspEmployerSize',
+      'integer',
+      'MSP: employees at the employer that sponsors the group health plan'
     ),
     f(
       'mspAccident',

@@ -99,6 +99,7 @@ export type Documentation = {
   mspEmployerPlan: boolean | null;
   mspEsrd: boolean | null;
   mspDisability: boolean | null;
+  mspEmployerSize: number | null;
   mspAccident: MspAccident | null;
   priorAuthorizationExpiresOn: string | null;
   pcsType: PcsType | null;
@@ -209,6 +210,11 @@ export const MAX_DOCUMENTED_COUNT = 99;
 const countOf = (min: number) => (x: unknown) =>
   typeof x === 'number' && Number.isInteger(x) && x >= min && x <= MAX_DOCUMENTED_COUNT ? x : null;
 
+export const MAX_EMPLOYER_SIZE = 9_999_999;
+
+export const employerSizeOf = (x: unknown) =>
+  typeof x === 'number' && Number.isInteger(x) && x >= 1 && x <= MAX_EMPLOYER_SIZE ? x : null;
+
 const milesOf = (x: unknown) =>
   typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= MAX_LOADED_MILES ? x : null;
 
@@ -241,6 +247,7 @@ export const readDocumentation = (x: unknown): Documentation => {
     mspEmployerPlan: flagOf(r.mspEmployerPlan),
     mspEsrd: flagOf(r.mspEsrd),
     mspDisability: flagOf(r.mspDisability),
+    mspEmployerSize: employerSizeOf(r.mspEmployerSize),
     mspAccident: mspAccidentOf(r.mspAccident),
     priorAuthorizationExpiresOn: dateOf(r.priorAuthorizationExpiresOn),
     pcsType: pcsTypeOf(r.pcsType),

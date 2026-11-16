@@ -39,6 +39,7 @@ type Documented = Pick<
   | 'has_msp_employer_plan'
   | 'has_msp_esrd'
   | 'has_msp_disability'
+  | 'msp_employer_size'
   | 'msp_accident'
   | 'prior_authorization_expires_on'
   | 'pcs_type'
@@ -75,20 +76,28 @@ export const abnText = (c: Pick<Documented, 'has_abn' | 'abn_signed_on' | 'is_de
         : 'Not on file';
 
 const MSP_REASONS = [
-  ['has_msp_employer_plan', 'Employer group health plan'],
-  ['has_msp_esrd', 'End-stage renal disease'],
-  ['has_msp_disability', 'Disability with a large group plan']
+  ['has_msp_employer_plan', 'Employer group health plan', 20],
+  ['has_msp_esrd', 'End-stage renal disease', 0],
+  ['has_msp_disability', 'Disability with a large group plan', 100]
 ] as const;
 
 export const mspText = (
   c: Pick<
     Documented,
-    'has_msp_employer_plan' | 'has_msp_esrd' | 'has_msp_disability' | 'msp_accident'
+    | 'has_msp_employer_plan'
+    | 'has_msp_esrd'
+    | 'has_msp_disability'
+    | 'msp_employer_size'
+    | 'msp_accident'
   >
 ) => {
   const first = [
     ...(c.msp_accident && c.msp_accident !== 'none' ? [MSP_ACCIDENTS[c.msp_accident]] : []),
-    ...MSP_REASONS.flatMap(([key, label]) => (c[key] ? [label] : []))
+    ...MSP_REASONS.flatMap(([key, label, employees]) =>
+      c[key] && (c.msp_employer_size ?? 0) >= employees
+        ? [employees ? `${label} (${c.msp_employer_size} employees)` : label]
+        : []
+    )
   ];
   if (first.length) return `Medicare pays second: ${first.join('; ')}`;
   const answered = c.msp_accident !== null && MSP_REASONS.every(([key]) => c[key] !== null);

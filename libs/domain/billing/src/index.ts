@@ -135,6 +135,7 @@ export {
   isSignatureStatus,
   isTransportReason,
   MAX_DOCUMENTED_COUNT,
+  MAX_EMPLOYER_SIZE,
   MSP_ACCIDENTS,
   type MspAccident,
   PCS_TYPES,

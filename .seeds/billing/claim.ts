@@ -844,7 +844,13 @@ const map837p = (): GraphDef => {
   g.wire('payer.insuredLastName', 'subscriber.lastName');
   g.wire('payer.insuredFirstName', 'subscriber.firstName');
   for (const pin of ['name', 'payerId', 'claimFiling']) g.wire(`payer.${pin}`, `x12Payer.${pin}`);
-  for (const pin of ['mspEmployerPlan', 'mspEsrd', 'mspDisability', 'mspAccident']) {
+  for (const pin of [
+    'mspEmployerPlan',
+    'mspEsrd',
+    'mspDisability',
+    'mspEmployerSize',
+    'mspAccident'
+  ]) {
     g.wire(`documentation.${pin}`, `msp.${pin}`);
   }
   g.wire('payer.claimFiling', 'insuranceType.claimFiling');

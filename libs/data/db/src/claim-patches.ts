@@ -33,6 +33,7 @@ const documentationValues = (d: ClaimEdit['documentation']) =>
     has_msp_employer_plan: d.mspEmployerPlan,
     has_msp_esrd: d.mspEsrd,
     has_msp_disability: d.mspDisability,
+    msp_employer_size: d.mspEmployerSize,
     msp_accident: d.mspAccident,
     prior_authorization: d.priorAuthorization,
     prior_authorization_expires_on: d.priorAuthorizationExpiresOn,

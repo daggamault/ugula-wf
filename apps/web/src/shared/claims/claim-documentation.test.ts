@@ -37,6 +37,7 @@ const documented = {
   has_msp_employer_plan: false,
   has_msp_esrd: false,
   has_msp_disability: false,
+  msp_employer_size: null,
   msp_accident: 'none' as const,
   prior_authorization_expires_on: '2026-12-01',
   pcs_type: 'repetitive' as const,
@@ -86,6 +87,14 @@ describe('claim documentation', () => {
       "Medicare pays second: Workers' compensation; End-stage renal disease"
     );
     assert.equal(mspText({ ...documented, has_msp_esrd: null }), 'Not answered');
+    assert.equal(
+      mspText({ ...documented, has_msp_employer_plan: true, msp_employer_size: 12 }),
+      'Medicare pays first'
+    );
+    assert.equal(
+      mspText({ ...documented, has_msp_employer_plan: true, msp_employer_size: 40 }),
+      'Medicare pays second: Employer group health plan (40 employees)'
+    );
     assert.match(abnText(documented), /^On file, signed .+ \(GA\)$/);
     assert.equal(
       abnText({ ...documented, has_abn: null }),

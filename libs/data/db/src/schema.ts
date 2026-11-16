@@ -504,6 +504,7 @@ export type ClaimsTable = {
   has_msp_employer_plan: boolean | null;
   has_msp_esrd: boolean | null;
   has_msp_disability: boolean | null;
+  msp_employer_size: number | null;
   msp_accident: MspAccident | null;
   prior_authorization_expires_on: NullableDate;
   pcs_type: PcsType | null;

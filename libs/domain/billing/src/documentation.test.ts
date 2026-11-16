@@ -98,6 +98,7 @@ describe('readDocumentation', () => {
         mspEmployerPlan: null,
         mspEsrd: null,
         mspDisability: null,
+        mspEmployerSize: null,
         mspAccident: null,
         priorAuthorizationExpiresOn: null,
         pcsType: null,

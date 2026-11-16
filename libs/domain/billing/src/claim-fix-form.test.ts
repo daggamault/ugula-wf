@@ -56,6 +56,7 @@ describe('fixForm', () => {
         'mspEmployerPlan',
         'mspEsrd',
         'mspDisability',
+        'mspEmployerSize',
         'mspAccident',
         'note'
       ]

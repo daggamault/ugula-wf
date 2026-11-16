@@ -17,6 +17,7 @@ import {
 import { ADDRESS_FIELDS } from './claim-fix-fields.ts';
 import type { ClaimCheck } from './claim-validation.ts';
 import {
+  employerSizeOf,
   type FacilityStay,
   facilityStayOf,
   isSignatureStatus,
@@ -62,6 +63,7 @@ type DocumentationValues = {
   mspEmployerPlan: boolean | null;
   mspEsrd: boolean | null;
   mspDisability: boolean | null;
+  mspEmployerSize: number | null;
   mspAccident: MspAccident | null;
   priorAuthorization: string | null;
   priorAuthorizationExpiresOn: string | null;
@@ -169,6 +171,7 @@ const documentationPatch = (
     mspEmployerPlan: flagIn(r.mspEmployerPlan),
     mspEsrd: flagIn(r.mspEsrd),
     mspDisability: flagIn(r.mspDisability),
+    mspEmployerSize: employerSizeOf(r.mspEmployerSize),
     mspAccident: mspAccidentOf(r.mspAccident),
     priorAuthorization: textOrNull(r.priorAuthorization),
     priorAuthorizationExpiresOn: dateIn(r.priorAuthorizationExpiresOn),

@@ -466,17 +466,18 @@ const CHECKS: Check[] = [
       'A claim billing Medicare answers the MSP questions, and when another payer pays first (Medicare Secondary Payer rule) that payer is on the claim and billed before Medicare; Medicare is billed after another payer only when the MSP rule says why (SBR05).',
     codes: {
       'msp-unanswered': 'warning',
+      'msp-employer-size-missing': 'warning',
       'msp-primary-missing': 'blocking',
       'msp-order': 'blocking',
       'msp-type-missing': 'blocking'
     },
-    facts: ['billsMedicare', 'payers', ...MSP_ANSWERS],
+    facts: ['billsMedicare', 'payers', ...MSP_ANSWERS, 'mspEmployerSize'],
     uses: [
       {
         id: 'msp',
         type: 'billing.medicare-secondary-payer',
         label: 'Medicare Secondary Payer',
-        inputs: MSP_ANSWERS,
+        inputs: [...MSP_ANSWERS, 'mspEmployerSize'],
         outputs: { medicareSecondary: 'secondary', reasons: 'why' }
       }
     ],
@@ -487,6 +488,14 @@ const CHECKS: Check[] = [
       'msp-unanswered',
       'msp',
       '"Answer the Medicare Secondary Payer questions before billing Medicare"'
+    )
+  )},
+  ${when(
+    '(mspEmployerPlan == true || mspDisability == true) && mspEmployerSize == null',
+    issue(
+      'msp-employer-size-missing',
+      'msp',
+      '"Enter how many employees the employer that sponsors the group health plan has; Medicare pays second only from 20 (working aged) or 100 (disability)"'
     )
   )},
   secondary && !some(payers ?? [], p => !p.medicare)

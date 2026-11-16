@@ -199,7 +199,7 @@ describe('createDraftStore', () => {
     );
     await createDraftStore(db, boss).saveClaim('r1', ID, 'k', claim);
     const [update] = sqlOf(queries, 'update "claims"');
-    assert.ok(update?.sql.endsWith('where "id" = $47 and "status" = $48'));
+    assert.ok(update?.sql.endsWith('where "id" = $48 and "status" = $49'));
     assert.ok(!update?.parameters.includes('needs_review'));
     assert.ok(update?.parameters.includes('emergency') && update.parameters.includes('ALS1'));
     assert.ok(update?.parameters.includes('2026-10-01'));

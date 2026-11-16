@@ -137,6 +137,7 @@ const claimRow = (id: string, over: Partial<ReadyClaimRow> = {}): ReadyClaimRow 
   has_msp_employer_plan: null,
   has_msp_esrd: null,
   has_msp_disability: null,
+  msp_employer_size: null,
   msp_accident: null,
   prior_authorization_expires_on: null,
   pcs_type: null,

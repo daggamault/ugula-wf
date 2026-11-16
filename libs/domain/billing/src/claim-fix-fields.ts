@@ -15,6 +15,7 @@ import type { ClaimField } from './claim-validation.ts';
 import {
   FACILITY_STAYS,
   MAX_DOCUMENTED_COUNT,
+  MAX_EMPLOYER_SIZE,
   MSP_ACCIDENTS,
   PCS_TYPES,
   SIGNATURE_LABELS,
@@ -97,8 +98,7 @@ export const DOCUMENTATION_FIX_FIELDS: FieldSpec[] = [
   {
     name: 'mspEmployerPlan',
     type: 'boolean',
-    label:
-      'MSP: group health plan from the patient or spouse’s current employment, at an employer with 20 or more employees'
+    label: 'MSP: group health plan from the patient or spouse’s current employment'
   },
   {
     name: 'mspEsrd',
@@ -108,8 +108,14 @@ export const DOCUMENTATION_FIX_FIELDS: FieldSpec[] = [
   {
     name: 'mspDisability',
     type: 'boolean',
-    label:
-      'MSP: under 65 and disabled, with a group health plan from an employer with 100 or more employees'
+    label: 'MSP: under 65 and disabled, with a group health plan through employment'
+  },
+  {
+    name: 'mspEmployerSize',
+    type: 'integer',
+    label: 'MSP: employees at the employer that sponsors the group health plan',
+    min: 1,
+    max: MAX_EMPLOYER_SIZE
   },
   {
     name: 'mspAccident',
@@ -270,7 +276,7 @@ export const FIELDS_OF: Record<ClaimField, string[]> = {
   nonCoveredMiles: CHARGE_FIELDS,
   patientCount: ['patientCount'],
   abn: ['abnOnFile', 'abnSignedOn', 'denialExpected'],
-  msp: ['mspEmployerPlan', 'mspEsrd', 'mspDisability', 'mspAccident'],
+  msp: ['mspEmployerPlan', 'mspEsrd', 'mspDisability', 'mspEmployerSize', 'mspAccident'],
   priorAuthorization: [
     'priorAuthorization',
     'priorAuthorizationExpiresOn',

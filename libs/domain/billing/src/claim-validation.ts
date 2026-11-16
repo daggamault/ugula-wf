@@ -254,6 +254,7 @@ export const checkFactsOf = (c: ClaimCheck, asOf: Date) => {
     mspEmployerPlan: d.mspEmployerPlan,
     mspEsrd: d.mspEsrd,
     mspDisability: d.mspDisability,
+    mspEmployerSize: d.mspEmployerSize,
     mspAccident: d.mspAccident,
     priorAuthorization: d.priorAuthorization,
     priorAuthorizationDaysLeft:

@@ -20,6 +20,7 @@ export const DOCUMENTATION_COLUMNS = [
   'c.has_msp_employer_plan',
   'c.has_msp_esrd',
   'c.has_msp_disability',
+  'c.msp_employer_size',
   'c.msp_accident',
   'c.prior_authorization_expires_on',
   'c.pcs_type',
@@ -48,6 +49,7 @@ type DocumentationRow = {
   has_msp_employer_plan: boolean | null;
   has_msp_esrd: boolean | null;
   has_msp_disability: boolean | null;
+  msp_employer_size: number | null;
   msp_accident: string | null;
   prior_authorization_expires_on: string | null;
   pcs_type: string | null;
@@ -79,6 +81,7 @@ export const documentationOf = (row: DocumentationRow): Documentation =>
     mspEmployerPlan: row.has_msp_employer_plan,
     mspEsrd: row.has_msp_esrd,
     mspDisability: row.has_msp_disability,
+    mspEmployerSize: row.msp_employer_size,
     mspAccident: row.msp_accident,
     priorAuthorizationExpiresOn: row.prior_authorization_expires_on,
     pcsType: row.pcs_type,
@@ -107,6 +110,7 @@ export const documentationValues = (d: Documentation) => ({
   has_msp_employer_plan: d.mspEmployerPlan,
   has_msp_esrd: d.mspEsrd,
   has_msp_disability: d.mspDisability,
+  msp_employer_size: d.mspEmployerSize,
   msp_accident: d.mspAccident,
   prior_authorization_expires_on: d.priorAuthorizationExpiresOn,
   pcs_type: d.pcsType,
