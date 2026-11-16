@@ -44,7 +44,11 @@ const buildNotificationsIndexes = (db: Kysely<Database>) => [
     .createIndex('idx_notifications_agency_created')
     .on('notifications')
     .columns(['agency_id', 'created_at desc']),
-  db.schema.createIndex('idx_notifications_user_id').on('notifications').column('user_id')
+  db.schema.createIndex('idx_notifications_user_id').on('notifications').column('user_id'),
+  db.schema
+    .createIndex('idx_notification_states_agency_id')
+    .on('notification_states')
+    .column('agency_id')
 ];
 
 export const createNotificationsTables = async (db: Kysely<Database>) => {
