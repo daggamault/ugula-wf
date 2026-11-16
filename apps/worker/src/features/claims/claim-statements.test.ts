@@ -123,6 +123,65 @@ describe('createStatementStore', () => {
     );
   });
 
+  it('dates payments in UTC, names the agency and the claim by id when the profile and PCR are missing', async () => {
+    const { db } = createRecordingDb((q) =>
+      q.sql.includes('from "claims" as "c"')
+        ? [
+            {
+              id: ID,
+              pcr_number: null,
+              total_cents: 1_000,
+              balance_cents: 0,
+              service_date: null,
+              first_name: 'Jane',
+              last_name: 'Doe',
+              address_line: null,
+              city: null,
+              state: null,
+              postal_code: null,
+              organization_name: null,
+              agency_address: null,
+              agency_city: null,
+              agency_state: null,
+              agency_postal_code: null,
+              phone: null,
+              time_zone: null
+            }
+          ]
+        : q.sql.includes('from "claim_lines"')
+          ? []
+          : [
+              {
+                kind: 'balance_protected',
+                payer: null,
+                paid_cents: 0,
+                adjusted_cents: 1_000,
+                paid_on: null,
+                created_at: '2026-10-26T02:30:00Z'
+              }
+            ]
+    );
+    const data = await createStatementStore(db, blobs).statementData('r1', ID);
+    assert.deepEqual(
+      [data.agency, data.reference, data.serviceDate, data.payments],
+      [
+        null,
+        '0195f2a4',
+        null,
+        [{ date: '2026-10-26', from: 'Agency', paidCents: 0, adjustedCents: 1_000 }]
+      ]
+    );
+  });
+
+  it('refuses a claim it cannot find, never querying a non-UUID id', async () => {
+    const { db, queries } = createRecordingDb();
+    const store = createStatementStore(db, blobs);
+    await assert.rejects(() => store.statementData('r1', 'nope'), /Claim nope does not exist/);
+    assert.equal(queries[0]?.parameters[0], null);
+    await assert.rejects(() => store.statementData('r1', ID), new RegExp(`Claim ${ID} does not`));
+    assert.equal(queries.length, 2);
+  });
+
   it('stores statement PDFs under the agency and logs them once per step', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('select') ? [{ id: ID, agency_id: 't-1' }] : []

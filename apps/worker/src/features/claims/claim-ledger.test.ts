@@ -138,6 +138,74 @@ describe('createLedgerStore', () => {
     );
   });
 
+  it('reads a claim without a patient, a signal or a pending review', async () => {
+    const { db } = createRecordingDb((q) =>
+      q.sql.includes('left join "patients"')
+        ? [
+            {
+              id: ID,
+              total_cents: 0,
+              pcr_number: null,
+              first_name: null,
+              last_name: null,
+              facility_id: 'f1',
+              service_date: null,
+              pickup_state: null,
+              received: null,
+              pending_review: null
+            }
+          ]
+        : []
+    );
+    assert.deepEqual(await createLedgerStore(db).ledger('r1', ID), {
+      totalCents: 0,
+      facilityId: 'f1',
+      serviceDate: null,
+      pickupState: null,
+      pendingReview: false,
+      signalsSeen: 0,
+      reference: '',
+      coverages: [],
+      events: []
+    });
+  });
+
+  it('has no previous report for a claim not billed from an import', async () => {
+    const { db } = createRecordingDb((q) =>
+      ownedClaim(q)
+        ? [owned]
+        : q.sql.startsWith('select "c"."status"')
+          ? [{ status: 'needs_review', bucket: null, key: null }]
+          : []
+    );
+    assert.deepEqual(
+      await createLedgerStore(db).noteRevision('r1', ID, 'k1', {
+        bucket: 'ugula',
+        key: 'imports/t-1/g.xml.reports/00000.json'
+      }),
+      { status: 'needs_review', previous: null }
+    );
+  });
+
+  it('drops the payer claim number of an event without a coverage', async () => {
+    const { db, queries } = createRecordingDb((q) => (ownedClaim(q) ? [owned] : []));
+    await createLedgerStore(db).recordEvent('r1', ID, 'k1', {
+      kind: 'statement',
+      coverageId: null,
+      note: 'Sent',
+      payerClaimNumber: 'PCN-7'
+    });
+    assert.deepEqual(queries.at(-1)?.parameters, [
+      't-1',
+      ID,
+      'statement',
+      null,
+      'Sent',
+      null,
+      'k1'
+    ]);
+  });
+
   it('reads a document of the claim', async () => {
     const DOC = '0195f2a4-0000-7000-8000-0000000000d1';
     const { db, queries } = createRecordingDb((q) =>

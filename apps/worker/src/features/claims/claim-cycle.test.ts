@@ -59,6 +59,22 @@ describe('createCycleStore', () => {
     assert.equal(await store.setStatus('r1', ID, 'k', 'submitted', 5), 'set');
   });
 
+  it('treats a claim that never had a signal as seen at zero', async () => {
+    const { db } = createRecordingDb((q) => (ownedClaim(q) ? [owned] : []));
+    const store = createCycleStore(db, boss);
+    assert.equal(await store.setStatus('r1', ID, 'k', 'submitted', 0), 'set');
+    assert.equal(await store.setStatus('r1', ID, 'k', 'submitted', 1), 'stale');
+  });
+
+  it('reads no claim check for a run that no longer exists', async () => {
+    const { db, queries } = createRecordingDb();
+    assert.equal(await createCycleStore(db, boss).claimCheck('r1', ID), null);
+    assert.deepEqual(
+      queries.map((q) => q.parameters),
+      [['r1']]
+    );
+  });
+
   it('reads a claim check for the run agency', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('select "agency_id" from "workflow_runs"') ? [{ agency_id: 't-1' }] : []
@@ -133,6 +149,34 @@ describe('createCycleStore', () => {
     assert.equal(sqlOf(replay.queries, 'insert into "signals"').length, 0);
     assert.equal(sqlOf(replay.queries, 'update').length, 0);
     assert.deepEqual(jobs, []);
+  });
+
+  it('touches no payer when the patch has no coverage', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      ownedClaim(q) ? [owned] : q.sql.startsWith('insert into "claim_events"') ? [{ id: 'e1' }] : []
+    );
+    await createCycleStore(db, boss).patchClaim('r1', ID, 'r1:s:patch:1', {
+      serviceDate: '2026-10-03',
+      documentation: null,
+      classification: null,
+      level: null,
+      emergency: null,
+      loadedMiles: null,
+      deceased: null,
+      nonCoveredMiles: null,
+      diagnoses: null,
+      pickup: null,
+      destination: null,
+      originDestination: null,
+      patientAddress: null,
+      coverage: null,
+      newCoverage: null,
+      lines: null,
+      note: ''
+    });
+    assert.ok(queries.some((q) => q.sql.startsWith('update "claims" set "service_date"')));
+    assert.ok(!queries.some((q) => q.sql.includes('claim_coverages')));
+    assert.equal(sqlOf(queries, 'insert into "signals"').length, 1);
   });
 
   it('links a claim to a cycle run of the same agency only', async () => {

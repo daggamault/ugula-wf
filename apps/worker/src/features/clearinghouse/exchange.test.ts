@@ -5,7 +5,7 @@ import { build277Status } from '@ugula/billing/mock';
 import { NO_CHECKABLE_PAYER, NOTHING_TO_ASK } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { CompiledQuery } from 'kysely';
-import { createExchangeStore, priorCheck, statusInquiry } from './exchange.ts';
+import { createExchangeStore, priorCheck, priorEligibility, statusInquiry } from './exchange.ts';
 
 const CLAIM = '01a16617-7704-7ba6-b9b5-9c79fa44f961';
 const COVERAGE = '01a16617-7704-7ba6-b9b5-000000000001';
@@ -497,6 +497,55 @@ describe('priorCheck', () => {
     assert.deepEqual(priorCheck(request('unavailable') as never), {
       status: 'unavailable',
       reason: 'The real-time claim status answer did not name the claim'
+    });
+  });
+});
+
+describe('priorEligibility', () => {
+  const request = (status: string, rest: Record<string, unknown> = {}) =>
+    ({
+      control_number: 7,
+      status,
+      note: null,
+      sent_as: null,
+      file_name: null,
+      reviews: null,
+      ...rest
+    }) as never;
+
+  it('replays an answered request with its file and reviews, or blanks for what it did not save', () => {
+    const review = { reference: 'cov-1', message: 'Inactive' };
+    assert.deepEqual(
+      priorEligibility(request('answered', { file_name: 'a.271', reviews: [review] })),
+      { status: 'answered', fileName: 'a.271', reviews: [review] }
+    );
+    assert.deepEqual(priorEligibility(request('answered')), {
+      status: 'answered',
+      fileName: '',
+      reviews: []
+    });
+  });
+
+  it('replays a sent request with its name and note', () => {
+    assert.deepEqual(
+      priorEligibility(request('sent', { sent_as: '270-7.X12', note: 'Real time failed' })),
+      { status: 'sent', sentAs: '270-7.X12', reason: 'Real time failed' }
+    );
+    assert.deepEqual(priorEligibility(request('sent')), {
+      status: 'sent',
+      sentAs: '',
+      reason: null
+    });
+  });
+
+  it('replays an unavailable request with its reason, or none', () => {
+    assert.deepEqual(priorEligibility(request('unavailable', { note: 'Payer down' })), {
+      status: 'unavailable',
+      reason: 'Payer down'
+    });
+    assert.deepEqual(priorEligibility(request('unavailable')), {
+      status: 'unavailable',
+      reason: ''
     });
   });
 });

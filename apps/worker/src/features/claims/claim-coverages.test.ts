@@ -112,6 +112,38 @@ describe('claim coverages', () => {
     );
   });
 
+  it('moves active payers the report dropped after the rest, and never links a non-UUID payer id', async () => {
+    const OLD = '0195f2a4-0000-7000-8000-0000000000e2';
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('with "lines"') ? [{ id: OLD, payer_name: 'Aetna', member_id: null }] : []
+    );
+    const [, bcbs] = claim.coverages;
+    assert.ok(bcbs);
+    await replaceClaimRows(db, 'r1', ID, {
+      ...claim,
+      coverages: [{ ...bcbs, payerId: 'not-a-uuid' }]
+    });
+    const [moved] = sqlOf(queries, '\n    update claim_coverages cc set position = v.position');
+    assert.deepEqual(moved?.parameters, [OLD, 2, ID]);
+    const [added] = sqlOf(queries, 'insert into "claim_coverages"');
+    assert.ok(added?.sql.includes('where "agency_id" = '));
+    assert.ok(added?.sql.includes('and "id" = $'));
+    assert.deepEqual(added?.parameters, [
+      ID,
+      'r1',
+      1,
+      'BCBS',
+      'r1',
+      null,
+      null,
+      null,
+      'G9',
+      '18',
+      null,
+      null
+    ]);
+  });
+
   it('reworks the rows without deleting payers that have billing activity', async () => {
     const KEPT = '0195f2a4-0000-7000-8000-0000000000e1';
     const { db, queries } = createRecordingDb((q) =>

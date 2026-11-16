@@ -198,10 +198,19 @@ describe('createRecoveryStore', () => {
     const store = createRecoveryStore(db, blobs, boss);
     const source = await store.appealPacket('r1', ID, COV);
     assert.equal(source.payer, 'Medicare');
-    assert.deepEqual(source.claim.slice(0, 3), [
+    assert.deepEqual(source.claim, [
       { label: 'Claim', value: '20261002-0012' },
       { label: 'PCR', value: 'PCR-1' },
-      { label: 'Patient', value: 'Jane Doe' }
+      { label: 'Patient', value: 'Jane Doe' },
+      { label: 'Birth date', value: '1950-01-01' },
+      { label: 'Member ID', value: 'M1' },
+      { label: 'Date of service', value: '2026-10-01' },
+      { label: 'Service', value: 'ALS1 emergency' },
+      { label: 'Loaded miles', value: '4.2' },
+      { label: 'Transport reason', value: 'A' },
+      { label: 'Billing signature', value: 'signed' },
+      { label: 'A0427', value: 'Ambulance service, 1 units, $800.00' },
+      { label: 'Total charges', value: '$900.00' }
     ]);
     assert.equal(source.attachments.length, 2);
     const documents = queries.find((q) => q.sql.includes('"document" is not null'));

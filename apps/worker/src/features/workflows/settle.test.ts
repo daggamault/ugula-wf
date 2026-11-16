@@ -13,6 +13,7 @@ import {
   isChildWait,
   notifyParent,
   readableError,
+  refaultRun,
   settleRun,
   stallRun
 } from './settle.ts';
@@ -392,6 +393,114 @@ describe('settleRun', () => {
     });
   });
 
+  it('queues a bare task with defaults for everything the suspension left out', async () => {
+    const { tx, calls } = fakeTx();
+    await settleRun(
+      tx,
+      run,
+      waiting('task', {
+        title: 'Look',
+        queue: 'billing',
+        subject: '',
+        summary: 7,
+        outcomes: 'ok',
+        hints: ['x'],
+        prefill: 'everything'
+      }),
+      []
+    );
+    assert.deepEqual(calls.tasks[0], {
+      agencyId: 't-1',
+      runId: 'run-1',
+      waitId: '7',
+      kind: 'task',
+      queue: 'billing',
+      title: 'Look',
+      subject: null,
+      summary: null,
+      instructions: '',
+      context: null,
+      fields: [],
+      outcomes: [],
+      hints: {},
+      defaults: null,
+      prefill: null,
+      priority: 0,
+      assigneeId: null,
+      dueAt: null,
+      permission: null
+    });
+    const suggested = fakeTx();
+    await settleRun(
+      suggested.tx,
+      run,
+      waiting('task', { title: 'Look', queue: 'q', hints: null, prefill: 'suggested' }),
+      []
+    );
+    assert.deepEqual(
+      [suggested.calls.tasks[0]?.prefill, suggested.calls.tasks[0]?.hints],
+      ['suggested', {}]
+    );
+  });
+
+  it('wakes a timer without a time at once, and leaves a signal without a deadline waiting', async () => {
+    const timer = fakeTx();
+    await settleRun(timer.tx, run, waiting('timer', null), []);
+    assert.deepEqual(timer.calls.jobs, [
+      {
+        runId: 'run-1',
+        command: { type: 'resume', suspensionId: '7', payload: null },
+        startAfter: '1970-01-01T00:00:00.000Z'
+      }
+    ]);
+    const signal = fakeTx({ received: 1 });
+    await settleRun(signal.tx, run, waiting('signal', { name: 'ack', key: 'C1', after: 1 }), []);
+    assert.deepEqual(signal.calls.jobs, []);
+  });
+
+  it('starts a detached run with no inputs when none are given', async () => {
+    const started = fakeTx({ version: 'v-9' });
+    await settleRun(started.tx, run, waiting('start', { type: 'x.y', version: 2, inputs: 3 }), []);
+    assert.deepEqual(started.calls.spawned, [[{}]]);
+  });
+
+  it('refuses to settle a suspended run with no wait or a faulted run with no error', async () => {
+    await assert.rejects(
+      () => settleRun(fakeTx().tx, run, state({ status: 'suspended' }), []),
+      /Run run-1 is suspended without a wait/
+    );
+    await assert.rejects(
+      () => settleRun(fakeTx().tx, run, state({ status: 'faulted' }), []),
+      /Run run-1 is faulted without an error/
+    );
+  });
+
+  it('opens a fault task again for a rejected retry, keyed by when it was rejected', async () => {
+    const { tx, calls } = fakeTx();
+    const error = { message: 'payer down', path: '', node: 'call' };
+    await refaultRun(tx, run, state({ status: 'faulted', fault: { cursor, error } }), null, {
+      reason: 'the payer is still down',
+      at: '2026-11-01T00:00:00.000Z'
+    });
+    const task = calls.tasks[0];
+    assert.deepEqual(
+      [task?.waitId, task?.title, task?.subject, task?.summary, task?.instructions, task?.fields],
+      [
+        'fault:9:2026-11-01T00:00:00.000Z',
+        'Stuck at call',
+        null,
+        'the payer is still down',
+        'The payer is still down.\n\ncall: Payer down.\n\nRetry once the cause is fixed.',
+        []
+      ]
+    );
+  });
+
+  it('keeps the punctuation an error message already ends with', () => {
+    assert.equal(readableError('Is the payer up?'), 'Is the payer up?');
+    assert.equal(readableError('  Done!  '), 'Done!');
+  });
+
   it('fails runs waiting on unsupported kinds', async () => {
     const { tx, calls } = fakeTx();
     await settleRun(tx, run, waiting('telepathy', null), []);
@@ -446,6 +555,23 @@ describe('notifyParent', () => {
     assert.equal(childrenPayload('workflow', []), null);
     assert.equal(isChildWait('workflows'), true);
     assert.equal(isChildWait('timer'), false);
+  });
+
+  it('fills in a child that returned no pin or outputs, or failed without a message', () => {
+    assert.deepEqual(
+      childrenPayload('workflows', [
+        { id: 'a', status: 'completed', result: {}, error: null },
+        { id: 'b', status: 'completed', result: null, error: null },
+        { id: 'c', status: 'failed', result: null, error: 'boom' }
+      ]),
+      {
+        results: [
+          { runId: 'a', pin: null, outputs: {} },
+          { runId: 'b', error: 'Run did not complete' },
+          { runId: 'c', error: 'Run did not complete' }
+        ]
+      }
+    );
   });
 
   it('waits for unfinished siblings and ignores parents no longer waiting', async () => {

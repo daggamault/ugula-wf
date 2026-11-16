@@ -233,6 +233,51 @@ describe('createDraftStore', () => {
     assert.deepEqual(diagnoses?.parameters, [ID, 1, 'R079', ID, 2, 'I10']);
   });
 
+  it('opens a draft without a source report or PCR number, matching a replay by its step only', async () => {
+    const bare = { pcrNumber: null, reportKey: null, claimId: null };
+    const { db, queries } = createRecordingDb((q) =>
+      q.sql.startsWith('select "id", "source_key" from "claims"')
+        ? [{ id: ID, source_key: 'r1:s:open:0' }]
+        : []
+    );
+    assert.deepEqual(await createDraftStore(db, boss).openDraft('r1', 'r1:s:open:0', bare), {
+      id: ID,
+      duplicate: false
+    });
+    const [insert] = sqlOf(queries, 'insert into "claims"');
+    assert.ok(!insert?.sql.includes('import_reports'));
+    assert.deepEqual(insert?.parameters, ['r1', null, null, 'r1:s:open:0']);
+    const [lookup] = sqlOf(queries, 'select "id", "source_key" from "claims"');
+    assert.ok(lookup?.sql.includes('and "source_key" = $2 order by source_key = $3 desc'));
+    assert.deepEqual(lookup?.parameters, ['r1', 'r1:s:open:0', 'r1:s:open:0']);
+  });
+
+  it('reopens a claim keeping its source report when the new one has none', async () => {
+    const { db, queries } = createRecordingDb((q) => (ownedClaim(q) ? [owned] : []));
+    await createDraftStore(db, boss).openDraft('r1', 'k', {
+      pcrNumber: 'PCR-1',
+      reportKey: null,
+      claimId: ID
+    });
+    const [reopen] = queries.filter((q) => q.sql.includes('with old as'));
+    assert.ok(reopen?.sql.includes('import_report_id = coalesce(null::uuid, import_report_id)'));
+    assert.ok(!reopen?.sql.includes('import_reports'));
+  });
+
+  it('saves no origin or destination code when the trip has none', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      ownedClaim(q) ? [owned] : q.sql.startsWith('update "claims"') ? [{}] : []
+    );
+    await createDraftStore(db, boss).saveClaim('r1', ID, 'k', {
+      ...claim,
+      details: { ...claim.details, originDestination: null }
+    });
+    const [update] = sqlOf(queries, 'update "claims"');
+    const at = (column: string) =>
+      update?.parameters[Number(update.sql.match(new RegExp(`"${column}" = \\$(\\d+)`))?.[1]) - 1];
+    assert.deepEqual([at('origin_code'), at('destination_code')], [null, null]);
+  });
+
   it('saves only drafts, and skips optional rows it does not have', async () => {
     const saved = createRecordingDb((q) => (ownedClaim(q) ? [owned] : []));
     await createDraftStore(saved.db, boss).saveClaim('r1', ID, 'k', claim);

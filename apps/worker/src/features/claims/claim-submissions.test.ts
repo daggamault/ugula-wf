@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { Clearinghouse } from '@ugula/billing';
+import type { ClaimStore, Clearinghouse } from '@ugula/billing';
 import { sampleSubmitter } from '@ugula/billing/testing';
 import type { Db } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
@@ -67,6 +67,75 @@ describe('createSubmissionStore', () => {
     await assert.rejects(() => store.submission('r1', 'bad', 'cov-1'), /Claim bad does not exist/);
     const unknown = createStore(createRecordingDb().db);
     await assert.rejects(() => unknown.submission('r1', ID, 'cov-1'), /does not exist/);
+  });
+
+  it('builds the pending claim from the ready row and its ledger, without a submitter profile', async () => {
+    const row = {
+      id: ID,
+      number: '20261105-1001',
+      pcr_number: 'PCR-1',
+      total_cents: 95_000,
+      loaded_miles: null,
+      is_emergency: true,
+      coverages: [{ id: 'cov-1', payer: 'Medicare', relationship: '18' }],
+      lines: [{ code: 'A0427', units: '1.00', unit_cents: 95_000, total_cents: 95_000 }],
+      diagnoses: ['R079']
+    };
+    const { db } = createRecordingDb((q) =>
+      q.sql.startsWith('select "agency_id" from "workflow_runs"')
+        ? [{ agency_id: 't-1' }]
+        : q.sql.includes('inner join "patients" as "p"')
+          ? [row]
+          : []
+    );
+    const ledger = { events: [] } as unknown as Awaited<ReturnType<ClaimStore['ledger']>>;
+    const store = createSubmissionStore(
+      db,
+      blobs,
+      async () => ledger,
+      async () => null
+    );
+    const { submitter, pending } = await store.submission('r1', ID, 'cov-1');
+    assert.equal(submitter, null);
+    assert.deepEqual(
+      [
+        pending?.id,
+        pending?.coverageId,
+        pending?.pcrNumber,
+        pending?.resubmission,
+        pending?.totalCents,
+        pending?.claim.claimId,
+        pending?.claim.payer.name
+      ],
+      [ID, 'cov-1', 'PCR-1', false, 95_000, '20261105-1001', 'Medicare']
+    );
+    assert.equal((await store.submission('r1', ID, 'cov-2')).pending, null);
+  });
+
+  it('files a first submission as submitted', async () => {
+    const { db, queries } = createRecordingDb((q) =>
+      ownedClaim(q)
+        ? [owned]
+        : q.sql.includes('for update of "c"')
+          ? [{ id: ID }]
+          : q.sql.startsWith('update "billing_profiles"')
+            ? [{ control_number: 9 }]
+            : q.sql.startsWith('insert into "claim_batches"')
+              ? [{}]
+              : []
+    );
+    await createStore(db).saveSubmission('r1', ID, 'k2', {
+      coverageId: 'cov-1',
+      resubmission: false,
+      totalCents: 95_000,
+      production: true,
+      build: (n: number) => `ISA*${n}~`
+    });
+    const [event] = sqlOf(queries, 'insert into "claim_events"');
+    assert.deepEqual(
+      [event?.parameters[2], event?.parameters[3], event?.parameters[4]],
+      ['submitted', 'cov-1', '837P file #9']
+    );
   });
 
   it('files a ready claim as its own numbered 837P file and marks it submitted', async () => {
