@@ -1,7 +1,7 @@
-import { agencyTimeZone, type Db, resolveWorkflowVersion, startRun } from '@ugula/db';
+import { type Db, resolveWorkflowVersion, startRun } from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
-import { sql } from 'kysely';
 import type { SlotBoss } from '../../shared/gated-work.ts';
+import { claimScheduleRun, type DueAgency, findDueAgencies } from './queries.ts';
 
 type Schedule = {
   queue: string;
@@ -29,32 +29,9 @@ type ScheduleBoss = Pick<SlotBoss, 'work'> & {
 
 type StartDeps = { db: Db; boss: RunQueueClient; report: (message: string) => void };
 
-type DueAgency = { id: string; fire_on: string };
-
-const findDueAgencies = (db: Db, s: Schedule) =>
-  sql<DueAgency>`
-  select a.id, z.period::date::text as fire_on
-  from agencies a
-  cross join lateral (
-    select date_trunc(${s.every}, now() at time zone ${agencyTimeZone(sql.ref('a.id'))}) as period,
-      now() at time zone ${agencyTimeZone(sql.ref('a.id'))} as local
-  ) z
-  where a.is_active
-    and z.local >= z.period + make_interval(hours => ${s.hour}::int)
-    and not exists (
-      select 1 from schedule_runs r
-      where r.agency_id = a.id and r.workflow = ${s.workflow} and r.fire_on = z.period::date
-    )
-  order by a.id`.execute(db);
-
 const startOnce = (db: Db, boss: RunQueueClient, s: Schedule, due: DueAgency) =>
   db.transaction().execute(async (tx) => {
-    const claimed = await tx
-      .insertInto('schedule_runs')
-      .values({ agency_id: due.id, workflow: s.workflow, fire_on: due.fire_on })
-      .onConflict((oc) => oc.doNothing())
-      .returning('agency_id')
-      .executeTakeFirst();
+    const claimed = await claimScheduleRun(tx, due.id, s.workflow, due.fire_on);
     if (!claimed) return 'claimed';
     const version = await resolveWorkflowVersion(tx, due.id, s.workflow);
     if (!version) return 'unpublished';

@@ -64,6 +64,34 @@ const addressOf = (f: {
     [[f.city, f.state].filter(Boolean).join(', '), f.postal_code].filter(Boolean).join(' ')
   ].filter((l) => l.trim());
 
+type DueSchedule = { workflow: string; every: 'day' | 'month'; hour: number };
+
+export type DueAgency = { id: string; fire_on: string };
+
+export const findDueAgencies = (db: Db, s: DueSchedule) =>
+  sql<DueAgency>`
+  select a.id, z.period::date::text as fire_on
+  from agencies a
+  cross join lateral (
+    select date_trunc(${s.every}, now() at time zone ${agencyTimeZone(sql.ref('a.id'))}) as period,
+      now() at time zone ${agencyTimeZone(sql.ref('a.id'))} as local
+  ) z
+  where a.is_active
+    and z.local >= z.period + make_interval(hours => ${s.hour}::int)
+    and not exists (
+      select 1 from schedule_runs r
+      where r.agency_id = a.id and r.workflow = ${s.workflow} and r.fire_on = z.period::date
+    )
+  order by a.id`.execute(db);
+
+export const claimScheduleRun = (db: Db, agencyId: string, workflow: string, fireOn: string) =>
+  db
+    .insertInto('schedule_runs')
+    .values({ agency_id: agencyId, workflow, fire_on: fireOn })
+    .onConflict((oc) => oc.doNothing())
+    .returning('agency_id')
+    .executeTakeFirst();
+
 export const createScheduleStore = (db: Db, blobs: Blobs): ScheduleStore => ({
   deadlines: async (runId, today) => {
     const { rows } = await sql<DeadlineRow>`
