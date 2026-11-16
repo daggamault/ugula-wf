@@ -112,6 +112,45 @@ describe('read999', () => {
     assert.equal(ack('AK9*P*2*2*1')?.accepted, false);
   });
 
+  it('reads acknowledgments that leave out control numbers, codes and positions', () => {
+    assert.deepEqual(
+      read999(
+        file(
+          'ST*999*0001*005010X231A1',
+          'IK5*A',
+          'AK9*A',
+          'AK2*837',
+          'AK1*HC',
+          'AK2*837',
+          'IK3',
+          'IK4*7:3**6* ',
+          'CTX*SITUATIONAL TRIGGER',
+          'IK5',
+          'IK4*1**1',
+          'AK9',
+          'SE*14*0001'
+        )
+      ),
+      [
+        {
+          groupControlNumber: '',
+          accepted: false,
+          transactions: [
+            {
+              controlNumber: '',
+              accepted: false,
+              errors: [
+                'Segment ? at position ?: Error without a code',
+                'Element 7-3: Invalid character in data element',
+                'Context SITUATIONAL TRIGGER'
+              ]
+            }
+          ]
+        }
+      ]
+    );
+  });
+
   it('ignores errors outside a transaction and reads only 999 transactions', () => {
     assert.deepEqual(
       read999(

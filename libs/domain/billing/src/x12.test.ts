@@ -69,6 +69,27 @@ describe('readX12', () => {
     assert.throws(() => readX12('ISA*00'), /Not an X12 file/);
   });
 
+  it('reads an ST without an id as no kind and a blank ISA13 as no control number', () => {
+    const blank = isa().replace('000000042', ' '.repeat(9));
+    assert.deepEqual(readX12(`${blank}ST~SE*2*0001~`), {
+      kind: null,
+      controlNumber: null,
+      component: ':',
+      repetition: '^',
+      segments: [blank.slice(0, -1).split('*'), ['ST'], ['SE', '2', '0001']]
+    });
+  });
+
+  it('reads an ISA cut short of its elements as having no repetition or control number', () => {
+    assert.deepEqual(readX12(`ISA|${'X'.repeat(100)}:~`), {
+      kind: null,
+      controlNumber: null,
+      component: ':',
+      repetition: null,
+      segments: [['ISA', `${'X'.repeat(100)}:`]]
+    });
+  });
+
   it('splits transaction sets of one kind', () => {
     const file = readX12(`${isa()}ST*999*1~AK1*HC*1~SE*3*1~ST*835*2~BPR*I~SE*3*2~ST*999*3~SE*2*3~`);
     assert.deepEqual(

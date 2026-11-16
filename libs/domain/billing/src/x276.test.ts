@@ -73,4 +73,21 @@ describe('build276', () => {
     assert.ok(text.includes('DMG*D8*20150601*U~\nNM1*QC*1*DOE*TIM~\nTRN*1*1042~'));
     assert.throws(() => build276(sampleSubmitter, [], envelope), /at least one claim/);
   });
+
+  it('sends an unknown sex as U and an empty submitter ID when none is set', () => {
+    const lines = build276(
+      { ...sampleSubmitter, submitterId: null },
+      [{ ...inquiry, subscriber: { ...inquiry.subscriber, sex: null } }],
+      envelope
+    )
+      .trim()
+      .split('\n');
+    assert.deepEqual(lines.slice(7, 12), [
+      `NM1*41*2*${sampleSubmitter.organizationName.toUpperCase()}*****46~`,
+      'HL*3*2*19*1~',
+      `NM1*1P*2*${sampleSubmitter.organizationName.toUpperCase()}*****XX*${sampleSubmitter.npi}~`,
+      'HL*4*3*22*0~',
+      'DMG*D8*19500203*U~'
+    ]);
+  });
 });

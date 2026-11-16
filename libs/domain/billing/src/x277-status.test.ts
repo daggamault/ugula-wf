@@ -72,6 +72,59 @@ describe('readClaimStatus', () => {
     ]);
   });
 
+  it('falls back to whichever of trace or claim number it has, and skips a status with neither', () => {
+    const statuses = readClaimStatus(
+      file(
+        'ST*277*0001*005010X212',
+        'HL*1**20*1',
+        'HL*2*1*22*0',
+        'STC*A1:20*20261103',
+        'HL*3',
+        'TRN*2*IGNORED',
+        'STC*F1:65*20261103**50*50',
+        'HL*4*1*22*0',
+        'REF*EJ*CLM-9',
+        'REF*EJ*CLM-10',
+        'REF*1K*PCN-9',
+        'REF*1K*PCN-10',
+        'STC*F2:999*20261103**100',
+        'STC*F1:65*20261103**100*100',
+        'HL*5*1*22*0',
+        'TRN*2*TR-1',
+        'STC*A2*20261103**abc',
+        'SE*18*0001'
+      )
+    );
+    assert.deepEqual(statuses, [
+      {
+        trace: 'CLM-9',
+        claimNumber: 'CLM-9',
+        payerClaimNumber: 'PCN-9',
+        category: 'F2',
+        code: '999',
+        meaning: 'denied',
+        chargeCents: 10_000,
+        paidCents: 0,
+        message: 'Finalized: denial: Status code 999'
+      },
+      {
+        trace: 'TR-1',
+        claimNumber: 'TR-1',
+        payerClaimNumber: null,
+        category: 'A2',
+        code: '',
+        meaning: 'inProcess',
+        chargeCents: 0,
+        paidCents: 0,
+        message: 'Accepted into adjudication'
+      }
+    ]);
+    assert.equal(
+      claimStatusNote({ meaning: 'unavailable', category: 'E1', code: '', message: 'Down' }),
+      'No answer (E1): Down'
+    );
+  });
+
   it('reads what the mock clearinghouse answers and describes it for the claim history', () => {
     const [status] = readClaimStatus(
       build277Status([{ trace: '7', claimNumber: '7', category: 'ZZ', code: '' }])

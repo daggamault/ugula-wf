@@ -225,6 +225,91 @@ describe('read835', () => {
     ]);
   });
 
+  it('names the payer a claim crossed over to and reads services with missing elements', () => {
+    const [r] = read835(
+      file(
+        'ST*835*0001',
+        'BPR*I*80*C*ACH*CCP*01*1*DA*1*1**01*1*DA*1*20261030',
+        'TRN*1*EFT4*1512345678',
+        'N1*PR*MEDICARE*XV*DEMOMCR',
+        'N1',
+        'REF*2U*NOT-A-PAYER',
+        'SVC*HC:A0428*100*80**1',
+        'NM1*TT*2*IGNORED BEFORE A CLAIM',
+        'CLP*2001*19*100*80*20*MB*ICN333',
+        'NM1*TT*2*STATE MEDICAID*****PI*MCD01',
+        'NM1*PR*2*NOT A CROSSOVER',
+        'SVC*HC*100*80',
+        'SVC*HC:A0425::RH: :GY*5*4**abc',
+        'SVC*HC:A0425*5*4** 2.5 ',
+        'CLP',
+        'SE*16*0001'
+      )
+    );
+    assert.equal(r?.payerId, 'DEMOMCR');
+    assert.deepEqual(r?.claims, [
+      {
+        claimNumber: '2001',
+        status: '19',
+        chargeCents: 10_000,
+        paidCents: 8000,
+        patientCents: 2000,
+        payerClaimNumber: 'ICN333',
+        adjustments: [],
+        remarks: [],
+        crossoverPayer: 'STATE MEDICAID',
+        denied: false,
+        reversal: false,
+        services: [
+          {
+            code: '',
+            modifiers: [],
+            chargeCents: 10_000,
+            paidCents: 8000,
+            units: 1,
+            originalCode: null,
+            lineNumber: null,
+            adjustments: []
+          },
+          {
+            code: 'A0425',
+            modifiers: ['RH', 'GY'],
+            chargeCents: 500,
+            paidCents: 400,
+            units: 1,
+            originalCode: null,
+            lineNumber: null,
+            adjustments: []
+          },
+          {
+            code: 'A0425',
+            modifiers: [],
+            chargeCents: 500,
+            paidCents: 400,
+            units: 2.5,
+            originalCode: null,
+            lineNumber: null,
+            adjustments: []
+          }
+        ]
+      },
+      {
+        claimNumber: '',
+        status: '',
+        chargeCents: 0,
+        paidCents: 0,
+        patientCents: 0,
+        payerClaimNumber: null,
+        adjustments: [],
+        remarks: [],
+        crossoverPayer: null,
+        denied: false,
+        reversal: false,
+        services: []
+      }
+    ]);
+  });
+
   it('reads nothing from files that carry no remittance', () => {
     assert.deepEqual(read835(file('ST*999*0001', 'AK1*HC*1', 'SE*3*0001')), []);
   });

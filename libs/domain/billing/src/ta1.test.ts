@@ -39,4 +39,21 @@ describe('readTA1', () => {
     ]);
     assert.deepEqual(readTA1(`${ISA}IEA*0*000000042~`), []);
   });
+
+  it('reads a bare TA1 as a rejection with nothing given, and a note it does not know by code', () => {
+    assert.deepEqual(readTA1(`${ISA}TA1~TA1* 000000045 *261104*1530* A *099~IEA*0*000000042~`), [
+      {
+        controlNumber: '',
+        status: 'rejected',
+        noteCode: '',
+        message: 'Interchange note not given'
+      },
+      {
+        controlNumber: '000000045',
+        status: 'accepted',
+        noteCode: '099',
+        message: 'Interchange note 099'
+      }
+    ]);
+  });
 });

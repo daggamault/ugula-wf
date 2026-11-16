@@ -252,4 +252,118 @@ describe('read271', () => {
     assert.equal(unnamed?.advantagePlan, 'SILVER PPO PLAN');
     assert.equal(read271(RESPONSE)[0]?.advantagePlan, null);
   });
+
+  it('keeps the first dates and stay, and fills in what a response leaves out', () => {
+    const text = file(
+      'ST*271*0001*005010X279A1',
+      'HL*1**20*1',
+      'MSG*Payer notice',
+      'EB*1**30**BEFORE ANY MEMBER',
+      'HL*2*1*21*1',
+      'HL*3*2*22*0',
+      'TRN*2',
+      'TRN*2*cov-late',
+      'EB',
+      'EB*R**30',
+      'MSG*',
+      'AAA*N',
+      'DTP*346',
+      'DTP*346*D8*20260101',
+      'DTP*346*D8*20250101',
+      'DTP*347*D8*20261231',
+      'DTP*347*D8*20271231',
+      'DTP*291*RD8*20200101-20201231',
+      'EB*1**48',
+      'DTP*435*D8*20261020',
+      'DTP*435*D8*20261021',
+      'DTP*096*D8*20261025',
+      'DTP*096*D8*20261026',
+      'DTP*472*RD8*20261001-20261002',
+      'EB*1**AG',
+      'DTP*435*D8*20260101',
+      'HL*9',
+      'EB*1**30**AFTER A NON-MEMBER LEVEL',
+      'HL*4*2*22*0',
+      'TRN*2*cov-b',
+      'EB*R**30*HM',
+      'NM1',
+      'NM1*PRP*2',
+      'DTP*346*D8*20260101',
+      'EB*1**30**PLAN B',
+      'DTP*291*D8*20260101',
+      'DTP*472*D8*20260101',
+      'SE*38*0001'
+    );
+    assert.deepEqual(read271(text.replace(ISA, isaOf('U'))), [
+      {
+        trace: '',
+        active: true,
+        planName: null,
+        coverageStart: '2026-01-01',
+        coverageEnd: '2026-12-31',
+        advantagePlan: null,
+        stay: { kind: 'inpatient', admittedOn: '2026-10-20', dischargedOn: '2026-10-25' },
+        messages: ['Payer notice', 'Rejected with reason not given']
+      },
+      {
+        trace: 'cov-b',
+        active: true,
+        planName: 'PLAN B',
+        coverageStart: null,
+        coverageEnd: null,
+        advantagePlan: 'A Medicare Advantage plan',
+        stay: null,
+        messages: ['Payer notice']
+      }
+    ]);
+  });
+
+  it('reads a single 472 date as an admission with no discharge', () => {
+    const [result] = read271(
+      file(
+        'ST*271*0001*005010X279A1',
+        'HL*1**20*1',
+        'HL*2*1*21*1',
+        'HL*3*2*22*0',
+        'TRN*2*cov-1',
+        'EB*1**48',
+        'DTP*472*D8*20261001',
+        'DTP*435*D8*bad',
+        'SE*9*0001'
+      )
+    );
+    assert.deepEqual(result?.stay, {
+      kind: 'inpatient',
+      admittedOn: '2026-10-01',
+      dischargedOn: null
+    });
+  });
+
+  it('leaves dates it cannot read empty, and drops a stay with no admission', () => {
+    const [result] = read271(
+      file(
+        'ST*271*0001*005010X279A1',
+        'HL*1**20*1',
+        'HL*2*1*21*1',
+        'HL*3*2*22*0',
+        'TRN*2*cov-1',
+        'DTP*347*D8*2026',
+        'DTP*291*RD8*bad',
+        'EB*6**48',
+        'DTP*096*D8*bad',
+        'DTP*435*D8*bad',
+        'SE*11*0001'
+      )
+    );
+    assert.deepEqual(result, {
+      trace: 'cov-1',
+      active: false,
+      planName: null,
+      coverageStart: null,
+      coverageEnd: null,
+      advantagePlan: null,
+      stay: null,
+      messages: []
+    });
+  });
 });

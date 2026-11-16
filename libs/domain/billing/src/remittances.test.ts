@@ -113,6 +113,30 @@ describe('readPostings', () => {
       'review'
     );
   });
+
+  it('reads nothing from a non-list, and drops postings without a position or known route', () => {
+    assert.deepEqual(readPostings(undefined), []);
+    assert.deepEqual(readPostings({ position: 1, route: 'reconcile' }), []);
+    assert.deepEqual(
+      readPostings([
+        { position: '1', route: 'reconcile' },
+        { position: 2, route: 'pay' },
+        { position: 3, route: 'unmatched', message: 7, crossover: 'yes' },
+        { position: 4, route: 'reconcile', adjustedCents: '250' }
+      ]),
+      [
+        { position: 3, route: 'unmatched', message: '', adjustedCents: 0, crossover: false },
+        {
+          position: 4,
+          route: 'review',
+          message:
+            'The adjustment of 250 cents is not a whole amount of the right sign; post it by hand',
+          adjustedCents: 0,
+          crossover: false
+        }
+      ]
+    );
+  });
 });
 
 describe('remittanceCoverage', () => {
@@ -126,6 +150,14 @@ describe('remittanceCoverage', () => {
     assert.equal(remittanceCoverage(coverages, null, '19')?.id, 'mcr');
     assert.equal(remittanceCoverage(coverages, null, '4'), null);
     assert.equal(remittanceCoverage(coverages, null, '3'), null);
+  });
+
+  it('trusts a single payer ID match over the processing order the status claims', () => {
+    assert.equal(remittanceCoverage(coverages, 'DEMOMCR', '2')?.id, 'mcr');
+    assert.equal(remittanceCoverage(coverages, 'demomcr', '4')?.id, 'mcr');
+    assert.equal(remittanceCoverage(coverages, 'MEDICAID', '4'), null);
+    assert.equal(remittanceCoverage(coverages, 'MEDICAID', '3'), null);
+    assert.equal(remittanceCoverage([], 'DEMOMCR', '1'), null);
   });
 
   it('never posts a payer that is not on the claim to another payer', () => {

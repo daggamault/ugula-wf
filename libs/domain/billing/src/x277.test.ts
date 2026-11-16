@@ -108,4 +108,43 @@ describe('read277', () => {
     });
     assert.deepEqual(read277(file('ST*999*0001', 'AK1*HC*1', 'SE*3*0001')), []);
   });
+
+  it('passes a rejection down from any level above, and skips parents it never saw', () => {
+    assert.deepEqual(
+      read277(
+        file(
+          'ST*277*0001*005010X214',
+          'HL',
+          'STC*A3:21',
+          'HL*2*99*PT',
+          'TRN*2*2001',
+          'STC*A1:19*20261024*WQ*100',
+          'HL*3**20*1',
+          'STC*A8:21*20261024*U*0********BATCH IN ERROR',
+          'HL*4*3*21*1',
+          'STC*A1:19',
+          'HL*5*4*PT',
+          'TRN*2*2002',
+          'TRN*2*2003',
+          'SE*14*0001'
+        )
+      ),
+      [
+        {
+          claimNumber: '2001',
+          status: 'accepted',
+          categories: ['A1'],
+          payerClaimNumber: null,
+          message: 'Received'
+        },
+        {
+          claimNumber: '2002',
+          status: 'rejected',
+          categories: ['A8'],
+          payerClaimNumber: null,
+          message: 'BATCH IN ERROR'
+        }
+      ]
+    );
+  });
 });
