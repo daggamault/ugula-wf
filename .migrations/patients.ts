@@ -46,17 +46,12 @@ const buildPatientsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_patients_last_name_key')
     .on('patients')
-    .columns(['agency_id', 'last_name_key']),
+    .expression(sql`agency_id, last_name_key text_pattern_ops`),
   db.schema
     .createIndex('idx_patients_last_name_trgm')
     .on('patients')
     .using('gin')
     .expression(sql`last_name_key gin_trgm_ops`),
-  db.schema
-    .createIndex('idx_patients_full_name_trgm')
-    .on('patients')
-    .using('gin')
-    .expression(sql`(lower(last_name || ' ' || first_name)) gin_trgm_ops`),
   db.schema
     .createIndex('idx_patients_first_name')
     .on('patients')

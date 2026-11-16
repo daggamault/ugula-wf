@@ -95,6 +95,10 @@ const buildPayerFilesIndexes = (db: Kysely<Database>) => [
     .columns(['agency_id', 'created_at desc']),
   db.schema.createIndex('idx_payer_files_uploaded_by').on('payer_files').column('uploaded_by'),
   db.schema.createIndex('idx_payer_files_run').on('payer_files').column('run_id'),
+  db.schema
+    .createIndex('idx_clearinghouse_downloads_agency_run')
+    .on('clearinghouse_downloads')
+    .columns(['agency_id', 'run_id']),
   db.schema.createIndex('idx_payer_file_items_claim').on('payer_file_items').column('claim_id')
 ];
 

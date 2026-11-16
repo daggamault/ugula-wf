@@ -18,7 +18,7 @@ const buildCodesTable = (db: Kysely<Database>) =>
 
 const buildCodesDescriptionIndex = (db: Kysely<Database>) =>
   db.schema
-    .createIndex('codes_description_trgm_idx')
+    .createIndex('idx_codes_description_trgm')
     .on('codes')
     .using('gin')
     .expression(sql`description gin_trgm_ops`);

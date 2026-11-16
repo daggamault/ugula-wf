@@ -62,7 +62,6 @@ const buildImportsIndexes = (db: Kysely<Database>) => [
     .on('imports')
     .columns(['agency_id', 'created_at desc']),
   db.schema.createIndex('idx_imports_uploaded_by').on('imports').column('uploaded_by'),
-  db.schema.createIndex('idx_import_reports_number').on('import_reports').column('number'),
   db.schema
     .createIndex('import_reports_report_key_unique')
     .on('import_reports')

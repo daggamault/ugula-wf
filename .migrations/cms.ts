@@ -90,7 +90,7 @@ const buildHospitalsTable = (db: Kysely<Database>) =>
     .addCheckConstraint('cms_hospitals_phone_check', sql`phone ~ '^[0-9]{10}$'`);
 
 const buildHospitalsStateIndex = (db: Kysely<Database>) =>
-  db.schema.createIndex('cms_hospitals_state_idx').on('cms_hospitals').column('state');
+  db.schema.createIndex('idx_cms_hospitals_state').on('cms_hospitals').column('state');
 
 export const createCmsTables = async (db: Kysely<Database>) => {
   await buildZipLocalitiesTable(db).execute();

@@ -156,6 +156,12 @@ const buildPayerSuggestionsTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint('payer_suggestions_name_key_check', sql`name_key <> ''`);
 
+const buildPayerSuggestionsIndex = (db: Kysely<Database>) =>
+  db.schema
+    .createIndex('idx_payer_suggestions_payer_id')
+    .on('payer_suggestions')
+    .columns(['agency_id', 'payer_id']);
+
 export const createBillingProfilesTables = async (db: Kysely<Database>) => {
   await buildBillingProfilesTable(db).execute();
   await buildSubmitterIndex(db).execute();
@@ -164,4 +170,5 @@ export const createBillingProfilesTables = async (db: Kysely<Database>) => {
   await buildPayerAliasesTable(db).execute();
   await buildPayerAliasesIndex(db).execute();
   await buildPayerSuggestionsTable(db).execute();
+  await buildPayerSuggestionsIndex(db).execute();
 };
