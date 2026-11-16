@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import type { RunQueueClient } from '@ugula/run-queue';
 import {
   postBatchAcknowledgments,
+  postClaimAcknowledgments,
   postClaimStatuses,
   postInterchangeAcknowledgments
 } from './payer-file-acknowledgments.ts';
@@ -68,6 +69,204 @@ describe('payer file acknowledgments', () => {
       [['000000055', 'unmatched']]
     );
     assert.match(out.envelopeRejection ?? '', /rejected the file envelope: interchange 55/);
+  });
+
+  it('records the batch rejection with the agency, control number, reason and time', async () => {
+    const { c, queries } = contextOf(({ sql }) =>
+      sql.includes('from "claim_batches" as "b"')
+        ? [{ claim_id: 'c1', coverage_id: 'cov1', number: '20261105-0007' }]
+        : []
+    );
+    const out = await postInterchangeAcknowledgments(c, [
+      { controlNumber: '000000055', status: 'rejected', noteCode: '', message: 'Bad ID' }
+    ]);
+    const update = queries.find((q) => q.sql.startsWith('update "claim_batches"'));
+    assert.equal(
+      update?.sql,
+      'update "claim_batches" set "rejected_at" = $1, "rejection" = $2 where "agency_id" = $3 and "control_number" = $4'
+    );
+    assert.deepEqual(update?.parameters, [c.now, 'Bad ID (TA1 note not given)', 't1', 55]);
+    const note =
+      'The clearinghouse rejected the file envelope of 837P file 55: Bad ID (TA1 note not given)';
+    const event = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.deepEqual(event?.parameters, [
+      'c1',
+      'rejected',
+      'cov1',
+      note,
+      null,
+      null,
+      'd:000000055:c1'
+    ]);
+    assert.deepEqual(out, {
+      items: [
+        {
+          reference: '20261105-0007',
+          claimId: 'c1',
+          outcome: 'rejected',
+          message: note,
+          paidCents: null,
+          adjustedCents: null
+        }
+      ],
+      envelopeRejection:
+        'The clearinghouse rejected the file envelope: interchange 55: Bad ID (TA1 note not given)'
+    });
+  });
+
+  it('does not mark a batch for a rejected TA1 whose control number is not a positive number', async () => {
+    const { c, queries } = contextOf();
+    const out = await postInterchangeAcknowledgments(c, [
+      { controlNumber: 'ABC', status: 'rejected', noteCode: '024', message: 'Bad' },
+      { controlNumber: '000000000', status: 'rejected', noteCode: '024', message: 'Zero' }
+    ]);
+    assert.deepEqual(queries, []);
+    assert.deepEqual(
+      out.items.map((i) => [i.reference, i.outcome, i.message]),
+      [
+        ['ABC', 'unmatched', 'No 837P file has control number ABC'],
+        ['000000000', 'unmatched', 'No 837P file has control number 000000000']
+      ]
+    );
+    assert.equal(
+      out.envelopeRejection,
+      'The clearinghouse rejected the file envelope: interchange ABC: Bad (TA1 note 024); interchange 000000000: Zero (TA1 note 024)'
+    );
+  });
+
+  it('lists accepted interchanges, with their errors, without touching any batch', async () => {
+    const { c, queries } = contextOf();
+    const out = await postInterchangeAcknowledgments(c, [
+      { controlNumber: '000000101', status: 'accepted', noteCode: '000', message: '' },
+      {
+        controlNumber: '000000102',
+        status: 'acceptedWithErrors',
+        noteCode: '020',
+        message: 'Invalid test indicator'
+      }
+    ]);
+    assert.deepEqual(queries, []);
+    assert.deepEqual(out, {
+      items: [
+        {
+          reference: '101',
+          claimId: null,
+          outcome: 'accepted',
+          message: 'The clearinghouse accepted interchange 101',
+          paidCents: null,
+          adjustedCents: null
+        },
+        {
+          reference: '102',
+          claimId: null,
+          outcome: 'accepted',
+          message: 'The clearinghouse accepted interchange 102 with errors: Invalid test indicator',
+          paidCents: null,
+          adjustedCents: null
+        }
+      ],
+      envelopeRejection: null
+    });
+  });
+
+  it('rejects a 999 batch with its errors and skips claims filed without a coverage', async () => {
+    const { c, queries } = contextOf(({ sql }) =>
+      sql.includes('from "claim_batches" as "b"')
+        ? [
+            { claim_id: 'c1', coverage_id: 'cov1', number: '20261105-0007' },
+            { claim_id: 'c2', coverage_id: null, number: '20261105-0008' }
+          ]
+        : []
+    );
+    const out = await postBatchAcknowledgments(c, [
+      {
+        groupControlNumber: '7',
+        accepted: true,
+        transactions: [
+          { controlNumber: '0001', accepted: false, errors: ['Bad NM1', 'Bad DTP'] },
+          { controlNumber: '0002', accepted: true, errors: [] }
+        ]
+      },
+      { groupControlNumber: '8', accepted: false, transactions: [] }
+    ]);
+    const lookups = queries.filter((q) => q.sql.includes('from "claim_batches" as "b"'));
+    assert.deepEqual(
+      lookups.map((q) => q.parameters),
+      [
+        ['t1', 7, 'submitted', 'resubmitted'],
+        ['t1', 8, 'submitted', 'resubmitted']
+      ]
+    );
+    assert.deepEqual(
+      out.items.map((i) => [i.claimId, i.outcome, i.message]),
+      [
+        ['c1', 'rejected', 'The clearinghouse rejected 837P file 7: Bad NM1; Bad DTP'],
+        ['c1', 'rejected', 'The clearinghouse rejected 837P file 8']
+      ]
+    );
+    const events = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
+    assert.deepEqual(
+      events.map((q) => q.parameters[6]),
+      ['d:7:c1', 'd:8:c1']
+    );
+  });
+
+  it('posts 277CA acknowledgments against the coverage last submitted', async () => {
+    const claims: Record<string, string> = { '20261105-1001': 'c1', '20261105-1002': 'c2' };
+    const { c, queries } = contextOf(({ sql, parameters }) => {
+      if (sql.startsWith('select "id", "status" from "claims"')) {
+        const id = claims[String(parameters[1])];
+        return id ? [{ id, status: 'submitted' }] : [];
+      }
+      if (sql.startsWith('select "coverage_id" from "claim_events"')) {
+        return parameters[0] === 'c1' ? [{ coverage_id: 'cov1' }] : [];
+      }
+      return [];
+    });
+    const ack = (
+      claimNumber: string,
+      status: 'accepted' | 'rejected' | 'pending',
+      message = ''
+    ) => ({
+      claimNumber,
+      status,
+      categories: status === 'rejected' ? ['A7', 'A8'] : ['A1'],
+      payerClaimNumber: status === 'accepted' ? 'PCN-1' : null,
+      message
+    });
+    const out = await postClaimAcknowledgments(c, [
+      ack('20261105-1001', 'accepted'),
+      ack('20261105-1001', 'rejected', 'Missing NPI'),
+      ack('20261105-1001', 'pending', 'Waiting on payer'),
+      ack('20261105-1001', 'pending'),
+      ack('20261105-1002', 'accepted'),
+      ack('20261105-9999', 'accepted'),
+      ack('not a number', 'accepted')
+    ]);
+    assert.deepEqual(
+      out.items.map((i) => [i.reference, i.claimId, i.outcome, i.message]),
+      [
+        ['20261105-1001', 'c1', 'accepted', 'Accepted (A1)'],
+        ['20261105-1001', 'c1', 'rejected', 'Rejected (A7, A8): Missing NPI'],
+        ['20261105-1001', 'c1', 'review', 'Pending: Waiting on payer'],
+        ['20261105-1001', 'c1', 'review', 'Pending: A1'],
+        ['20261105-1002', 'c2', 'review', 'The claim has not been submitted from here'],
+        ['20261105-9999', null, 'unmatched', 'No claim has number 20261105-9999'],
+        ['not a number', null, 'unmatched', 'No claim has number not a number']
+      ]
+    );
+    assert.equal(out.envelopeRejection, null);
+    const coverage = queries.find((q) => q.sql.startsWith('select "coverage_id"'));
+    assert.deepEqual(coverage?.parameters, ['c1', 'submitted', 'resubmitted', 1]);
+    assert.deepEqual(
+      queries
+        .filter((q) => q.sql.startsWith('insert into "claim_events"'))
+        .map((q) => q.parameters),
+      [
+        ['c1', 'accepted', 'cov1', 'Accepted (A1)', 'PCN-1', null, 'd:1'],
+        ['c1', 'rejected', 'cov1', 'Rejected (A7, A8): Missing NPI', null, null, 'd:2']
+      ]
+    );
   });
 
   it('sends a claim status for a claim never submitted from here to a biller', async () => {

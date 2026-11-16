@@ -52,4 +52,104 @@ describe('payer file eligibility', () => {
     assert.ok(queries.some((q) => q.sql.startsWith('update "claim_coverages"')));
     assert.equal(queries.filter((q) => q.sql.startsWith('insert into "claim_events"')).length, 1);
   });
+
+  const traced = () => {
+    const recording = createRecordingDb(({ sql }) =>
+      sql.includes('from "claim_coverages"')
+        ? [{ id: COVERAGE, claim_id: 'c1', claim_filing: 'CI' }]
+        : []
+    );
+    const c: Context = {
+      tx: recording.db,
+      boss,
+      agencyId: 't1',
+      userId: 'u1',
+      digest: 'd',
+      fileName: 'a.271',
+      now: new Date('2026-11-01T00:00:00Z'),
+      postings: []
+    };
+    return { c, queries: recording.queries };
+  };
+
+  const saves = (queries: { sql: string; parameters: readonly unknown[] }[]) =>
+    queries.filter((q) => q.sql.startsWith('update "claim_coverages"')).map((q) => q.parameters);
+
+  const events = (queries: { sql: string; parameters: readonly unknown[] }[]) =>
+    queries.filter((q) => q.sql.startsWith('insert into "claim_events"')).map((q) => q.parameters);
+
+  it('saves an active result with its stay and records the label with the note', async () => {
+    const { c, queries } = traced();
+    const out = await postEligibility(c, [
+      {
+        ...result(COVERAGE),
+        planName: 'Gold',
+        coverageStart: '2026-01-01',
+        stay: { kind: 'snf', admittedOn: '2026-10-01', dischargedOn: null }
+      }
+    ]);
+    const lookup = queries.find((q) => q.sql.includes('from "claim_coverages"'));
+    assert.deepEqual(lookup?.parameters, ['t1', COVERAGE]);
+    assert.deepEqual(saves(queries), [
+      ['active', 'Gold; Covered 2026-01-01 to now', c.now, 'snf', '2026-10-01', null, COVERAGE]
+    ]);
+    assert.deepEqual(events(queries), [
+      [
+        'c1',
+        'eligibility',
+        COVERAGE,
+        'Coverage active: Gold; Covered 2026-01-01 to now',
+        null,
+        'u1',
+        'd:1'
+      ]
+    ]);
+    assert.deepEqual(out.items, [
+      {
+        reference: COVERAGE,
+        claimId: 'c1',
+        outcome: 'eligible',
+        message: 'Gold; Covered 2026-01-01 to now',
+        paidCents: null,
+        adjustedCents: null
+      }
+    ]);
+  });
+
+  it('saves an inactive result with no note or stay as nulls', async () => {
+    const { c, queries } = traced();
+    const out = await postEligibility(c, [{ ...result(COVERAGE), active: false }]);
+    assert.deepEqual(saves(queries), [['inactive', null, c.now, null, null, null, COVERAGE]]);
+    assert.deepEqual(
+      events(queries).map((p) => p[3]),
+      ['Coverage not active']
+    );
+    assert.deepEqual(
+      out.items.map((i) => [i.outcome, i.message]),
+      [['ineligible', '']]
+    );
+  });
+
+  it('leaves the coverage alone when the payer does not say, but still records the answer', async () => {
+    const { c, queries } = traced();
+    const out = await postEligibility(c, [
+      { ...result(COVERAGE), active: null },
+      { ...result(COVERAGE), active: null, messages: ['Call the payer'] }
+    ]);
+    assert.deepEqual(saves(queries), []);
+    assert.deepEqual(
+      events(queries).map((p) => [p[3], p[6]]),
+      [
+        ['The payer did not say', 'd:1'],
+        ['Call the payer', 'd:2']
+      ]
+    );
+    assert.deepEqual(
+      out.items.map((i) => [i.outcome, i.message]),
+      [
+        ['review', 'The payer did not say'],
+        ['review', 'Call the payer']
+      ]
+    );
+  });
 });

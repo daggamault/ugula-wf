@@ -97,4 +97,40 @@ describe('payer file items', () => {
       ['claim:c1', 'claim:c2']
     );
   });
+
+  it('writes the event fields in order and signals the claim key for the agency', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    const c: Context = {
+      tx: db,
+      boss,
+      agencyId: 't1',
+      userId: null,
+      digest: 'abc',
+      fileName: 'a.277',
+      now: new Date(),
+      postings: []
+    };
+    await recordPayerEvent(c, 'c1', 'cov1', {
+      kind: 'accepted',
+      note: 'Accepted (A1)',
+      payerClaimNumber: 'PCN-9',
+      key: '3'
+    });
+    assert.deepEqual(
+      queries.map((q) => q.sql.split(' ').slice(0, 3).join(' ')),
+      ['insert into "claim_events"', 'insert into "signals"', 'select "id", state']
+    );
+    assert.deepEqual(queries[0]?.parameters, [
+      'c1',
+      'accepted',
+      'cov1',
+      'Accepted (A1)',
+      'PCN-9',
+      null,
+      'abc:3'
+    ]);
+    assert.ok(queries[0]?.sql.endsWith('returning "id"'));
+    assert.deepEqual(queries[1]?.parameters, ['t1', 'claim:c1', 1]);
+    assert.deepEqual(queries[2]?.parameters, ['t1', 'claim:c1', 'suspended']);
+  });
 });
