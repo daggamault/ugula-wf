@@ -12,6 +12,7 @@ import {
   stampOf,
   textOf,
   transactionsOf,
+  x12Amount,
   yyyymmdd
 } from './x12.ts';
 
@@ -124,6 +125,17 @@ describe('values', () => {
     assert.equal(yyyymmdd('2026-10-01T08:15:00Z'), '20261001');
     assert.equal(textOf('  ICN1 '), 'ICN1');
     assert.equal(textOf('   '), null);
+  });
+
+  it('writes cents as X12 decimals without trailing zeros', () => {
+    assert.deepEqual([12_345, 1250, 1200, 5, -1250, 0].map(x12Amount), [
+      '123.45',
+      '12.5',
+      '12',
+      '0.05',
+      '-12.5',
+      '0'
+    ]);
   });
 
   it('cleans free text to upper-case basic characters without delimiters', () => {

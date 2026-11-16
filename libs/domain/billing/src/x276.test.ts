@@ -50,7 +50,7 @@ describe('build276', () => {
       'NM1*IL*1*DOE*JANE****MI*1EG4TE5MK73~',
       'TRN*1*1042~',
       'REF*EJ*1042~',
-      'AMT*T3*1250.50~',
+      'AMT*T3*1250.5~',
       'DTP*472*RD8*20261001-20261001~'
     ]);
     assert.ok(lines.includes('HL*5**20*1~') && lines.includes('REF*1K*PCN-9~'));

@@ -3,11 +3,10 @@ import {
   DEFAULT_PROVIDER,
   envelope,
   type MockOptions,
-  mockDollars,
   type Party,
   stamp
 } from './mock-envelope.ts';
-import { clean, type Segment } from './x12.ts';
+import { clean, type Segment, x12Amount } from './x12.ts';
 
 type Mock277Status = {
   trace: string;
@@ -48,8 +47,8 @@ export const build277Status = (answers: Mock277Status[], o: MockOptions = {}) =>
               [a.category, a.code],
               date,
               '',
-              mockDollars(a.chargeCents ?? 0),
-              mockDollars(a.paidCents ?? 0),
+              x12Amount(a.chargeCents ?? 0),
+              x12Amount(a.paidCents ?? 0),
               '',
               '',
               '',

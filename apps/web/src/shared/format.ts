@@ -1,3 +1,5 @@
+import { SEX_LABELS, sexOf } from '@ugula/billing';
+
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 export const formatDateTime = (iso: string | null) => (iso ? dateTime.format(new Date(iso)) : '—');
@@ -16,10 +18,10 @@ export const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().tim
 export const patientName = (last: string | null, first: string | null) =>
   last ? [last, first].filter(Boolean).join(', ') : null;
 
-const SEX_LABELS: Readonly<Record<string, string>> = { F: 'Female', M: 'Male', U: 'Unknown' };
-
-export const sexLabel = (code: string | null) =>
-  code && Object.hasOwn(SEX_LABELS, code) ? SEX_LABELS[code] : null;
+export const sexLabel = (code: string | null) => {
+  const sex = sexOf(code);
+  return sex ? SEX_LABELS[sex] : null;
+};
 
 export const formatDuration = (ms: number) =>
   ms < 1 ? '<1 ms' : ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;

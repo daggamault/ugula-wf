@@ -98,11 +98,15 @@ export const clean = (x: string | null | undefined, max = 60) =>
     .trimEnd()
     .toUpperCase();
 
+export const CAS_TRIPLETS = 6;
+
+export const x12Amount = (cents: number) => String(cents / 100);
+
 const safe = (x: string) => x.replace(/[^\x20-\x7E]/g, '').replace(/[~*:^]/g, ' ');
 
 const fixed = (x: string | null, n: number) => clean(x, n).padEnd(n, ' ');
 
-const serialize = (seg: Segment) =>
+export const serialize = (seg: Segment) =>
   `${seg
     .map((el) => (typeof el === 'string' ? safe(el) : el.map(safe).join(':')))
     .join('*')

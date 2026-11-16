@@ -1,4 +1,4 @@
-import { clean, MAX_CONTROL_NUMBER, type Segment } from './x12.ts';
+import { clean, MAX_CONTROL_NUMBER, type Segment, serialize } from './x12.ts';
 
 export type MockOptions = {
   sender?: string;
@@ -20,17 +20,7 @@ export const DEFAULT_PROVIDER: Party = { name: 'DEVELOPMENT EMS', id: '123456789
 
 export const DEFAULT_PAYER: Party = { name: 'MEDICARE', id: 'DEMOMCR' };
 
-const safe = (x: string) => x.replace(/[^\x20-\x7E]/g, '').replace(/[~*:^]/g, ' ');
-
-const serialize = (seg: Segment) =>
-  `${seg
-    .map((el) => (typeof el === 'string' ? safe(el) : el.map(safe).join(':')))
-    .join('*')
-    .replace(/\*+$/, '')}~`;
-
 export const randomControl = () => Math.floor(Math.random() * (MAX_CONTROL_NUMBER - 1)) + 1;
-
-export const mockDollars = (cents: number) => (cents / 100).toFixed(2);
 
 export const stamp = (o: MockOptions) => {
   const iso = (o.createdAt ?? new Date()).toISOString();

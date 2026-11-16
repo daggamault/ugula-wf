@@ -1,4 +1,13 @@
-import { clean, type Envelope, interchange, type Segment, stampOf, yyyymmdd } from './x12.ts';
+import { sexOf } from './patients.ts';
+import {
+  clean,
+  type Envelope,
+  interchange,
+  type Segment,
+  stampOf,
+  x12Amount,
+  yyyymmdd
+} from './x12.ts';
 import type { Submitter } from './x837.ts';
 
 type Person = {
@@ -19,20 +28,14 @@ export type ClaimStatusInquiry = {
   serviceDate: string;
 };
 
-const SEXES = ['F', 'M', 'U'];
-
-const dollars = (cents: number) => (cents / 100).toFixed(2);
-
 const demographics = (p: Person): Segment[] =>
-  p.birthDate
-    ? [['DMG', 'D8', yyyymmdd(p.birthDate), p.sex && SEXES.includes(p.sex) ? p.sex : 'U']]
-    : [];
+  p.birthDate ? [['DMG', 'D8', yyyymmdd(p.birthDate), sexOf(p.sex) ?? 'U']] : [];
 
 const claimSegments = (q: ClaimStatusInquiry): Segment[] => [
   ['TRN', '1', q.trace.trim().slice(0, 50)],
   ...(q.payerClaimNumber ? [['REF', '1K', clean(q.payerClaimNumber, 50)]] : []),
   ['REF', 'EJ', q.claimNumber.trim().slice(0, 50)],
-  ['AMT', 'T3', dollars(q.chargeCents)],
+  ['AMT', 'T3', x12Amount(q.chargeCents)],
   ['DTP', '472', 'RD8', `${yyyymmdd(q.serviceDate)}-${yyyymmdd(q.serviceDate)}`]
 ];
 

@@ -6,6 +6,8 @@ export const SEXES = ['F', 'M', 'U'] as const;
 
 export type Sex = (typeof SEXES)[number];
 
+export const SEX_LABELS: Readonly<Record<Sex, string>> = { F: 'Female', M: 'Male', U: 'Unknown' };
+
 export type Address = {
   addressLine: string | null;
   city: string | null;

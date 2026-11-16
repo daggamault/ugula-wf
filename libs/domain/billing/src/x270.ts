@@ -1,3 +1,4 @@
+import { sexOf } from './patients.ts';
 import { clean, type Envelope, interchange, type Segment, stampOf, yyyymmdd } from './x12.ts';
 import type { Submitter } from './x837.ts';
 
@@ -16,11 +17,9 @@ export type EligibilityRequest = {
 
 const HEALTH_BENEFIT_PLAN_COVERAGE = '30';
 
-const SEXES = ['F', 'M', 'U'];
-
 const requestSegments = (s: Submitter, r: EligibilityRequest, hl: number): Segment[] => {
   const sub = r.subscriber;
-  const sex = sub.sex && SEXES.includes(sub.sex) ? sub.sex : 'U';
+  const sex = sexOf(sub.sex) ?? 'U';
   return [
     ['HL', String(hl), '', '20', '1'],
     ['NM1', 'PR', '2', clean(r.payer.name), '', '', '', '', 'PI', clean(r.payer.payerId, 80)],

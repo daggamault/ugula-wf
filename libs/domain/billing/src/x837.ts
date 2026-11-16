@@ -18,7 +18,16 @@ import { money } from './numbers.ts';
 import type { Address, Sex } from './patients.ts';
 import { isValidNpi } from './payers.ts';
 import { recordOf, textOrNull } from './values.ts';
-import { clean, type Envelope, interchange, type Segment, stampOf, yyyymmdd } from './x12.ts';
+import {
+  CAS_TRIPLETS,
+  clean,
+  type Envelope,
+  interchange,
+  type Segment,
+  stampOf,
+  x12Amount,
+  yyyymmdd
+} from './x12.ts';
 
 export { MAX_CONTROL_NUMBER } from './x12.ts';
 
@@ -82,8 +91,6 @@ export const NOTE_LENGTH = 80;
 const REPLACEMENT_FREQUENCIES: readonly string[] = ['7', '8'];
 
 const ZIP_PLUS_4 = new RegExp(ZIP_PLUS_4_PATTERN);
-
-const dollars = (cents: number) => String(cents / 100);
 
 export const submitterIssues = (s: Submitter | null) =>
   !s
@@ -396,8 +403,6 @@ const person = (code: string, p: Person, id: readonly string[] = []): Segment =>
   ...id
 ];
 
-const CAS_TRIPLETS = 6;
-
 const casSegments = (adjustments: Adjustment[]): Segment[] =>
   [...Map.groupBy(adjustments, (a) => a.group)].flatMap(([group, items]) =>
     Array.from({ length: Math.ceil(items.length / CAS_TRIPLETS) }, (_, k) => [
@@ -405,7 +410,7 @@ const casSegments = (adjustments: Adjustment[]): Segment[] =>
       group,
       ...items
         .slice(k * CAS_TRIPLETS, (k + 1) * CAS_TRIPLETS)
-        .flatMap((a) => [a.reason, dollars(a.cents), ''])
+        .flatMap((a) => [a.reason, x12Amount(a.cents), ''])
     ])
   );
 
@@ -423,7 +428,7 @@ const otherPayerSegments = (o: X837OtherPayer, i: number): Segment[] => [
     o.claimFiling
   ],
   ...casSegments(o.adjustments),
-  ['AMT', 'D', dollars(o.paidCents)],
+  ['AMT', 'D', x12Amount(o.paidCents)],
   ['OI', '', '', 'Y', 'P', '', 'Y'],
   person('IL', o, ['MI', clean(o.memberId, 80)]),
   ['NM1', 'PR', '2', clean(o.name), '', '', '', '', 'PI', clean(o.payerId, 80)],
@@ -437,7 +442,7 @@ const lineAdjudicationSegments = (o: X837OtherPayer, line: number): Segment[] =>
         [
           'SVD',
           clean(o.payerId, 80),
-          dollars(a.paidCents),
+          x12Amount(a.paidCents),
           ['HC', a.code, ...a.modifiers],
           '',
           String(a.units)
@@ -481,7 +486,7 @@ const claimSegments = (c: X837Claim, hl: number): Segment[] => {
     [
       'CLM',
       c.claimId,
-      dollars(totalCents),
+      x12Amount(totalCents),
       '',
       '',
       [c.placeOfService, 'B', c.frequency],
@@ -520,7 +525,7 @@ const claimSegments = (c: X837Claim, hl: number): Segment[] => {
       [
         'SV1',
         ['HC', l.code, ...l.modifiers],
-        dollars(l.chargeCents),
+        x12Amount(l.chargeCents),
         'UN',
         String(l.units),
         '',

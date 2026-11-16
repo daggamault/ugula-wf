@@ -140,7 +140,7 @@ describe('build835', () => {
       at
     );
     assert.ok(text.includes('NM1*TT*2*MEDIGAP PLAN*****PI*GAP01~'));
-    assert.ok(text.includes('PLB*1234567893*20261231*WO:ICN-9*15.00*L6*-0.25~'));
+    assert.ok(text.includes('PLB*1234567893*20261231*WO:ICN-9*15*L6*-0.25~'));
     const [r] = read835(text);
     assert.equal(r?.totalCents, 5_525);
     assert.deepEqual(r?.providerAdjustments, [

@@ -1,5 +1,6 @@
 import { type Adjustment, isAdjustmentGroup, MAX_LINE_MODIFIERS } from './claims.ts';
 import {
+  CAS_TRIPLETS,
   centsOf,
   componentsOf,
   dateOf,
@@ -52,8 +53,6 @@ const DENIED = '4';
 const REVERSAL = '22';
 
 const CROSSOVER_CARRIER = 'TT';
-
-const CAS_TRIPLETS = 6;
 
 const MOA_REMARKS = [3, 4, 5, 6, 7];
 

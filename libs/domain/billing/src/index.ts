@@ -221,6 +221,7 @@ export {
   type Demographics,
   isSamePerson,
   type Patient,
+  SEX_LABELS,
   SEXES,
   type Sex,
   sexOf

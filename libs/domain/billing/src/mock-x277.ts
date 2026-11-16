@@ -4,11 +4,10 @@ import {
   DEFAULT_SENDER,
   envelope,
   type MockOptions,
-  mockDollars,
   type Party,
   stamp
 } from './mock-envelope.ts';
-import { clean, type Segment, yyyymmdd } from './x12.ts';
+import { clean, type Segment, x12Amount, yyyymmdd } from './x12.ts';
 
 type Mock277Claim = {
   claimNumber: string;
@@ -70,7 +69,7 @@ export const build277 = (ack: Mock277, o: MockOptions = {}) => {
             ]
           : []),
         ...ack.claims.flatMap((c, i): Segment[] => {
-          const charge = mockDollars(c.chargeCents ?? 0);
+          const charge = x12Amount(c.chargeCents ?? 0);
           return [
             ['HL', String(4 + i), '3', 'PT'],
             [

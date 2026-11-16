@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { envelope, mockDollars, randomControl, stamp } from './mock-envelope.ts';
+import { envelope, randomControl, stamp } from './mock-envelope.ts';
 import { MAX_CONTROL_NUMBER, readX12 } from './x12.ts';
 
 const at = { createdAt: new Date('2026-11-03T12:34:00Z'), controlNumber: 7 };
@@ -57,8 +57,7 @@ describe('envelope', () => {
 });
 
 describe('envelope helpers', () => {
-  it('formats cents, stamps dates and draws control numbers in range', () => {
-    assert.equal(mockDollars(12_345), '123.45');
+  it('stamps dates and draws control numbers in range', () => {
     assert.deepEqual(stamp(at), { date: '20261103', time: '1234' });
     const n = randomControl();
     assert.ok(Number.isInteger(n) && n >= 1 && n < MAX_CONTROL_NUMBER);

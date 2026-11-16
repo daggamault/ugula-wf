@@ -4,13 +4,12 @@ import {
   DEFAULT_PROVIDER,
   envelope,
   type MockOptions,
-  mockDollars,
   type Party,
   randomControl,
   stamp,
   type Transaction
 } from './mock-envelope.ts';
-import { clean, type Segment } from './x12.ts';
+import { CAS_TRIPLETS, clean, type Segment, x12Amount } from './x12.ts';
 
 type Mock835Line = {
   code: string;
@@ -46,8 +45,6 @@ type Mock835 = {
   providerAdjustments?: Mock835ProviderAdjustment[];
 };
 
-const CAS_TRIPLETS = 6;
-
 const MOA_REMARKS = 5;
 
 const PLB_PAIRS = 6;
@@ -67,7 +64,7 @@ const casOf = (adjustments: Adjustment[]): Segment[] =>
   [...Map.groupBy(adjustments, (a) => a.group)].map(([group, items]) => [
     'CAS',
     group,
-    ...items.slice(0, CAS_TRIPLETS).flatMap((a) => [a.reason, mockDollars(a.cents), ''])
+    ...items.slice(0, CAS_TRIPLETS).flatMap((a) => [a.reason, x12Amount(a.cents), ''])
   ]);
 
 const lineAdjustmentsOf = (l: Mock835Line): Adjustment[] => {
@@ -80,8 +77,8 @@ const lineSegments = (l: Mock835Line): Segment[] => [
   [
     'SVC',
     ['HC', l.code, ...(l.modifiers ?? [])],
-    mockDollars(l.chargeCents),
-    mockDollars(l.paidCents),
+    x12Amount(l.chargeCents),
+    x12Amount(l.paidCents),
     '',
     String(l.units ?? 1)
   ],
@@ -94,9 +91,9 @@ const claimSegments = (c: Mock835Claim): Segment[] => [
     'CLP',
     c.claimNumber,
     c.status ?? (c.paidCents === 0 ? '4' : '1'),
-    mockDollars(c.chargeCents),
-    mockDollars(c.paidCents),
-    mockDollars(c.patientCents ?? 0),
+    x12Amount(c.chargeCents),
+    x12Amount(c.paidCents),
+    x12Amount(c.patientCents ?? 0),
     c.claimFiling ?? 'MB',
     c.payerClaimNumber ?? ''
   ],
@@ -117,7 +114,7 @@ const plbOf = (provider: string, date: string, items: Mock835ProviderAdjustment[
       .slice(k * PLB_PAIRS, (k + 1) * PLB_PAIRS)
       .flatMap((a) => [
         a.reference ? [a.reason, clean(a.reference, 50)] : a.reason,
-        mockDollars(a.cents)
+        x12Amount(a.cents)
       ])
   ]);
 
@@ -139,7 +136,7 @@ export const build835 = (remits: Mock835[], o: MockOptions = {}) => {
           [
             'BPR',
             total > 0 ? 'I' : 'H',
-            mockDollars(total),
+            x12Amount(total),
             'C',
             'ACH',
             'CCP',
