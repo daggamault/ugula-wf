@@ -189,8 +189,15 @@ const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export type PostedResponse = { balanceCents: number; adjustedCents: number; duplicate: boolean };
 
+export const nudgeClaims = (
+  tx: Db,
+  boss: RunQueueClient,
+  agencyId: string,
+  claimIds: readonly string[]
+) => signalRuns(tx, boss, { agencyId, name: CLAIM_SIGNAL, keys: claimIds, payload: null });
+
 export const nudgeClaim = (tx: Db, boss: RunQueueClient, agencyId: string, claimId: string) =>
-  signalRuns(tx, boss, { agencyId, name: CLAIM_SIGNAL, key: claimId, payload: null });
+  nudgeClaims(tx, boss, agencyId, [claimId]);
 
 const postedBy = async (db: Db, claimId: string, coverageId: string) =>
   db

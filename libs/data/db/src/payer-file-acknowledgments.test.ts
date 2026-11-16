@@ -72,7 +72,9 @@ describe('payer file acknowledgments', () => {
 
   it('sends a claim status for a claim never submitted from here to a biller', async () => {
     const { c } = contextOf(({ sql }) =>
-      sql.startsWith('select "id", "status" from "claims"') ? [{ id: 'c1', status: 'paid' }] : []
+      sql.startsWith('select "id", "number", "status" from "claims"')
+        ? [{ id: 'c1', number: '20261105-1001', status: 'paid' }]
+        : []
     );
     const out = await postClaimStatuses(c, [
       {

@@ -10,74 +10,101 @@ import {
   remittanceLine
 } from '@ugula/billing';
 import { postClaimResponse } from './claim-responses.ts';
-import { type Context, type FileItem, findClaimByNumber, item } from './payer-file-items.ts';
+import { type Context, type FileItem, findClaimsByNumber, item } from './payer-file-items.ts';
 import type { Db } from './schema.ts';
 
-const listPostingCoverages = (db: Db, claimId: string) =>
-  db
-    .selectFrom('claim_coverages as cc')
-    .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
-    .select(['cc.id', 'dp.payer_id as payerId'])
-    .where('cc.claim_id', '=', claimId)
-    .orderBy('cc.position')
-    .execute();
+const listPostingCoverages = async (db: Db, claimIds: readonly string[]) =>
+  Map.groupBy(
+    claimIds.length
+      ? await db
+          .selectFrom('claim_coverages as cc')
+          .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
+          .select(['cc.claim_id', 'cc.id', 'dp.payer_id as payerId'])
+          .where('cc.claim_id', 'in', claimIds)
+          .orderBy('cc.claim_id')
+          .orderBy('cc.position')
+          .execute()
+      : [],
+    (cc) => cc.claim_id
+  );
 
-const postedPayment = async (db: Db, coverageId: string, payerClaimNumber: string | null) =>
-  payerClaimNumber !== null &&
-  (await db
-    .selectFrom('claim_events')
-    .select('id')
-    .where('coverage_id', '=', coverageId)
-    .where('kind', '=', 'response')
-    .where('payer_claim_number', '=', payerClaimNumber)
-    .executeTakeFirst()) !== undefined;
+const listPostedPayments = async (db: Db, coverageIds: readonly string[]) =>
+  new Set(
+    coverageIds.length
+      ? (
+          await db
+            .selectFrom('claim_events')
+            .select(['coverage_id', 'payer_claim_number'])
+            .where('coverage_id', 'in', coverageIds)
+            .where('kind', '=', 'response')
+            .where('payer_claim_number', 'is not', null)
+            .execute()
+        ).map((e) => `${e.coverage_id}:${e.payer_claim_number}`)
+      : []
+  );
 
-const matchRemittance = async (
-  db: Db,
-  agencyId: string,
-  remit: Remittance,
-  rc: RemittanceClaim
-) => {
-  const claim = await findClaimByNumber(db, agencyId, rc.claimNumber);
-  const coverages = claim ? await listPostingCoverages(db, claim.id) : [];
-  const coverage = claim ? remittanceCoverage(coverages, remit.payerId, rc.status) : null;
-  return {
-    claimId: claim?.id ?? null,
-    coverageId: coverage?.id ?? null,
-    nextCoverageId: coverage ? (coverages[coverages.indexOf(coverage) + 1]?.id ?? null) : null,
-    reversesPosted:
-      rc.reversal &&
-      coverage !== null &&
-      (await postedPayment(db, coverage.id, rc.payerClaimNumber))
-  };
+type ClaimPayment = { remit: Remittance; rc: RemittanceClaim; position: number };
+
+type PaymentMatch = {
+  claimId: string | null;
+  coverageId: string | null;
+  nextCoverageId: string | null;
+  reversesPosted: boolean;
 };
 
-const eachClaimPayment = (remittances: Remittance[]) =>
+const eachClaimPayment = (remittances: Remittance[]): ClaimPayment[] =>
   remittances
     .flatMap((remit) => remit.claims.map((rc) => ({ remit, rc })))
-    .map((x, i) => ({
-      ...x,
-      position: i + 1
-    }));
+    .map((x, i) => ({ ...x, position: i + 1 }));
+
+const matchRemittances = async (db: Db, agencyId: string, payments: readonly ClaimPayment[]) => {
+  const claims = await findClaimsByNumber(
+    db,
+    agencyId,
+    payments.map((p) => p.rc.claimNumber)
+  );
+  const coverages = await listPostingCoverages(db, [
+    ...new Set([...claims.values()].map((claim) => claim.id))
+  ]);
+  const posted = await listPostedPayments(
+    db,
+    [...coverages.values()].flat().map((cc) => cc.id)
+  );
+  return ({ remit, rc }: ClaimPayment): PaymentMatch => {
+    const claim = claims.get(rc.claimNumber);
+    const list = claim ? (coverages.get(claim.id) ?? []) : [];
+    const coverage = claim ? remittanceCoverage(list, remit.payerId, rc.status) : null;
+    return {
+      claimId: claim?.id ?? null,
+      coverageId: coverage?.id ?? null,
+      nextCoverageId: coverage
+        ? (list[list.findIndex((cc) => cc.id === coverage.id) + 1]?.id ?? null)
+        : null,
+      reversesPosted:
+        rc.reversal &&
+        coverage !== null &&
+        rc.payerClaimNumber !== null &&
+        posted.has(`${coverage.id}:${rc.payerClaimNumber}`)
+    };
+  };
+};
 
 export const readRemittanceLines = async (
   db: Db,
   agencyId: string,
   text: string
 ): Promise<RemittanceLine[]> => {
-  const lines: RemittanceLine[] = [];
-  for (const { remit, rc, position } of eachClaimPayment(read835(text))) {
-    const { claimId, coverageId, reversesPosted } = await matchRemittance(db, agencyId, remit, rc);
-    lines.push(
-      remittanceLine(position, rc, {
-        claimId,
-        coverageId,
-        reversesPosted,
-        payerName: remit.payerName
-      })
-    );
-  }
-  return lines;
+  const payments = eachClaimPayment(read835(text));
+  const match = await matchRemittances(db, agencyId, payments);
+  return payments.map((p) => {
+    const { claimId, coverageId, reversesPosted } = match(p);
+    return remittanceLine(p.position, p.rc, {
+      claimId,
+      coverageId,
+      reversesPosted,
+      payerName: p.remit.payerName
+    });
+  });
 };
 
 const findClaimByPayerNumber = async (db: Db, agencyId: string, payerClaimNumber: string) =>
@@ -103,16 +130,11 @@ const providerItem = async (c: Context, remit: Remittance, a: ProviderAdjustment
 
 const postPayment = async (
   c: Context,
-  { remit, rc, position }: ReturnType<typeof eachClaimPayment>[number]
+  { remit, rc, position }: ClaimPayment,
+  { claimId, coverageId, nextCoverageId, reversesPosted }: PaymentMatch
 ): Promise<FileItem> => {
   const posting = c.postings.find((p) => p.position === position);
   if (!posting) throw new Error(`No posting was decided for claim payment ${position} of the file`);
-  const { claimId, coverageId, nextCoverageId, reversesPosted } = await matchRemittance(
-    c.tx,
-    c.agencyId,
-    remit,
-    rc
-  );
   if (!claimId || posting.route === 'unmatched') {
     return item(
       rc.claimNumber,
@@ -196,12 +218,13 @@ const postPayment = async (
 
 export const postRemittances = async (c: Context, remittances: Remittance[]) => {
   const payments = eachClaimPayment(remittances);
+  const match = await matchRemittances(c.tx, c.agencyId, payments);
   const posted = new Map<number, FileItem>();
   for (const payment of [
     ...payments.filter((p) => p.rc.reversal),
     ...payments.filter((p) => !p.rc.reversal)
   ]) {
-    posted.set(payment.position, await postPayment(c, payment));
+    posted.set(payment.position, await postPayment(c, payment, match(payment)));
   }
   const items = payments.flatMap((p) => posted.get(p.position) ?? []);
   for (const remit of remittances) {

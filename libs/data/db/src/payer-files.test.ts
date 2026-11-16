@@ -20,13 +20,15 @@ const boss: RunQueueClient = { insert: async () => undefined };
 const fileDb = () =>
   createRecordingDb(({ sql, parameters }) => {
     if (sql.startsWith('insert into "payer_files"')) return [{ id: 'f1' }];
-    if (sql.startsWith('select "id", "status" from "claims"'))
-      return parameters[1] === '20261105-1001' ? [{ id: 'c1', status: 'submitted' }] : [];
+    if (sql.startsWith('select "id", "number", "status" from "claims"'))
+      return parameters.includes('20261105-1001')
+        ? [{ id: 'c1', number: '20261105-1001', status: 'submitted' }]
+        : [];
     if (sql.includes('for update')) return [{ id: 'c1', status: 'submitted', patient_id: 'p1' }];
     if (sql.includes('from "claim_coverages" as "cc"'))
       return [
-        { id: 'cov1', payerId: 'DEMOMCR', payer: 'Medicare', has_events: true },
-        { id: 'cov2', payerId: 'GAP01', payer: 'Medigap', has_events: false }
+        { claim_id: 'c1', id: 'cov1', payerId: 'DEMOMCR', payer: 'Medicare', has_events: true },
+        { claim_id: 'c1', id: 'cov2', payerId: 'GAP01', payer: 'Medigap', has_events: false }
       ];
     if (sql.includes('claim_balances')) return [{ balance_cents: 100_000 }];
     if (sql.startsWith('insert into "claim_events"')) return [{ id: 'e1' }];
@@ -35,8 +37,13 @@ const fileDb = () =>
         ? [{ id: 'e0', claim_id: 'c1' }]
         : [];
     if (sql.includes('sum(adjusted_cents)')) return [{ paid: 60_000, adjusted: 40_000 }];
-    if (sql.startsWith('select "coverage_id" from "claim_events"'))
-      return [{ coverage_id: 'cov1' }];
+    if (sql.includes('"payer_claim_number" is not null'))
+      return [
+        { coverage_id: 'cov1', payer_claim_number: 'ICN-1' },
+        { coverage_id: 'cov1', payer_claim_number: 'ICN-7' }
+      ];
+    if (sql.includes('"coverage_id" from "claim_events"'))
+      return [{ claim_id: 'c1', coverage_id: 'cov1' }];
     if (sql.includes('from "claim_batches"'))
       return parameters.includes(55)
         ? [
@@ -44,8 +51,8 @@ const fileDb = () =>
             { claim_id: 'c2', coverage_id: null, number: '20261105-1002' }
           ]
         : [];
-    if (sql.includes('"claim_coverages"."id" = $'))
-      return parameters.includes(TRACE) ? [{ id: 'cov1', claim_id: 'c1' }] : [];
+    if (sql.includes('"claim_coverages"."id" in ($'))
+      return parameters.includes(TRACE) ? [{ id: TRACE, claim_id: 'c1' }] : [];
     return [];
   });
 
@@ -206,7 +213,7 @@ describe('applyPayerFile', () => {
       ['20261105-1001', 'c1', 'posted', 'Reversed']
     ]);
     assert.deepEqual(
-      events.map((e) => e.parameters.slice(3, 5)),
+      events.map((e) => e.parameters.slice(4, 6)),
       [
         [-60_000, -40_000],
         [70_000, 30_000]
@@ -477,7 +484,7 @@ describe('applyPayerFile', () => {
     const { events } = await apply(build271({ trace: TRACE, active: false }, { createdAt }));
     assert.equal(events.length, 1);
     assert.ok(events[0]?.parameters.includes('eligibility'));
-    assert.ok(events[0]?.parameters.includes('cov1'));
+    assert.ok(events[0]?.parameters.includes(TRACE));
     assert.ok(
       events[0]?.parameters.some(
         (p) => typeof p === 'string' && p.startsWith('Coverage not active')
@@ -487,8 +494,8 @@ describe('applyPayerFile', () => {
 
   it('asks a biller to bill the Medicare Advantage plan a Medicare answer names', async () => {
     const { db } = createRecordingDb(({ sql }) =>
-      sql.includes('"claim_coverages"."id" = $')
-        ? [{ id: 'cov1', claim_id: 'c1', claim_filing: 'MB' }]
+      sql.includes('"claim_coverages"."id" in ($')
+        ? [{ id: TRACE, claim_id: 'c1', claim_filing: 'MB' }]
         : sql.startsWith('insert into "payer_files"')
           ? [{ id: 'f1' }]
           : []

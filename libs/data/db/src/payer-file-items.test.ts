@@ -4,9 +4,9 @@ import type { RunQueueClient } from '@ugula/run-queue';
 import {
   type Context,
   controlNumberOf,
-  findClaimByNumber,
+  findClaimsByNumber,
   item,
-  recordPayerEvent,
+  recordPayerEvents,
   unmatchedClaim
 } from './payer-file-items.ts';
 import { createRecordingDb } from './testing.ts';
@@ -24,18 +24,26 @@ describe('payer file items', () => {
     ]);
   });
 
-  it('finds claims by the daily number billed as CLM01', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    assert.equal(await findClaimByNumber(db, 't1', 'x'), undefined);
-    assert.equal(await findClaimByNumber(db, 't1', '1001'), undefined);
+  it('finds claims by the daily number billed as CLM01 in one query', async () => {
+    const { db, queries } = createRecordingDb(() => [
+      { id: 'c1', number: '20261105-0001', status: 'submitted' }
+    ]);
+    assert.equal((await findClaimsByNumber(db, 't1', ['x', '1001'])).size, 0);
     assert.equal(queries.length, 0);
-    await findClaimByNumber(db, 't1', ' 20261105-0001 ');
-    await findClaimByNumber(db, 't1', '#202611050002');
+    const found = await findClaimsByNumber(db, 't1', [
+      ' 20261105-0001 ',
+      '#202611050002',
+      '20261105-0001'
+    ]);
     assert.deepEqual(
       queries.map((q) => q.parameters),
+      [['t1', '20261105-0001', '20261105-0002']]
+    );
+    assert.deepEqual(
+      [...found],
       [
-        ['t1', '20261105-0001'],
-        ['t1', '20261105-0002']
+        [' 20261105-0001 ', { id: 'c1', status: 'submitted' }],
+        ['20261105-0001', { id: 'c1', status: 'submitted' }]
       ]
     );
   });
@@ -59,7 +67,7 @@ describe('payer file items', () => {
     });
   });
 
-  it('logs a payer event once per file line and nudges the claim', async () => {
+  it('logs payer events once per file line in one statement and nudges their claims', async () => {
     const { db, queries } = createRecordingDb(() => []);
     const c: Context = {
       tx: db,
@@ -71,15 +79,22 @@ describe('payer file items', () => {
       now: new Date(),
       postings: []
     };
-    await recordPayerEvent(c, 'c1', 'cov1', {
-      kind: 'rejected',
-      note: 'Rejected',
-      payerClaimNumber: null,
-      key: '1'
-    });
-    const event = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
-    assert.ok(event?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
-    assert.ok(event?.parameters.includes('d:1') && event.parameters.includes('u1'));
-    assert.ok(queries.some((q) => q.sql.startsWith('insert into "signals"')));
+    await recordPayerEvents(c, []);
+    assert.equal(queries.length, 0);
+    const event = { kind: 'rejected', note: 'Rejected', payerClaimNumber: null } as const;
+    await recordPayerEvents(c, [
+      { ...event, claimId: 'c1', coverageId: 'cov1', key: '1' },
+      { ...event, claimId: 'c2', coverageId: 'cov2', key: '2' }
+    ]);
+    const [insert, signals] = queries;
+    assert.ok(insert?.sql.startsWith('insert into "claim_events"'));
+    assert.ok(insert?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
+    assert.ok(insert?.parameters.includes('d:1') && insert.parameters.includes('d:2'));
+    assert.ok(insert?.parameters.includes('u1'));
+    assert.ok(signals?.sql.startsWith('insert into "signals"'));
+    assert.deepEqual(
+      signals?.parameters.filter((p) => String(p).startsWith('claim:')),
+      ['claim:c1', 'claim:c2']
+    );
   });
 });

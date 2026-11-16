@@ -22,9 +22,9 @@ const result = (trace: string): EligibilityResult => ({
 });
 
 describe('payer file eligibility', () => {
-  it('matches a 271 to the coverage it traces by id, never by casting ids to text', async () => {
+  it('matches 271s to the coverages they trace by id in one lookup, never casting ids to text', async () => {
     const { db, queries } = createRecordingDb(({ sql, parameters }) =>
-      sql.includes('"claim_coverages"."id" = $') && parameters.includes(COVERAGE)
+      sql.includes('"claim_coverages"."id" in ($') && parameters.includes(COVERAGE)
         ? [{ id: COVERAGE, claim_id: 'c1', claim_filing: 'MB' }]
         : []
     );
@@ -50,5 +50,6 @@ describe('payer file eligibility', () => {
     assert.equal(lookups.length, 1);
     assert.ok(!lookups[0]?.sql.includes('::text'));
     assert.ok(queries.some((q) => q.sql.startsWith('update "claim_coverages"')));
+    assert.equal(queries.filter((q) => q.sql.startsWith('insert into "claim_events"')).length, 1);
   });
 });

@@ -3,23 +3,27 @@ import {
   type Context,
   type FileItem,
   item,
+  type PayerEvent,
   type Posted,
-  recordPayerEvent
+  recordPayerEvents
 } from './payer-file-items.ts';
 import type { Db } from './schema.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const findTracedCoverage = async (db: Db, agencyId: string, trace: string) =>
-  UUID.test(trace)
-    ? db
+const findTracedCoverages = async (db: Db, agencyId: string, traces: readonly string[]) => {
+  const ids = [...new Set(traces.filter((t) => UUID.test(t)).map((t) => t.toLowerCase()))];
+  const rows = ids.length
+    ? await db
         .selectFrom('claim_coverages')
         .leftJoin('payers', 'payers.id', 'claim_coverages.payer_id')
         .select(['claim_coverages.id', 'claim_coverages.claim_id', 'payers.claim_filing'])
         .where('claim_coverages.agency_id', '=', agencyId)
-        .where('claim_coverages.id', '=', trace.toLowerCase())
-        .executeTakeFirst()
-    : undefined;
+        .where('claim_coverages.id', 'in', ids)
+        .execute()
+    : [];
+  return new Map(rows.map((r) => [r.id, r]));
+};
 
 const saveEligibility = (
   db: Db,
@@ -46,11 +50,15 @@ export const postEligibility = async (
   c: Context,
   results: EligibilityResult[]
 ): Promise<Posted> => {
+  const coverages = await findTracedCoverages(
+    c.tx,
+    c.agencyId,
+    results.map((r) => r.trace)
+  );
   const items: FileItem[] = [];
-  let n = 0;
-  for (const r of results) {
-    n += 1;
-    const coverage = await findTracedCoverage(c.tx, c.agencyId, r.trace);
+  const events: PayerEvent[] = [];
+  for (const [i, r] of results.entries()) {
+    const coverage = coverages.get(r.trace.toLowerCase());
     if (!coverage) {
       items.push(item(r.trace, null, 'unmatched', 'No payer on a claim matches this response'));
       continue;
@@ -64,13 +72,16 @@ export const postEligibility = async (
         stay: r.stay
       });
     }
-    await recordPayerEvent(c, coverage.claim_id, coverage.id, {
+    events.push({
+      claimId: coverage.claim_id,
+      coverageId: coverage.id,
       kind: 'eligibility',
       note: [eligibilityLabel(found.active), found.note].filter(Boolean).join(': '),
       payerClaimNumber: null,
-      key: String(n)
+      key: String(i + 1)
     });
     items.push(item(r.trace, coverage.claim_id, found.outcome, found.note));
   }
+  await recordPayerEvents(c, events);
   return { items, envelopeRejection: null };
 };

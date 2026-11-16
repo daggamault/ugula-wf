@@ -39,7 +39,7 @@ describe('signalRuns', () => {
     let inserts = 0;
     const boss: RunQueueClient = { insert: async () => void inserts++ };
     assert.equal(
-      await signalRuns(db, boss, { agencyId: 't', name: 'claim', key: 'c1', payload: null }),
+      await signalRuns(db, boss, { agencyId: 't', name: 'claim', keys: ['c1'], payload: null }),
       0
     );
     assert.equal(inserts, 0);
@@ -49,6 +49,21 @@ describe('signalRuns', () => {
     );
     assert.deepEqual(queries[0]?.parameters, ['t', 'claim:c1', 1]);
     assert.ok(queries[1]?.sql.startsWith('select'));
+    await db.destroy();
+  });
+
+  it('counts each key once in one statement and signals nothing for no keys', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    const boss: RunQueueClient = { insert: async () => undefined };
+    const keys = ['c1', 'c2', 'c1'];
+    await signalRuns(db, boss, { agencyId: 't', name: 'claim', keys, payload: null });
+    assert.deepEqual(queries[0]?.parameters, ['t', 'claim:c1', 1, 't', 'claim:c2', 1]);
+    assert.deepEqual(queries[1]?.parameters, ['t', 'claim:c1', 'claim:c2', 'suspended']);
+    assert.equal(
+      await signalRuns(db, boss, { agencyId: 't', name: 'claim', keys: [], payload: null }),
+      0
+    );
+    assert.equal(queries.length, 2);
     await db.destroy();
   });
 
@@ -64,7 +79,12 @@ describe('signalRuns', () => {
     const jobs: unknown[] = [];
     const boss: RunQueueClient = { insert: async (_name, batch) => void jobs.push(...batch) };
     assert.equal(
-      await signalRuns(db, boss, { agencyId: 't', name: 'claim', key: 'c1', payload: { a: 1 } }),
+      await signalRuns(db, boss, {
+        agencyId: 't',
+        name: 'claim',
+        keys: ['c1'],
+        payload: { a: 1 }
+      }),
       2
     );
     assert.deepEqual(queries[1]?.parameters, ['t', 'claim:c1', 'suspended']);

@@ -197,7 +197,7 @@ describe('claim responses', () => {
       value: { balanceCents: 100, adjustedCents: -40, duplicate: false }
     });
     const insert = queries.find((q) => q.sql.startsWith('insert into "claim_events"'));
-    assert.deepEqual(insert?.parameters.slice(3, 5), [-60, -40]);
+    assert.deepEqual(insert?.parameters.slice(4, 6), [-60, -40]);
     assert.ok(!queries.some((q) => q.sql.startsWith('update "tasks"')));
     const beyond = await postClaimResponse(open(50, 40).db, boss, 't', 'c1', null, reversal);
     assert.match(beyond.ok ? '' : beyond.failure.message, /more than the \$0\.50 paid/);

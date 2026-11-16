@@ -31,19 +31,19 @@ export const startRun = async (tx: Kysely<Database>, boss: RunQueueClient, run: 
   return id;
 };
 
-const findRunWait = (db: Kysely<Database>, agencyId: string, waitKey: string) =>
+const findRunWaits = (db: Kysely<Database>, agencyId: string, waitKeys: readonly string[]) =>
   db
     .selectFrom('workflow_runs')
     .select(['id', sql<string>`state -> 'suspension' ->> 'id'`.as('wait_id')])
     .where('agency_id', '=', agencyId)
-    .where('wait_key', '=', waitKey)
+    .where('wait_key', 'in', waitKeys)
     .where('status', '=', 'suspended')
     .execute();
 
-const countSignal = (db: Kysely<Database>, agencyId: string, waitKey: string) =>
+const countSignals = (db: Kysely<Database>, agencyId: string, waitKeys: readonly string[]) =>
   db
     .insertInto('signals')
-    .values({ agency_id: agencyId, key: waitKey, received: 1 })
+    .values(waitKeys.map((key) => ({ agency_id: agencyId, key, received: 1 })))
     .onConflict((oc) =>
       oc.columns(['agency_id', 'key']).doUpdateSet({
         received: sql`signals.received + 1`,
@@ -54,11 +54,12 @@ const countSignal = (db: Kysely<Database>, agencyId: string, waitKey: string) =>
 export const signalRuns = async (
   tx: Kysely<Database>,
   boss: RunQueueClient,
-  signal: { agencyId: string; name: string; key: string; payload: unknown }
+  signal: { agencyId: string; name: string; keys: readonly string[]; payload: unknown }
 ) => {
-  const waitKey = `${signal.name}:${signal.key}`;
-  await countSignal(tx, signal.agencyId, waitKey).execute();
-  const waiting = await findRunWait(tx, signal.agencyId, waitKey);
+  const waitKeys = [...new Set(signal.keys)].map((key) => `${signal.name}:${key}`);
+  if (!waitKeys.length) return 0;
+  await countSignals(tx, signal.agencyId, waitKeys).execute();
+  const waiting = await findRunWaits(tx, signal.agencyId, waitKeys);
   await enqueueRuns(
     boss,
     sqlExecutor(tx),

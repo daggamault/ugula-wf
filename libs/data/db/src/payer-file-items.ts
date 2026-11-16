@@ -1,6 +1,6 @@
 import { dailyNumberOf, type PayerFileOutcome, type RemittancePosting } from '@ugula/billing';
 import type { RunQueueClient } from '@ugula/run-queue';
-import { nudgeClaim } from './claim-responses.ts';
+import { nudgeClaims } from './claim-responses.ts';
 import type { Db } from './schema.ts';
 
 export type FileItem = {
@@ -48,67 +48,65 @@ export const controlNumberOf = (reference: string) => {
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 };
 
-export const findClaimByNumber = (db: Db, agencyId: string, reference: string) => {
-  const number = dailyNumberOf(reference);
-  return number === null
-    ? Promise.resolve(undefined)
-    : db
+export const findClaimsByNumber = async (
+  db: Db,
+  agencyId: string,
+  references: readonly string[]
+) => {
+  const numbers = new Map(
+    references.flatMap((r) => {
+      const number = dailyNumberOf(r);
+      return number === null ? [] : [[r, number] as const];
+    })
+  );
+  const rows = numbers.size
+    ? await db
         .selectFrom('claims')
-        .select(['id', 'status'])
+        .select(['id', 'number', 'status'])
         .where('agency_id', '=', agencyId)
-        .where('number', '=', number)
-        .executeTakeFirst();
+        .where('number', 'in', [...new Set(numbers.values())])
+        .execute()
+    : [];
+  const byNumber = new Map(rows.map((r) => [r.number, { id: r.id, status: r.status }]));
+  return new Map(
+    [...numbers].flatMap(([reference, number]) => {
+      const claim = byNumber.get(number);
+      return claim ? [[reference, claim] as const] : [];
+    })
+  );
 };
 
-const insertPayerEvent = async (
-  db: Db,
-  a: {
-    agencyId: string;
-    claimId: string;
-    coverageId: string;
-    kind: 'accepted' | 'rejected' | 'eligibility' | 'claim_status';
-    note: string;
-    payerClaimNumber: string | null;
-    sourceKey: string;
-    createdBy: string | null;
-  }
-) =>
-  (await db
-    .insertInto('claim_events')
-    .values({
-      agency_id: a.agencyId,
-      claim_id: a.claimId,
-      kind: a.kind,
-      coverage_id: a.coverageId,
-      note: a.note,
-      payer_claim_number: a.payerClaimNumber,
-      created_by: a.createdBy,
-      source_key: a.sourceKey
-    })
-    .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
-    .returning('id')
-    .executeTakeFirst()) !== undefined;
+export type PayerEvent = {
+  claimId: string;
+  coverageId: string;
+  kind: 'accepted' | 'rejected' | 'eligibility' | 'claim_status';
+  note: string;
+  payerClaimNumber: string | null;
+  key: string;
+};
 
-export const recordPayerEvent = async (
-  c: Context,
-  claimId: string,
-  coverageId: string,
-  e: {
-    kind: 'accepted' | 'rejected' | 'eligibility' | 'claim_status';
-    note: string;
-    payerClaimNumber: string | null;
-    key: string;
-  }
-) => {
-  await insertPayerEvent(c.tx, {
-    agencyId: c.agencyId,
-    claimId,
-    coverageId,
-    kind: e.kind,
-    note: e.note,
-    payerClaimNumber: e.payerClaimNumber,
-    sourceKey: `${c.digest}:${e.key}`,
-    createdBy: c.userId
-  });
-  await nudgeClaim(c.tx, c.boss, c.agencyId, claimId);
+export const recordPayerEvents = async (c: Context, events: readonly PayerEvent[]) => {
+  if (!events.length) return;
+  await c.tx
+    .insertInto('claim_events')
+    .values(
+      events.map((e) => ({
+        agency_id: c.agencyId,
+        claim_id: e.claimId,
+        kind: e.kind,
+        coverage_id: e.coverageId,
+        note: e.note,
+        payer_claim_number: e.payerClaimNumber,
+        created_by: c.userId,
+        source_key: `${c.digest}:${e.key}`
+      }))
+    )
+    .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
+    .execute();
+  await nudgeClaims(
+    c.tx,
+    c.boss,
+    c.agencyId,
+    events.map((e) => e.claimId)
+  );
 };

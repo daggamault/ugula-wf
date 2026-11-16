@@ -22,10 +22,11 @@ const text = build835(
 );
 
 describe('payer file remittances', () => {
-  it('numbers claim payments across the file and matches them without writing', async () => {
+  it('numbers claim payments across the file and matches them in two lookups without writing', async () => {
     const { db, queries } = createRecordingDb(({ sql, parameters }) =>
-      sql.startsWith('select "id", "status" from "claims"') && parameters.includes('20261105-1002')
-        ? [{ id: 'c2', status: 'submitted' }]
+      sql.startsWith('select "id", "number", "status" from "claims"') &&
+      parameters.includes('20261105-1002')
+        ? [{ id: 'c2', number: '20261105-1002', status: 'submitted' }]
         : []
     );
     const lines = await readRemittanceLines(db, 't1', text);
@@ -37,6 +38,7 @@ describe('payer file remittances', () => {
       ]
     );
     assert.ok(queries.every((q) => q.sql.startsWith('select')));
+    assert.equal(queries.length, 2);
   });
 
   it('refuses to post a payment the remittance rules decided nothing for', async () => {
