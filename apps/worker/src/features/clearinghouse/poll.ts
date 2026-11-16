@@ -15,7 +15,7 @@ type PollDeps = {
   blobs: Pick<BlobStore, 'putBytes'>;
   targets: () => Promise<PollTarget[]>;
   report: (message: string) => void;
-  now?: () => Date;
+  now: () => Date;
 };
 
 const RETRY_MS = 60 * 60 * 1000;
@@ -152,7 +152,7 @@ const receive = async (
 
 const pollTarget = (deps: PollDeps, target: PollTarget) =>
   target.clearinghouse.inbox(async (inbox) => {
-    const at = (deps.now ?? (() => new Date()))();
+    const at = deps.now();
     for (const p of await pending(deps.db, target.source, await inbox.list(), at)) {
       await receive(deps, target, inbox, p, at).catch((err: unknown) =>
         deps.report(`Clearinghouse: could not receive ${p.file.path}: ${String(err)}`)

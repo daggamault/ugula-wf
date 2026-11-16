@@ -8,7 +8,7 @@ type CoreConfig = {
   receiverId: string;
   timeoutMs: number;
   fetch: typeof fetch;
-  now?: () => Date;
+  now: () => Date;
   newId?: () => string;
 };
 
@@ -29,7 +29,7 @@ const envelopeOf = (c: CoreConfig, payloadType: string, payload: string, id: str
     PayloadType: payloadType,
     ProcessingMode: 'RealTime',
     PayloadID: id,
-    TimeStamp: timestampOf((c.now ?? (() => new Date()))()),
+    TimeStamp: timestampOf(c.now()),
     SenderID: c.senderId,
     ReceiverID: c.receiverId,
     CORERuleVersion: CORE_RULE_VERSION,

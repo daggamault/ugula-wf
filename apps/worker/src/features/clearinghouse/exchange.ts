@@ -41,7 +41,7 @@ type ExchangeDeps = {
   blobs: Pick<BlobStore, 'putBytes'>;
   applyDocument: ApplyDocument;
   clearinghouseFor: (agencyId: string) => Promise<Clearinghouse | null>;
-  now?: () => Date;
+  now: () => Date;
 };
 
 const NO_CONNECTION =
@@ -87,7 +87,7 @@ const findEligibilityRequest = (db: Db, agencyId: string, sourceKey: string) =>
 
 type EligibilityRequest = NonNullable<Awaited<ReturnType<typeof findEligibilityRequest>>>;
 
-export const priorEligibility = (r: EligibilityRequest): EligibilityCheck =>
+const priorEligibility = (r: EligibilityRequest): EligibilityCheck =>
   r.status === 'answered'
     ? { status: 'answered', fileName: r.file_name ?? '', reviews: r.reviews ?? [] }
     : r.status === 'sent'
@@ -194,7 +194,7 @@ export const createExchangeStore = ({
   blobs,
   applyDocument,
   clearinghouseFor,
-  now = () => new Date()
+  now
 }: ExchangeDeps): ExchangeStore => {
   const prepare = async (agencyId: string, reserved?: number) => {
     const profile = await findProfile(db, agencyId);

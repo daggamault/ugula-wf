@@ -165,25 +165,18 @@ describe('createCoreRealtime', () => {
     });
   });
 
-  it('stamps a fresh payload id and the current time when none are injected', async () => {
+  it('stamps a fresh payload id when none is injected', async () => {
     const fields: Record<string, string>[] = [];
-    const {
-      now: _now,
-      newId: _newId,
-      ...rest
-    } = config(async (_, init) => {
+    const { newId: _newId, ...rest } = config(async (_, init) => {
       const form = init?.body as FormData;
       fields.push(Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)])));
       return reply({ PayloadType: 'R', Payload: 'p' });
     });
-    const before = Date.now();
     const send = createCoreRealtime(rest);
     assert.deepEqual(await send('T', 'x'), { ok: true, payloadType: 'R', payload: 'p' });
     await send('T', 'x');
     const [first, second] = fields;
     assert.match(first?.PayloadID ?? '', /^[0-9a-f-]{36}$/);
     assert.notEqual(first?.PayloadID, second?.PayloadID);
-    assert.match(first?.TimeStamp ?? '', /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
-    assert.ok(Date.parse(first?.TimeStamp ?? '') >= Math.floor(before / 1000) * 1000);
   });
 });

@@ -104,6 +104,7 @@ if (import.meta.main) {
   const guardedFetch = scope.fetch(fetch);
   const publicFetch = scope.fetch(createPublicFetch(fetch));
   const report = (message: string) => process.stderr.write(`${message}\n`);
+  const now = () => new Date();
   const connections = createConnections({
     db,
     keyring: config.CLEARINGHOUSE_SECRET_KEY
@@ -113,9 +114,10 @@ if (import.meta.main) {
     fetch: guardedFetch,
     agencyFetch: config.NODE_ENV === 'development' ? guardedFetch : publicFetch,
     realtimeTimeoutMs: config.CLEARINGHOUSE_REALTIME_TIMEOUT_SECONDS * 1000,
+    now,
     report
   });
-  const payerFiles = createPayerFileStore(db, blobs, boss, announce);
+  const payerFiles = createPayerFileStore(db, blobs, boss, announce, now);
   const runner = createRunner({
     store,
     engines: createEngineCache({
@@ -144,7 +146,8 @@ if (import.meta.main) {
               db,
               blobs,
               applyDocument: payerFiles.applyDocument,
-              clearinghouseFor: connections.forAgency
+              clearinghouseFor: connections.forAgency,
+              now
             })
           ),
           recovery: scope.guard(createRecoveryStore(db, blobs, boss)),
@@ -161,7 +164,7 @@ if (import.meta.main) {
       loadDefinitions: (ids) => findDefinitions(db, ids),
       loadTables: (ids) => findTableDefinitions(db, ids)
     }),
-    now: () => new Date(),
+    now,
     publish,
     within: scope.within
   });
@@ -182,7 +185,14 @@ if (import.meta.main) {
   });
   await registerPollJob({
     boss,
-    poll: createClearinghousePoll({ db, boss, blobs, targets: connections.pollTargets, report }),
+    poll: createClearinghousePoll({
+      db,
+      boss,
+      blobs,
+      targets: connections.pollTargets,
+      report,
+      now
+    }),
     pollMinutes: config.CLEARINGHOUSE_POLL_MINUTES,
     report
   });

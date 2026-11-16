@@ -285,7 +285,8 @@ describe('createClearinghousePoll', () => {
       boss,
       blobs,
       targets: async () => [target(clearinghouse)],
-      report: () => undefined
+      report: () => undefined,
+      now: () => NOW
     })();
     assert.deepEqual(removed, []);
     assert.equal(queries.length, 1);
@@ -330,7 +331,8 @@ describe('polling every connection', () => {
         { source: 'one', clearinghouse: broken.clearinghouse, agencyIds: null },
         { source: 'two', clearinghouse: working.clearinghouse, agencyIds: ['t1'] }
       ],
-      report: (m) => reports.push(m)
+      report: (m) => reports.push(m),
+      now: () => NOW
     })();
     assert.deepEqual(polled, ['second']);
     assert.deepEqual(reports, ['Clearinghouse: could not poll one: Error: refused']);

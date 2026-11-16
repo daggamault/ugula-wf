@@ -79,6 +79,7 @@ const setup = (rows: ReturnType<typeof row>[], withFallback = true, withKey = tr
     fetch: fetchVia('server'),
     agencyFetch: fetchVia('public'),
     realtimeTimeoutMs: 1000,
+    now: () => new Date(),
     report: (m) => reports.push(m)
   });
   return { connections, queries, reports, sent };
@@ -86,7 +87,13 @@ const setup = (rows: ReturnType<typeof row>[], withFallback = true, withKey = tr
 
 describe('connect', () => {
   it('checks in real time only with a real-time URL, a sender and a receiver', () => {
-    const realtime = { senderId: 'SUB01', receiverId: 'WAYSTAR', fetch, timeoutMs: 1000 };
+    const realtime = {
+      senderId: 'SUB01',
+      receiverId: 'WAYSTAR',
+      fetch,
+      timeoutMs: 1000,
+      now: () => new Date()
+    };
     const ch = connect(fallback, realtime);
     assert.ok(ch.checkEligibility && ch.checkClaimStatus);
     assert.equal(ch.afterDownload, 'delete');

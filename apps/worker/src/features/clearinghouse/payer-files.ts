@@ -32,7 +32,7 @@ export const createPayerFileStore = (
   blobs: Blobs,
   boss: RunQueueClient,
   announce: Announce,
-  now: () => Date = () => new Date()
+  now: () => Date
 ): PayerFileStore & { applyDocument: ApplyDocument } => {
   const load = async (runId: string, document: BlobRef) => {
     const run = await db

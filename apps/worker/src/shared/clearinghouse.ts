@@ -29,12 +29,13 @@ type ConnectionDeps = {
   fetch: typeof fetch;
   agencyFetch: typeof fetch;
   realtimeTimeoutMs: number;
+  now: () => Date;
   report: (message: string) => void;
 };
 
 type Parties = { senderId: string | null; receiverId: string | null };
 
-type Realtime = Parties & { fetch: typeof fetch; timeoutMs: number };
+type Realtime = Parties & { fetch: typeof fetch; timeoutMs: number; now: () => Date };
 
 const NO_PARTIES: Parties = { senderId: null, receiverId: null };
 
@@ -53,7 +54,8 @@ export const connect = (c: ConnectionSettings, realtime: Realtime): Clearinghous
           senderId: realtime.senderId.toUpperCase(),
           receiverId: realtime.receiverId.toUpperCase(),
           timeoutMs: realtime.timeoutMs,
-          fetch: realtime.fetch
+          fetch: realtime.fetch,
+          now: realtime.now
         })
       : null;
   return createClearinghouse({
@@ -146,7 +148,8 @@ export const createConnections = (deps: ConnectionDeps) => {
   const realtime = (parties: Parties, fetch = deps.fetch): Realtime => ({
     ...parties,
     fetch,
-    timeoutMs: deps.realtimeTimeoutMs
+    timeoutMs: deps.realtimeTimeoutMs,
+    now: deps.now
   });
   const partiesOf = async (agencyId: string): Promise<Parties> => {
     const profile = await deps.db
@@ -204,5 +207,3 @@ export const createConnections = (deps: ConnectionDeps) => {
     }
   };
 };
-
-export type Connections = ReturnType<typeof createConnections>;
