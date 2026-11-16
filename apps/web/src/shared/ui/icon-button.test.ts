@@ -8,9 +8,11 @@ import {
   EditLink,
   IconButton,
   IconLink,
+  MoveButtons,
   OpenLink,
   RemoveButton,
   RowActions,
+  RunLink,
   WorkLink
 } from './icon-button.tsx';
 
@@ -79,6 +81,7 @@ describe('row actions', () => {
         createElement(WorkLink, { to: '/tasks/t1', name: 'Doe, Jane' }),
         createElement(OpenLink, { to: '/claims/c1', name: 'Doe, Jane' }),
         createElement(EditLink, { to: '/fees/f1', name: 'A0427' }),
+        createElement(RunLink, { to: '/reports/aging', name: 'Aging' }),
         createElement(DeleteButton, { name: 'A0427', onClick: () => undefined })
       )
     );
@@ -87,11 +90,31 @@ describe('row actions', () => {
       ['Work Doe, Jane', 'Work Task'],
       ['Open Doe, Jane', 'Open'],
       ['Edit A0427', 'Edit'],
+      ['Run Aging', 'Run'],
       ['Delete A0427', 'Delete']
     ] as const) {
       assert.ok(html.includes(`aria-label="${label}"`), label);
       assert.ok(html.includes(`>${tooltip}</span>`), tooltip);
     }
     assert.ok(html.includes('lucide-trash') && html.includes('hover:text-danger'));
+  });
+});
+
+describe('MoveButtons', () => {
+  it('names the item, blocks moving past either end and ids each arrow', () => {
+    const moved: number[] = [];
+    const html = renderToStaticMarkup(
+      createElement(MoveButtons, {
+        name: 'I10',
+        index: 0,
+        count: 2,
+        idPrefix: 'dx-I10',
+        onMove: (by) => moved.push(by)
+      })
+    );
+    assert.ok(html.includes('aria-label="Move I10 up"'));
+    assert.ok(html.includes('aria-label="Move I10 down"') && html.includes('>Move Down<'));
+    assert.ok(html.includes('id="dx-I10-up"') && html.includes('id="dx-I10-down"'));
+    assert.ok(html.includes('Already first.') && !html.includes('Already last.'));
   });
 });

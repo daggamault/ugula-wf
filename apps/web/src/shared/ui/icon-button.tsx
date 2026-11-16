@@ -1,8 +1,11 @@
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
   ChevronRightIcon,
   ListTodoIcon,
   type LucideIcon,
   PencilIcon,
+  PlayIcon,
   Trash2Icon
 } from 'lucide-react';
 import { type ComponentProps, type ReactNode, useId } from 'react';
@@ -107,6 +110,43 @@ export const OpenLink = ({ to, name }: { to: string; name: string }) => (
 
 export const WorkLink = ({ to, name }: { to: string; name: string }) => (
   <IconLink to={to} label={`Work ${name}`} tooltip="Work Task" icon={ListTodoIcon} />
+);
+
+export const RunLink = ({ to, name }: { to: string; name: string }) => (
+  <IconLink to={to} label={`Run ${name}`} tooltip="Run" icon={PlayIcon} />
+);
+
+export const MoveButtons = ({
+  name,
+  index,
+  count,
+  idPrefix,
+  onMove
+}: {
+  name: string;
+  index: number;
+  count: number;
+  idPrefix?: string;
+  onMove: (by: -1 | 1) => void;
+}) => (
+  <>
+    <IconButton
+      id={idPrefix && `${idPrefix}-up`}
+      label={`Move ${name} up`}
+      tooltip="Move Up"
+      icon={ArrowUpIcon}
+      disabledReason={index === 0 ? 'Already first.' : undefined}
+      onClick={() => onMove(-1)}
+    />
+    <IconButton
+      id={idPrefix && `${idPrefix}-down`}
+      label={`Move ${name} down`}
+      tooltip="Move Down"
+      icon={ArrowDownIcon}
+      disabledReason={index === count - 1 ? 'Already last.' : undefined}
+      onClick={() => onMove(1)}
+    />
+  </>
 );
 
 export const DeleteButton = ({ name, onClick }: { name: string; onClick: () => void }) => (

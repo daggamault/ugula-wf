@@ -64,7 +64,7 @@ describe('code field', () => {
     assert.ok(one.includes('>Add a code<'));
     assert.ok(one.includes('aria-label="Remove R07.9"'));
     const two = render(['R079', 'I10'], true);
-    assert.ok(two.includes('id="field-diagnoses-down-R079"'));
+    assert.ok(two.includes('id="field-diagnoses-R079-down"'));
     assert.ok(two.includes('aria-label="Move I10 up"'));
     assert.ok(two.includes('role="status"'));
     const single = render('R079', false);

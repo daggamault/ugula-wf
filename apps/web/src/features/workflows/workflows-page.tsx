@@ -1,11 +1,11 @@
-import { MapIcon, PlayIcon, PlusIcon } from 'lucide-react';
+import { MapIcon, PlusIcon } from 'lucide-react';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
 import { FilterSelect } from '../../shared/ui/filter-select.tsx';
 import { Highlight } from '../../shared/ui/highlight.tsx';
-import { EditLink, IconLink, RowActions } from '../../shared/ui/icon-button.tsx';
+import { EditLink, RowActions, RunLink } from '../../shared/ui/icon-button.tsx';
 import { Page } from '../../shared/ui/page.tsx';
 import { Search } from '../../shared/ui/search.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
@@ -101,12 +101,7 @@ export const WorkflowsTable = ({
         <TableCell kind="actions">
           <RowActions>
             {g.kind === 'workflow' && g.publishedVersion ? (
-              <IconLink
-                to={`/runs/new?graph=${g.id}`}
-                label={`Run ${g.name}`}
-                tooltip="Run"
-                icon={PlayIcon}
-              />
+              <RunLink to={`/runs/new?graph=${g.id}`} name={g.name} />
             ) : null}
             <EditLink to={`${WORKFLOWS_PATH}/${g.id}`} name={g.name} />
           </RowActions>

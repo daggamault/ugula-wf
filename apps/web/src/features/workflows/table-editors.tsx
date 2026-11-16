@@ -1,9 +1,9 @@
 import { type ConditionOp, deepEqual, type Json } from '@ugula/graph';
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon } from 'lucide-react';
+import { PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { pinLabel } from '../../shared/graph/pins.ts';
 import { Button } from '../../shared/ui/button.tsx';
-import { IconButton, RemoveButton } from '../../shared/ui/icon-button.tsx';
+import { MoveButtons, RemoveButton } from '../../shared/ui/icon-button.tsx';
 import { Input, type InputProps } from '../../shared/ui/input.tsx';
 import { Section } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
@@ -290,20 +290,7 @@ const RuleEditor = ({
         </div>
         {editable ? (
           <div className="flex items-center gap-1">
-            <IconButton
-              label={`Move ${name} up`}
-              tooltip="Move Up"
-              icon={ArrowUpIcon}
-              disabledReason={index === 0 ? 'Already first.' : undefined}
-              onClick={() => onMove(-1)}
-            />
-            <IconButton
-              label={`Move ${name} down`}
-              tooltip="Move Down"
-              icon={ArrowDownIcon}
-              disabledReason={index === table.rules.length - 1 ? 'Already last.' : undefined}
-              onClick={() => onMove(1)}
-            />
+            <MoveButtons name={name} index={index} count={table.rules.length} onMove={onMove} />
           </div>
         ) : null}
       </div>

@@ -1,9 +1,8 @@
 import type { CodeSet } from '@ugula/billing';
 import type { Json } from '@ugula/graph';
-import { ArrowDownIcon, ArrowUpIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Code, CodesClient } from '../codes.ts';
-import { IconButton } from '../ui/icon-button.tsx';
+import { MoveButtons, RemoveButton } from '../ui/icon-button.tsx';
 import { Select, type SelectOption } from '../ui/select.tsx';
 import { useResource } from '../use-resource.ts';
 import { useSearch } from '../use-search.ts';
@@ -119,7 +118,6 @@ export const CodeField = ({
       />
     );
   }
-  const buttonId = (dir: string, code: string) => `${id}-${dir}-${code}`;
   const reorder = (next: string[], message: string, focus: string) => {
     onChange(next);
     setAnnounced(message);
@@ -144,35 +142,21 @@ export const CodeField = ({
               <li key={code} className="flex items-center gap-2 text-sm">
                 <span className="text-surface-fg-muted w-5 shrink-0 tabular-nums">{i + 1}.</span>
                 <span className="min-w-0 flex-1 truncate">{codeLabel(codeSet, labels, code)}</span>
-                <IconButton
-                  id={buttonId('up', code)}
-                  label={`Move ${shown} up`}
-                  tooltip="Move Up"
-                  icon={ArrowUpIcon}
-                  disabledReason={i === 0 ? 'Already first.' : undefined}
-                  onClick={() =>
-                    reorder(moveCode(chosen, i, -1), `${shown} moved to ${i}`, buttonId('up', code))
-                  }
-                />
-                <IconButton
-                  id={buttonId('down', code)}
-                  label={`Move ${shown} down`}
-                  tooltip="Move Down"
-                  icon={ArrowDownIcon}
-                  disabledReason={i === chosen.length - 1 ? 'Already last.' : undefined}
-                  onClick={() =>
+                <MoveButtons
+                  name={shown}
+                  index={i}
+                  count={chosen.length}
+                  idPrefix={`${id}-${code}`}
+                  onMove={(by) =>
                     reorder(
-                      moveCode(chosen, i, 1),
-                      `${shown} moved to ${i + 2}`,
-                      buttonId('down', code)
+                      moveCode(chosen, i, by),
+                      `${shown} moved to ${i + 1 + by}`,
+                      `${id}-${code}-${by < 0 ? 'up' : 'down'}`
                     )
                   }
                 />
-                <IconButton
+                <RemoveButton
                   label={`Remove ${shown}`}
-                  tooltip="Remove"
-                  icon={Trash2Icon}
-                  intent="danger"
                   onClick={() =>
                     reorder(
                       chosen.filter((c) => c !== code),
