@@ -168,4 +168,22 @@ describe('read999', () => {
       [{ groupControlNumber: '46', accepted: false, transactions: [] }]
     );
   });
+
+  it('marks an error without a position or segment with a question mark', () => {
+    const [group] = read999(
+      file(
+        'ST*999*0001*005010X231A1',
+        'AK1*HC*48*005010X222A1',
+        'AK2*837*0001*005010X222A1',
+        'IK3***',
+        'IK4***7',
+        'IK5*R*5',
+        'AK9*R*1*1*0',
+        'SE*8*0001'
+      )
+    );
+    const [segment, element] = group?.transactions[0]?.errors ?? [];
+    assert.match(segment ?? '', /^Segment \? at position \?: /);
+    assert.match(element ?? '', /^Element \?: /);
+  });
 });

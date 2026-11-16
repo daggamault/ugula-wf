@@ -55,12 +55,12 @@ const described = (codes: Readonly<Record<string, string>>, code: string | undef
   code ? (codes[code] ?? `Error ${code}`) : 'Error without a code';
 
 const segmentError = (ik3: string[]) =>
-  `Segment ${ik3[1] ?? '?'} at position ${ik3[2] ?? '?'}${ik3[3] ? ` in loop ${ik3[3]}` : ''}: ${described(SEGMENT_ERRORS, ik3[4])}`;
+  `Segment ${ik3[1] || '?'} at position ${ik3[2] || '?'}${ik3[3] ? ` in loop ${ik3[3]}` : ''}: ${described(SEGMENT_ERRORS, ik3[4])}`;
 
 const elementError = (ik4: string[], file: X12File) => {
   const [position, component] = componentsOf(ik4[1], file);
   const bad = textOf(ik4[4]);
-  return `Element ${position ?? '?'}${component ? `-${component}` : ''}${ik4[2] ? ` (${ik4[2]})` : ''}: ${described(ELEMENT_ERRORS, ik4[3])}${bad ? ` "${bad}"` : ''}`;
+  return `Element ${position || '?'}${component ? `-${component}` : ''}${ik4[2] ? ` (${ik4[2]})` : ''}: ${described(ELEMENT_ERRORS, ik4[3])}${bad ? ` "${bad}"` : ''}`;
 };
 
 const contextOf = (ctx: string[], file: X12File) => {
