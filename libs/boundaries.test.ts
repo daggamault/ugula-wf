@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { test } from 'node:test';
 
@@ -68,11 +68,17 @@ const apps = dirs(join(root, 'apps')).map((n) =>
 
 const layerOf = new Map(libs.map((p) => [p.name, p.layer]));
 
+const sourceDirs = ['src', 'e2e'];
+
 const sources = (dir: string) => [
   ...readdirSync(dir).filter((f) => /\.tsx?$/.test(f)),
-  ...(readdirSync(join(dir, 'src'), { recursive: true, encoding: 'utf8' }) as string[])
-    .filter((f) => /\.tsx?$/.test(f))
-    .map((f) => join('src', f))
+  ...sourceDirs
+    .filter((d) => existsSync(join(dir, d)))
+    .flatMap((d) =>
+      (readdirSync(join(dir, d), { recursive: true, encoding: 'utf8' }) as string[])
+        .filter((f) => /\.tsx?$/.test(f))
+        .map((f) => join(d, f))
+    )
 ];
 
 const specifiers = (file: string) =>
@@ -125,7 +131,7 @@ test('workspace packages declare only libs, linked as workspace:*', () => {
 test('the root declares exactly the libs its scripts import', () => {
   const pkg = load(root, layers);
   const used = new Set(
-    ['.migrations', '.seeds', '.e2e', '.dev'].flatMap((d) =>
+    ['.migrations', '.seeds'].flatMap((d) =>
       (readdirSync(join(root, d), { recursive: true, encoding: 'utf8' }) as string[])
         .filter((f) => /\.tsx?$/.test(f))
         .flatMap((f) => specifiers(join(root, d, f)))

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fixtureUrl } from '@ugula/nemsis/testing';
 import { type Browser, chromium, type Page } from 'playwright-core';
 import { config, withPcr } from './config.ts';
 import { chooseOption, chosenValue, listboxTriggers, optionValues } from './listbox.ts';
@@ -106,7 +107,7 @@ export const uniqueId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
 export const encounter = (pcr: string, fixture = 'new-patient-medicare') =>
-  withPcr(readFileSync(new URL(`../fixtures/${fixture}.xml`, import.meta.url), 'utf8'), pcr);
+  withPcr(readFileSync(fixtureUrl(fixture), 'utf8'), pcr);
 
 export type ClaimState = {
   claim: {

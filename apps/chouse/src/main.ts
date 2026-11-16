@@ -6,20 +6,19 @@ import {
   respondToEligibility
 } from '@ugula/billing/mock-waystar';
 import ssh2 from 'ssh2';
-import { credentialsMatch } from './mock-auth.ts';
-import { parseMockConfig } from './mock-config.ts';
-import { CORE_PATH, handleCore } from './mock-core.ts';
-import { createMockFiles } from './mock-files.ts';
-import { stableHostKey } from './mock-host-key.ts';
-import { createResponder } from './mock-responder.ts';
-import { createSftpHandlers } from './mock-sftp.ts';
-import { DOWNLOAD, UPLOAD } from './mock-uploads.ts';
+import { credentialsMatch } from './auth.ts';
+import { parseMockConfig } from './config.ts';
+import { CORE_PATH, handleCore } from './core.ts';
+import { createMockFiles } from './files.ts';
+import { stableHostKey } from './host-key.ts';
+import { createResponder } from './responder.ts';
+import { createSftpHandlers } from './sftp.ts';
+import { DOWNLOAD, UPLOAD } from './uploads.ts';
 
 const config = parseMockConfig(process.env);
 const { host, credentials } = config;
 const now = () => new Date();
-const log = (line: string) =>
-  process.stdout.write(`[mock-clearinghouse] ${now().toISOString()} ${line}\n`);
+const log = (line: string) => process.stdout.write(`[chouse] ${now().toISOString()} ${line}\n`);
 const respond = {
   claims: respondToClaims,
   eligibility: respondToEligibility,

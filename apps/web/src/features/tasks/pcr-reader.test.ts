@@ -8,7 +8,7 @@ const factOf = (facts: { label: string; value: string | null }[], label: string)
 
 describe('readPcr', () => {
   it('reads a NEMSIS 3.5 report with plain labels and each code with its meaning', () => {
-    const pcr = readPcr(fixtureReport('als2-iv-medications.xml'), fixtureDictionary);
+    const pcr = readPcr(fixtureReport('als2-iv-medications'), fixtureDictionary);
     assert.equal(factOf(pcr.patient, 'Name'), 'Rosalind Quintero');
     assert.equal(factOf(pcr.patient, 'Date of Birth'), '1961-02-19');
     assert.equal(factOf(pcr.patient, 'Sex'), 'Female (9919001)');
@@ -87,7 +87,7 @@ describe('readPcr', () => {
   });
 
   it('reads a NEMSIS 3.4 report, with gender for sex and its single incident disposition', () => {
-    const pcr = readPcr(fixtureReport('nemsis-34-emergency.xml'), fixtureDictionary);
+    const pcr = readPcr(fixtureReport('nemsis-34-emergency'), fixtureDictionary);
     assert.equal(factOf(pcr.patient, 'Sex'), 'Female (9906001)');
     assert.equal(pcr.paymentMethod, 'Medicare (2601005)');
     assert.equal(

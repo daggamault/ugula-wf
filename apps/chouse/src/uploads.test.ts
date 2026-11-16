@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { isInboundUpload, routeUpload } from './mock-uploads.ts';
+import { isInboundUpload, routeUpload } from './uploads.ts';
 
 describe('isInboundUpload', () => {
   it('picks up finished files written straight into the upload folder', () => {

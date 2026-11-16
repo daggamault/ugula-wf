@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { stableHostKey } from './mock-host-key.ts';
+import { stableHostKey } from './host-key.ts';
 
 describe('stableHostKey', () => {
   it('derives the same EC key every time, pinned by MOCK_HOST_KEY', () => {

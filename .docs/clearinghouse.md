@@ -68,7 +68,7 @@ The Waystar preset fills these folders and extensions with receiver ID `WAYSTAR`
 
 ## The mock
 
-`.dev/mock-clearinghouse.ts` follows these conventions (see [Mock clearinghouse](#mock-clearinghouse)), with a host key derived from a fixed seed so its fingerprint is always `MOCK_HOST_KEY`: `.CLP` claims, `.ELG` batch 270s and `.CLS` batch 276s in `/upload`, answers in `/download`, a `.TA1` for an interchange not addressed to Waystar, and `POST /core/realtime` answering 270 and 276. It remembers each claim it saw: a 276 is answered in process (A2) once accepted, paid (F1) once its 835 went out, rejected (A3) or not found (A4).
+`apps/chouse` follows these conventions (see [Mock clearinghouse](#mock-clearinghouse)), with a host key derived from a fixed seed so its fingerprint is always `MOCK_HOST_KEY`: `.CLP` claims, `.ELG` batch 270s and `.CLS` batch 276s in `/upload`, answers in `/download`, a `.TA1` for an interchange not addressed to Waystar, and `POST /core/realtime` answering 270 and 276. It remembers each claim it saw: a 276 is answered in process (A2) once accepted, paid (F1) once its 835 went out, rejected (A3) or not found (A4).
 
 ## Later
 
@@ -94,7 +94,7 @@ Response files are recognized by content (ISA/GS/ST, or a TA1 segment), not by n
 
 ## Mock clearinghouse
 
-`.dev/mock-clearinghouse.ts` is a dev-only, in-memory clearinghouse that follows Waystar's conventions, so moving to Waystar is a settings change. `pnpm dev` starts it (`pnpm dev:clearinghouse` alone): SFTP on `CLEARINGHOUSE_SFTP_HOST`:`CLEARINGHOUSE_SFTP_PORT` for `CLEARINGHOUSE_SFTP_USERNAME` / `CLEARINGHOUSE_SFTP_PASSWORD`, and CORE real-time eligibility and claim status on `CLEARINGHOUSE_REALTIME_PORT`. Files and claim states live in memory and are gone on restart. Its host key is derived from a fixed seed, so its fingerprint never changes: `MOCK_HOST_KEY` in `@ugula/billing`, which the mock preset and `.env.example` pin.
+`apps/chouse` is a dev-only, in-memory clearinghouse that follows Waystar's conventions, so moving to Waystar is a settings change. `pnpm dev` starts it (`pnpm --filter @ugula/chouse dev` alone): SFTP on `CLEARINGHOUSE_SFTP_HOST`:`CLEARINGHOUSE_SFTP_PORT` for `CLEARINGHOUSE_SFTP_USERNAME` / `CLEARINGHOUSE_SFTP_PASSWORD`, and CORE real-time eligibility and claim status on `CLEARINGHOUSE_REALTIME_PORT`. Files and claim states live in memory and are gone on restart. Its host key is derived from a fixed seed, so its fingerprint never changes: `MOCK_HOST_KEY` in `@ugula/billing`, which the mock preset and `.env.example` pin.
 
 - Upload to the write-only `/upload` folder: 837P files as `<name>.CLP`, batch 270s as `<name>.ELG`, batch 276s as `<name>.CLS`, with no other periods in the name (`.part`, `.tmp` and `.filepart` uploads wait until renamed). About 2s later the file is picked up and removed.
 - Answers arrive in `/download` as `<ISA06>_<type>_<yyyyMMddHHmmss>_<seq>.<ext>` and are recognized by content:

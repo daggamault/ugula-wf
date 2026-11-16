@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { build270 } from '@ugula/billing';
 import { sampleSubmitter } from '@ugula/billing/testing';
-import { createMockFiles } from './mock-files.ts';
-import { createResponder, type Responders } from './mock-responder.ts';
-import { DOWNLOAD, UPLOAD } from './mock-uploads.ts';
+import { createMockFiles } from './files.ts';
+import { createResponder, type Responders } from './responder.ts';
+import { DOWNLOAD, UPLOAD } from './uploads.ts';
 
 type ClaimsResult = ReturnType<Responders['claims']>;
 

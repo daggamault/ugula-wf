@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CORE_PATH, handleCore } from './mock-core.ts';
+import { CORE_PATH, handleCore } from './core.ts';
 
 const credentials = { username: 'ugula', password: 'secret' };
 

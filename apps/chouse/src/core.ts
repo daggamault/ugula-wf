@@ -1,6 +1,6 @@
 import type { MockClaimState } from '@ugula/billing/mock-waystar';
-import { type Credentials, isBasicAuthorized } from './mock-auth.ts';
-import type { Responders } from './mock-responder.ts';
+import { type Credentials, isBasicAuthorized } from './auth.ts';
+import type { Responders } from './responder.ts';
 
 export const CORE_PATH = '/core/realtime';
 

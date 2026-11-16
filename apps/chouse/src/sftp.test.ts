@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import ssh2 from 'ssh2';
-import { createMockFiles } from './mock-files.ts';
-import { createSftpHandlers } from './mock-sftp.ts';
+import { createMockFiles } from './files.ts';
+import { createSftpHandlers } from './sftp.ts';
 
 const { OPEN_MODE, STATUS_CODE } = ssh2.utils.sftp;
 

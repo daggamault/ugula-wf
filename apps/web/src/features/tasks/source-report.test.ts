@@ -42,8 +42,8 @@ describe('SourceReportView', () => {
       createElement(SourceReportView, {
         source: {
           ...source,
-          data: fixtureReport('nemsis-34-emergency.xml'),
-          xml: fixtureXml('nemsis-34-emergency.xml'),
+          data: fixtureReport('nemsis-34-emergency'),
+          xml: fixtureXml('nemsis-34-emergency'),
           dictionary: fixtureDictionary
         }
       })

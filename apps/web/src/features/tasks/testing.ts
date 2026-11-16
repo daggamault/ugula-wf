@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import type { Json } from '@ugula/graph';
 import { parseDataset, type ReportDictionary } from '@ugula/nemsis';
+import { fixtureUrl } from '@ugula/nemsis/testing';
 
-export const fixtureXml = (name: string) =>
-  readFileSync(new URL(`../../../../../.e2e/fixtures/${name}`, import.meta.url), 'utf8');
+export const fixtureXml = (name: string) => readFileSync(fixtureUrl(name), 'utf8');
 
 export const fixtureReport = (name: string): Json => {
   const [report] = parseDataset(fixtureXml(name)).reports;

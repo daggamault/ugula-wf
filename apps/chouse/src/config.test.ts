@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parseMockConfig } from './mock-config.ts';
+import { parseMockConfig } from './config.ts';
 
 const required = {
   CLEARINGHOUSE_SFTP_PORT: '2223',

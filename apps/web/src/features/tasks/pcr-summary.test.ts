@@ -11,7 +11,7 @@ const render = (data: Parameters<typeof readPcr>[0]) =>
 
 describe('PcrSummaryView', () => {
   it('summarizes a report in the sections a biller reads, with each code and its meaning', () => {
-    const html = render(fixtureReport('als2-iv-medications.xml'));
+    const html = render(fixtureReport('als2-iv-medications'));
     for (const title of [
       'Patient',
       'Times',

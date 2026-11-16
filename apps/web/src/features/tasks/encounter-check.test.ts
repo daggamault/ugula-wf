@@ -27,7 +27,7 @@ const facts = (patch: Partial<EncounterFacts> = {}): EncounterFacts => ({
 
 describe('encounterFactsOf', () => {
   it('reads the facts a claim copies from a patient care report', () => {
-    const e = encounterFactsOf(fixtureReport('als2-iv-medications.xml'));
+    const e = encounterFactsOf(fixtureReport('als2-iv-medications'));
     assert.equal(e.lastName, 'Quintero');
     assert.equal(e.birthDate, '1961-02-19');
     assert.equal(e.loadedMiles, 6.86);

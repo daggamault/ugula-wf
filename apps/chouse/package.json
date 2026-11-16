@@ -1,0 +1,15 @@
+{
+  "name": "@ugula/chouse",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ugula/billing": "workspace:*",
+    "@ugula/clearinghouse": "workspace:*",
+    "@ugula/config": "workspace:*"
+  }
+}

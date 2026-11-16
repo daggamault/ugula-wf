@@ -1,7 +1,7 @@
 import { posix } from 'node:path';
 import ssh2, { type Attributes, type FileEntry } from 'ssh2';
-import { type MockFiles, normalizePath } from './mock-files.ts';
-import { UPLOAD } from './mock-uploads.ts';
+import { type MockFiles, normalizePath } from './files.ts';
+import { UPLOAD } from './uploads.ts';
 
 const { OPEN_MODE, STATUS_CODE } = ssh2.utils.sftp;
 

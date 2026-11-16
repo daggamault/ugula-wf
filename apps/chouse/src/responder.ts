@@ -7,8 +7,8 @@ import {
   type respondToClaims,
   type respondToEligibility
 } from '@ugula/billing/mock-waystar';
-import type { MockFiles } from './mock-files.ts';
-import { DOWNLOAD, isInboundUpload, routeUpload } from './mock-uploads.ts';
+import type { MockFiles } from './files.ts';
+import { DOWNLOAD, isInboundUpload, routeUpload } from './uploads.ts';
 
 export type Responders = {
   claims: typeof respondToClaims;

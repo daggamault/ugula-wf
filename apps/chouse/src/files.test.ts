@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createMockFiles, normalizePath } from './mock-files.ts';
+import { createMockFiles, normalizePath } from './files.ts';
 
 describe('normalizePath', () => {
   it('resolves every path from the root', () => {
