@@ -54,7 +54,11 @@ export const memoryRedis = () => {
   const sets = new Map<string, Set<string>>();
   const redis: RedisLike & ThrottleStore = {
     get: async (k) => values.get(k)?.value ?? null,
-    set: async (k, value, _mode, ttl) => void values.set(k, { value, ttl }),
+    set: async (k: string, value: string, _mode: 'EX', ttl: number, flag?: 'NX') => {
+      if (flag === 'NX' && values.has(k)) return null;
+      values.set(k, { value, ttl });
+      return 'OK';
+    },
     del: async (...keys) => {
       for (const k of keys) {
         values.delete(k);

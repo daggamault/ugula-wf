@@ -122,7 +122,7 @@ export const createAuthService = ({
   };
   return {
     signIn: async ({ email, password }: SignInInput, ip: string): Promise<Result<SignedIn>> => {
-      const wait = await throttle.retryAfter(email, ip);
+      const wait = await throttle.begin(email, ip);
       if (wait) return rateLimited(wait);
       const user = await findActiveUserByEmail(db, email);
       if (!(await checkPassword(email, ip, password, user?.password_hash)) || !user) {
@@ -178,7 +178,7 @@ export const createAuthService = ({
       const i = await usableInvitation(token);
       if (!i) return invalidToken;
       if (i.user_id) {
-        const wait = await throttle.retryAfter(i.email, ip);
+        const wait = await throttle.begin(i.email, ip);
         if (wait) return rateLimited(wait);
         if (!(await checkPassword(i.email, ip, password, i.password_hash))) return badCredentials;
       } else if (!isLongEnoughPassword(password)) {
