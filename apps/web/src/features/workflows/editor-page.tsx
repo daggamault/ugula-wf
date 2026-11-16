@@ -1,6 +1,7 @@
 import { type GraphDef, type Issue, isPassThrough, type NodeDef, tableRefOf } from '@ugula/graph';
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { isApiError, messageOf } from '../../shared/api.ts';
+import { createEditTracker } from '../../shared/edit-tracker.ts';
 import { type Catalog, createCatalog, type PaletteEntry } from '../../shared/graph/catalog.ts';
 import {
   addNode,
@@ -118,6 +119,7 @@ export const EditorView = ({
   const removable = graph.canEdit && graph.scope !== 'system';
   const [def, setDef] = useState(() => (editable ? placed(source, catalog) : source));
   const [dirty, setDirty] = useState(false);
+  const [edits] = useState(createEditTracker);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [dialog, setDialog] = useState<EditorDialog | null>(null);
@@ -176,6 +178,7 @@ export const EditorView = ({
     graph.scope !== 'system' && (graph.is_stale || comparison?.baseChanged === true);
 
   const change = (next: GraphDef) => {
+    edits.edit();
     setDef(next);
     setDirty(true);
   };
@@ -195,9 +198,10 @@ export const EditorView = ({
 
   const save = () =>
     run('save', async () => {
+      const unchanged = edits.mark();
       const saved = await client.saveDraft(graph.id, def);
       setIssues(saved.issues);
-      setDirty(false);
+      if (unchanged()) setDirty(false);
       notify(
         saved.issues.length
           ? {

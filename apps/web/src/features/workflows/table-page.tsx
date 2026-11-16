@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
+import { createEditTracker } from '../../shared/edit-tracker.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
@@ -56,6 +57,7 @@ export const TableView = ({
   const editable = table.canEdit && isDraft;
   const [def, setDef] = useState<Json>(source);
   const [dirty, setDirty] = useState(false);
+  const [edits] = useState(createEditTracker);
   const [busy, setBusy] = useState<Busy | null>(null);
   const [error, setError] = useState('');
   const [confirm, setConfirm] = useState(false);
@@ -78,8 +80,9 @@ export const TableView = ({
   };
   const save = () =>
     run('save', async () => {
+      const unchanged = edits.mark();
       const saved = await client.tables.saveDraft(table.id, def);
-      setDirty(false);
+      if (unchanged()) setDirty(false);
       notify({ title: `Draft v${saved.version} saved` });
       if (saved.version !== version) navigate(tablePath(table.id, saved.version));
       onSaved();
@@ -240,6 +243,7 @@ export const TableView = ({
               variant="outline"
               size="sm"
               onClick={() => {
+                edits.edit();
                 setDef(base);
                 setDirty(true);
               }}
@@ -270,6 +274,7 @@ export const TableView = ({
           config={def}
           editable={editable}
           onConfig={(config) => {
+            edits.edit();
             setDef(config);
             setDirty(true);
           }}
