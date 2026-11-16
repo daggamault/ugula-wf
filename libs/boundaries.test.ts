@@ -15,14 +15,9 @@ type Layer = keyof typeof libLayers;
 
 const layers = Object.keys(libLayers) as Layer[];
 
-const appLayers: Record<string, readonly Layer[]> = {
-  web: ['kernel', 'domain', 'composition']
-};
-
 type Pkg = {
   name: string;
   dir: string;
-  may: readonly Layer[];
   deps: string[];
   foreign: string[];
 };
@@ -34,7 +29,7 @@ const dirs = (path: string) =>
     .filter((e) => e.isDirectory())
     .map((e) => e.name);
 
-const load = (dir: string, may: readonly Layer[]): Pkg => {
+const load = (dir: string): Pkg => {
   const json = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
     name: string;
     dependencies?: Record<string, string>;
@@ -45,7 +40,6 @@ const load = (dir: string, may: readonly Layer[]): Pkg => {
   return {
     name: json.name,
     dir,
-    may,
     deps: Object.keys(json.dependencies ?? {}).filter((d) => d.startsWith('@ugula/')),
     foreign: Object.entries(all)
       .filter(([d, v]) => !d.startsWith('@ugula/') || v !== 'workspace:*')
@@ -57,16 +51,12 @@ const libDirs = dirs(join(root, 'libs'));
 
 const libs = layers.flatMap((layer) =>
   dirs(join(root, 'libs', layer)).map((n) => ({
-    ...load(join(root, 'libs', layer, n), libLayers[layer]),
+    ...load(join(root, 'libs', layer, n)),
     layer
   }))
 );
 
-const apps = dirs(join(root, 'apps')).map((n) =>
-  load(join(root, 'apps', n), appLayers[n] ?? layers)
-);
-
-const layerOf = new Map(libs.map((p) => [p.name, p.layer]));
+const apps = dirs(join(root, 'apps')).map((n) => load(join(root, 'apps', n)));
 
 const sourceDirs = ['src', 'e2e'];
 
@@ -98,16 +88,31 @@ test('every folder under libs is a layer', () => {
   assert.deepEqual(libDirs.toSorted(), layers.toSorted());
 });
 
-test('packages import only libs in layers below them', () => {
-  const bad = [...libs, ...apps].flatMap((p) =>
-    libImports(p)
-      .filter(({ lib }) => {
-        const layer = layerOf.get(lib);
-        return layer === undefined || !p.may.includes(layer);
-      })
-      .map(({ file, lib }) => `${p.name} (${file}) -> ${lib} (${layerOf.get(lib) ?? 'unknown'})`)
-  );
-  assert.deepEqual(bad, []);
+test('biome lets each layer import exactly the libs in the layers below it', () => {
+  const biome = JSON.parse(readFileSync(join(root, 'biome.json'), 'utf8')) as {
+    overrides: {
+      includes: string[];
+      linter?: {
+        rules?: {
+          style?: { noRestrictedImports?: { options: { patterns: { group: string[] }[] } } };
+        };
+      };
+    }[];
+  };
+  const allowed = (layer: Layer) =>
+    biome.overrides
+      .find((o) => o.includes.includes(`libs/${layer}/**`))
+      ?.linter?.rules?.style?.noRestrictedImports?.options.patterns.flatMap((p) => p.group)
+      .filter((g) => g.startsWith('!@ugula/') && !g.endsWith('/**'))
+      .map((g) => g.slice(1))
+      .toSorted();
+  for (const layer of layers) {
+    const below = libs
+      .filter((l) => (libLayers[layer] as readonly Layer[]).includes(l.layer))
+      .map((l) => l.name)
+      .toSorted();
+    assert.deepEqual(allowed(layer), below, layer);
+  }
 });
 
 test('packages declare exactly the libs they import', () => {
@@ -129,7 +134,7 @@ test('workspace packages declare only libs, linked as workspace:*', () => {
 });
 
 test('the root declares exactly the libs its scripts import', () => {
-  const pkg = load(root, layers);
+  const pkg = load(root);
   const used = new Set(
     ['.migrations', '.seeds'].flatMap((d) =>
       (readdirSync(join(root, d), { recursive: true, encoding: 'utf8' }) as string[])

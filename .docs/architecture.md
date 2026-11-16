@@ -14,7 +14,7 @@ Ugula is a durable visual workflow engine with an EMS ambulance billing app buil
 
 ## Library layers
 
-Libraries live in `libs/<layer>/<name>` and only import layers below them. `libs/boundaries.test.ts` enforces this.
+Libraries live in `libs/<layer>/<name>` and only import layers below them. Biome's `noRestrictedImports` rules in `biome.json` enforce this, and `libs/boundaries.test.ts` keeps them in step with the lib folders.
 
 ```
 composition ──► domain ──► kernel

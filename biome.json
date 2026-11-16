@@ -63,6 +63,160 @@
       }
     },
     {
+      "includes": ["libs/kernel/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@ugula/**"],
+                    "message": "The kernel layer imports no lib."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["libs/platform/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@ugula/**",
+                      "!@ugula/config",
+                      "!@ugula/config/**",
+                      "!@ugula/graph",
+                      "!@ugula/graph/**",
+                      "!@ugula/live",
+                      "!@ugula/live/**"
+                    ],
+                    "message": "The platform layer imports only libs in kernel."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["libs/domain/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@ugula/**",
+                      "!@ugula/config",
+                      "!@ugula/config/**",
+                      "!@ugula/graph",
+                      "!@ugula/graph/**",
+                      "!@ugula/live",
+                      "!@ugula/live/**"
+                    ],
+                    "message": "The domain layer imports only libs in kernel."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["libs/data/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@ugula/**",
+                      "!@ugula/config",
+                      "!@ugula/config/**",
+                      "!@ugula/graph",
+                      "!@ugula/graph/**",
+                      "!@ugula/live",
+                      "!@ugula/live/**",
+                      "!@ugula/auth",
+                      "!@ugula/auth/**",
+                      "!@ugula/clearinghouse",
+                      "!@ugula/clearinghouse/**",
+                      "!@ugula/inference",
+                      "!@ugula/inference/**",
+                      "!@ugula/run-queue",
+                      "!@ugula/run-queue/**",
+                      "!@ugula/storage",
+                      "!@ugula/storage/**",
+                      "!@ugula/access",
+                      "!@ugula/access/**",
+                      "!@ugula/billing",
+                      "!@ugula/billing/**",
+                      "!@ugula/nemsis",
+                      "!@ugula/nemsis/**"
+                    ],
+                    "message": "The data layer imports only libs in kernel, platform, domain."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["libs/composition/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@ugula/**",
+                      "!@ugula/config",
+                      "!@ugula/config/**",
+                      "!@ugula/graph",
+                      "!@ugula/graph/**",
+                      "!@ugula/live",
+                      "!@ugula/live/**",
+                      "!@ugula/access",
+                      "!@ugula/access/**",
+                      "!@ugula/billing",
+                      "!@ugula/billing/**",
+                      "!@ugula/nemsis",
+                      "!@ugula/nemsis/**"
+                    ],
+                    "message": "The composition layer imports only libs in kernel, domain."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["apps/*/src/features/**"],
       "linter": {
         "rules": {
@@ -71,6 +225,102 @@
               "level": "error",
               "options": {
                 "patterns": [
+                  {
+                    "group": ["../**", "!../../shared", "!../../shared/**"],
+                    "message": "Features never import sibling features; promote shared code to shared/."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/**", "apps/web/e2e/**", "!apps/web/src/features/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@ugula/**",
+                      "!@ugula/config",
+                      "!@ugula/config/**",
+                      "!@ugula/graph",
+                      "!@ugula/graph/**",
+                      "!@ugula/live",
+                      "!@ugula/live/**",
+                      "!@ugula/access",
+                      "!@ugula/access/**",
+                      "!@ugula/billing",
+                      "!@ugula/billing/**",
+                      "!@ugula/nemsis",
+                      "!@ugula/nemsis/**",
+                      "!@ugula/catalog",
+                      "!@ugula/catalog/**",
+                      "@aws-sdk/**",
+                      "@hono/**",
+                      "hono",
+                      "hono/**",
+                      "ioredis",
+                      "kysely",
+                      "pg",
+                      "pg-boss",
+                      "ssh2",
+                      "ssh2-sftp-client"
+                    ],
+                    "message": "The web app runs in the browser: it imports only kernel, domain and composition libs and no server package."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/features/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@ugula/**",
+                      "!@ugula/config",
+                      "!@ugula/config/**",
+                      "!@ugula/graph",
+                      "!@ugula/graph/**",
+                      "!@ugula/live",
+                      "!@ugula/live/**",
+                      "!@ugula/access",
+                      "!@ugula/access/**",
+                      "!@ugula/billing",
+                      "!@ugula/billing/**",
+                      "!@ugula/nemsis",
+                      "!@ugula/nemsis/**",
+                      "!@ugula/catalog",
+                      "!@ugula/catalog/**",
+                      "@aws-sdk/**",
+                      "@hono/**",
+                      "hono",
+                      "hono/**",
+                      "ioredis",
+                      "kysely",
+                      "pg",
+                      "pg-boss",
+                      "ssh2",
+                      "ssh2-sftp-client"
+                    ],
+                    "message": "The web app runs in the browser: it imports only kernel, domain and composition libs and no server package."
+                  },
                   {
                     "group": ["../**", "!../../shared", "!../../shared/**"],
                     "message": "Features never import sibling features; promote shared code to shared/."
