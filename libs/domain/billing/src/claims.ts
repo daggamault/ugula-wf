@@ -230,7 +230,7 @@ export const CLAIM_STEPS = [
   'closed'
 ] as const;
 
-export type ClaimStepName = (typeof CLAIM_STEPS)[number];
+type ClaimStepName = (typeof CLAIM_STEPS)[number];
 
 export const isClaimStep = (x: unknown): x is ClaimStepName =>
   CLAIM_STEPS.includes(x as ClaimStepName);
@@ -396,7 +396,7 @@ export const PATIENT_KIND = 'patient';
 
 const PAYER_KINDS: readonly string[] = [UNKNOWN_KIND, PATIENT_KIND];
 
-export type LedgerFacts = ReturnType<typeof ledgerFactsOf>;
+type LedgerFacts = ReturnType<typeof ledgerFactsOf>;
 
 const sinceMs = (at: number | null, now: Date) => (at === null ? null : now.getTime() - at);
 

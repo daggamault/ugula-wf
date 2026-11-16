@@ -37,7 +37,7 @@ export type ClaimTaskKey = keyof typeof CLAIM_TASKS;
 
 export const CLAIM_TASK_KEYS = Object.keys(CLAIM_TASKS) as [ClaimTaskKey, ...ClaimTaskKey[]];
 
-export const MAX_CLAIM_PAYERS = 10;
+const MAX_CLAIM_PAYERS = 10;
 
 const MAX_PAYER_NAME = 60;
 

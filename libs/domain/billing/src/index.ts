@@ -24,7 +24,6 @@ export {
   ICD10_PATTERN,
   INSURED_RELATIONSHIPS,
   type InsuredRelationship,
-  isOriginDestination,
   type Location,
   ORIGIN_DESTINATION_CODES,
   RELATIONSHIP_LABELS,
@@ -47,15 +46,12 @@ export {
 export { type ManualPayment, PAYMENT_KINDS } from './claim-payments.ts';
 export { CLAIM_TASK_KEYS, CLAIM_TASKS, type ClaimTaskKey } from './claim-tasks.ts';
 export {
-  type CheckFacts,
   CLAIM_FIELDS,
   CLAIM_ISSUE_SEVERITIES,
   type ClaimCheck,
   type ClaimField,
   type ClaimIssue,
-  type ClaimIssueSeverity,
   checkFactsOf,
-  isBlocking,
   type NewClaim,
   type ReportedStay,
   readIssues,
@@ -74,10 +70,8 @@ export {
   CLOSED_CLAIM_STATUSES,
   type ClaimEvent,
   type ClaimEventKind,
-  type ClaimLedger,
   type ClaimStatus,
   type ClaimStep,
-  type ClaimStepName,
   COVERAGE_EVENT_KINDS,
   claimProgress,
   claimSignalKey,
@@ -85,7 +79,6 @@ export {
   type DenialRoute,
   isClosedStatus,
   isDenialRoute,
-  type LedgerFacts,
   type LineAdjudication,
   ledgerFactsOf,
   MAX_LINE_MODIFIERS,
@@ -98,10 +91,8 @@ export {
 export {
   AFTER_DOWNLOAD,
   type AfterDownload,
-  type BatchTransport,
   CLEARINGHOUSE_VENDORS,
   type Clearinghouse,
-  type ClearinghouseExtensions,
   type ClearinghouseFile,
   type ClearinghouseInbox,
   type ClearinghouseSettings,
@@ -134,8 +125,6 @@ export {
   type Documentation,
   FACILITY_STAYS,
   type FacilityStay,
-  isSignatureStatus,
-  isTransportReason,
   MAX_DOCUMENTED_COUNT,
   MAX_EMPLOYER_SIZE,
   MSP_ACCIDENTS,
@@ -150,13 +139,7 @@ export {
   TRANSPORT_REASONS,
   type TransportReason
 } from './documentation.ts';
-export type {
-  AgencyLetterhead,
-  AppealPacketSource,
-  DocumentSection,
-  FacilityInvoiceSource,
-  InvoicedClaim
-} from './documents.ts';
+export type { FacilityInvoiceSource } from './documents.ts';
 export { fieldSections } from './documents.ts';
 export { eligibilityFinding } from './eligibility.ts';
 export {
@@ -204,12 +187,10 @@ export {
   type DraftClaim,
   type EligibilityCheck,
   type ExchangeStore,
-  type FeeSchedules,
   type FeeStore,
   type PatientStore,
   type PayerFileStore,
   type PayerStore,
-  type ReadPayerFile,
   type RecoveryStore,
   type ReferenceStore,
   type Responsibility,
@@ -255,7 +236,6 @@ export {
 export {
   type RemittanceLine,
   type RemittancePosting,
-  type RemittanceRoute,
   remittanceCoverage,
   remittanceLine
 } from './remittances.ts';
@@ -266,12 +246,7 @@ export { build270, type EligibilityRequest } from './x270.ts';
 export { type EligibilityResult, type FacilityStayHint, read271 } from './x271.ts';
 export { build276, type ClaimStatusInquiry } from './x276.ts';
 export { type ClaimAcknowledgment, read277 } from './x277.ts';
-export {
-  type ClaimStatusMeaning,
-  claimStatusNote,
-  type PayerClaimStatus,
-  readClaimStatus
-} from './x277-status.ts';
+export { claimStatusNote, type PayerClaimStatus, readClaimStatus } from './x277-status.ts';
 export {
   type ProviderAdjustment,
   type Remittance,

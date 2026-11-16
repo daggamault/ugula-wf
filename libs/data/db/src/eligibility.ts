@@ -47,7 +47,7 @@ export const findEligibilityClaim = (db: Db, agencyId: string, id: string) =>
     .where('c.id', '=', id)
     .executeTakeFirst();
 
-export type EligibilityClaimRow = NonNullable<Awaited<ReturnType<typeof findEligibilityClaim>>>;
+type EligibilityClaimRow = NonNullable<Awaited<ReturnType<typeof findEligibilityClaim>>>;
 
 export const eligibilityRequests = (
   row: EligibilityClaimRow,

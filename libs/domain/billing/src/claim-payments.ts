@@ -9,7 +9,7 @@ import { textOrNull } from './values.ts';
 
 export const PAYMENT_KINDS = { response: 'Payment', refunded: 'Refund' } as const;
 
-export type PaymentKind = keyof typeof PAYMENT_KINDS;
+type PaymentKind = keyof typeof PAYMENT_KINDS;
 
 export type ManualPayment = {
   kind: PaymentKind;
@@ -24,7 +24,7 @@ export type ManualPayment = {
   note: string;
 };
 
-export type PaymentEntry = {
+type PaymentEntry = {
   kind?: unknown;
   coverageId?: unknown;
   paid?: unknown;

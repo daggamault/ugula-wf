@@ -44,7 +44,7 @@ type NullableDate = ColumnType<string | null, string | null | undefined, string 
 
 export const USER_TYPES = ['platform', 'organization'] as const;
 
-export type UserType = (typeof USER_TYPES)[number];
+type UserType = (typeof USER_TYPES)[number];
 
 type OrganizationsTable = {
   id: Generated<string>;
@@ -400,7 +400,7 @@ export type TaskPrefill = (typeof TASK_PREFILLS)[number];
 
 export const EXCHANGE_REQUEST_STATUSES = ['pending', 'answered', 'sent', 'unavailable'] as const;
 
-export type ExchangeRequestStatus = (typeof EXCHANGE_REQUEST_STATUSES)[number];
+type ExchangeRequestStatus = (typeof EXCHANGE_REQUEST_STATUSES)[number];
 
 type TasksTable = {
   id: Generated<string>;

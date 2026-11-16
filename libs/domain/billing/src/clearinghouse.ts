@@ -12,7 +12,7 @@ export const HOST_KEY_PATTERN = '^SHA256:[A-Za-z0-9+/]{43}$';
 
 export const MOCK_HOST_KEY = 'SHA256:VM159e2IEtdtiYxUoqIC5u7Z7D57F/k83MgfOvFrDdM';
 
-export type ClearinghouseExtensions = { claims: string; eligibility: string; claimStatus: string };
+type ClearinghouseExtensions = { claims: string; eligibility: string; claimStatus: string };
 
 export const WAYSTAR_EXTENSIONS: ClearinghouseExtensions = {
   claims: '.CLP',
@@ -101,13 +101,13 @@ export type BatchTransport = {
   session: <T>(work: (inbox: ClearinghouseInbox) => Promise<T>) => Promise<T>;
 };
 
-export type RealtimeReply =
+type RealtimeReply =
   | { ok: true; payloadType: string; payload: string }
   | { ok: false; error: string };
 
 export type RealtimeTransport = (payloadType: string, payload: string) => Promise<RealtimeReply>;
 
-export const CORE_PAYLOADS = {
+const CORE_PAYLOADS = {
   eligibility: {
     request: 'X12_270_Request_005010X279A1',
     response: 'X12_271_Response_005010X279A1'
@@ -155,7 +155,7 @@ export const createClearinghouse = ({
   };
 };
 
-export const EXCHANGE_FILES = { claims: '837P', eligibility: '270', claimStatus: '276' } as const;
+const EXCHANGE_FILES = { claims: '837P', eligibility: '270', claimStatus: '276' } as const;
 
 export const exchangeFileName = (
   kind: keyof typeof EXCHANGE_FILES,

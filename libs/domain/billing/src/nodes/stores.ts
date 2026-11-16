@@ -53,7 +53,7 @@ export type FeeStore = {
   ) => Promise<void>;
 };
 
-export type FoundCode = { description: string; billable: boolean };
+type FoundCode = { description: string; billable: boolean };
 
 export type ReferenceStore = {
   findCode: (set: CodeSet, code: string) => Promise<FoundCode | null>;

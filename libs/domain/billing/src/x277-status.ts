@@ -12,7 +12,7 @@ const CLAIM_STATUS_MEANINGS = [
   'unavailable'
 ] as const;
 
-export type ClaimStatusMeaning = (typeof CLAIM_STATUS_MEANINGS)[number];
+type ClaimStatusMeaning = (typeof CLAIM_STATUS_MEANINGS)[number];
 
 export type PayerClaimStatus = {
   trace: string;

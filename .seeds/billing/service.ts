@@ -24,7 +24,7 @@ import {
   table
 } from './shared.ts';
 
-export const INTERFACILITY = ['2205005', '2205015', '2205017', '2205019'];
+const INTERFACILITY = ['2205005', '2205015', '2205017', '2205019'];
 
 const NON_PATIENT_SERVICES = [
   '2205011',

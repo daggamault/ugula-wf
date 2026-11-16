@@ -233,7 +233,7 @@ const newestSystemVersion = (key: RawBuilder<unknown>) => sql`(
   where g.key = ${key} and g.organization_id is null and v.published_at is not null
 )`;
 
-export const buildFindRuleBundle = (agencyId: string, key: string) => sql<PublishedGraph>`
+const buildFindRuleBundle = (agencyId: string, key: string) => sql<PublishedGraph>`
   with recursive bundle (id, key, version) as (
     select r.id, req.key, req.version
     from (select ${key}::text as key, ${newestSystemVersion(sql`${key}::text`)} as version) req

@@ -86,7 +86,7 @@ export const findTableDefinitions = async (
         .execute()
     : [];
 
-export const buildFindGraphTables = (agencyId: string, versionIds: string[]) => sql<{
+const buildFindGraphTables = (agencyId: string, versionIds: string[]) => sql<{
   key: string;
   kind: TableKind;
   definition: unknown;

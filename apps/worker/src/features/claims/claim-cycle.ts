@@ -25,7 +25,7 @@ const DRAFT: ClaimStatus = 'draft';
 
 const REVIEWABLE: ClaimStatus = 'needs_review';
 
-export const otherClaimRuns = (runId: string, claimId: string) =>
+const otherClaimRuns = (runId: string, claimId: string) =>
   sql<{ id: string }>`
     with recursive closing (id, parent_id) as (
       select id, parent_id from workflow_runs where id = ${runId}

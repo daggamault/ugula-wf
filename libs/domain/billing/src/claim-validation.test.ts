@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import {
-  type ClaimCheck,
-  checkFactsOf,
-  isBlocking,
-  readIssues,
-  readNewClaim
-} from './claim-validation.ts';
+import { type ClaimCheck, checkFactsOf, readIssues, readNewClaim } from './claim-validation.ts';
 import { COMPLETE_DOCUMENTATION } from './testing.ts';
 
 const claim = {
@@ -313,8 +307,6 @@ describe('readIssues', () => {
         coverageId: null
       }
     ]);
-    assert.ok(isBlocking(issues));
-    assert.ok(!isBlocking(issues.slice(1)));
     assert.deepEqual(readIssues(null), []);
   });
 });

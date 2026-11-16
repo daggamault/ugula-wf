@@ -13,7 +13,7 @@ import type { Database } from './schema.ts';
 
 type Db = Kysely<Database>;
 
-export type PayerOrder = {
+type PayerOrder = {
   keep: { id: string; position: number }[];
   add: { payer: string; position: number }[];
   remove: string[];

@@ -10,5 +10,3 @@ export const createEditTracker = () => {
     }
   };
 };
-
-export type EditTracker = ReturnType<typeof createEditTracker>;

@@ -46,7 +46,7 @@ export type NewClaim = {
 
 export const CLAIM_ISSUE_SEVERITIES = ['blocking', 'warning'] as const;
 
-export type ClaimIssueSeverity = (typeof CLAIM_ISSUE_SEVERITIES)[number];
+type ClaimIssueSeverity = (typeof CLAIM_ISSUE_SEVERITIES)[number];
 
 export const CLAIM_FIELDS = [
   'patient',
@@ -202,8 +202,6 @@ const payerFacts = (serviceDate: string | null, today: string) => (p: CheckedPay
   };
 };
 
-export type CheckFacts = ReturnType<typeof checkFactsOf>;
-
 export const checkFactsOf = (c: ClaimCheck, asOf: Date) => {
   const { serviceDate, documentation: d } = c.details;
   return {
@@ -293,9 +291,6 @@ export const readIssues = (x: unknown): ClaimIssue[] =>
         ]
       : [];
   });
-
-export const isBlocking = (issues: readonly ClaimIssue[]) =>
-  issues.some((i) => i.severity === 'blocking');
 
 export const readNewClaim = (claim: unknown): NewClaim => {
   const c = isRecord(claim) ? claim : {};

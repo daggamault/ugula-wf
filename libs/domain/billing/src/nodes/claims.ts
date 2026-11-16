@@ -21,7 +21,7 @@ export const claimIdOf = (x: unknown) => requiredText(x, 'No claim to work on');
 
 const claimPin = pin('claim', CLAIM.type);
 
-export const issuesPin = pin('issues', { list: CLAIM_ISSUE.type });
+const issuesPin = pin('issues', { list: CLAIM_ISSUE.type });
 
 const pricedLinesPin = pin('lines', { list: LINE.type });
 
@@ -29,7 +29,7 @@ const CHARGE_LINES = { list: { object: { code: 'string', units: 'number' } } } a
 
 const FEES = { object: {} } as const;
 
-export const checkOf = (check: ClaimCheck | null, claimId: string) => {
+const checkOf = (check: ClaimCheck | null, claimId: string) => {
   if (!check) throw new Error(`Claim ${claimId} does not exist`);
   return check;
 };

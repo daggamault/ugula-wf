@@ -1,11 +1,11 @@
 import { PDFDocument, type PDFFont, type PDFPage, rgb, StandardFonts } from 'pdf-lib';
 import { money } from './numbers.ts';
 
-export type DocumentRow = { label: string; value: string };
+type DocumentRow = { label: string; value: string };
 
-export type DocumentSection = { heading: string; rows: DocumentRow[] };
+type DocumentSection = { heading: string; rows: DocumentRow[] };
 
-export type DocumentSpec = {
+type DocumentSpec = {
   title: string;
   subtitle: string;
   issuedOn: string;
@@ -116,7 +116,7 @@ export const appendPdfs = async (first: Uint8Array, attachments: readonly Uint8A
   return merged.save();
 };
 
-export type AgencyLetterhead = {
+type AgencyLetterhead = {
   name: string;
   addressLine: string | null;
   city: string | null;
@@ -206,7 +206,7 @@ export const renderAppealPacket = async (s: AppealPacketSource, issuedOn: string
     s.attachments
   );
 
-export type InvoicedClaim = {
+type InvoicedClaim = {
   claimId: string;
   number: string;
   pcrNumber: string | null;

@@ -73,7 +73,7 @@ type DocumentationValues = {
   facilityStay: FacilityStay | null;
 };
 
-export type DocumentationPatch = {
+type DocumentationPatch = {
   [K in keyof DocumentationValues]?: DocumentationValues[K] | undefined;
 };
 

@@ -1,7 +1,7 @@
 import type { Party } from './mock-envelope.ts';
 import { centsOf, componentsOf, dateOf, readX12, textOf } from './x12.ts';
 
-export type Mock837Line = {
+type Mock837Line = {
   code: string;
   modifiers: string[];
   chargeCents: number;
