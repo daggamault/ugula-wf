@@ -1,5 +1,6 @@
 import { type Adjustment, type ClaimStore, claimSignalKey } from '@ugula/billing';
 import type { Db } from '@ugula/db';
+import { importsPrefix } from '@ugula/storage';
 import { sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
@@ -15,6 +16,12 @@ export const createLedgerStore = (
 ): Pick<ClaimStore, 'ledger' | 'recordEvent' | 'noteRevision' | 'claimDocument'> => ({
   noteRevision: async (runId, claimId, sourceKey, report) => {
     const claim = await agencyClaim(db, runId, claimId);
+    if (
+      !report.key.startsWith(importsPrefix(claim.agency_id)) ||
+      report.key.split('/').includes('..')
+    ) {
+      throw new Error(`Blob ${report.key} is not one of this agency's imports`);
+    }
     await db
       .insertInto('claim_events')
       .values({

@@ -19,20 +19,26 @@ describe('createLedgerStore', () => {
       ownedClaim(q)
         ? [owned]
         : q.sql.startsWith('select "c"."status"')
-          ? [{ status: 'submitted', bucket: 'ugula', key: 'imports/t/f.xml.reports/00000.json' }]
+          ? [{ status: 'submitted', bucket: 'ugula', key: 'imports/t-1/f.xml.reports/00000.json' }]
           : []
     );
     const store = createLedgerStore(db);
-    const report = { bucket: 'ugula', key: 'imports/t/g.xml.reports/00000.json' };
+    const report = { bucket: 'ugula', key: 'imports/t-1/g.xml.reports/00000.json' };
     assert.deepEqual(await store.noteRevision('r1', ID, 'k1', report), {
       status: 'submitted',
-      previous: { bucket: 'ugula', key: 'imports/t/f.xml.reports/00000.json' }
+      previous: { bucket: 'ugula', key: 'imports/t-1/f.xml.reports/00000.json' }
     });
     const [insert] = sqlOf(queries, 'insert into "claim_events"');
     assert.ok(insert?.sql.startsWith('insert into "claim_events"'));
     assert.ok(insert?.parameters.includes('revised'));
     assert.ok(insert?.parameters.includes(JSON.stringify(report)));
     assert.ok(insert?.sql.includes('on conflict ("claim_id", "source_key") do nothing'));
+    for (const key of ['imports/t-2/g.json', 'imports/t-1/../t-2/g.json']) {
+      await assert.rejects(
+        () => store.noteRevision('r1', ID, 'k2', { bucket: 'ugula', key }),
+        /not one of this agency's imports/
+      );
+    }
   });
 
   it('reads the ledger by coverage in billing order and refuses other agencies or bad ids', async () => {
