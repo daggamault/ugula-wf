@@ -295,7 +295,7 @@ const faultRun = async (
     priority: 0,
     assigneeId: null,
     dueAt: null,
-    permission: null
+    permission: 'runs:update'
   });
 };
 
@@ -360,7 +360,7 @@ export const stallRun = async (
     priority: 0,
     assigneeId: null,
     dueAt: null,
-    permission: null
+    permission: 'runs:update'
   });
 };
 

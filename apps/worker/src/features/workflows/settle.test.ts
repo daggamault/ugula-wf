@@ -139,6 +139,7 @@ describe('settleRun', () => {
     });
     assert.deepEqual(calls.saved[0]?.error, error);
     assert.equal(calls.tasks[0]?.kind, 'fault');
+    assert.equal(calls.tasks[0]?.permission, 'runs:update');
     assert.equal(calls.tasks[0]?.waitId, 'fault:9');
     assert.equal(calls.tasks[0]?.title, 'Stuck at Call payer');
     assert.equal(calls.tasks[0]?.subject, 'PCR-1 · Jane Doe');
@@ -473,6 +474,7 @@ describe('stallRun and cancelRun', () => {
     assert.equal(calls.saved[0]?.status, 'faulted');
     assert.deepEqual(calls.saved[0]?.error, { message: 'bad input' });
     assert.equal(calls.tasks[0]?.kind, 'fault');
+    assert.equal(calls.tasks[0]?.permission, 'runs:update');
     assert.equal(calls.tasks[0]?.waitId, 'fault:0:2026-01-01T00:00:00.000Z');
     assert.deepEqual(calls.tasks[0]?.outcomes, ['retry', 'cancel']);
     assert.equal(calls.tasks[0]?.instructions, 'Bad input.\n\nRetry once the cause is fixed.');
