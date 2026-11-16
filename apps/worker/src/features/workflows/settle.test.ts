@@ -469,7 +469,7 @@ describe('stallRun and cancelRun', () => {
     const { tx, calls } = fakeTx({
       parent: { status: 'suspended', waitId: '7', kind: 'workflow' }
     });
-    await stallRun(tx, child, 'bad input', '2026-01-01T00:00:00.000Z');
+    await stallRun(tx, child, null, 'bad input', '2026-01-01T00:00:00.000Z');
     assert.equal(calls.saved[0]?.status, 'faulted');
     assert.deepEqual(calls.saved[0]?.error, { message: 'bad input' });
     assert.equal(calls.tasks[0]?.kind, 'fault');

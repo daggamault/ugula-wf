@@ -151,11 +151,12 @@ export const createRunner = ({
   const execute = async (
     run: ClaimedRun,
     command: RunCommand,
-    progress: { checkpointed: boolean },
+    progress: { checkpointed: boolean; state: RunState | null },
     signal: AbortSignal
   ) => {
     const { engine, root } = await engines(run);
     const state = run.state ?? engine.start(root, run.inputs, { now: now() });
+    progress.state = state;
     if (command.type === 'advance' && state.status !== 'running') {
       await store.release(run, state.status === 'suspended' ? 'suspended' : 'faulted');
       return;
@@ -202,7 +203,7 @@ export const createRunner = ({
       await notify(run, 'cancelled');
       return;
     }
-    const progress = { checkpointed: false };
+    const progress = { checkpointed: false, state: run.state };
     try {
       await execute(run, command, progress, signal);
     } catch (err) {
@@ -211,7 +212,9 @@ export const createRunner = ({
         await store.release(run, progress.checkpointed ? 'running' : priorStatus[command.type]);
         throw err;
       }
-      await store.transaction((tx) => stallRun(tx, run, messageOf(err), now().toISOString()));
+      await store.transaction((tx) =>
+        stallRun(tx, run, progress.state, messageOf(err), now().toISOString())
+      );
       await notify(run, 'faulted');
     }
   };

@@ -232,6 +232,27 @@ describe('runner', () => {
     assert.equal(row.status, 'suspended');
   });
 
+  it('keeps the state its first lease reached when settling it stalls', async () => {
+    const { store, row, log } = fakeStore({ ms: 5 });
+    const settle = store.transaction;
+    store.transaction = (fn) =>
+      settle((tx) =>
+        fn({
+          ...tx,
+          insertSteps: async () => {
+            throw new Error('steps cannot be saved');
+          }
+        })
+      );
+    await createRunner({ store, engines, now: () => now, publish }).process(
+      job({ type: 'advance' })
+    );
+    assert.equal(row.status, 'faulted');
+    assert.match(JSON.stringify(log.saves.at(-1)?.error), /steps cannot be saved/);
+    assert.equal(row.state?.status, 'suspended');
+    assert.notEqual(log.tasks[0]?.waitId.split(':')[1], '0');
+  });
+
   it('hands transient failures back for retry and fails runs on permanent ones', async () => {
     const flaky = fakeStore({ ms: 1 });
     const down: EngineSource = async () => {

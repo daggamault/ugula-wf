@@ -191,6 +191,7 @@ const suspendRun = async (tx: RunTx, run: ClaimedRun, state: RunState, jobs: Run
         await stallRun(
           tx,
           run,
+          state,
           `The task needs the permission ${String(permission)}, which does not exist`,
           wait.id
         );
@@ -332,13 +333,19 @@ export const refaultRun = (
   rejected: Rejection
 ) => faultRun(tx, run, state, failed, rejected);
 
-export const stallRun = async (tx: RunTx, run: ClaimedRun, message: string, at: string) => {
+export const stallRun = async (
+  tx: RunTx,
+  run: ClaimedRun,
+  state: RunState | null,
+  message: string,
+  at: string
+) => {
   const error = { message };
-  await tx.saveRun(run, { status: 'faulted', state: run.state, error });
+  await tx.saveRun(run, { status: 'faulted', state, error });
   await tx.insertTask({
     agencyId: run.agencyId,
     runId: run.id,
-    waitId: `fault:${run.state?.seq ?? 0}:${at}`,
+    waitId: `fault:${state?.seq ?? 0}:${at}`,
     kind: 'fault',
     queue: FAULT_QUEUE,
     title: 'Could not continue',
