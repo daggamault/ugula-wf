@@ -34,7 +34,7 @@ import { useToast } from '../../shared/ui/toast.tsx';
 import { Tooltip } from '../../shared/ui/tooltip.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
 import { backLabelOf, withBack } from '../../shared/url-state.ts';
-import { useResource } from '../../shared/use-resource.ts';
+import { loadFailure, refreshFailure, useResource } from '../../shared/use-resource.ts';
 import type { TaskClaimRecord, TaskDetail, TasksClient } from './client.ts';
 import { ContextView } from './context-view.tsx';
 import { encounterFactsOf, type Mismatch, mismatchesOf } from './encounter-check.ts';
@@ -114,6 +114,7 @@ type TaskViewProps = {
   onNext: () => Promise<void>;
   upload?: Upload | undefined;
   codes?: CodesClient | undefined;
+  refreshError?: string;
 };
 
 type Upload = (file: File) => Promise<{ file: Json; name: string }>;
@@ -452,7 +453,8 @@ export const TaskView = ({
   onAssign,
   onNext,
   upload,
-  codes
+  codes,
+  refreshError = ''
 }: TaskViewProps) => {
   const isFault = task.kind === 'fault';
   const info = queueInfo(task.queue);
@@ -549,6 +551,7 @@ export const TaskView = ({
       }
     >
       {error ? <Alert>{error}</Alert> : null}
+      {refreshError ? <Alert>{refreshError}</Alert> : null}
       <TaskIssue task={task}>
         {done !== null ? (
           <NextUp
@@ -644,7 +647,7 @@ export const TaskPage = ({ client, codes, live, taskId, back, tab = 'claim' }: T
     (e) => e.kind === 'claim' && claimId !== null && e.id === claimId,
     claimRecord.reload
   );
-  const failed = task.error ?? claimRecord.error;
+  const failed = loadFailure(task, claimRecord);
   if (failed) return <PageFailure message={failed.message} />;
   if (!task.data || (claimId !== null && !claimRecord.data)) return <PageLoading />;
   const { queue, source } = task.data;
@@ -677,6 +680,7 @@ export const TaskPage = ({ client, codes, live, taskId, back, tab = 'claim' }: T
         )
       }
       upload={(file) => client.uploadFile(taskId, file)}
+      refreshError={refreshFailure(task, claimRecord)}
       codes={codes}
       onAssign={async (assign) => {
         await (assign ? client.assign(taskId) : client.unassign(taskId));

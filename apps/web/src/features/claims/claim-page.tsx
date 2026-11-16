@@ -35,7 +35,12 @@ import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Tabs } from '../../shared/ui/tabs.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { backLabelOf, type Page as ListPage, withBack } from '../../shared/url-state.ts';
-import { type Resource, useResource } from '../../shared/use-resource.ts';
+import {
+  loadFailure,
+  type Resource,
+  refreshFailure,
+  useResource
+} from '../../shared/use-resource.ts';
 import { CycleAlert, OpenTasks } from './claim-cycle.tsx';
 import { DocumentsPanel } from './claim-documents.tsx';
 import { ClaimFiles } from './claim-files.tsx';
@@ -265,7 +270,8 @@ export const ClaimPage = ({
       setStarting(false);
     }
   };
-  if (detail.error) return <PageFailure message={detail.error.message} />;
+  const failed = loadFailure(detail);
+  if (failed) return <PageFailure message={failed.message} />;
   if (!detail.data) return <PageLoading />;
   const { claim, progress } = detail.data;
   return (
@@ -273,7 +279,7 @@ export const ClaimPage = ({
       tab={tab}
       back={back}
       me={me}
-      error={error}
+      error={error || refreshFailure(detail)}
       claim={claim}
       files={detail.data.files}
       payerFiles={detail.data.payerFiles}

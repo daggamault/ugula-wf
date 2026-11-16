@@ -80,6 +80,22 @@ const render = (
   );
 
 describe('TaskView', () => {
+  it('keeps the task form and says when a background refresh failed', () => {
+    const html = renderToStaticMarkup(
+      createElement(TaskView, {
+        task: task(),
+        back: '/claims',
+        remaining: 2,
+        refreshError: 'Network down',
+        onComplete: async () => undefined,
+        onAssign: async () => undefined,
+        onNext: async () => undefined
+      })
+    );
+    assert.ok(html.includes('Network down'));
+    assert.ok(html.includes('<form'));
+  });
+
   it('leads with the subject and queue, explains what to do and prefills the decision', () => {
     const html = render(task(), 'SOURCE PANEL');
     assert.ok(html.includes('PCR-1 · Jane Doe</h1>'));

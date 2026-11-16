@@ -9,6 +9,12 @@ export type Resource<T> = {
 
 type Loaded<T> = Omit<Resource<T>, 'reload' | 'loading'> & { key: string | null };
 
+export const loadFailure = (...resources: Pick<Resource<unknown>, 'data' | 'error'>[]) =>
+  resources.find((r) => r.error && r.data === undefined)?.error;
+
+export const refreshFailure = (...resources: Pick<Resource<unknown>, 'error'>[]) =>
+  resources.find((r) => r.error)?.error?.message ?? '';
+
 export const createLoadQueue = () => {
   let busy = false;
   let queued = false;
