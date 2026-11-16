@@ -284,7 +284,7 @@ describe('createRecoveryStore', () => {
                 pcr_number: null,
                 service_date: null,
                 level: 'BLS',
-                emergency: false,
+                is_emergency: false,
                 loaded_miles: null,
                 total_cents: 50_000,
                 transport_reason: null,
@@ -353,5 +353,21 @@ describe('createRecoveryStore', () => {
       () => createRecoveryStore(db, blobs, boss).appealPacket('r1', ID, COV),
       /billing profile/
     );
+  });
+
+  it('names an emergency without a level of service without a leading space', async () => {
+    const service = async (level: string | null) => {
+      const { db } = recording((sql) =>
+        sql.includes('from "billing_profiles"')
+          ? [profile]
+          : sql.includes('inner join "claim_coverages"')
+            ? [{ number: 'N1', level, is_emergency: true, signature: 'signed', payer: 'Acme' }]
+            : []
+      );
+      const source = await createRecoveryStore(db, blobs, boss).appealPacket('r1', ID, COV);
+      return source.claim.find((r) => r.label === 'Service')?.value;
+    };
+    assert.equal(await service(null), 'emergency');
+    assert.equal(await service('ALS1'), 'ALS1 emergency');
   });
 });

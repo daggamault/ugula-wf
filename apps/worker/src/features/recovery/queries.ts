@@ -280,7 +280,7 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
           { label: 'Date of service', value: row.service_date ?? '' },
           {
             label: 'Service',
-            value: `${row.level ?? ''}${row.is_emergency ? ' emergency' : ''}`
+            value: [row.level, row.is_emergency ? 'emergency' : null].filter(Boolean).join(' ')
           },
           { label: 'Loaded miles', value: row.loaded_miles ?? '' },
           { label: 'Transport reason', value: row.transport_reason ?? '' },
