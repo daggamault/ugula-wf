@@ -55,6 +55,9 @@ const checkOfSaved = (c: NewClaim): ClaimCheck => ({
   destinationFacility: null,
   responsibleParty: 'payer',
   responsibilityRecorded: false,
+  pickupLocality: null,
+  zipStates: { pickup: null, destination: null, patient: null },
+  diagnosisCodes: [],
   documents: [],
   timeZone: 'America/Chicago',
   payers: c.coverages.map((cov) => ({

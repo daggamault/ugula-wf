@@ -18,6 +18,7 @@ import {
   SELF
 } from './claim-details.ts';
 import type { DocumentKind } from './claim-documents.ts';
+import { formatIcd10 } from './code-sets.ts';
 import { daysBetween } from './documentation.ts';
 import type { CheckedFacility, ResponsibleParty } from './facilities.ts';
 import type { Address } from './patients.ts';
@@ -110,6 +111,10 @@ export type ReportedStay = {
   dischargedOn: string | null;
 };
 
+type CheckedDiagnosis = { code: string; description: string | null; billable: boolean };
+
+type ZipStates = { pickup: string | null; destination: string | null; patient: string | null };
+
 export type ClaimCheck = {
   patientId: string | null;
   patient: Address | null;
@@ -128,6 +133,9 @@ export type ClaimCheck = {
   destinationFacility: CheckedFacility | null;
   responsibleParty: ResponsibleParty;
   responsibilityRecorded: boolean;
+  pickupLocality: { needsPlusFour: boolean } | null;
+  zipStates: ZipStates;
+  diagnosisCodes: CheckedDiagnosis[];
   documents: DocumentKind[];
   timeZone: string;
 };
@@ -145,6 +153,18 @@ const missingParts = (a: Address | null) =>
 export const STAY_KINDS = ['inpatient', 'snf'] as const;
 
 export type StayKind = (typeof STAY_KINDS)[number];
+
+const zipStateMismatches = (c: ClaimCheck) =>
+  (
+    [
+      ['pickup', c.details.pickup.state],
+      ['destination', c.details.destination.state],
+      ['patient', c.patient?.state ?? null]
+    ] as const
+  ).flatMap(([place, state]) => {
+    const zipState = c.zipStates[place];
+    return zipState && state && zipState !== state ? [place] : [];
+  });
 
 const before = (a: string | null, b: string | null) =>
   a !== null && b !== null && Date.parse(b) < Date.parse(a);
@@ -195,7 +215,17 @@ export const checkFactsOf = (c: ClaimCheck, asOf: Date) => {
     lineCount: c.lines.length,
     linesAddUp: c.lines.reduce((sum, l) => sum + l.totalCents, 0) === c.totalCents,
     diagnosisCount: c.details.diagnoses.length,
+    unknownDiagnoses: c.diagnosisCodes.flatMap((d) =>
+      d.description === null ? [formatIcd10(d.code)] : []
+    ),
+    unbillableDiagnoses: c.diagnosisCodes.flatMap((d) =>
+      d.description !== null && !d.billable ? [`${d.description} (${formatIcd10(d.code)})`] : []
+    ),
     pickupMissing: missingParts(c.details.pickup),
+    pickupZipPriced: c.details.pickup.postalCode ? c.pickupLocality !== null : null,
+    pickupZipNeedsPlusFour:
+      c.pickupLocality?.needsPlusFour === true && (c.details.pickup.postalCode ?? '').length < 9,
+    zipStateMismatches: zipStateMismatches(c),
     destinationMissing: missingParts(c.details.destination),
     originDestinationValid: isOriginDestination(c.details.originDestination),
     transportReason: d.transportReason,

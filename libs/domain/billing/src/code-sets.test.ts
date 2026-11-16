@@ -1,11 +1,30 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { claimCodeRefs, describeCode, formatIcd10, isCodeSet } from './code-sets.ts';
+import {
+  CODE_PATTERN,
+  CODE_SET_NAMES,
+  CODE_SETS,
+  claimCodeRefs,
+  describeCode,
+  formatIcd10,
+  isCodeSet,
+  normalizeCode
+} from './code-sets.ts';
 
 describe('code sets', () => {
   it('knows its code sets', () => {
     assert.ok(isCodeSet('icd10cm'));
-    assert.ok(!isCodeSet('snomed'));
+    assert.ok(isCodeSet('snomed'));
+    assert.ok(!isCodeSet('cpt'));
+    assert.deepEqual(Object.keys(CODE_SET_NAMES), [...CODE_SETS]);
+  });
+
+  it('normalizes a typed code to how its set stores it', () => {
+    assert.equal(normalizeCode('icd10cm', ' r07.9 '), 'R079');
+    assert.equal(normalizeCode('hcpcs', 'a0427'), 'A0427');
+    assert.equal(normalizeCode('snomed', '232674004'), '232674004');
+    assert.match(normalizeCode('snomed', '1234567890123456'), new RegExp(CODE_PATTERN));
+    assert.doesNotMatch('R07.9', new RegExp(CODE_PATTERN));
   });
 
   it('dots ICD-10 codes after the category', () => {

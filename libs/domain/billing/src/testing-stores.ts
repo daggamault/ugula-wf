@@ -37,6 +37,13 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
     cacheSuggestion: async () => undefined
   },
   fees: stores.fees ?? { findSchedules: unused('fee'), saveFee: unused('fee') },
+  reference: stores.reference ?? {
+    findCode: unused('reference'),
+    medicareLocality: unused('reference'),
+    medicareFees: unused('reference'),
+    zipPlace: unused('reference'),
+    findHospital: unused('reference')
+  },
   claims: stores.claims ?? memoryClaims().store,
   claimTasks: stores.claimTasks ?? {
     setPayers: unused('claim task'),

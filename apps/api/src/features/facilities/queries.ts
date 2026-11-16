@@ -2,7 +2,7 @@ import { CLOSED_CLAIM_STATUSES } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
-import { containsPattern } from '../../shared/search.ts';
+import { containsPattern, escapeLike } from '../../shared/search.ts';
 import type { FacilityInput, FacilitySort } from './schemas.ts';
 
 const columns = [
@@ -85,3 +85,27 @@ export const deleteFacility = async (db: Db, agencyId: string, id: string) =>
     .where('agency_id', '=', agencyId)
     .returning('id')
     .executeTakeFirst()) !== undefined;
+
+const HOSPITAL_LIMIT = 20;
+
+export const searchHospitals = async (db: Db, q: string | undefined) => {
+  const words = (q ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  return db
+    .selectFrom('cms_hospitals')
+    .select([
+      'ccn',
+      'name',
+      'address_line',
+      'city',
+      'state',
+      'postal_code',
+      'phone',
+      'hospital_type'
+    ])
+    .where((eb) => eb.and(words.map((w) => eb('name', 'ilike', `%${escapeLike(w)}%`))))
+    .orderBy(sql`similarity(${q}, name)`, 'desc')
+    .orderBy('name')
+    .limit(HOSPITAL_LIMIT)
+    .execute();
+};

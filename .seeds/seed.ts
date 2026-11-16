@@ -28,18 +28,26 @@ import {
   buildUpsertDemoProfile
 } from './billing-setup.ts';
 import type { SeedTable } from './builder.ts';
-import { CODE_SETS_FILE, readCodeSets, upsertCodeSets } from './codes.ts';
+import { CMS_FILES, readCmsData, replaceCmsData } from './cms.ts';
+import { CODE_SETS_FILE, readCodeSets, replaceCodeSets } from './codes.ts';
 import { type DevSeedConfig, parseDbConfig, parseDevSeedConfig } from './config.ts';
 import { demoGraphs } from './demo-graphs.ts';
 import { buildUpsertDefaultFees, demoFees } from './fees.ts';
-import { PLACES_FILE, readPlaces, upsertPlaces } from './gnis.ts';
+import {
+  GEONAMES_POSTAL_CODES_FILE,
+  readGeonamesPostalCodes,
+  replaceGeonamesPostalCodes
+} from './geonames-postal-codes.ts';
+import { PLACES_FILE, readPlaces, replacePlaces } from './gnis.ts';
 import { publishGraphs, type SeedGraph } from './graphs.ts';
 import {
   CODES_FILE,
   ELEMENTS_FILE,
+  PICK_LISTS_FILE,
   readCodes,
   readElements,
-  upsertDictionary
+  readPickLists,
+  replaceDictionary
 } from './nemsis-dictionary.ts';
 import { publishTables } from './tables.ts';
 import { upsertMembership, upsertUser } from './users.ts';
@@ -102,12 +110,22 @@ const seedBase = async (db: Db) => {
   const codeSets = readCodeSets(await readFile(CODE_SETS_FILE));
   const dictionary = {
     elements: readElements(await readFile(ELEMENTS_FILE)),
-    codes: readCodes(await readFile(CODES_FILE))
+    codes: readCodes(await readFile(CODES_FILE)),
+    picks: readPickLists(await readFile(PICK_LISTS_FILE))
   };
+  const postalCodes = readGeonamesPostalCodes(await readFile(GEONAMES_POSTAL_CODES_FILE));
+  const cms = readCmsData({
+    zips: await readFile(CMS_FILES.zips),
+    zip4s: await readFile(CMS_FILES.zip4s),
+    fees: await readFile(CMS_FILES.fees),
+    hospitals: await readFile(CMS_FILES.hospitals)
+  });
   await db.transaction().execute(async (tx) => {
-    await upsertPlaces(tx, places);
-    await upsertDictionary(tx, dictionary);
-    await upsertCodeSets(tx, codeSets);
+    await replacePlaces(tx, places);
+    await replaceCodeSets(tx, codeSets);
+    await replaceDictionary(tx, dictionary);
+    await replaceGeonamesPostalCodes(tx, postalCodes);
+    await replaceCmsData(tx, cms);
     await publishTables(tx, billingTables);
     await publishGraphs(tx, billingGraphs, new Set(nodes.map(refKey)));
   });

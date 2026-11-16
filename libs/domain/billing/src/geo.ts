@@ -79,3 +79,13 @@ export const zipCode = (x: unknown): string | null => {
   const digits = x.replace(/\D/g, '');
   return digits.length === 5 || digits.length === 9 ? digits : null;
 };
+
+export type ZipPlace = {
+  postalCode: string;
+  city: string;
+  state: string;
+  county: string | null;
+  countyFips: string | null;
+  latitude: number;
+  longitude: number;
+};

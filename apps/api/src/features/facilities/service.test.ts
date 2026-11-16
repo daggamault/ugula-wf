@@ -63,3 +63,14 @@ describe('facility service', () => {
     );
   });
 });
+
+describe('facility service hospitals', () => {
+  it('answers the CMS hospitals a search finds', async () => {
+    const row = { ccn: '010001', name: 'SOUTHEAST HEALTH MEDICAL CENTER' };
+    const service = createFacilityService({ db: createRecordingDb(() => [row]).db });
+    assert.deepEqual(await service.hospitals('southeast'), {
+      ok: true,
+      value: { hospitals: [row] }
+    });
+  });
+});

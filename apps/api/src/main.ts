@@ -27,6 +27,8 @@ import { createClaimRoutes } from './features/claims/routes.ts';
 import { createClaimService } from './features/claims/service.ts';
 import { createConnectionRoutes } from './features/clearinghouse-connection/routes.ts';
 import { createConnectionService } from './features/clearinghouse-connection/service.ts';
+import { createCodeRoutes } from './features/codes/routes.ts';
+import { createCodeService } from './features/codes/service.ts';
 import { createFacilityRoutes } from './features/facilities/routes.ts';
 import { createFacilityService } from './features/facilities/service.ts';
 import { createFeeRoutes } from './features/fees/routes.ts';
@@ -222,6 +224,8 @@ export const createApp = ({
     .route('/facilities', createFacilityRoutes(createFacilityService({ db })))
     .use('/patients/*', guardMethods(read('patients:read')))
     .route('/patients', createPatientRoutes(createPatientService({ db })))
+    .use('/codes/*', guardMethods({ GET: null }))
+    .route('/codes', createCodeRoutes(createCodeService({ db })))
     .use('/notifications/*', guardMethods({ GET: null, POST: null }))
     .route('/notifications', createNotificationRoutes(createNotificationService({ db, announce })))
     .use('/billing-profile/*', guardMethods({ ...read('settings:read'), PUT: 'settings:update' }))

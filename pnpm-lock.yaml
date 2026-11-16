@@ -440,6 +440,9 @@ importers:
       '@ugula/billing':
         specifier: workspace:*
         version: link:../../domain/billing
+      '@ugula/nemsis':
+        specifier: workspace:*
+        version: link:../../domain/nemsis
       '@ugula/run-queue':
         specifier: workspace:*
         version: link:../../platform/run-queue

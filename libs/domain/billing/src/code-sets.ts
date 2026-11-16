@@ -1,10 +1,37 @@
 import { ORIGIN_DESTINATION_CODES } from './claim-details.ts';
 
-export const CODE_SETS = ['icd10cm', 'hcpcs', 'modifier', 'carc', 'rarc', 'pos'] as const;
+export const CODE_SETS = [
+  'icd10cm',
+  'hcpcs',
+  'modifier',
+  'carc',
+  'rarc',
+  'pos',
+  'rxnorm',
+  'snomed'
+] as const;
 
 export type CodeSet = (typeof CODE_SETS)[number];
 
 export const isCodeSet = (x: unknown): x is CodeSet => CODE_SETS.includes(x as CodeSet);
+
+export const CODE_SET_NAMES: Record<CodeSet, string> = {
+  icd10cm: 'ICD-10-CM',
+  hcpcs: 'HCPCS',
+  modifier: 'HCPCS modifier',
+  carc: 'Claim adjustment reason',
+  rarc: 'Remittance advice remark',
+  pos: 'Place of service',
+  rxnorm: 'RxNorm',
+  snomed: 'SNOMED CT'
+};
+
+export const CODE_PATTERN = '^[A-Z0-9]{1,18}$';
+
+export const normalizeCode = (set: CodeSet, code: string) => {
+  const trimmed = code.trim().toUpperCase();
+  return set === 'icd10cm' ? trimmed.replace('.', '') : trimmed;
+};
 
 export type CodeRef = { set: CodeSet; code: string };
 

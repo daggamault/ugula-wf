@@ -70,7 +70,28 @@ export const CHECK_FACTS = model(
     f('lineCount', 'integer', 'Charge lines'),
     f('linesAddUp', 'boolean', 'The claim total is the sum of its lines'),
     f('diagnosisCount', 'integer', 'Diagnoses'),
+    f('unknownDiagnoses', { list: 'string' }, 'Diagnoses that are not ICD-10-CM codes'),
+    f(
+      'unbillableDiagnoses',
+      { list: 'string' },
+      'ICD-10-CM categories on the claim that need more characters to bill, with their meaning'
+    ),
     f('pickupMissing', { list: 'string' }, 'Missing parts of the pickup address'),
+    f(
+      'pickupZipPriced',
+      'boolean',
+      'Medicare prices the pickup ZIP code (it is in the CMS ZIP file); empty without one'
+    ),
+    f(
+      'pickupZipNeedsPlusFour',
+      'boolean',
+      'CMS splits the pickup ZIP code between localities and the claim has no ZIP+4'
+    ),
+    f(
+      'zipStateMismatches',
+      { list: 'string' },
+      'Places (pickup, destination, patient) whose ZIP code is in another state'
+    ),
     f('destinationMissing', { list: 'string' }, 'Missing parts of the destination address'),
     f('originDestinationValid', 'boolean', 'The origin/destination modifier is valid'),
     f('transportReason', 'string', 'Ambulance transport reason'),

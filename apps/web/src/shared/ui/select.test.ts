@@ -181,6 +181,23 @@ describe('SelectControl', () => {
     assert.ok(html.includes('<input type="hidden" name="tags" value="c"/>'));
   });
 
+  it('searches on the server when asked, showing every option it gets and why there are none', () => {
+    const render = (options: { value: string; label: string }[]) =>
+      renderToStaticMarkup(
+        createElement(SelectControl, {
+          'aria-label': 'Code',
+          options,
+          value: '',
+          onChange: noop,
+          onSearch: noop,
+          emptyText: 'Type a code or words from its description'
+        })
+      );
+    assert.match(render([]), /role="combobox"[^>]*aria-label="Search Code"/);
+    assert.match(render([]), /role="status"[^>]*>Type a code or words from its description</);
+    assert.equal(render(many(3)).match(/role="option"/g)?.length, 3);
+  });
+
   it('adds a search box only past seven options or when asked', () => {
     const render = (options: { value: string; label: string }[], isSearchable?: boolean) =>
       renderToStaticMarkup(

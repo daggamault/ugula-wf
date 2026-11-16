@@ -28,6 +28,15 @@ const facilityAt = (eb: ClaimRow, where: ReturnType<typeof sql<boolean>>) =>
       .limit(1)
   );
 
+const zipState = (
+  eb: ClaimRow,
+  zip: 'c.pickup_postal_code' | 'c.destination_postal_code' | 'p.postal_code'
+) =>
+  eb
+    .selectFrom('geonames_postal_codes as g')
+    .select('g.state')
+    .where('g.postal_code', '=', sql<string>`left(${sql.ref(zip)}, 5)`);
+
 const facilityOf = (x: { id: string; name: string; kind: string; contract: boolean } | null) =>
   x && isFacilityKind(x.kind) ? ({ ...x, kind: x.kind } satisfies CheckedFacility) : null;
 
@@ -93,7 +102,15 @@ export const findClaimCheck = async (
       facilityAt(
         eb,
         sql<boolean>`(lower(f.name) = lower(c.destination_name) or ${sameAddress('c.destination_address_line', 'c.destination_postal_code')})`
-      ).as('destination_facility')
+      ).as('destination_facility'),
+      eb
+        .selectFrom('cms_zip_localities as z')
+        .select('z.needs_plus_four')
+        .where('z.postal_code', '=', sql<string>`left(c.pickup_postal_code, 5)`)
+        .as('pickup_zip_split'),
+      zipState(eb, 'c.pickup_postal_code').as('pickup_zip_state'),
+      zipState(eb, 'c.destination_postal_code').as('destination_zip_state'),
+      zipState(eb, 'p.postal_code').as('patient_zip_state')
     ])
     .where('c.id', '=', claimId)
     .where('c.agency_id', '=', agencyId)
@@ -129,10 +146,13 @@ export const findClaimCheck = async (
       .orderBy('cc.position')
       .execute(),
     db
-      .selectFrom('claim_diagnoses')
-      .select('code')
-      .where('claim_id', '=', claim.id)
-      .orderBy('position')
+      .selectFrom('claim_diagnoses as d')
+      .leftJoin('codes as cd', (j) =>
+        j.on('cd.code_set', '=', 'icd10cm').onRef('cd.code', '=', 'd.code')
+      )
+      .select(['d.code', 'cd.description', 'cd.billable'])
+      .where('d.claim_id', '=', claim.id)
+      .orderBy('d.position')
       .execute(),
     db
       .selectFrom('claim_documents')
@@ -184,6 +204,18 @@ export const findClaimCheck = async (
     destinationFacility: facilityOf(claim.destination_facility ?? null),
     responsibleParty: claim.facility_id ? 'facility' : 'payer',
     responsibilityRecorded: claim.facility_id !== null || claim.responsibility_recorded === true,
+    pickupLocality:
+      claim.pickup_zip_split === null ? null : { needsPlusFour: claim.pickup_zip_split },
+    zipStates: {
+      pickup: claim.pickup_zip_state,
+      destination: claim.destination_zip_state,
+      patient: claim.patient_zip_state
+    },
+    diagnosisCodes: diagnoses.map((d) => ({
+      code: d.code,
+      description: d.description,
+      billable: d.billable === true
+    })),
     documents: documents.map((d) => d.kind).filter(isDocumentKind),
     timeZone: claim.time_zone,
     details: {

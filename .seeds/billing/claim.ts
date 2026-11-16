@@ -169,6 +169,19 @@ const originDestination = (): GraphDef => {
       }
     )
   });
+  g.add(
+    'destinationLetter',
+    'std.expr',
+    expr('Destination Letter', "letter ?? (hospital == true ? 'H' : null)")
+  );
+  g.add(
+    'reasons',
+    'std.expr',
+    expr(
+      'Why',
+      "concat(rules, letter == null && hospital == true ? ['The destination is a Medicare-certified hospital (CMS hospital list)'] : [])"
+    )
+  );
   g.add('codes', 'std.list.make', { label: 'Origin and Destination', config: { count: 2 } });
   g.add('modifier', 'std.text.join', { label: 'Origin Then Destination' });
   g.ret('return');
@@ -178,10 +191,13 @@ const originDestination = (): GraphDef => {
   g.wire('trip.serviceType', 'origin.serviceType');
   g.wire('locations.destinationType', 'destination.key');
   g.wire('origin.code', 'codes.item1');
-  g.wire('destination.value', 'codes.item2');
+  g.wire('destination.value', 'destinationLetter.letter', 'reasons.letter');
+  g.wire('locations.destinationHospital', 'destinationLetter.hospital', 'reasons.hospital');
+  g.wire('destinationLetter.result', 'codes.item2');
   g.wire('codes.list', 'modifier.items');
   g.wire('modifier.text', 'return.originDestination');
-  g.wire('origin.rules', 'return.reasons');
+  g.wire('origin.rules', 'reasons.rules');
+  g.wire('reasons.result', 'return.reasons');
   return g.def;
 };
 
@@ -815,7 +831,7 @@ export const claimGraphs: SeedGraph[] = [
   asRule(
     'billing.origin-destination',
     'Origin/Destination Modifiers',
-    'The origin letter from the incident location type or type of service (Origin Modifier table) and the destination letter from the type of destination (Destination Modifier table).',
+    'The origin letter from the incident location type or type of service (Origin Modifier table) and the destination letter from the type of destination (Destination Modifier table), or H when the report gives no type and the destination is a Medicare-certified hospital.',
     originDestination()
   ),
   asRule(

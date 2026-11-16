@@ -74,3 +74,17 @@ describe('settings client errors', () => {
     ]);
   });
 });
+
+describe('settings client hospitals', () => {
+  it('searches the CMS hospital list by name', async () => {
+    const seen: string[] = [];
+    const client = createSettingsClient(
+      createApi('http://api.test', async (url) => {
+        seen.push(String(url));
+        return new Response('{"hospitals":[{"ccn":"010001"}]}', { status: 200 });
+      })
+    );
+    assert.deepEqual(await client.hospitals('southeast health'), [{ ccn: '010001' }]);
+    assert.deepEqual(seen, ['http://api.test/api/facilities/hospitals?q=southeast+health']);
+  });
+});

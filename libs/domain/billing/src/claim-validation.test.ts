@@ -54,6 +54,9 @@ const check: ClaimCheck = {
   destinationFacility: null,
   responsibleParty: 'payer',
   responsibilityRecorded: false,
+  pickupLocality: null,
+  zipStates: { pickup: null, destination: null, patient: null },
+  diagnosisCodes: [],
   documents: ['pcs'],
   timeZone: 'America/Chicago',
   lines: [
@@ -203,6 +206,55 @@ describe('checkFactsOf', () => {
     assert.deepEqual(facts.patientAddressMissing, []);
     assert.equal(facts.pcsDaysBeforeTrip, null);
     assert.equal(facts.payers[0]?.filingDaysLeft, null);
+  });
+
+  it('says whether Medicare prices the pickup ZIP and which ZIP codes belong to another state', () => {
+    const facts = checkFactsOf(check, asOf);
+    assert.equal(facts.pickupZipPriced, false);
+    assert.equal(facts.pickupZipNeedsPlusFour, false);
+    assert.deepEqual(facts.zipStateMismatches, []);
+    const split = checkFactsOf(
+      {
+        ...check,
+        pickupLocality: { needsPlusFour: true },
+        zipStates: { pickup: 'IL', destination: 'MO', patient: 'IN' }
+      },
+      asOf
+    );
+    assert.equal(split.pickupZipPriced, true);
+    assert.equal(split.pickupZipNeedsPlusFour, true);
+    assert.deepEqual(split.zipStateMismatches, ['destination', 'patient']);
+    const withPlusFour = checkFactsOf(
+      {
+        ...check,
+        pickupLocality: { needsPlusFour: true },
+        details: { ...check.details, pickup: { name: null, ...place, postalCode: '627021234' } }
+      },
+      asOf
+    );
+    assert.equal(withPlusFour.pickupZipNeedsPlusFour, false);
+    const noZip = { name: null, ...place, postalCode: null };
+    assert.equal(
+      checkFactsOf({ ...check, details: { ...check.details, pickup: noZip } }, asOf)
+        .pickupZipPriced,
+      null
+    );
+  });
+
+  it('tells unknown diagnosis codes from categories, showing each the way a biller reads it', () => {
+    const facts = checkFactsOf(
+      {
+        ...check,
+        diagnosisCodes: [
+          { code: 'R079', description: 'Chest pain, unspecified', billable: true },
+          { code: 'R07', description: 'Pain in throat and chest', billable: false },
+          { code: 'R999', description: null, billable: false }
+        ]
+      },
+      asOf
+    );
+    assert.deepEqual(facts.unknownDiagnoses, ['R99.9']);
+    assert.deepEqual(facts.unbillableDiagnoses, ['Pain in throat and chest (R07)']);
   });
 
   it("counts filing days left by the agency's calendar, not UTC", () => {

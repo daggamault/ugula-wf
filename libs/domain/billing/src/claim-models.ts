@@ -112,7 +112,12 @@ export const LOCATION_FACTS = model(
     f('destination', LOCATION.type, 'Destination'),
     f('pickupType', 'string', 'Incident location type · eScene.09'),
     f('destinationType', 'string', 'Type of destination · eDisposition.21'),
-    f('destinationReason', 'string', 'Main reason for choosing the destination · eDisposition.20')
+    f('destinationReason', 'string', 'Main reason for choosing the destination · eDisposition.20'),
+    f(
+      'destinationHospital',
+      'boolean',
+      'The destination is a Medicare-certified hospital (CMS hospital list)'
+    )
   ]
 );
 

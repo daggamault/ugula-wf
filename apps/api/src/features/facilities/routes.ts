@@ -3,13 +3,16 @@ import { Hono } from 'hono';
 import type { AgencyEnv } from '../../shared/access.ts';
 import { idParam, invalidRequest } from '../../shared/http.ts';
 import { respond } from '../../shared/result.ts';
-import { facilitySchema, searchFacilitiesQuery } from './schemas.ts';
+import { facilitySchema, searchFacilitiesQuery, searchHospitalsQuery } from './schemas.ts';
 import type { FacilityService } from './service.ts';
 
 export const createFacilityRoutes = (service: FacilityService) =>
   new Hono<AgencyEnv>()
     .get('/', sValidator('query', searchFacilitiesQuery, invalidRequest), async (c) =>
       respond(c, await service.search(c.get('access').agencyId, c.req.valid('query')))
+    )
+    .get('/hospitals', sValidator('query', searchHospitalsQuery, invalidRequest), async (c) =>
+      respond(c, await service.hospitals(c.req.valid('query').q))
     )
     .get('/:id', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.find(c.get('access').agencyId, c.req.valid('param').id))

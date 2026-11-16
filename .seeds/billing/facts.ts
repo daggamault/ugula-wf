@@ -7,6 +7,7 @@ import {
   asStage,
   d,
   exit,
+  expr,
   field,
   is,
   P,
@@ -348,7 +349,8 @@ const mapEncounterFacts = (): GraphDef => {
   const g = stage(
     [PCR_IN],
     [FACTS_OUT],
-    Object.fromEntries([['then', exit('Mapped', 'The encounter facts are ready.')]])
+    Object.fromEntries([['then', exit('Mapped', 'The encounter facts are ready.')]]),
+    [{ name: 'destinationHospital', type: 'boolean', default: false }]
   );
   g.add('pcr', 'nemsis.pcr.break');
   g.add('payment', 'nemsis.payment.break');
@@ -358,10 +360,49 @@ const mapEncounterFacts = (): GraphDef => {
   g.add('clinical', 'billing.clinical-facts', { label: 'Clinical Facts' });
   g.add('documentation', 'billing.documentation-facts', { label: 'Documentation Facts' });
   g.add('coverages', 'billing.coverages-from-pcr', { label: 'Reported Coverages' });
+  g.add('destinationName', 'std.expr', expr('Destination Name', 'locations?.destination?.name'));
+  g.add('destinationState', 'std.expr', expr('Destination State', 'locations?.destination?.state'));
+  g.add(
+    'destinationZip',
+    'std.expr',
+    expr('Destination ZIP Code', 'locations?.destination?.postalCode')
+  );
+  g.add('hospital', 'billing.find-hospital', { label: 'Destination Hospital' });
+  g.add('keepHospital', 'std.var.set', {
+    label: 'The Destination Is a Hospital',
+    config: { name: 'destinationHospital' },
+    values: { value: true }
+  });
+  g.add('isHospital', 'std.var.get', {
+    label: 'Destination Hospital',
+    config: { name: 'destinationHospital' }
+  });
+  g.add(
+    'locationFacts',
+    'std.expr',
+    expr(
+      'Locations With the Hospital',
+      'merge(locations, { destinationHospital: destinationHospital })'
+    )
+  );
   g.add('facts', 'billing.encounter-facts.make');
   g.add('agency', 'billing.agency-facts', { label: 'Agency Facts' });
   g.ret('done');
-  g.wire('entry.exec', 'done.exec');
+  g.wire('entry.exec', 'hospital.exec');
+  g.wire('hospital.found', 'keepHospital.exec');
+  g.wire('hospital.notFound', 'done.exec');
+  g.wire('keepHospital.then', 'done.exec');
+  g.wire(
+    'locations.locations',
+    'destinationName.locations',
+    'destinationState.locations',
+    'destinationZip.locations',
+    'locationFacts.locations'
+  );
+  g.wire('destinationName.result', 'hospital.name');
+  g.wire('destinationState.result', 'hospital.state');
+  g.wire('destinationZip.result', 'hospital.postalCode');
+  g.wire('isHospital.value', 'locationFacts.destinationHospital');
   g.wire(
     'entry.pcr',
     'pcr.pcr',
@@ -375,7 +416,7 @@ const mapEncounterFacts = (): GraphDef => {
   );
   g.wire('pcr.payment', 'payment.payment');
   g.wire('trip.trip', 'facts.trip');
-  g.wire('locations.locations', 'facts.locations');
+  g.wire('locationFacts.result', 'facts.locations');
   g.wire('patient.demographics', 'facts.patient');
   g.wire('clinical.clinical', 'facts.clinical');
   g.wire('documentation.documentation', 'facts.documentation');

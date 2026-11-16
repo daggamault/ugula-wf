@@ -19,11 +19,13 @@ import type {
   PayerFileOutcome,
   PcsType,
   PlanType,
+  Rurality,
   Sex,
   SignatureStatus,
   StayKind,
   TransportReason
 } from '@ugula/billing';
+import type { PickList } from '@ugula/nemsis';
 import type { ColumnType, Generated, GeneratedAlways, Kysely } from 'kysely';
 
 type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
@@ -276,6 +278,62 @@ type CodesTable = {
   code_set: CodeSet;
   code: string;
   description: string;
+  billable: boolean;
+};
+
+type NemsisPickListsTable = {
+  list: PickList;
+  code_set: CodeSet;
+  code: string;
+};
+
+type CmsZipLocalitiesTable = {
+  postal_code: string;
+  carrier: string;
+  locality: string;
+  rurality: Rurality;
+  needs_plus_four: boolean;
+};
+
+type CmsZip4LocalitiesTable = {
+  postal_code: string;
+  plus_four_from: string;
+  plus_four_to: string;
+  carrier: string;
+  locality: string;
+  rurality: Rurality;
+};
+
+type CmsAmbulanceFeesTable = {
+  carrier: string;
+  locality: string;
+  code: string;
+  urban_cents: number;
+  rural_cents: number;
+  super_rural_cents: number | null;
+  rural_short_trip_cents: number | null;
+};
+
+type CmsHospitalsTable = {
+  ccn: string;
+  name: string;
+  address_line: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  phone: string | null;
+  hospital_type: string;
+  emergency_services: boolean;
+};
+
+type GeonamesPostalCodesTable = {
+  postal_code: string;
+  city: string;
+  state: string;
+  county: string | null;
+  county_fips: string | null;
+  latitude: number;
+  longitude: number;
 };
 
 type NemsisCodesTable = {
@@ -783,7 +841,13 @@ export type Database = {
   gnis_places: GnisPlacesTable;
   nemsis_elements: NemsisElementsTable;
   nemsis_codes: NemsisCodesTable;
+  nemsis_pick_lists: NemsisPickListsTable;
   codes: CodesTable;
+  cms_zip_localities: CmsZipLocalitiesTable;
+  cms_zip4_localities: CmsZip4LocalitiesTable;
+  cms_ambulance_fees: CmsAmbulanceFeesTable;
+  cms_hospitals: CmsHospitalsTable;
+  geonames_postal_codes: GeonamesPostalCodesTable;
   signals: SignalsTable;
   schedule_runs: ScheduleRunsTable;
   tasks: TasksTable;

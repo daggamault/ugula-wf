@@ -61,6 +61,9 @@ export const completeCheck = (payers = ['Medicare', 'Blue']): ClaimCheck => ({
   destinationFacility: null,
   responsibleParty: 'payer',
   responsibilityRecorded: false,
+  pickupLocality: null,
+  zipStates: { pickup: null, destination: null, patient: null },
+  diagnosisCodes: [],
   documents: [],
   timeZone: 'America/Chicago',
   lines: [

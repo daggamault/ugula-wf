@@ -4,7 +4,7 @@
 docker compose up -d       # Postgres, Redis, RustFS, SFTPGo, embeddings and completions (GPU)
 pnpm install
 pnpm db:migrate            # resets and creates the schema
-pnpm db:seed:dev           # GNIS places, NEMSIS definitions, billing code sets, dev user, demo graphs, fees, payers
+pnpm db:seed:dev           # reference data (code sets, NEMSIS, GNIS, GeoNames, CMS), dev user, demo graphs, fees, payers
 pnpm dev                   # api, worker, sse, web and the mock clearinghouse
 pnpm e2e                   # with the stack running: every area in the browser, suites in parallel (about 30s)
 ```

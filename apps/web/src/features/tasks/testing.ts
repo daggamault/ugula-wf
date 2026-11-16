@@ -31,7 +31,7 @@ export const fixtureDictionary: ReportDictionary = {
     'eSituation.09': { 'R06.02': 'Shortness of breath', 'R00.2': 'Palpitations' },
     'eSituation.11': {
       'J44.1': 'Chronic obstructive pulmonary disease with (acute) exacerbation',
-      'I47.1': 'Supraventricular tachycardia'
+      'I47.10': 'Supraventricular tachycardia, unspecified'
     },
     'eMedications.03': { '435': 'Albuterol', '296': 'Adenosine' },
     'eMedications.04': { '9927071': 'Nebulizer', '9927023': 'Intravenous (IV)' },

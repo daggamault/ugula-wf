@@ -162,6 +162,8 @@ export const CLAIM_FIX_FIELDS: FieldSpec[] = [
     name: 'diagnoses',
     type: { list: 'string' },
     label: 'ICD-10 diagnoses, primary first',
+    codeSet: 'icd10cm',
+    codeList: 'impression',
     required: ['save']
   },
   ...address('pickup', 'Pickup'),

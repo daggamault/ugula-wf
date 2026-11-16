@@ -34,6 +34,8 @@ type ControlProps = {
   disabled?: boolean | undefined;
   required?: boolean | undefined;
   isSearchable?: boolean | undefined;
+  onSearch?: ((query: string) => void) | undefined;
+  emptyText?: string | undefined;
   title?: string | undefined;
   'aria-label'?: string | undefined;
   'aria-invalid'?: boolean | undefined;
@@ -109,7 +111,9 @@ export const SelectControl = (props: SelectControlProps) => {
     disabled,
     title,
     isMultiple = false,
-    isSearchable = options.length > SEARCH_THRESHOLD
+    onSearch,
+    emptyText = 'No matches',
+    isSearchable = onSearch !== undefined || options.length > SEARCH_THRESHOLD
   } = props;
   const ownId = useId().replace(/[^\w-]/g, '');
   const id = props.id ?? `select-${ownId}`;
@@ -125,7 +129,7 @@ export const SelectControl = (props: SelectControlProps) => {
   const [active, setActive] = useState(0);
   const typed = useRef({ text: '', at: 0 });
   const values = valuesOf(props);
-  const shown = matchesOf(options, query);
+  const shown = onSearch ? options : matchesOf(options, query);
   const optionId = (i: number) => `${listId}-${i}`;
   const activeOption = shown[active];
   const summary = summaryOf(options, values);
@@ -141,6 +145,7 @@ export const SelectControl = (props: SelectControlProps) => {
     setOpen(opened);
     if (!opened) return;
     setQuery('');
+    onSearch?.('');
     setActive(
       Math.max(
         0,
@@ -255,6 +260,7 @@ export const SelectControl = (props: SelectControlProps) => {
               onChange={(e) => {
                 setQuery(e.target.value);
                 setActive(0);
+                onSearch?.(e.target.value);
               }}
               onKeyDown={onListKey}
               onBlur={onLeave}
@@ -297,7 +303,9 @@ export const SelectControl = (props: SelectControlProps) => {
           })}
         </div>
         {shown.length ? null : (
-          <p className="text-surface-fg-muted px-3 py-2 text-sm">No matches</p>
+          <p role="status" className="text-surface-fg-muted px-3 py-2 text-sm">
+            {emptyText}
+          </p>
         )}
       </div>
     </div>

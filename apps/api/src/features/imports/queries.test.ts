@@ -212,6 +212,35 @@ describe('findDictionary', () => {
     ]);
     await db.destroy();
   });
+
+  it('names medications from RxNorm or SNOMED CT and procedures from SNOMED CT', async () => {
+    const { db } = createRecordingDb((q) =>
+      q.sql.includes('from "codes"')
+        ? [
+            { code_set: 'rxnorm', code: '3992', description: 'epinephrine' },
+            {
+              code_set: 'snomed',
+              code: '116762002',
+              description: 'Administration of blood product'
+            },
+            { code_set: 'snomed', code: '232674004', description: 'Orotracheal intubation' }
+          ]
+        : []
+    );
+    const dictionary = await findDictionary(db, {
+      elements: [],
+      codes: [
+        { list: 'eMedications.03', code: '3992' },
+        { list: 'eMedications.03', code: '116762002' },
+        { list: 'eProcedures.03', code: '232674004' }
+      ]
+    });
+    assert.deepEqual(dictionary.codes, {
+      'eMedications.03': { '3992': 'epinephrine', '116762002': 'Administration of blood product' },
+      'eProcedures.03': { '232674004': 'Orotracheal intubation' }
+    });
+    await db.destroy();
+  });
 });
 
 describe('import status and attention sorts', () => {

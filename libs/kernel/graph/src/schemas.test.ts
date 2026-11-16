@@ -70,6 +70,18 @@ describe('schemas', () => {
     assert.equal(v.safeParse(valueTypeSchema, { object: { 'a-b': 'string' } }).success, false);
   });
 
+  it('names the code set a text field or text list picks its codes from', () => {
+    const field = {
+      name: 'diagnoses',
+      type: { list: 'string' },
+      codeSet: 'icd10cm',
+      codeList: 'cause-of-injury'
+    };
+    assert.deepEqual(v.parse(fieldsSchema, [field]), [field]);
+    assert.equal(v.safeParse(fieldsSchema, [{ ...field, codeSet: 'ICD 10' }]).success, false);
+    assert.equal(v.safeParse(fieldsSchema, [{ ...field, codeList: 'Impressions' }]).success, false);
+  });
+
   it('expands bare option strings into labelled options', () => {
     assert.deepEqual(v.parse(fieldsSchema, [{ name: 'a', type: 'string', options: ['x'] }]), [
       { name: 'a', type: 'string', options: [{ value: 'x', label: 'x' }] }

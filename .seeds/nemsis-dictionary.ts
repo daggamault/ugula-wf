@@ -1,55 +1,60 @@
-import { gunzipSync } from 'node:zlib';
+import { type CodeSet, isCodeSet } from '@ugula/billing';
 import type { Database } from '@ugula/db';
+import { isPickList, type PickList } from '@ugula/nemsis';
 import type { Kysely } from 'kysely';
+import { BATCH, inBatches, tsvRows } from './tsv.ts';
 
 type Element = { element: string; name: string };
 
 type Code = { list: string; code: string; description: string };
 
-type Dictionary = { elements: Element[]; codes: Code[] };
+type Pick = { list: PickList; set: CodeSet; code: string };
+
+type Dictionary = { elements: Element[]; codes: Code[]; picks: Pick[] };
 
 export const ELEMENTS_FILE = new URL('./data/nemsis-elements.tsv.gz', import.meta.url);
 
 export const CODES_FILE = new URL('./data/nemsis-codes.tsv.gz', import.meta.url);
 
-const rowsOf = (gzipped: Buffer) =>
-  gunzipSync(gzipped)
-    .toString('utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => line.split('\t'));
+export const PICK_LISTS_FILE = new URL('./data/nemsis-pick-lists.tsv.gz', import.meta.url);
 
 export const readElements = (gzipped: Buffer): Element[] =>
-  rowsOf(gzipped).map(([element = '', name = '']) => ({ element, name }));
+  tsvRows(gzipped).map(([element = '', name = '']) => ({ element, name }));
 
 export const readCodes = (gzipped: Buffer): Code[] =>
-  rowsOf(gzipped).map(([list = '', code = '', description = '']) => ({ list, code, description }));
+  tsvRows(gzipped).map(([list = '', code = '', description = '']) => ({ list, code, description }));
 
-const DICTIONARY_BATCH = 2_000;
+export const readPickLists = (gzipped: Buffer): Pick[] =>
+  tsvRows(gzipped).map(([list, set, code = '']) => {
+    if (!isPickList(list) || !isCodeSet(set)) {
+      throw new Error(`Unknown pick list row ${list} ${set}`);
+    }
+    return { list, set, code };
+  });
 
-const buildUpsertElements = (db: Kysely<Database>, elements: readonly Element[]) =>
-  db
-    .insertInto('nemsis_elements')
-    .values(elements.map((e) => ({ element: e.element, name: e.name })))
-    .onConflict((oc) =>
-      oc.column('element').doUpdateSet({ name: (eb) => eb.ref('excluded.name') })
-    );
-
-const buildUpsertCodes = (db: Kysely<Database>, codes: readonly Code[]) =>
-  db
-    .insertInto('nemsis_codes')
-    .values(codes.map((c) => ({ list: c.list, code: c.code, description: c.description })))
-    .onConflict((oc) =>
-      oc
-        .columns(['list', 'code'])
-        .doUpdateSet({ description: (eb) => eb.ref('excluded.description') })
-    );
-
-export const upsertDictionary = async (db: Kysely<Database>, { elements, codes }: Dictionary) => {
-  for (let i = 0; i < elements.length; i += DICTIONARY_BATCH) {
-    await buildUpsertElements(db, elements.slice(i, i + DICTIONARY_BATCH)).execute();
-  }
-  for (let i = 0; i < codes.length; i += DICTIONARY_BATCH) {
-    await buildUpsertCodes(db, codes.slice(i, i + DICTIONARY_BATCH)).execute();
-  }
+export const replaceDictionary = async (
+  db: Kysely<Database>,
+  { elements, codes, picks }: Dictionary
+) => {
+  await db.deleteFrom('nemsis_pick_lists').execute();
+  await db.deleteFrom('nemsis_codes').execute();
+  await db.deleteFrom('nemsis_elements').execute();
+  await inBatches(elements, BATCH, (batch) =>
+    db
+      .insertInto('nemsis_elements')
+      .values(batch.map((e) => ({ element: e.element, name: e.name })))
+      .execute()
+  );
+  await inBatches(codes, BATCH, (batch) =>
+    db
+      .insertInto('nemsis_codes')
+      .values(batch.map((c) => ({ list: c.list, code: c.code, description: c.description })))
+      .execute()
+  );
+  await inBatches(picks, BATCH, (batch) =>
+    db
+      .insertInto('nemsis_pick_lists')
+      .values(batch.map((p) => ({ list: p.list, code_set: p.set, code: p.code })))
+      .execute()
+  );
 };

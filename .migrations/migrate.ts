@@ -4,12 +4,14 @@ import { createAgenciesTable } from './agencies.ts';
 import { createBillingProfilesTables } from './billing-profiles.ts';
 import { createClaimsTables } from './claims.ts';
 import { createClearinghouseConnectionsTable } from './clearinghouse-connections.ts';
+import { createCmsTables } from './cms.ts';
 import { createCodesTable } from './codes.ts';
 import { parseConfig } from './config.ts';
 import { createDataTablesTables } from './data-tables.ts';
 import { createExtensions } from './extensions.ts';
 import { createFacilitiesTables, createFacilityInvoiceClaimsTable } from './facilities.ts';
 import { createFeeSchedulesTable } from './fee-schedules.ts';
+import { createGeonamesPostalCodesTable } from './geonames-postal-codes.ts';
 import { createGnisPlacesTable } from './gnis-places.ts';
 import { createGraphsTables } from './graphs.ts';
 import { createImportsTables } from './imports.ts';
@@ -73,7 +75,13 @@ const resetSchema = async (db: Kysely<Database>) => {
     'users',
     'agencies',
     'organizations',
+    'nemsis_pick_lists',
     'codes',
+    'cms_zip4_localities',
+    'cms_zip_localities',
+    'cms_ambulance_fees',
+    'cms_hospitals',
+    'geonames_postal_codes',
     'gnis_places',
     'nemsis_codes',
     'nemsis_elements'
@@ -98,6 +106,8 @@ const steps = [
   createExtensions,
   createGnisPlacesTable,
   createCodesTable,
+  createCmsTables,
+  createGeonamesPostalCodesTable,
   createNemsisDictionaryTables,
   createAgenciesTable,
   createDailyNumbers,

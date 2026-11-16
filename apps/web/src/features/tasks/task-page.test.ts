@@ -341,6 +341,7 @@ describe('TaskPage', () => {
           find: async () => task(),
           queues: async () => []
         } as unknown as TasksClient,
+        codes: { search: async () => [], describe: async () => [] },
         live: idleLive,
         taskId: 't1',
         back: null
@@ -381,6 +382,34 @@ describe('TaskView files', () => {
     );
     assert.ok(html.includes('type="file"') && html.includes('Choose a file to upload.'));
     assert.ok(html.includes('>Add Document<'));
+  });
+});
+
+describe('TaskView codes', () => {
+  it('offers a code search for a field that picks from a code set', () => {
+    const html = renderToStaticMarkup(
+      createElement(TaskView, {
+        task: task({
+          fields: [
+            {
+              name: 'diagnoses',
+              type: { list: 'string' },
+              label: 'ICD-10 diagnoses, primary first',
+              codeSet: 'icd10cm'
+            }
+          ],
+          outcomes: ['save', 'cancel']
+        }),
+        back: '/claims',
+        remaining: 0,
+        codes: { search: async () => [], describe: async () => [] },
+        onComplete: async () => undefined,
+        onAssign: async () => undefined,
+        onNext: async () => undefined
+      })
+    );
+    assert.equal(html.match(/role="combobox"/g)?.length, 1);
+    assert.ok(!html.includes('One per line.'));
   });
 });
 

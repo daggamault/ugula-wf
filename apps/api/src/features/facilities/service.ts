@@ -7,6 +7,7 @@ import {
   findFacility,
   insertFacility,
   searchFacilities,
+  searchHospitals,
   updateFacility
 } from './queries.ts';
 import type { FacilityInput } from './schemas.ts';
@@ -23,6 +24,8 @@ const inUse = fail(
 export const createFacilityService = ({ db }: { db: Db }) => ({
   search: async (agencyId: string, filters: FacilityFilters) =>
     ok(await searchFacilities(db, agencyId, filters)),
+
+  hospitals: async (q: string | undefined) => ok({ hospitals: await searchHospitals(db, q) }),
 
   find: async (agencyId: string, id: string) => {
     const facility = await findFacility(db, agencyId, id);

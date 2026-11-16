@@ -102,6 +102,17 @@ export type Facility = {
   balance_cents: number;
 };
 
+export type CmsHospital = {
+  ccn: string;
+  name: string;
+  address_line: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  phone: string | null;
+  hospital_type: string;
+};
+
 export type FacilityInput = {
   name: string;
   addressLine: string | null;
@@ -151,6 +162,13 @@ export const createSettingsClient = (api: Api) => ({
     id
       ? api.put<{ id: string }>(`/api/facilities/${encodeURIComponent(id)}`, facility)
       : api.post<{ id: string }>('/api/facilities', facility),
+  hospitals: async (q: string, signal?: AbortSignal) =>
+    (
+      await api.get<{ hospitals: CmsHospital[] }>(
+        `/api/facilities/hospitals?${new URLSearchParams({ q })}`,
+        signal
+      )
+    ).hospitals,
   removeFacility: (id: string) => api.remove(`/api/facilities/${encodeURIComponent(id)}`),
   forgetAlias: (payerId: string, aliasId: string) =>
     api.remove(`/api/payers/${encodeURIComponent(payerId)}/aliases/${encodeURIComponent(aliasId)}`)

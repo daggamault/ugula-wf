@@ -4,9 +4,12 @@ import type { ClaimPatch } from '../claim-fix.ts';
 import type { ManualPayment } from '../claim-payments.ts';
 import type { ClaimCheck, NewClaim } from '../claim-validation.ts';
 import type { ClaimLedger, ClaimStatus, ClosedStatus, CycleEventKind } from '../claims.ts';
+import type { CodeSet } from '../code-sets.ts';
 import type { Completer } from '../completions.ts';
 import type { AppealPacketSource, FacilityInvoiceSource } from '../documents.ts';
-import type { CheckedFacility, ResponsibleParty } from '../facilities.ts';
+import type { CheckedFacility, Hospital, ResponsibleParty } from '../facilities.ts';
+import type { ZipPlace } from '../geo.ts';
+import type { MedicareFee, MedicareLocality } from '../medicare-fees.ts';
 import type { Address, NewPatient, Patient } from '../patients.ts';
 import type { PayerFileOutcome } from '../payer-files.ts';
 import type { DirectoryPayer, PayerLookup } from '../payers.ts';
@@ -48,6 +51,20 @@ export type FeeStore = {
     code: string,
     unitCents: number
   ) => Promise<void>;
+};
+
+export type FoundCode = { description: string; billable: boolean };
+
+export type ReferenceStore = {
+  findCode: (set: CodeSet, code: string) => Promise<FoundCode | null>;
+  medicareLocality: (postalCode: string) => Promise<MedicareLocality | null>;
+  medicareFees: (carrier: string, locality: string, codes: string[]) => Promise<MedicareFee[]>;
+  zipPlace: (postalCode: string) => Promise<ZipPlace | null>;
+  findHospital: (
+    name: string,
+    state: string,
+    postalCode: string | null
+  ) => Promise<Hospital | null>;
 };
 
 export type PayerStore = {
@@ -345,6 +362,7 @@ export type BillingStores = {
   patients: PatientStore;
   payers: PayerStore;
   fees: FeeStore;
+  reference: ReferenceStore;
   claims: ClaimStore;
   claimTasks: ClaimTaskStore;
   payerFiles: PayerFileStore;

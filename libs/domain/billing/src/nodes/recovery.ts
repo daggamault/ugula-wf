@@ -6,7 +6,8 @@ import {
   denialFactsOf,
   patientBalanceFactsOf,
   payerFactsOf,
-  refundFactsOf
+  refundFactsOf,
+  responseFactsOf
 } from '../recovery.ts';
 import { X837_CLAIM } from '../submission-models.ts';
 import { isCents, recordOf, requiredText, textOrNull } from '../values.ts';
@@ -48,6 +49,24 @@ export const recoveryNodes: NodesOf = (stores) => {
           coverageIdOf(inputs.coverageId)
         )
       })
+    }),
+    actionNode({
+      type: 'billing.read-payer-response',
+      title: 'Read Payer Response',
+      category: CATEGORY,
+      description:
+        "Adds up every response one payer sent on a claim: what it paid, the patient's share it stated (PR adjustments) and what it allowed (paid, plus the patient's share, plus Medicare sequestration, CO-253). Decides nothing.",
+      inputs: [claimIdPin, coverageIdPin],
+      outputs: [
+        pin('paidCents', 'integer', { label: 'Paid (Cents)' }),
+        pin('patientCents', 'integer', { label: "Patient's Share (Cents)" }),
+        pin('allowedCents', 'integer', { label: 'Allowed (Cents)' })
+      ],
+      compute: async (inputs, _, ctx) =>
+        responseFactsOf(
+          await ledgerOf(ctx.runId, claimIdOf(inputs.claimId)),
+          coverageIdOf(inputs.coverageId)
+        )
     }),
     actionNode({
       type: 'billing.read-payer',

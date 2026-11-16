@@ -91,3 +91,20 @@ export const patientBalanceFactsOf = (ledger: ClaimLedger) => {
       .reduce((sum, e) => sum + e.adjustedCents, 0)
   };
 };
+
+const SEQUESTRATION = 'CO-253';
+
+export const responseFactsOf = (ledger: ClaimLedger, coverageId: string) => {
+  if (!coverageOf(ledger, coverageId)) throw new Error(`Payer ${coverageId} is not on the claim`);
+  const responses = ledger.events.filter(
+    (e) => e.coverageId === coverageId && e.kind === 'response'
+  );
+  const adjustments = responses.flatMap((e) => e.adjustments);
+  const sum = (cents: number[]) => cents.reduce((total, c) => total + c, 0);
+  const paidCents = sum(responses.map((e) => e.paidCents));
+  const patientCents = sum(adjustments.filter((a) => a.group === 'PR').map((a) => a.cents));
+  const sequesteredCents = sum(
+    adjustments.filter((a) => `${a.group}-${a.reason}` === SEQUESTRATION).map((a) => a.cents)
+  );
+  return { paidCents, patientCents, allowedCents: paidCents + patientCents + sequesteredCents };
+};

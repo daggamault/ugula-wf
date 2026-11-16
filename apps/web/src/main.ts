@@ -19,6 +19,7 @@ import { createWorkflowsClient } from './features/workflows/client.ts';
 import type { AppClients } from './routes.tsx';
 import { createAgenciesClient } from './shared/access.tsx';
 import { createApi } from './shared/api.ts';
+import { createCodesClient } from './shared/codes.ts';
 import { createNotificationsClient } from './shared/notifications.ts';
 import { createSignal } from './shared/signal.ts';
 
@@ -40,7 +41,8 @@ export const createClients = (config: Config, fetchFn: typeof fetch = fetch): Ap
     patients: createPatientsClient(api),
     settings: createSettingsClient(api),
     reports: createReportsClient(api),
-    notifications: createNotificationsClient(api)
+    notifications: createNotificationsClient(api),
+    codes: createCodesClient(api)
   };
 };
 

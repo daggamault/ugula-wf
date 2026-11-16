@@ -6,6 +6,7 @@ import {
   findFacility,
   insertFacility,
   searchFacilities,
+  searchHospitals,
   updateFacility
 } from './queries.ts';
 
@@ -44,5 +45,20 @@ describe('facility queries', () => {
     assert.ok(queries[0]?.sql.includes('sum(b.balance_cents)'));
     assert.ok(queries[0]?.parameters.includes('%sun%'));
     assert.ok(queries[2]?.sql.includes('on conflict (agency_id, lower(name)) do nothing'));
+  });
+});
+
+describe('searchHospitals', () => {
+  it('finds CMS hospitals whose name has every word, closest first, and none for no words', async () => {
+    const { db, queries } = createRecordingDb(() => []);
+    await searchHospitals(db, 'Mercy  St_');
+    assert.deepEqual(await searchHospitals(db, '  '), []);
+    assert.equal(queries.length, 1);
+    assert.ok(
+      queries[0]?.sql.endsWith(
+        'from "cms_hospitals" where ("name" ilike $1 and "name" ilike $2) order by similarity($3, name) desc, "name" limit $4'
+      )
+    );
+    assert.deepEqual(queries[0]?.parameters, ['%mercy%', '%st\\_%', 'Mercy  St_', 20]);
   });
 });

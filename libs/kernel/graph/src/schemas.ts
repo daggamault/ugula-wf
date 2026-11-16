@@ -112,6 +112,10 @@ export const fieldsSchema = v.pipe(
       options: v.exactOptional(optionsSchema),
       required: v.exactOptional(v.array(name)),
       format: v.exactOptional(v.picklist(['date'])),
+      codeSet: v.exactOptional(name),
+      codeList: v.exactOptional(
+        v.pipe(v.string(), v.regex(/^[a-z][a-z-]*$/, 'Code lists are kebab-case names'))
+      ),
       min: v.exactOptional(v.number()),
       max: v.exactOptional(v.number())
     })

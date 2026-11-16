@@ -6,7 +6,8 @@ import {
   denialFactsOf,
   patientBalanceFactsOf,
   payerFactsOf,
-  refundFactsOf
+  refundFactsOf,
+  responseFactsOf
 } from './recovery.ts';
 
 const event = (patch: Partial<ClaimEvent> & Pick<ClaimEvent, 'kind'>): ClaimEvent => ({
@@ -143,5 +144,34 @@ describe('patientBalanceFactsOf', () => {
       protectedCents: 45_000
     });
     assert.equal(patientBalanceFactsOf(ledger([])).payerKind, 'patient');
+  });
+});
+
+describe('responseFactsOf', () => {
+  it("adds up what a payer allowed: its payments, the patient's share and sequestration", () => {
+    const paid = ledger([
+      event({ kind: 'submitted' }),
+      event({
+        kind: 'response',
+        paidCents: 43_000,
+        adjustments: [
+          { group: 'CO', reason: '45', cents: 40_000 },
+          { group: 'PR', reason: '2', cents: 11_000 },
+          { group: 'CO', reason: '253', cents: 900 }
+        ]
+      }),
+      event({ kind: 'response', coverageId: 'blue', paidCents: 5_000 })
+    ]);
+    assert.deepEqual(responseFactsOf(paid, 'mcr'), {
+      paidCents: 43_000,
+      patientCents: 11_000,
+      allowedCents: 54_900
+    });
+    assert.deepEqual(responseFactsOf(ledger([]), 'blue'), {
+      paidCents: 0,
+      patientCents: 0,
+      allowedCents: 0
+    });
+    assert.throws(() => responseFactsOf(paid, 'nope'), /not on the claim/);
   });
 });

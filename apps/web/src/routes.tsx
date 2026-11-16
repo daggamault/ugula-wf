@@ -57,6 +57,7 @@ import {
   WorkflowsPage
 } from './features/workflows/workflows-page.tsx';
 import type { AgenciesClient } from './shared/access.tsx';
+import type { CodesClient } from './shared/codes.ts';
 import type { Live } from './shared/live.ts';
 import type { NotificationsClient } from './shared/notifications.ts';
 import { matchPath } from './shared/router.tsx';
@@ -79,6 +80,7 @@ export type AppClients = {
   settings: SettingsClient;
   reports: ReportsClient;
   notifications: NotificationsClient;
+  codes: CodesClient;
 };
 
 export type RouteContext = AppClients & {
@@ -367,6 +369,7 @@ const routes: readonly Route[] = [
       <TaskPage
         key={p.id}
         client={c.tasks}
+        codes={c.codes}
         live={c.live}
         taskId={p.id ?? ''}
         back={q.has('back') ? backOf(q, TASKS_PATH, '/claims', '/runs/', '/imports/') : null}

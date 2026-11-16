@@ -61,7 +61,7 @@ describe('readPcr', () => {
     assert.equal(factOf(pcr.situation, 'Complaint'), 'Palpitations');
     assert.equal(
       factOf(pcr.situation, 'Primary Impression'),
-      'Supraventricular tachycardia (I47.1)'
+      'Supraventricular tachycardia, unspecified (I47.10)'
     );
     assert.equal(factOf(pcr.situation, 'Primary Symptom'), 'Palpitations (R00.2)');
     assert.equal(factOf(pcr.situation, 'Secondary Impressions'), null);

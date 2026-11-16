@@ -114,6 +114,8 @@ export {
   WAYSTAR_EXTENSIONS
 } from './clearinghouse.ts';
 export {
+  CODE_PATTERN,
+  CODE_SET_NAMES,
   CODE_SETS,
   type CodeDescriptions,
   type CodeRef,
@@ -121,7 +123,8 @@ export {
   claimCodeRefs,
   describeCode,
   formatIcd10,
-  isCodeSet
+  isCodeSet,
+  normalizeCode
 } from './code-sets.ts';
 export {
   AMBULANCE_CONDITIONS,
@@ -154,13 +157,33 @@ export type {
 export { fieldSections } from './documents.ts';
 export { eligibilityFinding } from './eligibility.ts';
 export {
+  CCN_PATTERN,
   type CheckedFacility,
   FACILITY_KINDS,
   type FacilityKind,
+  HOSPITAL_NAME_SIMILARITY,
+  HOSPITAL_WORD_SIMILARITY,
+  type Hospital,
   isFacilityKind,
+  pickHospital,
   type ResponsibleParty
 } from './facilities.ts';
-export { US_STATE_PATTERN, usState, ZIP_CODE_PATTERN, ZIP_PLUS_4_PATTERN } from './geo.ts';
+export {
+  US_STATE_PATTERN,
+  usState,
+  ZIP_CODE_PATTERN,
+  ZIP_PLUS_4_PATTERN,
+  type ZipPlace
+} from './geo.ts';
+export {
+  CARRIER_PATTERN,
+  isRurality,
+  LOCALITY_PATTERN,
+  type MedicareFee,
+  type MedicareLocality,
+  RURALITIES,
+  type Rurality
+} from './medicare-fees.ts';
 export { billingModels, billingTypes } from './models.ts';
 export { nameKey } from './names.ts';
 export { UNREAD_FINDINGS } from './narrative.ts';
@@ -184,6 +207,7 @@ export {
   type PayerStore,
   type ReadPayerFile,
   type RecoveryStore,
+  type ReferenceStore,
   type Responsibility,
   type ScheduleStore
 } from './nodes/index.ts';

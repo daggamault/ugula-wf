@@ -1,6 +1,6 @@
 import { FACILITY_KINDS, isFacilityKind } from '@ugula/billing';
 import { SaveIcon, XIcon } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
@@ -13,7 +13,7 @@ import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
-import type { Facility, FacilityInput, SettingsClient } from './client.ts';
+import type { CmsHospital, Facility, FacilityInput, SettingsClient } from './client.ts';
 
 export const toFacilityDraft = (f: Facility | null): FacilityInput => ({
   name: f?.name ?? '',
@@ -42,12 +42,76 @@ const FIELDS = [
   { key: 'phone', label: 'Phone', span: 1 }
 ] as const;
 
+const SEARCH_DELAY_MS = 250;
+
+type FindHospitals = (q: string, signal?: AbortSignal) => Promise<CmsHospital[]>;
+
+export const hospitalLabel = (h: CmsHospital) => `${h.name}, ${h.city} ${h.state} (${h.ccn})`;
+
+export const fromHospital = (draft: FacilityInput, h: CmsHospital): FacilityInput => ({
+  ...draft,
+  name: h.name,
+  addressLine: h.address_line,
+  city: h.city,
+  state: h.state,
+  postalCode: h.postal_code,
+  phone: h.phone,
+  kind: 'hospital'
+});
+
+const HospitalPicker = ({
+  findHospitals,
+  onPick
+}: {
+  findHospitals: FindHospitals;
+  onPick: (hospital: CmsHospital) => void;
+}) => {
+  const [text, setText] = useState('');
+  const [q, setQ] = useState('');
+  const [picked, setPicked] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setQ(text.trim()), SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
+  const found = useResource(`cms-hospitals:${q}`, (signal) =>
+    q ? findHospitals(q, signal) : Promise.resolve([])
+  );
+  const hospitals = found.data ?? [];
+  return (
+    <Select
+      id="facility-hospital"
+      label="Fill From CMS Hospital"
+      span={2}
+      hint="Fills the name, address, phone and kind from the Medicare hospital list"
+      options={hospitals.map((h) => ({ value: h.ccn, label: hospitalLabel(h) }))}
+      value={picked}
+      onSearch={setText}
+      emptyText={
+        found.error?.message ??
+        (found.loading
+          ? 'Searching…'
+          : q
+            ? 'No matching hospitals'
+            : 'Type part of a hospital name')
+      }
+      onChange={(ccn) => {
+        const hospital = hospitals.find((h) => h.ccn === ccn);
+        if (!hospital) return;
+        setPicked(ccn);
+        onPick(hospital);
+      }}
+    />
+  );
+};
+
 export const FacilityForm = ({
   facility,
+  findHospitals,
   back,
   onSave
 }: {
   facility: Facility | null;
+  findHospitals: FindHospitals;
   back: string;
   onSave: (facility: FacilityInput) => Promise<string | null>;
 }) => {
@@ -67,6 +131,12 @@ export const FacilityForm = ({
       <SectionPanel title="Facility">
         <fieldset disabled={busy}>
           <FieldGrid>
+            {facility ? null : (
+              <HospitalPicker
+                findHospitals={findHospitals}
+                onPick={(h) => setDraft(fromHospital(draft, h))}
+              />
+            )}
             <Input
               id="facility-name"
               label="Facility Name"
@@ -163,7 +233,13 @@ export const FacilityPage = ({ client, live, facilityId, back }: FacilityPagePro
       {facilityId && facility.data === undefined ? (
         <PageLoading />
       ) : (
-        <FacilityForm key={current?.id ?? 'new'} facility={current} back={back} onSave={save} />
+        <FacilityForm
+          key={current?.id ?? 'new'}
+          facility={current}
+          findHospitals={client.hospitals}
+          back={back}
+          onSave={save}
+        />
       )}
     </Page>
   );

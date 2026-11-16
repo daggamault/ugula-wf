@@ -81,6 +81,29 @@ describe('recoveryNodes', () => {
     await assert.rejects(() => run('read-refund', { claimId: 'other' }), /does not exist/);
   });
 
+  it('adds up what a payer paid and allowed across its responses', async () => {
+    const { claims, run } = setup();
+    claims.events.push(
+      event({
+        kind: 'response',
+        paidCents: 43_000,
+        adjustments: [
+          { group: 'PR', reason: '2', cents: 11_000 },
+          { group: 'CO', reason: '253', cents: 900 }
+        ]
+      })
+    );
+    const response = await run('read-payer-response', {
+      claimId: 'c1',
+      coverageId: 'cov-Medicare'
+    });
+    assert.deepEqual(response.outputs, {
+      paidCents: 43_000,
+      patientCents: 11_000,
+      allowedCents: 54_900
+    });
+  });
+
   it('reads a payer on the claim, or the patient when none is given', async () => {
     const { run } = setup();
     const medicare = await run('read-payer', { claimId: 'c1', coverageId: 'cov-Medicare' });

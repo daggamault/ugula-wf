@@ -5,7 +5,7 @@ import {
   MIN_WAIT_MS,
   STEP_STATUSES
 } from '@ugula/billing';
-import type { GraphDef, PinSpec } from '@ugula/graph';
+import type { GraphDef, PinSpec, VariableDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import { graph, p } from './glossary.ts';
 import {
@@ -78,9 +78,34 @@ const CONFIRM_PAYERS_SUMMARY = `'The report names no payer to bill' +
 const SUBMIT_SUMMARY = `'The 837P to ' + ${named('context?.payer', "'the payer'")} + ' could not be created: ' +
   ${named('context?.whyNotFiled', "'no reason was given'")} + '; fix it and try again, or skip the payer'`;
 
+const MEDICARE_ALLOWED = 'context?.medicareAllowed';
+
 const RECONCILE_SUMMARY = `${THE_PAYER} + ' answered and ' +
   (${BALANCE} != null ? ${dollars(BALANCE)} + (${TOTAL} != null ? ' of ' + ${dollars(TOTAL)} : '') + ' is' : 'a balance is') +
-  ' still open; reconcile it, move on or write it off'`;
+  ' still open' +
+  (${MEDICARE_ALLOWED} != null
+    ? (${MEDICARE_ALLOWED}.underpaid == true
+        ? '; underpaid: the payer allowed ' + ${dollars(`${MEDICARE_ALLOWED}.payerAllowedCents`)} + ', ' + ${dollars(`${MEDICARE_ALLOWED}.underpaidCents`)} + ' less than the ' + ${dollars(`${MEDICARE_ALLOWED}.allowedCents`)} + ' Medicare allows for this ' + (ruralities[${MEDICARE_ALLOWED}.rurality] ?? 'ambulance') + ' trip; reopen or appeal it, or'
+        : '; Medicare allows ' + ${dollars(`${MEDICARE_ALLOWED}.allowedCents`)} + ' for this ' + (ruralities[${MEDICARE_ALLOWED}.rurality] ?? 'ambulance') + ' trip;')
+    : ';') +
+  ' reconcile it, move on or write it off'`;
+
+const RURALITY_WORDS = { urban: 'urban', rural: 'rural', superRural: 'super-rural' };
+
+const IS_MEDICARE_TRIP = `some(claim?.payers ?? [], c => c?.coverageId == coverageId && (c?.claimFiling == 'MA' || c?.claimFiling == 'MB')) &&
+  len(claim?.lines ?? []) > 0 &&
+  (claim?.details?.pickup?.postalCode ?? '') != ''`;
+
+const MEDICARE_ALLOWED_FACTS = `{
+  allowedCents: totalCents,
+  rurality: rurality,
+  carrier: carrier,
+  locality: locality,
+  codesNotPriced: missing,
+  payerAllowedCents: payerAllowedCents,
+  underpaidCents: underpaidCents,
+  underpaid: underpaid
+}`;
 
 const FOLLOW_UP_SUMMARY = `${THE_PAYER} + ' has not answered this claim in time' +
   (${named('context?.claimStatus', 'null')} != null ? ' (latest status: ' + context?.claimStatus + ')' : '') +
@@ -123,18 +148,25 @@ const PATIENT_ADDRESS_FIELDS = ['AddressLine', 'City', 'State', 'PostalCode'].ma
 const recordEvent = (g: Builder, id: string, kind: string, label: string) =>
   g.add(id, 'billing.record-claim-event', { label, values: { kind } });
 
-const claimStep = (execOut: string[], about: PinSpec[] = [p('coverageId', 'string', true)]) =>
-  graph({
-    execIn: ['exec'],
-    execOut,
-    inputs: [
-      p('claimId', 'string'),
-      ...about,
-      p('subject', 'string', true),
-      p('context', 'any', true)
-    ],
-    outputs: []
-  });
+const claimStep = (
+  execOut: string[],
+  about: PinSpec[] = [p('coverageId', 'string', true)],
+  variables: VariableDef[] = []
+) =>
+  graph(
+    {
+      execIn: ['exec'],
+      execOut,
+      inputs: [
+        p('claimId', 'string'),
+        ...about,
+        p('subject', 'string', true),
+        p('context', 'any', true)
+      ],
+      outputs: []
+    },
+    variables
+  );
 
 const reviewClaim = (): GraphDef => {
   const g = claimStep(['done', 'void']);
@@ -300,15 +332,122 @@ const submitClaim = (): GraphDef => {
   return g.def;
 };
 
+const UNDERPAID_CENTS = 100;
+
+const underpayment = (): GraphDef => {
+  const g = rule(
+    [
+      d(
+        'medicareAllowedCents',
+        'integer',
+        'Medicare Fee Schedule (Cents)',
+        'What the Medicare ambulance fee schedule allows for the trip at its pickup locality.'
+      ),
+      d(
+        'payerAllowedCents',
+        'integer',
+        'Payer Allowed (Cents)',
+        "What the payer allowed: its payments, the patient's share and sequestration."
+      )
+    ],
+    [
+      d(
+        'underpaidCents',
+        'integer',
+        'Underpaid (Cents)',
+        'How far the payer allowed less than the fee schedule, or nothing when it did not.'
+      ),
+      d('underpaid', 'boolean', 'Underpaid', 'Whether a biller should take the shortfall up.'),
+      d('priority', 'integer', 'Task Priority', 'The priority of the reconcile task.'),
+      P.reasons('the response is or is not an underpayment')
+    ]
+  );
+  g.add(
+    'shortfall',
+    'std.expr',
+    expr('Shortfall', 'max(medicareAllowedCents - payerAllowedCents, 0)')
+  );
+  g.add('decide', 'std.table.decide', {
+    label: 'Underpayment',
+    config: shared.decision(
+      'billing.underpayment',
+      'Underpayment',
+      'Decides whether a payer allowed less than the Medicare ambulance fee schedule by enough to work, and how soon: an underpaid reconcile task is raised so it is handed out first.',
+      table(
+        [field('shortfallCents', 'integer', 'Allowed below the fee schedule (cents)')],
+        [field('underpaid', 'boolean', 'Underpaid'), field('priority', 'integer', 'Task priority')],
+        [
+          {
+            label: 'Allowed more than $1 below the Medicare fee schedule',
+            when: { shortfallCents: above(UNDERPAID_CENTS) },
+            set: { underpaid: true, priority: 2 }
+          }
+        ],
+        { underpaid: false, priority: 0 }
+      )
+    )
+  });
+  g.ret('return');
+  g.wire('entry.medicareAllowedCents', 'shortfall.medicareAllowedCents');
+  g.wire('entry.payerAllowedCents', 'shortfall.payerAllowedCents');
+  g.wire('shortfall.result', 'decide.shortfallCents', 'return.underpaidCents');
+  g.wire('decide.underpaid', 'return.underpaid');
+  g.wire('decide.priority', 'return.priority');
+  g.wire('decide.rules', 'return.reasons');
+  return g.def;
+};
+
 const reconcilePayment = (): GraphDef => {
-  const g = claimStep(['done', 'writeOff']);
+  const g = claimStep(
+    ['done', 'writeOff'],
+    [p('coverageId', 'string', true)],
+    [
+      { name: 'medicareAllowed', type: 'any', default: null },
+      { name: 'priority', type: 'integer', default: 0 }
+    ]
+  );
+  g.add('readClaim', 'billing.read-claim-checks', { label: 'Read the Claim' });
+  g.add('isMedicare', 'std.expr', expr('Medicare Pays This Trip', IS_MEDICARE_TRIP));
+  g.add('priceMedicare', 'std.flow.branch', { label: 'Price It as Medicare?' });
+  g.add('pickupZip', 'std.expr', expr('Pickup ZIP Code', 'claim?.details?.pickup?.postalCode'));
+  g.add('locality', 'billing.find-medicare-locality', { label: 'Pickup Locality' });
+  g.add(
+    'chargeLines',
+    'std.expr',
+    expr('Claim Lines', 'map(claim?.lines ?? [], l => { code: l.code, units: l.units })')
+  );
+  g.add('allowed', 'billing.medicare-allowed', { label: 'Medicare Allowed' });
+  g.add('response', 'billing.read-payer-response', { label: 'What the Payer Allowed' });
+  g.add('underpayment', 'billing.underpayment', { label: 'Underpayment' });
+  g.add('allowedFacts', 'std.expr', expr('What Medicare Allows', MEDICARE_ALLOWED_FACTS));
+  g.add('keepPriority', 'std.var.set', {
+    label: 'Keep the Priority',
+    config: { name: 'priority' }
+  });
+  g.add('priority', 'std.var.get', { label: 'Task Priority', config: { name: 'priority' } });
+  g.add('keepAllowed', 'std.var.set', {
+    label: 'Keep What Medicare Allows',
+    config: { name: 'medicareAllowed' }
+  });
+  g.add('medicareAllowed', 'std.var.get', {
+    label: 'Medicare Allowed for the Trip',
+    config: { name: 'medicareAllowed' }
+  });
+  g.add(
+    'taskContext',
+    'std.expr',
+    expr(
+      'Context With Medicare Allowed',
+      'merge(context ?? {}, { medicareAllowed: medicareAllowed })'
+    )
+  );
   g.add('reconcile', 'std.human.task', {
     label: 'Reconcile Payment',
     config: {
       title: 'Reconcile payment',
       queue: 'billing-reconcile',
       instructions:
-        'The payer answered and a balance remains. Check what they paid and adjusted, with their reason codes, against the claim, and record anything missing. Continue to the next payer or the patient, write off the rest, or correct the claim and resubmit it to this payer as a replacement of their claim.',
+        'The payer answered and a balance remains. Check what they paid and adjusted, with their reason codes, against the claim, and record anything missing. When Medicare pays, the details show what the Medicare ambulance fee schedule allows for the trip at its pickup locality (urban, rural or super-rural), so an underpayment stands out. Continue to the next payer or the patient, write off the rest, or correct the claim and resubmit it to this payer as a replacement of their claim.',
       outcomes: ['continue', 'writeOff', 'resubmitCorrected'],
       hints: {
         continue:
@@ -324,10 +463,51 @@ const reconcilePayment = (): GraphDef => {
   recordEvent(g, 'correct', 'resubmit_queued', 'Resubmit as a Corrected Claim');
   g.ret('doneReturn', 'done');
   g.ret('writeOffReturn', 'writeOff');
-  g.wire('entry.exec', 'reconcile.exec');
+  g.wire('entry.exec', 'readClaim.exec');
+  g.wire('entry.claimId', 'readClaim.claimId');
+  g.wire('readClaim.then', 'priceMedicare.exec');
+  g.wire('readClaim.claim', 'isMedicare.claim', 'pickupZip.claim', 'chargeLines.claim');
+  g.wire('entry.context', 'taskContext.context');
+  g.wire('entry.coverageId', 'isMedicare.coverageId');
+  g.wire('isMedicare.result', 'priceMedicare.condition');
+  g.wire('priceMedicare.true', 'locality.exec');
+  g.wire('priceMedicare.false', 'reconcile.exec');
+  g.wire('pickupZip.result', 'locality.postalCode');
+  g.wire('locality.found', 'allowed.exec');
+  g.wire('locality.notFound', 'reconcile.exec');
+  g.wire('chargeLines.result', 'allowed.lines');
+  g.wire('locality.carrier', 'allowed.carrier', 'allowedFacts.carrier');
+  g.wire('locality.locality', 'allowed.locality', 'allowedFacts.locality');
+  g.wire('locality.rurality', 'allowed.rurality', 'allowedFacts.rurality');
+  g.wire('allowed.totalCents', 'allowedFacts.totalCents');
+  g.wire('allowed.missing', 'allowedFacts.missing');
+  g.wire('allowed.then', 'response.exec');
+  g.wire('entry.claimId', 'response.claimId');
+  g.wire('entry.coverageId', 'response.coverageId');
+  g.wire('response.then', 'keepAllowed.exec');
+  g.wire('allowed.totalCents', 'underpayment.medicareAllowedCents');
+  g.wire(
+    'response.allowedCents',
+    'underpayment.payerAllowedCents',
+    'allowedFacts.payerAllowedCents'
+  );
+  g.wire('underpayment.underpaidCents', 'allowedFacts.underpaidCents');
+  g.wire('underpayment.underpaid', 'allowedFacts.underpaid');
+  g.wire('underpayment.priority', 'keepPriority.value');
+  g.wire('priority.value', 'reconcile.priority');
+  g.wire('allowedFacts.result', 'keepAllowed.value');
+  g.wire('keepAllowed.then', 'keepPriority.exec');
+  g.wire('keepPriority.then', 'reconcile.exec');
+  g.wire('medicareAllowed.value', 'taskContext.medicareAllowed');
   g.wire('entry.subject', 'reconcile.subject');
-  g.wire('entry.context', 'reconcile.context');
-  summarize(g, 'reconcile', RECONCILE_SUMMARY, { context: 'entry.context' });
+  g.wire('taskContext.result', 'reconcile.context');
+  summarize(
+    g,
+    'reconcile',
+    RECONCILE_SUMMARY,
+    { context: 'taskContext.result' },
+    { ruralities: RURALITY_WORDS }
+  );
   g.wire('entry.claimId', 'reconciled.claimId', 'correct.claimId');
   g.wire('entry.coverageId', 'reconciled.coverageId', 'correct.coverageId');
   g.wire('reconcile.continue', 'reconciled.exec');
@@ -1146,6 +1326,12 @@ export const cycleGraphs: SeedGraph[] = [
     'Claim Could Not Be Filed',
     'Asks a biller what to do about an approved claim whose 837P file could not be created: try again once the reason is fixed, fix its data, skip the payer, or mark it submitted elsewhere.',
     submitClaim()
+  ),
+  asRule(
+    'billing.underpayment',
+    'Underpayment',
+    'Compares what a payer allowed with what the Medicare ambulance fee schedule allows for the trip (Underpayment table): more than $1 short is an underpayment, and its reconcile task is raised.',
+    underpayment()
   ),
   asStage(
     'billing.reconcile-payment',

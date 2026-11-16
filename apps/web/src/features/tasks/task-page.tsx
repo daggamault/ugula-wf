@@ -12,6 +12,7 @@ import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 
 import { useCan } from '../../shared/access.tsx';
 import { isApiError, messageOf } from '../../shared/api.ts';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
+import type { CodesClient } from '../../shared/codes.ts';
 import { formatAgo, formatDateTime, formatDay } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
@@ -84,6 +85,7 @@ const FOLLOW_UP_WAIT_MS = 500;
 
 type TaskPageProps = {
   client: TasksClient;
+  codes: CodesClient;
   live: Live;
   taskId: string;
   back: string | null;
@@ -104,6 +106,7 @@ type TaskViewProps = {
   onAssign: (assign: boolean) => Promise<void>;
   onNext: () => Promise<void>;
   upload?: Upload | undefined;
+  codes?: CodesClient | undefined;
 };
 
 type Upload = (file: File) => Promise<{ file: Json; name: string }>;
@@ -263,8 +266,9 @@ const Decision = ({
   task,
   errors,
   upload,
+  codes,
   onComplete
-}: Pick<TaskViewProps, 'task' | 'upload'> & {
+}: Pick<TaskViewProps, 'task' | 'upload' | 'codes'> & {
   errors: FieldErrors;
   onComplete: (outcome: string, values: Record<string, Json>) => Promise<void>;
 }) => {
@@ -311,6 +315,9 @@ const Decision = ({
                   max={f.max}
                   error={errors[f.name]}
                   upload={upload}
+                  codeSet={f.codeSet}
+                  codeList={f.codeList}
+                  codes={codes}
                   value={values[f.name] ?? null}
                   onChange={(value) => setValues({ ...values, [f.name]: value })}
                 />
@@ -425,7 +432,8 @@ export const TaskView = ({
   onComplete,
   onAssign,
   onNext,
-  upload
+  upload,
+  codes
 }: TaskViewProps) => {
   const isFault = task.kind === 'fault';
   const info = queueInfo(task.queue);
@@ -538,6 +546,7 @@ export const TaskView = ({
             task={task}
             errors={errors}
             upload={upload}
+            codes={codes}
             onComplete={complete}
           />
         ) : (
@@ -585,7 +594,7 @@ export const TaskView = ({
   );
 };
 
-export const TaskPage = ({ client, live, taskId, back, tab = 'claim' }: TaskPageProps) => {
+export const TaskPage = ({ client, codes, live, taskId, back, tab = 'claim' }: TaskPageProps) => {
   const task = useResource(`task:${taskId}`, (signal) => client.find(taskId, signal));
   const queues = useResource('task-queues', client.queues);
   const runId = task.data?.run_id;
@@ -649,6 +658,7 @@ export const TaskPage = ({ client, live, taskId, back, tab = 'claim' }: TaskPage
         )
       }
       upload={(file) => client.uploadFile(taskId, file)}
+      codes={codes}
       onAssign={async (assign) => {
         await (assign ? client.assign(taskId) : client.unassign(taskId));
         task.reload();

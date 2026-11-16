@@ -100,8 +100,8 @@
       <eSituation>
         <eSituation.02>9922005</eSituation.02>
         <eSituation.04>Transfer for specialty care</eSituation.04>
-        <eSituation.09>G35</eSituation.09>
-        <eSituation.11>G35</eSituation.11>
+        <eSituation.09>G35.D</eSituation.09>
+        <eSituation.11>G35.D</eSituation.11>
         <eSituation.12>Z74.01</eSituation.12>
       </eSituation>
       <eVitals>

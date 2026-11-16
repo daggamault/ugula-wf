@@ -1,4 +1,4 @@
-import { usState } from '@ugula/billing';
+import { type CodeSet, normalizeCode, usState } from '@ugula/billing';
 import { type Db, describeCodes, type ImportSource, type RunStatus } from '@ugula/db';
 import { codeSystemOf, type ReportDictionary, type ReportTerms } from '@ugula/nemsis';
 import { sql } from 'kysely';
@@ -198,7 +198,13 @@ export const listImportReports = (
     sql.ref('ir.id')
   );
 
-const icd10Of = (code: string) => code.replace('.', '').toUpperCase();
+const CODE_SETS_OF: Readonly<Record<string, readonly CodeSet[]>> = {
+  icd10: ['icd10cm'],
+  rxnorm: ['rxnorm', 'snomed'],
+  snomed: ['snomed']
+};
+
+const codeSetsOf = (list: string) => CODE_SETS_OF[codeSystemOf(list) ?? ''] ?? [];
 
 const describeOutside = async (db: Db, codes: ReportTerms['codes']) => {
   const places = codes.filter((c) => codeSystemOf(c.list) === 'gnis' && /^\d{1,9}$/.test(c.code));
@@ -208,14 +214,14 @@ const describeOutside = async (db: Db, codes: ReportTerms['codes']) => {
     : [];
   const names = new Map(rows.map((p) => [p.id, p.name]));
   const states = codes.filter((c) => codeSystemOf(c.list) === 'state');
-  const diagnoses = codes.filter((c) => codeSystemOf(c.list) === 'icd10');
-  const icd10 =
-    (
-      await describeCodes(
-        db,
-        diagnoses.map((c) => ({ set: 'icd10cm', code: icd10Of(c.code) }))
-      )
-    ).icd10cm ?? {};
+  const coded = codes.flatMap((c) => {
+    const refs = codeSetsOf(c.list).map((set) => ({ set, code: normalizeCode(set, c.code) }));
+    return refs.length ? [{ ...c, refs }] : [];
+  });
+  const described = await describeCodes(
+    db,
+    coded.flatMap((c) => c.refs)
+  );
   return [
     ...places.flatMap((c) => {
       const description = names.get(Number(c.code));
@@ -225,8 +231,8 @@ const describeOutside = async (db: Db, codes: ReportTerms['codes']) => {
       const description = usState(c.code);
       return description ? [{ ...c, description }] : [];
     }),
-    ...diagnoses.flatMap((c) => {
-      const description = icd10[icd10Of(c.code)];
+    ...coded.flatMap(({ refs, ...c }) => {
+      const description = refs.map((r) => described[r.set]?.[r.code]).find(Boolean);
       return description ? [{ ...c, description }] : [];
     })
   ];

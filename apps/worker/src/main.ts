@@ -21,6 +21,7 @@ import { createReportStore } from './features/imports/reports.ts';
 import { createPatientStore } from './features/patients/queries.ts';
 import { createPayerStore } from './features/payers/queries.ts';
 import { createRecoveryStore } from './features/recovery/queries.ts';
+import { createReferenceStore } from './features/reference/queries.ts';
 import { registerScheduleJobs, startDueAgencies } from './features/schedules/job.ts';
 import { createCalendarStore, createScheduleStore } from './features/schedules/queries.ts';
 import { createEngineCache } from './features/workflows/engines.ts';
@@ -127,6 +128,7 @@ if (import.meta.main) {
             )
           ),
           fees: scope.guard(createFeeStore(db)),
+          reference: scope.guard(createReferenceStore(db)),
           claims: scope.guard(
             announceClaims(createClaimStore(db, blobs, boss, connections.forAgency), announce)
           ),

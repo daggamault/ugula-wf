@@ -32,7 +32,7 @@ describe('PcrSummaryView', () => {
     assert.ok(
       html.includes('Blue Plan') && html.includes('XGB110093422') && html.includes('GRP-10233')
     );
-    assert.ok(html.includes('Supraventricular tachycardia (I47.1)'));
+    assert.ok(html.includes('Supraventricular tachycardia, unspecified (I47.10)'));
     assert.ok(html.includes('Transport by This EMS Unit (This Crew Only)'));
     assert.ok(html.includes('ALS, Level 1 Emergency (2650003)'));
     assert.ok(html.includes('dateTime="2026-09-06T10:05:00-04:00"'));

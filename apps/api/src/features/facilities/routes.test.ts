@@ -17,6 +17,7 @@ const record =
 
 const service = {
   search: record('search', { items: [], total: 0, page: 1, pageSize: 25 }),
+  hospitals: record('hospitals', { hospitals: [] }),
   find: record('find', { facility: { id: ID } }),
   create: record('create', { id: ID }),
   update: record('update', { id: ID }),
@@ -28,6 +29,7 @@ const request = withSession(createFacilityRoutes(service));
 describe('facility routes', () => {
   it('lists, reads, creates, updates and deletes facilities of the session agency', async () => {
     assert.equal((await request('/?q=sun')).status, 200);
+    assert.equal((await request('/hospitals?q=mercy')).status, 200);
     assert.equal((await request(`/${ID}`)).status, 200);
     const body = JSON.stringify({ name: 'Sunrise SNF' });
     assert.equal((await request('/', { method: 'POST', body })).status, 201);
@@ -38,6 +40,7 @@ describe('facility routes', () => {
       calls.map(([name, agency]) => [name, agency]),
       [
         ['search', 't-1'],
+        ['hospitals', 'mercy'],
         ['find', 't-1'],
         ['create', 't-1'],
         ['update', 't-1'],

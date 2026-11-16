@@ -30,6 +30,10 @@ const claim = {
   responsibility_recorded: false,
   pickup_facility: null,
   destination_facility: { id: 'f1', name: 'Mercy', kind: 'hospital', contract: true },
+  pickup_zip_split: true,
+  pickup_zip_state: 'IL',
+  destination_zip_state: null,
+  patient_zip_state: 'IL',
   address_line: '1 Main St',
   city: 'Springfield',
   state: 'IL',
@@ -61,7 +65,10 @@ describe('findClaimCheck', () => {
               ]
             : q.sql.includes('from "claim_documents"')
               ? [{ kind: 'pcs' }, { kind: 'scan' }]
-              : [{ code: 'R079' }]
+              : [
+                  { code: 'R079', description: 'Chest pain, unspecified', billable: true },
+                  { code: 'R07', description: 'Pain in throat and chest', billable: false }
+                ]
     );
     const check = await findClaimCheck(db, 't1', 'c1');
     assert.equal(check?.loadedMiles, 7.3);
@@ -86,7 +93,26 @@ describe('findClaimCheck', () => {
     assert.deepEqual(check?.documents, ['pcs']);
     assert.equal(check?.responsibleParty, 'payer');
     assert.ok(queries[0]?.sql.includes('from "facilities" as "f"'));
-    assert.deepEqual(check?.details.diagnoses, ['R079']);
+    assert.deepEqual(check?.details.diagnoses, ['R079', 'R07']);
+    assert.deepEqual(check?.diagnosisCodes, [
+      { code: 'R079', description: 'Chest pain, unspecified', billable: true },
+      { code: 'R07', description: 'Pain in throat and chest', billable: false }
+    ]);
+    assert.deepEqual(check?.pickupLocality, { needsPlusFour: true });
+    assert.deepEqual(check?.zipStates, { pickup: 'IL', destination: null, patient: 'IL' });
+    assert.ok(
+      queries[0]?.sql.includes(
+        'from "cms_zip_localities" as "z" where "z"."postal_code" = left(c.pickup_postal_code, 5)'
+      )
+    );
+    assert.ok(
+      queries[0]?.sql.includes(
+        'from "geonames_postal_codes" as "g" where "g"."postal_code" = left("p"."postal_code", 5)'
+      )
+    );
+    assert.ok(
+      queries.some((q) => q.sql.includes('left join "codes" as "cd" on "cd"."code_set" = $'))
+    );
     assert.ok(queries[0]?.sql.includes('left join "patients" as "p"'));
     assert.deepEqual(queries[0]?.parameters, ['responsibility', 1, 1, 'c1', 't1']);
   });

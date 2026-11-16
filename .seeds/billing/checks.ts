@@ -176,25 +176,46 @@ const CHECKS: Check[] = [
   {
     key: 'billing.check-diagnoses',
     name: 'Check Diagnoses',
-    description: 'The claim has at least one ICD-10 diagnosis.',
-    codes: { 'diagnosis-missing': 'blocking' },
-    facts: ['diagnosisCount'],
-    expression: when(
-      'diagnosisCount == 0',
-      issue('diagnosis-missing', 'diagnoses', '"At least one diagnosis code is required"')
-    )
+    description:
+      'The claim has at least one ICD-10 diagnosis, every diagnosis is an ICD-10-CM code, and none is a category that needs more characters to bill.',
+    codes: {
+      'diagnosis-missing': 'blocking',
+      'diagnosis-unknown': 'blocking',
+      'diagnosis-not-billable': 'blocking'
+    },
+    facts: ['diagnosisCount', 'unknownDiagnoses', 'unbillableDiagnoses'],
+    expression: `concat(
+  ${when(
+    'diagnosisCount == 0',
+    issue('diagnosis-missing', 'diagnoses', '"At least one diagnosis code is required"')
+  )},
+  map(unknownDiagnoses ?? [], c => ${issue('diagnosis-unknown', 'diagnoses', '"Diagnosis " + c + " is not an ICD-10-CM code; correct it"')}),
+  map(unbillableDiagnoses ?? [], c => ${issue('diagnosis-not-billable', 'diagnoses', 'c + " is a category, not a billable ICD-10-CM code; choose a more specific code under it"')})
+)`
   },
   {
     key: 'billing.check-locations',
     name: 'Check Pickup and Destination',
     description:
-      'The pickup has a full street address; a transport also has a full destination address and a valid origin/destination modifier.',
+      'The pickup has a full street address; a transport also has a full destination address and a valid origin/destination modifier. Medicare prices the trip by the pickup ZIP code, so it must be in the CMS ZIP file, with its ZIP+4 where CMS splits the ZIP between localities; and every ZIP code should belong to the state of its address (GeoNames).',
     codes: {
       'pickup-address-missing': 'blocking',
       'destination-address-missing': 'blocking',
-      'origin-destination-missing': 'blocking'
+      'origin-destination-missing': 'blocking',
+      'pickup-zip-not-priced': 'blocking',
+      'pickup-zip4-needed': 'warning',
+      'zip-state-mismatch': 'warning'
     },
-    facts: ['pickupMissing', 'destinationMissing', 'originDestinationValid', 'transports'],
+    facts: [
+      'pickupMissing',
+      'destinationMissing',
+      'originDestinationValid',
+      'transports',
+      'billsMedicare',
+      'pickupZipPriced',
+      'pickupZipNeedsPlusFour',
+      'zipStateMismatches'
+    ],
     expression: `concat(
   ${addressIssues('pickupMissing', 'pickup-address-missing', 'pickup', 'pickup')},
   transports ? ${addressIssues('destinationMissing', 'destination-address-missing', 'destination', 'destination')} : [],
@@ -205,7 +226,24 @@ const CHECKS: Check[] = [
       'originDestination',
       '"The origin/destination modifier is missing"'
     )
-  )}
+  )},
+  ${when(
+    'billsMedicare && pickupZipPriced == false',
+    issue(
+      'pickup-zip-not-priced',
+      'pickup',
+      '"Medicare does not price the pickup ZIP code (it is not in the CMS ZIP file); correct it"'
+    )
+  )},
+  ${when(
+    'billsMedicare && pickupZipNeedsPlusFour == true',
+    issue(
+      'pickup-zip4-needed',
+      'pickup',
+      '"CMS splits the pickup ZIP code between Medicare localities; add its ZIP+4 so the trip is priced for the right one"'
+    )
+  )},
+  map(zipStateMismatches ?? [], p => { code: "zip-state-mismatch", field: p == "patient" ? "patientAddress" : p, message: "The " + (p == "patient" ? "patient's" : p) + " ZIP code belongs to another state than its address", coverageId: null })
 )`
   },
   {

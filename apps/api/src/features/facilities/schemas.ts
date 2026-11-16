@@ -53,6 +53,8 @@ const FACILITY_SORTS = ['name', 'city'] as const;
 
 export type FacilitySort = (typeof FACILITY_SORTS)[number];
 
+export const searchHospitalsQuery = v.object({ q: searchText });
+
 export const searchFacilitiesQuery = v.object({
   q: searchText,
   ...pageEntries(FACILITY_SORTS, 'name', 'asc')

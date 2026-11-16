@@ -9,6 +9,7 @@ import { patientNodes } from './patients.ts';
 import { payerFileNodes } from './payer-files.ts';
 import { payerNodes } from './payers.ts';
 import { recoveryNodes } from './recovery.ts';
+import { referenceNodes } from './reference.ts';
 import { scheduleNodes } from './schedules.ts';
 import type { BillingStores } from './stores.ts';
 
@@ -32,6 +33,7 @@ export type {
   PayerStore,
   ReadPayerFile,
   RecoveryStore,
+  ReferenceStore,
   Responsibility,
   ScheduleStore
 } from './stores.ts';
@@ -44,6 +46,7 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
   return [
     patientNodes,
     claimNodes,
+    referenceNodes,
     claimTaskNodes,
     payerNodes,
     narrativeNodes,
