@@ -99,10 +99,10 @@ export const FieldWas = ({
       onClick={onReset}
       className={classNamesOf(
         interactiveClasses,
-        'text-surface-fg-muted hover:text-surface-fg inline-flex items-center gap-1 rounded underline-offset-2 hover:underline'
+        'text-surface-fg-muted hover:text-surface-fg inline-flex items-center gap-1 rounded-lg underline-offset-2 hover:underline'
       )}
     >
-      <UndoIcon aria-hidden="true" className="size-3" />
+      <UndoIcon aria-hidden="true" className="size-3.5" />
       Undo<span className="sr-only"> change to {fieldLabel(field)}</span>
     </button>
   </p>

@@ -64,7 +64,7 @@ const triggerClasses = classNamesOf(
 );
 
 const panelClasses =
-  'bg-surface text-surface-fg border-border inset-auto my-1 max-h-[min(20rem,60vh)] min-w-[anchor-size(width)] scale-95 flex-col overflow-hidden rounded-xl border p-1 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out [position-area:bottom_span-right] [position-try-fallbacks:flip-block] open:flex open:scale-100 open:opacity-100 motion-reduce:transition-none starting:open:scale-95 starting:open:opacity-0';
+  'bg-surface text-surface-fg border-border inset-auto my-1 max-h-overlay min-w-[anchor-size(width)] scale-95 flex-col overflow-hidden rounded-xl border p-1 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out [position-area:bottom_span-right] [position-try-fallbacks:flip-block] open:flex open:scale-100 open:opacity-100 motion-reduce:transition-none starting:open:scale-95 starting:open:opacity-0';
 
 const optionClasses =
   'data-[active=true]:bg-surface-fg/6 aria-selected:bg-primary/10 aria-selected:text-primary flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm';
@@ -259,7 +259,11 @@ export const SelectControl = (props: SelectControlProps) => {
               autoComplete="off"
               placeholder="Search"
               value={query}
-              className={classNamesOf(fieldControlClasses, fieldTextClasses, 'h-9 pl-9')}
+              className={classNamesOf(
+                fieldControlClasses,
+                fieldTextClasses,
+                'h-10 pl-9 pointer-coarse:h-11'
+              )}
               onChange={(e) => {
                 setQuery(e.target.value);
                 setActive(0);

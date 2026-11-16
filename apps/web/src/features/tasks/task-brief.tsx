@@ -88,7 +88,9 @@ const EncounterSays = ({
     field === 'birthDate' || field === 'serviceDate' ? formatDate(m.encounter) : m.encounter;
   return (
     <span className="text-warning-text mt-1 flex items-start gap-1.5 text-xs font-medium">
-      <TriangleAlertIcon aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+      <span className="flex h-4 shrink-0 items-center">
+        <TriangleAlertIcon aria-hidden="true" className="size-3.5" />
+      </span>
       <span>Encounter says {value}</span>
     </span>
   );

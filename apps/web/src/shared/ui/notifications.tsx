@@ -105,7 +105,7 @@ export const NotificationsPanel = ({
         aria-label="Notifications"
         onToggle={onToggle}
         style={{ positionAnchor: anchorName }}
-        className="bg-surface text-surface-fg border-border inset-auto m-2 max-h-[min(32rem,80vh)] w-96 max-w-[calc(100vw-1rem)] scale-95 overflow-y-auto rounded-xl border p-0 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out [position-area:bottom_span-right] [position-try-fallbacks:flip-inline] open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0"
+        className="bg-surface text-surface-fg border-border max-h-overlay inset-auto m-2 w-96 max-w-[calc(100vw-1rem)] scale-95 overflow-y-auto rounded-xl border p-0 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out [position-area:bottom_span-right] [position-try-fallbacks:flip-inline] open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0"
       >
         <div className="border-border bg-surface sticky top-0 flex items-center justify-between gap-2 border-b px-4 py-3">
           <h2 className="text-base font-bold">Notifications</h2>

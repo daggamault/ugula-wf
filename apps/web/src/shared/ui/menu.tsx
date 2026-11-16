@@ -52,7 +52,7 @@ export const Menu = ({
         role="menu"
         aria-label={label}
         style={{ positionAnchor: anchorName }}
-        className="bg-surface text-surface-fg border-border inset-auto m-2 max-h-[min(32rem,75vh)] w-80 scale-95 overflow-y-auto rounded-xl border p-2 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out [position-area:bottom_span-left] open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0"
+        className="bg-surface text-surface-fg border-border max-h-overlay inset-auto m-2 w-80 scale-95 overflow-y-auto rounded-xl border p-2 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out [position-area:bottom_span-left] open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0"
       >
         {groups.map((group, g) => (
           <fieldset

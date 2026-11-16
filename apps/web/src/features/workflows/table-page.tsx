@@ -241,7 +241,6 @@ export const TableView = ({
           action={
             <Button
               variant="outline"
-              size="sm"
               onClick={() => {
                 edits.edit();
                 setDef(base);

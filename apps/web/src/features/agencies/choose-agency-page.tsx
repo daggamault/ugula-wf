@@ -29,7 +29,7 @@ export const ChooseAgencyPage = ({ agencies, notice, onSignOut }: ChooseAgencyPa
                 to={agencyPath(a.id)}
                 className={classNamesOf(
                   interactiveClasses,
-                  'border-border bg-surface hover:bg-surface-hover flex min-w-0 flex-1 items-center gap-3 rounded-lg border px-4 py-3'
+                  'border-border bg-surface hover:bg-surface-hover flex min-w-0 flex-1 items-center gap-3 rounded-xl border px-4 py-3'
                 )}
               >
                 <Building2Icon aria-hidden="true" className="text-surface-fg-muted size-4" />

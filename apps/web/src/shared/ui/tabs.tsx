@@ -39,7 +39,7 @@ export const Tabs = ({ label, tabs }: { label: string; tabs: readonly TabLink[] 
         {indicator ? (
           <span
             aria-hidden="true"
-            className="bg-primary absolute inset-y-1 left-0 rounded-full transition-[translate,width] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
+            className="bg-primary absolute inset-y-1 left-0 rounded-full transition-[translate,width] duration-300 ease-out"
             style={{ width: indicator.width, translate: `${indicator.left}px 0` }}
           />
         ) : null}

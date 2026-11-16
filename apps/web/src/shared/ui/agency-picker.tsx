@@ -56,7 +56,7 @@ export const AgencyPicker = ({ agencies, current }: AgencyPickerProps) => {
         role="dialog"
         aria-label="Agencies"
         style={{ positionAnchor: anchorName }}
-        className="bg-surface text-surface-fg border-border inset-auto m-2 max-h-[min(28rem,70vh)] w-72 scale-95 overflow-y-auto rounded-xl border p-2 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out [position-area:bottom_span-right] open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0"
+        className="bg-surface text-surface-fg border-border max-h-overlay inset-auto m-2 w-72 scale-95 overflow-y-auto rounded-xl border p-2 opacity-0 shadow-lg transition-[opacity,scale,display,overlay] transition-discrete duration-200 ease-out [position-area:bottom_span-right] open:scale-100 open:opacity-100 starting:open:scale-95 starting:open:opacity-0"
       >
         {searchable ? (
           <Input

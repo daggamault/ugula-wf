@@ -1,8 +1,10 @@
 import { documentationIssues, type GraphDef, type Issue } from '@ugula/graph';
 import { GitCompareArrowsIcon } from 'lucide-react';
+import { classNamesOf } from '../../shared/class-names.ts';
 import type { Catalog } from '../../shared/graph/catalog.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
+import { interactiveClasses } from '../../shared/ui/interactive.ts';
 
 export const documentationHints = (def: GraphDef, catalog: Catalog) =>
   documentationIssues(def).map((i) => {
@@ -15,7 +17,7 @@ export const documentationHints = (def: GraphDef, catalog: Catalog) =>
 export const DocumentationHints = ({ hints }: { hints: readonly string[] }) => (
   <Alert intent="warning">
     <details className="flex flex-col gap-1">
-      <summary className="cursor-pointer font-semibold">
+      <summary className={classNamesOf(interactiveClasses, 'w-fit rounded-lg font-semibold')}>
         {hints.length} Documentation {hints.length === 1 ? 'Hint' : 'Hints'}
       </summary>
       <ul className="flex list-disc flex-col gap-1 pt-1 pl-4">
@@ -51,7 +53,7 @@ export const EditorNotices = ({
         <Alert
           intent="warning"
           action={
-            <ButtonLink to={compareHref} variant="outline" size="sm">
+            <ButtonLink to={compareHref} variant="outline">
               <GitCompareArrowsIcon aria-hidden="true" className="size-4" />
               Compare
             </ButtonLink>
