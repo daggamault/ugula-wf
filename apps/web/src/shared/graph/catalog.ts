@@ -6,6 +6,7 @@ import {
   type GraphDef,
   INPUT_TYPE,
   inputNode,
+  isPure,
   type NodeDef,
   type NodeInstance,
   type NodeLevel,
@@ -33,6 +34,8 @@ export type PublishedNode = {
   overridden: boolean;
 };
 
+export type NodeKind = 'entry' | 'action' | 'pure' | 'flow' | 'human' | 'table' | 'call' | 'slot';
+
 export type PaletteEntry = NodeRef & {
   title: string;
   category: string;
@@ -59,6 +62,7 @@ export type Catalog = {
   graphOf: (ref: NodeRef) => GraphDef | undefined;
   opensAs: (inst: NodeInstance) => 'graph' | 'workflow' | null;
   publishedOf: (inst: NodeInstance) => PublishedNode | undefined;
+  kindOf: (inst: NodeInstance, signature: Signature | null) => NodeKind;
 };
 
 const workflowRefOf = (inst: NodeInstance): NodeRef | null => {
@@ -81,6 +85,12 @@ export const titleFromKey = (key: string) => labelFromName(key.split('.').at(-1)
 const categoryOf = (nodes: readonly NodeDef[], type: string) => {
   const prefix = type.split('.').slice(0, 2).join('.');
   return nodes.find((d) => d.type.startsWith(`${prefix}.`))?.category ?? 'Composites';
+};
+
+const CATEGORY_KINDS: Readonly<Record<string, NodeKind>> = {
+  Flow: 'flow',
+  Human: 'human',
+  Tables: 'table'
 };
 
 const ENTRY_DESCRIPTION =
@@ -114,6 +124,12 @@ export const createCatalog = (
     )
   );
   const graphOf = (ref: NodeRef) => full.get(refKey(ref)) ?? stdGraphs[refKey(ref)];
+  const opensAs = (inst: NodeInstance) => {
+    if (workflowRefOf(inst)) return 'workflow' as const;
+    const composite = graphOf(inst) !== undefined || stubs.has(refKey(inst));
+    return composite && !inst.type.startsWith('std.graph.') ? ('graph' as const) : null;
+  };
+  const publishedOf = (inst: NodeInstance) => stubs.get(refKey(workflowRefOf(inst) ?? inst));
   const latest = [...new Map([...published].reverse().map((p) => [p.key, p])).values()];
 
   const entryOf = (d: NodeDef): PaletteEntry => ({
@@ -214,11 +230,15 @@ export const createCatalog = (
       }
     },
     graphOf,
-    opensAs: (inst) => {
-      if (workflowRefOf(inst)) return 'workflow';
-      const composite = graphOf(inst) !== undefined || stubs.has(refKey(inst));
-      return composite && !inst.type.startsWith('std.graph.') ? 'graph' : null;
-    },
-    publishedOf: (inst) => stubs.get(refKey(workflowRefOf(inst) ?? inst))
+    opensAs,
+    publishedOf,
+    kindOf: (inst, signature) => {
+      if (inst.type === ENTRY_TYPE || inst.type === RETURN_TYPE) return 'entry';
+      if (publishedOf(inst)?.role === 'slot') return 'slot';
+      if (opensAs(inst)) return 'call';
+      const kind = CATEGORY_KINDS[registry.node(inst)?.category ?? ''];
+      if (kind) return kind;
+      return signature && isPure(signature) ? 'pure' : 'action';
+    }
   };
 };

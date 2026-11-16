@@ -5,15 +5,21 @@ import { testNodes } from '../testing.ts';
 import { createCatalog } from './catalog.ts';
 import {
   addNode,
+  addWired,
   arranged,
+  compatibleEntries,
   connect,
   connectionKind,
   disconnectPin,
   edgeId,
+  foldedSide,
+  insertReroute,
   moveNodes,
   placed,
+  REROUTE,
   removeEdges,
   removeNodes,
+  revealPin,
   toFlow,
   updateNode,
   withSignature
@@ -163,5 +169,105 @@ describe('editing', () => {
     });
     assert.notEqual(refreshed.nodes[0], def.nodes[0]);
     assert.equal(refreshed.variables.length, 1);
+  });
+});
+
+describe('node look', () => {
+  it('passes kind, summary and exit docs to the node', () => {
+    const add = toFlow(def, catalog).nodes.find((n) => n.id === 'add1');
+    assert.equal(add?.data.kind, 'pure');
+    assert.equal(toFlow(def, catalog).nodes.find((n) => n.id === 'entry')?.data.kind, 'entry');
+    assert.equal(add?.data.fold, null);
+  });
+
+  it('folds the fields of break and make nodes down to the used ones', () => {
+    assert.equal(foldedSide('nemsis.pcr.break'), 'out');
+    assert.equal(foldedSide('std.object.make'), 'in');
+    assert.equal(foldedSide('std.list.make'), null);
+    assert.equal(foldedSide('std.math.add'), null);
+    const pcr: GraphDef = {
+      ...def,
+      nodes: [...def.nodes, { id: 'pcr1', type: 'nemsis.pcr.break', version: 1 }]
+    };
+    const fold = () => toFlow(pcr, catalog).nodes.find((n) => n.id === 'pcr1')?.data.fold;
+    assert.deepEqual(fold(), { side: 'out', shown: [] });
+    const out = catalog.signatureOf({ id: 'p', type: 'nemsis.pcr.break', version: 1 }, pcr)
+      ?.outputs[0]?.name;
+    assert.ok(out);
+    const revealed = revealPin(pcr, 'pcr1', out);
+    assert.deepEqual(
+      toFlow(revealed, catalog).nodes.find((n) => n.id === 'pcr1')?.data.fold?.shown,
+      [out]
+    );
+    assert.deepEqual(revealPin(revealed, 'pcr1', out).nodes.at(-1)?.shown, [out]);
+  });
+});
+
+describe('context-sensitive add', () => {
+  it('offers only palette nodes with a pin that fits the dragged one', () => {
+    const fromNumber = compatibleEntries(def, catalog, { node: 'entry', pin: 'x', side: 'out' });
+    const types = fromNumber.map((e) => e.type);
+    assert.ok(types.includes('std.math.add'));
+    assert.ok(!types.includes('std.text.upper'));
+    const intoText = compatibleEntries(def, catalog, { node: 'up1', pin: 'text', side: 'in' });
+    assert.ok(intoText.some((e) => e.type === 'std.text.upper'));
+    assert.ok(!intoText.some((e) => e.type === 'std.math.add'));
+    const fromExec = compatibleEntries(def, catalog, { node: 'entry', pin: 'exec', side: 'out' });
+    assert.ok(fromExec.some((e) => e.type === 'std.flow.delay'));
+    assert.ok(!fromExec.some((e) => e.type === 'std.math.add'));
+    assert.deepEqual(compatibleEntries(def, catalog, { node: 'nope', pin: 'x', side: 'out' }), []);
+  });
+
+  it('places the picked node at the drop point and wires it', () => {
+    const add = { type: 'std.math.add', version: 1 };
+    const out = addWired(
+      def,
+      catalog,
+      add,
+      { x: 300.4, y: 40 },
+      {
+        node: 'entry',
+        pin: 'x',
+        side: 'out'
+      }
+    );
+    assert.deepEqual(out.def.nodes.at(-1)?.position, { x: 300, y: 40 });
+    assert.ok(out.def.edges.some((e) => e.from === 'entry' && e.to === out.id && e.toPin === 'a'));
+    const back = addWired(
+      def,
+      catalog,
+      add,
+      { x: 600, y: 0 },
+      {
+        node: 'return1',
+        pin: 'y',
+        side: 'in'
+      }
+    );
+    assert.ok(back.def.edges.some((e) => e.from === back.id && e.fromPin === 'result'));
+    assert.ok((back.def.nodes.at(-1)?.position?.x ?? 0) < 600, 'placed left of the input');
+    const loose = addWired(def, catalog, add, { x: 0, y: 0 }, null);
+    assert.equal(loose.def.edges.length, def.edges.length);
+  });
+});
+
+describe('reroute', () => {
+  it('splits a data wire with a knot typed like its source', () => {
+    const wired = connect(def, catalog, link('entry', 'x', 'add1', 'a'));
+    const wire = wired.edges.find((e) => e.to === 'add1');
+    assert.ok(wire);
+    const knot = insertReroute(wired, catalog, edgeId(wire), { x: 108, y: 58 });
+    assert.ok(knot);
+    const node = knot.def.nodes.at(-1);
+    assert.deepEqual(
+      [node?.type, node?.config, node?.position],
+      [REROUTE.type, { type: 'number' }, { x: 100, y: 50 }]
+    );
+    assert.deepEqual(
+      knot.def.edges.filter((e) => e.from === knot.id || e.to === knot.id).map(edgeId),
+      [`entry:x->${knot.id}:value`, `${knot.id}:value->add1:a`]
+    );
+    assert.ok(!knot.def.edges.includes(wire));
+    assert.equal(insertReroute(def, catalog, 'entry:exec->return1:exec', { x: 0, y: 0 }), null);
   });
 });

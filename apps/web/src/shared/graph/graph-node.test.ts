@@ -4,7 +4,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { GraphNodeData } from './flow.ts';
-import { GraphNode, pinTitle } from './graph-node.tsx';
+import { fieldMatches, GraphNode, NodeActions, pinTitle } from './graph-node.tsx';
 
 const render = (data: GraphNodeData, selected = false) =>
   renderToStaticMarkup(
@@ -26,6 +26,22 @@ const render = (data: GraphNodeData, selected = false) =>
     })
   );
 
+const pureSig = { execIn: [], execOut: [], inputs: [], outputs: [] };
+
+const props = {
+  id: 'n',
+  selected: false,
+  type: 'graph' as const,
+  dragging: false,
+  zIndex: 0,
+  isConnectable: true,
+  positionAbsoluteX: 0,
+  positionAbsoluteY: 0,
+  draggable: true,
+  selectable: true,
+  deletable: true
+};
+
 const base: GraphNodeData = {
   instance: {
     id: 'n',
@@ -35,6 +51,10 @@ const base: GraphNodeData = {
   },
   title: 'Add',
   description: 'Adds two numbers (a + b).',
+  summary: null,
+  kind: 'action',
+  exits: {},
+  fold: null,
   signature: {
     execIn: ['exec'],
     execOut: ['then', 'failed'],
@@ -86,9 +106,9 @@ describe('GraphNode', () => {
         execIn: [],
         execOut: ['failed'],
         inputs: [{ name: 'a', type: 'number', description: 'The first number' }],
-        outputs: [],
-        exits: { failed: { label: 'Gave Up', description: 'Every retry failed' } }
-      }
+        outputs: []
+      },
+      exits: { failed: { label: 'Gave Up', description: 'Every retry failed' } }
     });
     assert.ok(html.includes('title="A: Number. The first number"'));
     assert.ok(html.includes('title="Gave Up: Execution flow. Every retry failed"'));
@@ -122,5 +142,75 @@ describe('GraphNode', () => {
     assert.ok(html.includes('&quot;a long literal v…'));
     assert.ok(html.includes('= total * 2'));
     assert.ok(html.includes('>Failed<') && !html.includes('>Then<'));
+  });
+
+  it('colours the header by kind and shows the summary, keeping the description as a tooltip', () => {
+    const html = render({ ...base, kind: 'human', summary: 'Task: Match payer' });
+    assert.ok(html.includes('bg-node-human/15') && html.includes('border-t-node-human'));
+    assert.ok(html.includes('>Task: Match payer<'));
+    assert.ok(html.includes('title="Adds two numbers (a + b)."'));
+    assert.ok(!html.includes('line-clamp-2'));
+    const pure = render({ ...base, kind: 'pure', signature: { ...pureSig } });
+    assert.ok(pure.includes('bg-node-pure/10') && !pure.includes('border-t-4'));
+  });
+
+  it('draws exec pins as solid triangles and any pins as grey dots', () => {
+    const html = render({
+      ...base,
+      signature: { ...pureSig, execIn: ['exec'], inputs: [{ name: 'v', type: 'any' }] }
+    });
+    assert.ok(html.includes('clip-path:polygon') && html.includes('bg-surface-fg '));
+    assert.ok(html.includes('bg-surface-fg-muted/60'));
+  });
+
+  it('hides unused fields of break and make nodes behind Add Field when editing', () => {
+    const data: GraphNodeData = {
+      ...base,
+      kind: 'pure',
+      signature: {
+        ...pureSig,
+        outputs: [
+          { name: 'payer', type: 'string', label: 'Payer' },
+          { name: 'total', type: 'number', label: 'Total' }
+        ]
+      },
+      fold: { side: 'out', shown: ['total'] }
+    };
+    const html = renderToStaticMarkup(
+      createElement(NodeActions, {
+        value: { breakPin: () => undefined, revealPin: () => undefined },
+        children: createElement(ReactFlowProvider, {
+          children: createElement(GraphNode, { ...props, data })
+        })
+      })
+    );
+    assert.ok(html.includes('data-handleid="total"') && !html.includes('data-handleid="payer"'));
+    assert.ok(html.includes('Add Field'));
+    assert.ok(!render(data).includes('Add Field'), 'read-only nodes offer no Add Field');
+    const pins = [
+      { name: 'payer', label: 'Payer', exec: false },
+      { name: 'zip', label: 'Postal Code', exec: false }
+    ];
+    assert.deepEqual(
+      fieldMatches(pins, 'post').map((p) => p.name),
+      ['zip']
+    );
+    assert.equal(fieldMatches(pins, ' ').length, 2);
+  });
+
+  it('draws a reroute as a small typed knot', () => {
+    const html = render({
+      ...base,
+      title: 'Reroute',
+      instance: { id: 'n', type: 'std.flow.reroute', version: 1 },
+      kind: 'flow',
+      signature: {
+        ...pureSig,
+        inputs: [{ name: 'value', type: 'number' }],
+        outputs: [{ name: 'value', type: 'number' }]
+      }
+    });
+    assert.ok(html.includes('role="img"') && html.includes('aria-label="Reroute"'));
+    assert.ok(html.includes('bg-pin-number') && !html.includes('<article'));
   });
 });

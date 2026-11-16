@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import type { Page } from 'playwright-core';
+import type { Locator, Page } from 'playwright-core';
 import { importEncounter } from './shared/claims.ts';
 import { chooseOption, listboxByLabel } from './shared/listbox.ts';
 import {
@@ -41,6 +41,40 @@ const canvas = (page: Page) => page.getByRole('application').first();
 
 const node = (page: Page, title: string) =>
   canvas(page).getByRole('article', { name: title, exact: true });
+
+const openPicker = async (page: Page) => {
+  const picker = page.getByRole('dialog', { name: 'Add Node' });
+  await picker.waitFor();
+  const advanced = picker.getByLabel('Show Advanced');
+  if (!(await advanced.isChecked())) await advanced.check();
+  return picker;
+};
+
+const pick = async (picker: Locator, query: string) => {
+  const search = picker.getByRole('combobox', { name: 'Search Nodes' });
+  await search.fill(query);
+  await search.press('Enter');
+};
+
+const emptySpot = (page: Page, near: { x: number; y: number }) =>
+  page.evaluate(({ x, y }) => {
+    for (let r = 120; r < 800; r += 40) {
+      for (const [dx, dy] of [
+        [-r, r / 2],
+        [-r, 0],
+        [0, r],
+        [-r, -r / 2],
+        [0, -r],
+        [r, r / 2]
+      ] as const) {
+        const spot = { x: x + dx, y: y + dy };
+        if (document.elementFromPoint(spot.x, spot.y)?.classList.contains('react-flow__pane')) {
+          return spot;
+        }
+      }
+    }
+    return null;
+  }, near);
 
 const isInView = async (page: Page, title: string) => {
   const area = await canvas(page).boundingBox();
@@ -201,11 +235,15 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await s.page.getByRole('button', { name: 'Customize', exact: true }).click();
     await toast(s.page, 'Process Item copied for this agency');
     await s.page.getByRole('main').getByText('Agency', { exact: true }).waitFor();
+    await s.page.getByRole('link', { name: 'Inputs and Outputs' }).click();
+    const contract = s.page.getByRole('complementary', { name: 'Inputs and Outputs' });
+    await contract.getByText(/A copy keeps the inputs and outputs/).waitFor();
     assert.equal(
-      await s.page.getByRole('link', { name: 'Inputs and Outputs' }).count(),
+      await contract.getByRole('button', { name: 'Add Input' }).count(),
       0,
       'an override keeps the inputs and outputs of the built-in workflow'
     );
+    await contract.getByRole('button', { name: 'Close Inputs and Outputs' }).click();
     assert.equal(
       await s.page.getByRole('button', { name: 'Customize', exact: true }).count(),
       0,
@@ -283,8 +321,8 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await heading(s.page, `E2E ${workflowKey}`).waitFor();
     await s.page.getByRole('link', { name: 'Inputs and Outputs' }).click();
     await s.page.waitForURL(/[?&]panel=signature/);
-    const panel = s.page.getByRole('complementary', { name: 'Workflow Inputs and Outputs' });
-    for (const title of ['Paths', 'Inputs', 'Outputs', 'Variables']) {
+    const panel = s.page.getByRole('complementary', { name: 'Inputs and Outputs' });
+    for (const title of ['Inputs', 'Outputs', 'Exits', 'Variables']) {
       await section(s.page, title).first().waitFor();
     }
     await panel.getByRole('button', { name: 'Add Input' }).click();
@@ -301,10 +339,10 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
       'the inputs and outputs panel to close'
     );
     await s.page.getByRole('button', { name: 'Add Node' }).click();
-    const picker = s.page.getByRole('dialog', { name: 'Add Node' });
-    await picker.getByLabel('Search').fill('round');
+    const picker = await openPicker(s.page);
+    await picker.getByRole('combobox', { name: 'Search Nodes' }).fill('round');
     await picker
-      .getByRole('button', { name: /^Round/ })
+      .getByRole('option', { name: /^Round/ })
       .first()
       .click();
     await toast(s.page, /^Round added$/);
@@ -315,6 +353,71 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
       (g) => g.key === workflowKey
     );
     assert.ok(created, 'the new workflow is saved for the agency');
+  });
+
+  it('adds a wired node from a pin, undoes and redoes it, frames it and sets its formula', async () => {
+    const round = node(s.page, 'Round').first();
+    const wires = canvas(s.page).locator('.react-flow__edge');
+    const before = await wires.count();
+    const pin = await round.locator('[data-handleid="value"]').boundingBox();
+    assert.ok(pin, 'the Round node shows its Value pin');
+    const start = { x: pin.x + pin.width / 2, y: pin.y + pin.height / 2 };
+    const drop = await emptySpot(s.page, start);
+    assert.ok(drop, 'the canvas has empty space near Round');
+    await s.page.mouse.move(start.x, start.y);
+    await s.page.mouse.down();
+    await s.page.mouse.move(drop.x, drop.y, { steps: 10 });
+    await s.page.mouse.up();
+    const picker = await openPicker(s.page);
+    await picker.getByText('Nodes that connect to Value on Round.').waitFor();
+    assert.equal(
+      await picker.getByRole('option', { name: /^Upper Case/ }).count(),
+      0,
+      'the picker only lists nodes that fit the pin'
+    );
+    await pick(picker, 'multiply');
+    await toast(s.page, /^Multiply added$/);
+    const multiply = node(s.page, 'Multiply');
+    await multiply.first().waitFor();
+    await until(
+      s.page,
+      () => wires.count(),
+      (n) => n === before + 1,
+      'the new node to be wired'
+    );
+
+    await s.page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await until(
+      s.page,
+      () => multiply.count(),
+      (n) => n === 0,
+      'undo to remove the node'
+    );
+    await s.page.keyboard.press('Control+Shift+Z');
+    await multiply.first().waitFor();
+    await until(
+      s.page,
+      () => wires.count(),
+      (n) => n === before + 1,
+      'redo to wire it again'
+    );
+
+    await s.page.getByRole('button', { name: 'Add Comment' }).click();
+    await canvas(s.page).getByRole('textbox', { name: 'Comment Title' }).first().fill('Pricing');
+    await canvas(s.page).getByRole('region', { name: 'Pricing' }).waitFor();
+
+    await s.page.getByRole('button', { name: 'Add Node' }).click();
+    const adding = await openPicker(s.page);
+    await adding.getByRole('combobox', { name: 'Search Nodes' }).fill('formula');
+    await adding.getByRole('option', { name: /^Expression/ }).click();
+    await toast(s.page, /^Expression added$/);
+    const expression = node(s.page, 'Expression');
+    const formula = s.page.getByRole('textbox', { name: 'Formula' });
+    await formula.fill('price * 2');
+    await expression.first().getByText('price * 2').waitFor();
+    assert.equal(await s.page.getByRole('textbox', { name: /JSON/ }).count(), 0);
+    await s.page.getByRole('button', { name: 'Save', exact: true }).click();
+    await toast(s.page, /^Draft v\d+ saved/);
   });
 
   it('lists the import, shows what its PCR became and downloads the encounter XML', async () => {

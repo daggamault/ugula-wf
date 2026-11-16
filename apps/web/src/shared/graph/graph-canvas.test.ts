@@ -5,7 +5,13 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { testNodes } from '../testing.ts';
 import { createCatalog } from './catalog.ts';
-import { GraphCanvas, nodeClicks, OPENING_WIDTH, openingNodes } from './graph-canvas.tsx';
+import {
+  GraphCanvas,
+  nodeClicks,
+  OPENING_WIDTH,
+  openingNodes,
+  selectionOf
+} from './graph-canvas.tsx';
 
 describe('GraphCanvas', () => {
   it('renders a React Flow surface for a graph', () => {
@@ -24,6 +30,58 @@ describe('GraphCanvas', () => {
     );
     assert.ok(html.includes('react-flow'));
     assert.ok(html.includes('min-h-96'));
+    assert.ok(!html.includes('Add Comment'), 'read-only canvases offer no editing tools');
+  });
+
+  it('offers editing tools on editable canvases', () => {
+    const html = renderToStaticMarkup(
+      createElement(GraphCanvas, {
+        def: {
+          signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
+          variables: [],
+          nodes: [{ id: 'entry', type: ENTRY_TYPE, version: 1 }],
+          edges: []
+        },
+        catalog: createCatalog(testNodes),
+        selected: null,
+        onSelect: () => undefined,
+        onChange: () => undefined,
+        tools: createElement('span', null, 'Undo Tool')
+      })
+    );
+    assert.ok(html.includes('Undo Tool') && html.includes('Add Comment'));
+  });
+});
+
+describe('selectionOf', () => {
+  it('splits the selection into graph nodes and comment frames, skipping ghosts', () => {
+    const node = (id: string, selected: boolean, ghost = false) => ({
+      id,
+      type: 'graph' as const,
+      position: { x: 0, y: 0 },
+      selected,
+      data: { ghost } as never
+    });
+    const picked = selectionOf([
+      node('a', true),
+      node('b', false),
+      node('removed:c', true, true),
+      {
+        id: 'comment:comment1',
+        type: 'comment' as const,
+        position: { x: 0, y: 0 },
+        selected: true,
+        data: {
+          comment: {
+            id: 'comment1',
+            text: '',
+            position: { x: 0, y: 0 },
+            size: { width: 1, height: 1 }
+          }
+        }
+      }
+    ]);
+    assert.deepEqual(picked, { nodes: ['a'], comments: ['comment1'] });
   });
 });
 

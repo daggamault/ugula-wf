@@ -63,6 +63,7 @@ export type NodeInstance = NodeRef & {
   inputs?: Record<string, InputBinding>;
   retry?: RetryPolicy;
   position?: { x: number; y: number };
+  shown?: string[];
 };
 
 export type Edge = {

@@ -29,8 +29,8 @@ export const pinKindOf = (type: ValueType | 'exec'): PinKind =>
 
 const pinTones: Record<PinKind, PinTone> = {
   exec: {
-    dot: 'bg-surface-fg-muted',
-    edge: '[&_.react-flow__edge-path]:stroke-surface-fg-muted [&_.react-flow__edge-path]:stroke-[3]'
+    dot: 'bg-surface-fg',
+    edge: '[&_.react-flow__edge-path]:stroke-surface-fg [&_.react-flow__edge-path]:stroke-[3]'
   },
   any: {
     dot: 'bg-surface-fg-muted/60',

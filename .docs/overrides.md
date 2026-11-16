@@ -30,7 +30,7 @@ Every graph has a `role` (`graphs.role`), set by the seeds and copied by overrid
 | `rule`     | A pure subworkflow: facts in, decision out                                   | `workflows:update` |
 | `slot`     | An empty Agency Rule: a pure pass-through meant to be overridden             | `workflows:update` |
 
-Tables need `workflows:update`. `canEditScope` (`apps/api/src/shared/scopes.ts`) applies the tiers. New graphs created in the editor belong to the agency and are rules unless they are workflows. Only these custom graphs show **Inputs and Outputs** in the editor, to define their paths, pins, exits and variables; a copy keeps the contract of the graph it overrides.
+Tables need `workflows:update`. `canEditScope` (`apps/api/src/shared/scopes.ts`) applies the tiers. New graphs created in the editor belong to the agency and are rules unless they are workflows. Only these custom graphs edit **Inputs and Outputs** in the editor, to define their pins, exits and variables; other graphs show it read-only, and a copy keeps the contract of the graph it overrides.
 
 ## Agency rule slots
 

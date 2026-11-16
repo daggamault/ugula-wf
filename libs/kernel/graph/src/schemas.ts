@@ -98,7 +98,8 @@ export const graphDefSchema: v.GenericSchema<GraphDef> = v.strictObject({
           factor: v.exactOptional(v.pipe(v.number(), v.minValue(1), v.maxValue(10)))
         })
       ),
-      position: v.exactOptional(v.strictObject({ x: v.number(), y: v.number() }))
+      position: v.exactOptional(v.strictObject({ x: v.number(), y: v.number() })),
+      shown: v.exactOptional(v.array(name))
     })
   ),
   edges: v.array(v.strictObject({ from: id, fromPin: name, to: id, toPin: name })),

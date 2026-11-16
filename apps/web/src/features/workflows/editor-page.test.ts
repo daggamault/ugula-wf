@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { idleLive, testNodes } from '../../shared/testing.ts';
 import type { GraphComparison, GraphDetail, GraphScope, WorkflowsClient } from './client.ts';
-import { customizedNodes, EditorPage, EditorView } from './editor-page.tsx';
+import { customizedNodes, EditorPage, EditorView, lockedReason, pinHint } from './editor-page.tsx';
 import type { TrailStep } from './trail.ts';
 
 const source: GraphDef = {
@@ -118,7 +118,7 @@ describe('EditorView', () => {
     assert.ok(system.includes('>Built-in<'));
     assert.ok(!system.includes('Edit as New Draft'));
     assert.ok(system.includes('>Customize<'));
-    assert.ok(!system.includes('Inputs and Outputs'));
+    assert.ok(system.includes('Inputs and Outputs'), 'a built-in shows what it takes and returns');
     assert.ok(system.includes('Customize this one to change how your agency runs it'));
   });
 
@@ -131,7 +131,7 @@ describe('EditorView', () => {
     assert.ok(!overridden.includes('>Customize<'));
     const copy = render(detail('agency', false, { overrides: 'g0' }), 2);
     assert.ok(copy.includes('>Agency<') && copy.includes('Remove Override'));
-    assert.ok(!copy.includes('Inputs and Outputs'));
+    assert.ok(copy.includes('Inputs and Outputs'), 'a copy shows its fixed contract');
     assert.ok(copy.includes('>Publish<'));
     assert.ok(!copy.includes('Delete Workflow'));
   });
@@ -284,5 +284,49 @@ describe('EditorPage', () => {
       })
     );
     assert.ok(html.includes('aria-label="Loading"'));
+  });
+});
+
+describe('editor helpers', () => {
+  it('names the pin a filtered picker connects to', () => {
+    const def: GraphDef = {
+      ...source,
+      nodes: [...source.nodes, { id: 'add1', type: 'std.math.add', version: 1 }]
+    };
+    const catalog = createCatalog(testNodes);
+    assert.equal(
+      pinHint(def, catalog, { node: 'add1', pin: 'result', side: 'out' }),
+      'Nodes that connect to Result on Add.'
+    );
+    assert.equal(
+      pinHint(def, catalog, { node: 'gone', pin: 'x', side: 'in' }),
+      'Nodes that connect to this pin.'
+    );
+  });
+
+  it('explains why inputs and outputs are read-only', () => {
+    assert.match(
+      lockedReason({ scope: 'agency', overrides: 'g0' }, true, 'workflow') ?? '',
+      /keeps the inputs and outputs of the built-in workflow/
+    );
+    assert.match(
+      lockedReason({ scope: 'system', overrides: null }, false, 'workflow') ?? '',
+      /Built-in/
+    );
+    assert.equal(lockedReason({ scope: 'agency', overrides: null }, true, 'workflow'), null);
+    assert.match(
+      lockedReason({ scope: 'agency', overrides: null }, false, 'workflow') ?? '',
+      /Published/
+    );
+  });
+});
+
+describe('pinHint', () => {
+  it('names an execution pin by its exit label, or as the flow', () => {
+    const catalog = createCatalog(testNodes);
+    assert.equal(
+      pinHint(source, catalog, { node: 'entry', pin: 'exec', side: 'out' }),
+      'Nodes that connect to the flow on Entry.'
+    );
   });
 });

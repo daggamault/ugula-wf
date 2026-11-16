@@ -205,4 +205,35 @@ describe('createCatalog', () => {
     assert.equal(catalog.publishedOf(score)?.graph_id, 'g-s');
     assert.equal(catalog.publishedOf(start)?.graph_id, 'g-c');
   });
+
+  it('sorts nodes into kinds for their header colour', () => {
+    const catalog = createCatalog(testNodes, {
+      published: [
+        {
+          graph_id: 'g-slot',
+          key: 'acme.facts',
+          name: 'Facts',
+          kind: 'node',
+          role: 'slot',
+          overridden: false,
+          description: '',
+          version: 1,
+          signature
+        }
+      ]
+    });
+    const kind = (type: string, config?: { workflow: string; version: number }) => {
+      const inst = { id: 'n', type, version: 1, ...(config ? { config } : {}) };
+      return catalog.kindOf(inst, catalog.signatureOf(inst, owner));
+    };
+    assert.equal(kind(ENTRY_TYPE), 'entry');
+    assert.equal(kind(RETURN_TYPE), 'entry');
+    assert.equal(kind('acme.facts'), 'slot');
+    assert.equal(kind('std.math.average'), 'call');
+    assert.equal(kind('std.human.task'), 'human');
+    assert.equal(kind('std.table.lookup'), 'table');
+    assert.equal(kind('std.flow.delay'), 'flow');
+    assert.equal(kind('std.math.add'), 'pure');
+    assert.equal(kind('std.var.set'), 'action');
+  });
 });

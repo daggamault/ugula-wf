@@ -1,19 +1,25 @@
 import type { ExitDoc, InputBinding, PinSpec, ValueKinds } from '@ugula/graph';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
-import { createContext, useContext } from 'react';
+import { PlusIcon } from 'lucide-react';
+import { createContext, useContext, useId, useState } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { labelFromName } from '../format.ts';
 import { Badge } from '../ui/badge.tsx';
-import type { GraphFlowNode, NodeStatus } from './flow.ts';
+import { interactiveClasses } from '../ui/interactive.ts';
+import type { NodeKind } from './catalog.ts';
+import { type GraphFlowNode, type NodeStatus, REROUTE } from './flow.ts';
 import { describeType, pinLabel, toneOf, ValueKindsContext } from './pins.ts';
 
 type Pin = { name: string; label: string; exec: boolean; spec?: PinSpec; doc?: ExitDoc };
 
 type PinSide = 'in' | 'out';
 
-export const PinBreak = createContext<((node: string, pin: string, side: PinSide) => void) | null>(
-  null
-);
+type NodeActionsValue = {
+  breakPin: (node: string, pin: string, side: PinSide) => void;
+  revealPin: (node: string, pin: string) => void;
+};
+
+export const NodeActions = createContext<NodeActionsValue | null>(null);
 
 const statusClasses: Record<NodeStatus, string> = {
   idle: 'border-border',
@@ -22,13 +28,28 @@ const statusClasses: Record<NodeStatus, string> = {
   waiting: 'border-warning animate-pulse'
 };
 
+const KIND_CLASSES: Readonly<Record<NodeKind, string>> = {
+  entry: 'border-t-node-entry bg-node-entry/15',
+  action: 'border-t-node-action bg-node-action/15',
+  pure: 'border-t-node-pure bg-node-pure/10',
+  flow: 'border-t-node-flow bg-node-flow/15',
+  human: 'border-t-node-human bg-node-human/15',
+  table: 'border-t-node-table bg-node-table/15',
+  call: 'border-t-node-call bg-node-call/15',
+  slot: 'border-t-node-slot bg-node-slot/15'
+};
+
 const handleBase = 'size-3! border-0! transition-transform hover:scale-125';
 const execShape = 'rounded-none! [clip-path:polygon(0_0,100%_50%,0_100%)]';
 
 const execLabel = (name: string, doc: ExitDoc | undefined) =>
   doc?.label ?? (name === 'exec' || name === 'then' ? '' : labelFromName(name));
 
-const pinsOf = (exec: string[], data: PinSpec[], exits: Record<string, ExitDoc> = {}): Pin[] => [
+const pinsOf = (
+  exec: string[],
+  data: PinSpec[],
+  exits: Readonly<Record<string, ExitDoc>> = {}
+): Pin[] => [
   ...exec.map((name) => {
     const doc = exits[name];
     return { name, label: execLabel(name, doc), exec: true, ...(doc ? { doc } : {}) };
@@ -63,7 +84,7 @@ const PinRow = ({
   side: PinSide;
   binding?: string | null;
 }) => {
-  const breakPin = useContext(PinBreak);
+  const actions = useContext(NodeActions);
   const kinds = useContext(ValueKindsContext);
   return (
     <li
@@ -77,7 +98,7 @@ const PinRow = ({
         type={side === 'in' ? 'target' : 'source'}
         position={side === 'in' ? Position.Left : Position.Right}
         id={pin.name}
-        onClick={breakPin ? (e) => e.altKey && breakPin(node, pin.name, side) : undefined}
+        onClick={actions ? (e) => e.altKey && actions.breakPin(node, pin.name, side) : undefined}
         className={classNamesOf(
           handleBase,
           pin.exec ? execShape : 'rounded-full!',
@@ -94,6 +115,79 @@ const PinRow = ({
   );
 };
 
+export const fieldMatches = (pins: readonly Pin[], query: string) => {
+  const q = query.trim().toLowerCase();
+  return q ? pins.filter((p) => `${p.label} ${p.name}`.toLowerCase().includes(q)) : [...pins];
+};
+
+const AddField = ({ node, hidden }: { node: string; hidden: Pin[] }) => {
+  const actions = useContext(NodeActions);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const listId = useId();
+  if (!actions || !hidden.length) return null;
+  const close = () => {
+    setOpen(false);
+    setQuery('');
+  };
+  const matches = fieldMatches(hidden, query);
+  return open ? (
+    <div className="nodrag nopan nowheel border-border flex flex-col gap-1 border-t p-2">
+      <input
+        type="search"
+        aria-label="Find Field"
+        aria-controls={listId}
+        placeholder="Find a field"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          const first = matches[0];
+          if (e.key === 'Escape') close();
+          else if (e.key === 'Enter' && first) {
+            actions.revealPin(node, first.name);
+            close();
+          }
+        }}
+        className={classNamesOf(
+          interactiveClasses,
+          'bg-surface border-border h-8 rounded-lg border px-2 text-xs'
+        )}
+      />
+      <ul id={listId} className="flex max-h-48 flex-col overflow-y-auto">
+        {matches.map((p) => (
+          <li key={p.name}>
+            <button
+              type="button"
+              onClick={() => {
+                actions.revealPin(node, p.name);
+                close();
+              }}
+              className={classNamesOf(
+                interactiveClasses,
+                'hover:bg-surface-fg/6 w-full truncate rounded-lg px-2 py-1 text-left text-xs'
+              )}
+            >
+              {p.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  ) : (
+    <button
+      type="button"
+      onClick={() => setOpen(true)}
+      className={classNamesOf(
+        interactiveClasses,
+        'nodrag text-surface-fg-muted hover:bg-surface-fg/6 hover:text-surface-fg border-border flex w-full items-center gap-1 rounded-b-lg border-t px-3 py-1 text-xs'
+      )}
+    >
+      <PlusIcon aria-hidden="true" className="size-3.5" />
+      Add Field
+    </button>
+  );
+};
+
 const CHANGE_TITLES = {
   added: 'Added in this copy',
   changed: 'Changed from the base',
@@ -107,22 +201,61 @@ const borderOf = (status: NodeStatus, custom: boolean, ghost: boolean) =>
       ? 'border-custom'
       : statusClasses[status];
 
-export const GraphNode = ({ id, data, selected }: NodeProps<GraphFlowNode>) => {
-  const { instance, signature, title, description, status, issues, opens, connected } = data;
-  const { change, ghost } = data;
-  const inputs = signature ? pinsOf(signature.execIn, signature.inputs) : [];
-  const outputs = signature ? pinsOf(signature.execOut, signature.outputs, signature.exits) : [];
+const Knot = ({ data, selected }: NodeProps<GraphFlowNode>) => {
+  const type = data.signature?.outputs[0]?.type ?? 'any';
+  const dot = classNamesOf('size-2! min-w-0! min-h-0! border-0! rounded-full!', toneOf(type).dot);
+  return (
+    <div
+      role="img"
+      aria-label={data.title}
+      title={data.title}
+      className={classNamesOf(
+        'relative size-4 cursor-pointer rounded-full border-2',
+        toneOf(type).dot,
+        selected ? 'border-primary' : 'border-surface'
+      )}
+    >
+      <Handle type="target" position={Position.Left} id="value" className={dot} />
+      <Handle type="source" position={Position.Right} id="value" className={dot} />
+    </div>
+  );
+};
+
+export const GraphNode = (props: NodeProps<GraphFlowNode>) => {
+  const { id, data, selected } = props;
+  const { instance, signature, title, description, summary, status, issues, opens } = data;
+  const { connected, change, ghost, kind, fold, exits } = data;
+  if (instance.type === REROUTE.type && !ghost) return <Knot {...props} />;
+  const shownOn = (side: PinSide, pins: Pin[]) =>
+    fold?.side === side ? pins.filter((p) => p.exec || fold.shown.includes(p.name)) : pins;
+  const allInputs = signature ? pinsOf(signature.execIn, signature.inputs) : [];
+  const allOutputs = signature ? pinsOf(signature.execOut, signature.outputs, exits) : [];
+  const inputs = shownOn('in', allInputs);
+  const outputs = shownOn('out', allOutputs);
+  const hidden = fold
+    ? (fold.side === 'in' ? allInputs : allOutputs).filter(
+        (p) => !p.exec && !fold.shown.includes(p.name)
+      )
+    : [];
+  const pure = kind === 'pure';
   return (
     <article
       aria-label={ghost ? `${title} (removed)` : title}
       className={classNamesOf(
-        'bg-surface text-surface-fg w-60 rounded-xl border-2 text-left transition duration-150 ease-out',
+        'bg-surface text-surface-fg w-max max-w-80 min-w-60 rounded-xl border-2 text-left transition duration-150 ease-out',
         ghost ? 'pointer-events-none' : 'cursor-pointer',
         borderOf(status, change !== null, ghost),
         selected && 'ring-primary ring-2'
       )}
     >
-      <header className="border-border flex flex-col gap-0.5 border-b px-3 py-1.5">
+      <header
+        title={description || undefined}
+        className={classNamesOf(
+          'border-border flex flex-col gap-0.5 rounded-t-lg border-b px-3',
+          pure ? 'py-1' : 'border-t-4 py-1.5',
+          KIND_CLASSES[kind]
+        )}
+      >
         <span className="flex items-center justify-between gap-3">
           <span className="truncate text-sm font-semibold">{title}</span>
           <span className="flex shrink-0 items-center gap-1.5">
@@ -138,12 +271,18 @@ export const GraphNode = ({ id, data, selected }: NodeProps<GraphFlowNode>) => {
             ) : null}
           </span>
         </span>
-        {description ? (
-          <span className="text-surface-fg-muted line-clamp-2 text-xs">{description}</span>
+        {summary ? (
+          <span className="text-surface-fg-muted truncate text-xs contain-inline-size">
+            {summary}
+          </span>
+        ) : description && !pure ? (
+          <span className="text-surface-fg-muted line-clamp-2 text-xs contain-inline-size">
+            {description}
+          </span>
         ) : null}
       </header>
       {instance.note ? (
-        <p className="border-border bg-surface-fg/6 text-surface-fg line-clamp-3 border-b px-3 py-1.5 text-xs whitespace-pre-line">
+        <p className="border-border bg-surface-fg/6 text-surface-fg line-clamp-3 border-b px-3 py-1.5 text-xs whitespace-pre-line contain-inline-size">
           {instance.note}
         </p>
       ) : null}
@@ -171,6 +310,7 @@ export const GraphNode = ({ id, data, selected }: NodeProps<GraphFlowNode>) => {
           Unknown node {instance.type}@{instance.version}
         </p>
       )}
+      {ghost ? null : <AddField node={id} hidden={hidden} />}
       {issues.length ? (
         <footer className="border-danger/30 text-danger border-t px-3 py-1 text-xs">
           {issues[0]}

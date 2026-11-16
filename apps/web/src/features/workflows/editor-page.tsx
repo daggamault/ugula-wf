@@ -1,21 +1,41 @@
-import { type GraphDef, type Issue, isPassThrough, type NodeDef, tableRefOf } from '@ugula/graph';
+import {
+  type GraphDef,
+  type Issue,
+  isPassThrough,
+  type NodeDef,
+  type NodeRef,
+  tableRefOf
+} from '@ugula/graph';
+import { Redo2Icon, Undo2Icon, XIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isApiError, messageOf } from '../../shared/api.ts';
 import { createEditTracker } from '../../shared/edit-tracker.ts';
 import { type Catalog, createCatalog, type PaletteEntry } from '../../shared/graph/catalog.ts';
 import {
   addNode,
+  addWired,
   arranged,
+  compatibleEntries,
   type NodeChange,
+  type PinRef,
   placed,
   removeNodes
 } from '../../shared/graph/flow.ts';
-import { GraphCanvas } from '../../shared/graph/graph-canvas.tsx';
+import {
+  type AddRequest,
+  type CanvasView,
+  GraphCanvas,
+  isTyping
+} from '../../shared/graph/graph-canvas.tsx';
+import { emptyHistory, recorded, redone, undone } from '../../shared/graph/history.ts';
+import { pinLabel } from '../../shared/graph/pins.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate, useLocation, useUnsavedChanges } from '../../shared/router.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Breadcrumbs } from '../../shared/ui/breadcrumbs.tsx';
+import { Button } from '../../shared/ui/button.tsx';
 import { Drawer } from '../../shared/ui/drawer.tsx';
+import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { hrefWith } from '../../shared/url-state.ts';
@@ -29,8 +49,8 @@ import { NodeInspector } from './node-inspector.tsx';
 import { NodePicker } from './node-picker.tsx';
 import { diffGraphs } from './override-diff.ts';
 import { CopyBadge, RoleBadge, ScopeBadge, StaleBadge, scopeLabel } from './scope-badges.tsx';
-import { SignaturePanel } from './signature-panel.tsx';
 import { graphPath, type TrailStep, VERSION_PARAMS } from './trail.ts';
+import { type VariableNode, WorkflowPanel } from './workflow-panel.tsx';
 import { kindLabel } from './workflows-page.tsx';
 
 type EditorPageProps = {
@@ -82,6 +102,35 @@ export const customizedNodes = (
   return out;
 };
 
+type Picker = { request: AddRequest; entries: readonly PaletteEntry[]; hint?: string };
+
+export const pinHint = (def: GraphDef, catalog: Catalog, from: PinRef) => {
+  const inst = def.nodes.find((n) => n.id === from.node);
+  if (!inst) return 'Nodes that connect to this pin.';
+  const sig = catalog.signatureOf(inst, def);
+  const spec = [...(sig?.inputs ?? []), ...(sig?.outputs ?? [])].find((p) => p.name === from.pin);
+  const pin = spec ? pinLabel(spec) : (catalog.exitsOf(inst, def)[from.pin]?.label ?? 'the flow');
+  return `Nodes that connect to ${pin} on ${catalog.titleOf(inst)}.`;
+};
+
+const VARIABLE_NODES: Readonly<Record<VariableNode, NodeRef>> = {
+  get: { type: 'std.var.get', version: 1 },
+  set: { type: 'std.var.set', version: 1 }
+};
+
+export const lockedReason = (
+  graph: Pick<GraphDetail['graph'], 'scope' | 'overrides'>,
+  editable: boolean,
+  noun: string
+) =>
+  graph.overrides
+    ? `A copy keeps the inputs and outputs of the built-in ${noun} it overrides, so everything that uses it keeps working.`
+    : graph.scope === 'system'
+      ? `Built-in ${noun}s are read-only. This is what it takes in, hands back and keeps while it runs.`
+      : editable
+        ? null
+        : `Published versions are read-only. Open a draft to change what this ${noun} takes and returns.`;
+
 export const EditorView = ({
   detail,
   version,
@@ -107,14 +156,19 @@ export const EditorView = ({
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [dialog, setDialog] = useState<EditorDialog | null>(null);
+  const [picker, setPicker] = useState<Picker | null>(null);
+  const [history, setHistory] = useState(emptyHistory);
+  const view = useRef<CanvasView>(null);
   const location = useLocation();
   const panel = location.query.get('panel');
   const isCustom = graph.scope === 'agency' && !graph.overrides;
-  const isSignatureOpen = isCustom && panel === 'signature';
+  const isSignatureOpen = panel === 'signature';
+  const inside = location.query.get('inside');
   const isCompareOpen = panel === 'compare';
   const showRemoved = location.query.get('removed') === 'shown';
   const panelHref = (name: 'signature' | 'compare' | null) =>
     hrefWith(location.path, location.query, { panel: name });
+  const insideHref = (id: string | null) => hrefWith(location.path, location.query, { inside: id });
   const select = (id: string | null) => {
     setSelected(id);
     if (id && panel) navigate(panelHref(null), { replace: true });
@@ -130,8 +184,12 @@ export const EditorView = ({
       navigate(
         graphPath(target.graph_id, target.version, [...trail, { graphId: graph.id, version }])
       );
+    } else if (inst && catalog.graphOf(inst)) {
+      navigate(insideHref(id));
     }
   };
+  const insideNode = def.nodes.find((n) => n.id === inside);
+  const insideGraph = insideNode ? catalog.graphOf(insideNode) : undefined;
   const parent = trail.at(-1);
   const crumbs = [
     { label: 'Workflows', to: '/workflows' },
@@ -158,9 +216,37 @@ export const EditorView = ({
 
   const change = (next: GraphDef) => {
     edits.edit();
+    setHistory((h) => recorded(h, def, Date.now()));
     setDef(next);
     setDirty(true);
   };
+
+  const travel = (step: typeof undone) => {
+    const moved = step(history, def);
+    if (!moved) return;
+    edits.edit();
+    setHistory(moved.history);
+    setDef(moved.def);
+    setDirty(true);
+  };
+  const undo = () => travel(undone);
+  const redo = () => travel(redone);
+  const keys = useRef({ undo, redo });
+  keys.current = { undo, redo };
+
+  useEffect(() => {
+    if (!editable) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || isTyping(e.target)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) keys.current.undo();
+      else if ((key === 'z' && e.shiftKey) || key === 'y') keys.current.redo();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editable]);
 
   const run = async (kind: Busy, action: () => Promise<void>) => {
     setBusy(kind);
@@ -247,14 +333,32 @@ export const EditorView = ({
       onRebased();
     });
 
+  const openPicker = (request: AddRequest | null | undefined) => {
+    if (!request) return;
+    setPicker(
+      request.from
+        ? {
+            request,
+            entries: compatibleEntries(def, catalog, request.from),
+            hint: pinHint(def, catalog, request.from)
+          }
+        : { request, entries: catalog.palette }
+    );
+  };
+
+  const addVariableNode = (name: string, node: VariableNode) => {
+    const at = view.current?.centre()?.at ?? { x: 0, y: 0 };
+    const added = addNode(def, VARIABLE_NODES[node], at, { name });
+    change(added.def);
+    select(added.id);
+  };
+
   const add = (entry: PaletteEntry) => {
-    const added = addNode(def, entry, {
-      x: 120 + def.nodes.length * 24,
-      y: 120 + def.nodes.length * 24
-    });
+    if (!picker) return;
+    const added = addWired(def, catalog, entry, picker.request.at, picker.request.from);
     change(added.def);
     setSelected(added.id);
-    setDialog(null);
+    setPicker(null);
     notify({
       key: 'node-added',
       title: `${entry.title} added`,
@@ -265,7 +369,7 @@ export const EditorView = ({
   const hints = editable ? documentationHints(def, catalog) : [];
   const isEmptySlot = graph.role === 'slot' && isPassThrough(def);
   const howTo = editable
-    ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them; drag the end of a wire off its pin, or Alt+click the pin, to disconnect it.'
+    ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them, or drop a wire on empty space to add a node that fits; right-click or press A to add any node. Alt+click a wire or pin to disconnect it.'
     : graph.scope === 'system'
       ? graph.effectiveScope !== 'system'
         ? `Your ${scopeLabel(graph.effectiveScope).toLowerCase()} has its own copy of this built-in ${noun}; runs use it once it is published. Select a node to see what it does.`
@@ -304,7 +408,7 @@ export const EditorView = ({
             removable={removable}
             dirty={dirty}
             busy={busy}
-            signatureHref={isCustom ? panelHref(isSignatureOpen ? null : 'signature') : null}
+            signatureHref={panelHref(isSignatureOpen ? null : 'signature')}
             compareHref={
               comparison?.copiedFrom && graph.scope !== 'system'
                 ? panelHref(isCompareOpen ? null : 'compare')
@@ -320,7 +424,7 @@ export const EditorView = ({
                   }
                 : null
             }
-            onAdd={() => setDialog('add')}
+            onAdd={() => openPicker(view.current?.centre())}
             onArrange={() => change(arranged(def, catalog))}
             onVersion={(v) => navigate(graphPath(graph.id, v, trail))}
             onOverride={override}
@@ -355,19 +459,81 @@ export const EditorView = ({
                 selected={selected}
                 onSelect={select}
                 onOpen={openNode}
-                {...(editable ? { onChange: change } : {})}
+                viewRef={view}
+                {...(editable
+                  ? {
+                      onChange: change,
+                      onAdd: openPicker,
+                      tools: (
+                        <>
+                          <Button
+                            variant="outline"
+                            disabledReason={history.past.length ? undefined : 'Nothing to undo.'}
+                            onClick={undo}
+                          >
+                            <Undo2Icon aria-hidden="true" className="size-4" />
+                            Undo
+                          </Button>
+                          <Button
+                            variant="outline"
+                            disabledReason={history.future.length ? undefined : 'Nothing to redo.'}
+                            onClick={redo}
+                          >
+                            <Redo2Icon aria-hidden="true" className="size-4" />
+                            Redo
+                          </Button>
+                        </>
+                      )
+                    }
+                  : {})}
               />
             </div>
+            {insideNode && insideGraph ? (
+              <section
+                aria-labelledby="inside-title"
+                className="bg-canvas absolute inset-0 z-10 flex flex-col"
+              >
+                <header className="border-border bg-surface flex items-center justify-between gap-4 border-b px-4 py-2">
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <h2 id="inside-title" className="truncate text-base font-bold">
+                      Inside {catalog.titleOf(insideNode)}
+                    </h2>
+                    <p className="text-surface-fg-muted text-xs">
+                      A built-in subworkflow, shown read-only.
+                    </p>
+                  </div>
+                  <IconButton
+                    label={`Close ${catalog.titleOf(insideNode)}`}
+                    tooltip="Close"
+                    icon={XIcon}
+                    tooltipSide="left"
+                    onClick={() => navigate(insideHref(null))}
+                  />
+                </header>
+                <div className="relative min-h-0 flex-1">
+                  <div className="absolute inset-0">
+                    <GraphCanvas
+                      def={insideGraph}
+                      catalog={catalog}
+                      selected={null}
+                      onSelect={() => undefined}
+                    />
+                  </div>
+                </div>
+              </section>
+            ) : null}
           </div>
         </div>
         {isSignatureOpen ? (
           <Drawer width="lg">
-            <SignaturePanel
+            <WorkflowPanel
               key={version}
               kind={graph.kind}
               def={def}
-              editable={editable}
+              editable={editable && isCustom}
+              locked={lockedReason(graph, editable, noun)}
               onChange={change}
+              onVariableNode={editable && isCustom ? addVariableNode : undefined}
               onClose={() => navigate(panelHref(null))}
             />
           </Drawer>
@@ -398,7 +564,7 @@ export const EditorView = ({
                 change(removeNodes(def, [node.id]));
                 setSelected(null);
               }}
-              onOpen={catalog.publishedOf(node) ? () => openNode(node.id) : undefined}
+              onOpen={catalog.opensAs(node) ? () => openNode(node.id) : undefined}
               onClose={() => setSelected(null)}
               base={baseNode}
               table={nodeTable}
@@ -406,12 +572,13 @@ export const EditorView = ({
           </Drawer>
         ) : null}
       </div>
-      {editable ? (
+      {editable && picker ? (
         <NodePicker
-          open={dialog === 'add'}
-          entries={catalog.palette}
+          entries={picker.entries}
+          at={picker.request.screen}
+          hint={picker.hint}
           onAdd={add}
-          onClose={() => setDialog(null)}
+          onClose={() => setPicker(null)}
         />
       ) : null}
       <EditorDialogs

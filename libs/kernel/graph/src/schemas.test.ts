@@ -30,6 +30,13 @@ describe('schemas', () => {
     assert.equal(v.safeParse(graphDefSchema, badExit).success, false);
   });
 
+  it('accepts the pins a node shows on the canvas', () => {
+    const shown = { ...clampGraph, nodes: clampGraph.nodes.map((n) => ({ ...n, shown: ['a'] })) };
+    assert.deepEqual(v.parse(graphDefSchema, shown), shown);
+    const bad = { ...clampGraph, nodes: clampGraph.nodes.map((n) => ({ ...n, shown: ['1x'] })) };
+    assert.equal(v.safeParse(graphDefSchema, bad).success, false);
+  });
+
   it('accepts kinded types and comment boxes', () => {
     assert.deepEqual(v.parse(valueTypeSchema, { list: { id: 'claim' } }), {
       list: { id: 'claim' }

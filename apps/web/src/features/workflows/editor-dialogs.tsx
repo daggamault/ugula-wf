@@ -3,7 +3,7 @@ import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import type { GraphDetail } from './client.ts';
 import { kindLabel } from './workflows-page.tsx';
 
-export type EditorDialog = 'add' | 'remove' | 'reset';
+export type EditorDialog = 'remove' | 'reset';
 
 type EditorDialogsProps = {
   graph: GraphDetail['graph'];
