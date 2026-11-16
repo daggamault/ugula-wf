@@ -34,6 +34,9 @@ describe('math nodes', () => {
     assert.deepEqual(await run('std.math.round', { value: 2.5 }), { result: 3 });
     assert.deepEqual(await run('std.math.round', { value: 1250, digits: -2 }), { result: 1300 });
     assert.deepEqual(await run('std.math.sum', { values: [1, 2, null] }), { result: 3 });
+    assert.deepEqual(await run('std.math.add', { a: 1, b: null }), { result: null });
+    assert.deepEqual(await run('std.math.negate', {}), { result: null });
+    assert.deepEqual(await run('std.math.round', { value: null }), { result: null });
     assert.deepEqual(await run('std.math.sum', { values: [] }), { result: 0 });
   });
 

@@ -494,13 +494,13 @@ describe('engine', () => {
 
   it('faults on bad data with clear messages', async () => {
     const def = graph(
-      { outputs: [pin('x', 'number')] },
-      [n('add', 'std.math.add', { inputs: { a: val(1) } }), n('ret', RETURN_TYPE)],
-      [e('entry', 'exec', 'ret', 'exec'), e('add', 'result', 'ret', 'x')]
+      { outputs: [pin('x', 'string')] },
+      [n('upper', 'std.text.upper'), n('ret', RETURN_TYPE)],
+      [e('entry', 'exec', 'ret', 'exec'), e('upper', 'result', 'ret', 'x')]
     );
     const { state } = await run(def);
-    assert.equal(state.fault?.error.message, 'Input "b" of "add" is required');
-    assert.equal(state.fault?.error.node, 'add');
+    assert.equal(state.fault?.error.message, 'Input "text" of "upper" is required');
+    assert.equal(state.fault?.error.node, 'upper');
 
     const notYet = graph(
       { outputs: [pin('x', 'any')] },

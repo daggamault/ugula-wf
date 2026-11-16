@@ -5,6 +5,10 @@ import type { NodeDef } from '../types.ts';
 
 const CATEGORY = 'Math';
 
+const RESULT = pin('result', 'number', {
+  description: 'The result, or nothing when a number is missing.'
+});
+
 const finite = (title: string, n: number) =>
   Number.isFinite(n) ? n : fail(`${title}: result is not a finite number`);
 
@@ -22,11 +26,13 @@ const binary = (
     level: 'basic',
     keywords: ['math', 'calculate'],
     inputs: [
-      pin('a', 'number', { description: 'The first number.' }),
-      pin('b', 'number', { description: 'The second number.' })
+      pin('a', 'number', { optional: true, description: 'The first number.' }),
+      pin('b', 'number', { optional: true, description: 'The second number.' })
     ],
-    outputs: [pin('result', 'number', { description: 'The result.' })],
-    compute: ({ a, b }) => ({ result: finite(title, fn(a as number, b as number)) })
+    outputs: [RESULT],
+    compute: ({ a, b }) => ({
+      result: a === null || b === null ? null : finite(title, fn(a as number, b as number))
+    })
   });
 
 const unary = (key: string, title: string, description: string, fn: (x: number) => number) =>
@@ -37,9 +43,9 @@ const unary = (key: string, title: string, description: string, fn: (x: number) 
     description,
     level: 'basic',
     keywords: ['math', 'calculate'],
-    inputs: [pin('value', 'number', { description: 'The number to work on.' })],
-    outputs: [pin('result', 'number', { description: 'The result.' })],
-    compute: ({ value }) => ({ result: finite(title, fn(value as number)) })
+    inputs: [pin('value', 'number', { optional: true, description: 'The number to work on.' })],
+    outputs: [RESULT],
+    compute: ({ value }) => ({ result: value === null ? null : finite(title, fn(value as number)) })
   });
 
 const nonZero = (title: string, b: number) => (b === 0 ? fail(`${title}: division by zero`) : b);
@@ -76,11 +82,17 @@ export const mathNodes: NodeDef[] = [
     level: 'basic',
     keywords: ['math', 'decimals'],
     inputs: [
-      pin('value', 'number', { description: 'The number to round.' }),
+      pin('value', 'number', { optional: true, description: 'The number to round.' }),
       pin('digits', 'integer', { default: 0, description: 'How many decimal places to keep.' })
     ],
-    outputs: [pin('result', 'number', { description: 'The rounded number.' })],
-    compute: ({ value, digits }) => ({ result: roundTo(value as number, digits as number) })
+    outputs: [
+      pin('result', 'number', {
+        description: 'The rounded number, or nothing when the number is missing.'
+      })
+    ],
+    compute: ({ value, digits }) => ({
+      result: value === null ? null : roundTo(value as number, digits as number)
+    })
   }),
   pureNode({
     type: 'std.math.sum',

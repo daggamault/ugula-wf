@@ -12,7 +12,10 @@ import { CONDITION_OPS, holds } from './tables.ts';
 const CATEGORY = 'Lists';
 const ANY_LIST: ValueType = { list: 'any' };
 export const LIST_FORMULA_NAMES = ['item', 'index', 'list'];
-const LIST_IN = pin('list', ANY_LIST, { description: 'The list to work on.' });
+const LIST_IN = pin('list', ANY_LIST, {
+  optional: true,
+  description: 'The list to work on; an empty list when missing.'
+});
 const LIST_OUT = pin('list', ANY_LIST, { description: 'The resulting list.' });
 const ITEM_OUT = pin('item', 'any', { description: 'The item, or nothing.' });
 const RESULT = pin('result', 'boolean', { description: 'True or false.' });
@@ -59,11 +62,13 @@ const lambdaNode = (
     compute: (inputs, { expression }, ctx) => {
       const ast = parseExpr(expression);
       const run = createEvaluator({ now: ctx.now });
-      return fn(inputs.list as Json[], (item, index) => run(ast, { ...inputs, item, index }));
+      return fn((inputs.list ?? []) as Json[], (item, index) =>
+        run(ast, { ...inputs, item, index })
+      );
     }
   });
 
-const items = (x: Values) => x.list as Json[];
+const items = (x: Values) => (x.list ?? []) as Json[];
 
 const fieldOf = (item: Json, field: Json) =>
   typeof field === 'string' && field ? getPath(item, field) : item;

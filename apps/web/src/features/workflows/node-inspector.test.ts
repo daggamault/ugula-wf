@@ -64,7 +64,10 @@ describe('NodeInspector', () => {
     assert.ok(render('round1').includes('From Add · Result'));
     const add = render('add1');
     assert.ok(add.includes('Round'));
-    assert.ok(add.includes('Needs a value: connect a pin on the canvas, or set one here.'));
+    assert.ok(add.includes('Left empty unless you set it.'));
+    assert.ok(
+      render('branch1').includes('Needs a value: connect a pin on the canvas, or set one here.')
+    );
     assert.ok(!add.includes('Retry on Failure') && !add.includes('>Advanced'));
     assert.match(
       add,

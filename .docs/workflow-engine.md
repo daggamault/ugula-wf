@@ -53,6 +53,8 @@ A node definition (`NodeDef`) also carries what the editor shows:
 
 **Run Rule for Each**, **Keep Items Where** and **Find Item Where** (`std.list.map-rule`, `filter-rule`, `find-rule`) run a rule (a pure `node` graph, set as `{ rule, version, item }`, plus `test` for the last two) once per list item. `item` names the rule input each item goes to; the rule's other inputs become the node's own and are the same for every item. Their pins take their types from the rule (`SignatureContext.signatureOf`), the engine runs the rule through `NodeContext.evaluate`, and `graphRefs` counts the rule as a subgraph, so it is validated, pinned and retargeted like one. This is how per-item logic stays on the canvas instead of in a formula.
 
+Pure primitives tolerate missing data: math nodes give nothing when a number is missing, and list nodes treat a missing list as empty, so a rule that reads an optional field only fails where a value is truly required.
+
 `std.flow.reroute` is a knot on a wire: it passes `value` through unchanged, typed by its `type` setting (`any` by default).
 
 | Kind       | Examples                                                                                                                                                                                                                                                 |

@@ -52,7 +52,14 @@ const testedPlan = (c: TestConfig, ctx: SignatureContext) => {
 const itemType = (plan: Plan | null) => plan?.item.type ?? 'any';
 
 const inputsOf = (plan: Plan | null) => [
-  pin('list', { list: itemType(plan) }, { description: 'The items to go through.' }),
+  pin(
+    'list',
+    { list: itemType(plan) },
+    {
+      optional: true,
+      description: 'The items to go through; none when missing.'
+    }
+  ),
   ...(plan?.shared ?? [])
 ];
 
@@ -65,7 +72,7 @@ const runEach = async (
   visit: (outputs: Values, value: Json) => boolean
 ) => {
   const { list, ...shared } = inputs;
-  for (const [i, value] of (list as Json[]).entries()) {
+  for (const [i, value] of ((list ?? []) as Json[]).entries()) {
     const outputs = await ctx.evaluate({ type: rule, version }, { ...shared, [item]: value });
     if (visit(outputs, value)) return i;
   }
@@ -168,7 +175,7 @@ export const eachNodes: NodeDef[] = [
       const index = await runEach(inputs, c, ctx, (outputs) => outputs[c.test] === true);
       return index < 0
         ? { item: null, found: false, index: null }
-        : { item: (inputs.list as Json[])[index] ?? null, found: true, index };
+        : { item: ((inputs.list ?? []) as Json[])[index] ?? null, found: true, index };
     }
   })
 ];
