@@ -6,10 +6,11 @@ import {
 } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { matches } from './checks.ts';
 
 const list = (values: readonly string[]) => sql.join(values.map((v) => sql.lit(v)));
 
-const extension = (column: string) => sql`${sql.ref(column)} ~ ${sql.lit(FILE_EXTENSION_PATTERN)}`;
+const extension = (column: string) => matches(column, FILE_EXTENSION_PATTERN);
 
 const DOWNLOAD_PATH = '/[^[:cntrl:],]{0,254}';
 

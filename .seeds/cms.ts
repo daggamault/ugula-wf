@@ -7,7 +7,7 @@ import {
 } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import type { Kysely } from 'kysely';
-import { BATCH, inBatches, tsvRows } from './tsv.ts';
+import { BATCH, inBatches, truncate, tsvRows } from './tsv.ts';
 
 type Locality = Omit<MedicareLocality, 'plusFourNeeded'>;
 
@@ -15,7 +15,7 @@ type ZipLocality = Locality & { postalCode: string; needsPlusFour: boolean };
 
 type Zip4Locality = Locality & { postalCode: string; plusFourFrom: string; plusFourTo: string };
 
-type AmbulanceFee = MedicareFee & { carrier: string; locality: string };
+type AmbulanceFee = MedicareFee & { year: number; carrier: string; locality: string };
 
 type CmsData = {
   zips: ZipLocality[];
@@ -36,7 +36,13 @@ const ruralityOf = (x: string | undefined): Rurality => {
   return x;
 };
 
-const centsOrNull = (x: string | undefined) => (x ? Number(x) : null);
+const requiredNumber = (x: string | undefined) => {
+  const n = Number(x);
+  if (!x || !Number.isInteger(n)) throw new Error(`Expected a whole number, got ${x}`);
+  return n;
+};
+
+const centsOrNull = (x: string | undefined) => (x ? requiredNumber(x) : null);
 
 export const readCmsData = (files: Record<keyof CmsData, Buffer>): CmsData => ({
   zips: tsvRows(files.zips).map(([postalCode = '', carrier = '', locality = '', r, p]) => ({
@@ -56,12 +62,13 @@ export const readCmsData = (files: Record<keyof CmsData, Buffer>): CmsData => ({
       rurality: ruralityOf(r)
     })
   ),
-  fees: tsvRows(files.fees).map(([carrier = '', locality = '', code = '', u, r, s, t]) => ({
+  fees: tsvRows(files.fees).map(([year, carrier = '', locality = '', code = '', u, r, s, t]) => ({
+    year: requiredNumber(year),
     carrier,
     locality,
     code,
-    urbanCents: Number(u),
-    ruralCents: Number(r),
+    urbanCents: requiredNumber(u),
+    ruralCents: requiredNumber(r),
     superRuralCents: centsOrNull(s),
     ruralShortTripCents: centsOrNull(t)
   })),
@@ -91,10 +98,12 @@ export const readCmsData = (files: Record<keyof CmsData, Buffer>): CmsData => ({
 });
 
 export const replaceCmsData = async (db: Kysely<Database>, data: CmsData) => {
-  await db.deleteFrom('cms_zip4_localities').execute();
-  await db.deleteFrom('cms_zip_localities').execute();
-  await db.deleteFrom('cms_ambulance_fees').execute();
-  await db.deleteFrom('cms_hospitals').execute();
+  await truncate(db, [
+    'cms_zip4_localities',
+    'cms_zip_localities',
+    'cms_ambulance_fees',
+    'cms_hospitals'
+  ]);
   await inBatches(data.zips, BATCH, (rows) =>
     db
       .insertInto('cms_zip_localities')
@@ -129,6 +138,7 @@ export const replaceCmsData = async (db: Kysely<Database>, data: CmsData) => {
       .insertInto('cms_ambulance_fees')
       .values(
         rows.map((r) => ({
+          year: r.year,
           carrier: r.carrier,
           locality: r.locality,
           code: r.code,

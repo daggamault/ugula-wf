@@ -58,7 +58,12 @@ export type FoundCode = { description: string; billable: boolean };
 export type ReferenceStore = {
   findCode: (set: CodeSet, code: string) => Promise<FoundCode | null>;
   medicareLocality: (postalCode: string) => Promise<MedicareLocality | null>;
-  medicareFees: (carrier: string, locality: string, codes: string[]) => Promise<MedicareFee[]>;
+  medicareFees: (
+    year: number,
+    carrier: string,
+    locality: string,
+    codes: string[]
+  ) => Promise<MedicareFee[]>;
   zipPlace: (postalCode: string) => Promise<ZipPlace | null>;
   findHospital: (
     name: string,

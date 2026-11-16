@@ -198,13 +198,18 @@ export const listImportReports = (
     sql.ref('ir.id')
   );
 
-const CODE_SETS_OF: Readonly<Record<string, readonly CodeSet[]>> = {
+type CodeSystem = NonNullable<ReturnType<typeof codeSystemOf>>;
+
+const CODE_SETS_OF: Readonly<Partial<Record<CodeSystem, readonly CodeSet[]>>> = {
   icd10: ['icd10cm'],
   rxnorm: ['rxnorm', 'snomed'],
   snomed: ['snomed']
 };
 
-const codeSetsOf = (list: string) => CODE_SETS_OF[codeSystemOf(list) ?? ''] ?? [];
+const codeSetsOf = (list: string) => {
+  const system = codeSystemOf(list);
+  return (system && CODE_SETS_OF[system]) ?? [];
+};
 
 const describeOutside = async (db: Db, codes: ReportTerms['codes']) => {
   const places = codes.filter((c) => codeSystemOf(c.list) === 'gnis' && /^\d{1,9}$/.test(c.code));

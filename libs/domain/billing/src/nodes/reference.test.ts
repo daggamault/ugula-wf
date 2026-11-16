@@ -38,8 +38,8 @@ const setup = () => {
           }
         : null;
     },
-    medicareFees: async (carrier, locality, codes) => {
-      calls.push(['fees', carrier, locality, codes]);
+    medicareFees: async (year, carrier, locality, codes) => {
+      calls.push(['fees', year, carrier, locality, codes]);
       return [
         {
           code: 'A0427',
@@ -115,29 +115,42 @@ describe('referenceNodes', () => {
     const { calls, run } = setup();
     const { outputs } = await run('medicare-allowed', {
       lines: [
-        { code: 'A0427', units: 1 },
-        { code: 'A0888', units: 2 },
+        { code: 'A0427', units: 1, chargeCents: 80_000 },
+        { code: 'A0888', units: 2, chargeCents: 3_000 },
         { code: 'A0888', units: 1 }
       ],
+      serviceDate: '2026-11-02',
       carrier: '02102',
       locality: '01',
       rurality: 'superRural'
     });
     assert.deepEqual(outputs, {
-      lines: [{ code: 'A0427', units: 1, allowedCents: 87_869 }],
-      totalCents: 87_869,
+      lines: [{ code: 'A0427', units: 1, allowedCents: 80_000 }],
+      totalCents: 80_000,
       missing: ['A0888']
     });
-    assert.deepEqual(calls, [['fees', '02102', '01', ['A0427', 'A0888']]]);
+    assert.deepEqual(calls, [['fees', 2026, '02102', '01', ['A0427', 'A0888']]]);
     await assert.rejects(
       () =>
         run('medicare-allowed', {
           lines: [{ code: 'A0427', units: 1 }],
+          serviceDate: '2026-11-02',
           carrier: '02102',
           locality: '01',
           rurality: 'suburban'
         }),
       /not urban, rural or superRural/
+    );
+    await assert.rejects(
+      () =>
+        run('medicare-allowed', {
+          lines: [{ code: 'A0427', units: 1 }],
+          serviceDate: 'soon',
+          carrier: '02102',
+          locality: '01',
+          rurality: 'urban'
+        }),
+      /not a date of service/
     );
   });
 

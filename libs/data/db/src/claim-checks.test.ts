@@ -102,7 +102,7 @@ describe('findClaimCheck', () => {
     assert.deepEqual(check?.zipStates, { pickup: 'IL', destination: null, patient: 'IL' });
     assert.ok(
       queries[0]?.sql.includes(
-        'from "cms_zip_localities" as "z" where "z"."postal_code" = left(c.pickup_postal_code, 5)'
+        'from "cms_zip_localities" as "z" where "z"."postal_code" = left("c"."pickup_postal_code", 5)'
       )
     );
     assert.ok(

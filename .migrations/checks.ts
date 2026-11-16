@@ -3,6 +3,9 @@ import { sql } from 'kysely';
 export const trimmed = (column: string) =>
   sql`${sql.ref(column)} = btrim(${sql.ref(column)}) and ${sql.ref(column)} <> ''`;
 
+export const matches = (column: string, pattern: string) =>
+  sql`${sql.ref(column)} ~ ${sql.lit(pattern)}`;
+
 export const oneOf = (column: string, values: readonly string[]) =>
   sql`${sql.ref(column)} in (${sql.join(values.map((v) => sql.lit(v)))})`;
 

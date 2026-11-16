@@ -47,11 +47,12 @@ export const createReferenceStore = (db: Kysely<Database>): ReferenceStore => ({
         }
       : null;
   },
-  medicareFees: async (carrier, locality, codes) => {
+  medicareFees: async (year, carrier, locality, codes) => {
     if (!codes.length) return [];
     const rows = await db
       .selectFrom('cms_ambulance_fees')
       .select(['code', 'urban_cents', 'rural_cents', 'super_rural_cents', 'rural_short_trip_cents'])
+      .where('year', '=', year)
       .where('carrier', '=', carrier)
       .where('locality', '=', locality)
       .where('code', 'in', codes)

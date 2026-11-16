@@ -1,7 +1,7 @@
 import { US_STATE_PATTERN } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
-import { trimmed } from './checks.ts';
+import { matches, trimmed } from './checks.ts';
 
 const buildGeonamesPostalCodesTable = (db: Kysely<Database>) =>
   db.schema
@@ -15,10 +15,8 @@ const buildGeonamesPostalCodesTable = (db: Kysely<Database>) =>
     .addColumn('longitude', 'real', (col) => col.notNull())
     .addCheckConstraint('geonames_postal_codes_postal_code_check', sql`postal_code ~ '^[0-9]{5}$'`)
     .addCheckConstraint('geonames_postal_codes_city_check', trimmed('city'))
-    .addCheckConstraint(
-      'geonames_postal_codes_state_check',
-      sql`state ~ ${sql.lit(US_STATE_PATTERN)}`
-    )
+    .addCheckConstraint('geonames_postal_codes_state_check', matches('state', US_STATE_PATTERN))
+    .addCheckConstraint('geonames_postal_codes_county_check', trimmed('county'))
     .addCheckConstraint('geonames_postal_codes_county_fips_check', sql`county_fips ~ '^[0-9]{5}$'`)
     .addCheckConstraint(
       'geonames_postal_codes_coordinates_check',

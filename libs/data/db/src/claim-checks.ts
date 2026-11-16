@@ -106,7 +106,7 @@ export const findClaimCheck = async (
       eb
         .selectFrom('cms_zip_localities as z')
         .select('z.needs_plus_four')
-        .where('z.postal_code', '=', sql<string>`left(c.pickup_postal_code, 5)`)
+        .where('z.postal_code', '=', sql<string>`left(${sql.ref('c.pickup_postal_code')}, 5)`)
         .as('pickup_zip_split'),
       zipState(eb, 'c.pickup_postal_code').as('pickup_zip_state'),
       zipState(eb, 'c.destination_postal_code').as('destination_zip_state'),

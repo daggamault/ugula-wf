@@ -2,13 +2,15 @@ import { actionNode, branchNode, pin } from '@ugula/graph';
 import { readLines } from '../charges.ts';
 import { CODE_SET_NAMES, CODE_SETS, isCodeSet, normalizeCode } from '../code-sets.ts';
 import { usState, zipCode } from '../geo.ts';
-import { isRurality, medicareAllowed } from '../medicare-fees.ts';
-import { requiredText, textOrNull } from '../values.ts';
+import { feeYearOf, isRurality, medicareAllowed } from '../medicare-fees.ts';
+import { isCents, requiredText, textOrNull } from '../values.ts';
 import type { NodesOf } from './stores.ts';
 
 const CATEGORY = 'Billing';
 
-const CHARGE_LINES = { list: { object: { code: 'string', units: 'number' } } } as const;
+const CHARGED_LINES = {
+  list: { object: { code: 'string', units: 'number', chargeCents: 'integer' } }
+} as const;
 
 const ALLOWED_LINES = {
   list: { object: { code: 'string', units: 'number', allowedCents: 'integer' } }
@@ -63,9 +65,10 @@ export const referenceNodes: NodesOf = (stores) => {
       title: 'Medicare Allowed',
       category: CATEGORY,
       description:
-        'Works out what Medicare allows for each line from the CMS ambulance fee schedule for the carrier, locality and rurality: the urban, rural or super-rural base rate, and for rural mileage the first 17 miles at the short trip rate. Lists the codes Medicare has no fee for, such as A0888. Compare it with what a payer paid to find underpayments.',
+        'Works out what Medicare allows for each line from the CMS ambulance fee schedule of the year of the date of service, for the carrier, locality and rurality: the urban, rural or super-rural base rate, and for rural ground mileage the first 17 miles at the short trip rate, but never more than the line was charged (42 CFR 414.610). Lists the codes the schedule has no fee for, such as A0888, or every code when it has no schedule for that year. Compare it with what a payer allowed to find underpayments.',
       inputs: [
-        pin('lines', CHARGE_LINES),
+        pin('lines', CHARGED_LINES),
+        pin('serviceDate', 'string', { label: 'Date of Service' }),
         pin('carrier', 'string'),
         pin('locality', 'string'),
         pin('rurality', 'string')
@@ -76,11 +79,17 @@ export const referenceNodes: NodesOf = (stores) => {
         pin('missing', { list: 'string' })
       ],
       compute: async (inputs) => {
-        const lines = readLines(inputs.lines);
+        const lines = readLines(inputs.lines).map((l, i) => {
+          const charge = inputs.lines[i]?.chargeCents;
+          return { ...l, chargeCents: isCents(charge) ? charge : null };
+        });
         if (!isRurality(inputs.rurality)) {
           throw new Error(`${inputs.rurality} is not urban, rural or superRural`);
         }
+        const year = feeYearOf(textOrNull(inputs.serviceDate));
+        if (year === null) throw new Error(`${inputs.serviceDate} is not a date of service`);
         const fees = await reference().medicareFees(
+          year,
           requiredText(inputs.carrier, 'No Medicare carrier'),
           requiredText(inputs.locality, 'No Medicare locality'),
           [...new Set(lines.map((l) => l.code))]

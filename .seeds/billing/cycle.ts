@@ -23,6 +23,7 @@ import {
   is,
   issuesSummary,
   named,
+  notOneOf,
   P,
   rule,
   shared,
@@ -83,7 +84,7 @@ const MEDICARE_ALLOWED = 'context?.medicareAllowed';
 const RECONCILE_SUMMARY = `${THE_PAYER} + ' answered and ' +
   (${BALANCE} != null ? ${dollars(BALANCE)} + (${TOTAL} != null ? ' of ' + ${dollars(TOTAL)} : '') + ' is' : 'a balance is') +
   ' still open' +
-  (${MEDICARE_ALLOWED} != null
+  (${MEDICARE_ALLOWED}?.compared == true
     ? (${MEDICARE_ALLOWED}.underpaid == true
         ? '; underpaid: the payer allowed ' + ${dollars(`${MEDICARE_ALLOWED}.payerAllowedCents`)} + ', ' + ${dollars(`${MEDICARE_ALLOWED}.underpaidCents`)} + ' less than the ' + ${dollars(`${MEDICARE_ALLOWED}.allowedCents`)} + ' Medicare allows for this ' + (ruralities[${MEDICARE_ALLOWED}.rurality] ?? 'ambulance') + ' trip; reopen or appeal it, or'
         : '; Medicare allows ' + ${dollars(`${MEDICARE_ALLOWED}.allowedCents`)} + ' for this ' + (ruralities[${MEDICARE_ALLOWED}.rurality] ?? 'ambulance') + ' trip;')
@@ -92,11 +93,12 @@ const RECONCILE_SUMMARY = `${THE_PAYER} + ' answered and ' +
 
 const RURALITY_WORDS = { urban: 'urban', rural: 'rural', superRural: 'super-rural' };
 
-const IS_MEDICARE_TRIP = `some(claim?.payers ?? [], c => c?.coverageId == coverageId && (c?.claimFiling == 'MA' || c?.claimFiling == 'MB')) &&
-  len(claim?.lines ?? []) > 0 &&
-  (claim?.details?.pickup?.postalCode ?? '') != ''`;
+const PRICEABLE = `len(claim?.lines ?? []) > 0 &&
+  (claim?.details?.pickup?.postalCode ?? '') != '' &&
+  (claim?.details?.serviceDate ?? '') != ''`;
 
 const MEDICARE_ALLOWED_FACTS = `{
+  compared: compared,
   allowedCents: totalCents,
   rurality: rurality,
   carrier: carrier,
@@ -334,28 +336,67 @@ const submitClaim = (): GraphDef => {
 
 const UNDERPAID_CENTS = 100;
 
+const NOT_COMPARED = { compared: false, underpaid: false, priority: 0 };
+
 const underpayment = (): GraphDef => {
   const g = rule(
     [
       d(
+        'payerKind',
+        'string',
+        'Payer Kind',
+        'The claim filing indicator of the payer that answered.',
+        true
+      ),
+      d(
+        'primary',
+        'boolean',
+        'Primary Payer',
+        'The payer that answered is the first payer on the claim.'
+      ),
+      d(
+        'severalPatients',
+        'boolean',
+        'Several Patients',
+        'The trip carried more than one patient, so Medicare pays a share of the rates (GM).'
+      ),
+      d(
+        'denialExpected',
+        'boolean',
+        'Denial Expected',
+        'Medicare is expected to deny the transport (GZ).'
+      ),
+      d(
+        'reasonCoded',
+        'boolean',
+        'Sent Reason Codes',
+        'The payer sent reason codes, so what it allowed can be worked out.'
+      ),
+      d(
         'medicareAllowedCents',
         'integer',
         'Medicare Fee Schedule (Cents)',
-        'What the Medicare ambulance fee schedule allows for the trip at its pickup locality.'
+        'What the Medicare ambulance fee schedule of the year of service allows for the trip at its pickup locality, never more than charged.'
       ),
       d(
         'payerAllowedCents',
         'integer',
         'Payer Allowed (Cents)',
-        "What the payer allowed: its payments, the patient's share and sequestration."
+        "What the payer allowed: its payments, the patient's deductible, coinsurance and copay, and sequestration."
       )
     ],
     [
       d(
+        'compared',
+        'boolean',
+        'Compared',
+        'Whether the response can be held against the Medicare fee schedule at all.'
+      ),
+      d(
         'underpaidCents',
         'integer',
         'Underpaid (Cents)',
-        'How far the payer allowed less than the fee schedule, or nothing when it did not.'
+        'How far the payer allowed less than the fee schedule.'
       ),
       d('underpaid', 'boolean', 'Underpaid', 'Whether a biller should take the shortfall up.'),
       d('priority', 'integer', 'Task Priority', 'The priority of the reconcile task.'),
@@ -367,35 +408,94 @@ const underpayment = (): GraphDef => {
     'std.expr',
     expr('Shortfall', 'max(medicareAllowedCents - payerAllowedCents, 0)')
   );
+  g.add('priced', 'std.expr', expr('Fee Schedule Found', 'medicareAllowedCents > 0'));
   g.add('decide', 'std.table.decide', {
     label: 'Underpayment',
     config: shared.decision(
       'billing.underpayment',
       'Underpayment',
-      'Decides whether a payer allowed less than the Medicare ambulance fee schedule by enough to work, and how soon: an underpaid reconcile task is raised so it is handed out first.',
+      'Decides whether a payer response can be held against the Medicare ambulance fee schedule, and whether it allowed less by enough to work: an underpaid reconcile task is raised so it is handed out first.',
       table(
-        [field('shortfallCents', 'integer', 'Allowed below the fee schedule (cents)')],
-        [field('underpaid', 'boolean', 'Underpaid'), field('priority', 'integer', 'Task priority')],
         [
+          field('payerKind', 'string', 'Payer kind'),
+          field('primary', 'boolean', 'Primary payer'),
+          field('severalPatients', 'boolean', 'Several patients'),
+          field('denialExpected', 'boolean', 'Denial expected'),
+          field('reasonCoded', 'boolean', 'Sent reason codes'),
+          field('priced', 'boolean', 'Fee schedule found'),
+          field('shortfallCents', 'integer', 'Allowed below the fee schedule (cents)')
+        ],
+        [
+          field('compared', 'boolean', 'Compared'),
+          field('underpaid', 'boolean', 'Underpaid'),
+          field('priority', 'integer', 'Task priority')
+        ],
+        [
+          { label: 'Not Medicare', when: { payerKind: notOneOf('MA', 'MB') }, set: NOT_COMPARED },
+          {
+            label: 'Medicare pays after another payer',
+            when: { primary: is(false) },
+            set: NOT_COMPARED
+          },
+          {
+            label: 'Several patients on the trip (GM)',
+            when: { severalPatients: is(true) },
+            set: NOT_COMPARED
+          },
+          {
+            label: 'Medicare is expected to deny (GZ)',
+            when: { denialExpected: is(true) },
+            set: NOT_COMPARED
+          },
+          {
+            label: 'Posted without reason codes',
+            when: { reasonCoded: is(false) },
+            set: NOT_COMPARED
+          },
+          {
+            label: 'No fee schedule for the year of service',
+            when: { priced: is(false) },
+            set: NOT_COMPARED
+          },
           {
             label: 'Allowed more than $1 below the Medicare fee schedule',
             when: { shortfallCents: above(UNDERPAID_CENTS) },
-            set: { underpaid: true, priority: 2 }
+            set: { compared: true, underpaid: true, priority: 2 }
           }
         ],
-        { underpaid: false, priority: 0 }
+        { compared: true, underpaid: false, priority: 0 }
       )
     )
   });
   g.ret('return');
-  g.wire('entry.medicareAllowedCents', 'shortfall.medicareAllowedCents');
+  g.wire(
+    'entry.medicareAllowedCents',
+    'shortfall.medicareAllowedCents',
+    'priced.medicareAllowedCents'
+  );
   g.wire('entry.payerAllowedCents', 'shortfall.payerAllowedCents');
   g.wire('shortfall.result', 'decide.shortfallCents', 'return.underpaidCents');
+  g.wire('priced.result', 'decide.priced');
+  for (const pin of ['payerKind', 'primary', 'severalPatients', 'denialExpected', 'reasonCoded']) {
+    g.wire(`entry.${pin}`, `decide.${pin}`);
+  }
+  g.wire('decide.compared', 'return.compared');
   g.wire('decide.underpaid', 'return.underpaid');
   g.wire('decide.priority', 'return.priority');
   g.wire('decide.rules', 'return.reasons');
   return g.def;
 };
+
+const CLAIM_FACTS = [
+  [
+    'payerKind',
+    'Payer Kind',
+    'find(claim?.payers ?? [], c => c?.coverageId == coverageId)?.claimFiling'
+  ],
+  ['primary', 'Primary Payer', 'first(claim?.payers ?? [])?.coverageId == coverageId'],
+  ['severalPatients', 'Several Patients', '(claim?.details?.documentation?.patientCount ?? 1) > 1'],
+  ['denialExpected', 'Denial Expected', 'claim?.details?.documentation?.denialExpected == true']
+] as const;
 
 const reconcilePayment = (): GraphDef => {
   const g = claimStep(
@@ -407,17 +507,24 @@ const reconcilePayment = (): GraphDef => {
     ]
   );
   g.add('readClaim', 'billing.read-claim-checks', { label: 'Read the Claim' });
-  g.add('isMedicare', 'std.expr', expr('Medicare Pays This Trip', IS_MEDICARE_TRIP));
-  g.add('priceMedicare', 'std.flow.branch', { label: 'Price It as Medicare?' });
+  g.add('priceable', 'std.expr', expr('Lines, Pickup ZIP and Date of Service', PRICEABLE));
+  g.add('price', 'std.flow.branch', { label: 'Can Medicare Price It?' });
   g.add('pickupZip', 'std.expr', expr('Pickup ZIP Code', 'claim?.details?.pickup?.postalCode'));
+  g.add('serviceDate', 'std.expr', expr('Date of Service', 'claim?.details?.serviceDate'));
   g.add('locality', 'billing.find-medicare-locality', { label: 'Pickup Locality' });
   g.add(
     'chargeLines',
     'std.expr',
-    expr('Claim Lines', 'map(claim?.lines ?? [], l => { code: l.code, units: l.units })')
+    expr(
+      'Claim Lines',
+      'map(claim?.lines ?? [], l => { code: l.code, units: l.units, chargeCents: l.totalCents })'
+    )
   );
   g.add('allowed', 'billing.medicare-allowed', { label: 'Medicare Allowed' });
   g.add('response', 'billing.read-payer-response', { label: 'What the Payer Allowed' });
+  for (const [id, label, expression] of CLAIM_FACTS) {
+    g.add(id, 'std.expr', expr(label, expression));
+  }
   g.add('underpayment', 'billing.underpayment', { label: 'Underpayment' });
   g.add('allowedFacts', 'std.expr', expr('What Medicare Allows', MEDICARE_ALLOWED_FACTS));
   g.add('keepPriority', 'std.var.set', {
@@ -447,7 +554,7 @@ const reconcilePayment = (): GraphDef => {
       title: 'Reconcile payment',
       queue: 'billing-reconcile',
       instructions:
-        'The payer answered and a balance remains. Check what they paid and adjusted, with their reason codes, against the claim, and record anything missing. When Medicare pays, the details show what the Medicare ambulance fee schedule allows for the trip at its pickup locality (urban, rural or super-rural), so an underpayment stands out. Continue to the next payer or the patient, write off the rest, or correct the claim and resubmit it to this payer as a replacement of their claim.',
+        'The payer answered and a balance remains. Check what they paid and adjusted, with their reason codes, against the claim, and record anything missing. When Medicare pays first, the details show what the Medicare ambulance fee schedule allows for the trip at its pickup locality (urban, rural or super-rural), so an underpayment stands out. Continue to the next payer or the patient, write off the rest, or correct the claim and resubmit it to this payer as a replacement of their claim.',
       outcomes: ['continue', 'writeOff', 'resubmitCorrected'],
       hints: {
         continue:
@@ -464,33 +571,43 @@ const reconcilePayment = (): GraphDef => {
   g.ret('doneReturn', 'done');
   g.ret('writeOffReturn', 'writeOff');
   g.wire('entry.exec', 'readClaim.exec');
-  g.wire('entry.claimId', 'readClaim.claimId');
-  g.wire('readClaim.then', 'priceMedicare.exec');
-  g.wire('readClaim.claim', 'isMedicare.claim', 'pickupZip.claim', 'chargeLines.claim');
-  g.wire('entry.context', 'taskContext.context');
-  g.wire('entry.coverageId', 'isMedicare.coverageId');
-  g.wire('isMedicare.result', 'priceMedicare.condition');
-  g.wire('priceMedicare.true', 'locality.exec');
-  g.wire('priceMedicare.false', 'reconcile.exec');
+  g.wire('entry.claimId', 'readClaim.claimId', 'response.claimId');
+  g.wire('entry.coverageId', 'response.coverageId', 'payerKind.coverageId', 'primary.coverageId');
+  g.wire('readClaim.then', 'price.exec');
+  g.wire(
+    'readClaim.claim',
+    'priceable.claim',
+    'pickupZip.claim',
+    'serviceDate.claim',
+    'chargeLines.claim',
+    'payerKind.claim',
+    'primary.claim',
+    'severalPatients.claim',
+    'denialExpected.claim'
+  );
+  for (const [id] of CLAIM_FACTS) g.wire(`${id}.result`, `underpayment.${id}`);
+  g.wire('priceable.result', 'price.condition');
+  g.wire('price.true', 'locality.exec');
+  g.wire('price.false', 'reconcile.exec');
   g.wire('pickupZip.result', 'locality.postalCode');
   g.wire('locality.found', 'allowed.exec');
   g.wire('locality.notFound', 'reconcile.exec');
   g.wire('chargeLines.result', 'allowed.lines');
+  g.wire('serviceDate.result', 'allowed.serviceDate');
   g.wire('locality.carrier', 'allowed.carrier', 'allowedFacts.carrier');
   g.wire('locality.locality', 'allowed.locality', 'allowedFacts.locality');
   g.wire('locality.rurality', 'allowed.rurality', 'allowedFacts.rurality');
-  g.wire('allowed.totalCents', 'allowedFacts.totalCents');
+  g.wire('allowed.totalCents', 'allowedFacts.totalCents', 'underpayment.medicareAllowedCents');
   g.wire('allowed.missing', 'allowedFacts.missing');
   g.wire('allowed.then', 'response.exec');
-  g.wire('entry.claimId', 'response.claimId');
-  g.wire('entry.coverageId', 'response.coverageId');
   g.wire('response.then', 'keepAllowed.exec');
-  g.wire('allowed.totalCents', 'underpayment.medicareAllowedCents');
   g.wire(
     'response.allowedCents',
     'underpayment.payerAllowedCents',
     'allowedFacts.payerAllowedCents'
   );
+  g.wire('response.reasonCoded', 'underpayment.reasonCoded');
+  g.wire('underpayment.compared', 'allowedFacts.compared');
   g.wire('underpayment.underpaidCents', 'allowedFacts.underpaidCents');
   g.wire('underpayment.underpaid', 'allowedFacts.underpaid');
   g.wire('underpayment.priority', 'keepPriority.value');
@@ -499,6 +616,7 @@ const reconcilePayment = (): GraphDef => {
   g.wire('keepAllowed.then', 'keepPriority.exec');
   g.wire('keepPriority.then', 'reconcile.exec');
   g.wire('medicareAllowed.value', 'taskContext.medicareAllowed');
+  g.wire('entry.context', 'taskContext.context');
   g.wire('entry.subject', 'reconcile.subject');
   g.wire('taskContext.result', 'reconcile.context');
   summarize(
@@ -1330,7 +1448,7 @@ export const cycleGraphs: SeedGraph[] = [
   asRule(
     'billing.underpayment',
     'Underpayment',
-    'Compares what a payer allowed with what the Medicare ambulance fee schedule allows for the trip (Underpayment table): more than $1 short is an underpayment, and its reconcile task is raised.',
+    'Holds what a Medicare primary payer allowed against what the Medicare ambulance fee schedule of the year of service allows for the trip (Underpayment table), unless several patients shared the trip, a denial is expected, the response has no reason codes or the year has no schedule: more than $1 short is an underpayment, and its reconcile task is raised.',
     underpayment()
   ),
   asStage(

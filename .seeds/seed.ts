@@ -19,6 +19,7 @@ import {
   validateGraph
 } from '@ugula/graph';
 import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
+import { sql } from 'kysely';
 import * as v from 'valibot';
 import { upsertAgency, upsertOrganization } from './agencies.ts';
 import { billingGraphs, billingTables } from './billing/index.ts';
@@ -55,6 +56,19 @@ import { upsertMembership, upsertUser } from './users.ts';
 const DEV_AGENCIES = [
   { name: 'Development', slug: 'dev', sftp: true, submitterId: 'DEVEMS01' },
   { name: 'Development North', slug: 'dev-north', sftp: false, submitterId: 'DEVEMS02' }
+] as const;
+
+const REFERENCE_TABLES = [
+  'gnis_places',
+  'codes',
+  'nemsis_elements',
+  'nemsis_codes',
+  'nemsis_pick_lists',
+  'geonames_postal_codes',
+  'cms_zip_localities',
+  'cms_zip4_localities',
+  'cms_ambulance_fees',
+  'cms_hospitals'
 ] as const;
 
 const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
@@ -129,6 +143,7 @@ const seedBase = async (db: Db) => {
     await publishTables(tx, billingTables);
     await publishGraphs(tx, billingGraphs, new Set(nodes.map(refKey)));
   });
+  await sql`analyze ${sql.join(REFERENCE_TABLES.map((name) => sql.table(name)))}`.execute(db);
 };
 
 const seedDev = async (db: Db, dev: DevSeedConfig) => {

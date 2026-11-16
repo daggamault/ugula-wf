@@ -148,7 +148,7 @@ describe('patientBalanceFactsOf', () => {
 });
 
 describe('responseFactsOf', () => {
-  it("adds up what a payer allowed: its payments, the patient's share and sequestration", () => {
+  it("adds up what a payer allowed: its payments, the patient's deductible, coinsurance and copay, and sequestration", () => {
     const paid = ledger([
       event({ kind: 'submitted' }),
       event({
@@ -157,6 +157,7 @@ describe('responseFactsOf', () => {
         adjustments: [
           { group: 'CO', reason: '45', cents: 40_000 },
           { group: 'PR', reason: '2', cents: 11_000 },
+          { group: 'PR', reason: '96', cents: 15_000 },
           { group: 'CO', reason: '253', cents: 900 }
         ]
       }),
@@ -165,12 +166,14 @@ describe('responseFactsOf', () => {
     assert.deepEqual(responseFactsOf(paid, 'mcr'), {
       paidCents: 43_000,
       patientCents: 11_000,
-      allowedCents: 54_900
+      allowedCents: 54_900,
+      reasonCoded: true
     });
     assert.deepEqual(responseFactsOf(ledger([]), 'blue'), {
       paidCents: 0,
       patientCents: 0,
-      allowedCents: 0
+      allowedCents: 0,
+      reasonCoded: false
     });
     assert.throws(() => responseFactsOf(paid, 'nope'), /not on the claim/);
   });

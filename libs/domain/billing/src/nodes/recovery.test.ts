@@ -100,7 +100,8 @@ describe('recoveryNodes', () => {
     assert.deepEqual(response.outputs, {
       paidCents: 43_000,
       patientCents: 11_000,
-      allowedCents: 54_900
+      allowedCents: 54_900,
+      reasonCoded: true
     });
   });
 

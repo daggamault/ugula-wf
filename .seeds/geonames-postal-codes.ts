@@ -1,7 +1,7 @@
 import type { ZipPlace } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import type { Kysely } from 'kysely';
-import { BATCH, inBatches, tsvRows } from './tsv.ts';
+import { BATCH, inBatches, truncate, tsvRows } from './tsv.ts';
 
 export const GEONAMES_POSTAL_CODES_FILE = new URL(
   './data/geonames-postal-codes.tsv.gz',
@@ -23,7 +23,7 @@ export const replaceGeonamesPostalCodes = async (
   db: Kysely<Database>,
   places: readonly ZipPlace[]
 ) => {
-  await db.deleteFrom('geonames_postal_codes').execute();
+  await truncate(db, ['geonames_postal_codes']);
   await inBatches(places, BATCH, (batch) =>
     db
       .insertInto('geonames_postal_codes')

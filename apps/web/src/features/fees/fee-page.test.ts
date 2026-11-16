@@ -78,7 +78,7 @@ describe('FeePage', () => {
     assert.ok(html.includes('step="0.01"') && html.includes('Default Schedule (Every Payer)'));
     assert.ok(html.includes('href="/fees?q=a04"') && html.includes('>Save Fee<'));
     assert.ok(html.includes('@3xl:grid-cols-4'));
-    assert.ok(html.includes('>Find Payer<') && html.includes('type="search"'));
+    assert.match(html, /role="combobox"[^>]*aria-label="Search Payer"/);
   });
 
   it('keeps the payer and code of an existing fee and loads it first', () => {
@@ -92,7 +92,7 @@ describe('FeePage', () => {
     );
     assert.ok(edit.includes('readOnly=""') && edit.includes('value="950.00"'));
     assert.ok(
-      edit.includes('value="Default Schedule (Every Payer)"') && !edit.includes('Find Payer')
+      edit.includes('value="Default Schedule (Every Payer)"') && !edit.includes('Search Payer')
     );
     const loading = renderToStaticMarkup(
       createElement(FeePage, {

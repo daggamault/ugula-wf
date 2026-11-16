@@ -94,6 +94,8 @@ export const patientBalanceFactsOf = (ledger: ClaimLedger) => {
 
 const SEQUESTRATION = 'CO-253';
 
+const COST_SHARE = ['PR-1', 'PR-2', 'PR-3'];
+
 export const responseFactsOf = (ledger: ClaimLedger, coverageId: string) => {
   if (!coverageOf(ledger, coverageId)) throw new Error(`Payer ${coverageId} is not on the claim`);
   const responses = ledger.events.filter(
@@ -102,9 +104,13 @@ export const responseFactsOf = (ledger: ClaimLedger, coverageId: string) => {
   const adjustments = responses.flatMap((e) => e.adjustments);
   const sum = (cents: number[]) => cents.reduce((total, c) => total + c, 0);
   const paidCents = sum(responses.map((e) => e.paidCents));
-  const patientCents = sum(adjustments.filter((a) => a.group === 'PR').map((a) => a.cents));
-  const sequesteredCents = sum(
-    adjustments.filter((a) => `${a.group}-${a.reason}` === SEQUESTRATION).map((a) => a.cents)
-  );
-  return { paidCents, patientCents, allowedCents: paidCents + patientCents + sequesteredCents };
+  const centsOf = (codes: readonly string[]) =>
+    sum(adjustments.filter((a) => codes.includes(`${a.group}-${a.reason}`)).map((a) => a.cents));
+  const patientCents = centsOf(COST_SHARE);
+  return {
+    paidCents,
+    patientCents,
+    allowedCents: paidCents + patientCents + centsOf([SEQUESTRATION]),
+    reasonCoded: adjustments.length > 0
+  };
 };

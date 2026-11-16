@@ -55,12 +55,13 @@ export const recoveryNodes: NodesOf = (stores) => {
       title: 'Read Payer Response',
       category: CATEGORY,
       description:
-        "Adds up every response one payer sent on a claim: what it paid, the patient's share it stated (PR adjustments) and what it allowed (paid, plus the patient's share, plus Medicare sequestration, CO-253). Decides nothing.",
+        "Adds up every response one payer sent on a claim: what it paid, the patient's share of the allowed amount it stated (deductible, coinsurance and copay: PR-1, PR-2, PR-3), what it allowed (paid, plus that share, plus Medicare sequestration, CO-253) and whether it sent reason codes at all (a payment posted by hand may have none). Decides nothing.",
       inputs: [claimIdPin, coverageIdPin],
       outputs: [
         pin('paidCents', 'integer', { label: 'Paid (Cents)' }),
         pin('patientCents', 'integer', { label: "Patient's Share (Cents)" }),
-        pin('allowedCents', 'integer', { label: 'Allowed (Cents)' })
+        pin('allowedCents', 'integer', { label: 'Allowed (Cents)' }),
+        pin('reasonCoded', 'boolean', { label: 'Sent Reason Codes' })
       ],
       compute: async (inputs, _, ctx) =>
         responseFactsOf(

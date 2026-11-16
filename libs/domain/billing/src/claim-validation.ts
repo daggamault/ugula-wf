@@ -18,7 +18,7 @@ import {
   SELF
 } from './claim-details.ts';
 import type { DocumentKind } from './claim-documents.ts';
-import { formatIcd10 } from './code-sets.ts';
+import { formatIcd10, ICD10CM_FROM } from './code-sets.ts';
 import { daysBetween } from './documentation.ts';
 import type { CheckedFacility, ResponsibleParty } from './facilities.ts';
 import type { Address } from './patients.ts';
@@ -154,6 +154,9 @@ export const STAY_KINDS = ['inpatient', 'snf'] as const;
 
 export type StayKind = (typeof STAY_KINDS)[number];
 
+const checkedDiagnoses = (c: ClaimCheck) =>
+  c.details.serviceDate !== null && c.details.serviceDate < ICD10CM_FROM ? [] : c.diagnosisCodes;
+
 const zipStateMismatches = (c: ClaimCheck) =>
   (
     [
@@ -215,10 +218,10 @@ export const checkFactsOf = (c: ClaimCheck, asOf: Date) => {
     lineCount: c.lines.length,
     linesAddUp: c.lines.reduce((sum, l) => sum + l.totalCents, 0) === c.totalCents,
     diagnosisCount: c.details.diagnoses.length,
-    unknownDiagnoses: c.diagnosisCodes.flatMap((d) =>
+    unknownDiagnoses: checkedDiagnoses(c).flatMap((d) =>
       d.description === null ? [formatIcd10(d.code)] : []
     ),
-    unbillableDiagnoses: c.diagnosisCodes.flatMap((d) =>
+    unbillableDiagnoses: checkedDiagnoses(c).flatMap((d) =>
       d.description !== null && !d.billable ? [`${d.description} (${formatIcd10(d.code)})`] : []
     ),
     pickupMissing: missingParts(c.details.pickup),

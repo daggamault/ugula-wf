@@ -1,4 +1,5 @@
 import { PERMISSION_DESCRIPTIONS } from '@ugula/access';
+import { type CodeSet, isCodeSet } from '@ugula/billing';
 import type { FieldSpec, Json } from '@ugula/graph';
 import {
   ActivityIcon,
@@ -12,6 +13,7 @@ import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 
 import { useCan } from '../../shared/access.tsx';
 import { isApiError, messageOf } from '../../shared/api.ts';
 import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
+import { CodeField } from '../../shared/claims/code-field.tsx';
 import type { CodesClient } from '../../shared/codes.ts';
 import { formatAgo, formatDateTime, formatDay } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
@@ -79,6 +81,11 @@ const DecisionSection = ({ title, children }: { title: string; children: ReactNo
     </section>
   );
 };
+
+export const isCodeField = (f: FieldSpec): f is FieldSpec & { codeSet: CodeSet } =>
+  isCodeSet(f.codeSet) &&
+  (f.type === 'string' ||
+    (typeof f.type === 'object' && 'list' in f.type && f.type.list === 'string'));
 
 const FOLLOW_UP_TRIES = 40;
 const FOLLOW_UP_WAIT_MS = 500;
@@ -304,23 +311,35 @@ const Decision = ({
             const change = changes.find((c) => c.field.name === f.name);
             return (
               <div key={f.name} className="flex min-w-0 flex-col gap-1.5">
-                <ValueField
-                  id={`field-${f.name}`}
-                  label={fieldLabel(f)}
-                  type={f.type}
-                  options={f.options}
-                  isRequired={Boolean(f.required?.length)}
-                  format={f.format}
-                  min={f.min}
-                  max={f.max}
-                  error={errors[f.name]}
-                  upload={upload}
-                  codeSet={f.codeSet}
-                  codeList={f.codeList}
-                  codes={codes}
-                  value={values[f.name] ?? null}
-                  onChange={(value) => setValues({ ...values, [f.name]: value })}
-                />
+                {codes && isCodeField(f) ? (
+                  <CodeField
+                    id={`field-${f.name}`}
+                    label={fieldLabel(f)}
+                    codeSet={f.codeSet}
+                    codeList={f.codeList ?? null}
+                    codes={codes}
+                    isMultiple={f.type !== 'string'}
+                    isRequired={Boolean(f.required?.length)}
+                    error={errors[f.name]}
+                    value={values[f.name] ?? null}
+                    onChange={(value) => setValues({ ...values, [f.name]: value })}
+                  />
+                ) : (
+                  <ValueField
+                    id={`field-${f.name}`}
+                    label={fieldLabel(f)}
+                    type={f.type}
+                    options={f.options}
+                    isRequired={Boolean(f.required?.length)}
+                    format={f.format}
+                    min={f.min}
+                    max={f.max}
+                    error={errors[f.name]}
+                    upload={upload}
+                    value={values[f.name] ?? null}
+                    onChange={(value) => setValues({ ...values, [f.name]: value })}
+                  />
+                )}
                 {change ? (
                   <FieldWas
                     field={f}

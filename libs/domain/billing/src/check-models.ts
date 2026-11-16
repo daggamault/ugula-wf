@@ -70,7 +70,11 @@ export const CHECK_FACTS = model(
     f('lineCount', 'integer', 'Charge lines'),
     f('linesAddUp', 'boolean', 'The claim total is the sum of its lines'),
     f('diagnosisCount', 'integer', 'Diagnoses'),
-    f('unknownDiagnoses', { list: 'string' }, 'Diagnoses that are not ICD-10-CM codes'),
+    f(
+      'unknownDiagnoses',
+      { list: 'string' },
+      'Diagnoses that are not ICD-10-CM codes (checked for trips in the loaded code year)'
+    ),
     f(
       'unbillableDiagnoses',
       { list: 'string' },

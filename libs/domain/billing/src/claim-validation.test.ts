@@ -255,6 +255,15 @@ describe('checkFactsOf', () => {
     );
     assert.deepEqual(facts.unknownDiagnoses, ['R99.9']);
     assert.deepEqual(facts.unbillableDiagnoses, ['Pain in throat and chest (R07)']);
+    const older = checkFactsOf(
+      {
+        ...check,
+        details: { ...check.details, serviceDate: '2026-09-30' },
+        diagnosisCodes: [{ code: 'R999', description: null, billable: false }]
+      },
+      asOf
+    );
+    assert.deepEqual(older.unknownDiagnoses, []);
   });
 
   it("counts filing days left by the agency's calendar, not UTC", () => {

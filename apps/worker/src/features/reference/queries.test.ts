@@ -59,7 +59,7 @@ describe('createReferenceStore', () => {
       }
     ]);
     const store = createReferenceStore(db);
-    assert.deepEqual(await store.medicareFees('02102', '01', ['A0425', 'A0427']), [
+    assert.deepEqual(await store.medicareFees(2026, '02102', '01', ['A0425', 'A0427']), [
       {
         code: 'A0425',
         urbanCents: 933,
@@ -68,10 +68,10 @@ describe('createReferenceStore', () => {
         ruralShortTripCents: 1413
       }
     ]);
-    assert.deepEqual(await store.medicareFees('02102', '01', []), []);
+    assert.deepEqual(await store.medicareFees(2026, '02102', '01', []), []);
     assert.equal(queries.length, 1);
     assert.ok(queries[0]?.sql.startsWith('select "code", "urban_cents"'));
-    assert.deepEqual(queries[0]?.parameters, ['02102', '01', 'A0425', 'A0427']);
+    assert.deepEqual(queries[0]?.parameters, [2026, '02102', '01', 'A0425', 'A0427']);
   });
 
   it('finds the place of a ZIP', async () => {

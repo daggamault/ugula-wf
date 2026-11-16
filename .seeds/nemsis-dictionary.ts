@@ -2,7 +2,7 @@ import { type CodeSet, isCodeSet } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { isPickList, type PickList } from '@ugula/nemsis';
 import type { Kysely } from 'kysely';
-import { BATCH, inBatches, tsvRows } from './tsv.ts';
+import { BATCH, inBatches, truncate, tsvRows } from './tsv.ts';
 
 type Element = { element: string; name: string };
 
@@ -36,9 +36,7 @@ export const replaceDictionary = async (
   db: Kysely<Database>,
   { elements, codes, picks }: Dictionary
 ) => {
-  await db.deleteFrom('nemsis_pick_lists').execute();
-  await db.deleteFrom('nemsis_codes').execute();
-  await db.deleteFrom('nemsis_elements').execute();
+  await truncate(db, ['nemsis_pick_lists', 'nemsis_codes', 'nemsis_elements']);
   await inBatches(elements, BATCH, (batch) =>
     db
       .insertInto('nemsis_elements')

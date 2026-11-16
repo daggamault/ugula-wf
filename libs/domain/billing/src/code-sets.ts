@@ -26,6 +26,8 @@ export const CODE_SET_NAMES: Record<CodeSet, string> = {
   snomed: 'SNOMED CT'
 };
 
+export const ICD10CM_FROM = '2026-10-01';
+
 export const CODE_PATTERN = '^[A-Z0-9]{1,18}$';
 
 export const normalizeCode = (set: CodeSet, code: string) => {

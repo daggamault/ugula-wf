@@ -10,6 +10,7 @@ import { headlineOf } from './task-brief.tsx';
 import {
   backOfTask,
   fieldErrorsOf,
+  isCodeField,
   NextUp,
   TaskAbout,
   TaskPage,
@@ -386,6 +387,14 @@ describe('TaskView files', () => {
 });
 
 describe('TaskView codes', () => {
+  it('picks codes only for text or text list fields naming a known code set', () => {
+    assert.ok(isCodeField({ name: 'd', type: { list: 'string' }, codeSet: 'icd10cm' }));
+    assert.ok(isCodeField({ name: 'd', type: 'string', codeSet: 'hcpcs' }));
+    assert.ok(!isCodeField({ name: 'd', type: 'string', codeSet: 'cpt' }));
+    assert.ok(!isCodeField({ name: 'd', type: 'integer', codeSet: 'icd10cm' }));
+    assert.ok(!isCodeField({ name: 'd', type: 'string' }));
+  });
+
   it('offers a code search for a field that picks from a code set', () => {
     const html = renderToStaticMarkup(
       createElement(TaskView, {

@@ -115,7 +115,6 @@ export {
 } from './clearinghouse.ts';
 export {
   CODE_PATTERN,
-  CODE_SET_NAMES,
   CODE_SETS,
   type CodeDescriptions,
   type CodeRef,

@@ -2,15 +2,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import type { CodesClient } from '../codes.ts';
 import {
   CodeField,
   chosenCodes,
+  codeLabel,
   codeOptions,
-  moveCode,
-  searchStatus,
-  shownCode
+  labelsOf,
+  moveCode
 } from './code-field.tsx';
-import type { CodesClient } from './codes.ts';
 
 const pending = () => new Promise<never>(() => undefined);
 
@@ -31,25 +31,23 @@ const render = (value: string[] | string, isMultiple: boolean) =>
   );
 
 describe('code field', () => {
-  it('reads the chosen codes from a text or a text list', () => {
-    assert.deepEqual(chosenCodes(['R079', 3, 'I10']), ['R079', 'I10']);
+  it('reads the chosen codes from a text or a text list, once each', () => {
+    assert.deepEqual(chosenCodes(['R079', 3, 'I10', 'R079', '']), ['R079', 'I10']);
     assert.deepEqual(chosenCodes('R079'), ['R079']);
     assert.deepEqual(chosenCodes(''), []);
     assert.deepEqual(chosenCodes(null), []);
   });
 
-  it('lists the chosen codes first, then matches, each with its meaning', () => {
-    const known = [{ code: 'R079', description: 'Chest pain, unspecified', billable: true }];
-    const found = [
-      { code: 'I10', description: 'Essential (primary) hypertension', billable: true },
+  it('shows each code with its meaning, or the code alone before it is known', () => {
+    const labels = labelsOf([
       { code: 'R079', description: 'Chest pain, unspecified', billable: true }
-    ];
-    assert.deepEqual(codeOptions('icd10cm', ['R079', 'Z999'], known, found), [
-      { value: 'R079', label: 'Chest pain, unspecified (R07.9)' },
-      { value: 'Z999', label: 'Z99.9' },
-      { value: 'I10', label: 'Essential (primary) hypertension (I10)' }
     ]);
-    assert.equal(shownCode('rxnorm', '1191'), '1191');
+    assert.equal(codeLabel('icd10cm', labels, 'R079'), 'Chest pain, unspecified (R07.9)');
+    assert.equal(codeLabel('icd10cm', labels, 'Z999'), 'Z99.9');
+    assert.deepEqual(codeOptions('icd10cm', ['R079', 'Z999', 'R079'], labels), [
+      { value: 'R079', label: 'Chest pain, unspecified (R07.9)' },
+      { value: 'Z999', label: 'Z99.9' }
+    ]);
   });
 
   it('moves a code up or down the billing order, never past either end', () => {
@@ -59,21 +57,17 @@ describe('code field', () => {
     assert.deepEqual(moveCode(['A', 'B'], 1, 1), ['A', 'B']);
   });
 
-  it('says what the search is doing when it shows no codes', () => {
-    assert.equal(searchStatus('', false, undefined), 'Type a code or words from its description');
-    assert.equal(searchStatus('chest', true, undefined), 'Searching…');
-    assert.equal(searchStatus('zzz', false, undefined), 'No matching codes');
-    assert.equal(searchStatus('chest', false, new Error('Offline')), 'Offline');
-  });
-
-  it('searches inside one picker and lists several codes in billing order to reorder', () => {
+  it('searches inside one picker and lists the chosen codes in billing order to reorder or remove', () => {
     const one = render(['R079'], true);
     assert.equal(one.match(/role="combobox"/g)?.length, 1);
-    assert.ok(one.includes('R07.9') && !one.includes('Diagnoses in order'));
+    assert.ok(one.includes('aria-label="Diagnoses in order"'));
+    assert.ok(one.includes('>Add a code<'));
+    assert.ok(one.includes('aria-label="Remove R07.9"'));
     const two = render(['R079', 'I10'], true);
-    assert.ok(two.includes('aria-label="Diagnoses in order"'));
-    assert.ok(two.includes('aria-label="Move R07.9 down"'));
+    assert.ok(two.includes('id="field-diagnoses-down-R079"'));
     assert.ok(two.includes('aria-label="Move I10 up"'));
-    assert.ok(render('R079', false).includes('Choose…'));
+    assert.ok(two.includes('role="status"'));
+    const single = render('R079', false);
+    assert.ok(single.includes('R07.9') && !single.includes('in order'));
   });
 });

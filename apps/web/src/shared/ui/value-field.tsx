@@ -1,9 +1,6 @@
-import { isCodeSet } from '@ugula/billing';
 import { formatType, isFileType, type Json, type ValueType } from '@ugula/graph';
 import { useState } from 'react';
 import { classNamesOf } from '../class-names.ts';
-import { CodeField } from '../code-field.tsx';
-import type { CodesClient } from '../codes.ts';
 import { Checkbox } from './checkbox.tsx';
 import { describedByOf, Field, fieldControlClasses, fieldTextClasses } from './field.tsx';
 import { Input } from './input.tsx';
@@ -23,9 +20,6 @@ type ValueFieldProps = {
   max?: number | undefined;
   options?: readonly SelectOption[] | undefined;
   upload?: ((file: File) => Promise<UploadedValue>) | undefined;
-  codeSet?: string | undefined;
-  codeList?: string | undefined;
-  codes?: CodesClient | undefined;
 };
 
 type UploadedValue = { file: Json; name: string };
@@ -144,42 +138,11 @@ const ListField = ({ id, label, value, onChange, error, isRequired }: ValueField
 const textOf = (value: Json) => (typeof value === 'string' ? value : '');
 
 export const ValueField = (props: ValueFieldProps) => {
-  const {
-    id,
-    label,
-    type,
-    value,
-    onChange,
-    error,
-    isRequired,
-    format,
-    min,
-    max,
-    options,
-    upload,
-    codeSet,
-    codeList,
-    codes
-  } = props;
+  const { id, label, type, value, onChange, error, isRequired, format, min, max, options, upload } =
+    props;
   const common = { id, label, error, required: isRequired };
   if (upload && isFileType(type)) {
     return <FileField id={id} label={label} error={error} onChange={onChange} upload={upload} />;
-  }
-  if (codes && isCodeSet(codeSet) && (type === 'string' || isStringList(type))) {
-    return (
-      <CodeField
-        id={id}
-        label={label}
-        codeSet={codeSet}
-        codeList={codeList ?? null}
-        codes={codes}
-        isMultiple={type !== 'string'}
-        value={value}
-        onChange={onChange}
-        error={error}
-        isRequired={isRequired}
-      />
-    );
   }
   if (options) {
     return (

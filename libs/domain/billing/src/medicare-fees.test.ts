@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { isRurality, type MedicareFee, medicareAllowed } from './medicare-fees.ts';
+import { feeYearOf, isRurality, type MedicareFee, medicareAllowed } from './medicare-fees.ts';
 
 const fees: MedicareFee[] = [
   {
@@ -20,10 +20,10 @@ const fees: MedicareFee[] = [
 ];
 
 const lines = [
-  { code: 'A0427', units: 1 },
-  { code: 'A0425', units: 20.5 },
-  { code: 'A0888', units: 3 },
-  { code: 'A0888', units: 1 }
+  { code: 'A0427', units: 1, chargeCents: null },
+  { code: 'A0425', units: 20.5, chargeCents: null },
+  { code: 'A0888', units: 3, chargeCents: null },
+  { code: 'A0888', units: 1, chargeCents: null }
 ];
 
 describe('medicareAllowed', () => {
@@ -45,7 +45,7 @@ describe('medicareAllowed', () => {
       [71_671, 17 * 1413 + Math.round(3.5 * 942)]
     );
     assert.equal(
-      medicareAllowed([{ code: 'A0425', units: 4.2 }], fees, 'rural').totalCents,
+      medicareAllowed([{ code: 'A0425', units: 4.2, chargeCents: null }], fees, 'rural').totalCents,
       Math.round(4.2 * 1413)
     );
   });
@@ -58,8 +58,27 @@ describe('medicareAllowed', () => {
     );
   });
 
+  it('allows the lesser of the charge and the fee schedule', () => {
+    const charged = [
+      { code: 'A0427', units: 1, chargeCents: 95_000 },
+      { code: 'A0425', units: 10, chargeCents: 8_000 }
+    ];
+    assert.deepEqual(
+      medicareAllowed(charged, fees, 'urban').lines.map((l) => l.allowedCents),
+      [70_975, 8_000]
+    );
+  });
+
   it('knows the three CMS rurality classes', () => {
     assert.ok(['urban', 'rural', 'superRural'].every(isRurality));
     assert.ok(!isRurality('super-rural'));
+  });
+});
+
+describe('feeYearOf', () => {
+  it('takes the fee schedule year from a date of service', () => {
+    assert.equal(feeYearOf('2026-11-02'), 2026);
+    assert.equal(feeYearOf('2026-11'), null);
+    assert.equal(feeYearOf(null), null);
   });
 });

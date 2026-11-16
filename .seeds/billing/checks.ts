@@ -177,7 +177,7 @@ const CHECKS: Check[] = [
     key: 'billing.check-diagnoses',
     name: 'Check Diagnoses',
     description:
-      'The claim has at least one ICD-10 diagnosis, every diagnosis is an ICD-10-CM code, and none is a category that needs more characters to bill.',
+      'The claim has at least one ICD-10 diagnosis; for trips in the year of the loaded ICD-10-CM codes, every diagnosis is an ICD-10-CM code and none is a category that needs more characters to bill.',
     codes: {
       'diagnosis-missing': 'blocking',
       'diagnosis-unknown': 'blocking',

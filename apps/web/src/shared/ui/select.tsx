@@ -36,6 +36,7 @@ type ControlProps = {
   isSearchable?: boolean | undefined;
   onSearch?: ((query: string) => void) | undefined;
   emptyText?: string | undefined;
+  summary?: string | undefined;
   title?: string | undefined;
   'aria-label'?: string | undefined;
   'aria-invalid'?: boolean | undefined;
@@ -72,6 +73,8 @@ const TYPEAHEAD_MS = 600;
 
 const valuesOf = (props: SelectControlProps): readonly string[] =>
   props.isMultiple ? props.value : [props.value];
+
+export const resultCount = (count: number) => (count === 1 ? '1 result' : `${count} results`);
 
 export const summaryOf = (options: readonly SelectOption[], values: readonly string[]) => {
   const labels = values.flatMap((v) => options.find((o) => o.value === v)?.label ?? []);
@@ -132,7 +135,7 @@ export const SelectControl = (props: SelectControlProps) => {
   const shown = onSearch ? options : matchesOf(options, query);
   const optionId = (i: number) => `${listId}-${i}`;
   const activeOption = shown[active];
-  const summary = summaryOf(options, values);
+  const summary = props.summary ?? summaryOf(options, values);
   const listName = props.label ?? props['aria-label'];
 
   useEffect(() => {
@@ -302,11 +305,14 @@ export const SelectControl = (props: SelectControlProps) => {
             );
           })}
         </div>
-        {shown.length ? null : (
-          <p role="status" className="text-surface-fg-muted px-3 py-2 text-sm">
-            {emptyText}
+        {onSearch || !shown.length ? (
+          <p
+            role="status"
+            className={shown.length ? 'sr-only' : 'text-surface-fg-muted px-3 py-2 text-sm'}
+          >
+            {shown.length ? resultCount(shown.length) : emptyText}
           </p>
-        )}
+        ) : null}
       </div>
     </div>
   );

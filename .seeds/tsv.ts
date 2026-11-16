@@ -1,4 +1,6 @@
 import { gunzipSync } from 'node:zlib';
+import type { Database } from '@ugula/db';
+import { type Kysely, sql } from 'kysely';
 
 export const tsvRows = (gzipped: Buffer) =>
   gunzipSync(gzipped)
@@ -16,3 +18,6 @@ export const inBatches = async <T>(
 };
 
 export const BATCH = 5_000;
+
+export const truncate = (db: Kysely<Database>, tables: readonly (keyof Database)[]) =>
+  sql`truncate table ${sql.join(tables.map((name) => sql.table(name)))}`.execute(db);

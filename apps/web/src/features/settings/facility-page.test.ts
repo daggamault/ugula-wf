@@ -72,6 +72,10 @@ describe('FacilityPage', () => {
     };
     assert.equal(hospitalLabel(hospital), 'SOUTHEAST HEALTH MEDICAL CENTER, DOTHAN AL (010001)');
     const draft = { ...toFacilityDraft(null), contract: true, contractNote: 'Pays all 911' };
+    assert.equal(
+      fromHospital({ ...draft, phone: '2175550100' }, { ...hospital, phone: null }).phone,
+      '2175550100'
+    );
     assert.deepEqual(fromHospital(draft, hospital), {
       name: 'SOUTHEAST HEALTH MEDICAL CENTER',
       addressLine: '1108 ROSS CLARK CIRCLE',

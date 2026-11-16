@@ -1,5 +1,5 @@
 import { SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { parseDollars } from '../../shared/format.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
@@ -14,6 +14,7 @@ import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
+import { useSearch } from '../../shared/use-search.ts';
 import type { DirectoryPayer, Fee, FeeInput, FeesClient } from './client.ts';
 import { feeDeleteNote, feeName } from './fees-page.tsx';
 
@@ -31,8 +32,6 @@ export const payerOptions = (found: readonly DirectoryPayer[], chosen: Directory
   }))
 ];
 
-const SEARCH_DELAY_MS = 250;
-
 const PayerPicker = ({
   findPayers,
   value,
@@ -42,36 +41,26 @@ const PayerPicker = ({
   value: DirectoryPayer | null;
   onChange: (payer: DirectoryPayer | null) => void;
 }) => {
-  const [text, setText] = useState('');
-  const [q, setQ] = useState('');
-  useEffect(() => {
-    const timer = setTimeout(() => setQ(text.trim()), SEARCH_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [text]);
-  const found = useResource(`fee-payers:${q}`, (signal) => findPayers(q, signal));
-  const payers = found.data ?? [];
+  const search = useSearch<DirectoryPayer>('fee-payers', findPayers, 'Type part of a payer name');
   return (
-    <>
-      <Input
-        id="fee-payer-search"
-        label="Find Payer"
-        type="search"
-        span={2}
-        placeholder="Type part of a payer name"
-        hint={found.error ? found.error.message : undefined}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
-      <Select
-        id="fee-payer"
-        label="Payer"
-        span={2}
-        hint={payers.length === 50 ? 'Showing the first 50 matches.' : undefined}
-        options={payerOptions(payers, value)}
-        value={value?.id ?? ''}
-        onChange={(v) => onChange([value, ...payers].find((p) => p !== null && p.id === v) ?? null)}
-      />
-    </>
+    <Select
+      id="fee-payer"
+      label="Payer"
+      span={2}
+      hint={search.results.length === 50 ? 'Showing the first 50 matches.' : undefined}
+      summary={value?.name ?? DEFAULT_SCHEDULE.label}
+      options={
+        search.q
+          ? search.results.map((p) => ({ value: p.id, label: p.name }))
+          : payerOptions(search.results, value)
+      }
+      value={value?.id ?? ''}
+      onSearch={search.onSearch}
+      emptyText={search.emptyText}
+      onChange={(v) =>
+        onChange([value, ...search.results].find((p) => p !== null && p.id === v) ?? null)
+      }
+    />
   );
 };
 

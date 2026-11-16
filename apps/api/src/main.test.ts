@@ -62,6 +62,8 @@ describe('api createApp', () => {
         '/payers',
         '/patients?lastName=doe',
         '/notifications',
+        '/codes?set=icd10cm&q=chest',
+        '/facilities/hospitals?q=mercy',
         '/billing-profile',
         '/claims',
         '/submissions',
@@ -166,7 +168,11 @@ describe('api createApp', () => {
       [['payers:create'], 'POST', '/facilities', facility, false],
       [['facilities:create'], 'POST', '/facilities', facility, true],
       [['payers:update'], 'PUT', `/facilities/${ID}`, facility, false],
-      [['facilities:delete'], 'DELETE', `/facilities/${ID}`, undefined, true]
+      [['facilities:delete'], 'DELETE', `/facilities/${ID}`, undefined, true],
+      [['payers:read'], 'GET', '/facilities/hospitals?q=mercy', undefined, false],
+      [['facilities:read'], 'GET', '/facilities/hospitals?q=mercy', undefined, true],
+      [[], 'GET', '/codes?set=icd10cm&q=chest', undefined, true],
+      [['claims:update'], 'POST', '/codes', {}, false]
     ];
     for (const [held, method, path, body, allowed] of cases) {
       assert.equal(!(await send(held, method, path, body)), allowed, `${held} ${method} ${path}`);

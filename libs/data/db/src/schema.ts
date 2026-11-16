@@ -305,6 +305,7 @@ type CmsZip4LocalitiesTable = {
 };
 
 type CmsAmbulanceFeesTable = {
+  year: number;
   carrier: string;
   locality: string;
   code: string;

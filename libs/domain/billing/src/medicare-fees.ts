@@ -19,6 +19,13 @@ export type MedicareLocality = {
   plusFourNeeded: boolean;
 };
 
+const SERVICE_DATE = /^(\d{4})-\d{2}-\d{2}$/;
+
+export const feeYearOf = (serviceDate: string | null) => {
+  const year = SERVICE_DATE.exec(serviceDate ?? '')?.[1];
+  return year ? Number(year) : null;
+};
+
 export type MedicareFee = {
   code: string;
   urbanCents: number;
@@ -26,6 +33,8 @@ export type MedicareFee = {
   superRuralCents: number | null;
   ruralShortTripCents: number | null;
 };
+
+type ChargedLine = ClaimLine & { chargeCents: number | null };
 
 type AllowedLine = ClaimLine & { allowedCents: number };
 
@@ -39,14 +48,22 @@ const allowedCentsOf = (fee: MedicareFee, units: number, rurality: Rurality) => 
 };
 
 export const medicareAllowed = (
-  lines: readonly ClaimLine[],
+  lines: readonly ChargedLine[],
   fees: readonly MedicareFee[],
   rurality: Rurality
 ): AllowedClaim => {
   const byCode = new Map(fees.map((f) => [f.code, f]));
   const allowed = lines.flatMap((l) => {
     const fee = byCode.get(l.code);
-    return fee ? [{ ...l, allowedCents: allowedCentsOf(fee, l.units, rurality) }] : [];
+    if (!fee) return [];
+    const scheduled = allowedCentsOf(fee, l.units, rurality);
+    return [
+      {
+        code: l.code,
+        units: l.units,
+        allowedCents: l.chargeCents === null ? scheduled : Math.min(scheduled, l.chargeCents)
+      }
+    ];
   });
   return {
     lines: allowed,

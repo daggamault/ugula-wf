@@ -172,14 +172,14 @@ const originDestination = (): GraphDef => {
   g.add(
     'destinationLetter',
     'std.expr',
-    expr('Destination Letter', "letter ?? (hospital == true ? 'H' : null)")
+    expr('Destination Letter', "letter ?? (type == null && hospital == true ? 'H' : null)")
   );
   g.add(
     'reasons',
     'std.expr',
     expr(
       'Why',
-      "concat(rules, letter == null && hospital == true ? ['The destination is a Medicare-certified hospital (CMS hospital list)'] : [])"
+      "concat(rules, letter == null && type == null && hospital == true ? ['The report gives no destination type and the destination is a Medicare-certified hospital (CMS hospital list)'] : [])"
     )
   );
   g.add('codes', 'std.list.make', { label: 'Origin and Destination', config: { count: 2 } });
@@ -189,7 +189,7 @@ const originDestination = (): GraphDef => {
   g.wire('entry.trip', 'trip.trip');
   g.wire('locations.pickupType', 'origin.locationType');
   g.wire('trip.serviceType', 'origin.serviceType');
-  g.wire('locations.destinationType', 'destination.key');
+  g.wire('locations.destinationType', 'destination.key', 'destinationLetter.type', 'reasons.type');
   g.wire('origin.code', 'codes.item1');
   g.wire('destination.value', 'destinationLetter.letter', 'reasons.letter');
   g.wire('locations.destinationHospital', 'destinationLetter.hospital', 'reasons.hospital');
