@@ -84,14 +84,16 @@ export const isAssignable = (from: ValueType, to: ValueType): boolean => {
 
 const finiteProblem = (value: Json): string | null => {
   if (typeof value === 'number') return Number.isFinite(value) ? null : 'not a finite number';
-  const entries = Array.isArray(value)
-    ? value.map((x, i) => [`[${i}]`, x] as const)
-    : isRecord(value)
-      ? Object.entries(value)
-      : [];
-  for (const [at, x] of entries) {
-    const err = finiteProblem(x);
-    if (err) return `${at}: ${err}`;
+  if (Array.isArray(value)) {
+    for (const [i, x] of value.entries()) {
+      const err = finiteProblem(x);
+      if (err) return `[${i}]: ${err}`;
+    }
+  } else if (isRecord(value)) {
+    for (const k in value) {
+      const err = finiteProblem(value[k] ?? null);
+      if (err) return `${k}: ${err}`;
+    }
   }
   return null;
 };
@@ -99,31 +101,36 @@ const finiteProblem = (value: Json): string | null => {
 export const checkValue = (type: ValueType, value: Json): string | null =>
   finiteProblem(value) ?? checkShape(type, value);
 
+const mismatchOf = (type: ValueType, value: Json) =>
+  `expected ${formatType(type)}, got ${kindOf(value)}`;
+
 const checkShape = (type: ValueType, value: Json): string | null => {
   if (value === null || type === 'any') return null;
-  const mismatch = `expected ${formatType(type)}, got ${kindOf(value)}`;
   switch (type) {
     case 'string':
-      return typeof value === 'string' ? null : mismatch;
+      return typeof value === 'string' ? null : mismatchOf(type, value);
     case 'number':
-      return typeof value === 'number' && Number.isFinite(value) ? null : mismatch;
+      return typeof value === 'number' && Number.isFinite(value) ? null : mismatchOf(type, value);
     case 'integer':
-      return Number.isInteger(value) ? null : mismatch;
+      return Number.isInteger(value) ? null : mismatchOf(type, value);
     case 'boolean':
-      return typeof value === 'boolean' ? null : mismatch;
+      return typeof value === 'boolean' ? null : mismatchOf(type, value);
     case 'datetime':
-      return typeof value === 'string' && !Number.isNaN(Date.parse(value)) ? null : mismatch;
+      return typeof value === 'string' && !Number.isNaN(Date.parse(value))
+        ? null
+        : mismatchOf(type, value);
   }
   if ('list' in type) {
-    if (!Array.isArray(value)) return mismatch;
+    if (!Array.isArray(value)) return mismatchOf(type, value);
     for (const [i, item] of value.entries()) {
       const err = checkShape(type.list, item);
       if (err) return `[${i}]: ${err}`;
     }
     return null;
   }
-  if (!isRecord(value)) return mismatch;
-  for (const [k, t] of Object.entries(type.object)) {
+  if (!isRecord(value)) return mismatchOf(type, value);
+  for (const k in type.object) {
+    const t = type.object[k] ?? 'any';
     const err = checkShape(t, Object.hasOwn(value, k) ? (value[k] ?? null) : null);
     if (err) return `${k}: ${err}`;
   }
