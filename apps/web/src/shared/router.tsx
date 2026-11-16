@@ -44,6 +44,14 @@ export const useLocation = (fallback = '/') => {
   };
 };
 
+const decoded = (part: string) => {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return null;
+  }
+};
+
 export const matchPath = (pattern: string, path: string): Record<string, string> | null => {
   const want = pattern.split('/').filter(Boolean);
   const have = path.split('/').filter(Boolean);
@@ -51,8 +59,11 @@ export const matchPath = (pattern: string, path: string): Record<string, string>
   const params: Record<string, string> = {};
   for (const [i, part] of want.entries()) {
     const actual = have[i] ?? '';
-    if (part.startsWith(':')) params[part.slice(1)] = decodeURIComponent(actual);
-    else if (part !== actual) return null;
+    if (part.startsWith(':')) {
+      const value = decoded(actual);
+      if (value === null) return null;
+      params[part.slice(1)] = value;
+    } else if (part !== actual) return null;
   }
   return params;
 };

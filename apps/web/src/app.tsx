@@ -21,6 +21,7 @@ import { agencyPath, navigate, useLocation } from './shared/router.tsx';
 import { AgencyPicker } from './shared/ui/agency-picker.tsx';
 import { NotificationsButton } from './shared/ui/notifications.tsx';
 import { PageFailure, PageLoading } from './shared/ui/page.tsx';
+import { PageBoundary } from './shared/ui/page-boundary.tsx';
 import { Shell } from './shared/ui/shell.tsx';
 import { ToastProvider, useToast } from './shared/ui/toast.tsx';
 import { useResource } from './shared/use-resource.ts';
@@ -90,9 +91,11 @@ export const Workspace = ({
       }
       onSignOut={onSignOut}
     >
-      <Suspense fallback={<PageLoading />}>
-        {page ?? (home ? null : <PageFailure message={NO_SECTIONS} />)}
-      </Suspense>
+      <PageBoundary key={path}>
+        <Suspense fallback={<PageLoading />}>
+          {page ?? (home ? null : <PageFailure message={NO_SECTIONS} />)}
+        </Suspense>
+      </PageBoundary>
       {can('imports:create') ? <ImportDrop client={clients.imports} /> : null}
     </Shell>
   );

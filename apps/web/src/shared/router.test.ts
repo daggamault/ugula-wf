@@ -20,6 +20,7 @@ describe('router', () => {
     assert.deepEqual(matchPath('/runs', '/runs/'), {});
     assert.equal(matchPath('/runs/:id', '/runs'), null);
     assert.equal(matchPath('/runs/:id', '/tasks/1'), null);
+    assert.equal(matchPath('/claims/:id', '/claims/%E0'), null);
   });
 
   it('renders links and reads the server-side fallback location', () => {
