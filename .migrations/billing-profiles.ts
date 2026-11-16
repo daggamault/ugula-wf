@@ -53,6 +53,13 @@ const buildBillingProfilesTable = (db: Kysely<Database>) =>
       sql`submitter_id ~ '^[A-Za-z0-9]{2,15}$' and receiver_id ~ '^[A-Za-z0-9]{2,15}$'`
     );
 
+const buildSubmitterIndex = (db: Kysely<Database>) =>
+  db.schema
+    .createIndex('billing_profiles_submitter_id_unique')
+    .on('billing_profiles')
+    .unique()
+    .expression(sql`upper(submitter_id)`);
+
 const buildPayersTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('payers')
@@ -151,6 +158,7 @@ const buildPayerSuggestionsTable = (db: Kysely<Database>) =>
 
 export const createBillingProfilesTables = async (db: Kysely<Database>) => {
   await buildBillingProfilesTable(db).execute();
+  await buildSubmitterIndex(db).execute();
   await buildPayersTable(db).execute();
   await buildPayersIndex(db).execute();
   await buildPayerAliasesTable(db).execute();

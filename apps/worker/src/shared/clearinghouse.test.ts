@@ -133,6 +133,21 @@ describe('createConnections', () => {
     );
   });
 
+  it('polls an account copied with another password on its own, so it cannot hijack the inbox', async () => {
+    const { connections } = setup([
+      row('t1', 'acme'),
+      row('t2', 'acme', { secret: sealSecret(keyring, 'wrong', 't2') })
+    ]);
+    const targets = (await connections.pollTargets()).filter((t) => t.agencyIds);
+    assert.deepEqual(
+      targets.map((t) => [t.source, t.agencyIds]),
+      [
+        ['sftp://acme@sshftp.waystar.com:22/download', ['t1']],
+        ['sftp://acme@sshftp.waystar.com:22/download', ['t2']]
+      ]
+    );
+  });
+
   it('seals passwords sealed with a previous key again with the current one', async () => {
     const old = parseKeyring(oldKey);
     const stale = sealSecret(old, 'pw', 't1');

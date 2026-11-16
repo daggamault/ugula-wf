@@ -40,6 +40,8 @@ const NO_PARTIES: Parties = { senderId: null, receiverId: null };
 export const sourceOf = (c: ConnectionSettings) =>
   `sftp://${c.username}@${c.host}:${c.port}${c.downloadPaths.join(',')}`;
 
+const accountOf = (c: ConnectionSettings) => JSON.stringify([sourceOf(c), c.password, c.hostKey]);
+
 export const connect = (c: ConnectionSettings, realtime: Realtime): Clearinghouse => {
   const send: RealtimeTransport | null =
     c.realtimeUrl && realtime.senderId && realtime.receiverId
@@ -177,18 +179,18 @@ export const createConnections = (deps: ConnectionDeps) => {
         { settings: ConnectionSettings; agencyIds: string[] | null }
       >();
       if (deps.fallback) {
-        targets.set(sourceOf(deps.fallback), { settings: deps.fallback, agencyIds: null });
+        targets.set(accountOf(deps.fallback), { settings: deps.fallback, agencyIds: null });
       }
       for (const r of rows) {
         const settings = r.enabled ? settingsOf(r) : null;
         if (!settings) continue;
-        const source = sourceOf(settings);
-        const known = targets.get(source);
-        if (!known) targets.set(source, { settings, agencyIds: [r.agency_id] });
+        const account = accountOf(settings);
+        const known = targets.get(account);
+        if (!known) targets.set(account, { settings, agencyIds: [r.agency_id] });
         else known.agencyIds?.push(r.agency_id);
       }
-      return [...targets].map(([source, { settings, agencyIds }]) => ({
-        source,
+      return [...targets.values()].map(({ settings, agencyIds }) => ({
+        source: sourceOf(settings),
         clearinghouse: connect(settings, realtime(NO_PARTIES)),
         agencyIds
       }));

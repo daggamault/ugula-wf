@@ -32,4 +32,14 @@ describe('billing profile service', () => {
     assert.ok(queries[0]?.sql.includes('on conflict ("agency_id") do update set'));
     assert.equal(queries[0]?.parameters[0], 't-1');
   });
+
+  it('refuses a submitter ID another agency already uses', async () => {
+    const { db } = createRecordingDb(() => {
+      throw Object.assign(new Error('duplicate key'), { code: '23505' });
+    });
+    assert.deepEqual(await createBillingProfileService({ db }).save('t-2', profile), {
+      ok: false,
+      failure: { code: 'conflict', message: 'Another agency already uses submitter ID SUB01' }
+    });
+  });
 });
