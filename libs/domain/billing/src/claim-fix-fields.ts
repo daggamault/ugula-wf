@@ -97,7 +97,8 @@ export const DOCUMENTATION_FIX_FIELDS: FieldSpec[] = [
   {
     name: 'mspEmployerPlan',
     type: 'boolean',
-    label: 'MSP: group health plan from the patient or spouse’s current employment'
+    label:
+      'MSP: group health plan from the patient or spouse’s current employment, at an employer with 20 or more employees'
   },
   {
     name: 'mspEsrd',
@@ -107,7 +108,8 @@ export const DOCUMENTATION_FIX_FIELDS: FieldSpec[] = [
   {
     name: 'mspDisability',
     type: 'boolean',
-    label: 'MSP: under 65 and disabled, with a large group health plan'
+    label:
+      'MSP: under 65 and disabled, with a group health plan from an employer with 100 or more employees'
   },
   {
     name: 'mspAccident',

@@ -997,7 +997,7 @@ const MSP_ANSWERS = [
     'mspEmployerPlan',
     'boolean',
     'Employer Plan',
-    'The patient or spouse has a group health plan through current employment (working aged).',
+    'The patient or spouse has a group health plan through current employment at an employer with 20 or more employees (working aged, 42 CFR 411.172).',
     true
   ),
   d(
@@ -1011,7 +1011,7 @@ const MSP_ANSWERS = [
     'mspDisability',
     'boolean',
     'Disability',
-    'The patient is under 65, disabled, with a large group health plan.',
+    'The patient is under 65, disabled, with a large group health plan: an employer with 100 or more employees (42 CFR 411.101).',
     true
   ),
   d(
@@ -1050,8 +1050,16 @@ const medicareSecondaryPayer = (): GraphDef => {
         [
           field('mspAccident', 'string', 'Accident or work injury'),
           field('mspEsrd', 'boolean', 'End-stage renal disease coordination period'),
-          field('mspEmployerPlan', 'boolean', 'Group health plan from current employment'),
-          field('mspDisability', 'boolean', 'Disabled with a large group health plan')
+          field(
+            'mspEmployerPlan',
+            'boolean',
+            'Group health plan from current employment, employer of 20 or more'
+          ),
+          field(
+            'mspDisability',
+            'boolean',
+            'Disabled with a large group health plan, employer of 100 or more'
+          )
         ],
         [
           field('secondary', 'boolean', 'Medicare pays second'),
@@ -1079,12 +1087,12 @@ const medicareSecondaryPayer = (): GraphDef => {
             set: { secondary: true, insuranceType: '13' }
           },
           {
-            label: 'Working aged with an employer group health plan',
+            label: 'Working aged with a group health plan from an employer of 20 or more',
             when: { mspEmployerPlan: is(true) },
             set: { secondary: true, insuranceType: '12' }
           },
           {
-            label: 'Disabled with a large group health plan',
+            label: 'Disabled with a group health plan from an employer of 100 or more',
             when: { mspDisability: is(true) },
             set: { secondary: true, insuranceType: '43' }
           }
