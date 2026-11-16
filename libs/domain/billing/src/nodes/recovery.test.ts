@@ -162,5 +162,10 @@ describe('recoveryNodes', () => {
     assert.equal((await PDFDocument.load(packet.pdf)).getPageCount(), 1);
     const voided = await run('with-frequency', { x837: sampleX837, frequency: '8' });
     assert.equal((voided.outputs.x837 as { frequency: string }).frequency, '8');
+    const kept = await run('with-frequency', { x837: sampleX837 });
+    assert.equal(
+      (kept.outputs.x837 as { frequency: string }).frequency,
+      (sampleX837 as { frequency: string }).frequency
+    );
   });
 });

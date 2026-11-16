@@ -135,7 +135,7 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     assert.ok(claimId);
     await go(s.page, '/runs');
     await heading(s.page, 'Runs').waitFor();
-    await rowsOf('Workflow runs').filter({ hasText: 'Ingest NEMSIS File' }).first().waitFor();
+    await rowsOf('Workflow runs').filter({ hasText: 'Receive NEMSIS File' }).first().waitFor();
     await chooseOption(listboxByLabel(s.page, 'Status'), 'completed');
     await s.page.waitForURL(/status=completed/);
     await rowsOf('Workflow runs').nth(1).waitFor();
@@ -157,7 +157,7 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
       .press('Enter');
     await s.page.getByText('Waiting').first().waitFor({ timeout: FLOW_MS });
     await node(s.page, 'Open Draft Claim').first().waitFor();
-    await s.page.getByRole('link', { name: 'Back to Ingest NEMSIS File' }).waitFor();
+    await s.page.getByRole('link', { name: 'Back to Receive NEMSIS File' }).waitFor();
     await s.page.getByText('Waiting on').first().waitFor({ timeout: FLOW_MS });
   });
 

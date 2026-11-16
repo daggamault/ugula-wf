@@ -42,9 +42,6 @@ const DENIAL_SUMMARY = `${DENIED_BY} + ' denied this claim' +
   ((denial?.balanceCents ?? 0) > 0 ? ', leaving ' + ${dollars('denial?.balanceCents')} + ' open' : '') +
   '; ' + ${SUGGESTED}`;
 
-const VOID_BLOCKED_SUMMARY = `'The void of this claim to ' + ${named('context?.payer', "'the payer'")} + ' could not be filed: ' +
-  ${named('why', "'no reason was given'")} + '; fix it and try again, or skip the payer'`;
-
 const REOPENING_SUMMARY = `'Request a reopening from ' + ${named('denial?.payer', "'the payer'")} +
   (${named('denial?.payerClaimNumber', 'null')} != null ? ' of its claim ' + denial?.payerClaimNumber : '') +
   ', since it takes no corrected claims, and enter the reference you are given'`;
@@ -203,6 +200,13 @@ const correctionMethod = (): GraphDef => {
         'Correction',
         'replace to correct the claim, or void to cancel it.',
         true
+      ),
+      d(
+        'payerClaimNumber',
+        'string',
+        'Payer Claim Number',
+        'The payer claim number a biller entered for the claim being corrected, if any.',
+        true
       )
     ],
     [
@@ -218,14 +222,20 @@ const correctionMethod = (): GraphDef => {
     ]
   );
   g.add('denial', 'billing.denial-facts.break');
+  g.add(
+    'adjudicated',
+    'std.expr',
+    expr('Adjudicated by the Payer', '(payerClaimNumber ?? denied) != null')
+  );
   g.add('decide', 'std.table.decide', {
     label: 'Correction Methods',
     config: shared.decision(
       'billing.correction-methods',
       'Correction Methods',
-      "How a denied claim is corrected, by the payer's correction setting in the payer directory, its kind, the denial's reason and remark codes and what the biller asked for: a new claim (frequency 1) for a claim returned as unprocessable, which has no determination to reopen or appeal, a replacement (frequency 7), a void (frequency 8) or, where the payer takes no corrected claims, a reopening request.",
+      "How a claim the payer has is corrected, from a denial, a reconcile or a follow-up, by whether the payer adjudicated it, the payer's correction setting in the payer directory, its kind, the denial's reason and remark codes and what the biller asked for: a new claim (frequency 1) for a claim returned as unprocessable, which has no determination to reopen or appeal, a replacement (frequency 7), a void (frequency 8) or, where the payer takes no corrected claims, a reopening request.",
       table(
         [
+          field('adjudicated', 'boolean', 'The payer adjudicated the claim (835)'),
           field('correctionMethod', 'string', 'Payer setting: replacement or reopening'),
           field('payerKind', 'string', 'Claim filing indicator of the payer'),
           field('correction', 'string', 'What the biller asked for: replace or void'),
@@ -235,6 +245,11 @@ const correctionMethod = (): GraphDef => {
         ],
         [field('method', 'string', 'Method'), field('frequency', 'string', 'Claim frequency')],
         [
+          {
+            label: 'The payer never adjudicated the claim: submit it again as a new claim',
+            when: { adjudicated: is(false) },
+            set: { method: 'newClaim', frequency: '1' }
+          },
           {
             label: 'Returned as unprocessable (MA130): submit a new claim',
             when: { route: is('fix'), remarks: oneOf('MA130') },
@@ -282,6 +297,9 @@ const correctionMethod = (): GraphDef => {
   );
   g.ret('return');
   g.wire('entry.denial', 'denial.denial');
+  g.wire('entry.payerClaimNumber', 'adjudicated.payerClaimNumber');
+  g.wire('denial.payerClaimNumber', 'adjudicated.denied');
+  g.wire('adjudicated.result', 'decide.adjudicated');
   g.wire('denial.correctionMethod', 'decide.correctionMethod');
   g.wire('denial.payerKind', 'decide.payerKind');
   g.wire('denial.route', 'decide.route');
@@ -825,28 +843,8 @@ const workDenial = (): GraphDef => {
       prefill: 'suggested'
     }
   });
-  g.add('correctInputs', 'std.expr', {
-    label: 'Correction Inputs',
-    config: {
-      expression:
-        '{ claimId: claimId, coverageId: coverageId, correction: correction, payerClaimNumber: payerClaimNumber, subject: subject, context: context }'
-    }
-  });
-  g.add('correct', 'std.flow.run-workflow', {
-    label: 'Correct Claim',
-    config: { workflow: 'billing.correct-claim', version: 1 }
-  });
-  g.add('corrected', 'std.flow.switch', { label: 'How It Ended', config: { cases: ['void'] } });
-  g.add('appealInputs', 'std.expr', {
-    label: 'Appeal Inputs',
-    config: {
-      expression: '{ claimId: claimId, coverageId: coverageId, subject: subject, context: context }'
-    }
-  });
-  g.add('appeal', 'std.flow.run-workflow', {
-    label: 'Appeal Claim',
-    config: { workflow: 'billing.appeal-claim', version: 1 }
-  });
+  g.add('correct', 'billing.correct-claim', { label: 'Correct Claim' });
+  g.add('appeal', 'billing.appeal-claim', { label: 'Appeal Claim' });
   g.add('addPayer', 'billing.add-payer', { label: 'Add the Other Payer' });
   recordEvent(g, 'otherPayer', 'reconciled', 'Move On to the Other Payer');
   recordEvent(g, 'toPatient', 'reconciled', 'Move On to the Patient');
@@ -860,8 +858,8 @@ const workDenial = (): GraphDef => {
     'follow.claimId',
     'read.claimId',
     'choices.claimId',
-    'correctInputs.claimId',
-    'appealInputs.claimId',
+    'correct.claimId',
+    'appeal.claimId',
     'addPayer.claimId',
     'otherPayer.claimId',
     'toPatient.claimId',
@@ -870,13 +868,13 @@ const workDenial = (): GraphDef => {
   g.wire(
     'entry.coverageId',
     'read.coverageId',
-    'correctInputs.coverageId',
-    'appealInputs.coverageId',
+    'correct.coverageId',
+    'appeal.coverageId',
     'otherPayer.coverageId',
     'toPatient.coverageId'
   );
-  g.wire('entry.subject', 'decide.subject', 'correctInputs.subject', 'appealInputs.subject');
-  g.wire('entry.context', 'details.context', 'correctInputs.context', 'appealInputs.context');
+  g.wire('entry.subject', 'decide.subject', 'correct.subject', 'appeal.subject');
+  g.wire('entry.context', 'details.context', 'correct.context', 'appeal.context');
   g.wire('follow.then', 'read.exec');
   g.wire('read.then', 'choices.exec');
   g.wire('read.denial', 'category.denial', 'details.denial', 'defaults.denial');
@@ -892,16 +890,12 @@ const workDenial = (): GraphDef => {
   g.wire('choices.options', 'directory.object');
   g.wire('directory.object', 'decide.options');
   g.wire('decide.correctClaim', 'correct.exec');
-  g.wire('decide.correction', 'correctInputs.correction');
-  g.wire('decide.payerClaimNumber', 'correctInputs.payerClaimNumber');
-  g.wire('correctInputs.result', 'correct.inputs');
-  g.wire('correct.then', 'corrected.exec');
-  g.wire('correct.pin', 'corrected.value');
-  g.wire('corrected.void', 'voidReturn.exec');
-  g.wire('corrected.default', 'doneReturn.exec');
+  g.wire('decide.correction', 'correct.correction');
+  g.wire('decide.payerClaimNumber', 'correct.payerClaimNumber');
+  g.wire('correct.void', 'voidReturn.exec');
+  g.wire('correct.done', 'doneReturn.exec');
   g.wire('decide.appeal', 'appeal.exec');
-  g.wire('appealInputs.result', 'appeal.inputs');
-  g.wire('appeal.then', 'doneReturn.exec');
+  g.wire('appeal.done', 'doneReturn.exec');
   g.wire('decide.billAnotherPayer', 'addPayer.exec');
   for (const pin of PAYER_FIELDS) g.wire(`decide.${pin}`, `addPayer.${pin}`);
   g.wire('addPayer.then', 'otherPayer.exec');
@@ -913,35 +907,32 @@ const workDenial = (): GraphDef => {
   return g.def;
 };
 
-const VOID_STALE =
-  'The claim changed, or this payer is no longer the one being billed, before the void could be filed';
-
 const correctClaim = (): GraphDef => {
-  const g = graph(
-    {
-      execIn: ['exec'],
-      execOut: ['done', 'void'],
-      inputs: [
-        ...claimInputs,
-        d('correction', 'string', 'Correction', 'replace or void, as the biller asked.', true),
-        d(
-          'payerClaimNumber',
-          'string',
-          'Payer Claim Number',
-          'The payer claim number the correction replaces, when the biller entered one.',
-          true
-        )
-      ],
-      outputs: [],
-      exits: {
-        done: exit('Done', 'The correction was queued, filed or requested; the cycle goes on.'),
-        void: VOID
-      }
-    },
-    [{ name: 'whyNotFiled', type: 'string', default: null }]
-  );
-  g.add('read', 'billing.read-denial', { label: 'Read Denial' });
-  g.add('method', 'billing.correction-method', { label: 'Replacement or Reopening' });
+  const g = graph({
+    execIn: ['exec'],
+    execOut: ['done', 'void'],
+    inputs: [
+      p('claimId', 'string'),
+      d('coverageId', 'string', 'Payer', 'The payer on the claim whose claim is corrected.'),
+      p('subject', 'string', true),
+      p('context', 'any', true),
+      d('correction', 'string', 'Correction', 'replace or void, as the biller asked.', true),
+      d(
+        'payerClaimNumber',
+        'string',
+        'Payer Claim Number',
+        'The payer claim number the correction replaces, when the biller entered one.',
+        true
+      )
+    ],
+    outputs: [],
+    exits: {
+      done: exit('Done', 'The correction was queued, filed or requested; the cycle goes on.'),
+      void: VOID
+    }
+  });
+  g.add('read', 'billing.read-denial', { label: 'Read Payer Answer' });
+  g.add('method', 'billing.correction-method', { label: 'Correction Method' });
   g.add('route', 'std.flow.switch', {
     label: 'By Method',
     config: { cases: ['newClaim', 'replacement', 'void', 'reopening'] }
@@ -955,49 +946,7 @@ const correctClaim = (): GraphDef => {
   recordEvent(g, 'newClaim', 'resubmit_queued', 'Queue a New Claim');
   g.add('fix', 'billing.fix-claim', { label: 'Correct the Claim Data', values: { all: true } });
   recordEvent(g, 'reopenVoid', 'resubmit_queued', 'Reopen for the Void');
-  g.add('prepare', 'billing.prepare-837p', { label: 'Prepare 837P Claim' });
-  g.add('map', 'billing.map-837p', { label: 'Map 837P Claim' });
-  g.add('frequency', 'billing.with-frequency', { label: 'Void Frequency' });
-  g.add('file', 'billing.file-837p', { label: 'File 837P Void' });
-  g.add('send', 'billing.send-837p', { label: 'Send 837P to Clearinghouse' });
-  g.add('blockedWhy', 'std.var.set', {
-    label: 'Why the Void Was Blocked',
-    config: { name: 'whyNotFiled' }
-  });
-  g.add('staleWhy', 'std.var.set', {
-    label: 'Why the Void Went Stale',
-    config: { name: 'whyNotFiled' },
-    values: { value: VOID_STALE }
-  });
-  g.add('why', 'std.var.get', { label: 'Why Not Filed', config: { name: 'whyNotFiled' } });
-  g.add(
-    'filingContext',
-    'std.expr',
-    expr('Filing Context', 'merge(context ?? {}, { whyNotFiled: reason })')
-  );
-  g.add('blocked', 'std.human.task', {
-    label: 'Void Could Not Be Filed',
-    config: {
-      title: 'Void could not be filed',
-      queue: 'billing-review',
-      instructions:
-        'The void (frequency 8) of this claim could not be filed for the reason in the details. Fix what it names (the billing profile is in Settings) and try again, fix the claim data and try again, skip this payer, or mark the void submitted if it went out another way. Until it is filed the payer still has the claim.',
-      outcomes: ['tryAgain', 'fixData', 'skipPayer', 'submitted'],
-      hints: {
-        tryAgain:
-          'Prepares and files the void again; this task comes back if it still cannot be filed.',
-        fixData:
-          'Opens a Fix Claim Data task to edit the claim, then tries to file the void again.',
-        skipPayer:
-          'Moves on from this payer without filing the void; the payer still has the claim.',
-        submitted: 'Records the void as sent outside the app and moves on from this payer.'
-      }
-    }
-  });
-  g.add('fixVoid', 'billing.fix-claim', {
-    label: 'Fix Claim Data for the Void',
-    values: { all: true }
-  });
+  g.add('submit', 'billing.submit-to-payer', { label: 'Submit the Void' });
   recordEvent(g, 'voided', 'payer_skipped', 'Move On From the Voided Payer');
   g.add('reopening', 'std.human.task', {
     label: 'Request Reopening',
@@ -1019,7 +968,7 @@ const correctClaim = (): GraphDef => {
         requested:
           'Logs the reopening with its reference; the claim waits for the payer to reprocess it.',
         cannotReopen:
-          'Ends this correction without logging anything; the denial comes back for a new decision.'
+          'Ends this correction without logging anything; the claim cycle decides again.'
       }
     }
   });
@@ -1035,10 +984,7 @@ const correctClaim = (): GraphDef => {
     'newClaim.claimId',
     'fix.claimId',
     'reopenVoid.claimId',
-    'prepare.claimId',
-    'file.claimId',
-    'send.claimId',
-    'fixVoid.claimId',
+    'submit.claimId',
     'voided.claimId',
     'requested.claimId'
   );
@@ -1048,21 +994,14 @@ const correctClaim = (): GraphDef => {
     'replace.coverageId',
     'newClaim.coverageId',
     'reopenVoid.coverageId',
-    'prepare.coverageId',
-    'file.coverageId',
+    'submit.coverageId',
     'voided.coverageId',
     'requested.coverageId'
   );
-  g.wire('entry.subject', 'fix.subject', 'blocked.subject', 'fixVoid.subject', 'reopening.subject');
-  g.wire(
-    'entry.context',
-    'fix.context',
-    'filingContext.context',
-    'fixVoid.context',
-    'reopening.context'
-  );
+  g.wire('entry.subject', 'fix.subject', 'submit.subject', 'reopening.subject');
+  g.wire('entry.context', 'fix.context', 'submit.context', 'reopening.context');
   g.wire('entry.correction', 'method.correction');
-  g.wire('entry.payerClaimNumber', 'number.payerClaimNumber');
+  g.wire('entry.payerClaimNumber', 'number.payerClaimNumber', 'method.payerClaimNumber');
   g.wire('read.denial', 'method.denial', 'number.denial');
   g.wire('read.then', 'route.exec');
   g.wire('method.method', 'route.value');
@@ -1075,36 +1014,17 @@ const correctClaim = (): GraphDef => {
   g.wire('fix.backToReview', 'doneReturn.exec');
   g.wire('fix.voided', 'voidReturn.exec');
   g.wire('route.void', 'reopenVoid.exec');
-  g.wire('reopenVoid.then', 'prepare.exec');
-  g.wire('prepare.ready', 'file.exec');
-  g.wire('prepare.stale', 'staleWhy.exec');
-  g.wire('prepare.claim', 'map.claim');
-  g.wire('map.x837', 'frequency.x837');
-  g.wire('method.frequency', 'frequency.frequency');
-  g.wire('frequency.x837', 'file.x837');
-  g.wire('file.filed', 'send.exec');
-  g.wire('file.controlNumber', 'send.controlNumber');
-  g.wire('file.stale', 'staleWhy.exec');
-  g.wire('file.blocked', 'blockedWhy.exec');
-  g.wire('file.reason', 'blockedWhy.value');
-  g.wire('blockedWhy.then', 'blocked.exec');
-  g.wire('staleWhy.then', 'blocked.exec');
-  g.wire('why.value', 'filingContext.reason');
-  g.wire('filingContext.result', 'blocked.context');
-  summarize(g, 'blocked', VOID_BLOCKED_SUMMARY, { context: 'entry.context', why: 'why.value' });
-  summarize(g, 'reopening', REOPENING_SUMMARY, { denial: 'read.denial' });
-  g.wire('blocked.tryAgain', 'prepare.exec');
-  g.wire('blocked.fixData', 'fixVoid.exec');
-  g.wire('fixVoid.fixed', 'prepare.exec');
-  g.wire('fixVoid.backToReview', 'prepare.exec');
-  g.wire('fixVoid.voided', 'voidReturn.exec');
-  g.wire('blocked.skipPayer', 'voided.exec');
-  g.wire('blocked.submitted', 'voided.exec');
-  g.wire('send.sent', 'voided.exec');
-  g.wire('send.manual', 'voided.exec');
+  g.wire('reopenVoid.then', 'submit.exec');
+  g.wire('method.frequency', 'submit.frequency');
+  g.wire('submit.sent', 'voided.exec');
+  g.wire('submit.retry', 'submit.exec');
+  g.wire('submit.skipped', 'doneReturn.exec');
+  g.wire('submit.stale', 'doneReturn.exec');
+  g.wire('submit.void', 'voidReturn.exec');
   g.wire('voided.then', 'doneReturn.exec');
   g.wire('route.reopening', 'reopening.exec');
   g.wire('route.default', 'doneReturn.exec');
+  summarize(g, 'reopening', REOPENING_SUMMARY, { denial: 'read.denial' });
   g.wire('reopening.requested', 'requested.exec');
   g.wire('reopening.reference', 'reopenNote.reference');
   g.wire('reopenNote.result', 'requested.note');
@@ -1127,7 +1047,6 @@ const appealClaim = (): GraphDef => {
       { name: 'decideBy', type: 'datetime', default: null }
     ]
   );
-  g.add('follow', 'billing.follow-claim', { label: 'Show on the Claim' });
   g.add('read', 'billing.read-denial', { label: 'Read Denial' });
   g.add('level', 'billing.appeal-level', { label: 'Appeal Level and Deadline' });
   g.add('packet', 'billing.build-appeal-packet', { label: 'Build Appeal Packet' });
@@ -1219,10 +1138,9 @@ const appealClaim = (): GraphDef => {
     });
   }
   g.ret('doneReturn', 'done');
-  g.wire('entry.exec', 'follow.exec');
+  g.wire('entry.exec', 'read.exec');
   g.wire(
     'entry.claimId',
-    'follow.claimId',
     'read.claimId',
     'packet.claimId',
     'appealed.claimId',
@@ -1242,7 +1160,6 @@ const appealClaim = (): GraphDef => {
   );
   g.wire('entry.subject', 'send.subject', 'overdue.subject');
   g.wire('entry.context', 'details.context');
-  g.wire('follow.then', 'read.exec');
   g.wire('read.denial', 'level.denial', 'details.denial');
   g.wire('read.then', 'packet.exec');
   g.wire(
@@ -1305,7 +1222,7 @@ const appealClaim = (): GraphDef => {
   return g.def;
 };
 
-const respondRecordsRequest = (): GraphDef => {
+const logRecordsRequest = (): GraphDef => {
   const g = graph({
     execIn: ['exec'],
     execOut: [],
@@ -1617,8 +1534,8 @@ export const recoveryGraphs: SeedGraph[] = [
   ),
   asRule(
     'billing.correction-method',
-    'Replacement or Reopening',
-    "Decides how a denied claim is corrected (Correction Methods table): a new claim (frequency 1) when it was returned as unprocessable (MA130, or CO-16 from Medicare), a replacement claim (frequency 7) or void (frequency 8) with the payer claim number, or a reopening request where the payer takes no corrected claims (Medicare), by the payer directory's correction setting.",
+    'Correction Method',
+    "Decides how a claim the payer has is corrected (Correction Methods table): a new claim (frequency 1) when the payer never adjudicated it or returned it as unprocessable (MA130, or CO-16 from Medicare), a replacement claim (frequency 7) or void (frequency 8) with the payer claim number, or a reopening request where the payer takes no corrected claims (Medicare), by the payer directory's correction setting.",
     correctionMethod()
   ),
   asRule(
@@ -1663,16 +1580,16 @@ export const recoveryGraphs: SeedGraph[] = [
     'Asks someone with the claims:approve permission to approve writing off or sending to collections a balance above the Claim Policy threshold, and logs the approval.',
     approveClosing()
   ),
-  asWorkflow(
+  asStage(
     'billing.correct-claim',
     'Correct Claim',
-    'Corrects a denied claim the way Replacement or Reopening decides: queues a replacement claim (frequency 7 with the payer claim number, filed by the claim cycle once the data is fixed and reviewed), files a void (frequency 8) and moves on from the payer (a void that cannot be filed asks a biller to try again, fix the data and try again, skip the payer or mark it sent, and is never filed as a replacement), or asks a biller to request a reopening and waits for the payer to reprocess it. Started by Work Denial.',
+    'The one way a claim the payer has is corrected, used by Work Denial, Reconcile Payment and Follow Up with Payer: decides how with Correction Method, then queues a new or replacement claim (frequency 1 or 7 with the payer claim number, filed by the claim cycle once the data is corrected and reviewed), files a void (frequency 8) through Submit to Payer and moves on from the payer, or asks a biller to request a reopening and waits for the payer to reprocess it.',
     correctClaim()
   ),
-  asWorkflow(
+  asStage(
     'billing.appeal-claim',
     'Appeal Claim',
-    'Appeals a denial: decides its level and due date (Appeal Level and Deadline), stores an appeal packet in the claim files, asks a biller to send it, then waits for the payer to decide (a new remittance, decided by Appeal Decision) and asks a biller when the decision is overdue, counted from when the appeal was sent however often the claim changes meanwhile. Started by Work Denial.',
+    'Appeals a denial: decides its level and due date (Appeal Level and Deadline), stores an appeal packet in the claim files, asks a biller to send it, then waits for the payer to decide (a new remittance, decided by Appeal Decision) and asks a biller when the decision is overdue, counted from when the appeal was sent however often the claim changes meanwhile. Used by Work Denial.',
     appealClaim()
   ),
   asWorkflow(
@@ -1682,10 +1599,10 @@ export const recoveryGraphs: SeedGraph[] = [
     workDenial()
   ),
   asWorkflow(
-    'billing.respond-records-request',
-    'Respond to Records Request',
+    'billing.log-records-request',
+    'Log Records Request',
     'Started from a claim: a Log records request task enters a payer request for records (an additional documentation request) with its due date, then logs it, decides when the records are due (Records Due) by the kind of payer asking, not the one being billed, and asks a biller to gather and send them by then.',
-    respondRecordsRequest()
+    logRecordsRequest()
   ),
   asWorkflow(
     'billing.refund-overpayment',

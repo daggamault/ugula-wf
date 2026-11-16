@@ -16,10 +16,10 @@ describe('resolveWorkflowVersion', () => {
   it('takes the newest version number of the graph at the bottom, then resolves the override in effect for it', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.includes('from unnest')
-        ? [{ id: 'v-agency', key: 'billing.ingest-nemsis', version: 3, definition: {} }]
+        ? [{ id: 'v-agency', key: 'billing.receive-nemsis-file', version: 3, definition: {} }]
         : [{ version: 3 }]
     );
-    assert.deepEqual(await resolveWorkflowVersion(db, 't-1', 'billing.ingest-nemsis'), {
+    assert.deepEqual(await resolveWorkflowVersion(db, 't-1', 'billing.receive-nemsis-file'), {
       id: 'v-agency',
       version: 3
     });
@@ -30,14 +30,14 @@ describe('resolveWorkflowVersion', () => {
         'order by g.agency_id is not null, g.organization_id is not null, v.version desc'
       )
     );
-    assert.deepEqual(latest?.parameters.slice(0, 2), ['billing.ingest-nemsis', 't-1']);
-    assert.deepEqual(resolved?.parameters.slice(0, 2), [['billing.ingest-nemsis'], [3]]);
+    assert.deepEqual(latest?.parameters.slice(0, 2), ['billing.receive-nemsis-file', 't-1']);
+    assert.deepEqual(resolved?.parameters.slice(0, 2), [['billing.receive-nemsis-file'], [3]]);
     await db.destroy();
   });
 
   it('finds nothing when no version is published', async () => {
     const { db, queries } = createRecordingDb();
-    assert.equal(await resolveWorkflowVersion(db, 't-1', 'billing.ingest-nemsis'), undefined);
+    assert.equal(await resolveWorkflowVersion(db, 't-1', 'billing.receive-nemsis-file'), undefined);
     assert.equal(queries.length, 1);
     await db.destroy();
   });

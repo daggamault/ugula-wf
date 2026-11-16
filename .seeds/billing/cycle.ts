@@ -18,6 +18,7 @@ import {
   below,
   d,
   dollars,
+  exit,
   expr,
   field,
   is,
@@ -39,15 +40,6 @@ const CLAIM_CONTEXT = `{
   payer: payer,
   balanceCents: balanceCents,
   issues: checked.issues,
-  claim: checked.claim
-}`;
-
-const FILING_CONTEXT = `{
-  claimId: claimId,
-  coverageId: coverageId,
-  payer: payer,
-  balanceCents: balanceCents,
-  whyNotFiled: reason,
   claim: checked.claim
 }`;
 
@@ -285,51 +277,121 @@ const confirmPayers = (): GraphDef => {
   return g.def;
 };
 
-const submitClaim = (): GraphDef => {
-  const g = claimStep(['done', 'void']);
+const SUBMIT_EXITS = {
+  sent: exit('Sent', 'The 837P was filed and sent, or a biller marked it sent another way.'),
+  skipped: exit('Skipped', 'A biller skipped the payer; the claim moves on to the next payer.'),
+  retry: exit('Retry', 'A biller fixed what kept the 837P from being filed; file it again.'),
+  stale: exit(
+    'Stale',
+    'The claim changed, or the payer is no longer the one being billed, before it was filed.'
+  ),
+  void: exit('Void', 'A biller voided the claim.')
+};
+
+const submitToPayer = (): GraphDef => {
+  const g = graph(
+    {
+      execIn: ['exec'],
+      execOut: Object.keys(SUBMIT_EXITS),
+      inputs: [
+        p('claimId', 'string'),
+        p('coverageId', 'string'),
+        d(
+          'frequency',
+          'string',
+          'Frequency',
+          'A claim frequency to file with instead of the one Claim Frequency gives, such as 8 to void the claim.',
+          true
+        ),
+        p('subject', 'string', true),
+        p('context', 'any', true)
+      ],
+      outputs: [],
+      exits: SUBMIT_EXITS
+    },
+    [{ name: 'whyNotFiled', type: 'string', default: null }]
+  );
+  g.add('prepare', 'billing.prepare-837p', { label: 'Prepare 837P Claim' });
+  g.add('map', 'billing.map-837p', { label: 'Map 837P Claim' });
+  g.add('frequency', 'billing.with-frequency', { label: 'Claim Frequency to File' });
+  g.add('file', 'billing.file-837p', { label: 'File 837P Claim' });
+  g.add('send', 'billing.send-837p', { label: 'Send 837P to Clearinghouse' });
+  g.add('why', 'std.var.set', { label: 'Why It Was Not Filed', config: { name: 'whyNotFiled' } });
+  g.add('reason', 'std.var.get', { label: 'Why Not Filed', config: { name: 'whyNotFiled' } });
+  g.add(
+    'filingContext',
+    'std.expr',
+    expr('Filing Context', 'merge(context ?? {}, { whyNotFiled: reason })')
+  );
   g.add('submit', 'std.human.task', {
     label: 'Claim Could Not Be Filed',
     config: {
       title: 'Claim could not be filed',
       queue: 'billing-review',
       instructions:
-        'This claim was approved, but its 837P file could not be created for the reason in the details. Fix what it names (the billing profile is in Settings) and try again, fix the claim data (it is reviewed again), skip this payer, or mark it submitted if it went out another way.',
+        'The 837P of this claim could not be created for the reason in the details. Fix what it names (the billing profile is in Settings) and try again, fix the claim data, skip this payer, or mark it submitted if it went out another way.',
       outcomes: ['tryAgain', 'fixData', 'skipPayer', 'submitted'],
       hints: {
-        tryAgain:
-          'Creates and files the 837P again; this task comes back if it still cannot be filed.',
-        fixData:
-          'Opens a Fix Claim Data task to edit the claim; it is reviewed again before it is filed.',
+        tryAgain: 'Files the 837P again; this task comes back if it still cannot be filed.',
+        fixData: 'Opens a Fix Claim Data task to edit the claim, then files it again.',
         skipPayer:
-          'Skips this payer; the claim moves on to the next payer, or to the patient when none is left.',
-        submitted:
-          'Records the claim as sent to this payer outside the app; the claim then waits for the payer.'
+          'Skips this payer without filing; the claim moves on to the next payer, or to the patient when none is left.',
+        submitted: 'Records the 837P as sent to this payer outside the app.'
       }
     }
   });
   recordEvent(g, 'submitted', 'submitted', 'Submitted Outside the App');
   recordEvent(g, 'skip', 'payer_skipped', 'Move to Next Payer');
   g.add('fix', 'billing.fix-claim', { label: 'Fix Claim Data on Request', values: { all: true } });
-  g.ret('doneReturn', 'done');
+  g.ret('sentReturn', 'sent');
+  g.ret('skippedReturn', 'skipped');
+  g.ret('retryReturn', 'retry');
+  g.ret('staleReturn', 'stale');
   g.ret('voidReturn', 'void');
-  g.wire('entry.exec', 'submit.exec');
+  g.wire('entry.exec', 'prepare.exec');
+  g.wire(
+    'entry.claimId',
+    'prepare.claimId',
+    'file.claimId',
+    'send.claimId',
+    'submitted.claimId',
+    'skip.claimId',
+    'fix.claimId'
+  );
+  g.wire(
+    'entry.coverageId',
+    'prepare.coverageId',
+    'file.coverageId',
+    'submitted.coverageId',
+    'skip.coverageId'
+  );
+  g.wire('prepare.ready', 'file.exec');
+  g.wire('prepare.stale', 'staleReturn.exec');
+  g.wire('prepare.claim', 'map.claim');
+  g.wire('map.x837', 'frequency.x837');
+  g.wire('entry.frequency', 'frequency.frequency');
+  g.wire('frequency.x837', 'file.x837');
+  g.wire('file.filed', 'send.exec');
+  g.wire('file.controlNumber', 'send.controlNumber');
+  g.wire('file.stale', 'staleReturn.exec');
+  g.wire('file.blocked', 'why.exec');
+  g.wire('file.reason', 'why.value');
+  g.wire('why.then', 'submit.exec');
+  g.wire('send.sent', 'sentReturn.exec');
+  g.wire('send.manual', 'sentReturn.exec');
+  g.wire('entry.context', 'filingContext.context', 'fix.context');
+  g.wire('reason.value', 'filingContext.reason');
   g.wire('entry.subject', 'submit.subject', 'fix.subject');
-  g.wire('entry.context', 'submit.context', 'fix.context');
-  summarize(g, 'submit', SUBMIT_SUMMARY, { context: 'entry.context' });
-  g.wire('entry.claimId', 'submitted.claimId', 'skip.claimId', 'fix.claimId');
-  g.wire('entry.coverageId', 'submitted.coverageId', 'skip.coverageId');
-  g.wire('submit.submitted', 'submitted.exec');
+  g.wire('filingContext.result', 'submit.context');
+  summarize(g, 'submit', SUBMIT_SUMMARY, { context: 'filingContext.result' });
+  g.wire('submit.tryAgain', 'retryReturn.exec');
   g.wire('submit.fixData', 'fix.exec');
   g.wire('submit.skipPayer', 'skip.exec');
-  for (const done of [
-    'submit.tryAgain',
-    'submitted.then',
-    'skip.then',
-    'fix.fixed',
-    'fix.backToReview'
-  ] as const) {
-    g.wire(done, 'doneReturn.exec');
-  }
+  g.wire('submit.submitted', 'submitted.exec');
+  g.wire('submitted.then', 'sentReturn.exec');
+  g.wire('skip.then', 'skippedReturn.exec');
+  g.wire('fix.fixed', 'retryReturn.exec');
+  g.wire('fix.backToReview', 'retryReturn.exec');
   g.wire('fix.voided', 'voidReturn.exec');
   return g.def;
 };
@@ -499,7 +561,7 @@ const CLAIM_FACTS = [
 
 const reconcilePayment = (): GraphDef => {
   const g = claimStep(
-    ['done', 'writeOff'],
+    ['done', 'writeOff', 'void'],
     [p('coverageId', 'string', true)],
     [
       { name: 'medicareAllowed', type: 'any', default: null },
@@ -554,7 +616,7 @@ const reconcilePayment = (): GraphDef => {
       title: 'Reconcile payment',
       queue: 'billing-reconcile',
       instructions:
-        'The payer answered and a balance remains. Check what they paid and adjusted, with their reason codes, against the claim, and record anything missing. When Medicare pays first, the details show what the Medicare ambulance fee schedule allows for the trip at its pickup locality (urban, rural or super-rural), so an underpayment stands out. Continue to the next payer or the patient, write off the rest, or correct the claim and resubmit it to this payer as a replacement of their claim.',
+        'The payer answered and a balance remains. Check what they paid and adjusted, with their reason codes, against the claim, and record anything missing. When Medicare pays first, the details show what the Medicare ambulance fee schedule allows for the trip at its pickup locality (urban, rural or super-rural), so an underpayment stands out. Continue to the next payer or the patient, write off the rest, or correct the claim the way this payer takes corrections.',
       outcomes: ['continue', 'writeOff', 'resubmitCorrected'],
       hints: {
         continue:
@@ -562,14 +624,15 @@ const reconcilePayment = (): GraphDef => {
         writeOff:
           'Writes off the balance and closes the claim, once approved when it is above the approval limit.',
         resubmitCorrected:
-          'Queues a corrected claim to this payer, sent in the next batch as a replacement of their claim.'
+          'Corrects the claim the way this payer takes corrections (Correct Claim): a replacement or new claim after the data is corrected, or a reopening request.'
       }
     }
   });
   recordEvent(g, 'reconciled', 'reconciled', 'Mark the Response Reconciled');
-  recordEvent(g, 'correct', 'resubmit_queued', 'Resubmit as a Corrected Claim');
+  g.add('correct', 'billing.correct-claim', { label: 'Correct Claim' });
   g.ret('doneReturn', 'done');
   g.ret('writeOffReturn', 'writeOff');
+  g.ret('voidReturn', 'void');
   g.wire('entry.exec', 'readClaim.exec');
   g.wire('entry.claimId', 'readClaim.claimId', 'response.claimId');
   g.wire('entry.coverageId', 'response.coverageId', 'payerKind.coverageId', 'primary.coverageId');
@@ -617,7 +680,8 @@ const reconcilePayment = (): GraphDef => {
   g.wire('keepPriority.then', 'reconcile.exec');
   g.wire('medicareAllowed.value', 'taskContext.medicareAllowed');
   g.wire('entry.context', 'taskContext.context');
-  g.wire('entry.subject', 'reconcile.subject');
+  g.wire('entry.subject', 'reconcile.subject', 'correct.subject');
+  g.wire('entry.context', 'correct.context');
   g.wire('taskContext.result', 'reconcile.context');
   summarize(
     g,
@@ -632,17 +696,15 @@ const reconcilePayment = (): GraphDef => {
   g.wire('reconcile.resubmitCorrected', 'correct.exec');
   g.wire('reconcile.writeOff', 'writeOffReturn.exec');
   g.wire('reconciled.then', 'doneReturn.exec');
-  g.wire('correct.then', 'doneReturn.exec');
+  g.wire('correct.done', 'doneReturn.exec');
+  g.wire('correct.void', 'voidReturn.exec');
   return g.def;
 };
 
+const RESUBMIT_HINT =
+  'Resubmits the claim the way this payer takes corrections (Correct Claim): a new claim, or a replacement or reopening when the payer has its claim number.';
+
 const FOLLOW_UPS = [
-  [
-    'resubmit',
-    'resubmit_queued',
-    'Queue for the Next Batch',
-    'Queues the claim for the next 837P batch to this payer, replacing their claim when its number is entered.'
-  ],
   [
     'keepWaiting',
     'follow_up',
@@ -660,7 +722,7 @@ const FOLLOW_UPS = [
 const STATUS_WAIT_MS = 86_400_000;
 
 const followUpPayer = (): GraphDef => {
-  const g = claimStep(['done']);
+  const g = claimStep(['done', 'void']);
   g.add('ask', 'billing.send-276', { label: 'Ask the Payer for Claim Status' });
   g.add('wait', 'std.flow.wait-signal', {
     label: 'Await the Claim Status',
@@ -677,14 +739,27 @@ const followUpPayer = (): GraphDef => {
       title: 'Follow up on claim',
       queue: 'billing-followup',
       instructions:
-        "The payer has not responded in time. The payer's latest claim status (277), when it gave one, is in the details. Resubmit in the next 837P batch, keep waiting, or move on to the next payer. When the payer has the claim on file, enter its claim number so the resubmission replaces it.",
+        "The payer has not responded in time. The payer's latest claim status (277), when it gave one, is in the details. Resubmit it, keep waiting, or move on to the next payer. A resubmission goes through Correct Claim: when the payer has the claim on file, enter its claim number so it is replaced or reopened the way the payer takes corrections, else it goes as a new claim.",
       fields: [{ name: 'payerClaimNumber', type: 'string', label: 'Payer claim number' }],
-      outcomes: FOLLOW_UPS.map(([outcome]) => outcome),
-      hints: Object.fromEntries(FOLLOW_UPS.map(([outcome, , , hint]) => [outcome, hint]))
+      outcomes: ['resubmit', ...FOLLOW_UPS.map(([outcome]) => outcome)],
+      hints: {
+        resubmit: RESUBMIT_HINT,
+        ...Object.fromEntries(FOLLOW_UPS.map(([outcome, , , hint]) => [outcome, hint]))
+      }
     }
   });
-  g.ret('doneReturn');
+  g.add('correct', 'billing.correct-claim', { label: 'Correct Claim' });
+  g.ret('doneReturn', 'done');
+  g.ret('voidReturn', 'void');
   g.wire('entry.exec', 'ask.exec');
+  g.wire('followUp.resubmit', 'correct.exec');
+  g.wire('entry.claimId', 'correct.claimId');
+  g.wire('entry.coverageId', 'correct.coverageId');
+  g.wire('entry.subject', 'correct.subject');
+  g.wire('entry.context', 'correct.context');
+  g.wire('followUp.payerClaimNumber', 'correct.payerClaimNumber');
+  g.wire('correct.done', 'doneReturn.exec');
+  g.wire('correct.void', 'voidReturn.exec');
   g.wire('entry.claimId', 'ask.claimId', 'wait.key', 'latest.claimId');
   g.wire('entry.coverageId', 'ask.coverageId');
   g.wire('ask.sent', 'wait.exec');
@@ -714,7 +789,7 @@ const followUpPayer = (): GraphDef => {
   return g.def;
 };
 
-const sendStatement = (): GraphDef => {
+const billPatient = (): GraphDef => {
   const g = claimStep(
     ['done', 'writeOff'],
     [p('statementNumber', 'integer'), p('statementCount', 'integer')]
@@ -1211,12 +1286,7 @@ const cycleClaim = (): GraphDef => {
   g.add('fix', 'billing.fix-claim', { label: 'Fix Claim Data', values: { all: false } });
   g.add('review', 'billing.review-claim', { label: 'Review Claim' });
   g.add('confirmPayers', 'billing.confirm-payers', { label: 'Confirm Payers' });
-  g.add('prepare', 'billing.prepare-837p', { label: 'Prepare 837P Claim' });
-  g.add('map', 'billing.map-837p', { label: 'Map 837P Claim' });
-  g.add('file', 'billing.file-837p', { label: 'File 837P Claim' });
-  g.add('send', 'billing.send-837p', { label: 'Send 837P to Clearinghouse' });
-  g.add('filingContext', 'std.expr', expr('Filing Context', FILING_CONTEXT));
-  g.add('submit', 'billing.submit-claim', { label: 'Claim Could Not Be Filed' });
+  g.add('submit', 'billing.submit-to-payer', { label: 'Submit to Payer' });
   g.add('reconcile', 'billing.reconcile-payment', { label: 'Reconcile Payment' });
   g.add('denialInputs', 'std.expr', {
     label: 'Denial Inputs',
@@ -1253,7 +1323,7 @@ const cycleClaim = (): GraphDef => {
     values: { closing: 'collections' }
   });
   g.add('followUp', 'billing.follow-up-payer', { label: 'Follow Up with Payer' });
-  g.add('statement', 'billing.send-statement', { label: 'Send Patient Statement' });
+  g.add('statement', 'billing.bill-patient', { label: 'Bill Patient' });
   g.add('collections', 'std.human.task', {
     label: 'Collections Review',
     config: {
@@ -1324,11 +1394,11 @@ const cycleClaim = (): GraphDef => {
   g.wire('keepValid.then', 'route.exec');
   g.wire('keepInvalid.then', 'fix.exec');
 
-  g.wire('entry.claimId', 'claimContext.claimId', 'filingContext.claimId');
-  g.wire('next.coverageId', 'claimContext.coverageId', 'filingContext.coverageId');
-  g.wire('next.payer', 'claimContext.payer', 'filingContext.payer', 'payerSubject.payer');
-  g.wire('balance.value', 'claimContext.balanceCents', 'filingContext.balanceCents');
-  g.wire('checked.value', 'claimContext.checked', 'filingContext.checked');
+  g.wire('entry.claimId', 'claimContext.claimId');
+  g.wire('next.coverageId', 'claimContext.coverageId');
+  g.wire('next.payer', 'claimContext.payer', 'payerSubject.payer');
+  g.wire('balance.value', 'claimContext.balanceCents');
+  g.wire('checked.value', 'claimContext.checked');
   g.wire('ledger.reference', 'payerSubject.reference', 'claimSubject.reference');
 
   g.wire('route.await', 'wait.exec');
@@ -1348,7 +1418,7 @@ const cycleClaim = (): GraphDef => {
   for (const [id, about] of steps) {
     g.wire('entry.claimId', `${id}.claimId`);
     g.wire(`${about}Subject.result`, `${id}.subject`);
-    g.wire(id === 'submit' ? 'filingContext.result' : 'claimContext.result', `${id}.context`);
+    g.wire('claimContext.result', `${id}.context`);
     if (id !== 'fix' && id !== 'statement') g.wire('next.coverageId', `${id}.coverageId`);
   }
   g.wire('claimSubject.result', 'collections.subject', 'refundInputs.subject');
@@ -1368,16 +1438,7 @@ const cycleClaim = (): GraphDef => {
   g.wire('route.review', 'review.exec');
   g.wire('route.reviewPatient', 'review.exec');
   g.wire('route.confirmPayers', 'confirmPayers.exec');
-  g.wire('route.submit', 'prepare.exec');
-  g.wire('entry.claimId', 'prepare.claimId', 'file.claimId', 'send.claimId');
-  g.wire('next.coverageId', 'prepare.coverageId', 'file.coverageId');
-  g.wire('file.filed', 'send.exec');
-  g.wire('file.controlNumber', 'send.controlNumber');
-  g.wire('prepare.ready', 'file.exec');
-  g.wire('prepare.claim', 'map.claim');
-  g.wire('map.x837', 'file.x837');
-  g.wire('file.blocked', 'submit.exec');
-  g.wire('file.reason', 'filingContext.reason');
+  g.wire('route.submit', 'submit.exec');
   g.wire('route.reconcile', 'reconcile.exec');
   g.wire('route.workDenial', 'denial.exec');
   g.wire('denialInputs.result', 'denial.inputs');
@@ -1413,7 +1474,14 @@ const cycleClaim = (): GraphDef => {
   summarize(g, 'collections', COLLECTIONS_SUMMARY, { context: 'claimContext.result' });
   summarize(g, 'facilityFollowUp', FACILITY_SUMMARY, { context: 'claimContext.result' });
 
-  for (const id of ['fix.voided', 'review.void', 'confirmPayers.void', 'submit.void'] as const) {
+  for (const id of [
+    'fix.voided',
+    'review.void',
+    'confirmPayers.void',
+    'submit.void',
+    'reconcile.void',
+    'followUp.void'
+  ] as const) {
     g.wire(id, 'closeVoid.exec');
   }
   for (const id of ['reconcile.writeOff', 'statement.writeOff', 'collections.writeOff'] as const) {
@@ -1449,10 +1517,10 @@ export const cycleGraphs: SeedGraph[] = [
     confirmPayers()
   ),
   asStage(
-    'billing.submit-claim',
-    'Claim Could Not Be Filed',
-    'Asks a biller what to do about an approved claim whose 837P file could not be created: try again once the reason is fixed, fix its data, skip the payer, or mark it submitted elsewhere.',
-    submitClaim()
+    'billing.submit-to-payer',
+    'Submit to Payer',
+    'The one way a claim goes to a payer: prepares it for the payer being billed, maps it onto an 837P (Map 837P Claim), files it with the claim frequency asked for, if any (8 voids the claim the payer has), and sends it to the clearinghouse. When it cannot be filed, asks a biller to try again, fix its data, skip the payer or mark it sent another way. Used by the claim cycle and by Correct Claim for voids.',
+    submitToPayer()
   ),
   asRule(
     'billing.underpayment',
@@ -1463,20 +1531,20 @@ export const cycleGraphs: SeedGraph[] = [
   asStage(
     'billing.reconcile-payment',
     'Reconcile Payment',
-    'Asks a biller to reconcile a payer response that leaves a balance: continue, resubmit a corrected claim, or write off the rest.',
+    'Asks a biller to reconcile a payer response that leaves a balance: continue, correct the claim (Correct Claim), or write off the rest.',
     reconcilePayment()
   ),
   asStage(
     'billing.follow-up-payer',
     'Follow Up with Payer',
-    'Asks the payer for the claim status (276, real time or batch, waiting up to a day for the 277), then asks a biller what to do about a payer that has not responded, showing the latest status: resubmit, keep waiting, or move to the next payer.',
+    'Asks the payer for the claim status (276, real time or batch, waiting up to a day for the 277), then asks a biller what to do about a payer that has not responded, showing the latest status: resubmit (Correct Claim), keep waiting, or move to the next payer.',
     followUpPayer()
   ),
   asStage(
-    'billing.send-statement',
-    'Send Patient Statement',
+    'billing.bill-patient',
+    'Bill Patient',
     'Takes off what balance-billing law keeps off the patient (Patient Responsibility), then sends the next patient statement for what is left, or asks for the billing profile or patient address it needs first.',
-    sendStatement()
+    billPatient()
   ),
   asWorkflow(
     'billing.cycle-claim',

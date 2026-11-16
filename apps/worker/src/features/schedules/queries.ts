@@ -20,8 +20,8 @@ const WINDOW_DAYS = 90;
 const PCS_DAYS = 60;
 
 const TASK_DEADLINES = {
-  'billing.appeal-claim': 'appeal',
-  'billing.respond-records-request': 'records',
+  'billing.work-denial': 'appeal',
+  'billing.log-records-request': 'records',
   'billing.refund-overpayment': 'refund'
 } as const;
 

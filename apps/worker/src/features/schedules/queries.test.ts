@@ -72,7 +72,7 @@ describe('createScheduleStore', () => {
     for (const part of ['filing as', 'due as', 'pcs as', 'billing.deadline-reminder']) {
       assert.ok(q?.sql.includes(part) || q?.parameters.includes(part), part);
     }
-    assert.ok(q?.parameters.includes('billing.appeal-claim'));
+    assert.ok(q?.parameters.includes('billing.work-denial'));
     assert.ok(q?.sql.includes('(t.due_at at time zone a.zone)::date as due_on'));
     assert.ok(!q?.sql.includes('select *'));
   });

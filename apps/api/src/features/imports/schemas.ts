@@ -2,7 +2,7 @@ import * as v from 'valibot';
 import { pageEntries } from '../../shared/paging.ts';
 import { searchText } from '../../shared/search.ts';
 
-export const INGEST_WORKFLOW = 'billing.ingest-nemsis';
+export const INGEST_WORKFLOW = 'billing.receive-nemsis-file';
 
 const graphKey = v.pipe(v.string(), v.regex(/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/));
 

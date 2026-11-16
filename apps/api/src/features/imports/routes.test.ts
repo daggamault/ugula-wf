@@ -82,7 +82,13 @@ describe('import routes', () => {
   it('accepts a multipart file for the session agency', async () => {
     const res = await request('/', form({ file: new File(['<x/>'], 'pcrs.xml') }));
     assert.equal(res.status, 201);
-    assert.deepEqual(calls.at(-1), ['t-1', 'u-1', 'billing.ingest-nemsis', 'pcrs.xml', '<x/>']);
+    assert.deepEqual(calls.at(-1), [
+      't-1',
+      'u-1',
+      'billing.receive-nemsis-file',
+      'pcrs.xml',
+      '<x/>'
+    ]);
     const missing = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.missing' });
     assert.equal((await request('/', missing)).status, 404);
   });
@@ -93,12 +99,18 @@ describe('import routes', () => {
     const other = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.watch-deadlines' });
     assert.equal((await biller('/', other)).status, 403);
     assert.equal(calls.length, before);
-    const ingest = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.ingest-nemsis' });
+    const ingest = form({
+      file: new File(['<x/>'], 'a.xml'),
+      workflow: 'billing.receive-nemsis-file'
+    });
     assert.equal((await biller('/', ingest)).status, 201);
   });
 
   it('rejects missing files and oversized bodies', async () => {
-    assert.equal((await request('/', form({ workflow: 'billing.ingest-nemsis' }))).status, 400);
+    assert.equal(
+      (await request('/', form({ workflow: 'billing.receive-nemsis-file' }))).status,
+      400
+    );
     const big = await request('/', form({ file: new File(['x'.repeat(200_000)], 'big.xml') }));
     assert.equal(big.status, 413);
   });

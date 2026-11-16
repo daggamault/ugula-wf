@@ -26,7 +26,7 @@ export const CLAIM_TASKS = {
     description: 'Get a missing document by a due date.',
     onDrafts: false
   },
-  'billing.respond-records-request': {
+  'billing.log-records-request': {
     label: 'Log Records Request',
     description: 'A payer asked for records; send them by the due date.',
     onDrafts: false

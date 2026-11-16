@@ -23,7 +23,7 @@ import {
 
 const { blob: BLOB } = T;
 
-const ingestNemsis = (): GraphDef => {
+const receiveNemsisFile = (): GraphDef => {
   const g = graph({
     execIn: ['exec'],
     execOut: [],
@@ -735,10 +735,10 @@ export const payerFileGraphs: SeedGraph[] = [
     routeRemittances()
   ),
   asWorkflow(
-    'billing.ingest-nemsis',
-    'Ingest NEMSIS File',
+    'billing.receive-nemsis-file',
+    'Receive NEMSIS File',
     'Splits a NEMSIS export and starts one Encounter to Claim run per report, without waiting for them.',
-    ingestNemsis()
+    receiveNemsisFile()
   ),
   asWorkflow(
     'billing.review-payer-file-line',

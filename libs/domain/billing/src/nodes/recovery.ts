@@ -245,10 +245,12 @@ export const recoveryNodes: NodesOf = (stores) => {
       title: 'Set Claim Frequency',
       category: CATEGORY,
       description:
-        'Gives a mapped 837P claim another claim frequency (CLM05-3), such as 8 to void the claim the payer has on file.',
-      inputs: [pin('x837', X837_CLAIM.type), pin('frequency', 'string')],
+        'Gives a mapped 837P claim another claim frequency (CLM05-3), such as 8 to void the claim the payer has on file, or keeps its own when none is given.',
+      inputs: [pin('x837', X837_CLAIM.type), pin('frequency', 'string', { optional: true })],
       outputs: [pin('x837', X837_CLAIM.type)],
-      compute: ({ x837, frequency }) => ({ x837: { ...recordOf(x837), frequency } })
+      compute: ({ x837, frequency }) => ({
+        x837: frequency === null ? x837 : { ...recordOf(x837), frequency }
+      })
     })
   ];
 };

@@ -23,7 +23,7 @@ const ICONS: Readonly<Record<ClaimTaskKey, LucideIcon>> = {
   'billing.set-facility': BuildingIcon,
   'billing.add-document': FilePlusIcon,
   'billing.chase-document': SendIcon,
-  'billing.respond-records-request': FileClockIcon,
+  'billing.log-records-request': FileClockIcon,
   'billing.post-payment': HandCoinsIcon
 };
 

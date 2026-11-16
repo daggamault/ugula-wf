@@ -71,7 +71,7 @@ const file = (text: string, name = 'pcrs.xml') => ({
 describe('import service uploads', () => {
   it('stores the upload and starts the workflow with a reference to it', async () => {
     const { service, stored, jobs, queries } = setup();
-    const res = await service.upload('t-1', 'u-1', 'billing.ingest-nemsis', file('<x/>'));
+    const res = await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', file('<x/>'));
     assert.ok(res.ok);
     assert.equal(res.value.runId, 'r1');
     assert.match(stored[0] ?? '', /^imports\/t-1\/[0-9a-f-]{36}\/pcrs\.xml$/);
@@ -90,7 +90,7 @@ describe('import service uploads', () => {
   it('rejects empty, oversized and unroutable uploads before storing anything', async () => {
     const { service, stored } = setup({ published: false });
     const code = async (f: ReturnType<typeof file>) => {
-      const res = await service.upload('t-1', 'u-1', 'billing.ingest-nemsis', f);
+      const res = await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', f);
       return res.ok ? 'ok' : res.failure.code;
     };
     assert.equal(await code(file('')), 'invalid');
@@ -225,12 +225,14 @@ describe('import service SFTP hooks', () => {
 describe('import service announcements and names', () => {
   it('announces new imports to the agency and names unnamed uploads safely', async () => {
     const { service, publishAfter, queries } = setup();
-    assert.ok((await service.upload('t-1', 'u-1', 'billing.ingest-nemsis', file('<x/>', '  '))).ok);
+    assert.ok(
+      (await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', file('<x/>', '  '))).ok
+    );
     assert.deepEqual(publishAfter, [{ agencyId: 't-1', event: { kind: 'import', id: null } }]);
     const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
     assert.equal(recorded?.parameters[3], 'upload');
     const refused = setup({ published: false });
-    await refused.service.upload('t-1', 'u-1', 'billing.ingest-nemsis', file('<x/>'));
+    await refused.service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', file('<x/>'));
     assert.deepEqual(refused.publishAfter, []);
   });
 
