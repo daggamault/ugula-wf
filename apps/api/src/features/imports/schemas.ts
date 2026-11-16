@@ -2,11 +2,13 @@ import * as v from 'valibot';
 import { pageEntries } from '../../shared/paging.ts';
 import { searchText } from '../../shared/search.ts';
 
+export const INGEST_WORKFLOW = 'billing.ingest-nemsis';
+
 const graphKey = v.pipe(v.string(), v.regex(/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/));
 
 export const importFormSchema = v.object({
   file: v.instance(File),
-  workflow: v.optional(graphKey, 'billing.ingest-nemsis')
+  workflow: v.optional(graphKey, INGEST_WORKFLOW)
 });
 
 export const sftpAuthSchema = v.looseObject({

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { fail, ok } from '../../shared/result.ts';
-import { withSession } from '../../shared/testing.ts';
+import { testAccess, withSession } from '../../shared/testing.ts';
 import { createImportRoutes, createSftpRoutes } from './routes.ts';
 import type { ImportService } from './service.ts';
 
@@ -84,6 +84,16 @@ describe('import routes', () => {
     assert.deepEqual(calls.at(-1), ['t-1', 'u-1', 'billing.ingest-nemsis', 'pcrs.xml', '<x/>']);
     const missing = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.missing' });
     assert.equal((await request('/', missing)).status, 404);
+  });
+
+  it('starts workflows other than the NEMSIS ingest only for users who may create runs', async () => {
+    const biller = withSession(createImportRoutes(service, 16), testAccess(['imports:create']));
+    const before = calls.length;
+    const other = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.watch-deadlines' });
+    assert.equal((await biller('/', other)).status, 403);
+    assert.equal(calls.length, before);
+    const ingest = form({ file: new File(['<x/>'], 'a.xml'), workflow: 'billing.ingest-nemsis' });
+    assert.equal((await biller('/', ingest)).status, 201);
   });
 
   it('rejects missing files and oversized bodies', async () => {

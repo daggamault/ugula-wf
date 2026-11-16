@@ -19,9 +19,7 @@ import {
   listImports,
   type NewImport
 } from './queries.ts';
-import type { ReportSort, SftpEvent } from './schemas.ts';
-
-const INGEST_WORKFLOW = 'billing.ingest-nemsis';
+import { INGEST_WORKFLOW, type ReportSort, type SftpEvent } from './schemas.ts';
 
 type SftpStorage = {
   bucket: string;
