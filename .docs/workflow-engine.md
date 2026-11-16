@@ -44,7 +44,7 @@ Nodes are defined with `pureNode`, `actionNode` or `branchNode` and `pin()` (`li
 
 A node definition (`NodeDef`) also carries what the editor shows:
 
-- `level`: `basic` for what billers compose (billing and NEMSIS actions, tables, human tasks, branch, switch, for each, sequence, run and start workflow, Break and Make, Constant, Reroute), `advanced` for internals (formulas, variables, list, object and text plumbing).
+- `level`: `basic` for what billers compose rules from (billing and NEMSIS actions, tables, human tasks, conditions, Choose Value, comparisons, logic, math, text, time, list basics, rules run per item, fields, Make and Break, Constant, branch, switch, for each, sequence, run and start workflow, Reroute), `advanced` for internals (formulas, variables, untyped paths, JSON, loop and gate machinery).
 - `keywords`: more words the palette search matches.
 - `exits`: a label and description per exec output, as in `signature.exits`. `branchNode` takes them as `exits: { name: { label, description } }`, whose keys are its exec outputs.
 - `summary(config)`: one line describing the configured node on the canvas (the formula, `Table: <key>`, `Task: <title>`, the switch cases, the variable or workflow), or `null`.

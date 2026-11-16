@@ -32,8 +32,8 @@ describe('groupPalette', () => {
   });
 
   it('shows basic nodes only until advanced ones are asked for', () => {
-    const basic = typesOf(groupPalette(palette, 'round', false));
-    assert.ok(!basic.includes('std.math.round'));
+    const basic = typesOf(groupPalette(palette, 'formula', false));
+    assert.ok(!basic.includes('std.expr'));
     assert.ok(typesOf(groupPalette(palette, '', false)).includes('std.flow.reroute'));
   });
 });

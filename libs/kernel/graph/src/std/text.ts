@@ -32,7 +32,7 @@ const textNode = (key: string, title: string, description: string, fn: (s: strin
     title,
     category: CATEGORY,
     description,
-    level: 'advanced',
+    level: 'basic',
     keywords: ['text'],
     inputs: [pin('text', 'string', TEXT)],
     outputs: [pin('result', 'string', { description: 'The changed text.' })],
@@ -45,7 +45,7 @@ const testNode = (key: string, title: string, fn: (s: string, part: string) => b
     title,
     category: CATEGORY,
     description: `True when the text ${title.toLowerCase()} the given part.`,
-    level: 'advanced',
+    level: 'basic',
     keywords: ['text', 'search', 'match'],
     inputs: [
       pin('text', 'string', { description: 'The text to look in.' }),
@@ -85,7 +85,7 @@ export const textNodes: NodeDef[] = [
     title: 'Length',
     category: CATEGORY,
     description: 'Counts the characters in the text.',
-    level: 'advanced',
+    level: 'basic',
     keywords: ['text', 'count', 'size'],
     inputs: [pin('text', 'string', TEXT)],
     outputs: [pin('length', 'integer', { description: 'How many characters the text has.' })],
@@ -105,7 +105,7 @@ export const textNodes: NodeDef[] = [
     category: CATEGORY,
     description:
       'Replaces every place the text has what to find with the replacement; finding nothing changes nothing.',
-    level: 'advanced',
+    level: 'basic',
     keywords: ['text', 'substitute', 'change'],
     inputs: [
       pin('text', 'string', TEXT),
@@ -123,7 +123,7 @@ export const textNodes: NodeDef[] = [
     title: 'Split',
     category: CATEGORY,
     description: 'Splits text into a list wherever the separator appears.',
-    level: 'advanced',
+    level: 'basic',
     keywords: ['text', 'divide', 'list'],
     inputs: [
       pin('text', 'string', { description: 'The text to split.' }),
@@ -137,7 +137,7 @@ export const textNodes: NodeDef[] = [
     title: 'Join',
     category: CATEGORY,
     description: 'Joins the items of a list into one text, with a separator between them.',
-    level: 'advanced',
+    level: 'basic',
     keywords: ['text', 'combine', 'concatenate', 'list'],
     inputs: [
       pin('items', { list: 'any' }, { description: 'The items to join.' }),
@@ -154,7 +154,7 @@ export const textNodes: NodeDef[] = [
     category: CATEGORY,
     description:
       'Takes part of the text, from the start position up to but not including the end position.',
-    level: 'advanced',
+    level: 'basic',
     keywords: ['text', 'slice', 'part'],
     inputs: [
       pin('text', 'string', TEXT),
@@ -177,7 +177,7 @@ export const textNodes: NodeDef[] = [
     title: 'Pad',
     category: CATEGORY,
     description: 'Fills the text out to a length at its start or end, such as 7 becoming 007.',
-    level: 'advanced',
+    level: 'basic',
     keywords: ['text', 'zero', 'fill', 'length'],
     config: v.object({ side: v.optional(v.picklist(['start', 'end']), 'start') }),
     inputs: [

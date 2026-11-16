@@ -31,7 +31,7 @@ const listNode = (
     title,
     category: CATEGORY,
     description,
-    level: 'advanced',
+    level: 'basic',
     keywords: ['list'],
     inputs: [LIST_IN, ...inputs],
     outputs,
@@ -253,7 +253,7 @@ export const listNodes: NodeDef[] = [
     category: CATEGORY,
     description:
       'Keeps the items whose field passes a condition, such as route is one of a list of codes, and counts them.',
-    level: 'advanced',
+    level: 'basic',
     keywords: ['list', 'filter', 'condition', 'keep'],
     summary: ({ field, op, value }) =>
       [
@@ -320,7 +320,7 @@ export const listNodes: NodeDef[] = [
     title: 'Make List',
     category: CATEGORY,
     description: 'Builds a list from the values connected to it, leaving out the empty ones.',
-    level: 'advanced',
+    level: 'basic',
     keywords: ['list', 'build', 'create', 'array'],
     config: makeConfig,
     inputs: ({ count }) =>
