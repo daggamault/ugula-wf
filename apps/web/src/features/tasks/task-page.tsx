@@ -17,7 +17,7 @@ import { CodeField } from '../../shared/claims/code-field.tsx';
 import type { CodesClient } from '../../shared/codes.ts';
 import { formatAgo, formatDateTime, formatDay, patientName } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
-import { navigate } from '../../shared/router.tsx';
+import { navigate, useUnsavedChanges } from '../../shared/router.tsx';
 import { queueInfo } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
@@ -301,7 +301,9 @@ const Decision = ({
   };
   const ConfirmIcon = outcomeIcon(confirming ?? '');
   const showChanges = task.fields.length > 0 && task.prefill === 'current';
-  const changes = showChanges ? changesOf(task.fields, task.defaults, values) : [];
+  const edited = changesOf(task.fields, task.defaults, values);
+  const changes = showChanges ? edited : [];
+  useUnsavedChanges(edited.length > 0);
   const { shared, own } = fieldsByOutcome(task.fields, task.outcomes);
   const help = decisionHelp(task, showChanges);
   const fieldGrid = (fields: readonly FieldSpec[]) =>

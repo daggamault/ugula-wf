@@ -1,7 +1,8 @@
+import { deepEqual } from '@ugula/graph';
 import { PlusIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
-import { navigate, useLocation } from '../../shared/router.tsx';
+import { navigate, useLocation, useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
@@ -24,6 +25,8 @@ const GRAPH_KINDS = [
   { value: 'node', label: 'Subworkflow' }
 ] as const;
 
+const EMPTY: Omit<NewGraph, 'kind'> = { key: '', name: '', description: '' };
+
 export const graphKindOf = (query: URLSearchParams): GraphKind =>
   query.get('kind') === 'node' ? 'node' : 'workflow';
 
@@ -38,11 +41,8 @@ export const NewWorkflowForm = ({
   onKindChange: (kind: GraphKind) => void;
   onCreate: (graph: NewGraph) => Promise<string | null>;
 }) => {
-  const [fields, setForm] = useState<Omit<NewGraph, 'kind'>>({
-    key: '',
-    name: '',
-    description: ''
-  });
+  const [fields, setForm] = useState(EMPTY);
+  useUnsavedChanges(!deepEqual(fields, EMPTY));
   const form: NewGraph = { ...fields, kind };
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -133,7 +133,7 @@ export const NewWorkflowPage = ({ client, kind, back }: NewWorkflowPageProps) =>
         onCreate={async (graph) => {
           try {
             const { id } = await client.create(graph);
-            navigate(`/workflows/${id}`);
+            navigate(`/workflows/${id}`, { force: true });
             return null;
           } catch (err) {
             return messageOf(err);

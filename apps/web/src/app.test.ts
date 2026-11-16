@@ -58,6 +58,7 @@ describe('app', () => {
     assert.ok(!html.includes('href="/tasks"'));
     assert.match(html, /<button type="button" aria-expanded="true"[^>]*><span>Automation<\/span>/);
     assert.ok(html.includes('North EMS') && html.includes('Switch agency'));
+    assert.ok(html.includes('Discard Unsaved Changes?'));
   });
 
   it('waits for the agencies before opening one', () => {

@@ -1,8 +1,10 @@
+import { deepEqual } from '@ugula/graph';
 import { SaveIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { browserTimeZone } from '../../shared/format.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
+import { useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import {
@@ -113,13 +115,17 @@ export const ProfileForm = ({
   onSave: (profile: BillingProfileInput) => Promise<string | null>;
 }) => {
   const [draft, setDraft] = useState(() => toProfileDraft(profile));
+  const [saved, setSaved] = useState(draft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  useUnsavedChanges(!deepEqual(draft, saved));
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
     setError('');
-    setError((await onSave(fromProfileDraft(draft))) ?? '');
+    const failure = await onSave(fromProfileDraft(draft));
+    setError(failure ?? '');
+    if (failure === null) setSaved(draft);
     setBusy(false);
   };
   const inputs = (fields: ProfileField[], required: boolean) =>

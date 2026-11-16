@@ -1,5 +1,7 @@
+import { deepEqual } from '@ugula/graph';
 import { SendIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
+import { useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
@@ -28,6 +30,7 @@ export const InvitePage = ({ client, back }: { client: UsersClient; back: string
   const [draft, setDraft] = useState(EMPTY);
   const { busy, error, setError, run } = usePending();
   const [link, setLink] = useState('');
+  useUnsavedChanges(!link && !deepEqual(draft, EMPTY));
   if (roles.error) return <PageFailure message={roles.error.message} />;
   if (!roles.data) return <PageLoading />;
   const grantable = roles.data.filter((r) => r.isGrantable);

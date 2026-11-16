@@ -1,17 +1,62 @@
-import { type AnchorHTMLAttributes, type MouseEvent, useSyncExternalStore } from 'react';
+import { type AnchorHTMLAttributes, type MouseEvent, useEffect, useSyncExternalStore } from 'react';
+
+type Guard = { params: readonly string[] };
 
 const listeners = new Set<() => void>();
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  window.addEventListener('popstate', listener);
-  return () => {
-    listeners.delete(listener);
-    window.removeEventListener('popstate', listener);
-  };
-};
+const guards = new Set<Guard>();
+let shown = '';
+let pending: string | null = null;
 
 const current = () => `${window.location.pathname}${window.location.search}`;
+
+const emit = () => {
+  for (const listener of listeners) listener();
+};
+
+const isLeaving = (from: string, to: string) => {
+  const a = new URL(from, 'http://local');
+  const b = new URL(to, 'http://local');
+  return (
+    a.pathname !== b.pathname ||
+    [...guards].some((g) => g.params.some((p) => a.searchParams.get(p) !== b.searchParams.get(p)))
+  );
+};
+
+const hold = (to: string) => {
+  pending = to;
+  emit();
+};
+
+const onPop = () => {
+  const to = current();
+  if (guards.size && isLeaving(shown, to)) {
+    window.history.pushState(null, '', shown);
+    hold(to);
+    return;
+  }
+  shown = to;
+  pending = null;
+  emit();
+};
+
+const onUnload = (e: Event) => e.preventDefault();
+
+let isListening = false;
+
+const listen = () => {
+  if (isListening) return;
+  isListening = true;
+  shown = current();
+  window.addEventListener('popstate', onPop);
+};
+
+const subscribe = (listener: () => void) => {
+  listen();
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
 
 const AGENCY_PATH =
   /^\/agencies\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?=\/|$)/i;
@@ -27,11 +72,49 @@ export const agencyPath = (agencyId: string, to = '/') =>
 export const agencyHref = (to: string, agencyId = currentAgency()) =>
   agencyId && to.startsWith('/') && !to.startsWith('/agencies') ? agencyPath(agencyId, to) : to;
 
-export const navigate = (to: string, { replace = false } = {}) => {
+export const navigate = (to: string, { replace = false, force = false } = {}) => {
   const href = agencyHref(to);
+  if (!force && guards.size && isLeaving(current(), href)) {
+    hold(href);
+    return;
+  }
   if (replace) window.history.replaceState(null, '', href);
   else window.history.pushState(null, '', href);
-  for (const listener of listeners) listener();
+  shown = current();
+  pending = null;
+  emit();
+};
+
+export const guardChanges = (params: readonly string[]) => {
+  const guard = { params };
+  listen();
+  if (!guards.size) window.addEventListener('beforeunload', onUnload);
+  guards.add(guard);
+  return () => {
+    guards.delete(guard);
+    if (!guards.size) window.removeEventListener('beforeunload', onUnload);
+  };
+};
+
+const PATH_ONLY: readonly string[] = [];
+
+export const useUnsavedChanges = (dirty: boolean, params = PATH_ONLY) =>
+  useEffect(() => (dirty ? guardChanges(params) : undefined), [dirty, params]);
+
+export const usePendingLeave = () =>
+  useSyncExternalStore(
+    subscribe,
+    () => pending,
+    () => null
+  );
+
+export const stay = () => {
+  pending = null;
+  emit();
+};
+
+export const discard = () => {
+  if (pending !== null) navigate(pending, { force: true });
 };
 
 export const useLocation = (fallback = '/') => {

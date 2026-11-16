@@ -5,8 +5,10 @@ import {
   type ClearinghouseVendor,
   VENDOR_PRESETS
 } from '@ugula/billing';
+import { deepEqual } from '@ugula/graph';
 import { SaveIcon, Trash2Icon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
+import { useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
@@ -216,15 +218,21 @@ export const ConnectionForm = ({
   onRemove: () => Promise<string | null>;
 }) => {
   const [draft, setDraft] = useState(() => toConnectionDraft(connection));
+  const [saved, setSaved] = useState(draft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
+  useUnsavedChanges(!deepEqual(draft, saved));
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
     const failure = await onSave(fromConnectionDraft(draft));
     setError(failure ?? '');
-    if (failure === null) setDraft((d) => ({ ...d, secret: '' }));
+    if (failure === null) {
+      const next = { ...draft, secret: '' };
+      setDraft(next);
+      setSaved(next);
+    }
     setBusy(false);
   };
   const remove = async () => {

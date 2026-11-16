@@ -6,11 +6,12 @@ import {
   PLAN_TYPES,
   type PlanType
 } from '@ugula/billing';
+import { deepEqual } from '@ugula/graph';
 import { SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
-import { navigate } from '../../shared/router.tsx';
+import { navigate, useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { DeleteDialog } from '../../shared/ui/dialog.tsx';
@@ -69,6 +70,7 @@ export const PayerForm = ({
   onSave: (payer: PayerInput) => Promise<string | null>;
 }) => {
   const [draft, setDraft] = useState(() => toPayerDraft(payer));
+  useUnsavedChanges(!deepEqual(draft, toPayerDraft(payer)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async (e: FormEvent<HTMLFormElement>) => {
@@ -226,7 +228,7 @@ export const PayerPage = ({ client, live, payerId, back }: PayerPageProps) => {
     try {
       const saved = await client.save(input);
       notify({ title: payerSavedNotice(saved.payer.name, saved.linkedClaims) });
-      navigate(back);
+      navigate(back, { force: true });
       return null;
     } catch (err) {
       return messageOf(err);
@@ -236,7 +238,7 @@ export const PayerPage = ({ client, live, payerId, back }: PayerPageProps) => {
     try {
       await client.remove(p.id);
       notify({ title: `${p.name} deleted` });
-      navigate(back);
+      navigate(back, { force: true });
     } catch (err) {
       notify({ intent: 'danger', title: 'Could not delete payer', description: messageOf(err) });
     }

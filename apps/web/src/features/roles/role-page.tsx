@@ -3,7 +3,7 @@ import { SaveIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useCan } from '../../shared/access.tsx';
 import { messageOf } from '../../shared/api.ts';
-import { navigate } from '../../shared/router.tsx';
+import { navigate, useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
@@ -14,6 +14,10 @@ import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { PermissionGrant, Role, RoleInput, RolesClient } from './client.ts';
 import { PermissionGrid } from './permission-grid.tsx';
+
+export const isRoleChanged = (role: Role | null, draft: RoleInput) =>
+  draft.name !== (role?.name ?? '') ||
+  draft.permissions.toSorted().join() !== (role?.permissions ?? []).toSorted().join();
 
 type RoleFormProps = {
   role: Role | null;
@@ -26,6 +30,7 @@ type RoleFormProps = {
 export const RoleForm = ({ role, grants, readOnly, back, onSave }: RoleFormProps) => {
   const [name, setName] = useState(role?.name ?? '');
   const [permissions, setPermissions] = useState<Permission[]>(role?.permissions ?? []);
+  useUnsavedChanges(isRoleChanged(role, { name, permissions }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async (e: FormEvent<HTMLFormElement>) => {
@@ -105,7 +110,7 @@ export const RolePage = ({ client, roleId, back }: RolePageProps) => {
       if (role) await client.update(role.id, { ...input, version: role.version });
       else await client.create(input);
       notify({ title: `${input.name} saved` });
-      navigate(back);
+      navigate(back, { force: true });
       return null;
     } catch (err) {
       return messageOf(err);

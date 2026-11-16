@@ -1,11 +1,11 @@
-import { isFileType, type Json, type ValueType } from '@ugula/graph';
+import { deepEqual, isFileType, type Json, type ValueType } from '@ugula/graph';
 import { PlayIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { classNamesOf } from '../../shared/class-names.ts';
 import { pinLabel } from '../../shared/graph/pins.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
-import { navigate } from '../../shared/router.tsx';
+import { navigate, useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { EmptyText } from '../../shared/ui/empty-state.tsx';
@@ -33,12 +33,14 @@ export const inputSpanClasses = (type: ValueType) =>
       : '@lg:col-span-2 @3xl:col-span-4';
 
 export const StartRunForm = ({ client, target }: { client: RunsClient; target: Startable }) => {
-  const [inputs, setInputs] = useState<Record<string, Json>>(() =>
+  const [defaults] = useState<Record<string, Json>>(() =>
     Object.fromEntries(target.signature.inputs.map((p) => [p.name, p.default ?? null]))
   );
+  const [inputs, setInputs] = useState(defaults);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const notify = useToast();
+  useUnsavedChanges(!deepEqual(inputs, defaults));
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -47,7 +49,7 @@ export const StartRunForm = ({ client, target }: { client: RunsClient; target: S
     try {
       const { id, version } = await client.start(target.graphId, inputs);
       notify({ title: `${target.name} v${version} started` });
-      navigate(`/runs/${id}`);
+      navigate(`/runs/${id}`, { force: true });
     } catch (err) {
       setError(messageOf(err));
       setBusy(false);

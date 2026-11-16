@@ -1,9 +1,10 @@
 import { FACILITY_KINDS, isFacilityKind } from '@ugula/billing';
+import { deepEqual } from '@ugula/graph';
 import { SaveIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
-import { navigate } from '../../shared/router.tsx';
+import { navigate, useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { FieldGrid, FormActions } from '../../shared/ui/field.tsx';
@@ -101,6 +102,7 @@ export const FacilityForm = ({
   onSave: (facility: FacilityInput) => Promise<string | null>;
 }) => {
   const [draft, setDraft] = useState(() => toFacilityDraft(facility));
+  useUnsavedChanges(!deepEqual(draft, toFacilityDraft(facility)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async (e: FormEvent<HTMLFormElement>) => {
@@ -203,7 +205,7 @@ export const FacilityPage = ({ client, live, facilityId, back }: FacilityPagePro
     try {
       await client.save(facilityId, input);
       notify({ title: `${input.name} saved` });
-      navigate(back);
+      navigate(back, { force: true });
       return null;
     } catch (err) {
       return messageOf(err);

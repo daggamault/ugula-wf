@@ -1,9 +1,10 @@
+import { deepEqual } from '@ugula/graph';
 import { SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatDollars, parseDollars } from '../../shared/format.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
-import { navigate } from '../../shared/router.tsx';
+import { navigate, useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { DeleteDialog } from '../../shared/ui/dialog.tsx';
@@ -90,6 +91,7 @@ export const FeeForm = ({
   onSave: (fee: FeeInput) => Promise<string | null>;
 }) => {
   const [draft, setDraft] = useState(() => toFeeDraft(fee));
+  useUnsavedChanges(!deepEqual(draft, toFeeDraft(fee)));
   const [payer, setPayer] = useState<DirectoryPayer | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -194,7 +196,7 @@ export const FeePage = ({ client, live, feeId, back }: FeePageProps) => {
     try {
       const saved = await client.save(input);
       notify({ title: `${feeName(saved)} ${current ? 'updated' : 'added'}` });
-      navigate(back);
+      navigate(back, { force: true });
       return null;
     } catch (err) {
       return messageOf(err);
@@ -204,7 +206,7 @@ export const FeePage = ({ client, live, feeId, back }: FeePageProps) => {
     try {
       await client.remove(f.id);
       notify({ title: `${feeName(f)} deleted` });
-      navigate(back);
+      navigate(back, { force: true });
     } catch (err) {
       notify({ intent: 'danger', title: 'Could not delete fee', description: messageOf(err) });
     }

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { PermissionGrant, Role, RolesClient } from './client.ts';
-import { RoleForm, RolePage } from './role-page.tsx';
+import type { PermissionGrant, Role, RoleInput, RolesClient } from './client.ts';
+import { isRoleChanged, RoleForm, RolePage } from './role-page.tsx';
 
 const role: Role = {
   id: 'r1',
@@ -29,6 +29,17 @@ const form = (readOnly: boolean, r: Role | null = role) =>
       onSave: async () => null
     })
   );
+
+describe('isRoleChanged', () => {
+  it('tells unsaved edits from the saved role, whatever the permission order', () => {
+    const both: Role = { ...role, permissions: ['claims:read', 'runs:read'] };
+    const saved: RoleInput = { name: 'Biller', permissions: ['runs:read', 'claims:read'] };
+    assert.equal(isRoleChanged(both, saved), false);
+    assert.equal(isRoleChanged(both, { ...saved, name: 'Other' }), true);
+    assert.equal(isRoleChanged(both, { ...saved, permissions: ['runs:read'] }), true);
+    assert.equal(isRoleChanged(null, { name: '', permissions: [] }), false);
+  });
+});
 
 describe('RoleForm', () => {
   it('edits the name and permissions of a role', () => {

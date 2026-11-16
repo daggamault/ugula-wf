@@ -24,6 +24,7 @@ import { PageFailure, PageLoading } from './shared/ui/page.tsx';
 import { PageBoundary } from './shared/ui/page-boundary.tsx';
 import { Shell } from './shared/ui/shell.tsx';
 import { ToastProvider, useToast } from './shared/ui/toast.tsx';
+import { UnsavedChangesDialog } from './shared/ui/unsaved-changes-dialog.tsx';
 import { useResource } from './shared/use-resource.ts';
 
 const NO_SECTIONS = 'Your role in this agency opens no sections. Ask an administrator for access.';
@@ -97,6 +98,7 @@ export const Workspace = ({
         </Suspense>
       </PageBoundary>
       {can('imports:create') ? <ImportDrop client={clients.imports} /> : null}
+      <UnsavedChangesDialog />
     </Shell>
   );
 };

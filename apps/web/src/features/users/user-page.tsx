@@ -1,7 +1,7 @@
 import { KeyRoundIcon, SaveIcon, UserMinusIcon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useCan } from '../../shared/access.tsx';
-import { navigate } from '../../shared/router.tsx';
+import { navigate, useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
@@ -29,6 +29,7 @@ export const UserPage = ({ client, userId, back }: UserPageProps) => {
   const { busy, error, run } = usePending();
   const [link, setLink] = useState('');
   const [removing, setRemoving] = useState(false);
+  useUnsavedChanges(roleId !== null && roleId !== data.data?.user.role.id);
   if (data.error) return <PageFailure message={data.error.message} />;
   if (!data.data) return <PageLoading />;
   const { user, roles } = data.data;
@@ -47,7 +48,7 @@ export const UserPage = ({ client, userId, back }: UserPageProps) => {
     run(async () => {
       await client.remove(user.id);
       notify({ title: `${fullName(user)} removed` });
-      navigate(back);
+      navigate(back, { force: true });
     });
   const resetLink = () =>
     run(async () => {
