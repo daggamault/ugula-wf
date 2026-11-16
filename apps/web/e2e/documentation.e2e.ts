@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { expectClaim, segmentsOf } from './shared/expect.ts';
 import {
-  completeTask,
+  addDocument,
+  decision,
   draftClaim,
   fileClaim,
-  type Session,
-  SUITE_MS,
-  section,
-  signIn,
-  uniqueId,
+  REVIEW_PCR,
+  reviewed,
+  step,
   uploadEncounters,
-  workTasksUntil,
-  workTasksUntilTask
-} from './shared/session.ts';
+  workUntil,
+  workUntilTask
+} from './shared/claims.ts';
+import { tagged } from './shared/config.ts';
+import { expectClaim, lineCodes, segmentsOf } from './shared/expect.ts';
+import { type Session, SUITE_MS, signIn, uniqueId } from './shared/session.ts';
 
 const FIXTURES = [
   'scheduled-missing-pcs',
@@ -44,12 +45,9 @@ describe('documentation and coverage decide whether a claim can be billed', {
     await s?.browser.close();
   });
 
-  it('holds a scheduled Medicare transport without a physician certification in draft', async () => {
-    const stuck = await workTasksUntilTask(
-      s,
-      await claimOf('scheduled-missing-pcs'),
-      'Fix claim data'
-    );
+  it('holds a scheduled Medicare transport without a physician certification until one is added, then files it', async () => {
+    const claimId = await claimOf('scheduled-missing-pcs');
+    const stuck = await workUntilTask(s, claimId, REVIEW_PCR, 'Fix claim data');
     assert.equal(stuck.claim.status, 'draft');
     expectClaim(stuck, {
       classification: 'scheduled',
@@ -63,14 +61,16 @@ describe('documentation and coverage decide whether a claim can be billed', {
       payers: ['Medicare'],
       blocking: [/needs a physician certification statement/]
     });
+    await addDocument(s, claimId, 'pcs', 'pcs.pdf', '2026-09-01');
+    const built = await workUntil(s, claimId, [step('Fix claim data', 'Save')], 'needs_review');
+    assert.ok(!built.issues.some((i) => i.field === 'pcs' && i.severity === 'blocking'));
+    const { file } = await fileClaim(s, claimId);
+    assert.deepEqual(lineCodes(file), ['HC:A0428:HN', 'HC:A0425:HN']);
   });
 
-  it('bills Medicaid from the payment method, but needs its member ID and a valid signature reason', async () => {
-    const stuck = await workTasksUntilTask(
-      s,
-      await claimOf('medicaid-by-payment-method-unsigned'),
-      'Fix claim data'
-    );
+  it('bills Medicaid from the payment method once its member ID and a signed release are on file', async () => {
+    const claimId = await claimOf('medicaid-by-payment-method-unsigned');
+    const stuck = await workUntilTask(s, claimId, REVIEW_PCR, 'Fix claim data');
     expectClaim(stuck, {
       classification: 'emergency',
       level: 'BLS',
@@ -87,14 +87,28 @@ describe('documentation and coverage decide whether a claim can be billed', {
       ]
     });
     assert.equal(stuck.claim.signature, 'missing');
-  });
-
-  it('bills a child under a parent policy first and Medicaid second, signed by the parent', async () => {
-    const built = await workTasksUntil(
+    await addDocument(s, claimId, 'signature', 'release.pdf');
+    const built = await workUntil(
       s,
-      await claimOf('dependent-secondary-coverage'),
+      claimId,
+      [
+        step('Fix claim data', 'Save', async (d) => {
+          await d
+            .getByLabel(/Member ID/i)
+            .first()
+            .fill('PA0011223344');
+        })
+      ],
       'needs_review'
     );
+    assert.equal(built.claim.signature, 'signed');
+    const { file } = await fileClaim(s, claimId);
+    assert.deepEqual(lineCodes(file), ['HC:A0429:RH', 'HC:A0425:RH']);
+    assert.match(file, /NM1\*IL\*1\*[^~]*\*MI\*PA0011223344~/);
+  });
+
+  it('files a child under a parent policy first and Medicaid second, signed by the parent', async () => {
+    const built = await reviewed(s, await claimOf('dependent-secondary-coverage'));
     expectClaim(built, {
       classification: 'emergency',
       level: 'BLS',
@@ -114,23 +128,25 @@ describe('documentation and coverage decide whether a claim can be billed', {
     const { file } = await fileClaim(s, built.claim.id);
     assert.deepEqual(segmentsOf(file, 'SBR')[0]?.split('*').slice(0, 3), ['SBR', 'P', '']);
     assert.match(file, /PAT\*19~/);
-    assert.match(file, /NM1\*IL\*1\*CALLOWAY\*MIRIAM\*/);
-    assert.match(file, /NM1\*QC\*1\*CALLOWAY\*EZRA~/);
+    const last = built.claim.last_name?.toUpperCase();
+    const pcr = pcrs['dependent-secondary-coverage'];
+    assert.ok(file.includes(`NM1*IL*1*${last}*${tagged(pcr, 'Miriam').toUpperCase()}*`));
+    assert.ok(file.includes(`NM1*QC*1*${last}*${tagged(pcr, 'Ezra').toUpperCase()}~`));
   });
 
   it('asks for the name and birth date a report is missing before it matches the patient', async () => {
     const claimId = await claimOf('missing-patient-details');
-    await completeTask(s, claimId, 'Complete patient details', {
-      outcome: 'Save Patient',
-      check: async () => {
-        const decision = section(s.page, 'Your Decision').last();
-        await decision.getByLabel(/^First Name/i).fill('Rafael');
-        await decision.getByLabel(/^Birth Date/i).fill('1985-10-02');
-      }
-    });
-    const built = await workTasksUntil(s, claimId, 'needs_review');
-    assert.equal(built.claim.first_name, 'Rafael');
-    assert.equal(built.claim.last_name, 'Sandoval');
+    const rafael = tagged(pcrs['missing-patient-details'], 'Rafael');
+    const built = await reviewed(s, claimId, [
+      step('Complete patient details', 'Save Patient', async () => {
+        const d = decision(s.page);
+        await d.getByLabel(/^First Name/i).fill(rafael);
+        await d.getByLabel(/^Birth Date/i).fill('1985-10-02');
+      }),
+      step('Review PCR', 'Approve')
+    ]);
+    assert.equal(built.claim.first_name, rafael);
+    assert.equal(built.claim.last_name, tagged(pcrs['missing-patient-details'], 'Sandoval'));
     expectClaim(built, {
       classification: 'emergency',
       level: 'BLS',
@@ -143,5 +159,8 @@ describe('documentation and coverage decide whether a claim can be billed', {
       payers: ['Blue Plan'],
       warnings: [/Not signed because the patient's mental status was impaired/]
     });
+    const { file } = await fileClaim(s, claimId);
+    assert.deepEqual(lineCodes(file), ['HC:A0429:RH', 'HC:A0425:RH']);
+    assert.match(file, /DMG\*D8\*19851002\*/);
   });
 });

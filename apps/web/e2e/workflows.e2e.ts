@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { Page } from 'playwright-core';
+import { importEncounter } from './shared/claims.ts';
 import { chooseOption, listboxByLabel } from './shared/listbox.ts';
 import {
   api,
-  config,
   FLOW_MS,
   go,
   heading,
-  importEncounter,
   type Session,
   SUITE_MS,
   section,
+  send,
   signIn,
-  toasts,
+  toast,
   uniqueId,
   until
 } from './shared/session.ts';
@@ -21,37 +21,37 @@ import {
 type GraphSummary = { id: string; key: string; name: string; overrides: string | null };
 
 const pcr = uniqueId('E2E-WF');
-const workflowKey = `e2e.flow-${Date.now()}`;
+const workflowKey = uniqueId('e2e.flow').toLowerCase();
 
 let s: Session;
 
 const graphs = (show: string, q = '') =>
   api<{ items: GraphSummary[] }>(s, `/api/graphs?show=${show}&q=${encodeURIComponent(q)}`);
 
-const removeDemoOverride = async () => {
-  const mine = (await graphs('mine', 'demo.process-item')).items.filter(
-    (g) => g.key === 'demo.process-item' && g.overrides
+const removeGraphs = async (key: string, copiesOnly: boolean) => {
+  const mine = (await graphs('mine', key)).items.filter(
+    (g) => g.key === key && (!copiesOnly || g.overrides)
   );
-  for (const g of mine) {
-    await s.page.request.delete(`${s.apiUrl}/api/agencies/${s.agencyId}/graphs/${g.id}`, {
-      headers: { origin: new URL(config.E2E_WEB_URL).origin }
-    });
-  }
+  for (const g of mine) await send(s, 'DELETE', `/api/graphs/${g.id}`);
 };
 
+const removeDemoOverride = () => removeGraphs('demo.process-item', true);
+
+const canvas = (page: Page) => page.getByRole('application').first();
+
 const node = (page: Page, title: string) =>
-  page.locator('.react-flow__node').filter({ has: page.getByRole('article', { name: title }) });
+  canvas(page).getByRole('article', { name: title, exact: true });
 
 const isInView = async (page: Page, title: string) => {
-  const canvas = await page.locator('.react-flow').first().boundingBox();
+  const area = await canvas(page).boundingBox();
   const box = await node(page, title).first().boundingBox();
   return (
-    canvas !== null &&
+    area !== null &&
     box !== null &&
-    box.x >= canvas.x &&
-    box.y >= canvas.y &&
-    box.x + box.width <= canvas.x + canvas.width &&
-    box.y + box.height <= canvas.y + canvas.height
+    box.x >= area.x &&
+    box.y >= area.y &&
+    box.x + box.width <= area.x + area.width &&
+    box.y + box.height <= area.y + area.height
   );
 };
 
@@ -64,7 +64,26 @@ const editGraph = async (name: string) => {
   await heading(s.page, name).waitFor();
 };
 
-const rowsOf = (label: string) => s.page.getByRole('table', { name: label }).getByRole('row');
+const table = (label: string) => s.page.getByRole('table', { name: label });
+
+const dataRows = (label: string) =>
+  table(label)
+    .getByRole('row')
+    .filter({ has: s.page.getByRole('cell') });
+
+const startProcessItem = async (charge: number) => {
+  const [target] = (await graphs('workflows', 'Process Item')).items.filter(
+    (g) => g.key === 'demo.process-item' && !g.overrides
+  );
+  assert.ok(target, 'the demo workflow is seeded');
+  await go(s.page, `/runs/new?graph=${target.id}`);
+  await heading(s.page, 'Run Process Item').waitFor();
+  await s.page
+    .getByLabel('item')
+    .fill(JSON.stringify({ id: 'e2e', lines: [{ units: 2, charge }] }));
+  await s.page.getByRole('button', { name: 'Start Run' }).click();
+  await s.page.waitForURL(/\/runs\/[\w-]+$/);
+};
 
 describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
   before(async () => {
@@ -73,27 +92,30 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
   });
 
   after(async () => {
-    if (s) await removeDemoOverride();
+    if (s) {
+      await removeDemoOverride();
+      await removeGraphs(workflowKey, false);
+    }
     await s?.browser.close();
   });
 
   it('lists workflows and subworkflows, switching between them with the Show filter', async () => {
     await go(s.page, '/workflows');
     await heading(s.page, 'Workflows').waitFor();
-    const table = () => s.page.getByRole('table', { name: 'Workflows and subworkflows' });
-    await table().getByText('Encounter to Claim', { exact: true }).waitFor();
-    assert.equal(await table().getByText('Work Draft Claim', { exact: true }).count(), 0);
+    const list = table('Workflows and subworkflows');
+    await list.getByText('Encounter to Claim', { exact: true }).waitFor();
+    assert.equal(await list.getByText('Work Draft Claim', { exact: true }).count(), 0);
     await chooseOption(listboxByLabel(s.page, 'Show'), 'blocks');
     await s.page.waitForURL(/kind=blocks/);
-    await table().getByText('Bill the Claim', { exact: true }).waitFor();
-    const kinds = await table()
-      .getByRole('row')
-      .evaluateAll((rows) =>
-        rows.slice(1).map((r) => r.querySelector('td:nth-child(3)')?.textContent ?? '')
-      );
-    assert.ok(
-      kinds.length > 0 && kinds.every((k) => k.includes('Subworkflow') && !k.includes('Workflow'))
+    await list.getByText('Bill the Claim', { exact: true }).waitFor();
+    const rows = dataRows('Workflows and subworkflows');
+    assert.ok((await rows.count()) > 0);
+    assert.equal(
+      await rows.filter({ hasNotText: 'Subworkflow' }).count(),
+      0,
+      'every row is a subworkflow'
     );
+    assert.equal(await list.getByRole('cell', { name: 'Workflow', exact: true }).count(), 0);
     await s.page.getByRole('link', { name: 'New Subworkflow' }).waitFor();
   });
 
@@ -113,21 +135,51 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await heading(s.page, 'Encounter to Claim').waitFor();
   });
 
-  it('starts a run with its inputs and watches it complete', async () => {
-    const [target] = (await graphs('workflows', 'Process Item')).items.filter(
-      (g) => g.key === 'demo.process-item'
+  it('opens the workflow settings panel with its paths, pins and variables', async () => {
+    await editGraph('Process Item');
+    await s.page.getByRole('link', { name: 'Workflow Settings' }).click();
+    await s.page.waitForURL(/[?&]panel=settings/);
+    const panel = s.page.getByRole('complementary', { name: 'Workflow Settings' });
+    for (const title of ['Paths', 'Variables']) await section(s.page, title).first().waitFor();
+    await panel.getByRole('textbox', { name: 'Name' }).first().waitFor();
+    assert.equal(
+      await panel.getByRole('textbox', { name: 'Name' }).first().isDisabled(),
+      true,
+      'a built-in workflow is read only'
     );
-    assert.ok(target, 'the demo workflow is seeded');
-    await go(s.page, `/runs/new?graph=${target.id}`);
-    await heading(s.page, 'Run Process Item').waitFor();
-    await s.page
-      .getByLabel('item')
-      .fill(JSON.stringify({ id: 'e2e', lines: [{ units: 2, charge: 12.5 }] }));
-    await s.page.getByRole('button', { name: 'Start Run' }).click();
-    await s.page.waitForURL(/\/runs\/[\w-]+$/);
+    await panel.getByRole('button', { name: 'Close Settings' }).click();
+    await until(
+      s.page,
+      async () => new URL(s.page.url()).searchParams.get('panel'),
+      (p) => p === null,
+      'the settings panel to close'
+    );
+  });
+
+  it('starts a run with its inputs and watches it complete', async () => {
+    await startProcessItem(12.5);
     await s.page.getByText('Completed').first().waitFor();
     await section(s.page, 'Result').getByText('25').first().waitFor();
     await node(s.page, 'Return').first().waitFor();
+  });
+
+  it('cancels a run before it finishes', async () => {
+    await startProcessItem(600);
+    await s.page.getByRole('button', { name: 'Cancel Run' }).click();
+    await s.page
+      .getByRole('dialog', { name: 'Cancel Run?' })
+      .getByRole('button', { name: 'Cancel Run' })
+      .click();
+    await toast(s.page, 'Run cancelled');
+    const runId = new URL(s.page.url()).pathname.split('/').at(-1);
+    await until(
+      s.page,
+      async () => (await api<{ run: { status: string } }>(s, `/api/runs/${runId}`)).run.status,
+      (status) => status === 'cancelled',
+      'the run to be cancelled'
+    );
+    await heading(s.page, /Cancelled/).waitFor();
+    assert.equal(await s.page.getByRole('button', { name: 'Cancel Run' }).count(), 0);
   });
 
   it('lists runs, filters them by status and follows an import into its encounter run', async () => {
@@ -135,14 +187,16 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     assert.ok(claimId);
     await go(s.page, '/runs');
     await heading(s.page, 'Runs').waitFor();
-    await rowsOf('Workflow runs').filter({ hasText: 'Receive NEMSIS File' }).first().waitFor();
+    await dataRows('Workflow runs').filter({ hasText: 'Receive NEMSIS File' }).first().waitFor();
     await chooseOption(listboxByLabel(s.page, 'Status'), 'completed');
     await s.page.waitForURL(/status=completed/);
-    await rowsOf('Workflow runs').nth(1).waitFor();
-    const statuses = await rowsOf('Workflow runs').evaluateAll((rows) =>
-      rows.slice(1).map((r) => r.querySelector('td:nth-child(2)')?.textContent ?? '')
+    const rows = dataRows('Workflow runs');
+    await rows.first().waitFor();
+    assert.equal(
+      await rows.filter({ hasNotText: 'Completed' }).count(),
+      0,
+      'every run listed is completed'
     );
-    assert.ok(statuses.length > 0 && statuses.every((t) => t.includes('Completed')));
     const imports = await api<{ items: { file_name: string; run_id: string }[] }>(
       s,
       `/api/imports?q=${encodeURIComponent(pcr)}`
@@ -161,47 +215,75 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await s.page.getByText('Waiting on').first().waitFor({ timeout: FLOW_MS });
   });
 
-  it('overrides a built-in workflow, arranges, saves and publishes the copy, then removes it', async () => {
+  it('overrides a built-in workflow, removes a node, compares and publishes the copy, then removes it', async () => {
     await editGraph('Process Item');
     await s.page.getByRole('button', { name: 'Override for This Agency' }).click();
-    await toasts(s.page).getByText('Process Item copied for this agency').waitFor();
+    await toast(s.page, 'Process Item copied for this agency');
     await s.page.getByRole('main').getByText('Agency', { exact: true }).waitFor();
     assert.equal(
       await s.page.getByRole('button', { name: 'Override for This Agency' }).count(),
       0,
       'an agency copy cannot be overridden for the agency again'
     );
-    const arrange = s.page.getByRole('button', { name: 'Arrange Nodes' });
     const redraft = s.page.getByRole('button', { name: 'Edit as New Draft' });
+    const arrange = s.page.getByRole('button', { name: 'Arrange Nodes' });
     await arrange.or(redraft).first().waitFor();
     if (await redraft.isVisible()) {
       await redraft.click();
-      await toasts(s.page)
-        .getByText(/^Draft v\d+ saved$/)
-        .waitFor();
+      await toast(s.page, /^Draft v\d+ saved$/);
     }
-    await arrange.click();
+    const removed = 'Delay';
+    if (await node(s.page, removed).count()) {
+      await node(s.page, removed).click();
+      await s.page.getByRole('button', { name: 'Delete Node' }).dispatchEvent('click');
+      await until(
+        s.page,
+        () => node(s.page, removed).count(),
+        (n) => n === 0,
+        'the node to leave the canvas'
+      );
+    } else {
+      await arrange.click();
+    }
     await s.page.getByText('Unsaved', { exact: true }).waitFor();
     await s.page.getByRole('button', { name: 'Save', exact: true }).click();
-    await toasts(s.page)
-      .getByText(/^Draft v\d+ saved$/)
-      .waitFor();
+    await toast(s.page, /^Draft v\d+ saved$/);
+    await s.page.getByRole('link', { name: 'Show Removed' }).click();
+    await s.page.waitForURL(/[?&]removed=shown/);
+    await node(s.page, `${removed} (removed)`).waitFor();
+    await s.page.getByRole('link', { name: 'Hide Removed' }).click();
+    await s.page.getByRole('link', { name: 'Compare', exact: true }).first().click();
+    await s.page.waitForURL(/[?&]panel=compare/);
+    const compare = s.page.getByRole('complementary', { name: 'Compare With Base' });
+    await compare.getByRole('heading', { name: 'Yours' }).waitFor();
+    await compare.getByText(new RegExp(removed)).first().waitFor();
+    await compare.getByRole('button', { name: 'Close Compare' }).click();
     await s.page.getByRole('button', { name: 'Publish' }).click();
-    await toasts(s.page)
-      .getByText(/^Process Item v\d+ published$/)
-      .waitFor();
+    await toast(s.page, /^Process Item v\d+ published$/);
     assert.equal(
       (await graphs('mine', 'demo.process-item')).items.filter((g) => g.overrides).length,
       1
     );
+    await go(s.page, '/workflows/customized');
+    await heading(s.page, 'Customization Map').waitFor();
+    const map = s.page.getByRole('region', { name: 'Process Item', exact: true });
+    await map.getByText('demo.process-item', { exact: true }).first().waitFor();
+    await map.getByRole('link', { name: 'Process Item', exact: true }).first().click();
+    await heading(s.page, 'Process Item').waitFor();
     await s.page.getByRole('button', { name: 'Remove Override' }).click();
     await s.page.getByRole('dialog').getByRole('button', { name: 'Remove Override' }).click();
-    await toasts(s.page).getByText('Override removed').waitFor();
+    await toast(s.page, 'Override removed');
     await heading(s.page, 'Process Item').waitFor();
     await s.page.getByRole('main').getByText('Built-in', { exact: true }).waitFor();
     await s.page.getByRole('button', { name: 'Override for This Agency' }).waitFor();
     assert.equal(
       (await graphs('mine', 'demo.process-item')).items.filter((g) => g.overrides).length,
+      0
+    );
+    await go(s.page, '/workflows/customized');
+    await heading(s.page, 'Customization Map').waitFor();
+    assert.equal(
+      await s.page.getByRole('region', { name: 'Process Item', exact: true }).count(),
       0
     );
   });
@@ -220,14 +302,10 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
       .getByRole('button', { name: /^Round/ })
       .first()
       .click();
-    await toasts(s.page)
-      .getByText(/^Round added$/)
-      .waitFor();
+    await toast(s.page, /^Round added$/);
     await node(s.page, 'Round').first().waitFor();
     await s.page.getByRole('button', { name: 'Save', exact: true }).click();
-    await toasts(s.page)
-      .getByText(/^Draft v\d+ saved/)
-      .waitFor();
+    await toast(s.page, /^Draft v\d+ saved/);
     const [created] = (await graphs('mine', workflowKey)).items.filter(
       (g) => g.key === workflowKey
     );
@@ -242,7 +320,7 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
       .first()
       .click();
     await heading(s.page, `${pcr}.xml`).waitFor();
-    const row = rowsOf('PCRs in this file').filter({ hasText: pcr });
+    const row = dataRows('PCRs in this file').filter({ hasText: pcr });
     await row
       .getByText(/Waiting|Claim Opened/)
       .first()
@@ -257,11 +335,14 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
 
   it('refuses to import a file that is not NEMSIS XML', async () => {
     await go(s.page, '/imports');
-    await s.page.locator('input[type="file"][accept*="xml"]').setInputFiles({
+    await heading(s.page, 'Imports').waitFor();
+    const chooser = s.page.waitForEvent('filechooser');
+    await s.page.getByRole('button', { name: 'Import Files', exact: true }).click();
+    await (await chooser).setFiles({
       name: `${pcr}.txt`,
       mimeType: 'text/plain',
       buffer: Buffer.from('not a report')
     });
-    await toasts(s.page).getByText(`${pcr}.txt was not imported`).waitFor();
+    await toast(s.page, `${pcr}.txt was not imported`);
   });
 });

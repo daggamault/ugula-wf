@@ -1,31 +1,47 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { expectClaim } from './shared/expect.ts';
+import {
+  claimState,
+  draftClaim,
+  fileClaim,
+  reviewed,
+  step,
+  uploadEncounters,
+  workTask,
+  workUntil
+} from './shared/claims.ts';
+import { expectClaim, lineCodes } from './shared/expect.ts';
 import {
   api,
-  claimStatusIs,
-  completeTask,
-  draftClaim,
   go,
+  rowWith,
   type Session,
   SUITE_MS,
   signIn,
   uniqueId,
-  until,
-  uploadEncounters,
-  workTasksUntil
+  until
 } from './shared/session.ts';
 
 const batch = uniqueId('E2E-IMP');
 const revised = uniqueId('E2E-IMP');
+const kept = uniqueId('E2E-IMP');
 
 let s: Session;
+
+const claimsFor = async (pcr: string) =>
+  (
+    await api<{ items: { id: string }[] }>(
+      s,
+      `/api/claims?number=${encodeURIComponent(pcr)}&status=all`
+    )
+  ).items;
 
 describe('imports split files into reports and revise claims', { timeout: SUITE_MS }, () => {
   before(async () => {
     s = await signIn();
     await uploadEncounters(s, batch, 'batch-three-reports');
     await uploadEncounters(s, revised, 'bls-emergency-commercial');
+    await uploadEncounters(s, kept, 'bls-emergency-commercial');
   });
 
   after(async () => {
@@ -45,17 +61,11 @@ describe('imports split files into reports and revise claims', { timeout: SUITE_
     );
     const id = imports.items.find((i) => i.file_name === `${batch}.xml`)?.id;
     await go(s.page, `/imports/${id}`);
-    for (const n of [1, 2, 3]) {
-      await s.page
-        .getByRole('row')
-        .filter({ hasText: `${batch}-${n}` })
-        .first()
-        .waitFor();
-    }
+    for (const n of [1, 2, 3]) await rowWith(s.page, `${batch}-${n}`).first().waitFor();
   });
 
-  it('works each report in the file by its own classification', async () => {
-    const transported = await workTasksUntil(s, await draftClaim(s, `${batch}-1`), 'needs_review');
+  it('works each report in the file by its own classification and files the billable ones', async () => {
+    const transported = await reviewed(s, await draftClaim(s, `${batch}-1`));
     expectClaim(transported, {
       classification: 'emergency',
       level: 'BLS',
@@ -66,21 +76,29 @@ describe('imports split files into reports and revise claims', { timeout: SUITE_
       ],
       originDestination: 'SH'
     });
-    const cancelled = await draftClaim(s, `${batch}-2`);
-    await completeTask(s, cancelled, 'Confirm Not Billable', { outcome: 'Skip Claim' });
-    await claimStatusIs(s, cancelled, 'void');
-    const treated = await workTasksUntil(s, await draftClaim(s, `${batch}-3`), 'needs_review');
+    assert.deepEqual(lineCodes((await fileClaim(s, transported.claim.id)).file), [
+      'HC:A0429:SH',
+      'HC:A0425:SH'
+    ]);
+    await workUntil(
+      s,
+      await draftClaim(s, `${batch}-2`),
+      [step('Confirm Not Billable', 'Skip Claim')],
+      'void'
+    );
+    const treated = await reviewed(s, await draftClaim(s, `${batch}-3`));
     expectClaim(treated, {
       classification: 'treatNoTransport',
       level: 'ALS1',
       emergency: true,
       lines: [['A0998', 1]]
     });
+    assert.deepEqual(lineCodes((await fileClaim(s, treated.claim.id)).file), ['HC:A0998:GY']);
   });
 
-  it('turns a corrected report into a revision of its claim and rebuilds it on approval', async () => {
+  it('turns a corrected report into a revision of its claim and files the rebuilt claim', async () => {
     const claimId = await draftClaim(s, revised);
-    const first = await workTasksUntil(s, claimId, 'needs_review');
+    const first = await reviewed(s, claimId);
     assert.deepEqual(
       first.claim.lines.map((l) => [l.code, Number(l.units)]),
       [
@@ -89,14 +107,15 @@ describe('imports split files into reports and revise claims', { timeout: SUITE_
       ]
     );
     await uploadEncounters(s, revised, 'bls-emergency-commercial-corrected');
-    await completeTask(s, claimId, 'Review updated PCR', {
-      outcome: 'Apply Update',
-      check: async () => {
-        await s.page.getByText('Destination odometer').first().waitFor();
-      }
-    });
-    await claimStatusIs(s, claimId, 'draft');
-    const rebuilt = await workTasksUntil(s, claimId, 'needs_review');
+    await workTask(
+      s,
+      claimId,
+      step('Review updated PCR', 'Apply Update', async (d) => {
+        await d.page().getByText('Destination odometer').first().waitFor();
+      }),
+      ['Review claim']
+    );
+    const rebuilt = await reviewed(s, claimId);
     assert.equal(rebuilt.claim.id, claimId, 'the revision reworks the same claim');
     expectClaim(rebuilt, {
       classification: 'emergency',
@@ -108,10 +127,25 @@ describe('imports split files into reports and revise claims', { timeout: SUITE_
       ],
       originDestination: 'SH'
     });
-    const claims = await api<{ items: { id: string }[] }>(
-      s,
-      `/api/claims?number=${encodeURIComponent(revised)}&status=all`
+    assert.equal(
+      (await claimsFor(revised)).length,
+      1,
+      'a corrected report never opens a second claim'
     );
-    assert.equal(claims.items.length, 1, 'a corrected report never opens a second claim');
+    const { file } = await fileClaim(s, claimId);
+    assert.match(file, /SV1\*HC:A0425:SH\*[\d.]+\*UN\*10\.1\*/);
+    assert.match(file, /CR1\*{3,4}A\*DH\*10\.1~/);
+  });
+
+  it('keeps the claim as it is when a biller acknowledges a corrected report without applying it', async () => {
+    const claimId = await draftClaim(s, kept);
+    await reviewed(s, claimId);
+    await uploadEncounters(s, kept, 'bls-emergency-commercial-corrected');
+    await workTask(s, claimId, step('Review updated PCR', 'Acknowledge'), ['Review claim']);
+    const { claim } = await claimState(s, claimId);
+    assert.equal(claim.status, 'needs_review');
+    assert.equal(Number(claim.lines[1]?.units), 8.3);
+    assert.equal((await claimsFor(kept)).length, 1);
+    assert.match((await fileClaim(s, claimId)).file, /SV1\*HC:A0425:SH\*[\d.]+\*UN\*8\.3\*/);
   });
 });

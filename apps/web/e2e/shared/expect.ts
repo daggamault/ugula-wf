@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type { ClaimState } from './session.ts';
+import type { ClaimState } from './claims.ts';
 
 type ExpectedClaim = {
   classification: string;
@@ -62,3 +62,10 @@ export const segmentsOf = (file: string, tag: string) =>
     .split('~')
     .map((x) => x.trim())
     .filter((x) => x.startsWith(`${tag}*`));
+
+export const lineCodes = (file: string) => segmentsOf(file, 'SV1').map((x) => x.split('*')[1]);
+
+export const paidByOthersCents = (file: string) =>
+  segmentsOf(file, 'AMT')
+    .filter((x) => x.startsWith('AMT*D*'))
+    .map((x) => Math.round(Number(x.split('*')[2]) * 100));

@@ -1,3 +1,4 @@
+import { payerKey } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 
@@ -20,8 +21,11 @@ const demoPayers = [
   { name: 'Medicare', payer_code: 'DEMOMCR', claim_filing: 'MB' },
   { name: 'Medicaid', payer_code: 'DEMOMCD', claim_filing: 'MC' },
   { name: 'Blue Plan', payer_code: 'DEMOBCBS', claim_filing: 'BL' },
-  { name: 'Keystone Comp', payer_code: 'DEMOWC', claim_filing: 'WC' }
+  { name: 'Keystone Comp', payer_code: 'DEMOWC', claim_filing: 'WC' },
+  { name: 'Keystone Auto', payer_code: 'DEMOAUTO', claim_filing: 'CI' }
 ] as const;
+
+const demoPayerAliases = [{ payer: 'Medicare', alias: 'Simulated Medicare Part B' }] as const;
 
 const demoFacilities = [
   {
@@ -96,3 +100,25 @@ export const buildUpsertDemoPayers = (db: Kysely<Database>, agencyId: string) =>
         updated_at: sql`now()`
       })
     );
+
+export const upsertDemoPayerAliases = async (db: Kysely<Database>, agencyId: string) => {
+  for (const { payer, alias } of demoPayerAliases) {
+    await db
+      .insertInto('payer_aliases')
+      .columns(['agency_id', 'payer_id', 'alias', 'alias_key'])
+      .expression(
+        db
+          .selectFrom('payers')
+          .select([
+            'agency_id',
+            'id',
+            sql<string>`${alias}::text`.as('alias'),
+            sql<string>`${payerKey(alias)}::text`.as('alias_key')
+          ])
+          .where('agency_id', '=', agencyId)
+          .where(sql`lower(name)`, '=', payer.toLowerCase())
+      )
+      .onConflict((oc) => oc.columns(['agency_id', 'alias_key']).doNothing())
+      .execute();
+  }
+};

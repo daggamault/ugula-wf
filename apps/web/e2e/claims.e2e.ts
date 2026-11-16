@@ -1,31 +1,41 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import type { Page } from 'playwright-core';
-import { chooseOption, chosenValue, listboxByLabel } from './shared/listbox.ts';
 import {
+  approve,
+  claimEvents,
+  claimIs,
   claimState,
   claimStatusIs,
-  completeTask,
-  config,
   decide,
-  FLOW_MS,
-  finishTask,
+  decision,
+  eventLogged,
+  fileClaim,
+  importEncounter,
+  openClaim,
+  REVIEW_PCR,
+  startClaimTask,
+  step,
+  uploadPayerFile,
+  work,
+  workTask,
+  workUntil
+} from './shared/claims.ts';
+import { chooseOption, chosenValue, listboxByLabel } from './shared/listbox.ts';
+import {
+  config,
   go,
   heading,
-  importEncounter,
+  rowWith,
   type Session,
   SUITE_MS,
   section,
   signIn,
-  startClaimTask,
-  toasts,
+  submitSignIn,
+  toast,
   uniqueId,
   until
 } from './shared/session.ts';
-
-const LAST_NAME = 'Kline';
-const BIRTH_DATE = '1941-05-22';
-const OPTIONAL_TASKS = ['Match payer', 'Confirm patient'];
+import { eligibility271 } from './shared/x12.ts';
 
 let s: Session;
 const pcrs = {
@@ -35,35 +45,18 @@ const pcrs = {
 };
 const claims = { worked: '', held: '', voided: '' };
 
-const reach = (claimId: string, title: string) =>
-  until(
-    s.page,
-    async () => {
-      const { claim } = await claimState(s, claimId);
-      const optional = claim.tasks.find((t) => OPTIONAL_TASKS.includes(t.title));
-      if (optional && optional.title !== title) {
-        await completeTask(s, claimId, optional.title);
-        return undefined;
-      }
-      return claim.tasks.find((t) => t.title === title);
-    },
-    (t) => t !== undefined,
+const openTask = async (claimId: string, title: string) => {
+  const c = await claimIs(
+    s,
+    claimId,
+    (c) => c.claim.tasks.some((t) => t.title === title),
     `a "${title}" task`
   );
-
-const openTaskPage = async (claimId: string, title: string) => {
-  const task = await reach(claimId, title);
+  const task = c.claim.tasks.find((t) => t.title === title);
   await go(s.page, `/tasks/${task?.id}`);
-  await section(s.page, 'Your Decision').last().waitFor();
+  await decision(s.page).waitFor();
   return task?.id ?? '';
 };
-
-const openClaim = async (claimId: string, tab = '') => {
-  await go(s.page, `/claims/${claimId}${tab ? `?tab=${tab}` : ''}`);
-  await heading(s.page, /^Claim \d{8}-\d{4,}$/).waitFor();
-};
-
-const toast = (title: string | RegExp) => toasts(s.page).getByText(title).first().waitFor();
 
 const searchClaims = async (fields: Record<string, string>) => {
   await go(s.page, '/claims');
@@ -76,11 +69,7 @@ const searchClaims = async (fields: Record<string, string>) => {
   await s.page.waitForURL(/\/claims\?/);
 };
 
-const claimRow = (pcr: string) => s.page.getByRole('row').filter({ hasText: pcr });
-
-const fillNote = async (page: Page, note: string) => {
-  await section(page, 'Your Decision').last().getByLabel('Note').fill(note);
-};
+const fillNote = (note: string) => decision(s.page).getByLabel('Note').fill(note);
 
 describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () => {
   before(async () => {
@@ -103,10 +92,10 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
       await page.getByLabel('Password').fill(`${config.DEV_USER_PASSWORD}-wrong`);
       await page.getByRole('button', { name: 'Sign In' }).click();
       await page.getByRole('alert').first().waitFor();
-      assert.equal(await page.getByRole('heading', { level: 1, name: 'Claims' }).count(), 0);
+      assert.equal(await heading(page, 'Claims').count(), 0);
       await page.getByLabel('Password').fill(config.DEV_USER_PASSWORD);
-      await page.getByRole('button', { name: 'Sign In' }).click();
-      await page.getByRole('heading', { level: 1, name: 'Claims' }).waitFor();
+      await submitSignIn(page);
+      await heading(page, 'Claims').waitFor();
       await page.getByRole('button', { name: 'Sign Out' }).click();
       await page.getByText('Sign In to Your Account').waitFor();
       await page.goto(new URL(`/agencies/${s.agencyId}/claims`, config.E2E_WEB_URL).href);
@@ -117,41 +106,68 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
   });
 
   it('searches claims by encounter number and patient', async () => {
-    for (const claimId of Object.values(claims)) await reach(claimId, 'Review PCR');
+    for (const claimId of Object.values(claims)) await openTask(claimId, 'Review PCR');
     await searchClaims({ Number: pcrs.worked });
-    await claimRow(pcrs.worked).waitFor();
-    assert.equal(await claimRow(pcrs.held).count(), 0);
+    await rowWith(s.page, pcrs.worked).waitFor();
+    assert.equal(await rowWith(s.page, pcrs.held).count(), 0);
     await searchClaims({ Number: `${pcrs.worked}-none` });
     await s.page.getByRole('heading', { name: 'No Matching Claims' }).waitFor();
-    await searchClaims({ 'Last Name': LAST_NAME, 'Birth Date': BIRTH_DATE });
-    await claimRow(pcrs.held).waitFor();
-    await claimRow(pcrs.voided).waitFor();
+    const { claim } = await claimState(s, claims.held);
+    await searchClaims({
+      'Last Name': claim.last_name ?? '',
+      'Birth Date': claim.birth_date?.slice(0, 10) ?? ''
+    });
+    await rowWith(s.page, pcrs.held).waitFor();
+    assert.equal(await rowWith(s.page, pcrs.voided).count(), 0);
   });
 
   it('opens the waiting task from the tasks list, not from its claim', async () => {
-    await reach(claims.worked, 'Review PCR');
     const { claim } = await claimState(s, claims.worked);
     await searchClaims({ Number: pcrs.worked });
-    await claimRow(pcrs.worked).waitFor();
+    await rowWith(s.page, pcrs.worked).waitFor();
     assert.equal(
-      await claimRow(pcrs.worked)
+      await rowWith(s.page, pcrs.worked)
         .getByRole('link', { name: /^Work / })
         .count(),
       0
     );
     await go(s.page, `/tasks?q=${encodeURIComponent(claim.number)}`);
-    const row = s.page.getByRole('row').filter({ hasText: claim.number });
-    await row.getByRole('link', { name: /^Open task Review PCR/ }).click();
-    await section(s.page, 'Your Decision').last().waitFor();
+    await rowWith(s.page, claim.number)
+      .getByRole('link', { name: /^Open task Review PCR/ })
+      .click();
+    await decision(s.page).waitFor();
     assert.match(s.page.url(), /\/tasks\//);
   });
 
-  it('assigns a task, shows its details, and blocks an outcome until required fields are set', async () => {
-    await openTaskPage(claims.worked, 'Review PCR');
+  it('filters the work queue by queue and assignee', async () => {
+    const { claim } = await claimState(s, claims.worked);
+    await openTask(claims.worked, 'Review PCR');
     await s.page.getByRole('button', { name: 'Assign to Me' }).click();
-    await toast('Assigned to you');
+    await toast(s.page, 'Assigned to you');
+    await go(s.page, '/tasks');
+    await heading(s.page, 'Tasks').waitFor();
+    await chooseOption(listboxByLabel(s.page, 'Assignee'), 'mine');
+    await s.page.waitForURL(/assignee=mine/);
+    await rowWith(s.page, claim.number).waitFor();
+    const queue = listboxByLabel(s.page, 'Queue');
+    await chooseOption(queue, 'billing-review');
+    await s.page.waitForURL(/queue=billing-review/);
+    await rowWith(s.page, claim.number).waitFor();
+    await chooseOption(listboxByLabel(s.page, 'Assignee'), 'unassigned');
+    await s.page.waitForURL(/assignee=unassigned/);
+    await until(
+      s.page,
+      () => rowWith(s.page, claim.number).count(),
+      (n) => n === 0,
+      'my task to leave the unassigned list'
+    );
+    await openTask(claims.worked, 'Review PCR');
     await s.page.getByRole('button', { name: 'Unassign' }).click();
-    await toast('Unassigned');
+    await toast(s.page, 'Unassigned');
+  });
+
+  it('shows a task with its details, and blocks an outcome until required fields are set', async () => {
+    await openTask(claims.worked, 'Review PCR');
     await section(s.page, 'The Issue').first().waitFor();
     for (const title of ['Summary', 'Charges', 'Claim Data', 'Documentation', 'Payers']) {
       await section(s.page, title).first().waitFor();
@@ -167,58 +183,64 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await tabs.getByRole('link', { name: 'Workflow' }).click();
     await section(s.page, 'Workflow Details').first().waitFor();
     await tabs.getByRole('link', { name: 'Claim' }).click();
-    const decision = section(s.page, 'Your Decision').last();
-    for (const option of await decision
-      .getByRole('list', { name: 'Options' })
-      .locator('button[name="outcome"]')
-      .all()) {
+    const d = decision(s.page);
+    for (const name of ['Approve', 'Hold']) {
+      const option = d.getByRole('button', { name, exact: true });
       const ids = ((await option.getAttribute('aria-describedby')) ?? '').split(' ');
       const hint = ids.find((id) => id.startsWith('outcome-'));
-      assert.ok(hint, `${await option.textContent()} says what it does`);
+      assert.ok(hint, `${name} says what it does`);
       assert.ok(((await s.page.locator(`[id="${hint}"]`).textContent()) ?? '').length > 10);
     }
-    const level = listboxByLabel(decision, /^Level of Service/i);
+    const level = listboxByLabel(d, /^Level of Service/i);
     const chosen = await chosenValue(level);
     await chooseOption(level, '');
-    const approve = decision.getByRole('button', { name: 'Approve' });
-    assert.equal(await approve.getAttribute('aria-disabled'), 'true');
-    const described = ((await approve.getAttribute('aria-describedby')) ?? '').split(' ');
+    const approveButton = d.getByRole('button', { name: 'Approve' });
+    assert.equal(await approveButton.getAttribute('aria-disabled'), 'true');
+    const described = ((await approveButton.getAttribute('aria-describedby')) ?? '').split(' ');
     const reasons = await Promise.all(
       described.map(async (id) => (await s.page.locator(`[id="${id}"]`).textContent()) ?? '')
     );
     assert.ok(reasons.some((r) => /Fill in Level of Service/i.test(r)));
     await chooseOption(level, chosen);
-    assert.equal(await approve.getAttribute('aria-disabled'), null);
+    assert.equal(await approveButton.getAttribute('aria-disabled'), null);
   });
 
-  it('holds a PCR with a note and releases it back to review', async () => {
-    await openTaskPage(claims.held, 'Review PCR');
-    await fillNote(s.page, 'E2E hold: waiting on signature');
-    await decide(s.page, 'Hold');
-    await openTaskPage(claims.held, 'Held PCR');
+  it('holds a PCR with a note, moves on with Next Task and releases it back to review', async () => {
+    await workTask(
+      s,
+      claims.held,
+      step('Review PCR', 'Hold', () => fillNote('E2E hold: waiting on signature'))
+    );
+    const done = s.page.url();
+    await s.page.getByRole('button', { name: 'Next Task' }).click();
+    await s.page.waitForURL((u) => /\/tasks\/[^/?]+/.test(u.pathname) && u.href !== done);
+    await decision(s.page).waitFor();
+    await openTask(claims.held, 'Held PCR');
     await s.page.getByText('E2E hold: waiting on signature').first().waitFor();
     await searchClaims({ Number: pcrs.held });
-    await claimRow(pcrs.held).getByText('Held PCR').first().waitFor();
-    await openTaskPage(claims.held, 'Held PCR');
-    await decide(s.page, 'Release');
-    await reach(claims.held, 'Review PCR');
+    await rowWith(s.page, pcrs.held).getByText('Held PCR').first().waitFor();
+    await workTask(s, claims.held, step('Held PCR', 'Release'));
+    await openTask(claims.held, 'Review PCR');
   });
 
   it('holds a PCR and voids it, closing its claim as void', async () => {
-    await openTaskPage(claims.voided, 'Review PCR');
-    await fillNote(s.page, 'E2E duplicate trip');
-    await decide(s.page, 'Hold');
-    await openTaskPage(claims.voided, 'Held PCR');
-    await decide(s.page, 'Void');
-    await claimStatusIs(s, claims.voided, 'void');
+    await work(
+      s,
+      claims.voided,
+      [step('Review PCR', 'Hold', () => fillNote('E2E duplicate trip')), step('Held PCR', 'Void')],
+      (c) => c.claim.status === 'void',
+      'the claim to be void'
+    );
     await searchClaims({ Number: pcrs.voided });
-    await claimRow(pcrs.voided).getByText('Void').first().waitFor();
+    await rowWith(s.page, pcrs.voided).getByText('Void').first().waitFor();
   });
 
   it('builds a claim and shows its summary, charges, documentation, eligibility and payers', async () => {
-    await completeTask(s, claims.worked, 'Review PCR');
-    await claimStatusIs(s, claims.worked, 'needs_review');
-    await openClaim(claims.worked);
+    const built = await workUntil(s, claims.worked, REVIEW_PCR, 'needs_review');
+    const [coverage] = built.claim.coverages;
+    assert.ok(coverage);
+    await uploadPayerFile(s.page, `${pcrs.worked}.271`, eligibility271(coverage.id, true));
+    await openClaim(s, claims.worked);
     for (const title of ['Summary', 'Charges', 'Documentation', 'Eligibility', 'Payers']) {
       await section(s.page, title).first().waitFor();
     }
@@ -230,14 +252,12 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
       .getByRole('row')
       .filter({ hasText: 'Medicare' })
       .getByText('Active', { exact: true })
-      .waitFor({ timeout: FLOW_MS });
+      .waitFor();
   });
 
   it('sends a claim from review to a Fix Claim Data task and back, saying where each option leads', async () => {
-    await openTaskPage(claims.worked, 'Review claim');
-    const fix = section(s.page, 'Your Decision')
-      .last()
-      .getByRole('button', { name: 'Fix Claim Data' });
+    await openTask(claims.worked, 'Review claim');
+    const fix = decision(s.page).getByRole('button', { name: 'Fix Claim Data' });
     const hintId = ((await fix.getAttribute('aria-describedby')) ?? '')
       .split(' ')
       .find((id) => id.startsWith('outcome-'));
@@ -247,38 +267,32 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     );
     await decide(s.page, 'Fix Claim Data');
     const next = s.page.getByRole('link', { name: /^Open Fix claim data/i });
-    await next.waitFor({ timeout: FLOW_MS });
+    await next.waitFor({ timeout: config.E2E_FLOW_MS });
     await next.click();
-    const decision = section(s.page, 'Your Decision').last();
-    await decision.getByText('Fields start with the current values').waitFor();
-    await decision.getByText('No Changes Yet').waitFor();
-    await finishTask(s.page, 'Back to Review');
-    await reach(claims.worked, 'Review claim');
+    const d = decision(s.page);
+    await d.getByText('Fields start with the current values').waitFor();
+    await d.getByText('No Changes Yet').waitFor();
+    await decide(s.page, 'Back to Review');
+    await openTask(claims.worked, 'Review claim');
   });
 
   it('corrects documentation with a Correct Claim Data task and shows it on the overview', async () => {
-    await openClaim(claims.worked);
-    await startClaimTask(s.page, 'Correct Claim Data');
-    const decision = section(s.page, 'Your Decision').last();
-    await chooseOption(listboxByLabel(decision, /^Ambulance Transport Reason/i), 'D');
-    await decision
+    await startClaimTask(s, claims.worked, 'Correct Claim Data');
+    const d = decision(s.page);
+    await chooseOption(listboxByLabel(d, /^Ambulance Transport Reason/i), 'D');
+    await d
       .getByText(/^Changed from/)
       .first()
       .waitFor();
-    const changes = decision.getByRole('region', { name: 'Your changes' });
+    const changes = d.getByRole('region', { name: 'Your changes' });
     await changes.getByText('Ambulance Transport Reason').waitFor();
     await changes
       .getByText(/specialist or equipment/)
       .first()
       .waitFor();
-    await finishTask(s.page, 'Save');
-    await until(
-      s.page,
-      async () => (await claimState(s, claims.worked)).claim.transport_reason,
-      (reason) => reason === 'D',
-      'the transport reason to be D'
-    );
-    await openClaim(claims.worked);
+    await decide(s.page, 'Save');
+    await claimIs(s, claims.worked, (c) => c.claim.transport_reason === 'D', 'transport reason D');
+    await openClaim(s, claims.worked);
     await section(s.page, 'Documentation')
       .getByText(/^D · For a specialist or equipment/)
       .waitFor();
@@ -288,13 +302,11 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     const order = async () =>
       (await claimState(s, claims.worked)).claim.coverages.map((c) => c.payer);
     const change = async (names: string[]) => {
-      await openClaim(claims.worked);
-      await startClaimTask(s.page, 'Change Responsible Party');
-      await section(s.page, 'Your Decision')
-        .last()
+      await startClaimTask(s, claims.worked, 'Change Responsible Party');
+      await decision(s.page)
         .getByLabel(/^Payers/)
         .fill(names.join('\n'));
-      await finishTask(s.page, 'Save');
+      await decide(s.page, 'Save');
     };
     const [first = ''] = await order();
     await change([first, 'Blue Plan']);
@@ -305,76 +317,79 @@ describe('a biller works claims, tasks and patients', { timeout: SUITE_MS }, () 
     await until(s.page, order, (o) => o.join() === first, 'Blue Plan removed');
   });
 
-  it('adds a document and logs a records request through their tasks', async () => {
-    await openClaim(claims.worked);
-    await startClaimTask(s.page, 'Add Document');
-    const upload = section(s.page, 'Your Decision').last();
+  it('adds a document through its task and lists it on the claim', async () => {
+    await startClaimTask(s, claims.worked, 'Add Document');
+    const upload = decision(s.page);
     await chooseOption(listboxByLabel(upload, /^Document\b/), 'facesheet');
-    await upload.locator('input[type="file"]').setInputFiles({
+    await upload.getByLabel(/^File/).setInputFiles({
       name: 'facesheet.pdf',
       mimeType: 'application/pdf',
       buffer: Buffer.from('%PDF-1.4\n%%EOF\n')
     });
     await upload.getByText('Uploaded facesheet.pdf').waitFor();
-    await finishTask(s.page, 'Add Document');
-    await until(
-      s.page,
-      () => claimState(s, claims.worked),
+    await decide(s.page, 'Add Document');
+    await claimIs(
+      s,
+      claims.worked,
       (c) => c.documents.some((d) => d.file_name === 'facesheet.pdf'),
       'the facesheet on the claim'
     );
-    await openClaim(claims.worked);
+    await openClaim(s, claims.worked);
     await section(s.page, 'Documents').getByText('Facesheet: facesheet.pdf').waitFor();
-    await startClaimTask(s.page, 'Log Records Request');
-    await section(s.page, 'Your Decision')
-      .last()
+  });
+
+  it('logs a records request and marks the records sent', async () => {
+    await startClaimTask(s, claims.worked, 'Log Records Request');
+    await decision(s.page)
       .getByLabel(/^Records Requested/i)
       .fill('PCS and facesheet');
-    await finishTask(s.page, 'Log Request');
-    await reach(claims.worked, 'Send records');
+    await decide(s.page, 'Log Request');
+    await eventLogged(s, claims.worked, 'records_requested');
+    await workTask(s, claims.worked, step('Send records', 'Mark Sent'), ['Review claim']);
+    await eventLogged(s, claims.worked, 'records_sent');
   });
 
   it('files a claim once it is reviewed, posts a payment with a Post Payment task and lowers the balance', async () => {
-    await completeTask(s, claims.worked, 'Review claim', { outcome: 'Approve' });
+    await fileClaim(s, claims.worked, [approve]);
     const { claim } = await claimStatusIs(s, claims.worked, 'submitted');
-    await openClaim(claims.worked);
-    await startClaimTask(s.page, 'Post Payment');
-    const payment = section(s.page, 'Your Decision').last();
+    await startClaimTask(s, claims.worked, 'Post Payment');
+    const payment = decision(s.page);
     await payment.getByLabel(/^Paid or Refunded/i).fill('100.00');
     await payment.getByLabel(/^Paid On$/i).fill('2026-10-20');
     await payment.getByLabel(/^Reason Codes/i).fill('CO-45 50.00');
-    await finishTask(s.page, 'Post Payment');
-    const balanceOf = async () =>
-      (
-        await s.page.request
-          .get(`${s.apiUrl}/api/agencies/${s.agencyId}/claims/${claims.worked}`)
-          .then((r) => r.json())
-      ).claim.balance_cents as number;
-    await until(
-      s.page,
-      balanceOf,
-      (b) => b === claim.total_cents - 15_000,
+    await decide(s.page, 'Post Payment');
+    await claimIs(
+      s,
+      claims.worked,
+      (c) => c.claim.balance_cents === claim.total_cents - 15_000,
       'the balance to drop by $150'
     );
   });
 
   it('lists every event on the claim history tab', async () => {
-    await openClaim(claims.worked, 'history');
-    for (const event of ['Approved for submission', 'Submitted', 'Response', 'Claim data edited']) {
+    await openClaim(s, claims.worked, 'history');
+    for (const event of ['Approved for submission', 'Submitted', 'Claim data edited']) {
       await s.page.getByRole('cell', { name: event }).first().waitFor();
     }
+    assert.ok(
+      (await claimEvents(s, claims.worked)).some(
+        (e) => e.kind === 'response' && e.paid_cents === 10_000
+      )
+    );
   });
 
   it('finds the patient by name and birth date and lists their claims', async () => {
+    const { claim } = await claimState(s, claims.worked);
     await go(s.page, '/patients');
     const form = s.page.getByRole('search', { name: 'Search patients' });
-    await form.getByLabel('Last Name').fill('kli');
-    await form.getByLabel('Birth Date').fill(BIRTH_DATE);
+    await form.getByLabel('Last Name').fill(claim.last_name?.slice(0, 8) ?? '');
+    await form.getByLabel('Birth Date').fill(claim.birth_date?.slice(0, 10) ?? '');
     await form.getByRole('button', { name: 'Search' }).click();
-    await s.page.getByRole('link', { name: 'Open patient Kline, Dorothy' }).first().click();
+    await s.page
+      .getByRole('link', { name: `Open patient ${claim.last_name}, ${claim.first_name}` })
+      .click();
     await section(s.page, 'Details').first().waitFor();
-    const { claim } = await claimState(s, claims.worked);
-    await s.page.getByRole('row').filter({ hasText: claim.number }).first().waitFor();
+    await rowWith(s.page, claim.number).first().waitFor();
   });
 
   it('keeps new tasks in the notification bell and clears them', async () => {

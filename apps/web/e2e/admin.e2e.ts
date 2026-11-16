@@ -1,65 +1,84 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, it } from 'node:test';
-import type { Page } from 'playwright-core';
-import { chooseOption, listboxByLabel } from './shared/listbox.ts';
+import { MOCK_HOST_KEY } from '@ugula/billing';
+import { claimState, importEncounter, reviewed, uploadPayerFile } from './shared/claims.ts';
+import { chooseOption, chosenValue, listboxByLabel } from './shared/listbox.ts';
 import {
   api,
+  confirmDelete,
   FLOW_MS,
   go,
   heading,
+  rowWith,
   type Session,
   SUITE_MS,
+  send,
   signIn,
-  toasts,
+  toast,
   uniqueId,
-  uploadPayerFile
+  until
 } from './shared/session.ts';
 import { batchAcknowledgment999, remittance835 } from './shared/x12.ts';
 
 let s: Session;
 
 const UNKNOWN_CLAIM = '19990101-9999';
+const MUTED_CHECK = 'msp-unanswered';
 
-const feeCode = `Q${String(Math.floor(Math.random() * 9000) + 1000)}`;
+const run = uniqueId('E2E-ADM');
+const feeCode = `Q${String((Number.parseInt(run.replace(/\W/g, ''), 36) % 9000) + 1000)}`;
 const payerName = uniqueId('E2E Payer');
-const payerCode = `E2E${Date.now()}`;
+const payerCode = uniqueId('E2E').replace(/\W/g, '').slice(0, 20);
+const facilityName = uniqueId('E2E Holy Spirit');
 
-const confirmDelete = async (page: Page, name: string) => {
-  const dialog = page.getByRole('dialog', { name: `Delete ${name}?` });
-  await dialog.getByRole('button', { name: 'Delete' }).click();
-  await toasts(page).getByText(`${name} deleted`).waitFor();
+type Connection = {
+  is_active: boolean;
+  secret_set: boolean;
+  vendor: string;
+  sftp_username: string;
 };
 
-const fileRow = (page: Page, name: string) => page.getByRole('row').filter({ hasText: name });
+const connection = async () =>
+  (await api<{ connection: Connection | null }>(s, '/api/clearinghouse-connection')).connection;
 
 const removeLeftovers = async () => {
-  const headers = { origin: new URL(s.page.url()).origin };
   const fees = await api<{ items: { id: string; code: string; payer: string | null }[] }>(
     s,
     `/api/fees?q=${feeCode}`
   );
   for (const f of fees.items.filter((x) => x.code === feeCode && x.payer === null)) {
-    await s.page.request.delete(`${s.apiUrl}/api/agencies/${s.agencyId}/fees/${f.id}`, { headers });
+    await send(s, 'DELETE', `/api/fees/${f.id}`);
   }
   const payers = await api<{ items: { id: string; name: string }[] }>(
     s,
     `/api/payers?q=${encodeURIComponent(payerName)}`
   );
   for (const p of payers.items.filter((x) => x.name === payerName)) {
-    await s.page.request.delete(`${s.apiUrl}/api/agencies/${s.agencyId}/payers/${p.id}`, {
-      headers
-    });
+    await send(s, 'DELETE', `/api/payers/${p.id}`);
+  }
+  const facilities = await api<{ items: { id: string; name: string }[] }>(
+    s,
+    `/api/facilities?q=${encodeURIComponent(facilityName)}`
+  );
+  for (const f of facilities.items.filter((x) => x.name.startsWith(facilityName))) {
+    await send(s, 'DELETE', `/api/facilities/${f.id}`);
+  }
+  const tables = await api<{ items: { id: string; key: string; overrides: string | null }[] }>(
+    s,
+    '/api/tables?show=customized&q=check-severity'
+  );
+  for (const t of tables.items.filter((x) => x.key === 'billing.check-severity' && x.overrides)) {
+    await send(s, 'DELETE', `/api/tables/${t.id}`);
   }
 };
 
-describe('an administrator keeps fees, payers, settings, reports and payer files', {
+describe('an administrator keeps fees, payers, facilities, settings, tables, reports and payer files', {
   timeout: SUITE_MS
 }, () => {
   before(async () => {
     s = await signIn();
-    const existing = await api<{ items: { code: string }[] }>(s, `/api/fees?q=${feeCode}`);
-    assert.ok(!existing.items.some((f) => f.code === feeCode), `${feeCode} is not already priced`);
+    await removeLeftovers();
   });
 
   after(async () => {
@@ -77,23 +96,22 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     await page.getByLabel('HCPCS').fill(feeCode);
     await page.getByLabel('Amount (USD)').fill('123.45');
     await page.getByRole('button', { name: 'Save Fee' }).click();
-    await toasts(page).getByText(`${name} added`).waitFor();
+    await toast(page, `${name} added`);
     await go(page, `/fees?q=${feeCode}`);
-    await page.locator('mark', { hasText: feeCode }).first().waitFor();
-    const row = page.getByRole('row').filter({ hasText: feeCode });
+    const row = rowWith(page, feeCode);
     await row.getByText('$123.45').waitFor();
     await row.getByRole('link', { name: `Edit ${name}` }).click();
     await heading(page, name).waitFor();
     assert.equal(await page.getByLabel('HCPCS').inputValue(), feeCode);
     await page.getByLabel('Amount (USD)').fill('150');
     await page.getByRole('button', { name: 'Save Fee' }).click();
-    await toasts(page).getByText(`${name} updated`).waitFor();
+    await toast(page, `${name} updated`);
     await page.waitForURL(/\/fees\?q=/);
     await row.getByText('$150.00').waitFor();
     await row.getByRole('button', { name: `Delete ${name}` }).click();
     await confirmDelete(page, name);
     await page.getByRole('heading', { name: 'No Matching Fees' }).waitFor();
-    assert.equal(await page.getByRole('row').filter({ hasText: feeCode }).count(), 0);
+    assert.equal(await rowWith(page, feeCode).count(), 0);
   });
 
   it('refuses a negative fee before saving it', async () => {
@@ -125,9 +143,9 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     await chooseOption(listboxByLabel(page, 'Claim Filing'), 'CI');
     await page.getByLabel('Filing Limit (Days)').fill('90');
     await page.getByRole('button', { name: 'Save Payer' }).click();
-    await toasts(page).getByText(`${payerName} saved`).waitFor();
+    await toast(page, `${payerName} saved`);
     await go(page, `/payers?q=${encodeURIComponent(payerName)}`);
-    const row = page.getByRole('row').filter({ hasText: payerName });
+    const row = rowWith(page, payerName);
     await row.getByText(payerCode).waitFor();
     await row.getByText(/^CI · Commercial insurance$/).waitFor();
     await row.getByRole('link', { name: `Edit ${payerName}` }).click();
@@ -137,7 +155,7 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     await page.getByText(/No learned names yet/).waitFor();
     await page.getByLabel('Filing Limit (Days)').fill('180');
     await page.getByRole('button', { name: 'Save Payer' }).click();
-    await toasts(page).getByText(`${payerName} saved`).last().waitFor();
+    await toast(page, `${payerName} saved`);
     await page.waitForURL(/\/payers\?q=/);
     await row.getByRole('link', { name: `Edit ${payerName}` }).click();
     await heading(page, payerName).waitFor();
@@ -146,6 +164,58 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     await confirmDelete(page, payerName);
     await go(page, `/payers?q=${encodeURIComponent(payerName)}`);
     await page.getByRole('heading', { name: /No Matching Payers/ }).waitFor();
+  });
+
+  it('adds a contract facility filled from the CMS hospital list, edits it and deletes it', async () => {
+    const page = s.page;
+    await go(page, '/facilities');
+    await heading(page, 'Facilities').waitFor();
+    await page.getByRole('link', { name: 'Add Facility' }).first().click();
+    await heading(page, 'Add Facility').waitFor();
+    const picker = listboxByLabel(page, 'Fill From CMS Hospital');
+    await picker.click();
+    await page.getByLabel('Search Fill From CMS Hospital').fill('Holy Spirit');
+    const option = page.getByRole('option', { name: /Holy Spirit/i }).first();
+    await option.waitFor();
+    await option.click();
+    await until(
+      page,
+      () => page.getByLabel('Facility Name').inputValue(),
+      (name) => /Holy Spirit/i.test(name),
+      'the hospital to fill the form'
+    );
+    assert.ok(await page.getByLabel('City').inputValue(), 'the city is filled');
+    assert.match(await page.getByLabel('ZIP Code').inputValue(), /^\d{5}/);
+    assert.equal(await chosenValue(listboxByLabel(page, 'Kind')), 'hospital');
+    await page.getByLabel('Facility Name').fill(facilityName);
+    await chooseOption(listboxByLabel(page, 'Contract'), 'yes');
+    await page.getByLabel('Contract Note').fill('Pays its scheduled transfers');
+    await page.getByRole('button', { name: 'Save Facility' }).click();
+    await toast(page, `${facilityName} saved`);
+    await go(page, `/facilities?q=${encodeURIComponent(facilityName)}`);
+    const row = rowWith(page, facilityName);
+    await row.getByText(/· contract/).waitFor();
+    await row.getByRole('link', { name: `Edit ${facilityName}` }).click();
+    await heading(page, facilityName).waitFor();
+    assert.equal(
+      await page.getByLabel('Contract Note').inputValue(),
+      'Pays its scheduled transfers'
+    );
+    await chooseOption(listboxByLabel(page, 'Contract'), 'no');
+    await page.getByRole('button', { name: 'Save Facility' }).click();
+    await toast(page, `${facilityName} saved`);
+    await go(page, `/facilities?q=${encodeURIComponent(facilityName)}`);
+    assert.equal(
+      await rowWith(page, facilityName)
+        .getByText(/· contract/)
+        .count(),
+      0
+    );
+    await rowWith(page, facilityName)
+      .getByRole('button', { name: `Delete ${facilityName}` })
+      .click();
+    await confirmDelete(page, facilityName);
+    await page.getByRole('heading', { name: /No Matching Facilities/ }).waitFor();
   });
 
   it('shows the billing profile, refuses an invalid NPI and saves valid values', async () => {
@@ -163,7 +233,98 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     await go(page, '/settings');
     assert.equal(await page.getByLabel('NPI').inputValue(), original);
     await page.getByRole('button', { name: 'Save Profile' }).click();
-    await toasts(page).getByText('Billing profile saved').waitFor();
+    await toast(page, 'Billing profile saved');
+  });
+
+  it('keeps the paused mock clearinghouse connection and its password when saved without one', async () => {
+    const page = s.page;
+    const before = await connection();
+    assert.ok(before?.secret_set, 'the e2e connection has a password');
+    assert.equal(before.is_active, false, 'the e2e agency exchanges nothing');
+    await go(page, '/settings');
+    const form = page.getByRole('form', { name: 'Clearinghouse connection' });
+    await form.waitFor();
+    assert.equal(await chosenValue(listboxByLabel(form, 'Clearinghouse')), 'mock');
+    assert.equal(await chosenValue(listboxByLabel(form, 'Status')), 'off');
+    assert.equal(await form.getByLabel('Host Key').inputValue(), MOCK_HOST_KEY);
+    await form.getByText('A password is set. Leave blank to keep it, or type a new one.').waitFor();
+    const username = form.getByLabel('Username');
+    await username.fill(`${before.sftp_username}-changed`);
+    await form.getByText('Enter the password again for the changed server or account.').waitFor();
+    await username.fill(before.sftp_username);
+    await form.getByText('A password is set. Leave blank to keep it, or type a new one.').waitFor();
+    assert.equal(await form.getByLabel('Password').inputValue(), '');
+    await form.getByRole('button', { name: 'Save Connection' }).click();
+    await toast(page, 'Clearinghouse connection saved');
+    const after = await connection();
+    assert.deepEqual(
+      { active: after?.is_active, secret: after?.secret_set, vendor: after?.vendor },
+      { active: false, secret: true, vendor: 'mock' }
+    );
+  });
+
+  it('overrides the check severity table for the agency to turn a check off, then removes it', async () => {
+    const page = s.page;
+    const claimId = await importEncounter(s, uniqueId('E2E-ADM'));
+    const built = await reviewed(s, claimId);
+    assert.ok(
+      built.issues.some((i) => i.code === MUTED_CHECK && i.severity === 'warning'),
+      `a Medicare claim warns ${MUTED_CHECK}`
+    );
+    await go(page, '/tables?q=Check%20Severity');
+    await heading(page, 'Tables').waitFor();
+    await rowWith(page, 'billing.check-severity')
+      .getByRole('link', { name: 'Edit Check Severity' })
+      .click();
+    await heading(page, 'Check Severity').waitFor();
+    await page.getByRole('button', { name: 'Override for This Agency' }).click();
+    await toast(page, 'Check Severity copied for this agency');
+    const redraft = page.getByRole('button', { name: 'Edit as New Draft' });
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    await redraft.or(save).first().waitFor();
+    const keys = page.getByRole('textbox', { name: 'Key', exact: true });
+    const values = page.getByRole('textbox', { name: 'Value', exact: true });
+    const index = (
+      await keys.evaluateAll((els) => els.map((e) => (e as unknown as { value: string }).value))
+    ).indexOf(MUTED_CHECK);
+    assert.ok(index >= 0, `${MUTED_CHECK} is listed`);
+    if ((await values.nth(index).inputValue()) !== 'off') {
+      if (await redraft.isVisible()) {
+        await redraft.click();
+        await toast(page, /^Draft v\d+ saved$/);
+      }
+      await values.nth(index).fill('off');
+      await page.getByText('Unsaved', { exact: true }).waitFor();
+      await save.click();
+      await toast(page, /^Draft v\d+ saved$/);
+    }
+    const publish = page.getByRole('button', { name: 'Publish' });
+    if ((await publish.count()) && (await publish.getAttribute('aria-disabled')) !== 'true') {
+      await publish.click();
+      await toast(page, /^Check Severity v\d+ published$/);
+    }
+    await until(
+      page,
+      () => claimState(s, claimId),
+      (c) => !c.issues.some((i) => i.code === MUTED_CHECK),
+      `${MUTED_CHECK} to be off`
+    );
+    await go(page, '/tables?show=customized');
+    const copy = rowWith(page, 'billing.check-severity').filter({ hasText: 'Agency' });
+    await rowWith(page, 'billing.check-severity').getByText('Has Your Copy').waitFor();
+    await copy.getByRole('link', { name: 'Edit Check Severity' }).click();
+    await page.getByRole('button', { name: 'Remove Override' }).click();
+    await page
+      .getByRole('dialog', { name: 'Remove Override?' })
+      .getByRole('button', { name: 'Remove Override' })
+      .click();
+    await toast(page, 'Override removed');
+    await until(
+      page,
+      () => claimState(s, claimId),
+      (c) => c.issues.some((i) => i.code === MUTED_CHECK && i.severity === 'warning'),
+      `${MUTED_CHECK} to warn again`
+    );
   });
 
   it('runs every report, showing results or that there is nothing to report, and exports CSV', async () => {
@@ -182,9 +343,9 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
       await heading(page, title).waitFor();
       await page.getByRole('button', { name: 'Run Report' }).click();
       await page.waitForURL(/\/results/);
-      const table = page.locator('table').first();
+      const results = page.getByRole('table').first();
       const empty = page.getByText('Nothing to report for these options.');
-      await table.or(empty).first().waitFor();
+      await results.or(empty).first().waitFor();
       if (await empty.isVisible()) continue;
       await page.getByRole('button', { name: 'Print' }).waitFor();
       const download = page.waitForEvent('download');
@@ -197,16 +358,20 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
 
   it('applies payer files, flags what matches nothing and never applies a file twice', async () => {
     const page = s.page;
-    const era = remittance835(UNKNOWN_CLAIM, 10_000, 6_000);
+    const era = remittance835({
+      claimNumber: UNKNOWN_CLAIM,
+      chargeCents: 10_000,
+      paidCents: 6_000
+    });
     const eraName = `${uniqueId('E2E-UNKNOWN')}.835`;
     assert.match(await uploadPayerFile(page, eraName, era), /received$/);
     await go(page, '/payer-files');
-    await fileRow(page, eraName).getByText('1 of 1 needs you').waitFor({ timeout: FLOW_MS });
-    await fileRow(page, eraName)
+    await rowWith(page, eraName).getByText('1 of 1 needs you').waitFor({ timeout: FLOW_MS });
+    await rowWith(page, eraName)
       .getByRole('link', { name: `Open payer file ${eraName}` })
       .click();
     await heading(page, eraName).waitFor();
-    const line = page.getByRole('row').filter({ hasText: UNKNOWN_CLAIM });
+    const line = rowWith(page, UNKNOWN_CLAIM);
     await line.getByText('No Match').waitFor();
     await line.getByText(`No claim has number ${UNKNOWN_CLAIM}`).waitFor();
     const href = await page.getByRole('link', { name: 'Download File' }).getAttribute('href');
@@ -214,30 +379,23 @@ describe('an administrator keeps fees, payers, settings, reports and payer files
     assert.equal(stored, era);
 
     assert.match(await uploadPayerFile(page, eraName, era), /could not be applied$/);
-    await toasts(page)
-      .getByText(/already imported/)
-      .first()
-      .waitFor();
+    await toast(page, /already imported/);
 
     const notEdi = `${uniqueId('E2E-NOT-EDI')}.txt`;
     assert.match(await uploadPayerFile(page, notEdi, 'not an X12 file'), /could not be applied$/);
-    await toasts(page)
-      .getByText(
-        /This is not a remittance \(835\), acknowledgment \(TA1, 999 or 277CA\), claim status \(277\) or eligibility \(271\) file/
-      )
-      .first()
-      .waitFor();
+    await toast(page, /This is not a remittance \(835\), acknowledgment/);
 
+    const control = 900_000_000 + (Number.parseInt(run.replace(/\W/g, ''), 36) % 99_999_999);
     const ackName = `${uniqueId('E2E-UNKNOWN')}.999`;
     assert.match(
-      await uploadPayerFile(page, ackName, batchAcknowledgment999(987_654_321, true)),
+      await uploadPayerFile(page, ackName, batchAcknowledgment999(control, true)),
       /received$/
     );
     await go(page, '/payer-files');
-    await fileRow(page, ackName)
+    await rowWith(page, ackName)
       .getByRole('link', { name: `Open payer file ${ackName}` })
       .click({ timeout: FLOW_MS });
     await heading(page, ackName).waitFor();
-    await page.getByRole('row').filter({ hasText: '987654321' }).getByText('No Match').waitFor();
+    await rowWith(page, String(control)).getByText('No Match').waitFor();
   });
 });

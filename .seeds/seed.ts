@@ -26,7 +26,8 @@ import { billingGraphs, billingTables } from './billing/index.ts';
 import {
   buildUpsertDemoFacilities,
   buildUpsertDemoPayers,
-  buildUpsertDemoProfile
+  buildUpsertDemoProfile,
+  upsertDemoPayerAliases
 } from './billing-setup.ts';
 import type { SeedTable } from './builder.ts';
 import { CMS_FILES, readCmsData, replaceCmsData } from './cms.ts';
@@ -185,6 +186,7 @@ const seedDev = async (db: Db, dev: DevSeedConfig) => {
       await buildUpsertDefaultFees(tx, agency.id, demoFees).execute();
       await buildUpsertDemoProfile(tx, agency.id, seed.submitterId).execute();
       await buildUpsertDemoPayers(tx, agency.id).execute();
+      await upsertDemoPayerAliases(tx, agency.id);
       await buildUpsertDemoFacilities(tx, agency.id).execute();
     }
 
