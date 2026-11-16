@@ -101,9 +101,7 @@ const OUTCOMES: Readonly<Record<string, OutcomeStyle>> = {
   billPayers: { icon: LandmarkIcon, label: 'Bill Payers' }
 };
 
-// Fallbacks for workflows that do not give hints, only for outcomes that mean
-// the same thing in every task. Words like continue, save or cancel do not.
-const HINTS: Readonly<Record<string, string>> = {
+const UNIVERSAL_OUTCOME_HINTS: Readonly<Record<string, string>> = {
   void: 'Closes the claim as void; it is never billed.',
   writeOff: 'Writes off the balance left and closes the claim.',
   skipPayer: 'Does not bill this payer; bills the next payer, or the patient if none is left.',
@@ -120,7 +118,7 @@ export const outcomeHint = (
   outcome: string
 ) =>
   (task.hints && Object.hasOwn(task.hints, outcome) ? task.hints[outcome] : null) ??
-  (Object.hasOwn(HINTS, outcome) ? HINTS[outcome] : null) ??
+  (Object.hasOwn(UNIVERSAL_OUTCOME_HINTS, outcome) ? UNIVERSAL_OUTCOME_HINTS[outcome] : null) ??
   null;
 
 const DESTRUCTIVE = new Set(['void', 'writeOff']);
@@ -131,9 +129,11 @@ export const outcomeLabel = (outcome: string) => styleOf(outcome)?.label ?? titl
 
 export const outcomeIcon = (outcome: string) => styleOf(outcome)?.icon ?? CircleCheckIcon;
 
-// Cancel only ends something for good on a stuck run; in a form it changes nothing.
+const isFinalCancel = (outcome: string, kind: 'task' | 'fault') =>
+  kind === 'fault' && outcome === 'cancel';
+
 export const isDestructive = (outcome: string, kind: 'task' | 'fault' = 'task') =>
-  DESTRUCTIVE.has(outcome) || (kind === 'fault' && outcome === 'cancel');
+  DESTRUCTIVE.has(outcome) || isFinalCancel(outcome, kind);
 
 export const fieldLabel = (f: Pick<FieldSpec, 'name' | 'label'>) =>
   f.label ? titleCaseLabel(f.label) : labelOf(f.name);

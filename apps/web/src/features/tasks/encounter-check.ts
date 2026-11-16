@@ -49,14 +49,12 @@ export const encounterFactsOf = (data: Json): EncounterFacts => {
 
 const normalized = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-// Only facts the claim copies from the report: classification and level are decided by
-// billing rules, so they may differ on purpose.
-type ClaimFacts = Pick<
+type CopiedFacts = Pick<
   ClaimDetail,
   'first_name' | 'last_name' | 'birth_date' | 'service_date' | 'loaded_miles'
 > & { coverages: readonly Pick<ClaimDetail['coverages'][number], 'member_id'>[] };
 
-export const mismatchesOf = (claim: ClaimFacts, e: EncounterFacts): Mismatch[] => {
+export const mismatchesOf = (claim: CopiedFacts, e: EncounterFacts): Mismatch[] => {
   const out: Mismatch[] = [];
   const name = patientName(e.lastName, e.firstName);
   const patient = patientName(claim.last_name, claim.first_name);
