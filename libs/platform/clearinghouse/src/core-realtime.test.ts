@@ -118,4 +118,72 @@ describe('createCoreRealtime', () => {
       error: 'Could not reach the clearinghouse: fetch failed'
     });
   });
+
+  it('treats an aborted request as a timeout and reports thrown values that are not errors', async () => {
+    const aborted = createCoreRealtime(
+      config(async () => {
+        throw new DOMException('stopped', 'AbortError');
+      }, 2500)
+    );
+    assert.deepEqual(await aborted('T', 'x'), {
+      ok: false,
+      error: 'The clearinghouse did not answer within 2.5s'
+    });
+    const other = createCoreRealtime(
+      config(async () => {
+        throw new DOMException('bad', 'SyntaxError');
+      })
+    );
+    assert.deepEqual(await other('T', 'x'), {
+      ok: false,
+      error: 'Could not reach the clearinghouse: bad'
+    });
+    const odd = createCoreRealtime(
+      config(async () => {
+        throw 'socket closed';
+      })
+    );
+    assert.deepEqual(await odd('T', 'x'), {
+      ok: false,
+      error: 'Could not reach the clearinghouse: socket closed'
+    });
+  });
+
+  it('reads an error code without a message, and file fields as blank', async () => {
+    const answer = (r: Response) => createCoreRealtime(config(async () => r))('T', 'x');
+    assert.deepEqual(await answer(reply({ ErrorCode: 'Receiver' })), {
+      ok: false,
+      error: 'Receiver'
+    });
+    const form = new FormData();
+    form.append('PayloadType', 'X12_271');
+    form.append('Payload', new Blob(['ISA*271~']), 'reply.x12');
+    assert.deepEqual(await answer(new Response(form)), {
+      ok: true,
+      payloadType: 'X12_271',
+      payload: ''
+    });
+  });
+
+  it('stamps a fresh payload id and the current time when none are injected', async () => {
+    const fields: Record<string, string>[] = [];
+    const {
+      now: _now,
+      newId: _newId,
+      ...rest
+    } = config(async (_, init) => {
+      const form = init?.body as FormData;
+      fields.push(Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)])));
+      return reply({ PayloadType: 'R', Payload: 'p' });
+    });
+    const before = Date.now();
+    const send = createCoreRealtime(rest);
+    assert.deepEqual(await send('T', 'x'), { ok: true, payloadType: 'R', payload: 'p' });
+    await send('T', 'x');
+    const [first, second] = fields;
+    assert.match(first?.PayloadID ?? '', /^[0-9a-f-]{36}$/);
+    assert.notEqual(first?.PayloadID, second?.PayloadID);
+    assert.match(first?.TimeStamp ?? '', /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    assert.ok(Date.parse(first?.TimeStamp ?? '') >= Math.floor(before / 1000) * 1000);
+  });
 });

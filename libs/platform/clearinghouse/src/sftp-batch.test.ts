@@ -19,6 +19,8 @@ const renames: string[][] = [];
 
 const sessions = { opened: 0, closed: 0 };
 
+const closedWaiters = new Set<() => void>();
+
 const keys = utils.generateKeyPairSync('ed25519');
 
 const HOST_KEY = hostKeyFingerprint(Buffer.from(keys.public.split(' ')[1] ?? '', 'base64'));
@@ -115,7 +117,10 @@ const server = new Server({ hostKeys: [keys.private] }, (client) => {
     .on('ready', () =>
       client.on('session', (accept) => accept().on('sftp', (open) => serve(open())))
     )
-    .on('close', () => sessions.closed++)
+    .on('close', () => {
+      sessions.closed++;
+      for (const check of closedWaiters) check();
+    })
     .on('error', () => undefined);
 });
 
@@ -130,12 +135,20 @@ const config = (): SftpConfig => ({
   readyTimeoutMs: 5000
 });
 
-const settled = async () => {
-  for (let i = 0; i < 100 && sessions.closed < sessions.opened; i++) {
-    await new Promise((r) => setTimeout(r, 10));
-  }
-  return sessions.closed === sessions.opened;
-};
+const settled = () =>
+  new Promise<boolean>((resolve) => {
+    const done = (ok: boolean) => {
+      clearTimeout(timer);
+      closedWaiters.delete(check);
+      resolve(ok);
+    };
+    const check = () => {
+      if (sessions.closed >= sessions.opened) done(sessions.closed === sessions.opened);
+    };
+    const timer = setTimeout(() => done(false), 5000);
+    closedWaiters.add(check);
+    check();
+  });
 
 describe('createSftpBatch', () => {
   before(() => new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve)));
