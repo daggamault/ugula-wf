@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { PDFDocument } from 'pdf-lib';
-import { localDate, money, renderStatement, type StatementData } from './statements.ts';
+import { localDate, renderStatement, type StatementData } from './statements.ts';
 
 const statement: StatementData = {
   number: 2,
@@ -40,13 +40,6 @@ const statement: StatementData = {
 };
 
 describe('statements', () => {
-  it('formats money', () => {
-    assert.equal(money(114_220), '$1,142.20');
-    assert.equal(money(-500), '-$5.00');
-    assert.equal(money(5), '$0.05');
-    assert.equal(money(0), '$0.00');
-  });
-
   it('dates a statement in the agency time zone', () => {
     const lateEvening = new Date('2026-11-02T03:30:00Z');
     assert.equal(localDate(lateEvening, 'America/Chicago'), '2026-11-01');

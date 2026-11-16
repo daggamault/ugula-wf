@@ -7,6 +7,7 @@ import {
 } from './claim-details.ts';
 import { type Adjudication, type Adjustment, isAdjustmentGroup } from './claims.ts';
 import { ZIP_PLUS_4_PATTERN } from './geo.ts';
+import { money } from './numbers.ts';
 import type { Address, Sex } from './patients.ts';
 import { isValidNpi } from './payers.ts';
 import { recordOf, textOrNull } from './values.ts';
@@ -261,6 +262,20 @@ export const readX837Claim = (x: unknown): X837Claim => {
   if (otherPayers.length >= RESPONSIBILITY.length) {
     throw new Error(`The 837P claim carries at most ${RESPONSIBILITY.length} payers`);
   }
+  const totalCents = lines.reduce((sum, l) => sum + l.chargeCents, 0);
+  otherPayers.forEach((o, i) => {
+    if (!o.adjustments.length) {
+      throw new Error(
+        `the reason codes (CAS) of other payer ${i + 1} (${o.name}); post its remittance with them`
+      );
+    }
+    const balanced = o.paidCents + o.adjustments.reduce((sum, a) => sum + a.cents, 0);
+    if (balanced !== totalCents) {
+      throw new Error(
+        `other payer ${i + 1} (${o.name}) to balance: its payment and reason codes add up to ${money(balanced)}, not the ${money(totalCents)} charged (CLM02 = AMT*D + CAS), so the charges changed after it adjudicated the claim or its remittance was posted in part`
+      );
+    }
+  });
   const frequency = need(textOrNull(r.frequency), 'a claim frequency');
   const payerClaimNumber = textOrNull(r.payerClaimNumber);
   if (REPLACEMENT_FREQUENCIES.includes(frequency) && payerClaimNumber === null) {
@@ -348,15 +363,7 @@ const casSegments = (adjustments: Adjustment[]): Segment[] =>
     ])
   );
 
-const fallbackCas = (o: X837OtherPayer, totalCents: number): Segment[] => {
-  const remaining = totalCents - o.paidCents - o.adjustedCents;
-  return [
-    ...(o.adjustedCents ? [['CAS', 'CO', '45', dollars(o.adjustedCents)]] : []),
-    ...(remaining ? [['CAS', 'PR', '2', dollars(remaining)]] : [])
-  ];
-};
-
-const otherPayerSegments = (o: X837OtherPayer, i: number, totalCents: number): Segment[] => [
+const otherPayerSegments = (o: X837OtherPayer, i: number): Segment[] => [
   [
     'SBR',
     RESPONSIBILITY.charAt(i),
@@ -369,7 +376,7 @@ const otherPayerSegments = (o: X837OtherPayer, i: number, totalCents: number): S
     '',
     o.claimFiling
   ],
-  ...(o.adjustments.length ? casSegments(o.adjustments) : fallbackCas(o, totalCents)),
+  ...casSegments(o.adjustments),
   ['AMT', 'D', dollars(o.paidCents)],
   ['OI', '', '', 'Y', 'P', '', 'Y'],
   person('IL', o, ['MI', clean(o.memberId, 80)]),
@@ -443,7 +450,7 @@ const claimSegments = (c: X837Claim, hl: number): Segment[] => {
     ...(c.loadedMiles === null
       ? []
       : [['NM1', '45', '2', clean(c.dropoff.name)], ...place(c.dropoff)]),
-    ...c.otherPayers.flatMap((o, i) => otherPayerSegments(o, i, totalCents)),
+    ...c.otherPayers.flatMap(otherPayerSegments),
     ...c.lines.flatMap((l, i): Segment[] => [
       ['LX', String(i + 1)],
       [

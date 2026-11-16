@@ -1,5 +1,6 @@
 import { PDFDocument, type PDFFont, rgb, StandardFonts } from 'pdf-lib';
 import type { PricedLine } from './charges.ts';
+import { money } from './numbers.ts';
 
 type MailingAddress = {
   name: string;
@@ -49,12 +50,6 @@ export const localDate = (at: Date, timeZone: string) => {
   );
   return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`;
 };
-
-export const money = (cents: number) =>
-  `${cents < 0 ? '-' : ''}$${(Math.abs(cents) / 100).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}`;
 
 const zip = (z: string | null) =>
   z && z.length === 9 ? `${z.slice(0, 5)}-${z.slice(5)}` : (z ?? '');

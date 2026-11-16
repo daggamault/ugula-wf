@@ -163,7 +163,10 @@ describe('build837', () => {
           paidCents: 60_000,
           adjustedCents: 20_000,
           paidOn: '2026-10-20',
-          adjustments: []
+          adjustments: [
+            { group: 'CO', reason: '45', cents: 20_000 },
+            { group: 'PR', reason: '2', cents: 14_250 }
+          ]
         }
       ]
     });
@@ -399,17 +402,32 @@ describe('readX837Claim', () => {
       claimFiling: 'MB',
       memberId: '1EG4TE5MK73',
       relationship: '18',
-      paidCents: 100,
+      paidCents: 84_150,
       adjustedCents: 0,
       paidOn: '2026-10-20',
       adjustments: [
-        { group: 'CO', reason: '45', cents: 10 },
+        { group: 'CO', reason: '45', cents: 10_100 },
         { group: 'XX', reason: '1', cents: 5 },
         { group: 'PR', reason: '1', cents: 0 }
       ]
     };
     const read = readX837Claim({ ...mapped, otherPayers: [prior] });
-    assert.deepEqual(read.otherPayers[0]?.adjustments, [{ group: 'CO', reason: '45', cents: 10 }]);
+    assert.deepEqual(read.otherPayers[0]?.adjustments, [
+      { group: 'CO', reason: '45', cents: 10_100 }
+    ]);
+    assert.throws(
+      () => readX837Claim({ ...mapped, otherPayers: [{ ...prior, adjustments: [] }] }),
+      /reason codes \(CAS\) of other payer 1 \(Medicare\)/
+    );
+    assert.throws(
+      () =>
+        readX837Claim({
+          ...mapped,
+          lines: [{ ...base, chargeCents: 90_000 }, ...mapped.lines.slice(1)],
+          otherPayers: [prior]
+        }),
+      /add up to \$942\.50, not the \$992\.50 charged/
+    );
     assert.equal(read.otherPayers[0]?.lastName, "O'Brien~*");
     assert.throws(
       () => readX837Claim({ ...mapped, otherPayers: [{ ...prior, paidCents: 1.5 }] }),

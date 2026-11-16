@@ -43,8 +43,12 @@ const PLB_PAIRS = 6;
 
 const adjustmentsOf = (c: Mock835Claim): Adjustment[] => {
   if (c.adjustments) return c.adjustments;
-  const rest = c.chargeCents - c.paidCents - (c.patientCents ?? 0);
-  return rest ? [{ group: 'CO', reason: '45', cents: rest }] : [];
+  const patient = c.patientCents ?? 0;
+  const rest = c.chargeCents - c.paidCents - patient;
+  return [
+    ...(rest ? [{ group: 'CO' as const, reason: '45', cents: rest }] : []),
+    ...(patient ? [{ group: 'PR' as const, reason: '2', cents: patient }] : [])
+  ];
 };
 
 const casOf = (adjustments: Adjustment[]): Segment[] =>

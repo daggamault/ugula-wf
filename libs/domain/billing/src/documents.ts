@@ -1,5 +1,5 @@
 import { PDFDocument, type PDFFont, type PDFPage, rgb, StandardFonts } from 'pdf-lib';
-import { money } from './statements.ts';
+import { money } from './numbers.ts';
 
 export type DocumentRow = { label: string; value: string };
 

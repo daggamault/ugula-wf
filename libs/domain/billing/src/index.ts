@@ -210,7 +210,7 @@ export {
   type Responsibility,
   type ScheduleStore
 } from './nodes/index.ts';
-export { dailyNumberOf } from './numbers.ts';
+export { dailyNumberOf, money } from './numbers.ts';
 export {
   type Address,
   type Demographics,
@@ -253,7 +253,7 @@ export {
   remittanceCoverage,
   remittanceLine
 } from './remittances.ts';
-export { localDate, money } from './statements.ts';
+export { localDate } from './statements.ts';
 export { type InterchangeAcknowledgment, readTA1 } from './ta1.ts';
 export { type InboundKind, readX12 } from './x12.ts';
 export { build270, type EligibilityRequest } from './x270.ts';
