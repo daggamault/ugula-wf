@@ -7,7 +7,6 @@ import {
   conditionValue,
   formatCell,
   freeName,
-  moveRule,
   parseCell,
   readDecision,
   readLookup,
@@ -85,20 +84,8 @@ describe('table config', () => {
     assert.deepEqual([dropped.outputs, dropped.otherwise, dropped.rules[0]?.set], [[], {}, {}]);
   });
 
-  it('names new columns and reorders rules', () => {
+  it('names new columns', () => {
     assert.equal(freeName(['input1'], 'input'), 'input2');
     assert.equal(freeName(['input2'], 'input'), 'input3');
-    assert.deepEqual(
-      moveRule(table.rules, 1, -1).map((r) => r.label),
-      ['Other', 'ALS']
-    );
-    assert.deepEqual(
-      moveRule(table.rules, 0, -1).map((r) => r.label),
-      ['ALS', 'Other']
-    );
-    assert.deepEqual(
-      moveRule(table.rules, 1, 1).map((r) => r.label),
-      ['ALS', 'Other']
-    );
   });
 });

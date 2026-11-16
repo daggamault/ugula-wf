@@ -3,23 +3,27 @@ import {
   type GraphDef,
   type InputBinding,
   isPure,
+  type Json,
   type NodeInstance,
   RETURN_TYPE,
+  type Signature,
   tableRefOf
 } from '@ugula/graph';
 import { ExternalLinkIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react';
-import { useId } from 'react';
+import { useId, useRef } from 'react';
 import { labelFromName } from '../../shared/format.ts';
 import type { Catalog } from '../../shared/graph/catalog.ts';
 import { updateNode } from '../../shared/graph/flow.ts';
+import { pinLabel } from '../../shared/graph/pins.ts';
 import { Button } from '../../shared/ui/button.tsx';
+import { Disclosure } from '../../shared/ui/disclosure.tsx';
 import { IconButton } from '../../shared/ui/icon-button.tsx';
 import { Input } from '../../shared/ui/input.tsx';
-import { SectionPanel } from '../../shared/ui/section-panel.tsx';
+import { Section, SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Textarea } from '../../shared/ui/textarea.tsx';
 import { BindingEditor, CustomDot, PinHeading } from './binding-editor.tsx';
 import type { EffectiveTable } from './client.ts';
-import { ConfigEditor, TABLE_EDITORS, TableReference } from './node-settings.tsx';
+import { ConfigEditor, NodeSettings, TableReference } from './node-settings.tsx';
 import { formatBase, nodeChanges, propertyName, resetProperty } from './override-diff.ts';
 
 type NodeInspectorProps = {
@@ -34,6 +38,10 @@ type NodeInspectorProps = {
   base?: NodeInstance | undefined;
   table?: EffectiveTable | undefined;
 };
+
+export const secondsOf = (ms: number) => ms / 1000;
+
+export const msOf = (seconds: number) => Math.max(0, Math.round(seconds * 1000));
 
 const Links = ({ items, empty }: { items: readonly string[]; empty: string }) => (
   <span className={items.length ? 'text-sm' : 'text-surface-fg-muted text-sm'}>
@@ -54,15 +62,23 @@ export const NodeInspector = ({
   table
 }: NodeInspectorProps) => {
   const titleId = useId();
-  const signature = catalog.signatureOf(node, def);
+  const lastSignature = useRef<Signature | null>(null);
+  const current = catalog.signatureOf(node, def);
+  if (current) lastSignature.current = current;
+  const signature = current ?? lastSignature.current;
   const titleOfId = (id: string) => {
     const other = def.nodes.find((n) => n.id === id);
     return other ? catalog.titleOf(other) : id;
   };
+  const outputLabel = (id: string, pin: string) => {
+    const other = def.nodes.find((n) => n.id === id);
+    const spec = other && catalog.signatureOf(other, def)?.outputs.find((o) => o.name === pin);
+    return spec ? pinLabel(spec) : labelFromName(pin);
+  };
   const incoming = (pin: string) =>
     def.edges
       .filter((e) => e.to === node.id && e.toPin === pin)
-      .map((e) => `${titleOfId(e.from)} (${e.fromPin})`);
+      .map((e) => `${titleOfId(e.from)} · ${outputLabel(e.from, e.fromPin)}`);
   const outgoing = (pin: string) =>
     def.edges.filter((e) => e.from === node.id && e.fromPin === pin).map((e) => titleOfId(e.to));
   const isStart = node.type === ENTRY_TYPE;
@@ -91,6 +107,11 @@ export const NodeInspector = ({
   const inputs = signature?.inputs ?? [];
   const outputs = signature?.outputs ?? [];
   const exits = signature?.execOut ?? [];
+  const exitDocs = catalog.exitsOf(node, def);
+  const hasSettings = !boundary && catalog.hasConfig(node);
+  const canRetry = signature !== null && !isPure(signature) && !boundary;
+  const variables = def.variables.map((x) => x.name);
+  const setConfig = (config: Json | undefined) => set({ config });
 
   return (
     <aside aria-labelledby={titleId} className="flex min-h-0 flex-1 flex-col">
@@ -167,11 +188,30 @@ export const NodeInspector = ({
                     binding={node.inputs?.[spec.name]}
                     editable={editable}
                     changed={changedPins.has(spec.name)}
+                    variables={variables}
                     onBind={(binding) => bind(spec.name, binding)}
                   />
                 );
               })}
             </ul>
+          </SectionPanel>
+        ) : null}
+        {hasSettings ? (
+          <SectionPanel title="Settings">
+            {tableRef ? (
+              <TableReference tableKey={tableRef.key} table={table} />
+            ) : (
+              <NodeSettings
+                key={node.id}
+                node={node}
+                nodeId={node.id}
+                config={node.config}
+                editable={editable}
+                onConfig={setConfig}
+                def={def}
+                catalog={catalog}
+              />
+            )}
           </SectionPanel>
         ) : null}
         {outputs.length ? (
@@ -190,7 +230,7 @@ export const NodeInspector = ({
           <SectionPanel title="Then">
             <ul className="flex flex-col gap-2">
               {exits.map((pin) => {
-                const doc = signature?.exits?.[pin];
+                const doc = exitDocs[pin];
                 return (
                   <li key={pin} className="flex flex-col gap-0.5">
                     <span className="flex flex-wrap justify-between gap-x-3">
@@ -208,34 +248,8 @@ export const NodeInspector = ({
             </ul>
           </SectionPanel>
         ) : null}
-        {!boundary && catalog.hasConfig(node) ? (
-          <SectionPanel title="Settings">
-            {tableRef ? (
-              <TableReference tableKey={tableRef.key} table={table} />
-            ) : Object.hasOwn(TABLE_EDITORS, node.type) ? (
-              (() => {
-                const TableEditor = TABLE_EDITORS[node.type as keyof typeof TABLE_EDITORS];
-                return (
-                  <TableEditor
-                    nodeId={node.id}
-                    config={node.config}
-                    editable={editable}
-                    onConfig={(config) => set({ config })}
-                  />
-                );
-              })()
-            ) : (
-              <ConfigEditor
-                key={node.id}
-                node={node}
-                editable={editable}
-                onConfig={(config) => set({ config })}
-              />
-            )}
-          </SectionPanel>
-        ) : null}
         {editable ? (
-          <SectionPanel title="Name and Note" description="Both show on the canvas.">
+          <Disclosure isPanel title="Rename and Note">
             <Input
               id={`${node.id}-label`}
               label="Label"
@@ -250,48 +264,59 @@ export const NodeInspector = ({
               value={node.note ?? ''}
               onChange={(e) => set({ note: e.target.value || undefined })}
             />
-          </SectionPanel>
+          </Disclosure>
         ) : node.note ? (
           <SectionPanel title="Note">
             <p className="text-sm whitespace-pre-line">{node.note}</p>
           </SectionPanel>
         ) : null}
-        {signature && !isPure(signature) && !boundary ? (
-          <SectionPanel title="Retry on Failure" description="Each wait is longer than the last.">
-            <fieldset disabled={!editable} className="grid grid-cols-2 gap-x-4 gap-y-5">
-              <Input
-                id={`${node.id}-retry-max`}
-                label="Attempts"
-                type="number"
-                min={0}
-                value={node.retry?.max ?? 0}
-                onChange={(e) => {
-                  const max = Number(e.target.value);
-                  set({
-                    retry:
-                      max > 0
-                        ? {
-                            max,
-                            delayMs: node.retry?.delayMs ?? 1000,
-                            factor: node.retry?.factor ?? 2
-                          }
-                        : undefined
-                  });
-                }}
-              />
-              <Input
-                id={`${node.id}-retry-delay`}
-                label="First Wait (ms)"
-                type="number"
-                min={0}
-                disabled={!node.retry}
-                value={node.retry?.delayMs ?? 1000}
-                onChange={(e) =>
-                  node.retry && set({ retry: { ...node.retry, delayMs: Number(e.target.value) } })
-                }
-              />
-            </fieldset>
-          </SectionPanel>
+        {canRetry || (hasSettings && !tableRef) ? (
+          <Disclosure isPanel title="Advanced">
+            {canRetry ? (
+              <Section title="Retry on Failure" description="Each wait is longer than the last.">
+                <fieldset disabled={!editable} className="grid grid-cols-2 gap-x-4 gap-y-5">
+                  <Input
+                    id={`${node.id}-retry-max`}
+                    label="Attempts"
+                    type="number"
+                    min={0}
+                    value={node.retry?.max ?? 0}
+                    onChange={(e) => {
+                      const max = Number(e.target.value);
+                      set({
+                        retry:
+                          max > 0
+                            ? {
+                                max,
+                                delayMs: node.retry?.delayMs ?? 1000,
+                                factor: node.retry?.factor ?? 2
+                              }
+                            : undefined
+                      });
+                    }}
+                  />
+                  <Input
+                    id={`${node.id}-retry-delay`}
+                    label="First Wait (Seconds)"
+                    type="number"
+                    min={0}
+                    step="any"
+                    disabled={!node.retry}
+                    value={secondsOf(node.retry?.delayMs ?? 1000)}
+                    onChange={(e) =>
+                      node.retry &&
+                      set({ retry: { ...node.retry, delayMs: msOf(Number(e.target.value)) } })
+                    }
+                  />
+                </fieldset>
+              </Section>
+            ) : null}
+            {hasSettings && !tableRef ? (
+              <Disclosure title="Edit Settings as JSON">
+                <ConfigEditor node={node} editable={editable} onConfig={setConfig} />
+              </Disclosure>
+            ) : null}
+          </Disclosure>
         ) : null}
         {editable && !isStart ? (
           <div className="border-border border-t pt-5">

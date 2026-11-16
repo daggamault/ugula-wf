@@ -11,7 +11,7 @@ import { CONDITION_OPS, holds } from './tables.ts';
 
 const CATEGORY = 'Lists';
 const ANY_LIST: ValueType = { list: 'any' };
-const RESERVED = ['item', 'index', 'list'];
+export const LIST_FORMULA_NAMES = ['item', 'index', 'list'];
 const LIST_IN = pin('list', ANY_LIST, { description: 'The list to work on.' });
 const LIST_OUT = pin('list', ANY_LIST, { description: 'The resulting list.' });
 const ITEM_OUT = pin('item', 'any', { description: 'The item, or nothing.' });
@@ -54,7 +54,7 @@ const lambdaNode = (
     keywords: ['list', 'formula'],
     summary: ({ expression }) => oneLine(expression),
     config: expressionConfig,
-    inputs: ({ expression }) => [LIST_IN, ...identifierPins([expression], RESERVED)],
+    inputs: ({ expression }) => [LIST_IN, ...identifierPins([expression], LIST_FORMULA_NAMES)],
     outputs,
     compute: (inputs, { expression }, ctx) => {
       const ast = parseExpr(expression);

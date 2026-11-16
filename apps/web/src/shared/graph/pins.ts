@@ -47,7 +47,7 @@ const pinTones: Record<PinKind, PinTone> = {
 
 export const toneOf = (type: ValueType | 'exec') => pinTones[pinKindOf(type)];
 
-const TYPE_WORDS: Readonly<Record<Exclude<PinKind, 'list' | 'object' | 'exec'>, string>> = {
+export const TYPE_WORDS: Readonly<Record<Exclude<PinKind, 'list' | 'object' | 'exec'>, string>> = {
   any: 'Any Value',
   string: 'Text',
   number: 'Number',

@@ -1,9 +1,10 @@
-import type { InputBinding, Json, PinSpec } from '@ugula/graph';
+import { exprProblem, type InputBinding, type Json, type PinSpec } from '@ugula/graph';
 import { useContext } from 'react';
 import { describeType, pinLabel, ValueKindsContext } from '../../shared/graph/pins.ts';
 import { Input } from '../../shared/ui/input.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
+import { FunctionReference, formulaInputs } from './expression-editor.tsx';
 
 type BindingMode = 'default' | 'value' | 'expr';
 
@@ -52,6 +53,19 @@ export const PinHeading = ({ spec, changed = false }: { spec: PinSpec; changed?:
   );
 };
 
+export const bindingProblem = (src: string, variables: readonly string[]) => {
+  if (!src.trim()) return 'Write an expression that uses this workflow’s variables.';
+  const problem = exprProblem(src);
+  if (problem) return problem;
+  const unknown = formulaInputs(src).find((name) => !variables.includes(name));
+  return unknown ? `"${unknown}" is not a variable of this workflow.` : null;
+};
+
+export const variablesHint = (variables: readonly string[]) =>
+  variables.length
+    ? `Only this workflow’s variables can be used here: ${variables.join(', ')}.`
+    : 'This workflow has no variables, so connect a pin or set a fixed value instead.';
+
 const unsetText = (spec: PinSpec) =>
   spec.default !== undefined
     ? `Uses ${JSON.stringify(spec.default)} unless you set it.`
@@ -65,6 +79,7 @@ export const BindingEditor = ({
   binding,
   editable,
   changed,
+  variables,
   onBind
 }: {
   nodeId: string;
@@ -72,6 +87,7 @@ export const BindingEditor = ({
   binding: InputBinding | undefined;
   editable: boolean;
   changed: boolean;
+  variables: readonly string[];
   onBind: (binding: InputBinding | undefined) => void;
 }) => {
   const id = `${nodeId}-${spec.name}`;
@@ -94,18 +110,23 @@ export const BindingEditor = ({
             label="Fixed Value"
             type={spec.type}
             value={binding.value}
+            editable={editable}
             onChange={(value: Json) => onBind({ value })}
           />
         ) : null}
         {binding && 'expr' in binding ? (
-          <Input
-            id={`${id}-expr`}
-            label="Expression"
-            hint="Use graph variables and functions such as round(), sum() or map()."
-            isMonospace
-            value={binding.expr}
-            onChange={(e) => onBind({ expr: e.target.value })}
-          />
+          <>
+            <Input
+              id={`${id}-expr`}
+              label="Expression"
+              hint={variablesHint(variables)}
+              error={bindingProblem(binding.expr, variables) ?? undefined}
+              isMonospace
+              value={binding.expr}
+              onChange={(e) => onBind({ expr: e.target.value })}
+            />
+            <FunctionReference />
+          </>
         ) : null}
         {mode === 'default' ? (
           <p className="text-surface-fg-muted text-xs">{unsetText(spec)}</p>

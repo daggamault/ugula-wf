@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageAt, type ExprValue, exprFunctions, parseNumber, roundTo } from './expr-functions.ts';
+import {
+  ageAt,
+  EXPR_CATEGORIES,
+  type ExprValue,
+  exprFunctionDocs,
+  exprFunctions,
+  parseNumber,
+  roundTo
+} from './expr-functions.ts';
 
 const cx = {
   call: (fn: ExprValue, args: ExprValue[]) => (typeof fn === 'function' ? fn(args) : null),
@@ -327,5 +335,15 @@ describe('expression functions', () => {
     assert.equal(f('daysBetween', '2026-03-02', '2026-03-01'), -1);
     assert.equal(ageAt(new Date('2000-05-10'), new Date('2026-05-09')), 25);
     assert.equal(ageAt(new Date('2000-05-10'), new Date('2026-05-10')), 26);
+  });
+});
+
+describe('exprFunctionDocs', () => {
+  it('documents every function under a known category with its usage', () => {
+    assert.deepEqual(Object.keys(exprFunctionDocs).sort(), Object.keys(exprFunctions).sort());
+    for (const [name, d] of Object.entries(exprFunctionDocs)) {
+      assert.ok(EXPR_CATEGORIES.includes(d.category), name);
+      assert.ok(d.usage.startsWith(`${name}(`) && d.description.endsWith('.'), name);
+    }
   });
 });

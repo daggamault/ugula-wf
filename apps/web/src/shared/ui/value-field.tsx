@@ -1,9 +1,19 @@
-import { formatType, isFileType, isTextType, type Json, type ValueType } from '@ugula/graph';
-import { useState } from 'react';
+import {
+  deepEqual,
+  isFileType,
+  isRecord,
+  isTextType,
+  type Json,
+  type ValueType
+} from '@ugula/graph';
+import { useContext, useState } from 'react';
 import { classNamesOf } from '../class-names.ts';
+import { labelFromName } from '../format.ts';
+import { describeType, ValueKindsContext } from '../graph/pins.ts';
 import { Checkbox } from './checkbox.tsx';
-import { describedByOf, Field, fieldControlClasses, fieldTextClasses } from './field.tsx';
+import { describedByOf, Field, FieldSet, fieldControlClasses, fieldTextClasses } from './field.tsx';
 import { Input } from './input.tsx';
+import { ListRows } from './list-rows.tsx';
 import { Select, type SelectOption } from './select.tsx';
 import { Textarea } from './textarea.tsx';
 
@@ -20,6 +30,7 @@ type ValueFieldProps = {
   max?: number | undefined;
   options?: readonly SelectOption[] | undefined;
   upload?: ((file: File) => Promise<UploadedValue>) | undefined;
+  editable?: boolean | undefined;
 };
 
 type UploadedValue = { file: Json; name: string };
@@ -78,31 +89,156 @@ const parseJson = (text: string): { value: Json } | { error: string } => {
   try {
     return { value: JSON.parse(text) as Json };
   } catch {
-    return { error: 'Not valid JSON' };
+    return { error: 'This is not valid JSON yet.' };
   }
 };
 
-const JsonField = ({ id, label, type, value, onChange, error }: ValueFieldProps) => {
-  const [text, setText] = useState(() => (value === null ? '' : JSON.stringify(value, null, 2)));
-  const [parseError, setParseError] = useState<string>();
+const formatJson = (value: Json) => (value === null ? '' : JSON.stringify(value, null, 2));
+
+type JsonFieldProps = {
+  id: string;
+  label: string;
+  value: Json;
+  onChange: (value: Json) => void;
+  hint?: string | undefined;
+  error?: string | undefined;
+  disabled?: boolean | undefined;
+};
+
+export const JsonField = ({
+  id,
+  label,
+  value,
+  onChange,
+  hint,
+  error,
+  disabled
+}: JsonFieldProps) => {
+  const [text, setText] = useState(() => formatJson(value));
+  const parsed = parseJson(text);
+  const isCurrent = 'error' in parsed || deepEqual(parsed.value, value);
   return (
     <Textarea
       isMonospace
       id={id}
       label={label}
-      hint={formatType(type)}
-      error={parseError ?? error}
-      value={text}
+      hint={hint}
+      error={('error' in parsed ? parsed.error : undefined) ?? error}
+      disabled={disabled}
+      value={isCurrent ? text : formatJson(value)}
       onChange={(e) => {
         setText(e.target.value);
-        const parsed = parseJson(e.target.value);
-        if ('error' in parsed) setParseError(parsed.error);
-        else {
-          setParseError(undefined);
-          onChange(parsed.value);
-        }
+        const next = parseJson(e.target.value);
+        if ('value' in next) onChange(next.value);
       }}
     />
+  );
+};
+
+const RecordField = ({
+  id,
+  label,
+  fields,
+  value,
+  onChange,
+  editable
+}: Pick<ValueFieldProps, 'id' | 'label' | 'value' | 'onChange' | 'editable'> & {
+  fields: Record<string, ValueType>;
+}) => {
+  const record = isRecord(value) ? value : {};
+  return (
+    <FieldSet label={label}>
+      {Object.entries(fields).map(([name, type]) => (
+        <ValueField
+          key={name}
+          id={`${id}-${name}`}
+          label={labelFromName(name)}
+          type={type}
+          value={record[name] ?? null}
+          editable={editable}
+          onChange={(next) => onChange({ ...record, [name]: next })}
+        />
+      ))}
+    </FieldSet>
+  );
+};
+
+const ItemsField = ({
+  id,
+  label,
+  item,
+  value,
+  onChange,
+  editable = true
+}: Pick<ValueFieldProps, 'id' | 'label' | 'value' | 'onChange' | 'editable'> & {
+  item: ValueType;
+}) => (
+  <FieldSet label={label}>
+    <ListRows<Json>
+      id={id}
+      noun="Item"
+      items={Array.isArray(value) ? value : []}
+      editable={editable}
+      blank={() => null}
+      onChange={onChange}
+    >
+      {(x, i, set) => (
+        <ValueField
+          id={`${id}-${i}`}
+          label={`Item ${i + 1}`}
+          type={item}
+          value={x}
+          editable={editable}
+          onChange={set}
+        />
+      )}
+    </ListRows>
+  </FieldSet>
+);
+
+const ANY_KINDS = [
+  { value: 'string', label: 'Text' },
+  { value: 'number', label: 'Number' },
+  { value: 'boolean', label: 'Yes or No' },
+  { value: 'json', label: 'JSON' }
+] as const;
+
+type AnyKind = (typeof ANY_KINDS)[number]['value'];
+
+export const anyKindOf = (value: Json): AnyKind =>
+  typeof value === 'number'
+    ? 'number'
+    : typeof value === 'boolean'
+      ? 'boolean'
+      : value === null || typeof value === 'string'
+        ? 'string'
+        : 'json';
+
+const convertedTo = (kind: AnyKind, value: Json): Json =>
+  kind === 'json' || anyKindOf(value) === kind ? value : kind === 'boolean' ? false : null;
+
+const AnyField = (props: ValueFieldProps) => {
+  const { id, label, value, onChange } = props;
+  const [kind, setKind] = useState(() => anyKindOf(value));
+  return (
+    <FieldSet label={label}>
+      <Select
+        id={`${id}-kind`}
+        label="Kind of Value"
+        options={ANY_KINDS}
+        value={kind}
+        onChange={(next) => {
+          const chosen = ANY_KINDS.find((k) => k.value === next)?.value ?? 'string';
+          setKind(chosen);
+          onChange(convertedTo(chosen, value));
+        }}
+      />
+      {kind === 'json' ? (
+        <JsonField id={id} label="JSON" value={value} error={props.error} onChange={onChange} />
+      ) : (
+        <ValueField {...props} label={kind === 'boolean' ? 'Yes' : 'Value'} type={kind} />
+      )}
+    </FieldSet>
   );
 };
 
@@ -140,6 +276,7 @@ const textOf = (value: Json) => (typeof value === 'string' ? value : '');
 export const ValueField = (props: ValueFieldProps) => {
   const { id, label, type, value, onChange, error, isRequired, format, min, max, options, upload } =
     props;
+  const kinds = useContext(ValueKindsContext);
   const common = { id, label, error, required: isRequired };
   if (upload && isFileType(type)) {
     return <FileField id={id} label={label} error={error} onChange={onChange} upload={upload} />;
@@ -188,7 +325,12 @@ export const ValueField = (props: ValueFieldProps) => {
   }
   if (isTextType(type)) {
     return (
-      <Input {...common} value={textOf(value)} onChange={(e) => onChange(e.target.value || null)} />
+      <Input
+        {...common}
+        hint={type === 'string' ? undefined : describeType(type, kinds)}
+        value={textOf(value)}
+        onChange={(e) => onChange(e.target.value || null)}
+      />
     );
   }
   if (type === 'datetime') {
@@ -205,5 +347,19 @@ export const ValueField = (props: ValueFieldProps) => {
     );
   }
   if (isStringList(type)) return <ListField {...props} />;
-  return <JsonField {...props} />;
+  if (typeof type === 'object' && 'list' in type) return <ItemsField {...props} item={type.list} />;
+  if (typeof type === 'object' && 'object' in type && Object.keys(type.object).length) {
+    return <RecordField {...props} fields={type.object} />;
+  }
+  if (type === 'any') return <AnyField {...props} />;
+  return (
+    <JsonField
+      id={id}
+      label={label}
+      hint={describeType(type, kinds)}
+      value={value}
+      error={error}
+      onChange={onChange}
+    />
+  );
 };

@@ -96,3 +96,10 @@ export const FormActions = ({ children }: { children: ReactNode }) => (
     {children}
   </div>
 );
+
+export const FieldSet = ({ label, children }: { label: string; children: ReactNode }) => (
+  <fieldset className="flex min-w-0 flex-col gap-1.5">
+    <legend className="pb-1.5 text-sm font-medium">{label}</legend>
+    <div className="border-border flex flex-col gap-3 border-l-2 pl-4">{children}</div>
+  </fieldset>
+);

@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { BindingEditor, bindingFor, PinHeading } from './binding-editor.tsx';
+import {
+  BindingEditor,
+  bindingFor,
+  bindingProblem,
+  PinHeading,
+  variablesHint
+} from './binding-editor.tsx';
 
 const spec = { name: 'miles', type: 'number', default: 5 } as const;
 
@@ -25,6 +31,7 @@ describe('BindingEditor', () => {
         binding,
         editable: true,
         changed: true,
+        variables: ['a'],
         onBind: () => undefined
       })
     );
@@ -35,9 +42,21 @@ describe('BindingEditor', () => {
     assert.ok(html.includes('aria-label="Changed from the base"'));
   });
 
-  it('edits an expression in a monospace input', () => {
+  it('edits an expression in a monospace input, checked against the graph variables', () => {
     const html = render({ expr: 'a + 1' });
     assert.ok(html.includes('id="n1-miles-expr"') && html.includes('value="a + 1"'));
+    assert.ok(html.includes('variables can be used here: a.') && html.includes('>Functions'));
+    assert.ok(!html.includes('role="alert"'));
+    assert.ok(render({ expr: 'b + 1' }).includes('&quot;b&quot; is not a variable'));
+  });
+
+  it('names the problem with an expression, and the variables it may use', () => {
+    assert.equal(bindingProblem('a * 2', ['a']), null);
+    assert.match(bindingProblem('', ['a']) ?? '', /variables/);
+    assert.match(bindingProblem('nope(a)', ['a']) ?? '', /Unknown function "nope"/);
+    assert.match(bindingProblem('a +', ['a']) ?? '', /\w/);
+    assert.equal(bindingProblem('map(xs, x => x + 1)', ['xs']), null);
+    assert.match(variablesHint([]), /no variables/);
   });
 
   it('heads a pin with its type and whether it is optional', () => {

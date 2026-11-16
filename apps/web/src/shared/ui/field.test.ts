@@ -7,6 +7,7 @@ import {
   errorIdOf,
   Field,
   FieldGroup,
+  FieldSet,
   FormActions,
   fieldControlClasses,
   hintIdOf
@@ -67,5 +68,15 @@ describe('FormActions', () => {
     const html = renderToStaticMarkup(createElement(FormActions, null, 'Save'));
     assert.ok(html.includes('flex-col-reverse') && html.includes('sm:justify-end'));
     assert.ok(html.includes('gap-2'));
+  });
+});
+
+describe('FieldSet', () => {
+  it('names nested fields with a legend and indents them', () => {
+    const html = renderToStaticMarkup(
+      createElement(FieldSet, { label: 'Address', children: 'fields' })
+    );
+    assert.ok(html.startsWith('<fieldset') && html.includes('<legend'));
+    assert.ok(html.includes('>Address</legend>') && html.includes('border-l-2 pl-4'));
   });
 });

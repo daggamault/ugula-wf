@@ -5,6 +5,7 @@ import { pinLabel } from '../../shared/graph/pins.ts';
 import { Button } from '../../shared/ui/button.tsx';
 import { MoveButtons, RemoveButton } from '../../shared/ui/icon-button.tsx';
 import { Input, type InputProps } from '../../shared/ui/input.tsx';
+import { moved } from '../../shared/ui/list-rows.tsx';
 import { Section } from '../../shared/ui/section-panel.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import {
@@ -18,7 +19,6 @@ import {
   formatCell,
   freeName,
   type LookupConfig,
-  moveRule,
   OPS,
   parseCell,
   type Rule,
@@ -390,7 +390,7 @@ export const DecisionTableEditor = ({ nodeId, config, editable, onConfig }: Tabl
               table={table}
               editable={editable}
               onRule={(next) => setRules(table.rules.map((r, j) => (j === i ? next : r)))}
-              onMove={(by) => setRules(moveRule(table.rules, i, by))}
+              onMove={(by) => setRules(moved(table.rules, i, by))}
               onRemove={() => setRules(table.rules.filter((_, j) => j !== i))}
             />
           ))}

@@ -2,19 +2,23 @@ import {
   combineSources,
   createRegistry,
   ENTRY_TYPE,
+  type ExitDoc,
   type GraphDef,
   INPUT_TYPE,
   inputNode,
   type NodeDef,
   type NodeInstance,
+  type NodeLevel,
   type NodeRef,
   RETURN_TYPE,
   refKey,
   type Signature,
   stdGraphInfo,
   stdGraphSource,
-  stdGraphs
+  stdGraphs,
+  WORKFLOW_CALL_TYPES
 } from '@ugula/graph';
+import type * as v from 'valibot';
 import { labelFromName } from '../format.ts';
 
 export type PublishedNode = {
@@ -33,6 +37,8 @@ export type PaletteEntry = NodeRef & {
   title: string;
   category: string;
   description: string;
+  level: NodeLevel;
+  keywords: readonly string[];
 };
 
 type CatalogSources = {
@@ -42,24 +48,23 @@ type CatalogSources = {
 
 export type Catalog = {
   palette: PaletteEntry[];
+  published: readonly PublishedNode[];
   signatureOf: (inst: NodeInstance, owner: GraphDef) => Signature | null;
   titleOf: (inst: NodeInstance) => string;
   describe: (inst: NodeInstance) => string;
   hasConfig: (inst: NodeInstance) => boolean;
+  configSchemaOf: (inst: NodeInstance) => v.GenericSchema | undefined;
+  summaryOf: (inst: NodeInstance) => string | null;
+  exitsOf: (inst: NodeInstance, owner: GraphDef) => Readonly<Record<string, ExitDoc>>;
   graphOf: (ref: NodeRef) => GraphDef | undefined;
   opensAs: (inst: NodeInstance) => 'graph' | 'workflow' | null;
   publishedOf: (inst: NodeInstance) => PublishedNode | undefined;
 };
 
-const SPAWNING = new Set([
-  'std.flow.run-workflow',
-  'std.flow.start-workflow',
-  'std.flow.map-workflow'
-]);
-
 const workflowRefOf = (inst: NodeInstance): NodeRef | null => {
   const config = inst.config;
-  if (!SPAWNING.has(inst.type) || typeof config !== 'object' || config === null) return null;
+  if (!WORKFLOW_CALL_TYPES.has(inst.type) || typeof config !== 'object' || config === null)
+    return null;
   const { workflow, version } = config as { workflow?: unknown; version?: unknown };
   return typeof workflow === 'string' && typeof version === 'number'
     ? { type: workflow, version }
@@ -111,49 +116,60 @@ export const createCatalog = (
   const graphOf = (ref: NodeRef) => full.get(refKey(ref)) ?? stdGraphs[refKey(ref)];
   const latest = [...new Map([...published].reverse().map((p) => [p.key, p])).values()];
 
-  const palette: PaletteEntry[] = [
-    {
-      type: inputNode.type,
-      version: inputNode.version,
-      title: inputNode.title,
-      category: inputNode.category,
-      description: inputNode.description
-    },
-    {
-      type: RETURN_TYPE,
-      version: 1,
-      title: 'Return',
-      category: 'Graph',
-      description: RETURN_DESCRIPTION
-    },
-    ...nodes.map((d) => ({
-      type: d.type,
-      version: d.version,
-      title: d.title,
-      category: d.category,
-      description: d.description
-    })),
+  const entryOf = (d: NodeDef): PaletteEntry => ({
+    type: d.type,
+    version: d.version,
+    title: d.title,
+    category: d.category,
+    description: d.description,
+    level: d.level ?? 'basic',
+    keywords: d.keywords ?? []
+  });
+
+  const graphEntry = (
+    type: string,
+    version: number,
+    title: string,
+    category: string,
+    description: string
+  ): PaletteEntry => ({
+    type,
+    version,
+    title,
+    category,
+    description,
+    level: 'basic',
+    keywords: []
+  });
+
+  const palette = [
+    entryOf(inputNode),
+    graphEntry(RETURN_TYPE, 1, 'Return', 'Graph', RETURN_DESCRIPTION),
+    ...nodes.map(entryOf),
     ...Object.keys(stdGraphs).map((key) => {
       const [type = key, version = '1'] = key.split('@');
-      return {
+      return graphEntry(
         type,
-        version: Number(version),
-        title: stdGraphInfo[key]?.title ?? titleFromKey(type),
-        category: categoryOf(nodes, type),
-        description: stdGraphInfo[key]?.description ?? ''
-      };
+        Number(version),
+        stdGraphInfo[key]?.title ?? titleFromKey(type),
+        categoryOf(nodes, type),
+        stdGraphInfo[key]?.description ?? ''
+      );
     }),
-    ...latest.map((p) => ({
-      type: p.key,
-      version: p.version,
-      title: p.name,
-      category: p.kind === 'node' ? 'Custom Nodes' : 'Workflows',
-      description: p.description
-    }))
+    ...latest.map((p) =>
+      graphEntry(
+        p.key,
+        p.version,
+        p.name,
+        p.kind === 'node' ? 'Custom Nodes' : 'Workflows',
+        p.description
+      )
+    )
   ].sort((a, b) => a.category.localeCompare(b.category) || a.title.localeCompare(b.title));
 
   return {
     palette,
+    published,
     signatureOf: (inst, owner) => {
       try {
         return registry.signature(inst, owner);
@@ -182,6 +198,21 @@ export const createCatalog = (
             stubs.get(refKey(inst))?.description ??
             ''),
     hasConfig: (inst) => registry.node(inst)?.config !== undefined,
+    configSchemaOf: (inst) => registry.node(inst)?.config,
+    summaryOf: (inst) => {
+      try {
+        return registry.node(inst)?.summary?.(registry.config(inst)) ?? null;
+      } catch {
+        return null;
+      }
+    },
+    exitsOf: (inst, owner) => {
+      try {
+        return { ...registry.signature(inst, owner).exits, ...registry.node(inst)?.exits };
+      } catch {
+        return registry.node(inst)?.exits ?? {};
+      }
+    },
     graphOf,
     opensAs: (inst) => {
       if (workflowRefOf(inst)) return 'workflow';

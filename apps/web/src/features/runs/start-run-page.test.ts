@@ -29,7 +29,7 @@ describe('StartRunPage', () => {
     );
     assert.ok(html.includes('id="input-limit"'));
     assert.ok(html.includes('value="10"'));
-    assert.ok(html.includes('<textarea'));
+    assert.ok(html.includes('Add Item'));
     assert.ok(html.includes('Start Run'));
     assert.ok(html.includes('@3xl:grid-cols-4') && html.includes('href="/workflows/g1"'));
     assert.ok(html.includes('>Cancel<'));

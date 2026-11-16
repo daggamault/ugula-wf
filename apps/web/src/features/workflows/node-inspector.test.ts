@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { testNodes } from '../../shared/testing.ts';
 import type { EffectiveTable } from './client.ts';
-import { NodeInspector } from './node-inspector.tsx';
+import { msOf, NodeInspector, secondsOf } from './node-inspector.tsx';
 
 const def: GraphDef = {
   signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
@@ -22,7 +22,8 @@ const def: GraphDef = {
     },
     { id: 'add1', type: 'std.math.add', version: 1, inputs: { a: { value: 2 } } },
     { id: 'round1', type: 'std.math.round', version: 1 },
-    { id: 'expr1', type: 'std.expr', version: 1, config: { expression: 'a + 1' } }
+    { id: 'expr1', type: 'std.expr', version: 1, config: { expression: 'a + 1' } },
+    { id: 'branch1', type: 'std.flow.branch', version: 1 }
   ],
   edges: [
     { from: 'entry', fromPin: 'exec', to: 'delay1', toPin: 'exec' },
@@ -52,18 +53,19 @@ describe('NodeInspector', () => {
     assert.ok(html.includes('value="wait * 1000"'));
     assert.ok(html.includes('Whole Number'));
     assert.ok(html.includes('Not connected'));
-    assert.ok(html.includes('Retry on Failure') && html.includes('value="500"'));
-    assert.ok(!html.includes('Settings (JSON)'));
+    assert.ok(html.includes('Retry on Failure') && html.includes('value="0.5"'));
+    assert.ok(html.includes('First Wait (Seconds)') && html.includes('>Advanced'));
+    assert.ok(!html.includes('Settings as JSON'));
     assert.ok(html.includes('Delete Node'));
     assert.ok(html.includes('aria-label="Close"'));
   });
 
   it('names where connected inputs come from and who uses each output', () => {
-    assert.ok(render('round1').includes('From Add (result)'));
+    assert.ok(render('round1').includes('From Add · Result'));
     const add = render('add1');
     assert.ok(add.includes('Round'));
     assert.ok(add.includes('Needs a value: connect a pin on the canvas, or set one here.'));
-    assert.ok(!add.includes('Retry on Failure'));
+    assert.ok(!add.includes('Retry on Failure') && !add.includes('>Advanced'));
     assert.match(
       add,
       /role="option"[^>]*aria-selected="true" data-value="value"[^>]*><span[^>]*>A Fixed Value<\/span>/
@@ -76,8 +78,26 @@ describe('NodeInspector', () => {
     assert.ok(render('delay1', true, () => undefined).includes('Open Workflow'));
   });
 
-  it('shows settings only for nodes that take them', () => {
-    assert.ok(render('expr1').includes('Settings (JSON)'));
+  it('shows settings as a form, with JSON only under Advanced, and only for nodes that take them', () => {
+    const html = render('expr1');
+    assert.ok(html.includes('>Settings</h2>') && html.includes('>Formula</label>'));
+    assert.ok(html.indexOf('>Settings</h2>') < html.indexOf('>Outputs</h2>'));
+    assert.ok(html.includes('Edit Settings as JSON') && html.includes('Settings as JSON</label>'));
+    assert.ok(!render('add1').includes('>Settings</h2>'));
+  });
+
+  it('documents exits from the node and puts renaming last, collapsed', () => {
+    const html = render('branch1');
+    assert.ok(html.includes('>True</span>') && html.includes('The condition is true.'));
+    assert.ok(html.includes('Rename and Note'));
+    assert.ok(html.indexOf('>Then</h2>') < html.indexOf('Rename and Note'));
+    assert.ok(!html.includes('<details open'));
+  });
+
+  it('converts retry waits between seconds and milliseconds', () => {
+    assert.equal(secondsOf(1500), 1.5);
+    assert.equal(msOf(2.5), 2500);
+    assert.equal(msOf(-1), 0);
   });
 
   it('shows pin and exit documentation and the node note', () => {
@@ -117,7 +137,7 @@ describe('NodeInspector', () => {
     const edit = html(true);
     assert.ok(edit.includes('The claim to check'));
     assert.ok(edit.includes('On Hold') && edit.includes('A biller holds it'));
-    assert.ok(edit.includes('Name and Note') && edit.includes('Check with billing</textarea>'));
+    assert.ok(edit.includes('Rename and Note') && edit.includes('Check with billing</textarea>'));
     const read = html(false);
     assert.ok(read.includes('Check with billing</p>') && !read.includes('<textarea'));
   });

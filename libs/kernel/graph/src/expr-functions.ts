@@ -318,3 +318,135 @@ export const exprFunctions: Record<string, ExprFunction> = {
       at == null ? (cx.now ?? fail('age: no clock available')) : date('age', at)
     )
 };
+
+export const EXPR_CATEGORIES = ['Math', 'Text', 'Lists', 'Records', 'Values', 'Dates'] as const;
+
+type ExprFunctionDoc = {
+  category: (typeof EXPR_CATEGORIES)[number];
+  usage: string;
+  description: string;
+};
+
+const doc = (
+  category: ExprFunctionDoc['category'],
+  usage: string,
+  description: string
+): ExprFunctionDoc => ({ category, usage, description });
+
+export const exprFunctionDocs: Record<string, ExprFunctionDoc> = {
+  abs: doc('Math', 'abs(x)', 'The number without its sign.'),
+  ceil: doc('Math', 'ceil(x)', 'Rounds up to a whole number.'),
+  floor: doc('Math', 'floor(x)', 'Rounds down to a whole number.'),
+  trunc: doc('Math', 'trunc(x)', 'Drops the decimals.'),
+  round: doc(
+    'Math',
+    'round(x, digits)',
+    'Rounds half away from zero, to whole numbers unless digits are given.'
+  ),
+  sqrt: doc('Math', 'sqrt(x)', 'The square root.'),
+  pow: doc('Math', 'pow(x, y)', 'x to the power of y.'),
+  min: doc('Math', 'min(a, b, …)', 'The smallest number, of the values or a list.'),
+  max: doc('Math', 'max(a, b, …)', 'The largest number, of the values or a list.'),
+  sum: doc('Math', 'sum(list)', 'The numbers added up.'),
+  avg: doc('Math', 'avg(list)', 'The average, or nothing when there are none.'),
+  clamp: doc('Math', 'clamp(x, low, high)', 'Keeps x between low and high.'),
+  upper: doc('Text', 'upper(text)', 'The text in capitals.'),
+  lower: doc('Text', 'lower(text)', 'The text in small letters.'),
+  trim: doc('Text', 'trim(text)', 'Drops the spaces at both ends.'),
+  len: doc('Text', 'len(x)', 'How many characters, items or fields x has.'),
+  contains: doc(
+    'Text',
+    'contains(x, part)',
+    'Whether text holds the part, or a list holds the item.'
+  ),
+  startsWith: doc('Text', 'startsWith(text, start)', 'Whether the text begins with start.'),
+  endsWith: doc('Text', 'endsWith(text, end)', 'Whether the text ends with end.'),
+  replace: doc('Text', 'replace(text, find, with)', 'Replaces every find in the text.'),
+  split: doc('Text', 'split(text, separator)', 'Cuts the text into a list.'),
+  join: doc('Text', 'join(list, separator)', 'Joins a list into one text.'),
+  substr: doc('Text', 'substr(text, start, end)', 'The part of the text from start up to end.'),
+  padStart: doc(
+    'Text',
+    'padStart(x, width, fill)',
+    'Fills on the left up to width, with spaces unless fill is given.'
+  ),
+  padEnd: doc(
+    'Text',
+    'padEnd(x, width, fill)',
+    'Fills on the right up to width, with spaces unless fill is given.'
+  ),
+  text: doc('Text', 'text(x)', 'Any value as readable text.'),
+  money: doc('Text', 'money(cents)', 'Cents as dollars, such as $12.50.'),
+  number: doc('Values', 'number(x)', 'Reads text such as "12.50" as a number.'),
+  map: doc('Lists', 'map(list, x => …)', 'Turns each item into a new value.'),
+  filter: doc('Lists', 'filter(list, x => …)', 'Keeps the items for which the formula is true.'),
+  find: doc('Lists', 'find(list, x => …)', 'The first item for which the formula is true.'),
+  some: doc('Lists', 'some(list, x => …)', 'Whether the formula is true for any item.'),
+  every: doc('Lists', 'every(list, x => …)', 'Whether the formula is true for every item.'),
+  count: doc(
+    'Lists',
+    'count(list, x => …)',
+    'How many items there are, or how many match the formula.'
+  ),
+  reduce: doc(
+    'Lists',
+    'reduce(list, (total, x) => …, start)',
+    'Builds one value from all the items.'
+  ),
+  sort: doc(
+    'Lists',
+    'sort(list, x => …)',
+    'Sorts smallest first, by the item or what the formula gives.'
+  ),
+  groupBy: doc(
+    'Lists',
+    'groupBy(list, x => …)',
+    'Groups the items into a record by what the formula gives.'
+  ),
+  unique: doc('Lists', 'unique(list)', 'Drops repeated items.'),
+  flatten: doc('Lists', 'flatten(list)', 'Turns a list of lists into one list.'),
+  first: doc('Lists', 'first(list)', 'The first item.'),
+  last: doc('Lists', 'last(list)', 'The last item.'),
+  at: doc(
+    'Lists',
+    'at(list, i)',
+    'The item at position i, counting from 0; negative counts from the end.'
+  ),
+  slice: doc('Lists', 'slice(list, start, end)', 'The items from start up to end.'),
+  reverse: doc('Lists', 'reverse(list)', 'The items in reverse order.'),
+  concat: doc('Lists', 'concat(a, b, …)', 'Joins lists into one.'),
+  indexOf: doc(
+    'Lists',
+    'indexOf(x, item)',
+    'Where the item first appears in a list or text, or -1.'
+  ),
+  range: doc('Lists', 'range(start, end)', 'The whole numbers from start up to end.'),
+  keys: doc('Records', 'keys(record)', 'The names of the fields.'),
+  values: doc('Records', 'values(record)', 'The values of the fields.'),
+  entries: doc('Records', 'entries(record)', 'The fields as a list of { key, value }.'),
+  fromEntries: doc(
+    'Records',
+    'fromEntries(list)',
+    'Builds a record from a list of { key, value }.'
+  ),
+  findKey: doc('Records', 'findKey(record, name)', 'The field name that matches, ignoring case.'),
+  get: doc('Records', 'get(record, "a.b")', 'The value at a dotted path, or nothing.'),
+  has: doc('Records', 'has(record, name)', 'Whether the record has the field.'),
+  merge: doc('Records', 'merge(a, b, …)', 'Combines records; later fields win.'),
+  pick: doc('Records', 'pick(record, names)', 'Keeps only the named fields.'),
+  omit: doc('Records', 'omit(record, names)', 'Drops the named fields.'),
+  coalesce: doc('Values', 'coalesce(a, b, …)', 'The first value that is not empty.'),
+  isNull: doc('Values', 'isNull(x)', 'Whether x is empty.'),
+  type: doc('Values', 'type(x)', 'What kind of value x is, such as number or list.'),
+  parseJson: doc('Values', 'parseJson(text)', 'Reads JSON text as a value.'),
+  toJson: doc('Values', 'toJson(x)', 'Writes a value as JSON text.'),
+  now: doc('Dates', 'now()', 'The current date and time.'),
+  date: doc('Dates', 'date(x)', 'The calendar day, such as 2026-03-01.'),
+  datetime: doc('Dates', 'datetime(x)', 'A full date and time in UTC.'),
+  addDays: doc('Dates', 'addDays(date, days)', 'The date that many days later.'),
+  daysBetween: doc('Dates', 'daysBetween(from, to)', 'Whole days from one date to another.'),
+  year: doc('Dates', 'year(date)', 'The year.'),
+  month: doc('Dates', 'month(date)', 'The month, 1 to 12.'),
+  day: doc('Dates', 'day(date)', 'The day of the month.'),
+  age: doc('Dates', 'age(birthDate, at)', 'Age in whole years, today unless at is given.')
+};

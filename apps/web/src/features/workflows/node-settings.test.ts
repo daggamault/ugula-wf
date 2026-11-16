@@ -1,8 +1,37 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { type GraphDef, INPUT_TYPE, type NodeInstance } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ConfigEditor, TABLE_EDITORS, TableReference } from './node-settings.tsx';
+import { createCatalog } from '../../shared/graph/catalog.ts';
+import { testNodes } from '../../shared/testing.ts';
+import {
+  ConfigEditor,
+  NodeSettings,
+  SETTINGS_EDITORS,
+  TABLE_EDITORS,
+  TableReference
+} from './node-settings.tsx';
+
+const def: GraphDef = {
+  signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] },
+  variables: [],
+  nodes: [],
+  edges: []
+};
+
+const settings = (node: NodeInstance) =>
+  renderToStaticMarkup(
+    createElement(NodeSettings, {
+      node,
+      nodeId: node.id,
+      config: node.config,
+      editable: true,
+      onConfig: () => undefined,
+      def,
+      catalog: createCatalog(testNodes)
+    })
+  );
 
 describe('ConfigEditor', () => {
   it('shows node settings as formatted JSON, read-only when not editable', () => {
@@ -13,8 +42,46 @@ describe('ConfigEditor', () => {
         onConfig: () => undefined
       })
     );
-    assert.ok(html.includes('Settings (JSON)') && html.includes('disabled=""'));
+    assert.ok(html.includes('Settings as JSON') && html.includes('disabled=""'));
     assert.ok(html.includes('&quot;expression&quot;: &quot;1&quot;'));
+  });
+});
+
+describe('NodeSettings', () => {
+  it('uses a dedicated editor where there is one and a form from the settings schema otherwise', () => {
+    const expr = settings({ id: 'e', type: 'std.expr', version: 1, config: { expression: 'a' } });
+    assert.ok(expr.includes('>Formula</label>'));
+    const http = settings({ id: 'h', type: 'std.http.request', version: 1 });
+    assert.ok(http.includes('>Method</label>') && http.includes('Fail on Error'));
+    const switched = settings({
+      id: 's',
+      type: 'std.flow.switch',
+      version: 1,
+      config: { cases: ['paid', 'denied'] }
+    });
+    assert.ok(switched.includes('value="denied"') && switched.includes('Add Case'));
+    assert.ok(!switched.includes('<textarea'));
+  });
+
+  it('registers editors for formulas, tasks, workflows and names, and keeps the table editors', () => {
+    assert.deepEqual(Object.keys(TABLE_EDITORS), ['std.table.lookup', 'std.table.decide']);
+    for (const type of [
+      ...Object.keys(TABLE_EDITORS),
+      'std.expr',
+      'std.list.map',
+      'std.human.task',
+      'std.flow.run-workflow',
+      'std.flow.spawn-workflows',
+      'std.value',
+      'std.var.set',
+      INPUT_TYPE
+    ]) {
+      assert.ok(Object.hasOwn(SETTINGS_EDITORS, type), type);
+    }
+    const types = new Set(testNodes.map((n) => n.type));
+    for (const type of Object.keys(SETTINGS_EDITORS)) {
+      assert.ok(types.has(type) || type === INPUT_TYPE, type);
+    }
   });
 });
 
@@ -33,9 +100,5 @@ describe('TableReference', () => {
       createElement(TableReference, { tableKey: 'x', table: undefined })
     );
     assert.ok(missing.includes('not available to your agency'));
-  });
-
-  it('edits lookup and decision tables inline', () => {
-    assert.deepEqual(Object.keys(TABLE_EDITORS), ['std.table.lookup', 'std.table.decide']);
   });
 });

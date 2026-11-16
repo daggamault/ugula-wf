@@ -58,8 +58,14 @@ describe('createCatalog', () => {
       version: 1,
       title: 'Clamp',
       category: 'Math',
-      description: 'Keeps a number between a minimum and a maximum.'
+      description: 'Keeps a number between a minimum and a maximum.',
+      level: 'basic',
+      keywords: []
     });
+    const expr = find('std.expr')[0];
+    assert.equal(expr?.level, 'advanced');
+    assert.ok(expr?.keywords.includes('formula'));
+    assert.equal(catalog.published.length, 2);
     assert.deepEqual(
       find('acme.score').map((p) => p.version),
       [2]
@@ -67,6 +73,38 @@ describe('createCatalog', () => {
     assert.equal(find(RETURN_TYPE)[0]?.category, 'Graph');
     assert.equal(find('nemsis.split')[0]?.category, 'NEMSIS');
     assert.equal(find(ENTRY_TYPE).length, 0);
+  });
+
+  it('reads node settings, summaries and exit docs, and never throws on bad settings', () => {
+    const catalog = createCatalog(testNodes);
+    const task = {
+      id: 't',
+      type: 'std.human.task',
+      version: 1,
+      config: { title: 'Match payer', queue: 'billing', outcomes: ['done'] }
+    };
+    assert.equal(catalog.summaryOf(task), 'Task: Match payer');
+    assert.equal(catalog.summaryOf({ ...task, config: { title: '' } }), null);
+    assert.equal(catalog.summaryOf({ id: 'a', type: 'std.math.add', version: 1 }), null);
+    assert.ok(catalog.configSchemaOf(task));
+    assert.equal(catalog.configSchemaOf({ id: 'a', type: 'std.math.add', version: 1 }), undefined);
+    const branch = { id: 'b', type: 'std.flow.branch', version: 1 };
+    assert.equal(catalog.exitsOf(branch, owner).true?.label, 'True');
+    const rule = { id: 'r', type: 'acme.rule', version: 1 };
+    const withRule = createCatalog(testNodes, {
+      graphs: [
+        {
+          type: 'acme.rule',
+          version: 1,
+          definition: {
+            ...owner,
+            signature: { ...owner.signature, exits: { exec: { label: 'Done' } } }
+          }
+        }
+      ]
+    });
+    assert.equal(withRule.exitsOf(rule, owner).exec?.label, 'Done');
+    assert.deepEqual(catalog.exitsOf({ id: 'z', type: 'nope', version: 1 }, owner), {});
   });
 
   it('resolves signatures and titles without throwing on unknown nodes', () => {

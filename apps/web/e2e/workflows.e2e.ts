@@ -78,9 +78,11 @@ const startProcessItem = async (charge: number) => {
   assert.ok(target, 'the dev workflow is seeded');
   await go(s.page, `/runs/new?graph=${target.id}`);
   await heading(s.page, 'Run Process Item').waitFor();
-  await s.page
-    .getByLabel('item')
-    .fill(JSON.stringify({ id: 'e2e', lines: [{ units: 2, charge }] }));
+  const item = s.page.getByRole('group', { name: 'Item', exact: true });
+  await item.getByRole('textbox').first().fill('e2e');
+  await item.getByRole('button', { name: 'Add Item' }).click();
+  await item.getByRole('spinbutton', { name: 'Units' }).fill('2');
+  await item.getByRole('spinbutton', { name: 'Charge' }).fill(String(charge));
   await s.page.getByRole('button', { name: 'Start Run' }).click();
   await s.page.waitForURL(/\/runs\/[\w-]+$/);
 };
