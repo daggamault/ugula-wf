@@ -21,6 +21,7 @@ describe('createStatementStore', () => {
       id: ID,
       pcr_number: 'PCR-1',
       total_cents: 95_000,
+      balance_cents: 35_000,
       service_date: '2026-10-01',
       first_name: 'Jane',
       last_name: 'Doe',
@@ -38,6 +39,7 @@ describe('createStatementStore', () => {
     };
     const responses = [
       {
+        kind: 'response',
         payer: 'Medicare',
         paid_cents: 40_000,
         adjusted_cents: 10_000,
@@ -45,6 +47,7 @@ describe('createStatementStore', () => {
         created_at: new Date('2026-10-20T00:00:00Z')
       },
       {
+        kind: 'response',
         payer: null,
         paid_cents: 5_000,
         adjusted_cents: 0,
@@ -52,11 +55,20 @@ describe('createStatementStore', () => {
         created_at: '2026-10-25T00:00:00Z'
       },
       {
+        kind: 'refunded',
         payer: 'Medicare',
         paid_cents: -1_000,
         adjusted_cents: 0,
         paid_on: '2026-10-28',
         created_at: '2026-10-28T00:00:00Z'
+      },
+      {
+        kind: 'balance_protected',
+        payer: null,
+        paid_cents: 0,
+        adjusted_cents: 6_000,
+        paid_on: '2026-10-30',
+        created_at: '2026-10-30T00:00:00Z'
       }
     ];
     const { db, queries } = createRecordingDb((q) =>
@@ -91,12 +103,15 @@ describe('createStatementStore', () => {
     assert.deepEqual(data.payments, [
       { date: '2026-10-18', from: 'Medicare', paidCents: 40_000, adjustedCents: 10_000 },
       { date: '2026-10-25', from: 'Patient', paidCents: 5_000, adjustedCents: 0 },
-      { date: '2026-10-28', from: 'Medicare', paidCents: -1_000, adjustedCents: 0 }
+      { date: '2026-10-28', from: 'Medicare', paidCents: -1_000, adjustedCents: 0 },
+      { date: '2026-10-30', from: 'Development EMS', paidCents: 0, adjustedCents: 6_000 }
     ]);
-    assert.equal(data.balanceCents, 41_000);
+    assert.equal(data.balanceCents, 35_000);
+    assert.ok(queries[0]?.sql.includes('inner join "claim_balances" as "cb"'));
     const payments = queries.find((q) => q.sql.includes('from "claim_events" as "e"'));
     assert.ok(payments?.sql.includes('("e"."paid_cents" <> $'));
     assert.ok(payments?.parameters.includes('refunded'));
+    assert.ok(payments?.parameters.includes('balance_protected'));
     const missing = createRecordingDb((q) =>
       q.sql.includes('from "claims" as "c"')
         ? [{ ...claimRow, organization_name: null, phone: null }]

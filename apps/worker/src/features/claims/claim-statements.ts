@@ -16,7 +16,7 @@ export const statementKey = (
 ) =>
   `statements/${agencyId}/${claimId}/${number}-${createHash('sha256').update(sourceKey).digest('hex').slice(0, 16)}.pdf`;
 
-const PAYMENT_KINDS = ['response', 'refunded'] as const;
+const PAYMENT_KINDS = ['response', 'refunded', 'balance_protected'] as const;
 
 export const createStatementStore = (
   db: Db,
@@ -26,11 +26,13 @@ export const createStatementStore = (
     const row = await db
       .selectFrom('claims as c')
       .innerJoin('patients as p', 'p.id', 'c.patient_id')
+      .innerJoin('claim_balances as cb', 'cb.claim_id', 'c.id')
       .leftJoin('billing_profiles as b', 'b.agency_id', 'c.agency_id')
       .select([
         'c.id',
         'c.pcr_number',
         'c.total_cents',
+        'cb.balance_cents',
         'c.service_date',
         'p.first_name',
         'p.last_name',
@@ -66,6 +68,7 @@ export const createStatementStore = (
         .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
         .select([
           payerName.as('payer'),
+          'e.kind',
           'e.paid_cents',
           'e.adjusted_cents',
           'e.paid_on',
@@ -80,7 +83,9 @@ export const createStatementStore = (
     ]);
     const paid = payments.map((r) => ({
       date: r.paid_on ?? day(r.created_at),
-      from: r.payer ?? 'Patient',
+      from:
+        r.payer ??
+        (r.kind === 'balance_protected' ? (row.organization_name ?? 'Agency') : 'Patient'),
       paidCents: r.paid_cents,
       adjustedCents: r.adjusted_cents
     }));
@@ -115,7 +120,7 @@ export const createStatementStore = (
       })),
       totalCents: row.total_cents,
       payments: paid,
-      balanceCents: paid.reduce((b, p) => b - p.paidCents - p.adjustedCents, row.total_cents)
+      balanceCents: row.balance_cents
     };
   },
 
