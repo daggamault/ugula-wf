@@ -401,7 +401,10 @@ describe('cycleNodes', () => {
     await run(record, { claimId: 'c1', kind: 'submitted', coverageId: 'cov-Blue' });
     assert.deepEqual(
       claims.events.map((e) => [e.kind, e.coverageId]),
-      [['follow_up', 'cov-Blue']]
+      [
+        ['follow_up', 'cov-Blue'],
+        ['submitted', 'cov-Blue']
+      ]
     );
   });
 
