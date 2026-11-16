@@ -44,7 +44,7 @@ const row = (
   claim_status_extension: '.CLS',
   after_download: 'keep',
   realtime_url: 'https://rt.waystar.example/core',
-  submitter_id: 'SUB01',
+  submitter_id: 'sub01',
   receiver_id: 'WAYSTAR'
 });
 
@@ -55,7 +55,7 @@ const setup = (rows: ReturnType<typeof row>[], withFallback = true, withKey = tr
       return agency ? rows.filter((r) => r.agency_id === agency) : rows;
     }
     if (q.sql.includes('from "billing_profiles"')) {
-      return [{ submitter_id: 'SUB09', receiver_id: 'ZIRMED' }];
+      return [{ submitter_id: 'sub09', receiver_id: 'zirmed' }];
     }
     return [];
   });
@@ -111,7 +111,7 @@ describe('createConnections', () => {
     );
   });
 
-  it('sends real-time requests from the submitter ID to the profile receiver ID', async () => {
+  it('sends real-time requests from the uppercased submitter ID to the profile receiver ID', async () => {
     const { connections, sent } = setup([row('t1', 'acme')]);
     await (await connections.forAgency('t1'))?.checkEligibility?.('ISA~');
     await (await connections.forAgency('t2'))?.checkEligibility?.('ISA~');

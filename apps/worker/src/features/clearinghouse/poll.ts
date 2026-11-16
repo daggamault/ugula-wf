@@ -67,7 +67,7 @@ const agenciesReceiving = async (db: Db, receiver: string | null, owners: string
         await db
           .selectFrom('billing_profiles')
           .select('agency_id')
-          .where('submitter_id', '=', receiver)
+          .where((eb) => eb(eb.fn('upper', ['submitter_id']), '=', receiver.toUpperCase()))
           .$if(owners !== null, (qb) => qb.where('agency_id', 'in', owners ?? []))
           .execute()
       ).map((r) => r.agency_id)

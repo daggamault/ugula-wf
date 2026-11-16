@@ -16,7 +16,8 @@ const clearinghouseId = v.nullable(
   v.pipe(
     v.string(),
     v.trim(),
-    v.regex(/^[A-Za-z0-9]{2,15}$/, 'Clearinghouse IDs are 2 to 15 letters or digits')
+    v.toUpperCase(),
+    v.regex(/^[A-Z0-9]{2,15}$/, 'Clearinghouse IDs are 2 to 15 letters or digits')
   )
 );
 

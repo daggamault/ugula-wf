@@ -158,6 +158,14 @@ describe('createClearinghousePoll', () => {
     assert.equal(sessions.opened, 1);
   });
 
+  it('matches the interchange receiver to submitter IDs saved in any letter case', async () => {
+    const { clearinghouse } = fakeClearinghouse({ 'a.999': isa('devems01') });
+    const { jobs, routing } = await poll(clearinghouse);
+    assert.equal(jobs.length, 1);
+    assert.ok(routing[0]?.sql.includes('upper("submitter_id") = $1'));
+    assert.deepEqual(routing[0]?.parameters, ['DEVEMS01']);
+  });
+
   it("routes files of an agency's own connection only to the agencies using it", async () => {
     const { clearinghouse } = fakeClearinghouse({
       'a.999': isa('DEVEMS01'),

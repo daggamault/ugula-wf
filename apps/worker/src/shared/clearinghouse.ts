@@ -47,8 +47,8 @@ export const connect = (c: ConnectionSettings, realtime: Realtime): Clearinghous
           url: c.realtimeUrl,
           username: c.username,
           password: c.password,
-          senderId: realtime.senderId,
-          receiverId: realtime.receiverId,
+          senderId: realtime.senderId.toUpperCase(),
+          receiverId: realtime.receiverId.toUpperCase(),
           timeoutMs: realtime.timeoutMs,
           fetch: realtime.fetch
         })

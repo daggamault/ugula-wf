@@ -13,7 +13,7 @@ const valid = {
   postalCode: '62704-1234',
   phone: '(217) 555-0100',
   timeZone: ' America/Chicago ',
-  submitterId: ' SUB01 ',
+  submitterId: ' sub01 ',
   receiverId: 'RCV01',
   receiverName: null,
   production: false
