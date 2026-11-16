@@ -39,7 +39,8 @@ describe('openingNodes', () => {
 });
 
 describe('nodeClicks', () => {
-  it('waits out a double-click before selecting a node that opens, so opening it is not blocked', async () => {
+  it('waits out a double-click before selecting a node that opens, so opening it is not blocked', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
     const selected: string[] = [];
     const opened: string[] = [];
     const clicks = nodeClicks({
@@ -51,13 +52,32 @@ describe('nodeClicks', () => {
     assert.deepEqual(selected, ['plain']);
     clicks.click('block', true);
     clicks.doubleClick('block', true);
-    await new Promise((r) => setTimeout(r, 20));
+    t.mock.timers.tick(20);
     assert.deepEqual([selected, opened], [['plain'], ['block']]);
     clicks.click('block', true);
-    await new Promise((r) => setTimeout(r, 20));
+    t.mock.timers.tick(4);
+    assert.deepEqual(selected, ['plain']);
+    t.mock.timers.tick(1);
     assert.deepEqual(selected, ['plain', 'block']);
     clicks.doubleClick('plain', false);
     assert.deepEqual(opened, ['block']);
+  });
+
+  it('selects only the last of two quick clicks, and not at all once cancelled', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const selected: string[] = [];
+    const clicks = nodeClicks({
+      onSelect: (id) => void selected.push(id),
+      onOpen: () => undefined
+    });
+    clicks.click('a', true);
+    clicks.click('b', true);
+    t.mock.timers.tick(1000);
+    assert.deepEqual(selected, ['b']);
+    clicks.click('c', true);
+    clicks.cancel();
+    t.mock.timers.tick(1000);
+    assert.deepEqual(selected, ['b']);
   });
 
   it('selects at once when nothing can be opened', () => {

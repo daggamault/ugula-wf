@@ -69,12 +69,19 @@ describe('AuthGate', () => {
   it('signs out locally even when the sign-out request fails', async () => {
     const changes: (AuthSession | null)[] = [];
     let signOut: () => void = () => undefined;
+    let changed: () => void = () => undefined;
+    const signedOut = new Promise<void>((resolve) => {
+      changed = resolve;
+    });
     renderToStaticMarkup(
       createElement(AuthGateView, {
         ready: true,
         session: mockSession,
         auth: { ...mockAuth, signOut: () => Promise.reject(new Error('offline')) },
-        onSessionChange: (s) => changes.push(s),
+        onSessionChange: (s) => {
+          changes.push(s);
+          changed();
+        },
         children: (_, out) => {
           signOut = out;
           return null;
@@ -82,7 +89,8 @@ describe('AuthGate', () => {
       })
     );
     signOut();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(changes, []);
+    await signedOut;
     assert.deepEqual(changes, [null]);
   });
 });
