@@ -137,7 +137,6 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
       const ref = found.document as BlobRef;
       return ok({
         bytes: await blobs.getBytes(ref),
-        contentType: ref.contentType,
         name: ref.key.split('/').at(-1) ?? 'document'
       });
     },
@@ -148,7 +147,6 @@ export const createClaimService = ({ db, boss, now, blobs, announce, rules }: Cl
       const ref = found.document as BlobRef;
       return ok({
         bytes: await blobs.getBytes(ref),
-        contentType: ref.contentType,
         name: found.file_name
       });
     },

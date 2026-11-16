@@ -1,5 +1,6 @@
 import { sValidator } from '@hono/standard-validator';
-import { Hono } from 'hono';
+import { documentContentTypeOf } from '@ugula/billing';
+import { type Context, Hono } from 'hono';
 import * as v from 'valibot';
 import type { AgencyEnv } from '../../shared/access.ts';
 import { idParam, invalidRequest, uuid } from '../../shared/http.ts';
@@ -13,6 +14,16 @@ import {
 import type { ClaimService } from './service.ts';
 
 const documentParam = v.object({ id: uuid, eventId: uuid });
+
+const serveFile = (c: Context<AgencyEnv>, file: { bytes: Uint8Array; name: string }) => {
+  const viewable = documentContentTypeOf(file.bytes);
+  return c.body(Uint8Array.from(file.bytes), 200, {
+    'content-type': viewable ?? 'application/octet-stream',
+    'content-disposition': `${viewable ? 'inline' : 'attachment'}; filename="${file.name.replace(/[^\w.-]/g, '_')}"`,
+    'x-content-type-options': 'nosniff',
+    'cache-control': 'private, max-age=300'
+  });
+};
 
 export const createClaimRoutes = (service: ClaimService) =>
   new Hono<AgencyEnv>()
@@ -42,12 +53,7 @@ export const createClaimRoutes = (service: ClaimService) =>
       async (c) => {
         const { id, eventId } = c.req.valid('param');
         const res = await service.document(c.get('access').agencyId, id, eventId);
-        if (!res.ok) return respond(c, res);
-        return c.body(Uint8Array.from(res.value.bytes), 200, {
-          'content-type': res.value.contentType,
-          'content-disposition': `inline; filename="${res.value.name}"`,
-          'cache-control': 'private, max-age=300'
-        });
+        return res.ok ? serveFile(c, res.value) : respond(c, res);
       }
     )
     .get(
@@ -56,12 +62,7 @@ export const createClaimRoutes = (service: ClaimService) =>
       async (c) => {
         const { id, documentId } = c.req.valid('param');
         const res = await service.documentFile(c.get('access').agencyId, id, documentId);
-        if (!res.ok) return respond(c, res);
-        return c.body(Uint8Array.from(res.value.bytes), 200, {
-          'content-type': res.value.contentType,
-          'content-disposition': `inline; filename="${res.value.name.replace(/[^\w.-]/g, '_')}"`,
-          'cache-control': 'private, max-age=300'
-        });
+        return res.ok ? serveFile(c, res.value) : respond(c, res);
       }
     )
     .post('/:id/restart-cycle', sValidator('param', idParam, invalidRequest), async (c) =>

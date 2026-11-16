@@ -24,13 +24,11 @@ const service = {
   documentFile: async () =>
     ok({
       bytes: new TextEncoder().encode('%PDF-1.7'),
-      contentType: 'application/pdf',
       name: 'p c s.pdf'
     }),
   document: async () =>
     ok({
       bytes: new TextEncoder().encode('%PDF-1.7'),
-      contentType: 'application/pdf',
       name: '2-abc.pdf'
     })
 } as unknown as ClaimService;
@@ -116,6 +114,27 @@ describe('claim routes', () => {
     const res = await request(`/${ID}/restart-cycle`, { method: 'POST' });
     assert.equal(res.status, 201);
     assert.deepEqual(calls.at(-1), ['restartCycle', 't-1', ID]);
+  });
+});
+
+describe('claim files that are not a viewable document', () => {
+  it('download as untyped attachments the browser may not sniff, under a safe name', async () => {
+    const html = {
+      bytes: new TextEncoder().encode('<script>alert(1)</script>'),
+      name: 'x".html'
+    };
+    const send = withSession(
+      createClaimRoutes({
+        document: async () => ok(html),
+        documentFile: async () => ok(html)
+      } as unknown as ClaimService)
+    );
+    for (const path of [`/${ID}/events/${ID}/document`, `/${ID}/documents/${ID}`]) {
+      const res = await send(path);
+      assert.equal(res.headers.get('content-type'), 'application/octet-stream');
+      assert.equal(res.headers.get('content-disposition'), 'attachment; filename="x_.html"');
+      assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+    }
   });
 });
 

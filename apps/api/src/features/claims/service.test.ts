@@ -177,7 +177,6 @@ describe('claim service', () => {
     const found = await service.document('t', 'c1', 'e1');
     assert.ok(found.ok);
     assert.equal(found.value.name, '2-abc.pdf');
-    assert.equal(found.value.contentType, 'application/pdf');
     assert.equal(new TextDecoder().decode(found.value.bytes), '%PDF-1.7');
     const lookup = queries.find((q) => q.sql.includes('from "claim_events" as "e" inner join'));
     assert.deepEqual(lookup?.parameters, ['e1', 'c1', 't']);
