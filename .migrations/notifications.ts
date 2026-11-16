@@ -30,10 +30,14 @@ const buildNotificationStatesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('notification_states')
     .addColumn('user_id', 'uuid', (col) =>
-      col.primaryKey().references('users.id').onDelete('cascade').onUpdate('cascade')
+      col.notNull().references('users.id').onDelete('cascade').onUpdate('cascade')
+    )
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
     .addColumn('read_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addColumn('cleared_at', 'timestamptz');
+    .addColumn('cleared_at', 'timestamptz')
+    .addPrimaryKeyConstraint('notification_states_pkey', ['user_id', 'agency_id']);
 
 const buildNotificationsIndexes = (db: Kysely<Database>) => [
   db.schema

@@ -8,16 +8,16 @@ describe('notification queries', () => {
     const { db, queries } = createRecordingDb(() => []);
     await listNotifications(db, 't', 'u');
     const [list] = queries;
-    assert.ok(list?.sql.includes('on "s"."user_id" = $1'));
-    assert.ok(list?.sql.includes('where "n"."agency_id" = $2'));
+    assert.ok(list?.sql.includes('on "s"."user_id" = $1 and "s"."agency_id" = $2'));
+    assert.ok(list?.sql.includes('where "n"."agency_id" = $3'));
     assert.ok(list?.sql.includes('("n"."user_id" is null or "n"."user_id" = $'));
     assert.ok(list?.sql.includes('s.cleared_at is null or n.created_at > s.cleared_at'));
     assert.ok(list?.sql.includes('order by "n"."created_at" desc, "n"."id" desc limit $'));
-    assert.deepEqual(list?.parameters, ['u', 't', 'u', 50]);
+    assert.deepEqual(list?.parameters, ['u', 't', 't', 'u', 50]);
     await db.destroy();
   });
 
-  it('record personal messages and read or cleared marks per user', async () => {
+  it('record personal messages and read or cleared marks per user and agency', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'n1' }]);
     assert.deepEqual(
       await insertNotification(db, 't', 'u', {
@@ -34,8 +34,8 @@ describe('notification queries', () => {
       description: 'x',
       link: null
     });
-    await markState(db, 'u', false);
-    await markState(db, 'u', true);
+    await markState(db, 't', 'u', false);
+    await markState(db, 't', 'u', true);
     assert.deepEqual(queries[0]?.parameters, [
       't',
       'u',
@@ -46,7 +46,12 @@ describe('notification queries', () => {
       '/fees'
     ]);
     assert.deepEqual(queries[1]?.parameters.slice(-2), [null, null]);
-    assert.ok(queries[2]?.sql.includes('on conflict ("user_id") do update set "read_at" = now()'));
+    assert.ok(
+      queries[2]?.sql.includes(
+        'on conflict ("user_id", "agency_id") do update set "read_at" = now()'
+      )
+    );
+    assert.deepEqual(queries[2]?.parameters, ['u', 't', null]);
     assert.ok(!queries[2]?.sql.includes('"cleared_at" = now()'));
     assert.ok(queries[3]?.sql.includes('"cleared_at" = now()'));
     await db.destroy();

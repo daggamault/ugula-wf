@@ -141,6 +141,7 @@ type NotificationsTable = {
 
 type NotificationStatesTable = {
   user_id: string;
+  agency_id: string;
   read_at: Timestamp;
   cleared_at: NullableTimestamp;
 };

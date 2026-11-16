@@ -13,7 +13,9 @@ type NewNotification = {
 export const listNotifications = (db: Db, agencyId: string, userId: string) =>
   db
     .selectFrom('notifications as n')
-    .leftJoin('notification_states as s', (j) => j.on('s.user_id', '=', userId))
+    .leftJoin('notification_states as s', (j) =>
+      j.on('s.user_id', '=', userId).on('s.agency_id', '=', agencyId)
+    )
     .select([
       'n.id',
       'n.intent',
@@ -47,16 +49,17 @@ export const insertNotification = (db: Db, agencyId: string, userId: string, n: 
     .returning('id')
     .executeTakeFirstOrThrow();
 
-export const markState = (db: Db, userId: string, clear: boolean) =>
+export const markState = (db: Db, agencyId: string, userId: string, clear: boolean) =>
   db
     .insertInto('notification_states')
     .values({
       user_id: userId,
+      agency_id: agencyId,
       read_at: sql`now()`,
       cleared_at: clear ? sql`now()` : null
     })
     .onConflict((oc) =>
-      oc.column('user_id').doUpdateSet({
+      oc.columns(['user_id', 'agency_id']).doUpdateSet({
         read_at: sql`now()`,
         ...(clear ? { cleared_at: sql`now()` } : {})
       })

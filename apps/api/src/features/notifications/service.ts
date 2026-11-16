@@ -42,9 +42,11 @@ export const createNotificationService = ({ db, announce }: { db: Db; announce: 
         })
       ),
 
-    read: (agencyId: string, userId: string) => changed(agencyId, markState(db, userId, false)),
+    read: (agencyId: string, userId: string) =>
+      changed(agencyId, markState(db, agencyId, userId, false)),
 
-    clear: (agencyId: string, userId: string) => changed(agencyId, markState(db, userId, true))
+    clear: (agencyId: string, userId: string) =>
+      changed(agencyId, markState(db, agencyId, userId, true))
   };
 };
 
