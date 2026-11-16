@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { invokeNode } from '@ugula/graph/testing';
+import { billingStores, memoryClaims } from '../testing.ts';
 import { createBillingNodes } from './index.ts';
 
 describe('createBillingNodes', () => {
@@ -83,5 +84,15 @@ describe('createBillingNodes', () => {
       inputs: { code: 'A0999', unitPrice: 10 }
     });
     assert.deepEqual([signature.execOut, outputs.fees], [['then'], { A0999: 1000 }]);
+  });
+
+  it('runs every node against the storage it is given', async () => {
+    const claims = memoryClaims();
+    const follow = createBillingNodes(billingStores({ claims: claims.store })).find(
+      (n) => n.type === 'billing.follow-claim'
+    );
+    if (!follow) throw new Error('No follow-claim node');
+    await invokeNode(follow, { inputs: { claimId: 'c1' } });
+    assert.deepEqual(claims.attached, ['claim:c1']);
   });
 });

@@ -93,6 +93,56 @@ describe('payerNodes', () => {
     );
   });
 
+  it('goes through matched when every payer is known, without reading the directory', async () => {
+    const payers = memoryPayers({ Medicare: medicare }, similar);
+    const directory = () => {
+      throw new Error('The directory is not needed');
+    };
+    const stores = billingStores({ payers: { ...payers.store, directory } });
+    const [match] = payerNodes(() => stores);
+    const known = await run(match, { coverages: coverages.slice(1, 2) });
+    assert.equal(known.pin, 'matched');
+    assert.deepEqual(known.outputs, {
+      coverages: [
+        {
+          payer: 'Medicare',
+          payerCode: null,
+          memberId: null,
+          groupId: null,
+          relationship: '18',
+          insuredFirstName: null,
+          insuredLastName: null,
+          payerId: 'p-medicare',
+          directoryName: 'Medicare',
+          claimFiling: 'MB'
+        }
+      ],
+      unmatched: [],
+      notes: []
+    });
+  });
+
+  it('treats a payer the search left out as unknown', async () => {
+    const payers = memoryPayers({ Medicare: medicare });
+    const stores = billingStores({
+      payers: { ...payers.store, lookup: async () => [] },
+      completer: scriptedCompleter(() => ({ choice: -1 })).completer
+    });
+    const [match] = payerNodes(() => stores);
+    const lost = await run(match, { coverages: coverages.slice(1, 2), suggest: false });
+    assert.equal(lost.pin, 'review');
+    assert.deepEqual(lost.outputs.unmatched, [
+      {
+        payer: 'Medicare',
+        memberId: null,
+        suggested: null,
+        candidates: [{ value: 'p-medicare', label: 'Medicare (Medicare Part B)' }],
+        notes: [],
+        key: 'medicare|'
+      }
+    ]);
+  });
+
   it('links what it can when the payer search or the model is down, and says so', async () => {
     const payers = memoryPayers({ Medicare: medicare }, similar, { searchDown: true });
     const model = scriptedCompleter(() => {

@@ -160,6 +160,16 @@ describe('recoveryNodes', () => {
     assert.equal(kind, 'packet');
     assert.equal(packet.note, 'Redetermination packet, due by 2026-06-29');
     assert.equal((await PDFDocument.load(packet.pdf)).getPageCount(), 1);
+    await run('build-appeal-packet', {
+      claimId: 'c1',
+      coverageId: 'cov-Medicare',
+      level: ' Reconsideration '
+    });
+    assert.equal((calls[1]?.[1] as { note: string } | undefined)?.note, 'Reconsideration packet');
+    await assert.rejects(
+      () => run('build-appeal-packet', { claimId: 'c1', coverageId: 'cov-Medicare', level: ' ' }),
+      /Name the appeal level/
+    );
     const voided = await run('with-frequency', { x837: sampleX837, frequency: '8' });
     assert.equal((voided.outputs.x837 as { frequency: string }).frequency, '8');
     const kept = await run('with-frequency', { x837: sampleX837 });

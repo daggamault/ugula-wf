@@ -102,6 +102,20 @@ describe('exchangeNodes', () => {
       [sent.pin, sent.outputs.sentAs, sent.outputs.signalsSeen],
       ['sent', '276-1.CLS', 4]
     );
+    const unavailable = await invokeNode(
+      setup(
+        { status: 'unavailable', reason: '' },
+        { status: 'unavailable', reason: 'No submission to ask about' }
+      ).node('send-276'),
+      { inputs: { claimId: 'c1', coverageId: 'cov-1' } }
+    );
+    assert.deepEqual(
+      [unavailable.pin, unavailable.outputs],
+      [
+        'unavailable',
+        { status: null, sentAs: null, signalsSeen: null, reason: 'No submission to ask about' }
+      ]
+    );
     await assert.rejects(
       () => invokeNode(answered.node('send-276'), { inputs: { claimId: 'c1', coverageId: ' ' } }),
       /No payer to ask about the claim/

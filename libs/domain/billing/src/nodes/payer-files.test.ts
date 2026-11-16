@@ -117,6 +117,14 @@ describe('payerFileNodes', () => {
       inputs: { file, fileName: 'a.835' }
     });
     assert.deepEqual([dup.pin, dup.outputs.fileId], ['duplicate', 'f0']);
+    const garbled = nodesWith(
+      { status: 'read', kind: '835', lines: [] },
+      { status: 'unreadable', reason: 'Not an X12 file' }
+    );
+    await assert.rejects(
+      () => invokeNode(garbled.node('apply-payer-file'), { inputs: { file, fileName: 'a.835' } }),
+      /^Error: Not an X12 file$/
+    );
   });
 
   it('refuses a file without a storage key or a name before reading anything', async () => {

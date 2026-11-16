@@ -165,6 +165,7 @@ describe('referenceNodes', () => {
       longitude: -85.4022
     });
     assert.deepEqual((await run('find-zip-place', { postalCode: '00000' })).outputs, {});
+    assert.deepEqual((await run('find-zip-place', { postalCode: '3630' })).outputs, {});
     assert.deepEqual(calls, [
       ['place', '36301'],
       ['place', '00000']

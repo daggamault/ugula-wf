@@ -370,6 +370,59 @@ describe('cycleNodes', () => {
     assert.equal(raced.pin, 'stale');
   });
 
+  it('lets a corrected claim go to the payer being reconciled, and only that payer', async () => {
+    const { claims, node } = world();
+    claims.events.push(event('submitted', 'cov-Medicare', '2025-12-01T00:00:00Z'));
+    claims.events.push(event('response', 'cov-Medicare', '2025-12-20T00:00:00Z'));
+    const record = node('record-claim-event');
+    const ledger = await run(node('read-claim-ledger'), { claimId: 'c1' });
+    const l = ledger.outputs.ledger as Record<string, unknown>;
+    assert.deepEqual([l.coverageId, l.unreconciledCoverageId], ['cov-Blue', 'cov-Medicare']);
+    await run(record, { claimId: 'c1', kind: 'follow_up', coverageId: 'cov-Medicare' });
+    await run(record, { claimId: 'c1', kind: 'submitted', coverageId: 'cov-Medicare' });
+    assert.equal(claims.events.length, 2);
+    await run(record, {
+      claimId: 'c1',
+      kind: 'resubmit_queued',
+      coverageId: 'cov-Medicare',
+      note: ' Corrected mileage ',
+      payerClaimNumber: ' MCR-7 '
+    });
+    assert.deepEqual(
+      claims.events.slice(2).map((e) => [e.kind, e.coverageId, e.note, e.payerClaimNumber]),
+      [['resubmit_queued', 'cov-Medicare', 'Corrected mileage', 'MCR-7']]
+    );
+  });
+
+  it('logs a payer action on a claim with no ledger to check it against', async () => {
+    const { claims, node } = world({ claimId: 'c2' });
+    const record = node('record-claim-event');
+    await run(record, { claimId: 'c1', kind: 'follow_up', coverageId: 'cov-Blue' });
+    await run(record, { claimId: 'c1', kind: 'submitted', coverageId: 'cov-Blue' });
+    assert.deepEqual(
+      claims.events.map((e) => [e.kind, e.coverageId]),
+      [['follow_up', 'cov-Blue']]
+    );
+  });
+
+  it('logs a submission made outside the app once per contact', async () => {
+    const { claims, node } = world();
+    const record = node('record-claim-event');
+    await run(record, {
+      claimId: 'c1',
+      kind: 'submitted',
+      coverageId: 'cov-Medicare',
+      note: 'Faxed'
+    });
+    assert.deepEqual(
+      claims.events.map((e) => [e.kind, e.coverageId, e.note]),
+      [['submitted', 'cov-Medicare', 'Faxed']]
+    );
+    await run(record, { claimId: 'c1', kind: 'submitted', coverageId: 'cov-Medicare' });
+    await run(record, { claimId: 'c1', kind: 'resubmit_queued' });
+    assert.equal(claims.events.length, 1);
+  });
+
   it('sends a filed 837P to the clearinghouse, or leaves it to the biller without a connection', async () => {
     const connected = world({ sending: { sentAs: '837P-000000001-abcd1234.txt' } });
     const sent = await run(connected.node('send-837p'), { claimId: 'c1', controlNumber: 1 });

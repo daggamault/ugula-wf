@@ -81,6 +81,17 @@ describe('patientNodes', () => {
     );
   });
 
+  it('searches by no last name, and asks for one, when the last name has no letters', async () => {
+    const { store, calls } = memoryPatients([]);
+    const unnamed = await run(nodeFor(store, 'match-patient'), {
+      demographics: { ...demographics, lastName: '1-2' }
+    });
+    assert.equal(unnamed.pin, 'incomplete');
+    assert.deepEqual(calls, [
+      ['findCandidates', 'run', { birthDate: '1980-01-02', lastNameKey: null, firstName: 'Jane' }]
+    ]);
+  });
+
   it('creates patients idempotently per step and loads chosen ones', async () => {
     const { store, calls } = memoryPatients([jane]);
     const create = nodeFor(store, 'create-patient');

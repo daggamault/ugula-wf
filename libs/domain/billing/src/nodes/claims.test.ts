@@ -167,6 +167,19 @@ describe('claimNodes', () => {
     });
     const read = await run(nodesFor(claims.store)('read-claim-checks'), { claimId: 'c1' });
     assert.deepEqual(read.outputs.skipped, ['cov-Blue']);
+    const unledgered = { ...claims.store, ledger: async () => null };
+    const bare = await run(nodesFor(unledgered)('read-claim-checks'), { claimId: 'c1' });
+    assert.deepEqual(bare.outputs.skipped, []);
+  });
+
+  it('names no primary payer once the last payer is removed', async () => {
+    const claims = memoryClaims({ check: completeCheck() });
+    const patch = nodesFor(claims.store)('patch-claim');
+    for (const coverageId of ['cov-Medicare', 'cov-Blue'])
+      await run(patch, { claimId: 'c1', coverageId, removeCoverage: true });
+    assert.deepEqual(claims.current()?.payers, []);
+    const last = await run(patch, { claimId: 'c1', note: 'Self pay' });
+    assert.equal(last.outputs.payerId, null);
   });
 
   it('lays out the fix form from the fields the issues name, or every field', async () => {
@@ -253,12 +266,18 @@ describe('claimNodes', () => {
 
   it('records who a claim is billed to, and lists the facility directory as choices', async () => {
     const claims = memoryClaims({
-      facilities: [{ id: 'f1', name: 'Oak Manor', kind: 'snf', contract: true }]
+      facilities: [
+        { id: 'f1', name: 'Oak Manor', kind: 'snf', contract: true },
+        { id: 'f2', name: 'Mercy', kind: 'hospital', contract: false }
+      ]
     });
     const node = nodesFor(claims.store);
     assert.deepEqual((await run(node('facility-choices'), {})).outputs, {
       options: {
-        facilityId: [{ value: 'f1', label: 'Oak Manor · Skilled nursing facility · contract' }]
+        facilityId: [
+          { value: 'f1', label: 'Oak Manor · Skilled nursing facility · contract' },
+          { value: 'f2', label: 'Mercy · Hospital' }
+        ]
       }
     });
     assert.deepEqual((await run(nodesFor()('facility-choices'), {})).outputs, { options: null });
