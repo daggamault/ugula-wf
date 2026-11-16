@@ -16,7 +16,7 @@ const blobs = {
 const ID = '0195f2a4-0000-7000-8000-000000000001';
 
 describe('createStatementStore', () => {
-  it('gathers statement data from lines, payments and refunds, without an agency when there is no billing profile', async () => {
+  it('gathers statement data from lines, payments, refunds and protections dated in the agency zone, without an agency when there is no billing profile', async () => {
     const claimRow = {
       id: ID,
       pcr_number: 'PCR-1',
@@ -52,7 +52,7 @@ describe('createStatementStore', () => {
         paid_cents: 5_000,
         adjusted_cents: 0,
         paid_on: null,
-        created_at: '2026-10-25T00:00:00Z'
+        created_at: '2026-10-26T02:30:00Z'
       },
       {
         kind: 'refunded',

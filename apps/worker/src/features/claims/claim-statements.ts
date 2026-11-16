@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
-import type { ClaimStore } from '@ugula/billing';
+import { type ClaimStore, localDate } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import type { BlobStore } from '@ugula/storage';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
 import { agencyClaim, payerName } from './claim-scope.ts';
 
-const day = (d: Date | string) => new Date(d).toISOString().slice(0, 10);
+const day = (d: Date | string, timeZone: string | null) =>
+  localDate(new Date(d), timeZone ?? 'UTC');
 
 export const statementKey = (
   agencyId: string,
@@ -82,7 +83,7 @@ export const createStatementStore = (
         .execute()
     ]);
     const paid = payments.map((r) => ({
-      date: r.paid_on ?? day(r.created_at),
+      date: r.paid_on ?? day(r.created_at, row.time_zone),
       from:
         r.payer ??
         (r.kind === 'balance_protected' ? (row.organization_name ?? 'Agency') : 'Patient'),
