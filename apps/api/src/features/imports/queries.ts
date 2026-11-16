@@ -158,7 +158,7 @@ export const listImportReports = (
       .leftJoin('workflow_runs as r', (j) =>
         j
           .onRef('r.parent_id', '=', 'i.run_id')
-          .on(sql<boolean>`r.inputs -> 'report' ->> 'key' = ir.report ->> 'key'`)
+          .on(sql<boolean>`r.inputs -> 'report' ->> 'key' = ir.report_key`)
       )
       .leftJoin('claim_runs as cr', 'cr.run_id', 'r.id')
       .leftJoin('claims as c', 'c.id', 'cr.claim_id')

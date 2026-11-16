@@ -218,7 +218,7 @@ export const createRecoveryStore = (db: Db, blobs: Blobs, boss: RunQueueClient):
             'cc.member_id',
             sql<string>`coalesce(dp.name, cc.payer_name)`.as('payer'),
             sql<string | null>`r.report ->> 'bucket'`.as('bucket'),
-            sql<string | null>`r.report ->> 'key'`.as('key')
+            'r.report_key as key'
           ])
           .where('c.id', '=', claim.id)
           .executeTakeFirst(),

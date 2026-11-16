@@ -94,7 +94,7 @@ describe('createDraftStore', () => {
     assert.ok(insert?.sql.includes('on conflict do nothing'));
     assert.ok(
       insert?.sql.includes(
-        '(select "r"."id" from "import_reports" as "r" inner join "imports" as "i" on "i"."id" = "r"."import_id" where r.report ->> \'key\' = $'
+        '(select "r"."id" from "import_reports" as "r" where "r"."agency_id" = (select "agency_id" from "workflow_runs"'
       )
     );
     assert.ok(insert?.parameters.includes('imports/t-1/a/f.xml.reports/00000.json'));

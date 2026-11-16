@@ -43,6 +43,7 @@ const buildImportReportsTable = (db: Kysely<Database>) =>
     .addColumn('number', 'text', (col) => col.notNull())
     .addColumn('pcr_number', 'text')
     .addColumn('report', 'jsonb', (col) => col.notNull())
+    .addColumn('report_key', 'text', (col) => col.notNull())
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addForeignKeyConstraint(
       'import_reports_import_id_fkey',
@@ -53,6 +54,8 @@ const buildImportReportsTable = (db: Kysely<Database>) =>
     )
     .addUniqueConstraint('import_reports_agency_id_id_unique', ['agency_id', 'id'])
     .addUniqueConstraint('import_reports_import_id_position_unique', ['import_id', 'position'])
+    .addUniqueConstraint('import_reports_agency_id_report_key_unique', ['agency_id', 'report_key'])
+    .addCheckConstraint('import_reports_report_key_check', sql`report_key = report ->> 'key'`)
     .addCheckConstraint('import_reports_position_check', sql`position >= 0`)
     .addCheckConstraint('import_reports_number_check', dailyNumberCheck);
 
@@ -61,12 +64,7 @@ const buildImportsIndexes = (db: Kysely<Database>) => [
     .createIndex('idx_imports_agency_created')
     .on('imports')
     .columns(['agency_id', 'created_at desc']),
-  db.schema.createIndex('idx_imports_uploaded_by').on('imports').column('uploaded_by'),
-  db.schema
-    .createIndex('import_reports_report_key_unique')
-    .on('import_reports')
-    .unique()
-    .expression(sql`(report ->> 'key')`)
+  db.schema.createIndex('idx_imports_uploaded_by').on('imports').column('uploaded_by')
 ];
 
 export const createImportsTables = async (db: Kysely<Database>) => {

@@ -54,7 +54,7 @@ describe('createReportStore', () => {
 
   it('records the import once per run and each report once per position', async () => {
     const { db, queries } = createRecordingDb((q) =>
-      q.sql.startsWith('select') ? [{ agency_id: 't-1' }] : [{ id: 'imp-1' }]
+      q.sql.startsWith('select') ? [{ agency_id: 't-1' }] : [{ id: 'imp-1', agency_id: 't-1' }]
     );
     const report = (i: number) => ({
       bucket: 'ugula',
@@ -75,8 +75,15 @@ describe('createReportStore', () => {
     assert.ok(imp?.parameters.includes('pcrs.xml') && imp.parameters.includes('manual'));
     const rows = queries.find((q) => q.sql.startsWith('insert into "import_reports"'));
     assert.ok(rows?.sql.includes('on conflict ("import_id", "position") do nothing'));
-    assert.deepEqual(rows?.parameters.slice(0, 3), ['imp-1', 0, 'A']);
-    assert.ok(String(rows?.parameters[7]).includes('pcrs.xml.reports/1.json'));
+    assert.deepEqual(rows?.parameters.slice(0, 6), [
+      't-1',
+      'imp-1',
+      0,
+      'A',
+      JSON.stringify(report(0)),
+      'imports/t-1/a/pcrs.xml.reports/0.json'
+    ]);
+    assert.ok(String(rows?.parameters[11]).endsWith('pcrs.xml.reports/1.json'));
     await assert.rejects(
       () =>
         createReportStore(

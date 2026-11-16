@@ -124,7 +124,9 @@ export const findTaskSource = (db: Db, runId: string) =>
   db
     .selectFrom('workflow_runs as r')
     .leftJoin('import_reports as ir', (j) =>
-      j.on(sql<boolean>`ir.report ->> 'key' = r.inputs -> 'report' ->> 'key'`)
+      j
+        .onRef('ir.agency_id', '=', 'r.agency_id')
+        .on(sql<boolean>`ir.report_key = r.inputs -> 'report' ->> 'key'`)
     )
     .leftJoin('claim_runs as cr', 'cr.run_id', 'r.id')
     .leftJoin('claims as c', 'c.id', 'cr.claim_id')

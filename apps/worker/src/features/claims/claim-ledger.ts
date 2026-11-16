@@ -46,7 +46,7 @@ export const createLedgerStore = (
       .select([
         'c.status',
         sql<string | null>`r.report ->> 'bucket'`.as('bucket'),
-        sql<string | null>`r.report ->> 'key'`.as('key')
+        'r.report_key as key'
       ])
       .where('c.id', '=', claim.id)
       .executeTakeFirstOrThrow();

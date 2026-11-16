@@ -67,7 +67,8 @@ export const createReportStore = (
               import_id: id,
               position: r.position,
               pcr_number: r.pcrNumber,
-              report: JSON.stringify(r.report)
+              report: JSON.stringify(r.report),
+              report_key: r.report.key
             }))
           )
           .onConflict((oc) => oc.columns(['import_id', 'position']).doNothing())

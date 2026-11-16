@@ -777,6 +777,7 @@ type ImportReportsTable = {
   number: GeneratedAlways<string>;
   pcr_number: string | null;
   report: JsonColumn;
+  report_key: string;
   created_at: Timestamp;
 };
 

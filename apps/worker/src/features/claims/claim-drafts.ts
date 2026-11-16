@@ -10,10 +10,9 @@ import { agencyClaim, linkClaimRun } from './claim-scope.ts';
 const sourceReport = (db: Db, runId: string, key: string) =>
   db
     .selectFrom('import_reports as r')
-    .innerJoin('imports as i', 'i.id', 'r.import_id')
     .select('r.id')
-    .where(sql`r.report ->> 'key'`, '=', key)
-    .where('i.agency_id', '=', runAgency(db, runId));
+    .where('r.agency_id', '=', runAgency(db, runId))
+    .where('r.report_key', '=', key);
 
 const claimValues = (c: NewClaim) => {
   const { serviceDate, pickup, destination, originDestination } = c.details;
