@@ -37,7 +37,7 @@ type ConnectionText =
 
 type ConnectionDraft = Record<ConnectionText, string> & {
   vendor: ClearinghouseVendor;
-  enabled: 'on' | 'off';
+  isActive: 'on' | 'off';
   afterDownload: AfterDownload;
 };
 
@@ -62,7 +62,7 @@ export const toConnectionDraft = (c: ClearinghouseConnection | null): Connection
   c
     ? {
         vendor: c.vendor,
-        enabled: c.is_active ? 'on' : 'off',
+        isActive: c.is_active ? 'on' : 'off',
         sftpHost: c.sftp_host,
         sftpPort: String(c.sftp_port),
         sftpHostKey: c.sftp_host_key,
@@ -76,7 +76,7 @@ export const toConnectionDraft = (c: ClearinghouseConnection | null): Connection
         afterDownload: c.after_download,
         realtimeUrl: c.realtime_url ?? ''
       }
-    : { ...presetDraft('waystar'), enabled: 'on', sftpUsername: '', secret: '' };
+    : { ...presetDraft('waystar'), isActive: 'on', sftpUsername: '', secret: '' };
 
 export const withVendor = (d: ConnectionDraft, vendor: ClearinghouseVendor): ConnectionDraft => ({
   ...d,
@@ -85,7 +85,7 @@ export const withVendor = (d: ConnectionDraft, vendor: ClearinghouseVendor): Con
 
 export const fromConnectionDraft = (d: ConnectionDraft): ConnectionInput => ({
   vendor: d.vendor,
-  isActive: d.enabled === 'on',
+  isActive: d.isActive === 'on',
   sftpHost: d.sftpHost.trim(),
   sftpPort: Number(d.sftpPort),
   sftpHostKey: d.sftpHostKey.trim(),
@@ -267,13 +267,13 @@ export const ConnectionForm = ({
                   onChange={(v) => isVendor(v) && setDraft(withVendor(draft, v))}
                 />
                 <Select
-                  id="connection-enabled"
+                  id="connection-active"
                   label="Status"
                   hint="While paused, nothing is sent or picked up for this agency"
                   span={2}
                   options={ENABLED_OPTIONS}
-                  value={draft.enabled}
-                  onChange={(v) => setDraft({ ...draft, enabled: v === 'off' ? 'off' : 'on' })}
+                  value={draft.isActive}
+                  onChange={(v) => setDraft({ ...draft, isActive: v === 'off' ? 'off' : 'on' })}
                 />
               </FieldGrid>
             </FieldGroup>
