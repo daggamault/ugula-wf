@@ -5,10 +5,9 @@ const buildDataTablesTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('data_tables')
     .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('organization_id', 'uuid', (col) =>
-      col.references('organizations.id').onDelete('cascade').onUpdate('cascade')
+    .addColumn('agency_id', 'uuid', (col) =>
+      col.references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
-    .addColumn('agency_id', 'uuid')
     .addColumn('key', 'text', (col) => col.notNull())
     .addColumn('name', 'text', (col) => col.notNull())
     .addColumn('kind', 'text', (col) => col.notNull())
@@ -16,21 +15,8 @@ const buildDataTablesTable = (db: Kysely<Database>) =>
     .addColumn('is_active', 'boolean', (col) => col.notNull().defaultTo(true))
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addUniqueConstraint(
-      'data_tables_scope_key_unique',
-      ['organization_id', 'agency_id', 'key'],
-      (uc) => uc.nullsNotDistinct()
-    )
-    .addForeignKeyConstraint(
-      'data_tables_agency_fkey',
-      ['agency_id', 'organization_id'],
-      'agencies',
-      ['id', 'organization_id'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
-    )
-    .addCheckConstraint(
-      'data_tables_scope_check',
-      sql`agency_id is null or organization_id is not null`
+    .addUniqueConstraint('data_tables_agency_id_key_unique', ['agency_id', 'key'], (uc) =>
+      uc.nullsNotDistinct()
     )
     .addCheckConstraint(
       'data_tables_kind_check',
@@ -76,8 +62,7 @@ const buildDataTableIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_data_table_versions_created_by_id')
     .on('data_table_versions')
-    .column('created_by_id'),
-  db.schema.createIndex('idx_data_tables_agency_id').on('data_tables').column('agency_id')
+    .column('created_by_id')
 ];
 
 const buildWorkflowRunTablesTable = (db: Kysely<Database>) =>

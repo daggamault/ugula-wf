@@ -1,6 +1,6 @@
 # Overrides
 
-Every built-in graph and shared table can be customized without code, for a whole organization or for one agency.
+Every built-in graph and shared table can be customized without code for one agency. Organizations own agencies but no graphs or tables: customization is built-in, then agency.
 
 ## Three ways to customize
 
@@ -10,15 +10,14 @@ Every built-in graph and shared table can be customized without code, for a whol
 | **Agency rule**    | An empty **slot** subworkflow that runs after the base rules             | None: the base keeps updating around it  |
 | **Graph override** | A copy of one rule, stage or workflow                                    | Tracked: compare, Keep Mine, Start Fresh |
 
-## Three levels
+## Two levels
 
-| Level        | Owner                                                       | Applies to                       |
-| ------------ | ----------------------------------------------------------- | -------------------------------- |
-| System       | Ugula (seeded)                                              | Everyone, unless overridden      |
-| Organization | Organization owners                                         | Every agency in the organization |
-| Agency       | Users with `workflows:update` or `workflows:manage` (below) | That agency only                 |
+| Level  | Owner                                                       | Applies to                  |
+| ------ | ----------------------------------------------------------- | --------------------------- |
+| System | Ugula (seeded)                                              | Everyone, unless overridden |
+| Agency | Users with `workflows:update` or `workflows:manage` (below) | That agency only            |
 
-A run uses the **agency** copy if one is active and published, else the **organization** copy, else the **system** graph or table.
+A run uses the **agency** copy if one is active and published, else the **system** graph or table. A system row has `agency_id` null. Organization owners reach every agency in their organization, so they customize each agency like any member with the permissions.
 
 ## Roles and permission tiers
 
@@ -31,7 +30,7 @@ Every graph has a `role` (`graphs.role`), set by the seeds and copied by overrid
 | `rule`     | A pure subworkflow: facts in, decision out                                   | `workflows:update` |
 | `slot`     | An empty Agency Rule: a pure pass-through meant to be overridden             | `workflows:update` |
 
-Tables need `workflows:update`. Organization copies always need an organization owner. `canEditScope` (`apps/api/src/shared/scopes.ts`) applies the tiers. New graphs created in the editor are rules unless they are workflows.
+Tables need `workflows:update`. `canEditScope` (`apps/api/src/shared/scopes.ts`) applies the tiers. New graphs created in the editor belong to the agency and are rules unless they are workflows. Only these custom graphs show **Inputs and Outputs** in the editor, to define their paths, pins, exits and variables; a copy keeps the contract of the graph it overrides.
 
 ## Agency rule slots
 
@@ -54,7 +53,7 @@ A slot is a subworkflow whose system version hands its inputs straight back (`sl
 Decision and lookup table nodes either carry their rules inline or reference a shared table: `config: { inputs, outputs, table: { key } }` (decision) or `{ type, table: { key } }` (lookup). The node keeps the fields, so its pins never depend on the table; the table holds the rules.
 
 - Tables live in `data_tables` / `data_table_versions` with the same scopes, `base_version_id`, one draft and immutable published versions as graphs. Their **contract** is their fields: input and output names and types (decision) or the value type (lookup) (`tableContract`).
-- When a run starts, `pinRunGraphs` also pins every table its graphs reference into `workflow_run_tables`, agency first, then organization, then system; organization and agency copies apply only while their contract matches the newest system version. Child runs reuse their parent's pins.
+- When a run starts, `pinRunGraphs` also pins every table its graphs reference into `workflow_run_tables`, agency first, then system; an agency copy applies only while its contract matches the newest system version. Child runs reuse their parent's pins.
 - The worker inlines the pinned tables into the graphs before running them (`inlineTables`). A table that is missing or no longer has the node's fields faults the node with a clear message.
 - The seeds declare shared tables with `createTables().decision(...)` and `.lookup(...)` in `.seeds/billing/`: Classification, Level of Service, Emergency Response, Base Rate, Mileage, Origin Modifier, Destination Modifier, Transport Reason by Destination Reason, Payer by Payment Method, Coverage Priority, Ambulance Conditions, Coverage Modifier, Reprice Triggers, Check Severity, Claim Policy, Claim Steps, Adjustment Reasons, Adjustment Classes, Crossover Signals, Remittance Routing, Denial Categories, Correction Methods, Appeal Levels, Appeal Decisions, Records Deadlines, Refund Deadlines, Balance-Billing Protection, Deadline Actions, MSP From the Report, Medicare Secondary Payer, Pronounced Dead, Non-Covered Miles, Non-Covered Mileage, Trip Modifiers, Line Code Modifier, Benefits Assignment, Claim Frequencies, Narrative Note, Facility Responsibility, Document Kinds and Document Chase Days (keys in [Billing Workflows](billing-workflows.md)). The seed checks every reference resolves to a table with the same fields.
 - A Lookup Table also looks up a list of keys at once (`keys` → `values`), which is how one Check Severity table rates every issue and Adjustment Classes classes every adjustment.
@@ -64,40 +63,40 @@ Decision and lookup table nodes either carry their rules inline or reference a s
 
 An override must keep the signature of the system graph it replaces: the same exec ins, exits, inputs and outputs with the same names, types, optionality and whether each has a default (its value may change). This is the **contract** (`contractOf`), stored on every version.
 
-- Publishing an override whose contract differs from the newest version of the graph at the bottom of its key fails: the system graph, or for an agency copy of an organization custom graph, that organization graph. The same holds for table overrides and their fields.
-- At run time an override applies only to the version of the graph at the bottom (system, else the organization custom graph) whose contract it matches. When Ugula ships a new system version with a different contract, older overrides stop applying (runs fall back to the system graph) until they are rebased, and the graph is marked **stale**.
+- Publishing an override whose contract differs from the newest version of the system graph with its key fails. The same holds for table overrides and their fields.
+- At run time an override applies only to the version of the system graph whose contract it matches. When Ugula ships a new system version with a different contract, older overrides stop applying (runs fall back to the system graph) until they are rebased, and the graph is marked **stale**.
 
 ## Lifecycle
 
-| Action     | Endpoint                              | Notes                                                                                                                                                                            |
-| ---------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Override   | `POST /graphs/:id/override { scope }` | Copies the newest published version of the graph you are looking at into a draft for the organization or agency. Records `base_version_id`. Re-enables a removed copy as it was. |
-| Edit draft | `PUT /graphs/:id/draft`               | Validates against the catalog, the graphs and the tables visible to the agency                                                                                                   |
-| Publish    | `POST /graphs/:id/publish`            | Checks issues and the contract; new runs use it immediately                                                                                                                      |
-| Compare    | `GET /graphs/:id/compare`             | Returns your newest version, the base version it was copied from and the base's newest version, and whether the base changed                                                     |
-| Rebase     | `POST /graphs/:id/rebase { mode }`    | `keep` keeps your definition and marks it as based on the newest base; `reset` replaces your draft with the newest base                                                          |
-| Remove     | `DELETE /graphs/:id`                  | Turns an override off (runs go back to the level below); a custom graph that overrides nothing is deleted, unless published graphs still call it                                 |
-| Map        | `GET /graphs/map`                     | Every effective graph with the graphs and tables it uses, and the effective table per key                                                                                        |
-| Tables     | `GET, PUT, POST, DELETE /tables/...`  | List (`show=customized`), `effective`, open, versions, compare, override, save draft, publish and remove table copies                                                            |
+| Action     | Endpoint                             | Notes                                                                                                                                                                     |
+| ---------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Override   | `POST /graphs/:id/override`          | Copies the newest published version of the built-in graph you are looking at into a draft for the agency. Records `base_version_id`. Re-enables a removed copy as it was. |
+| Edit draft | `PUT /graphs/:id/draft`              | Validates against the catalog, the graphs and the tables visible to the agency                                                                                            |
+| Publish    | `POST /graphs/:id/publish`           | Checks issues and the contract; new runs use it immediately                                                                                                               |
+| Compare    | `GET /graphs/:id/compare`            | Returns your newest version, the base version it was copied from and the base's newest version, and whether the base changed                                              |
+| Rebase     | `POST /graphs/:id/rebase { mode }`   | `keep` keeps your definition and marks it as based on the newest base; `reset` replaces your draft with the newest base                                                   |
+| Remove     | `DELETE /graphs/:id`                 | Turns an override off (runs go back to the built-in); a custom graph that overrides nothing is deleted, unless published graphs still call it                             |
+| Map        | `GET /graphs/map`                    | Every effective graph with the graphs and tables it uses, and the effective table per key                                                                                 |
+| Tables     | `GET, PUT, POST, DELETE /tables/...` | List (`show=customized`), `effective`, open, versions, compare, override, save draft, publish and remove table copies                                                     |
 
-`GET /graphs/nodes` marks each key `overridden` when an organization or agency copy is in effect, so parent graphs can highlight it. Runs that already started keep the versions they pinned; publishing or removing an override never changes them.
+`GET /graphs/nodes` marks each key `overridden` when an agency copy is in effect, so parent graphs can highlight it. Runs that already started keep the versions they pinned; publishing or removing an override never changes them.
 
 ## Showing changes
 
-`--color-custom` (fuchsia) means "this organization or agency changed this":
+`--color-custom` (fuchsia) means "this agency changed this":
 
-- **Canvas:** on a copy, nodes added or changed against the version it was copied from (type, version, settings, inputs, label or note) get a custom outline and a **Custom** chip; new wires are drawn in the custom color; **Show Removed** adds the base's removed nodes as dashed ghosts. In any graph, a subworkflow or table node whose key your organization or agency overrides gets the outline too.
+- **Canvas:** on a copy, nodes added or changed against the version it was copied from (type, version, settings, inputs, label or note) get a custom outline and a **Custom** chip; new wires are drawn in the custom color; **Show Removed** adds the base's removed nodes as dashed ghosts. In any graph, a subworkflow or table node whose key your agency overrides gets the outline too.
 - **Inspector:** a **Changed From Base** section lists each changed property with a custom dot, `Base: value` and **Reset to Base**; changed input pins carry the dot. Table nodes link to their table and say when it is customized.
 - **Base Updated:** a copy whose base has a newer version, or which is stale, shows a warning and a **Compare** panel: Base Then, Base Now (what the base changed) and Yours (what you changed), in plain words, with **Keep Mine** and **Start From Base** (danger confirm).
-- **Lists:** Workflows and Tables show the scope (Built-in, Organization, Agency), **Has Your Copy**, **Base Updated** and **Agency Rule** badges, and filter **Customized**. The **Customization Map** (`/workflows/customized`) shows each workflow's call tree with customized branches and tables highlighted, linking to each copy.
+- **Lists:** Workflows and Tables show the scope (Built-in, Agency), **Has Agency Copy**, **Base Updated** and **Agency Rule** badges, and filter **Customized**. The **Customization Map** (`/workflows/customized`) shows each workflow's call tree with customized branches and tables highlighted, linking to each copy.
 
 ## Scope resolution in SQL
 
 `libs/data/db/src/graph-versions.ts` resolves `key@version` for an agency, and `libs/data/db/src/data-tables.ts` resolves table keys the same way:
 
-1. Active graphs (or tables) with that key that are system, the agency's organization (agency null), or the agency.
-2. A reference `key@version` names a version of the graph at the bottom of that key: the system graph, else the organization's active custom graph, else the agency's. That graph matches on the exact version; every copy above it uses its newest published version whose contract equals that version's contract (the newest system version for tables). So an agency copy of an organization custom graph applies by the organization version's contract, never by its own version numbers.
-3. Agency first, then organization, then system.
+1. Active graphs (or tables) with that key that are system (`agency_id` null) or the agency's.
+2. A reference `key@version` names a version of the system graph with that key, else of the agency's custom graph. That graph matches on the exact version; an agency copy of a system graph uses its newest published version whose contract equals that version's contract (the newest system version for tables), never its own version numbers.
+3. Agency first, then system.
 
 ## Not built yet
 

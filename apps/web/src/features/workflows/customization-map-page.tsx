@@ -136,7 +136,7 @@ export const CustomizationMapView = ({
             title={root.name}
             description={
               hasCustomized(root)
-                ? 'Highlighted branches lead to a copy or table your organization or agency changed.'
+                ? 'Highlighted branches lead to a copy or table your agency changed.'
                 : 'Runs as built.'
             }
             {...(hasCustomized(root) ? { accent: 'custom' as const } : {})}

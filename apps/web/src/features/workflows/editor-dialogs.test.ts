@@ -17,7 +17,7 @@ const graph = (overrides: string | null): GraphDetail['graph'] => ({
   overrides,
   is_stale: false,
   canEdit: true,
-  canOverride: { organization: false, agency: false },
+  canOverride: false,
   effectiveId: 'g1',
   effectiveScope: 'agency'
 });
@@ -30,24 +30,21 @@ const render = (overrides: string | null, removable = true) =>
       graph: graph(overrides),
       dialog: null,
       removable,
-      leaving: null,
       onClose: noop,
       onRemove: noop,
-      onReset: noop,
-      onStay: noop,
-      onLeave: noop
+      onReset: noop
     })
   );
 
 describe('EditorDialogs', () => {
-  it('asks before removing an override, deleting a custom graph, resetting or leaving', () => {
+  it('asks before removing an override, deleting a custom graph, or resetting', () => {
     const override = render('g0');
     assert.ok(override.includes('Remove Override?') && override.includes('this copy overrides'));
     const custom = render(null);
     assert.ok(
       custom.includes('and its versions are deleted') && !custom.includes('Remove Override')
     );
-    assert.ok(custom.includes('Start From Base?') && custom.includes('Discard Unsaved Changes?'));
+    assert.ok(custom.includes('Start From Base?') && !custom.includes('Discard Unsaved Changes?'));
     assert.ok(!render('g0', false).includes('Remove Override?'));
   });
 });

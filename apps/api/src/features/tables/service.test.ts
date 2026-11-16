@@ -41,7 +41,7 @@ const createWorld = (tables: Table[], versions: Record<string, Version[]> = {}) 
     const [p0, p1] = q.parameters;
     const sql = q.sql;
     if (sql.startsWith('select "t"."id", "t"."key"')) {
-      const t = live.find((x) => x.id === q.parameters.at(-3));
+      const t = live.find((x) => x.id === q.parameters.at(-2));
       return t
         ? [
             {
@@ -59,13 +59,12 @@ const createWorld = (tables: Table[], versions: Record<string, Version[]> = {}) 
         : [];
     }
     if (sql.startsWith('select "t"."id" as "id", case')) {
-      const order = { agency: 0, organization: 1, system: 2 };
+      const order = { agency: 0, system: 1 };
       const [t] = live.toSorted((a, b) => order[a.scope] - order[b.scope]);
       return t ? [{ id: t.id, scope: t.scope }] : [];
     }
     if (sql.startsWith('select "id", "is_active" from "data_tables"')) {
-      const scope = q.parameters.length === 2 ? 'organization' : 'agency';
-      const t = tables.find((x) => x.scope === scope);
+      const t = tables.find((x) => x.scope === 'agency');
       return t ? [{ id: t.id, is_active: t.active !== false }] : [];
     }
     if (sql.startsWith('select "id" from "data_tables"')) {
@@ -128,16 +127,16 @@ describe('tableIssues', () => {
 });
 
 describe('table service', () => {
-  it('lets workflows:update override tables for the agency and owners for the organization', async () => {
+  it('lets workflows:update override tables for the agency', async () => {
     const { service } = createWorld([system], { 't-sys': [sysV] });
     const found = await service.find(editor, 't-sys');
     assert.ok(found.ok);
     assert.equal(found.value.table.canEdit, false);
-    assert.deepEqual(found.value.table.canOverride, { organization: false, agency: true });
+    assert.deepEqual(found.value.table.canOverride, true);
     const asReader = await service.find(reader, 't-sys');
     assert.ok(asReader.ok);
-    assert.deepEqual(asReader.value.table.canOverride, { organization: false, agency: false });
-    assert.deepEqual(await service.override(reader, 't-sys', 'agency'), {
+    assert.deepEqual(asReader.value.table.canOverride, false);
+    assert.deepEqual(await service.override(reader, 't-sys'), {
       ok: false,
       failure: { code: 'forbidden', message: 'You do not have permission to change this table' }
     });
@@ -145,16 +144,13 @@ describe('table service', () => {
 
   it('copies the newest built-in version into a draft that records its base', async () => {
     const { service, find } = createWorld([system], { 't-sys': [sysV] });
-    assert.deepEqual(await service.override(editor, 't-sys', 'agency'), {
+    assert.deepEqual(await service.override(editor, 't-sys'), {
       ok: true,
       value: { id: 't-new' }
     });
     const [draft] = find('insert into "data_table_versions"');
     assert.deepEqual(draft?.parameters.slice(0, 2), ['t-new', 1]);
     assert.equal(draft?.parameters[4], 'v-sys');
-    const owners = createWorld([system], { 't-sys': [sysV] });
-    assert.equal((await owners.service.override(editor, 't-sys', 'organization')).ok, false);
-    assert.equal((await owners.service.override(admin, 't-sys', 'organization')).ok, true);
   });
 
   it('saves only valid drafts and publishes only drafts that keep the built-in fields', async () => {

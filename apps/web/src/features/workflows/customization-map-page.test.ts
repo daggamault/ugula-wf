@@ -59,7 +59,7 @@ const map: CustomizationMap = {
       tables: []
     }
   ],
-  tables: [{ id: 't-rates', key: 'billing.rates', name: 'Rates', scope: 'organization' }]
+  tables: [{ id: 't-rates', key: 'billing.rates', name: 'Rates', scope: 'agency' }]
 };
 
 describe('buildMap', () => {
@@ -72,7 +72,7 @@ describe('buildMap', () => {
       build?.children.map((c) => c.key),
       ['billing.charges']
     );
-    assert.equal(build?.tables[0]?.scope, 'organization');
+    assert.equal(build?.tables[0]?.scope, 'agency');
     assert.equal(price?.customized, false);
   });
 
@@ -96,7 +96,7 @@ describe('CustomizationMapView', () => {
     assert.ok(
       html.includes('href="/workflows/g-charges"') && html.includes('href="/tables/t-rates"')
     );
-    assert.ok(html.includes('Agency Rule') && html.includes('>Organization<'));
+    assert.ok(html.includes('Agency Rule') && html.includes('>Agency<'));
     assert.ok(html.includes('href="/workflows/customized?all=shown"'));
     assert.ok(!html.includes('>Other<'));
     const all = renderToStaticMarkup(createElement(CustomizationMapView, { map, showAll: true }));

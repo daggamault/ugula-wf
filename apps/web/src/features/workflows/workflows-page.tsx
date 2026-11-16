@@ -164,7 +164,7 @@ export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
               ? {
                   title: 'Nothing Customized Yet',
                   children:
-                    'Every workflow runs as built. Override one for your organization or agency to change it.'
+                    'Every workflow runs as built. Customize one for your agency to change it.'
                 }
               : { title: 'Nothing Here Yet', children: 'Nothing matches this filter.' }
         }

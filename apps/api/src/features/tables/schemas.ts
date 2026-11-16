@@ -19,10 +19,6 @@ export const searchTablesQuery = v.object({
   ...pageEntries(TABLE_SORTS, 'name', 'asc')
 });
 
-export const overrideTableSchema = v.object({
-  scope: v.optional(v.picklist(['organization', 'agency']), 'agency')
-});
-
 export const tableDefinitionSchema = v.object({
   definition: v.pipe(
     v.unknown(),

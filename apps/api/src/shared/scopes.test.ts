@@ -17,7 +17,6 @@ import {
   nextVersionOf,
   overriddenByIn,
   overridesIn,
-  ownerOf,
   scopeIds,
   setActive,
   touch
@@ -32,10 +31,9 @@ const reader = testAccess(['workflows:read']);
 const flat = (text: string) => text.replace(/\s+/g, ' ');
 
 describe('canEditScope', () => {
-  it('never edits built-ins, leaves organization copies to owners and agency copies to permissions', () => {
+  it('never edits built-ins and leaves agency copies to permissions', () => {
     assert.equal(canEditScope(admin, 'system', 'workflow'), false);
-    assert.equal(canEditScope(admin, 'organization', 'workflow'), true);
-    assert.equal(canEditScope(manager, 'organization', 'rule'), false);
+    assert.equal(canEditScope(admin, 'agency', 'workflow'), true);
     assert.equal(canEditScope(manager, 'agency', 'workflow'), true);
     assert.equal(canEditScope(reader, 'agency', 'rule'), false);
   });
@@ -52,15 +50,13 @@ describe('canEditScope', () => {
 });
 
 describe('scope helpers', () => {
-  it('names the agency and owner a copy belongs to', () => {
-    assert.deepEqual(scopeIds(admin), { agencyId: 't-1', organizationId: 'o-1' });
-    assert.deepEqual(ownerOf(admin, 'agency'), { organizationId: 'o-1', agencyId: 't-1' });
-    assert.deepEqual(ownerOf(admin, 'organization'), { organizationId: 'o-1', agencyId: null });
+  it('names the agency a copy belongs to', () => {
+    assert.deepEqual(scopeIds(admin), { agencyId: 't-1' });
   });
 
   it('finds neighbouring scopes and staleness in graphs or tables', async () => {
     const db = createDummyDb();
-    const s = { agencyId: 'a-1', organizationId: 'o-1' };
+    const s = { agencyId: 'a-1' };
     const above = flat(sql`select ${overriddenByIn('data_tables', 't', s)}`.compile(db).sql);
     assert.ok(above.includes('from "data_tables" o where o.id = ( select ( select ev."table_id"'));
     assert.ok(above.includes('from (select "t"."key" as key) ek'));
@@ -82,11 +78,11 @@ describe('scope helpers', () => {
 
   it('finds the graph or table in effect for a key as runs resolve it', async () => {
     const { db, queries } = createRecordingDb();
-    await findEffectiveIn(db, 'graphs', { agencyId: 'a-1', organizationId: 'o-1' }, 'acme.flow');
-    await findEffectiveIn(db, 'data_tables', { agencyId: 'a-1', organizationId: 'o-1' }, 'k');
+    await findEffectiveIn(db, 'graphs', { agencyId: 'a-1' }, 'acme.flow');
+    await findEffectiveIn(db, 'data_tables', { agencyId: 'a-1' }, 'k');
     const [graph, table] = queries;
     assert.ok(graph?.sql.startsWith('select "g"."id" as "id", case'));
-    assert.ok(flat(graph?.sql ?? '').includes('from (select $8::text as key) ek'));
+    assert.ok(flat(graph?.sql ?? '').includes('from (select $4::text as key) ek'));
     assert.equal(graph?.parameters.at(-1), 'acme.flow');
     assert.ok(table?.sql.startsWith('select "t"."id" as "id", case'));
     assert.ok(
@@ -99,22 +95,18 @@ describe('scope helpers', () => {
 describe('scoped queries', () => {
   it('reads and changes copies of graphs or tables by the same queries', async () => {
     const { db, queries } = createRecordingDb();
-    await findScoped(db, 'graphs', { organizationId: 'o-1', agencyId: null }, 'acme.flow');
-    await findScoped(db, 'data_tables', { organizationId: 'o-1', agencyId: 'a-1' }, 'acme.t');
+    await findScoped(db, 'graphs', { agencyId: 'a-1' }, 'acme.flow');
+    await findScoped(db, 'data_tables', { agencyId: 'a-1' }, 'acme.t');
     await findSystem(db, 'graphs', 'acme.flow');
     await setActive(db, 'data_tables', 't1', false);
     await touch(db, 'graphs', 'g1');
-    const [org, agency, system, toggle, touched] = queries;
-    assert.ok(
-      org?.sql.endsWith(
-        'from "graphs" where "organization_id" = $1 and "agency_id" is null and "key" = $2'
-      )
-    );
+    const [graph, agency, system, toggle, touched] = queries;
+    assert.ok(graph?.sql.endsWith('from "graphs" where "agency_id" = $1 and "key" = $2'));
     assert.ok(agency?.sql.includes('from "data_tables"'));
-    assert.deepEqual(agency?.parameters, ['o-1', 'a-1', 'acme.t']);
-    assert.ok(system?.sql.endsWith('where "key" = $1 and "organization_id" is null'));
+    assert.deepEqual(agency?.parameters, ['a-1', 'acme.t']);
+    assert.ok(system?.sql.endsWith('where "key" = $1 and "agency_id" is null'));
     assert.ok(toggle?.sql.startsWith('update "data_tables" set "is_active" = $1'));
-    assert.ok(toggle?.sql.includes('where "id" = $2 and "organization_id" is not null'));
+    assert.ok(toggle?.sql.includes('where "id" = $2 and "agency_id" is not null'));
     assert.deepEqual(toggle?.parameters, [false, 't1']);
     assert.ok(touched?.sql.startsWith('update "graphs" set "updated_at" = now()'));
     await db.destroy();

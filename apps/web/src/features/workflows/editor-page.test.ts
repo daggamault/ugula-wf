@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
 import { idleLive, testNodes } from '../../shared/testing.ts';
 import type { GraphComparison, GraphDetail, GraphScope, WorkflowsClient } from './client.ts';
-import { customizedNodes, EditorPage, EditorView, leavingHref } from './editor-page.tsx';
+import { customizedNodes, EditorPage, EditorView } from './editor-page.tsx';
 import type { TrailStep } from './trail.ts';
 
 const source: GraphDef = {
@@ -33,7 +33,7 @@ const detail = (
     overrides: links.overrides ?? null,
     is_stale: false,
     canEdit: scope !== 'system',
-    canOverride: { organization: false, agency: scope === 'system' },
+    canOverride: scope === 'system',
     effectiveId: links.overridden_by ?? 'g1',
     effectiveScope: links.overridden_by ? 'agency' : scope
   },
@@ -86,9 +86,9 @@ describe('EditorView', () => {
     assert.ok(html.includes('>Save<'));
     assert.ok(html.includes('>Publish<'));
     assert.ok(html.includes('href="/runs/new?graph=g1"'));
-    assert.ok(html.includes('Add Node') && html.includes('Workflow Settings'));
+    assert.ok(html.includes('Add Node') && html.includes('Inputs and Outputs'));
     assert.ok(html.includes('Drag from one pin to another'));
-    assert.ok(html.includes('href="/?panel=settings"') && !html.includes('<dialog open'));
+    assert.ok(html.includes('href="/?panel=signature"') && !html.includes('<dialog open'));
     assert.ok(html.includes('No changes to save.') && !html.includes('Save your changes first.'));
     assert.ok(html.includes('aria-label="Version"'));
     assert.match(
@@ -117,9 +117,9 @@ describe('EditorView', () => {
     const system = render(detail('system', true), 1);
     assert.ok(system.includes('>Built-in<'));
     assert.ok(!system.includes('Edit as New Draft'));
-    assert.ok(system.includes('Override for This Agency'));
-    assert.ok(!system.includes('Override for Organization'));
-    assert.ok(system.includes('Override this one to change how your agency runs it'));
+    assert.ok(system.includes('>Customize<'));
+    assert.ok(!system.includes('Inputs and Outputs'));
+    assert.ok(system.includes('Customize this one to change how your agency runs it'));
   });
 
   it('links a built-in graph to its override, and lets the override be removed', () => {
@@ -128,9 +128,10 @@ describe('EditorView', () => {
     assert.ok(
       overridden.includes('href="/workflows/g9"') && overridden.includes('Open Agency Copy')
     );
-    assert.ok(!overridden.includes('Override for This Agency'));
+    assert.ok(!overridden.includes('>Customize<'));
     const copy = render(detail('agency', false, { overrides: 'g0' }), 2);
     assert.ok(copy.includes('>Agency<') && copy.includes('Remove Override'));
+    assert.ok(!copy.includes('Inputs and Outputs'));
     assert.ok(copy.includes('>Publish<'));
     assert.ok(!copy.includes('Delete Workflow'));
   });
@@ -283,17 +284,5 @@ describe('EditorPage', () => {
       })
     );
     assert.ok(html.includes('aria-label="Loading"'));
-  });
-});
-
-describe('leavingHref', () => {
-  it('only catches plain clicks on links that leave the editor', () => {
-    const plain = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false };
-    const link = (href: string | null) =>
-      ({ closest: () => (href ? { getAttribute: () => href } : null) }) as unknown as Element;
-    assert.equal(leavingHref(link('/workflows'), '/workflows/g1', plain), '/workflows');
-    assert.equal(leavingHref(link('/workflows/g1?panel=settings'), '/workflows/g1', plain), null);
-    assert.equal(leavingHref(link('/runs'), '/workflows/g1', { ...plain, ctrlKey: true }), null);
-    assert.equal(leavingHref(link(null), '/workflows/g1', plain), null);
   });
 });

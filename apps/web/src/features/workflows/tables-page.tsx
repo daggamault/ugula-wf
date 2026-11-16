@@ -101,10 +101,7 @@ export const TablesPage = ({
   useReconnect(live, tables.reload);
   const filterHref = useFilterHref(TABLES_PATH);
   return (
-    <Page
-      title="Tables"
-      description="Your organization or agency can change them without copying a workflow."
-    >
+    <Page title="Tables" description="Your agency can change them without copying a workflow.">
       <Search
         label="Tables"
         path={TABLES_PATH}

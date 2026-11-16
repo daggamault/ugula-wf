@@ -14,7 +14,7 @@ const recordingBoss = () => {
 const codeOf = (res: { ok: boolean; failure?: { code: string } }) =>
   res.ok ? 'ok' : res.failure?.code;
 
-const scope = { agencyId: 't-1', organizationId: 'o-1' };
+const scope = { agencyId: 't-1' };
 
 const stored: string[] = [];
 
@@ -53,7 +53,7 @@ describe('run service', () => {
     assert.deepEqual(jobs, [{ data: { runId: 'r1', command: { type: 'advance' } }, priority: 2 }]);
   });
 
-  it('runs the effective override of a built-in or organization workflow', async () => {
+  it('runs the effective override of a built-in workflow', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.includes('as req (key, version)')
         ? [{ id: 'override-v2', key: 'k', version: 4 }]
@@ -205,9 +205,7 @@ describe('run service agency scoping', () => {
     const service = createRunService({ db, boss: recordingBoss().boss, blobs, maxBytes: 100 });
     assert.equal(codeOf(await service.cancel('t-2', 'r1')), 'not_found');
     assert.equal(
-      codeOf(
-        await service.start({ agencyId: 't-2', organizationId: 'o-2' }, 'u2', 'g1', undefined, {})
-      ),
+      codeOf(await service.start({ agencyId: 't-2' }, 'u2', 'g1', undefined, {})),
       'not_found'
     );
     const [cancel, start] = queries.filter((q) => q.sql.startsWith('select'));

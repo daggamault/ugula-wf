@@ -4,18 +4,15 @@ import { isUniqueViolation } from './http.ts';
 import { fail, ok, type Result } from './result.ts';
 import {
   canEditScope,
-  type EditScope,
   type EditTier,
   findHeadVersion,
   findNewestPublished,
   findScoped,
   findSystem,
   findVersionById,
-  type Owner,
-  ownerOf,
-  RANK,
   type Scope,
   type ScopedTable,
+  scopeIds,
   setActive
 } from './scopes.ts';
 
@@ -23,31 +20,12 @@ type Copyable = { id: string; key: string; scope: Scope };
 
 type Published = NonNullable<Awaited<ReturnType<typeof findNewestPublished>>>;
 
-export const findBaseVersion = async (
-  db: Db,
-  table: ScopedTable,
-  access: AgencyAccess,
-  item: Pick<Copyable, 'key' | 'scope'>
-) => {
-  const org =
-    RANK[item.scope] === 0
-      ? await findScoped(
-          db,
-          table,
-          { organizationId: access.organizationId, agencyId: null },
-          item.key
-        )
-      : undefined;
-  const below = org?.is_active ? org.id : (await findSystem(db, table, item.key))?.id;
-  return below ? findNewestPublished(db, table, below) : undefined;
+export const findBaseVersion = async (db: Db, table: ScopedTable, key: string) => {
+  const system = (await findSystem(db, table, key))?.id;
+  return system ? findNewestPublished(db, table, system) : undefined;
 };
 
-export const compareCopy = async (
-  db: Db,
-  table: ScopedTable,
-  access: AgencyAccess,
-  item: Copyable
-) => {
+export const compareCopy = async (db: Db, table: ScopedTable, item: Copyable) => {
   if (item.scope === 'system') {
     return { mine: null, copiedFrom: null, latest: null, baseChanged: false };
   }
@@ -55,7 +33,7 @@ export const compareCopy = async (
   const copied = mine?.base_version_id
     ? await findVersionById(db, table, mine.base_version_id)
     : undefined;
-  const latest = await findBaseVersion(db, table, access, item);
+  const latest = await findBaseVersion(db, table, item.key);
   return {
     mine: mine ? { version: mine.version, definition: mine.definition } : null,
     copiedFrom: copied
@@ -74,8 +52,8 @@ export const compareCopy = async (
 type CopySpec = {
   noun: 'graph' | 'table';
   tier: EditTier;
-  forbidden: (scope: EditScope) => Result<never>;
-  insertCopy: (tx: Db, owner: Owner) => Promise<{ id: string }>;
+  forbidden: () => Result<never>;
+  insertCopy: (tx: Db, agencyId: string) => Promise<{ id: string }>;
   insertDraft: (tx: Db, id: string, from: Published) => Promise<unknown>;
 };
 
@@ -84,15 +62,13 @@ export const overrideCopy = async (
   table: ScopedTable,
   access: AgencyAccess,
   item: Copyable,
-  scope: EditScope,
   spec: CopySpec
 ): Promise<Result<{ id: string }>> => {
-  if (RANK[item.scope] <= RANK[scope]) {
-    return fail('conflict', `This ${spec.noun} cannot be overridden for the ${scope}`);
+  if (item.scope !== 'system') {
+    return fail('conflict', `This ${spec.noun} cannot be overridden for the agency`);
   }
-  if (!canEditScope(access, scope, spec.tier)) return spec.forbidden(scope);
-  const owner = ownerOf(access, scope);
-  const copy = await findScoped(tx, table, owner, item.key);
+  if (!canEditScope(access, 'agency', spec.tier)) return spec.forbidden();
+  const copy = await findScoped(tx, table, scopeIds(access), item.key);
   const taken = fail('conflict', `This ${spec.noun} is already overridden`);
   if (copy?.is_active) return taken;
   if (copy) {
@@ -104,7 +80,7 @@ export const overrideCopy = async (
     return fail('conflict', `This ${spec.noun} has no published version to start from`);
   }
   try {
-    const { id } = await spec.insertCopy(tx, owner);
+    const { id } = await spec.insertCopy(tx, access.agencyId);
     await spec.insertDraft(tx, id, latest);
     return ok({ id });
   } catch (err) {

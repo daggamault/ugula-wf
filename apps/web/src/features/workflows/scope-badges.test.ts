@@ -23,11 +23,6 @@ describe('scope badges', () => {
         'Has Agency Copy'
       )
     );
-    assert.ok(
-      html(createElement(CopyBadge, { scope: 'system', effective: 'organization' })).includes(
-        'Has Organization Copy'
-      )
-    );
     assert.equal(html(createElement(CopyBadge, { scope: 'agency', effective: 'agency' })), '');
     assert.ok(html(createElement(StaleBadge, { stale: true })).includes('Base Updated'));
     assert.equal(html(createElement(StaleBadge, { stale: false })), '');

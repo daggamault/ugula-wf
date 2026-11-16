@@ -277,7 +277,7 @@ describe('an administrator keeps fees, payers, facilities, settings, tables, rep
       .getByRole('link', { name: 'Edit Check Severity' })
       .click();
     await heading(page, 'Check Severity').waitFor();
-    await page.getByRole('button', { name: 'Override for This Agency' }).click();
+    await page.getByRole('button', { name: 'Customize', exact: true }).click();
     await toast(page, 'Check Severity copied for this agency');
     const redraft = page.getByRole('button', { name: 'Edit as New Draft' });
     const save = page.getByRole('button', { name: 'Save', exact: true });

@@ -56,8 +56,8 @@ describe('table routes', () => {
     assert.equal((await send('PUT', `/${ID}/draft`, { definition: { rows: [] } })).status, 200);
     assert.deepEqual(calls.at(-1), [access, ID, { rows: [] }]);
     assert.equal((await send('POST', `/${ID}/publish`)).status, 422);
-    assert.equal((await send('POST', `/${ID}/override`, {})).status, 201);
-    assert.deepEqual(calls.at(-1), [access, ID, 'agency']);
+    assert.equal((await send('POST', `/${ID}/override`)).status, 201);
+    assert.deepEqual(calls.at(-1), [access, ID]);
     assert.equal((await send('DELETE', `/${ID}`)).status, 200);
   });
 });

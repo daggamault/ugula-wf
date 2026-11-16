@@ -18,15 +18,15 @@ import {
 import { templateFor } from './service.ts';
 
 const BASE = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
-const S = { agencyId: 'a-1', organizationId: 'o-1' };
+const S = { agencyId: 'a-1' };
 const flat = (sql = '') => sql.replace(/\s+/g, ' ');
 const visibleTo = (alias: string) =>
   new RegExp(
-    `\\( "${alias}"\\."organization_id" is null or \\("${alias}"\\."is_active" and "${alias}"\\."agency_id" = \\$\\d+::uuid\\) or \\("${alias}"\\."is_active" and "${alias}"\\."agency_id" is null and "${alias}"\\."organization_id" = \\$\\d+::uuid\\) \\)`
+    `\\( "${alias}"\\."agency_id" is null or \\("${alias}"\\."is_active" and "${alias}"\\."agency_id" = \\$\\d+::uuid\\) \\)`
   );
 
 const scopedTo = (parameters: readonly unknown[] = [], ...others: unknown[]) =>
-  parameters.every((p) => p === 'a-1' || p === 'o-1' || others.includes(p));
+  parameters.every((p) => p === 'a-1' || others.includes(p));
 
 describe('customization queries', () => {
   it('shows customized graphs, the effective graph and table per key, and known table keys', async () => {
@@ -57,7 +57,7 @@ describe('graph queries', () => {
         kind: 'node',
         role: 'rule',
         description: '',
-        scope: 'organization',
+        scope: 'agency',
         updated_at: new Date(0),
         published: 2,
         draft: 3,
@@ -77,7 +77,7 @@ describe('graph queries', () => {
         kind: 'node',
         role: 'rule',
         description: '',
-        scope: 'organization',
+        scope: 'agency',
         isSystem: false,
         overrides: 'g-sys',
         overriddenBy: 'g-agency',
@@ -96,14 +96,14 @@ describe('graph queries', () => {
     assert.match(sql, visibleTo('g'));
     assert.ok(sql.includes(') as "overridden_by"'));
     assert.ok(sql.includes(') as "overrides"'));
-    assert.ok(sql.includes('sg.organization_id is null and not exists'));
+    assert.ok(sql.includes('sg.agency_id is null and not exists'));
     assert.ok(sql.includes('mv.contract = base.contract'));
     assert.ok(sql.includes('order by lower(g.name) asc nulls last'));
-    assert.ok(queries[0]?.parameters.includes('o-1'));
+    assert.ok(queries[0]?.parameters.includes('a-1'));
     await db.destroy();
   });
 
-  it('marks system graphs and scopes graphs by agency, then organization, then system', async () => {
+  it('marks system graphs and scopes graphs by agency, then system', async () => {
     const { db, queries } = createRecordingDb(() => [
       { id: 'g', scope: 'system', updated_at: new Date(0), is_stale: false, total: '1' }
     ]);
@@ -112,12 +112,12 @@ describe('graph queries', () => {
     const sql = flat(queries[0]?.sql);
     assert.ok(
       sql.includes(
-        `case when "g"."agency_id" is not null then 'agency' when "g"."organization_id" is not null then 'organization' else 'system' end as "scope"`
+        `case when "g"."agency_id" is not null then 'agency' else 'system' end as "scope"`
       )
     );
     assert.ok(
       sql.includes(
-        'case when "o"."agency_id" is not null then 0 when "o"."organization_id" is not null then 1 else 2 end < case when "g"."agency_id"'
+        'case when "o"."agency_id" is not null then 0 else 1 end < case when "g"."agency_id"'
       )
     );
     assert.ok(sql.includes('end > case when "g"."agency_id"'));
@@ -136,7 +136,7 @@ describe('graph queries', () => {
     assert.ok(blocks?.sql.includes('lower(g.key) like $'));
     assert.ok(blocks?.parameters.includes('%match%'));
     assert.ok(blocks?.sql.includes('order by (g.kind, lower(g.name)) desc nulls last'));
-    assert.ok(mine?.sql.includes('and "g"."organization_id" is not null order by'));
+    assert.ok(mine?.sql.includes('and "g"."agency_id" is not null order by'));
     assert.ok(workflows?.sql.includes('"g"."kind" = $'));
     await db.destroy();
   });
@@ -148,7 +148,7 @@ describe('graph queries', () => {
     assert.match(flat(graph?.sql), /where "g"\."id" = \$\d+ and /);
     assert.match(flat(graph?.sql), visibleTo('g'));
     assert.ok(scopedTo(graph?.parameters, 'g1'));
-    assert.deepEqual(graph?.parameters.slice(-3), ['g1', 'a-1', 'o-1']);
+    assert.deepEqual(graph?.parameters.slice(-2), ['g1', 'a-1']);
     await db.destroy();
   });
 
@@ -159,7 +159,7 @@ describe('graph queries', () => {
     assert.ok(sql.includes(`gv.definition -> 'signature'`));
     assert.ok(
       sql.includes(
-        '("g"."organization_id" is null or not exists (select "b"."id" from "graphs" as "b" where "b"."key" = "g"."key"'
+        '("g"."agency_id" is null or not exists (select "b"."id" from "graphs" as "b" where "b"."key" = "g"."key"'
       )
     );
     assert.match(sql, visibleTo('b'));
@@ -206,8 +206,7 @@ describe('graph writes', () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'x', version: 1 }]);
     const def = templateFor('workflow');
     await insertGraph(db, {
-      organizationId: 'o-1',
-      agencyId: null,
+      agencyId: 'a-1',
       key: 'acme.flow',
       name: 'Flow',
       kind: 'workflow',
@@ -222,15 +221,7 @@ describe('graph writes', () => {
       userId: 'u-1'
     });
     const [graph, draft] = queries;
-    assert.deepEqual(graph?.parameters, [
-      'o-1',
-      null,
-      'acme.flow',
-      'Flow',
-      'workflow',
-      'workflow',
-      ''
-    ]);
+    assert.deepEqual(graph?.parameters, ['a-1', 'acme.flow', 'Flow', 'workflow', 'workflow', '']);
     assert.deepEqual(draft?.parameters, [
       'g1',
       1,
@@ -245,7 +236,7 @@ describe('graph writes', () => {
   it('deletes custom graphs only', async () => {
     const { db, queries } = createRecordingDb();
     await deleteGraph(db, 'g1');
-    assert.ok(queries[0]?.sql.includes('where "id" = $1 and "organization_id" is not null'));
+    assert.ok(queries[0]?.sql.includes('where "id" = $1 and "agency_id" is not null'));
     await db.destroy();
   });
 });

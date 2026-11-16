@@ -24,7 +24,7 @@ const detail = (scope: GraphScope, published: boolean, effectiveScope = scope): 
     overrides: scope === 'system' ? null : 't0',
     is_stale: false,
     canEdit: scope !== 'system',
-    canOverride: { organization: scope === 'system', agency: scope === 'system' },
+    canOverride: scope === 'system',
     effectiveId: effectiveScope === scope ? 't1' : 't9',
     effectiveScope
   },
@@ -55,14 +55,12 @@ const render = (d: TableDetail, comparison: TableComparison | null = null, sourc
 describe('TableView', () => {
   it('offers built-in tables for overriding and opens the copy in effect', () => {
     const html = render(detail('system', true));
-    assert.ok(
-      html.includes('Override for Organization') && html.includes('Override for This Agency')
-    );
+    assert.ok(html.includes('>Customize<') && !html.includes('Organization'));
     assert.ok(html.includes('>Built-in<') && html.includes('Built-in tables are read-only'));
     assert.ok(html.includes('value="A0427"') && html.includes('disabled'));
     const copied = render(detail('system', true, 'agency'));
     assert.ok(copied.includes('href="/tables/t9"') && copied.includes('Open Agency Copy'));
-    assert.ok(copied.includes('Has Agency Copy') && !copied.includes('Override for This Agency'));
+    assert.ok(copied.includes('Has Agency Copy') && !copied.includes('>Customize<'));
   });
 
   it('edits a draft copy, marks changes from its base and warns when the base moved', () => {

@@ -1,5 +1,6 @@
 import type { ExitDoc, InputBinding, PinSpec } from '@ugula/graph';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
+import { createContext, useContext } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { labelFromName } from '../format.ts';
 import { Badge } from '../ui/badge.tsx';
@@ -7,6 +8,12 @@ import type { GraphFlowNode, NodeStatus } from './flow.ts';
 import { describeType, pinLabel, toneOf } from './pins.ts';
 
 type Pin = { name: string; label: string; exec: boolean; spec?: PinSpec; doc?: ExitDoc };
+
+type PinSide = 'in' | 'out';
+
+export const PinBreak = createContext<((node: string, pin: string, side: PinSide) => void) | null>(
+  null
+);
 
 const statusClasses: Record<NodeStatus, string> = {
   idle: 'border-border',
@@ -46,44 +53,50 @@ const preview = (binding: InputBinding | undefined) => {
 };
 
 const PinRow = ({
+  node,
   pin,
   side,
   binding
 }: {
+  node: string;
   pin: Pin;
-  side: 'in' | 'out';
+  side: PinSide;
   binding?: string | null;
-}) => (
-  <li
-    className={classNamesOf(
-      'text-surface-fg-muted relative flex min-h-6 items-center gap-2 text-xs',
-      side === 'in' ? 'pr-2 pl-4' : 'justify-end pr-4 pl-2'
-    )}
-    title={pinTitle(pin)}
-  >
-    <Handle
-      type={side === 'in' ? 'target' : 'source'}
-      position={side === 'in' ? Position.Left : Position.Right}
-      id={pin.name}
+}) => {
+  const breakPin = useContext(PinBreak);
+  return (
+    <li
       className={classNamesOf(
-        handleBase,
-        pin.exec ? execShape : 'rounded-full!',
-        toneOf(pin.exec ? 'exec' : (pin.spec?.type ?? 'any')).dot
+        'text-surface-fg-muted relative flex min-h-6 items-center gap-2 text-xs',
+        side === 'in' ? 'pr-2 pl-4' : 'justify-end pr-4 pl-2'
       )}
-    />
-    <span className="truncate">{pin.label}</span>
-    {binding ? (
-      <span className="bg-surface-fg/6 text-surface-fg-muted truncate rounded-full px-1.5 font-mono text-xs">
-        {binding}
-      </span>
-    ) : null}
-  </li>
-);
+      title={pinTitle(pin)}
+    >
+      <Handle
+        type={side === 'in' ? 'target' : 'source'}
+        position={side === 'in' ? Position.Left : Position.Right}
+        id={pin.name}
+        onClick={breakPin ? (e) => e.altKey && breakPin(node, pin.name, side) : undefined}
+        className={classNamesOf(
+          handleBase,
+          pin.exec ? execShape : 'rounded-full!',
+          toneOf(pin.exec ? 'exec' : (pin.spec?.type ?? 'any')).dot
+        )}
+      />
+      <span className="truncate">{pin.label}</span>
+      {binding ? (
+        <span className="bg-surface-fg/6 text-surface-fg-muted truncate rounded-full px-1.5 font-mono text-xs">
+          {binding}
+        </span>
+      ) : null}
+    </li>
+  );
+};
 
 const CHANGE_TITLES = {
   added: 'Added in this copy',
   changed: 'Changed from the base',
-  overridden: 'Your organization or agency overrides this'
+  overridden: 'Your agency overrides this'
 } as const;
 
 const borderOf = (status: NodeStatus, custom: boolean, ghost: boolean) =>
@@ -93,7 +106,7 @@ const borderOf = (status: NodeStatus, custom: boolean, ghost: boolean) =>
       ? 'border-custom'
       : statusClasses[status];
 
-export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
+export const GraphNode = ({ id, data, selected }: NodeProps<GraphFlowNode>) => {
   const { instance, signature, title, description, status, issues, opens, connected } = data;
   const { change, ghost } = data;
   const inputs = signature ? pinsOf(signature.execIn, signature.inputs) : [];
@@ -139,6 +152,7 @@ export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
             {inputs.map((pin) => (
               <PinRow
                 key={pin.name}
+                node={id}
                 pin={pin}
                 side="in"
                 binding={connected.includes(pin.name) ? null : preview(instance.inputs?.[pin.name])}
@@ -147,7 +161,7 @@ export const GraphNode = ({ data, selected }: NodeProps<GraphFlowNode>) => {
           </ul>
           <ul className="flex flex-col">
             {outputs.map((pin) => (
-              <PinRow key={pin.name} pin={pin} side="out" />
+              <PinRow key={pin.name} node={id} pin={pin} side="out" />
             ))}
           </ul>
         </div>

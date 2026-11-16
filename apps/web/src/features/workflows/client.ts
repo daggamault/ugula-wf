@@ -7,9 +7,7 @@ export type GraphKind = 'workflow' | 'node';
 
 export type GraphRole = 'workflow' | 'stage' | 'rule' | 'slot';
 
-export type GraphScope = 'system' | 'organization' | 'agency';
-
-export type EditScope = Exclude<GraphScope, 'system'>;
+export type GraphScope = 'system' | 'agency';
 
 export type GraphSummary = {
   id: string;
@@ -47,7 +45,7 @@ type Overridable = {
   overrides: string | null;
   is_stale: boolean;
   canEdit: boolean;
-  canOverride: Record<EditScope, boolean>;
+  canOverride: boolean;
   effectiveId: string;
   effectiveScope: GraphScope;
 };
@@ -80,7 +78,6 @@ export type NewGraph = {
   name: string;
   kind: GraphKind;
   description: string;
-  scope?: EditScope;
 };
 
 export type MapGraph = {
@@ -140,8 +137,7 @@ export const createWorkflowsClient = (api: Api) => ({
   saveDraft: (id: string, definition: GraphDef) =>
     api.put<{ version: number; issues: Issue[] }>(`${graphPathOf(id)}/draft`, { definition }),
   publish: (id: string) => api.post<{ version: number }>(`${graphPathOf(id)}/publish`),
-  override: (id: string, scope: EditScope = 'agency') =>
-    api.post<{ id: string }>(`${graphPathOf(id)}/override`, { scope }),
+  override: (id: string) => api.post<{ id: string }>(`${graphPathOf(id)}/override`),
   rebase: (id: string, mode: 'keep' | 'reset') =>
     api.post<{ id: string }>(`${graphPathOf(id)}/rebase`, { mode }),
   remove: (id: string) => api.remove<{ id: string }>(graphPathOf(id)),
@@ -160,8 +156,7 @@ export const createWorkflowsClient = (api: Api) => ({
     saveDraft: (id: string, definition: Json) =>
       api.put<{ version: number }>(`${tablePathOf(id)}/draft`, { definition }),
     publish: (id: string) => api.post<{ version: number }>(`${tablePathOf(id)}/publish`),
-    override: (id: string, scope: EditScope) =>
-      api.post<{ id: string }>(`${tablePathOf(id)}/override`, { scope }),
+    override: (id: string) => api.post<{ id: string }>(`${tablePathOf(id)}/override`),
     remove: (id: string) => api.remove<{ id: string }>(tablePathOf(id))
   }
 });

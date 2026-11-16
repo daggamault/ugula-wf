@@ -52,20 +52,12 @@ describe('graph routes', () => {
     assert.equal((await post('/validate', { definition: {} })).status, 400);
   });
 
-  it('create graphs with the agency access and a scope', async () => {
+  it('create graphs with the agency access', async () => {
     assert.equal((await post('/', { key: 'acme.new', name: 'X', kind: 'workflow' })).status, 201);
     assert.deepEqual(calls.at(-1), [
       access,
-      { key: 'acme.new', name: 'X', kind: 'workflow', description: '', scope: 'agency' }
+      { key: 'acme.new', name: 'X', kind: 'workflow', description: '' }
     ]);
-    await post('/', { key: 'acme.org', name: 'X', kind: 'node', scope: 'organization' });
-    assert.deepEqual(calls.at(-1)?.[1], {
-      key: 'acme.org',
-      name: 'X',
-      kind: 'node',
-      description: '',
-      scope: 'organization'
-    });
   });
 
   it('validate params and map failures to statuses', async () => {
@@ -102,14 +94,12 @@ describe('graph route validation', () => {
       await post('/', { key: 'std.x', name: 'X', kind: 'workflow' }),
       await post('/', { key: 'acme.x', name: ' ', kind: 'workflow' }),
       await post('/', { key: 'acme.x', name: 'X', kind: 'other' }),
-      await post('/', { key: 'acme.x', name: 'X', kind: 'node', scope: 'system' }),
       await request(`/${ID}/versions/0`),
       await request('/nope/versions/1'),
       await request('/nope/draft', { method: 'PUT', body: JSON.stringify({ definition }) }),
       await request(`/${ID}/draft`, { method: 'PUT', body: '{"definition":{"nodes":[]}}' }),
       await post('/nope/publish'),
       await post('/nope/override', {}),
-      await post(`/${ID}/override`, { scope: 'system' }),
       await post(`/${ID}/rebase`, { mode: 'merge' }),
       await post('/nope/rebase', { mode: 'keep' }),
       await request('/nope', { method: 'DELETE' })
@@ -124,11 +114,9 @@ describe('graph route validation', () => {
     });
   });
 
-  it('override for a scope, rebase by mode and map removal conflicts', async () => {
-    assert.equal((await post(`/${ID}/override`, {})).status, 201);
-    assert.deepEqual(calls.at(-1), [access, ID, 'agency']);
-    await post(`/${ID}/override`, { scope: 'organization' });
-    assert.deepEqual(calls.at(-1), [access, ID, 'organization']);
+  it('override for the agency, rebase by mode and map removal conflicts', async () => {
+    assert.equal((await post(`/${ID}/override`)).status, 201);
+    assert.deepEqual(calls.at(-1), [access, ID]);
     assert.equal((await post(`/${ID}/rebase`, { mode: 'reset' })).status, 200);
     assert.deepEqual(calls.at(-1), [access, ID, 'reset']);
     const removed = await request(`/${ID}`, { method: 'DELETE' });

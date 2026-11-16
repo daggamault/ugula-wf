@@ -6,6 +6,7 @@ React app in `apps/web`, built with Vite. Pages live in `src/features/<area>`; s
 
 - A small router (`src/shared/router.tsx`) keeps all app state in the URL.
 - Agency pages live under `/agencies/:agencyId/...`. Code links to agency-relative paths (`/claims/123`); `navigate`, `Link` and `useLocation` add and strip the prefix, so features never handle agency IDs.
+- Editing pages call `useUnsavedChanges(dirty)` while their form differs from what was loaded. Leaving for another page (links, `navigate`, back and forward) then asks to discard the changes in the one `UnsavedChangesDialog` the workspace mounts, and reload or close asks the browser to confirm. Query-only changes (panels, tabs) pass unless the page names the params that identify it (`['version']` in the workflow and table editors). Navigations after a successful save or delete pass `{ force: true }`.
 - Public pages: `/invitation?token=…` and `/password?token=…`.
 - `App` → `AuthGate` (sign in) → `AgencyGate` (pick and load the agency's access) → `Workspace` (shell, navigation, pages).
 
@@ -42,9 +43,9 @@ The claim page (`/claims/:id`) is a read-only record. Its **Start Task** menu st
 
 ## Workflow editor
 
-- `?panel=settings` opens graph settings (paths, exit labels and descriptions, pins with labels and descriptions, variables); `?panel=compare` opens the compare panel of a copy; `?removed=shown` adds the base's removed nodes as ghosts. Documentation hints from `documentationIssues` show as a collapsible warning.
+- `?panel=signature` opens **Inputs and Outputs** on an agency's custom graph (paths, exit labels and descriptions, pins with labels and descriptions, variables); built-in graphs and their copies do not offer it; `?panel=compare` opens the compare panel of a copy; `?removed=shown` adds the base's removed nodes as ghosts. Documentation hints from `documentationIssues` show as a collapsible warning.
 - On a copy the editor diffs the definition against `compare().copiedFrom` by node id (`override-diff.ts`) and passes `changes`, `changedEdges` and `removed` to the canvas; nodes whose subworkflow (`GET /graphs/nodes` `overridden`) or table (`GET /tables/effective`) is customized get the same outline.
-- `custom` is the accent for anything an organization or agency changed; see [Overrides](overrides.md).
+- `custom` is the accent for anything an agency changed; see [Overrides](overrides.md).
 
 UI rules (tokens, spacing, controls, accessibility) are in [Standards](standards.md).
 

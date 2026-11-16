@@ -152,8 +152,7 @@ export const listTableVersions = (db: Db, tableId: string) =>
 export const insertTable = (
   db: Db,
   input: {
-    organizationId: string;
-    agencyId: string | null;
+    agencyId: string;
     key: string;
     name: string;
     kind: TableKind;
@@ -163,7 +162,6 @@ export const insertTable = (
   db
     .insertInto('data_tables')
     .values({
-      organization_id: input.organizationId,
       agency_id: input.agencyId,
       key: input.key,
       name: input.name,

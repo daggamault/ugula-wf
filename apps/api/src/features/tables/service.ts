@@ -6,11 +6,8 @@ import { compareCopy, findBaseVersion, overrideCopy } from '../../shared/copies.
 import { fail, ok } from '../../shared/result.ts';
 import {
   canEditScope,
-  type EditScope,
   findDraftOf,
   findEffectiveIn,
-  findNewestPublished,
-  findSystem,
   findVersionOf,
   listEffective,
   lockOwner,
@@ -32,13 +29,7 @@ import {
 
 const notFound = fail('not_found', 'Table not found');
 
-const forbidden = (scope: EditScope) =>
-  fail(
-    'forbidden',
-    scope === 'organization'
-      ? 'Only organization owners can change organization tables'
-      : 'You do not have permission to change this table'
-  );
+const forbidden = () => fail('forbidden', 'You do not have permission to change this table');
 
 export const tableIssues = (kind: keyof typeof tableSchemas, definition: unknown) => {
   const parsed = v.safeParse(tableSchemas[kind], definition);
@@ -50,9 +41,9 @@ export const createTableService = ({ db }: { db: Db }) => {
     const table = await findTable(tx, scopeIds(access), tableId);
     if (!table) return notFound;
     if (table.scope === 'system') return fail('forbidden', 'Built-in tables are read-only');
-    if (!canEditScope(access, table.scope, 'table')) return forbidden(table.scope);
+    if (!canEditScope(access, table.scope, 'table')) return forbidden();
     await lockOwner(tx, 'data_tables', tableId);
-    return ok({ ...table, scope: table.scope as EditScope });
+    return ok(table);
   };
   return {
     search: async (access: AgencyAccess, filters: TableFilters) =>
@@ -67,10 +58,7 @@ export const createTableService = ({ db }: { db: Db }) => {
         table: {
           ...table,
           canEdit: canEditScope(access, table.scope, 'table'),
-          canOverride: {
-            organization: table.scope === 'system' && access.isOrganizationAdmin,
-            agency: table.scope !== 'agency' && canEditScope(access, 'agency', 'table')
-          },
+          canOverride: table.scope === 'system' && canEditScope(access, 'agency', 'table'),
           effectiveId: effective?.id ?? table.id,
           effectiveScope: effective?.scope ?? table.scope
         },
@@ -86,7 +74,7 @@ export const createTableService = ({ db }: { db: Db }) => {
     compare: async (access: AgencyAccess, id: string) => {
       const table = await findTable(db, scopeIds(access), id);
       if (!table) return notFound;
-      const { copiedFrom, ...rest } = await compareCopy(db, 'data_tables', access, table);
+      const { copiedFrom, ...rest } = await compareCopy(db, 'data_tables', table);
       return ok({
         ...rest,
         copiedFrom: copiedFrom && {
@@ -97,17 +85,17 @@ export const createTableService = ({ db }: { db: Db }) => {
         }
       });
     },
-    override: (access: AgencyAccess, tableId: string, scope: EditScope) =>
+    override: (access: AgencyAccess, tableId: string) =>
       db.transaction().execute(async (tx) => {
         const table = await findTable(tx, scopeIds(access), tableId);
         if (!table) return notFound;
-        return overrideCopy(tx, 'data_tables', access, table, scope, {
+        return overrideCopy(tx, 'data_tables', access, table, {
           noun: 'table',
           tier: 'table',
           forbidden,
-          insertCopy: (t, owner) =>
+          insertCopy: (t, agencyId) =>
             insertTable(t, {
-              ...owner,
+              agencyId,
               key: table.key,
               name: table.name,
               kind: table.kind,
@@ -139,7 +127,7 @@ export const createTableService = ({ db }: { db: Db }) => {
                 version: await nextVersionOf(tx, 'data_tables', tableId),
                 definition: definition as Json,
                 baseVersionId:
-                  (await findBaseVersion(tx, 'data_tables', access, table.value))?.id ?? null,
+                  (await findBaseVersion(tx, 'data_tables', table.value.key))?.id ?? null,
                 userId: access.userId
               })
             ).version;
@@ -154,8 +142,7 @@ export const createTableService = ({ db }: { db: Db }) => {
         if (!draft) return fail('conflict', 'Nothing to publish');
         const issues = tableIssues(table.value.kind, draft.definition);
         if (issues.length) return fail('invalid', issues.join('. '));
-        const system = await findSystem(tx, 'data_tables', table.value.key);
-        const original = system && (await findNewestPublished(tx, 'data_tables', system.id));
+        const original = await findBaseVersion(tx, 'data_tables', table.value.key);
         if (original && original.contract !== tableContract(draft.definition as Json)) {
           return fail(
             'invalid',

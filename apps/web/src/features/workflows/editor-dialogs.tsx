@@ -9,24 +9,18 @@ type EditorDialogsProps = {
   graph: GraphDetail['graph'];
   dialog: EditorDialog | null;
   removable: boolean;
-  leaving: string | null;
   onClose: () => void;
   onRemove: () => void;
   onReset: () => void;
-  onStay: () => void;
-  onLeave: (to: string) => void;
 };
 
 export const EditorDialogs = ({
   graph,
   dialog,
   removable,
-  leaving,
   onClose,
   onRemove,
-  onReset,
-  onStay,
-  onLeave
+  onReset
 }: EditorDialogsProps) => {
   const label = kindLabel(graph.kind);
   return (
@@ -65,21 +59,6 @@ export const EditorDialogs = ({
       >
         Are you sure? Your draft of {graph.name} is replaced with the newest base and your changes
         in it are lost. Published versions of your copy stay as they are until you publish again.
-      </ConfirmDialog>
-      <ConfirmDialog
-        open={leaving !== null}
-        title="Discard Unsaved Changes?"
-        intent="danger"
-        confirmLabel="Discard Changes"
-        confirmIcon={Trash2Icon}
-        dismissLabel="Keep Editing"
-        onClose={onStay}
-        onConfirm={() => {
-          onStay();
-          if (leaving) onLeave(leaving);
-        }}
-      >
-        Your changes to {graph.name} have not been saved. Leave anyway and lose them?
       </ConfirmDialog>
     </>
   );

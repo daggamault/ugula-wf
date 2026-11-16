@@ -26,7 +26,6 @@ describe('createWorkflowsClient', () => {
     });
     await client.publish('g');
     await client.override('g');
-    await client.override('g', 'organization');
     await client.compare('g');
     await client.rebase('g', 'keep');
     await client.remove('a/b');
@@ -38,7 +37,6 @@ describe('createWorkflowsClient', () => {
       'POST /api/graphs',
       'PUT /api/graphs/g/draft',
       'POST /api/graphs/g/publish',
-      'POST /api/graphs/g/override',
       'POST /api/graphs/g/override',
       'GET /api/graphs/g/compare',
       'POST /api/graphs/g/rebase',
@@ -62,7 +60,7 @@ describe('createWorkflowsClient', () => {
     await client.tables.version('t', 2);
     await client.tables.saveDraft('t', { rows: [] });
     await client.tables.publish('t');
-    await client.tables.override('t', 'organization');
+    await client.tables.override('t');
     await client.tables.remove('t');
     assert.deepEqual(calls, [
       'GET /api/graphs/map',

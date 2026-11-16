@@ -1,5 +1,5 @@
 import { type GraphDef, type Issue, isPassThrough, type NodeDef, tableRefOf } from '@ugula/graph';
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { isApiError, messageOf } from '../../shared/api.ts';
 import { createEditTracker } from '../../shared/edit-tracker.ts';
 import { type Catalog, createCatalog, type PaletteEntry } from '../../shared/graph/catalog.ts';
@@ -12,7 +12,7 @@ import {
 } from '../../shared/graph/flow.ts';
 import { GraphCanvas } from '../../shared/graph/graph-canvas.tsx';
 import { type Live, useReconnect } from '../../shared/live.ts';
-import { navigate, useLocation } from '../../shared/router.tsx';
+import { navigate, useLocation, useUnsavedChanges } from '../../shared/router.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Breadcrumbs } from '../../shared/ui/breadcrumbs.tsx';
 import { Drawer } from '../../shared/ui/drawer.tsx';
@@ -20,23 +20,17 @@ import { PageFailure, PageLoading, WorkspaceHeader } from '../../shared/ui/page.
 import { useToast } from '../../shared/ui/toast.tsx';
 import { hrefWith } from '../../shared/url-state.ts';
 import { useResource } from '../../shared/use-resource.ts';
-import type {
-  EditScope,
-  EffectiveTable,
-  GraphComparison,
-  GraphDetail,
-  WorkflowsClient
-} from './client.ts';
+import type { EffectiveTable, GraphComparison, GraphDetail, WorkflowsClient } from './client.ts';
 import { ComparePanel } from './compare-panel.tsx';
 import { type Busy, EditorActions } from './editor-actions.tsx';
 import { type EditorDialog, EditorDialogs } from './editor-dialogs.tsx';
 import { documentationHints, EditorNotices } from './editor-notices.tsx';
-import { GraphSettings } from './graph-settings.tsx';
 import { NodeInspector } from './node-inspector.tsx';
 import { NodePicker } from './node-picker.tsx';
 import { diffGraphs } from './override-diff.ts';
 import { CopyBadge, RoleBadge, ScopeBadge, StaleBadge, scopeLabel } from './scope-badges.tsx';
-import { graphPath, type TrailStep } from './trail.ts';
+import { SignaturePanel } from './signature-panel.tsx';
+import { graphPath, type TrailStep, VERSION_PARAMS } from './trail.ts';
 import { kindLabel } from './workflows-page.tsx';
 
 type EditorPageProps = {
@@ -60,16 +54,6 @@ type EditorViewProps = {
   comparison: GraphComparison | null;
   tables: readonly EffectiveTable[];
   onRebased: () => void;
-};
-
-export const leavingHref = (
-  target: Pick<Element, 'closest'>,
-  path: string,
-  e: Pick<MouseEvent, 'button' | 'metaKey' | 'ctrlKey' | 'shiftKey'>
-) => {
-  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return null;
-  const href = target.closest('a[href]')?.getAttribute('href');
-  return href && new URL(href, 'http://local').pathname !== path ? href : null;
 };
 
 const issuesByNode = (issues: readonly Issue[]) => {
@@ -123,34 +107,29 @@ export const EditorView = ({
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [dialog, setDialog] = useState<EditorDialog | null>(null);
-  const [leaving, setLeaving] = useState<string | null>(null);
   const location = useLocation();
   const panel = location.query.get('panel');
-  const isSettingsOpen = panel === 'settings';
+  const isCustom = graph.scope === 'agency' && !graph.overrides;
+  const isSignatureOpen = isCustom && panel === 'signature';
   const isCompareOpen = panel === 'compare';
   const showRemoved = location.query.get('removed') === 'shown';
-  const panelHref = (name: 'settings' | 'compare' | null) =>
+  const panelHref = (name: 'signature' | 'compare' | null) =>
     hrefWith(location.path, location.query, { panel: name });
-  const settingsHref = (open: boolean) => panelHref(open ? 'settings' : null);
   const select = (id: string | null) => {
     setSelected(id);
     if (id && panel) navigate(panelHref(null), { replace: true });
   };
   const [busy, setBusy] = useState<Busy | null>(null);
+  useUnsavedChanges(dirty, VERSION_PARAMS);
   const [error, setError] = useState('');
   const notify = useToast();
-  const leave = (to: string) => (dirty ? setLeaving(to) : navigate(to));
-  const guardLinks = (e: MouseEvent) => {
-    const to = dirty ? leavingHref(e.target as Element, location.path, e) : null;
-    if (!to) return;
-    e.preventDefault();
-    setLeaving(to);
-  };
   const openNode = (id: string) => {
     const inst = def.nodes.find((n) => n.id === id);
     const target = inst ? catalog.publishedOf(inst) : undefined;
     if (target) {
-      leave(graphPath(target.graph_id, target.version, [...trail, { graphId: graph.id, version }]));
+      navigate(
+        graphPath(target.graph_id, target.version, [...trail, { graphId: graph.id, version }])
+      );
     }
   };
   const parent = trail.at(-1);
@@ -211,7 +190,9 @@ export const EditorView = ({
             }
           : { title: `Draft v${saved.version} saved` }
       );
-      if (saved.version !== version) navigate(graphPath(graph.id, saved.version, trail));
+      if (saved.version !== version) {
+        navigate(graphPath(graph.id, saved.version, trail), { force: true });
+      }
       onSaved();
     });
 
@@ -226,11 +207,11 @@ export const EditorView = ({
       onSaved();
     });
 
-  const override = (scope: EditScope) =>
+  const override = () =>
     run('override', async () => {
-      const { id } = await client.override(graph.id, scope);
+      const { id } = await client.override(graph.id);
       notify({
-        title: `${graph.name} copied for ${scope === 'agency' ? 'this agency' : 'your organization'}`,
+        title: `${graph.name} copied for this agency`,
         description: `Change and publish the copy; new runs then use it everywhere this ${noun} is used.`
       });
       navigate(`/workflows/${id}`);
@@ -247,7 +228,7 @@ export const EditorView = ({
             }
           : { title: `${label} deleted`, description: `${graph.name} is gone.` }
       );
-      navigate(graph.overrides ? `/workflows/${graph.overrides}` : '/workflows');
+      navigate(graph.overrides ? `/workflows/${graph.overrides}` : '/workflows', { force: true });
     });
 
   const rebase = (mode: 'keep' | 'reset') =>
@@ -262,7 +243,7 @@ export const EditorView = ({
             }
           : { title: 'Started from the base', description: 'Your draft is the newest base again.' }
       );
-      navigate(`/workflows/${graph.id}`);
+      navigate(`/workflows/${graph.id}`, { force: true });
       onRebased();
     });
 
@@ -284,17 +265,17 @@ export const EditorView = ({
   const hints = editable ? documentationHints(def, catalog) : [];
   const isEmptySlot = graph.role === 'slot' && isPassThrough(def);
   const howTo = editable
-    ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them.'
+    ? 'Select a node to see what it does and set it up. Drag from one pin to another to connect them; drag the end of a wire off its pin, or Alt+click the pin, to disconnect it.'
     : graph.scope === 'system'
       ? graph.effectiveScope !== 'system'
         ? `Your ${scopeLabel(graph.effectiveScope).toLowerCase()} has its own copy of this built-in ${noun}; runs use it once it is published. Select a node to see what it does.`
-        : `Built-in ${noun}s are read-only. Override this one to change how your agency runs it.`
+        : `Built-in ${noun}s are read-only. Customize this one to change how your agency runs it.`
       : draft
         ? `Published versions are read-only. Open draft v${draft.version} to make changes.`
         : 'Published versions are read-only. Edit as a new draft to make changes.';
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col" onClickCapture={guardLinks}>
+    <section className="flex min-h-0 flex-1 flex-col">
       <WorkspaceHeader
         backTo={
           parent ? graphPath(parent.graphId, parent.version, trail.slice(0, -1)) : '/workflows'
@@ -323,7 +304,7 @@ export const EditorView = ({
             removable={removable}
             dirty={dirty}
             busy={busy}
-            settingsHref={settingsHref(!isSettingsOpen)}
+            signatureHref={isCustom ? panelHref(isSignatureOpen ? null : 'signature') : null}
             compareHref={
               comparison?.copiedFrom && graph.scope !== 'system'
                 ? panelHref(isCompareOpen ? null : 'compare')
@@ -341,7 +322,7 @@ export const EditorView = ({
             }
             onAdd={() => setDialog('add')}
             onArrange={() => change(arranged(def, catalog))}
-            onVersion={(v) => leave(graphPath(graph.id, v, trail))}
+            onVersion={(v) => navigate(graphPath(graph.id, v, trail))}
             onOverride={override}
             onRemove={() => setDialog('remove')}
             onSave={save}
@@ -352,38 +333,42 @@ export const EditorView = ({
       <p className="border-border bg-surface text-surface-fg-muted border-b px-4 py-2 text-xs">
         {howTo}
       </p>
-      <EditorNotices
-        error={error}
-        issues={graphIssues}
-        hints={hints}
-        base={baseUpdated ? (graph.is_stale ? 'stale' : 'updated') : null}
-        compareHref={panelHref('compare')}
-        emptySlot={isEmptySlot ? (graph.scope === 'system' ? 'system' : 'copy') : null}
-      />
-      <div className="relative min-h-0 flex-1">
-        <div className="absolute inset-0">
-          <GraphCanvas
-            def={def}
-            catalog={catalog}
-            issues={issuesByNode(issues)}
-            changes={changes}
-            {...(diff ? { changedEdges: diff.changedEdges } : {})}
-            {...(diff && showRemoved ? { removed: diff.removed } : {})}
-            selected={selected}
-            onSelect={select}
-            onOpen={openNode}
-            {...(editable ? { onChange: change } : {})}
+      <div className="relative flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <EditorNotices
+            error={error}
+            issues={graphIssues}
+            hints={hints}
+            base={baseUpdated ? (graph.is_stale ? 'stale' : 'updated') : null}
+            compareHref={panelHref('compare')}
+            emptySlot={isEmptySlot ? (graph.scope === 'system' ? 'system' : 'copy') : null}
           />
+          <div className="relative min-h-0 flex-1">
+            <div className="absolute inset-0">
+              <GraphCanvas
+                def={def}
+                catalog={catalog}
+                issues={issuesByNode(issues)}
+                changes={changes}
+                {...(diff ? { changedEdges: diff.changedEdges } : {})}
+                {...(diff && showRemoved ? { removed: diff.removed } : {})}
+                selected={selected}
+                onSelect={select}
+                onOpen={openNode}
+                {...(editable ? { onChange: change } : {})}
+              />
+            </div>
+          </div>
         </div>
-        {isSettingsOpen ? (
+        {isSignatureOpen ? (
           <Drawer width="lg">
-            <GraphSettings
+            <SignaturePanel
               key={version}
               kind={graph.kind}
               def={def}
               editable={editable}
               onChange={change}
-              onClose={() => navigate(settingsHref(false))}
+              onClose={() => navigate(panelHref(null))}
             />
           </Drawer>
         ) : isCompareOpen && comparison ? (
@@ -433,12 +418,9 @@ export const EditorView = ({
         graph={graph}
         dialog={dialog}
         removable={removable}
-        leaving={leaving}
         onClose={() => setDialog(null)}
         onRemove={() => void removeOverride()}
         onReset={() => void rebase('reset')}
-        onStay={() => setLeaving(null)}
-        onLeave={navigate}
       />
     </section>
   );

@@ -156,7 +156,7 @@ describe('createRunTx', () => {
     assert.deepEqual(await tx.insertChildren(parent, '7', 'v1', [{}]), ['v1']);
     const sqls = queries.map((q) => q.sql).join('\n');
     assert.ok(sqls.includes('insert into "notifications"'));
-    assert.ok(sqls.includes('order by g.agency_id is null, g.organization_id is null'));
+    assert.ok(sqls.includes('order by g.agency_id is null, v.version desc'));
     const find = queries.find((q) => q.sql.includes('from workflow_run_graphs p'));
     assert.ok(find?.parameters.includes('p') && find.parameters.includes('t'));
     await db.destroy();

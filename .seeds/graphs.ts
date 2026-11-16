@@ -25,7 +25,6 @@ const buildUpsertGraph = (db: Kysely<Database>, graph: SeedGraph) =>
   db
     .insertInto('graphs')
     .values({
-      organization_id: null,
       agency_id: null,
       key: graph.key,
       name: graph.name,
@@ -34,7 +33,7 @@ const buildUpsertGraph = (db: Kysely<Database>, graph: SeedGraph) =>
       description: graph.description
     })
     .onConflict((oc) =>
-      oc.columns(['organization_id', 'agency_id', 'key']).doUpdateSet({
+      oc.columns(['agency_id', 'key']).doUpdateSet({
         name: graph.name,
         kind: graph.kind,
         role: graph.role,
@@ -77,7 +76,7 @@ const findPublishedVersions = async (db: Kysely<Database>, keys: string[]) =>
         .selectFrom('graphs as g')
         .innerJoin('graph_versions as v', 'v.graph_id', 'g.id')
         .select(['g.key', (eb) => eb.fn.max('v.version').as('version')])
-        .where('g.organization_id', 'is', null)
+        .where('g.agency_id', 'is', null)
         .where('g.key', 'in', keys.length ? keys : [''])
         .where('v.published_at', 'is not', null)
         .groupBy('g.key')

@@ -7,7 +7,6 @@ const buildUpsertTable = (db: Kysely<Database>, table: SeedTable) =>
   db
     .insertInto('data_tables')
     .values({
-      organization_id: null,
       agency_id: null,
       key: table.key,
       name: table.name,
@@ -15,7 +14,7 @@ const buildUpsertTable = (db: Kysely<Database>, table: SeedTable) =>
       description: table.description
     })
     .onConflict((oc) =>
-      oc.columns(['organization_id', 'agency_id', 'key']).doUpdateSet({
+      oc.columns(['agency_id', 'key']).doUpdateSet({
         name: table.name,
         kind: table.kind,
         description: table.description,

@@ -12,7 +12,7 @@ import {
   updateTableDraft
 } from './queries.ts';
 
-const S = { agencyId: 'a-1', organizationId: 'o-1' };
+const S = { agencyId: 'a-1' };
 
 const flat = (text = '') => text.replace(/\s+/g, ' ');
 
@@ -77,7 +77,6 @@ describe('table queries', () => {
   it('writes tables, drafts with their contract and publishes once', async () => {
     const { db, queries } = createRecordingDb(() => [{ id: 'x', version: 1 }]);
     await insertTable(db, {
-      organizationId: 'o-1',
       agencyId: 'a-1',
       key: 'billing.codes',
       name: 'Codes',
@@ -94,7 +93,7 @@ describe('table queries', () => {
     await updateTableDraft(db, 'd1', LOOKUP);
     await publishTableVersion(db, 'd1');
     const [table, draft, update, publish] = queries;
-    assert.deepEqual(table?.parameters, ['o-1', 'a-1', 'billing.codes', 'Codes', 'lookup', '']);
+    assert.deepEqual(table?.parameters, ['a-1', 'billing.codes', 'Codes', 'lookup', '']);
     assert.deepEqual(draft?.parameters, [
       't1',
       1,

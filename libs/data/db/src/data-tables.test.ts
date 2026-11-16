@@ -13,16 +13,16 @@ import { createDummyDb, createRecordingDb } from './testing.ts';
 const flat = (text: string) => text.replace(/\s+/g, ' ');
 
 describe('data table queries', () => {
-  it('resolves a table from the agency, then its organization, then the system', async () => {
+  it('resolves a table from the agency, then the system', async () => {
     const db = createDummyDb();
     const compiled = sql`select ${resolvedTable('t-1', sql.lit('billing.base-rate'))}`.compile(db);
     const text = flat(compiled.sql);
-    assert.ok(
-      text.includes('order by t.agency_id is null, t.organization_id is null, v.version desc')
-    );
+    assert.ok(text.includes('order by t.agency_id is null, v.version desc'));
+    assert.ok(text.includes('st.agency_id is null'));
+    assert.ok(!text.includes('organization'));
     assert.ok(text.includes('(base.contract is null or v.contract = base.contract)'));
     assert.ok(text.includes('t.is_active and v.published_at is not null'));
-    assert.deepEqual(compiled.parameters, ['t-1', 't-1']);
+    assert.deepEqual(compiled.parameters, ['t-1']);
     await db.destroy();
   });
 

@@ -16,7 +16,7 @@ import {
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
 import { pendingActionMessage } from '../../shared/ui/disabled-reason.tsx';
 import { SelectControl } from '../../shared/ui/select.tsx';
-import type { EditScope, GraphDetail } from './client.ts';
+import type { GraphDetail } from './client.ts';
 import { scopeLabel } from './scope-badges.tsx';
 import { kindLabel } from './workflows-page.tsx';
 
@@ -29,13 +29,13 @@ type EditorActionsProps = {
   removable: boolean;
   dirty: boolean;
   busy: Busy | null;
-  settingsHref: string;
+  signatureHref: string | null;
   compareHref: string | null;
   removed: { href: string; shown: boolean } | null;
   onAdd: () => void;
   onArrange: () => void;
   onVersion: (version: number) => void;
-  onOverride: (scope: EditScope) => void;
+  onOverride: () => void;
   onRemove: () => void;
   onSave: () => void;
   onPublish: () => void;
@@ -48,7 +48,7 @@ export const EditorActions = ({
   removable,
   dirty,
   busy,
-  settingsHref,
+  signatureHref,
   compareHref,
   removed,
   onAdd,
@@ -76,10 +76,12 @@ export const EditorActions = ({
           Arrange Nodes
         </Button>
       ) : null}
-      <ButtonLink to={settingsHref} variant="outline">
-        <SlidersHorizontalIcon aria-hidden="true" className="size-4" />
-        {label} Settings
-      </ButtonLink>
+      {signatureHref ? (
+        <ButtonLink to={signatureHref} variant="outline">
+          <SlidersHorizontalIcon aria-hidden="true" className="size-4" />
+          Inputs and Outputs
+        </ButtonLink>
+      ) : null}
       <div className="w-36">
         <SelectControl
           aria-label="Version"
@@ -97,24 +99,10 @@ export const EditorActions = ({
           Open {scopeLabel(graph.effectiveScope)} Copy
         </ButtonLink>
       ) : null}
-      {graph.canOverride.organization && graph.effectiveScope === 'system' ? (
-        <Button
-          variant="outline"
-          isPending={busy === 'override'}
-          onClick={() => onOverride('organization')}
-        >
+      {graph.canOverride && graph.effectiveScope === 'system' ? (
+        <Button variant="outline" isPending={busy === 'override'} onClick={onOverride}>
           <CopyPlusIcon aria-hidden="true" className="size-4" />
-          Override for Organization
-        </Button>
-      ) : null}
-      {graph.canOverride.agency && graph.effectiveScope !== 'agency' ? (
-        <Button
-          variant="outline"
-          isPending={busy === 'override'}
-          onClick={() => onOverride('agency')}
-        >
-          <CopyPlusIcon aria-hidden="true" className="size-4" />
-          Override for This Agency
+          Customize
         </Button>
       ) : null}
       {compareHref ? (

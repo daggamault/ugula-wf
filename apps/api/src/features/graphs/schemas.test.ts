@@ -4,7 +4,6 @@ import * as v from 'valibot';
 import {
   createGraphSchema,
   definitionSchema,
-  overrideSchema,
   rebaseSchema,
   searchGraphsQuery,
   versionParam
@@ -12,15 +11,14 @@ import {
 import { templateFor } from './service.ts';
 
 describe('graph schemas', () => {
-  it('normalizes keys, reserves the std namespace and creates for the agency by default', () => {
+  it('normalizes keys, reserves the std namespace and ignores a scope', () => {
     assert.deepEqual(
       v.parse(createGraphSchema, { key: ' Billing.Match-Patient ', name: 'Match', kind: 'node' }),
       {
         key: 'billing.match-patient',
         name: 'Match',
         kind: 'node',
-        description: '',
-        scope: 'agency'
+        description: ''
       }
     );
     for (const key of ['std.thing', 'nodot', '1bad.key', 'a..b']) {
@@ -31,11 +29,7 @@ describe('graph schemas', () => {
       );
     }
     const base = { key: 'a.b', name: 'X', kind: 'node' };
-    assert.equal(
-      v.parse(createGraphSchema, { ...base, scope: 'organization' }).scope,
-      'organization'
-    );
-    assert.equal(v.safeParse(createGraphSchema, { ...base, scope: 'system' }).success, false);
+    assert.ok(!('scope' in v.parse(createGraphSchema, { ...base, scope: 'organization' })));
   });
 
   it('bounds names, descriptions and definition size', () => {
@@ -62,13 +56,8 @@ describe('graph schemas', () => {
   });
 });
 
-describe('graph override and rebase schemas', () => {
-  it('override for the agency by default and rebase by keeping or resetting', () => {
-    assert.deepEqual(v.parse(overrideSchema, {}), { scope: 'agency' });
-    assert.deepEqual(v.parse(overrideSchema, { scope: 'organization' }), {
-      scope: 'organization'
-    });
-    assert.equal(v.safeParse(overrideSchema, { scope: 'system' }).success, false);
+describe('graph rebase schema', () => {
+  it('rebases by keeping or resetting', () => {
     assert.deepEqual(v.parse(rebaseSchema, { mode: 'keep' }), { mode: 'keep' });
     assert.deepEqual(v.parse(rebaseSchema, { mode: 'reset' }), { mode: 'reset' });
     assert.equal(v.safeParse(rebaseSchema, {}).success, false);

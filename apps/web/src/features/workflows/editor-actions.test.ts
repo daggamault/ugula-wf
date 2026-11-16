@@ -18,7 +18,7 @@ const detail = (published: boolean, overrides: string | null = null): GraphDetai
     overrides,
     is_stale: false,
     canEdit: true,
-    canOverride: { organization: false, agency: false },
+    canOverride: false,
     effectiveId: 'g1',
     effectiveScope: 'agency'
   },
@@ -45,7 +45,7 @@ const render = (d: GraphDetail, props: Partial<Parameters<typeof EditorActions>[
       removable: true,
       dirty: false,
       busy: null,
-      settingsHref: '/?panel=settings',
+      signatureHref: '/?panel=signature',
       compareHref: null,
       removed: null,
       onAdd: noop,
@@ -62,7 +62,13 @@ const render = (d: GraphDetail, props: Partial<Parameters<typeof EditorActions>[
 describe('EditorActions', () => {
   it('edits, saves and publishes a draft, and deletes a custom graph', () => {
     const html = render(detail(false));
-    for (const label of ['Add Node', 'Arrange Nodes', 'Workflow Settings', '>Save<', '>Publish<']) {
+    for (const label of [
+      'Add Node',
+      'Arrange Nodes',
+      'Inputs and Outputs',
+      '>Save<',
+      '>Publish<'
+    ]) {
       assert.ok(html.includes(label), label);
     }
     assert.ok(html.includes('Delete Workflow') && !html.includes('Run<'));
@@ -70,12 +76,31 @@ describe('EditorActions', () => {
 
   it('offers a new draft, a run, compare and removed nodes on a published override', () => {
     const html = render(detail(true, 'g0'), {
+      signatureHref: null,
       compareHref: '/?panel=compare',
       removed: { href: '/?removed=shown', shown: false }
     });
     assert.ok(html.includes('Edit as New Draft') && html.includes('href="/runs/new?graph=g1"'));
     assert.ok(html.includes('Remove Override') && !html.includes('Delete Workflow'));
     assert.ok(html.includes('href="/?panel=compare"') && html.includes('Show Removed'));
-    assert.ok(!html.includes('Add Node'));
+    assert.ok(!html.includes('Add Node') && !html.includes('Inputs and Outputs'));
+  });
+
+  it('customizes a built-in graph for the current agency', () => {
+    const base = detail(true);
+    const system: GraphDetail = {
+      ...base,
+      graph: {
+        ...base.graph,
+        scope: 'system',
+        canEdit: false,
+        canOverride: true,
+        effectiveScope: 'system'
+      }
+    };
+    const html = render(system, { signatureHref: null, removable: false });
+    assert.ok(html.includes('>Customize<') && !html.includes('Organization'));
+    const copied = render({ ...system, graph: { ...system.graph, effectiveScope: 'agency' } });
+    assert.ok(!copied.includes('>Customize<'));
   });
 });

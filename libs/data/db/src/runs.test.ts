@@ -97,7 +97,7 @@ describe('signalRuns', () => {
 });
 
 describe('resolveWorkflowVersion', () => {
-  it('takes the newest visible version, then resolves it to the agency or organization override', async () => {
+  it('takes the newest visible version, then resolves it to the agency override', async () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.includes('from unnest')
         ? [{ id: 'v-agency', key: 'billing.claim', version: 2, definition: {} }]
@@ -108,12 +108,8 @@ describe('resolveWorkflowVersion', () => {
       version: 2
     });
     const [latest, resolve] = queries;
-    assert.ok(
-      latest?.sql.includes(
-        'order by g.agency_id is not null, g.organization_id is not null, v.version desc'
-      )
-    );
-    assert.deepEqual(latest?.parameters, ['billing.claim', 't', 't']);
+    assert.ok(latest?.sql.includes('order by g.agency_id is not null, v.version desc'));
+    assert.deepEqual(latest?.parameters, ['billing.claim', 't']);
     assert.deepEqual(resolve?.parameters.slice(0, 2), [['billing.claim'], [2]]);
     await db.destroy();
   });

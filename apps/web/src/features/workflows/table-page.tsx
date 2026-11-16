@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { createEditTracker } from '../../shared/edit-tracker.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
-import { navigate } from '../../shared/router.tsx';
+import { navigate, useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
 import { Button, ButtonLink } from '../../shared/ui/button.tsx';
@@ -23,10 +23,11 @@ import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { SelectControl } from '../../shared/ui/select.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { useResource } from '../../shared/use-resource.ts';
-import type { EditScope, TableComparison, TableDetail, WorkflowsClient } from './client.ts';
+import type { TableComparison, TableDetail, WorkflowsClient } from './client.ts';
 import { CopyBadge, ScopeBadge, StaleBadge, scopeLabel } from './scope-badges.tsx';
 import { DecisionTableEditor, LookupTableEditor } from './table-editors.tsx';
 import { TABLES_PATH, tableKindLabel } from './tables-page.tsx';
+import { VERSION_PARAMS } from './trail.ts';
 
 type TableViewProps = {
   detail: TableDetail;
@@ -62,6 +63,7 @@ export const TableView = ({
   const [error, setError] = useState('');
   const [confirm, setConfirm] = useState(false);
   const notify = useToast();
+  useUnsavedChanges(dirty, VERSION_PARAMS);
   const base = table.scope === 'system' ? undefined : comparison?.copiedFrom?.definition;
   const changed = base !== undefined && !deepEqual(base, def);
   const baseUpdated = table.scope !== 'system' && (table.is_stale || !!comparison?.baseChanged);
@@ -84,7 +86,7 @@ export const TableView = ({
       const saved = await client.tables.saveDraft(table.id, def);
       if (unchanged()) setDirty(false);
       notify({ title: `Draft v${saved.version} saved` });
-      if (saved.version !== version) navigate(tablePath(table.id, saved.version));
+      if (saved.version !== version) navigate(tablePath(table.id, saved.version), { force: true });
       onSaved();
     });
   const publish = () =>
@@ -96,11 +98,11 @@ export const TableView = ({
       });
       onSaved();
     });
-  const override = (scope: EditScope) =>
+  const override = () =>
     run('override', async () => {
-      const { id } = await client.tables.override(table.id, scope);
+      const { id } = await client.tables.override(table.id);
       notify({
-        title: `${table.name} copied for ${scope === 'agency' ? 'this agency' : 'your organization'}`,
+        title: `${table.name} copied for this agency`,
         description: 'Change and publish the copy; new runs then use it in every workflow.'
       });
       navigate(tablePath(id));
@@ -110,9 +112,9 @@ export const TableView = ({
       await client.tables.remove(table.id);
       notify({
         title: 'Override removed',
-        description: `New runs use the ${table.name} below this copy again.`
+        description: `New runs use the built-in ${table.name} again.`
       });
-      navigate(table.overrides ? tablePath(table.overrides) : TABLES_PATH);
+      navigate(table.overrides ? tablePath(table.overrides) : TABLES_PATH, { force: true });
     });
 
   return (
@@ -153,24 +155,10 @@ export const TableView = ({
               Open {scopeLabel(table.effectiveScope)} Copy
             </ButtonLink>
           ) : null}
-          {table.canOverride.organization && table.effectiveScope === 'system' ? (
-            <Button
-              variant="outline"
-              isPending={busy === 'override'}
-              onClick={() => override('organization')}
-            >
+          {table.canOverride && table.effectiveScope === 'system' ? (
+            <Button variant="outline" isPending={busy === 'override'} onClick={override}>
               <CopyPlusIcon aria-hidden="true" className="size-4" />
-              Override for Organization
-            </Button>
-          ) : null}
-          {table.canOverride.agency && table.effectiveScope !== 'agency' ? (
-            <Button
-              variant="outline"
-              isPending={busy === 'override'}
-              onClick={() => override('agency')}
-            >
-              <CopyPlusIcon aria-hidden="true" className="size-4" />
-              Override for This Agency
+              Customize
             </Button>
           ) : null}
           {table.overrides && table.canEdit ? (
@@ -261,7 +249,7 @@ export const TableView = ({
           editable
             ? 'Change rows freely; keep the inputs and outputs so every workflow that uses this table still fits.'
             : table.scope === 'system'
-              ? 'Built-in tables are read-only. Override this one to change its rows for your organization or agency.'
+              ? 'Built-in tables are read-only. Customize this one to change its rows for your agency.'
               : draft
                 ? `Published versions are read-only. Open draft v${draft.version} to make changes.`
                 : 'Published versions are read-only. Edit as a new draft to make changes.'

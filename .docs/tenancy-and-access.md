@@ -4,15 +4,15 @@
 
 - An **organization** is the customer: an EMS service, a county, or a billing company.
 - An **agency** belongs to one organization and owns the billing data: claims, patients, imports, payer files, payers, fees, the billing profile and tasks.
-- Workflows and shared tables can be customized for the whole organization (owners only) or for one agency (see [Overrides](overrides.md)). In an agency, `workflows:update` may override rules, Agency Rule slots and tables; `workflows:manage` is needed for stages and workflows.
+- Workflows and shared tables are built in or belong to one agency; an agency can customize them (see [Overrides](overrides.md)), and nothing is customized for a whole organization. In an agency, `workflows:update` may override rules, Agency Rule slots and tables; `workflows:manage` is needed for stages and workflows.
 
 ## Users
 
-| Type                              | Who                           | Access                                                                       |
-| --------------------------------- | ----------------------------- | ---------------------------------------------------------------------------- |
-| `platform`                        | Ugula staff                   | Every agency, every permission                                               |
-| `organization` owner (`is_owner`) | The customer's administrators | Every agency in their organization, every permission, organization workflows |
-| `organization` member             | Everyone else                 | Only agencies they have a membership in, with that membership's role         |
+| Type                              | Who                           | Access                                                               |
+| --------------------------------- | ----------------------------- | -------------------------------------------------------------------- |
+| `platform`                        | Ugula staff                   | Every agency, every permission                                       |
+| `organization` owner (`is_owner`) | The customer's administrators | Every agency in their organization, every permission                 |
+| `organization` member             | Everyone else                 | Only agencies they have a membership in, with that membership's role |
 
 A user belongs to at most one organization. Email addresses are unique and stored lowercase.
 
@@ -71,13 +71,13 @@ A human task can name the permission whoever completes it needs (`permission` in
 
 ## Guards
 
-| Guard                 | File                            | Does                                                           |
-| --------------------- | ------------------------------- | -------------------------------------------------------------- |
-| `requireAuth`         | `apps/api/src/shared/auth.ts`   | 401 without a valid session                                    |
-| `requireAgencyAccess` | `apps/api/src/shared/access.ts` | 404 unless the user may open `:agencyId`; sets `c.var.access`  |
-| `guardMethods`        | same                            | Maps GET/POST/PUT/DELETE on a router to permissions            |
-| `requirePermission`   | same                            | One permission for one route                                   |
-| `canEditScope`        | `apps/api/src/shared/scopes.ts` | Who may edit organization or agency graphs and tables, by role |
+| Guard                 | File                            | Does                                                          |
+| --------------------- | ------------------------------- | ------------------------------------------------------------- |
+| `requireAuth`         | `apps/api/src/shared/auth.ts`   | 401 without a valid session                                   |
+| `requireAgencyAccess` | `apps/api/src/shared/access.ts` | 404 unless the user may open `:agencyId`; sets `c.var.access` |
+| `guardMethods`        | same                            | Maps GET/POST/PUT/DELETE on a router to permissions           |
+| `requirePermission`   | same                            | One permission for one route                                  |
+| `canEditScope`        | `apps/api/src/shared/scopes.ts` | Who may edit agency graphs and tables, by permission tier     |
 
 Both checks come from `libs/data/db/src/access.ts`: `findAgencyAccess` for the API and `canOpenAgency`, the same query, for the SSE stream (`/events?agency=<id>`) before it streams an agency's events.
 

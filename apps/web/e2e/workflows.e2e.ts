@@ -135,27 +135,6 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await heading(s.page, 'Encounter to Claim').waitFor();
   });
 
-  it('opens the workflow settings panel with its paths, pins and variables', async () => {
-    await editGraph('Process Item');
-    await s.page.getByRole('link', { name: 'Workflow Settings' }).click();
-    await s.page.waitForURL(/[?&]panel=settings/);
-    const panel = s.page.getByRole('complementary', { name: 'Workflow Settings' });
-    for (const title of ['Paths', 'Variables']) await section(s.page, title).first().waitFor();
-    await panel.getByRole('textbox', { name: 'Name' }).first().waitFor();
-    assert.equal(
-      await panel.getByRole('textbox', { name: 'Name' }).first().isDisabled(),
-      true,
-      'a built-in workflow is read only'
-    );
-    await panel.getByRole('button', { name: 'Close Settings' }).click();
-    await until(
-      s.page,
-      async () => new URL(s.page.url()).searchParams.get('panel'),
-      (p) => p === null,
-      'the settings panel to close'
-    );
-  });
-
   it('starts a run with its inputs and watches it complete', async () => {
     await startProcessItem(12.5);
     await s.page.getByText('Completed').first().waitFor();
@@ -217,11 +196,16 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
 
   it('overrides a built-in workflow, removes a node, compares and publishes the copy, then removes it', async () => {
     await editGraph('Process Item');
-    await s.page.getByRole('button', { name: 'Override for This Agency' }).click();
+    await s.page.getByRole('button', { name: 'Customize', exact: true }).click();
     await toast(s.page, 'Process Item copied for this agency');
     await s.page.getByRole('main').getByText('Agency', { exact: true }).waitFor();
     assert.equal(
-      await s.page.getByRole('button', { name: 'Override for This Agency' }).count(),
+      await s.page.getByRole('link', { name: 'Inputs and Outputs' }).count(),
+      0,
+      'an override keeps the inputs and outputs of the built-in workflow'
+    );
+    assert.equal(
+      await s.page.getByRole('button', { name: 'Customize', exact: true }).count(),
       0,
       'an agency copy cannot be overridden for the agency again'
     );
@@ -275,7 +259,7 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await toast(s.page, 'Override removed');
     await heading(s.page, 'Process Item').waitFor();
     await s.page.getByRole('main').getByText('Built-in', { exact: true }).waitFor();
-    await s.page.getByRole('button', { name: 'Override for This Agency' }).waitFor();
+    await s.page.getByRole('button', { name: 'Customize', exact: true }).waitFor();
     assert.equal(
       (await graphs('mine', 'dev.process-item')).items.filter((g) => g.overrides).length,
       0
@@ -295,6 +279,25 @@ describe('workflows, runs and imports', { timeout: SUITE_MS }, () => {
     await s.page.getByLabel('Key').fill(workflowKey);
     await s.page.getByRole('button', { name: 'Create Workflow' }).click();
     await heading(s.page, `E2E ${workflowKey}`).waitFor();
+    await s.page.getByRole('link', { name: 'Inputs and Outputs' }).click();
+    await s.page.waitForURL(/[?&]panel=signature/);
+    const panel = s.page.getByRole('complementary', { name: 'Workflow Inputs and Outputs' });
+    for (const title of ['Paths', 'Inputs', 'Outputs', 'Variables']) {
+      await section(s.page, title).first().waitFor();
+    }
+    await panel.getByRole('button', { name: 'Add Input' }).click();
+    assert.equal(
+      await panel.getByRole('textbox', { name: 'Name' }).first().isDisabled(),
+      false,
+      'a custom workflow defines its own inputs'
+    );
+    await panel.getByRole('button', { name: 'Close Inputs and Outputs' }).click();
+    await until(
+      s.page,
+      async () => new URL(s.page.url()).searchParams.get('panel'),
+      (p) => p === null,
+      'the inputs and outputs panel to close'
+    );
     await s.page.getByRole('button', { name: 'Add Node' }).click();
     const picker = s.page.getByRole('dialog', { name: 'Add Node' });
     await picker.getByLabel('Search').fill('round');

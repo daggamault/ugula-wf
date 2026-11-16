@@ -6,7 +6,6 @@ import { respond } from '../../shared/result.ts';
 import {
   createGraphSchema,
   definitionSchema,
-  overrideSchema,
   rebaseSchema,
   searchGraphsQuery,
   versionParam
@@ -53,20 +52,8 @@ export const createGraphRoutes = (service: GraphService) =>
     .post('/:id/publish', sValidator('param', idParam, invalidRequest), async (c) =>
       respond(c, await service.publish(c.get('access'), c.req.valid('param').id))
     )
-    .post(
-      '/:id/override',
-      sValidator('param', idParam, invalidRequest),
-      sValidator('json', overrideSchema, invalidRequest),
-      async (c) =>
-        respond(
-          c,
-          await service.override(
-            c.get('access'),
-            c.req.valid('param').id,
-            c.req.valid('json').scope
-          ),
-          201
-        )
+    .post('/:id/override', sValidator('param', idParam, invalidRequest), async (c) =>
+      respond(c, await service.override(c.get('access'), c.req.valid('param').id), 201)
     )
     .post(
       '/:id/rebase',

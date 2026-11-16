@@ -5,9 +5,6 @@ export const TABLE_PUBLISHED_IMMUTABLE_TRIGGER = 'data_table_versions_published_
 
 export type RunTableRef = { key: string; id: string };
 
-const organizationOf = (agencyId: string) =>
-  sql`(select a.organization_id from agencies a where a.id = ${agencyId}::uuid)`;
-
 export const resolvedTable = (agencyId: string, key: RawBuilder<unknown>) =>
   sql<{ id: string }>`(
     select v.id
@@ -17,7 +14,7 @@ export const resolvedTable = (agencyId: string, key: RawBuilder<unknown>) =>
       select sv.contract
       from data_tables st
       join data_table_versions sv on sv.table_id = st.id
-      where st.key = t.key and st.organization_id is null and sv.published_at is not null
+      where st.key = t.key and st.agency_id is null and sv.published_at is not null
       order by sv.version desc
       limit 1
     ) base on true
@@ -25,16 +22,13 @@ export const resolvedTable = (agencyId: string, key: RawBuilder<unknown>) =>
       and t.is_active
       and v.published_at is not null
       and (
-        t.organization_id is null
+        t.agency_id is null
         or (
-          (
-            t.agency_id = ${agencyId}::uuid
-            or (t.agency_id is null and t.organization_id = ${organizationOf(agencyId)})
-          )
+          t.agency_id = ${agencyId}::uuid
           and (base.contract is null or v.contract = base.contract)
         )
       )
-    order by t.agency_id is null, t.organization_id is null, v.version desc
+    order by t.agency_id is null, v.version desc
     limit 1
   )`;
 

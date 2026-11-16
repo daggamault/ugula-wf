@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as v from 'valibot';
-import {
-  overrideTableSchema,
-  searchTablesQuery,
-  tableDefinitionSchema,
-  tableVersionParam
-} from './schemas.ts';
+import { searchTablesQuery, tableDefinitionSchema, tableVersionParam } from './schemas.ts';
 
 describe('table schemas', () => {
   it('pages tables and shows every table by default', () => {
@@ -21,9 +16,7 @@ describe('table schemas', () => {
     assert.equal(v.parse(searchTablesQuery, { show: 'customized' }).show, 'customized');
   });
 
-  it('overrides for the agency by default and limits the size of a table', () => {
-    assert.deepEqual(v.parse(overrideTableSchema, {}), { scope: 'agency' });
-    assert.equal(v.safeParse(overrideTableSchema, { scope: 'system' }).success, false);
+  it('limits the size of a table', () => {
     assert.equal(v.safeParse(tableDefinitionSchema, { definition: { rows: [] } }).success, true);
     assert.equal(
       v.safeParse(tableDefinitionSchema, { definition: 'x'.repeat(600_000) }).success,

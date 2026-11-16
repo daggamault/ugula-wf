@@ -71,11 +71,7 @@ export const TableReference = ({
           Open Table
         </ButtonLink>
         {table.scope === 'system' ? null : (
-          <Badge intent="custom">
-            {table.scope === 'agency'
-              ? 'Customized for This Agency'
-              : 'Customized for Organization'}
-          </Badge>
+          <Badge intent="custom">Customized for This Agency</Badge>
         )}
       </span>
     ) : (

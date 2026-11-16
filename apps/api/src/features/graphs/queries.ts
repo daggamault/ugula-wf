@@ -4,7 +4,6 @@ import { sql } from 'kysely';
 import { type Page, type PageRequest, paged } from '../../shared/paging.ts';
 import {
   isStaleIn,
-  type Owner,
   overriddenByIn,
   overridesIn,
   rankOf,
@@ -123,7 +122,7 @@ export const searchGraphs = async (
     .where(visible('g', s));
   if (f.show === 'workflows') q = q.where('g.kind', '=', 'workflow');
   if (f.show === 'blocks') q = q.where('g.kind', '!=', 'workflow');
-  if (f.show === 'mine') q = q.where('g.organization_id', 'is not', null);
+  if (f.show === 'mine') q = q.where('g.agency_id', 'is not', null);
   if (f.show === 'customized') {
     q = q.where((eb) =>
       eb.or([eb(overriddenBy(s), 'is not', null), eb(overridesOf(s), 'is not', null)])
@@ -144,7 +143,6 @@ export const findGraph = (db: Db, s: ScopeIds, id: string) =>
     .selectFrom('graphs as g')
     .select([
       'g.id',
-      'g.organization_id',
       'g.agency_id',
       'g.key',
       'g.name',
@@ -181,8 +179,7 @@ export const listVersions = (db: Db, graphId: string) =>
 export const insertGraph = (
   db: Db,
   input: {
-    organizationId: string;
-    agencyId: string | null;
+    agencyId: string;
     key: string;
     name: string;
     kind: GraphKind;
@@ -193,7 +190,6 @@ export const insertGraph = (
   db
     .insertInto('graphs')
     .values({
-      organization_id: input.organizationId,
       agency_id: input.agencyId,
       key: input.key,
       name: input.name,
@@ -273,7 +269,7 @@ export const listPublishedNodes = (db: Db, s: ScopeIds) =>
     .where(visible('g', s))
     .where((eb) =>
       eb.or([
-        eb('g.organization_id', 'is', null),
+        eb('g.agency_id', 'is', null),
         eb.not(
           eb.exists(
             eb
@@ -294,11 +290,11 @@ export const deleteGraph = (db: Db, id: string) =>
   db
     .deleteFrom('graphs')
     .where('id', '=', id)
-    .where('organization_id', 'is not', null)
+    .where('agency_id', 'is not', null)
     .returning('id')
     .executeTakeFirst();
 
-export const listDependents = async (db: Db, owner: Owner, key: string, graphId: string) =>
+export const listDependents = async (db: Db, s: ScopeIds, key: string, graphId: string) =>
   (
     await sql<{ name: string }>`
       select distinct g.name
@@ -311,15 +307,14 @@ export const listDependents = async (db: Db, owner: Owner, key: string, graphId:
       ) newest on true
       where g.id <> ${graphId}::uuid
         and g.is_active
-        and g.organization_id = ${owner.organizationId}::uuid
-        and (${owner.agencyId}::uuid is null or g.agency_id = ${owner.agencyId}::uuid)
+        and g.agency_id = ${s.agencyId}::uuid
         and exists (
           select 1 from unnest(newest.dependencies) d where split_part(d, '@', 1) = ${key}
         )
       order by g.name`.execute(db)
   ).rows;
 
-export const findVisibleTableKeys = async (db: Db, s: Owner, keys: string[]) =>
+export const findVisibleTableKeys = async (db: Db, s: ScopeIds, keys: string[]) =>
   keys.length
     ? (
         await db

@@ -7,6 +7,8 @@ export const parseTrail = (raw: string | null): TrailStep[] =>
     return graphId && Number.isInteger(version) && version > 0 ? [{ graphId, version }] : [];
   });
 
+export const VERSION_PARAMS = ['version'];
+
 export const graphPath = (graphId: string, version: number, trail: readonly TrailStep[] = []) =>
   `/workflows/${graphId}?version=${version}${
     trail.length ? `&trail=${trail.map((s) => `${s.graphId}:${s.version}`).join(',')}` : ''

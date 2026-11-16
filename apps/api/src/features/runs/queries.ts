@@ -23,14 +23,7 @@ export const findPublishedVersion = (db: Db, s: ScopeIds, graphId: string, versi
   const base = db
     .selectFrom('graph_versions as gv')
     .innerJoin('graphs as g', 'g.id', 'gv.graph_id')
-    .select([
-      'gv.id',
-      'gv.version',
-      'g.key',
-      sql<boolean>`g.organization_id is null or (g.agency_id is null and not exists (
-        select 1 from graphs s where s.key = g.key and s.organization_id is null
-      ))`.as('base')
-    ])
+    .select(['gv.id', 'gv.version', 'g.key', sql<boolean>`g.agency_id is null`.as('base')])
     .where('g.id', '=', graphId)
     .where('g.kind', '=', 'workflow')
     .where('g.is_active', '=', true)

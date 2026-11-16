@@ -25,11 +25,7 @@ describe('resolveWorkflowVersion', () => {
     });
     const [latest, resolved] = queries.map((q) => ({ ...q, sql: q.sql.replace(/\s+/g, ' ') }));
     assert.ok(latest?.sql.includes("g.kind = 'workflow' and g.is_active"));
-    assert.ok(
-      latest?.sql.includes(
-        'order by g.agency_id is not null, g.organization_id is not null, v.version desc'
-      )
-    );
+    assert.ok(latest?.sql.includes('order by g.agency_id is not null, v.version desc'));
     assert.deepEqual(latest?.parameters.slice(0, 2), ['billing.receive-nemsis-file', 't-1']);
     assert.deepEqual(resolved?.parameters.slice(0, 2), [['billing.receive-nemsis-file'], [3]]);
     await db.destroy();

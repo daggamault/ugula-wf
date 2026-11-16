@@ -24,34 +24,28 @@ const spec = (calls: string[]) => ({
 });
 
 describe('findBaseVersion', () => {
-  it('bases agency copies on the active organization copy, else on the built-in', async () => {
+  it('bases agency copies on the newest published built-in', async () => {
     const { db, queries } = createRecordingDb((q) => {
-      if (q.sql.startsWith('select "id", "is_active"')) return [{ id: 'org', is_active: false }];
       if (q.sql.startsWith('select "id" from')) return [{ id: 'sys' }];
       return [NEWEST];
     });
-    assert.deepEqual(
-      await findBaseVersion(db, 'data_tables', admin, { key: 'k', scope: 'agency' }),
-      NEWEST
-    );
+    assert.deepEqual(await findBaseVersion(db, 'data_tables', 'k'), NEWEST);
     assert.equal(queries.at(-1)?.parameters[0], 'sys');
-    await findBaseVersion(db, 'graphs', admin, { key: 'k', scope: 'organization' });
-    assert.ok(!queries.slice(3).some((q) => q.sql.startsWith('select "id", "is_active"')));
+    const none = createRecordingDb();
+    assert.equal(await findBaseVersion(none.db, 'graphs', 'k'), undefined);
+    assert.equal(none.queries.length, 1);
   });
 });
 
 describe('compareCopy', () => {
   it('has nothing to compare for built-ins and reports a base that moved on', async () => {
     const none = createRecordingDb();
-    assert.deepEqual(
-      await compareCopy(none.db, 'graphs', admin, { id: 'g', key: 'k', scope: 'system' }),
-      {
-        mine: null,
-        copiedFrom: null,
-        latest: null,
-        baseChanged: false
-      }
-    );
+    assert.deepEqual(await compareCopy(none.db, 'graphs', { id: 'g', key: 'k', scope: 'system' }), {
+      mine: null,
+      copiedFrom: null,
+      latest: null,
+      baseChanged: false
+    });
     assert.equal(none.queries.length, 0);
     const { db } = createRecordingDb((q) => {
       if (q.sql.startsWith('select "id", "version", "definition", "base_version_id"'))
@@ -62,11 +56,7 @@ describe('compareCopy', () => {
       if (q.sql.includes('"contract"')) return [NEWEST];
       return [];
     });
-    const out = await compareCopy(db, 'graphs', admin, {
-      id: 'g',
-      key: 'k',
-      scope: 'organization'
-    });
+    const out = await compareCopy(db, 'graphs', { id: 'g', key: 'k', scope: 'agency' });
     assert.deepEqual(out.copiedFrom, {
       ownerId: 'sys',
       scope: 'system',
@@ -87,30 +77,27 @@ describe('overrideCopy', () => {
       'data_tables',
       editor,
       { id: 't', key: 'k', scope: 'system' },
-      'agency',
       spec(calls)
     );
     assert.deepEqual(out, { ok: true, value: { id: 'new' } });
     assert.deepEqual(calls, ['copy', 'draft new from v-sys']);
   });
 
-  it('refuses narrower scopes, missing permission, a second copy and nothing published', async () => {
-    const item = { id: 't', key: 'k', scope: 'organization' as const };
+  it('refuses agency copies, missing permission, a second copy and nothing published', async () => {
+    const item = { id: 't', key: 'k', scope: 'system' as const };
     const { db } = createRecordingDb((q) =>
       q.sql.startsWith('select "id", "is_active"') ? [{ id: 'c', is_active: true }] : []
     );
-    const code = async (access = admin, scope: 'agency' | 'organization' = 'agency', d = db) => {
-      const r = await overrideCopy(d, 'data_tables', access, item, scope, spec([]));
+    const code = async (access = admin, d = db, it: typeof item | typeof copy = item) => {
+      const r = await overrideCopy(d, 'data_tables', access, it, spec([]));
       return r.ok ? 'ok' : r.failure.message;
     };
-    assert.equal(
-      await code(admin, 'organization'),
-      'This table cannot be overridden for the organization'
-    );
+    const copy = { id: 't', key: 'k', scope: 'agency' as const };
+    assert.equal(await code(admin, db, copy), 'This table cannot be overridden for the agency');
     assert.equal(await code(testAccess(['workflows:read'])), 'No');
     assert.equal(await code(), 'This table is already overridden');
     assert.equal(
-      await code(admin, 'agency', createRecordingDb().db),
+      await code(admin, createRecordingDb().db),
       'This table has no published version to start from'
     );
   });
@@ -120,13 +107,13 @@ describe('overrideCopy', () => {
       q.sql.startsWith('select "id", "is_active"') ? [{ id: 'c', is_active: false }] : []
     );
     const item = { id: 't', key: 'k', scope: 'system' as const };
-    assert.deepEqual(await overrideCopy(off.db, 'graphs', admin, item, 'agency', spec([])), {
+    assert.deepEqual(await overrideCopy(off.db, 'graphs', admin, item, spec([])), {
       ok: true,
       value: { id: 'c' }
     });
     assert.ok(off.queries.some((q) => q.sql.startsWith('update "graphs" set "is_active"')));
     const raced = createRecordingDb((q) => (q.sql.includes('"contract"') ? [NEWEST] : []));
-    const out = await overrideCopy(raced.db, 'graphs', admin, item, 'agency', {
+    const out = await overrideCopy(raced.db, 'graphs', admin, item, {
       ...spec([]),
       insertCopy: () => Promise.reject(Object.assign(new Error('pg'), { code: '23505' }))
     });

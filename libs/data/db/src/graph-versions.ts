@@ -15,25 +15,13 @@ export const PUBLISHED_IMMUTABLE_TRIGGER = 'graph_versions_published_immutable';
 
 export const dependencyOf = (ref: GraphKey) => `${ref.key}@${ref.version}`;
 
-type Viewer = { agency: RawBuilder<unknown>; organization: RawBuilder<unknown> };
+type Viewer = RawBuilder<unknown>;
 
-const agencyViewer = (agencyId: string | null): Viewer => ({
-  agency: sql`${agencyId}::uuid`,
-  organization: sql`(select a.organization_id from agencies a where a.id = ${agencyId}::uuid)`
-});
-
-const organizationViewer = (organizationId: string): Viewer => ({
-  agency: sql`null::uuid`,
-  organization: sql`${organizationId}::uuid`
-});
+const agencyViewer = (agencyId: string | null): Viewer => sql`${agencyId}::uuid`;
 
 const visibleTo = (alias: string, w: Viewer) => {
-  const a = (c: string) => sql.ref(`${alias}.${c}`);
-  return sql`(
-    ${a('organization_id')} is null
-    or ${a('agency_id')} = ${w.agency}
-    or (${a('agency_id')} is null and ${a('organization_id')} = ${w.organization})
-  )`;
+  const agency = sql.ref(`${alias}.agency_id`);
+  return sql`(${agency} is null or ${agency} = ${w})`;
 };
 
 const resolved = (w: Viewer, key: RawBuilder<unknown>, version: RawBuilder<unknown>) =>
@@ -46,13 +34,7 @@ const resolved = (w: Viewer, key: RawBuilder<unknown>, version: RawBuilder<unkno
       from graphs bg
       left join graph_versions bv
         on bv.graph_id = bg.id and bv.version = ${version} and bv.published_at is not null
-      where bg.key = g.key
-        and (
-          bg.organization_id is null
-          or (bg.is_active and bg.agency_id is null and bg.organization_id = ${w.organization})
-        )
-      order by bg.organization_id is not null
-      limit 1
+      where bg.key = g.key and bg.agency_id is null
     ) base on true
     where g.key = ${key}
       and g.is_active
@@ -60,7 +42,7 @@ const resolved = (w: Viewer, key: RawBuilder<unknown>, version: RawBuilder<unkno
       and ${visibleTo('g', w)}
       and case when base.id is null or base.id = g.id then v.version = ${version}
         else v.contract = base.contract end
-    order by g.agency_id is null, g.organization_id is null, v.version desc
+    order by g.agency_id is null, v.version desc
     limit 1
   )`;
 
@@ -74,7 +56,7 @@ const newestVersion = (w: Viewer, key: RawBuilder<unknown>, kind: RawBuilder<unk
       and g.is_active
       and v.published_at is not null
       and ${visibleTo('g', w)}
-    order by g.agency_id is not null, g.organization_id is not null, v.version desc
+    order by g.agency_id is not null, v.version desc
     limit 1`;
 
 export const resolvedGraph = (agencyId: string, key: RawBuilder<unknown>) => {
@@ -121,15 +103,6 @@ export const findPublishedGraphs = async (
   parentRunId: string | null = null
 ): Promise<PublishedGraph[]> =>
   refs.length ? (await buildFindPublishedGraphs(agencyId, refs, parentRunId).execute(db)).rows : [];
-
-export const findOrganizationGraphs = async (
-  db: Kysely<Database>,
-  organizationId: string,
-  refs: GraphKey[]
-): Promise<PublishedGraph[]> =>
-  refs.length
-    ? (await buildFind(organizationViewer(organizationId), refs, null).execute(db)).rows
-    : [];
 
 const bundle = (agencyId: string, versionId: string, parentRunId: string | null) => sql`
   with recursive bundle (id, key, version) as (
@@ -230,7 +203,7 @@ const newestSystemVersion = (key: RawBuilder<unknown>) => sql`(
   select max(v.version)
   from graphs g
   join graph_versions v on v.graph_id = g.id
-  where g.key = ${key} and g.organization_id is null and v.published_at is not null
+  where g.key = ${key} and g.agency_id is null and v.published_at is not null
 )`;
 
 const buildFindRuleBundle = (agencyId: string, key: string) => sql<PublishedGraph>`

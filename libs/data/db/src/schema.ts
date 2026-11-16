@@ -168,7 +168,6 @@ export type GraphRole = (typeof GRAPH_ROLES)[number];
 
 type GraphsTable = {
   id: Generated<string>;
-  organization_id: string | null;
   agency_id: string | null;
   key: string;
   name: string;
