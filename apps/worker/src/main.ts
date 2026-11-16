@@ -36,6 +36,7 @@ import {
   defaultHeapBytes,
   megabytes
 } from './shared/load.ts';
+import { createPublicFetch } from './shared/public-fetch.ts';
 import { createRunScope } from './shared/run-scope.ts';
 import { createAgencyOf } from './shared/tenancy.ts';
 
@@ -117,7 +118,7 @@ if (import.meta.main) {
     store,
     engines: createEngineCache({
       nodes: createNodeCatalog({
-        fetch: guardedFetch,
+        fetch: scope.fetch(createPublicFetch(fetch)),
         reports: scope.guard(announceImports(createReportStore(db, blobs, agencyOf), announce)),
         billing: {
           patients: scope.guard(createPatientStore(db)),

@@ -48,8 +48,14 @@ const parseV4 = (host: string) => {
 };
 
 const parseV6 = (host: string) => {
-  const [head = '', tail] = host.split('::');
-  const groups = (s: string) => (s ? s.split(':').map((g) => Number.parseInt(g, 16)) : []);
+  const [head = '', tail] = host.replace(/%.*$/, '').split('::');
+  const groups = (s: string) =>
+    s
+      ? s.split(':').flatMap((g) => {
+          const [a = 0, b = 0, c = 0, d = 0] = (g.includes('.') && parseV4(g)) || [];
+          return g.includes('.') ? [(a << 8) | b, (c << 8) | d] : [Number.parseInt(g, 16)];
+        })
+      : [];
   const [a, b] = [groups(head), groups(tail ?? '')];
   const words = tail === undefined ? a : [...a, ...Array(8 - a.length - b.length).fill(0), ...b];
   return words.flatMap((w) => [w >> 8, w & 0xff]);
@@ -66,12 +72,17 @@ const isPrivateV6 = (ip: number[]) => {
   );
 };
 
+export const isPublicAddress = (ip: string) => {
+  if (ip.includes(':')) return !isPrivateV6(parseV6(ip));
+  const v4 = parseV4(ip);
+  return v4 !== null && !isPrivateV4(v4);
+};
+
 const denyPrivateNetworks = (url: URL) => {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
   const host = url.hostname.toLowerCase().replace(/\.$/, '');
-  if (host.startsWith('[')) return !isPrivateV6(parseV6(host.slice(1, -1)));
-  const v4 = parseV4(host);
-  if (v4) return !isPrivateV4(v4);
+  if (host.startsWith('[')) return isPublicAddress(host.slice(1, -1));
+  if (parseV4(host)) return isPublicAddress(host);
   return (
     host.includes('.') &&
     !['.localhost', '.local', '.internal', '.localdomain'].some((s) => `.${host}`.endsWith(s))

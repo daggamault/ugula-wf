@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { invokeNode } from '../testing.ts';
-import { createHttpNodes } from './http.ts';
+import { createHttpNodes, isPublicAddress } from './http.ts';
+
+describe('isPublicAddress', () => {
+  it('tells resolved public addresses from private, loopback and link-local ones', () => {
+    for (const ip of ['8.8.8.8', '2001:4860::8888', '::ffff:8.8.8.8']) {
+      assert.equal(isPublicAddress(ip), true, ip);
+    }
+    for (const ip of ['169.254.169.254', '10.1.2.3', '::1', '::ffff:10.0.0.1', 'fe80::1%eth0']) {
+      assert.equal(isPublicAddress(ip), false, ip);
+    }
+  });
+});
 
 describe('http request node', () => {
   it('sends JSON with an idempotency key and parses JSON responses', async () => {

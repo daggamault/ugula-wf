@@ -22,6 +22,7 @@ export { runRule } from './rules.ts';
 export { type FieldSpec, graphDefSchema, valuesSchema } from './schemas.ts';
 export { isPassThrough, slotGraph } from './slot.ts';
 export { stdGraphInfo, stdGraphSource, stdGraphs } from './std/composites.ts';
+export { isPublicAddress } from './std/http.ts';
 export { createStdNodes, type StdDeps } from './std/index.ts';
 export type { ConditionOp } from './std/tables.ts';
 export {
