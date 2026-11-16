@@ -33,7 +33,10 @@ describe('createCycleStore', () => {
     );
     const store = createCycleStore(db, boss);
     assert.equal(await store.setStatus('r1', ID, 'k', 'submitted', 4), 'set');
-    const write = queries.find((q) => q.sql.includes('with current as'));
+    const at = queries.findIndex((q) => q.sql.includes('with current as'));
+    const write = queries[at];
+    const locked = queries.findIndex((q) => q.sql.endsWith('for update'));
+    assert.ok(locked >= 0 && locked < at);
     assert.ok(write?.sql.includes('(select received from current) = $'));
     assert.ok(write?.sql.includes('and status <> $'));
     assert.deepEqual(

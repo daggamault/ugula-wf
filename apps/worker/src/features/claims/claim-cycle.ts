@@ -10,6 +10,7 @@ import {
   applyClaimEdit,
   type Db,
   findClaimCheck,
+  lockClaim,
   sqlExecutor,
   TERMINAL_RUN_STATUSES
 } from '@ugula/db';
@@ -64,9 +65,11 @@ export const createCycleStore = (
       if (edited) await signalClaim(tx, boss, claim.agency_id, claim.id);
     }),
 
-  setStatus: async (runId, claimId, _sourceKey, status, signalsSeen) => {
-    const claim = await agencyClaim(db, runId, claimId);
-    const { rows } = await sql<{ received: number }>`
+  setStatus: (runId, claimId, _sourceKey, status, signalsSeen) =>
+    db.transaction().execute(async (tx) => {
+      const claim = await agencyClaim(tx, runId, claimId);
+      await lockClaim(tx, claim.agency_id, claim.id);
+      const { rows } = await sql<{ received: number }>`
       with current as (
         select coalesce(max(received), 0) as received from signals
         where agency_id = ${claim.agency_id} and key = ${claimSignalKey(claim.id)}
@@ -78,9 +81,9 @@ export const createCycleStore = (
           and (select received from current) = ${signalsSeen}
         returning id
       )
-      select received from current`.execute(db);
-    return Number(rows[0]?.received ?? 0) === signalsSeen ? 'set' : 'stale';
-  },
+      select received from current`.execute(tx);
+      return Number(rows[0]?.received ?? 0) === signalsSeen ? 'set' : 'stale';
+    }),
 
   attachCycle: async (runId, claimId, _sourceKey, cycleRunId) => {
     const claim = await agencyClaim(db, runId, claimId);
