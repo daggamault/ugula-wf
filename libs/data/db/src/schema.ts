@@ -11,6 +11,7 @@ import type {
   CorrectionMethod,
   DenialRoute,
   DocumentKind,
+  EligibilityCheck,
   EligibilityStatus,
   FacilityKind,
   FacilityStay,
@@ -397,14 +398,9 @@ export const TASK_PREFILLS = ['current', 'suggested'] as const;
 
 export type TaskPrefill = (typeof TASK_PREFILLS)[number];
 
-export const CLAIM_STATUS_REQUEST_STATUSES = [
-  'pending',
-  'answered',
-  'sent',
-  'unavailable'
-] as const;
+export const EXCHANGE_REQUEST_STATUSES = ['pending', 'answered', 'sent', 'unavailable'] as const;
 
-export type ClaimStatusRequestStatus = (typeof CLAIM_STATUS_REQUEST_STATUSES)[number];
+export type ExchangeRequestStatus = (typeof EXCHANGE_REQUEST_STATUSES)[number];
 
 type TasksTable = {
   id: Generated<string>;
@@ -679,13 +675,31 @@ type ClaimStatusRequestsTable = {
   source_key: string;
   control_number: number;
   status: ColumnType<
-    ClaimStatusRequestStatus,
-    ClaimStatusRequestStatus | undefined,
-    ClaimStatusRequestStatus
+    ExchangeRequestStatus,
+    ExchangeRequestStatus | undefined,
+    ExchangeRequestStatus
   >;
   note: ColumnType<string | null, string | null | undefined, string | null>;
   sent_as: ColumnType<string | null, string | null | undefined, string | null>;
   signals_seen: ColumnType<number | null, number | null | undefined, number | null>;
+  created_at: Timestamp;
+};
+
+type EligibilityRequestsTable = {
+  id: Generated<string>;
+  agency_id: string;
+  claim_id: string;
+  source_key: string;
+  control_number: number;
+  status: ColumnType<
+    ExchangeRequestStatus,
+    ExchangeRequestStatus | undefined,
+    ExchangeRequestStatus
+  >;
+  note: ColumnType<string | null, string | null | undefined, string | null>;
+  sent_as: ColumnType<string | null, string | null | undefined, string | null>;
+  file_name: ColumnType<string | null, string | null | undefined, string | null>;
+  reviews: NullableJsonColumn<Extract<EligibilityCheck, { status: 'answered' }>['reviews']>;
   created_at: Timestamp;
 };
 
@@ -886,6 +900,7 @@ export type Database = {
   claim_event_remarks: ClaimEventRemarksTable;
   claim_batches: ClaimBatchesTable;
   claim_status_requests: ClaimStatusRequestsTable;
+  eligibility_requests: EligibilityRequestsTable;
   payer_files: PayerFilesTable;
   clearinghouse_connections: ClearinghouseConnectionsTable;
   clearinghouse_downloads: ClearinghouseDownloadsTable;

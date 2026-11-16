@@ -7,6 +7,7 @@ import {
   type Clearinghouse,
   claimSignalKey,
   claimStatusNote,
+  type EligibilityCheck,
   type ExchangeStore,
   exchangeFileName,
   localDate,
@@ -73,6 +74,25 @@ export const priorCheck = (r: StatusRequest): ClaimStatusCheck =>
           signalsSeen: r.signals_seen ?? 0
         }
       : { status: 'unavailable', reason: r.note ?? UNNAMED_CLAIM };
+
+type EligibilityRequestPatch = Updateable<Database['eligibility_requests']>;
+
+const findEligibilityRequest = (db: Db, agencyId: string, sourceKey: string) =>
+  db
+    .selectFrom('eligibility_requests')
+    .select(['control_number', 'status', 'note', 'sent_as', 'file_name', 'reviews'])
+    .where('agency_id', '=', agencyId)
+    .where('source_key', '=', sourceKey)
+    .executeTakeFirst();
+
+type EligibilityRequest = NonNullable<Awaited<ReturnType<typeof findEligibilityRequest>>>;
+
+export const priorEligibility = (r: EligibilityRequest): EligibilityCheck =>
+  r.status === 'answered'
+    ? { status: 'answered', fileName: r.file_name ?? '', reviews: r.reviews ?? [] }
+    : r.status === 'sent'
+      ? { status: 'sent', sentAs: r.sent_as ?? '', reason: r.note }
+      : { status: 'unavailable', reason: r.note ?? '' };
 
 const unavailable = (reason: string) => ({ status: 'unavailable' as const, reason });
 
@@ -215,29 +235,50 @@ export const createExchangeStore = ({
     checkEligibility: async (runId, claimId, sourceKey, force) => {
       const agencyId = await agencyOf(runId);
       if (!isUuid(claimId)) return unavailable('The claim has no patient to ask about yet');
+      const prior = await findEligibilityRequest(db, agencyId, sourceKey);
+      if (prior && prior.status !== 'pending') return priorEligibility(prior);
       if (!force) await reuseEligibility(db, agencyId, claimId);
       const row = await findEligibilityClaim(db, agencyId, claimId);
       if (!row) return unavailable('The claim has no patient to ask about yet');
       if (!eligibilityRequests(row, now()).length) return unavailable(NO_CHECKABLE_PAYER);
       const requests = eligibilityRequests(row, now(), { force });
       if (!requests.length) return unavailable(NOTHING_TO_ASK);
-      const ready = await prepare(agencyId);
+      const ready = await prepare(agencyId, prior?.control_number);
       if (ready.status !== 'ready') return ready;
       const { submitter, clearinghouse, controlNumber } = ready;
+      if (!prior) {
+        await db
+          .insertInto('eligibility_requests')
+          .values({
+            agency_id: agencyId,
+            claim_id: claimId,
+            source_key: sourceKey,
+            control_number: controlNumber
+          })
+          .onConflict((oc) => oc.columns(['agency_id', 'source_key']).doNothing())
+          .execute();
+      }
       const text = build270(submitter, requests, { controlNumber, createdAt: now() });
       const name = exchangeFileName('eligibility', controlNumber, claimId);
-      const asked = () =>
-        markEligibilityRequested(
-          db,
-          agencyId,
-          requests.map((r) => r.trace),
-          now()
-        );
+      const settle = (patch: EligibilityRequestPatch) =>
+        db.transaction().execute(async (tx) => {
+          await markEligibilityRequested(
+            tx,
+            agencyId,
+            requests.map((r) => r.trace),
+            now()
+          );
+          await tx
+            .updateTable('eligibility_requests')
+            .set(patch)
+            .where('agency_id', '=', agencyId)
+            .where('source_key', '=', sourceKey)
+            .execute();
+        });
       let reason: string | null = null;
       if (clearinghouse.checkEligibility) {
         const answer = await clearinghouse.checkEligibility(text);
         if (answer.ok) {
-          await asked();
           const { fileName, applied } = await keep(
             runId,
             sourceKey,
@@ -246,18 +287,22 @@ export const createExchangeStore = ({
             answer.text
           );
           if (applied.status === 'unreadable') {
-            return unavailable(`The real-time answer could not be read: ${applied.reason}`);
+            const note = `The real-time answer could not be read: ${applied.reason}`;
+            await settle({ status: 'unavailable', note });
+            return unavailable(note);
           }
-          return {
+          const reviews = applied.status === 'applied' ? applied.reviews : [];
+          await settle({
             status: 'answered',
-            fileName,
-            reviews: applied.status === 'applied' ? applied.reviews : []
-          };
+            file_name: fileName,
+            reviews: JSON.stringify(reviews)
+          });
+          return { status: 'answered', fileName, reviews };
         }
         reason = answer.error;
       }
       const sentAs = await clearinghouse.submitEligibility(name, bytesOf(text));
-      await asked();
+      await settle({ status: 'sent', sent_as: sentAs, note: reason });
       return { status: 'sent', sentAs, reason };
     },
 

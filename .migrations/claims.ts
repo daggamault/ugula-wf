@@ -32,7 +32,7 @@ import {
   US_STATE_PATTERN,
   ZIP_CODE_PATTERN
 } from '@ugula/billing';
-import { CLAIM_STATUS_REQUEST_STATUSES, type Database } from '@ugula/db';
+import { type Database, EXCHANGE_REQUEST_STATUSES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { agencyNoActionForeignKey, agencySetNullForeignKey } from './foreign-keys.ts';
 import { dailyNumberCheck, dailyNumberTrigger } from './numbers.ts';
@@ -395,7 +395,7 @@ const buildClaimStatusRequestsTable = (db: Kysely<Database>) =>
     ])
     .addCheckConstraint(
       'claim_status_requests_status_check',
-      sql`status in (${list(CLAIM_STATUS_REQUEST_STATUSES)})`
+      sql`status in (${list(EXCHANGE_REQUEST_STATUSES)})`
     )
     .addCheckConstraint(
       'claim_status_requests_result_check',
@@ -403,6 +403,44 @@ const buildClaimStatusRequestsTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint(
       'claim_status_requests_control_number_check',
+      sql`control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER)}`
+    );
+
+const buildEligibilityRequestsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('eligibility_requests')
+    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
+    .addColumn('agency_id', 'uuid', (col) => col.notNull())
+    .addColumn('claim_id', 'uuid', (col) => col.notNull())
+    .addColumn('source_key', 'text', (col) => col.notNull())
+    .addColumn('control_number', 'integer', (col) => col.notNull())
+    .addColumn('status', 'text', (col) => col.notNull().defaultTo('pending'))
+    .addColumn('note', 'text')
+    .addColumn('sent_as', 'text')
+    .addColumn('file_name', 'text')
+    .addColumn('reviews', 'jsonb')
+    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addForeignKeyConstraint(
+      'eligibility_requests_claim_id_fkey',
+      ['agency_id', 'claim_id'],
+      'claims',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
+    .addUniqueConstraint('eligibility_requests_agency_id_source_key_unique', [
+      'agency_id',
+      'source_key'
+    ])
+    .addCheckConstraint(
+      'eligibility_requests_status_check',
+      sql`status in (${list(EXCHANGE_REQUEST_STATUSES)})`
+    )
+    .addCheckConstraint(
+      'eligibility_requests_result_check',
+      sql`(status = 'sent') = (sent_as is not null) and (status = 'answered') = (file_name is not null and reviews is not null) and (status <> 'unavailable' or note is not null)`
+    )
+    .addCheckConstraint(
+      'eligibility_requests_control_number_check',
       sql`control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER)}`
     );
 
@@ -595,6 +633,10 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_claim_status_requests_claim_id')
     .on('claim_status_requests')
+    .column('claim_id'),
+  db.schema
+    .createIndex('idx_eligibility_requests_claim_id')
+    .on('eligibility_requests')
     .column('claim_id')
 ];
 
@@ -612,6 +654,7 @@ export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimDocumentsTable(db).execute();
   await buildClaimBatchesTable(db).execute();
   await buildClaimStatusRequestsTable(db).execute();
+  await buildEligibilityRequestsTable(db).execute();
   await buildClaimEventsTable(db).execute();
   await buildClaimEventsBatchForeignKey().execute(db);
   await buildClaimEventAdjustmentsTable(db).execute();

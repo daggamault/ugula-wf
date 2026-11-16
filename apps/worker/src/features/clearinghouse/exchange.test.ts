@@ -233,6 +233,52 @@ describe('checkEligibility', () => {
     assert.equal(s.stamped(), 1);
   });
 
+  it('records what it sent, together with the payers it asked about', async () => {
+    const s = setup({ realtime: { ok: false, error: 'Timed out' } });
+    await s.store.checkEligibility('r1', CLAIM, 'k', false);
+    const sql = s.queries.map((q) => q.sql);
+    const insert = sql.findIndex((q) => q.startsWith('insert into "eligibility_requests"'));
+    const settle = sql.findIndex((q) => q.startsWith('update "eligibility_requests"'));
+    assert.ok(insert >= 0 && settle > insert);
+    assert.deepEqual(s.queries[settle]?.parameters.slice(0, 3), [
+      'sent',
+      '270-000000007-01a16617.ELG',
+      'Timed out'
+    ]);
+    const answered = setup({ realtime: { ok: true, text: 'ISA*271~' } });
+    await answered.store.checkEligibility('r1', CLAIM, 'k', false);
+    const saved = answered.queries.find((q) => q.sql.startsWith('update "eligibility_requests"'));
+    assert.equal(saved?.parameters[0], 'answered');
+    assert.equal(saved?.parameters[1], '271-270-000000007-01a16617.x12');
+  });
+
+  it('returns what a retried step already sent instead of asking again', async () => {
+    const reviews = [{ reference: COVERAGE, claimId: CLAIM, outcome: 'review', message: 'MA' }];
+    const prior = { control_number: 7, note: null, sent_as: null, file_name: null, reviews: null };
+    const answered = setup({
+      realtime: { ok: true, text: 'ISA*271~' },
+      prior: { ...prior, status: 'answered', file_name: '271-x.x12', reviews }
+    });
+    assert.deepEqual(await answered.store.checkEligibility('r1', CLAIM, 'k', true), {
+      status: 'answered',
+      fileName: '271-x.x12',
+      reviews
+    });
+    assert.equal(answered.sent.length, 0);
+    const sent = setup({ prior: { ...prior, status: 'sent', sent_as: '270-7.ELG' } });
+    assert.deepEqual(await sent.store.checkEligibility('r1', CLAIM, 'k', true), {
+      status: 'sent',
+      sentAs: '270-7.ELG',
+      reason: null
+    });
+    assert.equal(sent.uploads.length, 0);
+    const pending = setup({ prior: { ...prior, control_number: 5, status: 'pending' } });
+    await pending.store.checkEligibility('r1', CLAIM, 'k', false);
+    assert.equal(pending.uploads[0]?.[0], '270-000000005-01a16617');
+    assert.ok(!pending.queries.some((q) => q.sql.startsWith('update "billing_profiles"')));
+    assert.ok(!pending.queries.some((q) => q.sql.startsWith('insert into "eligibility_requests"')));
+  });
+
   it('says why it cannot ask', async () => {
     const offline = await setup({ connected: false }).store.checkEligibility(
       'r1',
