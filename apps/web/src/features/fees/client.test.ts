@@ -16,7 +16,7 @@ describe('createFeesClient', () => {
               : { items: [], fee: { id: 'f1' } }
             : init.method === 'PUT'
               ? { fee: { id: 'f1' } }
-              : { status: 'deleted' };
+              : { id: 'f1' };
         return new Response(JSON.stringify(body), { status: 200 });
       })
     );

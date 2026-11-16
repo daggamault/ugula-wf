@@ -49,7 +49,7 @@ export const createFacilityService = ({ db }: { db: Db }) => ({
 
   remove: async (agencyId: string, id: string) => {
     try {
-      return (await deleteFacility(db, agencyId, id)) ? ok({ status: 'deleted' }) : notFound;
+      return (await deleteFacility(db, agencyId, id)) ? ok({ id }) : notFound;
     } catch (err) {
       if (isForeignKeyViolation(err)) return inUse;
       throw err;

@@ -21,7 +21,7 @@ const service = {
   find: record('find', { facility: { id: ID } }),
   create: record('create', { id: ID }),
   update: record('update', { id: ID }),
-  remove: record('remove', { status: 'deleted' })
+  remove: record('remove', { id: ID })
 } as unknown as FacilityService;
 
 const request = withSession(createFacilityRoutes(service));

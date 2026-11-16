@@ -29,9 +29,7 @@ export const createFeeService = ({ db }: { db: Db }) => ({
       : fail('forbidden', writes.create ? "You can't change fees" : "You can't add fees");
   },
   remove: async (agencyId: string, id: string) =>
-    (await deleteFee(db, agencyId, id))
-      ? ok({ status: 'deleted' })
-      : fail('not_found', 'Fee not found')
+    (await deleteFee(db, agencyId, id)) ? ok({ id }) : fail('not_found', 'Fee not found')
 });
 
 export type FeeService = ReturnType<typeof createFeeService>;

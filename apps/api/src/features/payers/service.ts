@@ -59,12 +59,10 @@ export const createPayerService = ({ db, announce, embedder }: PayerServiceDeps)
       return ok({ ...value, embedded });
     },
     remove: async (agencyId: string, id: string) =>
-      (await deletePayer(db, agencyId, id))
-        ? ok({ status: 'deleted' })
-        : fail('not_found', 'Payer not found'),
+      (await deletePayer(db, agencyId, id)) ? ok({ id }) : fail('not_found', 'Payer not found'),
     forget: async (agencyId: string, payerId: string, aliasId: string) =>
       (await deleteAlias(db, agencyId, payerId, aliasId))
-        ? ok({ status: 'deleted' })
+        ? ok({ id: aliasId })
         : fail('not_found', 'Payer name not found')
   };
 };

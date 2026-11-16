@@ -25,7 +25,7 @@ describe('facility service', () => {
       value: { facility: { id: 'f1' } }
     });
     assert.deepEqual(await service.update('t', 'f1', input), { ok: true, value: { id: 'f1' } });
-    assert.deepEqual(await service.remove('t', 'f1'), { ok: true, value: { status: 'deleted' } });
+    assert.deepEqual(await service.remove('t', 'f1'), { ok: true, value: { id: 'f1' } });
     const none = createFacilityService({ db: createRecordingDb(() => []).db });
     assert.deepEqual(await none.create('t', input), {
       ok: false,

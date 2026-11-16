@@ -24,7 +24,7 @@ const service = {
   },
   remove: async (...args: unknown[]) => {
     calls.push(['remove', ...args]);
-    return ok({ status: 'deleted' });
+    return ok({ id: ID });
   }
 } as unknown as FeeService;
 
