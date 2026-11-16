@@ -34,6 +34,8 @@ describe('ValueField', () => {
     assert.ok(render({ list: 'number' }, null).includes('></textarea>'));
     const list = render({ list: 'string' }, ['R07.9', 'I10']);
     assert.ok(list.includes('R07.9\nI10</textarea>') && list.includes('One per line.'));
+    assert.ok(render({ id: 'claim' }, 'c1').includes('value="c1"'));
+    assert.ok(render({ list: { code: 'icd10' } }, ['I10']).includes('I10</textarea>'));
     const choice = renderToStaticMarkup(
       createElement(ValueField, {
         id: 'pin',

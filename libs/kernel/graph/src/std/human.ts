@@ -62,25 +62,69 @@ export const createHumanTaskNode = (permissions?: readonly string[]) =>
     title: 'Human Task',
     category: 'Human',
     description:
-      'Pauses the run and queues a task for a person, continuing through the outcome they choose. Hints say in one line what each outcome does, shown under its button. Prefill says what Defaults hold: current values (edits show as current → new) or suggestions. Summary says in one line what this task is about and what it needs. Visible limits the task to some of its fields; the others output nothing. Due is when the task must be done by; Permission names the permission whoever completes it needs.',
+      'Waits for a person to work a task, such as a biller filling in a form, and goes on through the outcome they choose with what they entered. Hints say in one line what each outcome does, shown under its button. Prefill says what the defaults are: current values, shown as current → new when edited, or suggestions. Permission names what whoever completes the task must be allowed to do.',
+    level: 'basic',
+    keywords: ['task', 'form', 'biller', 'person', 'review', 'approve', 'queue'],
+    summary: ({ title }) => `Task: ${title}`,
     config: taskConfigOf(permissions),
     signature: ({ fields, outcomes }) => ({
       execIn: ['exec'],
       execOut: outcomes,
       inputs: [
-        pin('subject', 'string', { optional: true }),
-        pin('summary', 'string', { optional: true }),
-        pin('context', 'any', { optional: true }),
-        pin('defaults', { object: {} }, { optional: true }),
-        pin('options', { object: {} }, { optional: true }),
-        pin('visible', { list: 'string' }, { optional: true }),
-        pin('assignee', 'string', { optional: true }),
-        pin('priority', 'integer', { default: 0 }),
-        pin('due', 'datetime', { optional: true })
+        pin('subject', 'string', {
+          optional: true,
+          description: 'What the task is about, as task lists name it.'
+        }),
+        pin('summary', 'string', {
+          optional: true,
+          description: 'One line on what the task is about and what it needs.'
+        }),
+        pin('context', 'any', {
+          optional: true,
+          description: 'Details shown with the task to help the person decide.'
+        }),
+        pin(
+          'defaults',
+          { object: {} },
+          {
+            optional: true,
+            description: 'Values the form starts with, by field name.'
+          }
+        ),
+        pin(
+          'options',
+          { object: {} },
+          {
+            optional: true,
+            description: 'Choices for fields, by field name, in place of the ones set here.'
+          }
+        ),
+        pin(
+          'visible',
+          { list: 'string' },
+          {
+            optional: true,
+            description: 'The fields to show; the others give nothing. All fields when empty.'
+          }
+        ),
+        pin('assignee', 'string', {
+          optional: true,
+          description: 'Who the task goes to; anyone in the queue when empty.'
+        }),
+        pin('priority', 'integer', {
+          default: 0,
+          description: 'How urgent the task is; higher comes first.'
+        }),
+        pin('due', 'datetime', { optional: true, description: 'When the task must be done by.' })
       ],
       outputs: [
-        ...fields.map((f) => pin(f.name, f.type, f.label ? { label: f.label } : {})),
-        pin('completedBy', 'string')
+        ...fields.map((f) =>
+          pin(f.name, f.type, {
+            description: 'What the person entered in this field.',
+            ...(f.label ? { label: f.label } : {})
+          })
+        ),
+        pin('completedBy', 'string', { description: 'The user who completed the task.' })
       ]
     }),
     run: async ({ event, read, config, state }) => {

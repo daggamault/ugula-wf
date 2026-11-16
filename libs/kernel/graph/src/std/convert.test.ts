@@ -17,7 +17,7 @@ describe('conversion nodes', () => {
   it('emits typed constants', async () => {
     assert.deepEqual(await out('std.value', {}, { type: 'integer', value: 5 }), { value: 5 });
     const list = await run('std.value', {}, { type: { list: 'string' }, value: ['a'] });
-    assert.deepEqual(list.signature.outputs, [{ name: 'value', type: { list: 'string' } }]);
+    assert.deepEqual(list.signature.outputs[0]?.type, { list: 'string' });
     assert.deepEqual(list.outputs, { value: ['a'] });
     await assert.rejects(
       () => out('std.value', {}, { type: 'integer', value: 'x' }),
@@ -41,5 +41,23 @@ describe('conversion nodes', () => {
     await assert.rejects(() => out('std.convert.parse-json', { text: '{' }), /invalid JSON/);
     assert.deepEqual(await out('std.convert.to-json', { value: [1] }), { text: '[1]' });
     assert.deepEqual(await out('std.convert.to-json', {}), { text: 'null' });
+  });
+
+  it('treats text as a code of one code set', async () => {
+    const modifier = { kind: 'modifier' };
+    assert.deepEqual(await out('std.convert.to-code', { text: ' RH ' }, modifier), { code: 'RH' });
+    assert.deepEqual(await out('std.convert.to-code', { text: ' ' }, modifier), { code: null });
+    const def = convertNodes.find((d) => d.type === 'std.convert.to-code');
+    assert.equal(def?.summary?.(modifier), 'Code Set: modifier');
+    await assert.rejects(() => out('std.convert.to-code', {}, { kind: 'zip-code' }));
+  });
+});
+
+describe('constant summary', () => {
+  it('shows the value typed in', () => {
+    const constant = convertNodes.find((n) => n.type === 'std.value');
+    assert.equal(constant?.summary?.({ type: 'number', value: 12 }), '12');
+    assert.equal(constant?.summary?.({ type: 'string', value: 'ALS1' }), 'ALS1');
+    assert.equal(constant?.summary?.({ type: 'any', value: null }), null);
   });
 });

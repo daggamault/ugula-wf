@@ -8,6 +8,8 @@ const varConfig = v.object({ name: v.pipe(v.string(), v.nonEmpty()) });
 
 type VarConfig = v.InferOutput<typeof varConfig>;
 
+const variableSummary = ({ name }: VarConfig) => `Variable: ${name}`;
+
 const typeOf = (graph: GraphDef, name: string): ValueType =>
   graph.variables.find((x) => x.name === name)?.type ?? 'any';
 
@@ -21,14 +23,19 @@ export const getVarNode = defineNode<VarConfig>({
   version: 1,
   title: 'Get Variable',
   category: CATEGORY,
-  description: "Reads the current value of one of this graph's variables.",
+  description: 'Reads the current value of a variable of this workflow.',
+  level: 'advanced',
+  keywords: ['variable', 'read', 'get'],
+  summary: variableSummary,
   config: varConfig,
   variables: ({ name }) => [name],
   signature: ({ name }, { graph }) => ({
     execIn: [],
     execOut: [],
     inputs: [],
-    outputs: [pin('value', typeOf(graph, name))]
+    outputs: [
+      pin('value', typeOf(graph, name), { description: 'The value the variable holds now.' })
+    ]
   }),
   run: ({ vars, config }) => next(null, { value: vars.get(config.name) })
 });
@@ -38,14 +45,19 @@ export const setVarNode = defineNode<VarConfig>({
   version: 1,
   title: 'Set Variable',
   category: CATEGORY,
-  description: "Stores a value in one of this graph's variables for later nodes to read.",
+  description: 'Remembers a value in a variable of this workflow, for later steps to read.',
+  level: 'advanced',
+  keywords: ['variable', 'store', 'assign', 'set'],
+  summary: variableSummary,
   config: varConfig,
   variables: ({ name }) => [name],
   signature: ({ name }, { graph }) => ({
     execIn: ['exec'],
     execOut: ['then'],
-    inputs: [pin('value', typeOf(graph, name), { optional: true })],
-    outputs: [pin('value', typeOf(graph, name))]
+    inputs: [
+      pin('value', typeOf(graph, name), { optional: true, description: 'The value to remember.' })
+    ],
+    outputs: [pin('value', typeOf(graph, name), { description: 'The value now remembered.' })]
   }),
   run: async ({ vars, read, config }) => {
     const value = await read('value');
@@ -59,14 +71,19 @@ export const appendVarNode = defineNode<VarConfig>({
   version: 1,
   title: 'Append To Variable',
   category: CATEGORY,
-  description: 'Adds an item to the end of a list variable.',
+  description: 'Adds an item to the end of a list kept in a variable.',
+  level: 'advanced',
+  keywords: ['variable', 'push', 'add'],
+  summary: variableSummary,
   config: varConfig,
   variables: ({ name }) => [name],
   signature: ({ name }, { graph }) => ({
     execIn: ['exec'],
     execOut: ['then'],
-    inputs: [pin('item', itemTypeOf(graph, name), { optional: true })],
-    outputs: [pin('length', 'integer')]
+    inputs: [
+      pin('item', itemTypeOf(graph, name), { optional: true, description: 'The item to add.' })
+    ],
+    outputs: [pin('length', 'integer', { description: 'How many items the list has now.' })]
   }),
   run: async ({ vars, read, config }) => {
     const current = vars.get(config.name);
@@ -82,14 +99,17 @@ export const incrementVarNode = defineNode<VarConfig>({
   version: 1,
   title: 'Increment Variable',
   category: CATEGORY,
-  description: 'Adds an amount to a number variable and stores the result.',
+  description: 'Adds an amount to a number kept in a variable.',
+  level: 'advanced',
+  keywords: ['variable', 'count', 'add'],
+  summary: variableSummary,
   config: varConfig,
   variables: ({ name }) => [name],
   signature: {
     execIn: ['exec'],
     execOut: ['then'],
-    inputs: [pin('by', 'number', { default: 1 })],
-    outputs: [pin('value', 'number')]
+    inputs: [pin('by', 'number', { default: 1, description: 'How much to add.' })],
+    outputs: [pin('value', 'number', { description: 'The new number.' })]
   },
   run: async ({ vars, read, config }) => {
     const current = vars.get(config.name);

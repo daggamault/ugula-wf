@@ -7,6 +7,7 @@ import { clampGraph, stdGraphSource } from './std/composites.ts';
 import { createStdNodes } from './std/index.ts';
 import type { GraphDef } from './types.ts';
 import { validateGraph } from './validate.ts';
+import { mergeKinds, STD_KINDS } from './value-types.ts';
 
 const registry = createRegistry(createStdNodes({ fetch }), combineSources(stdGraphSource));
 
@@ -30,6 +31,48 @@ describe('validateGraph', () => {
   it('accepts valid graphs', () => {
     assert.deepEqual(messages(base), []);
     assert.deepEqual(messages(clampGraph), []);
+  });
+
+  it('refuses plain text where an identity is expected, and ignores comment boxes', () => {
+    const typed = (from: GraphDef['signature']['inputs'][number]['type']): GraphDef => ({
+      ...base,
+      signature: { ...base.signature, inputs: [pin('n', from)] },
+      variables: [{ name: 'total', type: { id: 'claim' }, default: null }],
+      nodes: base.nodes.map((n) => ({ ...n })),
+      comments: [{ id: 'c', text: 'Why', position: { x: 0, y: 0 }, size: { width: 1, height: 1 } }]
+    });
+    const kinds = mergeKinds(STD_KINDS, {
+      id: { claim: 'Claim ID', patient: 'Patient ID' },
+      code: {}
+    });
+    const kinded = createRegistry(createStdNodes({ fetch }), stdGraphSource, kinds);
+    const check = (def: GraphDef) =>
+      validateGraph(def, kinded).map((i) => `${i.node ?? '-'}: ${i.message}`);
+    assert.deepEqual(check(typed({ id: 'claim' })), []);
+    assert.deepEqual(check(typed('string')), ['set: "value" expects id<claim> but got string']);
+    assert.deepEqual(check(typed({ id: 'patient' })), [
+      'set: "value" expects id<claim> but got id<patient>'
+    ]);
+  });
+
+  it('reports kinds nobody declared on pins, variables and node settings', () => {
+    const def: GraphDef = {
+      ...base,
+      signature: { ...base.signature, inputs: [pin('n', { id: 'clam' })] },
+      variables: [{ name: 'total', type: { list: { code: 'hcpc' } }, default: null }],
+      nodes: [
+        ...base.nodes.map((n) => ({ ...n })),
+        { id: 'code', type: 'std.convert.to-code', version: 1, config: { kind: 'icd9' } }
+      ]
+    };
+    assert.deepEqual(messages(def), [
+      '-: Unknown kind id<clam> on input "n"',
+      '-: Unknown kind code<hcpc> on variable "total"',
+      'set: Unknown kind code<hcpc> on input "value"',
+      'set: Unknown kind code<hcpc> on output "value"',
+      'code: Unknown kind code<icd9> on output "code"',
+      'set: "value" expects list<code<hcpc>> but got id<clam>'
+    ]);
   });
 
   it('reads graph inputs anywhere, but only inputs the graph has', () => {

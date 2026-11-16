@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { NodeDef, Values } from '@ugula/graph';
+import { type NodeDef, nodeDocumentationIssues, type Values } from '@ugula/graph';
 import { invokeNode } from '@ugula/graph/testing';
 import { createNemsisNodes, type ReportStore, reportKey } from './nodes.ts';
 
@@ -35,6 +35,12 @@ const run = (node: NodeDef | undefined, inputs: Values) => {
 };
 
 describe('createNemsisNodes', () => {
+  it('documents every pin as a basic node', () => {
+    const nodes = createNemsisNodes(null);
+    assert.deepEqual(nodes.flatMap(nodeDocumentationIssues), []);
+    assert.deepEqual(new Set(nodes.map((n) => n.level)), new Set(['basic']));
+  });
+
   it('splits a file into one stored report per patient care report', async () => {
     const { store, blobs, recorded } = memoryStore();
     const [split, readReport] = createNemsisNodes(store);

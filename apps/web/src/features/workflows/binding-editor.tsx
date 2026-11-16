@@ -1,5 +1,6 @@
 import type { InputBinding, Json, PinSpec } from '@ugula/graph';
-import { describeType, pinLabel } from '../../shared/graph/pins.ts';
+import { useContext } from 'react';
+import { describeType, pinLabel, ValueKindsContext } from '../../shared/graph/pins.ts';
 import { Input } from '../../shared/ui/input.tsx';
 import { Select } from '../../shared/ui/select.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
@@ -30,23 +31,26 @@ export const CustomDot = () => (
   />
 );
 
-export const PinHeading = ({ spec, changed = false }: { spec: PinSpec; changed?: boolean }) => (
-  <span className="flex flex-col gap-0.5">
-    <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-      <span className="flex items-center gap-2 text-sm font-semibold">
-        {changed ? <CustomDot /> : null}
-        {pinLabel(spec)}
+export const PinHeading = ({ spec, changed = false }: { spec: PinSpec; changed?: boolean }) => {
+  const kinds = useContext(ValueKindsContext);
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <span className="flex items-center gap-2 text-sm font-semibold">
+          {changed ? <CustomDot /> : null}
+          {pinLabel(spec)}
+        </span>
+        <span className="text-surface-fg-muted text-xs">
+          {describeType(spec.type, kinds)}
+          {spec.optional ? ', optional' : ''}
+        </span>
       </span>
-      <span className="text-surface-fg-muted text-xs">
-        {describeType(spec.type)}
-        {spec.optional ? ', optional' : ''}
-      </span>
+      {spec.description ? (
+        <span className="text-surface-fg-muted text-xs">{spec.description}</span>
+      ) : null}
     </span>
-    {spec.description ? (
-      <span className="text-surface-fg-muted text-xs">{spec.description}</span>
-    ) : null}
-  </span>
-);
+  );
+};
 
 const unsetText = (spec: PinSpec) =>
   spec.default !== undefined

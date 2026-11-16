@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { STD_KINDS } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AgencyGate, App, Workspace } from './app.tsx';
@@ -79,6 +80,9 @@ describe('app', () => {
   });
 
   it('renders nothing until the session check completes', () => {
-    assert.equal(renderToStaticMarkup(createElement(App, { clients, nodes: testNodes })), '');
+    assert.equal(
+      renderToStaticMarkup(createElement(App, { clients, nodes: testNodes, kinds: STD_KINDS })),
+      ''
+    );
   });
 });

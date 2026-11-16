@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { GraphKind, GraphRole } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
-import { contractOf, createStdNodes, ENTRY_TYPE, type GraphDef } from '@ugula/graph';
+import { contractOf, createStdNodes, ENTRY_TYPE, type GraphDef, STD_KINDS } from '@ugula/graph';
 import type { CompiledQuery } from 'kysely';
 import type { Scope } from '../../shared/scopes.ts';
 import { testAccess } from '../../shared/testing.ts';
@@ -179,7 +179,7 @@ const createWorld = ({ graphs, versions = {}, fail, dependents = [] }: World) =>
   };
   const { db, queries } = createRecordingDb(rows);
   const find = (prefix: string) => queries.filter((q) => q.sql.startsWith(prefix));
-  return { service: createGraphService({ db, nodes }), queries, find };
+  return { service: createGraphService({ db, nodes, kinds: STD_KINDS }), queries, find };
 };
 
 const system = (over: Partial<Graph> = {}): Graph => ({ id: 'g-sys', scope: 'system', ...over });

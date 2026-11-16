@@ -29,7 +29,7 @@ const PARTY_OUT = d('party', 'string', 'Responsible Party', 'payer or facility.'
 
 const FACILITY_ID_OUT = d(
   'facilityId',
-  'string',
+  { id: 'facility' },
   'Responsible Facility',
   'The directory facility billed, when one is known.',
   true
@@ -207,7 +207,7 @@ const billFacility = (): GraphDef => {
   const g = stage(
     [
       P.claimId(),
-      d('facilityId', 'string', 'Facility', 'The facility the rule names, if any.', true),
+      d('facilityId', { id: 'facility' }, 'Facility', 'The facility the rule names, if any.', true),
       d('reason', 'string', 'Reason', 'Why the facility is responsible.', true),
       P.subject(),
       P.context()
@@ -232,7 +232,7 @@ const billFacility = (): GraphDef => {
       fields: [
         {
           name: 'facilityId',
-          type: 'string',
+          type: { id: 'facility' },
           label: 'Responsible facility',
           required: ['billFacility']
         },

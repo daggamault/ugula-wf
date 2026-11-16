@@ -53,10 +53,24 @@ export const createNemsisNodes = (store: ReportStore | null): NodeDef[] => {
       title: 'Split NEMSIS File',
       category: 'NEMSIS',
       description:
-        'Parses a NEMSIS 3.4 or 3.5 EMSDataSet file, stores each patient care report as its own blob and records the reports against the import.',
+        'Reads a NEMSIS 3.4 or 3.5 export file, stores each patient care report in it as its own file and records the reports against the import.',
+      level: 'basic',
+      keywords: ['import', 'epcr', 'xml', 'pcr file'],
       effect: true,
-      inputs: [pin('file', BLOB)],
-      outputs: [pin('reports', { list: BLOB }), pin('count', 'integer')],
+      inputs: [pin('file', BLOB, { description: 'The stored NEMSIS export file.' })],
+      outputs: [
+        pin(
+          'reports',
+          { list: BLOB },
+          {
+            description: 'Each patient care report in the file, stored on its own.'
+          }
+        ),
+        pin('count', 'integer', {
+          label: 'Reports',
+          description: 'How many reports the file held.'
+        })
+      ],
       compute: async (inputs, _, ctx) => {
         const file = blobOf(inputs.file);
         const { reports } = parseDataset(await storage().getText(ctx.runId, file));
@@ -76,9 +90,16 @@ export const createNemsisNodes = (store: ReportStore | null): NodeDef[] => {
       title: 'Read Patient Care Report',
       category: 'NEMSIS',
       description:
-        'Loads one stored patient care report as typed sections (patient, times, payment, disposition and more) for Break nodes to split into fields, with GNIS city codes resolved to place names.',
-      inputs: [pin('report', BLOB)],
-      outputs: [pin('pcr', PCR_TYPE)],
+        'Loads one stored patient care report as sections (patient, times, payment, disposition and more) to split into fields, with city codes turned into place names.',
+      level: 'basic',
+      keywords: ['epcr', 'pcr', 'patient care report', 'load'],
+      inputs: [pin('report', BLOB, { description: 'The stored patient care report.' })],
+      outputs: [
+        pin('pcr', PCR_TYPE, {
+          label: 'PCR',
+          description: 'The patient care report, section by section.'
+        })
+      ],
       compute: async (inputs, _, ctx) => {
         const data = (await storage().getJson(ctx.runId, blobOf(inputs.report))) as Json;
         const pcr = toPcr(data);

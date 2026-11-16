@@ -134,18 +134,25 @@ export const createHttpNodes = ({
       version: 1,
       title: 'HTTP Request',
       category: 'Network',
-      description: 'Calls a URL; JSON bodies are sent and parsed automatically.',
+      description:
+        'Calls a web address and waits for its answer; JSON is sent and read automatically.',
+      level: 'advanced',
+      keywords: ['http', 'api', 'web', 'call', 'fetch', 'url'],
       config: requestConfig,
       effect: true,
       signature: {
         execIn: ['exec'],
         execOut: ['then'],
         inputs: [
-          pin('url', 'string'),
-          pin('headers', { object: {} }, { optional: true }),
-          pin('body', 'any', { optional: true })
+          pin('url', 'string', { description: 'The web address to call.' }),
+          pin('headers', { object: {} }, { optional: true, description: 'Headers to send.' }),
+          pin('body', 'any', { optional: true, description: 'What to send.' })
         ],
-        outputs: [pin('status', 'integer'), pin('headers', { object: {} }), pin('body', 'any')]
+        outputs: [
+          pin('status', 'integer', { description: 'The status code of the answer, such as 200.' }),
+          pin('headers', { object: {} }, { description: 'The headers of the answer.' }),
+          pin('body', 'any', { description: 'The answer, read as JSON when it is JSON.' })
+        ]
       },
       run: async ({ read, config, ctx }) => {
         const url = URL.parse(String(await read('url'))) ?? fail('HTTP request needs a valid URL');

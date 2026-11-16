@@ -83,3 +83,14 @@ describe('text nodes', () => {
     });
   });
 });
+
+describe('template summary', () => {
+  it('shows the pattern on one line', () => {
+    const template = textNodes.find((n) => n.type === 'std.text.template');
+    assert.equal(
+      template?.summary?.({ template: 'Claim {{ id }}\nfor {{ name }}' }),
+      'Claim {{ id }} for {{ name }}'
+    );
+    assert.equal(template?.summary?.({ template: '' }), null);
+  });
+});

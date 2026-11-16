@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { PERMISSIONS } from '@ugula/access';
 import { hashPassword } from '@ugula/auth';
-import { billingModels, createBillingNodes } from '@ugula/billing';
+import { billingKinds, billingModels, createBillingNodes } from '@ugula/billing';
 import { createDb, type Db, saveBuiltInRoles } from '@ugula/db';
 import {
   combineSources,
@@ -9,8 +9,10 @@ import {
   createRegistry,
   createStdNodes,
   documentationIssues,
+  mergeKinds,
   type NodeDef,
   refKey,
+  STD_KINDS,
   stdGraphSource,
   TABLE_NODE_KINDS,
   tableContract,
@@ -18,7 +20,7 @@ import {
   tableSchemas,
   validateGraph
 } from '@ugula/graph';
-import { createNemsisNodes, nemsisModels } from '@ugula/nemsis';
+import { createNemsisNodes, nemsisKinds, nemsisModels } from '@ugula/nemsis';
 import { sql } from 'kysely';
 import * as v from 'valibot';
 import { upsertAgency, upsertOrganization } from './agencies.ts';
@@ -78,7 +80,8 @@ const assertValidGraphs = (graphs: SeedGraph[], nodes: NodeDef[]) => {
   );
   const registry = createRegistry(
     nodes,
-    combineSources(stdGraphSource, (ref) => byRef.get(refKey(ref)))
+    combineSources(stdGraphSource, (ref) => byRef.get(refKey(ref))),
+    mergeKinds(STD_KINDS, nemsisKinds, billingKinds)
   );
   const problems = graphs.flatMap((g) =>
     [...validateGraph(g.definition, registry), ...documentationIssues(g.definition)].map(

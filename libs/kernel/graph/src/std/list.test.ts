@@ -259,3 +259,24 @@ describe('reshape', () => {
       await assert.rejects(() => invokeNode(def, { inputs: { list: [] }, config: { fields } }));
   });
 });
+
+describe('list summaries', () => {
+  const summaryOf = (type: string, config: Json) =>
+    listNodes.find((n) => n.type === type)?.summary?.(config);
+
+  it('show the formula, condition or fields', () => {
+    assert.equal(
+      summaryOf('std.list.filter', { expression: 'item.paid == false' }),
+      'item.paid == false'
+    );
+    assert.equal(
+      summaryOf('std.list.where', { field: 'route', op: 'oneOf', value: ['a', 'b'] }),
+      'route oneOf a, b'
+    );
+    assert.equal(summaryOf('std.list.where', { field: '', op: 'present' }), 'Item present');
+    assert.equal(
+      summaryOf('std.list.reshape', { fields: [{ name: 'code' }, { name: 'units' }] }),
+      'Fields: code, units'
+    );
+  });
+});

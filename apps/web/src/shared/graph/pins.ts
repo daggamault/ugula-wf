@@ -1,4 +1,5 @@
-import type { ValueType } from '@ugula/graph';
+import type { ValueKinds, ValueType } from '@ugula/graph';
+import { createContext } from 'react';
 import { labelFromName, titleCaseLabel } from '../format.ts';
 
 type PinKind =
@@ -18,7 +19,13 @@ type PinTone = {
 };
 
 export const pinKindOf = (type: ValueType | 'exec'): PinKind =>
-  typeof type === 'string' ? type : 'list' in type ? 'list' : 'object';
+  typeof type === 'string'
+    ? type
+    : 'id' in type || 'code' in type
+      ? 'string'
+      : 'list' in type
+        ? 'list'
+        : 'object';
 
 const pinTones: Record<PinKind, PinTone> = {
   exec: {
@@ -49,9 +56,13 @@ const TYPE_WORDS: Readonly<Record<Exclude<PinKind, 'list' | 'object' | 'exec'>, 
   datetime: 'Date and Time'
 };
 
-export const describeType = (type: ValueType): string => {
+export const ValueKindsContext = createContext<ValueKinds>({ id: {}, code: {} });
+
+export const describeType = (type: ValueType, kinds: ValueKinds): string => {
   if (typeof type === 'string') return TYPE_WORDS[type];
-  if ('list' in type) return `List of ${describeType(type.list)}`;
+  if ('id' in type) return kinds.id[type.id] ?? `${labelFromName(type.id)} ID`;
+  if ('code' in type) return kinds.code[type.code] ?? `${labelFromName(type.code)} Code`;
+  if ('list' in type) return `List of ${describeType(type.list, kinds)}`;
   const fields = Object.keys(type.object);
   return fields.length ? `Record With ${fields.join(', ')}` : 'Record';
 };

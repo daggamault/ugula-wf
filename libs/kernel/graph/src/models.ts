@@ -18,7 +18,9 @@ export const modelType = (m: Pick<Model, 'fields'>): ValueType => ({
 });
 
 const fieldPins = (m: Model): PinSpec[] =>
-  m.fields.map((f) => pin(f.name, f.type, { label: f.label, optional: true }));
+  m.fields.map((f) =>
+    pin(f.name, f.type, { label: f.label, optional: true, description: `${f.label}.` })
+  );
 
 export const createModelNodes = (models: readonly Model[]): NodeDef[] =>
   models.flatMap((m) => [
@@ -26,8 +28,16 @@ export const createModelNodes = (models: readonly Model[]): NodeDef[] =>
       type: `${m.key}.break`,
       title: `Break ${m.title}`,
       category: m.category,
-      description: `Splits ${m.description} into one output per field.`,
-      inputs: [pin(m.name, modelType(m), { label: m.title, optional: true })],
+      description: `Splits ${m.description} into its fields.`,
+      level: 'basic',
+      keywords: ['break', 'split', 'fields', m.title.toLowerCase()],
+      inputs: [
+        pin(m.name, modelType(m), {
+          label: m.title,
+          optional: true,
+          description: `The ${m.title} to split.`
+        })
+      ],
       outputs: fieldPins(m),
       compute: (inputs) => {
         const value = inputs[m.name];
@@ -39,9 +49,13 @@ export const createModelNodes = (models: readonly Model[]): NodeDef[] =>
       type: `${m.key}.make`,
       title: `Make ${m.title}`,
       category: m.category,
-      description: `Builds ${m.description} from one input per field.`,
+      description: `Builds ${m.description} from its fields.`,
+      level: 'basic',
+      keywords: ['make', 'build', 'fields', m.title.toLowerCase()],
       inputs: fieldPins(m),
-      outputs: [pin(m.name, modelType(m), { label: m.title })],
+      outputs: [
+        pin(m.name, modelType(m), { label: m.title, description: `The ${m.title} built.` })
+      ],
       compute: (inputs) => ({
         [m.name]: Object.fromEntries(m.fields.map((f) => [f.name, inputs[f.name] ?? null]))
       })

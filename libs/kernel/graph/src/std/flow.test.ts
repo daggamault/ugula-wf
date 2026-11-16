@@ -12,6 +12,7 @@ import {
   forRangeNode,
   gateNode,
   mapWorkflowNode,
+  rerouteNode,
   runWorkflowNode,
   sequenceNode,
   spawnWorkflowsNode,
@@ -374,5 +375,34 @@ describe('flow nodes', () => {
       () => invoke(spawnWorkflowsNode, { config, event: { type: 'resume', payload: {} } }),
       /Could not start workflows: no runs/
     );
+  });
+});
+
+describe('reroute', () => {
+  it('passes its value through with the type it is given', async () => {
+    const r = await invokeNode(rerouteNode, {
+      config: { type: { id: 'claim' } },
+      inputs: { value: 'c1' }
+    });
+    assert.deepEqual(r.result.outputs, { value: 'c1' });
+    assert.deepEqual(r.signature.outputs[0]?.type, { id: 'claim' });
+    assert.deepEqual((await invoke(rerouteNode)).outputs, { value: null });
+    await assert.rejects(
+      invokeNode(rerouteNode, { config: { type: 'number' }, inputs: { value: 'x' } }),
+      /expected number/
+    );
+  });
+});
+
+describe('flow summaries', () => {
+  it('list switch cases, count steps and name workflows', () => {
+    assert.equal(switchNode.summary?.({ cases: ['a', 'b'] }), 'Cases: a, b');
+    assert.equal(sequenceNode.summary?.({ count: 3 }), '3 steps');
+    for (const node of [runWorkflowNode, startWorkflowNode, mapWorkflowNode, spawnWorkflowsNode]) {
+      assert.equal(
+        node.summary?.({ workflow: 'billing.submit', version: 1 }),
+        'Workflow: billing.submit'
+      );
+    }
   });
 });

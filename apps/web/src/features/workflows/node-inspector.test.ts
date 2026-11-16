@@ -48,7 +48,7 @@ describe('NodeInspector', () => {
   it('explains what a step does, how its inputs are set and where it goes next', () => {
     const html = render('delay1');
     assert.ok(html.includes('Delay</h2>'));
-    assert.ok(html.includes('Durably waits'));
+    assert.ok(html.includes('even across restarts'));
     assert.ok(html.includes('value="wait * 1000"'));
     assert.ok(html.includes('Whole Number'));
     assert.ok(html.includes('Not connected'));

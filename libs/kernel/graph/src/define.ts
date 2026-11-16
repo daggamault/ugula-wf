@@ -1,9 +1,11 @@
 import type * as v from 'valibot';
 import type {
+  ExitDoc,
   Invocation,
   Json,
   NodeContext,
   NodeDef,
+  NodeLevel,
   NodeResult,
   PinSpec,
   SignatureContext,
@@ -14,7 +16,7 @@ import type {
 
 type ValueOf<T extends ValueType> = [ValueType] extends [T]
   ? Json
-  : T extends 'string' | 'datetime'
+  : T extends 'string' | 'datetime' | { id: string } | { code: string }
     ? string
     : T extends 'number' | 'integer'
       ? number
@@ -49,6 +51,9 @@ type NodeMeta<C> = {
   category: string;
   description: string;
   config?: v.GenericSchema<unknown, C>;
+  level?: NodeLevel;
+  keywords?: string[];
+  summary?: (config: C) => string | null;
 };
 
 type Computed<C, I, R> = {
@@ -62,9 +67,9 @@ type ComputeNode<C, I extends Pins<C>, O extends Pins<C>> = NodeMeta<C> &
 type Exit<E extends string, O> = { exit: E; outputs: O };
 
 type BranchNode<C, I extends Pins<C>, O extends Pins<C>, E extends string> = NodeMeta<C> &
-  Computed<C, I, Exit<E, OutputsOf<O>>> & {
+  Computed<C, I, Exit<NoInfer<E>, OutputsOf<O>>> & {
     outputs: O;
-    exits: readonly [E, ...E[]];
+    exits: Record<E, ExitDoc>;
     effect?: boolean;
   };
 
@@ -120,7 +125,10 @@ const metaOf = <C>(m: NodeMeta<C>) => ({
   title: m.title,
   category: m.category,
   description: m.description,
-  ...(m.config ? { config: m.config } : {})
+  ...(m.config ? { config: m.config } : {}),
+  ...(m.level ? { level: m.level } : {}),
+  ...(m.keywords ? { keywords: m.keywords } : {}),
+  ...(m.summary ? { summary: m.summary } : {})
 });
 
 const computeWith = async <C, I, R>(o: Computed<C, I, R>, inv: Invocation<C>) =>
@@ -174,9 +182,10 @@ export const branchNode = <
   defineNode<C>({
     ...metaOf(o),
     ...(o.effect ? { effect: true } : {}),
+    exits: o.exits,
     signature: (config, ctx) => ({
       execIn: ['exec'],
-      execOut: [...o.exits],
+      execOut: Object.keys(o.exits),
       inputs: pinsOf(o.inputs, config, ctx),
       outputs: pinsOf(o.outputs, config, ctx)
     }),

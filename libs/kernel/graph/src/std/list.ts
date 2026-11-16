@@ -3,15 +3,20 @@ import { pin, pureNode } from '../define.ts';
 import { fail } from '../errors.ts';
 import { createEvaluator, parseExpr } from '../expr.ts';
 import { MAX_RANGE, sortKey } from '../expr-functions.ts';
-import { deepEqual, getPath, groupBy, isTruthy } from '../json.ts';
+import { deepEqual, getPath, groupBy, isTruthy, toText } from '../json.ts';
 import { jsonSchema, valueTypeSchema } from '../schemas.ts';
 import type { Json, NodeDef, PinSpec, Values, ValueType } from '../types.ts';
-import { type ExpressionConfig, expressionConfig, identifierPins } from './expression.ts';
+import { type ExpressionConfig, expressionConfig, identifierPins, oneLine } from './expression.ts';
 import { CONDITION_OPS, holds } from './tables.ts';
 
 const CATEGORY = 'Lists';
 const ANY_LIST: ValueType = { list: 'any' };
 const RESERVED = ['item', 'index', 'list'];
+const LIST_IN = pin('list', ANY_LIST, { description: 'The list to work on.' });
+const LIST_OUT = pin('list', ANY_LIST, { description: 'The resulting list.' });
+const ITEM_OUT = pin('item', 'any', { description: 'The item, or nothing.' });
+const RESULT = pin('result', 'boolean', { description: 'True or false.' });
+const ITEM_IN = pin('item', 'any', { optional: true, description: 'The item.' });
 
 const listNode = (
   key: string,
@@ -26,7 +31,9 @@ const listNode = (
     title,
     category: CATEGORY,
     description,
-    inputs: [pin('list', ANY_LIST), ...inputs],
+    level: 'advanced',
+    keywords: ['list'],
+    inputs: [LIST_IN, ...inputs],
     outputs,
     compute
   });
@@ -43,8 +50,11 @@ const lambdaNode = (
     title,
     category: CATEGORY,
     description,
+    level: 'advanced',
+    keywords: ['list', 'formula'],
+    summary: ({ expression }) => oneLine(expression),
     config: expressionConfig,
-    inputs: ({ expression }) => [pin('list', ANY_LIST), ...identifierPins([expression], RESERVED)],
+    inputs: ({ expression }) => [LIST_IN, ...identifierPins([expression], RESERVED)],
     outputs,
     compute: (inputs, { expression }, ctx) => {
       const ast = parseExpr(expression);
@@ -88,9 +98,9 @@ export const listNodes: NodeDef[] = [
   listNode(
     'length',
     'Length',
-    'Outputs how many items a list has.',
+    'Counts the items of a list.',
     [],
-    [pin('length', 'integer')],
+    [pin('length', 'integer', { description: 'How many items the list has.' })],
     (x) => ({
       length: items(x).length
     })
@@ -98,17 +108,17 @@ export const listNodes: NodeDef[] = [
   listNode(
     'get',
     'Get Item',
-    'Item at an index; negative counts from the end.',
-    [pin('index', 'integer')],
-    [pin('item', 'any')],
+    'Gives the item at a position, counting from 0; a negative position counts from the end.',
+    [pin('index', 'integer', { description: 'The position of the item.' })],
+    [ITEM_OUT],
     (x) => ({ item: items(x).at(x.index as number) ?? null })
   ),
   listNode(
     'first',
     'First',
-    'Outputs the first item of a list, or nothing when the list is empty.',
+    'Gives the first item of a list, or nothing when the list is empty.',
     [],
-    [pin('item', 'any')],
+    [ITEM_OUT],
     (x) => ({
       item: items(x)[0] ?? null
     })
@@ -116,9 +126,9 @@ export const listNodes: NodeDef[] = [
   listNode(
     'last',
     'Last',
-    'Outputs the last item of a list, or nothing when the list is empty.',
+    'Gives the last item of a list, or nothing when the list is empty.',
     [],
-    [pin('item', 'any')],
+    [ITEM_OUT],
     (x) => ({
       item: items(x).at(-1) ?? null
     })
@@ -126,25 +136,31 @@ export const listNodes: NodeDef[] = [
   listNode(
     'append',
     'Append',
-    'A new list with the item added at the end.',
-    [pin('item', 'any', { optional: true })],
-    [pin('list', ANY_LIST)],
+    'Gives a copy of the list with the item added at the end.',
+    [ITEM_IN],
+    [LIST_OUT],
     (x) => ({ list: [...items(x), x.item ?? null] })
   ),
   listNode(
     'concat',
     'Concat',
     "Joins two lists into one, with the first list's items first.",
-    [pin('other', ANY_LIST)],
-    [pin('list', ANY_LIST)],
+    [pin('other', ANY_LIST, { description: 'The list to add after it.' })],
+    [LIST_OUT],
     (x) => ({ list: [...items(x), ...(x.other as Json[])] })
   ),
   listNode(
     'slice',
     'Slice',
-    'Items from start up to (not including) end.',
-    [pin('start', 'integer', { default: 0 }), pin('end', 'integer', { optional: true })],
-    [pin('list', ANY_LIST)],
+    'Takes the items from the start position up to but not including the end position.',
+    [
+      pin('start', 'integer', { default: 0, description: 'Where to start, counting from 0.' }),
+      pin('end', 'integer', {
+        optional: true,
+        description: 'Where to stop; the end of the list when empty.'
+      })
+    ],
+    [LIST_OUT],
     (x) => ({
       list: items(x).slice(x.start as number, x.end === null ? undefined : (x.end as number))
     })
@@ -152,35 +168,28 @@ export const listNodes: NodeDef[] = [
   listNode(
     'contains',
     'Contains',
-    'Outputs true when the list holds an item equal to the one given.',
-    [pin('item', 'any', { optional: true })],
-    [pin('result', 'boolean')],
+    'True when the list holds an item equal to the one given.',
+    [ITEM_IN],
+    [RESULT],
     (x) => ({ result: items(x).some((y) => deepEqual(y, x.item ?? null)) })
   ),
   listNode(
     'index-of',
     'Index Of',
-    'Outputs the position of the first equal item, counting from 0, or -1 when there is none.',
-    [pin('item', 'any', { optional: true })],
-    [pin('index', 'integer')],
+    'Gives the position of the first equal item, counting from 0, or -1 when there is none.',
+    [ITEM_IN],
+    [pin('index', 'integer', { description: 'The position, or -1.' })],
     (x) => ({ index: items(x).findIndex((y) => deepEqual(y, x.item ?? null)) })
   ),
-  listNode(
-    'reverse',
-    'Reverse',
-    'Outputs the list in reverse order.',
-    [],
-    [pin('list', ANY_LIST)],
-    (x) => ({
-      list: [...items(x)].reverse()
-    })
-  ),
+  listNode('reverse', 'Reverse', 'Gives the list in reverse order.', [], [LIST_OUT], (x) => ({
+    list: [...items(x)].reverse()
+  })),
   listNode(
     'unique',
     'Unique',
-    'Outputs the list with duplicate items removed, keeping the first of each.',
+    'Gives the list with repeated items left out, keeping the first of each.',
     [],
-    [pin('list', ANY_LIST)],
+    [LIST_OUT],
     (x) => ({
       list: items(x).filter((x, i, all) => all.findIndex((y) => deepEqual(x, y)) === i)
     })
@@ -190,7 +199,7 @@ export const listNodes: NodeDef[] = [
     'Flatten',
     'Turns a list of lists into a single list.',
     [],
-    [pin('list', ANY_LIST)],
+    [LIST_OUT],
     (x) => ({
       list: items(x).flatMap((x) => (Array.isArray(x) ? x : [x]))
     })
@@ -198,25 +207,31 @@ export const listNodes: NodeDef[] = [
   listNode(
     'pluck',
     'Pluck Field',
-    'Outputs the value at a field path, such as `code` or `payer.name`, from every item.',
-    [pin('field', 'string')],
-    [pin('list', ANY_LIST)],
+    'Gives the value at a path, such as code or payer.name, of every item.',
+    [pin('field', 'string', { description: 'Where the value is in each item.' })],
+    [LIST_OUT],
     (x) => ({ list: items(x).map((item) => fieldOf(item, x.field ?? null)) })
   ),
   listNode(
     'compact',
     'Drop Empty',
-    'Outputs the list without empty items.',
+    'Gives the list without its empty items.',
     [],
-    [pin('list', ANY_LIST)],
+    [LIST_OUT],
     (x) => ({ list: items(x).filter((item) => !isBlank(item)) })
   ),
   listNode(
     'sort-by-field',
     'Sort By Field',
     'Sorts items by the value at a field path, smallest first unless descending. Empty values sort last.',
-    [pin('field', 'string', { optional: true }), pin('descending', 'boolean', { default: false })],
-    [pin('list', ANY_LIST)],
+    [
+      pin('field', 'string', {
+        optional: true,
+        description: 'Where the value to sort by is in each item; the item itself when empty.'
+      }),
+      pin('descending', 'boolean', { default: false, description: 'Largest first instead.' })
+    ],
+    [LIST_OUT],
     (x) => {
       const dir = x.descending === true ? -1 : 1;
       const keyed = items(x).map((item) => ({ item, k: fieldOf(item, x.field ?? null) }));
@@ -238,9 +253,22 @@ export const listNodes: NodeDef[] = [
     category: CATEGORY,
     description:
       'Keeps the items whose field passes a condition, such as route is one of a list of codes, and counts them.',
+    level: 'advanced',
+    keywords: ['list', 'filter', 'condition', 'keep'],
+    summary: ({ field, op, value }) =>
+      [
+        field || 'Item',
+        op,
+        ...(value === undefined
+          ? []
+          : [Array.isArray(value) ? value.map(toText).join(', ') : toText(value)])
+      ].join(' '),
     config: whereConfig,
-    inputs: [pin('list', ANY_LIST)],
-    outputs: [pin('list', ANY_LIST), pin('count', 'integer')],
+    inputs: [LIST_IN],
+    outputs: [
+      pin('list', ANY_LIST, { description: 'The items kept.' }),
+      pin('count', 'integer', { description: 'How many items were kept.' })
+    ],
     compute: ({ list }, { field, op, value }) => {
       const kept = ((list ?? []) as Json[]).filter((item) =>
         holds({ op, value: value ?? null }, fieldOf(item, field))
@@ -253,11 +281,28 @@ export const listNodes: NodeDef[] = [
     title: 'Reshape Items',
     category: CATEGORY,
     description:
-      'Turns each item into a new object: each field you list is copied from a path in the item (an empty path copies the whole item), or, without a path, taken from the shared object, such as a date every line needs.',
+      'Turns each item into a new record: each field you list is copied from a path in the item (an empty path copies the whole item), or, without a path, taken from the shared record, such as a date every line needs.',
+    level: 'advanced',
+    keywords: ['list', 'map', 'transform', 'fields'],
+    summary: ({ fields }) => `Fields: ${fields.map((f) => f.name).join(', ')}`,
     config: reshapeConfig,
-    inputs: [pin('list', ANY_LIST), pin('shared', { object: {} }, { optional: true })],
+    inputs: [
+      LIST_IN,
+      pin(
+        'shared',
+        { object: {} },
+        {
+          optional: true,
+          description: 'Values every new item gets, by field name.'
+        }
+      )
+    ],
     outputs: ({ fields }) => [
-      pin('list', { list: { object: Object.fromEntries(fields.map((f) => [f.name, f.type])) } })
+      pin(
+        'list',
+        { list: { object: Object.fromEntries(fields.map((f) => [f.name, f.type])) } },
+        { description: 'The new items.' }
+      )
     ],
     compute: ({ list, shared }, { fields }) => ({
       list: ((list ?? []) as Json[]).map((item) =>
@@ -274,11 +319,15 @@ export const listNodes: NodeDef[] = [
     type: 'std.list.make',
     title: 'Make List',
     category: CATEGORY,
-    description: 'Builds a list from its item inputs, leaving out the ones that are empty.',
+    description: 'Builds a list from the values connected to it, leaving out the empty ones.',
+    level: 'advanced',
+    keywords: ['list', 'build', 'create', 'array'],
     config: makeConfig,
     inputs: ({ count }) =>
-      Array.from({ length: count }, (_, i) => pin(`item${i + 1}`, 'any', { optional: true })),
-    outputs: [pin('list', ANY_LIST)],
+      Array.from({ length: count }, (_, i) =>
+        pin(`item${i + 1}`, 'any', { optional: true, description: 'An item of the list.' })
+      ),
+    outputs: [pin('list', ANY_LIST, { description: 'The list.' })],
     compute: (inputs, { count }) => ({
       list: Array.from({ length: count }, (_, i) => inputs[`item${i + 1}`] ?? null).filter(
         (x) => !isBlank(x)
@@ -289,9 +338,14 @@ export const listNodes: NodeDef[] = [
     type: 'std.list.range',
     title: 'Range',
     category: CATEGORY,
-    description: 'Integers from start up to (not including) end.',
-    inputs: [pin('start', 'integer', { default: 0 }), pin('end', 'integer')],
-    outputs: [pin('list', { list: 'integer' })],
+    description: 'Lists the whole numbers from the start up to but not including the end.',
+    level: 'advanced',
+    keywords: ['list', 'numbers', 'sequence', 'count'],
+    inputs: [
+      pin('start', 'integer', { default: 0, description: 'The first number.' }),
+      pin('end', 'integer', { description: 'The number to stop before.' })
+    ],
+    outputs: [pin('list', { list: 'integer' }, { description: 'The numbers.' })],
     compute: ({ start, end }) => {
       const [lo, hi] = [start as number, end as number];
       if (hi - lo > MAX_RANGE) fail(`Range: at most ${MAX_RANGE} items`);
@@ -301,8 +355,8 @@ export const listNodes: NodeDef[] = [
   lambdaNode(
     'map',
     'Map',
-    'Transforms each `item` with an expression, e.g. `item.amount * 2`.',
-    [pin('list', ANY_LIST)],
+    'Turns each item into a new value with a formula, such as item.amount * 2.',
+    [LIST_OUT],
     (xs, each) => ({
       list: xs.map(each)
     })
@@ -310,8 +364,8 @@ export const listNodes: NodeDef[] = [
   lambdaNode(
     'filter',
     'Filter',
-    'Keeps items where the expression holds, e.g. `item.paid == false`.',
-    [pin('list', ANY_LIST)],
+    'Keeps the items for which a formula is true, such as item.paid == false.',
+    [LIST_OUT],
     (xs, each) => ({
       list: xs.filter((x, i) => isTruthy(each(x, i)))
     })
@@ -319,8 +373,11 @@ export const listNodes: NodeDef[] = [
   lambdaNode(
     'find',
     'Find',
-    'Outputs the first item for which the expression is true, or nothing when none is.',
-    [pin('item', 'any'), pin('found', 'boolean')],
+    'Gives the first item for which a formula is true, or nothing when none is.',
+    [
+      pin('item', 'any', { description: 'The item found, or nothing.' }),
+      pin('found', 'boolean', { description: 'Whether an item was found.' })
+    ],
     (xs, each) => {
       const i = xs.findIndex((x, j) => isTruthy(each(x, j)));
       return { item: xs[i] ?? null, found: i >= 0 };
@@ -329,8 +386,8 @@ export const listNodes: NodeDef[] = [
   lambdaNode(
     'every',
     'Every',
-    'True when the expression holds for all items.',
-    [pin('result', 'boolean')],
+    'True when a formula is true for every item.',
+    [RESULT],
     (xs, each) => ({
       result: xs.every((x, i) => isTruthy(each(x, i)))
     })
@@ -338,8 +395,8 @@ export const listNodes: NodeDef[] = [
   lambdaNode(
     'some',
     'Some',
-    'True when the expression holds for any item.',
-    [pin('result', 'boolean')],
+    'True when a formula is true for at least one item.',
+    [RESULT],
     (xs, each) => ({
       result: xs.some((x, i) => isTruthy(each(x, i)))
     })
@@ -347,8 +404,8 @@ export const listNodes: NodeDef[] = [
   lambdaNode(
     'sort-by',
     'Sort By',
-    'Sorts ascending by a key expression, e.g. `item.date`.',
-    [pin('list', ANY_LIST)],
+    'Sorts the items, smallest first, by what a formula such as item.date gives for each.',
+    [LIST_OUT],
     (xs, each) => ({
       list: xs
         .map((x, i) => ({ x, k: sortKey('Sort By', each(x, i)) }))
@@ -359,8 +416,8 @@ export const listNodes: NodeDef[] = [
   lambdaNode(
     'group-by',
     'Group By',
-    'Groups items into an object keyed by an expression.',
-    [pin('groups', { object: {} })],
+    'Groups the items into a record by what a formula gives for each.',
+    [pin('groups', { object: {} }, { description: 'The items of each group, by group.' })],
     (xs, each) => ({ groups: groupBy(xs, each) })
   )
 ];

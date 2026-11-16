@@ -1,5 +1,14 @@
 import { isRecord, kindOf } from './json.ts';
-import type { Json, ValueType } from './types.ts';
+import { type Json, SCALAR_TYPES, type ValueKinds, type ValueType } from './types.ts';
+
+export const KIND_NAME = /^[a-z][a-zA-Z0-9]*$/;
+
+export const STD_KINDS: ValueKinds = { id: { run: 'Run ID' }, code: {} };
+
+export const mergeKinds = (...all: ValueKinds[]): ValueKinds => ({
+  id: Object.assign({}, ...all.map((k) => k.id)),
+  code: Object.assign({}, ...all.map((k) => k.code))
+});
 
 const scalarCompat: Record<string, readonly string[]> = {
   number: ['integer'],
@@ -8,16 +17,18 @@ const scalarCompat: Record<string, readonly string[]> = {
   datetime: ['string']
 };
 
-export const formatType = (type: ValueType): string =>
-  typeof type === 'string'
-    ? type
-    : 'list' in type
-      ? `list<${formatType(type.list)}>`
-      : `object{${Object.entries(type.object)
-          .map(([k, t]) => `${k}: ${formatType(t)}`)
-          .join(', ')}}`;
+export const formatType = (type: ValueType): string => {
+  if (typeof type === 'string') return type;
+  if ('id' in type) return `id<${type.id}>`;
+  if ('code' in type) return `code<${type.code}>`;
+  if ('list' in type) return `list<${formatType(type.list)}>`;
+  return `object{${Object.entries(type.object)
+    .map(([k, t]) => `${k}: ${formatType(t)}`)
+    .join(', ')}}`;
+};
 
-const SCALARS = ['any', 'string', 'number', 'integer', 'boolean', 'datetime'] as const;
+const kindKey = (type: ValueType) =>
+  typeof type === 'object' && ('id' in type || 'code' in type) ? formatType(type) : null;
 
 export const parseType = (src: string): ValueType => {
   let i = 0;
@@ -32,8 +43,17 @@ export const parseType = (src: string): ValueType => {
     i += m[0].length;
     return m[0];
   };
+  const kind = () => {
+    expect('<');
+    const word = name();
+    if (!KIND_NAME.test(word)) throw new Error(`Invalid kind "${word}" in "${src}"`);
+    expect('>');
+    return word;
+  };
   const type = (): ValueType => {
     const word = name();
+    if (word === 'id') return { id: kind() };
+    if (word === 'code') return { code: kind() };
     if (word === 'list') {
       expect('<');
       const item = type();
@@ -53,7 +73,7 @@ export const parseType = (src: string): ValueType => {
       expect('}');
       return { object: fields };
     }
-    const scalar = SCALARS.find((s) => s === word);
+    const scalar = SCALAR_TYPES.find((s) => s === word);
     if (!scalar) throw new Error(`Unknown type "${word}"`);
     return scalar;
   };
@@ -64,6 +84,9 @@ export const parseType = (src: string): ValueType => {
 
 export const isAssignable = (from: ValueType, to: ValueType): boolean => {
   if (from === 'any' || to === 'any') return true;
+  const fromKind = kindKey(from);
+  const toKind = kindKey(to);
+  if (fromKind || toKind) return fromKind === toKind || (fromKind !== null && to === 'string');
   if (typeof from === 'string' || typeof to === 'string') {
     return (
       from === to ||
@@ -75,8 +98,8 @@ export const isAssignable = (from: ValueType, to: ValueType): boolean => {
   if ('list' in from && 'list' in to) return isAssignable(from.list, to.list);
   if ('object' in from && 'object' in to) {
     return Object.entries(to.object).every(([k, t]) => {
-      const f = from.object[k];
-      return f === undefined || isAssignable(f, t);
+      const f = Object.hasOwn(from.object, k) ? from.object[k] : undefined;
+      return f !== undefined && isAssignable(f, t);
     });
   }
   return false;
@@ -120,6 +143,9 @@ const checkShape = (type: ValueType, value: Json): string | null => {
         ? null
         : mismatchOf(type, value);
   }
+  if ('id' in type || 'code' in type) {
+    return typeof value === 'string' ? null : mismatchOf(type, value);
+  }
   if ('list' in type) {
     if (!Array.isArray(value)) return mismatchOf(type, value);
     for (const [i, item] of value.entries()) {
@@ -141,3 +167,13 @@ export const isFileType = (type: ValueType) =>
   typeof type === 'object' &&
   'object' in type &&
   Object.keys(type.object).sort().join(',') === 'bucket,key';
+
+export const isTextType = (type: ValueType) => type === 'string' || kindKey(type) !== null;
+
+export const unknownKinds = (type: ValueType, kinds: ValueKinds): string[] => {
+  if (typeof type === 'string') return [];
+  if ('id' in type) return Object.hasOwn(kinds.id, type.id) ? [] : [formatType(type)];
+  if ('code' in type) return Object.hasOwn(kinds.code, type.code) ? [] : [formatType(type)];
+  if ('list' in type) return unknownKinds(type.list, kinds);
+  return Object.values(type.object).flatMap((t) => unknownKinds(t, kinds));
+};

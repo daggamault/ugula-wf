@@ -85,7 +85,7 @@ const DENIAL_IN = d(
 
 const COVERAGE = d(
   'coverageId',
-  'string',
+  { id: 'coverage' },
   'Payer',
   'The payer on the claim whose denial is worked.'
 );
@@ -97,7 +97,7 @@ const VOID = exit('Void', 'A biller voided the claim.');
 const WRITE_OFF = exit('Write Off', 'A biller chose to write off the balance.');
 
 const claimInputs = [
-  p('claimId', 'string'),
+  p('claimId', { id: 'claim' }),
   COVERAGE,
   p('subject', 'string', true),
   p('context', 'any', true)
@@ -912,8 +912,13 @@ const correctClaim = (): GraphDef => {
     execIn: ['exec'],
     execOut: ['done', 'void'],
     inputs: [
-      p('claimId', 'string'),
-      d('coverageId', 'string', 'Payer', 'The payer on the claim whose claim is corrected.'),
+      p('claimId', { id: 'claim' }),
+      d(
+        'coverageId',
+        { id: 'coverage' },
+        'Payer',
+        'The payer on the claim whose claim is corrected.'
+      ),
       p('subject', 'string', true),
       p('context', 'any', true),
       d('correction', 'string', 'Correction', 'replace or void, as the biller asked.', true),
@@ -1227,8 +1232,8 @@ const logRecordsRequest = (): GraphDef => {
     execIn: ['exec'],
     execOut: [],
     inputs: [
-      p('claimId', 'string'),
-      d('coverageId', 'string', 'Payer', 'The payer asking for records, if known.', true),
+      p('claimId', { id: 'claim' }),
+      d('coverageId', { id: 'coverage' }, 'Payer', 'The payer asking for records, if known.', true),
       p('assignee', 'string', true)
     ],
     outputs: []
@@ -1354,7 +1359,11 @@ const refundOverpayment = (): GraphDef => {
   const g = graph({
     execIn: ['exec'],
     execOut: ['refunded', 'keptCredit'],
-    inputs: [p('claimId', 'string'), p('subject', 'string', true), p('context', 'any', true)],
+    inputs: [
+      p('claimId', { id: 'claim' }),
+      p('subject', 'string', true),
+      p('context', 'any', true)
+    ],
     outputs: [],
     exits: {
       refunded: exit(
@@ -1437,7 +1446,7 @@ const approveClosing = (): GraphDef => {
     execIn: ['exec'],
     execOut: ['approved', 'rejected'],
     inputs: [
-      p('claimId', 'string'),
+      p('claimId', { id: 'claim' }),
       d('closing', 'string', 'Closing', 'writeOff or collections.'),
       d('balanceCents', 'integer', 'Balance', 'The balance the claim would close with (cents).'),
       d(

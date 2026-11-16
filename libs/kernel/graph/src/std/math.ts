@@ -19,8 +19,13 @@ const binary = (
     title,
     category: CATEGORY,
     description,
-    inputs: [pin('a', 'number'), pin('b', 'number')],
-    outputs: [pin('result', 'number')],
+    level: 'advanced',
+    keywords: ['math', 'calculate'],
+    inputs: [
+      pin('a', 'number', { description: 'The first number.' }),
+      pin('b', 'number', { description: 'The second number.' })
+    ],
+    outputs: [pin('result', 'number', { description: 'The result.' })],
     compute: ({ a, b }) => ({ result: finite(title, fn(a as number, b as number)) })
   });
 
@@ -30,8 +35,10 @@ const unary = (key: string, title: string, description: string, fn: (x: number) 
     title,
     category: CATEGORY,
     description,
-    inputs: [pin('value', 'number')],
-    outputs: [pin('result', 'number')],
+    level: 'advanced',
+    keywords: ['math', 'calculate'],
+    inputs: [pin('value', 'number', { description: 'The number to work on.' })],
+    outputs: [pin('result', 'number', { description: 'The result.' })],
     compute: ({ value }) => ({ result: finite(title, fn(value as number)) })
   });
 
@@ -66,8 +73,13 @@ export const mathNodes: NodeDef[] = [
     title: 'Round',
     category: CATEGORY,
     description: 'Rounds a number to the given number of decimal places.',
-    inputs: [pin('value', 'number'), pin('digits', 'integer', { default: 0 })],
-    outputs: [pin('result', 'number')],
+    level: 'advanced',
+    keywords: ['math', 'decimals'],
+    inputs: [
+      pin('value', 'number', { description: 'The number to round.' }),
+      pin('digits', 'integer', { default: 0, description: 'How many decimal places to keep.' })
+    ],
+    outputs: [pin('result', 'number', { description: 'The rounded number.' })],
     compute: ({ value, digits }) => ({ result: roundTo(value as number, digits as number) })
   }),
   pureNode({
@@ -75,8 +87,10 @@ export const mathNodes: NodeDef[] = [
     title: 'Sum',
     category: CATEGORY,
     description: 'Adds up every number in a list.',
-    inputs: [pin('values', { list: 'number' })],
-    outputs: [pin('result', 'number')],
+    level: 'advanced',
+    keywords: ['math', 'total'],
+    inputs: [pin('values', { list: 'number' }, { description: 'The numbers to add up.' })],
+    outputs: [pin('result', 'number', { description: 'The total.' })],
     compute: ({ values }) => ({ result: (values as number[]).reduce((a, b) => a + (b ?? 0), 0) })
   })
 ];

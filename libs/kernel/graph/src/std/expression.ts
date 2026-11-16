@@ -33,17 +33,28 @@ const identifiersOf = (src: string) => {
 export const identifierPins = (sources: string[], reserved: readonly string[] = []): PinSpec[] =>
   [...new Set(sources.flatMap(identifiersOf))]
     .filter((name) => !reserved.includes(name))
-    .map((name) => pin(name, 'any', { optional: true }));
+    .map((name) => pin(name, 'any', { optional: true, description: 'A value the formula uses.' }));
+
+const SUMMARY_LENGTH = 80;
+
+export const oneLine = (src: string) => {
+  const line = src.replace(/\s+/g, ' ').trim();
+  if (!line) return null;
+  return line.length > SUMMARY_LENGTH ? `${line.slice(0, SUMMARY_LENGTH - 1)}…` : line;
+};
 
 export const expressionNode = pureNode<ExpressionConfig>({
   type: 'std.expr',
   title: 'Expression',
   category: 'Math',
   description:
-    'Evaluates a formula such as `price * qty + tax`; every name in it becomes an input.',
+    'Works out a value with a formula, such as price * units + tax; each name in the formula is a value to connect.',
+  level: 'advanced',
+  keywords: ['formula', 'calculate', 'expression', 'compute'],
+  summary: ({ expression }) => oneLine(expression),
   config: expressionConfig,
   inputs: ({ expression }) => identifierPins([expression]),
-  outputs: [pin('result', 'any')],
+  outputs: [pin('result', 'any', { description: 'What the formula works out to.' })],
   compute: (inputs, { expression }, ctx) => ({
     result: evaluateExpr(expression, inputs, { now: ctx.now })
   })

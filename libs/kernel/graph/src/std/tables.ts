@@ -233,6 +233,13 @@ export const decide = (config: DecideConfig, inputs: Values): Values => {
   };
 };
 
+const counted = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+const sharedOr = (config: object, own: () => string) =>
+  'table' in config && isRecord(config.table)
+    ? `Table: ${toText(config.table.key ?? null)}`
+    : own();
+
 export const tableNodes: NodeDef[] = [
   pureNode<LookupConfig | v.InferOutput<typeof lookupRef>>({
     type: 'std.table.lookup',
@@ -240,15 +247,34 @@ export const tableNodes: NodeDef[] = [
     category: CATEGORY,
     description:
       'Looks a key up in a table you fill in, or a shared table, such as a code and its meaning, and outputs its value, or the fallback when the key is not listed. Also looks up every key of a list at once, in order.',
+    level: 'basic',
+    keywords: ['table', 'lookup', 'map', 'translate', 'code'],
+    summary: (config) =>
+      sharedOr(config, () => counted('rows' in config ? config.rows.length : 0, 'row')),
     config: v.union([lookupRef, lookupConfig]),
     inputs: [
-      pin('key', 'any', { optional: true }),
-      pin('keys', { list: 'any' }, { optional: true, label: 'Keys to Look Up Together' })
+      pin('key', 'any', { optional: true, description: 'The key to look up.' }),
+      pin(
+        'keys',
+        { list: 'any' },
+        {
+          optional: true,
+          label: 'Keys to Look Up Together',
+          description: 'More keys to look up at once, in order.'
+        }
+      )
     ],
     outputs: ({ type }) => [
-      pin('value', type),
-      pin('found', 'boolean'),
-      pin('values', { list: type }, { label: 'Value of Each Key' })
+      pin('value', type, { description: 'The value of the key, or the fallback.' }),
+      pin('found', 'boolean', { description: 'Whether the table lists the key.' }),
+      pin(
+        'values',
+        { list: type },
+        {
+          label: 'Value of Each Key',
+          description: 'The value of each of the keys to look up together.'
+        }
+      )
     ],
     compute: ({ key, keys }, config) => {
       if ('table' in config) throw unresolved(config.table.key);
@@ -269,16 +295,39 @@ export const tableNodes: NodeDef[] = [
     category: CATEGORY,
     description:
       'Checks rules from top to bottom, its own or a shared table, and outputs the values of the first rule whose conditions all hold, or the otherwise values. Also outputs the matching rule and every rule that held, as reasons.',
+    level: 'basic',
+    keywords: ['table', 'decision', 'rule', 'rules', 'condition', 'if'],
+    summary: (config) =>
+      sharedOr(config, () => counted('rules' in config ? config.rules.length : 0, 'rule')),
     config: v.union([decideRef, decideConfig]),
     inputs: ({ inputs }) =>
       inputs.map((f) =>
-        pin(f.name, f.type, { optional: true, ...(f.label ? { label: f.label } : {}) })
+        pin(f.name, f.type, {
+          optional: true,
+          description: 'A value the rules test.',
+          ...(f.label ? { label: f.label } : {})
+        })
       ),
     outputs: ({ outputs }) => [
-      ...outputs.map((f) => pin(f.name, f.type, f.label ? { label: f.label } : {})),
-      pin('rule', 'string', { label: 'Matching rule' }),
-      pin('rules', { list: 'string' }, { label: 'Every rule that held' }),
-      pin('matched', 'boolean')
+      ...outputs.map((f) =>
+        pin(f.name, f.type, {
+          description: 'The value the matching rule sets.',
+          ...(f.label ? { label: f.label } : {})
+        })
+      ),
+      pin('rule', 'string', {
+        label: 'Matching Rule',
+        description: 'The first rule whose conditions all held, if any.'
+      }),
+      pin(
+        'rules',
+        { list: 'string' },
+        {
+          label: 'Every Rule That Held',
+          description: 'Every rule whose conditions all held, as reasons.'
+        }
+      ),
+      pin('matched', 'boolean', { description: 'Whether any rule held.' })
     ],
     compute: (inputs, config) => {
       if ('table' in config) throw unresolved(config.table.key);

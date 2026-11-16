@@ -9,8 +9,27 @@ export const documentationNodes: NodesOf = () => [
     category: 'Billing',
     description:
       "Reads the report's release-for-billing signature: signed by the patient or a representative, an exception because the patient could not sign, refused, or missing, with why.",
-    inputs: [pin('signatures', { list: { object: {} } }, { optional: true })],
-    outputs: [pin('signature', 'string'), pin('signatureNote', 'string')],
+    level: 'basic',
+    keywords: ['signature', 'release', 'consent'],
+    inputs: [
+      pin(
+        'signatures',
+        { list: { object: {} } },
+        {
+          optional: true,
+          description: 'The signatures recorded on the patient care report.'
+        }
+      )
+    ],
+    outputs: [
+      pin('signature', 'string', {
+        description: 'Whether the release was signed, an exception, refused or missing.'
+      }),
+      pin('signatureNote', 'string', {
+        label: 'Signature Note',
+        description: 'Why the patient did not sign, or who signed for them.'
+      })
+    ],
     compute: ({ signatures }) => signatureOf(signatures)
   })
 ];

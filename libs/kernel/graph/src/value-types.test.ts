@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ValueType } from './types.ts';
-import { checkValue, formatType, isAssignable, isFileType, parseType } from './value-types.ts';
+import {
+  checkValue,
+  formatType,
+  isAssignable,
+  isFileType,
+  isTextType,
+  mergeKinds,
+  parseType,
+  STD_KINDS,
+  unknownKinds
+} from './value-types.ts';
 
 describe('value types', () => {
   it('formats nested types', () => {
@@ -36,11 +46,67 @@ describe('value types', () => {
     assert.equal(isAssignable('string', 'number'), false);
     assert.equal(isAssignable({ list: 'integer' }, { list: 'number' }), true);
     assert.equal(isAssignable({ list: 'string' }, 'string'), false);
-    assert.equal(isAssignable({ object: {} }, { object: { id: 'string' } }), true);
+    assert.equal(isAssignable({ object: {} }, { object: { id: 'string' } }), false);
     assert.equal(isAssignable({ object: { id: 'number' } }, { object: { id: 'string' } }), false);
     assert.equal(isAssignable('number', 'integer'), true);
     assert.equal(isAssignable({ list: 'string' }, 'any'), true);
     assert.equal(isAssignable({ list: 'string' }, { object: {} }), false);
+  });
+
+  it('parses and formats identity and code kinds', () => {
+    for (const type of [
+      { id: 'patient' },
+      { code: 'hcpcs' },
+      { list: { code: 'icd10' } },
+      { object: { claimId: { id: 'claim' } } }
+    ] as const) {
+      assert.deepEqual(parseType(formatType(type)), type);
+    }
+    assert.equal(formatType({ list: { id: 'payerFile' } }), 'list<id<payerFile>>');
+    assert.deepEqual(parseType('id<person>'), { id: 'person' });
+    assert.throws(() => parseType('id<Person>'), /Invalid kind "Person"/);
+    assert.throws(() => parseType('code'), /Expected "<"/);
+  });
+
+  it('refuses to mix kinds or to treat plain text as a kind', () => {
+    assert.equal(isAssignable({ id: 'patient' }, { id: 'patient' }), true);
+    assert.equal(isAssignable({ id: 'patient' }, 'string'), true);
+    assert.equal(isAssignable({ id: 'patient' }, { id: 'claim' }), false);
+    assert.equal(isAssignable({ id: 'claim' }, { code: 'hcpcs' }), false);
+    assert.equal(isAssignable('string', { id: 'patient' }), false);
+    assert.equal(isAssignable('datetime', { code: 'hcpcs' }), false);
+    assert.equal(isAssignable({ code: 'hcpcs' }, 'datetime'), false);
+    assert.equal(isAssignable({ code: 'hcpcs' }, 'number'), false);
+    assert.equal(isAssignable('any', { id: 'patient' }), true);
+    assert.equal(isAssignable({ id: 'patient' }, 'any'), true);
+    assert.equal(isAssignable({ list: { code: 'icd10' } }, { list: 'string' }), true);
+    assert.equal(isAssignable({ list: 'string' }, { list: { code: 'icd10' } }), false);
+  });
+
+  it('assigns objects only when every field of the target is there and fits', () => {
+    const claim = { object: { id: { id: 'claim' }, total: 'integer' } } as const;
+    assert.equal(isAssignable(claim, { object: { id: { id: 'claim' } } }), true);
+    assert.equal(isAssignable(claim, { object: { id: 'string', total: 'number' } }), true);
+    assert.equal(isAssignable(claim, { object: {} }), true);
+    assert.equal(isAssignable({ object: {} }, claim), false);
+    assert.equal(isAssignable({ object: { id: { id: 'claim' } } }, claim), false);
+    assert.equal(isAssignable({ object: { id: { id: 'task' }, total: 'integer' } }, claim), false);
+    const inherited = JSON.parse('{"object":{"toString":"string"}}') as ValueType;
+    assert.equal(isAssignable(inherited, inherited), true);
+    assert.equal(isAssignable({ object: {} }, inherited), false);
+  });
+
+  it('tells types entered as plain text', () => {
+    assert.equal(isTextType('string'), true);
+    assert.equal(isTextType({ id: 'payer' }), true);
+    assert.equal(isTextType({ code: 'icd10' }), true);
+    assert.equal(isTextType('datetime'), false);
+    assert.equal(isTextType({ list: 'string' }), false);
+  });
+
+  it('checks runtime values of kinds as text', () => {
+    assert.equal(checkValue({ id: 'claim' }, 'c1'), null);
+    assert.equal(checkValue({ code: 'hcpcs' }, 410), 'expected code<hcpcs>, got number');
   });
 
   it('checks runtime values with paths in messages', () => {
@@ -74,5 +140,28 @@ describe('value types', () => {
     assert.equal(isFileType({ object: { key: 'string', bucket: 'string' } }), true);
     assert.equal(isFileType({ object: { key: 'string' } }), false);
     assert.equal(isFileType('string'), false);
+  });
+});
+
+describe('kinds', () => {
+  const kinds = mergeKinds(STD_KINDS, { id: { claim: 'Claim ID' }, code: { hcpcs: 'HCPCS Code' } });
+
+  it('merges the kinds each domain knows', () => {
+    assert.deepEqual(kinds, {
+      id: { run: 'Run ID', claim: 'Claim ID' },
+      code: { hcpcs: 'HCPCS Code' }
+    });
+  });
+
+  it('lists the kinds a type uses that nobody declared', () => {
+    assert.deepEqual(unknownKinds({ id: 'claim' }, kinds), []);
+    assert.deepEqual(
+      unknownKinds(
+        { object: { a: { list: { code: 'hcpc' } }, b: { id: 'claim' }, c: { id: 'toString' } } },
+        kinds
+      ),
+      ['code<hcpc>', 'id<toString>']
+    );
+    assert.deepEqual(unknownKinds('string', kinds), []);
   });
 });

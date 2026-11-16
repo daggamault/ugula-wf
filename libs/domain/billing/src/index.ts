@@ -161,6 +161,7 @@ export {
   ZIP_PLUS_4_PATTERN,
   type ZipPlace
 } from './geo.ts';
+export { billingKinds } from './kinds.ts';
 export { type BilledLine, matchServiceLines } from './line-adjudications.ts';
 export {
   CARRIER_PATTERN,

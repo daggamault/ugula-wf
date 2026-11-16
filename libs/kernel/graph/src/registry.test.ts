@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { pin } from './define.ts';
 import { combineSources, createRegistry, isPure } from './registry.ts';
 import { stdGraphSource } from './std/composites.ts';
 import { createStdNodes } from './std/index.ts';
@@ -28,7 +27,10 @@ describe('registry', () => {
     const seq = { id: 's', type: 'std.flow.sequence', version: 1, config: { count: 3 } };
     assert.deepEqual(registry.signature(seq, owner).execOut, ['then0', 'then1', 'then2']);
     const get = { id: 'g', type: 'std.var.get', version: 1, config: { name: 'total' } };
-    assert.deepEqual(registry.signature(get, owner).outputs, [pin('value', 'number')]);
+    assert.deepEqual(
+      registry.signature(get, owner).outputs.map((p) => p.type),
+      ['number']
+    );
     const clamp = { id: 'c', type: 'std.math.clamp', version: 1 };
     assert.equal(isPure(registry.signature(clamp, owner)), true);
     assert.throws(

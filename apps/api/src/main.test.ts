@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createSessionStore } from '@ugula/auth';
 import type { Db } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
-import { createStdNodes } from '@ugula/graph';
+import { createStdNodes, STD_KINDS } from '@ugula/graph';
 import { createNemsisNodes } from '@ugula/nemsis';
 import type { BlobStore } from '@ugula/storage';
 import type { Config } from './config.ts';
@@ -33,6 +33,7 @@ const deps: Parameters<typeof createApp>[0] = {
   blobs: {} as BlobStore,
   embedder: { embed: async () => [] },
   nodes: [...createStdNodes({ fetch }), ...createNemsisNodes(null)],
+  kinds: STD_KINDS,
   publish: async () => undefined,
   clientIp: () => '10.0.0.1',
   sealSecret: null

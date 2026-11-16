@@ -59,3 +59,11 @@ describe('graph boundary nodes', () => {
     assert.throws(() => returnNode.run({} as never), /executed by the engine/);
   });
 });
+
+describe('boundary summaries', () => {
+  it('name the input and the exit', () => {
+    assert.equal(inputNode.summary?.({ pin: 'claimId' }), 'Input: claimId');
+    assert.equal(returnNode.summary?.({ pin: 'approved' }), 'Exit: approved');
+    assert.equal(returnNode.summary?.({}), null);
+  });
+});

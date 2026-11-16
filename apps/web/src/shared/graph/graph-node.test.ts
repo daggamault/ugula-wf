@@ -94,7 +94,10 @@ describe('GraphNode', () => {
     assert.ok(html.includes('title="Gave Up: Execution flow. Every retry failed"'));
     assert.ok(html.includes('>Gave Up<'));
     assert.ok(html.includes('Ask billing first'));
-    assert.equal(pinTitle({ name: 'then', label: '', exec: true }), 'Execution flow');
+    assert.equal(
+      pinTitle({ name: 'then', label: '', exec: true }, { id: {}, code: {} }),
+      'Execution flow'
+    );
   });
 
   it('outlines customized nodes and dims removed ones', () => {

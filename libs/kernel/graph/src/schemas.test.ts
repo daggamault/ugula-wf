@@ -30,6 +30,27 @@ describe('schemas', () => {
     assert.equal(v.safeParse(graphDefSchema, badExit).success, false);
   });
 
+  it('accepts kinded types and comment boxes', () => {
+    assert.deepEqual(v.parse(valueTypeSchema, { list: { id: 'claim' } }), {
+      list: { id: 'claim' }
+    });
+    assert.equal(v.safeParse(valueTypeSchema, { code: 'Zip Code' }).success, false);
+    assert.equal(v.safeParse(valueTypeSchema, { id: 'claim', code: 'hcpcs' }).success, false);
+    const comment = {
+      id: 'c1',
+      text: 'Pricing',
+      position: { x: 0, y: 10 },
+      size: { width: 300, height: 200 },
+      color: 'info'
+    };
+    const commented = { ...clampGraph, comments: [comment] };
+    assert.deepEqual(v.parse(graphDefSchema, commented), commented);
+    for (const bad of [{ color: 'pink' }, { size: { width: 0, height: 1 } }, { extra: 1 }]) {
+      const c = { ...clampGraph, comments: [{ ...comment, ...bad }] };
+      assert.equal(v.safeParse(graphDefSchema, c).success, false);
+    }
+  });
+
   it('rejects malformed input', () => {
     assert.equal(v.safeParse(valueTypeSchema, 'money').success, false);
     assert.equal(v.safeParse(graphDefSchema, { ...clampGraph, extra: 1 }).success, false);

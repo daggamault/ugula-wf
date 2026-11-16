@@ -11,7 +11,7 @@ const choicesOf = (labels: Readonly<Record<string, string>>) =>
 
 export const claimTask = () =>
   flow(
-    [p('claimId', 'string'), p('assignee', 'string', true)],
+    [p('claimId', { id: 'claim' }), p('assignee', 'string', true)],
     [],
     [{ name: 'problem', type: 'string', default: null }]
   );
@@ -145,7 +145,7 @@ const changeResponsibleParty = (): GraphDef => {
         { name: 'payers', type: { list: 'string' }, label: 'Payers, in billing order' },
         {
           name: 'facilityId',
-          type: 'string',
+          type: { id: 'facility' },
           label: 'Responsible facility',
           required: ['billFacility']
         },
@@ -175,7 +175,7 @@ const changeResponsibleParty = (): GraphDef => {
   });
   g.add('eligibilityInputs', 'std.object.make', {
     label: 'Eligibility Inputs',
-    config: { fields: [{ name: 'claimId', type: 'string' }] }
+    config: { fields: [{ name: 'claimId', type: { id: 'claim' } }] }
   });
   g.add('eligibility', 'std.flow.start-workflow', {
     label: 'Check Eligibility of the Payers',
@@ -229,7 +229,7 @@ export const recordAddedDocument = (g: Builder, added: string, then: `${string}.
 };
 
 const PAYMENT_FIELDS: FieldSpec[] = [
-  { name: 'coverageId', type: 'string', label: 'Payer (empty for a patient payment)' },
+  { name: 'coverageId', type: { id: 'coverage' }, label: 'Payer (empty for a patient payment)' },
   {
     name: 'kind',
     type: 'string',

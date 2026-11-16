@@ -30,7 +30,7 @@ describe('variable nodes', () => {
     assert.deepEqual(append.outputs, { length: 1 });
     assert.deepEqual(vars.codes, ['A0427']);
     const unknown = await invokeNode(getVarNode, { graph, vars, config: { name: 'other' } });
-    assert.deepEqual(unknown.signature.outputs, [{ name: 'value', type: 'any' }]);
+    assert.equal(unknown.signature.outputs[0]?.type, 'any');
     assert.deepEqual(unknown.outputs, { value: null });
   });
 
@@ -57,5 +57,13 @@ describe('variable nodes', () => {
     assert.deepEqual([append.outputs, vars.codes], [{ length: 1 }, ['A0427']]);
     await invokeNode(incrementVarNode, { graph, vars, config: { name: 'count' } });
     assert.equal(vars.count, 1);
+  });
+});
+
+describe('variable summaries', () => {
+  it('name the variable', () => {
+    for (const node of [getVarNode, setVarNode, appendVarNode, incrementVarNode]) {
+      assert.equal(node.summary?.({ name: 'total' }), 'Variable: total');
+    }
   });
 });

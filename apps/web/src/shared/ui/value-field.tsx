@@ -1,4 +1,4 @@
-import { formatType, isFileType, type Json, type ValueType } from '@ugula/graph';
+import { formatType, isFileType, isTextType, type Json, type ValueType } from '@ugula/graph';
 import { useState } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { Checkbox } from './checkbox.tsx';
@@ -113,7 +113,7 @@ export const linesOf = (text: string) =>
     .filter(Boolean);
 
 const isStringList = (type: ValueType) =>
-  typeof type === 'object' && 'list' in type && type.list === 'string';
+  typeof type === 'object' && 'list' in type && isTextType(type.list);
 
 const ListField = ({ id, label, value, onChange, error, isRequired }: ValueFieldProps) => {
   const [text, setText] = useState(() =>
@@ -186,7 +186,7 @@ export const ValueField = (props: ValueFieldProps) => {
       />
     );
   }
-  if (type === 'string') {
+  if (isTextType(type)) {
     return (
       <Input {...common} value={textOf(value)} onChange={(e) => onChange(e.target.value || null)} />
     );

@@ -27,7 +27,7 @@ const NO_TRANSPORT = ['treatNoTransport', 'refusal'];
 
 const LINES_OUT = d('lines', CHARGE_LINES, 'Charge Lines', 'HCPCS codes and units to price.');
 
-const CODE_OUT = d('code', 'string', 'HCPCS Code', 'The HCPCS code to bill.');
+const CODE_OUT = d('code', { code: 'hcpcs' }, 'HCPCS Code', 'The HCPCS code to bill.');
 
 const baseRateCode = (): GraphDef => {
   const g = rule(
@@ -48,7 +48,7 @@ const baseRateCode = (): GraphDef => {
           field('emergency', 'boolean', 'Emergency'),
           field('deceased', 'boolean', 'Pronounced dead before loading')
         ],
-        [field('code', 'string', 'HCPCS code')],
+        [field('code', { code: 'hcpcs' }, 'HCPCS code')],
         [
           {
             label: 'Pronounced dead before loading, emergency response',
@@ -115,7 +115,7 @@ const mileageLines = (): GraphDef => {
           field('classification', 'string', 'Classification'),
           field('loadedMiles', 'number', 'Covered loaded miles')
         ],
-        [field('code', 'string', 'HCPCS code')],
+        [field('code', { code: 'hcpcs' }, 'HCPCS code')],
         [
           {
             label: 'Loaded miles transported',
@@ -151,7 +151,7 @@ const mileageLines = (): GraphDef => {
           field('classification', 'string', 'Classification'),
           field('nonCoveredMiles', 'number', 'Non-covered miles')
         ],
-        [field('code', 'string', 'HCPCS code')],
+        [field('code', { code: 'hcpcs' }, 'HCPCS code')],
         [
           {
             label: 'Miles beyond the nearest appropriate facility',
@@ -273,7 +273,7 @@ const PRICED_OUT = [
 
 const PAYER_IN = d(
   'payerId',
-  'string',
+  { id: 'payer' },
   'Primary Payer',
   'The directory payer whose prices come first, or nothing for the default fee schedule.',
   true
@@ -317,7 +317,7 @@ const priceCharges = (): GraphDef => {
       instructions:
         "No fee schedule has a price for a code on this claim. Enter the unit price to bill it at, and save it to the agency's default fee schedule so later claims are priced too, or void the claim.",
       fields: [
-        { name: 'code', type: 'string', label: 'HCPCS code', required: ['price'] },
+        { name: 'code', type: { code: 'hcpcs' }, label: 'HCPCS code', required: ['price'] },
         {
           name: 'unitPrice',
           type: 'number',

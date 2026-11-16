@@ -212,8 +212,8 @@ export const CLAIM_FIX_FIELDS: FieldSpec[] = [
   },
   ...DOCUMENTATION_FIX_FIELDS,
   ...address('patient', 'Patient'),
-  { name: 'coverageId', type: 'string', label: 'Payer on the claim' },
-  { name: 'payerId', type: 'string', label: 'Directory payer' },
+  { name: 'coverageId', type: { id: 'coverage' }, label: 'Payer on the claim' },
+  { name: 'payerId', type: { id: 'payer' }, label: 'Directory payer' },
   { name: 'memberId', type: 'string', label: 'Member ID' },
   {
     name: 'relationship',

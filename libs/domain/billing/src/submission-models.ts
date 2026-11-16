@@ -63,8 +63,8 @@ export const SUBMITTED_DETAILS = model(
     f('serviceDate', 'string', 'Date of service'),
     f('pickup', LOCATION.type, 'Pickup'),
     f('destination', LOCATION.type, 'Destination'),
-    f('diagnoses', { list: 'string' }, 'ICD-10 diagnoses'),
-    f('originDestination', 'string', 'Origin/destination modifier'),
+    f('diagnoses', { list: { code: 'icd10' } }, 'ICD-10 diagnoses'),
+    f('originDestination', { code: 'modifier' }, 'Origin/destination modifier'),
     f('documentation', DOCUMENTATION.type, 'Documentation')
   ]
 );
@@ -75,7 +75,7 @@ export const SUBMISSION = model(
   'Claim to Submit',
   'a saved claim on its way to a payer',
   [
-    f('claimId', 'string', 'Claim ID'),
+    f('claimId', { id: 'claim' }, 'Claim ID'),
     f(
       'payerClaimNumber',
       'string',
@@ -178,8 +178,8 @@ export const X837_LINE = model(
   'Service Line',
   'one 837P service line (2400)',
   [
-    f('code', 'string', 'HCPCS code (SV101-2)'),
-    f('modifiers', { list: 'string' }, 'Modifiers (SV101-3 to 6)'),
+    f('code', { code: 'hcpcs' }, 'HCPCS code (SV101-2)'),
+    f('modifiers', { list: { code: 'modifier' } }, 'Modifiers (SV101-3 to 6)'),
     f('chargeCents', 'integer', 'Charge in cents (SV102)'),
     f('units', 'number', 'Units (SV104)'),
     f('serviceDate', 'string', 'Date of service (DTP03)'),
@@ -214,7 +214,7 @@ export const X837_CLAIM = model(
     f('transportReason', 'string', 'Transport reason (CR104), with loaded miles'),
     f('loadedMiles', 'number', 'Loaded miles (CR106), none without transport'),
     f('conditionCodes', { list: 'string' }, 'Ambulance conditions (CRC03 to 07)'),
-    f('diagnoses', { list: 'string' }, 'Diagnoses (HI)'),
+    f('diagnoses', { list: { code: 'icd10' } }, 'Diagnoses (HI)'),
     f('pickup', LOCATION.type, 'Pickup (2310E)'),
     f('dropoff', LOCATION.type, 'Drop-off (2310F), with transport'),
     f('lines', { list: X837_LINE.type }, 'Service lines')

@@ -5,6 +5,12 @@ import type { Json, NodeDef } from '../types.ts';
 
 const CATEGORY = 'Logic';
 
+const RESULT = pin('result', 'boolean', { description: 'True or false.' });
+
+const A = { description: 'The first value.' };
+
+const B = { description: 'The second value.' };
+
 const comparable = (title: string, a: Json, b: Json) =>
   (typeof a === 'number' && typeof b === 'number') ||
   (typeof a === 'string' && typeof b === 'string')
@@ -14,15 +20,18 @@ const comparable = (title: string, a: Json, b: Json) =>
 const compareNode = (
   key: string,
   title: string,
+  phrase: string,
   fn: (a: number | string, b: number | string) => boolean
 ) =>
   pureNode({
     type: `std.logic.${key}`,
     title,
     category: CATEGORY,
-    description: `True when a ${title.toLowerCase()} b. Strings compare alphabetically (ISO dates compare chronologically).`,
-    inputs: [pin('a', 'any'), pin('b', 'any')],
-    outputs: [pin('result', 'boolean')],
+    description: `True when the first value is ${phrase} the second. Text compares alphabetically, and dates compare by time.`,
+    level: 'advanced',
+    keywords: ['compare', 'condition'],
+    inputs: [pin('a', 'any', A), pin('b', 'any', B)],
+    outputs: [RESULT],
     compute: ({ a, b }) => {
       const [x, y] = comparable(title, a ?? null, b ?? null);
       return { result: fn(x, y) };
@@ -40,8 +49,10 @@ const boolNode = (
     title,
     category: CATEGORY,
     description,
-    inputs: [pin('a', 'boolean'), pin('b', 'boolean')],
-    outputs: [pin('result', 'boolean')],
+    level: 'advanced',
+    keywords: ['condition', 'boolean'],
+    inputs: [pin('a', 'boolean', A), pin('b', 'boolean', B)],
+    outputs: [RESULT],
     compute: ({ a, b }) => ({ result: fn(a === true, b === true) })
   });
 
@@ -50,70 +61,86 @@ export const logicNodes: NodeDef[] = [
     type: 'std.logic.equal',
     title: 'Equal',
     category: CATEGORY,
-    description: 'Outputs true when both inputs hold the same value, including lists and objects.',
-    inputs: [pin('a', 'any', { optional: true }), pin('b', 'any', { optional: true })],
-    outputs: [pin('result', 'boolean')],
+    description: 'True when both values are the same, including lists and records.',
+    level: 'advanced',
+    keywords: ['compare', 'same', 'equals'],
+    inputs: [pin('a', 'any', { optional: true, ...A }), pin('b', 'any', { optional: true, ...B })],
+    outputs: [RESULT],
     compute: ({ a, b }) => ({ result: deepEqual(a ?? null, b ?? null) })
   }),
   pureNode({
     type: 'std.logic.not-equal',
     title: 'Not Equal',
     category: CATEGORY,
-    description: 'Outputs true when the two inputs hold different values.',
-    inputs: [pin('a', 'any', { optional: true }), pin('b', 'any', { optional: true })],
-    outputs: [pin('result', 'boolean')],
+    description: 'True when the two values differ.',
+    level: 'advanced',
+    keywords: ['compare', 'different'],
+    inputs: [pin('a', 'any', { optional: true, ...A }), pin('b', 'any', { optional: true, ...B })],
+    outputs: [RESULT],
     compute: ({ a, b }) => ({ result: !deepEqual(a ?? null, b ?? null) })
   }),
-  compareNode('greater', 'Greater Than', (a, b) => a > b),
-  compareNode('greater-or-equal', 'Greater Or Equal', (a, b) => a >= b),
-  compareNode('less', 'Less Than', (a, b) => a < b),
-  compareNode('less-or-equal', 'Less Or Equal', (a, b) => a <= b),
-  boolNode('and', 'And', 'Outputs true only when both inputs are true.', (a, b) => a && b),
-  boolNode('or', 'Or', 'Outputs true when at least one input is true.', (a, b) => a || b),
-  boolNode(
-    'xor',
-    'Xor',
-    'Outputs true when exactly one of the two inputs is true.',
-    (a, b) => a !== b
-  ),
+  compareNode('greater', 'Greater Than', 'greater than', (a, b) => a > b),
+  compareNode('greater-or-equal', 'Greater Or Equal', 'at least', (a, b) => a >= b),
+  compareNode('less', 'Less Than', 'less than', (a, b) => a < b),
+  compareNode('less-or-equal', 'Less Or Equal', 'at most', (a, b) => a <= b),
+  boolNode('and', 'And', 'True only when both values are true.', (a, b) => a && b),
+  boolNode('or', 'Or', 'True when at least one of the values is true.', (a, b) => a || b),
+  boolNode('xor', 'Xor', 'True when exactly one of the two values is true.', (a, b) => a !== b),
   pureNode({
     type: 'std.logic.not',
     title: 'Not',
     category: CATEGORY,
-    description: 'Outputs the opposite of a true or false input.',
-    inputs: [pin('value', 'boolean')],
-    outputs: [pin('result', 'boolean')],
+    description: 'Turns true into false and false into true.',
+    level: 'advanced',
+    keywords: ['invert', 'opposite'],
+    inputs: [pin('value', 'boolean', { description: 'The value to turn around.' })],
+    outputs: [RESULT],
     compute: ({ value }) => ({ result: value !== true })
   }),
   pureNode({
     type: 'std.logic.is-null',
     title: 'Is Null',
     category: CATEGORY,
-    description: 'Outputs true when the input has no value.',
-    inputs: [pin('value', 'any', { optional: true })],
-    outputs: [pin('result', 'boolean')],
+    description: 'True when the value is empty.',
+    level: 'advanced',
+    keywords: ['empty', 'missing', 'blank'],
+    inputs: [pin('value', 'any', { optional: true, description: 'The value to check.' })],
+    outputs: [RESULT],
     compute: ({ value }) => ({ result: value === null })
   }),
   pureNode({
     type: 'std.logic.coalesce',
     title: 'Coalesce',
     category: CATEGORY,
-    description: 'Outputs the first input that has a value, skipping empty ones.',
-    inputs: [pin('value', 'any', { optional: true }), pin('fallback', 'any', { optional: true })],
-    outputs: [pin('result', 'any')],
+    description: 'Gives the value, or the fallback when the value is empty.',
+    level: 'advanced',
+    keywords: ['default', 'fallback', 'first'],
+    inputs: [
+      pin('value', 'any', { optional: true, description: 'The value to use when it is there.' }),
+      pin('fallback', 'any', { optional: true, description: 'The value to use otherwise.' })
+    ],
+    outputs: [pin('result', 'any', { description: 'The value, or the fallback.' })],
     compute: ({ value, fallback }) => ({ result: value ?? fallback ?? null })
   }),
   pureNode({
     type: 'std.logic.select',
     title: 'Select',
     category: CATEGORY,
-    description: 'Picks whenTrue or whenFalse based on the condition.',
+    description: 'Gives one value when the condition is true and another when it is false.',
+    level: 'advanced',
+    keywords: ['if', 'choose', 'pick'],
     inputs: [
-      pin('condition', 'boolean'),
-      pin('whenTrue', 'any', { optional: true }),
-      pin('whenFalse', 'any', { optional: true })
+      pin('condition', 'boolean', { description: 'Which value to give.' }),
+      pin('whenTrue', 'any', {
+        optional: true,
+        description: 'The value when the condition is true.'
+      }),
+      pin('whenFalse', 'any', {
+        optional: true,
+        description: 'The value when the condition is false.'
+      })
     ],
-    outputs: [pin('result', 'any')],
+    outputs: [pin('result', 'any', { description: 'The chosen value.' })],
     compute: ({ condition, whenTrue, whenFalse }) => ({
       result: (condition ? whenTrue : whenFalse) ?? null
     })

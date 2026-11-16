@@ -66,3 +66,12 @@ describe('time nodes', () => {
     await assert.rejects(() => add('2026-03-15T00:00:00Z', 1, 'weeks'));
   });
 });
+
+describe('time summaries', () => {
+  it('name the unit', () => {
+    const summaryOf = (type: string) =>
+      timeNodes.find((n) => n.type === type)?.summary?.({ unit: 'days' });
+    assert.equal(summaryOf('std.time.add'), 'Adds days');
+    assert.equal(summaryOf('std.time.difference'), 'In days');
+  });
+});

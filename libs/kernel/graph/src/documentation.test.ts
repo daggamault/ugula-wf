@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import * as v from 'valibot';
 import { ENTRY_TYPE } from './compile.ts';
-import { documentationIssues, isTitleCase } from './documentation.ts';
+import { actionNode, branchNode, defineNode, next, pin, pureNode } from './define.ts';
+import { documentationIssues, isTitleCase, nodeDocumentationIssues } from './documentation.ts';
 import type { GraphDef } from './types.ts';
 
 const graph = (over: Partial<GraphDef['signature']>, label?: string): GraphDef => ({
@@ -69,6 +71,77 @@ describe('documentationIssues', () => {
       { message: 'Label or describe the exit "then"' },
       { message: 'Write the exit label "voided claim" in Title Case' },
       { node: 'entry', message: 'Write the label "start here" in Title Case' }
+    ]);
+  });
+});
+
+describe('nodeDocumentationIssues', () => {
+  const base = {
+    title: 'Grade',
+    category: 'T',
+    description: 'Grades a score.',
+    inputs: [pin('score', 'number', { description: 'The score.' })],
+    outputs: [pin('margin', 'number', { label: 'Margin', description: 'How far off.' })]
+  };
+  const compute = () => ({ exit: 'pass' as const, outputs: {} });
+
+  it('passes a node whose pins and exits are documented', () => {
+    const grade = branchNode({
+      ...base,
+      type: 't.grade',
+      exits: { pass: { label: 'Pass' }, fail: { description: 'Below half.' } },
+      compute
+    });
+    assert.deepEqual(nodeDocumentationIssues(grade), []);
+    const act = actionNode({ ...base, type: 't.act', compute: () => ({}) });
+    assert.deepEqual(nodeDocumentationIssues(act), []);
+  });
+
+  it('lists undescribed pins and undocumented exits other than then, leaving label case to the editor', () => {
+    const grade = branchNode({
+      ...base,
+      type: 't.grade',
+      inputs: [pin('score', 'number')],
+      outputs: [pin('margin', 'number', { label: 'the margin', description: 'How far off.' })],
+      exits: { pass: { label: 'pass' }, fail: {} },
+      compute
+    });
+    assert.deepEqual(nodeDocumentationIssues(grade), [
+      { node: 't.grade', message: 'Describe the input "score"' },
+      { node: 't.grade', message: 'Write the exit label "pass" in Title Case' },
+      { node: 't.grade', message: 'Label or describe the exit "fail"' }
+    ]);
+  });
+
+  it('checks a configurable node as first placed, and only its exits when it needs settings', () => {
+    const counted = pureNode<{ count: number }>({
+      ...base,
+      type: 't.counted',
+      config: v.object({ count: v.optional(v.number(), 1) }),
+      outputs: ({ count }) => Array.from({ length: count }, (_, i) => pin(`out${i}`, 'number')),
+      compute: () => ({})
+    });
+    assert.deepEqual(nodeDocumentationIssues(counted), [
+      { node: 't.counted', message: 'Describe the output "out0"' }
+    ]);
+    const named = defineNode<{ name: string }>({
+      type: 't.named',
+      version: 1,
+      title: 'Named',
+      category: 'T',
+      description: 'Needs a name.',
+      config: v.object({ name: v.string() }),
+      exits: { found: {} },
+      signature: ({ name }) => ({
+        execIn: [],
+        execOut: [],
+        inputs: [pin(name, 'any')],
+        outputs: []
+      }),
+      run: () => next(null)
+    });
+    assert.deepEqual(nodeDocumentationIssues(named), [
+      { node: 't.named', message: 'Label or describe the exit "found"' }
     ]);
   });
 });

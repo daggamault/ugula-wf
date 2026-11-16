@@ -15,17 +15,41 @@ import type { NodesOf } from './stores.ts';
 
 const CATEGORY = 'Billing';
 
-export const claimIdPin = pin('claimId', 'string');
+export const claimIdPin = pin(
+  'claimId',
+  { id: 'claim' },
+  { label: 'Claim', description: 'The claim being worked.' }
+);
 
 export const claimIdOf = (x: unknown) => requiredText(x, 'No claim to work on');
 
-const claimPin = pin('claim', CLAIM.type);
+const claimPin = pin('claim', CLAIM.type, {
+  description: 'The claim to save: classification, lines, payers, trip and diagnoses.'
+});
 
-const issuesPin = pin('issues', { list: CLAIM_ISSUE.type });
+const issuesPin = pin(
+  'issues',
+  { list: CLAIM_ISSUE.type },
+  {
+    description: 'The issues the checks found, each naming the field to fix.'
+  }
+);
 
-const pricedLinesPin = pin('lines', { list: LINE.type });
+const pricedLinesPin = pin(
+  'lines',
+  { list: LINE.type },
+  {
+    label: 'Priced Lines',
+    description: 'The charge lines with their unit price and line total.'
+  }
+);
 
-const CHARGE_LINES = { list: { object: { code: 'string', units: 'number' } } } as const;
+const CHARGE_LINES = { list: { object: { code: { code: 'hcpcs' }, units: 'number' } } } as const;
+
+const chargeLinesPin = pin('lines', CHARGE_LINES, {
+  label: 'Charge Lines',
+  description: 'The HCPCS codes and units to charge.'
+});
 
 const FEES = { object: {} } as const;
 
@@ -35,7 +59,12 @@ const checkOf = (check: ClaimCheck | null, claimId: string) => {
 };
 
 const fixPins: PinSpec[] = CLAIM_FIX_FIELDS.map((f) =>
-  pin(f.name, f.type, { optional: true, ...(f.label ? { label: f.label } : {}) })
+  pin(f.name, f.type, {
+    optional: true,
+    description: f.label
+      ? `${f.label}, as the biller entered it.`
+      : 'A claim field the biller entered.'
+  })
 );
 
 const dollarsToCents = (x: number) => Math.round(x * 100);
@@ -54,10 +83,29 @@ export const claimNodes: NodesOf = (stores) => {
       category: CATEGORY,
       description:
         "Reads the agency's fee schedules for the codes on the lines: the directory payer's own prices, and the default prices every payer falls back to. Which price wins is the Price Precedence rule.",
-      inputs: [pin('lines', CHARGE_LINES), pin('payerId', 'string', { optional: true })],
+      level: 'basic',
+      keywords: ['price', 'fee schedule', 'charges'],
+      inputs: [
+        chargeLinesPin,
+        pin(
+          'payerId',
+          { id: 'payer' },
+          {
+            optional: true,
+            label: 'Payer',
+            description: 'The directory payer whose own prices to read, if any.'
+          }
+        )
+      ],
       outputs: [
-        pin('payerFees', FEES, { label: 'Payer Prices (Cents)' }),
-        pin('defaultFees', FEES, { label: 'Default Prices (Cents)' })
+        pin('payerFees', FEES, {
+          label: 'Payer Prices (Cents)',
+          description: "The payer's own price per code, in cents."
+        }),
+        pin('defaultFees', FEES, {
+          label: 'Default Prices (Cents)',
+          description: 'The default price per code every payer falls back to, in cents.'
+        })
       ],
       compute: async (inputs, _, ctx) => {
         const codes = [...new Set(readLines(inputs.lines).map((l) => l.code))];
@@ -75,8 +123,30 @@ export const claimNodes: NodesOf = (stores) => {
       category: CATEGORY,
       description:
         'Prices HCPCS lines at the unit price chosen for each code, rounding each line to the cent, and lists the codes that have no price.',
-      inputs: [pin('lines', CHARGE_LINES), pin('fees', FEES, { label: 'Unit Prices (Cents)' })],
-      outputs: [pricedLinesPin, pin('totalCents', 'integer'), pin('missing', { list: 'string' })],
+      level: 'basic',
+      keywords: ['price', 'charges', 'total'],
+      inputs: [
+        chargeLinesPin,
+        pin('fees', FEES, {
+          label: 'Unit Prices (Cents)',
+          description: 'The unit price to charge per code, in cents.'
+        })
+      ],
+      outputs: [
+        pricedLinesPin,
+        pin('totalCents', 'integer', {
+          label: 'Total (Cents)',
+          description: 'The sum of the line totals, in cents.'
+        }),
+        pin(
+          'missing',
+          { list: { code: 'hcpcs' } },
+          {
+            label: 'Codes Without a Price',
+            description: 'The codes that have no price, so their lines are not priced.'
+          }
+        )
+      ],
       compute: (inputs) => priceLines(readLines(inputs.lines), centsOf(inputs.fees))
     }),
     actionNode({
@@ -84,15 +154,33 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Set Fee',
       category: CATEGORY,
       description:
-        "Adds a biller's price for a code to the prices set for this claim, and with saveToSchedule also to the agency's default fee schedule, so later claims are priced with it.",
+        "Adds a biller's price for a code to the prices set for this claim and, when asked, also to the agency's default fee schedule, so later claims are priced with it.",
+      level: 'basic',
+      keywords: ['price', 'fee schedule'],
       effect: true,
       inputs: [
-        pin('code', 'string'),
-        pin('unitPrice', 'number', { label: 'Unit Price (Dollars)' }),
-        pin('saveToSchedule', 'boolean', { optional: true }),
-        pin('fees', FEES, { optional: true })
+        pin('code', { code: 'hcpcs' }, { label: 'Code', description: 'The HCPCS code to price.' }),
+        pin('unitPrice', 'number', {
+          label: 'Unit Price (Dollars)',
+          description: 'The price of one unit, in dollars.'
+        }),
+        pin('saveToSchedule', 'boolean', {
+          optional: true,
+          label: 'Save to Fee Schedule',
+          description: "Also save the price to the agency's default fee schedule."
+        }),
+        pin('fees', FEES, {
+          optional: true,
+          label: 'Unit Prices (Cents)',
+          description: 'The prices already set for this claim, in cents.'
+        })
       ],
-      outputs: [pin('fees', FEES)],
+      outputs: [
+        pin('fees', FEES, {
+          label: 'Unit Prices (Cents)',
+          description: 'The prices set for this claim, with this one added, in cents.'
+        })
+      ],
       compute: async (inputs, _, ctx) => {
         const code = requiredText(inputs.code, 'No code to price');
         if (inputs.unitPrice < 0) throw new Error('A price cannot be negative');
@@ -107,12 +195,24 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Read Claim for Checks',
       category: CATEGORY,
       description:
-        'Loads the saved claim as the check rules read it (Check Facts): patient, trip, charges, diagnoses, places, documentation and each payer, with the days a certification was signed before the trip and the days left to file worked out. Also outputs the claim for task details and the payers already skipped, whose issues no longer matter.',
+        'Loads the saved claim as the check rules read it (Check Facts): patient, trip, charges, diagnoses, places, documentation and each payer, with the days a certification was signed before the trip and the days left to file worked out. Also gives the claim for task details and the payers already skipped, whose issues no longer matter.',
+      level: 'basic',
+      keywords: ['validate', 'check', 'facts'],
       inputs: [claimIdPin],
       outputs: [
-        pin('facts', CHECK_FACTS.type),
-        pin('claim', { object: {} }),
-        pin('skipped', { list: 'string' }, { label: 'Skipped Payers' })
+        pin('facts', CHECK_FACTS.type, {
+          label: 'Check Facts',
+          description: 'The claim as the check rules read it.'
+        }),
+        pin('claim', { object: {} }, { description: 'The saved claim, for task details.' }),
+        pin(
+          'skipped',
+          { list: { id: 'coverage' } },
+          {
+            label: 'Skipped Payers',
+            description: 'The payers already skipped, whose issues no longer matter.'
+          }
+        )
       ],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
@@ -134,12 +234,33 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Fix Claim Form',
       category: CATEGORY,
       description:
-        'Lays out a Fix Claim Data task: the fields the issues name (each issue says its field), with their current values and the payer and directory choices; with all, every field.',
-      inputs: [claimIdPin, issuesPin, pin('all', 'boolean', { optional: true })],
+        'Lays out a Fix Claim Data task: the fields the issues name, with their current values and the payer and directory choices, or every field when asked.',
+      level: 'basic',
+      keywords: ['task', 'form', 'fix'],
+      inputs: [
+        claimIdPin,
+        issuesPin,
+        pin('all', 'boolean', {
+          optional: true,
+          label: 'All Fields',
+          description: 'Show every field, not just those the issues name.'
+        })
+      ],
       outputs: [
-        pin('visible', { list: 'string' }),
-        pin('defaults', { object: {} }),
-        pin('options', { object: {} })
+        pin(
+          'visible',
+          { list: 'string' },
+          {
+            label: 'Fields Shown',
+            description: 'The fields the task shows.'
+          }
+        ),
+        pin('defaults', { object: {} }, { description: 'The current value of each field.' }),
+        pin(
+          'options',
+          { object: {} },
+          { description: 'The choices for fields picked from a list.' }
+        )
       ],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
@@ -157,19 +278,53 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Patch Claim',
       category: CATEGORY,
       description:
-        'Applies what a biller entered in a Fix Claim Data task to the claim, once per run step, leaving empty fields and fields kept as the task showed them as they are (so a document or answer recorded meanwhile stands), and logs the edit so an approved claim is reviewed again; lines saves repriced charges. Outputs what changed (classification, level, emergency, miles, payers), for the Reprice Triggers rule, and the classification, service and primary payer charges are mapped and priced from.',
+        'Applies what a biller entered in a Fix Claim Data task to the claim, once per step, leaving empty fields and fields unchanged from what the task showed as they are (so a document or answer recorded meanwhile stands), and logs the edit so an approved claim is reviewed again; repriced lines replace the charges. Gives what changed (classification, level, emergency, miles, payers) for the Reprice Triggers rule, and the classification, service and primary payer to map and price charges from.',
+      level: 'basic',
+      keywords: ['fix', 'edit', 'correct', 'update claim'],
       effect: true,
       inputs: [
         claimIdPin,
         ...fixPins,
-        pin('lines', { list: LINE.type }, { optional: true }),
-        pin('shown', { object: {} }, { optional: true, label: 'What the Task Showed' })
+        pin(
+          'lines',
+          { list: LINE.type },
+          {
+            optional: true,
+            label: 'Repriced Lines',
+            description: 'Repriced charge lines to save, if the charges changed.'
+          }
+        ),
+        pin(
+          'shown',
+          { object: {} },
+          {
+            optional: true,
+            label: 'What the Task Showed',
+            description: 'The values the task showed, so untouched fields are left alone.'
+          }
+        )
       ],
       outputs: [
-        pin('changes', { object: {} }, { label: 'What Changed' }),
-        pin('classification', 'string'),
-        pin('service', SERVICE.type),
-        pin('payerId', 'string')
+        pin(
+          'changes',
+          { object: {} },
+          {
+            label: 'What Changed',
+            description: 'Which of classification, level, emergency, miles and payers changed.'
+          }
+        ),
+        pin('classification', 'string', { description: 'The classification after the edit.' }),
+        pin('service', SERVICE.type, {
+          description: 'The level of service, emergency status and miles after the edit.'
+        }),
+        pin(
+          'payerId',
+          { id: 'payer' },
+          {
+            label: 'Primary Payer',
+            description: 'The directory payer billed first after the edit.'
+          }
+        )
       ],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
@@ -201,15 +356,38 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Open Draft Claim',
       category: CATEGORY,
       description:
-        'Opens a draft claim for an encounter as soon as its report arrives, linked to the report and to this run, so billers see it and every task it needs while it is worked. With claimId, works that claim again from this report instead (a restart, or reopening a void). Once per run step. Continues through duplicate with the existing claim when its PCR number was already billed.',
+        'Opens a draft claim for an encounter as soon as its report arrives, linked to the report and to this run, so billers see it and every task it needs while it is worked. Given a claim, works that claim again from this report instead (a restart, or reopening a void). Once per step.',
+      level: 'basic',
+      keywords: ['create claim', 'new claim', 'draft'],
       effect: true,
       inputs: [
-        pin('pcrNumber', 'string', { optional: true }),
-        pin('report', BLOB, { optional: true }),
-        pin('claimId', 'string', { optional: true })
+        pin('pcrNumber', 'string', {
+          optional: true,
+          label: 'PCR Number',
+          description: 'The PCR number of the report, used to spot a report already billed.'
+        }),
+        pin('report', BLOB, {
+          optional: true,
+          description: 'The stored patient care report the claim is billed from.'
+        }),
+        pin(
+          'claimId',
+          { id: 'claim' },
+          {
+            optional: true,
+            label: 'Claim',
+            description: 'A claim to work again from this report, instead of opening a new one.'
+          }
+        )
       ],
       outputs: [claimIdPin],
-      exits: ['opened', 'duplicate'],
+      exits: {
+        opened: { label: 'Opened', description: 'The draft claim is open to work.' },
+        duplicate: {
+          label: 'Duplicate',
+          description: 'The PCR number was already billed; the claim is the existing one.'
+        }
+      },
       compute: async (inputs, _, ctx) => {
         const { id, duplicate } = await claims().openDraft(ctx.runId, ctx.key, {
           pcrNumber: textOrNull(inputs.pcrNumber),
@@ -224,8 +402,15 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Assign Patient',
       category: CATEGORY,
       description: 'Sets the patient on a draft claim once the report patient is resolved.',
+      level: 'basic',
+      keywords: ['patient', 'link'],
       effect: true,
-      inputs: [claimIdPin, pin('patient', PATIENT.type)],
+      inputs: [
+        claimIdPin,
+        pin('patient', PATIENT.type, {
+          description: 'The billing patient the report was matched to.'
+        })
+      ],
       outputs: [],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
@@ -240,6 +425,8 @@ export const claimNodes: NodesOf = (stores) => {
       category: CATEGORY,
       description:
         'Fills the draft claim with its classification, charge lines, payers in billing order, trip details and diagnoses. It stays a draft until it is valid and its payer cycle starts.',
+      level: 'basic',
+      keywords: ['save', 'claim'],
       effect: true,
       inputs: [claimIdPin, claimPin],
       outputs: [],
@@ -254,9 +441,20 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Facility Choices',
       category: CATEGORY,
       description:
-        "Lists the agency's facility directory as choices for a task field named facilityId, contract facilities marked.",
+        "Lists the agency's facility directory as choices for a task's facility field, with contract facilities marked.",
+      level: 'basic',
+      keywords: ['facility', 'hospital', 'choices'],
       inputs: [],
-      outputs: [pin('options', { object: {} })],
+      outputs: [
+        pin(
+          'options',
+          { object: {} },
+          {
+            label: 'Choices',
+            description: 'The facility choices, for the facility field of a task.'
+          }
+        )
+      ],
       compute: async (_, __, ctx) => {
         const facilities = await claims().facilityDirectory(ctx.runId);
         return {
@@ -276,13 +474,26 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Record Responsible Party',
       category: CATEGORY,
       description:
-        'Records who a claim is billed to, once per run step, with why: the payers, or a facility (a Part A stay or a contract), which sets the claim to Bill facility and keeps it from going to payers on an 837P.',
+        'Records who a claim is billed to, once per step, with why: the payers, or a facility (a Part A stay or a contract), which sets the claim to Bill facility and keeps it from going to payers on an 837P.',
+      level: 'basic',
+      keywords: ['responsible party', 'bill facility', 'part a'],
       effect: true,
       inputs: [
         claimIdPin,
-        pin('party', 'string'),
-        pin('facilityId', 'string', { optional: true }),
-        pin('note', 'string', { optional: true })
+        pin('party', 'string', {
+          label: 'Responsible Party',
+          description: 'Who the claim is billed to: payer or facility.'
+        }),
+        pin(
+          'facilityId',
+          { id: 'facility' },
+          {
+            optional: true,
+            label: 'Facility',
+            description: 'The facility billed, when the facility is responsible.'
+          }
+        ),
+        pin('note', 'string', { optional: true, description: 'Why, in words a biller reads.' })
       ],
       outputs: [],
       compute: async (inputs, _, ctx) => {
@@ -306,8 +517,24 @@ export const claimNodes: NodesOf = (stores) => {
       category: CATEGORY,
       description:
         'Reads a document uploaded to a claim: its kind (facesheet, pcs, signature, abn or msp), the date it was signed and its file name.',
-      inputs: [claimIdPin, pin('documentId', 'string')],
-      outputs: [pin('document', CLAIM_DOCUMENT.type)],
+      level: 'basic',
+      keywords: ['document', 'attachment', 'pcs', 'abn'],
+      inputs: [
+        claimIdPin,
+        pin(
+          'documentId',
+          { id: 'document' },
+          {
+            label: 'Document',
+            description: 'The document on the claim to read.'
+          }
+        )
+      ],
+      outputs: [
+        pin('document', CLAIM_DOCUMENT.type, {
+          description: 'The kind, signed date and file name of the document.'
+        })
+      ],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
         const documentId = requiredText(inputs.documentId, 'No document to read');
@@ -321,11 +548,34 @@ export const claimNodes: NodesOf = (stores) => {
       title: 'Note PCR Revision',
       category: CATEGORY,
       description:
-        'Logs on a claim that an updated version of its patient care report arrived, with the new report attached. Once per run step. Continues through restartable while the claim can still be worked again from the new report (draft, needs review or void), else through billed, with the report it was billed from.',
+        'Logs on a claim that an updated version of its patient care report arrived, with the new report attached. Once per step.',
+      level: 'basic',
+      keywords: ['revision', 'updated report', 'amended pcr'],
       effect: true,
-      inputs: [claimIdPin, pin('report', BLOB)],
-      outputs: [pin('status', 'string'), pin('previous', BLOB)],
-      exits: ['restartable', 'billed'],
+      inputs: [
+        claimIdPin,
+        pin('report', BLOB, { description: 'The updated patient care report.' })
+      ],
+      outputs: [
+        pin('status', 'string', {
+          description: 'The status of the claim when the update arrived.'
+        }),
+        pin('previous', BLOB, {
+          label: 'Previous Report',
+          description: 'The report the claim was billed from before.'
+        })
+      ],
+      exits: {
+        restartable: {
+          label: 'Restartable',
+          description:
+            'The claim can still be worked again from the new report (draft, needs review or void).'
+        },
+        billed: {
+          label: 'Billed',
+          description: 'The claim was already billed from the previous report.'
+        }
+      },
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
         const report = {

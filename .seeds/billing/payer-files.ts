@@ -28,7 +28,7 @@ const receiveNemsisFile = (): GraphDef => {
     execIn: ['exec'],
     execOut: [],
     inputs: [p('file', BLOB)],
-    outputs: [p('count', 'integer'), p('runIds', { list: 'string' })]
+    outputs: [p('count', 'integer'), p('runIds', { list: { id: 'run' } })]
   });
   g.add('split', 'nemsis.split');
   g.add('items', 'std.list.reshape', {
@@ -78,7 +78,7 @@ const reviewPayerFileLine = (): GraphDef => {
     inputs: [
       p('fileName', 'string'),
       p('reference', 'string'),
-      p('claimId', 'string', true),
+      p('claimId', { id: 'claim' }, true),
       p('outcome', 'string'),
       p('message', 'string')
     ],
@@ -129,7 +129,7 @@ const checkEligibility = (): GraphDef => {
   const g = graph({
     execIn: ['exec'],
     execOut: [],
-    inputs: [p('claimId', 'string'), p('force', 'boolean', true)],
+    inputs: [p('claimId', { id: 'claim' }), p('force', 'boolean', true)],
     outputs: [
       p('sentAs', 'string', true),
       p('reason', 'string', true),
@@ -143,7 +143,7 @@ const checkEligibility = (): GraphDef => {
       fields: [
         { name: 'fileName', type: 'string' },
         { name: 'reference', type: 'string', from: 'reference' },
-        { name: 'claimId', type: 'string', from: 'claimId' },
+        { name: 'claimId', type: { id: 'claim' }, from: 'claimId' },
         { name: 'outcome', type: 'string', from: 'outcome' },
         { name: 'message', type: 'string', from: 'message' }
       ]
@@ -601,7 +601,11 @@ const receivePayerFile = (): GraphDef => {
     execIn: ['exec'],
     execOut: [],
     inputs: [p('file', BLOB), p('fileName', 'string')],
-    outputs: [p('fileId', 'string', true), p('kind', 'string', true), p('reviews', 'integer', true)]
+    outputs: [
+      p('fileId', { id: 'payerFile' }, true),
+      p('kind', 'string', true),
+      p('reviews', 'integer', true)
+    ]
   });
   g.add('read', 'billing.read-payer-file', { label: 'Read Payer File' });
   g.add('route', 'billing.route-remittances', { label: 'Route Remittances' });
@@ -612,7 +616,7 @@ const receivePayerFile = (): GraphDef => {
       fields: [
         { name: 'fileName', type: 'string' },
         { name: 'reference', type: 'string', from: 'reference' },
-        { name: 'claimId', type: 'string', from: 'claimId' },
+        { name: 'claimId', type: { id: 'claim' }, from: 'claimId' },
         { name: 'outcome', type: 'string', from: 'outcome' },
         { name: 'message', type: 'string', from: 'message' }
       ]

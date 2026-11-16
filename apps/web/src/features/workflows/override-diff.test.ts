@@ -58,6 +58,23 @@ describe('diffGraphs', () => {
     assert.equal(diffGraphs(base, base).changedEdges.size, 0);
   });
 
+  it('treats comment boxes as layout, like moves', () => {
+    const commented: GraphDef = {
+      ...base,
+      comments: [
+        { id: 'c1', text: 'Pricing', position: { x: 0, y: 0 }, size: { width: 200, height: 100 } }
+      ]
+    };
+    assert.deepEqual(
+      describeDiff(base, commented, (n) => n.id),
+      []
+    );
+    assert.deepEqual(
+      describeDiff(commented, base, (n) => n.id),
+      []
+    );
+  });
+
   it('notices a changed node type and signature', () => {
     const [, , old] = base.nodes;
     assert.ok(old);

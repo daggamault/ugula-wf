@@ -223,7 +223,7 @@ const reviewPatientMatch = (): GraphDef => {
       fields: [
         {
           name: 'patientId',
-          type: 'string',
+          type: { id: 'patient' },
           label: 'Candidate patient',
           required: ['useSelected']
         }
@@ -426,7 +426,9 @@ const resolvePayers = (): GraphDef => {
       queue: 'billing-payers',
       instructions:
         'The report names a payer that is not in the payer directory by that name. Choose the directory payer it means, and later reports with this name link automatically; similar payers come first with how close they are. Mark it unlisted when the payer is real but not in the directory yet, or remove it when it is not insurance (self pay, unknown).',
-      fields: [{ name: 'payerId', type: 'string', label: 'Directory payer', required: ['link'] }],
+      fields: [
+        { name: 'payerId', type: { id: 'payer' }, label: 'Directory payer', required: ['link'] }
+      ],
       outcomes: ['link', 'unlisted', 'remove'],
       hints: {
         link: 'Links this payer name to the directory payer; later reports with this name link automatically.',
@@ -570,7 +572,11 @@ const readFindings = (): GraphDef => {
 
 const claimPatient = (): GraphDef => {
   const g = action(
-    [p('demographics', DEMOGRAPHICS), p('pcrNumber', 'string', true), p('claimId', 'string')],
+    [
+      p('demographics', DEMOGRAPHICS),
+      p('pcrNumber', 'string', true),
+      p('claimId', { id: 'claim' })
+    ],
     [p('patient', PATIENT)]
   );
   g.add('resolve', 'billing.resolve-patient', { label: 'Resolve Patient' });
@@ -761,10 +767,10 @@ const reviewPcr = (): GraphDef => {
 };
 
 const startCycle = (): GraphDef => {
-  const g = action([p('claimId', 'string')], [p('runId', 'string')]);
+  const g = action([p('claimId', { id: 'claim' })], [p('runId', { id: 'run' })]);
   g.add('inputs', 'std.object.make', {
     label: 'Cycle Inputs',
-    config: { fields: [{ name: 'claimId', type: 'string' }] }
+    config: { fields: [{ name: 'claimId', type: { id: 'claim' } }] }
   });
   g.add('cycle', 'std.flow.start-workflow', {
     label: 'Start Payer Cycle',
@@ -782,13 +788,16 @@ const startCycle = (): GraphDef => {
 };
 
 const reworkClaim = (): GraphDef => {
-  const g = action([p('report', BLOB, true), p('claimId', 'string')], [p('runId', 'string')]);
+  const g = action(
+    [p('report', BLOB, true), p('claimId', { id: 'claim' })],
+    [p('runId', { id: 'run' })]
+  );
   g.add('inputs', 'std.object.make', {
     label: 'Run Inputs',
     config: {
       fields: [
         { name: 'report', type: BLOB },
-        { name: 'claimId', type: 'string' }
+        { name: 'claimId', type: { id: 'claim' } }
       ]
     }
   });
@@ -811,7 +820,7 @@ const reviewRevision = (): GraphDef => {
     {
       execIn: ['exec'],
       execOut: ['then'],
-      inputs: [p('report', BLOB), p('claimId', 'string'), p('pcr', PCR_TYPE)],
+      inputs: [p('report', BLOB), p('claimId', { id: 'claim' }), p('pcr', PCR_TYPE)],
       outputs: []
     },
     [{ name: 'previous', type: PCR_TYPE, default: null }]
@@ -900,11 +909,11 @@ const encounterToClaim = (): GraphDef => {
   const g = graph({
     execIn: ['exec'],
     execOut: [],
-    inputs: [p('report', BLOB), p('claimId', 'string', true)],
+    inputs: [p('report', BLOB), p('claimId', { id: 'claim' }, true)],
     outputs: [
       p('classification', 'string', true),
       p('patient', PATIENT, true),
-      p('claimId', 'string', true)
+      p('claimId', { id: 'claim' }, true)
     ]
   });
   g.add('read', 'nemsis.read-report');
@@ -934,14 +943,14 @@ const recoverDraft = (): GraphDef => {
   const g = graph({
     execIn: ['exec'],
     execOut: [],
-    inputs: [p('claimId', 'string'), p('report', BLOB, true), p('reason', 'string', true)],
+    inputs: [p('claimId', { id: 'claim' }), p('report', BLOB, true), p('reason', 'string', true)],
     outputs: []
   });
   g.add('context', 'std.object.make', {
     label: 'Orphan Context',
     config: {
       fields: [
-        { name: 'claimId', type: 'string' },
+        { name: 'claimId', type: { id: 'claim' } },
         { name: 'reason', type: 'string' }
       ]
     }
@@ -1211,7 +1220,7 @@ const buildClaim = (): GraphDef => {
     execIn: ['exec'],
     execOut: ['saved', 'voided'],
     inputs: [
-      p('claimId', 'string'),
+      p('claimId', { id: 'claim' }),
       p('report', BLOB, true),
       p('pcr', PCR_TYPE),
       p('facts', FACTS),
@@ -1232,7 +1241,7 @@ const buildClaim = (): GraphDef => {
   g.add('save', 'billing.save-claim', { label: 'Save Draft Claim' });
   g.add('eligibilityInputs', 'std.object.make', {
     label: 'Eligibility Inputs',
-    config: { fields: [{ name: 'claimId', type: 'string' }] }
+    config: { fields: [{ name: 'claimId', type: { id: 'claim' } }] }
   });
   g.add('eligibility', 'std.flow.start-workflow', {
     label: 'Check Eligibility of the Payers',
@@ -1271,7 +1280,7 @@ const billClaim = (): GraphDef => {
       execIn: ['exec'],
       execOut: ['claimed', 'voided'],
       inputs: [
-        p('claimId', 'string'),
+        p('claimId', { id: 'claim' }),
         p('report', BLOB, true),
         p('pcr', PCR_TYPE),
         p('facts', FACTS),
@@ -1380,7 +1389,7 @@ const workDraftClaim = (): GraphDef => {
   const g = graph({
     execIn: ['exec'],
     execOut: ['claimed', 'skipped', 'voided'],
-    inputs: [p('report', BLOB, true), p('pcr', PCR_TYPE), p('claimId', 'string')],
+    inputs: [p('report', BLOB, true), p('pcr', PCR_TYPE), p('claimId', { id: 'claim' })],
     outputs: [p('classification', 'string', true), p('patient', PATIENT, true)]
   });
   g.add('facts', 'billing.map-encounter-facts', { label: 'Map Encounter Facts' });

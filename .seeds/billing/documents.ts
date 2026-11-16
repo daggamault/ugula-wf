@@ -122,7 +122,10 @@ const documentFacts = (): GraphDef => {
 
 const recordDocument = (): GraphDef => {
   const g = stage(
-    [P.claimId(), d('documentId', 'string', 'Document', 'The document added to the claim.')],
+    [
+      P.claimId(),
+      d('documentId', { id: 'document' }, 'Document', 'The document added to the claim.')
+    ],
     [],
     { done: exit('Done', 'What the document records is on the claim and it was checked again.') }
   );

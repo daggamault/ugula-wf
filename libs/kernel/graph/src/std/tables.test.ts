@@ -62,7 +62,7 @@ describe('table nodes', () => {
       {},
       { type: 'integer', rows: [{ key: '1', value: 9 }] }
     );
-    assert.deepEqual(numbers.signature.outputs[0], { name: 'value', type: 'integer' });
+    assert.deepEqual(numbers.signature.outputs[0]?.type, 'integer');
     assert.deepEqual(numbers.outputs, { value: null, found: false, values: [] });
     assert.deepEqual(
       (
@@ -238,5 +238,26 @@ describe('startsWith', () => {
     assert.equal(holds({ op: 'startsWith', value: 'Y92.2' }, 'Y92.009'), false);
     assert.equal(holds({ op: 'startsWith', value: '' }, 'x'), false);
     assert.equal(holds({ op: 'startsWith', value: 'Y92' }, ['R10', 'Y92.0']), true);
+  });
+});
+
+describe('table summaries', () => {
+  const summaryOf = (type: string, config: Json) =>
+    tableNodes.find((n) => n.type === type)?.summary?.(config);
+
+  it('counts inline rules and rows, or names the shared table', () => {
+    assert.equal(
+      summaryOf('std.table.decide', { inputs: [], outputs: [], rules: [{ label: 'A' }] }),
+      '1 rule'
+    );
+    assert.equal(summaryOf('std.table.lookup', { rows: [{}, {}] }), '2 rows');
+    assert.equal(
+      summaryOf('std.table.decide', { inputs: [], outputs: [], table: { key: 'billing.level' } }),
+      'Table: billing.level'
+    );
+    assert.equal(
+      summaryOf('std.table.lookup', { table: { key: 'billing.codes' } }),
+      'Table: billing.codes'
+    );
   });
 });

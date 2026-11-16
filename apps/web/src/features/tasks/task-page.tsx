@@ -1,6 +1,6 @@
 import { PERMISSION_DESCRIPTIONS } from '@ugula/access';
 import { type CodeSet, isCodeSet } from '@ugula/billing';
-import type { FieldSpec, Json } from '@ugula/graph';
+import { type FieldSpec, isTextType, type Json } from '@ugula/graph';
 import {
   ActivityIcon,
   ArrowLeftIcon,
@@ -84,8 +84,8 @@ const DecisionSection = ({ title, children }: { title: string; children: ReactNo
 
 export const isCodeField = (f: FieldSpec): f is FieldSpec & { codeSet: CodeSet } =>
   isCodeSet(f.codeSet) &&
-  (f.type === 'string' ||
-    (typeof f.type === 'object' && 'list' in f.type && f.type.list === 'string'));
+  (isTextType(f.type) ||
+    (typeof f.type === 'object' && 'list' in f.type && isTextType(f.type.list)));
 
 const FOLLOW_UP_TRIES = 40;
 const FOLLOW_UP_WAIT_MS = 500;

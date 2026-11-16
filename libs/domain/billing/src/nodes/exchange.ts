@@ -7,22 +7,59 @@ import type { NodesOf } from './stores.ts';
 
 const CATEGORY = 'Billing';
 
+const sentAsPin = pin('sentAs', 'string', {
+  label: 'Sent As',
+  description: 'How the request was sent: realtime or the batch file name.'
+});
+
+const reasonPin = pin('reason', 'string', {
+  description: 'Why the request could not be sent or answered at once.'
+});
+
+const UNAVAILABLE = {
+  label: 'Unavailable',
+  description:
+    'Nothing was asked: there is no clearinghouse connection, billing profile or payer to ask; the reason says which.'
+};
+
 export const exchangeNodes: NodesOf = (stores) => [
   branchNode({
     type: 'billing.send-270',
     title: 'Check Eligibility with Clearinghouse',
     category: CATEGORY,
     description:
-      "Asks the clearinghouse whether each payer on a claim with a directory payer and member ID covers the patient on the date of service. Unless forced, a payer that already has an answer or a request waiting for one is not asked again, and an answer for the same patient, payer and member ID in the same month of service on another claim is reused. Sends a real-time 270 when the agency's connection supports it and applies the 271 answer at once (an inactive coverage blocks billing that payer), outputting the lines a biller has to look at, such as a Medicare answer that names a Medicare Advantage plan. Otherwise, or when the real-time request gets no answer, uploads a batch 270 whose 271 arrives with the payer files; a real-time answer that cannot be read is not asked again in batch, and a retried step returns what it already got instead of asking again. Continues through unavailable, saying why, without a connection, billing profile or payer to check.",
+      "Asks the clearinghouse whether each payer on a claim with a directory payer and member ID covers the patient on the date of service. Unless forced, a payer that already has an answer or a request waiting for one is not asked again, and an answer for the same patient, payer and member ID in the same month of service on another claim is reused. Sends a real-time 270 when the agency's connection supports it and applies the 271 answer at once (an inactive coverage blocks billing that payer), giving the lines a biller has to look at, such as a Medicare answer that names a Medicare Advantage plan. Otherwise, or when the real-time request gets no answer, uploads a batch 270 whose 271 arrives with the payer files; a real-time answer that cannot be read is not asked again in batch, and a retried step returns what it already got instead of asking again.",
+    level: 'basic',
+    keywords: ['eligibility', '270', '271', 'insurance check', 'coverage'],
     effect: true,
-    inputs: [claimIdPin, pin('force', 'boolean', { optional: true })],
-    outputs: [
-      pin('fileName', 'string'),
-      pin('reviews', { list: PAYER_FILE_LINE }),
-      pin('sentAs', 'string'),
-      pin('reason', 'string')
+    inputs: [
+      claimIdPin,
+      pin('force', 'boolean', {
+        optional: true,
+        label: 'Ask Again',
+        description: 'Ask every payer, even one already answered or waiting for an answer.'
+      })
     ],
-    exits: ['answered', 'sent', 'unavailable'],
+    outputs: [
+      pin('fileName', 'string', {
+        label: 'File Name',
+        description: 'The name of the real-time 271 answer.'
+      }),
+      pin(
+        'reviews',
+        { list: PAYER_FILE_LINE },
+        {
+          description: 'The answer lines a biller has to look at.'
+        }
+      ),
+      sentAsPin,
+      reasonPin
+    ],
+    exits: {
+      answered: { label: 'Answered', description: 'The payers answered in real time.' },
+      sent: { label: 'Sent', description: 'A batch request was sent; the answer comes later.' },
+      unavailable: UNAVAILABLE
+    },
     compute: async (inputs, _, ctx) => {
       const r = await stores().exchange.checkEligibility(
         ctx.runId,
@@ -49,16 +86,35 @@ export const exchangeNodes: NodesOf = (stores) => [
     title: 'Check Claim Status with Clearinghouse',
     category: CATEGORY,
     description:
-      "Asks the payer through the clearinghouse where a submitted claim stands (276). Sends it in real time when the agency's connection supports it and logs the 277 answer on the claim; otherwise, or when the real-time request gets no answer, uploads a batch 276 whose 277 is logged when it arrives, and outputs how many claim signals were seen so a wait can start from there. A real-time answer that does not name the claim is not asked again in batch, and a retried step returns what it already sent instead of asking again. Continues through unavailable, saying why, without a connection, billing profile or submission to ask about.",
+      "Asks the payer through the clearinghouse where a submitted claim stands (276). Sends it in real time when the agency's connection supports it and logs the 277 answer on the claim; otherwise, or when the real-time request gets no answer, uploads a batch 276 whose 277 is logged when it arrives, and gives how many claim changes were seen so a wait can start from there. A real-time answer that does not name the claim is not asked again in batch, and a retried step returns what it already sent instead of asking again.",
+    level: 'basic',
+    keywords: ['claim status', '276', '277', 'follow up'],
     effect: true,
-    inputs: [claimIdPin, pin('coverageId', 'string')],
-    outputs: [
-      pin('status', 'string'),
-      pin('sentAs', 'string'),
-      pin('signalsSeen', 'integer'),
-      pin('reason', 'string')
+    inputs: [
+      claimIdPin,
+      pin(
+        'coverageId',
+        { id: 'coverage' },
+        {
+          label: 'Payer',
+          description: 'The payer on the claim to ask.'
+        }
+      )
     ],
-    exits: ['answered', 'sent', 'unavailable'],
+    outputs: [
+      pin('status', 'string', { description: 'What the payer said about the claim.' }),
+      sentAsPin,
+      pin('signalsSeen', 'integer', {
+        label: 'Signals Seen',
+        description: 'How many claim changes were seen when the request was sent.'
+      }),
+      reasonPin
+    ],
+    exits: {
+      answered: { label: 'Answered', description: 'The payer answered in real time.' },
+      sent: { label: 'Sent', description: 'A batch request was sent; the answer comes later.' },
+      unavailable: UNAVAILABLE
+    },
     compute: async (inputs, _, ctx) => {
       const r = await stores().exchange.checkClaimStatus(
         ctx.runId,
@@ -85,9 +141,13 @@ export const exchangeNodes: NodesOf = (stores) => [
     title: 'Latest Claim Status',
     category: CATEGORY,
     description:
-      'The latest claim status the payer gave (277) for the payer being billed since the claim was last sent or followed up, or nothing.',
+      'Gives the latest claim status the payer being billed gave (277) since the claim was last sent or followed up, or nothing.',
+    level: 'basic',
+    keywords: ['claim status', '277'],
     inputs: [claimIdPin],
-    outputs: [pin('status', 'string')],
+    outputs: [
+      pin('status', 'string', { description: 'The latest status the payer gave, if any.' })
+    ],
     compute: async (inputs, _, ctx) => {
       const claimId = claimIdOf(inputs.claimId);
       const ledger = await stores().claims.ledger(ctx.runId, claimId);

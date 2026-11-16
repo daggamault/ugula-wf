@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { nodeDocumentationIssues } from '@ugula/graph';
 import { invokeNode } from '@ugula/graph/testing';
 import { billingStores, memoryClaims } from '../testing.ts';
 import { createBillingNodes } from './index.ts';
@@ -94,5 +95,25 @@ describe('createBillingNodes', () => {
     if (!follow) throw new Error('No follow-claim node');
     await invokeNode(follow, { inputs: { claimId: 'c1' } });
     assert.deepEqual(claims.attached, ['claim:c1']);
+  });
+
+  it('documents every pin and exit and tags every node with a level', () => {
+    const nodes = createBillingNodes(null);
+    assert.deepEqual(nodes.flatMap(nodeDocumentationIssues), []);
+    assert.deepEqual(
+      nodes.filter((n) => n.level !== 'basic').map((n) => [n.type, n.level]),
+      [
+        ['billing.attach-cycle', 'advanced'],
+        ['billing.record-claim-step', 'advanced'],
+        ['billing.with-frequency', 'advanced']
+      ]
+    );
+    const match = nodes.find((n) => n.type === 'billing.match-patient');
+    assert.deepEqual(Object.keys(match?.exits ?? {}), [
+      'matched',
+      'unmatched',
+      'review',
+      'incomplete'
+    ]);
   });
 });

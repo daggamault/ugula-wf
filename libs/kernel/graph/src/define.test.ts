@@ -64,6 +64,34 @@ describe('define helpers', () => {
     assert.equal(fan.config, undefined);
   });
 
+  it('carries the level, keywords and summary of a node', () => {
+    const shout = pureNode<{ word: string }>({
+      type: 't.shout',
+      title: 'Shout',
+      category: 'T',
+      description: '',
+      level: 'basic',
+      keywords: ['yell'],
+      summary: ({ word }) => `Shout ${word}`,
+      inputs: [],
+      outputs: [pin('id', { id: 'claim' })],
+      compute: () => ({ id: 'c1' })
+    });
+    assert.equal(shout.level, 'basic');
+    assert.deepEqual(shout.keywords, ['yell']);
+    assert.equal(shout.summary?.({ word: 'hi' }), 'Shout hi');
+    const bare = pureNode({
+      type: 't.bare',
+      title: 'Bare',
+      category: 'T',
+      description: '',
+      inputs: [],
+      outputs: [],
+      compute: () => ({})
+    });
+    assert.equal('level' in bare || 'keywords' in bare || 'summary' in bare, false);
+  });
+
   it('creates pure and action nodes that read all inputs', async () => {
     const options = {
       type: 't.add',
@@ -124,7 +152,7 @@ describe('define helpers', () => {
       description: '',
       inputs: [pin('score', 'number'), pin('meta', { object: { scale: 'number' } })],
       outputs: [pin('margin', 'number')],
-      exits: ['pass', 'fail'],
+      exits: { pass: { label: 'Pass' }, fail: { label: 'Fail' } },
       compute: ({ score, meta }) =>
         score >= (meta.scale ?? 100) / 2
           ? { exit: 'pass', outputs: { margin: score - 50 } }
@@ -144,5 +172,6 @@ describe('define helpers', () => {
       outputs: { margin: 30 }
     });
     assert.equal(grade.effect, undefined);
+    assert.deepEqual(grade.exits, { pass: { label: 'Pass' }, fail: { label: 'Fail' } });
   });
 });

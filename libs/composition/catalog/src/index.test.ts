@@ -1,9 +1,23 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { billingModels } from '@ugula/billing';
-import { createRegistry, stdGraphInfo, stdGraphSource } from '@ugula/graph';
-import { nemsisModels } from '@ugula/nemsis';
-import { createNodeCatalog } from './index.ts';
+import { billingKinds, billingModels } from '@ugula/billing';
+import {
+  createRegistry,
+  type GraphDef,
+  nodeDocumentationIssues,
+  stdGraphInfo,
+  stdGraphSource,
+  unknownKinds
+} from '@ugula/graph';
+import { nemsisKinds, nemsisModels } from '@ugula/nemsis';
+import { createNodeCatalog, valueKinds } from './index.ts';
+
+const UNWIRED: GraphDef = {
+  signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
+  variables: [],
+  nodes: [],
+  edges: []
+};
 
 const MINOR_WORDS = new Set([
   'a',
@@ -70,5 +84,36 @@ describe('createNodeCatalog', () => {
       ...[...nemsisModels, ...billingModels].flatMap((m) => m.fields.map((f) => f.label))
     ];
     for (const label of labels) assert.doesNotMatch(label, rawName, label);
+  });
+
+  it('documents every input, output and exit of every registered node', () => {
+    const registry = createRegistry(createNodeCatalog({ fetch }), stdGraphSource);
+    assert.deepEqual(registry.nodes().flatMap(nodeDocumentationIssues), []);
+  });
+
+  it('places every node at the basic or advanced level', () => {
+    const unleveled = createNodeCatalog({ fetch })
+      .filter((n) => !n.level)
+      .map((n) => n.type);
+    assert.deepEqual(unleveled, []);
+  });
+
+  it('uses only the kinds the domains declare, with one label per kind', () => {
+    const registry = createRegistry(createNodeCatalog({ fetch }), stdGraphSource, valueKinds);
+    const types = [
+      ...registry.nodes().flatMap((n) => {
+        try {
+          const sig = registry.signature({ id: n.type, type: n.type, version: n.version }, UNWIRED);
+          return [...sig.inputs, ...sig.outputs].map((p) => p.type);
+        } catch {
+          return [];
+        }
+      }),
+      ...[...nemsisModels, ...billingModels].flatMap((m) => m.fields.map((f) => f.type))
+    ];
+    assert.deepEqual([...new Set(types.flatMap((t) => unknownKinds(t, valueKinds)))], []);
+    for (const [kind, label] of Object.entries(nemsisKinds.code)) {
+      assert.equal(billingKinds.code[kind] ?? label, label, kind);
+    }
   });
 });

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as v from 'valibot';
 import { invokeNode } from '../testing.ts';
-import { expressionConfig, expressionNode, identifierPins } from './expression.ts';
+import { expressionConfig, expressionNode, identifierPins, oneLine } from './expression.ts';
 
 describe('expression node', () => {
   it('turns free names into inputs and evaluates the formula', async () => {
@@ -28,7 +28,7 @@ describe('expression node', () => {
 
   it('tolerates unparsable text when deriving pins but fails when run', async () => {
     assert.deepEqual(identifierPins(['max(', 'a + b'], ['b']), [
-      { name: 'a', type: 'any', optional: true }
+      { name: 'a', type: 'any', optional: true, description: 'A value the formula uses.' }
     ]);
     assert.deepEqual(
       identifierPins(['a + a', 'b * a']).map((p) => p.name),
@@ -49,5 +49,15 @@ describe('expression node', () => {
     assert.match(problem('a +* b') ?? '', /Unexpected "\*"/);
     assert.equal(problem('nosuchfn(1)'), 'Unknown function "nosuchfn"');
     assert.equal(problem('constructor(1)'), 'Unknown function "constructor"');
+  });
+});
+
+describe('expression summary', () => {
+  it('shows the formula on one line, shortened when long', () => {
+    assert.equal(expressionNode.summary?.({ expression: 'a +\n  b' }), 'a + b');
+    const long = expressionNode.summary?.({ expression: `x + ${'y'.repeat(100)}` }) ?? '';
+    assert.equal(long.length, 80);
+    assert.ok(long.endsWith('…'));
+    assert.equal(oneLine('  '), null);
   });
 });

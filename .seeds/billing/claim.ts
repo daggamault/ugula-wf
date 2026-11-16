@@ -89,7 +89,7 @@ const originDestination = (): GraphDef => {
     [
       d(
         'originDestination',
-        'string',
+        { code: 'modifier' },
         'Origin/Destination Modifier',
         'The origin letter, then the destination letter, as one modifier.',
         true
@@ -184,6 +184,10 @@ const originDestination = (): GraphDef => {
   );
   g.add('codes', 'std.list.make', { label: 'Origin and Destination', config: { count: 2 } });
   g.add('modifier', 'std.text.join', { label: 'Origin Then Destination' });
+  g.add('asModifier', 'std.convert.to-code', {
+    label: 'As Modifier',
+    config: { kind: 'modifier' }
+  });
   g.ret('return');
   g.wire('entry.locations', 'locations.locations');
   g.wire('entry.trip', 'trip.trip');
@@ -195,7 +199,8 @@ const originDestination = (): GraphDef => {
   g.wire('locations.destinationHospital', 'destinationLetter.hospital', 'reasons.hospital');
   g.wire('destinationLetter.result', 'codes.item2');
   g.wire('codes.list', 'modifier.items');
-  g.wire('modifier.text', 'return.originDestination');
+  g.wire('modifier.text', 'asModifier.text');
+  g.wire('asModifier.code', 'return.originDestination');
   g.wire('origin.rules', 'reasons.rules');
   g.wire('reasons.result', 'return.reasons');
   return g.def;
@@ -332,7 +337,7 @@ const lineModifiers = (): GraphDef => {
     [
       d(
         'originDestination',
-        'string',
+        { code: 'modifier' },
         'Origin/Destination Modifier',
         'The origin and destination letters.',
         true
@@ -344,7 +349,12 @@ const lineModifiers = (): GraphDef => {
         'The claim filing indicator of the payer billed.',
         true
       ),
-      d('codes', { list: 'string' }, 'Line Codes', 'The HCPCS codes on the claim, line by line.'),
+      d(
+        'codes',
+        { list: { code: 'hcpcs' } },
+        'Line Codes',
+        'The HCPCS codes on the claim, line by line.'
+      ),
       flagIn('emergency', 'Emergency', 'Whether the trip is billed as an emergency.'),
       flagIn('deceased', 'Pronounced Dead', 'The patient was pronounced dead before loading.'),
       d(
@@ -775,7 +785,9 @@ const map837p = (): GraphDef => {
         { name: 'paidOn', type: 'string', from: 'paidOn' },
         {
           name: 'adjustments',
-          type: { list: { object: { group: 'string', reason: 'string', cents: 'integer' } } },
+          type: {
+            list: { object: { group: 'string', reason: { code: 'carc' }, cents: 'integer' } }
+          },
           from: 'adjustments'
         },
         {
@@ -784,12 +796,12 @@ const map837p = (): GraphDef => {
             list: {
               object: {
                 line: 'integer',
-                code: 'string',
-                modifiers: { list: 'string' },
+                code: { code: 'hcpcs' },
+                modifiers: { list: { code: 'modifier' } },
                 paidCents: 'integer',
                 units: 'number',
                 adjustments: {
-                  list: { object: { group: 'string', reason: 'string', cents: 'integer' } }
+                  list: { object: { group: 'string', reason: { code: 'carc' }, cents: 'integer' } }
                 }
               }
             }

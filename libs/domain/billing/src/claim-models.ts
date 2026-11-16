@@ -34,7 +34,7 @@ export const FINDINGS = model(
 );
 
 export const LINE = model('billing.line', 'line', 'Claim Line', 'one HCPCS charge line', [
-  f('code', 'string', 'HCPCS code'),
+  f('code', { code: 'hcpcs' }, 'HCPCS code'),
   f('units', 'number', 'Units'),
   f('unitCents', 'integer', 'Unit price (cents)'),
   f('totalCents', 'integer', 'Line total (cents)')
@@ -132,8 +132,8 @@ export const CLINICAL_FACTS = model(
   'Clinical Facts',
   'what the crew found and did: impressions, coded medications and procedures, and the narrative',
   [
-    f('primaryImpression', 'string', 'Primary impression · eSituation.11'),
-    f('secondaryImpressions', { list: 'string' }, 'Secondary impressions · eSituation.12'),
+    f('primaryImpression', { code: 'icd10' }, 'Primary impression · eSituation.11'),
+    f('secondaryImpressions', { list: { code: 'icd10' } }, 'Secondary impressions · eSituation.12'),
     f(
       'medications',
       { list: { object: { medication: 'string', route: 'string' } } },
@@ -166,7 +166,7 @@ export const ENCOUNTER_FACTS = model(
 
 export const CLAIM = model('billing.claim', 'claim', 'Claim', 'a claim before it is saved', [
   f('pcrNumber', 'string', 'PCR number'),
-  f('patientId', 'string', 'Patient ID'),
+  f('patientId', { id: 'patient' }, 'Patient ID'),
   f('classification', 'string', 'Classification'),
   f('serviceDate', 'string', 'Date of service (YYYY-MM-DD)'),
   f('level', 'string', 'Level of service'),
@@ -179,8 +179,8 @@ export const CLAIM = model('billing.claim', 'claim', 'Claim', 'a claim before it
   f('coverages', { list: COVERAGE.type }, 'Payers in billing order'),
   f('pickup', LOCATION.type, 'Pickup'),
   f('destination', LOCATION.type, 'Destination'),
-  f('diagnoses', { list: 'string' }, 'ICD-10 diagnoses'),
-  f('originDestination', 'string', 'Origin/destination modifier'),
+  f('diagnoses', { list: { code: 'icd10' } }, 'ICD-10 diagnoses'),
+  f('originDestination', { code: 'modifier' }, 'Origin/destination modifier'),
   f('documentation', DOCUMENTATION.type, 'Documentation'),
   f('report', BLOB, 'Source report')
 ]);

@@ -15,7 +15,7 @@ export const DEMOGRAPHICS = model(
 );
 
 export const PATIENT = model('billing.patient', 'patient', 'Patient', 'a billing patient', [
-  f('id', 'string', 'Patient ID'),
+  f('id', { id: 'patient' }, 'Patient ID'),
   ...DEMOGRAPHICS.fields
 ]);
 
@@ -34,7 +34,7 @@ export const COVERAGE = model(
   'one payer that covers a claim, and who holds the policy',
   [
     f('payer', 'string', 'Payer name as reported'),
-    f('payerId', 'string', 'Directory payer ID'),
+    f('payerId', { id: 'payer' }, 'Directory payer ID'),
     f('directoryName', 'string', 'Directory payer name'),
     f('payerCode', 'string', 'Payer code'),
     f('priority', 'string', 'Billing priority'),

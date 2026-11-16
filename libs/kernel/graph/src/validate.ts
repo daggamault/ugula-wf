@@ -3,7 +3,9 @@ import { messageOf } from './errors.ts';
 import { freeIdentifiers } from './expr.ts';
 import { isPure, type Registry } from './registry.ts';
 import type { GraphDef, NodeInstance, Signature } from './types.ts';
-import { checkValue, formatType, isAssignable } from './value-types.ts';
+import { checkValue, formatType, isAssignable, unknownKinds } from './value-types.ts';
+
+const GRAPH_PINS = new Set([ENTRY_TYPE, RETURN_TYPE, INPUT_TYPE]);
 
 export type Issue = {
   node?: string;
@@ -26,6 +28,22 @@ export const validateGraph = (def: GraphDef, registry: Registry): Issue[] => {
   const graphIsPure = isPure(def.signature);
   const varNames = new Set(def.variables.map((x) => x.name));
 
+  const kindIssues = (sig: Signature, node?: string) => {
+    for (const [side, pins] of [
+      ['input', sig.inputs],
+      ['output', sig.outputs]
+    ] as const) {
+      for (const p of pins) {
+        for (const k of unknownKinds(p.type, registry.kinds))
+          add(`Unknown kind ${k} on ${side} "${p.name}"`, node);
+      }
+    }
+  };
+  kindIssues(def.signature);
+  for (const x of def.variables) {
+    for (const k of unknownKinds(x.type, registry.kinds))
+      add(`Unknown kind ${k} on variable "${x.name}"`);
+  }
   for (const name of pinIssues(def.signature)) add(`Duplicate graph pin "${name}"`);
   for (const name of duplicates(def.variables.map((x) => x.name)))
     add(`Duplicate variable "${name}"`);
@@ -55,6 +73,7 @@ export const validateGraph = (def: GraphDef, registry: Registry): Issue[] => {
       continue;
     }
     sigs.set(node.id, sig);
+    if (registry.node(node) && !GRAPH_PINS.has(node.type)) kindIssues(sig, node.id);
     if (graphIsPure && !isPure(sig) && node.type !== ENTRY_TYPE && node.type !== RETURN_TYPE) {
       add('Pure graphs can only contain pure nodes', node.id);
     }

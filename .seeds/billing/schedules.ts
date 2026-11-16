@@ -182,7 +182,7 @@ const deadlineReminder = (): GraphDef => {
     execIn: ['exec'],
     execOut: [],
     inputs: [
-      p('claimId', 'string'),
+      p('claimId', { id: 'claim' }),
       d('kind', 'string', 'Deadline', 'timelyFiling or pcs.'),
       d('dueOn', 'string', 'Due On', 'The due date (YYYY-MM-DD).'),
       d('reference', 'string', 'Claim', 'The claim number and patient the reminder names.'),

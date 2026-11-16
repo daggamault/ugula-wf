@@ -212,3 +212,9 @@ describe('human task node', () => {
     );
   });
 });
+
+describe('human task summary', () => {
+  it('names the task', () => {
+    assert.equal(createHumanTaskNode().summary?.({ title: 'Match Payer' }), 'Task: Match Payer');
+  });
+});

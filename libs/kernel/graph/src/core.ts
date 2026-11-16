@@ -12,7 +12,8 @@ export const entryNode = defineNode({
   version: 1,
   title: 'Entry',
   category: 'Graph',
-  description: 'Where execution and inputs enter this graph.',
+  description: 'Where this workflow starts, with its inputs.',
+  level: 'basic',
   signature: (_, { graph }) => ({
     execIn: [],
     execOut: graph.signature.execIn,
@@ -31,7 +32,10 @@ export const inputNode = defineNode<v.InferOutput<typeof inputConfig>>({
   version: 1,
   title: 'Get Input',
   category: 'Graph',
-  description: "Reads one of this graph's inputs next to the nodes that use it.",
+  description: 'Reads one of the inputs of this workflow, next to the steps that use it.',
+  level: 'basic',
+  keywords: ['input', 'parameter'],
+  summary: ({ pin }) => `Input: ${pin}`,
   config: inputConfig,
   signature: ({ pin }, { graph }) => ({
     execIn: [],
@@ -51,7 +55,10 @@ export const returnNode = defineNode<v.InferOutput<typeof returnConfig>>({
   version: 1,
   title: 'Return',
   category: 'Graph',
-  description: 'Completes this graph through an exec output with its output values.',
+  description: 'Finishes this workflow, through one of its exits, with the values connected to it.',
+  level: 'basic',
+  keywords: ['return', 'finish', 'end', 'output', 'exit'],
+  summary: ({ pin }) => (pin ? `Exit: ${pin}` : null),
   config: returnConfig,
   signature: (_, { graph }) => ({
     execIn: graph.signature.execIn.length ? ['exec'] : [],

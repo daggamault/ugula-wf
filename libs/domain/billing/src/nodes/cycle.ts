@@ -30,6 +30,25 @@ const PAYER_ACTIONS: readonly CycleEventKind[] = [
 
 const isClaimStatus = (x: unknown): x is ClaimStatus => CLAIM_STATUSES.includes(x as ClaimStatus);
 
+const STALE = {
+  label: 'Stale',
+  description: 'The claim changed meanwhile, so the next step is decided again.'
+};
+
+const signalsSeenPin = pin('signalsSeen', 'integer', {
+  label: 'Signals Seen',
+  description: 'How many claim changes the ledger already reflects.'
+});
+
+const coverageIdPin = pin(
+  'coverageId',
+  { id: 'coverage' },
+  {
+    label: 'Payer',
+    description: 'The payer on the claim the claim is submitted to.'
+  }
+);
+
 export const cycleNodes: NodesOf = (stores) => {
   const claims = () => stores().claims;
   return [
@@ -39,8 +58,20 @@ export const cycleNodes: NodesOf = (stores) => {
       category: CATEGORY,
       description:
         'Links a claim to the run that cycles it through payers, so its status can be shown, and wakes the run to record the status of its step now that the claim is out of draft.',
+      level: 'advanced',
+      keywords: ['cycle', 'link run'],
       effect: true,
-      inputs: [claimIdPin, pin('cycleRunId', 'string')],
+      inputs: [
+        claimIdPin,
+        pin(
+          'cycleRunId',
+          { id: 'run' },
+          {
+            label: 'Cycle Run',
+            description: 'The run that cycles the claim through its payers.'
+          }
+        )
+      ],
       outputs: [],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
@@ -55,12 +86,20 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Read Claim Ledger',
       category: CATEGORY,
       description:
-        "Reads where a claim stands from its history (Claim Ledger): its balance, the payer being billed and whether it has the claim or approved it, a payer response waiting to be reconciled, patient approval and statements, and why the last submission was rejected. Also outputs how many claim signals the history already reflects, and the claim's PCR number and patient for people to recognize it by. Decides nothing; Next Claim Step does.",
+        "Reads where a claim stands from its history (Claim Ledger): its balance, the payer being billed and whether it has the claim or approved it, a payer response waiting to be reconciled, patient approval and statements, and why the last submission was rejected. Also gives how many claim changes the history already reflects, and the claim's PCR number and patient for people to recognize it by. Decides nothing; Next Claim Step does.",
+      level: 'basic',
+      keywords: ['balance', 'status', 'ledger', 'history'],
       inputs: [claimIdPin],
       outputs: [
-        pin('ledger', billingTypes.ledger),
-        pin('signalsSeen', 'integer'),
-        pin('reference', 'string')
+        pin('ledger', billingTypes.ledger, {
+          label: 'Claim Ledger',
+          description:
+            'Where the claim stands: balance, payer being billed, approvals and statements.'
+        }),
+        signalsSeenPin,
+        pin('reference', 'string', {
+          description: "The claim's PCR number and patient, to recognize it by."
+        })
       ],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
@@ -78,15 +117,23 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Record Claim Step',
       category: CATEGORY,
       description:
-        'Records the status of the step a claim is on, so the status a biller filters by is always the step the claim is on; a step without a status (closing) records nothing. Continues through stale when the claim changed since its ledger was read, so the next step is decided again.',
+        'Records the status of the step a claim is on, so the status a biller filters by is always the step the claim is on; a step without a status (closing) records nothing.',
+      level: 'advanced',
+      keywords: ['status'],
       effect: true,
       inputs: [
         claimIdPin,
-        pin('status', 'string', { optional: true }),
-        pin('signalsSeen', 'integer')
+        pin('status', 'string', {
+          optional: true,
+          description: 'The status of the step the claim is on, if it has one.'
+        }),
+        signalsSeenPin
       ],
       outputs: [],
-      exits: ['recorded', 'stale'],
+      exits: {
+        recorded: { label: 'Recorded', description: 'The status is recorded.' },
+        stale: STALE
+      },
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
         const status = textOrNull(inputs.status);
@@ -107,14 +154,28 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Record Claim Event',
       category: CATEGORY,
       description:
-        "Logs a review approval (of a payer, or with no coverage of billing the patient), a submission made outside the app, a queued resubmission, follow-up, skipped payer, reconciled response or patient statement on a claim, once per run step, with the payer's claim number when the payer gave one, so a resubmission replaces that claim. Actions for a payer other than the one being billed are ignored, except reconciling a response or resubmitting a corrected claim to the payer whose response is being reconciled; a submission already on file is not logged twice.",
+        "Logs a review approval (of a payer, or with no payer, of billing the patient), a submission made outside the app, a queued resubmission, follow-up, skipped payer, reconciled response or patient statement on a claim, once per step, with the payer's claim number when the payer gave one, so a resubmission replaces that claim. Actions for a payer other than the one being billed are ignored, except reconciling a response or resubmitting a corrected claim to the payer whose response is being reconciled; a submission already on file is not logged twice.",
+      level: 'basic',
+      keywords: ['log', 'approve', 'follow up', 'skip payer', 'resubmit'],
       effect: true,
       inputs: [
         claimIdPin,
-        pin('kind', 'string'),
-        pin('coverageId', 'string', { optional: true }),
-        pin('note', 'string', { optional: true }),
-        pin('payerClaimNumber', 'string', { optional: true })
+        pin('kind', 'string', { label: 'Event', description: 'What happened on the claim.' }),
+        pin(
+          'coverageId',
+          { id: 'coverage' },
+          {
+            optional: true,
+            label: 'Payer',
+            description: 'The payer on the claim it is about, or none for the patient.'
+          }
+        ),
+        pin('note', 'string', { optional: true, description: 'A note for the claim history.' }),
+        pin('payerClaimNumber', 'string', {
+          optional: true,
+          label: 'Payer Claim Number',
+          description: 'The number the payer gave the claim, if any.'
+        })
       ],
       outputs: [],
       compute: async (inputs, _, ctx) => {
@@ -146,15 +207,35 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Issue Patient Statement',
       category: CATEGORY,
       description:
-        "Renders a PDF statement of the claim's charges, payments and balance due, numbered out of the statements the cycle sends and dated in the agency's time zone, stores it and logs it on the claim. Continues through missing, naming what, when the agency has no billing profile or the patient has no complete mailing address.",
+        "Renders a PDF statement of the claim's charges, payments and balance due, numbered out of the statements the cycle sends and dated in the agency's time zone, stores it and logs it on the claim.",
+      level: 'basic',
+      keywords: ['statement', 'patient bill', 'invoice', 'self pay'],
       effect: true,
       inputs: [
         claimIdPin,
-        pin('statementNumber', 'integer'),
-        pin('statementCount', 'integer', { label: 'Statements in the cycle' })
+        pin('statementNumber', 'integer', {
+          label: 'Statement',
+          description: 'Which statement of the cycle this is.'
+        }),
+        pin('statementCount', 'integer', {
+          label: 'Statements in the Cycle',
+          description: 'How many statements the cycle sends.'
+        })
       ],
-      outputs: [pin('need', 'string')],
-      exits: ['issued', 'missing'],
+      outputs: [
+        pin('need', 'string', {
+          label: 'Missing',
+          description: 'What is missing: the billing profile or the patient address.'
+        })
+      ],
+      exits: {
+        issued: { label: 'Issued', description: 'The statement was made and logged on the claim.' },
+        missing: {
+          label: 'Missing',
+          description:
+            'The agency has no billing profile or the patient has no complete mailing address.'
+        }
+      },
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
         const number = inputs.statementNumber;
@@ -185,10 +266,22 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Prepare 837P Claim',
       category: CATEGORY,
       description:
-        'Loads a claim as it goes to the payer it is being submitted to, ready to map onto an 837P. Continues through stale when that payer is no longer the one being billed or already has the claim.',
-      inputs: [claimIdPin, pin('coverageId', 'string')],
-      outputs: [pin('claim', billingTypes.submission)],
-      exits: ['ready', 'stale'],
+        'Loads a claim as it goes to the payer it is being submitted to, ready to map onto an 837P.',
+      level: 'basic',
+      keywords: ['submit', 'electronic claim', 'x12'],
+      inputs: [claimIdPin, coverageIdPin],
+      outputs: [
+        pin('claim', billingTypes.submission, {
+          description: 'The claim as it goes to the payer.'
+        })
+      ],
+      exits: {
+        ready: { label: 'Ready', description: 'The claim is ready to map onto an 837P.' },
+        stale: {
+          label: 'Stale',
+          description: 'The payer is no longer the one being billed or already has the claim.'
+        }
+      },
       compute: async (inputs, _, ctx) => {
         const { pending } = await claims().submission(
           ctx.runId,
@@ -205,17 +298,43 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'File 837P Claim',
       category: CATEGORY,
       description:
-        'Writes a mapped 837P claim into its own numbered 837P file for the clearinghouse, stores it and logs the claim as submitted (or resubmitted) to the payer, once per run step. Continues through blocked, saying why, when the billing profile is missing or incomplete, the 837P mapping is incomplete or control numbers are used up, and through stale when the claim changed or its payer is no longer the one being billed. The claim checks run before it, in Check Claim.',
+        'Writes a mapped 837P claim into its own numbered 837P file for the clearinghouse, stores it and logs the claim as submitted (or resubmitted) to the payer, once per step. The claim checks run before it, in Check Claim.',
+      level: 'basic',
+      keywords: ['submit', 'electronic claim', 'x12', 'file'],
       effect: true,
-      inputs: [claimIdPin, pin('coverageId', 'string'), pin('x837', billingTypes.x837)],
-      outputs: [pin('controlNumber', 'integer'), pin('reason', 'string')],
-      exits: ['filed', 'blocked', 'stale'],
+      inputs: [
+        claimIdPin,
+        coverageIdPin,
+        pin('x837', billingTypes.x837, {
+          label: '837P Claim',
+          description: 'The claim mapped onto the 837P.'
+        })
+      ],
+      outputs: [
+        pin('controlNumber', 'integer', {
+          label: 'Control Number',
+          description: 'The number of the 837P file written.'
+        }),
+        pin('reason', 'string', { description: 'Why the claim could not be filed.' })
+      ],
+      exits: {
+        filed: { label: 'Filed', description: 'The 837P file is written and the claim submitted.' },
+        blocked: {
+          label: 'Blocked',
+          description:
+            'The billing profile or 837P mapping is incomplete, or control numbers are used up; the reason says why.'
+        },
+        stale: {
+          label: 'Stale',
+          description: 'The claim changed or its payer is no longer the one being billed.'
+        }
+      },
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
         const coverageId = requiredText(inputs.coverageId, 'No payer to file the claim with');
-        const stale = { exit: 'stale', outputs: { controlNumber: null, reason: null } };
+        const stale = { exit: 'stale' as const, outputs: { controlNumber: null, reason: null } };
         const blocked = (reason: string) => ({
-          exit: 'blocked',
+          exit: 'blocked' as const,
           outputs: { controlNumber: null, reason }
         });
         const { submitter, pending } = await claims().submission(ctx.runId, claimId, coverageId);
@@ -251,6 +370,8 @@ export const cycleNodes: NodesOf = (stores) => {
       category: CATEGORY,
       description:
         "Links this run to a claim, so its tasks and problems show on the claim and the claim's tasks list. A run follows one claim.",
+      level: 'basic',
+      keywords: ['link', 'claim tasks'],
       effect: true,
       inputs: [claimIdPin],
       outputs: [],
@@ -264,11 +385,31 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Send 837P to Clearinghouse',
       category: CATEGORY,
       description:
-        "Uploads a claim's 837P file through the agency's clearinghouse connection (or the server default), once; sending it again does nothing. Continues through manual when no clearinghouse connection is set up, so the biller uploads the file from the claim page.",
+        "Uploads a claim's 837P file through the agency's clearinghouse connection (or the server default), once; sending it again does nothing.",
+      level: 'basic',
+      keywords: ['submit', 'upload', 'clearinghouse', 'send claim'],
       effect: true,
-      inputs: [claimIdPin, pin('controlNumber', 'integer')],
-      outputs: [pin('sentAs', 'string')],
-      exits: ['sent', 'manual'],
+      inputs: [
+        claimIdPin,
+        pin('controlNumber', 'integer', {
+          label: 'Control Number',
+          description: 'The number of the 837P file to send.'
+        })
+      ],
+      outputs: [
+        pin('sentAs', 'string', {
+          label: 'Sent As',
+          description: 'The name the file was sent under.'
+        })
+      ],
+      exits: {
+        sent: { label: 'Sent', description: 'The file was sent to the clearinghouse.' },
+        manual: {
+          label: 'Manual',
+          description:
+            'No clearinghouse connection is set up, so the biller uploads the file from the claim page.'
+        }
+      },
       compute: async (inputs, _, ctx) => {
         const sent = await claims().sendClaimFile(
           ctx.runId,
@@ -286,8 +427,15 @@ export const cycleNodes: NodesOf = (stores) => {
       category: CATEGORY,
       description:
         'Closes a claim as void, written off or sent to collections, or as paid if its balance has reached zero by then.',
+      level: 'basic',
+      keywords: ['void', 'write off', 'collections', 'close'],
       effect: true,
-      inputs: [claimIdPin, pin('status', 'string')],
+      inputs: [
+        claimIdPin,
+        pin('status', 'string', {
+          description: 'How to close the claim: void, written off or collections.'
+        })
+      ],
       outputs: [],
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);

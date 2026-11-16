@@ -8,8 +8,26 @@ import type { NodesOf } from './stores.ts';
 const CATEGORY = 'Billing';
 
 export const PAYER_FILE_LINE = {
-  object: { reference: 'string', claimId: 'string', outcome: 'string', message: 'string' }
+  object: { reference: 'string', claimId: { id: 'claim' }, outcome: 'string', message: 'string' }
 } as const;
+
+const filePin = pin('file', BLOB, { description: 'The stored payer file.' });
+
+const fileNamePin = pin('fileName', 'string', {
+  label: 'File Name',
+  description: 'The name the file arrived with.'
+});
+
+const fileIdPin = pin(
+  'fileId',
+  { id: 'payerFile' },
+  {
+    label: 'Payer File',
+    description: 'The payer file record, when the file was applied.'
+  }
+);
+
+const DUPLICATE = { label: 'Duplicate', description: 'The same file was already applied.' };
 
 const blobOf = ({ bucket, key }: { bucket: string | null; key: string | null }) => {
   if (!bucket || !key) throw new Error('No payer file to apply');
@@ -30,15 +48,29 @@ export const payerFileNodes: NodesOf = (stores) => [
     title: 'Read Payer File',
     category: CATEGORY,
     description:
-      'Reads a clearinghouse file without applying it: what kind it is (835, TA1, 999, 277CA, 277 claim status or 271) and, for an 835, each claim payment with the claim and payer it matched, so the remittance rules can route it. Continues through duplicate when the same file was applied before, and through unreadable when it is not one of those files.',
-    inputs: [pin('file', BLOB), pin('fileName', 'string')],
+      'Reads a clearinghouse file without applying it: what kind it is (835, TA1, 999, 277CA, 277 claim status or 271) and, for an 835, each claim payment with the claim and payer it matched, so the remittance rules can route it.',
+    level: 'basic',
+    keywords: ['835', 'era', 'remittance', '999', '277', 'clearinghouse file'],
+    inputs: [filePin, fileNamePin],
     outputs: [
-      pin('kind', 'string'),
-      pin('lines', billingTypes.remittanceLines, { label: 'Remittance Lines' }),
-      pin('fileId', 'string'),
-      pin('reason', 'string')
+      pin('kind', 'string', {
+        description: 'What kind of file it is (835, TA1, 999, 277CA, 277 or 271).'
+      }),
+      pin('lines', billingTypes.remittanceLines, {
+        label: 'Remittance Lines',
+        description: 'Each claim payment of an 835, with the claim and payer it matched.'
+      }),
+      fileIdPin,
+      pin('reason', 'string', { description: 'Why the file could not be read.' })
     ],
-    exits: ['read', 'duplicate', 'unreadable'],
+    exits: {
+      read: { label: 'Read', description: 'The file was read.' },
+      duplicate: DUPLICATE,
+      unreadable: {
+        label: 'Unreadable',
+        description: 'It is not a file the app reads; the reason says why.'
+      }
+    },
     compute: async (inputs, _, ctx) => {
       const read = await stores().payerFiles.read(ctx.runId, fileOf(inputs));
       const none = { kind: null, lines: [], fileId: null, reason: null };
@@ -57,20 +89,40 @@ export const payerFileNodes: NodesOf = (stores) => [
     title: 'Apply Payer File',
     category: CATEGORY,
     description:
-      'Applies a clearinghouse file to its claims, once: an 835 posts each claim payment the way the remittance rules routed it (postings), a 999 accepts or rejects every claim in its 837P file, a 277CA accepts or rejects single claims (a rejection of the billing provider or receiver rejects every claim under it, keeping the REF*1K of a rejected claim off it), a 271 records whether coverage is active, a TA1 rejection marks its 837P file rejected at the envelope and sends its claims back to review (outputting why, for whoever sets up the clearinghouse) and a 277 claim status is logged on each claim. Outputs the lines a biller has to look at. Continues through duplicate when the same file was applied meanwhile.',
+      'Applies a clearinghouse file to its claims, once: an 835 posts each claim payment the way the remittance rules routed it (postings), a 999 accepts or rejects every claim in its 837P file, a 277CA accepts or rejects single claims (a rejection of the billing provider or receiver rejects every claim under it, keeping the REF*1K of a rejected claim off it), a 271 records whether coverage is active, a TA1 rejection marks its 837P file rejected at the envelope and sends its claims back to review (giving why, for whoever sets up the clearinghouse) and a 277 claim status is logged on each claim. Gives the lines a biller has to look at.',
+    level: 'basic',
+    keywords: ['835', 'era', 'post payments', '999', '277', 'clearinghouse file'],
     effect: true,
     inputs: [
-      pin('file', BLOB),
-      pin('fileName', 'string'),
-      pin('postings', billingTypes.postings, { optional: true, label: 'Remittance Postings' })
+      filePin,
+      fileNamePin,
+      pin('postings', billingTypes.postings, {
+        optional: true,
+        label: 'Remittance Postings',
+        description: 'How the remittance rules routed each claim payment of an 835.'
+      })
     ],
     outputs: [
-      pin('fileId', 'string'),
-      pin('kind', 'string'),
-      pin('reviews', { list: PAYER_FILE_LINE }),
-      pin('envelopeRejection', 'string')
+      fileIdPin,
+      pin('kind', 'string', {
+        description: 'What kind of file it is (835, TA1, 999, 277CA, 277 or 271).'
+      }),
+      pin(
+        'reviews',
+        { list: PAYER_FILE_LINE },
+        {
+          description: 'The lines a biller has to look at.'
+        }
+      ),
+      pin('envelopeRejection', 'string', {
+        label: 'Envelope Rejection',
+        description: 'Why a TA1 rejected the whole file, for whoever sets up the clearinghouse.'
+      })
     ],
-    exits: ['applied', 'duplicate'],
+    exits: {
+      applied: { label: 'Applied', description: 'The file was applied to its claims.' },
+      duplicate: DUPLICATE
+    },
     compute: async (inputs, _, ctx) => {
       const applied = await stores().payerFiles.apply(ctx.runId, ctx.key, {
         ...fileOf(inputs),

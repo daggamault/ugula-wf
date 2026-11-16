@@ -1,7 +1,7 @@
 import { isRecord, type Json, type Model, type ModelField, type ValueType } from '@ugula/graph';
 import { elementLabel } from './elements.ts';
 
-type Kind = 'text' | 'texts' | 'number' | 'integer';
+type Kind = 'text' | 'texts' | 'number' | 'integer' | 'icd10' | 'icd10s';
 
 type Element = { name: string; element: string; kind: Kind; label?: string };
 
@@ -151,8 +151,8 @@ const SITUATION: Section = {
     el('complaint', 'eSituation.04'),
     el('primarySymptom', 'eSituation.09'),
     el('otherSymptoms', 'eSituation.10', 'texts'),
-    el('primaryImpression', 'eSituation.11'),
-    el('secondaryImpressions', 'eSituation.12', 'texts'),
+    el('primaryImpression', 'eSituation.11', 'icd10'),
+    el('secondaryImpressions', 'eSituation.12', 'icd10s'),
     el('workRelated', 'eSituation.14')
   ]
 };
@@ -297,7 +297,9 @@ const TYPES: Record<Kind, ValueType> = {
   text: 'string',
   texts: { list: 'string' },
   number: 'number',
-  integer: 'integer'
+  integer: 'integer',
+  icd10: { code: 'icd10' },
+  icd10s: { list: { code: 'icd10' } }
 };
 
 const sectionType = (s: Section): ValueType => ({
@@ -405,6 +407,7 @@ const elementValue = (x: unknown, { element, kind }: Element): Json => {
   const first = texts.find((t) => t !== null) ?? null;
   switch (kind) {
     case 'texts':
+    case 'icd10s':
       return texts.filter((t): t is string => t !== null);
     case 'number':
       return numberOf(first);
@@ -413,6 +416,7 @@ const elementValue = (x: unknown, { element, kind }: Element): Json => {
       return n !== null && Number.isInteger(n) ? n : null;
     }
     case 'text':
+    case 'icd10':
       return first;
   }
 };

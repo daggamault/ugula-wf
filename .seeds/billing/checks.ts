@@ -662,7 +662,7 @@ const REJECTION_IN = d(
 
 const REJECTED_COVERAGE_IN = d(
   'rejectedCoverageId',
-  'string',
+  { id: 'coverage' },
   'Rejected Payer',
   'The payer that rejected it.',
   true

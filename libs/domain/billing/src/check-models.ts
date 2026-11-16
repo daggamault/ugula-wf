@@ -10,7 +10,7 @@ export const CLAIM_ISSUE = model(
     f('severity', 'string', 'Severity (blocking or warning)'),
     f('field', 'string', 'Field to fix'),
     f('message', 'string', 'Message'),
-    f('coverageId', 'string', 'Coverage it is about')
+    f('coverageId', { id: 'coverage' }, 'Coverage it is about')
   ]
 );
 
@@ -20,7 +20,7 @@ export const CHECKED_PAYER = model(
   'Checked Payer',
   'what the claim checks know about one payer on the claim',
   [
-    f('coverageId', 'string', 'Coverage ID'),
+    f('coverageId', { id: 'coverage' }, 'Coverage ID'),
     f('name', 'string', 'Payer name'),
     f('linked', 'boolean', 'Linked to the payer directory with a claim filing indicator'),
     f('memberId', 'string', 'Member ID'),
@@ -41,7 +41,7 @@ export const FACILITY = model(
   'Facility',
   'a facility from the agency facility directory, and whether the agency bills it under contract',
   [
-    f('id', 'string', 'Facility ID'),
+    f('id', { id: 'facility' }, 'Facility ID'),
     f('name', 'string', 'Name'),
     f('kind', 'string', 'Kind (hospital, snf, dialysis or other)'),
     f('contract', 'boolean', 'The agency bills this facility for its transports under contract')
@@ -148,7 +148,7 @@ export const CLAIM_DOCUMENT = model(
   'Claim Document',
   'a document uploaded to a claim, such as a facesheet, certification, signature form, ABN or MSP form',
   [
-    f('id', 'string', 'Document ID'),
+    f('id', { id: 'document' }, 'Document ID'),
     f('kind', 'string', 'Kind (facesheet, pcs, signature, abn or msp)'),
     f('signedOn', 'string', 'Signed on (YYYY-MM-DD)'),
     f('fileName', 'string', 'File name')

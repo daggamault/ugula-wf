@@ -1,8 +1,9 @@
 import * as v from 'valibot';
-import { call, defineNode, next, pin, suspend } from '../define.ts';
+import { call, defineNode, next, pin, pureNode, suspend } from '../define.ts';
 import { fail } from '../errors.ts';
 import { MAX_RANGE } from '../expr-functions.ts';
 import { isRecord, toText } from '../json.ts';
+import { valueTypeSchema } from '../schemas.ts';
 import type { Json, NodeDef } from '../types.ts';
 
 const CATEGORY = 'Flow';
@@ -17,6 +18,13 @@ const workflowConfig = v.object({
   version: v.pipe(v.number(), v.integer(), v.minValue(1))
 });
 
+const workflowSummary = ({ workflow }: { workflow: string }) => `Workflow: ${workflow}`;
+
+const LOOP_EXITS = {
+  body: { label: 'Each Pass', description: 'Runs once for each pass.' },
+  completed: { label: 'Completed', description: 'Goes on once every pass is done.' }
+};
+
 const childError = (payload: Json) =>
   isRecord(payload) && typeof payload.error === 'string' ? payload.error : null;
 
@@ -25,11 +33,17 @@ export const flowBranchNode = defineNode({
   version: 1,
   title: 'Branch',
   category: CATEGORY,
-  description: 'Continues through true or false depending on the condition.',
+  description: 'Goes one way when the condition is true and the other way when it is false.',
+  level: 'basic',
+  keywords: ['if', 'condition', 'else', 'decide'],
+  exits: {
+    true: { label: 'True', description: 'The condition is true.' },
+    false: { label: 'False', description: 'The condition is false.' }
+  },
   signature: {
     execIn: ['exec'],
     execOut: ['true', 'false'],
-    inputs: [pin('condition', 'boolean')],
+    inputs: [pin('condition', 'boolean', { description: 'Which way to go.' })],
     outputs: []
   },
   run: async ({ read }) => next((await read('condition')) ? 'true' : 'false')
@@ -51,12 +65,17 @@ export const switchNode = defineNode<v.InferOutput<typeof switchConfig>>({
   version: 1,
   title: 'Switch',
   category: CATEGORY,
-  description: 'Continues through the exec output matching the value, or default.',
+  description:
+    'Goes the way of the case that matches the value, or the default way when none does.',
+  level: 'basic',
+  keywords: ['case', 'match', 'choose', 'route'],
+  exits: { default: { label: 'Default', description: 'No case matches the value.' } },
+  summary: ({ cases }) => `Cases: ${cases.join(', ')}`,
   config: switchConfig,
   signature: ({ cases }) => ({
     execIn: ['exec'],
     execOut: [...cases, 'default'],
-    inputs: [pin('value', 'any', { optional: true })],
+    inputs: [pin('value', 'any', { optional: true, description: 'The value to match to a case.' })],
     outputs: []
   }),
   run: async ({ read, config }) => {
@@ -65,8 +84,10 @@ export const switchNode = defineNode<v.InferOutput<typeof switchConfig>>({
   }
 });
 
+const MAX_STEPS = 32;
+
 const sequenceConfig = v.object({
-  count: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(32)), 2)
+  count: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(MAX_STEPS)), 2)
 });
 
 export const sequenceNode = defineNode<v.InferOutput<typeof sequenceConfig>>({
@@ -74,7 +95,16 @@ export const sequenceNode = defineNode<v.InferOutput<typeof sequenceConfig>>({
   version: 1,
   title: 'Sequence',
   category: CATEGORY,
-  description: 'Runs each exec output in order, each to completion.',
+  description: 'Does several things one after another, each to the end before the next.',
+  level: 'basic',
+  keywords: ['then', 'order', 'steps', 'sequence'],
+  exits: Object.fromEntries(
+    Array.from({ length: MAX_STEPS }, (_, i) => [
+      `then${i}`,
+      { label: `Then ${i + 1}`, description: `Step ${i + 1}, once the steps before it are done.` }
+    ])
+  ),
+  summary: ({ count }) => `${count} steps`,
   config: sequenceConfig,
   calls: ({ count }) => Array.from({ length: count }, (_, i) => `then${i}`),
   signature: ({ count }) => ({
@@ -94,13 +124,22 @@ export const forEachNode = defineNode({
   version: 1,
   title: 'For Each',
   category: CATEGORY,
-  description: 'Runs the body once per list item, then continues through completed.',
+  description: 'Does the same steps once for each item of a list, then goes on.',
+  level: 'basic',
+  keywords: ['loop', 'each', 'repeat', 'every'],
+  exits: {
+    body: { label: 'Each Item', description: 'Runs once for each item.' },
+    completed: { label: 'Completed', description: 'Goes on once every item is done.' }
+  },
   calls: () => ['body'],
   signature: {
     execIn: ['exec', 'break'],
     execOut: ['body', 'completed'],
-    inputs: [pin('list', { list: 'any' })],
-    outputs: [pin('item', 'any'), pin('index', 'integer')]
+    inputs: [pin('list', { list: 'any' }, { description: 'The items to go through.' })],
+    outputs: [
+      pin('item', 'any', { description: 'The item of this pass.' }),
+      pin('index', 'integer', { description: 'The position of the item, counting from 0.' })
+    ]
   },
   run: async ({ event, state, read }) => {
     if (isBreak(event)) return next('completed', {}, null);
@@ -117,13 +156,19 @@ export const forRangeNode = defineNode({
   version: 1,
   title: 'For Range',
   category: CATEGORY,
-  description: 'Runs the body for each integer from first to last inclusive.',
+  description: 'Does the same steps once for each whole number from first to last, then goes on.',
+  level: 'advanced',
+  keywords: ['loop', 'count', 'repeat', 'range'],
+  exits: LOOP_EXITS,
   calls: () => ['body'],
   signature: {
     execIn: ['exec', 'break'],
     execOut: ['body', 'completed'],
-    inputs: [pin('first', 'integer', { default: 0 }), pin('last', 'integer')],
-    outputs: [pin('index', 'integer')]
+    inputs: [
+      pin('first', 'integer', { default: 0, description: 'The first number.' }),
+      pin('last', 'integer', { description: 'The last number.' })
+    ],
+    outputs: [pin('index', 'integer', { description: 'The number of this pass.' })]
   },
   run: async ({ event, state, read }) => {
     if (isBreak(event)) return next('completed', {}, null);
@@ -145,14 +190,18 @@ export const whileNode = defineNode<v.InferOutput<typeof whileConfig>>({
   version: 1,
   title: 'While',
   category: CATEGORY,
-  description: 'Runs the body while the condition holds, re-checking it after each pass.',
+  description:
+    'Repeats the same steps while the condition is true, checking it again after each pass.',
+  level: 'advanced',
+  keywords: ['loop', 'repeat', 'until'],
+  exits: LOOP_EXITS,
   config: whileConfig,
   calls: () => ['body'],
   signature: {
     execIn: ['exec', 'break'],
     execOut: ['body', 'completed'],
-    inputs: [pin('condition', 'boolean')],
-    outputs: [pin('iteration', 'integer')]
+    inputs: [pin('condition', 'boolean', { description: 'Whether to do another pass.' })],
+    outputs: [pin('iteration', 'integer', { description: 'The pass, counting from 0.' })]
   },
   run: async ({ event, state, read, config }) => {
     if (isBreak(event)) return next('completed', {}, null);
@@ -168,7 +217,9 @@ export const doOnceNode = defineNode({
   version: 1,
   title: 'Do Once',
   category: CATEGORY,
-  description: 'Lets execution through only the first time until reset.',
+  description: 'Goes on only the first time it is reached, until it is reset.',
+  level: 'advanced',
+  keywords: ['once', 'first'],
   signature: { execIn: ['exec', 'reset'], execOut: ['then'], inputs: [], outputs: [] },
   run: ({ event, state }) => {
     if (event.type === 'exec' && event.pin === 'reset') return next(null, {}, { done: false });
@@ -183,13 +234,17 @@ export const gateNode = defineNode<v.InferOutput<typeof gateConfig>>({
   version: 1,
   title: 'Gate',
   category: CATEGORY,
-  description: 'Passes enter through to exit only while open.',
+  description:
+    'Lets the flow through only while the gate is open; other steps open, close or toggle it.',
+  level: 'advanced',
+  keywords: ['gate', 'block', 'allow'],
+  exits: { exit: { label: 'Exit', description: 'The flow went through the open gate.' } },
   config: gateConfig,
   signature: {
     execIn: ['enter', 'open', 'close', 'toggle'],
     execOut: ['exit'],
     inputs: [],
-    outputs: [pin('isOpen', 'boolean')]
+    outputs: [pin('isOpen', 'boolean', { description: 'Whether the gate is open now.' })]
   },
   run: ({ event, state, config }) => {
     const s = loopState(state);
@@ -206,12 +261,18 @@ export const flipFlopNode = defineNode({
   version: 1,
   title: 'Flip Flop',
   category: CATEGORY,
-  description: 'Alternates between a and b on each execution.',
+  description: 'Goes the first way, then the second way the next time, and so on.',
+  level: 'advanced',
+  keywords: ['alternate', 'toggle'],
+  exits: {
+    a: { label: 'A', description: 'The first, third and every other odd time.' },
+    b: { label: 'B', description: 'The second, fourth and every other even time.' }
+  },
   signature: {
     execIn: ['exec'],
     execOut: ['a', 'b'],
     inputs: [],
-    outputs: [pin('isA', 'boolean')]
+    outputs: [pin('isA', 'boolean', { description: 'Whether it went the first way.' })]
   },
   run: ({ state }) => {
     const isA = loopState(state).isA !== true;
@@ -224,14 +285,24 @@ export const tryNode = defineNode({
   version: 1,
   title: 'Try',
   category: CATEGORY,
-  description: 'Runs try; if anything inside fails, continues through catch with the error.',
+  description:
+    'Tries some steps; if any of them fails, goes the catch way with the error instead of stopping.',
+  level: 'advanced',
+  keywords: ['error', 'catch', 'fail', 'recover'],
+  exits: {
+    try: { label: 'Try', description: 'The steps to try.' },
+    catch: { label: 'Catch', description: 'A step tried failed.' }
+  },
   catches: true,
   calls: () => ['try'],
   signature: {
     execIn: ['exec'],
     execOut: ['try', 'then', 'catch'],
     inputs: [],
-    outputs: [pin('error', 'string'), pin('errorNode', 'string')]
+    outputs: [
+      pin('error', 'string', { description: 'What went wrong.' }),
+      pin('errorNode', 'string', { description: 'The step that failed.' })
+    ]
   },
   run: ({ event }) => {
     if (event.type === 'exec') return call('try', null);
@@ -250,8 +321,15 @@ export const failNode = defineNode({
   version: 1,
   title: 'Fail',
   category: CATEGORY,
-  description: 'Stops this path with an error that Try nodes or reviewers can handle.',
-  signature: { execIn: ['exec'], execOut: [], inputs: [pin('message', 'string')], outputs: [] },
+  description: 'Stops here with an error, for a Try step or a person to deal with.',
+  level: 'advanced',
+  keywords: ['error', 'stop', 'throw'],
+  signature: {
+    execIn: ['exec'],
+    execOut: [],
+    inputs: [pin('message', 'string', { description: 'What went wrong.' })],
+    outputs: []
+  },
   run: async ({ read }) => fail(String(await read('message')))
 });
 
@@ -260,11 +338,13 @@ export const delayNode = defineNode({
   version: 1,
   title: 'Delay',
   category: CATEGORY,
-  description: 'Durably waits for a number of milliseconds.',
+  description: 'Waits for a while, even across restarts, then goes on.',
+  level: 'advanced',
+  keywords: ['wait', 'pause', 'sleep', 'timer'],
   signature: {
     execIn: ['exec'],
     execOut: ['then'],
-    inputs: [pin('ms', 'integer')],
+    inputs: [pin('ms', 'integer', { description: 'How long to wait, in milliseconds.' })],
     outputs: []
   },
   run: async ({ event, read, ctx }) =>
@@ -283,11 +363,13 @@ export const waitUntilNode = defineNode({
   version: 1,
   title: 'Wait Until',
   category: CATEGORY,
-  description: 'Pauses the run until a date and time, even across restarts, then continues.',
+  description: 'Waits until a date and time, even across restarts, then goes on.',
+  level: 'advanced',
+  keywords: ['wait', 'pause', 'schedule', 'timer'],
   signature: {
     execIn: ['exec'],
     execOut: ['then'],
-    inputs: [pin('until', 'datetime')],
+    inputs: [pin('until', 'datetime', { description: 'When to go on.' })],
     outputs: []
   },
   run: async ({ event, read }) =>
@@ -305,17 +387,29 @@ export const waitSignalNode = defineNode({
   title: 'Wait For Signal',
   category: CATEGORY,
   description:
-    'Durably waits for an external signal matching name and key, with optional timeout. Given how many signals were already seen, continues at once if more arrived meanwhile.',
+    'Waits, even across restarts, for news from outside, such as a payer answer, named by a name and a key, for at most a while. Given how many such signals were already seen, goes on at once when more arrived meanwhile.',
+  level: 'advanced',
+  keywords: ['wait', 'signal', 'event', 'callback'],
+  exits: {
+    received: { label: 'Received', description: 'The signal arrived.' },
+    timeout: { label: 'Timed Out', description: 'The signal did not arrive in time.' }
+  },
   signature: {
     execIn: ['exec'],
     execOut: ['received', 'timeout'],
     inputs: [
-      pin('name', 'string'),
-      pin('key', 'string'),
-      pin('timeoutMs', 'integer', { optional: true }),
-      pin('after', 'integer', { optional: true })
+      pin('name', 'string', { description: 'What kind of signal to wait for.' }),
+      pin('key', 'string', { description: 'What the signal is about, such as a claim.' }),
+      pin('timeoutMs', 'integer', {
+        optional: true,
+        description: 'How long to wait at most, in milliseconds; forever when empty.'
+      }),
+      pin('after', 'integer', {
+        optional: true,
+        description: 'How many of these signals were already seen.'
+      })
     ],
-    outputs: [pin('payload', 'any')]
+    outputs: [pin('payload', 'any', { description: 'What the signal brought.' })]
   },
   run: async ({ event, read, ctx }) => {
     if (event.type === 'resume') {
@@ -342,13 +436,22 @@ export const runWorkflowNode = defineNode<v.InferOutput<typeof workflowConfig>>(
   version: 1,
   title: 'Run Workflow',
   category: CATEGORY,
-  description: 'Starts another workflow as a child run and waits for its result.',
+  description: 'Runs another workflow and waits for it to finish, then goes on with its results.',
+  level: 'basic',
+  keywords: ['workflow', 'subworkflow', 'call', 'run'],
+  summary: workflowSummary,
   config: workflowConfig,
   signature: {
     execIn: ['exec'],
     execOut: ['then'],
-    inputs: [pin('inputs', { object: {} }, { optional: true })],
-    outputs: [pin('runId', 'string'), pin('pin', 'string'), pin('outputs', { object: {} })]
+    inputs: [
+      pin('inputs', { object: {} }, { optional: true, description: 'The inputs of the workflow.' })
+    ],
+    outputs: [
+      pin('runId', { id: 'run' }, { description: 'The run of the workflow.' }),
+      pin('pin', 'string', { description: 'How the workflow ended.' }),
+      pin('outputs', { object: {} }, { description: 'The outputs of the workflow.' })
+    ]
   },
   run: async ({ event, read, config }) => {
     if (event.type !== 'resume') {
@@ -373,14 +476,19 @@ export const startWorkflowNode = defineNode<v.InferOutput<typeof workflowConfig>
   version: 1,
   title: 'Start Workflow',
   category: CATEGORY,
-  description: 'Starts another workflow as its own run and continues without waiting for it.',
+  description: 'Starts another workflow on its own and goes on without waiting for it.',
+  level: 'basic',
+  keywords: ['workflow', 'start', 'launch', 'background'],
+  summary: workflowSummary,
   config: workflowConfig,
   effect: true,
   signature: {
     execIn: ['exec'],
     execOut: ['then'],
-    inputs: [pin('inputs', { object: {} }, { optional: true })],
-    outputs: [pin('runId', 'string')]
+    inputs: [
+      pin('inputs', { object: {} }, { optional: true, description: 'The inputs of the workflow.' })
+    ],
+    outputs: [pin('runId', { id: 'run' }, { description: 'The run that was started.' })]
   },
   run: async ({ event, read, config }) => {
     if (event.type !== 'resume') {
@@ -405,13 +513,24 @@ export const mapWorkflowNode = defineNode<v.InferOutput<typeof workflowConfig>>(
   version: 1,
   title: 'Map Workflow',
   category: CATEGORY,
-  description: 'Starts one child run per item in parallel and waits for all results.',
+  description:
+    'Runs another workflow once for each item, all at the same time, and waits for every result.',
+  level: 'advanced',
+  keywords: ['workflow', 'each', 'parallel', 'batch'],
+  summary: workflowSummary,
   config: workflowConfig,
   signature: {
     execIn: ['exec'],
     execOut: ['then'],
-    inputs: [pin('items', { list: { object: {} } })],
-    outputs: [pin('results', { list: { object: {} } }), pin('runIds', { list: 'string' })]
+    inputs: [pin('items', { list: { object: {} } }, { description: 'The inputs of each run.' })],
+    outputs: [
+      pin(
+        'results',
+        { list: { object: {} } },
+        { description: 'The outputs of each run, in order.' }
+      ),
+      pin('runIds', { list: { id: 'run' } }, { description: 'Each run, in order.' })
+    ]
   },
   run: async ({ event, read, config }) => {
     if (event.type !== 'resume') {
@@ -437,14 +556,19 @@ export const spawnWorkflowsNode = defineNode<v.InferOutput<typeof workflowConfig
   title: 'Spawn Workflows',
   category: CATEGORY,
   description:
-    'Starts one child run per item and continues without waiting; the children stay linked to this run.',
+    'Starts another workflow once for each item and goes on without waiting; the runs stay linked to this one.',
+  level: 'advanced',
+  keywords: ['workflow', 'each', 'start', 'batch'],
+  summary: workflowSummary,
   config: workflowConfig,
   effect: true,
   signature: {
     execIn: ['exec'],
     execOut: ['then'],
-    inputs: [pin('items', { list: { object: {} } })],
-    outputs: [pin('runIds', { list: 'string' })]
+    inputs: [pin('items', { list: { object: {} } }, { description: 'The inputs of each run.' })],
+    outputs: [
+      pin('runIds', { list: { id: 'run' } }, { description: 'Each run started, in order.' })
+    ]
   },
   run: async ({ event, read, config }) => {
     if (event.type !== 'resume') {
@@ -462,7 +586,26 @@ export const spawnWorkflowsNode = defineNode<v.InferOutput<typeof workflowConfig
   }
 });
 
+const rerouteConfig = v.object({ type: v.optional(valueTypeSchema, 'any') });
+
+export const rerouteNode = pureNode<v.InferOutput<typeof rerouteConfig>>({
+  type: 'std.flow.reroute',
+  title: 'Reroute',
+  category: CATEGORY,
+  description:
+    'A bend in a connection that passes its value on unchanged, to keep the layout tidy.',
+  level: 'basic',
+  keywords: ['reroute', 'knot', 'wire', 'bend'],
+  config: rerouteConfig,
+  inputs: ({ type }) => [
+    pin('value', type, { optional: true, description: 'The value to pass on.' })
+  ],
+  outputs: ({ type }) => [pin('value', type, { description: 'The same value, unchanged.' })],
+  compute: ({ value }) => ({ value: value ?? null })
+});
+
 export const flowNodes: NodeDef[] = [
+  rerouteNode,
   flowBranchNode,
   switchNode,
   sequenceNode,

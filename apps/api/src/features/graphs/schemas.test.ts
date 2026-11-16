@@ -32,6 +32,14 @@ describe('graph schemas', () => {
     assert.ok(!('scope' in v.parse(createGraphSchema, { ...base, scope: 'organization' })));
   });
 
+  it('keeps comment boxes in a saved definition', () => {
+    const definition = {
+      ...templateFor('workflow'),
+      comments: [{ id: 'c1', text: 'Why', position: { x: 1, y: 2 }, size: { width: 3, height: 4 } }]
+    };
+    assert.deepEqual(v.parse(definitionSchema, { definition }), { definition });
+  });
+
   it('bounds names, descriptions and definition size', () => {
     const base = { key: 'billing.x', kind: 'node' };
     assert.equal(v.safeParse(createGraphSchema, { ...base, name: 'x'.repeat(121) }).success, false);

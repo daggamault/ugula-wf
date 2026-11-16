@@ -7,14 +7,14 @@ export const CLAIM_LEDGER = model(
   'where a claim stands from its history: balance, the payer being billed, approvals, responses and statements',
   [
     f('balanceCents', 'integer', 'Balance (cents)'),
-    f('coverageId', 'string', 'Payer being billed (coverage ID)'),
+    f('coverageId', { id: 'coverage' }, 'Payer being billed (coverage ID)'),
     f('payer', 'string', 'Payer being billed'),
     f('payerKind', 'string', 'Claim filing indicator of the payer being billed, or patient'),
     f('coverageCount', 'integer', 'Payers on the claim'),
     f('contacted', 'boolean', 'The payer being billed has the claim'),
     f('sinceContactMs', 'integer', 'Milliseconds since the payer was last contacted'),
     f('approved', 'boolean', 'The claim is approved for the payer being billed'),
-    f('unreconciledCoverageId', 'string', 'Payer whose response waits to be reconciled'),
+    f('unreconciledCoverageId', { id: 'coverage' }, 'Payer whose response waits to be reconciled'),
     f('unreconciledPayer', 'string', 'Name of the payer whose response waits to be reconciled'),
     f(
       'denialRoute',
@@ -42,13 +42,13 @@ export const DENIAL_FACTS = model(
   'Denial Facts',
   'a payer denial waiting to be worked: the payer, how it was routed, its reason codes and the payer settings that decide how to correct or appeal it',
   [
-    f('coverageId', 'string', 'Payer that denied (coverage ID)'),
+    f('coverageId', { id: 'coverage' }, 'Payer that denied (coverage ID)'),
     f('payer', 'string', 'Payer that denied'),
     f('payerKind', 'string', 'Claim filing indicator of the payer'),
     f('route', 'string', 'How Remittance Routing routed it: denial, appeal or fix'),
     f('note', 'string', 'What the routing said'),
     f('codes', { list: 'string' }, 'Group and reason codes of the denial (CO-50)'),
-    f('remarks', { list: 'string' }, 'Remark codes (RARC) of the denial (MA130)'),
+    f('remarks', { list: { code: 'rarc' } }, 'Remark codes (RARC) of the denial (MA130)'),
     f('paidCents', 'integer', 'Paid by the payer (cents)'),
     f('balanceCents', 'integer', 'Balance (cents)'),
     f('deniedOn', 'string', 'Date of the remittance that denied it (YYYY-MM-DD)'),
@@ -70,7 +70,11 @@ export const REFUND_FACTS = model(
   'a credit balance: how much more was paid than charged, by whom and when it was found',
   [
     f('overpaidCents', 'integer', 'Paid beyond the charges (cents)'),
-    f('coverageId', 'string', 'Payer that overpaid (coverage ID), or none for the patient'),
+    f(
+      'coverageId',
+      { id: 'coverage' },
+      'Payer that overpaid (coverage ID), or none for the patient'
+    ),
     f('payer', 'string', 'Payer that overpaid'),
     f('payerKind', 'string', 'Claim filing indicator of that payer, or patient'),
     f('paidCents', 'integer', 'What that payer or the patient paid in all (cents)'),
@@ -118,12 +122,12 @@ export const DEADLINE = model(
   'a claim deadline coming up: timely filing, an appeal, a records request, a refund or a physician certification',
   [
     f('kind', 'string', 'timelyFiling, appeal, records, refund or pcs'),
-    f('claimId', 'string', 'Claim'),
-    f('coverageId', 'string', 'Payer (coverage ID)'),
+    f('claimId', { id: 'claim' }, 'Claim'),
+    f('coverageId', { id: 'coverage' }, 'Payer (coverage ID)'),
     f('reference', 'string', 'Claim number and patient'),
     f('dueOn', 'string', 'Due date (YYYY-MM-DD)'),
     f('daysLeft', 'integer', 'Days left (negative once passed)'),
-    f('taskId', 'string', 'The open task the deadline belongs to, if any'),
+    f('taskId', { id: 'task' }, 'The open task the deadline belongs to, if any'),
     f('priority', 'integer', 'Priority of that task'),
     f('reminded', 'boolean', 'A reminder for this deadline was already opened')
   ]
@@ -136,7 +140,7 @@ export const ADJUSTMENT = model(
   'one 835 adjustment: its group code, reason code (CARC) and amount',
   [
     f('group', 'string', 'Group code (CO, PR, OA, PI, CR)'),
-    f('reason', 'string', 'Reason code (CARC)'),
+    f('reason', { code: 'carc' }, 'Reason code (CARC)'),
     f('cents', 'integer', 'Amount (cents)')
   ]
 );
@@ -149,11 +153,11 @@ export const REMITTANCE_LINE = model(
   [
     f('position', 'integer', 'Position in the file'),
     f('reference', 'string', 'Claim number the payer sent (CLP01)'),
-    f('claimId', 'string', 'Matched claim'),
-    f('coverageId', 'string', 'Matched payer on the claim'),
+    f('claimId', { id: 'claim' }, 'Matched claim'),
+    f('coverageId', { id: 'coverage' }, 'Matched payer on the claim'),
     f('payerName', 'string', 'Payer name'),
     f('status', 'string', 'Claim status code the payer sent (CLP02)'),
-    f('remarks', { list: 'string' }, 'Remark codes (RARC) of the claim payment'),
+    f('remarks', { list: { code: 'rarc' } }, 'Remark codes (RARC) of the claim payment'),
     f('crossoverPayer', 'string', 'Payer the claim was crossed over to (NM1*TT), if named'),
     f('denied', 'boolean', 'The payer denied the claim'),
     f('reversal', 'boolean', 'The payer reversed an earlier payment'),

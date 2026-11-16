@@ -4,13 +4,19 @@ export type Json = null | boolean | number | string | Json[] | { [key: string]: 
 
 export type Values = Record<string, Json>;
 
+export const SCALAR_TYPES = ['any', 'string', 'number', 'integer', 'boolean', 'datetime'] as const;
+
+export type ScalarType = (typeof SCALAR_TYPES)[number];
+
+export type ValueKinds = {
+  id: Readonly<Record<string, string>>;
+  code: Readonly<Record<string, string>>;
+};
+
 export type ValueType =
-  | 'any'
-  | 'string'
-  | 'number'
-  | 'integer'
-  | 'boolean'
-  | 'datetime'
+  | ScalarType
+  | { id: string }
+  | { code: string }
   | { list: ValueType }
   | { object: Record<string, ValueType> };
 
@@ -72,11 +78,31 @@ export type VariableDef = {
   default: Json;
 };
 
+export const COMMENT_COLORS = [
+  'neutral',
+  'primary',
+  'info',
+  'success',
+  'warning',
+  'danger'
+] as const;
+
+export type CommentColor = (typeof COMMENT_COLORS)[number];
+
+export type GraphComment = {
+  id: string;
+  text: string;
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  color?: CommentColor;
+};
+
 export type GraphDef = {
   signature: Signature;
   variables: VariableDef[];
   nodes: NodeInstance[];
   edges: Edge[];
+  comments?: GraphComment[];
 };
 
 export type GraphSource = (ref: NodeRef) => GraphDef | undefined;
@@ -141,10 +167,16 @@ export type SignatureContext = {
   graph: GraphDef;
 };
 
+export type NodeLevel = 'basic' | 'advanced';
+
 export type NodeDef<C = unknown> = NodeRef & {
   title: string;
   category: string;
   description: string;
+  level?: NodeLevel;
+  keywords?: string[];
+  exits?: Record<string, ExitDoc>;
+  summary?: (config: C) => string | null;
   config?: v.GenericSchema<unknown, C>;
   signature: Signature | ((config: C, ctx: SignatureContext) => Signature);
   effect?: boolean;

@@ -8,7 +8,9 @@ export const T = { ...billingTypes, pcr: PCR_TYPE };
 
 export const ADDRESS_PINS = ['addressLine', 'city', 'state', 'postalCode'];
 
-export const CHARGE_LINES: ValueType = { list: { object: { code: 'string', units: 'number' } } };
+export const CHARGE_LINES: ValueType = {
+  list: { object: { code: { code: 'hcpcs' }, units: 'number' } }
+};
 
 export const FEES: ValueType = { object: {} };
 
@@ -141,7 +143,7 @@ export const P = {
       'The normalized trip, locations, patient, clinical, documentation and reported coverages of the report.',
       optional
     ),
-  claimId: () => d('claimId', 'string', 'Claim', 'The claim being worked.'),
+  claimId: () => d('claimId', { id: 'claim' }, 'Claim', 'The claim being worked.'),
   report: (optional = true) =>
     d(
       'report',
@@ -193,7 +195,7 @@ export const P = {
   coverageId: () =>
     d(
       'coverageId',
-      'string',
+      { id: 'coverage' },
       'Payer',
       'The coverage (payer on the claim) this step is about.',
       true

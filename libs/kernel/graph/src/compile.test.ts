@@ -144,6 +144,7 @@ describe('contractOf', () => {
       { ...signature, execIn: [] },
       { ...signature, inputs: [{ name: 'id', type: 'string' }] },
       { ...signature, inputs: [{ name: 'claim', type: 'number' }] },
+      { ...signature, inputs: [{ name: 'claim', type: { id: 'claim' } }] },
       { ...signature, inputs: [{ name: 'claim', type: 'string', default: 'x' }] },
       { ...signature, outputs: [{ name: 'total', type: 'number' }] },
       { ...signature, execOut: ['failed', 'done'] }

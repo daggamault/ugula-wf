@@ -816,7 +816,7 @@ const determineService = (): GraphDef => {
 
 const DIAGNOSES_OUT = d(
   'diagnoses',
-  { list: 'string' },
+  { list: { code: 'icd10' } },
   'Diagnoses',
   'ICD-10 diagnoses, primary first.'
 );
@@ -898,10 +898,22 @@ export const serviceGraphs: SeedGraph[] = [
     'An agency rule after the diagnoses are assigned: add, drop or reorder ICD-10 codes. Passes the diagnoses through unchanged until an agency overrides it.',
     pureSlot(
       [
-        d('diagnoses', { list: 'string' }, 'Diagnoses', 'The diagnoses the base rules assigned.'),
+        d(
+          'diagnoses',
+          { list: { code: 'icd10' } },
+          'Diagnoses',
+          'The diagnoses the base rules assigned.'
+        ),
         FACTS_CONTEXT
       ],
-      [d('diagnoses', { list: 'string' }, 'Diagnoses', 'The diagnoses to bill, primary first.')]
+      [
+        d(
+          'diagnoses',
+          { list: { code: 'icd10' } },
+          'Diagnoses',
+          'The diagnoses to bill, primary first.'
+        )
+      ]
     )
   ),
   asRule(

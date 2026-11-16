@@ -1,7 +1,16 @@
 import * as v from 'valibot';
 import { type CompiledGraph, compileGraph, refKey } from './compile.ts';
 import { coreNodes } from './core.ts';
-import type { GraphDef, GraphSource, NodeDef, NodeInstance, NodeRef, Signature } from './types.ts';
+import type {
+  GraphDef,
+  GraphSource,
+  NodeDef,
+  NodeInstance,
+  NodeRef,
+  Signature,
+  ValueKinds
+} from './types.ts';
+import { STD_KINDS } from './value-types.ts';
 
 export type Registry = {
   node: (ref: NodeRef) => NodeDef | undefined;
@@ -9,6 +18,7 @@ export type Registry = {
   config: (inst: NodeInstance) => unknown;
   signature: (inst: NodeInstance, graph: GraphDef) => Signature;
   nodes: () => NodeDef[];
+  kinds: ValueKinds;
 };
 
 export const isPure = (sig: Signature) => sig.execIn.length === 0 && sig.execOut.length === 0;
@@ -23,7 +33,11 @@ export const combineSources =
     return undefined;
   };
 
-export const createRegistry = (defs: NodeDef[], graphs: GraphSource): Registry => {
+export const createRegistry = (
+  defs: NodeDef[],
+  graphs: GraphSource,
+  kinds: ValueKinds = STD_KINDS
+): Registry => {
   const byKey = new Map<string, NodeDef>();
   for (const def of [...coreNodes, ...defs]) {
     const key = refKey(def);
@@ -63,5 +77,5 @@ export const createRegistry = (defs: NodeDef[], graphs: GraphSource): Registry =
     return sig;
   };
 
-  return { node, graph, config, signature, nodes: () => [...byKey.values()] };
+  return { node, graph, config, signature, nodes: () => [...byKey.values()], kinds };
 };

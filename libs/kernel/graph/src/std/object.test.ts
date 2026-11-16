@@ -112,3 +112,16 @@ describe('object nodes', () => {
     });
   });
 });
+
+describe('record summaries', () => {
+  it('list the fields of Make and Break Object', () => {
+    for (const type of ['std.object.make', 'std.object.break']) {
+      const node = objectNodes.find((n) => n.type === type);
+      assert.equal(
+        node?.summary?.({ fields: [{ name: 'code', label: 'Code' }, { name: 'units' }] }),
+        'Fields: Code, units'
+      );
+      assert.equal(node?.summary?.({ fields: [] }), null);
+    }
+  });
+});

@@ -144,7 +144,7 @@ const recordEvent = (g: Builder, id: string, kind: string, label: string) =>
 
 const claimStep = (
   execOut: string[],
-  about: PinSpec[] = [p('coverageId', 'string', true)],
+  about: PinSpec[] = [p('coverageId', { id: 'coverage' }, true)],
   variables: VariableDef[] = []
 ) =>
   graph(
@@ -152,7 +152,7 @@ const claimStep = (
       execIn: ['exec'],
       execOut,
       inputs: [
-        p('claimId', 'string'),
+        p('claimId', { id: 'claim' }),
         ...about,
         p('subject', 'string', true),
         p('context', 'any', true)
@@ -294,8 +294,8 @@ const submitToPayer = (): GraphDef => {
       execIn: ['exec'],
       execOut: Object.keys(SUBMIT_EXITS),
       inputs: [
-        p('claimId', 'string'),
-        p('coverageId', 'string'),
+        p('claimId', { id: 'claim' }),
+        p('coverageId', { id: 'coverage' }),
         d(
           'frequency',
           'string',
@@ -562,7 +562,7 @@ const CLAIM_FACTS = [
 const reconcilePayment = (): GraphDef => {
   const g = claimStep(
     ['done', 'writeOff', 'void'],
-    [p('coverageId', 'string', true)],
+    [p('coverageId', { id: 'coverage' }, true)],
     [
       { name: 'medicareAllowed', type: 'any', default: null },
       { name: 'priority', type: 'integer', default: 0 }
@@ -987,7 +987,7 @@ const nextClaimStep = (): GraphDef => {
     [d('ledger', T.ledger, 'Claim Ledger', 'Where the claim stands, read from its history.')],
     [
       d('step', 'string', 'Step', `The next step: ${CLAIM_STEPS.join(', ')}.`),
-      d('coverageId', 'string', 'Payer', 'The payer the step is about, if any.', true),
+      d('coverageId', { id: 'coverage' }, 'Payer', 'The payer the step is about, if any.', true),
       d('payer', 'string', 'Payer Name', 'The name of that payer.', true),
       d('waitMs', 'integer', 'Wait Milliseconds', 'How long to wait on the await steps.', true),
       d('statementNumber', 'integer', 'Statement', 'Which patient statement to send.', true),
@@ -1220,7 +1220,7 @@ const UNCHECKED = { issues: [], claim: null };
 
 const cycleClaim = (): GraphDef => {
   const g = graph(
-    { execIn: ['exec'], execOut: [], inputs: [p('claimId', 'string')], outputs: [] },
+    { execIn: ['exec'], execOut: [], inputs: [p('claimId', { id: 'claim' })], outputs: [] },
     [
       { name: 'active', type: 'boolean', default: true },
       { name: 'checked', type: { object: {} }, default: UNCHECKED }

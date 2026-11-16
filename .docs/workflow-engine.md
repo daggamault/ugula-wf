@@ -4,26 +4,61 @@
 
 ## Graphs
 
-A graph (`GraphDef`) has a **signature**, **variables**, **nodes** and **edges**.
+A graph (`GraphDef`) has a **signature**, **variables**, **nodes**, **edges** and optional **comments**.
 
 - **Exec wires** carry control flow between exec pins (`execIn`, `execOut`).
 - **Data wires** carry typed values between input and output pins.
 - A graph's signature is what callers see: exec ins and outs (exits), typed inputs and outputs. Pins can have a `label` and a `description`; exits can be documented in `signature.exits` (`label`, `description`). Nodes can carry a `note`, shown on the canvas.
 - `documentationIssues(def)` lists pins without a description, exits without a label or description and labels that are not Title Case; the editor shows them as warnings, never blocking.
 - Graph kinds: `workflow` (runs on its own) and `node` (a subworkflow other graphs call as a node). Every graph also has a role (`workflow`, `stage`, `rule`, `slot`) that sets who may override it; see [Overrides](overrides.md).
+- `comments` are boxes drawn behind nodes (`id`, `text`, `position`, `size`, optional `color` from `COMMENT_COLORS`). They are layout only: the engine, validation and `contractOf` ignore them, and an override that only adds or moves comments changes nothing.
 - `slotGraph(signature)` builds an empty Agency Rule: a pass-through whose outputs are its same-named inputs; `isPassThrough(def)` says whether a slot is still empty.
 - `runRule({ nodes, graphs }, ref, inputs, now)` evaluates a pure graph (a rule) outside a run, through a one-step host graph, and returns its outputs; the API uses it to show the agency's own rules on a claim.
+
+## Types
+
+Pin, variable and field types are `ValueType`s, written as text by `formatType` and read by `parseType`:
+
+| Type     | Text                                                        | Value                            |
+| -------- | ----------------------------------------------------------- | -------------------------------- |
+| Scalar   | `any`, `string`, `number`, `integer`, `boolean`, `datetime` | A JSON value                     |
+| Identity | `id<claim>`                                                 | Text naming one record of a kind |
+| Code     | `code<hcpcs>`                                               | Text from one code set           |
+| List     | `list<code<icd10>>`                                         | A JSON array                     |
+| Object   | `object{id: id<claim>, total: integer}`                     | A JSON object                    |
+
+`isAssignable(from, to)` decides which wires connect, as in Unreal Blueprints:
+
+- `any` connects to and from everything.
+- An identity or code connects to the same kind, or to plain `string` (it widens). Plain `string` never connects to a kind, so a Patient ID cannot go where a Claim ID is expected: give the source its kind (a typed pin, field, variable or table column) or convert it with To Code.
+- `integer` and `number`, and `string` and `datetime`, connect both ways; lists connect when their items do.
+- An object connects to an object type only when it has every field of the target, each assignable; `object{}` accepts any object. Object fields have no optionality: a missing value is `null`.
+
+At run time a kind is plain text (`checkValue`); `isTextType` tells the types entered as text.
+
+The engine knows no kinds of its own beyond `run` (`STD_KINDS`); kind names only have to be camelCase (`a-z` first). Each domain declares the kinds it owns with their labels (`billingKinds`: `claim`, `coverage`, `document`, `facility`, `patient`, `payer`, `payerFile`, `task` and `carc`, `hcpcs`, `icd10`, `modifier`, `rarc`; `nemsisKinds`: `icd10`), and `valueKinds` in `libs/composition/catalog` merges them (`mergeKinds`). `createRegistry(nodes, graphs, kinds)` carries them, and `validateGraph` reports any graph pin, variable or node pin using a kind nobody declared (`unknownKinds`), so the API save and the seed gate catch typos. The editor names a kind by its label, or by its name in Title Case.
 
 ## Nodes
 
 Nodes are defined with `pureNode`, `actionNode` or `branchNode` and `pin()` (`libs/kernel/graph/src/define.ts`). The engine checks inputs, outputs and exits, so node code only checks domain rules.
 
-| Kind       | Examples                                                                                                                                                                                                                                        |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Standard   | flow (branch, switch, for-each, while, try, wait, wait for signal, run/start/map/spawn workflows), variables, math, logic, text, lists, objects, time, tables (Decision Table, Lookup Table, inline or a shared table by key), human task, HTTP |
-| Models     | A **Break** and a **Make** node per model field set (NEMSIS sections, claim, 837P parts)                                                                                                                                                        |
-| Capability | Billing and NEMSIS nodes that do I/O or heavy logic: read NEMSIS, match patients and payers, read narratives, price, save claims, file 837P, apply payer files                                                                                  |
-| Composite  | Any published `node` graph, called like a node                                                                                                                                                                                                  |
+A node definition (`NodeDef`) also carries what the editor shows:
+
+- `level`: `basic` for what billers compose (billing and NEMSIS actions, tables, human tasks, branch, switch, for each, sequence, run and start workflow, Break and Make, Constant, Reroute), `advanced` for internals (formulas, variables, list, object and text plumbing).
+- `keywords`: more words the palette search matches.
+- `exits`: a label and description per exec output, as in `signature.exits`. `branchNode` takes them as `exits: { name: { label, description } }`, whose keys are its exec outputs.
+- `summary(config)`: one line describing the configured node on the canvas (the formula, `Table: <key>`, `Task: <title>`, the switch cases, the variable or workflow), or `null`.
+
+`nodeDocumentationIssues(def)` checks a node as first placed: every input and output described, every exit other than `then` labelled or described, labels in Title Case. The catalog test runs it over every registered node.
+
+`std.flow.reroute` is a knot on a wire: it passes `value` through unchanged, typed by its `type` setting (`any` by default).
+
+| Kind       | Examples                                                                                                                                                                                                                                                 |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Standard   | flow (branch, switch, reroute, for-each, while, try, wait, wait for signal, run/start/map/spawn workflows), variables, math, logic, text, lists, objects, time, tables (Decision Table, Lookup Table, inline or a shared table by key), human task, HTTP |
+| Models     | A **Break** and a **Make** node per model field set (NEMSIS sections, claim, 837P parts)                                                                                                                                                                 |
+| Capability | Billing and NEMSIS nodes that do I/O or heavy logic: read NEMSIS, match patients and payers, read narratives, price, save claims, file 837P, apply payer files                                                                                           |
+| Composite  | Any published `node` graph, called like a node                                                                                                                                                                                                           |
 
 ## Durable runs
 

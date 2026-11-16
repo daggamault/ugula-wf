@@ -15,7 +15,13 @@ import type { BillingStores, NodesOf } from './stores.ts';
 
 const CATEGORY = 'Billing';
 
-const coveragesPin = pin('coverages', { list: COVERAGE.type });
+const coveragesPin = pin(
+  'coverages',
+  { list: COVERAGE.type },
+  {
+    description: 'The payers of the patient, in billing order.'
+  }
+);
 
 const SEARCH_DOWN = 'The payer search was unavailable, so only exact and learned names were linked';
 
@@ -103,20 +109,53 @@ export const payerNodes: NodesOf = (stores) => [
     title: 'Match Payers',
     category: CATEGORY,
     description:
-      'Puts coverages in billing priority order, leaves out the ones a biller removed, and links their payers to the payer directory by name or a name billers already matched. Every other name continues through review for a biller, with similar directory payers by embedding first and their similarity; with suggest, the language model picks the likely one, preselected only when it is close. When the search or the model is down, it links what it can and notes it.',
+      'Puts coverages in billing priority order, leaves out the ones a biller removed, and links their payers to the payer directory by name or a name billers already matched. Every other name goes to a biller for review, with the most similar directory payers first; when asked, the language model picks the likely one, preselected only when it is close. When the search or the model is down, it links what it can and notes it.',
+    level: 'basic',
+    keywords: ['insurance', 'payer directory', 'link payer', 'coverage'],
     inputs: [
       coveragesPin,
-      pin('suggest', 'boolean', { optional: true }),
-      pin('exclude', { list: 'string' }, { optional: true })
+      pin('suggest', 'boolean', {
+        optional: true,
+        label: 'Suggest',
+        description: 'Let the language model suggest the likely payer for a name.'
+      }),
+      pin(
+        'exclude',
+        { list: 'string' },
+        {
+          optional: true,
+          label: 'Removed Payers',
+          description: 'The payers a biller removed, left out of billing.'
+        }
+      )
     ],
     outputs: [
-      coveragesPin,
-      pin('unmatched', {
-        list: { object: { payer: 'string', candidates: { list: { object: {} } } } }
-      }),
-      pin('notes', { list: 'string' })
+      pin(
+        'coverages',
+        { list: COVERAGE.type },
+        {
+          description: 'The payers in billing order, linked to the directory where known.'
+        }
+      ),
+      pin(
+        'unmatched',
+        {
+          list: { object: { payer: 'string', candidates: { list: { object: {} } } } }
+        },
+        {
+          description: 'The payer names a biller has to match, with similar directory payers.'
+        }
+      ),
+      pin(
+        'notes',
+        { list: 'string' },
+        { description: 'What limited the matching, for the biller.' }
+      )
     ],
-    exits: ['matched', 'review'],
+    exits: {
+      matched: { label: 'Matched', description: 'Every payer is linked to the directory.' },
+      review: { label: 'Review', description: 'Some payer names need a biller to match them.' }
+    },
     compute: async (inputs, _, ctx) => {
       const s = stores();
       const removed = new Set((inputs.exclude ?? []).map((x) => String(x)));
@@ -163,11 +202,27 @@ export const payerNodes: NodesOf = (stores) => [
     title: 'Link Payer Alias',
     category: CATEGORY,
     description:
-      'Remembers that a payer name from reports means a directory payer, so later reports with that name link automatically. Continues through invalid when no payer or an unknown one was chosen.',
+      'Remembers that a payer name from reports means a directory payer, so later reports with that name link automatically.',
+    level: 'basic',
+    keywords: ['alias', 'payer name', 'remember'],
     effect: true,
-    inputs: [pin('name', 'string'), pin('payerId', 'string', { optional: true })],
+    inputs: [
+      pin('name', 'string', { description: 'The payer name as reports write it.' }),
+      pin(
+        'payerId',
+        { id: 'payer' },
+        {
+          optional: true,
+          label: 'Payer',
+          description: 'The directory payer the name means.'
+        }
+      )
+    ],
     outputs: [],
-    exits: ['linked', 'invalid'],
+    exits: {
+      linked: { label: 'Linked', description: 'The name now links to the payer.' },
+      invalid: { label: 'Invalid', description: 'No payer or an unknown one was chosen.' }
+    },
     compute: async (inputs, _, ctx) => {
       const name = textOrNull(inputs.name);
       const payerId = textOrNull(inputs.payerId);

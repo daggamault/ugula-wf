@@ -1,5 +1,15 @@
 import * as v from 'valibot';
-import type { GraphDef, Json, PinSpec, Signature, Values, ValueType } from './types.ts';
+import {
+  COMMENT_COLORS,
+  type GraphDef,
+  type Json,
+  type PinSpec,
+  SCALAR_TYPES,
+  type Signature,
+  type Values,
+  type ValueType
+} from './types.ts';
+import { KIND_NAME } from './value-types.ts';
 
 const unreserved = v.check((s: string) => !(s in Object.prototype), 'This name is reserved');
 const name = v.pipe(
@@ -27,9 +37,13 @@ export const jsonSchema: v.GenericSchema<Json> = v.lazy(() =>
 
 export const valuesSchema: v.GenericSchema<Values> = v.record(v.string(), jsonSchema);
 
+const kindName = v.pipe(v.string(), v.regex(KIND_NAME, 'Kinds are camelCase names'));
+
 export const valueTypeSchema: v.GenericSchema<ValueType> = v.lazy(() =>
   v.union([
-    v.picklist(['any', 'string', 'number', 'integer', 'boolean', 'datetime']),
+    v.picklist(SCALAR_TYPES),
+    v.strictObject({ id: kindName }),
+    v.strictObject({ code: kindName }),
     v.strictObject({ list: valueTypeSchema }),
     v.strictObject({ object: v.record(name, valueTypeSchema) })
   ])
@@ -87,7 +101,21 @@ export const graphDefSchema: v.GenericSchema<GraphDef> = v.strictObject({
       position: v.exactOptional(v.strictObject({ x: v.number(), y: v.number() }))
     })
   ),
-  edges: v.array(v.strictObject({ from: id, fromPin: name, to: id, toPin: name }))
+  edges: v.array(v.strictObject({ from: id, fromPin: name, to: id, toPin: name })),
+  comments: v.exactOptional(
+    v.array(
+      v.strictObject({
+        id,
+        text: v.pipe(v.string(), v.maxLength(2000)),
+        position: v.strictObject({ x: v.number(), y: v.number() }),
+        size: v.strictObject({
+          width: v.pipe(v.number(), v.minValue(1)),
+          height: v.pipe(v.number(), v.minValue(1))
+        }),
+        color: v.exactOptional(v.picklist(COMMENT_COLORS))
+      })
+    )
+  )
 });
 
 export const optionsSchema = v.pipe(

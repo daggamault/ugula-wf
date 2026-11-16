@@ -18,6 +18,7 @@ import {
   stdGraphSource,
   tableRefOf,
   tableRefs,
+  type ValueKinds,
   validateGraph,
   workflowRefs
 } from '@ugula/graph';
@@ -59,6 +60,7 @@ import {
 type GraphServiceDeps = {
   db: Db;
   nodes: NodeDef[];
+  kinds: ValueKinds;
 };
 
 type NewGraph = {
@@ -118,7 +120,7 @@ export const customizationMap = (graphs: readonly MapGraph[]) => {
   }));
 };
 
-export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
+export const createGraphService = ({ db, nodes, kinds }: GraphServiceDeps) => {
   const primitives = new Set(nodes.map(refKey));
   const check = async (tx: Db, access: AgencyAccess, def: GraphDef) => {
     const refs = graphRefs(def)
@@ -130,7 +132,8 @@ export const createGraphService = ({ db, nodes }: GraphServiceDeps) => {
     );
     const registry = createRegistry(
       nodes,
-      combineSources(stdGraphSource, (ref) => byRef.get(refKey(ref)))
+      combineSources(stdGraphSource, (ref) => byRef.get(refKey(ref))),
+      kinds
     );
     const calls = workflowRefs(def).map((r) => dependencyOf({ key: r.type, version: r.version }));
     const keys = tableRefs(def);

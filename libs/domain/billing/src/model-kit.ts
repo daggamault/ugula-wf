@@ -37,14 +37,14 @@ export const ADDRESS = [
 export const BLOB = { object: { bucket: 'string', key: 'string' } } as const satisfies ValueType;
 
 export const ADJUSTMENT_TYPE = {
-  object: { group: 'string', reason: 'string', cents: 'integer' }
+  object: { group: 'string', reason: { code: 'carc' }, cents: 'integer' }
 } as const satisfies ValueType;
 
 export const LINE_ADJUDICATION_TYPE = {
   object: {
     line: 'integer',
-    code: 'string',
-    modifiers: { list: 'string' },
+    code: { code: 'hcpcs' },
+    modifiers: { list: { code: 'modifier' } },
     paidCents: 'integer',
     units: 'number',
     adjustments: { list: ADJUSTMENT_TYPE }

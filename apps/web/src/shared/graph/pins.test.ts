@@ -7,22 +7,29 @@ describe('pin tones', () => {
     assert.equal(pinKindOf('exec'), 'exec');
     assert.equal(pinKindOf({ list: 'number' }), 'list');
     assert.equal(pinKindOf({ object: {} }), 'object');
+    assert.equal(pinKindOf({ id: 'claim' }), 'string');
     assert.ok(toneOf('number').dot === 'bg-pin-number');
     assert.ok(toneOf({ list: 'any' }).edge.includes('stroke-pin-list'));
     assert.notEqual(toneOf('string').dot, toneOf('integer').dot);
   });
 });
 
+const kinds = { id: { payerFile: 'Payer File ID' }, code: { hcpcs: 'HCPCS Code' } };
+
 describe('describeType', () => {
   it('names value types in plain words', () => {
-    assert.equal(describeType('integer'), 'Whole Number');
-    assert.equal(describeType({ list: 'string' }), 'List of Text');
-    assert.equal(describeType({ list: { list: 'boolean' } }), 'List of List of Yes or No');
+    assert.equal(describeType('integer', kinds), 'Whole Number');
+    assert.equal(describeType({ list: 'string' }, kinds), 'List of Text');
+    assert.equal(describeType({ list: { list: 'boolean' } }, kinds), 'List of List of Yes or No');
     assert.equal(
-      describeType({ object: { bucket: 'string', key: 'string' } }),
+      describeType({ object: { bucket: 'string', key: 'string' } }, kinds),
       'Record With bucket, key'
     );
-    assert.equal(describeType({ object: {} }), 'Record');
+    assert.equal(describeType({ object: {} }, kinds), 'Record');
+    assert.equal(describeType({ id: 'payerFile' }, kinds), 'Payer File ID');
+    assert.equal(describeType({ list: { code: 'hcpcs' } }, kinds), 'List of HCPCS Code');
+    assert.equal(describeType({ id: 'shift' }, kinds), 'Shift ID');
+    assert.equal(describeType({ code: 'snomed' }, kinds), 'Snomed Code');
   });
 });
 
