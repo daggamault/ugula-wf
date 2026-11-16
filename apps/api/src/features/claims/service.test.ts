@@ -52,7 +52,7 @@ const setup = ({
   const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
   const now = () => new Date('2026-01-01T12:00:00.000Z');
   const blobs = { getBytes: async () => new TextEncoder().encode('%PDF-1.7') };
-  const { announce, events: announced } = recordAnnouncements();
+  const { publish, events: publishAfter } = recordAnnouncements();
   const ruled: [string, string, unknown][] = [];
   const rules: RuleRunner = async (agencyId, key, inputs) => {
     ruled.push([agencyId, key, inputs]);
@@ -74,10 +74,10 @@ const setup = ({
         };
   };
   return {
-    service: createClaimService({ db, boss, now, blobs, announce, rules }),
+    service: createClaimService({ db, boss, now, blobs, publish, rules }),
     jobs,
     queries,
-    announced,
+    publishAfter,
     ruled
   };
 };
@@ -87,7 +87,7 @@ const failure = (res: { ok: boolean; failure?: { code: string; message: string }
 
 describe('claim service', () => {
   it('starts a claim task workflow for the claim, assigned to the biller who started it', async () => {
-    const { service, queries, jobs, announced } = setup();
+    const { service, queries, jobs, publishAfter } = setup();
     assert.deepEqual(await service.startTask('t', 'u1', 'c1', 'billing.post-payment'), {
       ok: true,
       value: { runId: 'cycle-2' }
@@ -97,7 +97,7 @@ describe('claim service', () => {
     assert.ok(run?.parameters.includes(JSON.stringify({ claimId: 'c1', assignee: 'u1' })));
     assert.ok(run?.parameters.includes('u1'));
     assert.equal(jobs.length, 1);
-    assert.deepEqual(announced, [{ agencyId: 't', event: { kind: 'claim', id: 'c1' } }]);
+    assert.deepEqual(publishAfter, [{ agencyId: 't', event: { kind: 'claim', id: 'c1' } }]);
   });
 
   it('starts claim tasks on open claims, and on drafts only those that work on drafts', async () => {
@@ -256,20 +256,20 @@ describe('claim service', () => {
 
 describe('claim service tenancy', () => {
   it('locks every claim write to the agency and announces only the writes that succeed', async () => {
-    const { service, queries, announced } = setup();
+    const { service, queries, publishAfter } = setup();
     await service.startTask('t', 'u1', 'c1', 'billing.correct-claim-data');
     await service.restartCycle('t', 'c1');
     const locks = queries.filter((q) => q.sql.endsWith('for update'));
     assert.equal(locks.length, 2);
     assert.ok(locks.every((q) => q.sql.includes('"agency_id" = $') && q.parameters.includes('t')));
     assert.deepEqual(
-      announced.map((a) => a.agencyId),
+      publishAfter.map((a) => a.agencyId),
       ['t', 't']
     );
     const foreign = setup({ row: null });
     await foreign.service.startTask('other', 'u1', 'c1', 'billing.correct-claim-data');
     await foreign.service.restartCycle('other', 'c1');
-    assert.deepEqual(foreign.announced, []);
+    assert.deepEqual(foreign.publishAfter, []);
     assert.ok(!foreign.queries.some((q) => /^(insert|update|delete)/.test(q.sql.trim())));
   });
 });

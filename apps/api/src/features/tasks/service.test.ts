@@ -24,7 +24,7 @@ const setup = (row: Record<string, unknown> | undefined, updated = true) => {
   );
   const jobs: unknown[] = [];
   const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
-  const { announce, events: announced } = recordAnnouncements();
+  const { publish, events: publishAfter } = recordAnnouncements();
   const stored: string[] = [];
   const blobs = {
     putBytes: async (key: string, body: Uint8Array, contentType: string) => {
@@ -33,10 +33,10 @@ const setup = (row: Record<string, unknown> | undefined, updated = true) => {
     }
   };
   return {
-    service: createTaskService({ db, boss, announce, blobs, maxBytes: 10 }),
+    service: createTaskService({ db, boss, publish, blobs, maxBytes: 10 }),
     jobs,
     queries,
-    announced,
+    publishAfter,
     stored
   };
 };
@@ -138,13 +138,13 @@ describe('task service', () => {
   });
 
   it('completes open tasks and resumes the run atomically', async () => {
-    const { service, jobs, announced } = setup(task());
+    const { service, jobs, publishAfter } = setup(task());
     assert.deepEqual(
       await service.complete('t', 'u1', 't1', { outcome: 'approve', values: { note: 'ok' } }, []),
       { ok: true, value: { status: 'completed' } }
     );
     assert.equal(jobs.length, 1);
-    assert.deepEqual(announced, [
+    assert.deepEqual(publishAfter, [
       { agencyId: 't', event: { kind: 'task', id: 't1', runId: null } }
     ]);
   });
@@ -198,7 +198,7 @@ describe('task service', () => {
     assert.equal((await approve(['claims:approve'])).ok, true);
     const rejected = setup(undefined);
     await rejected.service.complete('t', 'u1', 't1', { outcome: 'approve', values: {} }, []);
-    assert.deepEqual(rejected.announced, []);
+    assert.deepEqual(rejected.publishAfter, []);
   });
 
   it('refuses to claim a task that needs a permission the user lacks', async () => {
@@ -304,12 +304,12 @@ describe('task service sources and hand-out', () => {
           ]
         : [task()]
     );
-    const { announce } = recordAnnouncements();
+    const { publish } = recordAnnouncements();
     const boss: RunQueueClient = { insert: async () => undefined };
     const found = await createTaskService({
       db,
       boss,
-      announce,
+      publish,
       blobs: { putBytes: async () => Promise.reject(new Error('unused')) },
       maxBytes: 10
     }).find('t', 't1');
@@ -330,11 +330,11 @@ describe('task service sources and hand-out', () => {
       ok: true,
       value: { task: null }
     });
-    assert.deepEqual(empty.announced, []);
+    assert.deepEqual(empty.publishAfter, []);
     const full = setup(task());
     const next = await full.service.next('t', null, 'u1', []);
     assert.equal(next.ok && next.value.task?.id, 't1');
-    assert.deepEqual(full.announced, [
+    assert.deepEqual(full.publishAfter, [
       { agencyId: 't', event: { kind: 'task', id: 't1', runId: null } }
     ]);
   });

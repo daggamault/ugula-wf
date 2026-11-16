@@ -5,7 +5,7 @@ import { reportTerms, reportXml } from '@ugula/nemsis';
 import type { RunQueueClient } from '@ugula/run-queue';
 import { type BlobRef, type BlobStore, importsPrefix } from '@ugula/storage';
 import { safeName, type UploadedFile, uploadKey } from '../../shared/files.ts';
-import type { Announce } from '../../shared/live.ts';
+import type { Publish } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import {
@@ -32,7 +32,7 @@ type ImportServiceDeps = {
   db: Db;
   boss: RunQueueClient;
   blobs: Pick<BlobStore, 'putBytes' | 'getJson'>;
-  announce: Announce;
+  publish: Publish;
   maxBytes: number;
   sftp: SftpStorage;
 };
@@ -75,7 +75,7 @@ export const createImportService = ({
   blobs,
   maxBytes,
   sftp,
-  announce
+  publish
 }: ImportServiceDeps) => {
   const unpublished = (workflow: string) =>
     fail('not_found', `Workflow ${workflow} has no published version`);
@@ -96,7 +96,7 @@ export const createImportService = ({
       await insertImport(tx, { agencyId, runId: id, file, ...origin });
       return id;
     });
-    await announce(agencyId, { kind: 'import', id: null }).catch(() => undefined);
+    await publish(agencyId, { kind: 'import', id: null }).catch(() => undefined);
     return ok({ runId, file });
   };
 

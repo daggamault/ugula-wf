@@ -1,5 +1,5 @@
 import type { Db } from '@ugula/db';
-import { type Announce, announced } from '../../shared/live.ts';
+import { type Publish, publishAfter } from '../../shared/live.ts';
 import { ok } from '../../shared/result.ts';
 import { insertNotification, listNotifications, markState } from './queries.ts';
 import type { NotificationInput } from './schemas.ts';
@@ -16,10 +16,10 @@ export const toNotification = (r: Row) => ({
   read: r.read
 });
 
-export const createNotificationService = ({ db, announce }: { db: Db; announce: Announce }) => {
+export const createNotificationService = ({ db, publish }: { db: Db; publish: Publish }) => {
   const changed = (agencyId: string, work: Promise<unknown>) =>
-    announced(
-      announce,
+    publishAfter(
+      publish,
       agencyId,
       work.then(() => ok({ status: 'ok' })),
       () => [{ kind: 'notification', id: null }]

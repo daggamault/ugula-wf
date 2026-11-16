@@ -13,7 +13,7 @@ import {
 } from '@ugula/run-queue';
 import type { BlobStore } from '@ugula/storage';
 import { type UploadedFile, uploadKey } from '../../shared/files.ts';
-import { type Announce, announced } from '../../shared/live.ts';
+import { type Publish, publishAfter } from '../../shared/live.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
   assignTask,
@@ -29,7 +29,7 @@ import {
 type TaskServiceDeps = {
   db: Db;
   boss: RunQueueClient;
-  announce: Announce;
+  publish: Publish;
   blobs: Pick<BlobStore, 'putBytes'>;
   maxBytes: number;
 };
@@ -86,7 +86,7 @@ export const jobFor = (
 const takesFiles = (fields: unknown) =>
   Array.isArray(fields) && (fields as FieldSpec[]).some((f) => isFileType(f.type));
 
-export const createTaskService = ({ db, boss, announce, blobs, maxBytes }: TaskServiceDeps) => {
+export const createTaskService = ({ db, boss, publish, blobs, maxBytes }: TaskServiceDeps) => {
   const changed = (id: string): LiveEvent[] => [{ kind: 'task', id, runId: null }];
 
   const reassign = async (agencyId: string, id: string, userId: string, assignee: string | null) =>
@@ -95,7 +95,7 @@ export const createTaskService = ({ db, boss, announce, blobs, maxBytes }: TaskS
       : (blocked(await findTask(db, agencyId, id), userId) ?? closed);
 
   const assign = (agencyId: string, id: string, userId: string, assignee: string | null) =>
-    announced(announce, agencyId, reassign(agencyId, id, userId, assignee), () => changed(id));
+    publishAfter(publish, agencyId, reassign(agencyId, id, userId, assignee), () => changed(id));
 
   return {
     maxBytes,
@@ -127,8 +127,8 @@ export const createTaskService = ({ db, boss, announce, blobs, maxBytes }: TaskS
       userId: string,
       permissions: readonly Permission[]
     ) =>
-      announced(
-        announce,
+      publishAfter(
+        publish,
         agencyId,
         claimNext(db, agencyId, queue, userId, permissions).then((task) =>
           ok({ task: task ?? null })
@@ -178,8 +178,8 @@ export const createTaskService = ({ db, boss, announce, blobs, maxBytes }: TaskS
       completion: Completion,
       permissions: readonly Permission[]
     ) =>
-      announced(
-        announce,
+      publishAfter(
+        publish,
         agencyId,
         db.transaction().execute(async (tx) => {
           const task = await findTask(tx, agencyId, id);

@@ -62,7 +62,7 @@ import { createInvitationRoutes, createUserRoutes } from './features/users/route
 import { createUserService } from './features/users/service.ts';
 import { type AgencyEnv, guardMethods, requireAgencyAccess } from './shared/access.ts';
 import { type AuthEnv, requireAuth } from './shared/auth.ts';
-import type { Announce } from './shared/live.ts';
+import type { Publish } from './shared/live.ts';
 import { createRuleRunner } from './shared/rules.ts';
 import { createSignInThrottle, type ThrottleStore } from './shared/throttle.ts';
 
@@ -74,7 +74,7 @@ type AppDeps = {
   blobs: BlobStore;
   embedder: Embedder;
   nodes: NodeDef[];
-  announce: Announce;
+  publish: Publish;
   clientIp: (c: Context) => string;
   sealSecret: ((secret: string, agencyId: string) => string) | null;
 };
@@ -97,7 +97,7 @@ export const createApp = ({
   blobs,
   embedder,
   nodes,
-  announce,
+  publish,
   clientIp,
   sealSecret
 }: AppDeps) => {
@@ -145,7 +145,7 @@ export const createApp = ({
     db,
     boss,
     blobs,
-    announce,
+    publish,
     maxBytes: config.API_MAX_IMPORT_BYTES,
     sftp: sftpStorage(config)
   });
@@ -192,7 +192,7 @@ export const createApp = ({
     .route(
       '/tasks',
       createTaskRoutes(
-        createTaskService({ db, boss, announce, blobs, maxBytes: config.API_MAX_IMPORT_BYTES })
+        createTaskService({ db, boss, publish, blobs, maxBytes: config.API_MAX_IMPORT_BYTES })
       )
     )
     .use(
@@ -212,7 +212,7 @@ export const createApp = ({
         DELETE: 'payers:delete'
       })
     )
-    .route('/payers', createPayerRoutes(createPayerService({ db, announce, embedder })))
+    .route('/payers', createPayerRoutes(createPayerService({ db, publish, embedder })))
     .use(
       '/facilities/*',
       guardMethods({
@@ -228,7 +228,7 @@ export const createApp = ({
     .use('/codes/*', guardMethods({ GET: null }))
     .route('/codes', createCodeRoutes(createCodeService({ db })))
     .use('/notifications/*', guardMethods({ GET: null, POST: null }))
-    .route('/notifications', createNotificationRoutes(createNotificationService({ db, announce })))
+    .route('/notifications', createNotificationRoutes(createNotificationService({ db, publish })))
     .use('/billing-profile/*', guardMethods({ ...read('settings:read'), PUT: 'settings:update' }))
     .route('/billing-profile', createBillingProfileRoutes(createBillingProfileService({ db })))
     .use(
@@ -256,7 +256,7 @@ export const createApp = ({
           db,
           boss,
           blobs,
-          announce,
+          publish,
           now: () => new Date(),
           rules: createRuleRunner(db, nodes)
         })
@@ -332,7 +332,7 @@ if (import.meta.main) {
       blobs,
       embedder: createEmbedder({ url: config.EMBEDDINGS_URL, fetch }),
       nodes: createNodeCatalog({ fetch }),
-      announce: (agencyId, event) => publishLiveEvent(redis, agencyId, event),
+      publish: (agencyId, event) => publishLiveEvent(redis, agencyId, event),
       clientIp: (c) => getConnInfo(c).remote.address ?? 'unknown',
       sealSecret: keyring ? (secret, agencyId) => sealSecret(keyring, secret, agencyId) : null
     }).fetch,

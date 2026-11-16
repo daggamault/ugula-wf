@@ -33,8 +33,8 @@ describe('toNotification', () => {
 describe('notification service', () => {
   it('counts unread messages and tells the agency about every change', async () => {
     const { db, queries } = createRecordingDb(() => [row, { ...row, id: 'n2', read: true }]);
-    const { announce, events } = recordAnnouncements();
-    const service = createNotificationService({ db, announce });
+    const { publish, events } = recordAnnouncements();
+    const service = createNotificationService({ db, publish });
     const list = await service.list('t', 'u');
     assert.ok(list.ok);
     assert.equal(list.value.unread, 1);

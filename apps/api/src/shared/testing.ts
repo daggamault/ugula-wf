@@ -4,7 +4,7 @@ import type { LiveEvent } from '@ugula/live';
 import { Hono } from 'hono';
 import type { AgencyAccess, AgencyEnv } from './access.ts';
 import { requireAuth } from './auth.ts';
-import type { Announce } from './live.ts';
+import type { Publish } from './live.ts';
 import type { ThrottleStore } from './throttle.ts';
 
 export const testSessions: SessionStore = {
@@ -45,8 +45,8 @@ export const withSession = (routes: Hono<AgencyEnv>, access: AgencyAccess = test
 
 export const recordAnnouncements = () => {
   const events: { agencyId: string; event: LiveEvent }[] = [];
-  const announce: Announce = async (agencyId, event) => void events.push({ agencyId, event });
-  return { announce, events };
+  const publish: Publish = async (agencyId, event) => void events.push({ agencyId, event });
+  return { publish, events };
 };
 
 export const memoryRedis = () => {

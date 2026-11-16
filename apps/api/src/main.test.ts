@@ -33,7 +33,7 @@ const deps: Parameters<typeof createApp>[0] = {
   blobs: {} as BlobStore,
   embedder: { embed: async () => [] },
   nodes: [...createStdNodes({ fetch }), ...createNemsisNodes(null)],
-  announce: async () => undefined,
+  publish: async () => undefined,
   clientIp: () => '10.0.0.1',
   sealSecret: null
 };

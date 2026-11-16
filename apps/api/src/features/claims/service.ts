@@ -25,7 +25,7 @@ import {
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobRef, BlobStore } from '@ugula/storage';
 import { listLedgerEvents } from '../../shared/ledger.ts';
-import { type Announce, announced } from '../../shared/live.ts';
+import { type Publish, publishAfter } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
 import type { RuleRunner } from '../../shared/rules.ts';
@@ -50,7 +50,7 @@ type ClaimServiceDeps = {
   boss: RunQueueClient;
   now: () => Date;
   blobs: Pick<BlobStore, 'getBytes'>;
-  announce: Announce;
+  publish: Publish;
   rules: RuleRunner;
 };
 
@@ -63,9 +63,9 @@ const CYCLE_WORKFLOW = { key: 'billing.cycle-claim', version: 1 };
 const unpublished = (key: string) => fail('not_found', `The ${key} workflow is not published`);
 
 const notFound = fail('not_found', 'Claim not found');
-export const createClaimService = ({ db, boss, now, blobs, announce, rules }: ClaimServiceDeps) => {
+export const createClaimService = ({ db, boss, now, blobs, publish, rules }: ClaimServiceDeps) => {
   const write = <T>(agencyId: string, id: string, work: (tx: Db) => Promise<Result<T>>) =>
-    announced(announce, agencyId, db.transaction().execute(work), () => [{ kind: 'claim', id }]);
+    publishAfter(publish, agencyId, db.transaction().execute(work), () => [{ kind: 'claim', id }]);
 
   const billingOf = async (
     agencyId: string,

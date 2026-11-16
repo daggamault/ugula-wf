@@ -2,7 +2,7 @@ import { payerDocument } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import type { Embedder } from '@ugula/inference';
 import type { Writes } from '../../shared/access.ts';
-import { type Announce, announced } from '../../shared/live.ts';
+import { type Publish, publishAfter } from '../../shared/live.ts';
 import { fail, ok } from '../../shared/result.ts';
 import {
   deleteAlias,
@@ -17,9 +17,9 @@ import {
 } from './queries.ts';
 import type { PayerInput } from './schemas.ts';
 
-type PayerServiceDeps = { db: Db; announce: Announce; embedder: Embedder };
+type PayerServiceDeps = { db: Db; publish: Publish; embedder: Embedder };
 
-export const createPayerService = ({ db, announce, embedder }: PayerServiceDeps) => {
+export const createPayerService = ({ db, publish, embedder }: PayerServiceDeps) => {
   const embed = async (agencyId: string, id: string, input: PayerInput) => {
     const [vector] = await embedder.embed([payerDocument(input)]);
     if (vector) await setEmbedding(db, agencyId, id, vector);
@@ -36,8 +36,8 @@ export const createPayerService = ({ db, announce, embedder }: PayerServiceDeps)
     },
     save: async (agencyId: string, input: PayerInput, writes: Writes) => {
       if (!writes.create && !writes.update) return fail('forbidden', "You can't save payers");
-      const saved = await announced(
-        announce,
+      const saved = await publishAfter(
+        publish,
         agencyId,
         db.transaction().execute(async (tx) => {
           const row = await upsertPayer(tx, agencyId, input, writes);

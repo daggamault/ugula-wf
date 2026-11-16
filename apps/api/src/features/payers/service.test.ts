@@ -26,8 +26,8 @@ describe('payer service', () => {
     const { db } = createRecordingDb((q) =>
       q.sql.startsWith('delete') ? [] : [{ ...row, total: '1' }]
     );
-    const { announce, events } = recordAnnouncements();
-    const service = createPayerService({ db, announce, embedder: embedder([[0.5]]) });
+    const { publish, events } = recordAnnouncements();
+    const service = createPayerService({ db, publish, embedder: embedder([[0.5]]) });
     assert.deepEqual(await service.search('t-1', PAGE), {
       ok: true,
       value: { items: [row], total: 1, page: 1, pageSize: 25 }
@@ -71,7 +71,7 @@ describe('payer service', () => {
       );
       return {
         queries,
-        service: createPayerService({ db, announce: recordAnnouncements().announce, embedder: e })
+        service: createPayerService({ db, publish: recordAnnouncements().publish, embedder: e })
       };
     };
     const fresh = embedder([[0.25, 0.5]]);
@@ -98,8 +98,8 @@ describe('payer service', () => {
 
   it('adds payers only with create and changes them only with update', async () => {
     const { db, queries } = createRecordingDb(() => []);
-    const { announce, events } = recordAnnouncements();
-    const service = createPayerService({ db, announce, embedder: embedder([]) });
+    const { publish, events } = recordAnnouncements();
+    const service = createPayerService({ db, publish, embedder: embedder([]) });
     const input = {
       name: 'Medicare',
       payerCode: '00952',
@@ -130,7 +130,7 @@ describe('payer service', () => {
     const { db } = createRecordingDb(() => []);
     const service = createPayerService({
       db,
-      announce: recordAnnouncements().announce,
+      publish: recordAnnouncements().publish,
       embedder: embedder([])
     });
     const found = await service.find('t-1', 'p1');

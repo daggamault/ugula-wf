@@ -44,11 +44,11 @@ const setup = ({
   const stored: string[] = [];
   const jobs: unknown[] = [];
   const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
-  const { announce, events: announced } = recordAnnouncements();
+  const { publish, events: publishAfter } = recordAnnouncements();
   const service = createImportService({
     db,
     boss,
-    announce,
+    publish,
     sftp,
     maxBytes: 10,
     blobs: {
@@ -59,7 +59,7 @@ const setup = ({
       getJson: async () => ({ eRecord: { 'eRecord.01': 'PCR-1' } })
     }
   });
-  return { service, stored, jobs, queries, announced };
+  return { service, stored, jobs, queries, publishAfter };
 };
 
 const file = (text: string, name = 'pcrs.xml') => ({
@@ -224,14 +224,14 @@ describe('import service SFTP hooks', () => {
 
 describe('import service announcements and names', () => {
   it('announces new imports to the agency and names unnamed uploads safely', async () => {
-    const { service, announced, queries } = setup();
+    const { service, publishAfter, queries } = setup();
     assert.ok((await service.upload('t-1', 'u-1', 'billing.ingest-nemsis', file('<x/>', '  '))).ok);
-    assert.deepEqual(announced, [{ agencyId: 't-1', event: { kind: 'import', id: null } }]);
+    assert.deepEqual(publishAfter, [{ agencyId: 't-1', event: { kind: 'import', id: null } }]);
     const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
     assert.equal(recorded?.parameters[3], 'upload');
     const refused = setup({ published: false });
     await refused.service.upload('t-1', 'u-1', 'billing.ingest-nemsis', file('<x/>'));
-    assert.deepEqual(refused.announced, []);
+    assert.deepEqual(refused.publishAfter, []);
   });
 
   it('refuses SFTP logins for agencies without an SFTP password', async () => {
