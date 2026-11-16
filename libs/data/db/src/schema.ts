@@ -670,8 +670,6 @@ type ClaimBatchesTable = {
   created_at: Timestamp;
   sent_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
   sent_as: ColumnType<string | null, string | null | undefined, string | null>;
-  rejected_at: NullableTimestamp;
-  rejection: ColumnType<string | null, string | null | undefined, string | null>;
 };
 
 type ClaimStatusRequestsTable = {

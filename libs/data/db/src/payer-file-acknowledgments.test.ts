@@ -57,12 +57,16 @@ describe('payer file acknowledgments', () => {
     );
   });
 
-  it('marks a batch rejected at the envelope by a TA1', async () => {
+  it('passes on a TA1 envelope rejection and looks up the batch it names', async () => {
     const { c, queries } = contextOf();
     const out = await postInterchangeAcknowledgments(c, [
       { controlNumber: '000000055', status: 'rejected', noteCode: '006', message: 'Bad ID' }
     ]);
-    assert.ok(queries.some((q) => q.sql.startsWith('update "claim_batches"')));
+    assert.ok(queries.every((q) => q.sql.startsWith('select')));
+    assert.deepEqual(
+      out.items.map((i) => [i.reference, i.outcome]),
+      [['000000055', 'unmatched']]
+    );
     assert.match(out.envelopeRejection ?? '', /rejected the file envelope: interchange 55/);
   });
 

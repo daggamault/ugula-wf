@@ -48,20 +48,6 @@ const findBatchClaims = (db: Db, agencyId: string, controlNumber: string) => {
         .execute();
 };
 
-const markBatchRejected = (
-  db: Db,
-  agencyId: string,
-  controlNumber: number,
-  rejection: string,
-  at: Date
-) =>
-  db
-    .updateTable('claim_batches')
-    .set({ rejected_at: at, rejection })
-    .where('agency_id', '=', agencyId)
-    .where('control_number', '=', controlNumber)
-    .execute();
-
 const noBatch = (controlNumber: string) =>
   item(controlNumber, null, 'unmatched', `No 837P file has control number ${controlNumber}`);
 
@@ -130,10 +116,6 @@ export const postInterchangeAcknowledgments = async (
     }
     const reason = `${ack.message} (TA1 note ${ack.noteCode || 'not given'})`;
     reasons.push(`interchange ${number}: ${reason}`);
-    const control = Number(ack.controlNumber);
-    if (Number.isSafeInteger(control) && control > 0) {
-      await markBatchRejected(c.tx, c.agencyId, control, reason, c.now);
-    }
     items.push(
       ...(await acknowledgeBatch(
         c,

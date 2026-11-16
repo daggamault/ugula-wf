@@ -526,7 +526,7 @@ describe('applyPayerFile', () => {
       '008',
       createdAt
     );
-    const { out, queries, events } = await apply(ta1);
+    const { out, events } = await apply(ta1);
     assert.equal(out.kind, 'TA1');
     assert.equal(
       out.envelopeRejection,
@@ -540,9 +540,6 @@ describe('applyPayerFile', () => {
         'The clearinghouse rejected the file envelope of 837P file 55: Invalid interchange receiver ID (TA1 note 008)'
       ]
     ]);
-    const marked = queries.find((q) => q.sql.startsWith('update "claim_batches"'));
-    assert.deepEqual(marked?.parameters.slice(0, 1), [createdAt]);
-    assert.ok(marked?.parameters.includes(55));
     assert.ok(events[0]?.parameters.includes('rejected'));
     const unknown = await apply(
       buildTA1(

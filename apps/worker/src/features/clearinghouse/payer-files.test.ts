@@ -209,7 +209,7 @@ describe('createPayerFileStore', () => {
       applied.status === 'applied' ? (applied.envelopeRejection ?? '') : '',
       /^The clearinghouse rejected the file envelope: interchange 7: Invalid interchange receiver ID/
     );
-    assert.ok(queries.some((q) => q.sql.startsWith('update "claim_batches" set "rejected_at"')));
+    assert.ok(queries.some((q) => q.sql.includes('"envelope_rejection" = $')));
   });
 
   it("refuses another agency's files and keys that climb out of the agency folder", async () => {
