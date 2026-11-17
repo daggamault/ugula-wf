@@ -1,5 +1,7 @@
+@layer theme, base, xyflow, components, utilities;
+
 @import "tailwindcss";
-@import "@xyflow/react/dist/style.css";
+@import "@xyflow/react/style.css";
 
 @theme {
   --color-canvas: light-dark(oklch(97.5% 0.003 265), oklch(14.5% 0.005 265));

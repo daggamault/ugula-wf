@@ -1,11 +1,10 @@
 import type { GraphDef } from '@ugula/graph';
 import {
-  applyEdgeChanges,
-  applyNodeChanges,
   Background,
   Controls,
   type Edge,
   MiniMap,
+  type NodeChangeset,
   Panel,
   ReactFlow,
   type ReactFlowInstance
@@ -22,7 +21,6 @@ import {
   useState
 } from 'react';
 import { Button } from '../ui/button.tsx';
-import { useDocumentTheme } from '../ui/theme-toggle.tsx';
 import type { Catalog } from './catalog.ts';
 import { clipFrom, clipOf, clipText, pasted } from './clipboard.ts';
 import { CommentActions, CommentNode } from './comment-node.tsx';
@@ -164,7 +162,6 @@ export const GraphCanvas = ({
   tools,
   viewRef
 }: GraphCanvasProps) => {
-  const theme = useDocumentTheme();
   const editable = onChange !== undefined;
   const flow = useMemo(
     () =>
@@ -199,12 +196,14 @@ export const GraphCanvas = ({
     })
   );
   useEffect(() => clicks.cancel, [clicks]);
-  const [selectionChange] = useState(() => ({ nodes: picked }: { nodes: CanvasNode[] }) => {
-    const only = picked.length === 1 ? picked[0]?.id : undefined;
-    if (selectedRef.current !== null && only !== selectedRef.current) {
+  const nodesChange = (changes: NodeChangeset<CanvasNode>) => {
+    setNodes((ns) => changes.applyTo(ns));
+    const current = selectedRef.current;
+    if (current === null) return;
+    if (changes.getByType('select').some((c) => c.selected !== (c.id === current))) {
       handlers.current.onSelect(null);
     }
-  });
+  };
   const reconnected = useRef(true);
 
   const requestAt = (screen: Point, from: PinRef | null): AddRequest | null => {
@@ -346,21 +345,19 @@ export const GraphCanvas = ({
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
-            colorMode={theme}
             className="[&_.react-flow__node:focus-visible]:outline-primary [--xy-background-color:var(--color-canvas)] [--xy-background-pattern-color:var(--color-border)] [--xy-edge-stroke-width:2] [&_.react-flow__node:focus-visible]:rounded-xl [&_.react-flow__node:focus-visible]:outline-2 [&_.react-flow__node:focus-visible]:outline-offset-2"
             onInit={(rf) => {
               instance.current = rf;
             }}
             fitView
-            fitViewOptions={{ maxZoom: 1, padding: 0.15, nodes: opening }}
+            fitViewOptions={{ maxZoom: 1, padding: '15%', nodes: opening }}
             minZoom={0.15}
             zoomOnDoubleClick={false}
             nodesDraggable={editable}
             nodesConnectable={editable}
             deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
-            onNodesChange={(c) => setNodes((ns) => applyNodeChanges(c, ns))}
-            onEdgesChange={(c) => setEdges((es) => applyEdgeChanges(c, es))}
-            onSelectionChange={selectionChange}
+            onNodesChange={nodesChange}
+            onEdgesChange={(c) => setEdges((es) => c.applyTo(es))}
             onNodeClick={(e, node) => {
               if (!isGraphNode(node) || node.data.ghost || e.ctrlKey || e.metaKey || e.shiftKey)
                 return;

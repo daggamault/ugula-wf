@@ -18,7 +18,7 @@ const subscribeTheme = (onChange: () => void) => {
   return () => observer.disconnect();
 };
 
-export const useDocumentTheme = () =>
+const useDocumentTheme = () =>
   useSyncExternalStore(subscribeTheme, readDocumentTheme, (): Theme => 'light');
 
 const applyDocumentTheme = (theme: Theme) => {
