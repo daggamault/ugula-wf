@@ -46,3 +46,22 @@ export const COVERAGE = model(
     f('claimFiling', 'string', 'Claim filing indicator of the directory payer')
   ]
 );
+
+export const COVERAGE_CANDIDATE = model(
+  'billing.coverage-candidate',
+  'candidate',
+  'Coverage Candidate',
+  'a coverage insurance discovery found for the patient with a directory payer, not yet on the claim',
+  [
+    f('payerId', { id: 'payer' }, 'Directory payer ID'),
+    f('payerName', 'string', 'Directory payer name'),
+    f('memberId', 'string', 'Member ID'),
+    f('groupId', 'string', 'Group ID'),
+    f('planName', 'string', 'Plan name the payer gave'),
+    f(
+      'entity',
+      'string',
+      'How the 271 named the payer: PR for the payer asked, PRP, SEP or TTP for the primary, secondary or tertiary payer it reported'
+    )
+  ]
+);

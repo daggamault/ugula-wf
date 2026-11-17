@@ -77,6 +77,7 @@ export type ActivityRow = {
 export type PaymentRow = Claim & {
   id: string;
   posted_at: string;
+  posted_on: string;
   payer: string | null;
   filing: string | null;
   kind: 'response' | 'refunded';

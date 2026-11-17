@@ -16,6 +16,7 @@ const medicare: Payer = {
   correction_method: null,
   appeal_days: null,
   plan_type: null,
+  is_searchable: false,
   aliases: [{ id: 'a1', alias: 'MCR Part B' }]
 };
 
@@ -82,7 +83,8 @@ describe('toPayerDraft', () => {
       filingLimitDays: null,
       correctionMethod: null,
       appealDays: null,
-      planType: null
+      planType: null,
+      isSearchable: false
     });
   });
 
@@ -93,7 +95,8 @@ describe('toPayerDraft', () => {
         filing_limit_days: 365,
         correction_method: 'reopening',
         appeal_days: 120,
-        plan_type: 'government'
+        plan_type: 'government',
+        is_searchable: true
       }),
       {
         name: 'Medicare',
@@ -102,7 +105,8 @@ describe('toPayerDraft', () => {
         filingLimitDays: 365,
         correctionMethod: 'reopening',
         appealDays: 120,
-        planType: 'government'
+        planType: 'government',
+        isSearchable: true
       }
     );
   });
@@ -139,6 +143,7 @@ describe('PayerPage', () => {
       'By kind of payer (Medicare reopens, others replace)'
     );
     assert.equal(trigger('Plan Type').textContent, 'Unknown');
+    assert.equal(trigger('Accepts Insurance Searches').textContent, 'No');
     assert.equal(days('Filing Limit (Days)').value, '');
     assert.deepEqual(
       [days('Filing Limit (Days)').min, days('Filing Limit (Days)').max],
@@ -165,6 +170,11 @@ describe('PayerPage', () => {
     await user.type(days('Appeal Limit (Days)'), '120');
     await choose(user, 'Corrections', 'Reopening request (Medicare)');
     await choose(user, 'Plan Type', 'Government');
+    await choose(
+      user,
+      'Accepts Insurance Searches',
+      'Yes: insurance discovery asks it about patients without coverage'
+    );
     await user.click(screen.getByRole('button', { name: 'Save Payer' }));
     assert.deepEqual(saved, [
       {
@@ -174,7 +184,8 @@ describe('PayerPage', () => {
         filingLimitDays: 365,
         correctionMethod: 'reopening',
         appealDays: 120,
-        planType: 'government'
+        planType: 'government',
+        isSearchable: true
       }
     ]);
     await waitFor(() =>
@@ -207,7 +218,8 @@ describe('PayerPage', () => {
         filingLimitDays: null,
         correctionMethod: null,
         appealDays: null,
-        planType: null
+        planType: null,
+        isSearchable: false
       }
     ]);
   });
@@ -235,7 +247,8 @@ describe('PayerPage', () => {
         filingLimitDays: null,
         correctionMethod: null,
         appealDays: null,
-        planType: null
+        planType: null,
+        isSearchable: false
       }
     ]);
     await waitFor(() =>

@@ -14,6 +14,7 @@ import { Redis } from 'ioredis';
 import { Client } from 'pg';
 import { PgBoss } from 'pg-boss';
 import { type Config, clearinghouseOf, parseConfig } from './config.ts';
+import { createAccountingStore } from './features/accounting/queries.ts';
 import { createFeeStore } from './features/charges/queries.ts';
 import { announceClaims, announceClaimTasks } from './features/claims/announce.ts';
 
@@ -172,6 +173,7 @@ if (import.meta.main) {
           schedules: scope.guard(createScheduleStore(db, blobs)),
           calendar: scope.guard(createCalendarStore(db)),
           documents: scope.guard(createDocumentStore(db)),
+          accounting: scope.guard(createAccountingStore(db)),
           completer: createCompleter({
             url: config.COMPLETIONS_URL,
             model: config.COMPLETIONS_MODEL,

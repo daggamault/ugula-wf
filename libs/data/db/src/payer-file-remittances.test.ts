@@ -95,6 +95,8 @@ const remitOf = (o: Partial<Remit> = {}): Remit => ({
   payerName: 'Medicare',
   payerId: 'MCR',
   checkNumber: 'CHK-1',
+  originatorId: null,
+  paymentMethod: null,
   paidOn: '2026-11-01',
   totalCents: 0,
   providerAdjustments: [],

@@ -5,12 +5,19 @@ import {
   type ClaimStatusCheck,
   type ClaimStatusInquiry,
   type Clearinghouse,
+  type CoverageCandidate,
   claimSignalKey,
   claimStatusNote,
+  coverageCandidates,
+  type DiscoveryCheck,
+  discovered,
+  discoveryNote,
   type EligibilityCheck,
   type ExchangeStore,
   exchangeFileName,
   localDate,
+  type RealtimeAnswer,
+  read271,
   readClaimStatus,
   SELF,
   type Submitter,
@@ -95,6 +102,102 @@ export const priorEligibility = (r: EligibilityRequest): EligibilityCheck =>
       : { status: 'unavailable', reason: r.note ?? '' };
 
 const unavailable = (reason: string) => ({ status: 'unavailable' as const, reason });
+
+const NO_SEARCHABLE_PAYER =
+  'No payer in the directory accepts insurance searches; mark the ones that do under Admin, Payers';
+
+const NO_DISCOVERY =
+  "The agency's clearinghouse connection has no real-time URL, so it cannot search for insurance";
+
+const NO_PATIENT = 'The claim has no patient with a name and birth date to search for';
+
+const findDiscoveryRequest = (db: Db, agencyId: string, sourceKey: string) =>
+  db
+    .selectFrom('discovery_requests')
+    .select(['control_number', 'status', 'note', 'candidates'])
+    .where('agency_id', '=', agencyId)
+    .where('source_key', '=', sourceKey)
+    .executeTakeFirst();
+
+type DiscoveryRequest = NonNullable<Awaited<ReturnType<typeof findDiscoveryRequest>>>;
+
+export const priorDiscovery = (r: DiscoveryRequest): DiscoveryCheck =>
+  r.status === 'answered'
+    ? { status: 'answered', candidates: r.candidates ?? [] }
+    : unavailable(r.note ?? '');
+
+const discoveryClaim = (db: Db, agencyId: string, claimId: string) =>
+  db
+    .selectFrom('claims as c')
+    .leftJoin('patients as p', 'p.id', 'c.patient_id')
+    .select([
+      'c.number',
+      'c.service_date',
+      'p.first_name',
+      'p.last_name',
+      'p.birth_date',
+      'p.gender',
+      'p.address_line',
+      'p.city',
+      'p.state',
+      'p.postal_code',
+      agencyTimeZone(sql.ref('c.agency_id')).as('time_zone')
+    ])
+    .where('c.agency_id', '=', agencyId)
+    .where('c.id', '=', claimId)
+    .executeTakeFirst();
+
+type DiscoveryRow = NonNullable<Awaited<ReturnType<typeof discoveryClaim>>>;
+
+type SearchedPayer = { id: string; name: string; payerCode: string };
+
+export const searchRequest = (r: DiscoveryRow, payer: SearchedPayer, at: Date) =>
+  r.last_name && r.birth_date
+    ? {
+        trace: r.number,
+        payer: { name: payer.name, payerId: payer.payerCode },
+        subscriber: {
+          lastName: r.last_name,
+          firstName: r.first_name,
+          memberId: null,
+          birthDate: r.birth_date,
+          sex: r.gender,
+          address: {
+            addressLine: r.address_line,
+            city: r.city,
+            state: r.state,
+            postalCode: r.postal_code
+          }
+        },
+        serviceDate: r.service_date ?? localDate(at, r.time_zone)
+      }
+    : null;
+
+export const readDiscovery = (
+  asked: SearchedPayer[],
+  answers: RealtimeAnswer[],
+  directory: SearchedPayer[]
+) => {
+  const errors: string[] = [];
+  const found = answers.flatMap((a, i) => {
+    const payer = asked[i]?.name ?? 'A payer';
+    if (!a.ok) {
+      errors.push(`${payer}: ${a.error}`);
+      return [];
+    }
+    try {
+      return discovered(read271(a.text));
+    } catch {
+      errors.push(`${payer}: the answer could not be read`);
+      return [];
+    }
+  });
+  const { candidates, unmatched } = coverageCandidates(found, directory);
+  const note = discoveryNote(asked.length, candidates, unmatched, errors);
+  return errors.length === asked.length
+    ? { status: 'unavailable' as const, note }
+    : { status: 'answered' as const, candidates, note };
+};
 
 const bytesOf = (text: string) => new TextEncoder().encode(text);
 
@@ -196,7 +299,7 @@ export const createExchangeStore = ({
   clearinghouseFor,
   now
 }: ExchangeDeps): ExchangeStore => {
-  const prepare = async (agencyId: string, reserved?: number) => {
+  const prepare = async (agencyId: string, reserved?: number | null) => {
     const profile = await findProfile(db, agencyId);
     const submitter: Submitter | null = profile ? toSubmitter(profile) : null;
     const problems = submitterIssues(submitter);
@@ -359,6 +462,84 @@ export const createExchangeStore = ({
       const signalsSeen = row.received ?? 0;
       await settle({ status: 'sent', sent_as: sentAs, signals_seen: signalsSeen, note: reason });
       return { status: 'sent', sentAs, reason, signalsSeen };
+    },
+    discoverCoverage: async (runId, claimId, sourceKey) => {
+      const agencyId = await agencyOf(runId);
+      const prior = await findDiscoveryRequest(db, agencyId, sourceKey);
+      if (prior && prior.status !== 'pending') return priorDiscovery(prior);
+      const row = isUuid(claimId) ? await discoveryClaim(db, agencyId, claimId) : undefined;
+      if (!row) return unavailable(NO_PATIENT);
+      const settle = async (
+        patch: { status: 'answered' | 'unavailable'; note: string; candidates?: string },
+        candidates: CoverageCandidate[] | null = null
+      ): Promise<DiscoveryCheck> => {
+        await db.transaction().execute(async (tx) => {
+          await tx
+            .insertInto('discovery_requests')
+            .values({ agency_id: agencyId, claim_id: claimId, source_key: sourceKey, ...patch })
+            .onConflict((oc) =>
+              oc.columns(['agency_id', 'source_key']).doUpdateSet({
+                status: (eb) => eb.ref('excluded.status'),
+                note: (eb) => eb.ref('excluded.note'),
+                candidates: (eb) => eb.ref('excluded.candidates')
+              })
+            )
+            .execute();
+          await tx
+            .insertInto('claim_events')
+            .values({
+              agency_id: agencyId,
+              claim_id: claimId,
+              kind: 'discovery',
+              note: patch.note,
+              source_key: sourceKey
+            })
+            .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
+            .execute();
+        });
+        return candidates ? { status: 'answered', candidates } : unavailable(patch.note);
+      };
+      const giveUp = (note: string) => settle({ status: 'unavailable', note });
+      const directory = await db
+        .selectFrom('payers')
+        .select(['id', 'name', 'payer_code as payerCode', 'is_searchable'])
+        .where('agency_id', '=', agencyId)
+        .orderBy('name')
+        .execute();
+      const searchable = directory.filter((p) => p.is_searchable);
+      if (!searchable.length) return giveUp(NO_SEARCHABLE_PAYER);
+      const requests = searchable.flatMap((p) => searchRequest(row, p, now()) ?? []);
+      if (requests.length < searchable.length) return giveUp(NO_PATIENT);
+      const ready = await prepare(agencyId, prior?.control_number);
+      if (ready.status !== 'ready') return giveUp(ready.reason);
+      const { submitter, clearinghouse, controlNumber } = ready;
+      if (!clearinghouse.discoverCoverage) return giveUp(NO_DISCOVERY);
+      if (!prior) {
+        await db
+          .insertInto('discovery_requests')
+          .values({
+            agency_id: agencyId,
+            claim_id: claimId,
+            source_key: sourceKey,
+            control_number: controlNumber
+          })
+          .onConflict((oc) => oc.columns(['agency_id', 'source_key']).doNothing())
+          .execute();
+      }
+      const answers = await clearinghouse.discoverCoverage(
+        requests.map((r) => build270(submitter, [r], { controlNumber, createdAt: now() }))
+      );
+      const result = readDiscovery(searchable, answers, directory);
+      return result.status === 'answered'
+        ? settle(
+            {
+              status: 'answered',
+              note: result.note,
+              candidates: JSON.stringify(result.candidates)
+            },
+            result.candidates
+          )
+        : giveUp(result.note);
     },
     connectionHealth: async (runId) => {
       const row = await db

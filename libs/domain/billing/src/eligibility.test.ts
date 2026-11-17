@@ -5,6 +5,10 @@ import type { EligibilityResult } from './x271.ts';
 
 const result: EligibilityResult = {
   trace: 'cov-1',
+  payer: { name: 'MEDICARE', payerId: 'DEMOMCR' },
+  memberId: '1EG4TE5MK73',
+  groupId: null,
+  otherPayers: [],
   active: true,
   planName: 'MEDICARE PART B',
   coverageStart: '2015-01-01',

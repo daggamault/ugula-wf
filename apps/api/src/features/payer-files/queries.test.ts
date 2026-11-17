@@ -60,10 +60,13 @@ describe('searchPayerFiles', () => {
 });
 
 describe('findPayerFile', () => {
-  it('finds one file with its stored document only within the agency', async () => {
+  it('finds one file with its stored document, payment and matched deposit only within the agency', async () => {
     const { db, queries } = createRecordingDb(() => []);
     assert.equal(await findPayerFile(db, 't-1', 'f1'), undefined);
-    assert.equal(queries[0]?.sql, `${COLUMNS}, "f"."document" ${FROM} and "f"."id" = $2`);
+    assert.equal(
+      queries[0]?.sql,
+      `${COLUMNS}, "f"."document", "f"."payment_cents", "f"."payment_method", "f"."paid_on", "f"."trace_number", "f"."trace_payer_id", (select "d"."id" from "deposits" as "d" where "d"."payer_file_id" = "f"."id") as "deposit_id" ${FROM} and "f"."id" = $2`
+    );
     assert.deepEqual(queries[0]?.parameters, ['t-1', 'f1']);
     await db.destroy();
   });

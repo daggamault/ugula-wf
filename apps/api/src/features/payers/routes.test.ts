@@ -51,7 +51,8 @@ describe('payer routes', () => {
           filingLimitDays: null,
           correctionMethod: null,
           appealDays: null,
-          planType: null
+          planType: null,
+          isSearchable: false
         },
         { create: true, update: true }
       ],

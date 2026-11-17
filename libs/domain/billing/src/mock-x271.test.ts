@@ -39,6 +39,10 @@ describe('build271', () => {
     assert.deepEqual(read271(text), [
       {
         trace: 'T-1',
+        payer: { name: 'MEDICARE', payerId: 'DEMOMCR' },
+        memberId: '2KT7XM4RW91',
+        groupId: null,
+        otherPayers: [],
         active: true,
         planName: 'MEDICARE PART B',
         coverageStart: null,
@@ -82,5 +86,31 @@ describe('build271', () => {
       admittedOn: '2026-10-01',
       dischargedOn: null
     });
+  });
+
+  it('answers a found search with the member ID, group and plan, or says it found no one', () => {
+    const subscriber = { lastName: 'Nakamura', firstName: 'Kenji', memberId: 'BCX1' };
+    const found = build271(
+      { trace: 'C-1', active: true, subscriber, groupId: 'G1', planName: 'Blue Plan PPO' },
+      at
+    );
+    assert.deepEqual(segmentsOf(found, ['REF', 'EB']), [
+      ['REF', '6P', 'G1'],
+      ['EB', '1', '', '30', '', 'BLUE PLAN PPO']
+    ]);
+    const missing = build271(
+      {
+        trace: 'C-2',
+        active: false,
+        notFound: true,
+        subscriber: { ...subscriber, memberId: null }
+      },
+      at
+    );
+    assert.deepEqual(segmentsOf(missing, ['NM1', 'AAA', 'EB']).slice(2), [
+      ['NM1', 'IL', '1', 'NAKAMURA', 'KENJI'],
+      ['AAA', 'N', '', '75', 'C']
+    ]);
+    assert.deepEqual(read271(missing)[0]?.messages, ['Subscriber not found']);
   });
 });

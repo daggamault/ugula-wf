@@ -34,7 +34,7 @@ import {
   US_STATE_PATTERN,
   ZIP_CODE_PATTERN
 } from '@ugula/billing';
-import { type Database, EXCHANGE_REQUEST_STATUSES } from '@ugula/db';
+import { type Database, DISCOVERY_REQUEST_STATUSES, EXCHANGE_REQUEST_STATUSES } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { agencyNoActionForeignKey, agencySetNullForeignKey } from './foreign-keys.ts';
 import { dailyNumberCheck, dailyNumberTrigger } from './numbers.ts';
@@ -453,6 +453,42 @@ const buildEligibilityRequestsTable = (db: Kysely<Database>) =>
       sql`control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER)}`
     );
 
+const buildDiscoveryRequestsTable = (db: Kysely<Database>) =>
+  db.schema
+    .createTable('discovery_requests')
+    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
+    .addColumn('agency_id', 'uuid', (col) => col.notNull())
+    .addColumn('claim_id', 'uuid', (col) => col.notNull())
+    .addColumn('source_key', 'text', (col) => col.notNull())
+    .addColumn('control_number', 'integer')
+    .addColumn('status', 'text', (col) => col.notNull().defaultTo('pending'))
+    .addColumn('note', 'text')
+    .addColumn('candidates', 'jsonb')
+    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addForeignKeyConstraint(
+      'discovery_requests_claim_id_fkey',
+      ['agency_id', 'claim_id'],
+      'claims',
+      ['agency_id', 'id'],
+      (fk) => fk.onDelete('cascade').onUpdate('cascade')
+    )
+    .addUniqueConstraint('discovery_requests_agency_id_source_key_unique', [
+      'agency_id',
+      'source_key'
+    ])
+    .addCheckConstraint(
+      'discovery_requests_status_check',
+      sql`status in (${list(DISCOVERY_REQUEST_STATUSES)})`
+    )
+    .addCheckConstraint(
+      'discovery_requests_result_check',
+      sql`(status = 'answered') = (candidates is not null) and (status = 'pending' or note is not null) and (status <> 'pending' or control_number is not null)`
+    )
+    .addCheckConstraint(
+      'discovery_requests_control_number_check',
+      sql`control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER)}`
+    );
+
 const buildClaimEventsTable = (db: Kysely<Database>) =>
   db.schema
     .createTable('claim_events')
@@ -478,6 +514,7 @@ const buildClaimEventsTable = (db: Kysely<Database>) =>
       col.references('tasks.id').onDelete('set null').onUpdate('cascade')
     )
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
+    .addColumn('posted_on', 'date', (col) => col.notNull())
     .addForeignKeyConstraint(
       'claim_events_claim_id_fkey',
       ['agency_id', 'claim_id'],
@@ -688,6 +725,10 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
     .on('claim_events')
     .columns(['agency_id', 'kind', 'created_at']),
   db.schema
+    .createIndex('idx_claim_events_agency_posted_on')
+    .on('claim_events')
+    .columns(['agency_id', 'posted_on']),
+  db.schema
     .createIndex('idx_claim_batches_agency_created')
     .on('claim_batches')
     .columns(['agency_id', 'created_at desc']),
@@ -702,6 +743,10 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_eligibility_requests_claim_id')
     .on('eligibility_requests')
+    .column('claim_id'),
+  db.schema
+    .createIndex('idx_discovery_requests_claim_id')
+    .on('discovery_requests')
     .column('claim_id')
 ];
 
@@ -720,6 +765,7 @@ export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimBatchesTable(db).execute();
   await buildClaimStatusRequestsTable(db).execute();
   await buildEligibilityRequestsTable(db).execute();
+  await buildDiscoveryRequestsTable(db).execute();
   await buildClaimEventsTable(db).execute();
   await buildClaimEventsBatchForeignKey().execute(db);
   await buildClaimEventAdjustmentsTable(db).execute();

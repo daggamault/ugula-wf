@@ -17,6 +17,7 @@ const medicare: Payer = {
   correction_method: null,
   appeal_days: null,
   plan_type: null,
+  is_searchable: false,
   aliases: [{ id: 'a1', alias: 'MCR Part B' }]
 };
 

@@ -10,6 +10,7 @@ import {
   formatDollars,
   formatDuration,
   formatMiles,
+  formatMonth,
   labelFromName,
   labelOf,
   parseDollars,
@@ -54,6 +55,14 @@ describe('formatDate', () => {
 
   it('shows a dash for a missing date', () => {
     assert.equal(formatDate(null), '—');
+  });
+});
+
+describe('formatMonth', () => {
+  it('names the month and year of a month or of a day in it', () => {
+    assert.equal(formatMonth('2026-10'), 'October 2026');
+    assert.equal(formatMonth('2026-01'), 'January 2026');
+    assert.equal(formatMonth('2026-12-01'), 'December 2026');
   });
 });
 

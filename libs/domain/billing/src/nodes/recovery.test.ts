@@ -157,7 +157,7 @@ describe('recoveryNodes', () => {
     await run('protect-balance', { claimId: 'c1', adjustedCents: 0, note: 'NH law' });
     await run('protect-balance', { claimId: 'c1', adjustedCents: 4_000, note: 'NH law' });
     await run('skip-remaining-payers', { claimId: 'c1' });
-    await run('add-payer', { claimId: 'c1', payerId: 'p-blue', memberId: ' M1 ' });
+    await run('add-payer', { claimId: 'c1', payerId: 'p-blue', memberId: ' M1 ', groupId: 'G1' });
     assert.deepEqual(calls, [
       [
         'refund',
@@ -172,7 +172,7 @@ describe('recoveryNodes', () => {
       ],
       ['protect', { key: 'key', adjustedCents: 4_000, note: 'NH law' }],
       ['skip', { key: 'key', note: 'Moved to the patient' }],
-      ['add', { payerId: 'p-blue', memberId: 'M1' }]
+      ['add', { payerId: 'p-blue', memberId: 'M1', groupId: 'G1' }]
     ]);
   });
 
@@ -194,7 +194,7 @@ describe('recoveryNodes', () => {
         }
       ],
       ['skip', { key: 'key', note: 'Coverage lapsed' }],
-      ['add', { payerId: 'p-blue', memberId: null }]
+      ['add', { payerId: 'p-blue', memberId: null, groupId: null }]
     ]);
   });
 

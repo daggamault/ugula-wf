@@ -12,6 +12,10 @@ const COVERAGE = '0195f2a4-0000-7000-8000-0000000000c1';
 
 const result = (trace: string): EligibilityResult => ({
   trace,
+  payer: { name: null, payerId: null },
+  memberId: null,
+  groupId: null,
+  otherPayers: [],
   active: true,
   planName: null,
   coverageStart: null,

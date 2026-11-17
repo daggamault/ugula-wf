@@ -31,7 +31,23 @@ export const searchPayerFiles = (db: Db, agencyId: string, page: PageRequest<Pay
   paged(fileRows(db, agencyId), page, FILE_ORDER, sql.ref('f.id'));
 
 export const findPayerFile = (db: Db, agencyId: string, id: string) =>
-  fileRows(db, agencyId).select('f.document').where('f.id', '=', id).executeTakeFirst();
+  fileRows(db, agencyId)
+    .select([
+      'f.document',
+      'f.payment_cents',
+      'f.payment_method',
+      'f.paid_on',
+      'f.trace_number',
+      'f.trace_payer_id',
+      (eb) =>
+        eb
+          .selectFrom('deposits as d')
+          .select('d.id')
+          .whereRef('d.payer_file_id', '=', 'f.id')
+          .as('deposit_id')
+    ])
+    .where('f.id', '=', id)
+    .executeTakeFirst();
 
 export const listFileItems = (db: Db, fileId: string) =>
   db

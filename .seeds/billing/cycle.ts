@@ -1444,6 +1444,22 @@ const SITUATIONS: Situation[] = [
     rules: [{ field: 'balanceCents', op: 'lte', input: 'autoWriteOffCents' }]
   },
   {
+    id: 'uncovered',
+    label: 'No Payer Covers the Claim',
+    reason: 'No payer covers the claim and insurance discovery has not been tried',
+    step: 'discover',
+    inputs: {
+      coverageId: BILLED,
+      payerAnswered: ledgerPin('payerAnswered', 'boolean'),
+      discoveryTried: ledgerPin('discoveryTried', 'boolean')
+    },
+    rules: [
+      { field: 'coverageId', op: 'empty' },
+      { field: 'payerAnswered', op: 'is', value: false },
+      { field: 'discoveryTried', op: 'is', value: false }
+    ]
+  },
+  {
     id: 'reviewPatient',
     label: 'The Claim Needs Review Before the Patient',
     reason: 'The claim needs review before the patient is billed',
@@ -1834,6 +1850,7 @@ const claimTaskDetails = (): GraphDef => {
 
 const ROUTES = [
   'review',
+  'discover',
   'reviewPatient',
   'confirmPayers',
   'submit',
@@ -1954,6 +1971,10 @@ const cycleClaim = (): GraphDef => {
   g.add('denied', 'std.flow.switch', {
     label: 'How the Denial Ended',
     config: { cases: ['writeOff', 'void'] }
+  });
+  g.add('discover', 'std.flow.run-workflow', {
+    label: 'Discover Insurance',
+    config: { workflow: 'billing.discover-insurance', version: 1 }
   });
   const refundInputs = makeObject(g, 'refundInputs', 'Refund Inputs', {
     claimId: [{ id: 'claim' }, 'entry.claimId'],
@@ -2101,6 +2122,13 @@ const cycleClaim = (): GraphDef => {
   g.wire('denial.pin', 'denied.value');
   g.wire('denied.writeOff', 'approveWriteOff.exec');
   g.wire('denied.void', 'closeVoid.exec');
+  g.wire('route.discover', 'discover.exec');
+  g.wire(
+    makeObject(g, 'discoverInputs', 'Discover Insurance Inputs', {
+      claimId: [{ id: 'claim' }, 'entry.claimId']
+    }),
+    'discover.inputs'
+  );
   g.wire('route.overpaid', 'overpaid.exec');
   g.wire(refundInputs, 'overpaid.inputs');
   g.wire('overpaid.then', 'refunded.exec');
@@ -2291,7 +2319,7 @@ export const cycleGraphs: SeedGraph[] = [
   asRule(
     'billing.next-claim-step',
     'Next Claim Step',
-    'Decides what a claim needs next from where it stands, with the waits, statements and limits of the Claim Policy table, taking the first situation that applies, top to bottom, and saying why: refund an overpayment, work a payer denial, reconcile a payer response, wait on a responsible facility and follow up when it has not paid in time, review the claim before a payer and file it once approved, wait on the payer and follow up, review before the patient is billed or confirm payers, send or wait between patient statements, write off a small balance, review an unpaid balance for collections, or close.',
+    'Decides what a claim needs next from where it stands, with the waits, statements and limits of the Claim Policy table, taking the first situation that applies, top to bottom, and saying why: refund an overpayment, work a payer denial, reconcile a payer response, wait on a responsible facility and follow up when it has not paid in time, review the claim before a payer and file it once approved, wait on the payer and follow up, discover insurance once when no payer covers the claim, review before the patient is billed or confirm payers, send or wait between patient statements, write off a small balance, review an unpaid balance for collections, or close.',
     nextClaimStep()
   ),
   asRule(
@@ -2369,7 +2397,7 @@ export const cycleGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.cycle-claim',
     'Cycle Claim',
-    "Works a claim from its first bill until it closes, one step at a time: decides the Next Claim Step and shows it as the claim's status, checks the claim before a review or filing and asks a biller to fix what blocks it, has it reviewed, files it to each payer in order (asking a biller when it cannot), follows up on late payers, works denials (Work Denial), reconciles payments, refunds overpayments (Refund Overpayment), waits on a responsible facility and follows up when it has not paid in time, confirms payers when there are none, reviews before the first patient statement, sends statements, and has write-offs and collections above the Claim Policy limits approved. Between steps it sleeps until the claim changes or a wait runs out.",
+    "Works a claim from its first bill until it closes, one step at a time: decides the Next Claim Step and shows it as the claim's status, checks the claim before a review or filing and asks a biller to fix what blocks it, has it reviewed, files it to each payer in order (asking a biller when it cannot), follows up on late payers, works denials (Work Denial), reconciles payments, refunds overpayments (Refund Overpayment), waits on a responsible facility and follows up when it has not paid in time, searches for insurance once when no payer covers the claim (Discover Insurance), confirms payers when there are none, reviews before the first patient statement, sends statements, and has write-offs and collections above the Claim Policy limits approved. Between steps it sleeps until the claim changes or a wait runs out.",
     cycleClaim()
   ),
   asWorkflow(

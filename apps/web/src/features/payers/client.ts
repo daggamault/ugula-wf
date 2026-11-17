@@ -13,6 +13,7 @@ export type Payer = {
   correction_method: CorrectionMethod | null;
   appeal_days: number | null;
   plan_type: PlanType | null;
+  is_searchable: boolean;
   aliases: PayerAlias[];
 };
 
@@ -24,6 +25,7 @@ export type PayerInput = {
   correctionMethod: CorrectionMethod | null;
   appealDays: number | null;
   planType: PlanType | null;
+  isSearchable: boolean;
 };
 
 export const createPayersClient = (api: Api) => ({

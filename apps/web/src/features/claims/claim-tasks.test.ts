@@ -38,6 +38,7 @@ const reasons = (claim: Claim, progress?: ClaimProgress | null) =>
 const TASKS = [
   'Correct Claim Data',
   'Change Responsible Party',
+  'Discover Insurance',
   'Add Document',
   'Chase Document',
   'Log Records Request',
@@ -59,6 +60,10 @@ describe('claimTaskGroups', () => {
             [
               'Change Responsible Party',
               'Add, reorder or remove the payers, or bill a facility for the trip instead.'
+            ],
+            [
+              'Discover Insurance',
+              'Search the payers that accept searches for coverage the patient did not report.'
             ],
             ['Add Document', 'Upload a facesheet, certification, signature form, ABN or MSP form.'],
             ['Chase Document', 'Get a missing document by a due date.'],
@@ -83,6 +88,7 @@ describe('claimTaskGroups', () => {
     assert.deepEqual(done, [
       'billing.correct-claim-data',
       'billing.change-responsible-party',
+      'billing.discover-insurance',
       'billing.receive-document',
       'billing.chase-document',
       'billing.log-records-request',

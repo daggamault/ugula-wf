@@ -4,14 +4,15 @@
 
 `Clearinghouse` (`libs/domain/billing/src/clearinghouse.ts`) is an operations port, not a transport:
 
-| Operation           | Does                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------ |
-| `submitClaims`      | Uploads an 837P batch file, named with the connection's claim extension                    |
-| `submitEligibility` | Uploads a batch 270; the 271 arrives with the other downloads                              |
-| `checkEligibility`  | Real-time 270 → 271 text or an error (`null` when the connection has none)                 |
-| `submitClaimStatus` | Uploads a batch 276; the 277 arrives with the other downloads                              |
-| `checkClaimStatus`  | Real-time 276 → 277 text or an error (`null` without real time)                            |
-| `inbox`             | Lists, reads and deletes response files over one session; `afterDownload` says delete/keep |
+| Operation           | Does                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `submitClaims`      | Uploads an 837P batch file, named with the connection's claim extension                                 |
+| `submitEligibility` | Uploads a batch 270; the 271 arrives with the other downloads                                           |
+| `checkEligibility`  | Real-time 270 → 271 text or an error (`null` when the connection has none)                              |
+| `submitClaimStatus` | Uploads a batch 276; the 277 arrives with the other downloads                                           |
+| `checkClaimStatus`  | Real-time 276 → 277 text or an error (`null` without real time)                                         |
+| `discoverCoverage`  | Real-time search 270s (one per payer, no member ID) → a 271 or an error each (`null` without real time) |
+| `inbox`             | Lists, reads and deletes response files over one session; `afterDownload` says delete/keep              |
 
 `createClearinghouse` composes it from two transports, both domain-free adapters in `libs/platform/clearinghouse` (`@ugula/clearinghouse`):
 
@@ -46,6 +47,12 @@
 - `billing.check-eligibility` runs `Check Eligibility with Clearinghouse` (`billing.send-270`): real time when the connection has a real-time URL, applying the 271 at once as a payer file; otherwise, or when real time gets no answer, a batch `.ELG` upload (an answer that cannot be read is not re-sent in batch). Coverages already answered or with a request pending (`eligibility_requested_at`) are skipped, and an answer from another claim of the same patient, payer and member ID in the same month of service is copied instead of asking. Each request is recorded per run step in `eligibility_requests`, and the payers it asked about are stamped with its result in one transaction, so a retried step returns the answer or upload it already got (a request that never got that far is sent again with its control number). It starts when Encounter to Claim saves a claim's payers and from **Check Eligibility** on a claim, which forces a new request; **Download 270** still builds the file for a biller.
 - `Follow Up with Payer` first runs `Check Claim Status with Clearinghouse` (`billing.send-276`): real time, or, when real time gets no answer, a batch `.CLS` upload followed by a wait of up to a day for the claim to change, then shows the latest status in the follow-up task. Each request is recorded per run step in `claim_status_requests`, so a retried step returns what was already sent instead of paying for another 276.
 
+## Insurance discovery
+
+- A payer marked **Accepts Insurance Searches** in the payer directory (`payers.is_searchable`, Admin → Payers) is asked by `Discover Coverage` (`billing.discover-coverage`): one real-time 270 per such payer without a member ID (NM1*IL with no NM108/NM109), by the patient's name, birth date and sex (DMG) and, when known, address (N3/N4), as X12 5010 270 allows a subscriber search by demographics. Each 271 gives the subscriber member ID (2100C NM109), group (REF*6P, else REF*18), plan, and the other payers it reports (EB*R with the 2120C NM1 PRP, SEP, TTP or PR name and payer ID, and the member ID from REF*1W or IG). An active coverage found, and every other payer with a member ID, becomes a candidate when its payer ID matches a directory payer; the rest are only noted.
+- It needs the agency's connection to have a real-time URL, so batch-only connections say why and ask nothing. One control number is allocated per discovery and shared by its 270s. Each discovery is recorded per run step in `discovery_requests` with its candidates, so a retried step returns what it found instead of searching again, and logs a `discovery` event in the claim History saying what it found or why it could not search (no payer accepts searches, no patient birth date, no real-time connection, every payer failed).
+- `billing.discover-insurance` (Discover Insurance) runs it from the claim cycle, once, when no payer covers the claim, and from **Discover Insurance** on a claim: `Candidate Coverages` drops payers already on the claim and orders the rest by the Discovered Payer Order table, and a **Confirm discovered coverage** task adds the one a biller confirms with `Add Payer` (member and group ID, after the payers on the claim), then starts Check Eligibility.
+
 ## Waystar conventions
 
 Most of Waystar's interface documentation sits behind its developer portal login. What is public:
@@ -73,7 +80,7 @@ The Waystar preset fills these folders and extensions with receiver ID `WAYSTAR`
 
 ## Later
 
-Insurance discovery, Waystar's own API adapter, separate real-time credentials and proprietary front-end rejection reports.
+Waystar's own API adapter (including its insurance discovery product behind `discoverCoverage`), separate real-time credentials and proprietary front-end rejection reports.
 
 ## Clearinghouse connection
 
@@ -103,7 +110,7 @@ Response files are recognized by content (ISA/GS/ST, or a TA1 segment), not by n
   - `.999` acknowledges the group (AK1 = the 837 GS06); an unreadable 837P gets a rejected 999 (`AK9*R`);
   - `.277` (277CA) has one status per claim (TRN = CLM01): accepted, or rejected with "Invalid member ID" when the subscriber member ID starts with `REJECT`;
   - `.835` follows after `CHOUSE_REMIT_DELAY_SECONDS` (default 20) for accepted claims, one transaction per payer, 80% paid and the rest a CO-45, except payers listed in `CHOUSE_ERA_UNENROLLED` (no ERA enrollment, so no 835);
-  - `.271` answers each 270 inquiry: active coverage, inactive when the member ID starts with `INACTIVE`, naming a Medicare Advantage plan when it starts with `ADVANTAGE`, and reporting a hospital inpatient or SNF stay admitted on the date of service when it starts with `INPATIENT` or `SNF`;
+  - `.271` answers each 270 inquiry: a search without a member ID finds the insured on its roster by payer, name and birth date (Kenji Nakamura, born 1995-05-27, the patient of `.xmls/short-trip-self-pay.xml`, at `DEMOBCBS`, the dev Blue Plan, which accepts searches) with member ID, group and plan, or says subscriber not found (AAA 75); otherwise active coverage, inactive when the member ID starts with `INACTIVE`, naming a Medicare Advantage plan when it starts with `ADVANTAGE`, and reporting a hospital inpatient or SNF stay admitted on the date of service when it starts with `INPATIENT` or `SNF`;
   - `.277` (claim status, 005010X212) answers each 276: in process (A2) for an accepted claim, paid (F1) once its 835 went out, rejected (A3), or not found (A4) for a claim it never saw.
 - `POST /core/realtime` takes a CAQH CORE multipart envelope (Basic auth, `PayloadType` `X12_270_Request_005010X279A1` or `X12_276_Request_005010X212`) and returns the 271 or 277 in the same envelope.
 

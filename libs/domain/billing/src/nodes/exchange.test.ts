@@ -5,12 +5,13 @@ import { invokeNode } from '@ugula/graph/testing';
 import type { LedgerCoverage } from '../claims.ts';
 import { billingStores, memoryClaims } from '../testing.ts';
 import { exchangeNodes } from './exchange.ts';
-import type { ClaimStatusCheck, EligibilityCheck, StoredHealth } from './stores.ts';
+import type { ClaimStatusCheck, DiscoveryCheck, EligibilityCheck, StoredHealth } from './stores.ts';
 
 const setup = (
   eligibility: EligibilityCheck,
   status: ClaimStatusCheck,
-  coverages?: LedgerCoverage[]
+  coverages?: LedgerCoverage[],
+  discovery: DiscoveryCheck = { status: 'unavailable', reason: '' }
 ) => {
   const calls: unknown[][] = [];
   const claims = memoryClaims(coverages ? { coverages } : {});
@@ -25,6 +26,10 @@ const setup = (
         checkClaimStatus: async (...args) => {
           calls.push(['276', ...args]);
           return status;
+        },
+        discoverCoverage: async (...args) => {
+          calls.push(['discover', ...args]);
+          return discovery;
         },
         connectionHealth: async () => null
       }
@@ -124,6 +129,35 @@ describe('exchangeNodes', () => {
     );
   });
 
+  it('gives the coverages discovery found, or why it could not ask', async () => {
+    const none = { status: 'unavailable' as const, reason: '' };
+    const candidate = {
+      payerId: 'p-blue',
+      payerName: 'Blue Plan',
+      memberId: 'BCX1',
+      groupId: null,
+      planName: 'PPO',
+      entity: 'PR'
+    };
+    const found = setup(none, none, undefined, { status: 'answered', candidates: [candidate] });
+    const out = await invokeNode(found.node('discover-coverage'), { inputs: { claimId: 'c1' } });
+    assert.deepEqual(
+      [out.pin, out.outputs],
+      ['answered', { candidates: [candidate], reason: null }]
+    );
+    assert.deepEqual(found.calls, [['discover', 'run', 'c1', 'key']]);
+    const missing = await invokeNode(
+      setup(none, none, undefined, { status: 'unavailable', reason: 'No real time' }).node(
+        'discover-coverage'
+      ),
+      { inputs: { claimId: 'c1' } }
+    );
+    assert.deepEqual(
+      [missing.pin, missing.outputs],
+      ['unavailable', { candidates: [], reason: 'No real time' }]
+    );
+  });
+
   it('reads the latest claim status logged for the payer being billed', async () => {
     const s = setup({ status: 'unavailable', reason: '' }, { status: 'unavailable', reason: '' });
     const out = await invokeNode(s.node('latest-claim-status'), { inputs: { claimId: 'c1' } });
@@ -164,6 +198,7 @@ describe('billing.clearinghouse-health', () => {
         exchange: {
           checkEligibility: async () => assert.fail('not asked'),
           checkClaimStatus: async () => assert.fail('not asked'),
+          discoverCoverage: async () => assert.fail('not asked'),
           connectionHealth: async (runId) => {
             assert.equal(runId, 'run');
             return stored;

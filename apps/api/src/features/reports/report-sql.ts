@@ -24,6 +24,9 @@ const startOf = (day: string, tz: string) => sql`(${day}::date)::timestamp at ti
 export const within = (at: Expression<unknown>, { range, tz }: ReportContext) =>
   sql<boolean>`${at} >= ${startOf(range.from, tz)} and ${at} < (${range.to}::date + 1)::timestamp at time zone ${tz}`;
 
+export const postedIn = ({ range }: ReportContext) =>
+  sql<boolean>`e.posted_on between ${range.from}::date and ${range.to}::date`;
+
 export const servedIn = ({ range }: ReportContext) =>
   sql<boolean>`c.service_date between ${range.from}::date and ${range.to}::date`;
 

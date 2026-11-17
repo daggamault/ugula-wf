@@ -8,6 +8,7 @@ import type { ClaimLedger, ClaimStatus, ClosedStatus, CycleEventKind } from '../
 import type { ConnectionHealth } from '../clearinghouse.ts';
 import type { CodeSet } from '../code-sets.ts';
 import type { Completer } from '../completions.ts';
+import type { CoverageCandidate } from '../discovery.ts';
 import type { AppealPacketSource, FacilityInvoiceSource } from '../documents.ts';
 import type { CheckedFacility, Hospital, ResponsibleParty } from '../facilities.ts';
 import type { ZipPlace } from '../geo.ts';
@@ -145,7 +146,7 @@ export type RecoveryStore = {
   addPayer: (
     runId: string,
     claimId: string,
-    payer: { payerId: string; memberId: string | null }
+    payer: { payerId: string; memberId: string | null; groupId: string | null }
   ) => Promise<void>;
   appealPacket: (
     runId: string,
@@ -380,6 +381,8 @@ export type ClaimStatusCheck =
   | (SentBatch & { signalsSeen: number })
   | Unavailable;
 
+export type DiscoveryCheck = { status: 'answered'; candidates: CoverageCandidate[] } | Unavailable;
+
 export type StoredHealth = ConnectionHealth & { error: string | null };
 
 export type ExchangeStore = {
@@ -396,10 +399,54 @@ export type ExchangeStore = {
     sourceKey: string,
     coverageId: string
   ) => Promise<ClaimStatusCheck>;
+  discoverCoverage: (runId: string, claimId: string, sourceKey: string) => Promise<DiscoveryCheck>;
 };
 
 export type DocumentStore = {
   chasedDocuments: (runId: string, claimId: string) => Promise<string[]>;
+};
+
+export type DepositPair = {
+  depositId: string;
+  payerFileId: string;
+  depositTrace: string;
+  depositCents: number;
+  remittanceTrace: string;
+  remittanceCents: number;
+  payerName: string | null;
+  fileName: string;
+};
+
+export type UnmatchedPayment = {
+  kind: 'deposit' | 'remittance';
+  depositId: string | null;
+  payerFileId: string | null;
+  traceNumber: string;
+  amountCents: number;
+  receivedOn: string;
+  payerName: string | null;
+};
+
+export type PeriodTotals = {
+  chargesCents: number;
+  paymentsCents: number;
+  refundsCents: number;
+  adjustmentsCents: number;
+  writeOffsCents: number;
+};
+
+export type AccountingStore = {
+  depositPairs: (
+    runId: string,
+    of: { depositId: string | null; payerFileId: string | null }
+  ) => Promise<DepositPair[]>;
+  matchDeposit: (runId: string, depositId: string, payerFileId: string) => Promise<void>;
+  unmatchedPayments: (
+    runId: string,
+    before: string
+  ) => Promise<{ deposits: UnmatchedPayment[]; remittances: UnmatchedPayment[] }>;
+  periodTotals: (runId: string, period: string) => Promise<PeriodTotals>;
+  closePeriod: (runId: string, period: string, closedBy: string | null) => Promise<void>;
 };
 
 export type BillingStores = {
@@ -415,6 +462,7 @@ export type BillingStores = {
   schedules: ScheduleStore;
   calendar: CalendarStore;
   documents: DocumentStore;
+  accounting: AccountingStore;
   completer: Completer;
 };
 

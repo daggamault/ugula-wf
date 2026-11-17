@@ -66,13 +66,22 @@ describe('ledgerFactsOf', () => {
       sinceStatementMs: null,
       sinceFacilityContactMs: null,
       rejection: null,
-      pendingReview: false
+      pendingReview: false,
+      payerAnswered: false,
+      discoveryTried: false
     });
     const pending = ledgerFactsOf(
       { totalCents: 100, coverages: [], events: [], pendingReview: true },
       day(0)
     );
     assert.equal(pending.pendingReview, true);
+  });
+
+  it('says whether a payer answered and whether insurance discovery was tried', () => {
+    const answered = facts([e('response', 'Medicare', 1)], 2);
+    assert.deepEqual([answered.payerAnswered, answered.discoveryTried], [true, false]);
+    const tried = facts([e('discovery', null, 1)], 2, []);
+    assert.deepEqual([tried.payerAnswered, tried.discoveryTried], [false, true]);
   });
 
   it('measures the time since the payer was contacted and the last statement', () => {
@@ -227,6 +236,10 @@ describe('readClaimStep', () => {
       step: 'writeOff',
       balanceCents: 100_000
     });
+    assert.deepEqual(readClaimStep({ step: 'discover' }, ledger), {
+      step: 'discover',
+      balanceCents: 100_000
+    });
   });
 
   it('waits the minimum and numbers the next statement when the decision leaves them out', () => {
@@ -288,6 +301,7 @@ describe('claim statuses', () => {
     assert.deepEqual(
       CLAIM_STEPS.map((s) => STEP_STATUSES[s] ?? null),
       [
+        'needs_review',
         'needs_review',
         'needs_review',
         'needs_review',

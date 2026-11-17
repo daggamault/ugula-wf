@@ -95,6 +95,7 @@ export type Clearinghouse = {
   submitClaimStatus: (baseName: string, x12: Uint8Array) => Promise<string>;
   checkEligibility: ((x12: string) => Promise<RealtimeAnswer>) | null;
   checkClaimStatus: ((x12: string) => Promise<RealtimeAnswer>) | null;
+  discoverCoverage: ((searches: string[]) => Promise<RealtimeAnswer[]>) | null;
   inbox: <T>(work: (inbox: ClearinghouseInbox) => Promise<T>) => Promise<T>;
   afterDownload: AfterDownload;
 };
@@ -153,12 +154,14 @@ export const createClearinghouse = ({
     await batch.upload(name, x12);
     return name;
   };
+  const eligibility = realtime ? realtimeOf(realtime, CORE_PAYLOADS.eligibility) : null;
   return {
     submitClaims: submit(extensions.claims),
     submitEligibility: submit(extensions.eligibility),
     submitClaimStatus: submit(extensions.claimStatus),
-    checkEligibility: realtime ? realtimeOf(realtime, CORE_PAYLOADS.eligibility) : null,
+    checkEligibility: eligibility,
     checkClaimStatus: realtime ? realtimeOf(realtime, CORE_PAYLOADS.claimStatus) : null,
+    discoverCoverage: eligibility ? (searches) => Promise.all(searches.map(eligibility)) : null,
     inbox: batch.session,
     afterDownload
   };

@@ -4,6 +4,7 @@ export const billingKinds: ValueKinds = {
   id: {
     claim: 'Claim ID',
     coverage: 'Coverage ID',
+    deposit: 'Deposit ID',
     document: 'Document ID',
     facility: 'Facility ID',
     patient: 'Patient ID',

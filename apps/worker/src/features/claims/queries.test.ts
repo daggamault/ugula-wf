@@ -1686,6 +1686,7 @@ describe('createSubmissionStore', () => {
         submitClaimStatus: async (name) => name,
         checkEligibility: null,
         checkClaimStatus: null,
+        discoverCoverage: null,
         inbox: async () => assert.fail('no inbox'),
         afterDownload: 'keep'
       };

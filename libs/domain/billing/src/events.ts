@@ -175,6 +175,21 @@ export const billingEvents: EventDef[] = [
     "The agency's clearinghouse connection works again: its poll succeeded after failing.",
     [CONNECTION]
   ),
+  event(
+    'remittance.file_applied',
+    'Remittance File Applied',
+    'An 835 with a payment trace number (TRN02) was applied, so it can be matched to its deposit.',
+    [p('payerFileId', { id: 'payerFile' }, 'Payer File', 'The 835 file applied.')]
+  ),
+  event('deposit.recorded', 'Deposit Recorded', 'A biller recorded a bank deposit on Deposits.', [
+    p('depositId', { id: 'deposit' }, 'Deposit', 'The deposit recorded.')
+  ]),
+  event(
+    'period.closed',
+    'Period Closed',
+    'An accounting month was closed: postings dated in it are posted to the next open month.',
+    [p('period', 'string', 'Period', 'The month closed, as its first day (YYYY-MM-01).')]
+  ),
   ...LEDGER_EVENTS,
   event(
     'claim.classified',

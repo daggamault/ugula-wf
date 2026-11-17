@@ -21,16 +21,17 @@ const MEDICARE = {
   filingLimitDays: 90,
   correctionMethod: null,
   appealDays: null,
-  planType: null
+  planType: null,
+  isSearchable: true
 } as const;
 
-const COLUMNS = `select "p"."id", "p"."name", "p"."payer_code", "p"."claim_filing", "p"."filing_limit_days", "p"."correction_method", "p"."appeal_days", "p"."plan_type", "p"."updated_at", (select coalesce(json_agg(agg), '[]') from (select "a"."id", "a"."alias" from "payer_aliases" as "a" where "a"."payer_id" = "p"."id" order by lower(a.alias)) as agg) as "aliases"`;
+const COLUMNS = `select "p"."id", "p"."name", "p"."payer_code", "p"."claim_filing", "p"."filing_limit_days", "p"."correction_method", "p"."appeal_days", "p"."plan_type", "p"."is_searchable", "p"."updated_at", (select coalesce(json_agg(agg), '[]') from (select "a"."id", "a"."alias" from "payer_aliases" as "a" where "a"."payer_id" = "p"."id" order by lower(a.alias)) as agg) as "aliases"`;
 const FROM = 'from "payers" as "p" where "p"."agency_id" = $1';
 const RETURNING =
-  'returning "id", "name", "payer_code", "claim_filing", "filing_limit_days", "correction_method", "appeal_days", "plan_type", "updated_at", embedding is null as "unembedded"';
+  'returning "id", "name", "payer_code", "claim_filing", "filing_limit_days", "correction_method", "appeal_days", "plan_type", "is_searchable", "updated_at", embedding is null as "unembedded"';
 const INSERT =
-  'insert into "payers" ("agency_id", "name", "payer_code", "claim_filing", "filing_limit_days", "correction_method", "appeal_days", "plan_type") values ($1, $2, $3, $4, $5, $6, $7, $8)';
-const VALUES = ['t-1', 'Medicare', '00952', 'MB', 90, null, null, null];
+  'insert into "payers" ("agency_id", "name", "payer_code", "claim_filing", "filing_limit_days", "correction_method", "appeal_days", "plan_type", "is_searchable") values ($1, $2, $3, $4, $5, $6, $7, $8, $9)';
+const VALUES = ['t-1', 'Medicare', '00952', 'MB', 90, null, null, null, true];
 
 describe('searchPayers', () => {
   it('pages the agency payers with their learned names, sorted by name', async () => {
@@ -115,7 +116,7 @@ describe('upsertPayer', () => {
     });
     assert.equal(
       queries[0]?.sql,
-      `${INSERT} on conflict (agency_id, lower(name)) do update set "payer_code" = $9, "claim_filing" = $10, "filing_limit_days" = $11, "correction_method" = $12, "appeal_days" = $13, "plan_type" = $14, "updated_at" = now(), "embedding" = case when payers.claim_filing = excluded.claim_filing then payers.embedding end ${RETURNING}`
+      `${INSERT} on conflict (agency_id, lower(name)) do update set "payer_code" = $10, "claim_filing" = $11, "filing_limit_days" = $12, "correction_method" = $13, "appeal_days" = $14, "plan_type" = $15, "is_searchable" = $16, "updated_at" = now(), "embedding" = case when payers.claim_filing = excluded.claim_filing then payers.embedding end ${RETURNING}`
     );
     assert.deepEqual(queries[0]?.parameters, [...VALUES, ...VALUES.slice(2)]);
     await db.destroy();
@@ -140,7 +141,7 @@ describe('upsertPayer', () => {
     await upsertPayer(db, 't-1', MEDICARE, { create: false, update: true });
     assert.equal(
       queries[0]?.sql,
-      `update "payers" set "payer_code" = $1, "claim_filing" = $2, "filing_limit_days" = $3, "correction_method" = $4, "appeal_days" = $5, "plan_type" = $6, "updated_at" = now(), "embedding" = case when claim_filing = $7 then embedding end where "agency_id" = $8 and lower(name) = $9 ${RETURNING}`
+      `update "payers" set "payer_code" = $1, "claim_filing" = $2, "filing_limit_days" = $3, "correction_method" = $4, "appeal_days" = $5, "plan_type" = $6, "is_searchable" = $7, "updated_at" = now(), "embedding" = case when claim_filing = $8 then embedding end where "agency_id" = $9 and lower(name) = $10 ${RETURNING}`
     );
     assert.deepEqual(queries[0]?.parameters, [
       '00952',
@@ -149,6 +150,7 @@ describe('upsertPayer', () => {
       null,
       null,
       null,
+      true,
       'MB',
       't-1',
       'medicare'

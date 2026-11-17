@@ -45,7 +45,8 @@ export const EVENT_LABELS: Record<ClaimEvent['kind'], string> = {
   facility_follow_up: 'Followed up with facility',
   responsibility: 'Responsible party recorded',
   document: 'Document received',
-  reopened: 'Reopened'
+  reopened: 'Reopened',
+  discovery: 'Insurance discovery'
 };
 
 export const fileLinkClasses = classNamesOf(

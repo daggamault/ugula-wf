@@ -7,6 +7,7 @@ import {
   ListTodoIcon,
   type LucideIcon,
   RotateCcwIcon,
+  SearchIcon,
   SendIcon,
   ShieldCheckIcon,
   UsersIcon
@@ -19,6 +20,7 @@ import type { ClaimProgress } from './client.ts';
 const ICONS: Readonly<Record<ClaimTaskKey, LucideIcon>> = {
   'billing.correct-claim-data': FilePenIcon,
   'billing.change-responsible-party': UsersIcon,
+  'billing.discover-insurance': SearchIcon,
   'billing.receive-document': FilePlusIcon,
   'billing.chase-document': SendIcon,
   'billing.log-records-request': FileClockIcon,

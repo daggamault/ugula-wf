@@ -1,10 +1,12 @@
 import type { SeedGraph } from '../graphs.ts';
+import { accountingGraphs } from './accounting.ts';
 import { chargeGraphs } from './charges.ts';
 import { checkFactGraphs } from './check-facts.ts';
 import { checkGraphs } from './checks.ts';
 import { claimGraphs } from './claim.ts';
 import { claimTaskGraphs } from './claim-tasks.ts';
 import { cycleGraphs } from './cycle.ts';
+import { discoveryGraphs } from './discovery.ts';
 import { displayGraphs } from './display.ts';
 import { documentGraphs } from './documents.ts';
 import { facilityGraphs } from './facility.ts';
@@ -27,11 +29,13 @@ export const billingGraphs: SeedGraph[] = [
   ...facilityGraphs,
   ...documentGraphs,
   ...claimTaskGraphs,
+  ...discoveryGraphs,
   ...intakeGraphs,
   ...recoveryGraphs,
   ...cycleGraphs,
   ...payerFileGraphs,
-  ...scheduleGraphs
+  ...scheduleGraphs,
+  ...accountingGraphs
 ];
 
 export const billingTables = shared.list();

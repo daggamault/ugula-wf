@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { type EligibilityResult, read271 } from './x271.ts';
+import { discovered, type EligibilityResult, type OtherPayer, read271 } from './x271.ts';
 
 const isaOf = (repetition: string) =>
   `ISA*00*${' '.repeat(10)}*00*${' '.repeat(10)}*ZZ*${'CLEARING'.padEnd(15)}*ZZ*${'METROEMS'.padEnd(15)}*261024*0805*${repetition}*00501*000000888*0*P*:~`;
@@ -23,6 +23,10 @@ const member = (trace: string, ...segments: string[]) =>
 
 const unknown = (trace: string): EligibilityResult => ({
   trace,
+  payer: { name: null, payerId: null },
+  memberId: null,
+  groupId: null,
+  otherPayers: [],
   active: null,
   planName: null,
   coverageStart: null,
@@ -30,6 +34,17 @@ const unknown = (trace: string): EligibilityResult => ({
   advantagePlan: null,
   stay: null,
   messages: []
+});
+
+const MEDICARE = { name: 'MEDICARE', payerId: 'DEMOMCR' };
+
+const other = (o: Partial<OtherPayer> = {}): OtherPayer => ({
+  entity: '',
+  name: null,
+  payerId: null,
+  memberId: null,
+  groupId: null,
+  ...o
 });
 
 const RESPONSE = file(
@@ -68,19 +83,28 @@ describe('read271', () => {
       assert.deepEqual(read271(RESPONSE), [
         {
           ...unknown('cov-1'),
+          payer: MEDICARE,
+          memberId: '1EG4TE5MK73',
           active: true,
           planName: 'MEDICARE PART B',
           coverageStart: '2015-01-01'
         },
         {
           ...unknown('cov-2'),
+          payer: MEDICARE,
+          memberId: 'W123',
           active: false,
           planName: 'BLUE PPO',
           coverageStart: '2024-01-01',
           coverageEnd: '2025-12-31',
           messages: ['Coverage terminated']
         },
-        { ...unknown('cov-3'), messages: ['Invalid or missing member ID'] }
+        {
+          ...unknown('cov-3'),
+          payer: MEDICARE,
+          memberId: 'BAD',
+          messages: ['Invalid or missing member ID']
+        }
       ]);
     });
 
@@ -258,10 +282,12 @@ describe('read271', () => {
         [
           {
             ...unknown('cov-8'),
+            payer: MEDICARE,
             messages: ['The payer is unable to respond now', 'Payer notice']
           },
           {
             ...unknown('cov-9'),
+            payer: MEDICARE,
             messages: [
               'The payer is unable to respond now',
               'Payer notice',
@@ -292,8 +318,12 @@ describe('read271', () => {
           )
         ),
         [
-          { ...unknown('cov-1'), messages: ['The payer is unable to respond now'] },
-          unknown('cov-2')
+          {
+            ...unknown('cov-1'),
+            payer: MEDICARE,
+            messages: ['The payer is unable to respond now']
+          },
+          { ...unknown('cov-2'), payer: { name: 'BLUE', payerId: 'BLUE' } }
         ]
       );
     });
@@ -415,7 +445,8 @@ describe('read271', () => {
             ...unknown('cov-7'),
             active: true,
             planName: 'MEDICARE PART B',
-            advantagePlan: 'SUNSHINE ADVANTAGE'
+            advantagePlan: 'SUNSHINE ADVANTAGE',
+            otherPayers: [other({ entity: 'PRP', name: 'SUNSHINE ADVANTAGE', payerId: 'H1234' })]
           }
         ]
       );
@@ -423,21 +454,31 @@ describe('read271', () => {
 
     it('names the plan from the benefit when no entity names it', () => {
       assert.deepEqual(read271(member('cov-8', 'EB*R**30*PR*SILVER PPO PLAN', 'NM1*PRP*2')), [
-        { ...unknown('cov-8'), advantagePlan: 'SILVER PPO PLAN' }
+        {
+          ...unknown('cov-8'),
+          advantagePlan: 'SILVER PPO PLAN',
+          otherPayers: [other({ entity: 'PRP' })]
+        }
       ]);
     });
 
     it('notes an unnamed plan when nothing names it', () => {
       assert.deepEqual(read271(member('cov-1', 'EB*R**30*HM', 'NM1')), [
-        { ...unknown('cov-1'), advantagePlan: 'A Medicare Advantage plan' }
+        {
+          ...unknown('cov-1'),
+          advantagePlan: 'A Medicare Advantage plan',
+          otherPayers: [other()]
+        }
       ]);
     });
 
     it('ignores other payers that are not managed care plans', () => {
       assert.deepEqual(read271(member('cov-1', 'EB*R**30*MB', 'NM1*PRP*2*MEDICARE B')), [
-        unknown('cov-1')
+        { ...unknown('cov-1'), otherPayers: [other({ entity: 'PRP', name: 'MEDICARE B' })] }
       ]);
-      assert.deepEqual(read271(member('cov-2', 'EB*R**30')), [unknown('cov-2')]);
+      assert.deepEqual(read271(member('cov-2', 'EB*R**30')), [
+        { ...unknown('cov-2'), otherPayers: [other()] }
+      ]);
     });
 
     it('reads dates again once a later benefit is not the other plan', () => {
@@ -457,9 +498,100 @@ describe('read271', () => {
             active: true,
             planName: 'PLAN B',
             coverageStart: '2026-01-01',
-            advantagePlan: 'A Medicare Advantage plan'
+            advantagePlan: 'A Medicare Advantage plan',
+            otherPayers: [other()]
           }
         ]
+      );
+    });
+  });
+
+  describe('discovery', () => {
+    const SEARCH = file(
+      'ST*271*0001*005010X279A1',
+      'HL*1**20*1',
+      'NM1*PR*2*BLUE PLAN*****PI*DEMOBCBS',
+      'HL*2*1*21*1',
+      'HL*3*2*22*0',
+      'TRN*2*C-1',
+      'NM1*IL*1*NAKAMURA*KENJI****MI*BCX884213',
+      'REF*18*PLAN9',
+      'REF*6P*GRP5521',
+      'EB*1**30**BLUE PLAN PPO',
+      'REF*6P*IGNORED',
+      'EB*R**30',
+      'REF*1W*MCD123',
+      'REF*18*MCDPLAN',
+      'LS*2120',
+      'NM1*SEP*2*STATE MEDICAID*****PI*DEMOMCD',
+      'NM1*PR*2*IGNORED*****PI*OTHER',
+      'LE*2120',
+      'EB*R**30',
+      'LS*2120',
+      'NM1*PRP*2*NO MEMBER*****PI*DEMOAUTO',
+      'LE*2120',
+      'SE*20*0001'
+    );
+
+    it('reads the member ID, group and other payers a search answer names', () => {
+      const [result] = read271(SEARCH);
+      assert.deepEqual(
+        [result?.payer, result?.memberId, result?.groupId, result?.otherPayers],
+        [
+          { name: 'BLUE PLAN', payerId: 'DEMOBCBS' },
+          'BCX884213',
+          'GRP5521',
+          [
+            other({
+              entity: 'SEP',
+              name: 'STATE MEDICAID',
+              payerId: 'DEMOMCD',
+              memberId: 'MCD123',
+              groupId: 'MCDPLAN'
+            }),
+            other({ entity: 'PRP', name: 'NO MEMBER', payerId: 'DEMOAUTO' })
+          ]
+        ]
+      );
+    });
+
+    it('takes the plan number as the group when there is no group number', () => {
+      assert.equal(
+        read271(member('C-2', 'NM1*IL*1*DOE****MI*M1', 'REF*18*PLAN9'))[0]?.groupId,
+        'PLAN9'
+      );
+    });
+
+    it('lists the active coverage found and every other payer with a member ID', () => {
+      assert.deepEqual(discovered(read271(SEARCH)), [
+        {
+          payerName: 'BLUE PLAN',
+          payerCode: 'DEMOBCBS',
+          memberId: 'BCX884213',
+          groupId: 'GRP5521',
+          planName: 'BLUE PLAN PPO',
+          entity: 'PR'
+        },
+        {
+          payerName: 'STATE MEDICAID',
+          payerCode: 'DEMOMCD',
+          memberId: 'MCD123',
+          groupId: 'MCDPLAN',
+          planName: null,
+          entity: 'SEP'
+        }
+      ]);
+    });
+
+    it('lists nothing for an inactive, unnamed or not found subscriber', () => {
+      assert.deepEqual(
+        discovered([
+          { ...unknown('a'), active: false, memberId: 'M', payer: MEDICARE },
+          { ...unknown('b'), active: true, payer: MEDICARE },
+          { ...unknown('c'), active: true, memberId: 'M' },
+          unknown('d')
+        ]),
+        []
       );
     });
   });

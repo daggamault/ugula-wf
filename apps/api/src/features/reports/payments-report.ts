@@ -1,7 +1,7 @@
 import { payerName } from '@ugula/db';
 import { sql } from 'kysely';
 import { report } from './report.ts';
-import { reasonCode, within } from './report-sql.ts';
+import { postedIn, reasonCode } from './report-sql.ts';
 
 const PAYMENTS = ['response', 'refunded'] as const;
 
@@ -18,6 +18,7 @@ export const paymentsReport = report({
       .select([
         'e.id',
         'e.created_at as posted_at',
+        'e.posted_on',
         'c.number as claim_number',
         'c.pcr_number',
         'p.first_name',
@@ -49,11 +50,12 @@ export const paymentsReport = report({
       .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', 'in', PAYMENTS)
       .where('e.paid_cents', '<>', 0)
-      .where(within(sql.ref('e.created_at'), ctx))
+      .where(postedIn(ctx))
       .as('r'),
   columns: [
     'id',
     'posted_at',
+    'posted_on',
     'claim_number',
     'pcr_number',
     'first_name',

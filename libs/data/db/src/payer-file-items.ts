@@ -1,4 +1,9 @@
-import { dailyNumberOf, type PayerFileOutcome, type RemittancePosting } from '@ugula/billing';
+import {
+  dailyNumberOf,
+  type PayerFileOutcome,
+  type PaymentMethod,
+  type RemittancePosting
+} from '@ugula/billing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import { nudgeClaims } from './claim-responses.ts';
 import type { Db } from './schema.ts';
@@ -23,7 +28,19 @@ export type Context = {
   postings: readonly RemittancePosting[];
 };
 
-export type Posted = { items: FileItem[]; envelopeRejection: string | null };
+export type Payment = {
+  cents: number;
+  method: PaymentMethod | null;
+  paidOn: string | null;
+  traceNumber: string | null;
+  tracePayerId: string | null;
+};
+
+export type Posted = {
+  items: FileItem[];
+  envelopeRejection: string | null;
+  payment?: Payment | null;
+};
 
 export const item = (
   reference: string,

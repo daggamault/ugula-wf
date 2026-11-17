@@ -132,6 +132,8 @@ export {
   isCodeSet,
   normalizeCode
 } from './code-sets.ts';
+export { isPaymentMethod, PAYMENT_METHODS, type PaymentMethod } from './deposits.ts';
+export { type CoverageCandidate, coverageCandidates, discoveryNote } from './discovery.ts';
 export {
   AMBULANCE_CONDITIONS,
   CONDITION_LIMIT,
@@ -190,6 +192,7 @@ export { billingModels, billingTypes } from './models.ts';
 export { nameKey } from './names.ts';
 export { UNREAD_FINDINGS } from './narrative.ts';
 export {
+  type AccountingStore,
   type AppliedPayerFile,
   type BillingStores,
   type BlobRef,
@@ -199,6 +202,8 @@ export {
   type ClaimTaskStore,
   createBillingNodes,
   type DeadlineFacts,
+  type DepositPair,
+  type DiscoveryCheck,
   type DocumentStore,
   type DraftClaim,
   type EligibilityCheck,
@@ -210,7 +215,8 @@ export {
   type RecoveryStore,
   type ReferenceStore,
   type Responsibility,
-  type ScheduleStore
+  type ScheduleStore,
+  type UnmatchedPayment
 } from './nodes/index.ts';
 export { dailyNumberOf, dollarsToCents, money } from './numbers.ts';
 export {
@@ -259,7 +265,12 @@ export { localDate } from './statements.ts';
 export { type InterchangeAcknowledgment, readTA1 } from './ta1.ts';
 export { type InboundKind, readX12 } from './x12.ts';
 export { build270, type EligibilityRequest } from './x270.ts';
-export { type EligibilityResult, type FacilityStayHint, read271 } from './x271.ts';
+export {
+  discovered,
+  type EligibilityResult,
+  type FacilityStayHint,
+  read271
+} from './x271.ts';
 export { build276, type ClaimStatusInquiry } from './x276.ts';
 export { type ClaimAcknowledgment, read277 } from './x277.ts';
 export { claimStatusNote, type PayerClaimStatus, readClaimStatus } from './x277-status.ts';

@@ -4,6 +4,9 @@ import type { ReactElement } from 'react';
 import { ClaimPage } from './features/claims/claim-page.tsx';
 import { ClaimsPage } from './features/claims/claims-page.tsx';
 import { PatientClaims } from './features/claims/patient-claims.tsx';
+import { DepositPage } from './features/deposits/deposit-page.tsx';
+import { DepositsPage } from './features/deposits/deposits-page.tsx';
+import { RecordDepositPage } from './features/deposits/record-deposit-page.tsx';
 import { FacilitiesPage } from './features/facilities/facilities-page.tsx';
 import { FacilityPage } from './features/facilities/facility-page.tsx';
 import { FeePage } from './features/fees/fee-page.tsx';
@@ -16,6 +19,7 @@ import { PayerFilePage } from './features/payer-files/payer-file-page.tsx';
 import { PayerFilesPage } from './features/payer-files/payer-files-page.tsx';
 import { PayerPage } from './features/payers/payer-page.tsx';
 import { PayersPage } from './features/payers/payers-page.tsx';
+import { PeriodsPage } from './features/periods/periods-page.tsx';
 import {
   ReportOptionsPage,
   ReportResultsPage,
@@ -44,6 +48,7 @@ const clients = {
   tasks: { name: 'tasks' },
   imports: { name: 'imports' },
   payerFiles: { name: 'payerFiles' },
+  deposits: { name: 'deposits' },
   fees: { name: 'fees' },
   claims: { name: 'claims' },
   patients: { name: 'patients' },
@@ -52,6 +57,7 @@ const clients = {
   users: { name: 'users' },
   roles: { name: 'roles' },
   settings: { name: 'settings' },
+  periods: { name: 'periods' },
   reports: { name: 'reports' },
   codes: { name: 'codes' }
 } as unknown as AppClients;
@@ -111,7 +117,11 @@ describe('resolveRoute', () => {
       ['/roles', RolesPage],
       ['/roles/new', RolePage],
       ['/roles/r1', RolePage],
-      ['/settings', SettingsPage]
+      ['/settings', SettingsPage],
+      ['/deposits', DepositsPage],
+      ['/deposits/new', RecordDepositPage],
+      ['/deposits/d1', DepositPage],
+      ['/periods', PeriodsPage]
     ];
     for (const [path, page] of pages) assert.equal(resolve(path).type, page, path);
   });
@@ -132,6 +142,8 @@ describe('resolveRoute', () => {
     assert.equal(props('/claims').live, idleLive);
     assert.equal(props('/fees/f1').client, clients.fees);
     assert.equal(props('/facilities').client, clients.facilities);
+    assert.equal(props('/deposits/d1').client, clients.deposits);
+    assert.equal(props('/periods').client, clients.periods);
     assert.equal(props('/tables').client, clients.workflows);
     assert.equal(props('/tasks/t1').codes, clients.codes);
     assert.equal(props('/workflows/g1').nodes, testNodes);
@@ -155,6 +167,7 @@ describe('resolveRoute', () => {
     assert.equal(props('/fees/f1').feeId, 'f1');
     assert.equal(props('/payers/p1').payerId, 'p1');
     assert.equal(props('/facilities/x1').facilityId, 'x1');
+    assert.equal(props('/deposits/d1').depositId, 'd1');
     assert.equal(props('/users/u1').userId, 'u1');
     assert.equal(props('/roles/r1').roleId, 'r1');
     assert.equal(props('/tasks/t1').taskId, 't1');
@@ -171,6 +184,7 @@ describe('resolveRoute', () => {
     assert.equal(resolve('/fees/f1').key, 'f1');
     assert.equal(resolve('/payers/p1').key, 'p1');
     assert.equal(resolve('/facilities/x1').key, 'x1');
+    assert.equal(resolve('/deposits/d1').key, 'd1');
     assert.equal(resolve('/users/u1').key, 'u1');
     assert.equal(resolve('/roles/r1').key, 'r1');
     assert.equal(resolve('/tasks/t1').key, 't1');
@@ -275,6 +289,8 @@ describe('resolveRoute', () => {
       ['/fees/new', 'back=/fees?q=a', '/fees?q=a'],
       ['/payers/p1', 'back=/payersx', '/payers'],
       ['/facilities/new', 'back=/facilities?q=b', '/facilities?q=b'],
+      ['/deposits/new', 'back=/deposits?q=1', '/deposits?q=1'],
+      ['/deposits/d1', 'back=/claims', '/deposits'],
       ['/users/invite', 'back=/users/invitations', '/users'],
       ['/users/u1', 'back=/users?q=a', '/users?q=a'],
       ['/roles/r1', 'back=/roles?q=bill', '/roles?q=bill']

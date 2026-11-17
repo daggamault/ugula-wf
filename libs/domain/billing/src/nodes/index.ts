@@ -1,4 +1,5 @@
 import type { NodeDef } from '@ugula/graph';
+import { accountingNodes } from './accounting.ts';
 import { claimTaskNodes } from './claim-tasks.ts';
 import { claimNodes } from './claims.ts';
 import { cycleNodes } from './cycle.ts';
@@ -15,6 +16,7 @@ import { scheduleNodes } from './schedules.ts';
 import type { BillingStores } from './stores.ts';
 
 export type {
+  AccountingStore,
   AppliedPayerFile,
   BillingStores,
   BlobRef,
@@ -23,6 +25,8 @@ export type {
   ClaimStore,
   ClaimTaskStore,
   DeadlineFacts,
+  DepositPair,
+  DiscoveryCheck,
   DocumentStore,
   DraftClaim,
   EligibilityCheck,
@@ -37,7 +41,8 @@ export type {
   RecoveryStore,
   ReferenceStore,
   Responsibility,
-  ScheduleStore
+  ScheduleStore,
+  UnmatchedPayment
 } from './stores.ts';
 
 export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
@@ -58,6 +63,7 @@ export const createBillingNodes = (stores: BillingStores | null): NodeDef[] => {
     issueNodes,
     recoveryNodes,
     scheduleNodes,
-    documentNodes
+    documentNodes,
+    accountingNodes
   ].flatMap((nodes) => nodes(storesOf));
 };

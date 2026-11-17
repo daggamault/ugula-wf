@@ -9,6 +9,7 @@ import type {
   ClearinghouseVendor,
   CodeSet,
   CorrectionMethod,
+  CoverageCandidate,
   DenialRoute,
   DocumentKind,
   EligibilityCheck,
@@ -19,6 +20,7 @@ import type {
   InsuredRelationship,
   MspAccident,
   PayerFileOutcome,
+  PaymentMethod,
   PcsType,
   PlanType,
   Rurality,
@@ -419,6 +421,10 @@ export const EXCHANGE_REQUEST_STATUSES = ['pending', 'answered', 'sent', 'unavai
 
 type ExchangeRequestStatus = (typeof EXCHANGE_REQUEST_STATUSES)[number];
 
+export const DISCOVERY_REQUEST_STATUSES = ['pending', 'answered', 'unavailable'] as const;
+
+type DiscoveryRequestStatus = (typeof DISCOVERY_REQUEST_STATUSES)[number];
+
 type TasksTable = {
   id: Generated<string>;
   agency_id: string;
@@ -657,6 +663,7 @@ type ClaimEventsTable = {
   batch_id: string | null;
   task_id: string | null;
   created_at: Timestamp;
+  posted_on: Generated<string>;
 };
 
 type ClaimEventAdjustmentsTable = {
@@ -740,6 +747,22 @@ type EligibilityRequestsTable = {
   created_at: Timestamp;
 };
 
+type DiscoveryRequestsTable = {
+  id: Generated<string>;
+  agency_id: string;
+  claim_id: string;
+  source_key: string;
+  control_number: number | null;
+  status: ColumnType<
+    DiscoveryRequestStatus,
+    DiscoveryRequestStatus | undefined,
+    DiscoveryRequestStatus
+  >;
+  note: ColumnType<string | null, string | null | undefined, string | null>;
+  candidates: NullableJsonColumn<CoverageCandidate[]>;
+  created_at: Timestamp;
+};
+
 type ClearinghouseConnectionsTable = {
   agency_id: string;
   vendor: ClearinghouseVendor;
@@ -789,7 +812,36 @@ export type PayerFilesTable = {
   run_id: string | null;
   source_key: string | null;
   envelope_rejection: string | null;
+  payment_cents: number | null;
+  payment_method: ColumnType<
+    PaymentMethod | null,
+    PaymentMethod | null | undefined,
+    PaymentMethod | null
+  >;
+  paid_on: ColumnType<string | null, string | null | undefined, string | null>;
+  trace_number: string | null;
+  trace_payer_id: string | null;
   created_at: Timestamp;
+};
+
+type DepositsTable = {
+  id: Generated<string>;
+  agency_id: string;
+  trace_number: string;
+  amount_cents: number;
+  deposited_on: ColumnType<string, string, string>;
+  payer_name: string | null;
+  note: string | null;
+  payer_file_id: string | null;
+  created_by_id: string | null;
+  created_at: Timestamp;
+};
+
+type AccountingPeriodsTable = {
+  agency_id: string;
+  period_on: ColumnType<string, string, string>;
+  closed_at: Timestamp;
+  closed_by_id: string | null;
 };
 
 type PayerFileItemsTable = {
@@ -866,6 +918,7 @@ export type PayersTable = {
   >;
   appeal_days: ColumnType<number | null, number | null | undefined, number | null>;
   plan_type: ColumnType<PlanType | null, PlanType | null | undefined, PlanType | null>;
+  is_searchable: Generated<boolean>;
   embedding: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: Timestamp;
   updated_at: Timestamp;
@@ -945,7 +998,10 @@ export type Database = {
   claim_batches: ClaimBatchesTable;
   claim_status_requests: ClaimStatusRequestsTable;
   eligibility_requests: EligibilityRequestsTable;
+  discovery_requests: DiscoveryRequestsTable;
   payer_files: PayerFilesTable;
+  deposits: DepositsTable;
+  accounting_periods: AccountingPeriodsTable;
   clearinghouse_connections: ClearinghouseConnectionsTable;
   clearinghouse_downloads: ClearinghouseDownloadsTable;
   payer_file_items: PayerFileItemsTable;

@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 import {
   type InboundKind,
+  isPaymentMethod,
   PROBLEM_OUTCOMES,
   REVIEW_OUTCOMES,
+  type Remittance,
   type RemittancePosting,
   read271,
   read277,
@@ -13,6 +15,7 @@ import {
   readX12
 } from '@ugula/billing';
 import type { RunQueueClient } from '@ugula/run-queue';
+import { emitEvent } from './events.ts';
 import {
   postBatchAcknowledgments,
   postClaimAcknowledgments,
@@ -20,12 +23,25 @@ import {
   postInterchangeAcknowledgments
 } from './payer-file-acknowledgments.ts';
 import { postEligibility } from './payer-file-eligibility.ts';
-import type { Context, FileItem, Posted } from './payer-file-items.ts';
+import type { Context, FileItem, Payment, Posted } from './payer-file-items.ts';
 import { postRemittances } from './payer-file-remittances.ts';
 import { fail, ok, type Result } from './result.ts';
 import type { Db } from './schema.ts';
 
 export { readRemittanceLines } from './payer-file-remittances.ts';
+
+const REMITTANCE_FILE_APPLIED = 'remittance.file_applied';
+
+export const paymentOf = ([first]: readonly Remittance[]): Payment | null =>
+  first
+    ? {
+        cents: first.totalCents,
+        method: isPaymentMethod(first.paymentMethod) ? first.paymentMethod : null,
+        paidOn: first.paidOn,
+        traceNumber: first.checkNumber,
+        tracePayerId: first.originatorId
+      }
+    : null;
 
 export const findImported = (db: Db, agencyId: string, digest: string) =>
   db
@@ -80,7 +96,7 @@ const saveFileItems = async (
   fileId: string,
   items: readonly FileItem[],
   problems: number,
-  envelopeRejection: string | null
+  { envelopeRejection, payment }: Omit<Posted, 'items'>
 ) => {
   if (items.length) {
     await db
@@ -105,17 +121,30 @@ const saveFileItems = async (
     .set({
       item_count: items.length,
       problem_count: problems,
-      envelope_rejection: envelopeRejection
+      envelope_rejection: envelopeRejection,
+      ...(payment
+        ? {
+            payment_cents: payment.cents,
+            payment_method: payment.method,
+            paid_on: payment.paidOn,
+            trace_number: payment.traceNumber,
+            trace_payer_id: payment.tracePayerId
+          }
+        : {})
     })
     .where('id', '=', fileId)
     .execute();
 };
 
 const PROCESSORS: Record<InboundKind, (c: Context, text: string) => Promise<Posted>> = {
-  '835': async (c, text) => ({
-    items: await postRemittances(c, read835(text)),
-    envelopeRejection: null
-  }),
+  '835': async (c, text) => {
+    const remittances = read835(text);
+    return {
+      items: await postRemittances(c, remittances),
+      envelopeRejection: null,
+      payment: paymentOf(remittances)
+    };
+  },
   '999': (c, text) => postBatchAcknowledgments(c, read999(text)),
   '277': (c, text) => postClaimAcknowledgments(c, read277(text)),
   '271': (c, text) => postEligibility(c, read271(text)),
@@ -182,7 +211,7 @@ export const applyPayerFile = async (
     runId: f.runId,
     sourceKey: f.sourceKey
   });
-  const { items, envelopeRejection } = await PROCESSORS[f.file.kind](
+  const posted = await PROCESSORS[f.file.kind](
     {
       tx,
       boss,
@@ -195,7 +224,15 @@ export const applyPayerFile = async (
     },
     f.file.text
   );
+  const { items, envelopeRejection, payment = null } = posted;
   const problems = items.filter((i) => PROBLEM_OUTCOMES.includes(i.outcome)).length;
-  await saveFileItems(tx, f.agencyId, id, items, problems, envelopeRejection);
+  await saveFileItems(tx, f.agencyId, id, items, problems, { envelopeRejection, payment });
+  if (payment?.traceNumber) {
+    await emitEvent(tx, {
+      agencyId: f.agencyId,
+      type: REMITTANCE_FILE_APPLIED,
+      payload: { payerFileId: id }
+    });
+  }
   return { id, kind: f.file.kind, items, problems, envelopeRejection };
 };

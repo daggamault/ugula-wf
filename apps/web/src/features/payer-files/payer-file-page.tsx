@@ -1,5 +1,7 @@
+import { PAYMENT_METHODS } from '@ugula/billing';
 import { DownloadIcon } from 'lucide-react';
-import { formatCents, formatDateTime } from '../../shared/format.ts';
+import { CodeLabel, coded } from '../../shared/claims/code-text.tsx';
+import { formatCents, formatDate, formatDateTime } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { OUTCOME_STYLES } from '../../shared/payer-file-outcomes.ts';
 import { Badge } from '../../shared/ui/badge.tsx';
@@ -10,8 +12,9 @@ import { OpenLink } from '../../shared/ui/icon-button.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
+import { TextLink } from '../../shared/ui/text-link.tsx';
 import { useResource } from '../../shared/use-resource.ts';
-import type { PayerFileItem, PayerFilesClient } from './client.ts';
+import type { PayerFileDetail, PayerFileItem, PayerFilesClient } from './client.ts';
 import { fileStatus, kindOf } from './payer-files.ts';
 
 const amount = (cents: number | null) => (cents === null ? emptyValue : formatCents(cents));
@@ -59,6 +62,43 @@ export const PayerFileItems = ({ items }: { items: readonly PayerFileItem[] }) =
   </Table>
 );
 
+export const PayerFilePayment = ({
+  file
+}: {
+  file: Pick<
+    PayerFileDetail,
+    | 'payment_cents'
+    | 'payment_method'
+    | 'paid_on'
+    | 'trace_number'
+    | 'trace_payer_id'
+    | 'deposit_id'
+  >;
+}) => (
+  <DetailList>
+    <Detail label="Amount" isEmphasized>
+      {amount(file.payment_cents)}
+    </Detail>
+    <Detail label="Method">
+      {file.payment_method ? (
+        <CodeLabel value={coded(PAYMENT_METHODS[file.payment_method], file.payment_method)} />
+      ) : (
+        emptyValue
+      )}
+    </Detail>
+    <Detail label="Paid On">{formatDate(file.paid_on)}</Detail>
+    <Detail label="Trace Number">{file.trace_number ?? emptyValue}</Detail>
+    <Detail label="Payer ID">{file.trace_payer_id ?? emptyValue}</Detail>
+    <Detail label="Deposit">
+      {file.deposit_id ? (
+        <TextLink to={`/deposits/${file.deposit_id}`}>Open Deposit</TextLink>
+      ) : (
+        'Not matched to a deposit'
+      )}
+    </Detail>
+  </DetailList>
+);
+
 export const PayerFilePage = ({
   client,
   live,
@@ -73,7 +113,9 @@ export const PayerFilePage = ({
   const found = useResource(`payer-file:${fileId}`, (signal) => client.find(fileId, signal));
   useLive(
     live,
-    (e) => e.kind === 'claim' && (found.data?.items ?? []).some((i) => i.claim_id === e.id),
+    (e) =>
+      (e.kind === 'payerFile' && e.id === fileId) ||
+      (e.kind === 'claim' && (found.data?.items ?? []).some((i) => i.claim_id === e.id)),
     found.reload
   );
   if (found.error) return <PageFailure message={found.error.message} />;
@@ -116,6 +158,11 @@ export const PayerFilePage = ({
           <Detail label="Control Number">{file.control_number ?? emptyValue}</Detail>
         </DetailList>
       </SectionPanel>
+      {file.kind === '835' && file.trace_number ? (
+        <SectionPanel title="Payment">
+          <PayerFilePayment file={file} />
+        </SectionPanel>
+      ) : null}
       <SectionPanel title="Lines">
         {items.length ? (
           <PayerFileItems items={items} />

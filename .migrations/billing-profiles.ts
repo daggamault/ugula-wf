@@ -75,6 +75,7 @@ const buildPayersTable = (db: Kysely<Database>) =>
     .addColumn('correction_method', 'text')
     .addColumn('appeal_days', 'integer')
     .addColumn('plan_type', 'text')
+    .addColumn('is_searchable', 'boolean', (col) => col.notNull().defaultTo(false))
     .addColumn('embedding', sql`vector(${sql.lit(EMBEDDING_DIMENSIONS)})`)
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('updated_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))

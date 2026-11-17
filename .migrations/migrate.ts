@@ -1,5 +1,6 @@
 import { createDb, type Database, type Db } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { ACCOUNTING_FUNCTIONS, createAccountingTables } from './accounting.ts';
 import { createAgenciesTable } from './agencies.ts';
 import { createBillingProfilesTables } from './billing-profiles.ts';
 import { createClaimsTables } from './claims.ts';
@@ -28,6 +29,8 @@ import { createWorkflowRunsTables } from './workflow-runs.ts';
 const resetSchema = async (db: Kysely<Database>) => {
   await db.schema.dropView('claim_balances').ifExists().execute();
   for (const table of [
+    'accounting_periods',
+    'deposits',
     'notification_states',
     'notifications',
     'claim_event_line_adjustments',
@@ -37,6 +40,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'claim_events',
     'claim_status_requests',
     'eligibility_requests',
+    'discovery_requests',
     'claim_batches',
     'claim_diagnoses',
     'claim_coverages',
@@ -102,6 +106,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'check_table_version_base',
     'check_run_table_key',
     ...EVENT_FUNCTIONS,
+    ...ACCOUNTING_FUNCTIONS,
     ...DAILY_NUMBER_FUNCTIONS
   ]) {
     await sql`drop function if exists ${sql.id(name)}`.execute(db);
@@ -133,6 +138,7 @@ const steps = [
   createClaimsTables,
   createFacilityInvoiceClaimsTable,
   createPayerFilesTables,
+  createAccountingTables,
   createNotificationsTables,
   createEventEmitters
 ] as const;

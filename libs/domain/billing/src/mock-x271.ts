@@ -13,7 +13,10 @@ type Mock271 = {
   active: boolean;
   payer?: Party;
   provider?: Party;
-  subscriber?: { lastName: string; firstName?: string | null; memberId: string };
+  subscriber?: { lastName: string; firstName?: string | null; memberId: string | null };
+  groupId?: string;
+  planName?: string;
+  notFound?: boolean;
   message?: string;
   advantagePlan?: Party;
   stay?: { kind: 'inpatient' | 'snf'; admittedOn: string };
@@ -51,10 +54,14 @@ export const build271 = (e: Mock271, o: MockOptions = {}) => {
           '',
           '',
           '',
-          'MI',
-          subscriber.memberId
+          ...(subscriber.memberId ? ['MI', subscriber.memberId] : [])
         ],
-        e.active ? ['EB', '1', '', '30', '', 'MEDICARE PART B'] : ['EB', '6', '', '30'],
+        ...(e.groupId ? [['REF', '6P', e.groupId]] : []),
+        e.notFound
+          ? ['AAA', 'N', '', '75', 'C']
+          : e.active
+            ? ['EB', '1', '', '30', '', clean(e.planName ?? 'MEDICARE PART B')]
+            : ['EB', '6', '', '30'],
         ...(e.message ? [['MSG', e.message]] : []),
         ...(e.stay
           ? [

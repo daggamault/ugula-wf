@@ -16,7 +16,8 @@ const INPUT = {
   filingLimitDays: null,
   correctionMethod: null,
   appealDays: null,
-  planType: null
+  planType: null,
+  isSearchable: false
 } as const;
 
 const ROW = { id: 'p1', name: 'Medicare', payer_code: '00952', claim_filing: 'MB' };

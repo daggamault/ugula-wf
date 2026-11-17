@@ -43,6 +43,11 @@ const PLAN_OPTIONS = [
   ...Object.entries(PLAN_TYPES).map(([value, label]) => ({ value, label }))
 ];
 
+const SEARCH_OPTIONS = [
+  { value: 'no', label: 'No' },
+  { value: 'yes', label: 'Yes: insurance discovery asks it about patients without coverage' }
+];
+
 const isCorrectionMethod = (x: string): x is CorrectionMethod =>
   Object.hasOwn(CORRECTION_METHODS, x);
 
@@ -57,7 +62,8 @@ export const toPayerDraft = (p: Payer | null): PayerInput => ({
   filingLimitDays: p?.filing_limit_days ?? null,
   correctionMethod: p?.correction_method ?? null,
   appealDays: p?.appeal_days ?? null,
-  planType: p?.plan_type ?? null
+  planType: p?.plan_type ?? null,
+  isSearchable: p?.is_searchable ?? false
 });
 
 export const PayerForm = ({
@@ -155,6 +161,14 @@ export const PayerForm = ({
               options={PLAN_OPTIONS}
               value={draft.planType ?? ''}
               onChange={(v) => setDraft({ ...draft, planType: isPlanType(v) ? v : null })}
+            />
+            <Select
+              id="payer-searchable"
+              label="Accepts Insurance Searches"
+              hint="Whether the payer answers a real-time 270 without a member ID, by name, birth date and address."
+              options={SEARCH_OPTIONS}
+              value={draft.isSearchable ? 'yes' : 'no'}
+              onChange={(v) => setDraft({ ...draft, isSearchable: v === 'yes' })}
             />
           </FieldGrid>
         </fieldset>

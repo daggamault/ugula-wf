@@ -1,4 +1,4 @@
-import type { InboundKind, PayerFileOutcome } from '@ugula/billing';
+import type { InboundKind, PayerFileOutcome, PaymentMethod } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
 import type { Page } from '../../shared/url-state.ts';
 
@@ -11,6 +11,15 @@ export type PayerFileSummary = {
   problem_count: number;
   created_at: string;
   uploaded_by: string | null;
+};
+
+export type PayerFileDetail = PayerFileSummary & {
+  payment_cents: number | null;
+  payment_method: PaymentMethod | null;
+  paid_on: string | null;
+  trace_number: string | null;
+  trace_payer_id: string | null;
+  deposit_id: string | null;
 };
 
 export type PayerFileItem = {
@@ -30,7 +39,7 @@ export const createPayerFilesClient = (api: Api) => ({
   list: (query: string, signal?: AbortSignal) =>
     api.get<Page<PayerFileSummary>>(`/api/payer-files?${query}`, signal),
   find: (id: string, signal?: AbortSignal) =>
-    api.get<{ file: PayerFileSummary; items: PayerFileItem[] }>(
+    api.get<{ file: PayerFileDetail; items: PayerFileItem[] }>(
       `/api/payer-files/${encodeURIComponent(id)}`,
       signal
     ),

@@ -15,6 +15,7 @@ const columns = [
   'correction_method',
   'appeal_days',
   'plan_type',
+  'is_searchable',
   'updated_at'
 ] as const;
 
@@ -84,6 +85,7 @@ const changes = (p: PayerInput) => ({
   correction_method: p.correctionMethod,
   appeal_days: p.appealDays,
   plan_type: p.planType,
+  is_searchable: p.isSearchable,
   updated_at: sql<Date>`now()`
 });
 
@@ -100,7 +102,8 @@ const insertPayer = (db: Db, agencyId: string, p: PayerInput, update: boolean) =
       filing_limit_days: p.filingLimitDays,
       correction_method: p.correctionMethod,
       appeal_days: p.appealDays,
-      plan_type: p.planType
+      plan_type: p.planType,
+      is_searchable: p.isSearchable
     })
     .onConflict((oc) => {
       const key = oc.expression(sql`agency_id, lower(name)`);

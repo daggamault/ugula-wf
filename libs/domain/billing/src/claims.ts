@@ -32,7 +32,8 @@ export const CLAIM_EVENT_KINDS = [
   'facility_follow_up',
   'responsibility',
   'document',
-  'reopened'
+  'reopened',
+  'discovery'
 ] as const;
 
 export type ClaimEventKind = (typeof CLAIM_EVENT_KINDS)[number];
@@ -89,7 +90,8 @@ export const PATIENT_EVENT_KINDS: readonly ClaimEventKind[] = [
   'facility_invoiced',
   'facility_follow_up',
   'responsibility',
-  'document'
+  'document',
+  'discovery'
 ];
 
 export const DENIAL_ROUTES = ['denial', 'appeal', 'fix'] as const;
@@ -231,6 +233,7 @@ export const MIN_WAIT_MS = 60_000;
 
 export const CLAIM_STEPS = [
   'review',
+  'discover',
   'reviewPatient',
   'confirmPayers',
   'submit',
@@ -256,6 +259,7 @@ export const isClaimStep = (x: unknown): x is ClaimStepName =>
 
 export const STEP_STATUSES: Readonly<Partial<Record<ClaimStepName, ClaimStatus>>> = {
   review: 'needs_review',
+  discover: 'needs_review',
   reviewPatient: 'needs_review',
   confirmPayers: 'needs_review',
   submit: 'ready',
@@ -277,7 +281,7 @@ type CoverageStep = { coverage: LedgerCoverage; balanceCents: number };
 export type ClaimStep =
   | ({ step: 'review' | 'submit' | 'reconcile' | 'workDenial' | 'followUp' } & CoverageStep)
   | ({ step: 'await'; waitMs: number } & CoverageStep)
-  | { step: 'reviewPatient' | 'confirmPayers' | 'overpaid'; balanceCents: number }
+  | { step: 'discover' | 'reviewPatient' | 'confirmPayers' | 'overpaid'; balanceCents: number }
   | { step: 'statement'; statement: number; balanceCents: number }
   | { step: 'awaitPatient' | 'awaitReview' | 'facility'; waitMs: number; balanceCents: number }
   | { step: 'followUpFacility' | 'collections' | 'writeOff' | 'closed'; balanceCents: number };
@@ -440,7 +444,9 @@ export const ledgerFactsOf = (ledger: ClaimLedger, now: Date) => {
     sinceStatementMs: sinceMs(p.lastStatement, now),
     sinceFacilityContactMs: sinceMs(p.lastFacilityContact, now),
     rejection: p.rejection,
-    pendingReview: ledger.pendingReview ?? false
+    pendingReview: ledger.pendingReview ?? false,
+    payerAnswered: ledger.events.some((e) => e.kind === 'response' && e.coverageId !== null),
+    discoveryTried: ledger.events.some((e) => e.kind === 'discovery')
   };
 };
 

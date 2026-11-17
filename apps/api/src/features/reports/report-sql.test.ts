@@ -7,6 +7,7 @@ import {
   centsWhere,
   count,
   countWhere,
+  postedIn,
   reasonCode,
   SUBMISSIONS,
   servedIn,
@@ -68,6 +69,12 @@ describe('report sql', () => {
   it('bounds the service date on its own indexed column', () => {
     const q = compile(servedIn(reportContext));
     assert.equal(q.sql, 'select c.service_date between $1::date and $2::date as "v"');
+    assert.deepEqual(q.parameters, ['2026-01-01', '2026-10-23']);
+  });
+
+  it('bounds the posting period on the posted date, which skips closed months', () => {
+    const q = compile(postedIn(reportContext));
+    assert.equal(q.sql, 'select e.posted_on between $1::date and $2::date as "v"');
     assert.deepEqual(q.parameters, ['2026-01-01', '2026-10-23']);
   });
 });

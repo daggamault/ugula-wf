@@ -26,7 +26,8 @@ const input: PayerInput = {
   filingLimitDays: 365,
   correctionMethod: null,
   appealDays: null,
-  planType: null
+  planType: null,
+  isSearchable: false
 };
 
 describe('createPayersClient', () => {

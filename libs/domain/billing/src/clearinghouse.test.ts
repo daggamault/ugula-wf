@@ -83,6 +83,7 @@ describe('createClearinghouse', () => {
     ]);
     assert.equal(ch.checkEligibility, null);
     assert.equal(ch.checkClaimStatus, null);
+    assert.equal(ch.discoverCoverage, null);
     assert.equal(ch.afterDownload, 'keep');
     assert.deepEqual(await ch.inbox((inbox) => inbox.list()), [
       { path: '/download/a.999', name: 'a.999', size: 3, modifiedAt: new Date(0) }
@@ -116,11 +117,17 @@ describe('createClearinghouse', () => {
       ok: false,
       error: 'The clearinghouse answered CoreEnvelopeError'
     });
+    assert.deepEqual(await ch.discoverCoverage?.(['search 1', 'fail']), [
+      { ok: true, text: 'answer to search 1' },
+      { ok: false, error: 'Timed out' }
+    ]);
     assert.deepEqual(sent, [
       'X12_270_Request_005010X279A1',
       'X12_276_Request_005010X212',
       'X12_270_Request_005010X279A1',
-      'X12_276_Request_005010X212'
+      'X12_276_Request_005010X212',
+      'X12_270_Request_005010X279A1',
+      'X12_270_Request_005010X279A1'
     ]);
   });
 

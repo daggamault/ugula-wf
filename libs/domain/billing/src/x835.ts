@@ -42,6 +42,8 @@ export type Remittance = {
   payerName: string | null;
   payerId: string | null;
   checkNumber: string | null;
+  originatorId: string | null;
+  paymentMethod: string | null;
   paidOn: string | null;
   totalCents: number;
   providerAdjustments: ProviderAdjustment[];
@@ -127,6 +129,8 @@ const remittanceOf = (segments: string[][], file: X12File): Remittance => {
     payerName: null,
     payerId: null,
     checkNumber: null,
+    originatorId: null,
+    paymentMethod: null,
     paidOn: null,
     totalCents: 0,
     providerAdjustments: [],
@@ -139,10 +143,14 @@ const remittanceOf = (segments: string[][], file: X12File): Remittance => {
     switch (seg[0]) {
       case 'BPR':
         r.totalCents = centsOf(seg[2]);
+        r.paymentMethod = textOf(seg[4]);
         r.paidOn = dateOf(seg[16]);
         break;
       case 'TRN':
-        r.checkNumber ??= textOf(seg[2]);
+        if (!r.checkNumber) {
+          r.checkNumber = textOf(seg[2]);
+          r.originatorId = textOf(seg[3]);
+        }
         break;
       case 'N1':
         party = seg[1] ?? null;

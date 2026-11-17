@@ -145,6 +145,35 @@ describe('eligibility', () => {
       ]
     );
   });
+
+  it('finds an insured on its roster for a search without a member ID', () => {
+    const search = (lastName: string, birthDate: string, payerId = 'DEMOBCBS') => ({
+      ...inquiry(''),
+      payer: { name: 'BLUE PLAN', payerId },
+      subscriber: { lastName, firstName: 'Kenji', memberId: null, birthDate, sex: 'M' }
+    });
+    const file = build270(
+      waystar,
+      [
+        search('Nakamura', '1995-05-27'),
+        search('Nakamura', '1995-05-28'),
+        search('Nakamura', '1995-05-27', 'DEMOMCR')
+      ],
+      envelope
+    );
+    assert.equal(read270(file).inquiries[0]?.birthDate, '1995-05-27');
+    assert.deepEqual(
+      respondToEligibility(file, now).map((a) => {
+        const [r] = read271(a);
+        return [r?.active, r?.memberId, r?.groupId, r?.planName, r?.messages];
+      }),
+      [
+        [true, 'BCX884213', 'GRP5521', 'BLUE PLAN PPO', []],
+        [null, null, null, null, ['Subscriber not found']],
+        [null, null, null, null, ['Subscriber not found']]
+      ]
+    );
+  });
 });
 
 describe('Medicare Advantage', () => {
@@ -187,7 +216,7 @@ describe('claim status', () => {
   const status = (claimNumber: string, payerClaimNumber: string | null = null) => ({
     trace: `T-${claimNumber}`,
     payer: { name: 'MEDICARE', payerId: 'MCR' },
-    subscriber: { ...inquiry('A1').subscriber },
+    subscriber: { ...inquiry('A1').subscriber, memberId: 'A1' },
     patient: null,
     claimNumber,
     payerClaimNumber,

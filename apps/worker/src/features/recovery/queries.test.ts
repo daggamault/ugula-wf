@@ -113,7 +113,10 @@ describe('createRecoveryStore', () => {
       missing
     );
     await assert.rejects(() => store.skipRemainingPayers('r1', ID, 'k', 'x'), missing);
-    await assert.rejects(() => store.addPayer('r1', ID, { payerId: COV, memberId: null }), missing);
+    await assert.rejects(
+      () => store.addPayer('r1', ID, { payerId: COV, memberId: null, groupId: null }),
+      missing
+    );
     await assert.rejects(() => store.appealPacket('r1', ID, COV), missing);
     await assert.rejects(
       () =>
@@ -223,26 +226,41 @@ describe('createRecoveryStore', () => {
     );
   });
 
-  it('adds a directory payer after the others, once, and refuses one not in the directory', async () => {
+  it('adds a directory payer after the others, once, nudging the claim, and refuses one not in the directory', async () => {
     const { db, queries } = recording((sql) =>
-      sql.startsWith('select "id" from "payers"') ? [{ id: COV }] : []
+      sql.startsWith('select "id" from "payers"') || sql.startsWith('insert into "claim_coverages"')
+        ? [{ id: COV }]
+        : []
     );
     const store = createRecoveryStore(db, blobs, boss);
-    await store.addPayer('r1', ID, { payerId: COV, memberId: 'M1' });
+    await store.addPayer('r1', ID, { payerId: COV, memberId: 'M1', groupId: 'G1' });
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
+      queries.slice(0, 3).map((q) => [q.sql, q.parameters]),
       [
         [CLAIM, [ID, 'r1']],
         ['select "id" from "payers" where "id" = $1 and "agency_id" = $2', [COV, 't-1']],
         [
-          `insert into "claim_coverages" ("agency_id", "claim_id", "position", "payer_name", "payer_id", "member_id", "relationship") select "p"."agency_id", $1::uuid as "claim_id", (select coalesce(max(position), 0) + 1 from claim_coverages where claim_id = $2) as "position", "p"."name", "p"."id", $3::text as "member_id", $4::text as "relationship" from "payers" as "p" where "p"."id" = $5 and "p"."agency_id" = $6 on conflict (claim_id, lower(payer_name), lower(coalesce(member_id, ''))) do nothing`,
-          [ID, ID, 'M1', SELF, COV, 't-1']
+          `insert into "claim_coverages" ("agency_id", "claim_id", "position", "payer_name", "payer_id", "member_id", "group_id", "relationship") select "p"."agency_id", $1::uuid as "claim_id", (select coalesce(max(position), 0) + 1 from claim_coverages where claim_id = $2) as "position", "p"."name", "p"."id", $3::text as "member_id", $4::text as "group_id", $5::text as "relationship" from "payers" as "p" where "p"."id" = $6 and "p"."agency_id" = $7 on conflict (claim_id, lower(payer_name), lower(coalesce(member_id, ''))) do nothing`,
+          [ID, ID, 'M1', 'G1', SELF, COV, 't-1']
         ]
       ]
     );
+    assert.deepEqual(
+      sent(queries, 'insert into "signals"').map(([, parameters]) => parameters),
+      [['t-1', `claim:${ID}`, 1]]
+    );
+    const present = recording((sql) =>
+      sql.startsWith('select "id" from "payers"') ? [{ id: COV }] : []
+    );
+    await createRecoveryStore(present.db, blobs, boss).addPayer('r1', ID, {
+      payerId: COV,
+      memberId: 'M1',
+      groupId: null
+    });
+    assert.ok(!present.queries.some((q) => q.sql.startsWith('insert into "signals"')));
     const none = createRecoveryStore(recording(() => []).db, blobs, boss);
     await assert.rejects(
-      () => none.addPayer('r1', ID, { payerId: COV, memberId: null }),
+      () => none.addPayer('r1', ID, { payerId: COV, memberId: null, groupId: null }),
       /not in the directory/
     );
   });
@@ -395,7 +413,11 @@ describe('createRecoveryStore', () => {
     const { db, queries } = recording(() => [{ id: COV }]);
     await assert.rejects(
       () =>
-        createRecoveryStore(db, blobs, boss).addPayer('r1', ID, { payerId: 'MCR', memberId: null }),
+        createRecoveryStore(db, blobs, boss).addPayer('r1', ID, {
+          payerId: 'MCR',
+          memberId: null,
+          groupId: null
+        }),
       /Payer MCR is not in the directory/
     );
     assert.ok(!queries.some((q) => q.sql.includes('from "payers"')));

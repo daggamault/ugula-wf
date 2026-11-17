@@ -2,23 +2,43 @@ import { sexOf } from './patients.ts';
 import { clean, type Envelope, interchange, type Segment, stampOf, yyyymmdd } from './x12.ts';
 import type { Submitter } from './x837.ts';
 
+type SubscriberAddress = {
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+};
+
 export type EligibilityRequest = {
   trace: string;
   payer: { name: string; payerId: string };
   subscriber: {
     lastName: string;
     firstName: string | null;
-    memberId: string;
+    memberId: string | null;
     birthDate: string | null;
     sex: string | null;
+    address?: SubscriberAddress | null;
   };
   serviceDate: string;
 };
 
 const HEALTH_BENEFIT_PLAN_COVERAGE = '30';
 
+const addressSegments = (a: SubscriberAddress | null | undefined): Segment[] => {
+  if (!a?.city || !a.state || !a.postalCode) return [];
+  return [
+    ...(a.addressLine ? [['N3', clean(a.addressLine, 55)]] : []),
+    ['N4', clean(a.city, 30), clean(a.state, 2), clean(a.postalCode, 15)]
+  ];
+};
+
 const requestSegments = (s: Submitter, r: EligibilityRequest, hl: number): Segment[] => {
   const sub = r.subscriber;
+  const search = !sub.memberId;
+  if (search && !sub.birthDate) {
+    throw new Error(`A search without a member ID needs the birth date (${r.trace})`);
+  }
   const sex = sexOf(sub.sex) ?? 'U';
   return [
     ['HL', String(hl), '', '20', '1'],
@@ -33,12 +53,9 @@ const requestSegments = (s: Submitter, r: EligibilityRequest, hl: number): Segme
       '1',
       clean(sub.lastName),
       clean(sub.firstName, 35),
-      '',
-      '',
-      '',
-      'MI',
-      clean(sub.memberId, 80)
+      ...(search ? [] : ['', '', '', 'MI', clean(sub.memberId, 80)])
     ],
+    ...(search ? addressSegments(sub.address) : []),
     ...(sub.birthDate ? [['DMG', 'D8', yyyymmdd(sub.birthDate), sex]] : []),
     ['DTP', '291', 'D8', yyyymmdd(r.serviceDate)],
     ['EQ', HEALTH_BENEFIT_PLAN_COVERAGE]

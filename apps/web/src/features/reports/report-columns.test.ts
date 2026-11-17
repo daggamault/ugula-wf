@@ -24,7 +24,6 @@ import {
   csvRows,
   denialColumns,
   filingLabel,
-  formatMonth,
   HCPCS_COLUMNS,
   IMPORT_COLUMNS,
   MONTHLY_COLUMNS,
@@ -93,6 +92,7 @@ const monthly: MonthlyRow = {
 const payment: PaymentRow = {
   id: 'e1',
   posted_at: '2026-10-21T15:00:00Z',
+  posted_on: '2026-11-01',
   claim_number: '20261001-0007',
   pcr_number: null,
   first_name: 'Jane',
@@ -308,8 +308,6 @@ describe('monthly columns', () => {
   });
 
   it('formats months by name and keeps the ISO month in the CSV', () => {
-    assert.equal(formatMonth('2026-10'), 'October 2026');
-    assert.equal(formatMonth('2026-01'), 'January 2026');
     assert.equal(MONTHLY_COLUMNS[0]?.text(monthly, {}), 'October 2026');
     assert.equal(MONTHLY_COLUMNS[0]?.csv(monthly, {}), '2026-10');
   });
@@ -339,6 +337,7 @@ describe('payment columns', () => {
   it('lists payments with their paid date, check number and reason codes', () => {
     assert.deepEqual(shownBy(PAYMENT_COLUMNS, payment), {
       Posted: formatDateTime('2026-10-21T15:00:00Z'),
+      'Posted To': 'Nov 1, 2026',
       'Paid On': 'Oct 20, 2026',
       Claim: '20261001-0007',
       Patient: 'Doe, Jane',

@@ -1,6 +1,7 @@
 import { actionNode, branchNode, pin } from '@ugula/graph';
 import { claimProgress } from '../claims.ts';
 import { isFailing } from '../clearinghouse.ts';
+import { billingTypes } from '../models.ts';
 import { requiredText } from '../values.ts';
 import { claimIdOf, claimIdPin } from './claims.ts';
 import { PAYER_FILE_LINE } from './payer-files.ts';
@@ -135,6 +136,45 @@ export const exchangeNodes: NodesOf = (stores) => [
         case 'unavailable':
           return { exit: 'unavailable', outputs: { ...none, reason: r.reason } };
       }
+    }
+  }),
+  branchNode({
+    type: 'billing.discover-coverage',
+    title: 'Discover Coverage',
+    category: CATEGORY,
+    description:
+      "Searches for the patient's insurance through the clearinghouse in real time: sends a 270 without a member ID, by name, birth date, sex and address, to each directory payer that accepts searches, and gives each active coverage the 271 answers name (the payer asked, or another payer it reports) whose payer is in the directory, with its member ID, group and plan. Logs a discovery on the claim with what was found or why nothing could be asked, and a retried step returns what it already found instead of asking again.",
+    level: 'basic',
+    keywords: ['insurance discovery', 'coverage', '270', '271', 'self pay'],
+    effect: true,
+    inputs: [claimIdPin],
+    outputs: [
+      pin('candidates', billingTypes.candidates, {
+        label: 'Coverages Found',
+        description: 'The coverages found, each with its directory payer and member ID.'
+      }),
+      reasonPin
+    ],
+    exits: {
+      answered: {
+        label: 'Answered',
+        description: 'The payers answered; the coverages found may be none.'
+      },
+      unavailable: {
+        label: 'Unavailable',
+        description:
+          'Nothing was asked: there is no real-time clearinghouse connection, billing profile, patient or payer that accepts searches; the reason says which.'
+      }
+    },
+    compute: async (inputs, _, ctx) => {
+      const r = await stores().exchange.discoverCoverage(
+        ctx.runId,
+        claimIdOf(inputs.claimId),
+        ctx.key
+      );
+      return r.status === 'answered'
+        ? { exit: 'answered', outputs: { candidates: r.candidates, reason: null } }
+        : { exit: 'unavailable', outputs: { candidates: [], reason: r.reason } };
     }
   }),
   actionNode({

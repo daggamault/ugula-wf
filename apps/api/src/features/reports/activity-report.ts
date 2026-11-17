@@ -1,21 +1,17 @@
-import { type Expression, sql } from 'kysely';
+import { sql } from 'kysely';
 import { report } from './report.ts';
-import { cents, SUBMISSIONS, UNRECOVERED, within, zero } from './report-sql.ts';
+import { cents, postedIn, SUBMISSIONS, UNRECOVERED, zero } from './report-sql.ts';
 
 const LEDGER = ['response', 'refunded', 'balance_protected'] as const;
-
-const monthOf = (at: Expression<unknown>, tz: string) =>
-  sql<string>`to_char(${at} at time zone ${tz}, 'YYYY-MM')`;
 
 export const activityReport = report({
   dates: 'posted',
   rows: (db, ctx) => {
-    const month = (at: Expression<unknown>) => monthOf(at, ctx.tz).as('month');
     const billed = db
       .selectFrom('claim_events as e')
       .innerJoin('claims as c', 'c.id', 'e.claim_id')
       .select([
-        month(sql.ref('e.created_at')),
+        sql<string>`to_char(e.posted_on, 'YYYY-MM')`.as('month'),
         sql<number>`1`.as('claims_billed'),
         sql<number>`c.total_cents`.as('charges_billed'),
         zero.as('payer_paid'),
@@ -27,7 +23,7 @@ export const activityReport = report({
       ])
       .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', 'in', SUBMISSIONS)
-      .where(within(sql.ref('e.created_at'), ctx))
+      .where(postedIn(ctx))
       .where(({ not, exists, selectFrom }) =>
         not(
           exists(
@@ -43,7 +39,7 @@ export const activityReport = report({
       .selectFrom('claim_events as e')
       .innerJoin('claims as c', 'c.id', 'e.claim_id')
       .select([
-        month(sql.ref('e.created_at')),
+        sql<string>`to_char(e.posted_on, 'YYYY-MM')`.as('month'),
         zero.as('claims_billed'),
         zero.as('charges_billed'),
         sql<number>`case when e.kind = 'response' and e.coverage_id is not null then e.paid_cents else 0 end`.as(
@@ -59,13 +55,13 @@ export const activityReport = report({
       ])
       .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', 'in', LEDGER)
-      .where(within(sql.ref('e.created_at'), ctx));
+      .where(postedIn(ctx));
     const closed = db
       .selectFrom('claim_events as e')
       .innerJoin('claims as c', 'c.id', 'e.claim_id')
       .innerJoin('claim_balances as b', 'b.claim_id', 'c.id')
       .select([
-        month(sql.ref('e.created_at')),
+        sql<string>`to_char(e.posted_on, 'YYYY-MM')`.as('month'),
         zero.as('claims_billed'),
         zero.as('charges_billed'),
         zero.as('payer_paid'),
@@ -82,7 +78,7 @@ export const activityReport = report({
       .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', '=', 'closed')
       .where('e.note', 'in', UNRECOVERED)
-      .where(within(sql.ref('e.created_at'), ctx));
+      .where(postedIn(ctx));
     return db
       .selectFrom(billed.unionAll(posted).unionAll(closed).as('f'))
       .select([

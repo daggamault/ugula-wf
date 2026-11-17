@@ -23,6 +23,8 @@ export const describeProgress = (progress: ClaimProgress): string => {
       return `Waiting on ${progress.coverage.payer}. A follow-up task opens if they have not answered 30 days after submission.`;
     case 'followUp':
       return `${progress.coverage.payer} has not answered in 30 days. A payer follow-up task is waiting.`;
+    case 'discover':
+      return 'No payer covers this claim. Searching the payers that accept insurance searches; a task opens if coverage is found.';
     case 'reviewPatient':
       return 'Every payer is done. A review task is waiting before the patient is billed.';
     case 'confirmPayers':

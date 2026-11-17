@@ -5,6 +5,7 @@ import {
   formatDate,
   formatDateTime,
   formatDollars,
+  formatMonth,
   patientName
 } from '../../shared/format.ts';
 import { queueInfo, titleCase } from '../../shared/task-queues.ts';
@@ -193,14 +194,6 @@ const claimColumns = <R extends ClaimRow>({ hasPcr = true } = {}): ReportColumn<
   text<R>('Date of Service', (r) => (r.service_date ? formatDate(r.service_date) : null))
 ];
 
-const monthLabel = new Intl.DateTimeFormat(undefined, {
-  month: 'long',
-  year: 'numeric',
-  timeZone: 'UTC'
-});
-
-export const formatMonth = (month: string) => monthLabel.format(new Date(`${month}-01T00:00:00Z`));
-
 const monthColumn = <R extends { month: string }>(label: string): ReportColumn<R> => ({
   label,
   text: (r) => formatMonth(r.month),
@@ -263,6 +256,7 @@ export const ACTIVITY_COLUMNS: readonly ReportColumn<ActivityRow>[] = [
 
 export const PAYMENT_COLUMNS: readonly ReportColumn<PaymentRow>[] = [
   text('Posted', (r) => formatDateTime(r.posted_at)),
+  text('Posted To', (r) => formatDate(r.posted_on)),
   text('Paid On', (r) => (r.paid_on ? formatDate(r.paid_on) : null)),
   ...claimColumns<PaymentRow>({ hasPcr: false }),
   text('Paid By', (r) => r.payer ?? PATIENT),

@@ -18,11 +18,11 @@ const devProfile = {
 };
 
 const devPayers = [
-  { name: 'Medicare', payer_code: 'DEMOMCR', claim_filing: 'MB' },
-  { name: 'Medicaid', payer_code: 'DEMOMCD', claim_filing: 'MC' },
-  { name: 'Blue Plan', payer_code: 'DEMOBCBS', claim_filing: 'BL' },
-  { name: 'Keystone Comp', payer_code: 'DEMOWC', claim_filing: 'WC' },
-  { name: 'Keystone Auto', payer_code: 'DEMOAUTO', claim_filing: 'CI' }
+  { name: 'Medicare', payer_code: 'DEMOMCR', claim_filing: 'MB', is_searchable: false },
+  { name: 'Medicaid', payer_code: 'DEMOMCD', claim_filing: 'MC', is_searchable: false },
+  { name: 'Blue Plan', payer_code: 'DEMOBCBS', claim_filing: 'BL', is_searchable: true },
+  { name: 'Keystone Comp', payer_code: 'DEMOWC', claim_filing: 'WC', is_searchable: false },
+  { name: 'Keystone Auto', payer_code: 'DEMOAUTO', claim_filing: 'CI', is_searchable: false }
 ] as const;
 
 const devPayerAliases = [{ payer: 'Medicare', alias: 'Simulated Medicare Part B' }] as const;
@@ -97,6 +97,7 @@ export const buildUpsertDevPayers = (db: Kysely<Database>, agencyId: string) =>
       oc.expression(sql`agency_id, lower(name)`).doUpdateSet({
         payer_code: (eb) => eb.ref('excluded.payer_code'),
         claim_filing: (eb) => eb.ref('excluded.claim_filing'),
+        is_searchable: (eb) => eb.ref('excluded.is_searchable'),
         updated_at: sql`now()`
       })
     );

@@ -7,6 +7,7 @@ describe('CLAIM_TASKS', () => {
     assert.deepEqual(CLAIM_TASK_KEYS, [
       'billing.correct-claim-data',
       'billing.change-responsible-party',
+      'billing.discover-insurance',
       'billing.receive-document',
       'billing.chase-document',
       'billing.log-records-request',

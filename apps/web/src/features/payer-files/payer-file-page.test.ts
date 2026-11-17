@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { idleLive } from '../../shared/testing.ts';
 import { render, screen } from '../../shared/testing-dom.ts';
-import type { PayerFileSummary, PayerFilesClient } from './client.ts';
+import type { PayerFileDetail, PayerFilesClient } from './client.ts';
 import { PayerFileItems, PayerFilePage } from './payer-file-page.tsx';
 
 describe('payer file page', () => {
@@ -47,7 +47,7 @@ describe('payer file page', () => {
 });
 
 describe('PayerFilePage', () => {
-  const file: PayerFileSummary = {
+  const file: PayerFileDetail = {
     id: 'f1',
     kind: '835',
     file_name: 'era.835',
@@ -55,8 +55,26 @@ describe('PayerFilePage', () => {
     item_count: 0,
     problem_count: 0,
     created_at: '2026-10-31T12:00:00Z',
-    uploaded_by: null
+    uploaded_by: null,
+    payment_cents: null,
+    payment_method: null,
+    paid_on: null,
+    trace_number: null,
+    trace_payer_id: null,
+    deposit_id: null
   };
+
+  const paid: PayerFileDetail = {
+    ...file,
+    payment_cents: 60_000,
+    payment_method: 'ACH',
+    paid_on: '2026-10-30',
+    trace_number: '1234567890',
+    trace_payer_id: '1512345678',
+    deposit_id: 'd1'
+  };
+
+  const detail = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
 
   const show = (find: PayerFilesClient['find']) =>
     render(
@@ -78,6 +96,33 @@ describe('PayerFilePage', () => {
     assert.equal(download.hasAttribute('download'), true);
     assert.ok(screen.getByText('Nothing to Apply'));
     assert.ok(screen.getByText('This file had nothing for your claims.'));
+  });
+
+  it('shows the payment of an 835 and the deposit it matched', async () => {
+    show(async () => ({ file: paid, items: [] }));
+    assert.ok(await screen.findByRole('heading', { name: 'Payment' }));
+    assert.equal(detail('Amount'), '$600.00');
+    assert.equal(detail('Method'), 'Automated Clearing House (ACH) ACH');
+    assert.equal(detail('Paid On'), 'Oct 30, 2026');
+    assert.equal(detail('Trace Number'), '1234567890');
+    assert.equal(detail('Payer ID'), '1512345678');
+    assert.equal(
+      screen.getByRole('link', { name: 'Open Deposit' }).getAttribute('href'),
+      '/deposits/d1'
+    );
+  });
+
+  it('says when an 835 payment has no deposit yet', async () => {
+    show(async () => ({ file: { ...paid, deposit_id: null }, items: [] }));
+    assert.ok(await screen.findByRole('heading', { name: 'Payment' }));
+    assert.equal(detail('Deposit'), 'Not matched to a deposit');
+    assert.equal(screen.queryByRole('link', { name: 'Open Deposit' }), null);
+  });
+
+  it('shows no payment for a file without a trace number', async () => {
+    show(async () => ({ file, items: [] }));
+    await screen.findByRole('heading', { name: 'era.835' });
+    assert.equal(screen.queryByRole('heading', { name: 'Payment' }), null);
   });
 
   it('says why the file could not load', async () => {

@@ -39,6 +39,7 @@ const fakeClearinghouse = (
     submitClaimStatus: async (name) => name,
     checkEligibility: null,
     checkClaimStatus: null,
+    discoverCoverage: null,
     afterDownload,
     inbox: (work) => {
       sessions.opened++;

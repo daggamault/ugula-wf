@@ -33,12 +33,13 @@ describe('payerSchema', () => {
         filingLimitDays: null,
         correctionMethod: null,
         appealDays: null,
-        planType: null
+        planType: null,
+        isSearchable: false
       }
     );
   });
 
-  it('keeps the filing limit, correction method, appeal window and plan type', () => {
+  it('keeps the filing limit, correction method, appeal window, plan type and searches', () => {
     assert.deepEqual(
       v.parse(payerSchema, {
         name: 'Blue',
@@ -47,7 +48,8 @@ describe('payerSchema', () => {
         filingLimitDays: MAX_FILING_LIMIT_DAYS,
         correctionMethod: 'reopening',
         appealDays: MAX_APPEAL_DAYS,
-        planType: 'government'
+        planType: 'government',
+        isSearchable: true
       }),
       {
         name: 'Blue',
@@ -56,7 +58,8 @@ describe('payerSchema', () => {
         filingLimitDays: MAX_FILING_LIMIT_DAYS,
         correctionMethod: 'reopening',
         appealDays: MAX_APPEAL_DAYS,
-        planType: 'government'
+        planType: 'government',
+        isSearchable: true
       }
     );
   });

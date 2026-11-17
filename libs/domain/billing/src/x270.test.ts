@@ -145,6 +145,44 @@ describe('build270', () => {
     );
   });
 
+  it('searches by name, birth date and address when there is no member ID', () => {
+    const address = {
+      addressLine: '4 Front St',
+      city: 'Harrisburg',
+      state: 'PA',
+      postalCode: '17101'
+    };
+    const search = {
+      ...request,
+      subscriber: { ...request.subscriber, memberId: null, address }
+    };
+    assert.deepEqual(subscriberLines(search), [
+      'TRN*1*cov-1*1123456789~',
+      'NM1*IL*1*DOE*JANE~',
+      'N3*4 FRONT ST~',
+      'N4*HARRISBURG*PA*17101~',
+      'DMG*D8*19500203*F~',
+      'DTP*291*D8*20261001~',
+      'EQ*30~'
+    ]);
+    assert.deepEqual(
+      subscriberLines({
+        ...search,
+        subscriber: { ...search.subscriber, address: { ...address, city: null } }
+      }).slice(1, 3),
+      ['NM1*IL*1*DOE*JANE~', 'DMG*D8*19500203*F~']
+    );
+    assert.throws(
+      () =>
+        build270(
+          submitter,
+          [{ ...search, subscriber: { ...search.subscriber, birthDate: null } }],
+          envelope
+        ),
+      { message: 'A search without a member ID needs the birth date (cov-1)' }
+    );
+  });
+
   it('needs at least one subscriber', () => {
     assert.throws(() => build270(submitter, [], envelope), {
       message: 'An eligibility request needs at least one subscriber'

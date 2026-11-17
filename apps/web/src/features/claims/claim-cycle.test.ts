@@ -21,6 +21,7 @@ describe('describeProgress', () => {
       { step: 'workDenial', coverage: medicare, balanceCents: 1 },
       waiting,
       { step: 'followUp', coverage: medicare, balanceCents: 1 },
+      { step: 'discover', balanceCents: 1 },
       { step: 'reviewPatient', balanceCents: 1 },
       { step: 'confirmPayers', balanceCents: 1 },
       { step: 'overpaid', balanceCents: -2_500 },
@@ -44,6 +45,8 @@ describe('describeProgress', () => {
       await:
         'Waiting on Medicare. A follow-up task opens if they have not answered 30 days after submission.',
       followUp: 'Medicare has not answered in 30 days. A payer follow-up task is waiting.',
+      discover:
+        'No payer covers this claim. Searching the payers that accept insurance searches; a task opens if coverage is found.',
       reviewPatient: 'Every payer is done. A review task is waiting before the patient is billed.',
       confirmPayers:
         'No payer is on this claim. A task is waiting to add one or confirm the patient pays.',

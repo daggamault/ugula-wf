@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { AppliedPayerFile, Clearinghouse, RealtimeAnswer } from '@ugula/billing';
-import { build277Status } from '@ugula/billing/testing';
+import { build271, build277Status } from '@ugula/billing/testing';
 import { NO_CHECKABLE_PAYER, NOTHING_TO_ASK } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { CompiledQuery } from 'kysely';
-import { createExchangeStore, priorCheck, priorEligibility, statusInquiry } from './exchange.ts';
+import {
+  createExchangeStore,
+  priorCheck,
+  priorDiscovery,
+  priorEligibility,
+  readDiscovery,
+  searchRequest,
+  statusInquiry
+} from './exchange.ts';
 
 const CLAIM = '01a16617-7704-7ba6-b9b5-9c79fa44f961';
 const COVERAGE = '01a16617-7704-7ba6-b9b5-000000000001';
@@ -65,8 +73,40 @@ const statusRow: Parameters<typeof statusInquiry>[0] = {
   received: 3
 };
 
+const discoveryRow = {
+  ...patient,
+  address_line: '4 Front St',
+  city: 'Harrisburg',
+  state: 'PA',
+  postal_code: '17101'
+};
+
+const BLUE = '01a16617-7704-7ba6-b9b5-0000000000b1';
+
+const MEDICAID = '01a16617-7704-7ba6-b9b5-0000000000d1';
+
+const payers = [
+  { id: MEDICAID, name: 'Medicaid', payerCode: 'DEMOMCD', is_searchable: false },
+  { id: BLUE, name: 'Blue Plan', payerCode: 'DEMOBCBS', is_searchable: true }
+];
+
+const blueAnswer = build271(
+  {
+    trace: patient.number,
+    active: true,
+    payer: { name: 'Blue Plan', id: 'DEMOBCBS' },
+    subscriber: { lastName: 'Doe', memberId: 'BCX1' },
+    groupId: 'G1',
+    planName: 'Blue PPO'
+  },
+  { createdAt: new Date('2026-11-04T15:30:00Z') }
+);
+
 type Options = {
   realtime?: RealtimeAnswer | null;
+  discovery?: RealtimeAnswer[] | null;
+  directory?: typeof payers;
+  discoveryOf?: { [K in keyof typeof discoveryRow]?: (typeof discoveryRow)[K] | null } | null;
   connected?: boolean;
   withProfile?: boolean;
   submitted?: boolean;
@@ -83,6 +123,9 @@ type Options = {
 
 const setup = ({
   realtime = null,
+  discovery = null,
+  directory = payers,
+  discoveryOf = {},
   connected = true,
   withProfile = true,
   submitted = true,
@@ -104,6 +147,9 @@ const setup = ({
     if (q.sql.startsWith('select "control_number", "status"')) return prior ? [prior] : [];
     if (q.sql.includes('from "billing_profiles"'))
       return withProfile ? [{ ...profile, ...profileOf }] : [];
+    if (q.sql.includes('from "payers"')) return directory;
+    if (q.sql.includes('from "claims" as "c" left join "patients"'))
+      return discoveryOf ? [{ ...discoveryRow, ...discoveryOf }] : [];
     if (q.sql.includes('inner join "claim_coverages" as "cc"'))
       return statusOf ? [{ ...statusRow, submitted, ...statusOf }] : [];
     if (q.sql.includes('from "claims" as "c"'))
@@ -120,6 +166,7 @@ const setup = ({
   });
   const uploads: [string, string][] = [];
   const sent: string[] = [];
+  const searched: string[] = [];
   const answer = async (x12: string) => {
     sent.push(x12);
     return realtime as RealtimeAnswer;
@@ -136,6 +183,12 @@ const setup = ({
     },
     checkEligibility: realtime ? answer : null,
     checkClaimStatus: realtime ? answer : null,
+    discoverCoverage: discovery
+      ? async (searches) => {
+          searched.push(...searches);
+          return discovery;
+        }
+      : null,
     inbox: async () => assert.fail('no inbox'),
     afterDownload: 'delete'
   };
@@ -169,7 +222,7 @@ const setup = ({
       q.sql.startsWith('update "claim_coverages" set "eligibility_requested_at"')
     ).length;
   const reused = () => queries.some((q) => q.sql.includes('update claim_coverages cc set'));
-  return { store, uploads, sent, stored, applied, stamped, reused, queries };
+  return { store, uploads, sent, searched, stored, applied, stamped, reused, queries };
 };
 
 describe('checkEligibility', () => {
@@ -624,6 +677,139 @@ describe('statusInquiry', () => {
       statusInquiry({ ...statusRow, service_date: null }, new Date('2026-11-05T03:00:00Z'))
         ?.serviceDate,
       '2026-11-04'
+    );
+  });
+});
+
+const written = (queries: CompiledQuery[], table: string) =>
+  queries.filter((q) => q.sql.startsWith(`insert into "${table}"`)).map((q) => q.parameters);
+
+describe('discoverCoverage', () => {
+  it('searches each payer that accepts searches and logs the coverages found', async () => {
+    const s = setup({ discovery: [{ ok: true, text: blueAnswer }] });
+    const candidate = {
+      payerId: BLUE,
+      payerName: 'Blue Plan',
+      memberId: 'BCX1',
+      groupId: 'G1',
+      planName: 'BLUE PPO',
+      entity: 'PR'
+    };
+    assert.deepEqual(await s.store.discoverCoverage('r1', CLAIM, 'k'), {
+      status: 'answered',
+      candidates: [candidate]
+    });
+    assert.equal(s.searched.length, 1);
+    assert.ok(s.searched[0]?.includes('NM1*PR*2*BLUE PLAN*****PI*DEMOBCBS~'));
+    assert.ok(s.searched[0]?.includes('NM1*IL*1*DOE*JANE~'));
+    assert.ok(s.searched[0]?.includes('N4*HARRISBURG*PA*17101~'));
+    const note = 'Found Blue Plan (member BCX1)';
+    assert.deepEqual(written(s.queries, 'discovery_requests'), [
+      ['t1', CLAIM, 'k', 7],
+      ['t1', CLAIM, 'k', 'answered', note, JSON.stringify([candidate])]
+    ]);
+    assert.deepEqual(written(s.queries, 'claim_events'), [['t1', CLAIM, 'discovery', note, 'k']]);
+  });
+
+  it('logs why it could not search', async () => {
+    const cases: [Options, string][] = [
+      [
+        { discovery: [], directory: payers.map((p) => ({ ...p, is_searchable: false })) },
+        'No payer in the directory accepts insurance searches; mark the ones that do under Admin, Payers'
+      ],
+      [
+        { discovery: [], discoveryOf: { birth_date: null } },
+        'The claim has no patient with a name and birth date to search for'
+      ],
+      [
+        {},
+        "The agency's clearinghouse connection has no real-time URL, so it cannot search for insurance"
+      ],
+      [
+        { discovery: [{ ok: false, error: 'Timed out' }] },
+        'No coverage found with the 1 payer asked; Blue Plan: Timed out'
+      ]
+    ];
+    for (const [options, reason] of cases) {
+      const s = setup(options);
+      assert.deepEqual(await s.store.discoverCoverage('r1', CLAIM, 'k'), {
+        status: 'unavailable',
+        reason
+      });
+      assert.deepEqual(written(s.queries, 'claim_events'), [
+        ['t1', CLAIM, 'discovery', reason, 'k']
+      ]);
+    }
+  });
+
+  it('logs nothing for a claim it cannot find', async () => {
+    const s = setup({ discovery: [], discoveryOf: null });
+    assert.equal((await s.store.discoverCoverage('r1', CLAIM, 'k')).status, 'unavailable');
+    assert.equal((await s.store.discoverCoverage('r1', 'nope', 'k')).status, 'unavailable');
+    assert.deepEqual(written(s.queries, 'claim_events'), []);
+  });
+
+  it('returns what a retried step already found without searching again', async () => {
+    const s = setup({
+      discovery: [],
+      prior: { control_number: 7, status: 'answered', note: 'Found', candidates: [] }
+    });
+    assert.deepEqual(await s.store.discoverCoverage('r1', CLAIM, 'k'), {
+      status: 'answered',
+      candidates: []
+    });
+    assert.equal(s.searched.length, 0);
+    const pending = setup({
+      discovery: [{ ok: true, text: blueAnswer }],
+      prior: { control_number: 3, status: 'pending', note: null, candidates: null }
+    });
+    await pending.store.discoverCoverage('r1', CLAIM, 'k');
+    assert.ok(pending.searched[0]?.includes('*000000003*'));
+    assert.equal(written(pending.queries, 'discovery_requests').length, 1);
+  });
+});
+
+describe('priorDiscovery', () => {
+  it('replays an answered search with its candidates, or an unavailable one with its reason', () => {
+    const row = { control_number: 7, status: 'answered' as const, note: 'x', candidates: null };
+    assert.deepEqual(priorDiscovery(row), { status: 'answered', candidates: [] });
+    assert.deepEqual(priorDiscovery({ ...row, status: 'unavailable', note: null }), {
+      status: 'unavailable',
+      reason: ''
+    });
+  });
+});
+
+describe('searchRequest', () => {
+  it('searches without a member ID, dated by the agency calendar, and needs a birth date', () => {
+    const at = new Date('2026-11-05T03:00:00Z');
+    const blue = { id: BLUE, name: 'Blue Plan', payerCode: 'DEMOBCBS' };
+    const r = searchRequest({ ...discoveryRow, service_date: null }, blue, at);
+    assert.deepEqual(
+      [r?.subscriber.memberId, r?.subscriber.address?.city, r?.serviceDate],
+      [null, 'Harrisburg', '2026-11-04']
+    );
+    assert.equal(searchRequest({ ...discoveryRow, last_name: null }, blue, at), null);
+  });
+});
+
+describe('readDiscovery', () => {
+  it('keeps what readable answers found and notes the answers it could not read', () => {
+    const asked = [
+      { id: BLUE, name: 'Blue Plan', payerCode: 'DEMOBCBS' },
+      { id: MEDICAID, name: 'Medicaid', payerCode: 'DEMOMCD' }
+    ];
+    const r = readDiscovery(
+      asked,
+      [
+        { ok: true, text: blueAnswer },
+        { ok: true, text: 'garbage' }
+      ],
+      asked
+    );
+    assert.deepEqual(
+      [r.status, r.note],
+      ['answered', 'Found Blue Plan (member BCX1); Medicaid: the answer could not be read']
     );
   });
 });

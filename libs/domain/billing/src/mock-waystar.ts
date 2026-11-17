@@ -113,6 +113,7 @@ type EligibilityInquiry = {
   trace: string;
   payer: { name: string; id: string };
   subscriber: { lastName: string; firstName: string | null; memberId: string };
+  birthDate: string | null;
   serviceDate: string | null;
 };
 
@@ -137,10 +138,12 @@ export const read270 = (text: string) => {
           firstName: textOf(seg[4]),
           memberId: textOf(seg[9]) ?? ''
         },
+        birthDate: null,
         serviceDate: null
       });
     }
     const last = inquiries.at(-1);
+    if (id === 'DMG' && q === 'D8' && last) last.birthDate = dateOf(seg[2]) ?? null;
     if (id === 'DTP' && q === '291' && last) last.serviceDate = dateOf(seg[3]) ?? null;
   }
   return { interchange: readInterchange(text), inquiries };
@@ -149,21 +152,57 @@ export const read270 = (text: string) => {
 export const isActiveMember = (memberId: string) =>
   !memberId.toUpperCase().startsWith(INACTIVE_MEMBER_PREFIX);
 
+const memberAnswer = (q: EligibilityInquiry) => ({
+  trace: q.trace,
+  active: isActiveMember(q.subscriber.memberId),
+  payer: q.payer,
+  subscriber: q.subscriber,
+  ...(isActiveMember(q.subscriber.memberId) ? {} : { message: 'COVERAGE TERMINATED' }),
+  ...(q.subscriber.memberId.toUpperCase().startsWith(ADVANTAGE_MEMBER_PREFIX)
+    ? { advantagePlan: MOCK_ADVANTAGE_PLAN }
+    : {}),
+  ...stayOf(q)
+});
+
+const MOCK_INSURED = [
+  {
+    payerId: 'DEMOBCBS',
+    lastName: 'NAKAMURA',
+    firstName: 'KENJI',
+    birthDate: '1995-05-27',
+    memberId: 'BCX884213',
+    groupId: 'GRP5521',
+    planName: 'BLUE PLAN PPO'
+  }
+] as const;
+
+const same = (a: string | null, b: string) => (a ?? '').toUpperCase() === b;
+
+const searchAnswer = (q: EligibilityInquiry) => {
+  const insured = MOCK_INSURED.find(
+    (i) =>
+      same(q.payer.id, i.payerId) &&
+      same(q.subscriber.lastName, i.lastName) &&
+      same(q.subscriber.firstName, i.firstName) &&
+      q.birthDate === i.birthDate
+  );
+  return insured
+    ? {
+        active: true,
+        subscriber: { ...q.subscriber, memberId: insured.memberId },
+        groupId: insured.groupId,
+        planName: insured.planName
+      }
+    : { active: false, notFound: true, subscriber: { ...q.subscriber, memberId: null } };
+};
+
 export const respondToEligibility = (text: string, now: Date) => {
   const { interchange, inquiries } = read270(text);
   return inquiries.map((q) =>
     build271(
-      {
-        trace: q.trace,
-        active: isActiveMember(q.subscriber.memberId),
-        payer: q.payer,
-        subscriber: q.subscriber,
-        ...(isActiveMember(q.subscriber.memberId) ? {} : { message: 'COVERAGE TERMINATED' }),
-        ...(q.subscriber.memberId.toUpperCase().startsWith(ADVANTAGE_MEMBER_PREFIX)
-          ? { advantagePlan: MOCK_ADVANTAGE_PLAN }
-          : {}),
-        ...stayOf(q)
-      },
+      q.subscriber.memberId
+        ? memberAnswer(q)
+        : { trace: q.trace, payer: q.payer, ...searchAnswer(q) },
       {
         sender: 'WAYSTAR',
         receiver: interchange?.sender ?? '',

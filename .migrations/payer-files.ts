@@ -1,6 +1,7 @@
-import { PAYER_FILE_KINDS, PAYER_FILE_OUTCOMES } from '@ugula/billing';
+import { PAYER_FILE_KINDS, PAYER_FILE_OUTCOMES, PAYMENT_METHODS } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
+import { oneOf, trimmed } from './checks.ts';
 import { agencySetNullForeignKey } from './foreign-keys.ts';
 
 const list = (values: readonly string[]) => sql.join(values.map((v) => sql.lit(v)));
@@ -25,11 +26,25 @@ const buildPayerFilesTable = (db: Kysely<Database>) =>
     .addColumn('run_id', 'uuid')
     .addColumn('source_key', 'text')
     .addColumn('envelope_rejection', 'text')
+    .addColumn('payment_cents', 'integer')
+    .addColumn('payment_method', 'text')
+    .addColumn('paid_on', 'date')
+    .addColumn('trace_number', 'text')
+    .addColumn('trace_payer_id', 'text')
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addUniqueConstraint('payer_files_agency_id_id_unique', ['agency_id', 'id'])
     .addUniqueConstraint('payer_files_agency_id_digest_unique', ['agency_id', 'digest'])
     .addCheckConstraint('payer_files_kind_check', sql`kind in (${list(PAYER_FILE_KINDS)})`)
     .addCheckConstraint('payer_files_file_name_check', sql`file_name <> ''`)
+    .addCheckConstraint(
+      'payer_files_payment_method_check',
+      oneOf('payment_method', Object.keys(PAYMENT_METHODS))
+    )
+    .addCheckConstraint('payer_files_trace_number_check', trimmed('trace_number'))
+    .addCheckConstraint(
+      'payer_files_payment_check',
+      sql`kind = '835' or (payment_cents is null and payment_method is null and paid_on is null and trace_number is null and trace_payer_id is null)`
+    )
     .addCheckConstraint(
       'payer_files_counts_check',
       sql`item_count >= 0 and problem_count between 0 and item_count`
@@ -102,6 +117,11 @@ const buildPayerFilesIndexes = (db: Kysely<Database>) => [
     .on('payer_files')
     .column('uploaded_by_id'),
   db.schema.createIndex('idx_payer_files_run').on('payer_files').column('run_id'),
+  db.schema
+    .createIndex('idx_payer_files_agency_trace_number')
+    .on('payer_files')
+    .columns(['agency_id', 'trace_number'])
+    .where('trace_number', 'is not', null),
   db.schema
     .createIndex('idx_clearinghouse_downloads_agency_event')
     .on('clearinghouse_downloads')

@@ -47,7 +47,8 @@ export const payerSchema = v.object({
     ),
     null
   ),
-  planType: v.optional(v.nullable(v.picklist(Object.keys(PLAN_TYPES) as PlanType[])), null)
+  planType: v.optional(v.nullable(v.picklist(Object.keys(PLAN_TYPES) as PlanType[])), null),
+  isSearchable: v.optional(v.boolean(), false)
 });
 
 export type PayerInput = v.InferOutput<typeof payerSchema>;

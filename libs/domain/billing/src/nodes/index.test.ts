@@ -56,6 +56,7 @@ describe('createBillingNodes', () => {
         'billing.apply-payer-file@1',
         'billing.send-270@1',
         'billing.send-276@1',
+        'billing.discover-coverage@1',
         'billing.latest-claim-status@1',
         'billing.clearinghouse-health@1',
         'billing.issue-when@1',
@@ -76,7 +77,12 @@ describe('createBillingNodes', () => {
         'billing.read-deadlines@1',
         'billing.raise-task@1',
         'billing.issue-facility-invoices@1',
-        'billing.document-chases@1'
+        'billing.document-chases@1',
+        'billing.read-deposit-pairs@1',
+        'billing.save-deposit-match@1',
+        'billing.read-unmatched-payments@1',
+        'billing.read-period-totals@1',
+        'billing.close-period@1'
       ]
     );
   });

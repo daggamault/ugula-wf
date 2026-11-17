@@ -32,7 +32,9 @@ export const CLAIM_LEDGER = model(
       'Milliseconds since the facility was last invoiced or followed up'
     ),
     f('rejection', 'string', 'Why the last submission was rejected'),
-    f('pendingReview', 'boolean', 'A payer file line on the claim waits for a biller')
+    f('pendingReview', 'boolean', 'A payer file line on the claim waits for a biller'),
+    f('payerAnswered', 'boolean', 'A payer on the claim answered it (paid or denied)'),
+    f('discoveryTried', 'boolean', 'Insurance discovery was tried on the claim')
   ]
 );
 

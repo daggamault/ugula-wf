@@ -4,9 +4,11 @@ import {
   ActivityIcon,
   BadgeDollarSignIcon,
   Building2Icon,
+  CalendarCheckIcon,
   ChartColumnIcon,
   FileUpIcon,
   HospitalIcon,
+  LandmarkIcon,
   ListChecksIcon,
   ReceiptTextIcon,
   SettingsIcon,
@@ -16,7 +18,9 @@ import {
   UsersIcon,
   WorkflowIcon
 } from 'lucide-react';
+import { DEPOSITS_PATH } from './features/deposits/deposits-page.tsx';
 import { FACILITIES_PATH } from './features/facilities/facilities-page.tsx';
+import { PERIODS_PATH } from './features/periods/periods-page.tsx';
 import { ROLES_PATH } from './features/roles/roles-page.tsx';
 import { TASKS_PATH } from './features/tasks/tasks-page.tsx';
 import { USERS_PATH } from './features/users/users-page.tsx';
@@ -59,6 +63,13 @@ export const SECTIONS: readonly Section[] = [
     href: '/claims',
     icon: ReceiptTextIcon,
     permission: 'claims:read'
+  },
+  {
+    id: 'deposits',
+    label: 'Deposits',
+    href: DEPOSITS_PATH,
+    icon: LandmarkIcon,
+    permission: 'payer_files:read'
   },
   {
     id: 'reports',
@@ -130,6 +141,14 @@ export const SECTIONS: readonly Section[] = [
     icon: ShieldCheckIcon,
     group: 'Admin',
     permission: 'roles:read'
+  },
+  {
+    id: 'periods',
+    label: 'Accounting Periods',
+    href: PERIODS_PATH,
+    icon: CalendarCheckIcon,
+    group: 'Admin',
+    permission: 'settings:read'
   },
   {
     id: 'settings',

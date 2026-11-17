@@ -64,6 +64,8 @@ describe('read835', () => {
       payerName: 'MEDICARE PART B',
       payerId: 'DEMOMCR',
       checkNumber: 'EFT0042',
+      originatorId: '1512345678',
+      paymentMethod: 'ACH',
       paidOn: '2026-10-30',
       totalCents: 61_235,
       providerAdjustments: [
@@ -78,6 +80,8 @@ describe('read835', () => {
       payerName: 'BLUE PLAN',
       payerId: 'BCBS1',
       checkNumber: 'NOPAY77',
+      originatorId: '1512345678',
+      paymentMethod: 'NON',
       paidOn: '2026-10-30',
       totalCents: 0,
       providerAdjustments: [],
@@ -224,8 +228,8 @@ describe('read835', () => {
       )
     );
     assert.deepEqual(
-      [r?.payerId, r?.checkNumber, r?.paidOn, r?.totalCents],
-      ['MCD01', 'EFT2', '2026-10-30', 10_000]
+      [r?.payerId, r?.checkNumber, r?.originatorId, r?.paymentMethod, r?.paidOn, r?.totalCents],
+      ['MCD01', 'EFT2', '1512345678', 'ACH', '2026-10-30', 10_000]
     );
     assert.deepEqual(r?.claims, [
       {

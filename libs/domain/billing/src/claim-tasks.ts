@@ -15,6 +15,12 @@ export const CLAIM_TASKS = {
     onDrafts: false,
     onClosed: false
   },
+  'billing.discover-insurance': {
+    label: 'Discover Insurance',
+    description: 'Search the payers that accept searches for coverage the patient did not report.',
+    onDrafts: false,
+    onClosed: false
+  },
   'billing.receive-document': {
     label: 'Add Document',
     description: 'Upload a facesheet, certification, signature form, ABN or MSP form.',

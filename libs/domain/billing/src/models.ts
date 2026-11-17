@@ -1,4 +1,5 @@
 import type { Model, ValueType } from '@ugula/graph';
+import { DEPOSIT_PAIR, UNMATCHED_PAYMENT } from './accounting-models.ts';
 import {
   CHECK_FACTS,
   CHECKED_PAYER,
@@ -36,7 +37,7 @@ import {
   TASK_DUE
 } from './ledger-models.ts';
 import { BLOB } from './model-kit.ts';
-import { COVERAGE, DEMOGRAPHICS, LOCATION, PATIENT } from './party-models.ts';
+import { COVERAGE, COVERAGE_CANDIDATE, DEMOGRAPHICS, LOCATION, PATIENT } from './party-models.ts';
 import {
   PRIOR_PAYER,
   SUBMISSION,
@@ -57,6 +58,7 @@ export const billingTypes = {
   patient: PATIENT.type,
   location: LOCATION.type,
   coverages: { list: COVERAGE.type },
+  candidates: { list: COVERAGE_CANDIDATE.type },
   service: SERVICE.type,
   findings: FINDINGS.type,
   issues: { list: CLAIM_ISSUE.type },
@@ -74,6 +76,8 @@ export const billingTypes = {
   tasksDue: { list: TASK_DUE.type },
   reminders: { list: REMINDER_FACTS.type },
   deadlines: { list: DEADLINE.type },
+  depositPairs: { list: DEPOSIT_PAIR.type },
+  unmatchedPayments: { list: UNMATCHED_PAYMENT.type },
   adjustments: { list: ADJUSTMENT.type },
   remittanceLines: { list: REMITTANCE_LINE.type },
   postings: { list: REMITTANCE_POSTING.type },
@@ -93,6 +97,7 @@ export const billingModels: Model[] = [
   PATIENT,
   LOCATION,
   COVERAGE,
+  COVERAGE_CANDIDATE,
   SERVICE,
   FINDINGS,
   CLAIM_ISSUE,
@@ -112,6 +117,8 @@ export const billingModels: Model[] = [
   TASK_DUE,
   DUE_DATE,
   DEADLINE,
+  DEPOSIT_PAIR,
+  UNMATCHED_PAYMENT,
   ADJUSTMENT,
   REMITTANCE_LINE,
   REMITTANCE_POSTING,

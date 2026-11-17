@@ -16,6 +16,7 @@ import {
   applyPayerFile,
   findImported,
   findReviewLines,
+  paymentOf,
   readPayerFile,
   readRemittanceLines
 } from './payer-files.ts';
@@ -32,6 +33,7 @@ const boss: RunQueueClient = { insert: async () => undefined };
 const fileDb = () =>
   createRecordingDb(({ sql, parameters }) => {
     if (sql.startsWith('insert into "payer_files"')) return [{ id: 'f1' }];
+    if (sql.startsWith('insert into "events"')) return [{ id: 'ev1' }];
     if (sql.startsWith('select "id", "number", "status" from "claims"'))
       return parameters.includes('20261105-1001')
         ? [{ id: 'c1', number: '20261105-1001', status: 'submitted' }]
@@ -126,6 +128,35 @@ describe('readPayerFile', () => {
   });
 });
 
+describe('paymentOf', () => {
+  const remittance = {
+    payerName: 'MEDICARE',
+    payerId: 'MCR',
+    checkNumber: 'EFT-1',
+    originatorId: '1512345678',
+    paymentMethod: 'ACH',
+    paidOn: '2026-10-30',
+    totalCents: 12_345,
+    providerAdjustments: [],
+    claims: []
+  };
+
+  it('reads the BPR payment and TRN trace of the first 835 transaction', () => {
+    assert.deepEqual(paymentOf([remittance, { ...remittance, checkNumber: 'EFT-2' }]), {
+      cents: 12_345,
+      method: 'ACH',
+      paidOn: '2026-10-30',
+      traceNumber: 'EFT-1',
+      tracePayerId: '1512345678'
+    });
+  });
+
+  it('drops a payment method 5010 does not define, and reads nothing from no transaction', () => {
+    assert.equal(paymentOf([{ ...remittance, paymentMethod: 'XYZ' }])?.method, null);
+    assert.equal(paymentOf([]), null);
+  });
+});
+
 describe('findImported and findReviewLines', () => {
   it('finds a file the agency already imported by its digest', async () => {
     const row = {
@@ -160,7 +191,9 @@ describe('findImported and findReviewLines', () => {
 
 describe('applyPayerFile', () => {
   it('records a file with no lines without inserting any', async () => {
-    const { out, queries } = await apply(build835([{ claims: [] }], { createdAt }));
+    const { out, queries } = await apply(
+      build835([{ checkNumber: 'EFT-9', claims: [] }], { createdAt })
+    );
     assert.deepEqual(out, {
       id: 'f1',
       kind: '835',
@@ -172,10 +205,27 @@ describe('applyPayerFile', () => {
       queries.map((q) => [q.sql.split(' ').slice(0, 3).join(' '), q.parameters.at(-1)]),
       [
         ['insert into "payer_files"', 'r1:apply'],
-        ['update "payer_files" set', 'f1']
+        ['update "payer_files" set', 'f1'],
+        ['insert into "events"', null]
       ]
     );
-    assert.deepEqual(queries[1]?.parameters, [0, 0, null, 'f1']);
+    assert.deepEqual(queries[1]?.parameters, [
+      0,
+      0,
+      null,
+      0,
+      'ACH',
+      '2026-10-31',
+      'EFT-9',
+      '1',
+      'f1'
+    ]);
+    assert.deepEqual(queries[2]?.parameters, [
+      't1',
+      'remittance.file_applied',
+      '{"payerFileId":"f1"}',
+      null
+    ]);
   });
 
   it('posts remittances to matched claims and leaves unknown claims unmatched', async () => {
@@ -242,7 +292,7 @@ describe('applyPayerFile', () => {
       ]
     );
     assert.deepEqual(
-      queries.slice(-2).map((q) => [q.sql, q.parameters]),
+      queries.slice(-3, -1).map((q) => [q.sql, q.parameters]),
       [
         [
           'insert into "payer_file_items" ("agency_id", "file_id", "position", "reference", "claim_id", "outcome", "message", "paid_cents", "adjusted_cents") values ($1, $2, $3, $4, $5, $6, $7, $8, $9), ($10, $11, $12, $13, $14, $15, $16, $17, $18)',
@@ -268,8 +318,8 @@ describe('applyPayerFile', () => {
           ]
         ],
         [
-          'update "payer_files" set "item_count" = $1, "problem_count" = $2, "envelope_rejection" = $3 where "id" = $4',
-          [2, 1, null, 'f1']
+          'update "payer_files" set "item_count" = $1, "problem_count" = $2, "envelope_rejection" = $3, "payment_cents" = $4, "payment_method" = $5, "paid_on" = $6, "trace_number" = $7, "trace_payer_id" = $8 where "id" = $9',
+          [2, 1, null, 60_500, 'ACH', '2026-10-31', 'CHK-1', '1', 'f1']
         ]
       ]
     );
