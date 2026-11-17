@@ -42,7 +42,8 @@ const TASKS = [
   'Add Document',
   'Chase Document',
   'Log Records Request',
-  'Post Payment'
+  'Post Payment',
+  'Set Up Payment Plan'
 ];
 
 describe('claimTaskGroups', () => {
@@ -68,7 +69,8 @@ describe('claimTaskGroups', () => {
             ['Add Document', 'Upload a facesheet, certification, signature form, ABN or MSP form.'],
             ['Chase Document', 'Get a missing document by a due date.'],
             ['Log Records Request', 'A payer asked for records; send them by the due date.'],
-            ['Post Payment', 'A payment or refund that came by mail, phone or card.']
+            ['Post Payment', 'A payment or refund that came by mail, phone or card.'],
+            ['Set Up Payment Plan', 'Let the patient pay the balance in installments.']
           ]
         ],
         [
@@ -93,6 +95,7 @@ describe('claimTaskGroups', () => {
       'billing.chase-document',
       'billing.log-records-request',
       'billing.post-payment',
+      'billing.set-up-payment-plan',
       'check',
       'restart'
     ]);

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { inflateSync } from 'node:zlib';
 import { PDFArray, PDFDocument, type PDFRawStream } from 'pdf-lib';
-import { localDate, renderStatement, type StatementData } from './statements.ts';
+import { localDate, renderStatement, type StatementData, startOfLocalDay } from './statements.ts';
 
 const drawnText = async (bytes: Uint8Array) => {
   const doc = await PDFDocument.load(bytes);
@@ -19,8 +19,7 @@ const drawnText = async (bytes: Uint8Array) => {
 };
 
 const statement: StatementData = {
-  number: 2,
-  count: 5,
+  terms: { number: 2, count: 5 },
   issuedOn: '2026-11-01',
   agency: {
     name: 'Development EMS',
@@ -124,6 +123,20 @@ describe('statements', () => {
     ]);
   });
 
+  it('asks for the installment due on a payment plan statement, with the plan balance', async () => {
+    const plan = { ...statement, terms: { dueCents: 5_000, dueOn: '2026-12-01' } };
+    const bytes = await renderStatement(plan);
+    assert.equal((await PDFDocument.load(bytes)).getTitle(), 'Statement Payment plan - Jose Doe');
+    const drawn = await drawnText(bytes);
+    assert.ok(drawn.includes('Statement: Payment plan'));
+    assert.deepEqual(drawn.slice(-5, -1), [
+      'Balance on the payment plan',
+      '$642.20',
+      'Installment due by 2026-12-01',
+      '$50.00'
+    ]);
+  });
+
   it('leaves out missing address parts and prints other phone and ZIP formats as given', async () => {
     const sparse = await renderStatement({
       ...statement,
@@ -181,5 +194,23 @@ describe('statements', () => {
       '$0.00',
       'Please call (217) 555-0100 with insurance information or to arrange payment.'
     ]);
+  });
+});
+
+describe('startOfLocalDay', () => {
+  it('finds midnight of a date in a time zone, across daylight saving changes', () => {
+    assert.equal(startOfLocalDay('2026-12-02', 'UTC'), Date.parse('2026-12-02T00:00:00Z'));
+    assert.equal(
+      startOfLocalDay('2026-12-02', 'America/New_York'),
+      Date.parse('2026-12-02T05:00:00Z')
+    );
+    assert.equal(
+      startOfLocalDay('2026-07-02', 'America/New_York'),
+      Date.parse('2026-07-02T04:00:00Z')
+    );
+    assert.equal(
+      startOfLocalDay('2026-03-09', 'America/New_York'),
+      Date.parse('2026-03-09T04:00:00Z')
+    );
   });
 });

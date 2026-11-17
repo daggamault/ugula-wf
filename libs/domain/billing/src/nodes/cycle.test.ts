@@ -165,7 +165,15 @@ describe('cycleNodes', () => {
       rejection: null,
       pendingReview: false,
       payerAnswered: false,
-      discoveryTried: false
+      discoveryTried: false,
+      sinceEligibilityMs: null,
+      planActive: false,
+      planInstallmentCents: 0,
+      planMisses: 0,
+      planDueOn: null,
+      untilPlanDueMs: null,
+      planPaidCents: 0,
+      planBilled: false
     });
     await run(record, { claimId: 'c1', kind: 'approved', coverageId: 'cov-Blue' });
     assert.equal(claims.events.length, 0);
@@ -210,10 +218,22 @@ describe('cycleNodes', () => {
     const issued = await run(issue, { claimId: 'c1', statementNumber: 2, statementCount: 5 });
     assert.equal(issued.pin, 'issued');
     const [sent] = claims.statements;
-    assert.deepEqual([sent?.number, sent?.count], [2, 5]);
+    assert.deepEqual(sent?.terms, { number: 2, count: 5 });
     const pdf = await PDFDocument.load(sent?.pdf ?? new Uint8Array());
     assert.equal(pdf.getTitle(), 'Statement 2 of 5 - Jane Doe');
     assert.equal(pdf.getCreationDate()?.toISOString(), '2025-12-31T00:00:00.000Z');
+    const plan = await run(issue, { claimId: 'c1', dueCents: 5_000, dueOn: '2026-01-15' });
+    assert.equal(plan.pin, 'issued');
+    assert.deepEqual(claims.statements.at(-1)?.terms, { dueCents: 5_000, dueOn: '2026-01-15' });
+    await assert.rejects(
+      async () => run(issue, { claimId: 'c1', dueCents: 5_000, dueOn: 'soon' }),
+      /not a due date/
+    );
+    await assert.rejects(
+      async () => run(issue, { claimId: 'c1', dueCents: 0, dueOn: '2026-01-15' }),
+      /needs an installment due/
+    );
+    await assert.rejects(async () => run(issue, { claimId: 'c1' }), /number and count/);
     await run(close, { claimId: 'c1', status: 'written_off' });
     await run(close, { claimId: 'c1', status: 'void' });
     assert.deepEqual(claims.closed, ['written_off', 'void']);

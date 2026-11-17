@@ -1,5 +1,6 @@
-import type { ClaimEvent } from '@ugula/billing';
-import type { Db } from '@ugula/db';
+import type { ClaimEvent, LedgerPlan } from '@ugula/billing';
+import { agencyTimeZone, type Db } from '@ugula/db';
+import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 
 export const listLedgerEvents = async (db: Db, claimId: string): Promise<ClaimEvent[]> =>
@@ -40,3 +41,23 @@ export const listLedgerEvents = async (db: Db, claimId: string): Promise<ClaimEv
     route: e.route,
     at: new Date(e.created_at).toISOString()
   }));
+
+export const findActivePlan = async (db: Db, claimId: string): Promise<LedgerPlan | null> => {
+  const plan = await db
+    .selectFrom('payment_plans')
+    .select(['installment_cents', 'interval_days', 'first_due_on', 'missed_count', 'created_at'])
+    .select(agencyTimeZone(sql.ref('payment_plans.agency_id')).as('time_zone'))
+    .where('claim_id', '=', claimId)
+    .where('status', '=', 'active')
+    .executeTakeFirst();
+  return plan
+    ? {
+        installmentCents: plan.installment_cents,
+        intervalDays: plan.interval_days,
+        firstDueOn: plan.first_due_on,
+        missedCount: plan.missed_count,
+        startedAt: new Date(plan.created_at).toISOString(),
+        timeZone: plan.time_zone
+      }
+    : null;
+};

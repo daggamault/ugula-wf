@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
-import { listLedgerEvents } from './ledger.ts';
+import { findActivePlan, listLedgerEvents } from './ledger.ts';
 
 const ROW = {
   kind: 'response',
@@ -54,5 +54,33 @@ describe('listLedgerEvents', () => {
       [event?.at, event?.coverageId, event?.adjustments],
       ['2026-10-21T00:00:00.000Z', null, []]
     );
+  });
+});
+
+describe('findActivePlan', () => {
+  it("reads the claim's active payment plan in the agency time zone, or none", async () => {
+    const { db, queries } = createRecordingDb(() => [
+      {
+        installment_cents: 5_000,
+        interval_days: 30,
+        first_due_on: '2026-12-01',
+        missed_count: 1,
+        created_at: new Date('2026-11-17T10:00:00Z'),
+        time_zone: 'America/New_York'
+      }
+    ]);
+    assert.deepEqual(await findActivePlan(db, 'c1'), {
+      installmentCents: 5_000,
+      intervalDays: 30,
+      firstDueOn: '2026-12-01',
+      missedCount: 1,
+      startedAt: '2026-11-17T10:00:00.000Z',
+      timeZone: 'America/New_York'
+    });
+    assert.equal(
+      queries[0]?.sql,
+      `select "installment_cents", "interval_days", "first_due_on", "missed_count", "created_at", coalesce((select bp.time_zone from billing_profiles bp where bp.agency_id = "payment_plans"."agency_id"), 'UTC') as "time_zone" from "payment_plans" where "claim_id" = $1 and "status" = $2`
+    );
+    assert.equal(await findActivePlan(createRecordingDb(() => []).db, 'c1'), null);
   });
 });

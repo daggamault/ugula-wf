@@ -1929,23 +1929,30 @@ const logRecordsRequest = (): GraphDef => {
 };
 
 const refundOverpayment = (): GraphDef => {
-  const g = graph({
-    execIn: ['exec'],
-    execOut: ['refunded', 'keptCredit'],
-    inputs: [
-      p('claimId', { id: 'claim' }),
-      p('subject', 'string', true),
-      p('context', 'any', true)
-    ],
-    outputs: [],
-    exits: {
-      refunded: exit(
-        'Refunded',
-        'The refund was approved and recorded on the claim, or the credit was gone by then.'
-      ),
-      keptCredit: exit('Kept Credit', 'Someone who may approve refunds kept the credit.')
-    }
-  });
+  const g = graph(
+    {
+      execIn: ['exec'],
+      execOut: ['refunded', 'transferred', 'keptCredit'],
+      inputs: [
+        p('claimId', { id: 'claim' }),
+        p('subject', 'string', true),
+        p('context', 'any', true)
+      ],
+      outputs: [],
+      exits: {
+        refunded: exit(
+          'Refunded',
+          'The refund was approved and recorded on the claim, or the credit was gone by then.'
+        ),
+        transferred: exit(
+          'Transferred',
+          'The credit was moved to another open claim of the same patient.'
+        ),
+        keptCredit: exit('Kept Credit', 'Someone who may approve refunds kept the credit.')
+      }
+    },
+    [{ name: 'problem', type: 'string', default: null }]
+  );
   g.add('follow', 'billing.follow-claim', { label: 'Show on the Claim' });
   g.add('read', 'billing.read-refund', { label: 'Read Credit Balance' });
   g.add('due', 'billing.refund-due', { label: 'Refund Due' });
@@ -1954,7 +1961,9 @@ const refundOverpayment = (): GraphDef => {
     dueOn: ['string', 'due.dueOn'],
     why: [{ list: 'string' }, 'due.reasons']
   });
-  g.add('approveSummary', 'billing.refund-summary', { label: 'Task Summary' });
+  g.add('approveSummary', 'billing.refund-summary', { label: 'Refund Summary' });
+  g.add('targets', 'billing.credit-targets', { label: 'Credit Transfer Choices' });
+  g.add('problem', 'std.var.get', { label: 'Why It Was Not Moved', config: { name: 'problem' } });
   g.add('approve', 'std.human.task', {
     label: 'Approve Refund',
     config: {
@@ -1962,12 +1971,22 @@ const refundOverpayment = (): GraphDef => {
       queue: 'billing-approvals',
       permission: 'claims:approve',
       instructions:
-        'More has been paid on this claim than it charges. The credit balance, who paid it and the day the refund is due are in the details (Medicare and Medicaid overpayments must be returned within 60 days of being identified). Approve the refund to record it on the claim, then send it; or keep the credit.',
-      fields: [{ name: 'note', type: 'string', label: 'Refund reference' }],
-      outcomes: ['refund', 'keepCredit'],
+        "More has been paid on this claim than it charges. The credit balance, who paid it and the day the refund is due are in the details (Medicare and Medicaid overpayments must be returned within 60 days of being identified). Approve the refund to record it on the claim, then send it; move a patient's credit to another open claim of the same patient instead; or keep the credit.",
+      fields: [
+        { name: 'note', type: 'string', label: 'Refund reference or note' },
+        {
+          name: 'toClaimId',
+          type: { id: 'claim' },
+          label: 'Move to claim',
+          required: ['transfer']
+        }
+      ],
+      outcomes: ['refund', 'transfer', 'keepCredit'],
       hints: {
         refund:
           'Records a refund of the credit still owed on the claim, to whoever paid it; then send the refund.',
+        transfer:
+          'Moves the credit to the chosen claim of the same patient, never more than the credit or what that claim owes; if refused, this task comes back with why.',
         keepCredit: 'Keeps the credit and closes the claim as paid.'
       }
     }
@@ -1979,17 +1998,64 @@ const refundOverpayment = (): GraphDef => {
   g.add('amount', 'billing.refund-amount', { label: 'Refund Amount' });
   g.add('owed', 'std.flow.branch', { label: 'Still Owed?' });
   g.add('record', 'billing.record-refund', { label: 'Record Refund' });
+  g.add('credit', 'billing.refund-facts.break', { label: 'Credit Balance' });
+  g.add('patientsCredit', 'std.flow.branch', { label: "The Patient's Credit?" });
+  g.add('transfer', 'billing.transfer-credit', { label: 'Transfer Credit' });
+  g.add('remember', 'std.var.set', { label: 'Remember Why', config: { name: 'problem' } });
+  g.add('payerCredit', 'std.var.set', {
+    label: 'Only a Patient Credit Moves',
+    config: { name: 'problem' },
+    values: { value: "a payer's overpayment is refunded to that payer, not moved to another claim" }
+  });
   g.ret('refundedReturn', 'refunded');
+  g.ret('transferredReturn', 'transferred');
   g.ret('keptReturn', 'keptCredit');
   g.wire('entry.exec', 'follow.exec');
-  g.wire('entry.claimId', 'follow.claimId', 'read.claimId', 'reread.claimId', 'record.claimId');
+  g.wire(
+    'entry.claimId',
+    'follow.claimId',
+    'read.claimId',
+    'reread.claimId',
+    'record.claimId',
+    'targets.claimId',
+    'transfer.claimId'
+  );
   g.wire('entry.subject', 'approve.subject');
   g.wire('follow.then', 'read.exec');
   g.wire('read.refund', 'due.refund', 'approveSummary.refund');
   g.wire('due.dueOn', 'approve.due', 'approveSummary.dueOn');
   g.wire(details, 'approve.context');
-  g.wire('approveSummary.summary', 'approve.summary');
-  g.wire('read.then', 'approve.exec');
+  g.wire(
+    template(g, 'approveText', 'Task Summary', '[Not moved: {problem}. ]{summary}', {
+      problem: 'problem.value',
+      summary: 'approveSummary.summary'
+    }),
+    'approve.summary'
+  );
+  g.wire('read.then', 'targets.exec');
+  g.wire('targets.then', 'approve.exec');
+  g.wire('targets.options', 'approve.options');
+  g.wire('approve.transfer', 'patientsCredit.exec');
+  g.wire('read.refund', 'credit.refund');
+  g.wire(
+    condition(
+      g,
+      'byPatient',
+      'Credit Made by the Patient',
+      { coverageId: [{ id: 'coverage' }, 'credit.coverageId'] },
+      [{ field: 'coverageId', op: 'empty' }]
+    ),
+    'patientsCredit.condition'
+  );
+  g.wire('patientsCredit.true', 'transfer.exec');
+  g.wire('patientsCredit.false', 'payerCredit.exec');
+  g.wire('payerCredit.then', 'read.exec');
+  g.wire('approve.toClaimId', 'transfer.toClaimId');
+  g.wire('approve.note', 'transfer.note');
+  g.wire('transfer.transferred', 'transferredReturn.exec');
+  g.wire('transfer.refused', 'remember.exec');
+  g.wire('transfer.reason', 'remember.value');
+  g.wire('remember.then', 'read.exec');
   g.wire('approve.refund', 'reread.exec');
   g.wire('reread.refund', 'amount.refund');
   g.wire('reread.then', 'owed.exec');
@@ -2228,7 +2294,7 @@ export const recoveryGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.refund-overpayment',
     'Refund Overpayment',
-    'Works a credit balance: reads who overpaid, decides when the refund is due (Refund Due) and asks someone who may approve claims to approve it. It then reads the credit again and records a refund of what is still owed (Refund Amount), never more than the credit or what that payer paid. Started by the claim cycle.',
+    'Works a credit balance: reads who overpaid, decides when the refund is due (Refund Due) and asks someone who may approve claims to approve it. It then reads the credit again and records a refund of what is still owed (Refund Amount), never more than the credit or what that payer paid. Instead, the credit can be moved to another open claim of the same patient (Transfer Credit, never more than the credit or what that claim owes). Started by the claim cycle.',
     refundOverpayment()
   )
 ];

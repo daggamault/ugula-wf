@@ -13,6 +13,7 @@ import type {
   StatementSource,
   SubmissionSource
 } from './nodes/stores.ts';
+import type { StatementTerms } from './statements.ts';
 import { unused } from './testing-unused.ts';
 
 export type RecordedEvent = ClaimEvent & { key: string; note: string };
@@ -36,7 +37,7 @@ export type MemoryClaimOptions = {
   restartRefused?: string;
 };
 
-type SavedStatement = { key: string; number: number; count: number; pdf: Uint8Array };
+type SavedStatement = { key: string; terms: StatementTerms; pdf: Uint8Array };
 
 type FiledClaim = { key: string; coverageId: string; resubmission: boolean; file: string };
 

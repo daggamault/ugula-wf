@@ -79,8 +79,9 @@ describe('memoryClaims', () => {
   it('records saved statements under their source key', async () => {
     const claims = memoryClaims();
     const pdf = new Uint8Array([1]);
-    await claims.store.saveStatement('r', 'c1', 'k', { number: 1, count: 3, pdf });
-    assert.deepEqual(claims.statements, [{ key: 'k', number: 1, count: 3, pdf }]);
+    const terms = { number: 1, count: 3 };
+    await claims.store.saveStatement('r', 'c1', 'k', { terms, pdf });
+    assert.deepEqual(claims.statements, [{ key: 'k', terms, pdf }]);
   });
 
   it('reports the first status change stale only when asked to', async () => {

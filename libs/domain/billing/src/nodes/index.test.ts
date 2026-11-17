@@ -82,7 +82,13 @@ describe('createBillingNodes', () => {
         'billing.save-deposit-match@1',
         'billing.read-unmatched-payments@1',
         'billing.read-period-totals@1',
-        'billing.close-period@1'
+        'billing.record-period-close@1',
+        'billing.start-payment-plan@1',
+        'billing.record-plan-miss@1',
+        'billing.end-payment-plan@1',
+        'billing.record-collections-placement@1',
+        'billing.credit-targets@1',
+        'billing.transfer-credit@1'
       ]
     );
   });

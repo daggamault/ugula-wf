@@ -1186,7 +1186,24 @@ const statementSummaries = (): GraphDef => {
 const billPatient = (): GraphDef => {
   const g = claimStep(
     ['done', 'writeOff'],
-    [p('statementNumber', 'integer'), p('statementCount', 'integer')]
+    [
+      p('statementNumber', 'integer', true),
+      p('statementCount', 'integer', true),
+      d(
+        'dueCents',
+        'integer',
+        'Installment Due (Cents)',
+        'For a payment plan statement, the installment it asks the patient to pay.',
+        true
+      ),
+      d(
+        'dueOn',
+        'string',
+        'Installment Due On',
+        'For a payment plan statement, the date the installment is due (YYYY-MM-DD).',
+        true
+      )
+    ]
   );
   g.add('balance', 'billing.read-patient-balance', { label: 'Read Patient Balance' });
   g.add('responsibility', 'billing.patient-responsibility', { label: 'Patient Responsibility' });
@@ -1256,6 +1273,8 @@ const billPatient = (): GraphDef => {
   g.wire('billable.false', 'doneReturn.exec');
   g.wire('entry.statementNumber', 'statement.statementNumber', 'summaries.statementNumber');
   g.wire('entry.statementCount', 'statement.statementCount', 'summaries.statementCount');
+  g.wire('entry.dueCents', 'statement.dueCents');
+  g.wire('entry.dueOn', 'statement.dueOn');
   g.wire('entry.subject', 'profileNeeded.subject', 'addressNeeded.subject');
   g.wire('entry.context', 'profileNeeded.context', 'addressNeeded.context', 'summaries.context');
   g.wire('summaries.profileNeeded', 'profileNeeded.summary');
@@ -1296,8 +1315,37 @@ const POLICY_FIELDS = [
   field('autoWriteOffCents', 'integer', 'Auto Write-Off Limit (Cents)'),
   field('reviewRequired', 'boolean', 'Review Required'),
   field('writeOffApprovalCents', 'integer', 'Write-Off Approval Limit (Cents)'),
-  field('collectionsApprovalCents', 'integer', 'Collections Approval Limit (Cents)')
+  field('collectionsApprovalCents', 'integer', 'Collections Approval Limit (Cents)'),
+  field('planMinInstallmentCents', 'integer', 'Plan Minimum Installment (Cents)'),
+  field('planMaxMonths', 'integer', 'Plan Longest Term (Months)'),
+  field('planGraceDays', 'number', 'Plan Grace (Days)'),
+  field('planMissesToDefault', 'integer', 'Plan Misses Before Default'),
+  field('eligibilityMaxAgeDays', 'number', 'Eligibility Age Limit (Days)')
 ];
+
+export const CLAIM_POLICY = shared.decision(
+  'billing.claim-policy',
+  'Claim Policy',
+  'How the claim cycle works for each kind of payer billed (its claim filing indicator, or patient once no payer is left): how long it waits on a payer, a facility and a payer file line before acting, how long a follow-up waits for a claim status from the payer, how many patient statements it sends and how far apart, which balances it writes off or sends to collections review, whether a biller reviews the claim first, the largest write-off and collections placement closed without approval from someone with claims:approve, the payment plans billers may set up without that approval (the smallest installment and the longest term), the days of grace after an installment is due and the missed installments that default a plan, and how old the last eligibility answer of the payer may be before the claim is filed.',
+  table([field('payerKind', 'string', 'Payer Kind')], POLICY_FIELDS, [], {
+    payerWaitDays: 30,
+    statementCount: 3,
+    statementIntervalDays: 30,
+    facilityWaitDays: 60,
+    reviewWaitDays: 1,
+    statusWaitDays: 1,
+    collectionsThresholdCents: 0,
+    autoWriteOffCents: 0,
+    reviewRequired: true,
+    writeOffApprovalCents: 50_000,
+    collectionsApprovalCents: 0,
+    planMinInstallmentCents: 2_500,
+    planMaxMonths: 12,
+    planGraceDays: 10,
+    planMissesToDefault: 3,
+    eligibilityMaxAgeDays: 30
+  })
+);
 
 type Situation = {
   id: string;
@@ -1305,6 +1353,7 @@ type Situation = {
   reason: string;
   step: string;
   stepLabel?: string;
+  value?: Port;
   inputs: Record<string, [ValueType, Port]>;
   rules: Test[];
 };
@@ -1314,6 +1363,8 @@ const ledgerPin = (name: string, type: ValueType): [ValueType, Port] => [type, `
 const BALANCE = ledgerPin('balanceCents', 'integer');
 
 const BILLED = ledgerPin('coverageId', { id: 'coverage' });
+
+const PLAN_ACTIVE = ledgerPin('planActive', 'boolean');
 
 const DECISION: ValueType = { object: { step: 'string', reason: 'string' } };
 
@@ -1440,8 +1491,25 @@ const SITUATIONS: Situation[] = [
     reason: 'The balance is small enough to write off',
     step: 'writeOff',
     stepLabel: 'Write Off a Small Balance',
-    inputs: { balanceCents: BALANCE, autoWriteOffCents: ['integer', 'policy.autoWriteOffCents'] },
-    rules: [{ field: 'balanceCents', op: 'lte', input: 'autoWriteOffCents' }]
+    inputs: {
+      balanceCents: BALANCE,
+      autoWriteOffCents: ['integer', 'policy.autoWriteOffCents'],
+      planActive: PLAN_ACTIVE
+    },
+    rules: [
+      { field: 'balanceCents', op: 'lte', input: 'autoWriteOffCents' },
+      { field: 'planActive', op: 'is', value: false }
+    ]
+  },
+  {
+    id: 'onPlan',
+    label: 'The Patient Pays on a Plan',
+    reason: '',
+    step: 'awaitPlan',
+    stepLabel: 'Payment Plan Step',
+    value: 'planDecided.value',
+    inputs: { planActive: PLAN_ACTIVE },
+    rules: [{ field: 'planActive', op: 'is', value: true }]
   },
   {
     id: 'uncovered',
@@ -1516,9 +1584,32 @@ const SITUATIONS: Situation[] = [
     stepLabel: 'Write Off Below Collections',
     inputs: {
       balanceCents: BALANCE,
-      collectionsThresholdCents: ['integer', 'policy.collectionsThresholdCents']
+      collectionsThresholdCents: ['integer', 'policy.collectionsThresholdCents'],
+      planActive: PLAN_ACTIVE
     },
-    rules: [{ field: 'balanceCents', op: 'lt', input: 'collectionsThresholdCents' }]
+    rules: [
+      { field: 'balanceCents', op: 'lt', input: 'collectionsThresholdCents' },
+      { field: 'planActive', op: 'is', value: false }
+    ]
+  }
+];
+
+const PLAN_SITUATIONS: Situation[] = [
+  {
+    id: 'planMissed',
+    label: 'An Installment Was Missed',
+    reason: 'The patient missed an installment of the payment plan',
+    step: 'planMissed',
+    inputs: { planGraceLeftMs: ['integer', 'planGraceLeftMs.leftMs'] },
+    rules: [{ field: 'planGraceLeftMs', op: 'lte', value: 0 }]
+  },
+  {
+    id: 'planUnbilled',
+    label: 'The Next Installment Is Not Billed Yet',
+    reason: 'The next installment of the payment plan is not billed yet',
+    step: 'planStatement',
+    inputs: { planBilled: ledgerPin('planBilled', 'boolean') },
+    rules: [{ field: 'planBilled', op: 'is', value: false }]
   }
 ];
 
@@ -1535,7 +1626,8 @@ const WAIT_STEPS = [
   ['await', 'payerWaitLeftMs.result'],
   ['awaitPatient', 'statementWaitLeftMs.result'],
   ['facility', 'facilityWaitLeftMs.leftMs'],
-  ['awaitReview', 'reviewWait.leftMs']
+  ['awaitReview', 'reviewWait.leftMs'],
+  ['awaitPlan', 'planGraceLeftMs.leftMs']
 ] as const;
 
 const claimWaitLeft = (): GraphDef => {
@@ -1598,6 +1690,32 @@ const nextClaimStep = (): GraphDef => {
       d('statementNumber', 'integer', 'Statement', 'Which patient statement to send.', true),
       d('statementCount', 'integer', 'Statements', 'How many patient statements the policy sends.'),
       d(
+        'dueCents',
+        'integer',
+        'Installment Due (Cents)',
+        'For a payment plan statement, what it asks the patient to pay: the installment less what was paid toward it, never more than the balance.',
+        true
+      ),
+      d(
+        'dueOn',
+        'string',
+        'Installment Due On',
+        'For a payment plan statement, the date the installment is due (YYYY-MM-DD).',
+        true
+      ),
+      d(
+        'planDefaults',
+        'boolean',
+        'Plan Defaults',
+        'Whether this missed installment reaches the misses the Claim Policy allows, so the plan defaults.'
+      ),
+      d(
+        'refreshEligibility',
+        'boolean',
+        'Check Eligibility First',
+        "Whether the payer's last eligibility answer is older than the Claim Policy allows, so eligibility is checked again before the claim is filed."
+      ),
+      d(
         'writeOffApprovalCents',
         'integer',
         'Write-Off Approval Limit (Cents)',
@@ -1625,27 +1743,7 @@ const nextClaimStep = (): GraphDef => {
     ]
   );
   g.add('ledger', 'billing.claim-ledger.break', { label: 'Claim Ledger' });
-  g.add('policy', 'std.table.decide', {
-    label: 'Claim Policy',
-    config: shared.decision(
-      'billing.claim-policy',
-      'Claim Policy',
-      'How the claim cycle works for each kind of payer billed (its claim filing indicator, or patient once no payer is left): how long it waits on a payer, a facility and a payer file line before acting, how long a follow-up waits for a claim status from the payer, how many patient statements it sends and how far apart, which balances it writes off or sends to collections review, whether a biller reviews the claim first, and the largest write-off and collections placement closed without approval from someone with claims:approve.',
-      table([field('payerKind', 'string', 'Payer Kind')], POLICY_FIELDS, [], {
-        payerWaitDays: 30,
-        statementCount: 3,
-        statementIntervalDays: 30,
-        facilityWaitDays: 60,
-        reviewWaitDays: 1,
-        statusWaitDays: 1,
-        collectionsThresholdCents: 0,
-        autoWriteOffCents: 0,
-        reviewRequired: true,
-        writeOffApprovalCents: 50_000,
-        collectionsApprovalCents: 0
-      })
-    )
-  });
+  g.add('policy', 'std.table.decide', { label: 'Claim Policy', config: CLAIM_POLICY });
   const waitLeft = (id: string, label: string, days: string, elapsed?: string) => {
     g.add(id, 'billing.claim-wait-left', { label });
     g.wire(`policy.${days}`, `${id}.waitDays`);
@@ -1700,21 +1798,40 @@ const nextClaimStep = (): GraphDef => {
     'sinceFacilityContactMs'
   );
   waitLeft('reviewWait', 'Payer File Review Wait', 'reviewWaitDays');
-  const held = SITUATIONS.map((s) => ({
-    ...s,
-    when: condition(g, s.id, s.label, s.inputs, s.rules)
-  }));
+  g.add('sinceDue', 'std.math.negate', { label: 'Time Since the Installment Was Due' });
+  g.wire('ledger.untilPlanDueMs', 'sinceDue.value');
+  waitLeft('planGraceLeftMs', 'Plan Grace Left', 'planGraceDays');
+  g.wire('sinceDue.result', 'planGraceLeftMs.elapsedMs');
+  waitLeft(
+    'eligibilityLeft',
+    'Eligibility Age Left',
+    'eligibilityMaxAgeDays',
+    'sinceEligibilityMs'
+  );
+  const steps = (situations: Situation[]) =>
+    situations.map((s) => ({
+      id: `${s.id}Step`,
+      label: s.stepLabel ?? `${labelOf(s.step)} Step`,
+      when: condition(g, s.id, s.label, s.inputs, s.rules),
+      value: s.value ?? fixed({ step: s.step, reason: s.reason })
+    }));
+  firstOf(
+    g,
+    'planDecided',
+    'First Payment Plan Situation That Applies',
+    DECISION,
+    steps(PLAN_SITUATIONS),
+    fixed({
+      step: 'awaitPlan',
+      reason: 'The patient pays on a payment plan and the next installment is not due yet'
+    })
+  );
   const decided = firstOf(
     g,
     'decided',
     'First Situation That Applies',
     DECISION,
-    held.map((s) => ({
-      id: `${s.id}Step`,
-      label: s.stepLabel ?? `${labelOf(s.step)} Step`,
-      when: s.when,
-      value: fixed({ step: s.step, reason: s.reason })
-    })),
+    steps(SITUATIONS),
     fixed({
       step: 'collections',
       reason: 'Every payer and statement is done and a balance remains'
@@ -1749,6 +1866,42 @@ const nextClaimStep = (): GraphDef => {
     values: { b: MIN_WAIT_MS }
   });
   g.add('nextStatement', 'std.math.add', { label: 'Next Statement', values: { b: 1 } });
+  g.add('installmentLeft', 'std.math.subtract', { label: 'Installment Less What Was Paid' });
+  g.add('dueNow', 'std.math.min', { label: 'Never More Than the Balance' });
+  g.add('dueCents', 'std.logic.choose', {
+    label: 'Installment to Bill',
+    config: { mode: 'byCase', type: 'integer', cases: [{ when: 'planStatement' }] }
+  });
+  g.add('dueOn', 'std.logic.choose', {
+    label: 'Installment Due Date',
+    config: { mode: 'byCase', type: 'string', cases: [{ when: 'planStatement' }] }
+  });
+  g.add('misses', 'std.math.add', { label: 'Misses With This One', values: { b: 1 } });
+  const defaults = condition(
+    g,
+    'planDefaults',
+    'The Misses Reach the Limit',
+    {
+      misses: ['integer', 'misses.result'],
+      planMissesToDefault: ['integer', 'policy.planMissesToDefault']
+    },
+    [{ field: 'misses', op: 'gte', input: 'planMissesToDefault' }]
+  );
+  const stale = condition(
+    g,
+    'refreshEligibility',
+    'The Eligibility Answer Is Too Old to File',
+    {
+      step: ['string', 'decision.step'],
+      sinceEligibilityMs: ['integer', 'ledger.sinceEligibilityMs'],
+      eligibilityLeftMs: ['integer', 'eligibilityLeft.leftMs']
+    },
+    [
+      { field: 'step', op: 'is', value: 'submit' },
+      { field: 'sinceEligibilityMs', op: 'present' },
+      { field: 'eligibilityLeftMs', op: 'lt', value: 0 }
+    ]
+  );
   g.add('statementNumber', 'std.logic.choose', {
     label: 'Statement to Send',
     config: { mode: 'byCase', type: 'integer', cases: [{ when: 'statement' }] }
@@ -1773,7 +1926,26 @@ const nextClaimStep = (): GraphDef => {
   g.wire('policy.writeOffApprovalCents', 'return.writeOffApprovalCents');
   g.wire('policy.collectionsApprovalCents', 'return.collectionsApprovalCents');
   g.wire(waitLeft('statusWait', 'Claim Status Wait', 'statusWaitDays'), 'return.statusWaitMs');
-  g.wire(step, 'statementNumber.key', 'waitLeft.key', 'coverageId.key', 'payerName.key');
+  g.wire(
+    step,
+    'statementNumber.key',
+    'waitLeft.key',
+    'coverageId.key',
+    'payerName.key',
+    'dueCents.key',
+    'dueOn.key'
+  );
+  g.wire('ledger.planInstallmentCents', 'installmentLeft.a');
+  g.wire('ledger.planPaidCents', 'installmentLeft.b');
+  g.wire('installmentLeft.result', 'dueNow.a');
+  g.wire('ledger.balanceCents', 'dueNow.b');
+  g.wire('dueNow.result', 'dueCents.case1');
+  g.wire('ledger.planDueOn', 'dueOn.case1');
+  g.wire('dueCents.value', 'return.dueCents');
+  g.wire('dueOn.value', 'return.dueOn');
+  g.wire('ledger.planMisses', 'misses.a');
+  g.wire(defaults, 'return.planDefaults');
+  g.wire(stale, 'return.refreshEligibility');
   g.wire(step, 'return.step');
   for (const [i, [, port]] of WAIT_STEPS.entries()) g.wire(port, `waitLeft.case${i + 1}`);
   g.wire('waitLeft.value', 'waitMs.a');
@@ -1863,6 +2035,9 @@ const ROUTES = [
   'awaitPatient',
   'awaitReview',
   'followUp',
+  'planMissed',
+  'planStatement',
+  'awaitPlan',
   'statement',
   'collections',
   'writeOff',
@@ -1895,6 +2070,21 @@ const cycleClaim = (): GraphDef => {
     label: 'Clear the Checks',
     config: { name: 'checked' },
     values: { value: UNCHECKED }
+  });
+  g.add('refresh', 'std.flow.branch', { label: 'Check Eligibility First?' });
+  g.add('eligibilityInputs', 'std.object.make', {
+    label: 'Forced Eligibility Inputs',
+    config: {
+      fields: [
+        { name: 'claimId', type: { id: 'claim' } },
+        { name: 'force', type: 'boolean' }
+      ]
+    },
+    values: { force: true }
+  });
+  g.add('eligibility', 'std.flow.run-workflow', {
+    label: 'Check Eligibility Again',
+    config: { workflow: 'billing.check-eligibility', version: 1 }
   });
   g.add('checkFirst', 'std.flow.branch', { label: 'Check the Claim First?' });
   g.add('rejection', 'std.logic.choose', {
@@ -2033,6 +2223,30 @@ const cycleClaim = (): GraphDef => {
     }
   });
   recordEvent(g, 'facilityKeepWaiting', 'facility_follow_up', 'Keep Waiting on the Facility');
+  g.add('planDefaults', 'std.flow.branch', { label: 'Too Many Installments Missed?' });
+  g.add('planMissed', 'std.human.task', {
+    label: 'Installment Missed',
+    config: {
+      title: 'Installment missed',
+      queue: 'billing-collections',
+      instructions:
+        'The patient did not pay the installment of the payment plan by its due date and the days of grace (the details show the balance). Contact the patient, then keep the plan, which counts the miss and bills the next installment, or end it, which sends the claim back to patient statements and collections.',
+      outcomes: ['keepPlan', 'endPlan'],
+      hints: {
+        keepPlan:
+          'Counts the missed installment and keeps the plan; too many misses (Claim Policy) default it.',
+        endPlan: 'Ends the plan as defaulted; statements and collections review take over.'
+      }
+    }
+  });
+  g.add('keepPlan', 'billing.record-plan-miss', { label: 'Count the Missed Installment' });
+  g.add('defaultPlan', 'billing.end-payment-plan', {
+    label: 'Default the Plan',
+    values: {
+      status: 'defaulted',
+      note: 'Payment plan defaulted: an installment was missed'
+    }
+  });
   for (const [id, status, label] of CLOSINGS) {
     g.add(id, 'billing.close-claim', { label, values: { status } });
   }
@@ -2059,7 +2273,13 @@ const cycleClaim = (): GraphDef => {
   g.wire('ledger.signalsSeen', 'record.signalsSeen', 'wait.after');
   g.wire(joinText(g, 'stepReason', 'Why This Step', '; ', 'next.reasons'), 'record.reason');
   g.wire('record.recorded', 'clear.exec');
-  g.wire('clear.then', 'checkFirst.exec');
+  g.wire('clear.then', 'refresh.exec');
+  g.wire('next.refreshEligibility', 'refresh.condition');
+  g.wire('refresh.true', 'eligibility.exec');
+  g.wire('refresh.false', 'checkFirst.exec');
+  g.wire('entry.claimId', 'eligibilityInputs.claimId');
+  g.wire('eligibilityInputs.object', 'eligibility.inputs');
+  g.wire('eligibility.then', 'checkFirst.exec');
   g.wire('next.check', 'checkFirst.condition');
   g.wire('checkFirst.true', 'check.exec');
   g.wire('checkFirst.false', 'route.exec');
@@ -2084,6 +2304,7 @@ const cycleClaim = (): GraphDef => {
   g.wire('route.await', 'wait.exec');
   g.wire('route.awaitPatient', 'wait.exec');
   g.wire('route.awaitReview', 'wait.exec');
+  g.wire('route.awaitPlan', 'wait.exec');
   g.wire('next.waitMs', 'wait.timeoutMs');
 
   const steps = [
@@ -2137,6 +2358,18 @@ const cycleClaim = (): GraphDef => {
   g.wire('route.facility', 'wait.exec');
   g.wire('route.followUp', 'followUp.exec');
   g.wire('route.statement', 'statement.exec');
+  g.wire('route.planStatement', 'statement.exec');
+  g.wire('next.dueCents', 'statement.dueCents');
+  g.wire('next.dueOn', 'statement.dueOn');
+  g.wire('route.planMissed', 'planDefaults.exec');
+  g.wire('next.planDefaults', 'planDefaults.condition');
+  g.wire('planDefaults.true', 'defaultPlan.exec');
+  g.wire('planDefaults.false', 'planMissed.exec');
+  g.wire(subject, 'planMissed.subject');
+  g.wire(context, 'planMissed.context');
+  g.wire('planMissed.keepPlan', 'keepPlan.exec');
+  g.wire('planMissed.endPlan', 'defaultPlan.exec');
+  g.wire('entry.claimId', 'keepPlan.claimId', 'defaultPlan.claimId');
   g.wire('next.statementNumber', 'statement.statementNumber');
   g.wire('next.statementCount', 'statement.statementCount');
   g.wire('next.statusWaitMs', 'followUp.statusWaitMs');
@@ -2181,6 +2414,16 @@ const cycleClaim = (): GraphDef => {
       }
     ),
     'collections.summary'
+  );
+  g.wire(
+    template(
+      g,
+      'planMissedSummary',
+      'Installment Missed Summary',
+      'The patient missed an installment of the payment plan[ ({balance} open)]; contact the patient, then keep or end the plan',
+      { balance: balanceText }
+    ),
+    'planMissed.summary'
   );
   g.wire(
     template(
@@ -2319,7 +2562,7 @@ export const cycleGraphs: SeedGraph[] = [
   asRule(
     'billing.next-claim-step',
     'Next Claim Step',
-    'Decides what a claim needs next from where it stands, with the waits, statements and limits of the Claim Policy table, taking the first situation that applies, top to bottom, and saying why: refund an overpayment, work a payer denial, reconcile a payer response, wait on a responsible facility and follow up when it has not paid in time, review the claim before a payer and file it once approved, wait on the payer and follow up, discover insurance once when no payer covers the claim, review before the patient is billed or confirm payers, send or wait between patient statements, write off a small balance, review an unpaid balance for collections, or close.',
+    'Decides what a claim needs next from where it stands, with the waits, statements and limits of the Claim Policy table, taking the first situation that applies, top to bottom, and saying why: refund an overpayment, work a payer denial, reconcile a payer response, wait on a responsible facility and follow up when it has not paid in time, review the claim before a payer and file it once approved (checking eligibility again first when the last answer is too old), wait on the payer and follow up, discover insurance once when no payer covers the claim, work a payment plan (a missed installment, the statement for the next one, or wait for it), review before the patient is billed or confirm payers, send or wait between patient statements, write off a small balance, review an unpaid balance for collections, or close. While a payment plan is active, nothing is written off or sent to collections.',
     nextClaimStep()
   ),
   asRule(
@@ -2391,13 +2634,13 @@ export const cycleGraphs: SeedGraph[] = [
   asStage(
     'billing.bill-patient',
     'Bill Patient',
-    'Takes off what balance-billing law keeps off the patient (Patient Responsibility), then sends the next patient statement for what is left, or asks for the billing profile or patient address it needs first.',
+    'Takes off what balance-billing law keeps off the patient (Patient Responsibility), then sends the next patient statement for what is left, or the statement of a payment plan installment, or asks for the billing profile or patient address it needs first.',
     billPatient()
   ),
   asWorkflow(
     'billing.cycle-claim',
     'Cycle Claim',
-    "Works a claim from its first bill until it closes, one step at a time: decides the Next Claim Step and shows it as the claim's status, checks the claim before a review or filing and asks a biller to fix what blocks it, has it reviewed, files it to each payer in order (asking a biller when it cannot), follows up on late payers, works denials (Work Denial), reconciles payments, refunds overpayments (Refund Overpayment), waits on a responsible facility and follows up when it has not paid in time, searches for insurance once when no payer covers the claim (Discover Insurance), confirms payers when there are none, reviews before the first patient statement, sends statements, and has write-offs and collections above the Claim Policy limits approved. Between steps it sleeps until the claim changes or a wait runs out.",
+    "Works a claim from its first bill until it closes, one step at a time: decides the Next Claim Step and shows it as the claim's status, checks the claim before a review or filing and asks a biller to fix what blocks it, has it reviewed, files it to each payer in order (asking a biller when it cannot), follows up on late payers, works denials (Work Denial), reconciles payments, refunds overpayments (Refund Overpayment), checks eligibility again before filing when the last answer is too old (Check Eligibility), bills payment plan installments and asks a biller about a missed one, waits on a responsible facility and follows up when it has not paid in time, searches for insurance once when no payer covers the claim (Discover Insurance), confirms payers when there are none, reviews before the first patient statement, sends statements, and has write-offs and collections above the Claim Policy limits approved. Between steps it sleeps until the claim changes or a wait runs out.",
     cycleClaim()
   ),
   asWorkflow(

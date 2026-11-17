@@ -1,4 +1,4 @@
-import { actionNode, branchNode, pin } from '@ugula/graph';
+import { actionNode, branchNode, isIsoDate, pin } from '@ugula/graph';
 import {
   CLAIM_STATUSES,
   CLOSED_CLAIM_STATUSES,
@@ -12,7 +12,7 @@ import {
 } from '../claims.ts';
 import { billingTypes } from '../models.ts';
 import { isCompleteAddress } from '../patients.ts';
-import { localDate, renderStatement } from '../statements.ts';
+import { localDate, renderStatement, type StatementTerms } from '../statements.ts';
 import { requiredText, textOrNull } from '../values.ts';
 import { build837, readX837Claim, submitterIssues, type X837Claim } from '../x837.ts';
 import { claimIdOf, claimIdPin } from './claims.ts';
@@ -48,6 +48,31 @@ const coverageIdPin = pin(
     description: 'The payer on the claim the claim is submitted to.'
   }
 );
+
+type TermsInputs = {
+  statementNumber?: number | null;
+  statementCount?: number | null;
+  dueCents?: number | null;
+  dueOn?: string | null;
+};
+
+const statementTermsOf = (inputs: TermsInputs): StatementTerms => {
+  const { statementNumber: number, statementCount: count, dueCents, dueOn } = inputs;
+  if (dueCents !== null && dueCents !== undefined) {
+    if (dueCents <= 0) throw new Error('A payment plan statement needs an installment due');
+    if (typeof dueOn !== 'string' || !isIsoDate(dueOn)) {
+      throw new Error(`${String(dueOn)} is not a due date`);
+    }
+    return { dueCents, dueOn };
+  }
+  if (number === null || number === undefined || count === null || count === undefined) {
+    throw new Error('A statement needs its number and count, or an installment due');
+  }
+  if (number < 1 || number > count) {
+    throw new Error(`Statement ${number} is not one of the ${count} the cycle sends`);
+  }
+  return { number, count };
+};
 
 export const cycleNodes: NodesOf = (stores) => {
   const claims = () => stores().claims;
@@ -284,19 +309,31 @@ export const cycleNodes: NodesOf = (stores) => {
       title: 'Issue Patient Statement',
       category: CATEGORY,
       description:
-        "Renders a PDF statement of the claim's charges, payments and balance due, numbered out of the statements the cycle sends and dated in the agency's time zone, stores it and logs it on the claim.",
+        "Renders a PDF statement of the claim's charges, payments and balance due, numbered out of the statements the cycle sends, or for a payment plan asking for the installment due by its date, dated in the agency's time zone, stores it and logs it on the claim.",
       level: 'basic',
       keywords: ['statement', 'patient bill', 'invoice', 'self pay'],
       effect: true,
       inputs: [
         claimIdPin,
         pin('statementNumber', 'integer', {
+          optional: true,
           label: 'Statement',
-          description: 'Which statement of the cycle this is.'
+          description: 'Which statement of the cycle this is, unless it asks for an installment.'
         }),
         pin('statementCount', 'integer', {
+          optional: true,
           label: 'Statements in the Cycle',
           description: 'How many statements the cycle sends.'
+        }),
+        pin('dueCents', 'integer', {
+          optional: true,
+          label: 'Installment Due (Cents)',
+          description: 'For a payment plan statement, the installment it asks the patient to pay.'
+        }),
+        pin('dueOn', 'string', {
+          optional: true,
+          label: 'Installment Due On',
+          description: 'For a payment plan statement, the date the installment is due (YYYY-MM-DD).'
         })
       ],
       outputs: [
@@ -315,11 +352,7 @@ export const cycleNodes: NodesOf = (stores) => {
       },
       compute: async (inputs, _, ctx) => {
         const claimId = claimIdOf(inputs.claimId);
-        const number = inputs.statementNumber;
-        const count = inputs.statementCount;
-        if (number < 1 || number > count) {
-          throw new Error(`Statement ${number} is not one of the ${count} the cycle sends`);
-        }
+        const terms = statementTermsOf(inputs);
         const store = claims();
         const { agency, ...source } = await store.statementData(ctx.runId, claimId);
         if (!agency) return { exit: 'missing', outputs: { need: 'profile' } };
@@ -330,11 +363,10 @@ export const cycleNodes: NodesOf = (stores) => {
         const pdf = await renderStatement({
           ...source,
           agency: from,
-          number,
-          count,
+          terms,
           issuedOn: localDate(ctx.now, timeZone)
         });
-        await store.saveStatement(ctx.runId, claimId, ctx.key, { number, count, pdf });
+        await store.saveStatement(ctx.runId, claimId, ctx.key, { terms, pdf });
         return { exit: 'issued', outputs: { need: null } };
       }
     }),

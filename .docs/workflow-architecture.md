@@ -162,13 +162,13 @@ Base checks (MVP): Billing Signature or Exception · PCS Required (scheduled non
 
 ### 4.8 Patient balance and money out
 
-| Workflow               | Event                                                                                        | MVP       |
-| ---------------------- | -------------------------------------------------------------------------------------------- | --------- |
-| W Statement Cycle      | patient balance opened (statements, dunning, suppression rules)                              | yes       |
-| W Post Patient Payment | payment entered                                                                              | yes       |
-| W Refund Overpayment   | credit balance detected (R Refund Due · task Approve Refund · deadline for Medicare 60 days) | yes       |
-| W Place in Collections | policy threshold reached (task approve)                                                      | task only |
-| W Payment Plan         | plan created / installment missed                                                            | post-MVP  |
+| Workflow               | Event                                                                                                        | MVP                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| W Statement Cycle      | patient balance opened (statements, dunning, suppression rules)                                              | yes                                                      |
+| W Post Patient Payment | payment entered                                                                                              | yes                                                      |
+| W Refund Overpayment   | credit balance detected (R Refund Due · task Approve Refund · deadline for Medicare 60 days)                 | yes                                                      |
+| W Place in Collections | status becomes collections (task approve under the Claim Policy, then placement and the daily placement CSV) | yes (built: Place Collections)                           |
+| W Payment Plan         | plan created / installment missed                                                                            | yes (built: Set Up Payment Plan, the cycle's plan steps) |
 
 ### 4.9 Documents and deadlines
 

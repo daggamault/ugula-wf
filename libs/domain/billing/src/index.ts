@@ -132,6 +132,7 @@ export {
   isCodeSet,
   normalizeCode
 } from './code-sets.ts';
+export { type Placement, placementCsv } from './collections.ts';
 export { isPaymentMethod, PAYMENT_METHODS, type PaymentMethod } from './deposits.ts';
 export { type CoverageCandidate, coverageCandidates, discoveryNote } from './discovery.ts';
 export {
@@ -194,12 +195,14 @@ export { UNREAD_FINDINGS } from './narrative.ts';
 export {
   type AccountingStore,
   type AppliedPayerFile,
+  type BalanceStore,
   type BillingStores,
   type BlobRef,
   type CalendarStore,
   type ClaimStatusCheck,
   type ClaimStore,
   type ClaimTaskStore,
+  type CreditTarget,
   createBillingNodes,
   type DeadlineFacts,
   type DepositPair,
@@ -209,6 +212,7 @@ export {
   type EligibilityCheck,
   type ExchangeStore,
   type FeeStore,
+  type NewPaymentPlan,
   type PatientStore,
   type PayerFileStore,
   type PayerStore,
@@ -256,12 +260,20 @@ export {
   payerQuery
 } from './payers.ts';
 export {
+  addDays,
+  type EndedPlanStatus,
+  isEndedPlanStatus,
+  type LedgerPlan,
+  PLAN_STATUSES,
+  type PlanStatus
+} from './payment-plans.ts';
+export {
   type RemittanceLine,
   type RemittancePosting,
   remittanceCoverage,
   remittanceLine
 } from './remittances.ts';
-export { localDate } from './statements.ts';
+export { localDate, type StatementTerms } from './statements.ts';
 export { type InterchangeAcknowledgment, readTA1 } from './ta1.ts';
 export { type InboundKind, readX12 } from './x12.ts';
 export { build270, type EligibilityRequest } from './x270.ts';

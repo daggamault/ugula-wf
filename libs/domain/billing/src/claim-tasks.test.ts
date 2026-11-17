@@ -11,7 +11,8 @@ describe('CLAIM_TASKS', () => {
       'billing.receive-document',
       'billing.chase-document',
       'billing.log-records-request',
-      'billing.post-payment'
+      'billing.post-payment',
+      'billing.set-up-payment-plan'
     ]);
     assert.deepEqual(
       CLAIM_TASK_KEYS.filter((k) => CLAIM_TASKS[k].onDrafts),

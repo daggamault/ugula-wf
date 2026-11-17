@@ -75,5 +75,13 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
     periodTotals: unused('accounting'),
     closePeriod: unused('accounting')
   },
+  balances: stores.balances ?? {
+    startPlan: unused('balance'),
+    missPlan: unused('balance'),
+    endPlan: unused('balance'),
+    placeCollections: unused('balance'),
+    creditTargets: unused('balance'),
+    transferCredit: unused('balance')
+  },
   completer: stores.completer ?? { complete: unused('completion') }
 });

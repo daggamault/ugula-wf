@@ -1,4 +1,4 @@
-import type { ClaimStore, ClaimTaskStore } from '@ugula/billing';
+import type { BalanceStore, ClaimStore, ClaimTaskStore } from '@ugula/billing';
 import type { Announce } from '../../shared/live.ts';
 
 const announcing =
@@ -16,6 +16,18 @@ export const announceClaimTasks = (store: ClaimTaskStore, announce: Announce): C
     setPayers: after(store.setPayers),
     postPayment: after(store.postPayment),
     addDocument: after(store.addDocument)
+  };
+};
+
+export const announceBalances = (store: BalanceStore, announce: Announce): BalanceStore => {
+  const after = announcing(announce);
+  return {
+    ...store,
+    startPlan: after(store.startPlan),
+    missPlan: after(store.missPlan),
+    endPlan: after(store.endPlan),
+    placeCollections: after(store.placeCollections),
+    transferCredit: after(store.transferCredit)
   };
 };
 

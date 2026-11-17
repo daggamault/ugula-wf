@@ -34,7 +34,27 @@ export const CLAIM_LEDGER = model(
     f('rejection', 'string', 'Why the last submission was rejected'),
     f('pendingReview', 'boolean', 'A payer file line on the claim waits for a biller'),
     f('payerAnswered', 'boolean', 'A payer on the claim answered it (paid or denied)'),
-    f('discoveryTried', 'boolean', 'Insurance discovery was tried on the claim')
+    f('discoveryTried', 'boolean', 'Insurance discovery was tried on the claim'),
+    f(
+      'sinceEligibilityMs',
+      'integer',
+      'Milliseconds since the payer being billed last answered an eligibility check (271)'
+    ),
+    f('planActive', 'boolean', 'The patient pays on an active payment plan'),
+    f('planInstallmentCents', 'integer', 'Installment of the payment plan (cents)'),
+    f('planMisses', 'integer', 'Installments of the payment plan missed so far'),
+    f('planDueOn', 'string', 'Date the next installment is due (YYYY-MM-DD)'),
+    f(
+      'untilPlanDueMs',
+      'integer',
+      'Milliseconds until the next installment is due (negative once past)'
+    ),
+    f(
+      'planPaidCents',
+      'integer',
+      'What the patient paid toward that installment since the last one was due (cents)'
+    ),
+    f('planBilled', 'boolean', 'A plan statement was sent for that installment')
   ]
 );
 

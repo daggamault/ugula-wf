@@ -16,13 +16,17 @@ import {
   isClosedStatus,
   isDenialRoute,
   isFacilityKind,
+  type LedgerPlan,
   type LineAdjudication,
   localDate,
+  money,
   type NewClaim,
-  type ResponsibleParty
+  type ResponsibleParty,
+  type StatementTerms
 } from '@ugula/billing';
 import {
   ACTIVE_RUN_STATUSES,
+  agencyTimeZone,
   allocateControlNumber,
   applyClaimEdit,
   batchKey,
@@ -471,6 +475,24 @@ const otherClaimRuns = (runId: string, claimId: string) =>
         or r.id = (select cycle_run_id from claims where id = ${claimId})
       )`;
 
+const endPlanOnClose = (
+  tx: Db,
+  agencyId: string,
+  claimId: string,
+  status: ClaimStatus,
+  sourceKey: string
+) =>
+  sql`
+    with ended as (
+      update payment_plans set status = ${status === 'paid' ? 'completed' : 'cancelled'}, updated_at = now()
+      where claim_id = ${claimId} and status = 'active'
+      returning claim_id
+    )
+    insert into claim_events (agency_id, claim_id, kind, note, source_key)
+    select ${agencyId}, claim_id, 'plan_ended', ${status === 'paid' ? 'Payment plan completed: the balance is paid' : `Payment plan cancelled: the claim closed as ${CLAIM_STATUS_LABELS[status].toLowerCase()}`}, ${`${sourceKey}:plan`}
+    from ended
+    on conflict (claim_id, source_key) do nothing`.execute(tx);
+
 export const createCycleStore = (
   db: Db,
   boss: RunQueueClient
@@ -615,6 +637,7 @@ export const createCycleStore = (
         })
         .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
         .execute();
+      await endPlanOnClose(tx, claim.agency_id, claim.id, status, sourceKey);
       await tx
         .deleteFrom('signals')
         .where('agency_id', '=', claim.agency_id)
@@ -808,7 +831,30 @@ export const createLedgerStore = (
                   .where('t.status', '=', 'open')
                   .where('g.key', '=', REVIEW_LINE_WORKFLOW)
               )
-              .as('pending_review')
+              .as('pending_review'),
+            eb
+              .selectFrom('payment_plans as pp')
+              .select((pb) =>
+                pb
+                  .fn<LedgerPlan>('json_build_object', [
+                    sql.lit('installmentCents'),
+                    'pp.installment_cents',
+                    sql.lit('intervalDays'),
+                    'pp.interval_days',
+                    sql.lit('firstDueOn'),
+                    'pp.first_due_on',
+                    sql.lit('missedCount'),
+                    'pp.missed_count',
+                    sql.lit('startedAt'),
+                    'pp.created_at',
+                    sql.lit('timeZone'),
+                    agencyTimeZone(sql.ref('pp.agency_id'))
+                  ])
+                  .as('plan')
+              )
+              .whereRef('pp.claim_id', '=', 'c.id')
+              .where('pp.status', '=', 'active')
+              .as('plan')
           ])
           .where('c.id', '=', claimId)
           .where('c.agency_id', '=', runAgency(db, runId))
@@ -858,6 +904,9 @@ export const createLedgerStore = (
       serviceDate: claim.service_date,
       pickupState: claim.pickup_state,
       pendingReview: claim.pending_review === true,
+      plan: claim.plan
+        ? { ...claim.plan, startedAt: new Date(claim.plan.startedAt).toISOString() }
+        : null,
       signalsSeen: claim.received ?? 0,
       reference: [claim.pcr_number, patient].filter(Boolean).join(' · '),
       coverages,
@@ -936,12 +985,17 @@ const day = (d: Date | string, timeZone: string | null) =>
 export const statementKey = (
   agencyId: string,
   claimId: string,
-  number: number,
+  terms: StatementTerms,
   sourceKey: string
 ) =>
-  `statements/${agencyId}/${claimId}/${number}-${createHash('sha256').update(sourceKey).digest('hex').slice(0, 16)}.pdf`;
+  `statements/${agencyId}/${claimId}/${'dueCents' in terms ? `plan-${terms.dueOn}` : terms.number}-${createHash('sha256').update(sourceKey).digest('hex').slice(0, 16)}.pdf`;
 
-const PAYMENT_KINDS = ['response', 'refunded', 'balance_protected'] as const;
+const statementNote = (terms: StatementTerms) =>
+  'dueCents' in terms
+    ? `Payment plan statement: ${money(terms.dueCents)} due ${terms.dueOn}`
+    : `Patient statement ${terms.number} of ${terms.count}`;
+
+const PAYMENT_KINDS = ['response', 'refunded', 'balance_protected', 'credit_transferred'] as const;
 
 export const createStatementStore = (
   db: Db,
@@ -1049,10 +1103,10 @@ export const createStatementStore = (
     };
   },
 
-  saveStatement: async (runId, claimId, sourceKey, { number, count, pdf }) => {
+  saveStatement: async (runId, claimId, sourceKey, { terms, pdf }) => {
     const claim = await agencyClaim(db, runId, claimId);
     const document = await blobs.putBytes(
-      statementKey(claim.agency_id, claim.id, number, sourceKey),
+      statementKey(claim.agency_id, claim.id, terms, sourceKey),
       pdf,
       'application/pdf'
     );
@@ -1062,7 +1116,7 @@ export const createStatementStore = (
         agency_id: claim.agency_id,
         claim_id: claim.id,
         kind: 'statement',
-        note: `Patient statement ${number} of ${count}`,
+        note: statementNote(terms),
         document: JSON.stringify(document),
         source_key: sourceKey
       })

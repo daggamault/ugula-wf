@@ -55,6 +55,8 @@ const PROTECTED = sql.lit('balance_protected' satisfies ClaimEventKind);
 
 const DENIED = sql.lit('denied' satisfies ClaimEventKind);
 
+const TRANSFERRED = sql.lit('credit_transferred' satisfies ClaimEventKind);
+
 const DECIDED = sql.lit('decided' satisfies ClaimEventKind);
 
 const buildClaimsTable = (db: Kysely<Database>) =>
@@ -537,7 +539,7 @@ const buildClaimEventsTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint(
       'claim_events_amounts_check',
-      sql`(kind = ${RESPONSE} and paid_cents >= 0 and adjusted_cents >= 0) or (kind = ${REFUNDED} and paid_cents < 0 and adjusted_cents = 0) or (kind = ${PROTECTED} and paid_cents = 0 and adjusted_cents > 0) or (paid_cents = 0 and adjusted_cents = 0)`
+      sql`(kind = ${RESPONSE} and paid_cents >= 0 and adjusted_cents >= 0) or (kind = ${REFUNDED} and paid_cents < 0 and adjusted_cents = 0) or (kind = ${PROTECTED} and paid_cents = 0 and adjusted_cents > 0) or (kind = ${TRANSFERRED} and paid_cents <> 0 and adjusted_cents = 0) or (paid_cents = 0 and adjusted_cents = 0)`
     )
     .addCheckConstraint(
       'claim_events_payment_check',

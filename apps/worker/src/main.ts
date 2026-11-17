@@ -16,7 +16,12 @@ import { PgBoss } from 'pg-boss';
 import { type Config, clearinghouseOf, parseConfig } from './config.ts';
 import { createAccountingStore } from './features/accounting/queries.ts';
 import { createFeeStore } from './features/charges/queries.ts';
-import { announceClaims, announceClaimTasks } from './features/claims/announce.ts';
+import {
+  announceBalances,
+  announceClaims,
+  announceClaimTasks
+} from './features/claims/announce.ts';
+import { createBalanceStore } from './features/claims/balances.ts';
 
 import { createClaimStore, createClaimTaskStore } from './features/claims/queries.ts';
 import { createExchangeStore } from './features/clearinghouse/exchange.ts';
@@ -174,6 +179,9 @@ if (import.meta.main) {
           calendar: scope.guard(createCalendarStore(db)),
           documents: scope.guard(createDocumentStore(db)),
           accounting: scope.guard(createAccountingStore(db)),
+          balances: scope.guard(
+            announceBalances(createBalanceStore(db, blobs, boss, now), announce)
+          ),
           completer: createCompleter({
             url: config.COMPLETIONS_URL,
             model: config.COMPLETIONS_MODEL,

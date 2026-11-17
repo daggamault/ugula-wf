@@ -105,6 +105,30 @@ const LEDGER_EVENTS = [
     'Claim Reopened',
     'A payment, takeback or refund was posted to a paid, written-off or collections claim, which reopened it.',
     [CLAIM, NOTE]
+  ),
+  event(
+    'payment_plan.started',
+    'Payment Plan Started',
+    'The patient agreed to pay the balance of a claim in installments.',
+    [CLAIM, NOTE]
+  ),
+  event(
+    'payment_plan.missed',
+    'Payment Plan Missed',
+    'The patient missed an installment and the plan was kept.',
+    [CLAIM, NOTE]
+  ),
+  event(
+    'payment_plan.ended',
+    'Payment Plan Ended',
+    'A payment plan was completed, defaulted or cancelled.',
+    [CLAIM, NOTE]
+  ),
+  event(
+    'collections.placed',
+    'Collections Placed',
+    'A claim sent to collections was placed with the collection agency and added to its placement file.',
+    [CLAIM, NOTE]
   )
 ];
 
@@ -120,7 +144,11 @@ export const CLAIM_LEDGER_EVENTS = {
   eligibility: 'eligibility.answered',
   document: 'document.received',
   closed: 'claim.closed',
-  reopened: 'claim.reopened'
+  reopened: 'claim.reopened',
+  plan_started: 'payment_plan.started',
+  plan_missed: 'payment_plan.missed',
+  plan_ended: 'payment_plan.ended',
+  collections_placed: 'collections.placed'
 } as const satisfies Partial<Record<ClaimEventKind, string>>;
 
 const LEDGER_COLUMNS: Readonly<Record<string, string>> = {

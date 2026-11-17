@@ -25,6 +25,9 @@ describe('describeProgress', () => {
       { step: 'reviewPatient', balanceCents: 1 },
       { step: 'confirmPayers', balanceCents: 1 },
       { step: 'overpaid', balanceCents: -2_500 },
+      { step: 'planMissed', balanceCents: 1 },
+      { step: 'planStatement', dueCents: 5_000, dueOn: '2026-12-01', balanceCents: 1 },
+      { step: 'awaitPlan', waitMs: 1, balanceCents: 1 },
       { step: 'statement', statement: 2, balanceCents: 1 },
       { step: 'awaitPatient', waitMs: 1, balanceCents: 1 },
       { step: 'awaitReview', waitMs: 1, balanceCents: -1 },
@@ -51,6 +54,10 @@ describe('describeProgress', () => {
       confirmPayers:
         'No payer is on this claim. A task is waiting to add one or confirm the patient pays.',
       overpaid: '$25.00 more has been paid than the claim charges. A refund task is waiting.',
+      planMissed:
+        'The patient missed an installment of the payment plan. A task is waiting to keep or end the plan.',
+      planStatement: 'On a payment plan. Sending the statement for $50.00 due 2026-12-01.',
+      awaitPlan: 'On a payment plan. Waiting for the next installment.',
       statement: 'Sending patient statement 2 of 3.',
       awaitPatient:
         'Waiting on the patient. The next statement goes out 30 days after the last one.',

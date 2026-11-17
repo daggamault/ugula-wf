@@ -26,6 +26,10 @@ describe('billingEvents', () => {
         'document.received',
         'claim.closed',
         'claim.reopened',
+        'payment_plan.started',
+        'payment_plan.missed',
+        'payment_plan.ended',
+        'collections.placed',
         'claim.classified',
         'claim.status_changed',
         'claim.paid',
@@ -43,6 +47,9 @@ describe('CLAIM_LEDGER_EVENTS', () => {
     assert.equal(CLAIM_LEDGER_EVENTS.resubmitted, 'claim.submitted');
     assert.equal(CLAIM_LEDGER_EVENTS.response, 'remittance.posted');
     assert.equal(CLAIM_LEDGER_EVENTS.reopened, 'claim.reopened');
+    assert.equal(CLAIM_LEDGER_EVENTS.plan_missed, 'payment_plan.missed');
+    assert.equal(CLAIM_LEDGER_EVENTS.collections_placed, 'collections.placed');
+    assert.ok(!Object.hasOwn(CLAIM_LEDGER_EVENTS, 'credit_transferred'));
     assert.ok(!Object.hasOwn(CLAIM_LEDGER_EVENTS, 'edited'));
   });
 });

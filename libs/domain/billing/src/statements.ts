@@ -17,9 +17,15 @@ type StatementPayment = {
   adjustedCents: number;
 };
 
+export type StatementTerms =
+  | { number: number; count: number }
+  | { dueCents: number; dueOn: string };
+
+export const statementHeading = (t: StatementTerms) =>
+  'dueCents' in t ? 'Payment plan' : `${t.number} of ${t.count}`;
+
 export type StatementData = {
-  number: number;
-  count: number;
+  terms: StatementTerms;
   issuedOn: string;
   agency: MailingAddress & { phone: string };
   patient: MailingAddress;
@@ -51,6 +57,20 @@ export const localDate = (at: Date, timeZone: string) => {
   return `${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`;
 };
 
+const offsetMs = (at: number, timeZone: string) => {
+  const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longOffset' })
+    .formatToParts(at)
+    .find((p) => p.type === 'timeZoneName')?.value;
+  const [, sign, hours, minutes] = /GMT([+-])(\d{2}):(\d{2})/.exec(name ?? '') ?? [];
+  return sign ? (sign === '-' ? -1 : 1) * (Number(hours) * 60 + Number(minutes)) * 60_000 : 0;
+};
+
+export const startOfLocalDay = (on: string, timeZone: string) => {
+  const utc = Date.parse(`${on}T00:00:00Z`);
+  const guess = utc - offsetMs(utc, timeZone);
+  return utc - offsetMs(guess, timeZone);
+};
+
 const zip = (z: string | null) =>
   z && z.length === 9 ? `${z.slice(0, 5)}-${z.slice(5)}` : (z ?? '');
 
@@ -66,7 +86,7 @@ const phone = (p: string) =>
 
 export const renderStatement = async (s: StatementData): Promise<Uint8Array> => {
   const pdf = await PDFDocument.create();
-  pdf.setTitle(printable(`Statement ${s.number} of ${s.count} - ${s.patient.name}`));
+  pdf.setTitle(printable(`Statement ${statementHeading(s.terms)} - ${s.patient.name}`));
   pdf.setProducer('ugula');
   pdf.setCreationDate(new Date(`${s.issuedOn}T00:00:00Z`));
   pdf.setModificationDate(new Date(`${s.issuedOn}T00:00:00Z`));
@@ -98,7 +118,7 @@ export const renderStatement = async (s: StatementData): Promise<Uint8Array> => 
   right('PATIENT STATEMENT', 562, 14, bold);
   y -= 18;
   for (const [label, value] of [
-    ['Statement', `${s.number} of ${s.count}`],
+    ['Statement', statementHeading(s.terms)],
     ['Date', s.issuedOn],
     ['Reference', s.reference],
     ['Date of service', s.serviceDate ?? 'Unknown']
@@ -145,8 +165,16 @@ export const renderStatement = async (s: StatementData): Promise<Uint8Array> => 
   }
   rule();
   y -= 16;
-  text('Amount due from patient', 50, 13, bold);
-  right(money(s.balanceCents), 562, 13, bold);
+  if ('dueCents' in s.terms) {
+    text('Balance on the payment plan', 50);
+    right(money(s.balanceCents), 562);
+    y -= 18;
+    text(`Installment due by ${s.terms.dueOn}`, 50, 13, bold);
+    right(money(s.terms.dueCents), 562, 13, bold);
+  } else {
+    text('Amount due from patient', 50, 13, bold);
+    right(money(s.balanceCents), 562, 13, bold);
+  }
   y -= 30;
   text(
     `Please call ${phone(s.agency.phone)} with insurance information or to arrange payment.`,

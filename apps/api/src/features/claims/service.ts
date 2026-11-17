@@ -25,7 +25,7 @@ import {
 } from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobRef, BlobStore } from '@ugula/storage';
-import { listLedgerEvents } from '../../shared/ledger.ts';
+import { findActivePlan, listLedgerEvents } from '../../shared/ledger.ts';
 import { type Publish, publishAfter } from '../../shared/live.ts';
 import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok, type Result } from '../../shared/result.ts';
@@ -89,11 +89,12 @@ export const createClaimService = ({ db, boss, now, blobs, publish, rules }: Cla
       const claim = await findClaim(db, agencyId, id);
       if (!claim) return notFound;
       const open = unchangeable(claim.status) === null;
-      const [files, payerFiles, documents, events, check] = await Promise.all([
+      const [files, payerFiles, documents, events, plan, check] = await Promise.all([
         listClaimFiles(db, id),
         listClaimPayerFiles(db, id),
         listClaimDocuments(db, id),
         open ? listLedgerEvents(db, id) : [],
+        open ? findActivePlan(db, id) : null,
         findClaimCheck(db, agencyId, id)
       ]);
       const at = now();
@@ -109,7 +110,8 @@ export const createClaimService = ({ db, boss, now, blobs, publish, rules }: Cla
                 claimFiling: c.claim_filing
               })),
               events,
-              facilityId: claim.facility_id
+              facilityId: claim.facility_id,
+              plan
             },
             at
           )

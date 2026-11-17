@@ -16,8 +16,9 @@ import type { MedicareFee, MedicareLocality } from '../medicare-fees.ts';
 import type { Address, NewPatient, Patient } from '../patients.ts';
 import type { PayerFileOutcome } from '../payer-files.ts';
 import type { DirectoryPayer, PayerLookup } from '../payers.ts';
+import type { EndedPlanStatus } from '../payment-plans.ts';
 import type { RemittanceLine, RemittancePosting } from '../remittances.ts';
-import type { StatementData } from '../statements.ts';
+import type { StatementData, StatementTerms } from '../statements.ts';
 import type { InboundKind } from '../x12.ts';
 import type { PendingSubmission, Submitter } from '../x837.ts';
 
@@ -85,7 +86,7 @@ export type PayerStore = {
 
 type AgencyProfile = StatementData['agency'] & { timeZone: string };
 
-export type StatementSource = Omit<StatementData, 'number' | 'count' | 'issuedOn' | 'agency'> & {
+export type StatementSource = Omit<StatementData, 'terms' | 'issuedOn' | 'agency'> & {
   agency: AgencyProfile | null;
 };
 
@@ -250,7 +251,7 @@ export type ClaimStore = {
     runId: string,
     claimId: string,
     sourceKey: string,
-    statement: { number: number; count: number; pdf: Uint8Array }
+    statement: { terms: StatementTerms; pdf: Uint8Array }
   ) => Promise<void>;
   ledger: (runId: string, claimId: string) => Promise<TrackedLedger | null>;
   submission: (runId: string, claimId: string, coverageId: string) => Promise<SubmissionSource>;
@@ -449,6 +450,44 @@ export type AccountingStore = {
   closePeriod: (runId: string, period: string, closedBy: string | null) => Promise<void>;
 };
 
+export type NewPaymentPlan = {
+  installmentCents: number;
+  intervalDays: number;
+  firstDueOn: string;
+  createdBy: string | null;
+};
+
+export type CreditTarget = { claimId: string; reference: string; balanceCents: number };
+
+export type BalanceStore = {
+  startPlan: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    plan: NewPaymentPlan
+  ) => Promise<{ status: 'started' } | Refused>;
+  missPlan: (runId: string, claimId: string, sourceKey: string, note: string) => Promise<void>;
+  endPlan: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    ended: { status: EndedPlanStatus; note: string }
+  ) => Promise<void>;
+  placeCollections: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    placement: { agencyName: string; feePct: number }
+  ) => Promise<void>;
+  creditTargets: (runId: string, claimId: string) => Promise<CreditTarget[]>;
+  transferCredit: (
+    runId: string,
+    claimId: string,
+    sourceKey: string,
+    transfer: { toClaimId: string; note: string }
+  ) => Promise<{ status: 'transferred'; cents: number } | Refused>;
+};
+
 export type BillingStores = {
   patients: PatientStore;
   payers: PayerStore;
@@ -463,6 +502,7 @@ export type BillingStores = {
   calendar: CalendarStore;
   documents: DocumentStore;
   accounting: AccountingStore;
+  balances: BalanceStore;
   completer: Completer;
 };
 

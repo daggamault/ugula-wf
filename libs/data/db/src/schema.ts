@@ -22,6 +22,7 @@ import type {
   PayerFileOutcome,
   PaymentMethod,
   PcsType,
+  PlanStatus,
   PlanType,
   Rurality,
   ServiceLevel,
@@ -837,6 +838,32 @@ type DepositsTable = {
   created_at: Timestamp;
 };
 
+type PaymentPlansTable = {
+  id: Generated<string>;
+  agency_id: string;
+  claim_id: string;
+  installment_cents: number;
+  interval_days: number;
+  first_due_on: ColumnType<string, string, string>;
+  status: Generated<PlanStatus>;
+  missed_count: Generated<number>;
+  created_by_id: string | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+};
+
+type CollectionsPlacementsTable = {
+  id: Generated<string>;
+  agency_id: string;
+  claim_id: string;
+  agency_name: string;
+  fee_pct: ColumnType<string, number, number>;
+  balance_cents: number;
+  placed_on: ColumnType<string, string, string>;
+  recalled_on: ColumnType<string | null, string | null | undefined, string | null>;
+  created_at: Timestamp;
+};
+
 type AccountingPeriodsTable = {
   agency_id: string;
   period_on: ColumnType<string, string, string>;
@@ -1002,6 +1029,8 @@ export type Database = {
   payer_files: PayerFilesTable;
   deposits: DepositsTable;
   accounting_periods: AccountingPeriodsTable;
+  payment_plans: PaymentPlansTable;
+  collections_placements: CollectionsPlacementsTable;
   clearinghouse_connections: ClearinghouseConnectionsTable;
   clearinghouse_downloads: ClearinghouseDownloadsTable;
   payer_file_items: PayerFileItemsTable;

@@ -1,3 +1,5 @@
+import { billingStatements, type LedgerPlan, planProgress } from './payment-plans.ts';
+
 export const CLAIM_EVENT_KINDS = [
   'opened',
   'decided',
@@ -33,7 +35,12 @@ export const CLAIM_EVENT_KINDS = [
   'responsibility',
   'document',
   'reopened',
-  'discovery'
+  'discovery',
+  'plan_started',
+  'plan_missed',
+  'plan_ended',
+  'collections_placed',
+  'credit_transferred'
 ] as const;
 
 export type ClaimEventKind = (typeof CLAIM_EVENT_KINDS)[number];
@@ -91,7 +98,12 @@ export const PATIENT_EVENT_KINDS: readonly ClaimEventKind[] = [
   'facility_follow_up',
   'responsibility',
   'document',
-  'discovery'
+  'discovery',
+  'plan_started',
+  'plan_missed',
+  'plan_ended',
+  'collections_placed',
+  'credit_transferred'
 ];
 
 export const DENIAL_ROUTES = ['denial', 'appeal', 'fix'] as const;
@@ -227,6 +239,7 @@ export type ClaimLedger = {
   serviceDate?: string | null;
   pickupState?: string | null;
   pendingReview?: boolean;
+  plan?: LedgerPlan | null;
 };
 
 export const MIN_WAIT_MS = 60_000;
@@ -242,6 +255,9 @@ export const CLAIM_STEPS = [
   'overpaid',
   'await',
   'followUp',
+  'planMissed',
+  'planStatement',
+  'awaitPlan',
   'statement',
   'awaitPatient',
   'awaitReview',
@@ -268,6 +284,9 @@ export const STEP_STATUSES: Readonly<Partial<Record<ClaimStepName, ClaimStatus>>
   overpaid: 'reconcile',
   await: 'submitted',
   followUp: 'follow_up',
+  planMissed: 'patient_balance',
+  planStatement: 'patient_balance',
+  awaitPlan: 'patient_balance',
   statement: 'patient_balance',
   awaitPatient: 'patient_balance',
   awaitReview: 'reconcile',
@@ -281,9 +300,17 @@ type CoverageStep = { coverage: LedgerCoverage; balanceCents: number };
 export type ClaimStep =
   | ({ step: 'review' | 'submit' | 'reconcile' | 'workDenial' | 'followUp' } & CoverageStep)
   | ({ step: 'await'; waitMs: number } & CoverageStep)
-  | { step: 'discover' | 'reviewPatient' | 'confirmPayers' | 'overpaid'; balanceCents: number }
+  | {
+      step: 'discover' | 'reviewPatient' | 'confirmPayers' | 'overpaid' | 'planMissed';
+      balanceCents: number;
+    }
+  | { step: 'planStatement'; dueCents: number; dueOn: string; balanceCents: number }
   | { step: 'statement'; statement: number; balanceCents: number }
-  | { step: 'awaitPatient' | 'awaitReview' | 'facility'; waitMs: number; balanceCents: number }
+  | {
+      step: 'awaitPatient' | 'awaitReview' | 'awaitPlan' | 'facility';
+      waitMs: number;
+      balanceCents: number;
+    }
   | { step: 'followUpFacility' | 'collections' | 'writeOff' | 'closed'; balanceCents: number };
 
 const CONTACTS: readonly ClaimEventKind[] = [
@@ -370,7 +397,7 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
     denialAt > lastOf(unreconciled.id, ['response'])
       ? (events[denialAt] ?? null)
       : null;
-  const statements = events.filter((e) => e.kind === 'statement');
+  const statements = billingStatements(events);
   const facilityContacts = events.filter((e) => FACILITY_CONTACTS.includes(e.kind));
   const answered = coverages.filter(
     (c) => c.id !== coverage?.id && lastOf(c.id, ['response']) >= 0
@@ -408,7 +435,7 @@ export const claimProgress = ({ totalCents, coverages, events }: ClaimLedger) =>
       ...adjudication(events.filter((e) => e.coverageId === c.id && e.kind === 'response'))
     })),
     statements: statements.length,
-    lastStatement: latest(statements),
+    lastStatement: latest(events.filter((e) => e.kind === 'statement')),
     lastFacilityContact: latest(facilityContacts)
   };
 };
@@ -423,8 +450,15 @@ type LedgerFacts = ReturnType<typeof ledgerFactsOf>;
 
 const sinceMs = (at: number | null, now: Date) => (at === null ? null : now.getTime() - at);
 
+const eligibilityAt = ({ events }: ClaimLedger, coverageId: string | null) =>
+  coverageId === null
+    ? null
+    : latest(events.filter((e) => e.kind === 'eligibility' && e.coverageId === coverageId));
+
 export const ledgerFactsOf = (ledger: ClaimLedger, now: Date) => {
   const p = claimProgress(ledger);
+  const plan = ledger.plan ?? null;
+  const progress = plan ? planProgress(plan, ledger.events, now) : null;
   return {
     balanceCents: p.balanceCents,
     coverageId: p.coverage?.id ?? null,
@@ -446,7 +480,15 @@ export const ledgerFactsOf = (ledger: ClaimLedger, now: Date) => {
     rejection: p.rejection,
     pendingReview: ledger.pendingReview ?? false,
     payerAnswered: ledger.events.some((e) => e.kind === 'response' && e.coverageId !== null),
-    discoveryTried: ledger.events.some((e) => e.kind === 'discovery')
+    discoveryTried: ledger.events.some((e) => e.kind === 'discovery'),
+    sinceEligibilityMs: sinceMs(eligibilityAt(ledger, p.coverage?.id ?? null), now),
+    planActive: plan !== null,
+    planInstallmentCents: plan?.installmentCents ?? 0,
+    planMisses: plan?.missedCount ?? 0,
+    planDueOn: progress?.dueOn ?? null,
+    untilPlanDueMs: progress?.untilDueMs ?? null,
+    planPaidCents: progress?.paidCents ?? 0,
+    planBilled: progress?.billed ?? false
   };
 };
 
@@ -488,12 +530,20 @@ export const readClaimStep = (decision: Record<string, unknown>, facts: LedgerFa
       };
     case 'awaitPatient':
     case 'awaitReview':
+    case 'awaitPlan':
     case 'facility':
       return { step, waitMs: numberOr(decision.waitMs, MIN_WAIT_MS), balanceCents };
     case 'statement':
       return {
         step,
         statement: numberOr(decision.statementNumber, facts.statements + 1),
+        balanceCents
+      };
+    case 'planStatement':
+      return {
+        step,
+        dueCents: numberOr(decision.dueCents, Math.min(facts.planInstallmentCents, balanceCents)),
+        dueOn: typeof decision.dueOn === 'string' ? decision.dueOn : (facts.planDueOn ?? ''),
         balanceCents
       };
     default:

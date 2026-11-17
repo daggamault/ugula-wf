@@ -20,6 +20,7 @@ import { createImportsTables } from './imports.ts';
 import { createNemsisDictionaryTables } from './nemsis-dictionary.ts';
 import { createNotificationsTables } from './notifications.ts';
 import { createDailyNumbers, DAILY_NUMBER_FUNCTIONS } from './numbers.ts';
+import { createPatientBalanceTables } from './patient-balances.ts';
 import { createPatientsTable } from './patients.ts';
 import { createPayerFilesTables } from './payer-files.ts';
 import { createTasksTable } from './tasks.ts';
@@ -29,6 +30,8 @@ import { createWorkflowRunsTables } from './workflow-runs.ts';
 const resetSchema = async (db: Kysely<Database>) => {
   await db.schema.dropView('claim_balances').ifExists().execute();
   for (const table of [
+    'collections_placements',
+    'payment_plans',
     'accounting_periods',
     'deposits',
     'notification_states',
@@ -137,6 +140,7 @@ const steps = [
   createFacilitiesTables,
   createClaimsTables,
   createFacilityInvoiceClaimsTable,
+  createPatientBalanceTables,
   createPayerFilesTables,
   createAccountingTables,
   createNotificationsTables,

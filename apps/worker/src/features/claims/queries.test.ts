@@ -857,6 +857,17 @@ describe('createCycleStore', () => {
     const forgotten = owed.find((q) => q.sql.startsWith('delete from "signals"'));
     assert.equal(forgotten?.sql, 'delete from "signals" where "agency_id" = $1 and "key" = $2');
     assert.deepEqual(forgotten?.parameters, ['t-1', `claim:${ID}`]);
+    const planOf = (queries: { sql: string; parameters: readonly unknown[] }[]) =>
+      queries.find((q) => q.sql.includes('update payment_plans'))?.parameters;
+    assert.deepEqual(planOf(owed), [
+      'cancelled',
+      ID,
+      't-1',
+      'Payment plan cancelled: the claim closed as written off',
+      'k2:plan'
+    ]);
+    assert.deepEqual(planOf(settled)?.slice(0, 1), ['completed']);
+    assert.equal(planOf(settled)?.[3], 'Payment plan completed: the balance is paid');
     const done = await close({ status: 'paid', balance_cents: 0 });
     assert.equal(
       done.some((q) => q.sql.startsWith('update')),
@@ -1072,6 +1083,7 @@ describe('createLedgerStore', () => {
       serviceDate: '2026-01-01',
       pickupState: 'IL',
       pendingReview: true,
+      plan: null,
       signalsSeen: 4,
       reference: 'PCR-1 · Jane Doe',
       coverages: [{ id: 'cov-1', payer: 'Medicare' }],
@@ -1094,13 +1106,19 @@ describe('createLedgerStore', () => {
     });
     const [head] = queries;
     assert.ok(head?.sql.includes('(select "s"."received" from "signals" as "s"'));
-    assert.deepEqual(head?.parameters.slice(0, 4), [
+    assert.deepEqual(head?.parameters.slice(0, 5), [
       `claim:${ID}`,
       'open',
       'billing.review-payer-file-line',
+      'active',
       ID
     ]);
     assert.ok(head?.sql.includes('exists (select "t"."id" from "tasks" as "t"'));
+    assert.ok(
+      head?.sql.includes(
+        'from "payment_plans" as "pp" where "pp"."claim_id" = "c"."id" and "pp"."status" = $'
+      )
+    );
     assert.equal(queries.length, 3);
     const coverages = queries.find((q) => q.sql.includes('from "claim_coverages"'));
     assert.ok(coverages?.sql.includes('coalesce(dp.name, cc.payer_name) as "payer"'));
@@ -1140,7 +1158,14 @@ describe('createLedgerStore', () => {
               service_date: null,
               pickup_state: null,
               received: null,
-              pending_review: null
+              pending_review: null,
+              plan: {
+                installmentCents: 5_000,
+                intervalDays: 30,
+                firstDueOn: '2026-12-01',
+                missedCount: 1,
+                startedAt: '2026-11-17T10:00:00.5+00:00'
+              }
             }
           ]
         : []
@@ -1151,6 +1176,13 @@ describe('createLedgerStore', () => {
       serviceDate: null,
       pickupState: null,
       pendingReview: false,
+      plan: {
+        installmentCents: 5_000,
+        intervalDays: 30,
+        firstDueOn: '2026-12-01',
+        missedCount: 1,
+        startedAt: '2026-11-17T10:00:00.500Z'
+      },
       signalsSeen: 0,
       reference: '',
       coverages: [],
@@ -1373,10 +1405,18 @@ describe('createStatementStore', () => {
     const payments = queries.find((q) => q.sql.includes('from "claim_events" as "e"'));
     assert.ok(
       payments?.sql.endsWith(
-        'where "e"."claim_id" = $1 and "e"."kind" in ($2, $3, $4) and ("e"."paid_cents" <> $5 or "e"."adjusted_cents" <> $6) order by "e"."created_at", "e"."id"'
+        'where "e"."claim_id" = $1 and "e"."kind" in ($2, $3, $4, $5) and ("e"."paid_cents" <> $6 or "e"."adjusted_cents" <> $7) order by "e"."created_at", "e"."id"'
       )
     );
-    assert.deepEqual(payments?.parameters, [ID, 'response', 'refunded', 'balance_protected', 0, 0]);
+    assert.deepEqual(payments?.parameters, [
+      ID,
+      'response',
+      'refunded',
+      'balance_protected',
+      'credit_transferred',
+      0,
+      0
+    ]);
     const missing = createRecordingDb((q) =>
       q.sql.includes('from "claims" as "c"')
         ? [{ ...claimRow, organization_name: null, phone: null }]
@@ -1451,13 +1491,13 @@ describe('createStatementStore', () => {
     const { db, queries } = createRecordingDb((q) =>
       q.sql.startsWith('select') ? [{ id: ID, agency_id: 't-1' }] : []
     );
+    const terms = { number: 2, count: 4 };
     await createStatementStore(db, blobs).saveStatement('r1', ID, 'r1:s:stmt:0', {
-      number: 2,
-      count: 4,
+      terms,
       pdf: new Uint8Array([37, 80, 68, 70])
     });
     assert.deepEqual(stored.at(-1), {
-      key: statementKey('t-1', ID, 2, 'r1:s:stmt:0'),
+      key: statementKey('t-1', ID, terms, 'r1:s:stmt:0'),
       size: 4,
       type: 'application/pdf'
     });
@@ -1471,12 +1511,21 @@ describe('createStatementStore', () => {
       'Patient statement 2 of 4',
       JSON.stringify({
         bucket: 'ugula',
-        key: statementKey('t-1', ID, 2, 'r1:s:stmt:0'),
+        key: statementKey('t-1', ID, terms, 'r1:s:stmt:0'),
         size: 4,
         contentType: 'application/pdf'
       }),
       'r1:s:stmt:0'
     ]);
+    await createStatementStore(db, blobs).saveStatement('r1', ID, 'r1:s:plan:0', {
+      terms: { dueCents: 5_000, dueOn: '2026-12-01' },
+      pdf: new Uint8Array([37])
+    });
+    assert.match(
+      stored.at(-1)?.key ?? '',
+      /^statements\/t-1\/[0-9a-f-]{36}\/plan-2026-12-01-[0-9a-f]{16}\.pdf$/
+    );
+    assert.equal(queries.at(-1)?.parameters[3], 'Payment plan statement: $50.00 due 2026-12-01');
   });
 });
 

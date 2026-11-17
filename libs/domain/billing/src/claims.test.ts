@@ -68,7 +68,15 @@ describe('ledgerFactsOf', () => {
       rejection: null,
       pendingReview: false,
       payerAnswered: false,
-      discoveryTried: false
+      discoveryTried: false,
+      sinceEligibilityMs: null,
+      planActive: false,
+      planInstallmentCents: 0,
+      planMisses: 0,
+      planDueOn: null,
+      untilPlanDueMs: null,
+      planPaidCents: 0,
+      planBilled: false
     });
     const pending = ledgerFactsOf(
       { totalCents: 100, coverages: [], events: [], pendingReview: true },
@@ -191,6 +199,44 @@ describe('ledgerFactsOf', () => {
     assert.deepEqual([late.statements, late.sinceStatementMs], [2, 10 * DAY]);
   });
 
+  it('measures the last eligibility answer of the payer being billed', () => {
+    const answered = facts([e('eligibility', 'Medicare', 3), e('eligibility', 'Blue Plan', 9)], 10);
+    assert.equal(answered.sinceEligibilityMs, 7 * DAY);
+    assert.equal(facts([e('eligibility', 'Blue Plan', 9)], 10).sinceEligibilityMs, null);
+  });
+
+  it('reads an active payment plan and leaves its statements out of the statement count', () => {
+    const plan = {
+      installmentCents: 5_000,
+      intervalDays: 30,
+      firstDueOn: '2026-01-31',
+      missedCount: 1,
+      startedAt: day(1).toISOString(),
+      timeZone: 'UTC'
+    };
+    const events = [
+      e('statement', null, 0),
+      e('plan_started', null, 1),
+      e('statement', null, 1),
+      e('response', null, 5, 2_000)
+    ];
+    const onPlan = ledgerFactsOf({ totalCents: 100_000, coverages: [], events, plan }, day(10));
+    assert.deepEqual(
+      [
+        onPlan.planActive,
+        onPlan.planInstallmentCents,
+        onPlan.planMisses,
+        onPlan.planDueOn,
+        onPlan.untilPlanDueMs,
+        onPlan.planPaidCents,
+        onPlan.planBilled,
+        onPlan.statements,
+        onPlan.sinceStatementMs
+      ],
+      [true, 5_000, 1, '2026-01-31', 21 * DAY, 2_000, true, 1, 9 * DAY]
+    );
+  });
+
   it('reads a payer without a claim filing code as an unknown kind', () => {
     const ledger = { totalCents: 1, coverages: [{ id: 'c1', payer: 'Acme' }], events: [] };
     assert.equal(ledgerFactsOf(ledger, day(0)).payerKind, 'unknown');
@@ -240,6 +286,19 @@ describe('readClaimStep', () => {
       step: 'discover',
       balanceCents: 100_000
     });
+    assert.deepEqual(
+      readClaimStep({ step: 'planStatement', dueCents: 5_000, dueOn: '2026-02-01' }, ledger),
+      { step: 'planStatement', dueCents: 5_000, dueOn: '2026-02-01', balanceCents: 100_000 }
+    );
+    assert.deepEqual(readClaimStep({ step: 'awaitPlan', waitMs: DAY }, ledger), {
+      step: 'awaitPlan',
+      waitMs: DAY,
+      balanceCents: 100_000
+    });
+    assert.deepEqual(readClaimStep({ step: 'planMissed' }, ledger), {
+      step: 'planMissed',
+      balanceCents: 100_000
+    });
   });
 
   it('waits the minimum and numbers the next statement when the decision leaves them out', () => {
@@ -249,6 +308,15 @@ describe('readClaimStep', () => {
       waitMs: MIN_WAIT_MS,
       balanceCents: 100_000
     });
+    assert.deepEqual(
+      readClaimStep({ step: 'planStatement' }, { ...ledger, planInstallmentCents: 7 }),
+      {
+        step: 'planStatement',
+        dueCents: 7,
+        dueOn: '',
+        balanceCents: 100_000
+      }
+    );
     const sent = facts([e('statement', null, 1)], 2);
     assert.deepEqual(readClaimStep({ step: 'statement', statementNumber: '3' }, sent), {
       step: 'statement',
@@ -311,6 +379,9 @@ describe('claim statuses', () => {
         'reconcile',
         'submitted',
         'follow_up',
+        'patient_balance',
+        'patient_balance',
+        'patient_balance',
         'patient_balance',
         'patient_balance',
         'reconcile',

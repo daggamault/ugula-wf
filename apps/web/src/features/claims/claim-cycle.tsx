@@ -31,6 +31,12 @@ export const describeProgress = (progress: ClaimProgress): string => {
       return 'No payer is on this claim. A task is waiting to add one or confirm the patient pays.';
     case 'overpaid':
       return `${formatCents(-progress.balanceCents)} more has been paid than the claim charges. A refund task is waiting.`;
+    case 'planMissed':
+      return 'The patient missed an installment of the payment plan. A task is waiting to keep or end the plan.';
+    case 'planStatement':
+      return `On a payment plan. Sending the statement for ${formatCents(progress.dueCents)} due ${progress.dueOn}.`;
+    case 'awaitPlan':
+      return 'On a payment plan. Waiting for the next installment.';
     case 'statement':
       return `Sending patient statement ${progress.statement} of 3.`;
     case 'awaitPatient':

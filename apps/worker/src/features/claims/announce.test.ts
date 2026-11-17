@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { ClaimStore } from '@ugula/billing';
 import { memoryClaims } from '@ugula/billing/testing';
 import type { LiveEvent } from '@ugula/live';
-import { announceClaims, announceClaimTasks } from './announce.ts';
+import { announceBalances, announceClaims, announceClaimTasks } from './announce.ts';
 
 describe('announceClaims', () => {
   it('announces each claim change after the store has made it', async () => {
@@ -87,7 +87,10 @@ describe('announceClaims', () => {
     });
     assert.deepEqual(await claims.facilityDirectory('r1'), []);
     assert.equal(await claims.claimDocument('r1', 'c1', 'd1'), null);
-    await claims.saveStatement('r1', 'c1', 'k', { number: 1, count: 3, pdf: new Uint8Array() });
+    await claims.saveStatement('r1', 'c1', 'k', {
+      terms: { number: 1, count: 3 },
+      pdf: new Uint8Array()
+    });
     assert.equal(
       await claims.saveSubmission('r1', 'c1', 'k', {
         coverageId: 'cov-1',
@@ -173,5 +176,41 @@ describe('announceClaims', () => {
     await tasks.postPayment('r1', 'c2', 'k', {} as never, null);
     await tasks.addDocument('r1', 'c3', 'k', {} as never);
     assert.deepEqual(announced, ['r1:claim:c1', 'r1:claim:c2', 'r1:claim:c3']);
+  });
+});
+
+describe('announceBalances', () => {
+  it('announces each claim a payment plan, placement or credit transfer changed', async () => {
+    const announced: string[] = [];
+    const balances = announceBalances(
+      {
+        startPlan: async () => ({ status: 'started' }),
+        missPlan: async () => undefined,
+        endPlan: async () => undefined,
+        placeCollections: async () => undefined,
+        creditTargets: async () => [],
+        transferCredit: async () => ({ status: 'transferred', cents: 1 })
+      },
+      async (runId, e) => void announced.push(`${runId}:${e.kind}:${e.id}`)
+    );
+    const plan = {
+      installmentCents: 1,
+      intervalDays: 30,
+      firstDueOn: '2026-12-01',
+      createdBy: null
+    };
+    assert.deepEqual(await balances.startPlan('r1', 'c1', 'k', plan), { status: 'started' });
+    await balances.missPlan('r1', 'c2', 'k', 'Missed');
+    await balances.endPlan('r1', 'c3', 'k', { status: 'cancelled', note: '' });
+    await balances.placeCollections('r1', 'c4', 'k', { agencyName: 'Acme', feePct: 30 });
+    assert.deepEqual(await balances.creditTargets('r1', 'c5'), []);
+    await balances.transferCredit('r1', 'c6', 'k', { toClaimId: 'c7', note: '' });
+    assert.deepEqual(announced, [
+      'r1:claim:c1',
+      'r1:claim:c2',
+      'r1:claim:c3',
+      'r1:claim:c4',
+      'r1:claim:c6'
+    ]);
   });
 });

@@ -44,6 +44,12 @@ export const CLAIM_TASKS = {
     description: 'A payment or refund that came by mail, phone or card.',
     onDrafts: false,
     onClosed: true
+  },
+  'billing.set-up-payment-plan': {
+    label: 'Set Up Payment Plan',
+    description: 'Let the patient pay the balance in installments.',
+    onDrafts: false,
+    onClosed: false
   }
 } as const satisfies Record<string, ClaimTask>;
 

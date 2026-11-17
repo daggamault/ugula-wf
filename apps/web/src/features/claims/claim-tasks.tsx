@@ -1,5 +1,6 @@
 import { CLAIM_TASKS, type ClaimTaskKey, claimTaskStartsOn, isClosedStatus } from '@ugula/billing';
 import {
+  CalendarClockIcon,
   FileClockIcon,
   FilePenIcon,
   FilePlusIcon,
@@ -24,7 +25,8 @@ const ICONS: Readonly<Record<ClaimTaskKey, LucideIcon>> = {
   'billing.receive-document': FilePlusIcon,
   'billing.chase-document': SendIcon,
   'billing.log-records-request': FileClockIcon,
-  'billing.post-payment': HandCoinsIcon
+  'billing.post-payment': HandCoinsIcon,
+  'billing.set-up-payment-plan': CalendarClockIcon
 };
 
 export const START_TASK_ICON = ListTodoIcon;
