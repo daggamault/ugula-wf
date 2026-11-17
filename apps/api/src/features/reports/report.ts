@@ -6,7 +6,7 @@ import type { ReportPage } from './schemas.ts';
 
 export type DateRange = { from: string; to: string };
 
-type DateKind = 'service' | 'posted' | 'completed' | 'received';
+type DateKind = 'service' | 'posted' | 'closed' | 'completed' | 'received';
 
 export type ReportContext = {
   agencyId: string;

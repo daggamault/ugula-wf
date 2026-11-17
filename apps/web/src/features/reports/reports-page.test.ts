@@ -215,7 +215,7 @@ describe('ReportOptionsPage', () => {
     assert.ok(screen.getByText('It shows where things stand right now.'));
     assert.ok(!container.querySelector('input[type="date"]'));
     assert.equal(screen.getByRole('button', { name: 'Group By' }).textContent, 'Financial Class');
-    assert.deepEqual(texts(screen.getAllByRole('option')), ['Payer', 'Financial Class']);
+    assert.deepEqual(texts(screen.getAllByRole('option')), ['Payer', 'Financial Class', 'Status']);
   });
 
   it('runs reports without options from a single button', () => {

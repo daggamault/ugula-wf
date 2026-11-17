@@ -7,10 +7,10 @@ const subquery = (sql: string) =>
   sql.slice(sql.indexOf(' from (select'), sql.lastIndexOf(') as "r"') + 8);
 
 describe('writeOffsReport', () => {
-  it('is an ungrouped report over posting dates', () => {
+  it('is an ungrouped report over closing dates', () => {
     assert.deepEqual(
       { dates: writeOffsReport.dates, groups: writeOffsReport.groups },
-      { dates: 'posted', groups: null }
+      { dates: 'closed', groups: null }
     );
   });
 

@@ -3,7 +3,7 @@ import { report } from './report.ts';
 import { UNRECOVERED, within } from './report-sql.ts';
 
 export const writeOffsReport = report({
-  dates: 'posted',
+  dates: 'closed',
   rows: (db, ctx) =>
     db
       .selectFrom('claim_events as e')

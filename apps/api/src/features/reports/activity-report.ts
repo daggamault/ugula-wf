@@ -2,6 +2,8 @@ import { type Expression, sql } from 'kysely';
 import { report } from './report.ts';
 import { cents, SUBMISSIONS, UNRECOVERED, within, zero } from './report-sql.ts';
 
+const LEDGER = ['response', 'refunded', 'balance_protected'] as const;
+
 const monthOf = (at: Expression<unknown>, tz: string) =>
   sql<string>`to_char(${at} at time zone ${tz}, 'YYYY-MM')`;
 
@@ -19,6 +21,7 @@ export const activityReport = report({
         zero.as('payer_paid'),
         zero.as('patient_paid'),
         zero.as('adjusted'),
+        zero.as('refunds'),
         zero.as('written_off'),
         zero.as('collections')
       ])
@@ -43,16 +46,19 @@ export const activityReport = report({
         month(sql.ref('e.created_at')),
         zero.as('claims_billed'),
         zero.as('charges_billed'),
-        sql<number>`case when e.coverage_id is null then 0 else e.paid_cents end`.as('payer_paid'),
-        sql<number>`case when e.coverage_id is null then e.paid_cents else 0 end`.as(
+        sql<number>`case when e.kind = 'response' and e.coverage_id is not null then e.paid_cents else 0 end`.as(
+          'payer_paid'
+        ),
+        sql<number>`case when e.kind = 'response' and e.coverage_id is null then e.paid_cents else 0 end`.as(
           'patient_paid'
         ),
         sql<number>`e.adjusted_cents`.as('adjusted'),
+        sql<number>`case when e.kind = 'refunded' then -e.paid_cents else 0 end`.as('refunds'),
         zero.as('written_off'),
         zero.as('collections')
       ])
       .where('e.agency_id', '=', ctx.agencyId)
-      .where('e.kind', '=', 'response')
+      .where('e.kind', 'in', LEDGER)
       .where(within(sql.ref('e.created_at'), ctx));
     const closed = db
       .selectFrom('claim_events as e')
@@ -65,6 +71,7 @@ export const activityReport = report({
         zero.as('payer_paid'),
         zero.as('patient_paid'),
         zero.as('adjusted'),
+        zero.as('refunds'),
         sql<number>`case when e.note = 'written_off' then b.balance_cents else 0 end`.as(
           'written_off'
         ),
@@ -85,6 +92,7 @@ export const activityReport = report({
         cents(sql.ref('f.payer_paid')).as('payer_paid_cents'),
         cents(sql.ref('f.patient_paid')).as('patient_paid_cents'),
         cents(sql.ref('f.adjusted')).as('adjusted_cents'),
+        cents(sql.ref('f.refunds')).as('refunds_cents'),
         cents(sql.ref('f.written_off')).as('written_off_cents'),
         cents(sql.ref('f.collections')).as('collections_cents')
       ])
@@ -98,6 +106,7 @@ export const activityReport = report({
     'payer_paid_cents',
     'patient_paid_cents',
     'adjusted_cents',
+    'refunds_cents',
     'written_off_cents',
     'collections_cents'
   ],
@@ -110,6 +119,7 @@ export const activityReport = report({
     'payer_paid_cents',
     'patient_paid_cents',
     'adjusted_cents',
+    'refunds_cents',
     'written_off_cents',
     'collections_cents'
   ]

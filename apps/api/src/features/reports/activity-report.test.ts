@@ -15,7 +15,7 @@ const PARAMETERS = [
   ...['America/New_York', 't-1', 'submitted', 'resubmitted'],
   ...['2026-01-01', 'America/New_York', '2026-10-23', 'America/New_York'],
   ...['submitted', 'resubmitted'],
-  ...['America/New_York', 't-1', 'response'],
+  ...['America/New_York', 't-1', 'response', 'refunded', 'balance_protected'],
   ...['2026-01-01', 'America/New_York', '2026-10-23', 'America/New_York'],
   ...['America/New_York', 't-1', 'closed', 'written_off', 'collections'],
   ...['2026-01-01', 'America/New_York', '2026-10-23', 'America/New_York']
@@ -37,13 +37,14 @@ describe('activityReport', () => {
       'payer_paid_cents',
       'patient_paid_cents',
       'adjusted_cents',
+      'refunds_cents',
       'written_off_cents',
       'collections_cents'
     ];
     assert.deepEqual(aliases(rows.sql), ['month', ...amounts, 'total']);
     assert.equal(
       tail(rows.sql),
-      ') as "r" order by "r"."month" asc nulls last, "r"."month" asc limit $27 offset $28'
+      ') as "r" order by "r"."month" asc nulls last, "r"."month" asc limit $29 offset $30'
     );
     assert.deepEqual(aliases(totals.sql), amounts);
     assert.deepEqual(rows.parameters, [...PARAMETERS, 100, 0]);
@@ -53,14 +54,14 @@ describe('activityReport', () => {
   it('buckets each part by the month of the event in the agency time zone', async () => {
     const { rows } = await compileReport(activityReport);
     assert.equal(rows.sql.match(/union all/g)?.length, 2);
-    for (const n of [1, 11, 18]) {
+    for (const n of [1, 11, 20]) {
       assert.ok(
         rows.sql.includes(`to_char("e"."created_at" at time zone $${n}, 'YYYY-MM') as "month"`)
       );
     }
     assert.ok(
       rows.sql.endsWith(
-        ') as "f" group by "f"."month") as "r" order by "r"."month" asc nulls last, "r"."month" asc limit $27 offset $28'
+        ') as "f" group by "f"."month") as "r" order by "r"."month" asc nulls last, "r"."month" asc limit $29 offset $30'
       )
     );
   });
@@ -75,14 +76,16 @@ describe('activityReport', () => {
     assert.ok(rows.sql.includes('1 as "claims_billed", c.total_cents as "charges_billed"'));
   });
 
-  it('splits posted payments between payers and the patient by coverage', async () => {
+  it('splits posted payments between payers and the patient and books refunds and balance protections', async () => {
     const { rows } = await compileReport(activityReport);
     assert.ok(
-      rows.sql.includes(`where "e"."agency_id" = $12 and "e"."kind" = $13 and ${WITHIN(14)}`)
+      rows.sql.includes(
+        `where "e"."agency_id" = $12 and "e"."kind" in ($13, $14, $15) and ${WITHIN(16)}`
+      )
     );
     assert.ok(
       rows.sql.includes(
-        'case when e.coverage_id is null then 0 else e.paid_cents end as "payer_paid", case when e.coverage_id is null then e.paid_cents else 0 end as "patient_paid", e.adjusted_cents as "adjusted"'
+        `case when e.kind = 'response' and e.coverage_id is not null then e.paid_cents else 0 end as "payer_paid", case when e.kind = 'response' and e.coverage_id is null then e.paid_cents else 0 end as "patient_paid", e.adjusted_cents as "adjusted", case when e.kind = 'refunded' then -e.paid_cents else 0 end as "refunds"`
       )
     );
   });
@@ -91,7 +94,7 @@ describe('activityReport', () => {
     const { rows } = await compileReport(activityReport);
     assert.ok(
       rows.sql.includes(
-        `inner join "claim_balances" as "b" on "b"."claim_id" = "c"."id" where "e"."agency_id" = $19 and "e"."kind" = $20 and "e"."note" in ($21, $22) and ${WITHIN(23)}`
+        `inner join "claim_balances" as "b" on "b"."claim_id" = "c"."id" where "e"."agency_id" = $21 and "e"."kind" = $22 and "e"."note" in ($23, $24) and ${WITHIN(25)}`
       )
     );
     assert.ok(

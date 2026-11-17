@@ -17,9 +17,9 @@ describe('report catalog', () => {
         ['payments', 'posted'],
         ['denials', 'posted'],
         ['write-offs', 'closed'],
+        ['credit-balances', null],
         ['payers', 'service'],
         ['hcpcs', 'service'],
-        ['levels', 'service'],
         ['work-queue', null],
         ['productivity', 'completed'],
         ['imports', 'received']
@@ -50,7 +50,7 @@ describe('report catalog', () => {
     assert.deepEqual(
       REPORTS.filter((r) => r.groups).map((r) => [r.id, groupsOf(r.id)]),
       [
-        ['aging', ['payer', 'class']],
+        ['aging', ['payer', 'class', 'status']],
         ['denials', ['payer', 'reason']],
         ['payers', ['payer', 'class']],
         ['work-queue', ['queue', 'assignee']]
@@ -73,6 +73,7 @@ describe('report catalog', () => {
     const first = (id: string, group: string | null) => findReport(id)?.columns(group)[0]?.label;
     assert.equal(first('aging', 'payer'), 'Owed By');
     assert.equal(first('aging', 'class'), 'Financial Class');
+    assert.equal(first('aging', 'status'), 'Status');
     assert.equal(first('work-queue', 'assignee'), 'Assignee');
   });
 });

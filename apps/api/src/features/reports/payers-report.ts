@@ -3,8 +3,6 @@ import { sql } from 'kysely';
 import { report } from './report.ts';
 import { cents, centsWhere, count, countWhere, servedIn, UNBILLED, zero } from './report-sql.ts';
 
-const hasReasons = sql<boolean>`exists (select 1 from claim_event_adjustments a where a.event_id = e.id)`;
-
 export const payersReport = report({
   dates: 'service',
   groups: ['payer', 'class'],
@@ -25,9 +23,8 @@ export const payersReport = report({
                 'first_paid'
               ),
               countWhere(sql`e.kind = 'response'`).as('responses'),
-              countWhere(sql`e.kind = 'response' and e.paid_cents = 0 and ${hasReasons}`).as(
-                'denials'
-              ),
+              countWhere(sql`e.kind = 'denied'`).as('denials'),
+              countWhere(sql`e.kind = 'rejected'`).as('rejections'),
               cents(sql.ref('e.paid_cents')).as('paid'),
               cents(sql.ref('e.adjusted_cents')).as('adjusted')
             ])
@@ -48,6 +45,7 @@ export const payersReport = report({
         cents(sql.ref('a.adjusted')).as('adjusted_cents'),
         sql<number>`sum(a.responses)::int`.as('responses'),
         sql<number>`sum(a.denials)::int`.as('denials'),
+        countWhere(sql`a.rejections > 0`).as('rejected'),
         countWhere(sql`a.first_paid >= a.first_submitted`).as('paid_claims'),
         centsWhere(
           sql`extract(epoch from a.first_paid - a.first_submitted) / 86400`,
@@ -71,6 +69,7 @@ export const payersReport = report({
         cents(sql.ref('e.adjusted_cents')).as('adjusted_cents'),
         zero.as('responses'),
         zero.as('denials'),
+        zero.as('rejected'),
         zero.as('paid_claims'),
         zero.as('pay_days')
       ])
@@ -91,6 +90,7 @@ export const payersReport = report({
     'adjusted_cents',
     'responses',
     'denials',
+    'rejected',
     'paid_claims',
     'pay_days'
   ],
@@ -104,6 +104,7 @@ export const payersReport = report({
     'adjusted_cents',
     'responses',
     'denials',
+    'rejected',
     'paid_claims',
     'pay_days'
   ]

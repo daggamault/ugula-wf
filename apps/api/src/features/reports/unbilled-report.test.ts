@@ -14,16 +14,17 @@ describe('unbilledReport', () => {
     );
   });
 
-  it('ages agency claims not yet submitted from their service day with their oldest open task', async () => {
+  it('ages agency claims not yet submitted from their service day with their oldest open task and first payer filing deadline', async () => {
     const { rows } = await compileReport(unbilledReport);
     assert.equal(
       rows.sql,
-      'select "r"."claim_number" as "claim_number", "r"."pcr_number" as "pcr_number", "r"."first_name" as "first_name", "r"."last_name" as "last_name", "r"."service_date" as "service_date", "r"."status" as "status", "r"."queue" as "queue", "r"."age_days" as "age_days", "r"."charges_cents" as "charges_cents", count(*) over () as "total" from (select "c"."number" as "claim_number", "c"."pcr_number", "p"."first_name", "p"."last_name", "c"."service_date", "c"."status", "t"."queue", $1::date - coalesce(c.service_date, (c.created_at at time zone $2)::date) as "age_days", "c"."total_cents" as "charges_cents" from "claims" as "c" left join "patients" as "p" on "p"."id" = "c"."patient_id" left join lateral (select "t"."queue" from "claim_runs" as "cr" inner join "tasks" as "t" on "t"."run_id" = "cr"."run_id" where "cr"."claim_id" = "c"."id" and "t"."status" = $3 order by "t"."created_at" limit $4) as "t" on true where "c"."agency_id" = $5 and "c"."status" in ($6, $7, $8)) as "r" order by "r"."age_days" desc nulls last, "r"."claim_number" desc limit $9 offset $10'
+      `select "r"."claim_number" as "claim_number", "r"."pcr_number" as "pcr_number", "r"."first_name" as "first_name", "r"."last_name" as "last_name", "r"."service_date" as "service_date", "r"."status" as "status", "r"."queue" as "queue", "r"."age_days" as "age_days", "r"."file_by" as "file_by", "r"."charges_cents" as "charges_cents", count(*) over () as "total" from (select "c"."number" as "claim_number", "c"."pcr_number", "p"."first_name", "p"."last_name", "c"."service_date", "c"."status", "t"."queue", $1::date - coalesce(c.service_date, (c.created_at at time zone $2)::date) as "age_days", c.service_date + pp.filing_limit_days as "file_by", "c"."total_cents" as "charges_cents" from "claims" as "c" left join "patients" as "p" on "p"."id" = "c"."patient_id" left join lateral (select "t"."queue" from "claim_runs" as "cr" inner join "tasks" as "t" on "t"."run_id" = "cr"."run_id" where "cr"."claim_id" = "c"."id" and "t"."status" = $3 order by "t"."created_at" limit $4) as "t" on true left join lateral (select "dp"."filing_limit_days" from "claim_coverages" as "cc" left join "payers" as "dp" on "dp"."id" = "cc"."payer_id" where "cc"."claim_id" = "c"."id" order by "cc"."position" limit $5) as "pp" on true where "c"."agency_id" = $6 and "c"."status" in ($7, $8, $9)) as "r" order by "r"."age_days" desc nulls last, "r"."claim_number" desc limit $10 offset $11`
     );
     assert.deepEqual(rows.parameters, [
       '2026-10-23',
       'America/New_York',
       'open',
+      1,
       1,
       't-1',
       'draft',

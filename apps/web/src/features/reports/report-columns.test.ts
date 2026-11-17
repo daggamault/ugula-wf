@@ -4,10 +4,10 @@ import { formatDateTime } from '../../shared/format.ts';
 import type {
   ActivityRow,
   AgingRow,
+  CreditBalanceRow,
   DenialRow,
   HcpcsRow,
   ImportRow,
-  LevelRow,
   MonthlyRow,
   PayerRow,
   PaymentRow,
@@ -20,13 +20,13 @@ import {
   ACTIVITY_COLUMNS,
   adjustmentGroupLabel,
   agingColumns,
+  CREDIT_BALANCE_COLUMNS,
   csvRows,
   denialColumns,
   filingLabel,
   formatMonth,
   HCPCS_COLUMNS,
   IMPORT_COLUMNS,
-  LEVEL_COLUMNS,
   MONTHLY_COLUMNS,
   PAYMENT_COLUMNS,
   PRODUCTIVITY_COLUMNS,
@@ -120,6 +120,7 @@ const payer: PayerRow = {
   adjusted_cents: 0,
   responses: 2,
   denials: 1,
+  rejected: 0,
   paid_claims: 0,
   pay_days: 0
 };
@@ -160,7 +161,7 @@ describe('report columns', () => {
 
   it('writes only the header row to the CSV of an empty report', () => {
     assert.deepEqual(csvRows(PRODUCTIVITY_COLUMNS, [], {}), [
-      ['Biller', 'Tasks Completed', 'Hours per Task', 'Submissions', 'Payments Posted']
+      ['Biller', 'Tasks Completed', 'Hours Open per Task', 'Payments Posted']
     ]);
   });
 
@@ -181,6 +182,7 @@ describe('report columns', () => {
     assert.deepEqual(totalsOf(ACTIVITY_COLUMNS, {}), [
       'Total',
       '0',
+      '$0.00',
       '$0.00',
       '$0.00',
       '$0.00',
@@ -218,6 +220,12 @@ describe('aging columns', () => {
     assert.equal(column?.label, 'Financial Class');
     assert.equal(column?.text({ ...(aging[0] as AgingRow), name: 'MB' }, {}), 'Medicare Part B');
   });
+
+  it('names the claim status when grouped by status', () => {
+    const column = agingColumns('status')[0];
+    assert.equal(column?.label, 'Status');
+    assert.equal(column?.text({ ...(aging[0] as AgingRow), name: 'follow_up' }, {}), 'Follow Up');
+  });
 });
 
 describe('unbilled columns', () => {
@@ -230,6 +238,7 @@ describe('unbilled columns', () => {
     status: 'needs_review',
     queue: 'billing-followup',
     age_days: 12,
+    file_by: '2027-10-01',
     charges_cents: 95_000
   };
 
@@ -242,13 +251,20 @@ describe('unbilled columns', () => {
       Status: 'Needs Review',
       'Waiting On': 'Payer Follow-Up',
       'Days Old': '12',
+      'File By': 'Oct 1, 2027',
       Charges: '$950.00'
     });
   });
 
-  it('leaves the task and missing PCR blank for claims waiting on nothing', () => {
-    const shown = shownBy(UNBILLED_COLUMNS, { ...row, queue: null, pcr_number: null });
+  it('leaves the task, missing PCR and unknown filing limit blank', () => {
+    const shown = shownBy(UNBILLED_COLUMNS, {
+      ...row,
+      queue: null,
+      pcr_number: null,
+      file_by: null
+    });
     assert.equal(shown['Waiting On'], '—');
+    assert.equal(shown['File By'], '—');
     assert.equal(shown.PCR, '—');
     assert.equal(UNBILLED_COLUMNS[1]?.csv({ ...row, pcr_number: null }, {}), null);
   });
@@ -256,6 +272,7 @@ describe('unbilled columns', () => {
   it('does not total the days old', () => {
     assert.deepEqual(totalsOf(UNBILLED_COLUMNS, { age_days: 30, charges_cents: 95_000 }), [
       'Total',
+      '',
       '',
       '',
       '',
@@ -307,12 +324,13 @@ describe('activity columns', () => {
       payer_paid_cents: 200,
       patient_paid_cents: 300,
       adjusted_cents: 400,
+      refunds_cents: 450,
       written_off_cents: 500,
       collections_cents: 600
     };
     assert.deepEqual(
       ACTIVITY_COLUMNS.map((c) => c.text(row, {})),
-      ['September 2026', '1,200', '$1.00', '$2.00', '$3.00', '$4.00', '$5.00', '$6.00']
+      ['September 2026', '1,200', '$1.00', '$2.00', '$3.00', '$4.00', '$4.50', '$5.00', '$6.00']
     );
   });
 });
@@ -368,7 +386,6 @@ describe('denial columns', () => {
     payer: null,
     code: 'CO-45',
     description: 'Charge exceeds fee schedule.',
-    adjustments: 3,
     denials: 1,
     claims: 2,
     amount_cents: 12_000
@@ -381,7 +398,6 @@ describe('denial columns', () => {
         'Patient',
         'Charge exceeds fee schedule. (CO-45)',
         'Contractual obligation',
-        '3',
         '1',
         '2',
         '$120.00'
@@ -392,7 +408,7 @@ describe('denial columns', () => {
   it('groups denials by reason code without a payer column', () => {
     assert.deepEqual(
       denialColumns('reason').map((c) => c.text({ ...row, description: null }, {})),
-      ['CO-45', 'Contractual obligation', '3', '1', '2', '$120.00']
+      ['CO-45', 'Contractual obligation', '1', '2', '$120.00']
     );
   });
 
@@ -400,6 +416,12 @@ describe('denial columns', () => {
     assert.equal(adjustmentGroupLabel('CO-45'), 'Contractual obligation');
     assert.equal(adjustmentGroupLabel('XX-1'), null);
     assert.equal(denialColumns('reason')[1]?.text({ ...row, code: 'XX-1' }, {}), '—');
+  });
+
+  it('shows denials that came without a reason code', () => {
+    const columns = denialColumns('reason');
+    assert.equal(columns[0]?.text({ ...row, code: null }, {}), 'No Reason Given');
+    assert.equal(columns[1]?.text({ ...row, code: null }, {}), '—');
   });
 });
 
@@ -441,6 +463,62 @@ describe('write-off columns', () => {
   });
 });
 
+describe('credit balance columns', () => {
+  const row: CreditBalanceRow = {
+    claim_number: '20261001-0011',
+    pcr_number: 'P-11',
+    first_name: 'Jane',
+    last_name: 'Doe',
+    service_date: '2026-10-01',
+    status: 'paid',
+    charges_cents: 100_000,
+    paid_cents: 120_000,
+    adjusted_cents: 0,
+    credit_cents: 20_000,
+    last_paid_at: '2026-10-21T15:00:00Z',
+    age_days: 9
+  };
+
+  it('shows what was overpaid and how long ago', () => {
+    assert.deepEqual(shownBy(CREDIT_BALANCE_COLUMNS, row), {
+      Claim: '20261001-0011',
+      PCR: 'P-11',
+      Patient: 'Doe, Jane',
+      'Date of Service': 'Oct 1, 2026',
+      Status: 'Paid',
+      Charges: '$1,000.00',
+      Paid: '$1,200.00',
+      Adjusted: '$0.00',
+      Credit: '$200.00',
+      'Last Paid': formatDateTime('2026-10-21T15:00:00Z'),
+      'Days Since Paid': '9'
+    });
+    assert.equal(CREDIT_BALANCE_COLUMNS.at(-1)?.csv(row, {}), 9);
+  });
+
+  it('totals only the credit', () => {
+    assert.deepEqual(totalsOf(CREDIT_BALANCE_COLUMNS, { credit_cents: 20_000 }), [
+      'Total',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '$200.00',
+      '',
+      ''
+    ]);
+  });
+
+  it('leaves the age blank without a payment', () => {
+    const shown = shownBy(CREDIT_BALANCE_COLUMNS, { ...row, last_paid_at: null, age_days: null });
+    assert.equal(shown['Last Paid'], '—');
+    assert.equal(shown['Days Since Paid'], '—');
+  });
+});
+
 describe('payer columns', () => {
   it('marks payers outside the directory on screen but not in the CSV', () => {
     assert.equal(payerColumns('payer')[0]?.text(payer, {}), 'Aetna (not in payer directory)');
@@ -479,6 +557,12 @@ describe('payer columns', () => {
     assert.equal(shown['Paid of Charges'], '75%');
     assert.equal(shown['Days to Pay'], '12.5');
     assert.equal(shown['Denial Rate'], '50%');
+  });
+
+  it('rates rejections over the claims billed', () => {
+    const shown = shownBy(payerColumns('payer'), { ...payer, billed: 4, rejected: 1 });
+    assert.equal(shown.Rejected, '1');
+    assert.equal(shown['Rejection Rate'], '25%');
   });
 });
 
@@ -523,24 +607,6 @@ describe('HCPCS columns', () => {
   });
 });
 
-describe('level columns', () => {
-  const level: LevelRow = {
-    level: 'ALS1',
-    emergency: false,
-    trips: 4,
-    miles: 30,
-    charges_cents: 200_000
-  };
-
-  it('names the level and emergency status and averages per trip', () => {
-    assert.deepEqual(
-      LEVEL_COLUMNS.map((c) => c.text(level, { trips: 8 })),
-      ['ALS1 Non-Emergency', '4', '50%', '30', '7.5', '$2,000.00', '$500.00']
-    );
-    assert.equal(LEVEL_COLUMNS[0]?.text({ ...level, emergency: true }, {}), 'ALS1 Emergency');
-  });
-});
-
 describe('work queue columns', () => {
   it('names task queues and counts the unassigned', () => {
     const columns = workQueueColumns('queue');
@@ -580,12 +646,11 @@ describe('productivity columns', () => {
       name: 'a@b.c',
       tasks: 3,
       task_hours: 1,
-      submitted: 5,
-      posted: 0
+      posted: 5
     };
     assert.deepEqual(
       PRODUCTIVITY_COLUMNS.map((c) => c.text(row, {})),
-      ['a@b.c', '3', '0.3', '5', '0']
+      ['a@b.c', '3', '0.3', '5']
     );
     assert.equal(PRODUCTIVITY_COLUMNS[2]?.csv(row, {}), 0.3);
   });

@@ -22,6 +22,18 @@ export const unbilledReport = report({
             .as('t'),
         (join) => join.onTrue()
       )
+      .leftJoinLateral(
+        (eb) =>
+          eb
+            .selectFrom('claim_coverages as cc')
+            .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
+            .select('dp.filing_limit_days')
+            .whereRef('cc.claim_id', '=', 'c.id')
+            .orderBy('cc.position')
+            .limit(1)
+            .as('pp'),
+        (join) => join.onTrue()
+      )
       .select([
         'c.number as claim_number',
         'c.pcr_number',
@@ -33,6 +45,7 @@ export const unbilledReport = report({
         sql<number>`${ctx.today}::date - coalesce(c.service_date, (c.created_at at time zone ${ctx.tz})::date)`.as(
           'age_days'
         ),
+        sql<string | null>`c.service_date + pp.filing_limit_days`.as('file_by'),
         'c.total_cents as charges_cents'
       ])
       .where('c.agency_id', '=', ctx.agencyId)
@@ -47,6 +60,7 @@ export const unbilledReport = report({
     'status',
     'queue',
     'age_days',
+    'file_by',
     'charges_cents'
   ],
   order: 'age_days',

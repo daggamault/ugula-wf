@@ -12,10 +12,10 @@ import { emptyValue } from '../../shared/ui/empty-state.tsx';
 import type {
   ActivityRow,
   AgingRow,
+  CreditBalanceRow,
   DenialRow,
   HcpcsRow,
   ImportRow,
-  LevelRow,
   MonthlyRow,
   PayerRow,
   PaymentRow,
@@ -205,7 +205,9 @@ const AGING_BUCKETS = [
 ] as const;
 
 export const agingColumns = (group: string | null): ReportColumn<AgingRow>[] => [
-  { ...payerColumn<AgingRow>(group), ...(group === 'class' ? {} : { label: 'Owed By' }) },
+  group === 'status'
+    ? text<AgingRow>('Status', (r) => (r.name === null ? null : titleCase(r.name)))
+    : { ...payerColumn<AgingRow>(group), ...(group === 'class' ? {} : { label: 'Owed By' }) },
   count('Claims', 'claims'),
   ...AGING_BUCKETS.map(([key, label]) => money<AgingRow>(label, key)),
   money('Balance', 'balance_cents')
@@ -216,6 +218,7 @@ export const UNBILLED_COLUMNS: readonly ReportColumn<UnbilledRow>[] = [
   text('Status', (r) => titleCase(r.status)),
   text('Waiting On', (r) => (r.queue ? queueInfo(r.queue).label : null)),
   count('Days Old', 'age_days', false),
+  text('File By', (r) => (r.file_by ? formatDate(r.file_by) : null)),
   money('Charges', 'charges_cents')
 ];
 
@@ -227,7 +230,7 @@ export const MONTHLY_COLUMNS: readonly ReportColumn<MonthlyRow>[] = [
   money('Charges', 'charges_cents'),
   money('Payer Paid', 'payer_paid_cents'),
   money('Patient Paid', 'patient_paid_cents'),
-  money('Contractual Adjustments', 'adjusted_cents'),
+  money('Adjustments', 'adjusted_cents'),
   money('Written Off', 'written_off_cents'),
   money('Sent to Collections', 'collections_cents'),
   money('Open Balance', 'open_balance_cents'),
@@ -241,7 +244,8 @@ export const ACTIVITY_COLUMNS: readonly ReportColumn<ActivityRow>[] = [
   money('Charges Billed', 'charges_billed_cents'),
   money('Payer Payments', 'payer_paid_cents'),
   money('Patient Payments', 'patient_paid_cents'),
-  money('Contractual Adjustments', 'adjusted_cents'),
+  money('Adjustments', 'adjusted_cents'),
+  money('Refunds', 'refunds_cents'),
   money('Written Off', 'written_off_cents'),
   money('Sent to Collections', 'collections_cents')
 ];
@@ -264,10 +268,9 @@ export const PAYMENT_COLUMNS: readonly ReportColumn<PaymentRow>[] = [
 
 export const denialColumns = (group: string | null): ReportColumn<DenialRow>[] => [
   ...(group === 'reason' ? [] : [text<DenialRow>('Payer', (r) => r.payer ?? PATIENT)]),
-  text('Reason', (r) => described(r.description, r.code)),
-  text('Group', (r) => adjustmentGroupLabel(r.code)),
-  count('Adjustments', 'adjustments'),
-  count('Denials', 'denials'),
+  text('Reason', (r) => (r.code === null ? 'No Reason Given' : described(r.description, r.code))),
+  text('Group', (r) => (r.code === null ? null : adjustmentGroupLabel(r.code))),
+  count('Denials', 'denials', false),
   count('Claims', 'claims', false),
   money('Amount', 'amount_cents')
 ];
@@ -285,6 +288,22 @@ export const WRITE_OFF_COLUMNS: readonly ReportColumn<WriteOffRow>[] = [
   money('Paid', 'paid_cents'),
   money('Adjusted', 'adjusted_cents'),
   money('Amount Closed', 'balance_cents')
+];
+
+export const CREDIT_BALANCE_COLUMNS: readonly ReportColumn<CreditBalanceRow>[] = [
+  ...claimColumns<CreditBalanceRow>(),
+  text('Status', (r) => titleCase(r.status)),
+  money('Charges', 'charges_cents', false),
+  money('Paid', 'paid_cents', false),
+  money('Adjusted', 'adjusted_cents', false),
+  money('Credit', 'credit_cents'),
+  text('Last Paid', (r) => (r.last_paid_at ? formatDateTime(r.last_paid_at) : null)),
+  {
+    label: 'Days Since Paid',
+    isNumeric: true,
+    text: (r) => shown(r.age_days, AS_COUNT.text),
+    csv: (r) => r.age_days
+  }
 ];
 
 export const payerColumns = (group: string | null): ReportColumn<PayerRow>[] => [
@@ -305,6 +324,12 @@ export const payerColumns = (group: string | null): ReportColumn<PayerRow>[] => 
     (read) => read('denials'),
     (read) => read('responses')
   ),
+  count('Rejected', 'rejected'),
+  percent(
+    'Rejection Rate',
+    (read) => read('rejected'),
+    (read) => read('billed')
+  ),
   average('Days to Pay', 'pay_days', 'paid_claims')
 ];
 
@@ -315,16 +340,6 @@ export const HCPCS_COLUMNS: readonly ReportColumn<HcpcsRow>[] = [
   average('Average Price', 'charges_cents', 'units', AS_MONEY_AVERAGE, false),
   money('Charges', 'charges_cents'),
   share('Share of Charges', 'charges_cents')
-];
-
-export const LEVEL_COLUMNS: readonly ReportColumn<LevelRow>[] = [
-  text('Level of Service', (r) => `${r.level} ${r.emergency ? 'Emergency' : 'Non-Emergency'}`),
-  count('Trips', 'trips'),
-  share('Share of Trips', 'trips'),
-  derived('Loaded Miles', (read) => read('miles'), AS_DECIMAL),
-  average('Miles per Trip', 'miles', 'trips'),
-  money('Charges', 'charges_cents'),
-  average('Charges per Trip', 'charges_cents', 'trips', AS_MONEY_AVERAGE)
 ];
 
 const TASK_AGES = [
@@ -347,8 +362,7 @@ export const workQueueColumns = (group: string | null): ReportColumn<WorkQueueRo
 export const PRODUCTIVITY_COLUMNS: readonly ReportColumn<ProductivityRow>[] = [
   text('Biller', (r) => r.name),
   count('Tasks Completed', 'tasks'),
-  average('Hours per Task', 'task_hours', 'tasks'),
-  count('Submissions', 'submitted'),
+  average('Hours Open per Task', 'task_hours', 'tasks'),
   count('Payments Posted', 'posted')
 ];
 

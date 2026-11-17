@@ -18,7 +18,7 @@ const AGING_BUCKETS = [
 
 export const agingReport = report({
   dates: null,
-  groups: ['payer', 'class'],
+  groups: ['payer', 'class', 'status'],
   rows: (db, ctx) => {
     const age = sql`(${ctx.today}::date - coalesce(c.service_date, c.created_at::date))`;
     const inBucket = (min: number | null, max: number | null) =>
@@ -58,11 +58,13 @@ export const agingReport = report({
       )
       .leftJoin('facilities as f', 'f.id', 'c.facility_id')
       .select([
-        (ctx.group === 'class'
-          ? sql<
-              string | null
-            >`case when f.id is not null then 'Facility' when responsible.payer is null then null else coalesce(responsible.filing, '') end`
-          : sql<string | null>`coalesce(f.name, responsible.payer)`
+        (ctx.group === 'status'
+          ? sql<string | null>`c.status`
+          : ctx.group === 'class'
+            ? sql<
+                string | null
+              >`case when f.id is not null then 'Facility' when responsible.payer is null then null else coalesce(responsible.filing, '') end`
+            : sql<string | null>`coalesce(f.name, responsible.payer)`
         ).as('name'),
         sql<boolean>`bool_and(f.id is not null or coalesce(responsible.listed, true))`.as(
           'in_directory'

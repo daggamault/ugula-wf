@@ -1,10 +1,10 @@
 import type { Db } from '@ugula/db';
 import { activityReport } from './activity-report.ts';
 import { agingReport } from './aging-report.ts';
+import { creditBalancesReport } from './credit-balances-report.ts';
 import { denialsReport } from './denials-report.ts';
 import { hcpcsReport } from './hcpcs-report.ts';
 import { importsReport } from './imports-report.ts';
-import { levelsReport } from './levels-report.ts';
 import { monthlyReport } from './monthly-report.ts';
 import { payersReport } from './payers-report.ts';
 import { paymentsReport } from './payments-report.ts';
@@ -22,9 +22,9 @@ export const REPORTS = {
   payments: paymentsReport,
   denials: denialsReport,
   'write-offs': writeOffsReport,
+  'credit-balances': creditBalancesReport,
   payers: payersReport,
   hcpcs: hcpcsReport,
-  levels: levelsReport,
   'work-queue': workQueueReport,
   productivity: productivityReport,
   imports: importsReport

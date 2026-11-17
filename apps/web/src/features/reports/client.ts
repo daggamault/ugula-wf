@@ -44,6 +44,7 @@ export type UnbilledRow = Claim & {
   status: string;
   queue: string | null;
   age_days: number;
+  file_by: string | null;
   charges_cents: number;
 };
 
@@ -68,6 +69,7 @@ export type ActivityRow = {
   payer_paid_cents: number;
   patient_paid_cents: number;
   adjusted_cents: number;
+  refunds_cents: number;
   written_off_cents: number;
   collections_cents: number;
 };
@@ -90,9 +92,8 @@ export type PaymentRow = Claim & {
 
 export type DenialRow = {
   payer: string | null;
-  code: string;
+  code: string | null;
   description: string | null;
-  adjustments: number;
   denials: number;
   claims: number;
   amount_cents: number;
@@ -108,6 +109,16 @@ export type WriteOffRow = Claim & {
   balance_cents: number;
 };
 
+export type CreditBalanceRow = Claim & {
+  status: string;
+  charges_cents: number;
+  paid_cents: number;
+  adjusted_cents: number;
+  credit_cents: number;
+  last_paid_at: string | null;
+  age_days: number | null;
+};
+
 export type PayerRow = PayerName & {
   billed: number;
   charges_cents: number;
@@ -115,6 +126,7 @@ export type PayerRow = PayerName & {
   adjusted_cents: number;
   responses: number;
   denials: number;
+  rejected: number;
   paid_claims: number;
   pay_days: number;
 };
@@ -124,14 +136,6 @@ export type HcpcsRow = {
   description: string | null;
   claims: number;
   units: number;
-  charges_cents: number;
-};
-
-export type LevelRow = {
-  level: string;
-  emergency: boolean;
-  trips: number;
-  miles: number;
   charges_cents: number;
 };
 
@@ -150,7 +154,6 @@ export type ProductivityRow = {
   name: string;
   tasks: number;
   task_hours: number;
-  submitted: number;
   posted: number;
 };
 

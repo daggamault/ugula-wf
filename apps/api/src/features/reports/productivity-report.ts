@@ -1,6 +1,6 @@
 import { sql } from 'kysely';
 import { report } from './report.ts';
-import { cents, SUBMISSIONS, within, zero } from './report-sql.ts';
+import { cents, within, zero } from './report-sql.ts';
 
 export const productivityReport = report({
   dates: 'completed',
@@ -11,7 +11,6 @@ export const productivityReport = report({
         sql<string>`t.completed_by_id`.as('user_id'),
         sql<number>`1`.as('tasks'),
         sql<number>`extract(epoch from t.completed_at - t.created_at) / 3600`.as('task_hours'),
-        zero.as('submitted'),
         zero.as('posted')
       ])
       .where('t.agency_id', '=', ctx.agencyId)
@@ -20,16 +19,14 @@ export const productivityReport = report({
       .where(within(sql.ref('t.completed_at'), ctx));
     const events = db
       .selectFrom('claim_events as e')
-      .innerJoin('claims as c', 'c.id', 'e.claim_id')
       .select([
         sql<string>`e.created_by_id`.as('user_id'),
         zero.as('tasks'),
         zero.as('task_hours'),
-        sql<number>`(e.kind <> 'response')::int`.as('submitted'),
-        sql<number>`(e.kind = 'response')::int`.as('posted')
+        sql<number>`1`.as('posted')
       ])
       .where('e.agency_id', '=', ctx.agencyId)
-      .where('e.kind', 'in', [...SUBMISSIONS, 'response'])
+      .where('e.kind', '=', 'response')
       .where('e.created_by_id', 'is not', null)
       .where(within(sql.ref('e.created_at'), ctx));
     return db
@@ -39,15 +36,14 @@ export const productivityReport = report({
         'u.email as name',
         cents(sql.ref('f.tasks')).as('tasks'),
         cents(sql.ref('f.task_hours')).as('task_hours'),
-        cents(sql.ref('f.submitted')).as('submitted'),
         cents(sql.ref('f.posted')).as('posted')
       ])
       .groupBy('u.email')
       .as('r');
   },
-  columns: ['name', 'tasks', 'task_hours', 'submitted', 'posted'],
+  columns: ['name', 'tasks', 'task_hours', 'posted'],
   order: 'tasks',
   tiebreak: 'name',
   dir: 'desc',
-  totals: ['tasks', 'task_hours', 'submitted', 'posted']
+  totals: ['tasks', 'task_hours', 'posted']
 });

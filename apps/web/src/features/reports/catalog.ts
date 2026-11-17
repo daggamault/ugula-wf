@@ -2,10 +2,10 @@ import type { SelectOption } from '../../shared/ui/select.tsx';
 import {
   ACTIVITY_COLUMNS,
   agingColumns,
+  CREDIT_BALANCE_COLUMNS,
   denialColumns,
   HCPCS_COLUMNS,
   IMPORT_COLUMNS,
-  LEVEL_COLUMNS,
   MONTHLY_COLUMNS,
   PAYMENT_COLUMNS,
   PRODUCTIVITY_COLUMNS,
@@ -46,16 +46,16 @@ export const REPORTS: readonly AnyReport[] = [
     id: 'aging',
     title: 'Accounts Receivable Aging',
     description:
-      'Open balances as of today by who owes them now: the facility responsible for the trip, the next payer due to answer, or the patient once every payer has. Ages count from the date of service.',
+      'Open balances as of today by who owes them now (the facility responsible for the trip, the next payer due to answer, or the patient once every payer has), by financial class or by claim status. Ages count from the date of service.',
     dates: null,
-    groups: PAYER_GROUPS,
+    groups: [...PAYER_GROUPS, { value: 'status', label: 'Status' }],
     columns: agingColumns
   }),
   report({
     id: 'unbilled',
     title: 'Unbilled Claims',
     description:
-      'Claims not yet submitted to a payer, oldest first, with the task each one is waiting on.',
+      'Claims not yet submitted to a payer, oldest first, with the task each one is waiting on and the date the first payer must have it by.',
     dates: null,
     groups: null,
     columns: fixed(UNBILLED_COLUMNS)
@@ -73,7 +73,7 @@ export const REPORTS: readonly AnyReport[] = [
     id: 'activity',
     title: 'Monthly Activity',
     description:
-      'Claims billed, payments, adjustments, write-offs and collections booked in each month, for closing the month.',
+      'Claims billed, payments, adjustments, refunds, write-offs and collections booked in each month, for closing the month.',
     dates: 'posted',
     groups: null,
     columns: fixed(ACTIVITY_COLUMNS)
@@ -82,16 +82,16 @@ export const REPORTS: readonly AnyReport[] = [
     id: 'payments',
     title: 'Payments Posted',
     description:
-      'Every payer and patient payment and refund posted, with check or EFT numbers for matching deposits.',
+      'Every payer and patient payment and refund posted, with check or EFT numbers for matching deposits. Denials that paid nothing are on Denials.',
     dates: 'posted',
     groups: null,
     columns: fixed(PAYMENT_COLUMNS)
   }),
   report({
     id: 'denials',
-    title: 'Denials and Adjustments',
+    title: 'Denials',
     description:
-      'Adjustment reason codes from payer responses, with how many came on responses that paid nothing.',
+      'Payer denials posted, by the adjustment reason codes on each denial, to find what to fix before billing.',
     dates: 'posted',
     groups: [
       { value: 'payer', label: 'Payer' },
@@ -108,10 +108,19 @@ export const REPORTS: readonly AnyReport[] = [
     columns: fixed(WRITE_OFF_COLUMNS)
   }),
   report({
+    id: 'credit-balances',
+    title: 'Credit Balances',
+    description:
+      'Claims paid more than they are owed, longest since the last payment first, for refunding on time.',
+    dates: null,
+    groups: null,
+    columns: fixed(CREDIT_BALANCE_COLUMNS)
+  }),
+  report({
     id: 'payers',
     title: 'Payer Performance',
     description:
-      'How each payer handled the claims billed to it: what it paid, how often it denied them, and how long it took to pay.',
+      'How each payer handled the claims billed to it: what it paid, how often it denied or rejected them, and how long it took to pay.',
     dates: 'service',
     groups: PAYER_GROUPS,
     columns: payerColumns
@@ -119,23 +128,15 @@ export const REPORTS: readonly AnyReport[] = [
   report({
     id: 'hcpcs',
     title: 'Charges by HCPCS Code',
-    description: 'Billed services and mileage, by procedure code.',
+    description: 'Trips by level of service and loaded miles billed, by procedure code.',
     dates: 'service',
     groups: null,
     columns: fixed(HCPCS_COLUMNS)
   }),
   report({
-    id: 'levels',
-    title: 'Trips by Level of Service',
-    description: 'Trips, loaded miles and charges by level of service.',
-    dates: 'service',
-    groups: null,
-    columns: fixed(LEVEL_COLUMNS)
-  }),
-  report({
     id: 'work-queue',
     title: 'Work Queue',
-    description: 'Open tasks and stuck runs right now, by how long they have waited.',
+    description: 'Open tasks right now, by how long they have waited.',
     dates: null,
     groups: [
       { value: 'queue', label: 'Task Type' },
@@ -146,7 +147,7 @@ export const REPORTS: readonly AnyReport[] = [
   report({
     id: 'productivity',
     title: 'Biller Productivity',
-    description: 'Tasks completed, claims submitted and payments posted by each biller.',
+    description: 'Tasks completed and payments posted by each biller.',
     dates: 'completed',
     groups: null,
     columns: fixed(PRODUCTIVITY_COLUMNS)

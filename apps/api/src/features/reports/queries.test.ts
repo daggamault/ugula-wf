@@ -18,9 +18,9 @@ describe('report queries', () => {
       'payments',
       'denials',
       'write-offs',
+      'credit-balances',
       'payers',
       'hcpcs',
-      'levels',
       'work-queue',
       'productivity',
       'imports'

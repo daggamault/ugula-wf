@@ -48,6 +48,7 @@ export const paymentsReport = report({
       ])
       .where('e.agency_id', '=', ctx.agencyId)
       .where('e.kind', 'in', PAYMENTS)
+      .where('e.paid_cents', '<>', 0)
       .where(within(sql.ref('e.created_at'), ctx))
       .as('r'),
   columns: [

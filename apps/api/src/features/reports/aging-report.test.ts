@@ -33,10 +33,10 @@ const PARAMETERS = [
 const PAYER_NAME = 'coalesce(f.name, responsible.payer)';
 
 describe('agingReport', () => {
-  it('is an undated report grouped by payer or payer class', () => {
+  it('is an undated report grouped by payer, payer class or claim status', () => {
     assert.deepEqual(
       { dates: agingReport.dates, groups: agingReport.groups },
-      { dates: null, groups: ['payer', 'class'] }
+      { dates: null, groups: ['payer', 'class', 'status'] }
     );
   });
 
@@ -56,6 +56,14 @@ describe('agingReport', () => {
       `select ${COLUMNS}, count(*) over () as "total" from (${ROWS(
         `case when f.id is not null then 'Facility' when responsible.payer is null then null else coalesce(responsible.filing, '') end`
       )}) as "r" order by "r"."balance_cents" desc nulls last, "r"."name" desc limit $24 offset $25`
+    );
+  });
+
+  it('groups by the claim status', async () => {
+    const { rows } = await compileReport(agingReport, 'status');
+    assert.equal(
+      rows.sql,
+      `select ${COLUMNS}, count(*) over () as "total" from (${ROWS('c.status')}) as "r" order by "r"."balance_cents" desc nulls last, "r"."name" desc limit $24 offset $25`
     );
   });
 
