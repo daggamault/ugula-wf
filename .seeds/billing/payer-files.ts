@@ -950,6 +950,7 @@ const receivePayerFile = (): GraphDef => {
       p('reviews', 'integer', true)
     ]
   );
+  g.trigger({ kind: 'event', event: 'payer_file.received', where: {} });
   g.add('read', 'billing.read-payer-file', { label: 'Read Payer File' });
   g.add('route', 'billing.route-remittances', { label: 'Route Remittances' });
   g.add('apply', 'billing.apply-payer-file', { label: 'Apply to Claims' });
@@ -1062,7 +1063,7 @@ export const payerFileGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.receive-payer-file',
     'Receive Payer File',
-    'Reads a file the clearinghouse sent (835 remittance, TA1, 999 or 277CA acknowledgment, 277 claim status, 271 eligibility), routes each 835 claim payment with Route Remittances, applies the file to its claims, has the clearinghouse setup fixed when it rejected the file envelope (TA1), and asks a biller about each line that could not be applied on its own. Started for every file downloaded from the clearinghouse, and for every file uploaded on Payer Files.',
+    'Reads a file the clearinghouse sent (835 remittance, TA1, 999 or 277CA acknowledgment, 277 claim status, 271 eligibility), routes each 835 claim payment with Route Remittances, applies the file to its claims, has the clearinghouse setup fixed when it rejected the file envelope (TA1), and asks a biller about each line that could not be applied on its own. Starts on Payer File Received: every file downloaded from the clearinghouse or uploaded on Payer Files.',
     receivePayerFile()
   ),
   asWorkflow(

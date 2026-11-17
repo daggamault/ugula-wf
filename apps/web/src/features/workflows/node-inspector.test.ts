@@ -55,6 +55,7 @@ type Options = {
   onOpen?: () => void;
   base?: NodeInstance;
   table?: EffectiveTable;
+  isWorkflow?: boolean;
 };
 
 const show = (id: string, { graph = def, editable = true, ...extra }: Options = {}) => {
@@ -106,6 +107,20 @@ describe('NodeInspector', () => {
       within(panel).getAllByRole('paragraph')[0]?.textContent ?? '',
       /even across restarts/
     );
+  });
+
+  it('sets what starts a workflow on its start', () => {
+    show('entry', { isWorkflow: true });
+    assert.ok(screen.getByRole('heading', { name: 'Trigger' }));
+    assert.equal(
+      screen.getByRole('button', { name: 'Starts' }).textContent,
+      'When Someone Runs It'
+    );
+  });
+
+  it('has no trigger on the start of a subworkflow', () => {
+    show('entry');
+    assert.equal(screen.queryByRole('heading', { name: 'Trigger' }), null);
   });
 
   it('closes and deletes the step', async () => {

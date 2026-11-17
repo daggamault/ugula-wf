@@ -1,24 +1,9 @@
-import { type Db, resolveWorkflowVersion, startRun } from '@ugula/db';
+import { type Db, findScheduledWorkflows, startRun, type TriggeredWorkflow } from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { SlotBoss } from '../../shared/gated-work.ts';
-import { claimScheduleRun, type DueAgency, findDueAgencies } from './queries.ts';
+import { claimScheduleRun, findDueOn } from './queries.ts';
 
-type Schedule = {
-  queue: string;
-  workflow: string;
-  every: 'day' | 'month';
-  hour: number;
-};
-
-export const SCHEDULES: readonly Schedule[] = [
-  { queue: 'billing-watch-deadlines', workflow: 'billing.watch-deadlines', every: 'day', hour: 6 },
-  {
-    queue: 'billing-invoice-facilities',
-    workflow: 'billing.invoice-facilities',
-    every: 'month',
-    hour: 7
-  }
-];
+export const SCHEDULE_QUEUE = 'workflow-schedules';
 
 export const SCHEDULE_CRON = '*/15 * * * *';
 
@@ -29,45 +14,49 @@ type ScheduleBoss = Pick<SlotBoss, 'work'> & {
 
 type StartDeps = { db: Db; boss: RunQueueClient; report: (message: string) => void };
 
-const startOnce = (db: Db, boss: RunQueueClient, s: Schedule, due: DueAgency) =>
-  db.transaction().execute(async (tx) => {
-    const claimed = await claimScheduleRun(tx, due.id, s.workflow, due.fire_on);
-    if (!claimed) return 'claimed';
-    const version = await resolveWorkflowVersion(tx, due.id, s.workflow);
-    if (!version) return 'unpublished';
-    await startRun(tx, boss, { agencyId: due.id, versionId: version.id, inputs: {} });
-    return 'started';
+const startIfDue = async (db: Db, boss: RunQueueClient, agencyId: string, w: TriggeredWorkflow) => {
+  if (w.trigger.kind !== 'schedule') return;
+  const fireOn = await findDueOn(db, agencyId, w.key, w.trigger);
+  if (!fireOn) return;
+  await db.transaction().execute(async (tx) => {
+    if (!(await claimScheduleRun(tx, agencyId, w.key, fireOn))) return;
+    await startRun(tx, boss, { agencyId, versionId: w.versionId, inputs: {} });
   });
+};
 
-export const startDueAgencies =
+export const startDueSchedules =
   ({ db, boss, report }: StartDeps) =>
-  async (s: Schedule) => {
-    const { rows } = await findDueAgencies(db, s);
+  async () => {
+    const agencies = await db
+      .selectFrom('agencies')
+      .select('id')
+      .where('is_active', '=', true)
+      .orderBy('id')
+      .execute();
     const failed: string[] = [];
-    for (const due of rows) {
+    for (const { id } of agencies) {
       try {
-        if ((await startOnce(db, boss, s, due)) === 'unpublished') {
-          report(`Schedule: ${s.workflow} is not published for agency ${due.id}`);
+        for (const w of await findScheduledWorkflows(db, id)) {
+          await startIfDue(db, boss, id, w).catch((err: unknown) => {
+            failed.push(`${w.key} for agency ${id}`);
+            report(`Schedule ${w.key} failed for agency ${id}: ${String(err)}`);
+          });
         }
       } catch (err) {
-        failed.push(due.id);
-        report(`Schedule ${s.workflow} failed for agency ${due.id}: ${String(err)}`);
+        failed.push(`agency ${id}`);
+        report(`Schedules failed for agency ${id}: ${String(err)}`);
       }
     }
-    if (failed.length) {
-      throw new Error(`Schedule ${s.workflow} failed for ${failed.length} agencies`);
-    }
+    if (failed.length) throw new Error(`Schedules failed: ${failed.join(', ')}`);
   };
 
 type JobDeps = {
   boss: ScheduleBoss;
-  start: (s: Schedule) => Promise<void>;
+  start: () => Promise<void>;
 };
 
-export const registerScheduleJobs = async ({ boss, start }: JobDeps) => {
-  for (const s of SCHEDULES) {
-    await boss.createQueue(s.queue);
-    await boss.schedule(s.queue, SCHEDULE_CRON);
-    await boss.work(s.queue, { localConcurrency: 1, batchSize: 1 }, () => start(s));
-  }
+export const registerScheduleJob = async ({ boss, start }: JobDeps) => {
+  await boss.createQueue(SCHEDULE_QUEUE);
+  await boss.schedule(SCHEDULE_QUEUE, SCHEDULE_CRON);
+  await boss.work(SCHEDULE_QUEUE, { localConcurrency: 1, batchSize: 1 }, () => start());
 };

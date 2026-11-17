@@ -35,6 +35,7 @@ export type RunDetail = {
     result: { pin: string | null; outputs: Values } | null;
     error: ErrorInfo | null;
     state: RunState | null;
+    event: { id: string; type: string; createdAt: string } | null;
   };
   children: RunSummary[];
   childCount: number;

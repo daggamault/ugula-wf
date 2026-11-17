@@ -142,7 +142,7 @@ const show = (path: string, fakes: Fakes = {}) => {
   window.history.replaceState(null, '', path);
   const fake = fakeClients(fakes);
   const view = render(
-    createElement(App, { clients: fake.clients, nodes: testNodes, kinds: STD_KINDS })
+    createElement(App, { clients: fake.clients, nodes: testNodes, kinds: STD_KINDS, events: [] })
   );
   return { ...fake, ...view };
 };

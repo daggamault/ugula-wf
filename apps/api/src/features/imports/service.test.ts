@@ -75,7 +75,7 @@ const file = (text: string, name = 'pcrs.xml') => ({
 });
 
 describe('import service uploads', () => {
-  it('stores the upload and starts the workflow with a reference to it', async () => {
+  it('stores the upload, starts the workflow with a reference to it and emits NEMSIS File Received', async () => {
     const { service, stored, jobs, queries } = setup();
     const res = await service.upload('t-1', 'u-1', 'billing.receive-nemsis-file', file('<x/>'));
     assert.match(stored[0] ?? '', /^imports\/t-1\/[0-9a-f-]{36}\/pcrs\.xml$/);
@@ -92,6 +92,10 @@ describe('import service uploads', () => {
     const recorded = queries.find((q) => q.sql.startsWith('insert into "imports"'));
     assert.deepEqual(recorded?.parameters.slice(0, 4), ['t-1', 'r1', 'upload', 'pcrs.xml']);
     assert.equal(recorded?.parameters.at(-1), 'u-1');
+    const event = queries.find((q) => q.sql.startsWith('insert into "events"'));
+    assert.deepEqual(event?.parameters.slice(0, 2), ['t-1', 'import.received']);
+    assert.match(String(event?.parameters[2]), /"fileName":"pcrs.xml"/);
+    assert.equal(event?.parameters[3], 'u-1');
   });
 
   it('rejects empty, oversized and unroutable uploads before storing anything', async () => {

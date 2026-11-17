@@ -2,7 +2,9 @@ import {
   combineSources,
   createRegistry,
   ENTRY_TYPE,
+  type EventDef,
   type ExitDoc,
+  entryTrigger,
   type GraphDef,
   INPUT_TYPE,
   inputNode,
@@ -18,6 +20,7 @@ import {
   stdGraphInfo,
   stdGraphSource,
   stdGraphs,
+  triggerSummary,
   WORKFLOW_CALL_TYPES
 } from '@ugula/graph';
 import type * as v from 'valibot';
@@ -56,7 +59,14 @@ export type PaletteEntry = NodeRef & {
 type CatalogSources = {
   published?: readonly PublishedNode[];
   graphs?: readonly (NodeRef & { definition: GraphDef })[];
+  events?: readonly EventDef[];
 };
+
+export const eventLabel = (events: readonly EventDef[], type: string) =>
+  events.find((e) => e.type === type)?.label ?? type;
+
+const entrySummary = (inst: NodeInstance, events: readonly EventDef[]) =>
+  triggerSummary(entryTrigger(inst.config), (type) => eventLabel(events, type));
 
 export type Catalog = {
   palette: PaletteEntry[];
@@ -117,7 +127,7 @@ const stub = (signature: Signature): GraphDef => ({
 
 export const createCatalog = (
   nodes: NodeDef[],
-  { published = [], graphs = [] }: CatalogSources = {}
+  { published = [], graphs = [], events = [] }: CatalogSources = {}
 ): Catalog => {
   const full = new Map(graphs.map((g) => [refKey(g), g.definition]));
   const stubs = new Map(published.map((p) => [refKey({ type: p.key, version: p.version }), p]));
@@ -227,6 +237,7 @@ export const createCatalog = (
     hasConfig: (inst) => registry.node(inst)?.config !== undefined,
     configSchemaOf: (inst) => registry.node(inst)?.config,
     summaryOf: (inst) => {
+      if (inst.type === ENTRY_TYPE) return entrySummary(inst, events);
       try {
         return registry.node(inst)?.summary?.(registry.config(inst)) ?? null;
       } catch {

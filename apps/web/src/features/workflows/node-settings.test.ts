@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { type GraphDef, INPUT_TYPE, type Json, type NodeInstance } from '@ugula/graph';
+import { ENTRY_TYPE, type GraphDef, INPUT_TYPE, type Json, type NodeInstance } from '@ugula/graph';
 import { createElement, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createCatalog } from '../../shared/graph/catalog.ts';
@@ -121,13 +121,14 @@ describe('NodeSettings', () => {
       'std.flow.spawn-workflows',
       'std.value',
       'std.var.set',
-      INPUT_TYPE
+      INPUT_TYPE,
+      ENTRY_TYPE
     ]) {
       assert.ok(Object.hasOwn(SETTINGS_EDITORS, type), type);
     }
     const types = new Set(testNodes.map((n) => n.type));
     for (const type of Object.keys(SETTINGS_EDITORS)) {
-      assert.ok(types.has(type) || type === INPUT_TYPE, type);
+      assert.ok(types.has(type) || type === INPUT_TYPE || type === ENTRY_TYPE, type);
     }
   });
 });

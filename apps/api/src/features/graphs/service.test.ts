@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { GraphKind, GraphRole } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
-import { contractOf, createStdNodes, ENTRY_TYPE, type GraphDef, STD_KINDS } from '@ugula/graph';
+import {
+  contractOf,
+  createStdNodes,
+  ENTRY_TYPE,
+  type GraphDef,
+  STD_KINDS,
+  SUBWORKFLOW_TRIGGER
+} from '@ugula/graph';
 import type { CompiledQuery } from 'kysely';
 import type { Scope } from '../../shared/scopes.ts';
 import { testAccess } from '../../shared/testing.ts';
@@ -182,7 +189,13 @@ const createWorld = ({ graphs, versions = {}, fail, dependents = [], tables = []
   const { db, queries } = createRecordingDb(rows);
   const find = (prefix: string) => queries.filter((q) => q.sql.startsWith(prefix));
   return {
-    service: createGraphService({ db, nodes, kinds: STD_KINDS, newKey: () => 'custom.k7f3x9q2ab' }),
+    service: createGraphService({
+      db,
+      nodes,
+      kinds: STD_KINDS,
+      events: [],
+      newKey: () => 'custom.k7f3x9q2ab'
+    }),
     queries,
     find
   };
@@ -418,7 +431,7 @@ describe('graph service reads', () => {
       if (sql.startsWith('select e.id, e.key')) return [table];
       return [];
     });
-    const service = createGraphService({ db, nodes, kinds: STD_KINDS });
+    const service = createGraphService({ db, nodes, kinds: STD_KINDS, events: [] });
     assert.deepEqual(await service.map(admin), {
       ok: true,
       value: {
@@ -624,6 +637,28 @@ describe('graph service drafts', () => {
     assert.deepEqual(draft?.parameters.slice(0, 2), ['g-agency', 4]);
     assert.equal(draft?.parameters[4], null);
     assert.equal(fresh.find('update "graphs" set "updated_at"').length, 1);
+  });
+
+  it('lets only workflows start on their own', async () => {
+    const scheduled: GraphDef = {
+      ...flow,
+      nodes: [
+        {
+          id: 'entry',
+          type: ENTRY_TYPE,
+          version: 1,
+          config: { trigger: { kind: 'schedule', every: 'day', hour: 6 } }
+        },
+        ...flow.nodes.slice(1)
+      ]
+    };
+    const save = async (kind: GraphKind) => {
+      const world = createWorld({ graphs: [agency({ kind })] });
+      const saved = await world.service.saveDraft(manager, 'g-agency', scheduled);
+      return saved.ok ? saved.value.issues : saved;
+    };
+    assert.deepEqual(await save('workflow'), []);
+    assert.deepEqual(await save('node'), [{ message: SUBWORKFLOW_TRIGGER }]);
   });
 
   it('locks the graph before looking for its draft, so two first saves cannot both insert one', async () => {

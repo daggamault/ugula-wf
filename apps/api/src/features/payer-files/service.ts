@@ -1,4 +1,10 @@
-import { type Db, findImported, readPayerFile, resolveWorkflowVersion, startRun } from '@ugula/db';
+import {
+  type Db,
+  emitAndDispatch,
+  findEventWorkflows,
+  findImported,
+  readPayerFile
+} from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { BlobRef, BlobStore } from '@ugula/storage';
 import { safeName, type UploadedFile, uploadKey } from '../../shared/files.ts';
@@ -7,7 +13,7 @@ import { fail, ok } from '../../shared/result.ts';
 import { findPayerFile, listFileItems, searchPayerFiles } from './queries.ts';
 import type { PayerFileSort } from './schemas.ts';
 
-export const RECEIVE_WORKFLOW = 'billing.receive-payer-file';
+export const PAYER_FILE_RECEIVED = 'payer_file.received';
 
 type PayerFileServiceDeps = {
   db: Db;
@@ -50,29 +56,29 @@ export const createPayerFileService = ({ db, boss, blobs, maxBytes }: PayerFileS
       );
     }
     const fileName = file.name.trim() || safeName(file.name);
-    const version = await resolveWorkflowVersion(db, agencyId, RECEIVE_WORKFLOW);
-    if (!version) return fail('conflict', `The ${RECEIVE_WORKFLOW} workflow is not published`);
+    if (!(await findEventWorkflows(db, agencyId, PAYER_FILE_RECEIVED)).length) {
+      return fail('conflict', 'No published workflow starts when a payer file is received');
+    }
     const document = await blobs.putBytes(
       uploadKey(agencyId, fileName, 'payer-files/'),
       file.bytes,
       'application/edi-x12'
     );
-    const runId = await db
+    const { runIds } = await db
       .transaction()
       .execute((tx) =>
-        startRun(tx, boss, {
+        emitAndDispatch(tx, boss, {
           agencyId,
-          versionId: version.id,
-          inputs: { file: document, fileName },
-          interactive: true,
-          startedBy: userId
+          type: PAYER_FILE_RECEIVED,
+          payload: { file: document, fileName },
+          createdBy: userId
         })
       )
       .catch(async (err: unknown) => {
         await blobs.remove(document);
         throw err;
       });
-    return ok({ runId, kind: inbound.kind });
+    return ok({ runIds, kind: inbound.kind });
   }
 });
 

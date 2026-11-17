@@ -8,6 +8,7 @@ import { createCmsTables } from './cms.ts';
 import { createCodesTable } from './codes.ts';
 import { parseConfig } from './config.ts';
 import { createDataTablesTables } from './data-tables.ts';
+import { createEventEmitters, createEventsTables, EVENT_FUNCTIONS } from './events.ts';
 import { createExtensions } from './extensions.ts';
 import { createFacilitiesTables, createFacilityInvoiceClaimsTable } from './facilities.ts';
 import { createFeeSchedulesTable } from './fee-schedules.ts';
@@ -59,6 +60,8 @@ const resetSchema = async (db: Kysely<Database>) => {
     'daily_numbers',
     'signals',
     'schedule_runs',
+    'event_runs',
+    'events',
     'clearinghouse_downloads',
     'payer_file_items',
     'payer_files',
@@ -98,6 +101,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'check_run_graph_key',
     'check_table_version_base',
     'check_run_table_key',
+    ...EVENT_FUNCTIONS,
     ...DAILY_NUMBER_FUNCTIONS
   ]) {
     await sql`drop function if exists ${sql.id(name)}`.execute(db);
@@ -117,6 +121,7 @@ const steps = [
   createUsersTables,
   createGraphsTables,
   createWorkflowRunsTables,
+  createEventsTables,
   createDataTablesTables,
   createTasksTable,
   createPatientsTable,
@@ -128,7 +133,8 @@ const steps = [
   createClaimsTables,
   createFacilityInvoiceClaimsTable,
   createPayerFilesTables,
-  createNotificationsTables
+  createNotificationsTables,
+  createEventEmitters
 ] as const;
 
 export const migrate = async (db: Db) => {

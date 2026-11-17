@@ -10,7 +10,7 @@ export {
   WORKFLOW_CALL_TYPES,
   workflowRefs
 } from './compile.ts';
-export { inputNode } from './core.ts';
+export { inputNode, triggerSummary } from './core.ts';
 export { actionNode, branchNode, pin, pureNode } from './define.ts';
 export { documentationIssues, nodeDocumentationIssues, pathLabel } from './documentation.ts';
 export { createEngine, type Engine } from './engine.ts';
@@ -46,6 +46,23 @@ export {
   tableRefs,
   tableSchemas
 } from './std/tables.ts';
+export {
+  EVENT_TYPE_PATTERN,
+  type EventDef,
+  entryTrigger,
+  eventOf,
+  MANUAL_TRIGGER,
+  SCHEDULE_PERIODS,
+  type SchedulePeriod,
+  SUBWORKFLOW_TRIGGER,
+  type Trigger,
+  triggerInputs,
+  triggerIssues,
+  triggerMatches,
+  triggerOf,
+  triggerSchema,
+  type WorkflowEvent
+} from './triggers.ts';
 export type * from './types.ts';
 export { COMMENT_COLORS, SCALAR_TYPES, STEP_EVENTS } from './types.ts';
 export { type Issue, validateGraph } from './validate.ts';

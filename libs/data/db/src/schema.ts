@@ -187,6 +187,7 @@ type GraphVersionsTable = {
   base_version_id: string | null;
   contract: string;
   dependencies: ColumnType<string[], string[] | undefined, string[]>;
+  trigger: GeneratedAlways<unknown>;
   published_at: NullableTimestamp;
   created_by_id: string | null;
   created_at: Timestamp;
@@ -359,6 +360,23 @@ type SignalsTable = {
   key: string;
   received: Generated<number>;
   updated_at: Timestamp;
+};
+
+type EventsTable = {
+  id: Generated<string>;
+  agency_id: string;
+  type: string;
+  payload: JsonColumn;
+  created_by_id: string | null;
+  created_at: Timestamp;
+  dispatched_at: NullableTimestamp;
+};
+
+type EventRunsTable = {
+  event_id: string;
+  agency_id: string;
+  workflow: string;
+  run_id: string;
 };
 
 type ScheduleRunsTable = {
@@ -748,7 +766,7 @@ type ClearinghouseDownloadsTable = {
   size: number;
   modified_at: ColumnType<Date, Date | string, Date | string>;
   agency_id: string | null;
-  run_id: string | null;
+  event_id: string | null;
   note: ColumnType<string, string | undefined, string>;
   tried_at: ColumnType<Date, Date | string | undefined, Date | string>;
   created_at: Timestamp;
@@ -899,6 +917,8 @@ export type Database = {
   daily_numbers: DailyNumbersTable;
   signals: SignalsTable;
   schedule_runs: ScheduleRunsTable;
+  events: EventsTable;
+  event_runs: EventRunsTable;
   tasks: TasksTable;
   patients: PatientsTable;
   fee_schedules: FeeSchedulesTable;

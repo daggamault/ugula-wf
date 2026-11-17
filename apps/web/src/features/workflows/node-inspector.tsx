@@ -37,6 +37,7 @@ type NodeInspectorProps = {
   onClose: () => void;
   base?: NodeInstance | undefined;
   table?: EffectiveTable | undefined;
+  isWorkflow?: boolean;
 };
 
 export const secondsOf = (ms: number) => ms / 1000;
@@ -59,7 +60,8 @@ export const NodeInspector = ({
   onOpen,
   onClose,
   base,
-  table
+  table,
+  isWorkflow = false
 }: NodeInspectorProps) => {
   const titleId = useId();
   const lastSignature = useRef<Signature | null>(null);
@@ -108,7 +110,7 @@ export const NodeInspector = ({
   const outputs = signature?.outputs ?? [];
   const exits = signature?.execOut ?? [];
   const exitDocs = catalog.exitsOf(node, def);
-  const hasSettings = !boundary && catalog.hasConfig(node);
+  const hasSettings = (isStart ? isWorkflow : !boundary) && catalog.hasConfig(node);
   const canRetry = signature !== null && !isPure(signature) && !boundary;
   const variables = def.variables.map((x) => x.name);
   const setConfig = (config: Json | undefined) => set({ config });
@@ -197,7 +199,7 @@ export const NodeInspector = ({
           </SectionPanel>
         ) : null}
         {hasSettings ? (
-          <SectionPanel title="Settings">
+          <SectionPanel title={isStart ? 'Trigger' : 'Settings'}>
             {tableRef ? <TableReference tableKey={tableRef.key} table={table} /> : null}
             {tableRef && Object.hasOwn(TABLE_EDITORS, node.type) ? null : (
               <NodeSettings

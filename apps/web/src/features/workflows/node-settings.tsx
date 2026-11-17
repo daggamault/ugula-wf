@@ -1,4 +1,4 @@
-import { INPUT_TYPE, type Json, type NodeInstance } from '@ugula/graph';
+import { ENTRY_TYPE, INPUT_TYPE, type Json, type NodeInstance } from '@ugula/graph';
 import { TableIcon } from 'lucide-react';
 import type { ComponentType } from 'react';
 import { Badge } from '../../shared/ui/badge.tsx';
@@ -22,6 +22,7 @@ import {
 import type { SettingsEditorProps } from './settings-editor.ts';
 import { DecisionTableEditor, LookupTableEditor } from './table-editors.tsx';
 import { RecordFieldsEditor, TaskEditor } from './task-editor.tsx';
+import { TriggerEditor } from './trigger-editor.tsx';
 
 export const TABLE_EDITORS = {
   'std.table.lookup': LookupTableEditor,
@@ -55,7 +56,8 @@ export const SETTINGS_EDITORS: Readonly<Record<string, ComponentType<SettingsEdi
   'std.var.set': VariableEditor,
   'std.var.append': VariableEditor,
   'std.var.increment': VariableEditor,
-  [INPUT_TYPE]: GraphInputEditor
+  [INPUT_TYPE]: GraphInputEditor,
+  [ENTRY_TYPE]: TriggerEditor
 };
 
 export const NodeSettings = (props: SettingsEditorProps & { node: NodeInstance }) => {

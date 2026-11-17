@@ -83,9 +83,16 @@ export const searchRuns = (db: Db, agencyId: string, f: RunFilters) => {
   return paged(q, f, RUN_ORDER, sql.ref('r.id'));
 };
 
+const startedByEvent = sql<{
+  id: string;
+  type: string;
+  createdAt: string;
+} | null>`( select jsonb_build_object('id', e.id, 'type', e.type, 'createdAt', e.created_at) from event_runs er join events e on e.id = er.event_id where er.run_id = r.id )`;
+
 export const findRun = (db: Db, agencyId: string, id: string) =>
   runColumns(db)
     .select(['r.inputs', 'r.result', 'r.error', 'r.state', 'r.wait_key'])
+    .select(startedByEvent.as('event'))
     .where('r.agency_id', '=', agencyId)
     .where('r.id', '=', id)
     .executeTakeFirst();

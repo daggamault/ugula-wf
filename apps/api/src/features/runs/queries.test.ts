@@ -122,7 +122,7 @@ describe('run lookups', () => {
     assert.deepEqual(await findRun(db, 't-1', 'r1'), { id: 'r1' });
     assert.equal(
       queries[0]?.sql,
-      `${RUN_COLUMNS}, "r"."inputs", "r"."result", "r"."error", "r"."state", "r"."wait_key" ${RUN_FROM} where "r"."agency_id" = $1 and "r"."id" = $2`
+      `${RUN_COLUMNS}, "r"."inputs", "r"."result", "r"."error", "r"."state", "r"."wait_key", ( select jsonb_build_object('id', e.id, 'type', e.type, 'createdAt', e.created_at) from event_runs er join events e on e.id = er.event_id where er.run_id = r.id ) as "event" ${RUN_FROM} where "r"."agency_id" = $1 and "r"."id" = $2`
     );
     assert.deepEqual(queries[0]?.parameters, ['t-1', 'r1']);
   });

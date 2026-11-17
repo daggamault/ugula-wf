@@ -683,6 +683,7 @@ const watchDeadlines = (): GraphDef => {
     inputs: [],
     outputs: [d('checked', 'integer', 'Deadlines Checked', 'How many deadlines were looked at.')]
   });
+  g.trigger({ kind: 'schedule', every: 'day', hour: 6 });
   g.add('today', 'billing.agency-today', { label: 'Today at the Agency' });
   g.add('back', 'std.math.subtract', { label: 'Days Back', values: { a: 0 } });
   g.wire(checkLimit(g, 'validDays', 'pcsValidDays'), 'back.b');
@@ -872,6 +873,7 @@ const invoiceFacilities = (): GraphDef => {
       d('claims', 'integer', 'Claims', 'How many trips they bill.')
     ]
   });
+  g.trigger({ kind: 'schedule', every: 'month', hour: 7 });
   g.add('today', 'billing.agency-today', { label: 'Today at the Agency' });
   g.add('thisMonth', 'std.time.start-of', {
     label: 'Start of This Month',

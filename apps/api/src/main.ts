@@ -2,10 +2,10 @@ import { serve } from '@hono/node-server';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Permission } from '@ugula/access';
 import { createSessionStore, type RedisLike } from '@ugula/auth';
-import { createNodeCatalog, valueKinds } from '@ugula/catalog';
+import { createNodeCatalog, valueKinds, workflowEvents } from '@ugula/catalog';
 import { parseKeyring, sealSecret } from '@ugula/clearinghouse';
 import { createDb, type Db } from '@ugula/db';
-import type { NodeDef, ValueKinds } from '@ugula/graph';
+import type { EventDef, NodeDef, ValueKinds } from '@ugula/graph';
 import { createEmbedder, type Embedder } from '@ugula/inference';
 import { publishLiveEvent } from '@ugula/live';
 import type { RunQueueClient } from '@ugula/run-queue';
@@ -75,6 +75,7 @@ type AppDeps = {
   embedder: Embedder;
   nodes: NodeDef[];
   kinds: ValueKinds;
+  events: readonly EventDef[];
   publish: Publish;
   clientIp: (c: Context) => string;
   sealSecret: ((secret: string, agencyId: string) => string) | null;
@@ -99,6 +100,7 @@ export const createApp = ({
   embedder,
   nodes,
   kinds,
+  events,
   publish,
   clientIp,
   sealSecret
@@ -174,7 +176,7 @@ export const createApp = ({
         DELETE: 'workflows:update'
       })
     )
-    .route('/graphs', createGraphRoutes(createGraphService({ db, nodes, kinds })))
+    .route('/graphs', createGraphRoutes(createGraphService({ db, nodes, kinds, events })))
     .use(
       '/tables/*',
       guardMethods({
@@ -335,6 +337,7 @@ if (import.meta.main) {
       embedder: createEmbedder({ url: config.EMBEDDINGS_URL, fetch }),
       nodes: createNodeCatalog({ fetch }),
       kinds: valueKinds,
+      events: workflowEvents,
       publish: (agencyId, event) => publishLiveEvent(redis, agencyId, event),
       clientIp: (c) => getConnInfo(c).remote.address ?? 'unknown',
       sealSecret: keyring ? (secret, agencyId) => sealSecret(keyring, secret, agencyId) : null

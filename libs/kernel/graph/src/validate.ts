@@ -2,6 +2,7 @@ import { compileGraph, ENTRY_TYPE, INPUT_TYPE, portKey, RETURN_TYPE, refKey } fr
 import { messageOf } from './errors.ts';
 import { freeIdentifiers } from './expr.ts';
 import { isPure, type Registry } from './registry.ts';
+import { triggerIssues } from './triggers.ts';
 import type { GraphDef, NodeInstance, Signature } from './types.ts';
 import { checkValue, formatType, isAssignable, unknownKinds } from './value-types.ts';
 
@@ -56,6 +57,7 @@ export const validateGraph = (def: GraphDef, registry: Registry): Issue[] => {
     add('A graph can have only one Entry');
   }
   if (!g.entry && def.signature.execIn.length) add('Add an Entry node so execution can start');
+  for (const message of triggerIssues(def, registry.events)) add(message, g.entry?.id);
   if (graphIsPure && g.returns.length !== 1) add('A pure graph needs exactly one Return');
 
   const sigs = new Map<string, Signature>();

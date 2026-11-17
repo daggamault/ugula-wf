@@ -1,5 +1,8 @@
+import { type EventDef, entryTrigger, triggerSummary } from '@ugula/graph';
 import { MapIcon, PlusIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useContext, useState } from 'react';
+import { eventLabel } from '../../shared/graph/catalog.ts';
+import { WorkflowEventsContext } from '../../shared/graph/pins.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
@@ -45,56 +48,72 @@ export const GRAPH_TABLE = {
 
 export const graphsQueryOf = (apiQuery: string, show: GraphFilter) => `${apiQuery}&show=${show}`;
 
+export const startsLabel = (
+  g: Pick<GraphSummary, 'kind' | 'trigger'>,
+  events: readonly EventDef[]
+) =>
+  g.kind === 'workflow'
+    ? (triggerSummary(entryTrigger({ trigger: g.trigger }), (type) => eventLabel(events, type)) ??
+      'When Run')
+    : null;
+
 export const WorkflowsTable = ({
   graphs,
   search
 }: {
   graphs: readonly GraphSummary[];
   search: SearchView;
-}) => (
-  <Table
-    label="Workflows and subworkflows"
-    sorting={search}
-    head={[
-      { label: 'Name', sort: 'name' },
-      { label: 'Kind', sort: 'kind' },
-      'Scope',
-      'Published',
-      'Draft',
-      { label: 'Actions', isLabelHidden: true, isCompact: true }
-    ]}
-  >
-    {graphs.map((g) => (
-      <TableRow key={g.id}>
-        <TableCell>
-          <span className="font-medium">
-            <Highlight text={g.name} query={search.q} />
-          </span>
-        </TableCell>
-        <TableCell>
-          <Badge intent={g.kind === 'workflow' ? 'info' : undefined}>{kindLabel(g.kind)}</Badge>
-        </TableCell>
-        <TableCell>
-          <span className="flex flex-wrap items-center gap-2">
-            <ScopeBadge scope={g.scope} />
-            {g.overriddenBy ? <Badge intent="custom">Has Your Copy</Badge> : null}
-            <StaleBadge stale={g.isStale} />
-          </span>
-        </TableCell>
-        <TableCell isMuted>{g.publishedVersion ? `v${g.publishedVersion}` : emptyValue}</TableCell>
-        <TableCell isMuted>{g.draftVersion ? `v${g.draftVersion}` : emptyValue}</TableCell>
-        <TableCell kind="actions">
-          <RowActions>
-            {g.kind === 'workflow' && g.publishedVersion ? (
-              <RunLink to={`/runs/new?graph=${g.id}`} name={g.name} />
-            ) : null}
-            <EditLink to={`${WORKFLOWS_PATH}/${g.id}`} name={g.name} />
-          </RowActions>
-        </TableCell>
-      </TableRow>
-    ))}
-  </Table>
-);
+}) => {
+  const events = useContext(WorkflowEventsContext);
+  return (
+    <Table
+      label="Workflows and subworkflows"
+      sorting={search}
+      head={[
+        { label: 'Name', sort: 'name' },
+        { label: 'Kind', sort: 'kind' },
+        'Starts',
+        'Scope',
+        'Published',
+        'Draft',
+        { label: 'Actions', isLabelHidden: true, isCompact: true }
+      ]}
+    >
+      {graphs.map((g) => (
+        <TableRow key={g.id}>
+          <TableCell>
+            <span className="font-medium">
+              <Highlight text={g.name} query={search.q} />
+            </span>
+          </TableCell>
+          <TableCell>
+            <Badge intent={g.kind === 'workflow' ? 'info' : undefined}>{kindLabel(g.kind)}</Badge>
+          </TableCell>
+          <TableCell isMuted>{startsLabel(g, events) ?? emptyValue}</TableCell>
+          <TableCell>
+            <span className="flex flex-wrap items-center gap-2">
+              <ScopeBadge scope={g.scope} />
+              {g.overriddenBy ? <Badge intent="custom">Has Your Copy</Badge> : null}
+              <StaleBadge stale={g.isStale} />
+            </span>
+          </TableCell>
+          <TableCell isMuted>
+            {g.publishedVersion ? `v${g.publishedVersion}` : emptyValue}
+          </TableCell>
+          <TableCell isMuted>{g.draftVersion ? `v${g.draftVersion}` : emptyValue}</TableCell>
+          <TableCell kind="actions">
+            <RowActions>
+              {g.kind === 'workflow' && g.publishedVersion ? (
+                <RunLink to={`/runs/new?graph=${g.id}`} name={g.name} />
+              ) : null}
+              <EditLink to={`${WORKFLOWS_PATH}/${g.id}`} name={g.name} />
+            </RowActions>
+          </TableCell>
+        </TableRow>
+      ))}
+    </Table>
+  );
+};
 
 export const WorkflowsPage = ({ client, live, show }: WorkflowsPageProps) => {
   const search = useSearchState(WORKFLOWS_PATH, GRAPH_TABLE);

@@ -1,5 +1,5 @@
 import { PERMISSIONS } from '@ugula/access';
-import { billingKinds, billingModels, createBillingNodes } from '@ugula/billing';
+import { billingEvents, billingKinds, billingModels, createBillingNodes } from '@ugula/billing';
 import {
   combineSources,
   createModelNodes,
@@ -12,11 +12,13 @@ import {
   type NodeInstance,
   refKey,
   STD_KINDS,
+  SUBWORKFLOW_TRIGGER,
   stdGraphSource,
   TABLE_NODE_KINDS,
   tableFits,
   tableRefOf,
   tableSchemas,
+  triggerOf,
   validateGraph
 } from '@ugula/graph';
 import { createNemsisNodes, nemsisKinds, nemsisModels } from '@ugula/nemsis';
@@ -38,12 +40,17 @@ export const graphProblems = (graphs: SeedGraph[], nodes: NodeDef[]) => {
   const registry = createRegistry(
     nodes,
     combineSources(stdGraphSource, (ref) => byRef.get(refKey(ref))),
-    mergeKinds(STD_KINDS, nemsisKinds, billingKinds)
+    mergeKinds(STD_KINDS, nemsisKinds, billingKinds),
+    billingEvents
   );
   return graphs.flatMap((g) =>
-    [...validateGraph(g.definition, registry), ...documentationIssues(g.definition)].map(
-      (i) => `${g.key}${i.node ? `#${i.node}` : ''}: ${i.message}`
-    )
+    [
+      ...validateGraph(g.definition, registry),
+      ...documentationIssues(g.definition),
+      ...(g.kind !== 'workflow' && triggerOf(g.definition).kind !== 'manual'
+        ? [{ message: SUBWORKFLOW_TRIGGER }]
+        : [])
+    ].map((i) => `${g.key}${'node' in i && i.node ? `#${i.node}` : ''}: ${i.message}`)
   );
 };
 

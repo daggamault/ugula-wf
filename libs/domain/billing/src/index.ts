@@ -145,6 +145,7 @@ export {
 export type { FacilityInvoiceSource } from './documents.ts';
 export { fieldSections } from './documents.ts';
 export { eligibilityFinding } from './eligibility.ts';
+export { billingEvents, CLAIM_LEDGER_EVENTS, ledgerPayloadColumns } from './events.ts';
 export {
   CCN_PATTERN,
   type CheckedFacility,

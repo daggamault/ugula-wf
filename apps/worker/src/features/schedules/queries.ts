@@ -7,6 +7,7 @@ import {
   type ScheduleStore
 } from '@ugula/billing';
 import { agencyTimeZone, agencyToday, type Db, findProfile } from '@ugula/db';
+import type { SchedulePeriod } from '@ugula/graph';
 import type { BlobStore } from '@ugula/storage';
 import { sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
@@ -64,25 +65,24 @@ const addressOf = (f: {
     [[f.city, f.state].filter(Boolean).join(', '), f.postal_code].filter(Boolean).join(' ')
   ].filter((l) => l.trim());
 
-type DueSchedule = { workflow: string; every: 'day' | 'month'; hour: number };
+type DueSchedule = { every: SchedulePeriod; hour: number };
 
-export type DueAgency = { id: string; fire_on: string };
-
-export const findDueAgencies = (db: Db, s: DueSchedule) =>
-  sql<DueAgency>`
-  select a.id, z.period::date::text as fire_on
-  from agencies a
-  cross join lateral (
-    select date_trunc(${s.every}, now() at time zone ${agencyTimeZone(sql.ref('a.id'))}) as period,
-      now() at time zone ${agencyTimeZone(sql.ref('a.id'))} as local
-  ) z
-  where a.is_active
-    and z.local >= z.period + make_interval(hours => ${s.hour}::int)
-    and not exists (
-      select 1 from schedule_runs r
-      where r.agency_id = a.id and r.workflow = ${s.workflow} and r.fire_on = z.period::date
-    )
-  order by a.id`.execute(db);
+export const findDueOn = async (db: Db, agencyId: string, workflow: string, s: DueSchedule) => {
+  const zone = agencyTimeZone(agencyId);
+  const { rows } = await sql<{ fire_on: string }>`
+    select z.period::date::text as fire_on
+    from (
+      select date_trunc(${s.every}, now() at time zone ${zone}) as period,
+        now() at time zone ${zone} as local
+    ) z
+    where z.local >= z.period + make_interval(hours => ${s.hour}::int)
+      and not exists (
+        select 1 from schedule_runs r
+        where r.agency_id = ${agencyId}::uuid and r.workflow = ${workflow}
+          and r.fire_on = z.period::date
+      )`.execute(db);
+  return rows[0]?.fire_on ?? null;
+};
 
 export const claimScheduleRun = (db: Db, agencyId: string, workflow: string, fireOn: string) =>
   db

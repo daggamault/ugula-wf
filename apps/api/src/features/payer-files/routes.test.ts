@@ -25,7 +25,7 @@ const service = {
   },
   upload: async (agencyId: string, userId: string, file: { name: string; bytes: Uint8Array }) => {
     calls.push(['upload', agencyId, userId, file.name, file.bytes.byteLength]);
-    return ok({ runId: 'r1', kind: '835' });
+    return ok({ runIds: ['r1'], kind: '835' });
   },
   maxBytes: 64
 } as unknown as PayerFileService;
@@ -56,7 +56,10 @@ describe('payer file routes', () => {
     const body = new FormData();
     body.append('file', new File(['ISA*00'], 'era.835'));
     const uploaded = await request('/', { method: 'POST', body });
-    assert.deepEqual([uploaded.status, await uploaded.json()], [201, { runId: 'r1', kind: '835' }]);
+    assert.deepEqual(
+      [uploaded.status, await uploaded.json()],
+      [201, { runIds: ['r1'], kind: '835' }]
+    );
     assert.deepEqual(calls.at(-1), ['upload', 't-1', 'u-1', 'era.835', 6]);
     const missing = new FormData();
     assert.equal((await request('/', { method: 'POST', body: missing })).status, 400);

@@ -8,7 +8,6 @@ import type {
   ClearinghouseInbox
 } from '@ugula/billing';
 import { createRecordingDb } from '@ugula/db/testing';
-import type { RunJob, RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
 import type { PollTarget } from '../../shared/clearinghouse.ts';
 import { createClearinghousePoll, receiverOf } from './poll.ts';
@@ -57,7 +56,7 @@ const target = (clearinghouse: Clearinghouse, agencyIds: string[] | null = null)
   agencyIds
 });
 
-type Seen = { run_id: string | null; note: string; tried_at?: Date };
+type Seen = { event_id: string | null; note: string; tried_at?: Date };
 
 const NOW = new Date('2026-11-05T12:00:00Z');
 
@@ -101,17 +100,23 @@ const poll = async (
     }
     if (q.sql.startsWith('insert into "clearinghouse_downloads"')) {
       const name = String(q.parameters[1]).split('/').at(-1) ?? '';
-      return seen[name]?.run_id || taken.includes(name) ? [] : [{ id: `d-${name}` }];
+      return seen[name]?.event_id || taken.includes(name) ? [] : [{ id: `d-${name}` }];
     }
-    if (q.sql.includes('select v.version')) return published ? [{ version: 1 }] : [];
-    if (q.sql.includes('from unnest')) return published ? [{ id: 'v1', version: 1 }] : [];
-    if (q.sql.startsWith('insert into "workflow_runs"')) return [{ id: 'r1' }];
+    if (q.sql.includes('v.id as version_id')) {
+      return published
+        ? [
+            {
+              key: 'billing.receive-payer-file',
+              version_id: 'v1',
+              trigger: { kind: 'event', event: 'payer_file.received' },
+              signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] }
+            }
+          ]
+        : [];
+    }
+    if (q.sql.startsWith('insert into "events"')) return [{ id: 'e1' }];
     return [];
   });
-  const jobs: RunJob[] = [];
-  const boss: RunQueueClient = {
-    insert: async (_, batch) => void jobs.push(...batch.map((j) => j.data as RunJob))
-  };
   const stored: string[] = [];
   const blobs = {
     putBytes: async (key: string, body: Uint8Array, contentType: string) => {
@@ -122,7 +127,6 @@ const poll = async (
   const reports: string[] = [];
   await createClearinghousePoll({
     db,
-    boss,
     blobs,
     targets: async () => [target(clearinghouse, owners)],
     report: (m) => reports.push(m),
@@ -133,29 +137,27 @@ const poll = async (
     q.sql.startsWith('insert into "clearinghouse_downloads"')
   );
   const linked = queries.filter((q) => q.sql.startsWith('update "clearinghouse_downloads"'));
-  const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
+  const events = queries.filter((q) => q.sql.startsWith('insert into "events"'));
   const routing = queries.filter((q) => q.sql.includes('from "billing_profiles"'));
-  return { downloads, linked, run, jobs, stored, reports, routing };
+  return { downloads, linked, events, stored, reports, routing };
 };
 
 describe('createClearinghousePoll', () => {
-  it('starts a Receive Payer File run per new file for the agency it is addressed to', async () => {
+  it('emits Payer File Received per new file for the agency it is addressed to', async () => {
     const { clearinghouse, removed, sessions } = fakeClearinghouse({ 'a.999': isa('DEVEMS01') });
-    const { downloads, linked, run, jobs, stored, reports } = await poll(clearinghouse);
+    const { downloads, linked, events, stored, reports } = await poll(clearinghouse);
     assert.deepEqual(stored, [
       `clearinghouse/t1/${Date.parse('2026-11-03T12:00:00Z')}-${createHash('sha256').update('/outbound/999/a.999').digest('hex').slice(0, 8)}-a.999`
     ]);
-    assert.deepEqual(run?.parameters, [
+    assert.deepEqual(events[0]?.parameters, [
       't1',
-      'v1',
-      'running',
+      'payer_file.received',
       JSON.stringify({
         file: { bucket: 'b', key: stored[0], size: 112, contentType: 'application/edi-x12' },
         fileName: 'a.999'
       }),
       null
     ]);
-    assert.deepEqual(jobs, [{ runId: 'r1', command: { type: 'advance' } }]);
     assert.deepEqual(downloads[0]?.parameters, [
       SOURCE,
       '/outbound/999/a.999',
@@ -167,18 +169,18 @@ describe('createClearinghousePoll', () => {
     ]);
     assert.equal(
       downloads[0]?.sql,
-      'insert into "clearinghouse_downloads" ("source", "remote_path", "size", "modified_at", "agency_id", "note", "tried_at") values ($1, $2, $3, $4, $5, $6, $7) on conflict on constraint "clearinghouse_downloads_file_unique" do update set "agency_id" = "excluded"."agency_id", "note" = "excluded"."note", "tried_at" = "excluded"."tried_at" where "clearinghouse_downloads"."run_id" is null returning "id"'
+      'insert into "clearinghouse_downloads" ("source", "remote_path", "size", "modified_at", "agency_id", "note", "tried_at") values ($1, $2, $3, $4, $5, $6, $7) on conflict on constraint "clearinghouse_downloads_file_unique" do update set "agency_id" = "excluded"."agency_id", "note" = "excluded"."note", "tried_at" = "excluded"."tried_at" where "clearinghouse_downloads"."event_id" is null returning "id"'
     );
-    assert.deepEqual(linked[0]?.parameters, ['r1', 'd-a.999']);
+    assert.deepEqual(linked[0]?.parameters, ['e1', 'd-a.999']);
     assert.deepEqual(removed, ['/outbound/999/a.999']);
-    assert.deepEqual(reports, ['Clearinghouse: received /outbound/999/a.999, run r1']);
+    assert.deepEqual(reports, ['Clearinghouse: received /outbound/999/a.999, event e1']);
     assert.equal(sessions.opened, 1);
   });
 
   it('matches the interchange receiver to submitter IDs saved in any letter case', async () => {
     const { clearinghouse } = fakeClearinghouse({ 'a.999': isa('devems01') });
-    const { jobs, routing } = await poll(clearinghouse);
-    assert.equal(jobs.length, 1);
+    const { events, routing } = await poll(clearinghouse);
+    assert.equal(events.length, 1);
     assert.ok(routing[0]?.sql.includes('upper("submitter_id") = $1'));
     assert.deepEqual(routing[0]?.parameters, ['DEVEMS01']);
   });
@@ -188,11 +190,11 @@ describe('createClearinghousePoll', () => {
       'a.999': isa('DEVEMS01'),
       'b.999': isa('OTHER')
     });
-    const { jobs, routing, downloads } = await poll(clearinghouse, {
+    const { events, routing, downloads } = await poll(clearinghouse, {
       profiles: { DEVEMS01: ['t1'], OTHER: ['t2'] },
       owners: ['t1']
     });
-    assert.equal(jobs.length, 1);
+    assert.equal(events.length, 1);
     assert.deepEqual(
       routing.map((q) => q.parameters),
       [
@@ -212,16 +214,16 @@ describe('createClearinghousePoll', () => {
       'b.999': isa('SOMEONE'),
       'c.999': isa('NOBODY')
     });
-    const { jobs, reports } = await poll(clearinghouse, {
+    const { events, reports } = await poll(clearinghouse, {
       seen: {
-        'a.999': { run_id: null, note: 'No agency has submitter ID DEVEMS01' },
-        'b.999': { run_id: null, note: 'No agency has submitter ID SOMEONE' },
-        'c.999': { run_id: null, note: 'Not an X12 file' }
+        'a.999': { event_id: null, note: 'No agency has submitter ID DEVEMS01' },
+        'b.999': { event_id: null, note: 'No agency has submitter ID SOMEONE' },
+        'c.999': { event_id: null, note: 'Not an X12 file' }
       }
     });
-    assert.equal(jobs.length, 1);
+    assert.equal(events.length, 1);
     assert.deepEqual(reports, [
-      'Clearinghouse: received /outbound/999/a.999, run r1',
+      'Clearinghouse: received /outbound/999/a.999, event e1',
       'Clearinghouse: left /outbound/999/c.999 on the server: No agency has submitter ID NOBODY'
     ]);
   });
@@ -231,13 +233,17 @@ describe('createClearinghousePoll', () => {
       'a.999': isa('DEVEMS01'),
       'b.999': isa('DEVEMS01')
     });
-    const { jobs, downloads } = await poll(clearinghouse, {
+    const { events, downloads } = await poll(clearinghouse, {
       seen: {
-        'a.999': { run_id: null, note: 'No agency has submitter ID DEVEMS01', tried_at: RECENTLY },
-        'b.999': { run_id: null, note: 'No agency has submitter ID DEVEMS01' }
+        'a.999': {
+          event_id: null,
+          note: 'No agency has submitter ID DEVEMS01',
+          tried_at: RECENTLY
+        },
+        'b.999': { event_id: null, note: 'No agency has submitter ID DEVEMS01' }
       }
     });
-    assert.equal(jobs.length, 1);
+    assert.equal(events.length, 1);
     assert.deepEqual(
       downloads.map((q) => q.parameters[1]),
       ['/outbound/999/b.999']
@@ -245,19 +251,19 @@ describe('createClearinghousePoll', () => {
     assert.equal(downloads[0]?.parameters[6], NOW);
   });
 
-  it('starts no run for a file another poller claimed first, and leaves it to that poller', async () => {
+  it('emits nothing for a file another poller claimed first, and leaves it to that poller', async () => {
     const { clearinghouse, removed } = fakeClearinghouse({ 'a.999': isa('DEVEMS01') });
-    const { downloads, linked, run, jobs, reports } = await poll(clearinghouse, {
+    const { downloads, linked, events, reports } = await poll(clearinghouse, {
       taken: ['a.999']
     });
     assert.equal(downloads.length, 1);
-    assert.deepEqual([linked, run, jobs, removed, reports], [[], undefined, [], [], []]);
+    assert.deepEqual([linked, events, removed, reports], [[], [], [], []]);
   });
 
   it('keeps received files on the server when configured to', async () => {
     const { clearinghouse, removed } = fakeClearinghouse({ 'a.999': isa('DEVEMS01') }, 'keep');
-    const { jobs } = await poll(clearinghouse);
-    assert.equal(jobs.length, 1);
+    const { events } = await poll(clearinghouse);
+    assert.equal(events.length, 1);
     assert.deepEqual(removed, []);
   });
 
@@ -268,7 +274,7 @@ describe('createClearinghousePoll', () => {
       'c.999': isa('SHARED'),
       'd.999': isa('DEVEMS01')
     });
-    const { downloads, run, stored, reports } = await poll(clearinghouse, {
+    const { downloads, events, stored, reports } = await poll(clearinghouse, {
       profiles: { DEVEMS01: ['t1'], SHARED: ['t1', 't2'] },
       published: false
     });
@@ -278,10 +284,10 @@ describe('createClearinghousePoll', () => {
         [null, 'Not an X12 file'],
         [null, 'No agency has submitter ID SOMEONE'],
         [null, 'More than one agency has submitter ID SHARED'],
-        ['t1', 'The billing.receive-payer-file workflow is not published']
+        ['t1', 'No published workflow starts when a payer file is received']
       ]
     );
-    assert.equal(run, undefined);
+    assert.deepEqual(events, []);
     assert.deepEqual([stored, removed], [[], []]);
     assert.equal(
       reports[0],
@@ -297,18 +303,16 @@ describe('createClearinghousePoll', () => {
               remote_path: file('a.999').path,
               size: 10,
               modified_at: file('a.999').modifiedAt,
-              run_id: 'r0',
+              event_id: 'e0',
               note: ''
             }
           ]
         : []
     );
     const { clearinghouse, removed } = fakeClearinghouse({ 'a.999': isa('DEVEMS01') });
-    const boss: RunQueueClient = { insert: async () => undefined };
     const blobs = { putBytes: async () => assert.fail('should not store') };
     await createClearinghousePoll({
       db,
-      boss,
       blobs,
       targets: async () => [target(clearinghouse)],
       report: () => undefined,
@@ -319,7 +323,7 @@ describe('createClearinghousePoll', () => {
       queries.map((q) => [q.sql, q.parameters]),
       [
         [
-          'select "remote_path", "size", "modified_at", "run_id", "note", "tried_at" from "clearinghouse_downloads" where "source" = $1 and "remote_path" in ($2)',
+          'select "remote_path", "size", "modified_at", "event_id", "note", "tried_at" from "clearinghouse_downloads" where "source" = $1 and "remote_path" in ($2)',
           [SOURCE, '/outbound/999/a.999']
         ]
       ]
@@ -336,11 +340,11 @@ describe('createClearinghousePoll', () => {
     const download = inbox.download;
     inbox.download = async (path) =>
       path.endsWith('a.999') ? Promise.reject(new Error('connection reset')) : download(path);
-    const { jobs, reports } = await poll(clearinghouse);
-    assert.equal(jobs.length, 1);
+    const { events, reports } = await poll(clearinghouse);
+    assert.equal(events.length, 1);
     assert.deepEqual(reports, [
       'Clearinghouse: could not receive /outbound/999/a.999: Error: connection reset',
-      'Clearinghouse: received /outbound/999/b.999, run r1'
+      'Clearinghouse: received /outbound/999/b.999, event e1'
     ]);
   });
 });
@@ -359,7 +363,6 @@ describe('polling every connection', () => {
     };
     await createClearinghousePoll({
       db,
-      boss: { insert: async () => undefined },
       blobs: { putBytes: async () => assert.fail('nothing to store') },
       targets: async () => [
         { source: 'one', clearinghouse: broken.clearinghouse, agencyIds: null },

@@ -1,19 +1,41 @@
 import * as v from 'valibot';
 import { ENTRY_TYPE, INPUT_TYPE, RETURN_TYPE } from './compile.ts';
 import { defineNode } from './define.ts';
+import { entryConfigSchema, type Trigger } from './triggers.ts';
 import type { NodeDef } from './types.ts';
 
 const handledByEngine = (): never => {
   throw new Error('Graph boundary nodes are executed by the engine');
 };
 
-export const entryNode = defineNode({
+const HOURS = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
+
+const SCHEDULES = { day: 'Every day', week: 'Every Monday', month: 'On the first of every month' };
+
+export const triggerSummary = (trigger: Trigger, eventLabel: (type: string) => string) => {
+  switch (trigger.kind) {
+    case 'manual':
+      return null;
+    case 'event': {
+      const tests = Object.keys(trigger.where).length;
+      return `On ${eventLabel(trigger.event)}${tests ? ` (${tests === 1 ? '1 condition' : `${tests} conditions`})` : ''}`;
+    }
+    case 'schedule':
+      return `${SCHEDULES[trigger.every]} at ${HOURS(trigger.hour)}`;
+  }
+};
+
+export const entryNode = defineNode<v.InferOutput<typeof entryConfigSchema>>({
   type: ENTRY_TYPE,
   version: 1,
   title: 'Entry',
   category: 'Graph',
-  description: 'Where this workflow starts, with its inputs.',
+  description:
+    'Where this workflow starts, with its inputs: when it is run, when an event happens or on a schedule.',
   level: 'basic',
+  keywords: ['start', 'trigger', 'event', 'schedule'],
+  config: entryConfigSchema,
+  summary: ({ trigger }) => triggerSummary(trigger, (type) => type),
   signature: (_, { graph }) => ({
     execIn: [],
     execOut: graph.signature.execIn,

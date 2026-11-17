@@ -10,14 +10,17 @@ import {
   contractOf,
   createRegistry,
   ENTRY_TYPE,
+  type EventDef,
   type GraphDef,
   graphRefs,
   type NodeDef,
   RETURN_TYPE,
   refKey,
+  SUBWORKFLOW_TRIGGER,
   stdGraphSource,
   tableRefOf,
   tableRefs,
+  triggerOf,
   type ValueKinds,
   validateGraph,
   workflowRefs
@@ -63,6 +66,7 @@ type GraphServiceDeps = {
   db: Db;
   nodes: NodeDef[];
   kinds: ValueKinds;
+  events: readonly EventDef[];
   newKey?: () => string;
 };
 
@@ -125,9 +129,15 @@ export const customizationMap = (graphs: readonly MapGraph[]) => {
 
 const TABLE_KINDS = { decide: 'decision', lookup: 'lookup' } as const;
 
-export const createGraphService = ({ db, nodes, kinds, newKey = customKey }: GraphServiceDeps) => {
+export const createGraphService = ({
+  db,
+  nodes,
+  kinds,
+  events,
+  newKey = customKey
+}: GraphServiceDeps) => {
   const primitives = new Set(nodes.map(refKey));
-  const check = async (tx: Db, access: AgencyAccess, def: GraphDef) => {
+  const check = async (tx: Db, access: AgencyAccess, def: GraphDef, kind: GraphKind | null) => {
     const refs = graphRefs(def)
       .filter((r) => !r.type.startsWith('std.') && !primitives.has(refKey(r)))
       .map((r) => ({ key: r.type, version: r.version }));
@@ -138,7 +148,8 @@ export const createGraphService = ({ db, nodes, kinds, newKey = customKey }: Gra
     const registry = createRegistry(
       nodes,
       combineSources(stdGraphSource, (ref) => byRef.get(refKey(ref))),
-      kinds
+      kinds,
+      events
     );
     const calls = workflowRefs(def).map((r) => dependencyOf({ key: r.type, version: r.version }));
     const keys = tableRefs(def);
@@ -154,8 +165,13 @@ export const createGraphService = ({ db, nodes, kinds, newKey = customKey }: Gra
         ? []
         : [{ node: n.id, message: `Table ${ref.key} is not a ${TABLE_KINDS[ref.kind]} table` }];
     });
+    const triggered = kind === 'node' && triggerOf(def).kind !== 'manual';
     return {
-      issues: [...validateGraph(def, registry), ...tableIssues],
+      issues: [
+        ...validateGraph(def, registry),
+        ...tableIssues,
+        ...(triggered ? [{ message: SUBWORKFLOW_TRIGGER }] : [])
+      ],
       dependencies: [...new Set([...composites.map(dependencyOf), ...calls])]
     };
   };
@@ -217,7 +233,7 @@ export const createGraphService = ({ db, nodes, kinds, newKey = customKey }: Gra
       });
     },
     validate: async (access: AgencyAccess, def: GraphDef) =>
-      ok({ issues: (await check(db, access, def)).issues }),
+      ok({ issues: (await check(db, access, def, null)).issues }),
     create: async (access: AgencyAccess, input: NewGraph) => {
       const role = roleFor(input.kind, input.role);
       if (!canEditScope(access, 'agency', role)) return forbidden();
@@ -269,7 +285,7 @@ export const createGraphService = ({ db, nodes, kinds, newKey = customKey }: Gra
               })
             ).version;
         await touch(tx, 'graphs', graphId);
-        return ok({ version, issues: (await check(tx, access, def)).issues });
+        return ok({ version, issues: (await check(tx, access, def, graph.value.kind)).issues });
       }),
     override: (access: AgencyAccess, graphId: string) =>
       db.transaction().execute(async (tx) => {
@@ -371,7 +387,7 @@ export const createGraphService = ({ db, nodes, kinds, newKey = customKey }: Gra
         const draft = await findDraftOf(tx, 'graphs', graphId);
         if (!draft) return fail('conflict', 'Nothing to publish');
         const definition = draft.definition as GraphDef;
-        const { issues, dependencies } = await check(tx, access, definition);
+        const { issues, dependencies } = await check(tx, access, definition, graph.value.kind);
         if (issues.length) return fail('invalid', 'Fix the issues before publishing', { issues });
         const original = await baseOf(tx, graph.value);
         if (original && original.contract !== contractOf(definition.signature)) {

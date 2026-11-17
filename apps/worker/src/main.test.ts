@@ -49,6 +49,7 @@ describe('stopWorker', () => {
     await stopWorker(
       {
         jobs: { stop: () => void calls.push('jobs') },
+        events: { stop: async () => void calls.push('events') },
         live: { flush: async () => void calls.push('live') },
         boss: { stop: async (options) => void calls.push(`boss:${JSON.stringify(options)}`) },
         db: { destroy: async () => void calls.push('db') },
@@ -58,6 +59,7 @@ describe('stopWorker', () => {
     );
     assert.deepEqual(calls, [
       'jobs',
+      'events',
       'boss:{"graceful":true,"timeout":5000}',
       'live',
       'db',

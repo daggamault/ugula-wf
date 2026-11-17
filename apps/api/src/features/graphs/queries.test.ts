@@ -24,7 +24,7 @@ const flat = (sql = '') => sql.replace(/\s+/g, ' ').trim();
 const visibleTo = (alias: string, n: number) =>
   `( "${alias}"."agency_id" is null or ("${alias}"."is_active" and "${alias}"."agency_id" = $${n}::uuid) )`;
 const LATERAL =
-  'from "graphs" as "g" left join lateral (select max(gv.version) filter (where gv.published_at is not null) as "published", max(gv.version) filter (where gv.published_at is null) as "draft" from "graph_versions" as "gv" where "gv"."graph_id" = "g"."id") as "v" on true';
+  'from "graphs" as "g" left join lateral (select max(gv.version) filter (where gv.published_at is not null) as "published", max(gv.version) filter (where gv.published_at is null) as "draft", (array_agg(gv.trigger order by gv.version desc))[1] as "trigger" from "graph_versions" as "gv" where "gv"."graph_id" = "g"."id") as "v" on true';
 /** The search query after its select list: the joins, filters, order and page. */
 const tailOf = (sql = '') => flat(sql).slice(flat(sql).indexOf(LATERAL));
 
@@ -42,6 +42,7 @@ const row = {
   overrides: 'g-sys',
   overridden_by: 'g-agency',
   is_stale: true,
+  trigger: { kind: 'schedule', every: 'day', hour: 6 },
   total: '1'
 };
 
@@ -64,6 +65,7 @@ describe('searchGraphs', () => {
           isStale: true,
           publishedVersion: 2,
           draftVersion: 3,
+          trigger: { kind: 'schedule', every: 'day', hour: 6 },
           updatedAt: new Date(0)
         }
       ],
@@ -87,7 +89,7 @@ describe('searchGraphs', () => {
     const sql = flat(queries[0]?.sql);
     assert.ok(
       sql.startsWith(
-        `select "g"."id", "g"."key", "g"."name", "g"."kind", "g"."role", "g"."description", case when "g"."agency_id" is not null then 'agency' else 'system' end as "scope", "g"."updated_at", "v"."published", "v"."draft", ( select o.id from "graphs" o where o.id = (`
+        `select "g"."id", "g"."key", "g"."name", "g"."kind", "g"."role", "g"."description", case when "g"."agency_id" is not null then 'agency' else 'system' end as "scope", "g"."updated_at", "v"."published", "v"."draft", "v"."trigger", ( select o.id from "graphs" o where o.id = (`
       )
     );
     assert.ok(

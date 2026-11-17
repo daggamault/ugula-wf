@@ -21,7 +21,7 @@ const recordingClient = (
       const error = fail[file.name];
       if (error) throw error;
       run += 1;
-      return { runId: `r${run}`, kind: kinds[file.name] ?? '835' };
+      return { runIds: [`r${run}`], kind: kinds[file.name] ?? '835' };
     }
   };
   return { client, uploads };

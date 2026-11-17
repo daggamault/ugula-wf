@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { ENTRY_TYPE } from '@ugula/graph';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { WorkflowEventsContext } from '../../shared/graph/pins.ts';
 import { idleLive, testNodes } from '../../shared/testing.ts';
 import {
   act,
@@ -37,7 +38,8 @@ const detail = (status: RunDetail['run']['status']): RunDetail => ({
     inputs: { id: 'a' },
     result: null,
     error: status === 'faulted' ? { message: 'payer rejected', path: '', node: 'n' } : null,
-    state: null
+    state: null,
+    event: null
   },
   children: [],
   childCount: 0,
@@ -132,6 +134,40 @@ describe('RunView', () => {
     );
     assert.ok(html.includes('href="/runs/c1" aria-label="Open run #2 Item"'));
     assert.equal(html.split('href="/runs/c1"').length, 2);
+  });
+
+  it('says which event started the run', () => {
+    const base = detail('running');
+    const html = renderToStaticMarkup(
+      createElement(
+        WorkflowEventsContext.Provider,
+        {
+          value: [
+            {
+              type: 'payer_file.received',
+              label: 'Payer File Received',
+              description: '',
+              payload: []
+            }
+          ]
+        },
+        createElement(RunView, {
+          detail: {
+            ...base,
+            run: {
+              ...base.run,
+              event: { id: 'e1', type: 'payer_file.received', createdAt: base.run.created_at }
+            }
+          },
+          nodes: testNodes,
+          graphs,
+          steps: [],
+          stack: [],
+          onCancel: async () => undefined
+        })
+      )
+    );
+    assert.match(html, /Started [^.]+ by Payer File Received./);
   });
 
   it('hides cancel once a run is finished', () => {

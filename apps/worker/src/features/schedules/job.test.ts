@@ -2,38 +2,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
-import { registerScheduleJobs, SCHEDULE_CRON, SCHEDULES, startDueAgencies } from './job.ts';
+import { registerScheduleJob, SCHEDULE_CRON, SCHEDULE_QUEUE, startDueSchedules } from './job.ts';
 
-const [daily, monthly] = SCHEDULES;
-if (!daily || !monthly) throw new Error('No schedules');
-
-describe('SCHEDULES', () => {
-  it('watches deadlines daily at 6 and invoices facilities monthly at 7', () => {
-    assert.deepEqual(SCHEDULES, [
-      {
-        queue: 'billing-watch-deadlines',
-        workflow: 'billing.watch-deadlines',
-        every: 'day',
-        hour: 6
-      },
-      {
-        queue: 'billing-invoice-facilities',
-        workflow: 'billing.invoice-facilities',
-        every: 'month',
-        hour: 7
-      }
-    ]);
-  });
-});
-
-describe('registerScheduleJobs', () => {
-  const register = async (start: (s: (typeof SCHEDULES)[number]) => Promise<void>) => {
+describe('registerScheduleJob', () => {
+  const register = async (start: () => Promise<void>) => {
     const calls: unknown[][] = [];
     const handlers: (() => Promise<unknown>)[] = [];
-    await registerScheduleJobs({
+    await registerScheduleJob({
       boss: {
-        createQueue: async (name) => void calls.push(['createQueue', name]),
-        schedule: async (name, cron) => void calls.push(['schedule', name, cron]),
+        createQueue: async (name: string) => void calls.push(['createQueue', name]),
+        schedule: async (name: string, cron: string) => void calls.push(['schedule', name, cron]),
         work: async (name, options, h) => {
           calls.push(['work', name, options]);
           handlers.push(() => h([]));
@@ -45,175 +23,125 @@ describe('registerScheduleJobs', () => {
     return { calls, handlers };
   };
 
-  it('checks each billing schedule every quarter hour, one job at a time', async () => {
+  it('checks every scheduled workflow every quarter hour, one job at a time', async () => {
     const { calls } = await register(async () => undefined);
     assert.equal(SCHEDULE_CRON, '*/15 * * * *');
-    const one = { localConcurrency: 1, batchSize: 1 };
     assert.deepEqual(calls, [
-      ['createQueue', 'billing-watch-deadlines'],
-      ['schedule', 'billing-watch-deadlines', SCHEDULE_CRON],
-      ['work', 'billing-watch-deadlines', one],
-      ['createQueue', 'billing-invoice-facilities'],
-      ['schedule', 'billing-invoice-facilities', SCHEDULE_CRON],
-      ['work', 'billing-invoice-facilities', one]
+      ['createQueue', SCHEDULE_QUEUE],
+      ['schedule', SCHEDULE_QUEUE, SCHEDULE_CRON],
+      ['work', SCHEDULE_QUEUE, { localConcurrency: 1, batchSize: 1 }]
     ]);
   });
 
-  it('starts the schedule a queue belongs to', async () => {
-    const started: unknown[] = [];
-    const { handlers } = await register(async (s) => void started.push(s));
-    for (const h of handlers) await h();
-    assert.deepEqual(started, [daily, monthly]);
-  });
-
   it('lets a failed start fail the job so it retries', async () => {
-    const { handlers } = await register(async (s) =>
-      Promise.reject(new Error(`${s.workflow} down`))
-    );
-    await assert.rejects(
-      handlers[0] ?? (async () => undefined),
-      /^Error: billing.watch-deadlines down$/
-    );
-    await assert.rejects(
-      handlers[1] ?? (async () => undefined),
-      /^Error: billing.invoice-facilities down$/
-    );
+    const { handlers } = await register(async () => Promise.reject(new Error('down')));
+    await assert.rejects(handlers[0] ?? (async () => undefined), /^Error: down$/);
   });
 });
 
-type Agency = { id: string; claimed?: boolean; published?: boolean; fails?: boolean };
+type Workflow = { key: string; every: string; hour: number; due?: boolean; claimed?: boolean };
 
-const agencyDb = (agencies: Agency[]) => {
-  const byId = new Map(agencies.map((a) => [a.id, a]));
+type Agency = { id: string; workflows: Workflow[]; fails?: boolean };
+
+const scheduleDb = (agencies: Agency[]) => {
+  const byKey = (agencyId: unknown, key: unknown) =>
+    agencies.find((a) => a.id === agencyId)?.workflows.find((w) => w.key === key);
   return createRecordingDb(({ sql, parameters }) => {
+    if (sql.startsWith('select "id" from "agencies"')) return agencies.map((a) => ({ id: a.id }));
+    if (sql.includes('v.id as version_id')) {
+      const agency = agencies.find((a) => parameters.includes(a.id));
+      if (agency?.fails) throw new Error('database down');
+      return (agency?.workflows ?? []).map((w) => ({
+        key: w.key,
+        version_id: `v-${agency?.id}-${w.key}`,
+        trigger: { kind: 'schedule', every: w.every, hour: w.hour },
+        signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] }
+      }));
+    }
     if (sql.includes('as fire_on')) {
-      return agencies.map((a) => ({ id: a.id, fire_on: '2026-11-04' }));
+      const w = byKey(parameters.at(-2), parameters.at(-1));
+      return w?.due === false ? [] : [{ fire_on: '2026-11-04' }];
     }
     if (sql.startsWith('insert into "schedule_runs"')) {
-      return byId.get(String(parameters[0]))?.claimed ? [] : [{ agency_id: parameters[0] }];
+      return byKey(parameters[0], parameters[1])?.claimed ? [] : [{ agency_id: parameters[0] }];
     }
-    if (sql.startsWith('insert into "workflow_runs"')) return [{ id: `run-${parameters[0]}` }];
-    if (sql.trimStart().startsWith('insert')) return [];
-    if (sql.includes('version')) {
-      const a = agencies.find((x) => parameters.includes(x.id));
-      if (a?.fails) throw new Error('database down');
-      return a?.published === false ? [] : [{ id: `v-${a?.id}`, version: 1, key: 'k' }];
-    }
+    if (sql.startsWith('insert into "workflow_runs"')) return [{ id: `run-${parameters[1]}` }];
     return [];
   });
 };
 
-const DUE_SQL = (zone: string) => `
-  select a.id, z.period::date::text as fire_on
-  from agencies a
-  cross join lateral (
-    select date_trunc($1, now() at time zone ${zone}) as period,
-      now() at time zone ${zone} as local
-  ) z
-  where a.is_active
-    and z.local >= z.period + make_interval(hours => $2::int)
-    and not exists (
-      select 1 from schedule_runs r
-      where r.agency_id = a.id and r.workflow = $3 and r.fire_on = z.period::date
-    )
-  order by a.id`;
-
-const ZONE = `coalesce((select bp.time_zone from billing_profiles bp where bp.agency_id = "a"."id"), 'UTC')`;
-
-const run = (agencies: Agency[], schedule = daily) => {
+const run = (agencies: Agency[]) => {
   const jobs: unknown[] = [];
   const boss: RunQueueClient = { insert: async (_, batch) => void jobs.push(...batch) };
-  const { db, queries } = agencyDb(agencies);
+  const { db, queries } = scheduleDb(agencies);
   const reports: string[] = [];
-  const result = startDueAgencies({ db, boss, report: (m) => reports.push(m) })(schedule);
+  const result = startDueSchedules({ db, boss, report: (m) => reports.push(m) })();
   return { result, queries, jobs, reports };
 };
 
-const runInserts = (queries: { sql: string; parameters: readonly unknown[] }[]) =>
-  queries.filter((q) => q.sql.startsWith('insert into "workflow_runs"')).map((q) => q.parameters);
+const started = (queries: { sql: string; parameters: readonly unknown[] }[]) =>
+  queries
+    .filter((q) => q.sql.startsWith('insert into "workflow_runs"'))
+    .map((q) => q.parameters[1]);
 
-describe('startDueAgencies', () => {
-  it('finds agencies past the schedule hour in their own time zone that have not fired this period', async () => {
-    const { result, queries } = run([]);
+const DEADLINES = { key: 'billing.watch-deadlines', every: 'day', hour: 6 };
+
+const INVOICES = { key: 'billing.invoice-facilities', every: 'month', hour: 7 };
+
+describe('startDueSchedules', () => {
+  it('asks when each scheduled workflow of each active agency is due, in its own time zone', async () => {
+    const { result, queries } = run([{ id: 'a1', workflows: [DEADLINES, INVOICES] }]);
     await result;
+    const due = queries.filter((q) => q.sql.includes('as fire_on'));
     assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
-      [[DUE_SQL(ZONE), ['day', 6, 'billing.watch-deadlines']]]
-    );
-  });
-
-  it('truncates to the month for a monthly schedule', async () => {
-    const { result, queries } = run([], monthly);
-    await result;
-    assert.deepEqual(queries[0]?.parameters, ['month', 7, 'billing.invoice-facilities']);
-  });
-
-  it('claims the fire date once per agency, then starts a run of the published version', async () => {
-    const { result, queries, jobs, reports } = run([{ id: 'a1' }]);
-    await result;
-    const [, claim] = queries;
-    assert.deepEqual(
-      [claim?.sql, claim?.parameters],
+      due.map((q) => q.parameters),
       [
-        'insert into "schedule_runs" ("agency_id", "workflow", "fire_on") values ($1, $2, $3) on conflict do nothing returning "agency_id"',
-        ['a1', 'billing.watch-deadlines', '2026-11-04']
+        ['day', 'a1', 'a1', 6, 'a1', 'billing.watch-deadlines'],
+        ['month', 'a1', 'a1', 7, 'a1', 'billing.invoice-facilities']
       ]
     );
-    assert.deepEqual(runInserts(queries), [['a1', 'v-a1', 'running', '{}', null]]);
-    assert.deepEqual(jobs, [{ data: { runId: 'run-a1', command: { type: 'advance' } } }]);
+    assert.match(due[0]?.sql ?? '', /date_trunc\(\$1, now\(\) at time zone coalesce\(/);
+  });
+
+  it('claims the fire date once, then starts the published version with no inputs', async () => {
+    const { result, queries, jobs, reports } = run([{ id: 'a1', workflows: [DEADLINES] }]);
+    await result;
+    const claim = queries.find((q) => q.sql.startsWith('insert into "schedule_runs"'));
+    assert.deepEqual(claim?.parameters, ['a1', 'billing.watch-deadlines', '2026-11-04']);
+    assert.deepEqual(started(queries), ['v-a1-billing.watch-deadlines']);
+    assert.equal(
+      queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'))?.parameters[3],
+      '{}'
+    );
+    assert.equal(jobs.length, 1);
     assert.deepEqual(reports, []);
   });
 
-  it('skips an agency whose fire date another worker already claimed', async () => {
-    const { result, queries, jobs, reports } = run([{ id: 'a1', claimed: true }]);
+  it('starts nothing that is not due yet or that another worker already claimed', async () => {
+    const { result, queries, jobs } = run([
+      {
+        id: 'a1',
+        workflows: [
+          { ...DEADLINES, due: false },
+          { ...INVOICES, claimed: true }
+        ]
+      }
+    ]);
     await result;
-    assert.equal(queries.length, 2);
-    assert.deepEqual([runInserts(queries), jobs, reports], [[], [], []]);
+    assert.deepEqual([started(queries), jobs], [[], []]);
   });
 
-  it('reports an agency without a published version and starts nothing for it', async () => {
-    const { result, queries, jobs, reports } = run([{ id: 'a1', published: false }]);
-    await result;
-    assert.deepEqual([runInserts(queries), jobs], [[], []]);
-    assert.deepEqual(reports, ['Schedule: billing.watch-deadlines is not published for agency a1']);
-  });
-
-  it('handles each due agency on its own', async () => {
+  it('handles each agency on its own and fails the job after reporting the others', async () => {
     const { result, queries, reports } = run([
-      { id: 'a1' },
-      { id: 'a2', published: false },
-      { id: 'a3', claimed: true },
-      { id: 'a4' }
+      { id: 'a1', workflows: [DEADLINES] },
+      { id: 'a2', workflows: [DEADLINES], fails: true },
+      { id: 'a3', workflows: [INVOICES] }
     ]);
-    await result;
-    assert.deepEqual(
-      queries
-        .filter((q) => q.sql.startsWith('insert into "schedule_runs"'))
-        .map((q) => q.parameters[0]),
-      ['a1', 'a2', 'a3', 'a4']
-    );
-    assert.deepEqual(
-      runInserts(queries).map((p) => p[0]),
-      ['a1', 'a4']
-    );
-    assert.deepEqual(reports, ['Schedule: billing.watch-deadlines is not published for agency a2']);
-  });
-
-  it('keeps starting other agencies when one fails, then fails the job so it retries', async () => {
-    const { result, queries, reports } = run(
-      [{ id: 'a1', fails: true }, { id: 'a2' }, { id: 'a3', fails: true }],
-      monthly
-    );
-    await assert.rejects(result, {
-      message: 'Schedule billing.invoice-facilities failed for 2 agencies'
-    });
-    assert.deepEqual(
-      runInserts(queries).map((p) => p[0]),
-      ['a2']
-    );
-    assert.deepEqual(reports, [
-      'Schedule billing.invoice-facilities failed for agency a1: Error: database down',
-      'Schedule billing.invoice-facilities failed for agency a3: Error: database down'
+    await assert.rejects(result, /^Error: Schedules failed: agency a2$/);
+    assert.deepEqual(started(queries), [
+      'v-a1-billing.watch-deadlines',
+      'v-a3-billing.invoice-facilities'
     ]);
+    assert.deepEqual(reports, ['Schedules failed for agency a2: Error: database down']);
   });
 });

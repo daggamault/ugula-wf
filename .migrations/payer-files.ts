@@ -73,7 +73,7 @@ const buildClearinghouseDownloadsTable = (db: Kysely<Database>) =>
     .addColumn('agency_id', 'uuid', (col) =>
       col.references('agencies.id').onDelete('cascade').onUpdate('cascade')
     )
-    .addColumn('run_id', 'uuid')
+    .addColumn('event_id', 'uuid')
     .addColumn('note', 'text', (col) => col.notNull().defaultTo(''))
     .addColumn('tried_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -84,8 +84,8 @@ const buildClearinghouseDownloadsTable = (db: Kysely<Database>) =>
       'modified_at'
     ])
     .addCheckConstraint(
-      'clearinghouse_downloads_run_check',
-      sql`run_id is null or agency_id is not null`
+      'clearinghouse_downloads_event_check',
+      sql`event_id is null or agency_id is not null`
     )
     .addCheckConstraint(
       'clearinghouse_downloads_file_check',
@@ -103,9 +103,9 @@ const buildPayerFilesIndexes = (db: Kysely<Database>) => [
     .column('uploaded_by_id'),
   db.schema.createIndex('idx_payer_files_run').on('payer_files').column('run_id'),
   db.schema
-    .createIndex('idx_clearinghouse_downloads_agency_run')
+    .createIndex('idx_clearinghouse_downloads_agency_event')
     .on('clearinghouse_downloads')
-    .columns(['agency_id', 'run_id']),
+    .columns(['agency_id', 'event_id']),
   db.schema.createIndex('idx_payer_file_items_claim').on('payer_file_items').column('claim_id')
 ];
 
@@ -114,8 +114,8 @@ const buildPayerFilesForeignKeys = () => [
   agencySetNullForeignKey({ table: 'payer_file_items', column: 'claim_id', references: 'claims' }),
   agencySetNullForeignKey({
     table: 'clearinghouse_downloads',
-    column: 'run_id',
-    references: 'workflow_runs'
+    column: 'event_id',
+    references: 'events'
   })
 ];
 

@@ -1,10 +1,11 @@
 import type { NodeDef } from '@ugula/graph';
 import { CircleStopIcon, WorkflowIcon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { messageOf } from '../../shared/api.ts';
 import { formatDateTime } from '../../shared/format.ts';
-import { createCatalog } from '../../shared/graph/catalog.ts';
+import { createCatalog, eventLabel } from '../../shared/graph/catalog.ts';
 import { GraphCanvas } from '../../shared/graph/graph-canvas.tsx';
+import { WorkflowEventsContext } from '../../shared/graph/pins.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
@@ -53,12 +54,14 @@ export const RunView = ({ detail, nodes, graphs, steps, stack, onCancel }: RunVi
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const events = useContext(WorkflowEventsContext);
   const catalog = useMemo(
     () =>
       createCatalog(nodes, {
-        graphs: graphs.map((g) => ({ type: g.key, version: g.version, definition: g.definition }))
+        graphs: graphs.map((g) => ({ type: g.key, version: g.version, definition: g.definition })),
+        events
       }),
-    [nodes, graphs]
+    [nodes, graphs, events]
   );
   const root = graphs.find((g) => g.key === run.key && g.version === run.version)?.definition;
   const def = root ? graphAt(root, stack, catalog) : undefined;
@@ -115,7 +118,7 @@ export const RunView = ({ detail, nodes, graphs, steps, stack, onCancel }: RunVi
             <RunStatusBadge status={run.status} />
           </>
         }
-        description={`Started ${formatDateTime(run.created_at)}${run.completed_at ? ` and finished ${formatDateTime(run.completed_at)}` : ''}.`}
+        description={`Started ${formatDateTime(run.created_at)}${run.event ? ` by ${eventLabel(events, run.event.type)}` : ''}${run.completed_at ? ` and finished ${formatDateTime(run.completed_at)}` : ''}.`}
         actions={
           <>
             <ButtonLink to={`/workflows/${run.graph_id}?version=${run.version}`} variant="outline">

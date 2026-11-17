@@ -49,9 +49,9 @@ describe('createPayerFilesClient', () => {
   });
 
   it('uploads the file as a form into the agency it was dropped in', async () => {
-    const { client, calls } = recordingClient({ runId: 'r1', kind: '835' }, 200, 'a-current');
+    const { client, calls } = recordingClient({ runIds: ['r1'], kind: '835' }, 200, 'a-current');
     assert.deepEqual(await client.upload(new File(['ISA'], 'era.835'), 'a-1'), {
-      runId: 'r1',
+      runIds: ['r1'],
       kind: '835'
     });
     assert.deepEqual(calls, [
@@ -60,7 +60,7 @@ describe('createPayerFilesClient', () => {
   });
 
   it('uploads unscoped when no agency is given', async () => {
-    const { client, calls } = recordingClient({ runId: 'r1', kind: '835' }, 200, 'a-current');
+    const { client, calls } = recordingClient({ runIds: ['r1'], kind: '835' }, 200, 'a-current');
     await client.upload(new File(['ISA'], 'era.835'), null);
     assert.deepEqual(calls, [
       { method: 'POST', url: 'http://api.test/api/payer-files', file: 'era.835' }

@@ -1,4 +1,5 @@
 import { type Database, GRAPH_KINDS, GRAPH_ROLES, PUBLISHED_IMMUTABLE_TRIGGER } from '@ugula/db';
+import { ENTRY_TYPE } from '@ugula/graph';
 import { type Kysely, sql } from 'kysely';
 
 const buildGraphsTable = (db: Kysely<Database>) =>
@@ -47,6 +48,13 @@ const buildGraphVersionsTable = (db: Kysely<Database>) =>
     )
     .addColumn('contract', 'text', (col) => col.notNull())
     .addColumn('dependencies', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
+    .addColumn('trigger', 'jsonb', (col) =>
+      col
+        .generatedAlwaysAs(
+          sql`jsonb_path_query_first(definition, ${sql.lit(`$.nodes[*] ? (@.type == "${ENTRY_TYPE}").config.trigger`)}::jsonpath)`
+        )
+        .stored()
+    )
     .addColumn('published_at', 'timestamptz')
     .addColumn('created_by_id', 'uuid', (col) =>
       col.references('users.id').onDelete('set null').onUpdate('cascade')
@@ -62,6 +70,13 @@ const buildGraphVersionsDraftIndex = (db: Kysely<Database>) =>
     .column('graph_id')
     .unique()
     .where(sql.ref('published_at'), 'is', null);
+
+const buildGraphVersionsTriggerIndex = (db: Kysely<Database>) =>
+  db.schema
+    .createIndex('idx_graph_versions_trigger')
+    .on('graph_versions')
+    .expression(sql`(trigger ->> 'kind'), (trigger ->> 'event')`)
+    .where(sql<boolean>`published_at is not null and trigger is not null`);
 
 const buildGraphVersionsCreatedByIndex = (db: Kysely<Database>) =>
   db.schema
@@ -115,6 +130,7 @@ export const createGraphsTables = async (db: Kysely<Database>) => {
   await buildGraphVersionsTable(db).execute();
   await buildGraphVersionsDraftIndex(db).execute();
   await buildGraphVersionsCreatedByIndex(db).execute();
+  await buildGraphVersionsTriggerIndex(db).execute();
   await buildGraphVersionsBaseIndex(db).execute();
   await publishedImmutableFunction.execute(db);
   await publishedImmutableTrigger.execute(db);

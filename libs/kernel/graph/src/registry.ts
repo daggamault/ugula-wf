@@ -1,6 +1,7 @@
 import * as v from 'valibot';
 import { type CompiledGraph, compileGraph, refKey } from './compile.ts';
 import { coreNodes } from './core.ts';
+import type { EventDef } from './triggers.ts';
 import type {
   GraphDef,
   GraphSource,
@@ -19,6 +20,7 @@ export type Registry = {
   signature: (inst: NodeInstance, graph: GraphDef) => Signature;
   nodes: () => NodeDef[];
   kinds: ValueKinds;
+  events: readonly EventDef[];
 };
 
 export const isPure = (sig: Signature) => sig.execIn.length === 0 && sig.execOut.length === 0;
@@ -36,7 +38,8 @@ export const combineSources =
 export const createRegistry = (
   defs: NodeDef[],
   graphs: GraphSource,
-  kinds: ValueKinds = STD_KINDS
+  kinds: ValueKinds = STD_KINDS,
+  events: readonly EventDef[] = []
 ): Registry => {
   const byKey = new Map<string, NodeDef>();
   for (const def of [...coreNodes, ...defs]) {
@@ -81,5 +84,5 @@ export const createRegistry = (
     return sig;
   };
 
-  return { node, graph, config, signature, nodes: () => [...byKey.values()], kinds };
+  return { node, graph, config, signature, nodes: () => [...byKey.values()], kinds, events };
 };

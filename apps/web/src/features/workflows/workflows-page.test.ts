@@ -9,6 +9,7 @@ import {
   GRAPH_TABLE,
   graphFilterOf,
   graphsQueryOf,
+  startsLabel,
   WorkflowsPage,
   WorkflowsTable
 } from './workflows-page.tsx';
@@ -27,6 +28,7 @@ const graph = (patch: Partial<GraphSummary>): GraphSummary => ({
   overriddenBy: null,
   publishedVersion: 2,
   draftVersion: null,
+  trigger: null,
   updatedAt: '2026-01-01T00:00:00.000Z',
   ...patch
 });
@@ -75,7 +77,7 @@ const rowsOf = () =>
 const cellsOf = (row: HTMLElement) =>
   within(row)
     .getAllByRole('cell')
-    .slice(0, 5)
+    .slice(0, 6)
     .map((c) => c.lastElementChild?.textContent);
 
 const pageOf = (items: GraphSummary[]): Page<GraphSummary> => ({
@@ -119,14 +121,27 @@ describe('graphsQueryOf', () => {
 });
 
 describe('WorkflowsTable', () => {
-  it('lists each graph with its kind, scope and versions', () => {
+  it('lists each graph with its kind, what starts it, scope and versions', () => {
     showTable();
     assert.deepEqual(rowsOf().map(cellsOf), [
-      ['Batch', 'Workflow', 'Agency', 'v2', 'v3'],
-      ['Payer Rule', 'Subworkflow', 'Built-in', '—', '—'],
-      ['Match', 'Subworkflow', 'Built-inHas Your Copy', 'v2', '—'],
-      ['Match', 'Subworkflow', 'AgencyBase Updated', 'v2', '—']
+      ['Batch', 'Workflow', 'When Run', 'Agency', 'v2', 'v3'],
+      ['Payer Rule', 'Subworkflow', '—', 'Built-in', '—', '—'],
+      ['Match', 'Subworkflow', '—', 'Built-inHas Your Copy', 'v2', '—'],
+      ['Match', 'Subworkflow', '—', 'AgencyBase Updated', 'v2', '—']
     ]);
+  });
+
+  it('names the event or schedule that starts a workflow', () => {
+    const events = [{ type: 'claim.denied', label: 'Claim Denied', description: '', payload: [] }];
+    assert.equal(
+      startsLabel(graph({ trigger: { kind: 'event', event: 'claim.denied', where: {} } }), events),
+      'On Claim Denied'
+    );
+    assert.equal(
+      startsLabel(graph({ trigger: { kind: 'schedule', every: 'day', hour: 6 } }), events),
+      'Every day at 06:00'
+    );
+    assert.equal(startsLabel(graph({ kind: 'node' }), events), null);
   });
 
   it('highlights the search in names', () => {
@@ -164,6 +179,7 @@ describe('WorkflowsTable', () => {
       [
         ['Name', 'ascending', '/workflows?q=bat&sort=name&dir=desc'],
         ['Kind', null, '/workflows?q=bat&sort=kind&dir=desc'],
+        ['Starts', null, null],
         ['Scope', null, null],
         ['Published', null, null],
         ['Draft', null, null],

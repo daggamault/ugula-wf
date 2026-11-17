@@ -23,6 +23,7 @@ export type GraphSummary = {
   isStale: boolean;
   publishedVersion: number | null;
   draftVersion: number | null;
+  trigger: Json | null;
   updatedAt: string;
 };
 

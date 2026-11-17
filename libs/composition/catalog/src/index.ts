@@ -1,6 +1,7 @@
 import { PERMISSIONS } from '@ugula/access';
 import {
   type BillingStores,
+  billingEvents,
   billingKinds,
   billingModels,
   createBillingNodes
@@ -8,6 +9,7 @@ import {
 import {
   createModelNodes,
   createStdNodes,
+  type EventDef,
   mergeKinds,
   type NodeDef,
   STD_KINDS,
@@ -21,6 +23,8 @@ type CatalogDeps = Omit<StdDeps, 'permissions'> & {
 };
 
 export const valueKinds = mergeKinds(STD_KINDS, nemsisKinds, billingKinds);
+
+export const workflowEvents: readonly EventDef[] = billingEvents;
 
 export const createNodeCatalog = ({ reports, billing, ...std }: CatalogDeps): NodeDef[] => [
   ...createStdNodes({ ...std, permissions: PERMISSIONS }),

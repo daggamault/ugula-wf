@@ -1,5 +1,5 @@
 import { verifyPassword } from '@ugula/auth';
-import { type Db, resolveWorkflowVersion, startRun } from '@ugula/db';
+import { type Db, emitEvent, resolveWorkflowVersion, startRun } from '@ugula/db';
 import type { Json } from '@ugula/graph';
 import { reportTerms, reportXml } from '@ugula/nemsis';
 import type { RunQueueClient } from '@ugula/run-queue';
@@ -93,7 +93,13 @@ export const createImportService = ({
         inputs: { file },
         interactive: true
       });
-      await insertImport(tx, { agencyId, runId: id, file, ...origin });
+      const created = await insertImport(tx, { agencyId, runId: id, file, ...origin });
+      await emitEvent(tx, {
+        agencyId,
+        type: 'import.received',
+        payload: { importId: created.id, file, fileName: origin.fileName },
+        createdBy: origin.uploadedBy
+      });
       return id;
     });
     await publish(agencyId, { kind: 'import', id: null }).catch(() => undefined);

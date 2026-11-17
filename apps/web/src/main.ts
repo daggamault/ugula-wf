@@ -1,4 +1,4 @@
-import { createNodeCatalog, valueKinds } from '@ugula/catalog';
+import { createNodeCatalog, valueKinds, workflowEvents } from '@ugula/catalog';
 import { createElement, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app.tsx';
@@ -59,7 +59,8 @@ export const mountApp = (el: HTMLElement | null, config: Config) => {
       createElement(App, {
         clients: createClients(config),
         nodes: createNodeCatalog({ fetch: (...args) => fetch(...args) }),
-        kinds: valueKinds
+        kinds: valueKinds,
+        events: workflowEvents
       })
     )
   );

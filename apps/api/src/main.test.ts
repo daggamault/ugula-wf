@@ -41,6 +41,7 @@ const deps: Parameters<typeof createApp>[0] = {
   embedder: { embed: async () => [] },
   nodes: [...createStdNodes({ fetch }), ...createNemsisNodes(null)],
   kinds: STD_KINDS,
+  events: [],
   publish: async () => undefined,
   clientIp: () => '10.0.0.1',
   sealSecret: null

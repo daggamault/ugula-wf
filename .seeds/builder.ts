@@ -8,6 +8,7 @@ import {
   type NodeInstance,
   RETURN_TYPE,
   type Signature,
+  type Trigger,
   type ValueType,
   type VariableDef
 } from '@ugula/graph';
@@ -52,7 +53,11 @@ export const graph = (signature: Signature, variables: VariableDef[] = []) => {
       ...(fixed ? { values: fixed } : {})
     });
   const input = (id: string, pin: string) => add(id, INPUT_TYPE, { config: { pin } });
-  return { add, wire, ret, input, def };
+  const trigger = (t: Trigger) => {
+    const [entry] = def.nodes;
+    if (entry) entry.config = { trigger: t };
+  };
+  return { add, wire, ret, input, trigger, def };
 };
 
 export type SeedTable = {

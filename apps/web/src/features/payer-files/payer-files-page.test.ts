@@ -39,7 +39,7 @@ describe('PayerFilesPage', () => {
       },
       upload: async (picked: File) => {
         uploads.push(picked.name);
-        return { runId: 'run-9', kind: '835' as const };
+        return { runIds: ['run-9'], kind: '835' as const };
       },
       ...over
     } as PayerFilesClient;

@@ -1,4 +1,4 @@
-import type { NodeDef, ValueKinds } from '@ugula/graph';
+import type { EventDef, NodeDef, ValueKinds } from '@ugula/graph';
 import { Suspense, useEffect, useMemo } from 'react';
 import { ChooseAgencyPage } from './features/agencies/choose-agency-page.tsx';
 import { AuthGate } from './features/auth/auth-gate.tsx';
@@ -16,7 +16,7 @@ import {
   useAccess,
   useCan
 } from './shared/access.tsx';
-import { ValueKindsContext } from './shared/graph/pins.ts';
+import { ValueKindsContext, WorkflowEventsContext } from './shared/graph/pins.ts';
 import { createLive, useLiveStatus } from './shared/live.ts';
 import { agencyPath, navigate, useLocation } from './shared/router.tsx';
 import { AgencyPicker } from './shared/ui/agency-picker.tsx';
@@ -155,11 +155,13 @@ export const AgencyGate = ({ agencyId, userId, ...workspace }: AgencyGateProps) 
 export const App = ({
   clients,
   nodes,
-  kinds
+  kinds,
+  events
 }: {
   clients: AppClients;
   nodes: NodeDef[];
   kinds: ValueKinds;
+  events: readonly EventDef[];
 }) => {
   const { path, query, agencyId } = useLocation();
   if (path === '/invitation') {
@@ -170,25 +172,27 @@ export const App = ({
   }
   return (
     <ValueKindsContext.Provider value={kinds}>
-      <AuthGate auth={clients.auth}>
-        {(session, signOut) => (
-          <ToastProvider
-            onNotify={(toast) => void clients.notifications.record(toast).catch(() => undefined)}
-          >
-            <AgencyGate
-              clients={clients}
-              nodes={nodes}
-              path={path}
-              query={query}
-              agencyId={agencyId}
-              userId={session.user.id}
-              email={session.user.email}
-              sseUrl={session.sseUrl}
-              onSignOut={signOut}
-            />
-          </ToastProvider>
-        )}
-      </AuthGate>
+      <WorkflowEventsContext.Provider value={events}>
+        <AuthGate auth={clients.auth}>
+          {(session, signOut) => (
+            <ToastProvider
+              onNotify={(toast) => void clients.notifications.record(toast).catch(() => undefined)}
+            >
+              <AgencyGate
+                clients={clients}
+                nodes={nodes}
+                path={path}
+                query={query}
+                agencyId={agencyId}
+                userId={session.user.id}
+                email={session.user.email}
+                sseUrl={session.sseUrl}
+                onSignOut={signOut}
+              />
+            </ToastProvider>
+          )}
+        </AuthGate>
+      </WorkflowEventsContext.Provider>
     </ValueKindsContext.Provider>
   );
 };

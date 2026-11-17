@@ -53,7 +53,9 @@ describe('registry', () => {
         registry.config({ id: 'b', type: 'std.flow.sequence', version: 1, config: { count: 0 } }),
       { message: 'Invalid value: Expected >=1 but received 0' }
     );
-    assert.deepEqual(registry.config({ id: 'e', type: ENTRY_TYPE, version: 1 }), {});
+    assert.deepEqual(registry.config({ id: 'e', type: ENTRY_TYPE, version: 1 }), {
+      trigger: { kind: 'manual' }
+    });
   });
 
   it('works a node out again in another graph, as an edited one', () => {

@@ -32,7 +32,7 @@ export const uploadPayerFiles = async (
         intent: 'success',
         title: `${file.name} received`,
         description: `The ${PAYER_FILE_LABELS[done.kind]} is being applied to its claims; lines that need a biller become tasks.`,
-        action: { label: 'Open Run', to: `/runs/${done.runId}` }
+        ...(done.runIds[0] ? { action: { label: 'Open Run', to: `/runs/${done.runIds[0]}` } } : {})
       });
     } catch (err) {
       notify({

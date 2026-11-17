@@ -1,4 +1,4 @@
-import type { ValueKinds, ValueType } from '@ugula/graph';
+import type { EventDef, ValueKinds, ValueType } from '@ugula/graph';
 import { createContext } from 'react';
 import { labelFromName, titleCaseLabel } from '../format.ts';
 
@@ -57,6 +57,8 @@ export const TYPE_WORDS: Readonly<Record<Exclude<PinKind, 'list' | 'object' | 'e
 };
 
 export const ValueKindsContext = createContext<ValueKinds>({ id: {}, code: {} });
+
+export const WorkflowEventsContext = createContext<readonly EventDef[]>([]);
 
 export const describeType = (type: ValueType, kinds: ValueKinds): string => {
   if (typeof type === 'string') return TYPE_WORDS[type];

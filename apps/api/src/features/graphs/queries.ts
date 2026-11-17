@@ -29,6 +29,7 @@ type GraphSummary = {
   isStale: boolean;
   publishedVersion: number | null;
   draftVersion: number | null;
+  trigger: unknown;
   updatedAt: Date;
 };
 
@@ -51,6 +52,7 @@ type GraphRow = {
   overridden_by: string | null;
   overrides: string | null;
   is_stale: boolean;
+  trigger: unknown;
 };
 
 const GRAPH_ORDER = {
@@ -79,6 +81,7 @@ const toSummary = (r: GraphRow): GraphSummary => ({
   isStale: r.is_stale,
   publishedVersion: r.published,
   draftVersion: r.draft,
+  trigger: r.trigger,
   updatedAt: r.updated_at
 });
 
@@ -97,7 +100,8 @@ export const searchGraphs = async (
             sql<number | null>`max(gv.version) filter (where gv.published_at is not null)`.as(
               'published'
             ),
-            sql<number | null>`max(gv.version) filter (where gv.published_at is null)`.as('draft')
+            sql<number | null>`max(gv.version) filter (where gv.published_at is null)`.as('draft'),
+            sql<unknown>`(array_agg(gv.trigger order by gv.version desc))[1]`.as('trigger')
           ])
           .whereRef('gv.graph_id', '=', 'g.id')
           .as('v'),
@@ -114,6 +118,7 @@ export const searchGraphs = async (
       'g.updated_at',
       'v.published',
       'v.draft',
+      'v.trigger',
       overriddenBy(s).as('overridden_by'),
       overridesOf(s).as('overrides'),
       isStale.as('is_stale')

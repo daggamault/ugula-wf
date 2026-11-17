@@ -72,6 +72,24 @@ Node titles are Title Case with minor words in lowercase (Greater or Equal, Wait
 | Capability | Billing and NEMSIS nodes that do I/O or heavy logic: read NEMSIS, match patients and payers, read narratives, price, save claims, file 837P, apply payer files                                                                                                                                          |
 | Composite  | Any published `node` graph, called like a node                                                                                                                                                                                                                                                          |
 
+## Triggers and events
+
+Like an Unreal **Event** node or an n8n trigger, a workflow's **Entry** says what starts it (`config.trigger`, `triggerSchema` in `libs/kernel/graph/src/triggers.ts`):
+
+| Trigger  | Config                              | Starts                                                                                     |
+| -------- | ----------------------------------- | ------------------------------------------------------------------------------------------ |
+| Manual   | `{ kind: 'manual' }` (the default)  | From the app, the API or another graph (run, start, map and spawn workflow nodes)          |
+| On Event | `{ kind: 'event', event, where }`   | Once per event of that type whose payload passes every `where` test (the Condition tests)  |
+| Schedule | `{ kind: 'schedule', every, hour }` | Every day, every Monday or the first of every month, at the hour in the agency's time zone |
+
+- **Events** are typed: each domain declares an `EventDef` (`type` such as `claim.denied`, `label`, `description` and `payload` pins), and `workflowEvents` in `libs/composition/catalog` merges them. `createRegistry(nodes, graphs, kinds, events)` carries them, and `validateGraph` (`triggerIssues`) checks that the event exists, that each tested field is in its payload, and that every input of the workflow is a payload field of an assignable type, optional or defaulted; a scheduled workflow gets no inputs, so each needs a default. Only a `workflow` graph may have a trigger (`SUBWORKFLOW_TRIGGER`, checked on save, publish and seed). A run takes the payload fields its inputs name (`triggerInputs`).
+- **Outbox:** an event is a row in `events`, written in the same transaction as the change it reports. Code writes one with `emitEvent` (`libs/data/db/src/events.ts`); the claim history and claim and task changes write theirs with database triggers generated from the domain (`.migrations/events.ts`: `claim_events` kinds through `CLAIM_LEDGER_EVENTS`, claim status and classification, completed tasks), so no code path can change a claim without its event. Every insert notifies `workflow_events`.
+- **Dispatcher:** each worker listens on `workflow_events` (and sweeps every 30 seconds in case it missed a notice) and runs `dispatchEvents`: it takes up to 100 undispatched events `for update skip locked`, finds the agency's effective published workflows whose trigger names the event (`findEventWorkflows`: overrides resolved like any run, so an agency copy that changes or drops the trigger replaces the built-in one), starts one run per match with `startRun` (pinned, leased and fenced like every run), records it in `event_runs` (event, workflow, run; one run per event and workflow) and marks the batch dispatched, all in one transaction. A person's action that should open its run at once (a payer file upload) uses `emitAndDispatch`, which starts the runs in the request's own transaction and returns them; the run is interactive and started by that user.
+- **Schedules:** `graph_versions.trigger` is a stored column generated from the definition, indexed by kind and event. The worker's `workflow-schedules` job (every 15 minutes) asks, per active agency, for its scheduled workflows (`findScheduledWorkflows`), and starts each once its period has reached the hour in the agency's time zone, claiming `schedule_runs` (agency, workflow, day) first so a retried job never starts it twice.
+- **Where it shows:** the editor's **Trigger** section on a workflow's Entry picks the start, the event and its conditions or the schedule, and the canvas summarises it ("On Claim Denied (1 condition)", "Every day at 06:00"); the Workflows list has a **Starts** column; a run started by an event says which one.
+
+An agency adds "when a payer file is received, do X" by creating a workflow on `payer_file.received`; it runs next to Receive Payer File without overriding it.
+
 ## Durable runs
 
 - Run state is saved in Postgres after every node with side effects and every few pure steps.
@@ -93,13 +111,14 @@ Node titles are Title Case with minor words in lowercase (Greater or Equal, Wait
 
 ## Where things live
 
-| Concern                          | File                                                      |
-| -------------------------------- | --------------------------------------------------------- |
-| Types                            | `libs/kernel/graph/src/types.ts`                          |
-| Schema validation of definitions | `libs/kernel/graph/src/schemas.ts`                        |
-| Compile, refs, contracts         | `libs/kernel/graph/src/compile.ts`                        |
-| Engine                           | `libs/kernel/graph/src/engine.ts`                         |
-| Standard nodes                   | `libs/kernel/graph/src/std/*.ts`                          |
-| Resolution and pinning SQL       | `libs/data/db/src/graph-versions.ts`, `data-tables.ts`    |
-| Shared tables, docs lint         | `libs/kernel/graph/src/std/tables.ts`, `documentation.ts` |
-| Worker execution                 | `apps/worker/src/features/workflows/*`                    |
+| Concern                          | File                                                                                                                          |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Types                            | `libs/kernel/graph/src/types.ts`                                                                                              |
+| Schema validation of definitions | `libs/kernel/graph/src/schemas.ts`                                                                                            |
+| Compile, refs, contracts         | `libs/kernel/graph/src/compile.ts`                                                                                            |
+| Engine                           | `libs/kernel/graph/src/engine.ts`                                                                                             |
+| Standard nodes                   | `libs/kernel/graph/src/std/*.ts`                                                                                              |
+| Resolution and pinning SQL       | `libs/data/db/src/graph-versions.ts`, `data-tables.ts`                                                                        |
+| Triggers, events, dispatch       | `libs/kernel/graph/src/triggers.ts`, `libs/data/db/src/events.ts`, `apps/worker/src/features/events`, `.migrations/events.ts` |
+| Shared tables, docs lint         | `libs/kernel/graph/src/std/tables.ts`, `documentation.ts`                                                                     |
+| Worker execution                 | `apps/worker/src/features/workflows/*`                                                                                        |

@@ -1,6 +1,6 @@
 import { type GraphDef, type Issue, type NodeDef, type NodeRef, tableRefOf } from '@ugula/graph';
 import { Redo2Icon, Undo2Icon, XIcon } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { isApiError, messageOf } from '../../shared/api.ts';
 import { createEditTracker } from '../../shared/edit-tracker.ts';
 import { type Catalog, createCatalog, type PaletteEntry } from '../../shared/graph/catalog.ts';
@@ -21,7 +21,7 @@ import {
   isTyping
 } from '../../shared/graph/graph-canvas.tsx';
 import { emptyHistory, recorded, redone, undone } from '../../shared/graph/history.ts';
-import { pinLabel } from '../../shared/graph/pins.ts';
+import { pinLabel, WorkflowEventsContext } from '../../shared/graph/pins.ts';
 import { type Live, useReconnect } from '../../shared/live.ts';
 import { navigate, useLocation, useUnsavedChanges } from '../../shared/router.tsx';
 import { Badge } from '../../shared/ui/badge.tsx';
@@ -574,6 +574,7 @@ export const EditorView = ({
               onClose={() => setSelected(null)}
               base={baseNode}
               table={nodeTable}
+              isWorkflow={graph.kind === 'workflow'}
             />
           </Drawer>
         ) : null}
@@ -618,9 +619,10 @@ export const EditorPage = ({ client, live, nodes, graphId, version, trail }: Edi
   const source = useResource(`graph:${graphId}:v${chosen}`, () =>
     chosen === null ? Promise.resolve(null) : client.version(graphId, chosen)
   );
+  const events = useContext(WorkflowEventsContext);
   const catalog = useMemo(
-    () => createCatalog(nodes, { published: published.data ?? [] }),
-    [nodes, published.data]
+    () => createCatalog(nodes, { published: published.data ?? [], events }),
+    [nodes, published.data, events]
   );
   const { reload } = detail;
   const loads = useRef(0);

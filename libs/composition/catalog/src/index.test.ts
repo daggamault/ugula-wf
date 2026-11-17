@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { PERMISSIONS } from '@ugula/access';
-import { billingKinds, billingModels, createBillingNodes } from '@ugula/billing';
+import {
+  billingKinds,
+  billingModels,
+  CLAIM_LEDGER_EVENTS,
+  createBillingNodes,
+  ledgerPayloadColumns
+} from '@ugula/billing';
 import {
   createModelNodes,
   createRegistry,
   createStdNodes,
+  EVENT_TYPE_PATTERN,
   type GraphDef,
   nodeDocumentationIssues,
   STD_KINDS,
@@ -14,7 +21,7 @@ import {
   unknownKinds
 } from '@ugula/graph';
 import { createNemsisNodes, nemsisKinds, nemsisModels } from '@ugula/nemsis';
-import { createNodeCatalog, valueKinds } from './index.ts';
+import { createNodeCatalog, valueKinds, workflowEvents } from './index.ts';
 
 const UNWIRED: GraphDef = {
   signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
@@ -140,5 +147,41 @@ describe('createNodeCatalog', () => {
       ([kind, label]) => (billingKinds.code[kind] ?? label) !== label
     );
     assert.deepEqual(clashes, []);
+  });
+});
+
+describe('workflowEvents', () => {
+  it('names each event once, by a dotted type, with a Title Case label and a description', () => {
+    const types = workflowEvents.map((e) => e.type);
+    assert.equal(new Set(types).size, types.length);
+    for (const e of workflowEvents) {
+      assert.match(e.type, EVENT_TYPE_PATTERN);
+      assert.equal(lowerWordOf(e.label), undefined, e.label);
+      assert.ok(e.description.endsWith('.'), e.type);
+    }
+  });
+
+  it('documents every payload field with a declared kind, all optional', () => {
+    for (const e of workflowEvents) {
+      for (const p of e.payload) {
+        assert.ok(
+          p.label && lowerWordOf(p.label) === undefined && p.description,
+          `${e.type}.${p.name}`
+        );
+        assert.equal(p.optional, true, `${e.type}.${p.name}`);
+        assert.deepEqual(unknownKinds(p.type, valueKinds), [], `${e.type}.${p.name}`);
+      }
+    }
+  });
+
+  it('declares every event the claim ledger emits, each read from ledger columns', () => {
+    for (const type of Object.values(CLAIM_LEDGER_EVENTS)) {
+      const event = workflowEvents.find((e) => e.type === type);
+      assert.deepEqual(
+        event?.payload.map((p) => p.name),
+        Object.keys(ledgerPayloadColumns(type)),
+        type
+      );
+    }
   });
 });

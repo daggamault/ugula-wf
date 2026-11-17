@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createRecordingDb } from '@ugula/db/testing';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
-import { createPayerFileService, RECEIVE_WORKFLOW } from './service.ts';
+import { createPayerFileService } from './service.ts';
 
 const ISA = `ISA*00*${' '.repeat(10)}*00*${' '.repeat(10)}*ZZ*${'CLEARHOUSE'.padEnd(15)}*ZZ*${'METROEMS'.padEnd(15)}*261031*0900*^*00501*000000101*0*P*:~`;
 
@@ -72,14 +72,23 @@ const setup = ({ imported = false, published = true, failing = false } = {}) => 
     if (q.sql.includes('from "payer_files" where')) {
       return imported ? [{ id: 'f0', created_at: new Date('2026-10-01T00:00:00Z') }] : [];
     }
-    if (q.sql.includes('select v.version')) return published ? [{ version: 1 }] : [];
-    if (q.sql.includes('cross join lateral')) {
-      return [{ id: 'v1', key: RECEIVE_WORKFLOW, version: 1, definition: {} }];
+    if (q.sql.includes('v.id as version_id')) {
+      return published
+        ? [
+            {
+              key: 'billing.receive-payer-file',
+              version_id: 'v1',
+              trigger: { kind: 'event', event: 'payer_file.received' },
+              signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] }
+            }
+          ]
+        : [];
     }
-    if (q.sql.startsWith('insert into "workflow_runs"')) {
+    if (q.sql.startsWith('insert into "events"')) {
       if (failing) throw new Error('database down');
-      return [{ id: 'r1' }];
+      return [{ id: 'e1' }];
     }
+    if (q.sql.startsWith('insert into "workflow_runs"')) return [{ id: 'r1' }];
     return [];
   });
   const boss: RunQueueClient = { insert: async () => undefined };
@@ -105,36 +114,41 @@ const upload = (service: ReturnType<typeof setup>['service'], text: string, name
   service.upload('t1', 'u1', { name, type: '', bytes: new TextEncoder().encode(text) });
 
 describe('payer file service', () => {
-  it('stores an upload and starts Receive Payer File for it, like the clearinghouse poll', async () => {
+  it('stores an upload and starts the workflows Payer File Received triggers, like the poll', async () => {
     const { service, queries, stored } = setup();
     assert.deepEqual(await upload(service, REMITTANCE), {
       ok: true,
-      value: { runId: 'r1', kind: '835' }
+      value: { runIds: ['r1'], kind: '835' }
     });
     assert.match(stored[0] ?? '', /payer-files\/.+\/era\.835$/);
+    const event = queries.find((q) => q.sql.startsWith('insert into "events"'));
+    assert.deepEqual(event?.parameters.slice(0, 2), ['t1', 'payer_file.received']);
+    assert.equal(event?.parameters[3], 'u1');
+    assert.ok(event?.parameters.some((p) => String(p).includes('"fileName":"era.835"')));
     const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
-    assert.ok(run?.parameters.includes('t1') && run.parameters.includes('u1'));
-    assert.ok(run?.parameters.some((p) => String(p).includes('"fileName":"era.835"')));
-    assert.ok(queries.some((q) => q.sql.includes('insert into workflow_run_graphs')));
+    assert.deepEqual(run?.parameters.slice(0, 2), ['t1', 'v1']);
+    assert.equal(run?.parameters[4], 'u1');
+    assert.ok(queries.some((q) => q.sql.startsWith('insert into "event_runs"')));
+    assert.ok(queries.some((q) => q.sql.startsWith('update "events" set "dispatched_at"')));
     assert.ok(!queries.some((q) => q.sql.startsWith('insert into "payer_files"')));
   });
 
-  it('drops the stored file when its run cannot start', async () => {
+  it('drops the stored file when its event cannot be saved', async () => {
     const { service, stored, removed } = setup({ failing: true });
     await assert.rejects(() => upload(service, REMITTANCE), /database down/);
     assert.equal(stored.length, 1);
     assert.deepEqual(removed, stored);
   });
 
-  it('reads acknowledgments and eligibility files before starting their run', async () => {
+  it('reads acknowledgments and eligibility files before emitting their event', async () => {
     const { service } = setup();
     assert.deepEqual(await upload(service, CLAIM_ACK, 'ack.277'), {
       ok: true,
-      value: { runId: 'r1', kind: '277' }
+      value: { runIds: ['r1'], kind: '277' }
     });
     assert.deepEqual(await upload(service, ELIGIBILITY, 'elig.271'), {
       ok: true,
-      value: { runId: 'r1', kind: '271' }
+      value: { runIds: ['r1'], kind: '271' }
     });
   });
 
@@ -142,8 +156,8 @@ describe('payer file service', () => {
     const { service, queries, stored } = setup();
     await upload(service, REMITTANCE, '   ');
     assert.match(stored[0] ?? '', /payer-files\/.+\/upload$/);
-    const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
-    assert.ok(run?.parameters.some((p) => String(p).includes('"fileName":"upload"')));
+    const event = queries.find((q) => q.sql.startsWith('insert into "events"'));
+    assert.ok(event?.parameters.some((p) => String(p).includes('"fileName":"upload"')));
   });
 
   it('refuses files that are not inbound X12 or were already imported', async () => {
@@ -164,13 +178,13 @@ describe('payer file service', () => {
     assert.deepEqual([...stored, ...again.stored], []);
   });
 
-  it('refuses an upload when the workflow is not published', async () => {
+  it('refuses an upload no published workflow would receive', async () => {
     const { service, stored } = setup({ published: false });
     assert.deepEqual(await upload(service, REMITTANCE), {
       ok: false,
       failure: {
         code: 'conflict',
-        message: 'The billing.receive-payer-file workflow is not published'
+        message: 'No published workflow starts when a payer file is received'
       }
     });
     assert.equal(stored.length, 0);
