@@ -64,10 +64,10 @@ describe('field nodes', () => {
       () => run('std.object.get-field', {}, { record: FACTS, path: 'dropoffState' }),
       /no field "dropoffState"/
     );
-    await assert.rejects(
-      () => run('std.object.get-field', {}, { record: FACTS, path: '' }),
-      /Choose a field/
-    );
+    const unchosen = await run('std.object.get-field', {}, { record: FACTS });
+    assert.deepEqual(unchosen.signature.outputs, []);
+    const passed = await run('std.object.set-field', { record: { a: 1 } }, {});
+    assert.deepEqual(passed.outputs, { record: { a: 1 } });
     const def: GraphDef = {
       signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
       variables: [],

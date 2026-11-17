@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ENTRY_TYPE, type GraphDef, RETURN_TYPE } from '@ugula/graph';
+import { ENTRY_TYPE, type GraphDef, RETURN_TYPE, type ValueType } from '@ugula/graph';
 import { testNodes } from '../testing.ts';
 import { createCatalog } from './catalog.ts';
 import {
@@ -124,6 +124,30 @@ describe('connections', () => {
       ['entry']
     );
     assert.equal(connect(def, catalog, link('entry', 'x', 'up1', 'text')), def);
+  });
+
+  it('give open types the type of the wire connected to them', () => {
+    const trip: ValueType = { object: { miles: 'number', state: 'string' } };
+    const typed: GraphDef = {
+      ...def,
+      signature: {
+        ...def.signature,
+        inputs: [{ name: 'trip', type: trip }, ...def.signature.inputs]
+      },
+      nodes: [
+        ...def.nodes,
+        { id: 'get1', type: 'std.object.get-field', version: 1, config: { path: 'miles' } },
+        { id: 'list1', type: 'std.list.make', version: 1 },
+        { id: 'pick1', type: 'std.logic.choose', version: 1, config: { type: 'string' } }
+      ]
+    };
+    const configOf = (g: GraphDef, id: string) => g.nodes.find((n) => n.id === id)?.config;
+    const got = connect(typed, catalog, link('entry', 'trip', 'get1', 'record'));
+    assert.deepEqual(configOf(got, 'get1'), { path: 'miles', record: trip });
+    const listed = connect(typed, catalog, link('entry', 'x', 'list1', 'item1'));
+    assert.deepEqual(configOf(listed, 'list1'), { type: 'number' });
+    const kept = connect(typed, catalog, link('entry', 'x', 'pick1', 'option1'));
+    assert.deepEqual(configOf(kept, 'pick1'), { type: 'string' });
   });
 
   it('move an exec wire when its output is connected again', () => {

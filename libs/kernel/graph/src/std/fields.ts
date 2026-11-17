@@ -10,11 +10,11 @@ const CATEGORY = 'Objects';
 
 const fieldConfig = v.pipe(
   v.object({
-    record: valueTypeSchema,
-    path: v.pipe(v.string(), v.nonEmpty('Choose a field'))
+    record: v.optional(valueTypeSchema, 'any'),
+    path: v.optional(v.string(), '')
   }),
   v.check(
-    ({ record, path }) => fieldType(record, path) !== null,
+    ({ record, path }) => path === '' || fieldType(record, path) !== null,
     (issue) => `The record has no field "${(issue.input as { path: string }).path}"`
   )
 );
@@ -23,7 +23,18 @@ type FieldConfig = v.InferOutput<typeof fieldConfig>;
 
 const typeOf = ({ record, path }: FieldConfig): ValueType => fieldType(record, path) ?? 'any';
 
-const summary = ({ path }: FieldConfig) => pathLabel(path);
+const summary = ({ path }: FieldConfig) => (path ? pathLabel(path) : 'Choose a field');
+
+const valuePin = (c: FieldConfig, description: string, optional = false) =>
+  c.path
+    ? [
+        pin('value', typeOf(c), {
+          label: pathLabel(c.path),
+          description,
+          ...(optional ? { optional } : {})
+        })
+      ]
+    : [];
 
 export const fieldNodes: NodeDef[] = [
   pureNode<FieldConfig>({
@@ -31,7 +42,7 @@ export const fieldNodes: NodeDef[] = [
     title: 'Get Field',
     category: CATEGORY,
     description:
-      'Reads one field of a record, such as the pickup state of the encounter facts. Choose the field from the record wired in.',
+      'Reads one field of a record, such as the pickup state of the encounter facts. Wire the record in, then choose the field; the value appears once a field is chosen.',
     level: 'basic',
     keywords: ['field', 'get', 'read', 'property', 'record', 'prepopulate'],
     summary,
@@ -39,13 +50,8 @@ export const fieldNodes: NodeDef[] = [
     inputs: ({ record }) => [
       pin('record', record, { optional: true, description: 'The record to read.' })
     ],
-    outputs: (c) => [
-      pin('value', typeOf(c), {
-        label: pathLabel(c.path),
-        description: 'The value of the field, or nothing when it is empty.'
-      })
-    ],
-    compute: ({ record }, { path }) => ({ value: getPath(record ?? null, path) })
+    outputs: (c) => valuePin(c, 'The value of the field, or nothing when it is empty.'),
+    compute: ({ record }, { path }) => (path ? { value: getPath(record ?? null, path) } : {})
   }),
   pureNode<FieldConfig>({
     type: 'std.object.set-field',
@@ -59,17 +65,13 @@ export const fieldNodes: NodeDef[] = [
     config: fieldConfig,
     inputs: (c) => [
       pin('record', c.record, { optional: true, description: 'The record to change.' }),
-      pin('value', typeOf(c), {
-        label: pathLabel(c.path),
-        optional: true,
-        description: 'The new value of the field.'
-      })
+      ...valuePin(c, 'The new value of the field.', true)
     ],
     outputs: ({ record }) => [
       pin('record', record, { description: 'The copy with the field changed.' })
     ],
     compute: ({ record, value }, { path }) => ({
-      record: setPath(record ?? null, path, value ?? null)
+      record: path ? setPath(record ?? null, path, value ?? null) : (record ?? null)
     })
   })
 ];

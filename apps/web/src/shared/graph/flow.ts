@@ -191,6 +191,32 @@ export const connectionKind = (def: GraphDef, catalog: Catalog, c: Connection) =
   return from.type && to.type && isAssignable(from.type, to.type) ? 'data' : null;
 };
 
+type Adoption = { pins: RegExp; key: string; from: (type: ValueType) => ValueType | null };
+
+const itemOf = (type: ValueType) => (typeof type === 'object' && 'list' in type ? type.list : null);
+
+const recordOf = (type: ValueType) => (typeof type === 'object' && 'object' in type ? type : null);
+
+const ADOPTIONS: Readonly<Record<string, Adoption>> = {
+  'std.object.get-field': { pins: /^record$/, key: 'record', from: recordOf },
+  'std.object.set-field': { pins: /^record$/, key: 'record', from: recordOf },
+  'std.list.make': { pins: /^item\d+$/, key: 'type', from: (t) => t },
+  'std.list.join': { pins: /^list\d+$/, key: 'type', from: itemOf },
+  'std.logic.choose': { pins: /^(option\d+|case\d+|otherwise)$/, key: 'type', from: (t) => t },
+  'std.flow.reroute': { pins: /^value$/, key: 'type', from: (t) => t }
+};
+
+const adopt = (inst: NodeInstance, pin: string, type: ValueType | undefined): NodeInstance => {
+  const rule = Object.hasOwn(ADOPTIONS, inst.type) ? ADOPTIONS[inst.type] : undefined;
+  if (!rule || !type || type === 'any' || !rule.pins.test(pin)) return inst;
+  const config = (inst.config ?? {}) as Record<string, Json>;
+  const current = config[rule.key];
+  const adopted = rule.from(type);
+  return adopted && (current === undefined || current === 'any')
+    ? { ...inst, config: { ...config, [rule.key]: adopted as Json } }
+    : inst;
+};
+
 export const connect = (def: GraphDef, catalog: Catalog, c: Connection): GraphDef => {
   const kind = connectionKind(def, catalog, c);
   if (!kind || !c.sourceHandle || !c.targetHandle) return def;
@@ -200,12 +226,15 @@ export const connect = (def: GraphDef, catalog: Catalog, c: Connection): GraphDe
       ? !(e.from === edge.from && e.fromPin === edge.fromPin)
       : !(e.to === edge.to && e.toPin === edge.toPin)
   );
+  const from = outputOf(signatureById(def, catalog, edge.from), edge.fromPin);
   const nodes =
     kind === 'data'
       ? def.nodes.map((n) => {
-          if (n.id !== edge.to || !n.inputs?.[edge.toPin]) return n;
-          const { [edge.toPin]: _, ...inputs } = n.inputs;
-          return { ...n, inputs };
+          if (n.id !== edge.to) return n;
+          const typed = adopt(n, edge.toPin, from?.type ?? undefined);
+          if (!typed.inputs?.[edge.toPin]) return typed;
+          const { [edge.toPin]: _, ...inputs } = typed.inputs;
+          return { ...typed, inputs };
         })
       : def.nodes;
   return { ...def, nodes, edges: [...kept, edge] };

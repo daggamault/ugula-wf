@@ -41,5 +41,5 @@ Every billing decision should be readable on the canvas, built from small primit
 ### 4. Editor
 
 - [ ] Condition rules pick inputs and fields from the wired types; Get Field picks its path from the record type.
-- [ ] Types adopted from the wire on connect.
+- [x] Types adopted from the wire on connect (Get and Set Field, Make List, Join Lists, Choose Value, Reroute).
 - [ ] Collapse selected nodes to a rule.

@@ -10,6 +10,7 @@ import { ExpressionEditor, ListFormulaEditor } from './expression-editor.tsx';
 import {
   CodeSetEditor,
   ConstantEditor,
+  FieldEditor,
   GraphInputEditor,
   RuleEditor,
   RuleTestEditor,
@@ -42,6 +43,8 @@ export const SETTINGS_EDITORS: Readonly<Record<string, ComponentType<SettingsEdi
   'std.flow.map-workflow': WorkflowEditor,
   'std.flow.spawn-workflows': WorkflowEditor,
   'std.value': ConstantEditor,
+  'std.object.get-field': FieldEditor,
+  'std.object.set-field': FieldEditor,
   'std.convert.to-code': CodeSetEditor,
   'std.var.get': VariableEditor,
   'std.var.set': VariableEditor,

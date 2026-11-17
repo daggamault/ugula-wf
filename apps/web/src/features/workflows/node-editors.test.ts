@@ -10,6 +10,8 @@ import { testNodes } from '../../shared/testing.ts';
 import {
   CodeSetEditor,
   ConstantEditor,
+  FieldEditor,
+  fieldOptions,
   GraphInputEditor,
   RuleEditor,
   RuleTestEditor,
@@ -114,6 +116,20 @@ describe('RuleEditor', () => {
     });
     assert.match(filter, /aria-selected="true" data-value="billable"/);
     assert.ok(!render(RuleEditor, {}).includes('>Each Item Goes To</label>'));
+  });
+});
+
+describe('FieldEditor', () => {
+  it('lists the fields of the record wired in, else asks for the path', () => {
+    const record = { object: { trip: { object: { state: 'string' } }, miles: 'number' } };
+    assert.deepEqual(fieldOptions(record as never, ''), [
+      { value: 'trip', label: 'Trip' },
+      { value: 'trip.state', label: 'Trip › State' },
+      { value: 'miles', label: 'Miles' }
+    ]);
+    const html = render(FieldEditor, { record, path: 'trip.state' });
+    assert.match(html, /aria-selected="true" data-value="trip.state"/);
+    assert.ok(render(FieldEditor, {}).includes('Wire a record in to choose from its fields'));
   });
 });
 

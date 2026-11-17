@@ -1,8 +1,9 @@
-import { formatType, type Json } from '@ugula/graph';
+import { fieldPaths, formatType, type Json, pathLabel, type ValueType } from '@ugula/graph';
 import { useContext } from 'react';
 import type { PublishedNode } from '../../shared/graph/catalog.ts';
 import { pinLabel, ValueKindsContext } from '../../shared/graph/pins.ts';
 import { kindOptions, TypePicker } from '../../shared/graph/type-picker.tsx';
+import { Input } from '../../shared/ui/input.tsx';
 import { Select, type SelectOption } from '../../shared/ui/select.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
 import { asValueType, recordOf, withEntry } from './config-schema.ts';
@@ -189,6 +190,48 @@ export const ConstantEditor = ({ nodeId, config, editable, onConfig }: SettingsE
         value={record.value ?? null}
         editable={editable}
         onChange={(value) => onConfig({ ...record, value })}
+      />
+    </fieldset>
+  );
+};
+
+export const fieldOptions = (record: ValueType, current: string) =>
+  withCurrent(
+    fieldPaths(record).map((f) => ({ value: f.path, label: pathLabel(f.path) })),
+    current
+  );
+
+export const FieldEditor = ({ nodeId, config, editable, onConfig }: SettingsEditorProps) => {
+  const record = recordOf(config);
+  const type = asValueType(record.record);
+  const path = textOf(record.path);
+  const options = fieldOptions(type, path);
+  return (
+    <fieldset disabled={!editable} className="flex min-w-0 flex-col gap-5">
+      {options.length ? (
+        <Select
+          id={`${nodeId}-path`}
+          label="Field"
+          placeholder="Choose a field"
+          options={options}
+          value={path}
+          onChange={(next) => onConfig({ ...record, path: next })}
+        />
+      ) : (
+        <Input
+          id={`${nodeId}-path`}
+          label="Field"
+          hint="Wire a record in to choose from its fields, or type the field's path."
+          value={path}
+          onChange={(e) => onConfig({ ...record, path: e.currentTarget.value })}
+        />
+      )}
+      <TypePicker
+        id={`${nodeId}-record`}
+        label="Record"
+        value={type}
+        editable={editable}
+        onChange={(next) => onConfig({ ...record, record: next })}
       />
     </fieldset>
   );

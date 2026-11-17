@@ -12,7 +12,7 @@ export {
 } from './compile.ts';
 export { inputNode } from './core.ts';
 export { actionNode, branchNode, pin, pureNode } from './define.ts';
-export { documentationIssues, nodeDocumentationIssues } from './documentation.ts';
+export { documentationIssues, nodeDocumentationIssues, pathLabel } from './documentation.ts';
 export { createEngine, type Engine } from './engine.ts';
 export { messageOf } from './errors.ts';
 export { exprProblem, freeIdentifiers } from './expr.ts';
@@ -51,6 +51,9 @@ export { COMMENT_COLORS, SCALAR_TYPES, STEP_EVENTS } from './types.ts';
 export { type Issue, validateGraph } from './validate.ts';
 export {
   checkValue,
+  type FieldPath,
+  fieldPaths,
+  fieldType,
   formatType,
   isAssignable,
   isFileType,
