@@ -2,9 +2,12 @@ import {
   type ConditionOp,
   type EventDef,
   entryTrigger,
+  hourLabel,
   type Json,
+  SCHEDULE_PERIOD_LABELS,
   SCHEDULE_PERIODS,
   type SchedulePeriod,
+  TRIGGER_KIND_LABELS,
   type Trigger
 } from '@ugula/graph';
 import { useContext } from 'react';
@@ -18,24 +21,11 @@ import { CellInput, cellHint } from './table-editors.tsx';
 
 type Condition = { op: ConditionOp; value?: Json };
 
-export type EventTest = Condition & { field: string };
+type EventTest = Condition & { field: string };
 
-const STARTS = [
-  { value: 'manual', label: 'When Someone Runs It' },
-  { value: 'event', label: 'When an Event Happens' },
-  { value: 'schedule', label: 'On a Schedule' }
-] as const;
+const STARTS = Object.entries(TRIGGER_KIND_LABELS).map(([value, label]) => ({ value, label }));
 
-const PERIOD_LABELS: Readonly<Record<SchedulePeriod, string>> = {
-  day: 'Every Day',
-  week: 'Every Monday',
-  month: 'On the First of Every Month'
-};
-
-const HOURS = Array.from({ length: 24 }, (_, h) => ({
-  value: String(h),
-  label: `${String(h).padStart(2, '0')}:00`
-}));
+const HOURS = Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: hourLabel(h) }));
 
 const TEST_OPS = OPS.filter((o) => o.value !== '');
 
@@ -166,7 +156,7 @@ export const TriggerEditor = ({ nodeId, config, editable, onConfig }: SettingsEd
           <Select
             id={`${nodeId}-every`}
             label="Repeats"
-            options={SCHEDULE_PERIODS.map((p) => ({ value: p, label: PERIOD_LABELS[p] }))}
+            options={SCHEDULE_PERIODS.map((p) => ({ value: p, label: SCHEDULE_PERIOD_LABELS[p] }))}
             value={trigger.every}
             onChange={(every) => set({ ...trigger, every: every as SchedulePeriod })}
           />

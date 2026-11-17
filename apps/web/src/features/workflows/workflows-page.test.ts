@@ -124,7 +124,7 @@ describe('WorkflowsTable', () => {
   it('lists each graph with its kind, what starts it, scope and versions', () => {
     showTable();
     assert.deepEqual(rowsOf().map(cellsOf), [
-      ['Batch', 'Workflow', 'When Run', 'Agency', 'v2', 'v3'],
+      ['Batch', 'Workflow', 'When Someone Runs It', 'Agency', 'v2', 'v3'],
       ['Payer Rule', 'Subworkflow', '—', 'Built-in', '—', '—'],
       ['Match', 'Subworkflow', '—', 'Built-inHas Your Copy', 'v2', '—'],
       ['Match', 'Subworkflow', '—', 'AgencyBase Updated', 'v2', '—']
@@ -139,7 +139,7 @@ describe('WorkflowsTable', () => {
     );
     assert.equal(
       startsLabel(graph({ trigger: { kind: 'schedule', every: 'day', hour: 6 } }), events),
-      'Every day at 06:00'
+      'Every Day at 06:00'
     );
     assert.equal(startsLabel(graph({ kind: 'node' }), events), null);
   });

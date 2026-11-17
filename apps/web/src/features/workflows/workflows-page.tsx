@@ -1,4 +1,4 @@
-import { type EventDef, entryTrigger, triggerSummary } from '@ugula/graph';
+import { type EventDef, entryTrigger, TRIGGER_KIND_LABELS, triggerSummary } from '@ugula/graph';
 import { MapIcon, PlusIcon } from 'lucide-react';
 import { useContext, useState } from 'react';
 import { eventLabel } from '../../shared/graph/catalog.ts';
@@ -54,7 +54,7 @@ export const startsLabel = (
 ) =>
   g.kind === 'workflow'
     ? (triggerSummary(entryTrigger({ trigger: g.trigger }), (type) => eventLabel(events, type)) ??
-      'When Run')
+      TRIGGER_KIND_LABELS.manual)
     : null;
 
 export const WorkflowsTable = ({

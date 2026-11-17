@@ -1,11 +1,9 @@
 import { createHash } from 'node:crypto';
-import type { ClearinghouseFile, ClearinghouseInbox } from '@ugula/billing';
+import { type ClearinghouseFile, type ClearinghouseInbox, EVENT_TYPES } from '@ugula/billing';
 import { type Db, emitEvent, findEventWorkflows } from '@ugula/db';
 import { type BlobStore, clearinghousePrefix } from '@ugula/storage';
 import type { PollTarget } from '../../shared/clearinghouse.ts';
 import type { RecordHealth } from './health.ts';
-
-export const PAYER_FILE_RECEIVED = 'payer_file.received';
 
 const ISA_LENGTH = 106;
 
@@ -95,7 +93,7 @@ const receive = async (
   const agencies = await agenciesReceiving(db, receiver, agencyIds);
   const agencyId = agencies.length === 1 ? (agencies[0] ?? null) : null;
   const handled = agencyId
-    ? (await findEventWorkflows(db, agencyId, PAYER_FILE_RECEIVED)).length > 0
+    ? (await findEventWorkflows(db, agencyId, EVENT_TYPES.payerFileReceived)).length > 0
     : false;
   const note = noteOf(receiver, agencies, agencyIds !== null, handled);
   const document =
@@ -129,7 +127,7 @@ const receive = async (
     if (!claimed || !agencyId || !document) return null;
     const id = await emitEvent(tx, {
       agencyId,
-      type: PAYER_FILE_RECEIVED,
+      type: EVENT_TYPES.payerFileReceived,
       payload: { file: document, fileName: f.name }
     });
     await tx

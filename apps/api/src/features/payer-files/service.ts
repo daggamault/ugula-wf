@@ -1,3 +1,4 @@
+import { EVENT_TYPES } from '@ugula/billing';
 import {
   type Db,
   emitAndDispatch,
@@ -12,8 +13,6 @@ import type { PageRequest } from '../../shared/paging.ts';
 import { fail, ok } from '../../shared/result.ts';
 import { findPayerFile, listFileItems, searchPayerFiles } from './queries.ts';
 import type { PayerFileSort } from './schemas.ts';
-
-export const PAYER_FILE_RECEIVED = 'payer_file.received';
 
 type PayerFileServiceDeps = {
   db: Db;
@@ -56,7 +55,7 @@ export const createPayerFileService = ({ db, boss, blobs, maxBytes }: PayerFileS
       );
     }
     const fileName = file.name.trim() || safeName(file.name);
-    if (!(await findEventWorkflows(db, agencyId, PAYER_FILE_RECEIVED)).length) {
+    if (!(await findEventWorkflows(db, agencyId, EVENT_TYPES.payerFileReceived)).length) {
       return fail('conflict', 'No published workflow starts when a payer file is received');
     }
     const document = await blobs.putBytes(
@@ -69,7 +68,7 @@ export const createPayerFileService = ({ db, boss, blobs, maxBytes }: PayerFileS
       .execute((tx) =>
         emitAndDispatch(tx, boss, {
           agencyId,
-          type: PAYER_FILE_RECEIVED,
+          type: EVENT_TYPES.payerFileReceived,
           payload: { file: document, fileName },
           createdBy: userId
         })

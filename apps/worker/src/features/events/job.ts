@@ -1,6 +1,6 @@
 export const EVENT_BATCH = 100;
 
-export const EVENT_SWEEP_MS = 30_000;
+const EVENT_SWEEP_MS = 30_000;
 
 type Dispatched = { events: number; started: number };
 

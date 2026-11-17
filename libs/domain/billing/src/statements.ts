@@ -21,7 +21,7 @@ export type StatementTerms =
   | { number: number; count: number }
   | { dueCents: number; dueOn: string };
 
-export const statementHeading = (t: StatementTerms) =>
+const statementHeading = (t: StatementTerms) =>
   'dueCents' in t ? 'Payment plan' : `${t.number} of ${t.count}`;
 
 export type StatementData = {

@@ -11,13 +11,27 @@ export type EventDef = {
   payload: PinSpec[];
 };
 
-export type WorkflowEvent = { type: string; payload: Values };
+type WorkflowEvent = { type: string; payload: Values };
 
 export const EVENT_TYPE_PATTERN = /^[a-z][a-z_]*(\.[a-z][a-z_]*)+$/;
 
 export const SCHEDULE_PERIODS = ['day', 'week', 'month'] as const;
 
 export type SchedulePeriod = (typeof SCHEDULE_PERIODS)[number];
+
+export const SCHEDULE_PERIOD_LABELS: Readonly<Record<SchedulePeriod, string>> = {
+  day: 'Every Day',
+  week: 'Every Monday',
+  month: 'On the First of Every Month'
+};
+
+export const TRIGGER_KIND_LABELS = {
+  manual: 'When Someone Runs It',
+  event: 'When an Event Happens',
+  schedule: 'On a Schedule'
+} as const;
+
+export const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
 
 export const triggerSchema = v.variant('kind', [
   v.strictObject({ kind: v.literal('manual') }),
@@ -35,7 +49,7 @@ export const triggerSchema = v.variant('kind', [
 
 export type Trigger = v.InferOutput<typeof triggerSchema>;
 
-export const MANUAL_TRIGGER: Trigger = { kind: 'manual' };
+const MANUAL_TRIGGER: Trigger = { kind: 'manual' };
 
 export const SUBWORKFLOW_TRIGGER =
   'Only a workflow starts on its own; a subworkflow runs when a graph calls it';
@@ -52,8 +66,7 @@ export const entryTrigger = (config: Json | undefined): Trigger => {
 export const triggerOf = (def: GraphDef): Trigger =>
   entryTrigger(def.nodes.find((n) => n.type === ENTRY_TYPE)?.config);
 
-export const eventOf = (events: readonly EventDef[], type: string) =>
-  events.find((e) => e.type === type);
+const eventOf = (events: readonly EventDef[], type: string) => events.find((e) => e.type === type);
 
 export const triggerMatches = (trigger: Trigger, event: WorkflowEvent) =>
   trigger.kind === 'event' &&

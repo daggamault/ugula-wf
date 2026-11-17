@@ -1,3 +1,4 @@
+import { EVENT_TYPES } from '@ugula/billing';
 import type { GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import {
@@ -380,13 +381,13 @@ export const accountingGraphs: SeedGraph[] = [
     'billing.reconcile-deposit',
     'Reconcile Deposit',
     'Matches a deposit a biller recorded to the unmatched 835 with its trace number (Deposit Match), and asks a biller when the amounts differ. Starts on Deposit Recorded.',
-    reconcile('depositId', 'deposit.recorded')
+    reconcile('depositId', EVENT_TYPES.depositRecorded)
   ),
   asWorkflow(
     'billing.reconcile-remittance',
     'Reconcile Remittance',
     'Matches an 835 just applied to the unmatched deposit with its trace number (Deposit Match), and asks a biller when the amounts differ. Starts on Remittance File Applied.',
-    reconcile('payerFileId', 'remittance.file_applied')
+    reconcile('payerFileId', EVENT_TYPES.remittanceFileApplied)
   ),
   asWorkflow(
     'billing.unmatched-payment',

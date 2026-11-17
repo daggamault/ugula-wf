@@ -1,4 +1,4 @@
-import { CLAIM_LEDGER_EVENTS, ledgerPayloadColumns } from '@ugula/billing';
+import { CLAIM_LEDGER_EVENTS, EVENT_TYPES, ledgerPayloadColumns } from '@ugula/billing';
 import { type Database, EVENTS_CHANNEL } from '@ugula/db';
 import { EVENT_TYPE_PATTERN } from '@ugula/graph';
 import { type Kysely, sql } from 'kysely';
@@ -38,11 +38,7 @@ const buildEventsIndexes = (db: Kysely<Database>) => [
     .createIndex('idx_events_created_by_id')
     .on('events')
     .column('created_by_id')
-    .where('created_by_id', 'is not', null),
-  db.schema
-    .createIndex('idx_events_agency_created')
-    .on('events')
-    .columns(['agency_id', 'created_at desc'])
+    .where('created_by_id', 'is not', null)
 ];
 
 const buildEventRunsTable = (db: Kysely<Database>) =>
@@ -127,16 +123,16 @@ const claimFunction = sql`
   begin
     if new.classification is not null and new.classification is distinct from old.classification then
       insert into events (agency_id, type, payload)
-      values (new.agency_id, 'claim.classified',
+      values (new.agency_id, ${sql.lit(EVENT_TYPES.claimClassified)},
         jsonb_build_object('claimId', new.id, 'classification', new.classification));
     end if;
     if new.status is distinct from old.status then
       insert into events (agency_id, type, payload)
-      values (new.agency_id, 'claim.status_changed',
+      values (new.agency_id, ${sql.lit(EVENT_TYPES.claimStatusChanged)},
         jsonb_build_object('claimId', new.id, 'from', old.status, 'to', new.status));
       if new.status = 'paid' then
         insert into events (agency_id, type, payload)
-        values (new.agency_id, 'claim.paid', jsonb_build_object('claimId', new.id));
+        values (new.agency_id, ${sql.lit(EVENT_TYPES.claimPaid)}, jsonb_build_object('claimId', new.id));
       end if;
     end if;
     return null;
@@ -152,7 +148,7 @@ const taskFunction = sql`
   create function emit_task_completed_event() returns trigger language plpgsql as $$
   begin
     insert into events (agency_id, type, payload)
-    values (new.agency_id, 'task.completed', jsonb_strip_nulls(jsonb_build_object(
+    values (new.agency_id, ${sql.lit(EVENT_TYPES.taskCompleted)}, jsonb_strip_nulls(jsonb_build_object(
       'taskId', new.id,
       'claimId', (select cr.claim_id from claim_runs cr where cr.run_id = new.run_id limit 1),
       'queue', new.queue,

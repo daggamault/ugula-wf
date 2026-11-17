@@ -1,9 +1,7 @@
-import { PLAN_STATUSES } from '@ugula/billing';
+import { MAX_PLAN_INTERVAL_DAYS, PLAN_STATUSES } from '@ugula/billing';
 import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { oneOf, trimmed } from './checks.ts';
-
-const MAX_INTERVAL_DAYS = 366;
 
 const buildPaymentPlansTable = (db: Kysely<Database>) =>
   db.schema
@@ -31,7 +29,7 @@ const buildPaymentPlansTable = (db: Kysely<Database>) =>
     .addCheckConstraint('payment_plans_installment_cents_check', sql`installment_cents > 0`)
     .addCheckConstraint(
       'payment_plans_interval_days_check',
-      sql`interval_days between 1 and ${sql.lit(MAX_INTERVAL_DAYS)}`
+      sql`interval_days between 1 and ${sql.lit(MAX_PLAN_INTERVAL_DAYS)}`
     )
     .addCheckConstraint('payment_plans_status_check', oneOf('status', PLAN_STATUSES))
     .addCheckConstraint('payment_plans_missed_count_check', sql`missed_count >= 0`);

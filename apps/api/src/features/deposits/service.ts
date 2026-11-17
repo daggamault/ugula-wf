@@ -1,9 +1,8 @@
+import { EVENT_TYPES } from '@ugula/billing';
 import { type Db, emitEvent } from '@ugula/db';
 import { fail, ok } from '../../shared/result.ts';
 import { type DepositFilters, findDeposit, insertDeposit, searchDeposits } from './queries.ts';
 import type { DepositInput } from './schemas.ts';
-
-const DEPOSIT_RECORDED = 'deposit.recorded';
 
 export const createDepositService = ({ db }: { db: Db }) => ({
   search: async (agencyId: string, filters: DepositFilters) =>
@@ -20,7 +19,7 @@ export const createDepositService = ({ db }: { db: Db }) => ({
       if (row) {
         await emitEvent(tx, {
           agencyId,
-          type: DEPOSIT_RECORDED,
+          type: EVENT_TYPES.depositRecorded,
           payload: { depositId: row.id },
           createdBy: userId
         });

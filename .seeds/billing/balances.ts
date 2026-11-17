@@ -1,3 +1,4 @@
+import { EVENT_TYPES } from '@ugula/billing';
 import type { FieldSpec, GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import {
@@ -267,7 +268,7 @@ const placeCollections = (): GraphDef => {
   });
   g.trigger({
     kind: 'event',
-    event: 'claim.status_changed',
+    event: EVENT_TYPES.claimStatusChanged,
     where: { to: { op: 'is', value: 'collections' } }
   });
   g.add('ledger', 'billing.read-claim-ledger', { label: 'Read Claim Ledger' });

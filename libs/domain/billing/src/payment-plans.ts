@@ -1,6 +1,8 @@
 import type { ClaimEvent } from './claims.ts';
 import { startOfLocalDay } from './statements.ts';
 
+export const MAX_PLAN_INTERVAL_DAYS = 366;
+
 export const PLAN_STATUSES = ['active', 'completed', 'defaulted', 'cancelled'] as const;
 
 export type PlanStatus = (typeof PLAN_STATUSES)[number];

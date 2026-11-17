@@ -1,16 +1,12 @@
 import * as v from 'valibot';
 import { ENTRY_TYPE, INPUT_TYPE, RETURN_TYPE } from './compile.ts';
 import { defineNode } from './define.ts';
-import { entryConfigSchema, type Trigger } from './triggers.ts';
+import { entryConfigSchema, hourLabel, SCHEDULE_PERIOD_LABELS, type Trigger } from './triggers.ts';
 import type { NodeDef } from './types.ts';
 
 const handledByEngine = (): never => {
   throw new Error('Graph boundary nodes are executed by the engine');
 };
-
-const HOURS = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
-
-const SCHEDULES = { day: 'Every day', week: 'Every Monday', month: 'On the first of every month' };
 
 export const triggerSummary = (trigger: Trigger, eventLabel: (type: string) => string) => {
   switch (trigger.kind) {
@@ -21,7 +17,7 @@ export const triggerSummary = (trigger: Trigger, eventLabel: (type: string) => s
       return `On ${eventLabel(trigger.event)}${tests ? ` (${tests === 1 ? '1 condition' : `${tests} conditions`})` : ''}`;
     }
     case 'schedule':
-      return `${SCHEDULES[trigger.every]} at ${HOURS(trigger.hour)}`;
+      return `${SCHEDULE_PERIOD_LABELS[trigger.every]} at ${hourLabel(trigger.hour)}`;
   }
 };
 

@@ -158,7 +158,7 @@ export {
 export type { FacilityInvoiceSource } from './documents.ts';
 export { fieldSections } from './documents.ts';
 export { eligibilityFinding } from './eligibility.ts';
-export { billingEvents, CLAIM_LEDGER_EVENTS, ledgerPayloadColumns } from './events.ts';
+export { billingEvents, CLAIM_LEDGER_EVENTS, EVENT_TYPES, ledgerPayloadColumns } from './events.ts';
 export {
   CCN_PATTERN,
   type CheckedFacility,
@@ -202,17 +202,14 @@ export {
   type ClaimStatusCheck,
   type ClaimStore,
   type ClaimTaskStore,
-  type CreditTarget,
   createBillingNodes,
   type DeadlineFacts,
-  type DepositPair,
   type DiscoveryCheck,
   type DocumentStore,
   type DraftClaim,
   type EligibilityCheck,
   type ExchangeStore,
   type FeeStore,
-  type NewPaymentPlan,
   type PatientStore,
   type PayerFileStore,
   type PayerStore,
@@ -260,10 +257,8 @@ export {
   payerQuery
 } from './payers.ts';
 export {
-  addDays,
-  type EndedPlanStatus,
-  isEndedPlanStatus,
   type LedgerPlan,
+  MAX_PLAN_INTERVAL_DAYS,
   PLAN_STATUSES,
   type PlanStatus
 } from './payment-plans.ts';

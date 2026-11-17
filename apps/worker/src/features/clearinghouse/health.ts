@@ -1,15 +1,16 @@
-import { CLEARINGHOUSE_RECOVERED, CLEARINGHOUSE_SIGNAL, isFailing } from '@ugula/billing';
+import {
+  CLEARINGHOUSE_RECOVERED,
+  CLEARINGHOUSE_SIGNAL,
+  EVENT_TYPES,
+  isFailing
+} from '@ugula/billing';
 import { type Db, emitEvent, signalRuns } from '@ugula/db';
 import type { RunQueueClient } from '@ugula/run-queue';
 import type { PollTarget } from '../../shared/clearinghouse.ts';
 
-export const CLEARINGHOUSE_FAILED_EVENT = 'clearinghouse.failed';
-
-export const CLEARINGHOUSE_RECOVERED_EVENT = 'clearinghouse.recovered';
-
 const ERROR_LENGTH = 500;
 
-export type PollOutcome = { at: Date; error: string | null };
+type PollOutcome = { at: Date; error: string | null };
 
 export type RecordHealth = (
   target: Pick<PollTarget, 'connection' | 'agencyIds'>,
@@ -46,14 +47,14 @@ export const createHealthRecorder =
         if (message !== null) {
           await emitEvent(tx, {
             agencyId,
-            type: CLEARINGHOUSE_FAILED_EVENT,
+            type: EVENT_TYPES.clearinghouseFailed,
             payload: { connection, error: message }
           });
           continue;
         }
         await emitEvent(tx, {
           agencyId,
-          type: CLEARINGHOUSE_RECOVERED_EVENT,
+          type: EVENT_TYPES.clearinghouseRecovered,
           payload: { connection }
         });
         await signalRuns(tx, boss, {

@@ -428,7 +428,7 @@ export type UnmatchedPayment = {
   payerName: string | null;
 };
 
-export type PeriodTotals = {
+type PeriodTotals = {
   chargesCents: number;
   paymentsCents: number;
   refundsCents: number;

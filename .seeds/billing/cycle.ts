@@ -2,6 +2,7 @@ import {
   CLAIM_FIX_FIELDS,
   CLAIM_SIGNAL,
   CLAIM_STEPS,
+  EVENT_TYPES,
   MIN_WAIT_MS,
   STEP_STATUSES
 } from '@ugula/billing';
@@ -2466,7 +2467,7 @@ const resumeCycle = (): GraphDef => {
     inputs: [p('claimId', { id: 'claim' })],
     outputs: []
   });
-  g.trigger({ kind: 'event', event: 'claim.reopened', where: {} });
+  g.trigger({ kind: 'event', event: EVENT_TYPES.claimReopened, where: {} });
   g.add('restart', 'billing.restart-cycle', { label: 'Restart Claim Cycle' });
   g.ret('done');
   g.wire('entry.exec', 'restart.exec');

@@ -31,7 +31,7 @@ export const setCycleRun = async (db: Db, agencyId: string, id: string, runId: s
     .execute();
 };
 
-export type CycleRestart = {
+type CycleRestart = {
   agencyId: string;
   claimId: string;
   exceptRunId?: string | null;

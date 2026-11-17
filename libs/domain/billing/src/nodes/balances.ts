@@ -1,13 +1,11 @@
 import { actionNode, branchNode, isIsoDate, pin } from '@ugula/graph';
 import { money } from '../numbers.ts';
-import { isEndedPlanStatus } from '../payment-plans.ts';
+import { isEndedPlanStatus, MAX_PLAN_INTERVAL_DAYS } from '../payment-plans.ts';
 import { requiredText, textOrNull } from '../values.ts';
 import { claimIdOf, claimIdPin } from './claims.ts';
 import type { NodesOf, Refused } from './stores.ts';
 
 const CATEGORY = 'Billing';
-
-const MAX_INTERVAL_DAYS = 366;
 
 const reasonPin = pin('reason', 'string', {
   optional: true,
@@ -30,8 +28,8 @@ export const planTermsProblem = (t: {
   firstDueOn: string | null | undefined;
 }) => {
   if (t.installmentCents <= 0) return 'The installment must be more than $0.00';
-  if (t.intervalDays < 1 || t.intervalDays > MAX_INTERVAL_DAYS) {
-    return `Installments are 1 to ${MAX_INTERVAL_DAYS} days apart`;
+  if (t.intervalDays < 1 || t.intervalDays > MAX_PLAN_INTERVAL_DAYS) {
+    return `Installments are 1 to ${MAX_PLAN_INTERVAL_DAYS} days apart`;
   }
   if (!t.firstDueOn || !isIsoDate(t.firstDueOn)) return 'The first due date is not a date';
   return null;

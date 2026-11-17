@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  EVENT_TYPES,
   type InboundKind,
   isPaymentMethod,
   PROBLEM_OUTCOMES,
@@ -29,8 +30,6 @@ import { fail, ok, type Result } from './result.ts';
 import type { Db } from './schema.ts';
 
 export { readRemittanceLines } from './payer-file-remittances.ts';
-
-const REMITTANCE_FILE_APPLIED = 'remittance.file_applied';
 
 export const paymentOf = ([first]: readonly Remittance[]): Payment | null =>
   first
@@ -230,7 +229,7 @@ export const applyPayerFile = async (
   if (payment?.traceNumber) {
     await emitEvent(tx, {
       agencyId: f.agencyId,
-      type: REMITTANCE_FILE_APPLIED,
+      type: EVENT_TYPES.remittanceFileApplied,
       payload: { payerFileId: id }
     });
   }

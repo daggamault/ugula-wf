@@ -1,4 +1,4 @@
-import { CLEARINGHOUSE_RECOVERED, CLEARINGHOUSE_SIGNAL } from '@ugula/billing';
+import { CLEARINGHOUSE_RECOVERED, CLEARINGHOUSE_SIGNAL, EVENT_TYPES } from '@ugula/billing';
 import type { GraphDef, Json, ValueType } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import { action, p } from './glossary.ts';
@@ -948,7 +948,7 @@ const receivePayerFile = (): GraphDef => {
       p('reviews', 'integer', true)
     ]
   );
-  g.trigger({ kind: 'event', event: 'payer_file.received', where: {} });
+  g.trigger({ kind: 'event', event: EVENT_TYPES.payerFileReceived, where: {} });
   g.add('read', 'billing.read-payer-file', { label: 'Read Payer File' });
   g.add('route', 'std.list.map-rule', {
     label: 'Route Each Claim Payment',
@@ -1016,7 +1016,7 @@ const clearinghouseAlert = (): GraphDef => {
     [],
     [{ name: 'stillFailing', type: 'string', default: null }]
   );
-  g.trigger({ kind: 'event', event: 'clearinghouse.failed', where: {} });
+  g.trigger({ kind: 'event', event: EVENT_TYPES.clearinghouseFailed, where: {} });
   g.add('latest', 'std.var.get', {
     label: 'Still Failing With',
     config: { name: 'stillFailing' }

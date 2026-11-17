@@ -50,18 +50,18 @@ export {
   EVENT_TYPE_PATTERN,
   type EventDef,
   entryTrigger,
-  eventOf,
-  MANUAL_TRIGGER,
+  hourLabel,
+  SCHEDULE_PERIOD_LABELS,
   SCHEDULE_PERIODS,
   type SchedulePeriod,
   SUBWORKFLOW_TRIGGER,
+  TRIGGER_KIND_LABELS,
   type Trigger,
   triggerInputs,
   triggerIssues,
   triggerMatches,
   triggerOf,
-  triggerSchema,
-  type WorkflowEvent
+  triggerSchema
 } from './triggers.ts';
 export type * from './types.ts';
 export { COMMENT_COLORS, SCALAR_TYPES, STEP_EVENTS } from './types.ts';

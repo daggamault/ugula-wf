@@ -9,7 +9,7 @@ import { TextLink } from '../../shared/ui/text-link.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { Deposit, DepositsClient } from './client.ts';
 
-export const DepositMatch = ({ deposit }: { deposit: Deposit }) =>
+const DepositMatch = ({ deposit }: { deposit: Deposit }) =>
   deposit.payer_file_id ? (
     <DetailList>
       <Detail label="Remittance">

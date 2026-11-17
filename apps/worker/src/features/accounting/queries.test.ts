@@ -105,7 +105,7 @@ describe('createAccountingStore', () => {
     ]);
   });
 
-  it('totals a month by posting date', async () => {
+  it('totals a month by posting date, writing off the balance as it was at closing', async () => {
     const { db, queries } = createRecordingDb(() => [
       { charges: 100, payments: 80, refunds: 5, adjustments: 10, write_offs: 3 }
     ]);
@@ -120,6 +120,10 @@ describe('createAccountingStore', () => {
       queries[0]?.sql ?? '',
       /e\.posted_on >= \$\d+::date and e\.posted_on < \(\$\d+::date \+ interval '1 month'\)/
     );
+    assert.ok(
+      (queries[0]?.sql ?? '').includes('select coalesce(sum(f.paid_cents + f.adjusted_cents), 0)')
+    );
+    assert.ok((queries[0]?.sql ?? '').includes('(f.created_at, f.id) <= (e.created_at, e.id)'));
     assert.deepEqual(queries[0]?.parameters, ['r1', '2026-10-01', '2026-10-01']);
   });
 

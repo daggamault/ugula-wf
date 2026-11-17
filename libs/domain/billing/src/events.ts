@@ -2,6 +2,35 @@ import type { EventDef, PinSpec } from '@ugula/graph';
 import { CLAIM_STATUSES, type ClaimEventKind } from './claims.ts';
 import { BLOB } from './model-kit.ts';
 
+export const EVENT_TYPES = {
+  claimAccepted: 'claim.accepted',
+  claimAppealed: 'claim.appealed',
+  claimClassified: 'claim.classified',
+  claimClosed: 'claim.closed',
+  claimDenied: 'claim.denied',
+  claimOpened: 'claim.opened',
+  claimPaid: 'claim.paid',
+  claimRejected: 'claim.rejected',
+  claimReopened: 'claim.reopened',
+  claimStatusChanged: 'claim.status_changed',
+  claimSubmitted: 'claim.submitted',
+  clearinghouseFailed: 'clearinghouse.failed',
+  clearinghouseRecovered: 'clearinghouse.recovered',
+  collectionsPlaced: 'collections.placed',
+  depositRecorded: 'deposit.recorded',
+  documentReceived: 'document.received',
+  eligibilityAnswered: 'eligibility.answered',
+  importReceived: 'import.received',
+  payerFileReceived: 'payer_file.received',
+  paymentPlanEnded: 'payment_plan.ended',
+  paymentPlanMissed: 'payment_plan.missed',
+  paymentPlanStarted: 'payment_plan.started',
+  periodClosed: 'period.closed',
+  remittanceFileApplied: 'remittance.file_applied',
+  remittancePosted: 'remittance.posted',
+  taskCompleted: 'task.completed'
+} as const;
+
 const p = (name: string, type: PinSpec['type'], label: string, description: string): PinSpec => ({
   name,
   type,
@@ -46,86 +75,90 @@ const event = (type: string, label: string, description: string, payload: PinSpe
 });
 
 const LEDGER_EVENTS = [
-  event('claim.opened', 'Claim Opened', 'A draft claim was opened for a patient care report.', [
-    CLAIM,
-    NOTE
-  ]),
-  event('claim.submitted', 'Claim Submitted', 'A claim was filed with a payer, first or again.', [
-    CLAIM,
-    COVERAGE,
-    NOTE
-  ]),
   event(
-    'claim.accepted',
+    EVENT_TYPES.claimOpened,
+    'Claim Opened',
+    'A draft claim was opened for a patient care report.',
+    [CLAIM, NOTE]
+  ),
+  event(
+    EVENT_TYPES.claimSubmitted,
+    'Claim Submitted',
+    'A claim was filed with a payer, first or again.',
+    [CLAIM, COVERAGE, NOTE]
+  ),
+  event(
+    EVENT_TYPES.claimAccepted,
     'Claim Accepted',
     'A payer or the clearinghouse accepted a claim for processing (999 or 277CA).',
     [CLAIM, COVERAGE, NOTE]
   ),
   event(
-    'claim.rejected',
+    EVENT_TYPES.claimRejected,
     'Claim Rejected',
     'A payer or the clearinghouse rejected a claim before processing it (TA1, 999 or 277CA).',
     [CLAIM, COVERAGE, NOTE]
   ),
-  event('claim.denied', 'Claim Denied', 'A payer denied a claim on a remittance.', [
+  event(EVENT_TYPES.claimDenied, 'Claim Denied', 'A payer denied a claim on a remittance.', [
     CLAIM,
     COVERAGE,
     ROUTE,
     NOTE
   ]),
-  event('claim.appealed', 'Claim Appealed', 'An appeal of a denial was sent to the payer.', [
-    CLAIM,
-    COVERAGE,
-    NOTE
-  ]),
   event(
-    'remittance.posted',
+    EVENT_TYPES.claimAppealed,
+    'Claim Appealed',
+    'An appeal of a denial was sent to the payer.',
+    [CLAIM, COVERAGE, NOTE]
+  ),
+  event(
+    EVENT_TYPES.remittancePosted,
     'Remittance Posted',
     'A payment, an 835 claim payment or one posted by hand, was posted to a claim.',
     [CLAIM, COVERAGE, PAID, ADJUSTED, NOTE]
   ),
   event(
-    'eligibility.answered',
+    EVENT_TYPES.eligibilityAnswered,
     'Eligibility Answered',
     'A payer answered whether it covers the patient (271).',
     [CLAIM, COVERAGE, NOTE]
   ),
-  event('document.received', 'Document Received', 'A document was added to a claim.', [
+  event(EVENT_TYPES.documentReceived, 'Document Received', 'A document was added to a claim.', [
     CLAIM,
     NOTE
   ]),
   event(
-    'claim.closed',
+    EVENT_TYPES.claimClosed,
     'Claim Closed',
     'A claim was closed as paid, written off, sent to collections or void.',
     [CLAIM, NOTE]
   ),
   event(
-    'claim.reopened',
+    EVENT_TYPES.claimReopened,
     'Claim Reopened',
     'A payment, takeback or refund was posted to a paid, written-off or collections claim, which reopened it.',
     [CLAIM, NOTE]
   ),
   event(
-    'payment_plan.started',
+    EVENT_TYPES.paymentPlanStarted,
     'Payment Plan Started',
     'The patient agreed to pay the balance of a claim in installments.',
     [CLAIM, NOTE]
   ),
   event(
-    'payment_plan.missed',
+    EVENT_TYPES.paymentPlanMissed,
     'Payment Plan Missed',
     'The patient missed an installment and the plan was kept.',
     [CLAIM, NOTE]
   ),
   event(
-    'payment_plan.ended',
+    EVENT_TYPES.paymentPlanEnded,
     'Payment Plan Ended',
     'A payment plan was completed, defaulted or cancelled.',
     [CLAIM, NOTE]
   ),
   event(
-    'collections.placed',
+    EVENT_TYPES.collectionsPlaced,
     'Collections Placed',
     'A claim sent to collections was placed with the collection agency and added to its placement file.',
     [CLAIM, NOTE]
@@ -133,22 +166,22 @@ const LEDGER_EVENTS = [
 ];
 
 export const CLAIM_LEDGER_EVENTS = {
-  opened: 'claim.opened',
-  submitted: 'claim.submitted',
-  resubmitted: 'claim.submitted',
-  accepted: 'claim.accepted',
-  rejected: 'claim.rejected',
-  denied: 'claim.denied',
-  appealed: 'claim.appealed',
-  response: 'remittance.posted',
-  eligibility: 'eligibility.answered',
-  document: 'document.received',
-  closed: 'claim.closed',
-  reopened: 'claim.reopened',
-  plan_started: 'payment_plan.started',
-  plan_missed: 'payment_plan.missed',
-  plan_ended: 'payment_plan.ended',
-  collections_placed: 'collections.placed'
+  opened: EVENT_TYPES.claimOpened,
+  submitted: EVENT_TYPES.claimSubmitted,
+  resubmitted: EVENT_TYPES.claimSubmitted,
+  accepted: EVENT_TYPES.claimAccepted,
+  rejected: EVENT_TYPES.claimRejected,
+  denied: EVENT_TYPES.claimDenied,
+  appealed: EVENT_TYPES.claimAppealed,
+  response: EVENT_TYPES.remittancePosted,
+  eligibility: EVENT_TYPES.eligibilityAnswered,
+  document: EVENT_TYPES.documentReceived,
+  closed: EVENT_TYPES.claimClosed,
+  reopened: EVENT_TYPES.claimReopened,
+  plan_started: EVENT_TYPES.paymentPlanStarted,
+  plan_missed: EVENT_TYPES.paymentPlanMissed,
+  plan_ended: EVENT_TYPES.paymentPlanEnded,
+  collections_placed: EVENT_TYPES.collectionsPlaced
 } as const satisfies Partial<Record<ClaimEventKind, string>>;
 
 const LEDGER_COLUMNS: Readonly<Record<string, string>> = {
@@ -173,7 +206,7 @@ const STATUS = (name: string, label: string, description: string) =>
 
 export const billingEvents: EventDef[] = [
   event(
-    'import.received',
+    EVENT_TYPES.importReceived,
     'NEMSIS File Received',
     'A NEMSIS file was uploaded or arrived by SFTP, and its import started.',
     [
@@ -183,7 +216,7 @@ export const billingEvents: EventDef[] = [
     ]
   ),
   event(
-    'payer_file.received',
+    EVENT_TYPES.payerFileReceived,
     'Payer File Received',
     'A file from the clearinghouse (835, TA1, 999, 277CA, 277 or 271) was downloaded or uploaded on Payer Files.',
     [
@@ -192,46 +225,51 @@ export const billingEvents: EventDef[] = [
     ]
   ),
   event(
-    'clearinghouse.failed',
+    EVENT_TYPES.clearinghouseFailed,
     'Clearinghouse Failed',
     "The agency's clearinghouse connection stopped working: its poll failed after the one before succeeded.",
     [CONNECTION, p('error', 'string', 'Error', 'Why the poll failed.')]
   ),
   event(
-    'clearinghouse.recovered',
+    EVENT_TYPES.clearinghouseRecovered,
     'Clearinghouse Recovered',
     "The agency's clearinghouse connection works again: its poll succeeded after failing.",
     [CONNECTION]
   ),
   event(
-    'remittance.file_applied',
+    EVENT_TYPES.remittanceFileApplied,
     'Remittance File Applied',
     'An 835 with a payment trace number (TRN02) was applied, so it can be matched to its deposit.',
     [p('payerFileId', { id: 'payerFile' }, 'Payer File', 'The 835 file applied.')]
   ),
-  event('deposit.recorded', 'Deposit Recorded', 'A biller recorded a bank deposit on Deposits.', [
-    p('depositId', { id: 'deposit' }, 'Deposit', 'The deposit recorded.')
-  ]),
   event(
-    'period.closed',
+    EVENT_TYPES.depositRecorded,
+    'Deposit Recorded',
+    'A biller recorded a bank deposit on Deposits.',
+    [p('depositId', { id: 'deposit' }, 'Deposit', 'The deposit recorded.')]
+  ),
+  event(
+    EVENT_TYPES.periodClosed,
     'Period Closed',
     'An accounting month was closed: postings dated in it are posted to the next open month.',
     [p('period', 'string', 'Period', 'The month closed, as its first day (YYYY-MM-01).')]
   ),
   ...LEDGER_EVENTS,
   event(
-    'claim.classified',
+    EVENT_TYPES.claimClassified,
     'Claim Classified',
     'A claim was classified as an emergency, scheduled, treat-no-transport, refusal or not-billable trip.',
     [CLAIM, p('classification', 'string', 'Classification', 'How the trip is billed.')]
   ),
-  event('claim.status_changed', 'Claim Status Changed', "A claim's status changed.", [
+  event(EVENT_TYPES.claimStatusChanged, 'Claim Status Changed', "A claim's status changed.", [
     CLAIM,
     STATUS('from', 'From', 'The status before.'),
     STATUS('to', 'To', 'The status now.')
   ]),
-  event('claim.paid', 'Claim Paid', 'A claim was paid in full and closed as paid.', [CLAIM]),
-  event('task.completed', 'Task Completed', 'A biller completed a task.', [
+  event(EVENT_TYPES.claimPaid, 'Claim Paid', 'A claim was paid in full and closed as paid.', [
+    CLAIM
+  ]),
+  event(EVENT_TYPES.taskCompleted, 'Task Completed', 'A biller completed a task.', [
     p('taskId', { id: 'task' }, 'Task', 'The task completed.'),
     CLAIM,
     p('queue', 'string', 'Queue', 'The work queue the task was in.'),

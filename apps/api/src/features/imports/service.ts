@@ -1,4 +1,5 @@
 import { verifyPassword } from '@ugula/auth';
+import { EVENT_TYPES } from '@ugula/billing';
 import { type Db, emitEvent, resolveWorkflowVersion, startRun } from '@ugula/db';
 import type { Json } from '@ugula/graph';
 import { reportTerms, reportXml } from '@ugula/nemsis';
@@ -96,7 +97,7 @@ export const createImportService = ({
       const created = await insertImport(tx, { agencyId, runId: id, file, ...origin });
       await emitEvent(tx, {
         agencyId,
-        type: 'import.received',
+        type: EVENT_TYPES.importReceived,
         payload: { importId: created.id, file, fileName: origin.fileName },
         createdBy: origin.uploadedBy
       });

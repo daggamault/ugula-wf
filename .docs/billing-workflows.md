@@ -259,4 +259,4 @@ Chases also start on their own. While **Fix Claim** asks a biller to fix a block
 
 ## Target catalog
 
-The [Workflow Architecture Review](workflow-architecture.md) sets out what was still to come; EFT reassociation, payment plans, collections placement and insurance discovery are now in this catalog, each as new rules, table rows or slots.
+The [Workflow Architecture Review](workflow-architecture.md) sets out what was still to come; EFT reassociation, payment plans, collections placement and insurance discovery are now in this catalog, each as new rules or table rows.

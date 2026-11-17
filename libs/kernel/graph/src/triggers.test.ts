@@ -114,7 +114,7 @@ describe('triggerSummary', () => {
     );
     assert.equal(
       triggerSummary({ kind: 'schedule', every: 'month', hour: 7 }, label),
-      'On the first of every month at 07:00'
+      'On the First of Every Month at 07:00'
     );
     assert.equal(
       triggerSummary({ kind: 'schedule', every: 'week', hour: 18 }, label),

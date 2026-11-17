@@ -13,7 +13,7 @@ export const PERIODS_PATH = '/periods';
 
 const PERIOD_TABLE = { sorts: { period: 'desc' }, sort: 'period' } as const;
 
-export const PeriodsTable = ({
+const PeriodsTable = ({
   periods,
   sorting
 }: {

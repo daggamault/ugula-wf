@@ -1,10 +1,8 @@
-import type { AccountingStore, UnmatchedPayment } from '@ugula/billing';
+import { type AccountingStore, EVENT_TYPES, type UnmatchedPayment } from '@ugula/billing';
 import { agencyTimeZone, type Db, emitEvent } from '@ugula/db';
 import { sql } from 'kysely';
 import { isUuid } from '../../shared/ids.ts';
 import { runAgency } from '../../shared/tenancy.ts';
-
-const PERIOD_CLOSED = 'period.closed';
 
 const UNMATCHED_WORKFLOW = 'billing.unmatched-payment';
 
@@ -155,12 +153,15 @@ export const createAccountingStore = (db: Db): AccountingStore => ({
         coalesce(sum(e.paid_cents) filter (where e.kind = 'response'), 0)::float8 as payments,
         coalesce(-sum(e.paid_cents) filter (where e.kind = 'refunded'), 0)::float8 as refunds,
         coalesce(sum(e.adjusted_cents), 0)::float8 as adjustments,
-        coalesce(sum(b.balance_cents) filter (
-          where e.kind = 'closed' and e.note in (${UNRECOVERED})
+        coalesce(sum(
+          case when e.kind = 'closed' and e.note in (${UNRECOVERED}) then c.total_cents - (
+            select coalesce(sum(f.paid_cents + f.adjusted_cents), 0)
+            from claim_events f
+            where f.claim_id = e.claim_id and (f.created_at, f.id) <= (e.created_at, e.id)
+          ) end
         ), 0)::float8 as write_offs
       from claim_events e
       join claims c on c.id = e.claim_id
-      join claim_balances b on b.claim_id = c.id
       where e.agency_id = (select r.agency_id from workflow_runs r where r.id = ${runId})
         and e.posted_on >= ${period}::date and e.posted_on < (${period}::date + interval '1 month')`.execute(
       db
@@ -190,7 +191,11 @@ export const createAccountingStore = (db: Db): AccountingStore => ({
         .returning('period_on')
         .executeTakeFirst();
       if (closed) {
-        await emitEvent(tx, { agencyId: agency_id, type: PERIOD_CLOSED, payload: { period } });
+        await emitEvent(tx, {
+          agencyId: agency_id,
+          type: EVENT_TYPES.periodClosed,
+          payload: { period }
+        });
       }
     });
   }

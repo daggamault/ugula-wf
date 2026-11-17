@@ -62,7 +62,7 @@ export const PayerFileItems = ({ items }: { items: readonly PayerFileItem[] }) =
   </Table>
 );
 
-export const PayerFilePayment = ({
+const PayerFilePayment = ({
   file
 }: {
   file: Pick<

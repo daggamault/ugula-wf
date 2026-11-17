@@ -17,7 +17,7 @@ type Db = Kysely<Database>;
 
 export const EVENTS_CHANNEL = 'workflow_events';
 
-export type NewEvent = {
+type NewEvent = {
   agencyId: string;
   type: string;
   payload: Values;
