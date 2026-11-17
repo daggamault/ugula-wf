@@ -44,7 +44,7 @@ describe('searchPatientsQuery', () => {
 
   it('needs something to search for', () => {
     assert.deepEqual(issues({}), [NOTHING]);
-    assert.deepEqual(issues({ sort: 'balance' }), [NOTHING]);
+    assert.deepEqual(issues({ sort: 'claims' }), [NOTHING]);
     assert.deepEqual(issues({ lastName: ' ', number: ' ' }), [NOTHING]);
   });
 
@@ -59,7 +59,7 @@ describe('searchPatientsQuery', () => {
       [{ number: '1'.repeat(41) }, 'Invalid length: Expected <=40 but received 41'],
       [
         { sort: 'payer' },
-        'Invalid type: Expected ("name" | "number" | "born" | "lastService" | "balance" | "city" | "claims") but received "payer"'
+        'Invalid type: Expected ("name" | "number" | "born" | "lastService" | "city" | "claims") but received "payer"'
       ],
       [{ pageSize: '30' }, 'Invalid type: Expected (10 | 25 | 50 | 100) but received 30']
     ];

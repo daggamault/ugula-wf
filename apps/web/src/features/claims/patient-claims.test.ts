@@ -18,19 +18,12 @@ const claim: ClaimSummary = {
   encounter_number: '20261001-0007',
   level: 'ALS1',
   total_cents: 114_220,
-  balance_cents: 30_000,
   service_date: '2026-10-01',
   payers: ['Medicare'],
-  status: 'submitted',
+  status: 'needs_review',
   created_at: '2026-10-01T00:00:00Z',
   first_name: 'Jane',
-  last_name: 'Doe',
-  task_id: null,
-  task_title: null,
-  task_queue: null,
-  task_kind: null,
-  task_assignee_email: null,
-  open_tasks: 0
+  last_name: 'Doe'
 };
 
 const pageOf = (items: ClaimSummary[], total = items.length): Page<ClaimSummary> => ({
@@ -71,33 +64,22 @@ describe('PatientClaims', () => {
       within(table)
         .getAllByRole('columnheader')
         .map((h) => h.textContent),
-      [
-        'Claim',
-        'Encounter',
-        'Service Date',
-        'Total',
-        'Balance',
-        'Payers',
-        'Status',
-        'Waiting On',
-        'Actions'
-      ]
+      ['Claim', 'Encounter', 'Service Date', 'Total', 'Payers', 'Status', 'Actions']
     );
     const rows = within(table).getAllByRole('row');
     assert.equal(rows.length, 2);
     assert.deepEqual(
       within(rows[1] as HTMLElement)
         .getAllByRole('cell')
-        .slice(0, 7)
+        .slice(0, 6)
         .map((c) => c.textContent),
       [
         '20261001-0012',
         'Encounter20261001-0007',
         'Service DateOct 1, 2026',
         'Total$1,142.20',
-        'Balance$300.00',
         'PayersMedicare',
-        'StatusSubmitted'
+        'StatusNeeds Review'
       ]
     );
     assert.deepEqual(calls, [[{ patientId: 'p1' }, 'page=1&pageSize=25&sort=created&dir=desc']]);

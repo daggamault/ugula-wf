@@ -1,34 +1,22 @@
 import type { Permission } from '@ugula/access';
 import type {
-  AdjustmentGroup,
   AfterDownload,
-  ClaimEventKind,
   ClaimFilingCode,
   ClaimStatus,
   Classification,
   ClearinghouseVendor,
   CodeSet,
   CorrectionMethod,
-  CoverageCandidate,
-  DenialRoute,
-  DocumentKind,
-  EligibilityCheck,
-  EligibilityStatus,
   FacilityKind,
   FacilityStay,
-  InboundKind,
   InsuredRelationship,
   MspAccident,
-  PayerFileOutcome,
-  PaymentMethod,
   PcsType,
-  PlanStatus,
   PlanType,
   Rurality,
   ServiceLevel,
   Sex,
   SignatureStatus,
-  StayKind,
   TransportReason
 } from '@ugula/billing';
 import type { StepEvent } from '@ugula/graph';
@@ -418,14 +406,6 @@ export const TASK_PREFILLS = ['current', 'suggested'] as const;
 
 export type TaskPrefill = (typeof TASK_PREFILLS)[number];
 
-export const EXCHANGE_REQUEST_STATUSES = ['pending', 'answered', 'sent', 'unavailable'] as const;
-
-type ExchangeRequestStatus = (typeof EXCHANGE_REQUEST_STATUSES)[number];
-
-export const DISCOVERY_REQUEST_STATUSES = ['pending', 'answered', 'unavailable'] as const;
-
-type DiscoveryRequestStatus = (typeof DISCOVERY_REQUEST_STATUSES)[number];
-
 type TasksTable = {
   id: Generated<string>;
   agency_id: string;
@@ -536,7 +516,6 @@ export type ClaimsTable = {
   admitted_on: NullableDate;
   facility_stay: FacilityStay | null;
   status: Generated<ClaimStatus>;
-  cycle_run_id: string | null;
   facility_id: ColumnType<string | null, string | null | undefined, string | null>;
   source_key: string;
   created_at: Timestamp;
@@ -557,32 +536,6 @@ type FacilitiesTable = {
   contract_note: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
-};
-
-type FacilityInvoicesTable = {
-  id: Generated<string>;
-  agency_id: string;
-  facility_id: string;
-  period: ColumnType<string, string, string>;
-  sequence: number;
-  source_key: string;
-  claim_count: number;
-  total_cents: number;
-  document: JsonColumn;
-  created_at: Timestamp;
-};
-
-type FacilityInvoiceClaimsTable = {
-  agency_id: string;
-  invoice_id: string;
-  facility_id: string;
-  claim_id: string;
-};
-
-type ClaimRunsTable = {
-  agency_id: string;
-  run_id: string;
-  claim_id: string;
 };
 
 type ClaimLinesTable = {
@@ -607,161 +560,12 @@ type ClaimCoveragesTable = {
   relationship: InsuredRelationship;
   insured_first_name: string | null;
   insured_last_name: string | null;
-  eligibility: ColumnType<
-    EligibilityStatus | null,
-    EligibilityStatus | null | undefined,
-    EligibilityStatus | null
-  >;
-  eligibility_note: ColumnType<string | null, string | null | undefined, string | null>;
-  eligibility_checked_at: NullableTimestamp;
-  eligibility_requested_at: NullableTimestamp;
-  stay_kind: ColumnType<StayKind | null, StayKind | null | undefined, StayKind | null>;
-  stay_admitted_on: NullableDate;
-  stay_discharged_on: NullableDate;
-};
-
-type ClaimDocumentsTable = {
-  id: Generated<string>;
-  agency_id: string;
-  claim_id: string;
-  kind: DocumentKind;
-  file_name: string;
-  document: JsonColumn;
-  signed_on: NullableDate;
-  uploaded_by_id: string | null;
-  created_at: Timestamp;
 };
 
 type ClaimDiagnosesTable = {
   claim_id: string;
   position: number;
   code: string;
-};
-
-type ClaimBalancesView = {
-  claim_id: string;
-  paid_cents: number;
-  adjusted_cents: number;
-  balance_cents: number;
-};
-
-type ClaimEventsTable = {
-  id: Generated<string>;
-  agency_id: string;
-  claim_id: string;
-  kind: ClaimEventKind;
-  coverage_id: string | null;
-  paid_cents: Generated<number>;
-  adjusted_cents: Generated<number>;
-  payer_claim_number: string | null;
-  paid_on: ColumnType<string | null, string | null | undefined, string | null>;
-  check_number: string | null;
-  note: Generated<string>;
-  route: ColumnType<DenialRoute | null, DenialRoute | null | undefined, DenialRoute | null>;
-  document: NullableJsonColumn;
-  created_by_id: string | null;
-  source_key: string | null;
-  batch_id: string | null;
-  task_id: string | null;
-  created_at: Timestamp;
-  posted_on: Generated<string>;
-};
-
-type ClaimEventAdjustmentsTable = {
-  event_id: string;
-  position: number;
-  group_code: AdjustmentGroup;
-  reason_code: string;
-  amount_cents: number;
-};
-
-type ClaimEventLinesTable = {
-  event_id: string;
-  line: number;
-  code: string;
-  modifiers: ColumnType<string[], string[] | undefined, string[]>;
-  paid_cents: number;
-  units: ColumnType<string, number, number>;
-};
-
-type ClaimEventLineAdjustmentsTable = {
-  event_id: string;
-  line: number;
-  position: number;
-  group_code: AdjustmentGroup;
-  reason_code: string;
-  amount_cents: number;
-};
-
-type ClaimEventRemarksTable = {
-  event_id: string;
-  position: number;
-  code: string;
-};
-
-type ClaimBatchesTable = {
-  id: Generated<string>;
-  agency_id: string;
-  control_number: number;
-  claim_count: number;
-  total_cents: number;
-  is_production: boolean;
-  document: JsonColumn;
-  created_by_id: string | null;
-  created_at: Timestamp;
-  sent_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
-  sent_as: ColumnType<string | null, string | null | undefined, string | null>;
-};
-
-type ClaimStatusRequestsTable = {
-  id: Generated<string>;
-  agency_id: string;
-  claim_id: string;
-  source_key: string;
-  control_number: number;
-  status: ColumnType<
-    ExchangeRequestStatus,
-    ExchangeRequestStatus | undefined,
-    ExchangeRequestStatus
-  >;
-  note: ColumnType<string | null, string | null | undefined, string | null>;
-  sent_as: ColumnType<string | null, string | null | undefined, string | null>;
-  signals_seen: ColumnType<number | null, number | null | undefined, number | null>;
-  created_at: Timestamp;
-};
-
-type EligibilityRequestsTable = {
-  id: Generated<string>;
-  agency_id: string;
-  claim_id: string;
-  source_key: string;
-  control_number: number;
-  status: ColumnType<
-    ExchangeRequestStatus,
-    ExchangeRequestStatus | undefined,
-    ExchangeRequestStatus
-  >;
-  note: ColumnType<string | null, string | null | undefined, string | null>;
-  sent_as: ColumnType<string | null, string | null | undefined, string | null>;
-  file_name: ColumnType<string | null, string | null | undefined, string | null>;
-  reviews: NullableJsonColumn<Extract<EligibilityCheck, { status: 'answered' }>['reviews']>;
-  created_at: Timestamp;
-};
-
-type DiscoveryRequestsTable = {
-  id: Generated<string>;
-  agency_id: string;
-  claim_id: string;
-  source_key: string;
-  control_number: number | null;
-  status: ColumnType<
-    DiscoveryRequestStatus,
-    DiscoveryRequestStatus | undefined,
-    DiscoveryRequestStatus
-  >;
-  note: ColumnType<string | null, string | null | undefined, string | null>;
-  candidates: NullableJsonColumn<CoverageCandidate[]>;
-  created_at: Timestamp;
 };
 
 type ClearinghouseConnectionsTable = {
@@ -784,84 +588,6 @@ type ClearinghouseConnectionsTable = {
   last_error: string | null;
   last_error_at: NullableTimestamp;
   updated_at: Timestamp;
-};
-
-type ClearinghouseDownloadsTable = {
-  id: Generated<string>;
-  source: string;
-  remote_path: string;
-  size: number;
-  modified_at: ColumnType<Date, Date | string, Date | string>;
-  agency_id: string | null;
-  event_id: string | null;
-  note: ColumnType<string, string | undefined, string>;
-  tried_at: ColumnType<Date, Date | string | undefined, Date | string>;
-  created_at: Timestamp;
-};
-
-export type PayerFilesTable = {
-  id: Generated<string>;
-  agency_id: string;
-  kind: InboundKind;
-  file_name: string;
-  digest: string;
-  document: JsonColumn;
-  control_number: string | null;
-  item_count: ColumnType<number, number | undefined, number>;
-  problem_count: ColumnType<number, number | undefined, number>;
-  uploaded_by_id: string | null;
-  run_id: string | null;
-  source_key: string | null;
-  envelope_rejection: string | null;
-  payment_cents: number | null;
-  payment_method: ColumnType<
-    PaymentMethod | null,
-    PaymentMethod | null | undefined,
-    PaymentMethod | null
-  >;
-  paid_on: ColumnType<string | null, string | null | undefined, string | null>;
-  trace_number: string | null;
-  trace_payer_id: string | null;
-  created_at: Timestamp;
-};
-
-type PaymentPlansTable = {
-  id: Generated<string>;
-  agency_id: string;
-  claim_id: string;
-  installment_cents: number;
-  interval_days: number;
-  first_due_on: ColumnType<string, string, string>;
-  status: Generated<PlanStatus>;
-  missed_count: Generated<number>;
-  created_by_id: string | null;
-  created_at: Timestamp;
-  updated_at: Timestamp;
-};
-
-type CollectionsPlacementsTable = {
-  id: Generated<string>;
-  agency_id: string;
-  claim_id: string;
-  agency_name: string;
-  fee_pct: ColumnType<string, number, number>;
-  balance_cents: number;
-  placed_on: ColumnType<string, string, string>;
-  recalled_on: ColumnType<string | null, string | null | undefined, string | null>;
-  created_at: Timestamp;
-};
-
-type PayerFileItemsTable = {
-  id: Generated<string>;
-  agency_id: string;
-  file_id: string;
-  position: number;
-  reference: string;
-  claim_id: string | null;
-  outcome: PayerFileOutcome;
-  message: ColumnType<string, string | undefined, string>;
-  paid_cents: number | null;
-  adjusted_cents: number | null;
 };
 
 export const IMPORT_SOURCES = ['upload', 'sftp', 'manual'] as const;
@@ -989,34 +715,14 @@ export type Database = {
   import_reports: ImportReportsTable;
   claims: ClaimsTable;
   facilities: FacilitiesTable;
-  facility_invoices: FacilityInvoicesTable;
-  facility_invoice_claims: FacilityInvoiceClaimsTable;
-  claim_runs: ClaimRunsTable;
   claim_lines: ClaimLinesTable;
   claim_coverages: ClaimCoveragesTable;
   claim_diagnoses: ClaimDiagnosesTable;
-  claim_documents: ClaimDocumentsTable;
-  claim_balances: ClaimBalancesView;
-  claim_events: ClaimEventsTable;
-  claim_event_adjustments: ClaimEventAdjustmentsTable;
-  claim_event_remarks: ClaimEventRemarksTable;
-  claim_event_lines: ClaimEventLinesTable;
-  claim_event_line_adjustments: ClaimEventLineAdjustmentsTable;
-  claim_batches: ClaimBatchesTable;
-  claim_status_requests: ClaimStatusRequestsTable;
-  eligibility_requests: EligibilityRequestsTable;
-  discovery_requests: DiscoveryRequestsTable;
-  payer_files: PayerFilesTable;
-  payment_plans: PaymentPlansTable;
-  collections_placements: CollectionsPlacementsTable;
   clearinghouse_connections: ClearinghouseConnectionsTable;
-  clearinghouse_downloads: ClearinghouseDownloadsTable;
-  payer_file_items: PayerFileItemsTable;
   billing_profiles: BillingProfilesTable;
   payers: PayersTable;
   payer_aliases: PayerAliasesTable;
   payer_suggestions: PayerSuggestionsTable;
-
   notifications: NotificationsTable;
   notification_states: NotificationStatesTable;
 };

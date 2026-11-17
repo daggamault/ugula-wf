@@ -4,7 +4,6 @@ import {
   ActivityIcon,
   BadgeDollarSignIcon,
   Building2Icon,
-  ChartColumnIcon,
   FileUpIcon,
   HospitalIcon,
   ListChecksIcon,
@@ -59,13 +58,6 @@ export const SECTIONS: readonly Section[] = [
     href: '/claims',
     icon: ReceiptTextIcon,
     permission: 'claims:read'
-  },
-  {
-    id: 'reports',
-    label: 'Reports',
-    href: '/reports',
-    icon: ChartColumnIcon,
-    permission: 'reports:read'
   },
   {
     id: 'workflows',

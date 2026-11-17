@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { LineAdjudication } from './claims.ts';
+import type { LineAdjudication } from './adjudications.ts';
 import { claimLevelAdjustments, matchServiceLines } from './line-adjudications.ts';
 import type { RemittanceService } from './x835.ts';
 

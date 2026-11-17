@@ -4,13 +4,13 @@ import { createRecordingDb } from '@ugula/db/testing';
 import { findPatient, searchPatients } from './queries.ts';
 
 const COLUMNS =
-  'select "p"."id", "p"."number", "p"."first_name", "p"."last_name", p.birth_date::text as "birth_date", "p"."gender", "p"."address_line", "p"."city", "p"."state", "p"."postal_code", "claimed"."claim_count", "claimed"."balance_cents", "claimed"."last_service_date"';
-const FROM = `from "patients" as "p" left join lateral (select count(*)::int as "claim_count", (coalesce(sum(b.balance_cents) filter (where c.status not in ('paid', 'written_off', 'collections', 'void')), 0))::float8 as "balance_cents", max(c.service_date)::text as "last_service_date" from "claims" as "c" inner join "claim_balances" as "b" on "b"."claim_id" = "c"."id" where "c"."patient_id" = "p"."id") as "claimed" on true where "p"."agency_id" = $1`;
+  'select "p"."id", "p"."number", "p"."first_name", "p"."last_name", p.birth_date::text as "birth_date", "p"."gender", "p"."address_line", "p"."city", "p"."state", "p"."postal_code", "claimed"."claim_count", "claimed"."last_service_date"';
+const FROM = `from "patients" as "p" left join lateral (select count(*)::int as "claim_count", max(c.service_date)::text as "last_service_date" from "claims" as "c" where "c"."patient_id" = "p"."id") as "claimed" on true where "p"."agency_id" = $1`;
 const page = { page: 1, pageSize: 25, sort: 'name', dir: 'asc' } as const;
 const orderOf = (sql = '') => sql.slice(sql.lastIndexOf(' order by '));
 
 describe('searchPatients', () => {
-  it('lists every agency patient by name with claim counts and open balances', async () => {
+  it('lists every agency patient by name with claim counts', async () => {
     const { db, queries } = createRecordingDb();
     await searchPatients(db, 't-1', page);
     assert.equal(
@@ -36,12 +36,12 @@ describe('searchPatients', () => {
       lastName: "O'Brien",
       firstName: ' Ja_ ',
       birthDate: '1980-01-02',
-      sort: 'balance',
+      sort: 'claims',
       dir: 'desc'
     });
     assert.ok(
       queries[0]?.sql.endsWith(
-        `${FROM} and "p"."last_name_key" like $2 and lower(p.first_name) like $3 and "p"."birth_date" = $4 order by "claimed"."balance_cents" desc nulls last, "p"."id" desc limit $5 offset $6`
+        `${FROM} and "p"."last_name_key" like $2 and lower(p.first_name) like $3 and "p"."birth_date" = $4 order by "claimed"."claim_count" desc nulls last, "p"."id" desc limit $5 offset $6`
       )
     );
     assert.deepEqual(queries[0]?.parameters, ['t-1', 'obrien%', 'ja\\_%', '1980-01-02', 25, 0]);

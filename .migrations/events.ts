@@ -1,14 +1,9 @@
-import { CLAIM_LEDGER_EVENTS, EVENT_TYPES, ledgerPayloadColumns } from '@ugula/billing';
+import { EVENT_TYPES } from '@ugula/billing';
 import { type Database, EVENTS_CHANNEL } from '@ugula/db';
 import { EVENT_TYPE_PATTERN } from '@ugula/graph';
 import { type Kysely, sql } from 'kysely';
 
-export const EVENT_FUNCTIONS = [
-  'notify_workflow_events',
-  'emit_claim_ledger_event',
-  'emit_claim_change_events',
-  'emit_task_completed_event'
-] as const;
+export const EVENT_FUNCTIONS = ['notify_workflow_events', 'emit_task_completed_event'] as const;
 
 const buildEventsTable = (db: Kysely<Database>) =>
   db.schema
@@ -85,72 +80,12 @@ export const createEventsTables = async (db: Kysely<Database>) => {
   await notifyTrigger.execute(db);
 };
 
-const ledgerPayload = (type: string) =>
-  sql.join(
-    Object.entries(ledgerPayloadColumns(type)).map(
-      ([field, column]) => sql`${sql.lit(field)}, new.${sql.id(column)}`
-    )
-  );
-
-const ledgerEvents = sql.join(
-  Object.entries(CLAIM_LEDGER_EVENTS).map(
-    ([kind, type]) =>
-      sql`when ${sql.lit(kind)} then
-        insert into events (agency_id, type, payload)
-        values (new.agency_id, ${sql.lit(type)}, jsonb_strip_nulls(jsonb_build_object(${ledgerPayload(type)})));`
-  ),
-  sql` `
-);
-
-const ledgerFunction = sql`
-  create function emit_claim_ledger_event() returns trigger language plpgsql as $$
-  begin
-    case new.kind
-      ${ledgerEvents}
-      else null;
-    end case;
-    return null;
-  end;
-  $$`;
-
-const ledgerTrigger = sql`
-  create trigger claim_events_emit
-  after insert on claim_events
-  for each row execute function emit_claim_ledger_event()`;
-
-const claimFunction = sql`
-  create function emit_claim_change_events() returns trigger language plpgsql as $$
-  begin
-    if new.classification is not null and new.classification is distinct from old.classification then
-      insert into events (agency_id, type, payload)
-      values (new.agency_id, ${sql.lit(EVENT_TYPES.claimClassified)},
-        jsonb_build_object('claimId', new.id, 'classification', new.classification));
-    end if;
-    if new.status is distinct from old.status then
-      insert into events (agency_id, type, payload)
-      values (new.agency_id, ${sql.lit(EVENT_TYPES.claimStatusChanged)},
-        jsonb_build_object('claimId', new.id, 'from', old.status, 'to', new.status));
-      if new.status = 'paid' then
-        insert into events (agency_id, type, payload)
-        values (new.agency_id, ${sql.lit(EVENT_TYPES.claimPaid)}, jsonb_build_object('claimId', new.id));
-      end if;
-    end if;
-    return null;
-  end;
-  $$`;
-
-const claimTrigger = sql`
-  create trigger claims_emit
-  after update of status, classification on claims
-  for each row execute function emit_claim_change_events()`;
-
 const taskFunction = sql`
   create function emit_task_completed_event() returns trigger language plpgsql as $$
   begin
     insert into events (agency_id, type, payload)
     values (new.agency_id, ${sql.lit(EVENT_TYPES.taskCompleted)}, jsonb_strip_nulls(jsonb_build_object(
       'taskId', new.id,
-      'claimId', (select cr.claim_id from claim_runs cr where cr.run_id = new.run_id limit 1),
       'queue', new.queue,
       'outcome', new.resolution ->> 'outcome'
     )));
@@ -165,14 +100,7 @@ const taskTrigger = sql`
   execute function emit_task_completed_event()`;
 
 export const createEventEmitters = async (db: Kysely<Database>) => {
-  for (const statement of [
-    ledgerFunction,
-    ledgerTrigger,
-    claimFunction,
-    claimTrigger,
-    taskFunction,
-    taskTrigger
-  ]) {
+  for (const statement of [taskFunction, taskTrigger]) {
     await statement.execute(db);
   }
 };

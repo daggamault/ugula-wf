@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CLAIM_STATUS_LABELS } from '@ugula/billing';
 import { createElement } from 'react';
 import type { ClaimSummary } from '../../shared/claims/claim-detail.ts';
 import { useLocation } from '../../shared/router.tsx';
@@ -18,33 +17,12 @@ const claim: ClaimSummary = {
   encounter_number: '20261001-0007',
   level: 'ALS1',
   total_cents: 114_220,
-  balance_cents: 30_000,
   service_date: '2026-10-01',
   payers: ['Medicare', 'Blue Plan'],
-  status: 'submitted',
+  status: 'needs_review',
   created_at: '2026-10-01T00:00:00Z',
   first_name: 'Jane',
-  last_name: 'Doe',
-  task_id: null,
-  task_title: null,
-  task_queue: null,
-  task_kind: null,
-  task_assignee_email: null,
-  open_tasks: 0
-};
-
-const waiting: ClaimSummary = {
-  ...claim,
-  status: 'draft',
-  patient_number: null,
-  first_name: null,
-  last_name: null,
-  task_id: 't1',
-  task_title: 'Confirm patient',
-  task_queue: 'billing-patients',
-  task_kind: 'task',
-  task_assignee_email: 'me@example.com',
-  open_tasks: 2
+  last_name: 'Doe'
 };
 
 const noSearch: ClaimSearch = { firstName: '', lastName: '', birthDate: '', number: '' };
@@ -73,7 +51,7 @@ const showTable = (props: Partial<Parameters<typeof ClaimsTable>[0]> = {}) =>
   render(createElement(ClaimsTable, { claims: [claim], ...props }));
 
 describe('ClaimsTable', () => {
-  it('shows the claim, patient, encounter, money, payers, status and waiting task columns', () => {
+  it('shows the claim, patient, encounter, total, payers and status columns', () => {
     showTable();
     assert.deepEqual(headers(), [
       'Claim',
@@ -81,10 +59,8 @@ describe('ClaimsTable', () => {
       'Encounter',
       'Service Date',
       'Total',
-      'Balance',
       'Payers',
       'Status',
-      'Waiting On',
       'Actions'
     ]);
     assert.deepEqual(rows(), [
@@ -94,10 +70,8 @@ describe('ClaimsTable', () => {
         '20261001-0007PCR PCR-1001',
         'Oct 1, 2026',
         '$1,142.20',
-        '$300.00',
         'Medicare → Blue Plan',
-        'Submitted',
-        '—'
+        'Needs Review'
       ]
     ]);
     assert.deepEqual(marks(), []);
@@ -140,7 +114,7 @@ describe('ClaimsTable', () => {
 
   it('bills the patient only when the claim has no payers', () => {
     showTable({ claims: [{ ...claim, payers: [] }] });
-    assert.equal(rows()[0]?.[6], 'Patient only');
+    assert.equal(rows()[0]?.[5], 'Patient only');
   });
 
   it('shows the PCR alone without an encounter, and a dash with neither', () => {
@@ -180,30 +154,6 @@ describe('ClaimsTable', () => {
     showTable({ search: { ...noSearch, lastName: 'do', firstName: 'ja' } });
     assert.deepEqual(marks(), ['Do', 'Ja']);
   });
-
-  it('shows the task each claim waits on, its queue, who has it and how many more are open', () => {
-    showTable({
-      claims: [waiting, { ...waiting, id: 'c2', open_tasks: 1, task_assignee_email: null }],
-      me: 'me@example.com'
-    });
-    assert.deepEqual(
-      rows().map((r) => [r[1], r[7], r[8]]),
-      [
-        ['Not matched yet', 'Draft', 'Confirm patient +1 morePatient Matching · You'],
-        ['Not matched yet', 'Draft', 'Confirm patientPatient Matching · Unassigned']
-      ]
-    );
-    assert.ok(!screen.queryByRole('link', { name: /Work/ }));
-  });
-
-  it('marks a task that faulted as danger', () => {
-    showTable({ claims: [waiting, { ...waiting, id: 'c2', task_kind: 'fault' }] });
-    const titles = screen.getAllByText('Confirm patient');
-    assert.deepEqual(
-      titles.map((t) => t.classList.contains('text-danger')),
-      [false, true]
-    );
-  });
 });
 
 const pageOf = (items: ClaimSummary[], facets?: Facets): Page<ClaimSummary> => ({
@@ -229,7 +179,6 @@ const Routed = ({ client }: { client: ClaimsClient }) =>
   createElement(ClaimsPage, {
     client,
     live: idleLive,
-    me: 'me@example.com',
     search: claimSearchOf(useLocation().query)
   });
 
@@ -303,51 +252,9 @@ describe('ClaimsPage', () => {
     assert.ok(!screen.queryByRole('heading', { name: 'No Matching Claims' }));
   });
 
-  it('filters by status and waiting queue from the counts in the database', async () => {
-    const { client, calls } = fakeClient(async () =>
-      pageOf([claim], {
-        status: [
-          { value: 'submitted', count: 3 },
-          { value: 'denied', count: 2 }
-        ],
-        waiting: [
-          { value: 'billing-review', count: 4 },
-          { value: 'none', count: 1 }
-        ]
-      })
-    );
-    const user = show(client, '/claims?lastName=doe');
-    await screen.findByRole('table', { name: 'Claims' });
-    await user.click(screen.getByRole('button', { name: 'Waiting On' }));
-    assert.deepEqual(
-      within(screen.getByRole('dialog', { name: 'Filter by Waiting On' }))
-        .getAllByRole('checkbox')
-        .map((c) => c.closest('label')?.textContent),
-      ['Billing Review4', 'Nothing1']
-    );
-    await user.click(screen.getByRole('button', { name: 'Status' }));
-    const panel = screen.getByRole('dialog', { name: 'Filter by Status' });
-    assert.deepEqual(
-      within(panel)
-        .getAllByRole('checkbox')
-        .map((c) => c.closest('label')?.textContent),
-      [`${CLAIM_STATUS_LABELS.denied}2`, `${CLAIM_STATUS_LABELS.submitted}3`].sort((a, b) =>
-        a.localeCompare(b)
-      )
-    );
-    await user.click(
-      within(panel).getByRole('checkbox', { name: new RegExp(CLAIM_STATUS_LABELS.denied) })
-    );
-    assert.equal(window.location.search, '?lastName=doe&status=denied');
-    await waitFor(() =>
-      assert.equal(calls.at(-1)?.[1], 'page=1&pageSize=25&sort=created&dir=desc&status=denied')
-    );
-    assert.equal(screen.getByRole('button', { name: /^Status/ }).textContent, 'Status1 selected');
-  });
-
   it('lists claims by filters alone and offers to clear filters that match nothing', async () => {
     const { client, calls } = fakeClient(async () => pageOf([]));
-    show(client, '/claims?status=denied&waiting=none');
+    show(client, '/claims?status=needs_review');
     assert.ok(await screen.findByRole('heading', { name: 'No Matching Claims' }));
     assert.equal(
       screen.getByRole('link', { name: 'Clear Filters' }).getAttribute('href'),
@@ -355,7 +262,7 @@ describe('ClaimsPage', () => {
     );
     assert.deepEqual(calls[0], [
       { firstName: '', lastName: '', birthDate: '', number: '' },
-      'page=1&pageSize=25&sort=created&dir=desc&status=denied&waiting=none'
+      'page=1&pageSize=25&sort=created&dir=desc&status=needs_review'
     ]);
   });
 

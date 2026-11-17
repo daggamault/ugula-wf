@@ -1,5 +1,4 @@
 import type { Permission } from '@ugula/access';
-import { dailyNumberOf } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
 import { facetCounts, whereFacets } from '../../shared/facets.ts';
@@ -20,7 +19,6 @@ const taskOrder = {
   due: sql.ref('t.due_at'),
   title: sql`lower(t.title)`,
   queue: sql.ref('t.queue'),
-  claim: sql.ref('c.number'),
   assignee: sql.ref('u.email')
 } as const;
 
@@ -35,24 +33,13 @@ const filteredTasks = (db: Db, agencyId: string, f: TaskFilters, except?: TaskFa
   let q = db
     .selectFrom('tasks as t')
     .leftJoin('users as u', 'u.id', 't.assignee_id')
-    .leftJoin('claim_runs as cr', 'cr.run_id', 't.run_id')
-    .leftJoin('claims as c', 'c.id', 'cr.claim_id')
-    .leftJoin('patients as p', 'p.id', 'c.patient_id')
     .where('t.agency_id', '=', agencyId)
     .where('t.status', '=', 'open');
   if (f.runId) q = q.where('t.run_id', '=', f.runId);
   if (f.q) {
     const pattern = containsPattern(f.q);
-    const number = dailyNumberOf(f.q);
-    const text = f.q.trim();
     q = q.where((eb) =>
-      eb.or([
-        eb(sql`lower(t.title)`, 'like', pattern),
-        eb(sql`lower(t.subject)`, 'like', pattern),
-        eb(sql`lower(p.last_name || ', ' || p.first_name)`, 'like', pattern),
-        eb('c.pcr_number', '=', text),
-        ...(number === null ? [] : [eb('c.number', '=', number)])
-      ])
+      eb.or([eb(sql`lower(t.title)`, 'like', pattern), eb(sql`lower(t.subject)`, 'like', pattern)])
     );
   }
   return whereFacets(q, TASK_FACETS, f, except);
@@ -69,11 +56,7 @@ export const searchTasks = async (db: Db, agencyId: string, f: TaskFilters) => {
     't.due_at',
     't.assignee_id',
     'u.email as assignee_email',
-    't.created_at',
-    'c.id as claim_id',
-    'c.number as claim_number',
-    'p.first_name',
-    'p.last_name'
+    't.created_at'
   ]);
   const [page, facets] = await Promise.all([
     paged(q, f, taskOrder, sql.ref('t.id')),
@@ -131,24 +114,6 @@ export const findTask = (db: Db, agencyId: string, id: string) =>
     .select(detail)
     .where('agency_id', '=', agencyId)
     .where('id', '=', id)
-    .executeTakeFirst();
-
-export const findTaskSource = (db: Db, runId: string) =>
-  db
-    .selectFrom('workflow_runs as r')
-    .leftJoin('import_reports as ir', (j) =>
-      j
-        .onRef('ir.agency_id', '=', 'r.agency_id')
-        .on(sql<boolean>`ir.report_key = r.inputs -> 'report' ->> 'key'`)
-    )
-    .leftJoin('claim_runs as cr', 'cr.run_id', 'r.id')
-    .leftJoin('claims as c', 'c.id', 'cr.claim_id')
-    .select((eb) => [
-      eb.fn.coalesce('ir.id', 'c.import_report_id').as('report_id'),
-      eb.fn.coalesce('ir.pcr_number', 'c.pcr_number').as('pcr_number'),
-      'c.id as claim_id'
-    ])
-    .where('r.id', '=', runId)
     .executeTakeFirst();
 
 export const claimNext = (
@@ -218,29 +183,3 @@ export const completeTask = (
     .where((eb) => eb.or([eb('assignee_id', 'is', null), eb('assignee_id', '=', input.userId)]))
     .returning('id')
     .executeTakeFirst();
-
-export const logTaskDecision = (
-  db: Db,
-  input: { agencyId: string; taskId: string; runId: string; userId: string; note: string }
-) =>
-  db
-    .insertInto('claim_events')
-    .columns(['agency_id', 'claim_id', 'kind', 'note', 'created_by_id', 'task_id', 'source_key'])
-    .expression((eb) =>
-      eb
-        .selectFrom('claim_runs as cr')
-        .innerJoin('claims as c', 'c.id', 'cr.claim_id')
-        .select([
-          'cr.agency_id',
-          'cr.claim_id',
-          sql.lit('decided').as('kind'),
-          sql.val(input.note).as('note'),
-          sql.val(input.userId).as('created_by_id'),
-          sql.val(input.taskId).as('task_id'),
-          sql.val(`task:${input.taskId}`).as('source_key')
-        ])
-        .where('cr.agency_id', '=', input.agencyId)
-        .where('cr.run_id', '=', input.runId)
-    )
-    .onConflict((oc) => oc.columns(['claim_id', 'source_key']).doNothing())
-    .execute();

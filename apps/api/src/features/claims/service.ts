@@ -1,183 +1,21 @@
-import {
-  billingCodeRefs,
-  type ClaimBilling,
-  type ClaimTaskKey,
-  claimBillingOf,
-  claimCodeRefs,
-  claimRecordOf,
-  claimTaskStartsOn,
-  ledgerFactsOf,
-  MAP_837P_RULE,
-  readClaimStep,
-  readIssues
-} from '@ugula/billing';
-import {
-  type Db,
-  describeCodes,
-  findClaimCheck,
-  findClaimToBill,
-  findPublishedGraphs,
-  lockClaim,
-  nextBatchClaim,
-  restartCycle,
-  startRun,
-  unchangeable
-} from '@ugula/db';
-import type { RunQueueClient } from '@ugula/run-queue';
-import type { BlobRef, BlobStore } from '@ugula/storage';
-import { findActivePlan, listLedgerEvents } from '../../shared/ledger.ts';
-import { type Publish, publishAfter } from '../../shared/live.ts';
-import type { PageRequest } from '../../shared/paging.ts';
-import { fail, ok, type Result } from '../../shared/result.ts';
-import type { RuleRunner } from '../../shared/rules.ts';
-import {
-  type ClaimFilters,
-  claimExists,
-  findClaim,
-  findClaimDocument,
-  findEventDocument,
-  listClaimDocuments,
-  listClaimEvents,
-  listClaimFiles,
-  listClaimPayerFiles,
-  searchClaims
-} from './queries.ts';
-import type { ClaimEventSort } from './schemas.ts';
+import { claimCodeRefs } from '@ugula/billing';
+import { type Db, describeCodes } from '@ugula/db';
+import { fail, ok } from '../../shared/result.ts';
+import { type ClaimFilters, findClaim, searchClaims } from './queries.ts';
 
-type ClaimServiceDeps = {
-  db: Db;
-  boss: RunQueueClient;
-  now: () => Date;
-  blobs: Pick<BlobStore, 'getBytes'>;
-  publish: Publish;
-  rules: RuleRunner;
-};
-
-export const NEXT_CLAIM_STEP_RULE = 'billing.next-claim-step';
-
-export const CLAIM_ISSUES_RULE = 'billing.claim-issues';
-
-const unpublished = (key: string) => fail('not_found', `The ${key} workflow is not published`);
+type ClaimServiceDeps = { db: Db };
 
 const notFound = fail('not_found', 'Claim not found');
-export const createClaimService = ({ db, boss, now, blobs, publish, rules }: ClaimServiceDeps) => {
-  const write = <T>(agencyId: string, id: string, work: (tx: Db) => Promise<Result<T>>) =>
-    publishAfter(publish, agencyId, db.transaction().execute(work), () => [{ kind: 'claim', id }]);
 
-  const billingOf = async (
-    agencyId: string,
-    id: string,
-    events: Parameters<typeof nextBatchClaim>[1],
-    at: Date
-  ): Promise<ClaimBilling | null> => {
-    const row = await findClaimToBill(db, agencyId, id);
-    const next = row ? nextBatchClaim(row, events) : null;
-    if (!next) return null;
-    try {
-      const { x837 } = await rules(agencyId, MAP_837P_RULE, { claim: next.claim }, at);
-      return claimBillingOf(next.payer, x837);
-    } catch {
-      return null;
-    }
-  };
+export const createClaimService = ({ db }: ClaimServiceDeps) => ({
+  search: async (agencyId: string, filters: ClaimFilters) =>
+    ok(await searchClaims(db, agencyId, filters)),
 
-  return {
-    search: async (agencyId: string, filters: ClaimFilters) =>
-      ok(await searchClaims(db, agencyId, filters)),
-
-    find: async (agencyId: string, id: string) => {
-      const claim = await findClaim(db, agencyId, id);
-      if (!claim) return notFound;
-      const open = unchangeable(claim.status) === null;
-      const [files, payerFiles, documents, events, plan, check] = await Promise.all([
-        listClaimFiles(db, id),
-        listClaimPayerFiles(db, id),
-        listClaimDocuments(db, id),
-        open ? listLedgerEvents(db, id) : [],
-        open ? findActivePlan(db, id) : null,
-        findClaimCheck(db, agencyId, id)
-      ]);
-      const at = now();
-      const billing = open ? await billingOf(agencyId, id, events, at) : null;
-      const codes = await describeCodes(db, [...claimCodeRefs(claim), ...billingCodeRefs(billing)]);
-      const ledger = open
-        ? ledgerFactsOf(
-            {
-              totalCents: claim.total_cents,
-              coverages: claim.coverages.map((c) => ({
-                id: c.id,
-                payer: c.payer,
-                claimFiling: c.claim_filing
-              })),
-              events,
-              facilityId: claim.facility_id,
-              plan
-            },
-            at
-          )
-        : null;
-      const [step, checked] = await Promise.all([
-        ledger ? rules(agencyId, NEXT_CLAIM_STEP_RULE, { ledger }, at) : null,
-        check ? rules(agencyId, CLAIM_ISSUES_RULE, { record: claimRecordOf(check, at) }, at) : null
-      ]);
-      return ok({
-        claim,
-        files,
-        payerFiles,
-        documents,
-        codes,
-        billing,
-        progress: step && ledger ? readClaimStep(step, ledger) : null,
-        issues: readIssues(checked?.issues)
-      });
-    },
-
-    events: async (agencyId: string, id: string, page: PageRequest<ClaimEventSort>) =>
-      (await claimExists(db, agencyId, id)) ? ok(await listClaimEvents(db, id, page)) : notFound,
-
-    document: async (agencyId: string, claimId: string, eventId: string) => {
-      const found = await findEventDocument(db, agencyId, claimId, eventId);
-      if (!found) return fail('not_found', 'Document not found');
-      const ref = found.document as BlobRef;
-      return ok({
-        bytes: await blobs.getBytes(ref),
-        name: ref.key.split('/').at(-1) ?? 'document'
-      });
-    },
-
-    documentFile: async (agencyId: string, id: string, documentId: string) => {
-      const found = await findClaimDocument(db, agencyId, id, documentId);
-      if (!found) return fail('not_found', 'Document not found');
-      const ref = found.document as BlobRef;
-      return ok({
-        bytes: await blobs.getBytes(ref),
-        name: found.file_name
-      });
-    },
-
-    restartCycle: (agencyId: string, id: string) =>
-      write(agencyId, id, (tx) =>
-        restartCycle(tx, boss, { agencyId, claimId: id, interactive: true })
-      ),
-
-    startTask: (agencyId: string, userId: string, id: string, key: ClaimTaskKey) =>
-      write(agencyId, id, async (tx) => {
-        const claim = await lockClaim(tx, agencyId, id);
-        if (!claim) return notFound;
-        const blocked = unchangeable(claim.status);
-        if (blocked && !claimTaskStartsOn(key, claim.status)) return blocked;
-        const [version] = await findPublishedGraphs(tx, agencyId, [{ key, version: 1 }]);
-        if (!version) return unpublished(key);
-        const runId = await startRun(tx, boss, {
-          agencyId,
-          versionId: version.id,
-          inputs: { claimId: id, assignee: userId },
-          interactive: true,
-          startedBy: userId
-        });
-        return ok({ runId });
-      })
-  };
-};
+  find: async (agencyId: string, id: string) => {
+    const claim = await findClaim(db, agencyId, id);
+    if (!claim) return notFound;
+    return ok({ claim, codes: await describeCodes(db, claimCodeRefs(claim)) });
+  }
+});
 
 export type ClaimService = ReturnType<typeof createClaimService>;

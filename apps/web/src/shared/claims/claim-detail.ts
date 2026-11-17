@@ -1,22 +1,13 @@
 import type {
   ClaimStatus,
   Classification,
-  DocumentKind,
-  EligibilityStatus,
   FacilityStay,
-  InboundKind,
   InsuredRelationship,
   MspAccident,
-  PayerFileOutcome,
   PcsType,
   SignatureStatus,
-  StayKind,
   TransportReason
 } from '@ugula/billing';
-
-type CycleStatus = 'running' | 'suspended' | 'completed' | 'faulted' | 'failed' | 'cancelled';
-
-type TaskKind = 'task' | 'fault';
 
 export type ClaimSummary = {
   id: string;
@@ -26,31 +17,12 @@ export type ClaimSummary = {
   encounter_number: string | null;
   level: string | null;
   total_cents: number;
-  balance_cents: number;
   service_date: string | null;
   payers: string[];
   status: ClaimStatus;
   created_at: string;
   first_name: string | null;
   last_name: string | null;
-  task_id: string | null;
-  task_title: string | null;
-  task_queue: string | null;
-  task_kind: TaskKind | null;
-  task_assignee_email: string | null;
-  open_tasks: number;
-};
-
-export type ClaimTask = {
-  id: string;
-  title: string;
-  subject: string | null;
-  queue: string;
-  kind: TaskKind;
-  assignee_id: string | null;
-  assignee_email: string | null;
-  due_at: string | null;
-  created_at: string;
 };
 
 export type ClaimLine = {
@@ -72,29 +44,6 @@ export type ClaimCoverage = {
   payer_code: string | null;
   member_id: string | null;
   group_id: string | null;
-  eligibility: EligibilityStatus | null;
-  eligibility_note: string | null;
-  eligibility_checked_at: string | null;
-  stay_kind: StayKind | null;
-  stay_admitted_on: string | null;
-  stay_discharged_on: string | null;
-};
-
-export type ClaimDocument = {
-  id: string;
-  kind: DocumentKind;
-  file_name: string;
-  signed_on: string | null;
-  created_at: string;
-  uploaded_by_email: string | null;
-};
-
-export type ClaimPayerFile = {
-  id: string;
-  kind: InboundKind;
-  file_name: string;
-  created_at: string;
-  items: { outcome: PayerFileOutcome; message: string }[];
 };
 
 export type ClaimDetail = ClaimSummary & {
@@ -106,8 +55,6 @@ export type ClaimDetail = ClaimSummary & {
   loaded_miles: string | null;
   birth_date: string | null;
   patient_id: string | null;
-  cycle_run_id: string | null;
-  cycle_status: CycleStatus | null;
   origin_code: string | null;
   destination_code: string | null;
   pickup_address_line: string | null;
@@ -155,7 +102,6 @@ export type ClaimDetail = ClaimSummary & {
   coverages: ClaimCoverage[];
   lines: ClaimLine[];
   diagnoses: string[];
-  tasks: ClaimTask[];
   facility_id: string | null;
   facility_name: string | null;
 };

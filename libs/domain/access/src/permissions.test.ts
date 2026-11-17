@@ -39,7 +39,7 @@ describe('permissions', () => {
       'claims:read',
       'workflows:read'
     ]);
-    assert.deepEqual(grantsOf(['reports'], ['update']), []);
+    assert.deepEqual(grantsOf(['imports'], ['update']), []);
     assert.deepEqual(grantsOf([]), []);
     assert.deepEqual(grantsOf(['claims'], []), []);
   });

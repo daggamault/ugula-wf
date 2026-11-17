@@ -13,20 +13,7 @@ describe('worker createWorker', () => {
       DB_PASSWORD: 'password',
       DB_NAME: 'ugula',
       WORKER_RUN_CONCURRENCY: 8,
-      WORKER_COMPLETIONS_CONCURRENCY: 2,
       WORKER_MAX_EVENT_LOOP_UTILIZATION: 0.9,
-      CLEARINGHOUSE_SFTP_PORT: 22,
-      CLEARINGHOUSE_SFTP_HOST_KEY: '',
-      CLEARINGHOUSE_UPLOAD_PATH: '/',
-      CLEARINGHOUSE_DOWNLOAD_PATHS: ['/'],
-      CLEARINGHOUSE_CLAIM_EXTENSION: '.txt',
-      CLEARINGHOUSE_ELIGIBILITY_EXTENSION: '.txt',
-      CLEARINGHOUSE_STATUS_EXTENSION: '.txt',
-      CLEARINGHOUSE_REALTIME_URL: '',
-      CLEARINGHOUSE_REALTIME_TIMEOUT_SECONDS: 30,
-      CLEARINGHOUSE_AFTER_DOWNLOAD: 'delete',
-      CLEARINGHOUSE_POLL_MINUTES: 1,
-      CLEARINGHOUSE_PREVIOUS_SECRET_KEYS: [],
       REDIS_HOST: 'localhost',
       REDIS_PORT: 6379,
       REDIS_PASSWORD: 'secret',
@@ -34,10 +21,7 @@ describe('worker createWorker', () => {
       S3_REGION: 'us-east-1',
       S3_BUCKET: 'ugula',
       S3_ACCESS_KEY: 'key',
-      S3_SECRET_KEY: 'secret',
-      EMBEDDINGS_URL: 'http://localhost:8080',
-      COMPLETIONS_URL: 'http://localhost:8081',
-      COMPLETIONS_MODEL: 'qwen'
+      S3_SECRET_KEY: 'secret'
     });
     assert.ok(boss instanceof PgBoss);
   });

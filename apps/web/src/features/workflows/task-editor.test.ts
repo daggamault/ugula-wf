@@ -20,7 +20,7 @@ const task = {
   title: 'Match Payer',
   queue: 'billing',
   instructions: 'Pick the payer.',
-  permission: 'claims:update',
+  permission: 'payers:update',
   outcomes: ['matched', 'skip'],
   hints: { matched: 'Uses the payer you chose.' },
   fields: [
@@ -92,10 +92,7 @@ describe('TaskEditor', () => {
     assert.equal(textbox(screen, 'Title').value, 'Match Payer');
     assert.equal(textbox(screen, 'Queue').value, 'billing');
     assert.equal(textbox(screen, 'Instructions').value, 'Pick the payer.');
-    assert.equal(
-      shown(screen, 'Who Can Complete It'),
-      'Change claims, restart their cycle and check eligibility (claims:update)'
-    );
+    assert.equal(shown(screen, 'Who Can Complete It'), 'Change payers (payers:update)');
     assert.equal(shown(screen, 'Defaults Are'), 'Starting Values');
   });
 
@@ -120,14 +117,8 @@ describe('TaskEditor', () => {
 
   it('sets who may complete the task, and clears it for anyone in the queue', async () => {
     const { last, user } = show({ title: 'A' });
-    await user.click(
-      option(
-        screen,
-        'Who Can Complete It',
-        'Change claims, restart their cycle and check eligibility (claims:update)'
-      )
-    );
-    assert.deepEqual(last(), { title: 'A', permission: 'claims:update' });
+    await user.click(option(screen, 'Who Can Complete It', 'Change payers (payers:update)'));
+    assert.deepEqual(last(), { title: 'A', permission: 'payers:update' });
     await user.click(option(screen, 'Who Can Complete It', 'Anyone in the Queue'));
     assert.deepEqual(last(), { title: 'A' });
   });

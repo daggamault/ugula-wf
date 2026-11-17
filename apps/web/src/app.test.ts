@@ -121,7 +121,7 @@ const fakeClients = (fakes: Fakes = {}) => {
         calls.push(`access ${agencyId}`);
         return fakes.access
           ? fakes.access(agencyId)
-          : accessTo(agencyId, fakes.permissions ?? ['reports:read']);
+          : accessTo(agencyId, fakes.permissions ?? ['claims:read']);
       }
     },
     tasks: { queues: fakes.queues ?? (async () => []) },
@@ -149,7 +149,7 @@ const show = (path: string, fakes: Fakes = {}) => {
 
 const nav = () => screen.getAllByRole('navigation', { name: 'Primary' })[0] as HTMLElement;
 
-const reportsPage = () => screen.findByRole('table', { name: 'Reports' });
+const claimsPage = () => screen.findByRole('heading', { name: 'Claims' });
 
 const realEventSource = globalThis.EventSource;
 
@@ -187,7 +187,7 @@ describe('App', () => {
   });
 
   it('asks a signed-out user to sign in', async () => {
-    const { calls } = show('/reports', { auth: { getMe: async () => null } });
+    const { calls } = show('/claims', { auth: { getMe: async () => null } });
     assert.ok(await screen.findByRole('button', { name: 'Sign In' }));
     assert.deepEqual(calls, []);
   });
@@ -195,28 +195,28 @@ describe('App', () => {
 
 describe('AgencyGate', () => {
   it('opens the only agency without asking, keeping the page and its query', async () => {
-    const { calls } = show('/reports?x=1', { agencies: async () => [agencies[0] as Agency] });
-    await reportsPage();
-    assert.equal(window.location.pathname, `/agencies/${NORTH}/reports`);
+    const { calls } = show('/claims?x=1', { agencies: async () => [agencies[0] as Agency] });
+    await claimsPage();
+    assert.equal(window.location.pathname, `/agencies/${NORTH}/claims`);
     assert.equal(window.location.search, '?x=1');
     assert.deepEqual(calls, ['getMe', 'agencies', `access ${NORTH}`]);
   });
 
   it('reopens the agency opened last time', async () => {
     localStorage.setItem('ugula.agency', SOUTH);
-    show('/reports');
-    await reportsPage();
-    assert.equal(window.location.pathname, `/agencies/${SOUTH}/reports`);
+    show('/claims');
+    await claimsPage();
+    assert.equal(window.location.pathname, `/agencies/${SOUTH}/claims`);
   });
 
   it('remembers the agency it opens', async () => {
-    show(`/agencies/${SOUTH}/reports`);
-    await reportsPage();
+    show(`/agencies/${SOUTH}/claims`);
+    await claimsPage();
     assert.equal(localStorage.getItem('ugula.agency'), SOUTH);
   });
 
   it('asks which agency to open when several are available', async () => {
-    const { calls } = show('/reports');
+    const { calls } = show('/claims');
     await screen.findByRole('link', { name: 'North EMS Acme' });
     const links = within(screen.getByRole('region', { name: 'Choose an Agency' })).getAllByRole(
       'link'
@@ -225,18 +225,18 @@ describe('AgencyGate', () => {
       links.map((l) => l.getAttribute('href')),
       [`/agencies/${NORTH}`, `/agencies/${SOUTH}`]
     );
-    assert.equal(window.location.pathname, '/reports');
+    assert.equal(window.location.pathname, '/claims');
     assert.deepEqual(calls, ['getMe', 'agencies']);
   });
 
   it('shows a loading state while the agency access loads', async () => {
-    show(`/agencies/${NORTH}/reports`, { access: () => new Promise(() => undefined) });
+    show(`/agencies/${NORTH}/claims`, { access: () => new Promise(() => undefined) });
     assert.ok(await screen.findByRole('status', { name: 'Loading' }));
     assert.ok(!screen.queryByRole('navigation'));
   });
 
   it('explains when the agencies cannot be loaded', async () => {
-    show('/reports', {
+    show('/claims', {
       agencies: async () => {
         throw new Error('Agencies are down');
       }
@@ -246,7 +246,7 @@ describe('AgencyGate', () => {
   });
 
   it('offers the other agencies when the chosen one cannot be opened', async () => {
-    show(`/agencies/${NORTH}/reports`, {
+    show(`/agencies/${NORTH}/claims`, {
       access: async () => {
         throw new Error('Forbidden');
       }
@@ -264,33 +264,32 @@ describe('AgencyGate', () => {
 
 describe('Workspace', () => {
   it('lists only the sections the role may open and marks the current one', async () => {
-    show(`/agencies/${NORTH}/reports`, {
-      permissions: ['claims:read', 'reports:read', 'fees:read']
+    show(`/agencies/${NORTH}/claims`, {
+      permissions: ['claims:read', 'fees:read']
     });
-    await reportsPage();
+    await claimsPage();
     const links = within(nav()).getAllByRole('link');
     assert.deepEqual(
       links.map((l) => [l.textContent, l.getAttribute('href'), l.getAttribute('aria-current')]),
       [
-        ['Claims', `/agencies/${NORTH}/claims`, null],
-        ['Reports', `/agencies/${NORTH}/reports`, 'page'],
+        ['Claims', `/agencies/${NORTH}/claims`, 'page'],
         ['Fees', `/agencies/${NORTH}/fees`, null]
       ]
     );
   });
 
   it('shows the signed-in email and the open agency', async () => {
-    show(`/agencies/${NORTH}/reports`);
-    await reportsPage();
+    show(`/agencies/${NORTH}/claims`);
+    await claimsPage();
     assert.ok(screen.getAllByText('dev@example.com').length > 0);
     assert.ok(screen.getAllByText('Switch agency').length > 0);
     assert.ok(screen.getAllByText('North EMS').length > 0);
   });
 
   it('opens the first section the role may see when the path is unknown', async () => {
-    show(`/agencies/${NORTH}/nope`, { permissions: ['fees:read', 'reports:read'] });
-    await reportsPage();
-    assert.equal(window.location.pathname, `/agencies/${NORTH}/reports`);
+    show(`/agencies/${NORTH}/nope`, { permissions: ['fees:read', 'claims:read'] });
+    await claimsPage();
+    assert.equal(window.location.pathname, `/agencies/${NORTH}/claims`);
   });
 
   it('explains when the role opens no sections', async () => {
@@ -318,11 +317,11 @@ describe('Workspace', () => {
   });
 
   it('shows the open task count on the tasks link', async () => {
-    show(`/agencies/${NORTH}/reports`, {
-      permissions: ['tasks:read', 'reports:read'],
+    show(`/agencies/${NORTH}/claims`, {
+      permissions: ['tasks:read', 'claims:read'],
       queues: async () => [queue('billing-review', 2), queue('billing-patients', 1)]
     });
-    await reportsPage();
+    await claimsPage();
     await waitFor(() =>
       assert.equal(within(nav()).getAllByRole('link')[0]?.textContent, 'Tasks3 open')
     );
@@ -330,11 +329,11 @@ describe('Workspace', () => {
 
   it('announces new tasks as they arrive without recording them as notifications', async () => {
     let open = 1;
-    const { calls } = show(`/agencies/${NORTH}/reports`, {
-      permissions: ['tasks:read', 'reports:read'],
+    const { calls } = show(`/agencies/${NORTH}/claims`, {
+      permissions: ['tasks:read', 'claims:read'],
       queues: async () => [queue('billing-review', open)]
     });
-    await reportsPage();
+    await claimsPage();
     await waitFor(() =>
       assert.equal(within(nav()).getAllByRole('link')[0]?.textContent, 'Tasks1 open')
     );
@@ -348,8 +347,8 @@ describe('Workspace', () => {
   });
 
   it('connects live updates for the agency and shows when they are on', async () => {
-    show(`/agencies/${NORTH}/reports`);
-    await reportsPage();
+    show(`/agencies/${NORTH}/claims`);
+    await claimsPage();
     assert.deepEqual(
       FakeEventSource.opened.map((s) => [s.url, s.init]),
       [[`http://sse.test/events?agency=${NORTH}`, { withCredentials: true }]]
@@ -361,16 +360,16 @@ describe('Workspace', () => {
   });
 
   it('closes live updates when the workspace closes', async () => {
-    const { unmount } = show(`/agencies/${NORTH}/reports`);
-    await reportsPage();
+    const { unmount } = show(`/agencies/${NORTH}/claims`);
+    await claimsPage();
     assert.equal(stream().isClosed, false);
     unmount();
     assert.equal(stream().isClosed, true);
   });
 
   it('signs out from the workspace', async () => {
-    const { calls } = show(`/agencies/${NORTH}/reports`);
-    await reportsPage();
+    const { calls } = show(`/agencies/${NORTH}/claims`);
+    await claimsPage();
     const [signOut] = screen.getAllByRole('button', { name: 'Sign Out' });
     assert.ok(signOut);
     await userEvent.setup().click(signOut);

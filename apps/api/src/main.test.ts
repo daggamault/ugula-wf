@@ -5,7 +5,6 @@ import { createSessionStore } from '@ugula/auth';
 import type { Db } from '@ugula/db';
 import { createRecordingDb } from '@ugula/db/testing';
 import { createStdNodes, STD_KINDS } from '@ugula/graph';
-import { createNemsisNodes } from '@ugula/nemsis';
 import type { BlobStore } from '@ugula/storage';
 import type { Config } from './config.ts';
 import { createApp } from './main.ts';
@@ -39,7 +38,7 @@ const deps: Parameters<typeof createApp>[0] = {
   boss: { insert: async () => null },
   blobs: {} as BlobStore,
   embedder: { embed: async () => [] },
-  nodes: [...createStdNodes({ fetch }), ...createNemsisNodes(null)],
+  nodes: createStdNodes({ fetch }),
   kinds: STD_KINDS,
   events: [],
   publish: async () => undefined,
@@ -260,14 +259,8 @@ describe('api createApp', () => {
       [['settings:update'], 'PUT', '/clearinghouse-connection', {}],
       [['settings:update'], 'DELETE', '/clearinghouse-connection'],
       [['claims:read'], 'GET', '/claims'],
-      [['claims:update'], 'POST', `/claims/${ID}/restart-cycle`],
-      [['claims:read'], 'GET', `/submissions/batches/${ID}/file`],
-      [['claims:update'], 'POST', '/submissions/eligibility', {}],
-      [['reports:read'], 'GET', '/reports/aging'],
       [['imports:read'], 'GET', '/imports'],
-      [['imports:create'], 'POST', '/imports/auth', {}],
-      [['payer_files:read'], 'GET', '/payer-files'],
-      [['payer_files:create'], 'POST', '/payer-files', {}]
+      [['imports:create'], 'POST', '/imports/auth', {}]
     ];
     for (const [needed, method, path, body] of cases) {
       const label = `${needed} ${method} ${path}`;
@@ -295,7 +288,7 @@ describe('api createApp', () => {
     for (const [method, path] of [
       ['POST', '/codes'],
       ['DELETE', `/patients/${ID}`],
-      ['PUT', '/reports/aging'],
+      ['PUT', `/claims/${ID}`],
       ['DELETE', `/claims/${ID}`],
       ['PUT', '/runs']
     ] as const) {

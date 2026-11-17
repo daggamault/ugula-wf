@@ -12,7 +12,4 @@ export { build277 } from './mock-x277.ts';
 export { build277Status } from './mock-x277-status.ts';
 export { build835 } from './mock-x835.ts';
 export { build999 } from './mock-x999.ts';
-export * from './testing-claims.ts';
-export * from './testing-party-stores.ts';
 export * from './testing-samples.ts';
-export * from './testing-stores.ts';

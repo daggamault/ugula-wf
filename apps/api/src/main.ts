@@ -42,18 +42,12 @@ import { createNotificationRoutes } from './features/notifications/routes.ts';
 import { createNotificationService } from './features/notifications/service.ts';
 import { createPatientRoutes } from './features/patients/routes.ts';
 import { createPatientService } from './features/patients/service.ts';
-import { createPayerFileRoutes } from './features/payer-files/routes.ts';
-import { createPayerFileService } from './features/payer-files/service.ts';
 import { createPayerRoutes } from './features/payers/routes.ts';
 import { createPayerService } from './features/payers/service.ts';
-import { createReportRoutes } from './features/reports/routes.ts';
-import { createReportService } from './features/reports/service.ts';
 import { createRoleRoutes } from './features/roles/routes.ts';
 import { createRoleService } from './features/roles/service.ts';
 import { createRunRoutes } from './features/runs/routes.ts';
 import { createRunService } from './features/runs/service.ts';
-import { createSubmissionRoutes } from './features/submissions/routes.ts';
-import { createSubmissionService } from './features/submissions/service.ts';
 import { createTableRoutes } from './features/tables/routes.ts';
 import { createTableService } from './features/tables/service.ts';
 import { createTaskRoutes } from './features/tasks/routes.ts';
@@ -63,7 +57,6 @@ import { createUserService } from './features/users/service.ts';
 import { type AgencyEnv, guardMethods, requireAgencyAccess } from './shared/access.ts';
 import { type AuthEnv, requireAuth } from './shared/auth.ts';
 import type { Publish } from './shared/live.ts';
-import { createRuleRunner } from './shared/rules.ts';
 import { createSignInThrottle, type ThrottleStore } from './shared/throttle.ts';
 
 type AppDeps = {
@@ -249,47 +242,10 @@ export const createApp = ({
         })
       )
     )
-    .use(
-      '/claims/*',
-      guardMethods({ ...read('claims:read'), PUT: 'claims:update', POST: 'claims:update' })
-    )
-    .route(
-      '/claims',
-      createClaimRoutes(
-        createClaimService({
-          db,
-          boss,
-          blobs,
-          publish,
-          now: () => new Date(),
-          rules: createRuleRunner(db, nodes)
-        })
-      )
-    )
-    .use('/submissions/*', guardMethods({ ...read('claims:read'), POST: 'claims:update' }))
-    .route(
-      '/submissions',
-      createSubmissionRoutes(createSubmissionService({ db, boss, blobs, now: () => new Date() }))
-    )
-    .use('/reports/*', guardMethods(read('reports:read')))
-    .route('/reports', createReportRoutes(createReportService({ db, now: () => new Date() })))
+    .use('/claims/*', guardMethods(read('claims:read')))
+    .route('/claims', createClaimRoutes(createClaimService({ db })))
     .use('/imports/*', guardMethods({ ...read('imports:read'), POST: 'imports:create' }))
-    .route('/imports', createImportRoutes(imports))
-    .use(
-      '/payer-files/*',
-      guardMethods({ ...read('payer_files:read'), POST: 'payer_files:create' })
-    )
-    .route(
-      '/payer-files',
-      createPayerFileRoutes(
-        createPayerFileService({
-          db,
-          boss,
-          blobs,
-          maxBytes: config.API_MAX_IMPORT_BYTES
-        })
-      )
-    );
+    .route('/imports', createImportRoutes(imports));
   app.route('/api/imports/sftp', createSftpRoutes(imports, config.SFTP_HOOK_SECRET));
   app.route('/api/agencies', protect(createAgencyListRoutes(agencies)));
   app.route('/api/agencies/:agencyId', protect(agency));

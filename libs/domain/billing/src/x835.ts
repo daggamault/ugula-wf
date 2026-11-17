@@ -1,4 +1,4 @@
-import { type Adjustment, isAdjustmentGroup, MAX_LINE_MODIFIERS } from './claims.ts';
+import { type Adjustment, isAdjustmentGroup, MAX_LINE_MODIFIERS } from './adjudications.ts';
 import {
   CAS_TRIPLETS,
   centsOf,

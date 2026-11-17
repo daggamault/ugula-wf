@@ -1,4 +1,4 @@
-import type { Adjustment } from './claims.ts';
+import type { Adjustment } from './adjudications.ts';
 import {
   DEFAULT_PAYER,
   DEFAULT_PROVIDER,

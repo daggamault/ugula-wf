@@ -1,5 +1,5 @@
+import { type Adjustment, type LineAdjudication, mergedAdjustments } from './adjudications.ts';
 import { HCPCS_PATTERN } from './charges.ts';
-import { type Adjustment, type LineAdjudication, mergedAdjustments } from './claims.ts';
 import type { RemittanceService } from './x835.ts';
 
 const HCPCS = new RegExp(HCPCS_PATTERN);

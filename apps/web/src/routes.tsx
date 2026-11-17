@@ -17,18 +17,9 @@ import { ImportsPage } from './features/imports/imports-page.tsx';
 import { type PatientsClient, searchOf } from './features/patients/client.ts';
 import { PatientPage } from './features/patients/patient-page.tsx';
 import { PatientsPage } from './features/patients/patients-page.tsx';
-import type { PayerFilesClient } from './features/payer-files/client.ts';
-import { PayerFilePage } from './features/payer-files/payer-file-page.tsx';
-import { PayerFilesPage } from './features/payer-files/payer-files-page.tsx';
 import type { PayersClient } from './features/payers/client.ts';
 import { PayerPage } from './features/payers/payer-page.tsx';
 import { PAYERS_PATH, PayersPage } from './features/payers/payers-page.tsx';
-import type { ReportsClient } from './features/reports/client.ts';
-import {
-  ReportOptionsPage,
-  ReportResultsPage,
-  ReportsPage
-} from './features/reports/reports-page.tsx';
 import type { RolesClient } from './features/roles/client.ts';
 import { RolePage } from './features/roles/role-page.tsx';
 import { ROLES_PATH, RolesPage } from './features/roles/roles-page.tsx';
@@ -39,7 +30,7 @@ import { StartRunPage } from './features/runs/start-run-page.tsx';
 import type { SettingsClient } from './features/settings/client.ts';
 import { SettingsPage } from './features/settings/settings-page.tsx';
 import type { TasksClient } from './features/tasks/client.ts';
-import { TaskPage, taskTabOf } from './features/tasks/task-page.tsx';
+import { TaskPage } from './features/tasks/task-page.tsx';
 import { TASKS_PATH, TasksPage } from './features/tasks/tasks-page.tsx';
 import type { UsersClient } from './features/users/client.ts';
 import { InvitePage } from './features/users/invite-page.tsx';
@@ -67,14 +58,12 @@ export type AppClients = {
   runs: RunsClient;
   tasks: TasksClient;
   imports: ImportsClient;
-  payerFiles: PayerFilesClient;
   fees: FeesClient;
   claims: ClaimsClient;
   patients: PatientsClient;
   payers: PayersClient;
   facilities: FacilitiesClient;
   settings: SettingsClient;
-  reports: ReportsClient;
   notifications: NotificationsClient;
   codes: CodesClient;
 };
@@ -177,25 +166,8 @@ const routes: readonly Route[] = [
     )
   },
   {
-    pattern: '/payer-files',
-    render: (_, __, c) => <PayerFilesPage client={c.payerFiles} live={c.live} />
-  },
-  {
-    pattern: '/payer-files/:id',
-    render: (p, q, c) => (
-      <PayerFilePage
-        client={c.payerFiles}
-        live={c.live}
-        fileId={p.id ?? ''}
-        back={backOf(q, '/payer-files')}
-      />
-    )
-  },
-  {
     pattern: '/claims',
-    render: (_, q, c) => (
-      <ClaimsPage client={c.claims} live={c.live} me={c.email} search={claimSearchOf(q)} />
-    )
+    render: (_, q, c) => <ClaimsPage client={c.claims} live={c.live} search={claimSearchOf(q)} />
   },
   {
     pattern: '/claims/:id',
@@ -203,7 +175,6 @@ const routes: readonly Route[] = [
       <ClaimPage
         client={c.claims}
         live={c.live}
-        me={c.email}
         claimId={p.id ?? ''}
         back={backOf(q, '/claims', '/patients/')}
         tab={CLAIM_TABS.find((t) => t.value === q.get('tab'))?.value ?? 'overview'}
@@ -224,17 +195,6 @@ const routes: readonly Route[] = [
         patientId={p.id ?? ''}
         claims={<PatientClaims client={c.claims} live={c.live} patientId={p.id ?? ''} />}
       />
-    )
-  },
-  { pattern: '/reports', render: () => <ReportsPage /> },
-  {
-    pattern: '/reports/:id',
-    render: (p, q) => <ReportOptionsPage key={p.id} reportId={p.id ?? ''} query={q} />
-  },
-  {
-    pattern: '/reports/:id/results',
-    render: (p, q, c) => (
-      <ReportResultsPage client={c.reports} live={c.live} reportId={p.id ?? ''} query={q} />
     )
   },
   { pattern: FEES_PATH, render: (_, __, c) => <FeesPage client={c.fees} live={c.live} /> },
@@ -351,8 +311,7 @@ const routes: readonly Route[] = [
         codes={c.codes}
         live={c.live}
         taskId={p.id ?? ''}
-        back={q.has('back') ? backOf(q, TASKS_PATH, '/claims', '/runs/', '/imports/') : null}
-        tab={taskTabOf(q.get('tab'))}
+        back={q.has('back') ? backOf(q, TASKS_PATH, '/runs/', '/imports/') : null}
       />
     )
   }

@@ -1,9 +1,6 @@
 import type { Permission } from '@ugula/access';
-import type { ClaimBilling, ClaimIssue, CodeDescriptions } from '@ugula/billing';
 import type { FieldSpec, Json } from '@ugula/graph';
-import type { ReportDictionary } from '@ugula/nemsis';
 import type { Api } from '../../shared/api.ts';
-import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import type { Page } from '../../shared/url-state.ts';
 
 type TaskStatus = 'open' | 'completed' | 'cancelled';
@@ -43,10 +40,6 @@ export type TaskRow = {
   assignee_id: string | null;
   assignee_email: string | null;
   created_at: string;
-  claim_id: string | null;
-  claim_number: string | null;
-  first_name: string | null;
-  last_name: string | null;
 };
 
 export type TaskDetail = TaskSummary & {
@@ -59,34 +52,6 @@ export type TaskDetail = TaskSummary & {
   defaults: Record<string, Json> | null;
   prefill: 'current' | 'suggested' | null;
   resolution: { outcome: string; values: Record<string, Json>; note?: string } | null;
-  source: TaskSource;
-};
-
-type TaskSource = {
-  reportId: string | null;
-  pcrNumber: string | null;
-  claimId: string | null;
-};
-
-export type TaskClaimRecord = {
-  claim: ClaimDetail;
-  codes: CodeDescriptions;
-  billing: ClaimBilling | null;
-  issues: ClaimIssue[];
-};
-
-export type SourceReport = {
-  report: {
-    id: string;
-    position: number;
-    pcr_number: string | null;
-    import_id: string;
-    file_name: string;
-    created_at: string;
-  };
-  data: Json;
-  xml: string;
-  dictionary: ReportDictionary;
 };
 
 export const createTasksClient = (api: Api) => ({
@@ -120,10 +85,7 @@ export const createTasksClient = (api: Api) => ({
       `/api/tasks/${encodeURIComponent(id)}/files`,
       form
     );
-  },
-  claim: (id: string, signal?: AbortSignal) =>
-    api.get<TaskClaimRecord>(`/api/claims/${encodeURIComponent(id)}`, signal),
-  report: (id: string) => api.get<SourceReport>(`/api/imports/reports/${encodeURIComponent(id)}`)
+  }
 });
 
 export type TasksClient = ReturnType<typeof createTasksClient>;

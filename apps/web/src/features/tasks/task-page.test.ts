@@ -2,23 +2,18 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { AccessProvider } from '../../shared/access.tsx';
-import { claimDetail } from '../../shared/claims/testing.ts';
 import type { Live } from '../../shared/live.ts';
 import { idleLive } from '../../shared/testing.ts';
 import { render, screen, userEvent, waitFor, within } from '../../shared/testing-dom.ts';
 import { type ToastInput, ToastProvider } from '../../shared/ui/toast.tsx';
-import type { TaskClaimRecord, TaskDetail, TasksClient } from './client.ts';
-import { headlineOf } from './task-brief.tsx';
+import type { TaskDetail, TasksClient } from './client.ts';
 import {
   backOfTask,
   fieldErrorsOf,
   isCodeField,
   NextUp,
-  TaskAbout,
   TaskPage,
-  type TaskTab,
-  TaskView,
-  taskTabOf
+  TaskView
 } from './task-page.tsx';
 
 const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
@@ -44,20 +39,8 @@ const task = (patch: Partial<TaskDetail> = {}): TaskDetail => ({
   defaults: { note: 'looks fine' },
   prefill: null,
   resolution: null,
-  source: { reportId: null, pcrNumber: null, claimId: null },
   ...patch
 });
-
-const record = (patch: Partial<TaskClaimRecord['claim']> = {}): TaskClaimRecord => ({
-  claim: { ...claimDetail, ...patch },
-  codes: { hcpcs: { A0427: 'ALS1 emergency' } },
-  billing: null,
-  issues: []
-});
-
-const onClaim = task({ source: { reportId: null, pcrNumber: 'PCR-1', claimId: 'c1' } });
-
-const fromReport = task({ source: { reportId: 'rep-1', pcrNumber: 'PCR-1', claimId: null } });
 
 type ViewProps = Parameters<typeof TaskView>[0];
 
@@ -68,7 +51,6 @@ const showView = (t: TaskDetail, props: Partial<ViewProps> = {}) => {
       task: t,
       back: '/claims',
       remaining: 2,
-      tabHref: (to) => `/tasks/t1?tab=${to}`,
       onComplete: async (...args) => {
         completed.push(args);
       },
@@ -79,21 +61,6 @@ const showView = (t: TaskDetail, props: Partial<ViewProps> = {}) => {
   );
   return { completed, user: userEvent.setup() };
 };
-
-const sourcePanel = createElement('p', null, 'SOURCE PANEL');
-
-const tabNames = () => {
-  const nav = screen.queryByRole('navigation', { name: 'Task data' });
-  return nav
-    ? within(nav)
-        .getAllByRole('link')
-        .map((l) => l.textContent)
-    : [];
-};
-
-const currentTab = () =>
-  screen.getByRole('navigation', { name: 'Task data' }).querySelector('[aria-current="page"]')
-    ?.textContent;
 
 const isBefore = (a: Element, b: Element) =>
   Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -131,15 +98,6 @@ describe('TaskView header', () => {
     assert.equal(document.querySelectorAll('time').length, 1);
   });
 
-  it('links the claim a task is about as a reference back to the task', () => {
-    showView(onClaim, { claim: record({ last_name: null }) });
-    const link = screen.getByRole('link', { name: '20261001-0012' });
-    assert.equal(link.getAttribute('href'), '/claims/c1?back=%2Ftasks%2Ft1');
-    screen.getByText(/^Review PCR on claim/);
-    screen.getByText(/for a patient not matched yet, opened/);
-    assert.ok(!screen.queryByRole('link', { name: 'Open Claim' }));
-  });
-
   it('offers to assign an open, unassigned task', () => {
     showView(task());
     screen.getByRole('button', { name: 'Assign to Me' });
@@ -168,160 +126,14 @@ describe('TaskView issue', () => {
     within(issue).getByText('Check the charges.');
   });
 
-  it('leads with the summary, ahead of the decision and the task data', () => {
-    showView(task({ summary: 'Medicare denied: CO-16', source: onClaim.source }), {
-      claim: record()
-    });
+  it('leads with the summary, ahead of the decision and the workflow details', () => {
+    showView(task({ summary: 'Medicare denied: CO-16' }));
     const issue = screen.getByRole('region', { name: 'The Issue' });
     within(issue).getByText('Medicare denied: CO-16');
     const decision = screen.getByRole('region', { name: 'Your Decision' });
-    const tabs = screen.getByRole('navigation', { name: 'Task data' });
+    const details = screen.getByRole('region', { name: 'Workflow Details' });
     assert.ok(isBefore(issue.querySelector('h2') as Element, decision));
-    assert.ok(isBefore(decision, tabs));
-  });
-});
-
-describe('headlineOf', () => {
-  const issues = [
-    {
-      code: 'msp',
-      field: 'msp',
-      message: 'Answer the MSP questions',
-      coverageId: null,
-      severity: 'warning'
-    },
-    {
-      code: 'pcs',
-      field: 'pcs',
-      message: 'A PCS is needed',
-      coverageId: null,
-      severity: 'blocking'
-    }
-  ];
-
-  it('leads with the summary', () => {
-    assert.equal(
-      headlineOf(task({ summary: 'Medicare denied: CO-16', context: { issues } })),
-      'Medicare denied: CO-16'
-    );
-  });
-
-  it('falls back to the first blocking issue, then the first issue', () => {
-    assert.equal(headlineOf(task({ context: { issues } })), 'A PCS is needed');
-    assert.equal(
-      headlineOf(task({ context: { issues: issues.slice(0, 1) } })),
-      'Answer the MSP questions'
-    );
-  });
-
-  it('falls back to the title without issues', () => {
-    assert.equal(headlineOf(task()), 'Review PCR');
-  });
-});
-
-describe('TaskView tabs', () => {
-  it('shows the claim, patient and workflow tabs for a task on a claim, opening the claim', () => {
-    showView(onClaim, { claim: record() });
-    assert.deepEqual(tabNames(), ['Claim', 'Patient', 'Workflow']);
-    assert.equal(currentTab(), 'Claim');
-    assert.equal(
-      screen.getByRole('link', { name: 'Patient' }).getAttribute('href'),
-      '/tasks/t1?tab=patient'
-    );
-    assert.ok(screen.getAllByText('ALS1 emergency').length);
-    assert.ok(!screen.queryByRole('region', { name: 'Workflow Details' }));
-  });
-
-  it('shows the patient record on the patient tab', () => {
-    showView(onClaim, { claim: record(), tab: 'patient' });
-    const patient = screen.getByRole('region', { name: 'Patient Record' });
-    within(patient).getByText('Doe, Jane');
-    assert.ok(!screen.queryByRole('region', { name: 'Charges' }));
-  });
-
-  it('shows the workflow context on its own tab', () => {
-    showView(onClaim, { claim: record(), tab: 'workflow' });
-    screen.getByRole('region', { name: 'Workflow Details' });
-    assert.ok(!screen.queryByText('ALS1 emergency'));
-  });
-
-  it('shows the encounter and workflow tabs for a task from a report, opening the encounter', () => {
-    showView(fromReport, { source: sourcePanel });
-    assert.deepEqual(tabNames(), ['Encounter', 'Workflow']);
-    assert.equal(currentTab(), 'Encounter');
-    screen.getByText('SOURCE PANEL');
-    assert.ok(!screen.queryByText(/ALS1/));
-  });
-
-  it('shows the workflow context instead of the encounter on the workflow tab', () => {
-    showView(fromReport, { source: sourcePanel, tab: 'workflow' });
-    screen.getByText(/ALS1/);
-    assert.ok(!screen.queryByText('SOURCE PANEL'));
-  });
-
-  it('links tabs to the query when the page gives no tab links', () => {
-    render(
-      createElement(TaskView, {
-        task: fromReport,
-        back: '/claims',
-        remaining: 0,
-        source: sourcePanel,
-        onComplete: async () => undefined,
-        onAssign: async () => undefined,
-        onNext: async () => undefined
-      })
-    );
-    assert.equal(
-      screen.getByRole('link', { name: 'Workflow' }).getAttribute('href'),
-      '?tab=workflow'
-    );
-  });
-
-  it('hides the claim tab while its draft has nothing on it, opening the encounter', () => {
-    const draft = record({
-      status: 'draft',
-      service_date: null,
-      level: null,
-      lines: [],
-      coverages: []
-    });
-    const t = task({ source: { reportId: 'rep-1', pcrNumber: 'PCR-1', claimId: 'c1' } });
-    showView(t, { source: sourcePanel, claim: draft });
-    assert.deepEqual(tabNames(), ['Encounter', 'Patient', 'Workflow']);
-    assert.equal(currentTab(), 'Encounter');
-    assert.ok(!screen.queryByRole('region', { name: 'Charges' }));
-  });
-
-  it('hides the patient tab until a patient is matched', () => {
-    showView(onClaim, { claim: record({ patient_id: null }) });
-    assert.deepEqual(tabNames(), ['Claim', 'Workflow']);
-  });
-
-  it('shows the workflow context alone when there is nothing else to show', () => {
-    showView(task());
-    assert.deepEqual(tabNames(), []);
-    screen.getByRole('region', { name: 'Workflow Details' });
-  });
-});
-
-describe('TaskView encounter mismatches', () => {
-  const t = task({ source: { reportId: 'rep-1', pcrNumber: 'PCR-1', claimId: 'c1' } });
-  const mismatches = [
-    { field: 'birthDate' as const, label: 'Birth Date', encounter: '1950-02-04' }
-  ];
-
-  it('flags claim values that differ from the encounter and links to it', () => {
-    showView(t, { source: sourcePanel, mismatches, claim: record() });
-    screen.getByText(/1 value differs from the encounter: Birth Date\./);
-    assert.equal(
-      screen.getByRole('link', { name: 'Open Encounter' }).getAttribute('href'),
-      '/tasks/t1?tab=encounter'
-    );
-  });
-
-  it('shows what the encounter says beside a differing patient value', () => {
-    showView(t, { source: sourcePanel, mismatches, claim: record(), tab: 'patient' });
-    screen.getByText(/^Encounter says/);
+    assert.ok(isBefore(decision, details));
   });
 });
 
@@ -375,7 +187,7 @@ describe('TaskView decision', () => {
     assert.deepEqual(completed, [['approve', { note: 'looks fine' }, '']]);
   });
 
-  it('sends the note written for the claim history with the decision', async () => {
+  it('sends the note with the decision', async () => {
     const { completed, user } = showView(task());
     await user.type(screen.getByRole('textbox', { name: 'Note (optional)' }), ' Called the crew ');
     await user.click(screen.getByRole('button', { name: 'Approve' }));
@@ -425,13 +237,13 @@ describe('TaskView decision', () => {
   });
 
   it('blocks completing without the permission the task needs, saying which', () => {
-    showView(task({ permission: 'claims:approve' }));
+    showView(task({ permission: 'payers:update' }));
     const approve = screen.getByRole('button', {
       name: 'Approve',
-      description: /^Completing this task needs a role allowed to: Approve refunds/
+      description: /^Completing this task needs a role allowed to: Change payers/
     });
     assert.equal(approve.getAttribute('aria-disabled'), 'true');
-    assert.ok(!document.body.textContent?.includes('claims:approve'));
+    assert.ok(!document.body.textContent?.includes('payers:update'));
   });
 
   it('lets a user with the permission complete the task', async () => {
@@ -445,10 +257,10 @@ describe('TaskView decision', () => {
           organizationName: 'Org',
           userId: 'u1',
           isOrganizationAdmin: false,
-          permissions: ['claims:approve']
+          permissions: ['payers:update']
         },
         children: createElement(TaskView, {
-          task: task({ permission: 'claims:approve' }),
+          task: task({ permission: 'payers:update' }),
           back: '/claims',
           remaining: 0,
           onComplete: async (...args) => {
@@ -750,42 +562,10 @@ describe('TaskPage', () => {
   });
 });
 
-describe('TaskAbout', () => {
-  const textOf = (t: TaskDetail, claim: typeof claimDetail | null = null) =>
-    render(createElement(TaskAbout, { task: t, claim })).container.textContent;
-
-  it('names the task when it has a subject', () => {
-    assert.equal(textOf(task()), 'Review PCR');
-  });
-
-  it('says it is waiting on a decision when there is nothing else to say', () => {
-    assert.equal(textOf(task({ subject: null })), 'Waiting on a decision');
-  });
-
-  it('names the claim and patient it is on in one sentence', () => {
-    assert.equal(
-      textOf(task({ subject: null }), claimDetail),
-      'On claim 20261001-0012 for Doe, Jane'
-    );
-    assert.equal(
-      screen.getByRole('link', { name: '20261001-0012' }).getAttribute('href'),
-      '/claims/c1?back=%2Ftasks%2Ft1'
-    );
-  });
-});
-
 describe('backOfTask', () => {
   it('goes back to the tasks unless told where the task was opened from', () => {
     assert.equal(backOfTask(null), '/tasks');
     assert.equal(backOfTask('/runs/r1'), '/runs/r1');
-  });
-});
-
-describe('taskTabOf', () => {
-  it('opens the claim tab unless the URL names another', () => {
-    assert.equal(taskTabOf(null), 'claim');
-    assert.equal(taskTabOf('patient'), 'patient');
-    assert.equal(taskTabOf('nope'), 'claim');
   });
 });
 
@@ -820,11 +600,7 @@ const fakeClient = (over: Partial<TasksClient> = {}) => {
 
 const openTask = async (
   client: TasksClient,
-  {
-    back = null,
-    tab = 'claim',
-    live = idleLive
-  }: { back?: string | null; tab?: TaskTab; live?: Live } = {}
+  { back = null, live = idleLive }: { back?: string | null; live?: Live } = {}
 ) => {
   const toasts: ToastInput[] = [];
   render(
@@ -836,8 +612,7 @@ const openTask = async (
         codes: { search: async () => [], describe: async () => [] },
         live,
         taskId: 't1',
-        back,
-        tab
+        back
       })
     )
   );
@@ -877,21 +652,12 @@ describe('TaskPage working a task', () => {
     assert.deepEqual(calls.at(-1), ['next', 'billing-review']);
   });
 
-  it('opens the next task without a way back when the task came from a claim', async () => {
-    const { client } = fakeClient();
-    const { user } = await openTask(client, { back: '/claims/c1' });
-    await user.click(screen.getByRole('button', { name: 'Approve' }));
-    await user.click(await screen.findByRole('button', { name: 'Next Task' }));
-    await waitFor(() => assert.equal(window.location.pathname, '/tasks/t2'));
-    assert.equal(window.location.search, '');
-  });
-
   it('goes back when another worker already took the last task in the queue', async () => {
     const { client } = fakeClient({ next: async () => null });
-    const { user } = await openTask(client, { back: '/claims/c1' });
+    const { user } = await openTask(client, { back: '/runs/r1' });
     await user.click(screen.getByRole('button', { name: 'Approve' }));
     await user.click(await screen.findByRole('button', { name: 'Next Task' }));
-    await waitFor(() => assert.equal(window.location.pathname, '/claims/c1'));
+    await waitFor(() => assert.equal(window.location.pathname, '/runs/r1'));
   });
 
   it('says when the next task could not be opened and stays on the page', async () => {
@@ -1043,12 +809,12 @@ describe('TaskPage working a task', () => {
 
   it('does not complete a task the user lacks the permission for', async () => {
     const { client, calls } = fakeClient({
-      find: async () => task({ permission: 'claims:approve' })
+      find: async () => task({ permission: 'payers:update' })
     });
     const { user } = await openTask(client);
     await user.click(screen.getByRole('button', { name: 'Approve' }));
     assert.deepEqual(calls, []);
-    assert.ok(screen.getAllByText(/needs a role allowed to: Approve refunds/).length);
+    assert.ok(screen.getAllByText(/needs a role allowed to: Change payers/).length);
   });
 
   it('assigns the task to the user, then lets them hand it back', async () => {
@@ -1114,17 +880,5 @@ describe('TaskPage working a task', () => {
     await openTask(client);
     assert.ok(screen.getByRole('heading', { name: 'Something Went Wrong' }));
     assert.ok(screen.getByText('Task not found'));
-  });
-
-  it('keeps the task open when its encounter could not be loaded', async () => {
-    const { client } = fakeClient({
-      find: async () => task({ source: { reportId: 'rep-1', pcrNumber: 'PCR-1', claimId: null } }),
-      report: async () => {
-        throw new Error('Report missing');
-      }
-    });
-    await openTask(client, { tab: 'encounter' });
-    assert.equal((await screen.findByRole('alert')).textContent, 'Report missing');
-    assert.ok(screen.getByRole('button', { name: 'Approve' }));
   });
 });

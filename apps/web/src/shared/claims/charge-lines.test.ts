@@ -25,15 +25,6 @@ const rows = () =>
         .map((c) => c.lastElementChild?.textContent)
     );
 
-const modifiersOf = (row: number) => {
-  const cell = within(within(table()).getAllByRole('row')[row + 1] as HTMLElement).getAllByRole(
-    'cell'
-  )[1] as HTMLElement;
-  return within(cell)
-    .queryAllByRole('listitem')
-    .map((li) => li.textContent);
-};
-
 describe('ChargeLines', () => {
   it('lists each HCPCS line with its units, unit price and amount', () => {
     render(createElement(ChargeLines, { lines: [als, mileage] }));
@@ -55,36 +46,6 @@ describe('ChargeLines', () => {
       rows().map((r) => r[0]),
       ['ALS1 emergency A0427', 'A0425']
     );
-  });
-
-  it('adds a modifiers column only when modifiers are given', () => {
-    render(createElement(ChargeLines, { lines: [als], modifiers: [[]] }));
-    assert.deepEqual(headers(), ['HCPCS', 'Modifiers', 'Units', 'Unit Price', 'Amount']);
-    assert.deepEqual(rows(), [['A0427', '—', '1', '$800.00', '$800.00']]);
-  });
-
-  it('describes origin and destination modifiers and those the codes name, else shows them bare', () => {
-    render(
-      createElement(ChargeLines, {
-        lines: [als],
-        codes: { modifier: { GM: 'Multiple patients on one ambulance trip' } },
-        modifiers: [['RH', 'GM', 'QM']]
-      })
-    );
-    assert.deepEqual(modifiersOf(0), [
-      'Residence to hospital RH',
-      'Multiple patients on one ambulance trip GM',
-      'QM'
-    ]);
-  });
-
-  it('shows a dash for a line without modifiers or past the end of the modifier list', () => {
-    render(createElement(ChargeLines, { lines: [als, mileage, als], modifiers: [['RH'], []] }));
-    assert.deepEqual(
-      rows().map((r) => r[1]),
-      ['Residence to hospital RH', '—', '—']
-    );
-    assert.deepEqual(modifiersOf(1), []);
   });
 
   it('shows an empty table without lines', () => {

@@ -15,7 +15,7 @@ export const completeTaskSchema = v.object({
   note: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(1000)), '')
 });
 
-const TASK_SORTS = ['waiting', 'priority', 'due', 'title', 'queue', 'claim', 'assignee'] as const;
+const TASK_SORTS = ['waiting', 'priority', 'due', 'title', 'queue', 'assignee'] as const;
 
 export type TaskSort = (typeof TASK_SORTS)[number];
 

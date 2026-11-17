@@ -17,7 +17,6 @@ describe('SECTIONS', () => {
         ['patients', 'Patients', '/patients', undefined, 'patients:read'],
         ['imports', 'Imports', '/imports', undefined, 'imports:read'],
         ['claims', 'Claims', '/claims', undefined, 'claims:read'],
-        ['reports', 'Reports', '/reports', undefined, 'reports:read'],
         ['workflows', 'Workflows', '/workflows', 'Automation', 'workflows:read'],
         ['tables', 'Tables', '/tables', 'Automation', 'workflows:read'],
         ['runs', 'Runs', '/runs', 'Automation', 'runs:read'],

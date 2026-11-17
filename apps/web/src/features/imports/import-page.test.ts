@@ -51,7 +51,7 @@ describe('reportOutcome', () => {
       name: 'claim for PCR-1',
       to: '/claims/c1'
     });
-    assert.equal(reportOutcome(report({ claim_id: 'c1', claim_status: 'void' })).label, 'Void');
+    assert.equal(reportOutcome(report({ claim_id: 'c1' })).label, 'Claim Opened');
     assert.equal(reportOutcome(report()).label, 'No Claim');
     assert.equal(reportOutcome(report({ run_status: 'running' })).label, 'Running');
     assert.equal(reportOutcome(report({ run_status: 'failed' })).label, 'Failed');

@@ -62,12 +62,11 @@ describe('modifierCode', () => {
   });
 });
 
-const show = (claim: Partial<ClaimDetail> = {}, placeOfService?: string | null) =>
+const show = (claim: Partial<ClaimDetail> = {}) =>
   render(
     createElement(ClaimDataView, {
       claim: { ...claimDetail, ...claim },
-      codes: { icd10cm: { R079: 'Chest pain' }, pos: { '41': 'Ambulance - Land' } },
-      placeOfService
+      codes: { icd10cm: { R079: 'Chest pain' } }
     })
   );
 
@@ -77,20 +76,10 @@ const details = () =>
     .map((t) => [t.textContent, t.nextElementSibling?.textContent]);
 
 describe('ClaimDataView', () => {
-  it('says how to change the data it shows', () => {
-    show();
-    assert.ok(
-      within(screen.getByRole('region', { name: 'Claim Data' })).getByText(
-        'Change it with the Correct Claim Data task.'
-      )
-    );
-  });
-
   it('shows the service date, diagnoses, pickup and destination types and addresses', () => {
-    show({ origin_code: 'R', destination_code: 'H', destination_city: 'Springfield' }, '41');
+    show({ origin_code: 'R', destination_code: 'H', destination_city: 'Springfield' });
     assert.deepEqual(details(), [
       ['Date of Service', 'Oct 1, 2026'],
-      ['Place of Service', 'Ambulance - Land 41'],
       ['Diagnosis Codes', 'Chest pain R07.9I10'],
       ['Pickup Type', 'Residence R'],
       ['Destination Type', 'Hospital H'],
@@ -107,14 +96,6 @@ describe('ClaimDataView', () => {
         .getAllByRole('listitem')
         .map((li) => li.textContent),
       ['Chest pain R07.9', 'I10']
-    );
-  });
-
-  it('leaves out the place of service when there is none', () => {
-    show({}, null);
-    assert.equal(
-      details().some(([label]) => label === 'Place of Service'),
-      false
     );
   });
 

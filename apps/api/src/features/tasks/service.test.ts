@@ -184,28 +184,6 @@ describe('task service', () => {
     ]);
   });
 
-  it('logs the decision with its note on every claim the task run works', async () => {
-    const { service, queries } = setup(task());
-    await service.complete(
-      't',
-      'u1',
-      't1',
-      { outcome: 'approve', values: {}, note: 'Spoke with the facility' },
-      []
-    );
-    const [logged] = queries.filter((q) => q.sql.startsWith('insert into "claim_events"'));
-    assert.ok(logged?.sql.includes('from "claim_runs" as "cr" inner join "claims" as "c"'));
-    assert.ok(logged?.sql.endsWith('on conflict ("claim_id", "source_key") do nothing'));
-    assert.deepEqual(logged?.parameters, [
-      'Spoke with the facility',
-      'u1',
-      't1',
-      'task:t1',
-      't',
-      'r1'
-    ]);
-  });
-
   it('names each invalid field and enqueues nothing', async () => {
     const { service, jobs, publishAfter } = setup(task());
     assert.deepEqual(
@@ -252,7 +230,7 @@ describe('task service', () => {
       'ok'
     );
     assert.equal(await status(task(), 'approve', { note: 'x' }, false), 'conflict');
-    const approval = task({ permission: 'claims:approve' });
+    const approval = task({ permission: 'payers:update' });
     const approve = (permissions: Permission[]) =>
       setup(approval).service.complete(
         't',
@@ -265,10 +243,10 @@ describe('task service', () => {
       ok: false,
       failure: {
         code: 'forbidden',
-        message: 'Completing this task needs the claims:approve permission'
+        message: 'Completing this task needs the payers:update permission'
       }
     });
-    assert.deepEqual(await approve(['claims:approve']), {
+    assert.deepEqual(await approve(['payers:update']), {
       ok: true,
       value: { status: 'completed' }
     });
@@ -278,16 +256,16 @@ describe('task service', () => {
   });
 
   it('refuses to claim a task that needs a permission the user lacks', async () => {
-    const approval = setup(task({ permission: 'claims:approve' }));
+    const approval = setup(task({ permission: 'payers:update' }));
     assert.deepEqual(await approval.service.claim('t', 't1', 'u1', ['tasks:update']), {
       ok: false,
       failure: {
         code: 'forbidden',
-        message: 'Completing this task needs the claims:approve permission'
+        message: 'Completing this task needs the payers:update permission'
       }
     });
     assert.ok(!approval.queries.some((q) => q.sql.startsWith('update "tasks"')));
-    assert.deepEqual(await approval.service.claim('t', 't1', 'u1', ['claims:approve']), {
+    assert.deepEqual(await approval.service.claim('t', 't1', 'u1', ['payers:update']), {
       ok: true,
       value: { status: 'claimed' }
     });
@@ -338,18 +316,7 @@ describe('task service', () => {
       value: { status: 'claimed' }
     });
     const found = await service.find('t', 't1');
-    assert.deepEqual(found.ok && found.value.task.source, {
-      reportId: null,
-      pcrNumber: null,
-      claimId: null
-    });
-    const source = queries.find((q) => q.sql.includes('left join "import_reports"'));
-    assert.ok(
-      source?.sql.includes(
-        'left join "claim_runs" as "cr" on "cr"."run_id" = "r"."id" left join "claims" as "c" on "c"."id" = "cr"."claim_id"'
-      )
-    );
-    assert.ok(source?.sql.includes('coalesce("ir"."id", "c"."import_report_id") as "report_id"'));
+    assert.deepEqual(found.ok && found.value.task.id, task().id);
     assert.deepEqual(await service.queues('t', 'u1'), { ok: true, value: { queues: [task()] } });
   });
 
@@ -375,34 +342,6 @@ describe('task service', () => {
 });
 
 describe('task service sources and hand-out', () => {
-  it('links a task to the report and the claim its run works', async () => {
-    const { db } = createRecordingDb((q) =>
-      q.sql.includes('from "workflow_runs"')
-        ? [
-            {
-              report_id: 'rep-1',
-              pcr_number: 'PCR-1',
-              claim_id: 'c1'
-            }
-          ]
-        : [task()]
-    );
-    const { publish } = recordAnnouncements();
-    const boss: RunQueueClient = { insert: async () => undefined };
-    const found = await createTaskService({
-      db,
-      boss,
-      publish,
-      blobs: { putBytes: async () => Promise.reject(new Error('unused')) },
-      maxBytes: 10
-    }).find('t', 't1');
-    assert.deepEqual(found.ok && found.value.task.source, {
-      reportId: 'rep-1',
-      pcrNumber: 'PCR-1',
-      claimId: 'c1'
-    });
-  });
-
   it('reports missing tasks and announces only tasks handed out', async () => {
     const empty = setup(undefined, false);
     assert.deepEqual(await empty.service.find('t', 't1'), {

@@ -8,45 +8,6 @@ import { ContextView } from './context-view.tsx';
 
 const CLAIM = '01a169fa-2534-79ed-97b7-d7789e899bd6';
 
-const issue = {
-  code: 'diagnosis-missing',
-  severity: 'blocking',
-  field: 'diagnoses',
-  message: 'No diagnosis',
-  coverageId: null
-};
-
-const claimCheck = {
-  patientId: 'p1',
-  patient: { addressLine: '1 Main St', city: 'Town', state: 'VT', postalCode: '05401' },
-  pcrNumber: 'PCR-1',
-  classification: 'emergency',
-  level: 'ALS1',
-  emergency: true,
-  loadedMiles: 6.8,
-  lines: [{ code: 'A0427', units: 1, unitCents: 90_000, totalCents: 90_000 }],
-  totalCents: 90_000,
-  payers: [
-    {
-      coverageId: 'c1',
-      name: 'Medicare',
-      payerId: 'd1',
-      claimFiling: 'MB',
-      memberId: 'M1',
-      relationship: '01',
-      insuredFirstName: 'John',
-      insuredLastName: 'Doe'
-    }
-  ],
-  details: {
-    serviceDate: '2026-10-01',
-    pickup: { name: null, addressLine: null, city: 'Town', state: 'VT', postalCode: null },
-    destination: { name: 'General', addressLine: null, city: null, state: null, postalCode: null },
-    diagnoses: ['R07.9'],
-    originDestination: 'RH'
-  }
-};
-
 const show = (value: Json | undefined, hideNotices?: boolean) =>
   render(
     createElement(ContextView, {
@@ -172,39 +133,25 @@ describe('ContextView values', () => {
 });
 
 describe('ContextView notices', () => {
-  it('shows claim issues, warnings and notes', () => {
-    show({
-      issues: [issue, { ...issue, severity: 'warning', field: 'pickup', message: 'No street' }],
-      warnings: ['The narrative could not be read'],
-      notes: ['Suggested by the model']
-    });
-    const alerts = within(context()).getAllByRole('alert');
-    assert.deepEqual(
-      alerts.map((a) => a.textContent),
-      ['Must Be FixedDiagnoses: No diagnosis']
-    );
+  it('shows warnings and notes', () => {
+    show({ warnings: ['The narrative could not be read'], notes: ['Suggested by the model'] });
     assert.deepEqual(
       within(context())
         .getAllByRole('status')
         .map((s) => s.textContent),
-      [
-        'Worth CheckingPickup: No street',
-        'WarningsThe narrative could not be read',
-        'NotesSuggested by the model'
-      ]
+      ['WarningsThe narrative could not be read', 'NotesSuggested by the model']
     );
   });
 
-  it('hides issues, warnings and notes the page already shows', () => {
-    show({ issues: [issue], warnings: ['W'], notes: ['N'], kept: 'yes' }, true);
+  it('hides warnings and notes the page already shows', () => {
+    show({ warnings: ['W'], notes: ['N'], kept: 'yes' }, true);
     assert.ok(!within(context()).queryByRole('alert'));
     assert.ok(!within(context()).queryByRole('status'));
     assert.deepEqual(detailsIn(context().querySelector('dl')), { Kept: 'yes' });
   });
 
-  it('ignores issues and notices that are not well formed', () => {
-    show({ issues: [{ field: 'nowhere', message: 'x' }], warnings: [1, 2], notes: [] });
-    assert.ok(!within(context()).queryByRole('alert'));
+  it('ignores notices that are not well formed', () => {
+    show({ warnings: [1, 2], notes: [] });
     assert.ok(!within(context()).queryByRole('status'));
   });
 });
@@ -241,38 +188,6 @@ describe('ContextView changes', () => {
     assert.ok(
       within(sectionOf('Changes (0)')).getByText('Nothing billed from the report changed.')
     );
-  });
-});
-
-describe('ContextView claim', () => {
-  it('shows a claim check with its charges and payers', () => {
-    show({ claim: claimCheck });
-    const section = sectionOf('Claim');
-    assert.ok(within(section).getByText('Emergency Transport'));
-    assert.ok(within(section).getByText('1 Main St, Town, VT 05401'));
-    assert.ok(within(section).getByRole('table', { name: 'Claim lines' }));
-    assert.ok(within(section).getByRole('table', { name: 'Payers on the claim' }));
-  });
-
-  it('opens a wrapped claim and shows its issues once', () => {
-    show({ issues: [issue], claim: { claimId: CLAIM, issues: [issue], claim: claimCheck } });
-    assert.equal(within(context()).getAllByRole('alert').length, 1);
-    assert.equal(
-      within(context()).getByRole('link', { name: 'Open Claim' }).getAttribute('href'),
-      `/claims/${CLAIM}`
-    );
-    assert.ok(sectionOf('Claim'));
-  });
-
-  it('shows the issues of a wrapped claim when the outer context has none', () => {
-    show({ claim: { issues: [issue], note: 'Inner' } });
-    assert.deepEqual(
-      within(context())
-        .getAllByRole('alert')
-        .map((a) => a.textContent),
-      ['Must Be FixedDiagnoses: No diagnosis']
-    );
-    assert.ok(within(context()).getByText('Inner'));
   });
 });
 

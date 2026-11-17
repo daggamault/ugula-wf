@@ -1,5 +1,5 @@
 import { isPermission } from '@ugula/access';
-import { CYCLE_WORKFLOW, type RunStatus } from '@ugula/db';
+import type { RunStatus } from '@ugula/db';
 import { isRecord, type Json, type RunState, type TraceEntry, type Values } from '@ugula/graph';
 import { advance, cancel, type RunJob, resume, timeout } from '@ugula/run-queue';
 import type { ClaimedRun } from './run-lease.ts';
@@ -28,25 +28,6 @@ const hintsOf = (value: unknown): Record<string, string> =>
     : {};
 
 const prefillOf = (value: unknown) => (value === 'current' || value === 'suggested' ? value : null);
-
-type Recovery = {
-  workflow: string;
-  recovery: { key: string; version: number };
-  start: 'recoverDrafts' | 'recoverCycles';
-};
-
-const RECOVERIES: Recovery[] = [
-  {
-    workflow: 'billing.encounter-to-claim',
-    recovery: { key: 'billing.recover-draft', version: 1 },
-    start: 'recoverDrafts'
-  },
-  {
-    workflow: CYCLE_WORKFLOW.key,
-    recovery: { key: 'billing.recover-cycle', version: 1 },
-    start: 'recoverCycles'
-  }
-];
 
 const RETRY_HINT = 'Retry once the cause is fixed.';
 
@@ -108,18 +89,6 @@ export const childrenPayload = (kind: string, children: ChildRun[]): Json => {
   return kind === 'workflows' ? { results } : (results[0] ?? null);
 };
 
-const rootKey = (run: ClaimedRun) => run.graphs.find((g) => g.id === run.versionId)?.key;
-
-const recoverClaims = async (tx: RunTx, run: ClaimedRun, reason: string, jobs: RunJob[]) => {
-  const key = rootKey(run);
-  const found = RECOVERIES.find((r) => r.workflow === key);
-  if (!found) return;
-  const versionId = await tx.findVersion(run, found.recovery.key, found.recovery.version);
-  if (!versionId) return;
-  const ids = await tx[found.start](run, versionId, reason);
-  jobs.push(...ids.map((id) => advance(id)));
-};
-
 const finish = async (
   tx: RunTx,
   run: ClaimedRun,
@@ -129,16 +98,6 @@ const finish = async (
   jobs: RunJob[]
 ) => {
   await tx.saveRun(run, { status, state, ...outcome });
-  if (status !== 'completed') {
-    await recoverClaims(
-      tx,
-      run,
-      status === 'cancelled'
-        ? 'The run was cancelled'
-        : `The run failed: ${messageOf(outcome.error ?? null)}`,
-      jobs
-    );
-  }
   await notifyParent(tx, run, jobs);
 };
 
@@ -301,7 +260,7 @@ const faultRun = async (
     kind: 'fault',
     queue: FAULT_QUEUE,
     title: `Stuck at ${node}`,
-    subject: await tx.claimReference(run.id),
+    subject: null,
     summary: rejected?.reason ?? fault.error.message,
     instructions: faultInstructions(node, fault.error.message, rejected?.reason ?? null),
     context: { runId: run.id, node, error: fault.error },
@@ -366,7 +325,7 @@ export const stallRun = async (
     kind: 'fault',
     queue: FAULT_QUEUE,
     title: 'Could not continue',
-    subject: await tx.claimReference(run.id),
+    subject: null,
     summary: readableError(message),
     instructions: `${readableError(message)}\n\n${RETRY_HINT}`,
     context: { runId: run.id, error },

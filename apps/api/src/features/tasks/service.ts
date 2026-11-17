@@ -20,9 +20,7 @@ import {
   claimNext,
   completeTask,
   findTask,
-  findTaskSource,
   listQueues,
-  logTaskDecision,
   searchTasks,
   type TaskFilters
 } from './queries.ts';
@@ -110,17 +108,7 @@ export const createTaskService = ({ db, boss, publish, blobs, maxBytes }: TaskSe
     find: async (agencyId: string, id: string) => {
       const task = await findTask(db, agencyId, id);
       if (!task) return notFound;
-      const source = await findTaskSource(db, task.run_id);
-      return ok({
-        task: {
-          ...task,
-          source: {
-            reportId: source?.report_id ?? null,
-            pcrNumber: source?.pcr_number ?? null,
-            claimId: source?.claim_id ?? null
-          }
-        }
-      });
+      return ok({ task });
     },
 
     next: (
@@ -204,13 +192,6 @@ export const createTaskService = ({ db, boss, publish, blobs, maxBytes }: TaskSe
           if (!(await completeTask(tx, { agencyId, id, userId, resolution: completion }))) {
             return blocked(await findTask(tx, agencyId, id), userId) ?? closed;
           }
-          await logTaskDecision(tx, {
-            agencyId,
-            taskId: id,
-            runId: task.run_id,
-            userId,
-            note: completion.note ?? ''
-          });
           await enqueueRuns(boss, sqlExecutor(tx), [jobFor(task, userId, completion)]);
           return ok({ status: 'completed' });
         }),

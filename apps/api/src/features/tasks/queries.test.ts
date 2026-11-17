@@ -6,7 +6,6 @@ import {
   claimNext,
   completeTask,
   findTask,
-  findTaskSource,
   listQueues,
   searchTasks
 } from './queries.ts';
@@ -53,7 +52,7 @@ describe('task list', () => {
 
   const isFacet = (text: string) => text.includes('group by 1');
 
-  it('lists open tasks of the agency with their claim and patient, oldest first', async () => {
+  it('lists open tasks of the agency, oldest first', async () => {
     const { db, queries } = createRecordingDb((q) =>
       isFacet(q.sql)
         ? q.sql.includes('coalesce(t.assignee_id::text')
@@ -74,8 +73,6 @@ describe('task list', () => {
     });
     const [list, queues, assignees] = queries;
     assert.ok(list?.sql.includes('left join "users" as "u" on "u"."id" = "t"."assignee_id"'));
-    assert.ok(list?.sql.includes('left join "claims" as "c" on "c"."id" = "cr"."claim_id"'));
-    assert.ok(list?.sql.includes('"c"."number" as "claim_number"'));
     assert.ok(list?.sql.includes('where "t"."agency_id" = $1 and "t"."status" = $2 order by'));
     assert.ok(list?.sql.includes('order by "t"."created_at" asc nulls last, "t"."id" asc'));
     assert.ok(!list?.sql.includes(' in ('));
@@ -119,27 +116,11 @@ describe('task list', () => {
     await db.destroy();
   });
 
-  it('searches titles, subjects, patients, PCRs and claim numbers', async () => {
+  it('searches titles and subjects', async () => {
     const { db, queries } = createRecordingDb();
-    await searchTasks(db, 't-1', { ...page, q: ' #202611050007 ' });
-    const [byNumber] = queries;
-    queries.length = 0;
     await searchTasks(db, 't-1', { ...page, q: '50%' });
-    const [byText] = queries;
-    assert.ok(
-      byNumber?.sql.includes(
-        '(lower(t.title) like $3 or lower(t.subject) like $4 or lower(p.last_name || \', \' || p.first_name) like $5 or "c"."pcr_number" = $6 or "c"."number" = $7)'
-      )
-    );
-    assert.deepEqual(byNumber?.parameters.slice(2, 7), [
-      '%#202611050007%',
-      '%#202611050007%',
-      '%#202611050007%',
-      '#202611050007',
-      '20261105-0007'
-    ]);
-    assert.ok(!byText?.sql.includes('"c"."number" ='));
-    assert.deepEqual(byText?.parameters.slice(2, 6), ['%50\\%%', '%50\\%%', '%50\\%%', '50%']);
+    assert.ok(queries[0]?.sql.includes('(lower(t.title) like $3 or lower(t.subject) like $4)'));
+    assert.deepEqual(queries[0]?.parameters.slice(2, 4), ['%50\\%%', '%50\\%%']);
     await db.destroy();
   });
 });
@@ -159,14 +140,6 @@ describe('task agency scoping', () => {
     assert.deepEqual(assign?.parameters, ['u1', 't-1', 'x', 'open', 'u1']);
     assert.ok(complete?.sql.includes('where "agency_id" = $'));
     assert.ok(complete?.parameters.includes('t-1'));
-    await db.destroy();
-  });
-
-  it('trace a task run back to its report and claim', async () => {
-    const { db, queries } = createRecordingDb();
-    await findTaskSource(db, 'r1');
-    assert.ok(queries[0]?.sql.endsWith('where "r"."id" = $1'));
-    assert.deepEqual(queries[0]?.parameters, ['r1']);
     await db.destroy();
   });
 });

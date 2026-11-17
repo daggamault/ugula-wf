@@ -1,20 +1,6 @@
-import type {
-  AdjustmentGroup,
-  ClaimBilling,
-  ClaimEventKind,
-  ClaimIssue,
-  ClaimStatus,
-  ClaimStep,
-  ClaimTaskKey,
-  CodeDescriptions
-} from '@ugula/billing';
+import type { ClaimStatus, CodeDescriptions } from '@ugula/billing';
 import type { Api } from '../../shared/api.ts';
-import type {
-  ClaimDetail,
-  ClaimDocument,
-  ClaimPayerFile,
-  ClaimSummary
-} from '../../shared/claims/claim-detail.ts';
+import type { ClaimDetail, ClaimSummary } from '../../shared/claims/claim-detail.ts';
 import type { Page } from '../../shared/url-state.ts';
 
 export type { ClaimStatus };
@@ -42,83 +28,13 @@ const listQuery = (query: ClaimQuery, page: string) => {
   return [filters.toString(), page].filter(Boolean).join('&');
 };
 
-type EventAdjustment = {
-  group: AdjustmentGroup;
-  reason: string;
-  cents: number;
-  description: string | null;
-};
-
-type EventRemark = { code: string; description: string | null };
-
-export type EventDecision = {
-  task: string;
-  outcome: string;
-  values: { label: string; value: string }[];
-};
-
-export type ClaimEvent = {
-  id: string;
-  kind: ClaimEventKind;
-  coverage_id: string | null;
-  payer: string | null;
-  paid_cents: number;
-  adjusted_cents: number;
-  paid_on: string | null;
-  check_number: string | null;
-  payer_claim_number: string | null;
-  note: string;
-  created_at: string;
-  by?: string | null;
-  decision?: EventDecision | null;
-  has_document: boolean;
-  batch_id?: string | null;
-  batch_number?: number | null;
-  batch_sent_at?: string | null;
-  adjustments?: EventAdjustment[];
-  remarks?: EventRemark[];
-};
-
-export type ClaimProgress = ClaimStep;
-
 const claimPath = (id: string) => `/api/claims/${encodeURIComponent(id)}`;
 
 export const createClaimsClient = (api: Api) => ({
   list: (query: ClaimQuery, page: string, signal?: AbortSignal) =>
     api.get<Page<ClaimSummary>>(`/api/claims?${listQuery(query, page)}`, signal),
   find: (id: string, signal?: AbortSignal) =>
-    api.get<{
-      claim: ClaimDetail;
-      files: ClaimEvent[];
-      payerFiles: ClaimPayerFile[];
-      documents: ClaimDocument[];
-      progress: ClaimProgress | null;
-      issues: ClaimIssue[];
-      codes: CodeDescriptions;
-      billing: ClaimBilling | null;
-    }>(claimPath(id), signal),
-  events: (id: string, page: string, signal?: AbortSignal) =>
-    api.get<Page<ClaimEvent>>(`${claimPath(id)}/events?${page}`, signal),
-  documentUrl: (claimId: string, eventId: string) =>
-    api.href(`${claimPath(claimId)}/events/${encodeURIComponent(eventId)}/document`),
-  restartCycle: (id: string) => api.post<{ runId: string }>(`${claimPath(id)}/restart-cycle`),
-  startTask: (id: string, workflow: ClaimTaskKey) =>
-    api.post<{ runId: string }>(`${claimPath(id)}/tasks`, { workflow }),
-  runTask: async (runId: string) =>
-    (await api.get<Page<{ id: string }>>(`/api/tasks?runId=${encodeURIComponent(runId)}`)).items[0]
-      ?.id ?? null,
-  claimDocumentUrl: (claimId: string, documentId: string) =>
-    api.href(`${claimPath(claimId)}/documents/${encodeURIComponent(documentId)}`),
-  eligibilityRequest: (claimId: string) =>
-    api.post<{ name: string; file: string; payers: string[] }>('/api/submissions/eligibility', {
-      claimId
-    }),
-  checkEligibility: (claimId: string) =>
-    api.post<{ runId: string }>('/api/submissions/eligibility-checks', { claimId }),
-  fileUrl: (batchId: string) =>
-    api.href(`/api/submissions/batches/${encodeURIComponent(batchId)}/file`),
-  encounterUrl: (reportId: string) =>
-    api.href(`/api/imports/reports/${encodeURIComponent(reportId)}/xml`)
+    api.get<{ claim: ClaimDetail; codes: CodeDescriptions }>(claimPath(id), signal)
 });
 
 export type ClaimsClient = ReturnType<typeof createClaimsClient>;

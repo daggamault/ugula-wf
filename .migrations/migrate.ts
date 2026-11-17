@@ -2,7 +2,7 @@ import { createDb, type Database, type Db } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { createAgenciesTable } from './agencies.ts';
 import { createBillingProfilesTables } from './billing-profiles.ts';
-import { CLAIM_FUNCTIONS, createClaimsTables } from './claims.ts';
+import { createClaimsTables } from './claims.ts';
 import { createClearinghouseConnectionsTable } from './clearinghouse-connections.ts';
 import { createCmsTables } from './cms.ts';
 import { createCodesTable } from './codes.ts';
@@ -10,7 +10,7 @@ import { parseConfig } from './config.ts';
 import { createDataTablesTables } from './data-tables.ts';
 import { createEventEmitters, createEventsTables, EVENT_FUNCTIONS } from './events.ts';
 import { createExtensions } from './extensions.ts';
-import { createFacilitiesTables, createFacilityInvoiceClaimsTable } from './facilities.ts';
+import { createFacilitiesTables } from './facilities.ts';
 import { createFeeSchedulesTable } from './fee-schedules.ts';
 import { createGeonamesPostalCodesTable } from './geonames-postal-codes.ts';
 import { createGnisPlacesTable } from './gnis-places.ts';
@@ -19,37 +19,19 @@ import { createImportsTables } from './imports.ts';
 import { createNemsisDictionaryTables } from './nemsis-dictionary.ts';
 import { createNotificationsTables } from './notifications.ts';
 import { createDailyNumbers, DAILY_NUMBER_FUNCTIONS } from './numbers.ts';
-import { createPatientBalanceTables } from './patient-balances.ts';
 import { createPatientsTable } from './patients.ts';
-import { createPayerFilesTables } from './payer-files.ts';
 import { createTasksTable } from './tasks.ts';
 import { createUsersTables } from './users.ts';
 import { createWorkflowRunsTables } from './workflow-runs.ts';
 
 const resetSchema = async (db: Kysely<Database>) => {
-  await db.schema.dropView('claim_balances').ifExists().execute();
   for (const table of [
-    'collections_placements',
-    'payment_plans',
     'notification_states',
     'notifications',
-    'claim_event_line_adjustments',
-    'claim_event_lines',
-    'claim_event_remarks',
-    'claim_event_adjustments',
-    'claim_events',
-    'claim_status_requests',
-    'eligibility_requests',
-    'discovery_requests',
-    'claim_batches',
     'claim_diagnoses',
     'claim_coverages',
     'claim_lines',
-    'claim_runs',
-    'claim_documents',
     'claims',
-    'facility_invoice_claims',
-    'facility_invoices',
     'facilities',
     'import_reports',
     'imports',
@@ -66,9 +48,6 @@ const resetSchema = async (db: Kysely<Database>) => {
     'schedule_runs',
     'event_runs',
     'events',
-    'clearinghouse_downloads',
-    'payer_file_items',
-    'payer_files',
     'workflow_run_tables',
     'data_table_versions',
     'data_tables',
@@ -106,7 +85,6 @@ const resetSchema = async (db: Kysely<Database>) => {
     'check_table_version_base',
     'check_run_table_key',
     ...EVENT_FUNCTIONS,
-    ...CLAIM_FUNCTIONS,
     ...DAILY_NUMBER_FUNCTIONS
   ]) {
     await sql`drop function if exists ${sql.id(name)}`.execute(db);
@@ -136,9 +114,6 @@ const steps = [
   createImportsTables,
   createFacilitiesTables,
   createClaimsTables,
-  createFacilityInvoiceClaimsTable,
-  createPatientBalanceTables,
-  createPayerFilesTables,
   createNotificationsTables,
   createEventEmitters
 ] as const;

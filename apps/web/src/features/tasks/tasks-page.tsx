@@ -1,9 +1,9 @@
-import { formatAgo, formatDay, patientName } from '../../shared/format.ts';
+import { formatAgo, formatDay } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
 import { assigneeOf, queueInfo } from '../../shared/task-queues.ts';
 import type { ColumnFilter } from '../../shared/ui/column-filters.tsx';
 import { emptyValue } from '../../shared/ui/empty-state.tsx';
-import { Highlight, NumberHighlight } from '../../shared/ui/highlight.tsx';
+import { Highlight } from '../../shared/ui/highlight.tsx';
 import { OpenLink, RowActions } from '../../shared/ui/icon-button.tsx';
 import { Page } from '../../shared/ui/page.tsx';
 import { Search } from '../../shared/ui/search.tsx';
@@ -66,63 +66,45 @@ export const TasksTable = ({
       head={[
         { label: 'Task', sort: 'title' },
         { label: 'Queue', isSecondary: true, sort: 'queue' },
-        { label: 'Claim', sort: 'claim' },
         { label: 'Assignee', sort: 'assignee' },
         { label: 'Due', isSecondary: true, sort: 'due' },
         { label: 'Waiting', sort: 'waiting' },
         { label: 'Actions', isLabelHidden: true, isCompact: true }
       ]}
     >
-      {tasks.map((t) => {
-        const patient = patientName(t.last_name, t.first_name);
-        return (
-          <TableRow key={t.id}>
-            <TableCell kind="wrap">
-              <span className="flex flex-col gap-0.5">
-                <span className={t.kind === 'fault' ? 'text-danger font-medium' : 'font-medium'}>
-                  <Highlight text={t.title} query={q} />
-                </span>
-                {t.subject ? (
-                  <span className="text-surface-fg-muted text-xs">
-                    <Highlight text={t.subject} query={q} />
-                  </span>
-                ) : null}
+      {tasks.map((t) => (
+        <TableRow key={t.id}>
+          <TableCell kind="wrap">
+            <span className="flex flex-col gap-0.5">
+              <span className={t.kind === 'fault' ? 'text-danger font-medium' : 'font-medium'}>
+                <Highlight text={t.title} query={q} />
               </span>
-            </TableCell>
-            <TableCell isMuted isSecondary>
-              {queueInfo(t.queue).label}
-            </TableCell>
-            <TableCell>
-              {t.claim_number !== null ? (
-                <span className="flex flex-col gap-0.5">
-                  <span className="font-medium">
-                    <NumberHighlight number={t.claim_number} query={q} />
-                  </span>
-                  <span className="text-surface-fg-muted text-xs">
-                    {patient ? <Highlight text={patient} query={q} /> : 'Not matched yet'}
-                  </span>
+              {t.subject ? (
+                <span className="text-surface-fg-muted text-xs">
+                  <Highlight text={t.subject} query={q} />
                 </span>
-              ) : (
-                <span className="text-surface-fg-muted">{emptyValue}</span>
-              )}
-            </TableCell>
-            <TableCell isMuted={!t.assignee_email}>{assigneeOf(t.assignee_email, me)}</TableCell>
-            <TableCell kind="date" isSecondary>
-              <span className={isOverdue(t.due_at) ? 'text-danger font-medium' : undefined}>
-                {t.due_at ? formatDay(t.due_at) : emptyValue}
-              </span>
-            </TableCell>
-            <TableCell kind="date" isMuted>
-              {formatAgo(t.created_at)}
-            </TableCell>
-            <TableCell kind="actions">
-              <RowActions>
-                <OpenLink to={withBack(`/tasks/${t.id}`, back)} name={`task ${t.title}`} />
-              </RowActions>
-            </TableCell>
-          </TableRow>
-        );
-      })}
+              ) : null}
+            </span>
+          </TableCell>
+          <TableCell isMuted isSecondary>
+            {queueInfo(t.queue).label}
+          </TableCell>
+          <TableCell isMuted={!t.assignee_email}>{assigneeOf(t.assignee_email, me)}</TableCell>
+          <TableCell kind="date" isSecondary>
+            <span className={isOverdue(t.due_at) ? 'text-danger font-medium' : undefined}>
+              {t.due_at ? formatDay(t.due_at) : emptyValue}
+            </span>
+          </TableCell>
+          <TableCell kind="date" isMuted>
+            {formatAgo(t.created_at)}
+          </TableCell>
+          <TableCell kind="actions">
+            <RowActions>
+              <OpenLink to={withBack(`/tasks/${t.id}`, back)} name={`task ${t.title}`} />
+            </RowActions>
+          </TableCell>
+        </TableRow>
+      ))}
     </Table>
   );
 };

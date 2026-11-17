@@ -30,21 +30,14 @@ export const modifierCode = (code: string) =>
 
 export const ClaimDataView = ({
   claim: c,
-  codes,
-  placeOfService = null
+  codes
 }: {
   claim: ClaimDetail;
   codes: CodeDescriptions;
-  placeOfService?: string | null | undefined;
 }) => (
-  <SectionPanel title="Claim Data" description="Change it with the Correct Claim Data task.">
+  <SectionPanel title="Claim Data">
     <DetailList>
       <Detail label="Date of Service">{formatDate(c.service_date)}</Detail>
-      {placeOfService ? (
-        <Detail label="Place of Service">
-          <CodeText codes={codes} set="pos" code={placeOfService} />
-        </Detail>
-      ) : null}
       <Detail label="Diagnosis Codes">
         {c.diagnoses.length ? (
           <ol className="flex flex-col gap-1">

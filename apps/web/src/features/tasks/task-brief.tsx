@@ -1,21 +1,8 @@
 import { isRecord, type Json } from '@ugula/graph';
-import { TriangleAlertIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { addressText } from '../../shared/claims/claim-data.tsx';
-import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
-import { ClaimIssues, isIssueList } from '../../shared/claims/claim-issues.tsx';
-import { formatDate, patientName, sexLabel } from '../../shared/format.ts';
-import { Alert, AlertList } from '../../shared/ui/alert.tsx';
-import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
-import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
+import { AlertList } from '../../shared/ui/alert.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
-import { TextLink } from '../../shared/ui/text-link.tsx';
-import { withBack } from '../../shared/url-state.ts';
 import type { TaskDetail } from './client.ts';
-import type { Mismatch, MismatchField } from './encounter-check.ts';
-
-const issuesOf = (context: Json) =>
-  isRecord(context) && isIssueList(context.issues) ? context.issues : [];
 
 const noticesOf = (context: Json, key: 'warnings' | 'notes') =>
   isRecord(context) && Array.isArray(context[key])
@@ -27,11 +14,8 @@ const reasonsOf = (context: Json) =>
     ? context.reasons.filter((r): r is string => typeof r === 'string' && r !== '')
     : [];
 
-export const headlineOf = (task: Pick<TaskDetail, 'summary' | 'context' | 'title'>) => {
-  if (task.summary) return task.summary;
-  const issues = issuesOf(task.context);
-  return (issues.find((i) => i.severity === 'blocking') ?? issues[0])?.message ?? task.title;
-};
+export const headlineOf = (task: Pick<TaskDetail, 'summary' | 'title'>) =>
+  task.summary ?? task.title;
 
 export const TaskIssue = ({
   task,
@@ -40,7 +24,6 @@ export const TaskIssue = ({
   task: Pick<TaskDetail, 'summary' | 'context' | 'title' | 'instructions' | 'kind'>;
   children?: ReactNode;
 }) => {
-  const issues = issuesOf(task.context);
   const reasons = reasonsOf(task.context);
   const warnings = noticesOf(task.context, 'warnings');
   const notes = noticesOf(task.context, 'notes');
@@ -50,7 +33,6 @@ export const TaskIssue = ({
       description={headlineOf(task)}
       accent="primary"
     >
-      {issues.length ? <ClaimIssues issues={issues} /> : null}
       {reasons.length ? (
         <ul className="text-surface-fg-muted flex list-disc flex-col gap-1 pl-5 text-sm">
           {reasons.map((r) => (
@@ -71,111 +53,6 @@ export const TaskIssue = ({
         </div>
       ) : null}
       {children ? <div className="border-border border-t pt-5">{children}</div> : null}
-    </SectionPanel>
-  );
-};
-
-const EncounterSays = ({
-  mismatches,
-  field
-}: {
-  mismatches: readonly Mismatch[];
-  field: MismatchField;
-}) => {
-  const m = mismatches.find((x) => x.field === field);
-  if (!m) return null;
-  const value =
-    field === 'birthDate' || field === 'serviceDate' ? formatDate(m.encounter) : m.encounter;
-  return (
-    <span className="text-warning-text mt-1 flex items-start gap-1.5 text-xs font-medium">
-      <span className="flex h-4 shrink-0 items-center">
-        <TriangleAlertIcon aria-hidden="true" className="size-3.5" />
-      </span>
-      <span>Encounter says {value}</span>
-    </span>
-  );
-};
-
-export const MismatchAlert = ({
-  mismatches,
-  encounterHref
-}: {
-  mismatches: readonly Mismatch[];
-  encounterHref: string | undefined;
-}) =>
-  mismatches.length ? (
-    <Alert
-      intent="warning"
-      action={encounterHref ? <TextLink to={encounterHref}>Open Encounter</TextLink> : undefined}
-    >
-      {mismatches.length === 1 ? '1 value differs' : `${mismatches.length} values differ`} from the
-      encounter: {mismatches.map((m) => m.label).join(', ')}.
-    </Alert>
-  ) : null;
-
-type PatientClaim = Pick<
-  ClaimDetail,
-  | 'patient_id'
-  | 'patient_number'
-  | 'first_name'
-  | 'last_name'
-  | 'birth_date'
-  | 'gender'
-  | 'address_line'
-  | 'city'
-  | 'state'
-  | 'postal_code'
->;
-
-export const PatientFacts = ({
-  claim: c,
-  taskId,
-  mismatches = [],
-  encounterHref
-}: {
-  claim: PatientClaim;
-  taskId: string;
-  mismatches?: readonly Mismatch[] | undefined;
-  encounterHref?: string | undefined;
-}) => {
-  const own = mismatches.filter((m) => m.field === 'patient' || m.field === 'birthDate');
-  return (
-    <SectionPanel
-      title="Patient Record"
-      actions={
-        c.patient_id ? (
-          <TextLink to={withBack(`/patients/${c.patient_id}`, `/tasks/${taskId}`)}>
-            Patient {c.patient_number}
-          </TextLink>
-        ) : null
-      }
-    >
-      {c.patient_id ? (
-        <>
-          <MismatchAlert mismatches={own} encounterHref={encounterHref} />
-          <DetailList>
-            <Detail label="Name">
-              {patientName(c.last_name, c.first_name) ?? emptyValue}
-              <EncounterSays mismatches={own} field="patient" />
-            </Detail>
-            <Detail label="Birth Date">
-              {c.birth_date ? formatDate(c.birth_date) : emptyValue}
-              <EncounterSays mismatches={own} field="birthDate" />
-            </Detail>
-            <Detail label="Sex">{sexLabel(c.gender) ?? emptyValue}</Detail>
-            <Detail label="Address">
-              {addressText({
-                addressLine: c.address_line,
-                city: c.city,
-                state: c.state,
-                postalCode: c.postal_code
-              }) ?? emptyValue}
-            </Detail>
-          </DetailList>
-        </>
-      ) : (
-        <EmptyText>No patient is matched to this claim yet.</EmptyText>
-      )}
     </SectionPanel>
   );
 };

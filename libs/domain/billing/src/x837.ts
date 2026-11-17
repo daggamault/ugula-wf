@@ -1,3 +1,10 @@
+import {
+  type Adjudication,
+  type Adjustment,
+  isAdjustmentGroup,
+  type LineAdjudication,
+  MAX_LINE_MODIFIERS
+} from './adjudications.ts';
 import type { PricedLine } from './charges.ts';
 import {
   type ClaimDetails,
@@ -5,13 +12,6 @@ import {
   type InsuredRelationship,
   SELF
 } from './claim-details.ts';
-import {
-  type Adjudication,
-  type Adjustment,
-  isAdjustmentGroup,
-  type LineAdjudication,
-  MAX_LINE_MODIFIERS
-} from './claims.ts';
 import { ZIP_PLUS_4_PATTERN } from './geo.ts';
 import { claimLevelAdjustments } from './line-adjudications.ts';
 import { money } from './numbers.ts';

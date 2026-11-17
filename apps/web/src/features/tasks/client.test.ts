@@ -138,17 +138,4 @@ describe('tasks client', () => {
     assert.deepEqual([...form.keys()], ['file']);
     assert.equal((form.get('file') as File).name, 'pcs.pdf');
   });
-
-  it('loads the claim a task works on', async () => {
-    const { api, calls } = fakeApi(() => ({ claim: { id: 'c 1' } }));
-    const signal = new AbortController().signal;
-    assert.deepEqual(await createTasksClient(api).claim('c 1', signal), { claim: { id: 'c 1' } });
-    assert.deepEqual(calls, [['GET', '/api/claims/c%201', signal]]);
-  });
-
-  it('loads the source report of a task', async () => {
-    const { api, calls } = fakeApi(() => ({ xml: '<x/>' }));
-    assert.deepEqual(await createTasksClient(api).report('rep/1'), { xml: '<x/>' });
-    assert.deepEqual(calls, [['GET', '/api/imports/reports/rep%2F1']]);
-  });
 });

@@ -1,40 +1,26 @@
 import {
-  ADJUSTMENT_GROUPS,
-  ADJUSTMENT_REASON_PATTERN,
   AMBULANCE_CONDITIONS,
-  CLAIM_EVENT_KINDS,
   CLAIM_STATUSES,
   CLASSIFICATIONS,
-  type ClaimEventKind,
-  type ClaimStatus,
   CONDITION_LIMIT,
-  COVERAGE_EVENT_KINDS,
-  DENIAL_ROUTES,
   DIAGNOSIS_LIMIT,
-  DOCUMENT_KINDS,
-  ELIGIBILITY_STATUSES,
   FACILITY_STAYS,
   HCPCS_PATTERN,
   ICD10_PATTERN,
   INSURED_RELATIONSHIPS,
-  MAX_CONTROL_NUMBER,
   MAX_DOCUMENTED_COUNT,
   MAX_EMPLOYER_SIZE,
-  MAX_LINE_MODIFIERS,
   MSP_ACCIDENTS,
   ORIGIN_DESTINATION_CODES,
-  PATIENT_EVENT_KINDS,
   PCS_TYPES,
-  REMARK_CODE_PATTERN,
   SERVICE_LEVELS,
   SIGNATURE_STATUSES,
-  STAY_KINDS,
   TRANSPORT_REASONS,
   UNIT_SCALE,
   US_STATE_PATTERN,
   ZIP_CODE_PATTERN
 } from '@ugula/billing';
-import { type Database, DISCOVERY_REQUEST_STATUSES, EXCHANGE_REQUEST_STATUSES } from '@ugula/db';
+import type { Database } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
 import { agencyNoActionForeignKey, agencySetNullForeignKey } from './foreign-keys.ts';
 import { dailyNumberCheck, dailyNumberTrigger } from './numbers.ts';
@@ -44,20 +30,6 @@ const list = (values: readonly string[]) => sql.join(values.map((v) => sql.lit(v
 const DESTINATION_CODES = Object.keys(ORIGIN_DESTINATION_CODES);
 
 const ORIGIN_CODES = DESTINATION_CODES.filter((c) => c !== 'X');
-
-const UNSENT = list(['draft', 'void'] satisfies ClaimStatus[]);
-
-const RESPONSE = sql.lit('response' satisfies ClaimEventKind);
-
-const REFUNDED = sql.lit('refunded' satisfies ClaimEventKind);
-
-const PROTECTED = sql.lit('balance_protected' satisfies ClaimEventKind);
-
-const DENIED = sql.lit('denied' satisfies ClaimEventKind);
-
-const TRANSFERRED = sql.lit('credit_transferred' satisfies ClaimEventKind);
-
-const DECIDED = sql.lit('decided' satisfies ClaimEventKind);
 
 const buildClaimsTable = (db: Kysely<Database>) =>
   db.schema
@@ -115,8 +87,7 @@ const buildClaimsTable = (db: Kysely<Database>) =>
     .addColumn('round_trips', 'smallint')
     .addColumn('admitted_on', 'date')
     .addColumn('facility_stay', 'text')
-    .addColumn('status', 'text', (col) => col.notNull().defaultTo('draft'))
-    .addColumn('cycle_run_id', 'uuid')
+    .addColumn('status', 'text', (col) => col.notNull().defaultTo('needs_review'))
     .addColumn('facility_id', 'uuid')
     .addColumn('source_key', 'text', (col) => col.notNull())
     .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
@@ -193,18 +164,12 @@ const buildClaimsTable = (db: Kysely<Database>) =>
       'claims_classification_check',
       sql`classification in (${list(CLASSIFICATIONS)})`
     )
-    .addCheckConstraint(
-      'claims_patient_check',
-      sql`status in (${UNSENT}) or patient_id is not null`
-    )
+    .addCheckConstraint('claims_patient_check', sql`patient_id is not null`)
     .addCheckConstraint(
       'claims_service_check',
-      sql`status in (${UNSENT}) or (level is not null and is_emergency is not null and service_date is not null)`
+      sql`level is not null and is_emergency is not null and service_date is not null`
     )
     .addCheckConstraint('claims_abn_signed_on_check', sql`abn_signed_on is null or has_abn`);
-
-const buildClaimsCycleRunForeignKey = () =>
-  agencySetNullForeignKey({ table: 'claims', column: 'cycle_run_id', references: 'workflow_runs' });
 
 const buildClaimsFacilityForeignKey = () =>
   agencyNoActionForeignKey({ table: 'claims', column: 'facility_id', references: 'facilities' });
@@ -215,27 +180,6 @@ const buildClaimsImportReportForeignKey = () =>
     column: 'import_report_id',
     references: 'import_reports'
   });
-
-const buildClaimRunsTable = (db: Kysely<Database>) =>
-  db.schema
-    .createTable('claim_runs')
-    .addColumn('agency_id', 'uuid', (col) => col.notNull())
-    .addColumn('run_id', 'uuid', (col) => col.primaryKey())
-    .addColumn('claim_id', 'uuid', (col) => col.notNull())
-    .addForeignKeyConstraint(
-      'claim_runs_run_id_fkey',
-      ['agency_id', 'run_id'],
-      'workflow_runs',
-      ['agency_id', 'id'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
-    )
-    .addForeignKeyConstraint(
-      'claim_runs_claim_id_fkey',
-      ['agency_id', 'claim_id'],
-      'claims',
-      ['agency_id', 'id'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
-    );
 
 const buildClaimLinesTable = (db: Kysely<Database>) =>
   db.schema
@@ -269,21 +213,6 @@ const buildClaimCoveragesTable = (db: Kysely<Database>) =>
     .addColumn('relationship', 'text', (col) => col.notNull())
     .addColumn('insured_first_name', 'text')
     .addColumn('insured_last_name', 'text')
-    .addColumn('eligibility', 'text')
-    .addColumn('eligibility_note', 'text')
-    .addColumn('eligibility_checked_at', 'timestamptz')
-    .addColumn('eligibility_requested_at', 'timestamptz')
-    .addColumn('stay_kind', 'text')
-    .addColumn('stay_admitted_on', 'date')
-    .addColumn('stay_discharged_on', 'date')
-    .addCheckConstraint(
-      'claim_coverages_stay_check',
-      sql`stay_kind in (${list(STAY_KINDS)}) or (stay_kind is null and stay_admitted_on is null and stay_discharged_on is null)`
-    )
-    .addCheckConstraint(
-      'claim_coverages_eligibility_check',
-      sql`eligibility is null or (eligibility in (${list(ELIGIBILITY_STATUSES)}) and eligibility_checked_at is not null)`
-    )
     .addForeignKeyConstraint(
       'claim_coverages_claim_id_fkey',
       ['agency_id', 'claim_id'],
@@ -323,361 +252,6 @@ const buildClaimDiagnosesTable = (db: Kysely<Database>) =>
     )
     .addCheckConstraint('claim_diagnoses_code_check', sql`code ~ ${sql.lit(ICD10_PATTERN)}`);
 
-const buildClaimDocumentsTable = (db: Kysely<Database>) =>
-  db.schema
-    .createTable('claim_documents')
-    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('agency_id', 'uuid', (col) => col.notNull())
-    .addColumn('claim_id', 'uuid', (col) => col.notNull())
-    .addColumn('kind', 'text', (col) => col.notNull())
-    .addColumn('file_name', 'text', (col) => col.notNull())
-    .addColumn('document', 'jsonb', (col) => col.notNull())
-    .addColumn('signed_on', 'date')
-    .addColumn('uploaded_by_id', 'uuid', (col) =>
-      col.references('users.id').onDelete('set null').onUpdate('cascade')
-    )
-    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addForeignKeyConstraint(
-      'claim_documents_claim_id_fkey',
-      ['agency_id', 'claim_id'],
-      'claims',
-      ['agency_id', 'id'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
-    )
-    .addCheckConstraint(
-      'claim_documents_kind_check',
-      sql`kind in (${list(Object.keys(DOCUMENT_KINDS))})`
-    )
-    .addCheckConstraint('claim_documents_file_name_check', sql`file_name <> ''`);
-
-const buildClaimBatchesTable = (db: Kysely<Database>) =>
-  db.schema
-    .createTable('claim_batches')
-    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('agency_id', 'uuid', (col) =>
-      col.notNull().references('agencies.id').onDelete('cascade').onUpdate('cascade')
-    )
-    .addColumn('control_number', 'integer', (col) => col.notNull())
-    .addColumn('claim_count', 'integer', (col) => col.notNull())
-    .addColumn('total_cents', 'integer', (col) => col.notNull())
-    .addColumn('is_production', 'boolean', (col) => col.notNull())
-    .addColumn('document', 'jsonb', (col) => col.notNull())
-    .addColumn('created_by_id', 'uuid', (col) =>
-      col.references('users.id').onDelete('set null').onUpdate('cascade')
-    )
-    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addColumn('sent_at', 'timestamptz')
-    .addColumn('sent_as', 'text')
-    .addUniqueConstraint('claim_batches_agency_id_id_unique', ['agency_id', 'id'])
-    .addCheckConstraint('claim_batches_sent_check', sql`(sent_at is null) = (sent_as is null)`)
-    .addUniqueConstraint('claim_batches_agency_id_control_number_unique', [
-      'agency_id',
-      'control_number'
-    ])
-    .addCheckConstraint(
-      'claim_batches_control_number_check',
-      sql`control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER)}`
-    )
-    .addCheckConstraint('claim_batches_counts_check', sql`claim_count > 0 and total_cents >= 0`);
-
-const buildClaimStatusRequestsTable = (db: Kysely<Database>) =>
-  db.schema
-    .createTable('claim_status_requests')
-    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('agency_id', 'uuid', (col) => col.notNull())
-    .addColumn('claim_id', 'uuid', (col) => col.notNull())
-    .addColumn('source_key', 'text', (col) => col.notNull())
-    .addColumn('control_number', 'integer', (col) => col.notNull())
-    .addColumn('status', 'text', (col) => col.notNull().defaultTo('pending'))
-    .addColumn('note', 'text')
-    .addColumn('sent_as', 'text')
-    .addColumn('signals_seen', 'integer')
-    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addForeignKeyConstraint(
-      'claim_status_requests_claim_id_fkey',
-      ['agency_id', 'claim_id'],
-      'claims',
-      ['agency_id', 'id'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
-    )
-    .addUniqueConstraint('claim_status_requests_agency_id_source_key_unique', [
-      'agency_id',
-      'source_key'
-    ])
-    .addCheckConstraint(
-      'claim_status_requests_status_check',
-      sql`status in (${list(EXCHANGE_REQUEST_STATUSES)})`
-    )
-    .addCheckConstraint(
-      'claim_status_requests_result_check',
-      sql`(status = 'sent') = (sent_as is not null and signals_seen is not null) and (status not in ('answered', 'unavailable') or note is not null)`
-    )
-    .addCheckConstraint(
-      'claim_status_requests_control_number_check',
-      sql`control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER)}`
-    );
-
-const buildEligibilityRequestsTable = (db: Kysely<Database>) =>
-  db.schema
-    .createTable('eligibility_requests')
-    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('agency_id', 'uuid', (col) => col.notNull())
-    .addColumn('claim_id', 'uuid', (col) => col.notNull())
-    .addColumn('source_key', 'text', (col) => col.notNull())
-    .addColumn('control_number', 'integer', (col) => col.notNull())
-    .addColumn('status', 'text', (col) => col.notNull().defaultTo('pending'))
-    .addColumn('note', 'text')
-    .addColumn('sent_as', 'text')
-    .addColumn('file_name', 'text')
-    .addColumn('reviews', 'jsonb')
-    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addForeignKeyConstraint(
-      'eligibility_requests_claim_id_fkey',
-      ['agency_id', 'claim_id'],
-      'claims',
-      ['agency_id', 'id'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
-    )
-    .addUniqueConstraint('eligibility_requests_agency_id_source_key_unique', [
-      'agency_id',
-      'source_key'
-    ])
-    .addCheckConstraint(
-      'eligibility_requests_status_check',
-      sql`status in (${list(EXCHANGE_REQUEST_STATUSES)})`
-    )
-    .addCheckConstraint(
-      'eligibility_requests_result_check',
-      sql`(status = 'sent') = (sent_as is not null) and (status = 'answered') = (file_name is not null and reviews is not null) and (status <> 'unavailable' or note is not null)`
-    )
-    .addCheckConstraint(
-      'eligibility_requests_control_number_check',
-      sql`control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER)}`
-    );
-
-const buildDiscoveryRequestsTable = (db: Kysely<Database>) =>
-  db.schema
-    .createTable('discovery_requests')
-    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('agency_id', 'uuid', (col) => col.notNull())
-    .addColumn('claim_id', 'uuid', (col) => col.notNull())
-    .addColumn('source_key', 'text', (col) => col.notNull())
-    .addColumn('control_number', 'integer')
-    .addColumn('status', 'text', (col) => col.notNull().defaultTo('pending'))
-    .addColumn('note', 'text')
-    .addColumn('candidates', 'jsonb')
-    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addForeignKeyConstraint(
-      'discovery_requests_claim_id_fkey',
-      ['agency_id', 'claim_id'],
-      'claims',
-      ['agency_id', 'id'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
-    )
-    .addUniqueConstraint('discovery_requests_agency_id_source_key_unique', [
-      'agency_id',
-      'source_key'
-    ])
-    .addCheckConstraint(
-      'discovery_requests_status_check',
-      sql`status in (${list(DISCOVERY_REQUEST_STATUSES)})`
-    )
-    .addCheckConstraint(
-      'discovery_requests_result_check',
-      sql`(status = 'answered') = (candidates is not null) and (status = 'pending' or note is not null) and (status <> 'pending' or control_number is not null)`
-    )
-    .addCheckConstraint(
-      'discovery_requests_control_number_check',
-      sql`control_number between 1 and ${sql.lit(MAX_CONTROL_NUMBER)}`
-    );
-
-const buildClaimEventsTable = (db: Kysely<Database>) =>
-  db.schema
-    .createTable('claim_events')
-    .addColumn('id', 'uuid', (col) => col.primaryKey().defaultTo(sql`uuidv7()`))
-    .addColumn('agency_id', 'uuid', (col) => col.notNull())
-    .addColumn('claim_id', 'uuid', (col) => col.notNull())
-    .addColumn('kind', 'text', (col) => col.notNull())
-    .addColumn('coverage_id', 'uuid')
-    .addColumn('paid_cents', 'integer', (col) => col.notNull().defaultTo(0))
-    .addColumn('adjusted_cents', 'integer', (col) => col.notNull().defaultTo(0))
-    .addColumn('payer_claim_number', 'text')
-    .addColumn('paid_on', 'date')
-    .addColumn('check_number', 'text')
-    .addColumn('note', 'text', (col) => col.notNull().defaultTo(''))
-    .addColumn('route', 'text')
-    .addColumn('document', 'jsonb')
-    .addColumn('created_by_id', 'uuid', (col) =>
-      col.references('users.id').onDelete('set null').onUpdate('cascade')
-    )
-    .addColumn('source_key', 'text')
-    .addColumn('batch_id', 'uuid')
-    .addColumn('task_id', 'uuid', (col) =>
-      col.references('tasks.id').onDelete('set null').onUpdate('cascade')
-    )
-    .addColumn('created_at', 'timestamptz', (col) => col.notNull().defaultTo(sql`now()`))
-    .addColumn('posted_on', 'date', (col) => col.notNull())
-    .addForeignKeyConstraint(
-      'claim_events_claim_id_fkey',
-      ['agency_id', 'claim_id'],
-      'claims',
-      ['agency_id', 'id'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
-    )
-    .addForeignKeyConstraint(
-      'claim_events_coverage_fkey',
-      ['claim_id', 'coverage_id'],
-      'claim_coverages',
-      ['claim_id', 'id'],
-      (fk) => fk.onDelete('no action').onUpdate('cascade')
-    )
-    .addUniqueConstraint('claim_events_claim_id_source_key_unique', ['claim_id', 'source_key'])
-    .addCheckConstraint('claim_events_kind_check', sql`kind in (${list(CLAIM_EVENT_KINDS)})`)
-    .addCheckConstraint(
-      'claim_events_coverage_check',
-      sql`(kind not in (${list(COVERAGE_EVENT_KINDS)}) or coverage_id is not null) and (kind not in (${list(PATIENT_EVENT_KINDS)}) or coverage_id is null)`
-    )
-    .addCheckConstraint(
-      'claim_events_amounts_check',
-      sql`(kind = ${RESPONSE} and paid_cents >= 0 and adjusted_cents >= 0) or (kind = ${REFUNDED} and paid_cents < 0 and adjusted_cents = 0) or (kind = ${PROTECTED} and paid_cents = 0 and adjusted_cents > 0) or (kind = ${TRANSFERRED} and paid_cents <> 0 and adjusted_cents = 0) or (paid_cents = 0 and adjusted_cents = 0)`
-    )
-    .addCheckConstraint(
-      'claim_events_payment_check',
-      sql`kind in (${RESPONSE}, ${REFUNDED}) or (paid_on is null and check_number is null)`
-    )
-    .addCheckConstraint(
-      'claim_events_route_check',
-      sql`(kind = ${DENIED} and route is not null and route in (${list(DENIAL_ROUTES)})) or (kind <> ${DENIED} and route is null)`
-    )
-    .addCheckConstraint(
-      'claim_events_decided_check',
-      sql`kind <> ${DECIDED} or note <> '' or task_id is not null`
-    )
-    .addCheckConstraint(
-      'claim_events_check_number_check',
-      sql`check_number is null or check_number <> ''`
-    )
-    .addCheckConstraint(
-      'claim_events_payer_claim_number_check',
-      sql`payer_claim_number is null or (payer_claim_number <> '' and coverage_id is not null)`
-    );
-
-const buildClaimEventsBatchForeignKey = () =>
-  agencyNoActionForeignKey({
-    table: 'claim_events',
-    column: 'batch_id',
-    references: 'claim_batches'
-  });
-
-const buildClaimEventAdjustmentsTable = (db: Kysely<Database>) =>
-  db.schema
-    .createTable('claim_event_adjustments')
-    .addColumn('event_id', 'uuid', (col) =>
-      col.notNull().references('claim_events.id').onDelete('cascade').onUpdate('cascade')
-    )
-    .addColumn('position', 'smallint', (col) => col.notNull())
-    .addColumn('group_code', 'text', (col) => col.notNull())
-    .addColumn('reason_code', 'text', (col) => col.notNull())
-    .addColumn('amount_cents', 'integer', (col) => col.notNull())
-    .addPrimaryKeyConstraint('claim_event_adjustments_pkey', ['event_id', 'position'])
-    .addCheckConstraint('claim_event_adjustments_position_check', sql`position >= 1`)
-    .addCheckConstraint(
-      'claim_event_adjustments_group_check',
-      sql`group_code in (${list(Object.keys(ADJUSTMENT_GROUPS))})`
-    )
-    .addCheckConstraint(
-      'claim_event_adjustments_reason_check',
-      sql`reason_code ~ ${sql.lit(ADJUSTMENT_REASON_PATTERN)}`
-    )
-    .addCheckConstraint('claim_event_adjustments_amount_check', sql`amount_cents <> 0`);
-
-const buildClaimEventRemarksTable = (db: Kysely<Database>) =>
-  db.schema
-    .createTable('claim_event_remarks')
-    .addColumn('event_id', 'uuid', (col) =>
-      col.notNull().references('claim_events.id').onDelete('cascade').onUpdate('cascade')
-    )
-    .addColumn('position', 'smallint', (col) => col.notNull())
-    .addColumn('code', 'text', (col) => col.notNull())
-    .addPrimaryKeyConstraint('claim_event_remarks_pkey', ['event_id', 'position'])
-    .addCheckConstraint('claim_event_remarks_position_check', sql`position >= 1`)
-    .addCheckConstraint(
-      'claim_event_remarks_code_check',
-      sql`code ~ ${sql.lit(REMARK_CODE_PATTERN)}`
-    );
-
-const buildClaimEventLinesTable = (db: Kysely<Database>) =>
-  db.schema
-    .createTable('claim_event_lines')
-    .addColumn('event_id', 'uuid', (col) =>
-      col.notNull().references('claim_events.id').onDelete('cascade').onUpdate('cascade')
-    )
-    .addColumn('line', 'smallint', (col) => col.notNull())
-    .addColumn('code', 'text', (col) => col.notNull())
-    .addColumn('modifiers', sql`text[]`, (col) => col.notNull().defaultTo(sql`'{}'`))
-    .addColumn('paid_cents', 'integer', (col) => col.notNull())
-    .addColumn('units', sql`numeric(8, ${sql.lit(UNIT_SCALE)})`, (col) => col.notNull())
-    .addPrimaryKeyConstraint('claim_event_lines_pkey', ['event_id', 'line'])
-    .addCheckConstraint('claim_event_lines_line_check', sql`line >= 1`)
-    .addCheckConstraint('claim_event_lines_code_check', sql`code ~ ${sql.lit(HCPCS_PATTERN)}`)
-    .addCheckConstraint(
-      'claim_event_lines_modifiers_check',
-      sql`cardinality(modifiers) <= ${sql.lit(MAX_LINE_MODIFIERS)}`
-    )
-    .addCheckConstraint('claim_event_lines_units_check', sql`units >= 0`);
-
-const buildClaimEventLineAdjustmentsTable = (db: Kysely<Database>) =>
-  db.schema
-    .createTable('claim_event_line_adjustments')
-    .addColumn('event_id', 'uuid', (col) => col.notNull())
-    .addColumn('line', 'smallint', (col) => col.notNull())
-    .addColumn('position', 'smallint', (col) => col.notNull())
-    .addColumn('group_code', 'text', (col) => col.notNull())
-    .addColumn('reason_code', 'text', (col) => col.notNull())
-    .addColumn('amount_cents', 'integer', (col) => col.notNull())
-    .addPrimaryKeyConstraint('claim_event_line_adjustments_pkey', ['event_id', 'line', 'position'])
-    .addForeignKeyConstraint(
-      'claim_event_line_adjustments_event_id_line_fkey',
-      ['event_id', 'line'],
-      'claim_event_lines',
-      ['event_id', 'line'],
-      (fk) => fk.onDelete('cascade').onUpdate('cascade')
-    )
-    .addCheckConstraint('claim_event_line_adjustments_position_check', sql`position >= 1`)
-    .addCheckConstraint(
-      'claim_event_line_adjustments_group_check',
-      sql`group_code in (${list(Object.keys(ADJUSTMENT_GROUPS))})`
-    )
-    .addCheckConstraint(
-      'claim_event_line_adjustments_reason_check',
-      sql`reason_code ~ ${sql.lit(ADJUSTMENT_REASON_PATTERN)}`
-    )
-    .addCheckConstraint('claim_event_line_adjustments_amount_check', sql`amount_cents <> 0`);
-
-const buildClaimBalancesView = (db: Kysely<Database>) =>
-  db.schema.createView('claim_balances').as(
-    db
-      .selectFrom('claims as c')
-      .innerJoinLateral(
-        (eb) =>
-          eb
-            .selectFrom('claim_events as e')
-            .select([
-              sql<number>`coalesce(sum(e.paid_cents), 0)::int`.as('paid_cents'),
-              sql<number>`coalesce(sum(e.adjusted_cents), 0)::int`.as('adjusted_cents')
-            ])
-            .whereRef('e.claim_id', '=', 'c.id')
-            .as('t'),
-        (join) => join.onTrue()
-      )
-      .select([
-        'c.id as claim_id',
-        't.paid_cents',
-        't.adjusted_cents',
-        sql<number>`c.total_cents - t.paid_cents - t.adjusted_cents`.as('balance_cents')
-      ])
-  );
-
 const buildClaimsIndexes = (db: Kysely<Database>) => [
   db.schema
     .createIndex('idx_claims_agency_status')
@@ -694,105 +268,23 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
     .columns(['agency_id', 'pcr_number'])
     .where('pcr_number', 'is not', null),
   db.schema.createIndex('idx_claims_patient_id').on('claims').column('patient_id'),
-  db.schema.createIndex('idx_claims_cycle_run_id').on('claims').column('cycle_run_id'),
   db.schema.createIndex('idx_claims_facility_id').on('claims').column('facility_id'),
-  db.schema
-    .createIndex('idx_claim_documents_claim_id')
-    .on('claim_documents')
-    .columns(['claim_id', 'created_at']),
-  db.schema
-    .createIndex('idx_claim_documents_uploaded_by_id')
-    .on('claim_documents')
-    .column('uploaded_by_id'),
-  db.schema.createIndex('idx_claim_runs_claim_id').on('claim_runs').column('claim_id'),
   db.schema
     .createIndex('claim_coverages_claim_payer_name_unique')
     .on('claim_coverages')
     .unique()
     .expression(sql`claim_id, lower(payer_name), lower(coalesce(member_id, ''))`),
-  db.schema.createIndex('idx_claim_coverages_payer_id').on('claim_coverages').column('payer_id'),
-  db.schema
-    .createIndex('idx_claim_events_claim_id')
-    .on('claim_events')
-    .columns(['claim_id', 'created_at']),
-  db.schema.createIndex('idx_claim_events_coverage_id').on('claim_events').column('coverage_id'),
-  db.schema
-    .createIndex('idx_claim_events_created_by_id')
-    .on('claim_events')
-    .column('created_by_id'),
-  db.schema.createIndex('idx_claim_events_batch_id').on('claim_events').column('batch_id'),
-  db.schema.createIndex('idx_claim_events_task_id').on('claim_events').column('task_id'),
-  db.schema
-    .createIndex('idx_claim_events_agency_kind_created')
-    .on('claim_events')
-    .columns(['agency_id', 'kind', 'created_at']),
-  db.schema
-    .createIndex('idx_claim_events_agency_posted_on')
-    .on('claim_events')
-    .columns(['agency_id', 'posted_on']),
-  db.schema
-    .createIndex('idx_claim_batches_agency_created')
-    .on('claim_batches')
-    .columns(['agency_id', 'created_at desc']),
-  db.schema
-    .createIndex('idx_claim_batches_created_by_id')
-    .on('claim_batches')
-    .column('created_by_id'),
-  db.schema
-    .createIndex('idx_claim_status_requests_claim_id')
-    .on('claim_status_requests')
-    .column('claim_id'),
-  db.schema
-    .createIndex('idx_eligibility_requests_claim_id')
-    .on('eligibility_requests')
-    .column('claim_id'),
-  db.schema
-    .createIndex('idx_discovery_requests_claim_id')
-    .on('discovery_requests')
-    .column('claim_id')
+  db.schema.createIndex('idx_claim_coverages_payer_id').on('claim_coverages').column('payer_id')
 ];
-
-const postedOnFunction = sql`
-  create function set_claim_event_posted_on() returns trigger language plpgsql as $$
-  begin
-    new.posted_on := (new.created_at at time zone coalesce(
-      (select bp.time_zone from billing_profiles bp where bp.agency_id = new.agency_id), 'UTC'))::date;
-    return new;
-  end;
-  $$`;
-
-const postedOnTrigger = sql`
-  create trigger claim_events_posted_on
-  before insert on claim_events
-  for each row execute function set_claim_event_posted_on()`;
-
-export const CLAIM_FUNCTIONS = ['set_claim_event_posted_on'] as const;
 
 export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimsTable(db).execute();
   await dailyNumberTrigger('claims', 'claim').execute(db);
-  await buildClaimsCycleRunForeignKey().execute(db);
   await buildClaimsFacilityForeignKey().execute(db);
   await buildClaimsImportReportForeignKey().execute(db);
-  await buildClaimRunsTable(db).execute();
   await buildClaimLinesTable(db).execute();
   await buildClaimCoveragesTable(db).execute();
   await buildClaimCoveragesPayerForeignKey().execute(db);
   await buildClaimDiagnosesTable(db).execute();
-  await buildClaimDocumentsTable(db).execute();
-  await buildClaimBatchesTable(db).execute();
-  await buildClaimStatusRequestsTable(db).execute();
-  await buildEligibilityRequestsTable(db).execute();
-  await buildDiscoveryRequestsTable(db).execute();
-  await buildClaimEventsTable(db).execute();
-  await buildClaimEventsBatchForeignKey().execute(db);
-  await postedOnFunction.execute(db);
-  await postedOnTrigger.execute(db);
-  await buildClaimEventAdjustmentsTable(db).execute();
-  await buildClaimEventRemarksTable(db).execute();
-  await buildClaimEventLinesTable(db).execute();
-  await buildClaimEventLineAdjustmentsTable(db).execute();
-
-  await buildClaimBalancesView(db).execute();
   for (const index of buildClaimsIndexes(db)) await index.execute();
 };

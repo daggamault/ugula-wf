@@ -1,343 +1,59 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { MAP_837P_RULE } from '@ugula/billing';
 import { createRecordingDb } from '@ugula/db/testing';
-import type { RunQueueClient } from '@ugula/run-queue';
 import type { CompiledQuery } from 'kysely';
-import type { RuleRunner } from '../../shared/rules.ts';
-import { recordAnnouncements } from '../../shared/testing.ts';
-import { CLAIM_ISSUES_RULE, createClaimService, NEXT_CLAIM_STEP_RULE } from './service.ts';
-
-const MEDICARE = '01a16617-7704-7ba6-b9b5-000000000001';
+import { createClaimService } from './service.ts';
 
 const claim = {
   id: 'c1',
-  status: 'submitted',
+  status: 'needs_review',
   patient_id: 'p1',
   total_cents: 100_000,
-  balance_cents: 100_000,
-  coverages: [{ id: MEDICARE, payer: 'Medicare' }],
+  coverages: [{ id: 'cov-1', payer: 'Medicare' }],
   lines: [{ code: 'A0427' }],
   diagnoses: ['I214']
 };
 
-const setup = ({
-  row = claim as Record<string, unknown> | null,
-  events = [] as Record<string, unknown>[],
-  published = true,
-  activeRun = false,
-  document = null as Record<string, unknown> | null,
-  mapFails = false
-} = {}) => {
+const setup = (row: Record<string, unknown> | null = claim) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
-    if (q.sql.endsWith('for update')) return row ? [row] : [];
-    if (q.sql.startsWith('select "id" from "claims"')) return row ? [{ id: 'c1' }] : [];
-    if (q.sql.includes('from "claim_events" as "e" inner join "claims"')) {
-      return document ? [document] : [];
-    }
-    if (q.sql.includes('from "claims" as "c"')) return row ? [row] : [];
-    if (q.sql.includes('from "claim_runs" as "cr"')) return activeRun ? [{ id: 'r0' }] : [];
-    if (q.sql.includes('cross join lateral'))
-      return published ? [{ id: 'v-cycle', key: 'billing.cycle-claim', version: 1 }] : [];
-    if (q.sql.startsWith('insert into "workflow_runs"')) return [{ id: 'cycle-2' }];
-    if (q.sql.includes('from "claim_events" as "e"')) return events;
     if (q.sql.includes('from "codes"')) {
       return [{ code_set: 'hcpcs', code: 'A0427', description: 'ALS1 emergency' }];
     }
-    if (q.sql.startsWith('select "document", "file_name" from "claim_documents"')) {
-      return document ? [{ ...document, file_name: 'pcs.pdf' }] : [];
-    }
+    if (q.sql.includes('from "claims" as "c"')) return row ? [row] : [];
     return [];
   });
-  const jobs: unknown[] = [];
-  const boss: RunQueueClient = { insert: async (_n, batch) => void jobs.push(...batch) };
-  const now = () => new Date('2026-01-01T12:00:00.000Z');
-  const blobs = { getBytes: async () => new TextEncoder().encode('%PDF-1.7') };
-  const { publish, events: publishAfter } = recordAnnouncements();
-  const ruled: [string, string, unknown][] = [];
-  const rules: RuleRunner = async (agencyId, key, inputs) => {
-    ruled.push([agencyId, key, inputs]);
-    if (key === MAP_837P_RULE) {
-      if (mapFails) throw new Error('The 837P map is not published');
-      return { x837: { placeOfService: '41', lines: [{ code: 'A0427', modifiers: ['RH'] }] } };
-    }
-    return key === NEXT_CLAIM_STEP_RULE
-      ? { step: 'await', waitMs: 2_548_800_000 }
-      : {
-          issues: [
-            {
-              code: 'lines-missing',
-              severity: 'blocking',
-              field: 'lines',
-              message: 'The claim has no charge lines',
-              coverageId: null
-            }
-          ]
-        };
-  };
-  return {
-    service: createClaimService({ db, boss, now, blobs, publish, rules }),
-    jobs,
-    queries,
-    publishAfter,
-    ruled
-  };
+  return { service: createClaimService({ db }), queries };
 };
 
-const failure = (res: { ok: boolean; failure?: { code: string; message: string } }) =>
-  res.ok ? 'ok' : `${res.failure?.code}: ${res.failure?.message}`;
-
 describe('claim service', () => {
-  it('starts a claim task workflow for the claim, assigned to the biller who started it', async () => {
-    const { service, queries, jobs, publishAfter } = setup();
-    assert.deepEqual(await service.startTask('t', 'u1', 'c1', 'billing.post-payment'), {
-      ok: true,
-      value: { runId: 'cycle-2' }
+  it('returns a claim with the meaning of its codes', async () => {
+    const { service, queries } = setup();
+    const res = await service.find('t-1', 'c1');
+    assert.ok(res.ok);
+    assert.deepEqual(res.value.claim, claim);
+    assert.deepEqual(res.value.codes, { hcpcs: { A0427: 'ALS1 emergency' } });
+    assert.deepEqual(queries[0]?.parameters.slice(0, 2), ['t-1', 'c1']);
+  });
+
+  it('reports a claim outside the agency as missing', async () => {
+    const res = await setup(null).service.find('t-2', 'c1');
+    assert.equal(res.ok, false);
+    assert.deepEqual(res.ok ? null : res.failure, {
+      code: 'not_found',
+      message: 'Claim not found'
     });
-    assert.ok(queries.some((q) => JSON.stringify(q.parameters).includes('billing.post-payment')));
-    const run = queries.find((q) => q.sql.startsWith('insert into "workflow_runs"'));
-    assert.ok(run?.parameters.includes(JSON.stringify({ claimId: 'c1', assignee: 'u1' })));
-    assert.ok(run?.parameters.includes('u1'));
-    assert.equal(jobs.length, 1);
-    assert.deepEqual(publishAfter, [{ agencyId: 't', event: { kind: 'claim', id: 'c1' } }]);
-  });
-
-  it('starts claim tasks on open claims, on drafts only those that work on drafts, and a payment on a closed claim', async () => {
-    const start = (
-      status: string,
-      key: 'billing.receive-document' | 'billing.change-responsible-party' | 'billing.post-payment'
-    ) => setup({ row: { ...claim, status } }).service.startTask('t', 'u1', 'c1', key);
-    assert.equal(failure(await start('draft', 'billing.receive-document')), 'ok');
-    assert.match(
-      failure(await start('draft', 'billing.change-responsible-party')),
-      /^conflict: This claim is still a draft/
-    );
-    assert.match(
-      failure(await start('paid', 'billing.receive-document')),
-      /^conflict: Claim is already closed/
-    );
-    assert.equal(failure(await start('written_off', 'billing.post-payment')), 'ok');
-    assert.match(
-      failure(await start('void', 'billing.post-payment')),
-      /^conflict: Claim is already closed/
-    );
-    assert.match(
-      failure(
-        await setup({ published: false }).service.startTask(
-          't',
-          'u1',
-          'c1',
-          'billing.change-responsible-party'
-        )
-      ),
-      /^not_found: The billing.change-responsible-party workflow is not published/
-    );
-    assert.match(
-      failure(
-        await setup({ row: null }).service.startTask(
-          't',
-          'u1',
-          'c1',
-          'billing.change-responsible-party'
-        )
-      ),
-      /^not_found/
-    );
-  });
-  it('restarts a stopped payer cycle and links the claim to the new run', async () => {
-    const stopped = setup();
-    assert.deepEqual(await stopped.service.restartCycle('t', 'c1'), {
-      ok: true,
-      value: { runId: 'cycle-2' }
-    });
-    assert.ok(stopped.queries.some((q) => q.sql.startsWith('update "claims" set "cycle_run_id"')));
-    assert.ok(stopped.queries.some((q) => q.sql.startsWith('insert into "claim_runs"')));
-    assert.deepEqual(stopped.jobs, [
-      { data: { runId: 'cycle-2', command: { type: 'advance' } }, priority: 2 }
-    ]);
-    const active = stopped.queries.find((q) => q.sql.includes('from "claim_runs" as "cr"'));
-    assert.ok(active?.parameters.includes('running') && active.parameters.includes('faulted'));
-    const restart = (row: Record<string, unknown> | null, published = true, activeRun = false) =>
-      setup({ row, published, activeRun }).service.restartCycle('t', 'c1');
-    assert.match(
-      failure(await restart(claim, true, true)),
-      /^conflict: This claim still has an active workflow run/
-    );
-    assert.match(
-      failure(await restart({ ...claim, status: 'paid' })),
-      /^conflict: Claim is already closed/
-    );
-    assert.match(failure(await restart(claim, false)), /^not_found: The claim cycle/);
-    assert.match(failure(await restart(null)), /^not_found/);
-  });
-
-  it('serves a claim document by its name', async () => {
-    const ref = {
-      bucket: 'ugula',
-      key: 'documents/t/c1/x/pcs.pdf',
-      contentType: 'application/pdf'
-    };
-    const found = await setup({ document: { document: ref } }).service.documentFile(
-      't',
-      'c1',
-      'd1'
-    );
-    assert.equal(found.ok && found.value.name, 'pcs.pdf');
-    assert.match(failure(await setup().service.documentFile('t', 'c1', 'd1')), /^not_found/);
-  });
-  it('serves stored statement PDFs only for claims of the agency', async () => {
-    const ref = {
-      bucket: 'ugula',
-      key: 'statements/t/c1/2-abc.pdf',
-      size: 8,
-      contentType: 'application/pdf'
-    };
-    const { service, queries } = setup({ document: { document: ref, kind: 'statement' } });
-    const found = await service.document('t', 'c1', 'e1');
-    assert.ok(found.ok);
-    assert.equal(found.value.name, '2-abc.pdf');
-    assert.equal(new TextDecoder().decode(found.value.bytes), '%PDF-1.7');
-    const lookup = queries.find((q) => q.sql.includes('from "claim_events" as "e" inner join'));
-    assert.deepEqual(lookup?.parameters, ['e1', 'c1', 't']);
-    assert.match(failure(await setup().service.document('t', 'c1', 'e1')), /^not_found/);
-  });
-
-  it('returns a claim with its history and what the cycle is doing now', async () => {
-    const events = [
-      {
-        kind: 'submitted',
-        coverage_id: MEDICARE,
-        paid_cents: 0,
-        adjusted_cents: 0,
-        created_at: new Date('2026-01-01T00:00:00.000Z')
-      }
-    ];
-    const { service, ruled } = setup({ events });
-    const found = await service.find('t', 'c1');
-    assert.ok(found.ok);
-    assert.deepEqual(
-      found.value.files,
-      events.map((e) => ({ ...e, decision: null }))
-    );
-    assert.deepEqual(found.value.codes, { hcpcs: { A0427: 'ALS1 emergency' } });
-    assert.deepEqual(found.value.issues, [
-      {
-        code: 'lines-missing',
-        severity: 'blocking',
-        field: 'lines',
-        message: 'The claim has no charge lines',
-        coverageId: null
-      }
-    ]);
-    assert.deepEqual(found.value.progress, {
-      step: 'await',
-      coverage: { id: MEDICARE, payer: 'Medicare', claimFiling: null },
-      waitMs: 2_548_800_000,
-      balanceCents: 100_000
-    });
-    assert.deepEqual(
-      ruled.map(([agency, key]) => [agency, key]),
-      [
-        ['t', MAP_837P_RULE],
-        ['t', NEXT_CLAIM_STEP_RULE],
-        ['t', CLAIM_ISSUES_RULE]
-      ]
-    );
-    assert.deepEqual(found.value.billing, {
-      payer: 'Medicare',
-      placeOfService: '41',
-      modifiers: [['RH']]
-    });
-    const [, , inputs] = ruled[1] ?? [];
-    const { ledger } = inputs as { ledger: Record<string, unknown> };
-    assert.deepEqual([ledger.coverageId, ledger.contacted], [MEDICARE, true]);
-    assert.deepEqual(Object.keys(ruled[2]?.[2] ?? {}), ['record']);
-    assert.match(failure(await setup({ row: null }).service.find('t', 'c1')), /^not_found/);
-  });
-
-  it('neither bills nor advances closed claims and drafts, but still checks them for issues', async () => {
-    for (const status of ['paid', 'draft']) {
-      const { service, ruled } = setup({ row: { ...claim, status } });
-      const found = await service.find('t', 'c1');
-      assert.ok(found.ok);
-      assert.deepEqual([found.value.billing, found.value.progress], [null, null], status);
-      assert.deepEqual(
-        ruled.map(([, key]) => key),
-        [CLAIM_ISSUES_RULE],
-        status
-      );
-    }
-  });
-
-  it('shows a claim without billing details when its 837P map cannot run', async () => {
-    const { service, ruled } = setup({ mapFails: true });
-    const found = await service.find('t', 'c1');
-    assert.ok(found.ok);
-    assert.equal(found.value.billing, null);
-    assert.equal(found.value.progress?.step, 'await');
-    assert.deepEqual(
-      ruled.map(([, key]) => key),
-      [MAP_837P_RULE, NEXT_CLAIM_STEP_RULE, CLAIM_ISSUES_RULE]
-    );
   });
 
   it('searches the claims of the agency', async () => {
-    const { service, queries } = setup({ row: null });
-    const filters = {
-      status: [],
-      waiting: [],
+    const { service, queries } = setup();
+    const res = await service.search('t-1', {
       page: 1,
       pageSize: 25,
-      sort: 'created' as const,
-      dir: 'desc' as const
-    };
-    assert.deepEqual(await service.search('t', filters), {
-      ok: true,
-      value: {
-        items: [],
-        total: 0,
-        page: 1,
-        pageSize: 25,
-        facets: { status: [], waiting: [] }
-      }
+      sort: 'created',
+      dir: 'desc',
+      status: []
     });
-    assert.ok(queries.every((q) => q.parameters.includes('t')));
-  });
-
-  it('pages the history of claims of the agency only', async () => {
-    const event = { kind: 'submitted', created_at: new Date('2026-01-01T00:00:00.000Z') };
-    const events = [{ ...event, total: '1' }];
-    const page = { page: 1, pageSize: 25, sort: 'when' as const, dir: 'desc' as const };
-    const { service, queries } = setup({ events });
-    assert.deepEqual(await service.events('t', 'c1', page), {
-      ok: true,
-      value: { items: [{ ...event, decision: null }], total: 1, page: 1, pageSize: 25 }
-    });
-    const exists = queries.find((q) => q.sql.startsWith('select "id" from "claims"'));
-    assert.deepEqual(exists?.parameters, ['c1', 't']);
-    assert.deepEqual(await setup({ row: null }).service.events('t', 'c1', page), {
-      ok: false,
-      failure: { code: 'not_found', message: 'Claim not found' }
-    });
-  });
-});
-
-describe('claim service tenancy', () => {
-  it('locks every claim write to the agency and announces only the writes that succeed', async () => {
-    const { service, queries, publishAfter } = setup();
-    await service.startTask('t', 'u1', 'c1', 'billing.correct-claim-data');
-    await service.restartCycle('t', 'c1');
-    const locks = queries.filter((q) => q.sql.endsWith('for update'));
-    assert.equal(locks.length, 2);
-    assert.ok(locks.every((q) => q.sql.includes('"agency_id" = $') && q.parameters.includes('t')));
-    assert.deepEqual(
-      publishAfter.map((a) => a.agencyId),
-      ['t', 't']
-    );
-    const foreign = setup({ row: null });
-    await foreign.service.startTask('other', 'u1', 'c1', 'billing.correct-claim-data');
-    await foreign.service.restartCycle('other', 'c1');
-    assert.deepEqual(foreign.publishAfter, []);
-    assert.ok(!foreign.queries.some((q) => /^(insert|update|delete)/.test(q.sql.trim())));
+    assert.ok(res.ok);
+    assert.equal(queries[0]?.parameters[0], 't-1');
   });
 });

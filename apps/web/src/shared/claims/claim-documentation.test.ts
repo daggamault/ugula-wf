@@ -2,15 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { formatDateTime } from '../format.ts';
-import { render, screen, userEvent, waitFor, within } from '../testing-dom.ts';
-import type { ClaimCoverage } from './claim-detail.ts';
+import { render, screen, within } from '../testing-dom.ts';
 import {
   abnText,
   authorizationText,
   conditionsText,
   DocumentationPanel,
-  EligibilityPanel,
-  eligibilityStyle,
   milesText,
   mspText,
   pcsText,
@@ -47,25 +44,6 @@ const documented = {
   facility_stay: null,
   is_deceased: false,
   non_covered_miles: '2.4'
-};
-
-const coverage: ClaimCoverage = {
-  id: 'cov-m',
-  position: 1,
-  payer: 'Medicare',
-  payer_id: 'p-m',
-  payer_code: null,
-  member_id: '1EG4',
-  group_id: null,
-  relationship: '18',
-  insured_first_name: null,
-  insured_last_name: null,
-  eligibility: 'inactive',
-  eligibility_note: 'Not covered after 2026-09-30',
-  eligibility_checked_at: '2026-10-31T12:00:00Z',
-  stay_kind: null,
-  stay_admitted_on: null,
-  stay_discharged_on: null
 };
 
 describe('pcsText', () => {
@@ -321,110 +299,5 @@ describe('DocumentationPanel', () => {
       ['Left Scene', '—'],
       ['At Destination', '—']
     ]);
-  });
-});
-
-describe('eligibilityStyle', () => {
-  it('marks active coverage as success, inactive as danger and unchecked as neutral', () => {
-    assert.deepEqual(eligibilityStyle({ eligibility: 'active' }), {
-      intent: 'success',
-      label: 'Active'
-    });
-    assert.deepEqual(eligibilityStyle(coverage), { intent: 'danger', label: 'Not Active' });
-    assert.deepEqual(eligibilityStyle({ eligibility: null }), { label: 'Not Checked' });
-  });
-});
-
-describe('EligibilityPanel', () => {
-  it("lists each payer with its eligibility, when it was checked and the payer's note", () => {
-    render(
-      createElement(EligibilityPanel, {
-        coverages: [
-          coverage,
-          {
-            ...coverage,
-            id: 'cov-b',
-            payer: 'Blue Plan',
-            eligibility: null,
-            eligibility_note: null,
-            eligibility_checked_at: null
-          }
-        ],
-        onDownload: async () => undefined
-      })
-    );
-    const panel = screen.getByRole('region', { name: 'Eligibility' });
-    assert.ok(within(panel).getByText("From each payer's 271 eligibility answer."));
-    assert.deepEqual(
-      within(within(panel).getByRole('table', { name: 'Eligibility by payer' }))
-        .getAllByRole('row')
-        .slice(1)
-        .map((row) =>
-          within(row)
-            .getAllByRole('cell')
-            .map((c) => c.lastElementChild?.textContent)
-        ),
-      [
-        [
-          'Medicare',
-          'Not Active',
-          formatDateTime('2026-10-31T12:00:00Z'),
-          'Not covered after 2026-09-30'
-        ],
-        ['Blue Plan', 'Not Checked', '—', '—']
-      ]
-    );
-  });
-
-  it('downloads the 270 and shows it is busy until the download finishes', async () => {
-    let finish: () => void = () => undefined;
-    let downloads = 0;
-    render(
-      createElement(EligibilityPanel, {
-        coverages: [coverage],
-        onDownload: () =>
-          new Promise<void>((resolve) => {
-            downloads += 1;
-            finish = resolve;
-          })
-      })
-    );
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Download 270' }));
-    assert.equal(downloads, 1);
-    assert.equal(
-      screen.getByRole('button', { name: 'Download 270' }).getAttribute('aria-busy'),
-      'true'
-    );
-    await user.click(screen.getByRole('button', { name: 'Download 270' }));
-    assert.equal(downloads, 1);
-    finish();
-    await waitFor(() =>
-      assert.equal(
-        screen.getByRole('button', { name: 'Download 270' }).getAttribute('aria-busy'),
-        null
-      )
-    );
-  });
-
-  it('says there is no payer and offers no 270 to download', async () => {
-    let downloads = 0;
-    render(
-      createElement(EligibilityPanel, {
-        coverages: [],
-        onDownload: async () => {
-          downloads += 1;
-        }
-      })
-    );
-    assert.ok(screen.getByText('No payer is on this claim.'));
-    assert.ok(!screen.queryByRole('table'));
-    const download = screen.getByRole('button', {
-      name: 'Download 270',
-      description: 'The claim has no payers.'
-    });
-    assert.equal(download.getAttribute('aria-disabled'), 'true');
-    await userEvent.setup().click(download);
-    assert.equal(downloads, 0);
   });
 });

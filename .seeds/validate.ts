@@ -1,5 +1,5 @@
 import { PERMISSIONS } from '@ugula/access';
-import { billingEvents, billingKinds, billingModels, createBillingNodes } from '@ugula/billing';
+import { billingEvents, billingKinds, billingModels } from '@ugula/billing';
 import {
   combineSources,
   createModelNodes,
@@ -21,15 +21,13 @@ import {
   triggerOf,
   validateGraph
 } from '@ugula/graph';
-import { createNemsisNodes, nemsisKinds, nemsisModels } from '@ugula/nemsis';
+import { nemsisKinds, nemsisModels } from '@ugula/nemsis';
 import * as v from 'valibot';
 import type { SeedTable } from './builder.ts';
 import type { SeedGraph } from './graphs.ts';
 
 export const graphNodes = (): NodeDef[] => [
   ...createStdNodes({ fetch, permissions: PERMISSIONS }),
-  ...createNemsisNodes(null),
-  ...createBillingNodes(null),
   ...createModelNodes([...nemsisModels, ...billingModels])
 ];
 

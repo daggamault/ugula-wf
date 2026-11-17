@@ -22,14 +22,12 @@ describe('createClients', () => {
       'runs',
       'tasks',
       'imports',
-      'payerFiles',
       'fees',
       'claims',
       'patients',
       'payers',
       'facilities',
       'settings',
-      'reports',
       'notifications',
       'codes'
     ]);

@@ -99,7 +99,7 @@ describe('createCatalog palette', () => {
   });
 
   it('files a std composite under the category of its sibling nodes', () => {
-    assert.equal(find('nemsis.split')[0]?.category, 'NEMSIS');
+    assert.equal(find('nemsis.pcr.break')[0]?.category, 'NEMSIS');
     assert.equal(find('std.math.average')[0]?.category, 'Math');
   });
 

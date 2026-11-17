@@ -69,7 +69,7 @@ describe('insertTask', () => {
       defaults: { note: '' },
       prefill: 'current',
       priority: 2,
-      permission: 'claims:approve'
+      permission: 'payers:update'
     });
     assert.deepEqual(
       queries.map((q) => ({ sql: q.sql, parameters: q.parameters })),
@@ -94,7 +94,7 @@ describe('insertTask', () => {
             'current',
             2,
             null,
-            'claims:approve',
+            'payers:update',
             null
           ]
         }

@@ -1,14 +1,4 @@
-import type { Model, ValueType } from '@ugula/graph';
-import {
-  CHECK_FACTS,
-  CHECKED_PAYER,
-  CLAIM_DOCUMENT,
-  CLAIM_ISSUE,
-  CLAIM_RECORD,
-  FACILITY,
-  RECORDED_DIAGNOSIS,
-  RECORDED_PAYER
-} from './check-models.ts';
+import type { Model } from '@ugula/graph';
 import {
   CLAIM,
   CLINICAL_FACTS,
@@ -20,120 +10,20 @@ import {
   SERVICE,
   TRIP_FACTS
 } from './claim-models.ts';
-import {
-  ADJUSTMENT,
-  CERTIFICATION_FACTS,
-  CLAIM_LEDGER,
-  DEADLINE,
-  DENIAL_FACTS,
-  DUE_DATE,
-  FILING_FACTS,
-  PATIENT_BALANCE_FACTS,
-  REFUND_FACTS,
-  REMINDER_FACTS,
-  REMITTANCE_LINE,
-  REMITTANCE_POSTING,
-  TASK_DUE
-} from './ledger-models.ts';
-import { BLOB } from './model-kit.ts';
-import { COVERAGE, COVERAGE_CANDIDATE, DEMOGRAPHICS, LOCATION, PATIENT } from './party-models.ts';
-import {
-  PRIOR_PAYER,
-  SUBMISSION,
-  SUBMITTED_DETAILS,
-  SUBMITTED_PATIENT,
-  SUBMITTED_PAYER,
-  X837_CLAIM,
-  X837_LINE,
-  X837_OTHER_PAYER,
-  X837_PATIENT,
-  X837_PAYER,
-  X837_SUBSCRIBER
-} from './submission-models.ts';
-
-export const billingTypes = {
-  blob: BLOB,
-  demographics: DEMOGRAPHICS.type,
-  patient: PATIENT.type,
-  location: LOCATION.type,
-  coverages: { list: COVERAGE.type },
-  candidates: { list: COVERAGE_CANDIDATE.type },
-  service: SERVICE.type,
-  findings: FINDINGS.type,
-  issues: { list: CLAIM_ISSUE.type },
-  checkFacts: CHECK_FACTS.type,
-  claimRecord: CLAIM_RECORD.type,
-  facility: FACILITY.type,
-  document: CLAIM_DOCUMENT.type,
-  ledger: CLAIM_LEDGER.type,
-  denial: DENIAL_FACTS.type,
-  refund: REFUND_FACTS.type,
-  patientBalance: PATIENT_BALANCE_FACTS.type,
-  filings: { list: FILING_FACTS.type },
-  certifications: { list: CERTIFICATION_FACTS.type },
-  dueDates: { list: DUE_DATE.type },
-  tasksDue: { list: TASK_DUE.type },
-  reminders: { list: REMINDER_FACTS.type },
-  deadlines: { list: DEADLINE.type },
-  adjustments: { list: ADJUSTMENT.type },
-  remittanceLines: { list: REMITTANCE_LINE.type },
-  postings: { list: REMITTANCE_POSTING.type },
-  trip: TRIP_FACTS.type,
-  locations: LOCATION_FACTS.type,
-  clinical: CLINICAL_FACTS.type,
-  facts: ENCOUNTER_FACTS.type,
-  lines: { list: LINE.type },
-  documentation: DOCUMENTATION.type,
-  claim: CLAIM.type,
-  submission: SUBMISSION.type,
-  x837: X837_CLAIM.type
-} satisfies Record<string, ValueType>;
+import { COVERAGE, DEMOGRAPHICS, LOCATION, PATIENT } from './party-models.ts';
 
 export const billingModels: Model[] = [
   DEMOGRAPHICS,
   PATIENT,
   LOCATION,
   COVERAGE,
-  COVERAGE_CANDIDATE,
   SERVICE,
   FINDINGS,
-  CLAIM_ISSUE,
-  CHECKED_PAYER,
-  FACILITY,
-  CHECK_FACTS,
-  RECORDED_PAYER,
-  RECORDED_DIAGNOSIS,
-  CLAIM_RECORD,
-  CLAIM_LEDGER,
-  DENIAL_FACTS,
-  REFUND_FACTS,
-  PATIENT_BALANCE_FACTS,
-  FILING_FACTS,
-  CERTIFICATION_FACTS,
-  REMINDER_FACTS,
-  TASK_DUE,
-  DUE_DATE,
-  DEADLINE,
-  ADJUSTMENT,
-  REMITTANCE_LINE,
-  REMITTANCE_POSTING,
-  CLAIM_DOCUMENT,
   LINE,
   DOCUMENTATION,
   TRIP_FACTS,
   LOCATION_FACTS,
   CLINICAL_FACTS,
   ENCOUNTER_FACTS,
-  CLAIM,
-  SUBMITTED_PATIENT,
-  SUBMITTED_PAYER,
-  PRIOR_PAYER,
-  SUBMITTED_DETAILS,
-  SUBMISSION,
-  X837_SUBSCRIBER,
-  X837_PATIENT,
-  X837_PAYER,
-  X837_OTHER_PAYER,
-  X837_LINE,
-  X837_CLAIM
+  CLAIM
 ].map(({ type: _, ...m }) => m);

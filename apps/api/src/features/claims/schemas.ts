@@ -1,4 +1,4 @@
-import { CLAIM_STATUSES, CLAIM_TASK_KEYS } from '@ugula/billing';
+import { CLAIM_STATUSES } from '@ugula/billing';
 import * as v from 'valibot';
 import { facetValues } from '../../shared/facets.ts';
 import { uuid } from '../../shared/http.ts';
@@ -12,9 +12,7 @@ const CLAIM_SORTS = [
   'pcr',
   'encounter',
   'total',
-  'balance',
-  'status',
-  'waiting'
+  'status'
 ] as const;
 
 export type ClaimSort = (typeof CLAIM_SORTS)[number];
@@ -23,7 +21,6 @@ const name = v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)));
 
 export const searchClaimsQuery = v.object({
   status: facetValues(v.picklist(CLAIM_STATUSES)),
-  waiting: facetValues(v.pipe(v.string(), v.maxLength(60))),
   firstName: name,
   lastName: name,
   birthDate: v.optional(v.pipe(v.string(), v.isoDate('Use a date like 1980-01-02'))),
@@ -31,13 +28,3 @@ export const searchClaimsQuery = v.object({
   patientId: v.optional(uuid),
   ...pageEntries(CLAIM_SORTS, 'created', 'desc')
 });
-
-const CLAIM_EVENT_SORTS = ['when', 'event', 'payer', 'amount'] as const;
-
-export type ClaimEventSort = (typeof CLAIM_EVENT_SORTS)[number];
-
-export const listClaimEventsQuery = v.object(pageEntries(CLAIM_EVENT_SORTS, 'when', 'desc'));
-
-export const startTaskSchema = v.object({ workflow: v.picklist(CLAIM_TASK_KEYS) });
-
-export const documentParam = v.object({ id: uuid, documentId: uuid });

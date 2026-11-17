@@ -21,10 +21,6 @@ const row = (over: Partial<TaskRow> = {}): TaskRow => ({
   assignee_id: null,
   assignee_email: null,
   created_at: '2026-11-01T00:00:00Z',
-  claim_id: 'c1',
-  claim_number: '20261101-0012',
-  first_name: 'Jane',
-  last_name: 'Doe',
   ...over
 });
 
@@ -34,10 +30,6 @@ const FAULT = row({
   queue: 'exceptions',
   title: 'Fix import',
   subject: null,
-  claim_id: null,
-  claim_number: null,
-  first_name: null,
-  last_name: null,
   assignee_email: 'sam@example.com'
 });
 
@@ -102,21 +94,13 @@ const choicesOf = async (filter: string) => {
 const here = () => `${window.location.pathname}${window.location.search}`;
 
 describe('TasksPage', () => {
-  it('lists each task with its queue, claim, patient, assignee and age', async () => {
+  it('lists each task with its queue, assignee and age', async () => {
     const { client, lists } = fakeClient();
     show(client);
     const ago = formatAgo('2026-11-01T00:00:00Z');
     assert.deepEqual(await rows(), [
-      [
-        'Review PCRPCR-1 · Jane Doe',
-        'Billing Review',
-        '20261101-0012Doe, Jane',
-        'You',
-        '—',
-        ago,
-        'Open'
-      ],
-      ['Fix import', 'Stuck Runs', '—', 'sam@example.com', '—', ago, 'Open']
+      ['Review PCRPCR-1 · Jane Doe', 'Billing Review', 'You', '—', ago, 'Open'],
+      ['Fix import', 'Stuck Runs', 'sam@example.com', '—', ago, 'Open']
     ]);
     assert.deepEqual(lists, [PAGE_QUERY]);
   });
@@ -139,12 +123,11 @@ describe('TasksPage', () => {
     );
   });
 
-  it('says when the claim has no patient yet and when nobody is assigned', async () => {
-    const { client } = fakeClient([row({ first_name: null, last_name: null })]);
+  it('says when nobody is assigned', async () => {
+    const { client } = fakeClient([row()]);
     show(client);
     const [cells] = await rows();
-    assert.equal(cells?.[2], '20261101-0012Not matched yet');
-    assert.equal(cells?.[3], 'Unassigned');
+    assert.equal(cells?.[2], 'Unassigned');
   });
 
   it('shows the due day, in red only once overdue', async () => {
@@ -159,29 +142,19 @@ describe('TasksPage', () => {
     assert.equal(screen.getByText(formatDay('2999-01-15T12:00:00Z')).className, '');
   });
 
-  it('highlights the search in titles, patients and claim numbers, and returns to it', async () => {
+  it('highlights the search in titles and subjects, and returns to it', async () => {
     const { client, lists } = fakeClient();
     show(client, 'q=doe');
     await table();
     assert.deepEqual(
       [...document.querySelectorAll('mark')].map((m) => m.textContent),
-      ['Doe', 'Doe']
+      ['Doe']
     );
     assert.equal(
       screen.getByRole('link', { name: 'Open task Review PCR' }).getAttribute('href'),
       '/tasks/t1?back=%2Ftasks%3Fq%3Ddoe'
     );
     assert.equal(lists[0], 'q=doe&page=1&pageSize=25&sort=waiting&dir=asc');
-  });
-
-  it('highlights a searched claim number however it is typed', async () => {
-    const { client } = fakeClient();
-    show(client, 'q=%23202611010012');
-    await table();
-    assert.deepEqual(
-      [...document.querySelectorAll('mark')].map((m) => m.textContent),
-      ['20261101-0012']
-    );
   });
 
   it('searches tasks from the search box', async () => {

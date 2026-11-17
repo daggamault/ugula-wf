@@ -1,16 +1,14 @@
 import { CLAIM_STATUSES, type ClaimStatus, dailyNumberOf, nameKey } from '@ugula/billing';
-import { type Db, DOCUMENTATION_COLUMNS, payerName } from '@ugula/db';
+import { type Db, DOCUMENTATION_COLUMNS } from '@ugula/db';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { facetCounts, whereFacets } from '../../shared/facets.ts';
 import { type PageRequest, paged } from '../../shared/paging.ts';
 import { escapeLike } from '../../shared/search.ts';
-import { withDecision } from './decisions.ts';
-import type { ClaimEventSort, ClaimSort } from './schemas.ts';
+import type { ClaimSort } from './schemas.ts';
 
 export type ClaimFilters = PageRequest<ClaimSort> & {
   status: readonly ClaimStatus[];
-  waiting: readonly string[];
   firstName?: string | undefined;
   lastName?: string | undefined;
   birthDate?: string | undefined;
@@ -18,44 +16,13 @@ export type ClaimFilters = PageRequest<ClaimSort> & {
   patientId?: string | undefined;
 };
 
-const claimTasks = (db: Db) =>
-  db
-    .selectFrom('tasks as t')
-    .innerJoin('claim_runs as cr', 'cr.run_id', 't.run_id')
-    .leftJoin('users as u', 'u.id', 't.assignee_id')
-    .where('t.status', '=', sql.lit('open'))
-    .orderBy('t.priority', 'desc')
-    .orderBy('t.created_at');
-
-const tasksOfClaim = (db: Db) => claimTasks(db).where('cr.claim_id', '=', sql.ref<string>('c.id'));
-
-const nextTask = (db: Db) =>
-  tasksOfClaim(db)
-    .select([
-      't.id',
-      't.title',
-      't.queue',
-      't.kind',
-      't.created_at',
-      'u.email',
-      sql<number>`(count(*) over ())::int`.as('count')
-    ])
-    .limit(sql.lit(1))
-    .as('t');
+const payerName = sql<string>`coalesce(dp.name, cc.payer_name)`;
 
 const claimRows = (db: Db, agencyId: string) =>
   db
     .selectFrom('claims as c')
     .leftJoin('patients as p', 'p.id', 'c.patient_id')
-    .innerJoin('claim_balances as b', 'b.claim_id', 'c.id')
-    .leftJoinLateral(nextTask(db), (join) => join.onTrue())
     .select((eb) => [
-      't.id as task_id',
-      't.title as task_title',
-      't.queue as task_queue',
-      't.kind as task_kind',
-      't.email as task_assignee_email',
-      eb.fn.coalesce('t.count', sql<number>`0`).as('open_tasks'),
       'c.id',
       'c.number',
       'p.number as patient_number',
@@ -72,7 +39,6 @@ const claimRows = (db: Db, agencyId: string) =>
       'c.created_at',
       'p.first_name',
       'p.last_name',
-      'b.balance_cents',
       sql<string[]>`array(${eb
         .selectFrom('claim_coverages as cc')
         .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
@@ -93,21 +59,11 @@ const claimOrder = (db: Db) => ({
     .select('er.number')
     .where('er.id', '=', sql.ref<string>('c.import_report_id')),
   total: sql.ref('c.total_cents'),
-  balance: db
-    .selectFrom('claim_balances as b')
-    .select('b.balance_cents')
-    .where('b.claim_id', '=', sql.ref<string>('c.id')),
-  waiting: tasksOfClaim(db).select('t.created_at').limit(sql.lit(1)),
   status: sql`array_position(array[${sql.join(CLAIM_STATUSES.map((s) => sql.lit(s)))}]::text[], c.status::text)`
 });
 
-const NOT_WAITING = 'none';
-
-const claimFacets = (db: Db) => ({
-  status: { value: sql.ref('c.status') },
-  waiting: {
-    value: sql<string>`coalesce(${tasksOfClaim(db).select('t.queue').limit(sql.lit(1))}, ${sql.lit(NOT_WAITING)})`
-  }
+const claimFacets = () => ({
+  status: { value: sql.ref('c.status') }
 });
 
 type ClaimFacet = keyof ReturnType<typeof claimFacets>;
@@ -138,13 +94,13 @@ const claimIds = (db: Db, agencyId: string, f: ClaimFilters, except?: ClaimFacet
       ])
     );
   }
-  return whereFacets(q, claimFacets(db), f, except);
+  return whereFacets(q, claimFacets(), f, except);
 };
 
 export const searchClaims = async (db: Db, agencyId: string, f: ClaimFilters) => {
   const [page, facets] = await Promise.all([
     paged(claimIds(db, agencyId, f), f, claimOrder(db), sql.ref('c.id')),
-    facetCounts((except) => claimIds(db, agencyId, f, except), claimFacets(db))
+    facetCounts((except) => claimIds(db, agencyId, f, except), claimFacets())
   ]);
   const ids = page.items.map((r) => r.id);
   const rows = ids.length ? await claimRows(db, agencyId).where('c.id', 'in', ids).execute() : [];
@@ -154,7 +110,6 @@ export const searchClaims = async (db: Db, agencyId: string, f: ClaimFilters) =>
 
 export const findClaim = (db: Db, agencyId: string, id: string) =>
   claimRows(db, agencyId)
-    .leftJoin('workflow_runs as r', 'r.id', 'c.cycle_run_id')
     .leftJoin('import_reports as ir', 'ir.id', 'c.import_report_id')
     .leftJoin('imports as i', 'i.id', 'ir.import_id')
     .leftJoin('facilities as f', 'f.id', 'c.facility_id')
@@ -183,8 +138,6 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
       'c.non_covered_miles',
       'p.birth_date',
       'c.patient_id',
-      'c.cycle_run_id',
-      'r.status as cycle_status',
       'p.gender',
       'p.address_line',
       'p.city',
@@ -205,13 +158,7 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
             'cc.group_id',
             'cc.relationship',
             'cc.insured_first_name',
-            'cc.insured_last_name',
-            'cc.eligibility',
-            'cc.eligibility_note',
-            'cc.eligibility_checked_at',
-            'cc.stay_kind',
-            'cc.stay_admitted_on',
-            'cc.stay_discharged_on'
+            'cc.insured_last_name'
           ])
           .whereRef('cc.claim_id', '=', 'c.id')
           .orderBy('cc.position')
@@ -227,195 +174,7 @@ export const findClaim = (db: Db, agencyId: string, id: string) =>
         .selectFrom('claim_diagnoses as d')
         .select('d.code')
         .whereRef('d.claim_id', '=', 'c.id')
-        .orderBy('d.position')})`.as('diagnoses'),
-      jsonArrayFrom(
-        claimTasks(db)
-          .select([
-            't.id',
-            't.title',
-            't.subject',
-            't.queue',
-            't.kind',
-            't.assignee_id',
-            'u.email as assignee_email',
-            't.due_at',
-            't.created_at'
-          ])
-          .where('cr.claim_id', '=', sql.ref<string>('c.id'))
-      ).as('tasks')
+        .orderBy('d.position')})`.as('diagnoses')
     ])
     .where('c.id', '=', id)
     .executeTakeFirst();
-
-export const claimExists = async (db: Db, agencyId: string, id: string) =>
-  (await db
-    .selectFrom('claims')
-    .select('id')
-    .where('id', '=', id)
-    .where('agency_id', '=', agencyId)
-    .executeTakeFirst()) !== undefined;
-
-export const listClaimDocuments = (db: Db, claimId: string) =>
-  db
-    .selectFrom('claim_documents as d')
-    .leftJoin('users as u', 'u.id', 'd.uploaded_by_id')
-    .select([
-      'd.id',
-      'd.kind',
-      'd.file_name',
-      'd.signed_on',
-      'd.created_at',
-      'u.email as uploaded_by_email'
-    ])
-    .where('d.claim_id', '=', claimId)
-    .orderBy('d.created_at')
-    .orderBy('d.id')
-    .execute();
-
-export const findClaimDocument = async (
-  db: Db,
-  agencyId: string,
-  claimId: string,
-  documentId: string
-) =>
-  (await db
-    .selectFrom('claim_documents')
-    .select(['document', 'file_name'])
-    .where('id', '=', documentId)
-    .where('claim_id', '=', claimId)
-    .where('agency_id', '=', agencyId)
-    .executeTakeFirst()) ?? null;
-
-const claimEvents = (db: Db, claimId: string) =>
-  db.selectFrom('claim_events as e').where('e.claim_id', '=', claimId);
-
-const eventPayer = sql<
-  string | null
->`case when e.coverage_id is null then null else ${payerName} end`;
-
-const EVENT_ORDER = {
-  when: sql.ref('e.created_at'),
-  event: sql`e.kind::text`,
-  payer: sql`lower(${eventPayer})`,
-  amount: sql`e.paid_cents + e.adjusted_cents`
-};
-
-const eventRows = (db: Db, claimId: string) =>
-  claimEvents(db, claimId)
-    .leftJoin('claim_coverages as cc', 'cc.id', 'e.coverage_id')
-    .leftJoin('payers as dp', 'dp.id', 'cc.payer_id')
-    .leftJoin('claim_batches as cb', 'cb.id', 'e.batch_id')
-    .leftJoin('users as eu', 'eu.id', 'e.created_by_id')
-    .leftJoin('tasks as t', 't.id', 'e.task_id')
-    .select((eb) => [
-      'e.id',
-      'e.kind',
-      'e.batch_id',
-      'cb.control_number as batch_number',
-      'cb.sent_at as batch_sent_at',
-      'e.coverage_id',
-      eventPayer.as('payer'),
-      'e.paid_cents',
-      'e.adjusted_cents',
-      'e.paid_on',
-      'e.check_number',
-      'e.payer_claim_number',
-      'e.note',
-      'e.created_at',
-      sql<string | null>`nullif(concat_ws(' ', eu.first_name, eu.last_name), '')`.as('by'),
-      't.title as task_title',
-      sql<string | null>`t.resolution->>'outcome'`.as('task_outcome'),
-      't.fields as task_fields',
-      't.defaults as task_defaults',
-      sql<unknown>`t.resolution->'values'`.as('task_values'),
-      sql<boolean>`e.document is not null`.as('has_document'),
-      jsonArrayFrom(
-        eb
-          .selectFrom('claim_event_adjustments as a')
-          .leftJoin('codes as d', (j) =>
-            j.on('d.code_set', '=', 'carc').onRef('d.code', '=', 'a.reason_code')
-          )
-          .select([
-            'a.group_code as group',
-            'a.reason_code as reason',
-            'a.amount_cents as cents',
-            'd.description'
-          ])
-          .whereRef('a.event_id', '=', 'e.id')
-          .orderBy('a.position')
-      ).as('adjustments'),
-      jsonArrayFrom(
-        eb
-          .selectFrom('claim_event_remarks as r')
-          .leftJoin('codes as d', (j) =>
-            j.on('d.code_set', '=', 'rarc').onRef('d.code', '=', 'r.code')
-          )
-          .select(['r.code', 'd.description'])
-          .whereRef('r.event_id', '=', 'e.id')
-          .orderBy('r.position')
-      ).as('remarks')
-    ]);
-
-export const listClaimEvents = async (
-  db: Db,
-  claimId: string,
-  page: PageRequest<ClaimEventSort>
-) => {
-  const found = await paged(eventRows(db, claimId), page, EVENT_ORDER, sql.ref('e.id'));
-  return { ...found, items: found.items.map(withDecision) };
-};
-
-export const listClaimFiles = async (db: Db, claimId: string) =>
-  (
-    await eventRows(db, claimId)
-      .where((eb) => eb.or([eb('e.batch_id', 'is not', null), eb('e.document', 'is not', null)]))
-      .orderBy('e.created_at')
-      .orderBy('e.id')
-      .execute()
-  ).map(withDecision);
-
-export const listClaimPayerFiles = (db: Db, claimId: string) =>
-  db
-    .selectFrom('payer_files as f')
-    .select((eb) => [
-      'f.id',
-      'f.kind',
-      'f.file_name',
-      'f.created_at',
-      jsonArrayFrom(
-        eb
-          .selectFrom('payer_file_items as fi')
-          .select(['fi.outcome', 'fi.message'])
-          .whereRef('fi.file_id', '=', 'f.id')
-          .where('fi.claim_id', '=', claimId)
-          .orderBy('fi.position')
-      ).as('items')
-    ])
-    .where((eb) =>
-      eb.exists(
-        eb
-          .selectFrom('payer_file_items as fi')
-          .select('fi.id')
-          .whereRef('fi.file_id', '=', 'f.id')
-          .where('fi.claim_id', '=', claimId)
-      )
-    )
-    .orderBy('f.created_at')
-    .orderBy('f.id')
-    .execute();
-
-export const findEventDocument = async (
-  db: Db,
-  agencyId: string,
-  claimId: string,
-  eventId: string
-) =>
-  (await db
-    .selectFrom('claim_events as e')
-    .innerJoin('claims as c', 'c.id', 'e.claim_id')
-    .select(['e.document', 'e.kind'])
-    .where('e.id', '=', eventId)
-    .where('c.id', '=', claimId)
-    .where('c.agency_id', '=', agencyId)
-    .where('e.document', 'is not', null)
-    .executeTakeFirst()) ?? null;

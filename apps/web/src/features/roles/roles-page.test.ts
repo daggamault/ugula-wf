@@ -15,7 +15,7 @@ const role = (patch: Partial<Role>): Role => ({
   name: 'Biller',
   version: 1,
   users: 3,
-  permissions: ['claims:read', 'claims:update'],
+  permissions: ['claims:read', 'tasks:update'],
   isGrantable: true,
   updatedAt: '2026-01-01T00:00:00.000Z',
   ...patch

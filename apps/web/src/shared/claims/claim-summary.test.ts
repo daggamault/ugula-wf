@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createElement } from 'react';
 import { render, screen, within } from '../testing-dom.ts';
 import type { ClaimDetail } from './claim-detail.ts';
-import { ClaimSummaryPanel, chargesNote, pricedLinesOf } from './claim-summary.tsx';
+import { ClaimSummaryPanel, pricedLinesOf } from './claim-summary.tsx';
 import { claimDetail } from './testing.ts';
 
 describe('pricedLinesOf', () => {
@@ -21,19 +21,6 @@ describe('pricedLinesOf', () => {
   });
 });
 
-describe('chargesNote', () => {
-  it('names the payer the modifiers were billed to', () => {
-    assert.equal(
-      chargesNote({ payer: 'Medicare', placeOfService: '41', modifiers: [] }),
-      'Modifiers as billed to Medicare.'
-    );
-  });
-
-  it('is undefined before the claim is billed', () => {
-    assert.equal(chargesNote(null), undefined);
-  });
-});
-
 const details = (claim: ClaimDetail) => {
   render(createElement(ClaimSummaryPanel, { claim }));
   return within(screen.getByRole('region', { name: 'Summary' }))
@@ -42,10 +29,9 @@ const details = (claim: ClaimDetail) => {
 };
 
 describe('ClaimSummaryPanel', () => {
-  it('shows what was billed, what is owed, the patient and the transport', () => {
+  it('shows what was billed, the patient and the transport', () => {
     assert.deepEqual(details(claimDetail), [
       ['Total', '$1,142.20'],
-      ['Balance', '$1,142.20'],
       ['Service Date', 'Oct 1, 2026'],
       ['Born', 'Apr 12, 1958'],
       ['Classification', 'Emergency Transport'],
@@ -63,7 +49,7 @@ describe('ClaimSummaryPanel', () => {
 
   it('shows the level alone for a non-emergency without loaded miles', () => {
     assert.equal(
-      details({ ...claimDetail, is_emergency: false, loaded_miles: null })[5]?.[1],
+      details({ ...claimDetail, is_emergency: false, loaded_miles: null })[4]?.[1],
       'ALS1'
     );
   });
@@ -77,7 +63,7 @@ describe('ClaimSummaryPanel', () => {
         is_emergency: false,
         loaded_miles: null,
         birth_date: null
-      }).slice(3, 6),
+      }).slice(2, 5),
       [
         ['Born', '—'],
         ['Classification', '—'],

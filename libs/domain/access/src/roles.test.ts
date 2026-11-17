@@ -11,8 +11,8 @@ const ALL_READS = PERMISSIONS.filter((p) => p.endsWith(':read'));
 
 describe('canGrant', () => {
   it('grants only permissions the granter holds', () => {
-    assert.equal(canGrant(['claims:read', 'claims:update'], ['claims:read']), true);
-    assert.equal(canGrant(['claims:read'], ['claims:read', 'claims:update']), false);
+    assert.equal(canGrant(['claims:read', 'tasks:read'], ['claims:read']), true);
+    assert.equal(canGrant(['claims:read'], ['claims:read', 'tasks:read']), false);
     assert.equal(canGrant([], ['claims:read']), false);
     assert.equal(canGrant([], []), true);
   });
@@ -68,18 +68,14 @@ describe('BUILT_IN_ROLES', () => {
       'imports:create',
       'imports:read',
       'claims:read',
-      'claims:update',
       'tasks:read',
       'tasks:update',
-      'payer_files:create',
-      'payer_files:read',
       'settings:read',
       'users:read',
       'roles:read',
       'payers:read',
       'facilities:read',
       'fees:read',
-      'reports:read',
       'workflows:read',
       'runs:read'
     ]);

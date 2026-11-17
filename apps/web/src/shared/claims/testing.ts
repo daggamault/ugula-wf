@@ -11,10 +11,9 @@ export const claimDetail: ClaimDetail = {
   pcr_number: 'PCR-1001',
   level: 'ALS1',
   total_cents: 114_220,
-  balance_cents: 114_220,
   service_date: '2026-10-01',
   payers: ['Medicare', 'Blue Plan'],
-  status: 'submitted',
+  status: 'needs_review',
   created_at: '2026-10-01T00:00:00Z',
   first_name: 'Jane',
   last_name: 'Doe',
@@ -24,8 +23,6 @@ export const claimDetail: ClaimDetail = {
   lines: [{ position: 1, code: 'A0427', units: 1, unit_cents: 95_000, total_cents: 95_000 }],
   birth_date: '1958-04-12',
   patient_id: 'p1',
-  cycle_run_id: 'cycle-1',
-  cycle_status: 'suspended',
   coverages: [
     {
       id: 'cov-m',
@@ -37,13 +34,7 @@ export const claimDetail: ClaimDetail = {
       group_id: null,
       relationship: '18',
       insured_first_name: null,
-      insured_last_name: null,
-      eligibility: null,
-      eligibility_note: null,
-      eligibility_checked_at: null,
-      stay_kind: null,
-      stay_admitted_on: null,
-      stay_discharged_on: null
+      insured_last_name: null
     },
     {
       id: 'cov-b',
@@ -55,13 +46,7 @@ export const claimDetail: ClaimDetail = {
       group_id: null,
       relationship: '01',
       insured_first_name: 'John',
-      insured_last_name: 'Doe',
-      eligibility: null,
-      eligibility_note: null,
-      eligibility_checked_at: null,
-      stay_kind: null,
-      stay_admitted_on: null,
-      stay_discharged_on: null
+      insured_last_name: 'Doe'
     }
   ],
   diagnoses: ['R079', 'I10'],
@@ -110,12 +95,5 @@ export const claimDetail: ClaimDetail = {
   facility_stay: null,
   is_deceased: false,
   non_covered_miles: null,
-  at_destination_at: '2026-10-01T10:40:00Z',
-  tasks: [],
-  task_id: null,
-  task_title: null,
-  task_queue: null,
-  task_kind: null,
-  task_assignee_email: null,
-  open_tasks: 0
+  at_destination_at: '2026-10-01T10:40:00Z'
 };

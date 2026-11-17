@@ -24,8 +24,6 @@ type FakeOptions = {
   version?: string;
   active?: string[];
   received?: number;
-  reference?: string;
-  recovered?: string[];
 };
 
 const fakeTx = (opts: FakeOptions = {}) => {
@@ -35,9 +33,7 @@ const fakeTx = (opts: FakeOptions = {}) => {
     tasks: [] as TaskInsert[],
     jobs: [] as RunJob[],
     cancelledTasks: [] as string[],
-    spawned: [] as Values[][],
-    recoveries: [] as [string, string, string][],
-    cycles: [] as [string, string, string][]
+    spawned: [] as Values[][]
   };
   const tx: RunTx = {
     saveRun: async (_, patch) => {
@@ -67,15 +63,6 @@ const fakeTx = (opts: FakeOptions = {}) => {
     children: async () => opts.children ?? [],
     activeChildren: async () => opts.active ?? [],
     lockSignal: async () => opts.received ?? 0,
-    claimReference: async () => opts.reference ?? null,
-    recoverDrafts: async (r, versionId, reason) => {
-      calls.recoveries.push([r.id, versionId, reason]);
-      return opts.recovered ?? [];
-    },
-    recoverCycles: async (r, versionId, reason) => {
-      calls.cycles.push([r.id, versionId, reason]);
-      return opts.recovered ?? [];
-    },
     enqueue: async (jobs) => {
       calls.jobs.push(...jobs);
     },
@@ -136,7 +123,7 @@ describe('settleRun', () => {
   });
 
   it('opens an exception task for faulted runs, named for the claim it works', async () => {
-    const { tx, calls } = fakeTx({ reference: 'PCR-1 · Jane Doe' });
+    const { tx, calls } = fakeTx();
     const error = { message: 'payer service answered 503', path: 'sub/', node: 'call' };
     await settleRun(tx, run, state({ status: 'faulted', fault: { cursor, error } }), [], {
       title: 'Call payer',
@@ -158,7 +145,7 @@ describe('settleRun', () => {
         kind: 'fault',
         queue: 'exceptions',
         title: 'Stuck at Call payer',
-        subject: 'PCR-1 · Jane Doe',
+        subject: null,
         summary: 'payer service answered 503',
         instructions: 'Call payer: Payer service answered 503.\n\nRetry once the cause is fixed.',
         context: { runId: 'run-1', node: 'Call payer', error },
@@ -284,7 +271,7 @@ describe('settleRun', () => {
         assignee: 'u-9',
         priority: 3,
         due: '2026-12-01T00:00:00.000Z',
-        permission: 'claims:approve'
+        permission: 'payers:update'
       }),
       []
     );
@@ -307,7 +294,7 @@ describe('settleRun', () => {
       priority: 3,
       assigneeId: 'u-9',
       dueAt: '2026-12-01T00:00:00.000Z',
-      permission: 'claims:approve'
+      permission: 'payers:update'
     });
   });
 
@@ -670,51 +657,6 @@ describe('stallRun and cancelRun', () => {
     const { tx, calls } = fakeTx();
     await stallRun(tx, run, state({ seq: 12 }), 'bad input', '2026-01-01T00:00:00.000Z');
     assert.equal(calls.tasks[0]?.waitId, 'fault:12:2026-01-01T00:00:00.000Z');
-  });
-
-  it('starts draft recovery when an Encounter to Claim run ends early, and only then', async () => {
-    const encounter = {
-      ...run,
-      graphs: [{ id: 'v-1', key: 'billing.encounter-to-claim', version: 1 }]
-    };
-    const cancelled = fakeTx({ version: 'v-rec', recovered: ['rec-1'] });
-    await cancelRun(cancelled.tx, encounter);
-    assert.deepEqual(cancelled.calls.recoveries, [['run-1', 'v-rec', 'The run was cancelled']]);
-    assert.deepEqual(cancelled.calls.jobs, [{ runId: 'rec-1', command: { type: 'advance' } }]);
-    const failed = fakeTx({ version: 'v-rec' });
-    await settleRun(failed.tx, encounter, waiting('nope' as never, {}), []);
-    assert.equal(failed.calls.saved[0]?.status, 'failed');
-    assert.deepEqual(failed.calls.recoveries, [
-      ['run-1', 'v-rec', 'The run failed: Unsupported wait "nope"']
-    ]);
-    const unpublished = fakeTx();
-    await cancelRun(unpublished.tx, encounter);
-    assert.deepEqual(unpublished.calls.recoveries, []);
-    const other = fakeTx({ version: 'v-rec' });
-    await cancelRun(other.tx, run);
-    await settleRun(other.tx, encounter, state({ status: 'completed', result: null }), []);
-    assert.deepEqual(other.calls.recoveries, []);
-    assert.deepEqual(other.calls.cycles, []);
-  });
-
-  it('starts cycle recovery when a claim cycle run fails or is cancelled, and only then', async () => {
-    const cycle = { ...run, graphs: [{ id: 'v-1', key: 'billing.cycle-claim', version: 1 }] };
-    const failed = fakeTx({ version: 'v-rec', recovered: ['rec-1'] });
-    await settleRun(failed.tx, cycle, waiting('nope' as never, {}), []);
-    assert.deepEqual(failed.calls.cycles, [
-      ['run-1', 'v-rec', 'The run failed: Unsupported wait "nope"']
-    ]);
-    assert.deepEqual(failed.calls.recoveries, []);
-    assert.deepEqual(failed.calls.jobs, [{ runId: 'rec-1', command: { type: 'advance' } }]);
-    const cancelled = fakeTx({ version: 'v-rec' });
-    await cancelRun(cancelled.tx, cycle);
-    assert.deepEqual(cancelled.calls.cycles, [['run-1', 'v-rec', 'The run was cancelled']]);
-    const completed = fakeTx({ version: 'v-rec' });
-    await settleRun(completed.tx, cycle, state({ status: 'completed', result: null }), []);
-    assert.deepEqual(completed.calls.cycles, []);
-    const unpublished = fakeTx();
-    await cancelRun(unpublished.tx, cycle);
-    assert.deepEqual(unpublished.calls.cycles, []);
   });
 
   it('cancel open tasks and cascade to active children', async () => {

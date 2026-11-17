@@ -46,11 +46,7 @@ export const reportOutcome = (r: ImportReport): ReportOutcome => {
       }
     };
   }
-  if (r.claim_id) {
-    return r.claim_status === 'void'
-      ? { label: 'Void', link: claimLink(r) }
-      : { intent: 'success', label: 'Claim Opened', link: claimLink(r) };
-  }
+  if (r.claim_id) return { intent: 'success', label: 'Claim Opened', link: claimLink(r) };
   switch (r.run_status) {
     case 'completed':
       return { label: 'No Claim', link: null };

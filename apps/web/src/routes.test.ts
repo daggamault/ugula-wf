@@ -12,15 +12,8 @@ import { ImportPage } from './features/imports/import-page.tsx';
 import { ImportsPage } from './features/imports/imports-page.tsx';
 import { PatientPage } from './features/patients/patient-page.tsx';
 import { PatientsPage } from './features/patients/patients-page.tsx';
-import { PayerFilePage } from './features/payer-files/payer-file-page.tsx';
-import { PayerFilesPage } from './features/payer-files/payer-files-page.tsx';
 import { PayerPage } from './features/payers/payer-page.tsx';
 import { PayersPage } from './features/payers/payers-page.tsx';
-import {
-  ReportOptionsPage,
-  ReportResultsPage,
-  ReportsPage
-} from './features/reports/reports-page.tsx';
 import { RolePage } from './features/roles/role-page.tsx';
 import { RolesPage } from './features/roles/roles-page.tsx';
 import { RunsPage } from './features/runs/runs-page.tsx';
@@ -43,7 +36,6 @@ const clients = {
   runs: { name: 'runs' },
   tasks: { name: 'tasks' },
   imports: { name: 'imports' },
-  payerFiles: { name: 'payerFiles' },
   fees: { name: 'fees' },
   claims: { name: 'claims' },
   patients: { name: 'patients' },
@@ -52,7 +44,6 @@ const clients = {
   users: { name: 'users' },
   roles: { name: 'roles' },
   settings: { name: 'settings' },
-  reports: { name: 'reports' },
   codes: { name: 'codes' }
 } as unknown as AppClients;
 
@@ -86,15 +77,10 @@ describe('resolveRoute', () => {
       ['/tasks/t1', TaskPage],
       ['/imports', ImportsPage],
       ['/imports/i1', ImportPage],
-      ['/payer-files', PayerFilesPage],
-      ['/payer-files/f1', PayerFilePage],
       ['/claims', ClaimsPage],
       ['/claims/c1', ClaimPage],
       ['/patients', PatientsPage],
       ['/patients/p1', PatientPage],
-      ['/reports', ReportsPage],
-      ['/reports/aging', ReportOptionsPage],
-      ['/reports/aging/results', ReportResultsPage],
       ['/fees', FeesPage],
       ['/fees/new', FeePage],
       ['/fees/f1', FeePage],
@@ -137,9 +123,7 @@ describe('resolveRoute', () => {
     assert.equal(props('/workflows/g1').nodes, testNodes);
   });
 
-  it('gives claim and task pages the signed-in email', () => {
-    assert.equal(props('/claims').me, 'dev@example.com');
-    assert.equal(props('/claims/c1').me, 'dev@example.com');
+  it('gives the task list the signed-in email', () => {
     assert.equal(props('/tasks').me, 'dev@example.com');
   });
 
@@ -148,10 +132,8 @@ describe('resolveRoute', () => {
     assert.equal(props('/workflows/g%201').graphId, 'g 1');
     assert.equal(props('/runs/r1').runId, 'r1');
     assert.equal(props('/imports/i1').importId, 'i1');
-    assert.equal(props('/payer-files/f1').fileId, 'f1');
     assert.equal(props('/claims/c1').claimId, 'c1');
     assert.equal(props('/patients/p1').patientId, 'p1');
-    assert.equal(props('/reports/aging/results').reportId, 'aging');
     assert.equal(props('/fees/f1').feeId, 'f1');
     assert.equal(props('/payers/p1').payerId, 'p1');
     assert.equal(props('/facilities/x1').facilityId, 'x1');
@@ -174,7 +156,6 @@ describe('resolveRoute', () => {
     assert.equal(resolve('/users/u1').key, 'u1');
     assert.equal(resolve('/roles/r1').key, 'r1');
     assert.equal(resolve('/tasks/t1').key, 't1');
-    assert.equal(resolve('/reports/aging').key, 'aging');
   });
 
   it('shows the patient claims on the patient page', () => {
@@ -238,11 +219,6 @@ describe('resolveRoute', () => {
     });
   });
 
-  it('reads the task tab', () => {
-    assert.equal(props('/tasks/t1', 'tab=patient').tab, 'patient');
-    assert.equal(props('/tasks/t1', 'tab=bogus').tab, 'claim');
-  });
-
   it('returns to the list unless the URL names an allowed back link', () => {
     const backs: [string, string, string][] = [
       ['/claims/c1', 'back=/patients/p1', '/patients/p1'],
@@ -253,7 +229,6 @@ describe('resolveRoute', () => {
       ['/patients/p1', 'back=/patients?lastName=doe', '/patients?lastName=doe'],
       ['/patients/p1', 'back=/claims', '/patients'],
       ['/imports/i1', 'back=/imports?page=2', '/imports?page=2'],
-      ['/payer-files/f1', 'back=/payer-files', '/payer-files'],
       ['/fees/new', 'back=/fees?q=a', '/fees?q=a'],
       ['/payers/p1', 'back=/payersx', '/payers'],
       ['/facilities/new', 'back=/facilities?q=b', '/facilities?q=b'],
@@ -266,10 +241,10 @@ describe('resolveRoute', () => {
     }
   });
 
-  it('lets a task return to the tasks, claims, runs or imports it came from', () => {
+  it('lets a task return to the tasks, runs or imports it came from', () => {
     assert.equal(props('/tasks/t1').back, null);
     assert.equal(props('/tasks/t1', 'back=/tasks?queue=billing').back, '/tasks?queue=billing');
-    assert.equal(props('/tasks/t1', 'back=/claims?lastName=doe').back, '/claims?lastName=doe');
+    assert.equal(props('/tasks/t1', 'back=/claims?lastName=doe').back, '/tasks');
     assert.equal(props('/tasks/t1', 'back=/runs/r1').back, '/runs/r1');
     assert.equal(props('/tasks/t1', 'back=/imports/i1').back, '/imports/i1');
     assert.equal(props('/tasks/t1', 'back=/patients/p1').back, '/tasks');

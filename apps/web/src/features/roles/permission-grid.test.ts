@@ -8,7 +8,7 @@ import { PermissionGrid, toggled } from './permission-grid.tsx';
 
 const grants: PermissionGrant[] = [
   { permission: 'claims:read', description: 'See claims.', isGrantable: true },
-  { permission: 'claims:update', description: 'Change claims.', isGrantable: false },
+  { permission: 'tasks:update', description: 'Work tasks.', isGrantable: false },
   { permission: 'users:read', description: 'See users.', isGrantable: true }
 ];
 
@@ -60,10 +60,10 @@ describe('PermissionGrid', () => {
 
   it('locks permissions the user cannot grant and explains why', async () => {
     const changes = show({ selected: [] });
-    assert.equal(box('Change Claims').disabled, true);
+    assert.equal(box('Change Tasks').disabled, true);
     assert.equal(box('View Claims').disabled, false);
     assert.equal(screen.getAllByText("You can't grant permissions you don't hold.").length, 1);
-    await userEvent.setup().click(box('Change Claims'));
+    await userEvent.setup().click(box('Change Tasks'));
     assert.deepEqual(changes, []);
   });
 

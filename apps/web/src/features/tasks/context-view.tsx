@@ -1,13 +1,11 @@
 import { isRecord, type Json } from '@ugula/graph';
 import type { ReactNode } from 'react';
-import { ClaimIssues, isIssueList } from '../../shared/claims/claim-issues.tsx';
 import { formatCents, formatDate, formatDateTime, labelOf } from '../../shared/format.ts';
 import { AlertList } from '../../shared/ui/alert.tsx';
 import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { EmptyText, emptyValue } from '../../shared/ui/empty-state.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
 import { TextLink } from '../../shared/ui/text-link.tsx';
-import { ClaimCheckView, isClaimCheck } from './claim-check.tsx';
 
 type ContextViewProps = {
   value: Json | undefined;
@@ -142,26 +140,22 @@ const NOTICES = {
   notes: { intent: 'info', title: 'Notes' }
 } as const;
 
-const SPECIAL = new Set(['issues', 'warnings', 'notes', 'changes', 'claim']);
+const SPECIAL = new Set(['warnings', 'notes', 'changes']);
 
 const ContextBody = ({
   value,
-  hasIssues,
   hideNotices = false
 }: {
   value: Record<string, Json>;
-  hasIssues: boolean;
   hideNotices?: boolean;
 }) => {
   const entries = entriesOf(value).filter(([key]) => !SPECIAL.has(key));
   const simple = Object.fromEntries(
     entries.filter(([, v]) => !isRecord(v) && !isRecordList(v))
   ) as Record<string, Json>;
-  const { issues, changes, claim } = value;
-  const showIssues = !hasIssues && isIssueList(issues);
+  const { changes } = value;
   return (
     <>
-      {showIssues ? <ClaimIssues issues={issues} /> : null}
       {(['warnings', 'notes'] as const).map((key) => {
         const items = value[key];
         return !hideNotices && isTextList(items) ? (
@@ -196,14 +190,6 @@ const ContextBody = ({
         ) : null
       )}
       {isChangeList(changes) ? <Changes changes={changes} /> : null}
-      {isClaimCheck(claim) ? (
-        <section className="flex flex-col gap-3">
-          <h3 className={subheading}>Claim</h3>
-          <ClaimCheckView claim={claim} />
-        </section>
-      ) : isRecord(claim) ? (
-        <ContextBody value={claim} hasIssues={hasIssues || showIssues} />
-      ) : null}
     </>
   );
 };
@@ -214,7 +200,7 @@ export const ContextView = ({ value, label, hideNotices = false }: ContextViewPr
   }
   return (
     <figure aria-label={label} className="flex min-w-0 flex-col gap-5">
-      <ContextBody value={value} hasIssues={hideNotices} hideNotices={hideNotices} />
+      <ContextBody value={value} hideNotices={hideNotices} />
     </figure>
   );
 };

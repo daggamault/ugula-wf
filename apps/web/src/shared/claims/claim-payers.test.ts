@@ -16,12 +16,6 @@ const coverage = (over: Partial<ClaimCoverage> = {}): ClaimCoverage => ({
   relationship: '18',
   insured_first_name: null,
   insured_last_name: null,
-  eligibility: null,
-  eligibility_note: null,
-  eligibility_checked_at: null,
-  stay_kind: null,
-  stay_admitted_on: null,
-  stay_discharged_on: null,
   ...over
 });
 

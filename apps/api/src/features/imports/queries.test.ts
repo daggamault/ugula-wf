@@ -15,12 +15,12 @@ import {
 const IMPORT_COLUMNS =
   'select "i"."id", "i"."file_name", "i"."source", "i"."report_count", "i"."created_at", "i"."run_id", "r"."status" as "run_status", "u"."email" as "uploaded_by_email", "reports"."completed", "reports"."waiting", "reports"."stuck", "reports"."failed", "reports"."processing", "claimed"."claims", "claimed"."charges_cents"';
 const IMPORT_FROM =
-  'from "imports" as "i" inner join "workflow_runs" as "r" on "r"."id" = "i"."run_id" left join "users" as "u" on "u"."id" = "i"."uploaded_by_id" left join lateral (select (count(*) filter (where ch.status = $1))::int as "completed", (count(*) filter (where ch.status = $2))::int as "waiting", (count(*) filter (where ch.status = $3))::int as "stuck", (count(*) filter (where ch.status = $4))::int as "failed", (count(*) filter (where ch.status = $5))::int as "processing" from "workflow_runs" as "ch" where "ch"."parent_id" = "i"."run_id") as "reports" on true left join lateral (select count(*)::int as "claims", coalesce(sum(c.total_cents), 0)::float8 as "charges_cents" from "claims" as "c" inner join "import_reports" as "ir" on "ir"."id" = "c"."import_report_id" where "ir"."import_id" = "i"."id" and "c"."status" <> $6) as "claimed" on true where "i"."agency_id" = $7';
-const STATUSES = ['completed', 'suspended', 'faulted', 'failed', 'running', 'void'];
+  'from "imports" as "i" inner join "workflow_runs" as "r" on "r"."id" = "i"."run_id" left join "users" as "u" on "u"."id" = "i"."uploaded_by_id" left join lateral (select (count(*) filter (where ch.status = $1))::int as "completed", (count(*) filter (where ch.status = $2))::int as "waiting", (count(*) filter (where ch.status = $3))::int as "stuck", (count(*) filter (where ch.status = $4))::int as "failed", (count(*) filter (where ch.status = $5))::int as "processing" from "workflow_runs" as "ch" where "ch"."parent_id" = "i"."run_id") as "reports" on true left join lateral (select count(*)::int as "claims", coalesce(sum(c.total_cents), 0)::float8 as "charges_cents" from "claims" as "c" inner join "import_reports" as "ir" on "ir"."id" = "c"."import_report_id" where "ir"."import_id" = "i"."id") as "claimed" on true where "i"."agency_id" = $6';
+const STATUSES = ['completed', 'suspended', 'faulted', 'failed', 'running'];
 
 const REPORT_COLUMNS =
   'select "ir"."id", "ir"."position", "ir"."number", "ir"."pcr_number", "r"."status" as "run_status", "c"."id" as "claim_id", "c"."status" as "claim_status", "c"."total_cents", "p"."first_name", "p"."last_name", "t"."id" as "task_id", "t"."title" as "task_title", "t"."subject" as "task_subject", "t"."kind" as "task_kind"';
-const REPORT_FROM = `from "import_reports" as "ir" inner join "imports" as "i" on "i"."id" = "ir"."import_id" left join "workflow_runs" as "r" on "r"."parent_id" = "i"."run_id" and r.inputs -> 'report' ->> 'key' = ir.report_key left join "claim_runs" as "cr" on "cr"."run_id" = "r"."id" left join "claims" as "c" on "c"."id" = "cr"."claim_id" left join "patients" as "p" on "p"."id" = "c"."patient_id" left join lateral (select "t"."id", "t"."title", "t"."subject", "t"."kind" from "tasks" as "t" where "t"."run_id" = "r"."id" and "t"."status" = $1 order by "t"."created_at" limit $2) as "t" on true where "i"."agency_id" = $3 and "i"."id" = $4`;
+const REPORT_FROM = `from "import_reports" as "ir" inner join "imports" as "i" on "i"."id" = "ir"."import_id" left join "workflow_runs" as "r" on "r"."parent_id" = "i"."run_id" and r.inputs -> 'report' ->> 'key' = ir.report_key left join "claims" as "c" on "c"."import_report_id" = "ir"."id" left join "patients" as "p" on "p"."id" = "c"."patient_id" left join lateral (select "t"."id", "t"."title", "t"."subject", "t"."kind" from "tasks" as "t" where "t"."run_id" = "r"."id" and "t"."status" = $1 order by "t"."created_at" limit $2) as "t" on true where "i"."agency_id" = $3 and "i"."id" = $4`;
 
 describe('resolveWorkflowVersion', () => {
   it('takes the newest version number of the graph at the bottom, then resolves the override in effect for it', async () => {
@@ -118,7 +118,7 @@ describe('searchImports', () => {
     await searchImports(db, 't-1', page);
     assert.equal(
       queries[0]?.sql,
-      `${IMPORT_COLUMNS}, count(*) over () as "total" ${IMPORT_FROM} order by lower(i.file_name) asc nulls last, "i"."id" asc limit $8 offset $9`
+      `${IMPORT_COLUMNS}, count(*) over () as "total" ${IMPORT_FROM} order by lower(i.file_name) asc nulls last, "i"."id" asc limit $7 offset $8`
     );
     assert.deepEqual(queries[0]?.parameters, [...STATUSES, 't-1', 10, 0]);
     await db.destroy();
@@ -129,10 +129,10 @@ describe('searchImports', () => {
     await searchImports(db, 't-1', { ...page, q: 'PCRS_', sort: 'received', dir: 'desc' });
     assert.ok(
       queries[0]?.sql.endsWith(
-        `${IMPORT_FROM} and (lower(i.file_name) like $8 or lower(u.email) like $9) order by "i"."created_at" desc nulls last, "i"."id" desc limit $10 offset $11`
+        `${IMPORT_FROM} and (lower(i.file_name) like $7 or lower(u.email) like $8) order by "i"."created_at" desc nulls last, "i"."id" desc limit $9 offset $10`
       )
     );
-    assert.deepEqual(queries[0]?.parameters.slice(6), ['t-1', '%pcrs\\_%', '%pcrs\\_%', 10, 0]);
+    assert.deepEqual(queries[0]?.parameters.slice(5), ['t-1', '%pcrs\\_%', '%pcrs\\_%', 10, 0]);
     await db.destroy();
   });
 
@@ -149,7 +149,7 @@ describe('searchImports', () => {
         '"claimed"."charges_cents"',
         '(r.status, reports.waiting + reports.processing + reports.stuck > 0)',
         'reports.waiting + reports.failed + reports.stuck + reports.processing'
-      ].map((by) => ` order by ${by} desc nulls last, "i"."id" desc limit $8 offset $9`)
+      ].map((by) => ` order by ${by} desc nulls last, "i"."id" desc limit $7 offset $8`)
     );
     await db.destroy();
   });
@@ -175,7 +175,7 @@ describe('findImport', () => {
   it('opens one import of the agency with its outcomes', async () => {
     const { db, queries } = createRecordingDb();
     assert.equal(await findImport(db, 't-1', 'i1'), undefined);
-    assert.equal(queries[0]?.sql, `${IMPORT_COLUMNS} ${IMPORT_FROM} and "i"."id" = $8`);
+    assert.equal(queries[0]?.sql, `${IMPORT_COLUMNS} ${IMPORT_FROM} and "i"."id" = $7`);
     assert.deepEqual(queries[0]?.parameters, [...STATUSES, 't-1', 'i1']);
     await db.destroy();
   });

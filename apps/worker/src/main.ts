@@ -1,5 +1,4 @@
 import { createNodeCatalog } from '@ugula/catalog';
-import { parseKeyring } from '@ugula/clearinghouse';
 import {
   createDb,
   dispatchEvents,
@@ -7,45 +6,21 @@ import {
   findDefinitions,
   findTableDefinitions
 } from '@ugula/db';
-import { createCompleter, createCompletionLimiter, createEmbedder } from '@ugula/inference';
 import { publishLiveEvent } from '@ugula/live';
 import { createBlobStore, createS3Storage } from '@ugula/storage';
 import { Redis } from 'ioredis';
 import { Client } from 'pg';
 import { PgBoss } from 'pg-boss';
-import { type Config, clearinghouseOf, parseConfig } from './config.ts';
-import { createFeeStore } from './features/charges/queries.ts';
-import {
-  announceBalances,
-  announceClaims,
-  announceClaimTasks
-} from './features/claims/announce.ts';
-import { createBalanceStore } from './features/claims/balances.ts';
-
-import { createClaimStore, createClaimTaskStore } from './features/claims/queries.ts';
-import { createExchangeStore } from './features/clearinghouse/exchange.ts';
-import { createHealthRecorder } from './features/clearinghouse/health.ts';
-import { registerPollJob } from './features/clearinghouse/job.ts';
-import { createPayerFileStore } from './features/clearinghouse/payer-files.ts';
-import { createClearinghousePoll } from './features/clearinghouse/poll.ts';
-import { createDocumentStore } from './features/documents/queries.ts';
+import { type Config, parseConfig } from './config.ts';
 import { startEventDispatcher } from './features/events/job.ts';
 import { registerHealthJob } from './features/health/job.ts';
-import { announceImports } from './features/imports/announce.ts';
-import { createReportStore } from './features/imports/reports.ts';
-import { createPatientStore } from './features/patients/queries.ts';
-import { createPayerStore } from './features/payers/queries.ts';
-import { createRecoveryStore } from './features/recovery/queries.ts';
-import { createReferenceStore } from './features/reference/queries.ts';
 import { registerScheduleJob, startDueSchedules } from './features/schedules/job.ts';
-import { createCalendarStore, createScheduleStore } from './features/schedules/queries.ts';
 import { createEngineCache } from './features/workflows/engines.ts';
 import { registerWorkflowJobs } from './features/workflows/job.ts';
 import { createRunStore } from './features/workflows/run-store.ts';
 import { createRunner } from './features/workflows/runner.ts';
-import { createConnections } from './shared/clearinghouse.ts';
 import { createListen } from './shared/listen.ts';
-import { coalescePublish, createAnnouncer, type Publish } from './shared/live.ts';
+import { coalescePublish, type Publish } from './shared/live.ts';
 import {
   createLoadGate,
   createProcessSampler,
@@ -54,7 +29,6 @@ import {
 } from './shared/load.ts';
 import { createPublicFetch } from './shared/public-fetch.ts';
 import { createRunScope } from './shared/run-scope.ts';
-import { createAgencyOf } from './shared/tenancy.ts';
 
 const connection = (config: Config) => ({
   host: config.DB_HOST,
@@ -122,71 +96,14 @@ if (import.meta.main) {
   const live = coalescePublish((agencyId, event) => publishLiveEvent(redis, agencyId, event));
   const publish: Publish = live.publish;
   const scope = createRunScope();
-  const agencyOf = createAgencyOf(db, scope.agencyOf);
-  const announce = createAnnouncer(agencyOf, publish);
-  const guardedFetch = scope.fetch(fetch);
   const publicFetch = scope.fetch(createPublicFetch(fetch));
   const report = (message: string) => process.stderr.write(`${message}\n`);
   const now = () => new Date();
-  const connections = createConnections({
-    db,
-    keyring: config.CLEARINGHOUSE_SECRET_KEY
-      ? parseKeyring(config.CLEARINGHOUSE_SECRET_KEY, config.CLEARINGHOUSE_PREVIOUS_SECRET_KEYS)
-      : null,
-    fallback: clearinghouseOf(config),
-    fetch: guardedFetch,
-    agencyFetch: config.NODE_ENV === 'development' ? guardedFetch : publicFetch,
-    realtimeTimeoutMs: config.CLEARINGHOUSE_REALTIME_TIMEOUT_SECONDS * 1000,
-    now,
-    report
-  });
-  const payerFiles = createPayerFileStore(db, blobs, boss, announce, now);
   const runner = createRunner({
     store,
     engines: createEngineCache({
       nodes: createNodeCatalog({
-        fetch: publicFetch,
-        reports: scope.guard(announceImports(createReportStore(db, blobs, agencyOf), announce)),
-        billing: {
-          patients: scope.guard(createPatientStore(db)),
-          payers: scope.guard(
-            createPayerStore(
-              db,
-              createEmbedder({ url: config.EMBEDDINGS_URL, fetch: guardedFetch })
-            )
-          ),
-          fees: scope.guard(createFeeStore(db)),
-          reference: scope.guard(createReferenceStore(db)),
-          claims: scope.guard(
-            announceClaims(createClaimStore(db, blobs, boss, connections.forAgency), announce)
-          ),
-          claimTasks: scope.guard(
-            announceClaimTasks(createClaimTaskStore(db, blobs, boss), announce)
-          ),
-          payerFiles: scope.guard(payerFiles),
-          exchange: scope.guard(
-            createExchangeStore({
-              db,
-              blobs,
-              applyDocument: payerFiles.applyDocument,
-              clearinghouseFor: connections.forAgency,
-              now
-            })
-          ),
-          recovery: scope.guard(createRecoveryStore(db, blobs, boss)),
-          schedules: scope.guard(createScheduleStore(db, blobs)),
-          calendar: scope.guard(createCalendarStore(db)),
-          documents: scope.guard(createDocumentStore(db)),
-          balances: scope.guard(
-            announceBalances(createBalanceStore(db, blobs, boss, now), announce)
-          ),
-          completer: createCompleter({
-            url: config.COMPLETIONS_URL,
-            model: config.COMPLETIONS_MODEL,
-            limit: createCompletionLimiter(redis, config.WORKER_COMPLETIONS_CONCURRENCY),
-            fetch: guardedFetch
-          })
-        }
+        fetch: publicFetch
       }),
       loadDefinitions: (ids) => findDefinitions(db, ids),
       loadTables: (ids) => findTableDefinitions(db, ids)
@@ -208,19 +125,6 @@ if (import.meta.main) {
         : defaultHeapBytes(),
       rssBytes: config.WORKER_MAX_RSS_MB ? megabytes(config.WORKER_MAX_RSS_MB) : null
     }),
-    report
-  });
-  await registerPollJob({
-    boss,
-    poll: createClearinghousePoll({
-      db,
-      blobs,
-      targets: connections.pollTargets,
-      recordHealth: createHealthRecorder({ db, boss }),
-      report,
-      now
-    }),
-    pollMinutes: config.CLEARINGHOUSE_POLL_MINUTES,
     report
   });
   await registerScheduleJob({ boss, start: startDueSchedules({ db, boss, report }) });

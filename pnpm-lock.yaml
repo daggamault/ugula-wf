@@ -386,9 +386,6 @@ importers:
       '@ugula/live':
         specifier: workspace:*
         version: link:../../libs/kernel/live
-      '@ugula/nemsis':
-        specifier: workspace:*
-        version: link:../../libs/domain/nemsis
 
   apps/worker:
     dependencies:
@@ -401,9 +398,6 @@ importers:
       '@ugula/catalog':
         specifier: workspace:*
         version: link:../../libs/composition/catalog
-      '@ugula/clearinghouse':
-        specifier: workspace:*
-        version: link:../../libs/platform/clearinghouse
       '@ugula/config':
         specifier: workspace:*
         version: link:../../libs/kernel/config

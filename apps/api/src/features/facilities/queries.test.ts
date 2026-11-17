@@ -27,7 +27,7 @@ const isFacet = (sql: string) => sql.includes('group by 1');
 const flat = (sql = '') => sql.replace(/\s+/g, ' ');
 
 describe('facility queries', () => {
-  it('scopes every query to the agency and totals what each facility owes', async () => {
+  it('scopes every query to the agency', async () => {
     const { db, queries } = createRecordingDb(({ sql }) =>
       isFacet(sql) ? [] : sql.startsWith('select') ? [{ id: 'f1', total: '1' }] : [{ id: 'f1' }]
     );
@@ -48,7 +48,6 @@ describe('facility queries', () => {
     assert.ok(insert?.sql.includes('"kind", "has_contract", "contract_note"'));
     assert.ok(insert?.parameters.includes('snf') && insert.parameters.includes(true));
     const page = queries.find((q) => !isFacet(q.sql));
-    assert.ok(page?.sql.includes('sum(b.balance_cents)'));
     assert.ok(page?.parameters.includes('%sun%'));
     assert.ok(insert?.sql.includes('on conflict (agency_id, lower(name)) do nothing'));
   });
@@ -69,10 +68,10 @@ describe('facility queries', () => {
     const list = queries.find((q) => !isFacet(q.sql));
     assert.ok(
       flat(list?.sql).includes(
-        'where "f"."agency_id" = $5 and lower(f.name) like $6 and "f"."kind" in ($7, $8)'
+        'where "f"."agency_id" = $1 and lower(f.name) like $2 and "f"."kind" in ($3, $4)'
       )
     );
-    assert.deepEqual(list?.parameters.slice(4, 8), ['t-1', '%sun%', 'snf', 'hospital']);
+    assert.deepEqual(list?.parameters.slice(0, 4), ['t-1', '%sun%', 'snf', 'hospital']);
     const facet = queries.find((q) => isFacet(q.sql));
     assert.equal(
       flat(facet?.sql),

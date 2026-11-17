@@ -4,7 +4,6 @@ import type { ReactNode } from 'react';
 import type { ClaimSummary } from '../../shared/claims/claim-detail.ts';
 import { formatCents, formatDate } from '../../shared/format.ts';
 import { isOnPage, LIST_RELOAD_MS, type Live, useLive } from '../../shared/live.ts';
-import { assigneeOf, queueInfo } from '../../shared/task-queues.ts';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { ButtonLink } from '../../shared/ui/button.tsx';
 import { type ColumnFilter, ColumnFilters } from '../../shared/ui/column-filters.tsx';
@@ -25,7 +24,6 @@ type ClaimsPageProps = {
   client: ClaimsClient;
   live: Live;
   search: ClaimSearch;
-  me: string;
 };
 
 const PATH = '/claims';
@@ -39,16 +37,12 @@ export const CLAIM_TABLE = {
     pcr: 'asc',
     encounter: 'desc',
     total: 'desc',
-    balance: 'desc',
-    status: 'asc',
-    waiting: 'asc'
+    status: 'asc'
   },
   sort: 'created'
 } as const;
 
-const CLAIMS_PAGE_TABLE = { ...CLAIM_TABLE, filters: ['status', 'waiting'] } as const;
-
-const NOT_WAITING = 'none';
+const CLAIMS_PAGE_TABLE = { ...CLAIM_TABLE, filters: ['status'] } as const;
 
 export const CLAIM_FILTERS: readonly ColumnFilter[] = [
   {
@@ -58,11 +52,6 @@ export const CLAIM_FILTERS: readonly ColumnFilter[] = [
       const status = CLAIM_STATUSES.find((s) => s === o.value);
       return status ? CLAIM_STATUS_LABELS[status] : o.value;
     }
-  },
-  {
-    key: 'waiting',
-    label: 'Waiting On',
-    labelOf: (o) => (o.value === NOT_WAITING ? 'Nothing' : queueInfo(o.value).label)
   }
 ];
 
@@ -73,37 +62,18 @@ export const CLAIM_SEARCH_FIELDS: readonly SearchField[] = [
   { name: 'number', label: 'Number', placeholder: 'Claim, Patient or Encounter #' }
 ];
 
-const WaitingOn = ({ claim, me }: { claim: ClaimSummary; me: string }) =>
-  claim.task_id ? (
-    <span className="flex flex-col gap-0.5">
-      <span className={claim.task_kind === 'fault' ? 'text-danger font-medium' : 'font-medium'}>
-        {claim.task_title}
-        {claim.open_tasks > 1 ? (
-          <span className="text-surface-fg-muted font-normal"> +{claim.open_tasks - 1} more</span>
-        ) : null}
-      </span>
-      <span className="text-surface-fg-muted text-xs">
-        {queueInfo(claim.task_queue ?? '').label} · {assigneeOf(claim.task_assignee_email, me)}
-      </span>
-    </span>
-  ) : (
-    <span className="text-surface-fg-muted">{emptyValue}</span>
-  );
-
 export const ClaimsTable = ({
   claims,
   sorting,
   showPatient = true,
   back = '',
-  search,
-  me = ''
+  search
 }: {
   claims: readonly ClaimSummary[];
   sorting?: TableSorting;
   showPatient?: boolean;
   back?: string;
   search?: ClaimSearch;
-  me?: string;
 }) => (
   <Table
     label="Claims"
@@ -114,10 +84,8 @@ export const ClaimsTable = ({
       { label: 'Encounter', isSecondary: true, sort: 'encounter' },
       { label: 'Service Date', sort: 'service' },
       { label: 'Total', sort: 'total' },
-      { label: 'Balance', sort: 'balance' },
       { label: 'Payers', isSecondary: true },
       { label: 'Status', sort: 'status' },
-      { label: 'Waiting On', sort: 'waiting' },
       { label: 'Actions', isLabelHidden: true, isCompact: true }
     ]}
   >
@@ -180,17 +148,11 @@ export const ClaimsTable = ({
         </TableCell>
         <TableCell kind="date">{formatDate(c.service_date)}</TableCell>
         <TableCell kind="numeric">{formatCents(c.total_cents)}</TableCell>
-        <TableCell kind="numeric">
-          <span className="font-semibold">{formatCents(c.balance_cents)}</span>
-        </TableCell>
         <TableCell kind="wrap" isMuted={!c.payers.length} isSecondary>
           {c.payers.length ? c.payers.join(' → ') : 'Patient only'}
         </TableCell>
         <TableCell>
           <ClaimStatusBadge status={c.status} />
-        </TableCell>
-        <TableCell kind="wrap">
-          <WaitingOn claim={c} me={me} />
         </TableCell>
         <TableCell kind="actions">
           <RowActions>
@@ -215,7 +177,6 @@ const ClaimResults = ({
   live,
   query,
   table,
-  me,
   search,
   empty
 }: {
@@ -223,7 +184,6 @@ const ClaimResults = ({
   live: Live;
   query: Parameters<ClaimsClient['list']>[0];
   table: ClaimsTableState;
-  me: string;
   search: ClaimSearch;
   empty: ReactNode;
 }) => {
@@ -238,18 +198,12 @@ const ClaimResults = ({
   useLive(
     live,
     (e) =>
-      (e.kind === 'claim' &&
-        isOnPage(
-          e.id,
-          table.page,
-          items.map((c) => c.id)
-        )) ||
-      (e.kind === 'task' &&
-        isOnPage(
-          e.id,
-          table.page,
-          items.map((c) => c.task_id)
-        )),
+      e.kind === 'claim' &&
+      isOnPage(
+        e.id,
+        table.page,
+        items.map((c) => c.id)
+      ),
     claims.reload,
     LIST_RELOAD_MS
   );
@@ -259,7 +213,7 @@ const ClaimResults = ({
       {claims.error ? <Alert>{claims.error.message}</Alert> : null}
       {items.length && claims.data ? (
         <>
-          <ClaimsTable claims={items} sorting={table} back={table.href} me={me} search={search} />
+          <ClaimsTable claims={items} sorting={table} back={table.href} search={search} />
           <Pagination label="Claims" total={claims.data.total} state={table} />
         </>
       ) : claims.loading ? (
@@ -284,7 +238,7 @@ const ClaimResults = ({
   );
 };
 
-export const ClaimsPage = ({ client, live, me, search }: ClaimsPageProps) => {
+export const ClaimsPage = ({ client, live, search }: ClaimsPageProps) => {
   const table = useTableState(PATH, CLAIMS_PAGE_TABLE);
   return (
     <Page title="Claims">
@@ -293,7 +247,6 @@ export const ClaimsPage = ({ client, live, me, search }: ClaimsPageProps) => {
         <ClaimResults
           client={client}
           live={live}
-          me={me}
           query={search}
           table={table}
           search={search}

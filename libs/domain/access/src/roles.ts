@@ -8,7 +8,7 @@ export const canGrant = (held: readonly Permission[], requested: readonly Permis
 export const isUserAdmin = (permissions: readonly Permission[]) =>
   canGrant(permissions, USER_ADMIN_PERMISSIONS);
 
-const WORK = ['patients', 'imports', 'claims', 'tasks', 'payer_files'] as const;
+const WORK = ['patients', 'imports', 'claims', 'tasks'] as const;
 
 const SETUP = [
   'settings',
@@ -26,17 +26,14 @@ export const BUILT_IN_ROLES: readonly { name: string; permissions: readonly Perm
   {
     name: 'Billing Manager',
     permissions: [
-      ...grantsOf([...WORK, 'payers', 'facilities', 'fees', 'reports', 'runs']),
+      ...grantsOf([...WORK, 'payers', 'facilities', 'fees', 'runs']),
       ...grantsOf(['settings', 'users', 'roles', 'workflows'], ['read']),
       'workflows:update'
     ]
   },
   {
     name: 'Biller',
-    permissions: [
-      ...grantsOf(WORK, ['create', 'read', 'update']),
-      ...grantsOf([...SETUP, 'reports'], ['read'])
-    ]
+    permissions: [...grantsOf(WORK, ['create', 'read', 'update']), ...grantsOf(SETUP, ['read'])]
   },
-  { name: 'Viewer', permissions: grantsOf([...WORK, ...SETUP, 'reports'], ['read']) }
+  { name: 'Viewer', permissions: grantsOf([...WORK, ...SETUP], ['read']) }
 ];

@@ -1,4 +1,4 @@
-import { CLOSED_CLAIM_STATUSES, dailyNumberOf, nameKey } from '@ugula/billing';
+import { dailyNumberOf, nameKey } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
 import { type PageRequest, paged } from '../../shared/paging.ts';
@@ -19,12 +19,8 @@ const patientRows = (db: Db, agencyId: string) =>
       (eb) =>
         eb
           .selectFrom('claims as c')
-          .innerJoin('claim_balances as b', 'b.claim_id', 'c.id')
           .select([
             sql<number>`count(*)::int`.as('claim_count'),
-            sql<number>`(coalesce(sum(b.balance_cents) filter (where c.status not in (${sql.join(
-              CLOSED_CLAIM_STATUSES.map((s) => sql.lit(s))
-            )})), 0))::float8`.as('balance_cents'),
             sql<string | null>`max(c.service_date)::text`.as('last_service_date')
           ])
           .whereRef('c.patient_id', '=', 'p.id')
@@ -43,7 +39,6 @@ const patientRows = (db: Db, agencyId: string) =>
       'p.state',
       'p.postal_code',
       'claimed.claim_count',
-      'claimed.balance_cents',
       'claimed.last_service_date'
     ])
     .where('p.agency_id', '=', agencyId);
@@ -53,7 +48,6 @@ const PATIENT_ORDER = {
   number: sql.ref('p.number'),
   born: sql.ref('p.birth_date'),
   lastService: sql.ref('claimed.last_service_date'),
-  balance: sql.ref('claimed.balance_cents'),
   city: sql`lower(p.city || ' ' || coalesce(p.state, ''))`,
   claims: sql.ref('claimed.claim_count')
 };

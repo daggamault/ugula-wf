@@ -7,16 +7,12 @@ import {
   SIGNATURE_LABELS,
   TRANSPORT_REASONS
 } from '@ugula/billing';
-import { DownloadIcon } from 'lucide-react';
-import { useState } from 'react';
 import { formatDate, formatDateTime } from '../format.ts';
 import { Badge, type StatusBadgeStyle } from '../ui/badge.tsx';
-import { Button } from '../ui/button.tsx';
 import { Detail, DetailList } from '../ui/detail-list.tsx';
-import { EmptyText, emptyValue } from '../ui/empty-state.tsx';
+import { emptyValue } from '../ui/empty-state.tsx';
 import { SectionPanel } from '../ui/section-panel.tsx';
-import { Table, TableCell, TableRow } from '../ui/table.tsx';
-import type { ClaimCoverage, ClaimDetail } from './claim-detail.ts';
+import type { ClaimDetail } from './claim-detail.ts';
 
 type Documented = Pick<
   ClaimDetail,
@@ -192,73 +188,3 @@ export const DocumentationPanel = ({ claim }: { claim: Documented }) => (
     </DetailList>
   </SectionPanel>
 );
-
-export const eligibilityStyle = (c: Pick<ClaimCoverage, 'eligibility'>): StatusBadgeStyle =>
-  c.eligibility === 'active'
-    ? { intent: 'success', label: 'Active' }
-    : c.eligibility === 'inactive'
-      ? { intent: 'danger', label: 'Not Active' }
-      : { label: 'Not Checked' };
-
-export const EligibilityPanel = ({
-  coverages,
-  onDownload
-}: {
-  coverages: readonly ClaimCoverage[];
-  onDownload: () => Promise<void>;
-}) => {
-  const [busy, setBusy] = useState(false);
-  return (
-    <SectionPanel
-      title="Eligibility"
-      description="From each payer's 271 eligibility answer."
-      actions={
-        <Button
-          variant="outline"
-          isPending={busy}
-          disabledReason={coverages.length ? undefined : 'The claim has no payers.'}
-          onClick={async () => {
-            setBusy(true);
-            await onDownload();
-            setBusy(false);
-          }}
-        >
-          <DownloadIcon aria-hidden="true" className="size-4" />
-          Download 270
-        </Button>
-      }
-    >
-      {coverages.length ? (
-        <Table
-          label="Eligibility by payer"
-          head={[
-            { label: 'Payer' },
-            { label: 'Status' },
-            { label: 'Checked', isSecondary: true },
-            { label: 'Details' }
-          ]}
-        >
-          {coverages.map((c) => {
-            const style = eligibilityStyle(c);
-            return (
-              <TableRow key={c.id}>
-                <TableCell>{c.payer}</TableCell>
-                <TableCell>
-                  <Badge intent={style.intent}>{style.label}</Badge>
-                </TableCell>
-                <TableCell kind="date" isMuted isSecondary>
-                  {formatDateTime(c.eligibility_checked_at)}
-                </TableCell>
-                <TableCell kind="wrap" isMuted={!c.eligibility_note}>
-                  {c.eligibility_note ?? emptyValue}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </Table>
-      ) : (
-        <EmptyText>No payer is on this claim.</EmptyText>
-      )}
-    </SectionPanel>
-  );
-};

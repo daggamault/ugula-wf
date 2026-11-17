@@ -12,10 +12,9 @@ import {
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useCan } from '../../shared/access.tsx';
 import { isApiError, messageOf } from '../../shared/api.ts';
-import type { ClaimDetail } from '../../shared/claims/claim-detail.ts';
 import { CodeField } from '../../shared/claims/code-field.tsx';
 import type { CodesClient } from '../../shared/codes.ts';
-import { formatAgo, formatDateTime, formatDay, patientName } from '../../shared/format.ts';
+import { formatAgo, formatDateTime, formatDay } from '../../shared/format.ts';
 import { type Live, useLive } from '../../shared/live.ts';
 import { navigate, useUnsavedChanges } from '../../shared/router.tsx';
 import {
@@ -39,35 +38,16 @@ import { FieldGrid } from '../../shared/ui/field.tsx';
 import type { Intent } from '../../shared/ui/intent.ts';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
-import { Tabs } from '../../shared/ui/tabs.tsx';
-import { TextLink } from '../../shared/ui/text-link.tsx';
 import { Textarea } from '../../shared/ui/textarea.tsx';
 import { useToast } from '../../shared/ui/toast.tsx';
 import { Tooltip } from '../../shared/ui/tooltip.tsx';
 import { ValueField } from '../../shared/ui/value-field.tsx';
 import { backLabelOf, withBack } from '../../shared/url-state.ts';
 import { loadFailure, refreshFailure, useResource } from '../../shared/use-resource.ts';
-import type { TaskClaimRecord, TaskDetail, TasksClient } from './client.ts';
+import type { TaskDetail, TasksClient } from './client.ts';
 import { ContextView } from './context-view.tsx';
-import { encounterFactsOf, type Mismatch, mismatchesOf } from './encounter-check.ts';
-import { SourceReportView } from './source-report.tsx';
-import { PatientFacts, TaskIssue } from './task-brief.tsx';
+import { TaskIssue } from './task-brief.tsx';
 import { ChangeList, changesOf, FieldWas } from './task-changes.tsx';
-import { TaskClaimView } from './task-claim.tsx';
-
-const TASK_TABS = ['claim', 'encounter', 'patient', 'workflow'] as const;
-
-export type TaskTab = (typeof TASK_TABS)[number];
-
-export const taskTabOf = (value: string | null): TaskTab =>
-  TASK_TABS.find((t) => t === value) ?? 'claim';
-
-const TAB_LABELS: Readonly<Record<TaskTab, string>> = {
-  claim: 'Claim',
-  encounter: 'Encounter',
-  patient: 'Patient',
-  workflow: 'Workflow'
-};
 
 type FollowUp = { title: string; href: string };
 
@@ -97,19 +77,13 @@ type TaskPageProps = {
   live: Live;
   taskId: string;
   back: string | null;
-  tab?: TaskTab;
 };
 
 type TaskViewProps = {
   task: TaskDetail;
   back: string;
   remaining: number | null;
-  tab?: TaskTab;
-  tabHref?: (tab: TaskTab) => string;
   findFollowUp?: (() => Promise<FollowUp | null>) | undefined;
-  mismatches?: readonly Mismatch[];
-  source?: ReactNode;
-  claim?: TaskClaimRecord | null;
   onComplete: (outcome: string, values: Record<string, Json>, note: string) => Promise<void>;
   onAssign: (assign: boolean) => Promise<void>;
   onNext: () => Promise<void>;
@@ -133,44 +107,6 @@ export const fieldErrorsOf = (err: unknown): FieldErrors => {
 
 const FAULT_HELP =
   'Retry the failed step, skip it with the outputs below (and the exec pin to continue from), or cancel the run.';
-
-export const TaskAbout = ({
-  task,
-  claim
-}: {
-  task: Pick<TaskDetail, 'id' | 'title' | 'subject'>;
-  claim: Pick<ClaimDetail, 'id' | 'number' | 'first_name' | 'last_name'> | null;
-}) => {
-  const about = task.subject ? task.title : null;
-  if (!claim) return about ?? 'Waiting on a decision';
-  return (
-    <>
-      {about ? `${about} on claim ` : 'On claim '}
-      <TextLink to={withBack(`/claims/${claim.id}`, `/tasks/${task.id}`)}>{claim.number}</TextLink>
-      {` for ${patientName(claim.last_name, claim.first_name) ?? 'a patient not matched yet'}`}
-    </>
-  );
-};
-
-type ClaimShape = Pick<ClaimDetail, 'status' | 'service_date' | 'level' | 'lines' | 'coverages'>;
-
-export const hasClaimData = (c: ClaimShape) =>
-  c.status !== 'draft' ||
-  c.service_date !== null ||
-  c.level !== null ||
-  c.lines.length > 0 ||
-  c.coverages.length > 0;
-
-const tabsOf = (claim: TaskClaimRecord | null, hasReport: boolean): readonly TaskTab[] =>
-  TASK_TABS.filter((t) =>
-    t === 'workflow'
-      ? true
-      : t === 'encounter'
-        ? hasReport
-        : t === 'patient'
-          ? claim?.claim.patient_id != null
-          : claim !== null && hasClaimData(claim.claim)
-  );
 
 export const backOfTask = (back: string | null) => back ?? '/tasks';
 
@@ -235,7 +171,7 @@ export const NextUp = ({
       {followUp ? (
         <div className="border-primary/40 bg-primary/5 flex flex-col gap-3 rounded-xl border p-3">
           <p className="text-sm">
-            <span className="text-surface-fg-muted">Up next on this claim: </span>
+            <span className="text-surface-fg-muted">Up next in this run: </span>
             <span className="font-semibold">{followUp.title}</span>
           </p>
           <ButtonLink to={followUp.href}>
@@ -384,11 +320,7 @@ const Decision = ({
         <Textarea
           id={`task-${task.id}-note`}
           label="Note (optional)"
-          hint={
-            task.source.claimId
-              ? 'Saved with your decision on the claim history, so others see why.'
-              : 'Saved with your decision.'
-          }
+          hint="Saved with your decision."
           maxLength={1000}
           rows={2}
           disabled={busy !== null}
@@ -478,12 +410,7 @@ export const TaskView = ({
   task,
   back,
   remaining,
-  tab = 'claim',
-  tabHref,
   findFollowUp,
-  mismatches = [],
-  source,
-  claim = null,
   onComplete,
   onAssign,
   onNext,
@@ -500,9 +427,6 @@ export const TaskView = ({
   const notify = useToast();
   const isUnassigned = task.assignee_id === null;
   const open = task.status === 'open' && done === null;
-  const tabs = tabsOf(claim, source != null);
-  const shown = tabs.includes(tab) ? tab : (tabs[0] ?? 'workflow');
-  const encounterHref = source != null ? (tabHref?.('encounter') ?? '?tab=encounter') : undefined;
 
   const complete = async (outcome: string, values: Record<string, Json>, note: string) => {
     setError('');
@@ -548,7 +472,7 @@ export const TaskView = ({
         <span className="flex flex-wrap items-center gap-2">
           <Badge intent={isFault ? 'danger' : 'info'}>{info.label}</Badge>
           <span>
-            <TaskAbout task={task} claim={claim?.claim ?? null} />, opened{' '}
+            {task.subject ? task.title : 'Waiting on a decision'}, opened{' '}
             <Tooltip label={formatDateTime(task.created_at)} side="bottom">
               <time dateTime={task.created_at}>
                 {formatAgo(task.created_at)}
@@ -622,51 +546,16 @@ export const TaskView = ({
           </DecisionSection>
         )}
       </TaskIssue>
-      {tabs.length > 1 ? (
-        <>
-          <Tabs
-            label="Task data"
-            tabs={tabs.map((t) => ({
-              label: TAB_LABELS[t],
-              href: tabHref?.(t) ?? `?tab=${t}`,
-              isSelected: t === shown
-            }))}
-          />
-          {shown === 'encounter' ? (
-            source
-          ) : shown === 'workflow' ? (
-            <WorkflowDetails context={task.context} />
-          ) : claim === null ? null : shown === 'patient' ? (
-            <PatientFacts
-              claim={claim.claim}
-              taskId={task.id}
-              mismatches={mismatches}
-              encounterHref={encounterHref}
-            />
-          ) : (
-            <TaskClaimView record={claim} mismatches={mismatches} encounterHref={encounterHref} />
-          )}
-        </>
-      ) : (
-        <WorkflowDetails context={task.context} />
-      )}
+      <WorkflowDetails context={task.context} />
     </Page>
   );
 };
 
-export const TaskPage = ({ client, codes, live, taskId, back, tab = 'claim' }: TaskPageProps) => {
+export const TaskPage = ({ client, codes, live, taskId, back }: TaskPageProps) => {
   const task = useResource(`task:${taskId}`, (signal) => client.find(taskId, signal));
   const queues = useResource('task-queues', client.queues);
   const runId = task.data?.run_id;
   const backTo = backOfTask(back);
-  const reportId = task.data?.source.reportId ?? null;
-  const report = useResource(`source-report:${reportId ?? 'none'}`, () =>
-    reportId ? client.report(reportId) : Promise.resolve(null)
-  );
-  const claimId = task.data?.source.claimId ?? null;
-  const claimRecord = useResource(`task-claim:${claimId ?? 'none'}`, (signal) =>
-    claimId ? client.claim(claimId, signal) : Promise.resolve(null)
-  );
   const findFollowUp = useCallback(async (): Promise<FollowUp | null> => {
     if (!runId) return null;
     const next = await client.followUp(runId, taskId);
@@ -680,45 +569,20 @@ export const TaskPage = ({ client, codes, live, taskId, back, tab = 'claim' }: T
       queues.reload();
     }
   );
-  useLive(
-    live,
-    (e) => e.kind === 'claim' && claimId !== null && e.id === claimId,
-    claimRecord.reload
-  );
-  const failed = loadFailure(task, claimRecord);
+  const failed = loadFailure(task);
   if (failed) return <PageFailure message={failed.message} />;
-  if (!task.data || (claimId !== null && !claimRecord.data)) return <PageLoading />;
-  const { queue, source } = task.data;
-  const encounter = report.data ? encounterFactsOf(report.data.data) : null;
+  if (!task.data) return <PageLoading />;
+  const { queue } = task.data;
   const waiting = queues.data?.find((q) => q.queue === queue)?.unassigned;
-  const claim = claimRecord.data ?? null;
-  const mismatches = encounter && claim ? mismatchesOf(claim.claim, encounter) : [];
-  const tabTo = (t: TaskTab) => {
-    const to = `/tasks/${taskId}?tab=${t}`;
-    return back === null ? to : withBack(to, back);
-  };
   return (
     <TaskView
       key={taskId}
       task={task.data}
       back={backTo}
       remaining={queues.data ? (waiting ?? 0) : null}
-      tab={tab}
-      tabHref={tabTo}
       findFollowUp={findFollowUp}
-      mismatches={mismatches}
-      claim={claim}
-      source={
-        source.reportId === null ? null : report.error ? (
-          <Alert>{report.error.message}</Alert>
-        ) : report.data ? (
-          <SourceReportView source={report.data} />
-        ) : (
-          <PageLoading />
-        )
-      }
       upload={(file) => client.uploadFile(taskId, file)}
-      refreshError={refreshFailure(task, claimRecord)}
+      refreshError={refreshFailure(task)}
       codes={codes}
       onAssign={async (assign) => {
         await (assign ? client.assign(taskId) : client.unassign(taskId));
@@ -731,7 +595,6 @@ export const TaskPage = ({ client, codes, live, taskId, back, tab = 'claim' }: T
       onNext={async () => {
         const next = await client.next(queue);
         if (!next) navigate(backTo);
-        else if (backTo.startsWith('/claims/')) navigate(`/tasks/${next.id}`);
         else navigate(withBack(`/tasks/${next.id}`, backTo));
       }}
     />

@@ -99,7 +99,6 @@ const importRows = (db: Db, agencyId: string) =>
             sql<number>`coalesce(sum(c.total_cents), 0)::float8`.as('charges_cents')
           ])
           .whereRef('ir.import_id', '=', 'i.id')
-          .where('c.status', '<>', 'void')
           .as('claimed'),
       (join) => join.onTrue()
     )
@@ -160,8 +159,7 @@ export const listImportReports = (
           .onRef('r.parent_id', '=', 'i.run_id')
           .on(sql<boolean>`r.inputs -> 'report' ->> 'key' = ir.report_key`)
       )
-      .leftJoin('claim_runs as cr', 'cr.run_id', 'r.id')
-      .leftJoin('claims as c', 'c.id', 'cr.claim_id')
+      .leftJoin('claims as c', 'c.import_report_id', 'ir.id')
       .leftJoin('patients as p', 'p.id', 'c.patient_id')
       .leftJoinLateral(
         (eb) =>

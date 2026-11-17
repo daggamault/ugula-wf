@@ -1,4 +1,4 @@
-import { CLOSED_CLAIM_STATUSES, type FacilityKind } from '@ugula/billing';
+import type { FacilityKind } from '@ugula/billing';
 import type { Db } from '@ugula/db';
 import { sql } from 'kysely';
 import { facetCounts, whereFacets } from '../../shared/facets.ts';
@@ -32,20 +32,7 @@ const FACILITY_FACETS = { kind: { value: sql.ref('f.kind') } };
 type FacilityFacet = keyof typeof FACILITY_FACETS;
 
 const facilityRows = (db: Db, agencyId: string) =>
-  db
-    .selectFrom('facilities as f')
-    .select([
-      ...columns,
-      (eb) =>
-        eb
-          .selectFrom('claims as c')
-          .innerJoin('claim_balances as b', 'b.claim_id', 'c.id')
-          .select(sql<number>`coalesce(sum(b.balance_cents), 0)::float8`.as('due'))
-          .whereRef('c.facility_id', '=', 'f.id')
-          .where('c.status', 'not in', CLOSED_CLAIM_STATUSES)
-          .as('balance_cents')
-    ])
-    .where('f.agency_id', '=', agencyId);
+  db.selectFrom('facilities as f').select(columns).where('f.agency_id', '=', agencyId);
 
 const filteredFacilities = (
   db: Db,

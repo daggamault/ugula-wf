@@ -1,13 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { PERMISSIONS } from '@ugula/access';
-import {
-  billingKinds,
-  billingModels,
-  CLAIM_LEDGER_EVENTS,
-  createBillingNodes,
-  ledgerPayloadColumns
-} from '@ugula/billing';
+import { billingKinds, billingModels } from '@ugula/billing';
 import {
   createModelNodes,
   createRegistry,
@@ -20,7 +14,7 @@ import {
   stdGraphSource,
   unknownKinds
 } from '@ugula/graph';
-import { createNemsisNodes, nemsisKinds, nemsisModels } from '@ugula/nemsis';
+import { nemsisKinds, nemsisModels } from '@ugula/nemsis';
 import { createNodeCatalog, valueKinds, workflowEvents } from './index.ts';
 
 const UNWIRED: GraphDef = {
@@ -60,12 +54,10 @@ const lowerWordOf = (title: string) =>
     .find((w, i) => /^[a-z]/.test(w) && !(i > 0 && MINOR_WORDS.has(w)));
 
 describe('createNodeCatalog', () => {
-  it('lists the standard, NEMSIS, billing and model nodes in that order', () => {
+  it('lists the standard and model nodes in that order', () => {
     const typesOf = (nodes: { type: string }[]) => nodes.map((n) => n.type);
     assert.deepEqual(typesOf(createNodeCatalog({ fetch })), [
       ...typesOf(createStdNodes({ fetch, permissions: PERMISSIONS })),
-      ...typesOf(createNemsisNodes(null)),
-      ...typesOf(createBillingNodes(null)),
       ...typesOf(createModelNodes([...nemsisModels, ...billingModels]))
     ]);
   });
@@ -79,7 +71,7 @@ describe('createNodeCatalog', () => {
       []
     );
     assert.deepEqual(
-      ['std.text.length', 'nemsis.split', 'billing.match-patient', 'nemsis.pcr.break'].filter(
+      ['std.text.length', 'nemsis.pcr.break', 'billing.claim.make'].filter(
         (t) => !types.includes(t)
       ),
       []
@@ -171,17 +163,6 @@ describe('workflowEvents', () => {
         assert.equal(p.optional, true, `${e.type}.${p.name}`);
         assert.deepEqual(unknownKinds(p.type, valueKinds), [], `${e.type}.${p.name}`);
       }
-    }
-  });
-
-  it('declares every event the claim ledger emits, each read from ledger columns', () => {
-    for (const type of Object.values(CLAIM_LEDGER_EVENTS)) {
-      const event = workflowEvents.find((e) => e.type === type);
-      assert.deepEqual(
-        event?.payload.map((p) => p.name),
-        Object.keys(ledgerPayloadColumns(type)),
-        type
-      );
     }
   });
 });
