@@ -5,12 +5,12 @@ import { formatDate, formatDateTime } from '../../shared/format.ts';
 import { render, screen, within } from '../../shared/testing-dom.ts';
 import { readPcr } from './pcr-reader.ts';
 import { PcrSummaryView } from './pcr-summary.tsx';
-import { fixtureDictionary, fixtureReport } from './testing.ts';
+import { alsReport, fixtureDictionary } from './testing.ts';
 
 const show = (data: Parameters<typeof readPcr>[0]) =>
   render(createElement(PcrSummaryView, { pcr: readPcr(data, fixtureDictionary) }));
 
-const showAls = () => show(fixtureReport('als2-iv-medications'));
+const showAls = () => show(alsReport);
 
 const part = (title: string) => {
   const section = screen.getByRole('heading', { name: title }).closest('section');
@@ -123,7 +123,7 @@ describe('PcrSummaryView', () => {
     showAls();
     assert.equal(
       part('Narrative').querySelector('p')?.textContent,
-      readPcr(fixtureReport('als2-iv-medications'), fixtureDictionary).narrative
+      readPcr(alsReport, fixtureDictionary).narrative
     );
     assert.deepEqual(details('Odometer'), [
       ['Loaded Miles', '6.86 miles'],

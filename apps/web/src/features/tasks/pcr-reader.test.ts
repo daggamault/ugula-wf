@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { readPcr, roundMiles } from './pcr-reader.ts';
-import { fixtureDictionary, fixtureReport } from './testing.ts';
+import { alsReport, fixtureDictionary, nemsis34Report } from './testing.ts';
 
-const als = () => readPcr(fixtureReport('als2-iv-medications'), fixtureDictionary);
-const copd = () => readPcr(fixtureReport('nemsis-34-emergency'), fixtureDictionary);
+const als = () => readPcr(alsReport, fixtureDictionary);
+const nemsis34 = () => readPcr(nemsis34Report, fixtureDictionary);
 
 describe('readPcr', () => {
   it('reads the patient with each code followed by its meaning', () => {
@@ -154,14 +154,14 @@ describe('readPcr', () => {
   });
 
   it('reads NEMSIS 3.4 gender as sex, dropping the deprecated mark', () => {
-    const pcr = copd();
+    const pcr = nemsis34();
     assert.deepEqual(pcr.patient[2], { label: 'Sex', value: 'Female (9906001)' });
     assert.equal(pcr.paymentMethod, 'Medicare (2601005)');
     assert.equal(pcr.insurances[0]?.groupId, null);
   });
 
   it('reads the single NEMSIS 3.4 incident disposition in place of the 3.5 ones', () => {
-    assert.deepEqual(copd().response, [
+    assert.deepEqual(nemsis34().response, [
       { label: 'Type of Service', value: 'Emergency Response (Primary Response Area) (2205001)' },
       { label: 'Response Mode', value: 'Emergent (Immediate Response) (2223001)' },
       { label: 'Level of Care', value: null },
@@ -174,7 +174,7 @@ describe('readPcr', () => {
   });
 
   it('rounds the loaded miles to hundredths', () => {
-    const pcr = copd();
+    const pcr = nemsis34();
     assert.deepEqual(pcr.odometer, [
       { label: 'At Scene', value: '12034.5' },
       { label: 'At Destination', value: '12041.33' }

@@ -6,7 +6,7 @@ import { render, screen, userEvent, waitFor, within } from '../../shared/testing
 import { type ToastInput, ToastProvider } from '../../shared/ui/toast.tsx';
 import type { SourceReport } from './client.ts';
 import { SourceReportView } from './source-report.tsx';
-import { fixtureDictionary, fixtureReport, fixtureXml } from './testing.ts';
+import { fixtureDictionary, nemsis34Report } from './testing.ts';
 
 const SOURCE: SourceReport = {
   report: {
@@ -65,8 +65,7 @@ describe('SourceReportView', () => {
   it('leads with a readable summary of the report', () => {
     show({
       ...SOURCE,
-      data: fixtureReport('nemsis-34-emergency'),
-      xml: fixtureXml('nemsis-34-emergency'),
+      data: nemsis34Report,
       dictionary: fixtureDictionary
     });
     const name = screen.getByText('Wilhelmina Thorncastle');

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { type EncounterFacts, encounterFactsOf, mismatchesOf } from './encounter-check.ts';
-import { fixtureReport } from './testing.ts';
+import { alsReport } from './testing.ts';
 
 type ClaimFacts = Parameters<typeof mismatchesOf>[0];
 
@@ -27,7 +27,7 @@ const facts = (patch: Partial<EncounterFacts> = {}): EncounterFacts => ({
 
 describe('encounterFactsOf', () => {
   it('reads the facts a claim copies from a patient care report', () => {
-    assert.deepEqual(encounterFactsOf(fixtureReport('als2-iv-medications')), {
+    assert.deepEqual(encounterFactsOf(alsReport), {
       firstName: 'Rosalind',
       lastName: 'Quintero',
       birthDate: '1961-02-19',

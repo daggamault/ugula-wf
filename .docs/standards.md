@@ -66,8 +66,8 @@ This repository enforces strict, consistent standards across all applications, l
 
 - **Mandatory Colocated Tests:** Every source file containing logic must have a colocated test file (`<name>.test.ts`) in the same directory. Migrations and seeds have none.
 - **Native Test Runner:** Write fast, isolated, deterministic tests using Node's built-in test runner (`node:test` and `node:assert/strict`).
-- **Test Kits:** Libraries ship their fakes from a `/testing` entry (`@ugula/db/testing`, `@ugula/graph/testing`, `@ugula/billing/testing`, `@ugula/nemsis/testing`) instead of each test rebuilding them. Test nodes with `invokeNode`, which applies the same input, output and exit checks as the engine.
-- **Synthetic Fixtures:** NEMSIS fixtures live in `libs/domain/nemsis/src/fixtures` (`fixtureUrl` from `@ugula/nemsis/testing`), one per billing scenario, each with its own PCR number (`PCR-1001` and up; a corrected report shares its original's). Never commit real patient data.
+- **Test Kits:** Libraries ship their fakes from a `/testing` entry (`@ugula/db/testing`, `@ugula/graph/testing`, `@ugula/billing/testing`) instead of each test rebuilding them. Test nodes with `invokeNode`, which applies the same input, output and exit checks as the engine.
+- **Synthetic Fixtures:** Sample NEMSIS files for manual testing live in `.fixtures/nemsis`, one per billing scenario, each with its own PCR number (`PCR-1001` and up; a corrected report shares its original's). Unit tests never read them; a test builds the report data it needs inline. Never commit real patient data.
 - **Testable by Design:** Leverage dependency injection and pure functions so units and features can be tested cleanly without brittle module mocking.
 
 ---

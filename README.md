@@ -20,6 +20,6 @@ Project documentation lives in [`.docs`](.docs). Read **Standards** before contr
 | [Clearinghouse](.docs/clearinghouse.md)                        | SFTP exchange, the mock, Waystar conventions, real-time plans                                  |
 | [Data Model](.docs/data-model.md)                              | Tables by area and the rules the database enforces                                             |
 | [Web App](.docs/web-app.md)                                    | Routing, agency paths, API scoping, live updates, pages                                        |
-| [Testing](.docs/testing.md)                                    | Unit tests, test kits, end-to-end suites                                                       |
+| [Testing](.docs/testing.md)                                    | Unit tests and test kits                                                                       |
 | [Workflow Architecture Review](.docs/workflow-architecture.md) | The critical review and target design that drives the roadmap                                  |
 | [Readable Workflows](.docs/readable-workflows.md)              | Moving every decision out of code and formulas into primitives on the canvas                   |
