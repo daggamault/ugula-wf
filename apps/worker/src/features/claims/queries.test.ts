@@ -784,6 +784,50 @@ describe('createCycleStore', () => {
     assert.equal(sqlOf(missing.queries, 'update').length, 0);
   });
 
+  it('restarts the cycle of a claim of the run agency, besides the run asking', async () => {
+    const restart = (claim: { status: string; active?: boolean; published?: boolean }) =>
+      createRecordingDb((q) => {
+        if (ownedClaim(q)) return [owned];
+        if (q.sql.endsWith('for update')) return [{ id: ID, status: claim.status }];
+        if (q.sql.includes('from "claim_runs" as "cr"')) return claim.active ? [{ id: 'r0' }] : [];
+        if (q.sql.includes('cross join lateral')) {
+          return claim.published === false
+            ? []
+            : [{ id: 'v-cycle', key: 'billing.cycle-claim', version: 1 }];
+        }
+        if (q.sql.startsWith('insert into "workflow_runs"')) return [{ id: CYCLE }];
+        return [];
+      });
+    const { db, queries } = restart({ status: 'reconcile' });
+    assert.deepEqual(await createCycleStore(db, boss).restartCycle('r1', ID), {
+      status: 'started',
+      cycleRunId: CYCLE
+    });
+    const lock = queries.find((q) => q.sql.endsWith('for update'));
+    assert.deepEqual(lock?.parameters, [ID, 't-1']);
+    const active = queries.find((q) => q.sql.includes('from "claim_runs" as "cr"'));
+    assert.ok(active?.parameters.includes('r1'));
+    assert.deepEqual(sqlOf(queries, 'update "claims" set "cycle_run_id"')[0]?.parameters, [
+      CYCLE,
+      ID
+    ]);
+    const busy = restart({ status: 'reconcile', active: true });
+    assert.deepEqual(await createCycleStore(busy.db, boss).restartCycle('r1', ID), {
+      status: 'refused',
+      reason: 'This claim still has an active workflow run'
+    });
+    const closed = restart({ status: 'paid' });
+    assert.deepEqual(await createCycleStore(closed.db, boss).restartCycle('r1', ID), {
+      status: 'refused',
+      reason: 'Claim is already closed'
+    });
+    const unpublished = restart({ status: 'reconcile', published: false });
+    await assert.rejects(
+      () => createCycleStore(unpublished.db, boss).restartCycle('r1', ID),
+      /The claim cycle workflow is not published/
+    );
+  });
+
   it('closes under a row lock, as paid when nothing is owed, and only open claims', async () => {
     const close = async (
       locked: { status: string; balance_cents: number },
@@ -1776,7 +1820,7 @@ describe('createClaimTaskStore', () => {
       USER,
       'run:step'
     ]);
-    const closed = await setup({ status: 'paid' }).store.postPayment('r1', ID, 'k', payment, 'x');
+    const closed = await setup({ status: 'void' }).store.postPayment('r1', ID, 'k', payment, 'x');
     assert.deepEqual(closed, { status: 'refused', reason: 'Claim is already closed' });
   });
 

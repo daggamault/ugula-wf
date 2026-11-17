@@ -18,6 +18,7 @@ export type ConnectionSettings = ClearinghouseSettings & { username: string; pas
 
 export type PollTarget = {
   source: string;
+  connection: string;
   clearinghouse: Clearinghouse;
   agencyIds: string[] | null;
 };
@@ -201,6 +202,7 @@ export const createConnections = (deps: ConnectionDeps) => {
       }
       return [...targets.values()].map(({ settings, agencyIds }) => ({
         source: sourceOf(settings),
+        connection: `${settings.host}:${settings.port}`,
         clearinghouse: connect(settings, realtime(NO_PARTIES)),
         agencyIds
       }));

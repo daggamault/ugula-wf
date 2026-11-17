@@ -246,7 +246,7 @@ describe('claim responses', () => {
     ]);
   });
 
-  it('posts nothing to a missing, closed or draft claim', async () => {
+  it('posts nothing to a missing, void or draft claim', async () => {
     const claimOf = (status: string | null) =>
       createRecordingDb((q) =>
         q.sql.includes('for update')
@@ -263,7 +263,7 @@ describe('claim responses', () => {
       ok: false,
       failure: { code: 'not_found', message: 'Claim not found' }
     });
-    assert.deepEqual(await post('paid'), {
+    assert.deepEqual(await post('void'), {
       ok: false,
       failure: { code: 'conflict', message: 'Claim is already closed' }
     });
@@ -275,6 +275,72 @@ describe('claim responses', () => {
       }
     });
     assert.equal(unchangeable('submitted'), null);
+  });
+
+  it('reopens a paid, written-off or collections claim a payment, takeback or refund is posted to', async () => {
+    const reopen = async (status: string, posted: Partial<ClaimResponse>, balance = 0) => {
+      const { db, queries } = createRecordingDb(({ sql }) => {
+        if (sql.includes('for update')) return [{ id: 'c1', status, patient_id: 'p1' }];
+        if (sql.includes('claim_balances')) return [{ balance_cents: balance }];
+        if (sql.includes('sum(adjusted_cents)')) return [{ paid: 60, adjusted: 40 }];
+        if (sql.includes('sum(paid_cents)')) return [{ paid: 60 }];
+        if (sql.startsWith('insert into "claim_events"')) return [{ id: 'e1' }];
+        return [];
+      });
+      const out = await postClaimResponse(db, boss, 't', 'c1', 'u1', { ...response, ...posted });
+      assert.ok(out.ok);
+      const reopened = queries.filter(
+        (q) => q.sql.startsWith('update "claims"') || q.parameters.includes('reopened')
+      );
+      return reopened.map((q) => [q.sql, q.parameters]);
+    };
+    assert.deepEqual(await reopen('paid', { coverageId: null }), [
+      [
+        'update "claims" set "status" = $1, "updated_at" = now() where "id" = $2',
+        ['reconcile', 'c1']
+      ],
+      [
+        'insert into "claim_events" ("agency_id", "claim_id", "kind", "coverage_id", "note", "created_by_id", "source_key") values ($1, $2, $3, $4, $5, $6, $7)',
+        [
+          't',
+          'c1',
+          'reopened',
+          null,
+          'A payment was posted after the claim closed as paid',
+          'u1',
+          'req-1:reopened'
+        ]
+      ]
+    ]);
+    const note = async (status: string, posted: Partial<ClaimResponse>, balance = 0) =>
+      (await reopen(status, posted, balance))[1]?.[1]?.[4];
+    assert.equal(
+      await note('written_off', {
+        coverageId: 'cov1',
+        paidCents: -60,
+        adjustedCents: -40,
+        reversal: true
+      }),
+      'A takeback was posted after the claim closed as written off'
+    );
+    assert.equal(
+      await note('collections', { kind: 'refunded', paidCents: 5, adjustments: [] }, -5),
+      'A refund was posted after the claim closed as sent to collections'
+    );
+  });
+
+  it('leaves a closed claim closed when the posting is refused or already applied', async () => {
+    const refused = claimDb({ status: 'paid' });
+    const out = await postClaimResponse(refused.db, boss, 't', 'c1', null, {
+      ...response,
+      paidCents: -5
+    });
+    assert.equal(out.ok, false);
+    const duplicate = claimDb({ status: 'paid', duplicate: true });
+    await postClaimResponse(duplicate.db, boss, 't', 'c1', null, response);
+    for (const { queries } of [refused, duplicate]) {
+      assert.ok(!queries.some((q) => /^(insert|update)/.test(q.sql)));
+    }
   });
 
   it('locks the claim of the agency before looking for an earlier copy of the request', async () => {
@@ -363,7 +429,7 @@ describe('claim responses', () => {
         return [];
       });
     const closed = await postClaimResponse(
-      open(60, 40, 'paid').db,
+      open(60, 40, 'void').db,
       boss,
       't',
       'c1',

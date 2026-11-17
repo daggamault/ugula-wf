@@ -1,5 +1,6 @@
 import { actionNode, branchNode, pin } from '@ugula/graph';
 import { claimProgress } from '../claims.ts';
+import { isFailing } from '../clearinghouse.ts';
 import { requiredText } from '../values.ts';
 import { claimIdOf, claimIdPin } from './claims.ts';
 import { PAYER_FILE_LINE } from './payer-files.ts';
@@ -153,6 +154,25 @@ export const exchangeNodes: NodesOf = (stores) => [
       const ledger = await stores().claims.ledger(ctx.runId, claimId);
       if (!ledger) throw new Error(`Claim ${claimId} does not exist`);
       return { status: claimProgress(ledger).claimStatus };
+    }
+  }),
+  actionNode({
+    type: 'billing.clearinghouse-health',
+    title: 'Clearinghouse Health',
+    category: CATEGORY,
+    description:
+      "Reads whether the agency's own clearinghouse connection is failing: its last poll failed after the last one that worked, with that poll's error. A connection never polled yet, or the server default, is not failing.",
+    level: 'basic',
+    keywords: ['clearinghouse', 'connection', 'poll', 'sftp', 'health'],
+    inputs: [],
+    outputs: [
+      pin('failing', 'boolean', { description: 'Whether the connection is failing.' }),
+      pin('error', 'string', { description: 'Why its last poll failed, while failing.' })
+    ],
+    compute: async (_, __, ctx) => {
+      const health = await stores().exchange.connectionHealth(ctx.runId);
+      const failing = health !== null && isFailing(health);
+      return { failing, error: failing ? health.error : null };
     }
   })
 ];

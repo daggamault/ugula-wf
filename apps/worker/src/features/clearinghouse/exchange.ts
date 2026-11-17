@@ -359,6 +359,20 @@ export const createExchangeStore = ({
       const signalsSeen = row.received ?? 0;
       await settle({ status: 'sent', sent_as: sentAs, signals_seen: signalsSeen, note: reason });
       return { status: 'sent', sentAs, reason, signalsSeen };
+    },
+    connectionHealth: async (runId) => {
+      const row = await db
+        .selectFrom('clearinghouse_connections')
+        .select(['last_polled_at', 'last_error_at', 'last_error'])
+        .where('agency_id', '=', await agencyOf(runId))
+        .executeTakeFirst();
+      return row
+        ? {
+            lastPolledAt: row.last_polled_at,
+            lastErrorAt: row.last_error_at,
+            error: row.last_error
+          }
+        : null;
     }
   };
 };

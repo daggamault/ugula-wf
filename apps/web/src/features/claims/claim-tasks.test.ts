@@ -134,10 +134,10 @@ describe('claimTaskGroups', () => {
     ]);
   });
 
-  it('allows nothing on a closed claim', () => {
+  it('allows only posting a payment on a closed claim, and nothing on a void one', () => {
     const closed = 'This claim is closed.';
     assert.deepEqual(reasons({ status: 'paid', cycle_status: null, coverages: [payer] }, null), [
-      ['Tasks', TASKS.map((t) => [t, closed])],
+      ['Tasks', TASKS.map((t) => [t, t === 'Post Payment' ? undefined : closed])],
       [
         'Actions',
         [
@@ -145,6 +145,10 @@ describe('claimTaskGroups', () => {
           ['Restart Payer Cycle', closed]
         ]
       ]
+    ]);
+    assert.deepEqual(reasons({ status: 'void', cycle_status: null, coverages: [payer] }, null)[0], [
+      'Tasks',
+      TASKS.map((t) => [t, closed])
     ]);
   });
 });

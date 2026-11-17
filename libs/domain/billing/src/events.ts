@@ -31,6 +31,12 @@ const ROUTE = p(
   'How Route Remittance routed it: denial, appeal or fix for a denial.'
 );
 const NOTE = p('note', 'string', 'Note', 'What the claim history says about it.');
+const CONNECTION = p(
+  'connection',
+  'string',
+  'Connection',
+  'The SFTP server of the clearinghouse connection (host and port).'
+);
 
 const event = (type: string, label: string, description: string, payload: PinSpec[]): EventDef => ({
   type,
@@ -93,6 +99,12 @@ const LEDGER_EVENTS = [
     'Claim Closed',
     'A claim was closed as paid, written off, sent to collections or void.',
     [CLAIM, NOTE]
+  ),
+  event(
+    'claim.reopened',
+    'Claim Reopened',
+    'A payment, takeback or refund was posted to a paid, written-off or collections claim, which reopened it.',
+    [CLAIM, NOTE]
   )
 ];
 
@@ -107,7 +119,8 @@ export const CLAIM_LEDGER_EVENTS = {
   response: 'remittance.posted',
   eligibility: 'eligibility.answered',
   document: 'document.received',
-  closed: 'claim.closed'
+  closed: 'claim.closed',
+  reopened: 'claim.reopened'
 } as const satisfies Partial<Record<ClaimEventKind, string>>;
 
 const LEDGER_COLUMNS: Readonly<Record<string, string>> = {
@@ -149,6 +162,18 @@ export const billingEvents: EventDef[] = [
       p('file', BLOB, 'File', 'Where the file is stored.'),
       p('fileName', 'string', 'File Name', 'The name the file arrived with.')
     ]
+  ),
+  event(
+    'clearinghouse.failed',
+    'Clearinghouse Failed',
+    "The agency's clearinghouse connection stopped working: its poll failed after the one before succeeded.",
+    [CONNECTION, p('error', 'string', 'Error', 'Why the poll failed.')]
+  ),
+  event(
+    'clearinghouse.recovered',
+    'Clearinghouse Recovered',
+    "The agency's clearinghouse connection works again: its poll succeeded after failing.",
+    [CONNECTION]
   ),
   ...LEDGER_EVENTS,
   event(

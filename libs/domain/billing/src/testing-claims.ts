@@ -33,6 +33,7 @@ export type MemoryClaimOptions = {
   sending?: SentClaimFile;
   facilities?: CheckedFacility[];
   documents?: ClaimDocument[];
+  restartRefused?: string;
 };
 
 type SavedStatement = { key: string; number: number; count: number; pdf: Uint8Array };
@@ -150,7 +151,8 @@ export const memoryClaims = ({
   saving = { controlNumber: 1 },
   sending = 'manual',
   facilities = [],
-  documents = []
+  documents = [],
+  restartRefused
 }: MemoryClaimOptions = {}) => {
   const drafts: DraftClaim[] = [];
   const patients: string[] = [];
@@ -264,6 +266,11 @@ export const memoryClaims = ({
     },
     linkRun: async (_, id) => {
       attached.push(`claim:${id}`);
+    },
+    restartCycle: async (_, id) => {
+      if (restartRefused) return { status: 'refused', reason: restartRefused };
+      attached.push(`restart:${id}`);
+      return { status: 'started', cycleRunId: 'cycle-2' };
     },
     sendClaimFile: async (_, __, controlNumber) => {
       if (sending !== 'manual') sent.push(controlNumber);

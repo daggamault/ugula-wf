@@ -27,7 +27,8 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
   payerFiles: stores.payerFiles ?? { read: unused('payer file'), apply: unused('payer file') },
   exchange: stores.exchange ?? {
     checkEligibility: unused('clearinghouse'),
-    checkClaimStatus: unused('clearinghouse')
+    checkClaimStatus: unused('clearinghouse'),
+    connectionHealth: unused('clearinghouse')
   },
   payers: stores.payers ?? {
     lookup: unused('payer'),
@@ -65,5 +66,6 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
     saveFacilityInvoice: unused('schedule')
   },
   calendar: stores.calendar ?? { today: async (_, at) => localDate(at, 'America/Chicago') },
+  documents: stores.documents ?? { chasedDocuments: async () => [] },
   completer: stores.completer ?? { complete: unused('completion') }
 });

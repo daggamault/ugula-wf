@@ -41,6 +41,7 @@ export const announceClaims = (store: ClaimStore, announce: Announce): ClaimStor
     recordEvent: after(store.recordEvent),
     recordDecision: after(store.recordDecision),
     closeClaim: after(store.closeClaim),
+    restartCycle: after(store.restartCycle),
     setResponsibility: after(store.setResponsibility)
   };
 };

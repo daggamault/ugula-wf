@@ -1,3 +1,4 @@
+import { CLEARINGHOUSE_RECOVERED, CLEARINGHOUSE_SIGNAL } from '@ugula/billing';
 import type { GraphDef, Json, ValueType } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import { action, p } from './glossary.ts';
@@ -998,6 +999,103 @@ const receivePayerFile = (): GraphDef => {
   return g.def;
 };
 
+const HOUR_MS = 60 * 60 * 1000;
+
+const clearinghouseAlert = (): GraphDef => {
+  const g = flow(
+    [
+      d(
+        'connection',
+        'string',
+        'Connection',
+        'The SFTP server of the clearinghouse connection (host and port).',
+        true
+      ),
+      d('error', 'string', 'Error', 'Why the poll failed.', true)
+    ],
+    [],
+    [{ name: 'stillFailing', type: 'string', default: null }]
+  );
+  g.trigger({ kind: 'event', event: 'clearinghouse.failed', where: {} });
+  g.add('latest', 'std.var.get', {
+    label: 'Still Failing With',
+    config: { name: 'stillFailing' }
+  });
+  const error = orElse(
+    g,
+    'shownError',
+    'Latest Error, Else the First',
+    'latest.value',
+    'entry.error'
+  );
+  g.add('task', 'std.human.task', {
+    label: 'Fix the Clearinghouse Connection',
+    config: {
+      title: 'Fix the clearinghouse connection',
+      queue: 'billing-admin',
+      permission: 'settings:update',
+      instructions:
+        'The clearinghouse connection fails, so no payer files (remittances, acknowledgments, eligibility and claim status answers) come in, and claims and requests most likely cannot go out either. The error is in the details. Check the connection in Settings → Clearinghouse Connection (host, port, host key, username, password and folders) with the clearinghouse, save it, then mark it fixed.',
+      outcomes: ['fixed'],
+      hints: {
+        fixed:
+          'Waits up to an hour for a poll to work again; this task comes back while the connection still fails.'
+      }
+    }
+  });
+  g.wire(
+    orElse(
+      g,
+      'subject',
+      'Connection, Else the Clearinghouse',
+      'entry.connection',
+      fixed('Clearinghouse')
+    ),
+    'task.subject'
+  );
+  g.wire(
+    makeObject(g, 'details', 'Connection Details', {
+      connection: ['string', 'entry.connection'],
+      problem: ['string', error]
+    }),
+    'task.context'
+  );
+  summary(
+    g,
+    'task',
+    'The clearinghouse connection fails[: {error}]; fix it in Settings → Clearinghouse Connection, then mark it fixed',
+    { error }
+  );
+  g.add('afterFix', 'billing.clearinghouse-health', { label: 'Clearinghouse Health' });
+  g.add('failsAfterFix', 'std.flow.branch', { label: 'Still Failing?' });
+  g.add('wait', 'std.flow.wait-signal', {
+    label: 'Await a Poll That Works',
+    values: { name: CLEARINGHOUSE_SIGNAL, key: CLEARINGHOUSE_RECOVERED, timeoutMs: HOUR_MS }
+  });
+  g.add('afterWait', 'billing.clearinghouse-health', { label: 'Clearinghouse Health an Hour On' });
+  g.add('failsAfterWait', 'std.flow.branch', { label: 'Still Failing an Hour On?' });
+  g.add('remember', 'std.var.set', {
+    label: 'Remember the Latest Error',
+    config: { name: 'stillFailing' }
+  });
+  g.ret('done');
+  g.wire('entry.exec', 'task.exec');
+  g.wire('task.fixed', 'afterFix.exec');
+  g.wire('afterFix.then', 'failsAfterFix.exec');
+  g.wire('afterFix.failing', 'failsAfterFix.condition');
+  g.wire('failsAfterFix.true', 'wait.exec');
+  g.wire('failsAfterFix.false', 'done.exec');
+  g.wire('wait.received', 'done.exec');
+  g.wire('wait.timeout', 'afterWait.exec');
+  g.wire('afterWait.then', 'failsAfterWait.exec');
+  g.wire('afterWait.failing', 'failsAfterWait.condition');
+  g.wire('failsAfterWait.false', 'done.exec');
+  g.wire('failsAfterWait.true', 'remember.exec');
+  g.wire('afterWait.error', 'remember.value');
+  g.wire('remember.then', 'task.exec');
+  return g.def;
+};
+
 export const payerFileGraphs: SeedGraph[] = [
   asRule(
     'billing.classify-adjustment',
@@ -1064,5 +1162,11 @@ export const payerFileGraphs: SeedGraph[] = [
     'Check Eligibility',
     "Asks the clearinghouse whether each payer on a claim covers the patient: a real-time 270 when the agency's connection supports it (its 271 is applied at once, and an inactive coverage blocks billing that payer), else a batch 270 whose 271 arrives with the payer files. A payer already answered or waiting for an answer is not asked again, and an answer from another claim of the patient with the same payer and member ID in the same month of service is reused, unless the check is forced. Asks a biller about each answer that needs one, such as a Medicare answer naming a Medicare Advantage plan. Started when Encounter to Claim saves a claim's payers, and forced from Check Eligibility on a claim.",
     checkEligibility()
+  ),
+  asWorkflow(
+    'billing.clearinghouse-alert',
+    'Clearinghouse Alert',
+    "Opens a Fix the clearinghouse connection task (queue billing-admin) with the poll's error when the agency's clearinghouse connection starts failing. Once marked fixed, it waits up to an hour for a poll that works (Clearinghouse Recovered) and closes, or comes back with the latest error. Starts on Clearinghouse Failed.",
+    clearinghouseAlert()
   )
 ];

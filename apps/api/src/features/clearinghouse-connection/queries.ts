@@ -16,6 +16,9 @@ const columns = [
   'claim_status_extension',
   'after_download',
   'realtime_url',
+  'last_polled_at',
+  'last_error',
+  'last_error_at',
   'updated_at'
 ] as const;
 

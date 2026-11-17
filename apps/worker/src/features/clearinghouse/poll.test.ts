@@ -52,6 +52,7 @@ const SOURCE = 'sftp://u@localhost:2223/outbound/999';
 
 const target = (clearinghouse: Clearinghouse, agencyIds: string[] | null = null): PollTarget => ({
   source: SOURCE,
+  connection: 'localhost:2223',
   clearinghouse,
   agencyIds
 });
@@ -129,6 +130,7 @@ const poll = async (
     db,
     blobs,
     targets: async () => [target(clearinghouse, owners)],
+    recordHealth: async () => undefined,
     report: (m) => reports.push(m),
     now: () => NOW
   })();
@@ -315,6 +317,7 @@ describe('createClearinghousePoll', () => {
       db,
       blobs,
       targets: async () => [target(clearinghouse)],
+      recordHealth: async () => undefined,
       report: () => undefined,
       now: () => NOW
     })();
@@ -350,9 +353,10 @@ describe('createClearinghousePoll', () => {
 });
 
 describe('polling every connection', () => {
-  it('polls each target and reports one that fails without stopping the others', async () => {
+  it('polls each target, reports one that fails without stopping the others and records how each went', async () => {
     const { db } = createRecordingDb(() => []);
     const reports: string[] = [];
+    const recorded: unknown[] = [];
     const broken = fakeClearinghouse({});
     broken.inbox.list = async () => Promise.reject(new Error('refused'));
     const polled: string[] = [];
@@ -365,14 +369,35 @@ describe('polling every connection', () => {
       db,
       blobs: { putBytes: async () => assert.fail('nothing to store') },
       targets: async () => [
-        { source: 'one', clearinghouse: broken.clearinghouse, agencyIds: null },
-        { source: 'two', clearinghouse: working.clearinghouse, agencyIds: ['t1'] }
+        {
+          source: 'one',
+          connection: 'one:22',
+          clearinghouse: broken.clearinghouse,
+          agencyIds: null
+        },
+        {
+          source: 'two',
+          connection: 'two:22',
+          clearinghouse: working.clearinghouse,
+          agencyIds: ['t1']
+        }
       ],
+      recordHealth: async (t, outcome) => {
+        recorded.push([t.agencyIds, outcome]);
+        if (t.agencyIds) throw new Error('database gone');
+      },
       report: (m) => reports.push(m),
       now: () => NOW
     })();
     assert.deepEqual(polled, ['second']);
-    assert.deepEqual(reports, ['Clearinghouse: could not poll one: Error: refused']);
+    assert.deepEqual(reports, [
+      'Clearinghouse: could not poll one: Error: refused',
+      'Clearinghouse: could not record how two polled: Error: database gone'
+    ]);
+    assert.deepEqual(recorded, [
+      [null, { at: NOW, error: 'refused' }],
+      [['t1'], { at: NOW, error: null }]
+    ]);
     await db.destroy();
   });
 });

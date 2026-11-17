@@ -142,11 +142,11 @@ describe('createConnections', () => {
   it('polls every enabled connection once, naming the agencies each one serves', async () => {
     const { connections } = setup([row('t1', 'acme'), row('t2', 'acme'), row('t3', 'metro')]);
     assert.deepEqual(
-      (await connections.pollTargets()).map((t) => [t.source, t.agencyIds]),
+      (await connections.pollTargets()).map((t) => [t.source, t.connection, t.agencyIds]),
       [
-        ['sftp://ugula@localhost:2223/download', null],
-        ['sftp://acme@sshftp.waystar.com:22/download', ['t1', 't2']],
-        ['sftp://metro@sshftp.waystar.com:22/download', ['t3']]
+        ['sftp://ugula@localhost:2223/download', 'localhost:2223', null],
+        ['sftp://acme@sshftp.waystar.com:22/download', 'sshftp.waystar.com:22', ['t1', 't2']],
+        ['sftp://metro@sshftp.waystar.com:22/download', 'sshftp.waystar.com:22', ['t3']]
       ]
     );
   });

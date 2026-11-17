@@ -102,10 +102,10 @@ describe('claim service', () => {
     assert.deepEqual(publishAfter, [{ agencyId: 't', event: { kind: 'claim', id: 'c1' } }]);
   });
 
-  it('starts claim tasks on open claims, and on drafts only those that work on drafts', async () => {
+  it('starts claim tasks on open claims, on drafts only those that work on drafts, and a payment on a closed claim', async () => {
     const start = (
       status: string,
-      key: 'billing.receive-document' | 'billing.change-responsible-party'
+      key: 'billing.receive-document' | 'billing.change-responsible-party' | 'billing.post-payment'
     ) => setup({ row: { ...claim, status } }).service.startTask('t', 'u1', 'c1', key);
     assert.equal(failure(await start('draft', 'billing.receive-document')), 'ok');
     assert.match(
@@ -114,6 +114,11 @@ describe('claim service', () => {
     );
     assert.match(
       failure(await start('paid', 'billing.receive-document')),
+      /^conflict: Claim is already closed/
+    );
+    assert.equal(failure(await start('written_off', 'billing.post-payment')), 'ok');
+    assert.match(
+      failure(await start('void', 'billing.post-payment')),
       /^conflict: Claim is already closed/
     );
     assert.match(

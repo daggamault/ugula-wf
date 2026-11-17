@@ -3,14 +3,17 @@ import {
   type AfterDownload,
   CLEARINGHOUSE_VENDORS,
   type ClearinghouseVendor,
+  isFailing,
   VENDOR_PRESETS
 } from '@ugula/billing';
 import { deepEqual } from '@ugula/graph';
 import { SaveIcon, Trash2Icon } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
+import { formatDateTime } from '../../shared/format.ts';
 import { useUnsavedChanges } from '../../shared/router.tsx';
 import { Alert } from '../../shared/ui/alert.tsx';
 import { Button } from '../../shared/ui/button.tsx';
+import { Detail, DetailList } from '../../shared/ui/detail-list.tsx';
 import { ConfirmDialog } from '../../shared/ui/dialog.tsx';
 import {
   FieldGrid,
@@ -206,6 +209,37 @@ export const receiverHint = (vendor: ClearinghouseVendor) => {
     : 'Use the receiver ID your clearinghouse gives you in the billing profile.';
 };
 
+const dateOf = (iso: string | null) => (iso ? new Date(iso) : null);
+
+export const pollFailing = (c: ClearinghouseConnection) =>
+  isFailing({ lastPolledAt: dateOf(c.last_polled_at), lastErrorAt: dateOf(c.last_error_at) });
+
+const PollHealth = ({ connection: c }: { connection: ClearinghouseConnection }) => (
+  <>
+    {pollFailing(c) ? (
+      <Alert>
+        The last poll failed, so payer files are not picked up. Fix the connection below and save;
+        the next poll tries it again.
+      </Alert>
+    ) : null}
+    <DetailList>
+      <Detail label="Last Successful Poll">
+        {c.last_polled_at ? formatDateTime(c.last_polled_at) : 'Never'}
+      </Detail>
+      <Detail label="Last Error">
+        {c.last_error ? (
+          <span className="flex flex-col gap-0.5">
+            <span>{c.last_error}</span>
+            <span className="text-surface-fg-muted text-xs">{formatDateTime(c.last_error_at)}</span>
+          </span>
+        ) : (
+          'None'
+        )}
+      </Detail>
+    </DetailList>
+  </>
+);
+
 export const ConnectionForm = ({
   connection,
   canStoreSecrets,
@@ -261,6 +295,7 @@ export const ConnectionForm = ({
         title="Clearinghouse Connection"
         description="Without one, the server default is used."
       >
+        {connection ? <PollHealth connection={connection} /> : null}
         <fieldset disabled={busy}>
           <FieldGroups>
             <FieldGroup title="Clearinghouse">

@@ -1,4 +1,4 @@
-import { CLAIM_TASKS, type ClaimTaskKey, isClosedStatus } from '@ugula/billing';
+import { CLAIM_TASKS, type ClaimTaskKey, claimTaskStartsOn, isClosedStatus } from '@ugula/billing';
 import {
   FileClockIcon,
   FilePenIcon,
@@ -51,7 +51,7 @@ export const claimTaskGroups = (
         label: CLAIM_TASKS[key].label,
         description: CLAIM_TASKS[key].description,
         icon: ICONS[key],
-        disabledReason: closed ? CLOSED : draft && !CLAIM_TASKS[key].onDrafts ? DRAFT : undefined,
+        disabledReason: claimTaskStartsOn(key, claim.status) ? undefined : draft ? DRAFT : CLOSED,
         onSelect: () => act.onStart(key)
       }))
     },

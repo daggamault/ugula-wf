@@ -2188,6 +2188,93 @@ const cycleClaim = (): GraphDef => {
   return g.def;
 };
 
+const resumeCycle = (): GraphDef => {
+  const g = graph({
+    execIn: ['exec'],
+    execOut: [],
+    inputs: [p('claimId', { id: 'claim' })],
+    outputs: []
+  });
+  g.trigger({ kind: 'event', event: 'claim.reopened', where: {} });
+  g.add('restart', 'billing.restart-cycle', { label: 'Restart Claim Cycle' });
+  g.ret('done');
+  g.wire('entry.exec', 'restart.exec');
+  g.wire('entry.claimId', 'restart.claimId');
+  g.wire('restart.started', 'done.exec');
+  g.wire('restart.skipped', 'done.exec');
+  return g.def;
+};
+
+const recoverCycle = (): GraphDef => {
+  const g = graph({
+    execIn: ['exec'],
+    execOut: [],
+    inputs: [p('claimId', { id: 'claim' }), p('reason', 'string', true)],
+    outputs: []
+  });
+  g.add('ledger', 'billing.read-claim-ledger', { label: 'Read Claim Ledger' });
+  g.add('next', 'billing.next-claim-step', { label: 'Next Claim Step' });
+  const context = makeObject(g, 'context', 'Task Details', {
+    claimId: [{ id: 'claim' }, 'entry.claimId'],
+    reason: ['string', 'entry.reason']
+  });
+  g.add('stopped', 'std.human.task', {
+    label: 'Claim Cycle Stopped',
+    config: {
+      title: 'Claim cycle stopped',
+      queue: 'billing-review',
+      instructions:
+        'The payer cycle working this claim failed or was cancelled before the claim closed, so nothing would happen to it. Fix what stopped it (the details say why), then restart the cycle, or write off the balance to close the claim. To void the claim instead, restart the cycle and void it from the step it asks about.',
+      outcomes: ['restart', 'writeOff'],
+      hints: {
+        restart: 'Starts the payer cycle again; it picks the next step from the claim history.',
+        writeOff:
+          'Writes off the balance and closes the claim, once approved when it is above the approval limit. A claim with nothing owed closes as paid.'
+      }
+    }
+  });
+  g.add('restart', 'billing.restart-cycle', { label: 'Restart Claim Cycle' });
+  g.add('approve', 'billing.approve-closing', {
+    label: 'Approve Write-Off',
+    values: { closing: 'writeOff' }
+  });
+  g.add('close', 'billing.close-claim', {
+    label: 'Close as Written Off',
+    values: { status: 'written_off' }
+  });
+  g.ret('done');
+  const balance = getField(
+    g,
+    'balance',
+    'Balance (Cents)',
+    T.ledger,
+    'balanceCents',
+    'ledger.ledger'
+  );
+  g.wire('entry.exec', 'ledger.exec');
+  g.wire('entry.claimId', 'ledger.claimId', 'restart.claimId', 'approve.claimId', 'close.claimId');
+  g.wire('ledger.ledger', 'next.ledger');
+  g.wire('ledger.reference', 'stopped.subject', 'approve.subject');
+  g.wire(context, 'stopped.context', 'approve.context');
+  summary(
+    g,
+    'stopped',
+    'The payer cycle of this claim stopped before it closed[ ({reason})]; restart it or write off the balance',
+    { reason: 'entry.reason' }
+  );
+  g.wire('ledger.then', 'stopped.exec');
+  g.wire('stopped.restart', 'restart.exec');
+  g.wire('restart.started', 'done.exec');
+  g.wire('restart.skipped', 'done.exec');
+  g.wire('stopped.writeOff', 'approve.exec');
+  g.wire(balance, 'approve.balanceCents');
+  g.wire('next.writeOffApprovalCents', 'approve.thresholdCents');
+  g.wire('approve.approved', 'close.exec');
+  g.wire('approve.rejected', 'restart.exec');
+  g.wire('close.then', 'done.exec');
+  return g.def;
+};
+
 export const cycleGraphs: SeedGraph[] = [
   asRule(
     'billing.claim-wait-left',
@@ -2284,5 +2371,17 @@ export const cycleGraphs: SeedGraph[] = [
     'Cycle Claim',
     "Works a claim from its first bill until it closes, one step at a time: decides the Next Claim Step and shows it as the claim's status, checks the claim before a review or filing and asks a biller to fix what blocks it, has it reviewed, files it to each payer in order (asking a biller when it cannot), follows up on late payers, works denials (Work Denial), reconciles payments, refunds overpayments (Refund Overpayment), waits on a responsible facility and follows up when it has not paid in time, confirms payers when there are none, reviews before the first patient statement, sends statements, and has write-offs and collections above the Claim Policy limits approved. Between steps it sleeps until the claim changes or a wait runs out.",
     cycleClaim()
+  ),
+  asWorkflow(
+    'billing.resume-cycle',
+    'Resume Claim Cycle',
+    'Starts the payer cycle again when a payment, takeback or refund reopens a paid, written-off or collections claim, unless a run is already working the claim; the cycle then reconciles the payment, refunds an overpayment or works a denial like any other.',
+    resumeCycle()
+  ),
+  asWorkflow(
+    'billing.recover-cycle',
+    'Recover Claim Cycle',
+    'Asks a biller what to do with an open claim whose payer cycle failed or was cancelled: restart the cycle, or write off the balance (approved above the Claim Policy limit) and close the claim.',
+    recoverCycle()
   )
 ];

@@ -282,11 +282,25 @@ describe('posting remittances', () => {
   });
 
   it('sends a payment the claim refuses to review with the reason', async () => {
-    const recording = postingDb({ status: 'paid' });
+    const recording = postingDb({ status: 'void' });
     const items = await postRemittances(contextFor(recording, [posting()]), [remitOf()]);
     assert.deepEqual(
       items.map((i) => [i.outcome, i.claimId, i.message]),
       [['review', 'c1', 'Claim is already closed']]
+    );
+  });
+
+  it('posts a late payment to a paid claim and reopens it', async () => {
+    const recording = postingDb({ status: 'paid' });
+    const items = await postRemittances(contextFor(recording, [posting()]), [remitOf()]);
+    assert.deepEqual(
+      items.map((i) => [i.outcome, i.claimId]),
+      [['posted', 'c1']]
+    );
+    assert.ok(
+      recording.queries.some(
+        (q) => q.sql.startsWith('insert into "claim_events"') && q.parameters.includes('reopened')
+      )
     );
   });
 

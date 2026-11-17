@@ -78,6 +78,7 @@ type Options = {
   profileOf?: Partial<typeof profile>;
   statusOf?: Partial<typeof statusRow> | null;
   eligibilityOf?: Partial<typeof eligibilityRow> | null;
+  health?: Record<string, unknown> | null;
 };
 
 const setup = ({
@@ -92,10 +93,12 @@ const setup = ({
   duplicate = false,
   profileOf = {},
   statusOf = {},
-  eligibilityOf = {}
+  eligibilityOf = {},
+  health = null
 }: Options = {}) => {
   const { db, queries } = createRecordingDb((q: CompiledQuery) => {
     if (q.sql.startsWith('select "agency_id" from "workflow_runs"')) return [{ agency_id: 't1' }];
+    if (q.sql.includes('from "clearinghouse_connections"')) return health ? [health] : [];
     if (q.sql.startsWith('update "billing_profiles"'))
       return numbers ? [{ control_number: 7 }] : [];
     if (q.sql.startsWith('select "control_number", "status"')) return prior ? [prior] : [];
@@ -481,6 +484,26 @@ describe('checkClaimStatus', () => {
       reason: null,
       signalsSeen: 0
     });
+  });
+});
+
+describe('connectionHealth', () => {
+  it("reads the poll health of the run agency's own connection", async () => {
+    const lastPolledAt = new Date('2026-11-05T11:00:00Z');
+    const lastErrorAt = new Date('2026-11-05T12:00:00Z');
+    const { store, queries } = setup({
+      health: { last_polled_at: lastPolledAt, last_error_at: lastErrorAt, last_error: 'Refused' }
+    });
+    assert.deepEqual(await store.connectionHealth('run-1'), {
+      lastPolledAt,
+      lastErrorAt,
+      error: 'Refused'
+    });
+    assert.deepEqual(queries.at(-1)?.parameters, ['t1']);
+  });
+
+  it('has no health without a connection of its own', async () => {
+    assert.equal(await setup().store.connectionHealth('run-1'), null);
   });
 });
 

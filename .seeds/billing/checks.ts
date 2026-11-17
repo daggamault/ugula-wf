@@ -302,6 +302,7 @@ const fixClaim = (): GraphDef => {
   g.add('toFacility', 'std.flow.branch', { label: 'Bill a Facility?' });
   g.add('responsibility', 'billing.decide-responsibility', { label: 'Decide Responsibility' });
   g.add('billFacility', 'billing.bill-facility', { label: 'Bill Facility' });
+  g.add('chase', 'billing.chase-missing-documents', { label: 'Chase Missing Documents' });
   g.add('fix', 'std.human.task', {
     label: 'Fix Claim Data',
     config: {
@@ -353,10 +354,13 @@ const fixClaim = (): GraphDef => {
     ),
     'toFacility.condition'
   );
-  g.wire('toFacility.false', 'fix.exec');
+  g.wire('toFacility.false', 'chase.exec');
   g.wire('toFacility.true', 'responsibility.exec');
   g.wire('claimIdToPatch.claimId', 'responsibility.claimId', 'billFacility.claimId');
-  g.wire('responsibility.payers', 'fix.exec');
+  g.wire('responsibility.payers', 'chase.exec');
+  g.wire('claimIdToPatch.claimId', 'chase.claimId');
+  g.wire('check.issues', 'chase.issues');
+  g.wire('chase.then', 'fix.exec');
   g.wire('responsibility.facility', 'billFacility.exec');
   g.wire('responsibility.facilityId', 'billFacility.facilityId');
   g.wire('responsibility.reason', 'billFacility.reason');
@@ -450,7 +454,7 @@ export const checkGraphs: SeedGraph[] = [
   asStage(
     'billing.fix-claim',
     'Fix Claim',
-    'Checks a saved claim and, while anything blocks it (or once anyway, with Ask Every Field), asks a biller to fix the fields the issues name, applies the fixes, reprices when the Reprice Triggers rule says so and checks again; a claim the Facility Responsibility rule bills to a facility goes to Bill Facility instead, then is checked again. With Patient Billing, only issues that matter for billing the patient count. Continues through Fixed, Voided or Back to Review.',
+    'Checks a saved claim and, while anything blocks it (or once anyway, with Ask Every Field), asks a biller to fix the fields the issues name, applies the fixes, reprices when the Reprice Triggers rule says so and checks again; a claim the Facility Responsibility rule bills to a facility goes to Bill Facility instead, then is checked again. With Patient Billing, only issues that matter for billing the patient count. Before asking, starts a chase for each missing document the issues name that no open chase is chasing (Chase Missing Documents). Continues through Fixed, Voided or Back to Review.',
     fixClaim()
   )
 ];

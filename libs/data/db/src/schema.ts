@@ -756,6 +756,9 @@ type ClearinghouseConnectionsTable = {
   claim_status_extension: string;
   after_download: AfterDownload;
   realtime_url: string | null;
+  last_polled_at: NullableTimestamp;
+  last_error: string | null;
+  last_error_at: NullableTimestamp;
   updated_at: Timestamp;
 };
 

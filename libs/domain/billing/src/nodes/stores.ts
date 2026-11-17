@@ -5,6 +5,7 @@ import type { ClaimPatch } from '../claim-fix.ts';
 import type { ManualPayment } from '../claim-payments.ts';
 import type { ClaimCheck, NewClaim } from '../claim-validation.ts';
 import type { ClaimLedger, ClaimStatus, ClosedStatus, CycleEventKind } from '../claims.ts';
+import type { ConnectionHealth } from '../clearinghouse.ts';
 import type { CodeSet } from '../code-sets.ts';
 import type { Completer } from '../completions.ts';
 import type { AppealPacketSource, FacilityInvoiceSource } from '../documents.ts';
@@ -260,6 +261,10 @@ export type ClaimStore = {
   ) => Promise<SavedSubmission>;
   sendClaimFile: (runId: string, claimId: string, controlNumber: number) => Promise<SentClaimFile>;
   linkRun: (runId: string, claimId: string) => Promise<void>;
+  restartCycle: (
+    runId: string,
+    claimId: string
+  ) => Promise<{ status: 'started'; cycleRunId: string } | Refused>;
   recordEvent: (
     runId: string,
     claimId: string,
@@ -375,7 +380,10 @@ export type ClaimStatusCheck =
   | (SentBatch & { signalsSeen: number })
   | Unavailable;
 
+export type StoredHealth = ConnectionHealth & { error: string | null };
+
 export type ExchangeStore = {
+  connectionHealth: (runId: string) => Promise<StoredHealth | null>;
   checkEligibility: (
     runId: string,
     claimId: string,
@@ -390,6 +398,10 @@ export type ExchangeStore = {
   ) => Promise<ClaimStatusCheck>;
 };
 
+export type DocumentStore = {
+  chasedDocuments: (runId: string, claimId: string) => Promise<string[]>;
+};
+
 export type BillingStores = {
   patients: PatientStore;
   payers: PayerStore;
@@ -402,6 +414,7 @@ export type BillingStores = {
   recovery: RecoveryStore;
   schedules: ScheduleStore;
   calendar: CalendarStore;
+  documents: DocumentStore;
   completer: Completer;
 };
 

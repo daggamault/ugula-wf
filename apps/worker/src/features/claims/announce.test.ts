@@ -35,6 +35,10 @@ describe('announceClaims', () => {
       submission: async () => ({ submitter: null, pending: null }),
       sendClaimFile: async () => 'manual' as const,
       linkRun: async () => void log.push('link'),
+      restartCycle: async () => {
+        log.push('restart');
+        return { status: 'started' as const, cycleRunId: 'r3' };
+      },
       saveSubmission: async () => {
         log.push('submission');
         return 'stale' as const;
@@ -96,6 +100,10 @@ describe('announceClaims', () => {
     );
     assert.equal(await claims.sendClaimFile('r1', 'c1', 1), 'manual');
     await claims.linkRun('r1', 'c1');
+    assert.deepEqual(await claims.restartCycle('r1', 'c1'), {
+      status: 'started',
+      cycleRunId: 'r3'
+    });
     assert.equal(await claims.ledger('r1', 'c1'), null);
     assert.equal(await claims.claimCheck('r1', 'c1'), null);
     assert.deepEqual(log, [
@@ -127,9 +135,11 @@ describe('announceClaims', () => {
       'announce',
       'submission',
       'announce',
-      'link'
+      'link',
+      'restart',
+      'announce'
     ]);
-    assert.deepEqual(announced, Array(14).fill(['r1', { kind: 'claim', id: 'c1' }]));
+    assert.deepEqual(announced, Array(15).fill(['r1', { kind: 'claim', id: 'c1' }]));
   });
 
   it('announces nothing when the store refuses the change', async () => {

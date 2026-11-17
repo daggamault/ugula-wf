@@ -7,6 +7,7 @@ import {
   exchangeFileName,
   FILE_EXTENSION_PATTERN,
   HOST_KEY_PATTERN,
+  isFailing,
   type RealtimeTransport,
   VENDOR_PRESETS,
   WAYSTAR_EXTENSIONS
@@ -156,5 +157,31 @@ describe('exchangeFileName', () => {
     );
     assert.equal(exchangeFileName('eligibility', 12, 'abcd-ef01-2345'), '270-000000012-abcdef01');
     assert.equal(exchangeFileName('claimStatus', 3, '12345678-9'), '276-000000003-12345678');
+  });
+});
+
+describe('isFailing', () => {
+  const at = (iso: string) => new Date(iso);
+
+  it('fails while the last error is newer than the last good poll', () => {
+    assert.equal(isFailing({ lastPolledAt: null, lastErrorAt: at('2026-11-05T12:00:00Z') }), true);
+    assert.equal(
+      isFailing({
+        lastPolledAt: at('2026-11-05T11:00:00Z'),
+        lastErrorAt: at('2026-11-05T12:00:00Z')
+      }),
+      true
+    );
+  });
+
+  it('works when it never failed or polled well since', () => {
+    assert.equal(isFailing({ lastPolledAt: null, lastErrorAt: null }), false);
+    assert.equal(
+      isFailing({
+        lastPolledAt: at('2026-11-05T12:05:00Z'),
+        lastErrorAt: at('2026-11-05T12:00:00Z')
+      }),
+      false
+    );
   });
 });

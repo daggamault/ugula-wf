@@ -1,6 +1,7 @@
 import { DOCUMENT_KINDS } from '@ugula/billing';
 import type { GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
+import { ISSUE_TYPE } from './check-rules.ts';
 import {
   assigned,
   beginClaimTask,
@@ -13,6 +14,7 @@ import {
   refusedSummary,
   rememberRefusal
 } from './claim-tasks.ts';
+import { action } from './glossary.ts';
 import {
   asRule,
   asStage,
@@ -22,9 +24,11 @@ import {
   either,
   exit,
   fixed,
+  getField,
   makeObject,
   orElse,
   P,
+  type Port,
   reasonsOf,
   rule,
   select,
@@ -231,8 +235,38 @@ const CHASE_DAYS = [
 ];
 
 const chaseDocument = (): GraphDef => {
-  const g = claimTask();
+  const g = claimTask(
+    [
+      d(
+        'kind',
+        'string',
+        'Document',
+        'The kind of document to chase, such as pcs; a biller chooses it when empty.',
+        true
+      ),
+      d('note', 'string', 'Note', 'Who to ask for the document, and for what.', true)
+    ],
+    [
+      { name: 'chasing', type: 'string', default: null },
+      { name: 'chaseNote', type: 'string', default: null }
+    ]
+  );
   beginClaimTask(g);
+  const given = condition(g, 'given', 'A Document Was Given', { kind: ['string', 'entry.kind'] }, [
+    { field: 'kind', op: 'present' }
+  ]);
+  g.add('isGiven', 'std.flow.branch', { label: 'Document Given?' });
+  const remember = (id: string, label: string, name: string, value: Port, then: Port) => {
+    g.add(id, 'std.var.set', { label, config: { name } });
+    g.wire(value, `${id}.value`);
+    g.wire(`${id}.then`, then);
+  };
+  remember('givenKind', 'Chase the Given Document', 'chasing', 'entry.kind', 'givenNote.exec');
+  remember('givenNote', 'Keep the Given Note', 'chaseNote', 'entry.note', 'read.exec');
+  remember('chosenKind', 'Chase the Chosen Document', 'chasing', 'ask.kind', 'chosenNote.exec');
+  remember('chosenNote', 'Keep the Chosen Note', 'chaseNote', 'ask.note', 'read.exec');
+  g.add('kind', 'std.var.get', { label: 'Document Chased', config: { name: 'chasing' } });
+  g.add('note', 'std.var.get', { label: 'Who to Ask', config: { name: 'chaseNote' } });
   g.add('ask', 'std.human.task', {
     label: 'Start Document Chase',
     config: {
@@ -283,7 +317,7 @@ const chaseDocument = (): GraphDef => {
   g.add('onFile', 'std.list.contains', { label: 'It Is on File' });
   const context = makeObject(g, 'context', 'Chase Details', {
     document: ['string', 'document.name'],
-    note: ['string', 'ask.note']
+    note: ['string', 'note.value']
   });
   const described = orElse(
     g,
@@ -320,11 +354,14 @@ const chaseDocument = (): GraphDef => {
   g.add('add', 'billing.add-claim-document', { label: 'Add Claim Document' });
   rememberRefusal(g, 'add', 'task.exec');
   g.ret('done');
-  g.wire('ledger.then', 'ask.exec');
-  g.wire('ask.chase', 'read.exec');
+  g.wire('ledger.then', 'isGiven.exec');
+  g.wire(given, 'isGiven.condition');
+  g.wire('isGiven.true', 'givenKind.exec');
+  g.wire('isGiven.false', 'ask.exec');
+  g.wire('ask.chase', 'chosenKind.exec');
   g.wire('ask.cancel', 'done.exec');
   g.wire('entry.claimId', 'read.claimId', 'add.claimId');
-  g.wire('ask.kind', 'days.key', 'document.kind', 'onFile.item', 'add.kind');
+  g.wire('kind.value', 'days.key', 'document.kind', 'onFile.item', 'add.kind');
   g.wire('now.now', 'due.time');
   g.wire('days.value', 'due.amount');
   g.wire('read.record', 'stored.record');
@@ -339,7 +376,7 @@ const chaseDocument = (): GraphDef => {
     g,
     'task',
     '{document} is missing from this claim[ ({note})]; get it, upload it here and mark it received',
-    { document: described, note: 'ask.note' }
+    { document: described, note: 'note.value' }
   );
   g.wire('task.received', 'withFile.exec');
   g.wire('task.file', 'add.file');
@@ -350,6 +387,131 @@ const chaseDocument = (): GraphDef => {
   g.wire('withFile.true', 'add.exec');
   recordAddedDocument(g, 'add', 'read.exec');
   g.wire('task.stop', 'done.exec');
+  return g.def;
+};
+
+const MISSING_DOCUMENTS = [
+  { key: 'pcs-missing', value: 'pcs' },
+  { key: 'pcs-missing-medicare', value: 'pcs' },
+  { key: 'signature-missing', value: 'signature' },
+  { key: 'abn-missing', value: 'abn' }
+];
+
+const KIND_OUT = d(
+  'kind',
+  'string',
+  'Document',
+  'The kind of document the issue says is missing, such as pcs; nothing for other issues.',
+  true
+);
+
+const CHASING_IN = d(
+  'chasing',
+  { list: 'string' },
+  'Chasing',
+  'The kinds of document open chases on the claim are already chasing.'
+);
+
+const issueDocument = (): GraphDef => {
+  const g = rule([d('issue', ISSUE_TYPE, 'Issue', 'One issue a check found.')], [KIND_OUT]);
+  const code = getField(g, 'code', 'Issue Code', ISSUE_TYPE, 'code', 'entry.issue');
+  g.add('missing', 'std.table.lookup', {
+    label: 'Missing Document Issues',
+    config: shared.lookup(
+      'billing.missing-document-issues',
+      'Missing Document Issues',
+      'The kind of document each claim check issue says is missing, so a chase for it starts on its own. An issue not listed starts none.',
+      { type: 'string', rows: MISSING_DOCUMENTS }
+    )
+  });
+  g.ret('return');
+  g.wire(code, 'missing.key');
+  g.wire('missing.value', 'return.kind');
+  return g.def;
+};
+
+const chaseNeeded = (): GraphDef => {
+  const g = rule(
+    [d('kind', 'string', 'Document', 'A kind of missing document, if any.', true), CHASING_IN],
+    [d('chase', 'boolean', 'Chase It', 'Whether a chase for the document should start.')]
+  );
+  g.wire(
+    condition(
+      g,
+      'notChased',
+      'A Document No Chase Is Chasing',
+      { kind: ['string', 'entry.kind'], chasing: [{ list: 'string' }, 'entry.chasing'] },
+      [
+        { field: 'kind', op: 'present' },
+        { field: 'kind', op: 'notOneOf', input: 'chasing' }
+      ]
+    ),
+    'return.chase'
+  );
+  g.ret('return');
+  return g.def;
+};
+
+const documentsToChase = (): GraphDef => {
+  const g = rule(
+    [P.issues('The issues Check Claim found on the claim.'), CHASING_IN],
+    [
+      d(
+        'kinds',
+        { list: 'string' },
+        'Documents to Chase',
+        'The kinds of missing document no open chase is chasing yet, each once.'
+      )
+    ]
+  );
+  g.add('missing', 'std.list.map-rule', {
+    label: 'Document Each Issue Says Is Missing',
+    config: { rule: 'billing.issue-document', version: 1, item: 'issue' }
+  });
+  g.add('once', 'std.list.unique', { label: 'Each Document Once' });
+  g.add('needed', 'std.list.filter-rule', {
+    label: 'Not Chased Yet',
+    config: { rule: 'billing.chase-needed', version: 1, item: 'kind', test: 'chase' }
+  });
+  g.ret('return');
+  g.wire('entry.issues', 'missing.list');
+  g.wire('missing.kind', 'once.list');
+  g.wire('once.list', 'needed.list');
+  g.wire('entry.chasing', 'needed.chasing');
+  g.wire('needed.list', 'return.kinds');
+  return g.def;
+};
+
+const chaseMissingDocuments = (): GraphDef => {
+  const g = action([P.claimId(), P.issues('The issues Check Claim found on the claim.')], []);
+  g.add('chases', 'billing.document-chases', { label: 'Document Chases' });
+  g.add('toChase', 'billing.documents-to-chase', { label: 'Documents to Chase' });
+  g.add('items', 'std.list.reshape', {
+    label: 'One Chase per Document',
+    config: {
+      fields: [
+        { name: 'claimId', type: { id: 'claim' } },
+        { name: 'kind', type: 'string', from: '' }
+      ]
+    }
+  });
+  g.add('spawn', 'std.flow.spawn-workflows', {
+    label: 'Chase Each Document',
+    config: { workflow: 'billing.chase-document', version: 1 }
+  });
+  g.ret('done', 'then');
+  g.wire('entry.exec', 'chases.exec');
+  g.wire('entry.claimId', 'chases.claimId');
+  g.wire('chases.then', 'spawn.exec');
+  g.wire('entry.issues', 'toChase.issues');
+  g.wire('chases.chasing', 'toChase.chasing');
+  g.wire('toChase.kinds', 'items.list');
+  g.wire(
+    makeObject(g, 'claim', 'Same for Every Chase', { claimId: [{ id: 'claim' }, 'entry.claimId'] }),
+    'items.shared'
+  );
+  g.wire('items.list', 'spawn.items');
+  g.wire('spawn.then', 'done.exec');
   return g.def;
 };
 
@@ -381,7 +543,31 @@ export const documentGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.chase-document',
     'Chase Document',
-    'Started from a claim: a Start document chase task names the missing document and who to ask. A Chase document task, due in the days the Document Chase Days table gives, then takes the upload (Add Claim Document and Record Document) and comes back until the document is on file or a biller stops chasing it.',
+    'Started from a claim, where a Start document chase task names the missing document and who to ask, or by Chase Missing Documents with the document. A Chase document task, due in the days the Document Chase Days table gives, then takes the upload (Add Claim Document and Record Document) and comes back until the document is on file or a biller stops chasing it.',
     chaseDocument()
+  ),
+  asRule(
+    'billing.issue-document',
+    'Issue Document',
+    'The kind of document a claim check issue says is missing (Missing Document Issues table), such as signature for signature-missing, or nothing.',
+    issueDocument()
+  ),
+  asRule(
+    'billing.chase-needed',
+    'Chase Needed',
+    'Whether a missing document should be chased: it is a document, and no open chase on the claim is chasing it.',
+    chaseNeeded()
+  ),
+  asRule(
+    'billing.documents-to-chase',
+    'Documents to Chase',
+    'The documents the issues say are missing (Issue Document), each once, that no open chase is chasing yet (Chase Needed).',
+    documentsToChase()
+  ),
+  asStage(
+    'billing.chase-missing-documents',
+    'Chase Missing Documents',
+    'Starts a Chase Document run, without waiting for it, for each document the issues say is missing that no open chase on the claim is chasing (Document Chases, Documents to Chase). Used by Fix Claim.',
+    chaseMissingDocuments()
   )
 ];

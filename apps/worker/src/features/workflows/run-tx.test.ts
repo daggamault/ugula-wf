@@ -53,6 +53,9 @@ const step = (seq: number): TraceEntry => ({
 
 const flat = (sql: string | undefined) => sql?.replace(/\s+/g, ' ');
 
+const idle = (n: number) =>
+  `not exists ( select 1 from claim_runs o join workflow_runs w on w.id = o.run_id where o.claim_id = c.id and o.run_id <> $${n} and w.status in ($${n + 1}, $${n + 2}, $${n + 3}) )`;
+
 const SAVE =
   'update "workflow_runs" set "status" = $1, "state" = $2, "result" = $3, "error" = $4, "wait_key" = $5, "lease_expires_at" = $6, "lease_token" = $7, "updated_at" = now(), "completed_at" = ';
 
@@ -492,7 +495,7 @@ describe('createRunTx', () => {
   describe('recoverDrafts', () => {
     it('starts a recovery run for each draft claim no other active run works', async () => {
       const { db, queries } = createRecordingDb((q) =>
-        q.sql.includes('with orphans as') ? [{ id: 'rec-1' }, { id: 'rec-2' }] : []
+        q.sql.includes('with started as') ? [{ id: 'rec-1' }, { id: 'rec-2' }] : []
       );
       assert.deepEqual(
         await createRunTx(db, recordingBoss().boss).recoverDrafts(
@@ -504,21 +507,50 @@ describe('createRunTx', () => {
       );
       assert.equal(
         flat(queries[0]?.sql),
-        " with orphans as ( select c.id, r.report from claim_runs cr join claims c on c.id = cr.claim_id left join import_reports r on r.id = c.import_report_id where cr.run_id = $1 and c.status = 'draft' and not exists ( select 1 from claim_runs o join workflow_runs w on w.id = o.run_id where o.claim_id = c.id and o.run_id <> $2 and w.status in ($3, $4, $5) ) ), started as ( insert into workflow_runs (agency_id, graph_version_id, status, inputs) select $6, $7, 'running', jsonb_build_object('claimId', o.id, 'report', o.report, 'reason', $8::text) from orphans o returning id, (inputs ->> 'claimId')::uuid as claim_id ), linked as ( insert into claim_runs (agency_id, run_id, claim_id) select $9, id, claim_id from started ) select id from started"
+        ` with started as ( insert into workflow_runs (agency_id, graph_version_id, status, inputs) select $1, $2, 'running', o.inputs from (select jsonb_build_object('claimId', c.id, 'report', r.report, 'reason', $3::text) as inputs from claim_runs cr join claims c on c.id = cr.claim_id left join import_reports r on r.id = c.import_report_id where cr.run_id = $4 and c.status = 'draft' and ${idle(5)}) o returning id, (inputs ->> 'claimId')::uuid as claim_id ), linked as ( insert into claim_runs (agency_id, run_id, claim_id) select $9, id, claim_id from started ) select id from started`
       );
       assert.deepEqual(queries[0]?.parameters, [
+        't',
+        'v-rec',
+        'The run was cancelled',
         'r1',
         'r1',
         'running',
         'suspended',
         'faulted',
-        't',
-        'v-rec',
-        'The run was cancelled',
         't'
       ]);
       const pin = queries.find((q) => isPin(q.sql));
       assert.deepEqual(pin?.parameters.slice(0, 3), ['v-rec', 'r1', 't']);
+      await db.destroy();
+    });
+
+    it('starts a recovery run for each open claim a stopped cycle leaves with no active run', async () => {
+      const { db, queries } = createRecordingDb((q) =>
+        q.sql.includes('with started as') ? [{ id: 'rec-1' }] : []
+      );
+      assert.deepEqual(
+        await createRunTx(db, recordingBoss().boss).recoverCycles(
+          { ...parent, id: 'r1' },
+          'v-rec',
+          'The run failed: boom'
+        ),
+        ['rec-1']
+      );
+      assert.equal(
+        flat(queries[0]?.sql),
+        ` with started as ( insert into workflow_runs (agency_id, graph_version_id, status, inputs) select $1, $2, 'running', o.inputs from (select jsonb_build_object('claimId', c.id, 'reason', $3::text) as inputs from claim_runs cr join claims c on c.id = cr.claim_id where cr.run_id = $4 and c.status not in ($5, $6, $7, $8, $9) and ${idle(10)}) o returning id, (inputs ->> 'claimId')::uuid as claim_id ), linked as ( insert into claim_runs (agency_id, run_id, claim_id) select $14, id, claim_id from started ) select id from started`
+      );
+      assert.deepEqual(queries[0]?.parameters.slice(2, 10), [
+        'The run failed: boom',
+        'r1',
+        'draft',
+        'paid',
+        'written_off',
+        'collections',
+        'void',
+        'r1'
+      ]);
       await db.destroy();
     });
 

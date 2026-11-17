@@ -41,6 +41,11 @@ const QUEUES: Readonly<Record<string, QueueInfo>> = {
     description:
       'Missing facesheets, certifications, signature forms, ABNs and MSP forms to get and upload, each due by its date.'
   },
+  'billing-admin': {
+    label: 'Billing Setup',
+    description:
+      'Clearinghouse connections and other settings that stop billing until someone who may change Settings fixes them.'
+  },
   'billing-approvals': {
     label: 'Approvals',
     description:

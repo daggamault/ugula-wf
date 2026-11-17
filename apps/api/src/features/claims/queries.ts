@@ -1,5 +1,5 @@
 import { CLAIM_STATUSES, CLOSED_CLAIM_STATUSES, dailyNumberOf, nameKey } from '@ugula/billing';
-import { ACTIVE_RUN_STATUSES, type Db, DOCUMENTATION_COLUMNS, payerName } from '@ugula/db';
+import { type Db, DOCUMENTATION_COLUMNS, payerName } from '@ugula/db';
 import { sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { type PageRequest, paged } from '../../shared/paging.ts';
@@ -239,28 +239,6 @@ export const claimExists = async (db: Db, agencyId: string, id: string) =>
     .where('id', '=', id)
     .where('agency_id', '=', agencyId)
     .executeTakeFirst()) !== undefined;
-
-export const hasActiveRun = async (db: Db, claimId: string) =>
-  (await db
-    .selectFrom('claim_runs as cr')
-    .innerJoin('workflow_runs as r', 'r.id', 'cr.run_id')
-    .select('r.id')
-    .where('cr.claim_id', '=', claimId)
-    .where('r.status', 'in', ACTIVE_RUN_STATUSES)
-    .limit(1)
-    .executeTakeFirst()) !== undefined;
-
-export const setCycleRun = async (db: Db, agencyId: string, id: string, runId: string) => {
-  await db
-    .insertInto('claim_runs')
-    .values({ agency_id: agencyId, run_id: runId, claim_id: id })
-    .execute();
-  await db
-    .updateTable('claims')
-    .set({ cycle_run_id: runId, updated_at: sql`now()` })
-    .where('id', '=', id)
-    .execute();
-};
 
 export const listClaimDocuments = (db: Db, claimId: string) =>
   db

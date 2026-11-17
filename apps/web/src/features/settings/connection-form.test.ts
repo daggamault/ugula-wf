@@ -10,6 +10,7 @@ import {
   endpointChanged,
   fromConnectionDraft,
   needsSecret,
+  pollFailing,
   receiverHint,
   saveBlocked,
   secretHint,
@@ -33,7 +34,10 @@ const saved: ClearinghouseConnection = {
   eligibility_extension: '.270',
   claim_status_extension: '.276',
   after_download: 'keep',
-  realtime_url: null
+  realtime_url: null,
+  last_polled_at: null,
+  last_error: null,
+  last_error_at: null
 };
 
 const savedInput: ConnectionInput = {
@@ -151,9 +155,36 @@ describe('connection draft', () => {
     assert.equal(receiverHint('waystar'), 'Set the billing profile Receiver ID to WAYSTAR.');
     assert.match(receiverHint('custom-sftp'), /receiver ID your clearinghouse gives you/);
   });
+
+  it('fails while the last error is newer than the last successful poll', () => {
+    const at = (lastPolled: string | null, lastError: string | null) =>
+      pollFailing({ ...saved, last_polled_at: lastPolled, last_error_at: lastError });
+    assert.equal(at(null, null), false);
+    assert.equal(at(null, '2026-11-05T12:00:00Z'), true);
+    assert.equal(at('2026-11-05T11:00:00Z', '2026-11-05T12:00:00Z'), true);
+    assert.equal(at('2026-11-05T12:05:00Z', '2026-11-05T12:00:00Z'), false);
+  });
 });
 
 describe('ConnectionForm', () => {
+  it('shows the last successful poll and the last error, alerting while polling fails', () => {
+    showForm({
+      ...saved,
+      last_polled_at: '2026-11-05T11:00:00Z',
+      last_error: 'All configured authentication methods failed',
+      last_error_at: '2026-11-05T12:00:00Z'
+    });
+    assert.match(screen.getByRole('alert').textContent ?? '', /The last poll failed/);
+    assert.ok(screen.getByText('Last Successful Poll'));
+    assert.ok(screen.getByText('All configured authentication methods failed'));
+  });
+
+  it('shows a working connection without an alert', () => {
+    showForm({ ...saved, last_polled_at: '2026-11-05T12:00:00Z' });
+    assert.ok(!screen.queryByRole('alert'));
+    assert.ok(screen.getByText('None'));
+  });
+
   it('saves a new connection from the chosen vendor preset and clears the typed password', async () => {
     const { calls, onSave } = recordSaves();
     const user = showForm(null, { onSave });

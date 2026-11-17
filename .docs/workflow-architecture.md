@@ -27,7 +27,7 @@ A critical review of today's billing workflows and override mechanism, what EMS 
 
 ### Billing coverage gaps for MVP
 
-Still missing: insurance discovery, rural/super-rural, automatic chasing of missing documents, and EFT reassociation. **Built since:** TA1, 276/277 claim status, real-time and batch 270/271, per-agency clearinghouse connections, denial routing by CARC (Work Denial), corrected claims vs. reopenings, appeals with deadlines and packets, records requests, refunds with approval and the Medicare 60-day deadline, closing approvals, daily deadline watching, state balance-billing protection on statements, facility invoicing, the MSP questionnaire and rule, Facility Responsibility at intake, ABN with GA/GZ, QL, GM, A0888, the NTE narrative and admission date, prior authorization and PCS tracking, and claim documents (see [Billing Workflows](billing-workflows.md)).
+Still missing: insurance discovery, rural/super-rural, and EFT reassociation. **Built since:** TA1, 276/277 claim status, real-time and batch 270/271, per-agency clearinghouse connections, denial routing by CARC (Work Denial), corrected claims vs. reopenings, appeals with deadlines and packets, records requests, refunds with approval and the Medicare 60-day deadline, closing approvals, daily deadline watching, state balance-billing protection on statements, facility invoicing, the MSP questionnaire and rule, Facility Responsibility at intake, ABN with GA/GZ, QL, GM, A0888, the NTE narrative and admission date, prior authorization and PCS tracking, claim documents with automatic chasing of missing ones, and clearinghouse connection health alerts (see [Billing Workflows](billing-workflows.md)).
 
 ---
 

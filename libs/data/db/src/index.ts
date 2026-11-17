@@ -1,5 +1,6 @@
 export * from './access.ts';
 export * from './claim-checks.ts';
+export * from './claim-cycles.ts';
 export * from './claim-documentation.ts';
 export * from './claim-patches.ts';
 export * from './claim-payers.ts';

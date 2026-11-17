@@ -36,7 +36,8 @@ const fakeTx = (opts: FakeOptions = {}) => {
     jobs: [] as RunJob[],
     cancelledTasks: [] as string[],
     spawned: [] as Values[][],
-    recoveries: [] as [string, string, string][]
+    recoveries: [] as [string, string, string][],
+    cycles: [] as [string, string, string][]
   };
   const tx: RunTx = {
     saveRun: async (_, patch) => {
@@ -69,6 +70,10 @@ const fakeTx = (opts: FakeOptions = {}) => {
     claimReference: async () => opts.reference ?? null,
     recoverDrafts: async (r, versionId, reason) => {
       calls.recoveries.push([r.id, versionId, reason]);
+      return opts.recovered ?? [];
+    },
+    recoverCycles: async (r, versionId, reason) => {
+      calls.cycles.push([r.id, versionId, reason]);
       return opts.recovered ?? [];
     },
     enqueue: async (jobs) => {
@@ -689,6 +694,27 @@ describe('stallRun and cancelRun', () => {
     await cancelRun(other.tx, run);
     await settleRun(other.tx, encounter, state({ status: 'completed', result: null }), []);
     assert.deepEqual(other.calls.recoveries, []);
+    assert.deepEqual(other.calls.cycles, []);
+  });
+
+  it('starts cycle recovery when a claim cycle run fails or is cancelled, and only then', async () => {
+    const cycle = { ...run, graphs: [{ id: 'v-1', key: 'billing.cycle-claim', version: 1 }] };
+    const failed = fakeTx({ version: 'v-rec', recovered: ['rec-1'] });
+    await settleRun(failed.tx, cycle, waiting('nope' as never, {}), []);
+    assert.deepEqual(failed.calls.cycles, [
+      ['run-1', 'v-rec', 'The run failed: Unsupported wait "nope"']
+    ]);
+    assert.deepEqual(failed.calls.recoveries, []);
+    assert.deepEqual(failed.calls.jobs, [{ runId: 'rec-1', command: { type: 'advance' } }]);
+    const cancelled = fakeTx({ version: 'v-rec' });
+    await cancelRun(cancelled.tx, cycle);
+    assert.deepEqual(cancelled.calls.cycles, [['run-1', 'v-rec', 'The run was cancelled']]);
+    const completed = fakeTx({ version: 'v-rec' });
+    await settleRun(completed.tx, cycle, state({ status: 'completed', result: null }), []);
+    assert.deepEqual(completed.calls.cycles, []);
+    const unpublished = fakeTx();
+    await cancelRun(unpublished.tx, cycle);
+    assert.deepEqual(unpublished.calls.cycles, []);
   });
 
   it('cancel open tasks and cascade to active children', async () => {

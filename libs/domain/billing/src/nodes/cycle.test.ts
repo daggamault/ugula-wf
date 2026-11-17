@@ -473,4 +473,21 @@ describe('cycleNodes', () => {
       ['submitted']
     );
   });
+
+  it('restarts the payer cycle of a claim, or says why it did not', async () => {
+    const { claims, node } = world();
+    const started = await run(node('restart-cycle'), { claimId: 'c1' });
+    assert.deepEqual(
+      [started.pin, started.outputs],
+      ['started', { cycleRunId: 'cycle-2', reason: null }]
+    );
+    assert.deepEqual(claims.attached, ['restart:c1']);
+    const busy = world({ restartRefused: 'This claim still has an active workflow run' });
+    const skipped = await run(busy.node('restart-cycle'), { claimId: 'c1' });
+    assert.deepEqual(
+      [skipped.pin, skipped.outputs],
+      ['skipped', { cycleRunId: null, reason: 'This claim still has an active workflow run' }]
+    );
+    assert.deepEqual(busy.claims.attached, []);
+  });
 });

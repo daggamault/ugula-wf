@@ -19,9 +19,11 @@ import { announceClaims, announceClaimTasks } from './features/claims/announce.t
 
 import { createClaimStore, createClaimTaskStore } from './features/claims/queries.ts';
 import { createExchangeStore } from './features/clearinghouse/exchange.ts';
+import { createHealthRecorder } from './features/clearinghouse/health.ts';
 import { registerPollJob } from './features/clearinghouse/job.ts';
 import { createPayerFileStore } from './features/clearinghouse/payer-files.ts';
 import { createClearinghousePoll } from './features/clearinghouse/poll.ts';
+import { createDocumentStore } from './features/documents/queries.ts';
 import { startEventDispatcher } from './features/events/job.ts';
 import { registerHealthJob } from './features/health/job.ts';
 import { announceImports } from './features/imports/announce.ts';
@@ -169,6 +171,7 @@ if (import.meta.main) {
           recovery: scope.guard(createRecoveryStore(db, blobs, boss)),
           schedules: scope.guard(createScheduleStore(db, blobs)),
           calendar: scope.guard(createCalendarStore(db)),
+          documents: scope.guard(createDocumentStore(db)),
           completer: createCompleter({
             url: config.COMPLETIONS_URL,
             model: config.COMPLETIONS_MODEL,
@@ -205,6 +208,7 @@ if (import.meta.main) {
       db,
       blobs,
       targets: connections.pollTargets,
+      recordHealth: createHealthRecorder({ db, boss }),
       report,
       now
     }),

@@ -41,6 +41,7 @@ import {
   nudgeClaim,
   pendingClaim,
   postClaimResponse,
+  restartCycle,
   setClaimPayers,
   sqlExecutor,
   TERMINAL_RUN_STATUSES,
@@ -475,7 +476,13 @@ export const createCycleStore = (
   boss: RunQueueClient
 ): Pick<
   ClaimStore,
-  'claimCheck' | 'patchClaim' | 'setStatus' | 'attachCycle' | 'closeClaim' | 'linkRun'
+  | 'claimCheck'
+  | 'patchClaim'
+  | 'setStatus'
+  | 'attachCycle'
+  | 'closeClaim'
+  | 'linkRun'
+  | 'restartCycle'
 > => ({
   claimCheck: async (runId, claimId) => {
     if (!isUuid(claimId)) return null;
@@ -625,6 +632,18 @@ export const createCycleStore = (
   linkRun: async (runId, claimId) => {
     const claim = await agencyClaim(db, runId, claimId);
     await linkClaimRun(db, runId, claim.id);
+  },
+
+  restartCycle: async (runId, claimId) => {
+    const claim = await agencyClaim(db, runId, claimId);
+    const restarted = await db
+      .transaction()
+      .execute((tx) =>
+        restartCycle(tx, boss, { agencyId: claim.agency_id, claimId: claim.id, exceptRunId: runId })
+      );
+    if (restarted.ok) return { status: 'started', cycleRunId: restarted.value.runId };
+    if (restarted.failure.code === 'conflict') return refusedBy(restarted.failure);
+    throw new Error(restarted.failure.message);
   }
 });
 

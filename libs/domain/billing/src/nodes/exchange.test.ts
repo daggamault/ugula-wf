@@ -5,7 +5,7 @@ import { invokeNode } from '@ugula/graph/testing';
 import type { LedgerCoverage } from '../claims.ts';
 import { billingStores, memoryClaims } from '../testing.ts';
 import { exchangeNodes } from './exchange.ts';
-import type { ClaimStatusCheck, EligibilityCheck } from './stores.ts';
+import type { ClaimStatusCheck, EligibilityCheck, StoredHealth } from './stores.ts';
 
 const setup = (
   eligibility: EligibilityCheck,
@@ -25,7 +25,8 @@ const setup = (
         checkClaimStatus: async (...args) => {
           calls.push(['276', ...args]);
           return status;
-        }
+        },
+        connectionHealth: async () => null
       }
     })
   );
@@ -153,5 +154,47 @@ describe('exchangeNodes', () => {
       () => invokeNode(s.node('latest-claim-status'), { inputs: { claimId: 'missing' } }),
       /does not exist/
     );
+  });
+});
+
+describe('billing.clearinghouse-health', () => {
+  const health = async (stored: StoredHealth | null) => {
+    const node = exchangeNodes(() =>
+      billingStores({
+        exchange: {
+          checkEligibility: async () => assert.fail('not asked'),
+          checkClaimStatus: async () => assert.fail('not asked'),
+          connectionHealth: async (runId) => {
+            assert.equal(runId, 'run');
+            return stored;
+          }
+        }
+      })
+    ).find((n) => n.type === 'billing.clearinghouse-health') as NodeDef;
+    return (await invokeNode(node, {})).outputs;
+  };
+  const at = (iso: string) => new Date(iso);
+
+  it('says the connection fails with the error of a poll newer than the last good one', async () => {
+    assert.deepEqual(
+      await health({
+        lastPolledAt: at('2026-11-05T11:00:00Z'),
+        lastErrorAt: at('2026-11-05T12:00:00Z'),
+        error: 'Connection refused'
+      }),
+      { failing: true, error: 'Connection refused' }
+    );
+  });
+
+  it('says it works once polled well since, and without a connection of its own', async () => {
+    assert.deepEqual(
+      await health({
+        lastPolledAt: at('2026-11-05T12:05:00Z'),
+        lastErrorAt: at('2026-11-05T12:00:00Z'),
+        error: 'Connection refused'
+      }),
+      { failing: false, error: null }
+    );
+    assert.deepEqual(await health(null), { failing: false, error: null });
   });
 });

@@ -10,6 +10,8 @@ describe('billingEvents', () => {
       [
         'import.received',
         'payer_file.received',
+        'clearinghouse.failed',
+        'clearinghouse.recovered',
         'claim.opened',
         'claim.submitted',
         'claim.accepted',
@@ -20,6 +22,7 @@ describe('billingEvents', () => {
         'eligibility.answered',
         'document.received',
         'claim.closed',
+        'claim.reopened',
         'claim.classified',
         'claim.status_changed',
         'claim.paid',
@@ -36,6 +39,7 @@ describe('CLAIM_LEDGER_EVENTS', () => {
     );
     assert.equal(CLAIM_LEDGER_EVENTS.resubmitted, 'claim.submitted');
     assert.equal(CLAIM_LEDGER_EVENTS.response, 'remittance.posted');
+    assert.equal(CLAIM_LEDGER_EVENTS.reopened, 'claim.reopened');
     assert.ok(!Object.hasOwn(CLAIM_LEDGER_EVENTS, 'edited'));
   });
 });
@@ -55,6 +59,7 @@ describe('ledgerPayloadColumns', () => {
       route: 'route',
       note: 'note'
     });
+    assert.deepEqual(ledgerPayloadColumns('claim.reopened'), { claimId: 'claim_id', note: 'note' });
     assert.deepEqual(ledgerPayloadColumns('claim.paid'), {});
   });
 });

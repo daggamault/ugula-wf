@@ -1,3 +1,4 @@
+import { CLOSED_CLAIM_STATUSES } from '@ugula/billing';
 import {
   ACTIVE_RUN_STATUSES,
   type Database,
@@ -16,7 +17,7 @@ import {
   type RunQueueClient,
   type TimeoutClient
 } from '@ugula/run-queue';
-import { type Kysely, sql } from 'kysely';
+import { type Kysely, type RawBuilder, sql } from 'kysely';
 import { assertLeased, type ClaimedRun, type LeasedRun } from './run-lease.ts';
 import { cancelTasks, insertTask, type TaskInsert } from './run-tasks.ts';
 
@@ -61,6 +62,7 @@ export type RunTx = {
   lockSignal: (agencyId: string, key: string) => Promise<number>;
   claimReference: (runId: string) => Promise<string | null>;
   recoverDrafts: (run: ClaimedRun, versionId: string, reason: string) => Promise<string[]>;
+  recoverCycles: (run: ClaimedRun, versionId: string, reason: string) => Promise<string[]>;
   enqueue: (jobs: RunJob[]) => Promise<void>;
   dropTimeout: (runId: string, waitId: string) => Promise<void>;
 };
@@ -105,6 +107,37 @@ const stepRow = (s: TraceEntry) => ({
 const CHILD_CHUNK = 1_000;
 
 const json = (value: Json | undefined) => (value === undefined ? null : JSON.stringify(value));
+
+const idleClaim = (runId: string) => sql`not exists (
+  select 1 from claim_runs o
+  join workflow_runs w on w.id = o.run_id
+  where o.claim_id = c.id and o.run_id <> ${runId}
+    and w.status in (${sql.join(ACTIVE_RUN_STATUSES)})
+)`;
+
+const recoverClaims = async (
+  tx: Kysely<Database>,
+  run: ClaimedRun,
+  versionId: string,
+  orphans: RawBuilder<unknown>
+) => {
+  const { rows } = await sql<{ id: string }>`
+    with started as (
+      insert into workflow_runs (agency_id, graph_version_id, status, inputs)
+      select ${run.agencyId}, ${versionId}, 'running', o.inputs
+      from (${orphans}) o
+      returning id, (inputs ->> 'claimId')::uuid as claim_id
+    ), linked as (
+      insert into claim_runs (agency_id, run_id, claim_id)
+      select ${run.agencyId}, id, claim_id from started
+    )
+    select id from started`.execute(tx);
+  const ids = rows.map((r) => r.id);
+  if (ids.length) {
+    await pinRunsGraphs(tx, { ids, agencyId: run.agencyId, versionId, parentRunId: run.id });
+  }
+  return ids;
+};
 
 export const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => ({
   saveRun: async (run, patch) => {
@@ -255,36 +288,29 @@ export const createRunTx = (tx: Kysely<Database>, boss: QueueClient): RunTx => (
         .where('cr.run_id', '=', runId)
         .executeTakeFirst()
     )?.reference || null,
-  recoverDrafts: async (run, versionId, reason) => {
-    const { rows } = await sql<{ id: string }>`
-      with orphans as (
-        select c.id, r.report from claim_runs cr
+  recoverDrafts: (run, versionId, reason) =>
+    recoverClaims(
+      tx,
+      run,
+      versionId,
+      sql`select jsonb_build_object('claimId', c.id, 'report', r.report, 'reason', ${reason}::text) as inputs
+        from claim_runs cr
         join claims c on c.id = cr.claim_id
         left join import_reports r on r.id = c.import_report_id
-        where cr.run_id = ${run.id} and c.status = 'draft'
-          and not exists (
-            select 1 from claim_runs o
-            join workflow_runs w on w.id = o.run_id
-            where o.claim_id = c.id and o.run_id <> ${run.id}
-              and w.status in (${sql.join(ACTIVE_RUN_STATUSES)})
-          )
-      ), started as (
-        insert into workflow_runs (agency_id, graph_version_id, status, inputs)
-        select ${run.agencyId}, ${versionId}, 'running',
-          jsonb_build_object('claimId', o.id, 'report', o.report, 'reason', ${reason}::text)
-        from orphans o
-        returning id, (inputs ->> 'claimId')::uuid as claim_id
-      ), linked as (
-        insert into claim_runs (agency_id, run_id, claim_id)
-        select ${run.agencyId}, id, claim_id from started
-      )
-      select id from started`.execute(tx);
-    const ids = rows.map((r) => r.id);
-    if (ids.length) {
-      await pinRunsGraphs(tx, { ids, agencyId: run.agencyId, versionId, parentRunId: run.id });
-    }
-    return ids;
-  },
+        where cr.run_id = ${run.id} and c.status = 'draft' and ${idleClaim(run.id)}`
+    ),
+  recoverCycles: (run, versionId, reason) =>
+    recoverClaims(
+      tx,
+      run,
+      versionId,
+      sql`select jsonb_build_object('claimId', c.id, 'reason', ${reason}::text) as inputs
+        from claim_runs cr
+        join claims c on c.id = cr.claim_id
+        where cr.run_id = ${run.id}
+          and c.status not in (${sql.join(['draft', ...CLOSED_CLAIM_STATUSES])})
+          and ${idleClaim(run.id)}`
+    ),
   enqueue: (jobs) => enqueueRuns(boss, sqlExecutor(tx), jobs),
   dropTimeout: (runId, waitId) => dropTimeout(boss, sqlExecutor(tx), runId, waitId)
 });

@@ -45,7 +45,12 @@ export {
   LOADED_MILES_FIELD
 } from './claim-fix-fields.ts';
 export { type ManualPayment, PAYMENT_KINDS } from './claim-payments.ts';
-export { CLAIM_TASK_KEYS, CLAIM_TASKS, type ClaimTaskKey } from './claim-tasks.ts';
+export {
+  CLAIM_TASK_KEYS,
+  CLAIM_TASKS,
+  type ClaimTaskKey,
+  claimTaskStartsOn
+} from './claim-tasks.ts';
 export {
   CLAIM_FIELDS,
   CLAIM_ISSUE_SEVERITIES,
@@ -81,6 +86,7 @@ export {
   type DenialRoute,
   isClosedStatus,
   isDenialRoute,
+  isReopenableStatus,
   type LineAdjudication,
   ledgerFactsOf,
   MAX_LINE_MODIFIERS,
@@ -93,16 +99,20 @@ export {
 export {
   AFTER_DOWNLOAD,
   type AfterDownload,
+  CLEARINGHOUSE_RECOVERED,
+  CLEARINGHOUSE_SIGNAL,
   CLEARINGHOUSE_VENDORS,
   type Clearinghouse,
   type ClearinghouseFile,
   type ClearinghouseInbox,
   type ClearinghouseSettings,
   type ClearinghouseVendor,
+  type ConnectionHealth,
   createClearinghouse,
   exchangeFileName,
   FILE_EXTENSION_PATTERN,
   HOST_KEY_PATTERN,
+  isFailing,
   MOCK_HOST_KEY,
   type RealtimeAnswer,
   type RealtimeTransport,
@@ -189,6 +199,7 @@ export {
   type ClaimTaskStore,
   createBillingNodes,
   type DeadlineFacts,
+  type DocumentStore,
   type DraftClaim,
   type EligibilityCheck,
   type ExchangeStore,

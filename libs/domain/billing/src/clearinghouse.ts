@@ -12,6 +12,15 @@ export const HOST_KEY_PATTERN = '^SHA256:[A-Za-z0-9+/]{43}$';
 
 export const MOCK_HOST_KEY = 'SHA256:VM159e2IEtdtiYxUoqIC5u7Z7D57F/k83MgfOvFrDdM';
 
+export const CLEARINGHOUSE_SIGNAL = 'clearinghouse';
+
+export const CLEARINGHOUSE_RECOVERED = 'recovered';
+
+export type ConnectionHealth = { lastPolledAt: Date | null; lastErrorAt: Date | null };
+
+export const isFailing = ({ lastPolledAt, lastErrorAt }: ConnectionHealth) =>
+  lastErrorAt !== null && (lastPolledAt === null || lastErrorAt > lastPolledAt);
+
 type ClearinghouseExtensions = { claims: string; eligibility: string; claimStatus: string };
 
 export const WAYSTAR_EXTENSIONS: ClearinghouseExtensions = {

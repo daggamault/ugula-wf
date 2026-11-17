@@ -41,6 +41,7 @@ describe('createBillingNodes', () => {
         'billing.link-payer@1',
         'billing.read-narrative@1',
         'billing.attach-cycle@1',
+        'billing.restart-cycle@1',
         'billing.read-claim-ledger@1',
         'billing.record-claim-step@1',
         'billing.record-claim-event@1',
@@ -56,6 +57,7 @@ describe('createBillingNodes', () => {
         'billing.send-270@1',
         'billing.send-276@1',
         'billing.latest-claim-status@1',
+        'billing.clearinghouse-health@1',
         'billing.issue-when@1',
         'billing.issue-for-each@1',
         'billing.read-denial@1',
@@ -73,7 +75,8 @@ describe('createBillingNodes', () => {
         'billing.agency-today@1',
         'billing.read-deadlines@1',
         'billing.raise-task@1',
-        'billing.issue-facility-invoices@1'
+        'billing.issue-facility-invoices@1',
+        'billing.document-chases@1'
       ]
     );
   });
@@ -118,6 +121,7 @@ describe('createBillingNodes', () => {
         .map((n) => [n.type, n.level]),
       [
         ['billing.attach-cycle', 'advanced'],
+        ['billing.restart-cycle', 'advanced'],
         ['billing.record-claim-step', 'advanced'],
         ['billing.with-frequency', 'advanced']
       ]

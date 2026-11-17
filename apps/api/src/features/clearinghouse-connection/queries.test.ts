@@ -12,7 +12,8 @@ import type { ConnectionInput } from './schemas.ts';
 const RETURNING =
   '"vendor", "is_active", "sftp_host", "sftp_port", "sftp_host_key", "sftp_username", ' +
   '"upload_path", "download_paths", "claim_extension", "eligibility_extension", ' +
-  '"claim_status_extension", "after_download", "realtime_url", "updated_at", ' +
+  '"claim_status_extension", "after_download", "realtime_url", "last_polled_at", "last_error", ' +
+  '"last_error_at", "updated_at", ' +
   'sftp_secret <> \'\' as "secret_set"';
 
 const INPUT: ConnectionInput = {

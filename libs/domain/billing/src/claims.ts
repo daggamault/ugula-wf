@@ -31,7 +31,8 @@ export const CLAIM_EVENT_KINDS = [
   'facility_invoiced',
   'facility_follow_up',
   'responsibility',
-  'document'
+  'document',
+  'reopened'
 ] as const;
 
 export type ClaimEventKind = (typeof CLAIM_EVENT_KINDS)[number];
@@ -180,6 +181,9 @@ export type ClosedStatus = (typeof CLOSED_CLAIM_STATUSES)[number];
 
 export const isClosedStatus = (status: string): status is ClosedStatus =>
   (CLOSED_CLAIM_STATUSES as readonly string[]).includes(status);
+
+export const isReopenableStatus = (status: string): status is Exclude<ClosedStatus, 'void'> =>
+  isClosedStatus(status) && status !== 'void';
 
 export type LedgerCoverage = {
   id: string;

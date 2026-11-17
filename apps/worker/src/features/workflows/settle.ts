@@ -1,5 +1,5 @@
 import { isPermission } from '@ugula/access';
-import type { RunStatus } from '@ugula/db';
+import { CYCLE_WORKFLOW, type RunStatus } from '@ugula/db';
 import { isRecord, type Json, type RunState, type TraceEntry, type Values } from '@ugula/graph';
 import { advance, cancel, type RunJob, resume, timeout } from '@ugula/run-queue';
 import type { ClaimedRun } from './run-lease.ts';
@@ -29,9 +29,24 @@ const hintsOf = (value: unknown): Record<string, string> =>
 
 const prefillOf = (value: unknown) => (value === 'current' || value === 'suggested' ? value : null);
 
-const ENCOUNTER_WORKFLOW = 'billing.encounter-to-claim';
+type Recovery = {
+  workflow: string;
+  recovery: { key: string; version: number };
+  start: 'recoverDrafts' | 'recoverCycles';
+};
 
-const RECOVER_DRAFT = { key: 'billing.recover-draft', version: 1 };
+const RECOVERIES: Recovery[] = [
+  {
+    workflow: 'billing.encounter-to-claim',
+    recovery: { key: 'billing.recover-draft', version: 1 },
+    start: 'recoverDrafts'
+  },
+  {
+    workflow: CYCLE_WORKFLOW.key,
+    recovery: { key: 'billing.recover-cycle', version: 1 },
+    start: 'recoverCycles'
+  }
+];
 
 const RETRY_HINT = 'Retry once the cause is fixed.';
 
@@ -95,11 +110,13 @@ export const childrenPayload = (kind: string, children: ChildRun[]): Json => {
 
 const rootKey = (run: ClaimedRun) => run.graphs.find((g) => g.id === run.versionId)?.key;
 
-const recoverDrafts = async (tx: RunTx, run: ClaimedRun, reason: string, jobs: RunJob[]) => {
-  if (rootKey(run) !== ENCOUNTER_WORKFLOW) return;
-  const versionId = await tx.findVersion(run, RECOVER_DRAFT.key, RECOVER_DRAFT.version);
+const recoverClaims = async (tx: RunTx, run: ClaimedRun, reason: string, jobs: RunJob[]) => {
+  const key = rootKey(run);
+  const found = RECOVERIES.find((r) => r.workflow === key);
+  if (!found) return;
+  const versionId = await tx.findVersion(run, found.recovery.key, found.recovery.version);
   if (!versionId) return;
-  const ids = await tx.recoverDrafts(run, versionId, reason);
+  const ids = await tx[found.start](run, versionId, reason);
   jobs.push(...ids.map((id) => advance(id)));
 };
 
@@ -113,7 +130,7 @@ const finish = async (
 ) => {
   await tx.saveRun(run, { status, state, ...outcome });
   if (status !== 'completed') {
-    await recoverDrafts(
+    await recoverClaims(
       tx,
       run,
       status === 'cancelled'

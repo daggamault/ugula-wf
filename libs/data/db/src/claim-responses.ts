@@ -1,8 +1,11 @@
 import {
   type Adjustment,
   CLAIM_SIGNAL,
+  CLAIM_STATUS_LABELS,
+  type ClaimStatus,
   type DenialRoute,
   isClosedStatus,
+  isReopenableStatus,
   type LineAdjudication,
   money
 } from '@ugula/billing';
@@ -272,6 +275,38 @@ const postReversal = async (
   });
 };
 
+const REOPENED_STATUS: ClaimStatus = 'reconcile';
+
+const reopenedNote = (r: ClaimResponse, status: ClaimStatus) =>
+  `${r.kind === 'refunded' ? 'A refund' : r.reversal ? 'A takeback' : 'A payment'} was posted after the claim closed as ${CLAIM_STATUS_LABELS[status].toLowerCase()}`;
+
+const reopenClaim = async (
+  tx: Db,
+  agencyId: string,
+  claimId: string,
+  userId: string | null,
+  r: ClaimResponse,
+  status: ClaimStatus
+) => {
+  await tx
+    .updateTable('claims')
+    .set({ status: REOPENED_STATUS, updated_at: sql`now()` })
+    .where('id', '=', claimId)
+    .execute();
+  await tx
+    .insertInto('claim_events')
+    .values({
+      agency_id: agencyId,
+      claim_id: claimId,
+      kind: 'reopened',
+      coverage_id: r.coverageId,
+      note: reopenedNote(r, status),
+      created_by_id: userId,
+      source_key: `${r.requestId}:reopened`
+    })
+    .execute();
+};
+
 export const postClaimResponse = async (
   tx: Db,
   boss: RunQueueClient,
@@ -289,8 +324,26 @@ export const postClaimResponse = async (
       duplicate: true
     });
   }
-  const blocked = unchangeable(claim.status);
-  if (blocked) return blocked;
+  const { status } = claim;
+  if (!isReopenableStatus(status)) {
+    const blocked = unchangeable(status);
+    if (blocked) return blocked;
+  }
+  const posted = await postOpenResponse(tx, boss, agencyId, claimId, userId, response);
+  if (posted.ok && isReopenableStatus(status)) {
+    await reopenClaim(tx, agencyId, claimId, userId, response, status);
+  }
+  return posted;
+};
+
+const postOpenResponse = async (
+  tx: Db,
+  boss: RunQueueClient,
+  agencyId: string,
+  claimId: string,
+  userId: string | null,
+  response: ClaimResponse
+): Promise<Result<PostedResponse>> => {
   if (response.reversal) return postReversal(tx, boss, agencyId, claimId, userId, response);
   if (response.paidCents < 0 || response.adjustedCents < 0) return negative;
   if (

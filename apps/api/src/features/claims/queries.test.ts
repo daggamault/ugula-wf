@@ -6,13 +6,11 @@ import {
   findClaim,
   findClaimDocument,
   findEventDocument,
-  hasActiveRun,
   listClaimDocuments,
   listClaimEvents,
   listClaimFiles,
   listClaimPayerFiles,
-  searchClaims,
-  setCycleRun
+  searchClaims
 } from './queries.ts';
 
 const PAGE = { page: 1, pageSize: 25, sort: 'created', dir: 'desc' } as const;
@@ -295,46 +293,6 @@ describe('claimExists', () => {
   it('reports a claim outside the agency as missing', async () => {
     const { db } = createRecordingDb(() => []);
     assert.equal(await claimExists(db, 't-1', 'c1'), false);
-  });
-});
-
-describe('cycle queries', () => {
-  it('finds a running, suspended or faulted run of a claim', async () => {
-    const { db, queries } = createRecordingDb(() => [{ id: 'r1' }]);
-    assert.equal(await hasActiveRun(db, 'c1'), true);
-    assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
-      [
-        [
-          'select "r"."id" from "claim_runs" as "cr" inner join "workflow_runs" as "r" ' +
-            'on "r"."id" = "cr"."run_id" where "cr"."claim_id" = $1 and "r"."status" in ($2, $3, $4) limit $5',
-          ['c1', 'running', 'suspended', 'faulted', 1]
-        ]
-      ]
-    );
-  });
-
-  it('reports a claim without active runs', async () => {
-    const { db } = createRecordingDb(() => []);
-    assert.equal(await hasActiveRun(db, 'c1'), false);
-  });
-
-  it('links a new cycle run to the claim and marks it as the claim cycle', async () => {
-    const { db, queries } = createRecordingDb(() => []);
-    await setCycleRun(db, 't-1', 'c1', 'r2');
-    assert.deepEqual(
-      queries.map((q) => [q.sql, q.parameters]),
-      [
-        [
-          'insert into "claim_runs" ("agency_id", "run_id", "claim_id") values ($1, $2, $3)',
-          ['t-1', 'r2', 'c1']
-        ],
-        [
-          'update "claims" set "cycle_run_id" = $1, "updated_at" = now() where "id" = $2',
-          ['r2', 'c1']
-        ]
-      ]
-    );
   });
 });
 

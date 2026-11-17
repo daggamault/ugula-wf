@@ -3,6 +3,7 @@ import type { ClearinghouseFile, ClearinghouseInbox } from '@ugula/billing';
 import { type Db, emitEvent, findEventWorkflows } from '@ugula/db';
 import { type BlobStore, clearinghousePrefix } from '@ugula/storage';
 import type { PollTarget } from '../../shared/clearinghouse.ts';
+import type { RecordHealth } from './health.ts';
 
 export const PAYER_FILE_RECEIVED = 'payer_file.received';
 
@@ -12,6 +13,7 @@ type PollDeps = {
   db: Db;
   blobs: Pick<BlobStore, 'putBytes'>;
   targets: () => Promise<PollTarget[]>;
+  recordHealth: RecordHealth;
   report: (message: string) => void;
   now: () => Date;
 };
@@ -157,8 +159,18 @@ const pollTarget = (deps: PollDeps, target: PollTarget) =>
 
 export const createClearinghousePoll = (deps: PollDeps) => async () => {
   for (const target of await deps.targets()) {
-    await pollTarget(deps, target).catch((err: unknown) =>
-      deps.report(`Clearinghouse: could not poll ${target.source}: ${String(err)}`)
+    const at = deps.now();
+    const error = await pollTarget(deps, target).then(
+      () => null,
+      (err: unknown) => {
+        deps.report(`Clearinghouse: could not poll ${target.source}: ${String(err)}`);
+        return err instanceof Error ? err.message : String(err);
+      }
     );
+    await deps
+      .recordHealth(target, { at, error })
+      .catch((err: unknown) =>
+        deps.report(`Clearinghouse: could not record how ${target.source} polled: ${String(err)}`)
+      );
   }
 };

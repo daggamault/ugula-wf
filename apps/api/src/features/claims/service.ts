@@ -1,11 +1,11 @@
 import {
   billingCodeRefs,
-  CLAIM_TASKS,
   type ClaimBilling,
   type ClaimTaskKey,
   claimBillingOf,
   claimCodeRefs,
   claimRecordOf,
+  claimTaskStartsOn,
   ledgerFactsOf,
   MAP_837P_RULE,
   readClaimStep,
@@ -19,6 +19,7 @@ import {
   findPublishedGraphs,
   lockClaim,
   nextBatchClaim,
+  restartCycle,
   startRun,
   unchangeable
 } from '@ugula/db';
@@ -35,13 +36,11 @@ import {
   findClaim,
   findClaimDocument,
   findEventDocument,
-  hasActiveRun,
   listClaimDocuments,
   listClaimEvents,
   listClaimFiles,
   listClaimPayerFiles,
-  searchClaims,
-  setCycleRun
+  searchClaims
 } from './queries.ts';
 import type { ClaimEventSort } from './schemas.ts';
 
@@ -57,8 +56,6 @@ type ClaimServiceDeps = {
 export const NEXT_CLAIM_STEP_RULE = 'billing.next-claim-step';
 
 export const CLAIM_ISSUES_RULE = 'billing.claim-issues';
-
-const CYCLE_WORKFLOW = { key: 'billing.cycle-claim', version: 1 };
 
 const unpublished = (key: string) => fail('not_found', `The ${key} workflow is not published`);
 
@@ -157,32 +154,16 @@ export const createClaimService = ({ db, boss, now, blobs, publish, rules }: Cla
     },
 
     restartCycle: (agencyId: string, id: string) =>
-      write(agencyId, id, async (tx) => {
-        const claim = await lockClaim(tx, agencyId, id);
-        if (!claim) return notFound;
-        const blocked = unchangeable(claim.status);
-        if (blocked) return blocked;
-        if (await hasActiveRun(tx, id)) {
-          return fail('conflict', 'This claim still has an active workflow run');
-        }
-        const [version] = await findPublishedGraphs(tx, agencyId, [CYCLE_WORKFLOW]);
-        if (!version) return fail('not_found', 'The claim cycle workflow is not published');
-        const runId = await startRun(tx, boss, {
-          agencyId,
-          versionId: version.id,
-          inputs: { claimId: id },
-          interactive: true
-        });
-        await setCycleRun(tx, agencyId, id, runId);
-        return ok({ runId });
-      }),
+      write(agencyId, id, (tx) =>
+        restartCycle(tx, boss, { agencyId, claimId: id, interactive: true })
+      ),
 
     startTask: (agencyId: string, userId: string, id: string, key: ClaimTaskKey) =>
       write(agencyId, id, async (tx) => {
         const claim = await lockClaim(tx, agencyId, id);
         if (!claim) return notFound;
         const blocked = unchangeable(claim.status);
-        if (blocked && !(claim.status === 'draft' && CLAIM_TASKS[key].onDrafts)) return blocked;
+        if (blocked && !claimTaskStartsOn(key, claim.status)) return blocked;
         const [version] = await findPublishedGraphs(tx, agencyId, [{ key, version: 1 }]);
         if (!version) return unpublished(key);
         const runId = await startRun(tx, boss, {

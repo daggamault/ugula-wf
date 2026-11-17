@@ -10,6 +10,7 @@ import {
   isClosedStatus,
   isCycleEventKind,
   isDenialRoute,
+  isReopenableStatus,
   ledgerFactsOf,
   MIN_WAIT_MS,
   mergedAdjustments,
@@ -308,6 +309,10 @@ describe('claim statuses', () => {
     );
     assert.deepEqual(['followUp', 'appeal', null].map(isClaimStep), [true, false, false]);
     assert.deepEqual(['paid', 'void', 'ready'].map(isClosedStatus), [true, true, false]);
+    assert.deepEqual(
+      ['paid', 'written_off', 'collections', 'void', 'ready'].map(isReopenableStatus),
+      [true, true, true, false, false]
+    );
   });
 });
 

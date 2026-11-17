@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CLAIM_TASK_KEYS, CLAIM_TASKS, readPayerNames } from './claim-tasks.ts';
+import { CLAIM_TASK_KEYS, CLAIM_TASKS, claimTaskStartsOn, readPayerNames } from './claim-tasks.ts';
 
 describe('CLAIM_TASKS', () => {
   it('names each claim task workflow a biller can start, and which work on drafts', () => {
@@ -16,6 +16,15 @@ describe('CLAIM_TASKS', () => {
       CLAIM_TASK_KEYS.filter((k) => CLAIM_TASKS[k].onDrafts),
       ['billing.receive-document']
     );
+  });
+
+  it('starts a task on an open claim, on a draft when it works on drafts, and a payment on a closed claim but a void one', () => {
+    const on = (status: string) => CLAIM_TASK_KEYS.filter((k) => claimTaskStartsOn(k, status));
+    assert.deepEqual(on('submitted'), CLAIM_TASK_KEYS);
+    assert.deepEqual(on('draft'), ['billing.receive-document']);
+    assert.deepEqual(on('paid'), ['billing.post-payment']);
+    assert.deepEqual(on('collections'), ['billing.post-payment']);
+    assert.deepEqual(on('void'), []);
   });
 });
 

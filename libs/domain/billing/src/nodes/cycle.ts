@@ -81,6 +81,47 @@ export const cycleNodes: NodesOf = (stores) => {
         return {};
       }
     }),
+    branchNode({
+      type: 'billing.restart-cycle',
+      title: 'Restart Claim Cycle',
+      category: CATEGORY,
+      description:
+        'Starts the payer cycle of an open claim again and links the claim to it, unless the claim is a draft, closed or still has an active run besides this one.',
+      level: 'advanced',
+      keywords: ['cycle', 'restart', 'resume', 'reopen'],
+      effect: true,
+      inputs: [claimIdPin],
+      outputs: [
+        pin(
+          'cycleRunId',
+          { id: 'run' },
+          {
+            optional: true,
+            label: 'Cycle Run',
+            description: 'The payer cycle run started, when one was.'
+          }
+        ),
+        pin('reason', 'string', {
+          optional: true,
+          label: 'Why Not',
+          description: 'Why no cycle was started, in words a biller reads.'
+        })
+      ],
+      exits: {
+        started: { label: 'Started', description: 'A new payer cycle runs the claim.' },
+        skipped: {
+          label: 'Skipped',
+          description:
+            'The claim is a draft, closed or still has an active run, so no cycle was started; Why Not says why.'
+        }
+      },
+      compute: async (inputs, _, ctx) => {
+        const restarted = await claims().restartCycle(ctx.runId, claimIdOf(inputs.claimId));
+        return restarted.status === 'started'
+          ? { exit: 'started', outputs: { cycleRunId: restarted.cycleRunId, reason: null } }
+          : { exit: 'skipped', outputs: { cycleRunId: null, reason: restarted.reason } };
+      }
+    }),
     actionNode({
       type: 'billing.read-claim-ledger',
       title: 'Read Claim Ledger',

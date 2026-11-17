@@ -1,5 +1,5 @@
 import { CLAIM_FIX_FIELDS, PAYMENT_KINDS } from '@ugula/billing';
-import type { FieldSpec, GraphDef } from '@ugula/graph';
+import type { FieldSpec, GraphDef, PinSpec, VariableDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import { p } from './glossary.ts';
 import {
@@ -20,11 +20,11 @@ export const EDIT_PERMISSION = 'claims:update';
 export const choicesOf = (labels: Readonly<Record<string, string>>) =>
   Object.entries(labels).map(([value, label]) => ({ value, label }));
 
-export const claimTask = () =>
+export const claimTask = (inputs: PinSpec[] = [], variables: VariableDef[] = []) =>
   flow(
-    [p('claimId', { id: 'claim' }), p('assignee', 'string', true)],
+    [p('claimId', { id: 'claim' }), p('assignee', 'string', true), ...inputs],
     [],
-    [{ name: 'problem', type: 'string', default: null }]
+    [{ name: 'problem', type: 'string', default: null }, ...variables]
   );
 
 export const beginClaimTask = (g: Builder) => {
