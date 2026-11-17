@@ -106,4 +106,4 @@ Response files are recognized by content (ISA/GS/ST, or a TA1 segment), not by n
   - `.277` (claim status, 005010X212) answers each 276: in process (A2) for an accepted claim, paid (F1) once its 835 went out, rejected (A3), or not found (A4) for a claim it never saw.
 - `POST /core/realtime` takes a CAQH CORE multipart envelope (Basic auth, `PayloadType` `X12_270_Request_005010X279A1` or `X12_276_Request_005010X212`) and returns the 271 or 277 in the same envelope.
 
-The answers come from the Waystar mock in `@ugula/billing/testing`, which also has the 999/277CA/835/271/277 builders the e2e suites use.
+The answers come from the Waystar mock in `@ugula/billing/testing`.

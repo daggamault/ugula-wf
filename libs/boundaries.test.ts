@@ -58,7 +58,7 @@ const libs = layers.flatMap((layer) =>
 
 const apps = dirs(join(root, 'apps')).map((n) => load(join(root, 'apps', n)));
 
-const sourceDirs = ['src', 'e2e'];
+const sourceDirs = ['src'];
 
 const sources = (dir: string) => [
   ...readdirSync(dir).filter((f) => /\.tsx?$/.test(f)),

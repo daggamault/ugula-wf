@@ -5,7 +5,6 @@ docker compose up -d       # Postgres, Redis, RustFS, SFTPGo, embeddings and com
 pnpm install
 pnpm db:reset              # schema and reference data from a cached template, billing graphs, dev user, agencies, fees, payers
 pnpm dev                   # api, worker, sse, web and the mock clearinghouse
-pnpm e2e                   # its own stack and ugula_e2e database: every area in the browser, suites in parallel
 ```
 
 Copy `.env.example` to `.env` first, and have Docker running. The clearinghouse connection and the mock clearinghouse `pnpm dev` starts are in [Clearinghouse](clearinghouse.md). Run `pnpm check`, `pnpm typecheck`, and `pnpm test` before committing, and `pnpm seed:check` after changing a seed graph or table: it validates every billing and dev graph and table without a database, as `db:seed` does before publishing.
@@ -17,7 +16,7 @@ Copy `.env.example` to `.env` first, and have Docker running. The clearinghouse 
 | `apps/api`              | Hono HTTP API: auth, graphs, runs, tasks, imports, payer files, claims, patients, notifications, reports                                                                                                                 |
 | `apps/worker`           | Executes workflow runs from the pg-boss queue and implements billing store ports                                                                                                                                         |
 | `apps/sse`              | Pushes live run, task, claim and import updates over Server-Sent Events (via Redis)                                                                                                                                      |
-| `apps/web`              | React app: claims and their tasks, patients, imports, payer files, reports, workflows, runs, payers, fees, settings; browser tests of every area in `e2e/` (`pnpm e2e`), suites at the top, helpers in `shared/`         |
+| `apps/web`              | React app: claims and their tasks, patients, imports, payer files, reports, workflows, runs, payers, fees, settings                                                                                                      |
 | `apps/chouse`           | Mock clearinghouse: dev-only Waystar-style SFTP and CORE real-time server; never built or deployed                                                                                                                       |
 | `libs/kernel`           | `graph` (workflow engine, expression language, standard nodes), `config` (validators), `live` (live event contract)                                                                                                      |
 | `libs/platform`         | Domain-free I/O: `auth` (passwords, sessions), `clearinghouse` (SFTP batch, CORE real-time, sealed secrets), `inference` (embeddings, completions), `run-queue`, `storage` (S3)                                          |
