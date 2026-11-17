@@ -151,8 +151,25 @@ export const TaskAbout = ({
   );
 };
 
-const tabsOf = (hasClaim: boolean, hasReport: boolean): readonly TaskTab[] =>
-  TASK_TABS.filter((t) => t === 'workflow' || (t === 'encounter' ? hasReport : hasClaim));
+type ClaimShape = Pick<ClaimDetail, 'status' | 'service_date' | 'level' | 'lines' | 'coverages'>;
+
+export const hasClaimData = (c: ClaimShape) =>
+  c.status !== 'draft' ||
+  c.service_date !== null ||
+  c.level !== null ||
+  c.lines.length > 0 ||
+  c.coverages.length > 0;
+
+const tabsOf = (claim: TaskClaimRecord | null, hasReport: boolean): readonly TaskTab[] =>
+  TASK_TABS.filter((t) =>
+    t === 'workflow'
+      ? true
+      : t === 'encounter'
+        ? hasReport
+        : t === 'patient'
+          ? claim?.claim.patient_id != null
+          : claim !== null && hasClaimData(claim.claim)
+  );
 
 export const backOfTask = (back: string | null) => back ?? '/tasks';
 
@@ -467,7 +484,7 @@ export const TaskView = ({
   const notify = useToast();
   const isUnassigned = task.assignee_id === null;
   const open = task.status === 'open' && done === null;
-  const tabs = tabsOf(claim !== null, source != null);
+  const tabs = tabsOf(claim, source != null);
   const shown = tabs.includes(tab) ? tab : (tabs[0] ?? 'workflow');
   const encounterHref = source != null ? (tabHref?.('encounter') ?? '?tab=encounter') : undefined;
 

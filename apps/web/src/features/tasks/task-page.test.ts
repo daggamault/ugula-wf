@@ -277,6 +277,26 @@ describe('TaskView tabs', () => {
     );
   });
 
+  it('hides the claim tab while its draft has nothing on it, opening the encounter', () => {
+    const draft = record({
+      status: 'draft',
+      service_date: null,
+      level: null,
+      lines: [],
+      coverages: []
+    });
+    const t = task({ source: { reportId: 'rep-1', pcrNumber: 'PCR-1', claimId: 'c1' } });
+    showView(t, { source: sourcePanel, claim: draft });
+    assert.deepEqual(tabNames(), ['Encounter', 'Patient', 'Workflow']);
+    assert.equal(currentTab(), 'Encounter');
+    assert.ok(!screen.queryByRole('region', { name: 'Charges' }));
+  });
+
+  it('hides the patient tab until a patient is matched', () => {
+    showView(onClaim, { claim: record({ patient_id: null }) });
+    assert.deepEqual(tabNames(), ['Claim', 'Workflow']);
+  });
+
   it('shows the workflow context alone when there is nothing else to show', () => {
     showView(task());
     assert.deepEqual(tabNames(), []);

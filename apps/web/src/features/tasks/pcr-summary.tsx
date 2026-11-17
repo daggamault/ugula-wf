@@ -63,18 +63,16 @@ export const PcrSummaryView = ({ pcr }: { pcr: PcrSummary }) => (
         ))}
       </DetailList>
     </Part>
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Part title="Scene / Pickup">
-        <DetailList>
-          <FactDetails facts={pcr.scene} />
-        </DetailList>
-      </Part>
-      <Part title="Destination">
-        <DetailList>
-          <FactDetails facts={pcr.destination} />
-        </DetailList>
-      </Part>
-    </div>
+    <Part title="Scene / Pickup">
+      <DetailList>
+        <FactDetails facts={pcr.scene} />
+      </DetailList>
+    </Part>
+    <Part title="Destination">
+      <DetailList>
+        <FactDetails facts={pcr.destination} />
+      </DetailList>
+    </Part>
     <Part title="Response and Disposition">
       <DetailList>
         <FactDetails facts={pcr.response} />
@@ -155,7 +153,7 @@ export const PcrSummaryView = ({ pcr }: { pcr: PcrSummary }) => (
     </Part>
     <Part title="Narrative">
       {pcr.narrative ? (
-        <p className="max-w-prose text-sm whitespace-pre-wrap">{pcr.narrative}</p>
+        <p className="text-sm whitespace-pre-wrap">{pcr.narrative}</p>
       ) : (
         <EmptyText>No narrative on the report.</EmptyText>
       )}

@@ -117,6 +117,13 @@ describe('ContextView values', () => {
     });
   });
 
+  it('formats times written inside text', () => {
+    show({ vitals: '2026-09-05T13:27:00-04:00 · BP 104/62 · HR 104' });
+    assert.deepEqual(detailsIn(context().querySelector('dl')), {
+      Vitals: `${formatDateTime('2026-09-05T13:27:00-04:00')} · BP 104/62 · HR 104`
+    });
+  });
+
   it('links claims, runs and tasks by their ids', () => {
     show({ claimId: CLAIM, runId: CLAIM, taskId: CLAIM });
     assert.deepEqual(

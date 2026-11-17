@@ -50,6 +50,8 @@ const entriesOf = (value: Record<string, Json>) =>
 const isRecordList = (value: Json): value is Record<string, Json>[] =>
   Array.isArray(value) && value.length > 0 && value.every(isRecord);
 
+const EMBEDDED_TIME = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?/g;
+
 const scalarText = (key: string, value: Json): ReactNode => {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') {
@@ -59,10 +61,9 @@ const scalarText = (key: string, value: Json): ReactNode => {
   const link = LINKS[key];
   if (link && UUID.test(value)) return <TextLink to={link.to(value)}>{link.text}</TextLink>;
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return formatDate(value);
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) && !Number.isNaN(Date.parse(value))) {
-    return formatDateTime(value);
-  }
-  return value;
+  return value.replace(EMBEDDED_TIME, (at) =>
+    Number.isNaN(Date.parse(at)) ? at : formatDateTime(at)
+  );
 };
 
 const ValueText = ({ name, value }: { name: string; value: Json }): ReactNode => {
