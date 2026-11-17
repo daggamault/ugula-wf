@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { render, screen, userEvent, within } from '../../shared/testing-dom.ts';
 import type { AuthClient } from './client.ts';
 import { SignInForm, signInErrorOf } from './sign-in-form.tsx';
 
@@ -28,17 +28,62 @@ const mockAuth: AuthClient = {
 };
 
 describe('SignInForm', () => {
-  it('renders accessible sign-in form fields and submit button', () => {
-    const html = renderToStaticMarkup(
-      createElement(SignInForm, { auth: mockAuth, onSuccess: () => undefined })
+  it('names its card and labels the email and password fields for autofill', () => {
+    render(createElement(SignInForm, { auth: mockAuth, onSuccess: () => undefined }));
+    const card = screen.getByRole('region', { name: 'Sign In to Your Account' });
+    const email = within(card).getByLabelText(/^Email/) as HTMLInputElement;
+    const password = within(card).getByLabelText(/^Password/) as HTMLInputElement;
+    assert.deepEqual(
+      [email.type, email.autocomplete, password.type, password.autocomplete],
+      ['email', 'email', 'password', 'current-password']
     );
-    assert.ok(html.includes('Sign In to Your Account'));
-    assert.ok(html.includes('for="email"') && html.includes('>Email<'));
-    assert.ok(html.includes('for="password"') && html.includes('>Password<'));
-    assert.ok(html.includes('type="email"') && html.includes('autoComplete="email"'));
-    assert.ok(html.includes('type="password"') && html.includes('autoComplete="current-password"'));
-    assert.ok(html.includes('type="submit"') && html.includes('Sign In</span></button>'));
-    assert.ok(!html.includes('role="alert"'));
+    assert.equal(
+      within(card).getByRole('button', { name: 'Sign In' }).getAttribute('type'),
+      'submit'
+    );
+    assert.ok(!screen.queryByRole('alert'));
+  });
+
+  it('signs in with the typed email and password', async () => {
+    const calls: [string, string][] = [];
+    const signedIn: unknown[] = [];
+    const session = await mockAuth.signIn('', '');
+    const auth = {
+      ...mockAuth,
+      signIn: async (email: string, password: string) => {
+        calls.push([email, password]);
+        return session;
+      }
+    };
+    render(createElement(SignInForm, { auth, onSuccess: (s) => signedIn.push(s) }));
+    const user = userEvent.setup();
+    await user.type(screen.getByRole('textbox', { name: 'Email' }), 'dev@example.com');
+    await user.type(screen.getByLabelText(/^Password/), 'secret');
+    await user.click(screen.getByRole('button', { name: 'Sign In' }));
+    assert.deepEqual(calls, [['dev@example.com', 'secret']]);
+    assert.deepEqual(signedIn, [session]);
+    assert.ok(!screen.queryByRole('alert'));
+  });
+
+  it('shows why sign-in failed and lets the user try again', async () => {
+    const auth = {
+      ...mockAuth,
+      signIn: async () => {
+        throw new Error('Invalid email or password');
+      }
+    };
+    const signedIn: unknown[] = [];
+    render(createElement(SignInForm, { auth, onSuccess: (s) => signedIn.push(s) }));
+    const user = userEvent.setup();
+    await user.type(screen.getByRole('textbox', { name: 'Email' }), 'dev@example.com');
+    await user.type(screen.getByLabelText(/^Password/), 'wrong');
+    await user.click(screen.getByRole('button', { name: 'Sign In' }));
+    assert.equal((await screen.findByRole('alert')).textContent, 'Invalid email or password');
+    assert.deepEqual(signedIn, []);
+    assert.equal(
+      (screen.getByRole('textbox', { name: 'Email' }) as HTMLInputElement).disabled,
+      false
+    );
   });
 });
 

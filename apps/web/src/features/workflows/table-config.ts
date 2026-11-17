@@ -78,10 +78,13 @@ export const parseCell = (text: string, type: ValueType): Json => {
         .filter(Boolean);
     case 'boolean':
       return raw === 'true' ? true : raw === 'false' ? false : null;
-    case 'number':
-    case 'integer': {
+    case 'number': {
       const n = Number(raw);
       return Number.isFinite(n) ? n : raw;
+    }
+    case 'integer': {
+      const n = Number(raw);
+      return Number.isInteger(n) ? n : raw;
     }
     default:
       return raw;

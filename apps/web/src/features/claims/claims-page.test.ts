@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import type { ClaimSummary } from '../../shared/claims/claim-detail.ts';
+import { useLocation } from '../../shared/router.tsx';
 import { idleLive } from '../../shared/testing.ts';
-import { CLAIM_SEARCH_FIELDS, CLAIM_TABLE, ClaimsPage, ClaimsTable } from './claims-page.tsx';
-import type { ClaimsClient } from './client.ts';
+import { render, screen, userEvent, waitFor, within } from '../../shared/testing-dom.ts';
+import type { Page } from '../../shared/url-state.ts';
+import { ClaimsPage, ClaimsTable } from './claims-page.tsx';
+import { type ClaimSearch, type ClaimsClient, claimSearchOf } from './client.ts';
 
 const claim: ClaimSummary = {
   id: 'c1',
@@ -30,123 +32,288 @@ const claim: ClaimSummary = {
   open_tasks: 0
 };
 
-const noSearch = { firstName: '', lastName: '', birthDate: '', number: '' };
+const waiting: ClaimSummary = {
+  ...claim,
+  status: 'draft',
+  patient_number: null,
+  first_name: null,
+  last_name: null,
+  task_id: 't1',
+  task_title: 'Confirm patient',
+  task_queue: 'billing-patients',
+  task_kind: 'task',
+  task_assignee_email: 'me@example.com',
+  open_tasks: 2
+};
 
-const marked = (text: string) => new RegExp(`<mark class="[^"]+">${text}</mark>`);
+const noSearch: ClaimSearch = { firstName: '', lastName: '', birthDate: '', number: '' };
+
+const table = () => screen.getByRole('table', { name: 'Claims' });
+
+const headers = () =>
+  within(table())
+    .getAllByRole('columnheader')
+    .map((h) => h.textContent);
+
+const rows = () =>
+  within(table())
+    .getAllByRole('row')
+    .slice(1)
+    .map((row) =>
+      within(row)
+        .getAllByRole('cell')
+        .slice(0, -1)
+        .map((c) => c.lastElementChild?.textContent)
+    );
+
+const marks = () => [...table().querySelectorAll('mark')].map((m) => m.textContent);
+
+const showTable = (props: Partial<Parameters<typeof ClaimsTable>[0]> = {}) =>
+  render(createElement(ClaimsTable, { claims: [claim], ...props }));
 
 describe('ClaimsTable', () => {
-  it('opens each claim from an icon action and shows the patient, encounter, money and status', () => {
-    const html = renderToStaticMarkup(
-      createElement(ClaimsTable, { claims: [claim, { ...claim, id: 'c2', payers: [] }] })
-    );
-    assert.ok(html.includes('<span class="sr-only">Actions</span>'));
-    assert.ok(html.includes('href="/claims/c1" aria-label="Open claim 20261001-0012"'));
-    assert.equal(html.split('href="/claims/c1"').length, 2);
-    assert.ok(html.includes('>20261001-0012<') && html.includes('Patient 20260915-0003'));
-    assert.ok(!html.includes('#'));
-    assert.ok(html.includes('Doe, Jane'));
-    assert.ok(html.includes('>20261001-0007<') && html.includes('PCR PCR-1001'));
-    assert.ok(html.includes('$1,142.20') && html.includes('$300.00'));
-    assert.ok(html.includes('Medicare → Blue Plan') && html.includes('Patient only'));
-    assert.ok(html.includes('>Submitted<'));
-    assert.ok(!html.includes('<mark'));
-    const own = renderToStaticMarkup(
-      createElement(ClaimsTable, { claims: [claim], showPatient: false })
-    );
-    assert.ok(!own.includes('Doe, Jane'));
+  it('shows the claim, patient, encounter, money, payers, status and waiting task columns', () => {
+    showTable();
+    assert.deepEqual(headers(), [
+      'Claim',
+      'Patient',
+      'Encounter',
+      'Service Date',
+      'Total',
+      'Balance',
+      'Payers',
+      'Status',
+      'Waiting On',
+      'Actions'
+    ]);
+    assert.deepEqual(rows(), [
+      [
+        '20261001-0012',
+        'Doe, JanePatient 20260915-0003',
+        '20261001-0007PCR PCR-1001',
+        'Oct 1, 2026',
+        '$1,142.20',
+        '$300.00',
+        'Medicare → Blue Plan',
+        'Submitted',
+        '—'
+      ]
+    ]);
+    assert.deepEqual(marks(), []);
   });
 
-  it('shows a dash for a claim with neither an encounter nor a PCR number', () => {
-    const html = renderToStaticMarkup(
-      createElement(ClaimsTable, {
-        claims: [{ ...claim, encounter_number: null, pcr_number: null }]
-      })
-    );
-    assert.ok(!html.includes('PCR '));
-    assert.ok(!html.includes('20261001-0007'));
+  it('names a patient without a first name by the last name alone', () => {
+    showTable({ claims: [{ ...claim, first_name: null }] });
+    assert.equal(rows()[0]?.[1], 'DoePatient 20260915-0003');
   });
 
-  it('highlights the claim, patient or encounter number and PCR the search names', () => {
-    const render = (number: string) =>
-      renderToStaticMarkup(
-        createElement(ClaimsTable, {
-          claims: [claim],
-          search: { ...noSearch, lastName: 'do', number }
-        })
-      );
-    assert.match(render('#202610010012'), marked('20261001-0012'));
-    assert.match(render('20260915-0003'), marked('20260915-0003'));
-    assert.match(render('202610010007'), marked('20261001-0007'));
-    assert.match(render(' PCR-1001 '), marked('PCR-1001'));
-    const partial = render('PCR-10');
-    assert.ok(!partial.includes('>PCR-10<'));
-    assert.match(partial, marked('Do'));
+  it('opens each claim only from its icon action', () => {
+    showTable({ claims: [claim, { ...claim, id: 'c2', number: '20261001-0013' }] });
+    const [first, second] = within(table()).getAllByRole('row').slice(1);
+    assert.ok(first && second);
+    assert.deepEqual(
+      within(first)
+        .getAllByRole('link')
+        .map((a) => [a.getAttribute('aria-label'), a.getAttribute('href')]),
+      [['Open claim 20261001-0012', '/claims/c1']]
+    );
+    assert.equal(
+      within(second).getByRole('link', { name: 'Open claim 20261001-0013' }).getAttribute('href'),
+      '/claims/c2'
+    );
   });
 
-  it('shows the task each claim is waiting on and opens only the claim', () => {
-    const waiting = {
-      ...claim,
-      status: 'draft',
-      patient_number: null,
-      first_name: null,
-      last_name: null,
-      task_id: 't1',
-      task_title: 'Confirm patient',
-      task_queue: 'billing-patients',
-      task_kind: 'task',
-      task_assignee_email: 'me@example.com',
-      open_tasks: 2
-    } as const;
-    const html = renderToStaticMarkup(
-      createElement(ClaimsTable, {
-        claims: [waiting, { ...waiting, id: 'c2', task_kind: 'fault', task_assignee_email: null }],
-        me: 'me@example.com',
-        back: '/claims?task=any'
-      })
+  it('carries the way back to the list into the claim it opens', () => {
+    showTable({ back: '/claims?lastName=doe' });
+    assert.equal(
+      screen.getByRole('link', { name: 'Open claim 20261001-0012' }).getAttribute('href'),
+      '/claims/c1?back=%2Fclaims%3FlastName%3Ddoe'
     );
-    assert.ok(html.includes('Not matched yet'));
-    assert.ok(html.includes('Confirm patient') && html.includes('+1 more'));
-    assert.ok(
-      html.includes('Patient Matching · You') && html.includes('Patient Matching · Unassigned')
-    );
-    assert.ok(
-      !html.includes('href="/tasks/') && html.includes('aria-label="Open claim 20261001-0012"')
-    );
-    assert.ok(html.includes('text-danger font-medium'));
-    assert.ok(html.includes('>Draft<'));
   });
 
-  it('sorts by the encounter number', () => {
-    assert.equal(CLAIM_TABLE.sorts.encounter, 'desc');
+  it('leaves out the patient column for a single patient', () => {
+    showTable({ showPatient: false });
+    assert.deepEqual(headers().slice(0, 3), ['Claim', 'Encounter', 'Service Date']);
+    assert.equal(rows()[0]?.[1], '20261001-0007PCR PCR-1001');
+  });
+
+  it('bills the patient only when the claim has no payers', () => {
+    showTable({ claims: [{ ...claim, payers: [] }] });
+    assert.equal(rows()[0]?.[6], 'Patient only');
+  });
+
+  it('shows the PCR alone without an encounter, and a dash with neither', () => {
+    showTable({
+      claims: [
+        { ...claim, encounter_number: null },
+        { ...claim, id: 'c2', encounter_number: null, pcr_number: null }
+      ]
+    });
+    assert.deepEqual(
+      rows().map((r) => r[2]),
+      ['—PCR PCR-1001', '—']
+    );
+  });
+
+  it('highlights the claim, patient and encounter numbers a search names, ignoring separators', () => {
+    const marked = (number: string) => {
+      const { unmount } = showTable({ search: { ...noSearch, number } });
+      const found = marks();
+      unmount();
+      return found;
+    };
+    assert.deepEqual(marked('#202610010012'), ['20261001-0012']);
+    assert.deepEqual(marked('20260915-0003'), ['20260915-0003']);
+    assert.deepEqual(marked('202610010007'), ['20261001-0007']);
+  });
+
+  it('highlights a PCR only when the search names all of it', () => {
+    const { unmount } = showTable({ search: { ...noSearch, number: ' PCR-1001 ' } });
+    assert.deepEqual(marks(), ['PCR-1001']);
+    unmount();
+    showTable({ search: { ...noSearch, number: 'PCR-10' } });
+    assert.deepEqual(marks(), []);
+  });
+
+  it('highlights the start of the names a search names', () => {
+    showTable({ search: { ...noSearch, lastName: 'do', firstName: 'ja' } });
+    assert.deepEqual(marks(), ['Do', 'Ja']);
+  });
+
+  it('shows the task each claim waits on, its queue, who has it and how many more are open', () => {
+    showTable({
+      claims: [waiting, { ...waiting, id: 'c2', open_tasks: 1, task_assignee_email: null }],
+      me: 'me@example.com'
+    });
+    assert.deepEqual(
+      rows().map((r) => [r[1], r[7], r[8]]),
+      [
+        ['Not matched yet', 'Draft', 'Confirm patient +1 morePatient Matching · You'],
+        ['Not matched yet', 'Draft', 'Confirm patientPatient Matching · Unassigned']
+      ]
+    );
+    assert.ok(!screen.queryByRole('link', { name: /Work/ }));
+  });
+
+  it('marks a task that faulted as danger', () => {
+    showTable({ claims: [waiting, { ...waiting, id: 'c2', task_kind: 'fault' }] });
+    const titles = screen.getAllByText('Confirm patient');
+    assert.deepEqual(
+      titles.map((t) => t.classList.contains('text-danger')),
+      [false, true]
+    );
   });
 });
 
-describe('ClaimsPage', () => {
-  const pending = () => new Promise(() => undefined);
-  const render = (search = noSearch) =>
-    renderToStaticMarkup(
-      createElement(ClaimsPage, {
-        client: { list: pending } as unknown as ClaimsClient,
-        live: idleLive,
-        me: 'me@example.com',
-        search
-      })
-    );
+const pageOf = (items: ClaimSummary[]): Page<ClaimSummary> => ({
+  items,
+  total: items.length,
+  page: 1,
+  pageSize: 25
+});
 
-  it('searches every claim by name, birth date or number, asking for a search first', () => {
+const fakeClient = (list: () => Promise<Page<ClaimSummary>> = async () => pageOf([claim])) => {
+  const calls: [Parameters<ClaimsClient['list']>[0], string][] = [];
+  const client = {
+    list: (query: Parameters<ClaimsClient['list']>[0], page: string) => {
+      calls.push([query, page]);
+      return list();
+    }
+  } as ClaimsClient;
+  return { client, calls };
+};
+
+const Routed = ({ client }: { client: ClaimsClient }) =>
+  createElement(ClaimsPage, {
+    client,
+    live: idleLive,
+    me: 'me@example.com',
+    search: claimSearchOf(useLocation().query)
+  });
+
+const show = (client: ClaimsClient, at = '/claims') => {
+  window.history.replaceState(null, '', at);
+  render(createElement(Routed, { client }));
+  return userEvent.setup();
+};
+
+const searchClaims = () => screen.getByLabelText('Search claims');
+
+describe('ClaimsPage', () => {
+  it('asks for a search first and loads no claims until there is one', () => {
+    const { client, calls } = fakeClient();
+    show(client);
     assert.deepEqual(
-      CLAIM_SEARCH_FIELDS.map((f) => f.name),
-      ['firstName', 'lastName', 'birthDate', 'number']
+      within(searchClaims())
+        .getAllByRole('searchbox')
+        .map((f) => f.id),
+      ['search-firstName', 'search-lastName', 'search-number']
     );
-    const empty = render();
-    assert.ok(!empty.includes('aria-label="Claim views"'));
-    assert.ok(!empty.includes('tab=search'));
-    assert.ok(empty.includes('aria-label="Search claims"'));
-    assert.ok(empty.includes('for="search-number"') && empty.includes('for="search-birthDate"'));
-    assert.ok(empty.includes('Enter a name, birth date, or a claim, patient or encounter number.'));
-    assert.ok(!empty.includes('aria-haspopup="listbox"'));
-    const searching = render({ ...noSearch, lastName: 'doe' });
-    assert.ok(searching.includes('aria-label="Search claims"'));
-    assert.ok(!searching.includes('Enter a name, birth date'));
+    assert.equal(within(searchClaims()).getByLabelText('Birth Date').getAttribute('type'), 'date');
+    assert.ok(
+      screen.getByText(
+        'Enter a name, birth date, or a claim, patient or encounter number. Names match from the start.'
+      )
+    );
+    assert.ok(!screen.queryByRole('table'));
+    assert.deepEqual(calls, []);
+  });
+
+  it('searches every claim by what was entered and highlights it', async () => {
+    const { client, calls } = fakeClient();
+    const user = show(client);
+    await user.type(within(searchClaims()).getByLabelText('Last Name'), 'doe');
+    await user.type(within(searchClaims()).getByLabelText('Number'), ' 20261001-0012 ');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    await screen.findByRole('table', { name: 'Claims' });
+    assert.equal(window.location.search, '?lastName=doe&number=20261001-0012');
+    assert.deepEqual(calls, [
+      [
+        { status: 'all', firstName: '', lastName: 'doe', birthDate: '', number: '20261001-0012' },
+        'page=1&pageSize=25&sort=created&dir=desc'
+      ]
+    ]);
+    assert.deepEqual(marks(), ['20261001-0012', 'Doe']);
+    assert.equal(
+      screen.getByRole('link', { name: 'Open claim 20261001-0012' }).getAttribute('href'),
+      '/claims/c1?back=%2Fclaims%3FlastName%3Ddoe%26number%3D20261001-0012'
+    );
+  });
+
+  it('says when no claim matches the search', async () => {
+    const { client } = fakeClient(async () => pageOf([]));
+    show(client, '/claims?lastName=zz');
+    assert.ok(await screen.findByRole('heading', { name: 'No Matching Claims' }));
+    assert.ok(
+      screen.getByText(
+        'Names match from the start, so “Sm” finds Smith. Try fewer letters or another number.'
+      )
+    );
+    assert.ok(!screen.queryByRole('table'));
+  });
+
+  it('says why the claims could not be loaded', async () => {
+    const { client } = fakeClient(async () => {
+      throw new Error('Network down');
+    });
+    show(client, '/claims?lastName=doe');
+    assert.equal((await screen.findByRole('alert')).textContent, 'Network down');
+    assert.ok(!screen.queryByRole('heading', { name: 'No Matching Claims' }));
+  });
+
+  it('sorts by the encounter number, newest first', async () => {
+    const { client, calls } = fakeClient();
+    const user = show(client, '/claims?lastName=doe');
+    await screen.findByRole('table', { name: 'Claims' });
+    await user.click(within(table()).getByRole('link', { name: 'Encounter' }));
+    await waitFor(() => assert.equal(calls.length, 2));
+    assert.equal(window.location.search, '?lastName=doe&sort=encounter&dir=desc');
+    assert.equal(calls[1]?.[1], 'page=1&pageSize=25&sort=encounter&dir=desc');
+    await waitFor(() =>
+      assert.equal(
+        within(table()).getByRole('columnheader', { name: 'Encounter' }).getAttribute('aria-sort'),
+        'descending'
+      )
+    );
   });
 });

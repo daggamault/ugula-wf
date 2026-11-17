@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { valueKinds } from '@ugula/catalog';
 import type { GraphDef, Json } from '@ugula/graph';
-import { type ComponentType, createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { type ComponentType, createElement, useState } from 'react';
 import { createCatalog, type PublishedNode } from '../../shared/graph/catalog.ts';
 import { ValueKindsContext } from '../../shared/graph/pins.ts';
 import { testNodes } from '../../shared/testing.ts';
+import { render, screen, userEvent, within } from '../../shared/testing-dom.ts';
 import {
   CodeSetEditor,
   ConstantEditor,
@@ -38,26 +38,34 @@ const published = (key: string, name: string, version: number, kind: 'workflow' 
     signature: { execIn: ['exec'], execOut: [], inputs: [], outputs: [] }
   }) satisfies PublishedNode;
 
+const lineRule = (version: number, inputs: string, test: string): PublishedNode => ({
+  ...published('acme.line', 'Line Modifiers', version, 'node'),
+  role: 'rule',
+  signature: {
+    execIn: [],
+    execOut: [],
+    inputs: [
+      { name: inputs, type: 'string', label: 'Service Line' },
+      { name: 'facts', type: 'any' }
+    ],
+    outputs: [
+      { name: 'modifiers', type: { list: 'string' } },
+      { name: test, type: 'boolean' },
+      { name: 'flagged', type: 'boolean' }
+    ]
+  }
+});
+
 const nodes: PublishedNode[] = [
   published('billing.claim', 'Claim Cycle', 1, 'workflow'),
   published('billing.claim', 'Claim Cycle', 2, 'workflow'),
   published('billing.intake', 'Intake', 1, 'workflow'),
   published('acme.rule', 'Rule', 1, 'node'),
+  lineRule(2, 'line', 'billable'),
+  lineRule(1, 'item', 'kept'),
   {
-    ...published('acme.line', 'Line Modifiers', 2, 'node'),
-    role: 'rule',
-    signature: {
-      execIn: [],
-      execOut: [],
-      inputs: [
-        { name: 'line', type: 'string', label: 'Service Line' },
-        { name: 'facts', type: 'any' }
-      ],
-      outputs: [
-        { name: 'modifiers', type: { list: 'string' } },
-        { name: 'billable', type: 'boolean' }
-      ]
-    }
+    ...published('acme.age', 'Age Check', 1, 'node'),
+    signature: { execIn: [], execOut: [], inputs: [], outputs: [] }
   }
 ];
 
@@ -65,110 +73,399 @@ const def: GraphDef = {
   signature: {
     execIn: ['exec'],
     execOut: [],
-    inputs: [{ name: 'claimId', type: 'string' }],
+    inputs: [
+      { name: 'claimId', type: 'string' },
+      { name: 'tripDate', type: 'string' }
+    ],
     outputs: []
   },
-  variables: [{ name: 'total', type: 'number', default: 0 }],
+  variables: [
+    { name: 'total', type: 'number', default: 0 },
+    { name: 'count', type: 'integer', default: 0 }
+  ],
   nodes: [],
   edges: []
 };
 
-const render = (editor: ComponentType<SettingsEditorProps>, config: Json) =>
-  renderToStaticMarkup(
-    createElement(
-      ValueKindsContext.Provider,
-      { value: valueKinds },
-      createElement(editor, {
-        nodeId: 'n',
-        config,
-        editable: true,
-        onConfig: () => undefined,
-        def,
-        catalog: createCatalog(testNodes, { published: nodes })
-      })
-    )
+const Harness = ({
+  editor,
+  initial,
+  sent,
+  editable
+}: {
+  editor: ComponentType<SettingsEditorProps>;
+  initial: Json;
+  sent: (Json | undefined)[];
+  editable: boolean;
+}) => {
+  const [config, setConfig] = useState<Json | undefined>(initial);
+  return createElement(
+    ValueKindsContext.Provider,
+    { value: valueKinds },
+    createElement(editor, {
+      nodeId: 'n',
+      config,
+      editable,
+      onConfig: (next) => {
+        sent.push(next);
+        setConfig(next);
+      },
+      def,
+      catalog: createCatalog(testNodes, { published: nodes })
+    })
   );
+};
 
-describe('WorkflowEditor', () => {
-  it('picks a published workflow and one of its versions', () => {
+const show = (editor: ComponentType<SettingsEditorProps>, initial: Json, editable = true) => {
+  const sent: (Json | undefined)[] = [];
+  render(createElement(Harness, { editor, initial, sent, editable }));
+  return { sent, last: () => sent.at(-1), user: userEvent.setup() };
+};
+
+const shown = (name: string) => screen.getByRole('button', { name }).textContent;
+
+const option = (list: string, name: string) =>
+  within(screen.getByRole('listbox', { name: list })).getByRole('option', { name });
+
+const optionsIn = (list: string) =>
+  within(screen.getByRole('listbox', { name: list }))
+    .getAllByRole('option')
+    .map((o) => o.textContent);
+
+const textbox = (name: string) => screen.getByRole('textbox', { name }) as HTMLInputElement;
+
+const hintOf = (el: HTMLElement) =>
+  document.getElementById(el.getAttribute('aria-describedby') ?? '')?.textContent;
+
+describe('workflowOptions', () => {
+  it('lists each published workflow once, by name', () => {
     assert.deepEqual(workflowOptions(nodes, ''), [
       { value: 'billing.claim', label: 'Claim Cycle' },
       { value: 'billing.intake', label: 'Intake' }
     ]);
+  });
+
+  it('keeps a chosen workflow that is no longer published', () => {
     assert.deepEqual(workflowOptions(nodes, 'gone').at(-1), { value: 'gone', label: 'gone' });
+    assert.equal(workflowOptions(nodes, 'billing.claim').length, 2);
+  });
+});
+
+describe('versionsOf', () => {
+  it('lists the published versions newest first', () => {
     assert.deepEqual(versionsOf(nodes, 'billing.claim'), [2, 1]);
-    const html = render(WorkflowEditor, { workflow: 'billing.claim', version: 1 });
-    assert.ok(html.includes('>Claim Cycle</span>') && html.includes('>Version 1</span>'));
-    assert.ok(html.includes('>Version 2</span>'));
-    assert.ok(!render(WorkflowEditor, {}).includes('>Version</label>'));
+    assert.deepEqual(versionsOf(nodes, 'gone'), []);
+  });
+});
+
+describe('WorkflowEditor', () => {
+  it('shows the chosen workflow and its versions', () => {
+    show(WorkflowEditor, { workflow: 'billing.claim', version: 1 });
+    assert.equal(shown('Workflow'), 'Claim Cycle');
+    assert.equal(shown('Version'), 'Version 1');
+    assert.deepEqual(optionsIn('Version'), ['Version 2', 'Version 1']);
+  });
+
+  it('asks for a workflow before a version', () => {
+    show(WorkflowEditor, {});
+    assert.equal(shown('Workflow'), 'Choose a workflow');
+    assert.ok(!screen.queryByRole('button', { name: 'Version' }));
+  });
+
+  it('runs the latest version of a newly chosen workflow', async () => {
+    const { last, user } = show(WorkflowEditor, { workflow: 'billing.intake', version: 1 });
+    await user.click(option('Workflow', 'Claim Cycle'));
+    assert.deepEqual(last(), { workflow: 'billing.claim', version: 2 });
+  });
+
+  it('pins an older version', async () => {
+    const { last, user } = show(WorkflowEditor, { workflow: 'billing.claim', version: 2 });
+    await user.click(option('Version', 'Version 1'));
+    assert.deepEqual(last(), { workflow: 'billing.claim', version: 1 });
+  });
+
+  it('keeps a version that is no longer published', () => {
+    show(WorkflowEditor, { workflow: 'billing.claim', version: 7 });
+    assert.deepEqual(optionsIn('Version'), ['Version 2', 'Version 1', '7']);
+  });
+});
+
+describe('ruleOptions', () => {
+  it('lists published nodes without flow pins as rules', () => {
+    assert.deepEqual(ruleOptions(nodes, ''), [
+      { value: 'acme.age', label: 'Age Check' },
+      { value: 'acme.line', label: 'Line Modifiers' }
+    ]);
   });
 });
 
 describe('RuleEditor', () => {
-  it('picks a rule, the input each item goes to and the output that keeps it', () => {
-    assert.deepEqual(ruleOptions(nodes, ''), [{ value: 'acme.line', label: 'Line Modifiers' }]);
-    const map = render(RuleEditor, { rule: 'acme.line', version: 2, item: 'line' });
-    assert.ok(map.includes('>Each Item Goes To</label>') && map.includes('>Service Line</span>'));
-    assert.ok(!map.includes('>Keep When</label>'));
-    const filter = render(RuleTestEditor, {
+  it('picks the input each item goes to', () => {
+    show(RuleEditor, { rule: 'acme.line', version: 2, item: 'line' });
+    assert.equal(shown('Rule'), 'Line Modifiers');
+    assert.equal(shown('Version'), 'Version 2');
+    assert.equal(shown('Each Item Goes To'), 'Service Line');
+    assert.deepEqual(optionsIn('Each Item Goes To'), ['Service Line', 'Facts']);
+    assert.ok(!screen.queryByRole('button', { name: 'Keep When' }));
+  });
+
+  it('asks for a rule before anything else', () => {
+    show(RuleEditor, {});
+    assert.equal(shown('Rule'), 'Choose a rule');
+    assert.ok(!screen.queryByRole('button', { name: 'Version' }));
+    assert.ok(!screen.queryByRole('button', { name: 'Each Item Goes To' }));
+  });
+
+  it('sends items to the first input of a newly chosen rule', async () => {
+    const { last, user } = show(RuleEditor, {});
+    await user.click(option('Rule', 'Line Modifiers'));
+    assert.deepEqual(last(), { rule: 'acme.line', version: 2, item: 'line' });
+  });
+
+  it('follows the first input of another version', async () => {
+    const { last, user } = show(RuleEditor, { rule: 'acme.line', version: 2, item: 'facts' });
+    await user.click(option('Version', 'Version 1'));
+    assert.deepEqual(last(), { rule: 'acme.line', version: 1, item: 'item' });
+  });
+
+  it('clears the input when the new rule has none', async () => {
+    const { last, user } = show(RuleEditor, { rule: 'acme.line', version: 2, item: 'line' });
+    await user.click(option('Rule', 'Age Check'));
+    assert.deepEqual(last(), { rule: 'acme.age', version: 1, item: '' });
+  });
+
+  it('sends items to another input', async () => {
+    const { last, user } = show(RuleEditor, { rule: 'acme.line', version: 2, item: 'line' });
+    await user.click(option('Each Item Goes To', 'Facts'));
+    assert.deepEqual(last(), { rule: 'acme.line', version: 2, item: 'facts' });
+  });
+});
+
+describe('RuleTestEditor', () => {
+  it('keeps items by one of the true or false outputs', () => {
+    show(RuleTestEditor, { rule: 'acme.line', version: 2, item: 'line', test: 'billable' });
+    assert.equal(shown('Keep When'), 'Billable');
+    assert.deepEqual(optionsIn('Keep When'), ['Billable', 'Flagged']);
+  });
+
+  it('keeps by the first true or false output of a newly chosen rule', async () => {
+    const { last, user } = show(RuleTestEditor, {});
+    await user.click(option('Rule', 'Line Modifiers'));
+    assert.deepEqual(last(), { rule: 'acme.line', version: 2, item: 'line', test: 'billable' });
+  });
+
+  it('clears the input and the test when the new rule has neither', async () => {
+    const { last, user } = show(RuleTestEditor, {
       rule: 'acme.line',
       version: 2,
       item: 'line',
       test: 'billable'
     });
-    assert.match(filter, /aria-selected="true" data-value="billable"/);
-    assert.ok(!render(RuleEditor, {}).includes('>Each Item Goes To</label>'));
+    await user.click(option('Rule', 'Age Check'));
+    assert.deepEqual(last(), { rule: 'acme.age', version: 1, item: '', test: '' });
+  });
+
+  it('keeps items by another output', async () => {
+    const { last, user } = show(RuleTestEditor, {
+      rule: 'acme.line',
+      version: 2,
+      item: 'line',
+      test: 'billable'
+    });
+    await user.click(option('Keep When', 'Flagged'));
+    assert.deepEqual(last(), { rule: 'acme.line', version: 2, item: 'line', test: 'flagged' });
   });
 });
 
-describe('FieldEditor', () => {
-  it('lists the fields of the record wired in, else asks for the path', () => {
+describe('fieldOptions', () => {
+  it('lists every field of a record, nested ones by their path', () => {
     const record = { object: { trip: { object: { state: 'string' } }, miles: 'number' } };
     assert.deepEqual(fieldOptions(record as never, ''), [
       { value: 'trip', label: 'Trip' },
       { value: 'trip.state', label: 'Trip › State' },
       { value: 'miles', label: 'Miles' }
     ]);
-    const html = render(FieldEditor, { record, path: 'trip.state' });
-    assert.match(html, /aria-selected="true" data-value="trip.state"/);
-    assert.ok(render(FieldEditor, {}).includes('Wire a record in to choose from its fields'));
+  });
+
+  it('keeps a typed path the record does not have', () => {
+    assert.deepEqual(fieldOptions({ object: { miles: 'number' } }, 'gone'), [
+      { value: 'miles', label: 'Miles' },
+      { value: 'gone', label: 'gone' }
+    ]);
   });
 });
 
-describe('small editors', () => {
-  it('picks a constant type and value, a code set, a variable and an input', () => {
-    const constant = render(ConstantEditor, { type: 'integer', value: 4 });
-    assert.ok(constant.includes('>Whole Number</span>') && constant.includes('value="4"'));
-    const code = render(CodeSetEditor, { kind: 'hcpcs' });
-    assert.ok(code.includes('>Code Set</label>') && code.includes('data-value="hcpcs"'));
-    const variable = render(VariableEditor, { name: 'total' });
-    assert.match(variable, /aria-selected="true" data-value="total"/);
-    const input = render(GraphInputEditor, { pin: 'claimId' });
-    assert.ok(input.includes('>Claim ID</span>'));
+describe('FieldEditor', () => {
+  const record = { object: { trip: { object: { state: 'string' } }, miles: 'number' } };
+
+  it('lists the fields of the record wired in', async () => {
+    const { last, user } = show(FieldEditor, { record, path: 'trip.state' });
+    assert.equal(shown('Field'), 'Trip › State');
+    assert.equal(shown('Record'), 'Record');
+    await user.click(option('Field', 'Miles'));
+    assert.deepEqual(last(), { record, path: 'miles' });
+  });
+
+  it('asks for the path when no record is wired in', async () => {
+    const { last, user } = show(FieldEditor, {});
+    const path = textbox('Field');
+    assert.equal(
+      hintOf(path),
+      "Wire a record in to choose from its fields, or type the field's path."
+    );
+    await user.type(path, 'a');
+    assert.deepEqual(last(), { path: 'a' });
+  });
+
+  it('changes the type of the record', async () => {
+    const { last, user } = show(FieldEditor, { path: 'a' });
+    await user.click(option('Record', 'List'));
+    assert.deepEqual(last(), { path: 'a', record: { list: 'string' } });
   });
 });
 
-describe('WhereEditor', () => {
-  it('tests a field against a value, or against the keys of a shared table', () => {
-    const value = render(WhereEditor, { field: 'code', op: 'oneOf', value: ['A0427', 'A0429'] });
-    assert.ok(value.includes('value="A0427, A0429"') && !value.includes('>Table</label>'));
-    const listed = render(WhereEditor, {
-      field: 'code',
-      op: 'listed',
-      table: { key: 'billing.codes' }
-    });
-    assert.ok(listed.includes('value="billing.codes"') && !listed.includes('>Value</label>'));
-    assert.ok(!render(WhereEditor, { op: 'empty' }).includes('>Value</label>'));
+describe('ConstantEditor', () => {
+  it('shows the type and value', () => {
+    show(ConstantEditor, { type: 'integer', value: 4 });
+    assert.equal(shown('Type'), 'Whole Number');
+    assert.equal((screen.getByLabelText('Value') as HTMLInputElement).value, '4');
   });
 
-  it('keeps what the new test still uses', () => {
-    const table = { key: 'billing.codes' };
+  it('clears the value when the type changes', async () => {
+    const { last, user } = show(ConstantEditor, { type: 'integer', value: 4 });
+    await user.click(option('Type', 'Text'));
+    assert.deepEqual(last(), { type: 'string', value: null });
+  });
+
+  it('sends the typed value', async () => {
+    const { last, user } = show(ConstantEditor, { type: 'string', value: null });
+    await user.type(screen.getByLabelText('Value'), 'hi');
+    assert.deepEqual(last(), { type: 'string', value: 'hi' });
+  });
+});
+
+describe('CodeSetEditor', () => {
+  it('picks one of the known code sets', async () => {
+    const { last, user } = show(CodeSetEditor, {});
+    assert.equal(shown('Code Set'), 'Choose a code set');
+    await user.click(option('Code Set', valueKinds.code.hcpcs ?? 'hcpcs'));
+    assert.deepEqual(last(), { kind: 'hcpcs' });
+  });
+});
+
+describe('VariableEditor', () => {
+  it('picks one of the variables of the workflow', async () => {
+    const { last, user } = show(VariableEditor, { name: 'total' });
+    assert.equal(shown('Variable'), 'total');
+    assert.deepEqual(optionsIn('Variable'), ['total', 'count']);
+    await user.click(option('Variable', 'count'));
+    assert.deepEqual(last(), { name: 'count' });
+  });
+
+  it('keeps a variable that no longer exists', () => {
+    show(VariableEditor, { name: 'gone' });
+    assert.equal(shown('Variable'), 'gone');
+  });
+});
+
+describe('GraphInputEditor', () => {
+  it('picks one of the inputs of the workflow by its label', async () => {
+    const { last, user } = show(GraphInputEditor, { pin: 'claimId' });
+    assert.equal(shown('Input'), 'Claim ID');
+    await user.click(option('Input', 'Trip Date'));
+    assert.deepEqual(last(), { pin: 'tripDate' });
+  });
+
+  it('asks for an input when none is chosen', () => {
+    show(GraphInputEditor, {});
+    assert.equal(shown('Input'), 'Choose an input');
+  });
+});
+
+describe('whereWithOp', () => {
+  const table = { key: 'billing.codes' };
+
+  it('drops the value for a table test', () => {
     assert.deepEqual(whereWithOp({ field: 'code', op: 'is', value: 'x' }, 'listed'), {
       field: 'code',
       op: 'listed'
     });
+  });
+
+  it('keeps the table between table tests', () => {
     assert.deepEqual(whereWithOp({ op: 'listed', table }, 'notListed'), { op: 'notListed', table });
+  });
+
+  it('drops the table for a value test', () => {
+    assert.deepEqual(whereWithOp({ op: 'listed', table }, 'is'), { op: 'is' });
+  });
+
+  it('keeps the value between value tests and drops it for presence tests', () => {
     assert.deepEqual(whereWithOp({ op: 'is', value: 'x' }, 'gt'), { op: 'gt', value: 'x' });
     assert.deepEqual(whereWithOp({ op: 'is', value: 'x' }, 'present'), { op: 'present' });
+  });
+});
+
+describe('WhereEditor', () => {
+  it('tests a field against a list of values', () => {
+    show(WhereEditor, { field: 'code', op: 'oneOf', value: ['A0427', 'A0429'] });
+    assert.equal(textbox('Field').value, 'code');
+    assert.equal(shown('Test'), 'Is One of');
+    assert.equal(textbox('Value').value, 'A0427, A0429');
+    assert.equal(hintOf(textbox('Value')), 'Separate items with commas.');
+    assert.ok(!screen.queryByRole('textbox', { name: 'Table' }));
+  });
+
+  it('tests a field against the keys of a shared table', () => {
+    show(WhereEditor, { field: 'code', op: 'listed', table: { key: 'billing.codes' } });
+    assert.equal(textbox('Table').value, 'billing.codes');
+    assert.ok(!screen.queryByRole('textbox', { name: 'Value' }));
+  });
+
+  it('asks for no value when the test only checks presence', () => {
+    show(WhereEditor, { op: 'empty' });
+    assert.ok(!screen.queryByRole('textbox', { name: 'Value' }));
+    assert.ok(!screen.queryByRole('textbox', { name: 'Table' }));
+  });
+
+  it('tests for equality when no test is set', () => {
+    show(WhereEditor, {});
+    assert.equal(shown('Test'), 'Is');
+    assert.equal(textbox('Value').value, '');
+  });
+
+  it('sends the field and drops it once cleared', async () => {
+    const { sent, user } = show(WhereEditor, { op: 'is' });
+    await user.type(textbox('Field'), 'a');
+    await user.clear(textbox('Field'));
+    assert.deepEqual(sent, [{ op: 'is', field: 'a' }, { op: 'is' }]);
+  });
+
+  it('sends the typed value and drops it once cleared', async () => {
+    const { sent, user } = show(WhereEditor, { op: 'oneOf' });
+    await user.type(textbox('Value'), 'a,b');
+    assert.deepEqual(sent.at(-1), { op: 'oneOf', value: ['a', 'b'] });
+    await user.clear(textbox('Value'));
+    assert.deepEqual(sent.at(-1), { op: 'oneOf' });
+  });
+
+  it('sends the trimmed table key and drops it once cleared', async () => {
+    const { sent, user } = show(WhereEditor, { op: 'listed' });
+    await user.type(textbox('Table'), ' t ');
+    assert.deepEqual(sent.at(-1), { op: 'listed', table: { key: 't' } });
+    await user.clear(textbox('Table'));
+    assert.deepEqual(sent.at(-1), { op: 'listed' });
+  });
+
+  it('switches to a table test', async () => {
+    const { last, user } = show(WhereEditor, { field: 'code', op: 'is', value: 'x' });
+    await user.click(option('Test', 'Is Listed in Table'));
+    assert.deepEqual(last(), { field: 'code', op: 'listed' });
+    assert.equal(textbox('Table').value, '');
+  });
+
+  it('locks every field when read-only', () => {
+    show(WhereEditor, { op: 'is' }, false);
+    assert.equal(screen.getByRole('group').hasAttribute('disabled'), true);
   });
 });

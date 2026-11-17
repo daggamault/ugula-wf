@@ -118,7 +118,7 @@ const ruleEditor =
         ...record,
         rule: key,
         ...(n === undefined ? {} : { version: n }),
-        ...(next?.inputs[0] ? { item: next.inputs[0].name } : {}),
+        ...(next ? { item: next.inputs[0]?.name ?? '' } : {}),
         ...(withTest && next
           ? { test: next.outputs.find((p) => p.type === 'boolean')?.name ?? '' }
           : {})

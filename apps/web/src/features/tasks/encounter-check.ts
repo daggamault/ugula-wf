@@ -68,7 +68,12 @@ export const mismatchesOf = (claim: CopiedFacts, e: EncounterFacts): Mismatch[] 
     out.push({ field: 'serviceDate', label: 'Date of Service', encounter: e.serviceDate });
   }
   const miles = claim.loaded_miles === null ? null : Number(claim.loaded_miles);
-  if (e.loadedMiles !== null && miles !== null && Math.abs(miles - e.loadedMiles) >= 0.1) {
+  const hundredths = (x: number) => Math.round(x * 100);
+  if (
+    e.loadedMiles !== null &&
+    miles !== null &&
+    Math.abs(hundredths(miles) - hundredths(e.loadedMiles)) >= 10
+  ) {
     out.push({ field: 'loadedMiles', label: 'Loaded Miles', encounter: String(e.loadedMiles) });
   }
   const known = new Set(e.memberIds.map(normalized));

@@ -1,7 +1,7 @@
 import type { ExitDoc, InputBinding, PinSpec, ValueKinds } from '@ugula/graph';
 import { Handle, type NodeProps, Position } from '@xyflow/react';
 import { PlusIcon } from 'lucide-react';
-import { createContext, useContext, useId, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
 import { classNamesOf } from '../class-names.ts';
 import { labelFromName } from '../format.ts';
 import { Badge } from '../ui/badge.tsx';
@@ -125,6 +125,14 @@ const AddField = ({ node, hidden }: { node: string; hidden: Pin[] }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const listId = useId();
+  const searchRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open) searchRef.current?.focus();
+    else if (wasOpen.current) triggerRef.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
   if (!actions || !hidden.length) return null;
   const close = () => {
     setOpen(false);
@@ -134,6 +142,7 @@ const AddField = ({ node, hidden }: { node: string; hidden: Pin[] }) => {
   return open ? (
     <div className="nodrag nopan nowheel border-border flex flex-col gap-1 border-t p-2">
       <input
+        ref={searchRef}
         type="search"
         aria-label="Find Field"
         aria-controls={listId}
@@ -175,6 +184,7 @@ const AddField = ({ node, hidden }: { node: string; hidden: Pin[] }) => {
     </div>
   ) : (
     <button
+      ref={triggerRef}
       type="button"
       onClick={() => setOpen(true)}
       className={classNamesOf(

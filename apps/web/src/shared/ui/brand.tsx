@@ -8,10 +8,10 @@ type BrandHeaderProps = { id?: string; description?: string; children: ReactNode
 
 export const BrandHeader = ({ id, description, children }: BrandHeaderProps) => (
   <header className="flex flex-col gap-2">
-    <h1 id={id}>
-      <Brand />
+    <Brand />
+    <h1 id={id} className="text-base font-bold">
+      {children}
     </h1>
-    <p className="text-base font-bold">{children}</p>
     {description ? <p className="text-surface-fg-muted text-sm">{description}</p> : null}
   </header>
 );

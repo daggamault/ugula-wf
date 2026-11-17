@@ -77,7 +77,7 @@ export const ClaimFiles = ({
             <>
               <a href={encounterUrl(claim.import_report_id)} download className={fileLinkClasses}>
                 <DownloadIcon aria-hidden="true" className="size-4" />
-                Encounter {claim.pcr_number ?? ''} (NEMSIS XML)
+                {['Encounter', claim.pcr_number, '(NEMSIS XML)'].filter(Boolean).join(' ')}
               </a>
               {claim.import_id ? (
                 <span className="text-surface-fg-muted">

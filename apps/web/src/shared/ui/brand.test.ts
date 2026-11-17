@@ -1,27 +1,32 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { render, screen } from '../testing-dom.ts';
 import { Brand, BrandHeader } from './brand.tsx';
 
 describe('Brand', () => {
   it('renders the wordmark', () => {
-    assert.ok(renderToStaticMarkup(createElement(Brand)).includes('>ugula</span>'));
+    const { container } = render(createElement(Brand));
+    assert.equal(container.textContent, 'ugula');
   });
+});
 
-  it('heads a card with the wordmark and a tagline', () => {
-    const html = renderToStaticMarkup(
-      createElement(BrandHeader, { id: 'h', children: 'Sign in.' })
-    );
-    assert.ok(html.includes('<h1 id="h">'));
-    assert.ok(html.includes('<p class="text-base font-bold">Sign in.</p>'));
-    assert.ok(!html.includes('text-surface-fg-muted'));
+describe('BrandHeader', () => {
+  it('shows the wordmark above a heading that names the card', () => {
+    const { container } = render(createElement(BrandHeader, { id: 'h', children: 'Sign In' }));
+    const heading = screen.getByRole('heading', { level: 1, name: 'Sign In' });
+    assert.equal(heading.id, 'h');
+    assert.equal(container.textContent, 'ugulaSign In');
+    assert.ok(!screen.queryByRole('heading', { name: 'ugula' }));
   });
 
   it('adds one sentence saying what the card is for', () => {
-    const html = renderToStaticMarkup(
+    const { container } = render(
       createElement(BrandHeader, { children: 'Sign In', description: 'Use your work email.' })
     );
-    assert.ok(html.includes('<p class="text-surface-fg-muted text-sm">Use your work email.</p>'));
+    assert.deepEqual(
+      [...container.querySelectorAll('p')].map((p) => p.textContent),
+      ['Use your work email.']
+    );
   });
 });

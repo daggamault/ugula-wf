@@ -27,11 +27,14 @@ const facts = (patch: Partial<EncounterFacts> = {}): EncounterFacts => ({
 
 describe('encounterFactsOf', () => {
   it('reads the facts a claim copies from a patient care report', () => {
-    const e = encounterFactsOf(fixtureReport('als2-iv-medications'));
-    assert.equal(e.lastName, 'Quintero');
-    assert.equal(e.birthDate, '1961-02-19');
-    assert.equal(e.loadedMiles, 6.86);
-    assert.match(e.serviceDate ?? '', /^\d{4}-\d{2}-\d{2}$/);
+    assert.deepEqual(encounterFactsOf(fixtureReport('als2-iv-medications')), {
+      firstName: 'Rosalind',
+      lastName: 'Quintero',
+      birthDate: '1961-02-19',
+      serviceDate: '2026-09-06',
+      loadedMiles: 6.86,
+      memberIds: ['XGB110093422']
+    });
   });
 
   it('reads nothing from an empty report', () => {
@@ -43,6 +46,37 @@ describe('encounterFactsOf', () => {
       loadedMiles: null,
       memberIds: []
     });
+  });
+
+  it('dates the service by the call, then the scene arrival, then leaving the scene', () => {
+    const times = {
+      'eTimes.01': '2026-09-13T23:50:00-04:00',
+      'eTimes.06': '2026-09-14T00:10:00-04:00',
+      'eTimes.09': '2026-09-15T00:30:00-04:00'
+    };
+    assert.equal(encounterFactsOf(times).serviceDate, '2026-09-13');
+    assert.equal(encounterFactsOf({ ...times, 'eTimes.01': 'unknown' }).serviceDate, '2026-09-14');
+    assert.equal(encounterFactsOf({ 'eTimes.09': '2026-09-15' }).serviceDate, '2026-09-15');
+  });
+
+  it('measures loaded miles between the odometers only when both are read', () => {
+    assert.equal(
+      encounterFactsOf({ 'eResponse.20': '10.04', 'eResponse.21': '16.9' }).loadedMiles,
+      6.86
+    );
+    assert.equal(encounterFactsOf({ 'eResponse.20': '10' }).loadedMiles, null);
+    assert.equal(encounterFactsOf({ 'eResponse.21': '16.9' }).loadedMiles, null);
+  });
+
+  it('trims names and member ids and skips blank ones', () => {
+    const e = encounterFactsOf({
+      'ePatient.02': '  ',
+      'ePatient.03': ' Ann ',
+      'ePayment.InsuranceGroup': [{ 'ePayment.18': ' A1 ' }, { 'ePayment.18': '  ' }, {}]
+    });
+    assert.equal(e.lastName, null);
+    assert.equal(e.firstName, 'Ann');
+    assert.deepEqual(e.memberIds, ['A1']);
   });
 });
 
@@ -66,19 +100,38 @@ describe('mismatchesOf', () => {
       loaded_miles: '12',
       coverages: [{ member_id: '9ZZ9' }]
     });
-    assert.deepEqual(
-      mismatchesOf(claim, facts()).map((m) => [m.field, m.encounter]),
-      [
-        ['patient', 'Quintero, Rosalind'],
-        ['birthDate', '1961-02-19'],
-        ['serviceDate', '2026-09-14'],
-        ['loadedMiles', '6.86'],
-        ['memberId', '1EG4-TE5-MK72']
-      ]
-    );
+    assert.deepEqual(mismatchesOf(claim, facts({ memberIds: ['1EG4', 'TE5'] })), [
+      { field: 'patient', label: 'Patient', encounter: 'Quintero, Rosalind' },
+      { field: 'birthDate', label: 'Birth Date', encounter: '1961-02-19' },
+      { field: 'serviceDate', label: 'Date of Service', encounter: '2026-09-14' },
+      { field: 'loadedMiles', label: 'Loaded Miles', encounter: '6.86' },
+      { field: 'memberId', label: 'Member ID', encounter: '1EG4, TE5' }
+    ]);
   });
 
-  it('does not flag what either side leaves out', () => {
+  it('flags loaded miles a tenth of a mile or more apart', () => {
+    const at = (loaded_miles: string) =>
+      mismatchesOf(claimOf({ loaded_miles }), facts({ loadedMiles: 6 })).map((m) => m.field);
+    assert.deepEqual(at('6.09'), []);
+    assert.deepEqual(at('5.91'), []);
+    assert.deepEqual(at('6.11'), ['loadedMiles']);
+    assert.deepEqual(at('5.89'), ['loadedMiles']);
+    assert.deepEqual(at('6.1'), ['loadedMiles']);
+    assert.deepEqual(at('5.9'), ['loadedMiles']);
+  });
+
+  it('flags a member id once any coverage is not on the encounter', () => {
+    const claim = claimOf({
+      coverages: [{ member_id: '1EG4TE5MK72' }, { member_id: null }, { member_id: 'X' }]
+    });
+    assert.deepEqual(
+      mismatchesOf(claim, facts()).map((m) => m.field),
+      ['memberId']
+    );
+    assert.deepEqual(mismatchesOf(claimOf({ coverages: [{ member_id: null }] }), facts()), []);
+  });
+
+  it('does not flag what the encounter leaves out', () => {
     const empty = facts({
       lastName: null,
       birthDate: null,
@@ -86,8 +139,18 @@ describe('mismatchesOf', () => {
       loadedMiles: null,
       memberIds: []
     });
-    const claim = claimOf({ coverages: [{ member_id: 'X' }] });
+    const claim = claimOf({
+      service_date: '2026-09-15',
+      loaded_miles: '12',
+      coverages: [{ member_id: 'X' }]
+    });
     assert.deepEqual(mismatchesOf(claim, empty), []);
-    assert.deepEqual(mismatchesOf(claimOf({ last_name: null, birth_date: null }), facts()), []);
+  });
+
+  it('does not flag what the claim leaves out', () => {
+    assert.deepEqual(
+      mismatchesOf(claimOf({ last_name: null, birth_date: null, coverages: [] }), facts()),
+      []
+    );
   });
 });

@@ -115,7 +115,11 @@ export const ClaimsTable = ({
                     isPrefix
                     keyOf={nameKey}
                   />
-                  , <Highlight text={c.first_name ?? ''} query={search?.firstName ?? ''} isPrefix />
+                  {c.first_name ? (
+                    <>
+                      , <Highlight text={c.first_name} query={search?.firstName ?? ''} isPrefix />
+                    </>
+                  ) : null}
                 </span>
                 <span className="text-surface-fg-muted text-xs">
                   Patient <NumberHighlight number={c.patient_number} query={search?.number ?? ''} />

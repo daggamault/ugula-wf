@@ -10,6 +10,7 @@ type GraphDiff = {
   properties: Record<string, PropertyChange[]>;
   removed: NodeInstance[];
   changedEdges: Set<string>;
+  removedEdges: Set<string>;
   signatureChanged: boolean;
   variablesChanged: boolean;
 };
@@ -55,11 +56,13 @@ export const diffGraphs = (base: GraphDef, mine: GraphDef): GraphDiff => {
     }
   }
   const baseEdges = new Set(base.edges.map(edgeId));
+  const mineEdges = new Set(mine.edges.map(edgeId));
   return {
     changes,
     properties,
     removed: base.nodes.filter((n) => !after.has(n.id)),
-    changedEdges: new Set(mine.edges.map(edgeId).filter((id) => !baseEdges.has(id))),
+    changedEdges: new Set([...mineEdges].filter((id) => !baseEdges.has(id))),
+    removedEdges: new Set([...baseEdges].filter((id) => !mineEdges.has(id))),
     signatureChanged: !same(base.signature, mine.signature),
     variablesChanged: !same(base.variables, mine.variables)
   };
@@ -107,6 +110,8 @@ export const formatBase = (value: Json | undefined) => {
   return text.length > 60 ? `${text.slice(0, 59)}…` : text;
 };
 
+const connections = (n: number) => `${n} ${n === 1 ? 'connection' : 'connections'}`;
+
 export const describeDiff = (
   base: GraphDef,
   mine: GraphDef,
@@ -125,10 +130,7 @@ export const describeDiff = (
       return `Changed ${title}: ${what.join(', ')}`;
     }),
     ...diff.removed.map((n) => `Removed ${titleOf(n)}`),
-    ...(diff.changedEdges.size
-      ? [
-          `Rewired ${diff.changedEdges.size} ${diff.changedEdges.size === 1 ? 'connection' : 'connections'}`
-        ]
-      : [])
+    ...(diff.changedEdges.size ? [`Rewired ${connections(diff.changedEdges.size)}`] : []),
+    ...(diff.removedEdges.size ? [`Removed ${connections(diff.removedEdges.size)}`] : [])
   ];
 };
