@@ -23,7 +23,7 @@ import { Section, SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Textarea } from '../../shared/ui/textarea.tsx';
 import { BindingEditor, CustomDot, PinHeading } from './binding-editor.tsx';
 import type { EffectiveTable } from './client.ts';
-import { ConfigEditor, NodeSettings, TableReference } from './node-settings.tsx';
+import { ConfigEditor, NodeSettings, TABLE_EDITORS, TableReference } from './node-settings.tsx';
 import { formatBase, nodeChanges, propertyName, resetProperty } from './override-diff.ts';
 
 type NodeInspectorProps = {
@@ -198,9 +198,8 @@ export const NodeInspector = ({
         ) : null}
         {hasSettings ? (
           <SectionPanel title="Settings">
-            {tableRef ? (
-              <TableReference tableKey={tableRef.key} table={table} />
-            ) : (
+            {tableRef ? <TableReference tableKey={tableRef.key} table={table} /> : null}
+            {tableRef && Object.hasOwn(TABLE_EDITORS, node.type) ? null : (
               <NodeSettings
                 key={node.id}
                 node={node}

@@ -8,7 +8,7 @@ import { conditionValue, OPS, takesList, takesValue } from './table-config.ts';
 import { CellInput, cellHint } from './table-editors.tsx';
 import { FieldsEditor, fieldsOf } from './task-editor.tsx';
 
-type Rule = { field: string; op: ConditionOp; value?: Json };
+type Rule = { field: string; op: ConditionOp; value?: Json; input?: string };
 
 const MATCH = [
   { value: 'all', label: 'Every Rule Holds' },
@@ -16,6 +16,20 @@ const MATCH = [
 ];
 
 const RULE_OPS = OPS.filter((o) => o.value !== '');
+
+const A_VALUE = '';
+
+export const againstOptions = (
+  names: readonly string[],
+  field: string,
+  labelOf: (name: string) => string
+) => [
+  { value: A_VALUE, label: 'A Value' },
+  ...names.filter((n) => n !== field).map((n) => ({ value: n, label: labelOf(n) }))
+];
+
+const compared = ({ field, op }: Rule, against: string): Rule =>
+  against === A_VALUE ? { field, op } : { field, op, input: against };
 
 const isRule = (x: Json): x is Rule =>
   typeof x === 'object' && x !== null && !Array.isArray(x) && typeof x.field === 'string';
@@ -60,14 +74,17 @@ export const ConditionEditor = ({ nodeId, config, editable, onConfig }: Settings
         {(rule, i, set) => {
           const column = columnOf(rule.field);
           return (
-            <div className="grid grid-cols-1 items-start gap-x-4 gap-y-5 sm:grid-cols-3">
+            <div className="grid grid-cols-1 items-start gap-x-4 gap-y-5 sm:grid-cols-2">
               <Select
                 id={`${nodeId}-rule-${i}-field`}
                 label="Input"
                 placeholder="Choose an input"
                 options={names.map((n) => ({ value: n, label: pinLabel(columnOf(n)) }))}
                 value={rule.field}
-                onChange={(field) => set({ ...rule, field })}
+                onChange={(field) => {
+                  const { input, ...rest } = rule;
+                  set(input === field ? { ...rest, field } : { ...rule, field });
+                }}
               />
               <Select
                 id={`${nodeId}-rule-${i}-op`}
@@ -80,6 +97,15 @@ export const ConditionEditor = ({ nodeId, config, editable, onConfig }: Settings
                 }}
               />
               {takesValue(rule.op) ? (
+                <Select
+                  id={`${nodeId}-rule-${i}-against`}
+                  label="Compare with"
+                  options={againstOptions(names, rule.field, (n) => pinLabel(columnOf(n)))}
+                  value={rule.input ?? A_VALUE}
+                  onChange={(against) => set(compared(rule, against))}
+                />
+              ) : null}
+              {takesValue(rule.op) && rule.input === undefined ? (
                 <CellInput
                   id={`${nodeId}-rule-${i}-value`}
                   label="Value"

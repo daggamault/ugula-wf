@@ -31,7 +31,7 @@ type Condition = v.InferOutput<typeof conditionSchema>;
 
 const TABLE_KEY_PATTERN = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
 
-const tableRefSchema = v.strictObject({
+export const tableRefSchema = v.strictObject({
   key: v.pipe(v.string(), v.regex(TABLE_KEY_PATTERN, 'Use a dotted lowercase table key'))
 });
 
@@ -97,8 +97,11 @@ const decideRef = v.pipe(
 
 export const TABLE_NODE_KINDS = {
   'std.table.decide': 'decide',
-  'std.table.lookup': 'lookup'
+  'std.table.lookup': 'lookup',
+  'std.list.where': 'lookup'
 } as const;
+
+const KEYS_ONLY: ReadonlySet<string> = new Set(['std.list.where']);
 
 export type TableKind = (typeof TABLE_NODE_KINDS)[keyof typeof TABLE_NODE_KINDS];
 
@@ -119,6 +122,10 @@ const contractOfFields = (c: Record<string, unknown>) =>
 
 export const tableContract = (definition: Json) =>
   isRecord(definition) ? contractOfFields(definition) : '';
+
+export const tableFits = (node: NodeInstance, definition: Json) =>
+  KEYS_ONLY.has(node.type) ||
+  (isRecord(node.config) && tableContract(definition) === contractOfFields(node.config));
 
 const tableKindOf = (type: string): TableKind | undefined =>
   Object.hasOwn(TABLE_NODE_KINDS, type)
@@ -164,15 +171,14 @@ export const inlineTables = (
       const ref = tableRefOf(n);
       const table = ref ? resolve(ref.key) : undefined;
       if (!ref || !table || table.kind !== ref.kind || !isRecord(table.definition)) return n;
-      const config = n.config as Record<string, Json>;
-      return tableContract(table.definition) === contractOfFields(config)
-        ? { ...n, config: inlined(config, table.definition) }
+      return tableFits(n, table.definition)
+        ? { ...n, config: inlined(n.config as Record<string, Json>, table.definition) }
         : n;
     })
   };
 };
 
-const unresolved = (key: string) =>
+export const unresolved = (key: string) =>
   new Error(`The table ${key} is not available to this run, or no longer has these fields`);
 
 const numberOf = (x: Json) => {

@@ -1,3 +1,4 @@
+import { TABLE_NODE_KINDS } from '@ugula/graph';
 import { type Kysely, type RawBuilder, sql } from 'kysely';
 import type { Database, TableKind } from './schema.ts';
 
@@ -34,8 +35,9 @@ export const resolvedTable = (agencyId: string, key: RawBuilder<unknown>) =>
     limit 1
   )`;
 
-const TABLE_KEYS_PATH =
-  '$.nodes[*] ? (@.type == "std.table.decide" || @.type == "std.table.lookup").config.table.key';
+const TABLE_KEYS_PATH = `$.nodes[*] ? (${Object.keys(TABLE_NODE_KINDS)
+  .map((t) => `@.type == "${t}"`)
+  .join(' || ')}).config.table.key`;
 
 export const buildPinRunTables = (runId: string, agencyId: string, parentRunId: string | null) => {
   const pinned = parentRunId

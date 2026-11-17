@@ -46,7 +46,11 @@ describe('data table queries', () => {
     const text = flat(own.sql);
     assert.ok(text.includes('insert into workflow_run_tables (run_id, key, table_version_id)'));
     assert.ok(text.includes('jsonb_path_query(gv.definition, $'));
-    assert.ok(own.parameters.some((p) => String(p).includes('std.table.decide')));
+    assert.ok(
+      ['std.table.decide', 'std.table.lookup', 'std.list.where'].every((t) =>
+        own.parameters.some((p) => String(p).includes(t))
+      )
+    );
     assert.ok(!text.includes('workflow_run_tables p'));
     const child = flat(buildPinRunTables('r-2', 't-1', 'p-1').compile(db).sql);
     assert.ok(child.includes('select p.table_version_id from workflow_run_tables p'));

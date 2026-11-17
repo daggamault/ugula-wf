@@ -314,17 +314,15 @@ export const listDependents = async (db: Db, s: ScopeIds, key: string, graphId: 
       order by g.name`.execute(db)
   ).rows;
 
-export const findVisibleTableKeys = async (db: Db, s: ScopeIds, keys: string[]) =>
+export const findVisibleTableKinds = async (db: Db, s: ScopeIds, keys: string[]) =>
   keys.length
-    ? (
-        await db
-          .selectFrom('data_tables as t')
-          .select('t.key')
-          .distinct()
-          .where('t.key', 'in', keys)
-          .where(visible('t', s))
-          .execute()
-      ).map((r) => r.key)
+    ? await db
+        .selectFrom('data_tables as t')
+        .select(['t.key', 't.kind'])
+        .distinct()
+        .where('t.key', 'in', keys)
+        .where(visible('t', s))
+        .execute()
     : [];
 
 type EffectiveGraph = {

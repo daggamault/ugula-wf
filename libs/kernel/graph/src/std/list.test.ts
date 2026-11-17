@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { invokeNode } from '../testing.ts';
-import type { Json, Values } from '../types.ts';
+import type { GraphDef, Json, Values } from '../types.ts';
 import { listNodes } from './list.ts';
+import { inlineTables, tableRefs } from './tables.ts';
 
 const run = async (type: string, inputs: Values, config: Json = {}) => {
   const def = listNodes.find((d) => d.type === type);
@@ -63,7 +64,7 @@ describe('list nodes', () => {
     });
     await assert.rejects(
       () => out('std.list.sort-by', { list: [{}] }, { expression: 'item' }),
-      /Sort By: can only sort by numbers or strings/
+      /Sort by: can only sort by numbers or strings/
     );
     await assert.rejects(
       () =>
@@ -173,7 +174,7 @@ describe('field list nodes', () => {
     );
     await assert.rejects(
       () => invokeNode(node('std.list.sort-by-field'), { inputs: { list: [{ a: 1 }] } }),
-      /Sort By Field: can only sort by numbers or strings/
+      /Sort by Field: can only sort by numbers or strings/
     );
     assert.deepEqual(
       (await invokeNode(node('std.list.where'), { inputs: { list: ['a', '', null, 'b'] } }))
@@ -286,5 +287,61 @@ describe('list summaries', () => {
       summaryOf('std.list.reshape', { fields: [{ name: 'code' }, { name: 'units' }] }),
       'Fields: code, units'
     );
+  });
+});
+
+describe('where listed in a shared table', () => {
+  const where = (op: string) => ({
+    id: op,
+    type: 'std.list.where',
+    version: 1,
+    config: { field: 'code', op, table: { key: 'billing.transport-codes' } }
+  });
+  const graph: GraphDef = {
+    signature: { execIn: [], execOut: [], inputs: [], outputs: [] },
+    variables: [],
+    nodes: [where('listed'), where('notListed')],
+    edges: []
+  };
+
+  it('keeps the items whose field is, or is not, a key of the table', async () => {
+    assert.deepEqual(tableRefs(graph), ['billing.transport-codes']);
+    await assert.rejects(
+      () => run('std.list.where', { list: lines }, where('listed').config),
+      /billing.transport-codes is not available/
+    );
+    const inlined = inlineTables(graph, () => ({
+      kind: 'lookup',
+      definition: { type: 'boolean', rows: [{ key: 'A0427', value: true }] }
+    }));
+    const [listed, unlisted] = inlined.nodes.map((n) => n.config ?? null);
+    assert.deepEqual(await out('std.list.where', { list: lines }, listed), {
+      list: [lines[0] ?? null],
+      count: 1
+    });
+    assert.deepEqual(await out('std.list.where', { list: lines }, unlisted), {
+      list: lines.slice(1),
+      count: 2
+    });
+    assert.deepEqual(
+      await out(
+        'std.list.where',
+        { list: [['A0427', 'X'], ['X']] },
+        { op: 'listed', rows: [{ key: 'A0427' }] }
+      ),
+      { list: [['A0427', 'X']], count: 1 }
+    );
+  });
+
+  it('names a table only for the listed tests', async () => {
+    for (const config of [
+      { op: 'listed' },
+      { op: 'listed', value: 'A0427', table: { key: 'billing.codes' } },
+      { op: 'is', table: { key: 'billing.codes' } }
+    ]) {
+      await assert.rejects(() => run('std.list.where', {}, config), /Name a shared table/);
+    }
+    const def = listNodes.find((d) => d.type === 'std.list.where');
+    assert.equal(def?.summary?.(where('listed').config), 'code listed billing.transport-codes');
   });
 });

@@ -5,7 +5,7 @@ import { contractOf } from '@ugula/graph';
 import {
   deleteGraph,
   findGraph,
-  findVisibleTableKeys,
+  findVisibleTableKinds,
   insertDraft,
   insertGraph,
   listEffectiveGraphs,
@@ -39,9 +39,9 @@ describe('customization queries', () => {
     assert.ok(
       graphs.includes('join graph_versions v on v.id = r.id join graphs g on g.id = v.graph_id')
     );
-    assert.deepEqual(await findVisibleTableKeys(db, S, []), []);
+    assert.deepEqual(await findVisibleTableKinds(db, S, []), []);
     assert.equal(queries.length, 2);
-    await findVisibleTableKeys(db, S, ['billing.base-rate']);
+    await findVisibleTableKinds(db, S, ['billing.base-rate']);
     assert.ok(queries[2]?.sql.includes('from "data_tables" as "t"'));
     await db.destroy();
   });

@@ -80,9 +80,9 @@ export const logicNodes: NodeDef[] = [
     compute: ({ a, b }) => ({ result: !deepEqual(a ?? null, b ?? null) })
   }),
   compareNode('greater', 'Greater Than', 'greater than', (a, b) => a > b),
-  compareNode('greater-or-equal', 'Greater Or Equal', 'at least', (a, b) => a >= b),
+  compareNode('greater-or-equal', 'Greater or Equal', 'at least', (a, b) => a >= b),
   compareNode('less', 'Less Than', 'less than', (a, b) => a < b),
-  compareNode('less-or-equal', 'Less Or Equal', 'at most', (a, b) => a <= b),
+  compareNode('less-or-equal', 'Less or Equal', 'at most', (a, b) => a <= b),
   boolNode('and', 'And', 'True only when both values are true.', (a, b) => a && b),
   boolNode('or', 'Or', 'True when at least one of the values is true.', (a, b) => a || b),
   boolNode('xor', 'Xor', 'True when exactly one of the two values is true.', (a, b) => a !== b),

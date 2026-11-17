@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { invokeNode } from '../testing.ts';
-import type { Values } from '../types.ts';
+import type { Json, Values } from '../types.ts';
 import { mathNodes } from './math.ts';
 
-const run = async (type: string, inputs: Values) => {
+const run = async (type: string, inputs: Values, config: Json = {}) => {
   const def = mathNodes.find((d) => d.type === type);
   if (!def) throw new Error(type);
-  return (await invokeNode(def, { inputs })).outputs;
+  return (await invokeNode(def, { inputs, config })).outputs;
 };
 
 describe('math nodes', () => {
@@ -38,6 +38,43 @@ describe('math nodes', () => {
     assert.deepEqual(await run('std.math.negate', {}), { result: null });
     assert.deepEqual(await run('std.math.round', { value: null }), { result: null });
     assert.deepEqual(await run('std.math.sum', { values: [] }), { result: 0 });
+  });
+
+  it('rounds up or down without float error', async () => {
+    const up = { direction: 'up' };
+    const down = { direction: 'down' };
+    assert.deepEqual(await run('std.math.round', { value: 12.3, digits: 1 }, up), { result: 12.3 });
+    assert.deepEqual(await run('std.math.round', { value: 12.31, digits: 1 }, up), {
+      result: 12.4
+    });
+    assert.deepEqual(await run('std.math.round', { value: 0.1 * 3, digits: 1 }, up), {
+      result: 0.3
+    });
+    assert.deepEqual(await run('std.math.round', { value: 12.0000001, digits: 1 }, up), {
+      result: 12.1
+    });
+    assert.deepEqual(await run('std.math.round', { value: 12.01 }, up), { result: 13 });
+    assert.deepEqual(await run('std.math.round', { value: 12 }, up), { result: 12 });
+    await assert.rejects(
+      run('std.math.round', { value: 1, digits: 400 }, up),
+      /Round: result is not a finite number/
+    );
+    assert.deepEqual(await run('std.math.round', { value: 1201, digits: -2 }, up), {
+      result: 1300
+    });
+    assert.deepEqual(await run('std.math.round', { value: 12.39, digits: 1 }, down), {
+      result: 12.3
+    });
+    assert.deepEqual(await run('std.math.round', { value: 1.1 * 3, digits: 1 }, down), {
+      result: 3.3
+    });
+    assert.deepEqual(await run('std.math.round', { value: -1.25, digits: 1 }, down), {
+      result: -1.3
+    });
+    assert.deepEqual(await run('std.math.round', { value: null }, up), { result: null });
+    const def = mathNodes.find((d) => d.type === 'std.math.round');
+    assert.equal(def?.summary?.(up), 'Round up');
+    assert.equal(def?.summary?.({ direction: 'nearest' }), null);
   });
 
   it('refuses non-finite results', async () => {

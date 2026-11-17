@@ -76,10 +76,61 @@ describe('condition nodes', () => {
     assert.equal(def?.summary?.({ match: 'all', inputs: [], rules: [] }), null);
   });
 
+  it('compares an input with another input', async () => {
+    const config = {
+      inputs: [
+        { name: 'count', type: 'integer' },
+        { name: 'shown', type: 'integer' },
+        { name: 'code', type: 'string' },
+        { name: 'allowed', type: { list: 'string' } }
+      ],
+      rules: [
+        { field: 'count', op: 'gt', input: 'shown' },
+        { field: 'code', op: 'oneOf', input: 'allowed' }
+      ]
+    };
+    const both = await run(
+      'std.logic.condition',
+      { count: 5, shown: 3, code: 'A0427', allowed: ['A0427', 'A0429'] },
+      config
+    );
+    assert.deepEqual(both.outputs, {
+      result: true,
+      reasons: ['Count is more than Shown', 'Code is one of Allowed']
+    });
+    const equal = await run('std.logic.condition', { count: 3, shown: 3, code: 'A0427' }, config);
+    assert.deepEqual(equal.outputs, { result: false, reasons: [] });
+    assert.equal((await run('std.logic.condition', { count: 5 }, config)).outputs.result, false);
+    const same = { ...config, rules: [{ field: 'count', op: 'is', input: 'shown' }] };
+    assert.equal((await run('std.flow.if', { count: 2, shown: 2 }, same)).pin, 'true');
+    assert.equal((await run('std.flow.if', { count: 2 }, same)).pin, 'false');
+    const def = conditionNodes.find((d) => d.type === 'std.logic.condition');
+    assert.equal(
+      def?.summary?.({ match: 'all', ...config }),
+      'Count is more than Shown and Code is one of Allowed'
+    );
+  });
+
   it('rejects rules on inputs it does not have', async () => {
     await assert.rejects(
       () => run('std.logic.condition', {}, { rules: [{ field: 'x', op: 'present' }] }),
       /Each rule must test one of the inputs/
     );
+    const inputs = [{ name: 'a', type: 'number' }];
+    await assert.rejects(
+      () =>
+        run('std.logic.condition', {}, { inputs, rules: [{ field: 'a', op: 'gt', input: 'b' }] }),
+      /Each rule must test one of the inputs/
+    );
+    for (const rule of [
+      { field: 'a', op: 'gt', input: 'a', value: 1 },
+      { field: 'a', op: 'empty', input: 'a' },
+      { field: 'a', op: 'gt', input: 'a' }
+    ]) {
+      await assert.rejects(
+        () => run('std.logic.condition', {}, { inputs, rules: [rule] }),
+        /compares with a value or another input/
+      );
+    }
   });
 });

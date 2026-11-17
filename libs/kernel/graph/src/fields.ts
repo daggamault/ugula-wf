@@ -2,7 +2,7 @@ import type { FieldSpec } from './schemas.ts';
 import type { Json } from './types.ts';
 import { checkValue } from './value-types.ts';
 
-const isIsoDate = (x: string) => {
+export const isIsoDate = (x: string) => {
   const t = Date.parse(`${x}T00:00:00Z`);
   return (
     /^\d{4}-\d{2}-\d{2}$/.test(x) && !Number.isNaN(t) && new Date(t).toISOString().startsWith(x)

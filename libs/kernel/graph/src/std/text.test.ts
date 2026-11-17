@@ -37,6 +37,54 @@ describe('text nodes', () => {
     );
   });
 
+  it('fills a pattern that arrives on a wire from a record of values', async () => {
+    const fill = async (pattern: string, values?: Json) =>
+      (await run('std.text.fill', values === undefined ? { pattern } : { pattern, values }))
+        .outputs;
+    assert.deepEqual(
+      await fill('Claim {claim.id} for {name}[ (member {m})]  now', {
+        claim: { id: 'C1' },
+        name: 'Ann'
+      }),
+      { text: 'Claim C1 for Ann now' }
+    );
+    assert.deepEqual(await fill('[{a} ]{b}', { a: 'x', b: 2 }), { text: 'x 2' });
+    assert.deepEqual(await fill('Hi {constructor}{toString}', {}), { text: 'Hi' });
+    assert.deepEqual(await fill('Hi {name}'), { text: 'Hi' });
+  });
+
+  it('joins with a last separator and writes counts with their noun', async () => {
+    const out = async (type: string, inputs: Values) => (await run(type, inputs)).outputs;
+    const join = (items: Json[]) => out('std.text.join', { items, separator: ', ', last: ' and ' });
+    assert.deepEqual(await join(['a', 'b', 'c']), { text: 'a, b and c' });
+    assert.deepEqual(await join(['a', 'b']), { text: 'a and b' });
+    assert.deepEqual(await join(['a']), { text: 'a' });
+    assert.deepEqual(await join([]), { text: '' });
+    for (const last of [null, '']) {
+      assert.deepEqual(
+        await out('std.text.join', { items: ['a', 'b', 'c'], separator: ', ', last }),
+        {
+          text: 'a, b, c'
+        }
+      );
+    }
+    assert.deepEqual(await out('std.text.count', { count: 1, singular: 'warning' }), {
+      text: '1 warning'
+    });
+    assert.deepEqual(await out('std.text.count', { count: 3, singular: 'warning' }), {
+      text: '3 warnings'
+    });
+    assert.deepEqual(
+      await out('std.text.count', { count: 0, singular: 'person', plural: 'people' }),
+      { text: '0 people' }
+    );
+    assert.deepEqual(await out('std.text.count', { singular: 'warning' }), { text: null });
+    assert.deepEqual(await out('std.text.capitalize', { text: 'two claims' }), {
+      result: 'Two claims'
+    });
+    assert.deepEqual(await out('std.text.capitalize', { text: '' }), { result: '' });
+  });
+
   it('writes cents as dollars', async () => {
     assert.deepEqual((await run('std.text.money', { cents: 125050 })).outputs, {
       text: '$1,250.50'

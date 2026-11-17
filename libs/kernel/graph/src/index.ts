@@ -17,7 +17,7 @@ export { createEngine, type Engine } from './engine.ts';
 export { messageOf } from './errors.ts';
 export { exprProblem, freeIdentifiers } from './expr.ts';
 export { EXPR_CATEGORIES, exprFunctionDocs } from './expr-functions.ts';
-export { checkField } from './fields.ts';
+export { checkField, isIsoDate } from './fields.ts';
 export { deepEqual, isRecord } from './json.ts';
 export { createModelNodes, type Model, type ModelField, modelType } from './models.ts';
 export { combineSources, createRegistry, isPure } from './registry.ts';
@@ -35,13 +35,14 @@ export { stdGraphInfo, stdGraphSource, stdGraphs } from './std/composites.ts';
 export { isPublicAddress } from './std/http.ts';
 export { TASK_PREFILLS } from './std/human.ts';
 export { createStdNodes, type StdDeps } from './std/index.ts';
-export { LIST_FORMULA_NAMES } from './std/list.ts';
+export { isListedOp, LIST_FORMULA_NAMES } from './std/list.ts';
 export type { ConditionOp } from './std/tables.ts';
 export {
   inlineTables,
   type ResolvedTable,
   TABLE_NODE_KINDS,
   tableContract,
+  tableFits,
   tableRefOf,
   tableRefs,
   tableSchemas

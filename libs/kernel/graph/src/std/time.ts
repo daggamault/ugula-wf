@@ -111,7 +111,7 @@ export const timeNodes: NodeDef[] = [
   }),
   pureNode<v.InferOutput<typeof periodConfig>>({
     type: 'std.time.start-of',
-    title: 'Start Of',
+    title: 'Start of Period',
     category: CATEGORY,
     description:
       'The first moment of the day, month or year a date and time falls in, in UTC, such as the first of the month for a monthly report.',

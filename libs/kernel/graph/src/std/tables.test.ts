@@ -7,6 +7,7 @@ import {
   inlineTables,
   type ResolvedTable,
   tableContract,
+  tableFits,
   tableNodes,
   tableRefOf,
   tableRefs
@@ -201,6 +202,21 @@ describe('shared tables', () => {
     assert.equal(tableContract({ rows: [] }), tableContract({ type: 'string', table: {} }));
     assert.equal(tableContract(null), '');
     assert.deepEqual(tableRefOf({ id: 'x', type: 'std.math.add', version: 1, config: ref }), null);
+  });
+
+  it('fits a table to a node by its fields, or by its keys alone for Where', () => {
+    const node = (type: string, config: Json): NodeInstance => ({
+      id: 'x',
+      type,
+      version: 1,
+      config
+    });
+    assert.equal(tableFits(node('std.table.decide', ref), LEVELS), true);
+    assert.equal(tableFits(node('std.table.decide', ref), { ...LEVELS, outputs: [] }), false);
+    assert.equal(
+      tableFits(node('std.list.where', { table: { key: 'k' } }), { type: 'integer', rows: [] }),
+      true
+    );
   });
 
   it('inlines resolved tables with matching fields and keeps the rest as references', async () => {

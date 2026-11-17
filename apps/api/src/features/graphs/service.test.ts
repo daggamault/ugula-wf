@@ -62,12 +62,13 @@ type World = {
   versions?: Record<string, Version[]>;
   fail?: { sql: string; code: string };
   dependents?: string[];
+  tables?: { key: string; kind: string }[];
 };
 
 const RANK = { agency: 0, system: 1 };
 const KEY = 'acme.flow';
 
-const createWorld = ({ graphs, versions = {}, fail, dependents = [] }: World) => {
+const createWorld = ({ graphs, versions = {}, fail, dependents = [], tables = [] }: World) => {
   const keyOf = (g: Graph) => g.key ?? KEY;
   const live = graphs.filter((g) => g.active !== false);
   const versionsOf = (id: unknown) => versions[id as string] ?? [];
@@ -107,6 +108,7 @@ const createWorld = ({ graphs, versions = {}, fail, dependents = [] }: World) =>
         .sort((a, b) => RANK[a.scope] - RANK[b.scope]);
       return g ? [{ id: g.id, scope: g.scope }] : [];
     }
+    if (sql.includes('from "data_tables" as "t"')) return tables;
     if (sql.startsWith('select "id", "is_active" from "graphs"')) {
       const g = graphs.find((x) => x.scope === 'agency' && keyOf(x) === q.parameters.at(-1));
       return g ? [{ id: g.id, is_active: g.active !== false }] : [];
@@ -262,6 +264,30 @@ describe('customization map', () => {
     const res = await service.validate(admin, def);
     assert.ok(res.ok);
     assert.deepEqual(res.value.issues, [{ node: 't', message: 'Unknown table acme.missing' }]);
+  });
+
+  it('reports a table node whose table is of another kind', async () => {
+    const { service } = createWorld({
+      graphs: [],
+      tables: [{ key: 'acme.rates', kind: 'decide' }]
+    });
+    const def: GraphDef = {
+      ...flow,
+      nodes: [
+        ...flow.nodes,
+        {
+          id: 'w',
+          type: 'std.list.where',
+          version: 1,
+          config: { field: 'code', op: 'listed', table: { key: 'acme.rates' } }
+        }
+      ]
+    };
+    const res = await service.validate(admin, def);
+    assert.ok(res.ok);
+    assert.deepEqual(res.value.issues, [
+      { node: 'w', message: 'Table acme.rates is not a lookup table' }
+    ]);
   });
 
   it('checks agency graphs against built-in and agency graphs and tables', async () => {

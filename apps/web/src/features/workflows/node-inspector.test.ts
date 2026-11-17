@@ -194,5 +194,17 @@ describe('NodeInspector', () => {
     assert.ok(html.includes('Uses the shared table') && html.includes('href="/tables/t1"'));
     assert.ok(html.includes('Customized for This Agency'));
     assert.ok(inspect(node).includes('This table is not available to your agency.'));
+    assert.ok(!html.includes('rates-op'));
+  });
+
+  it('keeps the settings of a node that tests items against a shared table', () => {
+    const html = inspect({
+      id: 'known',
+      type: 'std.list.where',
+      version: 1,
+      config: { field: 'code', op: 'listed', table: { key: 'billing.codes' } }
+    });
+    assert.ok(html.includes('Uses the shared table') && html.includes('Is Listed in Table'));
+    assert.ok(html.includes('value="billing.codes"'));
   });
 });

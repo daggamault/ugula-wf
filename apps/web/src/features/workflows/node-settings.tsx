@@ -16,6 +16,7 @@ import {
   RuleEditor,
   RuleTestEditor,
   VariableEditor,
+  WhereEditor,
   WorkflowEditor
 } from './node-editors.tsx';
 import type { SettingsEditorProps } from './settings-editor.ts';
@@ -46,6 +47,7 @@ export const SETTINGS_EDITORS: Readonly<Record<string, ComponentType<SettingsEdi
   'std.logic.condition': ConditionEditor,
   'std.flow.if': ConditionEditor,
   'std.value': ConstantEditor,
+  'std.list.where': WhereEditor,
   'std.object.get-field': FieldEditor,
   'std.object.set-field': FieldEditor,
   'std.convert.to-code': CodeSetEditor,
@@ -101,8 +103,8 @@ export const TableReference = ({
 }) => (
   <div className="flex flex-col gap-3">
     <p className="text-sm">
-      Uses the shared table <code className="font-mono">{tableKey}</code>, so its rules can change
-      without changing this workflow.
+      Uses the shared table <code className="font-mono">{tableKey}</code>, so it can change without
+      changing this workflow.
     </p>
     {table ? (
       <span className="flex flex-wrap items-center gap-2">

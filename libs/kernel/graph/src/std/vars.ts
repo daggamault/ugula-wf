@@ -69,7 +69,7 @@ export const setVarNode = defineNode<VarConfig>({
 export const appendVarNode = defineNode<VarConfig>({
   type: 'std.var.append',
   version: 1,
-  title: 'Append To Variable',
+  title: 'Append to Variable',
   category: CATEGORY,
   description: 'Adds an item to the end of a list kept in a variable.',
   level: 'advanced',

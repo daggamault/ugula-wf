@@ -44,7 +44,7 @@ import {
 import {
   deleteGraph,
   findGraph,
-  findVisibleTableKeys,
+  findVisibleTableKinds,
   type GraphFilters,
   insertDraft,
   insertGraph,
@@ -120,6 +120,8 @@ export const customizationMap = (graphs: readonly MapGraph[]) => {
   }));
 };
 
+const TABLE_KINDS = { decide: 'decision', lookup: 'lookup' } as const;
+
 export const createGraphService = ({ db, nodes, kinds }: GraphServiceDeps) => {
   const primitives = new Set(nodes.map(refKey));
   const check = async (tx: Db, access: AgencyAccess, def: GraphDef) => {
@@ -137,10 +139,17 @@ export const createGraphService = ({ db, nodes, kinds }: GraphServiceDeps) => {
     );
     const calls = workflowRefs(def).map((r) => dependencyOf({ key: r.type, version: r.version }));
     const keys = tableRefs(def);
-    const known = new Set(await findVisibleTableKeys(tx, scopeIds(access), keys));
+    const tableKinds = new Map(
+      (await findVisibleTableKinds(tx, scopeIds(access), keys)).map((t) => [t.key, t.kind])
+    );
     const tableIssues = def.nodes.flatMap((n) => {
-      const key = tableRefOf(n)?.key;
-      return key && !known.has(key) ? [{ node: n.id, message: `Unknown table ${key}` }] : [];
+      const ref = tableRefOf(n);
+      if (!ref) return [];
+      const kind = tableKinds.get(ref.key);
+      if (!kind) return [{ node: n.id, message: `Unknown table ${ref.key}` }];
+      return kind === ref.kind
+        ? []
+        : [{ node: n.id, message: `Table ${ref.key} is not a ${TABLE_KINDS[ref.kind]} table` }];
     });
     return {
       issues: [...validateGraph(def, registry), ...tableIssues],

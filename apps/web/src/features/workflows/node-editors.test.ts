@@ -18,7 +18,9 @@ import {
   ruleOptions,
   VariableEditor,
   versionsOf,
+  WhereEditor,
   WorkflowEditor,
+  whereWithOp,
   workflowOptions
 } from './node-editors.tsx';
 import type { SettingsEditorProps } from './settings-editor.ts';
@@ -143,5 +145,30 @@ describe('small editors', () => {
     assert.match(variable, /aria-selected="true" data-value="total"/);
     const input = render(GraphInputEditor, { pin: 'claimId' });
     assert.ok(input.includes('>Claim ID</span>'));
+  });
+});
+
+describe('WhereEditor', () => {
+  it('tests a field against a value, or against the keys of a shared table', () => {
+    const value = render(WhereEditor, { field: 'code', op: 'oneOf', value: ['A0427', 'A0429'] });
+    assert.ok(value.includes('value="A0427, A0429"') && !value.includes('>Table</label>'));
+    const listed = render(WhereEditor, {
+      field: 'code',
+      op: 'listed',
+      table: { key: 'billing.codes' }
+    });
+    assert.ok(listed.includes('value="billing.codes"') && !listed.includes('>Value</label>'));
+    assert.ok(!render(WhereEditor, { op: 'empty' }).includes('>Value</label>'));
+  });
+
+  it('keeps what the new test still uses', () => {
+    const table = { key: 'billing.codes' };
+    assert.deepEqual(whereWithOp({ field: 'code', op: 'is', value: 'x' }, 'listed'), {
+      field: 'code',
+      op: 'listed'
+    });
+    assert.deepEqual(whereWithOp({ op: 'listed', table }, 'notListed'), { op: 'notListed', table });
+    assert.deepEqual(whereWithOp({ op: 'is', value: 'x' }, 'gt'), { op: 'gt', value: 'x' });
+    assert.deepEqual(whereWithOp({ op: 'is', value: 'x' }, 'present'), { op: 'present' });
   });
 });

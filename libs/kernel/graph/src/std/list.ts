@@ -7,7 +7,7 @@ import { deepEqual, getPath, groupBy, isTruthy, toText } from '../json.ts';
 import { jsonSchema, valueTypeSchema } from '../schemas.ts';
 import type { Json, NodeDef, PinSpec, Values, ValueType } from '../types.ts';
 import { type ExpressionConfig, expressionConfig, identifierPins, oneLine } from './expression.ts';
-import { CONDITION_OPS, holds } from './tables.ts';
+import { CONDITION_OPS, holds, tableRefSchema, unresolved } from './tables.ts';
 
 const CATEGORY = 'Lists';
 const ANY_LIST: ValueType = { list: 'any' };
@@ -73,11 +73,27 @@ const items = (x: Values) => (x.list ?? []) as Json[];
 const fieldOf = (item: Json, field: Json) =>
   typeof field === 'string' && field ? getPath(item, field) : item;
 
-const whereConfig = v.object({
-  field: v.optional(v.string(), ''),
-  op: v.optional(v.picklist(CONDITION_OPS), 'is'),
-  value: v.optional(jsonSchema)
-});
+const LISTED_OPS = ['listed', 'notListed'] as const;
+
+export const isListedOp = (op: string): op is (typeof LISTED_OPS)[number] =>
+  (LISTED_OPS as readonly string[]).includes(op);
+
+const whereConfig = v.pipe(
+  v.object({
+    field: v.optional(v.string(), ''),
+    op: v.optional(v.picklist([...CONDITION_OPS, ...LISTED_OPS]), 'is'),
+    value: v.optional(jsonSchema),
+    table: v.optional(tableRefSchema),
+    rows: v.optional(v.array(v.object({ key: v.string() })))
+  }),
+  v.check(
+    ({ op, value, table, rows }) =>
+      isListedOp(op)
+        ? value === undefined && (table !== undefined || rows !== undefined)
+        : table === undefined && rows === undefined,
+    'Name a shared table for is listed and is not listed, and only for them'
+  )
+);
 
 const makeConfig = v.object({
   count: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(32)), 2),
@@ -181,7 +197,7 @@ export const listNodes: NodeDef[] = [
   ),
   listNode(
     'index-of',
-    'Index Of',
+    'Index of',
     'Gives the position of the first equal item, counting from 0, or -1 when there is none.',
     [ITEM_IN],
     [pin('index', 'integer', { description: 'The position, or -1.' })],
@@ -228,7 +244,7 @@ export const listNodes: NodeDef[] = [
   ),
   listNode(
     'sort-by-field',
-    'Sort By Field',
+    'Sort by Field',
     'Sorts items by the value at a field path, smallest first unless descending. Empty values sort last.',
     [
       pin('field', 'string', {
@@ -246,7 +262,7 @@ export const listNodes: NodeDef[] = [
         list: [
           ...keyed
             .filter((e) => !isBlank(e.k))
-            .map((e) => ({ item: e.item, k: sortKey('Sort By Field', e.k) }))
+            .map((e) => ({ item: e.item, k: sortKey('Sort by Field', e.k) }))
             .sort((a, b) => (a.k < b.k ? -dir : a.k > b.k ? dir : 0)),
           ...blank
         ].map((e) => e.item)
@@ -258,16 +274,18 @@ export const listNodes: NodeDef[] = [
     title: 'Where',
     category: CATEGORY,
     description:
-      'Keeps the items whose field passes a condition, such as route is one of a list of codes, and counts them.',
+      'Keeps the items whose field passes a condition, such as route is one of a list of codes, or is listed as a key of a shared table, and counts them.',
     level: 'basic',
     keywords: ['list', 'filter', 'condition', 'keep'],
-    summary: ({ field, op, value }) =>
+    summary: ({ field, op, value, table }) =>
       [
         field || 'Item',
         op,
-        ...(value === undefined
-          ? []
-          : [Array.isArray(value) ? value.map(toText).join(', ') : toText(value)])
+        ...(table
+          ? [table.key]
+          : value === undefined
+            ? []
+            : [Array.isArray(value) ? value.map(toText).join(', ') : toText(value)])
       ].join(' '),
     config: whereConfig,
     inputs: [LIST_IN],
@@ -275,10 +293,15 @@ export const listNodes: NodeDef[] = [
       pin('list', ANY_LIST, { description: 'The items kept.' }),
       pin('count', 'integer', { description: 'How many items were kept.' })
     ],
-    compute: ({ list }, { field, op, value }) => {
-      const kept = ((list ?? []) as Json[]).filter((item) =>
-        holds({ op, value: value ?? null }, fieldOf(item, field))
-      );
+    compute: ({ list }, { field, op, value, table, rows }) => {
+      if (table) throw unresolved(table.key);
+      const test = isListedOp(op)
+        ? {
+            op: op === 'listed' ? ('oneOf' as const) : ('notOneOf' as const),
+            value: (rows ?? []).map((r) => r.key)
+          }
+        : { op, value: value ?? null };
+      const kept = ((list ?? []) as Json[]).filter((item) => holds(test, fieldOf(item, field)));
       return { list: kept, count: kept.length };
     }
   }),
@@ -429,19 +452,19 @@ export const listNodes: NodeDef[] = [
   ),
   lambdaNode(
     'sort-by',
-    'Sort By',
+    'Sort by',
     'Sorts the items, smallest first, by what a formula such as item.date gives for each.',
     [LIST_OUT],
     (xs, each) => ({
       list: xs
-        .map((x, i) => ({ x, k: sortKey('Sort By', each(x, i)) }))
+        .map((x, i) => ({ x, k: sortKey('Sort by', each(x, i)) }))
         .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0))
         .map((e) => e.x)
     })
   ),
   lambdaNode(
     'group-by',
-    'Group By',
+    'Group by',
     'Groups the items into a record by what a formula gives for each.',
     [pin('groups', { object: {} }, { description: 'The items of each group, by group.' })],
     (xs, each) => ({ groups: groupBy(xs, each) })

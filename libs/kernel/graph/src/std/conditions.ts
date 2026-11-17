@@ -8,17 +8,38 @@ import { type ConditionOp, conditionSchema, holds } from './tables.ts';
 
 const MATCH_MODES = ['all', 'any'] as const;
 
+const ALONE: readonly ConditionOp[] = ['empty', 'present'];
+
 const conditionConfig = v.pipe(
   v.object({
     match: v.optional(v.picklist(MATCH_MODES), 'all'),
     inputs: v.optional(fieldsSchema, []),
     rules: v.optional(
-      v.array(v.strictObject({ field: v.string(), ...conditionSchema.entries })),
+      v.array(
+        v.pipe(
+          v.strictObject({
+            field: v.string(),
+            ...conditionSchema.entries,
+            input: v.exactOptional(v.string())
+          }),
+          v.check(
+            (r) =>
+              r.input === undefined ||
+              (r.value === undefined && r.input !== r.field && !ALONE.includes(r.op)),
+            'A rule compares with a value or another input, and only when its test takes one'
+          )
+        )
+      ),
       []
     )
   }),
   v.check(
-    ({ inputs, rules }) => rules.every((r) => inputs.some((i) => i.name === r.field)),
+    ({ inputs, rules }) =>
+      rules.every((r) =>
+        [r.field, ...(r.input === undefined ? [] : [r.input])].every((n) =>
+          inputs.some((i) => i.name === n)
+        )
+      ),
     'Each rule must test one of the inputs'
   )
 );
@@ -44,9 +65,13 @@ const PHRASES: Readonly<Record<ConditionOp, string>> = {
 const valueText = (value: Json) =>
   Array.isArray(value) ? value.map(toText).join(', ') : toText(value);
 
+const inputLabel = (name: string, inputs: ConditionConfig['inputs']) =>
+  inputs.find((i) => i.name === name)?.label ?? nameLabel(name);
+
 const ruleSentence = (rule: Rule, inputs: ConditionConfig['inputs']) => {
-  const input = inputs.find((i) => i.name === rule.field);
-  const subject = input?.label ?? nameLabel(rule.field);
+  const subject = inputLabel(rule.field, inputs);
+  if (rule.input !== undefined)
+    return `${subject} ${PHRASES[rule.op]} ${inputLabel(rule.input, inputs)}`;
   const value = rule.value ?? null;
   if (rule.op === 'empty' || rule.op === 'present' || (rule.op === 'is' && value === null))
     return `${subject} ${PHRASES[rule.op === 'is' ? 'empty' : rule.op]}`;
@@ -59,7 +84,12 @@ const conditionSentence = ({ match, inputs, rules }: ConditionConfig) =>
     : null;
 
 const evaluate = (config: ConditionConfig, values: Values) => {
-  const held = config.rules.filter((r) => holds(r, values[r.field] ?? null));
+  const held = config.rules.filter((r) =>
+    holds(
+      { op: r.op, value: r.input === undefined ? (r.value ?? null) : (values[r.input] ?? null) },
+      values[r.field] ?? null
+    )
+  );
   const result = config.match === 'all' ? held.length === config.rules.length : held.length > 0;
   return { result, reasons: held.map((r) => ruleSentence(r, config.inputs)) };
 };
@@ -92,7 +122,7 @@ export const conditionNodes: NodeDef[] = [
     title: 'Condition',
     category: 'Logic',
     description:
-      'Checks rules you build from its inputs, such as Pickup State is NH and Emergency is true, and gives true when all of them hold, or any of them if you choose.',
+      'Checks rules you build from its inputs, such as Pickup State is NH, or Loaded Miles is more than the Mileage Limit input, and gives true when all of them hold, or any of them if you choose.',
     level: 'basic',
     keywords: ['condition', 'rule', 'check', 'test', 'when', 'and', 'or'],
     outputs: [pin('result', 'boolean', { description: 'Whether the rules hold.' }), REASONS],

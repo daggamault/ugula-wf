@@ -384,7 +384,7 @@ export const waitUntilNode = defineNode({
 export const waitSignalNode = defineNode({
   type: 'std.flow.wait-signal',
   version: 1,
-  title: 'Wait For Signal',
+  title: 'Wait for Signal',
   category: CATEGORY,
   description:
     'Waits, even across restarts, for news from outside, such as a payer answer, named by a name and a key, for at most a while. Given how many such signals were already seen, goes on at once when more arrived meanwhile.',

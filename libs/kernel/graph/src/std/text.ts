@@ -28,6 +28,17 @@ const templateConfig = v.object({
 
 const TEXT = { description: 'The text to work on.' };
 
+const fillTemplate = (template: string, valueAt: (name: string, path: string) => Json) => {
+  const textAt = (name: string, path: string) => toText(valueAt(name, path));
+  const fill = (part: string) =>
+    part.replace(PLACEHOLDER, (_, name: string, path: string) => textAt(name, path));
+  const filled = (part: string) =>
+    [...part.matchAll(PLACEHOLDER)].every(([, name = '', path = '']) => textAt(name, path));
+  return fill(template.replace(OPTIONAL_PART, (_, part: string) => (filled(part) ? part : '')))
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+};
+
 const textNode = (key: string, title: string, description: string, fn: (s: string) => string) =>
   pureNode({
     type: `std.text.${key}`,
@@ -73,18 +84,32 @@ export const textNodes: NodeDef[] = [
         pin(name, 'any', { optional: true, description: 'A value the text fills in.' })
       ),
     outputs: [pin('text', 'string', { description: 'The finished text.' })],
-    compute: (inputs, { template }) => {
-      const textAt = (name: string, path: string) => toText(getPath(inputs[name] ?? null, path));
-      const fill = (part: string) =>
-        part.replace(PLACEHOLDER, (_, name: string, path: string) => textAt(name, path));
-      const filled = (part: string) =>
-        [...part.matchAll(PLACEHOLDER)].every(([, name = '', path = '']) => textAt(name, path));
-      return {
-        text: fill(template.replace(OPTIONAL_PART, (_, part: string) => (filled(part) ? part : '')))
-          .replace(/[ \t]{2,}/g, ' ')
-          .trim()
-      };
-    }
+    compute: (inputs, { template }) => ({
+      text: fillTemplate(template, (name, path) => getPath(inputs[name] ?? null, path))
+    })
+  }),
+  pureNode({
+    type: 'std.text.fill',
+    title: 'Fill Template',
+    category: CATEGORY,
+    description:
+      'Builds text from a pattern that arrives on a wire, such as a message kept in a table, filling each name in braces, such as {number} or {patient.name}, from the values. Empty values leave nothing behind, and a part in square brackets is left out whole when a value in it is empty.',
+    level: 'basic',
+    keywords: ['text', 'template', 'format', 'message', 'merge', 'pattern', 'placeholder'],
+    inputs: [
+      pin('pattern', 'string', {
+        description: 'The pattern, such as "Claim {number} for {name}".'
+      }),
+      pin(
+        'values',
+        { object: {} },
+        { optional: true, description: 'The values the pattern names, by name.' }
+      )
+    ],
+    outputs: [pin('text', 'string', { description: 'The finished text.' })],
+    compute: ({ pattern, values }) => ({
+      text: fillTemplate(pattern as string, (name, path) => getPath(values ?? null, name + path))
+    })
   }),
   pureNode({
     type: 'std.text.length',
@@ -99,12 +124,18 @@ export const textNodes: NodeDef[] = [
   }),
   textNode('upper', 'Upper Case', 'Writes the text in capital letters.', (s) => s.toUpperCase()),
   textNode('lower', 'Lower Case', 'Writes the text in small letters.', (s) => s.toLowerCase()),
+  textNode(
+    'capitalize',
+    'Capitalize',
+    'Writes the first letter of the text as a capital and leaves the rest as it is.',
+    (s) => s.charAt(0).toUpperCase() + s.slice(1)
+  ),
   textNode('trim', 'Trim', 'Removes spaces and line breaks from both ends of the text.', (s) =>
     s.trim()
   ),
   testNode('contains', 'Contains', (s, p) => s.includes(p)),
-  testNode('starts-with', 'Starts With', (s, p) => s.startsWith(p)),
-  testNode('ends-with', 'Ends With', (s, p) => s.endsWith(p)),
+  testNode('starts-with', 'Starts with', (s, p) => s.startsWith(p)),
+  testNode('ends-with', 'Ends with', (s, p) => s.endsWith(p)),
   pureNode({
     type: 'std.text.replace',
     title: 'Replace',
@@ -147,12 +178,49 @@ export const textNodes: NodeDef[] = [
     keywords: ['text', 'combine', 'concatenate', 'list'],
     inputs: [
       pin('items', { list: 'any' }, { optional: true, description: 'The items to join.' }),
-      pin('separator', 'string', { default: '', description: 'What goes between the items.' })
+      pin('separator', 'string', { default: '', description: 'What goes between the items.' }),
+      pin('last', 'string', {
+        optional: true,
+        label: 'Last Separator',
+        description:
+          'What goes before the last item instead, such as " and " for "a, b and c"; the separator when empty.'
+      })
     ],
     outputs: [pin('text', 'string', { description: 'The joined text.' })],
-    compute: ({ items, separator }) => ({
-      text: ((items ?? []) as Json[]).map(toText).join(separator as string)
-    })
+    compute: ({ items, separator, last }) => {
+      const texts = ((items ?? []) as Json[]).map(toText);
+      const end = texts.length > 1 && last ? texts.pop() : undefined;
+      const text = texts.join(separator as string);
+      return { text: end === undefined ? text : `${text}${last}${end}` };
+    }
+  }),
+  pureNode({
+    type: 'std.text.count',
+    title: 'Count with Noun',
+    category: CATEGORY,
+    description:
+      'Writes a count with its noun in agreement, such as 1 warning or 3 warnings, or nothing when the count is missing.',
+    level: 'basic',
+    keywords: ['text', 'plural', 'singular', 'count', 'number', 'noun'],
+    inputs: [
+      pin('count', 'number', { optional: true, description: 'How many there are.' }),
+      pin('singular', 'string', { description: 'The noun for one, such as warning.' }),
+      pin('plural', 'string', {
+        optional: true,
+        description:
+          'The noun for any other count, such as people; the noun for one with an s when empty.'
+      })
+    ],
+    outputs: [
+      pin('text', 'string', {
+        description: 'The count and its noun, or nothing when the count is missing.'
+      })
+    ],
+    compute: ({ count, singular, plural }) => {
+      if (count === null) return { text: null };
+      const noun = count === 1 ? singular : plural || `${singular}s`;
+      return { text: `${toText(count)} ${noun}` };
+    }
   }),
   pureNode({
     type: 'std.text.money',
