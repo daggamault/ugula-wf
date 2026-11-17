@@ -43,8 +43,10 @@ export const graphProblems = (graphs: SeedGraph[], nodes: NodeDef[]) => {
     mergeKinds(STD_KINDS, nemsisKinds, billingKinds),
     billingEvents
   );
+  const nodeTypes = new Set(nodes.map((n) => n.type));
   return graphs.flatMap((g) =>
     [
+      ...(nodeTypes.has(g.key) ? [{ message: 'A node already has this key' }] : []),
       ...validateGraph(g.definition, registry),
       ...documentationIssues(g.definition),
       ...(g.kind !== 'workflow' && triggerOf(g.definition).kind !== 'manual'

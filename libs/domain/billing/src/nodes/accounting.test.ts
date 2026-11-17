@@ -95,7 +95,7 @@ describe('accountingNodes', () => {
       inputs: { period: '2026-10-01' }
     });
     assert.deepEqual(outputs, totals);
-    await invokeNode(node('billing.close-period'), {
+    await invokeNode(node('billing.record-period-close'), {
       inputs: { period: '2026-10-01', closedBy: 'u1' }
     });
     assert.deepEqual(calls, [
@@ -103,7 +103,7 @@ describe('accountingNodes', () => {
       ['closePeriod', 'run', '2026-10-01', 'u1']
     ]);
     await assert.rejects(
-      () => invokeNode(node('billing.close-period'), { inputs: { period: '2026-10-02' } }),
+      () => invokeNode(node('billing.record-period-close'), { inputs: { period: '2026-10-02' } }),
       { message: '2026-10-02 is not the first day of a month' }
     );
   });

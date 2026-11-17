@@ -354,7 +354,7 @@ const closePeriod = (): GraphDef => {
       writeOffs: amounts.writeOffs
     }
   );
-  g.add('close', 'billing.close-period', { label: 'Close Period' });
+  g.add('close', 'billing.record-period-close', { label: 'Record Period Close' });
   g.ret('return');
   g.wire('entry.exec', 'today.exec');
   g.wire('today.today', 'thisMonth.time');

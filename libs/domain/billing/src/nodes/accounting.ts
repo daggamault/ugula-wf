@@ -157,8 +157,8 @@ export const accountingNodes: NodesOf = (stores) => {
         accounting().periodTotals(ctx.runId, periodOf(inputs.period))
     }),
     actionNode({
-      type: 'billing.close-period',
-      title: 'Close Period',
+      type: 'billing.record-period-close',
+      title: 'Record Period Close',
       category: CATEGORY,
       description:
         'Closes an accounting month and emits Period Closed: postings dated in it from now on are posted to the next open month. A month already closed stays as it was.',
