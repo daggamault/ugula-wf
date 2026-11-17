@@ -5,22 +5,16 @@ import {
   asStage,
   d,
   exit,
-  expr,
   field,
   is,
-  named,
   P,
   rule,
   shared,
   stage,
-  summarize,
+  summary,
   T,
   table
 } from './shared.ts';
-
-const BILL_FACILITY_SUMMARY = `'This trip looks billable to a facility, not to the payers' +
-  (${named('reason', 'null')} != null ? ' (' + reason + ')' : '') +
-  '; choose the facility to bill, or bill the payers'`;
 
 const FACILITY_IN = (name: string, label: string, description: string) =>
   d(name, T.facility, label, description, true);
@@ -43,13 +37,55 @@ const FACILITY_NAME_OUT = d(
   true
 );
 
-const RESPONSIBLE_FACILITY = `bill == 'contract'
-  ? (pickup != null && pickup.contract == true ? pickup : destination)
-  : bill == 'pickup'
-    ? pickup
-    : bill == 'snf'
-      ? (pickup != null && pickup.kind == 'snf' ? pickup : destination != null && destination.kind == 'snf' ? destination : pickup)
-      : null`;
+const facilityBilled = () =>
+  shared.decision(
+    'billing.facility-billed',
+    'Facility Billed',
+    'Names which end of the trip the responsible facility is at, for the facility a Facility Responsibility rule bills: the contract facility (the pickup when both are), the pickup hospital for an inpatient, or the skilled nursing facility (the pickup unless only the destination is one).',
+    table(
+      [
+        field('bill', 'string', 'Facility billed (contract, pickup or snf)'),
+        field('pickupContract', 'boolean', 'The pickup facility is under contract'),
+        field('pickupKind', 'string', 'Kind of the pickup facility'),
+        field('destinationKind', 'string', 'Kind of the destination facility')
+      ],
+      [field('end', 'string', 'Facility at (pickup or destination)')],
+      [
+        {
+          label: 'Contract facility at the pickup',
+          when: { bill: is('contract'), pickupContract: is(true) },
+          set: { end: 'pickup' }
+        },
+        {
+          label: 'Contract facility at the destination',
+          when: { bill: is('contract') },
+          set: { end: 'destination' }
+        },
+        {
+          label: 'Hospital the inpatient was picked up from',
+          when: { bill: is('pickup') },
+          set: { end: 'pickup' }
+        },
+        {
+          label: 'Skilled nursing facility at the pickup',
+          when: { bill: is('snf'), pickupKind: is('snf') },
+          set: { end: 'pickup' }
+        },
+        {
+          label: 'Skilled nursing facility at the destination',
+          when: { bill: is('snf'), destinationKind: is('snf') },
+          set: { end: 'destination' }
+        },
+        {
+          label: 'Skilled nursing stay, neither end listed as one',
+          when: { bill: is('snf') },
+          set: { end: 'pickup' }
+        }
+      ],
+      {},
+      'No facility is billed'
+    )
+  );
 
 const facilityResponsibility = (): GraphDef => {
   const g = rule(
@@ -78,14 +114,22 @@ const facilityResponsibility = (): GraphDef => {
     ],
     [PARTY_OUT, FACILITY_ID_OUT, FACILITY_NAME_OUT, P.reasons('the claim is billed to its payer')]
   );
-  g.add(
-    'contract',
-    'std.expr',
-    expr(
-      'Either End Under Contract',
-      '(pickup != null && pickup.contract == true) || (destination != null && destination.contract == true)'
-    )
-  );
+  g.add('pickup', 'billing.facility.break', { label: 'Pickup Facility' });
+  g.add('destination', 'billing.facility.break', { label: 'Destination Facility' });
+  g.add('contract', 'std.logic.condition', {
+    label: 'Either End Under Contract',
+    config: {
+      match: 'any',
+      inputs: [
+        { name: 'pickupContract', type: 'boolean', label: 'Pickup Under Contract' },
+        { name: 'destinationContract', type: 'boolean', label: 'Destination Under Contract' }
+      ],
+      rules: [
+        { field: 'pickupContract', op: 'is', value: true },
+        { field: 'destinationContract', op: 'is', value: true }
+      ]
+    }
+  });
   g.add('decide', 'std.table.decide', {
     label: 'Facility Responsibility',
     config: shared.decision(
@@ -134,30 +178,33 @@ const facilityResponsibility = (): GraphDef => {
       )
     )
   });
-  g.add('facility', 'std.expr', expr('Facility Billed', RESPONSIBLE_FACILITY));
-  g.add(
-    'chosen',
-    'std.expr',
-    expr(
-      'Its ID and Name',
-      '{ id: facility == null ? null : facility.id, name: facility == null ? null : facility.name }'
-    )
-  );
-  g.add('id', 'std.object.get', { label: 'Facility ID', values: { path: 'id' } });
-  g.add('name', 'std.object.get', { label: 'Facility Name', values: { path: 'name' } });
+  g.add('end', 'std.table.decide', { label: 'Facility Billed', config: facilityBilled() });
+  g.add('facility', 'std.logic.choose', {
+    label: 'Facility at That End',
+    config: {
+      mode: 'byCase',
+      type: T.facility,
+      cases: [{ when: 'pickup' }, { when: 'destination' }]
+    }
+  });
+  g.add('chosen', 'billing.facility.break', { label: 'Its ID and Name' });
   g.ret('return');
-  g.wire('entry.pickupFacility', 'contract.pickup', 'facility.pickup');
-  g.wire('entry.destinationFacility', 'contract.destination', 'facility.destination');
+  g.wire('entry.pickupFacility', 'pickup.facility', 'facility.case1');
+  g.wire('entry.destinationFacility', 'destination.facility', 'facility.case2');
+  g.wire('pickup.contract', 'contract.pickupContract', 'end.pickupContract');
+  g.wire('destination.contract', 'contract.destinationContract');
+  g.wire('pickup.kind', 'end.pickupKind');
+  g.wire('destination.kind', 'end.destinationKind');
   g.wire('entry.recordedParty', 'decide.recordedParty');
   g.wire('entry.facilityStay', 'decide.facilityStay');
   g.wire('entry.emergency', 'decide.emergency');
   g.wire('contract.result', 'decide.contract');
-  g.wire('decide.bill', 'facility.bill');
-  g.wire('facility.result', 'chosen.facility');
-  g.wire('chosen.result', 'id.object', 'name.object');
+  g.wire('decide.bill', 'end.bill');
+  g.wire('end.end', 'facility.key');
+  g.wire('facility.value', 'chosen.facility');
   g.wire('decide.party', 'return.party');
-  g.wire('id.value', 'return.facilityId');
-  g.wire('name.value', 'return.facilityName');
+  g.wire('chosen.id', 'return.facilityId');
+  g.wire('chosen.name', 'return.facilityName');
   g.wire('decide.rules', 'return.reasons');
   return g.def;
 };
@@ -220,8 +267,19 @@ const billFacility = (): GraphDef => {
     }
   );
   g.add('choices', 'billing.facility-choices', { label: 'Facility Choices' });
-  g.add('defaults', 'std.expr', expr('Suggested Facility', '{ facilityId: facilityId }'));
-  g.add('context', 'std.expr', expr('Facility Context', '{ reason: reason, claim: context }'));
+  g.add('defaults', 'std.object.make', {
+    label: 'Suggested Facility',
+    config: { fields: [{ name: 'facilityId', type: { id: 'facility' } }] }
+  });
+  g.add('context', 'std.object.make', {
+    label: 'Facility Context',
+    config: {
+      fields: [
+        { name: 'reason', type: 'string' },
+        { name: 'claim', type: 'any' }
+      ]
+    }
+  });
   g.add('task', 'std.human.task', {
     label: 'Bill Facility',
     config: {
@@ -269,14 +327,19 @@ const billFacility = (): GraphDef => {
   g.wire('entry.claimId', 'confirm.claimId', 'payers.claimId');
   g.wire('entry.facilityId', 'defaults.facilityId', 'facility.fallback');
   g.wire('entry.reason', 'context.reason', 'billedNote.fallback');
-  g.wire('entry.context', 'context.context');
+  g.wire('entry.context', 'context.claim');
   g.wire('entry.subject', 'task.subject');
   g.wire('entry.exec', 'choices.exec');
   g.wire('choices.then', 'task.exec');
   g.wire('choices.options', 'task.options');
-  g.wire('defaults.result', 'task.defaults');
-  g.wire('context.result', 'task.context');
-  summarize(g, 'task', BILL_FACILITY_SUMMARY, { reason: 'entry.reason' });
+  g.wire('defaults.object', 'task.defaults');
+  g.wire('context.object', 'task.context');
+  summary(
+    g,
+    'task',
+    'This trip looks billable to a facility, not to the payers[ ({reason})]; choose the facility to bill, or bill the payers',
+    { reason: 'entry.reason' }
+  );
   g.wire('task.facilityId', 'facility.value');
   g.wire('task.note', 'billedNote.value', 'payersNote.value');
   g.wire('task.billFacility', 'confirm.exec');

@@ -2,7 +2,7 @@ import { CLAIM_FIX_FIELDS, PAYMENT_KINDS } from '@ugula/billing';
 import type { FieldSpec, GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import { p } from './glossary.ts';
-import { asWorkflow, type Builder, expr, flow, summarize, T } from './shared.ts';
+import { asWorkflow, type Builder, flow, summary, T } from './shared.ts';
 
 const EDIT_PERMISSION = 'claims:update';
 
@@ -29,13 +29,13 @@ const assigned = (g: Builder, task: string) => {
   g.wire('ledger.reference', `${task}.subject`);
 };
 
-export const claimSummary = (g: Builder, task: string, sentence: string, refusable = false) => {
+export const claimSummary = (g: Builder, task: string, text: string, refusable = false) => {
   if (!refusable) {
-    summarize(g, task, sentence, { reference: 'ledger.reference' });
+    summary(g, task, text, { reference: 'ledger.reference' });
     return;
   }
   g.add('problem', 'std.var.get', { label: 'Why It Was Refused', config: { name: 'problem' } });
-  summarize(g, task, `(problem != null ? 'Not saved: ' + problem + '. ' : '') + ${sentence}`, {
+  summary(g, task, `[Not saved: {problem}. ]${text}`, {
     reference: 'ledger.reference',
     problem: 'problem.value'
   });
@@ -51,11 +51,19 @@ const correctClaimData = (): GraphDef => {
   const g = claimTask();
   beginClaimTask(g);
   g.add('check', 'billing.check-claim', { label: 'Check Claim', values: { all: true } });
-  g.add('context', 'std.expr', expr('Correction Context', '{ issues: issues, claim: claim }'));
+  g.add('context', 'std.object.make', {
+    label: 'Correction Context',
+    config: {
+      fields: [
+        { name: 'issues', type: T.issues },
+        { name: 'claim', type: { object: {} } }
+      ]
+    }
+  });
   claimSummary(
     g,
     'task',
-    '"Correct what claim " + reference + " sends on its 837P; charges are priced again when the trip, service, miles or payers change, and the claim is checked again."'
+    'Correct what claim {reference} sends on its 837P; charges are priced again when the trip, service, miles or payers change, and the claim is checked again.'
   );
   g.add('task', 'std.human.task', {
     label: 'Correct Claim Data',
@@ -96,7 +104,7 @@ const correctClaimData = (): GraphDef => {
   g.wire('check.claim', 'context.claim');
   for (const pin of ['visible', 'defaults', 'options']) g.wire(`check.${pin}`, `task.${pin}`);
   g.wire('check.defaults', 'patch.shown');
-  g.wire('context.result', 'task.context', 'reprice.context');
+  g.wire('context.object', 'task.context', 'reprice.context');
   assigned(g, 'task');
   g.wire('ledger.reference', 'reprice.subject');
   g.wire('task.save', 'patch.exec');
@@ -122,15 +130,19 @@ const changeResponsibleParty = (): GraphDef => {
   beginClaimTask(g);
   g.add('read', 'billing.read-claim-checks', { label: 'Read the Payers' });
   g.add('choices', 'billing.facility-choices', { label: 'Facility Choices' });
-  g.add(
-    'defaults',
-    'std.expr',
-    expr('Payers Now', '{ payers: map(claim.payers, payer => payer.name) }')
-  );
+  g.add('claimPayers', 'std.object.get', {
+    label: 'Payers on the Claim',
+    values: { path: 'payers' }
+  });
+  g.add('payerNames', 'std.list.pluck', { label: 'Their Names', values: { field: 'name' } });
+  g.add('defaults', 'std.object.make', {
+    label: 'Payers Now',
+    config: { fields: [{ name: 'payers', type: { list: 'string' } }] }
+  });
   claimSummary(
     g,
     'task',
-    '"Say who pays for the trip on claim " + reference + ": its payers, in billing order (the patient is billed after the last one), or a facility that is responsible instead."',
+    'Say who pays for the trip on claim {reference}: its payers, in billing order (the patient is billed after the last one), or a facility that is responsible instead.',
     true
   );
   g.add('task', 'std.human.task', {
@@ -194,8 +206,10 @@ const changeResponsibleParty = (): GraphDef => {
     'toFacility.claimId',
     'eligibilityInputs.claimId'
   );
-  g.wire('read.claim', 'defaults.claim');
-  g.wire('defaults.result', 'task.defaults');
+  g.wire('read.claim', 'claimPayers.object');
+  g.wire('claimPayers.value', 'payerNames.list');
+  g.wire('payerNames.list', 'defaults.payers');
+  g.wire('defaults.object', 'task.defaults');
   assigned(g, 'task');
   g.wire('task.save', 'set.exec');
   g.wire('task.payers', 'set.payers');
@@ -254,22 +268,31 @@ const postPayment = (): GraphDef => {
     values: { all: true, issues: [] }
   });
   g.add('payers', 'std.object.pick', { label: 'Payers', values: { keys: ['coverageId'] } });
-  g.add('visible', 'std.expr', {
-    ...expr(
-      'Fields to Ask',
-      'payers.coverageId == null ? filter(fields, f => f != "coverageId") : null'
-    ),
-    values: { fields: PAYMENT_FIELDS.map((f) => f.name) }
+  g.add('payerChoices', 'std.object.get', {
+    label: 'Payer Choices',
+    values: { path: 'coverageId' }
   });
-  g.add(
-    'defaults',
-    'std.expr',
-    expr('Payment Defaults', '{ coverageId: coverageId, kind: "response" }')
-  );
+  g.add('noPayers', 'std.logic.is-null', { label: 'No Payer to Choose' });
+  g.add('visible', 'std.logic.select', {
+    label: 'Fields to Ask',
+    values: {
+      whenTrue: PAYMENT_FIELDS.map((f) => f.name).filter((name) => name !== 'coverageId')
+    }
+  });
+  g.add('defaults', 'std.object.make', {
+    label: 'Payment Defaults',
+    config: {
+      fields: [
+        { name: 'coverageId', type: { id: 'coverage' } },
+        { name: 'kind', type: 'string' }
+      ]
+    },
+    values: { kind: 'response' }
+  });
   claimSummary(
     g,
     'task',
-    '"Post a payment or refund for claim " + reference + " that came outside an 835; it is reconciled like a remittance."',
+    'Post a payment or refund for claim {reference} that came outside an 835; it is reconciled like a remittance.',
     true
   );
   g.add('task', 'std.human.task', {
@@ -289,7 +312,19 @@ const postPayment = (): GraphDef => {
       prefill: 'suggested'
     }
   });
-  g.add('routed', 'std.expr', expr('From a Payer?', 'kind != "refunded" && coverageId != null'));
+  g.add('routed', 'std.logic.condition', {
+    label: 'From a Payer',
+    config: {
+      inputs: [
+        { name: 'kind', type: 'string' },
+        { name: 'coverageId', type: { id: 'coverage' } }
+      ],
+      rules: [
+        { field: 'kind', op: 'isNot', value: 'refunded' },
+        { field: 'coverageId', op: 'present' }
+      ]
+    }
+  });
   g.add('fromPayer', 'std.flow.branch', { label: 'Route It?' });
   g.add('line', 'billing.payment-line', { label: 'Payment Line' });
   g.add('route', 'billing.route-remittance', { label: 'Route Remittance' });
@@ -304,10 +339,12 @@ const postPayment = (): GraphDef => {
   g.wire('ledger.then', 'choices.exec');
   g.wire('entry.claimId', 'choices.claimId', 'post.claimId', 'postRouted.claimId', 'line.claimId');
   g.wire('choices.options', 'payers.object');
-  g.wire('payers.object', 'task.options', 'visible.payers');
+  g.wire('payers.object', 'task.options', 'payerChoices.object');
+  g.wire('payerChoices.value', 'noPayers.value');
+  g.wire('noPayers.result', 'visible.condition');
   g.wire('choices.then', 'task.exec');
   g.wire('visible.result', 'task.visible');
-  g.wire('defaults.result', 'task.defaults');
+  g.wire('defaults.object', 'task.defaults');
   assigned(g, 'task');
   g.wire('task.post', 'fromPayer.exec');
   g.wire('task.kind', 'routed.kind');

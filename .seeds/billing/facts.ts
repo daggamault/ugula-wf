@@ -7,7 +7,6 @@ import {
   asStage,
   d,
   exit,
-  expr,
   field,
   is,
   P,
@@ -360,13 +359,8 @@ const mapEncounterFacts = (): GraphDef => {
   g.add('clinical', 'billing.clinical-facts', { label: 'Clinical Facts' });
   g.add('documentation', 'billing.documentation-facts', { label: 'Documentation Facts' });
   g.add('coverages', 'billing.coverages-from-pcr', { label: 'Reported Coverages' });
-  g.add('destinationName', 'std.expr', expr('Destination Name', 'locations?.destination?.name'));
-  g.add('destinationState', 'std.expr', expr('Destination State', 'locations?.destination?.state'));
-  g.add(
-    'destinationZip',
-    'std.expr',
-    expr('Destination ZIP Code', 'locations?.destination?.postalCode')
-  );
+  g.add('places', 'billing.location-facts.break', { label: 'Pickup and Destination' });
+  g.add('destination', 'billing.location.break', { label: 'Destination' });
   g.add('hospital', 'billing.find-hospital', { label: 'Destination Hospital' });
   g.add('keepHospital', 'std.var.set', {
     label: 'The Destination Is a Hospital',
@@ -377,14 +371,10 @@ const mapEncounterFacts = (): GraphDef => {
     label: 'Destination Hospital',
     config: { name: 'destinationHospital' }
   });
-  g.add(
-    'locationFacts',
-    'std.expr',
-    expr(
-      'Locations With the Hospital',
-      'merge(locations, { destinationHospital: destinationHospital })'
-    )
-  );
+  g.add('locationFacts', 'std.object.set-field', {
+    label: 'Locations With the Hospital',
+    config: { record: T.locations, path: 'destinationHospital' }
+  });
   g.add('facts', 'billing.encounter-facts.make');
   g.add('agency', 'billing.agency-facts', { label: 'Agency Facts' });
   g.ret('done');
@@ -392,17 +382,12 @@ const mapEncounterFacts = (): GraphDef => {
   g.wire('hospital.found', 'keepHospital.exec');
   g.wire('hospital.notFound', 'done.exec');
   g.wire('keepHospital.then', 'done.exec');
-  g.wire(
-    'locations.locations',
-    'destinationName.locations',
-    'destinationState.locations',
-    'destinationZip.locations',
-    'locationFacts.locations'
-  );
-  g.wire('destinationName.result', 'hospital.name');
-  g.wire('destinationState.result', 'hospital.state');
-  g.wire('destinationZip.result', 'hospital.postalCode');
-  g.wire('isHospital.value', 'locationFacts.destinationHospital');
+  g.wire('locations.locations', 'places.locations', 'locationFacts.record');
+  g.wire('places.destination', 'destination.location');
+  g.wire('destination.name', 'hospital.name');
+  g.wire('destination.state', 'hospital.state');
+  g.wire('destination.postalCode', 'hospital.postalCode');
+  g.wire('isHospital.value', 'locationFacts.value');
   g.wire(
     'entry.pcr',
     'pcr.pcr',
@@ -416,7 +401,7 @@ const mapEncounterFacts = (): GraphDef => {
   );
   g.wire('pcr.payment', 'payment.payment');
   g.wire('trip.trip', 'facts.trip');
-  g.wire('locationFacts.result', 'facts.locations');
+  g.wire('locationFacts.record', 'facts.locations');
   g.wire('patient.demographics', 'facts.patient');
   g.wire('clinical.clinical', 'facts.clinical');
   g.wire('documentation.documentation', 'facts.documentation');

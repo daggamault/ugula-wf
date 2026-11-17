@@ -5,29 +5,86 @@ import {
   asRule,
   asWorkflow,
   atMost,
+  type Builder,
   below,
   d,
-  expr,
   field,
   is,
-  named,
   oneOf,
   P,
   rule,
   shared,
-  summarize,
   T,
-  table
+  table,
+  template
 } from './shared.ts';
 
-const REMINDER_SUMMARY = `kind == 'pcs'
-  ? "The patient's physician certification expires" + (${named('dueOn', 'null')} != null ? ' on ' + dueOn : '') +
-    '; get a new one before the next scheduled trip'
-  : kind == 'timelyFiling'
-    ? (${named('dueOn', 'null')} != null && dueOn < date(now())
-      ? 'The filing limit passed on ' + dueOn + '; file the claim with proof of timely filing or write it off'
-      : 'File this claim before its filing limit' + (${named('dueOn', 'null')} != null ? ' on ' + dueOn : ''))
-    : ${named('message', "'A deadline on this claim is near or has passed'")}`;
+const reminderSummary = (g: Builder) => {
+  g.add('dueDate', 'std.logic.choose', {
+    label: 'Due Date If Set',
+    config: { mode: 'first', type: 'string', count: 1 }
+  });
+  g.add('now', 'std.time.now', { label: 'Now' });
+  g.add('today', 'std.time.start-of', { label: 'Today', config: { unit: 'day' } });
+  g.add('daysLeft', 'std.time.difference', { label: 'Days Left', config: { unit: 'days' } });
+  g.add('passed', 'std.logic.condition', {
+    label: 'Filing Limit Passed',
+    config: {
+      inputs: [{ name: 'daysLeft', type: 'integer' }],
+      rules: [{ field: 'daysLeft', op: 'lt', value: 0 }]
+    }
+  });
+  const due = { dueOn: 'dueDate.value' } as const;
+  template(
+    g,
+    'pcsText',
+    'Certification Expires',
+    "The patient's physician certification expires[ on {dueOn}]; get a new one before the next scheduled trip",
+    due
+  );
+  template(
+    g,
+    'passedText',
+    'Filing Limit Passed Text',
+    'The filing limit passed on {dueOn}; file the claim with proof of timely filing or write it off',
+    due
+  );
+  template(
+    g,
+    'fileText',
+    'File Before the Limit',
+    'File this claim before its filing limit[ on {dueOn}]',
+    due
+  );
+  g.add('filingText', 'std.logic.select', { label: 'Passed or Coming Up' });
+  g.add('otherText', 'std.logic.choose', {
+    label: 'Message, Else Near or Passed',
+    config: { mode: 'first', type: 'string', count: 2 },
+    values: { option2: 'A deadline on this claim is near or has passed' }
+  });
+  g.add('remindSummary', 'std.logic.choose', {
+    label: 'Task Summary',
+    config: {
+      mode: 'byCase',
+      type: 'string',
+      cases: [{ when: 'pcs' }, { when: 'timelyFiling' }]
+    }
+  });
+  g.wire('entry.dueOn', 'dueDate.option1');
+  g.wire('now.now', 'today.time');
+  g.wire('today.time', 'daysLeft.start');
+  g.wire('dueDate.value', 'daysLeft.end');
+  g.wire('daysLeft.amount', 'passed.daysLeft');
+  g.wire('passed.result', 'filingText.condition');
+  g.wire('passedText.text', 'filingText.whenTrue');
+  g.wire('fileText.text', 'filingText.whenFalse');
+  g.wire('entry.message', 'otherText.option1');
+  g.wire('entry.kind', 'remindSummary.key');
+  g.wire('pcsText.text', 'remindSummary.case1');
+  g.wire('filingText.result', 'remindSummary.case2');
+  g.wire('otherText.value', 'remindSummary.otherwise');
+  g.wire('remindSummary.value', 'remind.summary');
+};
 
 const TASK_KINDS = ['appeal', 'records', 'refund', 'task'];
 
@@ -115,17 +172,18 @@ const deadlineAction = (): GraphDef => {
       )
     )
   });
-  g.add(
-    'message',
-    'std.expr',
-    expr('Message With Date', 'replace(message ?? "", "{dueOn}", dueOn)')
-  );
+  g.add('pattern', 'std.logic.coalesce', { label: 'Message or Nothing', values: { fallback: '' } });
+  g.add('message', 'std.text.replace', {
+    label: 'Message With Date',
+    values: { find: '{dueOn}' }
+  });
   g.ret('return');
   g.wire('entry.deadline', 'deadline.deadline');
   for (const f of ['kind', 'daysLeft', 'priority', 'reminded'])
     g.wire(`deadline.${f}`, `decide.${f}`);
-  g.wire('deadline.dueOn', 'message.dueOn');
-  g.wire('decide.message', 'message.message');
+  g.wire('deadline.dueOn', 'message.replacement');
+  g.wire('decide.message', 'pattern.value');
+  g.wire('pattern.result', 'message.text');
   g.wire('decide.action', 'return.action');
   g.wire('decide.priority', 'return.priority');
   g.wire('message.result', 'return.message');
@@ -146,11 +204,18 @@ const watchDeadlines = (): GraphDef => {
   g.add('route', 'std.flow.switch', { label: 'By Action', config: { cases: ['raise', 'remind'] } });
   g.add('taskId', 'std.object.get', { label: 'Open Task', values: { path: 'taskId' } });
   g.add('raise', 'billing.raise-task', { label: 'Raise Task Priority' });
-  g.add('reminder', 'std.expr', {
+  g.add('deadline', 'billing.deadline.break', { label: 'Deadline' });
+  g.add('reminder', 'std.object.make', {
     label: 'Reminder Inputs',
     config: {
-      expression:
-        '{ claimId: deadline.claimId, kind: deadline.kind, dueOn: deadline.dueOn, reference: deadline.reference, message: message, priority: priority }'
+      fields: [
+        { name: 'claimId', type: { id: 'claim' } },
+        { name: 'kind', type: 'string' },
+        { name: 'dueOn', type: 'string' },
+        { name: 'reference', type: 'string' },
+        { name: 'message', type: 'string' },
+        { name: 'priority', type: 'integer' }
+      ]
     }
   });
   g.add('remind', 'std.flow.start-workflow', {
@@ -163,14 +228,16 @@ const watchDeadlines = (): GraphDef => {
   g.wire('find.then', 'each.exec');
   g.wire('find.deadlines', 'each.list', 'count.list');
   g.wire('each.body', 'route.exec');
-  g.wire('each.item', 'act.deadline', 'taskId.object', 'reminder.deadline');
+  g.wire('each.item', 'act.deadline', 'taskId.object', 'deadline.deadline');
+  for (const pin of ['claimId', 'kind', 'dueOn', 'reference'])
+    g.wire(`deadline.${pin}`, `reminder.${pin}`);
   g.wire('act.action', 'route.value');
   g.wire('route.raise', 'raise.exec');
   g.wire('taskId.value', 'raise.taskId');
   g.wire('act.priority', 'raise.priority', 'reminder.priority');
   g.wire('act.message', 'reminder.message');
   g.wire('route.remind', 'remind.exec');
-  g.wire('reminder.result', 'remind.inputs');
+  g.wire('reminder.object', 'remind.inputs');
   g.wire('each.completed', 'return.exec');
   g.wire('count.length', 'return.checked');
   return g.def;
@@ -191,11 +258,16 @@ const deadlineReminder = (): GraphDef => {
     outputs: []
   });
   g.add('follow', 'billing.follow-claim', { label: 'Show on the Claim' });
-  g.add(
-    'details',
-    'std.expr',
-    expr('Deadline Details', '{ deadline: kind, dueOn: dueOn, message: message }')
-  );
+  g.add('details', 'std.object.make', {
+    label: 'Deadline Details',
+    config: {
+      fields: [
+        { name: 'deadline', type: 'string' },
+        { name: 'dueOn', type: 'string' },
+        { name: 'message', type: 'string' }
+      ]
+    }
+  });
   g.add('remind', 'std.human.task', {
     label: 'Deadline Coming Up',
     config: {
@@ -210,17 +282,13 @@ const deadlineReminder = (): GraphDef => {
   g.ret('done');
   g.wire('entry.exec', 'follow.exec');
   g.wire('entry.claimId', 'follow.claimId');
-  g.wire('entry.kind', 'details.kind');
+  g.wire('entry.kind', 'details.deadline');
   g.wire('entry.dueOn', 'details.dueOn', 'remind.due');
   g.wire('entry.message', 'details.message');
   g.wire('entry.reference', 'remind.subject');
   g.wire('entry.priority', 'remind.priority');
-  g.wire('details.result', 'remind.context');
-  summarize(g, 'remind', REMINDER_SUMMARY, {
-    kind: 'entry.kind',
-    dueOn: 'entry.dueOn',
-    message: 'entry.message'
-  });
+  g.wire('details.object', 'remind.context');
+  reminderSummary(g);
   g.wire('follow.then', 'remind.exec');
   g.wire('remind.done', 'done.exec');
   return g.def;
@@ -237,17 +305,24 @@ const invoiceFacilities = (): GraphDef => {
     ]
   });
   g.add('today', 'billing.agency-today', { label: 'Agency Today' });
-  g.add(
-    'period',
-    'std.expr',
-    expr('Last Month', 'substr(addDays(substr(today, 0, 8) + "01", -1), 0, 8) + "01"')
-  );
+  g.add('thisMonth', 'std.time.start-of', {
+    label: 'Start of This Month',
+    config: { unit: 'month' }
+  });
+  g.add('lastMonth', 'std.time.add', {
+    label: 'Start of Last Month',
+    config: { unit: 'months' },
+    values: { amount: -1 }
+  });
+  g.add('period', 'std.time.parts', { label: 'Last Month' });
   g.add('issue', 'billing.issue-facility-invoices', { label: 'Issue Facility Invoices' });
   g.ret('return');
   g.wire('entry.exec', 'today.exec');
   g.wire('today.then', 'issue.exec');
-  g.wire('today.today', 'period.today');
-  g.wire('period.result', 'issue.period');
+  g.wire('today.today', 'thisMonth.time');
+  g.wire('thisMonth.time', 'lastMonth.time');
+  g.wire('lastMonth.time', 'period.time');
+  g.wire('period.date', 'issue.period');
   g.wire('issue.then', 'return.exec');
   g.wire('issue.invoices', 'return.invoices');
   g.wire('issue.claims', 'return.claims');

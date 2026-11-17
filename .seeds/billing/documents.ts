@@ -14,22 +14,22 @@ import {
   asWorkflow,
   d,
   exit,
-  expr,
   field,
   is,
-  named,
   P,
   rule,
   shared,
   stage,
-  summarize,
+  summary,
   T,
-  table
+  table,
+  template
 } from './shared.ts';
 
-const CHASE_SUMMARY = `(problem != null ? 'Not saved: ' + problem + '. ' : '') + (kind != null ? labels[kind] ?? kind : 'A document') + ' is missing from this claim' +
-  (${named('note', 'null')} != null ? ' (' + note + ')' : '') +
-  '; get it, upload it here and mark it received'`;
+const DOCUMENT_NAMES = {
+  type: 'string',
+  rows: Object.entries(DOCUMENT_KINDS).map(([key, value]) => ({ key, value }))
+};
 
 const DOCUMENT_IN = d('document', T.document, 'Document', 'The document uploaded to the claim.');
 
@@ -100,21 +100,23 @@ const documentFacts = (): GraphDef => {
       )
     )
   });
-  g.add(
-    'pcsSignedOn',
-    'std.expr',
-    expr('Certification Date', "datedAs == 'pcs' ? signedOn : null")
-  );
-  g.add('abnSignedOn', 'std.expr', expr('ABN Date', "datedAs == 'abn' ? signedOn : null"));
+  g.add('pcsSignedOn', 'std.logic.choose', {
+    label: 'Certification Date',
+    config: { mode: 'byCase', type: 'string', cases: [{ when: 'pcs' }] }
+  });
+  g.add('abnSignedOn', 'std.logic.choose', {
+    label: 'ABN Date',
+    config: { mode: 'byCase', type: 'string', cases: [{ when: 'abn' }] }
+  });
   g.ret('return');
   g.wire('entry.document', 'document.document');
   g.wire('document.kind', 'decide.kind');
-  g.wire('document.signedOn', 'pcsSignedOn.signedOn', 'abnSignedOn.signedOn');
-  g.wire('decide.datedAs', 'pcsSignedOn.datedAs', 'abnSignedOn.datedAs');
+  g.wire('document.signedOn', 'pcsSignedOn.case1', 'abnSignedOn.case1');
+  g.wire('decide.datedAs', 'pcsSignedOn.key', 'abnSignedOn.key');
   for (const pin of ['pcsOnFile', 'abnOnFile', 'signature'])
     g.wire(`decide.${pin}`, `return.${pin}`);
-  g.wire('pcsSignedOn.result', 'return.pcsSignedOn');
-  g.wire('abnSignedOn.result', 'return.abnSignedOn');
+  g.wire('pcsSignedOn.value', 'return.pcsSignedOn');
+  g.wire('abnSignedOn.value', 'return.abnSignedOn');
   g.wire('decide.matched', 'return.changes');
   g.wire('decide.rules', 'return.reasons');
   return g.def;
@@ -132,23 +134,28 @@ const recordDocument = (): GraphDef => {
   g.add('read', 'billing.read-claim-document', { label: 'Read Claim Document' });
   g.add('facts', 'billing.document-facts', { label: 'Document Facts' });
   g.add('records', 'std.flow.branch', { label: 'Records Anything?' });
-  g.add('labels', 'std.expr', {
-    ...expr('Document Note', "'Document received: ' + (labels[document.kind] ?? document.kind)"),
-    values: { labels: DOCUMENT_KINDS }
+  g.add('document', 'billing.claim-document.break', { label: 'Claim Document' });
+  g.add('kindName', 'std.table.lookup', { label: 'Document Name', config: DOCUMENT_NAMES });
+  g.add('name', 'std.logic.choose', {
+    label: 'Name, Else Kind',
+    config: { mode: 'first', type: 'string', count: 2 }
   });
+  template(g, 'labels', 'Document Note', 'Document received: {name}', { name: 'name.value' });
   g.add('patch', 'billing.patch-claim', { label: 'Record the Document' });
   g.add('check', 'billing.check-claim', { label: 'Check Claim Again' });
   g.ret('done', 'done');
   g.wire('entry.exec', 'read.exec');
   g.wire('entry.claimId', 'read.claimId', 'patch.claimId', 'check.claimId');
   g.wire('entry.documentId', 'read.documentId');
-  g.wire('read.document', 'facts.document', 'labels.document');
+  g.wire('read.document', 'facts.document', 'document.document');
+  g.wire('document.kind', 'kindName.key', 'name.option2');
+  g.wire('kindName.value', 'name.option1');
   g.wire('read.then', 'records.exec');
   g.wire('facts.changes', 'records.condition');
   g.wire('records.true', 'patch.exec');
   g.wire('records.false', 'check.exec');
   for (const pin of DOCUMENTED) g.wire(`facts.${pin}`, `patch.${pin}`);
-  g.wire('labels.result', 'patch.note');
+  g.wire('labels.text', 'patch.note');
   g.wire('patch.then', 'check.exec');
   g.wire('check.valid', 'done.exec');
   g.wire('check.invalid', 'done.exec');
@@ -161,7 +168,7 @@ const receiveDocument = (): GraphDef => {
   claimSummary(
     g,
     'task',
-    '"Upload a document for claim " + reference + "; what it records is put on the claim and the claim is checked again."',
+    'Upload a document for claim {reference}; what it records is put on the claim and the claim is checked again.',
     true
   );
   g.add('task', 'std.human.task', {
@@ -247,7 +254,7 @@ const chaseDocument = (): GraphDef => {
   claimSummary(
     g,
     'ask',
-    "'Start chasing a document claim ' + reference + ' is missing, due by the days its kind allows'"
+    'Start chasing a document claim {reference} is missing, due by the days its kind allows'
   );
   g.wire('entry.assignee', 'ask.assignee');
   g.wire('ledger.reference', 'ask.subject', 'task.subject');
@@ -260,17 +267,31 @@ const chaseDocument = (): GraphDef => {
       { type: 'integer', rows: CHASE_DAYS, fallback: 7 }
     )
   });
-  g.add('due', 'std.expr', expr('Due At', 'addDays(now(), days)'));
-  g.add('context', 'std.expr', {
-    ...expr(
-      'Chase Context',
-      '{ document: labels[kind] ?? kind, note: note, onFile: contains(documents ?? [], kind) }'
-    ),
-    values: { labels: DOCUMENT_KINDS }
+  g.add('now', 'std.time.now', { label: 'Now' });
+  g.add('due', 'std.time.add', { label: 'Due At', config: { unit: 'days' } });
+  g.add('kindName', 'std.table.lookup', { label: 'Document Name', config: DOCUMENT_NAMES });
+  g.add('document', 'std.logic.choose', {
+    label: 'Name, Else Kind',
+    config: { mode: 'first', type: 'string', count: 2 }
+  });
+  g.add('context', 'std.object.make', {
+    label: 'Chase Context',
+    config: {
+      fields: [
+        { name: 'document', type: 'string' },
+        { name: 'note', type: 'string' },
+        { name: 'onFile', type: 'boolean' }
+      ]
+    }
   });
   g.add('read', 'billing.read-claim-checks', { label: 'Documents on File' });
   g.add('facts', 'billing.check-facts.break');
-  g.add('onFile', 'std.expr', expr('Is It on File?', 'contains(documents ?? [], kind)'));
+  g.add('onFile', 'std.list.contains', { label: 'Is It on File' });
+  g.add('described', 'std.logic.choose', {
+    label: 'Document, Else Any Document',
+    config: { mode: 'first', type: 'string', count: 2 },
+    values: { option2: 'A document' }
+  });
   g.add('received', 'std.flow.branch', { label: 'Received?' });
   g.add('task', 'std.human.task', {
     label: 'Chase Document',
@@ -289,7 +310,13 @@ const chaseDocument = (): GraphDef => {
     }
   });
   g.add('problem', 'std.var.get', { label: 'Why It Was Refused', config: { name: 'problem' } });
-  g.add('uploaded', 'std.expr', expr('File Uploaded?', 'file != null'));
+  g.add('uploaded', 'std.logic.condition', {
+    label: 'File Uploaded',
+    config: {
+      inputs: [{ name: 'file', type: T.blob }],
+      rules: [{ field: 'file', op: 'present' }]
+    }
+  });
   g.add('withFile', 'std.flow.branch', { label: 'With a File?' });
   g.add('add', 'billing.add-claim-document', { label: 'Add Claim Document' });
   g.add('remember', 'std.var.set', { label: 'Remember Why', config: { name: 'problem' } });
@@ -298,23 +325,26 @@ const chaseDocument = (): GraphDef => {
   g.wire('ask.chase', 'read.exec');
   g.wire('ask.cancel', 'done.exec');
   g.wire('entry.claimId', 'read.claimId', 'add.claimId');
-  g.wire('ask.kind', 'days.key', 'context.kind', 'onFile.kind', 'add.kind');
+  g.wire('ask.kind', 'days.key', 'kindName.key', 'document.option2', 'onFile.item', 'add.kind');
+  g.wire('kindName.value', 'document.option1');
+  g.wire('document.value', 'context.document', 'described.option1');
   g.wire('ask.note', 'context.note');
-  g.wire('days.value', 'due.days');
+  g.wire('now.now', 'due.time');
+  g.wire('days.value', 'due.amount');
   g.wire('read.facts', 'facts.facts');
-  g.wire('facts.documents', 'onFile.documents', 'context.documents');
+  g.wire('facts.documents', 'onFile.list');
+  g.wire('onFile.result', 'context.onFile');
   g.wire('read.then', 'received.exec');
   g.wire('onFile.result', 'received.condition');
   g.wire('received.true', 'done.exec');
   g.wire('received.false', 'task.exec');
-  g.wire('due.result', 'task.due');
-  g.wire('context.result', 'task.context');
-  summarize(
+  g.wire('due.time', 'task.due');
+  g.wire('context.object', 'task.context');
+  summary(
     g,
     'task',
-    CHASE_SUMMARY,
-    { kind: 'ask.kind', note: 'ask.note', problem: 'problem.value' },
-    { labels: DOCUMENT_KINDS }
+    '[Not saved: {problem}. ]{document} is missing from this claim[ ({note})]; get it, upload it here and mark it received',
+    { document: 'described.value', note: 'ask.note', problem: 'problem.value' }
   );
   g.wire('task.received', 'withFile.exec');
   g.wire('task.file', 'uploaded.file', 'add.file');

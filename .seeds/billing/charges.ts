@@ -9,7 +9,6 @@ import {
   CHARGE_LINES,
   d,
   exit,
-  expr,
   FEES,
   field,
   is,
@@ -18,9 +17,9 @@ import {
   rule,
   shared,
   stage,
-  summarize,
   T,
-  table
+  table,
+  template
 } from './shared.ts';
 
 const NO_TRANSPORT = ['treatNoTransport', 'refusal'];
@@ -129,14 +128,12 @@ const mileageLines = (): GraphDef => {
       )
     )
   });
-  g.add(
-    'covered',
-    'std.expr',
-    expr(
-      'Loaded Miles Less Non-Covered Miles',
-      'loadedMiles == null ? null : round(loadedMiles - (nonCoveredMiles ?? 0), 2)'
-    )
-  );
+  g.add('nonCoveredOrZero', 'std.logic.coalesce', {
+    label: 'Non-Covered Miles or 0',
+    values: { fallback: 0 }
+  });
+  g.add('less', 'std.math.subtract', { label: 'Loaded Miles Less Non-Covered Miles' });
+  g.add('covered', 'std.math.round', { label: 'Covered Miles', values: { digits: 2 } });
   g.add('miles', 'std.logic.coalesce', { label: 'Covered Miles or 0', values: { fallback: 0 } });
   g.add('line', 'billing.line.make', { label: 'Mileage Line' });
   g.add('keep', 'std.logic.select', { label: 'Only When Miles Are Billed' });
@@ -172,8 +169,10 @@ const mileageLines = (): GraphDef => {
   g.ret('return');
   g.wire('entry.service', 'service.service');
   g.wire('entry.classification', 'mileage.classification', 'nonCovered.classification');
-  g.wire('service.loadedMiles', 'covered.loadedMiles');
-  g.wire('service.nonCoveredMiles', 'covered.nonCoveredMiles', 'nonCovered.nonCoveredMiles');
+  g.wire('service.loadedMiles', 'less.a');
+  g.wire('service.nonCoveredMiles', 'nonCoveredOrZero.value', 'nonCovered.nonCoveredMiles');
+  g.wire('nonCoveredOrZero.result', 'less.b');
+  g.wire('less.result', 'covered.value');
   g.wire('service.nonCoveredMiles', 'excess.units');
   g.wire('covered.result', 'mileage.loadedMiles', 'miles.value');
   g.wire('mileage.code', 'line.code');
@@ -228,43 +227,91 @@ const pricePrecedence = (): GraphDef => {
       P.reasons('each code got its price')
     ]
   );
-  g.add(
-    'fees',
-    'std.expr',
-    expr(
-      'Claim, Else Payer, Else Default',
-      'merge(defaultFees ?? {}, payerFees ?? {}, claimFees ?? {})'
-    )
-  );
-  g.add(
-    'reasons',
-    'std.expr',
-    expr(
-      'Where Each Price Came From',
-      "map(keys(fees), c => c + ': ' + (has(claimFees ?? {}, c) ? 'set for this claim' : has(payerFees ?? {}, c) ? 'payer fee schedule' : 'default fee schedule'))"
-    )
-  );
+  const none = { values: { fallback: {} } };
+  g.add('defaults', 'std.logic.coalesce', { label: 'Default Prices or None', ...none });
+  g.add('payer', 'std.logic.coalesce', { label: 'Payer Prices or None', ...none });
+  g.add('claim', 'std.logic.coalesce', { label: 'Claim Prices or None', ...none });
+  g.add('payerOverDefault', 'std.object.merge', { label: 'Payer, Else Default' });
+  g.add('fees', 'std.object.merge', { label: 'Claim, Else Payer, Else Default' });
+  g.add('codes', 'std.object.keys', { label: 'Codes Priced' });
+  g.add('reasons', 'std.list.map-rule', {
+    label: 'Where Each Price Came From',
+    config: { rule: 'billing.price-source', version: 1, item: 'code' }
+  });
   g.ret('return');
-  for (const pin of ['claimFees', 'payerFees', 'defaultFees']) {
-    g.wire(`entry.${pin}`, `fees.${pin}`);
-  }
-  g.wire('entry.claimFees', 'reasons.claimFees');
-  g.wire('entry.payerFees', 'reasons.payerFees');
-  g.wire('fees.result', 'reasons.fees', 'return.fees');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('entry.defaultFees', 'defaults.value');
+  g.wire('entry.payerFees', 'payer.value', 'reasons.payerFees');
+  g.wire('entry.claimFees', 'claim.value', 'reasons.claimFees');
+  g.wire('defaults.result', 'payerOverDefault.a');
+  g.wire('payer.result', 'payerOverDefault.b');
+  g.wire('payerOverDefault.object', 'fees.a');
+  g.wire('claim.result', 'fees.b');
+  g.wire('fees.object', 'codes.object', 'return.fees');
+  g.wire('codes.keys', 'reasons.list');
+  g.wire('reasons.reason', 'return.reasons');
   return g.def;
 };
 
-const SET_CHARGE_CONTEXT = `{
-  codes: map(missing, c => labels[c] == null ? c : labels[c] + ' (' + c + ')'),
-  primaryPayer: payerId == null ? 'No directory payer, so the default fee schedule' : payerId,
-  claim: context
-}`;
+const priceSource = (): GraphDef => {
+  const g = rule(
+    [
+      d('code', 'string', 'Code', 'The HCPCS code priced.'),
+      d('claimFees', FEES, 'Claim Prices', 'Unit prices a biller set for this claim.', true),
+      d('payerFees', FEES, 'Payer Prices', "The primary payer's fee schedule.", true)
+    ],
+    [d('reason', 'string', 'Price Source', 'The code and where its price came from.')]
+  );
+  g.add('onClaim', 'std.object.has', { label: 'Set for This Claim' });
+  g.add('onPayer', 'std.object.has', { label: 'On the Payer Schedule' });
+  g.add('payerOrDefault', 'std.logic.select', {
+    label: 'Payer, Else Default Schedule',
+    values: { whenTrue: 'payer fee schedule', whenFalse: 'default fee schedule' }
+  });
+  g.add('source', 'std.logic.select', {
+    label: 'Where the Price Came From',
+    values: { whenTrue: 'set for this claim' }
+  });
+  template(g, 'reason', 'Code and Source', '{code}: {source}', {
+    code: 'entry.code',
+    source: 'source.result'
+  });
+  g.ret('return');
+  g.wire('entry.claimFees', 'onClaim.object');
+  g.wire('entry.payerFees', 'onPayer.object');
+  g.wire('entry.code', 'onClaim.key', 'onPayer.key');
+  g.wire('onPayer.result', 'payerOrDefault.condition');
+  g.wire('onClaim.result', 'source.condition');
+  g.wire('payerOrDefault.result', 'source.whenFalse');
+  g.wire('reason.text', 'return.reason');
+  return g.def;
+};
 
-const SET_CHARGE_SUMMARY = `len(missing ?? []) == 0
-  ? 'A code on this claim has no price; enter its unit price or void the claim'
-  : 'No fee schedule prices ' + join(map(missing, c => labels[c] == null ? c : labels[c] + ' (' + c + ')'), '; ') +
-    (len(missing) == 1 ? '; enter its unit price' : '; enter their unit prices') + ' or void the claim'`;
+const chargeCodeText = (): GraphDef => {
+  const g = rule(
+    [d('code', { code: 'hcpcs' }, 'HCPCS Code', 'The code to name.')],
+    [d('text', 'string', 'Code Text', 'The meaning of the code with the code, or the code.')]
+  );
+  g.add('meaning', 'std.table.lookup', {
+    label: 'HCPCS Meaning',
+    config: {
+      type: 'string',
+      rows: Object.entries(hcpcsDescriptions()).map(([key, value]) => ({ key, value }))
+    }
+  });
+  template(g, 'described', 'Meaning (Code)', '[{meaning} ({code})]', {
+    meaning: 'meaning.value',
+    code: 'entry.code'
+  });
+  g.add('text', 'std.logic.choose', {
+    label: 'Meaning (Code), Else Code',
+    config: { mode: 'first', type: 'string', count: 2 }
+  });
+  g.ret('return');
+  g.wire('entry.code', 'meaning.key', 'text.option2');
+  g.wire('described.text', 'text.option1');
+  g.wire('text.value', 'return.text');
+  return g.def;
+};
 
 const PRICED_OUT = [
   d('lines', T.lines, 'Priced Lines', 'The lines with unit prices and totals.', true),
@@ -303,12 +350,50 @@ const priceCharges = (): GraphDef => {
   g.add('missingCount', 'std.list.length', { label: 'Codes Without a Price' });
   g.add('allPriced', 'std.logic.equal', { label: 'None Missing', values: { b: 0 } });
   g.add('check', 'std.flow.branch', { label: 'Every Code Priced?' });
-  g.add('setContext', 'std.expr', {
-    ...expr('Missing Fees', SET_CHARGE_CONTEXT),
-    values: { labels: hcpcsDescriptions() }
+  g.add('codeTexts', 'std.list.map-rule', {
+    label: 'Codes Named',
+    config: { rule: 'billing.charge-code-text', version: 1, item: 'code' }
   });
-  g.add('codeChoices', 'std.expr', expr('Codes Without a Fee', '{ code: missing }'));
-  g.add('firstCode', 'std.expr', expr('First Code', '{ code: missing[0] }'));
+  g.add('primaryPayer', 'std.logic.choose', {
+    label: 'Primary Payer, Else Default Schedule',
+    config: { mode: 'first', type: 'any', count: 2 },
+    values: { option2: 'No directory payer, so the default fee schedule' }
+  });
+  g.add('setContext', 'std.object.make', {
+    label: 'Missing Fees',
+    config: {
+      fields: [
+        { name: 'codes', type: { list: 'string' } },
+        { name: 'primaryPayer', type: 'any' },
+        { name: 'claim', type: 'any' }
+      ]
+    }
+  });
+  g.add('codeChoices', 'std.object.make', {
+    label: 'Codes Without a Fee',
+    config: { fields: [{ name: 'code', type: { list: { code: 'hcpcs' } } }] }
+  });
+  g.add('missingFirst', 'std.list.first', { label: 'First Code Without a Fee' });
+  g.add('firstCode', 'std.object.make', {
+    label: 'First Code',
+    config: { fields: [{ name: 'code', type: { code: 'hcpcs' } }] }
+  });
+  g.add('codeList', 'std.text.join', { label: 'Codes Listed', values: { separator: '; ' } });
+  g.add('several', 'std.text.template', {
+    label: 'Several Codes Unpriced',
+    config: {
+      template: 'No fee schedule prices {codes}; enter their unit prices or void the claim'
+    }
+  });
+  g.add('one', 'std.text.template', {
+    label: 'One Code Unpriced',
+    config: { template: 'No fee schedule prices {codes}; enter its unit price or void the claim' }
+  });
+  g.add('setChargeSummary', 'std.logic.choose', {
+    label: 'Task Summary',
+    config: { mode: 'byCase', type: 'string', cases: [{ when: '0' }, { when: '1' }] },
+    values: { case1: 'A code on this claim has no price; enter its unit price or void the claim' }
+  });
   g.add('setCharge', 'std.human.task', {
     label: 'Set Charge',
     config: {
@@ -342,7 +427,7 @@ const priceCharges = (): GraphDef => {
   g.ret('voidedDone', 'voided');
   g.wire('entry.exec', 'find.exec');
   g.wire('entry.lines', 'find.lines', 'price.lines');
-  g.wire('entry.payerId', 'find.payerId', 'setContext.payerId');
+  g.wire('entry.payerId', 'find.payerId', 'primaryPayer.option1');
   g.wire('claimFees.value', 'precedence.claimFees', 'setFee.fees');
   g.wire('find.payerFees', 'precedence.payerFees');
   g.wire('find.defaultFees', 'precedence.defaultFees');
@@ -355,19 +440,20 @@ const priceCharges = (): GraphDef => {
   g.wire('price.lines', 'pricedDone.lines');
   g.wire('price.totalCents', 'pricedDone.totalCents');
   g.wire('check.false', 'setCharge.exec');
-  g.wire('price.missing', 'setContext.missing', 'codeChoices.missing', 'firstCode.missing');
-  g.wire('entry.context', 'setContext.context');
-  g.wire('setContext.result', 'setCharge.context');
-  g.wire('codeChoices.result', 'setCharge.options');
-  g.wire('firstCode.result', 'setCharge.defaults');
+  g.wire('price.missing', 'codeTexts.list', 'codeChoices.code', 'missingFirst.list');
+  g.wire('codeTexts.text', 'setContext.codes', 'codeList.items');
+  g.wire('primaryPayer.value', 'setContext.primaryPayer');
+  g.wire('entry.context', 'setContext.claim');
+  g.wire('setContext.object', 'setCharge.context');
+  g.wire('codeChoices.object', 'setCharge.options');
+  g.wire('missingFirst.item', 'firstCode.code');
+  g.wire('firstCode.object', 'setCharge.defaults');
   g.wire('entry.subject', 'setCharge.subject');
-  summarize(
-    g,
-    'setCharge',
-    SET_CHARGE_SUMMARY,
-    { missing: 'price.missing' },
-    { labels: hcpcsDescriptions() }
-  );
+  g.wire('codeList.text', 'several.codes', 'one.codes');
+  g.wire('missingCount.length', 'setChargeSummary.key');
+  g.wire('one.text', 'setChargeSummary.case2');
+  g.wire('several.text', 'setChargeSummary.otherwise');
+  g.wire('setChargeSummary.value', 'setCharge.summary');
   g.wire('setCharge.price', 'setFee.exec');
   g.wire('setCharge.code', 'setFee.code');
   g.wire('setCharge.unitPrice', 'setFee.unitPrice');
@@ -536,10 +622,22 @@ export const chargeGraphs: SeedGraph[] = [
     mapCharges()
   ),
   asRule(
+    'billing.price-source',
+    'Price Source',
+    "Says where a code's unit price came from: set for this claim, the payer fee schedule or the default fee schedule.",
+    priceSource()
+  ),
+  asRule(
     'billing.price-precedence',
     'Price Precedence',
-    "Chooses each code's unit price: a price a biller set for this claim, else the primary payer's fee schedule, else the agency's default fee schedule.",
+    "Chooses each code's unit price: a price a biller set for this claim, else the primary payer's fee schedule, else the agency's default fee schedule, with where each came from (Price Source).",
     pricePrecedence()
+  ),
+  asRule(
+    'billing.charge-code-text',
+    'Charge Code Text',
+    'Names an HCPCS code as its meaning followed by the code in parentheses, or the code alone when its meaning is not known.',
+    chargeCodeText()
   ),
   asStage(
     'billing.price-charges',

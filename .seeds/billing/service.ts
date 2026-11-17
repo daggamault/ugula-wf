@@ -9,17 +9,15 @@ import {
   atLeast,
   d,
   exit,
-  expr,
   field,
   is,
-  named,
   notOneOf,
   oneOf,
   P,
   rule,
   shared,
   stage,
-  summarize,
+  summary,
   T,
   table
 } from './shared.ts';
@@ -194,31 +192,27 @@ const classifyTrip = (): GraphDef => {
   g.add('facts', 'billing.encounter-facts.break');
   g.add('base', 'billing.classification', { label: 'Classification' });
   g.add('agency', 'billing.agency-classification', { label: 'Agency Classification' });
-  g.add(
-    'reasons',
-    'std.expr',
-    expr(
-      'Reasons for the Classification Billed',
-      "classification == baseType ? reasons : [reason ?? 'Changed by an agency rule']"
-    )
-  );
+  g.add('unchanged', 'std.logic.equal', { label: 'Agency Kept the Classification' });
+  g.add('agencyReason', 'std.logic.coalesce', {
+    label: 'Agency Reason, Else Changed by a Rule',
+    values: { fallback: 'Changed by an agency rule' }
+  });
+  g.add('agencyReasons', 'std.list.append', { label: 'As a List' });
+  g.add('reasons', 'std.logic.select', { label: 'Reasons for the Classification Billed' });
   g.ret('return');
   g.wire('entry.facts', 'facts.facts', 'agency.facts');
   g.wire('facts.trip', 'base.trip');
-  g.wire('base.classification', 'agency.classification', 'reasons.baseType');
+  g.wire('base.classification', 'agency.classification', 'unchanged.b');
   g.wire('base.reason', 'agency.reason');
-  g.wire('agency.classification', 'return.classification', 'reasons.classification');
-  g.wire('agency.reason', 'return.reason', 'reasons.reason');
-  g.wire('base.reasons', 'reasons.reasons');
+  g.wire('agency.classification', 'return.classification', 'unchanged.a');
+  g.wire('agency.reason', 'return.reason', 'agencyReason.value');
+  g.wire('agencyReason.result', 'agencyReasons.item');
+  g.wire('unchanged.result', 'reasons.condition');
+  g.wire('base.reasons', 'reasons.whenTrue');
+  g.wire('agencyReasons.list', 'reasons.whenFalse');
   g.wire('reasons.result', 'return.reasons');
   return g.def;
 };
-
-const tripContext = `{ trip: trip }`;
-
-const NOT_BILLABLE_SUMMARY = `'This trip was classified as not billable' +
-  (${named('reason', 'null')} != null ? ' (' + reason + ')' : '') +
-  '; confirm it and skip the claim, or classify it and make a claim if care was given'`;
 
 const decideClaim = (): GraphDef => {
   const g = stage([P.pcr(), P.facts()], [CLASSIFICATION_OUT, P.reason()], {
@@ -234,7 +228,10 @@ const decideClaim = (): GraphDef => {
     config: { cases: ['notBillable'] }
   });
   g.add('trip', 'billing.trip-summary', { label: 'Trip Summary' });
-  g.add('context', 'std.expr', expr('Trip Context', tripContext));
+  g.add('context', 'std.object.make', {
+    label: 'Trip Context',
+    config: { fields: [{ name: 'trip', type: { object: {} } }] }
+  });
   g.add('subject', 'billing.pcr-subject', { label: 'Task Subject' });
   g.add('notBillable', 'std.human.task', {
     label: 'Confirm Not Billable',
@@ -263,9 +260,14 @@ const decideClaim = (): GraphDef => {
   g.wire('trip.trip', 'context.trip');
   g.wire('needed.default', 'classified.exec');
   g.wire('needed.notBillable', 'notBillable.exec');
-  g.wire('context.result', 'notBillable.context');
+  g.wire('context.object', 'notBillable.context');
   g.wire('subject.subject', 'notBillable.subject');
-  summarize(g, 'notBillable', NOT_BILLABLE_SUMMARY, { reason: 'classify.reason' });
+  summary(
+    g,
+    'notBillable',
+    'This trip was classified as not billable[ ({reason})]; confirm it and skip the claim, or classify it and make a claim if care was given',
+    { reason: 'classify.reason' }
+  );
   g.wire('notBillable.claim', 'confirmed.exec');
   g.wire('notBillable.classification', 'confirmed.classification');
   g.wire('notBillable.skipClaim', 'skipped.exec');
@@ -596,14 +598,11 @@ const nonCoveredMiles = (): GraphDef => {
   g.add('facts', 'billing.encounter-facts.break');
   g.add('documentation', 'billing.documentation.break');
   g.add('reason', 'billing.transport-reason', { label: 'Transport Reason' });
-  g.add(
-    'excess',
-    'std.expr',
-    expr(
-      'Miles Past the Closest Hospital',
-      'loadedMiles == null || closest == null ? null : round(loadedMiles - closest, 2)'
-    )
-  );
+  g.add('beyond', 'std.math.subtract', { label: 'Loaded Miles Less Closest Hospital Miles' });
+  g.add('excess', 'std.math.round', {
+    label: 'Miles Past the Closest Hospital',
+    values: { digits: 2 }
+  });
   g.add('decide', 'std.table.decide', {
     label: 'Non-Covered Miles',
     config: shared.decision(
@@ -645,8 +644,9 @@ const nonCoveredMiles = (): GraphDef => {
   g.wire('entry.facts', 'facts.facts');
   g.wire('facts.documentation', 'documentation.documentation', 'reason.documentation');
   g.wire('facts.locations', 'reason.locations');
-  g.wire('entry.loadedMiles', 'excess.loadedMiles');
-  g.wire('documentation.closestFacilityMiles', 'excess.closest');
+  g.wire('entry.loadedMiles', 'beyond.a');
+  g.wire('documentation.closestFacilityMiles', 'beyond.b');
+  g.wire('beyond.result', 'excess.value');
   g.wire('reason.transportReason', 'decide.transportReason');
   g.add('locations', 'billing.location-facts.break');
   g.wire('facts.locations', 'locations.locations');
@@ -712,23 +712,46 @@ const deceasedHandling = (): GraphDef => {
       )
     )
   });
-  g.add(
-    'service',
-    'std.expr',
-    expr(
-      'BLS Without Miles When Pronounced Dead',
-      "deceased ? merge(service, { level: 'BLS', loadedMiles: null, nonCoveredMiles: null, deceased: true, basis: concat(service.basis ?? [], rules, ['Billed as BLS with QL and no mileage']) }) : merge(service, { deceased: false })"
-    )
-  );
+  g.add('suggested', 'billing.service.break', { label: 'Suggested Service' });
+  g.add('level', 'std.logic.select', {
+    label: 'BLS When Pronounced Dead',
+    values: { whenTrue: 'BLS' }
+  });
+  g.add('loadedMiles', 'std.logic.select', { label: 'No Loaded Miles When Pronounced Dead' });
+  g.add('nonCoveredMiles', 'std.logic.select', {
+    label: 'No Non-Covered Miles When Pronounced Dead'
+  });
+  g.add('withQl', 'std.list.join', {
+    label: 'Reasons With QL',
+    config: { count: 3, type: 'string' },
+    values: { list3: ['Billed as BLS with QL and no mileage'] }
+  });
+  g.add('basis', 'std.logic.select', { label: 'Reasons' });
+  g.add('service', 'billing.service.make', { label: 'BLS Without Miles When Pronounced Dead' });
   g.ret('return');
   g.wire('entry.trip', 'trip.trip');
   for (const pin of ['incidentDisposition', 'transportDisposition', 'arrestOutcome']) {
     g.wire(`trip.${pin}`, `decide.${pin}`);
   }
-  g.wire('entry.service', 'service.service');
-  g.wire('decide.deceased', 'service.deceased');
-  g.wire('decide.rules', 'service.rules');
-  g.wire('service.result', 'return.service');
+  g.wire('entry.service', 'suggested.service');
+  g.wire(
+    'decide.deceased',
+    'level.condition',
+    'loadedMiles.condition',
+    'nonCoveredMiles.condition',
+    'basis.condition',
+    'service.deceased'
+  );
+  g.wire('suggested.level', 'level.whenFalse');
+  g.wire('suggested.loadedMiles', 'loadedMiles.whenFalse');
+  g.wire('suggested.nonCoveredMiles', 'nonCoveredMiles.whenFalse');
+  g.wire('suggested.basis', 'withQl.list1', 'basis.whenFalse');
+  g.wire('decide.rules', 'withQl.list2');
+  g.wire('withQl.list', 'basis.whenTrue');
+  g.wire('suggested.emergency', 'service.emergency');
+  for (const pin of ['level', 'loadedMiles', 'nonCoveredMiles', 'basis'])
+    g.wire(`${pin}.result`, `service.${pin}`);
+  g.wire('service.service', 'return.service');
   return g.def;
 };
 
@@ -792,23 +815,26 @@ const determineService = (): GraphDef => {
     g.wire('entry.facts', `${id}.facts`);
     g.wire('entry.findings', `${id}.findings`);
   }
-  g.add(
-    'byTrip',
-    'std.expr',
-    expr(
-      'Service for the Classification',
-      '{ scheduled: scheduled, treatNoTransport: treatNoTransport, refusal: refusal }[classification] ?? emergency'
-    )
-  );
+  g.add('byTrip', 'std.logic.choose', {
+    label: 'Service for the Classification',
+    config: {
+      mode: 'byCase',
+      type: T.service,
+      cases: [{ when: 'scheduled' }, { when: 'treatNoTransport' }, { when: 'refusal' }]
+    }
+  });
   g.add('facts', 'billing.encounter-facts.break');
   g.add('deceased', 'billing.deceased-handling', { label: 'Deceased Handling (QL)' });
   g.add('agency', 'billing.agency-service', { label: 'Agency Service' });
   g.ret('return');
-  g.wire('entry.classification', 'byTrip.classification', 'agency.classification');
-  for (const [id] of TRIP_SERVICES) g.wire(`${id}.service`, `byTrip.${id}`);
+  g.wire('entry.classification', 'byTrip.key', 'agency.classification');
+  g.wire('scheduled.service', 'byTrip.case1');
+  g.wire('treatNoTransport.service', 'byTrip.case2');
+  g.wire('refusal.service', 'byTrip.case3');
+  g.wire('emergency.service', 'byTrip.otherwise');
   g.wire('entry.facts', 'facts.facts', 'agency.facts');
   g.wire('facts.trip', 'deceased.trip');
-  g.wire('byTrip.result', 'deceased.service');
+  g.wire('byTrip.value', 'deceased.service');
   g.wire('deceased.service', 'agency.service');
   g.wire('agency.service', 'return.service');
   return g.def;
