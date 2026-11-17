@@ -18,6 +18,25 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
 
+  pgweb:
+    image: sosedoff/pgweb:0.17.0
+    profiles: [tools]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - --bind=0.0.0.0
+      - --listen=8081
+      - --host=postgres
+      - --port=5432
+      - --user=${DB_USER:?DB_USER is required}
+      - --pass=${DB_PASSWORD:?DB_PASSWORD is required}
+      - --db=${DB_NAME:?DB_NAME is required}
+      - --ssl=disable
+    ports:
+      - "127.0.0.1:${DB_UI_PORT:?DB_UI_PORT is required}:8081"
+
   redis:
     image: redis:8.10.3-alpine
     restart: unless-stopped

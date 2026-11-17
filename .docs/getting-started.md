@@ -5,6 +5,7 @@ docker compose up -d       # Postgres, Redis, RustFS, SFTPGo, embeddings and com
 pnpm install
 pnpm db:reset              # schema and reference data from a cached template, billing graphs, dev user, agencies, fees, payers
 pnpm dev                   # api, worker, sse, web and the mock clearinghouse
+pnpm db:ui                 # browse the database at http://localhost:<DB_UI_PORT> (pgweb)
 ```
 
 Copy `.env.example` to `.env` first, and have Docker running. The clearinghouse connection and the mock clearinghouse `pnpm dev` starts are in [Clearinghouse](clearinghouse.md). Run `pnpm check`, `pnpm typecheck`, and `pnpm test` before committing, and `pnpm seed:check` after changing a seed graph or table: it validates every billing and dev graph and table without a database, as `db:seed` does before publishing.
