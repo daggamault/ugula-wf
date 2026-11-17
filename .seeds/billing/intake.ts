@@ -4,7 +4,7 @@ import {
   LOADED_MILES_FIELD,
   UNREAD_FINDINGS
 } from '@ugula/billing';
-import type { GraphDef } from '@ugula/graph';
+import type { GraphDef, Json, ValueType } from '@ugula/graph';
 import { PCR_TYPE } from '@ugula/nemsis';
 import { slot } from '../builder.ts';
 import type { SeedGraph } from '../graphs.ts';
@@ -15,20 +15,17 @@ import {
   asStage,
   asWorkflow,
   atLeast,
+  type Builder,
   d,
-  expr,
   field,
   is,
-  named,
-  nameOf,
   P,
-  placeOf,
   rule,
   shared,
-  subject,
-  summarize,
+  summary,
   T,
-  table
+  table,
+  template
 } from './shared.ts';
 
 const {
@@ -41,163 +38,809 @@ const {
   facts: FACTS
 } = T;
 
-const CONFIRM_PATIENT_SUMMARY = `'Decide whether ' + ${named(nameOf('demographics?'), "'the patient on the report'")} +
-  (${named('demographics?.birthDate', 'null')} != null ? ', born ' + demographics?.birthDate + ',' : '') +
-  (len(candidates ?? []) <= 1 ? ' is an existing patient' : ' is one of ' + text(len(candidates ?? [])) + ' existing patients') +
-  (${named('reason', 'null')} != null ? ' (' + reason + ')' : '') + ', or create a new patient'`;
+type Port = `${string}.${string}`;
 
-const MISSING_DETAILS = `join(filter([
-  (reported?.firstName ?? '') == '' ? 'first name' : null,
-  (reported?.lastName ?? '') == '' ? 'last name' : null,
-  (reported?.birthDate ?? '') == '' ? 'birth date' : null
-], x => x != null), ', ')`;
+const PCR_PARTS = (PCR_TYPE as { object: Record<string, ValueType> }).object;
 
-const COMPLETE_PATIENT_SUMMARY = `${MISSING_DETAILS} == ''
-  ? 'The patient name or birth date on the report is not valid; correct them so the patient can be matched or created'
-  : 'The report has no patient ' + ${MISSING_DETAILS} + '; fill it in so the patient can be matched or created'`;
+const VITAL = (PCR_PARTS.vitals as { list: ValueType }).list;
 
-const MATCH_PAYER_SUMMARY = `'Link the reported payer "' + text(item?.payer) + '" to a directory payer' +
-  (find(item?.candidates ?? [], c => c?.value == item?.suggested)?.label != null
-    ? ' (likely ' + find(item?.candidates ?? [], c => c?.value == item?.suggested)?.label + ')'
-    : '') +
-  ', mark it unlisted, or remove it if it is not insurance'`;
+const COVERAGE = (COVERAGES as { list: ValueType }).list;
 
-const SERVICE_PARTS = `filter([
-  { scheduled: 'scheduled trip', treatNoTransport: 'treat-no-transport', refusal: 'refusal', notBillable: 'not billable' }[classification ?? ''],
-  service?.level,
-  service?.emergency == true ? 'emergency' : service?.emergency == false ? 'non-emergency' : null,
-  service?.loadedMiles != null ? text(round(service?.loadedMiles, 1)) + ' loaded miles' : null,
-  service?.deceased == true ? 'pronounced dead before loading' : null
-], x => x != null && x != '')`;
+const CHOICE: ValueType = { object: { value: 'string', label: 'string' } };
 
-const REVIEW_PCR_SUMMARY = `len(${SERVICE_PARTS}) == 0
-  ? 'Confirm the classification, level of service and loaded miles before this claim is priced'
-  : 'Confirm the service: ' + join(${SERVICE_PARTS}, ', ') +
-    (len(findings?.medications ?? []) + len(findings?.procedures ?? []) > 0 ? ', suggested from the narrative' : '') +
-    ', before this claim is priced'`;
+const UNMATCHED_PAYER: ValueType = { object: { payer: 'string' } };
 
-const HELD_SUMMARY = `'This PCR is on hold' + (${named('note', 'null')} != null ? ': ' + note : '') +
-  '; release it back to review once it is sorted out, or void it'`;
+const MEDICATION: ValueType = {
+  object: { medication: 'string', route: 'string', doses: 'integer' }
+};
 
-const REVISION_SUMMARY = `(context?.changes == null
-  ? 'A newer version of this report arrived'
-  : len(context?.changes) == 0
-    ? 'A newer version of this report arrived with no changes to its billing details'
-    : 'A newer version of this report changes the ' + join(map(slice(context?.changes, 0, 3), x => lower(x.field)), ', ') +
-      (len(context?.changes) > 3 ? ' and ' + text(len(context?.changes) - 3) + ' more' : '')) +
-  (context?.canApply == true
-    ? '; apply it, acknowledge it or void the claim'
-    : '; the claim is ' + (context?.status != null ? replace(context?.status, '_', ' ') : 'past review') +
-      ', so correct it with a Correct Claim Data task on the claim or acknowledge it')`;
+const CHANGE: ValueType = { object: { field: 'string', was: 'any', now: 'any' } };
 
-const ORPHAN_SUMMARY = `'This draft claim stopped before it was ready' +
-  (${named('reason', 'null')} != null ? ' (' + reason + ')' : '') + '; restart it from its report or void it'`;
+const DETAILS: ValueType = {
+  object: { name: 'string', birthDate: 'string', sex: 'string', address: 'string' }
+};
 
-const SEX = "{ F: 'Female', M: 'Male', U: 'Unknown' }";
+const MEDICARE_FILING = ['MA', 'MB'];
 
-const TRIP = `{
-  pcrNumber: pcr.pcrNumber,
-  classification: classification,
-  classifiedBy: reason,
-  calledAt: pcr.times.psapCall,
-  response: {
-    '2223001': 'Emergent',
-    '2223003': 'Emergent, downgraded to non-emergent',
-    '2223005': 'Non-emergent',
-    '2223007': 'Non-emergent, upgraded to emergent'
-  }[pcr.response.responseMode ?? ''] ?? pcr.response.responseMode,
-  careProvided: {
-    '4232001': 'BLS',
-    '4232003': 'ALS',
-    '4232005': 'ALS',
-    '4232009': 'Critical care'
-  }[pcr.disposition.levelOfCare ?? ''] ?? pcr.disposition.levelOfCare,
-  primaryImpression: pcr.situation.primaryImpression,
-  otherImpressions: pcr.situation.secondaryImpressions,
-  pickup: ${placeOf('pcr.scene')},
-  destination: join(filter([pcr.disposition.destinationName, ${placeOf('pcr.disposition')}], x => x != null && x != ''), ' · ')
-}`;
+const rows = (labels: Record<string, string>) =>
+  Object.entries(labels).map(([key, value]) => ({ key, value }));
 
-const REVIEW_CONTEXT = `{
-  patient: {
-    name: ${nameOf('patient')},
-    birthDate: patient.birthDate,
-    sex: ${SEX}[patient.gender ?? ''] ?? null,
-    address: ${placeOf('patient')}
-  },
-  trip: trip,
-  coverage: map(coverages, c => {
-    payer: c.payer,
-    directory: c.directoryName ?? 'Not linked to the payer directory',
-    memberId: c.memberId,
-    groupId: c.groupId
-  }),
-  narrative: {
-    medications: map(findings.medications, m =>
-      m.medication + ' ' + m.route + (m.doses > 1 ? ' x' + text(m.doses) : '')),
-    procedures: findings.procedures
-  },
-  condition: {
-    complaint: pcr.situation.complaint,
-    primarySymptom: pcr.situation.primarySymptom,
-    vitals: map(pcr.vitals, v => join(filter([
-      v.takenAt,
-      v.systolic != null ? 'BP ' + text(v.systolic) + '/' + text(v.diastolic ?? '?') : null,
-      v.heartRate != null ? 'HR ' + text(v.heartRate) : null,
-      v.respiratoryRate != null ? 'RR ' + text(v.respiratoryRate) : null,
-      v.pulseOximetry != null ? 'SpO2 ' + text(v.pulseOximetry) + '%' : null,
-      v.bloodGlucose != null ? 'BGL ' + text(v.bloodGlucose) : null,
-      v.glasgowComaScore != null ? 'GCS ' + text(v.glasgowComaScore) : null
-    ], x => x != null && x != ''), ' · ')),
-    proceduresCoded: map(pcr.procedures, x => x.procedure)
-  },
-  documentation: {
-    signature: documentation.signature,
-    signatureNote: documentation.signatureNote,
-    physicianCertification: documentation.pcsOnFile,
-    transportReason: documentation.transportReason,
-    conditionCodes: documentation.conditionCodes,
-    patientsTransported: documentation.patientCount,
-    mspAccident: documentation.mspAccident
-  },
-  suggested: service,
-  warnings: concat(
-    reason == null ? ['No disposition or type of service is recorded, so the trip was classified as an emergency transport'] : [],
-    documentation.signature == 'signed' ? [] : [documentation.signatureNote ?? 'No billing signature'],
-    classification == 'scheduled' && documentation.pcsOnFile != true ? ['This scheduled trip has no physician certification statement'] : [],
-    len(pcr.vitals ?? []) == 0 ? ['No vital signs are recorded to support medical necessity'] : [],
-    service.deceased == true ? ['The patient was pronounced dead before loading, so the trip is billed as BLS with QL and no mileage'] : [],
-    (service.nonCoveredMiles ?? 0) > 0 ? [text(service.nonCoveredMiles) + ' miles past the closest hospital are billed as non-covered (A0888)'] : [],
-    (documentation.patientCount ?? 1) > 1 ? [text(documentation.patientCount) + ' patients rode on this trip, so its lines carry GM'] : [],
-    findings.notes,
-    payerNotes
-  )
-}`;
+const sexLabels = () =>
+  shared.lookup(
+    'billing.sex-labels',
+    'Sex Labels',
+    'The meaning of each sex code a patient or report gives (F, M or U).',
+    { type: 'string', rows: rows({ F: 'Female', M: 'Male', U: 'Unknown' }) }
+  );
 
-const PATIENT_REVIEW_CONTEXT = `{
-  reason: reason,
-  report: {
-    name: ${nameOf('demographics')},
-    birthDate: demographics.birthDate,
-    sex: ${SEX}[demographics.gender ?? ''] ?? null,
-    address: ${placeOf('demographics')},
-    pcrNumber: pcrNumber
-  },
-  candidates: map(candidates, c => {
-    name: ${nameOf('c')},
-    birthDate: c.birthDate,
-    sex: ${SEX}[c.gender ?? ''] ?? null,
-    address: ${placeOf('c')}
-  })
-}`;
+const responseModes = () =>
+  shared.lookup(
+    'billing.response-mode-labels',
+    'Response Mode Labels',
+    'The meaning of each NEMSIS response mode to the scene (eResponse.23).',
+    {
+      type: 'string',
+      rows: rows({
+        '2223001': 'Emergent',
+        '2223003': 'Emergent, downgraded to non-emergent',
+        '2223005': 'Non-emergent',
+        '2223007': 'Non-emergent, upgraded to emergent'
+      })
+    }
+  );
 
-const PATIENT_CHOICES = `{
-  patientId: map(candidates, c => {
-    value: c.id,
-    label: c.lastName + ', ' + c.firstName + ' · born ' + c.birthDate +
-      (c.postalCode ? ' · ' + c.postalCode : '')
-  })
-}`;
+const levelsOfCare = () =>
+  shared.lookup(
+    'billing.level-of-care-labels',
+    'Level of Care Labels',
+    'The meaning of each NEMSIS level of care provided (eDisposition.32).',
+    {
+      type: 'string',
+      rows: rows({
+        '4232001': 'BLS',
+        '4232003': 'ALS',
+        '4232005': 'ALS',
+        '4232009': 'Critical care'
+      })
+    }
+  );
+
+const PRIORITY_RANKS = [
+  '2611003',
+  '2611005',
+  '2611007',
+  '2611009',
+  '2611011',
+  '2611013',
+  '2611015',
+  '2611017',
+  '2611019',
+  '2611021',
+  '2611023'
+].map((key, value) => ({ key, value }));
+
+const coveragePriority = () =>
+  shared.lookup(
+    'billing.coverage-priority',
+    'Coverage Priority',
+    'The billing order of each reported coverage priority (ePayment.10): primary first, then secondary and on. Coverages with other priorities come last, in the order reported.',
+    { type: 'integer', rows: PRIORITY_RANKS, fallback: PRIORITY_RANKS.length }
+  );
+
+const getField = (
+  g: Builder,
+  id: string,
+  label: string,
+  record: ValueType,
+  path: string,
+  from: Port
+) => {
+  g.add(id, 'std.object.get-field', { label, config: { record, path } });
+  g.wire(from, `${id}.record`);
+  return `${id}.value` as const;
+};
+
+const makeObject = (
+  g: Builder,
+  id: string,
+  label: string,
+  fields: Record<string, [ValueType, Port]>
+) => {
+  g.add(id, 'std.object.make', {
+    label,
+    config: { fields: Object.entries(fields).map(([name, [type]]) => ({ name, type })) }
+  });
+  for (const [name, [, port]] of Object.entries(fields)) g.wire(port, `${id}.${name}`);
+  return `${id}.object` as const;
+};
+
+const makeList = (g: Builder, id: string, label: string, type: ValueType, items: Port[]) => {
+  g.add(id, 'std.list.make', { label, config: { count: items.length, type } });
+  for (const [i, port] of items.entries()) g.wire(port, `${id}.item${i + 1}`);
+  return `${id}.list` as const;
+};
+
+const joinText = (g: Builder, id: string, label: string, separator: string, items: Port) => {
+  g.add(id, 'std.text.join', { label, values: { separator } });
+  g.wire(items, `${id}.items`);
+  return `${id}.text` as const;
+};
+
+const when = (
+  g: Builder,
+  id: string,
+  label: string,
+  inputs: Record<string, [ValueType, Port]>,
+  rules: { field: string; op: string; value?: Json }[],
+  match: 'all' | 'any' = 'all'
+) => {
+  g.add(id, 'std.logic.condition', {
+    label,
+    config: {
+      match,
+      inputs: Object.entries(inputs).map(([name, [type]]) => ({ name, type })),
+      rules
+    }
+  });
+  for (const [name, [, port]] of Object.entries(inputs)) g.wire(port, `${id}.${name}`);
+  return `${id}.result` as const;
+};
+
+const select = (
+  g: Builder,
+  id: string,
+  label: string,
+  condition: Port,
+  whenTrue: Port | Json,
+  whenFalse: Port | Json = null
+) => {
+  const isPort = (x: Port | Json): x is Port => typeof x === 'string' && /^\w+\.\w+$/.test(x);
+  const fixed = Object.fromEntries(
+    (
+      [
+        ['whenTrue', whenTrue],
+        ['whenFalse', whenFalse]
+      ] as const
+    ).filter(([, x]) => x !== null && !isPort(x))
+  ) as Record<string, Json>;
+  g.add(id, 'std.logic.select', { label, ...(Object.keys(fixed).length ? { values: fixed } : {}) });
+  g.wire(condition, `${id}.condition`);
+  if (isPort(whenTrue)) g.wire(whenTrue, `${id}.whenTrue`);
+  if (isPort(whenFalse)) g.wire(whenFalse, `${id}.whenFalse`);
+  return `${id}.result` as const;
+};
+
+const nameOf = (g: Builder, id: string, label: string, person: Port) =>
+  template(g, id, label, '{person.firstName} {person.lastName}', { person });
+
+const subjectOf = (g: Builder, id: string, parts: Port[]) =>
+  joinText(
+    g,
+    id,
+    'Task Subject',
+    ' · ',
+    makeList(g, `${id}Parts`, 'Subject Parts', 'string', parts)
+  );
+
+const patientDetails = (): GraphDef => {
+  const g = rule(
+    [d('person', DEMOGRAPHICS, 'Person', 'A patient, or the demographics a report gives.', true)],
+    [d('details', DETAILS, 'Details', 'The name, birth date, sex and address, for a biller.')]
+  );
+  g.add('parts', 'billing.demographics.break', { label: 'Person' });
+  const name = nameOf(g, 'name', 'Name', 'entry.person');
+  g.add('sex', 'std.table.lookup', { label: 'Sex', config: sexLabels() });
+  g.add('address', 'billing.place-text', { label: 'Address' });
+  g.ret('return');
+  g.wire('entry.person', 'parts.demographics', 'address.place');
+  g.wire('parts.gender', 'sex.key');
+  const details = makeObject(g, 'details', 'Details', {
+    name: ['string', name],
+    birthDate: ['string', 'parts.birthDate'],
+    sex: ['string', 'sex.value'],
+    address: ['string', 'address.text']
+  });
+  g.wire(details, 'return.details');
+  return g.def;
+};
+
+const patientMatchContext = (): GraphDef => {
+  const g = rule(
+    [
+      d('reason', 'string', 'Match Reason', 'Why the report may be one of the candidates.', true),
+      d('demographics', DEMOGRAPHICS, 'Reported Demographics', 'The patient on the report.', true),
+      d('candidates', { list: PATIENT }, 'Candidates', 'The patients who may be them.', true),
+      d('pcrNumber', 'string', 'PCR Number', 'The number of the patient care report.', true)
+    ],
+    [P.context()]
+  );
+  g.add('reported', 'billing.patient-details', { label: 'Reported Patient' });
+  g.add('report', 'std.object.merge', { label: 'Reported Patient and PCR Number' });
+  g.add('candidates', 'std.list.map-rule', {
+    label: 'Candidate Details',
+    config: { rule: 'billing.patient-details', version: 1, item: 'person' }
+  });
+  g.ret('return');
+  g.wire('entry.demographics', 'reported.person');
+  g.wire('reported.details', 'report.a');
+  g.wire(
+    makeObject(g, 'number', 'PCR Number', { pcrNumber: ['string', 'entry.pcrNumber'] }),
+    'report.b'
+  );
+  g.wire('entry.candidates', 'candidates.list');
+  const context = makeObject(g, 'context', 'Task Details', {
+    reason: ['string', 'entry.reason'],
+    report: [{ object: {} }, 'report.object'],
+    candidates: [{ list: DETAILS }, 'candidates.details']
+  });
+  g.wire(context, 'return.context');
+  return g.def;
+};
+
+const patientChoice = (): GraphDef => {
+  const g = rule(
+    [d('candidate', PATIENT, 'Candidate', 'A patient who may be the one on the report.', true)],
+    [
+      d(
+        'choice',
+        CHOICE,
+        'Choice',
+        'The patient as a choice: the patient, named with birth date and ZIP code.'
+      )
+    ]
+  );
+  const id = getField(g, 'id', 'Patient ID', PATIENT, 'id', 'entry.candidate');
+  const label = template(
+    g,
+    'label',
+    'Choice Label',
+    '{candidate.lastName}, {candidate.firstName} · born {candidate.birthDate}[ · {candidate.postalCode}]',
+    { candidate: 'entry.candidate' }
+  );
+  g.ret('return');
+  g.wire(
+    makeObject(g, 'choice', 'Choice', { value: ['string', id], label: ['string', label] }),
+    'return.choice'
+  );
+  return g.def;
+};
+
+const payerNameKey = (): GraphDef => {
+  const g = rule(
+    [d('payer', UNMATCHED_PAYER, 'Unlinked Payer', 'A payer name the report gives.', true)],
+    [d('key', 'string', 'Name Key', 'The payer name in small letters, to group the same names.')]
+  );
+  const name = getField(g, 'name', 'Payer Name', UNMATCHED_PAYER, 'payer', 'entry.payer');
+  g.add('key', 'std.text.lower', { label: 'In Small Letters' });
+  g.ret('return');
+  g.wire(name, 'key.text');
+  g.wire('key.result', 'return.key');
+  return g.def;
+};
+
+const payerHasName = (): GraphDef => {
+  const g = rule(
+    [
+      d('payer', UNMATCHED_PAYER, 'Unlinked Payer', 'A payer name the report gives.', true),
+      d('name', 'string', 'Name Key', 'A payer name in small letters.', true)
+    ],
+    [d('matches', 'boolean', 'Has the Name', 'Whether the payer has this name, in any case.')]
+  );
+  g.add('key', 'billing.payer-name-key', { label: 'Payer Name Key' });
+  g.add('matches', 'std.logic.equal', { label: 'Same Name' });
+  g.ret('return');
+  g.wire('entry.payer', 'key.payer');
+  g.wire('key.key', 'matches.a');
+  g.wire('entry.name', 'matches.b');
+  g.wire('matches.result', 'return.matches');
+  return g.def;
+};
+
+const payerNameTask = (): GraphDef => {
+  const g = rule(
+    [
+      d('name', 'string', 'Name Key', 'A payer name in small letters.', true),
+      d(
+        'unmatched',
+        { list: UNMATCHED_PAYER },
+        'Unlinked Payers',
+        'The payers on the report the directory does not know, with their coverage keys.',
+        true
+      )
+    ],
+    [
+      d(
+        'task',
+        { object: {} },
+        'Payer Name Task',
+        'The first payer with the name, with the keys of every coverage that has it.'
+      )
+    ]
+  );
+  const byName = { rule: 'billing.payer-has-name', version: 1, item: 'payer', test: 'matches' };
+  g.add('first', 'std.list.find-rule', { label: 'First With the Name', config: byName });
+  g.add('same', 'std.list.filter-rule', { label: 'All With the Name', config: byName });
+  g.add('keys', 'std.list.pluck', { label: 'Their Coverage Keys', values: { field: 'key' } });
+  g.add('task', 'std.object.merge', { label: 'First With Every Key' });
+  g.ret('return');
+  g.wire('entry.unmatched', 'first.list', 'same.list');
+  g.wire('entry.name', 'first.name', 'same.name');
+  g.wire('same.list', 'keys.list');
+  g.wire('first.item', 'task.a');
+  g.wire(
+    makeObject(g, 'keyed', 'Coverage Keys', { keys: [{ list: 'string' }, 'keys.list'] }),
+    'task.b'
+  );
+  g.wire('task.object', 'return.task');
+  return g.def;
+};
+
+const isSuggestedPayer = (): GraphDef => {
+  const g = rule(
+    [
+      d('choice', CHOICE, 'Directory Choice', 'A directory payer offered for a name.', true),
+      d('suggested', 'string', 'Suggested Payer', 'The directory payer suggested, if any.', true)
+    ],
+    [d('isSuggested', 'boolean', 'Is Suggested', 'Whether this choice is the suggested payer.')]
+  );
+  const value = getField(g, 'value', 'Directory Payer', CHOICE, 'value', 'entry.choice');
+  g.add('same', 'std.logic.equal', { label: 'Same Payer' });
+  g.ret('return');
+  g.wire(value, 'same.a');
+  g.wire('entry.suggested', 'same.b');
+  g.wire('same.result', 'return.isSuggested');
+  return g.def;
+};
+
+const coverageDetails = (): GraphDef => {
+  const g = rule(
+    [d('coverage', COVERAGE, 'Coverage', 'A payer of the patient.', true)],
+    [
+      d(
+        'details',
+        { object: { payer: 'string', directory: 'string', memberId: 'string', groupId: 'string' } },
+        'Coverage Details',
+        'The payer as reported, its directory payer, member ID and group ID, for a biller.'
+      )
+    ]
+  );
+  g.add('parts', 'billing.coverage.break', { label: 'Coverage' });
+  g.add('directory', 'std.logic.choose', {
+    label: 'Directory Payer, Else Not Linked',
+    config: { mode: 'first', type: 'string', count: 2 },
+    values: { option2: 'Not linked to the payer directory' }
+  });
+  g.ret('return');
+  g.wire('entry.coverage', 'parts.coverage');
+  g.wire('parts.directoryName', 'directory.option1');
+  const details = makeObject(g, 'details', 'Coverage Details', {
+    payer: ['string', 'parts.payer'],
+    directory: ['string', 'directory.value'],
+    memberId: ['string', 'parts.memberId'],
+    groupId: ['string', 'parts.groupId']
+  });
+  g.wire(details, 'return.details');
+  return g.def;
+};
+
+const medicationText = (): GraphDef => {
+  const g = rule(
+    [d('medication', MEDICATION, 'Medication', 'A medication the narrative documents.', true)],
+    [
+      d(
+        'text',
+        'string',
+        'Medication Text',
+        'The medication and route, with the doses when more than one.'
+      )
+    ]
+  );
+  g.add('parts', 'std.object.break', {
+    label: 'Medication',
+    config: {
+      fields: [
+        { name: 'medication', type: 'string' },
+        { name: 'route', type: 'string' },
+        { name: 'doses', type: 'integer' }
+      ]
+    }
+  });
+  g.wire('entry.medication', 'parts.object');
+  const several = when(g, 'several', 'More Than One Dose', { doses: ['integer', 'parts.doses'] }, [
+    { field: 'doses', op: 'gt', value: 1 }
+  ]);
+  const doses = select(g, 'doses', 'Doses When Several', several, 'parts.doses');
+  const text = template(g, 'text', 'Medication Text', '{medication} {route}[ x{doses}]', {
+    medication: 'parts.medication',
+    route: 'parts.route',
+    doses
+  });
+  g.ret('return');
+  g.wire(text, 'return.text');
+  return g.def;
+};
+
+const VITAL_PARTS: [id: string, label: string, text: string][] = [
+  ['heartRate', 'Heart Rate', '[HR {vital.heartRate}]'],
+  ['respiratoryRate', 'Respiratory Rate', '[RR {vital.respiratoryRate}]'],
+  ['pulseOximetry', 'Pulse Oximetry', '[SpO2 {vital.pulseOximetry}%]'],
+  ['bloodGlucose', 'Blood Glucose', '[BGL {vital.bloodGlucose}]'],
+  ['glasgowComaScore', 'Glasgow Coma Score', '[GCS {vital.glasgowComaScore}]']
+];
+
+const vitalSignsText = (): GraphDef => {
+  const g = rule(
+    [d('vital', VITAL, 'Vital Signs', 'One set of vital signs the report records.', true)],
+    [
+      d(
+        'text',
+        'string',
+        'Vital Signs Text',
+        'When they were taken and each reading, separated by dots.'
+      )
+    ]
+  );
+  const takenAt = getField(g, 'takenAt', 'Taken At', VITAL, 'takenAt', 'entry.vital');
+  const diastolic = getField(g, 'diastolic', 'Diastolic', VITAL, 'diastolic', 'entry.vital');
+  g.add('diastolicOrUnknown', 'std.logic.choose', {
+    label: 'Diastolic, Else Unknown',
+    config: { mode: 'first', type: 'any', count: 2 },
+    values: { option2: '?' }
+  });
+  g.wire(diastolic, 'diastolicOrUnknown.option1');
+  const bp = template(g, 'bloodPressure', 'Blood Pressure', '[BP {vital.systolic}/{diastolic}]', {
+    vital: 'entry.vital',
+    diastolic: 'diastolicOrUnknown.value'
+  });
+  const readings = VITAL_PARTS.map(([id, label, text]) =>
+    template(g, id, label, text, { vital: 'entry.vital' })
+  );
+  const list = makeList(g, 'readings', 'Time and Readings', 'string', [takenAt, bp, ...readings]);
+  g.ret('return');
+  g.wire(joinText(g, 'text', 'Vital Signs Text', ' · ', list), 'return.text');
+  return g.def;
+};
+
+const reviewWarnings = (): GraphDef => {
+  const g = rule(
+    [
+      P.reason(),
+      P.classification(true),
+      d(
+        'documentation',
+        T.documentation,
+        'Documentation',
+        'The signature, certification and trip documentation of the report, with the transport reason.',
+        true
+      ),
+      P.service(true),
+      d('vitals', { list: VITAL }, 'Vital Signs', 'The vital signs the report records.', true),
+      P.findings(true),
+      d('payerNotes', { list: 'string' }, 'Payer Notes', 'What limited matching the payers.', true)
+    ],
+    [
+      d(
+        'warnings',
+        { list: 'string' },
+        'Warnings',
+        'What could not be read or decided, or needs care, for the reviewer.'
+      )
+    ]
+  );
+  g.add('docs', 'billing.documentation.break', { label: 'Documentation' });
+  g.add('service', 'billing.service.break', { label: 'Suggested Service' });
+  g.add('findings', 'billing.findings.break', { label: 'Narrative Findings' });
+  g.wire('entry.documentation', 'docs.documentation');
+  g.wire('entry.service', 'service.service');
+  g.wire('entry.findings', 'findings.findings');
+  const unclassified = select(
+    g,
+    'unclassifiedWarning',
+    'Classified as Emergency Warning',
+    when(g, 'unclassified', 'Nothing Classified It', { reason: ['string', 'entry.reason'] }, [
+      { field: 'reason', op: 'empty' }
+    ]),
+    'No disposition or type of service is recorded, so the trip was classified as an emergency transport'
+  );
+  g.add('signatureNote', 'std.logic.choose', {
+    label: 'Signature Note, Else No Signature',
+    config: { mode: 'first', type: 'string', count: 2 },
+    values: { option2: 'No billing signature' }
+  });
+  g.wire('docs.signatureNote', 'signatureNote.option1');
+  const unsigned = select(
+    g,
+    'unsignedWarning',
+    'Signature Warning',
+    when(g, 'unsigned', 'Not Signed', { signature: ['string', 'docs.signature'] }, [
+      { field: 'signature', op: 'isNot', value: 'signed' }
+    ]),
+    'signatureNote.value'
+  );
+  const noPcs = select(
+    g,
+    'noPcsWarning',
+    'Certification Warning',
+    when(
+      g,
+      'noPcs',
+      'Scheduled Without Certification',
+      {
+        classification: ['string', 'entry.classification'],
+        pcsOnFile: ['boolean', 'docs.pcsOnFile']
+      },
+      [
+        { field: 'classification', op: 'is', value: 'scheduled' },
+        { field: 'pcsOnFile', op: 'isNot', value: true }
+      ]
+    ),
+    'This scheduled trip has no physician certification statement'
+  );
+  const noVitals = select(
+    g,
+    'noVitalsWarning',
+    'Vital Signs Warning',
+    when(g, 'noVitals', 'No Vital Signs', { vitals: [{ list: VITAL }, 'entry.vitals'] }, [
+      { field: 'vitals', op: 'empty' }
+    ]),
+    'No vital signs are recorded to support medical necessity'
+  );
+  const dead = select(
+    g,
+    'deceasedWarning',
+    'Pronounced Dead Warning',
+    when(g, 'deceased', 'Pronounced Dead', { deceased: ['boolean', 'service.deceased'] }, [
+      { field: 'deceased', op: 'is', value: true }
+    ]),
+    'The patient was pronounced dead before loading, so the trip is billed as BLS with QL and no mileage'
+  );
+  const nonCovered = select(
+    g,
+    'nonCoveredWarning',
+    'Non-Covered Miles Warning',
+    when(
+      g,
+      'nonCovered',
+      'Has Non-Covered Miles',
+      { miles: ['number', 'service.nonCoveredMiles'] },
+      [{ field: 'miles', op: 'gt', value: 0 }]
+    ),
+    template(
+      g,
+      'nonCoveredText',
+      'Non-Covered Miles Text',
+      '{miles} miles past the closest hospital are billed as non-covered (A0888)',
+      { miles: 'service.nonCoveredMiles' }
+    )
+  );
+  const several = select(
+    g,
+    'severalWarning',
+    'Several Patients Warning',
+    when(g, 'several', 'Several Patients', { count: ['integer', 'docs.patientCount'] }, [
+      { field: 'count', op: 'gt', value: 1 }
+    ]),
+    template(
+      g,
+      'severalText',
+      'Several Patients Text',
+      '{count} patients rode on this trip, so its lines carry GM',
+      { count: 'docs.patientCount' }
+    )
+  );
+  const flagged = makeList(g, 'flagged', 'Warnings Found', 'string', [
+    unclassified,
+    unsigned,
+    noPcs,
+    noVitals,
+    dead,
+    nonCovered,
+    several
+  ]);
+  g.add('warnings', 'std.list.join', {
+    label: 'Every Warning',
+    config: { count: 3, type: 'string' }
+  });
+  g.ret('return');
+  g.wire(flagged, 'warnings.list1');
+  g.wire('findings.notes', 'warnings.list2');
+  g.wire('entry.payerNotes', 'warnings.list3');
+  g.wire('warnings.list', 'return.warnings');
+  return g.def;
+};
+
+const REVISION_FACTS: [name: string, type: ValueType, label: string, field: string][] = [
+  ['patientName', 'string', 'Patient Name', 'Patient name'],
+  ['birthDate', 'string', 'Birth Date', 'Birth date'],
+  ['patientAddress', 'string', 'Patient Address', 'Patient address'],
+  ['callTime', 'string', 'Call Time', 'Call time'],
+  ['pickup', 'string', 'Pickup', 'Pickup'],
+  ['destination', 'string', 'Destination', 'Destination'],
+  ['primaryImpression', { code: 'icd10' }, 'Primary Impression', 'Primary impression'],
+  ['otherImpressions', 'string', 'Other Impressions', 'Other impressions'],
+  ['levelOfCare', 'string', 'Level of Care', 'Level of care'],
+  ['responseMode', 'string', 'Response Mode', 'Response mode'],
+  ['sceneOdometer', 'number', 'Scene Odometer', 'Scene odometer'],
+  ['destinationOdometer', 'number', 'Destination Odometer', 'Destination odometer'],
+  ['payers', 'string', 'Payers', 'Payers'],
+  ['narrativeLength', 'integer', 'Narrative Length', 'Narrative']
+];
+
+const reportRevisionFacts = (): GraphDef => {
+  const g = rule(
+    [d('pcr', PCR_TYPE, 'PCR', 'A version of the patient care report.', true)],
+    REVISION_FACTS.map(([name, type, label]) =>
+      d(name, type, label, `The ${label.toLowerCase()} the report gives, as compared.`, true)
+    )
+  );
+  const pcr: Port = 'entry.pcr';
+  const at = (id: string, label: string, path: string) =>
+    getField(g, id, label, PCR_TYPE, path, pcr);
+  const place = (id: string, label: string, path: string) => {
+    g.add(`${id}OrNone`, 'std.logic.coalesce', {
+      label: `${label} Place, Else None`,
+      values: { fallback: {} }
+    });
+    g.add(id, 'billing.place-text', { label });
+    g.wire(at(`${id}Place`, `${label} Place`, path), `${id}OrNone.value`);
+    g.wire(`${id}OrNone.result`, `${id}.place`);
+    return `${id}.text` as const;
+  };
+  g.add('impressions', 'std.text.join', {
+    label: 'Other Impressions',
+    values: { separator: ', ' }
+  });
+  g.add('companies', 'std.list.pluck', { label: 'Payer Names', values: { field: 'companyName' } });
+  g.add('payers', 'std.text.join', { label: 'Payers', values: { separator: ', ' } });
+  g.add('narrative', 'std.logic.coalesce', {
+    label: 'Narrative, Else None',
+    values: { fallback: '' }
+  });
+  g.add('narrativeLength', 'std.text.length', { label: 'Narrative Length' });
+  g.wire(
+    at('secondary', 'Secondary Impressions', 'situation.secondaryImpressions'),
+    'impressions.items'
+  );
+  g.wire(at('insurances', 'Insurances', 'insurances'), 'companies.list');
+  g.wire('companies.list', 'payers.items');
+  g.wire(at('narrativeText', 'Narrative Text', 'narrative'), 'narrative.value');
+  g.wire('narrative.result', 'narrativeLength.text');
+  const facts: Record<string, Port> = {
+    patientName: template(
+      g,
+      'patientName',
+      'Patient Name',
+      '{pcr.patient.firstName} {pcr.patient.lastName}',
+      { pcr }
+    ),
+    birthDate: at('birthDate', 'Birth Date', 'patient.birthDate'),
+    patientAddress: place('patientAddress', 'Patient Address', 'patient'),
+    callTime: at('callTime', 'Call Time', 'times.psapCall'),
+    pickup: place('pickup', 'Pickup', 'scene'),
+    destination: place('destination', 'Destination', 'disposition'),
+    primaryImpression: at('primaryImpression', 'Primary Impression', 'situation.primaryImpression'),
+    otherImpressions: 'impressions.text',
+    levelOfCare: at('levelOfCare', 'Level of Care', 'disposition.levelOfCare'),
+    responseMode: at('responseMode', 'Response Mode', 'response.responseMode'),
+    sceneOdometer: at('sceneOdometer', 'Scene Odometer', 'response.sceneOdometer'),
+    destinationOdometer: at(
+      'destinationOdometer',
+      'Destination Odometer',
+      'response.destinationOdometer'
+    ),
+    payers: 'payers.text',
+    narrativeLength: 'narrativeLength.length'
+  };
+  g.ret('return');
+  for (const [name, port] of Object.entries(facts)) g.wire(port, `return.${name}`);
+  return g.def;
+};
+
+const revisionChange = (): GraphDef => {
+  const g = rule(
+    [
+      d('field', 'string', 'Field', 'What the change is to, such as Birth date.'),
+      d('was', 'any', 'Was', 'The value on the earlier report.', true),
+      d('now', 'any', 'Now', 'The value on the new report.', true)
+    ],
+    [
+      d(
+        'change',
+        CHANGE,
+        'Change',
+        'The field with both values, or nothing when they are the same.',
+        true
+      )
+    ]
+  );
+  g.add('differs', 'std.logic.not-equal', { label: 'Changed' });
+  g.ret('return');
+  g.wire('entry.was', 'differs.a');
+  g.wire('entry.now', 'differs.b');
+  const change = makeObject(g, 'change', 'Change', {
+    field: ['string', 'entry.field'],
+    was: ['any', 'entry.was'],
+    now: ['any', 'entry.now']
+  });
+  g.wire(select(g, 'changed', 'Change If Changed', 'differs.result', change), 'return.change');
+  return g.def;
+};
+
+const canReworkClaim = (): GraphDef => {
+  const g = rule(
+    [
+      d('status', 'string', 'Claim Status', 'The status of the claim the new report revises.', true)
+    ],
+    [
+      d(
+        'canApply',
+        'boolean',
+        'Can Apply',
+        'Whether the claim can be worked again from the new report: it is a draft, needs review or is void.'
+      )
+    ]
+  );
+  const result = when(
+    g,
+    'canApply',
+    'Not Yet With Payers',
+    { status: ['string', 'entry.status'] },
+    [{ field: 'status', op: 'oneOf', value: ['draft', 'needs_review', 'void'] }]
+  );
+  g.ret('return');
+  g.wire(result, 'return.canApply');
+  return g.def;
+};
+
+const coverageBillingRank = (): GraphDef => {
+  const g = rule(
+    [
+      d('coverage', COVERAGE, 'Coverage', 'A payer as resolved.', true),
+      d(
+        'medicareSecondary',
+        'boolean',
+        'Medicare Secondary',
+        'Another payer pays before Medicare, as the Medicare Secondary Payer rule decided.',
+        true
+      )
+    ],
+    [
+      d(
+        'ranked',
+        { object: { coverage: COVERAGE, rank: 'number' } },
+        'Ranked Coverage',
+        'The coverage with its billing rank: its priority, plus 1000 when Medicare goes after the payers that pay first.'
+      )
+    ]
+  );
+  g.add('parts', 'billing.coverage.break', { label: 'Coverage' });
+  g.add('priority', 'std.table.lookup', { label: 'Coverage Priority', config: coveragePriority() });
+  g.add('rank', 'std.math.add', { label: 'Billing Rank' });
+  g.ret('return');
+  g.wire('entry.coverage', 'parts.coverage');
+  g.wire('parts.priority', 'priority.key');
+  const medicareLast = when(
+    g,
+    'medicareLast',
+    'Medicare Pays Second',
+    {
+      medicareSecondary: ['boolean', 'entry.medicareSecondary'],
+      claimFiling: ['string', 'parts.claimFiling']
+    },
+    [
+      { field: 'medicareSecondary', op: 'is', value: true },
+      { field: 'claimFiling', op: 'oneOf', value: MEDICARE_FILING }
+    ]
+  );
+  g.wire('priority.value', 'rank.a');
+  g.wire(select(g, 'afterOthers', 'After the Others', medicareLast, 1000, 0), 'rank.b');
+  const ranked = makeObject(g, 'ranked', 'Ranked Coverage', {
+    coverage: [COVERAGE, 'entry.coverage'],
+    rank: ['number', 'rank.result']
+  });
+  g.wire(ranked, 'return.ranked');
+  return g.def;
+};
 
 const reviewPatientMatch = (): GraphDef => {
   const g = action(
@@ -209,10 +852,39 @@ const reviewPatientMatch = (): GraphDef => {
     ],
     [p('patient', PATIENT)]
   );
-  g.add('choices', 'std.expr', expr('Candidate Choices', PATIENT_CHOICES));
-  g.add('pick', 'std.expr', expr('Likeliest Candidate', '{ patientId: candidates[0].id }'));
-  g.add('context', 'std.expr', expr('Review Context', PATIENT_REVIEW_CONTEXT));
-  g.add('subject', 'std.expr', subject('pcrNumber', nameOf('demographics')));
+  g.add('choiceList', 'std.list.map-rule', {
+    label: 'Candidate Choices',
+    config: { rule: 'billing.patient-choice', version: 1, item: 'candidate' }
+  });
+  const choices = makeObject(g, 'choices', 'Choices by Field', {
+    patientId: [{ list: CHOICE }, 'choiceList.choice']
+  });
+  g.add('likeliest', 'std.list.first', { label: 'Likeliest Candidate' });
+  const likeliest = getField(g, 'likeliestId', 'Its Patient', PATIENT, 'id', 'likeliest.item');
+  const pick = makeObject(g, 'pick', 'Preselected Patient', {
+    patientId: [{ id: 'patient' }, likeliest]
+  });
+  g.add('context', 'billing.patient-match-context', { label: 'Review Context' });
+  const reported = nameOf(g, 'reportedName', 'Reported Name', 'entry.demographics');
+  const subject = subjectOf(g, 'subject', ['entry.pcrNumber', reported]);
+  g.add('count', 'std.list.length', { label: 'Candidates' });
+  const existing = select(
+    g,
+    'existing',
+    'Existing Patient or One of Several',
+    when(g, 'oneOrNone', 'One Candidate at Most', { count: ['integer', 'count.length'] }, [
+      { field: 'count', op: 'lte', value: 1 }
+    ]),
+    'is an existing patient',
+    template(g, 'several', 'One of Several', 'is one of {count} existing patients', {
+      count: 'count.length'
+    })
+  );
+  g.add('who', 'std.logic.choose', {
+    label: 'Reported Name, Else the Patient',
+    config: { mode: 'first', type: 'string', count: 2 },
+    values: { option2: 'the patient on the report' }
+  });
   g.add('confirm', 'std.human.task', {
     label: 'Confirm Patient',
     config: {
@@ -241,20 +913,22 @@ const reviewPatientMatch = (): GraphDef => {
   g.ret('reviewed');
   g.ret('linked');
   g.wire('entry.exec', 'confirm.exec');
-  g.wire('entry.candidates', 'choices.candidates', 'pick.candidates', 'context.candidates');
+  g.wire('entry.candidates', 'choiceList.list', 'likeliest.list', 'context.candidates');
+  g.wire('entry.candidates', 'count.list');
   g.wire('entry.reason', 'context.reason');
-  g.wire('entry.demographics', 'context.demographics', 'subject.demographics');
-  g.wire('entry.demographics', 'createNew.demographics');
-  g.wire('entry.pcrNumber', 'context.pcrNumber', 'subject.pcrNumber');
-  g.wire('choices.result', 'confirm.options');
-  g.wire('pick.result', 'confirm.defaults');
-  g.wire('context.result', 'confirm.context');
-  g.wire('subject.result', 'confirm.subject');
-  summarize(g, 'confirm', CONFIRM_PATIENT_SUMMARY, {
-    candidates: 'entry.candidates',
-    demographics: 'entry.demographics',
-    reason: 'entry.reason'
-  });
+  g.wire('entry.demographics', 'context.demographics', 'createNew.demographics');
+  g.wire('entry.pcrNumber', 'context.pcrNumber');
+  g.wire(reported, 'who.option1');
+  g.wire(choices, 'confirm.options');
+  g.wire(pick, 'confirm.defaults');
+  g.wire('context.context', 'confirm.context');
+  g.wire(subject, 'confirm.subject');
+  summary(
+    g,
+    'confirm',
+    'Decide whether {who}[, born {demographics.birthDate},] {existing}[ ({reason})], or create a new patient',
+    { who: 'who.value', demographics: 'entry.demographics', existing, reason: 'entry.reason' }
+  );
   g.wire('confirm.useSelected', 'find.exec');
   g.wire('confirm.patientId', 'find.patientId');
   g.wire('find.missing', 'confirm.exec');
@@ -280,8 +954,9 @@ const resolvePatient = (): GraphDef => {
   g.add('match', 'billing.match-patient');
   g.add('create', 'billing.create-patient', { values: { reuseMatch: true } });
   g.add('review', 'billing.review-patient-match', { label: 'Review Likely Matches' });
-  g.add('context', 'std.expr', expr('Report Context', PATIENT_REVIEW_CONTEXT));
-  g.add('subject', 'std.expr', subject('pcrNumber', nameOf('demographics')));
+  g.add('context', 'billing.patient-match-context', { label: 'Report Context' });
+  const reportedName = nameOf(g, 'reportedName', 'Reported Name', 'entry.demographics');
+  const subject = subjectOf(g, 'subject', ['entry.pcrNumber', reportedName]);
   g.add('entered', 'std.var.get', { label: 'Details Entered Before', config: { name: 'entered' } });
   g.add('prefill', 'std.logic.coalesce', { label: 'Entered Before, Else the Report' });
   g.add('complete', 'std.human.task', {
@@ -311,6 +986,7 @@ const resolvePatient = (): GraphDef => {
     }
   });
   g.add('reported', 'billing.demographics.break', { label: 'Cleaned Demographics' });
+  g.add('prefilled', 'billing.demographics.break', { label: 'Details to Complete' });
   g.add('corrected', 'billing.demographics.make', { label: 'Completed Demographics' });
   g.add('remember', 'std.var.set', { label: 'Remember the Details', config: { name: 'entered' } });
   g.add('rematch', 'billing.match-patient', { label: 'Match Completed Patient' });
@@ -333,9 +1009,8 @@ const resolvePatient = (): GraphDef => {
   }
   g.wire('entry.exec', 'match.exec');
   g.wire('entry.demographics', 'match.demographics', 'create.demographics');
-  g.wire('entry.demographics', 'subject.demographics');
   g.wire('entry.pcrNumber', 'review.pcrNumber', 'reviewCompleted.pcrNumber');
-  g.wire('entry.pcrNumber', 'context.pcrNumber', 'subject.pcrNumber');
+  g.wire('entry.pcrNumber', 'context.pcrNumber');
   g.wire('match.matched', 'matched.exec');
   g.wire('match.patient', 'matched.patient');
   g.wire('match.unmatched', 'create.exec');
@@ -349,12 +1024,45 @@ const resolvePatient = (): GraphDef => {
   g.wire('review.then', 'reviewed.exec');
   g.wire('review.patient', 'reviewed.patient');
   g.wire('match.incomplete', 'complete.exec');
-  g.wire('context.result', 'complete.context');
-  g.wire('subject.result', 'complete.subject');
+  g.wire('context.context', 'complete.context');
+  g.wire(subject, 'complete.subject');
   g.wire('entered.value', 'prefill.value');
   g.wire('match.demographics', 'prefill.fallback', 'reported.demographics');
-  g.wire('prefill.result', 'complete.defaults');
-  summarize(g, 'complete', COMPLETE_PATIENT_SUMMARY, { reported: 'prefill.result' });
+  g.wire('prefill.result', 'complete.defaults', 'prefilled.demographics');
+  const missing = (pin: string, label: string, text: string) =>
+    select(
+      g,
+      `${pin}Missing`,
+      `Missing ${label}`,
+      when(g, `${pin}Empty`, `No ${label}`, { value: ['string', `prefilled.${pin}`] }, [
+        { field: 'value', op: 'empty' }
+      ]),
+      text
+    );
+  const missingList = makeList(g, 'missing', 'Missing Details', 'string', [
+    missing('firstName', 'First Name', 'first name'),
+    missing('lastName', 'Last Name', 'last name'),
+    missing('birthDate', 'Birth Date', 'birth date')
+  ]);
+  g.wire(
+    select(
+      g,
+      'completeSummary',
+      'Task Summary',
+      when(g, 'noneMissing', 'Nothing Missing', { missing: [{ list: 'string' }, missingList] }, [
+        { field: 'missing', op: 'empty' }
+      ]),
+      'The patient name or birth date on the report is not valid; correct them so the patient can be matched or created',
+      template(
+        g,
+        'missingSummary',
+        'Missing Details Summary',
+        'The report has no patient {missing}; fill it in so the patient can be matched or created',
+        { missing: joinText(g, 'missingText', 'Missing Details Text', ', ', missingList) }
+      )
+    ),
+    'complete.summary'
+  );
   for (const pin of ['gender', ...ADDRESS_PINS]) {
     g.wire(`reported.${pin}`, `corrected.${pin}`);
   }
@@ -396,29 +1104,60 @@ const resolvePayers = (): GraphDef => {
     [{ name: 'removed', type: { list: 'string' }, default: [] }]
   );
   g.add('match', 'billing.match-payers');
-  g.add(
-    'byName',
-    'std.expr',
-    expr(
-      'One Task per Payer Name',
-      'map(values(groupBy(unmatched, x => lower(x.payer))), g => merge(first(g), { keys: map(g, x => x.key) }))'
-    )
-  );
+  g.add('names', 'std.list.map-rule', {
+    label: 'Payer Name Keys',
+    config: { rule: 'billing.payer-name-key', version: 1, item: 'payer' }
+  });
+  g.add('distinct', 'std.list.unique', { label: 'Each Name Once' });
+  g.add('byName', 'std.list.map-rule', {
+    label: 'One Task per Payer Name',
+    config: { rule: 'billing.payer-name-task', version: 1, item: 'name' }
+  });
   g.add('each', 'std.flow.for-each', { label: 'Each Unlinked Payer Name' });
-  g.add(
+  g.add('unlinked', 'std.object.break', {
+    label: 'Unlinked Payer Name',
+    config: {
+      fields: [
+        { name: 'payer', type: 'string' },
+        { name: 'memberId', type: 'string' },
+        { name: 'suggested', type: 'string' },
+        { name: 'candidates', type: { list: CHOICE } },
+        { name: 'notes', type: { list: 'string' } },
+        { name: 'keys', type: { list: 'string' } }
+      ]
+    }
+  });
+  const choices = select(
+    g,
     'choices',
-    'std.expr',
-    expr('Directory Choices', 'len(item.candidates) > 0 ? { payerId: item.candidates } : null')
+    'Directory Choices',
+    when(
+      g,
+      'hasChoices',
+      'Has Directory Choices',
+      { candidates: [{ list: CHOICE }, 'unlinked.candidates'] },
+      [{ field: 'candidates', op: 'present' }]
+    ),
+    makeObject(g, 'choicesByField', 'Choices by Field', {
+      payerId: [{ list: CHOICE }, 'unlinked.candidates']
+    })
   );
-  g.add('suggestion', 'std.expr', expr('Suggested Payer', '{ payerId: item.suggested }'));
-  g.add(
-    'context',
-    'std.expr',
-    expr(
-      'Payer Context',
-      '{ reportedPayer: item.payer, memberId: item.memberId, patient: patientName, pcrNumber: pcrNumber, notes: item.notes }'
-    )
-  );
+  const suggestion = makeObject(g, 'suggestion', 'Suggested Payer', {
+    payerId: ['string', 'unlinked.suggested']
+  });
+  const context = makeObject(g, 'context', 'Payer Context', {
+    reportedPayer: ['string', 'unlinked.payer'],
+    memberId: ['string', 'unlinked.memberId'],
+    patient: ['string', 'entry.patientName'],
+    pcrNumber: ['string', 'entry.pcrNumber'],
+    notes: [{ list: 'string' }, 'unlinked.notes']
+  });
+  const subject = subjectOf(g, 'subject', ['entry.pcrNumber', 'unlinked.payer']);
+  g.add('likely', 'std.list.find-rule', {
+    label: 'Suggested Choice',
+    config: { rule: 'billing.is-suggested-payer', version: 1, item: 'choice', test: 'isSuggested' }
+  });
+  const likely = getField(g, 'likelyName', 'Likely Payer', CHOICE, 'label', 'likely.item');
   g.add('confirm', 'std.human.task', {
     label: 'Match Payer',
     config: {
@@ -439,11 +1178,11 @@ const resolvePayers = (): GraphDef => {
       prefill: 'suggested'
     }
   });
-  g.add('reported', 'std.object.get', { label: 'Reported Name', values: { path: 'payer' } });
-  g.add('keys', 'std.object.get', { label: 'Coverage Keys', values: { path: 'keys' } });
-  g.add('subject', 'std.expr', subject('pcrNumber', 'item.payer'));
   g.add('link', 'billing.link-payer', { label: 'Remember Payer Name' });
-  g.add('leaveOut', 'std.expr', expr('Coverages Left Out', 'concat(removed, keys)'));
+  g.add('leaveOut', 'std.list.join', {
+    label: 'Coverages Left Out',
+    config: { count: 2, type: 'string' }
+  });
   g.add('remove', 'std.var.set', {
     label: 'Leave Out the Coverages With This Name',
     config: { name: 'removed' }
@@ -461,26 +1200,33 @@ const resolvePayers = (): GraphDef => {
   g.wire('match.coverages', 'matched.coverages');
   g.wire('match.notes', 'matched.notes');
   g.wire('match.review', 'each.exec');
-  g.wire('match.unmatched', 'byName.unmatched');
-  g.wire('byName.result', 'each.list');
+  g.wire('match.unmatched', 'names.list', 'byName.unmatched');
+  g.wire('names.key', 'distinct.list');
+  g.wire('distinct.list', 'byName.list');
+  g.wire('byName.task', 'each.list');
   g.wire('each.body', 'confirm.exec');
-  g.wire('each.item', 'choices.item', 'suggestion.item', 'context.item', 'subject.item');
-  g.wire('each.item', 'reported.object', 'keys.object');
-  g.wire('entry.pcrNumber', 'context.pcrNumber', 'subject.pcrNumber');
-  g.wire('entry.patientName', 'context.patientName');
-  g.wire('choices.result', 'confirm.options');
-  g.wire('suggestion.result', 'confirm.defaults');
-  g.wire('context.result', 'confirm.context');
-  g.wire('subject.result', 'confirm.subject');
-  summarize(g, 'confirm', MATCH_PAYER_SUMMARY, { item: 'each.item' });
+  g.wire('each.item', 'unlinked.object');
+  g.wire('unlinked.candidates', 'likely.list');
+  g.wire('unlinked.suggested', 'likely.suggested');
+  g.wire(choices, 'confirm.options');
+  g.wire(suggestion, 'confirm.defaults');
+  g.wire(context, 'confirm.context');
+  g.wire(subject, 'confirm.subject');
+  summary(
+    g,
+    'confirm',
+    'Link the reported payer "{payer}" to a directory payer[ (likely {likely})], mark it unlisted, or remove it if it is not insurance',
+    { payer: 'unlinked.payer', likely }
+  );
   g.wire('confirm.link', 'link.exec');
-  g.wire('reported.value', 'link.name');
+  g.wire('unlinked.payer', 'link.name');
   g.wire('confirm.payerId', 'link.payerId');
   g.wire('link.invalid', 'confirm.exec');
   g.wire('confirm.remove', 'remove.exec');
-  g.wire('keys.value', 'leaveOut.keys');
-  g.wire('leaveOut.result', 'remove.value');
-  g.wire('removed.value', 'rematch.exclude', 'leaveOut.removed');
+  g.wire('removed.value', 'leaveOut.list1');
+  g.wire('unlinked.keys', 'leaveOut.list2');
+  g.wire('leaveOut.list', 'remove.value');
+  g.wire('removed.value', 'rematch.exclude');
   g.wire('each.completed', 'rematch.exec');
   g.wire('rematch.matched', 'reviewed.exec');
   g.wire('rematch.review', 'reviewed.exec');
@@ -497,36 +1243,20 @@ const REVIEW_FIELDS = [
   { name: 'note', type: 'string', label: 'Note' }
 ];
 
-const REVISION_CONTEXT = `{
-  claimId: claimId,
-  status: status,
-  canApply: some(['draft', 'needs_review', 'void'], s => s == status),
-  patient: { name: ${nameOf('pcr.patient')}, birthDate: pcr.patient.birthDate },
-  trip: trip,
-  changes: previous == null ? null : filter([
-    { field: 'Patient name', was: ${nameOf('previous.patient')}, now: ${nameOf('pcr.patient')} },
-    { field: 'Birth date', was: previous.patient.birthDate, now: pcr.patient.birthDate },
-    { field: 'Patient address', was: ${placeOf('previous.patient')}, now: ${placeOf('pcr.patient')} },
-    { field: 'Call time', was: previous.times.psapCall, now: pcr.times.psapCall },
-    { field: 'Pickup', was: ${placeOf('previous.scene')}, now: ${placeOf('pcr.scene')} },
-    { field: 'Destination', was: ${placeOf('previous.disposition')}, now: ${placeOf('pcr.disposition')} },
-    { field: 'Primary impression', was: previous.situation.primaryImpression, now: pcr.situation.primaryImpression },
-    { field: 'Other impressions', was: join(previous.situation.secondaryImpressions ?? [], ', '), now: join(pcr.situation.secondaryImpressions ?? [], ', ') },
-    { field: 'Level of care', was: previous.disposition.levelOfCare, now: pcr.disposition.levelOfCare },
-    { field: 'Response mode', was: previous.response.responseMode, now: pcr.response.responseMode },
-    { field: 'Scene odometer', was: previous.response.sceneOdometer, now: pcr.response.sceneOdometer },
-    { field: 'Destination odometer', was: previous.response.destinationOdometer, now: pcr.response.destinationOdometer },
-    { field: 'Payers', was: join(map(previous.insurances ?? [], i => i.companyName ?? ''), ', '), now: join(map(pcr.insurances ?? [], i => i.companyName ?? ''), ', ') },
-    { field: 'Narrative', was: len(previous.narrative ?? ''), now: len(pcr.narrative ?? '') }
-  ], d => d.was != d.now)
-}`;
-
 const pcrSubject = (): GraphDef => {
   const g = rule([p('pcr', PCR_TYPE)], [p('subject', 'string')]);
-  g.add('subject', 'std.expr', subject('pcr.pcrNumber', nameOf('pcr.patient')));
+  const number = getField(g, 'number', 'PCR Number', PCR_TYPE, 'pcrNumber', 'entry.pcr');
+  const name = template(
+    g,
+    'name',
+    'Patient Name',
+    '{pcr.patient.firstName} {pcr.patient.lastName}',
+    {
+      pcr: 'entry.pcr'
+    }
+  );
   g.ret('return');
-  g.wire('entry.pcr', 'subject.pcr');
-  g.wire('subject.result', 'return.subject');
+  g.wire(subjectOf(g, 'subject', [number, name]), 'return.subject');
   return g.def;
 };
 
@@ -535,12 +1265,70 @@ const tripSummary = (): GraphDef => {
     [p('pcr', PCR_TYPE), p('classification', 'string', true), p('reason', 'string', true)],
     [p('trip', { object: {} })]
   );
-  g.add('trip', 'std.expr', expr('Trip Summary', TRIP));
+  const pcr: Port = 'entry.pcr';
+  const at = (id: string, label: string, path: string) =>
+    getField(g, id, label, PCR_TYPE, path, pcr);
+  const labelled = (id: string, label: string, code: Port, config: Json) => {
+    g.add(`${id}Label`, 'std.table.lookup', { label: `${label} Label`, config });
+    g.add(id, 'std.logic.choose', {
+      label: `${label}, Else Its Code`,
+      config: { mode: 'first', type: 'string', count: 2 }
+    });
+    g.wire(code, `${id}Label.key`, `${id}.option2`);
+    g.wire(`${id}Label.value`, `${id}.option1`);
+    return `${id}.value` as const;
+  };
+  const place = (id: string, label: string, path: string) => {
+    g.add(id, 'billing.place-text', { label });
+    g.wire(at(`${id}Place`, `${label} Place`, path), `${id}.place`);
+    return `${id}.text` as const;
+  };
+  const destination = joinText(
+    g,
+    'destination',
+    'Destination',
+    ' · ',
+    makeList(g, 'destinationParts', 'Destination Name and Place', 'string', [
+      at('destinationName', 'Destination Name', 'disposition.destinationName'),
+      place('destinationPlace', 'Destination Address', 'disposition')
+    ])
+  );
+  const trip = makeObject(g, 'trip', 'Trip Summary', {
+    pcrNumber: ['string', at('pcrNumber', 'PCR Number', 'pcrNumber')],
+    classification: ['string', 'entry.classification'],
+    classifiedBy: ['string', 'entry.reason'],
+    calledAt: ['string', at('calledAt', 'Call Time', 'times.psapCall')],
+    response: [
+      'string',
+      labelled(
+        'response',
+        'Response',
+        at('responseMode', 'Response Mode', 'response.responseMode'),
+        responseModes()
+      )
+    ],
+    careProvided: [
+      'string',
+      labelled(
+        'careProvided',
+        'Care Provided',
+        at('levelOfCare', 'Level of Care', 'disposition.levelOfCare'),
+        levelsOfCare()
+      )
+    ],
+    primaryImpression: [
+      { code: 'icd10' },
+      at('primaryImpression', 'Primary Impression', 'situation.primaryImpression')
+    ],
+    otherImpressions: [
+      { list: { code: 'icd10' } },
+      at('otherImpressions', 'Other Impressions', 'situation.secondaryImpressions')
+    ],
+    pickup: ['string', place('pickup', 'Pickup', 'scene')],
+    destination: ['string', destination]
+  });
   g.ret('return');
-  g.wire('entry.pcr', 'trip.pcr');
-  g.wire('entry.classification', 'trip.classification');
-  g.wire('entry.reason', 'trip.reason');
-  g.wire('trip.result', 'return.trip');
+  g.wire(trip, 'return.trip');
   return g.def;
 };
 
@@ -632,15 +1420,67 @@ const reviewPcr = (): GraphDef => {
     label: 'Documentation With the Transport Reason',
     values: { path: 'transportReason' }
   });
-  g.add('context', 'std.expr', expr('Review Context', REVIEW_CONTEXT));
-  g.add(
-    'defaults',
-    'std.expr',
-    expr(
-      'Answers Before, Else the Suggestion',
-      'merge(service, { classification: classification }, fromEntries(filter(entries(answers ?? {}), e => e.value != null)))'
-    )
-  );
+  g.add('patient', 'billing.patient-details', { label: 'Patient Details' });
+  g.add('coverage', 'std.list.map-rule', {
+    label: 'Coverage Details',
+    config: { rule: 'billing.coverage-details', version: 1, item: 'coverage' }
+  });
+  g.add('findings', 'billing.findings.break', { label: 'Narrative Findings' });
+  g.add('medications', 'std.list.map-rule', {
+    label: 'Medications Given',
+    config: { rule: 'billing.medication-text', version: 1, item: 'medication' }
+  });
+  const pcrField = (id: string, label: string, path: string) =>
+    getField(g, id, label, PCR_TYPE, path, 'entry.pcr');
+  const vitals = pcrField('vitals', 'Vital Signs', 'vitals');
+  g.add('vitalTexts', 'std.list.map-rule', {
+    label: 'Each Set of Vital Signs',
+    config: { rule: 'billing.vital-signs-text', version: 1, item: 'vital' }
+  });
+  g.add('proceduresCoded', 'std.list.pluck', {
+    label: 'Procedures Coded',
+    values: { field: 'procedure' }
+  });
+  g.add('docs', 'billing.documentation.break', { label: 'Documentation' });
+  g.add('warnings', 'billing.review-warnings', { label: 'Review Warnings' });
+  const narrative = makeObject(g, 'narrative', 'Narrative', {
+    medications: [{ list: 'string' }, 'medications.text'],
+    procedures: [{ list: 'string' }, 'findings.procedures']
+  });
+  const condition = makeObject(g, 'condition', 'Condition', {
+    complaint: ['string', pcrField('complaint', 'Complaint', 'situation.complaint')],
+    primarySymptom: [
+      'string',
+      pcrField('primarySymptom', 'Primary Symptom', 'situation.primarySymptom')
+    ],
+    vitals: [{ list: 'string' }, 'vitalTexts.text'],
+    proceduresCoded: [{ list: 'string' }, 'proceduresCoded.list']
+  });
+  const documentation = makeObject(g, 'documented', 'Documentation Details', {
+    signature: ['string', 'docs.signature'],
+    signatureNote: ['string', 'docs.signatureNote'],
+    physicianCertification: ['boolean', 'docs.pcsOnFile'],
+    transportReason: ['string', 'docs.transportReason'],
+    conditionCodes: [{ list: 'string' }, 'docs.conditionCodes'],
+    patientsTransported: ['integer', 'docs.patientCount'],
+    mspAccident: ['string', 'docs.mspAccident']
+  });
+  const context = makeObject(g, 'context', 'Review Context', {
+    patient: [{ object: {} }, 'patient.details'],
+    trip: [{ object: {} }, 'trip.trip'],
+    coverage: [{ list: { object: {} } }, 'coverage.details'],
+    narrative: [{ object: {} }, narrative],
+    condition: [{ object: {} }, condition],
+    documentation: [{ object: {} }, documentation],
+    suggested: [SERVICE, 'entry.service'],
+    warnings: [{ list: 'string' }, 'warnings.warnings']
+  });
+  g.add('classified', 'std.object.set', {
+    label: 'Suggestion With the Classification',
+    values: { path: 'classification' }
+  });
+  g.add('answered', 'std.object.compact', { label: 'Answers Given' });
+  g.add('defaults', 'std.object.merge', { label: 'Answers Before, Else the Suggestion' });
   g.add('review', 'std.human.task', {
     label: 'Review PCR',
     config: {
@@ -671,11 +1511,11 @@ const reviewPcr = (): GraphDef => {
     }
   });
   g.add('remember', 'std.var.set', { label: 'Remember the Answers', config: { name: 'answers' } });
-  g.add(
-    'holdContext',
-    'std.expr',
-    expr('Hold Context', `{ note: note, patient: ${nameOf('patient')}, trip: trip }`)
-  );
+  const holdContext = makeObject(g, 'holdContext', 'Hold Context', {
+    note: ['string', 'review.note'],
+    patient: ['string', nameOf(g, 'patientName', 'Patient Name', 'entry.patient')],
+    trip: [{ object: {} }, 'trip.trip']
+  });
   g.add('held', 'std.human.task', {
     label: 'Held PCR',
     config: {
@@ -695,10 +1535,15 @@ const reviewPcr = (): GraphDef => {
   g.add('emergency', 'std.logic.coalesce', { label: 'Confirmed Emergency' });
   g.add('miles', 'std.logic.coalesce', { label: 'Confirmed Loaded Miles' });
   g.add('nonCovered', 'billing.non-covered-miles', { label: 'Non-Covered Miles' });
-  g.add(
+  const nonCoveredUnlessDead = select(
+    g,
     'nonCoveredUnlessDead',
-    'std.expr',
-    expr('No Non-Covered Miles When Pronounced Dead', 'deceased == true ? null : miles')
+    'No Non-Covered Miles When Pronounced Dead',
+    when(g, 'pronouncedDead', 'Pronounced Dead', { deceased: ['boolean', 'suggested.deceased'] }, [
+      { field: 'deceased', op: 'is', value: true }
+    ]),
+    null,
+    'nonCovered.nonCoveredMiles'
   );
   g.add('confirmed', 'billing.service.make', { label: 'Confirmed Service' });
   g.ret('approvedDone', 'approved');
@@ -707,42 +1552,132 @@ const reviewPcr = (): GraphDef => {
   g.wire('entry.exec', 'start.exec');
   g.wire('entry.answers', 'start.value');
   g.wire('start.then', 'review.exec');
-  g.wire('entry.pcr', 'trip.pcr', 'subject.pcr', 'context.pcr');
+  g.wire('entry.pcr', 'trip.pcr', 'subject.pcr');
   g.wire('entry.facts', 'facts.facts');
   g.wire('facts.documentation', 'reasonForTransport.documentation', 'documentation.object');
   g.wire('facts.locations', 'reasonForTransport.locations');
   g.wire('reasonForTransport.transportReason', 'documentation.value');
-  g.wire('documentation.object', 'context.documentation');
-  g.wire(
-    'entry.classification',
-    'trip.classification',
-    'defaults.classification',
-    'context.classification'
-  );
-  g.wire('entry.reason', 'trip.reason', 'context.reason');
-  g.wire('trip.trip', 'context.trip', 'holdContext.trip');
-  g.wire('entry.patient', 'context.patient', 'holdContext.patient');
-  g.wire('entry.coverages', 'context.coverages');
-  g.wire('entry.payerNotes', 'context.payerNotes');
-  g.wire('entry.findings', 'context.findings');
-  g.wire('entry.service', 'context.service', 'defaults.service', 'suggested.service');
-  g.wire('answers.value', 'defaults.answers');
-  g.wire('defaults.result', 'review.defaults');
-  g.wire('context.result', 'review.context');
-  summarize(g, 'review', REVIEW_PCR_SUMMARY, {
-    service: 'entry.service',
-    classification: 'entry.classification',
-    findings: 'entry.findings'
+  g.wire('documentation.object', 'docs.documentation', 'warnings.documentation');
+  g.wire('entry.classification', 'trip.classification', 'classified.value');
+  g.wire('entry.classification', 'warnings.classification', 'tripKind.key');
+  g.wire('entry.reason', 'trip.reason', 'warnings.reason');
+  g.wire('entry.patient', 'patient.person');
+  g.wire('entry.coverages', 'coverage.list');
+  g.wire('entry.findings', 'findings.findings', 'warnings.findings');
+  g.wire('findings.medications', 'medications.list');
+  g.wire(vitals, 'vitalTexts.list', 'warnings.vitals');
+  g.wire(pcrField('procedures', 'Procedures', 'procedures'), 'proceduresCoded.list');
+  g.wire('entry.payerNotes', 'warnings.payerNotes');
+  g.wire('entry.service', 'warnings.service', 'classified.object', 'suggested.service');
+  g.wire('classified.object', 'defaults.a');
+  g.wire('answers.value', 'answered.object');
+  g.wire('answered.object', 'defaults.b');
+  g.wire('defaults.object', 'review.defaults');
+  g.wire(context, 'review.context');
+  g.add('tripKind', 'std.logic.choose', {
+    label: 'Kind of Trip',
+    config: {
+      mode: 'byCase',
+      type: 'string',
+      cases: [
+        { when: 'scheduled' },
+        { when: 'treatNoTransport' },
+        { when: 'refusal' },
+        { when: 'notBillable' }
+      ]
+    },
+    values: {
+      case1: 'scheduled trip',
+      case2: 'treat-no-transport',
+      case3: 'refusal',
+      case4: 'not billable'
+    }
   });
+  g.add('emergencyText', 'std.logic.choose', {
+    label: 'Emergency or Not',
+    config: { mode: 'byCase', type: 'string', cases: [{ when: 'true' }, { when: 'false' }] },
+    values: { case1: 'emergency', case2: 'non-emergency' }
+  });
+  g.add('roundedMiles', 'std.math.round', {
+    label: 'Loaded Miles to a Tenth',
+    values: { digits: 1 }
+  });
+  g.add('deceasedText', 'std.logic.choose', {
+    label: 'Pronounced Dead Text',
+    config: { mode: 'byCase', type: 'string', cases: [{ when: 'true' }] },
+    values: { case1: 'pronounced dead before loading' }
+  });
+  g.wire('suggested.emergency', 'emergencyText.key');
+  g.wire('suggested.loadedMiles', 'roundedMiles.value');
+  g.wire('suggested.deceased', 'deceasedText.key');
+  const serviceParts = makeList(g, 'serviceParts', 'Suggested Service Parts', 'string', [
+    'tripKind.value',
+    'suggested.level',
+    'emergencyText.value',
+    template(g, 'milesText', 'Loaded Miles Text', '[{miles} loaded miles]', {
+      miles: 'roundedMiles.result'
+    }),
+    'deceasedText.value'
+  ]);
+  const fromNarrative = select(
+    g,
+    'fromNarrative',
+    'Suggested From the Narrative',
+    when(
+      g,
+      'narrativeFound',
+      'Narrative Documents Care',
+      {
+        medications: [{ list: MEDICATION }, 'findings.medications'],
+        procedures: [{ list: 'string' }, 'findings.procedures']
+      },
+      [
+        { field: 'medications', op: 'present' },
+        { field: 'procedures', op: 'present' }
+      ],
+      'any'
+    ),
+    ', suggested from the narrative'
+  );
+  g.wire(
+    select(
+      g,
+      'reviewSummary',
+      'Task Summary',
+      when(
+        g,
+        'nothingSuggested',
+        'Nothing Suggested',
+        { parts: [{ list: 'string' }, serviceParts] },
+        [{ field: 'parts', op: 'empty' }]
+      ),
+      'Confirm the classification, level of service and loaded miles before this claim is priced',
+      template(
+        g,
+        'confirmService',
+        'Confirm the Service',
+        'Confirm the service: {parts}{narrative}, before this claim is priced',
+        {
+          parts: joinText(g, 'serviceText', 'Suggested Service Text', ', ', serviceParts),
+          narrative: fromNarrative
+        }
+      )
+    ),
+    'review.summary'
+  );
   g.wire('subject.subject', 'review.subject', 'held.subject');
   for (const pin of REVIEW_ANSWERS) g.wire(`review.${pin}`, `given.${pin}`);
 
   g.wire('review.hold', 'remember.exec');
   g.wire('given.object', 'remember.value', 'approvedDone.answers');
   g.wire('remember.then', 'held.exec');
-  g.wire('review.note', 'holdContext.note');
-  g.wire('holdContext.result', 'held.context');
-  summarize(g, 'held', HELD_SUMMARY, { note: 'review.note' });
+  g.wire(holdContext, 'held.context');
+  summary(
+    g,
+    'held',
+    'This PCR is on hold[: {note}]; release it back to review once it is sorted out, or void it',
+    { note: 'review.note' }
+  );
   g.wire('held.release', 'review.exec');
   g.wire('held.void', 'voidedDone.exec');
 
@@ -758,9 +1693,8 @@ const reviewPcr = (): GraphDef => {
   g.wire('suggested.loadedMiles', 'miles.fallback');
   g.wire('miles.result', 'confirmed.loadedMiles', 'nonCovered.loadedMiles');
   g.wire('entry.facts', 'nonCovered.facts');
-  g.wire('suggested.deceased', 'confirmed.deceased', 'nonCoveredUnlessDead.deceased');
-  g.wire('nonCovered.nonCoveredMiles', 'nonCoveredUnlessDead.miles');
-  g.wire('nonCoveredUnlessDead.result', 'confirmed.nonCoveredMiles');
+  g.wire('suggested.deceased', 'confirmed.deceased');
+  g.wire(nonCoveredUnlessDead, 'confirmed.nonCoveredMiles');
   g.wire('suggested.basis', 'confirmed.basis');
   g.wire('confirmed.service', 'approvedDone.service');
   return g.def;
@@ -837,8 +1771,112 @@ const reviewRevision = (): GraphDef => {
   g.add('classify', 'billing.classify-trip', { label: 'Classify Trip' });
   g.add('trip', 'billing.trip-summary', { label: 'Trip Summary' });
   g.add('subject', 'billing.pcr-subject', { label: 'Task Subject' });
-  g.add('context', 'std.expr', expr('Revision Context', REVISION_CONTEXT));
-  g.add('canApply', 'std.object.get', { label: 'Can Apply', values: { path: 'canApply' } });
+  g.add('canApply', 'billing.can-rework-claim', { label: 'Can Rework Claim' });
+  g.add('earlier', 'billing.report-revision-facts', { label: 'Earlier Report Facts' });
+  g.add('current', 'billing.report-revision-facts', { label: 'New Report Facts' });
+  const changeList = makeList(
+    g,
+    'changeList',
+    'Changed Fields',
+    CHANGE,
+    REVISION_FACTS.map(([name, , label, field]) => {
+      const id = `${name}Change`;
+      g.add(id, 'billing.revision-change', { label: `${label} Change`, values: { field } });
+      g.wire(`earlier.${name}`, `${id}.was`);
+      g.wire(`current.${name}`, `${id}.now`);
+      return `${id}.change` as const;
+    })
+  );
+  g.add('noEarlier', 'std.logic.is-null', { label: 'No Earlier PCR' });
+  const changes = select(g, 'changes', 'Changes', 'noEarlier.result', null, changeList);
+  const context = makeObject(g, 'context', 'Revision Context', {
+    claimId: [{ id: 'claim' }, 'contextClaimId.claimId'],
+    status: ['string', 'note.status'],
+    canApply: ['boolean', 'canApply.canApply'],
+    patient: [
+      { object: {} },
+      makeObject(g, 'patient', 'Patient', {
+        name: ['string', 'current.patientName'],
+        birthDate: ['string', 'current.birthDate']
+      })
+    ],
+    trip: [{ object: {} }, 'trip.trip'],
+    changes: [{ list: CHANGE }, changes]
+  });
+  g.add('fields', 'std.list.pluck', { label: 'Changed Field Names', values: { field: 'field' } });
+  g.add('firstThree', 'std.list.slice', { label: 'First Three', values: { start: 0, end: 3 } });
+  g.add('listedLower', 'std.text.lower', { label: 'In Small Letters' });
+  g.add('count', 'std.list.length', { label: 'How Many Changed' });
+  g.add('beyond', 'std.math.subtract', { label: 'Beyond Three', values: { b: 3 } });
+  g.wire(changes, 'fields.list', 'count.list');
+  g.wire('fields.list', 'firstThree.list');
+  g.wire(joinText(g, 'listed', 'Listed', ', ', 'firstThree.list'), 'listedLower.text');
+  g.wire('count.length', 'beyond.a');
+  const more = select(
+    g,
+    'more',
+    'How Many More',
+    when(g, 'moreThanThree', 'More Than Three', { count: ['integer', 'count.length'] }, [
+      { field: 'count', op: 'gt', value: 3 }
+    ]),
+    'beyond.result'
+  );
+  g.add('headline', 'std.logic.choose', {
+    label: 'What Changed',
+    config: { mode: 'byCase', type: 'string', cases: [{ when: '0' }] },
+    values: {
+      case1: 'A newer version of this report arrived with no changes to its billing details'
+    }
+  });
+  g.wire('count.length', 'headline.key');
+  g.wire(
+    template(
+      g,
+      'changed',
+      'Changes Text',
+      'A newer version of this report changes the {fields}[ and {more} more]',
+      { fields: 'listedLower.result', more }
+    ),
+    'headline.otherwise'
+  );
+  const arrived = select(
+    g,
+    'arrived',
+    'What Arrived',
+    'noEarlier.result',
+    'A newer version of this report arrived',
+    'headline.value'
+  );
+  g.add('statusText', 'std.logic.coalesce', {
+    label: 'Status, Else None',
+    values: { fallback: '' }
+  });
+  g.add('statusWords', 'std.text.replace', {
+    label: 'Status in Words',
+    values: { find: '_', replacement: ' ' }
+  });
+  g.add('statusOrPast', 'std.logic.choose', {
+    label: 'Status, Else Past Review',
+    config: { mode: 'first', type: 'string', count: 2 },
+    values: { option2: 'past review' }
+  });
+  g.wire('note.status', 'statusText.value');
+  g.wire('statusText.result', 'statusWords.text');
+  g.wire('statusWords.result', 'statusOrPast.option1');
+  const next = select(
+    g,
+    'next',
+    'What to Do',
+    'canApply.canApply',
+    '; apply it, acknowledge it or void the claim',
+    template(
+      g,
+      'correctIt',
+      'Correct It Text',
+      '; the claim is {status}, so correct it with a Correct Claim Data task on the claim or acknowledge it',
+      { status: 'statusOrPast.value' }
+    )
+  );
   g.add('revision', 'std.human.task', {
     label: 'Review Updated PCR',
     config: {
@@ -874,24 +1912,22 @@ const reviewRevision = (): GraphDef => {
   g.wire('note.restartable', 'first.exec');
   g.wire('note.billed', 'first.exec');
   g.wire('note.previous', 'hasPrevious.value', 'readPrevious.report');
-  g.wire('note.status', 'context.status');
+  g.wire('note.status', 'canApply.status');
   g.wire('hasPrevious.result', 'first.condition');
   g.wire('first.true', 'revision.exec');
   g.wire('first.false', 'readPrevious.exec');
   g.wire('readPrevious.then', 'keep.exec');
   g.wire('readPrevious.pcr', 'keep.value');
   g.wire('keep.then', 'revision.exec');
-  g.wire('previous.value', 'context.previous');
-  g.wire('pcr.pcr', 'trip.pcr', 'subject.pcr', 'context.pcr');
+  g.wire('previous.value', 'earlier.pcr', 'noEarlier.value');
+  g.wire('pcr.pcr', 'trip.pcr', 'subject.pcr', 'current.pcr');
   g.wire('classify.classification', 'trip.classification');
   g.wire('classify.reason', 'trip.reason');
-  g.wire('trip.trip', 'context.trip');
-  g.wire('contextClaimId.claimId', 'context.claimId');
   g.wire('subject.subject', 'revision.subject');
-  summarize(g, 'revision', REVISION_SUMMARY, { context: 'context.result' });
-  g.wire('context.result', 'revision.context', 'canApply.object');
+  summary(g, 'revision', '{arrived}{next}', { arrived, next });
+  g.wire(context, 'revision.context');
   g.wire('revision.apply', 'applies.exec');
-  g.wire('canApply.value', 'applies.condition', 'voidable.condition');
+  g.wire('canApply.canApply', 'applies.condition', 'voidable.condition');
   g.wire('applies.true', 'rework.exec');
   g.wire('applies.false', 'revision.exec');
   g.wire('report.report', 'rework.report');
@@ -980,27 +2016,18 @@ const recoverDraft = (): GraphDef => {
   g.wire('entry.reason', 'context.reason');
   g.wire('entry.report', 'rework.report');
   g.wire('context.object', 'orphan.context');
-  summarize(g, 'orphan', ORPHAN_SUMMARY, { reason: 'entry.reason' });
+  summary(
+    g,
+    'orphan',
+    'This draft claim stopped before it was ready[ ({reason})]; restart it from its report or void it',
+    { reason: 'entry.reason' }
+  );
   g.wire('orphan.restart', 'rework.exec');
   g.wire('rework.then', 'done.exec');
   g.wire('orphan.void', 'void.exec');
   g.wire('void.then', 'done.exec');
   return g.def;
 };
-
-const PRIORITY_RANKS = [
-  '2611003',
-  '2611005',
-  '2611007',
-  '2611009',
-  '2611011',
-  '2611013',
-  '2611015',
-  '2611017',
-  '2611019',
-  '2611021',
-  '2611023'
-].map((key, value) => ({ key, value }));
 
 const MSP_ANSWERS = [
   d(
@@ -1136,42 +2163,55 @@ const coordinationOrder = (): GraphDef => {
       P.reasons('the payers are in this order')
     ]
   );
-  g.add('priorities', 'std.list.pluck', {
-    label: 'Reported Priorities',
-    values: { field: 'priority' }
+  g.add('ranked', 'std.list.map-rule', {
+    label: 'Each With Its Billing Rank',
+    config: { rule: 'billing.coverage-billing-rank', version: 1, item: 'coverage' }
   });
-  g.add('ranks', 'std.table.lookup', {
-    label: 'Coverage Priority',
-    config: shared.lookup(
-      'billing.coverage-priority',
-      'Coverage Priority',
-      'The billing order of each reported coverage priority (ePayment.10): primary first, then secondary and on. Coverages with other priorities come last, in the order reported.',
-      { type: 'integer', rows: PRIORITY_RANKS, fallback: PRIORITY_RANKS.length }
-    )
+  g.add('sorted', 'std.list.sort-by-field', { label: 'By Rank', values: { field: 'rank' } });
+  g.add('ordered', 'std.list.pluck', {
+    label: 'By Priority, Then as Reported',
+    values: { field: 'coverage' }
   });
-  g.add(
-    'ordered',
-    'std.expr',
-    expr(
-      'By Priority, Then as Reported',
-      "map(sort(map(coverages, (c, n) => { c: c, rank: (medicareSecondary == true && contains(['MA', 'MB'], c.claimFiling) ? 1000000 : 0) + (ranks[n] ?? 99) * 1000 + n }), x => x.rank), x => x.c)"
-    )
-  );
-  g.add(
-    'reasons',
-    'std.expr',
-    expr(
-      'Why',
-      "concat(len(coverages) > 1 ? ['Billed in the priority order the report gives, then as reported'] : [], medicareSecondary == true && some(coverages, c => !contains(['MA', 'MB'], c.claimFiling)) ? ['Medicare is billed after the payers that pay first'] : [])"
-    )
-  );
+  g.add('count', 'std.list.length', { label: 'How Many Payers' });
+  g.add('othersFirst', 'std.list.where', {
+    label: 'Payers Other Than Medicare',
+    config: { field: 'claimFiling', op: 'notOneOf', value: MEDICARE_FILING }
+  });
   g.ret('return');
-  g.wire('entry.coverages', 'priorities.list', 'ordered.coverages', 'reasons.coverages');
-  g.wire('entry.medicareSecondary', 'ordered.medicareSecondary', 'reasons.medicareSecondary');
-  g.wire('priorities.list', 'ranks.keys');
-  g.wire('ranks.values', 'ordered.ranks');
-  g.wire('ordered.result', 'return.coverages');
-  g.wire('reasons.result', 'return.reasons');
+  g.wire('entry.coverages', 'ranked.list', 'count.list', 'othersFirst.list');
+  g.wire('entry.medicareSecondary', 'ranked.medicareSecondary');
+  g.wire('ranked.ranked', 'sorted.list');
+  g.wire('sorted.list', 'ordered.list');
+  g.wire('ordered.list', 'return.coverages');
+  const inOrder = select(
+    g,
+    'inOrder',
+    'Priority Order Reason',
+    when(g, 'several', 'Several Payers', { count: ['integer', 'count.length'] }, [
+      { field: 'count', op: 'gt', value: 1 }
+    ]),
+    'Billed in the priority order the report gives, then as reported'
+  );
+  const medicareAfter = select(
+    g,
+    'medicareAfter',
+    'Medicare After Reason',
+    when(
+      g,
+      'medicareSecond',
+      'Medicare Pays After Others',
+      {
+        medicareSecondary: ['boolean', 'entry.medicareSecondary'],
+        others: ['integer', 'othersFirst.count']
+      },
+      [
+        { field: 'medicareSecondary', op: 'is', value: true },
+        { field: 'others', op: 'gt', value: 0 }
+      ]
+    ),
+    'Medicare is billed after the payers that pay first'
+  );
+  g.wire(makeList(g, 'reasons', 'Why', 'string', [inOrder, medicareAfter]), 'return.reasons');
   return g.def;
 };
 
@@ -1212,8 +2252,8 @@ const determinePayers = (): GraphDef => {
   return g.def;
 };
 
-const tripContext = (g: ReturnType<typeof graph>, id: string) =>
-  g.add(id, 'std.expr', expr('Trip Context', '{ trip: trip }'));
+const tripContext = (g: Builder, id: string, trip: Port) =>
+  makeObject(g, id, 'Trip Context', { trip: [{ object: {} }, trip] });
 
 const buildClaim = (): GraphDef => {
   const g = graph({
@@ -1322,7 +2362,7 @@ const billClaim = (): GraphDef => {
     config: { name: 'classification' }
   });
   g.add('trip', 'billing.trip-summary', { label: 'Trip Summary' });
-  tripContext(g, 'claimContext');
+  const claimContext = tripContext(g, 'claimContext', 'trip.trip');
   g.add('subject', 'billing.pcr-subject', { label: 'Task Subject' });
   g.add('build', 'billing.build-claim', { label: 'Build Claim' });
   g.add('responsibility', 'billing.decide-responsibility', { label: 'Decide Responsibility' });
@@ -1358,13 +2398,12 @@ const billClaim = (): GraphDef => {
   g.wire('reviewed.then', 'build.exec');
   g.wire('entry.reason', 'trip.reason');
   g.wire('billedTrip.value', 'trip.classification', 'build.classification');
-  g.wire('trip.trip', 'claimContext.trip');
   for (const pin of ['claimId', 'report', 'patient', 'coverages']) {
     g.wire(`entry.${pin}`, `build.${pin}`);
   }
   g.wire('review.service', 'build.service');
   g.wire('subject.subject', 'build.subject', 'fix.subject', 'facility.subject');
-  g.wire('claimContext.result', 'build.context', 'fix.context', 'facility.context');
+  g.wire(claimContext, 'build.context', 'fix.context', 'facility.context');
   g.wire('entry.claimId', 'fix.claimId', 'cycle.claimId', 'void.claimId');
   g.wire('entry.claimId', 'responsibility.claimId', 'facility.claimId');
   g.wire('build.saved', 'responsibility.exec');
@@ -1464,6 +2503,96 @@ export const intakeGraphs: SeedGraph[] = [
       ],
       outputs: [d('coverages', COVERAGES, 'Coverages', 'The payers to bill, in order.')]
     }
+  ),
+  asRule(
+    'billing.patient-details',
+    'Patient Details',
+    'Writes a patient for a biller: name, birth date, sex (Sex Labels table) and address.',
+    patientDetails()
+  ),
+  asRule(
+    'billing.patient-match-context',
+    'Patient Match Context',
+    'What a biller sees when matching a report to a patient: why, the reported patient with the PCR number, and the details of each candidate.',
+    patientMatchContext()
+  ),
+  asRule(
+    'billing.patient-choice',
+    'Patient Choice',
+    'Offers a candidate patient as a choice, named by last and first name, birth date and ZIP code.',
+    patientChoice()
+  ),
+  asRule(
+    'billing.payer-name-key',
+    'Payer Name Key',
+    'Writes a reported payer name in small letters, so the same name in any case is asked about once.',
+    payerNameKey()
+  ),
+  asRule(
+    'billing.payer-has-name',
+    'Payer Has Name',
+    'Says whether a reported payer has a name, in any case.',
+    payerHasName()
+  ),
+  asRule(
+    'billing.payer-name-task',
+    'Payer Name Task',
+    'Gathers the unlinked payers with one name into one task: the first of them, with the coverage keys of all.',
+    payerNameTask()
+  ),
+  asRule(
+    'billing.is-suggested-payer',
+    'Is Suggested Payer',
+    'Says whether a directory choice is the payer suggested for a name.',
+    isSuggestedPayer()
+  ),
+  asRule(
+    'billing.coverage-details',
+    'Coverage Details',
+    'Writes a payer for a biller: the name reported, its directory payer or that it is not linked, member ID and group ID.',
+    coverageDetails()
+  ),
+  asRule(
+    'billing.medication-text',
+    'Medication Text',
+    'Writes a medication the narrative documents as its name and route, with the doses when more than one.',
+    medicationText()
+  ),
+  asRule(
+    'billing.vital-signs-text',
+    'Vital Signs Text',
+    'Writes one set of vital signs as when they were taken and each reading recorded.',
+    vitalSignsText()
+  ),
+  asRule(
+    'billing.review-warnings',
+    'Review Warnings',
+    'Warns the PCR reviewer about what could not be read or decided: no classification reason, no signature, no certification for a scheduled trip, no vital signs, a death before loading, non-covered miles, several patients, and the narrative and payer notes.',
+    reviewWarnings()
+  ),
+  asRule(
+    'billing.report-revision-facts',
+    'Report Revision Facts',
+    'The billing details of a report version that a revision compares: patient, times, places, impressions, care, response, odometers, payers and narrative length.',
+    reportRevisionFacts()
+  ),
+  asRule(
+    'billing.revision-change',
+    'Revision Change',
+    'Gives a field with its earlier and new values when a newer report changed it, or nothing.',
+    revisionChange()
+  ),
+  asRule(
+    'billing.can-rework-claim',
+    'Can Rework Claim',
+    'Says whether a claim can still be worked again from a newer report: while it is a draft, needs review or is void.',
+    canReworkClaim()
+  ),
+  asRule(
+    'billing.coverage-billing-rank',
+    'Coverage Billing Rank',
+    'Ranks a payer for billing order: its reported priority (Coverage Priority table), after the other payers when it is Medicare and another payer pays first.',
+    coverageBillingRank()
   ),
   asStage(
     'billing.review-patient-match',
