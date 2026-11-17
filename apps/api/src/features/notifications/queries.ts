@@ -28,7 +28,7 @@ export const listNotifications = (db: Db, agencyId: string, userId: string) =>
     ])
     .where('n.agency_id', '=', agencyId)
     .where((eb) => eb.or([eb('n.user_id', 'is', null), eb('n.user_id', '=', userId)]))
-    .where(sql<boolean>`s.cleared_at is null or n.created_at > s.cleared_at`)
+    .where(sql<boolean>`(s.cleared_at is null or n.created_at > s.cleared_at)`)
     .orderBy('n.created_at', 'desc')
     .orderBy('n.id', 'desc')
     .limit(NOTIFICATION_LIMIT)

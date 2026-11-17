@@ -57,7 +57,7 @@ export const payersReport = report({
       .where('c.agency_id', '=', ctx.agencyId)
       .where('c.status', 'not in', UNBILLED)
       .where(servedIn(ctx))
-      .where(sql<boolean>`a.first_submitted is not null or a.responses > 0`)
+      .where(sql<boolean>`(a.first_submitted is not null or a.responses > 0)`)
       .groupBy(sql`1`);
     const patient = db
       .selectFrom('claim_events as e')
