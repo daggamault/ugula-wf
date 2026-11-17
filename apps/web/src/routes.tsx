@@ -5,10 +5,6 @@ import { CLAIM_TABS, ClaimPage } from './features/claims/claim-page.tsx';
 import { ClaimsPage } from './features/claims/claims-page.tsx';
 import { type ClaimsClient, claimSearchOf } from './features/claims/client.ts';
 import { PatientClaims } from './features/claims/patient-claims.tsx';
-import type { DepositsClient } from './features/deposits/client.ts';
-import { DepositPage } from './features/deposits/deposit-page.tsx';
-import { DEPOSITS_PATH, DepositsPage } from './features/deposits/deposits-page.tsx';
-import { RecordDepositPage } from './features/deposits/record-deposit-page.tsx';
 import type { FacilitiesClient } from './features/facilities/client.ts';
 import { FACILITIES_PATH, FacilitiesPage } from './features/facilities/facilities-page.tsx';
 import { FacilityPage } from './features/facilities/facility-page.tsx';
@@ -27,8 +23,6 @@ import { PayerFilesPage } from './features/payer-files/payer-files-page.tsx';
 import type { PayersClient } from './features/payers/client.ts';
 import { PayerPage } from './features/payers/payer-page.tsx';
 import { PAYERS_PATH, PayersPage } from './features/payers/payers-page.tsx';
-import type { PeriodsClient } from './features/periods/client.ts';
-import { PERIODS_PATH, PeriodsPage } from './features/periods/periods-page.tsx';
 import type { ReportsClient } from './features/reports/client.ts';
 import {
   ReportOptionsPage,
@@ -74,14 +68,12 @@ export type AppClients = {
   tasks: TasksClient;
   imports: ImportsClient;
   payerFiles: PayerFilesClient;
-  deposits: DepositsClient;
   fees: FeesClient;
   claims: ClaimsClient;
   patients: PatientsClient;
   payers: PayersClient;
   facilities: FacilitiesClient;
   settings: SettingsClient;
-  periods: PeriodsClient;
   reports: ReportsClient;
   notifications: NotificationsClient;
   codes: CodesClient;
@@ -196,26 +188,6 @@ const routes: readonly Route[] = [
         live={c.live}
         fileId={p.id ?? ''}
         back={backOf(q, '/payer-files')}
-      />
-    )
-  },
-  {
-    pattern: DEPOSITS_PATH,
-    render: (_, __, c) => <DepositsPage client={c.deposits} live={c.live} />
-  },
-  {
-    pattern: `${DEPOSITS_PATH}/new`,
-    render: (_, q, c) => <RecordDepositPage client={c.deposits} back={backOf(q, DEPOSITS_PATH)} />
-  },
-  {
-    pattern: `${DEPOSITS_PATH}/:id`,
-    render: (p, q, c) => (
-      <DepositPage
-        key={p.id}
-        client={c.deposits}
-        live={c.live}
-        depositId={p.id ?? ''}
-        back={backOf(q, DEPOSITS_PATH)}
       />
     )
   },
@@ -365,10 +337,6 @@ const routes: readonly Route[] = [
   {
     pattern: '/settings',
     render: (_, __, c) => <SettingsPage client={c.settings} live={c.live} />
-  },
-  {
-    pattern: PERIODS_PATH,
-    render: (_, __, c) => <PeriodsPage client={c.periods} live={c.live} />
   },
   {
     pattern: TASKS_PATH,

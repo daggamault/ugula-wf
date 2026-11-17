@@ -73,7 +73,7 @@ export const REPORTS: readonly AnyReport[] = [
     id: 'activity',
     title: 'Monthly Activity',
     description:
-      'Claims billed, payments, adjustments, refunds, write-offs and collections booked in each month, for closing the month.',
+      'Claims billed, payments, adjustments, refunds, write-offs and collections booked in each month.',
     dates: 'posted',
     groups: null,
     columns: fixed(ACTIVITY_COLUMNS)
@@ -82,7 +82,7 @@ export const REPORTS: readonly AnyReport[] = [
     id: 'payments',
     title: 'Payments Posted',
     description:
-      'Every payer and patient payment and refund posted, with check or EFT numbers for matching deposits. Denials that paid nothing are on Denials.',
+      'Every payer and patient payment and refund posted, with its check or EFT number. Denials that paid nothing are on Denials.',
     dates: 'posted',
     groups: null,
     columns: fixed(PAYMENT_COLUMNS)

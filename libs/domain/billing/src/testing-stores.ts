@@ -68,13 +68,6 @@ export const billingStores = (stores: Partial<BillingStores> = {}): BillingStore
   },
   calendar: stores.calendar ?? { today: async (_, at) => localDate(at, 'America/Chicago') },
   documents: stores.documents ?? { chasedDocuments: async () => [] },
-  accounting: stores.accounting ?? {
-    depositPairs: unused('accounting'),
-    matchDeposit: unused('accounting'),
-    unmatchedPayments: unused('accounting'),
-    periodTotals: unused('accounting'),
-    closePeriod: unused('accounting')
-  },
   balances: stores.balances ?? {
     startPlan: unused('balance'),
     missPlan: unused('balance'),

@@ -1,5 +1,4 @@
 import type { Model, ValueType } from '@ugula/graph';
-import { DEPOSIT_PAIR, UNMATCHED_PAYMENT } from './accounting-models.ts';
 import {
   CHECK_FACTS,
   CHECKED_PAYER,
@@ -76,8 +75,6 @@ export const billingTypes = {
   tasksDue: { list: TASK_DUE.type },
   reminders: { list: REMINDER_FACTS.type },
   deadlines: { list: DEADLINE.type },
-  depositPairs: { list: DEPOSIT_PAIR.type },
-  unmatchedPayments: { list: UNMATCHED_PAYMENT.type },
   adjustments: { list: ADJUSTMENT.type },
   remittanceLines: { list: REMITTANCE_LINE.type },
   postings: { list: REMITTANCE_POSTING.type },
@@ -117,8 +114,6 @@ export const billingModels: Model[] = [
   TASK_DUE,
   DUE_DATE,
   DEADLINE,
-  DEPOSIT_PAIR,
-  UNMATCHED_PAYMENT,
   ADJUSTMENT,
   REMITTANCE_LINE,
   REMITTANCE_POSTING,

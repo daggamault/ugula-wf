@@ -19,7 +19,6 @@ export type PayerFileDetail = PayerFileSummary & {
   paid_on: string | null;
   trace_number: string | null;
   trace_payer_id: string | null;
-  deposit_id: string | null;
 };
 
 export type PayerFileItem = {

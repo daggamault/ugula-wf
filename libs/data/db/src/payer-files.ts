@@ -226,7 +226,7 @@ export const applyPayerFile = async (
   const { items, envelopeRejection, payment = null } = posted;
   const problems = items.filter((i) => PROBLEM_OUTCOMES.includes(i.outcome)).length;
   await saveFileItems(tx, f.agencyId, id, items, problems, { envelopeRejection, payment });
-  if (payment?.traceNumber) {
+  if (payment) {
     await emitEvent(tx, {
       agencyId: f.agencyId,
       type: EVENT_TYPES.remittanceFileApplied,

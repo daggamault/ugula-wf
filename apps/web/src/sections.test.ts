@@ -17,7 +17,6 @@ describe('SECTIONS', () => {
         ['patients', 'Patients', '/patients', undefined, 'patients:read'],
         ['imports', 'Imports', '/imports', undefined, 'imports:read'],
         ['claims', 'Claims', '/claims', undefined, 'claims:read'],
-        ['deposits', 'Deposits', '/deposits', undefined, 'payer_files:read'],
         ['reports', 'Reports', '/reports', undefined, 'reports:read'],
         ['workflows', 'Workflows', '/workflows', 'Automation', 'workflows:read'],
         ['tables', 'Tables', '/tables', 'Automation', 'workflows:read'],
@@ -27,7 +26,6 @@ describe('SECTIONS', () => {
         ['fees', 'Fees', '/fees', 'Admin', 'fees:read'],
         ['users', 'Users', '/users', 'Admin', 'users:read'],
         ['roles', 'Roles', '/roles', 'Admin', 'roles:read'],
-        ['periods', 'Accounting Periods', '/periods', 'Admin', 'settings:read'],
         ['settings', 'Settings', '/settings', 'Admin', 'settings:read']
       ]
     );

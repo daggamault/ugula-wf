@@ -825,19 +825,6 @@ export type PayerFilesTable = {
   created_at: Timestamp;
 };
 
-type DepositsTable = {
-  id: Generated<string>;
-  agency_id: string;
-  trace_number: string;
-  amount_cents: number;
-  deposited_on: ColumnType<string, string, string>;
-  payer_name: string | null;
-  note: string | null;
-  payer_file_id: string | null;
-  created_by_id: string | null;
-  created_at: Timestamp;
-};
-
 type PaymentPlansTable = {
   id: Generated<string>;
   agency_id: string;
@@ -862,13 +849,6 @@ type CollectionsPlacementsTable = {
   placed_on: ColumnType<string, string, string>;
   recalled_on: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: Timestamp;
-};
-
-type AccountingPeriodsTable = {
-  agency_id: string;
-  period_on: ColumnType<string, string, string>;
-  closed_at: Timestamp;
-  closed_by_id: string | null;
 };
 
 type PayerFileItemsTable = {
@@ -1027,8 +1007,6 @@ export type Database = {
   eligibility_requests: EligibilityRequestsTable;
   discovery_requests: DiscoveryRequestsTable;
   payer_files: PayerFilesTable;
-  deposits: DepositsTable;
-  accounting_periods: AccountingPeriodsTable;
   payment_plans: PaymentPlansTable;
   collections_placements: CollectionsPlacementsTable;
   clearinghouse_connections: ClearinghouseConnectionsTable;

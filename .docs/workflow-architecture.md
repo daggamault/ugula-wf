@@ -27,7 +27,7 @@ A critical review of today's billing workflows and override mechanism, what EMS 
 
 ### Billing coverage gaps for MVP
 
-Still missing: insurance discovery, rural/super-rural, and EFT reassociation. **Built since:** TA1, 276/277 claim status, real-time and batch 270/271, per-agency clearinghouse connections, denial routing by CARC (Work Denial), corrected claims vs. reopenings, appeals with deadlines and packets, records requests, refunds with approval and the Medicare 60-day deadline, closing approvals, daily deadline watching, state balance-billing protection on statements, facility invoicing, the MSP questionnaire and rule, Facility Responsibility at intake, ABN with GA/GZ, QL, GM, A0888, the NTE narrative and admission date, prior authorization and PCS tracking, claim documents with automatic chasing of missing ones, and clearinghouse connection health alerts (see [Billing Workflows](billing-workflows.md)).
+Still missing: insurance discovery and rural/super-rural. **Built since:** TA1, 276/277 claim status, real-time and batch 270/271, per-agency clearinghouse connections, denial routing by CARC (Work Denial), corrected claims vs. reopenings, appeals with deadlines and packets, records requests, refunds with approval and the Medicare 60-day deadline, closing approvals, daily deadline watching, state balance-billing protection on statements, facility invoicing, the MSP questionnaire and rule, Facility Responsibility at intake, ABN with GA/GZ, QL, GM, A0888, the NTE narrative and admission date, prior authorization and PCS tracking, claim documents with automatic chasing of missing ones, and clearinghouse connection health alerts (see [Billing Workflows](billing-workflows.md)).
 
 ---
 
@@ -158,7 +158,6 @@ Base checks (MVP): Billing Signature or Exception · PCS Required (scheduled non
 | S Correct Claim       | biller chooses correct | R Correction Method (payer rule: frequency 1/7/8 vs Medicare reopening) · S Submit to Payer                                                                                                                                                                 | yes                                                               |
 | S Appeal Claim        | biller chooses appeal  | R Appeal Level and Deadline · A Build Appeal Packet (PCR, PCS, signatures, facesheet) · task Send Appeal · wait decision                                                                                                                                    | redetermination and reconsideration                               |
 | W Log Records Request | ADR received           | task Gather Records · deadline timer                                                                                                                                                                                                                        | task only (built: from the claim page; Watch Deadlines raises it) |
-| W Reconcile Deposit   | EFT / lockbox file     | R Match Deposit to 835 (TRN)                                                                                                                                                                                                                                | post-MVP                                                          |
 
 ### 4.8 Patient balance and money out
 
@@ -239,7 +238,7 @@ Batch SFTP covers 837P, 999, 277CA, 835 and batch 270/271/276/277. **Real-time**
 2. Diff and custom-accent UI, customization map, rule Test panel.
 3. **Done:** Encounter Facts model; split `validate-claim` into check rules; move claim-step and posting decisions into rules drawn as visible logic, with tables only for reference data (see [Billing Workflows](billing-workflows.md)).
 4. Missing MVP billing: none of the items above. **Done:** MSP, facility responsibility at intake, ABN/GA/GZ, QL, GM, A0888, NTE and admission date, prior authorization and PCS tracking, documents, TA1, 276/277, real-time and batch 270/271 through the port, CARC routing, denials, corrected claims, appeals, records requests, refunds, approvals, deadlines, balance-billing protection, facility invoicing.
-5. Per-agency clearinghouse connections; post-MVP items (discovery, EFT reassociation, payment plans, esMD).
+5. Per-agency clearinghouse connections; post-MVP items (discovery, payment plans, esMD).
 
 ## 8. Open Questions
 

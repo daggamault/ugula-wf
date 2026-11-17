@@ -407,49 +407,6 @@ export type DocumentStore = {
   chasedDocuments: (runId: string, claimId: string) => Promise<string[]>;
 };
 
-export type DepositPair = {
-  depositId: string;
-  payerFileId: string;
-  depositTrace: string;
-  depositCents: number;
-  remittanceTrace: string;
-  remittanceCents: number;
-  payerName: string | null;
-  fileName: string;
-};
-
-export type UnmatchedPayment = {
-  kind: 'deposit' | 'remittance';
-  depositId: string | null;
-  payerFileId: string | null;
-  traceNumber: string;
-  amountCents: number;
-  receivedOn: string;
-  payerName: string | null;
-};
-
-type PeriodTotals = {
-  chargesCents: number;
-  paymentsCents: number;
-  refundsCents: number;
-  adjustmentsCents: number;
-  writeOffsCents: number;
-};
-
-export type AccountingStore = {
-  depositPairs: (
-    runId: string,
-    of: { depositId: string | null; payerFileId: string | null }
-  ) => Promise<DepositPair[]>;
-  matchDeposit: (runId: string, depositId: string, payerFileId: string) => Promise<void>;
-  unmatchedPayments: (
-    runId: string,
-    before: string
-  ) => Promise<{ deposits: UnmatchedPayment[]; remittances: UnmatchedPayment[] }>;
-  periodTotals: (runId: string, period: string) => Promise<PeriodTotals>;
-  closePeriod: (runId: string, period: string, closedBy: string | null) => Promise<void>;
-};
-
 export type NewPaymentPlan = {
   installmentCents: number;
   intervalDays: number;
@@ -501,7 +458,6 @@ export type BillingStores = {
   schedules: ScheduleStore;
   calendar: CalendarStore;
   documents: DocumentStore;
-  accounting: AccountingStore;
   balances: BalanceStore;
   completer: Completer;
 };

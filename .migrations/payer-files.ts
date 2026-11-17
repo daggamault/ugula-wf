@@ -118,11 +118,6 @@ const buildPayerFilesIndexes = (db: Kysely<Database>) => [
     .column('uploaded_by_id'),
   db.schema.createIndex('idx_payer_files_run').on('payer_files').column('run_id'),
   db.schema
-    .createIndex('idx_payer_files_agency_trace_number')
-    .on('payer_files')
-    .columns(['agency_id', 'trace_number'])
-    .where('trace_number', 'is not', null),
-  db.schema
     .createIndex('idx_clearinghouse_downloads_agency_event')
     .on('clearinghouse_downloads')
     .columns(['agency_id', 'event_id']),

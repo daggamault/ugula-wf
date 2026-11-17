@@ -30,14 +30,14 @@ Lists search, sort, filter and page on the server, with the state in the URL (`u
 
 ## Pages
 
-| Area                    | Paths                                                                                                                                                           |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Claims and tasks        | `/claims`, `/claims/:id`, `/tasks/:id`                                                                                                                          |
-| Patients                | `/patients`, `/patients/:id`                                                                                                                                    |
-| Imports and payer files | `/imports`, `/imports/:id`, `/payer-files`, `/payer-files/:id`, `/deposits`, `/deposits/new`, `/deposits/:id`                                                   |
-| Reports                 | `/reports`, `/reports/:id`, `/reports/:id/results`                                                                                                              |
-| Workflows and runs      | `/workflows`, `/workflows/customized`, `/workflows/:id`, `/tables`, `/tables/:id`, `/runs`, `/runs/:id`                                                         |
-| Admin                   | `/payers`, `/facilities`, `/fees`, `/users`, `/users/invitations`, `/users/invite`, `/users/:id`, `/roles`, `/roles/new`, `/roles/:id`, `/periods`, `/settings` |
+| Area                    | Paths                                                                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claims and tasks        | `/claims`, `/claims/:id`, `/tasks/:id`                                                                                                              |
+| Patients                | `/patients`, `/patients/:id`                                                                                                                        |
+| Imports and payer files | `/imports`, `/imports/:id`, `/payer-files`, `/payer-files/:id`                                                                                      |
+| Reports                 | `/reports`, `/reports/:id`, `/reports/:id/results`                                                                                                  |
+| Workflows and runs      | `/workflows`, `/workflows/customized`, `/workflows/:id`, `/tables`, `/tables/:id`, `/runs`, `/runs/:id`                                             |
+| Admin                   | `/payers`, `/facilities`, `/fees`, `/users`, `/users/invitations`, `/users/invite`, `/users/:id`, `/roles`, `/roles/new`, `/roles/:id`, `/settings` |
 
 ## Tasks and claims
 

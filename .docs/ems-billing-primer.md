@@ -51,7 +51,7 @@ A working summary of US ground ambulance billing for people building Ugula. Rule
 
 ## Events that each get a workflow
 
-**Files in**: NEMSIS PCR (new or revised), TA1, 999, clearinghouse rejection report, 277CA, 824, 271, discovery result, 277, 835, EFT/lockbox, documents (facesheet, PCS, signature, ABN, MSP), patient payments.
+**Files in**: NEMSIS PCR (new or revised), TA1, 999, clearinghouse rejection report, 277CA, 824, 271, discovery result, 277, 835, documents (facesheet, PCS, signature, ABN, MSP), patient payments. Bank deposits (EFT and lockbox) are reconciled with 835s in the agency's accounting system, not in Ugula.
 
 **Timers**: PCS expiry and chase, timely filing, no 277CA, no 835 (send 276), appeal deadlines, records requests, secondary filing windows, statement cycle, collections threshold, overpayment return deadline, annual fee schedule load.
 

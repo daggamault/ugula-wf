@@ -1,9 +1,8 @@
 import { createDb, type Database, type Db } from '@ugula/db';
 import { type Kysely, sql } from 'kysely';
-import { ACCOUNTING_FUNCTIONS, createAccountingTables } from './accounting.ts';
 import { createAgenciesTable } from './agencies.ts';
 import { createBillingProfilesTables } from './billing-profiles.ts';
-import { createClaimsTables } from './claims.ts';
+import { CLAIM_FUNCTIONS, createClaimsTables } from './claims.ts';
 import { createClearinghouseConnectionsTable } from './clearinghouse-connections.ts';
 import { createCmsTables } from './cms.ts';
 import { createCodesTable } from './codes.ts';
@@ -32,8 +31,6 @@ const resetSchema = async (db: Kysely<Database>) => {
   for (const table of [
     'collections_placements',
     'payment_plans',
-    'accounting_periods',
-    'deposits',
     'notification_states',
     'notifications',
     'claim_event_line_adjustments',
@@ -109,7 +106,7 @@ const resetSchema = async (db: Kysely<Database>) => {
     'check_table_version_base',
     'check_run_table_key',
     ...EVENT_FUNCTIONS,
-    ...ACCOUNTING_FUNCTIONS,
+    ...CLAIM_FUNCTIONS,
     ...DAILY_NUMBER_FUNCTIONS
   ]) {
     await sql`drop function if exists ${sql.id(name)}`.execute(db);
@@ -142,7 +139,6 @@ const steps = [
   createFacilityInvoiceClaimsTable,
   createPatientBalanceTables,
   createPayerFilesTables,
-  createAccountingTables,
   createNotificationsTables,
   createEventEmitters
 ] as const;

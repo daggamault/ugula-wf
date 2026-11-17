@@ -29,8 +29,6 @@ import { createConnectionRoutes } from './features/clearinghouse-connection/rout
 import { createConnectionService } from './features/clearinghouse-connection/service.ts';
 import { createCodeRoutes } from './features/codes/routes.ts';
 import { createCodeService } from './features/codes/service.ts';
-import { createDepositRoutes } from './features/deposits/routes.ts';
-import { createDepositService } from './features/deposits/service.ts';
 import { createFacilityRoutes } from './features/facilities/routes.ts';
 import { createFacilityService } from './features/facilities/service.ts';
 import { createFeeRoutes } from './features/fees/routes.ts';
@@ -48,8 +46,6 @@ import { createPayerFileRoutes } from './features/payer-files/routes.ts';
 import { createPayerFileService } from './features/payer-files/service.ts';
 import { createPayerRoutes } from './features/payers/routes.ts';
 import { createPayerService } from './features/payers/service.ts';
-import { createPeriodRoutes } from './features/periods/routes.ts';
-import { createPeriodService } from './features/periods/service.ts';
 import { createReportRoutes } from './features/reports/routes.ts';
 import { createReportService } from './features/reports/service.ts';
 import { createRoleRoutes } from './features/roles/routes.ts';
@@ -237,8 +233,6 @@ export const createApp = ({
     .route('/codes', createCodeRoutes(createCodeService({ db })))
     .use('/notifications/*', guardMethods({ GET: null, POST: null }))
     .route('/notifications', createNotificationRoutes(createNotificationService({ db, publish })))
-    .use('/periods/*', guardMethods(read('settings:read')))
-    .route('/periods', createPeriodRoutes(createPeriodService({ db })))
     .use('/billing-profile/*', guardMethods({ ...read('settings:read'), PUT: 'settings:update' }))
     .route('/billing-profile', createBillingProfileRoutes(createBillingProfileService({ db })))
     .use(
@@ -295,9 +289,7 @@ export const createApp = ({
           maxBytes: config.API_MAX_IMPORT_BYTES
         })
       )
-    )
-    .use('/deposits/*', guardMethods({ ...read('payer_files:read'), POST: 'payer_files:create' }))
-    .route('/deposits', createDepositRoutes(createDepositService({ db })));
+    );
   app.route('/api/imports/sftp', createSftpRoutes(imports, config.SFTP_HOOK_SECRET));
   app.route('/api/agencies', protect(createAgencyListRoutes(agencies)));
   app.route('/api/agencies/:agencyId', protect(agency));

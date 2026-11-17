@@ -752,6 +752,22 @@ const buildClaimsIndexes = (db: Kysely<Database>) => [
     .column('claim_id')
 ];
 
+const postedOnFunction = sql`
+  create function set_claim_event_posted_on() returns trigger language plpgsql as $$
+  begin
+    new.posted_on := (new.created_at at time zone coalesce(
+      (select bp.time_zone from billing_profiles bp where bp.agency_id = new.agency_id), 'UTC'))::date;
+    return new;
+  end;
+  $$`;
+
+const postedOnTrigger = sql`
+  create trigger claim_events_posted_on
+  before insert on claim_events
+  for each row execute function set_claim_event_posted_on()`;
+
+export const CLAIM_FUNCTIONS = ['set_claim_event_posted_on'] as const;
+
 export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildClaimsTable(db).execute();
   await dailyNumberTrigger('claims', 'claim').execute(db);
@@ -770,6 +786,8 @@ export const createClaimsTables = async (db: Kysely<Database>) => {
   await buildDiscoveryRequestsTable(db).execute();
   await buildClaimEventsTable(db).execute();
   await buildClaimEventsBatchForeignKey().execute(db);
+  await postedOnFunction.execute(db);
+  await postedOnTrigger.execute(db);
   await buildClaimEventAdjustmentsTable(db).execute();
   await buildClaimEventRemarksTable(db).execute();
   await buildClaimEventLinesTable(db).execute();

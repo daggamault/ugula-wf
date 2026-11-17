@@ -130,9 +130,7 @@ describe('api createApp', () => {
         '/claims',
         '/submissions',
         '/reports/aging',
-        '/payer-files',
-        '/deposits',
-        '/periods'
+        '/payer-files'
       ].map((p) => `${AGENCY}${p}`)
     ]) {
       const res = await app.request(path);
@@ -269,10 +267,7 @@ describe('api createApp', () => {
       [['imports:read'], 'GET', '/imports'],
       [['imports:create'], 'POST', '/imports/auth', {}],
       [['payer_files:read'], 'GET', '/payer-files'],
-      [['payer_files:create'], 'POST', '/payer-files', {}],
-      [['payer_files:read'], 'GET', '/deposits'],
-      [['payer_files:create'], 'POST', '/deposits', {}],
-      [['settings:read'], 'GET', '/periods']
+      [['payer_files:create'], 'POST', '/payer-files', {}]
     ];
     for (const [needed, method, path, body] of cases) {
       const label = `${needed} ${method} ${path}`;

@@ -30,7 +30,7 @@ const QUEUES: Readonly<Record<string, QueueInfo>> = {
   'billing-reconcile': {
     label: 'Reconcile Payments',
     description:
-      'Payer responses that left a balance, denials to correct or appeal, and deposits and 835s that do not match. Check them, then continue, correct, appeal, write off or match.'
+      'Payer responses that left a balance and denials to correct or appeal. Check them, then continue, correct, appeal or write off.'
   },
   'billing-collections': {
     label: 'Balance Review',
@@ -49,7 +49,7 @@ const QUEUES: Readonly<Record<string, QueueInfo>> = {
   'billing-approvals': {
     label: 'Approvals',
     description:
-      'Refunds, write-offs above the Claim Policy limit, collections placements and month-end closings waiting for someone who may approve them.'
+      'Refunds, write-offs above the Claim Policy limit and collections placements waiting for someone who may approve them.'
   },
   exceptions: {
     label: 'Stuck Runs',

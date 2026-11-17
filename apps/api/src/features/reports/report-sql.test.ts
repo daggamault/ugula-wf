@@ -72,7 +72,7 @@ describe('report sql', () => {
     assert.deepEqual(q.parameters, ['2026-01-01', '2026-10-23']);
   });
 
-  it('bounds the posting period on the posted date, which skips closed months', () => {
+  it('bounds the posting period on the posted date', () => {
     const q = compile(postedIn(reportContext));
     assert.equal(q.sql, 'select e.posted_on between $1::date and $2::date as "v"');
     assert.deepEqual(q.parameters, ['2026-01-01', '2026-10-23']);

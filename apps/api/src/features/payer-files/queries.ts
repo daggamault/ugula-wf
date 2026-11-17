@@ -62,13 +62,7 @@ export const findPayerFile = (db: Db, agencyId: string, id: string) =>
       'f.payment_method',
       'f.paid_on',
       'f.trace_number',
-      'f.trace_payer_id',
-      (eb) =>
-        eb
-          .selectFrom('deposits as d')
-          .select('d.id')
-          .whereRef('d.payer_file_id', '=', 'f.id')
-          .as('deposit_id')
+      'f.trace_payer_id'
     ])
     .where('f.id', '=', id)
     .executeTakeFirst();

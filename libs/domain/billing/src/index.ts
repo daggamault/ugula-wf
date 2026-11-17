@@ -133,7 +133,6 @@ export {
   normalizeCode
 } from './code-sets.ts';
 export { type Placement, placementCsv } from './collections.ts';
-export { isPaymentMethod, PAYMENT_METHODS, type PaymentMethod } from './deposits.ts';
 export { type CoverageCandidate, coverageCandidates, discoveryNote } from './discovery.ts';
 export {
   AMBULANCE_CONDITIONS,
@@ -193,7 +192,6 @@ export { billingModels, billingTypes } from './models.ts';
 export { nameKey } from './names.ts';
 export { UNREAD_FINDINGS } from './narrative.ts';
 export {
-  type AccountingStore,
   type AppliedPayerFile,
   type BalanceStore,
   type BillingStores,
@@ -216,8 +214,7 @@ export {
   type RecoveryStore,
   type ReferenceStore,
   type Responsibility,
-  type ScheduleStore,
-  type UnmatchedPayment
+  type ScheduleStore
 } from './nodes/index.ts';
 export { dailyNumberOf, dollarsToCents, money } from './numbers.ts';
 export {
@@ -233,10 +230,13 @@ export {
 export {
   ELIGIBILITY_STATUSES,
   type EligibilityStatus,
+  isPaymentMethod,
   PAYER_FILE_KINDS,
   PAYER_FILE_LABELS,
   PAYER_FILE_OUTCOMES,
+  PAYMENT_METHODS,
   type PayerFileOutcome,
+  type PaymentMethod,
   PROBLEM_OUTCOMES,
   REVIEW_OUTCOMES
 } from './payer-files.ts';

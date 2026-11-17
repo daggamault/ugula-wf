@@ -12,7 +12,6 @@ import { OpenLink } from '../../shared/ui/icon-button.tsx';
 import { Page, PageFailure, PageLoading } from '../../shared/ui/page.tsx';
 import { SectionPanel } from '../../shared/ui/section-panel.tsx';
 import { Table, TableCell, TableRow } from '../../shared/ui/table.tsx';
-import { TextLink } from '../../shared/ui/text-link.tsx';
 import { useResource } from '../../shared/use-resource.ts';
 import type { PayerFileDetail, PayerFileItem, PayerFilesClient } from './client.ts';
 import { fileStatus, kindOf } from './payer-files.ts';
@@ -67,12 +66,7 @@ const PayerFilePayment = ({
 }: {
   file: Pick<
     PayerFileDetail,
-    | 'payment_cents'
-    | 'payment_method'
-    | 'paid_on'
-    | 'trace_number'
-    | 'trace_payer_id'
-    | 'deposit_id'
+    'payment_cents' | 'payment_method' | 'paid_on' | 'trace_number' | 'trace_payer_id'
   >;
 }) => (
   <DetailList>
@@ -89,13 +83,6 @@ const PayerFilePayment = ({
     <Detail label="Paid On">{formatDate(file.paid_on)}</Detail>
     <Detail label="Trace Number">{file.trace_number ?? emptyValue}</Detail>
     <Detail label="Payer ID">{file.trace_payer_id ?? emptyValue}</Detail>
-    <Detail label="Deposit">
-      {file.deposit_id ? (
-        <TextLink to={`/deposits/${file.deposit_id}`}>Open Deposit</TextLink>
-      ) : (
-        'Not matched to a deposit'
-      )}
-    </Detail>
   </DetailList>
 );
 

@@ -1,5 +1,4 @@
 import type { SeedGraph } from '../graphs.ts';
-import { accountingGraphs } from './accounting.ts';
 import { balanceGraphs } from './balances.ts';
 import { chargeGraphs } from './charges.ts';
 import { checkFactGraphs } from './check-facts.ts';
@@ -36,8 +35,7 @@ export const billingGraphs: SeedGraph[] = [
   ...cycleGraphs,
   ...balanceGraphs,
   ...payerFileGraphs,
-  ...scheduleGraphs,
-  ...accountingGraphs
+  ...scheduleGraphs
 ];
 
 export const billingTables = shared.list();

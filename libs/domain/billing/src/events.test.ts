@@ -13,8 +13,6 @@ describe('billingEvents', () => {
         'clearinghouse.failed',
         'clearinghouse.recovered',
         'remittance.file_applied',
-        'deposit.recorded',
-        'period.closed',
         'claim.opened',
         'claim.submitted',
         'claim.accepted',

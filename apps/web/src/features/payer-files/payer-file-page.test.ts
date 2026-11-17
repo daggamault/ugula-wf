@@ -60,8 +60,7 @@ describe('PayerFilePage', () => {
     payment_method: null,
     paid_on: null,
     trace_number: null,
-    trace_payer_id: null,
-    deposit_id: null
+    trace_payer_id: null
   };
 
   const paid: PayerFileDetail = {
@@ -70,8 +69,7 @@ describe('PayerFilePage', () => {
     payment_method: 'ACH',
     paid_on: '2026-10-30',
     trace_number: '1234567890',
-    trace_payer_id: '1512345678',
-    deposit_id: 'd1'
+    trace_payer_id: '1512345678'
   };
 
   const detail = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
@@ -98,7 +96,7 @@ describe('PayerFilePage', () => {
     assert.ok(screen.getByText('This file had nothing for your claims.'));
   });
 
-  it('shows the payment of an 835 and the deposit it matched', async () => {
+  it('shows the payment of an 835', async () => {
     show(async () => ({ file: paid, items: [] }));
     assert.ok(await screen.findByRole('heading', { name: 'Payment' }));
     assert.equal(detail('Amount'), '$600.00');
@@ -106,17 +104,6 @@ describe('PayerFilePage', () => {
     assert.equal(detail('Paid On'), 'Oct 30, 2026');
     assert.equal(detail('Trace Number'), '1234567890');
     assert.equal(detail('Payer ID'), '1512345678');
-    assert.equal(
-      screen.getByRole('link', { name: 'Open Deposit' }).getAttribute('href'),
-      '/deposits/d1'
-    );
-  });
-
-  it('says when an 835 payment has no deposit yet', async () => {
-    show(async () => ({ file: { ...paid, deposit_id: null }, items: [] }));
-    assert.ok(await screen.findByRole('heading', { name: 'Payment' }));
-    assert.equal(detail('Deposit'), 'Not matched to a deposit');
-    assert.equal(screen.queryByRole('link', { name: 'Open Deposit' }), null);
   });
 
   it('shows no payment for a file without a trace number', async () => {

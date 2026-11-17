@@ -17,7 +17,6 @@ export const EVENT_TYPES = {
   clearinghouseFailed: 'clearinghouse.failed',
   clearinghouseRecovered: 'clearinghouse.recovered',
   collectionsPlaced: 'collections.placed',
-  depositRecorded: 'deposit.recorded',
   documentReceived: 'document.received',
   eligibilityAnswered: 'eligibility.answered',
   importReceived: 'import.received',
@@ -25,7 +24,6 @@ export const EVENT_TYPES = {
   paymentPlanEnded: 'payment_plan.ended',
   paymentPlanMissed: 'payment_plan.missed',
   paymentPlanStarted: 'payment_plan.started',
-  periodClosed: 'period.closed',
   remittanceFileApplied: 'remittance.file_applied',
   remittancePosted: 'remittance.posted',
   taskCompleted: 'task.completed'
@@ -239,20 +237,8 @@ export const billingEvents: EventDef[] = [
   event(
     EVENT_TYPES.remittanceFileApplied,
     'Remittance File Applied',
-    'An 835 with a payment trace number (TRN02) was applied, so it can be matched to its deposit.',
+    'An 835 was applied: its payments and adjustments are posted to the claims.',
     [p('payerFileId', { id: 'payerFile' }, 'Payer File', 'The 835 file applied.')]
-  ),
-  event(
-    EVENT_TYPES.depositRecorded,
-    'Deposit Recorded',
-    'A biller recorded a bank deposit on Deposits.',
-    [p('depositId', { id: 'deposit' }, 'Deposit', 'The deposit recorded.')]
-  ),
-  event(
-    EVENT_TYPES.periodClosed,
-    'Period Closed',
-    'An accounting month was closed: postings dated in it are posted to the next open month.',
-    [p('period', 'string', 'Period', 'The month closed, as its first day (YYYY-MM-01).')]
   ),
   ...LEDGER_EVENTS,
   event(
