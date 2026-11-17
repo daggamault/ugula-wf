@@ -282,7 +282,7 @@ const CHECKS: CheckSpec[] = [
   {
     key: 'billing.check-patient',
     name: 'Check Patient',
-    description: 'The claim has a patient with a complete mailing address.',
+    description: 'Checks that the claim has a patient with a complete mailing address.',
     codes: { 'patient-missing': 'blocking', 'patient-address-missing': 'blocking' },
     build: (c) => {
       c.issue(
@@ -302,7 +302,7 @@ const CHECKS: CheckSpec[] = [
   {
     key: 'billing.check-report',
     name: 'Check Report',
-    description: 'The report has a PCR number and a date of service.',
+    description: 'Checks that the report has a PCR number and a date of service.',
     codes: { 'pcr-number-missing': 'warning', 'service-date-missing': 'blocking' },
     build: (c) => {
       c.issue(
@@ -323,7 +323,7 @@ const CHECKS: CheckSpec[] = [
     key: 'billing.check-service',
     name: 'Check Service',
     description:
-      'The trip is billable, has a level of service and says whether it was an emergency; a scheduled trip billed as an emergency is worth checking.',
+      'Checks that the trip is billable, has a level of service and says whether it was an emergency; a scheduled trip billed as an emergency is worth checking.',
     codes: {
       'not-billable': 'blocking',
       'level-missing': 'blocking',
@@ -366,7 +366,7 @@ const CHECKS: CheckSpec[] = [
   {
     key: 'billing.check-charges',
     name: 'Check Charges',
-    description: 'The claim has charge lines and its total adds up to them.',
+    description: 'Checks that the claim has charge lines and its total adds up to them.',
     codes: { 'lines-missing': 'blocking', 'lines-total': 'blocking' },
     build: (c) => {
       c.issue(
@@ -391,7 +391,7 @@ const CHECKS: CheckSpec[] = [
     key: 'billing.check-diagnoses',
     name: 'Check Diagnoses',
     description:
-      'The claim has at least one ICD-10 diagnosis; for trips in the year of the loaded ICD-10-CM codes, every diagnosis is an ICD-10-CM code and none is a category that needs more characters to bill.',
+      'Checks that the claim has at least one ICD-10 diagnosis; for trips in the year of the loaded ICD-10-CM codes, every diagnosis is an ICD-10-CM code and none is a category that needs more characters to bill.',
     codes: {
       'diagnosis-missing': 'blocking',
       'diagnosis-unknown': 'blocking',
@@ -420,9 +420,9 @@ const CHECKS: CheckSpec[] = [
   },
   {
     key: 'billing.check-locations',
-    name: 'Check Pickup and Destination',
+    name: 'Check Addresses',
     description:
-      'The pickup has a full street address; a transport also has a full destination address and a valid origin/destination modifier. Medicare prices the trip by the pickup ZIP code, so it must be in the CMS ZIP file, with its ZIP+4 where CMS splits the ZIP code between localities; and every ZIP code should belong to the state of its address (GeoNames).',
+      'Checks that the pickup has a full street address; a transport also has a full destination address and a valid origin/destination modifier. Medicare prices the trip by the pickup ZIP code, so it must be in the CMS ZIP file, with its ZIP+4 where CMS splits the ZIP code between localities; and every ZIP code should belong to the state of its address (GeoNames).',
     codes: {
       'pickup-address-missing': 'blocking',
       'destination-address-missing': 'blocking',
@@ -482,7 +482,7 @@ const CHECKS: CheckSpec[] = [
   {
     key: 'billing.check-transport-reason',
     name: 'Check Transport Reason',
-    description: 'A transport has an ambulance transport reason (CR104).',
+    description: 'Checks that a transport has an ambulance transport reason (CR104).',
     codes: { 'transport-reason-missing': 'blocking' },
     build: (c) =>
       c.issue(
@@ -499,7 +499,7 @@ const CHECKS: CheckSpec[] = [
     key: 'billing.check-conditions',
     name: 'Check Ambulance Conditions',
     description:
-      'A non-emergency Medicare transport documents the ambulance conditions (CRC) that made an ambulance necessary, such as bed-confined or moved by stretcher.',
+      'Checks that a non-emergency Medicare transport documents the ambulance conditions (CRC) that made an ambulance necessary, such as bed-confined or moved by stretcher.',
     codes: { 'conditions-missing': 'warning' },
     build: (c) =>
       c.issue(
@@ -518,7 +518,7 @@ const CHECKS: CheckSpec[] = [
     key: 'billing.check-trip-times',
     name: 'Check Trip Times',
     description:
-      'A transport records when the patient left the scene and arrived at the destination, in order.',
+      'Checks that a transport records when the patient left the scene and arrived at the destination, in order.',
     codes: { 'trip-times-missing': 'warning', 'trip-times-order': 'warning' },
     build: (c) => {
       c.issue(
@@ -547,7 +547,7 @@ const CHECKS: CheckSpec[] = [
     key: 'billing.check-mileage',
     name: 'Check Mileage',
     description:
-      'A transport has loaded miles within the Maximum Loaded Miles of the Check Limits table, and more than the Likely Loaded Miles of the Check Limits table are worth checking; a trip without transport has none.',
+      'Checks that a transport has loaded miles within the Maximum Loaded Miles of the Check Limits table, and more than the Likely Loaded Miles of the Check Limits table are worth checking; a trip without transport has none.',
     codes: {
       'loaded-miles-missing': 'blocking',
       'loaded-miles-over-limit': 'blocking',
@@ -601,7 +601,7 @@ const CHECKS: CheckSpec[] = [
     key: 'billing.check-signature',
     name: 'Check Billing Signature',
     description:
-      'The patient or a representative signed the release for billing, or a documented exception explains why not, when the claim bills a payer.',
+      'Checks that the patient or a representative signed the release for billing, or a documented exception explains why not, when the claim bills a payer.',
     codes: {
       'signature-exception': 'warning',
       'signature-refused': 'blocking',
@@ -643,7 +643,7 @@ const CHECKS: CheckSpec[] = [
     key: 'billing.check-pcs',
     name: 'Check Physician Certification',
     description:
-      'A scheduled non-emergency transport has a physician certification statement (required for Medicare); one for repetitive transports is signed within the PCS Valid Days before the trip, and none later than the PCS Late Days after it (Check Limits table).',
+      'Checks that a scheduled non-emergency transport has a physician certification statement (required for Medicare); one for repetitive transports is signed within the PCS Valid Days before the trip, and none later than the PCS Late Days after it (Check Limits table).',
     codes: {
       'pcs-missing-medicare': 'blocking',
       'pcs-missing': 'warning',
@@ -716,7 +716,7 @@ const CHECKS: CheckSpec[] = [
     key: 'billing.check-prior-authorization',
     name: 'Check Prior Authorization',
     description:
-      'A repetitive scheduled non-emergency Medicare transport past the Round Trips Without Authorization of the Check Limits table has a prior authorization (UTN) that has not expired by the date of service.',
+      'Checks that a repetitive scheduled non-emergency Medicare transport past the Round Trips Without Authorization of the Check Limits table has a prior authorization (UTN) that has not expired by the date of service.',
     codes: { 'prior-authorization-missing': 'warning', 'prior-authorization-expired': 'warning' },
     build: (c) => {
       const scheduled = c.when('scheduled', 'Scheduled Non-Emergency Medicare', [
@@ -751,7 +751,7 @@ const CHECKS: CheckSpec[] = [
     key: 'billing.check-abn',
     name: 'Check Advance Beneficiary Notice',
     description:
-      'A Medicare transport expected to be denied has an ABN on file (else it is billed with GZ and the patient cannot be billed); an ABN is dated and is not used for an emergency.',
+      'Checks that a Medicare transport expected to be denied has an ABN on file (else it is billed with GZ and the patient cannot be billed); an ABN is dated and is not used for an emergency.',
     codes: { 'abn-missing': 'warning', 'abn-undated': 'warning', 'abn-emergency': 'warning' },
     build: (c) => {
       c.issue(
@@ -791,7 +791,7 @@ const CHECKS: CheckSpec[] = [
     key: 'billing.check-msp',
     name: 'Check Medicare Secondary Payer',
     description:
-      'A claim billing Medicare answers the MSP questions, and when another payer pays first (Medicare Secondary Payer rule) that payer is on the claim and billed before Medicare; Medicare is billed after another payer only when the MSP rule says why (SBR05).',
+      'Checks that a claim billing Medicare answers the MSP questions, and when another payer pays first (Medicare Secondary Payer rule) that payer is on the claim and billed before Medicare; Medicare is billed after another payer only when the MSP rule says why (SBR05).',
     codes: {
       'msp-unanswered': 'warning',
       'msp-employer-size-missing': 'warning',
@@ -890,7 +890,7 @@ const CHECKS: CheckSpec[] = [
     key: 'billing.check-facility',
     name: 'Check Facility Responsibility',
     description:
-      'A claim the Facility Responsibility rule bills to a facility is billed to it rather than the payers, and a stay a payer reports on the date of service is confirmed by a biller.',
+      'Checks that a claim the Facility Responsibility rule bills to a facility is billed to it rather than the payers, and a stay a payer reports on the date of service is confirmed by a biller.',
     codes: { 'facility-responsible': 'blocking', 'facility-stay-reported': 'warning' },
     build: (c) => {
       c.node('responsibility', 'billing.facility-responsibility', 'Facility Responsibility');
@@ -934,14 +934,16 @@ const CHECKS: CheckSpec[] = [
   {
     key: 'billing.check-payers',
     name: 'Check Payers',
-    description: `Each payer is linked to the payer directory, has a member ID and the insured when the patient is not the insured, and has not answered that the coverage is inactive; an 837P claim carries at most ${MAX_PAYERS} payers.`,
+    description: `Checks the payers on the claim: at least one (else the patient is billed), at most ${MAX_PAYERS} on an 837P claim, and each one with Check One Payer: linked, with a member ID and insured, an active coverage and time left to file.`,
     codes: {
       'payer-missing': 'warning',
       'payers-over-limit': 'blocking',
       'payer-unlinked': 'blocking',
       'member-id-missing': 'blocking',
       'insured-missing': 'blocking',
-      'coverage-inactive': 'blocking'
+      'coverage-inactive': 'blocking',
+      'filing-limit-passed': 'warning',
+      'filing-limit-near': 'warning'
     },
     build: (c) => {
       c.issue(
@@ -966,20 +968,6 @@ const CHECKS: CheckSpec[] = [
         'billing.check-one-payer'
       );
     }
-  },
-  {
-    key: 'billing.check-timely-filing',
-    name: 'Check Timely Filing',
-    description:
-      "Warns when a payer's filing limit has passed or is near, from its days left to file.",
-    codes: { 'filing-limit-passed': 'warning', 'filing-limit-near': 'warning' },
-    build: (c) =>
-      c.perPayer(
-        'each',
-        'Check Each Payer Filing',
-        ['filingIssues', 'Every Filing Issue'],
-        'billing.check-payer-filing'
-      )
   }
 ];
 
@@ -988,12 +976,14 @@ const PAYER_RULES: PayerCheckSpec[] = [
     key: 'billing.check-one-payer',
     name: 'Check One Payer',
     description:
-      'One payer is linked to the payer directory, has a member ID and the insured when the patient is not the insured, and has not answered that the coverage is inactive.',
+      'Finds what stops one payer from being billed: not linked to the payer directory, no member ID, no insured when the patient is not the insured, or a coverage the payer says is inactive; and warns when its filing limit has passed or is within the Filing Warning Days of the Check Limits table.',
     codes: {
       'payer-unlinked': 'blocking',
       'member-id-missing': 'blocking',
       'insured-missing': 'blocking',
-      'coverage-inactive': 'blocking'
+      'coverage-inactive': 'blocking',
+      'filing-limit-passed': 'warning',
+      'filing-limit-near': 'warning'
     },
     build: (c) => {
       c.issue(
@@ -1027,15 +1017,6 @@ const PAYER_RULES: PayerCheckSpec[] = [
         c.when('inactive', 'Coverage Inactive', [['eligibility', 'is', 'inactive']]),
         { coverage: 'coverage' }
       );
-    }
-  },
-  {
-    key: 'billing.check-payer-filing',
-    name: 'Check Payer Filing',
-    description:
-      "Warns when one payer's filing limit has passed, or is within the Filing Warning Days of the Check Limits table.",
-    codes: { 'filing-limit-passed': 'warning', 'filing-limit-near': 'warning' },
-    build: (c) => {
       const passedDays = c.negate('daysPast', 'Days Past the Limit', 'filingDaysLeft');
       c.issue(
         'filing-limit-passed',

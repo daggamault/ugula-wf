@@ -682,7 +682,7 @@ const payerIsCoverage = (): GraphDef => {
 const feeScheduleFacts = (): GraphDef => {
   const g = rule(
     [
-      d('claim', { object: {} }, 'Claim', 'The saved claim, as Read Claim for Checks gives it.'),
+      d('claim', { object: {} }, 'Claim', 'The saved claim, as Read Claim gives it.'),
       d('coverageId', { id: 'coverage' }, 'Payer', 'The payer whose response is reconciled.', true)
     ],
     [
@@ -2197,7 +2197,7 @@ export const cycleGraphs: SeedGraph[] = [
   ),
   asRule(
     'billing.payer-is-coverage',
-    'Payer Is Coverage',
+    'Payer Matches Coverage',
     'Whether a payer on the claim is the coverage asked about.',
     payerIsCoverage()
   ),

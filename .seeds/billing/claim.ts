@@ -24,6 +24,8 @@ import {
   template
 } from './shared.ts';
 
+const AMBULANCE_PLACE_OF_SERVICE = '41';
+
 const DESTINATION_REASONS = [
   { key: '4220001', value: 'A' },
   { key: '4220003', value: 'A' },
@@ -859,54 +861,6 @@ const narrativeNote = (): GraphDef => {
   return g.def;
 };
 
-const admissionDate = (): GraphDef => {
-  const g = rule(
-    [d('documentation', T.documentation, 'Documentation', 'What the claim documents.')],
-    [
-      d(
-        'admissionDate',
-        'string',
-        'Admission Date',
-        'The date the patient was admitted (DTP 435), when known.',
-        true
-      ),
-      P.reasons('an admission date was or was not sent')
-    ]
-  );
-  g.add('documentation', 'billing.documentation.break', { label: 'Documentation' });
-  g.add('notDocumented', 'std.logic.is-null', { label: 'Not Documented' });
-  g.ret('return');
-  g.wire('entry.documentation', 'documentation.documentation');
-  g.wire('documentation.admissionDate', 'return.admissionDate', 'notDocumented.value');
-  g.wire(
-    select(
-      g,
-      'reasons',
-      'Why',
-      'notDocumented.result',
-      fixed([]),
-      fixed(['The admission date is documented'])
-    ),
-    'return.reasons'
-  );
-  return g.def;
-};
-
-const placeOfService = (): GraphDef => {
-  const g = rule(
-    [SUBMISSION_IN],
-    [
-      d('placeOfService', 'string', 'Place of Service', 'The place of service code (CLM05-1).'),
-      P.reasons('this place of service was billed')
-    ]
-  );
-  g.ret('return', undefined, {
-    placeOfService: '41',
-    reasons: ['Ground ambulance services are billed with place of service 41']
-  });
-  return g.def;
-};
-
 const claimFrequency = (): GraphDef => {
   const g = rule(
     [
@@ -1264,24 +1218,18 @@ const map837p = (): GraphDef => {
       }
     )
   });
-  g.add('place', 'billing.place-of-service', { label: 'Place of Service' });
   g.add('lines', 'billing.x837-service-lines', { label: 'Service Lines' });
   g.add('note', 'billing.narrative-note', { label: 'Narrative Note' });
-  g.add('admitted', 'billing.admission-date', { label: 'Admission Date' });
-  g.add('x837', 'x837.claim.make', { label: '837P Claim' });
+  g.add('x837', 'x837.claim.make', {
+    label: '837P Claim',
+    values: { placeOfService: AMBULANCE_PLACE_OF_SERVICE }
+  });
   g.ret('return');
-  g.wire(
-    'entry.claim',
-    'claim.claim',
-    'place.claim',
-    'x12Payer.claim',
-    'lines.claim',
-    'note.claim'
-  );
+  g.wire('entry.claim', 'claim.claim', 'x12Payer.claim', 'lines.claim', 'note.claim');
   g.wire('claim.payer', 'payer.payer');
   g.wire('claim.patient', 'patient.patient');
   g.wire('claim.details', 'details.details');
-  g.wire('details.documentation', 'documentation.documentation', 'admitted.documentation');
+  g.wire('details.documentation', 'documentation.documentation');
   g.wire('documentation.conditionCodes', 'conditions.documented');
   g.wire('claim.emergency', 'conditions.emergency');
   g.wire('documentation.weightKg', 'pounds.a');
@@ -1299,7 +1247,7 @@ const map837p = (): GraphDef => {
   g.wire('payer.insuredFirstName', 'subscriber.firstName');
   g.wire('conditions.codes', 'note.conditionCodes', 'x837.conditionCodes');
   g.wire('note.note', 'x837.note');
-  g.wire('admitted.admissionDate', 'x837.admissionDate');
+  g.wire('documentation.admissionDate', 'x837.admissionDate');
   g.wire('claim.priorPayers', 'otherPayers.list');
   g.wire('claim.payerClaimNumber', 'frequency.payerClaimNumber');
   g.wire('claim.correctionMethod', 'frequency.correctionMethod');
@@ -1308,7 +1256,6 @@ const map837p = (): GraphDef => {
   g.wire('frequency.replaces', 'x837.payerClaimNumber');
   g.wire('documentation.signature', 'assignment.key');
   g.wire('assignment.value', 'x837.benefitsAssignment');
-  g.wire('place.placeOfService', 'x837.placeOfService');
   g.wire('claim.claimId', 'x837.claimId');
   g.wire('subscriber.subscriber', 'x837.subscriber');
   g.wire('x12Patient.patient', 'x837.patient');
@@ -1375,18 +1322,6 @@ export const claimGraphs: SeedGraph[] = [
     narrativeNote()
   ),
   asRule(
-    'billing.admission-date',
-    'Admission Date',
-    'The admission date the claim carries (DTP 435), when it is documented.',
-    admissionDate()
-  ),
-  asRule(
-    'billing.place-of-service',
-    'Place of Service',
-    'The place of service code of the claim: 41, ground ambulance.',
-    placeOfService()
-  ),
-  asRule(
     'billing.claim-frequency',
     'Claim Frequency',
     'The claim frequency code: 7 with the claim number it replaces only when the payer adjudicated the claim and takes replacements, else 1 for an original claim, as for a claim rejected before adjudication, a payer that takes reopenings and Medicare Part B.',
@@ -1413,7 +1348,7 @@ export const claimGraphs: SeedGraph[] = [
   asRule(
     'billing.map-837p',
     'Map 837P Claim',
-    'Maps a claim on its way to a payer onto an 837P claim: subscriber and patient, 837P Payer, prior payers for coordination of benefits, Claim Frequency, Benefits Assignment, Place of Service, Admission Date, Ambulance Conditions, Narrative Note and 837P Service Lines.',
+    'Maps a claim on its way to a payer onto an 837P claim: subscriber and patient, 837P Payer, prior payers for coordination of benefits, Claim Frequency, Benefits Assignment, place of service 41 (ambulance, land), the admission date, Ambulance Conditions, Narrative Note and 837P Service Lines.',
     map837p()
   )
 ];

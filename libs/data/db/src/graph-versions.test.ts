@@ -170,16 +170,16 @@ describe('latest versions', () => {
 
 describe('findRuleBundle', () => {
   it('resolves a rule at its newest system version and every graph it calls, without a run', async () => {
-    const rows = [{ id: 'v-1', key: 'billing.claim-checks', version: 2, definition: {} }];
+    const rows = [{ id: 'v-1', key: 'billing.claim-issues', version: 2, definition: {} }];
     const { db, queries } = createRecordingDb(() => rows);
-    assert.deepEqual(await findRuleBundle(db, 't-1', 'billing.claim-checks'), rows);
+    assert.deepEqual(await findRuleBundle(db, 't-1', 'billing.claim-issues'), rows);
     assert.equal(
       flat(queries[0]),
       `with recursive bundle (id, key, version) as ( select r.id, req.key, req.version from (select $1::text as key, ( select max(v.version) from graphs g join graph_versions v on v.graph_id = g.id where g.key = $2::text and g.agency_id is null and v.published_at is not null ) as version) req cross join lateral ${resolvedSql('"req"."key"', '"req"."version"', '$3')} r where r.id is not null union ${dependencies} ${resolvedSql('"dep"."key"', '"dep"."version"', '$4')} r where r.id is not null ) select b.id, b.key, b.version, gv.definition from bundle b join graph_versions gv on gv.id = b.id order by b.key, b.version`
     );
     assert.deepEqual(queries[0]?.parameters, [
-      'billing.claim-checks',
-      'billing.claim-checks',
+      'billing.claim-issues',
+      'billing.claim-issues',
       't-1',
       't-1'
     ]);

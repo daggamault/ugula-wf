@@ -46,7 +46,7 @@ Decision and lookup table nodes either carry their rules inline or reference a s
   - **Code mappings:** Base Rate (the CMS base rate code by level of service and emergency), Destination Modifier (destination type → letter), Line Code Modifier (`billing.code-modifier`), Transport Reason by Destination Reason (`billing.transport-reason-by-destination`), Payer by Payment Method (`billing.payment-method-payer`), Coverage Priority, Benefits Assignment, Adjustment Reasons, Adjustment Classes, Classes That Lower the Balance (`billing.balance-lowering-classes`), Task Deadline Kinds.
 - The seed checks every reference resolves to a table with the same fields.
 - A Where node can keep the items whose field is listed (or not listed) as a key of a shared table (`op: listed` or `notListed` with `table: { key }`), which is how a rule tests a code set; a Lookup Table also looks up a list of keys at once (`keys` → `values`).
-- The API runs an agency's effective rule outside any run (`findRuleBundle`, `findGraphTables`, `runRule`) for the claim page's issues (Claim Issues: Claim Check Facts, then Claim Checks) and next step, so table and rule overrides show there as they apply in runs.
+- The API runs an agency's effective rule outside any run (`findRuleBundle`, `findGraphTables`, `runRule`) for the claim page's issues (Claim Issues: Claim Check Facts, then every check rule) and next step, so table and rule overrides show there as they apply in runs.
 
 ## Contracts
 

@@ -402,6 +402,12 @@ const classifyAdjustments = (): GraphDef => {
         'The group and reason code of each adjustment, such as CO-45.'
       ),
       d(
+        'unknownGroup',
+        'boolean',
+        'Unknown Group',
+        'Whether an adjustment has a group code 5010 does not use, denied or not.'
+      ),
+      d(
         'adjustedCents',
         'integer',
         'Adjusted (Cents)',
@@ -466,6 +472,16 @@ const classifyAdjustments = (): GraphDef => {
   g.wire('entry.adjustments', 'byCode.list', 'each.list');
   g.wire(denied, 'each.deniedClaim', 'return.deniedClaim');
   g.wire('each.class', 'return.classes');
+  g.wire(
+    condition(
+      g,
+      'unknownGroup',
+      'Adjustment Group 5010 Does Not Use',
+      { classes: [{ list: 'string' }, 'byCode.class'] },
+      [{ field: 'classes', op: 'is', value: 'unknown' }]
+    ),
+    'return.unknownGroup'
+  );
   g.wire('each.code', 'return.codes');
   g.wire('each.classified', 'lowers.list');
   g.wire('lowers.list', 'amounts.list');
@@ -681,13 +697,7 @@ const routeRemittance = (): GraphDef => {
       id: 'unknownGroup',
       label: 'Review the Group Code',
       reason: 'An adjustment group 5010 does not use',
-      when: condition(
-        g,
-        'unknownGroup',
-        'Adjustment Group 5010 Does Not Use',
-        { classes: [{ list: 'string' }, 'classify.classes'] },
-        [{ field: 'classes', op: 'is', value: 'unknown' }]
-      ),
+      when: 'classify.unknownGroup' as const,
       route: 'review',
       message: 'The remittance has an adjustment group code 5010 does not use; post it by hand'
     },
@@ -797,28 +807,6 @@ const routeRemittance = (): GraphDef => {
   g.wire('classify.adjustedCents', 'posting.adjustedCents');
   g.wire('reasons.list', 'posting.reasons');
   g.wire('posting.posting', 'return.posting');
-  return g.def;
-};
-
-const routeRemittances = (): GraphDef => {
-  const g = action(
-    [d('lines', T.remittanceLines, 'Remittance Lines', 'The claim payments of an 835.')],
-    [d('postings', T.postings, 'Postings', 'How each claim payment is posted.')],
-    ['then'],
-    [{ name: 'postings', type: T.postings, default: [] }]
-  );
-  g.add('each', 'std.flow.for-each', { label: 'Each Claim Payment' });
-  g.add('route', 'billing.route-remittance', { label: 'Route Remittance' });
-  g.add('keep', 'std.var.append', { label: 'Keep the Posting', config: { name: 'postings' } });
-  g.add('postings', 'std.var.get', { label: 'Postings', config: { name: 'postings' } });
-  g.ret('done');
-  g.wire('entry.exec', 'each.exec');
-  g.wire('entry.lines', 'each.list');
-  g.wire('each.body', 'keep.exec');
-  g.wire('each.item', 'route.line');
-  g.wire('route.posting', 'keep.item');
-  g.wire('each.completed', 'done.exec');
-  g.wire('postings.value', 'done.postings');
   return g.def;
 };
 
@@ -952,7 +940,10 @@ const receivePayerFile = (): GraphDef => {
   );
   g.trigger({ kind: 'event', event: 'payer_file.received', where: {} });
   g.add('read', 'billing.read-payer-file', { label: 'Read Payer File' });
-  g.add('route', 'billing.route-remittances', { label: 'Route Remittances' });
+  g.add('route', 'std.list.map-rule', {
+    label: 'Route Each Claim Payment',
+    config: { rule: 'billing.route-remittance', version: 1, item: 'line' }
+  });
   g.add('apply', 'billing.apply-payer-file', { label: 'Apply to Claims' });
   g.add('accepted', 'std.logic.is-null', { label: 'Envelope Accepted' });
   g.add('envelope', 'std.flow.branch', { label: 'Envelope Accepted?' });
@@ -974,10 +965,9 @@ const receivePayerFile = (): GraphDef => {
     'review.fileName',
     'unreadable.fileName'
   );
-  g.wire('read.read', 'route.exec');
-  g.wire('read.lines', 'route.lines');
-  g.wire('route.then', 'apply.exec');
-  g.wire('route.postings', 'apply.postings');
+  g.wire('read.read', 'apply.exec');
+  g.wire('read.lines', 'route.list');
+  g.wire('route.posting', 'apply.postings');
   g.wire('apply.applied', 'envelope.exec');
   g.wire('apply.envelopeRejection', 'accepted.value', 'setup.rejection');
   g.wire('accepted.result', 'envelope.condition');
@@ -1025,12 +1015,6 @@ export const payerFileGraphs: SeedGraph[] = [
     routeRemittance()
   ),
   asStage(
-    'billing.route-remittances',
-    'Route Remittances',
-    'Routes every claim payment of an 835 with Route Remittance, in file order.',
-    routeRemittances()
-  ),
-  asStage(
     'billing.review-payer-file-lines',
     'Review Each Payer File Line',
     'Starts a Review Payer File Line run for each line of a clearinghouse file that could not be applied on its own, without waiting for them.',
@@ -1063,7 +1047,7 @@ export const payerFileGraphs: SeedGraph[] = [
   asWorkflow(
     'billing.receive-payer-file',
     'Receive Payer File',
-    'Reads a file the clearinghouse sent (835 remittance, TA1, 999 or 277CA acknowledgment, 277 claim status, 271 eligibility), routes each 835 claim payment with Route Remittances, applies the file to its claims, has the clearinghouse setup fixed when it rejected the file envelope (TA1), and asks a biller about each line that could not be applied on its own. Starts on Payer File Received: every file downloaded from the clearinghouse or uploaded on Payer Files.',
+    'Reads a file the clearinghouse sent (835 remittance, TA1, 999 or 277CA acknowledgment, 277 claim status, 271 eligibility), routes each 835 claim payment with Route Remittance, applies the file to its claims, has the clearinghouse setup fixed when it rejected the file envelope (TA1), and asks a biller about each line that could not be applied on its own. Starts on Payer File Received: every file downloaded from the clearinghouse or uploaded on Payer Files.',
     receivePayerFile()
   ),
   asWorkflow(

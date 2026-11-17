@@ -1055,52 +1055,122 @@ const serviceWithoutMiles = (): GraphDef => {
   return g.def;
 };
 
-const tripService = (withoutMiles: boolean): GraphDef => {
-  const g = rule([P.facts(), P.findings(true)], [SERVICE_OUT]);
-  g.add('suggested', 'billing.base-service', { label: 'Base Service' });
+const NO_MILES_CLASSIFICATIONS = ['treatNoTransport', 'refusal'];
+
+const confirmedService = (): GraphDef => {
+  const g = rule(
+    [
+      d('service', T.service, 'Suggested Service', 'The service the rules suggested.'),
+      P.facts(),
+      d(
+        'classification',
+        'string',
+        'Confirmed Classification',
+        'The classification the biller confirmed.'
+      ),
+      d(
+        'level',
+        'string',
+        'Confirmed Level',
+        'The level of service the biller chose, if any.',
+        true
+      ),
+      d(
+        'emergency',
+        'boolean',
+        'Confirmed Emergency',
+        'Whether the biller said it was an emergency, if they did.',
+        true
+      ),
+      d(
+        'loadedMiles',
+        'number',
+        'Confirmed Loaded Miles',
+        'The loaded miles the biller entered, if any.',
+        true
+      )
+    ],
+    [SERVICE_OUT]
+  );
+  g.add('suggested', 'billing.service.break', { label: 'Suggested Service' });
+  g.add('level', 'std.logic.coalesce', { label: 'Confirmed Level' });
+  g.add('emergency', 'std.logic.coalesce', { label: 'Confirmed Emergency' });
+  g.add('miles', 'std.logic.coalesce', { label: 'Confirmed Loaded Miles' });
+  g.add('nonCovered', 'billing.non-covered-miles', { label: 'Non-Covered Miles' });
+  const nonCoveredUnlessDead = select(
+    g,
+    'nonCoveredUnlessDead',
+    'Non-Covered Miles Unless Pronounced Dead',
+    condition(
+      g,
+      'pronouncedDead',
+      'Pronounced Dead',
+      { deceased: ['boolean', 'suggested.deceased'] },
+      [{ field: 'deceased', op: 'is', value: true }]
+    ),
+    undefined,
+    'nonCovered.nonCoveredMiles'
+  );
+  g.add('confirmed', 'billing.service.make', { label: 'Confirmed Service' });
+  g.add('noMiles', 'billing.service-without-miles', { label: 'Service Without Miles' });
+  const billsNoMiles = condition(
+    g,
+    'billsNoMiles',
+    'Classified as a Trip Without Miles',
+    { classification: ['string', 'entry.classification'] },
+    [{ field: 'classification', op: 'oneOf', value: NO_MILES_CLASSIFICATIONS }]
+  );
   g.ret('return');
-  g.wire('entry.facts', 'suggested.facts');
-  g.wire('entry.findings', 'suggested.findings');
-  if (!withoutMiles) {
-    g.wire('suggested.service', 'return.service');
-    return g.def;
-  }
-  g.add('service', 'billing.service-without-miles', { label: 'Service Without Miles' });
-  g.wire('suggested.service', 'service.service');
-  g.wire('service.service', 'return.service');
+  g.wire('entry.service', 'suggested.service');
+  g.wire('entry.level', 'level.value');
+  g.wire('suggested.level', 'level.fallback');
+  g.wire('entry.emergency', 'emergency.value');
+  g.wire('suggested.emergency', 'emergency.fallback');
+  g.wire('entry.loadedMiles', 'miles.value');
+  g.wire('suggested.loadedMiles', 'miles.fallback');
+  g.wire('level.result', 'confirmed.level');
+  g.wire('emergency.result', 'confirmed.emergency');
+  g.wire('miles.result', 'confirmed.loadedMiles', 'nonCovered.loadedMiles');
+  g.wire('entry.facts', 'nonCovered.facts');
+  g.wire('suggested.deceased', 'confirmed.deceased');
+  g.wire(nonCoveredUnlessDead, 'confirmed.nonCoveredMiles');
+  g.wire('suggested.basis', 'confirmed.basis');
+  g.wire('confirmed.service', 'noMiles.service');
+  g.wire(
+    select(
+      g,
+      'billed',
+      'Without Miles When No Transport',
+      billsNoMiles,
+      'noMiles.service',
+      'confirmed.service'
+    ),
+    'return.service'
+  );
   return g.def;
 };
 
-const TRIP_SERVICES = [
-  ['emergency', 'billing.trip-emergency', 'Emergency Trip'],
-  ['scheduled', 'billing.trip-scheduled', 'Scheduled Trip'],
-  ['treatNoTransport', 'billing.trip-treat-no-transport', 'Treat, No Transport'],
-  ['refusal', 'billing.trip-refusal', 'Refusal']
-] as const;
-
 const determineService = (): GraphDef => {
   const g = rule([P.classification(), P.facts(), P.findings(true)], [SERVICE_OUT]);
-  for (const [id, type, label] of TRIP_SERVICES) {
-    g.add(id, type, { label });
-    g.wire('entry.facts', `${id}.facts`);
-    g.wire('entry.findings', `${id}.findings`);
-  }
+  g.add('base', 'billing.base-service', { label: 'Base Service' });
+  g.add('noMiles', 'billing.service-without-miles', { label: 'Service Without Miles' });
+  g.wire('entry.facts', 'base.facts');
+  g.wire('entry.findings', 'base.findings');
+  g.wire('base.service', 'noMiles.service');
   g.add('byTrip', 'std.logic.choose', {
     label: 'Service for the Classification',
     config: {
       mode: 'byCase',
       type: T.service,
-      cases: [{ when: 'scheduled' }, { when: 'treatNoTransport' }, { when: 'refusal' }]
+      cases: [{ when: 'treatNoTransport' }, { when: 'refusal' }]
     }
   });
   g.add('facts', 'billing.encounter-facts.break', { label: 'Encounter Facts' });
   g.add('deceased', 'billing.deceased-handling', { label: 'Deceased Handling (QL)' });
   g.ret('return');
   g.wire('entry.classification', 'byTrip.key');
-  g.wire('scheduled.service', 'byTrip.case1');
-  g.wire('treatNoTransport.service', 'byTrip.case2');
-  g.wire('refusal.service', 'byTrip.case3');
-  g.wire('emergency.service', 'byTrip.otherwise');
+  g.wire('noMiles.service', 'byTrip.case1', 'byTrip.case2');
+  g.wire('base.service', 'byTrip.otherwise');
   g.wire('entry.facts', 'facts.facts');
   g.wire('facts.trip', 'deceased.trip');
   g.wire('byTrip.value', 'deceased.service');
@@ -1179,33 +1249,15 @@ export const serviceGraphs: SeedGraph[] = [
     serviceWithoutMiles()
   ),
   asRule(
-    'billing.trip-emergency',
-    'Emergency Trip',
-    'The service an emergency transport is billed for: the Base Service.',
-    tripService(false)
-  ),
-  asRule(
-    'billing.trip-scheduled',
-    'Scheduled Trip',
-    'The service a scheduled or interfacility transport is billed for: the Base Service, the same as an emergency transport.',
-    tripService(false)
-  ),
-  asRule(
-    'billing.trip-treat-no-transport',
-    'Treat, No Transport',
-    'The service a trip where the crew treated but did not transport is billed for: the Base Service without miles.',
-    tripService(true)
-  ),
-  asRule(
-    'billing.trip-refusal',
-    'Refusal',
-    'The service a trip where the patient refused care or transport is billed for: the Base Service without miles.',
-    tripService(true)
+    'billing.confirmed-service',
+    'Confirmed Service',
+    'The service a biller confirmed: their level, emergency and loaded miles, else the suggested ones; the non-covered miles worked out again from the loaded miles (none when pronounced dead); and no miles at all when they classified the trip as treated without transport or a refusal.',
+    confirmedService()
   ),
   asRule(
     'billing.determine-service',
     'Determine Service',
-    'Suggests the service for the classification (Emergency Trip, Scheduled Trip, Treat, No Transport or Refusal), bills a patient pronounced dead before loading as BLS without miles (Deceased Handling).',
+    'Suggests the service for the classification: the Base Service, without miles for a trip treated without transport or a refusal, and billed as BLS without miles for a patient pronounced dead before loading (Deceased Handling).',
     determineService()
   ),
   asRule(
@@ -1223,7 +1275,7 @@ export const serviceGraphs: SeedGraph[] = [
   asStage(
     'billing.decide-claim',
     'Decide Whether to Claim',
-    'Classifies the trip and logs the classification on the claim. A clear not-billable trip skips the claim with its reason logged; a report the Classification Needs Review rule doubts goes to a biller, whose decision is logged.',
+    'Classifies the trip and logs a clear classification on the claim: a billable trip is claimed and a not-billable one skipped, with its reason. A report the Classification Needs Review rule doubts goes to a biller, who claims it under a classification or skips it; Work Draft Claim records that choice on the claim.',
     decideClaim()
   )
 ];

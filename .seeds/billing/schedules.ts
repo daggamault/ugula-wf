@@ -696,7 +696,6 @@ const watchDeadlines = (): GraphDef => {
   g.add('each', 'std.flow.for-each', { label: 'Each Deadline' });
   g.add('act', 'billing.deadline-action', { label: 'Deadline Action' });
   g.add('route', 'std.flow.switch', { label: 'By Action', config: { cases: ['raise', 'remind'] } });
-  g.add('taskId', 'std.object.get', { label: 'Open Task', values: { path: 'taskId' } });
   g.add('raise', 'billing.raise-task', { label: 'Raise Task Priority' });
   g.add('deadline', 'billing.deadline.break', { label: 'Deadline' });
   const reminder = makeObject(g, 'reminder', 'Reminder Inputs', {
@@ -721,93 +720,15 @@ const watchDeadlines = (): GraphDef => {
   g.wire('today.today', 'find.today');
   g.wire('find.deadlines', 'each.list', 'count.list');
   g.wire('each.body', 'route.exec');
-  g.wire('each.item', 'act.deadline', 'taskId.object', 'deadline.deadline');
+  g.wire('each.item', 'act.deadline', 'deadline.deadline');
   g.wire('act.action', 'route.value');
   g.wire('route.raise', 'raise.exec');
-  g.wire('taskId.value', 'raise.taskId');
+  g.wire('deadline.taskId', 'raise.taskId');
   g.wire('act.priority', 'raise.priority');
   g.wire('route.remind', 'remind.exec');
   g.wire(reminder, 'remind.inputs');
   g.wire('each.completed', 'return.exec');
   g.wire('count.length', 'return.checked');
-  return g.def;
-};
-
-const reminderSummary = (): GraphDef => {
-  const g = rule(
-    [
-      KIND_PIN,
-      d('dueOn', 'string', 'Due On', 'The due date (YYYY-MM-DD).', true),
-      { ...MESSAGE_PIN, optional: true }
-    ],
-    [d('summary', 'string', 'Task Summary', 'The sentence the reminder task shows a biller.')]
-  );
-  g.add('now', 'std.time.now', { label: 'Now' });
-  g.add('today', 'std.time.start-of', { label: 'Today', config: { unit: 'day' } });
-  g.add('daysLeft', 'std.time.difference', { label: 'Days Left', config: { unit: 'days' } });
-  const due = { dueOn: 'entry.dueOn' } as const;
-  const passed = condition(
-    g,
-    'passed',
-    'The Filing Limit Has Passed',
-    { daysLeft: ['integer', 'daysLeft.amount'] },
-    [{ field: 'daysLeft', op: 'lt', value: 0 }]
-  );
-  const filing = select(
-    g,
-    'filingText',
-    'Passed or Coming Up',
-    passed,
-    template(
-      g,
-      'passedText',
-      'Filing Limit Passed Text',
-      'The filing limit passed on {dueOn}; file the claim with proof of timely filing or write it off',
-      due
-    ),
-    template(
-      g,
-      'fileText',
-      'File Before the Limit Text',
-      'File this claim before its filing limit[ on {dueOn}][ ({left} left)]',
-      { ...due, left: countDays(g, 'left', 'Days Left Text', 'daysLeft.amount') }
-    )
-  );
-  g.add('summary', 'std.logic.choose', {
-    label: 'Task Summary',
-    config: {
-      mode: 'byCase',
-      type: 'string',
-      cases: [{ when: 'pcs' }, { when: 'timelyFiling' }]
-    }
-  });
-  g.ret('return');
-  g.wire('now.now', 'today.time');
-  g.wire('today.time', 'daysLeft.start');
-  g.wire('entry.dueOn', 'daysLeft.end');
-  g.wire('entry.kind', 'summary.key');
-  g.wire(
-    template(
-      g,
-      'pcsText',
-      'Certification Expires Text',
-      "The patient's physician certification expires[ on {dueOn}]; get a new one before the next scheduled trip",
-      due
-    ),
-    'summary.case1'
-  );
-  g.wire(filing, 'summary.case2');
-  g.wire(
-    orElse(
-      g,
-      'otherText',
-      'Message, Else Near or Passed',
-      'entry.message',
-      fixed('A deadline on this claim is near or has passed')
-    ),
-    'summary.otherwise'
-  );
-  g.wire('summary.value', 'return.summary');
   return g.def;
 };
 
@@ -836,7 +757,6 @@ const deadlineReminder = (): GraphDef => {
     dueOn: ['string', 'entry.dueOn'],
     message: ['string', 'entry.message']
   });
-  g.add('remindSummary', 'billing.deadline-reminder-summary', { label: 'Task Summary' });
   g.add('remind', 'std.human.task', {
     label: 'Deadline Coming Up',
     config: {
@@ -851,13 +771,11 @@ const deadlineReminder = (): GraphDef => {
   g.ret('done');
   g.wire('entry.exec', 'follow.exec');
   g.wire('entry.claimId', 'follow.claimId');
-  g.wire('entry.kind', 'remindSummary.kind');
-  g.wire('entry.dueOn', 'remind.due', 'remindSummary.dueOn');
-  g.wire('entry.message', 'remindSummary.message');
+  g.wire('entry.dueOn', 'remind.due');
+  g.wire('entry.message', 'remind.summary');
   g.wire('entry.reference', 'remind.subject');
   g.wire('entry.priority', 'remind.priority');
   g.wire(details, 'remind.context');
-  g.wire('remindSummary.summary', 'remind.summary');
   g.wire('follow.then', 'remind.exec');
   g.wire('remind.done', 'done.exec');
   return g.def;
@@ -950,7 +868,7 @@ export const scheduleGraphs: SeedGraph[] = [
   ),
   asRule(
     'billing.deadline-coming-up',
-    'Deadline Coming Up',
+    'Within Look-Ahead',
     'Says whether a deadline is close enough to look at: within the Look-Ahead Days (Deadline Limits table), or passed.',
     deadlineComingUp()
   ),
@@ -963,14 +881,8 @@ export const scheduleGraphs: SeedGraph[] = [
   asRule(
     'billing.deadline-action',
     'Deadline Action',
-    'Decides what to do about one claim deadline, taking the first case that applies, with the days from the Deadline Limits table: remind once the filing limit has passed (urgent) or is near (high), raise an open appeal, records request or refund task to urgent when due now and to high when due soon, remind when a physician certification is about to expire, or nothing.',
+    'Decides what to do about one claim deadline, taking the first case that applies, with the days from the Deadline Limits table: remind once the filing limit has passed (urgent) or is near (high), raise an open appeal, records request, refund or other task to urgent when due now and to high when due soon, remind when a physician certification is about to expire, or nothing.',
     deadlineAction()
-  ),
-  asRule(
-    'billing.deadline-reminder-summary',
-    'Deadline Reminder Summary',
-    'Says what a deadline reminder asks: get a new physician certification, file the claim before its filing limit, or file it with proof of timely filing once the limit has passed.',
-    reminderSummary()
   ),
   asWorkflow(
     'billing.deadline-reminder',

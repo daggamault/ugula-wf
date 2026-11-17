@@ -19,6 +19,7 @@ import {
   asWorkflow,
   condition,
   d,
+  either,
   exit,
   fixed,
   makeObject,
@@ -106,12 +107,12 @@ const documentFacts = (): GraphDef => {
   select(g, 'abnOnFile', 'ABN on File', abn, fixed(true));
   select(g, 'abnSignedOn', 'ABN Date', abn, 'document.signedOn');
   select(g, 'signature', 'Release Signed', signed, fixed('signed'));
-  const changes = condition(
+  const changes = either(
     g,
     'changes',
     'Records Something on the Claim',
-    { kind: ['string', 'document.kind'] },
-    [{ field: 'kind', op: 'oneOf', value: ['pcs', 'abn', 'signature'] }]
+    either(g, 'pcsOrAbn', 'A Certification or an ABN', pcs, abn),
+    signed
   );
   const reasons = reasonsOf(g, 'reasons', 'What It Records', [
     {
@@ -282,8 +283,7 @@ const chaseDocument = (): GraphDef => {
   g.add('onFile', 'std.list.contains', { label: 'It Is on File' });
   const context = makeObject(g, 'context', 'Chase Details', {
     document: ['string', 'document.name'],
-    note: ['string', 'ask.note'],
-    onFile: ['boolean', 'onFile.result']
+    note: ['string', 'ask.note']
   });
   const described = orElse(
     g,
@@ -374,7 +374,7 @@ export const documentGraphs: SeedGraph[] = [
   ),
   asWorkflow(
     'billing.receive-document',
-    'Receive Document',
+    'Add Document',
     'Started from a claim (Add Document): an Add document task uploads a facesheet, certification, signature form, ABN or MSP form. It is kept with the claim (Add Claim Document; when it refuses, the task comes back with why), and what it documents is recorded (Record Document).',
     receiveDocument()
   ),

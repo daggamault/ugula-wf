@@ -467,14 +467,13 @@ const unpricedCodes = (): GraphDef => {
   );
   g.add('summary', 'std.logic.choose', {
     label: 'One or Several',
-    config: { mode: 'byCase', type: 'string', cases: [{ when: '0' }, { when: '1' }] },
-    values: { case1: 'A code on this claim has no price; enter its unit price or void the claim' }
+    config: { mode: 'byCase', type: 'string', cases: [{ when: '1' }] }
   });
   g.ret('return');
   g.wire('entry.codes', 'named.list', 'count.list');
   g.wire('named.text', 'return.named');
   g.wire('count.length', 'summary.key');
-  g.wire(one, 'summary.case2');
+  g.wire(one, 'summary.case1');
   g.wire(several, 'summary.otherwise');
   g.wire('summary.value', 'return.summary');
   return g.def;
@@ -498,18 +497,16 @@ const PRICE_EXITS = {
   voided: exit('Voided', 'A biller voided the claim instead of pricing a code.')
 };
 
-const priceCharges = (): GraphDef => {
+const assignCharges = (): GraphDef => {
   const g = stage(
-    [
-      d('lines', CHARGE_LINES, 'Charge Lines', 'The lines to price.'),
-      PAYER_IN,
-      P.subject(),
-      P.context()
-    ],
+    [P.classification(), P.service(), PAYER_IN, P.subject(), P.context()],
     PRICED_OUT,
     PRICE_EXITS,
     [{ name: 'fees', type: FEES, default: {} }]
   );
+  g.add('charges', 'billing.map-charges', { label: 'Map Charges' });
+  g.wire('entry.classification', 'charges.classification');
+  g.wire('entry.service', 'charges.service');
   g.add('billed', 'std.list.map-rule', {
     label: 'Billed Units of Each Line',
     config: { rule: 'billing.billed-line', version: 1, item: 'line' }
@@ -579,7 +576,7 @@ const priceCharges = (): GraphDef => {
   g.ret('pricedDone', 'priced');
   g.ret('voidedDone', 'voided');
   g.wire('entry.exec', 'find.exec');
-  g.wire('entry.lines', 'billed.list');
+  g.wire('charges.lines', 'billed.list');
   g.wire('billed.line', 'find.lines', 'price.lines');
   g.wire('entry.payerId', 'find.payerId');
   g.wire('claimFees.value', 'precedence.claimFees', 'setFee.fees');
@@ -606,30 +603,6 @@ const priceCharges = (): GraphDef => {
   g.wire('setFee.fees', 'keep.value');
   g.wire('keep.then', 'find.exec');
   g.wire('setCharge.void', 'voidedDone.exec');
-  return g.def;
-};
-
-const assignCharges = (): GraphDef => {
-  const g = stage(
-    [P.classification(), P.service(), PAYER_IN, P.subject(), P.context()],
-    PRICED_OUT,
-    PRICE_EXITS
-  );
-  g.add('charges', 'billing.map-charges', { label: 'Map Charges' });
-  g.add('price', 'billing.price-charges', { label: 'Price Charges' });
-  g.ret('pricedDone', 'priced');
-  g.ret('voidedDone', 'voided');
-  g.wire('entry.exec', 'price.exec');
-  g.wire('entry.classification', 'charges.classification');
-  g.wire('entry.service', 'charges.service');
-  g.wire('charges.lines', 'price.lines');
-  g.wire('entry.payerId', 'price.payerId');
-  g.wire('entry.subject', 'price.subject');
-  g.wire('entry.context', 'price.context');
-  g.wire('price.priced', 'pricedDone.exec');
-  g.wire('price.lines', 'pricedDone.lines');
-  g.wire('price.totalCents', 'pricedDone.totalCents');
-  g.wire('price.voided', 'voidedDone.exec');
   return g.def;
 };
 
@@ -774,15 +747,9 @@ export const chargeGraphs: SeedGraph[] = [
     unpricedCodes()
   ),
   asStage(
-    'billing.price-charges',
-    'Price Charges',
-    'Rounds each line to its Billed Units, finds the fee schedules for the lines, prices them by Price Precedence, and asks a biller for the price of any code without one (optionally saving it to the default schedule) before going on, or voids.',
-    priceCharges()
-  ),
-  asStage(
     'billing.assign-charges',
     'Assign Charges',
-    'Maps the classification and service to charge lines (Map Charges) and prices them for the primary payer, or voids.',
+    'Maps the classification and service to charge lines (Map Charges), rounds each line to its Billed Units, finds the fee schedules, prices the lines by Price Precedence, and asks a biller for the price of any code without one (optionally saving it to the default schedule) before going on, or voids.',
     assignCharges()
   ),
   asRule(

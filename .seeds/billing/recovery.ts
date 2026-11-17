@@ -446,12 +446,6 @@ const appealLevel = (): GraphDef => {
   const g = rule(
     [DENIAL_IN],
     [
-      d(
-        'level',
-        'string',
-        'Level',
-        'The appeal level: redetermination, reconsideration, hearing or appeal.'
-      ),
       d('levelName', 'string', 'Level Name', 'The appeal level as the packet and tasks name it.'),
       d('dueOn', 'string', 'Due On', 'The last day to send the appeal (YYYY-MM-DD).'),
       d(
@@ -512,12 +506,24 @@ const appealLevel = (): GraphDef => {
         label: 'ALJ Hearing',
         when: both(
           g,
-          'medicareLater',
-          "Medicare's Third Appeal or Later",
+          'medicareThird',
+          "Medicare's Third Appeal",
           medicare,
-          sent('twoOrMore', 'Two or More Appeals Sent', 'gte', 2)
+          sent('atMostTwo', 'At Most Two Appeals Sent', 'lte', 2)
         ),
         value: fixed('hearing')
+      },
+      {
+        id: 'council',
+        label: 'Appeals Council Review',
+        when: both(
+          g,
+          'medicareLater',
+          "Medicare's Fourth Appeal or Later",
+          medicare,
+          sent('threeOrMore', 'Three or More Appeals Sent', 'gte', 3)
+        ),
+        value: fixed('council')
       },
       {
         id: 'medicaidAppeal',
@@ -532,11 +538,11 @@ const appealLevel = (): GraphDef => {
   const level = (
     step: string,
     label: string,
-    [level, levelName, days, decisionDays, payerLimit]: [string, string, number, number, boolean]
+    [levelName, days, decisionDays, payerLimit]: [string, number, number, boolean]
   ) => ({
     label,
     when: { step: is(step) },
-    set: { level, levelName, days, decisionDays, payerLimit }
+    set: { levelName, days, decisionDays, payerLimit }
   });
   g.add('decide', 'std.table.decide', {
     label: 'Appeal Levels',
@@ -547,7 +553,6 @@ const appealLevel = (): GraphDef => {
       table(
         [field('step', 'string', 'Appeal')],
         [
-          field('level', 'string', 'Level'),
           field('levelName', 'string', 'Level Name'),
           field('days', 'integer', 'Days to File'),
           field('decisionDays', 'integer', 'Days to Decide'),
@@ -555,42 +560,41 @@ const appealLevel = (): GraphDef => {
         ],
         [
           level('redetermination', 'Medicare: redetermination by the MAC within 120 days', [
-            'redetermination',
             'Redetermination',
             120,
             60,
             false
           ]),
           level('reconsideration', 'Medicare: reconsideration by the QIC within 180 days', [
-            'reconsideration',
             'Reconsideration',
             180,
             60,
             false
           ]),
           level('hearing', 'Medicare: hearing before an ALJ within 60 days (verify)', [
-            'hearing',
             'ALJ Hearing',
             60,
             90,
             false
           ]),
+          level(
+            'council',
+            'Medicare: Appeals Council review within 60 days of the ALJ decision (verify)',
+            ['Appeals Council Review', 60, 90, false]
+          ),
           level('medicaid', 'Medicaid: appeal within 90 days (verify with the state)', [
-            'appeal',
             'Medicaid Appeal',
             90,
             90,
             true
           ]),
           level('first', 'First appeal to the payer within 180 days (verify)', [
-            'appeal',
             'First Level Appeal',
             180,
             30,
             true
           ]),
           level('second', 'Second appeal to the payer within 60 days (verify)', [
-            'appeal',
             'Second Level Appeal',
             60,
             30,
@@ -637,7 +641,6 @@ const appealLevel = (): GraphDef => {
   g.wire('denial.deniedOn', 'dueOn.from');
   g.wire('decide.reasons', 'reasons.list1');
   g.wire(directoryReasons, 'reasons.list2');
-  g.wire('decide.level', 'return.level');
   g.wire('decide.levelName', 'return.levelName');
   g.wire('decide.decisionDays', 'return.decisionDays');
   g.wire('dueOn.dueOn', 'return.dueOn');
@@ -983,36 +986,6 @@ const THRESHOLD = d(
   'Approval Threshold',
   'The largest balance closed without approval (cents), from the Claim Policy table.'
 );
-
-const closingApproval = (): GraphDef => {
-  const g = rule(
-    [BALANCE, THRESHOLD],
-    [
-      d(
-        'needsApproval',
-        'boolean',
-        'Needs Approval',
-        'Whether someone who may approve must agree first.'
-      ),
-      P.reasons('approval is or is not needed')
-    ]
-  );
-  g.add('needs', 'std.logic.greater', { label: 'Above the Threshold' });
-  const reasons = select(
-    g,
-    'reasons',
-    'Why',
-    'needs.result',
-    fixed(['The balance is above the approval threshold of the Claim Policy']),
-    fixed(['The balance is within the approval threshold of the Claim Policy'])
-  );
-  g.ret('return');
-  g.wire('entry.balanceCents', 'needs.a');
-  g.wire('entry.thresholdCents', 'needs.b');
-  g.wire('needs.result', 'return.needsApproval');
-  g.wire(reasons, 'return.reasons');
-  return g.def;
-};
 
 const payerResponseAmounts = (): GraphDef => {
   const g = rule(
@@ -2049,7 +2022,7 @@ const approveClosing = (): GraphDef => {
       rejected: exit('Rejected', 'The closing was not approved; the cycle decides again.')
     }
   });
-  g.add('rule', 'billing.closing-approval', { label: 'Closing Approval' });
+  g.add('rule', 'std.logic.greater', { label: 'Above the Approval Threshold' });
   g.add('needed', 'std.flow.branch', { label: 'Needs Approval?' });
   g.add('which', 'std.flow.switch', { label: 'Which Closing', config: { cases: ['collections'] } });
   const task = (id: string, title: string, instructions: string, approve: string) =>
@@ -2097,9 +2070,9 @@ const approveClosing = (): GraphDef => {
   g.ret('approvedReturn', 'approved');
   g.ret('rejectedReturn', 'rejected');
   g.wire('entry.exec', 'needed.exec');
-  g.wire('entry.balanceCents', 'rule.balanceCents');
-  g.wire('entry.thresholdCents', 'rule.thresholdCents');
-  g.wire('rule.needsApproval', 'needed.condition');
+  g.wire('entry.balanceCents', 'rule.a');
+  g.wire('entry.thresholdCents', 'rule.b');
+  g.wire('rule.result', 'needed.condition');
   g.wire('needed.false', 'approvedReturn.exec');
   g.wire('needed.true', 'which.exec');
   g.wire('entry.closing', 'which.value');
@@ -2146,7 +2119,7 @@ export const recoveryGraphs: SeedGraph[] = [
   ),
   asRule(
     'billing.time-left',
-    'Time Left Until',
+    'Time Left',
     'Works out how long is left until a moment, or none once it has passed, for a wait that should end then.',
     timeLeft()
   ),
@@ -2195,7 +2168,7 @@ export const recoveryGraphs: SeedGraph[] = [
   asRule(
     'billing.refund-due',
     'Refund Due',
-    'Decides when a credit balance must be refunded, from the Refund Deadlines table: Medicare and Medicaid within 60 days of being identified.',
+    'Decides when a credit balance must be refunded, from the Refund Deadlines table: Medicare and Medicaid within 60 days of being identified (42 CFR 401.305), patients within 30 days, other payers within 60.',
     refundDue()
   ),
   asRule(
@@ -2209,12 +2182,6 @@ export const recoveryGraphs: SeedGraph[] = [
     'Refund Summary',
     'Writes the summary of an Approve Refund task: who overpaid, by how much, and when the refund is due.',
     refundSummary()
-  ),
-  asRule(
-    'billing.closing-approval',
-    'Closing Approval',
-    'Decides whether closing a claim with a balance (a write-off or collections) needs approval: it does when the balance is above the threshold the Claim Policy sets.',
-    closingApproval()
   ),
   asRule(
     'billing.payer-response-amounts',

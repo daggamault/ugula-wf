@@ -717,7 +717,7 @@ export const factGraphs: SeedGraph[] = [
   asRule(
     'billing.billing-signature',
     'Billing Signature',
-    "Says whether the report's release for billing was signed by the patient or a representative, not signed because the patient could not sign (a CMS signature exception), refused or missing, with why: the best of its signatures for the release, signed first, then an exception, a refusal, and missing last.",
+    'The best release-for-billing signature on the report, with why: signed by the patient or a representative, else a CMS signature exception (the patient could not sign), else refused, else missing.',
     billingSignature()
   ),
   asRule(

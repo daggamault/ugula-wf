@@ -348,14 +348,14 @@ const payerNameTask = (): GraphDef => {
     ]
   );
   const byName = { rule: 'billing.payer-has-name', version: 1, item: 'payer', test: 'matches' };
-  g.add('first', 'std.list.find-rule', { label: 'First with the Name', config: byName });
   g.add('same', 'std.list.filter-rule', { label: 'All with the Name', config: byName });
+  g.add('first', 'std.list.first', { label: 'First with the Name' });
   g.add('keys', 'std.list.pluck', { label: 'Their Coverage Keys', values: { field: 'key' } });
   g.add('task', 'std.object.merge', { label: 'First with Every Key' });
   g.ret('return');
-  g.wire('entry.unmatched', 'first.list', 'same.list');
-  g.wire('entry.name', 'first.name', 'same.name');
-  g.wire('same.list', 'keys.list');
+  g.wire('entry.unmatched', 'same.list');
+  g.wire('entry.name', 'same.name');
+  g.wire('same.list', 'keys.list', 'first.list');
   g.wire('first.item', 'task.a');
   g.wire(
     makeObject(g, 'keyed', 'Coverage Keys', { keys: [{ list: 'string' }, 'keys.list'] }),
@@ -1800,26 +1800,7 @@ const reviewPcr = (): GraphDef => {
       }
     }
   });
-  g.add('suggested', 'billing.service.break', { label: 'Suggested Service' });
-  g.add('level', 'std.logic.coalesce', { label: 'Confirmed Level' });
-  g.add('emergency', 'std.logic.coalesce', { label: 'Confirmed Emergency' });
-  g.add('miles', 'std.logic.coalesce', { label: 'Confirmed Loaded Miles' });
-  g.add('nonCovered', 'billing.non-covered-miles', { label: 'Non-Covered Miles' });
-  const nonCoveredUnlessDead = select(
-    g,
-    'nonCoveredUnlessDead',
-    'Non-Covered Miles Unless Pronounced Dead',
-    condition(
-      g,
-      'pronouncedDead',
-      'Pronounced Dead',
-      { deceased: ['boolean', 'suggested.deceased'] },
-      [{ field: 'deceased', op: 'is', value: true }]
-    ),
-    undefined,
-    'nonCovered.nonCoveredMiles'
-  );
-  g.add('confirmed', 'billing.service.make', { label: 'Confirmed Service' });
+  g.add('confirmed', 'billing.confirmed-service', { label: 'Confirmed Service' });
   g.ret('approvedDone', 'approved');
   g.ret('voidedDone', 'voided');
 
@@ -1829,7 +1810,7 @@ const reviewPcr = (): GraphDef => {
   g.wire('entry.pcr', 'trip.pcr', 'subject.pcr');
   g.wire('entry.classification', 'trip.classification', 'classified.value');
   g.wire('entry.reason', 'trip.reason');
-  g.wire('entry.service', 'classified.object', 'suggested.service');
+  g.wire('entry.service', 'classified.object');
   g.wire('classified.object', 'defaults.a');
   g.wire('answers.value', 'answered.object');
   g.wire('answered.object', 'defaults.b');
@@ -1857,19 +1838,12 @@ const reviewPcr = (): GraphDef => {
 
   g.wire('review.approve', 'approvedDone.exec');
   g.wire('review.classification', 'approvedDone.classification');
-  g.wire('review.level', 'level.value');
-  g.wire('suggested.level', 'level.fallback');
-  g.wire('review.emergency', 'emergency.value');
-  g.wire('suggested.emergency', 'emergency.fallback');
-  g.wire('level.result', 'confirmed.level');
-  g.wire('emergency.result', 'confirmed.emergency');
-  g.wire('review.loadedMiles', 'miles.value');
-  g.wire('suggested.loadedMiles', 'miles.fallback');
-  g.wire('miles.result', 'confirmed.loadedMiles', 'nonCovered.loadedMiles');
-  g.wire('entry.facts', 'nonCovered.facts');
-  g.wire('suggested.deceased', 'confirmed.deceased');
-  g.wire(nonCoveredUnlessDead, 'confirmed.nonCoveredMiles');
-  g.wire('suggested.basis', 'confirmed.basis');
+  g.wire('entry.service', 'confirmed.service');
+  g.wire('entry.facts', 'confirmed.facts');
+  g.wire('review.classification', 'confirmed.classification');
+  g.wire('review.level', 'confirmed.level');
+  g.wire('review.emergency', 'confirmed.emergency');
+  g.wire('review.loadedMiles', 'confirmed.loadedMiles');
   g.wire('confirmed.service', 'approvedDone.service');
   return g.def;
 };

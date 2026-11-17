@@ -3,7 +3,6 @@ import type { GraphDef } from '@ugula/graph';
 import type { SeedGraph } from '../graphs.ts';
 import { CLAIM_RECORD_IN } from './check-facts.ts';
 import {
-  CHECK_FACTS_IN,
   CHECK_RULES,
   CHECK_SEVERITIES,
   camel,
@@ -77,12 +76,13 @@ const ALL_ISSUES_OUT = P.issues(
   'Every issue the checks found, with the severity the Check Severity table gives it.'
 );
 
-const claimChecks = (): GraphDef => {
-  const g = rule([CHECK_FACTS_IN, REJECTION_IN, REJECTED_COVERAGE_IN], [ALL_ISSUES_OUT]);
+const claimIssues = (): GraphDef => {
+  const g = rule([CLAIM_RECORD_IN, REJECTION_IN, REJECTED_COVERAGE_IN], [ALL_ISSUES_OUT]);
+  g.add('facts', 'billing.claim-check-facts', { label: 'Claim Check Facts' });
   g.add('lastSubmission', 'billing.check-last-submission', { label: 'Check Last Submission' });
   for (const c of RULES) {
     g.add(c.id, c.key, { label: c.name });
-    g.wire('entry.facts', `${c.id}.facts`);
+    g.wire('facts.facts', `${c.id}.facts`);
   }
   g.add('found', 'std.list.join', {
     label: 'Every Issue Found',
@@ -97,6 +97,7 @@ const claimChecks = (): GraphDef => {
     config: { field: 'severity', op: 'oneOf', value: ['blocking', 'warning'] }
   });
   g.ret('return');
+  g.wire('entry.record', 'facts.record');
   g.wire('entry.rejection', 'lastSubmission.rejection');
   g.wire('entry.rejectedCoverageId', 'lastSubmission.rejectedCoverageId');
   g.wire('lastSubmission.issues', 'found.list1');
@@ -104,19 +105,6 @@ const claimChecks = (): GraphDef => {
   g.wire('found.list', 'rate.list');
   g.wire('rate.issue', 'shown.list');
   g.wire('shown.list', 'return.issues');
-  return g.def;
-};
-
-const claimIssues = (): GraphDef => {
-  const g = rule([CLAIM_RECORD_IN, REJECTION_IN, REJECTED_COVERAGE_IN], [ALL_ISSUES_OUT]);
-  g.add('facts', 'billing.claim-check-facts', { label: 'Claim Check Facts' });
-  g.add('checks', 'billing.claim-checks', { label: 'Claim Checks' });
-  g.ret('return');
-  g.wire('entry.record', 'facts.record');
-  g.wire('facts.facts', 'checks.facts');
-  g.wire('entry.rejection', 'checks.rejection');
-  g.wire('entry.rejectedCoverageId', 'checks.rejectedCoverageId');
-  g.wire('checks.issues', 'return.issues');
   return g.def;
 };
 
@@ -448,15 +436,9 @@ export const checkGraphs: SeedGraph[] = [
     issueMattersNow()
   ),
   asRule(
-    'billing.claim-checks',
-    'Claim Checks',
-    'Runs every claim check on the check facts and rates each issue with the Check Severity table (blocking, warning or off).',
-    claimChecks()
-  ),
-  asRule(
     'billing.claim-issues',
     'Claim Issues',
-    'Derives the Claim Check Facts from the saved claim and runs the Claim Checks on them, so the claim page and Check Claim find the same issues.',
+    'Works out the Claim Check Facts from the saved claim, runs every check rule on them and rates each issue with the Check Severity table (blocking, warning or off), keeping the blocking and warning ones, so the claim page and Check Claim find the same issues. An agency adds or drops a check by overriding it.',
     claimIssues()
   ),
   asStage(
