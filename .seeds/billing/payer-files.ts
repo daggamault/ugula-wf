@@ -593,6 +593,15 @@ const MEDICAL_NECESSITY_DENIALS: Record<string, string> = {
   'CO-197': 'Precertification, authorization or notification absent'
 };
 
+type RemittanceRoute = {
+  id: string;
+  label: string;
+  reason: string;
+  when: Port;
+  route: string;
+  message: string;
+};
+
 const routeRemittance = (): GraphDef => {
   const g = rule(
     [d('line', T.remittanceLines.list, 'Remittance Line', 'One claim payment of the 835.')],
@@ -609,7 +618,7 @@ const routeRemittance = (): GraphDef => {
       { codes: [{ list: 'string' }, keepListed(g, id, `${label} Codes`, codes, 'classify.codes')] },
       [{ field: 'codes', op: 'present' }]
     );
-  const routes = [
+  const routes: RemittanceRoute[] = [
     {
       id: 'noClaim',
       label: 'Unmatched',
@@ -697,7 +706,7 @@ const routeRemittance = (): GraphDef => {
       id: 'unknownGroup',
       label: 'Review the Group Code',
       reason: 'An adjustment group 5010 does not use',
-      when: 'classify.unknownGroup' as const,
+      when: 'classify.unknownGroup',
       route: 'review',
       message: 'The remittance has an adjustment group code 5010 does not use; post it by hand'
     },
